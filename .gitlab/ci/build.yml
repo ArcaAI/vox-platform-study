@@ -232,10 +232,14 @@ build-harness:
     - job: warm-up-base-images
       optional: true
     - job: build-python-base
-    # NOT optional (TASK-625 1.3): with `optional: true` the image builds even
-    # when the harness suite never ran, so a red or absent test could not stop a
-    # publish. The suite is hermetic (TASK-414), so it runs wherever the build does.
+    # TASK-625 1.3 made this need NON-optional so a red or absent harness suite
+    # could stop a publish. That is the right posture, but it is incompatible
+    # with the dev-2.1 shim (.gitlab-ci.yml sets SKIP_TESTS=true, which deletes
+    # `test-harness` while the build still runs) — the pipeline then fails to be
+    # CREATED at all. Restored to `optional: true`, matching every other build
+    # job. Drop the `optional: true` again when the dev-2.1 shim is removed.
     - job: test-harness
+      optional: true
   variables:
     SERVICE_NAME: harness
     DOCKER_CONTEXT: "."
@@ -252,7 +256,9 @@ build-harness-worker:
     - job: warm-up-base-images
       optional: true
     - job: build-python-base
+    # See build-harness above — same dev-2.1 shim constraint.
     - job: test-harness
+      optional: true
   variables:
     SERVICE_NAME: harness-worker
     DOCKER_CONTEXT: "."
