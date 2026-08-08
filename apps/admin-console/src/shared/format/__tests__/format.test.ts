@@ -1,5 +1,25 @@
 import { describe, expect, it } from 'vitest';
-import { formatBytes, formatDateTime, formatNumber, formatRelativeTime } from '../index';
+import { formatBytes, formatDateTime, formatMicros, formatNumber, formatRelativeTime } from '../index';
+
+describe('formatMicros', () => {
+  it('renders integer-micros strings as USD currency', () => {
+    expect(formatMicros('199029940')).toBe('$199.03'); // the TASK-615 live-evidence total
+    expect(formatMicros('0')).toBe('$0.00');
+    expect(formatMicros('3000')).toBe('$0.00'); // 3000 micros rounds to a cent
+    expect(formatMicros('999000000')).toBe('$999.00');
+  });
+
+  it('honours a non-USD currency', () => {
+    expect(formatMicros('1500000', 'EUR')).toContain('1.50');
+  });
+
+  it('renders an em-dash for nullish/empty/NaN values', () => {
+    expect(formatMicros(null)).toBe('—');
+    expect(formatMicros(undefined)).toBe('—');
+    expect(formatMicros('')).toBe('—');
+    expect(formatMicros('not-a-number')).toBe('—');
+  });
+});
 
 describe('formatNumber', () => {
   it('groups thousands', () => {

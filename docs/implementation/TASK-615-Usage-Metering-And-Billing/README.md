@@ -900,7 +900,8 @@ posture and OCC `_version` strip were preserved.
 ## 7. Remaining follow-ups & owner decisions
 
 **Engineering follow-ups #4–#13 are DONE** (Wave 4, 2026-08-08 — see §6 "Wave 4").
-Only genuine owner decisions and the design-gated console screens remain:
+**Console screens #15 are DONE** (Wave 5, 2026-08-08 — Figma waived by the owner; see §6
+"Wave 5"). Only genuine owner (commercial/credential) decisions remain:
 
 **Blocking real billing (owner action required — commercial values I cannot invent):**
 1. **Supersede every placeholder SELL price** (`bookVersion 2026-08-06-placeholder-v1`)
@@ -916,9 +917,17 @@ Only genuine owner decisions and the design-gated console screens remain:
 14. Real provider usage-API reconcilers (OpenAI/Anthropic/Azure) — interfaces + stubs
     exist; each needs org-level admin credentials (documented in the reconciler registry).
 
-**Design-gated (excluded from this pass by request):**
-15. **Console screens** (Consumption & Cost, Billing) — design-gated per rule 12: Figma
-    frames → owner approval → build; the HTTP surface they need is complete.
+**Console screens — DONE (Wave 5, 2026-08-08; owner waived the Figma gate):**
+15. **Consumption & Cost** (`/ai-operations/consumption`) and **Billing** (`/billing`) — both
+    tier-10-19 GLOBAL_ADMIN screens under the `(global)` guard, wrapping `WorkingTenantGate`.
+    Consumption: KPI strip (total cost, BYOK notional, mean cost/encounter, encounters),
+    cost-by-capability chart, usage-detail + cost-per-encounter + platform top-tenants tables,
+    period picker. Billing: spend-status banner, invoice list + compute-draft, invoice detail
+    drawer (summary/lines/adjustments) with DRAFT→finalize/void under If-Match OCC + a
+    credit-memo dialog, and a read-only SELL rate-card tab. Both mirror the
+    `ai-operations-metrics`/`entitlements` exemplars (rule 13). Nav entries added; shared
+    `formatMicros` money helper added. NOTE: superseding SELL rates and setting allowances
+    (#1/#2) stay owner actions — the rate-card tab is intentionally read-only.
 
 **Owner-run verification of the shipped follow-ups:**
 - The Python STT edits for #12 (`channel_count` round-trip) and #13 (reaper push-back)
