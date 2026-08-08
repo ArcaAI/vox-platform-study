@@ -94,6 +94,19 @@ records, not new capability either.
 
 ---
 
+> ### Surfaced by TASK-617 Wave C (2026-08-08) — a host collision waiting for this ticket
+>
+> Only the **dev** overlay patches Grafana's Ingress hostname. Staging and prod both render
+> `host: grafana.local`, the unpatched base placeholder. Harmless while `hope-v2-dev` is the only
+> namespace — but **this ticket is what creates the other two**, and the moment staging and prod
+> coexist on this single-node cluster, two Ingress objects claim the same host and Traefik resolves
+> it arbitrarily. This is the concrete form of TASK-616's O-12 "Grafana Ingress-host collision".
+>
+> TASK-617 C.5 added per-overlay hostname patches for `hope-api`, `hope-admin-console` and
+> `hope-compat-playground` following the live `grafana-dev.taphuynh.dev` precedent, so the pattern to
+> copy already exists — Grafana was simply never brought along. Fold it into the staging/prod overlay
+> work rather than treating it as a separate defect.
+
 ## 3. Implementation Plan
 
 Four waves. Everything inside a wave runs concurrently. Tier and effort per the
