@@ -76,6 +76,7 @@ class KnowledgeQdrantStore:
         sparse_name: str = SPARSE_VECTOR_NAME,
         client: QdrantClient | None = None,
         timeout: float = 10.0,
+        api_key: str | None = None,
     ) -> None:
         self._collection = collection
         self._dense_name = dense_name
@@ -85,7 +86,11 @@ class KnowledgeQdrantStore:
         else:
             from qdrant_client import QdrantClient
 
-            self._client = QdrantClient(url=url, timeout=cast(int, timeout))
+            # api_key=None is the unauthenticated path qdrant-client already
+            # expects, so this is safe to pass unconditionally (TASK-624 Q-03).
+            self._client = QdrantClient(
+                url=url, timeout=cast(int, timeout), api_key=api_key
+            )
 
     def upsert_chunks(self, items: list[UpsertItem]) -> int:
         """Upsert one named dense+sparse point per chunk; returns the count."""

@@ -23,8 +23,6 @@ QDRANT_PORT = int(os.getenv("QDRANT_PORT", "6333"))
 QDRANT_API_KEY = os.getenv("QDRANT_API_KEY", None)
 
 # STT Speaker Embeddings Collection
-STT_COLLECTION_NAME = "stt_speaker_embeddings"
-STT_VECTOR_SIZE = 512  # Pyannote embedding dimension
 
 # Knowledge Chunks Collection (TASK-330 Phase 3 — institutional RAG / hybrid retrieval).
 # Tenant + document + approval-scoped chunks of the institutional knowledge corpus,
@@ -100,9 +98,6 @@ def create_knowledge_chunks_collection(client: QdrantClient):
         raise
 
 
-# Legacy alias for backwards compatibility
-COLLECTION_NAME = STT_COLLECTION_NAME
-VECTOR_SIZE = STT_VECTOR_SIZE
 
 def main():
     print("=" * 60)
@@ -136,116 +131,15 @@ def main():
 
     print()
 
-    # Check if collection already exists
-    print(f"Checking if collection '{COLLECTION_NAME}' exists...")
-    try:
-        collections = client.get_collections().collections
-        collection_names = [col.name for col in collections]
+    # The stt_speaker_embeddings collection is NOT created (TASK-624 Q-06).
+    #
+    # STT diarization is in-memory and session-scoped; cross-session speaker
+    # identity comes from the PostgreSQL UserVoiceProfile row via
+    # diarization.preseed.preseed_speaker(), not from Qdrant. The collection has
+    # not been read or written by STT for some time (apps/stt/README.md:563), so
+    # provisioning it created an empty collection nobody used — and, worse,
+    # implied a speaker-embedding store that does not exist.
 
-        if COLLECTION_NAME in collection_names:
-            print(f"✓ Collection '{COLLECTION_NAME}' already exists")
-
-            # Get collection info
-            collection_info = client.get_collection(COLLECTION_NAME)
-            print(f"  - Vectors count: {collection_info.vectors_count}")
-            print(f"  - Points count: {collection_info.points_count}")
-            print(f"  - Vector size: {collection_info.config.params.vectors.size}")
-            print(f"  - Distance metric: {collection_info.config.params.vectors.distance}")
-            print()
-            print("Collection is ready to use!")
-            return
-
-    except Exception as e:
-        print(f"⚠ Could not check existing collections: {e}")
-
-    # Create collection
-    print(f"Creating collection '{COLLECTION_NAME}'...")
-    try:
-        client.create_collection(
-            collection_name=COLLECTION_NAME,
-            vectors_config=VectorParams(
-                size=VECTOR_SIZE,
-                distance=DISTANCE_METRIC
-            )
-        )
-        print(f"✓ Collection '{COLLECTION_NAME}' created successfully")
-
-        # Create payload indexes for multi-tenant filtering
-        # These match the filters used by stt.core.vectorstore.speaker_store
-        for field in ("tenant_id", "speaker_id", "consultation_id"):
-            client.create_payload_index(
-                collection_name=COLLECTION_NAME,
-                field_name=field,
-                field_schema=PayloadSchemaType.KEYWORD,
-            )
-        print("✓ Payload indexes created for stt_speaker_embeddings (tenant_id, speaker_id, consultation_id)")
-
-    except Exception as e:
-        print(f"✗ Failed to create collection: {e}")
-        sys.exit(1)
-
-    print()
-
-    # Verify collection
-    print("Verifying collection configuration...")
-    try:
-        collection_info = client.get_collection(COLLECTION_NAME)
-        print(f"✓ Collection verified:")
-        print(f"  - Name: {COLLECTION_NAME}")
-        print(f"  - Vector size: {collection_info.config.params.vectors.size}")
-        print(f"  - Distance metric: {collection_info.config.params.vectors.distance}")
-        print(f"  - Status: {collection_info.status}")
-    except Exception as e:
-        print(f"✗ Failed to verify collection: {e}")
-        sys.exit(1)
-
-    print()
-
-    # Create test point to verify write operations
-    print("Testing write operations...")
-    try:
-        test_point = PointStruct(
-            id="test-point-init",
-            vector=[0.0] * VECTOR_SIZE,
-            payload={
-                "speaker_code": "TEST_INIT",
-                "speaker_name": "Test Initialization",
-                "tenant_id": "00000000-0000-0000-0000-000000000000",
-                "test": True
-            }
-        )
-
-        client.upsert(
-            collection_name=COLLECTION_NAME,
-            points=[test_point]
-        )
-        print("✓ Write operation successful")
-
-        # Delete test point
-        client.delete(
-            collection_name=COLLECTION_NAME,
-            points_selector=["test-point-init"]
-        )
-        print("✓ Delete operation successful")
-
-    except Exception as e:
-        print(f"⚠ Write/delete test failed: {e}")
-
-    print()
-
-    # Test search operation
-    print("Testing search operations...")
-    try:
-        search_results = client.search(
-            collection_name=COLLECTION_NAME,
-            query_vector=[0.1] * VECTOR_SIZE,
-            limit=1
-        )
-        print(f"✓ Search operation successful (returned {len(search_results)} results)")
-    except Exception as e:
-        print(f"⚠ Search test failed: {e}")
-
-    # Create knowledge chunks collection (TASK-330 Phase 3 institutional RAG)
     create_knowledge_chunks_collection(client)
 
     print()
@@ -254,7 +148,6 @@ def main():
     print("=" * 60)
     print()
     print("Collections Created:")
-    print(f"  1. {STT_COLLECTION_NAME} (Vector: {STT_VECTOR_SIZE})")
     print(
         f"  2. {KNOWLEDGE_CHUNKS_COLLECTION} "
         f"(dense: {KNOWLEDGE_CHUNKS_VECTOR_SIZE} + sparse bm25)"
