@@ -962,10 +962,24 @@ describe('Department Prompt Configuration', () => {
   });
 
   describe('Unified Pre-Summary Template', () => {
-    it('should have all departments pointing to the unified PRE_SUMMARY_DEFAULT template', () => {
+    // TASK-634: pre-summary has NO department axis and NO visit-type axis — v1
+    // has exactly ONE pre-summary prompt per tenant, with department and visit
+    // type as VARIABLES inside it. Pointing every department at the unified
+    // template was harmless-looking but re-created the category error that let
+    // the department-agent tier hijack pre-summary (D-01/D-03), and left 18
+    // inert overrides the resolver no longer reads. The tenant-wide template is
+    // reached through the resolver's tenant tier, not through a per-department
+    // column, so this column must stay NULL — otherwise a re-seed silently
+    // restores the overrides after they are cleared.
+    it('should NOT department-scope the pre-summary prompt on any default department', () => {
       DEFAULT_DEPARTMENTS.forEach((dept) => {
-        expect(dept.preSummaryPromptId).toBe(SEED_TEMPLATE_IDS.PRE_SUMMARY_DEFAULT);
+        expect(dept.preSummaryPromptId, `${dept.code} must not department-scope pre-summary`).toBeNull();
       });
+    });
+
+    it('still seeds the unified PRE_SUMMARY_DEFAULT template itself (reached via the resolver tenant tier)', () => {
+      const preSummary = DEFAULT_PROMPT_TEMPLATES.find((t) => t.id === SEED_TEMPLATE_IDS.PRE_SUMMARY_DEFAULT);
+      expect(preSummary).toBeDefined();
     });
   });
 

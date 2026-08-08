@@ -19,7 +19,8 @@ export const DEFAULT_DEPARTMENTS = [
     name: 'General Practice',
     description: 'General medical consultations and primary care',
     defaultSummaryTemplate: 'SOAP',
-    preSummaryPromptId: '71000000-0000-0000-0000-000000000040',
+    // Pre-summary is NOT department-scoped — see ARCAAI_FALLBACK_TEMPLATE_IDS.
+    preSummaryPromptId: null,
     newPatientPromptId: '71000000-0000-0000-0000-000000000001',
     revisitPromptId: '71000000-0000-0000-0000-000000000005',
     promptConfig: {
@@ -35,7 +36,8 @@ export const DEFAULT_DEPARTMENTS = [
     name: 'Cardiology',
     description: 'Heart and cardiovascular system specialists',
     defaultSummaryTemplate: 'SOAP',
-    preSummaryPromptId: '71000000-0000-0000-0000-000000000040',
+    // Pre-summary is NOT department-scoped — see ARCAAI_FALLBACK_TEMPLATE_IDS.
+    preSummaryPromptId: null,
     newPatientPromptId: '71000000-0000-0000-0000-000000000004',
     revisitPromptId: '71000000-0000-0000-0000-000000000002',
     promptConfig: {
@@ -51,7 +53,8 @@ export const DEFAULT_DEPARTMENTS = [
     name: 'Radiology',
     description: 'Medical imaging and diagnostic radiology',
     defaultSummaryTemplate: 'Radiology-Report',
-    preSummaryPromptId: '71000000-0000-0000-0000-000000000040',
+    // Pre-summary is NOT department-scoped — see ARCAAI_FALLBACK_TEMPLATE_IDS.
+    preSummaryPromptId: null,
     newPatientPromptId: null,
     revisitPromptId: null,
     promptConfig: {
@@ -67,7 +70,8 @@ export const DEFAULT_DEPARTMENTS = [
     name: 'Laboratory',
     description: 'Clinical laboratory and pathology services',
     defaultSummaryTemplate: 'Lab-Report',
-    preSummaryPromptId: '71000000-0000-0000-0000-000000000040',
+    // Pre-summary is NOT department-scoped — see ARCAAI_FALLBACK_TEMPLATE_IDS.
+    preSummaryPromptId: null,
     newPatientPromptId: null,
     revisitPromptId: null,
     promptConfig: {
@@ -83,7 +87,8 @@ export const DEFAULT_DEPARTMENTS = [
     name: 'Neurology',
     description: 'Brain and nervous system specialists',
     defaultSummaryTemplate: 'Neurology-Structured',
-    preSummaryPromptId: '71000000-0000-0000-0000-000000000040',
+    // Pre-summary is NOT department-scoped — see ARCAAI_FALLBACK_TEMPLATE_IDS.
+    preSummaryPromptId: null,
     newPatientPromptId: '71000000-0000-0000-0000-000000000020',
     revisitPromptId: '71000000-0000-0000-0000-000000000021',
     promptConfig: {
@@ -99,7 +104,8 @@ export const DEFAULT_DEPARTMENTS = [
     name: 'Orthopedics',
     description: 'Musculoskeletal system and bone specialists',
     defaultSummaryTemplate: 'Orthopedics-Structured',
-    preSummaryPromptId: '71000000-0000-0000-0000-000000000040',
+    // Pre-summary is NOT department-scoped — see ARCAAI_FALLBACK_TEMPLATE_IDS.
+    preSummaryPromptId: null,
     newPatientPromptId: '71000000-0000-0000-0000-000000000018',
     revisitPromptId: '71000000-0000-0000-0000-000000000019',
     promptConfig: {
@@ -115,7 +121,8 @@ export const DEFAULT_DEPARTMENTS = [
     name: 'Dermatology',
     description: 'Skin, hair, and nail specialists',
     defaultSummaryTemplate: 'Dermatology-Structured',
-    preSummaryPromptId: '71000000-0000-0000-0000-000000000040',
+    // Pre-summary is NOT department-scoped — see ARCAAI_FALLBACK_TEMPLATE_IDS.
+    preSummaryPromptId: null,
     newPatientPromptId: '71000000-0000-0000-0000-000000000028',
     revisitPromptId: '71000000-0000-0000-0000-000000000029',
     promptConfig: {
@@ -138,7 +145,8 @@ export const DEFAULT_DEPARTMENTS = [
     name: 'Psychiatry',
     description: 'Mental health and psychiatric care',
     defaultSummaryTemplate: 'Psychiatric-Assessment',
-    preSummaryPromptId: '71000000-0000-0000-0000-000000000040',
+    // Pre-summary is NOT department-scoped — see ARCAAI_FALLBACK_TEMPLATE_IDS.
+    preSummaryPromptId: null,
     newPatientPromptId: null,
     revisitPromptId: null,
     promptConfig: {
@@ -161,7 +169,8 @@ export const DEFAULT_DEPARTMENTS = [
     name: 'Pediatrics',
     description: 'Child and adolescent healthcare',
     defaultSummaryTemplate: 'SOAP',
-    preSummaryPromptId: '71000000-0000-0000-0000-000000000040',
+    // Pre-summary is NOT department-scoped — see ARCAAI_FALLBACK_TEMPLATE_IDS.
+    preSummaryPromptId: null,
     newPatientPromptId: null,
     revisitPromptId: null,
     promptConfig: {
@@ -177,7 +186,8 @@ export const DEFAULT_DEPARTMENTS = [
     name: 'Emergency',
     description: 'Emergency and urgent care services',
     defaultSummaryTemplate: 'ER-Triage',
-    preSummaryPromptId: '71000000-0000-0000-0000-000000000040',
+    // Pre-summary is NOT department-scoped — see ARCAAI_FALLBACK_TEMPLATE_IDS.
+    preSummaryPromptId: null,
     newPatientPromptId: null,
     revisitPromptId: null,
     promptConfig: {
@@ -193,7 +203,8 @@ export const DEFAULT_DEPARTMENTS = [
     name: 'Surgery',
     description: 'General surgery and surgical specialties',
     defaultSummaryTemplate: 'Surgery-Structured',
-    preSummaryPromptId: '71000000-0000-0000-0000-000000000040',
+    // Pre-summary is NOT department-scoped — see ARCAAI_FALLBACK_TEMPLATE_IDS.
+    preSummaryPromptId: null,
     newPatientPromptId: '71000000-0000-0000-0000-000000000010',
     revisitPromptId: '71000000-0000-0000-0000-000000000011',
     promptConfig: {
@@ -217,7 +228,8 @@ export const DEFAULT_DEPARTMENTS = [
     name: 'General Medicine',
     description: 'Internal medicine and general medical consultations',
     defaultSummaryTemplate: 'Medicine-Structured',
-    preSummaryPromptId: '71000000-0000-0000-0000-000000000040',
+    // Pre-summary is NOT department-scoped — see ARCAAI_FALLBACK_TEMPLATE_IDS.
+    preSummaryPromptId: null,
     newPatientPromptId: '71000000-0000-0000-0000-000000000012',
     revisitPromptId: '71000000-0000-0000-0000-000000000013',
     promptConfig: {
@@ -240,7 +252,8 @@ export const DEFAULT_DEPARTMENTS = [
     name: 'Breast & Endocrine',
     description: 'Breast and endocrine surgery specialists',
     defaultSummaryTemplate: 'BreastEndocrine-Structured',
-    preSummaryPromptId: '71000000-0000-0000-0000-000000000040',
+    // Pre-summary is NOT department-scoped — see ARCAAI_FALLBACK_TEMPLATE_IDS.
+    preSummaryPromptId: null,
     newPatientPromptId: '71000000-0000-0000-0000-000000000014',
     revisitPromptId: '71000000-0000-0000-0000-000000000015',
     promptConfig: {
@@ -256,7 +269,8 @@ export const DEFAULT_DEPARTMENTS = [
     name: 'Rheumatology',
     description: 'Autoimmune and musculoskeletal disease specialists',
     defaultSummaryTemplate: 'Rheumatology-Structured',
-    preSummaryPromptId: '71000000-0000-0000-0000-000000000040',
+    // Pre-summary is NOT department-scoped — see ARCAAI_FALLBACK_TEMPLATE_IDS.
+    preSummaryPromptId: null,
     newPatientPromptId: '71000000-0000-0000-0000-000000000016',
     revisitPromptId: '71000000-0000-0000-0000-000000000017',
     promptConfig: {
@@ -272,7 +286,8 @@ export const DEFAULT_DEPARTMENTS = [
     name: 'Hematology',
     description: 'Blood disorders and hematology-oncology specialists',
     defaultSummaryTemplate: 'Hematology-Structured',
-    preSummaryPromptId: '71000000-0000-0000-0000-000000000040',
+    // Pre-summary is NOT department-scoped — see ARCAAI_FALLBACK_TEMPLATE_IDS.
+    preSummaryPromptId: null,
     newPatientPromptId: '71000000-0000-0000-0000-000000000022',
     revisitPromptId: '71000000-0000-0000-0000-000000000023',
     promptConfig: {
@@ -288,7 +303,8 @@ export const DEFAULT_DEPARTMENTS = [
     name: 'Dietetics',
     description: 'Clinical nutrition and dietetic services',
     defaultSummaryTemplate: 'Dietetics-Structured',
-    preSummaryPromptId: '71000000-0000-0000-0000-000000000040',
+    // Pre-summary is NOT department-scoped — see ARCAAI_FALLBACK_TEMPLATE_IDS.
+    preSummaryPromptId: null,
     newPatientPromptId: '71000000-0000-0000-0000-000000000030',
     revisitPromptId: '71000000-0000-0000-0000-000000000031',
     promptConfig: {
@@ -311,7 +327,8 @@ export const DEFAULT_DEPARTMENTS = [
     name: 'Nephrology',
     description: 'Kidney disease and renal care specialists',
     defaultSummaryTemplate: 'Nephrology-Structured',
-    preSummaryPromptId: '71000000-0000-0000-0000-000000000040',
+    // Pre-summary is NOT department-scoped — see ARCAAI_FALLBACK_TEMPLATE_IDS.
+    preSummaryPromptId: null,
     newPatientPromptId: '71000000-0000-0000-0000-000000000032',
     revisitPromptId: '71000000-0000-0000-0000-000000000033',
     promptConfig: {
@@ -327,7 +344,8 @@ export const DEFAULT_DEPARTMENTS = [
     name: 'Surgical Oncology',
     description: 'Surgical management of cancer and tumors',
     defaultSummaryTemplate: 'SurgicalOncology-Structured',
-    preSummaryPromptId: '71000000-0000-0000-0000-000000000040',
+    // Pre-summary is NOT department-scoped — see ARCAAI_FALLBACK_TEMPLATE_IDS.
+    preSummaryPromptId: null,
     newPatientPromptId: '71000000-0000-0000-0000-000000000034',
     revisitPromptId: '71000000-0000-0000-0000-000000000035',
     promptConfig: {
