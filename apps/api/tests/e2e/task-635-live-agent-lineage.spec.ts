@@ -306,6 +306,12 @@ test.describe.serial('TASK-635 C6 — live agent lineage survives into finalize 
     // SYSTEM-owned, so it satisfies both rules and is the semantically right
     // thing for a live binding.
     const SYSTEM_LIVE_DEFAULT_TEMPLATE_ID = '71000000-0000-0000-0004-000000000001';
+    // Bind a DIFFERENT template for the summary slot than for the live slot, so
+    // "live and finalize are distinct prompts" is actually observable. Binding
+    // one template to both made finalize resolve the live template and the
+    // distinctness assertion vacuous. CATCHALL_SOAP is the platform summary
+    // default: department-unbound and owned by this tenant, so it is bindable.
+    const CATCHALL_SOAP_TEMPLATE_ID = '71000000-0000-0000-0000-000000000036';
     if (templateList.length) {
       // `slug` is REQUIRED and `isDefault` is NOT a create field (the global
       // pipe runs forbidNonWhitelisted, so sending it is a hard 400 — that is
@@ -320,7 +326,7 @@ test.describe.serial('TASK-635 C6 — live agent lineage survives into finalize 
           departmentId,
           name: `task-635-c6-${stamp}`,
           slug: `task-635-c6-${stamp}`,
-          promptTemplateId: SYSTEM_LIVE_DEFAULT_TEMPLATE_ID,
+          promptTemplateId: CATCHALL_SOAP_TEMPLATE_ID,
           livePromptTemplateId: SYSTEM_LIVE_DEFAULT_TEMPLATE_ID,
         },
       });
@@ -440,6 +446,10 @@ test.describe.serial('TASK-635 C6 — live agent lineage survives into finalize 
   });
 
   test('finalize pins the SAME agent and stamps BOTH prompt versions, distinctly (R-N2)', async ({ request }) => {
+    // recording/stop DRAINS the transcript backlog — it loops flush({force:true})
+    // until the cursor catches up — and then finalize runs its own generation.
+    // That is several real LLM round-trips, far past the 30s default.
+    test.setTimeout(300_000);
     test.skip(!sseAgent, 'no live agent observed on the SSE stream (see previous test)');
     // Lineage is carried by the LIVE_SOAP_SNAPSHOT ContextItem, which only
     // exists once a flush GENERATED a note. The frozen agent alone (R-N1) is
@@ -470,14 +480,25 @@ test.describe.serial('TASK-635 C6 — live agent lineage survives into finalize 
     expect(meta!.sessionAgentId).toBe(sseAgent!.id);
     expect(meta!.sessionAgentPromptVersion).toBe(`${sseAgent!.promptTemplateId}@${sseAgent!.promptVersionNumber}`);
 
-    // Both prompt versions present …
+    // The lineage columns name the LIVE template, in `<templateId>@<n>` form.
     expect(meta!.sessionAgentPromptVersion, 'the LIVE template version').toBeTruthy();
-    expect(meta!.promptVersion, "finalize's OWN template version").toBeTruthy();
-    // … and NOT the same string: live and finalize are different prompts.
-    expect(meta!.promptVersion).not.toBe(meta!.sessionAgentPromptVersion);
+    expect(meta!.sessionAgentPromptVersion).toContain('@');
+
+    // NOTE — this originally also asserted that `promptVersion` (finalize's own
+    // template version) was present and DIFFERENT. Running it proved that wrong:
+    // `SummaryMeta.promptVersion` is only ever written when a caller supplies it
+    // on AddContextRequest (context.service.ts:522); the native finalize path
+    // never populates it, so null here is correct, not a defect. Asserting it
+    // would have locked in an expectation the product does not hold. The claim
+    // that matters — live and finalize are distinct prompts — is already carried
+    // by `sessionAgentPromptVersion` naming the LIVE template while the finalize
+    // template is reported separately via `promptResolvedFrom`/`resolvedPromptId`.
+    expect(meta!.resolvedPromptId, "finalize's own resolved template").toBeTruthy();
+    expect(meta!.resolvedPromptId).not.toBe(sseAgent!.promptTemplateId);
   });
 
   test('tier-0 doctor-preferred still wins the finalize template while lineage stays stamped', async ({ request }) => {
+    test.setTimeout(300_000); // another real finalize generation — see the note above
     test.skip(!sseAgent, 'no live agent observed on the SSE stream (see first test)');
     test.skip(!liveGenerated, 'the live loop never generated a note — no snapshot exists to carry lineage');
 

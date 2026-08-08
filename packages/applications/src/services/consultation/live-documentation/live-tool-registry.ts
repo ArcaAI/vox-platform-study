@@ -158,6 +158,8 @@ export interface NlpExtractionToolDeps {
   logger: Logger;
   cls?: ClsService<IActiveUserContext>;
   aiTaskDefaultService?: IAiTaskDefaultService;
+  /** Resolves `NLP_SERVICE_TOKEN` for the authenticated gateway→NLP hop (same as the groundedness deps). */
+  secretsService?: SecretsService;
 }
 
 /** `nlp.classify-tokens` — body moved from `LiveDocumentationService.callNlp` + `mapVitals`. */
@@ -178,10 +180,16 @@ export class NlpExtractionTool implements ExtractionToolExecutor {
     // Fail-open: {} on any resolution hiccup, or when CLS isn't wired (the
     // live-doc service isn't otherwise request-scoped).
     const modelSelection = this.deps.cls ? await resolveNerModelInjection(this.deps.aiTaskDefaultService, this.deps.cls, this.deps.logger) : {};
+    // The gateway→NLP hop is shared-secret authenticated the same way the
+    // guardrail executor below already does it. This call omitted the header,
+    // so wherever NLP enforces a token (`NLP_SERVICE_TOKEN` non-empty) entity
+    // extraction was rejected and the live note silently lost its highlights —
+    // the NLP twin of the SMR defect in `callSmr` (TASK-638).
+    const serviceToken = (await this.deps.secretsService?.getSecretOptional('NLP_SERVICE_TOKEN')) ?? '';
     const response = await this.deps.httpService.axiosRef.post(
       `${this.deps.nlpServiceUrl}/api/v1/classify/tokens`,
       { text: input.sourceText, ...modelSelection },
-      { timeout: 30000, signal },
+      { timeout: 30000, signal, headers: { 'Content-Type': 'application/json', 'X-Service-Token': serviceToken } },
     );
     // Canonical NLP wire shape (apps/nlp schemas/common.py Entity): text / entity_type /
     // position.{start,end} / icd_code (deterministic OntologyLinker; present only for the

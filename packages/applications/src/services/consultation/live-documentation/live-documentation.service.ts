@@ -464,6 +464,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
         logger: this.logger,
         cls: this.cls,
         aiTaskDefaultService: this.aiTaskDefaultService,
+        secretsService: this.secretsService,
       },
       groundedness: {
         httpService: this.httpService,
@@ -2023,9 +2024,18 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       stream: false as const,
       response_format: includeResponseFormat ? LIVE_SOAP_RESPONSE_FORMAT : undefined,
     };
+    // The gateway→SMR hop is shared-secret authenticated (`X-Service-Token`).
+    // This call omitted it, so wherever SMR actually enforces a token — i.e.
+    // every environment where `SMR_SERVICE_TOKEN` is non-empty — the live loop
+    // was rejected with `invalid_or_missing_token` and the flush degraded to an
+    // empty note (TASK-638). It "worked" only in dev, where an empty token
+    // trips SMR's bypass. Same resolution the sibling SMR callers use
+    // (`prompt-management.service.ts`, `dna-writing-style.processor.ts`); `??
+    // ''` preserves the dev bypass when no secret is configured.
+    const serviceToken = (await this.secretsService?.getSecretOptional('SMR_SERVICE_TOKEN')) ?? '';
     const response = await this.httpService.axiosRef.post(`${this.smrServiceUrl}/api/v1/generate`, payload, {
       timeout: this.smrTimeoutMs,
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-Service-Token': serviceToken },
       signal,
     });
     const stats = this.parseGenerationStats(response.data);
