@@ -1,4 +1,4 @@
-import { BillingInvoiceStatus } from '@arcaai/domains';
+import { BillingInvoiceStatus, TenantPlan } from '@arcaai/domains';
 
 import { AddAdjustmentRequest, BillingInvoiceResponse, BillingInvoiceSummaryResponse, SpendStatusResponse } from './dto';
 
@@ -40,6 +40,28 @@ export interface IBillingService {
 
   /** Month-to-date SELL-rated overage spend vs the tenant spend limit (D12). Read-only. */
   getSpendStatus(tenantId: string, period: string): Promise<SpendStatusResponse>;
+
+  /**
+   * Enforcement precheck for the optional tenant spend limit (TASK-615 #8, D12).
+   * Throws `SpendLimitExceededException` (→ HTTP 402) when the tenant has SET a
+   * monthly limit and its SELL-rated overage spend has reached it. Opt-in and
+   * cheap by construction: a tenant with no limit set (the default — every
+   * `monthlySpendLimitMicros` seeds NULL) returns immediately without computing
+   * a draft, so the metered hot path pays nothing until a limit exists. `period`
+   * defaults to the current UTC month.
+   */
+  assertSpendLimit(tenantId: string, period?: string): Promise<void>;
+
+  /**
+   * Append a plan-change fact to `TenantPlanHistory` (TASK-615 #6) — the source
+   * the invoice engine prorates the plan fee from. Closes the tenant's open
+   * window at `effectiveAt` and opens a new one for `newPlan` (or leaves it
+   * closed when `newPlan` is null = plan removed). Idempotent: re-recording the
+   * plan already in force is a no-op. This is the MECHANISM a plan-change action
+   * calls (tenant onboarding for the initial window; a future change-plan flow
+   * for subsequent ones); it does not itself change `Tenant.plan`.
+   */
+  recordPlanChange(tenantId: string, newPlan: TenantPlan | null, effectiveAt: Date, changeReason?: string): Promise<void>;
 }
 
 export const IBillingService = Symbol('IBillingService');

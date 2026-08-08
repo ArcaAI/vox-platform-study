@@ -46,6 +46,8 @@ export interface PriceCandidate {
   model: string | null;
   contextBand: string | null;
   planTier: TenantPlan | null;
+  /** Cache-write TTL band ("5m"/"1h"); null = TTL-agnostic wildcard (TASK-615 #7). */
+  cacheTtl: string | null;
   unitPriceMicros: bigint;
   bookVersion: string;
   currency: string;
@@ -59,12 +61,26 @@ export interface PriceQueryDimensions {
   model: string | null;
   contextBand: string | null;
   planTier: TenantPlan | null;
+  /**
+   * From `attributesJson.cacheTtl` on a CACHE_WRITE_TOKEN event (TASK-615 #7).
+   * Optional because it applies to a single unit — omitting it (like a null)
+   * resolves the TTL-agnostic wildcard row, the pre-#7 behavior for every other
+   * unit.
+   */
+  cacheTtl?: string | null;
 }
 
-const WEIGHT_PROVIDER = 8;
-const WEIGHT_MODEL = 4;
-const WEIGHT_CONTEXT_BAND = 2;
-const WEIGHT_PLAN_TIER = 1;
+// Powers of two so each dimension's presence dominates the sum of all
+// less-significant ones (a provider match can never be out-ranked by
+// model+contextBand+planTier+cacheTtl combined). `cacheTtl` is the LEAST
+// significant new dimension (TASK-615 #7): it leaves the existing
+// provider > model > contextBand > planTier precedence untouched and only lets
+// a TTL-specific cache-write row beat the TTL-agnostic wildcard.
+const WEIGHT_PROVIDER = 16;
+const WEIGHT_MODEL = 8;
+const WEIGHT_CONTEXT_BAND = 4;
+const WEIGHT_PLAN_TIER = 2;
+const WEIGHT_CACHE_TTL = 1;
 
 /**
  * Pick the row that prices this event, or `null` when none applies.
@@ -81,6 +97,7 @@ export function selectMostSpecificPrice(candidates: readonly PriceCandidate[], q
     if (!matches(row.model, query.model)) continue;
     if (!matches(row.contextBand, query.contextBand)) continue;
     if (!matches(row.planTier, query.planTier)) continue;
+    if (!matches(row.cacheTtl, query.cacheTtl)) continue;
 
     const score = specificity(row);
     if (best === null || score > bestScore || (score === bestScore && outranksOnTieBreak(row, best))) {
@@ -111,7 +128,7 @@ export function computeCostMicros(quantity: Decimal.Value, unitPriceMicros: bigi
 }
 
 /** A NULL row dimension is a wildcard; a set one must equal the query's value. */
-function matches(rowValue: string | TenantPlan | null, queryValue: string | TenantPlan | null): boolean {
+function matches(rowValue: string | TenantPlan | null, queryValue: string | TenantPlan | null | undefined): boolean {
   if (rowValue === null || rowValue === undefined) return true;
   return rowValue === queryValue;
 }
@@ -121,7 +138,8 @@ function specificity(row: PriceCandidate): number {
     (row.provider !== null ? WEIGHT_PROVIDER : 0) +
     (row.model !== null ? WEIGHT_MODEL : 0) +
     (row.contextBand !== null ? WEIGHT_CONTEXT_BAND : 0) +
-    (row.planTier !== null ? WEIGHT_PLAN_TIER : 0)
+    (row.planTier !== null ? WEIGHT_PLAN_TIER : 0) +
+    (row.cacheTtl !== null ? WEIGHT_CACHE_TTL : 0)
   );
 }
 

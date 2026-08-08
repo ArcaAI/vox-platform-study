@@ -13,6 +13,8 @@ export interface AiUsageRollupDailyDimension {
   tenantId: string;
   bucketStart: Date;
   capability: AiCapability;
+  /** Ledger event operation (TASK-615 #4); "" sentinel for pre-follow-up rows. */
+  operation: string;
   provider: string;
   /** "" sentinel when the capability selects no model — never null. */
   model: string;
@@ -94,5 +96,24 @@ export class AiUsageRollupDailyRepository extends Repository<AiUsageRollupDailyE
     });
     const mapper = AiUsageRollupDailyEntityMapper.getInstance();
     return models.map((model: AiUsageRollupDaily) => mapper.toDomainEntity(model));
+  }
+
+  /**
+   * All-time `quantitySum` for one (capability, unit-set) of a tenant, as a
+   * `number` (TASK-615 #11 — the ledger-derived consumption read behind
+   * `PlatformMetricsService.getConsumptionRollup`, so the platform-metrics
+   * dashboard agrees with `UsageAnalyticsService.getUsageSummary`). Pass
+   * `tenantId = null` for the platform-wide total. Returns 0 when no rows match.
+   */
+  async sumQuantityForCapabilityUnits(tenantId: string | null, capability: AiCapability, units: AiUsageUnit[]): Promise<number> {
+    const result = await this.db.aggregate({
+      _sum: { quantitySum: true },
+      where: { ...(tenantId ? { tenantId } : {}), capability, unit: { in: units } },
+    });
+    const sum = result._sum?.quantitySum ?? null;
+    if (sum === null || sum === undefined) return 0;
+    return typeof sum === 'object' && typeof (sum as { toNumber?: unknown }).toNumber === 'function'
+      ? (sum as { toNumber: () => number }).toNumber()
+      : Number(sum);
   }
 }

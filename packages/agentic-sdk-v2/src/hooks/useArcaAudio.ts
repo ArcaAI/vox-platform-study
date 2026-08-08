@@ -109,6 +109,24 @@ function injectedStreamLivenessViolation(stream: MediaStream): 'no audio track' 
  * }
  * ```
  */
+/**
+ * Number of distinct microphone SOURCES a `start()` request asks for
+ * (TASK-615 #12). Injected caller-owned streams win; otherwise the unique set of
+ * `deviceId` + `secondaryDeviceId` + `additionalDeviceIds`. Always ≥ 1 (a bare
+ * `start()` is one implicit default mic). The mix always collapses to one mono
+ * uplink, so this is a metadata signal for usage repricing, never a PCM count.
+ */
+function resolveRequestedSourceCount(options?: AudioStartOptions): number {
+  const injected = options?.sourceStreams?.length ?? 0;
+  if (injected > 0) return injected;
+  const ids = new Set(
+    [options?.deviceId, options?.secondaryDeviceId, ...(options?.additionalDeviceIds ?? [])].filter(
+      (id): id is string => typeof id === 'string' && id.trim().length > 0,
+    ),
+  );
+  return Math.max(ids.size, 1);
+}
+
 export function useArcaAudio() {
   const store = useAgenticStore();
 
@@ -399,6 +417,11 @@ export function useArcaAudio() {
         // setting a caller went out of their way to ask for. Only negatives
         // (meaningless) fall back to the client default.
         ...(typeof options?.quietWindowMs === 'number' && options.quietWindowMs >= 0 ? { quietWindowMs: options.quietWindowMs } : {}),
+        // Dual-/multi-mic source count for STT usage repricing (TASK-615 #12).
+        // Derived from the REQUESTED sources — injected streams, else the unique
+        // deviceId/secondaryDeviceId/additionalDeviceIds set — so it is known at
+        // create time (the resolved mix below always collapses to one mono track).
+        channelCount: resolveRequestedSourceCount(options),
       });
 
       const timer = logger?.startOperation('startAudio', {

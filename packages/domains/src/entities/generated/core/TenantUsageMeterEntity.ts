@@ -9,7 +9,12 @@ export interface ITenantUsageMeterEntity extends IBaseTenantEntity {
   metric: Enums.UsageMeterMetric;
   periodStart: Date;
   periodEnd: Date;
-  usedCount: number;
+  /**
+   * Monthly consumed total (TASK-615 #5): `bigint` so token/character meters do
+   * not overflow Int32 (~2.1B) for a heavy tenant. Maps to the `BigInt`
+   * `usedCount` column.
+   */
+  usedCount: bigint;
   reconciledAt?: Date | null;
 }
 
@@ -80,8 +85,8 @@ export class TenantUsageMeterEntity extends BaseTenantEntity {
     if (this._periodEnd.getTime() <= this._periodStart.getTime()) {
       throw new BusinessException('TenantUsageMeter periodEnd must be after periodStart.');
     }
-    if (typeof this._usedCount !== 'number' || this._usedCount < 0) {
-      throw new BusinessException('TenantUsageMeter usedCount must be a non-negative number.');
+    if (typeof this._usedCount !== 'bigint' || this._usedCount < 0n) {
+      throw new BusinessException('TenantUsageMeter usedCount must be a non-negative bigint.');
     }
   }
 }

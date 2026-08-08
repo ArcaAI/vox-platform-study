@@ -11,7 +11,7 @@ export class TenantUsageMeter extends BaseTenantDataModel {
   public metric: Enums.UsageMeterMetric;
   public periodStart: Date;
   public periodEnd: Date;
-  public usedCount: number;
+  public usedCount: bigint;
   public reconciledAt: Date | null;
   public resourceStatus: Enums.ResourceStatusType;
   public resourceStatusUpdatedAt: Date | null;

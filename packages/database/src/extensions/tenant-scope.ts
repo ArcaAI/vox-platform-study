@@ -151,6 +151,11 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   // throttler + global-admin cross-tenant override CRUD read it through the
   // extended client without a matching CLS tenant).
   'TenantUsageMeter',
+  // entitlement.prisma (1) — append-only plan-change history (TASK-615 #6).
+  // Tenant-scoped and NOT SYSTEM-shared: a tenant's plan timeline is its own.
+  // Soft-delete EXEMPT (append-only fact, no resourceStatus column) — see
+  // MODELS_WITHOUT_SOFT_DELETE in client.ts.
+  'TenantPlanHistory',
   // identity-provider.prisma (3) — tenant-scoped external OIDC IdP.
   // None are SYSTEM-shared reads — a tenant's IdP config/links/domains are
   // never visible cross-tenant.
@@ -357,6 +362,38 @@ export const SYSTEM_SHARED_READ_MODELS: ReadonlySet<string> = new Set([
   // tenant-owned row is reserved for a negotiated enterprise rate. No secret
   // material: prices are integer micros.
   'AiPriceBook',
+  // TASK-635 B-12 fold-in (C1 §8). The PLATFORM-DEFAULT prompt catalog lives
+  // under the SYSTEM tenant and every tenant's PromptResolutionService chain
+  // must read it while running under that tenant's own CLS:
+  //   - `SYSTEM_DEFAULTS.preSummaryPromptId` (…040), re-owned to SYSTEM by
+  //     migration 20260808000100. Before this widening a non-Global tenant's
+  //     `findById` missed, `isApprovedTemplate` returned false, and the
+  //     pre-summary chain fell through to its 503 fail-closed instead of the
+  //     platform fallback — the exact silent-fallback failure mode documented
+  //     for GlobalSetting above, but failing CLOSED.
+  //   - the SYSTEM live-summarization default (seed/07c-live-agent-defaults.ts),
+  //     which is unreachable cross-tenant without this.
+  //   - the 13 SYSTEM golden library templates, which
+  //     `DepartmentAgentService.assertTemplateBindable` already codes for
+  //     (`template.tenantId !== SYSTEM_TENANT_ID` allowance) but could never
+  //     reach, because the read missed first.
+  // READS widen to [caller, SYSTEM]; WRITES are NOT widened, so an
+  // update/delete of a SYSTEM-owned template from tenant CLS still yields
+  // P2025 → 404. No secret material: `content` is the prompt body, and the
+  // encrypted `lastTestOutput` ciphertext is inert without a gateway-side
+  // Vault-Transit decrypt and never appears in a read DTO.
+  //
+  // LIST-SURFACE CAVEAT (C1 §12 R1): the objection recorded in
+  // seed/07a-agent-golden-library.ts was that widening would surface SYSTEM
+  // rows inside tenants' own template pickers. It does not, because every
+  // list/count read in `PromptManagementService` pins an EXPLICIT
+  // `tenantId: <caller>` predicate, which `mergeSharedReadTenantIntoWhere`
+  // preserves verbatim (it only injects `IN [caller, SYSTEM]` when the caller
+  // supplied no tenantId at all). By-ID reads — resolution, assertTemplateBindable,
+  // version fetches — are the ones that get the widening, which is the intent.
+  // A new list surface MUST keep pinning tenantId explicitly.
+  'PromptTemplate',
+  'PromptVersion',
 ]);
 
 export function isSystemSharedReadModel(model: string): boolean {

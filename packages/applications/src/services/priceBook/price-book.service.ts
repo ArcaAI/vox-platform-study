@@ -46,6 +46,7 @@ export class PriceBookService implements IPriceBookService {
       model: input.model ?? null,
       contextBand: input.contextBand ?? null,
       planTier: input.planTier ?? null,
+      cacheTtl: input.cacheTtl ?? null,
     };
 
     // 1. The tenant's own card, when it has one.
@@ -116,6 +117,7 @@ function toCandidate(entity: AiPriceBookEntity): PriceCandidate {
     model: entity.model ?? null,
     contextBand: entity.contextBand ?? null,
     planTier: entity.planTier ?? null,
+    cacheTtl: entity.cacheTtl ?? null,
     unitPriceMicros: entity.unitPriceMicros,
     bookVersion: entity.bookVersion,
     currency: entity.currency ?? 'USD',

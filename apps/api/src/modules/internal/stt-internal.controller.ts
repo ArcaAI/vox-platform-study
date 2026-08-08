@@ -9,9 +9,11 @@ import {
   InternalUpdateProgressRequest,
   ITenantSttConfigService,
   SecretsService,
+  StreamingSessionService,
   SttInternalService,
 } from '@arcaai/applications';
-import type { SttProviderOverrides } from '@arcaai/applications';
+import type { SttProviderOverrides, StreamingSessionTeardownSummary } from '@arcaai/applications';
+import { SttStreamingUsagePushbackRequest } from './dto/stt-streaming-usage.request';
 import {
   BadRequestException,
   Body,
@@ -52,6 +54,9 @@ export class SttInternalController {
     // Verifies the platform internal credential before a caller-supplied
     // `X-Internal-Tenant-Id` is honoured (BUG-013 — see `assertPlatformInternalCredential`).
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
+    // Records the reaper-built usage summary on the STT-side push-back path
+    // (TASK-615 #13). Optional so positional test construction still works.
+    @Optional() private readonly streamingSession?: StreamingSessionService,
   ) {}
 
   /** The secret the STT worker presents as `X-Internal-Service-Key`. */
@@ -153,6 +158,20 @@ export class SttInternalController {
   ) {
     this.ensureInternalApiKey(request);
     return this.runTenantPinned(request, tenantId, () => this.sttInternalService.createTranscript(dto, idempotencyKey));
+  }
+
+  @Post('streaming/usage')
+  @ApiOperation({
+    summary: 'Record streaming usage from an STT-side reaper finalize (TASK-615 #13 push-back)',
+    description:
+      'The STT inactivity reaper POSTs the teardown summary it built for a session whose gateway caller crashed and whose ' +
+      'removal retries were exhausted, so the transcribe.stream usage is still metered. Idempotent on the session id.',
+  })
+  async recordStreamingUsage(@Req() request: RequestWithAuth, @Body() dto: SttStreamingUsagePushbackRequest): Promise<{ recorded: boolean }> {
+    this.ensureInternalApiKey(request);
+    const { interrupted, ...summary } = dto;
+    await this.streamingSession?.recordStreamingUsageFromSummary(summary as unknown as StreamingSessionTeardownSummary, interrupted);
+    return { recorded: true };
   }
 
   @Patch('jobs/:id/start')

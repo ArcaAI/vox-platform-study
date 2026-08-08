@@ -55,6 +55,7 @@ export * from './TenantStorageConfigFactory';
 export * from './TenantSttConfigFactory';
 export * from './TenantTtsConfigFactory';
 export * from './TenantFactory';
+export * from './TenantPlanHistoryFactory';
 export * from './TenantUsageMeterFactory';
 export * from './TranscriptionJobFactory';
 export * from './TranscriptSegmentFactory';

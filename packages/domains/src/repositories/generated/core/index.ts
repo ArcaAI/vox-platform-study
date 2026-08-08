@@ -110,6 +110,7 @@ export * from './TenantStorageConfigRepository';
 export * from './TenantSttConfigRepository';
 export * from './TenantTtsConfigRepository';
 export * from './TenantRepository';
+export * from './TenantPlanHistoryRepository';
 export * from './TenantUsageMeterRepository';
 export * from './TranscriptionJobRepository';
 export * from './TranscriptSegmentRepository';

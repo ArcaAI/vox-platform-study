@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { AiCapability, AiUsageUnit, BillingInvoiceStatus, BillingLineKind, TenantPlan } from '@arcaai/domains';
+import type { PlanFeeBasis } from '../invoice-math';
 
 /**
  * Invoice read model (TASK-615 D13).
@@ -98,12 +99,15 @@ export class BillingInvoiceResponse {
   planTier!: TenantPlan | null;
 
   @ApiProperty({
+    enum: ['PERIOD_END_PLAN', 'TENANT_PLAN_HISTORY'],
     description:
-      'How the plan fee was derived. PERIOD_END_PLAN: no plan-change history exists, so the plan in force at computation ' +
-      'time is billed for the whole period (allowances therefore apply retroactively on upgrade — D15). A future plan-history ' +
-      'source upgrades this to true multi-segment daily proration without an engine change.',
+      'How the plan fee was derived. PERIOD_END_PLAN: no plan-change history for the period, so the plan in force at ' +
+      'computation time is billed for the whole period (allowances therefore apply retroactively on upgrade — D15). ' +
+      'TENANT_PLAN_HISTORY (TASK-615 #6): dated plan segments existed, so the fee is prorated per segment ' +
+      '(fee × ownedDays / periodDays). A persisted invoice re-read reports the default basis; the compute-draft response is ' +
+      'authoritative for how that draft was rated.',
   })
-  planFeeBasis!: 'PERIOD_END_PLAN';
+  planFeeBasis!: PlanFeeBasis;
 
   @ApiProperty({
     description:

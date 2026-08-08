@@ -639,6 +639,8 @@ export class TranscriptionJobController {
       ...(autoSwitchEnabled !== undefined ? { autoSwitchEnabled } : {}),
       ...(consecutiveFailureThreshold !== undefined ? { consecutiveFailureThreshold } : {}),
       ...(body.startOn ? { startOn: body.startOn } : {}),
+      // Dual-/multi-mic source count for STT usage repricing (TASK-615 #12).
+      ...(body.channelCount !== undefined ? { channelCount: body.channelCount } : {}),
     } as Parameters<StreamingSessionService['createSession']>[0];
 
     const result = await this.sessionService.createSession(sessionPayload);

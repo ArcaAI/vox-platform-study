@@ -13,6 +13,8 @@ export interface AiUsageRollupHourlyDimension {
   tenantId: string;
   bucketStart: Date;
   capability: AiCapability;
+  /** Ledger event operation (TASK-615 #4); "" sentinel for pre-follow-up rows. */
+  operation: string;
   provider: string;
   /** "" sentinel when the capability selects no model — never null. */
   model: string;

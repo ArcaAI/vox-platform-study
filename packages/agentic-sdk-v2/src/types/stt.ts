@@ -111,6 +111,16 @@ export interface CreateStreamingSessionRequest {
   codeSwitching?: boolean;
   /** Microphone device identifier */
   microphoneId?: string;
+  /**
+   * Number of distinct microphone SOURCES mixed into this session's uplink
+   * (TASK-615 #12). 1 for a single mic; 2+ for a dual-/multi-mic recording
+   * (a secondary device or `additionalDeviceIds`). The audio is always mixed
+   * down to ONE mono track, so this is a metadata signal, NOT a PCM channel
+   * count: it bills 1× (OQ2) but is kept on the usage row for repricing. POSTed
+   * to the gateway (`channelCount`), forwarded to STT, and echoed on teardown.
+   * Omitted ⇒ the gateway defaults it to 1.
+   */
+  channelCount?: number;
 }
 
 /**

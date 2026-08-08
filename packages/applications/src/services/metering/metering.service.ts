@@ -19,8 +19,18 @@ const TOKEN_UNITS: AiUsageUnit[] = [
   AiUsageUnit.REASONING_TOKEN,
 ];
 
-/** operation string on `AiUsageEvent` — a `string` column (WS-B vocabulary), not an enum re-export. */
+/** operation strings on `AiUsageEvent` — `string` columns (WS-B vocabulary), not enum re-exports. */
 const GUARDRAIL_OPERATION = 'guardrail.validate';
+const HARNESS_OPERATION = 'harness.step';
+
+/**
+ * LLM operations metered for COGS but NEVER counted toward the tenant-billable
+ * LLM_TOKENS meter (D16): guardrail is platform-mandated safety and harness is
+ * internal agentic COGS — neither is ever quota-blocked or invoiced. Excluded
+ * from the LLM_TOKENS sum now that `AiUsageRollupDaily` carries `operation`
+ * (TASK-615 #4); before the dimension existed the meter over-counted by these.
+ */
+const NON_BILLABLE_LLM_OPERATIONS: string[] = [GUARDRAIL_OPERATION, HARNESS_OPERATION];
 
 /**
  * `Prisma.Decimal` (decimal.js) out of `aggregate({_sum})`, a plain number in
@@ -194,27 +204,20 @@ export class MeteringService implements IMeteringService, OnModuleInit, OnModule
     const client = this.databaseService.baseClient;
     const window = { gte: periodStart, lt: periodEnd };
 
-    const [
-      consultations,
-      durationAgg,
-      summaries,
-      sttSessionSeconds,
-      llmTokens,
-      ttsCharacters,
-      nlpTextUnits,
-      embeddingTokens,
-      guardrailCalls,
-    ] = await Promise.all([
-      client.consultation.count({ where: { tenantId, createdAt: window } }),
-      client.audioRecording.aggregate({ _sum: { duration: true }, where: { tenantId, createdAt: window } }),
-      client.summaryMeta.count({ where: { tenantId, generatedAt: window } }),
-      this.sumRollupQuantity(tenantId, window, AiCapability.STT, [AiUsageUnit.SESSION_SECOND]),
-      this.sumRollupQuantity(tenantId, window, AiCapability.LLM, TOKEN_UNITS),
-      this.sumRollupQuantity(tenantId, window, AiCapability.TTS, [AiUsageUnit.CHARACTER]),
-      this.sumRollupQuantity(tenantId, window, AiCapability.NLP, [AiUsageUnit.TEXT_UNIT]),
-      this.sumRollupQuantity(tenantId, window, AiCapability.EMBEDDING, TOKEN_UNITS),
-      this.countGuardrailCalls(tenantId, window),
-    ]);
+    const [consultations, durationAgg, summaries, sttSessionSeconds, llmTokens, ttsCharacters, nlpTextUnits, embeddingTokens, guardrailCalls] =
+      await Promise.all([
+        client.consultation.count({ where: { tenantId, createdAt: window } }),
+        client.audioRecording.aggregate({ _sum: { duration: true }, where: { tenantId, createdAt: window } }),
+        client.summaryMeta.count({ where: { tenantId, generatedAt: window } }),
+        this.sumRollupQuantity(tenantId, window, AiCapability.STT, [AiUsageUnit.SESSION_SECOND]),
+        // LLM_TOKENS bills ONLY generation/pre-summary operations — guardrail and
+        // harness LLM rows share the LLM capability but must never count (D16).
+        this.sumRollupQuantity(tenantId, window, AiCapability.LLM, TOKEN_UNITS, NON_BILLABLE_LLM_OPERATIONS),
+        this.sumRollupQuantity(tenantId, window, AiCapability.TTS, [AiUsageUnit.CHARACTER]),
+        this.sumRollupQuantity(tenantId, window, AiCapability.NLP, [AiUsageUnit.TEXT_UNIT]),
+        this.sumRollupQuantity(tenantId, window, AiCapability.EMBEDDING, TOKEN_UNITS),
+        this.countGuardrailCalls(tenantId, window),
+      ]);
 
     const durationMs = durationAgg._sum.duration ?? 0;
 
@@ -237,10 +240,25 @@ export class MeteringService implements IMeteringService, OnModuleInit, OnModule
    * `unit` is ALWAYS an `{ in: [...] }` filter, even for a single-unit metric,
    * so every TASK-615 metric reads through one shape.
    */
-  private async sumRollupQuantity(tenantId: EntityId, window: { gte: Date; lt: Date }, capability: AiCapability, units: AiUsageUnit[]): Promise<number> {
+  private async sumRollupQuantity(
+    tenantId: EntityId,
+    window: { gte: Date; lt: Date },
+    capability: AiCapability,
+    units: AiUsageUnit[],
+    excludeOperations?: string[],
+  ): Promise<number> {
     const result = await this.databaseService.baseClient.aiUsageRollupDaily.aggregate({
       _sum: { quantitySum: true },
-      where: { tenantId, capability, unit: { in: units }, bucketStart: window },
+      where: {
+        tenantId,
+        capability,
+        unit: { in: units },
+        bucketStart: window,
+        // TASK-615 #4 — drop COGS-only operations (guardrail/harness) from a
+        // billable capability's sum. Omitted entirely when not filtering so the
+        // query plan is unchanged for the single-operation capabilities.
+        ...(excludeOperations && excludeOperations.length > 0 ? { operation: { notIn: excludeOperations } } : {}),
+      },
     });
     return Math.round(toNumberSafe(result._sum.quantitySum));
   }
@@ -273,10 +291,14 @@ export class MeteringService implements IMeteringService, OnModuleInit, OnModule
     usedCount: number,
     reconciledAt: Date,
   ): Promise<void> {
+    // usedCount is a BigInt column (TASK-615 #5) — the aggregates arrive as
+    // rounded integers, safely below Number.MAX_SAFE_INTEGER, so BigInt() is
+    // exact; the widened column only removes the Int32 ceiling at the DB.
+    const usedCountBig = BigInt(usedCount);
     await this.databaseService.baseClient.tenantUsageMeter.upsert({
       where: { TenantUsageMeter_tenant_metric_period_unique: { tenantId, metric, periodStart } },
-      create: { tenantId, metric, periodStart, periodEnd, usedCount, reconciledAt },
-      update: { usedCount, periodEnd, reconciledAt },
+      create: { tenantId, metric, periodStart, periodEnd, usedCount: usedCountBig, reconciledAt },
+      update: { usedCount: usedCountBig, periodEnd, reconciledAt },
     });
   }
 

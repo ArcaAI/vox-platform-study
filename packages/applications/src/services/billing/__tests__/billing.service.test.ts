@@ -50,6 +50,8 @@ interface WorldConfig {
   /** Optional reprice: from this August day on, rates double. */
   repriceFromDay?: number;
   planFees?: Partial<Record<TenantPlan, bigint>>;
+  /** TenantPlanHistory windows (TASK-615 #6): [plan, fromDay, toDay|null]. */
+  planHistory?: Array<[TenantPlan, number, number | null]>;
 }
 
 function day(d: number): Date {
@@ -74,8 +76,7 @@ function makeWorld(config: WorldConfig = {}) {
     version: number;
   }
   const invoices = new Map<string, InvoiceRow>();
-  const materialize = (row: InvoiceRow): BillingInvoiceEntity =>
-    new BillingInvoiceEntity({ ...(row.props as never), version: row.version });
+  const materialize = (row: InvoiceRow): BillingInvoiceEntity => new BillingInvoiceEntity({ ...(row.props as never), version: row.version });
 
   const invoiceRepository = {
     findByPeriod: vi.fn(async (tenantId: string, periodStart: Date) => {
@@ -89,9 +90,7 @@ function makeWorld(config: WorldConfig = {}) {
       if (!row) throw new DataNotFoundException('billingInvoice', id);
       return materialize(row);
     }),
-    findByTenant: vi.fn(async (tenantId: string) =>
-      [...invoices.values()].filter((row) => row.props.tenantId === tenantId).map(materialize),
-    ),
+    findByTenant: vi.fn(async (tenantId: string) => [...invoices.values()].filter((row) => row.props.tenantId === tenantId).map(materialize)),
     create: vi.fn(async (entity: BillingInvoiceEntity, _tx?: unknown) => {
       invoices.set(entity.id, {
         props: {
@@ -228,6 +227,20 @@ function makeWorld(config: WorldConfig = {}) {
     resolveUsagePrice: vi.fn(),
   };
 
+  // ---- plan history (TASK-615 #6) — empty by default => single PERIOD_END_PLAN segment ----
+  const planHistoryRepository = {
+    findOverlappingPeriod: vi.fn(async () =>
+      (config.planHistory ?? []).map(([tier, fromDay, toDay]) => ({
+        plan: tier,
+        effectiveFrom: day(fromDay),
+        effectiveTo: toDay === null ? null : day(toDay),
+      })),
+    ),
+    findOpenWindow: vi.fn(async () => null),
+    update: vi.fn(async (_id: string, entity: unknown) => entity),
+    create: vi.fn(async (entity: unknown) => entity),
+  };
+
   const txMarker = { tx: true };
   const unitOfWork = { runInTransaction: vi.fn(async (work: (tx: unknown) => Promise<unknown>) => work(txMarker)) };
   const eventEmitter = { emit: vi.fn() };
@@ -250,11 +263,24 @@ function makeWorld(config: WorldConfig = {}) {
     planEntitlementRepository as never,
     tenantEntitlementRepository as never,
     tenantRepository as never,
+    planHistoryRepository as never,
     priceBook as never,
     unitOfWork as never,
   );
 
-  return { service, invoices, lines, adjustments, invoiceRepository, lineRepository, eventEmitter, priceBook, unitOfWork, txMarker };
+  return {
+    service,
+    invoices,
+    lines,
+    adjustments,
+    invoiceRepository,
+    lineRepository,
+    eventEmitter,
+    priceBook,
+    planHistoryRepository,
+    unitOfWork,
+    txMarker,
+  };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -326,6 +352,69 @@ describe('BillingService.computeDraft', () => {
     const fee = draft.lines.find((line) => line.kind === BillingLineKind.PLAN_FEE)!;
     expect(fee.amountMicros).toBe('999000000'); // full PRO fee — the honest, documented approximation
     expect(fee.description).toContain('PRO');
+  });
+
+  it('golden (c2): mid-period change WITH plan history prorates the fee per segment (TASK-615 #6)', async () => {
+    // Same STARTER→PRO mid-August upgrade, but now TenantPlanHistory supplies
+    // dated segments: STARTER for days 1–15, PRO from day 16. The fee is prorated
+    // per segment instead of the whole-period PERIOD_END_PLAN approximation.
+    const { service } = makeWorld({
+      plan: TenantPlan.PRO, // current plan (allowances + planTier)
+      planRow: { monthlySttSessionSeconds: 10_000n },
+      rollups: [], // isolate the plan-fee proration
+      planHistory: [
+        [TenantPlan.STARTER, 1, 16], // [Aug 1, Aug 16)  → 15 days
+        [TenantPlan.PRO, 16, null], // [Aug 16, period end) → 16 days
+      ],
+    });
+
+    const draft = await service.computeDraft(TENANT, PERIOD);
+
+    expect(draft.planFeeBasis).toBe('TENANT_PLAN_HISTORY');
+    const feeLines = draft.lines.filter((line) => line.kind === BillingLineKind.PLAN_FEE);
+    expect(feeLines).toHaveLength(2);
+
+    const starter = feeLines.find((line) => line.description.includes('STARTER'))!;
+    const pro = feeLines.find((line) => line.description.includes('PRO'))!;
+    // 199_000_000 × 15/31 = 96_290_322.58 → HALF-UP
+    expect(starter.description).toContain('15/31 days');
+    expect(starter.amountMicros).toBe('96290323');
+    // 999_000_000 × 16/31 = 515_612_903.23 → HALF-UP
+    expect(pro.description).toContain('16/31 days');
+    expect(pro.amountMicros).toBe('515612903');
+  });
+
+  it('recordPlanChange: closes the open window and opens a new one; idempotent no-op on the same plan (TASK-615 #6)', async () => {
+    const world = makeWorld({});
+    const at = day(16);
+
+    // No open window yet → opens the first window, closes nothing.
+    await world.service.recordPlanChange(TENANT, TenantPlan.STARTER, day(1), 'initial');
+    expect(world.planHistoryRepository.update).not.toHaveBeenCalled();
+    expect(world.planHistoryRepository.create).toHaveBeenCalledTimes(1);
+
+    // An open STARTER window now exists → a change to PRO closes it and opens PRO.
+    world.planHistoryRepository.findOpenWindow.mockResolvedValueOnce({
+      id: 'open-1',
+      plan: TenantPlan.STARTER,
+      effectiveFrom: day(1),
+      effectiveTo: null,
+      supersedeAt: vi.fn(),
+    } as never);
+    await world.service.recordPlanChange(TENANT, TenantPlan.PRO, at, 'upgrade');
+    expect(world.planHistoryRepository.update).toHaveBeenCalledTimes(1);
+    expect(world.planHistoryRepository.create).toHaveBeenCalledTimes(2);
+
+    // Re-recording the plan already in force is a no-op.
+    world.planHistoryRepository.findOpenWindow.mockResolvedValueOnce({
+      id: 'open-2',
+      plan: TenantPlan.PRO,
+      effectiveFrom: at,
+      effectiveTo: null,
+      supersedeAt: vi.fn(),
+    } as never);
+    await world.service.recordPlanChange(TENANT, TenantPlan.PRO, day(20));
+    expect(world.planHistoryRepository.create).toHaveBeenCalledTimes(2); // unchanged
   });
 
   it('golden (d): downgrade takes effect NEXT period — each period bills the plan it closed under', async () => {
@@ -629,5 +718,43 @@ describe('BillingService reads', () => {
     await service.getSpendStatus(TENANT, PERIOD);
     expect(invoices.size).toBe(0);
     expect(lines).toHaveLength(0);
+  });
+});
+
+describe('BillingService.assertSpendLimit (TASK-615 #8 — 402 gate)', () => {
+  it('no-op (and cheap — no draft computed) when the tenant set no limit', async () => {
+    const { service, priceBook } = makeWorld({ override: null });
+    await expect(service.assertSpendLimit(TENANT, PERIOD)).resolves.toBeUndefined();
+    // The opt-in short-circuit means the overage draft is never computed.
+    expect(priceBook.resolveSellPrice).not.toHaveBeenCalled();
+  });
+
+  it('throws SPEND_LIMIT_EXCEEDED (→402) when overage spend reaches the limit', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-02T00:00:00.000Z')); // period closed → all August rollups count
+    const { service } = makeWorld({
+      plan: TenantPlan.PRO,
+      planRow: { monthlySttSessionSeconds: 1000n },
+      override: { monthlySttSessionSeconds: 1000n, monthlySpendLimitMicros: 100n },
+      sellRates: { [AiUsageUnit.SESSION_SECOND]: 6n },
+      // 1500 session-s, allowance 1000 → 500 over × 6µ = 3000µ ≥ 100µ limit.
+      rollups: [[1, AiCapability.STT, AiUsageUnit.SESSION_SECOND, 1500]],
+    });
+    await expect(service.assertSpendLimit(TENANT, PERIOD)).rejects.toMatchObject({ code: 'DOMAIN.SPEND_LIMIT_EXCEEDED' });
+    vi.useRealTimers();
+  });
+
+  it('does not throw when overage spend is below the limit', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-02T00:00:00.000Z'));
+    const { service } = makeWorld({
+      plan: TenantPlan.PRO,
+      planRow: { monthlySttSessionSeconds: 1000n },
+      override: { monthlySttSessionSeconds: 1000n, monthlySpendLimitMicros: 1_000_000n },
+      sellRates: { [AiUsageUnit.SESSION_SECOND]: 6n },
+      rollups: [[1, AiCapability.STT, AiUsageUnit.SESSION_SECOND, 1500]], // 3000µ < 1_000_000µ
+    });
+    await expect(service.assertSpendLimit(TENANT, PERIOD)).resolves.toBeUndefined();
+    vi.useRealTimers();
   });
 });

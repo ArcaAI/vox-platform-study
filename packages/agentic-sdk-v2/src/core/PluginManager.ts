@@ -71,6 +71,12 @@ export interface PluginManagerRuntimeOptions {
    * resolve and is preserved; omitted / negative ⇒ the ws client's own default.
    */
   quietWindowMs?: number;
+  /**
+   * Number of distinct microphone SOURCES mixed into this session (TASK-615 #12).
+   * A usage-repricing signal, not a PCM channel count (the mix is mono).
+   * Defaults to 1 at the provider when omitted/≤1.
+   */
+  channelCount?: number;
   /** Optional microphone identifier surfaced in transcripts. */
   microphoneId?: string;
 }
@@ -864,6 +870,11 @@ export class PluginManager {
       // `0` means "disable the early resolve" and MUST survive this hop.
       ...(typeof this.runtimeOptions.quietWindowMs === 'number' && this.runtimeOptions.quietWindowMs >= 0
         ? { quietWindowMs: this.runtimeOptions.quietWindowMs }
+        : {}),
+      // Dual-/multi-mic source count for usage repricing (TASK-615 #12). Spread
+      // only when > 1 so a single-mic session keeps the provider's default of 1.
+      ...(typeof this.runtimeOptions.channelCount === 'number' && this.runtimeOptions.channelCount > 1
+        ? { channelCount: this.runtimeOptions.channelCount }
         : {}),
     };
   }

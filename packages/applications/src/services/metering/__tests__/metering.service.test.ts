@@ -8,11 +8,12 @@
  *     from `AiUsageRollupDaily` — each mapped metric reads a fixed
  *     (capability, unit) dimension over the same window, EXCEPT
  *     `guardrailCalls`, which is a distinct-`requestId` COUNT over the raw
- *     `AiUsageEvent` ledger (guardrail shares the LLM capability/units with
- *     `generate`/`generate.stream`/`harness.step`, so the rollup — which has
- *     no `operation` dimension — cannot separate it; `operation` DOES survive
- *     on the raw event, so that is the only place a guardrail-specific count
- *     can be read from).
+ *     `AiUsageEvent` ledger (the rollup carries `operation` since TASK-615 #4,
+ *     but a rollup aggregates token QUANTITY, not per-call cardinality, so a
+ *     distinct-call count still reads the raw event).
+ *   - LLM_TOKENS EXCLUDES the guardrail/harness operations from its sum via the
+ *     rollup `operation` dimension (TASK-615 #4) — they are metered for COGS but
+ *     never billed (D16).
  *   - `reconcileTenant` upserts NINE meter rows for that window (the three
  *     business meters + the six TASK-615 unit meters) with the aggregated
  *     values + `reconciledAt`, and returns the usage.
@@ -72,6 +73,18 @@ describe('MeteringService.getCurrentUsage', () => {
     const usage = await service.getCurrentUsage('tenant-1', FIXED_NOW);
 
     expect(usage).toEqual({ consultations: 12, transcriptionMinutes: 6, summaries: 7, ...ZERO_UNIT_METERS });
+  });
+
+  it('LLM_TOKENS excludes guardrail/harness operations; single-operation meters stay unfiltered (TASK-615 #4)', async () => {
+    await service.getCurrentUsage('tenant-1', FIXED_NOW);
+
+    const wheres = baseClient.aiUsageRollupDaily.aggregate.mock.calls.map((call: [{ where: Record<string, unknown> }]) => call[0].where);
+    const llmWhere = wheres.find((w) => w.capability === 'LLM')!;
+    const sttWhere = wheres.find((w) => w.capability === 'STT')!;
+
+    expect(llmWhere.operation).toEqual({ notIn: ['guardrail.validate', 'harness.step'] });
+    // A single-operation capability keeps the original query shape (no operation filter).
+    expect(sttWhere.operation).toBeUndefined();
   });
 
   it('scopes every aggregate to (tenantId, current window)', async () => {
@@ -261,11 +274,12 @@ describe('MeteringService.reconcileTenant', () => {
     )![0];
     expect(consultationCall.create).toMatchObject({
       tenantId: 'tenant-1',
-      usedCount: 12,
+      // TASK-615 #5 — usedCount persists as BigInt.
+      usedCount: 12n,
       periodStart: WINDOW.periodStart,
       periodEnd: WINDOW.periodEnd,
     });
-    expect(consultationCall.update).toMatchObject({ usedCount: 12, reconciledAt: FIXED_NOW });
+    expect(consultationCall.update).toMatchObject({ usedCount: 12n, reconciledAt: FIXED_NOW });
   });
 
   it('upserts a TASK-615 unit meter (LLM_TOKENS) with the summed value', async () => {
@@ -282,7 +296,7 @@ describe('MeteringService.reconcileTenant', () => {
       (call: [{ where: { TenantUsageMeter_tenant_metric_period_unique: { metric: UsageMeterMetric } } }]) =>
         call[0].where.TenantUsageMeter_tenant_metric_period_unique.metric === UsageMeterMetric.LLM_TOKENS,
     )![0];
-    expect(llmMeterCall.create).toMatchObject({ tenantId: 'tenant-1', usedCount: 7_500 });
+    expect(llmMeterCall.create).toMatchObject({ tenantId: 'tenant-1', usedCount: 7_500n });
   });
 });
 

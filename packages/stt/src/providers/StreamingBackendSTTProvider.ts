@@ -67,6 +67,12 @@ export interface StreamingRemoteProviderConfig extends ProviderConfig {
    * default.
    */
   quietWindowMs?: number;
+  /**
+   * Number of distinct microphone SOURCES mixed into this session (TASK-615 #12).
+   * A metadata signal for usage repricing, not a PCM channel count (the mix is
+   * always mono). Defaults to 1 when omitted.
+   */
+  channelCount?: number;
 }
 
 /**
@@ -152,6 +158,8 @@ export interface StreamingSessionLike {
     /** Pre-start STT engine selection (TASK-586); default 'primary'. */
     startOn?: 'primary' | 'fallback';
     microphoneId?: string;
+    /** Dual-/multi-mic source count for usage repricing (TASK-615 #12). */
+    channelCount?: number;
   }): Promise<{
     sessionId: string;
     wsUrl: string;
@@ -266,6 +274,8 @@ export class StreamingBackendSTTProvider extends BaseSTTProvider {
       // tenant-admin default provider when 'fallback'.
       startOn: streamingConfig.startOn,
       microphoneId: streamingConfig.microphoneId,
+      // Dual-/multi-mic source count for usage repricing (TASK-615 #12).
+      channelCount: streamingConfig.channelCount,
     });
 
     const url = this.session.getWebSocketUrl();

@@ -16,6 +16,7 @@ export class AiPriceBook extends BaseTenantDataModel {
   public model: string | null;
   public unit: Enums.AiUsageUnit | null;
   public contextBand: string | null;
+  public cacheTtl: string | null;
   public currency: string;
   public unitPriceMicros: bigint;
   public effectiveFrom: Date;
@@ -35,6 +36,7 @@ export class AiPriceBook extends BaseTenantDataModel {
     this.model = data.model;
     this.unit = data.unit;
     this.contextBand = data.contextBand;
+    this.cacheTtl = data.cacheTtl;
     this.currency = data.currency;
     this.unitPriceMicros = data.unitPriceMicros;
     this.effectiveFrom = data.effectiveFrom;

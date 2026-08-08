@@ -11,6 +11,7 @@ import * as Models from './';
 export class AiUsageRollupHourly extends BaseTenantDataModel {
   public bucketStart: Date;
   public capability: Enums.AiCapability;
+  public operation: string;
   public provider: string;
   public model: string;
   public unit: Enums.AiUsageUnit;
@@ -21,6 +22,7 @@ export class AiUsageRollupHourly extends BaseTenantDataModel {
     super(data);
     this.bucketStart = data.bucketStart;
     this.capability = data.capability;
+    this.operation = data.operation;
     this.provider = data.provider;
     this.model = data.model;
     this.unit = data.unit;

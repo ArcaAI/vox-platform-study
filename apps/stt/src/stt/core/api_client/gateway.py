@@ -229,6 +229,27 @@ class APIGatewayClient:
             headers=self._tenant_headers(tenant_id),
         )
 
+    async def record_streaming_usage(
+        self, summary: dict[str, Any], interrupted: bool
+    ) -> dict[str, Any]:
+        """Push a reaper-built streaming teardown summary to the gateway (TASK-615 #13).
+
+        Calls NestJS ``POST /internal/stt/streaming/usage`` so a session finalized
+        by the STT inactivity reaper — after the gateway crashed and its removal
+        retries were exhausted, leaving no ``removeSession()`` caller to receive
+        the DELETE-teardown response — still has its ``transcribe.stream`` usage
+        metered. Idempotent on the session id at the ledger, so a push-back that
+        races a late DELETE teardown never double-bills. ``tenant_id`` (from the
+        summary) addresses the owning tenant, exactly like the job callbacks.
+        """
+        payload: dict[str, Any] = {**summary, "interrupted": interrupted}
+        return await self._request(
+            "POST",
+            "/internal/stt/streaming/usage",
+            json=payload,
+            headers=self._tenant_headers(summary.get("tenant_id")),
+        )
+
     async def fail_job(
         self,
         job_id: str,

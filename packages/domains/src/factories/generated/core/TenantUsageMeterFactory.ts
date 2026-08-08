@@ -35,7 +35,7 @@ export class TenantUsageMeterFactory {
       metric: props.metric,
       periodStart: props.periodStart,
       periodEnd: props.periodEnd,
-      usedCount: props.usedCount ?? 0,
+      usedCount: props.usedCount ?? 0n,
       reconciledAt: props.reconciledAt ?? null,
     });
   }

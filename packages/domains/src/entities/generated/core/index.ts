@@ -55,6 +55,7 @@ export * from './TenantStorageConfigEntity';
 export * from './TenantSttConfigEntity';
 export * from './TenantTtsConfigEntity';
 export * from './TenantEntity';
+export * from './TenantPlanHistoryEntity';
 export * from './TenantUsageMeterEntity';
 export * from './TranscriptionJobEntity';
 export * from './TranscriptSegmentEntity';

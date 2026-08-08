@@ -42,6 +42,12 @@ export interface CreateStreamingSessionRequest {
    * SDK-configured pipeline. Forwarded to STT as `start_on`.
    */
   startOn?: 'primary' | 'fallback';
+  /**
+   * Number of distinct microphone SOURCES mixed into this session (TASK-615 #12).
+   * Forwarded to STT as `channel_count` and echoed on teardown for usage
+   * repricing; bills 1× (OQ2). Defaults to 1 when omitted.
+   */
+  channelCount?: number;
   /** Tenant-scoped audio bucket name forwarded to STT-v2 for storage isolation */
   audioBucketName?: string;
   /**
@@ -149,6 +155,11 @@ export interface StreamingSessionTeardownSummary {
   /** `SELF_HOSTED` | `CLOUD` | `BYOK`; `null` alongside a `null` engine. */
   deployment: string | null;
   language_mode: string | null;
+  /**
+   * Distinct microphone source count echoed from STT for usage repricing
+   * (TASK-615 #12). Absent from a pre-#12 STT ⇒ the gateway defaults it to 1.
+   */
+  channel_count?: number;
 }
 
 export interface StreamingAvailability {

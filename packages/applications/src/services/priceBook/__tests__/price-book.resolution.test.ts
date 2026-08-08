@@ -22,6 +22,7 @@ function candidate(overrides: Partial<PriceCandidate> & Pick<PriceCandidate, 'id
     model: null,
     contextBand: null,
     planTier: null,
+    cacheTtl: null,
     unitPriceMicros: 1n,
     bookVersion: 'book-v1',
     currency: 'USD',
@@ -79,6 +80,28 @@ describe('selectMostSpecificPrice — most-specific-wins', () => {
     // No band on the query: only the band-agnostic row may apply.
     const noBand = { provider: 'anthropic', model: null, contextBand: null, planTier: null, tenantId: SYSTEM };
     expect(selectMostSpecificPrice([agnostic, longCtx, shortCtx], noBand)?.id).toBe('any');
+  });
+
+  it('prefers a TTL-specific cache-write row over the TTL-agnostic wildcard (TASK-615 #7)', () => {
+    const blended = candidate({ id: 'blend', provider: 'anthropic', model: 'claude-sonnet-5', unitPriceMicros: 100n });
+    const oneHour = candidate({ id: '1h', provider: 'anthropic', model: 'claude-sonnet-5', cacheTtl: '1h', unitPriceMicros: 200n });
+    const fiveMin = candidate({ id: '5m', provider: 'anthropic', model: 'claude-sonnet-5', cacheTtl: '5m', unitPriceMicros: 125n });
+
+    const q1h = { provider: 'anthropic', model: 'claude-sonnet-5', contextBand: null, planTier: null, cacheTtl: '1h', tenantId: SYSTEM };
+    expect(selectMostSpecificPrice([blended, oneHour, fiveMin], q1h)?.id).toBe('1h');
+
+    // A CACHE_WRITE event carrying no TTL (or a non-cache unit) resolves the
+    // wildcard exactly as before the dimension existed.
+    const qNone = { provider: 'anthropic', model: 'claude-sonnet-5', contextBand: null, planTier: null, tenantId: SYSTEM };
+    expect(selectMostSpecificPrice([blended, oneHour, fiveMin], qNone)?.id).toBe('blend');
+  });
+
+  it('cacheTtl is the least-significant dimension — a provider match still outranks a TTL match', () => {
+    const providerRow = candidate({ id: 'provider', provider: 'anthropic', unitPriceMicros: 5n });
+    const ttlOnlyRow = candidate({ id: 'ttl', cacheTtl: '1h', unitPriceMicros: 9n });
+
+    const query = { provider: 'anthropic', model: null, contextBand: null, planTier: null, cacheTtl: '1h', tenantId: SYSTEM };
+    expect(selectMostSpecificPrice([ttlOnlyRow, providerRow], query)?.id).toBe('provider');
   });
 
   it('prefers a tier-specific SELL row over the tier-agnostic default, and excludes another tier', () => {

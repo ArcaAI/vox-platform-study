@@ -33,15 +33,14 @@ import { validateTimeseriesRange } from './range-bounds';
  * rollup dimension tuple cannot express: cost-per-CONSULTATION and
  * cross-TENANT top-N.
  *
- * G16 MIGRATION NOTE: `PlatformMetricsService.getConsumptionRollup` (the
- * ad-hoc `/admin/platform-metrics/consumption` view this module supersedes)
- * reads `AudioRecordingRepository`/`SummaryMetaRepository`/`MediaRepository`
- * directly — none of it is ledger-derived, so today's dashboard numbers do
- * not agree with `getUsageSummary`'s. This lane does NOT edit that module
- * (out of WS-J's boundary); the follow-up is to make `getConsumptionRollup`
- * delegate its `transcriptionMinutes`/`summaries24h` fields to
- * `getUsageSummary`/`getUsageTimeseries` once the platform-metrics owner
- * signs off on the response-shape change.
+ * G16 (CLOSED, TASK-615 #11): `PlatformMetricsService.getConsumptionRollup` now
+ * derives `transcriptionMinutes` from the STT `AUDIO_SECOND` rollups
+ * (`AiUsageRollupDailyRepository.sumQuantityForCapabilityUnits`), so that field
+ * agrees with this module's `getUsageSummary` instead of summing raw
+ * `AudioRecording` durations. `summaries24h` deliberately stays on
+ * `SummaryMetaRepository`: a summary COUNT has no ledger equivalent (the ledger
+ * meters tokens per request, not summary cardinality), so the rollups cannot
+ * answer it better. Storage/consultation fields keep their authoritative sources.
  */
 @Injectable()
 export class UsageAnalyticsService implements IUsageAnalyticsService {
