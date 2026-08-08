@@ -188,7 +188,10 @@ else
     # Schema/seed may still be missing on a freshly created volume.
     if ! "$SCRIPT_DIR/test-doctor.sh" --infra-only >/dev/null 2>&1; then
         echo "  schema missing — running test:db:reset"
-        if ! pnpm test:db:reset; then
+        # Seeding is opt-in and defaults to RUN_SEED=none (TASK-616) — managed
+        # test runs need the full demo fixture set (media-seed.ts depends on
+        # the seeded doctor row), so opt in explicitly, matching test-setup.sh.
+        if ! RUN_SEED=all NODE_ENV=test pnpm test:db:reset; then
             echo -e "${RED}Failed to prepare the test database.${NC}" >&2
             teardown
             exit 1
