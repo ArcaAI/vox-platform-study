@@ -35,11 +35,22 @@
       # --exit-code 0, pass 2's real exit code was swallowed by `|| echo ...`,
       # and the job carried allow_failure: true. All three are removed. A gate
       # that cannot fail is not a gate.
+      #
+      # --ignore-unfixed scopes the gate to CRITICALs a fix actually exists
+      # for. Without it, an upstream-unpatched OS CVE (e.g. CVE-2026-13221 in
+      # Debian trixie's perl-base — no Fixed Version, status "affected") fails
+      # every build off that base forever, with no action the team can take to
+      # go green. That is a different failure mode than "you're behind on
+      # patches," and treating it the same trains people to distrust or route
+      # around the gate — the exact regression this job's history warns about.
+      # A CRITICAL WITH a fix still fails the build; only "nothing to patch
+      # yet" is exempted.
       echo ""
-      echo "Gate: CRITICAL vulnerabilities fail this job."
+      echo "Gate: CRITICAL vulnerabilities (with a fix available) fail this job."
       trivy image \
         --exit-code 1 \
         --severity CRITICAL \
+        --ignore-unfixed \
         --no-progress \
         "$SCAN_IMAGE"
   allow_failure: false
