@@ -35,7 +35,7 @@ const VARIABLE_PATTERN = /\{([a-zA-Z_][\w-]*)\}/g;
  */
 export function substitutePromptVariables(template: string, variables: Record<string, string>, options?: { strict?: boolean }): string {
   return template.replace(VARIABLE_PATTERN, (match, name: string) => {
-    if (name in variables) {
+    if (Object.prototype.hasOwnProperty.call(variables, name)) {
       return variables[name];
     }
     if (options?.strict) {
@@ -66,5 +66,5 @@ export function extractPromptVariables(template: string): string[] {
  * @returns Array of variable names that are required but missing from `values`
  */
 export function validatePromptVariables(variableDefinitions: PromptVariable[], values: Record<string, string>): string[] {
-  return variableDefinitions.filter((v) => v.required && !(v.name in values)).map((v) => v.name);
+  return variableDefinitions.filter((v) => v.required && !Object.prototype.hasOwnProperty.call(values, v.name)).map((v) => v.name);
 }

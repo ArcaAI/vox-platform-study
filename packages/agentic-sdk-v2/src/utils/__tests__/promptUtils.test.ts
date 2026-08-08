@@ -88,6 +88,30 @@ describe('substitutePromptVariables', () => {
     const result = substitutePromptVariables('{ not_a_var }', { not_a_var: 'should not match' });
     expect(result).toBe('{ not_a_var }');
   });
+
+  it('should not resolve inherited Object.prototype properties as variables (D-26)', () => {
+    // `{toString}`/`{constructor}` are not own keys of `variables`, but `in` walks
+    // the prototype chain and would resolve them against Object.prototype,
+    // leaking JS internals ("function toString() { [native code] }") into the prompt.
+    const result = substitutePromptVariables('Note: {toString} and {constructor} and {valueOf}.', { patient_name: 'John' });
+    expect(result).toBe('Note: {toString} and {constructor} and {valueOf}.');
+    expect(result).not.toContain('native code');
+    expect(result).not.toContain('function');
+  });
+
+  it('should still substitute an explicitly-provided own property named like a prototype method', () => {
+    const result = substitutePromptVariables('{toString}', { toString: 'Patient summary' });
+    expect(result).toBe('Patient summary');
+  });
+
+  it('should never re-interpret braces inside a substituted value as another placeholder (single pass)', () => {
+    // Clinical free text can legitimately contain literal braces.
+    const result = substitutePromptVariables('Note: {clinical_text}', {
+      clinical_text: 'Patient reported pain level {8/10}',
+      '8/10': 'SHOULD NOT APPEAR',
+    });
+    expect(result).toBe('Note: Patient reported pain level {8/10}');
+  });
 });
 
 // ============================================================================
@@ -199,5 +223,12 @@ describe('validatePromptVariables', () => {
       {},
     );
     expect(result).toEqual([]);
+  });
+
+  it('should still report a required variable missing when only an inherited prototype key matches (D-26)', () => {
+    // `'toString' in {}` is true (inherited from Object.prototype), which would
+    // wrongly make a genuinely-missing required variable look present.
+    const result = validatePromptVariables([{ name: 'toString', type: 'string', required: true }], {});
+    expect(result).toEqual(['toString']);
   });
 });
