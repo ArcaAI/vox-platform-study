@@ -149,6 +149,29 @@ describe('NlpExtractionTool (C4-T4 + relocation parity)', () => {
     expect(body.text).toBe('TRANSCRIPT DELTA');
   });
 
+  it('authenticates the gateway→NLP hop with X-Service-Token (TASK-638 regression)', async () => {
+    const post = vi.fn().mockResolvedValue({ data: { entities: [] } });
+    const { deps } = makeDeps(post);
+    deps.nlp.secretsService = { getSecretOptional: vi.fn().mockResolvedValue('nlp-token') } as never;
+    const tool = new LiveToolRegistry(deps).extraction();
+
+    await tool.execute({ sourceText: 'pt reports cough' });
+
+    const [, , config] = post.mock.calls[0];
+    expect(config.headers['X-Service-Token'], 'NLP enforces this header whenever NLP_SERVICE_TOKEN is set').toBe('nlp-token');
+  });
+
+  it('sends an EMPTY service token when no secret is configured (preserves the dev bypass)', async () => {
+    const post = vi.fn().mockResolvedValue({ data: { entities: [] } });
+    const { deps } = makeDeps(post);
+    const tool = new LiveToolRegistry(deps).extraction();
+
+    await tool.execute({ sourceText: 'pt reports cough' });
+
+    const [, , config] = post.mock.calls[0];
+    expect(config.headers['X-Service-Token']).toBe('');
+  });
+
   it('mapVitals returns undefined when the service reported nothing (never fabricated)', () => {
     expect(mapVitals(undefined)).toBeUndefined();
     expect(mapVitals({ systolic: null, spo2: null })).toBeUndefined();
