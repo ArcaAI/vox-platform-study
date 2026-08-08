@@ -1,7 +1,7 @@
 /**
- * Provider usage/cost-API reconciler INTERFACE + a stub registry (TASK-615
- * WS-K scope note): "implement the INTERFACE + a stub registry only — real
- * HTTP clients need credentials the platform may not have."
+ * Provider usage/cost-API reconciler INTERFACE (TASK-615 WS-K, credential
+ * gating added in TASK-638). Implementations live in
+ * `provider-reconciler-registry.ts`.
  *
  * Per research-findings.md §11.2, no cloud provider gives per-request,
  * per-tenant cost — every reconciler here answers a PLATFORM-WIDE control
@@ -33,8 +33,13 @@ export type ProviderReconcilerAvailability = { available: true } | { available: 
 export interface IProviderReconciler {
   readonly provider: string;
 
-  /** Cheap, synchronous credential/config check — no network call. */
-  checkAvailability(): ProviderReconcilerAvailability;
+  /**
+   * Credential/config check — NO network call to the vendor, but async because
+   * resolving a credential means asking Vault (TASK-638). Must never throw:
+   * "unconfigured" is a normal answer, and reconciliation must not fail the
+   * sweep closed (§6 rule 7).
+   */
+  checkAvailability(): Promise<ProviderReconcilerAvailability>;
 
   /**
    * Fetches the platform-wide control total for `[windowStart, windowEnd)`.
@@ -46,67 +51,10 @@ export interface IProviderReconciler {
 }
 
 /**
- * A reconciler that is always unavailable — the honest placeholder for a
- * provider whose real HTTP client is not yet built. Documents exactly what
- * each provider needs (research-findings.md §11.2) so wiring the real client
- * later is a credential + fetch implementation, not a design decision.
+ * Implementations live in `provider-reconciler-registry.ts`
+ * ({@link CredentialGatedReconciler}), which derives availability from a real
+ * Vault lookup plus whether a vendor client exists. The hardcoded
+ * always-unavailable stub registry that used to live here was removed in
+ * TASK-638: it could not tell "no credential provisioned" from "no client
+ * written", and those need different actions from an operator.
  */
-class StubProviderReconciler implements IProviderReconciler {
-  constructor(
-    public readonly provider: string,
-    private readonly missingCredentialHint: string,
-  ) {}
-
-  checkAvailability(): ProviderReconcilerAvailability {
-    return { available: false, reason: `not implemented — needs ${this.missingCredentialHint}` };
-  }
-
-  async fetchControlTotal(): Promise<ProviderControlTotal | null> {
-    // Never called in practice — the reconciliation job checks
-    // `checkAvailability()` first and skips disabled reconcilers. Throwing
-    // here (rather than silently returning null) makes a future caller that
-    // skips the availability check fail loudly instead of shipping a fake 0.
-    throw new Error(`${this.provider} reconciler is a stub (${this.missingCredentialHint}) — call checkAvailability() before fetchControlTotal()`);
-  }
-}
-
-/**
- * The stub registry. Every entry documents the real credential/endpoint the
- * live client would need — see research-findings.md §11.2:
- *   - OpenAI:    an Admin API key (`OPENAI_ADMIN_API_KEY`) for
- *                `GET /v1/organization/usage/*` (+ `/v1/organization/costs`,
- *                1-day granularity only). Freshness is undocumented — must be
- *                measured empirically before it feeds an alert threshold.
- *   - Anthropic: an admin-scoped API key for
- *                `GET /v1/organizations/usage_report/messages` (+
- *                `/cost_report`, note plural "organizations"). Data is fresh
- *                ~5 minutes; priority-tier costs are absent from the cost
- *                endpoint; not available at all for Claude-on-Bedrock.
- *   - Azure:     an ARM-scoped credential for Cost Management (daily, 4-hour
- *                refresh — dollars, no tokens) OR Monitor metrics (PT1M —
- *                tokens, no dollars); no tenant dimension unless tenant ==
- *                deployment/resource-group/Foundry-project.
- *
- * None of the three has a credential provisioned in this platform today (per
- * the WS-K task brief — "the platform may not have them"), so every entry is
- * a {@link StubProviderReconciler}. Swapping one for a real client is a
- * drop-in replacement: the registry's shape and the reconciliation job's
- * consumption of it do not change.
- */
-export function buildStubProviderReconcilerRegistry(): Map<string, IProviderReconciler> {
-  return new Map<string, IProviderReconciler>([
-    ['openai', new StubProviderReconciler('openai', 'OPENAI_ADMIN_API_KEY (GET /v1/organization/usage/*)')],
-    ['anthropic', new StubProviderReconciler('anthropic', 'an admin-scoped API key (GET /v1/organizations/usage_report/messages)')],
-    ['azure', new StubProviderReconciler('azure', 'an ARM credential for Cost Management or Monitor metrics')],
-  ]);
-}
-
-/** Availability snapshot over the whole registry — what the shadow report logs per run. */
-export function summarizeProviderReconcilerAvailability(
-  registry: Map<string, IProviderReconciler>,
-): Array<{ provider: string } & ProviderReconcilerAvailability> {
-  return Array.from(registry.values()).map((reconciler) => ({
-    provider: reconciler.provider,
-    ...reconciler.checkAvailability(),
-  }));
-}
