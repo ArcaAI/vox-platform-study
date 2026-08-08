@@ -311,16 +311,16 @@ const PLAN_FEE_ROWS: PriceBookSeed[] = [
     plane: AiPriceBookPlane.SELL,
     rowKind: AiPriceRowKind.PLAN_FEE,
     planTier: TenantPlan.STARTER,
-    unitPriceMicros: 199_000_000n,
-    note: 'PLACEHOLDER — $199.00 / month.',
+    unitPriceMicros: 50_000_000n,
+    note: 'RATIFIED 2026-08-08 (TASK-638) — $50.00 / month, bundling 50 consultations.',
   },
   {
     id: 'B1000000-0000-0000-0001-000000000003',
     plane: AiPriceBookPlane.SELL,
     rowKind: AiPriceRowKind.PLAN_FEE,
     planTier: TenantPlan.PRO,
-    unitPriceMicros: 999_000_000n,
-    note: 'PLACEHOLDER — $999.00 / month.',
+    unitPriceMicros: 100_000_000n,
+    note: 'RATIFIED 2026-08-08 (TASK-638) — $100.00 / month, bundling 250 consultations.',
   },
   {
     id: 'B1000000-0000-0000-0001-000000000004',
@@ -328,7 +328,11 @@ const PLAN_FEE_ROWS: PriceBookSeed[] = [
     rowKind: AiPriceRowKind.PLAN_FEE,
     planTier: TenantPlan.ENTERPRISE,
     unitPriceMicros: 4_999_000_000n,
-    note: 'PLACEHOLDER — $4,999.00 / month.',
+    // ENTERPRISE is NEGOTIATED per contract (TASK-638). This SYSTEM row is only
+    // the fallback list price so the invoice engine (which fails closed on a
+    // missing PLAN_FEE row) can still draft; a signed contract MUST be entered
+    // as a tenant-scoped SELL row, which is more specific and wins.
+    note: 'NOMINAL LIST — $4,999.00 / month. ENTERPRISE is negotiated: supersede with a tenant-scoped row per contract.',
   },
 ];
 

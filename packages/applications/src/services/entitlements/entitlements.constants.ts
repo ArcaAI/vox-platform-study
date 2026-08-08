@@ -94,9 +94,18 @@ export interface PlanEntitlementValues {
   monthlyTranscriptionMinutes: number | null;
   monthlySummaries: number | null;
   /**
-   * Per-capability included allowances (TASK-615 D11). `null` = unlimited —
-   * every plan seeds NULL today; a commercial ceiling is set later through
-   * the admin plan matrix, once shadow metering has run a full cycle.
+   * Per-capability included allowances (TASK-615 D11), derived in TASK-638 §6
+   * from each plan's ratified business ceilings and then DOUBLED:
+   *
+   *   sttSessionSeconds = transcriptionMinutes × 60 × 1.1
+   *   llmTokens         = summaries          × 6,000
+   *   ttsCharacters     = consultations      × 2,000
+   *   nlpTextUnits      = consultations      ×    30
+   *   embeddingTokens   = consultations      × 1,500
+   *
+   * The ×2 headroom is deliberate — `monthlyConsultations` is the commercial
+   * cap, so these are RUNAWAY GUARDS, not a second business ceiling. `null` =
+   * unlimited (ENTERPRISE only, negotiated per contract).
    */
   monthlySttSessionSeconds: number | null;
   monthlyLlmTokens: number | null;
@@ -120,14 +129,15 @@ const PRO_VALUES: PlanEntitlementValues = {
   storageQuotaBytes: 100 * GIB,
   // PRO/TRIAL ≈ 25 concurrent doctors (anchored to the seat cap).
   maxConcurrentSessions: 25,
-  monthlyConsultations: 5_000,
-  monthlyTranscriptionMinutes: 12_000,
-  monthlySummaries: 5_000,
-  monthlySttSessionSeconds: null,
-  monthlyLlmTokens: null,
-  monthlyTtsCharacters: null,
-  monthlyNlpTextUnits: null,
-  monthlyEmbeddingTokens: null,
+  // RATIFIED 2026-08-08 (TASK-638): PRO = $100/mo bundling 250 consultations.
+  monthlyConsultations: 250,
+  monthlyTranscriptionMinutes: 5_000, // 250 × 20-min average
+  monthlySummaries: 250,
+  monthlySttSessionSeconds: 660_000,
+  monthlyLlmTokens: 3_000_000,
+  monthlyTtsCharacters: 1_000_000,
+  monthlyNlpTextUnits: 15_000,
+  monthlyEmbeddingTokens: 750_000,
   featureDnaReports: true,
   featureVoiceEnrollment: true,
   featureMonitoringAccess: false,
@@ -145,14 +155,15 @@ export const PLAN_ENTITLEMENT_DEFAULTS: Record<TenantPlan, PlanEntitlementValues
     storageQuotaBytes: 5 * GIB,
     // STARTER ≈ 5 concurrent doctors.
     maxConcurrentSessions: 5,
-    monthlyConsultations: 500,
-    monthlyTranscriptionMinutes: 1_000,
-    monthlySummaries: 500,
-    monthlySttSessionSeconds: null,
-    monthlyLlmTokens: null,
-    monthlyTtsCharacters: null,
-    monthlyNlpTextUnits: null,
-    monthlyEmbeddingTokens: null,
+    // RATIFIED 2026-08-08 (TASK-638): STARTER = $50/mo bundling 50 consultations.
+    monthlyConsultations: 50,
+    monthlyTranscriptionMinutes: 1_000, // 50 × 20-min average
+    monthlySummaries: 50,
+    monthlySttSessionSeconds: 132_000,
+    monthlyLlmTokens: 600_000,
+    monthlyTtsCharacters: 200_000,
+    monthlyNlpTextUnits: 3_000,
+    monthlyEmbeddingTokens: 150_000,
     featureDnaReports: false,
     featureVoiceEnrollment: false,
     featureMonitoringAccess: false,
@@ -170,9 +181,11 @@ export const PLAN_ENTITLEMENT_DEFAULTS: Record<TenantPlan, PlanEntitlementValues
     storageQuotaBytes: 1_000 * GIB,
     // ENTERPRISE ≈ 100 concurrent doctors.
     maxConcurrentSessions: 100,
-    monthlyConsultations: 50_000,
-    monthlyTranscriptionMinutes: 120_000,
-    monthlySummaries: 50_000,
+    // RATIFIED 2026-08-08 (TASK-638): ENTERPRISE is NEGOTIATED — usage
+    // unlimited by default; structural caps stay finite on purpose.
+    monthlyConsultations: null,
+    monthlyTranscriptionMinutes: null,
+    monthlySummaries: null,
     monthlySttSessionSeconds: null,
     monthlyLlmTokens: null,
     monthlyTtsCharacters: null,
