@@ -124,10 +124,16 @@ export class PlatformKnobsBinder implements OnModuleInit {
    *     `onSettingsRefreshed()`.
    *
    * With no settings service wired, no resolver is installed and
-   * `isOriginEnforcementEnabled()` answers `false`: enforcement stays OFF, which
-   * is the §4C default and the direction that cannot lock a deployment out.
-   * `resolvePlatform` throwing is handled there too (it never fails INTO
-   * enforcement), so this method has nothing to catch.
+   * `isOriginEnforcementEnabled()` answers `false`: enforcement stays OFF. That
+   * is NO LONGER the platform default — TASK-641 FR-6 made the descriptor
+   * default `true` — it is the fallback for a process that has no way to read
+   * the switch at all, and refusing every browser origin on the strength of a
+   * value nobody could read is the wrong direction. What prevents a lock-out
+   * under the new default is the bootstrap migration guaranteeing the SYSTEM
+   * loopback rows (`20260808160000_task_641_bootstrap_loopback_origins`, H-2),
+   * not a permissive fallback here. `resolvePlatform` throwing is handled in
+   * `isOriginEnforcementEnabled` too (it never fails INTO enforcement), so this
+   * method has nothing to catch.
    */
   private installOriginEnforcementResolver(): void {
     if (!this.tenantSettings) {

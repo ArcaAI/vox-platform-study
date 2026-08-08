@@ -1,12 +1,11 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { IconFilterOff, IconPencil, IconPlus, IconShieldLock, IconTrash, IconWorld } from '@tabler/icons-react';
+import { IconAlertTriangle, IconFilterOff, IconPencil, IconPlus, IconShieldCheck, IconTrash, IconWorld } from '@tabler/icons-react';
 import { toast } from 'sonner';
 import { VirtualizedDataGrid, includesSomeFilter, type ColumnDef } from '@arcaai/ui';
 import { Button } from '@arcaai/ui/components/shadcn/button';
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
-import { useSession } from '@/shared/auth';
 import { ConfirmDialog } from '@/shared/confirm/confirm-dialog';
 import type { FilterOption } from '@/shared/data/filter-bar';
 import { gridPersistence } from '@/shared/data/grid-persistence';
@@ -14,10 +13,11 @@ import { formatRelativeTime } from '@/shared/format';
 import { PageHeader } from '@/shared/page/page-header';
 import { ScreenTemplate } from '@/shared/page/screen-template';
 import { StatusFooter } from '@/shared/page/status-footer';
+import { ErrorBanner } from '@/shared/state/error-state';
 import { EmptyState } from '@/shared/state/empty-state';
 import { RESOURCE_STATUS_META, ResourceStatusBadge } from '@/shared/status/resource-status-badge';
 import { WorkingTenantGate } from '@/shared/tenant-scope/working-tenant-gate';
-import { useDeleteAllowedOrigin, useAllowedOrigins } from '../api';
+import { useAllowedOriginPosture, useDeleteAllowedOrigin, useAllowedOrigins } from '../api';
 import type { TenantAllowedOrigin } from '../api';
 import { AllowedOriginFormDialog } from './allowed-origin-form-dialog';
 
@@ -26,40 +26,47 @@ const STATUS_OPTIONS: FilterOption[] = [
   { value: 'DISABLED', label: RESOURCE_STATUS_META.DISABLED.label },
 ];
 
-function LoadingTable() {
-  return (
-    <div className="rounded-md border" aria-hidden>
-      <div className="flex flex-col gap-3 p-4">
-        <Skeleton className="h-4 w-48" />
-        {Array.from({ length: 4 }, (_, index) => (
-          <Skeleton key={index} className="h-10 w-full" />
-        ))}
+/**
+ * Enforcement disclosure (FR-4). `origin.enforcementEnabled` is a single
+ * platform-wide boolean (`GET /admin/allowed-origins/posture`), never
+ * per-tenant — reachable by TENANT_ADMIN and GLOBAL_ADMIN alike. When it is
+ * OFF the rows below have NO effect (every browser origin is admitted
+ * regardless of what is registered), so that state gets a prominent warning;
+ * ON only needs a quiet confirmation.
+ */
+function EnforcementBanner() {
+  const query = useAllowedOriginPosture();
+
+  if (query.isPending) {
+    return <Skeleton className="h-10 w-full rounded-md" aria-hidden />;
+  }
+
+  if (query.error) {
+    return <ErrorBanner error={query.error} onRetry={() => void query.refetch()} />;
+  }
+
+  if (!query.data?.enforcementEnabled) {
+    return (
+      <div role="alert" className="border-warning/40 bg-warning/10 text-foreground flex items-start gap-2 rounded-md border px-3 py-2 text-sm">
+        <IconAlertTriangle aria-hidden className="text-warning-strong mt-0.5 size-4 shrink-0" />
+        <p>
+          <span className="font-medium">Origin enforcement is off, platform-wide</span> — no browser origin is being checked right now, so the
+          rows below have no effect until a platform administrator turns enforcement back on.
+        </p>
       </div>
+    );
+  }
+
+  return (
+    <div role="status" className="bg-info/10 text-foreground flex items-center gap-2 rounded-md px-3 py-2 text-sm">
+      <IconShieldCheck aria-hidden className="text-info size-4 shrink-0" />
+      <span>Origin enforcement is on — only the origins registered below are allowed to reach the API.</span>
     </div>
   );
 }
 
-/** Allowed origins (/allowed-origins, tier 10-19, GLOBAL_ADMIN). */
+/** Allowed origins (/allowed-origins, tier 30-49 — TENANT_ADMIN for their own tenant's rows, GLOBAL_ADMIN unchanged). */
 export function AllowedOriginsScreen() {
-  const session = useSession();
-  const isElevated = session.data?.isElevated ?? false;
-
-  if (session.isPending) {
-    return (
-      <ScreenTemplate header={<PageHeader title="Allowed origins" />}>
-        <LoadingTable />
-      </ScreenTemplate>
-    );
-  }
-
-  if (!isElevated) {
-    return (
-      <ScreenTemplate header={<PageHeader title="Allowed origins" />}>
-        <EmptyState icon={IconShieldLock} title="Global admins only" description="The CORS allow-list is managed by global administrators." />
-      </ScreenTemplate>
-    );
-  }
-
   return (
     <WorkingTenantGate
       title="Allowed origins"
@@ -186,6 +193,7 @@ function AllowedOriginsBody() {
             }
           />
         }
+        statusBanner={<EnforcementBanner />}
         footer={
           <StatusFooter
             start={<span>{query.isFetching && !query.isLoading ? 'Refreshing' : 'Up to date'}</span>}
@@ -222,7 +230,7 @@ function AllowedOriginsBody() {
               <EmptyState
                 icon={IconWorld}
                 title="No origins registered"
-                description="Browser apps fall back to CORS_ALLOWED_ORIGINS until an origin is registered."
+                description="There is no fallback allow-list — every browser origin is refused until you register one."
                 action={
                   <Button onClick={openCreate}>
                     <IconPlus aria-hidden data-icon="inline-start" />

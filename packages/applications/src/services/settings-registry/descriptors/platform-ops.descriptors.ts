@@ -211,23 +211,34 @@ export const PLATFORM_OPS_SETTINGS: SettingDescriptor[] = [
     description: 'Cron expression for the nightly SYSTEM agent-library resync sweep.',
     default: '0 4 * * *',
   },
-  // ── Origin (CORS) enforcement — TASK-610 §4C ─────────────────────────────
+  // ── Origin (CORS) enforcement — TASK-610 §4C, reversed by TASK-641 FR-6 ───
   //
   // The ONE switch that decides whether any of TASK-610's origin machinery
   // enforces. Unlike its neighbours above, this key was not transcribed from an
-  // existing service fallback: it is new, and its DEFAULT IS THE PLATFORM
-  // POSTURE. No row is seeded for it — the descriptor default is the value on a
-  // fresh database, and the registry write lane creates the row when an operator
-  // first sets it.
+  // existing service fallback — its DEFAULT IS THE PLATFORM POSTURE. No row is
+  // seeded for it — the descriptor default is the value on a fresh database,
+  // and the registry write lane creates the row when an operator first sets it.
   //
-  // WHY IT IS NOT `killSwitch: true`, even though it defaults OFF. The
-  // `killSwitch` invariant (`SettingsRegistry.killSwitches()`) is about fail-SAFE
+  // TASK-610 shipped this defaulting OFF (permissive: every origin admitted)
+  // on an explicit owner directive. TASK-641 reverses that directive — "no
+  // default is off" — so the default below is now `true`: enforcing, out of
+  // the box, in every environment including a fresh local `pnpm setup:dev`,
+  // with no row present and no opt-in step. This is safe ONLY because TASK-641
+  // also makes the SYSTEM allowed-origin rows unconditional bootstrap data
+  // (`seed/11b-tenant-allowed-origins.ts`, no longer `RUN_SEED`-gated) — an
+  // unseeded environment would otherwise refuse every browser origin with no
+  // escape hatch (see that ticket's H-2).
+  //
+  // WHY IT IS NOT `killSwitch: true`. The `killSwitch` invariant
+  // (`SettingsRegistry.killSwitches()`) requires a DEFAULT-OFF value (fail-safe
   // rollout: an enforcement/engine gate ships OFF so a bad rollout degrades to
-  // the previous behaviour. Here OFF is the PERMISSIVE direction, not the safe
-  // one — turning this on ADDS a protection rather than removing one. Marking it
-  // a kill-switch would file it alongside sweeps and engines whose OFF state is
-  // the conservative choice, and mislead the operator reading the catalog. Same
-  // reasoning, opposite polarity, as `rate-limit.enabled` above.
+  // the previous behaviour) — and would now reject this descriptor outright,
+  // since it defaults `true`. That is not incidental: this is a
+  // PROTECTION-ENABLE flag, not a rollout gate — turning it off REMOVES a
+  // protection rather than disabling a newly-added enforcement path. Same
+  // reasoning, and now also the same default polarity, as `rate-limit.enabled`
+  // above (both default `true`; unlike a kill-switch, `false` is the state that
+  // needs justifying, not `true`).
   {
     key: 'origin.enforcementEnabled',
     tier: 'global-kv',
@@ -236,20 +247,40 @@ export const PLATFORM_OPS_SETTINGS: SettingDescriptor[] = [
     maxScope: 'system',
     editableBy: 'all',
     globalOnly: true,
-    // An unreadable control plane must NEVER fail into enforcement: that would
-    // turn a settings outage into a platform-wide browser outage, refusing every
-    // origin at once. Absent value ⇒ the default below ⇒ permissive.
+    // `failMode: 'open-to-default'` is unchanged from TASK-610, but its
+    // consequence inverts with the default below (TASK-641 H-3). Previously
+    // "fails open" meant an unreadable control plane fell back to permissive —
+    // the comment here used to argue that was the only acceptable outcome,
+    // because failing the other way would turn a settings outage into a
+    // platform-wide browser outage. With `default: true`, the SAME mechanism
+    // now fails INTO enforcement: a settings-read failure refuses browser
+    // origins that are not in the (bootstrap-seeded) allow-list, rather than
+    // admitting everything.
+    //
+    // This is accepted deliberately, not overlooked. Two reasons: (1) the
+    // failure window is narrow — a settings backend that cannot be read while
+    // the database it lives in is otherwise up is not a state this platform
+    // tolerates gracefully anywhere else either (the registry itself has its
+    // own fail-closed behaviour on an unreadable table; this key does not
+    // invent a second, different failure mode on top of it — see the plan's
+    // explicit instruction not to touch `failMode`). (2) TASK-641's whole
+    // premise is that browser-origin enforcement is the platform's default
+    // SECURITY STANCE, not an opt-in hardening step an operator remembers to
+    // flip — so the fail-open-to-default behaviour failing into that same
+    // stance is consistent, not surprising. A genuinely broken settings
+    // backend is an operational incident either way; this key does not change
+    // whether that incident happens, only which side of "admit" vs "refuse"
+    // browser traffic lands on while it is unresolved.
     failMode: 'open-to-default',
     category: 'Platform Operations',
     label: 'Origin (CORS) enforcement enabled',
     description:
-      'Master switch for browser-origin enforcement. While FALSE — the DEFAULT, for every tenant including SYSTEM and GLOBAL — every origin is admitted for every tenant: ' +
-      '`isOriginAllowed` admits without consulting the registry, `OriginTenantBindingGuard` passes every request, and the STT WebSocket handshake accepts every origin. ' +
-      'The `TenantAllowedOrigin` allow-list and the origin↔tenant binding guard only take effect when it is TRUE. ' +
-      'Nothing is deleted while it is off — setting it TRUE restores the full TASK-610 behaviour live, with no redeploy. ' +
-      'Register the origins each tenant needs BEFORE turning it on, or browser traffic starts being refused (grep the `origin_registry_miss` log reason). ' +
+      "Master switch for browser-origin enforcement. TRUE is the DEFAULT — for every tenant including SYSTEM and GLOBAL, in every environment, with no row present and no opt-in step (TASK-641 FR-6; reverses TASK-610 §4C's permissive-by-default posture): " +
+      '`isOriginAllowed` consults the `TenantAllowedOrigin` registry, `OriginTenantBindingGuard` enforces origin↔tenant binding, and the STT WebSocket handshake checks the registry — an unregistered origin is refused. ' +
+      "Setting it FALSE restores TASK-610's original behaviour live, with no redeploy: every origin is admitted for every tenant and the allow-list is not consulted. " +
+      'Register the origins each tenant needs BEFORE relying on enforcement, or legitimate browser traffic gets refused (grep the `origin_registry_miss` log reason). The SYSTEM rows needed for local development ship as unconditional bootstrap seed data, not demo data, precisely so this default is safe on a fresh database. ' +
       'Authentication and tenancy remain the enforcing controls either way; CORS is advisory browser behaviour and never was an authorization boundary.',
-    default: false,
+    default: true,
   },
   {
     key: 'agentic.trajectory.retentionDays',

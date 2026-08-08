@@ -54,12 +54,14 @@ const DAY_ONE = fakeRegistry({
 describe('cors.config', () => {
   beforeEach(() => {
     setOriginRegistryResolver(null);
-    // TASK-610 §4C — every case in THIS file describes the ENFORCING posture,
-    // which is no longer the default: `origin.enforcementEnabled` ships FALSE
-    // and short-circuits all of it (owner directive §4C.1). Turning it on here
-    // is what keeps this suite meaningful — it is the regression gate proving
-    // that flipping the switch restores §3–§4B unchanged. The permissive
-    // default is pinned separately in `cors.config.enforcement.task610.test.ts`.
+    // TASK-610 §4C — every case in THIS file describes the ENFORCING posture.
+    // Since TASK-641 FR-6 that IS the shipped default (`origin.enforcementEnabled`
+    // defaults `true`), so arming the switch here reproduces production rather
+    // than overriding it. It must still be set explicitly: `cors.config.ts` gets
+    // the value from a resolver, and in a unit test no `PlatformKnobsBinder` has
+    // installed one — the descriptor default never reaches this module by
+    // itself. The permissive/off state is pinned separately in
+    // `cors.config.enforcement.task610.test.ts`.
     setOriginEnforcementResolver(() => true);
   });
 
@@ -119,7 +121,9 @@ describe('cors.config', () => {
       expect(isOriginAllowed('https://arcaai-u2204.bcmch.org.evil.test', 'production')).toBe(false);
     });
 
-    it('refuses loopback in production even though development allows it', () => {
+    // Title corrected by TASK-641 B-7: development does not "allow it" any
+    // more either — see the `development is NOT a special case` block below.
+    it('refuses an unregistered loopback origin in production', () => {
       expect(isOriginAllowed('http://localhost:9999', 'production')).toBe(false);
     });
   });
@@ -190,7 +194,28 @@ describe('cors.config', () => {
     });
   });
 
-  describe('development loopback allowance', () => {
+  /**
+   * TASK-641 B-7 / FR-8 — THIS BLOCK USED TO ASSERT THE OPPOSITE.
+   *
+   * It pinned a `nodeEnv === 'development'` branch that admitted any loopback
+   * origin with an EMPTY registry. That branch was the last environment
+   * variable participating in a CORS decision, and the owner directive is that
+   * none may: *"no env var may participate in any CORS decision — not as an
+   * allow-list, and not as a behavioural branch."*
+   *
+   * Local development is covered instead by SEEDED SYSTEM-tenant rows
+   * (`http://localhost:*`, `http://127.0.0.1:*` — TASK-641 §3.1 step 2), which
+   * are ordinary registry rows and therefore take the ordinary path. That is
+   * the point: there is now exactly ONE way in, in every environment.
+   *
+   * The consequence, stated so nobody rediscovers it in an outage: an
+   * environment that never ran the origin seed refuses every browser origin,
+   * loopback included. That is hazard H-2, and the mitigation is making those
+   * rows unconditional bootstrap data — NOT a code fallback here.
+   *
+   * FR-8's general form is pinned in `cors.config.task641.test.ts`.
+   */
+  describe('development is NOT a special case (TASK-641 B-7 — the loopback branch is deleted)', () => {
     it.each([
       'http://localhost',
       'http://localhost:5173',
@@ -199,9 +224,9 @@ describe('cors.config', () => {
       'http://127.0.0.1:5173',
       'https://127.0.0.1:5174',
       'http://[::1]:5173',
-    ])('admits %s with an empty registry', (origin) => {
+    ])('REFUSES %s in development when the registry does not hold it', (origin) => {
       setOriginRegistryResolver(() => fakeRegistry({}));
-      expect(isOriginAllowed(origin, 'development')).toBe(true);
+      expect(isOriginAllowed(origin, 'development')).toBe(false);
     });
 
     it.each([
@@ -221,6 +246,17 @@ describe('cors.config', () => {
     it('admits a registered non-loopback origin in development', () => {
       setOriginRegistryResolver(() => DAY_ONE);
       expect(isOriginAllowed('https://arcaai-u2204.bcmch.org', 'development')).toBe(true);
+    });
+
+    /**
+     * The replacement path, end to end: registration — not the environment — is
+     * what admits loopback now. `DAY_ONE` already carries `http://localhost:5173`
+     * as a SYSTEM row, so this is the seeded case with no new fixture.
+     */
+    it('admits a REGISTERED loopback origin — in development and in production alike', () => {
+      setOriginRegistryResolver(() => DAY_ONE);
+      expect(isOriginAllowed('http://localhost:5173', 'development')).toBe(true);
+      expect(isOriginAllowed('http://localhost:5173', 'production')).toBe(true);
     });
   });
 

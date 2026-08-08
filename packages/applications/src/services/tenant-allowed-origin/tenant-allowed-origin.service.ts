@@ -1,9 +1,10 @@
-import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
   ResourceStatusType,
   ResourceType,
+  SYSTEM_TENANT_ID,
   SysEventType,
   TenantAllowedOriginEntity,
   TenantAllowedOriginFactory,
@@ -15,7 +16,7 @@ import { ALLOW_ALL_ORIGIN_PATTERN, isOriginPattern, normalizeOriginPattern } fro
 import { ITenantAllowedOriginService } from './ITenantAllowedOriginService';
 import { CreateTenantAllowedOriginRequest, TenantAllowedOriginResponse, UpdateTenantAllowedOriginRequest } from './dto';
 import { TenantAllowedOriginDtoMapper } from './tenant-allowed-origin.dto.mapper';
-import { BaseService } from '../../common';
+import { BaseService, isSuperAdmin } from '../../common';
 import { IActiveUserContext } from '../../interfaces';
 
 /**
@@ -26,24 +27,16 @@ import { IActiveUserContext } from '../../interfaces';
  */
 const ORIGIN_REGISTRY_INVALIDATE_EVENT = 'origin-registry.invalidate';
 
+/**
+ * One message for both wildcard refusals (raw and canonical) — a caller who
+ * smuggled a `*` through an encoding must not be able to tell that apart from
+ * a caller who typed one, and an operator reading logs should see one string.
+ */
+const WILDCARD_REFUSAL_MESSAGE = 'Only a global administrator may register a wildcard origin. Register an exact origin instead.';
+
 /** Structurally identifies a Prisma unique-constraint violation (P2002) without importing `@prisma/client` runtime code. */
 function isUniqueConstraintViolation(err: unknown): boolean {
   return typeof err === 'object' && err !== null && (err as Record<string, unknown>).code === 'P2002';
-}
-
-/**
- * Routes an incoming raw origin string to the correct validator BY SHAPE
- * (TASK-610 §4A.2/§4A.3, lane W5-E): `isOriginPattern` is true for anything
- * containing `*` — a wildcard pattern OR the bare allow-all token — which goes
- * through `normalizeOriginPattern`; everything else goes through the
- * pre-existing `normalizeOrigin`. Both throw the SAME `ArgumentInvalidException`
- * on a malformed value, so a caller never has to branch on error type and an
- * invalid pattern surfaces as the same clean validation error an invalid exact
- * origin does. The canonical result — never the raw input — is what gets
- * checked for uniqueness and persisted.
- */
-function normalizeIncomingOrigin(raw: string): string {
-  return isOriginPattern(raw) ? normalizeOriginPattern(raw) : normalizeOrigin(raw).origin;
 }
 
 @Injectable()
@@ -56,6 +49,91 @@ export class TenantAllowedOriginService extends BaseService implements ITenantAl
     protected override readonly clsService: ClsService<IActiveUserContext>,
   ) {
     super(eventEmitter, clsService, ResourceType.TenantAllowedOrigin);
+  }
+
+  /**
+   * AUTH-NOTE: WILDCARD GATE — GLOBAL_ADMIN-only, enforced imperatively here
+   * because no permission decorator can express it (TASK-641 FR-2;
+   * `05-nestjs-api.md` §Imperative Privilege Checks, "global-admin-only action
+   * on a tenant-manageable resource"). A TENANT_ADMIN legitimately holds
+   * `manage:TenantAllowedOrigin` for its own rows — what it may NOT do is
+   * register a value containing `*`. The decorator sees `action + subject`; it
+   * cannot see the SHAPE of the value, and the shape is the whole boundary.
+   * TASK-610 §4A.2's mitigation for the incomplete public-suffix heuristic is
+   * "a global admin approving a wildcard row must check the suffix by hand" —
+   * a tenant admin cannot be that check. This is a 403 (privilege), NOT the
+   * 404-over-403 cross-tenant posture; a cross-tenant id still 404s via
+   * `findOwnedOrThrow`, which runs FIRST on the update path.
+   *
+   * Routes an incoming raw origin string to the correct validator BY SHAPE
+   * (TASK-610 §4A.2/§4A.3, lane W5-E): `isOriginPattern` is true for anything
+   * containing `*` — a wildcard pattern OR the bare allow-all token — which goes
+   * through `normalizeOriginPattern`; everything else goes through the
+   * pre-existing `normalizeOrigin`. Both throw the SAME `ArgumentInvalidException`
+   * on a malformed value, so a caller never has to branch on error type and an
+   * invalid pattern surfaces as the same clean validation error an invalid exact
+   * origin does. The canonical result — never the raw input — is what gets
+   * checked for uniqueness and persisted.
+   *
+   * This ONE seam is deliberately shared by `create` and `update`: `update` is
+   * the escalation path (a tenant admin holding an exact row PATCHing its
+   * `origin` into `https://*.evil.com:*`), and a gate written only at `create`
+   * is the defect this placement makes structurally impossible.
+   *
+   * The shape is judged TWICE, and the second check is the load-bearing one:
+   *
+   *  1. On the RAW value, before validation — a fast deny that also means a
+   *     refused caller learns nothing about pattern grammar.
+   *  2. On the CANONICAL value, after normalization. **Normalization can
+   *     INTRODUCE a `*` that the raw text did not contain**, so a raw-only
+   *     gate is not sufficient. `normalizeOrigin` runs the value through the
+   *     URL parser, which percent-DECODES `%2A` and NFKC-folds the fullwidth
+   *     asterisk `＊` (U+FF0A); both `https://%2A.evil.com` and
+   *     `https://＊.evil.com` normalize to a literal `https://*.evil.com`
+   *     while containing no `*` themselves. (The normalizer's own
+   *     "must not contain a wildcard" check runs BEFORE that decode, so it
+   *     does not catch them either — a defect in `origin-normalizer.ts`,
+   *     reported separately.) Since `OriginRegistryService` decides
+   *     wildcard-vs-exact from the STORED string using the same
+   *     `includes('*')` test, the canonical value is the one that actually
+   *     determines trust, and therefore the one the privilege gate must
+   *     judge. Checking it here keeps FR-2 true no matter how the normalizer
+   *     evolves.
+   */
+  private normalizeIncomingOrigin(raw: string): string {
+    const elevated = isSuperAdmin(this.requestUser);
+
+    if (isOriginPattern(raw) && !elevated) {
+      throw new ForbiddenException(WILDCARD_REFUSAL_MESSAGE);
+    }
+
+    const canonical = isOriginPattern(raw) ? normalizeOriginPattern(raw) : normalizeOrigin(raw).origin;
+
+    if (isOriginPattern(canonical) && !elevated) {
+      throw new ForbiddenException(WILDCARD_REFUSAL_MESSAGE);
+    }
+
+    return canonical;
+  }
+
+  /**
+   * AUTH-NOTE: SYSTEM-TENANT GATE — GLOBAL_ADMIN-only, enforced imperatively
+   * (TASK-641 FR-3; same rule-05 pattern as the wildcard gate above). A row
+   * owned by the reserved SYSTEM tenant is treated as valid for EVERY tenant
+   * by `OriginRegistryService.allows()`, so a SYSTEM write is a PLATFORM-WIDE
+   * grant wearing the clothes of an ordinary tenant-scoped write — the
+   * decorator cannot tell the two apart, because they differ only by the
+   * ambient CLS tenant. No TENANT_ADMIN of SYSTEM exists today
+   * (`tenant_admin` is scoped to real tenants), and this guard exists so that
+   * remains a fact about the seed rather than the only thing standing between
+   * a mis-provisioned account and a platform-wide origin grant. 403
+   * (privilege), not 404 — the caller's OWN resolved tenant is SYSTEM, so
+   * there is no cross-tenant existence to hide.
+   */
+  private assertMayWriteInResolvedTenant(tenantId: string): void {
+    if (tenantId === SYSTEM_TENANT_ID && !isSuperAdmin(this.requestUser)) {
+      throw new ForbiddenException('Only a global administrator may manage platform (SYSTEM) allowed origins.');
+    }
   }
 
   async getAll(): Promise<TenantAllowedOriginResponse[]> {
@@ -94,11 +172,14 @@ export class TenantAllowedOriginService extends BaseService implements ITenantAl
       throw new BadRequestException('Tenant ID is required');
     }
 
+    this.assertMayWriteInResolvedTenant(tenantId);
+
     // Origin SYNTAX is decided exclusively by `normalizeOrigin` / `normalizeOriginPattern`,
     // routed by shape (README §4A.2/§4A.3) — the NORMALIZED form, never the raw
     // input, is what gets checked and persisted. Both throw the same
-    // `ArgumentInvalidException` on anything malformed.
-    const normalizedOrigin = normalizeIncomingOrigin(dto.origin);
+    // `ArgumentInvalidException` on anything malformed. The same call carries
+    // the FR-2 wildcard privilege gate — see its AUTH-NOTE.
+    const normalizedOrigin = this.normalizeIncomingOrigin(dto.origin);
 
     // §4B — a row IS a (origin, tenant) GRANT, not an owned origin. A LIVE
     // grant for THIS tenant on this origin is a genuine duplicate — reject
@@ -246,6 +327,8 @@ export class TenantAllowedOriginService extends BaseService implements ITenantAl
       throw new BadRequestException('Tenant ID is required');
     }
 
+    this.assertMayWriteInResolvedTenant(tenantId);
+
     const entity = await this.findOwnedOrThrow(id, tenantId);
 
     const { expectedVersion, origin, ...rest } = dto;
@@ -264,7 +347,9 @@ export class TenantAllowedOriginService extends BaseService implements ITenantAl
     // tenant already holding a grant on the same origin is not a conflict.
     let normalizedOrigin: string | undefined;
     if (origin !== undefined) {
-      normalizedOrigin = normalizeIncomingOrigin(origin);
+      // Carries the FR-2 wildcard privilege gate — this is the ESCALATION
+      // path the gate exists for (exact row -> pattern). See its AUTH-NOTE.
+      normalizedOrigin = this.normalizeIncomingOrigin(origin);
       if (normalizedOrigin !== originBeforeUpdate) {
         const existing = await this.tenantAllowedOriginRepository.findByOriginAndTenant(normalizedOrigin, tenantId);
         if (existing && existing.id !== id) {
@@ -323,6 +408,8 @@ export class TenantAllowedOriginService extends BaseService implements ITenantAl
     if (!tenantId) {
       throw new BadRequestException('Tenant ID is required');
     }
+
+    this.assertMayWriteInResolvedTenant(tenantId);
 
     await this.findOwnedOrThrow(id, tenantId);
 

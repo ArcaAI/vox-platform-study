@@ -1,9 +1,14 @@
 // TASK-610 §4C — the WS CSWSH check is DORMANT while origin enforcement is off.
 //
-// `stt-ws.gateway.origin.task610.test.ts` pins the ENFORCING behaviour (and now
+// `stt-ws.gateway.origin.task610.test.ts` pins the ENFORCING behaviour (and
 // installs `setOriginEnforcementResolver(() => true)` to get it). This file pins
-// the default: an unregistered `Origin` completes the handshake, and the
+// the OFF state: an unregistered `Origin` completes the handshake, and the
 // registry is never consulted.
+//
+// The off state is NO LONGER THE DEFAULT — TASK-641 FR-6 flipped
+// `origin.enforcementEnabled` to default `true`. Every case below sets the
+// resolver explicitly, so none of them changed; `null` here is this process's
+// pre-boot state, not the platform posture.
 //
 // §4C.3 flags this as the surface that would concern us most if `credentials`
 // were ever set back to `true` — browsers exempt WebSockets from CORS entirely,

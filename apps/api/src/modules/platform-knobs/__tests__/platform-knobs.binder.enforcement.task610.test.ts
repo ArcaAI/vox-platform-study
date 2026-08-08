@@ -6,8 +6,16 @@
 // that resolved the value ONCE at init would leave the switch permanently stuck
 // at whatever the cache held at boot (an operator's write would appear to do
 // nothing), and a binder that let a settings error escape would take the switch
-// to "enabled" by accident and start refusing browser traffic on a fresh
-// database — the lock-out §4C exists to prevent.
+// to "enabled" by accident — refusing browser traffic on the strength of an
+// exception rather than a resolved value.
+//
+// TASK-641 FR-6 note: enforcement is now the DESCRIPTOR default (`true`), so
+// "enabled" is no longer an accident by itself — the accident is arriving there
+// via a thrown lookup instead of a read. The lock-out §4C worried about is now
+// prevented by the bootstrap migration that guarantees the SYSTEM loopback rows
+// (`20260808160000_task_641_bootstrap_loopback_origins`, H-2), not by a
+// permissive default. Every case below installs its own fake resolver, so none
+// of them observes the descriptor default and none of them changed.
 import type { TenantSettingsService } from '@arcaai/applications';
 import { Logger } from '@nestjs/common';
 import { existsSync, readFileSync } from 'node:fs';
@@ -55,7 +63,11 @@ describe('PlatformKnobsBinder — origin enforcement resolver (TASK-610 §4C)', 
     expect(keys).toContain('origin.enforcementEnabled');
   });
 
-  it('keeps enforcement OFF when the setting resolves false — the descriptor default on a fresh database', () => {
+  // Reworded by TASK-641: `false` is no longer the descriptor default (FR-6
+  // made it `true`), so this now pins an OPERATOR-DISABLED platform, not a
+  // fresh-database one. The assertion is unchanged — the binder must report
+  // whatever the settings service resolves, either way.
+  it('keeps enforcement OFF when the setting resolves false — an operator having turned it off', () => {
     new PlatformKnobsBinder(fakeSettings(() => false)).onModuleInit();
 
     expect(isOriginEnforcementEnabled()).toBe(false);

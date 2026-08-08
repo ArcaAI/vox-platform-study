@@ -45,9 +45,11 @@ describe('PlatformKnobsBinder — origin registry resolver', () => {
   beforeEach(() => {
     setOriginRegistryResolver(null);
     // TASK-610 §4C — the registry only decides anything while enforcement is
-    // ON, and it now ships OFF. These cases are about the REGISTRY resolver, so
-    // the switch is armed to make them observable; the enforcement resolver the
-    // binder installs alongside it is pinned in
+    // ON, which since TASK-641 FR-6 is the shipped default. These cases are
+    // about the REGISTRY resolver, so the switch is armed to make them
+    // observable — explicitly, because a unit test has no `PlatformKnobsBinder`
+    // feeding the descriptor default into `cors.config.ts`. The enforcement
+    // resolver the binder installs alongside it is pinned in
     // `platform-knobs.binder.enforcement.task610.test.ts`.
     setOriginEnforcementResolver(() => true);
   });

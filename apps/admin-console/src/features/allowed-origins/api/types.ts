@@ -22,3 +22,8 @@ export interface UpdateAllowedOriginRequest {
   label?: string;
   description?: string | null;
 }
+
+/** FR-4 — the one platform-wide fact a tenant admin needs: is origin enforcement on? */
+export interface AllowedOriginPosture {
+  enforcementEnabled: boolean;
+}
