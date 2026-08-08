@@ -1,5 +1,7 @@
 # Deploy Langfuse — VM 400 `master` (10.10.1.100)
 
+**Status**: UNVERIFIED — this file describes a potential langfuse deployment on VM 400, but langfuse is not mentioned in any live-state or infrastructure audit documents (TASK-616 live-state 2026-08-07, vault-ha-deployment 2026-08-07). No evidence that langfuse is currently running; this may be a deployment guide for future use.
+
 **Date**: 2026-04-08
 **VM**: 400 | **Name**: `master` | **IP**: 10.10.1.100 | **Bridge**: vmbr1 | **Specs**: 8c / 16 GB / 64 GB disk
 **Config files**: [`configs/langfuse/`](../configs/langfuse/)

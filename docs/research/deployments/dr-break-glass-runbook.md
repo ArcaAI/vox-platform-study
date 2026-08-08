@@ -1,5 +1,7 @@
 # Disaster Recovery & Break-Glass Runbook
 
+**Status**: SUPERSEDED — this runbook (TASK-369 Phase 5) describes recovery procedures for a Shamir-based Vault unseal model. The actual Vault HA deployed (vault-ha-deployment 2026-08-07) uses Raft with Transit auto-unseal, rendering the Shamir-dependent break-glass procedures in this document inapplicable to current infrastructure.
+
 **Ticket**: TASK-369 (Data Encryption Initiative — Phase 5, key management / OPS)
 **Audience**: On-call SRE + the Shamir key-share holders
 **Covers**: Vault unseal, LUKS recovery, encrypted-backup restore, and the safe

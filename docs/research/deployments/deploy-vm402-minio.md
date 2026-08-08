@@ -1,5 +1,7 @@
 # Deploy MinIO — VM 402 (10.10.1.102)
 
+**Status**: BUILT — MinIO is live and operational; confirmed in vault-ha-deployment 2026-08-07 as the storage destination for Vault HA backup snapshots (daily age-encrypted backups, 30-day ILM retention).
+
 **Date**: 2026-03-16
 **VM**: 402 | **IP**: 10.10.1.102 | **Bridge**: vmbr1 | **Specs**: 8c / 16 GB / 64 GB disk
 **Config files**: [`configs/minio/`](../configs/minio/)

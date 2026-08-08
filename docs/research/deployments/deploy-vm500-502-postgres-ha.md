@@ -1,5 +1,7 @@
 # Deploy High-Availability TimescaleDB — VMs 500–502
 
+**Status**: BUILT — PostgreSQL HA cluster is live on VMs 500-502 per ground-truth VM inventory; this provides the primary database backend for the platform.
+
 **Date**: 2026-03-18
 **VMs**: 500 (`10.10.1.200`), 501 (`10.10.1.201`), 502 (`10.10.1.202`)
 **Bridge**: vmbr1 | **Specs**: 8 vCPU / 16 GB RAM / 64 GB OS disk + data disk (each)

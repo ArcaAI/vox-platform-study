@@ -1,5 +1,7 @@
 # Encryption At Rest — LUKS, MinIO SSE & Backup Cipher Runbook
 
+**Status**: UNVERIFIED — this document (TASK-369 Phase 1/4) describes encryption-at-rest procedures as operator actions on host systems. LUKS disk encryption is not confirmed as enabled in live-state audits (TASK-616 2026-08-07); MinIO SSE and pgBackRest AES-256-CBC are specified in the design but no evidence of live deployment has been found. Treat as a specification/playbook, not as a record of current state.
+
 **Ticket**: TASK-369 (Data Encryption Initiative — Phase 1 + Phase 4 verification)
 **Audience**: SRE / operators with host/VM root access
 **Scope**: PostgreSQL data + WAL volumes, MinIO object storage (PHI media + pgBackRest), Redis, auto-unlock key custody, and encrypted-backup verification.

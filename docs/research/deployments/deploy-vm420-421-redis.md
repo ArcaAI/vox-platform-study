@@ -1,5 +1,7 @@
 # Deploy Redis — VM 420 (Dev) & VM 421 (Staging)
 
+**Status**: BUILT — Redis VMs 420/421 exist and are live per ground-truth VM inventory; these support application caching and job queuing for dev/staging environments.
+
 **Date**: 2026-03-24
 **VMs**: 420 (`10.10.1.120`) — Dev | 421 (`10.10.1.121`) — Staging
 **Bridge**: vmbr1 | **Specs**: 2 vCPU / 2 GB RAM / 16 GB disk (Dev) | 2 vCPU / 4 GB RAM / 32 GB disk (Staging)
