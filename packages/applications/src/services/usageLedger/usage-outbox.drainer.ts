@@ -163,6 +163,9 @@ export class UsageOutboxDrainer {
       provider: event.provider,
       model: event.model,
       contextBand: event.attributesJson?.contextBand ?? null,
+      // Cache-write TTL band (TASK-615 #7): only CACHE_WRITE_TOKEN rows carry it;
+      // for every other unit it is null and resolves the TTL-agnostic wildcard.
+      cacheTtl: event.attributesJson?.cacheTtl ?? null,
       occurredAt,
     });
 
@@ -218,6 +221,10 @@ export class UsageOutboxDrainer {
     const dimension = {
       tenantId: event.tenantId,
       capability: event.capability,
+      // Operation dimension (TASK-615 #4): keeps guardrail.validate / harness.step
+      // LLM rows out of the tenant-billable LLM_TOKENS meter. Always present on an
+      // event (closed vocabulary); "" only for pre-follow-up rollup rows.
+      operation: event.operation ?? '',
       provider: event.provider,
       // EMPTY-STRING SENTINEL, never null: Postgres treats each NULL as
       // distinct, so a nullable dimension would let two upserts for the same

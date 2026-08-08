@@ -91,6 +91,16 @@ class CreateStreamingSessionRequest(BaseModel):
             "controller's default (2)."
         ),
     )
+    channel_count: int = Field(
+        default=1,
+        ge=1,
+        description=(
+            "Number of distinct microphone SOURCES mixed into this session "
+            "(TASK-615 #12). Stored and echoed on the teardown summary so the "
+            "usage row is repriceable; the audio itself is always one mono "
+            "uplink, so this is a metadata signal, not a PCM channel count."
+        ),
+    )
 
 
 class SwitchProviderRequest(BaseModel):
@@ -167,6 +177,14 @@ class StreamingSessionTeardownResponse(BaseModel):
     )
     language_mode: str | None = Field(
         default=None, description="End-user language mode id (TASK-587), e.g. 'ml-en'"
+    )
+    channel_count: int = Field(
+        default=1,
+        ge=1,
+        description=(
+            "Distinct microphone source count for this session (TASK-615 #12), "
+            "echoed for usage repricing; 1 for a single-mic session."
+        ),
     )
 
 

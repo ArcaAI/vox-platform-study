@@ -217,6 +217,12 @@ model AiPriceBook {
   // Optional context-window band ("0-128k", "128k+") — several vendors price
   // long-context requests differently for the same model.
   contextBand String?
+  // Optional cache-write TTL band (TASK-615 follow-up #7): Anthropic prices a 5m
+  // ephemeral cache write at ×1.25 and a 1h write at ×2.00 of base input. A row
+  // with a null `cacheTtl` is the TTL-agnostic wildcard (back-compat: every
+  // existing CACHE_WRITE_TOKEN row keeps rating unchanged); a row keyed to
+  // "5m"/"1h" wins over the wildcard for events that carry `attributesJson.cacheTtl`.
+  cacheTtl    String?
 
   // The price itself: integer micros of `currency` per ONE `unit`
   // (or per period for a PLAN_FEE row). Never Float.
@@ -276,6 +282,13 @@ model AiUsageRollupHourly {
   // Truncated to the hour, UTC.
   bucketStart DateTime
   capability  AiCapability
+  // Operation dimension (TASK-615 follow-up #4): the ledger event's operation
+  // (generate · guardrail.validate · harness.step · tts.synthesize · …). Without
+  // it the LLM_TOKENS meter summed guardrail + harness tokens that must NEVER be
+  // quota-blocked (D16); the meter now filters on operation. "" sentinel keeps
+  // upserts idempotent for the same NULL-distinctness reason as `model` (see the
+  // header) and stamps pre-follow-up rows created before this column existed.
+  operation   String       @default("")
   provider    String
   // "" sentinel when the capability selects no model (see the header).
   model       String       @default("")
@@ -292,7 +305,7 @@ model AiUsageRollupHourly {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([tenantId, bucketStart, capability, provider, model, unit], name: "AiUsageRollupHourly_dimension_unique")
+  @@unique([tenantId, bucketStart, capability, operation, provider, model, unit], name: "AiUsageRollupHourly_dimension_unique")
   @@index([tenantId, bucketStart], name: "AiUsageRollupHourly_tenant_bucketStart_idx")
   @@schema("core")
 }
@@ -313,6 +326,11 @@ model AiUsageRollupDaily {
   // billing periods use, so a period sum is a clean range scan.
   bucketStart DateTime
   capability  AiCapability
+  // Operation dimension (TASK-615 follow-up #4) — same contract and sentinel as
+  // the hourly rollup. Lets the LLM_TOKENS / GUARDRAIL_CALLS meters and the
+  // consumption screens read a single capability's billable operations without
+  // the raw-ledger side query WS-H needed.
+  operation   String       @default("")
   provider    String
   model       String       @default("")
   unit        AiUsageUnit
@@ -326,7 +344,7 @@ model AiUsageRollupDaily {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([tenantId, bucketStart, capability, provider, model, unit], name: "AiUsageRollupDaily_dimension_unique")
+  @@unique([tenantId, bucketStart, capability, operation, provider, model, unit], name: "AiUsageRollupDaily_dimension_unique")
   @@index([tenantId, bucketStart], name: "AiUsageRollupDaily_tenant_bucketStart_idx")
   @@schema("core")
 }

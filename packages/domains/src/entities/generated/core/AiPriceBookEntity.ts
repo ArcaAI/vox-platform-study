@@ -31,6 +31,12 @@ export interface IAiPriceBookEntity extends IBaseTenantEntity {
   model?: string | null;
   unit?: Enums.AiUsageUnit | null;
   contextBand?: string | null;
+  /**
+   * Cache-write TTL band ("5m" / "1h") this row prices; null = the TTL-agnostic
+   * wildcard every pre-existing CACHE_WRITE_TOKEN row keeps using. A TTL-keyed
+   * row wins over the wildcard for events carrying `attributesJson.cacheTtl`.
+   */
+  cacheTtl?: string | null;
 
   currency?: string;
   /** Integer micros per ONE `unit` (or per period for a PLAN_FEE row). */
@@ -53,6 +59,7 @@ export class AiPriceBookEntity extends BaseTenantEntity {
   private _model?: IAiPriceBookEntity['model'];
   private _unit?: IAiPriceBookEntity['unit'];
   private _contextBand?: IAiPriceBookEntity['contextBand'];
+  private _cacheTtl?: IAiPriceBookEntity['cacheTtl'];
   private _currency?: IAiPriceBookEntity['currency'];
   private _unitPriceMicros: IAiPriceBookEntity['unitPriceMicros'];
   private _effectiveFrom: IAiPriceBookEntity['effectiveFrom'];
@@ -69,6 +76,7 @@ export class AiPriceBookEntity extends BaseTenantEntity {
     this._model = init.model;
     this._unit = init.unit;
     this._contextBand = init.contextBand;
+    this._cacheTtl = init.cacheTtl;
     this._currency = init.currency;
     this._unitPriceMicros = init.unitPriceMicros;
     this._effectiveFrom = init.effectiveFrom;
@@ -138,6 +146,14 @@ export class AiPriceBookEntity extends BaseTenantEntity {
 
   set contextBand(value: IAiPriceBookEntity['contextBand']) {
     this.setProperty('contextBand', value);
+  }
+
+  get cacheTtl(): IAiPriceBookEntity['cacheTtl'] {
+    return this._cacheTtl;
+  }
+
+  set cacheTtl(value: IAiPriceBookEntity['cacheTtl']) {
+    this.setProperty('cacheTtl', value);
   }
 
   get currency(): IAiPriceBookEntity['currency'] {

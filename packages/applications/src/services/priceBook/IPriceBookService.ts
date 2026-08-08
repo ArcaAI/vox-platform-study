@@ -35,6 +35,12 @@ export interface ResolveUsagePriceInput {
   contextBand?: string | null;
   /** Plan tier — SELL-plane only; COST rows are tier-agnostic. */
   planTier?: TenantPlan | null;
+  /**
+   * Cache-write TTL band ("5m"/"1h") for a CACHE_WRITE_TOKEN event (TASK-615 #7).
+   * A TTL-keyed row wins over the TTL-agnostic wildcard; null resolves the
+   * blended wildcard rate exactly as before this dimension existed.
+   */
+  cacheTtl?: string | null;
 }
 
 /** Same shape with the plane made explicit (used by the generic entry point). */

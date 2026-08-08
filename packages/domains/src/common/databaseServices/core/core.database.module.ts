@@ -10,6 +10,7 @@ import { AiProviderConnectionRepository } from '../../../repositories/generated/
 import { AiRuntimeProfileRepository } from '../../../repositories/generated/core/AiRuntimeProfileRepository';
 import { AiTaskDefaultRepository } from '../../../repositories/generated/core/AiTaskDefaultRepository';
 import { AiUsageEventRepository } from '../../../repositories/generated/core/AiUsageEventRepository';
+import { TenantPlanHistoryRepository } from '../../../repositories/generated/core/TenantPlanHistoryRepository';
 import { AiUsageOutboxRepository } from '../../../repositories/generated/core/AiUsageOutboxRepository';
 import { AiUsageRollupDailyRepository } from '../../../repositories/generated/core/AiUsageRollupDailyRepository';
 import { AiUsageRollupHourlyRepository } from '../../../repositories/generated/core/AiUsageRollupHourlyRepository';
@@ -223,6 +224,9 @@ const repositories = [
   BillingInvoiceRepository,
   BillingInvoiceLineRepository,
   BillingAdjustmentRepository,
+  // Append-only plan-change facts feeding the invoice engine's plan-fee basis
+  // (no soft delete, no sys-events — see the repository doc).
+  TenantPlanHistoryRepository,
 ];
 
 @Module({

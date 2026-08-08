@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsIn, IsNotEmpty, IsNumber, IsOptional, IsString, IsUUID, Matches } from 'class-validator';
+import { IsBoolean, IsIn, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString, IsUUID, Matches, Max, Min } from 'class-validator';
 
 export const AUDIO_BUCKET = 'hope-audio';
 
@@ -112,6 +112,20 @@ export class CreateStreamSessionRequest {
   @IsIn(['primary', 'fallback'])
   @IsOptional()
   startOn?: 'primary' | 'fallback';
+
+  @ApiPropertyOptional({
+    description:
+      'Number of distinct microphone SOURCES mixed into the session (TASK-615 #12): 1 for a single mic, 2+ for dual-/multi-mic. ' +
+      'A usage-repricing metadata signal (bills 1×, OQ2), NOT a PCM channel count — the uplink is always mono. Forwarded to STT and echoed on teardown. Default 1.',
+    minimum: 1,
+    maximum: 8,
+    default: 1,
+  })
+  @IsInt()
+  @Min(1)
+  @Max(8)
+  @IsOptional()
+  channelCount?: number;
 }
 
 export class StreamSessionResponse {

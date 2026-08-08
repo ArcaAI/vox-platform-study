@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Review — all 11 workstreams (Waves 0–3) implemented and merged; live evidence run captured (§6 Wave 3); remaining items are owner decisions + design-gated console screens (§7) |
+| **Status** | Review — all 11 workstreams (Waves 0–3) merged; **Wave 4 (2026-08-08) closed the §7 engineering tail #4–#13** (schema custodian pass, 402 spend-limit, G16, dual-mic channelCount, STT reaper push-back, Grafana datasource, cross-tenant e2e). Remaining: owner commercial/credential decisions (#1–#3, #14) + design-gated console screens (#15). |
 | **Type** | feature (cross-cutting: database → domains → applications → api → python services → admin console → infra) |
 | **Created** | 2026-08-06 |
 | **Branch** | dev-2.1 |
@@ -830,41 +830,103 @@ follow-up spec, `task-615-streaming-abort.spec.ts`); Prometheus `/metrics` diff
 (requires a live API instance); `admin/usage/*` E2E coverage (explicitly deferred —
 WS-J owns that surface, built in parallel).
 
+### Wave 4 — §7 engineering follow-ups #4–#13 (2026-08-08, owner-authorized, uncommitted)
+
+The §7 engineering tail was closed in one pass (all Figma-gated console work #15 and the
+commercial/credential owner decisions #1–#3, #14 explicitly excluded). Evidence: every
+touched TS package builds clean (database, domains, applications, exceptions, api, `@arcaai/vox`,
+`@arcaai/stt`); `gen:check` reports no drift + schema coverage OK across 84 models; the
+edited Python files `py_compile` clean (pytest is owner-run — no `arcaenv` in-session).
+
+**Schema custodian pass** — one migration
+`20260808020000_task_615_plan_history_meter_and_price_dimensions` (authored from a pure
+schema-to-schema `prisma migrate diff`; the shared dev DB is db-push-managed and was NOT
+mutated). `gen:model` regenerated the model layer + scaffolded the new trio; the append-only
+posture and OCC `_version` strip were preserved.
+- **#5 `TenantUsageMeter.usedCount` Int32 → BigInt.** Domain entity/factory widened to
+  `bigint`; `MeteringService.upsertMeter` writes `BigInt(usedCount)` (aggregates are rounded
+  integers, so the conversion is exact); `shadow-metering` reads it through `toNumberSafe`.
+- **#4 `operation` dimension on both rollups.** Added to `AiUsageRollup{Hourly,Daily}`
+  (empty-string sentinel, extended the unique grain); the drainer stamps `event.operation`;
+  `MeteringService` now excludes `guardrail.validate`/`harness.step` from the tenant-billable
+  `LLM_TOKENS` sum (the documented over-count is gone). Red-first tests added.
+- **#7 `cacheTtl` price dimension on `AiPriceBook`.** New nullable dimension; the pure
+  `selectMostSpecificPrice` gained it as the LEAST-significant axis (weights rescaled to
+  powers of two so provider > model > contextBand > planTier precedence is unchanged and a
+  TTL-specific cache-write row beats the blended wildcard); the drainer passes
+  `attributesJson.cacheTtl` into the COST query. Seeding per-TTL rate rows stays an ops
+  decision (#2).
+- **#6 `TenantPlanHistory` table + true proration.** New append-only, tenant-scoped,
+  soft-delete-exempt model (allow-lists updated) + hand-reconciled domain trio with
+  `findOpenWindow`/`findOverlappingPeriod` finders. `BillingService.computeLineDrafts` now
+  builds one `PlanFeeSegment` per dated history segment (via the pure `clampPlanSegments`) and
+  the response carries `planFeeBasis: 'TENANT_PLAN_HISTORY'`; with no history it reproduces the
+  pre-#6 single-segment `PERIOD_END_PLAN` behavior byte-for-byte. Added `IBillingService.recordPlanChange`
+  (append + close-prior, idempotent) as the writer a plan-change action calls. Golden test
+  proves a 15/31 + 16/31 STARTER→PRO split.
+
+**Application + gateway + infra**
+- **#8 402 spend-limit.** New `SpendLimitExceededException` (`DOMAIN.SPEND_LIMIT_EXCEEDED`) +
+  `exception.interceptor` branch → HTTP 402; `IBillingService.assertSpendLimit` (opt-in and
+  cheap — a tenant with no limit set skips the draft entirely); wired at both LLM-token
+  quota sites in `summary.service` (`@Optional() IBillingService`, `BillingServiceModule`
+  imported). Tests cover the exception path and the no-op/over/under cases.
+- **#11 `getConsumptionRollup` (G16).** `PlatformMetricsService.transcriptionMinutes` now
+  derives from STT `AUDIO_SECOND` rollups (`AiUsageRollupDailyRepository.sumQuantityForCapabilityUnits`)
+  so it agrees with `getUsageSummary`; `summaries24h` stays on `SummaryMeta` (a summary count
+  has no ledger equivalent). Test updated.
+- **#12 dual-mic `channelCount`.** Real signal threaded SDK → gateway → STT and echoed on
+  teardown: `@arcaai/vox` `useArcaAudio` derives the requested source count →
+  `PluginManager` runtime option → `@arcaai/stt` provider `createSession`; gateway DTO
+  whitelists it, forwards `channel_count` to STT, and `emitStreamingUsage` reads
+  `summary.channel_count` (was hardcoded 1); STT stores + echoes it (`_session_channel_counts`,
+  `_build_teardown_summary`, schemas). SDK forwarding test added.
+- **#13 STT reaper push-back.** New idempotent gateway endpoint
+  `POST /internal/stt/streaming/usage` (`SttStreamingUsagePushbackRequest` DTO →
+  `StreamingSessionService.recordStreamingUsageFromSummary`); the STT idle reaper now POSTs
+  the teardown summary it builds (`APIGatewayClient.record_streaming_usage`) so a session
+  finalized after a gateway crash + retry-exhaustion is still metered — idempotent on the
+  session id, best-effort so it never fails the reaper.
+- **#9 cross-tenant e2e.** `apps/api/tests/e2e/task-615-usage-analytics-cross-tenant.spec.ts`
+  authored (foreign `?tenantId=` → 403, `top-tenants` global-admin-only → 403, global admin
+  → 200, `usage/me` self-service). Execution owner-gated (needs a live API).
+- **#10 Grafana `hope-postgres` datasource.** Provisioned in both the dev-mounted
+  (`infrastructure/docker/configs/grafana/…`) and standalone (`infrastructure/grafana/…`)
+  datasource files (postgres → `hope` DB on the compose network); the dev Grafana already
+  mounts the dashboards dir holding `consumption.json`.
+
 ---
 
-## 7. Remaining follow-ups & owner decisions (post-Wave-3)
+## 7. Remaining follow-ups & owner decisions
 
-**Blocking real billing (owner action required):**
+**Engineering follow-ups #4–#13 are DONE** (Wave 4, 2026-08-08 — see §6 "Wave 4").
+Only genuine owner decisions and the design-gated console screens remain:
+
+**Blocking real billing (owner action required — commercial values I cannot invent):**
 1. **Supersede every placeholder SELL price** (`bookVersion 2026-08-06-placeholder-v1`)
    with real commercial rates via `admin/billing/rate-card` before invoicing anyone.
 2. **Set real plan allowances** — all allowance columns seed NULL (unlimited); no
-   commercial ceilings were invented.
+   commercial ceilings were invented. (The `cacheTtl` COST dimension is now available for
+   per-TTL cache-write rate rows too — #7 — but seeding rates stays an ops/COGS decision.)
 3. **Production enforcement flip** (`entitlements.enabled`, `metering.reconcile.enabled`)
    remains a launch decision (OQ3); shadow-meter one full cycle first (the
    `ShadowMeteringService` exists, OFF by default).
 
-**Schema follow-ups (need a WS-A-style custodian pass):**
-4. Rollup grain lacks an `operation`/`billable` dimension — `LLM_TOKENS` meter over-counts
-   by guardrail+harness tokens; billing compensates via ledger aggregates today.
-5. `TenantUsageMeter.usedCount` is Int32 — overflow risk on token/character meters.
-6. `TenantPlanHistory` table for true mid-period fee proration (engine is ready;
-   `planFeeBasis: PERIOD_END_PLAN` until then).
-7. `cacheTtl` price dimension for per-TTL cache-write rates (single blended rate seeded).
-
-**Smaller engineering tail:**
-8. 402 spend-limit call-site wiring from `IBillingService.getSpendStatus`.
-9. Cross-tenant e2e specs for the WS-J `admin/usage/*` surface (WS-K deliberately left
-   them out while WS-J was in flight); execute the three authored task-615 e2e specs
-   against a live API (`pnpm test:up:api` → `pnpm test:e2e`).
-10. Grafana `hope-postgres` datasource provisioning (dashboard references it).
-11. `getConsumptionRollup` delegation to the ledger-derived usage-analytics service (G16).
-12. Dual-mic `channelCount` real signal (SDK session-create field; hardcoded 1 today).
-13. STT reaper edge: a session surviving gateway crash + retry exhaustion (~46 s) builds
-    a usage summary no gateway caller receives — needs an STT-side push-back path.
+**Credential-gated:**
 14. Real provider usage-API reconcilers (OpenAI/Anthropic/Azure) — interfaces + stubs
     exist; each needs org-level admin credentials (documented in the reconciler registry).
+
+**Design-gated (excluded from this pass by request):**
 15. **Console screens** (Consumption & Cost, Billing) — design-gated per rule 12: Figma
     frames → owner approval → build; the HTTP surface they need is complete.
+
+**Owner-run verification of the shipped follow-ups:**
+- The Python STT edits for #12 (`channel_count` round-trip) and #13 (reaper push-back)
+  `py_compile` clean but were NOT run under pytest — there is no `arcaenv` conda env in
+  the authoring session. Run `pnpm stt:test` after an STT restart.
+- The authored e2e specs (the three WS-K specs + the new
+  `task-615-usage-analytics-cross-tenant.spec.ts`, #9) need a live API:
+  `pnpm test:up:api` → `pnpm test:e2e`.
 
 ## 8. Change History
 
@@ -874,6 +936,7 @@ WS-J owns that surface, built in parallel).
 | 2026-08-06 | Plan approved by owner; execution started. **Wave 0 complete and merged** (WS-G `c4ef67e0`, WS-A `95718eb4`, WS-B `414204cb` — see §6); wave-1 emitter contract frozen (ws-b-contract.md). Status → In Progress. |
 | 2026-08-06 | **Wave 1 complete and merged** — all four emitter lanes (WS-D `54cbf3c7`, WS-F `9872338b`, WS-E `95aa176c`, WS-C `9c3ff673`; see §6). Gaps G5–G9 closed at the emission layer. Cross-lane verification in the merged tree: api streaming/compat/speech 351/351, applications stt+summary+ledger+trajectory 852/852. Wave 2 (WS-H meters/quotas, WS-I billing engine, WS-D2 emission completion) launched. |
 | 2026-08-06 | **Wave 3 complete — ALL 11 WORKSTREAMS DONE.** WS-J (usage-analytics API + Grafana, ff-head `560e1cd5`) and WS-K (shadow metering, outbox pruning, e2e specs, live evidence run, ff-head `af70931b`) merged; orchestrator tail fix for the TTS `AUDIO_SECOND` COST seed gap WS-K exposed. Live evidence: 13 synthetic events across all 5 capabilities drained → rated → rolled up → metered → a real 2-line draft invoice (PLAN_FEE + forced STT overage), cleanup psql-verified. Status → Review. Remaining: §7 follow-ups (placeholder SELL prices, allowances, schema tail, console screens behind the design gate). |
+| 2026-08-08 | **Wave 4 — §7 engineering follow-ups #4–#13 closed** (owner-authorized "finish all remaining without Figma screens"; uncommitted on `dev-2.1`). Schema custodian pass (migration `20260808020000_task_615_plan_history_meter_and_price_dimensions`): #5 usedCount→BigInt, #4 rollup `operation` dimension (+ meter over-count fix), #7 `AiPriceBook.cacheTtl` dimension, #6 `TenantPlanHistory` + true multi-segment proration (`recordPlanChange` writer, `planFeeBasis: TENANT_PLAN_HISTORY`). App/gateway/infra: #8 402 `SpendLimitExceededException` + `assertSpendLimit` wired at the summary LLM path, #11 G16 ledger-derived `transcriptionMinutes`, #12 dual-mic `channelCount` threaded SDK→gateway→STT→teardown, #13 STT reaper `POST /internal/stt/streaming/usage` push-back, #10 Grafana `hope-postgres` datasource, #9 `admin/usage/*` cross-tenant e2e authored. Evidence: 7 TS packages build clean, `gen:check` no-drift + coverage OK (84 models), **applications suite 8284 passed / 0 failed**, edited Python `py_compile` clean. Owner tail: run `pnpm stt:test` (no `arcaenv` in-session) + the e2e specs against a live API; #1–#3/#14 (commercial/credential) and #15 (design-gated console screens) unchanged. |
 | 2026-08-06 | **Wave 2 complete and merged** — WS-I (billing engine, ff-head `399b1149`), WS-D2 (emission completion, ff-head `b177e087`), WS-H (meters/quotas/alerts, ff-head `80e31a10`); see §6. Mid-wave, the owner linearized `dev-2.1` history and landed the `f5fdacbd` DI fix; all lanes rebased + fast-forwarded. Main-tree verification: billing/priceBook/ledger 212/212, consultation sweep 1,754/1,754, entitlements/metering/billing/summary 546/546, api speech+billing+interceptors 153/153. Wave 3 launched (WS-K evidence/shadow-metering + WS-J API/Grafana; console screens remain design-gated). |
 | 2026-08-06 | **WS-K complete, branch `task-615-ws-k` (worktree `hope-v2-wt-ws-k`, commit `e91b5a47`) — NOT merged/pushed.** Shadow-metering drift report + provider-reconciler stubs + DISPATCHED-outbox pruning (see §6 Wave 3); 3 E2E specs authored (not executed — no live API on 8868); 1 live SQL integration test (5/5, isolated test DB port 5433); live evidence run against dev Postgres (synthetic per-capability batch → real drainer → rollups → `MeteringService`/`BillingService`, incl. a forced real overage line), fully cleaned up and independently verified. Found: COST price book missing a `TTS AUDIO_SECOND` wildcard row (documented, not fixed — WS-A's lane). Evidence: applications 7,614/7,614, domains + applications build clean, lint clean. |
 | 2026-08-06 | **WS-D2 defect fix — WS-D's summary metering was dead in production.** `SummaryService` and `ChainSummaryService` injected the identically-named but UNWIRED `CoreUnitOfWorkService` from `services/baseServices/unitsOfWork/` (registered in no NestJS `providers: []` and absent from the applications barrel), so under `@Optional()` it resolved to `undefined` and `persistSummaryMetaWithUsage` ALWAYS took the unmetered fallback branch — no LLM/guardrail usage rows were ever written by `generateSummary`, `generatePreSummary`, or `generateComprehensiveSummary`. Unit tests could not catch it: they construct the services positionally with mocks and never exercise NestJS DI. Fixed by importing the DOMAINS `CoreUnitOfWorkService` from `@arcaai/domains` (provided + exported by `CoreDatabaseModule`, which both service modules already import) — the pattern WS-C's `SttInternalService` had already documented. Added `summary/__tests__/usage-ledger.di-wiring.task615.test.ts`, a container-free guard asserting the resolved constructor tokens against `CoreDatabaseModule`'s real exports (8 tests; verified RED against the broken imports first). The unwired class is retained (its own test is a named entry in the `cross-tenant-coverage` manifest) but now carries an explicit ⚠️ UNWIRED — DO NOT INJECT header. Evidence: `@arcaai/applications` build clean, 383 files / 7425 tests passing (baseline 7417 + 8 new), 0 new lint warnings. |

@@ -1,10 +1,11 @@
 /**
  * PlatformMetricsService.getConsumptionRollup.
  *
- * Postgres-derived (live-testable): transcription minutes = SUM(duration)/60000
- * (COALESCE over nullable durations), summaries-24h counts only generatedAt ≥
- * now−24h, storageUsedBytes = SUM(Media.size), storageQuotaBytes = SUM(quotaBytes)
- * (null until a bucket sets one).
+ * Ledger-derived (TASK-615 #11 / G16): transcription minutes = SUM(STT
+ * AUDIO_SECOND rollups)/60 so the dashboard agrees with getUsageSummary;
+ * summaries-24h counts only generatedAt ≥ now−24h (still SummaryMeta — no ledger
+ * equivalent), storageUsedBytes = SUM(Media.size), storageQuotaBytes =
+ * SUM(quotaBytes) (null until a bucket sets one).
  *
  * The reads now route through domain repositories
  * instead of `databaseService.client`, so the mocks stub the repositories.
@@ -12,19 +13,20 @@
  * `packages/domains/src/repositories/generated/core/__tests__/`.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { AiCapability, AiUsageUnit } from '@arcaai/domains';
 import { PlatformMetricsService } from '../platform-metrics.service';
 
 function makeRepos(overrides: {
-  duration?: number | null;
+  sttAudioSeconds?: number | null;
   summaries?: number;
   size?: number | null;
   quota?: bigint | null;
   total?: number;
   today?: number;
 }) {
-  const { duration = 120000, summaries = 5, size = 1000, quota = null, total = 10, today = 3 } = overrides;
+  const { sttAudioSeconds = 120, summaries = 5, size = 1000, quota = null, total = 10, today = 3 } = overrides;
   return {
-    audioRecording: { sumDurationForTenant: vi.fn(async () => duration) },
+    rollupDaily: { sumQuantityForCapabilityUnits: vi.fn(async () => sttAudioSeconds ?? 0) },
     summaryMeta: { countGeneratedSince: vi.fn(async () => summaries) },
     media: { sumSizeForTenant: vi.fn(async () => size) },
     tenantBucket: { sumConfiguredQuotaBytes: vi.fn(async () => quota) },
@@ -43,7 +45,7 @@ function makeService(repos: ReturnType<typeof makeRepos>) {
     prometheus as any,
     sockets as any,
     cache as any,
-    repos.audioRecording as any,
+    repos.rollupDaily as any,
     repos.summaryMeta as any,
     repos.media as any,
     repos.tenantBucket as any,
@@ -58,13 +60,13 @@ describe('PlatformMetricsService.getConsumptionRollup (#18)', () => {
     repos = makeRepos({});
   });
 
-  it('computes transcription minutes as SUM(duration)/60000', async () => {
+  it('computes transcription minutes as SUM(STT AUDIO_SECOND rollups)/60', async () => {
     const res = await makeService(repos).getConsumptionRollup(null);
-    expect(res.transcriptionMinutes).toBe(2);
+    expect(res.transcriptionMinutes).toBe(2); // 120 audio-seconds → 2 minutes
   });
 
-  it('COALESCEs a null duration sum to 0 minutes', async () => {
-    const res = await makeService(makeRepos({ duration: null })).getConsumptionRollup(null);
+  it('COALESCEs a null ledger sum to 0 minutes', async () => {
+    const res = await makeService(makeRepos({ sttAudioSeconds: null })).getConsumptionRollup(null);
     expect(res.transcriptionMinutes).toBe(0);
   });
 
@@ -87,7 +89,7 @@ describe('PlatformMetricsService.getConsumptionRollup (#18)', () => {
 
   it('scopes the aggregates to a tenant when an id is supplied', async () => {
     await makeService(repos).getConsumptionRollup('tenant-9');
-    expect(repos.audioRecording.sumDurationForTenant).toHaveBeenCalledWith('tenant-9');
+    expect(repos.rollupDaily.sumQuantityForCapabilityUnits).toHaveBeenCalledWith('tenant-9', AiCapability.STT, [AiUsageUnit.AUDIO_SECOND]);
     expect(repos.summaryMeta.countGeneratedSince).toHaveBeenCalledWith(expect.any(Date), 'tenant-9');
     expect(repos.media.sumSizeForTenant).toHaveBeenCalledWith('tenant-9');
     expect(repos.tenantBucket.sumConfiguredQuotaBytes).toHaveBeenCalledWith('tenant-9');
@@ -99,7 +101,7 @@ describe('PlatformMetricsService.getConsumptionRollup (#18)', () => {
 
   it('passes null tenant scoping through to every repository (platform-wide roll-up)', async () => {
     await makeService(repos).getConsumptionRollup(null);
-    expect(repos.audioRecording.sumDurationForTenant).toHaveBeenCalledWith(null);
+    expect(repos.rollupDaily.sumQuantityForCapabilityUnits).toHaveBeenCalledWith(null, AiCapability.STT, [AiUsageUnit.AUDIO_SECOND]);
     expect(repos.summaryMeta.countGeneratedSince).toHaveBeenCalledWith(expect.any(Date), null);
     expect(repos.media.sumSizeForTenant).toHaveBeenCalledWith(null);
     expect(repos.tenantBucket.sumConfiguredQuotaBytes).toHaveBeenCalledWith(null);

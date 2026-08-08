@@ -6,6 +6,7 @@ import {
   DataNotFoundException,
   OptimisticConcurrencyException,
   QuotaExceededException,
+  SpendLimitExceededException,
 } from '@arcaai/exceptions';
 import { BadRequestException, CallHandler, ExecutionContext, HttpException, HttpStatus, Injectable, Logger, NestInterceptor } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
@@ -210,6 +211,21 @@ export class ExceptionInterceptor implements NestInterceptor {
             status,
           });
           return throwError(() => new HttpException(err.toJSON(), status));
+        }
+
+        // The tenant hit its optional monthly SPEND limit (TASK-615 #8, D12).
+        // RFC maps a payment/credit exhaustion to 402 Payment Required — a
+        // distinct signal from the 429 throughput / 409 quantity quotas above.
+        // Body is `err.toJSON()` (`code: 'DOMAIN.SPEND_LIMIT_EXCEEDED'` +
+        // `metadata: { tenantId, period, spendLimitMicros, overageSpendMicros }`).
+        // MUST run before the generic BaseException branch, like the others.
+        if (err instanceof SpendLimitExceededException) {
+          this.logger.debug({
+            message: 'Spend-limit block',
+            ...baseContext,
+            correlationId: err.correlationId,
+          });
+          return throwError(() => new HttpException(err.toJSON(), HttpStatus.PAYMENT_REQUIRED));
         }
 
         // Services signal invalid input with

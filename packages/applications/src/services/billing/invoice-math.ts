@@ -100,6 +100,49 @@ export interface PlanFeeSegment {
   currency: string;
 }
 
+/**
+ * How the plan fee was derived (TASK-615 #6, surfaced on the response):
+ *   - `PERIOD_END_PLAN`   — no plan-change history for the period; the plan in
+ *                           force at computation time is billed for the whole period.
+ *   - `TENANT_PLAN_HISTORY` — `TenantPlanHistory` supplied dated segments, so the
+ *                           fee is prorated per segment (true mid-period proration).
+ */
+export type PlanFeeBasis = 'PERIOD_END_PLAN' | 'TENANT_PLAN_HISTORY';
+
+/** A dated plan interval before clamping — one `TenantPlanHistory` row. */
+export interface PlanInterval {
+  plan: TenantPlan;
+  from: Date;
+  /** null = still in force. */
+  to: Date | null;
+}
+
+/** A plan interval clamped to the billing period (half-open). */
+export interface ClampedPlanInterval {
+  plan: TenantPlan;
+  from: Date;
+  to: Date;
+}
+
+/**
+ * Clamp dated plan intervals to [period.start, period.end) and drop any that
+ * collapse to zero days (TASK-615 #6). An open interval (`to: null`) runs to
+ * period end. Each surviving interval becomes one `PlanFeeSegment`, so a
+ * mid-period plan change bills `fee × ownedDays / periodDays` per segment via
+ * the already-multi-segment {@link computePlanFeeLines}.
+ */
+export function clampPlanSegments(intervals: readonly PlanInterval[], period: BillingPeriod): ClampedPlanInterval[] {
+  const out: ClampedPlanInterval[] = [];
+  for (const interval of intervals) {
+    const from = interval.from.getTime() < period.start.getTime() ? period.start : interval.from;
+    const rawTo = interval.to ?? period.end;
+    const to = rawTo.getTime() > period.end.getTime() ? period.end : rawTo;
+    if (utcDayCount(from, to) <= 0) continue;
+    out.push({ plan: interval.plan, from, to });
+  }
+  return out;
+}
+
 export interface CapabilityOverageInput {
   capability: AiCapability;
   /** Pooled allowance in the capability's billing units; `null` = unlimited (D11). */

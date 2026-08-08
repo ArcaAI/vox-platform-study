@@ -142,6 +142,9 @@ export class StreamingSessionService implements IStreamingSessionService {
             // `false` survives.
             auto_switch_enabled: dto.autoSwitchEnabled ?? null,
             consecutive_failure_threshold: dto.consecutiveFailureThreshold ?? null,
+            // Dual-/multi-mic source count (TASK-615 #12): STT stores it and
+            // echoes it on the teardown summary so the usage row is repriceable.
+            channel_count: dto.channelCount ?? 1,
           },
           { timeout: 15000 },
         ),
@@ -327,7 +330,9 @@ export class StreamingSessionService implements IStreamingSessionService {
             engine: summary.engine,
             pipelineId: summary.pipeline_id,
             languageMode: summary.language_mode ?? null,
-            channelCount: 1,
+            // Real dual-/multi-mic signal from the teardown summary (TASK-615 #12);
+            // defaults to 1 for a single mic or a pre-#12 STT that omits it.
+            channelCount: summary.channel_count ?? 1,
             streamKind: 'ws',
             interrupted,
           },
@@ -344,5 +349,21 @@ export class StreamingSessionService implements IStreamingSessionService {
         error: error instanceof Error ? error.message : String(error),
       });
     }
+  }
+
+  /**
+   * Push-back entry for the STT idle reaper (TASK-615 #13).
+   *
+   * Normally the gateway learns a session's usage from the DELETE-teardown
+   * response and calls {@link emitStreamingUsage} itself. But when the gateway
+   * crashed and its removal retries were exhausted, the STT-side inactivity
+   * reaper is the one that finalizes the session — it builds a teardown summary
+   * that no `removeSession()` caller ever receives, and POSTs it here instead
+   * (via `POST /internal/stt/streaming/usage`). Idempotent: the ledger key is
+   * `sttStreamSession(sessionId)`, so a push-back that races a late DELETE
+   * teardown is a no-op, never a double bill.
+   */
+  async recordStreamingUsageFromSummary(summary: StreamingSessionTeardownSummary, interrupted: boolean): Promise<void> {
+    await this.emitStreamingUsage(summary, interrupted);
   }
 }

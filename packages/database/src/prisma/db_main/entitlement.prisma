@@ -209,7 +209,10 @@ model TenantUsageMeter {
   metric       UsageMeterMetric
   periodStart  DateTime
   periodEnd    DateTime
-  usedCount    Int       @default(0)
+  // BigInt (TASK-615 follow-up #5): token/character meters accumulate monthly
+  // per-tenant totals that overflow Int32 (~2.1B) for a heavy tenant. The meter
+  // is a summed count, never negative, so the widened range is the only change.
+  usedCount    BigInt    @default(0)
   reconciledAt DateTime?
 
   // resource status fields
@@ -225,5 +228,53 @@ model TenantUsageMeter {
 
   @@unique([tenantId, metric, periodStart], name: "TenantUsageMeter_tenant_metric_period_unique")
   @@index([tenantId], name: "TenantUsageMeter_tenantId_idx")
+  @@schema("core")
+}
+
+// ---------------------------------------------------------------------------
+// TenantPlanHistory — append-only record of a tenant's plan over time
+// (TASK-615 follow-up #6). Enables TRUE mid-period plan-fee proration (D15):
+// the invoice engine's `computePlanFeeLines` is already multi-segment and
+// golden-tested, so with a source of dated plan segments the engine bills
+// `fee × ownedDays / periodDays` per segment instead of the whole-period
+// `planFeeBasis: PERIOD_END_PLAN` approximation.
+//
+// POSTURE (the AiUsageEvent precedent): append-only FACTS, tenant-scoped, NO
+// soft-delete lifecycle (no `resourceStatus`; listed in
+// MODELS_WITHOUT_SOFT_DELETE) and NO sys-events on write (no ResourceType) —
+// the plan-change itself broadcasts on the Tenant it mutates; this is its
+// financial-history side-record. One row per plan the tenant has held:
+// `effectiveFrom` inclusive, `effectiveTo` null = still in force. A period with
+// no covering row simply has no plan fee (null-plan legacy tenants, D3).
+// ---------------------------------------------------------------------------
+model TenantPlanHistory {
+  // meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
+
+  // multi tenant fields
+  tenantId String
+
+  // The plan in force over [effectiveFrom, effectiveTo). Only real plans are
+  // recorded; removing a plan closes the current row and inserts nothing.
+  plan          TenantPlan
+  effectiveFrom DateTime
+  effectiveTo   DateTime?
+  // The plan this row replaced (null for a tenant's first plan). Audit only —
+  // proration reads `plan` + the effective window.
+  previousPlan  TenantPlan?
+  // Bounded enum-ish label (initial | upgrade | downgrade | correction). Never
+  // free text — this plane stays PHI-free like the rest of the billing plane.
+  changeReason  String?
+
+  // audit fields (no resource-status — append-only fact, see the header)
+  createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+  updatedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId], name: "TenantPlanHistory_tenantId_idx")
+  @@index([tenantId, effectiveFrom], name: "TenantPlanHistory_tenant_effectiveFrom_idx")
   @@schema("core")
 }

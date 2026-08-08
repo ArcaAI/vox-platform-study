@@ -27,6 +27,14 @@ export interface IAiUsageRollupDailyEntity extends IBaseTenantEntity {
   /** Truncated to the day, UTC. */
   bucketStart: Date;
   capability: Enums.AiCapability;
+  /**
+   * The ledger event's operation (generate · guardrail.validate · harness.step ·
+   * tts.synthesize · …). Part of the unique dimension tuple, so it carries the
+   * same "" SENTINEL contract as `model` — never null. Without this dimension
+   * the LLM_TOKENS meter summed guardrail + harness tokens that must never be
+   * quota-blocked (D16).
+   */
+  operation?: string;
   provider: string;
   /** "" sentinel when the capability selects no model — never null. */
   model?: string;
@@ -40,6 +48,7 @@ export interface IAiUsageRollupDailyEntity extends IBaseTenantEntity {
 export class AiUsageRollupDailyEntity extends BaseTenantEntity {
   private _bucketStart: IAiUsageRollupDailyEntity['bucketStart'];
   private _capability: IAiUsageRollupDailyEntity['capability'];
+  private _operation?: IAiUsageRollupDailyEntity['operation'];
   private _provider: IAiUsageRollupDailyEntity['provider'];
   private _model?: IAiUsageRollupDailyEntity['model'];
   private _unit: IAiUsageRollupDailyEntity['unit'];
@@ -50,6 +59,7 @@ export class AiUsageRollupDailyEntity extends BaseTenantEntity {
     super(init);
     this._bucketStart = init.bucketStart;
     this._capability = init.capability;
+    this._operation = init.operation;
     this._provider = init.provider;
     this._model = init.model;
     this._unit = init.unit;
@@ -71,6 +81,14 @@ export class AiUsageRollupDailyEntity extends BaseTenantEntity {
 
   set capability(value: IAiUsageRollupDailyEntity['capability']) {
     this.setProperty('capability', value);
+  }
+
+  get operation(): IAiUsageRollupDailyEntity['operation'] {
+    return this._operation;
+  }
+
+  set operation(value: IAiUsageRollupDailyEntity['operation']) {
+    this.setProperty('operation', value);
   }
 
   get provider(): IAiUsageRollupDailyEntity['provider'] {
@@ -131,6 +149,11 @@ export class AiUsageRollupDailyEntity extends BaseTenantEntity {
     // sentinel and is legitimate.
     if (this._model === null) {
       throw new BusinessException('AiUsageRollupDaily model cannot be null — use the "" sentinel when the capability selects no model.');
+    }
+    // Same NULL-distinctness trap as `model`: `operation` is part of the unique
+    // dimension tuple, so "" is the sentinel and null is never legitimate.
+    if (this._operation === null) {
+      throw new BusinessException('AiUsageRollupDaily operation cannot be null — use the "" sentinel when the event carries no operation.');
     }
     if (this._quantitySum === undefined || this._quantitySum === null) {
       throw new BusinessException('AiUsageRollupDaily quantitySum is required.');

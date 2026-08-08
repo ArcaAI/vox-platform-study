@@ -27,6 +27,14 @@ export interface IAiUsageRollupHourlyEntity extends IBaseTenantEntity {
   /** Truncated to the hour, UTC. */
   bucketStart: Date;
   capability: Enums.AiCapability;
+  /**
+   * The ledger event's operation (generate · guardrail.validate · harness.step ·
+   * tts.synthesize · …). Part of the unique dimension tuple, so it carries the
+   * same "" SENTINEL contract as `model` — never null. Without this dimension
+   * the LLM_TOKENS meter summed guardrail + harness tokens that must never be
+   * quota-blocked (D16).
+   */
+  operation?: string;
   provider: string;
   /** "" sentinel when the capability selects no model — never null. */
   model?: string;
@@ -40,6 +48,7 @@ export interface IAiUsageRollupHourlyEntity extends IBaseTenantEntity {
 export class AiUsageRollupHourlyEntity extends BaseTenantEntity {
   private _bucketStart: IAiUsageRollupHourlyEntity['bucketStart'];
   private _capability: IAiUsageRollupHourlyEntity['capability'];
+  private _operation?: IAiUsageRollupHourlyEntity['operation'];
   private _provider: IAiUsageRollupHourlyEntity['provider'];
   private _model?: IAiUsageRollupHourlyEntity['model'];
   private _unit: IAiUsageRollupHourlyEntity['unit'];
@@ -50,6 +59,7 @@ export class AiUsageRollupHourlyEntity extends BaseTenantEntity {
     super(init);
     this._bucketStart = init.bucketStart;
     this._capability = init.capability;
+    this._operation = init.operation;
     this._provider = init.provider;
     this._model = init.model;
     this._unit = init.unit;
@@ -71,6 +81,14 @@ export class AiUsageRollupHourlyEntity extends BaseTenantEntity {
 
   set capability(value: IAiUsageRollupHourlyEntity['capability']) {
     this.setProperty('capability', value);
+  }
+
+  get operation(): IAiUsageRollupHourlyEntity['operation'] {
+    return this._operation;
+  }
+
+  set operation(value: IAiUsageRollupHourlyEntity['operation']) {
+    this.setProperty('operation', value);
   }
 
   get provider(): IAiUsageRollupHourlyEntity['provider'] {
@@ -131,6 +149,11 @@ export class AiUsageRollupHourlyEntity extends BaseTenantEntity {
     // sentinel and is legitimate.
     if (this._model === null) {
       throw new BusinessException('AiUsageRollupHourly model cannot be null — use the "" sentinel when the capability selects no model.');
+    }
+    // Same NULL-distinctness trap as `model`: `operation` is part of the unique
+    // dimension tuple, so "" is the sentinel and null is never legitimate.
+    if (this._operation === null) {
+      throw new BusinessException('AiUsageRollupHourly operation cannot be null — use the "" sentinel when the event carries no operation.');
     }
     if (this._quantitySum === undefined || this._quantitySum === null) {
       throw new BusinessException('AiUsageRollupHourly quantitySum is required.');

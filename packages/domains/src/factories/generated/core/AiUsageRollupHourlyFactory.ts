@@ -9,6 +9,7 @@ export interface CreateAiUsageRollupHourlyProps extends BaseEntityFactoryCreateP
   tenantId: IAiUsageRollupHourlyEntity['tenantId'];
   bucketStart: IAiUsageRollupHourlyEntity['bucketStart'];
   capability: IAiUsageRollupHourlyEntity['capability'];
+  operation?: IAiUsageRollupHourlyEntity['operation'];
   provider: IAiUsageRollupHourlyEntity['provider'];
   model?: IAiUsageRollupHourlyEntity['model'];
   unit: IAiUsageRollupHourlyEntity['unit'];
@@ -44,6 +45,7 @@ export class AiUsageRollupHourlyFactory {
       tenantId: props.tenantId,
       bucketStart: props.bucketStart,
       capability: props.capability,
+      operation: props.operation ?? '',
       provider: props.provider,
       model: props.model ?? '',
       unit: props.unit,

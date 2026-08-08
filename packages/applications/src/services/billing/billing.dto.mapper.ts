@@ -2,6 +2,7 @@ import Decimal from 'decimal.js';
 import { BillingAdjustmentEntity, BillingInvoiceEntity, BillingInvoiceLineEntity, BillingInvoiceStatus, TenantPlan } from '@arcaai/domains';
 
 import { periodOf } from './billing-period';
+import type { PlanFeeBasis } from './invoice-math';
 import { BillingAdjustmentResponse, BillingInvoiceLineResponse, BillingInvoiceResponse, BillingInvoiceSummaryResponse } from './dto';
 
 /** Extras the read model derives outside the invoice row itself. */
@@ -9,6 +10,12 @@ export interface InvoiceResponseExtras {
   planTier: TenantPlan | null;
   byokNotionalCostMicros: bigint;
   rateCardVersions: string[];
+  /**
+   * How the plan fee was rated (TASK-615 #6). Optional so a stored-invoice
+   * re-read (which does not recompute the segments) defaults to the pre-#6
+   * PERIOD_END_PLAN label; compute-draft passes the true basis.
+   */
+  planFeeBasis?: PlanFeeBasis;
 }
 
 /**
@@ -61,7 +68,7 @@ export class BillingDtoMapper {
     response.finalizedBy = invoice.finalizedBy ?? null;
     response.version = invoice.version;
     response.planTier = extras.planTier;
-    response.planFeeBasis = 'PERIOD_END_PLAN';
+    response.planFeeBasis = extras.planFeeBasis ?? 'PERIOD_END_PLAN';
     response.byokNotionalCostMicros = extras.byokNotionalCostMicros.toString();
     response.rateCardVersions = extras.rateCardVersions;
     response.lines = lines.map((line) => BillingDtoMapper.toLineResponse(line));

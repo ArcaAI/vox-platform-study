@@ -149,6 +149,10 @@ export const MODELS_WITHOUT_SOFT_DELETE: ReadonlySet<string> = new Set([
   // `BillingInvoice` / `BillingInvoiceLine` are NOT here — a DRAFT invoice is
   // editable and a withdrawn one is soft-deleted.
   'BillingAdjustment',
+  // TenantPlanHistory (TASK-615 #6) — append-only plan-change facts feeding
+  // mid-period fee proration. A plan segment is corrected by appending, never by
+  // deleting a closed window, so it has no `resourceStatus` column.
+  'TenantPlanHistory',
 ]);
 
 /**

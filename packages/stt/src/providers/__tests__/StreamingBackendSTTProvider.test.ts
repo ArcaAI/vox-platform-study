@@ -141,6 +141,25 @@ describe('StreamingBackendSTTProvider', () => {
       expect(session.createSession).toHaveBeenCalledWith(expect.objectContaining({ startOn: 'fallback' }));
     });
 
+    it('forwards the dual-/multi-mic channelCount to createSession (TASK-615 #12)', async () => {
+      await provider.init({
+        sessionId: 'x',
+        language: 'en',
+        sampleRate: 48000,
+        channels: 1,
+        chunkLengthS: 30,
+        overlapLengthS: 5,
+        returnTimestamps: 'word',
+        codeSwitching: false,
+        diarization: false,
+        numSpeakers: 2,
+        pipelineId: 'pipeline-doctor-default',
+        channelCount: 2,
+      });
+
+      expect(session.createSession).toHaveBeenCalledWith(expect.objectContaining({ channelCount: 2 }));
+    });
+
     it('throws when pipelineId is missing', async () => {
       await expect(
         provider.init({

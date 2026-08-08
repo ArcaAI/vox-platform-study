@@ -22,3 +22,27 @@ datasources:
     editable: false
     jsonData:
       httpMethod: POST
+
+  # ==========================================================================
+  # HOPE Postgres — the AI usage/billing plane (TASK-615 #10).
+  # The Consumption & Cost dashboard (uid `hope-consumption`) binds every panel
+  # to datasource uid `hope-postgres`; without this row the dashboard shows
+  # "datasource not found". Grafana reaches Postgres by its compose service name
+  # on the shared `hope-network` (`postgres:5432`, NOT host.docker.internal).
+  # The app data — the `core.AiUsage*` tables the dashboard queries — lives in
+  # database `hope`, NOT the compose default maintenance DB. Dev credentials are
+  # the compose defaults; a real deployment injects its own via Grafana env/secret.
+  # ==========================================================================
+  - name: HOPE Postgres
+    uid: hope-postgres
+    type: postgres
+    access: proxy
+    url: postgres:5432
+    user: postgres
+    editable: false
+    jsonData:
+      database: hope
+      sslmode: disable
+      postgresVersion: 1800
+    secureJsonData:
+      password: postgres

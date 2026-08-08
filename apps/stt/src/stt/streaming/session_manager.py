@@ -28,6 +28,7 @@ from typing import Any
 import numpy as np
 import structlog
 
+from stt.core.api_client.gateway import APIGatewayClient
 from stt.core.config.settings import get_settings
 from stt.core.metrics import (
     streaming_inference_queue_dropped,
@@ -188,6 +189,8 @@ class SessionManager:
         # TASK-587 — per-session end-user language mode id, resolved against the
         # session's ASR engine at load time.
         self._session_language_modes: dict[str, str] = {}
+        # TASK-615 #12 — per-session dual-/multi-mic source count (absent ⇒ 1).
+        self._session_channel_counts: dict[str, int] = {}
         # TASK-615 WS-C — the ASR AiModelFormat actually loaded for this session,
         # stamped in `_load_asr_pipeline` (the single choke point for BOTH
         # session-create and every engine switch, so this can never go stale).
@@ -813,6 +816,7 @@ class SessionManager:
         start_on: str = "primary",
         auto_switch_enabled: bool | None = None,
         consecutive_failure_threshold: int | None = None,
+        channel_count: int = 1,
     ) -> StreamSession | None:
         """Create a new streaming session.
 
@@ -902,6 +906,11 @@ class SessionManager:
             # any create-time fallback assembly resolve it against their engine.
             if language_mode:
                 self._session_language_modes[session_id] = language_mode
+            # TASK-615 #12 — stash the dual-/multi-mic source count so the teardown
+            # summary (from EVERY finalize path, including the idle reaper) can
+            # echo it for usage repricing.
+            if channel_count and channel_count > 1:
+                self._session_channel_counts[session_id] = channel_count
 
             # TASK-586 C9 — a user-selected start-on-fallback assembles the
             # fallback pipeline_config directly (the primary is NOT attempted at
@@ -1388,6 +1397,7 @@ class SessionManager:
         self._provider_overrides.pop(session_id, None)
         self._fallback_pipeline_ids.pop(session_id, None)
         self._session_language_modes.pop(session_id, None)
+        self._session_channel_counts.pop(session_id, None)
         # TASK-615 WS-C — the teardown summary (if any) is built BEFORE this
         # runs (see `_finalize_session_locked`), so dropping the tracking dict
         # here is safe cleanup, not a lost read.
@@ -3581,6 +3591,7 @@ class SessionManager:
             "engine": engine,
             "deployment": deployment,
             "language_mode": self._session_language_modes.get(session.session_id),
+            "channel_count": self._session_channel_counts.get(session.session_id, 1),
         }
 
     async def _finalize_session_locked(self, session: StreamSession) -> dict[str, Any] | None:
@@ -4047,7 +4058,15 @@ class SessionManager:
                             preprocessor=self._preprocessors.get(session_id),
                         )
                         await self._drain_inference_queue(session_id)
-                    await self._finalize_session(session)
+                    teardown_summary = await self._finalize_session(session)
+                    # TASK-615 #13 — the reaper is the FINALIZER here, which means
+                    # the gateway crashed and its removal retries were exhausted:
+                    # no removeSession() caller received the DELETE-teardown
+                    # response, so the transcribe.stream usage would be lost.
+                    # Push the built summary back to the gateway (idempotent on the
+                    # session id → a late DELETE never double-bills).
+                    if teardown_summary:
+                        await self._push_streaming_usage_back(teardown_summary)
                 except Exception as exc:
                     logger.error(
                         "Failed to reap session gracefully; forcing removal",
@@ -4057,6 +4076,36 @@ class SessionManager:
                     await self.remove_session(session_id)
 
         return len(to_reap)
+
+    async def _push_streaming_usage_back(self, summary: dict[str, Any]) -> None:
+        """POST a reaper-built teardown summary to the gateway (TASK-615 #13).
+
+        Best-effort by design: the gateway may still be down (it just crashed),
+        so a failure here is logged and dropped — a metering side effect must
+        never fail the reaper, and the raw ledger back-rate remains the backstop.
+        ``interrupted=True`` because a reaped session was abandoned, not cleanly
+        stopped. A short-lived client is fine: the reaper runs on a multi-minute
+        idle cadence, so per-call construction cost is irrelevant.
+        """
+        settings = get_settings()
+        base_url = getattr(settings, "api_gateway_url", "")
+        secret = getattr(settings, "api_gateway_key", None)
+        api_key = secret.get_secret_value() if secret is not None else ""
+        if not base_url or not api_key:
+            return
+        client = APIGatewayClient(
+            base_url, api_key, timeout=getattr(settings, "api_gateway_timeout", 30)
+        )
+        try:
+            await client.record_streaming_usage(summary, interrupted=True)
+        except Exception as exc:  # noqa: BLE001 — best-effort metering side effect
+            logger.warning(
+                "stt.stream.usage_pushback_failed",
+                session_id=summary.get("session_id"),
+                error=str(exc),
+            )
+        finally:
+            await client.close()
 
     # ------------------------------------------------------------------
     # Audio snapshot loop

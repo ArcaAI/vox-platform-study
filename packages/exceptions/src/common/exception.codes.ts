@@ -20,6 +20,9 @@ export const BUSINESS = 'DOMAIN.BUSINESS';
 // A plan-entitlement quantity/meter limit was reached. The API gateway maps
 // this to 409 Conflict (create) / 429 (meter).
 export const QUOTA_EXCEEDED = 'DOMAIN.QUOTA_EXCEEDED';
+// The tenant's optional monthly spend limit was reached (TASK-615 #8, D12). The
+// API gateway maps this to 402 Payment Required.
+export const SPEND_LIMIT_EXCEEDED = 'DOMAIN.SPEND_LIMIT_EXCEEDED';
 
 /** Persistence layer */
 export const DATA_CONFLICT = 'PERSISTENCE.DATA_CONFLICT';

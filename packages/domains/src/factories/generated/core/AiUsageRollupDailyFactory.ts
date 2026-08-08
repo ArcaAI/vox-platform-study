@@ -9,6 +9,7 @@ export interface CreateAiUsageRollupDailyProps extends BaseEntityFactoryCreatePr
   tenantId: IAiUsageRollupDailyEntity['tenantId'];
   bucketStart: IAiUsageRollupDailyEntity['bucketStart'];
   capability: IAiUsageRollupDailyEntity['capability'];
+  operation?: IAiUsageRollupDailyEntity['operation'];
   provider: IAiUsageRollupDailyEntity['provider'];
   model?: IAiUsageRollupDailyEntity['model'];
   unit: IAiUsageRollupDailyEntity['unit'];
@@ -44,6 +45,7 @@ export class AiUsageRollupDailyFactory {
       tenantId: props.tenantId,
       bucketStart: props.bucketStart,
       capability: props.capability,
+      operation: props.operation ?? '',
       provider: props.provider,
       model: props.model ?? '',
       unit: props.unit,

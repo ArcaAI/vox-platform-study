@@ -17,6 +17,7 @@ export interface CreateAiPriceBookProps extends BaseEntityFactoryCreateProps {
   model?: IAiPriceBookEntity['model'];
   unit?: IAiPriceBookEntity['unit'];
   contextBand?: IAiPriceBookEntity['contextBand'];
+  cacheTtl?: IAiPriceBookEntity['cacheTtl'];
 
   currency?: IAiPriceBookEntity['currency'];
   unitPriceMicros: IAiPriceBookEntity['unitPriceMicros'];
@@ -62,6 +63,7 @@ export class AiPriceBookFactory {
       model: props.model ?? null,
       unit: props.unit ?? null,
       contextBand: props.contextBand ?? null,
+      cacheTtl: props.cacheTtl ?? null,
 
       currency: props.currency ?? 'USD',
       unitPriceMicros: props.unitPriceMicros,

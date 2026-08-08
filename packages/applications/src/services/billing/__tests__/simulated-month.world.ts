@@ -126,6 +126,14 @@ export function makeSimulatedWorld() {
     resolveUsagePrice: vi.fn(),
   };
 
+  // No plan-change history in the simulated month → single PERIOD_END_PLAN segment.
+  const planHistoryRepository = {
+    findOverlappingPeriod: vi.fn(async () => []),
+    findOpenWindow: vi.fn(async () => null),
+    update: vi.fn(),
+    create: vi.fn(),
+  };
+
   const unitOfWork = { runInTransaction: vi.fn(async (work: (tx: unknown) => Promise<unknown>) => work({})) };
   const eventEmitter = { emit: vi.fn() };
   const cls = { get: vi.fn((key: string) => (key === 'user' ? { id: 'admin-1', roles: ['GLOBAL_ADMIN'] } : TENANT)) };
@@ -141,6 +149,7 @@ export function makeSimulatedWorld() {
     planEntitlementRepository as never,
     tenantEntitlementRepository as never,
     tenantRepository as never,
+    planHistoryRepository as never,
     priceBook as never,
     unitOfWork as never,
   );

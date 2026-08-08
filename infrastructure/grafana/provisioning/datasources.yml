@@ -8,3 +8,21 @@ datasources:
     uid: prometheus
     isDefault: true
     editable: false
+
+  # HOPE Postgres — backs the Consumption & Cost dashboard (consumption.json,
+  # TASK-615 #10), whose panels bind to datasource uid `hope-postgres`. Reaches
+  # Postgres by its compose service name on `hope-network`; app data lives in the
+  # `hope` database. Dev-default credentials — a real deployment injects its own.
+  - name: HOPE Postgres
+    type: postgres
+    access: proxy
+    url: postgres:5432
+    user: postgres
+    uid: hope-postgres
+    editable: false
+    jsonData:
+      database: hope
+      sslmode: disable
+      postgresVersion: 1800
+    secureJsonData:
+      password: postgres

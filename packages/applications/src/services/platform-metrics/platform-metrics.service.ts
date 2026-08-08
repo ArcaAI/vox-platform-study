@@ -1,5 +1,13 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { AudioRecordingRepository, ConsultationRepository, MediaRepository, SummaryMetaRepository, TenantBucketRepository } from '@arcaai/domains';
+import {
+  AiCapability,
+  AiUsageRollupDailyRepository,
+  AiUsageUnit,
+  ConsultationRepository,
+  MediaRepository,
+  SummaryMetaRepository,
+  TenantBucketRepository,
+} from '@arcaai/domains';
 import { IPlatformMetricsService } from './IPlatformMetricsService';
 import { IPrometheusQueryService, PrometheusSample } from './prometheus-query.service';
 import { ISocketRegistryService } from './socket-registry.service';
@@ -56,7 +64,12 @@ export class PlatformMetricsService implements IPlatformMetricsService {
     @Inject(IRedisCacheService) private readonly cache: IRedisCacheService,
     // The consumption roll-up reads route through domain
     // repositories instead of the raw Prisma client.
-    private readonly audioRecordingRepository: AudioRecordingRepository,
+    // TASK-615 #11: transcriptionMinutes now derives from the ledger rollups
+    // (via AiUsageRollupDailyRepository) so the platform-metrics dashboard
+    // agrees with UsageAnalyticsService.getUsageSummary (G16). summaries24h
+    // stays on SummaryMeta — a summary COUNT has no ledger equivalent (the
+    // ledger meters tokens, not summary cardinality).
+    private readonly rollupDailyRepository: AiUsageRollupDailyRepository,
     private readonly summaryMetaRepository: SummaryMetaRepository,
     private readonly mediaRepository: MediaRepository,
     private readonly tenantBucketRepository: TenantBucketRepository,
@@ -109,8 +122,11 @@ export class PlatformMetricsService implements IPlatformMetricsService {
       startOfToday.setUTCHours(0, 0, 0, 0);
       const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
-      const [durationSum, summaries24h, sizeSum, quotaSum, totalConsultations, consultationsToday] = await Promise.all([
-        this.audioRecordingRepository.sumDurationForTenant(tenantId),
+      const [sttAudioSeconds, summaries24h, sizeSum, quotaSum, totalConsultations, consultationsToday] = await Promise.all([
+        // TASK-615 #11 — ledger-derived: metered STT audio-seconds (the consumed
+        // transcription audio), so this agrees with getUsageSummary's STT figure
+        // rather than the raw AudioRecording durations it used to sum.
+        this.rollupDailyRepository.sumQuantityForCapabilityUnits(tenantId, AiCapability.STT, [AiUsageUnit.AUDIO_SECOND]),
         this.summaryMetaRepository.countGeneratedSince(since24h, tenantId),
         this.mediaRepository.sumSizeForTenant(tenantId),
         this.tenantBucketRepository.sumConfiguredQuotaBytes(tenantId),
@@ -118,10 +134,8 @@ export class PlatformMetricsService implements IPlatformMetricsService {
         this.consultationRepository.count({ filters: { ...tenantWhere, createdAt: { gte: startOfToday } } }),
       ]);
 
-      const durationMs = durationSum ?? 0;
-
       return {
-        transcriptionMinutes: round2(durationMs / 60000),
+        transcriptionMinutes: round2(sttAudioSeconds / 60),
         summaries24h,
         storageUsedBytes: sizeSum ?? 0,
         storageQuotaBytes: quotaSum === null || quotaSum === undefined ? null : Number(quotaSum),

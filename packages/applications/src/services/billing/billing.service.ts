@@ -2,7 +2,7 @@ import { BadRequestException, ConflictException, ForbiddenException, Inject, Inj
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
 import Decimal from 'decimal.js';
-import { DataNotFoundException } from '@arcaai/exceptions';
+import { DataNotFoundException, SpendLimitExceededException } from '@arcaai/exceptions';
 import {
   AiCapability,
   AiUsageRollupDailyRepository,
@@ -25,6 +25,8 @@ import {
   SysEventType,
   TenantEntitlementRepository,
   TenantPlan,
+  TenantPlanHistoryFactory,
+  TenantPlanHistoryRepository,
   TenantRepository,
 } from '@arcaai/domains';
 
@@ -41,9 +43,11 @@ import {
   CurrencyMismatchError,
   InvoiceLineDraft,
   MissingSellRateError,
+  PlanFeeBasis,
   PlanFeeSegment,
   ResolvedSellRate,
   SellRateResolver,
+  clampPlanSegments,
   computeCapabilityOverage,
   computeInvoiceTotals,
   computePlanFeeLines,
@@ -120,6 +124,7 @@ export class BillingService extends BaseService implements IBillingService {
     private readonly planEntitlementRepository: PlanEntitlementRepository,
     private readonly tenantEntitlementRepository: TenantEntitlementRepository,
     private readonly tenantRepository: TenantRepository,
+    private readonly planHistoryRepository: TenantPlanHistoryRepository,
     @Inject(IPriceBookService) private readonly priceBook: IPriceBookService,
     private readonly unitOfWork: CoreUnitOfWorkService,
   ) {
@@ -197,6 +202,7 @@ export class BillingService extends BaseService implements IBillingService {
       planTier: computation.planTier,
       byokNotionalCostMicros,
       rateCardVersions: computation.rateCardVersions,
+      planFeeBasis: computation.planFeeBasis,
     });
   }
 
@@ -328,6 +334,57 @@ export class BillingService extends BaseService implements IBillingService {
     return response;
   }
 
+  async assertSpendLimit(tenantId: string, period?: string): Promise<void> {
+    // Cheap opt-in gate: a tenant that has NOT set a limit is unlimited (D12), so
+    // skip the overage computation entirely — this is the common case on the
+    // metered hot path.
+    const override = await this.tenantEntitlementRepository.findByTenant(tenantId);
+    if ((override?.monthlySpendLimitMicros ?? null) === null) return;
+
+    const status = await this.getSpendStatus(tenantId, period ?? new Date().toISOString().slice(0, 7));
+    if (!status.exceeded) return;
+
+    throw new SpendLimitExceededException(`Tenant has reached its monthly spend limit for ${status.period}.`, {
+      tenantId,
+      period: status.period,
+      spendLimitMicros: status.spendLimitMicros ?? '0',
+      overageSpendMicros: status.overageSpendMicros,
+    });
+  }
+
+  // ═════════════════════════════════════════════════════════════════════════
+  // recordPlanChange — append-only plan-history writer (TASK-615 #6)
+  // ═════════════════════════════════════════════════════════════════════════
+
+  async recordPlanChange(tenantId: string, newPlan: TenantPlan | null, effectiveAt: Date, changeReason?: string): Promise<void> {
+    const open = await this.planHistoryRepository.findOpenWindow(tenantId);
+
+    // Idempotent: re-recording the plan already in force changes nothing.
+    if ((open?.plan ?? null) === newPlan) return;
+
+    // Close the current window and open the new one atomically, so a period is
+    // never left double-covered or gapped.
+    await this.unitOfWork.runInTransaction(async (tx) => {
+      // Inside runInTransaction the repositories join the tx via the shared
+      // unit-of-work context; `update(id, entity)` carries no tx param (it reads
+      // that context), while `create` also accepts it explicitly.
+      if (open) {
+        open.supersedeAt(effectiveAt);
+        await this.planHistoryRepository.update(open.id, open);
+      }
+      if (newPlan !== null) {
+        const next = TenantPlanHistoryFactory.CreateTenantPlanHistory({
+          tenantId,
+          plan: newPlan,
+          effectiveFrom: effectiveAt,
+          previousPlan: open?.plan ?? null,
+          changeReason: changeReason ?? (open ? 'change' : 'initial'),
+        });
+        await this.planHistoryRepository.create(next, tx);
+      }
+    });
+  }
+
   // ═════════════════════════════════════════════════════════════════════════
   // The computation core (shared by computeDraft and getSpendStatus)
   // ═════════════════════════════════════════════════════════════════════════
@@ -336,7 +393,7 @@ export class BillingService extends BaseService implements IBillingService {
     tenantId: string,
     period: BillingPeriod,
     options: { includeAdjustments: boolean; usageUntil: Date; overageOnly?: boolean },
-  ): Promise<{ lines: InvoiceLineDraft[]; currency: string; planTier: TenantPlan | null; rateCardVersions: string[] }> {
+  ): Promise<{ lines: InvoiceLineDraft[]; currency: string; planTier: TenantPlan | null; rateCardVersions: string[]; planFeeBasis: PlanFeeBasis }> {
     // --- tenant + plan --------------------------------------------------------
     let plan: TenantPlan | null;
     try {
@@ -355,26 +412,48 @@ export class BillingService extends BaseService implements IBillingService {
     const currencies = new Set<string>();
     const bookVersions = new Set<string>();
 
-    // --- plan fee (single PERIOD_END_PLAN segment — see the class header) ------
-    if (plan !== null && !options.overageOnly) {
-      const fee = await this.priceBook.resolvePlanFee(tenantId, plan, period.start);
-      if (!fee) {
-        throw new ConflictException(
-          `The SELL card carries no PLAN_FEE row for tier ${plan} — the rate card is incomplete; a draft will not silently bill 0.`,
-        );
+    // --- plan fee (multi-segment from TenantPlanHistory, else PERIOD_END_PLAN) --
+    // TASK-615 #6: when the tenant has dated plan segments overlapping the period
+    // the fee is prorated PER SEGMENT (`fee × ownedDays / periodDays`); with no
+    // history the single whole-period segment reproduces the pre-#6 behavior
+    // exactly (a whole-period single segment bills the fee to the micro). The
+    // CURRENT plan still supplies the allowances for the whole period, so D15's
+    // upgrade retroactivity holds either way.
+    let planFeeBasis: PlanFeeBasis = 'PERIOD_END_PLAN';
+    if (!options.overageOnly) {
+      const history = await this.planHistoryRepository.findOverlappingPeriod(tenantId, period.start, period.end);
+      const intervals =
+        history.length > 0
+          ? clampPlanSegments(
+              history.map((row) => ({ plan: row.plan, from: row.effectiveFrom, to: row.effectiveTo ?? null })),
+              period,
+            )
+          : plan !== null
+            ? [{ plan, from: period.start, to: period.end }]
+            : [];
+      if (history.length > 0) planFeeBasis = 'TENANT_PLAN_HISTORY';
+
+      const segments: PlanFeeSegment[] = [];
+      for (const interval of intervals) {
+        const fee = await this.priceBook.resolvePlanFee(tenantId, interval.plan, interval.from);
+        if (!fee) {
+          throw new ConflictException(
+            `The SELL card carries no PLAN_FEE row for tier ${interval.plan} — the rate card is incomplete; a draft will not silently bill 0.`,
+          );
+        }
+        segments.push({
+          planTier: interval.plan,
+          from: interval.from,
+          to: interval.to,
+          feeMicrosPerPeriod: fee.unitPriceMicros,
+          priceBookId: fee.priceBookId,
+          bookVersion: fee.bookVersion,
+          currency: fee.currency,
+        });
+        currencies.add(fee.currency);
+        bookVersions.add(fee.bookVersion);
       }
-      const segment: PlanFeeSegment = {
-        planTier: plan,
-        from: period.start,
-        to: period.end,
-        feeMicrosPerPeriod: fee.unitPriceMicros,
-        priceBookId: fee.priceBookId,
-        bookVersion: fee.bookVersion,
-        currency: fee.currency,
-      };
-      currencies.add(fee.currency);
-      bookVersions.add(fee.bookVersion);
-      lines.push(...computePlanFeeLines([segment], period));
+      lines.push(...computePlanFeeLines(segments, period));
     }
 
     // --- billable usage per capability -----------------------------------------
@@ -452,6 +531,7 @@ export class BillingService extends BaseService implements IBillingService {
       currency: currencies.values().next().value ?? 'USD',
       planTier: plan,
       rateCardVersions: [...bookVersions].sort(),
+      planFeeBasis,
     };
   }
 
