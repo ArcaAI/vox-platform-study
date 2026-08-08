@@ -54,6 +54,12 @@ COPY packages/py-runtime-models ./packages/py-runtime-models
 # `uv sync` needs it on disk or layer 1 fails with "Distribution not found at:
 # file:///app/packages/py-env". Dependency-light and rarely changed.
 COPY packages/py-env ./packages/py-env
+# TASK-636 — shared OTEL trace-propagation helpers (`hope-otel`). Same workspace
+# path-dependency rule: stt now declares `hope-otel`, so `uv sync` needs it on
+# disk or layer 1 fails with "Distribution not found at:
+# file:///app/packages/py-otel". Its only dep (opentelemetry-api) is already in
+# the lock, so it costs no meaningful layer-cache churn.
+COPY packages/py-otel ./packages/py-otel
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --package stt --no-dev --no-install-project --no-editable
 
@@ -128,6 +134,7 @@ COPY apps/harness/pyproject.toml ./apps/harness/
 COPY apps/tts/pyproject.toml ./apps/tts/
 COPY packages/py-runtime-models ./packages/py-runtime-models
 COPY packages/py-env ./packages/py-env
+COPY packages/py-otel ./packages/py-otel
 COPY apps/stt/src ./apps/stt/src
 
 # Generate overrides that tell uv to skip most nvidia-* pip packages and triton.
@@ -274,7 +281,8 @@ RUN --mount=type=cache,target=/root/.cache/uv \
         --no-deps --no-sources \
         --reinstall-package hope-runtime-models \
         --reinstall-package hope-env \
-        ./packages/py-runtime-models ./packages/py-env
+        --reinstall-package hope-otel \
+        ./packages/py-runtime-models ./packages/py-env ./packages/py-otel
 
 RUN find /opt/venv \( \
         -name "__pycache__" \

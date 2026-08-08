@@ -39,6 +39,12 @@ COPY packages/py-runtime-models ./packages/py-runtime-models
 # `uv sync` needs it on disk or layer 1 fails with "Distribution not found at:
 # file:///app/packages/py-env". Dependency-light and rarely changed.
 COPY packages/py-env ./packages/py-env
+# TASK-636 — shared OTEL trace-propagation helpers (`hope-otel`). Same workspace
+# path-dependency rule: smr now declares `hope-otel`, so `uv sync` needs it on
+# disk or layer 1 fails with "Distribution not found at:
+# file:///app/packages/py-otel". Its only dep (opentelemetry-api) is already in
+# the lock, so it costs no meaningful layer-cache churn.
+COPY packages/py-otel ./packages/py-otel
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --package smr --no-dev --no-install-project --no-editable
 
