@@ -71,3 +71,20 @@ export function formatPercent(value: number | null | undefined): string {
   const rounded = Math.round(value * 100) / 100;
   return `${rounded}%`;
 }
+
+const currencyFormat = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
+
+/**
+ * Integer-micros string (1e-6 of the currency unit — the TASK-615 WS-I money
+ * convention, where money always rides a string, never a JSON double) to a
+ * display currency string: "199029940" -> "$199.03". Display-ONLY: it parses
+ * through a JS number, exact for any realistic invoice (< ~$9e9); the micros
+ * string stays the source of truth. `currency` overrides the default USD.
+ */
+export function formatMicros(micros: string | null | undefined, currency = 'USD'): string {
+  if (micros === null || micros === undefined || micros === '') return EM_DASH;
+  const n = Number(micros);
+  if (Number.isNaN(n)) return EM_DASH;
+  const fmt = currency === 'USD' ? currencyFormat : new Intl.NumberFormat('en-US', { style: 'currency', currency });
+  return fmt.format(n / 1_000_000);
+}

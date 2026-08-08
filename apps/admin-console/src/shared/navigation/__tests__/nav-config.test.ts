@@ -16,9 +16,9 @@ const TENANT_ADMIN_RULES: PermissionRule[] = [
 ];
 
 describe('NAV_ENTRIES (capabilities-matrix section 3, reviewed 2026-07-04; playground tier)', () => {
-  it('covers the full 43-route map across the four tiers (TASK-595 merges 3 AI screens into /ai-configuration)', () => {
-    expect(NAV_ENTRIES).toHaveLength(43);
-    expect(NAV_ENTRIES.filter((entry) => entry.tier === '10-19')).toHaveLength(18);
+  it('covers the full 45-route map across the four tiers (TASK-615 #15 adds Consumption & cost + Billing)', () => {
+    expect(NAV_ENTRIES).toHaveLength(45);
+    expect(NAV_ENTRIES.filter((entry) => entry.tier === '10-19')).toHaveLength(20);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '20-29')).toHaveLength(7);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '30-49')).toHaveLength(13);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '50-59')).toHaveLength(5);
