@@ -328,7 +328,7 @@ test-stt:
   image: python:3.11-slim
   # Ignored: references DATABASE_URL/REDIS_URL and no dedicated test infra
   # (esp. Redis) is provisioned. Runs but does not block the pipeline.
-  allow_failure: true
+  # allow_failure removed (TASK-621 C.1a) — verified green under CI-shaped env
   tags: [test]
   # python:3.11-slim ships neither curl nor wget; vault-login.sh falls back to
   # python3 for both transport and JSON, so no package install is needed here.
@@ -364,7 +364,7 @@ test-stt:
     - pip install --quiet --retries 5 --timeout 120 packages/py-env
     - cd apps/stt
     - pip install --quiet --retries 5 --timeout 120 ".[test]"
-    - python -m pytest tests/unit/ -v --tb=short --junitxml=../../junit-stt.xml || true
+    - python -m pytest tests/unit/ -v --tb=short --junitxml=../../junit-stt.xml
     - python -m pytest tests/ -v --tb=short --junitxml=../../junit-stt.xml --ignore=tests/e2e/ --ignore=tests/integration/ -x
   artifacts:
     when: always
@@ -482,7 +482,7 @@ test-guardrail:
   image: python:3.11-slim
   # Ignored: references REDIS_URL and no dedicated test Redis is provisioned.
   # Runs but does not block the pipeline.
-  allow_failure: true
+  # allow_failure removed (TASK-621 C.1a) — verified green under CI-shaped env
   tags: [test]
   id_tokens: !reference [.vault-oidc-id-token, id_tokens]
   before_script:
@@ -777,7 +777,7 @@ test-nlp:
   image: python:3.11-slim
   # Ignored: references DATABASE_URL/REDIS_URL and no dedicated test infra
   # (esp. Redis) is provisioned. Runs but does not block the pipeline.
-  allow_failure: true
+  # allow_failure removed (TASK-621 C.1a) — verified green under CI-shaped env
   tags: [test]
   id_tokens: !reference [.vault-oidc-id-token, id_tokens]
   before_script:

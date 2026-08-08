@@ -209,6 +209,38 @@ Part C — 2026 baseline:
 
 ## 7. Implementation Summary
 
+### Wave A — done 2026-08-08 (`ce14fed0`)
+
+**A.2 Trivy** armed: the template was neutralised three times over (`--exit-code 0`, `|| echo` swallowing pass 2, `allow_failure: true`). Now blocks on CRITICAL; HIGH stays informational.
+**A.3** — 12 images were built, 5 scanned. Added the 7 missing jobs; verified **both** directions (nothing built-unscanned, nothing scanning a build that never runs).
+**A.1 gitleaks** restored in working-tree mode, blocking. Full-history is Wave-B-gated: this repo's history is unaudited, and the sibling repo showed the failure mode.
+
+Arming it surfaced 3 hits, all placeholders. Allowlisted **by match form, not by path** — a path allowlist would then hide a real password in those same files. Needed `regexTarget = "match"`; gitleaks matches allowlist regexes against the captured *secret* by default, so without it the allowlist silently never fires. Verified against a `git archive HEAD` checkout: 0 leaks, a real `postgresql://admin:<pw>@` still caught.
+
+### A.4 — the four `allow_failure` Python suites
+
+Run with each job's **exact** CI command.
+
+| Suite | CI-shaped result | Verdict |
+|---|---|---|
+| `test-stt` | 2753 passed | **GREEN** |
+| `test-nlp` | 202 passed | **GREEN** |
+| `test-guardrail` | 187 passed | **GREEN** |
+| `test-smr` | 1 failed, 690 passed | **RED** — `test_provider_key_consistency.py::test_unconfigured_azure_not_registered_and_env_enable_ignored`; `azure-openai` registers when the test asserts it must not. Persists with Azure vars unset, so it is a real defect, not env bleed |
+
+⚠️ **Three of these first appeared RED locally and were not.** `nlp` and `guardrail` failed `401 != 200`, and `smr` mis-registered Azure, purely because `.env.dev` supplies a service token and Azure credentials that CI does not have. Re-running with those variables **unset** (not empty — setting them empty breaks a different nlp test that asserts Vault's secrets-dir supplies the value, since host env outranks secrets_dir) turned all three green. A verdict taken from a bare local run would have been wrong in both directions.
+
+**A.4 also found a defect this ticket did not record**: `test-stt`'s command ended in `|| true`. `allow_failure: true` was not its only gag — removing the flag alone would have been cosmetic.
+
+### Wave B — done 2026-08-08
+
+C.1a applied to the three green suites (`allow_failure` removed; `|| true` removed from stt). `test-smr` **keeps** `allow_failure: true` per C.1b — a red suite is owner-blocked, not flag-flipped.
+
+🔴 **Forward risk for [TASK-619](../TASK-619-GitOps-CICD-Delivery-Loop/README.md)**: these suites pass today only because `VAULT_ADDR` is deliberately empty, so `.vault-oidc` injects nothing. The moment Vault is armed in CI, service tokens get injected and `nlp`/`guardrail` will start returning `401` — exactly the local failure. The tests assume the unauthenticated dev-mode bypass. Arming Vault and un-flagging these suites are coupled, and were not previously known to be.
+
+**Not done**: Wave C (C.2 cosign, C.3 SBOM, C.4 Kyverno, C.5 registry retention).
+
+
 *Not started — awaiting owner approval of this plan (Phase 3 gate).*
 
 ---
