@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
-import { UsageAnalyticsServiceModule } from '@arcaai/applications';
+import { ShadowMeteringServiceModule, UsageAnalyticsServiceModule } from '@arcaai/applications';
 
+import { AdminReconciliationController } from './admin-reconciliation.controller';
 import { AdminUsageController } from './admin-usage.controller';
 import { MyUsageController } from './my-usage.controller';
 
@@ -10,7 +11,7 @@ import { MyUsageController } from './my-usage.controller';
  * usage-analytics endpoints live HERE.
  */
 @Module({
-  imports: [UsageAnalyticsServiceModule],
-  controllers: [AdminUsageController, MyUsageController],
+  imports: [UsageAnalyticsServiceModule, ShadowMeteringServiceModule],
+  controllers: [AdminUsageController, AdminReconciliationController, MyUsageController],
 })
 export class AdminUsageApiModule {}
