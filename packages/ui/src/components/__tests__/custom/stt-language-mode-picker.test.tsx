@@ -10,7 +10,10 @@ test.describe('SttLanguageModePicker', () => {
   test.describe('rendering', () => {
     test('renders with the default label', async ({ mount }) => {
       const component = await mount(<DefaultLanguageModePicker />);
-      await expect(component.getByText('Language')).toBeVisible();
+      // `exact` matters: getByText does a case-insensitive SUBSTRING match, so a
+      // bare 'Language' also matches the trigger's "Select a language"
+      // placeholder and trips strict mode.
+      await expect(component.getByText('Language', { exact: true })).toBeVisible();
     });
 
     test('shows the placeholder when no mode selected', async ({ mount }) => {
@@ -37,10 +40,13 @@ test.describe('SttLanguageModePicker', () => {
   });
 
   test.describe('interaction', () => {
-    test('selecting a mode reports its id', async ({ mount }) => {
+    test('selecting a mode reports its id', async ({ mount, page }) => {
       const component = await mount(<InteractiveLanguageModePicker />);
       await component.locator('button[data-slot="select-trigger"]').click();
-      await component.getByRole('option', { name: /Malayalam \+ English/ }).click();
+      // Radix renders SelectContent in a portal on document.body, OUTSIDE the
+      // mounted subtree — the option has to be located from `page`, not
+      // `component`, or the click waits forever.
+      await page.getByRole('option', { name: /Malayalam \+ English/ }).click();
       await expect(component.getByTestId('selected-mode')).toHaveText('ml-en');
     });
   });
