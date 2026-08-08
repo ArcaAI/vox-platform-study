@@ -1,5 +1,5 @@
 import Decimal from 'decimal.js';
-import { AiCapability, AiUsageUnit, BillingLineKind, TenantPlan } from '@arcaai/domains';
+import { AiCapability, AiDeploymentKind, AiUsageUnit, BillingLineKind, TenantPlan } from '@arcaai/domains';
 
 import { computeCostMicros } from '../priceBook/price-book.resolution';
 import { BillingPeriod, truncateToUtcDay, utcDayCount } from './billing-period';
@@ -28,21 +28,37 @@ import { BillingPeriod, truncateToUtcDay, utcDayCount } from './billing-period';
  * token kinds) but SELL rates are per unit and effective-dated. Reconciling the
  * three requires an attribution rule, fixed as:
  *
- *  1. CHRONOLOGICAL CROSSING, day grain. Walk the period's UTC day buckets in
- *     order; the day the cumulative usage crosses the allowance is where
- *     overage starts: `dayOverage = max(0, cumAfter − max(allowance, cumBefore))`.
+ *  0. SELF-HOSTED-FIRST TIER ORDER (TASK-638). Before anything chronological,
+ *     usage is partitioned by `deployment` and the allowance is consumed in the
+ *     order SELF_HOSTED → BYOK → CLOUD. The ordering is a margin decision, not
+ *     a preference: managed ASR costs the platform ~13× self-hosted per
+ *     audio-second, so letting the bundled allowance absorb the CHEAP usage
+ *     first is what pushes platform-funded managed usage into overage, where
+ *     its premium SELL rate recovers the COGS. BYOK sits in the middle because
+ *     it costs the PLATFORM nothing (the tenant funds it) yet must never be
+ *     rated at a managed premium — a premium recovering a cost nobody bore.
+ *
+ *     This changes ATTRIBUTION ONLY. Total overage is `max(0, total − allowance)`
+ *     under any ordering; the tiers decide WHICH usage is the overage, and
+ *     therefore at which rate it prices.
+ *  1. CHRONOLOGICAL CROSSING, day grain, WITHIN each tier. Walk the tier's UTC
+ *     day buckets in order; the day the cumulative usage crosses the remaining
+ *     allowance is where that tier's overage starts:
+ *     `dayOverage = max(0, cumAfter − max(remaining, cumBefore))`.
  *     Day grain because rollups are the invoice-time source (never raw events,
  *     D13) and the rollup day bucket is the finest time the invoice can see.
- *  2. PRO-RATA UNIT SPLIT inside the crossing day. A day's overage is split
- *     across that day's units in proportion to their quantities — deterministic
- *     and order-independent, unlike "whichever unit happened to arrive last".
- *     Shares are floored to 6 dp (the ledger's quantity scale) with the
- *     remainder assigned to the LAST unit in canonical enum order, so the split
- *     preserves the day's overage EXACTLY.
- *  3. RATE AT THE DAY BUCKET. Each (unit, day) portion is priced at the SELL
- *     row effective at that day's UTC midnight — a mid-month reprice therefore
- *     yields one line per rate row ("split-rate month"), each carrying its own
- *     full derivation (quantity → allowance → overage → rate → amount).
+ *  2. PRO-RATA (unit, provider) SPLIT inside the crossing day. A day's overage
+ *     is split across that day's (unit, provider) buckets in proportion to
+ *     their quantities — deterministic and order-independent, unlike "whichever
+ *     happened to arrive last". Shares are floored to 6 dp (the ledger's
+ *     quantity scale) with the remainder assigned to the LAST bucket in
+ *     canonical order, so the split preserves the day's overage EXACTLY.
+ *  3. RATE AT THE DAY BUCKET, PER PROVIDER. Each (provider, unit, day) portion
+ *     is priced at the SELL row effective at that day's UTC midnight — a
+ *     mid-month reprice therefore yields one line per rate row ("split-rate
+ *     month"), each carrying its own full derivation (quantity → allowance →
+ *     overage → rate → amount). Provider participates so a managed-vendor row
+ *     (more specific) can price above the provider-agnostic baseline.
  *
  * FAIL-CLOSED: the COST rater records an event unrated when no price resolves
  * (a missing rate is repairable later); an INVOICE LINE is money and cannot be
@@ -58,15 +74,24 @@ export interface ResolvedSellRate {
   currency: string;
 }
 
-/** Rate lookup the engine calls per (unit, UTC day). `null` = no rate on the card. */
-export type SellRateResolver = (unit: AiUsageUnit, day: Date) => ResolvedSellRate | null;
+/** Rate lookup the engine calls per (provider, unit, UTC day). `null` = no rate on the card. */
+export type SellRateResolver = (provider: string, unit: AiUsageUnit, day: Date) => ResolvedSellRate | null;
 
-/** One day-bucket of billable usage for one unit (already operation-filtered). */
+/** One day-bucket of billable usage for one (unit, provider, deployment) — already operation-filtered. */
 export interface DailyUnitQuantity {
   day: Date;
   unit: AiUsageUnit;
+  provider: string;
+  deployment: AiDeploymentKind;
   quantity: Decimal;
 }
+
+/**
+ * Allowance-consumption order (TASK-638). Cheapest-to-the-platform first, so the
+ * bundled allowance absorbs usage the platform barely pays for and the expensive
+ * platform-funded managed usage is what lands in premium-rated overage.
+ */
+export const DEPLOYMENT_ALLOWANCE_ORDER: readonly AiDeploymentKind[] = [AiDeploymentKind.SELF_HOSTED, AiDeploymentKind.BYOK, AiDeploymentKind.CLOUD];
 
 /** A line before persistence — the full dispute-answerable derivation. */
 export interface InvoiceLineDraft {
@@ -167,9 +192,10 @@ export class MissingSellRateError extends Error {
     public readonly capability: AiCapability,
     public readonly unit: AiUsageUnit,
     public readonly day: Date,
+    public readonly provider?: string,
   ) {
     super(
-      `No effective SELL rate for ${capability}/${unit} at ${day.toISOString()} — the rate card is incomplete; superseding it forward is the fix.`,
+      `No effective SELL rate for ${capability}/${unit}${provider ? ` (${provider})` : ''} at ${day.toISOString()} — the rate card is incomplete; superseding it forward is the fix.`,
     );
     this.name = 'MissingSellRateError';
   }
@@ -238,17 +264,28 @@ export function computePlanFeeLines(segments: readonly PlanFeeSegment[], period:
 // ---------------------------------------------------------------------------
 
 export function computeCapabilityOverage(input: CapabilityOverageInput, resolveRate: SellRateResolver): CapabilityOverageResult {
-  // ---- normalize: (day, unit) → quantity, dropping zero/negative noise ------
-  const byDay = new Map<number, Map<AiUsageUnit, Decimal>>();
+  /** One (unit, provider) bucket within a day of one deployment tier. */
+  const slotKey = (unit: AiUsageUnit, provider: string): string => `${unit}::${provider}`;
+
+  // ---- normalize: tier → day → (unit, provider) → quantity ------------------
+  const byTier = new Map<AiDeploymentKind, Map<number, Map<string, { unit: AiUsageUnit; provider: string; quantity: Decimal }>>>();
   const perUnitTotals = new Map<AiUsageUnit, Decimal>();
   let totalQuantity = new Decimal(0);
 
   for (const bucket of input.usage) {
     if (bucket.quantity.lessThanOrEqualTo(0)) continue;
     const dayKey = truncateToUtcDay(bucket.day).getTime();
-    const units = byDay.get(dayKey) ?? new Map<AiUsageUnit, Decimal>();
-    units.set(bucket.unit, (units.get(bucket.unit) ?? new Decimal(0)).plus(bucket.quantity));
-    byDay.set(dayKey, units);
+    const days = byTier.get(bucket.deployment) ?? new Map();
+    const slots = days.get(dayKey) ?? new Map<string, { unit: AiUsageUnit; provider: string; quantity: Decimal }>();
+    const key = slotKey(bucket.unit, bucket.provider);
+    const existing = slots.get(key);
+    slots.set(key, {
+      unit: bucket.unit,
+      provider: bucket.provider,
+      quantity: (existing?.quantity ?? new Decimal(0)).plus(bucket.quantity),
+    });
+    days.set(dayKey, slots);
+    byTier.set(bucket.deployment, days);
     perUnitTotals.set(bucket.unit, (perUnitTotals.get(bucket.unit) ?? new Decimal(0)).plus(bucket.quantity));
     totalQuantity = totalQuantity.plus(bucket.quantity);
   }
@@ -258,62 +295,86 @@ export function computeCapabilityOverage(input: CapabilityOverageInput, resolveR
     return noOverage; // unlimited, or allowance covers everything — incl. "exactly consumed"
   }
 
-  // ---- chronological crossing + pro-rata unit split -------------------------
+  // ---- tiered consumption, chronological within a tier ----------------------
   interface RateGroup {
     unit: AiUsageUnit;
+    provider: string;
     rate: ResolvedSellRate;
     overage: Decimal;
     firstDay: number;
   }
-  const groups = new Map<string, RateGroup>(); // key: unit :: priceBookId
+  const groups = new Map<string, RateGroup>(); // key: unit :: provider :: priceBookId
   const currencies = new Set<string>();
   const bookVersions = new Set<string>();
 
   const allowance = input.allowance;
-  let cumulative = new Decimal(0);
+  // Allowance already eaten by earlier (cheaper) tiers. Carried ACROSS tiers so
+  // the pool is shared — it is one capability allowance, not one per tier.
+  let consumed = new Decimal(0);
 
-  for (const dayKey of [...byDay.keys()].sort((a, b) => a - b)) {
-    const units = byDay.get(dayKey)!;
-    const dayTotal = [...units.values()].reduce((acc, q) => acc.plus(q), new Decimal(0));
-    const cumulativeAfter = cumulative.plus(dayTotal);
-    const dayOverage = Decimal.max(0, cumulativeAfter.minus(Decimal.max(allowance, cumulative)));
-    cumulative = cumulativeAfter;
-    if (dayOverage.isZero()) continue;
+  // Any deployment not named in the order (a future enum member) settles LAST,
+  // in enum order — the safe default: a tier we do not yet reason about never
+  // silently eats the allowance ahead of self-hosted usage.
+  const tiers = [
+    ...DEPLOYMENT_ALLOWANCE_ORDER.filter((tier) => byTier.has(tier)),
+    ...[...byTier.keys()].filter((tier) => !DEPLOYMENT_ALLOWANCE_ORDER.includes(tier)).sort(),
+  ];
 
-    // Pro-rata split, canonical unit order; floor-to-6dp shares with the exact
-    // remainder assigned to the last unit so Σ shares == dayOverage EXACTLY.
-    const orderedUnits = [...units.keys()].sort((a, b) => UNIT_ORDER[a] - UNIT_ORDER[b]);
-    let assigned = new Decimal(0);
-    orderedUnits.forEach((unit, index) => {
-      const isLast = index === orderedUnits.length - 1;
-      const share = isLast
-        ? dayOverage.minus(assigned)
-        : dayOverage.times(units.get(unit)!).dividedBy(dayTotal).toDecimalPlaces(QUANTITY_DECIMALS, Decimal.ROUND_FLOOR);
-      assigned = assigned.plus(share);
-      if (share.lessThanOrEqualTo(0)) return;
+  for (const tier of tiers) {
+    const days = byTier.get(tier)!;
 
-      const day = new Date(dayKey);
-      const rate = resolveRate(unit, day);
-      if (!rate) throw new MissingSellRateError(input.capability, unit, day);
-      currencies.add(rate.currency);
-      bookVersions.add(rate.bookVersion);
+    for (const dayKey of [...days.keys()].sort((a, b) => a - b)) {
+      const slots = days.get(dayKey)!;
+      const dayTotal = [...slots.values()].reduce((acc, slot) => acc.plus(slot.quantity), new Decimal(0));
+      const consumedAfter = consumed.plus(dayTotal);
+      const dayOverage = Decimal.max(0, consumedAfter.minus(Decimal.max(allowance, consumed)));
+      consumed = consumedAfter;
+      if (dayOverage.isZero()) continue;
 
-      const groupKey = `${unit}::${rate.priceBookId}`;
-      const group = groups.get(groupKey);
-      if (group) {
-        group.overage = group.overage.plus(share);
-        group.firstDay = Math.min(group.firstDay, dayKey);
-      } else {
-        groups.set(groupKey, { unit, rate, overage: share, firstDay: dayKey });
-      }
-    });
+      // Pro-rata split over the day's (unit, provider) slots in canonical order;
+      // floor-to-6dp shares with the exact remainder on the last slot so
+      // Σ shares == dayOverage EXACTLY.
+      const ordered = [...slots.values()].sort(
+        (a, b) => UNIT_ORDER[a.unit] - UNIT_ORDER[b.unit] || (a.provider < b.provider ? -1 : a.provider > b.provider ? 1 : 0),
+      );
+      let assigned = new Decimal(0);
+      ordered.forEach((slot, index) => {
+        const isLast = index === ordered.length - 1;
+        const share = isLast
+          ? dayOverage.minus(assigned)
+          : dayOverage.times(slot.quantity).dividedBy(dayTotal).toDecimalPlaces(QUANTITY_DECIMALS, Decimal.ROUND_FLOOR);
+        assigned = assigned.plus(share);
+        if (share.lessThanOrEqualTo(0)) return;
+
+        const day = new Date(dayKey);
+        const rate = resolveRate(slot.provider, slot.unit, day);
+        if (!rate) throw new MissingSellRateError(input.capability, slot.unit, day, slot.provider);
+        currencies.add(rate.currency);
+        bookVersions.add(rate.bookVersion);
+
+        const groupKey = `${slot.unit}::${slot.provider}::${rate.priceBookId}`;
+        const group = groups.get(groupKey);
+        if (group) {
+          group.overage = group.overage.plus(share);
+          group.firstDay = Math.min(group.firstDay, dayKey);
+        } else {
+          groups.set(groupKey, { unit: slot.unit, provider: slot.provider, rate, overage: share, firstDay: dayKey });
+        }
+      });
+    }
   }
 
   if (currencies.size > 1) throw new CurrencyMismatchError([...currencies].sort());
 
-  // ---- one line per (unit, rate row), deterministic order --------------------
+  // ---- one line per (unit, provider, rate row), deterministic order ----------
   const lines = [...groups.values()]
-    .sort((a, b) => UNIT_ORDER[a.unit] - UNIT_ORDER[b.unit] || a.firstDay - b.firstDay || (a.rate.priceBookId < b.rate.priceBookId ? -1 : 1))
+    .sort(
+      (a, b) =>
+        UNIT_ORDER[a.unit] - UNIT_ORDER[b.unit] ||
+        (a.provider < b.provider ? -1 : a.provider > b.provider ? 1 : 0) ||
+        a.firstDay - b.firstDay ||
+        (a.rate.priceBookId < b.rate.priceBookId ? -1 : 1),
+    )
     .map((group): InvoiceLineDraft => ({
       kind: BillingLineKind.OVERAGE,
       capability: input.capability,
@@ -325,7 +386,7 @@ export function computeCapabilityOverage(input: CapabilityOverageInput, resolveR
       // The ONE rounding rule: HALF-UP, once, at the line — via the SAME
       // helper the COST rater uses, so the planes can never round apart.
       amountMicros: computeCostMicros(group.overage, group.rate.unitPriceMicros),
-      description: `${input.capability} ${group.unit} overage — from ${new Date(group.firstDay).toISOString().slice(0, 10)}`,
+      description: `${input.capability} ${group.unit} overage (${group.provider}) — from ${new Date(group.firstDay).toISOString().slice(0, 10)}`,
     }));
 
   return {

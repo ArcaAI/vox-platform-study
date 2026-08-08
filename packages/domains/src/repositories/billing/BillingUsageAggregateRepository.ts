@@ -3,7 +3,7 @@ import Decimal from 'decimal.js';
 import { Prisma } from '@arcaai/database';
 
 import { CoreUnitOfWorkService } from '../../common/unitsOfWork/core';
-import { AiCapability, AiUsageUnit } from '../../enums';
+import { AiCapability, AiDeploymentKind, AiUsageUnit } from '../../enums';
 
 /**
  * Bounded SQL aggregates over the raw usage ledger for the invoice engine
@@ -35,6 +35,15 @@ export interface OperationDayUnitSum {
   day: Date;
   unit: AiUsageUnit;
   operation: string;
+  /**
+   * Funding + vendor of the compensated usage (TASK-638). These sums are
+   * SUBTRACTED FROM or REPLACE rollup buckets that are themselves keyed by
+   * (provider, deployment), so the compensation must carry the same dimensions
+   * or it would deduct one provider's usage from another's bucket — and the
+   * SELF_HOSTED-first allowance ordering would be computed on wrong quantities.
+   */
+  provider: string;
+  deployment: AiDeploymentKind;
   quantity: Decimal;
 }
 
@@ -56,7 +65,7 @@ export class BillingUsageAggregateRepository {
     return this.unitOfWorkService.getDatabaseService() as unknown as { $queryRaw: (query: unknown) => Promise<unknown> };
   }
 
-  /** Per-(UTC day, unit, operation) quantity sums for one capability and period. */
+  /** Per-(UTC day, unit, operation, provider, deployment) quantity sums for one capability and period. */
   async sumDailyQuantitiesByOperation(query: SumDailyQuantitiesByOperationQuery): Promise<OperationDayUnitSum[]> {
     if (query.operations.length === 0) return [];
 
@@ -64,6 +73,8 @@ export class BillingUsageAggregateRepository {
       SELECT date_trunc('day', "occurredAt" AT TIME ZONE 'UTC') AT TIME ZONE 'UTC' AS "day",
              "unit"::text                                                          AS "unit",
              "operation"                                                           AS "operation",
+             "provider"                                                            AS "provider",
+             "deployment"::text                                                    AS "deployment",
              SUM("quantity")                                                       AS "quantity"
       FROM "core"."AiUsageEvent"
       WHERE "tenantId" = ${query.tenantId}
@@ -71,14 +82,16 @@ export class BillingUsageAggregateRepository {
         AND "operation" IN (${Prisma.join([...query.operations])})
         AND "occurredAt" >= ${query.from}
         AND "occurredAt" < ${query.to}
-      GROUP BY 1, 2, 3
-      ORDER BY 1, 2, 3
-    `)) as Array<{ day: Date; unit: string; operation: string; quantity: unknown }>;
+      GROUP BY 1, 2, 3, 4, 5
+      ORDER BY 1, 2, 3, 4, 5
+    `)) as Array<{ day: Date; unit: string; operation: string; provider: string; deployment: string; quantity: unknown }>;
 
     return rows.map((row) => ({
       day: new Date(row.day),
       unit: row.unit as AiUsageUnit,
       operation: row.operation,
+      provider: row.provider,
+      deployment: row.deployment as AiDeploymentKind,
       // Postgres NUMERIC arrives as a driver-specific decimal/string — route
       // through Decimal so no float ever touches a billable quantity.
       quantity: new Decimal(String(row.quantity)),

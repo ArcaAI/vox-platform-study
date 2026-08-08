@@ -365,6 +365,36 @@ const OVERAGE_ROWS: PriceBookSeed[] = [
     unitPriceMicros: 6n,
     note: 'PLACEHOLDER — batch STT overage, parity with the streaming session rate.',
   },
+
+  // ── Managed-ASR add-on (TASK-638) ─────────────────────────────────────────
+  // The rows above are provider-AGNOSTIC and priced off self-hosted economics.
+  // These are provider-KEYED and therefore MORE SPECIFIC, so they win whenever
+  // overage lands on a platform-funded managed vendor — which, under the
+  // SELF_HOSTED-first allowance order, is exactly what spills into overage.
+  //
+  // 5× the managed COST row (azure-speech AUDIO_SECOND = 278µ) so the add-on
+  // carries the ratified 80% margin instead of being subsidised at the
+  // self-hosted rate. BYOK never reaches these rows: `prefetchSellRates`
+  // resolves the provider-agnostic baseline for BYOK deliberately, because a
+  // premium recovering platform COGS makes no sense on a tenant's own key.
+  {
+    id: 'B1000000-0000-0000-0002-000000000011',
+    plane: AiPriceBookPlane.SELL,
+    capability: AiCapability.STT,
+    provider: 'azure-speech',
+    unit: AiUsageUnit.SESSION_SECOND,
+    unitPriceMicros: 1_390n,
+    note: 'Managed-ASR add-on — azure-speech streaming, 5× the 278µ managed COST row (TASK-638).',
+  },
+  {
+    id: 'B1000000-0000-0000-0002-000000000012',
+    plane: AiPriceBookPlane.SELL,
+    capability: AiCapability.STT,
+    provider: 'azure-speech',
+    unit: AiUsageUnit.AUDIO_SECOND,
+    unitPriceMicros: 1_390n,
+    note: 'Managed-ASR add-on — azure-speech batch, parity with the streaming session rate (TASK-638).',
+  },
   {
     id: 'B1000000-0000-0000-0002-000000000003',
     plane: AiPriceBookPlane.SELL,

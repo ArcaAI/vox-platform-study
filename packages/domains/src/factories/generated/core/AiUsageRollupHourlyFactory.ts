@@ -3,6 +3,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { BaseEntityFactoryCreateProps } from '../../../common';
 import { AiUsageRollupHourlyEntity, IAiUsageRollupHourlyEntity } from '../../../entities';
+import { AiDeploymentKind } from '../../../enums';
 import { generateId } from '../../../utils';
 
 export interface CreateAiUsageRollupHourlyProps extends BaseEntityFactoryCreateProps {
@@ -11,6 +12,7 @@ export interface CreateAiUsageRollupHourlyProps extends BaseEntityFactoryCreateP
   capability: IAiUsageRollupHourlyEntity['capability'];
   operation?: IAiUsageRollupHourlyEntity['operation'];
   provider: IAiUsageRollupHourlyEntity['provider'];
+  deployment?: IAiUsageRollupHourlyEntity['deployment'];
   model?: IAiUsageRollupHourlyEntity['model'];
   unit: IAiUsageRollupHourlyEntity['unit'];
   quantitySum: IAiUsageRollupHourlyEntity['quantitySum'];
@@ -47,6 +49,7 @@ export class AiUsageRollupHourlyFactory {
       capability: props.capability,
       operation: props.operation ?? '',
       provider: props.provider,
+      deployment: props.deployment ?? AiDeploymentKind.SELF_HOSTED,
       model: props.model ?? '',
       unit: props.unit,
       quantitySum: props.quantitySum,

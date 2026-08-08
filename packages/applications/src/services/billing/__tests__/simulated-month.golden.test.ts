@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { AiCapability, AiUsageUnit, BillingInvoiceStatus, BillingLineKind, TenantPlan } from '@arcaai/domains';
+import { AiCapability, AiDeploymentKind, AiUsageUnit, BillingInvoiceStatus, BillingLineKind, TenantPlan } from '@arcaai/domains';
 
 /**
  * TASK-615 WS-I DoD evidence — ONE simulated month, end to end.

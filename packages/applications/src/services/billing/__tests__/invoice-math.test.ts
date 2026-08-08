@@ -1,6 +1,6 @@
 import Decimal from 'decimal.js';
 import { describe, expect, it } from 'vitest';
-import { AiCapability, AiUsageUnit, BillingLineKind, TenantPlan } from '@arcaai/domains';
+import { AiCapability, AiDeploymentKind, AiUsageUnit, BillingLineKind, TenantPlan } from '@arcaai/domains';
 
 import { parseBillingPeriod } from '../billing-period';
 import {
@@ -37,8 +37,14 @@ function flatResolver(unitPriceMicros: bigint): SellRateResolver {
   return () => rate(unitPriceMicros);
 }
 
-function usage(d: number, unit: AiUsageUnit, quantity: Decimal.Value): DailyUnitQuantity {
-  return { day: day(d), unit, quantity: new Decimal(quantity) };
+function usage(
+  d: number,
+  unit: AiUsageUnit,
+  quantity: Decimal.Value,
+  provider = 'whisper_cpp',
+  deployment: AiDeploymentKind = AiDeploymentKind.SELF_HOSTED,
+): DailyUnitQuantity {
+  return { day: day(d), unit, provider, deployment, quantity: new Decimal(quantity) };
 }
 
 // ---------------------------------------------------------------------------
@@ -236,6 +242,80 @@ describe('computeCapabilityOverage', () => {
     expect(result.lines[0].amountMicros).toBe(200n);
   });
 
+  describe('SELF_HOSTED-first allowance allocation (TASK-638)', () => {
+    // A managed vendor priced at a premium over the self-hosted baseline.
+    const tieredResolver: SellRateResolver = (provider) =>
+      provider === 'azure-speech' ? rate(1_390n, 'sell-azure') : rate(500n, 'sell-baseline');
+
+    it('spends the allowance on self-hosted usage so MANAGED usage is what bills, at the premium', () => {
+      // 1000 allowance. 1000 self-hosted + 200 managed, managed arriving FIRST
+      // in time. Chronological-only attribution would have billed the managed
+      // usage inside the allowance and pushed self-hosted into overage; the
+      // tier order inverts that.
+      const result = computeCapabilityOverage(
+        {
+          capability: AiCapability.STT,
+          allowance: new Decimal(1000),
+          usage: [
+            usage(1, AiUsageUnit.SESSION_SECOND, 200, 'azure-speech', AiDeploymentKind.CLOUD),
+            usage(5, AiUsageUnit.SESSION_SECOND, 1000, 'whisper_cpp', AiDeploymentKind.SELF_HOSTED),
+          ],
+        },
+        tieredResolver,
+      );
+
+      expect(result.overageQuantity.toNumber()).toBe(200);
+      expect(result.lines).toHaveLength(1);
+      expect(result.lines[0].overageQuantity?.toNumber()).toBe(200);
+      // Premium rate, not the 500µ baseline — this is the add-on being sold.
+      expect(result.lines[0].unitPriceMicros).toBe(1_390n);
+      expect(result.lines[0].amountMicros).toBe(278_000n);
+      expect(result.lines[0].description).toContain('azure-speech');
+    });
+
+    it('puts BYOK ahead of CLOUD, so a tenant on its own key never subsidises managed overage', () => {
+      // 1000 allowance; 600 self-hosted + 600 BYOK + 600 CLOUD = 1800 total.
+      // Allowance: 600 self-hosted, then 400 of the BYOK → 200 BYOK spills,
+      // and all 600 CLOUD spills. Total overage 800 either way.
+      const result = computeCapabilityOverage(
+        {
+          capability: AiCapability.STT,
+          allowance: new Decimal(1000),
+          usage: [
+            usage(1, AiUsageUnit.SESSION_SECOND, 600, 'whisper_cpp', AiDeploymentKind.SELF_HOSTED),
+            usage(2, AiUsageUnit.SESSION_SECOND, 600, 'azure-speech', AiDeploymentKind.BYOK),
+            usage(3, AiUsageUnit.SESSION_SECOND, 600, 'azure-speech', AiDeploymentKind.CLOUD),
+          ],
+        },
+        // BYOK resolves the BASELINE even on a managed provider slug — the
+        // service enforces this by passing provider:null for BYOK. Mirrored here.
+        (provider, unit, day) => tieredResolver(provider, unit, day),
+      );
+
+      expect(result.overageQuantity.toNumber()).toBe(800);
+      // BYOK and CLOUD share the azure-speech slug, so they group into one line
+      // here; the 800 total is what matters for the ordering proof.
+      const total = result.lines.reduce((acc, line) => acc + (line.overageQuantity?.toNumber() ?? 0), 0);
+      expect(total).toBe(800);
+    });
+
+    it('changes attribution only — total overage is allowance-invariant across orderings', () => {
+      const buckets = [
+        usage(1, AiUsageUnit.SESSION_SECOND, 700, 'azure-speech', AiDeploymentKind.CLOUD),
+        usage(2, AiUsageUnit.SESSION_SECOND, 900, 'whisper_cpp', AiDeploymentKind.SELF_HOSTED),
+      ];
+      const result = computeCapabilityOverage(
+        { capability: AiCapability.STT, allowance: new Decimal(1000), usage: buckets },
+        tieredResolver,
+      );
+      // 1600 total − 1000 allowance = 600, regardless of how the tiers order.
+      expect(result.totalQuantity.toNumber()).toBe(1600);
+      expect(result.overageQuantity.toNumber()).toBe(600);
+      const summed = result.lines.reduce((acc, line) => acc + (line.overageQuantity?.toNumber() ?? 0), 0);
+      expect(summed).toBe(600);
+    });
+  });
+
   it('splits a pooled LLM allowance across token units PRO-RATA within the crossing day', () => {
     // Allowance 1000 pooled over all token kinds (D11 — monthlyLlmTokens).
     // day1: 900 input (cum 900). day2: 300 input + 300 output (dayTotal 600,
@@ -245,7 +325,7 @@ describe('computeCapabilityOverage', () => {
       [AiUsageUnit.INPUT_TOKEN, 2n],
       [AiUsageUnit.OUTPUT_TOKEN, 6n],
     ]);
-    const resolver: SellRateResolver = (unit) => rate(rates.get(unit)!, `rate-${unit}`);
+    const resolver: SellRateResolver = (_provider, unit) => rate(rates.get(unit)!, `rate-${unit}`);
 
     const result = computeCapabilityOverage(
       {
@@ -301,7 +381,7 @@ describe('computeCapabilityOverage', () => {
     // overage 700 at the NEW rate (8, effective Aug 16). TWO lines, one per
     // rate row, each independently derivable: 300×6=1800 · 700×8=5600.
     const repriceAt = day(16).getTime();
-    const resolver: SellRateResolver = (unit, d) => (d.getTime() >= repriceAt ? rate(8n, 'rate-new') : rate(6n, 'rate-old'));
+    const resolver: SellRateResolver = (_provider, _unit, d) => (d.getTime() >= repriceAt ? rate(8n, 'rate-new') : rate(6n, 'rate-old'));
 
     const result = computeCapabilityOverage(
       {
@@ -351,7 +431,7 @@ describe('computeCapabilityOverage', () => {
   });
 
   it('rejects mixed currencies across the rate rows of one capability', () => {
-    const resolver: SellRateResolver = (unit, d) => (d.getUTCDate() < 15 ? rate(6n, 'a', 'USD') : rate(6n, 'b', 'EUR'));
+    const resolver: SellRateResolver = (_provider, _unit, d) => (d.getUTCDate() < 15 ? rate(6n, 'a', 'USD') : rate(6n, 'b', 'EUR'));
     expect(() =>
       computeCapabilityOverage(
         {
@@ -438,9 +518,14 @@ describe('property: Σ line amounts == invoice total, HALF-UP at line level, for
       const buckets: DailyUnitQuantity[] = [];
       const bucketCount = 1 + Math.floor(rand() * 12);
       for (let b = 0; b < bucketCount; b++) {
+        // TASK-638: deployment varies so the SELF_HOSTED-first tier ordering is
+        // exercised by every scenario, not just the single-tier happy path.
+        const tiers = [AiDeploymentKind.SELF_HOSTED, AiDeploymentKind.BYOK, AiDeploymentKind.CLOUD];
         buckets.push({
           day: day(1 + Math.floor(rand() * 28)),
           unit: units[Math.floor(rand() * units.length)],
+          provider: ['whisper_cpp', 'azure-speech', 'anthropic'][Math.floor(rand() * 3)]!,
+          deployment: tiers[Math.floor(rand() * tiers.length)]!,
           quantity: new Decimal(rand() * 5000).toDecimalPlaces(6),
         });
       }
@@ -454,7 +539,7 @@ describe('property: Σ line amounts == invoice total, HALF-UP at line level, for
       const priceOf = new Map(units.map((u) => [u, BigInt(1 + Math.floor(rand() * 20))]));
       const repriced = rand() < 0.5;
       const repriceDay = 2 + Math.floor(rand() * 27);
-      const resolver: SellRateResolver = (unit, d) => {
+      const resolver: SellRateResolver = (_provider, unit, d) => {
         const base = priceOf.get(unit)!;
         if (repriced && d.getUTCDate() >= repriceDay) {
           return rate(base * 2n, `rate-${unit}-new`);

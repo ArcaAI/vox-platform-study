@@ -1,5 +1,5 @@
 import Decimal from 'decimal.js';
-import { AiCapability, AiUsageUnit } from '@arcaai/domains';
+import { AiCapability, AiDeploymentKind, AiUsageUnit } from '@arcaai/domains';
 
 import { truncateToUtcDay } from './billing-period';
 import { DailyUnitQuantity } from './invoice-math';
@@ -21,11 +21,13 @@ import { DailyUnitQuantity } from './invoice-math';
  *     recorded for repricing only. Batch STT emits ONLY audio-seconds. The
  *     rollup AUDIO_SECOND bucket mixes both, so it cannot be billed as-is.
  *
- * Until the rollup grain grows an operation (or `billable`) dimension — a
- * WS-A follow-up migration, flagged in the WS-I report — the engine takes a
- * bounded LEDGER AGGREGATE (SQL `SUM(quantity) GROUP BY day, unit` filtered by
- * operation, via `BillingUsageAggregateRepository`; an indexed aggregate, not
- * row reads) and merges it here:
+ * The rollup grain DID grow an `operation` dimension (TASK-615 follow-up #4),
+ * but rows written before that migration carry the `""` sentinel, so the
+ * compensation path stays: it is the only thing that reads those historical
+ * buckets correctly. The engine takes a bounded LEDGER AGGREGATE (SQL
+ * `SUM(quantity) GROUP BY day, unit, operation, provider, deployment` filtered
+ * by operation, via `BillingUsageAggregateRepository`; an indexed aggregate,
+ * not row reads) and merges it here:
  *
  *   - LLM:  rollup pool MINUS the non-billable-operation sums (clamped ≥ 0).
  *   - STT:  SESSION_SECOND straight from rollups (pure streaming), while
@@ -66,10 +68,19 @@ export const NON_BILLABLE_LLM_OPERATIONS: readonly string[] = ['guardrail.valida
 /** The STT operation whose AUDIO_SECOND rows ARE billable (OQ1). */
 export const STT_BATCH_OPERATION = 'transcribe.batch';
 
-/** Per-(day, unit) sums, already summed across provider/model dimensions. */
+/**
+ * Per-(day, unit, provider, deployment) sums, already summed across `model`.
+ *
+ * `provider` and `deployment` survive into billing (TASK-638) because the pooled
+ * allowance is consumed SELF_HOSTED-first and the SELL rate is resolved per
+ * provider. Collapsing them here — as this type did before — is what made a
+ * managed-ASR premium unpriceable.
+ */
 export interface DayUnitSum {
   day: Date;
   unit: AiUsageUnit;
+  provider: string;
+  deployment: AiDeploymentKind;
   quantity: Decimal;
 }
 
@@ -96,16 +107,26 @@ export function buildBillableUsage(
   // streaming audio-seconds in the rollup must never leak into billing.
   if (capability === AiCapability.STT) replacedUnits.add(AiUsageUnit.AUDIO_SECOND);
 
-  const byKey = new Map<string, { day: Date; unit: AiUsageUnit; quantity: Decimal }>();
-  const keyOf = (day: Date, unit: AiUsageUnit): string => `${truncateToUtcDay(day).getTime()}::${unit}`;
+  const byKey = new Map<string, { day: Date; unit: AiUsageUnit; provider: string; deployment: AiDeploymentKind; quantity: Decimal }>();
+  // (provider, deployment) are part of the key so a deduction only ever cancels
+  // the SAME funded vendor's usage — subtracting guardrail's self-hosted LLM
+  // tokens from a tenant's CLOUD bucket would understate premium-rated overage.
+  const keyOf = (day: Date, unit: AiUsageUnit, provider: string, deployment: AiDeploymentKind): string =>
+    `${truncateToUtcDay(day).getTime()}::${unit}::${provider}::${deployment}`;
 
   const add = (entry: DayUnitSum, sign: 1 | -1): void => {
     if (!billableUnits.has(entry.unit)) return;
     const day = truncateToUtcDay(entry.day);
-    const key = keyOf(day, entry.unit);
+    const key = keyOf(day, entry.unit, entry.provider, entry.deployment);
     const existing = byKey.get(key);
     const delta = sign === 1 ? entry.quantity : entry.quantity.negated();
-    byKey.set(key, { day, unit: entry.unit, quantity: (existing?.quantity ?? new Decimal(0)).plus(delta) });
+    byKey.set(key, {
+      day,
+      unit: entry.unit,
+      provider: entry.provider,
+      deployment: entry.deployment,
+      quantity: (existing?.quantity ?? new Decimal(0)).plus(delta),
+    });
   };
 
   for (const entry of rollups) {
@@ -119,6 +140,12 @@ export function buildBillableUsage(
 
   return [...byKey.values()]
     .filter((entry) => entry.quantity.greaterThan(0)) // clamp — a deduction can never drive billable usage negative
-    .sort((a, b) => a.day.getTime() - b.day.getTime() || unitOrder[a.unit] - unitOrder[b.unit])
-    .map((entry) => ({ day: entry.day, unit: entry.unit, quantity: entry.quantity }));
+    .sort(
+      (a, b) =>
+        a.day.getTime() - b.day.getTime() ||
+        unitOrder[a.unit] - unitOrder[b.unit] ||
+        (a.deployment < b.deployment ? -1 : a.deployment > b.deployment ? 1 : 0) ||
+        (a.provider < b.provider ? -1 : a.provider > b.provider ? 1 : 0),
+    )
+    .map((entry) => ({ day: entry.day, unit: entry.unit, provider: entry.provider, deployment: entry.deployment, quantity: entry.quantity }));
 }

@@ -142,18 +142,28 @@ Auditing the seed against the decision found the **structural posture already co
 
 All three are now **locked by a seed-invariant guard**, `seed/__tests__/managed-asr-addon-posture.test.ts` (mutation-verified: flipping the SYSTEM `azure-speech` connection to `enabled: true` fails it). Enabling a SYSTEM managed-ASR connection *with a platform key* is precisely the change that would convert managed ASR from a tenant-funded add-on into a platform-funded default, and it now cannot happen silently.
 
-**What is NOT possible today — the add-on cannot be billed at a premium.** `BillingService.prefetchSellRates` resolves SELL rates with `provider: null, model: null` hard-coded (`billing.service.ts:564`), by design: overage is pooled per capability so the pure rating engine can stay synchronous. Consequences:
+### 6.3 Provider-aware rating — IMPLEMENTED (owner chose self-hosted-first)
 
-- Every SELL overage row is provider-agnostic, so **managed-ASR overage bills at the same rate as self-hosted** (`STT/SESSION_SECOND`).
-- Seeding a provider-keyed SELL row (`provider: 'azure-speech'`) would be **dead configuration** — the price book resolves that dimension, but the invoice engine never passes it. No such row was added, deliberately.
+The add-on could not carry a platform margin, because `BillingService.prefetchSellRates` resolved SELL rates with `provider: null` hard-coded — so a provider-keyed premium row would have been dead configuration. **Owner decision 2026-08-08: allowance allocation is SELF-HOSTED-FIRST**, and the engine now implements it.
 
-So today the add-on monetizes **only through BYOK** (tenant funds its own managed provider; usage metered, invoice zero-rated — D14). That is a coherent product: *"managed ASR is available on your own key."* Charging a platform margin on managed ASR needs provider-aware rating, which is a real engine change, not a seed row:
+**The allocation order is `SELF_HOSTED → BYOK → CLOUD`,** and each position is load-bearing:
 
-1. Split the per-capability usage buckets by `provider` (the daily rollup already carries it).
-2. Resolve a SELL rate per `(provider, unit, day)`.
-3. **Decide how the included allowance is allocated across providers** — cheapest-first, self-hosted-first, or pro-rata. This is a customer-visible fairness choice, not an implementation detail, and it is the reason this is not a mechanical change.
+| Tier | Position | Why |
+|---|---|---|
+| `SELF_HOSTED` | first | ~$0.028/consultation. Letting the bundled allowance absorb the cheap usage is what pushes expensive usage into overage. |
+| `BYOK` | middle | Costs the platform **nothing** (the tenant funds it) — so it should not displace self-hosted from the allowance, but it must also never be rated at a managed premium. `prefetchSellRates` resolves the **provider-agnostic baseline** for BYOK deliberately: a premium recovers platform COGS, and on a tenant's own key the platform bears none. |
+| `CLOUD` | last | ~$0.37/consultation. Spills into overage, where the provider-keyed premium row recovers the COGS. **This is the add-on being sold.** |
 
-Filed as decision #8.
+**This changes attribution only.** Total overage is `max(0, total − allowance)` under any ordering; the tiers decide *which* usage is the overage and therefore *at which rate* it prices. The property test (250 randomized scenarios) now varies deployment across all three tiers and re-proves that invariant.
+
+**What it took** (the reason this was not a seed row):
+
+1. **`deployment` joins the rollup grain** — schema + migration `20260808120000_task_638_rollup_deployment_dimension`, drainer, unique tuple. `provider` alone cannot answer it: the same `azure-speech` slug is CLOUD on a platform key and BYOK on a tenant key.
+2. **`provider` + `deployment` survive into billing** — `DayUnitSum`/`DailyUnitQuantity` carry them, and the compensation aggregate (`sumDailyQuantitiesByOperation`) groups by them too. That last part is subtle and the tests caught it: the D16/OQ1 deductions *subtract from* rollup buckets, so if they don't agree on the key they cancel the wrong bucket.
+3. **Tiered consumption in `computeCapabilityOverage`**, chronological within each tier, pro-rata across `(unit, provider)` inside the crossing day.
+4. **Provider-keyed SELL rows** for `azure-speech` at **1,390µ** (5× the 278µ managed COST row) — now genuinely resolvable, so the add-on carries the ratified 80% margin instead of being subsidised at the self-hosted rate.
+
+Mutation-verified: reversing the tier order makes managed overage bill at the 500µ baseline instead of the 1,390µ premium, and the guard test fails.
 
 ---
 
@@ -165,4 +175,4 @@ Filed as decision #8.
 5. ⏳ **Self-hosted COST utilization assumption** (30/60/90%) → the self-hosted COST rows. **Not yet seeded.**
 6. ✅ ENTERPRISE stays unlimited (negotiated per contract).
 7. ✅ **Managed-fallback posture** — RESOLVED 2026-08-08: SYSTEM default stays self-hosted, managed ASR is an add-on. Locked by a seed-invariant guard (§6.2).
-8. ⏳ **New — provider-aware rating**, required before a managed-ASR add-on can carry a platform margin (§6.2). The open question is *how the included allowance is allocated across providers* (cheapest-first / self-hosted-first / pro-rata) — customer-visible, so it needs a decision before implementation. Until then the add-on is BYOK-only.
+8. ✅ **Provider-aware rating** — RESOLVED 2026-08-08: allowance allocation is **self-hosted-first** (`SELF_HOSTED → BYOK → CLOUD`). Implemented and mutation-verified (§6.3); managed ASR now bills at 1,390µ/session-second while BYOK stays on the baseline.

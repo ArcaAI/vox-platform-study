@@ -5,6 +5,7 @@ import Decimal from 'decimal.js';
 import { DataNotFoundException, SpendLimitExceededException } from '@arcaai/exceptions';
 import {
   AiCapability,
+  AiDeploymentKind,
   AiUsageRollupDailyRepository,
   AiUsageUnit,
   BillingAdjustmentEntity,
@@ -478,7 +479,16 @@ export class BillingService extends BaseService implements IBillingService {
     for (const capability of Object.values(AiCapability)) {
       const slices: DayUnitSum[] = rollups
         .filter((rollup) => rollup.capability === capability)
-        .map((rollup) => ({ day: rollup.bucketStart, unit: rollup.unit, quantity: new Decimal(String(rollup.quantitySum)) }));
+        .map((rollup) => ({
+          day: rollup.bucketStart,
+          unit: rollup.unit,
+          provider: rollup.provider,
+          // Pre-TASK-638 rows have no deployment; the column defaults to
+          // SELF_HOSTED, which is the conservative reading (consumes allowance
+          // first, never retroactively re-rated at a managed premium).
+          deployment: rollup.deployment ?? AiDeploymentKind.SELF_HOSTED,
+          quantity: new Decimal(String(rollup.quantitySum)),
+        }));
 
       const usage = buildBillableUsage(
         capability,
@@ -545,7 +555,7 @@ export class BillingService extends BaseService implements IBillingService {
     tenantId: string,
     capability: AiCapability,
     planTier: TenantPlan | null,
-    usage: ReadonlyArray<{ day: Date; unit: AiUsageUnit }>,
+    usage: ReadonlyArray<{ day: Date; unit: AiUsageUnit; provider: string; deployment: AiDeploymentKind }>,
   ): Promise<{ resolver: SellRateResolver; currenciesUsed: string[] }> {
     const rates = new Map<string, ResolvedSellRate | null>();
     const currencies = new Set<string>();
@@ -553,15 +563,19 @@ export class BillingService extends BaseService implements IBillingService {
     for (const bucket of usage) {
       if (!BILLABLE_UNITS[capability].includes(bucket.unit)) continue;
       const day = truncateToUtcDay(bucket.day);
-      const key = `${bucket.unit}::${day.getTime()}`;
+      const key = `${bucket.provider}::${bucket.unit}::${day.getTime()}`;
       if (rates.has(key)) continue;
 
+      // TASK-638: `provider` participates so a managed-vendor SELL row (more
+      // specific) prices above the provider-agnostic baseline. BYOK deliberately
+      // resolves the BASELINE — a managed premium recovers platform COGS, and on
+      // a tenant's own key the platform bears none.
       const price = await this.priceBook.resolveSellPrice({
         tenantId,
         capability,
         unit: bucket.unit,
         occurredAt: day,
-        provider: null,
+        provider: bucket.deployment === AiDeploymentKind.BYOK ? null : bucket.provider,
         model: null,
         contextBand: null,
         planTier,
@@ -576,7 +590,7 @@ export class BillingService extends BaseService implements IBillingService {
     }
 
     return {
-      resolver: (unit, day) => rates.get(`${unit}::${truncateToUtcDay(day).getTime()}`) ?? null,
+      resolver: (provider, unit, day) => rates.get(`${provider}::${unit}::${truncateToUtcDay(day).getTime()}`) ?? null,
       currenciesUsed: [...currencies],
     };
   }
