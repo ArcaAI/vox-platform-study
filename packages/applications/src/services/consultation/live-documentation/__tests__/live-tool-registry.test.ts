@@ -149,7 +149,7 @@ describe('NlpExtractionTool (C4-T4 + relocation parity)', () => {
     expect(body.text).toBe('TRANSCRIPT DELTA');
   });
 
-  it('authenticates the gateway→NLP hop with X-Service-Token (TASK-638 regression)', async () => {
+  it('authenticates the gateway→NLP hop with X-Service-Token (TASK-640 regression)', async () => {
     const post = vi.fn().mockResolvedValue({ data: { entities: [] } });
     const { deps } = makeDeps(post);
     deps.nlp.secretsService = { getSecretOptional: vi.fn().mockResolvedValue('nlp-token') } as never;

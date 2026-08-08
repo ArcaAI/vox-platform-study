@@ -1,4 +1,4 @@
-# TASK-638 — BUG: a failed live-summary generation publishes a SILENT EMPTY note
+# TASK-640 — BUG: a failed live-summary generation publishes a SILENT EMPTY note
 
 | | |
 |---|---|
@@ -9,7 +9,7 @@
 | **Branch** | dev-2.1 |
 | **Discovered by** | TASK-635 C6 e2e work (2026-08-08) — reproduced with a live stack, not by inspection |
 | **Related** | TASK-635 (live-agent architecture; §7 "Third pass"), TASK-613 (live pipeline provenance) |
-| **Ticket-number note** | `docs/archive/` cannot be enumerated (permission denied); highest in `docs/implementation/` is TASK-637. Renumber if an archived ticket ≥ 638 exists. |
+| **Ticket-number note** | Originally filed as TASK-638; **renumbered to 640** because a concurrent session had independently taken 638 (`TASK-638-Reference-Pricing-Model-Plans-And-Enforcement`) and 639 was also claimed. `docs/archive/` cannot be enumerated here (permission denied) — renumber again if an archived ticket ≥ 640 turns up. |
 
 ---
 
