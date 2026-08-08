@@ -16,6 +16,7 @@ import contextlib
 import functools
 import signal
 from datetime import timedelta
+from pathlib import Path
 from typing import Any
 
 from temporalio.worker import Worker
@@ -119,6 +120,47 @@ async def _sweep_model_caches_forever(
             logger.info("harness.worker.model_cache_swept", released=released)
 
 
+# Liveness heartbeat ────────────────────────────────────────────────────────
+#
+# The worker serves no HTTP, so it has no endpoint for a kubelet httpGet probe.
+# The alternative in this repo — stt-v2-worker's manifest — ships NO probes at
+# all, which means a wedged worker is never restarted. That is the gap this
+# closes (TASK-625 W-10), so it deliberately does not copy that pattern.
+#
+# Instead the worker touches a file on a timer and the manifest execs
+# `find <file> -mmin -1`. The file's MTIME is the signal: if the asyncio loop
+# wedges, the touch stops, the file ages out, and the probe fails. A probe that
+# merely checked the file EXISTS would pass forever after the first write and
+# detect nothing.
+#
+# Interval is 15s against a 60s probe window, so three consecutive misses are
+# needed before a restart — one slow tick under load does not kill the worker.
+HEARTBEAT_PATH = Path("/tmp/harness-worker-heartbeat")  # noqa: S108 - container-local, not shared
+_HEARTBEAT_INTERVAL_S = 15.0
+
+
+async def _write_heartbeat_forever(
+    path: Path = HEARTBEAT_PATH,
+    interval_s: float = _HEARTBEAT_INTERVAL_S,
+) -> None:
+    """Touch the liveness file on a timer; cancelled when the worker shuts down.
+
+    Writes BEFORE the first sleep so the file exists as soon as the worker is
+    running — otherwise the liveness probe races the first interval and can fail
+    a healthy worker during startup.
+
+    Never raises: a heartbeat write failure must not take down a worker that is
+    otherwise processing work correctly. A persistent failure ages the file out
+    and the probe restarts the pod, which is the intended outcome anyway.
+    """
+    while True:
+        try:
+            path.touch()
+        except OSError as exc:  # pragma: no cover - defensive
+            logger.warning("harness.worker.heartbeat_write_failed", error=str(exc))
+        await asyncio.sleep(interval_s)
+
+
 def _assert_claim_check_store_is_deployable(settings: Settings) -> None:
     """Refuse to start a deployed worker that would offload blobs to the fake store.
 
@@ -206,13 +248,15 @@ async def run_worker() -> None:
         max_concurrent_activities=settings.max_concurrent_activities,
     )
     sweeper = asyncio.create_task(_sweep_model_caches_forever())
+    heartbeat = asyncio.create_task(_write_heartbeat_forever())
     try:
         async with worker:
             await interrupt_event.wait()
     finally:
-        sweeper.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await sweeper
+        for task in (sweeper, heartbeat):
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
     logger.info("harness.worker.stopped")
 
 
