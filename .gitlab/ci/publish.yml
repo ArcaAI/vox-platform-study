@@ -149,3 +149,690 @@ publish-sdk:
     - if: $CI_COMMIT_TAG =~ /^SDK-/ || $CI_COMMIT_TAG =~ /^ALL-/
     # Back-compat: the legacy release-sdk branch still publishes.
     - if: $PIPELINE_TYPE == "release_sdk"
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Image signing + SBOM attestation — TASK-621 Wave C, C.2 + C.3
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# GOAL
+#   Every image this pipeline publishes carries (a) a cosign signature bound to
+#   its DIGEST and (b) a CycloneDX SBOM attached as an in-toto attestation to
+#   that same digest. Together they let the cluster answer "was this exact bag
+#   of bytes built by this pipeline, and what is in it?" at admission time —
+#   which is what the Kyverno policy in the deployment repo verifies (C.4,
+#   deployment/k8s/base/kyverno-verify-images.yaml).
+#
+# ── WHY BY DIGEST, NEVER BY TAG (finding SC-03) ──────────────────────────────
+#
+#   GitLab CE has no immutable container tags (Ultimate-only, and capped even
+#   there). A tag on this registry can be re-pushed to point at different bytes.
+#   So:
+#     * `cosign sign <repo>:<tag>`  signs whatever the tag means RIGHT NOW and
+#       is worthless the moment someone re-pushes it;
+#     * `cosign sign <repo>@sha256:...` signs content that cannot change.
+#   The tag is resolved to a digest EXACTLY ONCE per job (step 1 below) and
+#   every subsequent command uses that digest. Do not "simplify" this by
+#   passing $IMAGE straight to `cosign sign` — cosign will accept it, print a
+#   warning, and silently resolve the tag itself, reintroducing the race this
+#   step exists to remove.
+#
+# ── ⛔ BLOCKER: PUBLIC FULCIO DOES NOT TRUST THIS GITLAB INSTANCE ─────────────
+#
+#   Keyless signing works by handing a GitLab-minted OIDC ID token to Fulcio,
+#   which issues a short-lived signing certificate. Fulcio only accepts tokens
+#   from issuers on an explicit allow-list. Checked 2026-08-08 against
+#   https://raw.githubusercontent.com/sigstore/fulcio/main/config/identity/config.yaml:
+#
+#     * 22 entries in `oidc-issuers`; the GitLab-typed ones are exactly
+#       https://gitlab.com, https://dev.gitlab.org, https://ops.gitlab.net and
+#       https://gitlab.archlinux.org.
+#     * `https://git.taphuynh.dev` is NOT present, and the `meta-issuers`
+#       wildcards cover only AKS/GKE/EKS/CircleCI orgs/GitHub Actions — none of
+#       them match a self-hosted GitLab.
+#
+#   So `cosign sign` against the PUBLIC Sigstore will fail from this instance
+#   until one of the following is true (owner decision, TASK-621 §4 ⚙ 3):
+#     1. `https://git.taphuynh.dev` is added to public Fulcio's allow-list
+#        (upstream MR + a publicly reachable OIDC discovery document), or
+#     2. a private Sigstore (Fulcio + Rekor + CTLog + TUF root) is deployed and
+#        COSIGN_FULCIO_URL / COSIGN_REKOR_URL below are pointed at it — the job
+#        bodies do not change, only those two variables plus a
+#        `cosign initialize --mirror ... --root ...` step for the private TUF
+#        root, and the matching `rekor.url`/`roots` in the Kyverno policy.
+#
+#   This is why the jobs are gated on COSIGN_SIGNING_ENABLED (next section) and
+#   NOT on `allow_failure: true`. TASK-621 exists because every gate in this
+#   pipeline was built and then neutralised; a job that runs, fails, and is
+#   forgiven is exactly that pattern. A job that is explicitly not-yet-armed,
+#   with the blocking prerequisite named, is the pattern .gitlab/ci/vault.yml
+#   already uses for `VAULT_ADDR: ""`.
+#
+# ── ARMING THIS ──────────────────────────────────────────────────────────────
+#
+#   Settings → CI/CD → Variables → COSIGN_SIGNING_ENABLED = "true"
+#   (not masked, not a secret — it is a switch, exactly like VAULT_ADDR).
+#
+#   While it is unset every job below is `when: never`. The moment it is "true"
+#   they run and they BLOCK: no allow_failure anywhere in this section. Arm it
+#   only after step 1 or 2 above is done, and verify with:
+#
+#     cosign verify \
+#       --certificate-identity-regexp '^https://git\.taphuynh\.dev/arca/hope-v2//\.gitlab-ci\.yml@refs/(heads|tags)/.+$' \
+#       --certificate-oidc-issuer https://git.taphuynh.dev \
+#       --allow-http-registry --allow-insecure-registry \
+#       10.10.1.110:5050/arca/hope-v2/api@sha256:<digest>
+#
+#     cosign verify-attestation --type cyclonedx \
+#       --certificate-identity-regexp '...' --certificate-oidc-issuer ... \
+#       10.10.1.110:5050/arca/hope-v2/api@sha256:<digest>
+#
+# ── TIER ─────────────────────────────────────────────────────────────────────
+#
+#   Re-probed 2026-08-08 against THIS instance with POST /projects/6/ci/lint,
+#   the same method .gitlab/ci/vault.yml:11-27 used for Vault:
+#
+#     id_tokens: {SIGSTORE_ID_TOKEN: {aud: sigstore}}   -> valid: true
+#     artifacts: {reports: {cyclonedx: [...]}}          -> valid: true
+#     secrets:   {DB: {vault: ..., token: ...}}         -> valid: FALSE,
+#         "jobs:...config contains unknown keys: secrets"
+#
+#   So: `id_tokens` is available (Free-tier since 15.7) and is what these jobs
+#   use. The native `secrets:` / GitLab-managed-signing-key flow is still
+#   Premium/Ultimate and is rejected by this instance's linter today — do not
+#   migrate to it without re-running the probe.
+#
+#   `artifacts:reports:cyclonedx` DOES lint here (only the dependency-list UI it
+#   feeds is Ultimate-gated), so it is declared alongside the plain artifact
+#   path. It costs nothing on CE and lights up automatically if the project ever
+#   moves to Ultimate. The authoritative copy of the SBOM is still the registry
+#   attestation — that is where a verifier at admission time actually looks.
+#
+# ── FOLLOWING GitLab'S OWN TEMPLATE ──────────────────────────────────────────
+#
+#   lib/gitlab/ci/templates/Cosign.gitlab-ci.yml (read 2026-08-08) is:
+#
+#     variables:  { COSIGN_YES: "true" }
+#     id_tokens:  { SIGSTORE_ID_TOKEN: { aud: sigstore } }
+#     after_script:
+#       - apk add --update cosign
+#       - IMAGE_DIGEST="$(docker inspect --format='{{index .RepoDigests 0}}' ...)"
+#       - cosign sign "$IMAGE_DIGEST"
+#
+#   Kept: COSIGN_YES, the `aud: sigstore` id_token, sign-by-digest.
+#   Changed, deliberately:
+#     * a PINNED cosign image instead of `apk add --update cosign` — an
+#       unpinned package install inside the job that establishes image
+#       provenance is self-defeating;
+#     * `cosign triangulate --type digest` instead of `docker inspect` —
+#       .build-template pushes with buildx and this job never holds the image
+#       locally, so there is no local RepoDigest to inspect;
+#     * `script:` not `after_script:` — an after_script failure does NOT fail
+#       the job, which would make this a non-gate.
+#
+# ── WHAT COULD NOT BE VERIFIED WHEN THIS WAS WRITTEN ─────────────────────────
+#
+#   No pipeline was run, no signature was produced, and no attestation was
+#   pushed. Tool behaviour WAS verified locally against the pinned images
+#   (cosign v2.6.5 `triangulate --type digest` returns `repo@sha256:...`;
+#   `attest --type` accepts `cyclonedx`; trivy 0.58.2 `--format cyclonedx`
+#   emits CycloneDX 1.6 carrying the resolved RepoDigest/RepoTag). End-to-end
+#   behaviour is unproven until COSIGN_SIGNING_ENABLED is armed.
+#
+# ══════════════════════════════════════════════════════════════════════════════
+
+# ── Shared gating ────────────────────────────────────────────────────────────
+# Referenced FIRST by every job below, so both guards win before any service
+# rule can match. Each job then appends its own `.rules-<svc>` fragment — the
+# SAME fragment its `build-*` job uses, so a signing job can never be scheduled
+# for an image that was not built (and never silently skipped for one that was).
+
+.image-signing-guard:
+  rules:
+    # Guard 1 — the arming switch (see "ARMING THIS" above).
+    - if: $COSIGN_SIGNING_ENABLED != "true"
+      when: never
+    # Guard 2 — pipeline types that build no images at all. Mirrors the leading
+    # `when: never` clause every scan-* job in .gitlab/ci/scan.yml carries.
+    # NOTE: `.skip-on-dev-2-1` is deliberately NOT referenced here. Builds DO
+    # run on dev-2.1 (.build-common-rules admits PIPELINE_TYPE == "dev"), and an
+    # image that is built but never signed is precisely the gap this closes.
+    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "release_playground" || $PIPELINE_TYPE == "main"
+      when: never
+
+# ── C.3 — CycloneDX SBOM generation ──────────────────────────────────────────
+# Reuses the Trivy image already pinned by .trivy-scan (.gitlab/ci/scan.yml:14)
+# rather than adding syft: one fewer tool in the supply chain, and 0.58.2's
+# `--format cyclonedx` was confirmed to emit CycloneDX 1.6 with the image's
+# RepoDigest and RepoTag recorded in metadata.component.
+
+.cyclonedx-sbom:
+  stage: publish
+  tags: [build]
+  image:
+    name: aquasec/trivy:0.58.2
+    entrypoint: [""]
+  timeout: 30m
+  variables:
+    TRIVY_USERNAME: $CI_REGISTRY_USER
+    TRIVY_PASSWORD: $CI_REGISTRY_PASSWORD
+    TRIVY_INSECURE: "true"
+    # Defaults to the dotenv IMAGE published by the matching build-* job.
+    # Overridden only by sbom-python-base (see its comment).
+    SIGN_IMAGE: $IMAGE
+    SBOM_FILE: sbom.cdx.json
+  script:
+    - |
+      set -eu
+
+      if [ -z "${SIGN_IMAGE:-}" ]; then
+        echo "SIGN_IMAGE is empty."
+        echo "It normally comes from the build-* job's dotenv report (IMAGE)."
+        echo "A build job that overrides .build-template's script without also"
+        echo "writing build.env publishes no IMAGE — set SIGN_IMAGE explicitly."
+        exit 1
+      fi
+
+      echo "Generating CycloneDX SBOM for: $SIGN_IMAGE"
+      trivy image \
+        --quiet \
+        --no-progress \
+        --format cyclonedx \
+        --output "$SBOM_FILE" \
+        "$SIGN_IMAGE"
+
+      # Two assertions, because "a file exists" is not "an SBOM was produced".
+      grep -qF '"bomFormat":"CycloneDX"' "$SBOM_FILE" \
+        || { echo "Output is not a CycloneDX document."; exit 1; }
+      # Trivy records the reference it was handed as metadata.component.name
+      # and as the aquasecurity:trivy:RepoTag property. If it is absent, this
+      # SBOM describes something other than the image about to be signed.
+      grep -qF "$SIGN_IMAGE" "$SBOM_FILE" \
+        || { echo "SBOM does not reference $SIGN_IMAGE."; exit 1; }
+
+      echo "SBOM OK: $(wc -c < "$SBOM_FILE") bytes"
+  artifacts:
+    paths:
+      - sbom.cdx.json
+    reports:
+      # Lints clean on this CE instance (probe above); surfaces in the
+      # dependency list only on Ultimate. Harmless either way.
+      cyclonedx:
+        - sbom.cdx.json
+    expire_in: 90 days
+  allow_failure: false
+
+# ── C.2 + C.3 — keyless signature, then SBOM attestation on the same digest ──
+
+.cosign-sign-attest:
+  stage: publish
+  tags: [build]
+  image:
+    # Pinned BY DIGEST, not by tag — the whole point of this section is that a
+    # tag is not an identity. Tag shown for humans; the digest is what resolves.
+    # gcr.io/projectsigstore/cosign:v2.6.5-dev, an OCI index covering
+    # amd64/arm64/arm/s390x/ppc64le (verified 2026-08-08).
+    #
+    # The `-dev` suffix is REQUIRED and is not a pre-release marker: the plain
+    # gcr.io/projectsigstore/cosign:v2.6.5 image is distroless with no shell
+    # (verified: `exec: "sh": executable file not found in $PATH`), so GitLab
+    # cannot run a `script:` in it. `-dev` is the same cosign binary on a
+    # busybox base.
+    name: gcr.io/projectsigstore/cosign:v2.6.5-dev@sha256:76029a0246bcfde96caa72469a62a1094f6e0978dc3f537f5cafd4c5f6c6a417
+    entrypoint: [""]
+  timeout: 20m
+  # A half-signed image (signature pushed, attestation not) is worse than an
+  # unsigned one: it satisfies a signature check while carrying no SBOM.
+  interruptible: false
+  id_tokens:
+    # Consumed by cosign automatically via $SIGSTORE_ID_TOKEN. `aud: sigstore`
+    # is what Fulcio requires; do not rename the variable.
+    SIGSTORE_ID_TOKEN:
+      aud: sigstore
+  variables:
+    COSIGN_YES: "true"
+    # Point these at a private Sigstore if the public one is unusable — see the
+    # BLOCKER section above. Defaults are cosign's own public endpoints.
+    COSIGN_FULCIO_URL: "https://fulcio.sigstore.dev"
+    COSIGN_REKOR_URL: "https://rekor.sigstore.dev"
+    # Credentials are handed to cosign through a docker config file rather than
+    # --registry-username/--registry-password so the token never appears in the
+    # process argv. go-containerregistry (cosign's registry layer) honours
+    # $DOCKER_CONFIG. The cosign image runs as `nonroot`, so use /tmp.
+    DOCKER_CONFIG: /tmp/.docker
+    SIGN_IMAGE: $IMAGE
+    SBOM_FILE: sbom.cdx.json
+  script:
+    - |
+      set -eu
+
+      if [ -z "${SIGN_IMAGE:-}" ]; then
+        echo "SIGN_IMAGE is empty — see the same check in .cyclonedx-sbom."
+        exit 1
+      fi
+      if [ ! -s "$SBOM_FILE" ]; then
+        echo "$SBOM_FILE is missing or empty."
+        echo "It is produced by this service's sbom-* job; check that job's"
+        echo "artifacts reached here via needs: [{ ..., artifacts: true }]."
+        exit 1
+      fi
+
+      # ── Registry credentials ──────────────────────────────────────────────
+      # Never wrap any of this in `set -x`: values expanded at runtime are NOT
+      # masked by GitLab (masking only covers project-settings variables) —
+      # the same trap .gitlab/ci/vault.yml:195-196 documents.
+      mkdir -p "$DOCKER_CONFIG"
+      auth=$(printf '%s:%s' "$CI_REGISTRY_USER" "$CI_REGISTRY_PASSWORD" | base64 | tr -d '\n')
+      printf '{"auths":{"%s":{"auth":"%s"}}}' "$REGISTRY" "$auth" > "$DOCKER_CONFIG/config.json"
+      unset auth
+
+      # The HOPE registry is plain HTTP on the LAN (REGISTRY=10.10.1.110:5050 in
+      # .gitlab-ci.yml; the buildx builder is configured http=true/insecure=true
+      # in templates.yml .buildx-registry-login). cosign refuses both by default.
+      REG_OPTS="--allow-http-registry --allow-insecure-registry"
+
+      # ── Step 1 — resolve the tag to a digest, ONCE ────────────────────────
+      # Everything after this line uses $digest_ref. Nothing is signed by tag.
+      digest_ref=$(cosign triangulate --type digest $REG_OPTS "$SIGN_IMAGE")
+      case "$digest_ref" in
+        *@sha256:*) : ;;
+        *)
+          echo "Could not resolve $SIGN_IMAGE to a digest (got: '$digest_ref')."
+          exit 1
+          ;;
+      esac
+      echo "Resolved $SIGN_IMAGE"
+      echo "      -> $digest_ref"
+
+      # ── Step 2 — C.2: keyless signature on the digest ─────────────────────
+      echo ""
+      echo "Signing (keyless, Fulcio=$COSIGN_FULCIO_URL Rekor=$COSIGN_REKOR_URL)"
+      cosign sign \
+        $REG_OPTS \
+        --fulcio-url "$COSIGN_FULCIO_URL" \
+        --rekor-url "$COSIGN_REKOR_URL" \
+        "$digest_ref"
+
+      # ── Step 3 — C.3: CycloneDX SBOM as an in-toto attestation ────────────
+      # Same $digest_ref as step 2 — the attestation subject is the signed
+      # artifact by construction, not by convention.
+      echo ""
+      echo "Attesting CycloneDX SBOM ($(wc -c < "$SBOM_FILE") bytes)"
+      cosign attest \
+        --type cyclonedx \
+        --predicate "$SBOM_FILE" \
+        --replace \
+        $REG_OPTS \
+        --fulcio-url "$COSIGN_FULCIO_URL" \
+        --rekor-url "$COSIGN_REKOR_URL" \
+        "$digest_ref"
+
+      echo ""
+      echo "Signed + attested: $digest_ref"
+  allow_failure: false
+
+# ── Per-image jobs ───────────────────────────────────────────────────────────
+# One sbom-* / sign-* pair per build-* job in .gitlab/ci/build.yml (13 images).
+# Two jobs, not one, because no single image ships both trivy and cosign and
+# fetching the missing binary at job time would put an unpinned download inside
+# the job that establishes provenance.
+#
+# Each pair's `rules:` are the SAME `.rules-<svc>` fragment its build-* job
+# uses. Cross-check BOTH directions when adding an image: a signing job gated
+# differently from its build either never runs, or waits forever on a job that
+# never ran (the failure mode .gitlab/ci/scan.yml:226-229 already records).
+
+# --- Shared Python base image ---
+# build-python-base OVERRIDES .build-template's script and never writes
+# build.env, so it publishes NO dotenv IMAGE — $IMAGE would be empty here.
+# The reference is reconstructed from the tags that job actually pushes
+# (build.yml:90-100). Do not copy this override to any other pair.
+sbom-python-base:
+  extends: .cyclonedx-sbom
+  needs:
+    - job: build-python-base
+  variables:
+    SIGN_IMAGE: $REGISTRY/$CI_PROJECT_PATH/hope-python-base:$CI_COMMIT_SHA
+  rules:
+    - !reference [.image-signing-guard, rules]
+    - !reference [.build-common-rules, rules]
+    - if: $CI_COMMIT_TAG =~ /^(SMR|STT|GUARD|TTS|HARNESS|NLP|ALL)-/
+
+sign-python-base:
+  extends: .cosign-sign-attest
+  needs:
+    - job: build-python-base
+    - job: sbom-python-base
+      artifacts: true
+  variables:
+    SIGN_IMAGE: $REGISTRY/$CI_PROJECT_PATH/hope-python-base:$CI_COMMIT_SHA
+  rules:
+    - !reference [.image-signing-guard, rules]
+    - !reference [.build-common-rules, rules]
+    - if: $CI_COMMIT_TAG =~ /^(SMR|STT|GUARD|TTS|HARNESS|NLP|ALL)-/
+
+# --- API gateway ---
+sbom-api:
+  extends: .cyclonedx-sbom
+  needs:
+    - job: build-api
+      artifacts: true
+  rules:
+    - !reference [.image-signing-guard, rules]
+    - !reference [.rules-api, rules]
+
+sign-api:
+  extends: .cosign-sign-attest
+  needs:
+    - job: build-api
+      artifacts: true
+    - job: sbom-api
+      artifacts: true
+  rules:
+    - !reference [.image-signing-guard, rules]
+    - !reference [.rules-api, rules]
+
+# --- Admin console ---
+sbom-admin-console:
+  extends: .cyclonedx-sbom
+  needs:
+    - job: build-admin-console
+      artifacts: true
+  rules:
+    - !reference [.image-signing-guard, rules]
+    - !reference [.rules-admin-console, rules]
+
+sign-admin-console:
+  extends: .cosign-sign-attest
+  needs:
+    - job: build-admin-console
+      artifacts: true
+    - job: sbom-admin-console
+      artifacts: true
+  rules:
+    - !reference [.image-signing-guard, rules]
+    - !reference [.rules-admin-console, rules]
+
+# --- Compat playground ---
+sbom-compat-playground:
+  extends: .cyclonedx-sbom
+  needs:
+    - job: build-compat-playground
+      artifacts: true
+  rules:
+    - !reference [.image-signing-guard, rules]
+    - !reference [.rules-compat-playground, rules]
+
+sign-compat-playground:
+  extends: .cosign-sign-attest
+  needs:
+    - job: build-compat-playground
+      artifacts: true
+    - job: sbom-compat-playground
+      artifacts: true
+  rules:
+    - !reference [.image-signing-guard, rules]
+    - !reference [.rules-compat-playground, rules]
+
+# --- NLP ---
+sbom-nlp:
+  extends: .cyclonedx-sbom
+  needs:
+    - job: build-nlp
+      artifacts: true
+  rules:
+    - !reference [.image-signing-guard, rules]
+    - !reference [.rules-nlp, rules]
+
+sign-nlp:
+  extends: .cosign-sign-attest
+  needs:
+    - job: build-nlp
+      artifacts: true
+    - job: sbom-nlp
+      artifacts: true
+  rules:
+    - !reference [.image-signing-guard, rules]
+    - !reference [.rules-nlp, rules]
+
+# --- Guardrail ---
+sbom-guardrail:
+  extends: .cyclonedx-sbom
+  needs:
+    - job: build-guardrail
+      artifacts: true
+  rules:
+    - !reference [.image-signing-guard, rules]
+    - !reference [.rules-guardrail, rules]
+
+sign-guardrail:
+  extends: .cosign-sign-attest
+  needs:
+    - job: build-guardrail
+      artifacts: true
+    - job: sbom-guardrail
+      artifacts: true
+  rules:
+    - !reference [.image-signing-guard, rules]
+    - !reference [.rules-guardrail, rules]
+
+# --- SMR ---
+sbom-smr:
+  extends: .cyclonedx-sbom
+  needs:
+    - job: build-smr
+      artifacts: true
+  rules:
+    - !reference [.image-signing-guard, rules]
+    - !reference [.rules-smr, rules]
+
+sign-smr:
+  extends: .cosign-sign-attest
+  needs:
+    - job: build-smr
+      artifacts: true
+    - job: sbom-smr
+      artifacts: true
+  rules:
+    - !reference [.image-signing-guard, rules]
+    - !reference [.rules-smr, rules]
+
+# --- Harness (FastAPI) ---
+sbom-harness:
+  extends: .cyclonedx-sbom
+  needs:
+    - job: build-harness
+      artifacts: true
+  rules:
+    - !reference [.image-signing-guard, rules]
+    - !reference [.rules-harness, rules]
+
+sign-harness:
+  extends: .cosign-sign-attest
+  needs:
+    - job: build-harness
+      artifacts: true
+    - job: sbom-harness
+      artifacts: true
+  rules:
+    - !reference [.image-signing-guard, rules]
+    - !reference [.rules-harness, rules]
+
+# --- Harness (Temporal worker — same Dockerfile, `worker` stage) ---
+sbom-harness-worker:
+  extends: .cyclonedx-sbom
+  needs:
+    - job: build-harness-worker
+      artifacts: true
+  rules:
+    - !reference [.image-signing-guard, rules]
+    - !reference [.rules-harness, rules]
+
+sign-harness-worker:
+  extends: .cosign-sign-attest
+  needs:
+    - job: build-harness-worker
+      artifacts: true
+    - job: sbom-harness-worker
+      artifacts: true
+  rules:
+    - !reference [.image-signing-guard, rules]
+    - !reference [.rules-harness, rules]
+
+# --- TTS ---
+sbom-tts:
+  extends: .cyclonedx-sbom
+  needs:
+    - job: build-tts
+      artifacts: true
+  rules:
+    - !reference [.image-signing-guard, rules]
+    - !reference [.rules-tts, rules]
+
+sign-tts:
+  extends: .cosign-sign-attest
+  needs:
+    - job: build-tts
+      artifacts: true
+    - job: sbom-tts
+      artifacts: true
+  rules:
+    - !reference [.image-signing-guard, rules]
+    - !reference [.rules-tts, rules]
+
+# --- STT ML runtime (GPU image; see C-18 — Trivy scans layers, not CUDA) ---
+sbom-stt:
+  extends: .cyclonedx-sbom
+  needs:
+    - job: build-stt
+      artifacts: true
+  rules:
+    - !reference [.image-signing-guard, rules]
+    - !reference [.rules-stt, rules]
+
+sign-stt:
+  extends: .cosign-sign-attest
+  needs:
+    - job: build-stt
+      artifacts: true
+    - job: sbom-stt
+      artifacts: true
+  rules:
+    - !reference [.image-signing-guard, rules]
+    - !reference [.rules-stt, rules]
+
+# --- STT worker ---
+sbom-stt-worker:
+  extends: .cyclonedx-sbom
+  needs:
+    - job: build-stt-worker
+      artifacts: true
+  rules:
+    - !reference [.image-signing-guard, rules]
+    - !reference [.rules-stt, rules]
+
+sign-stt-worker:
+  extends: .cosign-sign-attest
+  needs:
+    - job: build-stt-worker
+      artifacts: true
+    - job: sbom-stt-worker
+      artifacts: true
+  rules:
+    - !reference [.image-signing-guard, rules]
+    - !reference [.rules-stt, rules]
+
+# --- Database (Prisma migrations image — runs as the ArgoCD PreSync Job) ---
+sbom-database:
+  extends: .cyclonedx-sbom
+  needs:
+    - job: build-database
+      artifacts: true
+  rules:
+    - !reference [.image-signing-guard, rules]
+    - !reference [.rules-database, rules]
+
+sign-database:
+  extends: .cosign-sign-attest
+  needs:
+    - job: build-database
+      artifacts: true
+    - job: sbom-database
+      artifacts: true
+  rules:
+    - !reference [.image-signing-guard, rules]
+    - !reference [.rules-database, rules]
+
+# --- Qdrant collection bootstrap ---
+# No `.rules-qdrant-init` fragment exists; build-qdrant-init is gated by
+# .build-common-rules plus the ALL- release tag alone (build.yml), so this
+# mirrors it exactly.
+sbom-qdrant-init:
+  extends: .cyclonedx-sbom
+  needs:
+    - job: build-qdrant-init
+      artifacts: true
+  rules:
+    - !reference [.image-signing-guard, rules]
+    - !reference [.build-common-rules, rules]
+    - if: $CI_COMMIT_TAG =~ /^ALL-/
+
+sign-qdrant-init:
+  extends: .cosign-sign-attest
+  needs:
+    - job: build-qdrant-init
+      artifacts: true
+    - job: sbom-qdrant-init
+      artifacts: true
+  rules:
+    - !reference [.image-signing-guard, rules]
+    - !reference [.build-common-rules, rules]
+    - if: $CI_COMMIT_TAG =~ /^ALL-/
+
+# ══════════════════════════════════════════════════════════════════════════════
+# C.5 — registry retention: stop the 90-day reap eating release tags
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# NOT a CI job. This is a GitLab PROJECT SETTING and is ⚙ OWNER-APPLIED; it is
+# recorded here because it protects the very digests the jobs above sign.
+#
+# ⚠ DE-DUPLICATE FIRST. TASK-619 step C.11 claims this same change. Exactly one
+#   ticket may execute it — whichever lands first runs the command, the other
+#   links to it. Do not run it twice "to be safe": the second PUT would replace
+#   whatever value the first one set.
+#
+# CURRENT STATE (TASK-621 C-20/F12, live GET /projects/6 on 2026-08-07):
+#   cadence: 7d · keep_n: 25 · older_than: 90d · name_regex: ".*" ·
+#   name_regex_keep: ABSENT
+# Every tag matches the reap regex, including release tags. Once name_regex_keep
+# exempts them they also stop counting toward keep_n, so no keep_n bump is
+# needed.
+#
+# ⚠ THE REGEX IN THE TICKET TEXT WOULD BE A SILENT NO-OP.
+#   GitLab docs (reduce_container_registry_storage, read 2026-08-08): "Both keep
+#   and remove regex patterns are automatically surrounded with \A and \Z
+#   anchors, so you do not need to include them."
+#   So `^(v|prod-|production-)` is evaluated as `\A^(v|prod-|production-)\Z` and
+#   matches only the literal strings "v", "prod-" and "production-" — i.e. it
+#   protects nothing, while looking like it protects everything. The trailing
+#   `.*` below is what makes it match `v1.2.3`, `prod-a1b2c3d4`, etc.
+#
+# RUN (project owner / maintainer token with `api` scope):
+#
+#   curl --request PUT \
+#        --header "PRIVATE-TOKEN: <owner-token>" \
+#        --header "Content-Type: application/json" \
+#        --data '{"container_expiration_policy_attributes":{"name_regex_keep":"(v|prod-|production-).*"}}' \
+#        "https://git.taphuynh.dev/api/v4/projects/6"
+#
+#   # glab equivalent
+#   glab api --method PUT projects/6 \
+#     --field 'container_expiration_policy_attributes[name_regex_keep]=(v|prod-|production-).*'
+#
+# VERIFY (must echo the value back; a PUT that silently dropped the attribute
+# returns 200 with the old policy, so checking the response body is the test):
+#
+#   curl --silent --header "PRIVATE-TOKEN: <owner-token>" \
+#        "https://git.taphuynh.dev/api/v4/projects/6" \
+#     | python3 -c 'import json,sys; print(json.load(sys.stdin)["container_expiration_policy"])'
+#
+# ══════════════════════════════════════════════════════════════════════════════
