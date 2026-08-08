@@ -232,13 +232,34 @@ build-harness:
     - job: warm-up-base-images
       optional: true
     - job: build-python-base
+    # NOT optional (TASK-625 1.3): with `optional: true` the image builds even
+    # when the harness suite never ran, so a red or absent test could not stop a
+    # publish. The suite is hermetic (TASK-414), so it runs wherever the build does.
     - job: test-harness
-      optional: true
   variables:
     SERVICE_NAME: harness
     DOCKER_CONTEXT: "."
     DOCKERFILE: apps/harness/Dockerfile
     BUILD_TARGET: production
+    BUILD_ARGS: "--build-arg BASE_IMAGE=$REGISTRY/$CI_PROJECT_PATH/hope-python-base:$CI_COMMIT_SHA"
+  rules:
+    - !reference [.build-common-rules, rules]
+    - if: $CI_COMMIT_TAG =~ /^HARNESS-/ || $CI_COMMIT_TAG =~ /^ALL-/
+
+build-harness-worker:
+  extends: .build-template
+  needs:
+    - job: warm-up-base-images
+      optional: true
+    - job: build-python-base
+    - job: test-harness
+  variables:
+    SERVICE_NAME: harness-worker
+    DOCKER_CONTEXT: "."
+    DOCKERFILE: apps/harness/Dockerfile
+    # Same Dockerfile, `worker` stage — the Temporal worker is a separate
+    # PROCESS, not a separate codebase (06-python-services.md §Temporal).
+    BUILD_TARGET: worker
     BUILD_ARGS: "--build-arg BASE_IMAGE=$REGISTRY/$CI_PROJECT_PATH/hope-python-base:$CI_COMMIT_SHA"
   rules:
     - !reference [.build-common-rules, rules]

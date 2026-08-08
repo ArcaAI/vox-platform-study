@@ -230,6 +230,19 @@ scan-python-base:
   rules:
     - !reference [.build-common-rules, rules]
 
+scan-harness-worker:
+  extends: .trivy-scan
+  needs:
+    - job: build-harness-worker
+      artifacts: true
+  variables:
+    SCAN_IMAGE: $IMAGE
+  rules:
+    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "release_playground" || $PIPELINE_TYPE == "main"
+      when: never
+    - !reference [.skip-on-dev-2-1, rules]
+    - !reference [.rules-harness, rules]
+
 # ── Gitleaks scan (Phase 0 Item 6) — runs on ALL pipelines, MUST pass ────────
 
 scan-gitleaks:

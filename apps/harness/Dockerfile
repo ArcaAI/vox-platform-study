@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 # ── Harness Service ─────────────────────────────────────────────────────────
-# Multi-stage build: builder → production
+# Multi-stage build: builder → production → worker
 #
 # Built from the REPO ROOT context so it consumes the single uv workspace lock
 # (/uv.lock), resolving identical dependency versions as every other HOPE Python
@@ -106,3 +106,26 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
 EXPOSE 8866
 
 ENTRYPOINT ["python", "-m", "uvicorn", "harness.main:app", "--host", "0.0.0.0", "--port", "8866"]
+
+
+# ── Worker stage ────────────────────────────────────────────────────────────
+# The Temporal worker: same image contents as `production`, different process.
+#
+# It is a SEPARATE process by design — apps/harness's FastAPI app connects to
+# Temporal best-effort and must come up even when Temporal is down, while the
+# worker hard-requires it (06-python-services.md §Temporal). Running both in one
+# container would couple those lifecycles.
+#
+# ENTRYPOINT is overridden, not CMD: the production stage sets ENTRYPOINT, so a
+# CMD here would be appended as ARGUMENTS to uvicorn rather than replacing it —
+# the container would start the API again and no worker would ever run.
+#
+# No EXPOSE 8866 and no HTTP healthcheck: the worker serves no HTTP API. It
+# inherits the production stage's HEALTHCHECK, which probes the API's
+# /health/live, so that is cleared explicitly — otherwise every worker container
+# reports unhealthy forever against a port nothing is listening on.
+FROM production AS worker
+
+HEALTHCHECK NONE
+
+ENTRYPOINT ["python", "-m", "harness.temporal.worker"]
