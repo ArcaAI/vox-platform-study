@@ -74,16 +74,29 @@ export function VersionsPanel({ template }: { template: PromptTemplate }) {
             {versions.map((version) => (
               <li key={version.id} className="flex min-h-8 items-center gap-3 text-sm">
                 <span className="w-8 shrink-0 font-mono text-xs">v{version.versionNumber}</span>
-                <span className="w-16 shrink-0">
+                {/*
+                 * Two DIFFERENT facts, deliberately shown side by side:
+                 * "draft" is the current editable content row, "serving" is
+                 * the snapshot pinned at approval \u2014 which is what clinical
+                 * resolution actually runs. They diverge whenever a template
+                 * is edited after approval.
+                 */}
+                <span className="flex w-32 shrink-0 gap-1">
+                  {version.versionNumber === template.approvedVersionNumber ? (
+                    <Badge variant="default" className="text-[10px]">
+                      serving
+                    </Badge>
+                  ) : null}
                   {version.versionNumber === template.currentVersionNumber ? (
                     <Badge variant="secondary" className="text-[10px]">
-                      active
+                      draft
                     </Badge>
-                  ) : (
+                  ) : null}
+                  {version.versionNumber !== template.approvedVersionNumber && version.versionNumber !== template.currentVersionNumber ? (
                     <span aria-hidden className="text-muted-foreground">
                       {'\u2014'}
                     </span>
-                  )}
+                  ) : null}
                 </span>
                 <span className="text-muted-foreground shrink-0 text-xs tabular-nums">{formatDateTime(version.createdAt, 'date')}</span>
                 <span className="text-muted-foreground min-w-0 flex-1 truncate text-right font-mono text-xs">{version.changedBy ?? '\u2014'}</span>

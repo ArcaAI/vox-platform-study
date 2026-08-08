@@ -1,13 +1,14 @@
 /**
- * Frame 32 — Agents & Prompt Templates screen (build spec §7 redesign:
- * fill-height grid + console-wide detail slide-over). fetch is stubbed at the
- * network boundary; assertions cover the template grid, the working-tenant
- * gate, the detail drawer following the row selection, the Versions-tab
- * confirm-gated activate POST, the Test-run-tab OCC write, create-in-drawer and
- * the block error state.
+ * Frame 32 — Agent Catalog screen. fetch is stubbed at the network boundary;
+ * assertions cover the working-tenant gate, the `DepartmentAgent` catalog and
+ * the deep link to the prompt-template surface.
+ *
+ * The template-grid, detail-drawer and governance cases that used to live here
+ * moved to `prompt-templates-screen.test.tsx` when `PromptTemplate` got its own
+ * route (TASK-634 R6) — this screen no longer renders them.
  */
 
-import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { renderWithProviders } from '@/test/render';
 import type { Department, PromptTemplate, PromptUsageAnalytics, PromptVersion } from '../../api/types';
@@ -203,12 +204,6 @@ function stubAgents(custom: FetchHandler = () => undefined): RecordedCall[] {
 
 const pathOf = (call: RecordedCall) => new URL(call.url, 'http://test.local').pathname;
 
-/** Open the detail drawer for a row and wait for its detail read to land. */
-async function openRow(name: string) {
-  fireEvent.click(await screen.findByText(name));
-  return screen.findByRole('dialog');
-}
-
 afterEach(() => {
   vi.unstubAllGlobals();
   cleanup();
@@ -226,205 +221,23 @@ describe('AgentsScreen', () => {
     expect(calls.every((call) => !call.url.includes('/admin/prompt-templates'))).toBe(true);
   });
 
-  it('lands on the Agents tab by default with the Agent Catalog page title (TASK-547 naming rollout)', async () => {
+  it('lands on the Agent Catalog with the DepartmentAgent tab and no template grid', async () => {
     stubAgents();
     renderWithProviders(<AgentsScreen />);
 
     expect(await screen.findByRole('heading', { level: 1, name: 'Agent Catalog' })).toBeDefined();
-    expect(await screen.findByRole('tab', { name: 'Agents', selected: true })).toBeDefined();
-    // The Agent Templates grid (this test's default stub carries no
-    // department agents) is NOT mounted on the default tab.
+    // The PromptTemplate grid and governance surface moved to
+    // `/prompt-templates`; this screen owns DepartmentAgent alone.
+    expect(screen.queryByRole('tab', { name: 'Agent Templates' })).toBeNull();
+    expect(screen.queryByRole('tab', { name: 'Governance' })).toBeNull();
     expect(screen.queryByText('Cardiology Notes')).toBeNull();
   });
 
-  it('renders the fill-height template grid with department, type, active version and usage columns', async () => {
+  it('deep-links to the prompt-template surface instead of editing templates here', async () => {
     stubAgents();
-    renderWithProviders(<AgentsScreen />, { searchParams: '?tab=templates' });
+    renderWithProviders(<AgentsScreen />);
 
-    expect(await screen.findByText('Cardiology Notes')).toBeDefined();
-    expect(screen.getByText('Discharge Summary')).toBeDefined();
-    expect(screen.getByText('Radiology Report')).toBeDefined();
-    expect(screen.getByText(/3 templates/)).toBeDefined();
-    expect(screen.getByText('CARD')).toBeDefined();
-    // Type (category) column renders the label.
-    expect(screen.getAllByText('Summary').length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText('v12')).toBeDefined();
-    expect(await screen.findAllByText('1,204')).toBeDefined();
-    // No detail slide-over until a row is selected.
-    expect(screen.queryByRole('dialog')).toBeNull();
-  });
-
-  it('opens the detail slide-over on the clicked row (Overview tab seeds the edit form)', async () => {
-    stubAgents();
-    renderWithProviders(<AgentsScreen />, { searchParams: '?tab=templates' });
-
-    await openRow('Discharge Summary');
-    // Overview is the landing tab: the edit form seeds the name.
-    expect(((await screen.findByRole('textbox', { name: 'Name' })) as HTMLInputElement).value).toBe('Discharge Summary');
-  });
-
-  it('lists versions in the drawer Versions tab', async () => {
-    // Land on the Versions tab directly — Radix tab activation is unreliable
-    // under fireEvent.click in jsdom, so selection + tab come from the URL.
-    const calls = stubAgents();
-    renderWithProviders(<AgentsScreen />, { searchParams: '?template=pt-2&atab=versions' });
-
-    const timeline = await screen.findByLabelText('Versions of Discharge Summary');
-    expect(within(timeline).getByText('v12')).toBeDefined();
-    expect(within(timeline).getByText('minh.tran')).toBeDefined();
-    await waitFor(() => expect(calls.some((call) => pathOf(call) === '/api/hope/admin/prompt-templates/pt-2/versions')).toBe(true));
-  });
-
-  it('swaps the drawer content when a different row is selected (one detail surface)', async () => {
-    stubAgents();
-    renderWithProviders(<AgentsScreen />, { searchParams: '?tab=templates' });
-
-    await openRow('Discharge Summary');
-    expect(((await screen.findByRole('textbox', { name: 'Name' })) as HTMLInputElement).value).toBe('Discharge Summary');
-
-    fireEvent.click(screen.getByText('Radiology Report'));
-    await waitFor(() => expect((screen.getByRole('textbox', { name: 'Name' }) as HTMLInputElement).value).toBe('Radiology Report'));
-    // Exactly one detail surface at a time.
-    expect(screen.getAllByRole('dialog')).toHaveLength(1);
-  });
-
-  it('activates an older version from the Versions tab behind a confirm dialog', async () => {
-    const calls = stubAgents((call) => {
-      if (call.method === 'POST' && pathOf(call) === '/api/hope/admin/prompt-templates/pt-1/versions/6/activate') {
-        return Response.json({ ...TEMPLATES[0], currentVersionNumber: 8, version: 8 });
-      }
-      return undefined;
-    });
-    renderWithProviders(<AgentsScreen />, { searchParams: '?template=pt-1&atab=versions' });
-
-    // Default diff picks v6 (previous) as the "from" side of v6 <-> v7.
-    fireEvent.click(await screen.findByRole('button', { name: 'Activate v6' }));
-    const confirm = await screen.findByRole('alertdialog');
-    expect(within(confirm).getByText(/activate version 6/i)).toBeDefined();
-    fireEvent.click(within(confirm).getByRole('button', { name: 'Activate v6' }));
-
-    await waitFor(() =>
-      expect(calls.some((call) => call.method === 'POST' && pathOf(call) === '/api/hope/admin/prompt-templates/pt-1/versions/6/activate')).toBe(true),
-    );
-  });
-
-  it('runs a prompt test from the Test-run tab as an OCC write and renders the output', async () => {
-    const calls = stubAgents((call) => {
-      if (call.method === 'POST' && pathOf(call) === '/api/hope/admin/prompt-templates/pt-1/test') {
-        return Response.json({
-          id: 'pt-1',
-          score: 0.87,
-          output: 'S: Chest pain. O: Stable. A: Angina. P: Follow-up.',
-          testedAt: '2026-07-05T07:00:00.000Z',
-          version: 8,
-        });
-      }
-      return undefined;
-    });
-    renderWithProviders(<AgentsScreen />, { searchParams: '?template=pt-1&atab=test' });
-
-    fireEvent.change(await screen.findByLabelText('Sample input'), { target: { value: 'Patient reports chest pain.' } });
-    const runButton = screen.getByRole('button', { name: /run test/i }) as HTMLButtonElement;
-    // The button arms once the detail read has delivered the If-Match ETag.
-    await waitFor(() => expect(runButton.disabled).toBe(false));
-    fireEvent.click(runButton);
-
-    expect(await screen.findByText(/A: Angina/)).toBeDefined();
-    const post = calls.find((call) => call.method === 'POST' && pathOf(call) === '/api/hope/admin/prompt-templates/pt-1/test');
-    expect(post?.headers['if-match']).toBe('"7"');
-    expect(post?.body).toEqual({ sampleInput: 'Patient reports chest pain.', dryRun: true, expectedVersion: 7 });
-  });
-
-  it('creates a template from the drawer create mode (no modal)', async () => {
-    const calls = stubAgents((call) => {
-      if (call.method === 'POST' && pathOf(call) === '/api/hope/admin/prompt-templates') {
-        return Response.json(template({ id: 'pt-9', name: 'Nephrology Notes' }));
-      }
-      return undefined;
-    });
-    renderWithProviders(<AgentsScreen />, { searchParams: '?tab=templates' });
-
-    fireEvent.click(await screen.findByRole('button', { name: 'New template' }));
-    const dialog = await screen.findByRole('dialog');
-    fireEvent.change(await within(dialog).findByRole('textbox', { name: 'Name' }), { target: { value: 'Nephrology Notes' } });
-    fireEvent.change(within(dialog).getByRole('textbox', { name: /Prompt content/ }), { target: { value: 'You are a scribe.' } });
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Create template' }));
-
-    await waitFor(() => {
-      const post = calls.find((call) => call.method === 'POST' && pathOf(call) === '/api/hope/admin/prompt-templates');
-      expect(post?.body).toMatchObject({ name: 'Nephrology Notes', content: 'You are a scribe.' });
-    });
-  });
-
-  it('renders the block error state and retries the templates request', async () => {
-    const calls = stubAgents((call) => {
-      if (call.method === 'GET' && pathOf(call) === '/api/hope/admin/prompt-templates') {
-        return Response.json({ message: 'Service unavailable' }, { status: 503 });
-      }
-      return undefined;
-    });
-    renderWithProviders(<AgentsScreen />, { searchParams: '?tab=templates' });
-
-    expect(await screen.findByRole('alert')).toBeDefined();
-    expect(screen.getByText(/service unavailable/i)).toBeDefined();
-
-    fireEvent.click(screen.getByRole('button', { name: /retry/i }));
-    await waitFor(() => expect(calls.filter((call) => pathOf(call) === '/api/hope/admin/prompt-templates').length).toBe(2));
-  });
-
-  /**
-   * Prompt governance folded in from the retired
-   * `/prompt-studio`. The Governance tab is elevated-only in the CONSOLE;
-   * approve authority stays server-side (GLOBAL_ADMIN 403 in the service)
-   * regardless of what the console renders.
-   */
-  describe('Governance tab', () => {
-    it('is hidden for a non-elevated session', async () => {
-      stubAgents((call) => {
-        if (pathOf(call) === '/api/auth/session') {
-          const base = session();
-          return Response.json({
-            ...base,
-            user: { ...base.user, roles: ['TENANT_ADMIN'] },
-            isElevated: false,
-            effectiveIsElevated: false,
-          });
-        }
-        return undefined;
-      });
-      renderWithProviders(<AgentsScreen />);
-
-      await screen.findByRole('tab', { name: 'Agents' });
-      expect(screen.getByRole('tab', { name: 'Agent Templates' })).toBeDefined();
-      expect(screen.queryByRole('tab', { name: 'Governance' })).toBeNull();
-    });
-
-    it('is visible for an elevated session and opens on the redirect target ?tab=governance', async () => {
-      stubAgents();
-      // `/prompt-studio` redirects to exactly this URL, so the tab must be
-      // URL-addressable — asserting via searchParams tests that contract.
-      renderWithProviders(<AgentsScreen />, { searchParams: '?tab=governance' });
-
-      expect(await screen.findByRole('tab', { name: 'Governance' })).toBeDefined();
-      expect(await screen.findByRole('heading', { name: /prompt governance/i })).toBeDefined();
-    });
-
-    it('approves a template as an OCC write carrying If-Match', async () => {
-      const calls = stubAgents((call) => {
-        if (call.method === 'POST' && pathOf(call).endsWith('/approve')) {
-          return Response.json({ ...TEMPLATES[0], status: 'APPROVED', version: TEMPLATES[0].version + 1 });
-        }
-        return undefined;
-      });
-      renderWithProviders(<AgentsScreen />, { searchParams: '?tab=governance' });
-
-      fireEvent.click(await screen.findByText(TEMPLATES[0].name));
-      fireEvent.click(await screen.findByRole('button', { name: /approve/i }));
-
-      await waitFor(() => expect(calls.some((call) => call.method === 'POST' && pathOf(call).endsWith('/approve'))).toBe(true));
-      const approve = calls.find((call) => call.method === 'POST' && pathOf(call).endsWith('/approve'));
-      expect(approve?.headers['if-match']).toBe(`"${TEMPLATES[0].version}"`);
-      expect((approve?.body as { expectedVersion: number }).expectedVersion).toBe(TEMPLATES[0].version);
-    });
+    const link = await screen.findByRole('link', { name: 'Open prompt templates' });
+    expect(link.getAttribute('href')).toBe('/prompt-templates');
   });
 });

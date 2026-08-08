@@ -38,13 +38,8 @@ import { EmptyState } from '@/shared/state/empty-state';
 import { ErrorState } from '@/shared/state/error-state';
 import { useAgentEvalRuns, useApproveTemplate, useDepartmentAgents, useEvalGoldenSets, useRunGoldenSetEval, useTemplate, useTemplates } from '../api';
 import type { PromptTemplate, PromptTemplateStatus } from '../api';
+import { ApprovalPin, TemplateStatusBadge, statusVariant } from './approval-pin';
 import { VersionsPanel } from './versions-panel';
-
-function statusVariant(status: PromptTemplateStatus): 'default' | 'secondary' | 'outline' {
-  if (status === 'APPROVED') return 'default';
-  if (status === 'PUBLISHED') return 'secondary';
-  return 'outline';
-}
 
 /** Governance-focused list: filter by approval status, select to inspect. */
 function GovernanceList({ selectedId, onSelect }: { selectedId: string | null; onSelect: (id: string) => void }) {
@@ -105,6 +100,7 @@ function GovernanceList({ selectedId, onSelect }: { selectedId: string | null; o
                 <span className="truncate text-sm font-medium">{template.name}</span>
                 <span className="flex items-center gap-2">
                   <Badge variant={statusVariant(template.status)}>{template.status}</Badge>
+                  <ApprovalPin template={template} />
                   <span className="text-muted-foreground font-mono text-xs">v{template.version}</span>
                 </span>
               </button>
@@ -302,7 +298,11 @@ function ApprovePanel({ template, etag }: { template: PromptTemplate; etag: stri
         <h3 className="text-sm font-semibold">Governance approval</h3>
         <p className="text-muted-foreground text-sm">
           Approves the current version for clinical flows &mdash; <span className="font-mono text-xs">POST :id/approve</span> with If-Match; pins a
-          PromptVersion snapshot and writes a WORM change row. GLOBAL_ADMIN only.
+          PromptVersion snapshot and writes a WORM change row. Until this runs, resolution keeps serving the previously pinned version.
+        </p>
+        <p className="text-muted-foreground text-xs">
+          A tenant-owned template needs <span className="font-mono">manage:PromptTemplate</span> for its tenant; SYSTEM/library templates stay
+          GLOBAL_ADMIN-only. Either way the gate is server-side.
         </p>
       </div>
       <form onSubmit={handleSubmit} className="flex flex-col gap-3">
@@ -352,10 +352,15 @@ function TemplateGovernanceDetail({ id }: { id: string }) {
       <Card className="gap-2 p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h3 className="text-sm font-semibold">{template.name}</h3>
-          <Badge variant={statusVariant(template.status)}>{template.status}</Badge>
+          <span className="flex items-center gap-2">
+            <TemplateStatusBadge status={template.status} />
+            {/* Which PromptVersion the approval is pinned to — what
+                resolution actually serves, not the current content row. */}
+            <ApprovalPin template={template} />
+          </span>
         </div>
         <p className="text-muted-foreground text-xs">
-          <span className="font-mono">v{template.version}</span>
+          <span className="font-mono">row v{template.version}</span>
           {template.updatedAt ? <> &middot; updated {formatDateTime(template.updatedAt)}</> : null}
         </p>
       </Card>

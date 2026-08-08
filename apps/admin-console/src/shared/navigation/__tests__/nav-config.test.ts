@@ -16,11 +16,12 @@ const TENANT_ADMIN_RULES: PermissionRule[] = [
 ];
 
 describe('NAV_ENTRIES (capabilities-matrix section 3, reviewed 2026-07-04; playground tier)', () => {
-  it('covers the full 45-route map across the four tiers (TASK-615 #15 adds Consumption & cost + Billing)', () => {
-    expect(NAV_ENTRIES).toHaveLength(45);
+  // TASK-634 R6 adds /prompt-templates (tier 30-49), taking 45 -> 46.
+  it('covers the full 46-route map across the four tiers (TASK-634 R6 adds Prompt templates)', () => {
+    expect(NAV_ENTRIES).toHaveLength(46);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '10-19')).toHaveLength(20);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '20-29')).toHaveLength(7);
-    expect(NAV_ENTRIES.filter((entry) => entry.tier === '30-49')).toHaveLength(13);
+    expect(NAV_ENTRIES.filter((entry) => entry.tier === '30-49')).toHaveLength(14);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '50-59')).toHaveLength(5);
   });
 
@@ -105,8 +106,13 @@ describe('NAV_ENTRIES (capabilities-matrix section 3, reviewed 2026-07-04; playg
    * took its slot, and `/allowed-origins` adds the global CORS allow-list surface.
    */
   describe('console IA cleanup', () => {
-    it('retires /prompt-studio (governance moved into the /agents Governance tab)', () => {
+    it('retires /prompt-studio (governance moved into the prompt-template Governance tab)', () => {
       expect(NAV_ENTRIES.some((entry) => entry.route === '/prompt-studio')).toBe(false);
+      // TASK-634 R6: the surface it folded into now has its own nav entry.
+      const promptTemplates = NAV_ENTRIES.find((entry) => entry.route === '/prompt-templates');
+      expect(promptTemplates?.tier).toBe('30-49');
+      expect(promptTemplates?.required).toEqual([['manage', 'PromptTemplate']]);
+      expect(promptTemplates?.implemented).toBe(true);
     });
 
     it('renames /pstudio to /db-studio with unambiguous copy (M-08)', () => {
