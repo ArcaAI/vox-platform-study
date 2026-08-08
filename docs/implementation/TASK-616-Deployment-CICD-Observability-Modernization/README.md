@@ -423,23 +423,27 @@ Delivers the "all three environments production-ready" and "AWS-compatible" requ
 | 8.5 Decide and document the **hybrid boundary** — control plane (Postgres→RDS, Redis→ElastiCache, MinIO→S3, Vault with KMS auto-unseal, CPU services) is AWS-portable; **GPU inference stays on-prem** at roughly 4–8× cost saving. The app already speaks native S3 via `S3Client`, so object storage is a credential change, not a code change | A written decision record with the cost basis |
 | 8.6 HIPAA-on-AWS baseline: BAA scope, HIPAA-eligible service list, multi-account landing zone, Pod Identity over IRSA, encryption/audit controls | A gap list against the technical safeguards, not a claim of compliance |
 
-### Suggested sub-ticket split
+### Sub-ticket split — **created 2026-08-08**
 
-Phases map cleanly to standalone tickets if the work is parallelized:
+> These were proposed on 2026-08-07 and **none were created**. They exist now. The authoritative
+> index, including why 620 and 623 are deliberately *not* created, is
+> **[phase-program-index.md](./phase-program-index.md)**. Shared conventions:
+> [agent-operating-contract.md](./agent-operating-contract.md). Fresh evidence:
+> [live-state-recheck-2026-08-08.md](./live-state-recheck-2026-08-08.md).
 
 | Ticket | Scope | Depends on |
 |---|---|---|
 | TASK-616 | This assessment + Phase 0 (done) | — |
-| TASK-617 | Phase 1 — `hope-v2-dev` correctness + live-incident triage | 616 |
-| TASK-618 | Phase 2 — PHI security baseline (k3s hardening, PSA, NetworkPolicy) | 616 |
-| TASK-619 | Phase 3 — GitOps CI/CD (Image Updater repair, direct Argo registration, Argo config into Git) | 616, 617 |
-| ~~TASK-620~~ → **[TASK-636](../TASK-636-Observability-Coverage-And-Dependency-Monitoring/README.md)** | Phase 4 — observability **+ the dependency tier** (Timescale HA, Temporal, Redis, MinIO, Vault, node/cluster, GPU). TASK-620 was never created; TASK-636 supersedes it | 617 |
-| TASK-621 | Phase 5 — supply chain | 619 |
-| TASK-622 | Phase 6 — portability hygiene + operations docs | 617–621 |
-| TASK-623 | Phase 7a — **Vault HA** (VMs 430-432/434) + auth migration | 616, owner VM provisioning |
-| TASK-624 | Phase 7b — **Qdrant** deployment + auth code change | 617 |
-| TASK-625 | Phase 7c — **harness Temporal worker** + Temporal consolidation | 617, 619 |
-| TASK-626 | Phase 8 — **staging + production environments** and the AWS-portable component structure | 617–625 |
+| **[TASK-617](../TASK-617-Dev-Environment-Correctness-And-GitOps-Recovery/README.md)** | Phase 1 — `hope-v2-dev` correctness + **GitOps recovery** + live-incident triage | 616 |
+| **[TASK-618](../TASK-618-PHI-Security-Baseline/README.md)** | Phase 2 — PHI security baseline (k3s hardening, PSA, NetworkPolicy) **+ the Vault cutover formerly scoped as 623** | 617 |
+| **[TASK-619](../TASK-619-GitOps-CICD-Delivery-Loop/README.md)** | Phase 3 — GitOps CI/CD delivery loop | 617 |
+| ~~TASK-620~~ → **[TASK-636](../TASK-636-Observability-Coverage-And-Dependency-Monitoring/README.md)** | Phase 4 — observability **+ the dependency tier**. TASK-620 was never created; TASK-636 supersedes it | 617 |
+| **[TASK-621](../TASK-621-Supply-Chain-Integrity/README.md)** | Phase 5 — supply-chain integrity | 619 |
+| **[TASK-622](../TASK-622-Portability-Hygiene-And-Operations-Docs/README.md)** | Phase 6 — portability hygiene + operations docs | 617–621 |
+| ~~TASK-623~~ | Phase 7a — **Vault HA**. Never created; **phase 1 was executed inside this ticket** (Track V, Appendix H). Its remaining half — k8s auth, injector, secret migration, snapshots — is how 618's D-01/D-02/D-03 close, so it lives in **TASK-618 Wave D** | — |
+| **[TASK-624](../TASK-624-Qdrant-Deployment-And-Auth/README.md)** | Phase 7b — **Qdrant** deployment + auth code change | 617 |
+| **[TASK-625](../TASK-625-Harness-Temporal-Worker-And-Consolidation/README.md)** | Phase 7c — **harness Temporal worker** + Temporal consolidation | 617, 619 |
+| **[TASK-626](../TASK-626-Staging-Production-And-AWS-Portable-Structure/README.md)** | Phase 8 — **staging + production environments** and the AWS-portable component structure | 617–625 |
 
 ### Follow-up tickets spun out 2026-08-07
 
@@ -550,6 +554,10 @@ Two capabilities I do not have, and one scope caveat.
 | **"All three environments production-ready"** | Achievable for the *manifests*; not for the *substrate*. Three namespaces on one single-node VM share a kernel, one disk (currently 89% full), one GPU pair, and one failure domain. `hope-v2-dev` and `hope-v2-staging` can be production-**grade** on this box; genuine production wants its own cluster. Phase 8 designs for both shapes so the choice stays open |
 
 ## 10. Change History
+
+- **2026-08-08 (phase program created — TASK-617/618/619/621/622/624/625/626)** — The sub-ticket split proposed in §4 had **never been created**; the 617–626 range was reserved and left empty. All eight remaining tickets now exist, indexed in [phase-program-index.md](./phase-program-index.md), sharing one [agent-operating-contract.md](./agent-operating-contract.md) (tier mapping, "agents author / humans apply", ⚙/⚠ markers). **620 and 623 are deliberately not created**: 620's scope was widened into TASK-636, and 623's VM half was executed inside this ticket while its k3s half is how TASK-618's D-01/D-02/D-03 close — creating either would fork a register across two tickets.
+  A live recheck (Rancher + ArgoCD APIs, read-only) fed three findings into the plan that the 2026-08-07 assessment could not have seen. **LIVE-01**: the entire body of remediation is **unpushed** — `origin/main` is still `08d1651`, six commits behind local. **LIVE-02**: Argo CD has been failing every sync for seven days with `runtime error: invalid memory address or nil pointer dereference` (last successful deploy 2026-08-01); the stuck `hope-vault-init` PreSync hook, 3 Failed + 1 Pending, is the leading hypothesis. **LIVE-09**: the GPU premise in Phase 1 step 1.2 is wrong — the node advertises **2** slots, not 8, and `gpu-time-slicing.yaml` is deliberately **excluded from the kustomization** (it targets `gpu-operator`), so Argo will never apply it while the workload `nvidia.com/gpu` requests *do* sync automatically. Pushing before the manual time-slicing activation strands a GPU workload `Pending`, with no CI job able to catch it. Also re-confirmed live: zero NetworkPolicies cluster-wide outside Fleet's own, zero PSA labels on `hope-v2-dev`, and `allocated == capacity` on the node (no `system-reserved`).
+  One earlier finding is **withdrawn as inverted**: Appendix B §B3 read `last-applied-configuration` as hand-`kubectl apply` drift; it is Argo's own client-side apply, and the E6 audit found none of the 44 tracked objects hand-applied. Carried into TASK-617 as a struck-through row rather than silently dropped.
 
 - **2026-08-08 (config plane E4.4 + E6.3 · selfHeal preconditions verified)** — `2dbbd7f`, `90f54ee` in the deployment repo.
   **E4.4** — the three index-based JSON6902 env patches are gone, replaced by name-based strategic merges, plus a new blocking CI job `patch-hygiene` that bans the form (verified to catch a reintroduction). Two corrections to the design from the code: E4.4 says staging and prod "use the same fragile pattern" — they had **zero**, all three were in dev; and strategic merge **hoists** patched entries, so rendered output is not byte-identical. Verified inert: values unchanged, and **no container in any overlay has an env→env `$(VAR)` dependency**, so order is not load-bearing (`SMR_REDIS_URL`'s `$(REDIS_*)` resolve from `envFrom`, which kubelet processes before `env`).

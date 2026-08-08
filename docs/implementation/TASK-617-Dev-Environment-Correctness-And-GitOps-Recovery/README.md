@@ -1,6 +1,6 @@
 # TASK-617 — `hope-v2-dev` Correctness, GitOps Recovery & Live-Incident Triage
 
-**Status**: Pending (plan authored 2026-08-08, awaiting owner approval)
+**Status**: In Progress — Wave A (diagnosis) dispatched 2026-08-08. Waves B–D await owner approval and owner-only actions.
 **Classification**: infrastructure
 **Created**: 2026-08-08
 **Parent**: [TASK-616 Phase 1](../TASK-616-Deployment-CICD-Observability-Modernization/README.md#phase-1--make-staging-render-and-run-correctly--m) · [Program index](../TASK-616-Deployment-CICD-Observability-Modernization/phase-program-index.md)
@@ -54,10 +54,10 @@ the delivery architecture around it.** If a change is needed to get *today's* ap
 
 | ID | Sev | Statement | Evidence |
 |---|---|---|---|
-| **LIVE-01** | **Critical** | `origin/main` of `arca/hope-v2-deployment` is `08d1651 add argo example`. Local `main` carries **4 unpushed commits**: `8bcc85e` (CI digest promotion, Argo manifests, probe + GPU fixes), `6a02e65` (merge), `cb45b5f` (DB-05: `NODE_ENV` + `RUN_SEED` on `db-migrate`), `37cf4f6` (the repo's first CI). Argo syncs `origin/main`. **None of the remediation is live.** | `git log origin/main..main` |
+| **LIVE-01** | **Critical** | `origin/main` of `arca/hope-v2-deployment` is `08d1651 add argo example`. Local `main` carries **6 unpushed commits**: `8bcc85e` (CI digest promotion, Argo manifests, probe + GPU fixes), `6a02e65` (merge), `cb45b5f` (DB-05: `NODE_ENV` + `RUN_SEED` on `db-migrate`), `37cf4f6` (the repo's first CI), `2dbbd7f` (E4.4 name-based patches + `patch-hygiene` CI job), `90f54ee` (E6.3 explicit config refs). Argo syncs `origin/main`. **None of the remediation is live.** The count grows as work continues locally — re-check `git log origin/main..main` before A.2 rather than trusting this number | `git log origin/main..main`, 2026-08-08 |
 | **LIVE-02** | **Critical** | Argo `Application/hope-v2-dev`: `operationState.phase: Error`, `message: runtime error: invalid memory address or nil pointer dereference`, `retryCount: 3`, `lastTransitionTime: 2026-08-07T11:19:05Z`. `health.status: Missing`, `sync.status: OutOfSync`. Last successful deploy `2026-08-01T05:17:36Z` (history id 58, rev `c7031ffb`). | ArgoCD API |
 | **L-01** | High | Argo's `spec.destination.server` is `https://rancher.taphuynh.dev/k8s/clusters/c-nfhxq` — the **Rancher proxy**, not the cluster API. Appendix B §B2 names this as the likely cause of the `Missing` health status: Argo cannot reliably watch what it just wrote through a proxy that drops long-lived watches. | ArgoCD API; Appendix B §B2 |
-| **L-06** | Medium | Live resources carry `kubectl.kubernetes.io/last-applied-configuration` alongside the Argo tracking id — resources have been hand-`kubectl apply`ed against an Argo-managed namespace. GitOps is not the sole source of truth today. | Appendix B §B3 |
+| ~~L-06~~ | — | **Withdrawn — the original reading was inverted.** Appendix B §B3 read `kubectl.kubernetes.io/last-applied-configuration` on live resources as evidence of hand-`kubectl apply`. It is **Argo's own client-side apply**. The 2026-08-08 drift audit found that of 45 non-Pod objects in `hope-v2-dev`, all 44 real ones are Argo-tracked and **none is hand-applied**. GitOps *is* the source of truth for tracked objects. The one genuine artefact of the hand-run path is the `Pod/db-migrate-manual` (L-07) | TASK-616 Change History 2026-08-08 (E6 preconditions) |
 | **LIVE-08** | Medium | Exactly one Argo `Application` exists, created 2026-03-31 with `managedFields.manager: kubectl` — hand-made, not from Git. No `AppProject`, no `ApplicationSet`. | ArgoCD API |
 
 ### 2.2 Live incident state
@@ -86,7 +86,7 @@ in the four unpushed commits.** The register below marks each defect's *actual* 
 | **D-10** | High | ❌ **Not done — and inconsistent with SMR** | SMR *was* repointed to the direct node IP (`configmap.yaml:56` → `http://10.10.1.10:1234/v1`) when `lmstudio.yaml` was commented out of the kustomization. **Guardrail was not** — it still targets `http://hope-lmstudio:1234/v1`, whose Service no longer renders. Guardrail's LM Studio call cannot resolve DNS today | `guardrail.yaml:65` vs `configmap.yaml:56`; `base/kustomization.yaml:16` |
 | D-13 | High | ❌ **Not done** | `stt-v2-worker` has zero `readinessProbe`/`livenessProbe`/`startupProbe` | `base/stt-v2-worker.yaml` (grep count 0) |
 | **D-14** | Medium | ❌ **Not done — never touched** | `CORS_ALLOWED_ORIGINS: "*"` has been `"*"` since the ConfigMap's first commit. `"*"` is stale vs. the API's exact-string `.includes()` match, so it matches **nothing** — denying all browser origins during exactly the DB-registry outage the fallback exists to cover. A fail-mode inversion | `configmap.yaml:12`; `apps/api/src/cors.config.ts:145-152` |
-| D-15 | Medium | ⚠️ **Partial** | Only the `db-migrate` `RUN_SEED` patch was converted to name-based. Still index-based: SMR's OTel toggle (`containers/0/env/5/value`), the Grafana hostname envs, and the three Ingress `rules[0]` host patches | `overlays/dev/kustomization.yaml:114,123,126`; `:134,143`; `staging:34`; `prod:45` |
+| D-15 | Medium | ✅ **Done** (`2dbbd7f`) | All three index-based JSON6902 env patches replaced by name-based strategic merges, plus a **new blocking CI job `patch-hygiene`** that bans the form — verified to catch a reintroduction. Two corrections to the design doc, from the code: all three were in `dev` (staging and prod had **zero**, not "the same fragile pattern"), and strategic merge **hoists** patched entries, so rendered output is not byte-identical. Verified inert — no container in any overlay has an env→env `$(VAR)` dependency, so ordering is not load-bearing | `2dbbd7f`; TASK-616 Change History 2026-08-08 |
 | D-17 | Medium | ❌ **Not done** | Ollama's readiness probe (`/api/tags`, `ollama.yaml:51-57`) is byte-identical to before — it still passes as soon as `ollama serve` is up, not when the 11-model pull loop finishes | `git show 8bcc85e -- ollama.yaml` touches only GPU env/resources |
 | D-20 | Low | ❌ **Not done** | The deployment repo's `README.md` has had **zero commits** since `7c22bea`. It still claims a `base/charts/temporal/` Helm subtree (Temporal is plain manifests), still lists the deleted `ui.yaml`, and is still generic `your-app`/`acme` template boilerplate describing a different repo | `git log --oneline -- README.md`; `README.md:17-18,32-36` |
 | 1.4 (7 drifted keys) | High | ✅ **Done** | All seven committed with a reconciliation comment | `configmap.yaml:76-84` |
@@ -124,10 +124,29 @@ But they are delivered by two different mechanisms:
    automatically the moment the four commits are pushed.
 
 **Consequence if the commits are pushed before the ConfigMap is applied and the device plugin
-restarted**: three workloads request one GPU each against **2** allocatable slots. One is `Pending`
-forever. With `maxSurge: 1` the surge pod needs a fourth slot, so even two workloads can deadlock.
-This is a self-inflicted outage triggered by `git push`, and no CI job catches it — the ConfigMap is
-outside the rendered tree, so `render`/`schemas` never see the mismatch.
+restarted**: three workloads request one GPU each against **2** allocatable slots. Steady-state
+demand (3) exceeds capacity (2) **even with no rollout in progress**. No CI job catches it — the
+ConfigMap is outside the rendered tree, so `render`/`schemas` never see the mismatch.
+
+> ### ⚠️ The failure is not symmetric — one of the three is a real outage (A.2)
+>
+> My initial reading — "one workload is `Pending` forever" — understated it. A.2 worked the
+> rollout mechanics per workload:
+>
+> | Workload | Kind | Strategy | If it loses the GPU race |
+> |---|---|---|---|
+> | `stt-v2` | Deployment | `maxSurge: 1`, `maxUnavailable: 0` | Rollout **stalls safely** — the old pod keeps serving |
+> | `stt-v2-worker` | Deployment | `maxSurge: 1`, `maxUnavailable: 0` | Rollout **stalls safely** — the old pod keeps serving |
+> | **`ollama`** | **StatefulSet** | no surge concept | **Deletes the old pod before creating the new one → `hope-ollama` goes to zero replicas. A real outage.** |
+>
+> `8bcc85e`'s own risk comment models the Deployment case and never accounts for the StatefulSet
+> asymmetry. This is the single strongest reason the GPU activation is a hard gate on the push
+> rather than a follow-up.
+
+**Correction to §2.3's D-05 row (A.2):** `runtimeClassName: nvidia` was **already live** on all three
+workloads before this commit range. What `8bcc85e` actually adds is the resource requests/limits,
+the removal of the malformed `NVIDIA_VISIBLE_DEVICES` env pinning, and the Deployment strategy
+changes.
 
 **Correction.** The GPU activation is lifted out of the automatic sync path into an explicit ⚙
 runbook (Appendix G §G4.1's five steps) executed *before* the push: ConfigMap → ClusterPolicy patch
@@ -149,10 +168,11 @@ Four waves. Everything inside a wave runs concurrently. Tier and effort per the
 
 | # | Task | Complexity | Tier | Effort | Deliverable |
 |---|---|---|---|---|---|
-| **A.1** | **Root-cause the Argo nil-pointer panic (LIVE-02).** Read `argocd-application-controller` and `argocd-repo-server` logs around `2026-08-07T11:19:05Z`. Test three hypotheses in order: (a) the stuck `hope-vault-init` PreSync hook Job (LIVE-03) — a hook with no pod/nil status is a known nil-deref shape; (b) the Rancher-proxy destination dropping watches (L-01); (c) an Argo version bug — record the running version and check its changelog. | Complex — agentic live diagnosis | `sonnet-5` | max | A written diagnosis naming the cause with log evidence, plus the exact remediation command for the owner to run |
-| **A.2** | **Audit the 4 unpushed commits (LIVE-01)** before anything is pushed. Produce a file-by-file review of `08d1651..main`: what each commit changes, whether it is still correct against the live cluster, and specifically whether `8bcc85e`'s GPU changes assume 8 slots (§2.4). Flag anything that must be amended pre-push. | Complex — review with live cross-check | `sonnet-5` | high | A review doc with a per-commit verdict: push as-is / amend / drop |
-| **A.3** | **Diagnose the `hope-vault-init` hook failures (LIVE-03).** 3 Failed + 1 Pending. Pull the pod logs and the Job spec; determine whether it is failing on the dev Vault's state, on RBAC, or on a resource wait. Relates to A.1 hypothesis (a). | Moderate | `sonnet-5` | medium | Root cause + the fix (manifest change or hook removal) |
-| **A.4** | **Verify Argo destination re-registration (L-01).** Author the exact `argocd-manager` ServiceAccount + ClusterRoleBinding manifest and the `argocd cluster add` / Application patch that repoints `spec.destination.server` from the Rancher proxy to `https://10.10.1.10:6443`. Do not apply. | Moderate | `sonnet-5` | medium | Manifest + a step-by-step ⚙ runbook with a rollback step |
+| **A.1** ✅ | **CONFIRMED → [diagnosis](./wave-a1-argo-sync-panic-diagnosis.md).** Root cause: `bitnami/kubectl:1.31` was pruned from Docker Hub, so the `hope-vault-init` Sync hook has been in `ImagePullBackOff` since 2026-08-07T07:17:27Z (4,870 back-off events and counting). Argo v3.3.4 then nil-derefs re-evaluating the never-completing hook — a known upstream bug class (argoproj/argo-cd#25460, #25610). Hypothesis (b) **refuted**: the Rancher proxy responds normally (`live_ms: 1`). The controller never crashed (last restart 2026-07-25) — a recovered per-operation error. Argo runs on the `local` cluster, not `c-nfhxq`. Retries are exhausted, **but the trigger is live, so the panic recurs on the next sync attempt** — including B.2's push | Complex — agentic live diagnosis | `sonnet-5` | max | Original brief below |
+| ~~A.1 (brief)~~ | **Root-cause the Argo nil-pointer panic (LIVE-02).** Read `argocd-application-controller` and `argocd-repo-server` logs around `2026-08-07T11:19:05Z`. Test three hypotheses in order: (a) the stuck `hope-vault-init` PreSync hook Job (LIVE-03) — a hook with no pod/nil status is a known nil-deref shape; (b) the Rancher-proxy destination dropping watches (L-01); (c) an Argo version bug — record the running version and check its changelog. | Complex — agentic live diagnosis | `sonnet-5` | max | A written diagnosis naming the cause with log evidence, plus the exact remediation command for the owner to run |
+| **A.2** ✅ | **COMPLETE → [audit](./wave-a2-unpushed-commit-audit.md).** Verdict: **5 of 6 PUSH AS-IS**; `8bcc85e` (+ its merge marker `6a02e65`) is **PUSH-BUT-SEQUENCE** — no content needs changing, but GPU time-slicing activation must complete first. **No new secrets** in the diff; `bootstrap.dev.yaml` actually *removes* two. All six CI jobs reproduced and passed locally against real rendered output (residual gap: local kustomize v5.6.0 vs CI's pinned v5.4.3). `hope-tts`'s zero-provider state **confirmed live** from pod logs (`"providers": []`) — with `maxUnavailable: 0` its readiness repoint stalls rather than breaks the rollout. **Found the outage case I had missed — see §2.4** | Complex — review with live cross-check | `sonnet-5` | high | Original brief below |
+| **A.3** ✅ | **CONFIRMED → [diagnosis](./wave-a3-vault-init-hook-diagnosis.md).** Same root cause, reached independently from the Job side. Vault itself (`hope-vault-0`) is **healthy and Ready**; the RBAC is intact and never exercised because the container never starts. **The three `Failed` pods are a red herring** — they belong to an *earlier* Job generation (`controller-uid 6beba9f5…` vs the live `ee68b5dc…`), evicted 2026-08-01 by the disk-pressure incident, orphaned (no `ownerReferences`) and never GC'd. `backoffLimit: 6` is irrelevant — `ImagePullBackOff` never produces a countable container failure — and there is **no `activeDeadlineSeconds`**, so the Job wedges forever (`status.active: 1`, **zero `status.conditions`** — a degenerate shape that plausibly triggers the nil-deref). Fix: image swap **+ add `activeDeadlineSeconds`**. Retiring the dev Vault entirely is the right eventual direction but is out of scope | Moderate | `sonnet-5` | medium | Add `activeDeadlineSeconds` to Wave C |
+| **A.4** ✅ | **Verify Argo destination re-registration (L-01).** → [runbook](./wave-a4-argo-direct-api-runbook.md) + [RBAC manifest](./wave-a4-argocd-manager-rbac.yaml). Direct API address **verified** as `10.10.1.10:6443` from the `kubernetes` Endpoints object, not assumed. **Two findings changed the plan**: (i) the `argocd-manager` SA, ClusterRole, ClusterRoleBinding and a K8s ≥1.24-style token Secret **already exist on `c-nfhxq`** (created 2026-03-19, 11 days before the Application) — only the Argo-side cluster registration Secret is new; (ii) the six authored TASK-619 Argo files **still hard-code the Rancher proxy URL**, so applying them would carry L-01 forward. **Recommendation: fold the destination fix into TASK-619's cutover** rather than patching today's soon-to-be-replaced objects — a patch now is silently reverted when 619 applies its unmodified files | Moderate | `sonnet-5` | medium | Now [TASK-619 B.4a](../TASK-619-GitOps-CICD-Delivery-Loop/README.md) |
 
 **Wave A gate**: the panic has a named cause and a tested remediation; the four commits have a
 per-commit verdict. Nothing pushed, nothing applied.
@@ -162,7 +182,8 @@ per-commit verdict. Nothing pushed, nothing applied.
 | # | Task | Complexity | Tier | Effort | Notes |
 |---|---|---|---|---|---|
 | **B.0** | 🚨 ⚙ **Rotate the two credentials leaked on `origin/main`** — a GitLab access token for user `argocd` and `gitlab+deploy-token-2` were committed in plaintext in `08d1651`, which is **on origin today**. Deleting the file from the tip does not remove them from history. Owned by [TASK-619 F0-1](../TASK-619-GitOps-CICD-Delivery-Loop/README.md); listed here because **every push in this ticket goes to that repo** | — | **human** | — | Do this first, independent of everything else |
-| **B.1** | ⚙ Apply A.1's remediation; confirm Argo leaves `phase: Error` | — | **human** | — | Blocks everything else |
+| **B.0a** | **Fix the hook image + add a deadline.** `deployment/k8s/base/vault.yaml:139` `bitnami/kubectl:1.31` → a resolving image, **and add `activeDeadlineSeconds`** so the Job can never wedge indefinitely again (A.3: `backoffLimit: 6` is inert against `ImagePullBackOff`). Two options, both verified to resolve: `bitnamilegacy/kubectl:1.31` closes it in one line today but is a **frozen archive that will never receive a CVE fix**; `registry.k8s.io/kubectl:v1.34.5` is upstream-official, maintained, and matches the server exactly — kubectl 1.31 against k3s v1.34.5 is **three minors outside the supported ±1 skew**. If taking the upstream image, check the init script for Bitnami-specific assumptions (non-root UID, entrypoint shape, shell availability) | Trivial edit, non-trivial choice | `sonnet-5` | medium | ⚠ 7 — owner picks. Blocks B.1 |
+| **B.1** | ⚙ Apply A.1's remediation (clear the wedged Job to stop the live back-off loop); confirm Argo leaves `phase: Error` | — | **human** | — | Blocks everything else |
 | **B.1a** | ⚙ **Execute the GPU activation runbook** (§2.4, Appendix G §G4.1): apply `gpu-time-slicing.yaml` to `gpu-operator` → patch the ClusterPolicy → restart the `nvidia-device-plugin` DaemonSet → **verify `nvidia.com/gpu` allocatable == 6**. Must complete *before* B.2, or the push strands a GPU workload `Pending` | — | **human** | — | Pre-flight: B.5 disk reclaim done |
 | **B.2** | ⚙ Push the audited commits to `origin/main`; confirm Argo syncs them | — | **human** | — | After A.2's verdicts, B.0, B.1 and B.1a |
 | **B.3** | ⚙ Re-register Argo against the direct API per A.4 | — | **human** | — | |
@@ -182,7 +203,7 @@ D-04, 1.4, the PreSync hook, the repo CI, the non-optional-ref check and DB-05 a
 |---|---|---|---|---|---|
 | **C.1** | **Guardrail LM Studio URL** — repoint `guardrail.yaml:65` from the non-rendering `http://hope-lmstudio:1234/v1` to the direct node IP SMR already uses (`configmap.yaml:56`). One line; guardrail's safety path currently cannot resolve DNS | D-10 | Trivial | `haiku-4-5` | default |
 | **C.2** | **`CORS_ALLOWED_ORIGINS`** — replace `"*"` with a real origin list. Read `apps/api/src/cors.config.ts:145-152` first and state in the diff *why* `"*"` matches nothing, so the fix is not re-reverted by someone who reads `"*"` as permissive | D-14 | Moderate — the value is trivial, the reasoning is not | `sonnet-5` | medium |
-| **C.3** | **Convert the remaining index-based patches to name-based**: SMR's OTel toggle (`containers/0/env/5/value`), the two Grafana hostname envs, and the three Ingress `rules[0]` host patches | D-15 | Moderate | `sonnet-5` | medium |
+| ~~C.3~~ | **Dropped — D-15 closed by `2dbbd7f`** while this plan was being written, including a `patch-hygiene` CI job that prevents regression | D-15 | — | — | — |
 | **C.4** | **Script `secrets.*.yaml.example` generation from the manifests**; fix the `hope-registry-credsf` typo; emit staging and prod examples too. Then **extend `check-config-refs.py` to validate Secret keys** — it currently states *"Secret keys are deliberately NOT validated"* (`:21-24`), which is exactly the parity check D-06's acceptance criterion asks for | D-06 | Moderate | `sonnet-5` | high |
 | **C.5** | **Ingress** — author real Ingress for `hope-api`, `admin-console`, `compat-playground` using ingressClass `traefik` (**verified present, and the only IngressClass in the cluster**), and delete the three dead `Ingress/hope-api` patches. Note the irony in the diff: `overlays/prod/kustomization.yaml:48-53` documents this exact no-op failure mode for `hope-ui` while three live instances of it sit in the same files | D-09 | Moderate | `sonnet-5` | medium |
 | **C.6** | **Probes** — add liveness/readiness/startup to `stt-v2-worker` (it has none); gate Ollama readiness on model-pull completion rather than `ollama serve` being up. Consume TASK-627's probe standard; do not invent one | D-13, D-17 | Moderate | `sonnet-5` | medium |
@@ -210,11 +231,12 @@ each defect's stated verification (§6) reproduces.
 
 | # | Item | Why it is owner-only |
 |---|---|---|
-| **⚠ 1** | **`hope-ui`: retire or re-add.** It is Running, excluded from the base kustomization, and `requiresPruning`. TASK-619 must enable `prune` for a real GitOps loop — **the moment prune is on, `hope-ui` is deleted.** Decide before 619, not after | Product decision about a deprecated app |
+| **✅ 1** | **`hope-ui`: decided — retire.** TASK-616's 2026-08-08 E6 entry records it: `hope-ui` is Running live but deleted from Git, *"so prune retires it as a side effect (intended)"*. No longer an open decision; noted here so nobody re-opens it when the pod disappears on the prune flip | — |
 | **⚠ 2** | **`hope-tts` enable-or-remove.** It reports `1/1 Running` with **zero registered providers**; its own `/health/ready` has been correctly returning 503 the entire time, invisible because the probe points at `/health/live`. With `maxUnavailable: 0`, a *corrected* probe stalls its rollout. Incident doc ADDENDUM 2: *"Either way this is an owner decision, not something to resolve by loosening the probe back to `/health/live`."* | Product decision; the safe-looking workaround is the wrong answer |
 | **⚠ 3** | **`nvidia.com/gpu.mode=graphics`** — the GPUs are not in compute mode. Confirm this is intentional before the time-slicing surge | Hardware/driver posture |
 | **⚙ 4** | Root/sudo on VM 200 for the containerd image-GC configuration behind LIVE-04 | No access |
 | **⚙ 5** | Cloudflare tunnel hostname→service ingress mapping for C.5 | *"the `arca-dev` tunnel is remotely managed... needs the Cloudflare API, which I don't have a token for"* (README §9) |
+| **⚠ 7** | **Which kubectl image for the vault-init hook** (B.0a): `bitnamilegacy/kubectl:1.31` — one line, closes the outage today, permanently unpatched — or `registry.k8s.io/kubectl:v1.34.5` — maintained, correct version skew, needs an init-script compatibility check. Recommendation: the legacy image now if speed matters, upstream in the Wave-C batch | Security-posture tradeoff on a PHI platform |
 | **🚫 6** | **Standing constraint, owner directive 2026-08-07**: *"do not touch any downloaded models... No deletion, no deduplication, no moving, no reorganising, no 'safe' cleanup — of `/mnt/data/models-cache` or any model weights anywhere on the estate. This holds regardless of duplication, apparent staleness, or disk pressure."* | Absolute. Bounds B.5 to ~15 GB |
 
 ---
@@ -241,9 +263,13 @@ These are the orderings where getting it wrong is destructive or self-defeating.
    workload GPU requests. The Operator does not watch the ConfigMap; skipping the restart means
    nothing changes and the workload change strands a pod `Pending`.
 4. **Do not apply the corrected probe to `hope-tts` before ⚠ 2 is decided.**
-5. **Do not enable Argo `prune` in this ticket.** Appendix B §B7: *"Enabling prune on a cluster with
-   this much untracked drift **will delete things** — audit before flipping."* `prune` belongs to
-   TASK-619, after ⚠ 1 and after the config-plane drift is reconciled.
+5. **Do not enable Argo `prune`/`selfHeal` in this ticket** — but the preconditions are now met, so
+   the reason has changed. As of 2026-08-08 the config-plane drift is **fully reconciled** (rendered
+   `hope-config` is byte-identical to live: 55 keys, zero key or value differences) and the drift
+   audit is clean. TASK-616 E6 steps 8 (`selfHeal`) and 9 (`prune`) are owner actions in a watched
+   window, and belong to [TASK-619](../TASK-619-GitOps-CICD-Delivery-Loop/README.md)'s delivery-loop
+   work. Two expected effects on the prune flip: `hope-ui` retires (intended, ✅ 1) and
+   `Pod/db-migrate-manual` surfaces as the artefact of the hand-run migration path (L-07).
 6. **Reconcile `db-migrate-manual` (L-07) before wiring any automated PreSync hook** — otherwise the
    hook may re-run work already applied by hand.
 7. **Dead-pod reaping (B.4) has no ordering dependency** and is safe — the 2026-08-07 pilot proved
@@ -280,7 +306,68 @@ Part C — manifest correctness:
 
 ## 7. Implementation Summary
 
-*Not started — awaiting owner approval of this plan (Phase 3 gate).*
+### Wave A — complete 2026-08-08 (four agents, read-only, nothing applied)
+
+| Task | Tier | Outcome | Deliverable |
+|---|---|---|---|
+| A.1 | `sonnet-5` / max | Root cause **confirmed** | [wave-a1-argo-sync-panic-diagnosis.md](./wave-a1-argo-sync-panic-diagnosis.md) |
+| A.2 | `sonnet-5` / high | 5 PUSH AS-IS, 1 PUSH-BUT-SEQUENCE | [wave-a2-unpushed-commit-audit.md](./wave-a2-unpushed-commit-audit.md) |
+| A.3 | `sonnet-5` / medium | Same root cause, reached independently | [wave-a3-vault-init-hook-diagnosis.md](./wave-a3-vault-init-hook-diagnosis.md) |
+| A.4 | `sonnet-5` / medium | Runbook + RBAC; two plan corrections | [runbook](./wave-a4-argo-direct-api-runbook.md) · [rbac](./wave-a4-argocd-manager-rbac.yaml) |
+
+**The single cause of the 7-day outage**: Broadcom pruned versioned tags from the `bitnami/*` Docker
+Hub org. `bitnami/kubectl:1.31` (`vault.yaml:139`) stopped resolving, the `hope-vault-init` Sync hook
+went to `ImagePullBackOff` on 2026-08-07T07:17:27Z, and Argo v3.3.4 nil-dereferenced while
+re-evaluating a hook that could never complete. A.1 and A.3 reached this independently — A.1 from the
+controller side, A.3 from the Job side. Verified against the registry API: `bitnami/kubectl` now
+publishes only `latest` and `sha256-*` tags.
+
+**What Wave A changed in the plan:**
+
+| Change | Source |
+|---|---|
+| `ollama` is a **StatefulSet** — losing the GPU race takes it to **zero replicas**, a real outage, not a stalled rollout. Strongest reason GPU activation gates the push | A.2 |
+| The vault-init Job needs **`activeDeadlineSeconds`**, not just an image fix — `backoffLimit: 6` is inert against `ImagePullBackOff`, which is why it wedged rather than failed | A.3 |
+| The six authored TASK-619 Argo files **still hard-code the Rancher proxy URL** — applying them would carry L-01 forward. Split into [619 B.4a/B.4b](../TASK-619-GitOps-CICD-Delivery-Loop/README.md) | A.4 |
+| `argocd-manager` SA/ClusterRole/Binding/token Secret **already exist** on `c-nfhxq` (2026-03-19). Only the Argo-side registration Secret is new | A.4 |
+| Argo holds **cluster-admin** on the workload cluster — upstream default, not an expansion, but flagged to [TASK-618](../TASK-618-PHI-Security-Baseline/README.md) | A.4 |
+| Hypothesis (b) **refuted**: the Rancher proxy responds normally (`live_ms: 1`); it is not the panic's cause. Still open for the `Missing` health symptom | A.1 |
+| The three `Failed` vault-init pods are **debris from an earlier Job generation**, evicted 2026-08-01 — not evidence of repeated failure | A.3 |
+| `runtimeClassName: nvidia` was **already live** pre-`8bcc85e`; only requests/limits, env removal and strategy changed | A.2 |
+| `hope-tts`'s zero-provider state **confirmed live** (`"providers": []` in pod logs) | A.2 |
+
+### B.0a + TASK-619 B.4a — authored 2026-08-08, committed, **not pushed**
+
+Branch **`task-617-gitops-recovery`** in `arca/hope-v2-deployment`, commit `1e87729`, based on `main`
+at `90f54ee`. 7 files, +39/−7.
+
+| Change | Detail |
+|---|---|
+| **Hook image** | `bitnami/kubectl:1.31` → **`alpine/kubectl:1.34.2`**. Not `registry.k8s.io/kubectl:v1.34.5` as first chosen, and not `rancher/kubectl:v1.34.9` — **both are distroless** (`Entrypoint: /bin/kubectl`, no `/bin/sh`), verified by pulling and exec-ing each. The Job runs `command: ["/bin/sh","-ec"]` with `wget`, `sed`, `grep`, `tr`, `head`, so either would have failed at container start with `stat /bin/sh: no such file or directory` — a *new* failure wearing the old one's clothes. `alpine/kubectl` carries every binary the script needs (busybox `wget` verified to accept `--header`/`--post-data`), and its client is inside the ±1 minor skew of k3s v1.34.5; the old 1.31 was three minors out |
+| **`activeDeadlineSeconds: 600`** | The Job must be able to give up. Per A.3, `backoffLimit` counts *container* failures and is inert against `ImagePullBackOff` |
+| **`securityContext` 1001** | `bitnami/kubectl` ran as UID 1001; `alpine/kubectl` defaults to **root**. Without this the swap silently regresses the pod to root and pre-breaks [TASK-618](../TASK-618-PHI-Security-Baseline/README.md)'s PSA `restricted` rollout. Verified the script runs clean at 1001 |
+| **Argo destination** | **All six** `argocd/` manifests carried the Rancher proxy URL, not the two first reported — dev, staging and prod, `Application` *and* `AppProject`. Repointed to `https://10.10.1.10:6443`, confirmed from the `kubernetes` Endpoints object |
+
+**All six of the repo's CI gates reproduced locally and pass**: `render` (3/3 overlays, 60/60/62
+objects) · `schemas` (kubeconform strict, 182 resources, 0 invalid) · `config-refs` (57 non-optional
+refs resolve) · `image-hygiene` · `patch-hygiene` · `secrets` (gitleaks working-tree, clean).
+
+### Latent bug found while testing the script under busybox — not fixed here
+
+`vault.yaml`'s unseal loop reads:
+
+```sh
+for key in $(... | tr ',' ' ' | head -3); do
+```
+
+`tr ',' ' '` collapses the keys onto **one line**, and `head -3` takes the first three *lines* — so it
+passes **all five** keys, not three. Verified under busybox `sh`. Benign today: the threshold is 3, so
+Vault is unsealed after the third and the 4th/5th calls return an already-unsealed error that `>/dev/null`
+swallows. But the code does not do what it says, and it stops being benign the moment `secret_threshold`
+changes. Left alone deliberately — it is unrelated to the outage, and the dev Vault is slated for
+retirement in TASK-618 Wave D. Recorded so it is not rediscovered as a mystery.
+
+**Waves B–D not started** — they begin with owner-only actions (§4).
 
 ---
 
@@ -288,4 +375,5 @@ Part C — manifest correctness:
 
 | Date | Change | Author |
 |---|---|---|
+| 2026-08-08 | **Wave A executed** — four read-only agents, nothing applied, nothing pushed. The 7-day delivery outage is root-caused to a single line: `bitnami/kubectl:1.31` (`vault.yaml:139`) stopped resolving after Broadcom pruned versioned tags from the `bitnami/*` Docker Hub org, wedging the `hope-vault-init` Sync hook and triggering an Argo v3.3.4 nil-deref. Confirmed independently by two agents from opposite ends. Eight plan corrections recorded in §7, the most consequential being that **`ollama` is a StatefulSet** — it has no surge, so losing the GPU scheduling race takes it to zero replicas rather than stalling safely. My §2.4 originally described the failure as "one workload `Pending` forever", which understated it. Ticket status → In Progress. | Claude |
 | 2026-08-08 | Ticket created. TASK-616 Phase 1 was never spun out; this creates it and widens it with **GitOps recovery**, which the 2026-08-07 assessment could not have seen. Two critical live findings reorder the phase: the remediation was authored but **never pushed** (LIVE-01), and Argo has been **panicking on every sync for 7 days** (LIVE-02). One plan premise corrected: the cluster exposes **2** GPU slots, not the 8 the Phase-1 table assumed, and no time-slicing ConfigMap exists (§2.4) — GPU requests must follow time-slicing activation, not precede it. Phase-1 items already closed elsewhere (DB-05, the deployment-repo CI, the `cattle-system` reap) are recorded as done and excluded. Status `Pending` pending owner approval. | Claude |

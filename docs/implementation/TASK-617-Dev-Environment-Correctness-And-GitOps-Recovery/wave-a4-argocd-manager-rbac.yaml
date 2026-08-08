@@ -1,0 +1,115 @@
+# =============================================================================
+# Wave A.4 (TASK-617) — argocd-manager ServiceAccount + RBAC on the DIRECT
+# k3s API of the "hope-v2" cluster (Rancher id c-nfhxq, node "dell",
+# 10.10.1.10:6443, k3s v1.34.5+k3s1).
+#
+# UNAPPLIED. OWNER-EXECUTED. Authored by Claude (sonnet-5) as part of the
+# TASK-617 Wave A.4 runbook (see wave-a4-argo-direct-api-runbook.md in this
+# same directory) — no write tool (kubectl apply/patch, mcp__rancher__
+# kubernetes_create/_patch/_delete/_exec, argocd cluster add) was called
+# while producing this file. Apply with:
+#
+#   kubectl --context <context-for-c-nfhxq> apply --server-side \
+#     --force-conflicts -f wave-a4-argocd-manager-rbac.yaml
+#
+# IMPORTANT — this is very likely a no-op. Read-only inspection on 2026-08-08
+# (mcp__rancher__kubernetes_get/kubernetes_list against cluster c-nfhxq)
+# found ALL FOUR objects below ALREADY LIVE, created 2026-03-19T01:31:5x —
+# eleven days before the Argo Application itself was hand-created
+# (2026-03-31), consistent with an earlier, abandoned attempt at this same
+# direct-API registration. This file documents and pins that existing state
+# (so it is reviewable, versioned, and reproducible on a fresh cluster) — it
+# does not request new privilege. Applying it should report `unchanged` (or
+# `configured` with an empty diff) for the ServiceAccount, ClusterRole, and
+# ClusterRoleBinding. See the runbook's §3.1 for the expected-output check.
+#
+# The Secret at the bottom is the one part that needs care: Kubernetes
+# ceased auto-creating ServiceAccount token Secrets at v1.24 (this cluster
+# runs v1.34.5+k3s1), so the manual-secret pattern below is required. It
+# deliberately carries NO data — no `stringData.token`, no placeholder
+# value of any kind. Once a Secret of type `kubernetes.io/service-account-
+# token` exists with the `kubernetes.io/service-account.name` annotation
+# below, Kubernetes' own token controller populates `data.token`,
+# `data.ca.crt`, and `data.namespace` itself. There is no real credential
+# in this file to leak, and none should ever be pasted into it.
+#
+# A live Secret with this exact name already exists
+# (kubernetes.io/legacy-token-last-used: 2026-08-08 — actively used TODAY
+# by something outside this Application's own sync path, per the runbook's
+# finding §1.6). Applying this file will NOT rotate or clear that token —
+# `kubectl apply` on an already-populated token Secret is a no-op against
+# `data`, since this manifest supplies no `data`/`stringData` block to
+# collide with what the token controller already wrote. Do not add one.
+# =============================================================================
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: argocd-manager
+  namespace: kube-system
+  labels:
+    app.kubernetes.io/part-of: argocd
+    app.kubernetes.io/managed-by: task-617-wave-a4
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: argocd-manager-role
+  labels:
+    app.kubernetes.io/part-of: argocd
+    app.kubernetes.io/managed-by: task-617-wave-a4
+rules:
+  # Cluster-admin-equivalent, matching the upstream Argo CD `argocd-manager-role`
+  # bootstrap manifest verbatim (https://argo-cd.readthedocs.io/en/stable/operator-manual/security/#cluster-rbac).
+  # Argo needs unrestricted create/update/patch/delete across every API group
+  # and kind to sync arbitrary manifests during `kubectl apply`-equivalent
+  # reconciliation. This is not broader than what the Rancher-proxy path
+  # already grants Argo on this same cluster today (finding §1.6 of the
+  # runbook) — this manifest documents existing live state, it does not
+  # expand privilege beyond it.
+  - apiGroups:
+      - "*"
+    resources:
+      - "*"
+    verbs:
+      - "*"
+  - nonResourceURLs:
+      - "*"
+    verbs:
+      - "*"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: argocd-manager-role-binding
+  labels:
+    app.kubernetes.io/part-of: argocd
+    app.kubernetes.io/managed-by: task-617-wave-a4
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: argocd-manager-role
+subjects:
+  - kind: ServiceAccount
+    name: argocd-manager
+    namespace: kube-system
+---
+# Kubernetes >=1.24 manual ServiceAccount token Secret (this cluster's k3s
+# is v1.34.5+k3s1 — well past the point where token Secrets stopped being
+# auto-created). No `data`/`stringData` block: Kubernetes' built-in
+# controller populates `token`, `ca.crt`, and `namespace` once this object
+# exists and matches the ServiceAccount by the annotation below. This is
+# the ONLY correct way to hand-author this Secret — inventing a placeholder
+# token value here would either be rejected or, worse, silently overwritten
+# on the next controller pass, so no placeholder is used.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: argocd-manager-long-lived-token
+  namespace: kube-system
+  labels:
+    app.kubernetes.io/part-of: argocd
+    app.kubernetes.io/managed-by: task-617-wave-a4
+  annotations:
+    kubernetes.io/service-account.name: argocd-manager
+type: kubernetes.io/service-account-token
