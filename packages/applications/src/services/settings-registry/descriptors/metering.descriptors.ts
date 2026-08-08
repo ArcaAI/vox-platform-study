@@ -19,11 +19,13 @@
 // runtime gate — mirrors `entitlements.enabledDefault`
 // (feature-flags.descriptors.ts) exactly: SEED-TIME ONLY, read by
 // `seed/15-entitlements.ts` to decide the value of the
-// `metering.reconcile.enabled` GlobalSetting row on a FRESH database (OQ3:
-// ON in dev/staging via `METERING_RECONCILE_ENABLED_DEFAULT`, OFF in
-// test/CI/prod). Its migration path is the same as its sibling's: DELETION,
-// once seeding takes its default from the descriptor instead of the
-// environment.
+// `metering.reconcile.enabled` GlobalSetting row on a FRESH database.
+// POLICY (TASK-638): ON in every DEPLOYED environment (hope-v2-dev, staging,
+// production) — each sets `METERING_RECONCILE_ENABLED_DEFAULT=true` in its
+// host env / deploy overlay — and OFF only in LOCAL development (the committed
+// `.env.sample` default) and test/CI. Its migration path is the same as its
+// sibling's: DELETION, once seeding takes its default from the descriptor
+// instead of the environment.
 
 import { EDITABLE_BY_NONE, SettingDescriptor } from '../registry.types';
 import {
@@ -108,7 +110,7 @@ export const METERING_SETTINGS: SettingDescriptor[] = [
     category: 'Platform Operations',
     label: 'Metering reconcile seed default',
     description:
-      'SEED-TIME ONLY, and not itself a runtime gate: `seed/15-entitlements.ts` reads it to decide the value of the `metering.reconcile.enabled` GlobalSetting row on a FRESH database (OQ3 — ON in dev/staging via METERING_RECONCILE_ENABLED_DEFAULT, OFF in test/CI/prod). The live control plane is `metering.reconcile.enabled` (already cataloged above, tier `global-kv`, kill-switch). Mirrors `entitlements.enabledDefault` exactly; its migration is DELETION, once seeding takes its default from the descriptor instead of the environment.',
+      'SEED-TIME ONLY, and not itself a runtime gate: `seed/15-entitlements.ts` reads it to decide the value of the `metering.reconcile.enabled` GlobalSetting row on a FRESH database. POLICY (TASK-638): reconcile is ON in every DEPLOYED environment (hope-v2-dev, staging, production) — each sets METERING_RECONCILE_ENABLED_DEFAULT=true in its host env / deploy overlay — and OFF only in LOCAL development (this committed default) and test/CI (never set). Keep this LOCAL default false so a developer laptop never runs the sweep; flip live via the admin control plane. The live control plane is `metering.reconcile.enabled` (already cataloged above, tier `global-kv`, kill-switch). Mirrors `entitlements.enabledDefault` exactly; its migration is DELETION, once seeding takes its default from the descriptor instead of the environment.',
     default: false,
   },
 
