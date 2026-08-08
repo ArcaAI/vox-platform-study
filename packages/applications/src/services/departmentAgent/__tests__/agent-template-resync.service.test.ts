@@ -183,6 +183,31 @@ describe('AgentTemplateResyncService', () => {
     expect(mockAgentRepo.setDefaultForDepartment).toHaveBeenCalledTimes(1);
   });
 
+  // TASK-634 D-18 — resync reconciles agents onto the tenant's EXISTING
+  // departments; it must never provision a department. The old
+  // `resolveOrCreateTenantDepartment` cloned the golden department shape on a
+  // miss, which made the SYSTEM golden catalog the de-facto source of every
+  // tenant's department list (ArcaAI gained 15 departments in a 629 ms sweep,
+  // six of which its clinical model does not have) and made deleting them
+  // pointless, because the next sweep recreated them.
+  it('D-18: skips a golden agent whose department the tenant does not have, and creates NO department', async () => {
+    mockAgentRepo.findAll.mockImplementation(async (props: any) =>
+      props.filters.tenantId === SYSTEM_TENANT_ID ? [goldenAgent({ slug: 'brand-new' })] : [],
+    );
+    mockTemplateRepo.findById.mockResolvedValue(template({ id: 'sys-tpl-gen', content: GOLDEN_CONTENT_V1, currentVersionNumber: 1 }));
+    // The tenant has no department with the golden department's code.
+    mockDeptRepo.findByCode.mockResolvedValue(null);
+
+    const summary = await service.resyncTenant(TARGET_TENANT);
+
+    expect(summary).toEqual({ added: 0, fastForwarded: 0, skipped: 1 });
+    // The whole point: nothing is materialized on a miss.
+    expect(mockDeptRepo.create).not.toHaveBeenCalled();
+    expect(mockAgentRepo.create).not.toHaveBeenCalled();
+    expect(mockTemplateRepo.create).not.toHaveBeenCalled();
+    expect(mockVersionRepo.create).not.toHaveBeenCalled();
+  });
+
   // (ii) — a pristine locked clone behind the golden template.
   it('fast-forwards a pristine locked clone when the golden template advanced', async () => {
     mockAgentRepo.findAll.mockImplementation(async (props: any) => (props.filters.tenantId === SYSTEM_TENANT_ID ? [goldenAgent()] : [tenantAgent()]));
