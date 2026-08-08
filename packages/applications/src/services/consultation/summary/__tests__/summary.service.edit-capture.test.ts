@@ -69,6 +69,7 @@ const makeMocks = () => ({
     findById: vi.fn(),
     findTranscripts: vi.fn().mockResolvedValue([{ content: 'transcript' }]),
     findLatestPreSummary: vi.fn().mockResolvedValue(null),
+  findLatestPreSummaryWithDecryptedContent: vi.fn().mockResolvedValue({ entity: null, plaintext: null }),
     create: vi.fn(async (e: unknown) => e),
     update: vi.fn(async (_id: string, e: unknown) => e),
   },

@@ -665,8 +665,15 @@ describe('PromptResolutionService', () => {
       expect(result.resolvedFrom).toBe('tenant');
       expect(result.content).toBe('TENANT pre-summary body');
       expect(result.resolvedAgentId).toBeUndefined();
-      // The agent tier is never even consulted for pre-summary.
-      expect(mockDepartmentAgentRepository.findDefaultForDepartment).not.toHaveBeenCalled();
+      // TASK-635 DR-5 — DELIBERATE CHANGE. This used to assert
+      // `findDefaultForDepartment` was NEVER called for pre-summary, because the
+      // agent tier could only have served a clinical NOTE prompt. C2 gives the
+      // agent a dedicated `preSummaryTemplateId` binding, so the tier IS now
+      // consulted when a departmentId is supplied — but ONLY that binding is
+      // read, with no base-`promptTemplateId` fallback. The agent here has none,
+      // so the tier is skipped and the OUTCOME is unchanged: the tenant row still
+      // wins and no note prompt can ever be substituted (the assertions above).
+      expect(mockDepartmentAgentRepository.findDefaultForDepartment).toHaveBeenCalledTimes(1);
       // …and the department visit-type columns are not read.
       expect(result.promptId).not.toBe('dept-presummary-col');
       expect(result.resolutionTrace.departmentPromptId).toBeNull();
@@ -813,6 +820,10 @@ describe('PromptResolutionService', () => {
         content: 'PINNED v3 body',
         resolvedVersionNumber: 3,
         resolvedAgentId: 'agent-1',
+        // TASK-635 — additive trace/telemetry field naming which capability
+        // chain ran. Nothing branches on it; it is asserted here only because
+        // this is a whole-object deep-equal regression lock.
+        resolvedCapability: 'summary',
       });
       // The tenant pre-summary tier never runs for a summary prompt type.
       expect(mockPromptTemplateRepository.findAll).not.toHaveBeenCalled();

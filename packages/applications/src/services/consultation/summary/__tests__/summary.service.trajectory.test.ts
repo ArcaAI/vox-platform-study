@@ -27,6 +27,7 @@ function buildService(trajectoryOverride?: { recordSteps: ReturnType<typeof vi.f
     findCaseNotes: vi.fn().mockResolvedValue([{ id: 'cn-1', content: 'case note content' }]),
     findTranscripts: vi.fn().mockResolvedValue([{ content: 'transcript text' }]),
     findLatestPreSummary: vi.fn().mockResolvedValue(null),
+  findLatestPreSummaryWithDecryptedContent: vi.fn().mockResolvedValue({ entity: null, plaintext: null }),
     create: vi.fn(),
     update: vi.fn(),
   };

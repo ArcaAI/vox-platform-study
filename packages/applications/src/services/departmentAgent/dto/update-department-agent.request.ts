@@ -48,6 +48,50 @@ export class UpdateDepartmentAgentRequest {
   @IsString()
   goldenSetId?: string;
 
+  // ── TASK-635 RF-4 capability-keyed bindings. All optional; omitted/null ⇒ the
+  // LEGACY behaviour for that capability. Every field must be declared here —
+  // the gateway's global `forbidNonWhitelisted` pipe rejects undeclared fields,
+  // so this is mandatory, not cosmetic. `templateLocked` stays deliberately
+  // absent (existing posture) so it can never be flipped over the API.
+  @ApiPropertyOptional({ description: 'Summary template served for NEW-PATIENT visits. Null ⇒ fall back to promptTemplateId.' })
+  @IsOptional()
+  @IsString()
+  newPatientTemplateId?: string | null;
+
+  @ApiPropertyOptional({ description: 'Summary template served for REVISIT visits. Null ⇒ fall back to promptTemplateId.' })
+  @IsOptional()
+  @IsString()
+  revisitTemplateId?: string | null;
+
+  @ApiPropertyOptional({
+    description:
+      'Pre-summary template for NATIVE requests that carry this department. Null ⇒ the tenant default, then the SYSTEM default. Never consulted by the v1-compat path (it sends no departmentId).',
+  })
+  @IsOptional()
+  @IsString()
+  preSummaryTemplateId?: string | null;
+
+  @ApiPropertyOptional({ description: 'Live-summarization prompt template. Null ⇒ the SYSTEM live default.' })
+  @IsOptional()
+  @IsString()
+  livePromptTemplateId?: string | null;
+
+  @ApiPropertyOptional({
+    description:
+      'Which live-loop tools run: { version: 1, tools: { ner: { enabled }, vitals: { enabled }, groundedness: { enabled } } }. Null ⇒ platform default.',
+  })
+  @IsOptional()
+  @IsObject()
+  toolConfig?: Record<string, unknown> | null;
+
+  @ApiPropertyOptional({
+    description:
+      'Per-task LLM override: { live?: { aiModelSlug }, finalize?: { aiModelSlug } }. Each key falls back independently to the tenant AiTaskDefault.',
+  })
+  @IsOptional()
+  @IsObject()
+  llmOverrides?: Record<string, unknown> | null;
+
   @ApiPropertyOptional({ description: 'Tags', type: [String] })
   @IsOptional()
   @IsArray()

@@ -265,6 +265,40 @@ describe('useSMR', () => {
   });
 
   // ---------------------------------------------------------------------
+  // summarizeAsync deprecation (TASK-635 B-07 / A9-i) — the compat gateway
+  // has no `summary/async` route (that path exists only on the native
+  // consultation controller), so the method must reject BEFORE any network
+  // call rather than 404 at fetch time.
+  // ---------------------------------------------------------------------
+
+  describe('summarizeAsync (deprecated — TASK-635 B-07)', () => {
+    it('rejects synchronously-before-network with a descriptive error and issues no fetch', async () => {
+      const { result } = renderHook(() => useSMR());
+
+      await expect(result.current.summarizeAsync({ text: 'hi' })).rejects.toThrow(
+        /summarizeAsync is deprecated.*compat gateway has no `summary\/async` route.*(summarizeSync|summarize).*generateSummaryAsync/i,
+      );
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('fires onError with the same descriptive message and never flips loading to true', async () => {
+      const onError = vi.fn();
+      const { result } = renderHook(() => useSMR({ onError }));
+
+      await expect(result.current.summarizeAsync({ text: 'hi' })).rejects.toThrow();
+
+      expect(onError).toHaveBeenCalledWith(
+        expect.objectContaining({
+          code: 'ASYNC_SUMMARIZATION_ERROR',
+          message: expect.stringMatching(/summarizeAsync is deprecated/),
+        }),
+      );
+      expect(result.current.loading).toBe(false);
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+  });
+
+  // ---------------------------------------------------------------------
   // Streaming (TASK-589) — `stream:true` + `onDelta`
   // ---------------------------------------------------------------------
 

@@ -599,12 +599,21 @@ export class ChainSummaryService extends BaseService {
     outputTokens?: number;
     usage: SmrUsageDetail | null;
   }> {
+    // The tenant id is resolved EXPLICITLY (B-04), OUTSIDE the try/catch
+    // below — never a bare no-arg call trusting `resolveSmrSelection`'s own
+    // CLS fallback, so a worker path with unpopulated CLS fails loudly with
+    // a clear message instead of either silently serving the SYSTEM default
+    // model or having that failure masked by the generic SMR-call catch.
+    if (this.harnessPolicyService && !this.tenantId) {
+      throw new BadRequestException('Tenant ID is required');
+    }
+
     try {
       // Resolve the admin-managed {provider, model} (no in-gateway
       // default) as the base so a caller-supplied model still wins.
       let options = payload.options;
       if (this.harnessPolicyService) {
-        const { provider, model } = await this.harnessPolicyService.resolveSmrSelection();
+        const { provider, model } = await this.harnessPolicyService.resolveSmrSelection(this.tenantId!, 'finalize');
         options = { smrProvider: provider, smrModel: model, ...payload.options };
       }
       const smrPayload = buildSmrGeneratePayload(payload.assembledPrompt, options, payload.context);

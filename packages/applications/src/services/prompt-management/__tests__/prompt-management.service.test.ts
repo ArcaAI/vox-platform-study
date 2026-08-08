@@ -9,7 +9,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { SysEventType, ResourceStatusType, PromptTemplateFactory } from '@arcaai/domains';
-import { OptimisticConcurrencyException } from '@arcaai/exceptions';
+import { ArgumentInvalidException, OptimisticConcurrencyException } from '@arcaai/exceptions';
 import { PromptManagementService } from '../prompt-management.service';
 
 // ─── Mock Factories ─────────────────────────────────────────────────
@@ -798,6 +798,23 @@ describe('PromptManagementService', () => {
   // ─── listPromptTemplates ────────────────────────────────────
 
   describe('listPromptTemplates', () => {
+    // TASK-635 B-12 / R1 — regression lock. `PromptTemplate` is now a
+    // SYSTEM-shared READ model, so a read that supplies no `tenantId` gets
+    // `tenantId IN [caller, SYSTEM]` injected and would surface the 13 SYSTEM
+    // golden templates plus the platform defaults inside tenant pickers. An
+    // EXPLICIT caller pin is preserved verbatim by the shared-read merge, so
+    // this assertion is what keeps the list contents unchanged. Do not delete it
+    // as "redundant with tenant scoping" — it is not, since the widening landed.
+    it('B-12: pins an explicit caller tenantId so SYSTEM-shared rows never leak into the list', async () => {
+      const mockQb = createMockQueryBuilder();
+      mockTemplateRepo.$.mockReturnValue(mockQb);
+      mockQb.ToList.mockResolvedValue([]);
+
+      await service.listPromptTemplates();
+
+      expect(mockQb.Where).toHaveBeenCalledWith({ tenantId: 'tenant-1' });
+    });
+
     it('should return all templates when no filters provided', async () => {
       const mockQb = createMockQueryBuilder();
       mockTemplateRepo.$.mockReturnValue(mockQb);
@@ -1923,6 +1940,252 @@ describe('PromptManagementService', () => {
         expect(result.metrics).toBeDefined();
         expect(result.metrics?.wordCount).toBe(60);
         expect(result.metrics?.lengthScore).toBe(1);
+      });
+    });
+
+    // ─── TASK-635 Lane B — provider selection, dry-run/version, golden-case ───
+    describe('TASK-635 Lane B', () => {
+      const buildLaneBService = (opts: {
+        responseData: Record<string, unknown>;
+        harnessPolicyService?: { resolveSmrSelection: ReturnType<typeof vi.fn> };
+        aiModelRepository?: { findByTaskTypeSharedRead: ReturnType<typeof vi.fn> };
+        goldenCaseRepository?: { findById: ReturnType<typeof vi.fn>; decryptFieldsFromEntity: ReturnType<typeof vi.fn> };
+        secretsService?: Record<string, unknown>;
+      }) => {
+        const httpMock = createMockHttpService(opts.responseData);
+        const configMock = createMockConfigService();
+        const svc = new PromptManagementService(
+          mockTemplateRepo as never,
+          mockVersionRepo as never,
+          mockUsageRepo as never,
+          mockDepartmentService as never,
+          mockEventEmitter as never,
+          mockClsService as never,
+          mockDatabaseService as never,
+          httpMock as never,
+          configMock as never,
+          opts.secretsService as never, // secretsService
+          opts.harnessPolicyService as never, // harnessPolicyService
+          undefined, // userProfileService
+          undefined, // entitlements
+          undefined, // promotionGate
+          opts.aiModelRepository as never, // aiModelRepository
+          opts.goldenCaseRepository as never, // goldenCaseRepository
+        );
+        return { svc, httpMock };
+      };
+
+      describe('provider/model selection (smr.test routing tier)', () => {
+        it('forwards an explicit caller-supplied provider/model pair to SMR verbatim', async () => {
+          const existing = createMockTemplateEntity({ id: 'tpl-1', version: 1 });
+          mockTemplateRepo.findById.mockResolvedValue(existing);
+          mockTemplateRepo.updateWithVersion.mockResolvedValue(createMockTemplateEntity({ id: 'tpl-1', version: 2 }));
+          const harnessPolicyService = { resolveSmrSelection: vi.fn() };
+          const aiModelRepository = {
+            findByTaskTypeSharedRead: vi.fn().mockResolvedValue([{ provider: 'azure-openai', sourceUri: 'gpt-4o' }]),
+          };
+          const { svc, httpMock } = buildLaneBService({
+            responseData: { content: wordsOfLength(60) },
+            harnessPolicyService,
+            aiModelRepository,
+          });
+
+          await svc.testPromptTemplate('tpl-1', { provider: 'azure-openai', model: 'gpt-4o', expectedVersion: 1 } as never);
+
+          // The policy cascade is never consulted when the caller pins a pair.
+          expect(harnessPolicyService.resolveSmrSelection).not.toHaveBeenCalled();
+          const [, payload] = httpMock.axiosRef.post.mock.calls[0];
+          expect((payload as { provider?: string }).provider).toBe('azure-openai');
+          expect((payload as { model?: string }).model).toBe('gpt-4o');
+        });
+
+        it('rejects an unknown/disabled caller-supplied provider/model pair with ArgumentInvalidException', async () => {
+          const existing = createMockTemplateEntity({ id: 'tpl-1', version: 1 });
+          mockTemplateRepo.findById.mockResolvedValue(existing);
+          const aiModelRepository = { findByTaskTypeSharedRead: vi.fn().mockResolvedValue([]) };
+          const { svc, httpMock } = buildLaneBService({ responseData: { content: wordsOfLength(60) }, aiModelRepository });
+
+          await expect(
+            svc.testPromptTemplate('tpl-1', { provider: 'ghost-provider', model: 'ghost-model', expectedVersion: 1 } as never),
+          ).rejects.toThrow(ArgumentInvalidException);
+          expect(httpMock.axiosRef.post).not.toHaveBeenCalled();
+          expect(mockTemplateRepo.updateWithVersion).not.toHaveBeenCalled();
+        });
+
+        it('rejects a partial pair (provider without model)', async () => {
+          const existing = createMockTemplateEntity({ id: 'tpl-1', version: 1 });
+          mockTemplateRepo.findById.mockResolvedValue(existing);
+          const { svc } = buildLaneBService({ responseData: { content: wordsOfLength(60) } });
+
+          await expect(svc.testPromptTemplate('tpl-1', { provider: 'azure-openai', expectedVersion: 1 } as never)).rejects.toThrow(
+            ArgumentInvalidException,
+          );
+        });
+
+        it('cascades smr.test → smr.finalize when smr.test is unresolved for the tenant', async () => {
+          const existing = createMockTemplateEntity({ id: 'tpl-1', version: 1 });
+          mockTemplateRepo.findById.mockResolvedValue(existing);
+          mockTemplateRepo.updateWithVersion.mockResolvedValue(createMockTemplateEntity({ id: 'tpl-1', version: 2 }));
+          const resolveSmrSelection = vi
+            .fn()
+            .mockRejectedValueOnce(new BadRequestException('smr.test unresolved'))
+            .mockResolvedValueOnce({ provider: 'lm-studio', model: 'finalize-model' });
+          const { svc, httpMock } = buildLaneBService({
+            responseData: { content: wordsOfLength(60) },
+            harnessPolicyService: { resolveSmrSelection },
+          });
+
+          await svc.testPromptTemplate('tpl-1', { expectedVersion: 1 } as never);
+
+          expect(resolveSmrSelection).toHaveBeenNthCalledWith(1, 'tenant-1', 'test');
+          expect(resolveSmrSelection).toHaveBeenNthCalledWith(2, 'tenant-1', 'finalize');
+          const [, payload] = httpMock.axiosRef.post.mock.calls[0];
+          expect((payload as { provider?: string }).provider).toBe('lm-studio');
+          expect((payload as { model?: string }).model).toBe('finalize-model');
+        });
+      });
+
+      describe('dryRun + versionNumber', () => {
+        it('dry-run scores/generates WITHOUT persisting lastTest*/bumping _version', async () => {
+          const existing = createMockTemplateEntity({ id: 'tpl-1', version: 1, content: 'Summarize {{topic}}' });
+          mockTemplateRepo.findById.mockResolvedValue(existing);
+          const { svc, httpMock } = buildLaneBService({
+            responseData: { content: wordsOfLength(60) },
+            harnessPolicyService: { resolveSmrSelection: vi.fn().mockResolvedValue({ provider: 'lm-studio', model: 'm' }) },
+          });
+
+          const result = await svc.testPromptTemplate('tpl-1', { variables: { topic: 'asthma' }, dryRun: true } as never);
+
+          expect(httpMock.axiosRef.post).toHaveBeenCalledTimes(1);
+          expect(mockTemplateRepo.updateWithVersion).not.toHaveBeenCalled();
+          expect(mockTemplateRepo.encryptFieldsIntoEntity).not.toHaveBeenCalled();
+          expect(mockEventEmitter.emit).not.toHaveBeenCalled();
+          expect((existing as { incrementVersion: ReturnType<typeof vi.fn> }).incrementVersion).not.toHaveBeenCalled();
+          expect(result.version).toBe(1);
+          expect(result.output).toBe(wordsOfLength(60));
+        });
+
+        it('versionNumber targets the pinned PromptVersion snapshot content, not the mutable draft', async () => {
+          const existing = createMockTemplateEntity({ id: 'tpl-1', version: 3, content: 'DRAFT content — must not be sent' });
+          mockTemplateRepo.findById.mockResolvedValue(existing);
+          const version = createMockVersionEntity({
+            promptTemplateId: 'tpl-1',
+            versionNumber: 2,
+            content: 'PINNED snapshot for {{topic}}',
+            variables: [{ name: 'topic' }],
+          });
+          mockVersionRepo.findByVersionNumber.mockResolvedValue(version);
+          const { svc, httpMock } = buildLaneBService({
+            responseData: { content: wordsOfLength(60) },
+            harnessPolicyService: { resolveSmrSelection: vi.fn().mockResolvedValue({ provider: 'lm-studio', model: 'm' }) },
+          });
+
+          await svc.testPromptTemplate('tpl-1', { versionNumber: 2, variables: { topic: 'asthma' }, dryRun: true } as never);
+
+          expect(mockVersionRepo.findByVersionNumber).toHaveBeenCalledWith('tpl-1', 2);
+          const [, payload] = httpMock.axiosRef.post.mock.calls[0];
+          const prompt = (payload as { prompt: string }).prompt;
+          expect(prompt).toContain('PINNED snapshot for asthma');
+          expect(prompt).not.toContain('DRAFT content');
+        });
+
+        it('throws NotFoundException for a missing versionNumber (no SMR call, no write)', async () => {
+          const existing = createMockTemplateEntity({ id: 'tpl-1', version: 1 });
+          mockTemplateRepo.findById.mockResolvedValue(existing);
+          mockVersionRepo.findByVersionNumber.mockResolvedValue(undefined);
+          const { svc, httpMock } = buildLaneBService({ responseData: { content: wordsOfLength(60) } });
+
+          await expect(svc.testPromptTemplate('tpl-1', { versionNumber: 99, dryRun: true } as never)).rejects.toThrow(NotFoundException);
+          expect(httpMock.axiosRef.post).not.toHaveBeenCalled();
+          expect(mockTemplateRepo.updateWithVersion).not.toHaveBeenCalled();
+        });
+
+        it('interpolates a single-brace v1-style body via the shared substituter — no literal braces leak', async () => {
+          const existing = createMockTemplateEntity({
+            id: 'tpl-1',
+            version: 1,
+            content: 'Dept: {current_department} | Visit: {visit_type}',
+            variables: [{ name: 'current_department' }, { name: 'visit_type' }],
+          });
+          mockTemplateRepo.findById.mockResolvedValue(existing);
+          const { svc, httpMock } = buildLaneBService({
+            responseData: { content: wordsOfLength(60) },
+            harnessPolicyService: { resolveSmrSelection: vi.fn().mockResolvedValue({ provider: 'lm-studio', model: 'm' }) },
+          });
+
+          await svc.testPromptTemplate('tpl-1', { variables: { current_department: 'Cardiology' }, dryRun: true } as never);
+
+          const [, payload] = httpMock.axiosRef.post.mock.calls[0];
+          const prompt = (payload as { prompt: string }).prompt;
+          // caller-supplied value wins for the field it supplied
+          expect(prompt).toContain('Dept: Cardiology');
+          // the v1 default fills the field the caller did NOT supply
+          expect(prompt).toContain('Visit: Medical examination');
+          // no single-brace token leaks through literally
+          expect(prompt).not.toMatch(/\{current_department\}/);
+          expect(prompt).not.toMatch(/\{visit_type\}/);
+        });
+      });
+
+      describe('goldenCaseId (predefined example data)', () => {
+        it('feeds the decrypted golden-case transcript into interpolation as sample input', async () => {
+          const existing = createMockTemplateEntity({ id: 'tpl-1', version: 1, content: 'Summarize:' });
+          mockTemplateRepo.findById.mockResolvedValue(existing);
+          const goldenCaseEntity = { id: 'case-1', tenantId: 'tenant-1' };
+          const goldenCaseRepository = {
+            findById: vi.fn().mockResolvedValue(goldenCaseEntity),
+            decryptFieldsFromEntity: vi.fn().mockResolvedValue({ transcript: 'Patient reports chest pain.', referenceNote: 'SOAP note...' }),
+          };
+          const secretsService = { encrypt: vi.fn(), decrypt: vi.fn(), getSecretOptional: vi.fn().mockResolvedValue('') };
+          const { svc, httpMock } = buildLaneBService({
+            responseData: { content: wordsOfLength(60) },
+            harnessPolicyService: { resolveSmrSelection: vi.fn().mockResolvedValue({ provider: 'lm-studio', model: 'm' }) },
+            goldenCaseRepository,
+            secretsService,
+          });
+
+          await svc.testPromptTemplate('tpl-1', { goldenCaseId: 'case-1', dryRun: true } as never);
+
+          expect(goldenCaseRepository.findById).toHaveBeenCalledWith('case-1');
+          expect(goldenCaseRepository.decryptFieldsFromEntity).toHaveBeenCalledWith(goldenCaseEntity, secretsService);
+          const [, payload] = httpMock.axiosRef.post.mock.calls[0];
+          expect((payload as { prompt: string }).prompt).toContain('Patient reports chest pain.');
+        });
+
+        it('throws NotFoundException on a cross-tenant golden case (404-over-403)', async () => {
+          const existing = createMockTemplateEntity({ id: 'tpl-1', version: 1 });
+          mockTemplateRepo.findById.mockResolvedValue(existing);
+          const goldenCaseRepository = {
+            findById: vi.fn().mockResolvedValue({ id: 'case-X', tenantId: 'tenant-OTHER' }),
+            decryptFieldsFromEntity: vi.fn(),
+          };
+          const { svc, httpMock } = buildLaneBService({ responseData: { content: wordsOfLength(60) }, goldenCaseRepository });
+
+          await expect(svc.testPromptTemplate('tpl-1', { goldenCaseId: 'case-X', dryRun: true } as never)).rejects.toThrow(NotFoundException);
+          expect(goldenCaseRepository.decryptFieldsFromEntity).not.toHaveBeenCalled();
+          expect(httpMock.axiosRef.post).not.toHaveBeenCalled();
+        });
+
+        it('throws NotFoundException on an unknown golden case', async () => {
+          const existing = createMockTemplateEntity({ id: 'tpl-1', version: 1 });
+          mockTemplateRepo.findById.mockResolvedValue(existing);
+          const goldenCaseRepository = { findById: vi.fn().mockResolvedValue(undefined), decryptFieldsFromEntity: vi.fn() };
+          const { svc } = buildLaneBService({ responseData: { content: wordsOfLength(60) }, goldenCaseRepository });
+
+          await expect(svc.testPromptTemplate('tpl-1', { goldenCaseId: 'case-missing', dryRun: true } as never)).rejects.toThrow(NotFoundException);
+        });
+
+        it('rejects sampleInput + goldenCaseId supplied together', async () => {
+          const existing = createMockTemplateEntity({ id: 'tpl-1', version: 1 });
+          mockTemplateRepo.findById.mockResolvedValue(existing);
+          const { svc, httpMock } = buildLaneBService({ responseData: { content: wordsOfLength(60) } });
+
+          await expect(
+            svc.testPromptTemplate('tpl-1', { sampleInput: 'free text', goldenCaseId: 'case-1', dryRun: true } as never),
+          ).rejects.toThrow(ArgumentInvalidException);
+          expect(httpMock.axiosRef.post).not.toHaveBeenCalled();
+          expect(mockTemplateRepo.findById).not.toHaveBeenCalled();
+        });
       });
     });
   });

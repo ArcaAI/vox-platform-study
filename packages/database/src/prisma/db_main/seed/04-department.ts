@@ -349,10 +349,17 @@ export const DEFAULT_DEPARTMENTS = [
 // `PromptTemplate`s owned by the ArcaAI tenant (see
 // 07b-arcaai-clinical-templates.ts).
 //
-// These departments deliberately carry NO default `DepartmentAgent`, so the
-// prompt resolver skips tier-1a and uses these visit-type-faithful legacy
-// columns (an agent resolves ONE template per department and ignores visit
-// type, which would collapse v1's new-referral vs follow-up split).
+// TASK-635 RF-3 UPDATE: these departments DO now carry a default
+// `DepartmentAgent` (ARCAAI_TENANT_AGENTS in 07a-agent-golden-library.ts). The
+// former "no default agent" rule existed only because a DepartmentAgent used to
+// be a single prompt pointer that ignored visit type; TASK-635 C2 gave the agent
+// per-visit-type bindings (`newPatientTemplateId` / `revisitTemplateId`) wired to
+// exactly the ids below, so tier-1a now resolves the SAME template these columns
+// name. The columns below are therefore RETAINED as the DEPRECATED tier-1b
+// fallback — reached only when a department has no default agent or the agent's
+// selected binding fails the APPROVED/snapshot checks. Equality of the two paths
+// is locked by seed/__tests__/arcaai-agent-column-equality.test.ts (ids) and by
+// the C2-T2 resolver suite in packages/applications (ids + version + bytes).
 //
 // GEN_ARCAAI is RETAINED (existing consultation / user / DNA / audit seed
 // references) and REPURPOSED as General Medicine; the former CARD_ARCAAI /
@@ -367,7 +374,8 @@ export const ARCAAI_CLINICAL_DEPARTMENTS = [
     name: 'General Medicine',
     description: 'Internal medicine and general medical consultations',
     defaultSummaryTemplate: 'Medicine-Structured',
-    // Pre-summary is NOT department-scoped — see ARCAAI_FALLBACK_TEMPLATE_IDS.
+    // Pre-summary is NOT department-scoped — the tenant-wide PRE_SUMMARY_SPEC
+    // row in 07b-arcaai-clinical-templates.ts serves every department.
     preSummaryPromptId: null,
     newPatientPromptId: ARCAAI_CLINICAL_TEMPLATE_IDS.MEDICINE_NEW_REFERRAL,
     revisitPromptId: ARCAAI_CLINICAL_TEMPLATE_IDS.MEDICINE_FOLLOWUP,
@@ -384,7 +392,8 @@ export const ARCAAI_CLINICAL_DEPARTMENTS = [
     name: 'Surgery',
     description: 'General surgery and surgical specialties',
     defaultSummaryTemplate: 'Surgery-Structured',
-    // Pre-summary is NOT department-scoped — see ARCAAI_FALLBACK_TEMPLATE_IDS.
+    // Pre-summary is NOT department-scoped — the tenant-wide PRE_SUMMARY_SPEC
+    // row in 07b-arcaai-clinical-templates.ts serves every department.
     preSummaryPromptId: null,
     newPatientPromptId: ARCAAI_CLINICAL_TEMPLATE_IDS.SURGERY_NEW_REFERRAL,
     revisitPromptId: ARCAAI_CLINICAL_TEMPLATE_IDS.SURGERY_FOLLOWUP,
@@ -401,7 +410,8 @@ export const ARCAAI_CLINICAL_DEPARTMENTS = [
     name: 'Rheumatology',
     description: 'Autoimmune and musculoskeletal disease specialists',
     defaultSummaryTemplate: 'Rheumatology-Structured',
-    // Pre-summary is NOT department-scoped — see ARCAAI_FALLBACK_TEMPLATE_IDS.
+    // Pre-summary is NOT department-scoped — the tenant-wide PRE_SUMMARY_SPEC
+    // row in 07b-arcaai-clinical-templates.ts serves every department.
     preSummaryPromptId: null,
     newPatientPromptId: ARCAAI_CLINICAL_TEMPLATE_IDS.RHEUMATOLOGY_NEW_REFERRAL,
     revisitPromptId: ARCAAI_CLINICAL_TEMPLATE_IDS.RHEUMATOLOGY_FOLLOWUP,
@@ -418,7 +428,8 @@ export const ARCAAI_CLINICAL_DEPARTMENTS = [
     name: 'Neurology',
     description: 'Brain and nervous system specialists',
     defaultSummaryTemplate: 'Neurology-Structured',
-    // Pre-summary is NOT department-scoped — see ARCAAI_FALLBACK_TEMPLATE_IDS.
+    // Pre-summary is NOT department-scoped — the tenant-wide PRE_SUMMARY_SPEC
+    // row in 07b-arcaai-clinical-templates.ts serves every department.
     preSummaryPromptId: null,
     newPatientPromptId: ARCAAI_CLINICAL_TEMPLATE_IDS.NEUROLOGY_NEW_REFERRAL,
     revisitPromptId: ARCAAI_CLINICAL_TEMPLATE_IDS.NEUROLOGY_FOLLOWUP,
@@ -435,7 +446,8 @@ export const ARCAAI_CLINICAL_DEPARTMENTS = [
     name: 'Orthopedics',
     description: 'Musculoskeletal system and bone specialists',
     defaultSummaryTemplate: 'Orthopedics-Structured',
-    // Pre-summary is NOT department-scoped — see ARCAAI_FALLBACK_TEMPLATE_IDS.
+    // Pre-summary is NOT department-scoped — the tenant-wide PRE_SUMMARY_SPEC
+    // row in 07b-arcaai-clinical-templates.ts serves every department.
     preSummaryPromptId: null,
     newPatientPromptId: ARCAAI_CLINICAL_TEMPLATE_IDS.ORTHOPEDICS_NEW_REFERRAL,
     revisitPromptId: ARCAAI_CLINICAL_TEMPLATE_IDS.ORTHOPEDICS_REVIEW,
@@ -452,7 +464,8 @@ export const ARCAAI_CLINICAL_DEPARTMENTS = [
     name: 'Hematology',
     description: 'Blood disorders and hematology-oncology specialists',
     defaultSummaryTemplate: 'Hematology-Structured',
-    // Pre-summary is NOT department-scoped — see ARCAAI_FALLBACK_TEMPLATE_IDS.
+    // Pre-summary is NOT department-scoped — the tenant-wide PRE_SUMMARY_SPEC
+    // row in 07b-arcaai-clinical-templates.ts serves every department.
     preSummaryPromptId: null,
     newPatientPromptId: ARCAAI_CLINICAL_TEMPLATE_IDS.HEMATOLOGY_NEW_REFERRAL,
     revisitPromptId: ARCAAI_CLINICAL_TEMPLATE_IDS.HEMATOLOGY_REVISIT,
@@ -469,7 +482,8 @@ export const ARCAAI_CLINICAL_DEPARTMENTS = [
     name: 'Breast & Endocrine',
     description: 'Breast and endocrine surgery specialists',
     defaultSummaryTemplate: 'BreastEndocrine-Structured',
-    // Pre-summary is NOT department-scoped — see ARCAAI_FALLBACK_TEMPLATE_IDS.
+    // Pre-summary is NOT department-scoped — the tenant-wide PRE_SUMMARY_SPEC
+    // row in 07b-arcaai-clinical-templates.ts serves every department.
     preSummaryPromptId: null,
     newPatientPromptId: ARCAAI_CLINICAL_TEMPLATE_IDS.BREAST_ENDOCRINE_NEW_REFERRAL,
     revisitPromptId: ARCAAI_CLINICAL_TEMPLATE_IDS.BREAST_ENDOCRINE_FOLLOWUP,

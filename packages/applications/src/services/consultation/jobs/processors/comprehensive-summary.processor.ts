@@ -195,7 +195,15 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
         // Step 4: Call SMR service (60%)
         await this.jobService.notifyProgress(jobId, 60, 'Generating comprehensive summary with AI');
 
-        const smrResponse = await this.callSmrService(consultation, sections, aggregatedEntities, resolvedRequest, preferredPromptTemplateId, jobId);
+        const smrResponse = await this.callSmrService(
+          consultation,
+          sections,
+          aggregatedEntities,
+          resolvedRequest,
+          preferredPromptTemplateId,
+          tenantId,
+          jobId,
+        );
 
         // Step 5: Save results (85%)
         await this.jobService.notifyProgress(jobId, 85, 'Saving results');
@@ -303,6 +311,11 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
     request: GenerateComprehensiveSummaryJobPayload['request'],
     // Doctor's preferred prompt id, threaded into assembly below.
     preferredPromptTemplateId: string | null | undefined,
+    // TASK-635 A5 (B-04) — the tenant id `process()` already fail-closed
+    // validated (job.data.tenantId) is threaded through EXPLICITLY here
+    // rather than trusting `resolveSmrSelection()`'s own CLS fallback, so
+    // this call can never silently serve the SYSTEM default model.
+    tenantId: string,
     jobId?: string,
   ): Promise<{
     summary: string;
@@ -355,11 +368,11 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
 
     try {
       const smrStart = Date.now();
-      // Resolve the tenant's effective {provider, model} (CLS tenant
-      // set by process()) and merge as the base so a caller-supplied model wins.
+      // Resolve the tenant's effective {provider, model} and merge as the
+      // base so a caller-supplied model wins.
       let options = request.options;
       if (this.harnessPolicyService) {
-        const { provider, model } = await this.harnessPolicyService.resolveSmrSelection();
+        const { provider, model } = await this.harnessPolicyService.resolveSmrSelection(tenantId, 'finalize');
         options = { smrProvider: provider, smrModel: model, ...request.options };
       }
       const smrPayload = buildSmrGeneratePayload(assembledPrompt, options, {

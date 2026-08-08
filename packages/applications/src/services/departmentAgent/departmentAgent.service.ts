@@ -11,6 +11,8 @@ import {
   PromptTemplateFactory,
   PromptVersionRepository,
   PromptVersionFactory,
+  AiModelRepository,
+  ModelTaskType,
   ResourceType,
   ResourceStatusType,
   SysEventType,
@@ -26,7 +28,7 @@ import {
   PaginatedDepartmentAgentResponse,
 } from './dto';
 import { DepartmentAgentDtoMapper } from './departmentAgent.dto.mapper';
-import { disallowedHarnessOverrideKeys } from './constants';
+import { disallowedHarnessOverrideKeys, llmOverridesProblems, toolConfigProblems } from './constants';
 import { EvalPromotionGateService } from '../eval/eval-promotion-gate.service';
 import { BaseService, PaginatedQuery, withFormattedPaginatedProps, withFormattedCountProps } from '../../common';
 import { IActiveUserContext } from '../../interfaces';
@@ -51,6 +53,12 @@ export class DepartmentAgentService extends BaseService implements IDepartmentAg
     // re-pointing this agent's pin to a new version runs the eval (if the agent
     // references a golden set) and blocks (409) on a gate failure in block-mode.
     @Optional() @Inject(EvalPromotionGateService) private readonly promotionGate?: EvalPromotionGateService,
+    // TASK-635 RF-4: validates `llmOverrides` model slugs against the ENABLED
+    // TEXT_GENERATION catalogue. Appended as an OPTIONAL trailing dependency
+    // (the established fixture-arity convention) so existing unit fixtures that
+    // construct this service positionally keep compiling; when it is absent the
+    // structural validation still runs and only the catalogue check is skipped.
+    @Optional() @Inject(AiModelRepository) private readonly aiModelRepository?: AiModelRepository,
   ) {
     super(eventEmitter, clsService, ResourceType.DepartmentAgent);
   }
@@ -110,6 +118,9 @@ export class DepartmentAgentService extends BaseService implements IDepartmentAg
 
     const template = await this.assertTemplateBindable(tenantId, dto.promptTemplateId, dto.departmentId);
     this.validateHarnessOverrides(dto.harnessOverrides);
+    await this.assertCapabilityBindingsBindable(tenantId, dto.departmentId, dto);
+    this.validateToolConfig(dto.toolConfig);
+    await this.validateLlmOverrides(dto.llmOverrides);
     if (dto.pinnedVersionNumber !== undefined && dto.pinnedVersionNumber !== null) {
       await this.assertPinnedVersionApproved(template, dto.pinnedVersionNumber);
     }
@@ -125,6 +136,12 @@ export class DepartmentAgentService extends BaseService implements IDepartmentAg
       dnaStylePolicy: dto.dnaStylePolicy,
       harnessOverrides: dto.harnessOverrides ?? null,
       goldenSetId: dto.goldenSetId ?? null,
+      newPatientTemplateId: dto.newPatientTemplateId ?? null,
+      revisitTemplateId: dto.revisitTemplateId ?? null,
+      preSummaryTemplateId: dto.preSummaryTemplateId ?? null,
+      livePromptTemplateId: dto.livePromptTemplateId ?? null,
+      toolConfig: dto.toolConfig ?? null,
+      llmOverrides: dto.llmOverrides ?? null,
       tags: dto.tags ?? [],
       createdBy: userId ?? undefined,
     });
@@ -165,6 +182,12 @@ export class DepartmentAgentService extends BaseService implements IDepartmentAg
       await this.assertTemplateBindable(tenantId, dto.promptTemplateId, agent.departmentId);
     }
     this.validateHarnessOverrides(dto.harnessOverrides);
+    // Every capability binding rides the SAME `update()` path, so a locked
+    // template copy already rejected them at `assertNotTemplateLocked` above —
+    // "clone to customize" applies to the new columns with zero extra code.
+    await this.assertCapabilityBindingsBindable(tenantId, agent.departmentId, dto);
+    this.validateToolConfig(dto.toolConfig);
+    await this.validateLlmOverrides(dto.llmOverrides);
 
     if (dto.name !== undefined) agent.name = dto.name;
     if (dto.slug !== undefined) agent.slug = dto.slug;
@@ -173,6 +196,12 @@ export class DepartmentAgentService extends BaseService implements IDepartmentAg
     if (dto.dnaStylePolicy !== undefined) agent.dnaStylePolicy = dto.dnaStylePolicy;
     if (dto.harnessOverrides !== undefined) agent.harnessOverrides = dto.harnessOverrides;
     if (dto.goldenSetId !== undefined) agent.goldenSetId = dto.goldenSetId;
+    if (dto.newPatientTemplateId !== undefined) agent.newPatientTemplateId = dto.newPatientTemplateId;
+    if (dto.revisitTemplateId !== undefined) agent.revisitTemplateId = dto.revisitTemplateId;
+    if (dto.preSummaryTemplateId !== undefined) agent.preSummaryTemplateId = dto.preSummaryTemplateId;
+    if (dto.livePromptTemplateId !== undefined) agent.livePromptTemplateId = dto.livePromptTemplateId;
+    if (dto.toolConfig !== undefined) agent.toolConfig = dto.toolConfig;
+    if (dto.llmOverrides !== undefined) agent.llmOverrides = dto.llmOverrides;
     if (dto.tags !== undefined) agent.tags = dto.tags;
     // `resourceStatus` is entity-managed via lifecycle methods (setters are
     // read-only on BaseEntity), mirroring PipelineService.toggle.
@@ -377,6 +406,19 @@ export class DepartmentAgentService extends BaseService implements IDepartmentAg
       dnaStylePolicy: source.dnaStylePolicy,
       harnessOverrides: source.harnessOverrides ?? null,
       goldenSetId: source.goldenSetId ?? null,
+      // TASK-635 — capability bindings travel with the clone. Note the
+      // ASYMMETRY with the BASE binding, which is deliberate: only
+      // `promptTemplateId` is deep-copied into a fresh editable DRAFT template,
+      // because that is the one the tenant customizes. The capability bindings
+      // keep pointing at the SAME templates the source named, so a clone starts
+      // out resolving identically. A tenant that wants to customize a capability
+      // template edits/re-points that binding afterwards.
+      newPatientTemplateId: source.newPatientTemplateId ?? null,
+      revisitTemplateId: source.revisitTemplateId ?? null,
+      preSummaryTemplateId: source.preSummaryTemplateId ?? null,
+      livePromptTemplateId: source.livePromptTemplateId ?? null,
+      toolConfig: source.toolConfig ?? null,
+      llmOverrides: source.llmOverrides ?? null,
       // A clone is never the department default (the DB defaults `isDefault`
       // false; it is flipped only via `setDefaultForDepartment`).
       // The copy is the customizable one — never locked, whatever the source is;
@@ -451,6 +493,74 @@ export class DepartmentAgentService extends BaseService implements IDepartmentAg
       throw new BadRequestException(`promptTemplateId '${promptTemplateId}' belongs to a different department`);
     }
     return template;
+  }
+
+  /**
+   * Every capability binding present on the DTO must satisfy the SAME
+   * bindability rule as the base `promptTemplateId`: tenant-visible (or the
+   * SYSTEM shared catalogue) and department-compatible. Explicit `null` clears a
+   * binding and is always allowed.
+   *
+   * Note this validates VISIBILITY, not APPROVAL: an unapproved binding is a
+   * legal configuration that the resolver simply falls through (the tier returns
+   * null). Rejecting it here would make it impossible to wire an agent to a
+   * template that is still working its way through the approval gate.
+   */
+  private async assertCapabilityBindingsBindable(
+    tenantId: string,
+    departmentId: string,
+    dto: Pick<CreateDepartmentAgentRequest, 'newPatientTemplateId' | 'revisitTemplateId' | 'preSummaryTemplateId' | 'livePromptTemplateId'>,
+  ): Promise<void> {
+    const bindings: Array<[string, string | null | undefined]> = [
+      ['newPatientTemplateId', dto.newPatientTemplateId],
+      ['revisitTemplateId', dto.revisitTemplateId],
+      ['preSummaryTemplateId', dto.preSummaryTemplateId],
+      ['livePromptTemplateId', dto.livePromptTemplateId],
+    ];
+
+    for (const [field, templateId] of bindings) {
+      if (templateId === undefined || templateId === null) continue;
+      try {
+        await this.assertTemplateBindable(tenantId, templateId, departmentId);
+      } catch {
+        // Re-thrown against the FIELD so the console can highlight the right
+        // control; the message stays generic (never confirms the existence of a
+        // cross-tenant template).
+        throw new BadRequestException(`${field} '${templateId}' is not a valid template for this tenant/department`);
+      }
+    }
+  }
+
+  /** `toolConfig` may name only known live-loop tools, with a known schema version. */
+  private validateToolConfig(toolConfig?: Record<string, unknown> | null): void {
+    if (!toolConfig) return;
+    const problems = toolConfigProblems(toolConfig);
+    if (problems.length > 0) {
+      throw new BadRequestException(`Invalid toolConfig: ${problems.join('; ')}`);
+    }
+  }
+
+  /**
+   * `llmOverrides` may key only `live` / `finalize`, and each named model slug
+   * must be an ENABLED TEXT_GENERATION `AiModel`. Validated at WRITE time so a
+   * typo surfaces in the admin console rather than at 3am on a live flush; the
+   * read path degrades gracefully (frozen selection falls back to the tenant
+   * AiTaskDefault) for the case where a model is disabled after the fact.
+   */
+  private async validateLlmOverrides(llmOverrides?: Record<string, unknown> | null): Promise<void> {
+    if (!llmOverrides) return;
+    const { problems, slugs } = llmOverridesProblems(llmOverrides);
+    if (problems.length > 0) {
+      throw new BadRequestException(`Invalid llmOverrides: ${problems.join('; ')}`);
+    }
+    if (!this.aiModelRepository) return;
+
+    for (const slug of slugs) {
+      const model = await this.aiModelRepository.findBySlug(this.requireTenant(), slug);
+      if (!model || model.taskType !== ModelTaskType.TEXT_GENERATION || model.resourceStatus !== ResourceStatusType.ENABLED) {
+        throw new BadRequestException(`llmOverrides names '${slug}', which is not an enabled text-generation model`);
+      }
+    }
   }
 
   /** `harnessOverrides` may carry only tenant-tier HarnessPolicy keys. */

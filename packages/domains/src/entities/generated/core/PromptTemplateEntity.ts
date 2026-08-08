@@ -37,6 +37,11 @@ export interface IPromptTemplateEntity extends IBaseTaggedEntity {
   Versions?: PromptVersionEntity[] | null;
   Department?: Entities.DepartmentEntity | null;
   Owner?: Entities.UserEntity | null;
+  // `IBaseEntity.metaData` is declared but not wired on the abstract base —
+  // wired locally (the DepartmentAgentEntity / AiModelEntity precedent) so the
+  // live-agent resolver (TASK-635 C3) can read a per-template custom
+  // `metaData.promptConfig.systemPrompt` through the repository.
+  metaData?: Record<string, unknown> | null;
 }
 
 export class PromptTemplateEntity extends BaseTaggedEntity {
@@ -59,6 +64,7 @@ export class PromptTemplateEntity extends BaseTaggedEntity {
   private _Versions?: IPromptTemplateEntity['Versions'];
   private _Department?: IPromptTemplateEntity['Department'];
   private _Owner?: IPromptTemplateEntity['Owner'];
+  private _metaData?: IPromptTemplateEntity['metaData'];
 
   constructor(init: IPromptTemplateEntity) {
     super(init);
@@ -81,6 +87,7 @@ export class PromptTemplateEntity extends BaseTaggedEntity {
     this._Versions = init.Versions;
     this._Department = init.Department;
     this._Owner = init.Owner ?? null;
+    this._metaData = init.metaData ?? null;
   }
 
   get name(): IPromptTemplateEntity['name'] {
@@ -239,6 +246,14 @@ export class PromptTemplateEntity extends BaseTaggedEntity {
 
   set Owner(value: IPromptTemplateEntity['Owner']) {
     this.setProperty('Owner', value);
+  }
+
+  get metaData(): IPromptTemplateEntity['metaData'] {
+    return this._metaData;
+  }
+
+  set metaData(value: IPromptTemplateEntity['metaData']) {
+    this.setProperty('metaData', value);
   }
 
   public isActive(): boolean {

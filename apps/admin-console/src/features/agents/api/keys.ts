@@ -1,6 +1,7 @@
 import type {
   ListAgentEvalRunsParams,
   ListDepartmentAgentsParams,
+  ListEvalGoldenCasesParams,
   ListEvalGoldenSetsParams,
   ListTemplatesParams,
   ListUsageRecordsParams,
@@ -39,5 +40,7 @@ export const departmentAgentKeys = {
 export const agentEvalKeys = {
   root: ['agent-eval'] as const,
   goldenSets: (params?: ListEvalGoldenSetsParams) => [...agentEvalKeys.root, 'golden-sets', params ?? {}] as const,
+  goldenCases: (goldenSetId: string, params?: ListEvalGoldenCasesParams) =>
+    [...agentEvalKeys.root, 'golden-cases', goldenSetId, params ?? {}] as const,
   evalRuns: (params?: ListAgentEvalRunsParams) => [...agentEvalKeys.root, 'eval-runs', params ?? {}] as const,
 };

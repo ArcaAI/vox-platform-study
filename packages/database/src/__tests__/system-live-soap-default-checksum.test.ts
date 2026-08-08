@@ -1,0 +1,89 @@
+/**
+ * TASK-635 C2-T1 (database half) — byte lock for the SYSTEM live-summarization
+ * default prompt.
+ *
+ * PAIRED with
+ * `packages/applications/src/services/consultation/live-documentation/__tests__/live-soap-prompt-checksum.test.ts`,
+ * which pins the SAME two hashes against the in-code constants
+ * (`LIVE_SOAP_STABLE_SYSTEM_PREFIX` and the `system_prompt` literal in
+ * `callSmr`). Together the two tests are a byte-equality proof across the
+ * package boundary without a cross-package import — `packages/database` cannot
+ * depend on `packages/applications` (wrong dependency direction), and the seed
+ * modules are not part of this package's public exports.
+ *
+ * WHY THIS MUST HOLD. Lane C3's live chain is agent binding → this SYSTEM
+ * default → the in-code constants, where tier 3 is a deliberate FAIL-OPEN (a
+ * running consultation must never die on a prompt-resolution error). That
+ * exception is only safe while tiers 2 and 3 serve IDENTICAL bytes; the moment
+ * they diverge, "fail-open" silently becomes "different prompt".
+ *
+ * A mismatch here means the SEED constants changed. Before updating a pinned
+ * hash below, change the in-code constant to match in the SAME commit and
+ * update the applications-side test's identical pin — otherwise the live loop
+ * and its governed template have drifted apart.
+ */
+
+import { createHash } from 'crypto';
+
+import { describe, it, expect } from 'vitest';
+
+import { SYSTEM_LIVE_SOAP_TEMPLATE_ID, SYSTEM_LIVE_SOAP_VERSION_ID, SYSTEM_TENANT_ID } from '../prisma/db_main/seed/00-constants';
+import {
+  SYSTEM_LIVE_SOAP_PROMPT_CONTENT,
+  SYSTEM_LIVE_SOAP_SYSTEM_PROMPT,
+  SYSTEM_LIVE_SOAP_TEMPLATE,
+  SYSTEM_LIVE_SOAP_VERSION,
+} from '../prisma/db_main/seed/07c-live-agent-defaults';
+
+/**
+ * Pinned sha256 of the live-loop prompt constants as of TASK-635 C2.
+ * THE SAME TWO LITERALS appear in the applications-side test — change both or
+ * neither.
+ */
+const PINNED_PROMPT_SHA256 = 'efec476696dea4490e9041b3560458746b745c0f9c03b17db568811c2ae7132f';
+const PINNED_SYSTEM_PROMPT_SHA256 = '25769ec9be08696e4e9fb8576de59e9b12fbef58f0159277eb08f3a2cf921cf3';
+
+const sha256Hex = (content: string): string => createHash('sha256').update(content, 'utf8').digest('hex');
+
+describe('TASK-635 C2-T1 — SYSTEM live-summarization default prompt byte lock', () => {
+  it('SYSTEM_LIVE_SOAP_PROMPT_CONTENT matches the pinned sha256 of LIVE_SOAP_STABLE_SYSTEM_PREFIX', () => {
+    expect(
+      sha256Hex(SYSTEM_LIVE_SOAP_PROMPT_CONTENT),
+      'The seeded SYSTEM live prompt no longer matches the in-code LIVE_SOAP_STABLE_SYSTEM_PREFIX. ' +
+        'The live chain’s code-default fail-open tier is only safe while tiers 2 and 3 are byte-identical.',
+    ).toBe(PINNED_PROMPT_SHA256);
+  });
+
+  it('SYSTEM_LIVE_SOAP_SYSTEM_PROMPT matches the pinned sha256 of the callSmr system_prompt literal', () => {
+    expect(sha256Hex(SYSTEM_LIVE_SOAP_SYSTEM_PROMPT)).toBe(PINNED_SYSTEM_PROMPT_SHA256);
+  });
+
+  it('seeds the template content and its v1 version snapshot from the SAME constant', () => {
+    // The template row and the immutable PromptVersion snapshot must never be
+    // allowed to disagree — the resolver serves the VERSION, the admin console
+    // renders the TEMPLATE.
+    expect(SYSTEM_LIVE_SOAP_TEMPLATE.content).toBe(SYSTEM_LIVE_SOAP_PROMPT_CONTENT);
+    expect(SYSTEM_LIVE_SOAP_VERSION.content).toBe(SYSTEM_LIVE_SOAP_PROMPT_CONTENT);
+    expect(SYSTEM_LIVE_SOAP_VERSION.versionNumber).toBe(SYSTEM_LIVE_SOAP_TEMPLATE.approvedVersionNumber);
+  });
+
+  it('is SYSTEM-owned, APPROVED and version-pinned so every tenant can resolve it', () => {
+    // SYSTEM ownership + the B-12 read-widening is what makes this row visible
+    // from a customer tenant's CLS at all; APPROVED is the resolver's governance
+    // gate; approvedVersionNumber pins the immutable snapshot (F-02).
+    expect(SYSTEM_LIVE_SOAP_TEMPLATE.tenantId).toBe(SYSTEM_TENANT_ID);
+    expect(SYSTEM_LIVE_SOAP_TEMPLATE.status).toBe('APPROVED');
+    expect(SYSTEM_LIVE_SOAP_TEMPLATE.approvedVersionNumber).toBe(1);
+    expect(SYSTEM_LIVE_SOAP_TEMPLATE.departmentId).toBeNull();
+    expect(SYSTEM_LIVE_SOAP_TEMPLATE.id).toBe(SYSTEM_LIVE_SOAP_TEMPLATE_ID);
+    expect(SYSTEM_LIVE_SOAP_VERSION.id).toBe(SYSTEM_LIVE_SOAP_VERSION_ID);
+  });
+
+  it('carries the system-role string under metaData.promptConfig.systemPrompt', () => {
+    // The convention PromptAssemblyService already uses for
+    // promptConfig.hyperparameters / promptConfig.outputSchema — no schema
+    // change, no new PromptTemplateCategory member.
+    const metaData = SYSTEM_LIVE_SOAP_TEMPLATE.metaData as { promptConfig?: { systemPrompt?: string } };
+    expect(metaData.promptConfig?.systemPrompt).toBe(SYSTEM_LIVE_SOAP_SYSTEM_PROMPT);
+  });
+});

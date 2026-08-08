@@ -161,6 +161,120 @@ describe('ContextItemRepository.decryptContentFromEntity (Phase 3B)', () => {
   });
 });
 
+describe('ContextItemRepository.findLatestPreSummaryWithDecryptedContent (B-02 / B-06)', () => {
+  // B-02: the warm-start read (`findLatestPreSummary`) never decrypted
+  // `encryptedContent` — consumers reading `.content` off the result got
+  // empty text in Vault-backed envs. B-06: the finder was not subType-aware,
+  // so a case-notes PRE_SUMMARY created after a LIVE_SOAP_SNAPSHOT would
+  // shadow it. This method closes both: decrypt via the existing
+  // `decryptContentFromEntity` helper, and an optional `subType` filter
+  // mirroring harness's `loadLiveSoapSnapshot` in-memory-filter idiom.
+
+  it('decrypts the latest pre-summary content via decryptContentFromEntity', async () => {
+    const secrets: SecretsServiceLike = {
+      encrypt: vi.fn(),
+      decrypt: vi.fn(async () => Buffer.from('decrypted plan', 'utf8')),
+    };
+    const repo = makeRepo();
+    const older = makeEntity({
+      id: 'ctx-older',
+      createdAt: new Date('2026-01-01T00:00:00Z'),
+      content: null,
+      encryptedContent: Buffer.from('vault:v1:b2xk', 'utf8'),
+    });
+    const newer = makeEntity({
+      id: 'ctx-newer',
+      createdAt: new Date('2026-01-02T00:00:00Z'),
+      content: null,
+      encryptedContent: Buffer.from('vault:v1:bmV3', 'utf8'),
+    });
+    (repo as { findPreSummaries: typeof repo.findPreSummaries }).findPreSummaries = vi.fn(async () => [older, newer]);
+
+    const result = await repo.findLatestPreSummaryWithDecryptedContent('consult-1', secrets);
+
+    expect(result.entity?.id).toBe('ctx-newer');
+    expect(result.plaintext).toBe('decrypted plan');
+    expect(secrets.decrypt).toHaveBeenCalledWith('vault:v1:bmV3', 'hope-phi');
+  });
+
+  it('filters by metaData.subType so a newer case-notes row never shadows the live snapshot (B-06)', async () => {
+    const secrets: SecretsServiceLike = {
+      encrypt: vi.fn(),
+      decrypt: vi.fn(async (ct: string) => Buffer.from(ct.includes('snapshot') ? 'snapshot text' : 'case note text', 'utf8')),
+    };
+    const repo = makeRepo();
+    const liveSnapshot = makeEntity({
+      id: 'ctx-snapshot',
+      createdAt: new Date('2026-01-01T00:00:00Z'),
+      content: null,
+      encryptedContent: Buffer.from('vault:v1:snapshot', 'utf8'),
+      metaData: { subType: 'LIVE_SOAP_SNAPSHOT' },
+    } as any);
+    const caseNote = makeEntity({
+      id: 'ctx-casenote',
+      createdAt: new Date('2026-01-02T00:00:00Z'),
+      content: null,
+      encryptedContent: Buffer.from('vault:v1:casenote', 'utf8'),
+      metaData: null,
+    } as any);
+    (repo as { findPreSummaries: typeof repo.findPreSummaries }).findPreSummaries = vi.fn(async () => [liveSnapshot, caseNote]);
+
+    const result = await repo.findLatestPreSummaryWithDecryptedContent('consult-1', secrets, { subType: 'LIVE_SOAP_SNAPSHOT' });
+
+    expect(result.entity?.id).toBe('ctx-snapshot');
+    expect(result.plaintext).toBe('snapshot text');
+  });
+
+  it('keeps legacy no-filter behavior available (subType omitted picks the newest row regardless of metaData)', async () => {
+    const secrets: SecretsServiceLike = {
+      encrypt: vi.fn(),
+      decrypt: vi.fn(async () => Buffer.from('case note text', 'utf8')),
+    };
+    const repo = makeRepo();
+    const liveSnapshot = makeEntity({
+      id: 'ctx-snapshot',
+      createdAt: new Date('2026-01-01T00:00:00Z'),
+      content: null,
+      encryptedContent: Buffer.from('vault:v1:snapshot', 'utf8'),
+      metaData: { subType: 'LIVE_SOAP_SNAPSHOT' },
+    } as any);
+    const caseNote = makeEntity({
+      id: 'ctx-casenote',
+      createdAt: new Date('2026-01-02T00:00:00Z'),
+      content: null,
+      encryptedContent: Buffer.from('vault:v1:casenote', 'utf8'),
+      metaData: null,
+    } as any);
+    (repo as { findPreSummaries: typeof repo.findPreSummaries }).findPreSummaries = vi.fn(async () => [liveSnapshot, caseNote]);
+
+    const result = await repo.findLatestPreSummaryWithDecryptedContent('consult-1', secrets);
+
+    expect(result.entity?.id).toBe('ctx-casenote');
+  });
+
+  it('returns { entity: null, plaintext: null } when no pre-summary matches', async () => {
+    const secrets: SecretsServiceLike = { encrypt: vi.fn(), decrypt: vi.fn() };
+    const repo = makeRepo();
+    (repo as { findPreSummaries: typeof repo.findPreSummaries }).findPreSummaries = vi.fn(async () => []);
+
+    const result = await repo.findLatestPreSummaryWithDecryptedContent('consult-1', secrets, { subType: 'LIVE_SOAP_SNAPSHOT' });
+
+    expect(result).toEqual({ entity: null, plaintext: null });
+    expect(secrets.decrypt).not.toHaveBeenCalled();
+  });
+
+  it('degrades to the entity content transient field (no throw) when no SecretsService is wired', async () => {
+    const repo = makeRepo();
+    const entity = makeEntity({ id: 'ctx-1', content: 'already-plaintext-in-memory', encryptedContent: null });
+    (repo as { findPreSummaries: typeof repo.findPreSummaries }).findPreSummaries = vi.fn(async () => [entity]);
+
+    const result = await repo.findLatestPreSummaryWithDecryptedContent('consult-1', undefined);
+
+    expect(result.entity?.id).toBe('ctx-1');
+    expect(result.plaintext).toBe('already-plaintext-in-memory');
+  });
+});
+
 describe('ContextItemRepository.findByIdWithDecryptedContent (Phase 3B)', () => {
   it('wraps findById + decryptContentFromEntity into a single call', async () => {
     const secrets: SecretsServiceLike = {

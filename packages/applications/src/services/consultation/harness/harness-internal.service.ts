@@ -38,6 +38,7 @@ import {
   truncatePriorVisitSummary,
 } from '../../settings-registry/descriptors/agentic-revisit.descriptors';
 import { PromptAssemblyService, type NerEntityForPrompt } from '../prompt/prompt-assembly.service';
+import { formatSessionAgentPromptVersion, readLiveAgentLineage } from '../prompt/live-agent-lineage';
 import { IConsultationJobService } from '../jobs/consultation-job.service';
 import { IUsageLedgerService } from '../../usageLedger';
 import { assertEqualTenants, createWorkerSession, encryptPhiFields } from '../../../common';
@@ -541,7 +542,14 @@ export class HarnessInternalService {
       // {pre_summary_text} so the model refines it. Cold path when absent.
       // Gated behind the kill-switch (default OFF): when disabled we skip the
       // snapshot lookup entirely so nothing is injected.
-      const liveSnapshot = (await this.resolveWarmStartEnabled(tenantId)) ? await this.loadLiveSoapSnapshot(consultationId) : null;
+      // TASK-635 C5 §7.5 — the snapshot load is now UNCONDITIONAL, because the
+      // load is what tells us whether a live agent ran at all. Lineage present
+      // (the live loop stamped `metaData.agent`) ⇒ inject unconditionally, per
+      // R-N2 / DR-4; lineage absent ⇒ the flag gates the injection exactly as
+      // before, so the legacy case-notes path is byte-identical.
+      const liveSnapshot = await this.loadLiveSoapSnapshot(consultationId);
+      const liveLineage = readLiveAgentLineage(liveSnapshot);
+      const injectPriorDraft = liveLineage !== null || (await this.resolveWarmStartEnabled(tenantId));
 
       // Thread the doctor's preferred prompt id (Tier-0)
       // through the async/harness path too. Read-only from UserProfile via the
@@ -583,7 +591,12 @@ export class HarnessInternalService {
         clinicianNotes,
         attachments,
         highlights,
-        preSummaryText: liveSnapshot?.content ?? undefined,
+        preSummaryText: injectPriorDraft ? (liveSnapshot?.content ?? undefined) : undefined,
+        // TASK-635 C5 / RF-6 — same agent reviews and finalizes: unconditional
+        // injection on the lineage path + the resolver's agent tier pinned to
+        // that exact agent. Both absent for every non-live consultation.
+        preSummaryLineage: liveLineage ?? undefined,
+        pinnedAgentId: liveLineage?.agentId ?? undefined,
         // Spread rather than `?? undefined` so the key is ABSENT (not present-
         // and-undefined) when carry-forward is off — the assembler's regression
         // lock is "no such param", and an explicit undefined would still show up
@@ -691,7 +704,13 @@ export class HarnessInternalService {
         // row via the shared helper (deterministic post-stop) and write its id.
         // Gated behind the kill-switch (default OFF): when disabled we skip the
         // lookup and record empty provenance.
-        const liveSnapshot = (await this.resolveWarmStartEnabled(tenantId)) ? await this.loadLiveSoapSnapshot(consultationId) : null;
+        // TASK-635 C5 §7.5 — same rule as `assemble()` above, driven by the same
+        // deterministic (post-stop) helper so both call sites always agree on
+        // WHICH row was consumed: lineage present ⇒ recorded regardless of the
+        // flag; lineage absent ⇒ flag-gated, i.e. unchanged.
+        const liveSnapshotRow = await this.loadLiveSoapSnapshot(consultationId);
+        const liveLineage = readLiveAgentLineage(liveSnapshotRow);
+        const liveSnapshot = liveLineage || (await this.resolveWarmStartEnabled(tenantId)) ? liveSnapshotRow : null;
         // enrich the verdict's citation map with per-segment provenance
         // (LEGACY path only; EARLY withholds the verdict citationsMap — NER
         // claims + segment provenance enrichment — until finalizeAssurance). The
@@ -731,6 +750,11 @@ export class HarnessInternalService {
           redactionApplied: dto.redactionApplied ?? null,
           redactionManifest: (dto.redactionManifest ?? null) as never,
           preSummaryIds: liveSnapshot ? [liveSnapshot.id] : [],
+          // TASK-635 C5 / RF-6 — session-agent lineage, stamped identically to
+          // the synchronous `SummaryService.generateSummary` path. Null for
+          // every summary that no live agent produced.
+          sessionAgentId: liveLineage?.agentId ?? null,
+          sessionAgentPromptVersion: formatSessionAgentPromptVersion(liveLineage),
           generatedAt: new Date(),
         });
         await this.encryptBestEffort('SummaryMeta', () => this.summaryMetaRepository.encryptFieldsIntoEntity(summaryMeta, this.secretsService!));
@@ -1230,12 +1254,23 @@ export class HarnessInternalService {
    * newest matching row (defensive sort: findPreSummaries is createdAt ASC).
    * Shared by assemble() (injects the text) and persistDraft() (records the id)
    * so both always agree on which row was consumed.
+   *
+   * B-02: the plaintext `content` column was dropped — only `encryptedContent`
+   * is persisted — so the returned entity's `.content` is decrypted here via
+   * `decryptContentFromEntity` before it reaches callers (`assemble()` reads
+   * `.content` directly for the warm-start prompt injection). Best-effort: a
+   * missing SecretsService (dev/test, no Vault) leaves `.content` as whatever
+   * decrypt-on-read already populated (possibly null) rather than throwing.
    */
   private async loadLiveSoapSnapshot(consultationId: string): Promise<ContextItemEntity | null> {
     const preSummaries = await this.contextItemRepository.findPreSummaries(consultationId);
     const snapshots = preSummaries.filter((p) => (p.metaData as Record<string, unknown> | undefined)?.subType === 'LIVE_SOAP_SNAPSHOT');
     if (snapshots.length === 0) return null;
-    return snapshots.reduce((a, b) => (a.createdAt >= b.createdAt ? a : b));
+    const entity = snapshots.reduce((a, b) => (a.createdAt >= b.createdAt ? a : b));
+    if (this.secretsService) {
+      entity.content = await this.contextItemRepository.decryptContentFromEntity(entity, this.secretsService);
+    }
+    return entity;
   }
 
   /**

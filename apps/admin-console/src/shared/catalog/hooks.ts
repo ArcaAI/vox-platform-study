@@ -51,6 +51,37 @@ export interface CatalogOption {
   label: string;
 }
 
+/**
+ * GET text/providers row (SMR provider catalog, matrix row 38). Wire shape
+ * mirrors `apps/smr/src/smr/models/provider.py::ProviderInfo` verbatim
+ * (snake_case) — the playground feature (`playground-llm/api/types.ts`) owns
+ * its own copy for that surface; this one exists so the agents feature's Test
+ * Bench (rule 13: features never import each other) can reuse the same
+ * catalog read without depending on playground-llm.
+ */
+export interface TextProviderModel {
+  name: string;
+  size?: string;
+}
+
+export interface TextProvider {
+  name: string;
+  models: TextProviderModel[];
+  is_available: boolean;
+  is_default?: boolean;
+  default_model?: string;
+}
+
+/** Tenant provider/model catalog for provider pickers outside playground-llm. */
+export function useTextProviders() {
+  return useQuery({
+    queryKey: ['catalog', 'text-providers'],
+    queryFn: () => getJson<TextProvider[]>('text/providers'),
+    staleTime: CATALOG_STALE_MS,
+    retry: false,
+  });
+}
+
 export function useTenantCatalog() {
   return useQuery({
     queryKey: ['catalog', 'tenants'],

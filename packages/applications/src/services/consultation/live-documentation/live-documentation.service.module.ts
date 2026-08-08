@@ -12,6 +12,7 @@ import { HarnessPolicyServiceModule } from '../../harness-policy/harness-policy.
 import { AgentTrajectoryServiceModule } from '../../agent-trajectory/agent-trajectory.service.module';
 import { EffectiveSettingsModule } from '../../settings-registry/effective-settings.module';
 import { AiTaskDefaultServiceModule } from '../../ai-task-default/ai-task-default.service.module';
+import { LiveAgentResolutionServiceModule } from '../prompt/live-agent-resolution.service.module';
 
 /**
  * Live Documentation Service Module (Clinical Workflow Playground — WS1).
@@ -49,6 +50,10 @@ import { AiTaskDefaultServiceModule } from '../../ai-task-default/ai-task-defaul
     EffectiveSettingsModule,
     // nlp.ner model-injection resolver for the live-plane NLP call (TASK-552 Lane A).
     AiTaskDefaultServiceModule,
+    // TASK-635 C3 — resolves the @Optional ILiveAgentResolver port so a session
+    // freezes its governed agent (prompt bytes + tool plan + LLM override) at
+    // start(). Absent ⇒ the service falls open to the in-code constants.
+    LiveAgentResolutionServiceModule,
   ],
   providers: [LiveDocumentationService, RedisSubscriberService, OcrEnrichmentProcessor],
   exports: [LiveDocumentationService],

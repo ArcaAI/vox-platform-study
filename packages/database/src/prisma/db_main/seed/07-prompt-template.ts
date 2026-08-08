@@ -1,7 +1,7 @@
 import type { CorePrismaClient } from '../../../client';
 import { Prisma } from '../../../generated/core-prisma-client/client';
 import type { PromptTemplateCategory, PromptTemplateStatus } from '../../../generated/core-prisma-client/enums';
-import { SEED_CUSTOMER_TENANT_IDS } from './00-constants';
+import { SEED_CUSTOMER_TENANT_IDS, SYSTEM_TENANT_ID } from './00-constants';
 
 /**
  * Publication baseline.
@@ -214,6 +214,126 @@ const CORRECTIVE_RETRY_SUFFIX = `\n\nREVISE STRICTLY:
 - Provide a best‑effort concise summary from available information.`;
 
 const PRE_SUMMARY_SYSTEM_PROMPT = `You are a medical AI assistant producing clinically relevant, concise, department-aware pre-summaries from EMR context. Format your response with clear sections and bullet points for readability. Include main sections for: Confirmed & Provisional Diagnoses, Plan of Care, Investigations, Medications Prescribed, and Diagnostics & Trends.`;
+
+/**
+ * SYSTEM default pre-summary body (`TEMPLATE_IDS.PRE_SUMMARY_DEFAULT`, seeded
+ * to the GLOBAL customer tenant, consumed platform-wide as
+ * `SYSTEM_DEFAULTS.preSummaryPromptId` tier-2 fallback for pre-summary
+ * resolution). Extracted into a named constant (pure refactor, byte-identical)
+ * so `system-pre-summary-default-checksum.test.ts`
+ * (packages/database/src/__tests__/) can sha256-lock it against silent drift.
+ *
+ * This is a HAND-MAINTAINED NEAR-DUPLICATE of the v1-parity ArcaAI pre-summary
+ * body (`PRE_SUMMARY_CONTENT` in `07b-arcaai-clinical-content.ts`, itself
+ * checksum-locked by `v1-clinical-prompt-fidelity.test.ts`). The two are
+ * NOT the same constant and are NOT kept in sync automatically — do not edit
+ * one without consciously deciding whether the other needs the same change
+ * (TASK-635 B-10). Do NOT add this constant to the 15-entry ArcaAI fidelity
+ * fixture; that fixture asserts exactly 15 entries with v1-pod provenance and
+ * this constant has none.
+ */
+export const SYSTEM_PRE_SUMMARY_DEFAULT_CONTENT = `## Medical AI Pre-Summary Prompt
+
+> **You are a medical AI assistant tasked with creating a CRISP, CLINICALLY-RELEVANT pre-summary from multiple data sources.
+
+Do not carry over information from any other patient. Treat each request independently..**
+
+---
+
+### ** Contextual data is provided by **
+
+- **Department:** {current_department}
+
+- **Visit Type:** {visit_type}
+
+- **Demographics:** Age {safe_age}, DOB {safe_dob}, Gender {safe_gender}
+
+- **Recent Vitals:** {safe_vitals} (two most recent encounters)
+
+- **Test Results:** {formatted_test_results}
+
+- **Previous Visits:** {formatted_previous_visits}
+
+---
+
+## REQUIREMENTS
+
+### PRIORITIZE:
+
+- Notes from {current_department}
+
+- Most recent encounters
+
+### CAPTURE:
+
+- All provisional and confirmed diagnoses mentioned in any past case note
+
+- The Plan of Care from the latest note in the current department, documented in full
+
+- All investigation results reported in the latest department note
+
+- All medications prescribed in the latest department note, including doses and schedules
+
+### INCLUDE ONLY clinically significant items:
+
+- Active or ongoing conditions
+
+- Key treatments and responses
+
+- Current medications and tolerance
+
+- Important test results or procedures
+
+- Allergies/contraindications
+
+- Notable trends (e.g., weight changes, lab trajectories)
+
+### EXCLUDE:
+
+- Routine follow-ups without new findings
+
+- Minor resolved complaints
+
+- Administrative text
+
+- Repetitive details
+
+### STYLE:
+
+- Use bullet points
+
+- Group by clinical importance, not strictly chronology
+
+- Maintain brevity: keep each bullet to one sentence or phrase
+
+- Language: {language_name}
+
+### INSTRUCTIONS
+
+- Use the following section headers EXACTLY as written (in English) and do NOT translate them.
+- Write ALL bullet content in {language_name}, including any text inside parentheses.
+- Translate ALL English descriptors from context into {language_name}
+- Translate ALL text that appears in parentheses into {language_name}
+- Parentheses Localization Policy: For any parentheses that contain English words, translate them into {language_name}. If a direct translation is unclear, paraphrase briefly in {language_name}. Only leave English inside parentheses for standard clinical abbreviations (BP, HR, RR, Temp, SpO2) and measurement units (°C, mmHg, mg, ml).
+- Do NOT include English words in bullet items or parentheses, except for:
+- Standard clinical abbreviations (e.g., BP, HR, RR, Temp, SpO2)
+- Measurement units (e.g., °C, mmHg, mg, ml)
+- Before finalizing, perform a self-check: scan every pair of parentheses and ensure there are no English words inside (except the allowed abbreviations/units). If any are found, replace them with {language_name} equivalents.
+- Translate or localize any status or qualifier terms or any text inside parentheses into {language_name}.
+
+---
+
+## FORMAT
+
+- Confirmed & Provisional Diagnoses:
+- Investigations (Latest Dept Note):
+- Diagnostics & Trends:
+- Plan of Care (Latest Dept Note):
+- Medications Prescribed (Latest Dept Note):
+
+---
+
+Now generate the pre-summary.`;
 
 export const DEFAULT_PROMPT_TEMPLATES = [
   // ID 01: System Default Prompt (existing)
@@ -1469,7 +1589,14 @@ When the current encounter's department is **Hematology** (or "Haematology") and
     variables: null,
     currentVersionNumber: 1,
     departmentId: null,
-    tags: ['system', 'pre-summary', 'smr-v1'],
+    // NOTE (TASK-635 B-01 / OD-4b): deliberately NOT tagged `pre-summary`. This
+    // is a system-role stub, not the tenant's pre-summary default; carrying the
+    // tag made it a second candidate for `findTenantPreSummaryTemplateId`'s
+    // tag-convention lookup alongside `PRE_SUMMARY_DEFAULT` (…040) below, and the
+    // multi-candidate tiebreak (createdAt/id order) silently served this stub
+    // instead of the intended default. See
+    // pre-summary-candidate-uniqueness.test.ts.
+    tags: ['system', 'smr-v1'],
   },
   // ID 27: Previous Visit Summary System Prompt
   {
@@ -1485,113 +1612,34 @@ When the current encounter's department is **Hematology** (or "Haematology") and
     tags: ['system', 'previous-visit', 'smr-v1'],
   },
   // Unified Pre-Summary Template (tenant-level default for all departments)
+  //
+  // NOTE (TASK-635 B-12, C2): this is the SYSTEM_DEFAULTS.preSummaryPromptId
+  // platform-wide fallback, and it is now owned by the SYSTEM tenant — NOT the
+  // GLOBAL customer tenant it was seeded under originally. It had to move:
+  // PromptTemplate is tenant-scoped, the read handler injects the CALLER's
+  // tenantId, so a Global-owned row was invisible to every other tenant and the
+  // pre-summary chain's tier-2 fell through to its 503 fail-closed instead of
+  // this fallback. SYSTEM ownership + the PromptTemplate/PromptVersion entry in
+  // SYSTEM_SHARED_READ_MODELS (extensions/tenant-scope.ts) widens READS to
+  // `tenantId IN [caller, SYSTEM]`; writes are NOT widened, so no tenant can
+  // mutate it. Matching data migration:
+  // migrations/20260808000100_task_635_reown_system_pre_summary_default.
+  //
+  // `approvedVersionNumber: 1` is an integrity upgrade, not a content change:
+  // the resolver then serves the immutable V40 PromptVersion snapshot rather
+  // than the mutable `content` column via resolveGovernedContent's legacy
+  // fallback. The two are byte-identical here by construction.
+  //
+  // Its content (`SYSTEM_PRE_SUMMARY_DEFAULT_CONTENT`, declared above) is
+  // sha256-locked against silent drift by
+  // packages/database/src/__tests__/system-pre-summary-default-checksum.test.ts.
   {
     id: TEMPLATE_IDS.PRE_SUMMARY_DEFAULT,
-    tenantId: DEFAULT_TENANT_ID,
+    tenantId: SYSTEM_TENANT_ID,
+    approvedVersionNumber: 1,
     name: 'Pre-Summary Default Template',
     description: 'Unified pre-summary template for all departments. Uses {current_department} for department-aware prioritization.',
-    content: `## Medical AI Pre-Summary Prompt
-
-> **You are a medical AI assistant tasked with creating a CRISP, CLINICALLY-RELEVANT pre-summary from multiple data sources.
-
-Do not carry over information from any other patient. Treat each request independently..**
-
----
-
-### ** Contextual data is provided by **
-
-- **Department:** {current_department}
-
-- **Visit Type:** {visit_type}
-
-- **Demographics:** Age {safe_age}, DOB {safe_dob}, Gender {safe_gender}
-
-- **Recent Vitals:** {safe_vitals} (two most recent encounters)
-
-- **Test Results:** {formatted_test_results}
-
-- **Previous Visits:** {formatted_previous_visits}
-
----
-
-## REQUIREMENTS
-
-### PRIORITIZE:
-
-- Notes from {current_department}
-
-- Most recent encounters
-
-### CAPTURE:
-
-- All provisional and confirmed diagnoses mentioned in any past case note
-
-- The Plan of Care from the latest note in the current department, documented in full
-
-- All investigation results reported in the latest department note
-
-- All medications prescribed in the latest department note, including doses and schedules
-
-### INCLUDE ONLY clinically significant items:
-
-- Active or ongoing conditions
-
-- Key treatments and responses
-
-- Current medications and tolerance
-
-- Important test results or procedures
-
-- Allergies/contraindications
-
-- Notable trends (e.g., weight changes, lab trajectories)
-
-### EXCLUDE:
-
-- Routine follow-ups without new findings
-
-- Minor resolved complaints
-
-- Administrative text
-
-- Repetitive details
-
-### STYLE:
-
-- Use bullet points
-
-- Group by clinical importance, not strictly chronology
-
-- Maintain brevity: keep each bullet to one sentence or phrase
-
-- Language: {language_name}
-
-### INSTRUCTIONS
-
-- Use the following section headers EXACTLY as written (in English) and do NOT translate them.
-- Write ALL bullet content in {language_name}, including any text inside parentheses.
-- Translate ALL English descriptors from context into {language_name}
-- Translate ALL text that appears in parentheses into {language_name}
-- Parentheses Localization Policy: For any parentheses that contain English words, translate them into {language_name}. If a direct translation is unclear, paraphrase briefly in {language_name}. Only leave English inside parentheses for standard clinical abbreviations (BP, HR, RR, Temp, SpO2) and measurement units (°C, mmHg, mg, ml).
-- Do NOT include English words in bullet items or parentheses, except for:
-- Standard clinical abbreviations (e.g., BP, HR, RR, Temp, SpO2)
-- Measurement units (e.g., °C, mmHg, mg, ml)
-- Before finalizing, perform a self-check: scan every pair of parentheses and ensure there are no English words inside (except the allowed abbreviations/units). If any are found, replace them with {language_name} equivalents.
-- Translate or localize any status or qualifier terms or any text inside parentheses into {language_name}.
-
----
-
-## FORMAT
-
-- Confirmed & Provisional Diagnoses:
-- Investigations (Latest Dept Note):
-- Diagnostics & Trends:
-- Plan of Care (Latest Dept Note):
-- Medications Prescribed (Latest Dept Note):
-
----
-
-Now generate the pre-summary.`,
+    content: SYSTEM_PRE_SUMMARY_DEFAULT_CONTENT,
     category: 'SYSTEM',
     variables: {
       current_department: 'Department name injected at runtime',
@@ -2156,7 +2204,10 @@ When no department-specific template matches the current encounter's department,
 
 export const DEFAULT_PROMPT_VERSIONS = DEFAULT_PROMPT_TEMPLATES.map((t, i) => ({
   id: VERSION_IDS[`V${String(i + 1).padStart(2, '0')}` as keyof typeof VERSION_IDS],
-  tenantId: DEFAULT_TENANT_ID,
+  // Follows the TEMPLATE's owner rather than hardcoding the Global tenant: a
+  // version row must never end up in a different tenant from its template, and
+  // PRE_SUMMARY_DEFAULT (…040 / V40) is SYSTEM-owned since TASK-635 B-12.
+  tenantId: t.tenantId,
   promptTemplateId: t.id,
   versionNumber: 1,
   content: t.content,

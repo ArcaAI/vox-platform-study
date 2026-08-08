@@ -26,6 +26,7 @@ import {
   listAgentEvalRuns,
   listDepartmentAgents,
   listDepartments,
+  listEvalGoldenCases,
   listEvalGoldenSets,
   listTemplates,
   listUsageRecords,
@@ -44,6 +45,7 @@ import type {
   CreateTemplateRequest,
   DepartmentAgent,
   ListDepartmentAgentsParams,
+  ListEvalGoldenCasesParams,
   ListEvalGoldenSetsParams,
   ListTemplatesParams,
   ListUsageRecordsParams,
@@ -237,9 +239,30 @@ export function usePinDepartmentAgent() {
 // duplicate (rather than import) the harness-ops feature's own copies.
 // ---------------------------------------------------------------------------
 
-/** Golden sets for the Settings-tab picker and the Eval panel's name lookup. */
-export function useEvalGoldenSets(params?: ListEvalGoldenSetsParams) {
-  return useQuery({ queryKey: agentEvalKeys.goldenSets(params), queryFn: () => listEvalGoldenSets(params) });
+/**
+ * Golden sets for the Settings-tab picker, the Eval panel's name lookup, and
+ * the Test Bench's "Golden case" example-data source. `options.enabled`
+ * defers the read until a caller (e.g. the Test Bench) actually needs it.
+ */
+export function useEvalGoldenSets(params?: ListEvalGoldenSetsParams, options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: agentEvalKeys.goldenSets(params),
+    queryFn: () => listEvalGoldenSets(params),
+    enabled: options?.enabled ?? true,
+  });
+}
+
+/**
+ * A golden set's cases (PHI-safe metadata) for the Test Bench's "Golden case"
+ * combobox — disabled until a golden set is picked.
+ */
+export function useEvalGoldenCases(goldenSetId: string | null, params?: ListEvalGoldenCasesParams) {
+  return useQuery({
+    queryKey: agentEvalKeys.goldenCases(goldenSetId ?? '', params),
+    queryFn: () => listEvalGoldenCases(goldenSetId as string, params),
+    enabled: !!goldenSetId,
+    retry: false,
+  });
 }
 
 /**

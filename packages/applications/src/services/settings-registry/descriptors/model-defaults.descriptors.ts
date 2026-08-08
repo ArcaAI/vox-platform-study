@@ -61,6 +61,15 @@ const META: Record<AiTaskKey, { label: string; description: string }> = {
     label: 'SMR final-summary fallback model',
     description: 'Fallback text-generation model for the final/comprehensive summary generator when the primary provider fails.',
   },
+  // prompt-template test-bench routing (TASK-635 Lane B — tenant-admin
+  // configurable, same governance class as smr.live/smr.finalize). Consulted
+  // only when the caller does not supply an explicit provider/model pair on
+  // `POST admin/prompt-templates/:id/test`; falls back to `smr.finalize` when
+  // unset for the tenant.
+  'smr.test': {
+    label: 'SMR prompt-test-bench model',
+    description: 'Default text-generation model for the tenant-admin prompt-template test bench, when the caller does not select a provider/model.',
+  },
   // harness LLM-as-judge model (global admins only).
   'harness.judge': {
     label: 'Harness judge model',

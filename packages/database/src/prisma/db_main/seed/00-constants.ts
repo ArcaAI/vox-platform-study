@@ -29,6 +29,13 @@
  *   70000000-…-0002-…  →  SYSTEM golden departments (TASK-548)
  *   71000000-…-0002-…  →  SYSTEM golden prompt templates (TASK-548)
  *   72000000-…-0002-…  →  SYSTEM golden prompt versions (TASK-548)
+ *   71000000-…-0004-…  →  SYSTEM platform-default prompt templates (TASK-635)
+ *   72000000-…-0004-…  →  their v1 PromptVersion snapshots (mirror slot)
+ *                     A fresh STATIC block, deliberately NOT the golden
+ *                     `…-0002-…` generator (whose ids derive from
+ *                     `uniqueSourceIds` insertion order in
+ *                     07a-agent-golden-library.ts — appending there would
+ *                     couple a platform-default id to fixture ordering).
  *   80000000-0001  →  AI Models (ASR)
  *   80000000-0002  →  AI Models (VAD)
  *   80000000-0003  →  AI Models (Noise Reduction)
@@ -305,6 +312,29 @@ export const SEED_TEMPLATE_IDS = {
   CATCHALL_SOAP: '71000000-0000-0000-0000-000000000036',
   PRE_SUMMARY_DEFAULT: '71000000-0000-0000-0000-000000000040',
 } as const;
+
+// =============================================================================
+// SYSTEM PLATFORM-DEFAULT PROMPT TEMPLATES (TASK-635, `…-0004-…` block)
+//
+// Owned by the SYSTEM tenant and readable by EVERY tenant (PromptTemplate /
+// PromptVersion joined `SYSTEM_SHARED_READ_MODELS` in the C2 B-12 fold-in), so
+// a tenant with no configuration of its own still resolves a governed prompt.
+// Distinct from the `…-0002-…` golden LIBRARY (which is a per-tenant CLONE
+// source): these rows are resolved DIRECTLY, by explicit id, from
+// `SYSTEM_DEFAULTS` in PromptResolutionService.
+// =============================================================================
+
+export const SYSTEM_LIVE_SOAP_TEMPLATE_ID = '71000000-0000-0000-0004-000000000001';
+export const SYSTEM_LIVE_SOAP_VERSION_ID = '72000000-0000-0000-0004-000000000001';
+
+/**
+ * RESERVED for TASK-635 Lane D2 (OD-1b / RF-1): the department-free pre-summary
+ * fork served to NATIVE callers. Declared here so the id is claimed and cannot
+ * be reused; D2 seeds the row and flips the native call sites to
+ * `preSummaryVariant: 'dept-free'`. Nothing resolves it before then.
+ */
+export const SYSTEM_DEPT_FREE_PRE_SUMMARY_TEMPLATE_ID = '71000000-0000-0000-0004-000000000002';
+export const SYSTEM_DEPT_FREE_PRE_SUMMARY_VERSION_ID = '72000000-0000-0000-0004-000000000002';
 
 // Version IDs are generated dynamically — one per template.
 // Use helper: SEED_VERSION_ID(n) → '72000000-0000-0000-0000-' + n.toString().padStart(12, '0')

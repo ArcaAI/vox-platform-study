@@ -16,7 +16,6 @@ import { StreamingAudioBridgeService } from '../../stt/streaming/streamingAudioB
 import { mapSmrGenerateResponse } from '../summary/smr-generate';
 import { HarnessPolicyService } from '../../harness-policy/harness-policy.service';
 import { IAiTaskDefaultService } from '../../ai-task-default/IAiTaskDefaultService';
-import { resolveNerModelInjection } from '../shared/resolveNerModelSelection';
 import { ConsultationPipelineEvent, type ContextAddedPayload, type ContextRemovedPayload } from '../events';
 import {
   LiveDocEngineConfigResponse,
@@ -26,10 +25,18 @@ import {
   LiveSummaryEventDto,
   LiveSummaryGroundednessDto,
   LiveSummaryVitalsDto,
-  LiveSummaryGroundednessSegmentDto,
   LiveSummaryStatsDto,
+  LiveSummaryAgentDto,
 } from './dto';
 import { LIVE_SOAP_RESPONSE_FORMAT, buildRunningSummary, parseSoapJson, parseSoapSections } from './soap-parser';
+import {
+  DEFAULT_LIVE_TOOL_PLAN,
+  ILiveAgentResolver,
+  type FrozenLiveAgentSnapshot,
+  type ILiveAgentResolver as ILiveAgentResolverPort,
+  type PersistedLiveAgentLineage,
+} from './live-agent.port';
+import { LiveToolRegistry } from './live-tool-registry';
 import { generateJsonWithRepair, looksLikeJsonObject } from '../shared/bounded-json-repair';
 import type { LiveSummarySectionDto } from './dto';
 import {
@@ -70,6 +77,20 @@ export const LIVE_SOAP_STABLE_SYSTEM_PREFIX =
   'You are assisting a clinician during a live consultation, maintaining a concise, factual ' +
   'running clinical note structured as SOAP. ' +
   SOAP_OUTPUT_INSTRUCTION;
+
+/**
+ * The SMR `system_prompt` for the live running-note call.
+ *
+ * TASK-635 C3: LIFTED VERBATIM out of the inline `callSmr` literal — the bytes
+ * are unchanged (the paired sha256 guards in `live-soap-prompt-checksum.test.ts`
+ * and `system-live-soap-default-checksum.test.ts` pin them, and C2's seed
+ * carries the identical string under `metaData.promptConfig.systemPrompt`).
+ * Exported because it is now tier 3 of the live chain: the fail-open source a
+ * session freezes when no governed template can be resolved.
+ */
+export const LIVE_SOAP_SYSTEM_PROMPT =
+  'You are a clinical documentation assistant generating an in-progress, structured SOAP running note. ' +
+  'Be concise and faithful to the transcript; never fabricate findings.';
 
 /**
  * Safety cap on the transcript delta sent per flush (sliding-window fallback):
@@ -202,6 +223,16 @@ interface LiveSession {
   trajectorySessionId: string;
   /** §2C — monotonic trajectory-step sequence within this LIVE_DOC session. */
   trajectorySeq: number;
+  /**
+   * TASK-635 RF-6 — the session's FROZEN agent identity.
+   *
+   * `agentPromise` is kicked off (memoized) at `start()`; `agentSnapshot` caches
+   * its value on first use. Every flush reads the CACHED snapshot, so the loop
+   * adds ZERO blocking I/O per flush, and a mid-session template edit/approval
+   * can never mutate a running consultation.
+   */
+  agentPromise?: Promise<FrozenLiveAgentSnapshot>;
+  agentSnapshot?: FrozenLiveAgentSnapshot;
 }
 
 /**
@@ -330,6 +361,13 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
   private readonly groundednessTimeoutMs: number;
   private readonly groundednessMaxRetries: number;
   private readonly groundednessRetryBackoffMs: number;
+  /**
+   * TASK-635 C4 — the config-driven tool layer. Owns the two executors the flush
+   * dispatches (`nlp.classify-tokens`, `guardrail.groundedness`) and answers
+   * "does the session's frozen plan enable this key?". Executors are constructed
+   * lazily inside it, so a plan that disables a tool never builds one.
+   */
+  private readonly toolRegistry: LiveToolRegistry;
 
   constructor(
     private readonly httpService: HttpService,
@@ -363,8 +401,16 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // otherwise request-scoped). `ClsService` is provided by the globally-
     // registered `ClsModule` (see the class doc above). Optional + trailing so
     // existing positional fixtures keep their arity; absent ⇒ the resolver call
-    // is skipped defensively — see `callNlp`.
+    // is skipped defensively — see `NlpExtractionTool` in `live-tool-registry.ts`.
     @Optional() private readonly cls?: ClsService<IActiveUserContext>,
+    // TASK-635 C3 — the NARROW port that resolves the session's governed agent
+    // ONCE at start(). Deliberately NOT PromptAssemblyService (C1 DR-3): the
+    // live prompt is a bespoke prefix-cache-ordered concatenation, not the
+    // template-assembly pipeline. Optional + trailing so existing positional
+    // fixtures keep their arity; ABSENT ⇒ the service synthesizes the
+    // code-default snapshot locally from the in-code constants, i.e. behavior
+    // byte-identical to pre-C3.
+    @Optional() @Inject(ILiveAgentResolver) private readonly liveAgentResolver?: ILiveAgentResolverPort,
   ) {
     this.nlpServiceUrl = this.configService.get<string>('NLP_URL') ?? 'http://localhost:8864';
     this.smrServiceUrl = this.configService.get<string>('SMR_URL') ?? 'http://localhost:8862';
@@ -405,6 +451,31 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     this.groundednessTimeoutMs = Number(this.configService.get('LIVE_DOC_GROUNDEDNESS_TIMEOUT_MS') ?? 5000);
     this.groundednessMaxRetries = Number(this.configService.get('LIVE_DOC_GROUNDEDNESS_MAX_RETRIES') ?? 1);
     this.groundednessRetryBackoffMs = Number(this.configService.get('LIVE_DOC_GROUNDEDNESS_RETRY_BACKOFF_MS') ?? 200);
+
+    // TASK-635 C4 — `envDefaults` is the PRE-C4 answer for every tool: NER and
+    // vitals always ran; groundedness ran iff `LIVE_DOC_GROUNDEDNESS_ENABLED`.
+    // A plan entry of `enabled: null` ("follow the platform default", distinct
+    // from `false`) resolves to exactly these — which is why an unconfigured
+    // `toolConfig` reproduces today's behavior byte for byte.
+    this.toolRegistry = new LiveToolRegistry({
+      nlp: {
+        httpService: this.httpService,
+        nlpServiceUrl: this.nlpServiceUrl,
+        logger: this.logger,
+        cls: this.cls,
+        aiTaskDefaultService: this.aiTaskDefaultService,
+      },
+      groundedness: {
+        httpService: this.httpService,
+        guardrailServiceUrl: this.guardrailServiceUrl,
+        logger: this.logger,
+        secretsService: this.secretsService,
+        timeoutMs: this.groundednessTimeoutMs,
+        maxRetries: this.groundednessMaxRetries,
+        retryBackoffMs: this.groundednessRetryBackoffMs,
+      },
+      envDefaults: { ner: true, vitals: true, groundedness: this.groundednessEnabled },
+    });
   }
 
   /**
@@ -499,11 +570,186 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // forget so `start` stays synchronous for the recording controller.
     void this.claimOwnership(session);
 
+    // TASK-635 RF-6 — resolve and FREEZE the session's governing agent once,
+    // here. Kicked off fire-and-forget (same shape as `claimOwnership`) so
+    // `start()` stays synchronous for the recording controller; `flush()` awaits
+    // the memoized promise, which is already settled by the second flush.
+    session.agentPromise = this.ensureAgentResolved(session);
+
     this.logger.log({ message: 'Live documentation session started', consultationId: params.consultationId, sessionId: params.sessionId });
   }
 
   isActive(consultationId: string): boolean {
     return this.sessions.has(consultationId);
+  }
+
+  // ------------------------------------------------------------------
+  // TASK-635 — frozen agent identity (RF-6)
+  // ------------------------------------------------------------------
+
+  /**
+   * The in-code fail-open snapshot (tier 3 of the live chain, C1 §4.4). Its
+   * bytes are PROVEN identical to the seeded SYSTEM live default by the paired
+   * sha256 guards, which is the only reason a fail-open tier is acceptable on a
+   * clinical surface: it degrades to identical behavior, not different behavior.
+   */
+  private codeDefaultAgentSnapshot(): FrozenLiveAgentSnapshot {
+    return {
+      resolvedFrom: 'code-default',
+      agentId: null,
+      agentName: null,
+      promptTemplateId: null,
+      promptVersionNumber: null,
+      stableUserPrefix: LIVE_SOAP_STABLE_SYSTEM_PREFIX,
+      systemPrompt: LIVE_SOAP_SYSTEM_PROMPT,
+      toolPlan: DEFAULT_LIVE_TOOL_PLAN,
+      liveLlm: null,
+      frozenAt: new Date().toISOString(),
+    };
+  }
+
+  /**
+   * Resolve-and-freeze the session's agent, with THREE recovery tiers so a
+   * cross-instance restart or a crash re-pins the IDENTICAL agent (C1 §6.2):
+   *
+   *   1. **Redis adopt** — a snapshot mirrored by the previous owner is adopted
+   *      VERBATIM. This is what makes a re-attach on another instance serve the
+   *      same bytes rather than silently re-resolving to newer content.
+   *   2. **Durable lineage re-pin** — Redis cold but a `LIVE_SOAP_SNAPSHOT` row
+   *      exists: re-fetch the pinned, IMMUTABLE `(templateId, versionNumber)`
+   *      `PromptVersion` — never "latest" — so the rebuild is byte-identical.
+   *   3. **Fresh resolve** — only for a genuinely new session.
+   *
+   * NEVER REJECTS. Any failure at any tier yields the code-default snapshot, so
+   * `flush()` can `await` this without a live consultation ever being able to
+   * fail on prompt resolution.
+   */
+  private async ensureAgentResolved(session: LiveSession): Promise<FrozenLiveAgentSnapshot> {
+    // No port wired (legacy fixtures / non-DI construction): synthesize locally
+    // and touch nothing — behavior byte-identical to pre-C3, zero I/O.
+    if (!this.liveAgentResolver) {
+      const snapshot = this.codeDefaultAgentSnapshot();
+      session.agentSnapshot = snapshot;
+      return snapshot;
+    }
+
+    try {
+      // (1) adopt a mirrored snapshot
+      const stored = await this.readStoredAgentSnapshot(session.consultationId);
+      if (stored) {
+        session.agentSnapshot = stored;
+        this.logger.log({
+          message: 'Adopted frozen live-agent snapshot from Redis (cross-instance / restart)',
+          consultationId: session.consultationId,
+          resolvedFrom: stored.resolvedFrom,
+          promptTemplateId: stored.promptTemplateId,
+          promptVersionNumber: stored.promptVersionNumber,
+        });
+        return stored;
+      }
+
+      // (2) re-pin from the durable snapshot's lineage block
+      const lineage = await this.readDurableAgentLineage(session.consultationId);
+      if (lineage) {
+        const rehydrated = await this.liveAgentResolver.rehydrateFromLineage({ tenantId: session.tenantId, lineage });
+        if (rehydrated) {
+          session.agentSnapshot = rehydrated;
+          await this.storeAgentSnapshot(session.consultationId, rehydrated);
+          this.logger.log({
+            message: 'Re-pinned frozen live-agent snapshot from the durable LIVE_SOAP_SNAPSHOT lineage',
+            consultationId: session.consultationId,
+            promptTemplateId: rehydrated.promptTemplateId,
+            promptVersionNumber: rehydrated.promptVersionNumber,
+          });
+          return rehydrated;
+        }
+      }
+
+      // (3) fresh resolve
+      const resolved = await this.liveAgentResolver.resolveForSession({
+        consultationId: session.consultationId,
+        tenantId: session.tenantId,
+      });
+      session.agentSnapshot = resolved;
+      await this.storeAgentSnapshot(session.consultationId, resolved);
+      return resolved;
+    } catch (error) {
+      // The port's own contract is never-throws; this is the belt-and-braces
+      // half (a Redis outage, a malformed stored snapshot, a broken port impl).
+      this.logger.error({
+        message: 'Live-agent resolution failed — falling open to the in-code prompt constants',
+        consultationId: session.consultationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      const snapshot = this.codeDefaultAgentSnapshot();
+      session.agentSnapshot = snapshot;
+      return snapshot;
+    }
+  }
+
+  /** The frozen snapshot as mirrored in Redis, or null (absent / unusable / outage). */
+  private async readStoredAgentSnapshot(consultationId: string): Promise<FrozenLiveAgentSnapshot | null> {
+    try {
+      const raw = await this.cacheService.get(this.agentKey(consultationId));
+      if (!raw) return null;
+      const parsed = JSON.parse(typeof raw === 'string' ? raw : String(raw)) as FrozenLiveAgentSnapshot;
+      // Guard against a truncated/legacy blob: the prompt bytes are what the
+      // whole freeze exists to preserve, so anything without them is discarded
+      // and we resolve fresh rather than serving an empty prompt.
+      if (!parsed || typeof parsed.stableUserPrefix !== 'string' || typeof parsed.systemPrompt !== 'string') return null;
+      return { ...parsed, toolPlan: parsed.toolPlan ?? DEFAULT_LIVE_TOOL_PLAN };
+    } catch (error) {
+      this.logger.warn({
+        message: 'Failed to read the stored live-agent snapshot — resolving fresh',
+        consultationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    }
+  }
+
+  /**
+   * Mirror the frozen snapshot to Redis with the OWNER-LOCK TTL, refreshed by
+   * the same fenced renewal loop — so a live session's pin can never expire
+   * mid-session while the session itself is still owned.
+   */
+  private async storeAgentSnapshot(consultationId: string, snapshot: FrozenLiveAgentSnapshot): Promise<void> {
+    try {
+      await this.cacheService.setex(this.agentKey(consultationId), this.LOCK_TTL, JSON.stringify(snapshot));
+    } catch (error) {
+      // Non-fatal: the session keeps its in-memory freeze; only cross-instance
+      // adoption degrades to a fresh (identical, because version-pinned) resolve.
+      this.logger.warn({
+        message: 'Failed to mirror the frozen live-agent snapshot to Redis',
+        consultationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  /** The lineage block previously stamped onto the durable LIVE_SOAP_SNAPSHOT row, or null. */
+  private async readDurableAgentLineage(consultationId: string): Promise<PersistedLiveAgentLineage | null> {
+    try {
+      const row = await this.findLiveSnapshotRow(consultationId);
+      const agent = (row?.metaData as { agent?: PersistedLiveAgentLineage } | undefined)?.agent;
+      if (!agent || !agent.promptTemplateId || agent.promptVersionNumber === null || agent.promptVersionNumber === undefined) return null;
+      return agent;
+    } catch {
+      return null;
+    }
+  }
+
+  /** The lineage subset of a snapshot — what is persisted, without duplicating prompt bytes. */
+  private agentLineage(snapshot: FrozenLiveAgentSnapshot): PersistedLiveAgentLineage {
+    return {
+      agentId: snapshot.agentId,
+      agentName: snapshot.agentName,
+      promptTemplateId: snapshot.promptTemplateId,
+      promptVersionNumber: snapshot.promptVersionNumber,
+      resolvedFrom: snapshot.resolvedFrom,
+      ...(snapshot.liveLlm ? { liveLlm: snapshot.liveLlm } : {}),
+      frozenAt: snapshot.frozenAt,
+    };
   }
 
   /**
@@ -708,6 +954,13 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     session.lastFlushAt = Date.now();
     session.pendingSegments = 0;
 
+    // TASK-635 RF-6 — the session's FROZEN agent. Resolved once at `start()`;
+    // from the second flush on this is a settled promise, i.e. a microtask and
+    // ZERO blocking I/O. The very first flush of a session may await the
+    // in-flight start-time resolution (bounded, ≤4 reads, once per session).
+    // `ensureAgentResolved` never rejects, so this can never fail a flush.
+    const agent = session.agentSnapshot ?? (session.agentSnapshot = await (session.agentPromise ?? this.ensureAgentResolved(session)));
+
     // Resolve the effective agentic.context.* knobs for THIS flush.
     // Refreshing here (rather than at construction) is what makes the control plane
     // real: a global admin's registry write governs the very next flush, with no
@@ -800,7 +1053,11 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       });
     }
     const priorNote = session.lastPayload?.runningSummary ?? '';
-    const promptText = this.buildSmrUserPrompt(priorNote, delta || transcript, notes, elidedParts > 0);
+    // The stable lead-in now comes from the FROZEN snapshot rather than the
+    // module constant. Prefix-cache friendliness is preserved BY CONSTRUCTION:
+    // the prefix is frozen per session, so it stays byte-identical across every
+    // flush — exactly the property the constant used to provide.
+    const promptText = this.buildSmrUserPrompt(priorNote, delta || transcript, notes, elidedParts > 0, agent.stableUserPrefix);
 
     // SMR first (a structured S/O/A/P running note), then NER over the resulting
     // `runningSummary` (the canonical text the entity highlight offsets index — so it
@@ -829,7 +1086,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       const outcome = await generateJsonWithRepair<LiveSummarySectionDto[], LiveSoapCall>({
         generate: async (corrective) => {
           const startedAt = Date.now();
-          const { text, stats, structured } = await this.callSmr(promptText, session.tenantId, signal, corrective);
+          const { text, stats, structured } = await this.callSmr(promptText, session.tenantId, signal, corrective, agent);
           return { text, stats, structured, latencyMs: Date.now() - startedAt };
         },
         parseStrict: (text) => {
@@ -874,18 +1131,32 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // transcript-sourced entities are then GROUNDED back to the rendered note (below) — a
     // mention that survives only in the note with no transcript support is never a candidate
     // here (NER never sees the note) and is therefore never surfaced.
+    //
+    // TASK-635 C4 — WHICH tools run is now the session's frozen `toolPlan`
+    // (OD-5(b): config-driven, NOT a model-initiated loop). `ner` and `vitals`
+    // are two plan keys served by ONE executor and ONE HTTP call — disabling
+    // `vitals` filters the block off that same response rather than saving a
+    // request, and disabling BOTH is what skips the call entirely. The registry
+    // context receives `nerSourceText` and nothing else, so the anti-laundering
+    // rule above is enforced by the executor's input TYPE, not by convention.
     const nerSourceText = delta || transcript;
     const priorEntities = session.lastPayload?.entities ?? [];
+    const nerEnabled = this.toolRegistry.isEnabled(agent.toolPlan, 'ner');
+    const vitalsEnabled = this.toolRegistry.isEnabled(agent.toolPlan, 'vitals');
     let extracted: LiveSummaryEntityDto[] = [];
     let flushVitals: LiveSummaryVitalsDto | undefined;
     let nlpFailed = false;
     let nlpLatencyMs = 0;
+    let nlpRan = false;
     const nlpStartedAt = Date.now();
     try {
-      const nlpResult = nerSourceText ? await this.callNlp(nerSourceText, signal) : { entities: [] as LiveSummaryEntityDto[] };
-      extracted = nlpResult.entities;
-      flushVitals = nlpResult.vitals;
-      nlpLatencyMs = Date.now() - nlpStartedAt;
+      if (nerSourceText && (nerEnabled || vitalsEnabled)) {
+        nlpRan = true;
+        const nlpResult = await this.toolRegistry.extraction().execute({ sourceText: nerSourceText }, signal);
+        extracted = nerEnabled ? nlpResult.entities : [];
+        flushVitals = vitalsEnabled ? nlpResult.vitals : undefined;
+        nlpLatencyMs = Date.now() - nlpStartedAt;
+      }
     } catch (error) {
       if (isStale()) return this.dropStale(session);
       nlpFailed = true;
@@ -902,9 +1173,13 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // feed still publishes — the live feed is never frozen or dropped by the gate.
     let groundedness: LiveSummaryGroundednessDto | undefined;
     let groundednessLatencyMs = 0;
-    if (this.groundednessEnabled && runningSummary) {
+    // C4: gated by the frozen plan — `enabled: null` (the default) defers to
+    // `LIVE_DOC_GROUNDEDNESS_ENABLED`, exactly as before.
+    if (this.toolRegistry.isEnabled(agent.toolPlan, 'groundedness') && runningSummary) {
       const groundednessStartedAt = Date.now();
-      groundedness = await this.checkGroundedness(runningSummary, notes ? `${transcript}\n${notes}` : transcript, signal);
+      groundedness = await this.toolRegistry
+        .guardrail()
+        .execute({ summary: runningSummary, sourceText: notes ? `${transcript}\n${notes}` : transcript }, signal);
       groundednessLatencyMs = Date.now() - groundednessStartedAt;
       if (isStale()) return this.dropStale(session);
     }
@@ -918,6 +1193,16 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // non-null value wins, prior values persist. Absent until one is seen.
     const vitals = this.mergeVitals(session.lastPayload?.vitals, flushVitals);
 
+    const agentMetadata: LiveSummaryAgentDto | null = agent.promptTemplateId
+      ? {
+          id: agent.agentId,
+          name: agent.agentName,
+          promptTemplateId: agent.promptTemplateId,
+          promptVersionNumber: agent.promptVersionNumber,
+          resolvedFrom: agent.resolvedFrom,
+        }
+      : null;
+
     const payload: LiveSummaryEventDto = {
       consultationId,
       runningSummary,
@@ -928,7 +1213,14 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       // attach the AD-1 stats when present; omit the envelope
       // entirely on a stats-less flush (SMR failure / legacy cache hit) so the
       // feed degrades cleanly rather than publishing an empty metadata block.
-      ...(smrStats ? { metadata: { stats: smrStats } } : {}),
+      // TASK-635 RF-6 — the session's agent identity, additively, under the same
+      // optional envelope. Emitted only when a GOVERNED tier resolved: on the
+      // code-default tier there is no agent identity to report, and inventing a
+      // metadata block there would change the published shape for a tenant that
+      // configured nothing (the C3 behavior-identical invariant).
+      ...(smrStats || agentMetadata
+        ? { metadata: { ...(smrStats ? { stats: smrStats } : {}), ...(agentMetadata ? { agent: agentMetadata } : {}) } }
+        : {}),
       ...(vitals ? { vitals } : {}),
       updatedAt: new Date().toISOString(),
     };
@@ -981,7 +1273,9 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       smrRepaired,
       repairStats,
       repairLatencyMs,
-      nlpRan: !!nerSourceText,
+      // C4: the TOOL_CALL step records exactly the calls this flush made — a
+      // plan-disabled extraction records no step (it did not run).
+      nlpRan,
       nlpFailed,
       nlpLatencyMs,
       groundedness,
@@ -1040,6 +1334,17 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
         endedAt: new Date(now),
         durationMs: ctx.smrLatencyMs,
         stats: (ctx.smrStats ?? undefined) as CreateAgentTrajectoryStepInput['stats'],
+        // TASK-635 — WHICH agent/prompt version produced this flush (additive).
+        ...(session.agentSnapshot
+          ? {
+              payloadRef: {
+                agentId: session.agentSnapshot.agentId,
+                promptTemplateId: session.agentSnapshot.promptTemplateId,
+                promptVersionNumber: session.agentSnapshot.promptVersionNumber,
+                resolvedFrom: session.agentSnapshot.resolvedFrom,
+              },
+            }
+          : {}),
       });
 
       // 1b) LLM_CALL — the bounded JSON auto-repair retry,
@@ -1369,13 +1674,28 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
         // restoring the single-owner invariant mid-session instead of only logging.
         this.logger.warn({ message: 'Live-doc owner lock lost — standing down watcher to preserve single-owner invariant', consultationId });
         this.teardownLocal(this.sessions.get(consultationId));
+        return;
       }
+      // TASK-635: the frozen-agent pin rides the SAME renewal as the ownership
+      // it belongs to, so a long consultation's snapshot can never expire out
+      // from under a session that is still being served (risk R3).
+      await this.refreshAgentSnapshotTtl(consultationId);
     } catch (error) {
       this.logger.warn({
         message: 'Failed to renew live-doc owner lock',
         consultationId,
         error: error instanceof Error ? error.message : String(error),
       });
+    }
+  }
+
+  /** Extend the frozen-agent key's TTL alongside the fenced owner-lock renewal (TASK-635 R3). */
+  private async refreshAgentSnapshotTtl(consultationId: string): Promise<void> {
+    try {
+      await this.cacheService.expire(this.agentKey(consultationId), this.LOCK_TTL);
+    } catch {
+      // Non-fatal: the in-memory freeze is authoritative for THIS instance; only
+      // cross-instance adoption would degrade (to an identical version-pinned resolve).
     }
   }
 
@@ -1463,7 +1783,18 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     if (!content) return;
 
     session.lastDurableAt = Date.now();
-    const metaData = { subType: 'LIVE_SOAP_SNAPSHOT', lastSegmentId: session.lastSegmentId, updatedAt: payload.updatedAt };
+    // TASK-635 RF-6 — the `agent` block is the LINEAGE HAND-OFF to finalize
+    // (Lane C5 reads it off this exact row and stamps `SummaryMeta`). It carries
+    // the version PIN, never the prompt bytes, and it is ADDITIVE: `subType`,
+    // `lastSegmentId` and `updatedAt` keep their meaning and position, so the
+    // existing readers (`findLiveSnapshotRow`, the harness warm-start reader)
+    // are untouched. Present only once the session's agent has been frozen.
+    const metaData = {
+      subType: 'LIVE_SOAP_SNAPSHOT',
+      lastSegmentId: session.lastSegmentId,
+      updatedAt: payload.updatedAt,
+      ...(session.agentSnapshot ? { agent: this.agentLineage(session.agentSnapshot) } : {}),
+    };
 
     try {
       if (!session.snapshotEntity) {
@@ -1539,7 +1870,13 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
    * whole transcript, keeping prompt size bounded; the first flush sends the delta
    * as the initial transcript.
    */
-  private buildSmrUserPrompt(priorNote: string, delta: string, notes: string, elided = false): string {
+  private buildSmrUserPrompt(
+    priorNote: string,
+    delta: string,
+    notes: string,
+    elided = false,
+    stablePrefix: string = LIVE_SOAP_STABLE_SYSTEM_PREFIX,
+  ): string {
     const notesBlock = notes ? `\n\nClinician notes / labs:\n${notes}` : '';
     const hasPriorNote = priorNote.trim().length > 0;
     // In windowed mode an over-cap backlog drops its oldest part.
@@ -1564,7 +1901,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       ? '\n\nUpdate the existing SOAP note above using ONLY the new transcript since the last update; keep prior content unless it is contradicted.'
       : '\n\nFrom the transcript and any clinician notes/labs above, produce the running SOAP note now.';
 
-    return LIVE_SOAP_STABLE_SYSTEM_PREFIX + transcriptBlock + currentNoteBlock + elisionBlock + deltaInstruction + notesBlock;
+    return stablePrefix + transcriptBlock + currentNoteBlock + elisionBlock + deltaInstruction + notesBlock;
   }
 
   /**
@@ -1641,6 +1978,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     tenantId: string,
     signal?: AbortSignal,
     corrective?: string,
+    agent?: FrozenLiveAgentSnapshot,
   ): Promise<{ text: string; stats: LiveSummaryStatsDto | null; structured: boolean }> {
     // SMR is a stateless gateway with no model default. Resolve the
     // tenant's effective {provider, model} via the HarnessPolicy cascade (NOT the
@@ -1651,9 +1989,19 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // global admin can point the low-latency running-note model at something smaller
     // than the end-of-visit finalize model. Omitting the task argument defaults to
     // 'finalize', which is what left `smr.live` inert despite being seeded+registered.
+    //
+    // TASK-635 RF-4 — an agent's `llmOverrides.live` wins and is served FROZEN
+    // (resolved once at session start), so a live session's model can never
+    // drift mid-consultation. WITHOUT an override the per-flush tenant resolve
+    // below runs exactly as before, which is what keeps an admin re-point
+    // landing on the next flush for unconfigured tenants.
     let provider = this.smrProvider;
     let model = this.smrModel;
-    if (this.harnessPolicyService) {
+    let selectionSource: 'agent-override' | 'task-default' = 'task-default';
+    if (agent?.liveLlm) {
+      ({ provider, model } = agent.liveLlm);
+      selectionSource = 'agent-override';
+    } else if (this.harnessPolicyService) {
       ({ provider, model } = await this.harnessPolicyService.resolveSmrSelection(tenantId, 'live'));
     }
     // `response_format: json_schema` makes json-schema-capable providers return a
@@ -1665,8 +2013,10 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // (Phase 4D.1) stays byte-identical between the original and repair calls.
     const payload = {
       prompt: corrective ? `${promptText}${corrective}` : promptText,
-      system_prompt:
-        'You are a clinical documentation assistant generating an in-progress, structured SOAP running note. Be concise and faithful to the transcript; never fabricate findings.',
+      // The frozen snapshot's system prompt; identical to the exported constant
+      // whenever no agent binding customized it (the paired sha256 guards prove
+      // the constant and the seeded SYSTEM default carry the same bytes).
+      system_prompt: agent?.systemPrompt ?? LIVE_SOAP_SYSTEM_PROMPT,
       provider,
       model,
       max_tokens: this.smrMaxTokens,
@@ -1686,7 +2036,9 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // provider/model it actually ran, so the tier provenance is stamped here.
     return {
       text: mapSmrGenerateResponse(response.data).summary,
-      stats: stats ? { ...stats, task_key: 'smr.live' } : null,
+      // `selection_source` is additive telemetry: it says WHETHER the frozen
+      // agent override or the per-flush tenant default chose this model.
+      stats: stats ? { ...stats, task_key: 'smr.live', selection_source: selectionSource } : null,
       structured: includeResponseFormat,
     };
   }
@@ -1707,64 +2059,9 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     return rest as LiveSummaryStatsDto;
   }
 
-  private async callNlp(text: string, signal?: AbortSignal): Promise<{ entities: LiveSummaryEntityDto[]; vitals?: LiveSummaryVitalsDto }> {
-    // TASK-552 Lane A: inject the effective `nlp.ner` AiTaskDefault model
-    // (mirrors AiInferenceController's playground mapping) so a global
-    // admin's re-point governs the live plane too, not just the playground.
-    // Fail-open: {} on any resolution hiccup, or when CLS isn't wired (this
-    // service isn't otherwise request-scoped — see the constructor).
-    const modelSelection = this.cls ? await resolveNerModelInjection(this.aiTaskDefaultService, this.cls, this.logger) : {};
-    const response = await this.httpService.axiosRef.post(
-      `${this.nlpServiceUrl}/api/v1/classify/tokens`,
-      { text, ...modelSelection },
-      { timeout: 30000, signal },
-    );
-    // Canonical NLP wire shape (apps/nlp schemas/common.py Entity): text / entity_type /
-    // position.{start,end} / icd_code (deterministic OntologyLinker; present only for the
-    // curated vocabulary, absent otherwise — carried through so the UI can chip ICD-10 codes).
-    const raw = (response.data?.entities ?? []) as Array<{
-      entity_type?: string;
-      text?: string;
-      confidence?: number;
-      icd_code?: string | null;
-      position?: { start?: number; end?: number };
-    }>;
-    const entities = raw.map((e) => ({
-      text: e.text ?? '',
-      type: e.entity_type ?? 'UNKNOWN',
-      confidence: e.confidence,
-      icd10: e.icd_code ?? undefined,
-      start: e.position?.start,
-      end: e.position?.end,
-    }));
-    return { entities, vitals: this.mapVitals(response.data?.vitals) };
-  }
-
-  /**
-   * Map the NLP `Vitals` wire shape (snake_case, null-safe deterministic
-   * extraction) to `LiveSummaryVitalsDto`. Returns undefined when the NLP
-   * service reported no vitals — never fabricated.
-   */
-  private mapVitals(raw: unknown): LiveSummaryVitalsDto | undefined {
-    if (!raw || typeof raw !== 'object') return undefined;
-    const v = raw as {
-      systolic?: number | null;
-      diastolic?: number | null;
-      heart_rate?: number | null;
-      spo2?: number | null;
-      temperature_c?: number | null;
-      weight_kg?: number | null;
-    };
-    const mapped: LiveSummaryVitalsDto = {
-      ...(typeof v.systolic === 'number' ? { systolic: v.systolic } : {}),
-      ...(typeof v.diastolic === 'number' ? { diastolic: v.diastolic } : {}),
-      ...(typeof v.heart_rate === 'number' ? { heartRate: v.heart_rate } : {}),
-      ...(typeof v.spo2 === 'number' ? { spo2: v.spo2 } : {}),
-      ...(typeof v.temperature_c === 'number' ? { temperatureC: v.temperature_c } : {}),
-      ...(typeof v.weight_kg === 'number' ? { weightKg: v.weight_kg } : {}),
-    };
-    return Object.keys(mapped).length > 0 ? mapped : undefined;
-  }
+  // TASK-635 C4: `callNlp` + `mapVitals` were RELOCATED VERBATIM to
+  // `live-tool-registry.ts` (`NlpExtractionTool`) — same URL, same payload,
+  // same mapping, same 30s timeout. The flush reaches them via the registry.
 
   /** Merge vitals field-wise across flushes — a later non-null value wins; prior values persist. */
   private mergeVitals(prior: LiveSummaryVitalsDto | undefined, next: LiveSummaryVitalsDto | undefined): LiveSummaryVitalsDto | undefined {
@@ -1811,106 +2108,9 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     return grounded;
   }
 
-  /**
-   * Output-side groundedness gate call.
-   *
-   * POSTs `{ summary, transcript }` to the guardrail's self-hosted NLI endpoint
-   * (`/api/guardrail/ground`, behind `X-Service-Token`) and maps the per-segment
-   * verdicts for the SSE payload. Degrade-safe → fail-CLOSED:
-   * - a transient blip is absorbed by a bounded retry (verdict comes from the clean re-check);
-   * - a sustained outage / timeout / malformed response returns `unverified`;
-   * - NO error path can ever return `grounded` (the mapper only accepts the literal
-   *   `grounded` verdict from an honest `checked: true` response).
-   * PHI-safe logging: attempt counts + error names only — never clinical text.
-   */
-  private async checkGroundedness(summary: string, transcript: string, signal?: AbortSignal): Promise<LiveSummaryGroundednessDto> {
-    const attempts = Math.max(1, this.groundednessMaxRetries + 1);
-    for (let attempt = 1; attempt <= attempts; attempt++) {
-      try {
-        const token = (await this.secretsService?.getSecretOptional('GUARDRAIL_SERVICE_TOKEN')) ?? '';
-        const response = await this.httpService.axiosRef.post(
-          `${this.guardrailServiceUrl}/api/guardrail/ground`,
-          { summary, transcript },
-          {
-            timeout: this.groundednessTimeoutMs,
-            headers: { 'Content-Type': 'application/json', 'X-Service-Token': token },
-            signal,
-          },
-        );
-        const verdict = this.mapGroundednessResponse(response.data);
-        if (verdict) return verdict;
-        this.logger.warn({ message: 'Groundedness gate returned a malformed verdict — treating as unverified (fail-closed)', attempt });
-      } catch (error) {
-        this.logger.warn({
-          message: 'Groundedness gate call failed',
-          attempt,
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
-      if (signal?.aborted) break; // superseded — the flush drops this generation as stale
-      if (attempt < attempts && this.groundednessRetryBackoffMs > 0) {
-        await new Promise((resolve) => setTimeout(resolve, this.groundednessRetryBackoffMs));
-      }
-    }
-    // Fail-CLOSED: an unavailable/erroring gate marks the note `unverified` — the
-    // clinician sees the text but knows it is unchecked; it is NEVER presented as verified.
-    return { verdict: 'unverified', checkedAt: new Date().toISOString() };
-  }
-
-  /**
-   * Strict wire→DTO mapping for the guardrail `/guardrail/ground` response. Returns
-   * `null` for a malformed body (→ fail-closed `unverified` upstream). Only the
-   * literal `grounded` verdict string can mark a segment grounded, and only when the
-   * service honestly reports `checked: true` — an errored/disabled gate response can
-   * never roll up to `grounded`.
-   */
-  private mapGroundednessResponse(data: unknown): LiveSummaryGroundednessDto | null {
-    const body = data as { segments?: unknown; flagged_spans?: unknown; checked?: unknown } | null | undefined;
-    if (!body || !Array.isArray(body.segments)) return null;
-
-    // A response we distrust (`checked !== true`: any
-    // degrade / error / disabled path) must not drive ANY per-segment verdict, not just
-    // the rollup. An honest degrade already sets every segment 'unverified'; this defends
-    // against a compromised/buggy guardrail returning 'grounded' segments alongside
-    // checked:false — a panel rendering per-segment marks would otherwise show segments as
-    // verified from a response the mapper explicitly refused to trust. Only a `checked:true`
-    // response may carry a non-'unverified' segment verdict.
-    const trusted = body.checked === true;
-    const segments: LiveSummaryGroundednessSegmentDto[] = body.segments.map((raw) => {
-      const segment = raw as { text?: unknown; verdict?: unknown; score?: unknown; start?: unknown; end?: unknown };
-      const verdict = !trusted
-        ? 'unverified'
-        : segment.verdict === 'grounded'
-          ? 'grounded'
-          : segment.verdict === 'ungrounded'
-            ? 'ungrounded'
-            : 'unverified';
-      return {
-        text: typeof segment.text === 'string' ? segment.text : '',
-        verdict,
-        score: typeof segment.score === 'number' ? segment.score : undefined,
-        start: typeof segment.start === 'number' ? segment.start : undefined,
-        end: typeof segment.end === 'number' ? segment.end : undefined,
-      };
-    });
-
-    const flaggedSpans = Array.isArray(body.flagged_spans)
-      ? body.flagged_spans
-          .map((raw) => raw as { start?: unknown; end?: unknown })
-          .filter((span) => typeof span.start === 'number' && typeof span.end === 'number')
-          .map((span) => ({ start: span.start as number, end: span.end as number }))
-      : [];
-
-    const anyUngrounded = segments.some((segment) => segment.verdict === 'ungrounded');
-    const anyUnverified = segments.some((segment) => segment.verdict === 'unverified');
-    const verdict: LiveSummaryGroundednessDto['verdict'] = anyUngrounded
-      ? 'ungrounded'
-      : anyUnverified || segments.length === 0 || body.checked !== true
-        ? 'unverified'
-        : 'grounded';
-
-    return { verdict, segments, flaggedSpans, checkedAt: new Date().toISOString() };
-  }
+  // TASK-635 C4: `checkGroundedness` + `mapGroundednessResponse` were RELOCATED
+  // VERBATIM to `live-tool-registry.ts` (`GuardrailGroundednessTool`) — same
+  // endpoint, same bounded retry, same fail-CLOSED mapping.
 
   private channel(consultationId: string): string {
     return `${this.CHANNEL_PREFIX}${consultationId}`;
@@ -1924,6 +2124,15 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
   /** Single-owner lock key (P1-A). */
   private lockKey(consultationId: string): string {
     return `${this.CHANNEL_PREFIX}${consultationId}:lock`;
+  }
+
+  /**
+   * TASK-635 — the session's FROZEN agent snapshot (RF-6). TTL = `LOCK_TTL`,
+   * refreshed by the fenced lock-renewal loop, so the pin lives exactly as long
+   * as the ownership it belongs to.
+   */
+  private agentKey(consultationId: string): string {
+    return `${this.CHANNEL_PREFIX}${consultationId}:agent`;
   }
 
   private snapshotKey(consultationId: string): string {

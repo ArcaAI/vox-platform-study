@@ -141,12 +141,27 @@ export interface PromptVersionDiff {
   stats: PromptDiffStats;
 }
 
-/** POST :id/test body — If-Match route; expectedVersion is added by the client. */
+/**
+ * POST :id/test body — If-Match route; expectedVersion is added by the
+ * client. `sampleInput` and `goldenCaseId` are mutually exclusive (the panel
+ * enforces the XOR client-side); omitting `provider`/`model`/`versionNumber`
+ * falls back to the tenant default / current draft content respectively.
+ */
 export interface TestTemplateRequest {
   /** Sample values interpolated into the template `{{variables}}`. */
   variables?: Record<string, unknown>;
-  /** Extra sample input (e.g. transcript excerpt) appended to the prompt. */
+  /** Extra sample input (e.g. transcript excerpt) appended to the prompt. Mutually exclusive with `goldenCaseId`. */
   sampleInput?: string;
+  /** Golden-case example data (PHI-safe reference decrypted server-side). Mutually exclusive with `sampleInput`. */
+  goldenCaseId?: string;
+  /** Explicit provider override; omitted = tenant default via the HarnessPolicy cascade. */
+  provider?: string;
+  /** Explicit model override; only meaningful alongside `provider`. */
+  model?: string;
+  /** Skip persisting score/output to the row (the row's OCC version is unaffected). */
+  dryRun?: boolean;
+  /** Test a specific pinned PromptVersion instead of the current draft content. */
+  versionNumber?: number;
 }
 
 /** Per-dimension breakdown behind the composite test score. */
@@ -358,6 +373,29 @@ export interface EvalGoldenSetList {
 
 /** NOTE: `page` is ONE-based on this endpoint (matches the harness-ops copy). */
 export interface ListEvalGoldenSetsParams {
+  page?: number;
+  limit?: number;
+  [key: string]: string | number | boolean | undefined | null;
+}
+
+/**
+ * GET admin/harness/golden-sets/:id/cases row — a slim GoldenCaseMetaResponse
+ * projection (PHI-SAFE metadata only; the encrypted transcript/reference note
+ * are never surfaced through this plane). Feeds the Test Bench's "Golden
+ * case" example-data picker.
+ */
+export interface EvalGoldenCase {
+  id: string;
+  goldenSetId: string;
+  label?: string | null;
+}
+
+export interface EvalGoldenCaseList {
+  items: EvalGoldenCase[];
+  total: number;
+}
+
+export interface ListEvalGoldenCasesParams {
   page?: number;
   limit?: number;
   [key: string]: string | number | boolean | undefined | null;

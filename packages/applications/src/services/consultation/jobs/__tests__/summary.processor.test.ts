@@ -22,6 +22,9 @@ const createMockContextItemRepository = () => ({
   findById: vi.fn(),
   findTranscripts: vi.fn(),
   findLatestPreSummary: vi.fn().mockResolvedValue(null),
+  // TASK-635 C6 — the processor now reads the warm start through the
+  // decrypting, subType-aware accessor (B-02/B-06 parity with SummaryService).
+  findLatestPreSummaryWithDecryptedContent: vi.fn().mockResolvedValue({ entity: null, plaintext: null }),
   create: vi.fn(),
   encryptContentIntoEntity: vi.fn().mockResolvedValue(undefined),
 });

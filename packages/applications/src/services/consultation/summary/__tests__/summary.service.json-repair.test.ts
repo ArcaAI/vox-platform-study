@@ -48,6 +48,7 @@ const createMockContextItemRepository = () => ({
   findCaseNotes: vi.fn().mockResolvedValue([]),
   findTranscripts: vi.fn().mockResolvedValue([]),
   findLatestPreSummary: vi.fn().mockResolvedValue(null),
+  findLatestPreSummaryWithDecryptedContent: vi.fn().mockResolvedValue({ entity: null, plaintext: null }),
   create: vi.fn().mockImplementation((entity: { content?: string }) =>
     Promise.resolve({
       id: 'ctx-new',

@@ -19,6 +19,7 @@ import { SecretsService } from '../../baseServices/_meta/secrets/SecretsService'
 import { IGateEditExemplarRetriever } from '../../gate-edit-mining/IGateEditExemplarRetriever';
 import { truncatePriorVisitSummary } from '../../settings-registry/descriptors/agentic-revisit.descriptors';
 import { IActiveUserContext } from '../../../interfaces';
+import type { PersistedLiveAgentLineage } from '../live-documentation/live-agent.port';
 
 const VARIABLE_PATTERN = /\{([a-zA-Z_][\w-]*)\}/g;
 
@@ -211,6 +212,15 @@ export interface PromptAssemblyParams {
   departmentId?: string;
   promptType?: 'pre-summary' | 'new-patient' | 'revisit';
   /**
+   * TASK-635 D2 — which pre-summary prompt FAMILY to resolve when
+   * `promptType === 'pre-summary'`. `'v1'` (the resolver default) is the
+   * v1-parity body compat requires (RF-1 wire contract, never set by native
+   * callers); `'dept-free'` is the native-only fork with no
+   * `{current_department}` / `{visit_type}` placeholder. Ignored for every
+   * other `promptType`.
+   */
+  preSummaryVariant?: 'v1' | 'dept-free';
+  /**
    * The consultation's visit type, rendered into v1's `{visit_type}` placeholder
    * on a pre-summary body (TASK-634 D-08).
    *
@@ -225,6 +235,25 @@ export interface PromptAssemblyParams {
   conversationLanguage: string;
   dnaStyleId?: string;
   preSummaryText?: string;
+  /**
+   * TASK-635 C5 / DR-4 — the live session's frozen agent identity, read off the
+   * consumed `LIVE_SOAP_SNAPSHOT`'s `metaData.agent`.
+   *
+   * Its PRESENCE is the proof that a live agent actually ran this consultation,
+   * and that is what makes the prior-draft injection below UNCONDITIONAL:
+   * R-N2 ("the same specific agent reviews and finalizes") is the product
+   * contract, so it must not be an accident of `HARNESS_WARM_START_ENABLED`
+   * deployment configuration. The flag survives, demoted to gating only the
+   * legacy no-lineage path.
+   *
+   * Absent ⇒ every warm-start behaviour is byte-identical to pre-C5.
+   */
+  preSummaryLineage?: PersistedLiveAgentLineage | null;
+  /**
+   * TASK-635 C5 / RF-6 — pin the resolver's agent tier to the session's agent
+   * (see `PromptResolutionParams.pinnedAgentId`). Passed straight through.
+   */
+  pinnedAgentId?: string;
   /**
    * The patient's most authoritative summary from the PARENT consultation of a
    * re-visit (F-18). Supplied only when `agentic.revisit.carryForwardEnabled` is
@@ -438,8 +467,11 @@ export class PromptAssemblyService {
       // callers already running inside a request/worker scope.
       tenantId: params.tenantId ?? this.cls?.get('tenantId'),
       promptType: params.promptType,
+      preSummaryVariant: params.preSummaryVariant,
       explicitTemplate: params.explicitTemplate,
       preferredPromptTemplateId: params.preferredPromptTemplateId,
+      // TASK-635 C5 — finalize pins the LIVE session's agent (§7.4).
+      pinnedAgentId: params.pinnedAgentId,
     });
 
     const template = resolved.promptId ? await this.promptTemplateRepository.findById(resolved.promptId) : null;
@@ -531,7 +563,14 @@ export class PromptAssemblyService {
     // authoritative: on a scratchpad↔transcript conflict the model follows the transcript.
     // When the flag is OFF this block does not fire, restoring exact pre-Phase-C behavior
     // on the harness AND legacy paths.
-    if (await this.resolveWarmStartEnabled(params.tenantId)) {
+    // TASK-635 C5 / DR-4 — LINEAGE SUPERSEDES THE FLAG. `preSummaryLineage` is
+    // written by the live loop itself, so its presence proves a live agent ran
+    // this consultation; refusing to hand that agent's own draft to finalize
+    // would be refusing R-N2. Short-circuited BEFORE the policy read, so the
+    // lineage path costs no governance lookup. The flag keeps gating the legacy
+    // no-lineage path (case-notes pre-summaries, pre-C3 sessions) exactly as
+    // before — see the gating table in the C5 test.
+    if (params.preSummaryLineage || (await this.resolveWarmStartEnabled(params.tenantId))) {
       const preSummaryBlock = variables.pre_summary_text ?? '';
       if (preSummaryBlock && !userPrompt.includes(preSummaryBlock)) {
         // The prior draft is DATA (spotlighting-wrapped), but the refine

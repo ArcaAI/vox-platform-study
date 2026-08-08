@@ -5,11 +5,30 @@
  */
 
 import { getJson, postJson } from '@/shared/api';
-import type { AssembledGenerateRequest, AssembledGenerateResponse, GenerateOutcome, GenerateTextRequest, SmrProvider, SmrTask } from './types';
+import type { Paginated } from '@/shared/api';
+import type {
+  AssembledGenerateRequest,
+  AssembledGenerateResponse,
+  GenerateOutcome,
+  GenerateTextRequest,
+  ListPromptTemplatesParams,
+  PromptTemplateOption,
+  SmrProvider,
+  SmrTask,
+} from './types';
 
 /** Tenant catalog by default; `tenantKey: '__GLOBAL__'` is GLOBAL_ADMIN-only (403 otherwise). */
 export function listProviders(tenantKey?: string): Promise<SmrProvider[]> {
   return getJson('text/providers', tenantKey ? { tenantKey } : undefined);
+}
+
+/**
+ * Template picker for assembled mode's `prompt_template_id` field. NOTE:
+ * `page` is ONE-based on this endpoint (`page || 1` server-side, matching the
+ * agents feature's own copy of this route).
+ */
+export function listPromptTemplates(params?: ListPromptTemplatesParams): Promise<Paginated<PromptTemplateOption>> {
+  return getJson('admin/prompt-templates', params);
 }
 
 export function listGuardrailProviders(tenantKey?: string): Promise<SmrProvider[]> {

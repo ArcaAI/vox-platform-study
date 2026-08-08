@@ -188,17 +188,59 @@ export class LiveSummaryStatsDto {
       "The AiTaskDefault routing key this flush's SMR call resolved through (TASK-552 Lane B) — 'smr.live' for the live running-note tier. Lets the console/stat cards show WHICH tier (and therefore which admin-managed model) actually served this flush, distinct from the one-shot/finalize tier.",
   })
   task_key?: string | null;
+
+  @ApiPropertyOptional({
+    description:
+      "TASK-635 — whether this flush's model came from the session agent's frozen `llmOverrides.live` ('agent-override') or from the tenant's per-flush `smr.live` AiTaskDefault ('task-default').",
+  })
+  selection_source?: string | null;
+}
+
+/**
+ * TASK-635 RF-6 — the agent identity FROZEN for this live session.
+ *
+ * Resolved once at recording start and served unchanged for the whole session,
+ * so every event of a session reports the same `(promptTemplateId,
+ * promptVersionNumber)` pin — that stability is the point: it is the same
+ * lineage that reaches finalize through the durable snapshot (Lane C5), so a
+ * clinician-visible live note and its final note provably share one agent.
+ *
+ * Absent when the loop fell open to the in-code prompt constants (there is no
+ * governed identity to report in that case).
+ */
+export class LiveSummaryAgentDto {
+  @ApiPropertyOptional({ description: 'DepartmentAgent id, or null when a non-agent tier resolved', nullable: true })
+  id: string | null;
+
+  @ApiPropertyOptional({ description: 'DepartmentAgent name, or null when a non-agent tier resolved', nullable: true })
+  name: string | null;
+
+  @ApiPropertyOptional({ description: 'The governed PromptTemplate serving this session', nullable: true })
+  promptTemplateId: string | null;
+
+  @ApiPropertyOptional({ description: 'The IMMUTABLE PromptVersion number pinned for this session', nullable: true })
+  promptVersionNumber: number | null;
+
+  @ApiPropertyOptional({ description: "Which tier resolved: 'agent' | 'default' | 'code-default'" })
+  resolvedFrom: string;
 }
 
 /**
  * Optional per-flush metadata envelope on the live-summary payload.
- * Currently carries the AD-1 generation {@link LiveSummaryStatsDto | stats};
- * kept as a nested envelope so future per-flush telemetry (trajectory refs,
- * etc.) can be added without reshaping the top-level event.
+ * Carries the AD-1 generation {@link LiveSummaryStatsDto | stats} and the
+ * session's frozen {@link LiveSummaryAgentDto | agent} identity; kept as a
+ * nested envelope so future per-flush telemetry (trajectory refs, etc.) can be
+ * added without reshaping the top-level event.
  */
 export class LiveSummaryMetadataDto {
   @ApiPropertyOptional({ description: 'AD-1 generation stats for this flush (absent on a legacy idempotency-cache hit)', type: LiveSummaryStatsDto })
   stats?: LiveSummaryStatsDto | null;
+
+  @ApiPropertyOptional({
+    description: 'TASK-635 — the agent identity frozen for this session. Additive: absent on the code-default tier and on every pre-TASK-635 client.',
+    type: LiveSummaryAgentDto,
+  })
+  agent?: LiveSummaryAgentDto;
 }
 
 /**

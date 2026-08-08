@@ -39,6 +39,14 @@ export class DepartmentAgentEntityMapper extends BaseMapper<Entities.DepartmentA
   }
 }
 
+// TASK-635 RF-4 — the six capability-keyed columns (newPatientTemplateId,
+// revisitTemplateId, preSummaryTemplateId, livePromptTemplateId, toolConfig,
+// llmOverrides) need NO handler entries: `AutoClassMapper`/`AutoEntityChangeMapper`
+// map same-named fields automatically (stripping the entity's `_` prefix), which
+// is why `harnessOverrides`/`goldenSetId` have no entries either. Only RELATIONS
+// need suppression. `FIELDS_NOT_WRITABLE = ['version']` above stays untouched —
+// DepartmentAgent is OCC-written, and `gen:mapper` (which would strip that guard)
+// is NEVER run.
 export const DepartmentAgentEntityMapperHandlers = createMapperHandlers<Entities.DepartmentAgentEntity, Models.DepartmentAgent>({
   $toPersistence: {
     // Relations are never written through this mapper.

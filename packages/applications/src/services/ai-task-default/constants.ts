@@ -14,6 +14,10 @@ import { ModelTaskType } from '@arcaai/domains';
 // opt-in fallback selections `resolveSmrFallbackSelection` reads (fail-OPEN: no
 // row ⇒ no fallback). SMR selection is tenant-admin configurable (NOT in
 // `GLOBAL_ADMIN_ONLY_TASK_PREFIXES`).
+// `smr.test` (TASK-635 Lane B) routes the tenant-admin prompt-template test
+// bench when the caller does not supply an explicit provider/model pair;
+// `PromptManagementService.callSmrGenerate` falls back to `smr.finalize` when
+// `smr.test` is unconfigured for the tenant.
 // additive keys moving the last env-selected surfaces into the DB
 // control plane: `guardrail.safety` (GLiNER content-safety detector),
 // `guardrail.groundedness` (MiniCheck NLI fact-checker), `harness.judge`
@@ -30,6 +34,7 @@ export const AI_TASK_KEYS = [
   'smr.finalize',
   'smr.live.fallback',
   'smr.finalize.fallback',
+  'smr.test',
   'harness.judge',
 ] as const;
 
@@ -56,6 +61,8 @@ export const AI_TASK_MODEL_TASK_TYPES: Record<AiTaskKey, ModelTaskType> = {
   // per-tenant SMR fallback selections (TASK-588) — same task type.
   'smr.live.fallback': ModelTaskType.TEXT_GENERATION,
   'smr.finalize.fallback': ModelTaskType.TEXT_GENERATION,
+  // prompt-template test-bench routing (TASK-635 Lane B) — same task type.
+  'smr.test': ModelTaskType.TEXT_GENERATION,
   // the harness LLM-as-judge is a text-generation model.
   'harness.judge': ModelTaskType.TEXT_GENERATION,
 };

@@ -1,5 +1,6 @@
 import { Inject, Injectable, Logger, Optional, BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
+import type { AxiosError } from 'axios';
 import { ConfigService } from '@nestjs/config';
 import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
@@ -26,6 +27,8 @@ import {
   AgentStepStatus,
   AgentStepType,
   TranscriptSegmentRepository,
+  DepartmentAgentRepository,
+  AiModelRepository,
   generateId,
 } from '@arcaai/domains';
 import { IAgentTrajectoryService } from '../../agent-trajectory/IAgentTrajectoryService';
@@ -52,9 +55,13 @@ import { IActiveUserContext } from '../../../interfaces';
 import { PromptAssemblyService } from '../prompt/prompt-assembly.service';
 import { SecretsService } from '../../baseServices/_meta/secrets';
 import { IEntitlementsService } from '../../entitlements/IEntitlementsService';
+import { IBillingService } from '../../billing/IBillingService';
 import { HarnessGatewayService } from '../harness/harness-gateway.service';
 import { HarnessPolicyService } from '../../harness-policy/harness-policy.service';
 import type { PromptResolutionTier } from '../prompt/prompt-resolution.service';
+import type { PersistedLiveAgentLineage } from '../live-documentation/live-agent.port';
+import { resolveAgentFinalizeSelection } from '../prompt/agent-finalize-llm';
+import { formatSessionAgentPromptVersion, readLiveAgentLineage } from '../prompt/live-agent-lineage';
 import { namedEntityPropsFromNlp, type NlpNamedEntity } from '../shared/namedEntityFromNlp';
 import { resolveNerModelInjection } from '../shared/resolveNerModelSelection';
 import { buildNerUsageEvent } from '../shared/nerUsageEvent';
@@ -96,6 +103,48 @@ interface SummaryUsageAttribution {
   doctorId?: string | null;
   departmentId?: string | null;
 }
+
+/** Request shape for `SummaryService#callSmrService` / `#executeSmrGenerate` (B-03 / B-04). */
+interface SmrCallPayload {
+  assembledPrompt: {
+    userPrompt: string;
+    systemPrompt: string;
+    hyperparameters: Record<string, number>;
+    responseFormat: {
+      type: string;
+      json_schema: Record<string, unknown>;
+      strict: boolean;
+    } | null;
+    resolvedFrom: PromptResolutionTier;
+  };
+  options?: Record<string, unknown>;
+  context?: Record<string, unknown>;
+  /**
+   * TASK-635 C5 / RF-4 — the session agent's frozen `llmOverrides.finalize`
+   * selection, when it named one. Takes precedence over the tenant's
+   * `smr.finalize` AiTaskDefault; the A4 fallback retry stays tenant-configured.
+   */
+  agentLlm?: { provider: string; model: string } | null;
+}
+
+/**
+ * TASK-635 C5 — what the warm-start read hands to finalize.
+ *
+ * `lineage` is present ONLY when the live loop wrote it (C3 stamps
+ * `metaData.agent` on the LIVE_SOAP_SNAPSHOT), which is exactly why it is a
+ * sound proof that a live agent ran this consultation.
+ */
+interface WarmStartPreSummary {
+  text: string | null;
+  lineage: PersistedLiveAgentLineage | null;
+  snapshotId: string | null;
+}
+
+type SmrCallResult = LegacySmrSummaryResponse & {
+  stats: SmrGenerationStats | null;
+  usage: SmrUsageDetail | null;
+  guardrailUsage: SmrUsageDetail | null;
+};
 
 @Injectable()
 export class SummaryService extends BaseService implements ISummaryService {
@@ -178,6 +227,17 @@ export class SummaryService extends BaseService implements ISummaryService {
     // The token stays EXPLICIT (rather than relying on `emitDecoratorMetadata`,
     // as `SttInternalService` does) so the DI guard test can assert it.
     @Optional() @Inject(CoreUnitOfWorkService) private readonly unitOfWork?: CoreUnitOfWorkService,
+    // (TASK-615 #8) Optional + trailing: enforces the tenant's OPTIONAL monthly
+    // spend limit before an LLM generation incurs more paid overage (→ 402).
+    // Absent (or no limit set) ⇒ no-op, so metering/quotas are unaffected.
+    @Optional() @Inject(IBillingService) private readonly billing?: IBillingService,
+    // TASK-635 C5 / RF-4 — the two reads behind the FINALIZE LLM override:
+    // the session agent's `llmOverrides.finalize` slug, and the AiModel catalog
+    // row it names. Optional + trailing so existing positional test fixtures
+    // compile; unwired ⇒ no override is ever applied and the tenant
+    // `smr.finalize` AiTaskDefault decides exactly as before.
+    @Optional() @Inject(DepartmentAgentRepository) private readonly departmentAgentRepository?: DepartmentAgentRepository,
+    @Optional() @Inject(AiModelRepository) private readonly aiModelRepository?: AiModelRepository,
   ) {
     super(eventEmitter, clsService, ResourceType.ContextItem);
     this.smrServiceUrl = this.configService.get<string>('SMR_URL') ?? 'http://localhost:8862';
@@ -217,6 +277,11 @@ export class SummaryService extends BaseService implements ISummaryService {
     // null (unlimited — the seeded default for every plan today).
     await this.entitlements?.assertMeterQuota(tenantId, 'monthlyLlmTokens');
 
+    // (TASK-615 #8) Optional spend-limit gate → 402 when the tenant set a
+    // monthly cap and its overage spend has reached it. No-op (no draft
+    // computed) when unset — the seeded default for every tenant.
+    await this.billing?.assertSpendLimit(tenantId);
+
     // (audit C-1 / C-3) — verify the parent Consultation
     // belongs to the caller's tenant before invoking the (expensive) SMR
     // call. `assertParentInScope` throws `NotFoundException` for both
@@ -242,6 +307,9 @@ export class SummaryService extends BaseService implements ISummaryService {
       // SYSTEM default (or a 503).
       tenantId,
       promptType: 'pre-summary',
+      // TASK-635 D2 — native callers resolve the department-free fork;
+      // v1-compat is the ONLY surface that keeps the v1-parity body (RF-1).
+      preSummaryVariant: 'dept-free',
       // v1 `{visit_type}` (TASK-634 D-08). `parentConsultationId` is the
       // consultation's own visit-type signal (NULL = initial visit); the
       // vocabulary is the one the seeded pre-summary template declares for this
@@ -352,6 +420,9 @@ export class SummaryService extends BaseService implements ISummaryService {
     // null (unlimited — the seeded default for every plan today).
     await this.entitlements?.assertMeterQuota(tenantId, 'monthlyLlmTokens');
 
+    // (TASK-615 #8) Optional spend-limit gate → 402, as on the summary path.
+    await this.billing?.assertSpendLimit(tenantId);
+
     // (audit C-1 / C-3) — verify the parent Consultation
     // belongs to the caller's tenant, then validate every explicit
     // `contextItemIds` reference. Without the per-id check a cross-tenant
@@ -380,7 +451,10 @@ export class SummaryService extends BaseService implements ISummaryService {
       throw new BadRequestException('No content available for summary generation');
     }
 
-    const latestPreSummary = await this.contextItemRepository.findLatestPreSummary(consultationId);
+    // TASK-635 C5 — the warm-start read now also surfaces the live session's
+    // frozen agent lineage and the id of the row it consumed (R-N2 provenance).
+    const warmStart = await this.resolveWarmStartPreSummary(consultationId);
+    const latestPreSummaryText = warmStart.text;
     // Gate the DNA style on the effective decision
     // (tenant AND doctor). Drops to `undefined` (no DNA prompt) when the doctor
     // has opted out or the tenant flag is off. No-op (passes the requested id
@@ -392,7 +466,14 @@ export class SummaryService extends BaseService implements ISummaryService {
       transcript: content,
       conversationLanguage: this.resolveConversationLanguage(request.options),
       dnaStyleId: effectiveDnaStyleId,
-      preSummaryText: latestPreSummary?.content ?? undefined,
+      preSummaryText: latestPreSummaryText ?? undefined,
+      // TASK-635 C5 / RF-6 — the SAME agent that ran live reviews and
+      // finalizes: its lineage makes the prior-draft injection unconditional
+      // (DR-4) and pins the resolver's agent tier to that exact agent, so a
+      // department default re-pointed mid-visit cannot change this prompt.
+      // Both are `undefined` for every non-live consultation ⇒ unchanged.
+      preSummaryLineage: warmStart.lineage ?? undefined,
+      pinnedAgentId: warmStart.lineage?.agentId ?? undefined,
       explicitTemplate: request.template,
       preferredPromptTemplateId: await this.resolvePreferredPromptTemplateId(consultation.doctorId),
     });
@@ -401,6 +482,13 @@ export class SummaryService extends BaseService implements ISummaryService {
     const smrResponse = await this.callSmrService({
       assembledPrompt,
       options: request.options,
+      // TASK-635 RF-4 — agent `llmOverrides.finalize` outranks the tenant
+      // `smr.finalize` AiTaskDefault. Fail-CLOSED: a named-but-unusable model
+      // raises rather than silently finalizing on the tenant default.
+      agentLlm: await resolveAgentFinalizeSelection(
+        { departmentAgentRepository: this.departmentAgentRepository, aiModelRepository: this.aiModelRepository, logger: this.logger },
+        warmStart.lineage?.agentId,
+      ),
       context: {
         dnaStyleId: effectiveDnaStyleId,
         template: request.template,
@@ -438,6 +526,15 @@ export class SummaryService extends BaseService implements ISummaryService {
       qualityScore: smrResponse.qualityScore,
       promptResolvedFrom: assembledPrompt.resolvedFrom,
       resolvedPromptId: assembledPrompt.promptId,
+      // TASK-635 C5 / RF-6 — session-agent lineage. `sessionAgentPromptVersion`
+      // names the IMMUTABLE PromptVersion the LIVE loop served (distinct from
+      // `promptVersion`, which names finalize's own template version). Both stay
+      // null for a non-live summary — the additive-proof invariant.
+      sessionAgentId: warmStart.lineage?.agentId ?? null,
+      sessionAgentPromptVersion: formatSessionAgentPromptVersion(warmStart.lineage),
+      // Provenance for the consumed snapshot — recorded ONLY on the lineage
+      // path, so the legacy case-notes flow keeps writing nothing (unchanged).
+      preSummaryIds: warmStart.lineage && warmStart.snapshotId ? [warmStart.snapshotId] : [],
     });
     // persist the AD-1 GenerationStats headline fields when
     // SMR returned them. Set via the entity setters (change-tracked, same path
@@ -1161,107 +1258,162 @@ export class SummaryService extends BaseService implements ISummaryService {
     }
   }
 
-  private async callSmrService(payload: {
-    assembledPrompt: {
-      userPrompt: string;
-      systemPrompt: string;
-      hyperparameters: Record<string, number>;
-      responseFormat: {
-        type: string;
-        json_schema: Record<string, unknown>;
-        strict: boolean;
-      } | null;
-      resolvedFrom: PromptResolutionTier;
-    };
-    options?: Record<string, unknown>;
-    context?: Record<string, unknown>;
-  }): Promise<LegacySmrSummaryResponse & { stats: SmrGenerationStats | null; usage: SmrUsageDetail | null; guardrailUsage: SmrUsageDetail | null }> {
-    try {
-      // SMR is a stateless gateway with no model default; resolve
-      // the tenant's effective {provider, model} and merge it in as the base so a
-      // caller-supplied model still wins (resolved values fill only when omitted).
-      let options = payload.options;
-      if (this.harnessPolicyService) {
-        const { provider, model } = await this.harnessPolicyService.resolveSmrSelection();
-        options = { smrProvider: provider, smrModel: model, ...payload.options };
+  /**
+   * The single SMR call path for finalize (B-03 / B-04). Resolves the
+   * tenant's effective {provider, model} EXPLICITLY (never relies on
+   * `resolveSmrSelection()`'s own CLS fallback — a worker path with
+   * unpopulated CLS must fail loudly, not silently serve the SYSTEM
+   * default), then runs the request with the SAME bounded corrective-JSON
+   * retry as before. On a provider-side failure, retries EXACTLY ONCE
+   * against the tenant's configured `smr.finalize.fallback` selection
+   * (mirrors `smr-compat.controller.ts#computeSummary`'s fallback shape);
+   * an unconfigured/no-op fallback propagates the ORIGINAL error.
+   */
+  private async callSmrService(payload: SmrCallPayload): Promise<SmrCallResult> {
+    let tenantId: string | undefined;
+    if (this.harnessPolicyService) {
+      tenantId = this.tenantId ?? undefined;
+      if (!tenantId) {
+        throw new BadRequestException('Tenant ID is required');
       }
-      const smrPayload = buildSmrGeneratePayload(payload.assembledPrompt, options, payload.context);
-      const smrServiceToken = (await this.secretsService?.getSecretOptional('SMR_SERVICE_TOKEN')) ?? '';
-
-      // The finalize path now carries the SAME bounded corrective
-      // retry as the live-doc flush. Before this, a structured request
-      // that came back as malformed JSON was persisted VERBATIM as the clinical note
-      // — on the HIGHER-stakes path, since this output is what the clinician signs.
-      // The corrective instruction is APPENDED so the prefix-cache-stable lead-in
-      // stays byte-identical between the original and the repair call.
-      const basePrompt = smrPayload.prompt;
-      const structuredRequested = smrPayload.response_format !== undefined;
-
-      const outcome = await generateJsonWithRepair<string, SmrRepairCall>({
-        generate: async (corrective) => {
-          const response = await this.httpService.axiosRef.post(
-            `${this.smrServiceUrl}/api/v1/generate`,
-            { ...smrPayload, prompt: corrective ? `${basePrompt}${corrective}` : basePrompt },
-            {
-              headers: {
-                'Content-Type': 'application/json',
-                'X-Service-Token': smrServiceToken,
-              },
-            },
-          );
-          const mapped = mapSmrGenerateResponse(response.data);
-          const data = response.data as { usage_detail?: unknown; guardrail_usage?: unknown } | null;
-          return {
-            text: mapped.summary,
-            mapped,
-            stats: SummaryService.parseGenerationStats(response.data),
-            usage: parseSmrUsageDetail(data?.usage_detail),
-            guardrailUsage: parseSmrUsageDetail(data?.guardrail_usage),
-          };
-        },
-        // The summary is opaque JSON we persist verbatim, so the strict parse only
-        // decides WHETHER the structured contract was honoured — the text passes
-        // through unchanged. Storage semantics stay byte-identical to the
-        // pre-repair behaviour in every case except the malformed-JSON one.
-        parseStrict: (text) => (parsesAsJsonObject(text) ? text : null),
-        parseTolerant: (text) => text,
-        // Retry only a genuine malformed-JSON attempt: structured output was
-        // requested AND the text opens a JSON object. Prose (no leading `{`) is
-        // the contract on an unstructured request — retrying could never help.
-        shouldRepair: (first) => structuredRequested && looksLikeJsonObject(first.text),
-      });
-
-      const finalCall = outcome.calls[outcome.calls.length - 1];
-      if (outcome.repaired) {
-        this.logger.warn({
-          message: 'SMR finalize response failed the structured-output contract; one corrective retry applied',
-          repairSucceeded: parsesAsJsonObject(outcome.value),
-        });
-      }
-      // Cost fields are additive across the (at most two) calls — the repair really
-      // did spend those tokens/that time. Everything else describes the call whose
-      // text became the stored note.
-      const sumAcrossCalls = (pick: (call: SmrRepairCall) => number | undefined): number | undefined => {
-        const values = outcome.calls.map(pick).filter((v): v is number => typeof v === 'number');
-        return values.length > 0 ? values.reduce((a, b) => a + b, 0) : undefined;
-      };
-      return {
-        ...finalCall.mapped,
-        summary: outcome.value,
-        inputTokens: sumAcrossCalls((c) => c.mapped.inputTokens),
-        outputTokens: sumAcrossCalls((c) => c.mapped.outputTokens),
-        processingTimeMs: sumAcrossCalls((c) => c.mapped.processingTimeMs),
-        stats: finalCall.stats,
-        // The usage blocks describe the call whose text became the stored note.
-        // A repair attempt is a SEPARATE SMR request with its own task id, so it
-        // bills as its own ledger event rather than being folded in here — the
-        // per-unit sums above would silently merge two idempotency identities.
-        usage: finalCall.usage,
-        guardrailUsage: finalCall.guardrailUsage,
-      };
-    } catch (error) {
-      throw new BadRequestException(`Failed to call SMR service: ${error}`);
     }
+
+    let options = payload.options;
+    if (this.harnessPolicyService && tenantId) {
+      // TASK-635 RF-4 precedence: agent `llmOverrides.finalize` (frozen at the
+      // live session's agent) → tenant `smr.finalize` AiTaskDefault. The A4
+      // fallback retry below stays TENANT-configured either way — an agent
+      // override names the primary, never the fallback.
+      const { provider, model } = payload.agentLlm ?? (await this.harnessPolicyService.resolveSmrSelection(tenantId, 'finalize'));
+      options = { smrProvider: provider, smrModel: model, ...payload.options };
+    }
+
+    try {
+      return await this.executeSmrGenerate(payload, options);
+    } catch (primaryError) {
+      if (tenantId && this.harnessPolicyService && this.isSmrFallbackEligible(primaryError)) {
+        const fallback = await this.harnessPolicyService.resolveSmrFallbackSelection(tenantId, 'finalize');
+        const primaryProvider = (options as Record<string, unknown> | undefined)?.smrProvider;
+        if (fallback && fallback.provider !== primaryProvider) {
+          const fallbackOptions = { ...options, smrProvider: fallback.provider, smrModel: fallback.model };
+          try {
+            const result = await this.executeSmrGenerate(payload, fallbackOptions);
+            this.logger.warn({
+              message: 'Primary SMR finalize call failed; served via tenant-configured fallback',
+              fallbackProvider: fallback.provider,
+            });
+            return result;
+          } catch (fallbackError) {
+            // Surface the ORIGINAL primary error below — the primary failure is
+            // the one the caller's request actually hit.
+            this.logger.warn({
+              message: 'Tenant-configured SMR fallback also failed for finalize',
+              fallbackError: fallbackError instanceof Error ? fallbackError.message : String(fallbackError),
+            });
+          }
+        }
+      }
+      throw new BadRequestException(`Failed to call SMR service: ${primaryError}`);
+    }
+  }
+
+  /**
+   * Fallback is eligible for provider-side failures: an upstream RESPONSE
+   * error (SMR answered with an error — the LLM/provider failed) OR a
+   * parse/mapping failure (unparseable content, thrown by
+   * `generateJsonWithRepair`/`mapSmrGenerateResponse`). NOT eligible when SMR
+   * itself was unreachable (a connect-phase transport error with no
+   * response) — retrying a different provider through the same unreachable
+   * gateway cannot help. Mirrors `smr-compat.controller.ts#isFallbackEligible`.
+   */
+  private isSmrFallbackEligible(err: unknown): boolean {
+    const axiosError = err as AxiosError;
+    if (axiosError?.response !== undefined) return true; // SMR responded with an error
+    if (typeof axiosError?.code === 'string') return false; // connect-phase / unreachable SMR
+    return true; // parse/mapping failure
+  }
+
+  /**
+   * One SMR generate attempt (with the bounded corrective-JSON retry).
+   * Raw errors propagate uncaught so `callSmrService` can decide fallback
+   * eligibility from the original shape before wrapping into
+   * `BadRequestException`.
+   */
+  private async executeSmrGenerate(payload: SmrCallPayload, options: Record<string, unknown> | undefined): Promise<SmrCallResult> {
+    const smrPayload = buildSmrGeneratePayload(payload.assembledPrompt, options, payload.context);
+    const smrServiceToken = (await this.secretsService?.getSecretOptional('SMR_SERVICE_TOKEN')) ?? '';
+
+    // The finalize path now carries the SAME bounded corrective
+    // retry as the live-doc flush. Before this, a structured request
+    // that came back as malformed JSON was persisted VERBATIM as the clinical note
+    // — on the HIGHER-stakes path, since this output is what the clinician signs.
+    // The corrective instruction is APPENDED so the prefix-cache-stable lead-in
+    // stays byte-identical between the original and the repair call.
+    const basePrompt = smrPayload.prompt;
+    const structuredRequested = smrPayload.response_format !== undefined;
+
+    const outcome = await generateJsonWithRepair<string, SmrRepairCall>({
+      generate: async (corrective) => {
+        const response = await this.httpService.axiosRef.post(
+          `${this.smrServiceUrl}/api/v1/generate`,
+          { ...smrPayload, prompt: corrective ? `${basePrompt}${corrective}` : basePrompt },
+          {
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Service-Token': smrServiceToken,
+            },
+          },
+        );
+        const mapped = mapSmrGenerateResponse(response.data);
+        const data = response.data as { usage_detail?: unknown; guardrail_usage?: unknown } | null;
+        return {
+          text: mapped.summary,
+          mapped,
+          stats: SummaryService.parseGenerationStats(response.data),
+          usage: parseSmrUsageDetail(data?.usage_detail),
+          guardrailUsage: parseSmrUsageDetail(data?.guardrail_usage),
+        };
+      },
+      // The summary is opaque JSON we persist verbatim, so the strict parse only
+      // decides WHETHER the structured contract was honoured — the text passes
+      // through unchanged. Storage semantics stay byte-identical to the
+      // pre-repair behaviour in every case except the malformed-JSON one.
+      parseStrict: (text) => (parsesAsJsonObject(text) ? text : null),
+      parseTolerant: (text) => text,
+      // Retry only a genuine malformed-JSON attempt: structured output was
+      // requested AND the text opens a JSON object. Prose (no leading `{`) is
+      // the contract on an unstructured request — retrying could never help.
+      shouldRepair: (first) => structuredRequested && looksLikeJsonObject(first.text),
+    });
+
+    const finalCall = outcome.calls[outcome.calls.length - 1];
+    if (outcome.repaired) {
+      this.logger.warn({
+        message: 'SMR finalize response failed the structured-output contract; one corrective retry applied',
+        repairSucceeded: parsesAsJsonObject(outcome.value),
+      });
+    }
+    // Cost fields are additive across the (at most two) calls — the repair really
+    // did spend those tokens/that time. Everything else describes the call whose
+    // text became the stored note.
+    const sumAcrossCalls = (pick: (call: SmrRepairCall) => number | undefined): number | undefined => {
+      const values = outcome.calls.map(pick).filter((v): v is number => typeof v === 'number');
+      return values.length > 0 ? values.reduce((a, b) => a + b, 0) : undefined;
+    };
+    return {
+      ...finalCall.mapped,
+      summary: outcome.value,
+      inputTokens: sumAcrossCalls((c) => c.mapped.inputTokens),
+      outputTokens: sumAcrossCalls((c) => c.mapped.outputTokens),
+      processingTimeMs: sumAcrossCalls((c) => c.mapped.processingTimeMs),
+      stats: finalCall.stats,
+      // The usage blocks describe the call whose text became the stored note.
+      // A repair attempt is a SEPARATE SMR request with its own task id, so it
+      // bills as its own ledger event rather than being folded in here — the
+      // per-unit sums above would silently merge two idempotency identities.
+      usage: finalCall.usage,
+      guardrailUsage: finalCall.guardrailUsage,
+    };
   }
 
   /**
@@ -1309,6 +1461,28 @@ export class SummaryService extends BaseService implements ISummaryService {
       });
       return null;
     }
+  }
+
+  /**
+   * Warm-start read for `generateSummary` (B-02 / B-06). Prefers the running
+   * LIVE_SOAP_SNAPSHOT (the same live note a warm-started review is meant to
+   * pick up) so a case-notes PRE_SUMMARY created afterwards never shadows it;
+   * falls back to the legacy "latest pre-summary of any kind" lookup when no
+   * snapshot exists, preserving the pre-existing case-notes-only workflow.
+   * Both branches decrypt via `findLatestPreSummaryWithDecryptedContent`
+   * (`encryptedContent` is the only persisted form — the plaintext `content`
+   * column was dropped).
+   */
+  private async resolveWarmStartPreSummary(consultationId: string): Promise<WarmStartPreSummary> {
+    const snapshot = await this.contextItemRepository.findLatestPreSummaryWithDecryptedContent(consultationId, this.secretsService, {
+      subType: 'LIVE_SOAP_SNAPSHOT',
+    });
+    if (snapshot.entity) {
+      return { text: snapshot.plaintext, lineage: readLiveAgentLineage(snapshot.entity), snapshotId: snapshot.entity.id };
+    }
+
+    const legacy = await this.contextItemRepository.findLatestPreSummaryWithDecryptedContent(consultationId, this.secretsService);
+    return { text: legacy.plaintext, lineage: readLiveAgentLineage(legacy.entity), snapshotId: legacy.entity?.id ?? null };
   }
 
   /**

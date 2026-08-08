@@ -26,6 +26,11 @@ export interface ISummaryMetaEntity extends IBaseTenantEntity {
   qualityScore?: number | null;
   promptResolvedFrom?: string | null;
   resolvedPromptId?: string | null;
+  // TASK-635 RF-6 — session-agent lineage frozen at recording start and carried
+  // through the live loop into finalize. Null for non-live-session summaries.
+  // `sessionAgentPromptVersion` is "<templateId>@<versionNumber>".
+  sessionAgentId?: string | null;
+  sessionAgentPromptVersion?: string | null;
   // Clinical-harness sensor scores + citation provenance
   entityFaithfulnessScore?: number | null;
   coverageScore?: number | null;
@@ -73,6 +78,8 @@ export class SummaryMetaEntity extends BaseTenantEntity {
   private _qualityScore?: ISummaryMetaEntity['qualityScore'];
   private _promptResolvedFrom?: ISummaryMetaEntity['promptResolvedFrom'];
   private _resolvedPromptId?: ISummaryMetaEntity['resolvedPromptId'];
+  private _sessionAgentId?: ISummaryMetaEntity['sessionAgentId'];
+  private _sessionAgentPromptVersion?: ISummaryMetaEntity['sessionAgentPromptVersion'];
   private _entityFaithfulnessScore?: ISummaryMetaEntity['entityFaithfulnessScore'];
   private _coverageScore?: ISummaryMetaEntity['coverageScore'];
   private _ragTriadScore?: ISummaryMetaEntity['ragTriadScore'];
@@ -110,6 +117,8 @@ export class SummaryMetaEntity extends BaseTenantEntity {
     this._qualityScore = init.qualityScore;
     this._promptResolvedFrom = init.promptResolvedFrom;
     this._resolvedPromptId = init.resolvedPromptId;
+    this._sessionAgentId = init.sessionAgentId ?? null;
+    this._sessionAgentPromptVersion = init.sessionAgentPromptVersion ?? null;
     this._entityFaithfulnessScore = init.entityFaithfulnessScore;
     this._coverageScore = init.coverageScore;
     this._ragTriadScore = init.ragTriadScore;
@@ -272,6 +281,22 @@ export class SummaryMetaEntity extends BaseTenantEntity {
 
   set resolvedPromptId(value: ISummaryMetaEntity['resolvedPromptId']) {
     this.setProperty('resolvedPromptId', value);
+  }
+
+  get sessionAgentId(): ISummaryMetaEntity['sessionAgentId'] {
+    return this._sessionAgentId;
+  }
+
+  set sessionAgentId(value: ISummaryMetaEntity['sessionAgentId']) {
+    this.setProperty('sessionAgentId', value);
+  }
+
+  get sessionAgentPromptVersion(): ISummaryMetaEntity['sessionAgentPromptVersion'] {
+    return this._sessionAgentPromptVersion;
+  }
+
+  set sessionAgentPromptVersion(value: ISummaryMetaEntity['sessionAgentPromptVersion']) {
+    this.setProperty('sessionAgentPromptVersion', value);
   }
 
   get entityFaithfulnessScore(): ISummaryMetaEntity['entityFaithfulnessScore'] {

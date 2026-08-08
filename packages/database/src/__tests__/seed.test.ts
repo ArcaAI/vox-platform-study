@@ -26,7 +26,6 @@ import {
   ARCAAI_CLINICAL_TEMPLATES,
   ARCAAI_CLINICAL_VERSIONS,
   ARCAAI_CLINICAL_TEMPLATE_IDS,
-  ARCAAI_FALLBACK_TEMPLATE_IDS,
 } from '../prisma/db_main/seed/07b-arcaai-clinical-templates';
 import {
   DEFAULT_AI_MODELS,
@@ -751,9 +750,8 @@ describe('ArcaAI Clinical Department Seed Data', () => {
     });
   });
 
-  it('should expose the tenant-wide pre-summary template as the declared fallback', () => {
-    expect(ARCAAI_FALLBACK_TEMPLATE_IDS.PRE_SUMMARY).toBe(ARCAAI_CLINICAL_TEMPLATE_IDS.PRE_SUMMARY);
-    const preSummary = ARCAAI_CLINICAL_TEMPLATES.find((t) => t.id === ARCAAI_FALLBACK_TEMPLATE_IDS.PRE_SUMMARY);
+  it('should define the tenant-wide pre-summary template', () => {
+    const preSummary = ARCAAI_CLINICAL_TEMPLATES.find((t) => t.id === ARCAAI_CLINICAL_TEMPLATE_IDS.PRE_SUMMARY);
     expect(preSummary).toBeDefined();
     expect(preSummary?.tenantId).toBe(ARCAAI);
     expect(preSummary?.status).toBe('APPROVED');

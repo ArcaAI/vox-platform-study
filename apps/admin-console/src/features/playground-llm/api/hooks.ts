@@ -1,13 +1,28 @@
 'use client';
 
-import { useMutation, useQuery } from '@tanstack/react-query';
-import { cancelTask, generateAssembled, generateText, getTask, listGuardrailProviders, listProviders } from './client';
+import { keepPreviousData, useMutation, useQuery } from '@tanstack/react-query';
+import { cancelTask, generateAssembled, generateText, getTask, listGuardrailProviders, listPromptTemplates, listProviders } from './client';
 import { analyzeGuardrail, extractEntities } from './inference-client';
 import { playgroundLlmKeys } from './keys';
-import type { AssembledGenerateRequest, GenerateTextRequest, GuardrailType } from './types';
+import type { AssembledGenerateRequest, GenerateTextRequest, GuardrailType, ListPromptTemplatesParams } from './types';
 
 export function useSmrProviders(tenantKey?: string) {
   return useQuery({ queryKey: playgroundLlmKeys.providers(tenantKey), queryFn: () => listProviders(tenantKey) });
+}
+
+/**
+ * Template picker (assembled mode). `retry: false` so a load failure
+ * surfaces quickly — the picker falls back to a plain text input rather than
+ * blocking the playground on a flaky read.
+ */
+export function usePromptTemplates(params?: ListPromptTemplatesParams, options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: playgroundLlmKeys.templates(params),
+    queryFn: () => listPromptTemplates(params),
+    enabled: options?.enabled ?? true,
+    placeholderData: keepPreviousData,
+    retry: false,
+  });
 }
 
 export function useSmrGuardrailProviders(tenantKey?: string) {

@@ -17,6 +17,12 @@ export class DepartmentAgent extends BaseTenantDataModel {
   public dnaStylePolicy: Enums.DepartmentAgentDnaPolicy;
   public harnessOverrides: JsonValue | null;
   public goldenSetId: string | null;
+  public newPatientTemplateId: string | null;
+  public revisitTemplateId: string | null;
+  public preSummaryTemplateId: string | null;
+  public livePromptTemplateId: string | null;
+  public toolConfig: JsonValue | null;
+  public llmOverrides: JsonValue | null;
   public isDefault: boolean;
   public sourceAgentTemplateSlug: string | null;
   public templateLocked: boolean;
@@ -40,6 +46,12 @@ export class DepartmentAgent extends BaseTenantDataModel {
     this.dnaStylePolicy = data.dnaStylePolicy;
     this.harnessOverrides = data.harnessOverrides;
     this.goldenSetId = data.goldenSetId;
+    this.newPatientTemplateId = data.newPatientTemplateId;
+    this.revisitTemplateId = data.revisitTemplateId;
+    this.preSummaryTemplateId = data.preSummaryTemplateId;
+    this.livePromptTemplateId = data.livePromptTemplateId;
+    this.toolConfig = data.toolConfig;
+    this.llmOverrides = data.llmOverrides;
     this.isDefault = data.isDefault;
     this.sourceAgentTemplateSlug = data.sourceAgentTemplateSlug;
     this.templateLocked = data.templateLocked;

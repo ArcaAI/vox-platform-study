@@ -15,6 +15,8 @@ import { seedStt } from './06-stt';
 import { seedPromptTemplate } from './07-prompt-template';
 import { seedArcaaiClinicalTemplates } from './07b-arcaai-clinical-templates';
 import { seedAgentGoldenLibrary } from './07a-agent-golden-library';
+import { seedLiveAgentDefaults } from './07c-live-agent-defaults';
+import { seedDeptFreePreSummaryDefault } from './07d-dept-free-pre-summary-default';
 import { seedDnaWritingStyle } from './08-dna-writing-style';
 import { seedConsultation } from './09-consultation';
 import { seedAuditLog } from './10-audit-log';
@@ -164,9 +166,26 @@ export const seed = async () => {
     // clinical departments' per-visit-type summary templates + a shared
     // pre-summary, all APPROVED and owned by the ArcaAI tenant. The ArcaAI
     // departments (04-department) reference these via their legacy prompt-id
-    // columns and carry NO default DepartmentAgent (07a seeds none for ArcaAI),
-    // so the resolver uses the visit-type-faithful tier-1 legacy path.
+    // columns AND (since TASK-635 C2 / RF-3) by per-visit-type DepartmentAgent
+    // bindings that point at exactly the same 14 templates — behaviour-identical
+    // by construction, proven by arcaai-agent-column-equality.test.ts.
     await seedArcaaiClinicalTemplates(client);
+    console.log('');
+    // SYSTEM live-summarization default (TASK-635 C2): one SYSTEM-tenant
+    // PromptTemplate + v1 version whose content is byte-identical to the live
+    // loop's in-code constants, so the live chain's SYSTEM-default tier and its
+    // code-default fail-open tier serve the same bytes. Readable from every
+    // tenant's CLS because PromptTemplate/PromptVersion joined
+    // SYSTEM_SHARED_READ_MODELS in the same change (B-12 fold-in).
+    await seedLiveAgentDefaults(client);
+    console.log('');
+    // SYSTEM department-free pre-summary default (TASK-635 D2 / OD-1b / RF-1):
+    // one SYSTEM-tenant PromptTemplate + v1 version, native-only fork of the
+    // v1-parity pre-summary body with no {current_department}/{visit_type}
+    // placeholder. Resolved directly by SYSTEM_DEFAULTS.deptFreePreSummaryPromptId
+    // when a native caller passes preSummaryVariant: 'dept-free'; the v1-compat
+    // surface never requests this variant (RF-1 wire contract).
+    await seedDeptFreePreSummaryDefault(client);
     console.log('');
     // Agent Golden Library (TASK-548): SYSTEM golden departments +
     // APPROVED prompt templates + one default agent per department, plus the

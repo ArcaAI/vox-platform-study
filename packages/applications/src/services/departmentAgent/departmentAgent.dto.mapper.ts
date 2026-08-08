@@ -14,6 +14,15 @@ export class DepartmentAgentDtoMapper {
       dnaStylePolicy: entity.dnaStylePolicy,
       harnessOverrides: (entity.harnessOverrides as Record<string, unknown>) ?? undefined,
       goldenSetId: entity.goldenSetId ?? undefined,
+      // TASK-635 RF-4 — mapped as explicit `null` (not `undefined`) so a client
+      // can tell "no binding configured" apart from "field absent from this API
+      // version"; the console renders them as empty selects.
+      newPatientTemplateId: entity.newPatientTemplateId ?? null,
+      revisitTemplateId: entity.revisitTemplateId ?? null,
+      preSummaryTemplateId: entity.preSummaryTemplateId ?? null,
+      livePromptTemplateId: entity.livePromptTemplateId ?? null,
+      toolConfig: (entity.toolConfig as Record<string, unknown>) ?? null,
+      llmOverrides: (entity.llmOverrides as Record<string, unknown>) ?? null,
       isDefault: entity.isDefault,
       // Lineage is surfaced read-only; it is NEVER accepted on a request DTO.
       sourceAgentTemplateSlug: entity.sourceAgentTemplateSlug ?? null,

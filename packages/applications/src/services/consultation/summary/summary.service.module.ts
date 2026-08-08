@@ -14,6 +14,7 @@ import { EntitlementsServiceModule } from '../../entitlements/entitlements.servi
 import { AgentTrajectoryServiceModule } from '../../agent-trajectory/agent-trajectory.service.module';
 import { AiTaskDefaultServiceModule } from '../../ai-task-default/ai-task-default.service.module';
 import { UsageLedgerServiceModule } from '../../usageLedger/usage-ledger.service.module';
+import { BillingServiceModule } from '../../billing/billing.service.module';
 
 @Module({
   // HarnessAuditServiceModule supplies the WORM audit trail
@@ -42,6 +43,9 @@ import { UsageLedgerServiceModule } from '../../usageLedger/usage-ledger.service
     AgentTrajectoryServiceModule,
     AiTaskDefaultServiceModule,
     UsageLedgerServiceModule,
+    // BillingServiceModule supplies IBillingService for the optional
+    // spend-limit precheck on LLM generation (TASK-615 #8 → 402).
+    BillingServiceModule,
   ],
   providers: [
     PromptAssemblyService,

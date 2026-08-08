@@ -88,7 +88,9 @@ describe.each([
   const body = modelBody('usage-ledger.prisma', model);
 
   it('is unique on the FULL dimension tuple', () => {
-    expect(uniqueTuple(body)).toEqual(['tenantId', 'bucketStart', 'capability', 'provider', 'model', 'unit']);
+    // TASK-615 #4 — `operation` joins the grain so the LLM_TOKENS meter can
+    // exclude guardrail.validate/harness.step; empty-string sentinel like `model`.
+    expect(uniqueTuple(body)).toEqual(['tenantId', 'bucketStart', 'capability', 'operation', 'provider', 'model', 'unit']);
   });
 
   it(`names the index \`${indexName}\``, () => {
@@ -96,7 +98,7 @@ describe.each([
   });
 
   it('declares every tuple member NON-NULLABLE (a NULL would defeat the unique)', () => {
-    for (const field of ['tenantId', 'bucketStart', 'capability', 'provider', 'model', 'unit']) {
+    for (const field of ['tenantId', 'bucketStart', 'capability', 'operation', 'provider', 'model', 'unit']) {
       // `field Type?` anywhere in the tuple re-opens the NULL-is-distinct hole.
       expect(body, `${field} must not be nullable`).not.toMatch(new RegExp(`^\\s*${field}\\s+\\w+\\?`, 'm'));
     }

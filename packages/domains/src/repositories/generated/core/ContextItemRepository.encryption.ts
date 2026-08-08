@@ -51,6 +51,37 @@ declare module './ContextItemRepository' {
       id: string,
       secrets: SecretsServiceLike,
     ): Promise<{ entity: ContextItemEntity; plaintext: string | null }>;
+
+    /**
+     * Read-path helper for the warm-start lookup (B-02 / B-06): finds the
+     * latest PRE_SUMMARY for a consultation, optionally scoped to a
+     * `metaData.subType` value (e.g. 'LIVE_SOAP_SNAPSHOT'), and decrypts its
+     * content via `decryptContentFromEntity`.
+     *
+     * B-02: the plain `findLatestPreSummary` finder never decrypts —
+     * consumers reading `.content` off its result got empty text unless the
+     * process-wide decrypt-on-read wrap (`phi-read-decrypt.ts`) happened to be
+     * wired; this helper decrypts explicitly so the read is correct
+     * independent of that global wiring.
+     *
+     * B-06: `findLatestPreSummary` is not subType-aware, so a case-notes
+     * PRE_SUMMARY created after a LIVE_SOAP_SNAPSHOT would shadow it. The
+     * optional `subType` filter mirrors harness's `loadLiveSoapSnapshot`
+     * in-memory-filter idiom (fetch all pre-summaries, filter, pick newest by
+     * createdAt) rather than a DB-side JSON query. Omitting `subType`
+     * preserves the legacy "latest pre-summary of any kind" behavior.
+     *
+     * `secrets` may be omitted (mirrors the write-side `encryptPhiFields`
+     * soft no-op in dev/test): the entity's transient `content` — already
+     * populated by decrypt-on-read when Vault mode is wired — is returned
+     * as-is rather than throwing.
+     */
+    findLatestPreSummaryWithDecryptedContent(
+      this: ContextItemRepository,
+      consultationId: string,
+      secrets: SecretsServiceLike | undefined,
+      options?: { subType?: string },
+    ): Promise<{ entity: ContextItemEntity | null; plaintext: string | null }>;
   }
 }
 
@@ -80,5 +111,22 @@ ContextItemRepository.prototype.findByIdWithDecryptedContent = async function (
 ): Promise<{ entity: ContextItemEntity; plaintext: string | null }> {
   const entity = await this.findById(id);
   const plaintext = await this.decryptContentFromEntity(entity, secrets);
+  return { entity, plaintext };
+};
+
+ContextItemRepository.prototype.findLatestPreSummaryWithDecryptedContent = async function (
+  this: ContextItemRepository,
+  consultationId: string,
+  secrets: SecretsServiceLike | undefined,
+  options?: { subType?: string },
+): Promise<{ entity: ContextItemEntity | null; plaintext: string | null }> {
+  const preSummaries = await this.findPreSummaries(consultationId);
+  const candidates = options?.subType
+    ? preSummaries.filter((p) => (p.metaData as Record<string, unknown> | undefined)?.subType === options.subType)
+    : preSummaries;
+  if (candidates.length === 0) return { entity: null, plaintext: null };
+
+  const entity = candidates.reduce((a, b) => (a.createdAt >= b.createdAt ? a : b));
+  const plaintext = secrets ? await this.decryptContentFromEntity(entity, secrets) : (entity.content ?? null);
   return { entity, plaintext };
 };

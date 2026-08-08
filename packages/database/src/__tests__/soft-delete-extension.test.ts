@@ -177,6 +177,9 @@ describe('modelHasSoftDelete', () => {
       // deleting it; the correction path is another adjustment. No
       // `resourceStatus` column.
       'BillingAdjustment',
+      // TASK-615 #6 — append-only plan-change facts for fee proration. A plan
+      // window is corrected by appending, never by deleting closed history.
+      'TenantPlanHistory',
     ];
 
     expected.forEach((model) => {
