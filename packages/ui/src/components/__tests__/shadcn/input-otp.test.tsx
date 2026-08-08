@@ -119,13 +119,31 @@ test.describe('InputOTP', () => {
       await mount(<SingleGroupOTP />);
       const otp = page.locator('[data-slot="input-otp"]');
       await otp.click();
-      await page.keyboard.type('12345');
+
+      // `delay` is load-bearing, not padding. input-otp rewrites the input's
+      // value and selection on every keystroke, so a zero-delay keypress can
+      // land mid-update and be swallowed.
+      await page.keyboard.type('1234', { delay: 20 });
+      await expect(otp).toHaveValue('1234');
+
+      // Once the field is full, input-otp parks the selection over the LAST
+      // slot (data-input-otp-mss=3, mse=4), so a further keystroke REPLACES
+      // that character instead of appending. The guarantee this test exists to
+      // pin is the length cap, not the trailing character.
+      //
+      // This assertion used to read '4', and passed only because the swallowed
+      // keystroke above usually ate the '5'. Under load the keypress landed and
+      // the test failed at ~1-3%, which read as a maxLength bug; typing at a
+      // delay makes the real behaviour deterministic.
+      await page.keyboard.type('5', { delay: 20 });
+      await expect(otp).toHaveValue('1235');
 
       const slots = page.locator('[data-slot="input-otp-slot"]');
+      await expect(slots).toHaveCount(4);
       await expect(slots.nth(0)).toContainText('1');
       await expect(slots.nth(1)).toContainText('2');
       await expect(slots.nth(2)).toContainText('3');
-      await expect(slots.nth(3)).toContainText('4');
+      await expect(slots.nth(3)).toContainText('5');
     });
   });
 
