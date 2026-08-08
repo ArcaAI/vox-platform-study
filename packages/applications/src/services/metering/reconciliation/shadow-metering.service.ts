@@ -8,7 +8,6 @@ import {
   AiUsageUnit,
   CoreDatabaseService,
   EntityId,
-  ProviderReconciliationRunEntity,
   ProviderReconciliationRunFactory,
   ProviderReconciliationRunRepository,
   SYSTEM_TENANT_ID,
@@ -24,6 +23,7 @@ import type { ProviderReconcilerAvailability } from './provider-reconciler';
 import { SecretsService } from '../../baseServices/_meta/secrets';
 import { IShadowMeteringService } from './IShadowMeteringService';
 import { ProviderReconciliationResult, ProviderReconciliationSweepResult, ShadowMeteringSweepResult, TenantDriftReport } from './dto/drift-report';
+import { ProviderReconciliationRunDtoMapper, ProviderReconciliationRunResponse } from './dto/provider-reconciliation-run.response';
 import {
   RECONCILED_METER_METRICS,
   SHADOW_METERING_CRON_KEY,
@@ -75,6 +75,22 @@ export class ShadowMeteringService implements IShadowMeteringService, OnModuleIn
     private readonly runRepository: ProviderReconciliationRunRepository,
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
   ) {}
+
+  /**
+   * The UNSCOPED client, used for every `ProviderReconciliationRun` read and
+   * write (TASK-638).
+   *
+   * These rows are SYSTEM-owned PLATFORM records — a vendor bills the platform,
+   * not a tenant — so they can neither be written nor read under a customer
+   * tenant's CLS: the tenant-scope extension rightly rejects a SYSTEM `tenantId`
+   * from a non-SYSTEM context, and a scoped read would filter every row away.
+   * Access control for this surface is the GLOBAL_ADMIN gate on the controller,
+   * not the tenant scope. Same escape hatch this service already uses for its
+   * cross-tenant report reads.
+   */
+  private get unscopedClient(): unknown {
+    return this.databaseService.baseClient;
+  }
 
   /** Vault-backed credential resolution for the provider reconcilers. */
   private async lookupSecret(key: string): Promise<string | undefined> {
@@ -344,13 +360,13 @@ export class ShadowMeteringService implements IShadowMeteringService, OnModuleIn
    * GLOBAL_ADMIN-only at the call site: these are PLATFORM vendor totals, and a
    * tenant must never see aggregate platform spend.
    */
-  async findReconciliationRuns(query: ProviderReconciliationRunQuery = {}): Promise<ProviderReconciliationRunEntity[]> {
-    return this.runRepository.findRuns(query);
+  async findReconciliationRuns(query: ProviderReconciliationRunQuery = {}): Promise<ProviderReconciliationRunResponse[]> {
+    return ProviderReconciliationRunDtoMapper.toResponseList(await this.runRepository.findRuns(query, this.unscopedClient));
   }
 
   /** Most recent run per provider — the status-board read. */
-  async findLatestReconciliationPerProvider(): Promise<ProviderReconciliationRunEntity[]> {
-    return this.runRepository.findLatestPerProvider();
+  async findLatestReconciliationPerProvider(): Promise<ProviderReconciliationRunResponse[]> {
+    return ProviderReconciliationRunDtoMapper.toResponseList(await this.runRepository.findLatestPerProvider(this.unscopedClient));
   }
 
   /**
@@ -385,7 +401,7 @@ export class ShadowMeteringService implements IShadowMeteringService, OnModuleIn
           // verdict reached under the old one.
           thresholdPct: SHADOW_METERING_DRIFT_THRESHOLD_PCT,
         });
-        await this.runRepository.create(entity);
+        await this.runRepository.create(entity, this.unscopedClient);
       } catch (error) {
         this.logger.error({ message: 'Failed to persist a reconciliation run record', provider: result.provider, error: (error as Error).message });
       }

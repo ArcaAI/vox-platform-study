@@ -1,5 +1,7 @@
 import { EntityId } from '@arcaai/domains';
-import { ShadowMeteringSweepResult, TenantDriftReport } from './dto/drift-report';
+import { ProviderReconciliationSweepResult, ShadowMeteringSweepResult, TenantDriftReport } from './dto/drift-report';
+import { ProviderReconciliationRunResponse } from './dto/provider-reconciliation-run.response';
+import type { ProviderReconciliationRunQuery } from '@arcaai/domains';
 
 export const IShadowMeteringService = Symbol('IShadowMeteringService');
 
@@ -13,4 +15,13 @@ export interface IShadowMeteringService {
 
   /** Sweeps every tenant; used by the scheduled tick and available for an on-demand run. */
   runForAllActiveTenants(now?: Date): Promise<ShadowMeteringSweepResult>;
+
+  /** Reconcile the ledger against each provider's own report for the last settled window (TASK-638 §6). */
+  reconcileProviders(now?: Date): Promise<ProviderReconciliationSweepResult>;
+
+  /** The audit report — newest first. GLOBAL_ADMIN-only at the call site: these are PLATFORM vendor totals. */
+  findReconciliationRuns(query?: ProviderReconciliationRunQuery): Promise<ProviderReconciliationRunResponse[]>;
+
+  /** Most recent run per provider — the status-board read. */
+  findLatestReconciliationPerProvider(): Promise<ProviderReconciliationRunResponse[]>;
 }

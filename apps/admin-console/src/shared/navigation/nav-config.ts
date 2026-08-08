@@ -44,6 +44,7 @@ import {
   IconWaveSine,
   IconWorld,
   IconReportMoney,
+  IconScale,
   IconReceipt,
   type TablerIcon,
 } from '@tabler/icons-react';
@@ -168,6 +169,17 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     label: 'Consumption & cost',
     tier: '10-19',
     icon: IconReportMoney,
+    required: [['manage', 'all']],
+    implemented: true,
+  },
+  {
+    // TASK-638 §6 — the provider-reconciliation audit trail. Platform-wide
+    // (a vendor bills the platform, not a tenant), so tier 10-19 with no
+    // working-tenant gate, unlike its /ai-operations neighbours.
+    route: '/ai-operations/reconciliation',
+    label: 'Provider reconciliation',
+    tier: '10-19',
+    icon: IconScale,
     required: [['manage', 'all']],
     implemented: true,
   },

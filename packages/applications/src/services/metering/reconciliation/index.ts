@@ -7,3 +7,4 @@ export * from './IShadowMeteringService';
 export * from './shadow-metering.service';
 export * from './shadow-metering.service.module';
 export * from './dto/drift-report';
+export * from './dto/provider-reconciliation-run.response';
