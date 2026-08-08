@@ -43,6 +43,35 @@ describe('PromptManagementDtoMapper', () => {
       expect(result.updatedAt).toBe('2026-02-18T12:00:00.000Z');
     });
 
+    // The pinned approval snapshot is what resolution serves; the admin
+    // console cannot show "running v3, edited to v5" without it.
+    it('should surface approvedVersionNumber, and null when never approved', () => {
+      const approved = PromptManagementDtoMapper.toTemplateResponse({
+        id: 'tpl-a',
+        name: 'Approved',
+        content: 'x',
+        category: 'SUMMARY',
+        status: 'APPROVED',
+        currentVersionNumber: 5,
+        approvedVersionNumber: 3,
+        createdAt: new Date('2026-02-18T10:00:00Z'),
+        updatedAt: new Date('2026-02-18T10:00:00Z'),
+      } as never);
+      expect(approved.status).toBe('APPROVED');
+      expect(approved.approvedVersionNumber).toBe(3);
+      expect(approved.currentVersionNumber).toBe(5);
+
+      const never = PromptManagementDtoMapper.toTemplateResponse({
+        id: 'tpl-n',
+        name: 'Draft',
+        content: 'x',
+        category: 'SUMMARY',
+        createdAt: new Date('2026-02-18T10:00:00Z'),
+        updatedAt: new Date('2026-02-18T10:00:00Z'),
+      } as never);
+      expect(never.approvedVersionNumber).toBeNull();
+    });
+
     // Status maps through; pre-migration rows default DRAFT.
     it('should map status when present and default to DRAFT when absent', async () => {
       const withStatus = PromptManagementDtoMapper.toTemplateResponse({
