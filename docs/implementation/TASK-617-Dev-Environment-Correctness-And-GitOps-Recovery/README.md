@@ -206,8 +206,9 @@ D-04, 1.4, the PreSync hook, the repo CI, the non-optional-ref check and DB-05 a
 | ~~C.3~~ | **Dropped — D-15 closed by `2dbbd7f`** while this plan was being written, including a `patch-hygiene` CI job that prevents regression | D-15 | — | — | — |
 | **C.4** | **Script `secrets.*.yaml.example` generation from the manifests**; fix the `hope-registry-credsf` typo; emit staging and prod examples too. Then **extend `check-config-refs.py` to validate Secret keys** — it currently states *"Secret keys are deliberately NOT validated"* (`:21-24`), which is exactly the parity check D-06's acceptance criterion asks for | D-06 | Moderate | `sonnet-5` | high |
 | **C.5** | **Ingress** — author real Ingress for `hope-api`, `admin-console`, `compat-playground` using ingressClass `traefik` (**verified present, and the only IngressClass in the cluster**), and delete the three dead `Ingress/hope-api` patches. Note the irony in the diff: `overlays/prod/kustomization.yaml:48-53` documents this exact no-op failure mode for `hope-ui` while three live instances of it sit in the same files | D-09 | Moderate | `sonnet-5` | medium |
-| **C.6** | **Probes** — add liveness/readiness/startup to `stt-v2-worker` (it has none); gate Ollama readiness on model-pull completion rather than `ollama serve` being up. Consume TASK-627's probe standard; do not invent one | D-13, D-17 | Moderate | `sonnet-5` | medium |
+| **C.6** ⚠️ | **Probes — split at review; D-13 stays OPEN.** Investigation found **no liveness signal of any kind** exists in the STT worker: production runs `dramatiq stt.worker --processes 2 --threads 4` (`apps/stt/docker/Dockerfile:372`), no HTTP surface, no heartbeat, and **no Service selects `app: hope-stt-v2-worker`** — it has never been routable. Heartbeat-file exec probes were authored correctly but **commented out at review**: `/tmp/stt-worker-heartbeat` is written by no code that exists, so the `startupProbe` would fail all 180 times over 900s, kubelet would kill the container, and the worker would **CrashLoopBackOff permanently** — the batch transcription queue would stop being consumed. A comment saying "inert until X lands" does not stop Argo from applying it; commenting out the YAML does. **What did land** (safe, independent, and closes a real defect): `terminationGracePeriodSeconds` **60 → 620** — the Dramatiq `TimeLimit` is 600 000 ms (`settings.py:478`), so SIGKILL previously arrived **ten times sooner than the longest transcription could run**; and the `preStop: sleep 10` was removed (copy-pasted from `stt-v2.yaml`, which fronts a real Service — here it only ate drain budget). **D-13 needs a monorepo code change first**: a daemon thread per forked process started in `after_process_boot` / stopped in `before_worker_shutdown` (`apps/stt/src/stt/core/messaging/worker_init_middleware.py`), touching the file every ~15s *independent of message processing* so a legitimate 600s job cannot starve it. Exact spec preserved in the manifest | ~~D-13~~ (open) · G1 tGPS closed | Moderate | `sonnet-5` | medium |
 | **C.7** | **Claim-check credentials** — add `HARNESS_CLAIM_CHECK_ACCESS_KEY`/`_SECRET_KEY`/`_ENDPOINT_URL`. `STORE=s3` is set with nothing behind it; the repo's own comment says it *"surfaces on the first >64 KiB payload"* | 1.4d | Moderate | `sonnet-5` | medium |
+| **C.9** ✅ | **Remove `hope-ollama` from the stack** (owner request, 2026-08-08). Done in `5803bee`: StatefulSet + Service deleted, deregistered from `base/kustomization.yaml`, `gpu-time-slicing.yaml` capacity commentary corrected. Rendered output drops **exactly 2 objects**, both `hope-ollama`. **This removes the outage case in §2.4** — steady state is now 2 GPU consumers against 2 cards. Time-slicing is still required, but for *rollouts* (a `maxSurge: 1` update transiently needs a 3rd slot), not steady state. ⚠️ **Deregistering from Git does not delete the live workload** — `prune` is off, so `hope-ollama` keeps running and keeps holding a GPU until prune is enabled (TASK-619) or it is deleted by hand. See ⚠ 8 for the provider-level decision | Moderate | `sonnet-5` | medium |
 | **C.8** | **Deployment-repo README rewrite** — it has had zero commits since `7c22bea` and is still generic `your-app`/`acme` template boilerplate describing a different repo: claims a `base/charts/temporal/` Helm subtree that does not exist, lists the deleted `ui.yaml`. Rewrite it against the real tree, including the GPU time-slicing model and the PostSync smoke test | D-20 | Trivial — text | `haiku-4-5` | default |
 
 **Wave C gate**: `kustomize build` of all three overlays passes the deployment repo's five CI jobs;
@@ -236,6 +237,7 @@ each defect's stated verification (§6) reproduces.
 | **⚠ 3** | **`nvidia.com/gpu.mode=graphics`** — the GPUs are not in compute mode. Confirm this is intentional before the time-slicing surge | Hardware/driver posture |
 | **⚙ 4** | Root/sudo on VM 200 for the containerd image-GC configuration behind LIVE-04 | No access |
 | **⚙ 5** | Cloudflare tunnel hostname→service ingress mapping for C.5 | *"the `arca-dev` tunnel is remotely managed... needs the Cloudflare API, which I don't have a token for"* (README §9) |
+| **⚠ 8** | **Retire Ollama as a provider, or give it a reachable endpoint?** The `hope-ollama` workload is removed from the stack (C.9), but Ollama remains a supported SMR provider in code (`apps/smr/src/smr/providers/ollama.py` + ~15 test modules), is listed in `GUARDRAIL_PROVIDER_NAMES` (`11-global-setting.ts:89`), and is **seeded as an `AiProviderConnection`** (`17-ai-provider-connection.ts:65`) whose base URL comes from `SMR_OLLAMA_BASE_URL`. That seeded connection now points at a Service that no longer exists, so selecting it fails at **call time**, not config time. Either retire the provider (seed row + code + tests) or point it at a real endpoint | Product decision about a supported provider |
 | **⚠ 7** | **Which kubectl image for the vault-init hook** (B.0a): `bitnamilegacy/kubectl:1.31` — one line, closes the outage today, permanently unpatched — or `registry.k8s.io/kubectl:v1.34.5` — maintained, correct version skew, needs an init-script compatibility check. Recommendation: the legacy image now if speed matters, upstream in the Wave-C batch | Security-posture tradeoff on a PHI platform |
 | **🚫 6** | **Standing constraint, owner directive 2026-08-07**: *"do not touch any downloaded models... No deletion, no deduplication, no moving, no reorganising, no 'safe' cleanup — of `/mnt/data/models-cache` or any model weights anywhere on the estate. This holds regardless of duplication, apparent staleness, or disk pressure."* | Absolute. Bounds B.5 to ~15 GB |
 
@@ -367,7 +369,36 @@ swallows. But the code does not do what it says, and it stops being benign the m
 changes. Left alone deliberately — it is unrelated to the outage, and the dev Vault is slated for
 retirement in TASK-618 Wave D. Recorded so it is not rediscovered as a mystery.
 
-**Waves B–D not started** — they begin with owner-only actions (§4).
+### Wave C — complete 2026-08-08 (five agents, disjoint files, reviewed before commit)
+
+Branch `task-617-gitops-recovery`, commits `5803bee` (C.9) and `14d614d` (C.1–C.8). 17 files,
++1220/−216. **Not pushed.**
+
+| Task | Tier | Outcome |
+|---|---|---|
+| C.1 · C.8 | `haiku-4-5` | D-10, D-20 closed. **Amended at review** — the README rewrite documented promotion as tag-based; `promote.sh:111` pins `@digest`. Also corrected `deploy-*` → `promote-*` and an "authored ≠ live" claim about selfHeal |
+| C.2 · C.7 | `sonnet-5` | D-14, 1.4d closed |
+| C.4 | `sonnet-5` | D-06 closed — generator + Secret-key validation + a blocking drift gate |
+| C.5 | `sonnet-5` | D-09 closed |
+| C.6 | `sonnet-5` | **D-13 NOT closed** — probes commented out at review (would have CrashLoopBackOff'd the worker). tGPS 60→620 landed |
+| C.9 | `sonnet-5` | `hope-ollama` removed (owner request) |
+
+**All gates green post-regeneration**: render 3/3 (54/54/56) · kubeconform strict 164 resources,
+0 invalid · config-refs **162** non-optional ConfigMap **+ Secret** refs resolve · image-hygiene ·
+patch-hygiene · secrets-examples idempotent · gitleaks clean · `hope-registry-credsf` absent repo-wide.
+
+**What Wave C changed beyond its brief:**
+
+| Finding | Consequence |
+|---|---|
+| `cors.config.ts` on `dev-2.1` HEAD **no longer reads `CORS_ALLOWED_ORIGINS`** — TASK-610 replaced it with the DB registry. But the deployed image is pinned to `dev-6fba22dc`, *before* that removal | The defect is live in what is running, and goes inert after the next promotion. Fix still correct for today |
+| **Staging is CORS-locked-out today**, not merely at risk: its hardcoded fallback allows only `*.arcaai.com`, unrelated to this deployment's `*.taphuynh.dev` | Pre-existing; surfaced by C.2 |
+| `envFrom` variables **do** resolve in `$(VAR)` expansion — verified against the live SMR pod | My review doubt was wrong; the `SMR_REDIS_URL` precedent is sound and C.7's composed endpoint works |
+| Only **dev** patches Grafana's Ingress host; staging and prod both render `grafana.local` | A host collision the moment those namespaces exist → handed to [TASK-626](../TASK-626-Staging-Production-And-AWS-Portable-Structure/README.md) |
+| `Secret/hope-secrets` leaks **all 31 credentials in plaintext** via its `last-applied-configuration` annotation | New **critical** → [TASK-618 D-01b](../TASK-618-PHI-Security-Baseline/README.md). Rotation scope is 31 keys, not 2 |
+| `rendered/` was untracked and un-ignored while CI publishes it as an artifact | `.gitignore` added |
+
+**Waves B and D not started** — they begin with owner-only actions (§4).
 
 ---
 
