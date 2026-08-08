@@ -222,7 +222,13 @@ scan-python-base:
     - job: build-python-base
       artifacts: true
   variables:
-    SCAN_IMAGE: $IMAGE
+    # SCAN_IMAGE is set EXPLICITLY here, not inherited as $IMAGE like every other
+    # scan job. `build-python-base` is the one build job that OVERRIDES
+    # .build-template's `script:`, so it never runs the line that writes
+    # `IMAGE=` into build.env — it publishes no dotenv, and $IMAGE would expand
+    # to empty. With allow_failure removed (TASK-621 A.2) that is a hard failure,
+    # not a silent skip. Reference matches what its script actually pushes.
+    SCAN_IMAGE: $REGISTRY/$CI_PROJECT_PATH/hope-python-base:$CI_COMMIT_SHA
   # No .rules-python-base fragment exists — build-python-base is gated by
   # .build-common-rules alone, so this mirrors it exactly. A scan gated
   # differently from its build either never runs or waits on a job that
