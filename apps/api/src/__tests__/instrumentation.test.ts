@@ -73,6 +73,7 @@ describe('instrumentation', () => {
     delete process.env.OTEL_EXPORTER_OTLP_ENDPOINT;
     delete process.env.OTEL_SDK_DISABLED;
     delete process.env.OTEL_DEBUG;
+    delete process.env.OTEL_TRACES_ENABLED;
     consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     processOnSpy = vi.spyOn(process, 'on');
   });
