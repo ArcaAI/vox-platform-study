@@ -11,7 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@arcaai/ui/components/
 
 import { GatewayError } from '@/shared/api';
 import { useSession } from '@/shared/auth';
-import { formatMicros, formatPercent } from '@/shared/format';
+import { formatMicros, formatNumber, formatPercent, formatUnitRate } from '@/shared/format';
 import { PageHeader } from '@/shared/page/page-header';
 import { ScreenTemplate } from '@/shared/page/screen-template';
 import { StatusFooter } from '@/shared/page/status-footer';
@@ -204,7 +204,19 @@ function RateCardCard({ rows, isLoading, error }: { rows: SellRate[]; isLoading:
     unit: rate.unit ?? '—',
     provider: rate.provider ?? 'any',
     tier: rate.planTier ?? '—',
-    rate: formatMicros(rate.unitPriceMicros, rate.currency),
+    // PLAN_FEE is a whole-period amount (dollars); a USAGE_UNIT row is a
+    // per-unit rate and sub-cent, so it needs the 6-decimal formatter or the
+    // whole card reads "$0.00". Micros ride alongside because that is the exact
+    // integer the supersede dialog takes as input.
+    rate:
+      rate.rowKind === 'PLAN_FEE' ? (
+        formatMicros(rate.unitPriceMicros, rate.currency)
+      ) : (
+        <span className="flex flex-col items-end leading-tight">
+          <span>{formatUnitRate(rate.unitPriceMicros, rate.currency)}</span>
+          <span className="text-muted-foreground font-mono text-xs">{formatNumber(Number(rate.unitPriceMicros))}µ</span>
+        </span>
+      ),
     book: <span className="font-mono text-xs">{rate.bookVersion}</span>,
     // A closed row is history — it can be read but never repriced again.
     action: rate.effectiveTo ? (

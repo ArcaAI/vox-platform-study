@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatBytes, formatDateTime, formatMicros, formatNumber, formatRelativeTime } from '../index';
+import { formatBytes, formatDateTime, formatMicros, formatNumber, formatRelativeTime, formatUnitRate } from '../index';
 
 describe('formatMicros', () => {
   it('renders integer-micros strings as USD currency', () => {
@@ -18,6 +18,33 @@ describe('formatMicros', () => {
     expect(formatMicros(undefined)).toBe('—');
     expect(formatMicros('')).toBe('—');
     expect(formatMicros('not-a-number')).toBe('—');
+  });
+});
+
+describe('formatUnitRate', () => {
+  // REGRESSION (found in live verification of the TASK-638 rate card): unit
+  // rates are sub-cent by nature, so formatMicros — correct for invoice totals,
+  // see the '3000' case above — collapsed the ENTIRE card to "$0.00". The 6µ
+  // self-hosted baseline and the 1,390µ managed-ASR premium rendered
+  // identically, hiding the one distinction the screen exists to show.
+  it('keeps sub-cent unit rates distinguishable', () => {
+    expect(formatUnitRate('1390')).toBe('$0.00139');
+    expect(formatUnitRate('6')).toBe('$0.000006');
+    expect(formatUnitRate('2')).toBe('$0.000002');
+    // The two rates the bug conflated must not be equal.
+    expect(formatUnitRate('6')).not.toBe(formatUnitRate('1390'));
+  });
+
+  it('still renders whole-currency amounts conventionally', () => {
+    expect(formatUnitRate('50000000')).toBe('$50.00');
+    expect(formatUnitRate('0')).toBe('$0.00');
+  });
+
+  it('honours a non-USD currency and renders an em-dash for nullish/NaN', () => {
+    expect(formatUnitRate('1500000', 'EUR')).toContain('1.50');
+    expect(formatUnitRate(null)).toBe('—');
+    expect(formatUnitRate('')).toBe('—');
+    expect(formatUnitRate('not-a-number')).toBe('—');
   });
 });
 

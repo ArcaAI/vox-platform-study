@@ -88,3 +88,19 @@ export function formatMicros(micros: string | null | undefined, currency = 'USD'
   const fmt = currency === 'USD' ? currencyFormat : new Intl.NumberFormat('en-US', { style: 'currency', currency });
   return fmt.format(n / 1_000_000);
 }
+
+/**
+ * A PER-UNIT rate in micros to a display string — NOT {@link formatMicros}.
+ *
+ * Unit rates are sub-cent by nature (one token, one audio-second, one
+ * character), so the 2-decimal currency format collapses the whole rate card to
+ * "$0.00": a 6µ baseline and a 1,390µ managed-ASR premium render identically,
+ * which is exactly the distinction the card exists to show. This keeps up to 6
+ * decimals — the ledger's own quantity scale — so every seeded rate is legible.
+ */
+export function formatUnitRate(micros: string | null | undefined, currency = 'USD'): string {
+  if (micros === null || micros === undefined || micros === '') return EM_DASH;
+  const n = Number(micros);
+  if (Number.isNaN(n)) return EM_DASH;
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency, minimumFractionDigits: 2, maximumFractionDigits: 6 }).format(n / 1_000_000);
+}
