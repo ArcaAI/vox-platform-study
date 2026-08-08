@@ -1,6 +1,6 @@
 import Decimal from 'decimal.js';
 import { vi } from 'vitest';
-import { AiCapability, AiUsageUnit, BillingAdjustmentFactory, BillingInvoiceEntity, TenantEntity, TenantPlan } from '@arcaai/domains';
+import { AiCapability, AiDeploymentKind, AiUsageUnit, BillingAdjustmentFactory, BillingInvoiceEntity, TenantEntity, TenantPlan } from '@arcaai/domains';
 
 import { BillingService } from '../billing.service';
 
@@ -68,11 +68,19 @@ export function makeSimulatedWorld() {
     findAll: vi.fn(async () => [julyMemo]),
   };
 
-  const rollup = (d: number, capability: AiCapability, unit: AiUsageUnit, quantity: number) => ({
+  const rollup = (
+    d: number,
+    capability: AiCapability,
+    unit: AiUsageUnit,
+    quantity: number,
+    provider = 'test',
+    deployment: AiDeploymentKind = AiDeploymentKind.SELF_HOSTED,
+  ) => ({
     bucketStart: day(d),
     capability,
     unit,
-    provider: 'test',
+    provider,
+    deployment,
     model: '',
     quantitySum: new Decimal(quantity),
   });
@@ -91,7 +99,17 @@ export function makeSimulatedWorld() {
   const usageAggregateRepository = {
     sumDailyQuantitiesByOperation: vi.fn(async (query: { capability: AiCapability }) =>
       query.capability === AiCapability.LLM
-        ? [{ day: day(10), unit: AiUsageUnit.INPUT_TOKEN, operation: 'guardrail.validate', quantity: new Decimal(200_000) }]
+        ? [
+            {
+              day: day(10),
+              unit: AiUsageUnit.INPUT_TOKEN,
+              operation: 'guardrail.validate',
+              // Must match the rollup bucket it deducts from (TASK-638 key).
+              provider: 'test',
+              deployment: AiDeploymentKind.SELF_HOSTED,
+              quantity: new Decimal(200_000),
+            },
+          ]
         : [],
     ),
     sumByokNotionalCostMicros: vi.fn(async () => 555_555n),

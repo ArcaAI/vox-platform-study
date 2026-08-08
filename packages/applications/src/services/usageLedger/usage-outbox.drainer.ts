@@ -226,6 +226,11 @@ export class UsageOutboxDrainer {
       // event (closed vocabulary); "" only for pre-follow-up rollup rows.
       operation: event.operation ?? '',
       provider: event.provider,
+      // Deployment dimension (TASK-638): billing consumes the pooled allowance
+      // SELF_HOSTED-first, and BYOK must never be rated at a managed premium —
+      // neither is derivable from `provider` (the same slug is CLOUD on a
+      // platform key and BYOK on a tenant key).
+      deployment: event.deployment,
       // EMPTY-STRING SENTINEL, never null: Postgres treats each NULL as
       // distinct, so a nullable dimension would let two upserts for the same
       // model-less capability BOTH insert and silently double-count.

@@ -2,17 +2,7 @@ import Decimal from 'decimal.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { DataNotFoundException } from '@arcaai/exceptions';
-import {
-  AiCapability,
-  AiUsageUnit,
-  BillingAdjustmentEntity,
-  BillingInvoiceEntity,
-  BillingInvoiceStatus,
-  BillingLineKind,
-  SysEventType,
-  TenantEntity,
-  TenantPlan,
-} from '@arcaai/domains';
+import { AiCapability, AiDeploymentKind, AiUsageUnit, BillingAdjustmentEntity, BillingInvoiceEntity, BillingInvoiceStatus, BillingLineKind, SysEventType, TenantEntity, TenantPlan } from '@arcaai/domains';
 
 import { BillingService } from '../billing.service';
 import { AddAdjustmentRequest } from '../dto';
@@ -181,6 +171,9 @@ function makeWorld(config: WorldConfig = {}) {
         capability,
         unit,
         provider: 'test',
+        // TASK-638: the compensation aggregate below must agree on
+        // (provider, deployment) or its deduction lands in a different bucket.
+        deployment: AiDeploymentKind.SELF_HOSTED,
         model: '',
         quantitySum: new Decimal(quantity),
       })),
@@ -190,7 +183,14 @@ function makeWorld(config: WorldConfig = {}) {
     sumDailyQuantitiesByOperation: vi.fn(async (query: { capability: AiCapability; operations: readonly string[] }) =>
       (config.operationSums ?? [])
         .filter(([, capability, , operation]) => capability === query.capability && query.operations.includes(operation))
-        .map(([d, , unit, operation, quantity]) => ({ day: day(d), unit, operation, quantity: new Decimal(quantity) })),
+        .map(([d, , unit, operation, quantity]) => ({
+          day: day(d),
+          unit,
+          operation,
+          provider: 'test',
+          deployment: AiDeploymentKind.SELF_HOSTED,
+          quantity: new Decimal(quantity),
+        })),
     ),
     sumByokNotionalCostMicros: vi.fn(async () => config.byokNotionalMicros ?? 0n),
   };

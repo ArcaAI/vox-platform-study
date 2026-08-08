@@ -36,6 +36,8 @@ export interface IAiUsageRollupHourlyEntity extends IBaseTenantEntity {
    */
   operation?: string;
   provider: string;
+  /** Who FUNDED the call (TASK-638): SELF_HOSTED | CLOUD | BYOK. */
+  deployment?: Enums.AiDeploymentKind;
   /** "" sentinel when the capability selects no model — never null. */
   model?: string;
   unit: Enums.AiUsageUnit;
@@ -50,6 +52,7 @@ export class AiUsageRollupHourlyEntity extends BaseTenantEntity {
   private _capability: IAiUsageRollupHourlyEntity['capability'];
   private _operation?: IAiUsageRollupHourlyEntity['operation'];
   private _provider: IAiUsageRollupHourlyEntity['provider'];
+  private _deployment?: IAiUsageRollupHourlyEntity['deployment'];
   private _model?: IAiUsageRollupHourlyEntity['model'];
   private _unit: IAiUsageRollupHourlyEntity['unit'];
   private _quantitySum: IAiUsageRollupHourlyEntity['quantitySum'];
@@ -61,6 +64,7 @@ export class AiUsageRollupHourlyEntity extends BaseTenantEntity {
     this._capability = init.capability;
     this._operation = init.operation;
     this._provider = init.provider;
+    this._deployment = init.deployment;
     this._model = init.model;
     this._unit = init.unit;
     this._quantitySum = init.quantitySum;
@@ -81,6 +85,14 @@ export class AiUsageRollupHourlyEntity extends BaseTenantEntity {
 
   set capability(value: IAiUsageRollupHourlyEntity['capability']) {
     this.setProperty('capability', value);
+  }
+
+  get deployment(): IAiUsageRollupHourlyEntity['deployment'] {
+    return this._deployment;
+  }
+
+  set deployment(value: IAiUsageRollupHourlyEntity['deployment']) {
+    this.setProperty('deployment', value);
   }
 
   get operation(): IAiUsageRollupHourlyEntity['operation'] {

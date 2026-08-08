@@ -4,7 +4,7 @@ import { Prisma } from '@arcaai/database';
 import { Repository } from '../../../common';
 import { CoreUnitOfWorkService } from '../../../common/unitsOfWork/core';
 import { AiUsageRollupHourlyEntity } from '../../../entities';
-import { AiCapability, AiUsageUnit } from '../../../enums';
+import { AiCapability, AiDeploymentKind, AiUsageUnit } from '../../../enums';
 import { AiUsageRollupHourlyEntityMapper } from '../../../mappers';
 import { AiUsageRollupHourly } from '../../../models';
 
@@ -16,6 +16,8 @@ export interface AiUsageRollupHourlyDimension {
   /** Ledger event operation (TASK-615 #4); "" sentinel for pre-follow-up rows. */
   operation: string;
   provider: string;
+  /** Who FUNDED the call (TASK-638) — the allowance is consumed SELF_HOSTED-first. */
+  deployment: AiDeploymentKind;
   /** "" sentinel when the capability selects no model — never null. */
   model: string;
   unit: AiUsageUnit;

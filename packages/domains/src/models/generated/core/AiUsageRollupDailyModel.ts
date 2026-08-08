@@ -13,6 +13,7 @@ export class AiUsageRollupDaily extends BaseTenantDataModel {
   public capability: Enums.AiCapability;
   public operation: string;
   public provider: string;
+  public deployment: Enums.AiDeploymentKind;
   public model: string;
   public unit: Enums.AiUsageUnit;
   public quantitySum: Decimal;
@@ -24,6 +25,7 @@ export class AiUsageRollupDaily extends BaseTenantDataModel {
     this.capability = data.capability;
     this.operation = data.operation;
     this.provider = data.provider;
+    this.deployment = data.deployment;
     this.model = data.model;
     this.unit = data.unit;
     this.quantitySum = data.quantitySum;

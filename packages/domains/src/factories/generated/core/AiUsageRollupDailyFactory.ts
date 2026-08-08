@@ -3,6 +3,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { BaseEntityFactoryCreateProps } from '../../../common';
 import { AiUsageRollupDailyEntity, IAiUsageRollupDailyEntity } from '../../../entities';
+import { AiDeploymentKind } from '../../../enums';
 import { generateId } from '../../../utils';
 
 export interface CreateAiUsageRollupDailyProps extends BaseEntityFactoryCreateProps {
@@ -11,6 +12,7 @@ export interface CreateAiUsageRollupDailyProps extends BaseEntityFactoryCreatePr
   capability: IAiUsageRollupDailyEntity['capability'];
   operation?: IAiUsageRollupDailyEntity['operation'];
   provider: IAiUsageRollupDailyEntity['provider'];
+  deployment?: IAiUsageRollupDailyEntity['deployment'];
   model?: IAiUsageRollupDailyEntity['model'];
   unit: IAiUsageRollupDailyEntity['unit'];
   quantitySum: IAiUsageRollupDailyEntity['quantitySum'];
@@ -47,6 +49,7 @@ export class AiUsageRollupDailyFactory {
       capability: props.capability,
       operation: props.operation ?? '',
       provider: props.provider,
+      deployment: props.deployment ?? AiDeploymentKind.SELF_HOSTED,
       model: props.model ?? '',
       unit: props.unit,
       quantitySum: props.quantitySum,

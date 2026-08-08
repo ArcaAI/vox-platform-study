@@ -290,6 +290,14 @@ model AiUsageRollupHourly {
   // header) and stamps pre-follow-up rows created before this column existed.
   operation   String       @default("")
   provider    String
+  // Deployment dimension (TASK-638): who FUNDS the call — SELF_HOSTED, CLOUD
+  // (platform-funded managed vendor) or BYOK (tenant's own key). Billing needs
+  // it because the pooled allowance is consumed SELF_HOSTED-first so managed
+  // usage spills into premium-rated overage, and because BYOK must never pay a
+  // premium that exists to recover platform COGS the platform is not bearing.
+  // Provider alone cannot answer this: the same `azure-speech` slug is CLOUD on
+  // a platform key and BYOK on a tenant key.
+  deployment  AiDeploymentKind @default(SELF_HOSTED)
   // "" sentinel when the capability selects no model (see the header).
   model       String       @default("")
   unit        AiUsageUnit
@@ -305,7 +313,7 @@ model AiUsageRollupHourly {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([tenantId, bucketStart, capability, operation, provider, model, unit], name: "AiUsageRollupHourly_dimension_unique")
+  @@unique([tenantId, bucketStart, capability, operation, provider, deployment, model, unit], name: "AiUsageRollupHourly_dimension_unique")
   @@index([tenantId, bucketStart], name: "AiUsageRollupHourly_tenant_bucketStart_idx")
   @@schema("core")
 }
@@ -332,6 +340,9 @@ model AiUsageRollupDaily {
   // the raw-ledger side query WS-H needed.
   operation   String       @default("")
   provider    String
+  // Deployment dimension (TASK-638) — see the hourly model for why provider
+  // alone cannot answer "who funded this call".
+  deployment  AiDeploymentKind @default(SELF_HOSTED)
   model       String       @default("")
   unit        AiUsageUnit
 
@@ -344,7 +355,7 @@ model AiUsageRollupDaily {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([tenantId, bucketStart, capability, operation, provider, model, unit], name: "AiUsageRollupDaily_dimension_unique")
+  @@unique([tenantId, bucketStart, capability, operation, provider, deployment, model, unit], name: "AiUsageRollupDaily_dimension_unique")
   @@index([tenantId, bucketStart], name: "AiUsageRollupDaily_tenant_bucketStart_idx")
   @@schema("core")
 }
