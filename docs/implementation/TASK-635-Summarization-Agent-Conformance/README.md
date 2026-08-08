@@ -432,7 +432,27 @@ SMR (8962) and NLP (8964) were started against `.env.test`, plus **LM Studio on 
 
 `LiveSession.transcriptParts` is populated **only** by `ingestSegment()` (`live-documentation.service.ts:832-853`), which is fed from the STT Redis stream `stt:result:{sessionId}` attached at `start()`. The spec nudges the loop by POSTing a `TRANSCRIPT` **ContextItem**, which reaches `handleContextAdded` → `scheduleFlush` but contributes **no transcript text**. With `transcriptParts` empty the flush has nothing to summarize, never calls SMR, and therefore never publishes a `LiveSummaryEventDto` — so `metadata.agent` never appears regardless of how healthy SMR/NLP are. The spec's graceful skip then fires, correctly but for a misdiagnosed reason (its message blames "SMR/NLP unavailable").
 
-Two ways to close it, neither attempted here:
+#### Third pass — synthetic STT stream implemented (2026-08-08)
+
+Option 1 below was implemented: the spec now starts recording with a `sessionId` and XADDs final segments onto `stt:result:{sessionId}` (field encoding mirrors `projectAndEmitResult` exactly — `is_final` is the string `'1'`, `type: 'segment'`). **It works**: a manual probe confirmed the bridge's consumer group is created at subscribe time, the segments are ingested, and the loop flushes — the published frame carried `lastSegmentId: "seg-3"`, proving all three synthetic segments reached `ingestSegment`.
+
+**R-N1 now PASSES on the real agent tier.** Getting there required fixing three further spec defects, each a real contract mismatch:
+
+| Defect | Reality |
+|---|---|
+| `isDefault` sent to agent create | Not a create field, and `slug` is REQUIRED — with `forbidNonWhitelisted` this was a hard 400, so the spec's agent creation had **never** worked (it silently fell back) |
+| Bound template picked blindly off the available list | A binding must be tenant-visible AND department-compatible (`assertTemplateBindable`); the first available row belonged to another department → 400. Now binds the SYSTEM live-default (`departmentId: null`, SYSTEM-owned) |
+| Whole suite ran on 3 parallel workers | `beforeAll` ran per worker and the concurrent agent creations collided (409). The suite is order-dependent anyway (R-N2 consumes R-N1's session) → `test.describe.serial` |
+
+Also learned, and worth knowing: **`metadata.agent` rides the snapshot frozen at `start()`, so it arrives in ~90ms with no LLM involved.** That is exactly RF-6 working as designed — but it means "an agent frame arrived" is NOT evidence that generation happened. The spec now distinguishes the two and reports `generated`.
+
+**R-N2 is still blocked — root cause identified, and it is environmental, not a code defect.** The live loop's SMR call is rejected: `smr.auth.rejected … "reason": "invalid_or_missing_token"` at `09:58:27.972`, and the SSE frame published at `09:58:27.976` carries `runningSummary: ""`. In the same SMR process the test-bench generations **succeed** (`generation.audit … lm-studio / gemma-4-e2b-it-qat / 973 tokens / 4.85s`), so SMR and the model are fine — only the live path's service token is not accepted. With no generated note there is no `LIVE_SOAP_SNAPSHOT`, hence no lineage for finalize to stamp, hence R-N2 skips.
+
+This is an artifact of the hand-rolled harness (SMR started manually against `.env.test`, whose `SECRETS_PROVIDER=vault` is the same fixture mismatch that breaks ~384 unit tests) rather than something TASK-635 introduced. **But it exposes a genuine robustness gap worth its own ticket:** when the service token is rejected, the live loop degrades to publishing an EMPTY `runningSummary` instead of surfacing the auth failure — a silent empty note is indistinguishable from "nothing said yet" to any consumer.
+
+Remaining to finish R-N2: make the API and SMR agree on the service token in this harness (align `SERVICE_TOKEN`/secrets resolution for the live path), then re-run — everything else on the chain is now proven.
+
+Two ways to close it, the first now DONE:
 1. **Synthetic stream** — call `recording/start` with a `sessionId`, then XADD a final segment onto `stt:result:{sessionId}` in the test Redis (6380). Cheapest, hermetic, no audio or STT service; requires pinning the segment payload shape.
 2. **Full path** — run STT (8961, currently `ECONNREFUSED` in the log) and stream an audio fixture. Highest fidelity, heaviest setup.
 
