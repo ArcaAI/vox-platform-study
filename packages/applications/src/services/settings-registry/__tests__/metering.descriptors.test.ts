@@ -4,10 +4,10 @@
 // (`metering.outbox.drain.enabled` / `.intervalSeconds`) was live and
 // consumed (`usage-outbox.processor.ts#UsageOutboxScheduler.getConfig`)
 // but never cataloged. `metering.reconcile.enabled` mirrors
-// `entitlements.enabled`'s env-driven fresh-DB seed pattern (OQ3: ON in
-// dev/staging, OFF in test/CI/prod) via a companion `.enabledDefault`
-// SEED-TIME-ONLY key, exactly like `entitlements.enabledDefault`
-// (feature-flags.descriptors.ts) already does.
+// `entitlements.enabled`'s env-driven fresh-DB seed pattern (TASK-638 policy:
+// ON in every DEPLOYED env — hope-v2-dev/staging/production — OFF in local dev
+// and test/CI) via a companion `.enabledDefault` SEED-TIME-ONLY key, exactly
+// like `entitlements.enabledDefault` (feature-flags.descriptors.ts) already does.
 
 import { describe, expect, it } from 'vitest';
 import { HOPE_SETTINGS_REGISTRY } from '../registry';
