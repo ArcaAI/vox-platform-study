@@ -21,6 +21,7 @@ import { WorkingTenantGate } from '@/shared/tenant-scope/working-tenant-gate';
 import { useComputeDraft, useInvoices, useRateCard, useSpendStatus } from '../api/hooks';
 import type { BillingInvoiceStatus, SellRate, SpendStatus } from '../api/types';
 import { InvoiceDetailDrawer } from './invoice-detail-drawer';
+import { SupersedeRateDialog } from './supersede-rate-dialog';
 
 const MONTH_COUNT = 12;
 const monthLabelFormat = new Intl.DateTimeFormat('en-US', { year: 'numeric', month: 'long', timeZone: 'UTC' });
@@ -195,31 +196,48 @@ function InvoiceListCard({ rows, isLoading, error }: { rows: Record<string, Reac
 }
 
 function RateCardCard({ rows, isLoading, error }: { rows: SellRate[]; isLoading: boolean; error?: Error }) {
+  const [superseding, setSuperseding] = useState<SellRate | null>(null);
+
   const tableRows = rows.map((rate) => ({
     kind: rate.rowKind,
     capability: rate.capability ?? '—',
     unit: rate.unit ?? '—',
+    provider: rate.provider ?? 'any',
     tier: rate.planTier ?? '—',
     rate: formatMicros(rate.unitPriceMicros, rate.currency),
     book: <span className="font-mono text-xs">{rate.bookVersion}</span>,
+    // A closed row is history — it can be read but never repriced again.
+    action: rate.effectiveTo ? (
+      <span className="text-muted-foreground text-xs">superseded</span>
+    ) : (
+      <Button variant="outline" size="sm" onClick={() => setSuperseding(rate)}>
+        Supersede
+      </Button>
+    ),
   }));
+
   return (
-    <MetricTable
-      columns={[
-        { key: 'kind', label: 'Row kind' },
-        { key: 'capability', label: 'Capability' },
-        { key: 'unit', label: 'Unit' },
-        { key: 'tier', label: 'Plan' },
-        { key: 'rate', label: 'Rate', format: 'numeric' },
-        { key: 'book', label: 'Book version' },
-      ]}
-      rows={tableRows}
-      zebra
-      caption="Effective SELL rate card (read-only; superseding rates is a rate-card admin action)"
-      aria-label="SELL rate card"
-      isLoading={isLoading}
-      error={error}
-      emptyState={<EmptyState icon={IconReceipt} title="No SELL rates" description="The tenant-facing rate card has no effective rows yet." />}
-    />
+    <>
+      <MetricTable
+        columns={[
+          { key: 'kind', label: 'Row kind' },
+          { key: 'capability', label: 'Capability' },
+          { key: 'unit', label: 'Unit' },
+          { key: 'provider', label: 'Provider' },
+          { key: 'tier', label: 'Plan' },
+          { key: 'rate', label: 'Rate', format: 'numeric' },
+          { key: 'book', label: 'Book version' },
+          { key: 'action', label: '' },
+        ]}
+        rows={tableRows}
+        zebra
+        caption="SELL rate card — effective-dated and supersede-only, so a past invoice stays reproducible"
+        aria-label="SELL rate card"
+        isLoading={isLoading}
+        error={error}
+        emptyState={<EmptyState icon={IconReceipt} title="No SELL rates" description="The tenant-facing rate card has no effective rows yet." />}
+      />
+      <SupersedeRateDialog rate={superseding} onClose={() => setSuperseding(null)} />
+    </>
   );
 }

@@ -68,18 +68,66 @@ const INVOICE_DETAIL = {
 interface StubConfig {
   session?: typeof SESSION;
   invoices?: unknown;
+  rateCard?: unknown;
 }
 
-function stubFetch({ session = SESSION, invoices = INVOICES }: StubConfig = {}) {
+const RATE_ROWS = [
+  {
+    id: 'rate-1',
+    tenantId: '00000000-0000-0000-0000-000000000000',
+    plane: 'SELL',
+    rowKind: 'USAGE_UNIT',
+    planTier: null,
+    capability: 'STT',
+    provider: 'azure-speech',
+    model: null,
+    unit: 'SESSION_SECOND',
+    contextBand: null,
+    currency: 'USD',
+    unitPriceMicros: '500',
+    effectiveFrom: '2026-08-01T00:00:00.000Z',
+    effectiveTo: null,
+    bookVersion: '2026-08-06-placeholder-v1',
+    version: 3,
+  },
+  // A closed history row — repricing it again must not be offered.
+  {
+    id: 'rate-0',
+    tenantId: '00000000-0000-0000-0000-000000000000',
+    plane: 'SELL',
+    rowKind: 'USAGE_UNIT',
+    planTier: null,
+    capability: 'STT',
+    provider: null,
+    model: null,
+    unit: 'SESSION_SECOND',
+    contextBand: null,
+    currency: 'USD',
+    unitPriceMicros: '6',
+    effectiveFrom: '2026-07-01T00:00:00.000Z',
+    effectiveTo: '2026-08-01T00:00:00.000Z',
+    bookVersion: 'old',
+    version: 2,
+  },
+];
+
+const supersedeCalls: Array<{ body: Record<string, unknown>; ifMatch: string | null }> = [];
+
+function stubFetch({ session = SESSION, invoices = INVOICES, rateCard = RATE_ROWS }: StubConfig = {}) {
+  supersedeCalls.length = 0;
   vi.stubGlobal(
     'fetch',
-    vi.fn(async (input: string | URL | Request) => {
+    vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
       const path = String(input).split('?')[0];
       if (path === '/api/auth/session') return Response.json(session);
       if (path === '/api/hope/admin/billing/invoices/spend-status') return Response.json(SPEND);
       if (path === '/api/hope/admin/billing/invoices/inv-1') return Response.json(INVOICE_DETAIL, { headers: { ETag: '"1"' } });
       if (path === '/api/hope/admin/billing/invoices') return Response.json(invoices);
-      if (path === '/api/hope/admin/billing/rate-card') return Response.json([]);
+      if (path === '/api/hope/admin/billing/rate-card') return Response.json(rateCard);
+      if (path === '/api/hope/admin/billing/rate-card/rate-1/supersede') {
+        supersedeCalls.push({ body: JSON.parse(String((init as RequestInit | undefined)?.body ?? '{}')), ifMatch: new Headers((init as RequestInit | undefined)?.headers).get('If-Match') });
+        return Response.json({ closed: RATE_ROWS[0], successor: { ...RATE_ROWS[0], unitPriceMicros: '1390' } }, { status: 201 });
+      }
       throw new Error(`Unhandled fetch: ${path}`);
     }),
   );
@@ -134,5 +182,68 @@ describe('BillingScreen', () => {
     await screen.findByText('$199.03');
     await waitFor(() => expect(document.querySelector('[role="status"]')).not.toBeNull());
     expect(await axe(container)).toHaveNoViolations();
+  });
+
+  describe('rate card (TASK-638 §7 — the write half)', () => {
+    async function openRateCardTab() {
+      renderWithProviders(<BillingScreen />);
+      // Radix Tabs activates on mousedown, not click.
+      const trigger = await screen.findByRole('tab', { name: 'Rate card' });
+      fireEvent.mouseDown(trigger);
+      fireEvent.click(trigger);
+      return screen.findByRole('button', { name: 'Supersede' });
+    }
+
+    it('offers Supersede on an OPEN row only — a closed row is history', async () => {
+      stubFetch();
+      await openRateCardTab();
+
+      // Two rows render, but only the open one is repriceable.
+      expect(screen.getAllByRole('button', { name: 'Supersede' })).toHaveLength(1);
+      expect(await screen.findByText('superseded')).toBeDefined();
+    });
+
+    it('sends the new price with If-Match carrying the row version (OCC)', async () => {
+      stubFetch();
+      fireEvent.click(await openRateCardTab());
+
+      fireEvent.change(screen.getByLabelText(/New rate/), { target: { value: '1390' } });
+      fireEvent.change(screen.getByLabelText(/Effective from/), { target: { value: '2026-09-01' } });
+      fireEvent.change(screen.getByLabelText(/Book version/), { target: { value: '2026-09-01-commercial-v3' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Supersede', hidden: false }) ?? screen.getByText('Supersede'));
+
+      await waitFor(() => expect(supersedeCalls).toHaveLength(1));
+      expect(supersedeCalls[0].ifMatch).toBe('"3"');
+      expect(supersedeCalls[0].body).toMatchObject({
+        unitPriceMicros: '1390',
+        effectiveFrom: '2026-09-01T00:00:00.000Z',
+        bookVersion: '2026-09-01-commercial-v3',
+      });
+    });
+
+    it('keeps Supersede disabled until price, date and book version are all present', async () => {
+      stubFetch();
+      fireEvent.click(await openRateCardTab());
+
+      const submit = screen.getAllByRole('button', { name: 'Supersede' }).at(-1)!;
+      expect((submit as HTMLButtonElement).disabled).toBe(true);
+
+      fireEvent.change(screen.getByLabelText(/New rate/), { target: { value: '1390' } });
+      expect((submit as HTMLButtonElement).disabled).toBe(true); // book version still empty
+      fireEvent.change(screen.getByLabelText(/Book version/), { target: { value: 'v3' } });
+      expect((submit as HTMLButtonElement).disabled).toBe(false);
+    });
+
+    it('rejects a non-integer-micros price rather than sending it', async () => {
+      stubFetch();
+      fireEvent.click(await openRateCardTab());
+
+      fireEvent.change(screen.getByLabelText(/New rate/), { target: { value: '1.39' } });
+      fireEvent.change(screen.getByLabelText(/Book version/), { target: { value: 'v3' } });
+
+      const submit = screen.getAllByRole('button', { name: 'Supersede' }).at(-1)!;
+      expect((submit as HTMLButtonElement).disabled).toBe(true);
+      expect(supersedeCalls).toHaveLength(0);
+    });
   });
 });
