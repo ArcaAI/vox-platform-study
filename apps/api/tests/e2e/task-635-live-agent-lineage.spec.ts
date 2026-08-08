@@ -70,6 +70,18 @@ import { SEEDED_USERS, DEFAULT_TENANT_KEY, loginUser } from '../../../../tests/h
 
 const bearer = (token: string) => ({ Authorization: `Bearer ${token}` });
 
+/**
+ * Admin list envelopes are not uniform: some routes return a bare array, others
+ * the `PaginatedResponse` `{ data, count, limit, ... }` wrapper. Setup code must
+ * not fail on that distinction, so read both (same tolerance as the `asArray`
+ * helper used by password-security-hardening.spec.ts).
+ */
+function listOf<T>(body: unknown): T[] {
+  if (Array.isArray(body)) return body as T[];
+  const data = (body as { data?: unknown } | null)?.data;
+  return Array.isArray(data) ? (data as T[]) : [];
+}
+
 interface SummaryMetaRow {
   id: string;
   contextItemId: string;
@@ -112,7 +124,15 @@ interface SseAgent {
  * read once an agent block is found or the budget expires — enough to prove the
  * SSE contract without holding the connection for the session's lifetime.
  */
-async function readFirstAgentFromSse(baseURL: string, consultationId: string, token: string, timeoutMs = 45_000): Promise<SseAgent | null> {
+/**
+ * Waits for the first live-summary frame carrying `metadata.agent`.
+ *
+ * The budget MUST stay strictly under Playwright's per-test timeout (30s): if
+ * the wait outlives the test, the test dies on a timeout instead of reaching
+ * the graceful `test.skip()` below — which is the correct outcome whenever SMR
+ * or NLP is absent and the live loop can never emit a generated frame.
+ */
+async function readFirstAgentFromSse(baseURL: string, consultationId: string, token: string, timeoutMs = 20_000): Promise<SseAgent | null> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -170,18 +190,22 @@ test.describe('TASK-635 C6 — live agent lineage survives into finalize (R-N1 �
 
     const departments = await request.get('/api/v1/admin/departments?take=1', { headers: bearer(token) });
     expect(departments.status(), 'GET /admin/departments').toBe(200);
-    const deptBody = (await departments.json()) as { data?: { id: string }[] };
-    expect(deptBody.data?.length, 'the tenant must have at least one seeded department').toBeGreaterThan(0);
-    departmentId = deptBody.data![0].id;
+    // List envelopes are not uniform across admin surfaces — some return a bare
+    // array, some the `PaginatedResponse.data` wrapper. Tolerate both (the house
+    // `asArray` idiom, e.g. password-security-hardening.spec.ts) rather than
+    // pinning one shape and failing setup on an unrelated contract detail.
+    const deptList = listOf<{ id: string }>(await departments.json());
+    expect(deptList.length, 'the tenant must have at least one seeded department').toBeGreaterThan(0);
+    departmentId = deptList[0].id;
 
     // Ensure the department has a default agent — without one the live loop
     // resolves the code-default tier, which reports NO agent, and R-N2's
     // "same agent" claim has nothing to bind to.
     const agents = await request.get(`/api/v1/admin/department-agents?departmentId=${departmentId}&take=1`, { headers: bearer(token) });
-    const agentBody = agents.ok() ? ((await agents.json()) as { data?: { id: string }[] }) : { data: [] };
-    if (!agentBody.data?.length) {
+    const agentList = agents.ok() ? listOf<{ id: string }>(await agents.json()) : [];
+    if (!agentList.length) {
       const templates = await request.get('/api/v1/prompt-templates/available?category=SUMMARY', { headers: bearer(token) });
-      const templateList = templates.ok() ? ((await templates.json()) as { id: string }[]) : [];
+      const templateList = templates.ok() ? listOf<{ id: string }>(await templates.json()) : [];
       if (templateList.length) {
         const created = await request.post('/api/v1/admin/department-agents', {
           headers: bearer(token),
@@ -216,12 +240,15 @@ test.describe('TASK-635 C6 — live agent lineage survives into finalize (R-N1 �
 
     const ssePromise = readFirstAgentFromSse(baseURL!, consultationId, token);
 
-    // Nudge the live loop: a TRANSCRIPTION context item both feeds the running
+    // Nudge the live loop: a TRANSCRIPT context item both feeds the running
     // note (ContextAdded → scheduleFlush) and is the transcript finalize reads.
+    // NOTE: the field is `type` (AddContextRequest) and the enum member is
+    // TRANSCRIPT — the global pipe runs forbidNonWhitelisted, so a stray
+    // `contextType` key is a 400, not an ignored field.
     const context = await request.post(`/api/v1/consultations/${consultationId}/context`, {
       headers: bearer(token),
       data: {
-        contextType: 'TRANSCRIPTION',
+        type: 'TRANSCRIPT',
         content:
           'Doctor: What brings you in today? Patient: I have had a dry cough and low-grade fever for four days. ' +
           'Doctor: Any shortness of breath? Patient: Only when I climb stairs. Doctor: Blood pressure is 128 over 82.',
