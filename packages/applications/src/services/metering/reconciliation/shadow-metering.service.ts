@@ -2,7 +2,19 @@ import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit, Optional } f
 import { SchedulerRegistry } from '@nestjs/schedule';
 import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
 import { CronJob } from 'cron';
-import { AiCapability, AiDeploymentKind, AiUsageUnit, CoreDatabaseService, EntityId, UsageMeterMetric } from '@arcaai/domains';
+import {
+  AiCapability,
+  AiDeploymentKind,
+  AiUsageUnit,
+  CoreDatabaseService,
+  EntityId,
+  ProviderReconciliationRunEntity,
+  ProviderReconciliationRunFactory,
+  ProviderReconciliationRunRepository,
+  SYSTEM_TENANT_ID,
+  UsageMeterMetric,
+  type ProviderReconciliationRunQuery,
+} from '@arcaai/domains';
 import { IAppSettingsService } from '../../baseServices/_meta/appSettings/IAppSettingsService';
 import { currentMonthWindow } from '../metering-window';
 import { computeDrift, computeDriftReport, DriftComparison } from './drift-math';
@@ -60,6 +72,7 @@ export class ShadowMeteringService implements IShadowMeteringService, OnModuleIn
     // Optional so the service still constructs (and the sweep still runs, with
     // every provider reported unavailable) in a deployment with no secrets
     // backend wired — §6 rule 7, fail open.
+    private readonly runRepository: ProviderReconciliationRunRepository,
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
   ) {}
 
@@ -313,6 +326,8 @@ export class ShadowMeteringService implements IShadowMeteringService, OnModuleIn
       }
     }
 
+    await this.persistRuns(results);
+
     return {
       window: label,
       results,
@@ -321,6 +336,60 @@ export class ShadowMeteringService implements IShadowMeteringService, OnModuleIn
       failed: results.filter((r) => r.status === 'failed').length,
       breaches: results.filter((r) => r.breachesThreshold).length,
     };
+  }
+
+  /**
+   * The audit report (TASK-638 §6 rule 6) — newest first.
+   *
+   * GLOBAL_ADMIN-only at the call site: these are PLATFORM vendor totals, and a
+   * tenant must never see aggregate platform spend.
+   */
+  async findReconciliationRuns(query: ProviderReconciliationRunQuery = {}): Promise<ProviderReconciliationRunEntity[]> {
+    return this.runRepository.findRuns(query);
+  }
+
+  /** Most recent run per provider — the status-board read. */
+  async findLatestReconciliationPerProvider(): Promise<ProviderReconciliationRunEntity[]> {
+    return this.runRepository.findLatestPerProvider();
+  }
+
+  /**
+   * Persist one row per attempt — including SKIPPED and FAILED ones.
+   *
+   * Recording the non-events is most of the value: "we have not reconciled
+   * openai since March because the credential expired" is invisible if only
+   * successful comparisons are stored, and that gap is exactly what an auditor
+   * asks about. Persistence failures are swallowed: the sweep is a diagnostic
+   * and must not fail closed (§6 rule 7).
+   */
+  private async persistRuns(results: ProviderReconciliationResult[]): Promise<void> {
+    for (const result of results) {
+      try {
+        const entity = ProviderReconciliationRunFactory.CreateProviderReconciliationRun({
+          // SYSTEM-owned: a vendor bills the PLATFORM, not a tenant.
+          tenantId: SYSTEM_TENANT_ID,
+          provider: result.provider,
+          windowStart: result.windowStart,
+          windowEnd: result.windowEnd,
+          windowLabel: result.window,
+          status: result.status,
+          reason: result.reason ?? null,
+          // NULL, not 0, on a skipped/failed run — a stored 0 is
+          // indistinguishable from "the vendor genuinely billed nothing".
+          ledgerQuantity: result.ledgerQuantity ?? null,
+          providerQuantity: result.providerQuantity ?? null,
+          providerUnit: result.providerUnit ?? null,
+          relativeDrift: result.relativeDrift ?? null,
+          breachedThreshold: result.breachesThreshold ?? false,
+          // Stamped per row so a later threshold change never reinterprets a
+          // verdict reached under the old one.
+          thresholdPct: SHADOW_METERING_DRIFT_THRESHOLD_PCT,
+        });
+        await this.runRepository.create(entity);
+      } catch (error) {
+        this.logger.error({ message: 'Failed to persist a reconciliation run record', provider: result.provider, error: (error as Error).message });
+      }
+    }
   }
 
   // ── Internals ─────────────────────────────────────────────────────────

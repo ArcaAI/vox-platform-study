@@ -143,6 +143,9 @@ export const MODELS_WITHOUT_SOFT_DELETE: ReadonlySet<string> = new Set([
   'AiUsageOutbox',
   'AiUsageRollupHourly',
   'AiUsageRollupDaily',
+  // TASK-638 §6 rule 6 — the provider-reconciliation audit trail. An audit
+  // record that can be withdrawn is not a control.
+  'ProviderReconciliationRun',
   // A credit memo against a FINALIZED (immutable) invoice.
   // Retracting one by deleting it would rewrite a closed billing period; the
   // correction path is another adjustment. No `resourceStatus` column.

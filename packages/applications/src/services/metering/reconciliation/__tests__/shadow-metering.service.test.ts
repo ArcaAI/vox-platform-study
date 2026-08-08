@@ -32,14 +32,19 @@ function makeBaseClient(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function makeService(baseClient: ReturnType<typeof makeBaseClient>, enabled = false, secretsService?: unknown) {
+function makeRunRepository() {
+  return { create: vi.fn(async (entity: unknown) => entity), findRuns: vi.fn(async () => []), findLatestPerProvider: vi.fn(async () => []) };
+}
+
+function makeService(baseClient: ReturnType<typeof makeBaseClient>, enabled = false, secretsService?: unknown, runRepository = makeRunRepository()) {
   const appSettings = { getValueWithDefault: vi.fn((_key: string, fallback: unknown) => (typeof fallback === 'boolean' ? enabled : fallback)) } as never;
   const schedulerRegistry = { addCronJob: vi.fn(), getCronJob: vi.fn(), deleteCronJob: vi.fn() } as never;
   const eventEmitter = { emit: vi.fn() } as never;
   const databaseService = { baseClient } as never;
   return {
-    service: new ShadowMeteringService(appSettings, schedulerRegistry, eventEmitter, databaseService, secretsService as never),
+    service: new ShadowMeteringService(appSettings, schedulerRegistry, eventEmitter, databaseService, runRepository as never, secretsService as never),
     eventEmitter,
+    runRepository,
   };
 }
 
@@ -304,5 +309,78 @@ describe('ShadowMeteringService.reconcileProviders (TASK-638 §6)', () => {
 
     expect(update).not.toHaveBeenCalled();
     expect(create).not.toHaveBeenCalled();
+  });
+});
+
+describe('reconciliation run audit trail (TASK-638 §6 rule 6)', () => {
+  it('records SKIPPED runs too — the gap is what an auditor asks about', async () => {
+    const { service, runRepository } = makeService(makeBaseClient());
+
+    const sweep = await service.reconcileProviders(FIXED_NOW);
+
+    // "We have not reconciled openai since March because the credential
+    // expired" is invisible if only successful comparisons are stored.
+    expect(runRepository.create).toHaveBeenCalledTimes(sweep.results.length);
+    const persisted = runRepository.create.mock.calls.map(([entity]) => entity as Record<string, unknown>);
+    expect(persisted.every((run) => run.status === 'skipped')).toBe(true);
+    expect(persisted.every((run) => typeof run.reason === 'string' && (run.reason as string).length > 0)).toBe(true);
+  });
+
+  it('stores NULL — not 0 — for a run that never produced a comparison', async () => {
+    const { service, runRepository } = makeService(makeBaseClient());
+
+    await service.reconcileProviders(FIXED_NOW);
+
+    const [first] = runRepository.create.mock.calls.map(([entity]) => entity as Record<string, unknown>);
+    // A stored 0 would be indistinguishable from "the vendor genuinely billed
+    // nothing", which is the one reading that must never be guessed.
+    expect(first.ledgerQuantity).toBeNull();
+    expect(first.providerQuantity).toBeNull();
+    expect(first.relativeDrift).toBeNull();
+  });
+
+  it('stamps the threshold IN FORCE at run time, so a later change cannot reinterpret the verdict', async () => {
+    const { service, runRepository } = makeService(makeBaseClient());
+
+    await service.reconcileProviders(FIXED_NOW);
+
+    const persisted = runRepository.create.mock.calls.map(([entity]) => entity as Record<string, unknown>);
+    expect(persisted.every((run) => run.thresholdPct === 2)).toBe(true);
+  });
+
+  it('records a reconciled run with both totals and the verdict', async () => {
+    const aggregate = vi.fn().mockResolvedValue({ _sum: { quantitySum: decimalLike(1000) } });
+    const drifting: ProviderReconcilerSpec = {
+      provider: 'driftvendor',
+      secretKey: 'DRIFT_KEY',
+      endpointHint: 'GET /usage',
+      fetchControlTotal: async () => ({ provider: 'driftvendor', windowStart: FIXED_NOW, windowEnd: FIXED_NOW, unit: 'tokens', quantity: 1500 }),
+    };
+    const { service, runRepository } = makeService(makeBaseClient({ aiUsageRollupDaily: { aggregate } }), false, {
+      getSecretOptional: async () => 'sk-test',
+    });
+    (service as unknown as { providerRegistry: Map<string, unknown> }).providerRegistry = buildProviderReconcilerRegistry(
+      async () => 'sk-test',
+      [drifting],
+    );
+
+    await service.reconcileProviders(FIXED_NOW);
+
+    const [run] = runRepository.create.mock.calls.map(([entity]) => entity as Record<string, unknown>);
+    expect(run.status).toBe('reconciled');
+    expect(run.ledgerQuantity).toBe(1000);
+    expect(run.providerQuantity).toBe(1500);
+    expect(run.providerUnit).toBe('tokens');
+    expect(run.breachedThreshold).toBe(true);
+    expect(run.provider).toBe('driftvendor');
+  });
+
+  it('a persistence failure does not fail the sweep — reconciliation is a diagnostic', async () => {
+    const runRepository = makeRunRepository();
+    runRepository.create.mockRejectedValue(new Error('table gone'));
+    const { service } = makeService(makeBaseClient(), false, undefined, runRepository);
+
+    // The sweep still returns its result; the audit write is best-effort.
+    await expect(service.reconcileProviders(FIXED_NOW)).resolves.toMatchObject({ skipped: expect.any(Number) });
   });
 });
