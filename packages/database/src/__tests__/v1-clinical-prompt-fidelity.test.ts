@@ -37,6 +37,14 @@ import {
   BREAST_ENDOCRINE_NEW_REFERRAL_CONTENT,
   BREAST_ENDOCRINE_FOLLOWUP_CONTENT,
   PRE_SUMMARY_CONTENT,
+  DERMATOLOGY_NEW_REFERRAL_CONTENT,
+  DERMATOLOGY_FOLLOWUP_CONTENT,
+  DIETETICS_NEW_REFERRAL_CONTENT,
+  DIETETICS_FOLLOWUP_CONTENT,
+  NEPHROLOGY_NEW_REFERRAL_CONTENT,
+  NEPHROLOGY_FOLLOWUP_CONTENT,
+  SURGICAL_ONCOLOGY_NEW_REFERRAL_CONTENT,
+  SURGICAL_ONCOLOGY_FOLLOWUP_CONTENT,
 } from '../prisma/db_main/seed/07b-arcaai-clinical-content';
 import { V1_CLINICAL_PROMPT_CHECKSUMS } from './v1-clinical-prompt-checksums.fixture';
 
@@ -57,6 +65,14 @@ const CONTENT_BY_CONSTANT_NAME: Record<string, string> = {
   BREAST_ENDOCRINE_NEW_REFERRAL_CONTENT,
   BREAST_ENDOCRINE_FOLLOWUP_CONTENT,
   PRE_SUMMARY_CONTENT,
+  DERMATOLOGY_NEW_REFERRAL_CONTENT,
+  DERMATOLOGY_FOLLOWUP_CONTENT,
+  DIETETICS_NEW_REFERRAL_CONTENT,
+  DIETETICS_FOLLOWUP_CONTENT,
+  NEPHROLOGY_NEW_REFERRAL_CONTENT,
+  NEPHROLOGY_FOLLOWUP_CONTENT,
+  SURGICAL_ONCOLOGY_NEW_REFERRAL_CONTENT,
+  SURGICAL_ONCOLOGY_FOLLOWUP_CONTENT,
 };
 
 function sha256Hex(content: string): string {
@@ -64,9 +80,9 @@ function sha256Hex(content: string): string {
 }
 
 describe('TASK-634 Phase 7 — v1 clinical prompt fidelity fixture', () => {
-  it('pins exactly the 15 ArcaAI clinical content constants', () => {
-    expect(V1_CLINICAL_PROMPT_CHECKSUMS).toHaveLength(15);
-    expect(Object.keys(CONTENT_BY_CONSTANT_NAME)).toHaveLength(15);
+  it('pins exactly the 23 ArcaAI clinical content constants', () => {
+    expect(V1_CLINICAL_PROMPT_CHECKSUMS).toHaveLength(23);
+    expect(Object.keys(CONTENT_BY_CONSTANT_NAME)).toHaveLength(23);
   });
 
   it.each(V1_CLINICAL_PROMPT_CHECKSUMS)(

@@ -21,7 +21,14 @@ import { describe, it, expect, vi } from 'vitest';
 
 import { DEFAULT_POLICIES, PolicyScope } from '../prisma/db_main/seed/01-policy';
 import { SYSTEM_ROLES, TENANT_EXTENDABLE_ROLES, DEFAULT_ROLES } from '../prisma/db_main/seed/03-role';
-import { DEFAULT_DEPARTMENTS, DEFAULT_TENANT_ID, ARCAAI_CLINICAL_DEPARTMENTS } from '../prisma/db_main/seed/04-department';
+import {
+  DEFAULT_DEPARTMENTS,
+  DEFAULT_TENANT_ID,
+  ARCAAI_CLINICAL_DEPARTMENTS,
+  ARCAAI_CLINICAL_DEPARTMENTS_WITHOUT_AGENT,
+  ARCAAI_ALL_CLINICAL_DEPARTMENTS,
+} from '../prisma/db_main/seed/04-department';
+import { ARCAAI_TENANT_AGENTS } from '../prisma/db_main/seed/07a-agent-golden-library';
 import {
   ARCAAI_CLINICAL_TEMPLATES,
   ARCAAI_CLINICAL_VERSIONS,
@@ -89,11 +96,11 @@ describe('Seed Constants (00-constants)', () => {
     expect(SEED_USER_IDS.SYSTEM).toBe(SYSTEM_USER_ID);
   });
 
-  it('should define 25 department IDs (18 Global-tenant + 7 ArcaAI clinical, TASK-592 Workstream D)', () => {
-    expect(Object.keys(SEED_DEPARTMENT_IDS).length).toBe(25);
+  it('should define 29 department IDs (18 Global-tenant + 11 ArcaAI clinical)', () => {
+    expect(Object.keys(SEED_DEPARTMENT_IDS).length).toBe(29);
   });
 
-  it('should define the 7 ArcaAI clinical department IDs (GEN retained as General Medicine + 6 specialties)', () => {
+  it('should define the 11 ArcaAI clinical department IDs — v1 parity (TASK-634 Phase 8b)', () => {
     expect(SEED_DEPARTMENT_IDS.GEN_ARCAAI).toBeDefined();
     expect(SEED_DEPARTMENT_IDS.SURG_ARCAAI).toBeDefined();
     expect(SEED_DEPARTMENT_IDS.RHEUM_ARCAAI).toBeDefined();
@@ -101,6 +108,17 @@ describe('Seed Constants (00-constants)', () => {
     expect(SEED_DEPARTMENT_IDS.ORTH_ARCAAI).toBeDefined();
     expect(SEED_DEPARTMENT_IDS.HEME_ARCAAI).toBeDefined();
     expect(SEED_DEPARTMENT_IDS.BREN_ARCAAI).toBeDefined();
+    expect(SEED_DEPARTMENT_IDS.DERM_ARCAAI).toBeDefined();
+    expect(SEED_DEPARTMENT_IDS.DIET_ARCAAI).toBeDefined();
+    expect(SEED_DEPARTMENT_IDS.NEPH_ARCAAI).toBeDefined();
+    expect(SEED_DEPARTMENT_IDS.SONC_ARCAAI).toBeDefined();
+    // All eleven live in the ArcaAI `…-0001-…` block, and the ids are unique.
+    const arcaaiIds = Object.entries(SEED_DEPARTMENT_IDS)
+      .filter(([key]) => key.endsWith('_ARCAAI'))
+      .map(([, id]) => id);
+    expect(arcaaiIds).toHaveLength(11);
+    expect(new Set(arcaaiIds).size).toBe(11);
+    arcaaiIds.forEach((id) => expect(id.startsWith('70000000-0000-0000-0001-')).toBe(true));
   });
 
   it('should have retired the ArcaAI CARD + ER demo department IDs (TASK-592 Workstream D)', () => {
@@ -692,35 +710,86 @@ describe('Department Seed Data', () => {
 describe('ArcaAI Clinical Department Seed Data', () => {
   const ARCAAI = SEED_CUSTOMER_TENANT_IDS.ARCAAI;
 
-  it('should define the 7 v1 clinical departments for the ArcaAI tenant', () => {
-    expect(ARCAAI_CLINICAL_DEPARTMENTS.length).toBe(7);
-    const codes = ARCAAI_CLINICAL_DEPARTMENTS.map((d) => d.code).sort();
-    expect(codes).toEqual(['BREN', 'GEN', 'HEME', 'NEUR', 'ORTH', 'RHEUM', 'SURG'].sort());
+  // ---------------------------------------------------------------------------
+  // HOPE v1's canonical department set — ELEVEN, and the owner's strict rule for
+  // TASK-634 Phase 8b is that the ArcaAI tenant carries EXACTLY these and no
+  // others.
+  //
+  // Source of truth is the RUNNING v1 SMR pod (rancher cluster c-9lwv8,
+  // namespace apps, pod apps-smr-…), re-verified 2026-08-08:
+  //   `smr.models.prompts_json.DEPT_VISIT_SCHEMAS` → 22 entries = 11 departments
+  //   × {new_referral, followup}; `select_prompt_template` has 11 branches.
+  // v1 has no Department table at all, so "v1's departments" IS this key set.
+  // ---------------------------------------------------------------------------
+  const V1_DEPARTMENT_KEY_TO_ARCAAI_CODE: Record<string, string> = {
+    breast_endocrine: 'BREN',
+    dermatology: 'DERM',
+    dietetics: 'DIET',
+    hematology: 'HEME',
+    medicine: 'GEN',
+    nephrology: 'NEPH',
+    neurology: 'NEUR',
+    orthopedics: 'ORTH',
+    rheumatology: 'RHEUM',
+    surgery: 'SURG',
+    surgical_oncology: 'SONC',
+  };
+
+  it('should carry EXACTLY as many clinical departments as HOPE v1 — eleven (owner strict rule)', () => {
+    expect(Object.keys(V1_DEPARTMENT_KEY_TO_ARCAAI_CODE)).toHaveLength(11);
+    expect(ARCAAI_ALL_CLINICAL_DEPARTMENTS).toHaveLength(11);
+  });
+
+  it('should match v1 department-for-department — no extra, no missing (owner strict rule)', () => {
+    const seeded = new Set(ARCAAI_ALL_CLINICAL_DEPARTMENTS.map((d) => d.code));
+    const expected = new Set(Object.values(V1_DEPARTMENT_KEY_TO_ARCAAI_CODE));
+    expect([...seeded].sort()).toEqual([...expected].sort());
+    // Stated the other way round so a failure names the offending v1 key.
+    Object.entries(V1_DEPARTMENT_KEY_TO_ARCAAI_CODE).forEach(([v1Key, code]) => {
+      expect(seeded.has(code), `v1 department "${v1Key}" has no ArcaAI department (code ${code})`).toBe(true);
+    });
+  });
+
+  it('should split the eleven into the 7 agent-bound + 4 agent-free rows without overlap', () => {
+    expect(ARCAAI_CLINICAL_DEPARTMENTS.map((d) => d.code).sort()).toEqual(['BREN', 'GEN', 'HEME', 'NEUR', 'ORTH', 'RHEUM', 'SURG']);
+    expect(ARCAAI_CLINICAL_DEPARTMENTS_WITHOUT_AGENT.map((d) => d.code).sort()).toEqual(['DERM', 'DIET', 'NEPH', 'SONC']);
+    expect(ARCAAI_ALL_CLINICAL_DEPARTMENTS).toEqual([...ARCAAI_CLINICAL_DEPARTMENTS, ...ARCAAI_CLINICAL_DEPARTMENTS_WITHOUT_AGENT]);
+  });
+
+  it('should give the four Phase 8b departments NO default DepartmentAgent', () => {
+    // An agent binding is per-department; before TASK-635 C2 it ignored visit
+    // type entirely, and even now an agent is an extra resolution tier these
+    // rows do not need — the visit-type columns below are the v1-faithful path.
+    const agentFreeIds = new Set(ARCAAI_CLINICAL_DEPARTMENTS_WITHOUT_AGENT.map((d) => d.id));
+    ARCAAI_TENANT_AGENTS.forEach((agent) => {
+      expect(agentFreeIds.has(agent.departmentId as string), `department ${agent.departmentId} must carry no default agent`).toBe(false);
+    });
+    expect(ARCAAI_TENANT_AGENTS).toHaveLength(ARCAAI_CLINICAL_DEPARTMENTS.length);
   });
 
   it('should repurpose the retained GEN_ARCAAI id as General Medicine', () => {
-    const gen = ARCAAI_CLINICAL_DEPARTMENTS.find((d) => d.id === SEED_DEPARTMENT_IDS.GEN_ARCAAI);
+    const gen = ARCAAI_ALL_CLINICAL_DEPARTMENTS.find((d) => d.id === SEED_DEPARTMENT_IDS.GEN_ARCAAI);
     expect(gen).toBeDefined();
     expect(gen?.code).toBe('GEN');
     expect(gen?.name).toBe('General Medicine');
   });
 
   it('should bind every ArcaAI clinical department to the ArcaAI tenant', () => {
-    ARCAAI_CLINICAL_DEPARTMENTS.forEach((dept) => {
+    ARCAAI_ALL_CLINICAL_DEPARTMENTS.forEach((dept) => {
       expect(dept.tenantId).toBe(ARCAAI);
     });
   });
 
   it('should have unique, valid-UUID department IDs across all ArcaAI clinical rows', () => {
-    const ids = ARCAAI_CLINICAL_DEPARTMENTS.map((d) => d.id);
+    const ids = ARCAAI_ALL_CLINICAL_DEPARTMENTS.map((d) => d.id);
     expect(new Set(ids).size).toBe(ids.length);
     ids.forEach((id) => expect(id).toMatch(UUID_REGEX));
   });
 
   it('should wire both visit-type prompt-id columns on every ArcaAI clinical department', () => {
-    ARCAAI_CLINICAL_DEPARTMENTS.forEach((dept) => {
-      expect(dept.newPatientPromptId).not.toBeNull();
-      expect(dept.revisitPromptId).not.toBeNull();
+    ARCAAI_ALL_CLINICAL_DEPARTMENTS.forEach((dept) => {
+      expect(dept.newPatientPromptId, `${dept.code} new-patient column`).not.toBeNull();
+      expect(dept.revisitPromptId, `${dept.code} revisit column`).not.toBeNull();
       // new-referral and revisit MUST differ — the visit-type split is the
       // whole reason legacy columns are used instead of a single agent.
       expect(dept.newPatientPromptId).not.toBe(dept.revisitPromptId);
@@ -731,11 +800,20 @@ describe('ArcaAI Clinical Department Seed Data', () => {
     // Mirrors the resolver tier-1 legacy contract: Department.{new,revisit}PromptId
     // must resolve to an APPROVED PromptTemplate owned by the ArcaAI tenant.
     const approvedById = new Map(ARCAAI_CLINICAL_TEMPLATES.filter((t) => t.status === 'APPROVED').map((t) => [t.id, t]));
-    ARCAAI_CLINICAL_DEPARTMENTS.forEach((dept) => {
+    ARCAAI_ALL_CLINICAL_DEPARTMENTS.forEach((dept) => {
       [dept.newPatientPromptId, dept.revisitPromptId].forEach((promptId) => {
         const tpl = approvedById.get(promptId);
         expect(tpl, `${dept.code} → ${promptId} must be an APPROVED ArcaAI template`).toBeDefined();
         expect(tpl?.tenantId).toBe(ARCAAI);
+      });
+    });
+  });
+
+  it('should bind each visit-type template to its OWN department', () => {
+    const templateById = new Map(ARCAAI_CLINICAL_TEMPLATES.map((t) => [t.id, t]));
+    ARCAAI_ALL_CLINICAL_DEPARTMENTS.forEach((dept) => {
+      [dept.newPatientPromptId, dept.revisitPromptId].forEach((promptId) => {
+        expect(templateById.get(promptId)?.departmentId, `${dept.code} → ${promptId} must be scoped to ${dept.code}`).toBe(dept.id);
       });
     });
   });
@@ -745,7 +823,7 @@ describe('ArcaAI Clinical Department Seed Data', () => {
     // ONE pre-summary prompt per tenant, with department/visit type as variables
     // inside it. Setting `preSummaryPromptId` per department re-creates the
     // category error that let the department-agent tier hijack pre-summary.
-    ARCAAI_CLINICAL_DEPARTMENTS.forEach((dept) => {
+    ARCAAI_ALL_CLINICAL_DEPARTMENTS.forEach((dept) => {
       expect(dept.preSummaryPromptId, `${dept.code} must not department-scope pre-summary`).toBeNull();
     });
   });
@@ -768,8 +846,10 @@ describe('ArcaAI Clinical Department Seed Data', () => {
 describe('ArcaAI Clinical Prompt Library Seed Data', () => {
   const ARCAAI = SEED_CUSTOMER_TENANT_IDS.ARCAAI;
 
-  it('should define 15 templates (14 dept × visit-type + 1 shared pre-summary)', () => {
-    expect(ARCAAI_CLINICAL_TEMPLATES.length).toBe(15);
+  it('should define 23 templates (11 departments × 2 visit types + 1 shared pre-summary)', () => {
+    // 22 = v1's `DEPT_VISIT_SCHEMAS` cardinality, department-for-department.
+    expect(ARCAAI_CLINICAL_TEMPLATES.length).toBe(23);
+    expect(ARCAAI_CLINICAL_TEMPLATES.filter((t) => t.id !== ARCAAI_CLINICAL_TEMPLATE_IDS.PRE_SUMMARY)).toHaveLength(22);
   });
 
   it('should own every template + version by the ArcaAI tenant', () => {
@@ -786,7 +866,7 @@ describe('ArcaAI Clinical Prompt Library Seed Data', () => {
     });
   });
 
-  it('should scope the 14 department templates DEPARTMENT_DEFAULT and the pre-summary TENANT_DEFAULT', () => {
+  it('should scope the 22 department templates DEPARTMENT_DEFAULT and the pre-summary TENANT_DEFAULT', () => {
     const preSummary = ARCAAI_CLINICAL_TEMPLATES.find((t) => t.id === ARCAAI_CLINICAL_TEMPLATE_IDS.PRE_SUMMARY);
     expect(preSummary?.scope).toBe('TENANT_DEFAULT');
     expect(preSummary?.departmentId).toBeNull();
