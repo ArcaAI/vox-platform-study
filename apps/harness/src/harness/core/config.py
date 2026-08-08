@@ -160,6 +160,12 @@ class RetrievalConfig(BaseSettings):
 
     enabled: bool = False
     qdrant_url: str = "http://localhost:6333"
+    # Qdrant ships with NO authentication (TASK-624 Q-04). Unauthenticated is
+    # correct for local dev; in-cluster it means any pod in the namespace can
+    # read or delete the tenant knowledge corpus. SecretStr because the settings
+    # object is logged at startup. Default None, not "" — an empty string is
+    # itself a credential to Qdrant, so absent must mean absent.
+    qdrant_api_key: SecretStr | None = None
     collection: str = "knowledge_chunks"
     # LM Studio OpenAI-compatible root (already includes ``/v1``); the embeddings
     # client posts to ``{base_url}/embeddings``.
@@ -482,6 +488,16 @@ class Settings(BaseSettings):
     # metrics + the trajectory spine cover the observability need. ``_add_otel_context``
     # in core/logging.py is kept: it is inert until something installs a provider.
     metrics_enabled: bool = True
+
+    # Bind address for the Temporal SDK's Prometheus exporter in the WORKER
+    # process (TASK-636 OBS-06). Separate from the FastAPI app's :8866 — the
+    # worker is its own process and shares no HTTP server with it.
+    #
+    # Loopback by default: this is a PHI-processing service and must not become
+    # LAN-reachable by accident. `scripts/dev-service.sh` takes the same posture
+    # for the HTTP ports; containers override with 0.0.0.0.
+    temporal_metrics_host: str = "127.0.0.1"
+    temporal_metrics_port: int = 9464
 
     # Sub-configs (loaded from their own env prefixes)
     temporal: TemporalConfig = Field(default_factory=TemporalConfig)
