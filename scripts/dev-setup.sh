@@ -104,7 +104,11 @@ fi
 green "→ Postgres ready; Vault AppRole bootstrap complete."
 
 bold "── Step 3/6: applying migrations + seed (pnpm db:all) ───────────────"
-pnpm db:all
+# Seeding is opt-in and defaults to RUN_SEED=none (TASK-616) — this local dev
+# bootstrap wants the full demo fixture set (incl. the super_admin login), so
+# it opts in explicitly. NODE_ENV=development satisfies seed-mode.ts's guard
+# that RUN_SEED=all is refused unless the environment is explicitly stated.
+RUN_SEED=all NODE_ENV=development pnpm db:all
 
 bold "── Step 4/6: refreshing Vault AppRole creds in .env.dev ─────────────"
 "$SCRIPT_DIR/refresh-vault-creds.sh"

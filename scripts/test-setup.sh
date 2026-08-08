@@ -140,7 +140,11 @@ green "→ .env.test Vault config provisioned (role_id ${ROLE_ID:0:8}…, raw re
 bold "── Step 4/6: applying migrations + seed ─────────────────────────────"
 pnpm db:generate
 pnpm test:db:push
-pnpm test:db:seed
+# Seeding is opt-in and defaults to RUN_SEED=none (TASK-616) — this local test
+# bootstrap wants the full demo fixture set (incl. the super_admin login), so
+# it opts in explicitly. NODE_ENV=test satisfies seed-mode.ts's guard that
+# RUN_SEED=all is refused unless the environment is explicitly stated.
+RUN_SEED=all NODE_ENV=test pnpm test:db:seed
 
 bold "── Step 5/6: bootstrapping Vault dynamic DB credentials ─────────────"
 yellow "→ SKIPPED on purpose: test keeps static Postgres creds for CI reliability"
