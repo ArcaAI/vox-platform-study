@@ -1,12 +1,17 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { createAllowedOrigin, deleteAllowedOrigin, getAllowedOrigin, listAllowedOrigins, updateAllowedOrigin } from './client';
+import { createAllowedOrigin, deleteAllowedOrigin, getAllowedOrigin, getAllowedOriginPosture, listAllowedOrigins, updateAllowedOrigin } from './client';
 import { allowedOriginKeys } from './keys';
 import type { CreateAllowedOriginRequest, UpdateAllowedOriginRequest } from './types';
 
 export function useAllowedOrigins(enabled: boolean) {
   return useQuery({ queryKey: allowedOriginKeys.list(), queryFn: listAllowedOrigins, enabled });
+}
+
+/** FR-4 — enforcement posture, reachable by both tenant and global admins. */
+export function useAllowedOriginPosture() {
+  return useQuery({ queryKey: allowedOriginKeys.posture(), queryFn: getAllowedOriginPosture });
 }
 
 export function useAllowedOrigin(id: string | null, enabled: boolean) {

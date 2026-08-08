@@ -187,6 +187,12 @@ export const DEFAULT_POLICIES = [
       // routes). GLOBAL_ADMIN already covers this via the wildcard `manage
       // all` rule above.
       { action: 'manage', subject: 'TenantIdentityProvider', conditions: { tenantId: '${context.tenantId}' } },
+      // Tenant admins manage their own tenant's Vox SDK CORS
+      // allowed-origin rows (TASK-641). Tenant-scoped; the service pins every
+      // op to the caller's tenant and gates wildcard/pattern origins +
+      // SYSTEM-tenant rows to GLOBAL_ADMIN only (not expressible here).
+      // GLOBAL_ADMIN already covers this via the wildcard `manage all` rule.
+      { action: 'manage', subject: 'TenantAllowedOrigin', conditions: { tenantId: '${context.tenantId}' } },
     ],
   },
   {

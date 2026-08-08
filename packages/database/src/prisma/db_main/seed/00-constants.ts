@@ -61,6 +61,12 @@
  *   98000000-xxxx  →  Transcription Jobs (ASR job queue rows)
  *   A0000000-xxxx  →  Audit Log Entries
  *   B0000000-xxxx  →  Plan Entitlements
+ *   C0000000-xxxx  →  Tenant Allowed Origins — bootstrap loopback rows ONLY.
+ *                     Not used by any seed file: these ids are allocated by
+ *                     `migrations/20260808160000_task_641_bootstrap_loopback_origins`,
+ *                     which guarantees the six SYSTEM loopback rows exist in
+ *                     environments that never run the seed (TASK-641 H-2).
+ *                     Listed here so the block is not handed out twice.
  */
 
 // =============================================================================

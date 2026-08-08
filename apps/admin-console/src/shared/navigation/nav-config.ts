@@ -185,7 +185,6 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
   },
   { route: '/billing', label: 'Billing & invoices', tier: '10-19', icon: IconReceipt, required: [['manage', 'all']], implemented: true },
   { route: '/tools-mcp', label: 'Tools & MCP', tier: '10-19', icon: IconPlugConnected, required: [['manage', 'all']], implemented: true },
-  { route: '/allowed-origins', label: 'Allowed origins', tier: '10-19', icon: IconWorld, required: [['manage', 'all']], implemented: true },
   { route: '/queues', label: 'Queues & jobs', tier: '10-19', icon: IconStack2, required: [['manage', 'all']], implemented: true },
   { route: '/schedulers', label: 'Schedulers', tier: '10-19', icon: IconCalendarTime, required: [['manage', 'all']], implemented: true },
   { route: '/audit-logs', label: 'Audit logs', tier: '10-19', icon: IconHistory, required: [['read', 'AuditLog']], implemented: true },
@@ -252,6 +251,20 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     required: [
       ['read', 'TenantIdentityProvider'],
       ['manage', 'TenantIdentityProvider'],
+    ],
+    implemented: true,
+  },
+  // Retiered from 10-19 (TASK-641): tenant admins now manage their own
+  // exact-origin rows; wildcard/SYSTEM rows stay GLOBAL_ADMIN-only, enforced
+  // in the service, not the nav gate.
+  {
+    route: '/allowed-origins',
+    label: 'Allowed origins',
+    tier: '30-49',
+    icon: IconWorld,
+    required: [
+      ['read', 'TenantAllowedOrigin'],
+      ['manage', 'TenantAllowedOrigin'],
     ],
     implemented: true,
   },

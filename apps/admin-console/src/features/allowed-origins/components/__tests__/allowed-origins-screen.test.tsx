@@ -61,7 +61,13 @@ interface RecordedCall {
   body: unknown;
 }
 
-function installFetchStub(session: typeof SESSION, handler: (url: string, method: string) => Response | Promise<Response>): RecordedCall[] {
+function installFetchStub(
+  session: typeof SESSION,
+  handler: (url: string, method: string) => Response | Promise<Response>,
+  // FR-4 posture — defaults to "on" so every test that isn't specifically
+  // exercising the banner doesn't need to know this endpoint exists.
+  posture: { enforcementEnabled: boolean } = { enforcementEnabled: true },
+): RecordedCall[] {
   const calls: RecordedCall[] = [];
   vi.stubGlobal(
     'fetch',
@@ -76,6 +82,7 @@ function installFetchStub(session: typeof SESSION, handler: (url: string, method
       });
       if (url === '/api/auth/session') return Response.json(session);
       if (url.includes('/user/me/settings')) return method === 'GET' ? Response.json([]) : Response.json({ success: true });
+      if (url === '/api/hope/admin/allowed-origins/posture') return Response.json(posture);
       return handler(url, method);
     }),
   );
@@ -98,6 +105,24 @@ describe('AllowedOriginsScreen', () => {
     expect(await screen.findByRole('grid', { name: 'Allowed origins' })).toBeDefined();
     expect(await screen.findByText('https://app.example.org')).toBeDefined();
     expect(screen.getByText('https://staging.example.org')).toBeDefined();
+    // Quiet "on" confirmation — enforcement defaults to on in this stub.
+    expect(await screen.findByText(/origin enforcement is on/i)).toBeDefined();
+  });
+
+  // TASK-641 FR-1/FR-5: the screen moved from the (global) tier to the
+  // (tenant) tier, so a TENANT_ADMIN session now reaches it for their own
+  // tenant's rows — this inverts the previous "gates non-elevated sessions"
+  // assertion.
+  it('renders the allow-list grid for a tenant-admin session', async () => {
+    installFetchStub(TENANT_ADMIN_SESSION, (url) => {
+      if (url === '/api/hope/admin/allowed-origins') return Response.json(ORIGINS);
+      throw new Error(`Unhandled fetch: ${url}`);
+    });
+    renderWithProviders(<AllowedOriginsScreen />);
+
+    expect(await screen.findByRole('grid', { name: 'Allowed origins' })).toBeDefined();
+    expect(await screen.findByText('https://app.example.org')).toBeDefined();
+    expect(screen.queryByText('Global admins only')).toBeNull();
   });
 
   it('asks an elevated session without a working tenant to select one without fetching the allow-list', async () => {
@@ -112,14 +137,33 @@ describe('AllowedOriginsScreen', () => {
     expect(screen.queryByRole('grid', { name: 'Allowed origins' })).toBeNull();
   });
 
-  it('gates non-elevated sessions without fetching the allow-list', async () => {
-    installFetchStub(TENANT_ADMIN_SESSION, () => {
-      throw new Error('allowed-origins must not be fetched for tenant admins');
+  it('shows a prominent warning when origin enforcement is off, platform-wide (FR-4)', async () => {
+    installFetchStub(
+      SESSION,
+      (url) => {
+        if (url === '/api/hope/admin/allowed-origins') return Response.json(ORIGINS);
+        throw new Error(`Unhandled fetch: ${url}`);
+      },
+      { enforcementEnabled: false },
+    );
+    renderWithProviders(<AllowedOriginsScreen />);
+
+    const banner = await screen.findByRole('alert');
+    expect(within(banner).getByText(/origin enforcement is off/i)).toBeDefined();
+    expect(within(banner).getByText(/no effect/i)).toBeDefined();
+    expect(screen.queryByText(/origin enforcement is on/i)).toBeNull();
+  });
+
+  it('drops the stale CORS_ALLOWED_ORIGINS fallback copy from the empty state (B-5)', async () => {
+    installFetchStub(SESSION, (url, method) => {
+      if (url === '/api/hope/admin/allowed-origins' && method === 'GET') return Response.json([]);
+      throw new Error(`Unhandled fetch: ${url} ${method}`);
     });
     renderWithProviders(<AllowedOriginsScreen />);
 
-    expect(await screen.findByText('Global admins only')).toBeDefined();
-    expect(screen.queryByRole('grid', { name: 'Allowed origins' })).toBeNull();
+    expect(await screen.findByText('No origins registered')).toBeDefined();
+    expect(screen.queryByText(/CORS_ALLOWED_ORIGINS/)).toBeNull();
+    expect(screen.getByText(/no fallback allow-list/i)).toBeDefined();
   });
 
   it('registers an origin with the expected POST payload', async () => {
@@ -160,5 +204,53 @@ describe('AllowedOriginsScreen', () => {
     const deletion = calls.find((call) => call.method === 'DELETE');
     expect(deletion?.url).toBe(`/api/hope/admin/allowed-origins/${ORIGINS[0].id}`);
     expect(deletion?.headers.get('if-match')).toBeNull();
+  });
+
+  // FR-2: a non-elevated caller gets a guaranteed 403 from the server on a
+  // wildcard/pattern origin — the form suppresses the attempt instead of
+  // letting it round-trip to a failure.
+  it('suppresses wildcard entry for a non-elevated (tenant-admin) session', async () => {
+    const calls = installFetchStub(TENANT_ADMIN_SESSION, (url, method) => {
+      if (url === '/api/hope/admin/allowed-origins' && method === 'GET') return Response.json([]);
+      throw new Error(`Unhandled fetch: ${url} ${method}`);
+    });
+    renderWithProviders(<AllowedOriginsScreen />);
+    await screen.findByText('No origins registered');
+
+    fireEvent.click(screen.getAllByRole('button', { name: /register origin/i })[0]);
+    const dialog = await screen.findByRole('dialog');
+
+    // Elevated-only wildcard hint is gone; the reason is stated instead.
+    expect(within(dialog).queryByText(/subdomains at any depth/i)).toBeNull();
+    expect(within(dialog).getByText(/wildcard patterns are managed by platform administrators/i)).toBeDefined();
+
+    const originField = within(dialog).getByLabelText(/^origin/i);
+    fireEvent.change(originField, { target: { value: 'https://*.example.org:*' } });
+    fireEvent.change(within(dialog).getByLabelText(/^label/i), { target: { value: 'New app' } });
+
+    const submit = within(dialog).getByRole('button', { name: /register origin/i }) as HTMLButtonElement;
+    expect(submit.disabled).toBe(true);
+    fireEvent.click(submit);
+
+    expect(calls.some((call) => call.method === 'POST')).toBe(false);
+  });
+
+  it('keeps the full wildcard hint and an enabled submit for an elevated session', async () => {
+    installFetchStub(SESSION, (url, method) => {
+      if (url === '/api/hope/admin/allowed-origins' && method === 'GET') return Response.json([]);
+      throw new Error(`Unhandled fetch: ${url} ${method}`);
+    });
+    renderWithProviders(<AllowedOriginsScreen />);
+    await screen.findByText('No origins registered');
+
+    fireEvent.click(screen.getAllByRole('button', { name: /register origin/i })[0]);
+    const dialog = await screen.findByRole('dialog');
+
+    expect(within(dialog).getByText(/subdomains at any depth/i)).toBeDefined();
+
+    fireEvent.change(within(dialog).getByLabelText(/^origin/i), { target: { value: 'https://*.example.org:*' } });
+    fireEvent.change(within(dialog).getByLabelText(/^label/i), { target: { value: 'New app' } });
+    const submit = within(dialog).getByRole('button', { name: /register origin/i }) as HTMLButtonElement;
+    expect(submit.disabled).toBe(false);
   });
 });

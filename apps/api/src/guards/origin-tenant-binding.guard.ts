@@ -88,9 +88,13 @@ export class OriginTenantBindingGuard implements CanActivate {
   ) {}
 
   canActivate(context: ExecutionContext): boolean {
-    // RULE 0 (TASK-610 §4C) — origin enforcement is OFF BY DEFAULT, and while
-    // it is off this guard is a pass-through: it never 404s a tenant mismatch
-    // and never touches the registry. §4C.3 states the consequence plainly —
+    // RULE 0 (TASK-610 §4C, default reversed by TASK-641 FR-6) — origin
+    // enforcement is now ON BY DEFAULT (`origin.enforcementEnabled` defaults
+    // `true`), so this guard is LIVE unless an operator has turned the switch
+    // off — or the process has not yet installed the resolver (the pre-boot
+    // window; see `cors.config.ts`). While it IS off this guard is a
+    // pass-through: it never 404s a tenant mismatch and never touches the
+    // registry. §4C.3 states the consequence of that state plainly —
     // "a request from any origin may act on any tenant it can authenticate to";
     // authentication and tenancy remain the enforcing controls, the ORIGIN
     // binding simply does not apply.

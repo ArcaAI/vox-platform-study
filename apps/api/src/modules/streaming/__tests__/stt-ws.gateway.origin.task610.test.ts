@@ -102,9 +102,12 @@ describe('SttWsGateway — origin registry CSWSH guard (TASK-610 D-6, T-7)', () 
   beforeEach(() => {
     vi.clearAllMocks();
     // TASK-610 §4C — the CSWSH check is dormant unless `origin.enforcementEnabled`
-    // is on, and it ships OFF. Every case below describes the ENFORCING
-    // behaviour, so the switch is armed here; the dormant default is pinned in
-    // `stt-ws.gateway.enforcement.task610.test.ts`.
+    // is on. Since TASK-641 FR-6 it ships ON (descriptor default `true`), so
+    // arming the switch here reproduces the shipped posture rather than
+    // overriding it; the dormant/off state is pinned in
+    // `stt-ws.gateway.enforcement.task610.test.ts`. It is still set explicitly
+    // because `cors.config.ts` has no resolver installed in a unit test — the
+    // descriptor default reaches it only through `PlatformKnobsBinder`.
     setOriginEnforcementResolver(() => true);
     mockSessionService = createMockSessionService();
     mockBridgeService = createMockBridgeService();

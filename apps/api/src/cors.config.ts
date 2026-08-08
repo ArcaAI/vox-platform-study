@@ -1,11 +1,12 @@
 /**
  * CORS origin admission for the API gateway (TASK-610 lane W3-A; env-var
- * removal — TASK-610 §4A.1, W5-C).
+ * removal — TASK-610 §4A.1, W5-C, completed by TASK-641 lane D / FR-8).
  *
  * ONE RULE: an origin is admitted iff it is REGISTERED — a `TenantAllowedOrigin`
  * row, reachable here through `IOriginRegistry` (plan §3.0, FR-3). There is no
  * wildcard, no scheme-based catch-all, no hostname compiled into this file, and
- * — since §4A.1 — no environment variable anywhere in the decision.
+ * — since §4A.1 and TASK-641 B-7 — no environment variable anywhere in the
+ * decision. Not as an allow-list, and not as a behavioural branch.
  *
  * WHAT THIS FILE DELETED, and why each deletion matters:
  *
@@ -29,6 +30,37 @@
  *     load-bearing behavior change: an unreachable or not-yet-loaded registry
  *     now DENIES every browser origin instead of falling back to env. That is
  *     the safe direction, and it is a hard dependency rather than a soft one.
+ *   • the `development`-only LOOPBACK allowance and its `isLoopbackOrigin`
+ *     helper (TASK-641 B-7) — the LAST environment variable participating in a
+ *     CORS decision. It admitted `localhost` / `127.0.0.0/8` / `::1` whenever
+ *     `NODE_ENV === 'development'`, overriding a registry that had just said
+ *     no, so a developer's admission rule and everyone else's were different
+ *     code. Owner directive FR-8 leaves no room for it: "no env var may
+ *     participate in any CORS decision — not as an allow-list, and not as a
+ *     behavioural branch."
+ *
+ *     WHAT REPLACES IT: SYSTEM-tenant rows for all six loopback spellings —
+ *     `localhost`, `127.0.0.1` and `[::1]`, each on http and https (TASK-641
+ *     §3.1 step 2, widened by lane G). They are ordinary registry
+ *     rows and take the ordinary path, so local development and production are
+ *     decided by the same three lines. Do NOT re-add a code fallback "just in
+ *     case" the rows are missing — a hardcoded env-independent branch is the
+ *     same defect wearing a different hat, and it would make the seed's
+ *     correctness untestable by making its absence invisible.
+ *
+ *     THE COST, stated so it is not rediscovered during an outage (hazard H-2):
+ *     an environment with no loopback row refuses EVERY browser origin,
+ *     loopback included, recoverable only by writing a row. That is why those
+ *     rows are guaranteed by a MIGRATION
+ *     (`20260808160000_task_641_bootstrap_loopback_origins`) rather than by the
+ *     `RUN_SEED`-gated seed, and why FR-7 is load-bearing rather than a nicety.
+ *     There are SIX of them, not two: the deleted branch used `isLoopbackHost`,
+ *     covering `localhost` ∪ `127.0.0.0/8` ∪ `::1` on EITHER scheme, so
+ *     `https://localhost:*`, `https://127.0.0.1:*`, `http://[::1]:*` and
+ *     `https://[::1]:*` are seeded alongside the two http rows. `127.0.0.2`-
+ *     `127.0.0.255` stay uncovered — the pattern grammar cannot express them
+ *     (see the migration's residual-gap note); register such an address as its
+ *     own exact row.
  *
  * WHAT SURVIVED, and why each survival matters:
  *
@@ -37,37 +69,63 @@
  *      wholesale, and it buys nothing: CORS is a browser mechanism, and a
  *      client that can omit the header can equally forge it. The real tenant
  *      isolation control is `OriginTenantBindingGuard` (FR-4), post-auth.
- *   2. A `development`-only LOOPBACK allowance — the one remaining `NODE_ENV`
- *      branch, kept so a fresh clone with an empty database can still run the
- *      SDK playground on `http://localhost:5173`. It is scoped to loopback
- *      hosts only (`localhost` / `127.0.0.0/8` / `::1`), which browsers treat
- *      as a secure context, and it is unreachable in staging/production.
+ *   2. `logCorsDecision`'s `NODE_ENV`/`LOG_LEVEL` read — the only `process.env`
+ *      left in this file, and deliberately kept. It selects LOG VERBOSITY, not
+ *      admission: both of that function's branches return `allowed` unchanged,
+ *      so no value of either variable can move an origin from refused to
+ *      admitted. FR-8 governs the CORS decision; deleting a diagnostic would
+ *      cost the operator their only per-origin trace and buy nothing. The T-10
+ *      guard in `cors.config.task641.test.ts` excises exactly that function and
+ *      asserts over everything else — so this exception is narrow, explicit,
+ *      and mechanically enforced rather than a matter of reviewer memory.
  *
  * CORS is advisory. Everything here is browser-enforced and proves nothing
  * about a non-browser caller — it narrows the blast radius of a hostile page,
  * it is not an authorization boundary.
  *
- * ── §4C: NONE OF THE ABOVE APPLIES UNTIL AN OPERATOR TURNS IT ON ────────────
+ * ── §4C: THE SWITCH — NOW DEFAULT-ON (TASK-641 FR-6 REVERSES TASK-610 §4C) ──
  *
- * Everything described so far is now gated behind ONE platform switch,
- * `origin.enforcementEnabled` (`global-kv`, `globalOnly`, DEFAULT `false`), by
- * owner directive:
+ * Everything described so far is gated behind ONE platform switch,
+ * `origin.enforcementEnabled` (`global-kv`, `globalOnly`, DEFAULT **`true`**
+ * since TASK-641). Read the history, because this file used to say the
+ * opposite and the reversal is deliberate:
  *
+ *   TASK-610 §4C shipped the switch DEFAULT `false` on the owner directive
  *   "make sure by default (apply to all tenants including SYSTEM, GLOBAL) no
- *    origin checks, ALL is ALLOWED for calling and using our APIs"
+ *    origin checks, ALL is ALLOWED for calling and using our APIs".
  *
- * While it is false, `isOriginAllowed` admits every origin WITHOUT consulting
- * the registry, `OriginTenantBindingGuard` passes every request, and the STT WS
- * handshake accepts every origin. This is a DEFAULT, not a deletion: none of
- * the machinery above is removed, and flipping the switch restores all of it
- * live. The point is that an unseeded deployment cannot lock itself out, and
- * hardening is an operator decision rather than a redeploy.
+ *   TASK-641 FR-6 reverses it on a later owner directive — "no default is off".
+ *   Enforcement is now ON in every environment, for every tenant, with no row
+ *   present and no opt-in step. The descriptor default lives in
+ *   `platform-ops.descriptors.ts` (`origin.enforcementEnabled`); this file only
+ *   READS whatever the binder resolves.
  *
- * What makes the permissive default an ordinary public-API posture rather than
- * a data-leak path is `credentials: false` (see `buildCorsOptions`). Allow-all
- * origins WITH credentials is a cross-origin READ primitive.
+ * While the switch is false — an operator turning it off, not a default any
+ * more — `isOriginAllowed` admits every origin WITHOUT consulting the registry,
+ * `OriginTenantBindingGuard` passes every request, and the STT WS handshake
+ * accepts every origin. None of the machinery above is removed either way, and
+ * flipping the switch takes effect live, with no redeploy.
+ *
+ * WHAT STOPS THIS LOCKING EVERYONE OUT (hazard H-2). Default-ON plus no env
+ * fallback plus no dev branch plus TASK-616's opt-in `RUN_SEED` would mean an
+ * environment that skipped the seed refuses EVERY browser origin, loopback
+ * included. The six SYSTEM loopback rows are therefore guaranteed by a
+ * MIGRATION — `20260808160000_task_641_bootstrap_loopback_origins` — the same
+ * mechanism that guarantees the SYSTEM tenant row itself, so every environment
+ * has them whether or not it seeds. Do NOT re-introduce a code-level fallback
+ * to "protect" against a missing row; that is B-7 wearing a different hat, and
+ * it would make the migration's correctness untestable.
+ *
+ * There remains ONE genuinely permissive window, and it is a property of this
+ * process rather than of the platform: until `PlatformKnobsBinder` installs the
+ * resolver, `isOriginEnforcementEnabled()` returns false (see below). That is
+ * the pre-boot gap, measured in the module-graph startup, not a posture.
+ *
+ * `credentials: false` (see `buildCorsOptions`) is unchanged and stays
+ * unchanged (H-4): allow-all origins WITH credentials is a cross-origin READ
+ * primitive, and enforcement-on does not create a need for cookies.
  */
-import { isLoopbackHost, normalizeOrigin, type OriginIndexResolver } from '@arcaai/applications';
+import { type OriginIndexResolver } from '@arcaai/applications';
 import { Logger } from '@nestjs/common';
 import { CORS_ALLOWED_HEADERS, CORS_EXPOSED_HEADERS } from './cors.headers';
 
@@ -101,11 +159,17 @@ export function setOriginRegistryResolver(resolver: OriginIndexResolver | null):
  * for the same reason the registry one is: this module is imported by `main.ts`
  * before the Nest module graph exists, so it cannot inject `TenantSettingsService`.
  *
- * `null` — no resolver installed — is the TRUE DEFAULT of the process, and it
- * means PERMISSIVE. That direction is deliberate and is the opposite of the
- * registry resolver's: an absent registry denies (there is no allow-list to
- * consult), an absent enforcement switch admits (nobody has asked for
- * enforcement).
+ * `null` — no resolver installed — means PERMISSIVE. Since TASK-641 FR-6 this
+ * is NO LONGER the platform default (the descriptor defaults `true`); it is the
+ * PRE-BOOT state of this process, in force only from module load until
+ * `PlatformKnobsBinder.onModuleInit` runs. Read it as "nobody has told this
+ * process the answer yet", not as "enforcement is off".
+ *
+ * The direction is still deliberate, and still the opposite of the registry
+ * resolver's: an absent registry denies (there is no allow-list to consult),
+ * an absent enforcement switch admits (this process cannot yet know the
+ * posture, and guessing `true` would refuse traffic on the strength of a
+ * guess). Once the binder is up, the descriptor default `true` applies.
  */
 let originEnforcementResolver: (() => boolean) | null = null;
 
@@ -228,25 +292,20 @@ function queryRegistry(origin: string): boolean | null {
   }
 }
 
-/** The `development`-only loopback allowance (see the header, survival #3). */
-function isLoopbackOrigin(origin: string): boolean {
-  try {
-    // `normalizeOrigin` is the single source of truth for origin syntax, so
-    // this branch cannot drift from what the registry accepts: it rejects
-    // `ftp:`/`ws:`/`file:`, wildcards, paths, userinfo, and hosts that merely
-    // START with a loopback label (`localhost.evil.example.com`).
-    return isLoopbackHost(normalizeOrigin(origin).host);
-  } catch {
-    return false;
-  }
-}
-
 /**
  * The single origin decision, shared by the CORS callback and by any WebSocket
  * handshake that wants the same posture (browsers exempt WS from CORS — see
  * D-6).
+ *
+ * `_nodeEnv` is INERT and kept only because `main.ts` → `buildCorsOptions` →
+ * `getCorsOrigins` thread it through and `isOriginAllowed` is re-exported from
+ * `main.ts`. Since TASK-641 B-7 removed the last branch that read it, no value
+ * of it can change any verdict — pinned by "returns the same verdict for every
+ * value of the nodeEnv argument" in `cors.config.task641.test.ts`. Dropping the
+ * parameter is a wider signature change than the FR-8 deletion needs; it is a
+ * cleanup for whoever next touches `main.ts`'s CORS wiring.
  */
-export function isOriginAllowed(origin: string | undefined, nodeEnv: string): boolean {
+export function isOriginAllowed(origin: string | undefined, _nodeEnv: string): boolean {
   // §4C — the switch, checked FIRST and short-circuiting everything below,
   // including the registry lookup. Placing it here rather than inside
   // `queryRegistry` is deliberate: with enforcement off there must be no
@@ -264,10 +323,6 @@ export function isOriginAllowed(origin: string | undefined, nodeEnv: string): bo
 
   if (registered === true) {
     return logCorsDecision(origin, true, 'origin_registry_match');
-  }
-
-  if (nodeEnv === 'development' && isLoopbackOrigin(origin)) {
-    return logCorsDecision(origin, true, 'development_loopback');
   }
 
   if (registered === false) {
@@ -291,10 +346,12 @@ export type CorsOriginCallback = (err: Error | null, allow?: boolean) => void;
  *
  * Every environment returns the SAME callback: the registry is the single
  * decision point, so there is no per-environment allow-list to express as a
- * RegExp any more. It stays a CALLBACK even under the §4C permissive default —
- * a static `true` would hard-code "admit everything" into the wiring, and the
- * switch could no longer be turned on without a redeploy, which is the whole
- * property §4C was asked for.
+ * RegExp any more. It stays a CALLBACK rather than a static `true`/`false`: the
+ * switch is resolved PER REQUEST, so neither posture may be baked into the
+ * wiring. Hard-coding either one would mean an operator's write could not take
+ * effect without a redeploy, which is the whole property §4C was asked for —
+ * and that property matters in both directions now that TASK-641 FR-6 makes
+ * enforcement the default.
  */
 export function getCorsOrigins(nodeEnv: string): (origin: string | undefined, callback: CorsOriginCallback) => void {
   return (origin: string | undefined, callback: CorsOriginCallback) => {
@@ -321,12 +378,14 @@ export interface CorsOptions {
  *
  * ── WHY `credentials: false` (§4C.2) ────────────────────────────────────────
  *
- * `credentials: true` PLUS a reflected arbitrary origin — which is exactly what
- * the §4C permissive default produces — is a cross-origin READ primitive: any
- * site a logged-in user visits can issue authenticated requests to this gateway
- * AND READ THE RESPONSES, PHI included. That is not a hypothetical; it is the
- * standard consequence of allowing credentials while reflecting the caller's
- * origin.
+ * `credentials: true` PLUS a reflected arbitrary origin is a cross-origin READ
+ * primitive: any site a logged-in user visits can issue authenticated requests
+ * to this gateway AND READ THE RESPONSES, PHI included. That is not a
+ * hypothetical; it is the standard consequence of allowing credentials while
+ * reflecting the caller's origin. TASK-610 §4C produced exactly that shape by
+ * default; TASK-641 FR-6 flipped enforcement on, which narrows the window to
+ * "whenever an operator turns enforcement off" plus this process's pre-boot
+ * gap — narrower, but not gone, so `credentials: false` stays (H-4).
  *
  * With `credentials: false`, browsers do not attach cookies cross-origin, and
  * Bearer-token auth is unaffected — the SDK sets the `Authorization` header

@@ -10,10 +10,14 @@ import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
 import { Textarea } from '@arcaai/ui/components/shadcn/textarea';
 import { GatewayError } from '@/shared/api';
+import { useSession } from '@/shared/auth';
 import { OccConflictAlert } from '@/shared/occ/occ-alert';
 import { ErrorState } from '@/shared/state/error-state';
 import { useAllowedOrigin, useCreateAllowedOrigin, useUpdateAllowedOrigin } from '../api';
 import type { CreateAllowedOriginRequest, TenantAllowedOrigin, UpdateAllowedOriginRequest } from '../api';
+
+/** FR-2 — only a GLOBAL_ADMIN may register or escalate into a wildcard/pattern origin; the server 403s a non-elevated attempt on both create and update. */
+const WILDCARD_REASON = 'Wildcard patterns are managed by platform administrators.';
 
 interface FormValues {
   origin: string;
@@ -59,12 +63,15 @@ function toUpdateBody(values: FormValues): UpdateAllowedOriginRequest {
 function AllowedOriginForm({
   initial,
   etag,
+  canRegisterWildcard,
   onDone,
   onCancel,
   onReloadLatest,
 }: {
   initial?: TenantAllowedOrigin;
   etag?: string;
+  /** FR-2 — false for a non-elevated (tenant-admin) session; true keeps today's full GLOBAL_ADMIN capability. */
+  canRegisterWildcard: boolean;
   onDone: () => void;
   onCancel: () => void;
   onReloadLatest?: () => void;
@@ -76,6 +83,10 @@ function AllowedOriginForm({
   const [values, setValues] = useState<FormValues>(() => toValues(initial));
   const pending = createMutation.isPending || updateMutation.isPending;
   const mutationError = isEdit ? updateMutation.error : createMutation.error;
+  // Presence of the wildcard token, not full origin grammar (the server owns
+  // that, see the field comment below) — the one signal the UI needs to keep
+  // a non-elevated caller from submitting a request the server will 403.
+  const attemptsWildcard = !canRegisterWildcard && values.origin.includes('*');
 
   function setField<K extends keyof FormValues>(key: K, value: FormValues[K]) {
     setValues((prev) => ({ ...prev, [key]: value }));
@@ -90,6 +101,12 @@ function AllowedOriginForm({
     event.preventDefault();
     if (!values.origin.trim() || !values.label.trim()) {
       toast.error('Origin and label are required');
+      return;
+    }
+    // Defense in depth — the submit button is already disabled for this
+    // case, but Enter-to-submit and programmatic submits go through here too.
+    if (attemptsWildcard) {
+      toast.error(WILDCARD_REASON);
       return;
     }
 
@@ -156,11 +173,22 @@ function AllowedOriginForm({
           aria-describedby={`${uid}-origin-hint`}
           className="font-mono text-sm"
         />
-        <p id={`${uid}-origin-hint`} className="text-muted-foreground text-xs">
-          Exact origin (<code className="font-mono">https://app.example.org</code>), a wildcard pattern (
-          <code className="font-mono">https://*.example.org:*</code> — subdomains at any depth, never the apex), or{' '}
-          <code className="font-mono">*</code> to admit every origin for this tenant.
-        </p>
+        {canRegisterWildcard ? (
+          <p id={`${uid}-origin-hint`} className="text-muted-foreground text-xs">
+            Exact origin (<code className="font-mono">https://app.example.org</code>), a wildcard pattern (
+            <code className="font-mono">https://*.example.org:*</code> — subdomains at any depth, never the apex), or{' '}
+            <code className="font-mono">*</code> to admit every origin for this tenant.
+          </p>
+        ) : (
+          <p id={`${uid}-origin-hint`} className="text-muted-foreground text-xs">
+            Exact origin only (<code className="font-mono">https://app.example.org</code>). {WILDCARD_REASON}
+          </p>
+        )}
+        {attemptsWildcard ? (
+          <p role="alert" className="text-destructive text-sm">
+            {WILDCARD_REASON}
+          </p>
+        ) : null}
       </div>
 
       <div className="flex flex-col gap-2">
@@ -184,7 +212,7 @@ function AllowedOriginForm({
         <Button type="button" variant="outline" onClick={onCancel} disabled={pending}>
           Cancel
         </Button>
-        <Button type="submit" disabled={pending}>
+        <Button type="submit" disabled={pending || attemptsWildcard}>
           {pending ? <Spinner /> : null}
           {isEdit ? 'Save changes' : 'Register origin'}
         </Button>
@@ -206,6 +234,11 @@ export function AllowedOriginFormDialog({
   const isEdit = Boolean(editingId);
   const detailQuery = useAllowedOrigin(editingId, open && isEdit);
   const origin = detailQuery.data?.data;
+  const session = useSession();
+  // FR-2 / FR-5 — GLOBAL_ADMIN keeps today's full capability; a non-elevated
+  // (tenant-admin) session cannot register or escalate into a wildcard —
+  // the server 403s it, so the form suppresses the attempt up front.
+  const canRegisterWildcard = session.data?.isElevated ?? false;
 
   function close() {
     onOpenChange(false);
@@ -224,7 +257,7 @@ export function AllowedOriginFormDialog({
         </DialogHeader>
 
         {!isEdit ? (
-          <AllowedOriginForm onDone={close} onCancel={close} />
+          <AllowedOriginForm canRegisterWildcard={canRegisterWildcard} onDone={close} onCancel={close} />
         ) : detailQuery.isPending ? (
           <div className="flex min-h-0 flex-1 flex-col gap-3" aria-hidden>
             <Skeleton className="h-9 w-full" />
@@ -238,6 +271,7 @@ export function AllowedOriginFormDialog({
             key={origin.id}
             initial={origin}
             etag={detailQuery.data?.etag ?? undefined}
+            canRegisterWildcard={canRegisterWildcard}
             onDone={close}
             onCancel={close}
             onReloadLatest={() => void detailQuery.refetch()}

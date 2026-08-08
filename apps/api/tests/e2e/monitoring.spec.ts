@@ -85,13 +85,18 @@ test.describe('Health & Monitoring', () => {
   test.describe('API Response Headers', () => {
     // TASK-610 §4C.2 — INVERTED DELIBERATELY. This used to assert
     // `access-control-allow-credentials` was PRESENT. It must now be ABSENT:
-    // with origin enforcement off by default (§4C.1), permitting credentials
-    // alongside a reflected arbitrary origin would be a cross-origin READ
-    // primitive — any site a logged-in user visits could issue authenticated
-    // requests to this gateway and read the responses, PHI included.
-    // `credentials: false` is what keeps the permissive default an ordinary
-    // public-API posture. Bearer auth is unaffected (the SDK sets the
-    // `Authorization` header explicitly) and nothing reads `req.session`.
+    // permitting credentials alongside a reflected arbitrary origin would be a
+    // cross-origin READ primitive — any site a logged-in user visits could
+    // issue authenticated requests to this gateway and read the responses, PHI
+    // included. Bearer auth is unaffected (the SDK sets the `Authorization`
+    // header explicitly) and nothing reads `req.session`.
+    //
+    // TASK-641 FR-6 flipped `origin.enforcementEnabled` to default `true`, so
+    // the permissive posture this originally guarded is no longer the default —
+    // but it is still reachable (an operator turning the switch off, and the
+    // pre-boot window before `PlatformKnobsBinder` installs the resolver), and
+    // H-4 records that `credentials` stays `false` regardless. The assertion is
+    // unchanged.
     test('must NOT permit cross-origin credentials', async ({ request }) => {
       const response = await request.get('/api/v1/health');
       expect(response.headers()['access-control-allow-credentials']).toBeUndefined();

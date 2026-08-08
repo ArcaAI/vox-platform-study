@@ -1,21 +1,23 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { ForbiddenException } from '@nestjs/common';
+import { NotFoundException } from '@nestjs/common';
 import { TenantAllowedOriginController } from '../tenant-allowed-origin.controller';
 
-// CLS mock — the controller reads `user` (for the imperative
-// global-admin gate, TASK-610 §3.4 item 6) off CLS, matching the house
-// pattern in `department.controller.test.ts` / `harness-admin.controller.ts`.
-function createMockCls(user: { id?: string; tenantId?: string | null; roles?: string[] } | null) {
-  return {
-    get: vi.fn((key: string) => {
-      if (key === 'user') return user;
-      return undefined;
-    }),
-  };
-}
+// TASK-641: the blanket `assertGlobalAdmin()` imperative gate is GONE from
+// this controller — see the rewritten class AUTH-NOTE. The controller no
+// longer reads `user`/`roles` off CLS at all; it unconditionally delegates
+// to `ITenantAllowedOriginService`, which is CLS-tenant-scoped on its own
+// and (per Lane E) imperatively refuses a wildcard/SYSTEM write from a
+// non-global caller ONE LAYER DOWN. That narrower boundary is out of scope
+// for this file — it belongs to `tenant-allowed-origin.service.test.ts` —
+// so these tests assert the controller behaves IDENTICALLY no matter who is
+// calling (T-7): there is nothing left here to distinguish a TENANT_ADMIN
+// from a GLOBAL_ADMIN caller.
 
-const GLOBAL_ADMIN_USER = { id: 'u-admin', tenantId: 'tenant-1', roles: ['GLOBAL_ADMIN'] };
-const TENANT_ADMIN_USER = { id: 'u-tenant', tenantId: 'tenant-1', roles: ['TENANT_ADMIN'] };
+vi.mock('../../../cors.config', () => ({
+  isOriginEnforcementEnabled: vi.fn(),
+}));
+
+import { isOriginEnforcementEnabled } from '../../../cors.config';
 
 const createMockRow = (overrides: Record<string, unknown> = {}) => ({
   id: overrides.id ?? 'origin-1',
@@ -46,103 +48,54 @@ describe('TenantAllowedOriginController', () => {
     mockService = createMockService();
   });
 
-  function build(user: { id?: string; tenantId?: string | null; roles?: string[] } | null) {
-    const cls = createMockCls(user);
-    return new TenantAllowedOriginController(mockService as any, cls as any);
+  function build() {
+    // No ClsService/user argument — the controller has no role awareness of
+    // its own post-TASK-641. Any caller-role gate that survives lives in the
+    // service (wildcard/SYSTEM) or in `@CanManage`/`UnifiedAuthGuard`
+    // upstream of the handler (neither reachable from a unit test that
+    // instantiates the controller directly).
+    return new TenantAllowedOriginController(mockService as any);
   }
 
-  describe('global-admin gate (AUTH-NOTE — imperative, decorator alone cannot express it)', () => {
-    it('refuses getAll for a non-global-admin caller and never reaches the service', async () => {
-      const controller = build(TENANT_ADMIN_USER);
-      await expect(controller.getAll()).rejects.toBeInstanceOf(ForbiddenException);
-      expect(mockService.getAll).not.toHaveBeenCalled();
-    });
-
-    it('refuses getById for a non-global-admin caller', async () => {
-      const controller = build(TENANT_ADMIN_USER);
-      await expect(controller.getById('origin-1')).rejects.toBeInstanceOf(ForbiddenException);
-      expect(mockService.getById).not.toHaveBeenCalled();
-    });
-
-    it('refuses create for a non-global-admin caller', async () => {
-      const controller = build(TENANT_ADMIN_USER);
-      await expect(controller.create({ origin: 'https://x.org', label: 'X' } as any)).rejects.toBeInstanceOf(ForbiddenException);
-      expect(mockService.create).not.toHaveBeenCalled();
-    });
-
-    it('refuses update for a non-global-admin caller', async () => {
-      const controller = build(TENANT_ADMIN_USER);
-      await expect(controller.update('origin-1', { expectedVersion: 1 } as any, 1)).rejects.toBeInstanceOf(ForbiddenException);
-      expect(mockService.update).not.toHaveBeenCalled();
-    });
-
-    it('refuses deleteById for a non-global-admin caller', async () => {
-      const controller = build(TENANT_ADMIN_USER);
-      await expect(controller.deleteById('origin-1')).rejects.toBeInstanceOf(ForbiddenException);
-      expect(mockService.deleteById).not.toHaveBeenCalled();
-    });
-
-    it('refuses every route for an unauthenticated (null) caller', async () => {
-      const controller = build(null);
-      await expect(controller.getAll()).rejects.toBeInstanceOf(ForbiddenException);
-    });
-  });
-
-  describe('GET /admin/allowed-origins (getAll) — global admin', () => {
-    it('delegates to service.getAll with no arguments', async () => {
+  describe('T-7 — every CRUD route is reachable regardless of caller role (FR-1, FR-5)', () => {
+    it('getAll delegates straight to the service with no imperative gate', async () => {
       const rows = [createMockRow()];
       mockService.getAll.mockResolvedValue(rows);
-      const controller = build(GLOBAL_ADMIN_USER);
+      const controller = build();
 
       const result = await controller.getAll();
 
       expect(mockService.getAll).toHaveBeenCalledWith();
       expect(result).toBe(rows);
     });
-  });
 
-  describe('GET /admin/allowed-origins/:id (getById) — global admin', () => {
-    it('delegates to service.getById with the id param', async () => {
+    it('getById delegates straight to the service with no imperative gate', async () => {
       const row = createMockRow();
       mockService.getById.mockResolvedValue(row);
-      const controller = build(GLOBAL_ADMIN_USER);
+      const controller = build();
 
       const result = await controller.getById('origin-1');
 
       expect(mockService.getById).toHaveBeenCalledWith('origin-1');
       expect(result).toBe(row);
     });
-  });
 
-  describe('POST /admin/allowed-origins (create) — global admin', () => {
-    it('delegates to service.create with the request body', async () => {
+    it('create delegates straight to the service with no imperative gate', async () => {
       const dto = { origin: 'https://arcaai-staging.bcmch.org', label: 'BCMCH staging' };
       const row = createMockRow();
       mockService.create.mockResolvedValue(row);
-      const controller = build(GLOBAL_ADMIN_USER);
+      const controller = build();
 
       const result = await controller.create(dto as any);
 
       expect(mockService.create).toHaveBeenCalledWith(dto);
       expect(result).toBe(row);
     });
-  });
 
-  describe('PATCH /admin/allowed-origins/:id (update) — global admin + OCC', () => {
-    it('carries @RequiresIfMatch and @ExpectedVersion (OCC decorators) on the route handler', () => {
-      // Reflect on the metadata the decorators attach — mirrors how
-      // `admin-route-permission-audit.ts` reads route metadata, and proves
-      // the PATCH route is wired for the house OCC pattern
-      // (`department.controller.ts#update`) without needing a live guard.
-      const handler = TenantAllowedOriginController.prototype.update;
-      const requiresIfMatch = Reflect.getMetadata('requiresIfMatch', handler);
-      expect(requiresIfMatch).toBe(true);
-    });
-
-    it('prefers the If-Match header version over the body expectedVersion', async () => {
+    it('update delegates straight to the service with no imperative gate, header version wins', async () => {
       const row = createMockRow({ version: 2 });
       mockService.update.mockResolvedValue(row);
-      const controller = build(GLOBAL_ADMIN_USER);
+      const controller = build();
 
       const result = await controller.update('origin-1', { label: 'Renamed', expectedVersion: 1 } as any, 7);
 
@@ -150,27 +103,80 @@ describe('TenantAllowedOriginController', () => {
       expect(result).toBe(row);
     });
 
-    it('falls back to the body expectedVersion when the header is absent', async () => {
+    it('update falls back to the body expectedVersion when the If-Match header is absent', async () => {
       const row = createMockRow({ version: 2 });
       mockService.update.mockResolvedValue(row);
-      const controller = build(GLOBAL_ADMIN_USER);
+      const controller = build();
 
       await controller.update('origin-1', { label: 'Renamed', expectedVersion: 1 } as any, undefined);
 
       expect(mockService.update).toHaveBeenCalledWith('origin-1', { label: 'Renamed', expectedVersion: 1 });
     });
-  });
 
-  describe('DELETE /admin/allowed-origins/:id (deleteById) — global admin', () => {
-    it('delegates to service.deleteById with the id param', async () => {
+    it('deleteById delegates straight to the service with no imperative gate', async () => {
       const row = createMockRow({ resourceStatus: 'DELETED' });
       mockService.deleteById.mockResolvedValue(row);
-      const controller = build(GLOBAL_ADMIN_USER);
+      const controller = build();
 
       const result = await controller.deleteById('origin-1');
 
       expect(mockService.deleteById).toHaveBeenCalledWith('origin-1');
       expect(result).toBe(row);
+    });
+
+    it('carries @RequiresIfMatch metadata on the update handler (OCC still wired)', () => {
+      const handler = TenantAllowedOriginController.prototype.update;
+      const requiresIfMatch = Reflect.getMetadata('requiresIfMatch', handler);
+      expect(requiresIfMatch).toBe(true);
+    });
+  });
+
+  describe('T-7 — cross-tenant id still answers 404, not 403, for every caller', () => {
+    it('getById propagates the service NotFoundException verbatim (404-over-403)', async () => {
+      mockService.getById.mockRejectedValue(new NotFoundException('Allowed origin origin-1 not found'));
+      const controller = build();
+
+      await expect(controller.getById('origin-1')).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('update propagates the service NotFoundException verbatim (404-over-403)', async () => {
+      mockService.update.mockRejectedValue(new NotFoundException('Allowed origin origin-1 not found'));
+      const controller = build();
+
+      await expect(controller.update('origin-1', { label: 'X' } as any, 1)).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('deleteById propagates the service NotFoundException verbatim (404-over-403)', async () => {
+      mockService.deleteById.mockRejectedValue(new NotFoundException('Allowed origin origin-1 not found'));
+      const controller = build();
+
+      await expect(controller.deleteById('origin-1')).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
+
+  describe('GET /admin/allowed-origins/posture (FR-4, §3.2 option A)', () => {
+    it('reports enforcement ON when isOriginEnforcementEnabled() is true', () => {
+      vi.mocked(isOriginEnforcementEnabled).mockReturnValue(true);
+      const controller = build();
+
+      expect(controller.getPosture()).toEqual({ enforcementEnabled: true });
+    });
+
+    it('reports enforcement OFF when isOriginEnforcementEnabled() is false', () => {
+      vi.mocked(isOriginEnforcementEnabled).mockReturnValue(false);
+      const controller = build();
+
+      expect(controller.getPosture()).toEqual({ enforcementEnabled: false });
+    });
+
+    it('does not touch ITenantAllowedOriginService — posture is platform-wide, not a row', () => {
+      vi.mocked(isOriginEnforcementEnabled).mockReturnValue(true);
+      const controller = build();
+
+      controller.getPosture();
+
+      expect(mockService.getAll).not.toHaveBeenCalled();
+      expect(mockService.getById).not.toHaveBeenCalled();
     });
   });
 });

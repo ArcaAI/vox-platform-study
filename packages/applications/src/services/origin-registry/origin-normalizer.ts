@@ -3,7 +3,10 @@
 // This is the single place origin SYNTAX is decided (plan §3.3):
 //  - parse with `new URL()`; reject anything that fails to parse
 //  - require `http:` or `https:`; reject `ftp:`, `ws:`, `file:`, `data:`, and
-//    any wildcard form (`*`)
+//    any wildcard form (`*`) — checked on the raw input AND again on the
+//    canonical host, because URL parsing can DECODE a `*` into existence
+//    (TASK-641 lane J). The invariant callers may rely on: this function never
+//    returns an origin containing `*`.
 //  - reject any path, query, fragment, or userinfo, and any trailing slash
 //  - lowercase scheme + host; strip the default port (`:443` on https, `:80`
 //    on http) so `https://x.org` and `https://x.org:443` cannot both be
@@ -43,6 +46,9 @@ export function normalizeOrigin(raw: string): NormalizedOrigin {
   // Reject wildcard forms outright, before parsing — `new URL('https://*')`
   // parses "successfully" (hostname `*`), so this cannot be left to the
   // parser/host checks below.
+  //
+  // This RAW check is necessary but NOT sufficient: see the canonical re-check
+  // after parsing (TASK-641 lane J).
   if (raw.includes('*')) {
     throw new ArgumentInvalidException(`Origin must not contain a wildcard: ${raw}`);
   }
@@ -81,6 +87,31 @@ export function normalizeOrigin(raw: string): NormalizedOrigin {
   // `url.port` are already canonical here.
   const host = url.hostname;
   const port = url.port === '' ? null : Number(url.port);
+
+  // WILDCARD RE-CHECK ON THE CANONICAL HOST (TASK-641 lane J).
+  //
+  // The raw guard above runs BEFORE `new URL()`, and parsing is not
+  // value-preserving: WHATWG URL percent-decodes `%2A`/`%2a` and IDNA/NFKC-folds
+  // fullwidth `＊` (U+FF0A) into an ASCII `*` inside the host. So
+  // `https://%2A.evil.com` and `https://＊.evil.com` both pass the raw guard and
+  // parse to hostname `*.evil.com`.
+  //
+  // That is a privilege escalation, not a cosmetic leak: nothing downstream ever
+  // re-reads the raw input. `origin-registry.service.ts` classifies a STORED row
+  // with `isOriginPattern(storedOrigin)` — "a value is a pattern iff it contains
+  // `*`" — so a row admitted here as an EXACT origin is later evaluated by
+  // `matchesOriginPattern` as a genuine wildcard, granting credentialed CORS to
+  // every subdomain of the attacker's apex.
+  //
+  // The invariant this enforces: `normalizeOrigin` NEVER returns an origin
+  // containing `*`. Checking the canonical host (rather than only `raw`) is what
+  // makes that true for every present and future encoding the URL parser folds,
+  // and it also guarantees `isLoopbackHost` below is never handed a wildcard.
+  // `scheme` is constrained to http/https and `port` is WHATWG-normalized
+  // digits, so the host is the only channel a `*` can arrive through.
+  if (host.includes('*')) {
+    throw new ArgumentInvalidException(`Origin must not contain a wildcard (decoded from an encoded form): ${raw}`);
+  }
 
   if (scheme === 'http' && !isLoopbackHost(host)) {
     throw new ArgumentInvalidException(`Plain http:// is only allowed for loopback hosts (localhost/127.0.0.0/8/::1): ${raw}`);

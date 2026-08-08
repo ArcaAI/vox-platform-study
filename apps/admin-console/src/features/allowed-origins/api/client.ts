@@ -1,11 +1,16 @@
 import { deleteJson, getJson, getWithEtag, patchWithEtag, postJson, versionFromEtag } from '@/shared/api';
 import type { WithEtag } from '@/shared/api';
-import type { CreateAllowedOriginRequest, TenantAllowedOrigin, UpdateAllowedOriginRequest } from './types';
+import type { AllowedOriginPosture, CreateAllowedOriginRequest, TenantAllowedOrigin, UpdateAllowedOriginRequest } from './types';
 
 const BASE = 'admin/allowed-origins';
 
 export function listAllowedOrigins(): Promise<TenantAllowedOrigin[]> {
   return getJson(BASE);
+}
+
+/** FR-4 — `GET /admin/allowed-origins/posture`, reachable by both tenant and global admins. */
+export function getAllowedOriginPosture(): Promise<AllowedOriginPosture> {
+  return getJson(`${BASE}/posture`);
 }
 
 export function getAllowedOrigin(id: string): Promise<WithEtag<TenantAllowedOrigin>> {

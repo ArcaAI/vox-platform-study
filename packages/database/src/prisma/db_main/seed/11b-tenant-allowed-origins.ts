@@ -1,5 +1,5 @@
 /**
- * Tenant Allowed Origin Seed (TASK-610)
+ * Tenant Allowed Origin Seed (TASK-610, corrected by TASK-641 §3.1 step 2)
  *
  * The day-1 CORS allow-list. Since TASK-610 §4A.1 there is NO env-var control
  * of CORS at all — `CORS_ALLOWED_ORIGINS` is gone — so these rows (plus whatever
@@ -12,11 +12,25 @@
  * admits a SYSTEM-owned origin for EVERY tenant, but binds a tenant-owned origin
  * to that tenant alone (anything else is a 404).
  *
- *   SYSTEM  — `localhost`. A developer must be able to work against ANY tenant
+ *   SYSTEM  — the SIX loopback spellings: `localhost`, `127.0.0.1` and `[::1]`,
+ *             each on http AND https (see B-8 and the parity note below — one
+ *             row per spelling, because the grammar matches host and scheme
+ *             exactly). A developer must be able to work against ANY tenant
  *             from their machine; binding loopback to one tenant would 404 all
  *             the others.
  *   ARCAAI  — every deployed host. ArcaAI is the single retained customer
  *             tenant, so its consoles bind to it.
+ *
+ * ── THE SIX LOOPBACK ROWS ARE ALSO BOOTSTRAP MIGRATION DATA (H-2) ───────────
+ * They are duplicated, deliberately, in
+ * `migrations/20260808160000_task_641_bootstrap_loopback_origins/migration.sql`.
+ * Since TASK-616 made seeding opt-in (`RUN_SEED`, default `none`) and TASK-641
+ * turned enforcement on with no code fallback left, an environment that skips
+ * the seed would refuse EVERY browser origin. The migration GUARANTEES those
+ * six rows exist everywhere; this seed RECONCILES their `label`/`description`
+ * on re-run. Keep the two byte-identical for `origin`, `tenantId`, `label` and
+ * `description` — only `id` legitimately differs (Prisma mints a UUIDv7 here;
+ * the migration uses hand-allocated `C0000000-…` literals).
  *
  * If a SECOND customer tenant is ever served from a `bcmch.org` host, that host
  * must move to SYSTEM or gain its own per-tenant row — leaving it ArcaAI-owned
@@ -29,7 +43,15 @@
  *
  *   `https://*.bcmch.org:*`  → any https subdomain of bcmch.org, any port.
  *                              NOT the apex, NOT `evilbcmch.org`, NOT http.
- *   `http://localhost:*`     → any port on loopback (http permitted ONLY here).
+ *   `http://localhost:*`     → any port on loopback (http permitted ONLY here
+ *                              and on the other loopback rows).
+ *   `http://127.0.0.1:*`     → the loopback IP literal — a SEPARATE row, because
+ *                              `http://localhost:*` has a CONCRETE host pattern
+ *                              (`localhost` contains no `*`) and does not match
+ *                              `127.0.0.1` (TASK-641 B-8). The same reasoning
+ *                              gives `[::1]` its own row, and the exact scheme
+ *                              comparison gives each of the three hosts an
+ *                              https twin.
  *
  * A wildcard trusts every subdomain that exists now OR LATER, including one with
  * a dangling DNS record — a subdomain takeover under `*.bcmch.org` becomes
@@ -50,7 +72,7 @@
  * makes `pnpm db:seed` safe against a live database.
  */
 import type { CorePrismaClient } from '../../../client';
-import { SEED_CUSTOMER_TENANT_IDS, SEED_TENANT_ID, SEED_USER_IDS, SYSTEM_TENANT_ID } from './00-constants';
+import { SEED_CUSTOMER_TENANT_IDS, SEED_USER_IDS, SYSTEM_TENANT_ID } from './00-constants';
 
 const CREATED_BY = SEED_USER_IDS.SYSTEM;
 
@@ -68,46 +90,92 @@ interface OriginSeed {
   description: string;
 }
 
-const ORIGINS: OriginSeed[] = [
-  // ── Global tenant — ANY ORIGIN (owner-directed, all environments) ─────────
-  //
-  // ⚠️ READ BEFORE COPYING THIS ROW TO ANOTHER TENANT.
-  //
-  // `*` admits every origin. Because the gateway sets `credentials: true` and
-  // runs `express-session`, this means any website a Global-tenant user visits
-  // can issue credentialed requests to the API AND READ THE RESPONSES — a
-  // cross-origin read primitive, not merely a write one. For any other tenant
-  // that would be an unacceptable exposure.
-  //
-  // What confines it: `OriginTenantBindingGuard`. `*` carries the LOWEST
-  // possible pattern specificity, so it only ever wins a lookup that nothing
-  // else matches. A request from `evil.example` therefore resolves owner=Global,
-  // and if it carries an ArcaAI token the tenants disagree → 404. Every other
-  // tenant stays protected; the blast radius is exactly the Global tenant's own
-  // data. That containment is the ONLY reason this row is defensible, and it
-  // evaporates the moment the binding guard is bypassed or reordered.
-  //
-  // Precedence this row depends on (asserted in the registry's tests):
-  //   https://arcaai-u2204.bcmch.org → ArcaAI  (exact beats every pattern)
-  //   https://anything.bcmch.org     → ArcaAI  (*.bcmch.org outranks `*`)
-  //   https://random.example.com     → Global  (only `*` matches)
-  //
-  // Revoking is a single soft delete of this row — no deploy, no restart.
-  {
-    origin: '*',
-    tenantId: SEED_TENANT_ID,
-    label: 'Global — any origin',
-    description:
-      'Owner-directed: the Global tenant accepts requests from any origin in every environment (dev, staging, production). Lowest precedence, so it never shadows a tenant-owned origin. Confined to Global-tenant data by OriginTenantBindingGuard.',
-  },
-
+/** Exported for the TASK-641 seed-correctness test — see the `__tests__` sibling. */
+export const TENANT_ALLOWED_ORIGIN_SEEDS: OriginSeed[] = [
   // ── Platform-wide (SYSTEM) ────────────────────────────────────────────────
+  //
+  // ⚠️ DO NOT RE-ADD A GLOBAL `*` ROW. (TASK-641 H-1 — read before "fixing" this.)
+  //
+  // A Global-tenant `origin: '*'` row used to live here (TASK-610 §4A.3). It
+  // was removed on owner confirmation because `OriginRegistryService.has(origin)`
+  // is `tenantsFor(origin).size > 0`, and a `*` row matches EVERY origin — so
+  // for as long as it exists, `tenantsFor()` is never empty and CORS admits
+  // every origin NO MATTER WHAT `origin.enforcementEnabled` says. Flipping
+  // enforcement on (TASK-641 FR-6) buys nothing at the CORS layer while this
+  // row is present; only `OriginTenantBindingGuard` would still be doing real
+  // work, and the Global tenant itself would stay wide open regardless.
+  // TASK-610 §4A.3 seeded it under the assumption Global was scratch/demo
+  // data. It is not: Global holds 21 users, 9 consultations, 18 departments —
+  // more than the ArcaAI customer tenant. A wildcard grant that broad belongs
+  // to a specific tenant admin's deliberate choice (FR-2 still gates it
+  // GLOBAL_ADMIN-only), never to platform bootstrap data.
   {
     origin: 'http://localhost:*',
     tenantId: SYSTEM_TENANT_ID,
     label: 'Local development (any port)',
     description:
       'Loopback for SDK/playground/admin-console development. SYSTEM-owned so a developer can work against any tenant. `http` is permitted here and ONLY here — browsers treat loopback as a secure context.',
+  },
+  // `http://localhost:*` does NOT also cover `127.0.0.1` (TASK-641 B-8/FR-7).
+  // Verified against `parseHostPattern` in origin-pattern.ts: the `localhost`
+  // host segment contains no `*`, so it parses as a CONCRETE host
+  // (`wildcard: false, matchHost: 'localhost'`), and `matchesOriginPattern`
+  // then requires `parsedOrigin.host === parsed.matchHost` exactly — there is
+  // no suffix/wildcard match that would let `127.0.0.1` satisfy it. The two
+  // loopback spellings need two separate rows.
+  {
+    origin: 'http://127.0.0.1:*',
+    tenantId: SYSTEM_TENANT_ID,
+    label: 'Local development — loopback IP (any port)',
+    description:
+      'Loopback for SDK/playground/admin-console development via the literal 127.0.0.1 address (does not match the localhost hostname pattern above). SYSTEM-owned so a developer can work against any tenant. `http` is permitted here and ONLY here — browsers treat loopback as a secure context.',
+  },
+  // The remaining FOUR loopback spellings (TASK-641 lane G, task 2 — the parity
+  // gap lane D found). The deleted `development_loopback` branch called
+  // `isLoopbackHost()`, which admits `localhost` ∪ `127.0.0.0/8` ∪ `::1` on
+  // EITHER scheme; two http rows are narrower than that in two ways that both
+  // bite locally:
+  //   • https — a stack fronted by mkcert/self-signed TLS sends
+  //     `Origin: https://localhost:<port>`, and `parsePattern` compares the
+  //     scheme EXACTLY, so no http row can match it.
+  //   • ::1 — a browser resolving `localhost` to the IPv6 loopback sends
+  //     `Origin: http://[::1]:<port>`, which matches neither of the rows above
+  //     (both have CONCRETE hosts, compared with `===`).
+  // All four round-trip UNCHANGED through `normalizeOriginPattern`, i.e. the
+  // strings below are already canonical — verified before they were added, and
+  // re-verified by `seed-origin-canonicalization.task610.test.ts`.
+  //
+  // RESIDUAL GAP: `127.0.0.2`-`127.0.0.255` stay uncovered. The grammar cannot
+  // express them (`*` must be the leftmost label with a >= 2-label, non-IP
+  // suffix), so `http://127.0.0.*` and `http://*.127.0.0.1:*` are both rejected
+  // by design. Bind to an alternate loopback address and you must register that
+  // exact origin as a row.
+  {
+    origin: 'https://localhost:*',
+    tenantId: SYSTEM_TENANT_ID,
+    label: 'Local development — local TLS (any port)',
+    description:
+      'Loopback served over local TLS (mkcert/self-signed). The pattern grammar matches the scheme EXACTLY, so the http row does not cover an https local stack. Restores the https half of the loopback coverage the deleted NODE_ENV development_loopback branch had via isLoopbackHost.',
+  },
+  {
+    origin: 'https://127.0.0.1:*',
+    tenantId: SYSTEM_TENANT_ID,
+    label: 'Local development — loopback IP over local TLS (any port)',
+    description:
+      'Loopback IP literal served over local TLS (mkcert/self-signed). Scheme is matched exactly and 127.0.0.1 is a distinct host from localhost, so this needs its own row.',
+  },
+  {
+    origin: 'http://[::1]:*',
+    tenantId: SYSTEM_TENANT_ID,
+    label: 'Local development — IPv6 loopback (any port)',
+    description:
+      'IPv6 loopback literal. A browser that resolves localhost to ::1 sends Origin: http://[::1]:<port>, which matches NEITHER http://localhost:* (concrete host localhost) NOR http://127.0.0.1:*. SYSTEM-owned so a developer can work against any tenant.',
+  },
+  {
+    origin: 'https://[::1]:*',
+    tenantId: SYSTEM_TENANT_ID,
+    label: 'Local development — IPv6 loopback over local TLS (any port)',
+    description: 'IPv6 loopback literal served over local TLS (mkcert/self-signed). Scheme is matched exactly, so the http row above does not cover it.',
   },
 
   // ── ArcaAI deployed hosts (exact) ─────────────────────────────────────────
@@ -152,9 +220,9 @@ const ORIGINS: OriginSeed[] = [
 ];
 
 export const seedTenantAllowedOrigins = async (client: CorePrismaClient): Promise<void> => {
-  console.log(`Seeding Tenant Allowed Origins (${ORIGINS.length} rows)...`);
+  console.log(`Seeding Tenant Allowed Origins (${TENANT_ALLOWED_ORIGIN_SEEDS.length} rows)...`);
 
-  for (const originRow of ORIGINS) {
+  for (const originRow of TENANT_ALLOWED_ORIGIN_SEEDS) {
     await client.tenantAllowedOrigin.upsert({
       // The GRANT key: (origin, tenantId). Since README §4B the same origin may
       // be granted to several tenants, so an origin alone no longer identifies
@@ -185,9 +253,11 @@ export const seedTenantAllowedOrigins = async (client: CorePrismaClient): Promis
         createdBy: CREATED_BY,
       },
     });
-    const owner = originRow.tenantId === SYSTEM_TENANT_ID ? 'SYSTEM' : originRow.tenantId === SEED_TENANT_ID ? 'Global' : 'ArcaAI';
+    // No row is Global-owned any more (TASK-641 H-1 removed the `*` row) — the
+    // only owners left are SYSTEM and the ArcaAI customer tenant.
+    const owner = originRow.tenantId === SYSTEM_TENANT_ID ? 'SYSTEM' : 'ArcaAI';
     console.log(`  ${originRow.origin.padEnd(40)} [${owner}] ${originRow.label}`);
   }
 
-  console.log(`Seeded ${ORIGINS.length} Tenant Allowed Origins`);
+  console.log(`Seeded ${TENANT_ALLOWED_ORIGIN_SEEDS.length} Tenant Allowed Origins`);
 };

@@ -5,12 +5,14 @@ import { matchNavEntry, NAV_ENTRIES, NAV_SECTIONS, visibleNavEntries } from '../
 const GLOBAL_ADMIN_RULES: PermissionRule[] = [{ action: 'manage', subject: 'all' }];
 
 // Approximation of the seeded TENANT_ADMIN policy set (tenant-full-access,
-// rbac-tenant-manage, prompt-template-manage, audit-log-read).
+// rbac-tenant-manage, prompt-template-manage, audit-log-read). TASK-641 adds
+// manage:TenantAllowedOrigin (own-tenant condition) to tenant-full-access.
 const TENANT_ADMIN_RULES: PermissionRule[] = [
   { action: 'read', subject: 'AuditLog' },
   { action: 'manage', subject: 'Department' },
   { action: 'manage', subject: 'User' },
   { action: 'manage', subject: 'PromptTemplate' },
+  { action: 'manage', subject: 'TenantAllowedOrigin' },
   { action: 'read,update', subject: 'Tenant' },
   { action: 'read', subject: 'Role' },
 ];
@@ -18,11 +20,13 @@ const TENANT_ADMIN_RULES: PermissionRule[] = [
 describe('NAV_ENTRIES (capabilities-matrix section 3, reviewed 2026-07-04; playground tier)', () => {
   // TASK-634 R6 adds /prompt-templates (tier 30-49), taking 45 -> 46.
   // TASK-638 §6 adds /ai-operations/reconciliation (tier 10-19), taking 46 -> 47.
-  it('covers the full 47-route map across the four tiers (TASK-638 adds Provider reconciliation)', () => {
+  // TASK-641 retiers /allowed-origins 10-19 -> 30-49 (tenant admins now reach
+  // it for their own tenant's rows); total stays 47.
+  it('covers the full 47-route map across the four tiers (TASK-641 retiers /allowed-origins to tenant scope)', () => {
     expect(NAV_ENTRIES).toHaveLength(47);
-    expect(NAV_ENTRIES.filter((entry) => entry.tier === '10-19')).toHaveLength(21);
+    expect(NAV_ENTRIES.filter((entry) => entry.tier === '10-19')).toHaveLength(20);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '20-29')).toHaveLength(7);
-    expect(NAV_ENTRIES.filter((entry) => entry.tier === '30-49')).toHaveLength(14);
+    expect(NAV_ENTRIES.filter((entry) => entry.tier === '30-49')).toHaveLength(15);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '50-59')).toHaveLength(5);
   });
 
@@ -102,9 +106,9 @@ describe('NAV_ENTRIES (capabilities-matrix section 3, reviewed 2026-07-04; playg
   });
 
   /**
-   * Console IA cleanup. The tier-10-19
-   * count is now 18: `/prompt-studio` folded into `/agents`, `/ai-services`
-   * took its slot, and `/allowed-origins` adds the global CORS allow-list surface.
+   * Console IA cleanup: `/prompt-studio` folded into `/agents`, `/ai-services`
+   * took its slot. `/allowed-origins` moved OUT of tier 10-19 under TASK-641 —
+   * see the dedicated retier test below.
    */
   describe('console IA cleanup', () => {
     it('retires /prompt-studio (governance moved into the prompt-template Governance tab)', () => {
@@ -134,6 +138,16 @@ describe('NAV_ENTRIES (capabilities-matrix section 3, reviewed 2026-07-04; playg
     it('keeps every route unique after the rename', () => {
       const routes = NAV_ENTRIES.map((entry) => entry.route);
       expect(new Set(routes).size).toBe(routes.length);
+    });
+
+    it('retiers /allowed-origins to tenant scope now that TENANT_ADMIN can manage their own rows (TASK-641)', () => {
+      const allowedOrigins = NAV_ENTRIES.find((entry) => entry.route === '/allowed-origins');
+      expect(allowedOrigins?.tier).toBe('30-49');
+      expect(allowedOrigins?.required).toEqual([
+        ['read', 'TenantAllowedOrigin'],
+        ['manage', 'TenantAllowedOrigin'],
+      ]);
+      expect(allowedOrigins?.implemented).toBe(true);
     });
   });
 
@@ -192,6 +206,8 @@ describe('visibleNavEntries', () => {
     expect(visible).toContain('/account');
     expect(visible).toContain('/playground/consultation');
     expect(visible).toContain('/playground/llm');
+    // TASK-641: a tenant admin now reaches the retiered allowed-origins screen.
+    expect(visible).toContain('/allowed-origins');
   });
 
   it('shows only ungated entries (account) for an authenticated user with zero grants', () => {

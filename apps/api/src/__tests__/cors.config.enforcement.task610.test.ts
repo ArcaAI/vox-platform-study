@@ -1,8 +1,20 @@
 /**
- * TASK-610 §4C — origin enforcement is OFF BY DEFAULT.
+ * TASK-610 §4C — the PERMISSIVE side of the origin-enforcement switch.
  *
- * > "make sure by default (apply to all tenants including SYSTEM, GLOBAL) no
- * > origin checks, ALL is ALLOWED for calling and using our APIs"
+ * TITLE CORRECTED BY TASK-641 (lane G). This file used to be headed "origin
+ * enforcement is OFF BY DEFAULT", quoting the TASK-610 owner directive "make
+ * sure by default (apply to all tenants including SYSTEM, GLOBAL) no origin
+ * checks, ALL is ALLOWED for calling and using our APIs". That directive was
+ * reversed: TASK-641 FR-6 sets `origin.enforcementEnabled` DEFAULT `true`, so
+ * enforcement is now the platform default in every environment.
+ *
+ * None of the assertions below changed, because none of them was ever about the
+ * DESCRIPTOR default. They pin `cors.config.ts`'s own resolver contract: with no
+ * resolver installed — or one that returns false, or one that throws —
+ * `isOriginEnforcementEnabled()` is false and the registry is never consulted.
+ * A descriptor default cannot move any of that; only the binder installing a
+ * resolver can. What the un-installed case now MEANS is narrower than it was: it
+ * is this process's pre-boot window, not the platform's posture.
  *
  * This file pins the PERMISSIVE side of the switch. The enforcing side is
  * `cors.config.test.ts`, which now installs `setOriginEnforcementResolver(() =>
@@ -49,7 +61,7 @@ describe('origin enforcement switch (TASK-610 §4C)', () => {
     vi.restoreAllMocks();
   });
 
-  describe('the true default — nothing installed at all', () => {
+  describe('the pre-boot state — nothing installed at all', () => {
     it('reports enforcement DISABLED when no resolver was ever installed', () => {
       expect(isOriginEnforcementEnabled()).toBe(false);
     });
@@ -72,10 +84,17 @@ describe('origin enforcement switch (TASK-610 §4C)', () => {
       }
     });
 
-    it('admits an unregistered origin even when NO registry is wired (the fresh-clone case)', () => {
+    it('admits an unregistered origin even when NO registry is wired (the pre-boot case)', () => {
       // Pre-§4C this exact case was the fail-closed `origin_registry_unavailable`
-      // deny — an unseeded deployment refusing every browser origin. §4C's whole
-      // purpose is that a deployment cannot lock itself out this way.
+      // deny. §4C made it permissive so a request landing before the binder is
+      // up is not refused on the strength of a guess.
+      //
+      // This is NOT "a deployment cannot lock itself out" any more — TASK-641
+      // FR-6 defaults enforcement ON, so once the binder installs the resolver
+      // an origin with no matching row IS refused. What prevents the lock-out is
+      // that the six SYSTEM loopback rows are guaranteed by a migration
+      // (`20260808160000_task_641_bootstrap_loopback_origins`) rather than by
+      // the opt-in seed — see `cors.config.ts` §4C and TASK-641 H-2.
       expect(isOriginAllowed('https://anything.example.com', 'production')).toBe(true);
     });
   });
@@ -145,9 +164,12 @@ describe('buildCorsOptions (TASK-610 §4C.2 — credentials: false)', () => {
   /**
    * Allow-all origins WITH credentials is a cross-origin read primitive: any
    * site a logged-in user visits could issue authenticated requests and read
-   * the responses, PHI included. `credentials: false` is what makes the
-   * permissive default an ordinary public-API posture instead of a data-leak
-   * path — so it is pinned here rather than left to review.
+   * the responses, PHI included. `credentials: false` is what keeps a permissive
+   * posture an ordinary public-API one instead of a data-leak path — so it is
+   * pinned here rather than left to review. TASK-641 FR-6 narrowed that window
+   * (enforcement now defaults ON) but did not close it: an operator may still
+   * turn the switch off, and H-4 records that `credentials` stays `false`
+   * regardless, so nobody "restores" it as a tidy-up.
    */
   it('never permits cross-origin credentials', () => {
     expect(buildCorsOptions('production').credentials).toBe(false);
