@@ -24,16 +24,38 @@ export class PromptTemplateResponse {
   @ApiPropertyOptional({ description: 'Template scope (e.g. USER_PERSONAL, DEPARTMENT_DEFAULT, TENANT_DEFAULT)' })
   scope?: string;
 
-  // Real Draft/Published lifecycle column (was previously
+  // Real Draft/Published/Approved lifecycle column (was previously
   // dropped server-side; the admin status filter is now server-side).
-  @ApiProperty({ description: 'Publication status', enum: ['DRAFT', 'PUBLISHED'], default: 'DRAFT' })
-  status: 'DRAFT' | 'PUBLISHED';
+  //
+  // `APPROVED` was missing from the declared union even though the enum, the
+  // list filter and the approve route all produce it — an approved row was
+  // already outside this contract. Widened rather than worked around.
+  @ApiProperty({ description: 'Publication status', enum: ['DRAFT', 'PUBLISHED', 'APPROVED'], default: 'DRAFT' })
+  status: 'DRAFT' | 'PUBLISHED' | 'APPROVED';
 
   @ApiPropertyOptional({ description: 'Template variable definitions' })
   variables?: Record<string, unknown>;
 
   @ApiProperty({ description: 'Current version number' })
   currentVersionNumber: number;
+
+  /**
+   * The `PromptVersion` snapshot pinned at the last approval — `null` when the
+   * template has never been approved.
+   *
+   * Load-bearing for admin surfaces: `PromptResolutionService` serves THIS
+   * snapshot to clinical flows, never the mutable `content` column. So when
+   * `approvedVersionNumber < currentVersionNumber` the template is being edited
+   * ahead of what is actually running, and an admin can only see that if the
+   * field is exposed. It previously was not, which made the pinned-vs-current
+   * distinction invisible in the console.
+   */
+  @ApiPropertyOptional({
+    description: 'PromptVersion number pinned at the last approval — what resolution actually serves. Null = never approved.',
+    example: 3,
+    nullable: true,
+  })
+  approvedVersionNumber?: number | null;
 
   @ApiPropertyOptional({ description: 'Department ID' })
   departmentId?: string;

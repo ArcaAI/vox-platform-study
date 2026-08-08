@@ -13,9 +13,12 @@ export class PromptManagementDtoMapper {
       // Expose scope for the doctor "My Prompts" UI.
       scope: entity.scope ?? undefined,
       // Surface the real status; pre-migration rows default DRAFT.
-      status: (entity.status as 'DRAFT' | 'PUBLISHED') ?? 'DRAFT',
+      status: (entity.status as 'DRAFT' | 'PUBLISHED' | 'APPROVED') ?? 'DRAFT',
       variables: entity.variables ?? undefined,
       currentVersionNumber: entity.currentVersionNumber ?? 1,
+      // The snapshot resolution actually serves. Without it the console cannot
+      // distinguish "approved and running v3" from "edited to v5 since".
+      approvedVersionNumber: entity.approvedVersionNumber ?? null,
       departmentId: entity.departmentId ?? undefined,
       tags: entity.tags ?? undefined,
       createdAt: entity.createdAt.toISOString(),
