@@ -2028,7 +2028,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // This call omitted it, so wherever SMR actually enforces a token — i.e.
     // every environment where `SMR_SERVICE_TOKEN` is non-empty — the live loop
     // was rejected with `invalid_or_missing_token` and the flush degraded to an
-    // empty note (TASK-638). It "worked" only in dev, where an empty token
+    // empty note (TASK-640). It "worked" only in dev, where an empty token
     // trips SMR's bypass. Same resolution the sibling SMR callers use
     // (`prompt-management.service.ts`, `dna-writing-style.processor.ts`); `??
     // ''` preserves the dev bypass when no secret is configured.
