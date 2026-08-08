@@ -35,6 +35,14 @@ export interface PromptTemplate {
   status: PromptTemplateStatus;
   variables?: Record<string, unknown>;
   currentVersionNumber: number;
+  /**
+   * The `PromptVersion` snapshot pinned at the last approval; `null`/absent =
+   * never approved. `PromptResolutionService` serves THIS snapshot to clinical
+   * flows, never the mutable `content` row — so `approvedVersionNumber <
+   * currentVersionNumber` means the template has been edited ahead of what is
+   * actually running. Optional here because older gateways omit the field.
+   */
+  approvedVersionNumber?: number | null;
   departmentId?: string;
   tags?: string[];
   createdAt: string;

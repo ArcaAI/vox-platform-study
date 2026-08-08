@@ -12,6 +12,7 @@ import {
   IconDatabaseSearch,
   IconDna,
   IconDna2,
+  IconFileText,
   IconFingerprint,
   IconFolders,
   IconGauge,
@@ -254,6 +255,17 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     implemented: true,
   },
   { route: '/agents', label: 'Agents', tier: '30-49', icon: IconRobot, required: [['manage', 'PromptTemplate']], implemented: true },
+  // Prompt instruction templates got their own route (TASK-634 R6): the
+  // pre-summary/summary resolution map, template CRUD + versions, and clinical
+  // approval, previously buried as tabs 2 and 3 of the Agent Catalog.
+  {
+    route: '/prompt-templates',
+    label: 'Prompt templates',
+    tier: '30-49',
+    icon: IconFileText,
+    required: [['manage', 'PromptTemplate']],
+    implemented: true,
+  },
   {
     route: '/dna-writing-styles',
     label: 'DNA writing styles',

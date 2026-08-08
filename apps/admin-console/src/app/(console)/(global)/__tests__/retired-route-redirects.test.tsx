@@ -30,8 +30,10 @@ async function renderPage(path: string): Promise<string> {
 }
 
 describe('retired route redirects', () => {
-  it('sends /prompt-studio to the /agents Governance tab', async () => {
-    expect(await renderPage('../prompt-studio/page')).toBe('/agents?tab=governance');
+  // TASK-634 R6 re-pointed the target: the Governance tab moved with the rest
+  // of the PromptTemplate surface onto its own route.
+  it('sends /prompt-studio to the prompt-template Governance tab', async () => {
+    expect(await renderPage('../prompt-studio/page')).toBe('/prompt-templates?tab=governance');
   });
 
   it('sends /pstudio to /db-studio', async () => {
