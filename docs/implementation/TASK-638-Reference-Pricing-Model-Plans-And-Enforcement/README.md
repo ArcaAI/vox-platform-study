@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Review — design, COGS/SELL formulas, enforcement-flip policy, tenant-config model and reconciler best practices all landed; **plan fees, allowances and BOTH price planes are RATIFIED and SEEDED** (book `2026-08-08-commercial-v1`), and provider-aware rating is implemented. Remaining: provider reconcilers (blocked on credentials) and revisiting the ~90% self-hosted utilization assumption against measured data. |
+| **Status** | Review — design, COGS/SELL formulas, enforcement-flip policy, tenant-config model and reconciler best practices all landed; **plan fees, allowances and BOTH price planes are RATIFIED and SEEDED** (book `2026-08-08-commercial-v1`), and provider-aware rating is implemented. Remaining: per-vendor HTTP clients + the read-only credentials themselves (an operator task), persisting reconciliation runs as audit records, and revisiting the ~90% self-hosted utilization assumption against measured data. |
 | **Type** | feature (billing/pricing) + infrastructure (enforcement) + docs (reconciler & tenant-config best practices) |
 | **Created** | 2026-08-08 |
 | **Supersedes / closes** | TASK-615 §7 owner tail #1 (SELL prices), #2 (allowances), #3 (enforcement flip), #14 (reconcilers) |
@@ -164,6 +164,24 @@ The reconciler INTERFACE + stubs already exist (TASK-615 WS-K, `metering/reconci
 6. **Store each run as an audit record** (period, provider, ledger total, provider total, drift, verdict) — this is the financial control that lets an invoice dispute be answered.
 7. **Fail open.** A reconciler that can't reach the provider API logs and skips — it must never block metering or billing (same posture as the at-ingest rater).
 
+### 6.1 What is BUILT (2026-08-08) and what is still credential-gated
+
+The sweep is implemented and green; the only thing outstanding per provider is the vendor HTTP call itself.
+
+| Rule | State |
+|---|---|
+| 1. Read-only org-level credential from Vault | **Built** — `CredentialGatedReconciler` resolves through `SecretsService` (Vault kv-v2). `PROVIDER_RECONCILER_SPECS` names the exact key per vendor: `OPENAI_ADMIN_API_KEY`, `ANTHROPIC_ADMIN_API_KEY`, `AZURE_COST_MANAGEMENT_CREDENTIAL`. |
+| 2. CLOUD only, never BYOK | **Built** — `cloudLedgerControlTotal` filters `deployment: CLOUD`, which is only expressible because TASK-638 put `deployment` on the rollup grain. Self-hosted engines are deliberately absent from the spec list (no vendor bill exists). |
+| 3. Grain = (provider, day) | **Built** — platform-wide, no tenant filter: no vendor exposes per-tenant cost, so a tenant-sliced join could never balance. |
+| 4. Trailing window | **Built** — `resolveReconciliationWindow`, default lag 2 days / window 1 day, pure and unit-tested across month boundaries. |
+| 5. Alert, never auto-correct | **Built** — breaches emit `metering.provider-drift-detected`; a test asserts the sweep performs **no writes** at all. |
+| 6. Persist each run as an audit record | **NOT built** — the sweep returns a `ProviderReconciliationSweepResult` but nothing persists it. This is the financial control that answers an invoice dispute, and it needs a table + migration. Highest-value next step, and it is NOT credential-gated. |
+| 7. Fail open | **Built** — a vendor error is recorded `failed` and the sweep continues; a missing secrets backend leaves every provider `skipped` with a reason. |
+
+**Availability has two independent gates**, and keeping them separate is deliberate: *client not implemented* and *no credential provisioned* need different actions from an operator, and a credential landing before a client existed would otherwise turn every run into a spurious transport failure. Wiring a provider = supplying `fetchControlTotal` on its spec; nothing else changes.
+
+> **The credentials themselves are the remaining blocker**, and they are an operator task, not a code task: mint a READ-ONLY usage/cost credential per vendor and put it in Vault kv-v2 under the key named in the spec. The moment one lands, that provider's availability flips on its own.
+
 ---
 
 ## 7. SELL-price configuration interface (#1)
@@ -189,6 +207,7 @@ Alternatively (or additionally) the derived rate card from the companion doc is 
 
 | Date | Change |
 |---|---|
+| 2026-08-08 | **Provider reconcilers — everything except the vendor HTTP calls.** Retired the WS-K hardcoded "always unavailable" stub registry for a `CredentialGatedReconciler` whose availability derives from two independent gates (client implemented · read-only credential present in Vault), so a credential landing flips a provider on with no code change. Added the trailing settled-window rule (`resolveReconciliationWindow`, lag 2 / window 1, pure), the platform-wide **CLOUD-only** ledger control total (only expressible thanks to the `deployment` grain), and `reconcileProviders()` — which alerts via `metering.provider-drift-detected` and, per §6 rule 5, performs **no writes at all** (asserted by test). `checkAvailability()` became async, since resolving a credential means asking Vault. Still open and NOT credential-gated: persisting each run as an audit record (§6 rule 6). |
 | 2026-08-08 | **Ratified rate card SEEDED** — book `2026-08-06-placeholder-v1` → **`2026-08-08-commercial-v1`**, 42 rows (26 COST · 4 PLAN_FEE · 12 SELL), placeholder markers gone. Seeding surfaced two defects in the companion doc's own §5 table, both fixed: **STT AUDIO_SECOND was 0µ** (OQ1 bills BATCH transcription on that unit — it would have made batch transcription free), and **REASONING_TOKEN had no SELL row** (all token kinds pool into `monthlyLlmTokens` and the engine fails closed, so one reasoning token in overage would have aborted the whole draft). Added managed COST rows for azure gpt-4.1-mini, anthropic Sonnet (incl. cache read/write) and openai embeddings. Applied to the live dev DB by clearing the unreferenced placeholder rows (0 invoices, 0 lines, 0 usage events) and re-seeding; verified through the running console. **Self-hosted COST is seeded at ~90% GPU utilization — the optimistic end**; at the 0.3–0.6 clinical duty cycle the model predicts, COGS is 1.5–3× higher and reported margin is flattered. Each row carries the scaling in its note. |
 | 2026-08-08 | **Local dev database reset and migrated.** It had never been on the migration track — no `_prisma_migrations` table at all, `db push`-managed, 77 of 84 model tables. `prisma migrate reset` (explicit owner consent; `pg_dump` taken first) replayed all **78 migrations cleanly**, which is the first end-to-end proof that history is coherent. Verified after: 86 core tables, `AiUsageRollupDaily.deployment` present defaulting `SELF_HOSTED`, the unique index carrying `deployment` in position, and two rollup rows differing only by deployment coexisting (inserted + rolled back). Re-seeded with `RUN_SEED=all`: the ratified plan matrix is live (STARTER 50 / PRO·TRIAL 250 / ENTERPRISE ∞), plan fees $50 / $100, and both managed-ASR SELL rows at 1,390µ. **Rate-card editing UI DONE** (§7) — the last non-blocked item. |
 | 2026-08-08 | **Provider-aware rating IMPLEMENTED** — owner chose **self-hosted-first** allowance allocation, so the managed-ASR add-on now carries its margin instead of being subsidised at the self-hosted rate. Order `SELF_HOSTED → BYOK → CLOUD`; BYOK resolves the baseline, never the premium (it costs the platform nothing). Required: `deployment` on the rollup grain (migration `20260808120000_task_638_rollup_deployment_dimension`, drainer, unique tuple); `provider`+`deployment` threaded through `DayUnitSum`/`DailyUnitQuantity` **and** the `sumDailyQuantitiesByOperation` aggregate (the tests caught that a mismatched key makes the D16/OQ1 deductions cancel the wrong bucket); tiered consumption in `computeCapabilityOverage` with pro-rata `(unit, provider)` split; provider-keyed SELL rows for `azure-speech` at 1,390µ. Attribution-only change — the property test now varies deployment across all three tiers and re-proves `total overage = max(0, total − allowance)`. Mutation-verified: reversing the tier order drops managed overage to the 500µ baseline and fails the guard. |

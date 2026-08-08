@@ -1,5 +1,7 @@
 export * from './drift-math';
 export * from './provider-reconciler';
+export * from './provider-reconciler-registry';
+export * from './provider-reconciliation-window';
 export * from './shadow-metering.constants';
 export * from './IShadowMeteringService';
 export * from './shadow-metering.service';
