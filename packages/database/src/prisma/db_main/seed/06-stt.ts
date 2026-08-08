@@ -1998,6 +1998,20 @@ export const seedSttSettings = async (client: CorePrismaClient) => {
  * platform-default posture; unscoped seed client so the SYSTEM row is written
  * directly.
  */
+export const SYSTEM_TENANT_STT_CONFIG = {
+  tenantId: SYSTEM_TENANT_ID,
+  // No platform-default fallback — fallback is an explicit tenant choice.
+  //
+  // This NULL is load-bearing for unit economics (TASK-638 §6.1): pointing it at
+  // a CLOUD pipeline would route every tenant's fallback traffic to a managed
+  // ASR vendor on PLATFORM credentials, and managed ASR costs ~13× self-hosted
+  // per audio-second — enough to take PRO from ~93% gross margin to ~7%. Managed
+  // ASR is an ADD-ON: reached via tenant BYOK (tenant funds it) or an explicit
+  // tenant-scoped arrangement, never as a silent platform-funded default.
+  fallbackPipelineId: null,
+  autoSwitchEnabled: true,
+} as const;
+
 export const seedTenantSttConfig = async (client: CorePrismaClient) => {
   console.log('Seeding SYSTEM TenantSttConfig (platform default)...');
 
@@ -2011,12 +2025,7 @@ export const seedTenantSttConfig = async (client: CorePrismaClient) => {
   }
 
   await client.tenantSttConfig.create({
-    data: {
-      tenantId: SYSTEM_TENANT_ID,
-      // No platform-default fallback — fallback is an explicit tenant choice.
-      fallbackPipelineId: null,
-      autoSwitchEnabled: true,
-    },
+    data: { ...SYSTEM_TENANT_STT_CONFIG },
   });
   console.log('  Created SYSTEM TenantSttConfig platform-default row.');
   return { success: true, created: true };
