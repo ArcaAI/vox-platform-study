@@ -34,6 +34,27 @@ description = "DATABASE_URL with embedded password (postgresql://user:pw@...)"
 regex = '''(?i)(DATABASE_URL|DB_CONNECTION_STRING)\s*[:=]\s*["']?postgresql://[^:]+:[^@\s"']{8,}@'''
 tags = ["postgres", "url"]
 
+  # Allowlisted by MATCH FORM, not by path (TASK-621 A.1).
+  #
+  # Arming scan-gitleaks as blocking surfaced three hits, all placeholders:
+  # .env.sample:75 and two docs/research pages. Allowlisting those PATHS would
+  # have been the easy fix and the wrong one — it would then hide a real
+  # password pasted into the same files. These two forms are instead
+  # unambiguous non-secrets wherever they appear:
+  #   * postgres:postgres — the canonical local-dev default, published in every
+  #     compose file and README; it protects nothing
+  #   * <UPPER_SNAKE> — an angle-bracketed fill-me-in token, not a credential
+  [rules.allowlist]
+  description = "Documented placeholder connection strings, not credentials"
+  # regexTarget defaults to "secret" (the captured group). These patterns describe
+  # the whole MATCH, so the target has to be stated explicitly — without it the
+  # allowlist silently never fires.
+  regexTarget = "match"
+  regexes = [
+    '''postgresql://postgres:postgres@''',
+    '''postgresql://[^:]+:<[A-Z_]+>@''',
+  ]
+
 [[rules]]
 id = "hope-pgbouncer-userlist"
 description = "PgBouncer userlist.txt format (Stream C interlock)"

@@ -20,6 +20,7 @@
     SCAN_IMAGE: ""
   script:
     - |
+      # Pass 1 — INFORMATIONAL. HIGH+CRITICAL as a readable table, never blocks.
       echo "Scanning image: $SCAN_IMAGE"
       trivy image \
         --exit-code 0 \
@@ -28,14 +29,20 @@
         --no-progress \
         "$SCAN_IMAGE"
 
+      # Pass 2 — THE GATE. CRITICAL fails the job (TASK-621 C-02).
+      #
+      # This scan was previously neutralised three times over: pass 1 used
+      # --exit-code 0, pass 2's real exit code was swallowed by `|| echo ...`,
+      # and the job carried allow_failure: true. All three are removed. A gate
+      # that cannot fail is not a gate.
       echo ""
-      echo "Checking for CRITICAL vulnerabilities..."
+      echo "Gate: CRITICAL vulnerabilities fail this job."
       trivy image \
         --exit-code 1 \
         --severity CRITICAL \
         --no-progress \
-        "$SCAN_IMAGE" || echo "CRITICAL vulnerabilities found — review required"
-  allow_failure: true
+        "$SCAN_IMAGE"
+  allow_failure: false
 
 # ── Per-service container scans ──────────────────────────────────────────────
 
@@ -129,47 +136,148 @@ scan-source:
     - if: $CI_COMMIT_TAG =~ /^v\d+/
     - if: $PIPELINE_TYPE
 
+# ── Scans added by TASK-621 A.3 — the 7 images that were built but never scanned ──
+
+scan-guardrail:
+  extends: .trivy-scan
+  needs:
+    - job: build-guardrail
+      artifacts: true
+  variables:
+    SCAN_IMAGE: $IMAGE
+  rules:
+    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "release_playground" || $PIPELINE_TYPE == "main"
+      when: never
+    - !reference [.skip-on-dev-2-1, rules]
+    - !reference [.rules-guardrail, rules]
+
+scan-harness:
+  extends: .trivy-scan
+  needs:
+    - job: build-harness
+      artifacts: true
+  variables:
+    SCAN_IMAGE: $IMAGE
+  rules:
+    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "release_playground" || $PIPELINE_TYPE == "main"
+      when: never
+    - !reference [.skip-on-dev-2-1, rules]
+    - !reference [.rules-harness, rules]
+
+scan-tts:
+  extends: .trivy-scan
+  needs:
+    - job: build-tts
+      artifacts: true
+  variables:
+    SCAN_IMAGE: $IMAGE
+  rules:
+    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "release_playground" || $PIPELINE_TYPE == "main"
+      when: never
+    - !reference [.skip-on-dev-2-1, rules]
+    - !reference [.rules-tts, rules]
+
+scan-admin-console:
+  extends: .trivy-scan
+  needs:
+    - job: build-admin-console
+      artifacts: true
+  variables:
+    SCAN_IMAGE: $IMAGE
+  rules:
+    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "release_playground" || $PIPELINE_TYPE == "main"
+      when: never
+    - !reference [.skip-on-dev-2-1, rules]
+    - !reference [.rules-admin-console, rules]
+
+scan-database:
+  extends: .trivy-scan
+  needs:
+    - job: build-database
+      artifacts: true
+  variables:
+    SCAN_IMAGE: $IMAGE
+  rules:
+    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "release_playground" || $PIPELINE_TYPE == "main"
+      when: never
+    - !reference [.skip-on-dev-2-1, rules]
+    - !reference [.rules-database, rules]
+
+scan-stt-worker:
+  extends: .trivy-scan
+  needs:
+    - job: build-stt-worker
+      artifacts: true
+  variables:
+    SCAN_IMAGE: $IMAGE
+  rules:
+    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "release_playground" || $PIPELINE_TYPE == "main"
+      when: never
+    - !reference [.skip-on-dev-2-1, rules]
+    - !reference [.rules-stt, rules]
+
+scan-python-base:
+  extends: .trivy-scan
+  needs:
+    - job: build-python-base
+      artifacts: true
+  variables:
+    SCAN_IMAGE: $IMAGE
+  # No .rules-python-base fragment exists — build-python-base is gated by
+  # .build-common-rules alone, so this mirrors it exactly. A scan gated
+  # differently from its build either never runs or waits on a job that
+  # never ran.
+  rules:
+    - !reference [.build-common-rules, rules]
+
 # ── Gitleaks scan (Phase 0 Item 6) — runs on ALL pipelines, MUST pass ────────
 
-# scan-gitleaks:
-#   stage: scan
-#   tags: [fast]
-#   image:
-#     name: zricethezav/gitleaks:v8.21.2
-#     entrypoint: [""]
-#   needs: []
-#   variables:
-#     # Full clone (not the default shallow depth-20). A shallow clone grafts the
-#     # boundary commit and re-attributes its whole file tree to that commit's
-#     # SHA, so the historic-rotation `commits` allowlist in .gitleaks.toml (keyed
-#     # by the ORIGINAL introducing SHA) stops matching and already-remediated
-#     # secrets get re-reported. A full clone keeps original SHAs intact.
-#     GIT_DEPTH: 0
-#   script:
-#     - |
-#       echo "Scanning entire repo for known-secret patterns…"
-#       gitleaks detect \
-#                --source . \
-#                --config .gitleaks.toml \
-#                --no-banner \
-#                --redact \
-#                --report-format sarif \
-#                --report-path gl-secret-detection-report.sarif
-#   artifacts:
-#     when: always
-#     paths:
-#       - gl-secret-detection-report.sarif
-#     reports:
-#       sast: gl-secret-detection-report.sarif
-#     expire_in: 30 days
-#   allow_failure: false
-#   rules:
-#     - if: $CI_COMMIT_TAG =~ /^v\d+/
-#     - if: $PIPELINE_TYPE == "merge_request"
-#     - if: $PIPELINE_TYPE == "feature"
-#     - if: $PIPELINE_TYPE == "cicd"
-#     - if: $PIPELINE_TYPE == "dev"
-#     - if: $PIPELINE_TYPE == "staging"
-#     - if: $PIPELINE_TYPE == "release_sdk"
-#     - if: $PIPELINE_TYPE == "release_playground"
-#     - if: $PIPELINE_TYPE == "main"
+scan-gitleaks:
+  stage: scan
+  tags: [fast]
+  image:
+    name: zricethezav/gitleaks:v8.21.2
+    entrypoint: [""]
+  needs: []
+  script:
+    - |
+      # WORKING-TREE mode (TASK-621 A.1), not full history.
+      #
+      # The previous body used GIT_DEPTH: 0 + full-history detection so the
+      # `commits` allowlist in .gitleaks.toml (keyed by original introducing SHA)
+      # kept matching. That is the right END state, but it cannot be switched on
+      # blind: this repo's history has not been audited, and the sibling
+      # hope-v2-deployment repo demonstrated the failure mode — two live
+      # credentials in its history would fail every pipeline forever, when the
+      # remediation is ROTATION, not a permanently red pipeline.
+      #
+      # Working-tree mode stops NEW secrets landing, which is what CI can
+      # usefully enforce today, and it blocks (allow_failure: false).
+      # Full-history mode is Wave-B-gated on that audit — see TASK-621 §5.
+      echo "Scanning working tree for known-secret patterns…"
+      gitleaks detect \
+               --no-git \
+               --source . \
+               --config .gitleaks.toml \
+               --no-banner \
+               --redact \
+               --report-format sarif \
+               --report-path gl-secret-detection-report.sarif
+  artifacts:
+    when: always
+    paths:
+      - gl-secret-detection-report.sarif
+    reports:
+      sast: gl-secret-detection-report.sarif
+    expire_in: 30 days
+  allow_failure: false
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v\d+/
+    - if: $PIPELINE_TYPE == "merge_request"
+    - if: $PIPELINE_TYPE == "feature"
+    - if: $PIPELINE_TYPE == "cicd"
+    - if: $PIPELINE_TYPE == "dev"
+    - if: $PIPELINE_TYPE == "staging"
+    - if: $PIPELINE_TYPE == "release_sdk"
+    - if: $PIPELINE_TYPE == "release_playground"
+    - if: $PIPELINE_TYPE == "main"
