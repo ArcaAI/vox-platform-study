@@ -243,6 +243,21 @@ scan-harness-worker:
     - !reference [.skip-on-dev-2-1, rules]
     - !reference [.rules-harness, rules]
 
+scan-qdrant-init:
+  extends: .trivy-scan
+  needs:
+    - job: build-qdrant-init
+      artifacts: true
+  variables:
+    SCAN_IMAGE: $IMAGE
+  # No .rules-qdrant-init fragment exists (same situation as scan-python-base
+  # above) — build-qdrant-init is gated by .build-common-rules + the ALL- tag
+  # alone, so this mirrors it exactly rather than inventing a path-based rule
+  # in rules.yml for a one-shot provisioning image.
+  rules:
+    - !reference [.build-common-rules, rules]
+    - if: $CI_COMMIT_TAG =~ /^ALL-/
+
 # ── Gitleaks scan (Phase 0 Item 6) — runs on ALL pipelines, MUST pass ────────
 
 scan-gitleaks:

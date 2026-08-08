@@ -265,6 +265,27 @@ build-harness-worker:
     - !reference [.build-common-rules, rules]
     - if: $CI_COMMIT_TAG =~ /^HARNESS-/ || $CI_COMMIT_TAG =~ /^ALL-/
 
+# ── Qdrant collection provisioning (TASK-624 Q-02/Q-07) ─────────────────────
+# One-shot init image for the Argo `Sync`-hook Job that creates
+# `knowledge_chunks` (deployment/k8s/base/qdrant-init.yaml in
+# hope-v2-deployment) — bakes the script + qdrant-client so the Job never
+# pip-installs at pod start. Not built from hope-python-base (see the
+# Dockerfile) and has no test job of its own, so `needs:` is just the base
+# image warm-up, same shape as build-database.
+
+build-qdrant-init:
+  extends: .build-template
+  needs:
+    - job: warm-up-base-images
+      optional: true
+  variables:
+    SERVICE_NAME: qdrant-init
+    DOCKER_CONTEXT: "."
+    DOCKERFILE: infrastructure/docker/qdrant-init/Dockerfile
+  rules:
+    - !reference [.build-common-rules, rules]
+    - if: $CI_COMMIT_TAG =~ /^ALL-/
+
 # ── TTS ─────────────────────────────────────────────────────────────────────
 
 build-tts:
