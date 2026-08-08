@@ -40,7 +40,14 @@ set -eu
 : "${CI_PROJECT_PATH:?CI_PROJECT_PATH is required}"
 : "${CI_COMMIT_SHA:?CI_COMMIT_SHA is required}"
 : "${DEPLOY_REPO_URL:?DEPLOY_REPO_URL is required}"
-: "${DEPLOY_TOKEN:?DEPLOY_TOKEN is required (Vault deploy/DEPLOY_TOKEN, see vault.yml)}"
+: "${DEPLOY_TOKEN:?DEPLOY_TOKEN is required — a masked CI variable holding a token with write_repository on the deployment repo, or Vault deploy/DEPLOY_TOKEN once VAULT_ADDR is set (see vault.yml)}"
+
+# The username half of the HTTPS basic-auth pair. GitLab accepts ANY non-empty
+# username alongside a personal or project access token, which is why the
+# `gitlab-ci-token` default works for those. A DEPLOY TOKEN is different: its
+# username is assigned by GitLab at creation and the pair is rejected if it
+# doesn't match. Override this variable in that case rather than editing here.
+DEPLOY_TOKEN_USERNAME="${DEPLOY_TOKEN_USERNAME:-gitlab-ci-token}"
 
 SHORT_SHA=$(echo "$CI_COMMIT_SHA" | cut -c1-8)
 SOURCE_TAG="sha-${SHORT_SHA}"
@@ -105,8 +112,8 @@ KUSTOMIZE_IMAGE_PREFIX="hope-v2"
 PUBLIC_REGISTRY_HOST="registry.taphuynh.dev"
 
 DEPLOY_AUTH_URL=$(echo "$DEPLOY_REPO_URL" | sed \
-  -e "s|https://|https://gitlab-ci-token:${DEPLOY_TOKEN}@|" \
-  -e "s|http://|http://gitlab-ci-token:${DEPLOY_TOKEN}@|")
+  -e "s|https://|https://${DEPLOY_TOKEN_USERNAME}:${DEPLOY_TOKEN}@|" \
+  -e "s|http://|http://${DEPLOY_TOKEN_USERNAME}:${DEPLOY_TOKEN}@|")
 
 rm -rf /tmp/deploy
 git clone --depth 1 "$DEPLOY_AUTH_URL" /tmp/deploy
