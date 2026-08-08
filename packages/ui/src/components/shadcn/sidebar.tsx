@@ -313,8 +313,13 @@ function SidebarContent({ className, ...props }: React.ComponentProps<'div'>) {
       data-sidebar="content"
       // Icon-collapsed keeps VERTICAL scrolling (long menus stay reachable on
       // short viewports); only horizontal overflow is clipped so the width
-      // transition never spills content out of the 3rem rail.
-      className={cn('flex min-h-0 flex-1 flex-col gap-2 overflow-auto group-data-[collapsible=icon]:overflow-x-hidden', className)}
+      // transition never spills content out of the 3rem rail. The scrollbar
+      // track is hidden in the 3rem rail (still scrollable via wheel/touch) —
+      // a visible track there reads as a rendering glitch, not an affordance.
+      className={cn(
+        'flex min-h-0 flex-1 flex-col gap-2 overflow-auto group-data-[collapsible=icon]:overflow-x-hidden group-data-[collapsible=icon]:[scrollbar-width:none] group-data-[collapsible=icon]:[&::-webkit-scrollbar]:hidden',
+        className,
+      )}
       {...props}
     />
   );
