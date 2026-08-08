@@ -83,12 +83,18 @@ test.describe('InputOTP', () => {
   });
 
   test.describe('typing', () => {
+    // Every test here types with `{ delay: 20 }`. input-otp rewrites the input's
+    // value and selection on each keystroke, so a zero-delay keypress can land
+    // mid-update and be swallowed — the race that made 'does not exceed
+    // maxLength' flake under load. Asserting the input value alongside the slot
+    // text keeps a swallowed keystroke from passing as a green test.
     test('typing fills the first slot', async ({ mount, page }) => {
       await mount(<BasicOTP />);
       const otp = page.locator('[data-slot="input-otp"]');
       await otp.click();
-      await page.keyboard.type('1');
+      await page.keyboard.type('1', { delay: 20 });
 
+      await expect(otp).toHaveValue('1');
       const firstSlot = page.locator('[data-slot="input-otp-slot"]').first();
       await expect(firstSlot).toContainText('1');
     });
@@ -97,8 +103,9 @@ test.describe('InputOTP', () => {
       await mount(<BasicOTP />);
       const otp = page.locator('[data-slot="input-otp"]');
       await otp.click();
-      await page.keyboard.type('123');
+      await page.keyboard.type('123', { delay: 20 });
 
+      await expect(otp).toHaveValue('123');
       const slots = page.locator('[data-slot="input-otp-slot"]');
       await expect(slots.nth(0)).toContainText('1');
       await expect(slots.nth(1)).toContainText('2');
@@ -109,8 +116,9 @@ test.describe('InputOTP', () => {
       await mount(<BasicOTP />);
       const otp = page.locator('[data-slot="input-otp"]');
       await otp.click();
-      await page.keyboard.type('1');
+      await page.keyboard.type('1', { delay: 20 });
 
+      await expect(otp).toHaveValue('1');
       const secondSlot = page.locator('[data-slot="input-otp-slot"]').nth(1);
       await expect(secondSlot).toHaveAttribute('data-active', 'true');
     });
@@ -218,8 +226,14 @@ test.describe('InputOTP', () => {
       await mount(<BasicOTP />);
       const otp = page.locator('[data-slot="input-otp"]');
       await otp.click();
-      await page.keyboard.type('12');
+      await page.keyboard.type('12', { delay: 20 });
+      // Pin the pre-state: `not.toContainText('2')` below is satisfied by an
+      // empty field too, so without this the test passes when the typing was
+      // swallowed and Backspace deleted nothing.
+      await expect(otp).toHaveValue('12');
+
       await page.keyboard.press('Backspace');
+      await expect(otp).toHaveValue('1');
 
       const secondSlot = page.locator('[data-slot="input-otp-slot"]').nth(1);
       await expect(secondSlot).not.toContainText('2');
