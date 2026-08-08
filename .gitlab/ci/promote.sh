@@ -61,12 +61,19 @@ esac
 
 echo "── Promoting ${SOURCE_TAG} → ${DEPLOY_ENV} (env tag: ${ENV_TAG}) ──"
 
-# §F9 — the canonical 11-service list, plus `database` (the migration-Job
-# image, not a long-running service). `harness-worker` does not exist yet
-# (no Dockerfile target / CI build job / manifest) — it is listed here so it
-# starts promoting automatically the day it exists, but until then the loop
-# below skips it with a warning instead of failing the whole promotion.
-SERVICES="api stt-ml-runtime stt-worker smr guardrail harness harness-worker nlp tts admin-console compat-playground database"
+# §F9 — the canonical 11-service list, plus the two job images: `database`
+# (the migration Job) and `qdrant-init` (the Argo PreSync collection-bootstrap
+# Job). Both are built by build.yml and referenced by the deployment repo's
+# base/, so both must be pinned or they deploy as an unresolvable
+# `hope-v2/<name>:latest`. `harness-worker` graduated from placeholder to a
+# real build job (build.yml `build-harness-worker`) + manifest
+# (base/harness-worker.yaml).
+#
+# Every name here MUST equal the `SERVICE_NAME` of its build job — that is what
+# forms `$REGISTRY/$CI_PROJECT_PATH/<name>` — and the `hope-v2/<name>` key the
+# overlays use. A name with no matching `sha-<sha8>` tag is skipped with a
+# warning rather than failing the whole promotion.
+SERVICES="api stt-ml-runtime stt-worker smr guardrail harness harness-worker nlp tts admin-console compat-playground database qdrant-init"
 
 PROMOTED=""
 for svc in $SERVICES; do

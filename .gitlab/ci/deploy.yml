@@ -24,10 +24,20 @@
 # and a layout that never existed. The real repo is `arca/hope-v2-deployment`,
 # pure Kustomize.
 #
-# CI Variables needed (Settings → CI/CD → Variables):
-#   DEPLOY_REPO_URL   — https://git.taphuynh.dev/arca/hope-v2-deployment.git
-# Everything else (DEPLOY_TOKEN) comes from Vault via VAULT_SECRETS below —
-# see .gitlab/ci/vault.yml for the per-environment role split (§F10).
+# Credentials:
+#   DEPLOY_REPO_URL   — NOT a secret; defaulted below so a fresh runner needs no
+#                       manual setup. A project/group CI variable of the same
+#                       name still wins (project variables outrank job
+#                       `variables:`), which is the override path if the
+#                       deployment repo ever moves.
+#   DEPLOY_TOKEN      — a secret. Comes from Vault via VAULT_SECRETS below once
+#                       VAULT_ADDR is set; until then it must exist as a masked
+#                       project CI variable (Settings → CI/CD → Variables) with
+#                       `write_repository` on arca/hope-v2-deployment. With
+#                       VAULT_ADDR empty the Vault step is a no-op, so the CI
+#                       variable is the ONLY source — see .gitlab/ci/vault.yml
+#                       § "FALLBACK / ROLLOUT SAFETY" and the per-environment
+#                       role split (§F10).
 #
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -39,6 +49,7 @@
   id_tokens: !reference [.vault-oidc-id-token, id_tokens]
   variables:
     VAULT_SECRETS: !reference [.vault-secret-sets, deploy]
+    DEPLOY_REPO_URL: "https://git.taphuynh.dev/arca/hope-v2-deployment.git"
   before_script:
     - apk add --no-cache git curl bash
     - !reference [.vault-oidc, before_script]
