@@ -1,0 +1,146 @@
+# Reference Pricing Model — researched inputs + derived COST/SELL rate card
+
+Companion to [README.md](./README.md). **Provenance:** the provider figures below are
+~**Jan 2026** knowledge with the canonical pricing page cited per row — NOT live-fetched.
+LLM prices move monthly; re-confirm against the live pages before any figure reaches a
+customer-facing rate card. Currency USD. `unitPriceMicros` = integer micros (1e-6 USD) per
+ONE unit (token, audio-second, character), matching `AiPriceBook`.
+
+> **Everything past §3 is a PROPOSAL for owner ratification** — it sets real customer prices.
+
+---
+
+## 1. Managed provider COGS (verify live)
+
+**LLM $/1M tokens (representative mid-tier summarizer per provider):**
+
+| Provider | Model | Input $/1M | Output $/1M | Source |
+|---|---|---|---|---|
+| OpenAI | GPT-5 mini | 0.25 | 2.00 | openai.com/api/pricing |
+| OpenAI | GPT-4.1 mini | 0.40 | 1.60 | openai.com/api/pricing |
+| Anthropic | Claude Sonnet 4.5 | 3.00 | 15.00 | anthropic.com/pricing |
+| Anthropic | Claude Haiku 4.5 | 1.00 | 5.00 | anthropic.com/pricing |
+| Azure OpenAI | GPT-4.1 mini (= OpenAI list; Data-Zone +10–20%) | 0.40 | 1.60 | azure … /openai-service |
+| Bedrock | Amazon Nova Lite | 0.06 | 0.24 | aws.amazon.com/bedrock/pricing |
+| Gemini/Vertex | Gemini 2.5 Flash | 0.30 | 2.50 | ai.google.dev/pricing |
+
+Anthropic cache: write-5m = 1.25× input, write-1h = 2× input, read = 0.1× input (feeds the TASK-615 #7 `cacheTtl` COST rows). OpenAI cache read ≈ 0.1–0.5× input, no write surcharge.
+
+**Other meters:** STT managed ≈ **$0.0001/audio-s** (Whisper $0.006/min; Deepgram Nova-3 $0.0000717/s; **Azure Speech $0.000278/s**). TTS managed ≈ **$0.000016/char** (Azure neural $16/1M, OpenAI tts-1 $15/1M; ElevenLabs 4–15× more — a premium, not commodity). Embeddings ≈ **$0.02/1M** (OpenAI 3-small / Voyage-lite) up to **$0.13/1M** (3-large).
+
+**Per-token → micros:** `$/1M tokens` numerically equals `micros/token` (both are 1e-6). So Sonnet input $3/1M → **3 µ/token**; output $15/1M → **15 µ/token**. STT Azure $0.000278/s → **278 µ/audio-s** (this matches the existing seed COST row). TTS $0.000016/char → **16 µ/char**.
+
+---
+
+## 2. Self-hosted COGS (utilization-gated)
+
+Cloud GPU $/hr (per single GPU, on-demand; neocloud/reserved cheaper): H100 ~$2.5–7, A100 ~$1.3–5, L40S ~$0.9–1.9, L4 ~$0.4–0.8. Throughput: 8B vLLM ~2,000–5,000 tok/s aggregate; 70B ~800–1,500 tok/s; whisper large-v3 RTFx 10–30× (up to 70× batched). US commercial electricity ~$0.13/kWh; H100 ~700W; PUE ~1.5.
+
+Derived (formula in README §3.1, at **high** utilization):
+
+| Meter | Self-hosted COGS | Managed COGS | Notes |
+|---|---|---|---|
+| LLM 8B | ~$0.17/1M tok (**~0.17 µ/token**) | $0.25–3/1M | sub-micro/token — see rounding note |
+| LLM 70B | ~$0.69/1M tok (~0.69 µ/token) | $1–15/1M | |
+| STT | ~$0.00002/audio-s (**~20 µ/s**) | $0.0001/s (100 µ) | ~5× cheaper than Whisper API |
+| TTS (Kokoro/Indic) | GPU-economics like STT (single-digit–low-tens µ/char) | 16 µ/char | |
+
+> **The dominant sensitivity is utilization.** At <30% GPU utilization the self-hosted COGS can EXCEED managed API prices. Model 30%/60%/90% before committing a self-hosted COST row.
+
+> **Sub-micro rounding:** a self-hosted LLM token (~0.17 µ) is below the integer-micro floor. Options: (a) keep the self-hosted COST row at `0µ` (self-hosted LLM COGS is genuinely ~free at this granularity) and rate SELL off a managed reference; (b) add a `1000-token` unit if per-token COGS precision is ever needed. Recommend (a) — SELL is the revenue lever, and it should be **market-referenced**, not `self-host-COST × 4` (which would underprice).
+
+---
+
+## 3. Markup / margin — RATIFIED 80% / 5×
+
+`SELL = COGS / (1 − target_gross_margin) = COGS × markup`. **Owner ratified 2026-08-08: `target_gross_margin = 80%` → markup = 5×** on all metered lines (the healthier end of the AI-SaaS 70–80% band).
+
+For meters where the platform self-hosts (STT/TTS/embeddings, and LLM on the built-in models), self-hosted COGS is far below the managed price — so the `× 5` below is applied to the **managed reference COST** for each meter (what the platform pays on the SYSTEM/fallback provider), NOT to the near-zero self-hosted COGS. This makes the tenant pay a market-competitive rate while the platform banks the self-hosting delta ON TOP of the 80% target — i.e. 80% is the *floor* margin, higher whenever a self-hosted path serves the call.
+
+---
+
+## 4. PROPOSED COST rows (supersede the `2026-08-06-placeholder-v1` card)
+
+Integer micros per unit. `provider: null` = self-hosted catch-all. **RATIFY before seeding.**
+
+| plane | capability | provider | model | unit | µ/unit | basis |
+|---|---|---|---|---|---|---|
+| COST | STT | null (whisper_cpp) | — | AUDIO_SECOND | **20** | self-hosted high-util (was placeholder 3µ — too low) |
+| COST | STT | azure-speech | — | AUDIO_SECOND | 278 | Azure real-time (already seeded) |
+| COST | LLM | null (built-in) | — | INPUT_TOKEN | **0** | self-hosted ~sub-micro (see §2 note) |
+| COST | LLM | null (built-in) | — | OUTPUT_TOKEN | **0** | " |
+| COST | LLM | azure | gpt-4.1-mini | INPUT_TOKEN | 1 | $0.40/1M (round up from 0.4) |
+| COST | LLM | azure | gpt-4.1-mini | OUTPUT_TOKEN | 2 | $1.60/1M |
+| COST | LLM | anthropic | claude-sonnet-5 | INPUT_TOKEN | 3 | $3/1M |
+| COST | LLM | anthropic | claude-sonnet-5 | OUTPUT_TOKEN | 15 | $15/1M |
+| COST | LLM | anthropic | claude-sonnet-5 | CACHE_WRITE_TOKEN (cacheTtl `5m`) | 4 | 1.25× input, #7 dimension |
+| COST | LLM | anthropic | claude-sonnet-5 | CACHE_WRITE_TOKEN (cacheTtl `1h`) | 6 | 2× input |
+| COST | LLM | anthropic | claude-sonnet-5 | CACHE_READ_TOKEN | 1 | 0.1× input (round up) |
+| COST | TTS | null (kokoro) | — | CHARACTER | 2 | self-hosted low |
+| COST | TTS | azure-speech | — | CHARACTER | 16 | $16/1M |
+| COST | EMBEDDING | null (lm-studio) | — | INPUT_TOKEN | 0 | self-hosted ~free |
+| COST | EMBEDDING | openai | text-embedding-3-small | INPUT_TOKEN | 1 | $0.02/1M (round up) |
+
+## 5. PROPOSED SELL rows (5× markup — ratified — off the stated managed reference)
+
+Tier-agnostic overage defaults (`planTier: null`); add per-tier premium later if wanted (≤15%, D12). Each row is `5 × managed-reference COST`; the reference is named so you can adjust the basis without changing the 5×.
+
+| plane | capability | unit | µ/unit | 5× of (managed reference) |
+|---|---|---|---|---|
+| SELL | STT | SESSION_SECOND | **500** | ~$0.0001/s Whisper-API-class (100µ) × 5 → ~$0.03/min. Covers the Azure-fallback COST (278µ) at ~1.8× and self-hosted (20µ) at 25×. |
+| SELL | STT | AUDIO_SECOND | 0 | recorded for COGS/repricing; billing is on SESSION_SECOND (OQ1) |
+| SELL | LLM | INPUT_TOKEN | **5** | default SYSTEM model gpt-4.1-mini input ($0.40–1.0/1M ≈ 1µ) × 5 = ~$5/1M |
+| SELL | LLM | OUTPUT_TOKEN | **10** | gpt-4.1-mini output ($1.60/1M ≈ 2µ) × 5 = ~$10/1M |
+| SELL | LLM | CACHE_READ_TOKEN | 1 | 0.1× SELL input (≈0.5µ, rounded up) |
+| SELL | LLM | CACHE_WRITE_TOKEN | 8 | ~1.5× SELL input |
+| SELL | TTS | CHARACTER | **80** | Azure neural 16µ × 5 = ~$80/1M char |
+| SELL | NLP | TEXT_UNIT | **50** | per 100-char NER unit (self-hosted GLiNER; no managed market — nominal) |
+| SELL | EMBEDDING | INPUT_TOKEN | 1 | openai 3-small $0.02/1M ×5 ≈ 0.1µ → 1µ integer floor |
+
+> **Premium models supersede.** These baseline SELL rows are priced off the **default SYSTEM model (gpt-4.1-mini class)**. A tenant running a pricier model (e.g. Sonnet, COST 3µ in / 15µ out) should get its own SELL rows keyed by model: `5× → 15µ in / 75µ out`. Add those as the premium tiers actually ship.
+
+> **STT cost-basis caveat (decision #5):** SESSION_SECOND SELL must cover the *worst* provider the platform might route to. 500µ covers Azure-fallback (278µ) with margin; if you expect heavy Azure/premium-ASR routing, raise it. If you only ever self-host (20µ COGS), 500µ is a 25× margin and you could lower it to stay competitive.
+
+## 6. Plan fees + allowances — RATIFIED 2026-08-08, SEEDED
+
+Owner-ratified: **STARTER $50/mo · 50 consultations**, **PRO $100/mo · 250 consultations**, **ENTERPRISE negotiated / unlimited**. TRIAL stays a free 1-week PRO-entitled window.
+
+**Intensity constants** used for the derivation (engineering estimates, revisit after a shadow-metering cycle): `avg_consultation_minutes = 20`, `avg_tokens_per_summary = 6,000` (in+out, all passes), `avg_tts_chars_per_consultation = 2,000`, `avg_ner_text_units = 30`, `avg_embed_tokens_per_consultation = 1,500`, `session_overhead = 1.1`.
+
+| Tier | Plan fee/mo | consultations | transcriptionMin | summaries | sttSessionSeconds | llmTokens | ttsCharacters | nlpTextUnits | embeddingTokens |
+|---|---|---|---|---|---|---|---|---|---|
+| STARTER | **$50** | **50** | 1,000 | 50 | 132,000 | 600,000 | 200,000 | 3,000 | 150,000 |
+| PRO / TRIAL | **$100** (TRIAL $0) | **250** | 5,000 | 250 | 660,000 | 3,000,000 | 1,000,000 | 15,000 | 750,000 |
+| ENTERPRISE | negotiated | `null` | `null` | `null` | `null` | `null` | `null` | `null` | `null` |
+
+**The per-capability numbers carry ×2 headroom on purpose.** `monthlyConsultations` is the *commercial* cap; the per-capability ceilings are **runaway guards** (a stuck loop, an abusive workload), not a second business cap. A tenant working normally inside its consultation cap must never trip one — which matters now that enforcement defaults ON in deployed environments (§5 of the README). Tighten them only once shadow metering reports real per-consultation intensity.
+
+### 6.1 Margin check on the ratified fees — the one thing to watch
+
+Per 20-minute consultation, at the §5 (5×) SELL rates the bundled value is ≈ **$0.86** (STT 1,320 session-s × 500µ = $0.66 · LLM 6k tokens ≈ $0.035 · TTS 2,000 × 80µ = $0.16 · NLP/embeddings ≈ $0.003).
+
+| | STARTER ($50 / 50) | PRO ($100 / 250) |
+|---|---|---|
+| Bundled value at SELL rates | ~$43 | ~$215 |
+| Fee vs bundled value | fee is **1.2× above** | fee is **0.47×** → a ~53% prepay discount |
+| **COGS if self-hosted** (~$0.028/consultation) | $1.40 → **97% margin** ✅ | $7.00 → **93% margin** ✅ |
+| **COGS if routed to Azure** (~$0.37/consultation) | $18.65 → **63% margin** ⚠️ | $93.25 → **~7% margin** 🚨 |
+
+**Finding: both fees are healthy on self-hosted infrastructure and PRO is essentially break-even if its traffic falls back to managed Azure.** At a 30-minute average consultation, PRO on Azure goes *negative*. Three mitigations, all already available in the design — pick at least one before opening PRO to managed-fallback traffic:
+
+1. **BYOK** — a tenant on its own key funds its own provider cost (`BYOK_NOTIONAL`, zero-rated); this is the intended path for heavy users and it removes the exposure entirely.
+2. **Keep the SYSTEM default self-hosted** and treat premium/managed ASR as an add-on SKU rather than a silent fallback.
+3. **Raise PRO** (or lower its consultation bundle) if managed fallback is expected to be routine.
+
+This is a routing-economics exposure, not a pricing error — the fees themselves are fine for the intended self-hosted deployment.
+
+---
+
+## 7. Decisions — status
+1. ✅ **`target_gross_margin` = 80% → 5× markup** — RATIFIED 2026-08-08.
+2. ✅ **Plan fees + consultation ceilings** — RATIFIED 2026-08-08 ($50/50, $100/250, ENTERPRISE negotiated). Seeded.
+3. ⏳ **The §5 SELL per-unit rates** — computed at 5× off named managed references; confirm the references (esp. the STT SESSION_SECOND cost-basis caveat and premium-model rows). **Not yet seeded** — the placeholder overage rows still stand.
+4. ✅ **Intensity constants** — §6, applied with ×2 headroom; revisit after a shadow-metering cycle.
+5. ⏳ **Self-hosted COST utilization assumption** (30/60/90%) → the self-hosted COST rows. **Not yet seeded.**
+6. ✅ ENTERPRISE stays unlimited (negotiated per contract).
+7. 🚨 **New — decide the managed-fallback posture for PRO** (§6.1).

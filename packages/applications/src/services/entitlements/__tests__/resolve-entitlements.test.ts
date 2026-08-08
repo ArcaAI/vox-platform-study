@@ -32,7 +32,8 @@ describe('resolveEntitlements', () => {
       expect(r.limits.maxDepartments).toBe(2);
       expect(r.limits.storageQuotaBytes).toBe(5 * GIB);
       expect(r.limits.maxConcurrentSessions).toBe(5);
-      expect(r.limits.monthlyConsultations).toBe(500);
+      // TASK-638: STARTER = $50/mo bundling 50 consultations.
+      expect(r.limits.monthlyConsultations).toBe(50);
       expect(r.features).toEqual({ dnaReports: false, voiceEnrollment: false, monitoringAccess: false });
       expect(r.modelTier).toBe('base');
       expect(r.rateLimitTier).toBe('strict');
@@ -54,7 +55,8 @@ describe('resolveEntitlements', () => {
       expect(r.limits.maxUsers).toBe(100);
       expect(r.limits.maxConcurrentSessions).toBe(100);
       expect(r.limits.storageQuotaBytes).toBe(1_000 * GIB);
-      expect(r.limits.monthlyConsultations).toBe(50_000);
+      // TASK-638: ENTERPRISE usage is negotiated — unlimited by default.
+      expect(r.limits.monthlyConsultations).toBeNull();
       expect(r.features.monitoringAccess).toBe(true);
       expect(r.modelTier).toBe('full_custom');
       expect(r.rateLimitTier).toBe('relaxed');
@@ -133,15 +135,34 @@ describe('resolveEntitlements', () => {
   });
 
   describe('TASK-615 D11 per-capability allowances (monthlySttSessionSeconds/monthlyLlmTokens/monthlyTtsCharacters/monthlyNlpTextUnits/monthlyEmbeddingTokens)', () => {
-    it('seeds every plan unlimited (null) — D11: seeding NULL is a strict no-op until a commercial ceiling is set', () => {
-      for (const plan of [TenantPlan.STARTER, TenantPlan.TRIAL, TenantPlan.PRO, TenantPlan.ENTERPRISE]) {
+    it('seeds the ratified per-capability ceilings on the paid tiers (TASK-638)', () => {
+      // Derived from each plan's business ceilings × intensity constants × 2
+      // headroom — see TASK-638 §6. They are runaway guards, so they must sit
+      // well ABOVE what the consultation cap alone permits.
+      const starter = resolveEntitlements(TenantPlan.STARTER);
+      expect(starter.limits.monthlySttSessionSeconds).toBe(132_000);
+      expect(starter.limits.monthlyLlmTokens).toBe(600_000);
+      expect(starter.limits.monthlyTtsCharacters).toBe(200_000);
+      expect(starter.limits.monthlyNlpTextUnits).toBe(3_000);
+      expect(starter.limits.monthlyEmbeddingTokens).toBe(150_000);
+
+      for (const plan of [TenantPlan.TRIAL, TenantPlan.PRO]) {
         const r = resolveEntitlements(plan);
-        expect(r.limits.monthlySttSessionSeconds).toBeNull();
-        expect(r.limits.monthlyLlmTokens).toBeNull();
-        expect(r.limits.monthlyTtsCharacters).toBeNull();
-        expect(r.limits.monthlyNlpTextUnits).toBeNull();
-        expect(r.limits.monthlyEmbeddingTokens).toBeNull();
+        expect(r.limits.monthlySttSessionSeconds).toBe(660_000);
+        expect(r.limits.monthlyLlmTokens).toBe(3_000_000);
+        expect(r.limits.monthlyTtsCharacters).toBe(1_000_000);
+        expect(r.limits.monthlyNlpTextUnits).toBe(15_000);
+        expect(r.limits.monthlyEmbeddingTokens).toBe(750_000);
       }
+    });
+
+    it('ENTERPRISE stays unlimited across every allowance — usage is negotiated per contract', () => {
+      const r = resolveEntitlements(TenantPlan.ENTERPRISE);
+      expect(r.limits.monthlySttSessionSeconds).toBeNull();
+      expect(r.limits.monthlyLlmTokens).toBeNull();
+      expect(r.limits.monthlyTtsCharacters).toBeNull();
+      expect(r.limits.monthlyNlpTextUnits).toBeNull();
+      expect(r.limits.monthlyEmbeddingTokens).toBeNull();
     });
 
     it('a null plan (ungated-legacy) has unlimited allowances too', () => {
@@ -156,8 +177,8 @@ describe('resolveEntitlements', () => {
     it('a DB plan row can set a finite allowance ceiling', () => {
       const r = resolveEntitlements(TenantPlan.TRIAL, { monthlyLlmTokens: 500_000 });
       expect(r.limits.monthlyLlmTokens).toBe(500_000);
-      // untouched allowance fields stay unlimited
-      expect(r.limits.monthlyTtsCharacters).toBeNull();
+      // untouched allowance fields fall through to the plan default (TRIAL = PRO)
+      expect(r.limits.monthlyTtsCharacters).toBe(1_000_000);
     });
 
     it('a per-tenant override wins over the plan row (negotiated enterprise allowance)', () => {

@@ -12,8 +12,9 @@ import { SEED_TENANT_ID, SEED_USER_IDS, SEED_GLOBAL_SETTING_IDS, SEED_PLAN_ENTIT
  *   2. The entitlements enforcement kill-switch (`entitlements.enabled`
  *      GlobalSetting) under the platform tenant. Ships **OFF** by default so
  *      the epic lands safely dark; the fresh-DB seed value is **env-driven**
- *      so DEV + STAGING come up **ON** while TEST/CI/PROD stay **OFF** — see the
- *      `ENTITLEMENTS_ENABLED_DEFAULT` note below.
+ *      so every DEPLOYED env (hope-v2-dev, staging, production) comes up **ON**
+ *      while LOCAL dev and TEST/CI stay **OFF** — see the
+ *      `ENTITLEMENTS_ENABLED_DEFAULT` note below (TASK-638 policy).
  *   3. TASK-615 WS-H: the metering reconcile-sweep kill-switch
  *      (`metering.reconcile.enabled` GlobalSetting), same platform tenant,
  *      same env-driven fresh-DB pattern (OQ3) via a SEPARATE
@@ -36,15 +37,20 @@ const GIB = 1024 ** 3;
 
 /**
  * The kill-switch's SEED-TIME initial value is
- * environment-driven so an env can come up with enforcement already ON without
- * any code change, while keeping the default SAFE (OFF):
+ * environment-driven so a DEPLOYED env comes up with enforcement already ON
+ * without any code change, while keeping the LOCAL/committed default SAFE (OFF).
+ * POLICY (TASK-638): enforcement is ON in every DEPLOYED environment and OFF
+ * only on a developer laptop and in test/CI:
  *
- *   - DEV  → `.env.dev` sets `ENTITLEMENTS_ENABLED_DEFAULT=true` → fresh DEV seed = ON.
+ *   - LOCAL DEV → the committed `.env.sample`/`.env.dev` leaves the var **false** →
+ *     fresh local seed = OFF, so a developer never fights quota locally.
+ *   - `hope-v2-dev` CLUSTER → its deploy/host env sets `ENTITLEMENTS_ENABLED_DEFAULT=true`
+ *     → ON (a deployed env is host-env-only; it does NOT read `.env.dev`).
  *   - STAGING → its deploy/host env sets `ENTITLEMENTS_ENABLED_DEFAULT=true` → ON on the
  *     next deploy+seed (staging uses host env; there is no committed `.env.staging`).
+ *   - PRODUCTION → its host env sets `ENTITLEMENTS_ENABLED_DEFAULT=true` → ON.
  *   - TEST/CI → `.env.test` (and CI) never set the var → default **false** → OFF, so the
  *     shared E2E baseline stays OFF even after a `pnpm test:db:reset`.
- *   - PRODUCTION → host env unset → OFF (prod enablement is a separate decision).
  *
  * This only affects a FRESH row (the `create` branch). On an existing DB the
  * kill-switch upsert's `update` branch intentionally omits `value`, so a re-seed
@@ -77,13 +83,23 @@ interface PlanEntitlementSeed {
   monthlyConsultations: number | null;
   monthlyTranscriptionMinutes: number | null;
   monthlySummaries: number | null;
-  // Per-capability included allowances (TASK-615 D11). Seeded NULL =
-  // UNLIMITED for every plan, which is a deliberate ZERO-BEHAVIOUR-CHANGE
-  // default: the ledger that would feed these meters does not exist yet on a
-  // fresh database, so any finite ceiling here would start blocking traffic
-  // against numbers nothing is populating. Real ceilings are a commercial
-  // decision, set through the admin plan matrix once shadow metering has run a
-  // full cycle and the numbers have been reconciled (README §5.4).
+  // Per-capability included allowances (TASK-615 D11), derived in TASK-638 §6
+  // from the RATIFIED business ceilings above:
+  //
+  //   sttSessionSeconds = transcriptionMinutes × 60 × 1.1 (session ≥ audio)
+  //   llmTokens         = summaries          × 6,000      (in+out, all passes)
+  //   ttsCharacters     = consultations      × 2,000
+  //   nlpTextUnits      = consultations      ×    30      (100-char units)
+  //   embeddingTokens   = consultations      × 1,500
+  //
+  // …then DOUBLED. The ×2 headroom is deliberate: `monthlyConsultations` is the
+  // commercial cap, so these per-capability numbers exist as RUNAWAY GUARDS, not
+  // as a second business ceiling. A tenant working normally inside its
+  // consultation cap must never trip one; only a loop or an abusive workload
+  // should. Tighten them only after shadow metering reports real per-consultation
+  // intensity (the intensity constants above are estimates).
+  //
+  // `null` = unlimited (ENTERPRISE only — negotiated per contract).
   monthlySttSessionSeconds: bigint | null;
   monthlyLlmTokens: bigint | null;
   monthlyTtsCharacters: bigint | null;
@@ -105,15 +121,16 @@ const PRO_VALUES = {
   maxApiKeys: 10,
   storageQuotaBytes: BigInt(100 * GIB),
   maxConcurrentSessions: 25,
-  monthlyConsultations: 5_000,
-  monthlyTranscriptionMinutes: 12_000,
-  monthlySummaries: 5_000,
-  // Per-capability allowances: NULL = unlimited (see the interface comment).
-  monthlySttSessionSeconds: null,
-  monthlyLlmTokens: null,
-  monthlyTtsCharacters: null,
-  monthlyNlpTextUnits: null,
-  monthlyEmbeddingTokens: null,
+  // RATIFIED 2026-08-08 (TASK-638): PRO = $100/mo bundling 250 consultations.
+  monthlyConsultations: 250,
+  monthlyTranscriptionMinutes: 5_000, // 250 × 20-min average
+  monthlySummaries: 250,
+  // Derived + ×2 headroom — see the interface comment.
+  monthlySttSessionSeconds: 660_000n, // 5,000 × 60 × 1.1 × 2
+  monthlyLlmTokens: 3_000_000n, //        250 × 6,000     × 2
+  monthlyTtsCharacters: 1_000_000n, //    250 × 2,000     × 2
+  monthlyNlpTextUnits: 15_000n, //        250 ×    30     × 2
+  monthlyEmbeddingTokens: 750_000n, //    250 × 1,500     × 2
   featureDnaReports: true,
   featureVoiceEnrollment: true,
   featureMonitoringAccess: false,
@@ -132,15 +149,16 @@ const PLAN_ENTITLEMENTS: PlanEntitlementSeed[] = [
     maxApiKeys: 2,
     storageQuotaBytes: BigInt(5 * GIB),
     maxConcurrentSessions: 5,
-    monthlyConsultations: 500,
-    monthlyTranscriptionMinutes: 1_000,
-    monthlySummaries: 500,
-    // Per-capability allowances: NULL = unlimited (see the interface comment).
-    monthlySttSessionSeconds: null,
-    monthlyLlmTokens: null,
-    monthlyTtsCharacters: null,
-    monthlyNlpTextUnits: null,
-    monthlyEmbeddingTokens: null,
+    // RATIFIED 2026-08-08 (TASK-638): STARTER = $50/mo bundling 50 consultations.
+    monthlyConsultations: 50,
+    monthlyTranscriptionMinutes: 1_000, // 50 × 20-min average
+    monthlySummaries: 50,
+    // Derived + ×2 headroom — see the interface comment.
+    monthlySttSessionSeconds: 132_000n, // 1,000 × 60 × 1.1 × 2
+    monthlyLlmTokens: 600_000n, //            50 × 6,000     × 2
+    monthlyTtsCharacters: 200_000n, //        50 × 2,000     × 2
+    monthlyNlpTextUnits: 3_000n, //           50 ×    30     × 2
+    monthlyEmbeddingTokens: 150_000n, //      50 × 1,500     × 2
     featureDnaReports: false,
     featureVoiceEnrollment: false,
     featureMonitoringAccess: false,
@@ -159,10 +177,13 @@ const PLAN_ENTITLEMENTS: PlanEntitlementSeed[] = [
     maxApiKeys: 50,
     storageQuotaBytes: BigInt(1_000 * GIB),
     maxConcurrentSessions: 100,
-    monthlyConsultations: 50_000,
-    monthlyTranscriptionMinutes: 120_000,
-    monthlySummaries: 50_000,
-    // Per-capability allowances: NULL = unlimited (see the interface comment).
+    // RATIFIED 2026-08-08 (TASK-638): ENTERPRISE is NEGOTIATED — usage is
+    // unlimited by default; a signed contract sets tenant-scoped overrides.
+    // Structural caps (seats/departments/storage) stay finite on purpose.
+    monthlyConsultations: null,
+    monthlyTranscriptionMinutes: null,
+    monthlySummaries: null,
+    // Per-capability allowances: NULL = unlimited (negotiated per contract).
     monthlySttSessionSeconds: null,
     monthlyLlmTokens: null,
     monthlyTtsCharacters: null,
