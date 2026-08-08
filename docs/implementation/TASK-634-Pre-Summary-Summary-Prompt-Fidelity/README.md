@@ -2,15 +2,15 @@
 
 | Field | Value |
 |---|---|
-| **Status** | In Progress |
+| **Status** | **Review** — code complete and committed; cluster rollout + live A/B outstanding |
 | **Type** | bugfix (+ refactor of the prompt-resolution model) |
 | **Tenant in scope** | ArcaAI (`50000000-0000-0000-0000-000000000001`) |
 | **Reported by** | Tester — "generated pre-summary does not meet expectation" |
 | **Opened** | 2026-08-07 |
-| **Related** | TASK-592 (compat SMR pre-summary/summary integration, Workstream D — the migration this ticket corrects), TASK-546 (DepartmentAgent tier-1a), TASK-560 (v1→v2 compat) |
+| **Code complete** | 2026-08-08 |
+| **Related** | TASK-592 (compat SMR pre-summary/summary integration, Workstream D — the migration this ticket corrects), TASK-546 (DepartmentAgent tier-1a), TASK-560 (v1→v2 compat), TASK-635 (agent capability bindings — its migration is a rollout prerequisite, §11.5) |
 
-> **Ticket number not yet confirmed by the owner.** 633 was the highest existing id;
-> 634 assigned per `00-project-context.md` §Ticket Workflow. Rename if it collides.
+Ticket id **TASK-634** confirmed by the owner (OD-4).
 
 ---
 
@@ -1013,6 +1013,62 @@ Surgical Oncology - Follow-up   content_matches_v1 = true   pinned v1
 The full chain is verified: v1 pod → byte-exact extraction → seed → database →
 the pinned snapshot served at runtime.
 
+## 13. Delivery Summary
+
+### 13.1 Commits (branch `dev-2.1`)
+
+| Commit | Scope |
+|---|---|
+| `ee30acb5` | Resolution split by capability, pre-summary variables, smr-compat fidelity |
+| `058cff6b` | v1's complete 23-template corpus + ArcaAI pinned to v1's 11 departments |
+| `72ed73a6` | D-18 — resync sweep can no longer provision a tenant department |
+| `628b8e7f` | D-20 `approvedVersionNumber` on the DTO + D-17 test posture |
+| `3fec28cb` | Phase 6 — tenant-admin prompt-template console |
+| `a8145538` | e2e coverage for the new console |
+| `679cf8bb` | Global pre-summary de-coupling (the D-18-class seed trap) |
+| `bfe1a5ae` | D-21 — destructive Alert contrast raised to a passing ratio |
+| `b6c7b3cd` | D-26 — prototype-chain substitution in the browser SDK |
+| `06f4f087` `5b38f85e` `43a65bc6` | Ticket documentation |
+
+`06f4f087` carries a `docs:` subject but also contains seed and test changes — an
+agent committed a mid-flight snapshot. Left as-is: amending would rewrite a shared
+branch that other sessions are committing to. Noted in §4.7.
+
+### 13.2 Verification (re-run at top level, not relayed from agents)
+
+| Suite | Result |
+|---|---|
+| `@arcaai/database` | 1061 passed (42 files) |
+| `@arcaai/applications` | 8348 passed, 4 skipped |
+| `@arcaai/admin-console` | 1300 passed (167 files), lint 0 warnings, axe 0 violations, 23/23 Playwright |
+| `@arcaai/vox` | 4126 passed (254 files) |
+| `@arcaai/domains` | 1518 passed |
+| `apps/api` | 2668 passed · `api:build` 8/8 |
+| Local dev DB | 0 stale overrides after a full re-seed; served `PromptVersion` snapshots sha256-match v1 |
+
+### 13.3 Requirements
+
+| Req | State |
+|---|---|
+| R1 pre-summary ≠ summary | ✅ separate resolution chains; pre-summary fails closed rather than reaching a note prompt |
+| R2 two visit types | ✅ 11 departments × {New, Re-Visit} = 22 templates wired |
+| R3 pre-summary fallback | ✅ tenant `TENANT_DEFAULT` → SYSTEM default → 503 |
+| R4 summary fallback | ✅ department-agnostic fallback declared; points at an existing approved template (no content authored) |
+| R5 per-department New/Re-Visit | ✅ all 22 byte-exact against the running v1 pod |
+| R6 tenant-admin management | ✅ `/prompt-templates` console with Fallbacks / Templates / Governance |
+| R7 exact 1:1, no rewriting | ✅ 23/23 sha256-pinned; extraction only, never model-retyped |
+
+### 13.4 Outstanding — cluster rollout, in this order
+
+1. Apply the TASK-635 migration to `vox-dev`
+2. Run the seed — resolves D-23, D-24, D-25 and wires DERM/DIET/NEPH/SONC in place
+3. §9.5 cleanup — retire the 7 non-v1 departments and duplicate `MED` (keep `GEN`: it holds the live consultations). Safe now that D-18 is fixed
+4. Deploy **after** 1–2, or every native pre-summary 503s (§11.5)
+5. Live A/B against v1, reviewed by the reporting tester
+
+Owner decisions still open: soft-delete vs rename for `019fb12d-dbe7…`, and
+whether `06f4f087` is left as-is.
+
 ## 8. Change History
 
 | Date | Change |
@@ -1036,6 +1092,7 @@ the pinned snapshot served at runtime.
 | 2026-08-07 | **Phase 6 (R6)** — tenant-admin UI delivered with the Figma gate waived. Most of R6 already existed but was buried in `/agents`; promoted to a new `/prompt-templates` screen (tier 30-49) with **Fallbacks · Templates · Governance** tabs. `/agents` demoted to `DepartmentAgent` only per the one-authoritative-editor rule; `/prompt-studio` redirect re-pointed. The Fallbacks tab mirrors `PromptResolutionService` literally — pre-summary as a single row badged `tenant-wide` ("no department axis / no visit-type axis") with the `tenant → SYSTEM → 503` chain, summary as a department × visit-type matrix whose pre-summary column reads `n/a — tenant-wide`. Gates: 167 files / 1300 tests, lint 0 warnings, **axe 0 violations** (8 scans, both themes), **23/23 Playwright** against the running stack. |
 | 2026-08-07 | Phase 6 surfaced D-20 (added `approvedVersionNumber` to `PromptTemplateResponse` + widened the `status` union to include `APPROVED`), D-21 (destructive Alert contrast 4.08:1) and D-22 (Global tenant has no APPROVED pre-summary template; 18 departments still carry inert pre-summary overrides). It also fixed two pre-existing broken e2e specs (`agents.spec.ts` fully red since TASK-547; a fragile `.first()` filter locator). |
 | 2026-08-08 | **D-18 fixed** (§10) — resync made reuse-only; it can no longer provision a tenant department. Regression test locks it. Unblocks §9.5 step 1, so retiring the 7 non-v1 ArcaAI departments will now stick. |
+| 2026-08-08 | Status → Review. All phases code-complete and committed (§13); cluster rollout and live A/B outstanding. |
 | 2026-08-08 | Local dev DB verified end to end (§12). D-23/D-24/D-25 confirmed **live-data staleness, not repo defects** — the seed already yields correct ownership, tagging and approval pins. Found and fixed a D-18-class trap: the seed still set `preSummaryPromptId` on all 18 Global departments, so clearing them would have been undone by the next seed. Cleanup + full re-seed proved 0 restored. sha256 computed inside Postgres proves the served `PromptVersion` snapshots are byte-exact v1. |
 | 2026-08-08 | D-16, D-17 and D-26 fixed and committed. D-26 closed the same prototype-chain defect in the browser SDK, in BOTH substitution and required-variable validation. |
 | 2026-08-08 | Spin-offs dispatched: D-16 (prototype-chain substitution), D-17 (`SECRETS_PROVIDER=vault`), D-22 (live pre-summary audit + dry-run remediation script). D-21 (Alert contrast) is being handled in a separate owner session. |
