@@ -293,7 +293,7 @@ export function TenantSettingsTab({ readOnly = false }: { readOnly?: boolean } =
                         <p className="text-muted-foreground text-xs">Platform-managed &middot; read-only</p>
                       )}
                     </div>
-                    <div className="shrink-0" id={controlId}>
+                    <div className="w-full shrink-0 sm:w-72" id={controlId}>
                       <ConfigControl
                         config={config}
                         value={draft ?? config.value}
