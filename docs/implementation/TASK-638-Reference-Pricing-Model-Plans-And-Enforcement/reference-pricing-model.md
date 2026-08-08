@@ -126,13 +126,34 @@ Per 20-minute consultation, at the §5 (5×) SELL rates the bundled value is ≈
 | **COGS if self-hosted** (~$0.028/consultation) | $1.40 → **97% margin** ✅ | $7.00 → **93% margin** ✅ |
 | **COGS if routed to Azure** (~$0.37/consultation) | $18.65 → **63% margin** ⚠️ | $93.25 → **~7% margin** 🚨 |
 
-**Finding: both fees are healthy on self-hosted infrastructure and PRO is essentially break-even if its traffic falls back to managed Azure.** At a 30-minute average consultation, PRO on Azure goes *negative*. Three mitigations, all already available in the design — pick at least one before opening PRO to managed-fallback traffic:
+**Finding: both fees are healthy on self-hosted infrastructure and PRO is essentially break-even if its traffic falls back to managed Azure.** At a 30-minute average consultation, PRO on Azure goes *negative*. This is a routing-economics exposure, not a pricing error — the fees are fine for the intended self-hosted deployment.
 
-1. **BYOK** — a tenant on its own key funds its own provider cost (`BYOK_NOTIONAL`, zero-rated); this is the intended path for heavy users and it removes the exposure entirely.
-2. **Keep the SYSTEM default self-hosted** and treat premium/managed ASR as an add-on SKU rather than a silent fallback.
-3. **Raise PRO** (or lower its consultation bundle) if managed fallback is expected to be routine.
+**RESOLVED 2026-08-08 (owner): keep the SYSTEM default self-hosted; sell managed ASR as an add-on.** The fees stand as ratified.
 
-This is a routing-economics exposure, not a pricing error — the fees themselves are fine for the intended self-hosted deployment.
+### 6.2 Implementing that decision — what was already true, and what is not
+
+Auditing the seed against the decision found the **structural posture already correct**, so the exposure was *latent*, not active:
+
+| Invariant | State |
+|---|---|
+| Platform default ASR pipeline | `arcaai-whisper-large-ml-en-gguf` — self-hosted ✅ |
+| SYSTEM managed-ASR provider connections (`azure-speech`, `sarvam`, `openai`, …) | `enabled: false`, `encryptedApiKey: null` — **no platform-funded managed credential** ✅ |
+| SYSTEM `TenantSttConfig.fallbackPipelineId` | `null` — no platform-default fallback ✅ |
+
+All three are now **locked by a seed-invariant guard**, `seed/__tests__/managed-asr-addon-posture.test.ts` (mutation-verified: flipping the SYSTEM `azure-speech` connection to `enabled: true` fails it). Enabling a SYSTEM managed-ASR connection *with a platform key* is precisely the change that would convert managed ASR from a tenant-funded add-on into a platform-funded default, and it now cannot happen silently.
+
+**What is NOT possible today — the add-on cannot be billed at a premium.** `BillingService.prefetchSellRates` resolves SELL rates with `provider: null, model: null` hard-coded (`billing.service.ts:564`), by design: overage is pooled per capability so the pure rating engine can stay synchronous. Consequences:
+
+- Every SELL overage row is provider-agnostic, so **managed-ASR overage bills at the same rate as self-hosted** (`STT/SESSION_SECOND`).
+- Seeding a provider-keyed SELL row (`provider: 'azure-speech'`) would be **dead configuration** — the price book resolves that dimension, but the invoice engine never passes it. No such row was added, deliberately.
+
+So today the add-on monetizes **only through BYOK** (tenant funds its own managed provider; usage metered, invoice zero-rated — D14). That is a coherent product: *"managed ASR is available on your own key."* Charging a platform margin on managed ASR needs provider-aware rating, which is a real engine change, not a seed row:
+
+1. Split the per-capability usage buckets by `provider` (the daily rollup already carries it).
+2. Resolve a SELL rate per `(provider, unit, day)`.
+3. **Decide how the included allowance is allocated across providers** — cheapest-first, self-hosted-first, or pro-rata. This is a customer-visible fairness choice, not an implementation detail, and it is the reason this is not a mechanical change.
+
+Filed as decision #8.
 
 ---
 
@@ -143,4 +164,5 @@ This is a routing-economics exposure, not a pricing error — the fees themselve
 4. ✅ **Intensity constants** — §6, applied with ×2 headroom; revisit after a shadow-metering cycle.
 5. ⏳ **Self-hosted COST utilization assumption** (30/60/90%) → the self-hosted COST rows. **Not yet seeded.**
 6. ✅ ENTERPRISE stays unlimited (negotiated per contract).
-7. 🚨 **New — decide the managed-fallback posture for PRO** (§6.1).
+7. ✅ **Managed-fallback posture** — RESOLVED 2026-08-08: SYSTEM default stays self-hosted, managed ASR is an add-on. Locked by a seed-invariant guard (§6.2).
+8. ⏳ **New — provider-aware rating**, required before a managed-ASR add-on can carry a platform margin (§6.2). The open question is *how the included allowance is allocated across providers* (cheapest-first / self-hosted-first / pro-rata) — customer-visible, so it needs a decision before implementation. Until then the add-on is BYOK-only.
