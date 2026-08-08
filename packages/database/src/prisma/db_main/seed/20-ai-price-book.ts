@@ -6,8 +6,19 @@ import { SYSTEM_TENANT_ID, SEED_USER_IDS } from './00-constants';
  * AiPriceBook seed — platform rate card, BOTH planes (TASK-615 D4 / D10).
  *
  * ============================================================================
- * EVERY PRICE IN THIS FILE IS A PLACEHOLDER. NONE HAS BEEN COMMERCIALLY
- * APPROVED. Do not bill a customer from these numbers.
+ * RATIFIED 2026-08-08 (TASK-638). These are the commercial rates, not
+ * placeholders: COST from researched provider list prices and the self-hosted
+ * COGS formula, SELL at the ratified 80% gross margin (5x markup) off a NAMED
+ * managed reference per meter.
+ *
+ * TWO CAVEATS THAT TRAVEL WITH THE NUMBERS:
+ *   1. Provider list prices are ~Jan-2026 knowledge, NOT live-fetched. Re-check
+ *      the vendor pages before a repricing round.
+ *   2. Self-hosted COST assumes ~90% GPU utilization. A clinical duty cycle is
+ *      bursty (0.3-0.6), and cost/unit scales INVERSELY with utilization — so
+ *      these rows UNDERSTATE self-hosted COGS at a realistic duty cycle, which
+ *      is the margin-flattering direction. Each affected row carries the
+ *      scaling in its note.
  * ============================================================================
  *
  * The seed exists so the plane is EXERCISABLE end to end from a fresh database:
@@ -45,19 +56,18 @@ import { SYSTEM_TENANT_ID, SEED_USER_IDS } from './00-constants';
  * negotiated enterprise rate and is never seeded.
  *
  * IDEMPOTENT: CREATE-ONLY (`update: {}`), so a re-seed NEVER clobbers a price a
- * global admin has since corrected. Superseding is done through the admin API,
- * not by editing this file and re-running it.
+ * global admin has since corrected. Superseding is done through the admin API
+ * (or the console rate card), not by editing this file and re-running it —
+ * editing here only changes what a FRESH database comes up with.
  */
 
 const CREATED_BY = SEED_USER_IDS.SUPER_ADMIN;
 
 /**
  * Stamped onto every ledger row this book prices, so an invoice stays
- * reproducible after the card moves on. The `placeholder` marker is deliberate:
- * it shows up in rated rows and in invoice audit reads, making it obvious that
- * nothing here is a real commercial rate.
+ * reproducible after the card moves on.
  */
-const BOOK_VERSION = '2026-08-06-placeholder-v1';
+const BOOK_VERSION = '2026-08-08-commercial-v1';
 
 /**
  * Far enough in the past that every historical event a fresh dev database can
@@ -92,8 +102,8 @@ const COST_ROWS: PriceBookSeed[] = [
     capability: AiCapability.STT,
     provider: null, // self-hosted whisper.cpp / faster-whisper pipelines
     unit: AiUsageUnit.AUDIO_SECOND,
-    unitPriceMicros: 3n,
-    note: 'PLACEHOLDER — self-hosted ASR compute, ~$0.011/audio-hour. Ops-owned (OQ4), reviewed quarterly.',
+    unitPriceMicros: 20n,
+    note: 'Self-hosted ASR compute — ~$0.072/audio-hour at ~90% GPU utilization (TASK-638 §4). SCALES INVERSELY with utilization: ~30µ at 60%, ~60µ at 30%.',
   },
   {
     id: 'B1000000-0000-0000-0000-000000000002',
@@ -115,7 +125,7 @@ const COST_ROWS: PriceBookSeed[] = [
     provider: 'azure-speech',
     unit: AiUsageUnit.AUDIO_SECOND,
     unitPriceMicros: 278n,
-    note: 'PLACEHOLDER — Azure Speech batch list, ~$1.00/audio-hour.',
+    note: 'Azure Speech real-time/batch list, ~$1.00/audio-hour (TASK-638 §1).',
   },
   {
     id: 'B1000000-0000-0000-0000-000000000004',
@@ -124,7 +134,7 @@ const COST_ROWS: PriceBookSeed[] = [
     provider: 'openai',
     unit: AiUsageUnit.AUDIO_SECOND,
     unitPriceMicros: 100n,
-    note: 'PLACEHOLDER — OpenAI whisper-1 list, $0.006/audio-minute.',
+    note: 'OpenAI whisper-1 list, $0.006/audio-minute (TASK-638 §1).',
   },
   {
     id: 'B1000000-0000-0000-0000-000000000005',
@@ -133,7 +143,7 @@ const COST_ROWS: PriceBookSeed[] = [
     provider: 'sarvam',
     unit: AiUsageUnit.AUDIO_SECOND,
     unitPriceMicros: 100n,
-    note: 'PLACEHOLDER — Sarvam ASR, not verified against a published card.',
+    note: 'Sarvam ASR — carried at the Whisper-API reference; not verified against a published card.',
   },
 
   // --- LLM -----------------------------------------------------------------
@@ -145,8 +155,8 @@ const COST_ROWS: PriceBookSeed[] = [
     capability: AiCapability.LLM,
     provider: null,
     unit: AiUsageUnit.INPUT_TOKEN,
-    unitPriceMicros: 1n,
-    note: 'PLACEHOLDER — self-hosted (ollama/lm-studio/vllm/llama-cpp), $1.00 per 1M input tokens.',
+    unitPriceMicros: 0n,
+    note: 'Self-hosted LLM — ~0.17µ/token at high utilization, BELOW the integer-micro floor, so 0 is the honest rounding (TASK-638 §2). Consequence: self-hosted LLM shows no COGS; SELL is the revenue lever.',
   },
   {
     id: 'B1000000-0000-0000-0000-000000000011',
@@ -154,8 +164,8 @@ const COST_ROWS: PriceBookSeed[] = [
     capability: AiCapability.LLM,
     provider: null,
     unit: AiUsageUnit.OUTPUT_TOKEN,
-    unitPriceMicros: 3n,
-    note: 'PLACEHOLDER — self-hosted, $3.00 per 1M output tokens.',
+    unitPriceMicros: 0n,
+    note: 'Self-hosted LLM output — sub-micro per token, see the input row.',
   },
   {
     id: 'B1000000-0000-0000-0000-000000000012',
@@ -163,11 +173,11 @@ const COST_ROWS: PriceBookSeed[] = [
     capability: AiCapability.LLM,
     provider: null,
     unit: AiUsageUnit.REASONING_TOKEN,
-    unitPriceMicros: 3n,
+    unitPriceMicros: 0n,
     // Reasoning tokens bill as OUTPUT everywhere in the market — seeding them at
     // the output rate keeps the placeholder from understating cost on a
     // thinking-heavy model.
-    note: 'PLACEHOLDER — self-hosted; reasoning tokens are priced as output (market norm).',
+    note: 'Self-hosted reasoning tokens — sub-micro per token, priced as output.',
   },
   {
     id: 'B1000000-0000-0000-0000-000000000013',
@@ -222,6 +232,69 @@ const COST_ROWS: PriceBookSeed[] = [
     note: 'PLACEHOLDER — cache read at ~10% of input (converged market discount).',
   },
 
+  // --- Managed LLM list prices (TASK-638 §1, ~Jan-2026) ---------------------
+  // Provider-keyed, so they win over the self-hosted catch-all whenever a call
+  // actually runs on that vendor. $/1M tokens equals µ/token numerically.
+  {
+    id: 'B1000000-0000-0000-0000-000000000023',
+    plane: AiPriceBookPlane.COST,
+    capability: AiCapability.LLM,
+    provider: 'azure',
+    model: 'gpt-4.1-mini',
+    unit: AiUsageUnit.INPUT_TOKEN,
+    unitPriceMicros: 1n,
+    note: 'Azure OpenAI gpt-4.1-mini input, $0.40/1M (rounded up from 0.4µ to the integer floor).',
+  },
+  {
+    id: 'B1000000-0000-0000-0000-000000000024',
+    plane: AiPriceBookPlane.COST,
+    capability: AiCapability.LLM,
+    provider: 'azure',
+    model: 'gpt-4.1-mini',
+    unit: AiUsageUnit.OUTPUT_TOKEN,
+    unitPriceMicros: 2n,
+    note: 'Azure OpenAI gpt-4.1-mini output, $1.60/1M (rounded up).',
+  },
+  {
+    id: 'B1000000-0000-0000-0000-000000000025',
+    plane: AiPriceBookPlane.COST,
+    capability: AiCapability.LLM,
+    provider: 'anthropic',
+    unit: AiUsageUnit.INPUT_TOKEN,
+    unitPriceMicros: 3n,
+    note: 'Anthropic Sonnet-class input, $3.00/1M.',
+  },
+  {
+    id: 'B1000000-0000-0000-0000-000000000026',
+    plane: AiPriceBookPlane.COST,
+    capability: AiCapability.LLM,
+    provider: 'anthropic',
+    unit: AiUsageUnit.OUTPUT_TOKEN,
+    unitPriceMicros: 15n,
+    note: 'Anthropic Sonnet-class output, $15.00/1M.',
+  },
+  {
+    id: 'B1000000-0000-0000-0000-000000000027',
+    plane: AiPriceBookPlane.COST,
+    capability: AiCapability.LLM,
+    provider: 'anthropic',
+    unit: AiUsageUnit.CACHE_READ_TOKEN,
+    unitPriceMicros: 1n,
+    note: 'Anthropic cache read = 0.1x input (0.3µ), rounded up to the integer floor.',
+  },
+  {
+    id: 'B1000000-0000-0000-0000-000000000028',
+    plane: AiPriceBookPlane.COST,
+    capability: AiCapability.LLM,
+    provider: 'anthropic',
+    unit: AiUsageUnit.CACHE_WRITE_TOKEN,
+    unitPriceMicros: 4n,
+    // The 5m/1h split (1.25x vs 2x input) rides the cacheTtl dimension added by
+    // TASK-615 #7; this TTL-agnostic row is the wildcard both resolve through
+    // until per-TTL rows are added.
+    note: 'Anthropic cache write, 5m TTL = 1.25x input. Per-TTL rows supersede via the cacheTtl dimension.',
+  },
+
   // --- TTS -----------------------------------------------------------------
   {
     id: 'B1000000-0000-0000-0000-000000000030',
@@ -229,8 +302,8 @@ const COST_ROWS: PriceBookSeed[] = [
     capability: AiCapability.TTS,
     provider: null, // self-hosted kokoro / indic_parler
     unit: AiUsageUnit.CHARACTER,
-    unitPriceMicros: 1n,
-    note: 'PLACEHOLDER — self-hosted TTS compute, $1.00 per 1M characters.',
+    unitPriceMicros: 2n,
+    note: 'Self-hosted TTS (kokoro / indic_parler) — GPU economics, ~$2.00 per 1M characters (TASK-638 §4).',
   },
   {
     id: 'B1000000-0000-0000-0000-000000000031',
@@ -283,8 +356,18 @@ const COST_ROWS: PriceBookSeed[] = [
     capability: AiCapability.EMBEDDING,
     provider: null,
     unit: AiUsageUnit.INPUT_TOKEN,
+    unitPriceMicros: 0n,
+    note: 'Self-hosted embeddings (lm-studio) — sub-micro per token; see the LLM input row.',
+  },
+  {
+    id: 'B1000000-0000-0000-0000-000000000051',
+    plane: AiPriceBookPlane.COST,
+    capability: AiCapability.EMBEDDING,
+    provider: 'openai',
+    model: 'text-embedding-3-small',
+    unit: AiUsageUnit.INPUT_TOKEN,
     unitPriceMicros: 1n,
-    note: 'PLACEHOLDER — self-hosted embeddings (diarization/RAG), $1.00 per 1M tokens.',
+    note: 'OpenAI text-embedding-3-small, $0.02/1M (0.02µ rounded up to the integer floor).',
   },
 ];
 
@@ -354,16 +437,16 @@ const OVERAGE_ROWS: PriceBookSeed[] = [
     plane: AiPriceBookPlane.SELL,
     capability: AiCapability.STT,
     unit: AiUsageUnit.SESSION_SECOND,
-    unitPriceMicros: 6n,
-    note: 'PLACEHOLDER — ~$0.0216 per streaming session-minute above allowance (OQ1 basis).',
+    unitPriceMicros: 500n,
+    note: 'Streaming STT overage — 5x the ~100µ managed reference (~$0.03/session-minute), TASK-638 §5.',
   },
   {
     id: 'B1000000-0000-0000-0002-000000000002',
     plane: AiPriceBookPlane.SELL,
     capability: AiCapability.STT,
     unit: AiUsageUnit.AUDIO_SECOND,
-    unitPriceMicros: 6n,
-    note: 'PLACEHOLDER — batch STT overage, parity with the streaming session rate.',
+    unitPriceMicros: 500n,
+    note: 'BATCH STT overage at parity with streaming. NOT zero: OQ1 bills batch on AUDIO_SECOND (streaming audio-seconds are excluded upstream), so a 0 here would make batch transcription free.',
   },
 
   // ── Managed-ASR add-on (TASK-638) ─────────────────────────────────────────
@@ -400,16 +483,16 @@ const OVERAGE_ROWS: PriceBookSeed[] = [
     plane: AiPriceBookPlane.SELL,
     capability: AiCapability.LLM,
     unit: AiUsageUnit.INPUT_TOKEN,
-    unitPriceMicros: 2n,
-    note: 'PLACEHOLDER — $2.00 per 1M input tokens above allowance.',
+    unitPriceMicros: 5n,
+    note: 'LLM input overage — 5x the gpt-4.1-mini-class managed reference, ~$5.00 per 1M input tokens (TASK-638 §5).',
   },
   {
     id: 'B1000000-0000-0000-0002-000000000004',
     plane: AiPriceBookPlane.SELL,
     capability: AiCapability.LLM,
     unit: AiUsageUnit.OUTPUT_TOKEN,
-    unitPriceMicros: 6n,
-    note: 'PLACEHOLDER — $6.00 per 1M output tokens above allowance.',
+    unitPriceMicros: 10n,
+    note: 'LLM output overage — 5x the managed reference, ~$10.00 per 1M output tokens (TASK-638 §5).',
   },
   // The remaining LLM token kinds. The invoice engine FAILS CLOSED on a
   // missing SELL rate (an invoice line cannot be "unrated"), and the pooled
@@ -422,56 +505,56 @@ const OVERAGE_ROWS: PriceBookSeed[] = [
     capability: AiCapability.LLM,
     unit: AiUsageUnit.CACHE_READ_TOKEN,
     unitPriceMicros: 1n,
-    note: 'PLACEHOLDER — cache reads at half the input overage rate (market discount direction).',
+    note: 'Cache reads at ~0.2x the input rate (market discount direction).',
   },
   {
     id: 'B1000000-0000-0000-0002-000000000009',
     plane: AiPriceBookPlane.SELL,
     capability: AiCapability.LLM,
     unit: AiUsageUnit.CACHE_WRITE_TOKEN,
-    unitPriceMicros: 3n,
+    unitPriceMicros: 8n,
     // Per-TTL split (5m ×1.25 vs 1h ×2.00) awaits a price dimension — the
     // ws-b-contract §11 item; a single blended write rate until then.
-    note: 'PLACEHOLDER — cache writes at ~1.5× input overage; per-TTL split deferred (needs a cacheTtl price dimension).',
+    note: 'Cache writes at ~1.5x the input rate; the per-TTL split rides the cacheTtl dimension.',
   },
   {
     id: 'B1000000-0000-0000-0002-000000000010',
     plane: AiPriceBookPlane.SELL,
     capability: AiCapability.LLM,
     unit: AiUsageUnit.REASONING_TOKEN,
-    unitPriceMicros: 6n,
-    note: 'PLACEHOLDER — reasoning tokens priced as output (market norm).',
+    unitPriceMicros: 10n,
+    note: 'Reasoning tokens priced as OUTPUT (market norm). Required: all billable token kinds pool into monthlyLlmTokens and the engine fails closed on a missing SELL rate.',
   },
   {
     id: 'B1000000-0000-0000-0002-000000000005',
     plane: AiPriceBookPlane.SELL,
     capability: AiCapability.TTS,
     unit: AiUsageUnit.CHARACTER,
-    unitPriceMicros: 2n,
-    note: 'PLACEHOLDER — $2.00 per 1M characters above allowance.',
+    unitPriceMicros: 80n,
+    note: 'TTS overage — 5x the 16µ Azure neural reference, ~$80.00 per 1M characters (TASK-638 §5).',
   },
   {
     id: 'B1000000-0000-0000-0002-000000000006',
     plane: AiPriceBookPlane.SELL,
     capability: AiCapability.NLP,
     unit: AiUsageUnit.TEXT_UNIT,
-    unitPriceMicros: 15n,
-    note: 'PLACEHOLDER — per 100-character text unit above allowance.',
+    unitPriceMicros: 50n,
+    note: 'NLP overage per 100-character text unit — self-hosted GLiNER, no managed market; nominal (TASK-638 §5).',
   },
   {
     id: 'B1000000-0000-0000-0002-000000000007',
     plane: AiPriceBookPlane.SELL,
     capability: AiCapability.EMBEDDING,
     unit: AiUsageUnit.INPUT_TOKEN,
-    unitPriceMicros: 2n,
-    note: 'PLACEHOLDER — $2.00 per 1M embedding tokens above allowance.',
+    unitPriceMicros: 1n,
+    note: 'Embedding overage — 5x the $0.02/1M managed reference lands under the integer floor, so 1µ.',
   },
 ];
 
 export const PRICE_BOOK_SEED_ROWS: PriceBookSeed[] = [...COST_ROWS, ...PLAN_FEE_ROWS, ...OVERAGE_ROWS];
 
 export const seedAiPriceBook = async (client: CorePrismaClient) => {
-  console.log(`Seeding AI price book (${PRICE_BOOK_SEED_ROWS.length} SYSTEM rows — ALL PLACEHOLDER prices, book "${BOOK_VERSION}")...`);
+  console.log(`Seeding AI price book (${PRICE_BOOK_SEED_ROWS.length} SYSTEM rows, ratified book "${BOOK_VERSION}")...`);
 
   let created = 0;
   for (const row of PRICE_BOOK_SEED_ROWS) {
@@ -497,9 +580,9 @@ export const seedAiPriceBook = async (client: CorePrismaClient) => {
         effectiveFrom: EFFECTIVE_FROM,
         effectiveTo: null,
         bookVersion: BOOK_VERSION,
-        // The marker travels with the row so an admin screen can flag an
-        // un-reviewed rate without consulting this file.
-        metaData: { placeholder: true, note: row.note },
+        // Provenance travels with the row so an admin screen can show WHY a
+        // rate is what it is without consulting this file.
+        metaData: { ratifiedBy: 'TASK-638', ratifiedOn: '2026-08-08', note: row.note },
         createdBy: CREATED_BY,
       },
     });
@@ -509,5 +592,5 @@ export const seedAiPriceBook = async (client: CorePrismaClient) => {
 
   console.log(`  cost/${COST_ROWS.length} · plan-fee/${PLAN_FEE_ROWS.length} · overage/${OVERAGE_ROWS.length}`);
   console.log(`Seeded AI price book: ${created} new row(s), ${PRICE_BOOK_SEED_ROWS.length - created} already present (create-only).`);
-  console.log('  ⚠️  All seeded prices are PLACEHOLDERS — replace via the admin rate-card API (supersede) before billing anyone.');
+  console.log('  Self-hosted COST rows assume ~90% GPU utilization — they understate COGS at a realistic clinical duty cycle (TASK-638 §4).');
 };
