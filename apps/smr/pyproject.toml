@@ -49,11 +49,14 @@ dependencies = [
     "hope-runtime-models",
     # --- Shared env-file loader (TASK-558): NODE_ENV -> .env.<env>, host env wins ---
     "hope-env",
+    # --- Shared OTel trace-propagation helper (TASK-636 OBS-16) ---
+    "hope-otel",
 ]
 
 [tool.uv.sources]
 hope-runtime-models = { workspace = true }
 hope-env = { workspace = true }
+hope-otel = { workspace = true }
 
 [project.optional-dependencies]
 dev = [

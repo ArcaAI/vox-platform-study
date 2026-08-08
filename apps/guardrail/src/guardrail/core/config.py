@@ -384,7 +384,7 @@ class Settings(BaseSettings):
     # Observability
     otel_enabled: bool = False
     otel_exporter_endpoint: str = "http://localhost:4317"
-    otel_service_name: str = "guardrail-v2"
+    otel_service_name: str = "guardrail"
     metrics_enabled: bool = True
 
     # Sub-configs

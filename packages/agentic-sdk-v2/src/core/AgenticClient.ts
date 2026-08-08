@@ -8,7 +8,7 @@ import type { ApiConfig } from '../types';
 import { AgenticError } from '../types';
 import { DEFAULT_TIMEOUT, isAdminPlanePath } from './constants';
 import type { ISDKLogger } from './logger';
-import { createTraceparent, generateSpanId } from './logger';
+import { createTraceparent, generateSpanId, toW3CTraceId } from './logger';
 import { classifyHttpError } from '../utils/errorUtils';
 import { SPEECH_ENDPOINTS } from './constants';
 
@@ -215,7 +215,10 @@ export class AgenticClient {
     if (correlationId) {
       headers['X-Correlation-ID'] = correlationId;
       // Add W3C traceparent header for OpenTelemetry compatibility
-      const traceId = correlationId.replace(/-/g, '').slice(0, 32).padStart(32, '0');
+      // A correlation id that is not 32 hex chars would make the traceparent
+      // INVALID, and a W3C propagator silently starts a new trace (TASK-636
+      // OBS-16). `toW3CTraceId` derives when it can and generates when it cannot.
+      const traceId = toW3CTraceId(correlationId);
       headers['traceparent'] = createTraceparent(traceId, spanId);
     }
 
@@ -815,7 +818,10 @@ export class AgenticClient {
     const correlationId = this.logger?.getCorrelationId();
     if (correlationId) {
       headers['X-Correlation-ID'] = correlationId;
-      const traceId = correlationId.replace(/-/g, '').slice(0, 32).padStart(32, '0');
+      // A correlation id that is not 32 hex chars would make the traceparent
+      // INVALID, and a W3C propagator silently starts a new trace (TASK-636
+      // OBS-16). `toW3CTraceId` derives when it can and generates when it cannot.
+      const traceId = toW3CTraceId(correlationId);
       headers['traceparent'] = createTraceparent(traceId, spanId);
     }
 
@@ -950,7 +956,10 @@ export class AgenticClient {
     const correlationId = this.logger?.getCorrelationId();
     if (correlationId) {
       headers['X-Correlation-ID'] = correlationId;
-      const traceId = correlationId.replace(/-/g, '').slice(0, 32).padStart(32, '0');
+      // A correlation id that is not 32 hex chars would make the traceparent
+      // INVALID, and a W3C propagator silently starts a new trace (TASK-636
+      // OBS-16). `toW3CTraceId` derives when it can and generates when it cannot.
+      const traceId = toW3CTraceId(correlationId);
       headers['traceparent'] = createTraceparent(traceId, spanId);
     }
 

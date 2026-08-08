@@ -343,7 +343,13 @@ services:
       GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
     volumes:
       - ./configs/grafana/provisioning:/etc/grafana/provisioning:ro
-      - ./configs/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      # TASK-636 OBS-30: this mounted ./configs/grafana/dashboards, which held a
+      # SINGLE dashboard, while the nine purpose-built ones (SMR overview /
+      # resilience / security / cache-friendliness, consumption,
+      # agentic-trajectory, model-retention, optimistic-locking, pgbouncer) sat
+      # unmounted in ../grafana/dashboards — reachable only from the standalone
+      # apps/smr/docker-compose.yml stack. The two directories are now one.
+      - ../grafana/dashboards:/var/lib/grafana/dashboards:ro
       - grafana-data:/var/lib/grafana
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/health"]

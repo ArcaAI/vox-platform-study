@@ -60,7 +60,10 @@ def setup_opentelemetry(
     endpoint: str = "http://localhost:4317",
     service_name: str = "smr",
     service_namespace: str = "hope",
-    deployment_environment: str = "production",
+    # TASK-636 OBS-18: never default to "production" — see core/config.py.
+    # Callers pass `settings.otel_deployment_environment`, which resolves from
+    # the environment; this fallback only applies to direct callers.
+    deployment_environment: str = "development",
     insecure: bool = True,
     logs_enabled: bool = True,
 ) -> None:

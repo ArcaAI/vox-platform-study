@@ -21,6 +21,12 @@ from collections.abc import Callable, Coroutine
 from typing import Any
 
 import structlog
+from hope_otel.trace_propagation import (
+    carrier_from_redis_fields,
+    extract_trace_context,
+    inject_trace_carrier,
+)
+from opentelemetry import context as context_api
 from redis.exceptions import TimeoutError as RedisTimeoutError
 
 from stt.core.config.settings import get_settings
@@ -168,10 +174,31 @@ class IngestionConsumer:
         )
         self._last_claim_at = 0.0
         self._group_ready = False
+        #: W3C trace context the API Gateway stamped on this session's audio
+        #: (TASK-636 OBS-16). Captured ONCE — see :attr:`trace_context`.
+        self._trace_context: Any | None = None
 
     @property
     def is_running(self) -> bool:
         return self._running
+
+    @property
+    def trace_context(self) -> Any | None:
+        """The gateway's trace context for this session, or ``None``.
+
+        Captured from the FIRST audio frame that carries a ``traceparent`` and
+        then frozen for the life of the consumer. A streaming session is one
+        logical operation spanning minutes and tens of frames a second; its
+        parent does not change mid-stream, so re-deriving it per frame would
+        put propagator work on the clinical audio path to produce the same
+        answer. Frozen also means a late frame with a different parent (a
+        reconnect racing an XAUTOCLAIM hand-off) cannot re-key a live session's
+        telemetry halfway through.
+
+        ``None`` whenever tracing is off anywhere upstream — the gateway then
+        writes no ``traceparent`` and this stays the pre-TASK-636 behaviour.
+        """
+        return self._trace_context
 
     async def start(self) -> None:
         """Start the consumer as a background asyncio task."""
@@ -220,11 +247,44 @@ class IngestionConsumer:
                 )
         self._group_ready = True
 
+    def _capture_trace_context(self, fields: Any) -> None:
+        """Latch the gateway's trace context off the first frame that carries one.
+
+        Deliberately cheap on the steady state: once ``_trace_context`` is set
+        this returns on the first line, so the per-frame cost after frame 1 is
+        one attribute read. Never raises — an unparseable carrier leaves the
+        session untraced rather than dropping clinical audio.
+        """
+        if self._trace_context is not None:
+            return
+        carrier = carrier_from_redis_fields(fields)
+        if not carrier:
+            return
+        ctx = extract_trace_context(carrier)
+        if ctx is None:
+            logger.debug(
+                "Ignoring unparseable traceparent on audio frame",
+                session_id=self._session_id,
+            )
+            return
+        self._trace_context = ctx
+        logger.debug("Captured gateway trace context for session", session_id=self._session_id)
+
     async def _dispatch_frame(self, entry_id: str, fields: Any) -> None:
         """Decode + forward one frame. A bad frame is skipped (logged), never fatal."""
         try:
+            self._capture_trace_context(fields)
             frame = AudioFrame.from_redis_dict(fields)
-            await self._on_frame(frame)
+            if self._trace_context is None:
+                await self._on_frame(frame)
+            else:
+                # Attach/detach is two contextvar operations; it runs only once
+                # a context exists (i.e. only when tracing is actually on).
+                token = context_api.attach(self._trace_context)
+                try:
+                    await self._on_frame(frame)
+                finally:
+                    context_api.detach(token)
         except Exception as exc:
             logger.warning(
                 "Failed to process audio frame, skipping",
@@ -426,6 +486,27 @@ class ResultPublisher:
             return self._maxlen
         return get_settings().streaming_result_stream_maxlen
 
+    @staticmethod
+    def _with_trace(fields: dict[str, str]) -> dict[str, str]:
+        """Stamp the CURRENT trace context onto an outbound result entry.
+
+        The result stream is the return leg: the API Gateway reads it and
+        relays to the browser, so without this the gateway's work on a
+        transcript is an orphan trace even when the inbound leg was continued.
+
+        Volume here is per-utterance/partial (single-digit per second), not
+        per audio frame, so injecting per entry is affordable AND correct — the
+        producing span genuinely differs between utterances.
+
+        No-op when tracing is off: :func:`inject_trace_carrier` returns ``{}``
+        and the entry is byte-identical to pre-TASK-636.
+        """
+        carrier = inject_trace_carrier()
+        if not carrier:
+            return fields
+        fields.update(carrier)
+        return fields
+
     async def publish(self, result: SegmentResult) -> str | None:
         """Write a ``SegmentResult`` to the result stream.
 
@@ -436,7 +517,7 @@ class ResultPublisher:
         key = result_stream_key(self._session_id)
         entry_id = await self._redis.xadd(
             key,
-            result.to_redis_dict(),
+            self._with_trace(result.to_redis_dict()),
             maxlen=self._resolve_maxlen(),
             approximate=True,
         )
@@ -454,7 +535,7 @@ class ResultPublisher:
         key = result_stream_key(self._session_id)
         entry_id = await self._redis.xadd(
             key,
-            {"type": "error", "message": error_message},
+            self._with_trace({"type": "error", "message": error_message}),
             maxlen=self._resolve_maxlen(),
             approximate=True,
         )
@@ -466,7 +547,7 @@ class ResultPublisher:
         key = result_stream_key(self._session_id)
         entry_id = await self._redis.xadd(
             key,
-            {"type": "status", "status": status},
+            self._with_trace({"type": "status", "status": status}),
             maxlen=self._resolve_maxlen(),
             approximate=True,
         )
@@ -510,7 +591,7 @@ class ResultPublisher:
         key = result_stream_key(self._session_id)
         entry_id = await self._redis.xadd(
             key,
-            fields,
+            self._with_trace(fields),
             maxlen=self._resolve_maxlen(),
             approximate=True,
         )
@@ -582,6 +663,35 @@ class ControlListener:
         self._task = None
         logger.info("ControlListener stopped", session_id=self._session_id)
 
+    async def _handle_entry(self, entry_id: Any, fields: Any) -> None:
+        """Decode one control entry and invoke the callback under its trace context.
+
+        Unlike the audio stream, the control stream is low volume (a handful of
+        entries per session), and each command is a DISTINCT caller action —
+        a user-requested engine switch is not the same operation as the
+        finalize that ends the session. So the context is extracted per entry
+        rather than latched, and the callback runs under it so the work the
+        command triggers joins the caller's trace.
+
+        Extraction failure is not fatal: the command is still executed, just
+        untraced.
+        """
+        control = SessionControl.from_redis_dict(fields)
+        logger.info(
+            "Control command received",
+            session_id=self._session_id,
+            action=control.action.value,
+        )
+        ctx = extract_trace_context(carrier_from_redis_fields(fields))
+        if ctx is None:
+            await self._on_control(control)
+            return
+        token = context_api.attach(ctx)
+        try:
+            await self._on_control(control)
+        finally:
+            context_api.detach(token)
+
     async def _run(self) -> None:
         """Main read loop for control commands."""
         stream_key = control_stream_key(self._session_id)
@@ -617,13 +727,7 @@ class ControlListener:
                 for _stream_name, messages in entries:
                     for entry_id, fields in messages:
                         try:
-                            control = SessionControl.from_redis_dict(fields)
-                            logger.info(
-                                "Control command received",
-                                session_id=self._session_id,
-                                action=control.action.value,
-                            )
-                            await self._on_control(control)
+                            await self._handle_entry(entry_id, fields)
                         except Exception as exc:
                             logger.warning(
                                 "Failed to process control command, skipping",

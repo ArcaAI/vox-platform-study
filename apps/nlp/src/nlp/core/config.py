@@ -131,8 +131,20 @@ class NLPServiceConfig(BaseSettings):
     # Master switch: gates traces, metrics, AND log export (default off).
     otel_enabled: bool = Field(default=os.getenv("NLP_OTEL_ENABLED", "false").lower() == "true")
     traces_enabled: bool = Field(default=os.getenv("OTEL_TRACES_ENABLED", "true").lower() == "true")
+    # Gates the Prometheus /metrics endpoint AND the OTLP metric reader.
+    #
+    # Reads NLP_METRICS_ENABLED first (the fleet convention — every other
+    # service uses its own prefixed switch: SMR_METRICS_ENABLED,
+    # TTS_METRICS_ENABLED, GUARDRAIL_V2_METRICS_ENABLED, HARNESS_METRICS_ENABLED,
+    # METRICS_ENABLED for STT). It used to read ONLY the gateway-scoped
+    # OTEL_METRICS_ENABLED, which .env.dev sets to false — so NLP's /metrics
+    # was disabled by a variable documented under the API gateway (TASK-636
+    # OBS-02). OTEL_METRICS_ENABLED is kept as a fallback for compatibility.
     metrics_enabled: bool = Field(
-        default=os.getenv("OTEL_METRICS_ENABLED", "true").lower() == "true"
+        default=os.getenv(
+            "NLP_METRICS_ENABLED", os.getenv("OTEL_METRICS_ENABLED", "true")
+        ).lower()
+        == "true"
     )
 
     # Inter-service authentication. Reads NLP_SERVICE_TOKEN via the
@@ -178,7 +190,9 @@ class NLPServiceConfig(BaseSettings):
             "traces_enabled", os.getenv("OTEL_TRACES_ENABLED", "true").lower() == "true"
         )
         kwargs.setdefault(
-            "metrics_enabled", os.getenv("OTEL_METRICS_ENABLED", "true").lower() == "true"
+            "metrics_enabled",
+            os.getenv("NLP_METRICS_ENABLED", os.getenv("OTEL_METRICS_ENABLED", "true")).lower()
+            == "true",
         )
         super().__init__(**kwargs)
 

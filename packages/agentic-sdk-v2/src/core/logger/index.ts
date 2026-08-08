@@ -98,6 +98,7 @@ export {
   generateId,
   generateTraceId,
   generateSpanId,
+  toW3CTraceId,
   serializeError,
   safeStringify,
   truncate,

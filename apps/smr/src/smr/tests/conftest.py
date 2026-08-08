@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import importlib
+import os
+
 from collections.abc import AsyncGenerator
 from typing import TypeVar
 from unittest.mock import AsyncMock
@@ -12,7 +15,34 @@ from httpx import ASGITransport, AsyncClient
 from pydantic import SecretStr
 
 from smr.core.config import Settings
-from smr.main import create_app
+
+# TASK-636 — test-environment isolation (same defect class fixed in
+# apps/tts/src/tts/tests/conftest.py).
+#
+# `smr/main.py` ends with a module-level `app = create_app()`, which the
+# uvicorn/Docker entrypoint (`uvicorn smr.main:app`) legitimately relies on.
+# That call runs the real `get_settings()`, which loads this machine's
+# gitignored `.env.dev` into `os.environ` via `hope_env.load_env()` — a
+# permanent mutation of the process environment, not scoped to a test.
+#
+# pytest imports every conftest.py during collection, BEFORE any test or
+# fixture runs, so a plain `from smr.main import create_app` here was enough to
+# leak a live `SMR_SERVICE_TOKEN` into the whole session. Every request the
+# suite then made through the auth middleware got a real token expectation and
+# returned `401 Invalid or missing service token` — 134 failures across the
+# unit suite, all with the same root cause and none of them about the code
+# under test.
+#
+# This was LATENT, not new: it only surfaced when the TASK-636 trace-helper
+# refactor changed the import graph enough to alter collection order. Fixing
+# the leak here removes the ordering dependency entirely.
+#
+# Every fixture below passes an explicit Settings override, so nothing here
+# needs `.env.dev` loaded — the import is only for the `create_app` symbol.
+_env_before_main_import = dict(os.environ)
+create_app = importlib.import_module("smr.main").create_app
+os.environ.clear()
+os.environ.update(_env_before_main_import)
 
 _C = TypeVar("_C")
 

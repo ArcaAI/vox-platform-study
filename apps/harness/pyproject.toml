@@ -32,14 +32,22 @@ dependencies = [
     "python-dotenv>=1.2.0",
     "orjson>=3.11.7",
     "jsonschema>=4.23.0",   # SOAP json_schema validation (sensors.computational.schema_validity)
-    "temporalio>=1.28.0",
+    # `[opentelemetry]` extra pulls opentelemetry-sdk (already listed explicitly
+    # below) so `temporalio.contrib.opentelemetry.TracingInterceptor` is available
+    # (TASK-636 OBS-14 — workflow/activity trace spans).
+    "temporalio[opentelemetry]>=1.28.0",
     "prometheus-client>=0.24.1",
     "prometheus-fastapi-instrumentator>=7.1.0",
-    # TASK-533 D-27: the SDK/exporter/instrumentation packages were dropped — nothing
-    # in the service ever imported them (no TracerProvider was ever constructed). Only
-    # the API remains, for the inert `_add_otel_context` structlog processor in
-    # core/logging.py, which stamps trace ids IF some future code installs a provider.
+    # TASK-533 D-27 dropped these (no TracerProvider was ever constructed; only the
+    # bare API remained for the inert `_add_otel_context` structlog processor in
+    # core/logging.py). TASK-636 OBS-14 re-adds the SDK/exporter/instrumentation
+    # packages: `core/observability.py` is now the consumer that installs a
+    # TracerProvider (default OFF — TASK-411) for both the FastAPI app and the
+    # Temporal worker process.
     "opentelemetry-api>=1.39.1",
+    "opentelemetry-sdk>=1.39.1",
+    "opentelemetry-instrumentation-fastapi>=0.60b1",
+    "opentelemetry-exporter-otlp-proto-grpc>=1.39.0",
     # Claim-check payload offload (TASK-483): S3BlobStore keeps large workflow
     # payloads out of Temporal history. Lazy-imported (claim_check.py, inside
     # S3BlobStore only) and gated behind HARNESS_CLAIM_CHECK_STORE=s3 (default

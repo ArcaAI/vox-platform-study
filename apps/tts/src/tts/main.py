@@ -115,6 +115,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     logger.info("tts.started", providers=registry.list_providers())
     yield
+
+    from tts.core.observability import shutdown_opentelemetry
+
+    shutdown_opentelemetry(app)
+
     logger.info("tts.shutdown_complete")
 
 
@@ -133,6 +138,8 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
     )
 
     app.state.settings = settings
+    app.state.tracer_provider = None
+    app.state.logger_provider = None
 
     from tts.catalog.voices import VoiceCatalog
     from tts.providers.base import ProviderRegistry
@@ -166,6 +173,23 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
     app.include_router(voices_router, prefix="/api/v1")
     app.include_router(speech_router, prefix="/api/v1")
     app.include_router(stream_ws_router, prefix="/api/v1")
+
+    # TASK-636 OBS-13: default OFF — activates only when BOTH the master
+    # switch AND an endpoint are set (TASK-411 invariant: never require a
+    # reachable observability backend to start or serve traffic). The
+    # WebSocket streaming surface is deliberately NOT instrumented here.
+    if settings.otel_enabled and settings.otel_exporter_endpoint:
+        from tts.core.observability import setup_opentelemetry
+
+        setup_opentelemetry(
+            app,
+            endpoint=settings.otel_exporter_endpoint,
+            service_name=settings.otel_service_name,
+            service_namespace=settings.otel_service_namespace,
+            deployment_environment=settings.otel_deployment_environment,
+            insecure=settings.otel_insecure,
+            logs_enabled=settings.otel_logs_enabled,
+        )
 
     if settings.metrics_enabled:
         from prometheus_fastapi_instrumentator import Instrumentator

@@ -91,10 +91,16 @@ scrape_configs:
         replacement: guardrail
 
   # ---- NLP (FastAPI) -------------------------------------------------------
-  # http_* (FastAPI instrumentator, un-namespaced — was nlp_http_* until
-  # aligned with the rest of the fleet) + model_* (service="nlp", model in
-  # {Medical-NER, symps-disease-bert}). Domain metrics use OTel/OTLP
+  # http_* (FastAPI instrumentator, un-namespaced) + model_* (service="nlp",
+  # model in {Medical-NER, symps-disease-bert}). Domain metrics use OTel/OTLP
   # (NOT scraped here).
+  #
+  # TASK-636 OBS-02/OBS-03: this comment previously claimed NLP had been
+  # "aligned with the rest of the fleet" — it had not. Until TASK-636 the
+  # instrumentator passed metric_namespace="nlp" (emitting nlp_http_*, which
+  # the regex below cannot match) AND gated exposition on an ENABLE_METRICS
+  # env var that no environment set, so /metrics returned 404 outright.
+  # Both are fixed; the statement is now true.
   - job_name: nlp
     metrics_path: /metrics
     static_configs:
@@ -117,3 +123,19 @@ scrape_configs:
         regex: "http_.*"
         target_label: service
         replacement: harness
+
+  # ---- TTS (FastAPI) -------------------------------------------------------
+  # http_* (instrumentator, gated on TTS_METRICS_ENABLED) + tts_* domain
+  # metrics. TTS runs local models (Kokoro / Indic Parler) alongside Azure.
+  #
+  # TASK-636 OBS-04: TTS has exposed /metrics since it was built, but was the
+  # one service never added to this file — six of seven services were scraped.
+  - job_name: tts
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["host.docker.internal:8865"]
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: "http_.*"
+        target_label: service
+        replacement: tts

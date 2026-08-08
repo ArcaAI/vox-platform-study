@@ -2,6 +2,13 @@ import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit, Optional } f
 import Redis from 'ioredis';
 import { Observable, Subject, finalize } from 'rxjs';
 import { IConfigService } from '../../baseServices/_meta/config';
+import {
+  TraceCarrier,
+  injectTraceCarrier,
+  traceCarrierFromFields,
+  traceCarrierToArgs,
+  withTraceContext,
+} from '../../baseServices/observability/trace-propagation';
 import { StreamingTranscriptMessage, StreamingServerMessage, StreamingStatusMessage } from './dto';
 import { deriveSpeakerLabel } from './speaker-label';
 
@@ -229,6 +236,13 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
    * @param sampleRate - Audio sample rate
    * @param encoding - Audio encoding (default pcm_s16le)
    * @param isFinal - Whether this is the last frame
+   * @param traceCarrier - Pre-computed W3C trace carrier for the SESSION
+   *   (TASK-636 OBS-16). Deliberately a parameter rather than something this
+   *   method derives: audio is the latency-sensitive hop (tens of frames a
+   *   second per session) and a streaming session's trace parent does not
+   *   change mid-stream, so the WS gateway computes it ONCE at connect and the
+   *   hot path only spreads two extra XADD arguments. Omitted / empty ⇒ the
+   *   frame is byte-identical to the pre-TASK-636 wire.
    */
   async writeAudioFrame(
     sessionId: string,
@@ -237,6 +251,7 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
     sampleRate: number = 16000,
     encoding: string = 'pcm_s16le',
     isFinal: boolean = false,
+    traceCarrier?: TraceCarrier,
   ): Promise<void> {
     if (!this.writerRedis) {
       throw new Error('Audio bridge not connected');
@@ -264,6 +279,9 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
       isFinal ? '1' : '0',
       'ts',
       String(Date.now() / 1000),
+      // Empty list when tracing is off — `apps/stt`'s IngestionConsumer latches
+      // the first traceparent it sees and ignores the field thereafter.
+      ...(traceCarrier ? traceCarrierToArgs(traceCarrier) : []),
     );
   }
 
@@ -284,7 +302,12 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
 
     const streamKey = `stt:control:${sessionId}`;
 
-    await this.writerRedis.xadd(streamKey, '*', 'action', action);
+    // Control is low volume (a handful of entries per session) and each command
+    // is a DISTINCT caller action, so — unlike audio — the carrier is derived
+    // from the ACTIVE context here. `apps/stt`'s ControlListener runs the
+    // command handler under it, so a user-triggered finalize/engine-switch
+    // joins the trace of the request that asked for it.
+    await this.writerRedis.xadd(streamKey, '*', 'action', action, ...traceCarrierToArgs(injectTraceCarrier()));
 
     this.logger.log({
       message: 'Control command sent',
@@ -671,6 +694,24 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
    * double-send `closed`.
    */
   private parseAndEmitResult(subject: Subject<StreamingServerMessage>, fields: string[]): boolean {
+    // The STT worker stamps its producing trace context on every result entry
+    // (TASK-636 OBS-16). Lift it out of the RAW field array — never out of the
+    // parsed `data` object below, which holds transcript text — and emit under
+    // it, so whatever a subscriber does synchronously with this transcript
+    // (LiveDocumentationService persistence, the WS relay) hangs off the STT
+    // span that produced it instead of starting an orphan trace.
+    //
+    // Propagation deliberately STOPS here: the traceparent is NOT copied onto
+    // the client-facing message. Server-side trace ids are internal, and the
+    // browser wire has its own drop trap — `packages/stt`'s transport hop
+    // (`StreamingTranscriptEvent` mapping) projects a fixed field set, so an
+    // added field would be silently discarded there anyway.
+    const traceCarrier = traceCarrierFromFields(fields);
+    return withTraceContext(traceCarrier, () => this.projectAndEmitResult(subject, fields));
+  }
+
+  /** Field-array → client message projection (runs inside the producer's trace context). */
+  private projectAndEmitResult(subject: Subject<StreamingServerMessage>, fields: string[]): boolean {
     // Parse fields array into key-value pairs
     const data: Record<string, string> = {};
     for (let i = 0; i < fields.length; i += 2) {

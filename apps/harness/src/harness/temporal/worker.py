@@ -210,6 +210,15 @@ async def run_worker() -> None:
     setup_logging(settings.log_level)
     _assert_claim_check_store_is_deployable(settings)
 
+    # TASK-636 OBS-14 — the worker is its own process, separate from the
+    # FastAPI app, so it needs its own TracerProvider installed for the
+    # TracingInterceptor wired in `get_temporal_client` (below) to export
+    # workflow/activity spans instead of no-oping. No-op when tracing is off
+    # (default) or the collector is unreachable.
+    from harness.core.observability import build_tracer_provider
+
+    build_tracer_provider(settings)
+
     logger.info(
         "harness.worker.connecting",
         address=settings.temporal.address,

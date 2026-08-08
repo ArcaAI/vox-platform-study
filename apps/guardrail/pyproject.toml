@@ -33,6 +33,14 @@ dependencies = [
     "python-dotenv>=1.2.0",
     "prometheus-client>=0.24.1",
     "prometheus-fastapi-instrumentator>=7.1.0",
+    # OpenTelemetry tracing (TASK-636 OBS-12). Mirrors apps/smr's dependency
+    # set: guardrail auto-instruments FastAPI + httpx (the LM Studio/Ollama/
+    # vLLM/llama.cpp engine calls) and exports spans via OTLP/gRPC.
+    "opentelemetry-api>=1.39.1",
+    "opentelemetry-sdk>=1.39.1",
+    "opentelemetry-instrumentation-fastapi>=0.60b1",
+    "opentelemetry-instrumentation-httpx>=0.60b1",
+    "opentelemetry-exporter-otlp-proto-grpc>=1.39.0",
     # Async DB access for per-tenant config resolution (TASK-338; mirrors STT).
     # SQLAlchemy has no `asyncpg` extra — the async driver must be declared explicitly.
     "sqlalchemy[asyncio]>=2.0.47",

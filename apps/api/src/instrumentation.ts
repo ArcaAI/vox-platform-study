@@ -7,21 +7,28 @@ import { resourceFromAttributes } from '@opentelemetry/resources';
 import { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } from '@opentelemetry/semantic-conventions';
 import { PrismaInstrumentation } from '@prisma/instrumentation';
 import { diag, DiagConsoleLogger, DiagLogLevel } from '@opentelemetry/api';
+import { resolveTelemetryPlan } from './instrumentation.flags';
 
 if (process.env.OTEL_DEBUG === 'true') {
   diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.DEBUG);
 }
 
-// Telemetry export is explicit opt-in — no localhost fallback.
+// Telemetry export is explicit opt-in — no localhost fallback. Resolution
+// rules (incl. `OTEL_TRACES_ENABLED`, TASK-636 OBS-16) live in
+// `instrumentation.flags.ts` so they are unit-testable; this module cannot be
+// imported in a test without starting an SDK.
+const plan = resolveTelemetryPlan(process.env);
 const endpoint = process.env.OTEL_EXPORTER_OTLP_ENDPOINT;
-const sdkDisabled = process.env.OTEL_SDK_DISABLED === 'true';
 
 let sdk: NodeSDK | undefined;
 
-if (!endpoint || sdkDisabled) {
-  const reason = sdkDisabled ? 'OTEL_SDK_DISABLED=true' : 'OTEL_EXPORTER_OTLP_ENDPOINT not set';
-  console.log(`[OTel] Telemetry export disabled (${reason})`);
+if (!plan.sdkEnabled) {
+  console.log(`[OTel] Telemetry export disabled (${plan.reason})`);
 } else {
+  if (!plan.tracesEnabled) {
+    console.log(`[OTel] ${plan.reason}`);
+  }
+
   sdk = new NodeSDK({
     resource: resourceFromAttributes({
       [ATTR_SERVICE_NAME]: process.env.OTEL_SERVICE_NAME || 'api-gateway',
@@ -29,7 +36,22 @@ if (!endpoint || sdkDisabled) {
       'service.namespace': 'hope',
       'deployment.environment.name': process.env.NODE_ENV || 'production',
     }),
-    traceExporter: new OTLPTraceExporter({ url: endpoint }),
+    // TASK-636 OBS-16 — `OTEL_TRACES_ENABLED=false` means "emit no spans",
+    // NOT "stop understanding traces".
+    //
+    // An explicit EMPTY `spanProcessors` list is what expresses that. NodeSDK
+    // treats it as "processors were configured" and so skips both the
+    // configured exporter and its `OTEL_TRACES_EXPORTER` env fallback; with no
+    // processors it registers no TracerProvider, so this process creates only
+    // non-recording spans and opens no gRPC channel to the collector.
+    //
+    // Crucially, `setupContextManager` and `setupPropagator` run BEFORE that
+    // branch in `NodeSDK.start()`, so the W3C propagator and the async-hooks
+    // context manager are registered either way: a gateway with traces off
+    // still EXTRACTS an inbound `traceparent` and still FORWARDS it downstream.
+    // A service that severed its neighbours' traces to save its own export
+    // volume would be a worse outcome than the volume.
+    ...(plan.tracesEnabled ? { traceExporter: new OTLPTraceExporter({ url: endpoint }) } : { spanProcessors: [] }),
     // sdk-logs 0.220: BatchLogRecordProcessor takes an options object, not a positional exporter.
     logRecordProcessors: [new BatchLogRecordProcessor({ exporter: new OTLPLogExporter({ url: endpoint }) })],
     instrumentations: [

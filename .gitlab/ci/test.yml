@@ -362,6 +362,7 @@ test-stt:
     - echo "── Test infra → PostgreSQL=${CI_DATABASE_URL:+set} Redis=${CI_REDIS_URL:+set} ──"
     - pip install --quiet --retries 5 --timeout 120 packages/py-runtime-models
     - pip install --quiet --retries 5 --timeout 120 packages/py-env
+    - pip install --quiet --retries 5 --timeout 120 packages/py-otel
     - cd apps/stt
     - pip install --quiet --retries 5 --timeout 120 ".[test]"
     - python -m pytest tests/unit/ -v --tb=short --junitxml=../../junit-stt.xml
@@ -423,6 +424,7 @@ test-smr:
     - echo "── Test infra → PostgreSQL=${CI_DATABASE_URL:+set} Redis=${CI_REDIS_URL:+set} ──"
     - pip install --quiet --retries 5 --timeout 120 packages/py-runtime-models
     - pip install --quiet --retries 5 --timeout 120 packages/py-env
+    - pip install --quiet --retries 5 --timeout 120 packages/py-otel
     - cd apps/smr
     - pip install --quiet --retries 5 --timeout 120 ".[test]"
     - PYTHONPATH=src python -m pytest src/smr/tests/ -v --tb=short --junitxml=../../junit-smr.xml -x

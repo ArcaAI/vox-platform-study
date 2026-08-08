@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | `Pending` |
+| **Status** | `In Progress` — Phase 1 partial (6 defects closed, verified); Phases 2–7 not started |
 | **Type** | `infrastructure` |
 | **Created** | 2026-08-08 |
 | **Supersedes** | TASK-616 Phase 4 (planned as TASK-620 — **never created**; all its open items are inherited here) |
@@ -322,8 +322,6 @@ Per the owner's complexity table. **Effort level** is the reasoning-effort setti
 
 ## 4. Implementation Summary
 
-*(To be completed as lanes land. Each lane appends its own subsection with live query output as evidence — configuration inspection is not accepted as verification, per §3.2 rule 2.)*
-
 **Baseline captured 2026-08-08** (cluster `c-nfhxq`, ns `hope-v2-dev`):
 
 ```
@@ -335,10 +333,255 @@ deps    : 0 of 9 monitored
 head series: 15,338 (largest single metric: traces_spanmetrics_latency_bucket, 3,300)
 ```
 
+### Phase 1 — partial (2026-08-08)
+
+Closed: **OBS-02, OBS-03, OBS-04, OBS-09, OBS-10, OBS-30 (dev half)**. All verified against the running dev stack, not by config inspection.
+
+| Defect | Change | Files |
+|---|---|---|
+| **OBS-02** | NLP `/metrics` un-404'd. **Two independent root causes, both required**: (a) `setup_prometheus` gated on `should_respect_env_var`/`ENABLE_METRICS`, which no environment sets — replaced with the fleet-standard `settings.service.metrics_enabled` check; (b) even then `metrics_enabled` resolved from the **gateway-scoped** `OTEL_METRICS_ENABLED`, which `.env.dev:513` sets to `false` — NLP now reads its own `NLP_METRICS_ENABLED` first (matching `SMR_`/`TTS_`/`GUARDRAIL_V2_`/`HARNESS_`/STT's `METRICS_ENABLED`), falling back to the old key | `apps/nlp/src/nlp/core/observability.py`, `apps/nlp/src/nlp/core/config.py`, `apps/nlp/.env.sample`, `.env.dev`, `.env.test` |
+| **OBS-03** | Dropped `metric_namespace="nlp"`; NLP now emits fleet-standard `http_*`. Corrected the dev `prometheus.yml` comment, which had asserted this alignment before it existed | same + `infrastructure/docker/configs/prometheus/prometheus.yml` |
+| **OBS-04** | Added the missing `tts` scrape job (`host.docker.internal:8865`) with the standard `service` relabel | `infrastructure/docker/configs/prometheus/prometheus.yml` |
+| **OBS-09** | `_worker_service_name()` suffixes at most once, ending the `hope-stt-v2-worker-worker` label | `apps/stt/src/stt/worker.py` |
+| **OBS-10** | `LOKI_ENABLED`/`LOKI_HOST`/`LOKI_LABELS` declared as `env`-tier descriptors, so `env:sync` emits them into `turbo.json#globalEnv` and the samples. **Root cause**: the reader goes through `getEnvString`/`getEnvBoolean`, which index `process.env[key]` dynamically — `env-sync.mts`'s `process.env.NAME` regex scan cannot see them, so a fully-implemented transport had no declared config path | `apps/api/src/config/env.descriptors.ts` (generated: `turbo.json`, `.env.sample`, `apps/api/.env.sample`) |
+| **OBS-30** (dev) | Consolidated the two dashboard directories: `hope-platform-metrics.json` moved into `infrastructure/grafana/dashboards/`, and the dev Grafana repointed there. The cluster half remains open | `infrastructure/docker/docker-compose.dev.yml`, `git mv` of the dashboard |
+
+**Evidence — dev Prometheus targets (was 7 jobs, now 8):**
+
+```
+api-gateway  guardrail  harness  nlp  prometheus  smr  stt  tts   ← tts is new
+```
+
+**Evidence — dev Grafana provisioned dashboards (was 1, now 10):**
+
+```
+Agentic Trajectory (Harness) · Consumption & Cost · HOPE Platform Metrics (dev)
+Model Retention & Lifecycle · Optimistic Locking · PgBouncer — HOPE Production
+SMR Cache Friendliness · SMR Overview · SMR Resilience · SMR Security
+```
+
+**Evidence — tests.** New: `apps/nlp/tests/test_metrics_endpoint_task636.py` (2), `apps/stt/tests/test_worker_service_name_task636.py` (5). Both were written failing first; the NLP test reproduced the exact live `404 == 200`. Suites: NLP `196 passed, 6 failed`, STT (worker/telemetry/metrics scope) `134 passed`, `pnpm api:typecheck` clean, `pnpm env:sync:check` OK (144 keys). **The 6 NLP failures are pre-existing** — `test_extract.py` auth 401s, reproduced identically with these changes stashed.
+
+**Operational note discovered during verification.** Rewriting a single-file Docker bind mount **atomically** (write-temp + rename, which most editors and tools do) changes the inode and **severs the mount** — the container keeps serving its old in-memory copy and `POST /-/reload` fails with `no such file or directory`. Editing `prometheus.yml` on a running dev stack therefore requires `--force-recreate`, not a reload. Worth carrying into the Phase 6 runbook.
+
+### Phase 1 completion + Phase 2 (in-cluster) — authored 2026-08-08, NOT deployed
+
+Repo: `hope-v2-deployment`, branch `task-636-observability-coverage` (uncommitted, unpushed).
+
+Closes on merge: **OBS-01, OBS-22, OBS-26, OBS-27**.
+
+| Defect | Change | File |
+|---|---|---|
+| **OBS-01** | Added scrape jobs for `guardrail:8863`, `nlp:8864`, `harness:8866`, `tts:8865`. All were serving `/metrics` already and were simply never listed | `base/observability-config.yaml` |
+| **OBS-27** | Added the `dcgm-exporter` job (`nvidia-dcgm-exporter.gpu-operator.svc:9400`). The exporter has been running healthy the whole time, producing 92 GPU metrics that were discarded | same |
+| **OBS-22** | Temporal server metrics: `PROMETHEUS_ENDPOINT=0.0.0.0:9090` on the Deployment, a `metrics` port on the container and Service, and a `temporal` scrape job | `base/temporal.yaml`, `base/observability-config.yaml` |
+| **OBS-26** | New `cluster-monitoring.yaml`: **kube-state-metrics** (Deployment + Service + ServiceAccount + read-only ClusterRole/Binding) and **node-exporter** (DaemonSet, `tolerations: [{operator: Exists}]` so it survives a pressured node). Scrape jobs for both, with a `metric_relabel_configs` drop of `kube_*_labels`/`kube_*_annotations` for cardinality | `base/cluster-monitoring.yaml`, `base/kustomization.yaml`, `base/observability-config.yaml` |
+
+Scrape jobs go **7 → 15**. Verified: all three overlays (`dev`/`staging`/`prod`) render via `kubectl kustomize`; both pinned image tags resolve (`docker manifest inspect`).
+
+**Two defects were found and fixed in this change before it shipped** — both by rendering the non-dev overlays rather than trusting the dev render:
+
+1. **Hardcoding `namespace: hope-v2-dev` on the ClusterRoleBinding subject made kustomize's namespace transformer skip it** — the staging render still bound to the *dev* ServiceAccount, so staging's kube-state-metrics would have got 403s. Omitting the field entirely makes the transformer inject the right namespace per overlay. Verified against all three.
+2. **Cluster-scoped name collision (documented, not fixed).** `ClusterRole`/`ClusterRoleBinding` are cluster-scoped and no overlay sets a `namePrefix`. Harmless today — `hope-v2-dev` is the only HOPE namespace — but the moment staging or prod is created on the same k3s cluster, all three overlays render the same object name and their Argo Applications will fight over it. Flagged in-file for **TASK-626**, which owns creating those namespaces.
+
+**Deliberately deferred: container-level cAdvisor metrics.** They need Prometheus RBAC + `kubernetes_sd_configs` + TLS and are the highest-cardinality source available. Enabling them on a single node with a 1 GiB Prometheus limit *and a live eviction history* — in the same change that first gives the node any visibility at all — is the wrong risk order. Separate step, after the §0.2 cardinality budget exists.
+
+**Not deployed.** These manifests are authored and validated but not committed, pushed, or synced. Argo's `hope-v2-dev` Application syncs `main` automatically, so merging deploys them — including a `hostPID`/`hostNetwork` DaemonSet. That needs an explicit go-ahead, not an inference from "implement Phase 2".
+
+### Phase 2 — VM-hosted dependencies · authored 2026-08-08, NOT deployed
+
+Full deployment reference: **[`hope-v2-deployment/docs/observability-dependency-monitoring.md`](../../../../hope-v2-deployment/docs/observability-dependency-monitoring.md)** — inventory, per-VM evidence, verification runbook, gotchas.
+
+> **The register's premise for this phase was wrong, and in our favour.** §2.4 E assumed these exporters needed deploying. Live inspection of the Proxmox estate found **`postgres_exporter` v0.16.0 running on all three database VMs, Patroni's own `:8008/metrics` live on all three, and `redis_exporter` v1.66.0 running on both Redis VMs** — all healthy, and all **already reachable from the Prometheus pod** (verified by `wget` from inside it: 6 of 7 targets OK, no firewall or route change needed). They had never been listed in a scrape config. Same "built, then never wired" pattern TASK-616 §7 found in the CI security gates and Vault OIDC.
+
+Closes on merge: **OBS-20, OBS-23** (plus OBS-01/22/26/27 above). Scrape jobs **7 → 18**.
+
+| Defect | Change |
+|---|---|
+| **OBS-20** | `postgres` job (`10.10.1.{200,201,202}:9187`) + `patroni` job (`:8008`). Patroni is the more important of the two — it carries `patroni_primary`, `patroni_replica`, `patroni_cluster_unlocked`, `patroni_postgres_streaming`, i.e. failover state, which `postgres_exporter` does not expose |
+| **OBS-23** | `redis` job (`10.10.1.{120,121}:9121`). Persistence is deliberately off (PHI posture), so eviction and memory-pressure metrics are load-bearing — an eviction is by-design unrecoverable loss |
+
+Both jobs stamp a readable `node` label via `relabel_configs` (`database-00`, `redis-01`, …); a bare `ip:port` `instance` is useless in an alert body.
+
+**Live state now recorded for the first time:** db-00 leader, db-01/02 streaming replicas, cluster locked/healthy; 833 `pg_*` series per node; `redis_up 1`, 119 MB used, 0 evictions.
+
+### Phase 2 completion — VM exporters DEPLOYED LIVE 2026-08-08 (owner-approved)
+
+Owner approved MinIO, Vault and PgBouncer on the basis that the Proxmox estate is a development environment. All three are **applied and running**; exact configs, commands and rollback are in the deployment doc §3.
+
+| Defect | Result | Evidence |
+|---|---|---|
+| **OBS-21** PgBouncer | `pgbouncer_exporter` v0.11.0 deployed on all three DB VMs in the existing `monitoring` compose profile; password kept in `.env` via `${PG_PASSWORD}`. No restart of PgBouncer or Patroni | `pgbouncer_up 1` ×3, 48 metrics each |
+| **OBS-24** MinIO | `MINIO_PROMETHEUS_AUTH_TYPE=public` + container recreate | 200, 91 `minio_*` series; cluster healthy, 300 GB usable, drive online |
+| **OBS-25** Vault | Added the missing `telemetry` stanza **and** `unauthenticated_metrics_access` on the listener (Vault had *no* telemetry config on any node), then a rolling restart standbys-first | 201 `vault_*` series ×3, `vault_core_unsealed 1` ×3; every node auto-unsealed, leadership failed over cleanly vault-2 → vault-1 |
+
+**Two corrections to the register.** (1) **OBS-24's diagnosis was wrong**: MinIO serves **HTTPS**, so the observed 400 was a protocol mismatch, not auth — over `https://` it was a **403**. The scrape job needs `scheme: https` + `insecure_skip_verify`, which the original reading would have missed; the same applies to Vault. (2) The premise that these exporters needed deploying held for **PgBouncer only**.
+
+**Incident during execution.** VM 402's QEMU guest agent stalled mid-command (that VM runs at ~90% memory). MinIO itself was unaffected — verified healthy over the network — but it left the `.env` write state unknown, and a corrupt `env_file` stops MinIO booting. SSH between VMs turned out to be impossible (**no key path exists — worth fixing independently**), so recovery was: snapshot `task636-pre-metrics-restart` → graceful shutdown → start. The agent returned and the file was **pristine — the command had never executed**. Full account + rollback command in the deployment doc §7.
+
+### Phase 6 (partial) — Grafana dashboards · authored 2026-08-08, NOT deployed
+
+Full catalogue: **[`hope-v2-deployment/docs/observability-dashboards.md`](../../../../hope-v2-deployment/docs/observability-dashboards.md)**
+
+Five dashboards, **67 panels**, delivered as real `.json` files assembled by a kustomize `configMapGenerator` (content-hashed, so an edit rolls Grafana automatically). Replaces the previous cluster Grafana, which shipped **one dashboard with one `up` panel**.
+
+| Dashboard | Covers |
+|---|---|
+| Infrastructure Overview | target up/down, **availability % over range**, uptime, reboots, dependency tiles (incl. Patroni leader count — must be exactly 1) |
+| Node & System Activity | CPU by mode, load vs cores, **PSI resource-stall (the honest RAM-stress signal)**, OOM kills, **open sockets** (TCP in-use/alloc/TIME_WAIT, UDP), file descriptors vs max, disk, network, context switches |
+| GPU (DCGM) | utilisation, framebuffer, thermals, power, clock throttling, tensor-pipe activity, PCIe replays, **remapped-row failures** |
+| Data-tier Dependencies | Patroni role/failover, replication, connections vs max, cache hit ratio, PgBouncer client-wait, Redis evictions, MinIO capacity, Vault seal state |
+| Kubernetes Workloads & Events | **node conditions incl. DiskPressure**, pod phase, restarts, waiting reasons, evicted pods, requests vs allocatable |
+
+**Validation** — the check that matters is PromQL: **111 of 111 expressions parse**, verified by submitting each one to a live Prometheus with template vars substituted. That catches typos which would otherwise surface as a silently empty panel weeks later. Also: all 5 accepted by Grafana's `POST /api/dashboards/db`; all three overlays render. Validation imports were then deleted from the dev Grafana, since these target cluster-only exporters.
+
+**Honest limitation**: kube-state-metrics exposes object *state*, not the Kubernetes event stream. Restart counters, waiting reasons and terminal pod reasons are **event proxies**. A true event feed needs `kube-events-exporter` or an event→Loki shipper — neither is in this change.
+
+### Phase 5 — Alerting · authored 2026-08-08, NOT deployed
+
+Full reference: **[`hope-v2-deployment/docs/observability-alerting.md`](../../../../hope-v2-deployment/docs/observability-alerting.md)**
+
+**31 alert rules across 8 groups** + Alertmanager with a routing tree, inhibition rules and persistent silences. Prometheus wired with `rule_files` + `alerting` (its `evaluation_interval` had been set since the file was created, with nothing to evaluate). Scrape jobs **21 → 22** (Alertmanager self-monitors — an alerting layer that is itself down unnoticed is the worst of both worlds).
+
+Rules are derived from failure modes this platform has **already experienced**, not a generic template: `NodeDiskPressure` (2026-08-06), `PodCrashLooping` (hope-stt-v2 at 22 restarts), `VaultSealed`, `RedisEvictingKeys` (persistence is off, so eviction *is* data loss), `PatroniNoLeader`/`SplitBrain`.
+
+**`ExpectedTargetCountMismatch` is the guard against this ticket's own defect class.** A plain `up == 0` check could never have detected the original problem: when a service is silently absent from the scrape config, every target that exists is up and the platform looks healthy — precisely the state found at the start (3 of 11 scraped, zero down). So the rule alerts on expected *job count*, not target health.
+
+**Verification.** `promtool check rules` → 31 rules, no errors. `amtool check-config` → SUCCESS. And, more importantly, **`promtool test rules` → 7 scenarios, SUCCESS** — syntax passing does not prove an alert fires. The tests prove the logic, including the healthy-case silence and one scenario that replays the 2026-08-06 incident. They are hermetic and need no cluster, so they belong in the deployment repo's CI.
+
+> **⚠️ OBS-29 is only HALF closed, and the ticket should not claim otherwise.** Alerts now fire and are visible in the Alertmanager UI and on the Infrastructure Overview dashboard (new `ALERTS` panels). But **nothing is delivered to a human**: there is no Slack webhook, no SMTP server and no PagerDuty key anywhere in this estate — Argo CD Notifications hit the identical wall and left a `TODO(owner)`. Until a receiver is supplied, an incident still pages nobody; it merely becomes visible to someone who goes looking. Receiver blocks are stubbed and commented in `alertmanager.yaml`, using `*_file` variants so the credential never enters Git.
+
+### Blocked on an owner decision — not actioned
+
+> **Superseded 2026-08-08** — all three were owner-approved and are now **done** (see above). Retained for the decision record.
+
+| Item | Why it was gated |
+|---|---|
+| **OBS-24 MinIO** | `/minio/v2/metrics/cluster` returns **400** — auth required, and `MINIO_PROMETHEUS_AUTH_TYPE` is unset. Option A (`=public`) needs a **MinIO container restart** — an availability event on the PHI object store. Option B (`mc admin prometheus generate` → k8s Secret → `bearer_token_file`) needs no restart but puts a long-lived JWT in the telemetry path. Both costed in the deployment doc §5.2 |
+| **OBS-25 Vault** | `/opt/vault/config/vault.hcl` has **no `telemetry` stanza at all** on any node, so Vault emits nothing and `/v1/sys/metrics` needs a token; standbys 307 to the leader. Needs the stanza plus a **rolling restart of vault-1/2/3**. Low-risk on paper — Track V proved transit auto-unseal survives a hard power cycle in ~20 s — but if VM 434 is unavailable at that moment a restarted node stays **sealed** and every secret resolution fails. Exact config in the deployment doc §5.3 |
+| **OBS-21 PgBouncer** | `pgbouncer` runs on all three DB VMs (`:6432`) but there is **no exporter beside it** — `:9127` is closed. Deploying is additive (new container, no restart of pgbouncer or Patroni), and the scrape config *and* alert rules already exist at `docs/research/configs/postgres-ha/prometheus/`. Listed rather than done silently because it adds a container to a production database host |
+
+### Phase 1 tail — worker metrics · OBS-05 + OBS-06 closed 2026-08-08
+
+Both workers are separate processes from their HTTP services, so the app-level jobs said nothing about them, and **neither emitted any metric at all**. Scrape jobs **22 → 23**; alert rules **31 → 35**.
+
+| Defect | Change | Files |
+|---|---|---|
+| **OBS-05** | STT batch worker exposes `dramatiq_*` on :9191 via dramatiq's own Prometheus middleware. Chosen over a hand-rolled exporter because dramatiq **forks** — a naive `start_http_server()` collides on the port in each fork and plain `prometheus_client` counters would be per-fork and silently wrong. The middleware sets `PROMETHEUS_MULTIPROC_DIR` and binds once | [broker.py](../../../apps/stt/src/stt/core/messaging/broker.py), `stt-v2-worker.yaml`, `.env.sample` |
+| **OBS-06** | New [`harness/temporal/metrics.py`](../../../apps/harness/src/harness/temporal/metrics.py) builds a Temporal SDK `Runtime` with `PrometheusConfig` (default `127.0.0.1:9464`), passed to `Client.connect(runtime=…)`. The SDK emits nothing without one, and a `Runtime` must exist exactly once per process — hence the memo | `metrics.py`, `client.py`, `config.py`, `.env.sample` |
+
+Two decisions worth recording:
+
+- **Both default to loopback**, not the libraries' `0.0.0.0`. These are PHI-processing services and must not become LAN-reachable by accident — the same posture `scripts/dev-service.sh` takes for the HTTP ports. Only the container manifests open them up.
+- **A headless Service + `dns_sd_configs`** for the STT worker, not a ClusterIP + `static_configs`. A ClusterIP Service load-balances, so scraping it returns **one random pod per scrape** and the series is silently a sample rather than the fleet. Headless publishes an A record per pod — correct at `replicas: 1` and still correct when it scales.
+
+Both degrade rather than fail: a held metrics port logs a warning and the worker keeps consuming. That is the TASK-411 invariant applied consistently — a service must never require a reachable observability backend, and by the same principle must not refuse to boot because a metrics port is taken. A test asserts it.
+
+> ⚠️ **The harness worker has no k8s Deployment**, so OBS-06 has nothing to scrape in-cluster yet — TASK-616 §B1 Q4 found the only `*-worker` pods are STT's. Building it is **TASK-625**. The code and the `TemporalWorkerTaskFailures` alert are ready and simply never fire until then; `pnpm worker:dev` exercises it locally.
+
+**Tests** (RED first, both): `apps/stt/tests/test_worker_metrics_task636.py` (3), `apps/harness/.../test_worker_metrics_task636.py` (5). Suites green — STT worker/broker scope **120 passed**, harness temporal **276 passed**. `ruff` + `black` clean; `env:sync:check` OK; `promtool check config` validates all 23 jobs + the alerting block; `promtool test rules` still passes.
+
+### Phase 3 — PHI redaction & environment labelling · OBS-18 + OBS-19 closed 2026-08-08
+
+Full reference: **[`hope-v2-deployment/docs/observability-phi-redaction.md`](../../../../hope-v2-deployment/docs/observability-phi-redaction.md)**
+
+**This was the gate on Phase 4.** Four separate holes, all closed:
+
+| Defect | Fix |
+|---|---|
+| **OBS-19** collector | `redaction/phi` processor with an **attribute allowlist** (`allow_all_keys: false`) on **all three** pipelines, placed **before `batch`** so nothing unredacted is ever buffered or flushed on shutdown |
+| **OBS-19** backend logs | New [`logging/redactor.ts`](../../../packages/applications/src/services/baseServices/logging/redactor.ts) applied at the single `dispatch()` chokepoint — before ANY transport. `LOG_REDACT_FIELDS` finally makes the long-declared `redactFields` load-bearing |
+| **OBS-19** NLP | `_phi_sanitization_hook` wired. The two `instrument_app` call sites are collapsed into one `_instrument_fastapi()` — two call sites is exactly how the hook came to be missing from *both* |
+| **OBS-18** env label | Collector reads `DEPLOYMENT_ENVIRONMENT` from pod env (patched per overlay: dev/staging/prod); STT's hardcoded `"production"` replaced with `DEPLOYMENT_ENVIRONMENT` → `NODE_ENV` → `development` |
+
+**Allowlist, not denylist** — a denylist fails open on every attribute anyone adds later. Deliberate omissions: `http.url`/`http.target` (query strings carry identifiers — `http.route` allowed instead), `db.statement` (embeds parameter values), `exception.message`/`exception.stacktrace` (both embed the offending payload). `hope.tenant_id` **is** allowed: a tenant is a routing key, not patient data.
+
+Three decisions worth recording:
+
+- **The redactor returns the original reference when nothing needs redacting.** Load-bearing, not an optimisation: `base.transport.formatError` and `console.transport` both branch on `instanceof Error`, and existing tests compare identity. I initially converted `Error` to a plain object and broke two passing tests — the identity-preserving design fixes that *and* means the common clean log line costs no clone. When redaction is needed the `Error` is rebuilt as a real `Error`, **with the stack redacted too** (the stack embeds the message verbatim).
+- **STT defaults to `development`, never `production`.** An unset environment tagging laptop traces as production is the dangerous direction — a mislabelled dev span is noise, a mislabelled prod span corrupts an audit trail.
+- **`insert`, not `upsert`** on the environment keys: a service that sets its own correct value keeps it. The collector fills gaps, it doesn't overrule emitters.
+
+**Verification.** The collector config validates against the real contrib 0.149.0 binary (`otelcol validate`, exit 0) — and a **negative control** with a deliberately broken processor key was correctly rejected, proving the check can fail and that `redaction` exists in this build. Suites: applications **321 passed** (18 new, RED first), STT **2810 passed**, NLP 199 passed, `api:typecheck`/`ruff`/`black`/`env:sync:check` clean.
+
+> **Honest limits.** The allowlist guarantees no *unlisted attribute* leaves the collector; it cannot know whether an *allowed* one has been misused. Span **names** are not redacted, only attributes. The agent-DaemonSet/gateway split from the original plan was **not** implemented — redaction went into the single existing collector, which achieves the same enforcement with far less infrastructure; the split remains worthwhile for back-pressure and tail sampling but is not a PHI gap. And **no test proves an end-to-end drop through a running collector** — the ticket's acceptance criterion ("a span carrying a planted PHI attribute is confirmed dropped before Tempo") needs a live deployment. **Run it first after merging, before enabling Phase 4.**
+
+### Phases 4, 5 and 7 — delivered by 8 parallel agents, 2026-08-08
+
+Every lane was independently re-verified (tests re-run, claims checked); agent reports were not taken as evidence. Lanes had exclusive file ownership so none could collide.
+
+| Lane | Tier | Closes |
+|---|---|---|
+| Guardrail OTel | `sonnet` | **OBS-12** — service had zero OTel code |
+| TTS OTel | `sonnet` | **OBS-13** — service had zero OTel code |
+| Harness tracing | `sonnet` | **OBS-14** — no TracerProvider; + Temporal `TracingInterceptor` |
+| Trace propagation | `opus` | **OBS-16** — Redis Streams · SSE · WebSocket · inbound HTTP |
+| Alloy + object storage | `sonnet` | **OBS-08, OBS-11, OBS-33** |
+| Cross-env topology | `opus` | **OBS-31, OBS-32, OBS-35, OBS-07/17** |
+| SLOs + on-call | `sonnet` | **OBS-36** |
+| App-side follow-ups | `sonnet` | service-name alignment · helper dedupe · TTS test isolation |
+
+**Totals: scrape jobs 7 → 26. Alert rules 0 → 35. Dashboards 1 panel → 67. Dependencies monitored 0 → 9.**
+
+#### OBS-18 was materially wider than this register recorded
+
+The register named the collector and STT. Verification found the same hardcoded `"production"` / `"dev"` environment stamp in **five** places:
+
+1. **`apps/smr/core/config.py` — the origin.** It is the reference implementation every service's OTel setup is copied from, and it always defaulted to `"production"`. Harness and TTS faithfully inherited it when they were added in this ticket.
+2. `apps/smr/core/observability.py` — same literal in the function signature.
+3. `apps/harness` and 4. `apps/tts` — inherited.
+5. **Prometheus `external_labels`** — `environment: "dev"` hardcoded in the shared base with no overlay patching it, sitting in the exact label a cross-environment view joins on. Fixed via `--enable-feature=expand-external-labels`.
+
+All five now resolve `DEPLOYMENT_ENVIRONMENT` → `NODE_ENV` → **`development`**, with regression guards. Defaulting to `production` is the dangerous direction: a mislabelled dev span is noise, a mislabelled prod span corrupts an audit trail.
+
+#### Three findings that corrected this ticket's own analysis
+
+- **`OTEL_TRACES_ENABLED` was NOT unread.** This README asserted it was. It is read at `otel.service.ts:88` and `apps/nlp/core/config.py:133,190` — the "unread" claim came from grepping the literal `traceparent`, a bad inference. Deleting it, as originally proposed, would have desynchronised the gateway from a service that honours it. It is now implemented.
+- **The cAdvisor deferral rested on a false premise.** It cited memory pressure and eviction history. The evictions were **DiskPressure**; Prometheus's last termination was `exitCode 255`, **not OOMKilled**. Measured live: 11,456 head series at 125 MiB — **12% of its 1 GiB limit**. cAdvisor enabled with a `keep` allowlist, landing at ~30%. Two surprises from that budget: **87.5% of what this Prometheus stores is the observability stack monitoring itself** (app services are 6.4%), and the largest pending contributor is **redis_exporter at 3,566 series — 4× filtered cAdvisor**.
+- **"ClusterIP-only blocks a cross-env view" was wrong.** ClusterIP is routable cross-namespace by FQDN and no NetworkPolicy exists. The real blocker was identical datasource UIDs — a provisioning-file problem, not architecture.
+
+#### OBS-31 — recommendation: NOT Mimir
+
+One platform Grafana + per-env Prometheus/Loki/Tempo as separate datasources, staged, with Mimir behind explicit documented triggers. Mimir's distinguishing benefits (HA dedup, retention beyond local disk, cross-cluster) apply to none of: one cluster, one live namespace, 7-day retention under 1 GiB. Building it adds three failure modes (ring, WAL replay, compactor) to serve a Prometheus at 12% utilisation — a net reliability *reduction*. Design: [`observability-multi-env.md`](../../../../hope-v2-deployment/docs/observability-multi-env.md).
+
+#### Two hard failures caught before staging bring-up
+
+- **`nodePort: 30300` is cluster-scoped.** The second overlay applied to this cluster would fail Service allocation outright (`provided port is already allocated`). Staging/prod now use Ingress; dev keeps the NodePort.
+- **`GF_SECURITY_COOKIE_SECURE=true` would have broken Grafana login silently** — the dev Ingress publishes on port 80 despite an `https://` root URL, and a secure cookie over HTTP is never returned. `false` in base, `true` in prod only.
+
+#### 🔴 Security finding — out of scope, needs owner action
+
+**`hope-secrets` exposes every credential in plaintext via `kubectl.kubernetes.io/last-applied-configuration`.** Kubernetes redacts `data`; it does **not** redact annotations. Verified directly against the cluster: the API returned all 31 values as `***` and then supplied the full original `stringData` in the annotation. Readable by anyone with `get secret` and by any UI rendering object metadata.
+
+Exposed: Postgres superuser password (and the three DSNs embedding it), `VAULT_TOKEN` / `VAULT_ROLE_ID` / `VAULT_SECRET_ID`, `JWT_SECRET_KEY`, `ADMIN_SESSION_SECRET`, `API_GATEWAY_KEY`, Azure OpenAI + Speech keys, HuggingFace token, Sarvam key, MinIO secret key, Redis password. **No value is reproduced in any document.**
+
+Stop the bleeding: `kubectl -n hope-v2-dev annotate secret hope-secrets kubectl.kubernetes.io/last-applied-configuration-`. But the annotation is not the vulnerability — the exposure already happened, so **every credential above should be treated as compromised and rotated**, Vault AppRole and Postgres superuser first. Root cause is `kubectl apply` on Secrets; server-side apply or the Vault Agent injection already designed in `deployment/vault-agent/` avoids it. In-cluster sibling of the TASK-617→626 leak. **Not actioned — rotating credentials on a PHI cluster is an owner decision.**
+
+### Spun out
+
+- **[TASK-639](../TASK-639-SMR-Test-Environment-Leak/README.md)** — the SMR test env-leak (109 failures, `401 Invalid or missing service token`). Surfaced during this ticket's verification and initially mis-diagnosed here as a regression from the trace-propagation refactor; a stash-and-rerun disproved that (baseline 134 failed / 928 passed vs 109 / 963 with the work). Two partial fixes landed under this ticket — a conftest env snapshot/restore, and a genuinely separate stale-mock defect in `test_xread_streaming.py` where the SSE endpoint had moved to `read_chunk_entries_blocking` while the test double still mocked only the old reader. TASK-639 finishes it.
+- **`task_8f917f8a`** (separate session) — the same env-leak class in guardrail.
+- The TTS instance of the same defect was **fixed inside this ticket** (5 failing → 243 passing).
+
+### Not yet started
+
+- **Alert delivery.** OBS-29 remains HALF closed: 35 rules fire and are visible, but no Slack/SMTP/PagerDuty destination exists anywhere in the estate. One receiver block closes it.
+- `smr_provider_health == 0` has no alert despite SMR being the best-instrumented path — a genuine hole in the 35.
+- Prometheus Operator / ServiceMonitor migration (design written, deliberately not executed).
+- End-to-end proofs needing live infra: the planted-PHI drop through a running collector, and one connected trace across an STT streaming session in Tempo.
+
 ---
 
 ## 5. Change History
 
 | Date | Change | Author |
 |---|---|---|
+| 2026-08-08 | **Phases 4, 5 and 7 delivered via 8 parallel agents** (exclusive file ownership per lane; every lane independently re-verified rather than trusted). Closes OBS-07/08/11/12/13/14/16/17/31/32/33/35/36. Scrape jobs 7 → 26, alert rules 0 → 35, dashboards 1 panel → 67, dependencies 0 → 9. **Verification corrected this ticket's own analysis three times**: OBS-18 was five places not two — `apps/smr/core/config.py` is the reference every service copies and always defaulted to `"production"`, so harness and TTS inherited it, and Prometheus `external_labels` had the same defect in the label a cross-env view joins on; `OTEL_TRACES_ENABLED` was NOT unread (read in `otel.service.ts` and NLP config — deleting it would have desynchronised the gateway); and the cAdvisor deferral rested on a false premise (evictions were DiskPressure, `exitCode 255` not OOMKilled — Prometheus sits at 12% of its memory limit). Two hard failures caught pre-staging: cluster-scoped `nodePort: 30300` would fail Service allocation on the second overlay, and `COOKIE_SECURE=true` would have broken Grafana login silently over the plain-HTTP Ingress. OBS-31 recommendation is **against** Mimir — three new failure modes to serve a Prometheus at 12% utilisation is a net reliability reduction. **🔴 Out-of-scope security finding: `hope-secrets` leaks all 31 credentials in plaintext via the `last-applied-configuration` annotation** (annotations are not redacted like `data`) — verified live, values deliberately not reproduced, rotation is an owner action. | Claude |
+| 2026-08-08 | **Phase 3 closed — OBS-18 + OBS-19. This was the gate on Phase 4.** Four holes: the collector had no redaction at all; the backend `redactFields` was declared with zero readers; NLP's PHI hook was dead code; and the environment label was wrong from both directions (collector upserted `dev`, STT hardcoded `production`). Collector now runs a `redaction/phi` **allowlist** on all three pipelines before `batch`; backend logs redact at the single `dispatch()` chokepoint; NLP's two `instrument_app` sites collapsed into one that always attaches the hook; environment comes from pod env, patched per overlay. **A design correction mid-implementation**: converting `Error` to a plain object broke two passing transport tests, so the redactor now returns the ORIGINAL reference when nothing needs redacting — preserving `instanceof Error`, which `base.transport` and `console.transport` both branch on — and rebuilds a real `Error` (stack included) only when it must. Validated against the real otelcol binary **with a negative control** proving the validator rejects a broken config. 321 + 2810 + 199 tests green. Doc: `observability-phi-redaction.md`, including the limits: allowlists don't police misuse of allowed keys, span names aren't redacted, the agent/gateway split was deliberately skipped, and **the end-to-end planted-PHI drop test still needs a live deployment — run it before Phase 4**. | Claude |
+| 2026-08-08 | **OBS-05 + OBS-06 closed — both worker processes now emit metrics.** Neither had emitted anything at all. STT's batch worker uses dramatiq's own Prometheus middleware because dramatiq FORKS: a naive `start_http_server()` collides per-fork and plain counters would be silently per-fork. The harness worker gets a Temporal SDK `Runtime` with `PrometheusConfig` — the SDK emits nothing without one. Both default to **loopback** rather than the libraries' `0.0.0.0` (PHI posture), with containers opening them up; both **degrade rather than fail** on a held port, asserted by test. STT's scrape uses a **headless Service + `dns_sd_configs`**, not ClusterIP + `static_configs` — a ClusterIP would load-balance and return one random pod per scrape, making the series a silent sample. Scrape jobs 22 → 23, alert rules 31 → 35 (batch failure rate, queue backlog, worker down). **OBS-06 has nothing to scrape in-cluster until TASK-625 builds the harness worker Deployment** — recorded, not hidden. 8 new tests RED-first; 120 + 276 suite tests green; ruff/black/env:sync clean; `promtool check config` validates the whole config. | Claude |
+| 2026-08-08 | **Phase 5 alerting authored** (same branch, not deployed). 31 rules / 8 groups + Alertmanager with routing, inhibition and persistent silences; Prometheus wired with `rule_files` + `alerting`; scrape jobs 21 → 22. Rules derived from incidents this platform actually had, not a template. **`promtool test rules` passes 7 logic scenarios** — including the healthy-case silence and a replay of the 2026-08-06 DiskPressure event — which is the check that matters, since `check rules` only proves syntax. `ExpectedTargetCountMismatch` guards against this ticket's own defect class: a plain `up == 0` check cannot see a service that is silently absent from the scrape config. **OBS-29 is deliberately recorded as HALF closed**: alerts fire and are visible, but no notification destination exists anywhere in the estate, so nothing reaches a human until an owner supplies a receiver. Doc: `observability-alerting.md`. | Claude |
+| 2026-08-08 | **Phase 2 VM work DEPLOYED LIVE + Phase 6 dashboards authored.** Owner approved MinIO/Vault/PgBouncer (Proxmox is a dev estate). Deployed `pgbouncer_exporter` ×3 (the one exporter genuinely absent), `MINIO_PROMETHEUS_AUTH_TYPE=public`, and Vault telemetry ×3 via rolling restart — every node auto-unsealed, leadership failed over cleanly. **Corrected OBS-24's diagnosis: MinIO runs HTTPS, so the observed 400 was a protocol mismatch, not auth (403 over https) — the scrape job needs `scheme: https`, which the original reading would have missed.** VM 402's guest agent stalled mid-command; MinIO stayed healthy but the `.env` write state was unknown, and no SSH key path exists between VMs, so recovery was snapshot → graceful reboot; the file turned out pristine (the command never ran). Also authored 5 Grafana dashboards / 67 panels (infra, node+PSI+sockets, GPU/DCGM, dependencies, k8s events) as kustomize-generated JSON replacing the cluster's single one-panel dashboard; **111/111 PromQL expressions parse-validated against a live Prometheus**. Two deployment docs written: `observability-dependency-monitoring.md` (rewritten with exact configs, incident record, rollback, gotchas) and `observability-dashboards.md`. | Claude |
+| 2026-08-08 | **Phase 2 VM-hosted dependencies authored** (same branch, not deployed). **The register's premise for this phase was wrong in our favour**: live Proxmox inspection found `postgres_exporter` on all three database VMs, Patroni `:8008` on all three, and `redis_exporter` on both Redis VMs — all healthy, and all already reachable from the Prometheus pod (6 of 7 probes OK from inside it; only MinIO failed). Nothing needed deploying; they had never been listed in a scrape config. Closes OBS-20 + OBS-23; scrape jobs 7 → 18. Three items gated on an owner decision rather than actioned: MinIO (restart or long-lived JWT), Vault (no `telemetry` stanza on any node; needs a rolling restart of the secrets backbone), PgBouncer (exporter genuinely absent; additive but on a production DB host). Full reference captured as a deployment doc at `hope-v2-deployment/docs/observability-dependency-monitoring.md`. | Claude |
+| 2026-08-08 | **Phase 1 completion + Phase 2 in-cluster authored** in `hope-v2-deployment` branch `task-636-observability-coverage` (uncommitted, **not deployed**): closes OBS-01, OBS-22, OBS-26, OBS-27 on merge; scrape jobs 7 → 15. New `cluster-monitoring.yaml` deploys kube-state-metrics + node-exporter — the node had **no** monitoring at all, which is why the 2026-08-06 DiskPressure eviction wave produced no signal. Rendering the *staging* overlay (not just dev) caught a real defect before it shipped: hardcoding the ClusterRoleBinding subject namespace makes kustomize's transformer skip it, so staging/prod would bind the dev ServiceAccount and 403. A second, unfixed constraint is documented in-file for TASK-626 — cluster-scoped ClusterRole/Binding names collide across overlays once staging/prod exist on the same cluster. cAdvisor deliberately deferred (highest-cardinality source; wrong risk order on a 1 GiB Prometheus with an eviction history). | Claude |
+| 2026-08-08 | **Phase 1 partial — 6 defects closed and verified against the running dev stack**: OBS-02, OBS-03, OBS-04, OBS-09, OBS-10, OBS-30 (dev half). Dev Prometheus 7 → 8 targets; dev Grafana 1 → 10 dashboards. Two TDD test files added (both RED first). **OBS-02 turned out to have two independent root causes**, not one: the `ENABLE_METRICS` instrumentator gate *and* `metrics_enabled` resolving from the gateway-scoped `OTEL_METRICS_ENABLED=false`; fixing either alone still left `/metrics` returning 404. **OBS-10's root cause was also deeper than recorded**: `env-sync.mts` computes `globalEnv` from the declared surface ∪ a `process.env.NAME` regex scan, and the Loki keys are read via `getEnvString`/`getEnvBoolean` (dynamic `process.env[key]`), so the scan structurally cannot see them — the fix is a descriptor declaration, not a hand-edit to `turbo.json` (which `env:sync` reverts). OBS-01 deliberately left unapplied: it belongs in the Argo-managed config repo, and hand-`kubectl apply` drift is already a recorded problem (TASK-616 L-06). | Claude |
 | 2026-08-08 | Ticket created. Full stack observability review (static + live cluster inspection). 36 defects registered (OBS-01…OBS-36): 17 inherited from the TASK-616 O-register, 14 new, 5 refined. **Inherits all open items of TASK-616 Phase 4 (steps 4.1–4.9), which had been planned as TASK-620 — that ticket was never created.** Extends the parent's scope with the dependency tier (TimescaleDB HA, PgBouncer, Redis, MinIO, Temporal, Vault, node/cluster, GPU), which the parent register did not cover at all. 8-phase plan across 6 parallel agent lanes with model-tier assignments. Status `Pending` — awaiting owner approval of the plan before Phase 1. | Claude (review requested by owner) |
