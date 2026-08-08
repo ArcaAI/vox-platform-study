@@ -3,7 +3,6 @@ import {
   DepartmentAgentFactory,
   DepartmentAgentRepository,
   DepartmentEntity,
-  DepartmentFactory,
   DepartmentRepository,
   PromptTemplateFactory,
   PromptTemplateRepository,
@@ -118,8 +117,19 @@ export class AgentTemplateResyncService extends BaseService {
         const existing = bySlug.get(golden.slug);
 
         if (!existing) {
-          await this.cloneGoldenIntoTenant(golden, tenantId);
-          summary.added += 1;
+          // Reuse-only: no tenant department for this golden agent means the
+          // tenant does not run that department. Skip it — do NOT provision one
+          // (TASK-634 D-18).
+          if (await this.cloneGoldenIntoTenant(golden, tenantId)) {
+            summary.added += 1;
+          } else {
+            summary.skipped += 1;
+            this.logger.log({
+              message: 'Skipped golden agent - tenant has no department with this code',
+              tenantId,
+              goldenAgentSlug: golden.slug,
+            });
+          }
           continue;
         }
 
@@ -145,9 +155,16 @@ export class AgentTemplateResyncService extends BaseService {
     return summary;
   }
 
-  /** (i) The tenant has never had this golden agent — clone it in, locked. */
-  private async cloneGoldenIntoTenant(golden: DepartmentAgentEntity, tenantId: string): Promise<void> {
-    const tenantDept = await this.resolveOrCreateTenantDepartment(golden.departmentId, tenantId);
+  /**
+   * (i) The tenant has never had this golden agent — clone it in, locked.
+   *
+   * Returns `false` when the tenant has no department for this golden agent, in
+   * which case NOTHING is created (TASK-634 D-18: resync reconciles agents onto
+   * the tenant's existing departments; it must never provision a department).
+   */
+  private async cloneGoldenIntoTenant(golden: DepartmentAgentEntity, tenantId: string): Promise<boolean> {
+    const tenantDept = await this.resolveTenantDepartment(golden.departmentId, tenantId);
+    if (!tenantDept) return false;
 
     const goldenTemplate = await this.promptTemplateRepository.findById(golden.promptTemplateId);
     if (!goldenTemplate) {
@@ -239,6 +256,7 @@ export class AgentTemplateResyncService extends BaseService {
         resyncAction: 'added',
       },
     });
+    return true;
   }
 
   /**
@@ -326,26 +344,30 @@ export class AgentTemplateResyncService extends BaseService {
   }
 
   /**
-   * Resolve the tenant's department for a golden department: reuse the
-   * same-code department when it exists, else clone the golden department shape.
+   * Resolve the tenant's department for a golden department — REUSE ONLY.
+   *
+   * Returns the tenant's same-code department, or `null` when the tenant does
+   * not have one. It NEVER creates a department.
+   *
+   * This used to clone the golden department shape into the tenant on a miss
+   * (TASK-634 D-18). That made the SYSTEM golden catalog the de-facto source of
+   * every tenant's department list: `GOLDEN_DEPARTMENTS` derives from the Global
+   * `DEFAULT_DEPARTMENTS`, so each sweep provisioned one tenant department per
+   * Global department, forever. It gave the ArcaAI tenant 15 departments in a
+   * 629 ms window on 2026-07-30 — including six the tenant's own clinical model
+   * does not have — and made deleting them futile, because the next sweep put
+   * them straight back.
+   *
+   * A tenant's department set is authoritative and is owned by the tenant (for
+   * ArcaAI it is pinned to HOPE v1's eleven; see the seed and TASK-634 §9).
+   * Resync reconciles AGENTS onto departments that already exist; it is not a
+   * department provisioner. A golden agent whose department the tenant lacks is
+   * skipped and logged, not silently materialized.
    */
-  private async resolveOrCreateTenantDepartment(goldenDepartmentId: string, tenantId: string): Promise<DepartmentEntity> {
+  private async resolveTenantDepartment(goldenDepartmentId: string, tenantId: string): Promise<DepartmentEntity | null> {
     const goldenDept = await this.departmentRepository.findById(goldenDepartmentId);
-    const existing = goldenDept.code ? await this.departmentRepository.findByCode(tenantId, goldenDept.code) : null;
-    if (existing) {
-      return existing;
-    }
-
-    const department = DepartmentFactory.CreateDepartment({
-      tenantId,
-      code: goldenDept.code ?? undefined,
-      name: goldenDept.name ?? undefined,
-      description: goldenDept.description ?? undefined,
-      defaultSummaryTemplate: goldenDept.defaultSummaryTemplate ?? undefined,
-      promptConfig: (goldenDept.promptConfig as Record<string, unknown> | null) ?? undefined,
-      createdBy: this.requestUserId ?? undefined,
-    });
-    return this.departmentRepository.create(department);
+    if (!goldenDept.code) return null;
+    return (await this.departmentRepository.findByCode(tenantId, goldenDept.code)) ?? null;
   }
 
   /** The version the clone's content was taken from (default 1 for legacy rows). */
