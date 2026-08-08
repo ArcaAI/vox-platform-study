@@ -393,16 +393,17 @@ Gaps against R6:
 | D-13 | No tenant-level fallback resolution tier (pointers are inert) | **Critical** | **Fixed** (Phase 1) |
 | D-14 | v1 has 11 departments / 23 templates; only 7 / 15 were migrated | **Critical** | In progress (Phase 8a) |
 | D-15 | ArcaAI's live department set (18 rows) ≠ v1's 11 | High | In progress (Phase 8b) |
-| D-16 | `substituteVariables` in `prompt-assembly.service.ts` uses `name in variables` — walks the prototype chain, so `{toString}` injects JS source into a clinical prompt | High | Open (separate ticket) |
+| D-16 | `substituteVariables` in `prompt-assembly.service.ts` uses `name in variables` — walks the prototype chain, so `{toString}` injects JS source into a clinical prompt | High | **Fixed** |
 | D-17 | `.env.test` sets `SECRETS_PROVIDER=vault`, so ~379 PHI-encryption unit tests fail by default in `@arcaai/applications` | Medium | **Fixed** — see §12 |
 | D-18 | `AgentTemplateResyncService.resolveOrCreateTenantDepartment` clones EVERY Global department into every tenant — the source of ArcaAI's 7 non-v1 departments. Deleting them without disabling this re-creates them on the next sweep | **Critical** | **Fixed** — see §10 |
 | D-19 | Live `DepartmentAgent` rows for 6 ArcaAI departments are `019fb12d-*` golden clones, but the seed declares `78000000-…-0001-…`. Seeding would ADD a second agent rather than update the existing one | High | Open (TASK-635 RF-3 seam) |
 | D-20 | `approvedVersionNumber` — the pin the resolver actually serves — was absent from `PromptTemplateResponse`, and the `status` union omitted `APPROVED` despite the enum, list filter and approve route all producing it | Medium | **Fixed** (Phase 6) — gateway rebuild/restart required |
 | D-21 | The shared `destructive` **Alert** variant renders its description at **4.08:1**, failing WCAG 1.4.3. Affects every destructive alert app-wide, including the OCC conflict banner | Medium | Open (`packages/ui`, separate ticket) |
 | D-22 | ~~Global tenant has no APPROVED pre-summary template~~ — **premise wrong.** Global has TWO tier-1 candidates and the resolver picks the WRONG one; stale overrides are **25**, not 18 | High | Audited — see §11 |
-| D-23 | Global's `…0000-000000000026` "Pre-Summary System Prompt" is tagged `pre-summary`, so it WINS tier-1 by oldest-wins (15 ms) over the real body `…040`. Global pre-summaries render from a **337-byte system-role prompt** | **Critical** | Open — live data |
-| D-24 | `SYSTEM_DEFAULTS.preSummaryPromptId` (`…0000-000000000040`) is owned live by the **Global** tenant, not SYSTEM, so `SYSTEM_SHARED_READ_MODELS` cross-tenant read does not apply. Every non-Global tenant finds nothing at tier 2 → **503** | **Critical** | Open — live data (TASK-635 B-12 re-owning never reached this DB) |
-| D-25 | `…026`, `…040` and `…024` all have `approvedVersionNumber = null`, so `governedSnapshot` serves the **mutable `content` column**, not a pinned `PromptVersion` — the F-02 integrity guarantee is inert for exactly the templates the pre-summary path uses | High | Open — live data |
+| D-23 | Global's `…0000-000000000026` "Pre-Summary System Prompt" is tagged `pre-summary`, so it WINS tier-1 by oldest-wins (15 ms) over the real body `…040`. Global pre-summaries render from a **337-byte system-role prompt** | **Critical** | **Fixed in seed** — local DB correct; cluster needs the seed run (§12) |
+| D-24 | `SYSTEM_DEFAULTS.preSummaryPromptId` (`…0000-000000000040`) is owned live by the **Global** tenant, not SYSTEM, so `SYSTEM_SHARED_READ_MODELS` cross-tenant read does not apply. Every non-Global tenant finds nothing at tier 2 → **503** | **Critical** | **Fixed in seed** — local DB correct; cluster needs the seed run (§12) |
+| D-26 | Same prototype-chain lookup in the browser SDK `promptUtils.ts` (both substitution AND required-variable validation) | High | **Fixed** |
+| D-25 | `…026`, `…040` and `…024` all have `approvedVersionNumber = null`, so `governedSnapshot` serves the **mutable `content` column**, not a pinned `PromptVersion` — the F-02 integrity guarantee is inert for exactly the templates the pre-summary path uses | High | **Fixed in seed** — local DB correct; cluster needs the seed run (§12) |
 
 ---
 
@@ -949,6 +950,69 @@ pnpm --filter @arcaai/applications typecheck  →  clean (tsc --noEmit, no outpu
 
 No test was skipped, weakened, or deleted; no prompt/seed content touched.
 
+## 12. Local Environment Verification (2026-08-08)
+
+Run against the local dev database (`localhost:5432/hope`). **This is now the
+reference for what the cluster should look like.**
+
+### 12.1 The local DB is already correct — the cluster is stale
+
+| Check | Local dev DB | Cluster `vox-dev` |
+|---|---|---|
+| TASK-635 migration applied | ✅ | ❌ |
+| `DepartmentAgent.preSummaryTemplateId` | ✅ | ❌ |
+| Dept-free default `…0004-…002` | ✅ SYSTEM-owned, APPROVED | ❌ absent |
+| D-23 `…026` mis-tagged `pre-summary` | ✅ not tagged | ❌ tagged |
+| D-24 `…040` ownership | ✅ SYSTEM | ❌ Global |
+| D-25 `approvedVersionNumber` | ✅ 1 | ❌ null |
+| ArcaAI departments | ✅ 11 | ❌ 18 |
+| ArcaAI v1 templates | ✅ 23 | ❌ 15 |
+
+**D-23, D-24 and D-25 are therefore live-data staleness, not repo defects** — the
+seed already produces the correct ownership, tagging and approval pin. Applying
+the migration and running the seed resolves all three.
+
+Tier-1 resolution locally is the intended design:
+
+| Tenant | Candidates | Resolves to |
+|---|---|---|
+| ArcaAI | 1 | `Clinical Pre-Summary` |
+| Global | **0** | falls through to the SYSTEM default (correct — §11.6) |
+| System | 1 | `Pre-Summary Default Template` |
+
+### 12.2 A D-18-class trap found and fixed
+
+The remediation dry-run showed all 18 stale overrides were **Global-tenant
+departments that the seed itself still set** (`DEFAULT_DEPARTMENTS`). Clearing
+them would have been undone by the very next seed — exactly the D-18 pattern.
+Fixed at source: `preSummaryPromptId: null` on all 18, and the test asserting the
+old design inverted.
+
+Proven, not assumed:
+
+1. cleanup applied → 18 cleared, 0 remaining
+2. **full re-seed** → still **0** (previously it would have restored all 18);
+   ArcaAI 11 departments, 23 templates, 7 default agents
+
+### 12.3 End-to-end content proof
+
+sha256 computed **inside Postgres** over the `PromptVersion` snapshots the
+resolver actually serves, compared against the fingerprints taken from the
+running v1 pod:
+
+```
+Clinical Pre-Summary            content_matches_v1 = true   pinned v1
+Dermatology - New Referral      content_matches_v1 = true   pinned v1
+General Medicine - Follow-up    content_matches_v1 = true   pinned v1
+Hematology - Revisit            content_matches_v1 = true   pinned v1
+Orthopedics - New Referral      content_matches_v1 = true   pinned v1
+Surgery - New Referral          content_matches_v1 = true   pinned v1
+Surgical Oncology - Follow-up   content_matches_v1 = true   pinned v1
+```
+
+The full chain is verified: v1 pod → byte-exact extraction → seed → database →
+the pinned snapshot served at runtime.
+
 ## 8. Change History
 
 | Date | Change |
@@ -972,6 +1036,8 @@ No test was skipped, weakened, or deleted; no prompt/seed content touched.
 | 2026-08-07 | **Phase 6 (R6)** — tenant-admin UI delivered with the Figma gate waived. Most of R6 already existed but was buried in `/agents`; promoted to a new `/prompt-templates` screen (tier 30-49) with **Fallbacks · Templates · Governance** tabs. `/agents` demoted to `DepartmentAgent` only per the one-authoritative-editor rule; `/prompt-studio` redirect re-pointed. The Fallbacks tab mirrors `PromptResolutionService` literally — pre-summary as a single row badged `tenant-wide` ("no department axis / no visit-type axis") with the `tenant → SYSTEM → 503` chain, summary as a department × visit-type matrix whose pre-summary column reads `n/a — tenant-wide`. Gates: 167 files / 1300 tests, lint 0 warnings, **axe 0 violations** (8 scans, both themes), **23/23 Playwright** against the running stack. |
 | 2026-08-07 | Phase 6 surfaced D-20 (added `approvedVersionNumber` to `PromptTemplateResponse` + widened the `status` union to include `APPROVED`), D-21 (destructive Alert contrast 4.08:1) and D-22 (Global tenant has no APPROVED pre-summary template; 18 departments still carry inert pre-summary overrides). It also fixed two pre-existing broken e2e specs (`agents.spec.ts` fully red since TASK-547; a fragile `.first()` filter locator). |
 | 2026-08-08 | **D-18 fixed** (§10) — resync made reuse-only; it can no longer provision a tenant department. Regression test locks it. Unblocks §9.5 step 1, so retiring the 7 non-v1 ArcaAI departments will now stick. |
+| 2026-08-08 | Local dev DB verified end to end (§12). D-23/D-24/D-25 confirmed **live-data staleness, not repo defects** — the seed already yields correct ownership, tagging and approval pins. Found and fixed a D-18-class trap: the seed still set `preSummaryPromptId` on all 18 Global departments, so clearing them would have been undone by the next seed. Cleanup + full re-seed proved 0 restored. sha256 computed inside Postgres proves the served `PromptVersion` snapshots are byte-exact v1. |
+| 2026-08-08 | D-16, D-17 and D-26 fixed and committed. D-26 closed the same prototype-chain defect in the browser SDK, in BOTH substitution and required-variable validation. |
 | 2026-08-08 | Spin-offs dispatched: D-16 (prototype-chain substitution), D-17 (`SECRETS_PROVIDER=vault`), D-22 (live pre-summary audit + dry-run remediation script). D-21 (Alert contrast) is being handled in a separate owner session. |
 | 2026-08-07 | Live-DB reconciliation completed read-only (§9). Found **D-18**: the 15 `019fb12d-*` rows were created in a 629 ms window by `AgentTemplateResyncService`, which clones every Global department into every tenant — so deleting the 7 non-v1 departments without disabling the sweep is futile. Also **D-19**: live agent ids diverge from the seed, so seeding would add a second agent to 6 departments. |
 | 2026-08-08 | **D-17 fixed** (§12) — `packages/applications/vitest.config.ts` now overrides `SECRETS_PROVIDER=env` for that package's Vitest run (mirrors the existing `apps/api/vitest.config.ts` `DATABASE_URL` override pattern), instead of touching the shared `.env.test`. Vault-mode (fail-closed) behavior keeps dedicated coverage in `phi-field-encryption.test.ts`, which injects `SECRETS_PROVIDER=vault` explicitly rather than relying on ambient `process.env`. Confirmed `apps/api` and `@arcaai/domains` do not share the defect (both pass unmodified). Verified: `@arcaai/applications` 440 files / 8348 tests passed (1/4 skipped), typecheck clean. |
