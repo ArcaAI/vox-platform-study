@@ -3,6 +3,14 @@ import { Subject } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { RESUME_BUFFER_SIZE, SttWsGateway, WS_CLOSE_CODES, WS_RESUME_GRACE_MS } from '../stt-ws.gateway';
 
+/**
+ * The 7th `writeAudioFrame` argument is the session's W3C trace carrier
+ * (TASK-636 OBS-16). With no OTel SDK running in unit tests the gateway derives
+ * an EMPTY carrier, so the Redis wire is byte-identical to pre-TASK-636 — which
+ * is the no-op guarantee these assertions now also pin.
+ */
+const TRACE_CARRIER_DISABLED = {};
+
 const createMockSocket = (overrides: Partial<WebSocket> = {}) => ({
   send: vi.fn(),
   close: vi.fn(),
@@ -553,7 +561,7 @@ describe('SttWsGateway', () => {
 
       await gateway.handleMessage(client as any, audioMsg);
 
-      expect(mockBridgeService.writeAudioFrame).toHaveBeenCalledWith('sess-audio', 1, expect.any(Buffer), 16000, 'pcm_s16le', false);
+      expect(mockBridgeService.writeAudioFrame).toHaveBeenCalledWith('sess-audio', 1, expect.any(Buffer), 16000, 'pcm_s16le', false, TRACE_CARRIER_DISABLED);
     });
 
     it('should handle stop message by sending finalize control command', async () => {
@@ -606,7 +614,7 @@ describe('SttWsGateway', () => {
       const binaryData = Buffer.from([0x01, 0x02, 0x03, 0x04]);
       await gateway.handleMessage(client as any, binaryData as any, true);
 
-      expect(mockBridgeService.writeAudioFrame).toHaveBeenCalledWith('sess-bin', expect.any(Number), binaryData, 16000, 'pcm_s16le', false);
+      expect(mockBridgeService.writeAudioFrame).toHaveBeenCalledWith('sess-bin', expect.any(Number), binaryData, 16000, 'pcm_s16le', false, TRACE_CARRIER_DISABLED);
     });
   });
 
@@ -625,7 +633,7 @@ describe('SttWsGateway', () => {
       await gateway.handleMessage(client as any, binaryData as any, true);
 
       expect(mockSessionBinding.lookupSessionMeta).toHaveBeenCalledWith('sess-sr-bin');
-      expect(mockBridgeService.writeAudioFrame).toHaveBeenCalledWith('sess-sr-bin', expect.any(Number), binaryData, 48000, 'pcm_s16le', false);
+      expect(mockBridgeService.writeAudioFrame).toHaveBeenCalledWith('sess-sr-bin', expect.any(Number), binaryData, 48000, 'pcm_s16le', false, TRACE_CARRIER_DISABLED);
     });
 
     it('forwards the session-negotiated sampleRate on JSON audio frames (C5)', async () => {
@@ -636,7 +644,7 @@ describe('SttWsGateway', () => {
 
       await gateway.handleMessage(client as any, JSON.stringify({ type: 'audio', seq: 7, data: 'YWJjZA==' }));
 
-      expect(mockBridgeService.writeAudioFrame).toHaveBeenCalledWith('sess-sr-json', 7, expect.any(Buffer), 44100, 'pcm_s16le', false);
+      expect(mockBridgeService.writeAudioFrame).toHaveBeenCalledWith('sess-sr-json', 7, expect.any(Buffer), 44100, 'pcm_s16le', false, TRACE_CARRIER_DISABLED);
     });
 
     it('defaults the sampleRate to 16000 when no session meta is bound', async () => {
@@ -654,6 +662,7 @@ describe('SttWsGateway', () => {
         16000,
         'pcm_s16le',
         false,
+        TRACE_CARRIER_DISABLED,
       );
     });
 
@@ -674,6 +683,7 @@ describe('SttWsGateway', () => {
         16000,
         'pcm_s16le',
         false,
+        TRACE_CARRIER_DISABLED,
       );
     });
 

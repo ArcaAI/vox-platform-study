@@ -38,6 +38,33 @@ def _phi_sanitization_hook(span: trace.Span, scope: dict[str, Any]) -> None:
             span.set_attribute(attr, "[REDACTED]")
 
 
+def _instrument_fastapi(
+    app: FastAPI,
+    tracer_provider: Any | None,
+    excluded_urls: str = "",
+) -> None:
+    """Instrument the app, ALWAYS with the PHI sanitisation hook attached.
+
+    TASK-636 OBS-19: ``_phi_sanitization_hook`` existed since this module was
+    written and was never passed to the instrumentor — dead code, while SMR's
+    identical hook *was* wired. NLP receives clinical text on every request, so
+    an unhooked instrumentor is free to attach request/response bodies to spans
+    that land in Tempo.
+
+    There used to be TWO ``instrument_app`` call sites (provider-configured and
+    fallback), which is exactly how the hook came to be missing from both. They
+    are collapsed here so the two cannot drift again.
+    """
+    kwargs: dict[str, Any] = {
+        "excluded_urls": excluded_urls,
+        "server_request_hook": _phi_sanitization_hook,
+    }
+    if tracer_provider is not None:
+        kwargs["tracer_provider"] = tracer_provider
+
+    FastAPIInstrumentor().instrument_app(app, **kwargs)
+
+
 def setup_opentelemetry(app: FastAPI) -> None:
     if not settings.service.otel_enabled:
         logger.info("OpenTelemetry disabled (NLP_OTEL_ENABLED=false)")
@@ -107,21 +134,14 @@ def setup_opentelemetry(app: FastAPI) -> None:
 
     excluded_urls = ",".join(excluded_endpoints)
 
+    _instrument_fastapi(app, tracer_provider, excluded_urls)
+
     if tracer_provider is not None:
-        FastAPIInstrumentor().instrument_app(
-            app,
-            excluded_urls=excluded_urls,
-            tracer_provider=tracer_provider,
-        )
         LoggingInstrumentor().instrument(
             set_logging_format=False,
             tracer_provider=tracer_provider,
         )
     else:
-        FastAPIInstrumentor().instrument_app(
-            app,
-            excluded_urls=excluded_urls,
-        )
         LoggingInstrumentor().instrument(set_logging_format=False)
 
     logger.info(
@@ -153,17 +173,31 @@ def shutdown_opentelemetry(app: FastAPI) -> None:
 
 
 def setup_prometheus(app: FastAPI) -> None:
+    """Mount ``/metrics`` and instrument HTTP requests.
+
+    Gated on ``settings.service.metrics_enabled`` — the same switch every other
+    Python service uses. It previously used the instrumentator's own
+    ``should_respect_env_var``/``ENABLE_METRICS`` gate, which no environment
+    ever set, so ``/metrics`` 404'd everywhere (TASK-636 OBS-02).
+
+    HTTP series are deliberately NOT namespaced (TASK-636 OBS-03): the
+    fleet-wide contract is ``http_*``, which the Prometheus relabel rule
+    (``__name__ =~ "http_.*"``) and ``PlatformMetricsService``'s
+    ``sum by (service) (rate(http_requests_total[5m]))`` both depend on.
+    """
+    if not settings.service.metrics_enabled:
+        logger.info("prometheus.disabled", extra={"reason": "metrics_enabled=false"})
+        return
+
     Instrumentator(
         should_group_status_codes=False,
         should_ignore_untemplated=True,
-        should_respect_env_var=True,
         should_instrument_requests_inprogress=True,
         excluded_handlers=["/metrics", "/health"],
-        env_var_name="ENABLE_METRICS",
         inprogress_name="fastapi_inprogress",
         inprogress_labels=True,
     ).add(prometheus_metrics.default(), prometheus_metrics.combined_size()).instrument(
-        app=app, metric_namespace="nlp"
+        app=app
     ).expose(
         app=app, should_gzip=True
     )

@@ -11,6 +11,7 @@ Azure ``REGION`` remains env-set (``TTS_AZURE_REGION`` / ``AZURE_SPEECH_REGION``
 
 from __future__ import annotations
 
+import os
 from typing import Annotated, Any
 
 from hope_env import hope_settings_sources, load_env
@@ -197,6 +198,29 @@ class Settings(BaseSettings):
     # value comes from the control plane (`tts.modelCache.ttlSeconds`), consumed
     # via `core/effective_config.py`.
     model_cache_ttl_seconds: int = 600
+
+    # Observability (TASK-636 OBS-13). Default OFF (TASK-411 invariant: never
+    # require a reachable collector to boot/serve). `otel_exporter_endpoint`
+    # defaults to empty (no hardcoded localhost target) so tracing activates
+    # ONLY when BOTH `otel_enabled` AND an endpoint are explicitly set — see
+    # `main.create_app`. TTS receives clinical text to synthesise, so
+    # `core/observability.py` wires a PHI-redaction hook into every span.
+    otel_enabled: bool = False
+    otel_exporter_endpoint: str = ""
+    otel_service_name: str = "tts"
+    otel_service_namespace: str = "hope"
+    # TASK-636 OBS-18. Resolved from the environment, defaulting to DEVELOPMENT.
+    # Copied "production" from the SMR reference, which was itself the origin of
+    # this defect fleet-wide. A hardcoded "production" tags a developer laptop's
+    # spans as production data — a mislabelled dev span is noise, a mislabelled
+    # prod span corrupts an audit trail.
+    otel_deployment_environment: str = Field(
+        default_factory=lambda: os.getenv("DEPLOYMENT_ENVIRONMENT")
+        or os.getenv("NODE_ENV")
+        or "development"
+    )
+    otel_insecure: bool = True
+    otel_logs_enabled: bool = True
 
     @field_validator("log_level")
     @classmethod

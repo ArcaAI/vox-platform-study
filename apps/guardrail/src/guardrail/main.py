@@ -198,6 +198,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     if getattr(app.state, "tenant_config_engine", None) is not None:
         await app.state.tenant_config_engine.dispose()
 
+    from guardrail.core.observability import shutdown_opentelemetry
+
+    shutdown_opentelemetry(app)
+
 
 def create_app() -> FastAPI:
     """Create FastAPI application with middleware and routes."""
@@ -246,6 +250,21 @@ def create_app() -> FastAPI:
     # Live output-side groundedness gate — behind X-Service-Token.
     app.include_router(groundedness_router, prefix="/api", tags=["groundedness"])
     app.include_router(jobs_router, prefix="/api", tags=["jobs"])
+
+    # OpenTelemetry tracing (TASK-636 OBS-12). Default-OFF: both the master
+    # switch AND a non-empty collector endpoint are required, so an unset
+    # endpoint can never make a truthy flag start dialing a collector that
+    # was never configured.
+    if settings.otel_enabled and settings.otel_exporter_endpoint:
+        from guardrail.core.observability import setup_opentelemetry
+
+        setup_opentelemetry(
+            app,
+            endpoint=settings.otel_exporter_endpoint,
+            service_name=settings.otel_service_name,
+        )
+    else:
+        app.state.tracer_provider = None
 
     # Metrics endpoint
     if settings.metrics_enabled:

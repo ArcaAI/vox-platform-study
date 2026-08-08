@@ -26,6 +26,8 @@ are unaffected — their model default is acceptable built-in topology.
 
 from __future__ import annotations
 
+import os
+
 from hope_env import hope_settings_sources, load_env
 from pydantic import AliasChoices, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -488,8 +490,21 @@ class Settings(BaseSettings):
         default="hope",
         validation_alias=AliasChoices("OTEL_SERVICE_NAMESPACE", "V2_OTEL_SERVICE_NAMESPACE"),
     )
+    # TASK-636 OBS-18. Resolved from the environment, defaulting to DEVELOPMENT.
+    #
+    # This defaulted to "production" and was the ORIGIN of the defect across the
+    # fleet: `apps/smr/core/observability.py` is the reference implementation
+    # every other service's OTel setup was copied from, so harness and TTS both
+    # inherited a hardcoded "production" when they were added in this ticket.
+    # STT had the same literal in its resource builder.
+    #
+    # A hardcoded "production" tags a developer laptop's spans as production
+    # data. That is the dangerous direction — a mislabelled dev span is noise,
+    # a mislabelled prod span corrupts an audit trail.
     otel_deployment_environment: str = Field(
-        default="production",
+        default_factory=lambda: os.getenv("DEPLOYMENT_ENVIRONMENT")
+        or os.getenv("NODE_ENV")
+        or "development",
         validation_alias=AliasChoices(
             "OTEL_DEPLOYMENT_ENVIRONMENT", "V2_OTEL_DEPLOYMENT_ENVIRONMENT"
         ),

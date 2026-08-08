@@ -25,6 +25,7 @@ members = [
     "guardrail",
     "harness",
     "hope-env",
+    "hope-otel",
     "hope-runtime-models",
     "nlp",
     "smr",
@@ -1680,6 +1681,11 @@ dependencies = [
     { name = "httpx", marker = "(sys_platform == 'darwin' and extra == 'extra-3-stt-ml') or (sys_platform == 'darwin' and extra == 'extra-3-stt-ml-gpu') or (sys_platform == 'darwin' and extra != 'extra-3-stt-nemo') or (sys_platform == 'linux' and extra == 'extra-3-stt-ml') or (sys_platform == 'linux' and extra == 'extra-3-stt-ml-gpu') or (sys_platform == 'linux' and extra != 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
     { name = "minio", marker = "(sys_platform == 'darwin' and extra == 'extra-3-stt-ml') or (sys_platform == 'darwin' and extra == 'extra-3-stt-ml-gpu') or (sys_platform == 'darwin' and extra != 'extra-3-stt-nemo') or (sys_platform == 'linux' and extra == 'extra-3-stt-ml') or (sys_platform == 'linux' and extra == 'extra-3-stt-ml-gpu') or (sys_platform == 'linux' and extra != 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
     { name = "onnxruntime", marker = "(sys_platform == 'darwin' and extra == 'extra-3-stt-ml') or (sys_platform == 'darwin' and extra == 'extra-3-stt-ml-gpu') or (sys_platform == 'darwin' and extra != 'extra-3-stt-nemo') or (sys_platform == 'linux' and extra == 'extra-3-stt-ml') or (sys_platform == 'linux' and extra == 'extra-3-stt-ml-gpu') or (sys_platform == 'linux' and extra != 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
+    { name = "opentelemetry-api", marker = "(sys_platform == 'darwin' and extra == 'extra-3-stt-ml') or (sys_platform == 'darwin' and extra == 'extra-3-stt-ml-gpu') or (sys_platform == 'darwin' and extra != 'extra-3-stt-nemo') or (sys_platform == 'linux' and extra == 'extra-3-stt-ml') or (sys_platform == 'linux' and extra == 'extra-3-stt-ml-gpu') or (sys_platform == 'linux' and extra != 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
+    { name = "opentelemetry-exporter-otlp-proto-grpc", marker = "(sys_platform == 'darwin' and extra == 'extra-3-stt-ml') or (sys_platform == 'darwin' and extra == 'extra-3-stt-ml-gpu') or (sys_platform == 'darwin' and extra != 'extra-3-stt-nemo') or (sys_platform == 'linux' and extra == 'extra-3-stt-ml') or (sys_platform == 'linux' and extra == 'extra-3-stt-ml-gpu') or (sys_platform == 'linux' and extra != 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
+    { name = "opentelemetry-instrumentation-fastapi", marker = "(sys_platform == 'darwin' and extra == 'extra-3-stt-ml') or (sys_platform == 'darwin' and extra == 'extra-3-stt-ml-gpu') or (sys_platform == 'darwin' and extra != 'extra-3-stt-nemo') or (sys_platform == 'linux' and extra == 'extra-3-stt-ml') or (sys_platform == 'linux' and extra == 'extra-3-stt-ml-gpu') or (sys_platform == 'linux' and extra != 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
+    { name = "opentelemetry-instrumentation-httpx", marker = "(sys_platform == 'darwin' and extra == 'extra-3-stt-ml') or (sys_platform == 'darwin' and extra == 'extra-3-stt-ml-gpu') or (sys_platform == 'darwin' and extra != 'extra-3-stt-nemo') or (sys_platform == 'linux' and extra == 'extra-3-stt-ml') or (sys_platform == 'linux' and extra == 'extra-3-stt-ml-gpu') or (sys_platform == 'linux' and extra != 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
+    { name = "opentelemetry-sdk", marker = "(sys_platform == 'darwin' and extra == 'extra-3-stt-ml') or (sys_platform == 'darwin' and extra == 'extra-3-stt-ml-gpu') or (sys_platform == 'darwin' and extra != 'extra-3-stt-nemo') or (sys_platform == 'linux' and extra == 'extra-3-stt-ml') or (sys_platform == 'linux' and extra == 'extra-3-stt-ml-gpu') or (sys_platform == 'linux' and extra != 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
     { name = "prometheus-client", marker = "(sys_platform == 'darwin' and extra == 'extra-3-stt-ml') or (sys_platform == 'darwin' and extra == 'extra-3-stt-ml-gpu') or (sys_platform == 'darwin' and extra != 'extra-3-stt-nemo') or (sys_platform == 'linux' and extra == 'extra-3-stt-ml') or (sys_platform == 'linux' and extra == 'extra-3-stt-ml-gpu') or (sys_platform == 'linux' and extra != 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
     { name = "prometheus-fastapi-instrumentator", marker = "(sys_platform == 'darwin' and extra == 'extra-3-stt-ml') or (sys_platform == 'darwin' and extra == 'extra-3-stt-ml-gpu') or (sys_platform == 'darwin' and extra != 'extra-3-stt-nemo') or (sys_platform == 'linux' and extra == 'extra-3-stt-ml') or (sys_platform == 'linux' and extra == 'extra-3-stt-ml-gpu') or (sys_platform == 'linux' and extra != 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
     { name = "pydantic", marker = "(sys_platform == 'darwin' and extra == 'extra-3-stt-ml') or (sys_platform == 'darwin' and extra == 'extra-3-stt-ml-gpu') or (sys_platform == 'darwin' and extra != 'extra-3-stt-nemo') or (sys_platform == 'linux' and extra == 'extra-3-stt-ml') or (sys_platform == 'linux' and extra == 'extra-3-stt-ml-gpu') or (sys_platform == 'linux' and extra != 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
@@ -1737,6 +1743,11 @@ requires-dist = [
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.19.1" },
     { name = "mypy", marker = "extra == 'lint'", specifier = ">=1.19.1" },
     { name = "onnxruntime", specifier = ">=1.18.0" },
+    { name = "opentelemetry-api", specifier = ">=1.39.1" },
+    { name = "opentelemetry-exporter-otlp-proto-grpc", specifier = ">=1.39.0" },
+    { name = "opentelemetry-instrumentation-fastapi", specifier = ">=0.60b1" },
+    { name = "opentelemetry-instrumentation-httpx", specifier = ">=0.60b1" },
+    { name = "opentelemetry-sdk", specifier = ">=1.39.1" },
     { name = "pre-commit", marker = "extra == 'dev'", specifier = ">=4.5.1" },
     { name = "prometheus-client", specifier = ">=0.24.1" },
     { name = "prometheus-fastapi-instrumentator", specifier = ">=7.1.0" },
@@ -1795,6 +1806,9 @@ dependencies = [
     { name = "httpx", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
     { name = "jsonschema", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
     { name = "opentelemetry-api", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
+    { name = "opentelemetry-exporter-otlp-proto-grpc", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
+    { name = "opentelemetry-instrumentation-fastapi", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
+    { name = "opentelemetry-sdk", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
     { name = "orjson", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
     { name = "prometheus-client", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
     { name = "prometheus-fastapi-instrumentator", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
@@ -1802,7 +1816,7 @@ dependencies = [
     { name = "pydantic-settings", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
     { name = "python-dotenv", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
     { name = "structlog", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
-    { name = "temporalio", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
+    { name = "temporalio", extra = ["opentelemetry"], marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
     { name = "uvicorn", extra = ["standard"], marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
 ]
 
@@ -1886,6 +1900,9 @@ requires-dist = [
     { name = "numpy", marker = "extra == 'eval'", specifier = ">=1.26" },
     { name = "openai", marker = "extra == 'eval'", specifier = ">=1.0.0" },
     { name = "opentelemetry-api", specifier = ">=1.39.1" },
+    { name = "opentelemetry-exporter-otlp-proto-grpc", specifier = ">=1.39.0" },
+    { name = "opentelemetry-instrumentation-fastapi", specifier = ">=0.60b1" },
+    { name = "opentelemetry-sdk", specifier = ">=1.39.1" },
     { name = "orjson", specifier = ">=3.11.7" },
     { name = "pre-commit", marker = "extra == 'dev'", specifier = ">=4.5.1" },
     { name = "presidio-analyzer", marker = "extra == 'guardrails'", specifier = ">=2.2.362" },
@@ -1910,7 +1927,7 @@ requires-dist = [
     { name = "ruff", marker = "extra == 'lint'", specifier = ">=0.15.7" },
     { name = "spacy", marker = "extra == 'guardrails'", specifier = ">=3.7" },
     { name = "structlog", specifier = ">=25.5.0" },
-    { name = "temporalio", specifier = ">=1.28.0" },
+    { name = "temporalio", extras = ["opentelemetry"], specifier = ">=1.28.0" },
     { name = "types-jsonschema", marker = "extra == 'dev'", specifier = ">=4.26.0" },
     { name = "types-jsonschema", marker = "extra == 'lint'", specifier = ">=4.26.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.41.0" },
@@ -1972,6 +1989,30 @@ requires-dist = [
     { name = "pydantic-settings", specifier = ">=2.13.1" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=9.0.2" },
     { name = "python-dotenv", specifier = ">=1.2.0" },
+    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.15.7" },
+]
+provides-extras = ["dev"]
+
+[[package]]
+name = "hope-otel"
+version = "0.1.0"
+source = { editable = "packages/py-otel" }
+dependencies = [
+    { name = "opentelemetry-api", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
+]
+
+[package.optional-dependencies]
+dev = [
+    { name = "mypy", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
+    { name = "pytest", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
+    { name = "ruff", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.20.0" },
+    { name = "opentelemetry-api", specifier = ">=1.39.1" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=9.0.2" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.15.7" },
 ]
 provides-extras = ["dev"]
@@ -5964,6 +6005,7 @@ dependencies = [
     { name = "fastapi", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
     { name = "google-genai", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
     { name = "hope-env", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
+    { name = "hope-otel", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
     { name = "hope-runtime-models", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
     { name = "httpx", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
     { name = "openai", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
@@ -6032,6 +6074,7 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.133.0" },
     { name = "google-genai", specifier = ">=1.0.0" },
     { name = "hope-env", editable = "packages/py-env" },
+    { name = "hope-otel", editable = "packages/py-otel" },
     { name = "hope-runtime-models", editable = "packages/py-runtime-models" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "httpx", marker = "extra == 'test'", specifier = ">=0.28.1" },
@@ -6336,6 +6379,7 @@ dependencies = [
     { name = "dramatiq", extra = ["redis"], marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
     { name = "fastapi", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
     { name = "hope-env", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
+    { name = "hope-otel", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
     { name = "hope-runtime-models", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
     { name = "httpx", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
     { name = "minio", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
@@ -6450,6 +6494,7 @@ requires-dist = [
     { name = "flash-attn", marker = "sys_platform == 'linux' and extra == 'ml-gpu'", specifier = ">=2.8.3" },
     { name = "freezegun", marker = "extra == 'test'", specifier = ">=1.5.0" },
     { name = "hope-env", editable = "packages/py-env" },
+    { name = "hope-otel", editable = "packages/py-otel" },
     { name = "hope-runtime-models", editable = "packages/py-runtime-models" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "huggingface-hub", marker = "extra == 'ml'", specifier = ">=0.28.0" },
@@ -6563,6 +6608,12 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/40/f3/a2237d5265eb29de591abeac7610a48616b590a1b923b4919f60ee81adfa/temporalio-1.30.0-cp310-abi3-macosx_11_0_arm64.whl", hash = "sha256:4038c3ce2d9acc12fef31dd16ef9be8cc7f721672da5662aa05e3942d0b5c9d1", size = 14018523, upload-time = "2026-07-02T21:04:34.405Z" },
     { url = "https://files.pythonhosted.org/packages/e6/57/dc648d812f4c688bd246a616f0d65c5f03b33675df2effb1b480e1df6d21/temporalio-1.30.0-cp310-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:108d1a56e174eabc18add58316084cdead230e239d3df22bbe999d6954986591", size = 14330502, upload-time = "2026-07-02T21:04:37.39Z" },
     { url = "https://files.pythonhosted.org/packages/1c/e1/dbd57de0f5090891850c2ee5490319834a12b704076b11f32a4a149998d4/temporalio-1.30.0-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:47b156138de30c2cd6723d5bfc06a30abcf680344c5481abb31f2a98a9b1f809", size = 14833364, upload-time = "2026-07-02T21:04:40.454Z" },
+]
+
+[package.optional-dependencies]
+opentelemetry = [
+    { name = "opentelemetry-api", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
+    { name = "opentelemetry-sdk", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
 ]
 
 [[package]]
@@ -7019,6 +7070,12 @@ dependencies = [
     { name = "hope-env", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
     { name = "hope-runtime-models", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
     { name = "httpx", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
+    { name = "opentelemetry-api", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
+    { name = "opentelemetry-exporter-otlp-proto-grpc", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
+    { name = "opentelemetry-instrumentation-fastapi", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
+    { name = "opentelemetry-instrumentation-httpx", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
+    { name = "opentelemetry-instrumentation-logging", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
+    { name = "opentelemetry-sdk", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
     { name = "orjson", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
     { name = "prometheus-client", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
     { name = "prometheus-fastapi-instrumentator", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
@@ -7089,6 +7146,12 @@ requires-dist = [
     { name = "mypy", marker = "extra == 'lint'", specifier = ">=1.19.1" },
     { name = "numpy", marker = "extra == 'local'", specifier = ">=1.26.0" },
     { name = "numpy", marker = "extra == 'test'", specifier = ">=1.26.0" },
+    { name = "opentelemetry-api", specifier = ">=1.39.1" },
+    { name = "opentelemetry-exporter-otlp-proto-grpc", specifier = ">=1.39.0" },
+    { name = "opentelemetry-instrumentation-fastapi", specifier = ">=0.60b1" },
+    { name = "opentelemetry-instrumentation-httpx", specifier = ">=0.60b1" },
+    { name = "opentelemetry-instrumentation-logging", specifier = ">=0.60b1" },
+    { name = "opentelemetry-sdk", specifier = ">=1.39.1" },
     { name = "orjson", specifier = ">=3.11.7" },
     { name = "pre-commit", marker = "extra == 'dev'", specifier = ">=4.5.1" },
     { name = "prometheus-client", specifier = ">=0.24.1" },

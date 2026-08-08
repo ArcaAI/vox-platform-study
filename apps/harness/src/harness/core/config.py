@@ -7,6 +7,7 @@ configured once across the API gateway, the worker, and the FastAPI app.
 
 from __future__ import annotations
 
+import os
 from typing import TYPE_CHECKING
 
 from hope_env import hope_settings_sources, load_env
@@ -481,12 +482,50 @@ class Settings(BaseSettings):
         """
         return self.service_token
 
-    # Observability. There is deliberately no ``otel_*`` block here: it would have
-    # zero consumers, no TracerProvider/exporter would ever be constructed, and no
-    # env file would even reach it — the repo only ever defines bare ``OTEL_*`` vars
-    # for stt/smr, never a ``HARNESS_OTEL_*`` prefix. Prometheus
-    # metrics + the trajectory spine cover the observability need. ``_add_otel_context``
-    # in core/logging.py is kept: it is inert until something installs a provider.
+    @property
+    def otel_tracing_enabled(self) -> bool:
+        """The real gate: the master switch AND a configured collector endpoint.
+
+        ``otel_enabled`` alone is not enough — flipping it on with no endpoint
+        set must stay a no-op (TASK-411: never require a reachable collector to
+        start). Both ``core/observability.py`` and ``temporal/client.py`` read
+        this property rather than ``otel_enabled`` directly.
+        """
+        return self.otel_enabled and bool(self.otel_exporter_endpoint)
+
+    # Observability — traces (TASK-636 OBS-14). Prometheus metrics + the
+    # trajectory spine cover most of the observability need, but neither one
+    # replaces distributed tracing across FastAPI request handling and the
+    # Temporal workflow/activity spans. ``_add_otel_context`` in core/logging.py
+    # is no longer inert: `core/observability.py` is the consumer that installs a
+    # TracerProvider (default OFF — TASK-411), after which every log line carries
+    # the active trace/span id.
+    #
+    # Default OFF and requires an explicit endpoint (not just the flag) — a
+    # bare ``HARNESS_OTEL_ENABLED=true`` with no collector configured must not
+    # change startup behaviour. See ``otel_tracing_enabled`` below.
+    otel_enabled: bool = False
+    otel_exporter_endpoint: str = ""
+    otel_service_name: str = "harness"
+    otel_service_namespace: str = "hope"
+    # TASK-636 OBS-18. Resolved from the environment, and defaulting to
+    # DEVELOPMENT — never "production".
+    #
+    # This is the same defect that was fixed in `apps/stt/core/telemetry.py`
+    # in this ticket: a hardcoded "production" tags a developer laptop's spans
+    # as production data. That is the dangerous direction — a mislabelled dev
+    # span is noise, a mislabelled prod span corrupts an audit trail.
+    #
+    # Precedence matches STT and the OTel collector: DEPLOYMENT_ENVIRONMENT
+    # (what the k8s overlays patch) then NODE_ENV (the repo-wide selector,
+    # TASK-558) then "development".
+    otel_deployment_environment: str = Field(
+        default_factory=lambda: os.getenv("DEPLOYMENT_ENVIRONMENT")
+        or os.getenv("NODE_ENV")
+        or "development"
+    )
+    otel_insecure: bool = True
+
     metrics_enabled: bool = True
 
     # Bind address for the Temporal SDK's Prometheus exporter in the WORKER

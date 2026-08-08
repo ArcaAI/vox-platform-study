@@ -1,6 +1,15 @@
-import { IOriginRegistry, ISocketRegistryService, StreamingAudioBridgeService, StreamingSessionService } from '@arcaai/applications';
+import {
+  IOriginRegistry,
+  ISocketRegistryService,
+  StreamingAudioBridgeService,
+  StreamingSessionService,
+  type TraceCarrier,
+  extractTraceCarrier,
+  injectTraceCarrier,
+} from '@arcaai/applications';
 import { Inject, Logger, Optional, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 import { OnGatewayConnection, OnGatewayDisconnect, WebSocketGateway, WebSocketServer } from '@nestjs/websockets';
+import { type Span, SpanKind, context, trace } from '@opentelemetry/api';
 import type { IncomingMessage } from 'http';
 import type { Subscription } from 'rxjs';
 import type WebSocket from 'ws';
@@ -166,6 +175,21 @@ interface SessionInfo {
    * with no error anywhere. See `handleResume`.
    */
   freshlyCreated?: boolean;
+  /**
+   * The session-scoped trace span (TASK-636 OBS-16). A streaming session is
+   * ONE logical operation lasting the length of a consultation, so it gets one
+   * span, ended in `finalizeSession`. `undefined` when tracing is disabled —
+   * `trace.getTracer()` then hands back a no-op tracer whose spans have an
+   * invalid span context, which is exactly what makes {@link traceCarrier}
+   * empty and the whole path free.
+   */
+  traceSpan?: Span;
+  /**
+   * The session's W3C carrier, derived ONCE from {@link traceSpan}. Handed to
+   * every audio frame so the hot path never runs a propagator. `{}` when
+   * tracing is off.
+   */
+  traceCarrier: TraceCarrier;
 }
 
 @WebSocketGateway({ path: '/ws/stt/stream' })
@@ -522,9 +546,17 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
       return;
     }
 
+    // Root (or continue) this session's trace. Started only AFTER every
+    // handshake gate has passed, so a rejected/probing connection can never
+    // create telemetry — and never a span this code would then have to
+    // remember to end.
+    const { span: traceSpan, carrier: traceCarrier } = this.startSessionTrace(sessionId, req);
+
     const session: SessionInfo = {
       sessionId,
       client,
+      traceSpan,
+      traceCarrier,
       connectedAt: new Date(),
       binarySeq: 0,
       resultSeq: 0,
@@ -565,6 +597,52 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
     // ack AFTER registration + subscription so the client gates its first
     // resume/audio on it (a deterministic gate, not a timing guess).
     this.sendReady(session);
+  }
+
+  /**
+   * Root the trace for one streaming session (TASK-636 OBS-16).
+   *
+   * WHY THE GATEWAY AND NOT AUTO-INSTRUMENTATION
+   * `@opentelemetry/instrumentation-http` patches the HTTP server's `request`
+   * event; a WebSocket handshake arrives on `upgrade` and is never seen by it.
+   * So a streaming session begins with NO active span, and every span it
+   * subsequently caused (Redis writes, the STT worker's per-utterance work, the
+   * result relay) was an orphan. This is the seam that fixes that.
+   *
+   * PARENTING
+   * A `traceparent` on the upgrade request is honoured — non-browser callers
+   * (server-to-server, the Node SDK, an ingress that injects one) can hand us
+   * their trace. Browsers cannot set headers on a WebSocket handshake, so the
+   * common case is a NEW root span. Either way the session gets a real span,
+   * which is what makes the rest of the chain joinable.
+   *
+   * PHI
+   * One attribute, the session id. No tenant/user/ticket/patient data: the
+   * session id is the internal identifier an operator correlates on (the same
+   * class of value the backend log redactor deliberately preserves), and
+   * anything else would be payload riding on telemetry.
+   *
+   * COST WHEN DISABLED
+   * `trace.getTracer()` returns the no-op tracer, `startSpan` a non-recording
+   * span with an INVALID span context, and `injectTraceCarrier` therefore `{}`.
+   * No allocation that matters, no propagator work, and the audio wire is
+   * byte-identical to pre-TASK-636.
+   */
+  private startSessionTrace(sessionId: string, req: IncomingMessage): { span: Span; carrier: TraceCarrier } {
+    const parentContext = extractTraceCarrier(req.headers as Record<string, string>) ?? context.active();
+    const span = trace
+      .getTracer('hope.stt.stream')
+      .startSpan('stt.stream.session', { kind: SpanKind.SERVER, attributes: { 'hope.stt.session_id': sessionId } }, parentContext);
+    return { span, carrier: injectTraceCarrier(trace.setSpan(parentContext, span)) };
+  }
+
+  /** End a session's trace span exactly once. Safe to call on an untraced session. */
+  private endSessionTrace(session: SessionInfo): void {
+    if (!session.traceSpan) return;
+    session.traceSpan.end();
+    // Cleared so a double finalize (explicit close racing grace expiry) cannot
+    // end the same span twice.
+    session.traceSpan = undefined;
   }
 
   /**
@@ -917,6 +995,10 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
       return;
     }
     session.finalizing = true;
+    // The session span covers the whole logical operation, so it ends here —
+    // the one place a session is genuinely over (explicit close OR an expired
+    // grace window), never on a transient disconnect that may still reconnect.
+    this.endSessionTrace(session);
     if (session.graceTimer) {
       clearTimeout(session.graceTimer);
       session.graceTimer = undefined;
@@ -1038,7 +1120,10 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
    * `lastSeq` resume protocol handles recovery.
    */
   private forwardAudioFrame(session: SessionInfo, seq: number, data: Buffer): void {
-    this.bridgeService.writeAudioFrame(session.sessionId, seq, data, session.sampleRate, 'pcm_s16le', false).catch((err) => {
+    // The carrier was derived ONCE at handshake (TASK-636 OBS-16) — passing it
+    // here is a reference copy, not propagator work, so the 10–125 frames/s/session
+    // path keeps its cost profile.
+    this.bridgeService.writeAudioFrame(session.sessionId, seq, data, session.sampleRate, 'pcm_s16le', false, session.traceCarrier).catch((err) => {
       session.droppedAudioFrames++;
       this.logger.error({
         message: 'Error forwarding audio frame',

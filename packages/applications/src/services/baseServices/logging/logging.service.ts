@@ -34,6 +34,7 @@ import {
   OTelLogBridgeTransport,
 } from './transports';
 import { getEnvBoolean, getEnvString, getEnvNumber, isDevelopment } from './env.utils';
+import { redactEntry } from './redactor';
 
 /**
  * Main logging service implementation
@@ -49,6 +50,11 @@ export class LoggingService implements ILoggingService, LoggerService, OnModuleI
   private readonly environment: string;
   private readonly hostname: string;
   private readonly pid: number;
+  /**
+   * Deployment-specific PHI field names, on top of the canonical list in
+   * `redactor.ts`. Comma-separated via `LOG_REDACT_FIELDS` (TASK-636 OBS-19).
+   */
+  private readonly extraRedactFields: string[];
 
   constructor() {
     this.serviceName = getEnvString('SERVICE_NAME', 'api') || 'api';
@@ -57,6 +63,10 @@ export class LoggingService implements ILoggingService, LoggerService, OnModuleI
     this.hostname = os.hostname();
     this.pid = process.pid;
     this.level = this.parseLogLevel(getEnvString('LOG_LEVEL', 'info') || 'info');
+    this.extraRedactFields = (getEnvString('LOG_REDACT_FIELDS', '') || '')
+      .split(',')
+      .map((f) => f.trim())
+      .filter(Boolean);
 
     this.initializeTransports();
   }
@@ -282,9 +292,19 @@ export class LoggingService implements ILoggingService, LoggerService, OnModuleI
    * Dispatch log entry to all transports
    */
   private dispatch(entry: LogEntry): void {
+    // TASK-636 OBS-19 — PHI redaction happens HERE, once, before any transport
+    // sees the entry. Redacting inside each transport would mean every future
+    // transport re-implements it and one of them eventually forgets; this is
+    // also where the browser SDK applies it, so the two runtimes match.
+    //
+    // `LOG_REDACT_FIELDS` extends the canonical PHI key list per deployment —
+    // it is what finally makes the long-declared `LoggingConfig.redactFields`
+    // load-bearing (it had zero readers).
+    const safeEntry = redactEntry(entry, this.extraRedactFields);
+
     for (const transport of this.transports) {
       try {
-        transport.log(entry);
+        transport.log(safeEntry);
       } catch (err) {
         // Fallback to console if transport fails
         console.error(`[LoggingService] Transport ${transport.name} failed:`, err);

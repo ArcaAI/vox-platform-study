@@ -190,6 +190,35 @@ const PROCESS_IDENTITY: SettingDescriptor[] = [
     'Writes errors to their own file in addition to the combined log.',
     false,
   ),
+  // Loki push transport (`logging.service.ts`). Declared here rather than
+  // discovered by the TypeScript scan because the reader goes through
+  // `getEnvString`/`getEnvBoolean` (`logging/env.utils.ts`), which index
+  // `process.env[key]` dynamically — the scanner's `process.env.NAME` regex
+  // cannot see them. They were therefore absent from `turbo.json#globalEnv`
+  // entirely, so a fully-implemented transport had no declared config path and
+  // Turbo never invalidated its cache when the destination changed
+  // (TASK-636 OBS-10).
+  // PHI redaction (TASK-636 OBS-19). The canonical PHI key list lives in
+  // `logging/redactor.ts` and always applies; this only ADDS deployment-
+  // specific field names. Declared here for the same reason as the Loki keys:
+  // the reader goes through `getEnvString`, which the env-sync scanner cannot
+  // see. This is the variable `LoggingConfig.redactFields` always implied.
+  envKnob(
+    'log.redactFields',
+    'string',
+    'Logging',
+    'Extra PHI fields to redact',
+    'Comma-separated field names redacted from every log entry, on top of the built-in PHI key list. Matching is case-insensitive and ignores _ and -.',
+  ),
+  envKnob('loki.enabled', 'boolean', 'Logging', 'Loki transport enabled', 'Pushes logs to Loki in addition to stdout. Requires `LOKI_HOST`.', false),
+  envKnob('loki.host', 'string', 'Logging', 'Loki base URL', 'Loki base URL; the transport appends `/loki/api/v1/push`. Unset disables the transport.'),
+  envKnob(
+    'loki.labels',
+    'string',
+    'Logging',
+    'Loki extra labels',
+    'Comma-separated `key=value` pairs merged into every stream label set. Keep LOW-cardinality — never a tenant, user, or request id.',
+  ),
 ];
 
 /** OpenTelemetry (`apps/api/src/instrumentation.ts`, `observability/otel.service.ts`). */

@@ -34,6 +34,19 @@ settings = get_settings()
 setup_logging(settings.log_level)
 logger = get_logger(__name__)
 
+def _worker_service_name(configured: str) -> str:
+    """Return the worker's OTel service name without double-suffixing.
+
+    The suffix exists so a worker started from the API's own service name
+    (``stt``) reports as ``stt-worker``. But deployments set
+    ``OTEL_SERVICE_NAME`` on the worker Deployment directly — in-cluster it is
+    ``hope-stt-v2-worker`` — and appending unconditionally produced the
+    ``hope-stt-v2-worker-worker`` label observed live in Loki
+    (TASK-636 OBS-09). Only append when the operator has not already named it.
+    """
+    return configured if configured.endswith("-worker") else f"{configured}-worker"
+
+
 _worker_logger_provider = None
 if settings.otel_enabled:
     from stt.core.telemetry import setup_telemetry_logs
@@ -41,7 +54,7 @@ if settings.otel_enabled:
     _worker_logger_provider = setup_telemetry_logs(
         enabled=True,
         endpoint=settings.otel_exporter_endpoint,
-        service_name=f"{settings.otel_service_name}-worker",
+        service_name=_worker_service_name(settings.otel_service_name),
     )
 
 # Configure the Dramatiq broker FIRST (before importing actors)

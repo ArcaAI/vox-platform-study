@@ -11,13 +11,13 @@ disagree with those declarations.
 
 | Metric | Value |
 |---|---:|
-| Declared keys (distinct) | 141 |
+| Declared keys (distinct) | 145 |
 | … of which required (`failMode: closed`) | 31 |
 | … of which secret | 30 |
-| … tier `env` | 106 |
+| … tier `env` | 110 |
 | … tier `global-kv` | 9 |
 | … tier `vault-kv` | 26 |
-| `turbo.json#globalEnv` entries | 154 |
+| `turbo.json#globalEnv` entries | 158 |
 
 ## Variables
 
@@ -41,7 +41,7 @@ disagree with those declarations.
 | `DEBUG` | `env` | no | `false` | `apps/api` | Enables verbose config/service debug logging. |
 | `DIRECT_URL` | `env` | no | — | `apps/api` | Migrations-only, un-pooled PostgreSQL endpoint (`packages/database/src/migration-url.ts`). Falls back to `DATABASE_URL` when unset, which is correct in dev but wrong behind a transaction-mode pooler — production must set it explicitly. |
 | `ENABLE_PRISMA_STUDIO` | `env` | no | `false` | `apps/api` | Development-only: mounts the Prisma Studio module (`app.module.ts`). |
-| `ENTITLEMENTS_ENABLED_DEFAULT` | `env` | no | `false` | `apps/api` | SEED-TIME ONLY, and the only key in this file that is not a runtime gate: `seed/15-entitlements.ts` reads it to decide the value of the `entitlements.enabled` GlobalSetting row on a FRESH database. The live control plane is `entitlements.enabled` (already cataloged, tier `global-kv`, kill-switch). Its migration is therefore NOT to redis-flag but DELETION, once seeding takes its default from the descriptor instead of the environment. |
+| `ENTITLEMENTS_ENABLED_DEFAULT` | `env` | no | `false` | `apps/api` | SEED-TIME ONLY, and the only key in this file that is not a runtime gate: `seed/15-entitlements.ts` reads it to decide the value of the `entitlements.enabled` GlobalSetting row on a FRESH database. POLICY (TASK-638): quota enforcement is ON in every DEPLOYED environment (hope-v2-dev, staging, production) — each sets ENTITLEMENTS_ENABLED_DEFAULT=true in its host env / deploy overlay — and OFF only in LOCAL development (this committed default) and test/CI (never set), so a developer never fights quota locally and the shared E2E baseline stays deterministic. Keep this LOCAL default false; an operator flips it live via `PUT /admin/entitlements/enabled`. The live control plane is `entitlements.enabled` (already cataloged, tier `global-kv`, kill-switch). Its migration is therefore NOT to redis-flag but DELETION, once seeding takes its default from the descriptor instead of the environment. |
 | `ENV_FILE_PATH` | `env` | no | — | `apps/api` | Overrides the NODE_ENV→file map used by `loadEnv()`. Unset in every normal deployment. |
 | `GUARDRAIL_PORT` | `env` | no | `8863` | `apps/guardrail` | Port apps/guardrail binds (test: 8963). |
 | `GUARDRAIL_SERVICE_TOKEN` | `vault-kv` | yes | `CHANGE_ME` | `apps/api` | Shared secret on the gateway↔guardrail hop (`X-Service-Token`). |
@@ -68,7 +68,11 @@ disagree with those declarations.
 | `LOG_FILE_PATH` | `env` | no | `./logs` | `apps/api` | Directory rotating log files are written to. |
 | `LOG_FILE_SEPARATE_ERROR` | `env` | no | `false` | `apps/api` | Writes errors to their own file in addition to the combined log. |
 | `LOG_LEVEL` | `global-kv` | no | `info` | `apps/api` | Gateway log level, applied live by `PlatformKnobsBinder` through `ILoggingService.setLevel` whenever the settings cache refreshes — so an operator can raise verbosity during an incident with no redeploy. `LOG_LEVEL` remains the BOOTSTRAP value: it is read pre-bootstrap in `apps/api/src/main.ts` (before the Nest module graph, therefore before any DB) to seed the Nest logger. |
-| `METERING_RECONCILE_ENABLED_DEFAULT` | `env` | no | `false` | `apps/api` | SEED-TIME ONLY, and not itself a runtime gate: `seed/15-entitlements.ts` reads it to decide the value of the `metering.reconcile.enabled` GlobalSetting row on a FRESH database (OQ3 — ON in dev/staging via METERING_RECONCILE_ENABLED_DEFAULT, OFF in test/CI/prod). The live control plane is `metering.reconcile.enabled` (already cataloged above, tier `global-kv`, kill-switch). Mirrors `entitlements.enabledDefault` exactly; its migration is DELETION, once seeding takes its default from the descriptor instead of the environment. |
+| `LOG_REDACT_FIELDS` | `env` | no | — | `apps/api` | Comma-separated field names redacted from every log entry, on top of the built-in PHI key list. Matching is case-insensitive and ignores _ and -. |
+| `LOKI_ENABLED` | `env` | no | `false` | `apps/api` | Pushes logs to Loki in addition to stdout. Requires `LOKI_HOST`. |
+| `LOKI_HOST` | `env` | no | — | `apps/api` | Loki base URL; the transport appends `/loki/api/v1/push`. Unset disables the transport. |
+| `LOKI_LABELS` | `env` | no | — | `apps/api` | Comma-separated `key=value` pairs merged into every stream label set. Keep LOW-cardinality — never a tenant, user, or request id. |
+| `METERING_RECONCILE_ENABLED_DEFAULT` | `env` | no | `false` | `apps/api` | SEED-TIME ONLY, and not itself a runtime gate: `seed/15-entitlements.ts` reads it to decide the value of the `metering.reconcile.enabled` GlobalSetting row on a FRESH database. POLICY (TASK-638): reconcile is ON in every DEPLOYED environment (hope-v2-dev, staging, production) — each sets METERING_RECONCILE_ENABLED_DEFAULT=true in its host env / deploy overlay — and OFF only in LOCAL development (this committed default) and test/CI (never set). Keep this LOCAL default false so a developer laptop never runs the sweep; flip live via the admin control plane. The live control plane is `metering.reconcile.enabled` (already cataloged above, tier `global-kv`, kill-switch). Mirrors `entitlements.enabledDefault` exactly; its migration is DELETION, once seeding takes its default from the descriptor instead of the environment. |
 | `METRICS_COLLECT_INTERVAL` | `env` | no | `15000` | `apps/api` | Interval of the simplified monitoring collector. |
 | `METRICS_PREFIX` | `env` | no | — | `apps/api` | Prefix for Prometheus metric names; defaults to the sanitized service name. |
 | `MINIO_ACCESS_KEY` | `vault-kv` | yes | `CHANGE_ME` | `apps/api` | MinIO/S3 access key for platform object storage. NOTE: the per-tenant / platform-default STORAGE CONFIG (endpoint, region, path style, prefix) is a separate concern owned by `TenantStorageConfig`; only the credential lives here, referenced by `credentialsRef`. |

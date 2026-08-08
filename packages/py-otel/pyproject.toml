@@ -1,0 +1,50 @@
+[build-system]
+requires = ["setuptools>=75.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hope-otel"
+version = "0.1.0"
+description = "Shared OpenTelemetry trace-propagation helpers for the HOPE Python services"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11,<3.12"
+
+# ONE dependency, and a free one: every workspace member that currently
+# imports this package (stt, smr) already declares `opentelemetry-api` (and
+# every other service declares it too, for its own FastAPI instrumentation),
+# so adding it here forces nothing new onto anyone and cannot perturb the
+# single root `uv.lock`.
+dependencies = ["opentelemetry-api>=1.39.1"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+# PEP 561 — ship inline types, or every `from hope_otel import ...` in an
+# adopting service degrades to `Any` under mypy (same rationale as
+# hope-env / hope-runtime-models).
+[tool.setuptools.package-data]
+hope_otel = ["py.typed"]
+
+[project.optional-dependencies]
+dev = ["pytest>=9.0.2", "ruff>=0.15.7", "mypy>=1.20.0"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "S"]
+
+[tool.ruff.lint.per-file-ignores]
+# S101 assert — pytest's whole idiom.
+"tests/*" = ["S101"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+
+[tool.pytest.ini_options]
+minversion = "9.0"
+addopts = ["-ra", "--strict-config", "--strict-markers"]
+testpaths = ["tests"]

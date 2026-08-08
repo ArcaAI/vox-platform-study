@@ -326,3 +326,35 @@ export function extractTraceContext(
 export function createTraceparent(traceId: string, spanId: string, traceFlags = 1): string {
   return `00-${traceId}-${spanId}-${traceFlags.toString(16).padStart(2, '0')}`;
 }
+
+/** A W3C trace id: exactly 32 lowercase hex characters, not all zero. */
+const W3C_TRACE_ID = /^[0-9a-f]{32}$/;
+
+/**
+ * Derive a VALID W3C trace id from an arbitrary correlation id (TASK-636 OBS-16).
+ *
+ * `AgenticClient` used to build the trace id inline as
+ * `correlationId.replace(/-/g, '').slice(0, 32).padStart(32, '0')`. That works
+ * for the default correlation id — `crypto.randomUUID()`, pure hex plus dashes
+ * — but `SDKLogger.setCorrelationId()` is public API, and a host app that
+ * threads its own request id through it (`'req-9f3a'`, `'order_12'`, an opaque
+ * token) produced a trace id containing non-hex characters.
+ *
+ * A W3C propagator REJECTS such a `traceparent`: the server silently starts a
+ * fresh trace, and the browser hop disappears from every trace with no error
+ * anywhere. That is the same silent-severing failure the rest of TASK-636
+ * OBS-16 addresses, one hop further upstream.
+ *
+ * So: derive from the correlation id when that yields a valid id (keeping the
+ * useful property that one browser session's calls share a trace), otherwise
+ * generate a fresh valid one. Nothing is lost by the fallback — the client
+ * already sends the raw correlation id as `X-Correlation-ID`, and an id the
+ * server rejects was never correlating anything.
+ */
+export function toW3CTraceId(correlationId: string | undefined): string {
+  const candidate = (correlationId ?? '').replace(/-/g, '').toLowerCase();
+  if (W3C_TRACE_ID.test(candidate) && !/^0+$/.test(candidate)) {
+    return candidate;
+  }
+  return generateTraceId();
+}

@@ -5,6 +5,8 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from hope_otel.trace_propagation import extract_trace_context, inject_trace_carrier
+from opentelemetry import context as context_api
 from sse_starlette.sse import EventSourceResponse
 
 from smr.core.dependencies import get_task_manager
@@ -38,13 +40,28 @@ async def stream_task(
             if await request.is_disconnected():
                 break
 
-            entries = await task_manager.read_chunks_blocking(
+            entries = await task_manager.read_chunk_entries_blocking(
                 task_id, last_id=cursor, block_ms=5000
             )
 
-            for msg_id, chunk in entries:
+            for msg_id, chunk, carrier in entries:
                 cursor = msg_id
-                yield {"event": chunk.type, "data": chunk.model_dump_json(), "id": msg_id}
+                # TASK-636 OBS-16: relay each chunk under the trace context of
+                # the GENERATION that produced it, not this SSE request's. The
+                # two are separate HTTP requests — without this, the work of
+                # emitting a chunk (and every log line it writes, via
+                # LoggingInstrumentor's trace-id injection) is disconnected from
+                # the generation it belongs to. `None` when the producer was
+                # untraced, in which case this is a plain yield.
+                producer_context = extract_trace_context(carrier)
+                token = (
+                    context_api.attach(producer_context) if producer_context is not None else None
+                )
+                try:
+                    yield {"event": chunk.type, "data": chunk.model_dump_json(), "id": msg_id}
+                finally:
+                    if token is not None:
+                        context_api.detach(token)
                 if chunk.type in ("done", "error"):
                     return
 
@@ -57,4 +74,19 @@ async def stream_task(
                 ):
                     return
 
-    return EventSourceResponse(event_generator())
+    # W3C Trace Context Level 2 `traceresponse` (TASK-636 OBS-16). SSE is
+    # one-way once open, so this header is the ONLY point at which the server
+    # can tell the caller which trace served the stream. The API Gateway's SSE
+    # proxy relays raw chunks, so without it a caller correlating a long-lived
+    # stream to server-side spans has nothing to correlate ON.
+    #
+    # It carries the SERVER's ids, which the caller already sent us or can
+    # already see — no new information crosses the boundary, and nothing here
+    # is PHI.
+    carrier = inject_trace_carrier()
+    headers = (
+        {"traceresponse": carrier["traceparent"], "Access-Control-Expose-Headers": "traceresponse"}
+        if carrier.get("traceparent")
+        else None
+    )
+    return EventSourceResponse(event_generator(), headers=headers)

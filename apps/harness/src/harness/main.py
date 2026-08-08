@@ -59,6 +59,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     logger.info("harness.shutting_down")
     app.state.temporal_client = None
+
+    from harness.core.observability import shutdown_opentelemetry
+
+    shutdown_opentelemetry(app)
+
     logger.info("harness.shutdown_complete")
 
 
@@ -81,6 +86,7 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
 
     app.state.settings = settings
     app.state.temporal_client = None
+    app.state.tracer_provider = None
 
     if settings.cors_enabled and settings.cors_origins:
         app.add_middleware(
@@ -102,6 +108,11 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
     app.include_router(knowledge_router, prefix="/api/v1/internal")
     app.include_router(eval_router, prefix="/api/v1/internal")
     app.include_router(admin_router, prefix="/api/v1/internal/harness")
+
+    if settings.otel_tracing_enabled:
+        from harness.core.observability import setup_opentelemetry
+
+        setup_opentelemetry(app, settings)
 
     if settings.metrics_enabled:
         from prometheus_fastapi_instrumentator import Instrumentator

@@ -1,5 +1,7 @@
 """Dramatiq broker configuration with Redis."""
 
+import os
+
 import dramatiq
 import structlog
 from dramatiq.brokers.redis import RedisBroker
@@ -41,6 +43,53 @@ def should_retry(retries_so_far: int, exception: BaseException) -> bool:
     return should
 
 
+def _add_prometheus_middleware(broker: RedisBroker) -> None:
+    """Expose Dramatiq worker metrics for Prometheus (TASK-636 OBS-05).
+
+    The batch worker is a SEPARATE process from the FastAPI app, so ``/metrics``
+    on :8861 says nothing about it — job throughput, duration, retries and
+    failures were entirely unmeasurable.
+
+    Dramatiq's own middleware is used rather than a hand-rolled exporter
+    because the worker FORKS (``--processes N``): a naive ``start_http_server``
+    in each fork collides on the port, and plain ``prometheus_client`` counters
+    would be per-fork and silently wrong. This middleware sets
+    ``PROMETHEUS_MULTIPROC_DIR``, aggregates across forks, and binds once.
+
+    Two ordering constraints, both easy to get wrong:
+
+    1. ``dramatiq.middleware.prometheus`` reads ``dramatiq_prom_host`` /
+       ``dramatiq_prom_port`` into MODULE-LEVEL constants at import time, so
+       they must be set *before* the first import — hence the local import.
+    2. The bind host defaults to **loopback**, not dramatiq's ``0.0.0.0``. This
+       is a PHI-processing service; it must not become LAN-reachable by
+       accident. ``scripts/dev-service.sh`` takes the same posture for the HTTP
+       ports. Containers override via ``dramatiq_prom_host=0.0.0.0``.
+
+    Gated on ``metrics_enabled`` — the TASK-411 invariant is that every
+    exporter sits behind a switch and no backend is ever required to start.
+    """
+    if not settings.metrics_enabled:
+        logger.info("dramatiq.prometheus_disabled", reason="metrics_enabled=false")
+        return
+
+    os.environ.setdefault("dramatiq_prom_host", "127.0.0.1")
+    os.environ.setdefault("dramatiq_prom_port", "9191")
+
+    try:
+        from dramatiq.middleware.prometheus import Prometheus
+
+        broker.add_middleware(Prometheus())
+        logger.info(
+            "dramatiq.prometheus_enabled",
+            host=os.environ["dramatiq_prom_host"],
+            port=os.environ["dramatiq_prom_port"],
+        )
+    except Exception as exc:  # pragma: no cover - defensive
+        # Never let telemetry stop the worker from consuming jobs (TASK-411).
+        logger.warning("dramatiq.prometheus_setup_failed", error=str(exc))
+
+
 def configure_broker(redis_url: str) -> RedisBroker:
     """Configure and return the Dramatiq broker."""
     global _broker
@@ -74,6 +123,8 @@ def configure_broker(redis_url: str) -> RedisBroker:
     _broker.add_middleware(Results(backend=result_backend))
 
     _broker.add_middleware(WorkerInitMiddleware())
+
+    _add_prometheus_middleware(_broker)
 
     # Set as the global broker
     dramatiq.set_broker(_broker)

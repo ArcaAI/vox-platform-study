@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from typing import Any, cast
 
 import structlog
+from hope_otel.trace_propagation import carrier_from_redis_fields, inject_trace_carrier
 
 from smr.models.stream import StreamChunk
 from smr.models.task import TaskState, TaskStatus
@@ -95,9 +96,16 @@ class TaskManager:
         return await self.update_task(task_id, status=TaskStatus.CANCELLED)
 
     async def append_chunk(self, task_id: str, chunk: StreamChunk) -> str:
+        # TASK-636 OBS-16: stamp the GENERATING context onto the entry. The SSE
+        # reader is a different HTTP request (often a different connection), so
+        # this field is the only thing that can join a streamed chunk to the
+        # generation that produced it. Empty (and the entry byte-identical to
+        # pre-TASK-636) when tracing is off.
+        fields: dict[str, str] = {"data": chunk.model_dump_json()}
+        fields.update(inject_trace_carrier())
         msg_id = await self._redis.xadd(
             self._stream_key(task_id),
-            {"data": chunk.model_dump_json()},
+            fields,
             maxlen=self._stream_max_len,
         )
         return cast(str, msg_id)
@@ -120,6 +128,25 @@ class TaskManager:
         """Block-read new chunks from the stream via XREAD BLOCK.
 
         Returns list of (msg_id, chunk) tuples. Returns empty list on timeout.
+
+        Kept at its original two-tuple shape so existing callers are untouched;
+        :meth:`read_chunk_entries_blocking` is the trace-aware variant.
+        """
+        return [
+            (msg_id, chunk)
+            for msg_id, chunk, _carrier in await self.read_chunk_entries_blocking(
+                task_id, last_id=last_id, block_ms=block_ms
+            )
+        ]
+
+    async def read_chunk_entries_blocking(
+        self, task_id: str, last_id: str = "0-0", block_ms: int = 5000
+    ) -> list[tuple[str, StreamChunk, dict[str, str]]]:
+        """Block-read chunks, returning each entry's producer trace carrier too.
+
+        ``(msg_id, chunk, carrier)``. The carrier is ``{}`` when the producing
+        side was untraced. Built from the RAW Redis fields — the generated text
+        in ``data`` is never handed to a propagator (TASK-636 OBS-16).
         """
         stream_key = self._stream_key(task_id)
         result = await self._redis.xread(
@@ -130,7 +157,7 @@ class TaskManager:
         if not result:
             return []
 
-        chunks: list[tuple[str, StreamChunk]] = []
+        chunks: list[tuple[str, StreamChunk, dict[str, str]]] = []
         for _stream_name, entries in result:
             for msg_id, fields in entries:
                 raw = fields.get(b"data") or fields.get("data")
@@ -139,5 +166,11 @@ class TaskManager:
                         raw = raw.decode()
                     if isinstance(msg_id, bytes):
                         msg_id = msg_id.decode()
-                    chunks.append((msg_id, StreamChunk.model_validate_json(raw)))
+                    chunks.append(
+                        (
+                            msg_id,
+                            StreamChunk.model_validate_json(raw),
+                            carrier_from_redis_fields(fields),
+                        )
+                    )
         return chunks
