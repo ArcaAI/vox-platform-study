@@ -1,7 +1,13 @@
 /**
- * TASK-634 Phase 7 — pinned v1 sha256 checksums for the 15 ArcaAI clinical
- * prompt templates (14 department x visit-type summary bodies + the
+ * TASK-634 Phase 7 — pinned v1 sha256 checksums for the 23 ArcaAI clinical
+ * prompt templates (22 department x visit-type summary bodies + the
  * tenant-wide pre-summary).
+ *
+ * Phase 8a added the last 8 bodies (dermatology, dietetics, nephrology and
+ * surgical oncology x new-referral/follow-up). v1 supports ELEVEN departments
+ * x 2 visit types = 22 bodies; the original migration ported only seven
+ * departments, so those four had no v2 counterpart to drift from — a gap the
+ * Phase 7 fixture could not detect, because it pinned only what was ported.
  *
  * WHY THIS EXISTS
  *
@@ -126,5 +132,46 @@ export const V1_CLINICAL_PROMPT_CHECKSUMS: readonly V1ClinicalPromptChecksum[] =
     contentConstant: 'PRE_SUMMARY_CONTENT',
     templateId: '71000000-0000-0000-0001-000000000024',
     v1Sha256: '309a9cd137925d3469df5b52ed3cc4ff5647f4d21b67b8736ba2cf21496a4e32',
+  },
+  // TASK-634 Phase 8a — the four departments the original migration never ported.
+  {
+    contentConstant: 'DERMATOLOGY_NEW_REFERRAL_CONTENT',
+    templateId: '71000000-0000-0000-0001-000000000025',
+    v1Sha256: 'b99ab4f4952016ed8e5c2a16e5ead2d8d9f4c602466180ea317387024d17bdb5',
+  },
+  {
+    contentConstant: 'DERMATOLOGY_FOLLOWUP_CONTENT',
+    templateId: '71000000-0000-0000-0001-000000000026',
+    v1Sha256: 'd237427271bd120f0adec4fbdeddcc4367b305b0a3f5cc4cd16901e210d51907',
+  },
+  {
+    contentConstant: 'DIETETICS_NEW_REFERRAL_CONTENT',
+    templateId: '71000000-0000-0000-0001-000000000027',
+    v1Sha256: '351041078487e1c1bca510d18fe9ea85b7cf7cfdee749ec28eb4350841e46e07',
+  },
+  {
+    contentConstant: 'DIETETICS_FOLLOWUP_CONTENT',
+    templateId: '71000000-0000-0000-0001-000000000028',
+    v1Sha256: '715a394f0e11be7b8ffefd74b0f2051ef44f67c5df7af7aacc45539917cbd0b2',
+  },
+  {
+    contentConstant: 'NEPHROLOGY_NEW_REFERRAL_CONTENT',
+    templateId: '71000000-0000-0000-0001-000000000029',
+    v1Sha256: '24e6eb6b735bf94b7e712c97b23452b34e9048ab858709cfc749786f6624769d',
+  },
+  {
+    contentConstant: 'NEPHROLOGY_FOLLOWUP_CONTENT',
+    templateId: '71000000-0000-0000-0001-000000000030',
+    v1Sha256: '53841fda6205cf572420c1f4cecfe7ad9e7c1382feed7683355422c806cf919a',
+  },
+  {
+    contentConstant: 'SURGICAL_ONCOLOGY_NEW_REFERRAL_CONTENT',
+    templateId: '71000000-0000-0000-0001-000000000031',
+    v1Sha256: '419e577751a8310d11676296fad0f4aa16138e13977b9b7f86cc35bb2cca9cf7',
+  },
+  {
+    contentConstant: 'SURGICAL_ONCOLOGY_FOLLOWUP_CONTENT',
+    templateId: '71000000-0000-0000-0001-000000000032',
+    v1Sha256: '6c9c122c725b1d2a364b852240fcd9fc4bdf577317a963a6faaa91ba9c54097b',
   },
 ] as const;

@@ -338,15 +338,23 @@ export const DEFAULT_DEPARTMENTS = [
   },
 ];
 
-// ArcaAI customer-tenant CLINICAL departments (TASK-592 Workstream D).
+// ArcaAI customer-tenant CLINICAL departments — the AGENT-BOUND seven
+// (TASK-592 Workstream D).
+//
+// ⚠ THIS IS NOT THE WHOLE SET. ArcaAI carries ELEVEN clinical departments; the
+// other four live in ARCAAI_CLINICAL_DEPARTMENTS_WITHOUT_AGENT below and the
+// union is ARCAAI_ALL_CLINICAL_DEPARTMENTS, which is what `seedDepartment`
+// writes. The split is load-bearing, not cosmetic: `ARCAAI_TENANT_AGENTS`
+// (07a-agent-golden-library.ts) derives exactly one default `DepartmentAgent`
+// per row of THIS array, so membership here IS the "has a default agent"
+// predicate.
 //
 // The DEFAULT_DEPARTMENTS above all belong to the Global customer tenant
-// (DEFAULT_TENANT_ID). The ArcaAI customer tenant carries the 7 v1 clinical
-// departments — Surgery, General Medicine, Rheumatology, Neurology,
-// Orthopedics, Hematology, Breast & Endocrine — each wired via the LEGACY
-// Department prompt-id columns (newPatientPromptId / revisitPromptId /
-// preSummaryPromptId, plain String, no FK) to its own APPROVED, per-visit-type
-// `PromptTemplate`s owned by the ArcaAI tenant (see
+// (DEFAULT_TENANT_ID). These seven — Surgery, General Medicine, Rheumatology,
+// Neurology, Orthopedics, Hematology, Breast & Endocrine — are each wired via
+// the LEGACY Department prompt-id columns (newPatientPromptId /
+// revisitPromptId / preSummaryPromptId, plain String, no FK) to their own
+// APPROVED, per-visit-type `PromptTemplate`s owned by the ArcaAI tenant (see
 // 07b-arcaai-clinical-templates.ts).
 //
 // TASK-635 RF-3 UPDATE: these departments DO now carry a default
@@ -495,11 +503,108 @@ export const ARCAAI_CLINICAL_DEPARTMENTS = [
   },
 ];
 
+// TASK-634 Phase 8b — the remaining FOUR v1 clinical departments.
+//
+// WHY THIS ARRAY EXISTS SEPARATELY. v1 recognises ELEVEN departments (verified
+// on the running v1 SMR pod: `DEPT_VISIT_SCHEMAS` = 22 = 11 × {new_referral,
+// followup}; `select_prompt_template` = 11 branches), and the ArcaAI tenant must
+// carry exactly those eleven — no more, no fewer. The seven above were ported by
+// TASK-592; these four complete the set.
+//
+// They are held apart from ARCAAI_CLINICAL_DEPARTMENTS because
+// `ARCAAI_TENANT_AGENTS` (07a-agent-golden-library.ts) maps ONE default
+// `DepartmentAgent` over every row of that array. These four must carry NO
+// default agent: the per-visit-type legacy columns below are the v1-faithful
+// resolution path, and an agent tier adds a second way to answer the same
+// question for no benefit. Splitting the arrays makes "no agent" a structural
+// property rather than a rule someone has to remember.
+//
+// Everything else matches the seven exactly: ArcaAI-owned, both visit-type
+// columns wired to APPROVED per-department templates, and `preSummaryPromptId`
+// NULL — pre-summary has no department axis (TASK-634 §2.1).
+//
+// Exported for testing purposes.
+export const ARCAAI_CLINICAL_DEPARTMENTS_WITHOUT_AGENT = [
+  {
+    id: SEED_DEPARTMENT_IDS.DERM_ARCAAI,
+    tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
+    code: 'DERM',
+    name: 'Dermatology',
+    description: 'Skin, hair, and nail specialists',
+    defaultSummaryTemplate: 'Dermatology-Structured',
+    preSummaryPromptId: null,
+    newPatientPromptId: ARCAAI_CLINICAL_TEMPLATE_IDS.DERMATOLOGY_NEW_REFERRAL,
+    revisitPromptId: ARCAAI_CLINICAL_TEMPLATE_IDS.DERMATOLOGY_FOLLOWUP,
+    promptConfig: {
+      contextVariables: ['PREVIOUS CASE NOTES SUMMARY', 'Recent Vitals'],
+      preferredSections: ['Presenting Complaints', 'Evolution of Symptoms', 'Clinical Examination', 'Impression', 'Treatment Plan', 'Follow-Up Advice'],
+      abbreviationDensity: 'low',
+    },
+  },
+  {
+    id: SEED_DEPARTMENT_IDS.DIET_ARCAAI,
+    tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
+    code: 'DIET',
+    name: 'Dietetics',
+    description: 'Clinical nutrition and dietetic services',
+    defaultSummaryTemplate: 'Dietetics-Structured',
+    preSummaryPromptId: null,
+    newPatientPromptId: ARCAAI_CLINICAL_TEMPLATE_IDS.DIETETICS_NEW_REFERRAL,
+    revisitPromptId: ARCAAI_CLINICAL_TEMPLATE_IDS.DIETETICS_FOLLOWUP,
+    promptConfig: {
+      contextVariables: ['PREVIOUS CASE NOTES SUMMARY', 'Recent Vitals'],
+      preferredSections: ['Patient History', 'Anthropometric Measurements', 'Diet History', 'Nutrition Screening', 'Nutritional Status', 'Plan of Care'],
+      abbreviationDensity: 'low',
+    },
+  },
+  {
+    id: SEED_DEPARTMENT_IDS.NEPH_ARCAAI,
+    tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
+    code: 'NEPH',
+    name: 'Nephrology',
+    description: 'Kidney disease and renal care specialists',
+    defaultSummaryTemplate: 'Nephrology-Structured',
+    preSummaryPromptId: null,
+    newPatientPromptId: ARCAAI_CLINICAL_TEMPLATE_IDS.NEPHROLOGY_NEW_REFERRAL,
+    revisitPromptId: ARCAAI_CLINICAL_TEMPLATE_IDS.NEPHROLOGY_FOLLOWUP,
+    promptConfig: {
+      contextVariables: ['PREVIOUS CASE NOTES SUMMARY', 'Recent Vitals'],
+      preferredSections: ['Diagnosis', 'History', 'Examination', 'Investigations', 'Medicine', 'Plan of Care'],
+      abbreviationDensity: 'medium',
+    },
+  },
+  {
+    id: SEED_DEPARTMENT_IDS.SONC_ARCAAI,
+    tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
+    code: 'SONC',
+    name: 'Surgical Oncology',
+    description: 'Surgical management of cancer and tumors',
+    defaultSummaryTemplate: 'SurgicalOncology-Structured',
+    preSummaryPromptId: null,
+    newPatientPromptId: ARCAAI_CLINICAL_TEMPLATE_IDS.SURGICAL_ONCOLOGY_NEW_REFERRAL,
+    revisitPromptId: ARCAAI_CLINICAL_TEMPLATE_IDS.SURGICAL_ONCOLOGY_FOLLOWUP,
+    promptConfig: {
+      contextVariables: ['PREVIOUS CASE NOTES SUMMARY', 'Recent Vitals'],
+      preferredSections: ['Patient Demographics', 'History', 'Presenting Complaints', 'Investigations Done', 'Impression', 'Plan', 'MDT Plan'],
+      abbreviationDensity: 'medium',
+    },
+  },
+];
+
+/**
+ * ALL eleven ArcaAI clinical departments — v1's canonical department set,
+ * department-for-department. This is what `seedDepartment` writes; the two
+ * arrays above are a wiring detail (agent vs no agent), not two catalogs.
+ *
+ * Exported for testing purposes.
+ */
+export const ARCAAI_ALL_CLINICAL_DEPARTMENTS = [...ARCAAI_CLINICAL_DEPARTMENTS, ...ARCAAI_CLINICAL_DEPARTMENTS_WITHOUT_AGENT];
+
 export const seedDepartment = async (client: CorePrismaClient) => {
   console.log('Seeding departments...');
 
   try {
-    const allDepartments = [...DEFAULT_DEPARTMENTS, ...ARCAAI_CLINICAL_DEPARTMENTS];
+    const allDepartments = [...DEFAULT_DEPARTMENTS, ...ARCAAI_ALL_CLINICAL_DEPARTMENTS];
     for (const dept of allDepartments) {
       const { id, ...department } = dept;
       await client.department.upsert({

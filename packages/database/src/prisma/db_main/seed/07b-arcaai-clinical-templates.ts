@@ -6,20 +6,24 @@
  * `PromptResolutionService` resolves them PER VISIT TYPE.
  *
  * Wiring model — TWO paths that resolve the SAME template, by construction:
- *   - tier-1a (preferred, since TASK-635 RF-3): each ArcaAI clinical department
- *     has ONE default `DepartmentAgent` whose per-visit-type bindings
+ *   - tier-1a (preferred, since TASK-635 RF-3): the SEVEN departments seeded by
+ *     TASK-592 have ONE default `DepartmentAgent` whose per-visit-type bindings
  *     (`newPatientTemplateId` / `revisitTemplateId`) name the ids below —
- *     ARCAAI_TENANT_AGENTS in 07a-agent-golden-library.ts;
- *   - tier-1b (deprecated fallback): the LEGACY Department prompt-id columns
- *     (`newPatientPromptId` / `revisitPromptId` in 04-department.ts), retained
- *     and pointing at the very same ids.
+ *     ARCAAI_TENANT_AGENTS in 07a-agent-golden-library.ts. The FOUR departments
+ *     added by TASK-634 Phase 8b carry NO agent and reach their templates
+ *     through tier-1b only;
+ *   - tier-1b: the LEGACY Department prompt-id columns (`newPatientPromptId` /
+ *     `revisitPromptId` in 04-department.ts), set on all eleven and pointing at
+ *     the very same ids.
  * Before TASK-635 the agent tier could not be used at all here, because a
  * DepartmentAgent was a single prompt pointer that ignored visit type and would
  * have collapsed v1's new-referral vs follow-up split. C2 added the visit-type
  * axis, which is what makes the agent tier safe for this tenant.
  *
- * 15 rows: 14 department × visit-type SUMMARY templates + 1 shared TENANT-scoped
- * pre-summary template. Each has a matching v1-content PromptVersion, and each
+ * 23 rows: 22 department × visit-type SUMMARY templates (11 v1 departments ×
+ * {new referral, follow-up} — exactly v1's `DEPT_VISIT_SCHEMAS` cardinality) +
+ * 1 shared TENANT-scoped pre-summary template.
+ * Each has a matching v1-content PromptVersion, and each
  * is seeded APPROVED with `approvedVersionNumber = 1` so the resolver serves the
  * pinned `PromptVersion` snapshot (never the mutable `content` row) — the F-01 /
  * F-02 integrity path (see PromptResolutionService.resolveGovernedContent).
@@ -28,7 +32,7 @@
  * (generated, byte-exact). This module owns only the structure/wiring.
  *
  * ID blocks (documented in 00-constants.ts): ArcaAI tenant templates use the
- * `71000000-…-0001-…` group, slots 010-024; their versions mirror in
+ * `71000000-…-0001-…` group, slots 010-032; their versions mirror in
  * `72000000-…-0001-…` via the deterministic `72${id.slice(2)}` convention.
  */
 import type { CorePrismaClient } from '../../../client';
@@ -38,10 +42,16 @@ import { SEED_CUSTOMER_TENANT_IDS, SEED_DEPARTMENT_IDS, SYSTEM_USER_ID } from '.
 import {
   BREAST_ENDOCRINE_FOLLOWUP_CONTENT,
   BREAST_ENDOCRINE_NEW_REFERRAL_CONTENT,
+  DERMATOLOGY_FOLLOWUP_CONTENT,
+  DERMATOLOGY_NEW_REFERRAL_CONTENT,
+  DIETETICS_FOLLOWUP_CONTENT,
+  DIETETICS_NEW_REFERRAL_CONTENT,
   HEMATOLOGY_NEW_REFERRAL_CONTENT,
   HEMATOLOGY_REVISIT_CONTENT,
   MEDICINE_FOLLOWUP_CONTENT,
   MEDICINE_NEW_REFERRAL_CONTENT,
+  NEPHROLOGY_FOLLOWUP_CONTENT,
+  NEPHROLOGY_NEW_REFERRAL_CONTENT,
   NEUROLOGY_FOLLOWUP_CONTENT,
   NEUROLOGY_NEW_REFERRAL_CONTENT,
   ORTHOPEDICS_NEW_REFERRAL_CONTENT,
@@ -51,6 +61,8 @@ import {
   RHEUMATOLOGY_NEW_REFERRAL_CONTENT,
   SURGERY_FOLLOWUP_CONTENT,
   SURGERY_NEW_REFERRAL_CONTENT,
+  SURGICAL_ONCOLOGY_FOLLOWUP_CONTENT,
+  SURGICAL_ONCOLOGY_NEW_REFERRAL_CONTENT,
 } from './07b-arcaai-clinical-content';
 
 const ARCAAI_TENANT_ID = SEED_CUSTOMER_TENANT_IDS.ARCAAI;
@@ -63,6 +75,10 @@ const ARCAAI_DEPARTMENT_ID_BY_CODE = {
   ORTH: SEED_DEPARTMENT_IDS.ORTH_ARCAAI,
   HEME: SEED_DEPARTMENT_IDS.HEME_ARCAAI,
   BREN: SEED_DEPARTMENT_IDS.BREN_ARCAAI,
+  DERM: SEED_DEPARTMENT_IDS.DERM_ARCAAI,
+  DIET: SEED_DEPARTMENT_IDS.DIET_ARCAAI,
+  NEPH: SEED_DEPARTMENT_IDS.NEPH_ARCAAI,
+  SONC: SEED_DEPARTMENT_IDS.SONC_ARCAAI,
 } as const;
 
 const ARCAAI_DEPARTMENT_CODES = Object.keys(ARCAAI_DEPARTMENT_ID_BY_CODE) as Array<keyof typeof ARCAAI_DEPARTMENT_ID_BY_CODE>;
@@ -87,6 +103,16 @@ export const ARCAAI_CLINICAL_TEMPLATE_IDS = {
   BREAST_ENDOCRINE_NEW_REFERRAL: '71000000-0000-0000-0001-000000000022',
   BREAST_ENDOCRINE_FOLLOWUP: '71000000-0000-0000-0001-000000000023',
   PRE_SUMMARY: '71000000-0000-0000-0001-000000000024',
+  // TASK-634 Phase 8b — the four remaining v1 departments. Slots continue after
+  // the pre-summary (…024); the block is contiguous, not grouped by department.
+  DERMATOLOGY_NEW_REFERRAL: '71000000-0000-0000-0001-000000000025',
+  DERMATOLOGY_FOLLOWUP: '71000000-0000-0000-0001-000000000026',
+  DIETETICS_NEW_REFERRAL: '71000000-0000-0000-0001-000000000027',
+  DIETETICS_FOLLOWUP: '71000000-0000-0000-0001-000000000028',
+  NEPHROLOGY_NEW_REFERRAL: '71000000-0000-0000-0001-000000000029',
+  NEPHROLOGY_FOLLOWUP: '71000000-0000-0000-0001-000000000030',
+  SURGICAL_ONCOLOGY_NEW_REFERRAL: '71000000-0000-0000-0001-000000000031',
+  SURGICAL_ONCOLOGY_FOLLOWUP: '71000000-0000-0000-0001-000000000032',
 } as const;
 
 // The initial version of each template reuses the template UUID with the `72…`
@@ -253,6 +279,78 @@ const SUMMARY_SPECS: ClinicalTemplateSpec[] = [
     departmentId: SEED_DEPARTMENT_IDS.BREN_ARCAAI,
     scope: 'DEPARTMENT_DEFAULT',
     tags: ['arcaai', 'clinical', 'breast_endocrine', 'followup', 'smr-v1'],
+  },
+  {
+    id: ARCAAI_CLINICAL_TEMPLATE_IDS.DERMATOLOGY_NEW_REFERRAL,
+    name: 'Dermatology - New Referral',
+    description: 'ArcaAI Dermatology — New/Referral patient clinical note prompt (v1 port).',
+    content: DERMATOLOGY_NEW_REFERRAL_CONTENT,
+    departmentId: SEED_DEPARTMENT_IDS.DERM_ARCAAI,
+    scope: 'DEPARTMENT_DEFAULT',
+    tags: ['arcaai', 'clinical', 'dermatology', 'new_referral', 'smr-v1'],
+  },
+  {
+    id: ARCAAI_CLINICAL_TEMPLATE_IDS.DERMATOLOGY_FOLLOWUP,
+    name: 'Dermatology - Follow-up',
+    description: 'ArcaAI Dermatology — Follow-up/Revisit clinical note prompt (v1 port).',
+    content: DERMATOLOGY_FOLLOWUP_CONTENT,
+    departmentId: SEED_DEPARTMENT_IDS.DERM_ARCAAI,
+    scope: 'DEPARTMENT_DEFAULT',
+    tags: ['arcaai', 'clinical', 'dermatology', 'followup', 'smr-v1'],
+  },
+  {
+    id: ARCAAI_CLINICAL_TEMPLATE_IDS.DIETETICS_NEW_REFERRAL,
+    name: 'Dietetics - New Referral',
+    description: 'ArcaAI Dietetics — New/Referral patient clinical note prompt (v1 port).',
+    content: DIETETICS_NEW_REFERRAL_CONTENT,
+    departmentId: SEED_DEPARTMENT_IDS.DIET_ARCAAI,
+    scope: 'DEPARTMENT_DEFAULT',
+    tags: ['arcaai', 'clinical', 'dietetics', 'new_referral', 'smr-v1'],
+  },
+  {
+    id: ARCAAI_CLINICAL_TEMPLATE_IDS.DIETETICS_FOLLOWUP,
+    name: 'Dietetics - Follow-up',
+    description: 'ArcaAI Dietetics — Follow-up/Revisit clinical note prompt (v1 port).',
+    content: DIETETICS_FOLLOWUP_CONTENT,
+    departmentId: SEED_DEPARTMENT_IDS.DIET_ARCAAI,
+    scope: 'DEPARTMENT_DEFAULT',
+    tags: ['arcaai', 'clinical', 'dietetics', 'followup', 'smr-v1'],
+  },
+  {
+    id: ARCAAI_CLINICAL_TEMPLATE_IDS.NEPHROLOGY_NEW_REFERRAL,
+    name: 'Nephrology - New Referral',
+    description: 'ArcaAI Nephrology — New/Referral patient clinical note prompt (v1 port).',
+    content: NEPHROLOGY_NEW_REFERRAL_CONTENT,
+    departmentId: SEED_DEPARTMENT_IDS.NEPH_ARCAAI,
+    scope: 'DEPARTMENT_DEFAULT',
+    tags: ['arcaai', 'clinical', 'nephrology', 'new_referral', 'smr-v1'],
+  },
+  {
+    id: ARCAAI_CLINICAL_TEMPLATE_IDS.NEPHROLOGY_FOLLOWUP,
+    name: 'Nephrology - Follow-up',
+    description: 'ArcaAI Nephrology — Follow-up/Revisit clinical note prompt (v1 port).',
+    content: NEPHROLOGY_FOLLOWUP_CONTENT,
+    departmentId: SEED_DEPARTMENT_IDS.NEPH_ARCAAI,
+    scope: 'DEPARTMENT_DEFAULT',
+    tags: ['arcaai', 'clinical', 'nephrology', 'followup', 'smr-v1'],
+  },
+  {
+    id: ARCAAI_CLINICAL_TEMPLATE_IDS.SURGICAL_ONCOLOGY_NEW_REFERRAL,
+    name: 'Surgical Oncology - New Referral',
+    description: 'ArcaAI Surgical Oncology — New/Referral patient clinical note prompt (v1 port).',
+    content: SURGICAL_ONCOLOGY_NEW_REFERRAL_CONTENT,
+    departmentId: SEED_DEPARTMENT_IDS.SONC_ARCAAI,
+    scope: 'DEPARTMENT_DEFAULT',
+    tags: ['arcaai', 'clinical', 'surgical_oncology', 'new_referral', 'smr-v1'],
+  },
+  {
+    id: ARCAAI_CLINICAL_TEMPLATE_IDS.SURGICAL_ONCOLOGY_FOLLOWUP,
+    name: 'Surgical Oncology - Follow-up',
+    description: 'ArcaAI Surgical Oncology — Follow-up/Revisit clinical note prompt (v1 port).',
+    content: SURGICAL_ONCOLOGY_FOLLOWUP_CONTENT,
+    departmentId: SEED_DEPARTMENT_IDS.SONC_ARCAAI,
+    scope: 'DEPARTMENT_DEFAULT',
+    tags: ['arcaai', 'clinical', 'surgical_oncology', 'followup', 'smr-v1'],
   },
 ];
 

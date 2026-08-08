@@ -14,8 +14,11 @@
  *   70000000-xxxx  →  Departments (separate entity, same prefix range but dept block)
  *   71000000-xxxx  →  Prompt Templates
  *   71000000-…-0001-0000000000XX  →  ArcaAI-tenant prompt templates
- *                     (001-004 demo cross-tenant set; 010-024 = the 15
- *                     ArcaAI clinical templates — TASK-592 Workstream D)
+ *                     (001-004 demo cross-tenant set; 010-024 = the first 15
+ *                     ArcaAI clinical templates — TASK-592 Workstream D;
+ *                     025-032 = the 8 added by TASK-634 Phase 8b, bringing the
+ *                     set to 23 = 11 departments × 2 visit types + 1 shared
+ *                     pre-summary)
  *   72000000-xxxx  →  Prompt Versions
  *   72000000-…-0001-0000000000XX  →  ArcaAI-tenant prompt versions (mirror of
  *                     the template slot above)
@@ -213,25 +216,38 @@ export const SEED_DEPARTMENT_IDS = {
   DIET: '70000000-0000-0000-0000-000000000016',
   NEPH: '70000000-0000-0000-0000-000000000017',
   SONC: '70000000-0000-0000-0000-000000000018',
-  // ArcaAI customer-tenant CLINICAL departments (TASK-592 Workstream D).
+  // ArcaAI customer-tenant CLINICAL departments (TASK-592 Workstream D;
+  // completed to v1 parity by TASK-634 Phase 8b).
   //
-  // The ArcaAI tenant carries the 7 v1 clinical departments — Surgery,
-  // General Medicine, Rheumatology, Neurology, Orthopedics, Hematology,
-  // Breast & Endocrine — each wired via the LEGACY Department prompt-id
-  // columns (newPatientPromptId / revisitPromptId / preSummaryPromptId) to
-  // its own APPROVED, per-visit-type `PromptTemplate`s (see
-  // 07b-arcaai-clinical-templates.ts). These departments deliberately have NO
-  // default `DepartmentAgent`, so the prompt resolver skips tier-1a and uses
-  // the visit-type-faithful legacy columns (an agent resolves ONE template per
-  // department and ignores visit type, which would collapse the v1 new-referral
-  // vs follow-up split).
+  // The ArcaAI tenant carries the ELEVEN v1 clinical departments — and exactly
+  // eleven. v1 has no Department table; its department set is defined by what
+  // its SMR recognises, and BOTH authoritative sources on the running v1 pod
+  // agree on eleven: `DEPT_VISIT_SCHEMAS` (22 = 11 × {new_referral, followup})
+  // and `select_prompt_template` (11 branches). The v1 keys map to the codes
+  // below as: breast_endocrine→BREN, dermatology→DERM, dietetics→DIET,
+  // hematology→HEME, medicine→GEN, nephrology→NEPH, neurology→NEUR,
+  // orthopedics→ORTH, rheumatology→RHEUM, surgery→SURG,
+  // surgical_oncology→SONC.
+  //
+  // Each is wired via the LEGACY Department prompt-id columns
+  // (newPatientPromptId / revisitPromptId) to its own APPROVED, per-visit-type
+  // `PromptTemplate`s (see 07b-arcaai-clinical-templates.ts).
+  // `preSummaryPromptId` is deliberately NULL on every one of them: pre-summary
+  // has no department axis (TASK-634).
+  //
+  // The first seven ALSO carry a per-visit-type default `DepartmentAgent`
+  // (TASK-635 RF-3, ARCAAI_TENANT_AGENTS in 07a-agent-golden-library.ts),
+  // binding the same ids. The four added by Phase 8b carry NO default agent —
+  // the visit-type columns are the v1-faithful path and an agent tier adds
+  // nothing here.
   //
   // GEN_ARCAAI is RETAINED (existing consultation / user / DNA / audit seed
   // references point at it) and REPURPOSED as General Medicine. The former
   // CARD_ARCAAI / ER_ARCAAI demo departments were retired.
   //
   // 4th UUID group 0001 = ArcaAI tenant; trailing slot 001 = General Medicine
-  // (kept), 010-015 = the six new specialty departments.
+  // (kept), 010-015 = the six specialty departments added by TASK-592,
+  // 016-019 = the four added by TASK-634 Phase 8b.
   GEN_ARCAAI: '70000000-0000-0000-0001-000000000001',
   SURG_ARCAAI: '70000000-0000-0000-0001-000000000010',
   RHEUM_ARCAAI: '70000000-0000-0000-0001-000000000011',
@@ -239,6 +255,10 @@ export const SEED_DEPARTMENT_IDS = {
   ORTH_ARCAAI: '70000000-0000-0000-0001-000000000013',
   HEME_ARCAAI: '70000000-0000-0000-0001-000000000014',
   BREN_ARCAAI: '70000000-0000-0000-0001-000000000015',
+  DERM_ARCAAI: '70000000-0000-0000-0001-000000000016',
+  DIET_ARCAAI: '70000000-0000-0000-0001-000000000017',
+  NEPH_ARCAAI: '70000000-0000-0000-0001-000000000018',
+  SONC_ARCAAI: '70000000-0000-0000-0001-000000000019',
 } as const;
 
 // =============================================================================
