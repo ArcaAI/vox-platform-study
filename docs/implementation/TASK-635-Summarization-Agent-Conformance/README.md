@@ -384,9 +384,40 @@ Dispatch order deviated from the C1 plan in one place: the design listed C3∥C4
 
 The BullMQ finalize path is **entirely unmetered today**: `summary.processor.ts:272-333` uses `mapSmrGenerateResponse` without `parseSmrUsageDetail`, injects no `usageLedger`/`unitOfWork`, calls no `assertMeterQuota`, and writes no `SummaryMeta`. It is live production code with two enqueue sites — `POST /consultations/:id/summary/async` (`consultation.controller.ts:1072`, backing the SDK's `generateSummaryAsync`) and the auto-pipeline (`consultation-event.handler.ts:227`). So async summaries currently bypass **both quota enforcement and billing**, while the sync path meters normally.
 
-Owner questions: (a) should the async path count toward `monthlySummaries`? (b) should it emit billable usage-ledger rows? Given TASK-615 shipped metering, this looks like a gap rather than an exemption. **Recommend a dedicated ticket** — the fix changes live metering/billing output and does not belong inside TASK-635.
+Owner questions: (a) should the async path count toward `monthlySummaries`? (b) should it emit billable usage-ledger rows? Given TASK-615 shipped metering, this looks like a gap rather than an exemption.
 
-### E2E status — BLOCKED on an owner-consent action (not on code)
+➡️ **Raised as [TASK-637](../TASK-637-Async-Summary-Path-Unmetered/README.md)** (2026-08-08) with the full evidence chain and decisions D-1..D-4. Not fixed here — the change alters live metering/billing output.
+
+### E2E — EXECUTED 2026-08-08 (owner consent given)
+
+Ran against the **isolated test stack** (Postgres 5433 / Redis 6380 / MinIO 9002 / Qdrant 6335 via `pnpm infra:test:up`; API on 8968 via `pnpm test:up:api`). Two environment gates had to be opened explicitly, both by design:
+1. **Prisma's AI-agent guardrail** blocks `prisma db push --force-reset --accept-data-loss` (what `pnpm test:db:reset` resolves to) without a recorded consent token — supplied via `PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION`.
+2. **`RUN_SEED` is opt-in and defaults to "none"** (TASK-616). Without it the seed silently no-ops — the first run pushed the schema but seeded nothing, which then surfaced as a confusing FK error from the *separate* `media-seed.ts`. Re-ran with `RUN_SEED=all`.
+
+**Schema + seed verified directly in the database** (`psql` against `hope_test`) — this is the first live confirmation of C2's and D2's work:
+
+| Check | Result |
+|---|---|
+| `DepartmentAgent` new columns | **6/6** present |
+| `SummaryMeta` lineage columns | **2/2** present |
+| ArcaAI `DepartmentAgent` rows | **7**, all 7 with both visit-type bindings (RF-3) |
+| SYSTEM live-default template `…0004-…0001` | present |
+| Dept-free fork `…0004-…0002` | present, tags `pre-summary,dept-free,system-default` |
+| **B-12**: pre-summary default `…040` owner | **`00000000-…` (SYSTEM tenant)** — the re-owning is real, not just seed code |
+
+**Spec results** (`pnpm test:e2e -- task-635`): **730 passed**, zero TASK-635 failures. The 20 remaining failures in the full run are the concurrent billing lane's (TASK-615 invoice/cross-tenant/ledger specs) plus `ai-task-defaults-cross-tenant`, `department-agent-resync`, `task-562-smr-compat` — all pre-existing and untouched here.
+
+- `task-635-prompt-test-bench.spec.ts` — **all tests pass.** Fully asserted (SMR-independent): unknown provider/model → 400, out-of-range `versionNumber` → 404, `sampleInput` + `goldenCaseId` → 400, nonexistent `goldenCaseId` → 404, missing `If-Match` → 428, cross-tenant template → 404-never-403.
+- `task-635-live-agent-lineage.spec.ts` — **skips gracefully**, as designed: SMR (8862) and NLP (8864) are not running in this stack, so the live loop can never emit a generated frame and R-N1/R-N2 have nothing to bind to. The spec logs `No live-summary SSE event with metadata.agent arrived` and calls `test.skip()` rather than asserting against an absent engine.
+
+**Two real spec defects were found and fixed by running them** (this is why unrun specs are not evidence):
+1. `GET /admin/departments` returns a **bare array** on this surface, not the `PaginatedResponse.data` wrapper the spec assumed — setup failed on an unrelated contract detail. Fixed with a `listOf()` helper tolerating both shapes (the house `asArray` idiom).
+2. The context POST used `contextType`/`TRANSCRIPTION`; the DTO field is **`type`** and the enum member is **`TRANSCRIPT`** — and because the global pipe runs `forbidNonWhitelisted`, the stray key was a hard 400, not an ignored field.
+3. The SSE wait budget (45s) exceeded Playwright's per-test timeout (30s), so the graceful-skip path was unreachable and the test died on a timeout instead. Lowered to 20s — a wait must always sit strictly inside the test budget.
+
+**Still owed**: the generation-dependent assertions (live SSE `agent` block, `SummaryMeta` lineage stamping, tier-0-preferred-wins-while-lineage-stamped) need SMR + NLP up. Run `pnpm smr:dev` and `pnpm nlp:dev` alongside, then re-run `pnpm test:e2e -- task-635` with the same two env gates.
+
+### E2E status — original blocker (resolved above)
 
 Both specs (`task-635-prompt-test-bench.spec.ts`, `task-635-live-agent-lineage.spec.ts`) are written, typecheck- and lint-clean, and have **never been executed**. Isolated test infra (Postgres 5433 / Redis 6380 / MinIO 9002 / Qdrant 6335) was started successfully via `pnpm infra:test:up` and validated healthy. The next step, `pnpm test:db:reset`, resolves to `prisma db push --force-reset --accept-data-loss` against `hope_test`, which **Prisma's AI-agent guardrail refuses to run without explicit, recorded user consent** — correctly, since it irreversibly destroys that database. The dev database (port 5432) is a different container and is untouched either way.
 
