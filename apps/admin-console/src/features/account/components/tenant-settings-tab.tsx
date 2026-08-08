@@ -224,7 +224,7 @@ export function TenantSettingsTab({ readOnly = false }: { readOnly?: boolean } =
   });
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex min-h-0 flex-1 flex-col gap-4">
       <OccConflictAlert
         error={updateConfigs.error}
         onReload={() => {
@@ -234,17 +234,17 @@ export function TenantSettingsTab({ readOnly = false }: { readOnly?: boolean } =
           void configsQuery.refetch();
         }}
       />
-      <div className="grid gap-4 lg:grid-cols-[220px_1fr]">
+      <div className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row">
         {tier === 'mobile' ? (
-          <nav aria-label="Settings categories" className="-mx-1 flex snap-x gap-2 overflow-x-auto px-1 pb-1">
+          <nav aria-label="Settings categories" className="-mx-1 flex shrink-0 snap-x gap-2 overflow-x-auto px-1 pb-1">
             {rail}
           </nav>
         ) : (
-          <nav aria-label="Settings categories" className="flex flex-col gap-1">
+          <nav aria-label="Settings categories" className="flex flex-col gap-1 lg:w-55 lg:shrink-0 lg:min-h-0 lg:overflow-y-auto lg:pr-1">
             {rail}
           </nav>
         )}
-        <section aria-labelledby={`${uid}-cat-heading`} className="flex min-w-0 flex-col gap-4">
+        <section aria-labelledby={`${uid}-cat-heading`} className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-y-auto lg:pr-1">
           <div className="flex flex-col gap-1">
             <h3 id={`${uid}-cat-heading`} className="text-base font-semibold">
               {activeMeta.label}

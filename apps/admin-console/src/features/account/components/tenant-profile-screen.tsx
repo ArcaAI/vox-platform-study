@@ -273,6 +273,7 @@ export function TenantProfileScreen() {
   return (
     <Tabs value={tab} onValueChange={(next) => void setTabParam(next === 'organization' ? null : next)} className="flex min-h-0 flex-1 flex-col">
       <ScreenTemplate
+        contentMode={tab === 'settings' ? 'fill' : 'scroll'}
         header={header}
         tabs={
           <TabsList variant="line">
@@ -343,8 +344,8 @@ export function TenantProfileScreen() {
             </section>
           </TabsContent>
         ) : null}
-        <TabsContent value="settings">
-          <section aria-labelledby={`${uid}-settings`} className="flex flex-col gap-3">
+        <TabsContent value="settings" className="flex min-h-0 flex-1 flex-col">
+          <section aria-labelledby={`${uid}-settings`} className="flex min-h-0 flex-1 flex-col gap-3">
             <h2 id={`${uid}-settings`} className="sr-only">
               Tenant settings
             </h2>
