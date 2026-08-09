@@ -88,6 +88,27 @@ ENV PYTHONPATH="/app/src" \
 COPY --from=builder --chown=hope:hope /app/.venv /app/.venv
 COPY --chown=hope:hope apps/nlp/src ./src
 
+# ── TASK-648 W3 — bake build identity, LAST layer ───────────────────────────
+# These args change on every commit; kept below every COPY/RUN so they never
+# invalidate the layer cache above them. Written to /app/build-info.json per
+# docs/implementation/TASK-648-Service-Version-And-Release-Registry/contracts/build-info.schema.json.
+ARG BUILD_SERVICE
+ARG BUILD_VERSION
+ARG BUILD_RELEASE_TAG
+ARG BUILD_GIT_BRANCH
+ARG BUILD_GIT_SHA
+ARG BUILD_AT
+ARG BUILD_CI_PIPELINE_ID
+ARG BUILD_CI_PIPELINE_URL
+RUN set -eu; \
+    release_tag=$( [ -n "${BUILD_RELEASE_TAG:-}" ] && printf '"%s"' "${BUILD_RELEASE_TAG}" || printf 'null' ); \
+    pipeline_id=$( [ -n "${BUILD_CI_PIPELINE_ID:-}" ] && printf '"%s"' "${BUILD_CI_PIPELINE_ID}" || printf 'null' ); \
+    pipeline_url=$( [ -n "${BUILD_CI_PIPELINE_URL:-}" ] && printf '"%s"' "${BUILD_CI_PIPELINE_URL}" || printf 'null' ); \
+    printf '{"service":"%s","version":"%s","releaseTag":%s,"gitBranch":"%s","gitCommitSha":"%s","buildAt":"%s","ciPipelineId":%s,"ciPipelineUrl":%s}\n' \
+      "${BUILD_SERVICE}" "${BUILD_VERSION}" "${release_tag}" "${BUILD_GIT_BRANCH}" "${BUILD_GIT_SHA}" "${BUILD_AT}" "${pipeline_id}" "${pipeline_url}" \
+      > /app/build-info.json && \
+    chown hope:hope /app/build-info.json
+
 USER hope
 EXPOSE 8864
 
