@@ -337,6 +337,24 @@ export const SYSTEM_SHARED_READ_MODELS: ReadonlySet<string> = new Set([
   // [caller, SYSTEM]; WRITES are NOT widened (registry mutation is global-admin
   // only at the service layer, the guardrail.* precedent).
   'McpServer',
+  // TASK-648 — the release registry and the curated changelog are PLATFORM
+  // facts owned by the SYSTEM tenant, read by callers acting under their own
+  // tenant CLS. Without widening, `/changelog` and `/changelog/unseen` return
+  // NOTHING for every tenant user, and `/releases` returns nothing for a
+  // TENANT_ADMIN (or a global admin who has a working tenant selected) — the
+  // rows exist, the reader just never sees them. Found by U10 during
+  // implementation; it affects all three models, not only the changelog.
+  // READS widen to [caller, SYSTEM]; WRITES are NOT widened — release rows are
+  // written only by the service-token registration path, and changelog
+  // authoring is global-admin-only, enforced imperatively in ChangelogService.
+  // No secret material: these carry versions, commit SHAs and release notes.
+  //
+  // `UserChangelogAcknowledgement` is deliberately NOT here — an
+  // acknowledgement is genuinely the acknowledging user's own tenant's row,
+  // and widening it would let one tenant observe another's read state.
+  'ServiceRelease',
+  'ServiceInstance',
+  'ChangelogEntry',
   // The PLATFORM-DEFAULT storage row (SYSTEM tenant, `bucketId IS NULL`) is the
   // third step of the model's own resolution order
   // (bucket row → tenant default → SYSTEM default → env). Every tenant's
