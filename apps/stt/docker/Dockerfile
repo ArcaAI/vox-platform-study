@@ -351,6 +351,36 @@ COPY --from=ml-builder --chown=hope:hope /opt/python /opt/python
 COPY --from=ml-builder --chown=hope:hope /opt/venv /opt/venv
 COPY --chown=hope:hope apps/stt/src ./src
 
+# ── TASK-648 W3 — bake build identity, LAST layer ───────────────────────────
+# These args change on every commit; kept below every COPY/RUN so they never
+# invalidate the layer cache above them. Written to /app/build-info.json per
+# docs/implementation/TASK-648-Service-Version-And-Release-Registry/contracts/build-info.schema.json.
+# NOTE: this stage is shared by BOTH build-stt (SERVICE_NAME=stt-ml-runtime,
+# --target ml-runtime) and build-stt-worker (SERVICE_NAME=stt-worker,
+# --target worker, which FROMs this stage). Each is a separate CI build
+# invocation with its own --build-arg BUILD_SERVICE, so the value baked here
+# is always the one that matches the target actually being built — no
+# duplicate write is needed in the `worker` stage below. The CPU-only
+# `runtime` stage above is not built by CI (dev-only, no SERVICE_NAME/build
+# job in .gitlab/ci/build.yml, not in the build-info schema's service enum)
+# and deliberately does not bake this file.
+ARG BUILD_SERVICE
+ARG BUILD_VERSION
+ARG BUILD_RELEASE_TAG
+ARG BUILD_GIT_BRANCH
+ARG BUILD_GIT_SHA
+ARG BUILD_AT
+ARG BUILD_CI_PIPELINE_ID
+ARG BUILD_CI_PIPELINE_URL
+RUN set -eu; \
+    release_tag=$( [ -n "${BUILD_RELEASE_TAG:-}" ] && printf '"%s"' "${BUILD_RELEASE_TAG}" || printf 'null' ); \
+    pipeline_id=$( [ -n "${BUILD_CI_PIPELINE_ID:-}" ] && printf '"%s"' "${BUILD_CI_PIPELINE_ID}" || printf 'null' ); \
+    pipeline_url=$( [ -n "${BUILD_CI_PIPELINE_URL:-}" ] && printf '"%s"' "${BUILD_CI_PIPELINE_URL}" || printf 'null' ); \
+    printf '{"service":"%s","version":"%s","releaseTag":%s,"gitBranch":"%s","gitCommitSha":"%s","buildAt":"%s","ciPipelineId":%s,"ciPipelineUrl":%s}\n' \
+      "${BUILD_SERVICE}" "${BUILD_VERSION}" "${release_tag}" "${BUILD_GIT_BRANCH}" "${BUILD_GIT_SHA}" "${BUILD_AT}" "${pipeline_id}" "${pipeline_url}" \
+      > /app/build-info.json && \
+    chown hope:hope /app/build-info.json
+
 USER hope
 
 ENV PATH="/opt/venv/bin:$PATH" \
