@@ -127,3 +127,7 @@ export * from './UserVoiceProfileRepository';
 export * from './WebhookRepository';
 export * from './WebhookRunHistoryRepository';
 export * from './ProviderReconciliationRunRepository';
+export * from './ServiceReleaseRepository';
+export * from './ServiceInstanceRepository';
+export * from './ChangelogEntryRepository';
+export * from './UserChangelogAcknowledgementRepository';

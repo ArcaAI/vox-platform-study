@@ -90,7 +90,12 @@ describe('TENANT_SCOPED_MODELS allow-list', () => {
     // 66 → 67: TASK-615 #6 adds TenantPlanHistory (append-only plan-fee proration).
     // 67 → 68: TASK-638 §6 adds ProviderReconciliationRun (SYSTEM-owned audit trail;
     // scoped so a tenant can never read aggregate platform vendor spend).
-    expect(TENANT_SCOPED_MODELS.size).toBe(68);
+    // 68 → 72: TASK-648 adds the Service Version & Release Registry
+    // (ServiceRelease, ServiceInstance, ChangelogEntry,
+    // UserChangelogAcknowledgement). All four carry tenantId; the first
+    // three are platform-wide (SYSTEM tenant), UserChangelogAcknowledgement
+    // is scoped to the acknowledging user's own tenant.
+    expect(TENANT_SCOPED_MODELS.size).toBe(72);
   });
 
   // TASK-615 — the usage ledger, its outbox, the rollups and the whole billing

@@ -224,6 +224,13 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   // (platform-operated origins, valid for every tenant) are resolved by the
   // application-layer OriginRegistryService, not by widening this read here.
   'TenantAllowedOrigin',
+  // platform.prisma — Service Version & Release Registry (TASK-648). All
+  // four are platform-wide (SYSTEM tenant), EXCEPT UserChangelogAcknowledgement
+  // which is scoped to the acknowledging user's own tenant.
+  'ServiceRelease',
+  'ServiceInstance',
+  'ChangelogEntry',
+  'UserChangelogAcknowledgement',
 ]);
 
 /**

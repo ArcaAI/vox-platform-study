@@ -79,3 +79,7 @@ export * from './BillingInvoiceEntity';
 export * from './BillingInvoiceLineEntity';
 export * from './TenantAllowedOriginEntity';
 export * from './ProviderReconciliationRunEntity';
+export * from './ChangelogEntryEntity';
+export * from './ServiceInstanceEntity';
+export * from './ServiceReleaseEntity';
+export * from './UserChangelogAcknowledgementEntity';

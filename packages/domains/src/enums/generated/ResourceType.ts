@@ -83,4 +83,8 @@ export enum ResourceType {
   AiPriceBook = 'AiPriceBook',
   BillingInvoice = 'BillingInvoice',
   BillingAdjustment = 'BillingAdjustment',
+  ServiceRelease = 'ServiceRelease',
+  ServiceInstance = 'ServiceInstance',
+  ChangelogEntry = 'ChangelogEntry',
+  UserChangelogAcknowledgement = 'UserChangelogAcknowledgement',
 }
