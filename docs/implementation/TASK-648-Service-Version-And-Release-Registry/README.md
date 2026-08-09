@@ -67,7 +67,29 @@ Keep the existing per-service tag family and formalise its grammar:
 ```
 <SVC>-<MAJOR>.<MINOR>.<PATCH>[-<prerelease>]        e.g. SMR-2.1.0, STT-3.0.0-rc.1
 ALL-<MAJOR>.<MINOR>.<PATCH>                          platform release train
+v<MAJOR>.<MINOR>.<PATCH>                             production promotion trigger
 ```
+
+**Correction (found by U9 against the real CI, 2026-08-09).** The first draft of this plan
+conflated "the version tag" with "the deploy trigger". They are separate families and
+`.gitlab-ci.yml` treats them differently:
+
+| Tag | `PIPELINE_TYPE` | Effect |
+|---|---|---|
+| `ALL-*`, `<SVC>-*` | `release` | **Builds and publishes images. Deploys nothing.** |
+| `v<X.Y.Z>` | `tag_release` | **Builds nothing.** Triggers the manual `promote-prod` digest copy (`deploy.yml:95-113`). |
+
+This does not change the data model — §7's "one release row, three environments" still holds,
+because promotion attaches a digest to a row a prior `dev-*`/`staging-*` build already
+created. It does change two things: the promote step must find that row by **`CI_COMMIT_SHA`,
+not by tag** (no build ran in a `v*` pipeline, so there is no tag-derived identity to match
+on), and the release runbook must not tell an operator that `ALL-2.2.0` ships to production —
+it does not, and following that would dead-end at `promote-prod` failing on a missing digest.
+
+**Open question for the user:** `v2.2.0` and `ALL-2.2.0` are today two independent numbers
+that nothing forces to agree. Either they should be the same number (promote-prod validates
+that a matching `ALL-` train exists), or the console must show both and label which is which.
+Flagged, not silently decided.
 
 | Bump | Trigger |
 |---|---|
