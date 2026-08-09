@@ -55,6 +55,15 @@ from hope_env.build_info import (
     BuildInfoReader,
     format_untagged_version,
 )
+from hope_env.service_registration import (
+    DEFAULT_HEARTBEAT_INTERVAL_S,
+    DEFAULT_REGISTER_TIMEOUT_S,
+    build_payload,
+    instance_id,
+    normalize_environment,
+    start_registration,
+    stop_registration,
+)
 from hope_env.settings_sources import (
     DEFAULT_SECRETS_DIR,
     SECRETS_DIR_ENV_VAR,
@@ -67,6 +76,8 @@ from hope_env.settings_sources import (
 
 __all__ = [
     "DEFAULT_BUILD_INFO_PATH",
+    "DEFAULT_HEARTBEAT_INTERVAL_S",
+    "DEFAULT_REGISTER_TIMEOUT_S",
     "DEFAULT_SECRETS_DIR",
     "ENV_FILE_BY_NODE_ENV",
     "SECRETS_DIR_ENV_VAR",
@@ -74,13 +85,18 @@ __all__ = [
     "BuildInfoReader",
     "LoadEnvResult",
     "build_hope_sources",
+    "build_payload",
     "find_monorepo_root",
     "format_untagged_version",
     "hope_settings_sources",
+    "instance_id",
     "load_env",
+    "normalize_environment",
     "register_settings_cache",
     "reload_secrets",
     "resolve_secrets_dir",
+    "start_registration",
+    "stop_registration",
 ]
 
 #: ``NODE_ENV`` → env-file name. Mirrors ``ENV_FILE_MAP`` in the TS loader.

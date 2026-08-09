@@ -13,6 +13,8 @@ import httpx
 import redis.asyncio as aioredis
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from hope_env import BuildInfoReader
+from hope_env.service_registration import start_registration, stop_registration
 
 from smr.core.config import Settings, get_settings
 from smr.core.logging import get_logger, setup_logging
@@ -280,6 +282,21 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
         app.state.shutdown_manager = ShutdownManager()
 
+    # Self-registration (TASK-648 W9): fire-and-forget, bounded-timeout, NEVER
+    # blocks or fails boot. Reuses the shared `http_client` above (already
+    # closed on shutdown below) rather than opening a second one.
+    app.state.service_release_task = None
+    try:
+        app.state.service_release_task = start_registration(
+            http_client=http_client,
+            gateway_url=settings.gateway_url,
+            service_token=settings.service_token.get_secret_value(),
+            build_info=BuildInfoReader().get_build_info(),
+            environment=settings.otel_deployment_environment,
+        )
+    except Exception as exc:  # noqa: BLE001 - registration must never block boot
+        logger.warning("smr.service_release_registration_failed", error=str(exc))
+
     logger.info("smr.started", providers=registry.list_providers())
     yield
 
@@ -291,6 +308,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             logger.warning("smr.drain_timeout", remaining=shutdown_mgr.active_count)
 
     logger.info("smr.shutting_down")
+    await stop_registration(app.state.service_release_task)
     await http_client.aclose()
     if redis_client and hasattr(redis_client, "aclose"):
         try:

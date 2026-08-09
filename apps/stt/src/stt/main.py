@@ -1,10 +1,14 @@
 """STT Service - FastAPI Application Entry Point."""
 
+import os
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
+import httpx
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from hope_env import BuildInfoReader
+from hope_env.service_registration import start_registration, stop_registration
 
 from stt.core.config.settings import get_settings
 from stt.core.database.connection import close_database, initialize_database
@@ -169,12 +173,36 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # (PRELOAD_PIPELINES, empty by default) remains available below.
     await _preload_pipeline_models()
 
+    # Self-registration (TASK-648 W9): fire-and-forget, bounded-timeout, NEVER
+    # blocks or fails boot. `DEPLOYMENT_ENVIRONMENT` / `NODE_ENV` is the same
+    # repo-wide convention `stt.core.telemetry._deployment_environment` uses
+    # (TASK-636 OBS-18); stt has no dedicated `environment` settings field.
+    app.state.service_release_task = None
+    app.state.service_release_http_client = None
+    try:
+        registration_client = httpx.AsyncClient()
+        app.state.service_release_http_client = registration_client
+        app.state.service_release_task = start_registration(
+            http_client=registration_client,
+            gateway_url=settings.api_gateway_url,
+            service_token=settings.api_gateway_key.get_secret_value(),
+            build_info=BuildInfoReader().get_build_info(),
+            environment=os.getenv("DEPLOYMENT_ENVIRONMENT")
+            or os.getenv("NODE_ENV")
+            or "development",
+        )
+    except Exception as exc:  # noqa: BLE001 - registration must never block boot
+        logger.warning("stt.service_release_registration_failed", error=str(exc))
+
     logger.info("STT Service started successfully")
 
     yield
 
     # Shutdown
     logger.info("Shutting down STT Service...")
+    await stop_registration(app.state.service_release_task)
+    if app.state.service_release_http_client is not None:
+        await app.state.service_release_http_client.aclose()
     await shutdown_streaming()
     try:
         from stt.punctuation import service as punctuation_service
