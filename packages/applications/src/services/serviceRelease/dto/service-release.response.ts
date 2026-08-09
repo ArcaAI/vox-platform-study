@@ -31,6 +31,9 @@ export class ServiceReleaseResponse {
   imageDigest!: string | null;
 
   @ApiProperty({ nullable: true })
+  ciPipelineId!: string | null;
+
+  @ApiProperty({ nullable: true })
   ciPipelineUrl!: string | null;
 
   @ApiPropertyOptional({ isArray: true, nullable: true, description: 'Generated technical changelog.' })

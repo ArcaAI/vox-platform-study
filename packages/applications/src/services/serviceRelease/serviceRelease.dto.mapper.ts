@@ -19,6 +19,7 @@ export class ServiceReleaseDtoMapper {
       buildAt: entity.buildAt.toISOString(),
       imageRepository: entity.imageRepository ?? null,
       imageDigest: entity.imageDigest ?? null,
+      ciPipelineId: entity.ciPipelineId ?? null,
       ciPipelineUrl: entity.ciPipelineUrl ?? null,
       changelog: entity.changelog ?? null,
     };
