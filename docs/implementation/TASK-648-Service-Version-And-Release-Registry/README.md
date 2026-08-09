@@ -84,8 +84,10 @@ Rules (each is enforced by a CI gate, §5 W1):
 2. **Tags are immutable and never moved.** Same rule already in force for image digests
    (TASK-616 §F3). A re-tag would silently repoint a release row at different code.
 3. **Untagged builds get a pre-release-shaped identity**, never a fake SemVer:
-   `0.0.0-<branch>.<sha8>` (e.g. `0.0.0-dev-2.1.0ab258f9`). It sorts below every real
-   release and is visually obvious in the console as "not a release".
+   `0.0.0-<branch-slug>.<sha8>` (e.g. `dev-2.1` → `0.0.0-dev-2-1.0ab258f9`). The slug uses
+   the same `[^a-zA-Z0-9]` → `-` rule as the image tag in `.build-template`, so the version
+   string and the image tag agree. It sorts below every real release and is visually obvious
+   in the console as "not a release".
 4. **`ALL-<ver>` is the platform version** — the headline number in the console. Per-service
    versions sit beneath it. A service may be newer than the train (hotfix) but never older
    than the train's pinned digest for that environment.
@@ -582,7 +584,46 @@ chain lands first so U8's registration calls have somewhere real to go.
 
 ## 8. Implementation Summary
 
-_Not started — plan awaiting approval._
+### U0 — Contract freeze ✅ COMPLETE
+
+Worktree `.claude/worktrees/task-648-version-registry`, branch `task-648-version-release-registry`
+(based on `dev-2.1`, **not** `origin/dev` — the default `worktree.baseRef: fresh` would have
+branched off the wrong line).
+
+| Artifact | Path |
+|---|---|
+| Version grammar (code + 23 tests) | `packages/utils/src/version-grammar.ts`, `src/__tests__/version-grammar.test.ts`, exported from the barrel |
+| Build-info JSON Schema | `contracts/build-info.schema.json` |
+| Technical-changelog JSON Schema | `contracts/changelog-entry.schema.json` |
+| API contract (8 routes + DTO/enum shapes) | `contracts/service-release.api.yaml` |
+
+Evidence:
+
+```
+ Test Files  6 passed (6)          # whole @arcaai/utils suite
+      Tests  168 passed (168)      # 23 of them new
+```
+
+RED observed first (import failure on the not-yet-written module). `tsc --noEmit` reports
+only pre-existing errors in `model-registry.ts` / `ModelLoader.ts` (unbuilt `@arcaai/types` in
+a fresh worktree); none in the new files. `packages/utils` has no eslint config or `lint`
+script, so there is no lint gate for this unit.
+
+Decisions made while freezing, that Wave 1 must honour:
+
+- **Build metadata (`+...`) is rejected** in the tag grammar. An image is identified by its
+  digest; a `+build` suffix would be a second, weaker identity competing with it.
+- **`parseReleaseTag` returns null rather than throwing.** Most pipeline runs are untagged —
+  "not a release" is an ordinary outcome, not an error.
+- **`formatUntaggedVersion` never throws**, degrading to `0.0.0-unknown.unknown`. It runs on
+  the boot path of PHI-serving services (§3.7).
+- **Branch slug corrected** to the `[^a-zA-Z0-9]` → `-` rule already used by
+  `.build-template`, so `dev-2.1` yields `0.0.0-dev-2-1.<sha8>` and the version string agrees
+  with the image tag. The original §3.1 example was inconsistent with CI and has been fixed.
+
+### Wave 1 — not started
+
+Awaiting review of the four U0 artifacts before fan-out.
 
 ## 9. Change History
 
