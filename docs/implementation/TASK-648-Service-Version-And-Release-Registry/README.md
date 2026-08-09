@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | Pending (plan awaiting approval) |
+| **Status** | Review — all 11 units implemented and verified; see §8 for gaps |
 | **Type** | feature (infrastructure + full-stack) |
 | **Branch** | `dev-2.1` |
 | **Design gate** | WAIVED by the user (no Figma frames required for this ticket) |
@@ -643,9 +643,83 @@ Decisions made while freezing, that Wave 1 must honour:
   `.build-template`, so `dev-2.1` yields `0.0.0-dev-2-1.<sha8>` and the version string agrees
   with the image tag. The original §3.1 example was inconsistent with CI and has been fixed.
 
-### Wave 1 — not started
+### Wave 1 + integration ✅ COMPLETE — all 11 units landed
 
-Awaiting review of the four U0 artifacts before fan-out.
+Run as three dependency batches in ONE shared worktree (not the 11-way fan-out of §7b.3:
+concurrent units in a single checkout would have had U5/U6 importing modules U4 was still
+writing). Batch A = U1, U2, U3, U4, U7, U9, U11 · Batch B = U5, U10 · Batch C = U6, U8.
+
+| Unit | Commit | Evidence |
+|---|---|---|
+| U0 contracts | `523ed0c1` | utils 168 passed (23 new) |
+| U9 docs + rules | `5ea05fd9` | every cited path/command grepped against the repo |
+| U2 Dockerfiles ×11 | `4de46ced` | 45 passed |
+| U3 build-info readers | `4d7d119f` | TS 8, Python 73 (ruff/black/mypy clean) |
+| U1 CI + changelog gen | `55173fed` | 25 passed; pipeline lint `valid: true` via GitLab MCP |
+| U4 DB + domain | `71a9bba1` | domains 1563, database 1107; all 3 generators no-drift |
+| U7 /releases screen | `56d1ec18` | 36 passed, axe 0 violations |
+| U11 changelog UI | `600f42e1` | 17 passed incl. a live XSS tripwire |
+| U5 ServiceReleaseService | `882383c4` | 16 passed |
+| U10 changelog svc + API | `b6d8bea34` | 17 + 7 passed |
+| U6 release API + health fix | `da4dbeae9` | 53 passed |
+| U8 self-registration ×10 | `4e50ff9e7` | TS 17, Python 73 |
+
+**Integration verification (actual output):**
+
+```
+build chain: utils → database → domains → applications        all Done
+@arcaai/applications   452 files | 8537 passed | 4 skipped
+apps/api               2778 passed | 10 skipped | 1 flake (see below)
+apps/admin-console     1281 passed | 5 files failed to LOAD (see below)
+@arcaai/database       1107 passed
+@arcaai/domains        1563 passed
+packages/py-env        73 passed
+apps/api lint          0 errors, 65 warnings — all pre-existing, none added
+admin-console lint     clean at --max-warnings 0
+```
+
+Two non-clean results, both diagnosed rather than waved away:
+- `throttle-guard.test.ts` fails with `ECONNRESET` under full-suite parallel load and
+  **passes 17/17 in isolation**. Redis is up; it is a load/timing flake in a rate-limit test
+  this ticket does not touch.
+- 5 admin-console files fail to RESOLVE `@arcaai/stt` / `@arcaai/vox` (neither has a `dist/`
+  in a fresh worktree). Module resolution, not assertions — 1281/1281 assertions passed, and
+  all 5 are playground features untouched here.
+
+### Defects found during implementation
+
+Every one was in the PLAN, not in a unit's execution of it. The ownership rule worked: each
+was reported upward instead of being silently patched or worked around.
+
+| Found by | Defect | Resolution |
+|---|---|---|
+| U9 | §3.1 conflated the version tag with the deploy trigger. `ALL-`/`<SVC>-` build but deploy nothing; prod is reached only by a separate `v<X.Y.Z>` tag that builds nothing. | Plan corrected; promote keyed on `CI_COMMIT_SHA`. A runbook written from the original plan would have dead-ended at `promote-prod` failing on a missing digest. |
+| U1 | `imageDigest` documented as "attached by CI" with NO route to attach it. | Contract amended with `POST /internal/service-releases/digest`. |
+| U5 | "heartbeat updates `lastSeenAt` and nothing else" freezes the reported version forever for any stable instance identity — **StatefulSet pods keep stable names across rollouts**. | Ruled: same release → heartbeat; different release → re-point + reset `startedAt`. Both branches tested. |
+| U10 | 🔴 All four models tenant-scoped but NOT in `SYSTEM_SHARED_READ_MODELS`. SYSTEM-owned rows are invisible to a tenant-scoped reader — `/changelog` AND `/releases` return nothing, with every unit test still green because they mock the repository. | Three models added to the allow-list (acknowledgements deliberately excluded); drift-guard test updated. |
+| U6 | `ciPipelineId` was an accepted U5 ruling that never got implemented — the integrator relayed a decision as though it were code. | Added to DTO + mapper by the integrator. |
+| U7 | "Drift" as specified needs the promotion-repo digest pin, which no contract exposes. | Downgraded to staleness, documented in code. Still weaker than §6 claims. |
+
+### Known gaps / follow-ups (NOT done)
+
+1. **`v2.2.0` vs `ALL-2.2.0` are independent numbers.** Nothing forces them to agree. Needs a
+   ruling: either `promote-prod` validates a matching train, or the console shows both.
+2. **Digest attach is unwired.** U1 computes and exports the digest; nothing calls the route,
+   because it assumes CI runners can reach the gateway. If they cannot, the digest should ride
+   in via the deployment repo's manifests as an env var instead.
+3. **Platform version is derived client-side** from the newest `ALL-` tag. Belongs server-side.
+4. **No SHA → commit deep-link**: no repo base URL on the release row. CI already stamps
+   `org.opencontainers.image.source`; the column is the cheap fix.
+5. **Drift stat is really a staleness stat** (see U7 above).
+6. **admin-console registers using `API_GATEWAY_KEY`** — a real registered SERVICE_ACCOUNT
+   ApiKey raw value. It works, but it is over-privileged for reporting a version string. Worth
+   a dedicated credential or dropping console self-registration.
+7. **Audience mapping** puts every non-global-admin in `[ALL, TENANT_ADMIN]`, so a clinician
+   sees TENANT_ADMIN notes. A fourth enum value would be needed to separate them.
+8. **Unseen scans only the 50 most recent entries**; an older unacknowledged note is never
+   replayed.
+9. **The migration has never been applied** to any database. It is authored and reviewed only.
+10. **No e2e spec** (§5 named `release-registration.spec.ts`); unit/component coverage only.
 
 ## 9. Change History
 
