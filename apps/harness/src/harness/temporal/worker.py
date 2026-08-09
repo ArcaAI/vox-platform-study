@@ -19,6 +19,9 @@ from datetime import timedelta
 from pathlib import Path
 from typing import Any
 
+import httpx
+from hope_env import BuildInfoReader
+from hope_env.service_registration import start_registration, stop_registration
 from temporalio.worker import Worker
 
 from harness.core.config import _DEPLOYED_ENVIRONMENTS, Settings, get_settings
@@ -258,6 +261,27 @@ async def run_worker() -> None:
     )
     sweeper = asyncio.create_task(_sweep_model_caches_forever())
     heartbeat = asyncio.create_task(_write_heartbeat_forever())
+
+    # Self-registration (TASK-648 W9): this worker has no inbound HTTP surface
+    # of its own, so it registers+heartbeats independently, exactly like the
+    # FastAPI app does — fire-and-forget, bounded-timeout, NEVER blocks or
+    # fails boot. Registers as service "harness-worker" (distinct from the
+    # FastAPI app's "harness" build-info `service` field) so the registry can
+    # tell the two processes apart.
+    service_release_task = None
+    service_release_http_client = httpx.AsyncClient()
+    try:
+        worker_build_info = _worker_build_info()
+        service_release_task = start_registration(
+            http_client=service_release_http_client,
+            gateway_url=f"{settings.api_base_url.rstrip('/')}/api/v1",
+            service_token=settings.service_token.get_secret_value(),
+            build_info=worker_build_info,
+            environment=settings.environment,
+        )
+    except Exception as exc:  # noqa: BLE001 - registration must never block boot
+        logger.warning("harness.worker.service_release_registration_failed", error=str(exc))
+
     try:
         async with worker:
             await interrupt_event.wait()
@@ -266,7 +290,22 @@ async def run_worker() -> None:
             task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await task
+        await stop_registration(service_release_task)
+        await service_release_http_client.aclose()
     logger.info("harness.worker.stopped")
+
+
+def _worker_build_info() -> Any:
+    """The worker's build-info, `service` renamed to `harness-worker`.
+
+    Same baked `/app/build-info.json` as the FastAPI app (same image), so
+    every field except `service` is identical; the rename is what lets the
+    registry distinguish the two processes booted from that one image.
+    """
+    from dataclasses import replace
+
+    base = BuildInfoReader().get_build_info()
+    return replace(base, service="harness-worker")
 
 
 def _request_shutdown(sig: signal.Signals, interrupt_event: asyncio.Event) -> None:

@@ -1,4 +1,4 @@
-import { ILoggingService, loadEnv, SecretsService } from '@arcaai/applications';
+import { BuildInfoService, ILoggingService, IServiceReleaseService, loadEnv, SecretsService } from '@arcaai/applications';
 import { LogLevel, RequestMethod, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { WsAdapter } from '@nestjs/platform-ws';
@@ -16,7 +16,7 @@ import { apiEnv } from './config';
 import { buildCorsOptions, isOriginAllowed } from './cors.config';
 import { flushOtel } from './instrumentation';
 import { ETagInterceptor } from './interceptors';
-import { GracefulShutdownService } from './services';
+import { GracefulShutdownService, startServiceReleaseRegistration } from './services';
 // Swagger config lives in `swagger.config.ts` so the security-scheme list
 // (bearer + api-key) is unit-testable.
 import { buildSwaggerConfig } from './swagger.config';
@@ -187,6 +187,19 @@ async function bootstrap() {
   // other cleanup callback, under its own timeout, after the readiness gate
   // has already closed and connections have started draining.
   gracefulShutdownService.registerCleanupCallback('otel-flush', flushOtel);
+
+  // Self-registration (TASK-648 W9): the gateway is the ONLY process that
+  // registers IN-PROCESS — it already holds `IServiceReleaseService`, so it
+  // calls `registerInstance()` directly rather than making a self-HTTP call
+  // (ticket §3.4). Fire-and-forget, bounded-timeout, and — like every other
+  // process — must NEVER block or fail boot; failures are logged and
+  // swallowed inside `startServiceReleaseRegistration` itself.
+  const serviceReleaseHandle = startServiceReleaseRegistration(app.get(IServiceReleaseService), new BuildInfoService(), nodeEnv, {
+    onError: (error) =>
+      loggingService.warn('Service-release registration failed (non-fatal)', { error: (error as Error)?.message ?? error }, 'Bootstrap'),
+  });
+  gracefulShutdownService.registerCleanupCallback('service-release-heartbeat', async () => serviceReleaseHandle.stop());
+
   loggingService.info(
     'Graceful shutdown enabled',
     {

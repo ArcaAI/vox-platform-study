@@ -12,8 +12,11 @@ import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
+import httpx
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from hope_env import BuildInfoReader
+from hope_env.service_registration import start_registration, stop_registration
 
 from harness.core.config import Settings, get_settings
 from harness.core.logging import get_logger, setup_logging
@@ -54,10 +57,31 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             error=str(exc),
         )
 
+    # Self-registration (TASK-648 W9): fire-and-forget, bounded-timeout, NEVER
+    # blocks or fails boot. A dedicated short-lived httpx client (kept out of
+    # any request-serving pool) — closed on shutdown below.
+    app.state.service_release_task = None
+    app.state.service_release_http_client = None
+    try:
+        registration_client = httpx.AsyncClient()
+        app.state.service_release_http_client = registration_client
+        app.state.service_release_task = start_registration(
+            http_client=registration_client,
+            gateway_url=f"{settings.api_base_url.rstrip('/')}/api/v1",
+            service_token=settings.service_token.get_secret_value(),
+            build_info=BuildInfoReader().get_build_info(),
+            environment=settings.environment,
+        )
+    except Exception as exc:  # noqa: BLE001 - registration must never block boot
+        logger.warning("harness.service_release_registration_failed", error=str(exc))
+
     logger.info("harness.started")
     yield
 
     logger.info("harness.shutting_down")
+    await stop_registration(app.state.service_release_task)
+    if app.state.service_release_http_client is not None:
+        await app.state.service_release_http_client.aclose()
     app.state.temporal_client = None
 
     from harness.core.observability import shutdown_opentelemetry

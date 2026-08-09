@@ -23,8 +23,15 @@ Usage:
 """
 
 import asyncio
+import os
 import signal
+import threading
 from types import FrameType
+from typing import Any
+
+import httpx
+from hope_env import BuildInfoReader
+from hope_env.service_registration import start_registration, stop_registration
 
 from stt.core.config.settings import get_settings
 from stt.core.logging import get_logger, setup_logging
@@ -33,6 +40,7 @@ from stt.core.messaging.broker import configure_broker
 settings = get_settings()
 setup_logging(settings.log_level)
 logger = get_logger(__name__)
+
 
 def _worker_service_name(configured: str) -> str:
     """Return the worker's OTel service name without double-suffixing.
@@ -159,6 +167,89 @@ async def cleanup_services() -> None:
     logger.info("Worker services cleanup complete")
 
 
+def _worker_build_info() -> Any:
+    """The worker's build-info, `service` renamed to `stt-worker`.
+
+    Same baked `/app/build-info.json` as the `stt` FastAPI app (same image);
+    the rename is what lets the registry distinguish the two processes.
+    """
+    from dataclasses import replace
+
+    base = BuildInfoReader().get_build_info()
+    return replace(base, service="stt-worker")
+
+
+def _start_service_release_registration() -> dict[str, Any]:
+    """Self-registration (TASK-648 W9): this worker has no inbound HTTP
+
+    surface of its own, so it registers+heartbeats independently — fire-and-
+    forget, bounded-timeout, NEVER blocks or fails boot.
+
+    The Dramatiq worker's `main()` is synchronous (it blocks on
+    `shutdown_event.wait()`), so there is no ambient asyncio event loop alive
+    for the process lifetime. This runs the registration + heartbeat loop on
+    a dedicated background event-loop thread instead. `DEPLOYMENT_ENVIRONMENT`
+    / `NODE_ENV` is the same repo-wide convention used elsewhere (TASK-636
+    OBS-18); stt has no dedicated `environment` settings field.
+    """
+    box: dict[str, Any] = {"loop": None, "task": None, "client": None}
+    ready = threading.Event()
+
+    def _runner() -> None:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        box["loop"] = loop
+
+        async def _start() -> None:
+            client = httpx.AsyncClient()
+            box["client"] = client
+            try:
+                box["task"] = start_registration(
+                    http_client=client,
+                    gateway_url=settings.api_gateway_url,
+                    service_token=settings.api_gateway_key.get_secret_value(),
+                    build_info=_worker_build_info(),
+                    environment=(
+                        os.getenv("DEPLOYMENT_ENVIRONMENT")
+                        or os.getenv("NODE_ENV")
+                        or "development"
+                    ),
+                )
+            except Exception as exc:  # noqa: BLE001 - registration must never block boot
+                logger.warning(f"Service-release registration failed to start (non-fatal): {exc}")
+
+        loop.create_task(_start())
+        ready.set()
+        loop.run_forever()
+
+    thread = threading.Thread(target=_runner, name="service-release-registration", daemon=True)
+    thread.start()
+    ready.wait(timeout=2.0)
+    return box
+
+
+def _stop_service_release_registration(box: dict[str, Any]) -> None:
+    """Cancel the heartbeat task cleanly on its own loop, then stop the loop."""
+    loop = box.get("loop")
+    task = box.get("task")
+    client = box.get("client")
+    if loop is None:
+        return
+
+    async def _stop() -> None:
+        await stop_registration(task)
+        if client is not None:
+            await client.aclose()
+
+    try:
+        future = asyncio.run_coroutine_threadsafe(_stop(), loop)
+        future.result(timeout=5.0)
+    except Exception as exc:  # noqa: BLE001 - shutdown must never raise either
+        logger.warning(f"Service-release registration shutdown failed (non-fatal): {exc}")
+    finally:
+        loop.call_soon_threadsafe(loop.stop)
+
+
 def main() -> None:
     """
     Entry point for the Dramatiq worker.
@@ -174,6 +265,8 @@ def main() -> None:
 
     # Initialize services (database, MinIO, etc.) before starting worker
     asyncio.run(initialize_services())
+
+    service_release_box = _start_service_release_registration()
 
     # The worker-thread ceiling resolves control-plane first with the env value
     # as fallback. Resolved once at worker start (Dramatiq fixes the thread pool
@@ -240,6 +333,8 @@ def main() -> None:
     logger.info("Waiting for worker threads to finish...")
     worker.join()
     logger.info("Worker threads stopped")
+
+    _stop_service_release_registration(service_release_box)
 
     if _worker_logger_provider is not None:
         _worker_logger_provider.force_flush()

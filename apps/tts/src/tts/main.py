@@ -11,8 +11,11 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
+import httpx
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from hope_env import BuildInfoReader
+from hope_env.service_registration import start_registration, stop_registration
 
 from tts.core.config import Settings, get_settings
 from tts.core.logging import get_logger, setup_logging
@@ -113,8 +116,29 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 logger=logger,
             )
 
+    # Self-registration (TASK-648 W9): fire-and-forget, bounded-timeout, NEVER
+    # blocks or fails boot. Dedicated short-lived httpx client, closed below.
+    app.state.service_release_task = None
+    app.state.service_release_http_client = None
+    try:
+        registration_client = httpx.AsyncClient()
+        app.state.service_release_http_client = registration_client
+        app.state.service_release_task = start_registration(
+            http_client=registration_client,
+            gateway_url=settings.gateway_url,
+            service_token=settings.service_token.get_secret_value(),
+            build_info=BuildInfoReader().get_build_info(),
+            environment=settings.otel_deployment_environment,
+        )
+    except Exception as exc:  # noqa: BLE001 - registration must never block boot
+        logger.warning("tts.service_release_registration_failed", error=str(exc))
+
     logger.info("tts.started", providers=registry.list_providers())
     yield
+
+    await stop_registration(app.state.service_release_task)
+    if app.state.service_release_http_client is not None:
+        await app.state.service_release_http_client.aclose()
 
     from tts.core.observability import shutdown_opentelemetry
 

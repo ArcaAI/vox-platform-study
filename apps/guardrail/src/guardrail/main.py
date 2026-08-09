@@ -6,6 +6,7 @@ FastAPI application with Ollama integration and job queue processing.
 from __future__ import annotations
 
 import asyncio
+import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import cast
@@ -14,6 +15,8 @@ import httpx
 import redis.asyncio as aioredis
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from hope_env import BuildInfoReader
+from hope_env.service_registration import start_registration, stop_registration
 
 from guardrail.core.config import (
     OllamaConfig,
@@ -172,10 +175,31 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         )
         logger.info("guardrail.job_processor_started")
 
+    # Self-registration (TASK-648 W9): fire-and-forget, bounded-timeout, NEVER
+    # blocks or fails boot. Reuses the shared `http_client` above. Guardrail
+    # has no dedicated `environment` settings field; `DEPLOYMENT_ENVIRONMENT`
+    # / `NODE_ENV` is the same repo-wide convention `_deployment_environment()`
+    # uses for OTel elsewhere (TASK-636 OBS-18).
+    app.state.service_release_task = None
+    try:
+        app.state.service_release_task = start_registration(
+            http_client=http_client,
+            gateway_url=settings.gateway_url,
+            service_token=settings.service_token.get_secret_value(),
+            build_info=BuildInfoReader().get_build_info(),
+            environment=os.getenv("DEPLOYMENT_ENVIRONMENT")
+            or os.getenv("NODE_ENV")
+            or "development",
+        )
+    except Exception as exc:  # noqa: BLE001 - registration must never block boot
+        logger.warning("guardrail.service_release_registration_failed", error=str(exc))
+
     yield
 
     # Cleanup
     logger.info("guardrail.shutting_down")
+
+    await stop_registration(app.state.service_release_task)
 
     if hasattr(app.state, "job_processor") and app.state.job_processor:
         await app.state.job_processor.stop()

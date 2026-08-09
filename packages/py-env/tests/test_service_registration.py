@@ -1,0 +1,249 @@
+"""Tests for the shared self-registration + heartbeat helper (TASK-648 U8).
+
+Contract: `docs/implementation/TASK-648-Service-Version-And-Release-Registry/
+contracts/service-release.api.yaml` `POST /internal/service-releases` —
+idempotent upsert; a repeat call (heartbeat) is the SAME endpoint.
+
+Critical rule under test: registration must NEVER block or fail process boot
+(TASK-648 §3.7). A down/timeout/500 gateway must not raise past
+`start_registration`/`stop_registration`, and the heartbeat task must be
+cleanly cancellable with no leaked task.
+"""
+
+from __future__ import annotations
+
+import asyncio
+
+import httpx
+import pytest
+
+from hope_env.build_info import BuildInfo
+from hope_env.service_registration import (
+    build_payload,
+    instance_id,
+    normalize_environment,
+    start_registration,
+    stop_registration,
+)
+
+SAMPLE_BUILD_INFO = BuildInfo(
+    service="smr",
+    version="2.1.0",
+    release_tag="SMR-2.1.0",
+    git_branch="main",
+    git_commit_sha="0ab258f9c1d2e3f4a5b6c7d8e9f0011223344557",
+    build_at="2026-08-09T11:22:33Z",
+    ci_pipeline_id="12345",
+    ci_pipeline_url="https://gitlab.example.com/pipelines/12345",
+)
+
+
+class TestNormalizeEnvironment:
+    @pytest.mark.parametrize(
+        ("raw", "expected"),
+        [
+            ("development", "dev"),
+            ("dev", "dev"),
+            ("test", "dev"),
+            ("staging", "staging"),
+            ("production", "prod"),
+            ("prod", "prod"),
+            ("", "dev"),
+            ("Production", "prod"),
+        ],
+    )
+    def test_normalizes_known_conventions(self, raw: str, expected: str) -> None:
+        assert normalize_environment(raw) == expected
+
+
+class TestInstanceId:
+    def test_prefers_hostname_env_var(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("HOSTNAME", "smr-7d8f9c-abcde")
+        assert instance_id() == "smr-7d8f9c-abcde"
+
+    def test_falls_back_to_hostname_colon_pid(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("HOSTNAME", raising=False)
+        result = instance_id()
+        assert ":" in result
+
+
+class TestBuildPayload:
+    def test_builds_the_wire_shape_from_build_info_plus_runtime_facts(self) -> None:
+        payload = build_payload(SAMPLE_BUILD_INFO, "production", "smr-pod-1")
+
+        assert payload == {
+            "service": "smr",
+            "version": "2.1.0",
+            "releaseTag": "SMR-2.1.0",
+            "gitBranch": "main",
+            "gitCommitSha": "0ab258f9c1d2e3f4a5b6c7d8e9f0011223344557",
+            "buildAt": "2026-08-09T11:22:33Z",
+            "ciPipelineId": "12345",
+            "ciPipelineUrl": "https://gitlab.example.com/pipelines/12345",
+            "environment": "prod",
+            "instanceId": "smr-pod-1",
+        }
+
+    def test_normalizes_environment_inline(self) -> None:
+        payload = build_payload(SAMPLE_BUILD_INFO, "development", "smr-pod-1")
+        assert payload["environment"] == "dev"
+
+
+class _RecordingTransport(httpx.AsyncBaseTransport):
+    """Fake transport recording every request it sees."""
+
+    def __init__(self, responder) -> None:
+        self.calls: list[httpx.Request] = []
+        self._responder = responder
+
+    async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+        self.calls.append(request)
+        return self._responder(request)
+
+
+class _RaisingTransport(httpx.AsyncBaseTransport):
+    """Fake transport that always raises (simulates a down gateway)."""
+
+    def __init__(self, exc: Exception) -> None:
+        self.calls = 0
+        self._exc = exc
+
+    async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+        self.calls += 1
+        raise self._exc
+
+
+@pytest.mark.asyncio
+class TestStartRegistrationNeverBlocksBoot:
+    async def test_gateway_down_does_not_raise(self) -> None:
+        transport = _RaisingTransport(httpx.ConnectError("connection refused"))
+        client = httpx.AsyncClient(transport=transport)
+        try:
+            task = start_registration(
+                http_client=client,
+                gateway_url="http://gateway:8868/api/v1",
+                service_token="secret",
+                build_info=SAMPLE_BUILD_INFO,
+                environment="dev",
+                instance_id_="smr-pod-1",
+                interval_s=9999,
+            )
+            # Give the fire-and-forget initial POST a chance to run and fail.
+            await asyncio.sleep(0.05)
+            assert not task.done() or task.exception() is None
+        finally:
+            await stop_registration(task)
+            await client.aclose()
+
+    async def test_gateway_timeout_does_not_raise(self) -> None:
+        transport = _RaisingTransport(httpx.TimeoutException("timed out"))
+        client = httpx.AsyncClient(transport=transport)
+        try:
+            task = start_registration(
+                http_client=client,
+                gateway_url="http://gateway:8868/api/v1",
+                service_token="secret",
+                build_info=SAMPLE_BUILD_INFO,
+                environment="dev",
+                instance_id_="smr-pod-1",
+                interval_s=9999,
+            )
+            await asyncio.sleep(0.05)
+            assert not task.done() or task.exception() is None
+        finally:
+            await stop_registration(task)
+            await client.aclose()
+
+    async def test_gateway_500_does_not_raise(self) -> None:
+        transport = _RecordingTransport(lambda req: httpx.Response(500, json={"error": "boom"}))
+        client = httpx.AsyncClient(transport=transport)
+        try:
+            task = start_registration(
+                http_client=client,
+                gateway_url="http://gateway:8868/api/v1",
+                service_token="secret",
+                build_info=SAMPLE_BUILD_INFO,
+                environment="dev",
+                instance_id_="smr-pod-1",
+                interval_s=9999,
+            )
+            await asyncio.sleep(0.05)
+            assert not task.done() or task.exception() is None
+            assert len(transport.calls) == 1
+        finally:
+            await stop_registration(task)
+            await client.aclose()
+
+    async def test_posts_the_expected_payload_and_headers_on_success(self) -> None:
+        transport = _RecordingTransport(lambda req: httpx.Response(200, json={"id": "abc"}))
+        client = httpx.AsyncClient(transport=transport)
+        try:
+            task = start_registration(
+                http_client=client,
+                gateway_url="http://gateway:8868/api/v1",
+                service_token="s3cr3t",
+                build_info=SAMPLE_BUILD_INFO,
+                environment="prod",
+                instance_id_="smr-pod-1",
+                interval_s=9999,
+            )
+            await asyncio.sleep(0.05)
+            assert len(transport.calls) == 1
+            request = transport.calls[0]
+            assert str(request.url) == "http://gateway:8868/api/v1/internal/service-releases"
+            assert request.headers["x-service-token"] == "s3cr3t"
+        finally:
+            await stop_registration(task)
+            await client.aclose()
+
+
+@pytest.mark.asyncio
+class TestHeartbeatScheduling:
+    async def test_heartbeats_on_the_configured_interval(self) -> None:
+        transport = _RecordingTransport(lambda req: httpx.Response(200, json={"id": "abc"}))
+        client = httpx.AsyncClient(transport=transport)
+        try:
+            task = start_registration(
+                http_client=client,
+                gateway_url="http://gateway:8868/api/v1",
+                service_token="secret",
+                build_info=SAMPLE_BUILD_INFO,
+                environment="dev",
+                instance_id_="smr-pod-1",
+                interval_s=0.02,
+            )
+            await asyncio.sleep(0.1)
+            # Initial registration + at least 2 heartbeats.
+            assert len(transport.calls) >= 3
+        finally:
+            await stop_registration(task)
+            await client.aclose()
+
+    async def test_stop_registration_cancels_the_task_cleanly(self) -> None:
+        transport = _RecordingTransport(lambda req: httpx.Response(200, json={"id": "abc"}))
+        client = httpx.AsyncClient(transport=transport)
+        try:
+            task = start_registration(
+                http_client=client,
+                gateway_url="http://gateway:8868/api/v1",
+                service_token="secret",
+                build_info=SAMPLE_BUILD_INFO,
+                environment="dev",
+                instance_id_="smr-pod-1",
+                interval_s=0.02,
+            )
+            await asyncio.sleep(0.03)
+            await stop_registration(task)
+
+            assert task.cancelled() or task.done()
+            calls_at_stop = len(transport.calls)
+            await asyncio.sleep(0.1)
+            # No further heartbeats after cancellation — no leaked task.
+            assert len(transport.calls) == calls_at_stop
+        finally:
+            await client.aclose()
+
+    async def test_stop_registration_on_a_never_started_task_is_a_noop(self) -> None:
+        # None must never raise — a lifespan that skipped start_registration
+        # (e.g. because build-info was unreadable) still calls stop unconditionally.
+        await stop_registration(None)
