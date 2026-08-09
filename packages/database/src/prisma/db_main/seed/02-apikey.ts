@@ -217,6 +217,32 @@ export const DEFAULT_API_KEYS = [
     rateLimit: 2000,
   },
   {
+    id: SEED_API_KEY_IDS.SDK_COMPAT_ARCAAI,
+    rawKey: SEED_API_KEY_RAW.SDK_COMPAT_ARCAAI,
+    keyName: 'ArcaAI SDK Compat Key',
+    keyType: ApiKeyType.SDK,
+    keyStatus: ApiKeyStatus.ACTIVE,
+    description: 'SDK API key for ArcaAI tenant - client-side SDK compat usage',
+    environment: 'development',
+    tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
+    userId: SEED_USER_IDS.ARCAAI_ADMIN,
+    scopes: [
+      'stt:transcription:read',
+      'stt:transcription:write',
+      'stt:stream:write',
+      'consultation:session:read',
+      'consultation:session:write',
+      'consultation:report:read',
+      // Generating a summary / pre-summary is a report WRITE. Required since the
+      // summarization routes began declaring @RequiredScopes — without it every
+      // seeded SDK key 403s on the primary consultation-documentation flow.
+      'consultation:report:write',
+      'user:preferences:read',
+      'user:preferences:write',
+    ],
+    rateLimit: 1000,
+  },
+  {
     id: SEED_API_KEY_IDS.EXPIRED_DOCTOR2,
     rawKey: SEED_API_KEY_RAW.EXPIRED_DOCTOR2,
     keyName: 'Expired Test Key - Doctor2',

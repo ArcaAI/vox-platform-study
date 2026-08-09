@@ -108,6 +108,13 @@ interface PlanEntitlementSeed {
   featureDnaReports: boolean;
   featureVoiceEnrollment: boolean;
   featureMonitoringAccess: boolean;
+  // TASK-643 R6 — may this plan's tenants consume the PLATFORM-DEFAULT
+  // (SYSTEM-tenant) provider credential? `false` on every plan (OD-7): the
+  // grant is sold per tenant via `TenantEntitlement`, because a plan-level
+  // grant would hand every tenant on that tier a platform-funded cloud path —
+  // the margin hole TASK-638 closed. Kept in sync by
+  // `packages/applications/src/services/entitlements/__tests__/plan-matrix-parity.test.ts`.
+  featurePlatformDefaultCredential: boolean;
   modelTier: string;
   rateLimitTier: string;
 }
@@ -134,11 +141,19 @@ const PRO_VALUES = {
   featureDnaReports: true,
   featureVoiceEnrollment: true,
   featureMonitoringAccess: false,
+  featurePlatformDefaultCredential: false,
   modelTier: 'full',
   rateLimitTier: 'default',
 };
 
-const PLAN_ENTITLEMENTS: PlanEntitlementSeed[] = [
+/**
+ * The seeded per-plan matrix. EXPORTED (TASK-643 §3.5.7) so the parity guard in
+ * `@arcaai/applications` can assert it field-for-field against
+ * `PLAN_ENTITLEMENT_DEFAULTS` — the two copies are hand-synced and, until that
+ * test, nothing checked them. Follows the same export-for-test convention as
+ * `SYSTEM_AI_PROVIDER_CONNECTIONS` (17-ai-provider-connection.ts).
+ */
+export const PLAN_ENTITLEMENTS: PlanEntitlementSeed[] = [
   {
     id: SEED_PLAN_ENTITLEMENT_IDS.STARTER,
     plan: TenantPlan.STARTER,
@@ -162,6 +177,7 @@ const PLAN_ENTITLEMENTS: PlanEntitlementSeed[] = [
     featureDnaReports: false,
     featureVoiceEnrollment: false,
     featureMonitoringAccess: false,
+    featurePlatformDefaultCredential: false,
     modelTier: 'base',
     rateLimitTier: 'strict',
   },
@@ -192,6 +208,7 @@ const PLAN_ENTITLEMENTS: PlanEntitlementSeed[] = [
     featureDnaReports: true,
     featureVoiceEnrollment: true,
     featureMonitoringAccess: true,
+    featurePlatformDefaultCredential: false,
     modelTier: 'full_custom',
     rateLimitTier: 'relaxed',
   },
@@ -261,7 +278,8 @@ export const seedEntitlements = async (client: CorePrismaClient) => {
     },
     update: {
       dataType: ValueType.Boolean,
-      description: 'Metering reconcile-sweep kill-switch. Persists per-(tenant, metric, window) usage snapshots into TenantUsageMeter; reads never depend on it.',
+      description:
+        'Metering reconcile-sweep kill-switch. Persists per-(tenant, metric, window) usage snapshots into TenantUsageMeter; reads never depend on it.',
       namespace: 'metering',
     },
     create: {
@@ -275,7 +293,8 @@ export const seedEntitlements = async (client: CorePrismaClient) => {
       value: String(METERING_RECONCILE_SEED_DEFAULT),
       defaultValue: 'false',
       dataType: ValueType.Boolean,
-      description: 'Metering reconcile-sweep kill-switch. Persists per-(tenant, metric, window) usage snapshots into TenantUsageMeter; reads never depend on it.',
+      description:
+        'Metering reconcile-sweep kill-switch. Persists per-(tenant, metric, window) usage snapshots into TenantUsageMeter; reads never depend on it.',
       locked: false,
       createdBy: CREATED_BY,
     },

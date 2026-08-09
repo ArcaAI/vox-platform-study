@@ -11,7 +11,9 @@ describe('resolveEntitlements', () => {
       expect(r.plan).toBeNull();
       expect(r.limits).toEqual(UNGATED_ENTITLEMENTS.limits);
       expect(Object.values(r.limits).every((v) => v === null)).toBe(true);
-      expect(r.features).toEqual({ dnaReports: true, voiceEnrollment: true, monitoringAccess: true });
+      // TASK-643 §0(3): `platformDefaultCredential` is the ONE feature that is
+      // NOT `true` for a null-plan tenant — see the dedicated test below.
+      expect(r.features).toEqual({ dnaReports: true, voiceEnrollment: true, monitoringAccess: true, platformDefaultCredential: false });
       expect(r.modelTier).toBe('full_custom');
     });
 
@@ -34,7 +36,7 @@ describe('resolveEntitlements', () => {
       expect(r.limits.maxConcurrentSessions).toBe(5);
       // TASK-638: STARTER = $50/mo bundling 50 consultations.
       expect(r.limits.monthlyConsultations).toBe(50);
-      expect(r.features).toEqual({ dnaReports: false, voiceEnrollment: false, monitoringAccess: false });
+      expect(r.features).toEqual({ dnaReports: false, voiceEnrollment: false, monitoringAccess: false, platformDefaultCredential: false });
       expect(r.modelTier).toBe('base');
       expect(r.rateLimitTier).toBe('strict');
       expect(r.rateLimitPerMinute).toBeNull();
@@ -207,6 +209,72 @@ describe('resolveEntitlements', () => {
       const pro = resolveEntitlements(TenantPlan.PRO);
       expect(trial.limits.monthlyLlmTokens).toBe(pro.limits.monthlyLlmTokens);
       expect(trial.limits.monthlyEmbeddingTokens).toBe(pro.limits.monthlyEmbeddingTokens);
+    });
+  });
+
+  /*
+   * TASK-643 R6 — `featurePlatformDefaultCredential`.
+   *
+   * The grant that decides whether a tenant's provider-credential cascade may
+   * reach the SYSTEM (platform-funded) tier. Resolution shape is identical to
+   * the three existing booleans (plan default ← tri-state tenant override);
+   * what is deliberately DIFFERENT is the ungated-legacy fallback and the
+   * seeded plan matrix, both of which are `false`. See §0(3) and §3.5.2.
+   */
+  describe('TASK-643 platformDefaultCredential grant', () => {
+    // 22
+    it('a plan row granting featurePlatformDefaultCredential resolves the feature true', () => {
+      const r = resolveEntitlements(TenantPlan.STARTER, { featurePlatformDefaultCredential: true });
+      expect(r.features.platformDefaultCredential).toBe(true);
+    });
+
+    // 23 — the primary sales path (§3.5.2: no plan grants it; grants are per tenant).
+    it('a per-tenant override grants it over a plan default of false', () => {
+      const r = resolveEntitlements(TenantPlan.PRO, { featurePlatformDefaultCredential: false }, { featurePlatformDefaultCredential: true });
+      expect(r.features.platformDefaultCredential).toBe(true);
+    });
+
+    // 24 — the tri-state's third state is not decorative.
+    it('an explicit tenant deny (false) beats a plan grant (true)', () => {
+      const r = resolveEntitlements(TenantPlan.ENTERPRISE, { featurePlatformDefaultCredential: true }, { featurePlatformDefaultCredential: false });
+      expect(r.features.platformDefaultCredential).toBe(false);
+    });
+
+    // 25 — null = inherit, in BOTH directions.
+    it('a null tenant override inherits the plan value (neither forced true nor false)', () => {
+      const granted = resolveEntitlements(TenantPlan.PRO, { featurePlatformDefaultCredential: true }, { featurePlatformDefaultCredential: null });
+      expect(granted.features.platformDefaultCredential).toBe(true);
+
+      const ungranted = resolveEntitlements(TenantPlan.PRO, { featurePlatformDefaultCredential: false }, { featurePlatformDefaultCredential: null });
+      expect(ungranted.features.platformDefaultCredential).toBe(false);
+    });
+
+    /*
+     * 26 — TASK-643 §0(3). `UNGATED_ENTITLEMENTS` resolves every OTHER boolean
+     * feature `true` (a null-plan "ungated-legacy" tenant is unrestricted by
+     * design). This one must be the FIRST to resolve `false`: the grant governs
+     * whether the platform SPENDS MONEY on a tenant's behalf, so the ungated
+     * fallback has to fail CLOSED. Restoring the "ungated ⇒ everything on"
+     * symmetry silently grants the platform default to every null-plan tenant.
+     */
+    it('UNGATED_ENTITLEMENTS resolves platformDefaultCredential FALSE — the one asymmetric feature (§0(3))', () => {
+      expect(UNGATED_ENTITLEMENTS.features.platformDefaultCredential).toBe(false);
+      // …while its three neighbours stay `true`, so the asymmetry is deliberate
+      // and visible rather than an oversight in one direction or the other.
+      expect(UNGATED_ENTITLEMENTS.features.dnaReports).toBe(true);
+      expect(UNGATED_ENTITLEMENTS.features.voiceEnrollment).toBe(true);
+      expect(UNGATED_ENTITLEMENTS.features.monitoringAccess).toBe(true);
+
+      // …and the resolver actually returns it for a null plan.
+      expect(resolveEntitlements(null).features.platformDefaultCredential).toBe(false);
+    });
+
+    // 27 — OD-7: `false` on all four plans; grants are per tenant only.
+    it('every seeded plan defaults to false (OD-7 — no plan tier carries the grant)', () => {
+      for (const plan of [TenantPlan.STARTER, TenantPlan.TRIAL, TenantPlan.PRO, TenantPlan.ENTERPRISE]) {
+        expect(PLAN_ENTITLEMENT_DEFAULTS[plan].featurePlatformDefaultCredential, `${plan} matrix default`).toBe(false);
+        expect(resolveEntitlements(plan).features.platformDefaultCredential, `${plan} resolved`).toBe(false);
+      }
     });
   });
 });

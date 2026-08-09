@@ -49,4 +49,33 @@ export const ENTITLEMENT_SETTINGS: SettingDescriptor[] = [
     label,
     description,
   })),
+  /*
+   * TASK-643 R6 — declared separately from the three above, not folded into the
+   * `.map`, because ONE field differs and that field is the whole point.
+   *
+   * `failMode: 'closed'`. The other three feature descriptors are
+   * `open-to-default`, which is right for a display flag: an unresolved value
+   * degrades to "show it". This one decides whether the platform SPENDS ITS OWN
+   * MONEY on a tenant's cloud calls, so an unresolved value must raise rather
+   * than substitute a permissive default — the same fail-closed rule the
+   * settings framework applies to provider/model SELECTION.
+   *
+   * `default: false` is the seeded plan value on all four tiers (OD-7); grants
+   * are issued per tenant through `TenantEntitlement`.
+   */
+  {
+    key: 'entitlements.featurePlatformDefaultCredential',
+    tier: 'entitlement',
+    dataType: 'boolean',
+    sensitivity: 'internal',
+    maxScope: 'tenant',
+    editableBy: 'PlanEntitlement',
+    globalOnly: true,
+    failMode: 'closed',
+    category: 'Plan',
+    label: 'Platform-default provider credential',
+    description:
+      'Whether the tenant may consume the PLATFORM-DEFAULT (SYSTEM-tenant) provider credential when it holds no key of its own. Platform-funded spend — granted per tenant, never by plan tier.',
+    default: false,
+  },
 ];

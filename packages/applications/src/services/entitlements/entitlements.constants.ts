@@ -115,6 +115,21 @@ export interface PlanEntitlementValues {
   featureDnaReports: boolean;
   featureVoiceEnrollment: boolean;
   featureMonitoringAccess: boolean;
+  /**
+   * TASK-643 R6 — may this plan's tenants consume the PLATFORM-DEFAULT
+   * (SYSTEM-tenant) provider credential when they hold no key of their own?
+   *
+   * Unlike its three neighbours this flag is ENFORCED, not display-only: it
+   * decides whether the provider-credential cascade reaches the SYSTEM tier,
+   * i.e. whether the platform spends its own money serving this tenant.
+   *
+   * `false` on all four plans (OD-7). A plan-level grant on PRO or ENTERPRISE
+   * would hand every tenant on that tier a platform-funded cloud path — the
+   * margin hole TASK-638 closed when it ratified "SYSTEM stays self-hosted,
+   * managed cloud is a paid add-on". Grants are per tenant, through
+   * `TenantEntitlement`, which is also how ENTERPRISE is actually sold.
+   */
+  featurePlatformDefaultCredential: boolean;
   modelTier: ModelTier;
   rateLimitTier: string;
 }
@@ -141,6 +156,7 @@ const PRO_VALUES: PlanEntitlementValues = {
   featureDnaReports: true,
   featureVoiceEnrollment: true,
   featureMonitoringAccess: false,
+  featurePlatformDefaultCredential: false,
   modelTier: 'full',
   rateLimitTier: 'default',
 };
@@ -167,6 +183,7 @@ export const PLAN_ENTITLEMENT_DEFAULTS: Record<TenantPlan, PlanEntitlementValues
     featureDnaReports: false,
     featureVoiceEnrollment: false,
     featureMonitoringAccess: false,
+    featurePlatformDefaultCredential: false,
     modelTier: 'base',
     rateLimitTier: 'strict',
   },
@@ -194,6 +211,7 @@ export const PLAN_ENTITLEMENT_DEFAULTS: Record<TenantPlan, PlanEntitlementValues
     featureDnaReports: true,
     featureVoiceEnrollment: true,
     featureMonitoringAccess: true,
+    featurePlatformDefaultCredential: false,
     modelTier: 'full_custom',
     rateLimitTier: 'relaxed',
   },

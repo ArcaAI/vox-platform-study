@@ -6,8 +6,16 @@ import {
   UpdatePlanEntitlementRequest,
   UpsertTenantEntitlementRequest,
 } from './dto';
-import { ResolvedEntitlements } from './resolve-entitlements';
+import { ResolvedEntitlements, ResolvedFeatures } from './resolve-entitlements';
 import { EntitlementLimitKey, MeterCapabilityKey } from './enforcement';
+
+/**
+ * A boolean feature entitlement, by its resolved name. Derived from
+ * `ResolvedFeatures` (never a free string) for the same reason
+ * `EntitlementLimitKey` is `keyof ResolvedLimits`: entitlements are
+ * COLUMN-per-key, so the type system is the registry.
+ */
+export type EntitlementFeatureKey = keyof ResolvedFeatures;
 
 /**
  * Result of a storage soft-warn evaluation (Q6). `warn` is true when the
@@ -69,6 +77,25 @@ export interface IEntitlementsService {
    * usage (Q5), features, tiers, and the trial clock.
    */
   getCapabilities(tenantId: EntityId): Promise<EntitlementCapabilitiesResponse>;
+
+  /**
+   * (TASK-643 R6) — NON-THROWING read of a boolean feature entitlement for
+   * `tenantId`. Returns the resolved value (seeded plan default ← plan row ←
+   * tri-state tenant override).
+   *
+   * **Non-throwing on purpose.** Its caller — the provider-credential cascade
+   * in `AiProviderConnectionService` — uses it to SHAPE a cascade, at a point
+   * where nobody yet knows which provider the request will select. Throwing
+   * there would 403 a tenant that was about to use a self-hosted provider and
+   * never needed the platform credential at all. The throw belongs at the point
+   * of selection, once a provider is chosen and found to have no override.
+   *
+   * **Honours the global kill switch (OD-6).** When `entitlements.enabled` is
+   * OFF this returns `true` without resolving anything — the same "do not
+   * enforce" early return the four `assert*`/`evaluate*` methods make. The
+   * consequence is deliberate: with the switch off, feature gates are INERT.
+   */
+  isFeatureEnabled(tenantId: EntityId, feature: EntitlementFeatureKey): Promise<boolean>;
 
   /**
    * (Q10 "block-new") — throw a typed `QuotaExceededException` when

@@ -27,6 +27,7 @@ export interface CreatePlanEntitlementProps extends BaseEntityFactoryCreateProps
   featureDnaReports?: IPlanEntitlementEntity['featureDnaReports'];
   featureVoiceEnrollment?: IPlanEntitlementEntity['featureVoiceEnrollment'];
   featureMonitoringAccess?: IPlanEntitlementEntity['featureMonitoringAccess'];
+  featurePlatformDefaultCredential?: IPlanEntitlementEntity['featurePlatformDefaultCredential'];
   modelTier?: IPlanEntitlementEntity['modelTier'];
   rateLimitTier?: IPlanEntitlementEntity['rateLimitTier'];
 
@@ -66,6 +67,9 @@ export class PlanEntitlementFactory {
       featureDnaReports: props.featureDnaReports ?? false,
       featureVoiceEnrollment: props.featureVoiceEnrollment ?? false,
       featureMonitoringAccess: props.featureMonitoringAccess ?? false,
+      // TASK-643: fail-CLOSED default — a plan never grants the platform-default
+      // credential unless someone says so explicitly (OD-7).
+      featurePlatformDefaultCredential: props.featurePlatformDefaultCredential ?? false,
       modelTier: props.modelTier ?? 'full',
       rateLimitTier: props.rateLimitTier ?? 'default',
     });

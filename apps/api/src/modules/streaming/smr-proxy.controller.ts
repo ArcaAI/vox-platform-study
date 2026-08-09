@@ -88,6 +88,19 @@ interface SmrGenerateRequest {
       model?: string;
       project?: string;
       location?: string;
+      /**
+       * TASK-643 R3 — WHO PAID for this credential: the caller tenant's own
+       * connection row (`'tenant'`) or the SYSTEM-tenant platform default
+       * (`'platform'`). SMR reads it to stamp `usage_detail.byok`, which
+       * becomes `deployment`/`costBasis` on the ledger row.
+       *
+       * The entry is forwarded VERBATIM below, so this field rides the
+       * existing transport with no plumbing of its own — and, being
+       * per-entry, it survives a cascade that merges tenant-over-platform per
+       * provider. ABSENT ⇒ `'tenant'`, which is exactly right for any sender
+       * with no platform tier to draw from.
+       */
+      funding?: 'tenant' | 'platform';
     }
   >;
 }

@@ -218,6 +218,78 @@ describe('EntitlementsService', () => {
     });
   });
 
+  /*
+   * TASK-643 R6 — `isFeatureEnabled`, the first ENFORCING read of a boolean
+   * entitlement (§0(2): the three pre-existing feature booleans are
+   * display-only, read by nothing but `getCapabilities` and the console).
+   *
+   * Non-throwing by design: the caller (`AiProviderConnectionService.cascadeRows`)
+   * uses it to SHAPE a credential cascade, at a point where nobody yet knows
+   * which provider will be selected. Throwing there would 403 a tenant that was
+   * about to use a self-hosted provider and never needed the platform key.
+   */
+  describe('isFeatureEnabled (TASK-643 R6)', () => {
+    const arrangeTenant = (override: Record<string, unknown> | null) => {
+      tenantRepository.findById.mockResolvedValue({ plan: 'PRO', trialEndsAt: null });
+      planEntitlementRepository.findByPlan.mockResolvedValue(null);
+      tenantEntitlementRepository.findByTenant.mockResolvedValue(override);
+    };
+
+    // 28
+    it('returns the resolved boolean and never throws, for either value', async () => {
+      values.set('entitlements.enabled', true);
+
+      arrangeTenant({ featurePlatformDefaultCredential: true });
+      await expect(makeService().isFeatureEnabled('tenant-1', 'platformDefaultCredential')).resolves.toBe(true);
+
+      arrangeTenant({ featurePlatformDefaultCredential: false });
+      await expect(makeService().isFeatureEnabled('tenant-1', 'platformDefaultCredential')).resolves.toBe(false);
+
+      // …and the seeded plan default (no override row at all) is `false` (OD-7).
+      arrangeTenant(null);
+      await expect(makeService().isFeatureEnabled('tenant-1', 'platformDefaultCredential')).resolves.toBe(false);
+    });
+
+    it('reads the other feature booleans through the same path', async () => {
+      values.set('entitlements.enabled', true);
+      arrangeTenant(null);
+      // PRO seeds dnaReports=true, monitoringAccess=false.
+      await expect(makeService().isFeatureEnabled('tenant-1', 'dnaReports')).resolves.toBe(true);
+      await expect(makeService().isFeatureEnabled('tenant-1', 'monitoringAccess')).resolves.toBe(false);
+    });
+
+    /*
+     * 29 — OD-6 (DECIDED 2026-08-09): the gate HONOURS the global kill switch.
+     *
+     * `isFeatureEnabled` returns early exactly like the four existing
+     * enforcement methods (`assertQuantityQuota:215`, `assertMeterQuota`,
+     * `assertConcurrencyQuota`, `evaluateStorageSoftWarn`), all of which
+     * return WITHOUT ENFORCING when `entitlements.enabled` is off. For a
+     * boolean read, "do not enforce" means `true` — the feature is not gated.
+     *
+     * The consequence is deliberate and must be stated, not discovered: with
+     * the switch OFF the platform-default gate is INERT and every tenant may
+     * reach the SYSTEM credential tier. The owner flips `entitlements.enabled`
+     * on separately; this test is what documents the two states, and it must
+     * fail if anyone later changes the behaviour in either direction.
+     */
+    it('honours the global kill switch: returns true (ungated) when entitlements.enabled is OFF (OD-6)', async () => {
+      // Switch OFF — the tenant is explicitly DENIED in its override row, and
+      // still reads `true`, because enforcement as a whole is off.
+      values.delete('entitlements.enabled');
+      arrangeTenant({ featurePlatformDefaultCredential: false });
+      await expect(makeService().isFeatureEnabled('tenant-1', 'platformDefaultCredential')).resolves.toBe(true);
+      // Not even resolved — the early return happens before any DB read.
+      expect(tenantRepository.findById).not.toHaveBeenCalled();
+
+      // Switch ON — the resolved value is authoritative again.
+      values.set('entitlements.enabled', true);
+      arrangeTenant({ featurePlatformDefaultCredential: false });
+      await expect(makeService().isFeatureEnabled('tenant-1', 'platformDefaultCredential')).resolves.toBe(false);
+      expect(tenantRepository.findById).toHaveBeenCalled();
+    });
+  });
+
   describe('getCapabilities', () => {
     it('composes resolved limits with live usage + flags near-limit', async () => {
       tenantRepository.findById.mockResolvedValue({ plan: 'STARTER', trialEndsAt: null });

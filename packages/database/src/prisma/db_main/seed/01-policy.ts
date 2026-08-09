@@ -1,4 +1,5 @@
 import type { CorePrismaClient } from '../../../client';
+import { Prisma } from '../../../generated/core-prisma-client/client';
 
 /**
  * Policy-Based RBAC Seed Data
@@ -37,9 +38,29 @@ export const PolicyScope = {
 // See: docs/RBAC_BEST_PRACTICES.md for full design documentation
 // =============================================================================
 
+/**
+ * CASL rule shape stored in `Policy.rules` (Json). `action` accepts a single
+ * value or an array (CASL fans the rule across each combination); `conditions`
+ * is omitted for unconditional (e.g. global) rules.
+ */
+interface PolicyRule {
+  action: string | string[];
+  subject: string;
+  conditions?: Record<string, unknown>;
+}
+
+interface DefaultPolicy {
+  id: string;
+  name: string;
+  description: string;
+  scope: (typeof PolicyScope)[keyof typeof PolicyScope];
+  isProtected?: boolean;
+  rules: PolicyRule[];
+}
+
 // Default policies for the RBAC system
 // Exported for testing purposes
-export const DEFAULT_POLICIES = [
+export const DEFAULT_POLICIES: DefaultPolicy[] = [
   // =========================================================================
   // GLOBAL SCOPE POLICIES (System-wide)
   // =========================================================================
@@ -500,7 +521,7 @@ export const seedPolicy = async (client: CorePrismaClient) => {
         data: {
           description: policyData.description,
           scope: policyData.scope,
-          rules: policyData.rules,
+          rules: policyData.rules as unknown as Prisma.InputJsonValue,
           ...protectedPatch,
         },
       });
@@ -512,7 +533,7 @@ export const seedPolicy = async (client: CorePrismaClient) => {
           name: policyData.name,
           description: policyData.description,
           scope: policyData.scope,
-          rules: policyData.rules,
+          rules: policyData.rules as unknown as Prisma.InputJsonValue,
           ...protectedPatch,
         },
       });

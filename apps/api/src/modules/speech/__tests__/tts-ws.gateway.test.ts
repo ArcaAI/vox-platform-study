@@ -373,6 +373,49 @@ describe('TtsWsGateway', () => {
       expect(call.common).toMatchObject({ provider: 'azure', deployment: 'BYOK', costBasis: 'BYOK_NOTIONAL' });
     });
 
+    it('TASK-643 R3: a PLATFORM-FUNDED override resolves to deployment CLOUD, not BYOK', async () => {
+      // Same bridge, same injected init frame — the only difference is WHOSE
+      // credential the resolver supplied. A SYSTEM-tenant (platform) key is
+      // platform vendor spend, so it must reach the COGS rollups (OD-2).
+      const usageLedger = createMockUsageLedger();
+      const tenantTtsConfig = {
+        getEffective: vi.fn().mockResolvedValue({
+          tenantId: 't1',
+          defaultFormat: 'pcm',
+          defaultSpeed: 1.0,
+          routingEn: ['azure'],
+          routingMl: ['azure'],
+          allowedProviders: ['azure'],
+          voiceBindings: {},
+        }),
+      };
+      const providerConnectionService = {
+        resolveTenantCloudOverrides: vi.fn().mockResolvedValue({ azure: { api_key: 'k', funding: 'platform' } }),
+      };
+      gateway = new TtsWsGateway(
+        ticketService as never,
+        config as never,
+        secrets as never,
+        tenantTtsConfig as never,
+        providerConnectionService as never,
+        usageLedger as never,
+      );
+      gateway.createUpstreamSocket = vi.fn(() => upstream as never);
+      const client = makeSocket();
+      await gateway.handleConnection(client as never, req('?sessionId=sess-1&ticket=t'));
+      upstream.emit('open');
+
+      upstream.emit(
+        'message',
+        Buffer.from(JSON.stringify({ type: 'usage', characters: 4, audioSeconds: 0.1, interrupted: false, provider: 'azure' })),
+        false,
+      );
+
+      const call = usageLedger.recordUsage.mock.calls[0][0];
+      expect(call.common).toMatchObject({ provider: 'azure', deployment: 'CLOUD' });
+      expect(call.common.costBasis).toBeUndefined();
+    });
+
     it('classifies a self-hosted engine as deployment SELF_HOSTED with no costBasis', async () => {
       const usageLedger = createMockUsageLedger();
       gateway = buildGateway(usageLedger);

@@ -114,6 +114,55 @@ describe('AiProviderConnection SYSTEM seed rows', () => {
     });
   });
 
+  /*
+   * TASK-643 test 39 — the cascade's arming switch.
+   *
+   * Once the platform-default cascade lands, an ENABLED + KEYED SYSTEM row is
+   * the single thing that makes a cloud provider reachable on the PLATFORM's
+   * money for every tenant that lacks its own key. The seed must therefore keep
+   * every cloud-BYO SYSTEM row disabled and keyless, so arming one stays a
+   * deliberate, per-provider act by a global admin (§2.5).
+   *
+   * The pair list is spelled out here rather than derived: it mirrors
+   * `CLOUD_BYO_PROVIDERS` in `@arcaai/applications`, which the database package
+   * must not import (same one-way dependency rule as the plan matrix). Written
+   * out in full so that adding a provider on either side surfaces as a failure
+   * here rather than as a silently-unchecked row.
+   */
+  const CLOUD_BYO_SEED_PAIRS = [
+    'llm:azure',
+    'llm:bedrock',
+    'llm:openai',
+    'llm:anthropic',
+    'llm:vertex',
+    'stt:azure-speech',
+    'stt:sarvam',
+    'stt:openai',
+    'tts:azure',
+    'tts:sarvam',
+  ] as const;
+
+  it('seeds every cloud-BYO provider a SYSTEM row (the cascade has something to arm)', () => {
+    const seeded = new Set(SYSTEM_AI_PROVIDER_CONNECTIONS.map((c) => `${c.service}:${c.provider}`));
+    CLOUD_BYO_SEED_PAIRS.forEach((pair) => {
+      expect(seeded.has(pair), `cloud-BYO ${pair} must have a SYSTEM connection row`).toBe(true);
+    });
+  });
+
+  it('keeps every cloud-BYO SYSTEM row DISABLED and KEYLESS (TASK-643 — the cascade stays unarmed until an admin arms it)', () => {
+    const cloudByo = SYSTEM_AI_PROVIDER_CONNECTIONS.filter((c) => (CLOUD_BYO_SEED_PAIRS as readonly string[]).includes(`${c.service}:${c.provider}`));
+    expect(cloudByo).toHaveLength(CLOUD_BYO_SEED_PAIRS.length);
+
+    cloudByo.forEach((c) => {
+      expect(c.tenantId, `${c.service}:${c.provider} must be a SYSTEM row`).toBe(SYSTEM_TENANT_ID);
+      expect(c.enabled, `cloud-BYO ${c.service}:${c.provider} must seed disabled — an enabled row is platform-funded for every entitled tenant`).toBe(
+        false,
+      );
+      expect(c.encryptedApiKey ?? null, `cloud-BYO ${c.service}:${c.provider} must seed keyless`).toBeNull();
+      expect(c.keyVersion ?? null, `cloud-BYO ${c.service}:${c.provider} must seed without a key version`).toBeNull();
+    });
+  });
+
   it('has unique ids and one row per (tenant, service, provider)', () => {
     const ids = SYSTEM_AI_PROVIDER_CONNECTIONS.map((c) => c.id);
     const triples = SYSTEM_AI_PROVIDER_CONNECTIONS.map((c) => `${c.tenantId}::${c.service}::${c.provider}`);

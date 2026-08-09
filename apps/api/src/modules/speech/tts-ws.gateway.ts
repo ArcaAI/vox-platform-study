@@ -9,18 +9,16 @@ import {
   SecretsService,
   UsageIdempotencyKey,
 } from '@arcaai/applications';
-import { AiCapability, AiCostBasis, AiDeploymentKind, AiUsageUnit } from '@arcaai/domains';
+import { AiCapability, AiDeploymentKind, AiUsageUnit } from '@arcaai/domains';
 import { QuotaExceededException } from '@arcaai/exceptions';
 import { Inject, Logger, Optional } from '@nestjs/common';
 import { OnGatewayConnection, OnGatewayDisconnect, WebSocketGateway } from '@nestjs/websockets';
 import type { IncomingMessage } from 'http';
 import WebSocket from 'ws';
 import { StreamTicketService } from '../auth/stream-ticket.service';
-
-// Self-hosted TTS engine ids (KNOWN_PROVIDERS, packages/applications/.../vocabulary.ts).
-// Mirrors SpeechProxyController's classifier — kept local rather than shared
-// since the two files have no common base and the set is tiny/stable.
-const SELF_HOSTED_TTS_PROVIDERS = new Set(['kokoro', 'indic_parler']);
+// TASK-643 OD-4: the classifier + self-hosted allow-list used to exist as a
+// verbatim copy here AND in SpeechProxyController. One definition now.
+import { classifyTtsProvider } from './tts-provider-classification';
 
 /** Shape of the `{"type":"usage",...}` control frame stream_ws.py sends at teardown. */
 interface TtsUsageFrame {
@@ -383,7 +381,7 @@ export class TtsWsGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     if (this.usageLedger && bridge.tenantId) {
       const { deployment, costBasis } = parsed.provider
-        ? this.classifyTtsProvider(parsed.provider, bridge.providerOverrides)
+        ? classifyTtsProvider(parsed.provider, bridge.providerOverrides)
         : { deployment: AiDeploymentKind.SELF_HOSTED, costBasis: undefined };
       this.usageLedger
         .recordUsage({
@@ -417,20 +415,6 @@ export class TtsWsGateway implements OnGatewayConnection, OnGatewayDisconnect {
         });
     }
     return true;
-  }
-
-  /** BYOK (tenant credential injected into the init frame) beats self-hosted beats platform-funded cloud. */
-  private classifyTtsProvider(
-    provider: string,
-    providerOverrides: ProviderOverrides | null,
-  ): { deployment: AiDeploymentKind; costBasis?: AiCostBasis } {
-    if (providerOverrides && provider in providerOverrides) {
-      return { deployment: AiDeploymentKind.BYOK, costBasis: AiCostBasis.BYOK_NOTIONAL };
-    }
-    if (SELF_HOSTED_TTS_PROVIDERS.has(provider)) {
-      return { deployment: AiDeploymentKind.SELF_HOSTED };
-    }
-    return { deployment: AiDeploymentKind.CLOUD };
   }
 
   private safeSend(socket: WebSocket, data: WebSocket.RawData, isBinary: boolean): void {

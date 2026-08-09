@@ -9,18 +9,15 @@ import {
   SecretsService,
   UsageIdempotencyKey,
 } from '@arcaai/applications';
-import { AiCapability, AiCostBasis, AiDeploymentKind, AiUsageUnit, generateId } from '@arcaai/domains';
+import { AiCapability, AiDeploymentKind, AiUsageUnit, generateId } from '@arcaai/domains';
 import { HttpService } from '@nestjs/axios';
 import { ClsService } from 'nestjs-cls';
 import { Body, Controller, Get, HttpException, HttpStatus, Inject, Logger, Optional, Post, Res } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { AxiosError } from 'axios';
 import type { Response } from 'express';
+import { type ProviderFunding, classifyTtsProvider } from './tts-provider-classification';
 
-// Self-hosted TTS engine ids (KNOWN_PROVIDERS, packages/applications/.../vocabulary.ts).
-// Anything else that isn't a BYOK-overridden connection is treated as a
-// platform-funded CLOUD call (azure/sarvam on the platform's own credential).
-const SELF_HOSTED_TTS_PROVIDERS = new Set(['kokoro', 'indic_parler']);
 // Raw s16le mono PCM: 2 bytes/sample. WAV carries the same payload behind a
 // fixed 44-byte header. Mirrors tts.core.usage.compute_audio_seconds — kept
 // in lockstep so the gateway-derived streaming figure agrees with tts's own.
@@ -41,7 +38,11 @@ interface SpeechSynthesizeRequest {
   routing_en?: string[];
   routing_ml?: string[];
   allowed_providers?: string[];
-  provider_overrides?: Record<string, { api_key: string; region?: string; base_url?: string }>;
+  // `funding` (TASK-643 R3) labels WHO PAID for the credential: the caller
+  // tenant's own connection row, or the SYSTEM-tenant platform default. tts
+  // ignores it (it reads named credential keys only); the gateway reads it back
+  // when it stamps the usage row. Absent ⇒ `'tenant'`.
+  provider_overrides?: Record<string, { api_key: string; region?: string; base_url?: string; funding?: ProviderFunding }>;
   // Resolved voice bindings ({internalVoiceId: {provider: providerVoiceName}});
   // tts falls back to its built-in DEFAULT_VOICES when absent.
   voice_bindings?: Record<string, Record<string, string>>;
@@ -235,20 +236,6 @@ export class SpeechProxyController {
     return null; // mp3 / unknown — compressed, not derivable from byte count
   }
 
-  /** BYOK (tenant credential we injected) beats self-hosted beats platform-funded cloud. */
-  private classifyTtsProvider(
-    provider: string,
-    providerOverrides: SpeechSynthesizeRequest['provider_overrides'],
-  ): { deployment: AiDeploymentKind; costBasis?: AiCostBasis } {
-    if (providerOverrides && provider in providerOverrides) {
-      return { deployment: AiDeploymentKind.BYOK, costBasis: AiCostBasis.BYOK_NOTIONAL };
-    }
-    if (SELF_HOSTED_TTS_PROVIDERS.has(provider)) {
-      return { deployment: AiDeploymentKind.SELF_HOSTED };
-    }
-    return { deployment: AiDeploymentKind.CLOUD };
-  }
-
   @Post('synthesize')
   @Authorize()
   @ApiOperation({ summary: 'Synthesize speech via TTS (batch audio, streamed audio, or SSE)' })
@@ -301,7 +288,7 @@ export class SpeechProxyController {
       const characters = this.resolveCharacterCount(upstream.headers, forwardBody.input);
       const provider = (upstream.headers['x-tts-provider'] as string | undefined) || undefined;
       const { deployment, costBasis } = provider
-        ? this.classifyTtsProvider(provider, forwardBody.provider_overrides)
+        ? classifyTtsProvider(provider, forwardBody.provider_overrides)
         : { deployment: undefined, costBasis: undefined };
       const requestId = generateId();
       let proxiedBytes = 0;

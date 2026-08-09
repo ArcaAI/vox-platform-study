@@ -43,7 +43,7 @@ export class UsageLedgerService implements IUsageLedgerService {
     }
 
     this.assertValid(events);
-    this.warnOnUnflaggedByok(events);
+    this.warnOnInconsistentCostBasis(events);
 
     const outboxIds: string[] = [];
     for (const [tenantId, tenantEvents] of groupByTenant(events)) {
@@ -95,27 +95,52 @@ export class UsageLedgerService implements IUsageLedgerService {
   }
 
   /**
-   * A BYOK call left on the INTERNAL cost basis is almost certainly a forgotten
+   * `deployment` and `costBasis` disagreeing is almost certainly a forgotten
    * flag — but it is NOT corrected here.
    *
-   * Deriving `BYOK_NOTIONAL` from `deployment` would make the omission
-   * invisible, and the two fields are not synonyms: BYOK→platform failover is a
-   * genuinely INTERNAL call made on a BYOK tenant's behalf (D14). The default's
-   * direction of error — over-reporting platform spend — is the safe one, so a
-   * warning is the whole intervention.
+   * Deriving one from the other would make the omission invisible, and they are
+   * not synonyms: BYOK→platform failover is a genuinely INTERNAL call made on a
+   * BYOK tenant's behalf (D14). So a warning is the whole intervention, in both
+   * directions:
+   *
+   *  - **BYOK + INTERNAL** — platform spend over-reported. The safe direction
+   *    to be wrong in, which is exactly why it needs saying out loud.
+   *  - **non-BYOK + BYOK_NOTIONAL** — platform spend SILENTLY LOST. The drainer
+   *    contributes `0` to every COGS rollup for a `BYOK_NOTIONAL` row
+   *    (`usage-outbox.drainer.ts`), and billing resolves the provider-agnostic
+   *    baseline SELL price rather than the managed-vendor row. Added by
+   *    TASK-643 R3: since a platform-funded call meters as the EXISTING `CLOUD`
+   *    member (OD-2), a mis-attributed one carries no novel enum value and no
+   *    "did something unknown appear" check can ever catch it. Shadow metering
+   *    filters to `CLOUD`, so the mis-stamped events drop out of the one
+   *    reconciliation that would otherwise notice. This warning is the guard.
    */
-  private warnOnUnflaggedByok(events: UsageEventInput[]): void {
-    const suspects = events.filter(
-      (event) => event.deployment === AiDeploymentKind.BYOK && (event.costBasis ?? AiCostBasis.INTERNAL) !== AiCostBasis.BYOK_NOTIONAL,
-    );
+  private warnOnInconsistentCostBasis(events: UsageEventInput[]): void {
+    const effectiveBasis = (event: UsageEventInput): AiCostBasis => event.costBasis ?? AiCostBasis.INTERNAL;
 
-    if (suspects.length > 0) {
+    const unflaggedByok = events.filter((event) => event.deployment === AiDeploymentKind.BYOK && effectiveBasis(event) !== AiCostBasis.BYOK_NOTIONAL);
+    if (unflaggedByok.length > 0) {
       this.logger.warn({
         message: 'BYOK usage recorded on the INTERNAL cost basis — platform spend will be over-reported unless this was a BYOK-to-platform failover',
-        count: suspects.length,
-        tenantId: suspects[0].tenantId,
-        capability: suspects[0].capability,
-        provider: suspects[0].provider,
+        count: unflaggedByok.length,
+        tenantId: unflaggedByok[0].tenantId,
+        capability: unflaggedByok[0].capability,
+        provider: unflaggedByok[0].provider,
+      });
+    }
+
+    const notionalWithoutByok = events.filter(
+      (event) => event.deployment !== AiDeploymentKind.BYOK && effectiveBasis(event) === AiCostBasis.BYOK_NOTIONAL,
+    );
+    if (notionalWithoutByok.length > 0) {
+      this.logger.warn({
+        message:
+          'Non-BYOK usage recorded on the BYOK_NOTIONAL cost basis — this cost contributes NOTHING to the COGS rollups; a platform-funded call was probably mis-attributed',
+        count: notionalWithoutByok.length,
+        tenantId: notionalWithoutByok[0].tenantId,
+        capability: notionalWithoutByok[0].capability,
+        provider: notionalWithoutByok[0].provider,
+        deployment: notionalWithoutByok[0].deployment,
       });
     }
   }

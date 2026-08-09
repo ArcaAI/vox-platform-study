@@ -303,3 +303,65 @@ describe('UsageLedgerService.recordUsage — validation (derives nothing silentl
     await expect(service.recordUsage(validInput({ provider: 'brand-new-vendor' }))).resolves.toMatchObject({ events: 1 });
   });
 });
+
+/**
+ * TASK-643 R3 — the deployment/costBasis consistency guard.
+ *
+ * OD-2 decided a platform-funded (SYSTEM-credential) call meters as the
+ * EXISTING `CLOUD` member rather than a new enum value. That keeps every
+ * downstream consumer unchanged, but it costs us the one cheap regression
+ * detector we would otherwise have had: a mis-stamped call carries no novel
+ * enum member, so "did something unknown appear" can never fire. These
+ * warnings are therefore the only in-process guard on the pair, which is why
+ * the plan records them as not optional.
+ *
+ * Both directions are wrong in a way money notices:
+ *   BYOK + INTERNAL       → platform spend over-reported (pre-existing warn)
+ *   CLOUD/SELF_HOSTED
+ *          + BYOK_NOTIONAL → platform spend SILENTLY LOST: the drainer
+ *                            contributes 0 to every COGS rollup
+ *                            (`usage-outbox.drainer.ts`, `costDelta`)
+ */
+describe('UsageLedgerService.recordUsage — deployment/costBasis consistency warnings', () => {
+  let service: UsageLedgerService;
+  let warn: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockOutboxRepository.create.mockImplementation(async (entity: unknown) => entity);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    service = new UsageLedgerService(mockOutboxRepository as any);
+    warn = vi.fn();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (service as any).logger = { warn, log: vi.fn(), error: vi.fn(), debug: vi.fn() };
+  });
+
+  it('warns on BYOK + INTERNAL (platform spend over-reported)', async () => {
+    await service.recordUsage(validInput({ deployment: AiDeploymentKind.BYOK }));
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0][0]).toMatchObject({ count: 1, tenantId: TENANT, provider: 'anthropic' });
+  });
+
+  it('warns on CLOUD + BYOK_NOTIONAL — the platform-default mis-stamp, where COGS is LOST', async () => {
+    await service.recordUsage(validInput({ deployment: AiDeploymentKind.CLOUD, costBasis: AiCostBasis.BYOK_NOTIONAL }));
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0][0].message)).toMatch(/BYOK_NOTIONAL/);
+  });
+
+  it('warns on SELF_HOSTED + BYOK_NOTIONAL', async () => {
+    await service.recordUsage(validInput({ deployment: AiDeploymentKind.SELF_HOSTED, costBasis: AiCostBasis.BYOK_NOTIONAL }));
+    expect(warn).toHaveBeenCalledTimes(1);
+  });
+
+  it('stays silent on the two CONSISTENT pairs', async () => {
+    await service.recordUsage(validInput({ deployment: AiDeploymentKind.CLOUD, costBasis: AiCostBasis.INTERNAL }));
+    await service.recordUsage(validInput({ deployment: AiDeploymentKind.BYOK, costBasis: AiCostBasis.BYOK_NOTIONAL }));
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('never rewrites the pair — it only reports it', async () => {
+    await service.recordUsage(validInput({ deployment: AiDeploymentKind.CLOUD, costBasis: AiCostBasis.BYOK_NOTIONAL }));
+    expect(writtenPayload().events[0].deployment).toBe(AiDeploymentKind.CLOUD);
+    expect(writtenPayload().events[0].costBasis).toBe(AiCostBasis.BYOK_NOTIONAL);
+  });
+});
