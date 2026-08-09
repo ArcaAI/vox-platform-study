@@ -54,19 +54,43 @@ hope-runtime-models = { workspace = true }
 hope-env = { workspace = true }
 
 [project.optional-dependencies]
-# Self-hosted local engines (Phase 4). Kept OUT of the base install so the
-# default image + CI stay light; enabled only on GPU-capable deployments.
-# NOTE: `parler-tts` installs from git (not on PyPI) — it is added in the
-# GPU image build, not here, so the shared `uv.lock` stays resolvable.
-local = [
+# --- Self-hosted local engines, split by engine (TASK-642 Step 2) ---
+#
+# `kokoro` is BUILT INTO the default image (see apps/tts/Dockerfile): it is
+# Apache-2.0, needs no credential, and the SYSTEM TenantTtsConfig row already
+# routes English to it. Everything Kokoro needs at import/synth time lives here:
+#   - kokoro          -> the engine (transitively pulls torch, transformers,
+#                        numpy, huggingface-hub, misaki[en]/spacy — `transformers`
+#                        is a HARD dependency of kokoro 0.9.x, not separable)
+#   - numpy / soxr    -> tts.core.audio (imported at module scope by the provider)
+#   - lameenc         -> tts.core.audio MP3 encoding
+# torch is listed explicitly so the CPU-only wheel index in the Dockerfile has a
+# direct requirement to pin against.
+kokoro = [
     "torch>=2.4.0",
-    "transformers>=4.46.1",
     "kokoro>=0.9.4",
     "numpy>=1.26.0",
     "soxr>=0.5.0",
+    "lameenc>=1.7.0",
+]
+
+# Indic Parler-TTS (Malayalam). NOT in the default image — it adds the
+# sentencepiece/accelerate tail on top of a much larger weight set, and
+# `parler-tts` itself installs from git (not on PyPI) so it is added in a
+# dedicated image build, never here: the shared `uv.lock` must stay resolvable.
+# `transformers` is pinned here as a direct requirement because indic_parler
+# uses it directly (it also arrives transitively via kokoro).
+indic-parler = [
+    "transformers>=4.46.1",
     "sentencepiece>=0.2.0",
     "accelerate>=1.0.0",
-    "lameenc>=1.7.0",
+]
+
+# Back-compat aggregate: everything local. Kept so `--extra local` in existing
+# scripts/envs keeps meaning "all self-hosted engines".
+local = [
+    "tts[kokoro]",
+    "tts[indic-parler]",
 ]
 
 dev = [
