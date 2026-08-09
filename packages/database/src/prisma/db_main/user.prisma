@@ -274,6 +274,17 @@ model UserVoiceProfile {
   User User @relation("_User_VoiceProfiles", fields: [userId], references: [id], onDelete: Cascade)
 
   // indexing
+  // NOTE: the DB also carries a PARTIAL unique index —
+  //   CREATE UNIQUE INDEX "UserVoiceProfile_userId_active_unique" ON
+  //     "core"."UserVoiceProfile"("userId")
+  //     WHERE "isActive" = true AND "resourceStatus" = 'ENABLED'
+  // enforcing "at most one active, enabled voice profile per user". Prisma's
+  // schema language cannot express partial indexes, so it exists ONLY in
+  // migration SQL (20260413000000_add_user_voice_profile, restored by
+  // 20260809010000_task_644_restore_user_voice_profile_active_unique after
+  // TASK-644 found `db push`-built environments were missing it entirely —
+  // see that migration's header). Do not treat the plain index below as
+  // equivalent; do not "clean up" the partial index as redundant.
   @@index([tenantId], name: "UserVoiceProfile_tenantId_idx")
   @@index([userId, isActive], name: "UserVoiceProfile_userId_isActive_idx")
   @@index([resourceStatus], name: "UserVoiceProfile_status_idx")
