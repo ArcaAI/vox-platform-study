@@ -68,6 +68,12 @@ export class PlanEntitlementResponse {
   @ApiProperty({ description: 'Monitoring / telemetry access enabled' })
   featureMonitoringAccess: boolean;
 
+  @ApiProperty({
+    description:
+      "May this plan's tenants consume the PLATFORM-DEFAULT (SYSTEM-tenant) provider credential when they hold no key of their own? ENFORCED, not display-only. false on every plan — the grant is issued per tenant via the tenant-entitlement override.",
+  })
+  featurePlatformDefaultCredential: boolean;
+
   @ApiProperty({ description: 'Model-access tier (base | full | full_custom)' })
   modelTier: string;
 
@@ -188,6 +194,14 @@ export class UpdatePlanEntitlementRequest {
   @IsOptional()
   @IsBoolean()
   featureMonitoringAccess?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      "Grant this plan's tenants the PLATFORM-DEFAULT (SYSTEM-tenant) provider credential. Platform SPEND, not a display flag — a plan-level grant funds cloud calls for every tenant on the tier. Prefer the per-tenant override.",
+  })
+  @IsOptional()
+  @IsBoolean()
+  featurePlatformDefaultCredential?: boolean;
 
   @ApiPropertyOptional({ description: 'Model-access tier (base | full | full_custom)' })
   @IsOptional()

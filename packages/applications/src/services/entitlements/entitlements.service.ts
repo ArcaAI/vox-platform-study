@@ -23,7 +23,7 @@ import { IGlobalSettingService } from '../globalSetting/IGlobalSettingService';
 import { ITenantService } from '../tenant/ITenantService';
 import { IMeteringService, MeterUsage } from '../metering/IMeteringService';
 import { ISocketRegistryService } from '../platform-metrics/socket-registry.service';
-import { IEntitlementsService, StorageSoftWarn, TenantRateLimitPolicy } from './IEntitlementsService';
+import { EntitlementFeatureKey, IEntitlementsService, StorageSoftWarn, TenantRateLimitPolicy } from './IEntitlementsService';
 import { ResolvedEntitlements, resolveEntitlements } from './resolve-entitlements';
 import { buildCapabilityRow, computeTrialInfo } from './capability';
 import { EntitlementLimitKey, MeterCapabilityKey, wouldExceedLimit } from './enforcement';
@@ -205,6 +205,35 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
       rateLimitPerMinute: resolved.rateLimitPerMinute,
       trial: computeTrialInfo(plan, tenant.trialEndsAt ?? null),
     };
+  }
+
+  /**
+   * TASK-643 R6 — the first ENFORCING read of a boolean entitlement.
+   *
+   * The three pre-existing feature booleans are display-only: nothing but
+   * `getCapabilities`, the SDK's `useEntitlements` and the console reads them.
+   * `featurePlatformDefaultCredential` is different — it decides whether a
+   * tenant's provider-credential cascade may reach the SYSTEM (platform-funded)
+   * tier, so something has to actually consult it.
+   *
+   * Two properties this method must keep:
+   *
+   *   1. NON-THROWING (contract note on `IEntitlementsService`). The caller is
+   *      shaping a cascade before a provider is selected; a throw here would
+   *      403 requests that were never going to need the platform credential.
+   *   2. It HONOURS the kill switch (OD-6), returning early exactly like
+   *      `assertQuantityQuota:215` and its three siblings. For a boolean read,
+   *      their "return without enforcing" is `true` — the feature is ungated.
+   *      So with `entitlements.enabled` OFF the platform-default gate is INERT
+   *      and every tenant reaches the SYSTEM tier. That is the accepted cost of
+   *      keeping one master switch an operator can pull in an incident; the
+   *      containment comes back the moment the switch is on.
+   */
+  async isFeatureEnabled(tenantId: EntityId, feature: EntitlementFeatureKey): Promise<boolean> {
+    if (!this.isEnforcementEnabled()) return true;
+
+    const resolved = await this.resolveForTenant(tenantId);
+    return resolved.features[feature];
   }
 
   // --- Enforcement primitive (Q9 gate + Q10 block-new) ------------------
@@ -422,6 +451,7 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
     if (request.featureDnaReports !== undefined) row.featureDnaReports = request.featureDnaReports;
     if (request.featureVoiceEnrollment !== undefined) row.featureVoiceEnrollment = request.featureVoiceEnrollment;
     if (request.featureMonitoringAccess !== undefined) row.featureMonitoringAccess = request.featureMonitoringAccess;
+    if (request.featurePlatformDefaultCredential !== undefined) row.featurePlatformDefaultCredential = request.featurePlatformDefaultCredential;
     if (request.modelTier !== undefined) row.modelTier = request.modelTier;
     if (request.rateLimitTier !== undefined) row.rateLimitTier = request.rateLimitTier;
 
@@ -479,14 +509,19 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
       monthlyTranscriptionMinutes: request.monthlyTranscriptionMinutes ?? null,
       monthlySummaries: request.monthlySummaries ?? null,
       // TASK-615 D11 — negotiated per-capability allowance overrides.
-      monthlySttSessionSeconds: request.monthlySttSessionSeconds === null || request.monthlySttSessionSeconds === undefined ? null : BigInt(request.monthlySttSessionSeconds),
+      monthlySttSessionSeconds:
+        request.monthlySttSessionSeconds === null || request.monthlySttSessionSeconds === undefined ? null : BigInt(request.monthlySttSessionSeconds),
       monthlyLlmTokens: request.monthlyLlmTokens === null || request.monthlyLlmTokens === undefined ? null : BigInt(request.monthlyLlmTokens),
-      monthlyTtsCharacters: request.monthlyTtsCharacters === null || request.monthlyTtsCharacters === undefined ? null : BigInt(request.monthlyTtsCharacters),
-      monthlyNlpTextUnits: request.monthlyNlpTextUnits === null || request.monthlyNlpTextUnits === undefined ? null : BigInt(request.monthlyNlpTextUnits),
-      monthlyEmbeddingTokens: request.monthlyEmbeddingTokens === null || request.monthlyEmbeddingTokens === undefined ? null : BigInt(request.monthlyEmbeddingTokens),
+      monthlyTtsCharacters:
+        request.monthlyTtsCharacters === null || request.monthlyTtsCharacters === undefined ? null : BigInt(request.monthlyTtsCharacters),
+      monthlyNlpTextUnits:
+        request.monthlyNlpTextUnits === null || request.monthlyNlpTextUnits === undefined ? null : BigInt(request.monthlyNlpTextUnits),
+      monthlyEmbeddingTokens:
+        request.monthlyEmbeddingTokens === null || request.monthlyEmbeddingTokens === undefined ? null : BigInt(request.monthlyEmbeddingTokens),
       featureDnaReports: request.featureDnaReports ?? null,
       featureVoiceEnrollment: request.featureVoiceEnrollment ?? null,
       featureMonitoringAccess: request.featureMonitoringAccess ?? null,
+      featurePlatformDefaultCredential: request.featurePlatformDefaultCredential ?? null,
       modelTier: request.modelTier ?? null,
       rateLimitTier: request.rateLimitTier ?? null,
       rateLimitPerMinute: request.rateLimitPerMinute ?? null,
@@ -527,6 +562,7 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
     existing.featureDnaReports = null;
     existing.featureVoiceEnrollment = null;
     existing.featureMonitoringAccess = null;
+    existing.featurePlatformDefaultCredential = null;
     existing.modelTier = null;
     existing.rateLimitTier = null;
     existing.rateLimitPerMinute = null;
@@ -597,6 +633,7 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
     if (request.featureDnaReports !== undefined) entity.featureDnaReports = request.featureDnaReports;
     if (request.featureVoiceEnrollment !== undefined) entity.featureVoiceEnrollment = request.featureVoiceEnrollment;
     if (request.featureMonitoringAccess !== undefined) entity.featureMonitoringAccess = request.featureMonitoringAccess;
+    if (request.featurePlatformDefaultCredential !== undefined) entity.featurePlatformDefaultCredential = request.featurePlatformDefaultCredential;
     if (request.modelTier !== undefined) entity.modelTier = request.modelTier;
     if (request.rateLimitTier !== undefined) entity.rateLimitTier = request.rateLimitTier;
     if (request.rateLimitPerMinute !== undefined) entity.rateLimitPerMinute = request.rateLimitPerMinute;
@@ -645,6 +682,7 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
       featureDnaReports: row.featureDnaReports,
       featureVoiceEnrollment: row.featureVoiceEnrollment,
       featureMonitoringAccess: row.featureMonitoringAccess,
+      featurePlatformDefaultCredential: row.featurePlatformDefaultCredential,
       modelTier: row.modelTier,
       rateLimitTier: row.rateLimitTier,
       version: row.version,
@@ -673,6 +711,7 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
       featureDnaReports: row.featureDnaReports ?? null,
       featureVoiceEnrollment: row.featureVoiceEnrollment ?? null,
       featureMonitoringAccess: row.featureMonitoringAccess ?? null,
+      featurePlatformDefaultCredential: row.featurePlatformDefaultCredential ?? null,
       modelTier: row.modelTier ?? null,
       rateLimitTier: row.rateLimitTier ?? null,
       rateLimitPerMinute: row.rateLimitPerMinute ?? null,

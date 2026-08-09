@@ -28,6 +28,7 @@ export interface ITenantEntitlementEntity extends IBaseTenantEntity {
   featureDnaReports?: boolean | null;
   featureVoiceEnrollment?: boolean | null;
   featureMonitoringAccess?: boolean | null;
+  featurePlatformDefaultCredential?: boolean | null;
   modelTier?: string | null;
   rateLimitTier?: string | null;
   rateLimitPerMinute?: number | null;
@@ -53,6 +54,7 @@ export class TenantEntitlementEntity extends BaseTenantEntity {
   private _featureDnaReports?: ITenantEntitlementEntity['featureDnaReports'];
   private _featureVoiceEnrollment?: ITenantEntitlementEntity['featureVoiceEnrollment'];
   private _featureMonitoringAccess?: ITenantEntitlementEntity['featureMonitoringAccess'];
+  private _featurePlatformDefaultCredential?: ITenantEntitlementEntity['featurePlatformDefaultCredential'];
   private _modelTier?: ITenantEntitlementEntity['modelTier'];
   private _rateLimitTier?: ITenantEntitlementEntity['rateLimitTier'];
   private _rateLimitPerMinute?: ITenantEntitlementEntity['rateLimitPerMinute'];
@@ -78,6 +80,7 @@ export class TenantEntitlementEntity extends BaseTenantEntity {
     this._featureDnaReports = init.featureDnaReports;
     this._featureVoiceEnrollment = init.featureVoiceEnrollment;
     this._featureMonitoringAccess = init.featureMonitoringAccess;
+    this._featurePlatformDefaultCredential = init.featurePlatformDefaultCredential;
     this._modelTier = init.modelTier;
     this._rateLimitTier = init.rateLimitTier;
     this._rateLimitPerMinute = init.rateLimitPerMinute;
@@ -233,6 +236,14 @@ export class TenantEntitlementEntity extends BaseTenantEntity {
 
   set featureMonitoringAccess(value: ITenantEntitlementEntity['featureMonitoringAccess']) {
     this.setProperty('featureMonitoringAccess', value);
+  }
+
+  get featurePlatformDefaultCredential(): ITenantEntitlementEntity['featurePlatformDefaultCredential'] {
+    return this._featurePlatformDefaultCredential;
+  }
+
+  set featurePlatformDefaultCredential(value: ITenantEntitlementEntity['featurePlatformDefaultCredential']) {
+    this.setProperty('featurePlatformDefaultCredential', value);
   }
 
   get modelTier(): ITenantEntitlementEntity['modelTier'] {

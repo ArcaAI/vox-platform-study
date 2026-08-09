@@ -13,6 +13,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SEED_GLOBAL_SETTING_IDS, SEED_TENANT_ID } from '../00-constants';
+import { PLAN_ENTITLEMENTS } from '../15-entitlements';
 
 beforeEach(() => {
   vi.resetModules();
@@ -106,5 +107,55 @@ describe('seedEntitlements — metering.reconcile.enabled GlobalSetting row', ()
     const meteringUpsert = upserts.find((u) => (u.create as { key?: string }).key === 'metering.reconcile.enabled')!;
     expect(entitlementsUpsert.create.value).toBe('true');
     expect(meteringUpsert.create.value).toBe('false');
+  });
+});
+
+/*
+ * TASK-643 test 40 — OD-7, seed side.
+ *
+ * `featurePlatformDefaultCredential` grants a tenant's provider-credential
+ * cascade access to the SYSTEM (platform-funded) tier. NO plan tier carries it:
+ * a plan-level `true` on PRO or ENTERPRISE would hand every tenant on that plan
+ * a platform-funded cloud path, reopening exactly the margin hole TASK-638
+ * closed when it ratified "SYSTEM default stays self-hosted, managed cloud is a
+ * paid add-on" (see `managed-asr-addon-posture.test.ts`, whose posture this
+ * upholds). Grants are per tenant, via `TenantEntitlement`.
+ *
+ * Seed-side counterpart of the resolver-side test in
+ * `packages/applications/src/services/entitlements/__tests__/resolve-entitlements.test.ts`.
+ */
+describe('seedEntitlements — featurePlatformDefaultCredential (TASK-643 OD-7)', () => {
+  it('seeds all four plan rows with the grant OFF', () => {
+    expect(PLAN_ENTITLEMENTS).toHaveLength(4);
+    PLAN_ENTITLEMENTS.forEach((row) => {
+      expect(row.featurePlatformDefaultCredential, `plan ${row.plan} must not carry the platform-default grant`).toBe(false);
+    });
+  });
+
+  it('covers every plan exactly once (a missing plan would inherit the column default silently)', () => {
+    const plans = PLAN_ENTITLEMENTS.map((row) => row.plan).sort();
+    expect(plans).toEqual(['ENTERPRISE', 'PRO', 'STARTER', 'TRIAL']);
+  });
+
+  it('writes the grant into the create branch, and never into the update branch (re-seed must not clobber a granted tenant plan row)', async () => {
+    const seedEntitlements = (await import('../15-entitlements')).seedEntitlements;
+    const planUpserts: Array<{ update: Record<string, unknown>; create: Record<string, unknown> }> = [];
+    const client = {
+      planEntitlement: {
+        upsert: vi.fn(async (args: { update: Record<string, unknown>; create: Record<string, unknown> }) => {
+          planUpserts.push(args);
+          return {};
+        }),
+      },
+      globalSetting: { upsert: vi.fn(async () => ({})) },
+    };
+
+    await seedEntitlements(client as never);
+
+    expect(planUpserts).toHaveLength(4);
+    planUpserts.forEach((upsert) => {
+      expect(upsert.create).toHaveProperty('featurePlatformDefaultCredential', false);
+      expect(upsert.update).toEqual({});
+    });
   });
 });

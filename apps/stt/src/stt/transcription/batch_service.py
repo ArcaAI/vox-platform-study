@@ -87,29 +87,63 @@ _ENGINE_ID_OVERRIDES: dict[AiModelFormat, str] = {
     AiModelFormat.AZURE_SPEECH: "azure-speech",
 }
 
+# TASK-643 R3 — which ``provider_overrides`` KEY each cloud ASR format reads
+# its credential from. This is NOT the same as the ledger engine id above:
+# AZURE_FOUNDRY meters as its own engine but takes its credential from the
+# ``azure-speech`` entry (``azure_foundry_loader.py``). Kept in lockstep with
+# the loaders by ``tests/unit/test_batch_service_usage_attribution.py``, which
+# imports the loaders' own constants and asserts agreement.
+_OVERRIDE_KEY_BY_FORMAT: dict[AiModelFormat, str] = {
+    AiModelFormat.AZURE_SPEECH: "azure-speech",  # azure_speech_loader.py
+    AiModelFormat.AZURE_FOUNDRY: "azure-speech",  # azure_foundry_loader.py
+    AiModelFormat.SARVAM: "sarvam",  # sarvam_loader.SARVAM_OVERRIDE_KEY
+    AiModelFormat.OPENAI: "openai",  # openai_loader.OPENAI_OVERRIDE_KEY
+}
+
 
 def resolve_usage_attribution(
     asr_format: AiModelFormat, provider_overrides: dict[str, Any] | None
 ) -> tuple[str, str]:
     """Map the loaded ASR model's format to a usage-ledger ``(engine, deployment)``.
 
-    ``deployment`` follows the SAME BYOK-detection rule the model loader
-    itself uses at line ~867 (``_asr_cloud_byok``): a format in
-    ``_CLOUD_ASR_OVERRIDE_FORMATS`` with a non-empty ``provider_overrides``
-    dict was actually served on the tenant's own credential (TASK-567) and is
-    ``"BYOK"``; the same format with no override is platform-funded
-    ``"CLOUD"``; anything else is ``"SELF_HOSTED"``. Recomputed here (rather
-    than threaded out of ``_load_models``) from the exact same two inputs, so
-    it can never drift from the load-time decision.
+    A format outside ``_CLOUD_ASR_OVERRIDE_FORMATS`` runs on the platform's own
+    hardware and is ``"SELF_HOSTED"``. A cloud format is ``"BYOK"`` only when it
+    was served on the TENANT's own credential; otherwise it is platform-funded
+    ``"CLOUD"``.
+
+    Two corrections over the pre-TASK-643 rule, both of which misattributed
+    real money:
+
+    1. **Key-specific, not dict-truthy.** The old predicate was
+       ``bool(provider_overrides)`` on the WHOLE map, so a tenant holding a
+       Sarvam key had its Azure-Speech call marked BYOK — and vice versa. The
+       entry is now looked up under the key the LOADER actually read.
+    2. **Funding is declared, not inferred.** The gateway can inject a
+       credential from the SYSTEM-tenant platform default as well as from the
+       caller's own row; on the wire they are identical. ``entry["funding"]``
+       says which, and a platform-funded call meters as ``"CLOUD"`` (TASK-643
+       OD-2) so its cost reaches the COGS rollups instead of being zeroed as
+       ``BYOK_NOTIONAL``.
+
+    An ABSENT ``funding`` means ``"tenant"``: a gateway that does not stamp it
+    has no platform tier to draw from, so every credential it can inject is the
+    caller's own. That makes the default exact for pre-R3 senders rather than a
+    guess, and an unrecognized value degrades the same conservative way.
     """
     is_cloud = asr_format in _CLOUD_ASR_OVERRIDE_FORMATS
-    is_byok = is_cloud and bool(provider_overrides)
     engine = (
         _ENGINE_ID_OVERRIDES.get(asr_format)
         or str(getattr(asr_format, "value", asr_format)).lower()
     )
-    deployment = "BYOK" if is_byok else ("CLOUD" if is_cloud else "SELF_HOSTED")
-    return engine, deployment
+    if not is_cloud:
+        return engine, "SELF_HOSTED"
+
+    override_key = _OVERRIDE_KEY_BY_FORMAT.get(asr_format)
+    entry = (provider_overrides or {}).get(override_key) if override_key else None
+    if not isinstance(entry, dict) or not entry:
+        return engine, "CLOUD"
+
+    return engine, ("CLOUD" if entry.get("funding") == "platform" else "BYOK")
 
 
 class BatchTranscriptionService:

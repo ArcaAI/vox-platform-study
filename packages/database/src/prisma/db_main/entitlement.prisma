@@ -100,6 +100,19 @@ model PlanEntitlement {
   featureVoiceEnrollment  Boolean @default(false)
   featureMonitoringAccess Boolean @default(false)
 
+  // TASK-643 R6 — may this plan's tenants consume the PLATFORM-DEFAULT
+  // (SYSTEM-tenant) provider credential when they have no key of their own?
+  //
+  // Unlike its three neighbours this flag is ENFORCING, not display-only: it
+  // decides whether the provider-credential cascade may reach the SYSTEM tier,
+  // i.e. whether the platform spends its own money serving this tenant.
+  //
+  // `false` on all four seeded plans (OD-7). Granting it plan-wide on PRO or
+  // ENTERPRISE would hand every tenant on that plan a platform-funded cloud
+  // path, reopening the margin hole TASK-638 closed. Grants are per tenant, via
+  // `TenantEntitlement.featurePlatformDefaultCredential`.
+  featurePlatformDefaultCredential Boolean @default(false)
+
   // model access tier (clone-subset, Q8) + rate-limit tier (Q7)
   modelTier     String @default("full")
   rateLimitTier String @default("default")
@@ -169,6 +182,15 @@ model TenantEntitlement {
   featureDnaReports       Boolean?
   featureVoiceEnrollment  Boolean?
   featureMonitoringAccess Boolean?
+
+  // TASK-643 R6 — the per-tenant platform-default-credential grant, and the
+  // ONLY way it is ever granted (no plan carries it — OD-7). Tri-state:
+  //   null  = inherit the plan value (which is `false` on every seeded plan)
+  //   true  = GRANT — this tenant's credential cascade may reach the SYSTEM tier
+  //   false = explicit DENY, even if a plan row is later flipped on
+  // A tenant's own DISABLED provider row remains a stronger, per-provider VETO
+  // that this grant can never override (§3.5.5).
+  featurePlatformDefaultCredential Boolean?
 
   // model + rate-limit overrides (null = inherit) — Q7 "increase on demand"
   modelTier          String?

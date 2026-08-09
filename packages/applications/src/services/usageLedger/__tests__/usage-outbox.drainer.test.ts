@@ -227,6 +227,35 @@ describe('UsageOutboxDrainer — ledger append + rollup maintenance', () => {
     expect(mockDailyRepository.accumulate.mock.calls[0][2]).toBe(0n);
   });
 
+  it('TASK-643 R3: a PLATFORM-FUNDED call contributes its FULL cost to the rollups', async () => {
+    // A call served on the platform's own (SYSTEM-tenant) cloud credential is
+    // platform vendor spend, so it meters as CLOUD + INTERNAL (OD-2) and its
+    // cost must reach the COGS rollups. Asserted alongside its mis-stamp below
+    // so the price of getting funding attribution wrong is written down: the
+    // SAME call stamped BYOK/BYOK_NOTIONAL contributes NOTHING, silently.
+    mockOutboxRepository.findClaimable.mockResolvedValue([
+      outboxRow([serializedEvent({ deployment: AiDeploymentKind.CLOUD, costBasis: AiCostBasis.INTERNAL })]),
+    ]);
+
+    await drainer.drainBatch();
+
+    expect(mockEventRepository.create.mock.calls[0][0].costMicros).toBe(3000n);
+    expect(mockHourlyRepository.accumulate.mock.calls[0][2]).toBe(3000n);
+    expect(mockDailyRepository.accumulate.mock.calls[0][2]).toBe(3000n);
+
+    // The mis-stamp this ticket exists to prevent — same call, zero COGS.
+    vi.clearAllMocks();
+    mockUnitOfWork.runInTransaction.mockImplementation(async (work: (tx: unknown) => Promise<unknown>) => work(TX));
+    mockEventRepository.create.mockImplementation(async (entity: unknown) => entity);
+    mockPriceBook.resolveCostPrice.mockResolvedValue({ priceBookId: 'p1', unitPriceMicros: 3n, bookVersion: 'book-v1', currency: 'USD' });
+    mockOutboxRepository.findClaimable.mockResolvedValue([
+      outboxRow([serializedEvent({ deployment: AiDeploymentKind.BYOK, costBasis: AiCostBasis.BYOK_NOTIONAL })]),
+    ]);
+
+    await drainer.drainBatch();
+    expect(mockHourlyRepository.accumulate.mock.calls[0][2]).toBe(0n);
+  });
+
   it('contributes a ZERO cost delta for an unrated event', async () => {
     mockPriceBook.resolveCostPrice.mockResolvedValue(null);
     mockOutboxRepository.findClaimable.mockResolvedValue([outboxRow([serializedEvent()])]);

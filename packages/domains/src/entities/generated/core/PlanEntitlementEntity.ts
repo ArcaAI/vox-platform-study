@@ -28,6 +28,7 @@ export interface IPlanEntitlementEntity extends Omit<IBaseEntity, 'tenantId'> {
   featureDnaReports: boolean;
   featureVoiceEnrollment: boolean;
   featureMonitoringAccess: boolean;
+  featurePlatformDefaultCredential: boolean;
   modelTier: string;
   rateLimitTier: string;
 }
@@ -52,6 +53,7 @@ export class PlanEntitlementEntity extends BaseEntity {
   private _featureDnaReports: IPlanEntitlementEntity['featureDnaReports'];
   private _featureVoiceEnrollment: IPlanEntitlementEntity['featureVoiceEnrollment'];
   private _featureMonitoringAccess: IPlanEntitlementEntity['featureMonitoringAccess'];
+  private _featurePlatformDefaultCredential: IPlanEntitlementEntity['featurePlatformDefaultCredential'];
   private _modelTier: IPlanEntitlementEntity['modelTier'];
   private _rateLimitTier: IPlanEntitlementEntity['rateLimitTier'];
 
@@ -76,6 +78,7 @@ export class PlanEntitlementEntity extends BaseEntity {
     this._featureDnaReports = init.featureDnaReports;
     this._featureVoiceEnrollment = init.featureVoiceEnrollment;
     this._featureMonitoringAccess = init.featureMonitoringAccess;
+    this._featurePlatformDefaultCredential = init.featurePlatformDefaultCredential;
     this._modelTier = init.modelTier;
     this._rateLimitTier = init.rateLimitTier;
   }
@@ -230,6 +233,14 @@ export class PlanEntitlementEntity extends BaseEntity {
 
   set featureMonitoringAccess(value: IPlanEntitlementEntity['featureMonitoringAccess']) {
     this.setProperty('featureMonitoringAccess', value);
+  }
+
+  get featurePlatformDefaultCredential(): IPlanEntitlementEntity['featurePlatformDefaultCredential'] {
+    return this._featurePlatformDefaultCredential;
+  }
+
+  set featurePlatformDefaultCredential(value: IPlanEntitlementEntity['featurePlatformDefaultCredential']) {
+    this.setProperty('featurePlatformDefaultCredential', value);
   }
 
   get modelTier(): IPlanEntitlementEntity['modelTier'] {

@@ -15,8 +15,36 @@ lowercased value (`azure_speech`) does NOT match its seeded connection id
 exactly the failure mode the contract warns against.
 """
 
+from stt.models.openai_loader import OPENAI_OVERRIDE_KEY
+from stt.models.sarvam_loader import SARVAM_OVERRIDE_KEY
 from stt.pipeline.dto import AiModelFormat
-from stt.transcription.batch_service import resolve_usage_attribution
+from stt.transcription.batch_service import (
+    _CLOUD_ASR_OVERRIDE_FORMATS,
+    _OVERRIDE_KEY_BY_FORMAT,
+    resolve_usage_attribution,
+)
+
+
+class TestOverrideKeyMapAgreesWithTheLoaders:
+    """`_OVERRIDE_KEY_BY_FORMAT` must name the key each LOADER actually reads.
+
+    Attribution now looks up the entry under that key, so a drift here would
+    silently re-open the misattribution this ticket closes — the call would
+    resolve a credential the ledger cannot see.
+    """
+
+    def test_every_cloud_format_has_an_override_key(self):
+        assert set(_OVERRIDE_KEY_BY_FORMAT) == set(_CLOUD_ASR_OVERRIDE_FORMATS)
+
+    def test_sarvam_key_matches_the_loader_constant(self):
+        assert _OVERRIDE_KEY_BY_FORMAT[AiModelFormat.SARVAM] == SARVAM_OVERRIDE_KEY
+
+    def test_openai_key_matches_the_loader_constant(self):
+        assert _OVERRIDE_KEY_BY_FORMAT[AiModelFormat.OPENAI] == OPENAI_OVERRIDE_KEY
+
+    def test_both_azure_formats_read_the_same_azure_speech_entry(self):
+        assert _OVERRIDE_KEY_BY_FORMAT[AiModelFormat.AZURE_SPEECH] == "azure-speech"
+        assert _OVERRIDE_KEY_BY_FORMAT[AiModelFormat.AZURE_FOUNDRY] == "azure-speech"
 
 
 class TestResolveUsageAttributionSelfHosted:
@@ -82,6 +110,96 @@ class TestResolveUsageAttributionByok:
         )
         assert engine == "azure-speech"
         assert deployment == "BYOK"
+
+
+class TestResolveUsageAttributionIsKeySpecific:
+    """TASK-643 R3 — the override map must be inspected BY KEY.
+
+    The pre-R3 rule was ``bool(provider_overrides)`` on the whole dict, so an
+    override for one provider marked a call served by a *different* provider
+    as BYOK. That already misattributes today (a tenant holding a Sarvam key
+    while the pipeline runs Azure Speech), and the platform-default cascade
+    makes mixed maps the normal case rather than the exception.
+    """
+
+    def test_override_for_a_different_provider_is_not_byok(self):
+        engine, deployment = resolve_usage_attribution(
+            AiModelFormat.SARVAM, {"azure-speech": {"api_key": "k"}}
+        )
+        assert engine == "sarvam"
+        assert deployment == "CLOUD"
+
+    def test_azure_foundry_reads_the_azure_speech_override_key(self):
+        """``azure_foundry_loader`` resolves its credential from the
+        ``azure-speech`` entry (there is no ``azure_foundry`` key on the wire),
+        so attribution must look under the same key the loader used."""
+        _, deployment = resolve_usage_attribution(
+            AiModelFormat.AZURE_FOUNDRY, {"azure-speech": {"api_key": "k"}}
+        )
+        assert deployment == "BYOK"
+
+    def test_azure_foundry_with_only_an_unrelated_override_is_cloud(self):
+        _, deployment = resolve_usage_attribution(
+            AiModelFormat.AZURE_FOUNDRY, {"sarvam": {"api_key": "k"}}
+        )
+        assert deployment == "CLOUD"
+
+    def test_empty_entry_for_the_serving_provider_is_not_byok(self):
+        _, deployment = resolve_usage_attribution(AiModelFormat.SARVAM, {"sarvam": {}})
+        assert deployment == "CLOUD"
+
+
+class TestResolveUsageAttributionFunding:
+    """TASK-643 R3 — explicit funding origin beats inference.
+
+    A platform-funded (SYSTEM-tenant) credential is economically a
+    platform-funded vendor call, so it meters as ``CLOUD`` (OD-2) even though
+    an override entry IS present on the request.
+    """
+
+    def test_platform_funded_entry_meters_as_cloud(self):
+        engine, deployment = resolve_usage_attribution(
+            AiModelFormat.SARVAM, {"sarvam": {"api_key": "k", "funding": "platform"}}
+        )
+        assert engine == "sarvam"
+        assert deployment == "CLOUD"
+
+    def test_tenant_funded_entry_meters_as_byok(self):
+        _, deployment = resolve_usage_attribution(
+            AiModelFormat.SARVAM, {"sarvam": {"api_key": "k", "funding": "tenant"}}
+        )
+        assert deployment == "BYOK"
+
+    def test_absent_funding_preserves_todays_rule(self):
+        """An older gateway sends no ``funding``. Every sender that predates R3
+        can only ever inject the caller tenant's OWN credential, so ``tenant``
+        is exactly correct for them — not merely a conservative guess."""
+        _, deployment = resolve_usage_attribution(
+            AiModelFormat.SARVAM, {"sarvam": {"api_key": "k"}}
+        )
+        assert deployment == "BYOK"
+
+    def test_unrecognized_funding_value_falls_back_to_tenant(self):
+        _, deployment = resolve_usage_attribution(
+            AiModelFormat.SARVAM, {"sarvam": {"api_key": "k", "funding": "wat"}}
+        )
+        assert deployment == "BYOK"
+
+    def test_mixed_map_is_attributed_per_provider(self):
+        """The cascade merges tenant-over-platform PER PROVIDER, so one request
+        can legitimately carry one tenant-funded and one platform-funded entry."""
+        overrides = {
+            "sarvam": {"api_key": "platform", "funding": "platform"},
+            "azure-speech": {"api_key": "tenant", "funding": "tenant"},
+        }
+        assert resolve_usage_attribution(AiModelFormat.SARVAM, overrides)[1] == "CLOUD"
+        assert resolve_usage_attribution(AiModelFormat.AZURE_SPEECH, overrides)[1] == "BYOK"
+
+    def test_funding_never_promotes_a_self_hosted_engine(self):
+        _, deployment = resolve_usage_attribution(
+            AiModelFormat.WHISPER_CPP, {"whisper_cpp": {"funding": "tenant"}}
+        )
+        assert deployment == "SELF_HOSTED"
 
 
 class TestResolveUsageAttributionUnmappedFormat:

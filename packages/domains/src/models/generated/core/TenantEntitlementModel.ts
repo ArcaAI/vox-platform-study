@@ -27,6 +27,7 @@ export class TenantEntitlement extends BaseTenantDataModel {
   public featureDnaReports: boolean | null;
   public featureVoiceEnrollment: boolean | null;
   public featureMonitoringAccess: boolean | null;
+  public featurePlatformDefaultCredential: boolean | null;
   public modelTier: string | null;
   public rateLimitTier: string | null;
   public rateLimitPerMinute: number | null;
@@ -55,6 +56,7 @@ export class TenantEntitlement extends BaseTenantDataModel {
     this.featureDnaReports = data.featureDnaReports;
     this.featureVoiceEnrollment = data.featureVoiceEnrollment;
     this.featureMonitoringAccess = data.featureMonitoringAccess;
+    this.featurePlatformDefaultCredential = data.featurePlatformDefaultCredential;
     this.modelTier = data.modelTier;
     this.rateLimitTier = data.rateLimitTier;
     this.rateLimitPerMinute = data.rateLimitPerMinute;

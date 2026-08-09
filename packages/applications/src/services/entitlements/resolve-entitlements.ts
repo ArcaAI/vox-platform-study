@@ -49,6 +49,17 @@ export interface ResolvedFeatures {
   dnaReports: boolean;
   voiceEnrollment: boolean;
   monitoringAccess: boolean;
+  /**
+   * TASK-643 R6 — may this tenant's provider-credential cascade reach the
+   * SYSTEM (platform-funded) tier when it holds no key of its own?
+   *
+   * The first ENFORCED boolean entitlement in the system: its three neighbours
+   * are display-only (read by `getCapabilities`, the SDK and the console, and
+   * by nothing that decides anything). This one gates platform SPEND, which is
+   * why it is also the only feature that resolves `false` for a null-plan
+   * tenant — see {@link UNGATED_ENTITLEMENTS}.
+   */
+  platformDefaultCredential: boolean;
 }
 
 export interface ResolvedEntitlements {
@@ -88,6 +99,7 @@ export interface PlanEntitlementInput {
   featureDnaReports?: boolean;
   featureVoiceEnrollment?: boolean;
   featureMonitoringAccess?: boolean;
+  featurePlatformDefaultCredential?: boolean;
   modelTier?: string;
   rateLimitTier?: string;
 }
@@ -116,6 +128,7 @@ export interface TenantEntitlementOverrideInput {
   featureDnaReports?: boolean | null;
   featureVoiceEnrollment?: boolean | null;
   featureMonitoringAccess?: boolean | null;
+  featurePlatformDefaultCredential?: boolean | null;
   modelTier?: string | null;
   rateLimitTier?: string | null;
   rateLimitPerMinute?: number | null;
@@ -142,7 +155,21 @@ export const UNGATED_ENTITLEMENTS: ResolvedEntitlements = {
     monthlyNlpTextUnits: null,
     monthlyEmbeddingTokens: null,
   },
-  features: { dnaReports: true, voiceEnrollment: true, monitoringAccess: true },
+  /*
+   * ⚠ TASK-643 §0(3) — READ BEFORE "FIXING" THE ASYMMETRY BELOW.
+   *
+   * Every other boolean here is `true`: a null-plan ("ungated-legacy") tenant
+   * is unrestricted by design, and that is the right default for a DISPLAY
+   * flag. `platformDefaultCredential` is `false` — deliberately breaking the
+   * symmetry — because it is not a display flag: it decides whether the
+   * platform spends its OWN money serving a tenant that brought no key.
+   *
+   * Making it `true` "for consistency" silently grants the platform-default
+   * credential to every ungated tenant, which is precisely inverted from the
+   * fail-closed gate this exists to be. Pinned by
+   * `__tests__/resolve-entitlements.test.ts`.
+   */
+  features: { dnaReports: true, voiceEnrollment: true, monitoringAccess: true, platformDefaultCredential: false },
   modelTier: 'full_custom',
   rateLimitTier: 'relaxed',
   rateLimitPerMinute: null,
@@ -196,6 +223,7 @@ export function resolveEntitlements(
     featureDnaReports: pick(planRow?.featureDnaReports, seeded.featureDnaReports),
     featureVoiceEnrollment: pick(planRow?.featureVoiceEnrollment, seeded.featureVoiceEnrollment),
     featureMonitoringAccess: pick(planRow?.featureMonitoringAccess, seeded.featureMonitoringAccess),
+    featurePlatformDefaultCredential: pick(planRow?.featurePlatformDefaultCredential, seeded.featurePlatformDefaultCredential),
     modelTier: pick(planRow?.modelTier, seeded.modelTier) as ModelTier,
     rateLimitTier: pick(planRow?.rateLimitTier, seeded.rateLimitTier),
   };
@@ -225,6 +253,7 @@ export function resolveEntitlements(
       dnaReports: pick(override?.featureDnaReports, base.featureDnaReports),
       voiceEnrollment: pick(override?.featureVoiceEnrollment, base.featureVoiceEnrollment),
       monitoringAccess: pick(override?.featureMonitoringAccess, base.featureMonitoringAccess),
+      platformDefaultCredential: pick(override?.featurePlatformDefaultCredential, base.featurePlatformDefaultCredential),
     },
     modelTier: pick(override?.modelTier, base.modelTier) as ModelTier,
     rateLimitTier: pick(override?.rateLimitTier, base.rateLimitTier),

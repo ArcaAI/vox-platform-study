@@ -18,6 +18,18 @@ class ResponseFormat(BaseModel):
     strict: bool = True
 
 
+ProviderFunding = Literal["tenant", "platform"]
+"""WHO PAID for an injected credential (TASK-643 R3).
+
+The gateway can inject a credential from two tiers — the caller tenant's own
+connection row, or the SYSTEM-tenant platform default — and they are the same
+bytes on the wire with opposite economics. Tenant-funded spend is metered
+notionally and never invoiced; platform-funded spend is real COGS the platform
+must recover. SMR must therefore be TOLD which it was, not left to infer it
+from the presence of an override.
+"""
+
+
 class ProviderOverride(BaseModel):
     """Per-request BYO cloud credential the gateway injects for the resolved
     cloud provider (`apps/api` ``SmrProxyController.applyTenantProviderOverrides``).
@@ -40,6 +52,28 @@ class ProviderOverride(BaseModel):
     # so both travel with the override. Ignored by every non-Vertex provider.
     project: str | None = None
     location: str | None = None
+    # TASK-643 R3 — funding origin. Carried PER ENTRY rather than once per
+    # request because the platform-default cascade merges tenant-over-platform
+    # per provider: one request can legitimately hold a tenant-funded entry and
+    # a platform-funded one, which a request-level field cannot express.
+    # Non-secret metadata, so deliberately NOT a SecretStr — the attribution
+    # must survive ``model_dump()``.
+    funding: ProviderFunding = "tenant"
+
+    @field_validator("funding", mode="before")
+    @classmethod
+    def _unknown_funding_is_tenant(cls, value: object) -> object:
+        """Degrade an unrecognized value to ``"tenant"`` instead of 422-ing.
+
+        ABSENT means ``"tenant"`` and that is exact, not a hedge: a gateway
+        that does not stamp funding has no platform tier to draw from, so every
+        credential it can inject is the caller's own. For a MALFORMED value,
+        rejecting the request would take generation down over a metering label
+        — the opposite of this lane's fail-open posture for BYO credentials —
+        so it degrades to the same conservative default, which can never
+        silently convert tenant-funded spend into a platform COGS charge.
+        """
+        return value if value in ("tenant", "platform") else "tenant"
 
 
 class GenerateRequest(BaseModel):

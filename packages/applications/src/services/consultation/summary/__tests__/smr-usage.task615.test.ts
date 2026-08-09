@@ -192,6 +192,30 @@ describe('buildLlmUsageInput', () => {
     expect(input.common.costBasis).toBe(AiCostBasis.BYOK_NOTIONAL);
   });
 
+  it('TASK-643 R3: a PLATFORM-FUNDED cloud call is CLOUD + INTERNAL, not BYOK', () => {
+    // The gateway injected `provider_overrides` for this call — but from the
+    // SYSTEM-tenant platform default, not the tenant's own credential. SMR is
+    // told which it was via `provider_overrides[<provider>].funding` and
+    // reports `byok: false`, so the economics land here as ordinary
+    // platform-funded cloud spend (OD-2: no new AiDeploymentKind member).
+    //
+    // Pinning test: the DECISION lives in SMR's `_used_byok_credential`
+    // (`apps/smr/.../generate.py`, tested there). What this pins is the
+    // consequence — that `byok: false` on a cloud provider yields a costBasis
+    // the drainer will actually accumulate. Stamped BYOK instead, this call
+    // would contribute 0 to every COGS rollup and resolve the baseline SELL
+    // price rather than the managed-vendor row.
+    const input = buildLlmUsageInput({
+      usage: parseSmrUsageDetail(detail({ byok: false, provider: 'azure-openai', endpoint_kind: 'openai.chat' }))!,
+      tenantId: 'tenant-1',
+      operation: 'generate',
+    })!;
+
+    expect(input.common.provider).toBe('azure');
+    expect(input.common.deployment).toBe(AiDeploymentKind.CLOUD);
+    expect(input.common.costBasis).toBe(AiCostBasis.INTERNAL);
+  });
+
   it('classifies a self-hosted engine as SELF_HOSTED, not CLOUD', () => {
     const input = buildLlmUsageInput({
       usage: parseSmrUsageDetail(detail({ provider: 'lm-studio', endpoint_kind: 'lmstudio.chat' }))!,

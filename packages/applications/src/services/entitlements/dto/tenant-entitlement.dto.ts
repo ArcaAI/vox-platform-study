@@ -67,6 +67,13 @@ export class TenantEntitlementResponse {
   @ApiPropertyOptional({ description: 'Override monitoring access feature; null = inherit', nullable: true })
   featureMonitoringAccess?: boolean | null;
 
+  @ApiPropertyOptional({
+    description:
+      "Override the PLATFORM-DEFAULT (SYSTEM-tenant) provider-credential grant; null = inherit the plan (false on every plan), true = grant, false = explicit deny. A tenant's own DISABLED provider row is a stronger per-provider veto this grant never overrides.",
+    nullable: true,
+  })
+  featurePlatformDefaultCredential?: boolean | null;
+
   @ApiPropertyOptional({ description: 'Override model tier; null = inherit', nullable: true })
   modelTier?: string | null;
 
@@ -191,6 +198,15 @@ export class UpsertTenantEntitlementRequest {
   @IsOptional()
   @IsBoolean()
   featureMonitoringAccess?: boolean | null;
+
+  @ApiPropertyOptional({
+    description:
+      "Grant (true) / deny (false) / inherit (null) the PLATFORM-DEFAULT (SYSTEM-tenant) provider credential for this tenant. This is how the grant is issued — no plan tier carries it. Granting lets the platform fund this tenant's cloud provider calls.",
+    nullable: true,
+  })
+  @IsOptional()
+  @IsBoolean()
+  featurePlatformDefaultCredential?: boolean | null;
 
   @ApiPropertyOptional({ description: 'Override model tier; null = inherit', nullable: true })
   @IsOptional()

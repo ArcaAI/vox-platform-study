@@ -156,14 +156,23 @@ def _coerce_stats(result: Any, *, provider: str, model: str, latency_ms: int) ->
 
 
 def _used_byok_credential(request_body: GenerateRequest) -> bool:
-    """True when the gateway injected a tenant credential for THIS provider.
+    """True when the call was served on the TENANT's own credential.
 
-    The gateway only forwards the override entry for the provider it resolved,
-    so a match here means the call is tenant-funded and the ledger row must be
-    stamped ``BYOK_NOTIONAL`` rather than counted as platform spend.
+    TASK-643 R3. The presence of an override entry is no longer the answer:
+    the gateway can inject a credential from the SYSTEM-tenant platform default
+    as well as from the caller's own connection row, and those are identical on
+    the wire. A platform-funded call is ordinary platform vendor spend and must
+    reach the COGS rollups (OD-2 — it meters as ``CLOUD``/``INTERNAL``); stamped
+    ``BYOK``/``BYOK_NOTIONAL`` it would contribute zero and never be invoiced.
+
+    So the entry for the RESOLVED provider is read, and it says who paid.
+    Absent entry ⇒ platform env credential ⇒ not BYOK. Absent ``funding``
+    ⇒ ``"tenant"`` (a sender with no platform tier can only inject the
+    caller's own key), which keeps an older gateway byte-for-byte unchanged.
     """
-    overrides = request_body.provider_overrides
-    return overrides is not None and request_body.provider in overrides
+    overrides = request_body.provider_overrides or {}
+    entry = overrides.get(request_body.provider)
+    return entry is not None and entry.funding == "tenant"
 
 
 def _extract_stream_usage(data: dict[str, Any]) -> tuple[int, int, int | None]:

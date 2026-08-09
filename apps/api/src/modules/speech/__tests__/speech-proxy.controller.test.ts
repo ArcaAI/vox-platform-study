@@ -396,6 +396,45 @@ describe('SpeechProxyController', () => {
       expect(call.common).toMatchObject({ provider: 'azure', deployment: 'BYOK', costBasis: 'BYOK_NOTIONAL' });
     });
 
+    it('TASK-643 R3: a PLATFORM-FUNDED override is deployment CLOUD, not BYOK', async () => {
+      // The cascade injects the SYSTEM-tenant platform credential for a tenant
+      // that has none of its own. An override IS present — but the platform is
+      // paying, so this must meter exactly like any other platform-funded
+      // cloud call (OD-2), NOT as BYOK/BYOK_NOTIONAL (which contributes zero
+      // to the COGS rollups and is never invoiced).
+      const usageLedger = createMockUsageLedger();
+      const ctrl = buildController(usageLedger);
+      const stream = makeStream();
+      http.axiosRef.post.mockResolvedValue({
+        headers: { 'content-type': 'audio/pcm', 'x-tts-characters': '3', 'x-tts-provider': 'azure', 'x-tts-sample-rate': '24000', 'x-tts-audio-format': 'pcm' },
+        data: stream,
+      });
+      const res = makeRes();
+
+      await ctrl.synthesize({ input: 'Hi.', voice: 'en-female-1', provider_overrides: { azure: { api_key: 'k', funding: 'platform' } } } as any, res);
+      stream.emit('end');
+
+      const call = usageLedger.recordUsage.mock.calls[0][0];
+      expect(call.common).toMatchObject({ provider: 'azure', deployment: 'CLOUD' });
+      expect(call.common.costBasis).toBeUndefined();
+    });
+
+    it('TASK-643 R3: an override for a DIFFERENT provider never marks this call BYOK', async () => {
+      const usageLedger = createMockUsageLedger();
+      const ctrl = buildController(usageLedger);
+      const stream = makeStream();
+      http.axiosRef.post.mockResolvedValue({
+        headers: { 'content-type': 'audio/pcm', 'x-tts-characters': '3', 'x-tts-provider': 'azure', 'x-tts-sample-rate': '24000', 'x-tts-audio-format': 'pcm' },
+        data: stream,
+      });
+      const res = makeRes();
+
+      await ctrl.synthesize({ input: 'Hi.', voice: 'en-female-1', provider_overrides: { sarvam: { api_key: 'k' } } } as any, res);
+      stream.emit('end');
+
+      expect(usageLedger.recordUsage.mock.calls[0][0].common).toMatchObject({ provider: 'azure', deployment: 'CLOUD' });
+    });
+
     it('classifies a cloud provider NOT covered by a BYOK override as deployment CLOUD', async () => {
       const usageLedger = createMockUsageLedger();
       const ctrl = buildController(usageLedger);
