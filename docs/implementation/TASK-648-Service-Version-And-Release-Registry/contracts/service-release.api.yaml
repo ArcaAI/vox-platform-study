@@ -43,6 +43,45 @@ paths:
         '200': { description: Registered (or heartbeated), content: { application/json: { schema: { $ref: '#/components/schemas/ServiceReleaseResponse' } } } }
         '401': { description: Missing or invalid X-Service-Token }
 
+  /internal/service-releases/digest:
+    post:
+      operationId: attachReleaseDigest
+      summary: Attach a resolved image digest to an existing release (U1 gap fix)
+      description: >
+        AMENDMENT to the U0 freeze. U1 correctly reported that `imageDigest` was documented as
+        "attached by CI" with no route to attach it. Added here rather than left to a unit to
+        invent.
+
+
+        Keyed on (service, gitCommitSha) — NOT on the tag. A `v<X.Y.Z>` promotion pipeline
+        builds nothing, so it has no tag-derived identity; the commit SHA is the only stable
+        key across build and promotion. Idempotent, and MUST NOT create a release row: if no
+        row matches, that is a 404, because a digest without a build is a contradiction.
+
+
+        REACHABILITY CAVEAT for the integrator: this assumes the CI runner can reach the
+        gateway. If it cannot in production, the fallback is for the promotion step to write
+        the digest into the deployment repo's manifests as an env var, which the pod then
+        includes in its own self-registration. Decide before wiring U1's `build.env` DIGEST
+        output to this route.
+      security: [{ serviceToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [service, gitCommitSha, imageDigest]
+              properties:
+                service: { type: string }
+                gitCommitSha: { type: string, pattern: '^[0-9a-f]{40}$' }
+                imageRepository: { type: [string, 'null'] }
+                imageDigest: { type: string, pattern: '^sha256:[0-9a-f]{64}$' }
+      responses:
+        '200': { description: Digest attached, content: { application/json: { schema: { $ref: '#/components/schemas/ServiceReleaseResponse' } } } }
+        '401': { description: Missing or invalid X-Service-Token }
+        '404': { description: No release row for that (service, gitCommitSha) }
+
   /admin/service-releases:
     get:
       operationId: listServiceReleases

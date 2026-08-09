@@ -138,6 +138,12 @@
       # no semver major/minor derivation (kept deliberately simple).
       # Branch builds: env prefix + short sha. `case` matches the dev-*/staging-*/
       # prod-* release-line globs.
+      #
+      # BRANCH_SLUG is computed unconditionally below (not just in the `*` case)
+      # because TASK-648's BUILD_VERSION needs it for EVERY untagged build, not
+      # only the branches that fall through to the generic case.
+      BRANCH_SLUG=$(echo "${CI_COMMIT_BRANCH:-unknown}" | sed 's/[^a-zA-Z0-9]/-/g')
+
       if [ -n "${CI_COMMIT_TAG:-}" ]; then
         TAG_SLUG=$(echo "$CI_COMMIT_TAG" | sed 's/[^a-zA-Z0-9._-]/-/g')
         TAGS="$TAG_SLUG sha-${short_sha}"
@@ -149,7 +155,6 @@
           cicd)                TAGS="cicd-${short_sha} sha-${short_sha}" ;;
           release-playground)  TAGS="playground-${short_sha} sha-${short_sha}" ;;
           *)
-            BRANCH_SLUG=$(echo "${CI_COMMIT_BRANCH:-unknown}" | sed 's/[^a-zA-Z0-9]/-/g')
             TAGS="${BRANCH_SLUG}-${short_sha} sha-${short_sha}"
             ;;
         esac
@@ -169,6 +174,22 @@
       echo "Building service=$SERVICE_NAME primary_tag=$primary_tag all_tags=$TAGS"
       echo "  commit=$CI_COMMIT_SHA branch=${CI_COMMIT_BRANCH:-} git_tag=${CI_COMMIT_TAG:-}"
 
+      # ── TASK-648 §3.2/§3.1 — build-identity args, baked into /app/build-info.json
+      # by each Dockerfile (unit U2; frozen shape: contracts/build-info.schema.json).
+      # BUILD_VERSION is the git tag's SemVer core (the tag IS the version — never
+      # package.json/pyproject.toml), or, for an untagged build,
+      # 0.0.0-<branch-slug>.<sha8> — the SAME [^a-zA-Z0-9]->- branch-slug rule as
+      # the image tag above, and the SAME shape `formatUntaggedVersion` in
+      # packages/utils/src/version-grammar.ts produces, so the baked version and
+      # the image tag always agree.
+      if [ -n "${CI_COMMIT_TAG:-}" ]; then
+        BUILD_VERSION=$(echo "$CI_COMMIT_TAG" | sed -E 's/^[A-Za-z]+-//')
+        BUILD_RELEASE_TAG="$CI_COMMIT_TAG"
+      else
+        BUILD_VERSION="0.0.0-${BRANCH_SLUG}.${short_sha}"
+        BUILD_RELEASE_TAG=""
+      fi
+
       docker buildx build \
         --push \
         --cache-from type=registry,ref=$cache_repo \
@@ -177,6 +198,16 @@
         --label org.opencontainers.image.revision=$CI_COMMIT_SHA \
         --label org.opencontainers.image.created=$created_at \
         --label org.opencontainers.image.version=$primary_tag \
+        --label org.opencontainers.image.ref.name=$primary_tag \
+        --label com.arcaai.branch="${CI_COMMIT_BRANCH:-}" \
+        --build-arg BUILD_SERVICE="$SERVICE_NAME" \
+        --build-arg BUILD_VERSION="$BUILD_VERSION" \
+        --build-arg BUILD_RELEASE_TAG="$BUILD_RELEASE_TAG" \
+        --build-arg BUILD_GIT_BRANCH="${CI_COMMIT_BRANCH:-}" \
+        --build-arg BUILD_GIT_SHA="$CI_COMMIT_SHA" \
+        --build-arg BUILD_AT="$created_at" \
+        --build-arg BUILD_CI_PIPELINE_ID="${CI_PIPELINE_ID:-}" \
+        --build-arg BUILD_CI_PIPELINE_URL="${CI_PIPELINE_URL:-}" \
         $build_target_arg \
         $BUILD_ARGS \
         $tag_args \
@@ -188,7 +219,19 @@
         echo "    $image_repo:$tag"
       done
 
+      # ── TASK-648 §3.2/§7 — resolve the manifest digest AFTER the push (it does
+      # not exist before) and carry it forward as a pipeline artifact variable.
+      # This is the value the promote-* jobs in deploy.yml re-resolve and attach
+      # to the SAME ServiceRelease row (keyed on service+gitCommitSha+releaseTag)
+      # — promotion NEVER creates a second release row, it only re-tags an
+      # already-pushed digest (see promote.sh and README §7 "Resolved decisions").
+      digest=$(docker buildx imagetools inspect "$image_repo:$primary_tag" | awk '/^Digest:/ {print $2; exit}')
+      echo "  digest: $digest"
+
       echo "IMAGE=$image_repo:$primary_tag" >> build.env
+      echo "DIGEST=$digest" >> build.env
+      echo "BUILD_VERSION=$BUILD_VERSION" >> build.env
+      echo "BUILD_RELEASE_TAG=$BUILD_RELEASE_TAG" >> build.env
   artifacts:
     reports:
       dotenv: build.env

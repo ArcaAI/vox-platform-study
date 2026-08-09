@@ -31,6 +31,25 @@
 # so `$CI_COMMIT_SHA` is identical to the staging pipeline that already built
 # it — see §F11). If no such tag exists, `imagetools inspect` fails cleanly
 # instead of silently rebuilding.
+#
+# TASK-648 §7 "Resolved decisions" (prod is promotion-only) — this script's
+# existing CI_COMMIT_SHA-keyed digest resolution (above) is exactly the
+# mechanism that invariant depends on:
+#   - A `v*` promote-prod pipeline BUILDS NOTHING (`.build-common-rules` in
+#     build.yml has no clause matching `PIPELINE_TYPE == "tag_release"`), so
+#     there is no tag-derived release identity to key on in that pipeline —
+#     only CI_COMMIT_SHA, which is what SOURCE_TAG is built from below.
+#   - The ServiceRelease row for that commit was created earlier by the
+#     dev-*/staging-* pipeline that actually built `sha-<sha8>` (via the
+#     self-registration path, README §3.4/§9 W8/W9) and is looked up by
+#     (serviceName, gitCommitSha, releaseTag) — the SAME key this script's
+#     SOURCE_TAG is derived from.
+#   - This script has ZERO database access and creates NO release row for any
+#     environment — it only re-tags an already-pushed digest and pins the
+#     deployment overlay. Digest attachment to the release row happens
+#     through the internal service-release API once it exists (README §5 W8),
+#     keyed the same way. Promoting twice is therefore idempotent by
+#     construction: same CI_COMMIT_SHA in, same digest out, no second row.
 # ══════════════════════════════════════════════════════════════════════════════
 set -eu
 
