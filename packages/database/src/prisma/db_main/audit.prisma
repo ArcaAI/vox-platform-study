@@ -225,5 +225,18 @@ enum ResourceType {
   BillingInvoice
   BillingAdjustment
 
+  // Service Version & Release Registry (TASK-648). Only the first
+  // registration of a previously-unseen ServiceRelease broadcasts
+  // ResourceCreated — heartbeats and ServiceInstance upserts deliberately do
+  // NOT (see §3.4 of the ticket README: ~15 processes heartbeating every 5
+  // minutes would otherwise flood the audit trail with ~4,300 noise rows/day).
+  // ChangelogEntry create/update/publish and UserChangelogAcknowledgement are
+  // included for parity with their sys-event-emitting services (W7/W13,
+  // outside this unit's scope).
+  ServiceRelease
+  ServiceInstance
+  ChangelogEntry
+  UserChangelogAcknowledgement
+
   @@schema("core")
 }

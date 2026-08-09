@@ -182,6 +182,16 @@ describe('modelHasSoftDelete', () => {
       // TASK-615 #6 — append-only plan-change facts for fee proration. A plan
       // window is corrected by appending, never by deleting closed history.
       'TenantPlanHistory',
+      // TASK-648 — Service Version & Release Registry. ServiceInstance is a
+      // heartbeated runtime observation pruned wholesale by the existing
+      // scheduler surface, not soft-deleted. ChangelogEntry moves
+      // DRAFT -> PUBLISHED only. UserChangelogAcknowledgement rows are
+      // immutable acknowledgement facts. None carries a `resourceStatus`
+      // column (ServiceRelease is DELIBERATELY NOT here — it keeps the
+      // standard lifecycle).
+      'ServiceInstance',
+      'ChangelogEntry',
+      'UserChangelogAcknowledgement',
     ];
 
     expected.forEach((model) => {

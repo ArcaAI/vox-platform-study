@@ -156,6 +156,18 @@ export const MODELS_WITHOUT_SOFT_DELETE: ReadonlySet<string> = new Set([
   // mid-period fee proration. A plan segment is corrected by appending, never by
   // deleting a closed window, so it has no `resourceStatus` column.
   'TenantPlanHistory',
+  // Service Version & Release Registry (TASK-648). ServiceInstance is a
+  // heartbeated runtime observation — stale rows are pruned wholesale by the
+  // existing scheduler surface (30-day retention), never individually
+  // soft-deleted, so it has no `resourceStatus` column. `ServiceRelease` is
+  // DELIBERATELY NOT here — it keeps the standard lifecycle.
+  'ServiceInstance',
+  // ChangelogEntry moves DRAFT -> PUBLISHED only (§3.5); withdrawing an entry
+  // is out of this ticket's scope, so it carries no `resourceStatus` column.
+  'ChangelogEntry',
+  // UserChangelogAcknowledgement rows are immutable acknowledgement facts —
+  // "was this admin shown the notice" must never be retractable.
+  'UserChangelogAcknowledgement',
 ]);
 
 /**

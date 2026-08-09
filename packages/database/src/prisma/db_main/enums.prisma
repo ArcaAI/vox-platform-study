@@ -546,3 +546,36 @@ enum BillingLineKind {
 
   @@schema("core")
 }
+
+// Service Version & Release Registry — ChangelogEntry (TASK-648). Exact
+// member values are frozen in the ticket's
+// contracts/service-release.api.yaml — do not rename without updating that
+// contract.
+
+// Drives badge colour and whether an entry is pinned in the "What's New"
+// popup (§3.5/§3.6 of the ticket README).
+enum ChangelogSeverity {
+  INFO
+  IMPORTANT
+  BREAKING
+
+  @@schema("core")
+}
+
+// Filters both the one-time popup and the /changelog list.
+enum ChangelogAudience {
+  ALL
+  GLOBAL_ADMIN
+  TENANT_ADMIN
+
+  @@schema("core")
+}
+
+// CI creates DRAFT on an ALL- tag; a global admin PUBLISHes it. Nothing
+// reaches admins' screens automatically (§3.5).
+enum ChangelogPublishStatus {
+  DRAFT
+  PUBLISHED
+
+  @@schema("core")
+}

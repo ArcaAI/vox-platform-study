@@ -14,6 +14,10 @@ import { TenantPlanHistoryRepository } from '../../../repositories/generated/cor
 import { AiUsageOutboxRepository } from '../../../repositories/generated/core/AiUsageOutboxRepository';
 import { AiUsageRollupDailyRepository } from '../../../repositories/generated/core/AiUsageRollupDailyRepository';
 import { ProviderReconciliationRunRepository } from '../../../repositories/generated/core/ProviderReconciliationRunRepository';
+import { ServiceReleaseRepository } from '../../../repositories/generated/core/ServiceReleaseRepository';
+import { ServiceInstanceRepository } from '../../../repositories/generated/core/ServiceInstanceRepository';
+import { ChangelogEntryRepository } from '../../../repositories/generated/core/ChangelogEntryRepository';
+import { UserChangelogAcknowledgementRepository } from '../../../repositories/generated/core/UserChangelogAcknowledgementRepository';
 import { AiUsageRollupHourlyRepository } from '../../../repositories/generated/core/AiUsageRollupHourlyRepository';
 import { BillingAdjustmentRepository } from '../../../repositories/generated/core/BillingAdjustmentRepository';
 import { BillingInvoiceLineRepository } from '../../../repositories/generated/core/BillingInvoiceLineRepository';
@@ -229,6 +233,14 @@ const repositories = [
   // Append-only plan-change facts feeding the invoice engine's plan-fee basis
   // (no soft delete, no sys-events — see the repository doc).
   TenantPlanHistoryRepository,
+  // Service Version & Release Registry (TASK-648). ServiceRelease is
+  // immutable build facts; ServiceInstance is a heartbeated runtime
+  // observation (no soft delete). ChangelogEntry is the one human-edited, OCC
+  // model; UserChangelogAcknowledgement is its per-user ack trail.
+  ServiceReleaseRepository,
+  ServiceInstanceRepository,
+  ChangelogEntryRepository,
+  UserChangelogAcknowledgementRepository,
 ];
 
 @Module({
