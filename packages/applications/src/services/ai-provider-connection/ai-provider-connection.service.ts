@@ -25,7 +25,16 @@ import { isSuperAdmin } from '../../common/tenant-guards';
 import { IActiveUserContext } from '../../interfaces';
 import { SecretsService } from '../baseServices/_meta/secrets/SecretsService';
 import { decryptSecretField, encryptSecretField } from '../baseServices/_meta/secrets/secret-field.util';
-import { IProviderConnectionService, ProviderOverrideEntry, ProviderOverrides, ResolvedProviderConnection } from './IProviderConnectionService';
+import { IEntitlementsService } from '../entitlements/IEntitlementsService';
+import {
+  IProviderConnectionService,
+  PlatformDefaultOutcome,
+  ProviderFunding,
+  ProviderOverrideEntry,
+  ProviderOverrides,
+  ResolvedProviderConnection,
+  ResolvedProviderOverrides,
+} from './IProviderConnectionService';
 import { AiProviderConnectionDtoMapper } from './ai-provider-connection.dto.mapper';
 import { ProviderService, isCloudByoProvider } from './constants';
 import { AiProviderConnectionResponse, UpsertAiProviderConnectionRequest } from './dto';
@@ -63,6 +72,13 @@ export class AiProviderConnectionService extends BaseService implements IProvide
     protected override readonly clsService: ClsService<IActiveUserContext>,
     // Optional so non-Vault deploys still run; key writes then reject.
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
+    // The platform-default entitlement gate (TASK-643 R6). Optional so this
+    // service still constructs in unit tests and in any composition that does
+    // not import the entitlements module — but an ABSENT gate DENIES the SYSTEM
+    // tier rather than granting it. Failing open here would spend the
+    // platform's money on a wiring mistake; failing closed reproduces exactly
+    // the pre-cascade behaviour (tenant tier only), which is a safe default.
+    @Optional() @Inject(IEntitlementsService) private readonly entitlementsService?: IEntitlementsService,
   ) {
     super(eventEmitter, clsService, ResourceType.AiProviderConnection);
   }
@@ -226,17 +242,19 @@ export class AiProviderConnectionService extends BaseService implements IProvide
   }
 
   async resolveConnection(service: ProviderService, provider: string, tenantId: string): Promise<ResolvedProviderConnection | null> {
-    const tx = this.crossTenantLane(SYSTEM_TENANT_ID);
+    const { tenantRows, systemRows, vetoed } = await this.cascadeRows(service, tenantId, provider);
 
-    const [tenantRow, systemRow] = await Promise.all([
-      tenantId === SYSTEM_TENANT_ID ? Promise.resolve(null) : this.connectionRepository.findByTenantServiceProvider(service, provider, tenantId, tx),
-      this.connectionRepository.findByTenantServiceProvider(service, provider, SYSTEM_TENANT_ID, tx),
-    ]);
+    // The veto fails CLOSED: never the platform default, never another
+    // provider. (A vetoed row is disabled, so the tenant branch below could
+    // not match anyway — this is explicit because the SYSTEM branch could.)
+    if (vetoed.has(provider)) return null;
 
-    // A DISABLED row is treated as absent — that is what makes the shipped
-    // all-disabled seed behaviour-neutral (silent-change guard).
-    if (tenantRow?.enabled) return this.toResolved(tenantRow, 'tenant');
-    if (systemRow?.enabled) return this.toResolved(systemRow, 'system');
+    // A DISABLED row is treated as absent at both tiers — that is what makes
+    // the shipped all-disabled seed behaviour-neutral (silent-change guard).
+    const tenantRow = tenantRows.find((r) => r.enabled);
+    if (tenantRow) return this.toResolved(tenantRow, 'tenant');
+    const systemRow = systemRows.find((r) => r.enabled);
+    if (systemRow) return this.toResolved(systemRow, 'system');
     return null;
   }
 
@@ -254,60 +272,39 @@ export class AiProviderConnectionService extends BaseService implements IProvide
    * `service='llm'`) so the TASK-572-owned smr-proxy keeps compiling until it
    * repoints to the service-first form.
    */
-  async resolveTenantCloudOverrides(service: ProviderService, tenantId: string): Promise<ProviderOverrides>;
+  async resolveTenantCloudOverrides(service: ProviderService, tenantId: string): Promise<ResolvedProviderOverrides>;
   /** @deprecated 1-arg form assumes `service='llm'`; kept for the smr-proxy transition (TASK-572 removes it). */
-  async resolveTenantCloudOverrides(tenantId: string): Promise<ProviderOverrides>;
-  async resolveTenantCloudOverrides(a: ProviderService | string, b?: string): Promise<ProviderOverrides> {
+  async resolveTenantCloudOverrides(tenantId: string): Promise<ResolvedProviderOverrides>;
+  async resolveTenantCloudOverrides(a: ProviderService | string, b?: string): Promise<ResolvedProviderOverrides> {
     const service = (b === undefined ? 'llm' : a) as ProviderService;
     const tenantId = b === undefined ? a : b;
 
     // No Transit provider → nothing is decryptable. The WRITE path already
     // rejects key writes without Vault, so this is a degraded-runtime case,
     // not a policy decision: resolve to nothing and let SYSTEM/env serve.
-    if (!this.secretsService) return {};
+    if (!this.secretsService) return { overrides: {} };
 
-    const tx = this.crossTenantLane(tenantId);
-    const rows = await this.connectionRepository.findByTenantIdAndService(service, tenantId, tx);
+    const { tenantRows, systemRows, vetoed, platformDefault } = await this.cascadeRows(service, tenantId);
 
-    const out: ProviderOverrides = {};
-    for (const row of rows) {
+    const overrides: ProviderOverrides = {};
+    // SYSTEM first, then the tenant's own rows OVER it — the merge is per
+    // provider KEY, never a whole-map "tenant if non-empty" short-circuit, so a
+    // tenant with an azure key but no sarvam key still gets platform sarvam.
+    for (const row of [...systemRows, ...tenantRows]) {
       // A non-listed row must never become a credential override even if one
-      // exists — the tenant lane is cloud-only per-service (C5), enforced
-      // independently of the write-side guard.
+      // exists — the BYO lane is cloud-only per-service (C5), enforced
+      // independently of the write-side guard, and enforced at BOTH tiers so
+      // the SYSTEM tier cannot become a back door for injecting a self-host
+      // row's base_url as a credential.
       if (!isCloudByoProvider(service, row.provider)) continue;
+      if (vetoed.has(row.provider)) continue;
       if (!row.enabled || !row.encryptedApiKey) continue;
 
-      try {
-        const apiKey = await decryptSecretField(this.secretsService, row.encryptedApiKey);
-        const entry: ProviderOverrideEntry = { api_key: apiKey };
-        if (row.baseUrl) entry.base_url = row.baseUrl;
-        if (row.region) entry.region = row.region;
-        if (row.apiVersion) entry.api_version = row.apiVersion;
-        if (row.deploymentName) entry.deployment_name = row.deploymentName;
-        // Columns cover azure/bedrock; the newer providers keep their per-request
-        // target in extraJson (console-written): `model` (openai/anthropic/stt),
-        // `project`/`location` (vertex). Without this, Vertex BYO never reaches
-        // the tenant's project and an LLM model override is silently dropped.
-        const extra = (row.extraJson ?? {}) as Record<string, unknown>;
-        if (typeof extra.model === 'string') entry.model = extra.model;
-        if (typeof extra.project === 'string') entry.project = extra.project;
-        if (typeof extra.location === 'string') entry.location = extra.location;
-        out[row.provider] = entry;
-      } catch {
-        // FAIL OPEN for this one credential. The log carries the identifying
-        // facts and NOTHING else — no ciphertext, no plaintext, and deliberately
-        // not the error message either (a Transit error string can echo the
-        // payload it choked on).
-        this.logger.warn({
-          message: 'Tenant provider credential failed to decrypt; skipping (request falls back to platform credentials)',
-          tenantId,
-          service,
-          provider: row.provider,
-          keyVersion: row.keyVersion ?? null,
-        });
-      }
+      const entry = await this.toOverrideEntry(row, service);
+      if (entry) overrides[row.provider] = entry;
     }
-    return out;
+
+    return platformDefault ? { overrides, platformDefault } : { overrides };
   }
 
   /**
@@ -348,6 +345,174 @@ export class AiProviderConnectionService extends BaseService implements IProvide
       data: { service, provider, tenantId: scopedTenantId, enabled: restored.enabled, action: 'connection-restored' },
     });
     return AiProviderConnectionDtoMapper.toResponse(restored);
+  }
+
+  // ─────────────────────── the two-tier cascade (R1/R4/R6) ───────────────────────
+
+  /**
+   * THE cascade. Every path that may reach the SYSTEM-tenant platform default —
+   * `resolveTenantCloudOverrides` (all six production injection sites) and
+   * `resolveConnection` — comes through here, so there is exactly one
+   * precedence rule, one veto set and one entitlement `if` in the codebase
+   * (TASK-643 §3.1 option C, OD-5).
+   *
+   * `provider` selects the read SHAPE, not the policy: given, both tiers are
+   * read by (service, provider); omitted, both are read as whole-service maps.
+   * The tier logic below is identical either way.
+   *
+   * ORDERING IS DELIBERATE, and it is what keeps the change cheap and safe:
+   *   1. the caller's own tier is read FIRST and UNCONDITIONALLY;
+   *   2. the veto set is computed from it;
+   *   3. the entitlement gate is evaluated;
+   *   4. only then is the SYSTEM tier read.
+   * A tenant that is vetoing or unentitled therefore costs exactly ONE query —
+   * the same as before this ticket — and the platform's ciphertext is never
+   * fetched for a caller that may not use it.
+   *
+   * TENANT SAFETY: the only two `tenantId` values that may appear in either
+   * read are the caller's and SYSTEM. Both reads stay EXPLICITLY pinned, which
+   * matters because on the `crossTenantLane` base-client path that predicate is
+   * the only tenant boundary there is (the base client also skips the
+   * soft-delete filter). Asserted by `tests/cross-tenant/task-643-*`.
+   */
+  private async cascadeRows(
+    service: ProviderService,
+    tenantId: string,
+    provider?: string,
+  ): Promise<{
+    tenantRows: AiProviderConnectionEntity[];
+    systemRows: AiProviderConnectionEntity[];
+    vetoed: Set<string>;
+    platformDefault?: PlatformDefaultOutcome;
+  }> {
+    const tenantRows = await this.readTier(service, tenantId, provider);
+
+    // R4 — a tenant-owned row that is DISABLED is a VETO of this
+    // (service, provider), not merely "unused": fail closed, never fall through
+    // to the platform default and never to a different provider. Scoped to
+    // cloud BYO providers because those are the only ones a tenant may own.
+    // NOTE: a row the tenant SOFT-DELETED is invisible to the repository and so
+    // reads as absent — deleting is how a tenant returns to "no opinion",
+    // disabling is how it refuses.
+    const vetoed = new Set(tenantRows.filter((r) => !r.enabled && isCloudByoProvider(service, r.provider)).map((r) => r.provider));
+
+    // The caller IS the platform tier; there is nothing above it to cascade to
+    // (and no gate — the SYSTEM tenant does not need permission to spend the
+    // platform's own money).
+    if (tenantId === SYSTEM_TENANT_ID) {
+      return { tenantRows, systemRows: [], vetoed };
+    }
+
+    // A single vetoed provider makes the SYSTEM read pointless for the
+    // by-provider shape: skip it rather than fetch a secret we must discard.
+    if (provider !== undefined && vetoed.has(provider)) {
+      return { tenantRows, systemRows: [], vetoed, platformDefault: { entitlementSuppressed: false, vetoed: [...vetoed] } };
+    }
+
+    // R6 — the gate, evaluated BEFORE the SYSTEM read. It governs platform
+    // SPEND, so it applies to cloud BYO providers only: a SYSTEM row for a
+    // self-host engine records where platform INFRASTRUCTURE lives and must
+    // stay resolvable for every tenant, entitled or not.
+    const gated = provider === undefined || isCloudByoProvider(service, provider);
+    if (gated && !(await this.mayConsumePlatformDefault(tenantId))) {
+      return { tenantRows, systemRows: [], vetoed, platformDefault: { entitlementSuppressed: true, vetoed: [...vetoed] } };
+    }
+
+    const systemRows = await this.readTier(service, SYSTEM_TENANT_ID, provider);
+    const platformDefault = vetoed.size > 0 ? { entitlementSuppressed: false, vetoed: [...vetoed] } : undefined;
+    return { tenantRows, systemRows, vetoed, platformDefault };
+  }
+
+  /**
+   * One tier of the cascade, always pinned to exactly one `tenantId`. The lane
+   * selection is per tier and unchanged from the single-tier code: a global
+   * admin reading another tenant gets the unscoped base client (the explicit
+   * predicate still bounds it), everyone else goes through the extended client,
+   * where `mergeSharedReadTenantIntoWhere` permits an explicit SYSTEM pin from
+   * any tenant's CLS — which is precisely the widening this model was added to
+   * `SYSTEM_SHARED_READ_MODELS` for.
+   */
+  private async readTier(service: ProviderService, tenantId: string, provider?: string): Promise<AiProviderConnectionEntity[]> {
+    const tx = this.crossTenantLane(tenantId);
+    if (provider === undefined) {
+      return this.connectionRepository.findByTenantIdAndService(service, tenantId, tx);
+    }
+    const row = await this.connectionRepository.findByTenantServiceProvider(service, provider, tenantId, tx);
+    return row ? [row] : [];
+  }
+
+  /**
+   * R6 — may this tenant draw on the SYSTEM-tenant platform default?
+   *
+   * Non-throwing by design: at cascade time nobody knows which provider the
+   * request will select, so throwing here would 403 a tenant that was about to
+   * use a self-hosted provider. The throw belongs at selection —
+   * `assertProviderAvailable`.
+   *
+   * With NO entitlements service wired this DENIES. A gate that fails open is
+   * not a gate, and the failure mode it would protect against is spending the
+   * platform's money; denying merely reproduces the pre-cascade behaviour.
+   */
+  private async mayConsumePlatformDefault(tenantId: string): Promise<boolean> {
+    if (!this.entitlementsService) return false;
+    return this.entitlementsService.isFeatureEnabled(tenantId, 'platformDefaultCredential');
+  }
+
+  /**
+   * THE ONLY construction site of a `ProviderOverrideEntry` — deliberately, and
+   * this is the point of the whole R3/R1 seam.
+   *
+   * `funding` is DERIVED from the row that supplied the credential, never
+   * passed in and never stamped afterwards, because a stamp is something a call
+   * site can forget: an unstamped platform entry defaults to `tenant` and
+   * produces a perfectly self-consistent `BYOK` + `BYOK_NOTIONAL` pair — the
+   * ledger's consistency guard stays silent, shadow metering (which filters to
+   * CLOUD) drops the event, and the call is invoiced exactly as wrongly as
+   * before. Derivation removes the class of bug rather than the instance.
+   *
+   * Returns `null` on a decrypt failure: FAIL OPEN for that one credential (a
+   * fault, never a veto), logging the identifying facts and NOTHING else — no
+   * ciphertext, no plaintext, and deliberately not the error message either (a
+   * Transit error string can echo the payload it choked on).
+   */
+  private async toOverrideEntry(row: AiProviderConnectionEntity, service: ProviderService): Promise<ProviderOverrideEntry | null> {
+    if (!this.secretsService || !row.encryptedApiKey) return null;
+    try {
+      const apiKey = await decryptSecretField(this.secretsService, row.encryptedApiKey);
+      const entry: ProviderOverrideEntry = { api_key: apiKey, funding: this.fundingOf(row) };
+      if (row.baseUrl) entry.base_url = row.baseUrl;
+      if (row.region) entry.region = row.region;
+      if (row.apiVersion) entry.api_version = row.apiVersion;
+      if (row.deploymentName) entry.deployment_name = row.deploymentName;
+      // Columns cover azure/bedrock; the newer providers keep their per-request
+      // target in extraJson (console-written): `model` (openai/anthropic/stt),
+      // `project`/`location` (vertex). Without this, Vertex BYO never reaches
+      // the tenant's project and an LLM model override is silently dropped.
+      // `foundryModel` is the pre-unification spelling of `model` on STT rows;
+      // reading it here is what lets a SYSTEM-sourced STT entry keep its model
+      // id (the caller-side `list()` fold that used to supply it is
+      // tenant-pinned and cannot see the platform row).
+      const extra = (row.extraJson ?? {}) as Record<string, unknown>;
+      const model = extra.model ?? extra.foundryModel;
+      if (typeof model === 'string' && model.length > 0) entry.model = model;
+      if (typeof extra.project === 'string') entry.project = extra.project;
+      if (typeof extra.location === 'string') entry.location = extra.location;
+      return entry;
+    } catch {
+      this.logger.warn({
+        message: 'Provider credential failed to decrypt; skipping (the other tier/credentials still resolve)',
+        tenantId: row.tenantId,
+        service,
+        provider: row.provider,
+        keyVersion: row.keyVersion ?? null,
+      });
+      return null;
+    }
+  }
+
+  /** Funding is a pure function of WHOSE row supplied the credential. */
+  private fundingOf(row: AiProviderConnectionEntity): ProviderFunding {
+    return row.tenantId === SYSTEM_TENANT_ID ? 'platform' : 'tenant';
   }
 
   // ────────────────────────────── internals ──────────────────────────────

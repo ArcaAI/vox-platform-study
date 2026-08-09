@@ -490,29 +490,33 @@ export class TenantSttConfigService extends BaseService implements ITenantSttCon
    *
    * The unified entry shape (`api_key`, `base_url?`, `region?`, `api_version?`,
    * `deployment_name?`) has no `model` field — STT-only (Foundry/Sarvam/OpenAI
-   * model id). It is folded in here from the same rows' masked `extraJson` (a
-   * second, non-secret `list()` call), so the injectable shape this method
-   * returns is unchanged: `{api_key, region?, base_url?, model?}`.
+   * model id). The resolver folds it in from the row's `extraJson` (tolerating
+   * the pre-unification `foundryModel` spelling), so the injectable shape this
+   * method returns is unchanged: `{api_key, funding, region?, base_url?, model?}`.
+   *
+   * TASK-643 — two things changed here and both are load-bearing:
+   *
+   *   1. `funding` is FORWARDED. This method rebuilds each entry field by
+   *      field, so anything it does not copy is dropped; dropping the funding
+   *      label would make every platform-funded STT call meter as tenant BYOK
+   *      (zero COGS, baseline rate, never invoiced) with nothing to notice it.
+   *   2. The second, `list()`-based model lookup is GONE. It was pinned to the
+   *      caller's tenant, so a SYSTEM-sourced override silently lost its model
+   *      id the moment the cascade started supplying one. The resolver reads
+   *      the model from whichever row won, which is the only tier-correct
+   *      source — and it saves a query.
    */
   async resolveProviderOverrides(tenantId: string): Promise<SttProviderOverrides> {
-    const overrides = await this.providerConnectionService.resolveTenantCloudOverrides(STT_SERVICE, tenantId);
-    const providers = Object.keys(overrides);
-    if (providers.length === 0) {
-      return {};
-    }
-
-    const rows = await this.providerConnectionService.list(STT_SERVICE, tenantId);
-    const modelByProvider = new Map(rows.map((row) => [row.provider, this.extractModel(row.extraJson)]));
+    const { overrides } = await this.providerConnectionService.resolveTenantCloudOverrides(STT_SERVICE, tenantId);
 
     const out: SttProviderOverrides = {};
-    for (const provider of providers) {
-      const entry = overrides[provider];
-      const model = modelByProvider.get(provider);
+    for (const [provider, entry] of Object.entries(overrides)) {
       out[provider] = {
         api_key: entry.api_key,
+        funding: entry.funding,
         ...(entry.region ? { region: entry.region } : {}),
         ...(entry.base_url ? { base_url: entry.base_url } : {}),
-        ...(model ? { model } : {}),
+        ...(entry.model ? { model: entry.model } : {}),
       };
     }
     return out;

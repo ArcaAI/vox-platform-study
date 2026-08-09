@@ -17,9 +17,17 @@
  */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ProviderCredentialVetoedException, QuotaExceededException } from '@arcaai/exceptions';
 import { SmrProxyController } from '../smr-proxy.controller';
 
-function build(opts: { overrides?: Record<string, unknown>; resolverThrows?: boolean; selectionThrows?: boolean } = {}) {
+function build(
+  opts: {
+    overrides?: Record<string, unknown>;
+    platformDefault?: { entitlementSuppressed: boolean; vetoed: string[] };
+    resolverThrows?: boolean;
+    selectionThrows?: boolean;
+  } = {},
+) {
   const http = { axiosRef: { post: vi.fn().mockResolvedValue({ data: { content: 'ok' } }), get: vi.fn() } };
   const cls = { get: vi.fn((k: string) => (k === 'tenantId' ? 'tenant-abc' : undefined)), getId: vi.fn(() => 'req-1') };
   const config = { getConfigValue: vi.fn(() => 'http://localhost:8862') };
@@ -32,7 +40,8 @@ function build(opts: { overrides?: Record<string, unknown>; resolverThrows?: boo
   const connections = {
     resolveTenantCloudOverrides: vi.fn(async () => {
       if (opts.resolverThrows) throw new Error('vault unreachable');
-      return opts.overrides ?? {};
+      // TASK-643 — the resolver returns the two-tier result, not a bare map.
+      return { overrides: opts.overrides ?? {}, ...(opts.platformDefault ? { platformDefault: opts.platformDefault } : {}) };
     }),
   };
 
@@ -125,6 +134,30 @@ describe('SMR proxy — tenant BYO credential injection', () => {
     await expect(ctrl.generate({ prompt: 'p', stream: false } as any)).resolves.toBeDefined();
 
     expect(http.axiosRef.post).toHaveBeenCalledTimes(1);
+    expect(forwardedBody(http)).not.toHaveProperty('provider_overrides');
+  });
+
+  // TASK-643 — a SUPPRESSED platform tier is REPORTED, not degraded into SMR's
+  // generic missing-credential 503. Both errors are raised before dispatch, so
+  // no vendor request and no usage event is produced.
+  it('raises the 409 veto instead of dispatching, when the tenant disabled this provider', async () => {
+    const { ctrl, http } = build({ overrides: {}, platformDefault: { entitlementSuppressed: false, vetoed: ['azure'] } });
+
+    await expect(ctrl.generate({ prompt: 'p', stream: false } as any)).rejects.toBeInstanceOf(ProviderCredentialVetoedException);
+    expect(http.axiosRef.post).not.toHaveBeenCalled();
+  });
+
+  it('raises the 403 entitlement denial instead of dispatching, when the tenant holds no grant', async () => {
+    const { ctrl, http } = build({ overrides: {}, platformDefault: { entitlementSuppressed: true, vetoed: [] } });
+
+    await expect(ctrl.generate({ prompt: 'p', stream: false } as any)).rejects.toBeInstanceOf(QuotaExceededException);
+    expect(http.axiosRef.post).not.toHaveBeenCalled();
+  });
+
+  it('does NOT convert an unconfigured provider into a policy error — that stays the downstream 503', async () => {
+    // Nothing suppressed: the body is byte-identical to today's and SMR decides.
+    const { ctrl, http } = build({ overrides: {} });
+    await expect(ctrl.generate({ prompt: 'p', stream: false } as any)).resolves.toBeDefined();
     expect(forwardedBody(http)).not.toHaveProperty('provider_overrides');
   });
 

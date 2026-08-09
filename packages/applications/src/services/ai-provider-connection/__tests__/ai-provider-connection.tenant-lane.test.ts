@@ -94,7 +94,7 @@ describe('resolveTenantCloudOverrides — BYO injection resolver', () => {
         }),
       ],
     });
-    const out = await svc.resolveTenantCloudOverrides('llm', TENANT_A);
+    const { overrides: out } = await svc.resolveTenantCloudOverrides('llm', TENANT_A);
     // The Python ProviderOverride carries project/location/model; the console
     // stores them in extraJson (no dedicated column), so the gateway emitter
     // MUST forward them or Vertex BYO never reaches the tenant's project.
@@ -118,9 +118,13 @@ describe('resolveTenantCloudOverrides — BYO injection resolver', () => {
       ],
     });
 
-    await expect(svc.resolveTenantCloudOverrides(TENANT_A)).resolves.toEqual({
+    const { overrides } = await svc.resolveTenantCloudOverrides(TENANT_A);
+    // TASK-643 — every entry now carries who paid for it, derived from the row
+    // that supplied it. This IS the wire shape; asserted exactly, not loosely.
+    expect(overrides).toEqual({
       azure: {
         api_key: 'plaintext-key',
+        funding: 'tenant',
         base_url: 'https://acme.openai.azure.com',
         api_version: '2024-10-21',
         deployment_name: 'gpt-4o-mini',
@@ -133,36 +137,37 @@ describe('resolveTenantCloudOverrides — BYO injection resolver', () => {
       rows: [makeRow({ provider: 'bedrock', region: 'us-east-1' })],
     });
 
-    await expect(svc.resolveTenantCloudOverrides(TENANT_A)).resolves.toEqual({
-      bedrock: { api_key: 'plaintext-key', region: 'us-east-1' },
-    });
+    const { overrides } = await svc.resolveTenantCloudOverrides(TENANT_A);
+    expect(overrides).toEqual({ bedrock: { api_key: 'plaintext-key', funding: 'tenant', region: 'us-east-1' } });
   });
 
   it('skips a DISABLED row so resolution falls through to SYSTEM/env', async () => {
     const { svc } = makeService({ rows: [makeRow({ provider: 'azure', enabled: false })] });
-    await expect(svc.resolveTenantCloudOverrides(TENANT_A)).resolves.toEqual({});
+    // …and, since TASK-643, records WHY: a disabled tenant row is a veto, so
+    // the platform default is suppressed for that provider too.
+    await expect(svc.resolveTenantCloudOverrides(TENANT_A)).resolves.toMatchObject({ overrides: {} });
   });
 
   it('skips a row with no stored key', async () => {
     const { svc } = makeService({ rows: [makeRow({ encryptedApiKey: null, keyVersion: null })] });
-    await expect(svc.resolveTenantCloudOverrides(TENANT_A)).resolves.toEqual({});
+    await expect(svc.resolveTenantCloudOverrides(TENANT_A)).resolves.toMatchObject({ overrides: {} });
   });
 
   it('never injects a SELF-HOST provider row as a credential override', async () => {
     const { svc } = makeService({
       rows: [makeRow({ provider: 'ollama', baseUrl: 'http://localhost:11434' }), makeRow({ provider: 'vllm' })],
     });
-    await expect(svc.resolveTenantCloudOverrides(TENANT_A)).resolves.toEqual({});
+    await expect(svc.resolveTenantCloudOverrides(TENANT_A)).resolves.toMatchObject({ overrides: {} });
   });
 
   it('returns {} when no Vault secrets provider is wired', async () => {
     const { svc } = makeService({ rows: [makeRow()], withVault: false });
-    await expect(svc.resolveTenantCloudOverrides(TENANT_A)).resolves.toEqual({});
+    await expect(svc.resolveTenantCloudOverrides(TENANT_A)).resolves.toEqual({ overrides: {} });
   });
 
   it('is tenant-isolated: tenant B resolves nothing from tenant A rows', async () => {
     const { svc, repo } = makeService({ rows: [] });
-    await expect(svc.resolveTenantCloudOverrides(TENANT_B)).resolves.toEqual({});
+    await expect(svc.resolveTenantCloudOverrides(TENANT_B)).resolves.toMatchObject({ overrides: {} });
     // The lookup is pinned to the requested tenant — never widened. Service-first
     // signature: findByTenantIdAndService(service, tenantId, tx) → tenantId is arg 1.
     expect(repo.findByTenantIdAndService.mock.calls[0][1]).toBe(TENANT_B);
@@ -184,11 +189,11 @@ describe('resolveTenantCloudOverrides — BYO injection resolver', () => {
         },
       });
 
-      const out = await svc.resolveTenantCloudOverrides(TENANT_A);
+      const { overrides: out } = await svc.resolveTenantCloudOverrides(TENANT_A);
 
       // The healthy credential still resolves — a broken BYO key degrades to
       // the platform default, it does not take generation down.
-      expect(out).toEqual({ bedrock: { api_key: 'good-key', region: 'eu-west-1' } });
+      expect(out).toEqual({ bedrock: { api_key: 'good-key', funding: 'tenant', region: 'eu-west-1' } });
 
       expect(warn).toHaveBeenCalledTimes(1);
       const arg = warn.mock.calls[0][0] as Record<string, unknown>;

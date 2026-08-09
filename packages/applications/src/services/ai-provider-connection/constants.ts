@@ -41,6 +41,20 @@ export const CLOUD_BYO_PROVIDERS: Record<ProviderService, readonly string[]> = {
 export type CloudByoProvider = (typeof CLOUD_BYO_PROVIDERS)[ProviderService][number];
 
 /**
+ * The three-state meaning of a connection row's `enabled` flag (TASK-643 R4).
+ *
+ * ONE wording, referenced by the request DTO, the response DTO and the
+ * controller's Swagger annotations, so the semantics cannot drift between the
+ * surfaces an operator actually reads. The console's helper text mirrors it.
+ */
+export const CONNECTION_ENABLED_SEMANTICS =
+  'Three states, per (service, provider): NO ROW = no opinion, so the platform-provided credential may serve ' +
+  'this provider (subject to the tenant holding the platform-default entitlement). ENABLED with a key = your own ' +
+  'credential serves it. DISABLED = a VETO: this provider is blocked for your tenant entirely, INCLUDING the ' +
+  'platform-provided key, and the call fails rather than falling through to another provider. Disabling is how a ' +
+  'tenant refuses a shared vendor account; deleting the row instead returns it to "no opinion".';
+
+/**
  * Whether a tenant may hold its own connection row for `(service, provider)`.
  *
  * The 1-arg form is a `@deprecated` transition shim that assumes `service='llm'`

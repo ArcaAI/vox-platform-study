@@ -1,5 +1,6 @@
 import {
   AiProviderConnectionResponse,
+  CONNECTION_ENABLED_SEMANTICS,
   IActiveUserContext,
   IProviderConnectionService,
   PROVIDER_SERVICES,
@@ -98,7 +99,8 @@ export class ProviderConnectionController {
       'Optimistic concurrency is enforced: the `If-Match` header (RFC 7232) is REQUIRED and the server runs a ' +
       "Compare-And-Set against the row's `_version`. When present the header overrides the body-field " +
       '`expectedVersion`. Version drift → `412`; missing header → `428`. Use `expectedVersion: 0` to create. ' +
-      'A supplied `apiKey` is Vault-Transit encrypted and never returned; omitting it leaves the stored key intact.',
+      'A supplied `apiKey` is Vault-Transit encrypted and never returned; omitting it leaves the stored key intact. ' +
+      `**\`enabled\` is three-state.** ${CONNECTION_ENABLED_SEMANTICS}`,
   })
   @ApiParam({ name: 'service', description: 'Capability the connection serves.', enum: ['llm', 'stt', 'tts'] })
   @ApiParam({ name: 'provider', description: 'Capability-scoped provider identifier, e.g. `azure`.' })
@@ -132,7 +134,13 @@ export class ProviderConnectionController {
 
   @Delete(':service/:provider')
   @CanManage('GlobalSetting')
-  @ApiOperation({ summary: 'Soft-delete one provider connection.' })
+  @ApiOperation({
+    summary: 'Soft-delete one provider connection.',
+    description:
+      'Deleting returns this (service, provider) to "no opinion", so the platform-provided credential may serve it ' +
+      'again (subject to the platform-default entitlement). To BLOCK the provider instead — including the ' +
+      'platform-provided key — keep the row and set `enabled: false`, which is a veto.',
+  })
   @ApiParam({ name: 'service', description: 'Capability the connection serves.', enum: ['llm', 'stt', 'tts'] })
   @ApiParam({ name: 'provider', description: 'Capability-scoped provider identifier, e.g. `azure`.' })
   @ApiQuery({ name: 'tenantId', required: false })

@@ -9,6 +9,7 @@ import {
   SecretsService,
   UsageIdempotencyKey,
 } from '@arcaai/applications';
+import type { ProviderOverrides } from '@arcaai/applications';
 import { AiCapability, AiDeploymentKind, AiUsageUnit, generateId } from '@arcaai/domains';
 import { HttpService } from '@nestjs/axios';
 import { ClsService } from 'nestjs-cls';
@@ -102,10 +103,16 @@ export class SpeechProxyController {
     const tenantId = this.cls?.get('tenantId');
     if (!this.tenantTtsConfig || !tenantId) return body;
     try {
-      const [eff, overrides] = await Promise.all([
+      const [eff, resolved] = await Promise.all([
         this.tenantTtsConfig.getEffective(tenantId),
-        this.providerConnectionService ? this.providerConnectionService.resolveTenantCloudOverrides('tts', tenantId) : Promise.resolve({}),
+        this.providerConnectionService
+          ? this.providerConnectionService.resolveTenantCloudOverrides('tts', tenantId)
+          : Promise.resolve({ overrides: {} as ProviderOverrides }),
       ]);
+      // TASK-643 — the map now spans two tiers (the tenant's own rows over the
+      // SYSTEM-tenant platform default) and each entry carries its `funding`,
+      // which `classifyTtsProvider` reads back to stamp the usage row.
+      const overrides = resolved.overrides;
       return {
         ...body,
         response_format: body.response_format ?? (eff.defaultFormat as 'pcm' | 'wav' | 'mp3'),

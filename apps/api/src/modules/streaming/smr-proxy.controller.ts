@@ -11,13 +11,14 @@ import {
   ITenantService,
   IUsageLedgerService,
   ModelResponse,
+  assertProviderAvailable,
   buildLlmUsageInput,
   isCloudByoProvider,
   parseSmrUsageDetail,
   SecretsService,
   isSuperAdmin,
 } from '@arcaai/applications';
-import type { IBlobStorageService as IBlobStorageServiceType } from '@arcaai/applications';
+import type { IBlobStorageService as IBlobStorageServiceType, ResolvedProviderOverrides } from '@arcaai/applications';
 import {
   ContextItemRepository,
   ContextItemType,
@@ -270,12 +271,13 @@ export class SmrProxyController {
     const tenantId = this.clsService.get('tenantId');
     if (!tenantId) return target;
 
+    // TASK-643 — the resolver cascades the tenant's own row over the
+    // SYSTEM-tenant platform default, and each entry's `funding` label travels
+    // with it so SMR meters platform-funded generation as CLOUD rather than as
+    // the tenant's own BYOK.
+    let resolved: ResolvedProviderOverrides;
     try {
-      const overrides = await this.aiProviderConnectionService.resolveTenantCloudOverrides('llm', tenantId);
-      const entry = overrides[provider];
-      if (entry) {
-        (target as Record<string, unknown>).provider_overrides = { [provider]: entry };
-      }
+      resolved = await this.aiProviderConnectionService.resolveTenantCloudOverrides('llm', tenantId);
     } catch (error) {
       // Non-secret log only. The resolver itself already logs per-credential
       // decrypt failures with `{tenantId, provider, keyVersion}`; this covers a
@@ -285,8 +287,23 @@ export class SmrProxyController {
         provider,
         error: error instanceof Error ? error.message : String(error),
       });
+      return target;
     }
 
+    const entry = resolved.overrides[provider];
+    if (entry) {
+      (target as Record<string, unknown>).provider_overrides = { [provider]: entry };
+      return target;
+    }
+
+    // No credential for the SELECTED provider. When the SYSTEM tier was
+    // deliberately SUPPRESSED — the tenant vetoed this provider (409) or holds
+    // no platform-default entitlement (403) — say so. Deliberately OUTSIDE the
+    // fail-open catch above: a policy refusal is not a lookup failure, and
+    // swallowing it would return the unattributable 503 this exists to replace.
+    // With nothing suppressed this returns void and the pre-existing
+    // "no override → SMR uses its own configuration" path is unchanged.
+    assertProviderAvailable(resolved, 'llm', provider);
     return target;
   }
 

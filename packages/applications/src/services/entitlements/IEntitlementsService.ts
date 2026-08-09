@@ -113,7 +113,16 @@ export interface IEntitlementsService {
    * `increment` more of a rolling-monthly METER `capability` (consultations /
    * transcription-minutes / summaries) would exceed the tenant's monthly limit.
    * Reads the live current-month usage internally (no caller-supplied count).
-   * A no-op when the kill-switch is OFF (Q9) or the meter is unlimited (Q3).
+   * A no-op when the kill-switch is OFF (Q9) or the meter is unlimited (Q3) —
+   * an unlimited allowance returns *before* the meter is read at all.
+   *
+   * **FAILS OPEN on a metering-read failure.** This assertion sits on the
+   * clinical hot path (consultation create, summary generation, transcription
+   * submit, every TTS request); a billing-data outage must not 500 it. If the
+   * live metering read throws, the check is SKIPPED and this resolves — logged
+   * at ERROR and counted on `entitlements_meter_check_skipped_total`. The only
+   * rejection it can produce is `QuotaExceededException`; callers that
+   * distinguish quota from infrastructure errors can rely on that.
    */
   assertMeterQuota(tenantId: EntityId, capability: MeterCapabilityKey, increment?: number): Promise<void>;
 

@@ -19,6 +19,7 @@ import {
   DataNotFoundException,
   OptimisticConcurrencyException,
   BaseException,
+  ProviderCredentialVetoedException,
   QuotaExceededException,
 } from '@arcaai/exceptions';
 import { PrismaClientKnownRequestError } from '@arcaai/database';
@@ -282,6 +283,66 @@ describe('ExceptionInterceptor — QuotaExceededException → precise client sta
     const body = caught.getResponse() as { code: string; metadata?: { capability: string } };
     expect(body.code).toBe('DOMAIN.QUOTA_EXCEEDED');
     expect(body.metadata?.capability).toBe('maxApiKeys');
+  });
+
+  // TASK-643 — the FIRST exercise of the `startsWith('feature')` branch. It has
+  // been wired since the entitlements plane landed and never fired, because no
+  // boolean entitlement had an enforcement call site until the platform-default
+  // gate. A regression here would turn a commercial denial into a 409 that
+  // reads like a conflict the tenant could resolve.
+  it('maps a FEATURE capability (featurePlatformDefaultCredential) to 403 Forbidden', async () => {
+    const caught = await catchHttp(
+      new QuotaExceededException('not entitled', { capability: 'featurePlatformDefaultCredential', limit: 0, used: 0, requested: 1 }),
+    );
+    expect(caught.getStatus()).toBe(HttpStatus.FORBIDDEN);
+    const body = caught.getResponse() as { code: string; metadata?: { capability: string } };
+    expect(body.metadata?.capability).toBe('featurePlatformDefaultCredential');
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// ProviderCredentialVetoedException → 409 Conflict (TASK-643 R4).
+//
+// Deliberately a DIFFERENT status from the 403 above, because the remediation
+// is different: a veto is the tenant's own disabled connection row, which a
+// tenant admin can clear in the console; a missing entitlement they cannot.
+// Both must also stay distinct from the downstream 503 that means "nothing is
+// configured at all".
+// ───────────────────────────────────────────────────────────────────────────
+describe('ExceptionInterceptor — ProviderCredentialVetoedException → 409', () => {
+  let interceptor: ExceptionInterceptor;
+
+  beforeEach(() => {
+    const cls: any = { getId: () => 'corr-v', get: () => undefined };
+    interceptor = new ExceptionInterceptor(cls);
+  });
+
+  function createMockContext(): ExecutionContext {
+    return {
+      switchToHttp: () => ({ getRequest: () => ({ method: 'POST', url: '/api/v1/text/generate' }), getResponse: () => ({}) }),
+    } as unknown as ExecutionContext;
+  }
+
+  async function catchHttp(err: unknown): Promise<HttpException> {
+    try {
+      await firstValueFrom(interceptor.intercept(createMockContext(), { handle: () => throwError(() => err) } as CallHandler));
+    } catch (e) {
+      return e as HttpException;
+    }
+    throw new Error('expected interceptor to throw');
+  }
+
+  it('maps the veto to 409 and preserves the (service, provider) metadata', async () => {
+    const caught = await catchHttp(new ProviderCredentialVetoedException('vetoed', { service: 'tts', provider: 'azure', tenantId: 't-1' }));
+    expect(caught.getStatus()).toBe(HttpStatus.CONFLICT);
+    const body = caught.getResponse() as { code: string; metadata?: { service: string; provider: string } };
+    expect(body.code).toBe('DOMAIN.PROVIDER_CREDENTIAL_VETOED');
+    expect(body.metadata).toMatchObject({ service: 'tts', provider: 'azure' });
+  });
+
+  it('never leaks a different provider name into the response', async () => {
+    const caught = await catchHttp(new ProviderCredentialVetoedException('vetoed', { service: 'tts', provider: 'azure' }));
+    expect(JSON.stringify(caught.getResponse())).not.toContain('sarvam');
   });
 });
 

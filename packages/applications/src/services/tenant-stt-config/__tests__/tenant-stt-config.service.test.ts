@@ -323,34 +323,39 @@ describe('TenantSttConfigService — resolveProviderOverrides (delegated to IPro
     vi.clearAllMocks();
   });
 
-  it('folds extraJson.model in on top of the decrypted overrides (region/base_url/model mapped)', async () => {
+  it('maps region/base_url/model straight off the resolved entries — no second, tenant-pinned read', async () => {
     ctx.providerConnectionService.resolveTenantCloudOverrides.mockResolvedValue({
-      'azure-speech': { api_key: 'AZ-KEY', region: 'eastus' },
-      sarvam: { api_key: 'SV-KEY', base_url: 'https://api.sarvam.ai' },
+      overrides: {
+        'azure-speech': { api_key: 'AZ-KEY', funding: 'tenant', region: 'eastus' },
+        sarvam: { api_key: 'SV-KEY', funding: 'platform', base_url: 'https://api.sarvam.ai', model: 'saaras:v4' },
+      },
     });
-    ctx.providerConnectionService.list.mockResolvedValue([
-      connectionRow({ provider: 'azure-speech', region: 'eastus' }),
-      connectionRow({ provider: 'sarvam', baseUrl: 'https://api.sarvam.ai', extraJson: { model: 'saaras:v4' } }),
-    ]);
 
     const overrides = await ctx.svc.resolveProviderOverrides(TENANT);
 
     expect(ctx.providerConnectionService.resolveTenantCloudOverrides).toHaveBeenCalledWith('stt', TENANT);
     expect(overrides).toEqual({
-      'azure-speech': { api_key: 'AZ-KEY', region: 'eastus' },
-      sarvam: { api_key: 'SV-KEY', base_url: 'https://api.sarvam.ai', model: 'saaras:v4' },
+      'azure-speech': { api_key: 'AZ-KEY', funding: 'tenant', region: 'eastus' },
+      sarvam: { api_key: 'SV-KEY', funding: 'platform', base_url: 'https://api.sarvam.ai', model: 'saaras:v4' },
     });
-  });
-
-  it('short-circuits to {} without a second call when the unified plane has no overrides', async () => {
-    ctx.providerConnectionService.resolveTenantCloudOverrides.mockResolvedValue({});
-    expect(await ctx.svc.resolveProviderOverrides(TENANT)).toEqual({});
+    // TASK-643 — the `model` used to be re-read with `list()`, which is pinned
+    // to the CALLER's tenant: a SYSTEM-sourced override would silently lose its
+    // model id the moment the cascade started supplying one.
     expect(ctx.providerConnectionService.list).not.toHaveBeenCalled();
   });
 
-  it('returns empty when the unified plane resolves nothing (no Vault / all disabled / all decrypt-failed)', async () => {
-    ctx.providerConnectionService.resolveTenantCloudOverrides.mockResolvedValue({});
+  it('forwards the funding label — a dropped label bills a platform-funded call as tenant BYOK', async () => {
+    ctx.providerConnectionService.resolveTenantCloudOverrides.mockResolvedValue({
+      overrides: { sarvam: { api_key: 'SV-KEY', funding: 'platform' } },
+    });
+    const overrides = await ctx.svc.resolveProviderOverrides(TENANT);
+    expect(overrides.sarvam.funding).toBe('platform');
+  });
+
+  it('returns empty when the unified plane resolves nothing (no Vault / all disabled / all decrypt-failed / not entitled)', async () => {
+    ctx.providerConnectionService.resolveTenantCloudOverrides.mockResolvedValue({ overrides: {} });
     expect(await ctx.svc.resolveProviderOverrides(TENANT)).toEqual({});
+    expect(ctx.providerConnectionService.list).not.toHaveBeenCalled();
   });
 });
 

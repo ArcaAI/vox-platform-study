@@ -336,7 +336,9 @@ test.describe.serial('TASK-635 C6 — live agent lineage survives into finalize 
         const madeDefault = await request.post(`/api/v1/admin/department-agents/${createdAgentId}/set-default`, { headers: bearer(token) });
         liveBindingApplied = madeDefault.ok();
         if (!liveBindingApplied) {
-          console.warn(`[TASK-635 C6] agent created but set-default failed (status ${madeDefault.status()}) — R-N1 will assert the fallback tier instead.`);
+          console.warn(
+            `[TASK-635 C6] agent created but set-default failed (status ${madeDefault.status()}) — R-N1 will assert the fallback tier instead.`,
+          );
         }
       } else {
         console.warn(

@@ -15,12 +15,20 @@ import { AiModelFormat } from '@arcaai/domains';
 export const BYO_STT_PROVIDERS = ['azure-speech', 'sarvam', 'openai'] as const;
 
 /**
- * Decrypted per-tenant provider credentials, injected by the gateway into
- * apps/stt (streaming) or pulled by the batch worker. snake_case matches the
- * Python wire shape (§3.3). Never persisted, never logged, never returned by a
- * read API.
+ * Decrypted provider credentials, injected by the gateway into apps/stt
+ * (streaming) or pulled by the batch worker. snake_case matches the Python wire
+ * shape (§3.3). Never persisted, never logged, never returned by a read API.
+ *
+ * `funding` (TASK-643) says WHO PAID for the entry — the caller's own row
+ * (`tenant`) or the SYSTEM-tenant platform default (`platform`). It is REQUIRED
+ * here because this type is built by copying fields off the resolved entry, and
+ * a field this shape forgets to copy is a field that silently reverts to
+ * `tenant` in `resolve_usage_attribution` — a mis-bill with no error anywhere.
  */
-export type SttProviderOverrides = Record<string, { api_key: string; region?: string; base_url?: string; endpoint?: string; model?: string }>;
+export type SttProviderOverrides = Record<
+  string,
+  { api_key: string; funding: 'tenant' | 'platform'; region?: string; base_url?: string; endpoint?: string; model?: string }
+>;
 
 /** Code defaults for the fallback spec (last fallback in the cascade). */
 export const STT_FALLBACK_DEFAULTS = {

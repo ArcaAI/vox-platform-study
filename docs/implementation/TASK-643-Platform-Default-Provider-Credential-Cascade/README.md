@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | `Pending` — plan only, no code written. Awaiting the Phase 3 approval gate (`01-development-workflow.md`). |
+| **Status** | `In Progress` — R1 (cascade, §4.7), R3 (attribution, §4.2), R4 (veto, §4.7) and R6 (entitlement layer §4.1 + gate call site §4.7) are all implemented and unit-verified. **Not shippable yet**: no runtime evidence, e2e specs 17-21 unbuilt, the STT streaming teardown still attribution-blind, and `entitlements.enabled` still OFF — which under OD-6-as-implemented leaves the gate INERT. |
 | **Type** | `bugfix` (with a **blocking** billing-attribution sub-task that is functionally a `feature`) |
 | **Raised from** | 2026-08-09 — TTS review under TASK-642; the defect is not TTS-specific |
 | **Blocks** | TASK-642 Step 4 (Malayalam routing needs a working platform cloud credential) |
@@ -73,6 +73,49 @@ the *practice*: every existing entitlement is either a number or a display-only 
 and `failMode` on all three existing feature descriptors is `open-to-default`
 (`settings-registry/descriptors/entitlements.descriptors.ts:29-51`), whereas this one
 must be `closed`. That is a difference the owner should know about, not a blocker.
+
+### 0.1 Prerequisite for OD-6 — `assertMeterQuota` no longer 500s the clinical path (LANDED 2026-08-09)
+
+OD-6 was answered *"honour the kill switch **and flip `entitlements.enabled` on
+first**"*. That flip is what makes finding (1) moot — and it is also what arms
+**every other** quota check at the same instant. One of them was not safe to arm.
+
+**The defect.** `EntitlementsService.assertMeterQuota` read the live meter with no
+guard whatsoever:
+
+```ts
+if (!this.isEnforcementEnabled()) return;                    // :280
+const usage = await this.metering.getCurrentUsage(tenantId); // :282  ← unguarded
+```
+
+`getCurrentUsage` fans out to five `aiUsageRollupDaily.aggregate()` calls plus an
+`aiUsageEvent.findMany()`; neither `aggregateWindow` nor `getCurrentUsage` has a
+`try/catch`, and of the eight `assertMeterQuota` call sites only `tts-ws.gateway.ts`
+wraps the call — and that one catches `QuotaExceededException` and **rethrows
+everything else**. The assertion fronts consultation create, summary generation,
+transcription-job submit and every TTS request, so *any* metering failure became a
+platform-wide 500 on the core clinical workflow rather than a graceful 429. Until
+TASK-644 baselined the database the tables did not exist in `hope-v2-dev` at all, so
+flipping the switch would have thrown `relation ... does not exist` on the first
+consultation; the tables exist now, but a slow aggregate, connection exhaustion or a
+future schema drift reproduces it exactly.
+
+**What landed** (`entitlements.service.ts`, `entitlements.constants.ts`,
+`IEntitlementsService.ts`, `__tests__/entitlements.service.test.ts` — TDD, RED first):
+
+| Decision | Choice + why |
+|---|---|
+| Where the guard lives | **At the enforcement boundary (`assertMeterQuota`), not inside `getCurrentUsage`.** Verified by search: the method's other consumers are `getCapabilities` (the admin capability/usage snapshot) and `scripts/task-615-evidence-run.ts` (billing evidence). For those, substituting zeros for an error is a **silent lie about usage**. Fail-open is an *enforcement policy*, not a property of the data source |
+| Ordering | **Resolve the limit first; an unlimited (`null`) allowance returns before the meter is read.** A null limit can never block, so the aggregate was always waste — this is behaviour-preserving, removes a six-query fan-out from every ungated/ENTERPRISE request, and means an ungated tenant does not inherit metering's failure modes either. Implemented by extracting the shared block-new decision into a private `enforceLimit()` so the meter path does **not** re-resolve the tenant (which delegating to `assertQuantityQuota` would have cost: three extra DB reads on a hot path) |
+| Observability | **Log AND counter.** A fail-open is invisible by construction — the request succeeds either way — so "metering down for six hours, nobody metered" is indistinguishable from "nobody over quota". ERROR log carries tenant + capability + error class; `entitlements_meter_check_skipped_total{capability}` carries the *rate*, which is the question an alert rule can ask. `tenantId` is deliberately **not** a label (unbounded cardinality). `IMetricsService` is `@Optional()`-injected (same precedent as `socketRegistry` in this constructor) and counter registration is itself try/caught — observing a fail-open must never become a second failure mode |
+
+**Scope of the asymmetry.** Only the metering READ fails open. Quantity, concurrency
+and storage quotas are untouched (none reads metering), and a `QuotaExceededException`
+is still the only rejection `assertMeterQuota` can produce — so callers that
+distinguish quota from infrastructure errors keep that guarantee. `resolveForTenant`
+failures still propagate, unchanged and by design: that is the same read every
+quantity quota already depends on, and silently ungating a tenant because the *plan*
+could not be read would be a different (billing-side) fail-open than the one approved.
 
 ---
 
@@ -1389,6 +1432,175 @@ warning stays silent, shadow metering (which filters to `CLOUD`) drops the event
 the call bills exactly as wrongly as it does today. Test 1's
 `sources[provider] === 'system'` assertion and this stamp are the same requirement.
 
+### 4.7 R1 (cascade) + R4 (veto) + R6 (gate call site) — **DONE** 2026-08-09
+
+Scope built: §3.7 rows **1, 2, 3, 3b, 3c, 4, 5, 11** and the console copy in row 12's
+sibling file, plus tests 1-11 and 30-38 and a cross-tenant contract lock. The
+entitlement LAYER (§4.1) and the R3 attribution work (§4.2, second one) were already
+on HEAD and were not redone. The STT streaming teardown (§4.2's open tail) is still
+owned by another session and was deliberately left untouched.
+
+#### R3's closing warning is answered by DELETING the stamp, not by adding one
+
+§4.2 ends with "R1 **must stamp** `funding: 'platform'` on every SYSTEM-tier entry, and
+nothing in R3 can detect the omission." A stamp is exactly the wrong shape for a
+requirement nothing can detect — it is a thing a future call site forgets. `funding` is
+a pure function of data already in hand (`row.tenantId === SYSTEM_TENANT_ID`), so it is
+**derived**, in one place, and the type system makes forgetting it a compile error:
+
+| Mechanism | Where |
+|---|---|
+| ONE private factory constructs every `ProviderOverrideEntry` — `toOverrideEntry(row, service)` — and derives `funding` from the row it was handed. No call site, not even inside the service, assembles an entry literal | `ai-provider-connection.service.ts` |
+| `funding` is **REQUIRED** on the internal type. Strict where entries are CONSTRUCTED, lenient where they are PARSED: every consumer still reads absent ⇒ `'tenant'`, so in-flight requests during a rolling deploy are unchanged | `IProviderConnectionService.ts`, `platform-limits.ts` |
+| Asserted STRUCTURALLY, through the real resolver, never a hand-built map: test 3 puts a tenant `azure` row and a SYSTEM `sarvam` row in ONE call and asserts `tenant` / `platform` **independently per provider** — the mixed case the merge creates and a request-level label could not express | `…platform-default.test.ts` |
+
+A second leak of the same label was found and closed on the way:
+`TenantSttConfigService.resolveProviderOverrides` **rebuilds** each entry field by
+field, so it silently dropped anything it did not copy. Every platform-funded STT call
+would have arrived unlabelled — i.e. billed as the tenant's own BYOK — with nothing to
+notice. `SttProviderOverrides` now declares `funding` as required for the same reason
+the resolver type does.
+
+#### What was built
+
+| File | Change |
+|---|---|
+| `…/ai-provider-connection/IProviderConnectionService.ts` | `ProviderFunding`; **required** `funding` on `ProviderOverrideEntry`; `PlatformDefaultOutcome`; `ResolvedProviderOverrides`; the two-tier + three-state contract written onto `resolveTenantCloudOverrides` and `resolveConnection` |
+| `…/ai-provider-connection/ai-provider-connection.service.ts` | `cascadeRows()` — the single choke point (tenant tier → veto set → gate → SYSTEM tier); `readTier()`; `toOverrideEntry()` (the one entry factory); `fundingOf()`; `mayConsumePlatformDefault()`; `resolveConnection` refactored onto the same helper; `resolveTenantCloudOverrides` merges SYSTEM-then-tenant per provider key |
+| `…/ai-provider-connection/assert-provider-available.ts` | **NEW** — the shared surfacing helper: veto ⇒ 409, no grant ⇒ 403 (`capability: 'featurePlatformDefaultCredential'`), neither ⇒ void (the downstream 503 is left alone) |
+| `…/ai-provider-connection/constants.ts` | `CONNECTION_ENABLED_SEMANTICS` — the ONE wording of the three-state rule, pointed at by both DTOs and the controller |
+| `…/ai-provider-connection/ai-provider-connection.service.module.ts` | imports `EntitlementsServiceModule` (verified acyclic: nothing reachable from it imports this module back) |
+| `packages/exceptions/src/{common/exception.codes.ts,domain/providerCredentialVetoed.exception.ts,domain/index.ts}` | **NEW** `ProviderCredentialVetoedException` + `DOMAIN.PROVIDER_CREDENTIAL_VETOED`. Checked first: no existing member maps to 409 with usable metadata (`BusinessException` carries untyped metadata and no 409 mapping) |
+| `apps/api/src/interceptors/exception.interceptor.ts` | 409 branch for the veto, ordered before the generic `BaseException` branch like its siblings |
+| `…/tenant-stt-config/{tenant-stt-config.service.ts,platform-limits.ts}` | forwards `funding`; **drops** the second, tenant-pinned `list()` read — the model now comes off whichever tier won (the resolver tolerates the legacy `foundryModel` key for this) |
+| `apps/api/src/modules/speech/{speech-proxy.controller.ts,tts-ws.gateway.ts}` | consume `.overrides` |
+| `apps/api/src/modules/streaming/smr-proxy.controller.ts` | consume `.overrides`; `assertProviderAvailable` on the no-entry path, deliberately OUTSIDE the fail-open catch |
+| `apps/api/src/modules/smr-compat/smr-compat.controller.ts` | `resolveSarvamByok` **folded onto the shared cascade** — its hand-rolled double call is gone; `attachLlmByok` surfaces a suppressed tier |
+| `…/dto/{upsert-ai-provider-connection.request,ai-provider-connection.response}.ts`, `apps/api/src/modules/ai-provider-connection/ai-provider-connection.controller.ts`, `apps/admin-console/src/features/ai-providers/components/provider-credential-card.tsx` | §3.4.3 — the veto semantics written where an operator will actually meet them, incl. live helper text under the enable switch |
+
+#### Four deviations from the plan, each deliberate
+
+1. **`PlatformDefaultOutcome` is a struct, not a discriminated union.** §3.5.4 proposed
+   `{suppressed:'entitlement'} | {suppressed:'veto', providers}`. That cannot represent
+   a tenant that vetoes `azure` **and** holds no grant — which §3.5.5 explicitly
+   requires to produce the **409 for `azure` and the 403 for every other provider**. It
+   is now `{ entitlementSuppressed: boolean; vetoed: string[] }`, absent when nothing
+   was suppressed, and `assertProviderAvailable` applies veto-beats-grant per provider.
+   Test 35b pins both answers from one call.
+2. **No `sources` map.** §3.3 proposed a parallel `ProviderOverrideSources`; R3 shipped
+   `funding` on the entry instead (correctly — it needs the granularity of the merge).
+   A second parallel structure would be a second thing to keep in sync, so the plan's
+   `sources` is superseded rather than added.
+3. **The gate applies to CLOUD BYO providers only.** A SYSTEM row for a self-host
+   engine records where platform INFRASTRUCTURE lives; gating it would have made an
+   unentitled tenant unable to resolve the platform's own vLLM/Kokoro endpoint. The
+   map-shaped path is cloud-filtered already, so this only bites `resolveConnection`
+   (test 10d).
+4. **§3.4.2's truth table says `resourceStatus <> ENABLED`; the implementation keys off
+   the `enabled` BOOLEAN column.** They are different columns, and the plan's wording
+   is not implementable as written: `findByTenantIdAndService` filters
+   `resourceStatus = ENABLED`, so a non-ENABLED row is never returned and cannot be
+   distinguished from an absent one. `enabled` is also the field the console's toggle
+   writes and the one §3.4.1's data check sampled. The resulting semantics are the
+   ones the plan intends, and are arguably cleaner: **disabling** is a veto,
+   **deleting** (soft-delete ⇒ invisible to the repository) returns the tenant to "no
+   opinion".
+
+#### One contract flip that is not a deviation but must be read
+
+`resolveConnection`'s existing test *"falls through a DISABLED tenant row to the SYSTEM
+row"* is now inverted — a disabled tenant row resolves to `null`. That is R4 applied
+consistently: the injection resolver and the by-provider resolver must not disagree
+about the same row. Safe because `resolveConnection` still has zero production callers
+(§2.2). The test was rewritten with the reasoning in-place, and a new
+*"falls through an ABSENT tenant row"* case preserves the fall-through coverage.
+
+#### Where `assertProviderAvailable` is (and is not) wired
+
+Only the **LLM** paths (`smr-proxy`, `smr-compat`) call it, because they are the only
+sites where the gateway knows the provider before dispatch. TTS routing (chains +
+failover inside `apps/tts`) and STT engine selection are decided downstream, so the
+gateway has no provider to assert on; converting their "no override" into a 403/409
+would be a guess. Those lanes keep today's behaviour (no override → the service's own
+resolution → 503 if it has nothing), and the outcome is still carried on the result for
+when a call site can use it.
+
+#### Verification — actual output
+
+RED first, before any implementation:
+
+```
+$ npx vitest run src/services/ai-provider-connection      # the two new files
+ Test Files  2 failed | 3 passed (5)
+      Tests  10 failed | 54 passed (64)
+Error: Failed to load url ../assert-provider-available            ← whole gate file
+AssertionError: expected undefined to match object { api_key: …, funding: 'platform' }
+AssertionError: expected [ 'tenant-aaa' ] to deeply equal [ 'tenant-aaa', '00000000-…' ]
+```
+
+GREEN after:
+
+```
+$ npx vitest run src/services/ai-provider-connection/__tests__/ai-provider-connection.platform-default*.test.ts
+ Test Files  2 passed (2) ·  Tests  29 passed (29)
+
+$ npx vitest run --project workspace tests/cross-tenant
+ Test Files  2 passed (2) ·  Tests  11 passed (11)
+
+$ pnpm --filter @arcaai/applications build      # tsc, clean — no output
+$ pnpm --filter @arcaai/applications test
+ Test Files  449 passed | 1 skipped (450) ·  Tests  8499 passed | 4 skipped (8503)
+
+$ pnpm api:build
+ Tasks: 8 successful, 8 total
+
+$ pnpm test:unit
+ Test Files  937 passed | 2 skipped (939) ·  Tests  15961 passed | 4 skipped | 9 todo (15974)
+ packages/ui 656 · agentic-sdk-v2 4126 · compat-playground 223 · admin-console 1311 — all passed
+
+$ pnpm lint
+ Tasks: 31 successful, 31 total          # 0 errors repo-wide
+```
+
+`pnpm lint` needed two **pre-existing** prettier errors cleared to run at all —
+`apps/api/src/config/env.descriptors.ts:214` and
+`apps/api/tests/e2e/task-635-live-agent-lineage.spec.ts:339`. Both files were byte-identical
+to HEAD before the fix (verified with `git diff HEAD --`), neither is touched by this
+work, and the fix is `prettier --write` output only. Recorded here so the green
+`pnpm lint` above is not mistaken for evidence that this lane found the tree clean.
+The §4.5 `@arcaai/database` TS2339 that blocked the same command for the entitlement
+lane is **gone** — it was fixed in commit `999b01e9`.
+
+#### Cross-tenant coverage added (R2)
+
+**`tests/cross-tenant/task-643-platform-default-cascade.test.ts`** (new, 5 cases, runs
+under `pnpm test:unit`) drives the REAL resolver against a fake repository that serves
+a whole WORLD of tenants, so a widening has something to leak:
+
+- only `[caller, SYSTEM]` tenantIds are ever read — tenant B never queries tenant A;
+- B is served the PLATFORM credential and A's key material appears nowhere in B's result;
+- B's platform-served entry is labelled `platform`, so it cannot be invoiced as B's own BYOK;
+- A still gets its own credential, labelled `tenant`;
+- a GLOBAL ADMIN resolving for A under working tenant B — the `crossTenantLane`
+  base-client path, where the explicit predicate is the ONLY tenant boundary — still
+  reads exactly `[A, SYSTEM]`.
+
+Like `fixtures.ts`, the file avoids `@arcaai/domains` (the root `tests/` project cannot
+resolve it) by mirroring the SYSTEM tenant id literally and using plain row objects.
+The e2e specs 17-21 in §3.6 remain **unbuilt** — they need a live gateway and Vault.
+
+#### Still owed on this ticket
+
+- **Runtime evidence** (§3.8): no 200/403/409 has been observed against a running
+  stack. Requires an armed SYSTEM row, Vault Transit, and a granted tenant.
+- **e2e specs 17-21** (cross-tenant, BYO-LLM fallback, ledger, opt-out, gate).
+- **STT streaming teardown attribution** — §4.2's open tail, another session's file.
+- **`entitlements.enabled` is still OFF**, and under OD-6-as-implemented
+  (`isFeatureEnabled` returns `true` when the switch is off) that means **the gate this
+  lane wired is inert until the owner flips it** — a non-entitled tenant currently
+  reaches the platform credential. The pre-flight audit in §3.9 is the gating step.
+- **Console/SDK feature lists** (row 12) still omit the grant.
+
 ---
 
 ## 5. Open Decisions (owner)
@@ -1416,6 +1628,8 @@ the call bills exactly as wrongly as it does today. Test 1's
 
 | Date | Change |
 |---|---|
+| 2026-08-09 (rev 5) | **CASCADE (R1) + VETO (R4) + GATE CALL SITE (R6) IMPLEMENTED** — §3.7 rows 1/2/3/3b/3c/4/5/11, tests 1-11 and 30-38, plus a new cross-tenant contract file. Evidence in §4.7. The headline decision: R3's closing warning ("R1 must STAMP `funding: 'platform'` and nothing can detect the omission") is answered by **eliminating the stamp** — one private factory constructs every `ProviderOverrideEntry` and DERIVES `funding` from `row.tenantId === SYSTEM_TENANT_ID`, and the field is REQUIRED on the internal type (strict where constructed, lenient where parsed), so a missing label is a compile error rather than a silent mis-bill. That hunt found a **second** label leak the plan did not predict: `TenantSttConfigService.resolveProviderOverrides` rebuilds entries field-by-field and dropped `funding` outright, which would have billed every platform-funded STT call as tenant BYOK. Four deliberate deviations, all argued in §4.7: `PlatformDefaultOutcome` is a struct rather than §3.5.4's union (the union cannot express "vetoed azure AND ungranted", which §3.5.5 requires); §3.3's `sources` map is superseded by R3's per-entry `funding`; the entitlement gate applies to CLOUD BYO providers only (gating a SYSTEM self-host row would break platform infrastructure resolution for unentitled tenants); and the veto keys off the `enabled` BOOLEAN column rather than §3.4.2's `resourceStatus`, because a non-ENABLED `resourceStatus` row is never returned by the repository and so cannot be distinguished from an absent one. One contract flip to read: `resolveConnection` no longer falls through a DISABLED tenant row to the SYSTEM row (it is a veto now) — safe because it still has zero production callers, and required so the two resolvers cannot disagree about the same row. `smr-compat.resolveSarvamByok`'s hand-rolled tenant→SYSTEM cascade is gone, folded onto the shared helper. `assertProviderAvailable` is wired on the LLM paths only, because TTS/STT choose their provider downstream of the gateway. Gates: `pnpm --filter @arcaai/applications build test` (8499 passed), `pnpm test:unit` (15961 passed), `pnpm api:build`, `pnpm lint` — all green; the §4.5 `@arcaai/database` TS2339 is fixed on HEAD, though two unrelated pre-existing prettier errors had to be cleared for `pnpm lint` to run at all. Still owed: runtime evidence, e2e specs 17-21, the STT streaming teardown, and the `entitlements.enabled` flip **without which the gate is inert**. |
 | 2026-08-09 (rev 3) | **ENTITLEMENT LAYER (R6) IMPLEMENTED** — §3.7 rows 0a-0f, tests 22-29 + 39-41. Evidence in the new §4. OD-7 implemented as `false` on all four plans in both matrix copies and as the SQL column default; OD-6 implemented as *honour the kill switch*, so `isFeatureEnabled` returns `true` (ungated) when `entitlements.enabled` is OFF — recorded explicitly in §4.1 and pinned by test 29, because it means **the gate is inert until the owner flips the switch**. Three findings worth the owner's attention: **(1)** §3.5.7's uncertainty is RESOLVED in favour of the plan's preferred location — the parity guard lives in `@arcaai/applications/__tests__` and reaches the seed by relative source import after exporting `PLAN_ENTITLEMENTS`; the `tests/contracts/` fallback was not needed (§4.3). **(2)** `pnpm db:migrate:create` is UNUSABLE on the local dev DB — `migrate status` shows all 80 committed migrations unapplied because the database is `db push`-managed, so `migrate dev` demands a destructive reset. The migration SQL was instead generated by `prisma migrate diff` (identical to what §3.5.6 predicted) and the two columns applied additively and verified in `information_schema`; the file has never been executed *as a migration* (§4.2). **(3)** `pnpm lint` fails on a PRE-EXISTING `@arcaai/database` build error in a TASK-641 seed test — proven pre-existing by reproducing it with all local database changes stashed — so §3.8's "lint clean" box cannot be ticked by this lane (§4.5). Also noted: test 39 was green on arrival (it locks existing seed posture rather than driving new code), and the console/SDK feature lists (row 12) still omit the grant, making it administrable only via the admin API. |
+| 2026-08-09 (rev 4) | **OD-6 PREREQUISITE LANDED — `assertMeterQuota` no longer takes down the clinical path when metering fails (new §0.1).** Owner-approved standalone hardening, TDD (5 RED tests first, all 5 green after). The defect: `assertMeterQuota:282` read `metering.getCurrentUsage` with no `try/catch` on a method that fans out to six unguarded aggregate/ledger queries, in front of consultation create, summary generation, transcription submit and every TTS request — so flipping `entitlements.enabled` on (which OD-6 requires) turned any metering fault into a platform-wide 500 instead of a 429. Three decisions, each justified in §0.1: **(a)** the guard sits at the ENFORCEMENT boundary, not inside `getCurrentUsage` — verified by search that the method's other consumers are `getCapabilities` (display) and the TASK-615 billing-evidence script, for which zeros-instead-of-error would be a silent lie; **(b)** the resolved limit is now read BEFORE the meter, so an unlimited (`null`) allowance returns without reading it at all — behaviour-preserving, and it removes the six-query fan-out from every ungated/ENTERPRISE request; achieved by extracting a private `enforceLimit()` so the meter path does not re-resolve the tenant; **(c)** a skip is observable beyond a log line — ERROR (tenant + capability + error class) **plus** a new `entitlements_meter_check_skipped_total{capability}` counter (`ENTITLEMENTS_METER_SKIPPED_METRIC`), `tenantId` deliberately not a label, `IMetricsService` `@Optional()`-injected and its registration try/caught. Scope: only the metering read fails open — quantity/concurrency/storage quotas and `resolveForTenant` failures are unchanged, and `QuotaExceededException` remains the only rejection `assertMeterQuota` can produce. Evidence: `entitlements.service.test.ts` 5 failed → 57 passed; `pnpm --filter @arcaai/applications build` clean; eslint over `services/entitlements` + `services/metering` 0 errors. Noted for the owner: the same unguarded read remains in `getCapabilities` (admin display endpoint, non-clinical — left deliberately so a metering fault surfaces there instead of being papered over), and root `pnpm lint` / the full package suite are RED on `ai-provider-connection.service.ts` from this ticket's own concurrently-running cascade lane, not from this change (`tsc` reports zero errors outside that file). |
 | 2026-08-09 (rev 2) | **Owner answered OD-1, OD-2, OD-3; plan revised to be executable.** OD-1 → opt-out in scope, option (a) (disabled tenant row = VETO), justified by a live `hope-v2-dev` check returning **zero** disabled tenant-owned rows; §3.4 rewritten with the three-state truth table, the per-environment re-run query and (b) fallback, the four operator-facing surfaces that must carry the new meaning, and a distinct 409. OD-2 → meter as `CLOUD`; R3 is now schema-free (no `AiDeploymentKind` member, no `ALTER TYPE`). OD-3 → **the entitlement gate**, reversing this plan's prior recommendation; new §3.5 designs it against the *real* entitlements plane and adds R6 as a third merge blocker. Research findings that shaped §3.5 and are recorded in the new **§0**: **(1)** `entitlements.enabled` defaults to `false` and gates all four existing enforcement methods, so a conventional gate is a **no-op today** — raised as **OD-6**; **(2)** the three existing boolean entitlements are **enforced nowhere** (no `assertFeature`, zero call sites read `resolved.features`) — this ticket writes the first enforcement, though the schema, tri-state override, DTOs, admin CRUD and even the `feature*` → 403 mapping at `exception.interceptor.ts:331` are all pre-wired and unused; **(3)** `UNGATED_ENTITLEMENTS` resolves every boolean feature `true` (`resolve-entitlements.ts:145`), so the new member must be the first to resolve `false` or every null-plan tenant is silently granted; **(4)** the two hand-synced copies of the plan matrix (`seed/15-entitlements.ts` and `entitlements.constants.ts`) have **no parity test whatsoever** — confirmed by search; the TASK-638 "seed invariant" is `managed-asr-addon-posture.test.ts`, a different guard — so §3.5.7 adds one. Tier-contract check: a boolean grant supplies no value and only bounds whose cascade includes the SYSTEM tier, so it fits the `entitlement` tier's letter, but it is the first *enforcing* boolean and the first with `failMode: 'closed'`. Also added: **OD-7** (which plan tiers carry the grant — recommended none, per-tenant only, on TASK-638's add-on posture), §3.9 sequencing with all three merge blockers and the exact four-step precondition list for TASK-642 Step 4 (Malayalam is unblocked by the merge **plus** an admin arming the SYSTEM row **plus** a per-tenant grant — without the grant it fails with 403 instead of today's 503, which testers must be told), an entitlement/veto TDD block (tests 22-38) and three seed/parity tests (39-41), and a rewritten §3.7 file order that builds the entitlement layer first. OD-4 and OD-5 unchanged, with strengthened rationale. Still no code written. |
 | 2026-08-09 | Ticket created. Defect verified end-to-end (non-cascading resolver at `ai-provider-connection.service.ts:260`, explicit `tenantId` at `AiProviderConnectionRepository.ts:111`, non-firing widening at `tenant-scope.ts:635`, dead `resolveConnection` at `:228`). Three findings that change the shape of the fix and were **not** in the raising brief: **(1)** the metering path never reads `AiProviderConnection` at all — BYOK is inferred from the presence of `provider_overrides` on the request (`batch_service.py:70`, `generate.py:158`, `classifyTtsProvider`), so the cascade would mis-rate every platform-funded call as BYOK/zero-COGS/never-invoiced, making R3 a merge blocker rather than a follow-up; **(2)** an explicit `tenantId: SYSTEM` read is already permitted from any tenant's CLS by `mergeSharedReadTenantIntoWhere`, so the fix needs no repository change and no client elevation — and conversely a repository-layer fix would be actively unsafe on the `crossTenantLane` base-client path; **(3)** call site #4 (`smr-compat.resolveSarvamByok:264`) already implements the cascade by hand, which is both the working precedent and the evidence that a per-call-site fix gets copied rather than shared. Also verified that every cloud-BYO SYSTEM seed row ships `enabled: false` and keyless, so the change is behaviour-neutral until a global admin arms it. No code written. |

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Logger, NotFoundException } from '@nestjs/common';
 import { SysEventType, ValueType } from '@arcaai/domains';
 import { QuotaExceededException } from '@arcaai/exceptions';
 import { EntitlementsService } from '../entitlements.service';
@@ -55,6 +55,10 @@ const eventEmitter = { emit: vi.fn() };
 const clsService = { get: vi.fn(() => undefined) };
 // (concurrency) — live per-tenant socket count source.
 const socketRegistry = { getTenantAggregateCount: vi.fn().mockResolvedValue(0) };
+// Fail-open observability: the skipped-meter-check counter. `createCounter` is
+// idempotent in the real `MetricsService`, so one shared fake counter is faithful.
+const skipCounter = { inc: vi.fn() };
+const metricsService = { createCounter: vi.fn(() => skipCounter) };
 
 const makeService = () =>
   new EntitlementsService(
@@ -69,6 +73,7 @@ const makeService = () =>
     eventEmitter as any,
     clsService as any,
     socketRegistry as any,
+    metricsService as any,
   );
 
 const usageStats = (o: Record<string, unknown> = {}) => ({
@@ -651,27 +656,119 @@ describe('EntitlementsService', () => {
       );
     });
 
+    /*
+     * Metering must never take down the clinical path.
+     *
+     * `assertMeterQuota` sits in front of consultation create, summary
+     * generation, transcription-job submit and every TTS request. Its meter
+     * read fans out to six `aiUsageRollupDaily` aggregates plus a raw-ledger
+     * scan; before this block existed, ANY failure of that read — a missing
+     * relation, connection exhaustion, a slow aggregate, future schema drift —
+     * propagated straight out of the assertion and became a 500 on the core
+     * clinical workflow. Only `tts-ws.gateway.ts` wrapped the call, and it
+     * catches `QuotaExceededException` and rethrows everything else.
+     *
+     * The asymmetry is deliberate: BILLING accuracy is worth less than the
+     * clinician's request. A meter read that fails is skipped, not propagated.
+     * Quantity/concurrency/storage quotas are unaffected — none of them reads
+     * metering.
+     *
+     * A skipped check is a real event, not a shrug: it is logged at ERROR with
+     * everything needed to diagnose it (tenant, capability, error class) AND
+     * counted on a Prometheus counter, because a fail-open is invisible by
+     * construction — the request succeeds either way, so without a signal
+     * "metering has been down for six hours and nobody is being metered"
+     * looks exactly like "nobody is over quota".
+     */
+    describe('fail-open when the metering read fails', () => {
+      const arrangeFiniteLimit = () => {
+        values.set('entitlements.enabled', true);
+        asStarter(); // STARTER.monthlyConsultations = 50 — a finite, enforceable limit
+      };
+
+      it('does NOT propagate the metering failure — the caller still succeeds and nothing is blocked', async () => {
+        arrangeFiniteLimit();
+        metering.getCurrentUsage.mockRejectedValueOnce(new Error('relation "AiUsageRollupDaily" does not exist'));
+
+        await expect(makeService().assertMeterQuota('tenant-1', 'monthlyConsultations')).resolves.toBeUndefined();
+        // A skipped check is not a quota block — no block event, no 429.
+        expect(eventEmitter.emit).not.toHaveBeenCalled();
+      });
+
+      it('logs the skipped check at ERROR with the tenant, capability and error class', async () => {
+        arrangeFiniteLimit();
+        const errorLog = vi.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+        metering.getCurrentUsage.mockRejectedValueOnce(new TypeError('connection pool exhausted'));
+
+        await makeService().assertMeterQuota('tenant-1', 'monthlySummaries', 3);
+
+        expect(errorLog).toHaveBeenCalledWith(
+          expect.objectContaining({
+            tenantId: 'tenant-1',
+            capability: 'monthlySummaries',
+            errorClass: 'TypeError',
+            error: 'connection pool exhausted',
+          }),
+        );
+        errorLog.mockRestore();
+      });
+
+      it('counts the skip on a Prometheus counter, labelled by capability', async () => {
+        arrangeFiniteLimit();
+        metering.getCurrentUsage.mockRejectedValueOnce(new Error('db down'));
+
+        await makeService().assertMeterQuota('tenant-1', 'monthlyConsultations');
+
+        expect(skipCounter.inc).toHaveBeenCalledWith({ capability: 'monthlyConsultations' });
+      });
+
+      it('still fails open when no metrics service is wired (the counter is best-effort, the skip is not)', async () => {
+        arrangeFiniteLimit();
+        metering.getCurrentUsage.mockRejectedValueOnce(new Error('db down'));
+        const withoutMetrics = new EntitlementsService(
+          tenantRepository as any,
+          planEntitlementRepository as any,
+          tenantEntitlementRepository as any,
+          apiKeyRepository as any,
+          tenantService as any,
+          metering as any,
+          appSettings as any,
+          globalSettings as any,
+          eventEmitter as any,
+          clsService as any,
+          socketRegistry as any,
+          undefined,
+        );
+
+        await expect(withoutMetrics.assertMeterQuota('tenant-1', 'monthlyConsultations')).resolves.toBeUndefined();
+      });
+
+      it('a QUANTITY quota still throws normally — the fail-open is scoped to the metering read', async () => {
+        values.set('entitlements.enabled', true);
+        asStarter(); // STARTER.maxUsers = 5
+
+        await expect(makeService().assertQuantityQuota('tenant-1', 'maxUsers', 5)).rejects.toBeInstanceOf(QuotaExceededException);
+      });
+    });
+
     describe('TASK-615 D11 unit-allowance capabilities', () => {
-      it('is a NO-OP when the allowance is null (unlimited) even with heavy usage — no DB plan row', async () => {
+      /*
+       * An unlimited (null) allowance can never block, so the metering
+       * aggregate it would be compared against is pure waste — and it is a
+       * six-query fan-out on a clinical hot path. The resolved limit is
+       * therefore checked BEFORE the meter is read: an ungated/unlimited tenant
+       * never pays for the aggregate, and never inherits its failure modes.
+       */
+      it('is a NO-OP when the allowance is null (unlimited) — and never reads the live meter at all', async () => {
         values.set('entitlements.enabled', true);
         // ENTERPRISE is the tier that seeds every allowance NULL (negotiated).
         tenantRepository.findById.mockResolvedValue({ plan: 'ENTERPRISE', trialEndsAt: null });
         planEntitlementRepository.findByPlan.mockResolvedValue(null);
         tenantEntitlementRepository.findByTenant.mockResolvedValue(null);
-        metering.getCurrentUsage.mockResolvedValueOnce({
-          consultations: 0,
-          transcriptionMinutes: 0,
-          summaries: 0,
-          sttSessionSeconds: 0,
-          llmTokens: 0,
-          ttsCharacters: 999_999_999,
-          nlpTextUnits: 0,
-          guardrailCalls: 0,
-          embeddingTokens: 0,
-        });
 
         await expect(makeService().assertMeterQuota('tenant-1', 'monthlyTtsCharacters', 500)).resolves.toBeUndefined();
         expect(eventEmitter.emit).not.toHaveBeenCalled();
+        expect(metering.getCurrentUsage).not.toHaveBeenCalled();
       });
 
       it('throws QuotaExceededException once a finite TTS-character allowance is exceeded', async () => {

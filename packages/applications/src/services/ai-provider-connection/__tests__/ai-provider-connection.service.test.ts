@@ -44,7 +44,7 @@ function makeRow(
   });
 }
 
-function makeService(opts: { roles?: string[]; clsTenantId?: string | null; withVault?: boolean } = {}) {
+function makeService(opts: { roles?: string[]; clsTenantId?: string | null; withVault?: boolean; entitled?: boolean } = {}) {
   const repo = {
     findByTenantServiceProvider: vi.fn().mockResolvedValue(null),
     findDeletedByTenantServiceProvider: vi.fn().mockResolvedValue(null),
@@ -67,8 +67,13 @@ function makeService(opts: { roles?: string[]; clsTenantId?: string | null; with
           decrypt: vi.fn(async () => Buffer.from('plaintext-key', 'utf8')),
           supportsTransit: vi.fn(() => true),
         };
-  const svc = new AiProviderConnectionService(repo as any, db as any, emitter as any, cls as any, secrets as any);
-  return { svc, repo, emitter, cls, secrets };
+  // TASK-643 — the platform-default entitlement gate. Defaults to GRANTED here
+  // so these pre-existing cascade cases keep testing the cascade rather than
+  // the gate (which `ai-provider-connection.platform-default-gate.test.ts`
+  // owns); pass `entitled: false` to exercise a denial.
+  const entitlements = { isFeatureEnabled: vi.fn(async () => opts.entitled ?? true) };
+  const svc = new AiProviderConnectionService(repo as any, db as any, emitter as any, cls as any, secrets as any, entitlements as any);
+  return { svc, repo, emitter, cls, secrets, entitlements };
 }
 
 /** Recursively collect every key name in an object graph. */
@@ -325,7 +330,25 @@ describe('AiProviderConnectionService — resolveConnection cascade (§5 test 5)
     expect(resolved?.source).toBe('tenant');
   });
 
-  it('falls through a DISABLED tenant row to the SYSTEM row', async () => {
+  it('falls through an ABSENT tenant row to the SYSTEM row', async () => {
+    const { svc, repo } = makeService({ roles: ['GLOBAL_ADMIN'] });
+    repo.findByTenantServiceProvider.mockImplementation(async (_service: string, _provider: string, tenantId: string) =>
+      tenantId === TENANT ? null : makeRow({ tenantId: SYSTEM_TENANT_ID, enabled: true, baseUrl: 'https://system.example' }),
+    );
+
+    const resolved = await svc.resolveConnection('llm', 'azure', TENANT);
+    expect(resolved?.baseUrl).toBe('https://system.example');
+    expect(resolved?.source).toBe('system');
+  });
+
+  it('does NOT fall through a DISABLED tenant row — TASK-643 R4 makes that a VETO', async () => {
+    // CONTRACT CHANGE, deliberate: this case used to resolve the SYSTEM row.
+    // A disabled tenant row is now the tenant REFUSING that provider (a shared
+    // vendor account is a PHI decision), so it fails closed instead of quietly
+    // routing the call onto the platform's key. `resolveConnection` had zero
+    // production callers when this flipped, so nothing observable changed with
+    // it — but the rule must match the injection resolver's, or the two paths
+    // would disagree about the same row.
     const { svc, repo } = makeService({ roles: ['GLOBAL_ADMIN'] });
     repo.findByTenantServiceProvider.mockImplementation(async (_service: string, _provider: string, tenantId: string) =>
       tenantId === TENANT
@@ -333,9 +356,7 @@ describe('AiProviderConnectionService — resolveConnection cascade (§5 test 5)
         : makeRow({ tenantId: SYSTEM_TENANT_ID, enabled: true, baseUrl: 'https://system.example' }),
     );
 
-    const resolved = await svc.resolveConnection('llm', 'azure', TENANT);
-    expect(resolved?.baseUrl).toBe('https://system.example');
-    expect(resolved?.source).toBe('system');
+    await expect(svc.resolveConnection('llm', 'azure', TENANT)).resolves.toBeNull();
   });
 
   it('falls through a DISABLED SYSTEM row to null (the env-fallback signal)', async () => {

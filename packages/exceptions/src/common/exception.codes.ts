@@ -23,6 +23,12 @@ export const QUOTA_EXCEEDED = 'DOMAIN.QUOTA_EXCEEDED';
 // The tenant's optional monthly spend limit was reached (TASK-615 #8, D12). The
 // API gateway maps this to 402 Payment Required.
 export const SPEND_LIMIT_EXCEEDED = 'DOMAIN.SPEND_LIMIT_EXCEEDED';
+// The tenant's OWN configuration forbids a provider (TASK-643 R4): its
+// connection row for that (service, provider) is disabled, which is a VETO of
+// the platform-default credential, not merely "unused". The API gateway maps
+// this to 409 Conflict — a tenant admin can clear it in the console, which is
+// what distinguishes it from the 403 a missing entitlement produces.
+export const PROVIDER_CREDENTIAL_VETOED = 'DOMAIN.PROVIDER_CREDENTIAL_VETOED';
 
 /** Persistence layer */
 export const DATA_CONFLICT = 'PERSISTENCE.DATA_CONFLICT';
