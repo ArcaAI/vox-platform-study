@@ -603,7 +603,10 @@ export const DEFAULT_LOCAL_CONFIG: LocalWorkflowConfig = {
   // (the onnx-community repo is gated / 401s); local STT runs tiny/base/small.
   stt: { modelId: 'whisper-base' },
   vad: { modelId: 'silero-vad-v5', sensitivity: 0.5 },
-  ner: { modelId: 'biomedical', autoExtract: true },
+  // Optional feature — the model id is retained for opt-in, but auto-extraction
+  // stays OFF by default (TASK-647). Medical NER pulls the ~300MB `@arcaai/med-ner`
+  // peer; it runs only when a consumer explicitly enables `autoExtract`.
+  ner: { modelId: 'biomedical', autoExtract: false },
   diarization: { enabled: false, autoEnroll: false },
   voiceEmbedding: { modelId: '' },
   audioSilence: { modelId: '' },
@@ -617,9 +620,21 @@ export const DEFAULT_LOCAL_CONFIG: LocalWorkflowConfig = {
 /**
  * Default audio plugin configuration
  */
+/**
+ * Optional audio features default OFF (TASK-647).
+ *
+ * VAD and noise cancellation are opt-in: each pulls a runtime model on the first
+ * `audio.start()` (VAD → Silero ONNX + ORT WASM from the jsDelivr CDN; noise →
+ * RNNoise WASM). A consumer that never states an audio preference falls through
+ * to this default via `AgenticProvider`'s `cfg.audio ?? DEFAULT_AUDIO_CONFIG`, so
+ * enabling them here forced an unsolicited CDN fetch on every such app. STT is the
+ * core capability, not an optional add-on, so it stays enabled. Opt in per stage
+ * with `audio.vad.enabled` / `audio.noiseFilter.enabled` (core) or
+ * `audioSettings.voiceActivityDetection` / `noiseSuppression` (compat).
+ */
 export const DEFAULT_AUDIO_CONFIG: AudioPluginConfig = {
-  noiseFilter: { enabled: true, level: 'medium' },
-  vad: { enabled: true, sensitivity: 0.5 },
+  noiseFilter: { enabled: false, level: 'medium' },
+  vad: { enabled: false, sensitivity: 0.5 },
   stt: {
     enabled: true,
     provider: 'auto',
