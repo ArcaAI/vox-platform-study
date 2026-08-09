@@ -1,4 +1,4 @@
-import { IConfigService } from '@arcaai/applications';
+import { BuildInfoService, IConfigService } from '@arcaai/applications';
 import { Controller, Get, HttpCode, HttpStatus, Inject, Logger, NotFoundException, Param, ServiceUnavailableException } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { HttpService } from '@nestjs/axios';
@@ -8,8 +8,6 @@ import { GracefulShutdownService, IGracefulShutdownService } from '../../service
 import { CanAny } from '../../decorators';
 
 const SERVICE_NAME = 'api';
-// eslint-disable-next-line turbo/no-undeclared-env-vars -- npm/pnpm auto-injects this from package.json at script runtime; it is not a configurable input, so it does not belong in turbo.json#globalEnv
-const SERVICE_VERSION = process.env.npm_package_version || '0.1.0';
 
 interface DownstreamService {
   key: string;
@@ -63,6 +61,13 @@ export class ApiHealthController {
     private readonly httpService: HttpService,
     @Inject(IConfigService)
     private readonly configService: IConfigService,
+    // Baked build identity (TASK-648 W4/W8) — replaces the always-`0.1.0`
+    // `process.env.npm_package_version` read: the API container runs
+    // `node dist/main.js` directly, so pnpm never injects that var in any
+    // deployed environment. `/health` surfaces only `version`; branch/SHA/CI
+    // detail is operator data and stays behind the admin-gated
+    // `/admin/service-releases` surface instead.
+    private readonly buildInfoService: BuildInfoService,
   ) {
     // Downstream URLs resolve through the typed
     // `IConfigService.getConfigValue(...)` accessor. The pre-W7 direct
@@ -167,7 +172,7 @@ export class ApiHealthController {
     return {
       status,
       service: SERVICE_NAME,
-      version: SERVICE_VERSION,
+      version: this.buildInfoService.getBuildInfo().version,
       uptime_seconds: Math.round(process.uptime() * 10) / 10,
       timestamp: new Date().toISOString(),
       checks: {

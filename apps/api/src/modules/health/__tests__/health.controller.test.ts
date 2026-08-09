@@ -43,18 +43,36 @@ const createMockConfigService = () => ({
   }),
 });
 
+// Stubbed `BuildInfoService` — the real reader is unit-tested in
+// `packages/applications`; here we only need a fixed `version` so the
+// controller's `/health` payload can be asserted.
+const createMockBuildInfoService = (version = '2.1.0') => ({
+  getBuildInfo: vi.fn(() => ({
+    service: 'api',
+    version,
+    releaseTag: `ALL-${version}`,
+    gitBranch: 'main',
+    gitCommitSha: '0ab258f9c1d2e3f4a5b6c7d8e9f0011223344557',
+    buildAt: '2026-08-09T11:22:33Z',
+    ciPipelineId: '12345',
+    ciPipelineUrl: 'https://gitlab.example.com/pipelines/12345',
+  })),
+});
+
 describe('ApiHealthController', () => {
   let controller: ApiHealthController;
   let mockShutdownService: ReturnType<typeof createMockShutdownService>;
   let mockHttpService: ReturnType<typeof createMockHttpService>;
   let mockConfigService: ReturnType<typeof createMockConfigService>;
+  let mockBuildInfoService: ReturnType<typeof createMockBuildInfoService>;
 
   beforeEach(() => {
     vi.clearAllMocks();
     mockShutdownService = createMockShutdownService();
     mockHttpService = createMockHttpService();
     mockConfigService = createMockConfigService();
-    controller = new ApiHealthController(mockShutdownService as any, mockHttpService as any, mockConfigService as any);
+    mockBuildInfoService = createMockBuildInfoService();
+    controller = new ApiHealthController(mockShutdownService as any, mockHttpService as any, mockConfigService as any, mockBuildInfoService as any);
   });
 
   describe('GET /health/live', () => {
@@ -70,14 +88,14 @@ describe('ApiHealthController', () => {
 
     it('should throw 503 when service is shutting down', () => {
       mockShutdownService = createMockShutdownService({ isReady: false, isShuttingDown: true });
-      controller = new ApiHealthController(mockShutdownService as any, mockHttpService as any, mockConfigService as any);
+      controller = new ApiHealthController(mockShutdownService as any, mockHttpService as any, mockConfigService as any, mockBuildInfoService as any);
 
       expect(() => controller.readiness()).toThrow();
     });
 
     it('should throw 503 when service is not ready', () => {
       mockShutdownService = createMockShutdownService({ isReady: false });
-      controller = new ApiHealthController(mockShutdownService as any, mockHttpService as any, mockConfigService as any);
+      controller = new ApiHealthController(mockShutdownService as any, mockHttpService as any, mockConfigService as any, mockBuildInfoService as any);
 
       expect(() => controller.readiness()).toThrow();
     });
@@ -90,7 +108,7 @@ describe('ApiHealthController', () => {
 
     it('should throw 503 when service is initializing', () => {
       mockShutdownService = createMockShutdownService({ isReady: false, isShuttingDown: false });
-      controller = new ApiHealthController(mockShutdownService as any, mockHttpService as any, mockConfigService as any);
+      controller = new ApiHealthController(mockShutdownService as any, mockHttpService as any, mockConfigService as any, mockBuildInfoService as any);
 
       expect(() => controller.startup()).toThrow();
     });
@@ -108,9 +126,30 @@ describe('ApiHealthController', () => {
       expect(result.checks.process.status).toBe('healthy');
     });
 
+    it('reports the real baked build version, not the npm_package_version placeholder (TASK-648 W8)', () => {
+      // The API container runs `node dist/main.js` directly, so
+      // `npm_package_version` is never injected in any deployed environment
+      // and previously always fell back to the `0.1.0` default. `/health`
+      // must now report `BuildInfoService`'s baked version instead.
+      const result = controller.check();
+
+      expect(result.version).toBe('2.1.0');
+      expect(result.version).not.toBe('0.1.0');
+      expect(mockBuildInfoService.getBuildInfo).toHaveBeenCalled();
+    });
+
+    it('does not leak branch/SHA/CI detail onto the public /health payload', () => {
+      const result = controller.check();
+
+      expect(result).not.toHaveProperty('gitBranch');
+      expect(result).not.toHaveProperty('gitCommitSha');
+      expect(result).not.toHaveProperty('ciPipelineUrl');
+      expect(result).not.toHaveProperty('releaseTag');
+    });
+
     it('should return unhealthy when shutting down', () => {
       mockShutdownService = createMockShutdownService({ isReady: false, isShuttingDown: true });
-      controller = new ApiHealthController(mockShutdownService as any, mockHttpService as any, mockConfigService as any);
+      controller = new ApiHealthController(mockShutdownService as any, mockHttpService as any, mockConfigService as any, mockBuildInfoService as any);
 
       const result = controller.check();
       expect(result.status).toBe('unhealthy');
@@ -118,7 +157,7 @@ describe('ApiHealthController', () => {
 
     it('should return degraded when not ready and not shutting down', () => {
       mockShutdownService = createMockShutdownService({ isReady: false, isShuttingDown: false });
-      controller = new ApiHealthController(mockShutdownService as any, mockHttpService as any, mockConfigService as any);
+      controller = new ApiHealthController(mockShutdownService as any, mockHttpService as any, mockConfigService as any, mockBuildInfoService as any);
 
       const result = controller.check();
       expect(result.status).toBe('degraded');
