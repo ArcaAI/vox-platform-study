@@ -22,9 +22,10 @@ describe('NAV_ENTRIES (capabilities-matrix section 3, reviewed 2026-07-04; playg
   // TASK-638 §6 adds /ai-operations/reconciliation (tier 10-19), taking 46 -> 47.
   // TASK-641 retiers /allowed-origins 10-19 -> 30-49 (tenant admins now reach
   // it for their own tenant's rows); total stays 47.
-  it('covers the full 47-route map across the four tiers (TASK-641 retiers /allowed-origins to tenant scope)', () => {
-    expect(NAV_ENTRIES).toHaveLength(47);
-    expect(NAV_ENTRIES.filter((entry) => entry.tier === '10-19')).toHaveLength(20);
+  // TASK-648 §6 adds /releases (tier 10-19), taking 47 -> 48.
+  it('covers the full 48-route map across the four tiers (TASK-648 adds /releases)', () => {
+    expect(NAV_ENTRIES).toHaveLength(48);
+    expect(NAV_ENTRIES.filter((entry) => entry.tier === '10-19')).toHaveLength(21);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '20-29')).toHaveLength(7);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '30-49')).toHaveLength(15);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '50-59')).toHaveLength(5);

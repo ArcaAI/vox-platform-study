@@ -41,6 +41,7 @@ import {
   IconUsers,
   IconUserScan,
   IconUserShield,
+  IconVersions,
   IconWaveSine,
   IconWorld,
   IconReportMoney,
@@ -95,6 +96,20 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     label: 'Monitoring',
     tier: '10-19',
     icon: IconActivity,
+    required: [
+      ['manage', 'all'],
+      ['read', 'TenantTelemetry'],
+    ],
+    implemented: true,
+  },
+  {
+    // TASK-648 §6 — service version & release registry. Same gate as
+    // `/monitoring` and `/health/services` (frozen contract): grouped
+    // together in the sidebar.
+    route: '/releases',
+    label: 'Releases',
+    tier: '10-19',
+    icon: IconVersions,
     required: [
       ['manage', 'all'],
       ['read', 'TenantTelemetry'],
