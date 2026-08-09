@@ -101,3 +101,8 @@ export * from './directory-sync';
 export * from './origin-registry';
 // Global-admin CRUD over the allow-list rows the registry above indexes.
 export * from './tenant-allowed-origin';
+// Curated release notes ("What's New") — reader surface + global-admin authoring.
+export * from './changelog';
+// Service version & release registry: boot self-registration + heartbeat,
+// release history, and what is running right now per environment.
+export * from './serviceRelease';

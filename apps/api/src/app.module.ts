@@ -55,6 +55,7 @@ import { GlobalSettingModule } from './modules/global-setting/global-setting.mod
 import { PlatformKnobsModule } from './modules/platform-knobs/platform-knobs.module';
 import { SettingsCatalogModule } from './modules/settings-catalog/settings-catalog.module';
 import { ConsultationModule } from './modules/consultation/consultation.module';
+import { ChangelogModule } from './modules/changelog/changelog.module';
 import { DepartmentModule } from './modules/department/department.module';
 import { TenantAllowedOriginModule } from './modules/tenant-allowed-origin/tenant-allowed-origin.module';
 import { DepartmentAgentModule } from './modules/department-agent/department-agent.module';
@@ -80,6 +81,7 @@ import { TenantSttConfigModule } from './modules/tenant-stt-config/tenant-stt-co
 import { TenantIdpConfigModule } from './modules/tenant-idp-config/tenant-idp-config.module';
 import { HealthModule } from './modules/health/health.module';
 import { InternalModule } from './modules/internal/internal.module';
+import { ServiceReleaseModule } from './modules/service-release/service-release.module';
 import { MonitoringModule } from './modules/monitoring/monitoring.module';
 // /admin/notifications (read/update/delete over system-emitted rows).
 import { NotificationModule } from './modules/notification/notification.module';
@@ -316,6 +318,8 @@ const featureModules: any[] = [
   AuthModule,
   AuditLogModule,
   ConsultationModule,
+  // TASK-648 — curated release notes: reader surface + global-admin authoring.
+  ChangelogModule,
   DepartmentModule,
   // TASK-610 — global-admin CRUD over the browser-origin allow-list.
   TenantAllowedOriginModule,
@@ -345,6 +349,7 @@ const featureModules: any[] = [
   KnowledgeServiceModule,
   HealthModule,
   InternalModule,
+  ServiceReleaseModule,
   MonitoringModule,
   // /admin/notifications (read/update/delete; no admin POST).
   NotificationModule,

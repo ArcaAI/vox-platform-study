@@ -341,6 +341,14 @@ describe('SYSTEM_SHARED_READ_MODELS allow-list', () => {
         'TenantSttConfig',
         'AiTaskDefault',
         'McpServer',
+        // TASK-648 — SYSTEM-owned platform facts read under the caller's own
+        // tenant CLS. Without widening, /changelog and /releases return nothing
+        // for a tenant-scoped reader even though the rows exist. Writes are not
+        // widened; UserChangelogAcknowledgement is deliberately excluded (a
+        // read-state row genuinely belongs to its own tenant).
+        'ServiceRelease',
+        'ServiceInstance',
+        'ChangelogEntry',
         'AiProviderConnection',
         'AiRuntimeProfile',
         // TenantStorageConfig's SYSTEM row (bucketId IS NULL) is the platform
