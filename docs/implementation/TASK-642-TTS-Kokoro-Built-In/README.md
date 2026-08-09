@@ -472,6 +472,47 @@ Steps 3–4: _not started_ (both need the deployment repo / the SYSTEM DB row).
 
 ---
 
+## 5b. Model-storage posture (DECIDED 2026-08-09)
+
+**House rule: no model file ships inside a service image.** Models live on
+`/mnt/data`, the external disk mounted into every VM, and are fetched and cached
+there on demand.
+
+**OD-2 resolved — read-through cache, not baked weights and not a read-only mount.**
+`HF_HUB_CACHE` (deliberately not `HF_HOME`) points at `/mnt/data/models-cache`.
+A cache hit is served from the share with no egress; a miss is fetched from
+huggingface.co and **written back to the share**, so the next pod on any node is
+a hit. `HF_HUB_OFFLINE` is **not** set — offline turns a miss into a hard failure,
+when a miss should self-heal and leave the cache warmer than it found it.
+
+Why the variable matters: the share's layout is hub-style, with
+`models--hexgrad--Kokoro-82M` at the **root** of the directory (which is how
+`hope-stt-v2` populated it). Setting `HF_HOME` there instead resolves the cache to
+`<that>/hub`, finds nothing, and re-downloads every model into a nested directory —
+a second copy of every weight on a disk already ~90 % full. Verified in the built
+image (`huggingface_hub` 1.16.1 honours `HF_HUB_CACHE` directly) and against the
+live share (`local_files_only=True` resolves all 72 files with zero network).
+
+### ⚠ The one sanctioned exception to the no-models-in-images rule
+
+`en_core_web_sm` (12.8 MB spaCy English pipeline) **is** baked into the TTS image
+as a pip wheel. It is a model file by any honest reading, and it is there because
+`misaki.en.G2P.__init__` calls `spacy.cli.download('en_core_web_sm')` when the
+package is absent — a pip install from `github.com` at **first synth**, as the
+non-root `hope` user with no writable `HOME`. Verified: that fails, and Kokoro
+never produces audio.
+
+It cannot simply move to `/mnt/data` because misaki resolves it by **package
+name** (`spacy.load('en_core_web_sm')`), not by a data path — so it must be
+*installed*, not mounted. Owner decision 2026-08-09: **keep it baked and document
+the exception.** It is a ~13 MB tokenizer/tagger that behaves as a library
+dependency of misaki's G2P front-end, not an inference model anyone would swap,
+and the alternative is a runtime pip install from the public internet inside a
+PHI-adjacent pod — strictly worse on both egress and reliability. Revisit only if
+spaCy or misaki grows a supported path-based lookup.
+
+---
+
 ## 6. Change History
 
 | Date | Change |
