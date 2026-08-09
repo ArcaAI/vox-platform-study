@@ -7099,6 +7099,20 @@ dev = [
     { name = "pytest-mock", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
     { name = "ruff", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
 ]
+indic-parler = [
+    { name = "accelerate", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
+    { name = "sentencepiece", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
+    { name = "transformers", version = "4.57.6", source = { registry = "https://pypi.org/simple" }, marker = "(sys_platform == 'darwin' and extra == 'extra-3-stt-nemo') or (sys_platform == 'linux' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
+    { name = "transformers", version = "5.5.4", source = { registry = "https://pypi.org/simple" }, marker = "(sys_platform == 'darwin' and extra == 'extra-3-stt-ml') or (sys_platform == 'darwin' and extra == 'extra-3-stt-ml-gpu') or (sys_platform == 'darwin' and extra != 'extra-3-stt-nemo') or (sys_platform == 'linux' and extra == 'extra-3-stt-ml') or (sys_platform == 'linux' and extra == 'extra-3-stt-ml-gpu') or (sys_platform == 'linux' and extra != 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
+]
+kokoro = [
+    { name = "kokoro", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
+    { name = "lameenc", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
+    { name = "numpy", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
+    { name = "soxr", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
+    { name = "torch", version = "2.8.0", source = { registry = "https://pypi.org/simple" }, marker = "(sys_platform == 'darwin' and extra == 'extra-3-stt-ml') or (sys_platform == 'darwin' and extra == 'extra-3-stt-ml-gpu') or (sys_platform == 'darwin' and extra != 'extra-3-stt-nemo') or (sys_platform == 'linux' and extra == 'extra-3-stt-ml') or (sys_platform == 'linux' and extra == 'extra-3-stt-ml-gpu') or (sys_platform == 'linux' and extra != 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
+    { name = "torch", version = "2.12.1", source = { registry = "https://pypi.org/simple" }, marker = "(sys_platform == 'darwin' and extra == 'extra-3-stt-nemo') or (sys_platform == 'linux' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
+]
 lint = [
     { name = "black", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
     { name = "mypy", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
@@ -7130,7 +7144,7 @@ test = [
 
 [package.metadata]
 requires-dist = [
-    { name = "accelerate", marker = "extra == 'local'", specifier = ">=1.0.0" },
+    { name = "accelerate", marker = "extra == 'indic-parler'", specifier = ">=1.0.0" },
     { name = "azure-cognitiveservices-speech", specifier = ">=1.42.0" },
     { name = "black", marker = "extra == 'dev'", specifier = ">=26.1.0" },
     { name = "black", marker = "extra == 'lint'", specifier = ">=26.1.0" },
@@ -7139,12 +7153,12 @@ requires-dist = [
     { name = "hope-runtime-models", editable = "packages/py-runtime-models" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "httpx", marker = "extra == 'test'", specifier = ">=0.28.1" },
-    { name = "kokoro", marker = "extra == 'local'", specifier = ">=0.9.4" },
-    { name = "lameenc", marker = "extra == 'local'", specifier = ">=1.7.0" },
+    { name = "kokoro", marker = "extra == 'kokoro'", specifier = ">=0.9.4" },
+    { name = "lameenc", marker = "extra == 'kokoro'", specifier = ">=1.7.0" },
     { name = "lameenc", marker = "extra == 'test'", specifier = ">=1.7.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.19.1" },
     { name = "mypy", marker = "extra == 'lint'", specifier = ">=1.19.1" },
-    { name = "numpy", marker = "extra == 'local'", specifier = ">=1.26.0" },
+    { name = "numpy", marker = "extra == 'kokoro'", specifier = ">=1.26.0" },
     { name = "numpy", marker = "extra == 'test'", specifier = ">=1.26.0" },
     { name = "opentelemetry-api", specifier = ">=1.39.1" },
     { name = "opentelemetry-exporter-otlp-proto-grpc", specifier = ">=1.39.0" },
@@ -7171,16 +7185,18 @@ requires-dist = [
     { name = "python-dotenv", specifier = ">=1.2.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.15.7" },
     { name = "ruff", marker = "extra == 'lint'", specifier = ">=0.15.7" },
-    { name = "sentencepiece", marker = "extra == 'local'", specifier = ">=0.2.0" },
-    { name = "soxr", marker = "extra == 'local'", specifier = ">=0.5.0" },
+    { name = "sentencepiece", marker = "extra == 'indic-parler'", specifier = ">=0.2.0" },
+    { name = "soxr", marker = "extra == 'kokoro'", specifier = ">=0.5.0" },
     { name = "soxr", marker = "extra == 'test'", specifier = ">=0.5.0" },
     { name = "sse-starlette", specifier = ">=3.2.0" },
     { name = "structlog", specifier = ">=25.5.0" },
-    { name = "torch", marker = "extra == 'local'", specifier = ">=2.4.0" },
-    { name = "transformers", marker = "extra == 'local'", specifier = ">=4.46.1" },
+    { name = "torch", marker = "extra == 'kokoro'", specifier = ">=2.4.0" },
+    { name = "transformers", marker = "extra == 'indic-parler'", specifier = ">=4.46.1" },
+    { name = "tts", extras = ["indic-parler"], marker = "extra == 'local'" },
+    { name = "tts", extras = ["kokoro"], marker = "extra == 'local'" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.41.0" },
 ]
-provides-extras = ["local", "dev", "test", "lint"]
+provides-extras = ["kokoro", "indic-parler", "local", "dev", "test", "lint"]
 
 [[package]]
 name = "typeguard"
