@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://arcaai.dev/schemas/task-648/changelog-entry.schema.json",
+  "title": "HOPE generated technical changelog",
+  "description": "The TECHNICAL changelog (TASK-648 §3.5): every commit between the previous tag of the same family and this one, parsed from Conventional Commits by CI and stored immutably on ServiceRelease.changelog. This is NOT what the login popup shows — that is the curated ChangelogEntry release note. Conflating the two is the failure this schema exists to prevent.",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["type", "subject", "sha", "breaking"],
+    "properties": {
+      "type": {
+        "type": "string",
+        "description": "Conventional Commit type. `other` is the bucket for commits that do not parse — they are kept, never dropped, so the technical changelog is always complete.",
+        "enum": ["feat", "fix", "perf", "refactor", "docs", "test", "build", "ci", "chore", "revert", "other"]
+      },
+      "scope": {
+        "type": ["string", "null"],
+        "description": "Raw scope as written, e.g. `TASK-643`.",
+        "default": null
+      },
+      "ticket": {
+        "type": ["string", "null"],
+        "description": "TASK-nnn / BUG-nnn extracted from the scope, linked to its ticket README in the console.",
+        "pattern": "^(TASK|BUG)-[0-9]+$",
+        "default": null
+      },
+      "subject": {
+        "type": "string",
+        "description": "Commit subject with type/scope stripped.",
+        "minLength": 1
+      },
+      "sha": {
+        "type": "string",
+        "pattern": "^[0-9a-f]{40}$"
+      },
+      "breaking": {
+        "type": "boolean",
+        "description": "True for a `feat!:`/`fix!:` marker or a `BREAKING CHANGE:` footer. CI FAILS the release when any entry is true and the tag is not a MAJOR bump — this is what makes the SemVer policy of §3.1 enforced rather than aspirational."
+      }
+    }
+  }
+}

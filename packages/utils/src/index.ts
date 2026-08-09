@@ -17,3 +17,4 @@ export { getModelSourceManager } from './ModelSourceManager';
 export * from './ModelLoader';
 export { getModelLoader } from './ModelLoader';
 export * from './transformers-cache';
+export * from './version-grammar';

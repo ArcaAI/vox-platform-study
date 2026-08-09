@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://arcaai.dev/schemas/task-648/build-info.schema.json",
+  "title": "HOPE build-info",
+  "description": "Immutable build identity baked into every HOPE image at /app/build-info.json. Written by the Dockerfile from CI build args (TASK-648 §3.2); read once at process boot. This is NOT configuration — it is a property of the artifact, so it must never be settable from a Deployment manifest, an env file, or turbo.json#globalEnv. The image digest is deliberately absent: it does not exist until after the push, and is attached to the release row by CI instead.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["service", "version", "gitBranch", "gitCommitSha", "buildAt"],
+  "properties": {
+    "service": {
+      "type": "string",
+      "description": "Image/process name as built by CI (SERVICE_NAME in .gitlab/ci/build.yml).",
+      "enum": [
+        "api",
+        "admin-console",
+        "compat-playground",
+        "smr",
+        "stt-ml-runtime",
+        "stt-worker",
+        "nlp",
+        "guardrail",
+        "tts",
+        "harness",
+        "harness-worker",
+        "database",
+        "qdrant-init",
+        "hope-python-base"
+      ]
+    },
+    "version": {
+      "type": "string",
+      "description": "SemVer from the release tag, or 0.0.0-<branch-slug>.<sha8> for an untagged build. Produced by parseReleaseTag / formatUntaggedVersion in @arcaai/utils — never hand-formatted, never read from package.json.",
+      "minLength": 5
+    },
+    "releaseTag": {
+      "type": ["string", "null"],
+      "description": "The git tag that produced this build, e.g. SMR-2.1.0. Null on untagged builds.",
+      "default": null
+    },
+    "gitBranch": {
+      "type": "string",
+      "description": "Branch the build ran on. Empty string when the pipeline ran on a detached tag with no branch context."
+    },
+    "gitCommitSha": {
+      "type": "string",
+      "description": "Full 40-character commit SHA. The short form is derived at display time, never stored separately.",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "buildAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "UTC RFC3339 instant the image was built, matching org.opencontainers.image.created."
+    },
+    "ciPipelineId": {
+      "type": ["string", "null"],
+      "default": null
+    },
+    "ciPipelineUrl": {
+      "type": ["string", "null"],
+      "format": "uri",
+      "default": null
+    }
+  }
+}
