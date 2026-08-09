@@ -49,6 +49,12 @@ from pathlib import Path
 from dotenv import dotenv_values
 
 from hope_env._provenance import record_injection
+from hope_env.build_info import (
+    DEFAULT_BUILD_INFO_PATH,
+    BuildInfo,
+    BuildInfoReader,
+    format_untagged_version,
+)
 from hope_env.settings_sources import (
     DEFAULT_SECRETS_DIR,
     SECRETS_DIR_ENV_VAR,
@@ -60,12 +66,16 @@ from hope_env.settings_sources import (
 )
 
 __all__ = [
+    "DEFAULT_BUILD_INFO_PATH",
     "DEFAULT_SECRETS_DIR",
     "ENV_FILE_BY_NODE_ENV",
     "SECRETS_DIR_ENV_VAR",
+    "BuildInfo",
+    "BuildInfoReader",
     "LoadEnvResult",
     "build_hope_sources",
     "find_monorepo_root",
+    "format_untagged_version",
     "hope_settings_sources",
     "load_env",
     "register_settings_cache",

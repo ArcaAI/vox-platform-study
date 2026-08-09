@@ -45,6 +45,7 @@
     "@arcaai/exceptions": "workspace:*",
     "@arcaai/logger": "workspace:*",
     "@arcaai/types": "workspace:*",
+    "@arcaai/utils": "workspace:*",
     "@aws-sdk/client-s3": "^3.1079.0",
     "@aws-sdk/s3-request-presigner": "^3.1079.0",
     "@azure/msal-node": "^3.8.10",

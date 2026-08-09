@@ -1,6 +1,7 @@
 export * from './dto';
 export * from './env';
 export * from './decorators';
+export * from './build-info';
 
 export * from './apiResponseType.enum';
 export * from './applyChangesToEntity';
