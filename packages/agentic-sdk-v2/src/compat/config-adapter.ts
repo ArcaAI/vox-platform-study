@@ -39,6 +39,12 @@ function ensureApiV1Base(apiEndpoint: string): string {
  * it does for every `sttPipelineId`), every stage it omits is OFF, not
  * defaulted. Stating a preference explicitly is therefore the only way a compat
  * app can turn a stage ON as well as off.
+ *
+ * Since TASK-647 the fallback itself is also safe: `DEFAULT_AUDIO_CONFIG` declares
+ * VAD and noise cancellation OFF (STT stays ON). So a compat app that supplies
+ * neither `audioSettings` nor `sttPipelineId` — where this returns `undefined` and
+ * the provider uses the default — no longer inherits VAD/noise or triggers an
+ * unsolicited Silero/RNNoise model fetch. Opt in per stage to turn them on.
  */
 function mapAudioSettings(audio: V1AudioSettings | undefined, sttPipelineId: string | undefined): AudioPluginConfig | undefined {
   if (!audio && !sttPipelineId) return undefined;
