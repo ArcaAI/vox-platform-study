@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import type { ReactNode } from 'react';
 import { SidebarInset, SidebarProvider } from '@arcaai/ui/components/shadcn/sidebar';
+import { WhatsNewDialog } from '@/features/changelog';
 import { toSafeSession } from '@/server/safe-user';
 import { getSession } from '@/server/session';
 import { AppSidebar } from '@/shared/layout/app-sidebar';
@@ -23,6 +24,7 @@ export default async function ConsoleLayout({ children }: { children: ReactNode 
 
   return (
     <Providers session={safeSession}>
+      <WhatsNewDialog />
       <SidebarProvider>
         <SidebarTierSync />
         <AppSidebar />
