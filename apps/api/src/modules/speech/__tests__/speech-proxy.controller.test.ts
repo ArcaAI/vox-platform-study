@@ -168,8 +168,10 @@ describe('SpeechProxyController', () => {
       getEffective: vi.fn().mockResolvedValue(makeEffective(voiceBindings)),
     });
 
+    // TASK-643 — the resolver returns the two-tier result `{overrides, platformDefault?}`,
+    // not a bare map; entries carry `funding`.
     const makeProviderConnectionService = (overrides: Record<string, unknown> = {}) => ({
-      resolveTenantCloudOverrides: vi.fn().mockResolvedValue(overrides),
+      resolveTenantCloudOverrides: vi.fn().mockResolvedValue({ overrides }),
     });
 
     const makeCls = () => ({ get: vi.fn((key: string) => (key === 'tenantId' ? 't1' : undefined)) });
@@ -215,7 +217,7 @@ describe('SpeechProxyController', () => {
     // TenantTtsConfigService.resolveProviderOverrides. The injected
     // provider_overrides SHAPE is unchanged (C4 — byte-identical body).
     it('injects provider_overrides via IProviderConnectionService.resolveTenantCloudOverrides("tts", tenantId)', async () => {
-      const OVERRIDES = { azure: { api_key: 'THE-KEY', region: 'eastus' } };
+      const OVERRIDES = { azure: { api_key: 'THE-KEY', funding: 'tenant', region: 'eastus' } };
       const providerConnectionService = makeProviderConnectionService(OVERRIDES);
       const ctrl = buildController(makeTenantTtsConfig({}), providerConnectionService);
       http.axiosRef.post.mockResolvedValue({ headers: { 'content-type': 'audio/pcm' }, data: makeStream() });

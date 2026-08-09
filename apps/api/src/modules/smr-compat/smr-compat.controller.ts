@@ -7,8 +7,8 @@ import {
   IProviderConnectionService,
   RequiredScopes,
   SecretsService,
+  assertProviderAvailable,
 } from '@arcaai/applications';
-import { SYSTEM_TENANT_ID } from '@arcaai/domains';
 import { HttpService } from '@nestjs/axios';
 import { Body, Controller, HttpException, HttpStatus, Inject, Logger, Optional, Post, Req, Res, UnauthorizedException } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
@@ -246,22 +246,24 @@ export class SmrCompatController {
   }
 
   /**
-   * TASK-600 — resolve the effective Sarvam BYOK credential (decrypted) from the
-   * unified provider plane, cascading the tenant admin's own credential first,
-   * then the global admin's platform (SYSTEM-tenant) credential. Sarvam is
-   * BYOK-only — there is NO env fallback. Returns `undefined` when neither tier
-   * has an enabled Sarvam credential (→ SMR gets no key → fail-open, no
-   * translation). One Sarvam subscription key serves every capability, so the
-   * existing `stt`/`sarvam` connection row is the source.
+   * TASK-600 — resolve the effective Sarvam credential (decrypted) from the
+   * unified provider plane: the tenant admin's own row first, then the global
+   * admin's platform (SYSTEM-tenant) credential. Sarvam is BYOK-only — there is
+   * NO env fallback. Returns `undefined` when neither tier has an enabled Sarvam
+   * credential (→ SMR gets no key → fail-open, no translation). One Sarvam
+   * subscription key serves every capability, so the `stt`/`sarvam` connection
+   * row is the source.
+   *
+   * TASK-643 — this used to hand-roll the tenant→SYSTEM cascade by calling the
+   * resolver TWICE, and it was the only place in the codebase that reached the
+   * platform tier at all. It now rides the shared cascade, so the veto, the
+   * entitlement gate and the `funding` label apply here exactly as everywhere
+   * else instead of being a second, divergent implementation of the same rule.
    */
   private async resolveSarvamByok(tenantId: string): Promise<Record<string, unknown> | undefined> {
     if (!this.providerConnectionService) return undefined;
-    const pick = async (scopeTenantId: string): Promise<Record<string, unknown> | undefined> => {
-      const overrides = await this.providerConnectionService!.resolveTenantCloudOverrides('stt', scopeTenantId).catch(() => undefined);
-      return overrides?.sarvam as Record<string, unknown> | undefined;
-    };
-    // Tenant admin's key wins; else the global admin's platform (SYSTEM) key.
-    return (await pick(tenantId)) ?? (tenantId === SYSTEM_TENANT_ID ? undefined : await pick(SYSTEM_TENANT_ID));
+    const resolved = await this.providerConnectionService.resolveTenantCloudOverrides('stt', tenantId).catch(() => undefined);
+    return resolved?.overrides.sarvam as Record<string, unknown> | undefined;
   }
 
   /**
@@ -655,9 +657,17 @@ export class SmrCompatController {
   private async attachLlmByok(request: SmrGenerateRequest, tenantId: string): Promise<void> {
     if (!this.providerConnectionService || !request.provider) return;
     const connKey = request.provider === 'azure-openai' ? 'azure' : request.provider;
-    const overrides = await this.providerConnectionService.resolveTenantCloudOverrides('llm', tenantId).catch(() => undefined);
-    const entry = overrides?.[connKey] as Record<string, unknown> | undefined;
-    if (entry) request.provider_overrides = { [request.provider]: entry };
+    const resolved = await this.providerConnectionService.resolveTenantCloudOverrides('llm', tenantId).catch(() => undefined);
+    const entry = resolved?.overrides[connKey] as Record<string, unknown> | undefined;
+    if (entry) {
+      request.provider_overrides = { [request.provider]: entry };
+      return;
+    }
+    // TASK-643 — a SUPPRESSED platform tier (tenant veto → 409, no
+    // entitlement → 403) is reported instead of degrading to SMR's
+    // unattributable 503. Nothing suppressed ⇒ returns void and the fail-open
+    // behaviour above is unchanged.
+    if (resolved) assertProviderAvailable(resolved, 'llm', connKey);
   }
 
   /**

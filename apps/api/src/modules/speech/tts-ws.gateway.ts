@@ -219,10 +219,17 @@ export class TtsWsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     let providerOverrides: ProviderOverrides | null = null;
     if (this.tenantTtsConfig && tenantId) {
       try {
-        [effectiveConfig, providerOverrides] = await Promise.all([
+        // TASK-643 — two tiers (tenant rows over the SYSTEM-tenant platform
+        // default); each entry carries the `funding` label the teardown usage
+        // stamp reads back.
+        const [eff, resolved] = await Promise.all([
           this.tenantTtsConfig.getEffective(tenantId),
-          this.providerConnectionService ? this.providerConnectionService.resolveTenantCloudOverrides('tts', tenantId) : Promise.resolve({}),
+          this.providerConnectionService
+            ? this.providerConnectionService.resolveTenantCloudOverrides('tts', tenantId)
+            : Promise.resolve({ overrides: {} as ProviderOverrides }),
         ]);
+        effectiveConfig = eff;
+        providerOverrides = resolved.overrides;
       } catch (err) {
         this.logger.warn({
           message: 'Tenant TTS config resolve failed; init frame not enriched',

@@ -1,5 +1,6 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { IsBoolean, IsIn, IsInt, IsObject, IsOptional, IsString, MaxLength, Min, MinLength } from 'class-validator';
+import { CONNECTION_ENABLED_SEMANTICS } from '../constants';
 
 /**
  * Upsert one (service, tenant, provider) connection row.
@@ -64,10 +65,11 @@ export class UpsertAiProviderConnectionRequest {
   apiKey?: string;
 
   @ApiPropertyOptional({
-    description:
-      'Whether this connection participates in resolution. A DISABLED row is skipped and ' +
-      'resolution falls through to the SYSTEM row, then fails closed (TASK-602: the STT/TTS/SMR ' +
-      'cloud credentials no longer have a per-service env fallback).',
+    // TASK-643 R4 — `enabled: false` is a VETO, not merely "unused". The single
+    // wording lives in `constants.ts` so the request DTO, the response DTO and
+    // the controller's Swagger cannot drift apart on a rule an operator has to
+    // reason about while debugging a 409.
+    description: `Whether this connection participates in resolution. ${CONNECTION_ENABLED_SEMANTICS}`,
     default: false,
   })
   @IsOptional()

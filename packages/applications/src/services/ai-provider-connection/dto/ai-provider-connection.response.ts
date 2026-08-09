@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { CONNECTION_ENABLED_SEMANTICS } from '../constants';
 
 /**
  * Masked read view of one (tenant, provider) connection row.
@@ -38,7 +39,7 @@ export class AiProviderConnectionResponse {
   @ApiProperty({ description: 'Vault-Transit key version backing the stored ciphertext.', nullable: true })
   keyVersion!: number | null;
 
-  @ApiProperty({ description: 'Whether this connection participates in resolution.' })
+  @ApiProperty({ description: `Whether this connection participates in resolution. ${CONNECTION_ENABLED_SEMANTICS}` })
   enabled!: boolean;
 
   @ApiProperty({ description: 'Provider-specific extras.', nullable: true, type: Object })

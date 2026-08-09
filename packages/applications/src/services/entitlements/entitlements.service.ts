@@ -1,5 +1,6 @@
 import { BadRequestException, Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import type { Counter } from 'prom-client';
 import { ClsService } from 'nestjs-cls';
 import { QuotaExceededException } from '@arcaai/exceptions';
 import {
@@ -19,6 +20,7 @@ import {
 import { BaseService } from '../../common';
 import { IActiveUserContext } from '../../interfaces';
 import { IAppSettingsService } from '../baseServices/_meta/appSettings/IAppSettingsService';
+import { IMetricsService } from '../baseServices/metrics/IMetricsService';
 import { IGlobalSettingService } from '../globalSetting/IGlobalSettingService';
 import { ITenantService } from '../tenant/ITenantService';
 import { IMeteringService, MeterUsage } from '../metering/IMeteringService';
@@ -30,6 +32,7 @@ import { EntitlementLimitKey, MeterCapabilityKey, wouldExceedLimit } from './enf
 import { ENTITLEMENTS_QUOTA_BLOCKED_EVENT, ENTITLEMENTS_STORAGE_WARN_EVENT } from './entitlements.constants';
 import {
   ENTITLEMENTS_GLOBAL_ENABLED_DEFAULT,
+  ENTITLEMENTS_METER_SKIPPED_METRIC,
   ENTITLEMENTS_NAMESPACE,
   ENTITLEMENTS_TENANT_ID,
   entitlementsEnabledKey,
@@ -96,6 +99,13 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
   /** Per-tenant rate-limit policy cache (short TTL, hot path). */
   private readonly rateLimitPolicyCache = new Map<string, { value: TenantRateLimitPolicy | null; expiresAt: number }>();
 
+  /**
+   * Counts meter checks skipped because the metering read failed. `null` when
+   * no metrics service is wired, or when registering the counter itself failed
+   * — observability of a fail-open must never become a second failure mode.
+   */
+  private readonly meterSkippedCounter: Counter<string> | null;
+
   constructor(
     private readonly tenantRepository: TenantRepository,
     private readonly planEntitlementRepository: PlanEntitlementRepository,
@@ -118,8 +128,34 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
     @Optional()
     @Inject(ISocketRegistryService)
     private readonly socketRegistry?: ISocketRegistryService,
+    // Fail-open observability for `assertMeterQuota` (see
+    // {@link ENTITLEMENTS_METER_SKIPPED_METRIC}). Optional for the same reason
+    // `socketRegistry` is: this is a signal ABOUT the path, never a
+    // precondition FOR it.
+    @Optional()
+    @Inject(IMetricsService)
+    metrics?: IMetricsService,
   ) {
     super(eventEmitter, clsService, ResourceType.Tenant);
+    this.meterSkippedCounter = this.registerMeterSkippedCounter(metrics);
+  }
+
+  /** Register the fail-open counter once, tolerating any metrics-layer failure. */
+  private registerMeterSkippedCounter(metrics?: IMetricsService): Counter<string> | null {
+    if (!metrics) return null;
+    try {
+      return metrics.createCounter({
+        name: ENTITLEMENTS_METER_SKIPPED_METRIC,
+        help: 'Meter quota checks skipped because the live metering read failed (fail-open). Non-zero means usage is NOT being enforced.',
+        labelNames: ['capability'],
+      });
+    } catch (err) {
+      this.logger.warn({
+        message: 'Could not register the meter-skip counter — fail-open events will only be visible in logs',
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return null;
+    }
   }
 
   // --- Kill-switch (Q9) --------------------------------------------------
@@ -244,10 +280,22 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
     if (!this.isEnforcementEnabled()) return;
 
     const resolved = await this.resolveForTenant(tenantId);
-    const limit = resolved.limits[capability];
+    this.enforceLimit(tenantId, capability, resolved.limits[capability], currentCount, increment);
+  }
 
+  /**
+   * The shared Q10 "block-new" decision: emit the audit event and throw the
+   * typed error when `increment` more would exceed `limit`; otherwise return.
+   *
+   * Extracted so `assertMeterQuota` can resolve the limit BEFORE it decides
+   * whether the meter is even worth reading, without either re-resolving the
+   * tenant (three more DB reads on a clinical hot path) or duplicating the
+   * block/throw. Pure decision — no I/O, no kill-switch read; both callers have
+   * already made those.
+   */
+  private enforceLimit(tenantId: EntityId, capability: EntitlementLimitKey, limit: number | null, used: number, increment: number): void {
     // Unlimited/ungated (null limit, incl. null-plan legacy + system tenant, Q3).
-    if (!wouldExceedLimit(limit, currentCount, increment)) return;
+    if (!wouldExceedLimit(limit, used, increment)) return;
 
     // Q10 — block the NEW action only; existing resources are grandfathered.
     // Emit an audit event (subscribers persist it), then throw the
@@ -260,31 +308,87 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
       tenantId,
       capability,
       limit,
-      used: currentCount,
+      used,
       requested: increment,
       at: new Date(),
       responsibleEntityId: this.requestUserId ?? undefined,
     });
 
     throw new QuotaExceededException(
-      `Plan limit reached for '${capability}' (${currentCount}/${limit}). Existing items are unaffected — raise the plan or per-tenant override to add more.`,
-      { capability, limit: limit as number, used: currentCount, requested: increment, tenantId },
+      `Plan limit reached for '${capability}' (${used}/${limit}). Existing items are unaffected — raise the plan or per-tenant override to add more.`,
+      { capability, limit: limit as number, used, requested: increment, tenantId },
     );
   }
 
   // --- Meter enforcement (Q5, → 429) ------------------------------------
 
+  /**
+   * **Billing must never take down the clinical path.**
+   *
+   * This assertion fronts consultation create, summary generation,
+   * transcription-job submit and every TTS request. Its inputs are a resolved
+   * limit and a live metering aggregate — and the aggregate is by far the most
+   * fragile of the two: six `AiUsageRollupDaily` aggregates plus a raw-ledger
+   * scan, none of it wrapped, in tables that a schema drift or a connection
+   * squeeze can take out independently of everything else. Propagating that
+   * failure turns a billing outage into a platform-wide 500 on the core
+   * clinical workflow. So it does not propagate: the check is SKIPPED, loudly.
+   *
+   * Two ordering/containment decisions make that safe:
+   *
+   *   1. The RESOLVED LIMIT is read first, and an unlimited (`null`) allowance
+   *      returns before the meter is touched at all. An ungated tenant neither
+   *      pays for the aggregate nor inherits its failure modes — and since a
+   *      null limit can never block, this is behaviour-preserving.
+   *   2. The guard wraps ONLY the metering read, and lives HERE rather than in
+   *      `MeteringService.getCurrentUsage`. `getCapabilities` and the invoice
+   *      evidence tooling read the same method for DISPLAY and BILLING, where
+   *      zeros substituted for an error would be a silent lie. Fail-open is an
+   *      ENFORCEMENT policy, so it belongs at the enforcement boundary.
+   *
+   * A skip is never silent: ERROR log (tenant + capability + error class) plus
+   * {@link ENTITLEMENTS_METER_SKIPPED_METRIC}.
+   */
   async assertMeterQuota(tenantId: EntityId, capability: MeterCapabilityKey, increment = 1): Promise<void> {
     // Q9 — inert until the kill-switch is flipped; keeps hot consultation/STT/
     // summary paths free of any metering aggregation while enforcement is OFF.
     if (!this.isEnforcementEnabled()) return;
 
-    const usage = await this.metering.getCurrentUsage(tenantId);
-    const used = METER_USAGE_FIELD_BY_CAPABILITY[capability](usage);
+    const resolved = await this.resolveForTenant(tenantId);
+    const limit = resolved.limits[capability];
+    if (limit === null) return; // unlimited/ungated — never read the meter (1)
 
-    // Delegates to the shared block-new logic (same event + typed error). The
-    // API maps the meter capabilities to 429; the quantity ones to 409.
-    await this.assertQuantityQuota(tenantId, capability, used, increment);
+    let used: number;
+    try {
+      const usage = await this.metering.getCurrentUsage(tenantId);
+      used = METER_USAGE_FIELD_BY_CAPABILITY[capability](usage);
+    } catch (err) {
+      this.recordSkippedMeterCheck(tenantId, capability, err);
+      return; // FAIL OPEN — the clinical request proceeds unmetered-against
+    }
+
+    // Same block-new logic the quantity path uses (same event + typed error).
+    // The API maps the meter capabilities to 429; the quantity ones to 409.
+    this.enforceLimit(tenantId, capability, limit, used, increment);
+  }
+
+  /** Make a skipped quota check findable: loud log + a counter an alert can read. */
+  private recordSkippedMeterCheck(tenantId: EntityId, capability: MeterCapabilityKey, err: unknown): void {
+    const error = err instanceof Error ? err : new Error(String(err));
+
+    this.logger.error({
+      message: 'Metering read failed — meter quota check SKIPPED (fail-open); this request was NOT checked against its allowance',
+      tenantId,
+      capability,
+      errorClass: error.name,
+      error: error.message,
+    });
+
+    try {
+      this.meterSkippedCounter?.inc({ capability });
+    } catch {
+      // Recording the skip must never become a second way to fail the request.
+    }
   }
 
   // --- Concurrency gate (hard-block → 429) --------------------

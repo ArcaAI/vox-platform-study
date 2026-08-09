@@ -160,8 +160,8 @@ describe('resolveTenantCloudOverrides — service-scoped injection', () => {
   it("injects only the requested service's listed providers", async () => {
     // The stt lane returns an stt-listed provider row → injected.
     const { svc } = makeService({ rows: [makeRow('stt', 'azure-speech', { region: 'eastus' })] });
-    await expect(svc.resolveTenantCloudOverrides('stt', TENANT)).resolves.toEqual({
-      'azure-speech': { api_key: 'plaintext-key', region: 'eastus' },
+    await expect(svc.resolveTenantCloudOverrides('stt', TENANT)).resolves.toMatchObject({
+      overrides: { 'azure-speech': { api_key: 'plaintext-key', funding: 'tenant', region: 'eastus' } },
     });
   });
 
@@ -169,14 +169,14 @@ describe('resolveTenantCloudOverrides — service-scoped injection', () => {
     // An 'azure' row surfaced while resolving service='stt' is skipped (azure is
     // an llm/tts provider, not an stt provider) — no cross-service leak.
     const { svc } = makeService({ rows: [makeRow('stt', 'azure')] });
-    await expect(svc.resolveTenantCloudOverrides('stt', TENANT)).resolves.toEqual({});
+    await expect(svc.resolveTenantCloudOverrides('stt', TENANT)).resolves.toMatchObject({ overrides: {} });
   });
 
   it('the deprecated 1-arg form resolves the llm lane', async () => {
     const { svc, repo } = makeService({ rows: [makeRow('llm', 'azure', { baseUrl: 'https://acme.openai.azure.com' })] });
     // eslint-disable-next-line @typescript-eslint/no-deprecated
-    await expect(svc.resolveTenantCloudOverrides(TENANT)).resolves.toEqual({
-      azure: { api_key: 'plaintext-key', base_url: 'https://acme.openai.azure.com' },
+    await expect(svc.resolveTenantCloudOverrides(TENANT)).resolves.toMatchObject({
+      overrides: { azure: { api_key: 'plaintext-key', funding: 'tenant', base_url: 'https://acme.openai.azure.com' } },
     });
     expect(repo.findByTenantIdAndService.mock.calls[0][0]).toBe('llm');
   });

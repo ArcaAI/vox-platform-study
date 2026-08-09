@@ -160,6 +160,116 @@ class TestBuildTeardownSummary:
         assert summary["engine"] == "azure-speech"
         assert summary["deployment"] == "BYOK"
 
+    def test_platform_funded_cloud_engine_meters_as_cloud(self):
+        """TASK-643 R3 — a gateway-injected SYSTEM-tenant credential is
+        indistinguishable from the tenant's own on the wire, so `funding`
+        declares which. Platform-funded must meter as CLOUD: BYOK would zero
+        its COGS contribution and rate it at baseline SELL, never invoiced."""
+        from stt.pipeline.dto import AiModelFormat
+
+        mgr = _make_manager()
+        session = _make_session()
+        session._metadata.closed_at = session._metadata.created_at
+        mgr._session_asr_formats[session.session_id] = AiModelFormat.AZURE_SPEECH
+        mgr._provider_overrides[session.session_id] = {
+            "azure-speech": {"apiKey": "platform-key", "funding": "platform"}
+        }
+
+        summary = mgr._build_teardown_summary(session)
+
+        assert summary["engine"] == "azure-speech"
+        assert summary["deployment"] == "CLOUD"
+
+    def test_tenant_funded_cloud_engine_meters_as_byok(self):
+        from stt.pipeline.dto import AiModelFormat
+
+        mgr = _make_manager()
+        session = _make_session()
+        session._metadata.closed_at = session._metadata.created_at
+        mgr._session_asr_formats[session.session_id] = AiModelFormat.AZURE_SPEECH
+        mgr._provider_overrides[session.session_id] = {
+            "azure-speech": {"apiKey": "tenant-key", "funding": "tenant"}
+        }
+
+        summary = mgr._build_teardown_summary(session)
+
+        assert summary["deployment"] == "BYOK"
+
+    def test_override_for_a_different_provider_does_not_attribute(self):
+        """The pre-R3 predicate was dict-truthy over the WHOLE override map, so
+        a tenant holding only a Sarvam key had its Azure-Speech call marked
+        BYOK. The serving engine's own entry is the only one that counts."""
+        from stt.pipeline.dto import AiModelFormat
+
+        mgr = _make_manager()
+        session = _make_session()
+        session._metadata.closed_at = session._metadata.created_at
+        mgr._session_asr_formats[session.session_id] = AiModelFormat.AZURE_SPEECH
+        mgr._provider_overrides[session.session_id] = {"sarvam": {"apiKey": "tenant-sarvam-key"}}
+
+        summary = mgr._build_teardown_summary(session)
+
+        assert summary["engine"] == "azure-speech"
+        # No azure-speech entry -> the call ran on a platform credential.
+        assert summary["deployment"] == "CLOUD"
+
+    def test_each_provider_entry_is_attributed_on_its_own_funding(self):
+        """A mixed map: platform-funded Azure alongside a tenant-funded Sarvam.
+        Whichever engine actually served the session decides, independently."""
+        from stt.pipeline.dto import AiModelFormat
+
+        overrides = {
+            "azure-speech": {"apiKey": "platform-key", "funding": "platform"},
+            "sarvam": {"apiKey": "tenant-key", "funding": "tenant"},
+        }
+
+        mgr = _make_manager()
+        azure_session = _make_session(session_id="sess_azure")
+        azure_session._metadata.closed_at = azure_session._metadata.created_at
+        mgr._session_asr_formats[azure_session.session_id] = AiModelFormat.AZURE_SPEECH
+        mgr._provider_overrides[azure_session.session_id] = dict(overrides)
+
+        sarvam_session = _make_session(session_id="sess_sarvam")
+        sarvam_session._metadata.closed_at = sarvam_session._metadata.created_at
+        mgr._session_asr_formats[sarvam_session.session_id] = AiModelFormat.SARVAM
+        mgr._provider_overrides[sarvam_session.session_id] = dict(overrides)
+
+        assert mgr._build_teardown_summary(azure_session)["deployment"] == "CLOUD"
+        assert mgr._build_teardown_summary(sarvam_session)["deployment"] == "BYOK"
+
+    def test_funding_survives_the_request_schema_and_the_shallow_copy(self):
+        """The label is only useful if it reaches `_build_teardown_summary`
+        unchanged: `provider_overrides` is typed `dict[str, Any]` (pydantic
+        does not model — and so cannot strip — the per-entry fields), and
+        `create_session` stores `dict(provider_overrides or {})`, a SHALLOW
+        copy whose values are the same nested dicts."""
+        from stt.pipeline.dto import AiModelFormat
+        from stt.streaming.api.schemas import CreateStreamingSessionRequest
+
+        request = CreateStreamingSessionRequest(
+            session_id="sess_wire",
+            tenant_id="t1",
+            pipeline_id="p1",
+            provider_overrides={
+                "azure-speech": {
+                    "apiKey": "platform-key",
+                    "region": "eastus",
+                    "funding": "platform",
+                }
+            },
+        )
+        assert request.provider_overrides is not None
+        assert request.provider_overrides["azure-speech"]["funding"] == "platform"
+
+        mgr = _make_manager()
+        session = _make_session(session_id="sess_wire")
+        session._metadata.closed_at = session._metadata.created_at
+        mgr._session_asr_formats[session.session_id] = AiModelFormat.AZURE_SPEECH
+        # Exactly what create_session stores (session_manager.py:902).
+        mgr._provider_overrides[session.session_id] = dict(request.provider_overrides or {})
+
+        assert mgr._build_teardown_summary(session)["deployment"] == "CLOUD"
+
     def test_no_asr_format_tracked_yields_no_engine(self):
         """A session that never resolved an ASR model (e.g. it failed before
         load) must not fabricate an engine — the gateway skips ledger

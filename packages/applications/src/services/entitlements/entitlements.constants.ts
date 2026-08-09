@@ -62,6 +62,22 @@ export interface QuotaBlockedEvent {
 export const ENTITLEMENTS_STORAGE_WARN_EVENT = 'entitlements.storage-warn';
 
 /**
+ * Prometheus counter incremented every time a meter quota check is SKIPPED
+ * because the live metering read failed (`assertMeterQuota`'s fail-open).
+ *
+ * A fail-open is invisible by construction — the clinician's request succeeds
+ * either way — so without this counter "metering has been down for six hours
+ * and nothing is being checked" is indistinguishable from "nobody is over
+ * quota". The ERROR log says *why* a single skip happened; this says *whether,
+ * and how often*, which is the question an alert rule can ask.
+ *
+ * Labelled by `capability` ONLY. `tenantId` is deliberately NOT a label — it is
+ * unbounded cardinality (`09-infrastructure-devops.md`); the tenant is in the
+ * log line, where it belongs.
+ */
+export const ENTITLEMENTS_METER_SKIPPED_METRIC = 'entitlements_meter_check_skipped_total';
+
+/**
  * Enforcement ships OFF by default (proposal Q9). Until an operator flips
  * `entitlements.enabled` to `true` per-env, every quota/feature check is a
  * no-op — so a partial landing of this epic is safe.

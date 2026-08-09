@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { CoreDatabaseModule } from '@arcaai/domains';
 import { CommonServiceModule } from '../baseServices/common.service.module';
+import { EntitlementsServiceModule } from '../entitlements/entitlements.service.module';
 import { IProviderConnectionService } from './IProviderConnectionService';
 import { AiProviderConnectionService } from './ai-provider-connection.service';
 
@@ -9,7 +10,11 @@ import { AiProviderConnectionService } from './ai-provider-connection.service';
 // `@Inject(IProviderConnectionService)` and the legacy `@Inject(IAiProviderConnectionService)`
 // (smr-proxy) until TASK-572 repoints.
 @Module({
-  imports: [CommonServiceModule, CoreDatabaseModule],
+  // `EntitlementsServiceModule` supplies the platform-default gate
+  // (TASK-643 R6). It is the ONLY consumer-visible reason this module grew an
+  // import: without it the resolver denies the SYSTEM credential tier outright
+  // (fail-closed), which is correct but silently disables the cascade.
+  imports: [CommonServiceModule, CoreDatabaseModule, EntitlementsServiceModule],
   providers: [
     AiProviderConnectionService,
     {

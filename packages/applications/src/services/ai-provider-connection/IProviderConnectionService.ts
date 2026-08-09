@@ -20,12 +20,41 @@ export interface ResolvedProviderConnection {
 }
 
 /**
- * One decrypted tenant BYO credential in the shape the Python services
+ * WHO PAID for a credential (TASK-643 R3).
+ *
+ * `tenant` — the caller's own BYO row. Metered `BYOK` + `BYOK_NOTIONAL`: the
+ * platform bore no vendor cost, so the call is rated notionally and not
+ * invoiced.
+ * `platform` — the SYSTEM-tenant platform default. The platform DID bear the
+ * vendor cost, so the call meters `CLOUD` + `INTERNAL` (OD-2), reaching the
+ * COGS rollups and the premium SELL row.
+ *
+ * Getting this label wrong is silent: the wrong value still produces a
+ * self-consistent deployment/costBasis pair, so no ledger guard fires and the
+ * shadow-metering reconciliation (which filters to CLOUD) drops the event
+ * entirely. It is therefore DERIVED from the row that supplied the credential
+ * (`row.tenantId === SYSTEM_TENANT_ID`) inside the single private factory in
+ * `AiProviderConnectionService`, never stamped by a call site.
+ */
+export type ProviderFunding = 'tenant' | 'platform';
+
+/**
+ * One decrypted BYO credential in the shape the Python services
  * consume. snake_case matches the frozen wire contract (C4) and the TTS
  * `provider_overrides` precedent.
  */
 export interface ProviderOverrideEntry {
   api_key: string;
+  /**
+   * REQUIRED here, on purpose — strict where entries are CONSTRUCTED, lenient
+   * where they are PARSED. Every consumer (`tts-provider-classification.ts`,
+   * SMR's `_used_byok_credential`, STT's `resolve_usage_attribution`) treats an
+   * absent value as `tenant`, which is exact rather than merely conservative
+   * for any sender that predates the cascade, and keeps in-flight requests
+   * unchanged during a rolling deploy. Making it required on the internal type
+   * turns a missing label into a COMPILE error instead of a silent mis-bill.
+   */
+  funding: ProviderFunding;
   base_url?: string;
   region?: string;
   api_version?: string;
@@ -43,6 +72,37 @@ export interface ProviderOverrideEntry {
 
 /** `provider → override`, keyed by the serving provider identifier. */
 export type ProviderOverrides = Record<string, ProviderOverrideEntry>;
+
+/**
+ * WHY the SYSTEM (platform-default) tier did not contribute (TASK-643 §3.5.4).
+ *
+ * Both facts are carried because both can be true at once, and they are not
+ * alternatives: the veto is per `(service, provider)` while the entitlement
+ * grant is per tenant. A tenant that vetoes `azure` and holds no grant must
+ * still get the VETO error for `azure` (the more specific, more local fact) and
+ * the entitlement error for every other provider.
+ *
+ * Absent from `ResolvedProviderOverrides` ⇒ the SYSTEM tier was consulted
+ * normally and nothing was suppressed.
+ */
+export interface PlatformDefaultOutcome {
+  /** The gate denied the whole SYSTEM tier: no `featurePlatformDefaultCredential`. */
+  entitlementSuppressed: boolean;
+  /** Providers the tenant explicitly vetoed by disabling its own row (§3.4). */
+  vetoed: string[];
+}
+
+/**
+ * The injection resolver's result. `overrides` is the unchanged wire map (still
+ * gateway-only — it carries plaintext key material); `platformDefault` is the
+ * out-of-band reason a provider has no entry, so the call site can raise an
+ * attributable 403/409 instead of letting a Python service report a generic
+ * missing-credential 503. Pass the whole object to `assertProviderAvailable`.
+ */
+export interface ResolvedProviderOverrides {
+  overrides: ProviderOverrides;
+  platformDefault?: PlatformDefaultOutcome;
+}
 
 // C2 published aliases — the program doc names these; downstream lanes import them.
 export type ProviderConnectionResponse = AiProviderConnectionResponse;
@@ -90,10 +150,17 @@ export interface IProviderConnectionService {
   deleteRow(service: ProviderService, provider: string, tenantId?: string, expectedVersion?: number): Promise<void>;
 
   /**
-   * The resolution cascade for one service: ENABLED tenant row → ENABLED SYSTEM
-   * row → null. `null` is the "no DB opinion — use the service's env
-   * configuration" signal. Server-side only; the result carries ciphertext and
-   * is never serialized to a client.
+   * The resolution cascade for one (service, provider): ENABLED tenant row →
+   * ENABLED SYSTEM row → null. `null` is the "no DB opinion — use the service's
+   * env configuration" signal. Server-side only; the result carries ciphertext
+   * and is never serialized to a client.
+   *
+   * Shares ONE cascade helper with `resolveTenantCloudOverrides` (TASK-643
+   * OD-5), so the veto (§3.4) and the entitlement gate (§3.5) apply here too —
+   * there is exactly one `if` in the codebase deciding whether a tenant may see
+   * the platform default. The gate applies to CLOUD BYO providers only: a
+   * SYSTEM row for a self-host engine is platform INFRASTRUCTURE, not platform
+   * SPEND, and must stay reachable for every tenant.
    */
   resolveConnection(service: ProviderService, provider: string, tenantId: string): Promise<ResolvedProviderConnection | null>;
 
@@ -101,11 +168,28 @@ export interface IProviderConnectionService {
   findRow(service: ProviderService, provider: string, tenantId: string): Promise<AiProviderConnectionEntity | null>;
 
   /**
-   * Decrypt a tenant's ENABLED **cloud BYO** connections for one service into
-   * the injectable `provider_overrides` map the gateway folds into the Python
-   * service body. Gateway-only: the result carries plaintext key material and is
-   * NEVER returned by any read API.
+   * Decrypt the ENABLED **cloud BYO** connections that serve one service for one
+   * tenant into the injectable `provider_overrides` map the gateway folds into
+   * the Python service body. Gateway-only: the result carries plaintext key
+   * material and is NEVER returned by any read API.
    *
+   * TWO TIERS, merged PER PROVIDER (TASK-643 R1): the caller's own rows over the
+   * SYSTEM-tenant platform default. A tenant holding an `azure` key but no
+   * `sarvam` key still receives platform `sarvam` — never a whole-map
+   * "tenant if non-empty" short-circuit. Every entry carries `funding`, derived
+   * from the row that supplied it.
+   *
+   * THREE STATES per (service, provider), evaluated on the caller's own row:
+   *   - **absent** ⇒ the platform default applies, subject to the entitlement
+   *     gate (`featurePlatformDefaultCredential`);
+   *   - **present, enabled, keyed** ⇒ the tenant's own credential wins and the
+   *     SYSTEM tier is not consulted for that provider (an ENABLED but KEYLESS
+   *     row is an incomplete setup, treated as absent — not a veto);
+   *   - **present, disabled** ⇒ a **VETO**: no credential from either tier, no
+   *     fall-through to another provider, and `platformDefault.vetoed` records
+   *     it so the call site can raise a 409.
+   *
+
    * FAILS OPEN PER CREDENTIAL, on decrypt error only: a credential whose
    * ciphertext will not decrypt (Vault down, key rotated badly, corrupt bytes)
    * is skipped with a non-secret `warn` ({tenantId, service, provider,
@@ -117,9 +201,9 @@ export interface IProviderConnectionService {
    * `service='llm'`) so the (TASK-572-owned) smr-proxy keeps compiling until it
    * repoints; TASK-572 removes it.
    */
-  resolveTenantCloudOverrides(service: ProviderService, tenantId: string): Promise<ProviderOverrides>;
+  resolveTenantCloudOverrides(service: ProviderService, tenantId: string): Promise<ResolvedProviderOverrides>;
   /** @deprecated 1-arg form assumes `service='llm'`; kept for the smr-proxy transition (TASK-572 removes it). */
-  resolveTenantCloudOverrides(tenantId: string): Promise<ProviderOverrides>;
+  resolveTenantCloudOverrides(tenantId: string): Promise<ResolvedProviderOverrides>;
 }
 
 /** @deprecated Use `IProviderConnectionService`. */

@@ -158,8 +158,10 @@ describe('TtsWsGateway', () => {
       }),
     });
 
+    // TASK-643 — the resolver returns `{overrides, platformDefault?}` (two
+    // tiers merged per provider), not a bare map.
     const makeProviderConnectionService = (overrides: Record<string, unknown> = {}) => ({
-      resolveTenantCloudOverrides: vi.fn().mockResolvedValue(overrides),
+      resolveTenantCloudOverrides: vi.fn().mockResolvedValue({ overrides }),
     });
 
     const lastUpstreamTextFrame = () => {
@@ -229,7 +231,7 @@ describe('TtsWsGateway', () => {
     // TASK-570 — provider_overrides now resolves through the unified
     // IProviderConnectionService (`service='tts'`). Shape unchanged (C4).
     it('injects provider_overrides into the first init frame via IProviderConnectionService', async () => {
-      const OVERRIDES = { sarvam: { api_key: 'THE-KEY', base_url: 'https://vpc.sarvam' } };
+      const OVERRIDES = { sarvam: { api_key: 'THE-KEY', funding: 'tenant', base_url: 'https://vpc.sarvam' } };
       const providerConnectionService = makeProviderConnectionService(OVERRIDES);
       gateway = new TtsWsGateway(
         ticketService as never,
@@ -349,7 +351,9 @@ describe('TtsWsGateway', () => {
           voiceBindings: {},
         }),
       };
-      const providerConnectionService = { resolveTenantCloudOverrides: vi.fn().mockResolvedValue({ azure: { api_key: 'k' } }) };
+      const providerConnectionService = {
+        resolveTenantCloudOverrides: vi.fn().mockResolvedValue({ overrides: { azure: { api_key: 'k', funding: 'tenant' } } }),
+      };
       gateway = new TtsWsGateway(
         ticketService as never,
         config as never,
@@ -390,7 +394,7 @@ describe('TtsWsGateway', () => {
         }),
       };
       const providerConnectionService = {
-        resolveTenantCloudOverrides: vi.fn().mockResolvedValue({ azure: { api_key: 'k', funding: 'platform' } }),
+        resolveTenantCloudOverrides: vi.fn().mockResolvedValue({ overrides: { azure: { api_key: 'k', funding: 'platform' } } }),
       };
       gateway = new TtsWsGateway(
         ticketService as never,

@@ -211,7 +211,13 @@ const PROCESS_IDENTITY: SettingDescriptor[] = [
     'Comma-separated field names redacted from every log entry, on top of the built-in PHI key list. Matching is case-insensitive and ignores _ and -.',
   ),
   envKnob('loki.enabled', 'boolean', 'Logging', 'Loki transport enabled', 'Pushes logs to Loki in addition to stdout. Requires `LOKI_HOST`.', false),
-  envKnob('loki.host', 'string', 'Logging', 'Loki base URL', 'Loki base URL; the transport appends `/loki/api/v1/push`. Unset disables the transport.'),
+  envKnob(
+    'loki.host',
+    'string',
+    'Logging',
+    'Loki base URL',
+    'Loki base URL; the transport appends `/loki/api/v1/push`. Unset disables the transport.',
+  ),
   envKnob(
     'loki.labels',
     'string',

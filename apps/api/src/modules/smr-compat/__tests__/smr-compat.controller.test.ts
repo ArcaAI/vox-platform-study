@@ -349,7 +349,9 @@ describe('SmrCompatController', () => {
     // before summarizing; BYOK resolved from the unified provider plane; fail-open
     // to the original transcript on error; no call when the flag is absent.
     it('translates the transcript via SMR /api/v1/translate (with tenant BYOK) before summarizing', async () => {
-      const providerConnection = { resolveTenantCloudOverrides: vi.fn().mockResolvedValue({ sarvam: { api_key: 'byok' } }) };
+      const providerConnection = {
+        resolveTenantCloudOverrides: vi.fn().mockResolvedValue({ overrides: { sarvam: { api_key: 'byok', funding: 'tenant' } } }),
+      };
       const httpLocal = createMockHttpService();
       httpLocal.axiosRef.post.mockImplementation((url: string, reqBody: { texts?: string[] }) => {
         if (String(url).includes('/api/v1/translate')) {
@@ -384,7 +386,9 @@ describe('SmrCompatController', () => {
     });
 
     it('forces the summary OUTPUT language to English when the transcript is translated (AC: EN summary from a non-English transcript)', async () => {
-      const providerConnection = { resolveTenantCloudOverrides: vi.fn().mockResolvedValue({ sarvam: { api_key: 'byok' } }) };
+      const providerConnection = {
+        resolveTenantCloudOverrides: vi.fn().mockResolvedValue({ overrides: { sarvam: { api_key: 'byok', funding: 'tenant' } } }),
+      };
       const httpLocal = createMockHttpService();
       httpLocal.axiosRef.post.mockImplementation((url: string, reqBody: { texts?: string[] }) => {
         if (String(url).includes('/api/v1/translate')) {
@@ -429,7 +433,7 @@ describe('SmrCompatController', () => {
     });
 
     it('falls back to the ORIGINAL transcript when translation fails (fail-open)', async () => {
-      const providerConnection = { resolveTenantCloudOverrides: vi.fn().mockResolvedValue(undefined) };
+      const providerConnection = { resolveTenantCloudOverrides: vi.fn().mockResolvedValue({ overrides: {} }) };
       const httpLocal = createMockHttpService();
       httpLocal.axiosRef.post.mockImplementation((url: string) => {
         if (String(url).includes('/api/v1/translate')) return Promise.reject(new Error('smr translate down'));
@@ -454,11 +458,15 @@ describe('SmrCompatController', () => {
       expect(res.jsonBody).toBeTruthy(); // summary still produced
     });
 
-    it('falls back to the global-admin (SYSTEM) Sarvam credential when the tenant has none (BYOK-only, no env)', async () => {
+    // TASK-643 — this used to prove the CONTROLLER called the resolver twice
+    // (its own hand-rolled tenant→SYSTEM cascade, the only one in the codebase).
+    // The cascade now lives in the resolver, so the controller makes ONE call
+    // and the platform tier arrives labelled `funding: 'platform'` — which is
+    // what makes the translation bill as platform spend rather than as the
+    // tenant's own key.
+    it('serves the global-admin (SYSTEM) Sarvam credential through the shared cascade, labelled platform', async () => {
       const providerConnection = {
-        resolveTenantCloudOverrides: vi.fn(async (_service: string, scopeTenantId: string) =>
-          scopeTenantId === '00000000-0000-0000-0000-000000000000' ? { sarvam: { api_key: 'platform-byok' } } : {},
-        ),
+        resolveTenantCloudOverrides: vi.fn().mockResolvedValue({ overrides: { sarvam: { api_key: 'platform-byok', funding: 'platform' } } }),
       };
       const httpLocal = createMockHttpService();
       httpLocal.axiosRef.post.mockImplementation((url: string, reqBody: { texts?: string[] }) => {
@@ -481,11 +489,15 @@ describe('SmrCompatController', () => {
       const res = createMockRes();
       await ctrl.summarySync(syncRequest({ translate_to_english: true }), {} as never, res as never);
 
-      // tenant tier tried first, then SYSTEM tier.
+      // ONE call, on the caller's tenant — the SYSTEM read happens inside the
+      // resolver, under the veto and the entitlement gate like every other path.
       expect(providerConnection.resolveTenantCloudOverrides).toHaveBeenCalledWith('stt', 'tenant-1');
-      expect(providerConnection.resolveTenantCloudOverrides).toHaveBeenCalledWith('stt', '00000000-0000-0000-0000-000000000000');
+      expect(providerConnection.resolveTenantCloudOverrides.mock.calls.map((c: unknown[]) => c[1])).not.toContain(
+        '00000000-0000-0000-0000-000000000000',
+      );
       const translateCall = httpLocal.axiosRef.post.mock.calls.find((c: unknown[]) => String(c[0]).includes('/api/v1/translate'));
       expect(translateCall![1].provider_overrides.sarvam.api_key).toBe('platform-byok');
+      expect(translateCall![1].provider_overrides.sarvam.funding).toBe('platform');
     });
 
     it('does not call SMR translate when translate_to_english is absent', async () => {

@@ -175,11 +175,26 @@ export function ProviderCredentialCard({ service, meta }: { service: ProviderSer
         </div>
       ))}
 
-      <div className="flex items-center gap-2">
-        <Switch id={`${uid}-enabled`} checked={enabled} onCheckedChange={setEnabledDraft} />
-        <Label htmlFor={`${uid}-enabled`} className="text-muted-foreground text-xs">
-          Enabled
-        </Label>
+      <div className="flex flex-col gap-1">
+        <div className="flex items-center gap-2">
+          <Switch id={`${uid}-enabled`} checked={enabled} onCheckedChange={setEnabledDraft} />
+          <Label htmlFor={`${uid}-enabled`} className="text-muted-foreground text-xs">
+            Enabled
+          </Label>
+        </div>
+        {/*
+          Turning this OFF is a VETO, not "unused" — it blocks the
+          platform-provided key for this provider too, and calls that select it
+          fail rather than falling through to another provider. An admin cannot
+          be expected to infer that from a switch, and the resulting 409 is
+          otherwise unexplainable. Removing the credential entirely returns this
+          provider to "no opinion" instead.
+        */}
+        <p id={`${uid}-enabled-help`} className="text-muted-foreground pl-10 text-xs">
+          {enabled
+            ? 'Your credential serves this provider. Remove it to fall back to the platform-provided key.'
+            : 'Disabled blocks this provider for your tenant entirely — including the platform-provided key. Remove the credential instead to allow the platform default.'}
+        </p>
       </div>
 
       <OccConflictAlert

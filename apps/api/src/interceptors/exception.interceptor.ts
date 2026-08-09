@@ -5,6 +5,7 @@ import {
   BaseException,
   DataNotFoundException,
   OptimisticConcurrencyException,
+  ProviderCredentialVetoedException,
   QuotaExceededException,
   SpendLimitExceededException,
 } from '@arcaai/exceptions';
@@ -211,6 +212,25 @@ export class ExceptionInterceptor implements NestInterceptor {
             status,
           });
           return throwError(() => new HttpException(err.toJSON(), status));
+        }
+
+        // The caller's OWN tenant forbids this provider (TASK-643 R4): its
+        // connection row for the (service, provider) is disabled, which is a
+        // VETO of the platform-default credential rather than "unused". 409,
+        // deliberately distinct from the 403 a missing entitlement produces
+        // above — a tenant admin can clear a veto themselves, and from the
+        // downstream 503 that means "nothing configured at all". Body is
+        // `err.toJSON()` (`code: 'DOMAIN.PROVIDER_CREDENTIAL_VETOED'` +
+        // `metadata: { service, provider, tenantId }`). MUST run before the
+        // generic BaseException branch, like the others.
+        if (err instanceof ProviderCredentialVetoedException) {
+          this.logger.debug({
+            message: 'Provider credential vetoed by tenant configuration',
+            ...baseContext,
+            correlationId: err.correlationId,
+            metadata: err.metadata,
+          });
+          return throwError(() => new HttpException(err.toJSON(), HttpStatus.CONFLICT));
         }
 
         // The tenant hit its optional monthly SPEND limit (TASK-615 #8, D12).
