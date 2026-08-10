@@ -29,6 +29,7 @@ COPY packages/domains/package.json ./packages/domains/
 COPY packages/exceptions/package.json ./packages/exceptions/
 COPY packages/logger/package.json ./packages/logger/
 COPY packages/tools/package.json ./packages/tools/
+COPY packages/utils/package.json ./packages/utils/
 COPY packages/config-eslint/package.json ./packages/config-eslint/
 COPY packages/config-rollup/package.json ./packages/config-rollup/
 COPY packages/config-ts/package.json ./packages/config-ts/
@@ -119,6 +120,7 @@ COPY packages/domains/package.json ./packages/domains/
 COPY packages/exceptions/package.json ./packages/exceptions/
 COPY packages/logger/package.json ./packages/logger/
 COPY packages/tools/package.json ./packages/tools/
+COPY packages/utils/package.json ./packages/utils/
 COPY packages/config-eslint/package.json ./packages/config-eslint/
 COPY packages/config-rollup/package.json ./packages/config-rollup/
 COPY packages/config-ts/package.json ./packages/config-ts/
@@ -151,6 +153,9 @@ COPY --from=builder --chown=api:hope /app/packages/logger/package.json ./package
 # providers require() at boot, so its dist must be present like the other deps.
 COPY --from=builder --chown=api:hope /app/packages/types/dist ./packages/types/dist
 COPY --from=builder --chown=api:hope /app/packages/types/package.json ./packages/types/package.json
+# @arcaai/utils is require()d at runtime by @arcaai/applications (build-info service).
+COPY --from=builder --chown=api:hope /app/packages/utils/dist ./packages/utils/dist
+COPY --from=builder --chown=api:hope /app/packages/utils/package.json ./packages/utils/package.json
 
 # Copy packages that don't build but are needed at runtime (source code packages)
 COPY --from=builder --chown=api:hope /app/packages/database ./packages/database
