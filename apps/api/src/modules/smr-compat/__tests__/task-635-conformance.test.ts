@@ -119,10 +119,10 @@ const createTemplateService = (overrides?: {
       overrides?.resolve ??
       vi.fn(async () => ({ promptId: 'tpl-bound', resolvedFrom: 'agent', content: 'GOVERNED BODY', trace: {} })),
   };
-  const service = new SmrCompatTemplateService(
-    departmentRepository as never,
-    promptResolutionService as never,
-  );
+  // ClsService is used only by the INFO audit line (correlation id).
+  const service = new SmrCompatTemplateService(departmentRepository as never, promptResolutionService as never, {
+    getId: () => 'req-test-id',
+  } as never);
   return { service, departmentRepository, promptResolutionService };
 };
 

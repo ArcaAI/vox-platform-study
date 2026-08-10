@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { SmrCompatTemplateService } from '../smr-compat-template.service';
 
@@ -19,6 +20,70 @@ const createResolver = () => ({
   })),
 });
 
+/**
+ * The INFO audit line exists so prompt selection is answerable in production
+ * without a debug build, so these assert the FIELDS an investigation needs —
+ * not the message wording.
+ */
+describe('SmrCompatTemplateService — INFO resolution audit', () => {
+  let repo: ReturnType<typeof createDeptRepo>;
+  let resolver: ReturnType<typeof createResolver>;
+  let service: SmrCompatTemplateService;
+  let info: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    repo = createDeptRepo();
+    resolver = createResolver();
+    info = vi.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+    service = new SmrCompatTemplateService(repo as never, resolver as never, { getId: () => 'req-test-id' } as never);
+  });
+
+  it('logs template id, department, doctor id and visit type when a governed template serves', async () => {
+    await service.resolveGovernedInstruction('tenant-1', 'Cardiology', 'revisit', { visitType: 'Follow-up', doctorId: 'doc-7' });
+
+    expect(info).toHaveBeenCalledWith(
+      expect.objectContaining({
+        promptTemplateId: 'p-1',
+        departmentId: 'dep-card',
+        department: 'Cardiology',
+        doctorId: 'doc-7',
+        visitType: 'Follow-up',
+        promptType: 'revisit',
+        resolvedFrom: 'department',
+        served: 'governed-template',
+        correlationId: 'req-test-id',
+      }),
+    );
+  });
+
+  it('reports the static-steering fallback rather than staying silent', async () => {
+    resolver.resolve.mockResolvedValueOnce({ template: 'SOAP', promptId: 'sys-default', content: 'x', resolvedFrom: 'default' });
+
+    await service.resolveGovernedInstruction('tenant-1', 'Cardiology', 'new-patient', { visitType: 'New Referral' });
+
+    expect(info).toHaveBeenCalledWith(expect.objectContaining({ served: 'static-v1-steering', resolvedFrom: 'default' }));
+  });
+
+  it('records a null departmentId when the free-form name matches no tenant row', async () => {
+    await service.resolveGovernedInstruction('tenant-1', 'Hepatology', 'new-patient');
+
+    expect(info).toHaveBeenCalledWith(
+      expect.objectContaining({ department: 'Hepatology', departmentId: null, promptTemplateId: null, served: 'static-v1-steering' }),
+    );
+  });
+
+  it('still logs when resolution throws (the fail-closed pre-summary path)', async () => {
+    resolver.resolve.mockRejectedValueOnce(new Error('resolver 503'));
+
+    await service.resolveGovernedInstruction('tenant-1', 'Cardiology', 'pre-summary', { doctorId: 'doc-7' });
+
+    expect(info).toHaveBeenCalledWith(
+      expect.objectContaining({ capability: 'pre-summary', served: 'static-v1-steering', error: 'resolver 503', doctorId: 'doc-7' }),
+    );
+  });
+});
+
 describe('SmrCompatTemplateService (TASK-592)', () => {
   let repo: ReturnType<typeof createDeptRepo>;
   let resolver: ReturnType<typeof createResolver>;
@@ -28,7 +93,8 @@ describe('SmrCompatTemplateService (TASK-592)', () => {
     vi.clearAllMocks();
     repo = createDeptRepo();
     resolver = createResolver();
-    service = new SmrCompatTemplateService(repo as never, resolver as never);
+    // ClsService is used only by the INFO audit line (correlation id).
+    service = new SmrCompatTemplateService(repo as never, resolver as never, { getId: () => 'req-test-id' } as never);
   });
 
   describe('toSummaryPromptType', () => {

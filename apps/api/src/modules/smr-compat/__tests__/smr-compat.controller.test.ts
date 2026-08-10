@@ -687,7 +687,7 @@ describe('SmrCompatController', () => {
 
       await invokeSummary(syncRequest({ department: 'Cardiology', visit_type: 'Follow-up' }));
 
-      expect(template.resolveGovernedInstruction).toHaveBeenCalledWith('tenant-1', 'Cardiology', 'revisit');
+      expect(template.resolveGovernedInstruction).toHaveBeenCalledWith('tenant-1', 'Cardiology', 'revisit', expect.objectContaining({ visitType: expect.any(String) }));
       const [, body] = http.axiosRef.post.mock.calls[0];
       expect(body.system_prompt).toContain('capture ejection fraction and rhythm');
     });
@@ -709,7 +709,7 @@ describe('SmrCompatController', () => {
 
       await invokePresummary({ current_department: 'Cardiology', visit_type: 'New Referral' } as PreSummaryRequest);
 
-      expect(template.resolveGovernedInstruction).toHaveBeenCalledWith('tenant-1', 'Cardiology', 'pre-summary');
+      expect(template.resolveGovernedInstruction).toHaveBeenCalledWith('tenant-1', 'Cardiology', 'pre-summary', expect.any(Object));
       const [, body] = http.axiosRef.post.mock.calls[0];
       // TASK-634: the governed template IS the user prompt (v1 shape); the
       // system prompt stays v1's dedicated pre-summary system message.

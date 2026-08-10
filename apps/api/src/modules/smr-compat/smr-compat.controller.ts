@@ -394,7 +394,10 @@ export class SmrCompatController {
   private async resolveSummaryGoverned(body: SyncSummaryRequest, tenantId: string): Promise<string | undefined> {
     const { department, visitType } = resolveDepartmentVisit(body, body.session_data);
     const promptType = this.templateService.toSummaryPromptType(visitType);
-    return this.templateService.resolveGovernedInstruction(tenantId, department, promptType);
+    return this.templateService.resolveGovernedInstruction(tenantId, department, promptType, {
+      visitType,
+      doctorId: body.doctor_id,
+    });
   }
 
   /**
@@ -554,7 +557,10 @@ export class SmrCompatController {
    * same v1 error shapes the summary path uses.
    */
   private async computePreSummary(body: PreSummaryRequest, tenantId: string): Promise<PreSummaryResponse> {
-    const governed = await this.templateService.resolveGovernedInstruction(tenantId, body.current_department, 'pre-summary');
+    const governed = await this.templateService.resolveGovernedInstruction(tenantId, body.current_department, 'pre-summary', {
+      visitType: body.visit_type,
+      doctorId: body.doctor_id,
+    });
     const dnaStyleText = await this.resolveDnaStyleText(body.doctor_id);
     const smrRequest = this.buildPreSummaryRequest(body, governed, dnaStyleText);
     await this.applySmrModelSelection(smrRequest, tenantId);
@@ -600,7 +606,10 @@ export class SmrCompatController {
    * cannot restart, so mid-stream failures surface as a single `error` event.
    */
   private async streamPreSummary(res: Response, body: PreSummaryRequest, tenantId: string): Promise<void> {
-    const governed = await this.templateService.resolveGovernedInstruction(tenantId, body.current_department, 'pre-summary');
+    const governed = await this.templateService.resolveGovernedInstruction(tenantId, body.current_department, 'pre-summary', {
+      visitType: body.visit_type,
+      doctorId: body.doctor_id,
+    });
     const dnaStyleText = await this.resolveDnaStyleText(body.doctor_id);
     const smrRequest = this.buildPreSummaryRequest(body, governed, dnaStyleText);
     await this.applySmrModelSelection(smrRequest, tenantId);
