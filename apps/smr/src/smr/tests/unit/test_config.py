@@ -41,7 +41,9 @@ class TestOllamaConfig:
         _clear_smr_env(monkeypatch)
         cfg = OllamaConfig()
         assert cfg.base_url == "http://localhost:11434"
-        assert cfg.default_model == "google/gemma-4-e4b"
+        # An OLLAMA tag, not a Hugging Face path. Pinned because the old value
+        # (`google/gemma-4-e4b`) was an id no backend ever served.
+        assert cfg.default_model == "gemma4:e2b-it-qat"
         assert cfg.timeout_s == 300
         assert cfg.max_concurrent == 4
 
