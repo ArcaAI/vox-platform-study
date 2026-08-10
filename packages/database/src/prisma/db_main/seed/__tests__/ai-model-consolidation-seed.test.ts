@@ -322,6 +322,76 @@ describe('consolidated AI model catalog (26 rows) + extensions', () => {
     expect(row?.metaData?.azureDeployment).toBe('');
   });
 
+  // ===========================================================================
+  // LM Studio identifier parity with the live instance
+  // ===========================================================================
+  //
+  // `sourceUri` on an `lm-studio` row IS the LM Studio model id sent as
+  // `model` on the OpenAI-compatible wire — a wrong identifier is not a
+  // cosmetic drift, it is a guaranteed 404 at request time. That is exactly
+  // how `harness.judge` broke: the seed carried `google/gemma-4-e4b` while the
+  // instance serves `google/gemma-4-e4b-qat`.
+  //
+  // Verified against the dev instance on 2026-08-10
+  // (`curl http://127.0.0.1:1234/v1/models` on the `gpu` host).
+  const LIVE_LM_STUDIO_MODEL_IDS = [
+    'gemma-4-e2b-it-qat',
+    'granite-guardian-4.1-8b',
+    'google/gemma-4-e4b-qat',
+    'text-embedding-nomic-embed-text-v1.5',
+  ] as const;
+
+  // Every `lm-studio` catalogue row, pinned. Rows flagged `loaded: false` are
+  // catalogued-but-not-installed on THIS host: the identifier is
+  // provider-correct, the weights are simply not loaded here. That is a
+  // legitimate catalogue state and is NOT the same defect as a wrong id.
+  const LM_STUDIO_SOURCE_URIS: ReadonlyArray<readonly [slug: string, sourceUri: string, loaded: boolean]> = [
+    ['granite-guardian-4.1-8b', 'granite-guardian-4.1-8b', true],
+    ['lms-gemma-4-e2b-it-qat', 'gemma-4-e2b-it-qat', true],
+    ['lms-gemma-4-e4b', 'google/gemma-4-e4b-qat', true],
+    ['lms-gemma-4-e4b-it-qat', 'gemma-4-e4b-it-qat', false],
+    ['lms-gemma-4-medical-icd10', 'gemma-4-medical-icd10', false],
+    ['lms-gemma-4-12b-qat', 'google/gemma-4-12b-qat', false],
+    ['lms-medgemma-1.5-4b-it', 'medgemma-1.5-4b-it', false],
+  ] as const;
+
+  it.each(LM_STUDIO_SOURCE_URIS)('pins the LM Studio identifier of %s to %s', (slug, sourceUri) => {
+    const row = bySlug(slug);
+    expect(row, `missing lm-studio row ${slug}`).toBeDefined();
+    expect(row?.provider).toBe('lm-studio');
+    expect(row?.sourceUri).toBe(sourceUri);
+  });
+
+  it('covers every lm-studio catalogue row in the identifier pin', () => {
+    const pinned = new Set(LM_STUDIO_SOURCE_URIS.map(([slug]) => slug));
+    const actual = catalog.filter((m) => m.provider === 'lm-studio').map((m) => m.slug);
+    expect([...actual].sort()).toEqual([...pinned].sort());
+  });
+
+  it('resolves every row marked loaded against a real live LM Studio model id', () => {
+    const live = new Set<string>(LIVE_LM_STUDIO_MODEL_IDS);
+    LM_STUDIO_SOURCE_URIS.filter(([, , loaded]) => loaded).forEach(([slug, sourceUri]) => {
+      expect(live.has(sourceUri), `${slug} claims to be loaded but ${sourceUri} is not served by the instance`).toBe(true);
+    });
+  });
+
+  it('says "not loaded" in the description of every catalogued-but-not-installed row', () => {
+    LM_STUDIO_SOURCE_URIS.filter(([, , loaded]) => !loaded).forEach(([slug]) => {
+      expect(bySlug(slug)?.description, `${slug} must declare that it is not loaded on the dev instance`).toMatch(/not loaded/i);
+    });
+  });
+
+  it('points every AiTaskDefault-referenced lm-studio row at a loaded model', async () => {
+    const { SYSTEM_AI_TASK_DEFAULTS } = (await import('../16-ai-task-default')) as {
+      SYSTEM_AI_TASK_DEFAULTS: Array<{ taskKey: string; modelSlug: string }>;
+    };
+    const loadedSlugs = new Set(LM_STUDIO_SOURCE_URIS.filter(([, , loaded]) => loaded).map(([slug]) => slug));
+    const lmStudioSlugs = new Set(LM_STUDIO_SOURCE_URIS.map(([slug]) => slug));
+    SYSTEM_AI_TASK_DEFAULTS.filter((row) => lmStudioSlugs.has(row.modelSlug)).forEach((row) => {
+      expect(loadedSlugs.has(row.modelSlug), `AiTaskDefault ${row.taskKey} selects ${row.modelSlug}, which is not loaded`).toBe(true);
+    });
+  });
+
   it('seeds the two NLP task models from HuggingFace with the right taskTypes', () => {
     const ner = bySlug('medical-ner');
     expect(ner?.taskType).toBe('TOKEN_CLASSIFICATION');
@@ -535,7 +605,11 @@ describe('AiTaskDefault SYSTEM seed', () => {
     // guardrail safety/groundedness + harness judge selection.
     expect(byKey.get('guardrail.safety')?.modelSlug).toBe('gliner-guard-uniencoder-onnx');
     expect(byKey.get('guardrail.groundedness')?.modelSlug).toBe('minicheck-flan-t5-large');
-    expect(byKey.get('harness.judge')?.modelSlug).toBe('lms-gemma-4-e4b');
+    // The judge points at the model the dev LM Studio instance actually serves
+    // and that a global admin already selected in the live DB
+    // (`harness.judge` v1→v2). Was `lms-gemma-4-e4b`, whose sourceUri carried
+    // the `google/gemma-4-e4b` typo and could never resolve.
+    expect(byKey.get('harness.judge')?.modelSlug).toBe('lms-gemma-4-e2b-it-qat');
     SYSTEM_AI_TASK_DEFAULTS.forEach((row) => {
       expect(row.tenantId).toBe(SYSTEM_TENANT_ID);
       expect(row.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);

@@ -14,7 +14,7 @@ import { SYSTEM_TENANT_ID, SYSTEM_USER_ID } from './00-constants';
  * - nlp.diagnosis → symps-disease-bert-v3-c41 (TEXT_CLASSIFICATION row — )
  * - guardrail.safety → gliner-guard-uniencoder-onnx (TOKEN_CLASSIFICATION row — )
  * - guardrail.groundedness → minicheck-flan-t5-large (TEXT_CLASSIFICATION row — )
- * - harness.judge → lms-gemma-4-e4b (TEXT_GENERATION row — )
+ * - harness.judge → lms-gemma-4-e2b-it-qat (TEXT_GENERATION row)
  *
  * Resolution at runtime (AiTaskDefaultService.getEffective): tenant row →
  * SYSTEM row → consuming service's env fallback.
@@ -115,7 +115,13 @@ export const SYSTEM_AI_TASK_DEFAULTS: AiTaskDefaultSeed[] = [
     id: '86000000-0000-0000-0000-000000000008',
     tenantId: SYSTEM_TENANT_ID,
     taskKey: 'harness.judge',
-    modelSlug: 'lms-gemma-4-e4b',
+    // Repointed off `lms-gemma-4-e4b`, whose sourceUri carried the
+    // `google/gemma-4-e4b` typo (LM Studio serves `google/gemma-4-e4b-qat`),
+    // so every judge call 404d. A global admin already made this same change
+    // in the live DB (v1→v2); this line only decides what a COLD seed writes —
+    // `seedAiTaskDefault` below is CREATE-ONLY, so a re-seed against an
+    // existing row changes nothing either way.
+    modelSlug: 'lms-gemma-4-e2b-it-qat',
   },
 ];
 

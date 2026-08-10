@@ -10,6 +10,34 @@ import { AiModelFormat, AiModelSource, ModelCategory, ModelTaskType, ModelType, 
  * LM Studio model name, Azure model id); `slug` stays the stable registry
  * key. New rows use the fresh `80000000-…-0007-…` id block (0001–0006 are
  * occupied by the legacy audio/LLM/browser blocks).
+ *
+ * ## LM Studio identifiers — the invariant, and the two states a row may be in
+ *
+ * For an `lm-studio` row, `sourceUri` IS the LM Studio model id the services
+ * put on the wire as `model`. A wrong identifier is not cosmetic drift; it is
+ * a guaranteed 404 at request time, and it stays invisible until the model is
+ * actually called. This is exactly how `harness.judge` broke: this file
+ * carried `google/gemma-4-e4b` while the instance serves
+ * `google/gemma-4-e4b-qat`, and the same typo had travelled in from
+ * `apps/harness/.env.sample`.
+ *
+ * Two states are legitimate, and a reader must be able to tell them apart:
+ *
+ *   1. **Loaded** — the identifier resolves on the dev LM Studio instance
+ *      today. Verified 2026-08-10 (`curl http://127.0.0.1:1234/v1/models` on
+ *      the `gpu` host) — the instance serves exactly:
+ *        gemma-4-e2b-it-qat · granite-guardian-4.1-8b ·
+ *        google/gemma-4-e4b-qat · text-embedding-nomic-embed-text-v1.5
+ *   2. **Catalogued, not loaded** — the identifier is provider-correct but the
+ *      weights are not installed on this host. A catalogue legitimately lists
+ *      installable models, so these rows are KEPT (not retired): retirement is
+ *      a permanent cross-tenant soft-delete, which is the wrong verb for "an
+ *      operator has not pulled this one yet". Each such row says "Not loaded"
+ *      in its description, and NO `AiTaskDefault` may select one.
+ *
+ * `ai-model-consolidation-seed.test.ts` pins every LM Studio `sourceUri`,
+ * enforces the "not loaded" wording, and fails if an `AiTaskDefault` ever
+ * points at an unloaded row.
  */
 export const LLM_AI_MODELS: AiModelSeed[] = [
   // =========================================================================
@@ -130,7 +158,8 @@ export const LLM_AI_MODELS: AiModelSeed[] = [
     tenantId: SYSTEM_TENANT_ID,
     name: 'Gemma 4 E4B IT QAT (LM Studio)',
     slug: 'lms-gemma-4-e4b-it-qat',
-    description: 'Google Gemma 4 E4B instruction-tuned QAT via LM Studio — balanced local text-generation model.',
+    description:
+      'Google Gemma 4 E4B instruction-tuned QAT via LM Studio — balanced local text-generation model. Not loaded on the dev LM Studio instance (verified 2026-08-10); the identifier is provider-correct, the weights are simply not installed there.',
     category: ModelCategory.NLP,
     taskType: ModelTaskType.TEXT_GENERATION,
     modelType: ModelType.QUANTIZED_MODEL,
@@ -150,7 +179,8 @@ export const LLM_AI_MODELS: AiModelSeed[] = [
     tenantId: SYSTEM_TENANT_ID,
     name: 'Gemma 4 Medical ICD-10 (LM Studio)',
     slug: 'lms-gemma-4-medical-icd10',
-    description: 'Gemma 4 medical ICD-10 fine-tune via LM Studio — medical-coding-aware text generation.',
+    description:
+      'Gemma 4 medical ICD-10 fine-tune via LM Studio — medical-coding-aware text generation. Not loaded on the dev LM Studio instance (verified 2026-08-10); the identifier is provider-correct, the weights are simply not installed there.',
     category: ModelCategory.NLP,
     taskType: ModelTaskType.TEXT_GENERATION,
     modelType: ModelType.QUANTIZED_MODEL,
@@ -170,7 +200,8 @@ export const LLM_AI_MODELS: AiModelSeed[] = [
     tenantId: SYSTEM_TENANT_ID,
     name: 'Gemma 4 12B QAT (LM Studio)',
     slug: 'lms-gemma-4-12b-qat',
-    description: 'Google Gemma 4 12B QAT via LM Studio — large local text-generation model.',
+    description:
+      'Google Gemma 4 12B QAT via LM Studio — large local text-generation model. Not loaded on the dev LM Studio instance (verified 2026-08-10); the identifier is provider-correct, the weights are simply not installed there.',
     category: ModelCategory.NLP,
     taskType: ModelTaskType.TEXT_GENERATION,
     modelType: ModelType.QUANTIZED_MODEL,
@@ -190,7 +221,8 @@ export const LLM_AI_MODELS: AiModelSeed[] = [
     tenantId: SYSTEM_TENANT_ID,
     name: 'MedGemma 1.5 4B IT (LM Studio)',
     slug: 'lms-medgemma-1.5-4b-it',
-    description: 'MedGemma 1.5 4B instruction-tuned via LM Studio — medical-domain text generation.',
+    description:
+      'MedGemma 1.5 4B instruction-tuned via LM Studio — medical-domain text generation. Not loaded on the dev LM Studio instance (verified 2026-08-10); the identifier is provider-correct, the weights are simply not installed there.',
     category: ModelCategory.NLP,
     taskType: ModelTaskType.TEXT_GENERATION,
     modelType: ModelType.QUANTIZED_MODEL,
@@ -317,15 +349,15 @@ export const LLM_AI_MODELS: AiModelSeed[] = [
   {
     id: '80000000-0000-0000-0007-000000000023',
     tenantId: SYSTEM_TENANT_ID,
-    name: 'Gemma 4 E4B (LM Studio judge)',
+    name: 'Gemma 4 E4B QAT (LM Studio judge)',
     slug: 'lms-gemma-4-e4b',
     description:
-      'Google Gemma 4 E4B served via LM Studio (OpenAI-compatible) — the harness LLM-as-judge default (harness.judge AiTaskDefault; matches HARNESS_JUDGE model google/gemma-4-e4b).',
+      'Google Gemma 4 E4B QAT served via LM Studio (OpenAI-compatible) — the harness LLM-as-judge model (matches the HARNESS_JUDGE_MODEL env default google/gemma-4-e4b-qat). The sourceUri previously read `google/gemma-4-e4b`, an identifier LM Studio has never served, so every judge call 404d.',
     category: ModelCategory.NLP,
     taskType: ModelTaskType.TEXT_GENERATION,
     modelType: ModelType.QUANTIZED_MODEL,
     source: AiModelSource.HUGGINGFACE,
-    sourceUri: 'google/gemma-4-e4b',
+    sourceUri: 'google/gemma-4-e4b-qat',
     sourceRevision: 'main',
     format: AiModelFormat.GGUF,
     provider: 'lm-studio',
