@@ -30,7 +30,7 @@ import { describe, it, expect } from 'vitest';
 import { SYSTEM_DEPT_FREE_PRE_SUMMARY_CONTENT } from '../prisma/db_main/seed/07d-dept-free-pre-summary-default';
 
 /** Pinned sha256 of `SYSTEM_DEPT_FREE_PRE_SUMMARY_CONTENT` as of TASK-635 D2. */
-const PINNED_SHA256 = '3daef59dbe4cbba655b40a7aa21b1e718d7e72cad6566c3ba87a25aa3707b2ae';
+const PINNED_SHA256 = '0751eb9a4221e6f58ea9892a9dcf42116965d48ea4cb6d6ad0e3f76a4bdb3e39';
 
 function sha256Hex(content: string): string {
   return createHash('sha256').update(content, 'utf8').digest('hex');

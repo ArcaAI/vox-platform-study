@@ -237,7 +237,10 @@ Nine substitutions were made during migration:
 1–6. `{current_department}`, `{visit_type}`, `Age {safe_age}, DOB {safe_dob}, Gender {safe_gender}`, `{safe_vitals}`, `{formatted_test_results}`, `{formatted_previous_visits}` → `provided in the request context`
 7. `Notes from {current_department}` → `Notes from the current department`
 8. all 8 × `{language_name}` → `the conversation language` / `conversation-language`
-9. **FORMAT block rewritten** — title line added, five headers reordered, `Latest Dept Note` → `Latest Department Note`
+9. ~~**FORMAT block rewritten** — title line added, five headers reordered, `Latest Dept Note` → `Latest Department Note`~~ — **RETRACTED 2026-08-10 (D-27).** This reads the diff BACKWARDS. v1 *is* the title line + that order + `Latest Department Note` (`previous_visit_service.py:151-163`); items 1-8 were real migration edits, but item 9 describes v1's own text as if it were the migration's. Acting on it is what introduced the drift. See D-27 in §8.
+
+> ⚠ **Items 1-8 below are still valid; item 9 and §2.11 (D-09) are not.** The paragraph
+> immediately following is retained only as the record of the mistaken reasoning.
 
 **Item 9 is a defect independent of the placeholder question.** v1's
 `display_titles` and `normalize_header` match `Latest Dept Note` verbatim, so the
@@ -256,7 +259,16 @@ v1 defaults to reproduce: department `|| 'General'`; visit type
 `language_name` via `en→English`, `ml→Malayalam`, else `English`.
 All nine values already exist on `dto/pre-summary.request.ts`.
 
-### 2.11 D-09 — Response mapper hard-codes the stale section contract
+### 2.11 D-09 — ~~Response mapper hard-codes the stale section contract~~ **WITHDRAWN**
+
+> ⚠ **WITHDRAWN 2026-08-10 (D-27).** The mapper was already correct. It carried v1's
+> real order and naming (`Latest Department Note`); "old" here was a misreading of
+> item 9 above. Changing it to `Latest Dept Note` is what broke `structured_data`
+> on the dev cluster. Both mapper and template are now back on v1. The one durable
+> lesson stands: **the template and the parser must change together** — v1 keeps
+> them identical, so any edit must touch `V1_PRE_SUMMARY_TEMPLATE` and
+> `PRE_SUMMARY_DISPLAY_TITLES` in the same commit, re-derived from
+> `previous_visit_service.py` and re-hashed.
 
 `apps/api/src/modules/smr-compat/summary-response.mapper.ts:162-166` hard-codes
 the five titles in the **old order** with the **old naming**
@@ -1097,4 +1109,6 @@ whether `06f4f087` is left as-is.
 | 2026-08-08 | D-16, D-17 and D-26 fixed and committed. D-26 closed the same prototype-chain defect in the browser SDK, in BOTH substitution and required-variable validation. |
 | 2026-08-08 | Spin-offs dispatched: D-16 (prototype-chain substitution), D-17 (`SECRETS_PROVIDER=vault`), D-22 (live pre-summary audit + dry-run remediation script). D-21 (Alert contrast) is being handled in a separate owner session. |
 | 2026-08-07 | Live-DB reconciliation completed read-only (§9). Found **D-18**: the 15 `019fb12d-*` rows were created in a 629 ms window by `AgentTemplateResyncService`, which clones every Global department into every tenant — so deleting the 7 non-v1 departments without disabling the sweep is futile. Also **D-19**: live agent ids diverge from the seed, so seeding would add a second agent to 6 departments. |
+| 2026-08-10 | **D-27 — D-09's premise was wrong; the pre-summary FORMAT block is restored to v1.** A byte diff of the v1 source body (`HOPE/apps/smr/src/smr/services/previous_visit_service.py`, `_build_pre_summary_prompt`) against `V1_PRE_SUMMARY_TEMPLATE` differs in the **FORMAT block alone** — every other byte of TASK-634's port was faithful. But that block was a rewrite, not an extraction: v1 is sha256 `d1b718001948`, **3155 B**, while the `309a9cd13792` / 3091 B recorded here as v1 provenance is the hash of *this ticket's own output*. Three changes are reverted: the `Pre-Summary of Medical History` title line (dropped → restored), the section order (reordered → v1's Diagnoses · Plan of Care · Investigations · Medications · Diagnostics & Trends), and `Latest Department Note` (renamed to `Latest Dept Note` → restored). D-09 is therefore **withdrawn**, not fixed: v1 keeps template and parser identical (`previous_visit_service.py:151-163` vs `:215-221`), and so do we. Changed together: `summary-prompt.builder.ts`, `summary-response.mapper.ts` (`PRE_SUMMARY_DISPLAY_TITLES`), the three seeded bodies (`07-prompt-template.ts`, `07b-arcaai-clinical-content.ts`, `07d` re-derived keeping its `(Latest Note)` fork wording), the v1 provenance fixture, 2 checksum pins and 4 golden fixtures. Owner accepted v1's duplicated title (FORMAT emits it unbolded, the mapper prepends the bolded form) as true parity. Verified: database 44 files / **1118 tests**, smr-compat **178**, applications prompt **205**, SMR contracts **50**, api lint 0 warnings in scope. |
+| 2026-08-10 | **Root cause of the reported dev-cluster failure identified — it is data, not code.** A `hope-v2-dev` `/presummary` call returned a v1-shaped markdown body (title line, v1 order, `Latest Department Note`) alongside `structured_data` using the *v2* order and `Latest Dept Note` naming. Two vintages in one response ⇒ new image + **stale governed template row**: `buildPreSummaryPrompt` uses `governed \|\| V1_PRE_SUMMARY_TEMPLATE`, so the tenant's DB row silently overrides corrected code. The same stale row is the pre-TASK-634 de-parameterized body (§2.10 items 1-6, placeholders → `provided in the request context`), which is why the model answered "no contextual patient data … were provided" despite vitals/labs/prior-visits being sent. **A redeploy alone cannot fix this — the ArcaAI pre-summary `PromptTemplate`/`PromptVersion` rows must be re-seeded.** |
 | 2026-08-08 | **D-17 fixed** (§12) — `packages/applications/vitest.config.ts` now overrides `SECRETS_PROVIDER=env` for that package's Vitest run (mirrors the existing `apps/api/vitest.config.ts` `DATABASE_URL` override pattern), instead of touching the shared `.env.test`. Vault-mode (fail-closed) behavior keeps dedicated coverage in `phi-field-encryption.test.ts`, which injects `SECRETS_PROVIDER=vault` explicitly rather than relying on ambient `process.env`. Confirmed `apps/api` and `@arcaai/domains` do not share the defect (both pass unmodified). Verified: `@arcaai/applications` 440 files / 8348 tests passed (1/4 skipped), typecheck clean. |

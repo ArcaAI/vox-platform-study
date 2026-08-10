@@ -23,9 +23,9 @@
  *     the pre-existing sibling bullet, "Most recent encounters")
  *   - "the latest note in the current department" / "the latest department
  *     note" → "the latest note" (CAPTURE section, 3 occurrences)
- *   - FORMAT headings: "(Latest Dept Note)" → "(Latest Note)" (3 occurrences —
- *     Investigations, Plan of Care, Medications Prescribed). RF-1 permits this:
- *     native does not go through the compat title-matching mapper.
+ *   - FORMAT headings: "(Latest Department Note)" → "(Latest Note)" (3
+ *     occurrences — Investigations, Plan of Care, Medications Prescribed). RF-1
+ *     permits this: native does not go through the compat title-matching mapper.
  *   - Nothing else changed: the FORMAT section order, the five FORMAT items,
  *     the STYLE/INSTRUCTIONS/EXCLUDE blocks, and the remaining seven variables
  *     (`safe_age`, `safe_dob`, `safe_gender`, `safe_vitals`,
@@ -107,11 +107,12 @@ export const SYSTEM_DEPT_FREE_PRE_SUMMARY_CONTENT =
   '- Translate or localize any status or qualifier terms or any text inside parentheses into {language_name}.\n\n' +
   '---\n\n' +
   '## FORMAT\n\n' +
-  '- Confirmed & Provisional Diagnoses:\n' +
-  '- Investigations (Latest Note):\n' +
-  '- Diagnostics & Trends:\n' +
-  '- Plan of Care (Latest Note):\n' +
-  '- Medications Prescribed (Latest Note):\n\n' +
+  'Pre-Summary of Medical History  \n\n' +
+  '- Confirmed & Provisional Diagnoses:  \n\n' +
+  '- Plan of Care (Latest Note):  \n\n' +
+  '- Investigations (Latest Note):  \n\n' +
+  '- Medications Prescribed (Latest Note):  \n\n' +
+  '- Diagnostics & Trends:\n\n' +
   '---\n\n' +
   'Now generate the pre-summary.';
 

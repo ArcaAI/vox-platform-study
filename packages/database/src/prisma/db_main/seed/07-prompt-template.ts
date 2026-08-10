@@ -325,11 +325,17 @@ Do not carry over information from any other patient. Treat each request indepen
 
 ## FORMAT
 
-- Confirmed & Provisional Diagnoses:
-- Investigations (Latest Dept Note):
+Pre-Summary of Medical History  
+
+- Confirmed & Provisional Diagnoses:  
+
+- Plan of Care (Latest Department Note):  
+
+- Investigations (Latest Department Note):  
+
+- Medications Prescribed (Latest Department Note):  
+
 - Diagnostics & Trends:
-- Plan of Care (Latest Dept Note):
-- Medications Prescribed (Latest Dept Note):
 
 ---
 
