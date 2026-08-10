@@ -81,7 +81,9 @@ class TestOpenAICompatConfig:
         _clear_smr_env(monkeypatch)
         cfg = OpenAICompatConfig()
         assert cfg.base_url == "http://localhost:1234/v1"
-        assert cfg.default_model == "google/gemma-4-e4b"
+        # Must be an id LM Studio actually serves — sent verbatim as the wire
+        # `model`. The old `google/gemma-4-e4b` 400d ("Failed to load model").
+        assert cfg.default_model == "gemma-4-e2b-it-qat"
         assert cfg.timeout_s == 300
         assert cfg.max_concurrent == 4
         assert cfg.organization is None

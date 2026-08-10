@@ -50,7 +50,13 @@ class OllamaConfig(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="SMR_OLLAMA_")
 
     base_url: str = "http://localhost:11434"
-    default_model: str = "google/gemma-4-e4b"
+    # An OLLAMA-format tag, not a Hugging Face path. This read
+    # `google/gemma-4-e4b` — an id no Ollama has ever served, copied from the
+    # LM Studio config below, which was itself wrong (see OpenAICompatConfig).
+    # Note in-cluster Ollama was retired in favour of LM Studio, so this default
+    # is currently unreachable in the deployed topology; it is corrected rather
+    # than removed because the provider is still a supported local engine.
+    default_model: str = "gemma4:e2b-it-qat"
     # Bootstrap fallback; runtime value comes from the control plane
     # (effective-config). Applies to `timeout_s` and `max_concurrent` below.
     timeout_s: int = 300
@@ -128,7 +134,16 @@ class OpenAICompatConfig(BaseSettings):
 
     base_url: str = "http://localhost:1234/v1"
     api_key: SecretStr = SecretStr("not-needed")
-    default_model: str = "google/gemma-4-e4b"
+    # This must be an identifier LM Studio actually serves — it is sent verbatim
+    # as the OpenAI-wire `model`. It read `google/gemma-4-e4b`, which LM Studio
+    # has never served under any configuration (the installed E4B build is
+    # `google/gemma-4-e4b-qat`), so anything reaching this default got a 400
+    # "Failed to load model". The same missing `-qat` reached the AiModel
+    # catalogue and broke `harness.judge`.
+    # Set to the model the SYSTEM AiTaskDefault actually selects for smr.live /
+    # smr.finalize, and the one pre-loaded on the dev host. Verified served:
+    # `curl http://<lmstudio>:1234/v1/models`.
+    default_model: str = "gemma-4-e2b-it-qat"
     # Bootstrap fallbacks; runtime values come from the control plane.
     timeout_s: int = 300
     max_concurrent: int = 4
