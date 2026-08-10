@@ -1,4 +1,4 @@
-import { buildPreSummaryVariables, resolveV1LanguageName, substitutePreSummaryVariables } from '@arcaai/applications';
+import { buildPreSummaryVariables, substitutePreSummaryVariables } from '@arcaai/applications';
 import { humanizeField, selectDeptTemplate } from './dept-templates';
 import type { PreSummaryRequest } from './dto/pre-summary.request';
 import type { PreviousVisitRecordDto, SessionDataDto, TestResultDto } from './dto/session-data.dto';
@@ -24,7 +24,12 @@ export interface SummaryPromptOptions {
   visitType?: string;
   specialty?: string;
   encounterType?: string;
-  /** Resolved output language ("en" / "ml"); defaults to English guidance. */
+  /**
+   * The consultation's SOURCE language ("en" / "ml" / "ml-en" …). It selects
+   * whether the transcript is translated before summarization — it does NOT
+   * choose the output language. The note is always English (TASK-650 R1); see
+   * `languageDirective` below.
+   */
   language?: string;
   /**
    * Whether pre-summary enrichment is enabled. Decided by the controller per
@@ -51,22 +56,34 @@ export interface SummaryPromptOptions {
 }
 
 /**
- * The department template/governed instruction injected above (`:133-135`) is
- * steered as AUTHORITATIVE clinical guidance and — for 13 seeded department
- * templates — carries its own "content in conversation language, headings in
- * English" clause. A bare `Language: X` label loses to that specific
- * in-template clause (TASK-650 §2.4), so this directive must NAME the
- * conflict it overrides, not just state the target language, and must default
- * to English (R1) while still honouring an explicitly requested non-English
- * output language (R2 — `resolveV1LanguageName` already defaults empty/unknown
- * input to English and passes `ml` through). Section headings stay in English
- * regardless (R4). Phrasing mirrors `V1_PRE_SUMMARY_TEMPLATE`'s
- * `### INSTRUCTIONS` block ("Write ALL bullet content in {language_name}") so
- * both paths read consistently.
+ * The clinical note is ALWAYS written in English (TASK-650 R1, owner decision
+ * 2026-08-10 option (a)). `language` describes the SOURCE of the consultation —
+ * it drives whether the transcript is translated (Sarvam) — and is never an
+ * instruction about the OUTPUT.
+ *
+ * Two things forced this to be unconditional rather than "default English,
+ * honour an explicit request":
+ *
+ *  1. The department template injected below as AUTHORITATIVE steering carries,
+ *     in 13 seeded rows, its own `content in conversation language, headings in
+ *     English` clause. A generic label loses to that specific in-template
+ *     instruction, so the directive must NAME the conflict it overrides.
+ *  2. `language` is not a request for an output language at all. Real callers
+ *     send the STT locale — `ml-en`, a CODE-SWITCH marker meaning "Malayalam and
+ *     English mixed". `resolveV1LanguageName` reduces it to the base subtag
+ *     (`ml`) and it was read as "write Malayalam". Verified live 2026-08-10:
+ *     that payload produced a fully Malayalam clinical note.
+ *
+ * So the output language is not derived from caller input. This supersedes
+ * TASK-634 D-11 ON THE COMPAT SUMMARY SURFACE ONLY — D-11 fixed an `ml` request
+ * being told to answer in English, which was correct while output language
+ * tracked the source. Under R1 the note is an English artefact regardless, and
+ * localisation is the translate step's job, not the note's.
  */
-function languageDirective(language?: string): string {
-  const languageName = resolveV1LanguageName(language);
-  return `Write ALL summary content in ${languageName}, regardless of the transcript's language and regardless of any conflicting language instruction in the department instruction above (for example, an instruction to write content in the conversation language). Section headings stay in English.`;
+const SUMMARY_OUTPUT_LANGUAGE = 'English';
+
+function languageDirective(): string {
+  return `Write ALL summary content in ${SUMMARY_OUTPUT_LANGUAGE}, regardless of the transcript's language and regardless of any conflicting language instruction in the department instruction above (for example, an instruction to write content in the conversation language). Translate any non-${SUMMARY_OUTPUT_LANGUAGE} clinical content into ${SUMMARY_OUTPUT_LANGUAGE}. Section headings stay in ${SUMMARY_OUTPUT_LANGUAGE}.`;
 }
 
 /** One rendered transcript line per turn — fixes v1 F2 (whole transcript collapsed into one segment). */
@@ -176,7 +193,7 @@ export function buildSummaryPrompt(sessionData: SessionDataDto, options: Summary
   systemLines.push(
     'Base the summary strictly on the provided transcript and context; do not fabricate findings.',
     'Respond with a single JSON object that conforms to the provided schema. Output JSON only — no prose, no markdown fences.',
-    languageDirective(options.language),
+    languageDirective(),
   );
 
   const userSections: string[] = [];

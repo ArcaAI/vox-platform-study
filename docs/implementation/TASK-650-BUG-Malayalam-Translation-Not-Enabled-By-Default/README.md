@@ -187,6 +187,29 @@ This is the direct consequence of an ambiguity I introduced: the ticket's **R2**
 not the owner's. The owner said **"by default, summarization in English for all
 cases"**. R2 as implemented lets a non-English `language` value override that.
 
+### Reproduced locally 2026-08-10 — `ml-en` is the sharpest case
+
+The real client payload sends `session_metadata.language: "ml-en"` — a
+**code-switch marker** meaning "Malayalam-English mixed", not a request for
+Malayalam output. `resolveV1LanguageName` reduces it to the base subtag
+(`'ml-en'.split('-')[0]` → `ml`) → `Malayalam`. Verified against the built
+prompt:
+
+| `language` | directive emitted |
+|---|---|
+| `ml-en` | **Write ALL summary content in Malayalam** … |
+| `ml` | Write ALL summary content in Malayalam … |
+| `en` | Write ALL summary content in English … |
+| *(absent)* | Write ALL summary content in English … |
+
+And the same request logs `translateToEnglish: false`, so Sarvam never runs.
+
+So for the payload the product actually sends today, the pipeline **explicitly
+instructs the model to write Malayalam and does not translate the transcript**.
+R2-as-implemented is not merely permissive here — it actively converts a
+code-switch hint into a non-English output instruction. This is the strongest
+argument for option (a) below.
+
 **Decision needed:**
 - **(a) English always** — the summary directive is hardcoded to English
   regardless of `language`, which becomes a SOURCE-language hint only. Simplest,
