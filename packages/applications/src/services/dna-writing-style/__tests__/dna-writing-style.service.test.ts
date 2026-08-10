@@ -1574,6 +1574,33 @@ describe('DnaWritingStyleService', () => {
       expect(mockReportRepo.decryptFieldsFromEntity).not.toHaveBeenCalled();
     });
 
+    /**
+     * TASK-651 — the v1-compat summary surface authenticates with an API KEY, and
+     * that path leaves CLS `tenantId` EMPTY (only the JWT strategy populates it;
+     * `SmrCompatController.requireTenantId` therefore falls back to
+     * `apiKey.tenantId`). Every other resolver on that path is handed the
+     * resolved tenant explicitly — this one alone re-read CLS, so on
+     * `hope-v2-dev` every single summary logged "DNA writing-style resolution
+     * failed; proceeding without style — Tenant ID is required" and no
+     * clinician's style was ever applied. Verified live 2026-08-10.
+     */
+    it('getEffectiveStyleText uses an explicitly-passed tenantId when CLS has none (API-key path)', async () => {
+      mockClsService.get.mockImplementation((key: string) => (key === 'user' ? { id: 'user-id-1' } : null));
+      policy.getDnaSettings.mockResolvedValue({ effective: true, tenantEnabled: true, doctorToggle: true, version: 1 });
+      mockReportRepo.findLatestForDoctor.mockResolvedValue({ id: 'rep-1', doctorId: 'doctor-id-1' });
+      mockReportRepo.decryptFieldsFromEntity.mockResolvedValue({ styleText: 'Terse, active voice.', reportData: null, redactionRules: null });
+
+      const res = await svc.getEffectiveStyleText('doctor-id-1', 'tenant-1');
+
+      expect(res).toBe('Terse, active voice.');
+    });
+
+    it('getEffectiveStyleText still throws when neither CLS nor the caller supplies a tenant', async () => {
+      mockClsService.get.mockImplementation((key: string) => (key === 'user' ? { id: 'user-id-1' } : null));
+
+      await expect(svc.getEffectiveStyleText('doctor-id-1')).rejects.toThrow('Tenant ID is required');
+    });
+
     it('getEffectiveStyleText returns null when the doctor has no report', async () => {
       policy.getDnaSettings.mockResolvedValue({ effective: true, tenantEnabled: true, doctorToggle: true, version: 1 });
       mockReportRepo.findLatestForDoctor.mockResolvedValue(null);
