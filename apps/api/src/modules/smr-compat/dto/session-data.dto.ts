@@ -15,6 +15,22 @@ export class ConversationSegmentDto {
   @IsString()
   text!: string;
 
+  /**
+   * The turn's ORIGINAL words when `text` holds a machine translation of them.
+   *
+   * Set by the gateway's Sarvam pre-translation step, not by v1 callers — the
+   * frozen v1 wire shape has no such field, and every v1 client omits it. It is
+   * accepted from the wire (the global pipe whitelists declared fields only) so
+   * a caller that already holds a bilingual transcript can supply it directly.
+   *
+   * Present ⇒ `buildSummaryPrompt` renders both lines and makes THIS one
+   * authoritative for clinical facts (TASK-651).
+   */
+  @ApiPropertyOptional({ description: 'Original untranslated text, when `text` is a machine translation' })
+  @IsOptional()
+  @IsString()
+  original_text?: string;
+
   @ApiProperty({ description: 'ISO-8601 timestamp of the turn' })
   @IsString()
   timestamp!: string;

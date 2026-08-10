@@ -87,6 +87,22 @@ function languageDirective(): string {
 }
 
 /** One rendered transcript line per turn — fixes v1 F2 (whole transcript collapsed into one segment). */
+/** Does any turn carry an original alongside a machine translation of it? */
+function hasBilingualTurns(segments: SessionDataDto['conversation_segments']): boolean {
+  return (segments ?? []).some((seg) => {
+    const original = seg.original_text?.trim();
+    return Boolean(original) && original !== (seg.text?.trim() ?? '');
+  });
+}
+
+/**
+ * One rendered transcript line per turn — plus, when the turn was machine
+ * translated, a second line carrying the clinician's original words.
+ *
+ * The original line is suppressed when it is identical to the translation
+ * (an already-English turn round-tripped through the translator), so an
+ * English consultation renders exactly as it did before.
+ */
 function renderSegments(segments: SessionDataDto['conversation_segments']): string {
   if (!segments || segments.length === 0) {
     return '(no conversation transcript provided)';
@@ -95,10 +111,39 @@ function renderSegments(segments: SessionDataDto['conversation_segments']): stri
     .map((seg) => {
       const speaker = seg.speaker?.trim() || 'unknown';
       const text = seg.text?.trim() ?? '';
+      const original = seg.original_text?.trim();
+      if (original && original !== text) {
+        return `${speaker}: ${text}\n${speaker} (original, untranslated): ${original}`;
+      }
       return `${speaker}: ${text}`;
     })
     .join('\n');
 }
+
+/**
+ * Steering for a bilingual transcript (TASK-651).
+ *
+ * Sarvam is a general-purpose MT engine with no clinical vocabulary, and the
+ * summary is built from its output. Verified live on `hope-v2-dev` 2026-08-10
+ * against one real `ml-en` consultation, the translation alone produced:
+ *   - `aceclofenac 100 mg PRN` → "Acetaminophen 100 mg" — a DIFFERENT DRUG;
+ *   - `marked ... subchondral sclerosis` → "mild" — an inverted severity;
+ *   - `medial joint space narrowing` and the referred physiotherapist's name
+ *     dropped entirely.
+ * The same payload summarized WITHOUT pre-translation got all of them right,
+ * because the model reads the code-switched original far better than the MT
+ * engine renders it.
+ *
+ * So the translation stays — it is what makes the note readable English — but
+ * it stops being the sole source. The directive names the specific classes
+ * that were observed to break rather than a generic "be accurate", because a
+ * generic instruction gives the model no reason to prefer one line over the
+ * other when they disagree.
+ */
+const BILINGUAL_TRANSCRIPT_DIRECTIVE =
+  'Each transcript turn may appear twice: a machine translation, followed by a line marked "(original, untranslated)" carrying the speaker\'s own words. ' +
+  'The machine translation is not clinically reliable — it has been observed to substitute one drug for another, invert severity qualifiers, and drop findings and proper nouns. ' +
+  'Use the translation only to follow the conversation. For every clinical fact — drug names, doses, routes, frequencies, numbers, measurements, scores, severity qualifiers, anatomical sites, and proper nouns — take the value from the original line whenever the two disagree, and render it in English yourself.';
 
 function renderTestResults(results?: TestResultDto[]): string | null {
   if (!results || results.length === 0) return null;
@@ -193,8 +238,17 @@ export function buildSummaryPrompt(sessionData: SessionDataDto, options: Summary
   systemLines.push(
     'Base the summary strictly on the provided transcript and context; do not fabricate findings.',
     'Respond with a single JSON object that conforms to the provided schema. Output JSON only — no prose, no markdown fences.',
-    languageDirective(),
   );
+
+  // Placed AFTER the department/DNA steering and BEFORE the language directive:
+  // it must outrank any governed template's own wording about the transcript,
+  // and it is what the language directive's "translate any non-English content"
+  // then acts on.
+  if (hasBilingualTurns(sessionData.conversation_segments)) {
+    systemLines.push(BILINGUAL_TRANSCRIPT_DIRECTIVE);
+  }
+
+  systemLines.push(languageDirective());
 
   const userSections: string[] = [];
 

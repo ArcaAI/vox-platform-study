@@ -319,7 +319,9 @@ describe('SmrCompatController', () => {
       const res = createMockRes();
       await controllerWithDna.summarySync(syncRequest({ doctor_id: 'doctor-1' }), {} as never, res as never);
 
-      expect(dna.getEffectiveStyleText).toHaveBeenCalledWith('doctor-1');
+      // TASK-651 — the resolved tenant now travels with the doctor id; the
+      // service no longer re-derives it from CLS (empty on the API-key path).
+      expect(dna.getEffectiveStyleText).toHaveBeenCalledWith('doctor-1', 'tenant-1');
       const [, body] = http.axiosRef.post.mock.calls[0];
       expect(body.system_prompt).toContain('Terse SOAP, active voice.');
     });
@@ -383,6 +385,95 @@ describe('SmrCompatController', () => {
       const smrCall = calls.find((c: unknown[]) => String(c[0]).includes('/api/v1/generate'));
       expect(smrCall![1].prompt).toContain('EN:What brings you in?');
       expect(smrCall![1].prompt).toContain('EN:Chest tightness.');
+    });
+
+    // TASK-651 — Sarvam stays enabled, but its output is no longer the only text
+    // the model sees. On a real ml-en consultation the translation alone swapped
+    // aceclofenac for acetaminophen and "marked" for "mild"; the untranslated
+    // turn now travels with it and outranks it for clinical facts.
+    it('sends BOTH the Sarvam translation and the untranslated original to SMR', async () => {
+      const httpLocal = createMockHttpService();
+      httpLocal.axiosRef.post.mockImplementation((url: string, reqBody: { texts?: string[] }) => {
+        if (String(url).includes('/api/v1/translate')) {
+          return Promise.resolve({ data: { translations: (reqBody.texts ?? []).map((t) => `EN:${t}`), provider: 'sarvam', chars: 0 } });
+        }
+        return Promise.resolve({ data: { content: JSON.stringify({ chief_complaint: 'x', summary: 'y' }) } });
+      });
+      const ctrl = new SmrCompatController(
+        httpLocal as any,
+        config as any,
+        cls as any,
+        policy as any,
+        template as any,
+        secrets as any,
+        undefined,
+        undefined,
+      );
+
+      await ctrl.summarySync(syncRequest({ translate_to_english: true }), {} as never, createMockRes() as never);
+
+      const smrCall = httpLocal.axiosRef.post.mock.calls.find((c: unknown[]) => String(c[0]).includes('/api/v1/generate'));
+      // The translation is what the note is written from...
+      expect(smrCall![1].prompt).toContain('EN:What brings you in?');
+      // ...and the speaker's own words travel with it, marked as such.
+      expect(smrCall![1].prompt).toContain('(original, untranslated): What brings you in?');
+      // The system prompt must tell the model which line wins on a conflict.
+      expect(smrCall![1].system_prompt).toMatch(/take the value from the original line/i);
+    });
+
+    // TASK-651 — DNA writing style on the API-KEY path. CLS `tenantId` is empty
+    // there (only the JWT strategy sets it), so the service's own CLS read threw
+    // 'Tenant ID is required' and fail-open swallowed it: no clinician's style
+    // was EVER applied on this surface. Verified live on hope-v2-dev 2026-08-10.
+    it('applies the DNA writing style when the tenant came from the API key, not CLS', async () => {
+      const httpLocal = createMockHttpService();
+      httpLocal.axiosRef.post.mockResolvedValue({ data: { content: JSON.stringify({ chief_complaint: 'x', summary: 'y' }) } });
+      // CLS carries NO tenantId — exactly the API-key request shape.
+      const clsNoTenant = { get: vi.fn(() => undefined), getId: vi.fn(() => 'req-test-id') };
+      const dna = { getEffectiveStyleText: vi.fn().mockResolvedValue('Terse, active voice, no abbreviations.') };
+      const ctrl = new SmrCompatController(
+        httpLocal as any,
+        config as any,
+        clsNoTenant as any,
+        policy as any,
+        template as any,
+        secrets as any,
+        dna as any,
+        undefined,
+      );
+
+      await ctrl.summarySync(syncRequest({ doctor_id: 'doc-9' }), { apiKey: { tenantId: 'tenant-1' } } as never, createMockRes() as never);
+
+      // The tenant reached the resolver instead of being re-derived from an empty CLS...
+      expect(dna.getEffectiveStyleText).toHaveBeenCalledWith('doc-9', 'tenant-1');
+      // ...and the style actually landed in the prompt the model sees.
+      const smrCall = httpLocal.axiosRef.post.mock.calls.find((c: unknown[]) => String(c[0]).includes('/api/v1/generate'));
+      expect(smrCall![1].system_prompt).toContain('Terse, active voice, no abbreviations.');
+    });
+
+    // An English consultation never reaches the translate step, so nothing about
+    // its prompt may change — this is the regression guard for that.
+    it('leaves an English transcript single-line, with no bilingual directive', async () => {
+      const httpLocal = createMockHttpService();
+      httpLocal.axiosRef.post.mockResolvedValue({ data: { content: JSON.stringify({ chief_complaint: 'x', summary: 'y' }) } });
+      const ctrl = new SmrCompatController(
+        httpLocal as any,
+        config as any,
+        cls as any,
+        policy as any,
+        template as any,
+        secrets as any,
+        undefined,
+        undefined,
+      );
+
+      await ctrl.summarySync(syncRequest({}), {} as never, createMockRes() as never);
+
+      const calls = httpLocal.axiosRef.post.mock.calls;
+      expect(calls.some((c: unknown[]) => String(c[0]).includes('/api/v1/translate'))).toBe(false);
+      const smrCall = calls.find((c: unknown[]) => String(c[0]).includes('/api/v1/generate'));
+      expect(smrCall![1].prompt).not.toContain('(original');
+      expect(smrCall![1].system_prompt).not.toContain('machine translation');
     });
 
     // TASK-650 R2 (owner decision 2026-08-10): Sarvam fires for ANY non-English
@@ -1096,7 +1187,9 @@ describe('SmrCompatController', () => {
           transcriptSegments: 2,
           transcriptChars: expectedChars,
           includePreSummaryInContext: true,
-          translateToEnglish: false,
+          translateToEnglishRequested: false,
+          sourceLanguage: 'en',
+          willTranslate: false,
           correlationId: 'req-test-id',
         });
       });
@@ -1119,7 +1212,9 @@ describe('SmrCompatController', () => {
           transcriptSegments: 0,
           transcriptChars: 0,
           includePreSummaryInContext: false,
-          translateToEnglish: false,
+          translateToEnglishRequested: false,
+          sourceLanguage: 'en',
+          willTranslate: false,
         });
       });
 
@@ -1135,7 +1230,22 @@ describe('SmrCompatController', () => {
 
         const calls = logCallsFor('SMR compat summary context received');
         expect(calls).toHaveLength(1);
-        expect(calls[0]).toMatchObject({ translateToEnglish: true });
+        expect(calls[0]).toMatchObject({ translateToEnglishRequested: true, willTranslate: true });
+      });
+
+      // TASK-651 — the flag alone used to be the whole story, and it lied: since
+      // TASK-650 R2 a non-English source translates with NO flag set, so the log
+      // reported `false` on a request that was translated. `willTranslate` is the
+      // effective decision; `translateToEnglishRequested` is what the caller asked.
+      it('reports willTranslate on a non-English source even though the caller set no flag', async () => {
+        http.axiosRef.post.mockResolvedValue({ data: { content: JSON.stringify({ chief_complaint: 'x', summary: 'y' }) } });
+        const body = syncRequest({});
+        body.session_data.session_metadata = { ...(body.session_data.session_metadata ?? {}), language: 'ml-en' };
+
+        await invokeSummary(body);
+
+        const calls = logCallsFor('SMR compat summary context received');
+        expect(calls[0]).toMatchObject({ translateToEnglishRequested: false, sourceLanguage: 'ml-en', willTranslate: true });
       });
 
       it('logs on the STREAMING path too', async () => {

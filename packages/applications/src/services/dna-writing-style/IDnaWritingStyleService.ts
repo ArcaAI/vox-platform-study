@@ -42,8 +42,13 @@ export abstract class IDnaWritingStyleService {
    * or the secrets backend is unwired. Reused by the v1-compat SMR path to inject
    * the doctor's style into the summary/pre-summary prompt. Never throws on an
    * absent/disabled style — DNA is additive.
+   *
+   * `explicitTenantId` (TASK-651) supplies the tenant for callers whose CLS
+   * `tenantId` is empty — notably the API-key-authenticated v1-compat surface,
+   * where only the JWT strategy populates CLS. Omit it and the CLS value is used
+   * as before. Tenant membership of `doctorId` is asserted either way.
    */
-  abstract getEffectiveStyleText(doctorId: string): Promise<string | null>;
+  abstract getEffectiveStyleText(doctorId: string, explicitTenantId?: string): Promise<string | null>;
   /**
    * Read the caller doctor's DNA on/off settings
    * (effective = tenant AND doctor, plus the tenant gate + DOCTOR-row OCC

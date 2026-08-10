@@ -199,15 +199,27 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
    * report/style, or the secrets backend is unwired, so callers can treat DNA as
    * purely additive.
    */
-  async getEffectiveStyleText(doctorId: string): Promise<string | null> {
-    const tenantId = this.tenantId;
+  async getEffectiveStyleText(doctorId: string, explicitTenantId?: string): Promise<string | null> {
+    // TASK-651 — `explicitTenantId` exists because the CLS getter is not always
+    // populated: the v1-compat SMR surface authenticates by API KEY, and only the
+    // JWT strategy writes CLS `tenantId`. Its controller already resolves the
+    // authoritative tenant (`requireTenantId` → CLS, else `apiKey.tenantId`) and
+    // hands it to every other resolver on that path; this method re-read CLS and
+    // so threw on every API-key call, silently dropping DNA style from every
+    // summary. The argument is NOT a tenant override for untrusted input — it is
+    // the same authenticated value, passed instead of re-derived — and
+    // `assertUserBelongsToTenant` below still proves the doctor is in it.
+    const tenantId = explicitTenantId?.trim() || this.tenantId;
     if (!tenantId) {
       throw new BadRequestException('Tenant ID is required');
     }
     await assertUserBelongsToTenant(this.userRoleAssignmentRepository, this.userDepartmentRepository, this.userRepository, doctorId, tenantId);
 
     // Effective = tenant AND doctor toggle (Phase-5 cascade). Off ⇒ no style.
-    const settings = await this.getDnaSettings(doctorId);
+    // Resolved against the SAME tenant, not CLS again — `getDnaSettings` has the
+    // identical CLS dependency and would re-introduce the failure here.
+    const policy = this.requirePipelinePolicyService();
+    const settings = await policy.getDnaSettings({ tenantId, doctorId });
     if (!settings.effective) return null;
 
     const report = await this.dnaReportRepository.findLatestForDoctor(doctorId);

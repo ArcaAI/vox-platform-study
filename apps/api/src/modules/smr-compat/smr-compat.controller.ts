@@ -220,7 +220,14 @@ export class SmrCompatController {
       if (!Array.isArray(translations) || translations.length !== segments.length) {
         throw new Error('SMR /api/v1/translate returned an unexpected shape');
       }
-      const translatedSegments = segments.map((s, i) => ({ ...s, text: String(translations[i]) }));
+      // TASK-651 — keep the speaker's own words alongside the translation.
+      // Sarvam still produces the English the note is written from, but it is a
+      // general-purpose MT engine: on a real ml-en consultation it substituted
+      // acetaminophen for aceclofenac and turned a "marked" radiology finding
+      // into "mild". `buildSummaryPrompt` renders both lines and makes the
+      // original authoritative for clinical facts, so a mistranslation degrades
+      // phrasing instead of changing the medicine.
+      const translatedSegments = segments.map((s, i) => ({ ...s, text: String(translations[i]), original_text: s.text }));
       return {
         ...body,
         session_data: {
@@ -273,11 +280,16 @@ export class SmrCompatController {
    * doctor has no style. Never throws — DNA is additive; any failure degrades to
    * "no style" so a summary is always produced.
    */
-  private async resolveDnaStyleText(doctorId?: string): Promise<string | undefined> {
+  private async resolveDnaStyleText(doctorId: string | undefined, tenantId: string): Promise<string | undefined> {
     const id = doctorId?.trim();
     if (!id || !this.dnaWritingStyleService) return undefined;
     try {
-      return (await this.dnaWritingStyleService.getEffectiveStyleText(id)) ?? undefined;
+      // TASK-651 — pass the tenant this request already resolved. The service
+      // otherwise reads CLS `tenantId`, which the API-key path never populates,
+      // so this threw 'Tenant ID is required' on EVERY compat summary and the
+      // fail-open below swallowed it into a warning: no clinician's DNA style
+      // was ever applied on this surface.
+      return (await this.dnaWritingStyleService.getEffectiveStyleText(id, tenantId)) ?? undefined;
     } catch (err) {
       this.logger.warn({
         message: 'DNA writing-style resolution failed; proceeding without style',
@@ -410,7 +422,7 @@ export class SmrCompatController {
     // TASK-600: translate the transcript to English first when requested (fail-open).
     const workingBody = await this.maybeTranslateBody(body, tenantId);
     const governed = await this.resolveSummaryGoverned(workingBody, tenantId);
-    const dnaStyleText = await this.resolveDnaStyleText(workingBody.doctor_id);
+    const dnaStyleText = await this.resolveDnaStyleText(workingBody.doctor_id, tenantId);
     const { baseRequest, buildResponse } = this.prepareSummary(workingBody, governed, dnaStyleText);
     await this.applySmrModelSelection(baseRequest, tenantId);
 
@@ -474,7 +486,7 @@ export class SmrCompatController {
     // TASK-600: translate the transcript to English first when requested (fail-open).
     const workingBody = await this.maybeTranslateBody(body, tenantId);
     const governed = await this.resolveSummaryGoverned(workingBody, tenantId);
-    const dnaStyleText = await this.resolveDnaStyleText(workingBody.doctor_id);
+    const dnaStyleText = await this.resolveDnaStyleText(workingBody.doctor_id, tenantId);
     const { baseRequest, buildResponse } = this.prepareSummary(workingBody, governed, dnaStyleText);
     await this.applySmrModelSelection(baseRequest, tenantId);
 
@@ -564,7 +576,7 @@ export class SmrCompatController {
       visitType: body.visit_type,
       doctorId: body.doctor_id,
     });
-    const dnaStyleText = await this.resolveDnaStyleText(body.doctor_id);
+    const dnaStyleText = await this.resolveDnaStyleText(body.doctor_id, tenantId);
     const smrRequest = this.buildPreSummaryRequest(body, governed, dnaStyleText);
     await this.applySmrModelSelection(smrRequest, tenantId);
 
@@ -614,7 +626,7 @@ export class SmrCompatController {
       visitType: body.visit_type,
       doctorId: body.doctor_id,
     });
-    const dnaStyleText = await this.resolveDnaStyleText(body.doctor_id);
+    const dnaStyleText = await this.resolveDnaStyleText(body.doctor_id, tenantId);
     const smrRequest = this.buildPreSummaryRequest(body, governed, dnaStyleText);
     await this.applySmrModelSelection(smrRequest, tenantId);
     await this.streamGenerate(
@@ -693,7 +705,14 @@ export class SmrCompatController {
       transcriptSegments: segments.length,
       transcriptChars: segments.reduce((sum, s) => sum + (s.text?.length ?? 0), 0),
       includePreSummaryInContext: body.include_pre_summary_in_context === true,
-      translateToEnglish: body.translate_to_english === true,
+      // The caller's FLAG and the EFFECTIVE decision are different facts, so both
+      // are logged. Since TASK-650 R2, translation also fires on a non-English
+      // source with no flag set — logging the flag alone reported `false` on
+      // requests that were in fact translated, the opposite of the truth for
+      // anyone reading this line to debug a translation problem.
+      translateToEnglishRequested: body.translate_to_english === true,
+      sourceLanguage: this.resolveLanguage(body.session_data?.session_metadata),
+      willTranslate: this.shouldTranslateToEnglish(body),
       correlationId: this.clsService.getId(),
     });
   }

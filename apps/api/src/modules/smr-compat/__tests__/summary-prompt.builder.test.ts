@@ -186,6 +186,70 @@ describe('buildSummaryPrompt', () => {
   });
 });
 
+/**
+ * TASK-651 — Sarvam pre-translation is a general-purpose MT engine with no
+ * clinical vocabulary. Verified live against `hope-v2-dev` 2026-08-10 on a real
+ * `ml-en` consultation: it rendered `aceclofenac 100 mg` as "Acetaminophen"
+ * (a different drug class), turned `marked ... subchondral sclerosis` into
+ * "mild", and dropped `medial joint space narrowing` and the referred
+ * physiotherapist's name. The same payload WITHOUT pre-translation summarized
+ * every one of those correctly.
+ *
+ * The fix keeps Sarvam in the loop (it still produces the readable English the
+ * note is written from) but stops its output being the ONLY text the model
+ * sees: each turn now carries the clinician's original words alongside the
+ * translation, and the original is authoritative for clinical facts.
+ */
+describe('buildSummaryPrompt — bilingual transcript (Sarvam translation + original)', () => {
+  const bilingualSession = (): SessionDataDto =>
+    ({
+      session_id: 'sess-ml',
+      created_at: '2026-08-10T07:12:26Z',
+      conversation_segments: [
+        {
+          speaker: 'provider',
+          text: 'Acetaminophen 100 mg is given when there is severe pain.',
+          original_text: 'severe pain വരുമ്പോൾ കഴിക്കാൻ aceclofenac 100 mg PRN തരികയാണ്.',
+          timestamp: '2026-08-10T07:12:30Z',
+        },
+      ],
+    }) as SessionDataDto;
+
+  it('renders the original turn alongside the translation', () => {
+    const { user } = buildSummaryPrompt(bilingualSession());
+    expect(user).toContain('provider: Acetaminophen 100 mg is given when there is severe pain.');
+    expect(user).toContain('aceclofenac 100 mg PRN');
+  });
+
+  it('makes the original authoritative for clinical facts in the system prompt', () => {
+    const { system } = buildSummaryPrompt(bilingualSession());
+    expect(system).toContain('machine translation');
+    expect(system).toMatch(/take the value from the original line/i);
+    // The failure modes actually observed must be named, not implied.
+    expect(system).toMatch(/drug names/i);
+    expect(system).toMatch(/severity/i);
+  });
+
+  it('adds no bilingual directive and no extra lines when no segment carries an original', () => {
+    const { system, user } = buildSummaryPrompt(baseSession());
+    expect(system).not.toContain('machine translation');
+    expect(user).not.toContain('(original');
+  });
+
+  it('does not repeat the turn when the original is identical to the translation', () => {
+    const session = {
+      session_id: 'sess-en',
+      created_at: '2026-08-10T07:12:26Z',
+      conversation_segments: [
+        { speaker: 'patient', text: 'Chest tightness.', original_text: 'Chest tightness.', timestamp: '2026-08-10T07:12:30Z' },
+      ],
+    } as SessionDataDto;
+    const { user } = buildSummaryPrompt(session);
+    expect(user).not.toContain('(original');
+    expect(user.match(/Chest tightness\./g)).toHaveLength(1);
+  });
+});
+
 describe('buildPreSummaryPrompt (v1 1:1 — TASK-634 D-08)', () => {
   /** Mirrors the kwargs used to render `rendered-full.txt` with Python `str.format`. */
   const req = (): PreSummaryRequest =>
