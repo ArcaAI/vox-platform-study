@@ -111,16 +111,22 @@ describe('buildSummaryPrompt', () => {
     expect(buildSummaryPrompt(baseSession(), { language: '' }).system).toContain('Write ALL summary content in English');
   });
 
-  // R2 — an explicitly requested non-English output language is still honoured;
-  // R1 sets the default, not a hard lock.
-  it('honours an explicitly requested Malayalam output language (R2)', () => {
-    const { system } = buildSummaryPrompt(baseSession(), { language: 'ml' });
-    expect(system).toContain('Write ALL summary content in Malayalam');
-    expect(system).not.toContain('Write ALL summary content in English');
-  });
+  // R1 is UNCONDITIONAL (owner decision 2026-08-10, option (a)): `language` is
+  // the SOURCE locale and never selects the output language. Verified live —
+  // the client sends `ml-en` (a code-switch marker), which the previous
+  // "honour an explicit request" behaviour read as "write Malayalam" and
+  // produced a fully Malayalam clinical note.
+  it.each(['ml', 'ml-en', 'ml-IN', 'hi-IN', 'ta-IN', 'en', undefined])(
+    'writes the note in English regardless of the source language (%s)',
+    (language) => {
+      const { system } = buildSummaryPrompt(baseSession(), { language });
+      expect(system).toContain('Write ALL summary content in English');
+      expect(system).not.toContain('Write ALL summary content in Malayalam');
+    },
+  );
 
   // R4 — section headings stay in English regardless of the content language.
-  it('keeps section headings in English regardless of the requested content language', () => {
+  it('keeps section headings in English regardless of the source language', () => {
     const { system } = buildSummaryPrompt(baseSession(), { language: 'ml' });
     expect(system).toContain('Section headings stay in English');
   });
@@ -131,7 +137,7 @@ describe('buildSummaryPrompt', () => {
     const { system } = buildSummaryPrompt(baseSession(), { language: 'ml' });
     const lines = system.split('\n');
     expect(lines).toContain(
-      "Write ALL summary content in Malayalam, regardless of the transcript's language and regardless of any conflicting language instruction in the department instruction above (for example, an instruction to write content in the conversation language). Section headings stay in English.",
+      "Write ALL summary content in English, regardless of the transcript's language and regardless of any conflicting language instruction in the department instruction above (for example, an instruction to write content in the conversation language). Translate any non-English clinical content into English. Section headings stay in English.",
     );
   });
 

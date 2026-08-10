@@ -385,6 +385,57 @@ describe('SmrCompatController', () => {
       expect(smrCall![1].prompt).toContain('EN:Chest tightness.');
     });
 
+    // TASK-650 R2 (owner decision 2026-08-10): Sarvam fires for ANY non-English
+    // source, with no flag from the caller. Nothing in the product ever set
+    // `translate_to_english`, so before this every Malayalam consultation was
+    // summarized from an untranslated transcript.
+    it.each([
+      ['ml-en', true],
+      ['ml-IN', true],
+      ['hi-IN', true],
+      ['en-US', false],
+      ['en', false],
+    ])('translates a %s transcript without an explicit flag: %s', async (language, expectTranslate) => {
+      const providerConnection = {
+        resolveTenantCloudOverrides: vi.fn().mockResolvedValue({ overrides: { sarvam: { api_key: 'byok', funding: 'tenant' } } }),
+      };
+      const httpLocal = createMockHttpService();
+      httpLocal.axiosRef.post.mockImplementation((url: string, reqBody: { texts?: string[] }) => {
+        if (String(url).includes('/api/v1/translate')) {
+          return Promise.resolve({ data: { translations: (reqBody.texts ?? []).map((t) => `EN:${t}`), provider: 'sarvam', chars: 0 } });
+        }
+        return Promise.resolve({ data: { content: JSON.stringify({ chief_complaint: 'x', summary: 'y' }) } });
+      });
+      const ctrl = new SmrCompatController(
+        httpLocal as any,
+        config as any,
+        cls as any,
+        policy as any,
+        template as any,
+        secrets as any,
+        undefined,
+        providerConnection as any,
+      );
+
+      const body = syncRequest({
+        session_data: {
+          session_id: 'sess-lang',
+          created_at: '2026-08-10T09:30:00Z',
+          conversation_segments: [{ speaker: 'provider', text: 'ചോദ്യം', timestamp: '2026-08-10T09:30:05Z' }],
+          session_metadata: { language },
+        },
+      } as Partial<SyncSummaryRequest>);
+      await ctrl.summarySync(body, {} as never, createMockRes() as never);
+
+      const translateCalled = httpLocal.axiosRef.post.mock.calls.some((c: unknown[]) => String(c[0]).includes('/api/v1/translate'));
+      expect(translateCalled).toBe(expectTranslate);
+
+      // The note is English either way — translation improves transcript
+      // fidelity, it is not what guarantees the output language.
+      const smrCall = httpLocal.axiosRef.post.mock.calls.find((c: unknown[]) => String(c[0]).includes('/api/v1/generate'));
+      expect(smrCall![1].system_prompt).toContain('Write ALL summary content in English');
+    });
+
     it('forces the summary OUTPUT language to English when the transcript is translated (AC: EN summary from a non-English transcript)', async () => {
       const providerConnection = {
         resolveTenantCloudOverrides: vi.fn().mockResolvedValue({ overrides: { sarvam: { api_key: 'byok', funding: 'tenant' } } }),

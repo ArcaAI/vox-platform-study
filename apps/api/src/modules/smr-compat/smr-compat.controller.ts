@@ -194,7 +194,7 @@ export class SmrCompatController {
    * off/absent ⇒ no SMR translate call.
    */
   private async maybeTranslateBody(body: SyncSummaryRequest, tenantId: string): Promise<SyncSummaryRequest> {
-    if (body.translate_to_english !== true) return body;
+    if (!this.shouldTranslateToEnglish(body)) return body;
     const segments = body.session_data?.conversation_segments ?? [];
     const texts = segments.map((s) => s.text ?? '');
     if (texts.every((t) => !t.trim())) return body;
@@ -702,6 +702,36 @@ export class SmrCompatController {
   private resolveLanguage(metadata?: Record<string, unknown>): string {
     const language = metadata?.language;
     return typeof language === 'string' && language.trim() ? language.trim() : 'en';
+  }
+
+  /**
+   * Should the transcript be translated to English before summarization?
+   *
+   * TASK-650 R2 (owner decision 2026-08-10): Sarvam is the medium for ANY
+   * non-English consultation, and the caller no longer has to remember a flag.
+   * Before this, translation fired ONLY on an explicit `translate_to_english`,
+   * which nothing in the product ever set — so a Malayalam consultation reached
+   * the model untranslated every time.
+   *
+   * The source language is the STT locale from `session_metadata.language`,
+   * compared on its BASE SUBTAG so every real-world spelling lands correctly:
+   * `en`, `en-US` ⇒ no translation; `ml`, `ml-IN`, `hi-IN`, `ta-IN` ⇒ translate.
+   *
+   * `ml-en` — the CODE-SWITCH marker the live client actually sends — has base
+   * subtag `ml`, so it translates. That is the intended reading: a
+   * Malayalam-English mixed transcript still needs the Malayalam half rendered
+   * into English.
+   *
+   * An explicit `translate_to_english: true` still forces translation even for
+   * an English-tagged transcript (the caller may know the tag is wrong).
+   * Translation remains FAIL-OPEN, and the summary is written in English
+   * regardless (`languageDirective`) — so a Sarvam outage degrades transcript
+   * fidelity, never the output language.
+   */
+  private shouldTranslateToEnglish(body: SyncSummaryRequest): boolean {
+    if (body.translate_to_english === true) return true;
+    const source = this.resolveLanguage(body.session_data?.session_metadata);
+    return source.toLowerCase().split('-')[0] !== 'en';
   }
 
   private async applySmrModelSelection(request: SmrGenerateRequest, tenantId: string): Promise<void> {
