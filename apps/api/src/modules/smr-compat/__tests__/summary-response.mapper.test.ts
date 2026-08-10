@@ -127,27 +127,29 @@ describe('mapGenerateToV1Summary', () => {
 });
 
 describe('parseSections / mapGenerateToV1PreSummary (v1 5-section guarantee)', () => {
-  // TASK-634 D-09 — v1's LIVE order + naming (`Latest Dept Note`), verified
-  // against the running v1 pod's `display_titles`.
+  // v1's order + naming (`Latest Department Note`), taken from
+  // `previous_visit_service.py:215-221`. TASK-634 D-09 asserted a different
+  // order and `Latest Dept Note` on a running-pod claim that a byte diff of the
+  // v1 source disproved — see PRE_SUMMARY_DISPLAY_TITLES for the full note.
   const EXPECTED_TITLES = [
     'Confirmed & Provisional Diagnoses',
-    'Investigations (Latest Dept Note)',
+    'Plan of Care (Latest Department Note)',
+    'Investigations (Latest Department Note)',
+    'Medications Prescribed (Latest Department Note)',
     'Diagnostics & Trends',
-    'Plan of Care (Latest Dept Note)',
-    'Medications Prescribed (Latest Dept Note)',
   ];
 
   const allPresent = [
     '**Confirmed & Provisional Diagnoses**',
     '- Essential hypertension, on amlodipine 5mg',
     '- Hyperlipidemia',
-    '**Investigations (Latest Dept Note)**',
+    '**Investigations (Latest Department Note)**',
     '- ECG normal',
     '**Diagnostics & Trends**',
     '- Weight stable',
-    '**Plan of Care (Latest Dept Note):**',
+    '**Plan of Care (Latest Department Note):**',
     '- Continue current medications',
-    '**Medications Prescribed (Latest Dept Note)**',
+    '**Medications Prescribed (Latest Department Note)**',
     '- Amlodipine 5mg OD',
   ].join('\n');
 
@@ -155,7 +157,9 @@ describe('parseSections / mapGenerateToV1PreSummary (v1 5-section guarantee)', (
     const structured = parseSections(allPresent);
     expect(structured.sections.map((s) => s.title)).toEqual(EXPECTED_TITLES);
     expect(structured.sections[0].items).toEqual([{ text: 'Essential hypertension, on amlodipine 5mg' }, { text: 'Hyperlipidemia' }]);
-    expect(structured.sections[4].items).toEqual([{ text: 'Amlodipine 5mg OD' }]);
+    // Medications is index 3 in v1's order; Diagnostics & Trends is last.
+    expect(structured.sections[3].items).toEqual([{ text: 'Amlodipine 5mg OD' }]);
+    expect(structured.sections[4].items).toEqual([{ text: 'Weight stable' }]);
   });
 
   it('fills missing sections with a single "Not available" item, preserving order', () => {
@@ -163,11 +167,11 @@ describe('parseSections / mapGenerateToV1PreSummary (v1 5-section guarantee)', (
     const structured = parseSections(someMissing);
     expect(structured.sections.map((s) => s.title)).toEqual(EXPECTED_TITLES);
     expect(structured.sections[0].items).toEqual([{ text: 'Hypertension' }]);
-    expect(structured.sections[2].items).toEqual([{ text: 'Weight stable' }]);
+    expect(structured.sections[4].items).toEqual([{ text: 'Weight stable' }]);
     // The 3 unparsed sections are filled.
     expect(structured.sections[1].items).toEqual([{ text: 'Not available' }]);
+    expect(structured.sections[2].items).toEqual([{ text: 'Not available' }]);
     expect(structured.sections[3].items).toEqual([{ text: 'Not available' }]);
-    expect(structured.sections[4].items).toEqual([{ text: 'Not available' }]);
   });
 
   it('returns all 5 sections as "Not available" when nothing parses', () => {

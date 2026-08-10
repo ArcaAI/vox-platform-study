@@ -37,7 +37,7 @@ import { describe, it, expect } from 'vitest';
 import { SYSTEM_PRE_SUMMARY_DEFAULT_CONTENT } from '../prisma/db_main/seed/07-prompt-template';
 
 /** Pinned sha256 of `SYSTEM_PRE_SUMMARY_DEFAULT_CONTENT` as of TASK-635. */
-const PINNED_SHA256 = 'bca5b460b0037256303ba6caa9add52078c8fe1a3b6fbf4f5312b588e0ef0112';
+const PINNED_SHA256 = 'be6be5760819c34c22029ac1293474b452e0f75a34c885fb9f0eeab3ce05335a';
 
 function sha256Hex(content: string): string {
   return createHash('sha256').update(content, 'utf8').digest('hex');

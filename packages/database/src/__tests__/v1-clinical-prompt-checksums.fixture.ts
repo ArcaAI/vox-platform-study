@@ -131,7 +131,7 @@ export const V1_CLINICAL_PROMPT_CHECKSUMS: readonly V1ClinicalPromptChecksum[] =
   {
     contentConstant: 'PRE_SUMMARY_CONTENT',
     templateId: '71000000-0000-0000-0001-000000000024',
-    v1Sha256: '309a9cd137925d3469df5b52ed3cc4ff5647f4d21b67b8736ba2cf21496a4e32',
+    v1Sha256: 'd1b718001948db0aa05607803e96f30b429946e73774964eb6353c95b039b5ef',
   },
   // TASK-634 Phase 8a — the four departments the original migration never ported.
   {

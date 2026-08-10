@@ -293,8 +293,8 @@ describe('R-C3 (ii) — CHARACTERIZATION: the compat pre-summary BODY still carr
     expect(rendered).not.toContain('{visit_type}');
   });
 
-  it('WIRE CONTRACT (RF-1): the mapper title-matches three "(Latest Dept Note)" headings that the template emits verbatim', () => {
-    const deptNoteTitles = PRE_SUMMARY_DISPLAY_TITLES.filter((t) => t.includes('(Latest Dept Note)'));
+  it('WIRE CONTRACT (RF-1): the mapper title-matches three "(Latest Department Note)" headings that the template emits verbatim', () => {
+    const deptNoteTitles = PRE_SUMMARY_DISPLAY_TITLES.filter((t) => t.includes('(Latest Department Note)'));
     expect(deptNoteTitles).toHaveLength(3);
     for (const title of PRE_SUMMARY_DISPLAY_TITLES) {
       expect(V1_PRE_SUMMARY_TEMPLATE).toContain(`- ${title}:`);

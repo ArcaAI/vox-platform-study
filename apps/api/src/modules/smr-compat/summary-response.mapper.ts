@@ -158,18 +158,26 @@ export function mapGenerateToV1Summary(content: string, meta: SummaryMappingMeta
  * v1 (`previous_visit_service.py:215-221`). Only these exact titles are treated
  * as section headers; the structured output always carries all five, in order.
  *
- * TASK-634 D-09: order and naming come from the RUNNING v1 pod's `display_titles`
- * — `Latest Dept Note`, NOT `Latest Department Note`. Parsing is title-matched,
- * so these MUST stay identical to the FORMAT block of the v1 pre-summary body
- * (`V1_PRE_SUMMARY_TEMPLATE` in `summary-prompt.builder.ts`); any drift returns
- * an EMPTY `structured_data.sections`.
+ * Order and naming are v1's, verbatim — `Latest Department Note`, NOT
+ * `Latest Dept Note`. Parsing is title-matched, so these MUST stay identical to
+ * the FORMAT block of the v1 pre-summary body (`V1_PRE_SUMMARY_TEMPLATE` in
+ * `summary-prompt.builder.ts`); any drift silently absorbs the unmatched headers
+ * into the preceding section and pads the rest with "Not available".
+ *
+ * ⚠ TASK-634 D-09 asserted the opposite (`Latest Dept Note`, and this list in a
+ * different order), citing the running v1 pod. That was wrong: a byte diff of
+ * the v1 source body against TASK-634's own output differs in the FORMAT block
+ * ALONE, and the `309a9cd13792` hash it recorded as v1 provenance is the hash of
+ * its own rewrite. Restored to v1 (`previous_visit_service.py:215-221`) together
+ * with the template. Do not "correct" these back without re-deriving from
+ * `previous_visit_service.py` and re-hashing.
  */
 export const PRE_SUMMARY_DISPLAY_TITLES = [
   'Confirmed & Provisional Diagnoses',
-  'Investigations (Latest Dept Note)',
+  'Plan of Care (Latest Department Note)',
+  'Investigations (Latest Department Note)',
+  'Medications Prescribed (Latest Department Note)',
   'Diagnostics & Trends',
-  'Plan of Care (Latest Dept Note)',
-  'Medications Prescribed (Latest Dept Note)',
 ] as const;
 
 const PRE_SUMMARY_NOT_AVAILABLE = 'Not available';

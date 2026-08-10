@@ -158,9 +158,9 @@ describe('buildPreSummaryPrompt (v1 1:1 — TASK-634 D-08)', () => {
       language: 'en',
     }) as PreSummaryRequest;
 
-  it('carries the v1 pre-summary body byte-exact (sha256 309a9cd1…, 3091 B)', () => {
-    expect(sha256(V1_PRE_SUMMARY_TEMPLATE)).toBe('309a9cd137925d3469df5b52ed3cc4ff5647f4d21b67b8736ba2cf21496a4e32');
-    expect(Buffer.byteLength(V1_PRE_SUMMARY_TEMPLATE, 'utf8')).toBe(3091);
+  it('carries the v1 pre-summary body byte-exact (sha256 d1b71800…, 3155 B)', () => {
+    expect(sha256(V1_PRE_SUMMARY_TEMPLATE)).toBe('d1b718001948db0aa05607803e96f30b429946e73774964eb6353c95b039b5ef');
+    expect(Buffer.byteLength(V1_PRE_SUMMARY_TEMPLATE, 'utf8')).toBe(3155);
     expect(V1_PRE_SUMMARY_TEMPLATE).toBe(readFixture('template.txt'));
   });
 
