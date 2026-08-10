@@ -22,9 +22,10 @@ import { PreSummaryRequest } from './dto/pre-summary.request';
 import type { PreSummaryResponse, SummaryResponse, TokenUsage } from './dto/summary.response';
 import { SyncSummaryRequest } from './dto/sync-summary.request';
 import { SmrCompatTemplateService } from './smr-compat-template.service';
-import { buildPreSummaryPrompt, buildSummaryPrompt } from './summary-prompt.builder';
+import { buildSummaryPrompt } from './summary-prompt.builder';
 import { mapGenerateToV1PreSummary, mapGenerateToV1Summary } from './summary-response.mapper';
-import { ENHANCED_SUMMARY_SCHEMA, SIMPLIFIED_SUMMARY_SCHEMA } from './summary-schemas';
+import { ENHANCED_SUMMARY_SCHEMA } from './summary-schemas';
+import { buildV1PreSummaryPrompt, buildV1SummaryPrompt } from './v1-summary-prompt.builder';
 
 // Codes that can occur ONLY while establishing the connection, i.e. before any
 // request bytes reached SMR. `/generate` is non-idempotent (billable
@@ -345,15 +346,52 @@ export class SmrCompatController {
     // metadata aliases, else session_type) — feeds v1 dept×visit prompt steering.
     const { department, visitType } = resolveDepartmentVisit(body, sessionData);
 
-    const { system, user } = buildSummaryPrompt(sessionData, {
-      department,
-      visitType,
-      specialty: body.specialty,
-      encounterType: body.encounter_type,
-      language,
-      includePreSummary,
-      governedInstruction,
-      dnaStyleText,
+    // The DEFAULT (v1) path assembles through `buildV1SummaryPrompt`, where the
+    // instruction template and the response schema are a MATCHED PAIR and travel
+    // together: `responseSchema` is derived from the SAME v1 department schema
+    // the prompt embeds. Binding `response_format` to an unrelated schema — as
+    // the generic Simplified schema previously did — is precisely what stopped
+    // the LLM following the template, because strict structured output always
+    // overrides prose instructions. See `v1-summary-prompt.builder.ts`.
+    //
+    // `use_enhanced_format: true` is EXEMPT and keeps the pre-existing generic
+    // assembly. That flag is an explicit request for the declared
+    // `EnhancedMedicalSummary` wire contract (§3.3, frozen in TASK-560 §5.4);
+    // serving template-shaped keys to a caller that asked for it by name would
+    // break them. Those callers therefore do NOT get template adherence — the
+    // enhanced contract has no room to express a department's sections. Moving
+    // them over is an owner decision, not a silent side effect of this change.
+    const v1Assembled = useEnhanced
+      ? null
+      : buildV1SummaryPrompt(sessionData, { department, visitType, includePreSummary, governedInstruction, dnaStyleText });
+
+    const { system, user } =
+      v1Assembled ??
+      buildSummaryPrompt(sessionData, {
+        department,
+        visitType,
+        specialty: body.specialty,
+        encounterType: body.encounter_type,
+        language,
+        includePreSummary,
+        governedInstruction,
+        dnaStyleText,
+      });
+
+    const responseSchema = v1Assembled?.responseSchema ?? ENHANCED_SUMMARY_SCHEMA;
+
+    this.logger.log({
+      message: 'SMR compat summary prompt assembled',
+      assembly: v1Assembled ? 'v1-template' : 'generic-enhanced',
+      department: department ?? null,
+      visitType: visitType ?? null,
+      resolvedDepartmentKey: v1Assembled?.resolvedDepartmentKey ?? null,
+      resolvedVisitType: v1Assembled?.resolvedVisitType ?? null,
+      // Section COUNT only — schema field names are non-PHI structure, but the
+      // count alone answers "did the template's sections reach the model?".
+      schemaSections: Array.isArray(responseSchema.required) ? responseSchema.required.length : null,
+      hasGovernedInstruction: Boolean(governedInstruction?.trim()),
+      correlationId: this.clsService.getId(),
     });
 
     const baseRequest: SmrGenerateRequest = {
@@ -363,7 +401,7 @@ export class SmrCompatController {
       max_tokens: body.max_tokens,
       response_format: {
         type: 'json_schema',
-        json_schema: useEnhanced ? ENHANCED_SUMMARY_SCHEMA : SIMPLIFIED_SUMMARY_SCHEMA,
+        json_schema: responseSchema,
         strict: true,
       },
     };
@@ -553,7 +591,11 @@ export class SmrCompatController {
 
   /** Build the pre-summary `SmrGenerateRequest` (shared by sync + streaming). */
   private buildPreSummaryRequest(body: PreSummaryRequest, governedInstruction?: string, dnaStyleText?: string): SmrGenerateRequest {
-    const { system, user } = buildPreSummaryPrompt(body, { governedInstruction, dnaStyleText });
+    // v1 body + substitution unchanged (checksum-locked, and its FORMAT block
+    // must stay in lockstep with `PRE_SUMMARY_DISPLAY_TITLES`); the v1 wrapper
+    // adds only the system-message adherence directive that makes the FORMAT
+    // block a contract rather than a suggestion.
+    const { system, user } = buildV1PreSummaryPrompt(body, { governedInstruction, dnaStyleText });
     return {
       system_prompt: system,
       prompt: user,

@@ -272,13 +272,43 @@ describe('SmrCompatController', () => {
       expect(policy.resolveSmrSelection).toHaveBeenCalledWith('tenant-from-key');
     });
 
-    it('selects the Simplified schema when use_enhanced_format is false', async () => {
-      http.axiosRef.post.mockResolvedValue({ data: { content: JSON.stringify({ chief_complaint: 'x', summary: 'y' }) } });
+    // The default path now assembles through `buildV1SummaryPrompt`, so the
+    // response schema is v1's — derived from the department × visit-type
+    // template rather than the generic Simplified shape. With no department on
+    // the request that is v1's own SOAP fallback (`JSON_RESPONSE_SPEC`).
+    it('selects the v1 template-derived schema when use_enhanced_format is false', async () => {
+      http.axiosRef.post.mockResolvedValue({ data: { content: JSON.stringify({ subjective: 'x', plan: 'y' }) } });
       await invokeSummary(syncRequest({ use_enhanced_format: false }));
       const [, body] = http.axiosRef.post.mock.calls[0];
       expect(body.response_format.type).toBe('json_schema');
-      expect(body.response_format.json_schema.title).toBe('SimplifiedMedicalSummary');
+      expect(body.response_format.json_schema.title).toBe('V1Summary_generic_new_referral');
+      expect(body.response_format.json_schema.required).toEqual(['subjective', 'objective', 'assessment', 'plan']);
       expect(body.response_format.strict).toBe(true);
+    });
+
+    // The regression this whole path exists to prevent: the schema the model is
+    // constrained by must be the one the department template implies, or the
+    // template cannot be followed no matter what the prompt says.
+    it('constrains the response to the department template sections (rheumatology × follow-up)', async () => {
+      http.axiosRef.post.mockResolvedValue({ data: { content: JSON.stringify({ diagnosis: 'x', plan: 'y' }) } });
+      await invokeSummary(syncRequest({ department: 'Rheumatology', visit_type: 'Follow-up' }));
+      const [, body] = http.axiosRef.post.mock.calls[0];
+      expect(body.response_format.json_schema.required).toEqual([
+        'diagnosis',
+        'disease_activity',
+        'current_issues',
+        'medication_review_rx',
+        'review_on',
+        'tests_to_do',
+        'advice',
+        'plan',
+        'consultation_notes',
+        'lab_reports',
+      ]);
+      // The same schema is echoed inside v1's STRICT JSON RESPONSE FORMAT block,
+      // so prompt and wire constraint agree.
+      expect(body.prompt).toContain('Conform EXACTLY to this JSON schema');
+      expect(body.prompt).toContain('"disease_activity"');
     });
 
     it('selects the Enhanced schema when use_enhanced_format is true', async () => {
@@ -522,9 +552,11 @@ describe('SmrCompatController', () => {
       expect(translateCalled).toBe(expectTranslate);
 
       // The note is English either way — translation improves transcript
-      // fidelity, it is not what guarantees the output language.
+      // fidelity, it is not what guarantees the output language. Under the v1
+      // assembly the requirement rides v1's OWN `{conversation_language}`
+      // placeholder rather than a separate appended directive.
       const smrCall = httpLocal.axiosRef.post.mock.calls.find((c: unknown[]) => String(c[0]).includes('/api/v1/generate'));
-      expect(smrCall![1].system_prompt).toContain('Write ALL summary content in English');
+      expect(smrCall![1].prompt).toContain('Use the English for all values');
     });
 
     it('forces the summary OUTPUT language to English when the transcript is translated (AC: EN summary from a non-English transcript)', async () => {
@@ -570,10 +602,14 @@ describe('SmrCompatController', () => {
 
       const smrCall = httpLocal.axiosRef.post.mock.calls.find((c: unknown[]) => String(c[0]).includes('/api/v1/generate'));
       expect(smrCall![1].prompt).toContain('EN:ചോദ്യം'); // transcript translated
-      // TASK-650: the bare `Language: X` label was replaced by an explicit
-      // directive that also overrides the department template's own
-      // "content in conversation language" clause.
-      expect(smrCall![1].system_prompt).toContain('Write ALL summary content in English'); // output forced to English
+      // TASK-650 R1 survives the v1 assembly: rather than appending a directive
+      // that competes with the department template's own "content in
+      // conversation language" clause, `{conversation_language}` — the very
+      // token that clause defers to — is substituted with English, so v1's own
+      // monolingual-policy lines carry the requirement.
+      expect(smrCall![1].prompt).toContain('CONVERSATION LANGUAGE:\nEnglish');
+      expect(smrCall![1].prompt).toContain('Use the English for all values');
+      expect(smrCall![1].prompt).not.toContain('Malayalam');
       expect(smrCall![1].system_prompt).not.toContain('Malayalam');
     });
 
@@ -834,7 +870,9 @@ describe('SmrCompatController', () => {
 
       expect(template.resolveGovernedInstruction).toHaveBeenCalledWith('tenant-1', 'Cardiology', 'revisit', expect.objectContaining({ visitType: expect.any(String) }));
       const [, body] = http.axiosRef.post.mock.calls[0];
-      expect(body.system_prompt).toContain('capture ejection fraction and rhythm');
+      // v1 places the department body as the user-prompt PREFACE, ahead of the
+      // session scaffold and the strict-JSON rule block.
+      expect(body.prompt).toContain('capture ejection fraction and rhythm');
     });
 
     it('falls back to the static steering (no governed instruction) when no tenant department matches', async () => {
@@ -844,8 +882,11 @@ describe('SmrCompatController', () => {
       await invokeSummary(syncRequest({ department: 'Rheumatology', visit_type: 'New Referral' }));
 
       const [, body] = http.axiosRef.post.mock.calls[0];
-      // Static rheumatology×new_referral steering still applies (v1 field set).
-      expect(body.system_prompt).toContain('Department-specific documentation focus');
+      // With no governed body there is no preface — exactly v1's state for a
+      // schema-only department. The rheumatology×new_referral SCHEMA still
+      // steers the output, which is what the field set was ever for.
+      expect(body.response_format.json_schema.title).toBe('V1Summary_rheumatology_new_referral');
+      expect(body.response_format.json_schema.required).toContain('patient_global_health');
     });
 
     it('resolves the pre-summary governed template with the pre-summary prompt type', async () => {
