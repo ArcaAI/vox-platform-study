@@ -17,7 +17,7 @@ disagree with those declarations.
 | … tier `env` | 110 |
 | … tier `global-kv` | 9 |
 | … tier `vault-kv` | 26 |
-| `turbo.json#globalEnv` entries | 158 |
+| `turbo.json#globalEnv` entries | 161 |
 
 ## Variables
 
