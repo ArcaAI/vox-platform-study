@@ -68,7 +68,39 @@ Mapper and template ship in the same image, so the prompt must come from the DB.
 Target sha256 for the ArcaAI row after the fix:
 `d1b718001948db0aa05607803e96f30b429946e73774964eb6353c95b039b5ef` (3155 B).
 
-### 2.2 CONFIRMED — browser pre-summary never sends test results (P1)
+### 2.2 CONFIRMED — but it is a MISSING CAPABILITY, not a one-line hardcode (P1)
+
+> **Investigated 2026-08-10. The hardcode is a symptom; there is no test-results
+> data anywhere in ALaaS to send.** Every layer between the EMR and the browser
+> hook was traced and none carries labs/tests:
+>
+> | Layer | Evidence |
+> |---|---|
+> | EMR payload | `apps/web_ui/public/mock/patientResponse.json` — `data` has `patient`, `consultant`, `isNewVisit`, `firstVisitInfo`, `vitals`, `encounters`. No `tests`/`labs`/`investigations`/`pathology`/`diagnostics`. |
+> | Intake DTO | `apps/audio-stream-svc/src/patient-data/dto/store-patient-data.dto.ts` — the field is not even **accepted** from the EMR. |
+> | Persisted entity | `apps/audio-stream-svc/src/patient-data/patient.entity.ts` — no lab/test column exists. |
+> | The endpoint the hook calls | `GET /api/v1/patient/context/:regNo/:deptId` → `previous-casenotes.service.ts:1318-1367` returns exactly `{ success, encountersWithCaseNotes, recentVitals, previousCaseNotesSummary }`. |
+>
+> Lab values *do* appear, but only as free-text inside `encounters[].CaseNotes[].text`
+> (e.g. `"S Creatinine : WNL."` inline in clinical prose). Extracting them would be
+> inventing a mapping — explicitly out of scope.
+>
+> **Revised scope:** populating `formatted_test_results` requires a new backend
+> capability — EMR field → intake DTO → entity column → `/context` response — not
+> an edit to `useClinicalLogic.js`. Phase 2 below is therefore **blocked**, and
+> the work belongs in a new ticket against `apps/audio-stream-svc` + the EMR
+> integration. **Until that lands, the hardcoded `""` is honest**: there is
+> genuinely nothing to send.
+>
+> **Escalation — `:1255-1256` is worse than a duplicate.** The summary path sends
+> `testResultsText: recentVitalsRef.current`, i.e. it labels **vitals** as test
+> results. Downstream (and the LLM) cannot distinguish "no labs available" from
+> "these labs say X"; it will read vitals text as lab content. Recommendation:
+> **omit `testResultsText` entirely** rather than substituting vitals — an honest
+> absence beats a mislabelled substitute. Vitals already travel in their own field.
+> This is now the actionable half of §2.2.
+
+### 2.2.1 The original finding (kept for the record)
 
 `ALaaSv3.0/apps/web_ui/hooks/useClinicalLogic.js:1790`
 
@@ -117,12 +149,12 @@ sends. Specifically check:
 | 1.3 | Verify **inside Postgres** that `sha256(PromptVersion.content)` equals the target above. Do not trust an application read. | sonnet-5 | medium |
 | 1.4 | Re-run the reference request and confirm the supplied vitals / labs / prior visits are reflected in `pre_summary`. | sonnet-5 | medium |
 
-### Phase 2 — ALaaS: stop dropping test results
+### Phase 2 — ALaaS: test results
 
 | # | Task | Agent tier | Effort |
 |---|---|---|---|
-| 2.1 | Find the real test-results field in the patient payload (`apps/web_ui/public/mock/patientResponse.json` shows the shape) and format it like the sibling `formatted_vitals` / `formatted_previous_visits` builders in the same function. **If no such field exists, STOP and report** — do not invent a mapping and do not substitute vitals. | sonnet-5 | medium |
-| 2.2 | Report on whether `testResultsText: recentVitalsRef.current` (`:1256`) should remain once real results flow. | sonnet-5 | medium |
+| ~~2.1~~ | ~~Find the real test-results field and wire it up~~ — **BLOCKED 2026-08-10, see §2.2.** No such field exists at any layer; this needs a new backend capability (EMR → DTO → entity → `/context`), tracked separately against `apps/audio-stream-svc`. The `""` hardcode stays until then. | — | — |
+| 2.2 | **Stop mislabelling vitals as test results**: omit `testResultsText` (`useClinicalLogic.js:1256`) instead of copying `recentVitals` into it. Vitals already travel in their own field, so this loses no information and stops the model reading vitals as lab results. Verify the gateway tolerates the field's absence (it does — `test_results_text` is optional and the builder guards on it, `summary-prompt.builder.ts:180-181`). | sonnet-5 | medium |
 
 ### Phase 3 — make silent context loss impossible
 

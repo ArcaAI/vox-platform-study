@@ -49,10 +49,28 @@ grep -rn "translate_to_english|translateToEnglish" apps/audio-stream-svc/src app
 
 **Consequence: the raw Malayalam / code-switched transcript reaches the LLM untranslated.**
 
-### 2.2 ALaaS asserts `language: 'en'` regardless of the actual conversation
+### 2.2 ~~ALaaS asserts `language: 'en'`~~ — **CORRECTED 2026-08-10: it forwards the TRUE language, and that made things worse, not better**
 
-`apps/audio-stream-svc/src/queue/medical-summary.processor.ts:448` — `language: language || 'en'`.
-So HOPE is told "English" while receiving a Malayalam transcript. Nothing reconciles the two.
+My original reading of `medical-summary.processor.ts:448` (`language: language || 'en'`)
+was wrong. That is not a hardcode — it forwards the real STT source language, and
+`|| 'en'` only covers a genuinely absent value.
+
+The chain: `useClinicalLogic.js:762` — **`useState("ml-IN")`** — is the same value
+that drives the live STT session (`:880`) and is forwarded at `:1240` through
+`triggerBackgroundSummary` → `TriggerSdkSummaryDto.language` → job data →
+`callAgenticSdkSummarize`. Locales come from `LANGUAGE_MAP`
+(`apps/web_ui/src/constants.js`): `ml-IN | en-US | hi-IN | ta-IN`.
+
+**So the browser's default language is Malayalam.** HOPE was therefore told
+`ml-IN`, `resolveV1LanguageName` reduced it to the base subtag `ml` → `Malayalam`,
+and the old directive read **`Language: Malayalam`**. The model was not merely
+drifting toward the transcript's language — **it was explicitly instructed to write
+Malayalam**, and the 13 templates' "conversation language" clause agreed with it.
+That is a more direct cause than §2.3/§2.4 alone and supersedes them in weight.
+
+The real gap remains the one the grep found: **nothing in ALaaS ever set
+`translate_to_english`**, so the Sarvam path never ran and nothing ever forced the
+output back to English.
 
 ### 2.3 Thirteen department templates instruct the model to write in the conversation language
 
@@ -148,7 +166,41 @@ content, and forecloses future Malayalam support. Fix at the edge.
 
 ---
 
-## 6. Change History
+## 6. ⚠ OPEN — R1 is only satisfied for Malayalam
+
+Phase 1 + Phase 2 are implemented, and the combination works for `ml`:
+ALaaS sets `translate_to_english: true` ⇒ the gateway translates the transcript
+**and** forces `session_metadata.language = 'en'`
+(`smr-compat.controller.ts:235`) ⇒ the directive resolves to English.
+
+**But R1 says English in ALL cases, and two paths still produce non-English:**
+
+1. **Hindi / Tamil.** `LANGUAGE_MAP` offers `hi-IN` and `ta-IN`. Neither triggers
+   the translate flag (it keys on Malayalam), so the directive resolves to Hindi
+   or Tamil and the summary is written in that language.
+2. **Any `ml` request where `translate_to_english` is absent** — e.g. a caller
+   other than the browser summary path, or the flag being dropped — falls back to
+   `Language: Malayalam`.
+
+This is the direct consequence of an ambiguity I introduced: the ticket's **R2**
+("honour an explicitly requested non-English output language") is *my* wording,
+not the owner's. The owner said **"by default, summarization in English for all
+cases"**. R2 as implemented lets a non-English `language` value override that.
+
+**Decision needed:**
+- **(a) English always** — the summary directive is hardcoded to English
+  regardless of `language`, which becomes a SOURCE-language hint only. Simplest,
+  matches the owner's words literally, and makes Hindi/Tamil safe by construction.
+- **(b) Keep R2** — non-English output stays reachable, and the translate trigger
+  must then widen from "Malayalam" to "any non-English source", so English remains
+  the default for every locale.
+
+Recommendation: **(a)**, with `translate_to_english` still driving Sarvam for
+non-English sources so the model reads English input rather than translating in
+its head. (b) is only worth the complexity if a customer genuinely wants
+vernacular notes.
+
+## 7. Change History
 
 | Date | Change |
 |---|---|

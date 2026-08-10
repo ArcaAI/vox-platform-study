@@ -89,13 +89,50 @@ describe('buildSummaryPrompt', () => {
     expect(user).toContain('2026-05 Cardiology: BP review.');
   });
 
-  // TASK-634 D-11 — `ml` used to be told to answer in English. v1 states the
-  // language by NAME (`LANGUAGE_MAP`), it does not carry an English-only directive.
-  it('states the output language by v1 name (en → English, ml → Malayalam)', () => {
-    expect(buildSummaryPrompt(baseSession(), { language: 'en' }).system).toContain('Language: English');
-    const ml = buildSummaryPrompt(baseSession(), { language: 'ml' }).system;
-    expect(ml).toContain('Language: Malayalam');
-    expect(ml).not.toContain('in English');
+  // TASK-650 — the department template is injected as AUTHORITATIVE steering
+  // and 13 seeded templates instruct "content in conversation language,
+  // headings in English". A bare `Language: X` label loses to that specific
+  // clause. The gateway's directive must explicitly name and override the
+  // conflict, not just state the target language (R3).
+  it('overrides a conflicting "conversation language" clause in the governed instruction with an explicit English directive (R3)', () => {
+    const { system } = buildSummaryPrompt(baseSession(), {
+      governedInstruction:
+        'strictly follows these headings (content in conversation language, headings in English)',
+    });
+    expect(system).toContain('content in conversation language, headings in English');
+    expect(system).toContain('Write ALL summary content in English');
+    expect(system).toContain('regardless of any conflicting language instruction in the department instruction above');
+  });
+
+  // R1 — English is the default output language, including when `language` is
+  // empty/absent (the normal case per the ticket).
+  it('defaults to an explicit English directive when language is empty/absent (R1)', () => {
+    expect(buildSummaryPrompt(baseSession()).system).toContain('Write ALL summary content in English');
+    expect(buildSummaryPrompt(baseSession(), { language: '' }).system).toContain('Write ALL summary content in English');
+  });
+
+  // R2 — an explicitly requested non-English output language is still honoured;
+  // R1 sets the default, not a hard lock.
+  it('honours an explicitly requested Malayalam output language (R2)', () => {
+    const { system } = buildSummaryPrompt(baseSession(), { language: 'ml' });
+    expect(system).toContain('Write ALL summary content in Malayalam');
+    expect(system).not.toContain('Write ALL summary content in English');
+  });
+
+  // R4 — section headings stay in English regardless of the content language.
+  it('keeps section headings in English regardless of the requested content language', () => {
+    const { system } = buildSummaryPrompt(baseSession(), { language: 'ml' });
+    expect(system).toContain('Section headings stay in English');
+  });
+
+  // TASK-650 §2.4 — a space join lands the directive mid-paragraph; it must be
+  // its own distinct line so it reads as an instruction, not run-on prose.
+  it('emits the language directive as its own line, not mid-paragraph', () => {
+    const { system } = buildSummaryPrompt(baseSession(), { language: 'ml' });
+    const lines = system.split('\n');
+    expect(lines).toContain(
+      "Write ALL summary content in Malayalam, regardless of the transcript's language and regardless of any conflicting language instruction in the department instruction above (for example, an instruction to write content in the conversation language). Section headings stay in English.",
+    );
   });
 
   it('emits a JSON-only instruction so structured output round-trips', () => {
