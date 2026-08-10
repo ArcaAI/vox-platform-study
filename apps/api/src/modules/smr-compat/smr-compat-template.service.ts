@@ -1,11 +1,29 @@
 import { PromptResolutionService } from '@arcaai/applications';
 import { DepartmentRepository } from '@arcaai/domains';
 import { Injectable, Logger } from '@nestjs/common';
+import { ClsService } from 'nestjs-cls';
 import { matchTenantDepartment } from './department-match';
 import { normalizeVisitType } from './dept-templates';
 
 /** The resolver's summary prompt-type union (`PromptResolutionParams.promptType`). */
 export type SummaryPromptType = 'new-patient' | 'revisit' | 'pre-summary';
+
+/**
+ * Request-scoped identifiers the resolver itself never sees, carried purely so
+ * the INFO audit line can answer "which template did THIS doctor's request for
+ * THIS department and visit type actually get?".
+ *
+ * Deliberately NOT resolution inputs: `visitType` is the RAW v1 string (the
+ * resolver takes the already-bucketed `new-patient`/`revisit`), and `doctorId`
+ * selects no template today — it only drives DNA writing style. Passing them
+ * here keeps the audit line complete without implying either is a selector.
+ */
+export interface GovernedInstructionAudit {
+  /** Raw v1 `visit_type` as the client sent it, before bucketing. */
+  visitType?: string;
+  /** v1 `doctor_id` as the client sent it (a clinician id, not PHI). */
+  doctorId?: string;
+}
 
 /**
  * Bridges the v1-compat SMR shim to HOPE v2's real tenant `Department` +
@@ -30,6 +48,7 @@ export class SmrCompatTemplateService {
   constructor(
     private readonly departmentRepository: DepartmentRepository,
     private readonly promptResolutionService: PromptResolutionService,
+    private readonly clsService: ClsService,
   ) {}
 
   /** Map a v1 visit-type string to the resolver's summary prompt-type bucket. */
@@ -64,17 +83,30 @@ export class SmrCompatTemplateService {
    * because the SYSTEM pre-summary template still carries un-interpolated
    * single-brace `{placeholders}` that would reach the LLM literally.
    */
-  async resolveGovernedInstruction(tenantId: string, department: string | undefined, promptType: SummaryPromptType): Promise<string | undefined> {
+  async resolveGovernedInstruction(
+    tenantId: string,
+    department: string | undefined,
+    promptType: SummaryPromptType,
+    audit: GovernedInstructionAudit = {},
+  ): Promise<string | undefined> {
+    let departmentId: string | null = null;
+
     try {
-      const resolved =
-        promptType === 'pre-summary'
-          ? await this.promptResolutionService.resolve({ tenantId, promptType })
-          : await this.resolveDepartmentScoped(tenantId, department, promptType);
+      let resolved: Awaited<ReturnType<PromptResolutionService['resolve']>> | null;
+      if (promptType === 'pre-summary') {
+        resolved = await this.promptResolutionService.resolve({ tenantId, promptType });
+      } else {
+        const scoped = await this.resolveDepartmentScoped(tenantId, department, promptType);
+        departmentId = scoped?.departmentId ?? null;
+        resolved = scoped?.resolved ?? null;
+      }
 
-      if (!resolved || resolved.resolvedFrom === 'default') return undefined;
+      // A `default`-tier resolution is deliberately DISCARDED (see the doc block
+      // above), so it is reported as static steering — not as a served template.
+      const governed = !resolved || resolved.resolvedFrom === 'default' ? undefined : resolved.content?.trim() || undefined;
 
-      const content = resolved.content?.trim();
-      return content ? content : undefined;
+      this.logResolution({ tenantId, department, departmentId, promptType, audit, resolved, served: governed !== undefined });
+      return governed;
     } catch (err) {
       // Includes the pre-summary chain's fail-closed 503: the compat shim must
       // degrade to the static v1 pre-summary path, never fail the request.
@@ -83,26 +115,88 @@ export class SmrCompatTemplateService {
         promptType,
         reason: err instanceof Error ? err.message : undefined,
       });
+      this.logResolution({
+        tenantId,
+        department,
+        departmentId,
+        promptType,
+        audit,
+        resolved: null,
+        served: false,
+        error: err instanceof Error ? err.message : String(err),
+      });
       return undefined;
     }
   }
 
   /**
+   * The ONE INFO-level line that makes prompt selection answerable in production
+   * without a debug build.
+   *
+   * `PromptResolutionService` already traces the same decision, but at `debug`
+   * and one layer down, and this shim discards everything except the content —
+   * so on a normal deployment there was no way to tell WHICH template served a
+   * given request, or why a department fell back. That is the first question
+   * every "wrong summary" investigation asks.
+   *
+   * Emitted on EVERY resolution, including the misses: `served: false` with
+   * `resolvedFrom: 'default'` means the governed tier was skipped and the static
+   * v1 dept×visit steering ran instead, and a null `departmentId` alongside a
+   * non-empty `department` means the free-form name matched no tenant row.
+   *
+   * Identifiers only — never prompt content, and no patient-identifying field.
+   * `doctorId` is a clinician id (not PHI) and is carried because per-doctor
+   * behaviour is the next thing this chain will grow.
+   */
+  private logResolution(input: {
+    tenantId: string;
+    department: string | undefined;
+    departmentId: string | null;
+    promptType: SummaryPromptType;
+    audit: GovernedInstructionAudit;
+    resolved: Awaited<ReturnType<PromptResolutionService['resolve']>> | null;
+    served: boolean;
+    error?: string;
+  }): void {
+    const { resolved } = input;
+    this.logger.log({
+      message: 'SMR compat instruction template resolved',
+      capability: input.promptType === 'pre-summary' ? 'pre-summary' : 'summary',
+      promptType: input.promptType,
+      tenantId: input.tenantId,
+      doctorId: input.audit.doctorId ?? null,
+      department: input.department?.trim() || null,
+      departmentId: input.departmentId,
+      visitType: input.audit.visitType?.trim() || null,
+      promptTemplateId: resolved?.promptId ?? null,
+      promptVersionNumber: resolved?.resolvedVersionNumber ?? null,
+      departmentAgentId: resolved?.resolvedAgentId ?? null,
+      resolvedFrom: resolved?.resolvedFrom ?? null,
+      // What actually steered the LLM — the governed template, or the hardcoded
+      // v1 field-set guidance in `dept-templates.ts`.
+      served: input.served ? 'governed-template' : 'static-v1-steering',
+      correlationId: this.clsService.getId(),
+      ...(input.error ? { error: input.error } : {}),
+    });
+  }
+
+  /**
    * Summary route: free-form department NAME → real tenant `Department` UUID →
    * that department's governed visit-type template. `null` when no tenant
-   * department matches (→ static steering).
+   * department matches (→ static steering). Returns the matched department id
+   * alongside the resolution so the audit line can report which row was hit.
    */
   private async resolveDepartmentScoped(
     tenantId: string,
     department: string | undefined,
     promptType: Exclude<SummaryPromptType, 'pre-summary'>,
-  ): Promise<Awaited<ReturnType<PromptResolutionService['resolve']>> | null> {
+  ): Promise<{ resolved: Awaited<ReturnType<PromptResolutionService['resolve']>>; departmentId: string } | null> {
     if (!department?.trim()) return null;
 
     const departments = await this.departmentRepository.findAllByTenant(tenantId);
     const match = matchTenantDepartment(departments, department);
     if (!match) return null;
 
-    return this.promptResolutionService.resolve({ departmentId: match.id, promptType });
+    return { resolved: await this.promptResolutionService.resolve({ departmentId: match.id, promptType }), departmentId: match.id };
   }
 }
