@@ -12,20 +12,56 @@
 # Build (from repo root):
 #   docker build -f apps/nlp/Dockerfile --target production -t nlp .
 #
-# Image size note (x86_64): the locked torch 2.8.0 PyPI wheel for linux/amd64
-# bundles + pulls nvidia-* CUDA packages (~2 GB). torch >=2.8 eagerly loads some
-# CUDA libs at import, so blanket CUDA-stripping breaks `import torch`. A CPU-only
-# torch index for linux/amd64 is the correct slimming path and is tracked as a
-# follow-up (must be validated on an x86_64 CI runner). On linux/arm64 the locked
-# wheel is already CPU-only (~102 MB).
+# CPU-ONLY TORCH (TASK-647). The locked torch 2.8.0 PyPI wheel for linux/amd64
+# drags in the whole nvidia-cu12 + triton stack (~2.7 GB). `hope-nlp` requests NO
+# GPU (`base/nlp.yaml` declares no `nvidia.com/gpu`), and every GPU code path in
+# this service is already gated on `torch.cuda.is_available()` — which is False in
+# the pod regardless — so that stack is weight the process can never execute. On a
+# single-node cluster with `maxSurge: 0`, pull time IS downtime: NLP served zero
+# endpoints for 24+ minutes during the 2026-08-09 rollout.
+#
+# `--extra-index-url` alone does NOT work here: under `--frozen` uv installs the
+# exact URL+hash recorded in the lock and ignores extra indexes, silently producing
+# the CUDA build anyway. The working form (proven by TASK-642 on apps/tts) is an
+# explicit `--no-install-package` exclusion of the CUDA set plus a separate pinned
+# install from the PyTorch CPU index. Measured on linux/amd64: see TASK-647 §4.
+#
+# If NLP is ever given a GPU, the answer is a SECOND image variant, not putting
+# CUDA back in the default image (TASK-647 OD-1).
 # ─────────────────────────────────────────────────────────────────────────────
 
 # Base image is parameterized so CI can inject the registry-qualified tag while
 # local builds default to the locally-built `hope-python-base:latest`.
 ARG BASE_IMAGE=hope-python-base:latest
+# Must match the `torch` version resolved for `nlp` in the workspace lock. The CPU
+# index publishes the same version as `<version>+cpu`.
+ARG TORCH_VERSION=2.8.0
+ARG TORCH_CPU_INDEX=https://download.pytorch.org/whl/cpu
 
 # ── Stage 1: builder ─────────────────────────────────────────────────────────
 FROM ${BASE_IMAGE} AS builder
+ARG TORCH_VERSION
+ARG TORCH_CPU_INDEX
+
+# The CUDA stack `torch` 2.8.0 declares on linux/x86_64. Skipped from the frozen
+# sync and replaced by the CPU-only wheel below; on aarch64 these are already
+# excluded by their environment markers, so the flags are simply no-ops there.
+ENV UV_NO_CUDA_SKIPS="--no-install-package torch \
+    --no-install-package triton \
+    --no-install-package nvidia-cublas-cu12 \
+    --no-install-package nvidia-cuda-cupti-cu12 \
+    --no-install-package nvidia-cuda-nvrtc-cu12 \
+    --no-install-package nvidia-cuda-runtime-cu12 \
+    --no-install-package nvidia-cudnn-cu12 \
+    --no-install-package nvidia-cufft-cu12 \
+    --no-install-package nvidia-cufile-cu12 \
+    --no-install-package nvidia-curand-cu12 \
+    --no-install-package nvidia-cusolver-cu12 \
+    --no-install-package nvidia-cusparse-cu12 \
+    --no-install-package nvidia-cusparselt-cu12 \
+    --no-install-package nvidia-nccl-cu12 \
+    --no-install-package nvidia-nvjitlink-cu12 \
+    --no-install-package nvidia-nvtx-cu12"
 
 # build-essential: some pure-source deps (e.g. editdistpy via symspellpy) may
 # build from sdist when no matching wheel is published for the target platform.
@@ -53,13 +89,22 @@ COPY packages/py-runtime-models ./packages/py-runtime-models
 # file:///app/packages/py-env". Dependency-light and rarely changed.
 COPY packages/py-env ./packages/py-env
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --package nlp --no-dev --no-install-project --no-editable
+    uv sync --frozen --package nlp --no-dev --no-install-project --no-editable \
+        ${UV_NO_CUDA_SKIPS}
 
-# Layer 2: copy source + install the package itself.
+# Layer 1b: CPU-only torch, pinned to the lock's version. Kept in its own layer so
+# it is cached alongside the lock rather than re-run on every source edit.
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install --python /app/.venv/bin/python \
+        --index-url "${TORCH_CPU_INDEX}" "torch==${TORCH_VERSION}"
+
+# Layer 2: copy source + install the package itself. `--inexact` keeps the CPU
+# torch installed above (a plain sync would prune it as extraneous).
 COPY apps/nlp/README.md ./apps/nlp/
 COPY apps/nlp/src ./apps/nlp/src
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --package nlp --no-dev --no-editable
+    uv sync --frozen --package nlp --no-dev --no-editable --inexact \
+        ${UV_NO_CUDA_SKIPS}
 
 # Slim the venv: drop bytecode + egg-info only. Do NOT delete dirs named
 # "docs"/"doc"/"tests" — some packages ship real importable submodules with
