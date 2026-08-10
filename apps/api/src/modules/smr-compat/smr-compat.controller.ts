@@ -406,6 +406,7 @@ export class SmrCompatController {
    * suite can drive it directly.
    */
   private async computeSummary(body: SyncSummaryRequest, tenantId: string): Promise<SummaryResponse> {
+    this.logSummaryContext(body);
     // TASK-600: translate the transcript to English first when requested (fail-open).
     const workingBody = await this.maybeTranslateBody(body, tenantId);
     const governed = await this.resolveSummaryGoverned(workingBody, tenantId);
@@ -469,6 +470,7 @@ export class SmrCompatController {
    * restarted, so mid-stream failures surface as a single `error` event.
    */
   private async streamSummary(res: Response, body: SyncSummaryRequest, tenantId: string, _request: RequestWithAuth): Promise<void> {
+    this.logSummaryContext(body);
     // TASK-600: translate the transcript to English first when requested (fail-open).
     const workingBody = await this.maybeTranslateBody(body, tenantId);
     const governed = await this.resolveSummaryGoverned(workingBody, tenantId);
@@ -557,6 +559,7 @@ export class SmrCompatController {
    * same v1 error shapes the summary path uses.
    */
   private async computePreSummary(body: PreSummaryRequest, tenantId: string): Promise<PreSummaryResponse> {
+    this.logPreSummaryContext(body);
     const governed = await this.templateService.resolveGovernedInstruction(tenantId, body.current_department, 'pre-summary', {
       visitType: body.visit_type,
       doctorId: body.doctor_id,
@@ -606,6 +609,7 @@ export class SmrCompatController {
    * cannot restart, so mid-stream failures surface as a single `error` event.
    */
   private async streamPreSummary(res: Response, body: PreSummaryRequest, tenantId: string): Promise<void> {
+    this.logPreSummaryContext(body);
     const governed = await this.templateService.resolveGovernedInstruction(tenantId, body.current_department, 'pre-summary', {
       visitType: body.visit_type,
       doctorId: body.doctor_id,
@@ -634,6 +638,64 @@ export class SmrCompatController {
         return null;
       },
     );
+  }
+
+  /**
+   * TASK-652 §3.1 — ONE INFO line per pre-summary request recording which
+   * context blocks were present and how large they were. Today an empty
+   * context is indistinguishable from a full one in the logs: a live request
+   * carrying real vitals/labs/prior visits produced "No contextual patient
+   * data ... were provided", and diagnosing that took a full code audit
+   * because nothing recorded what the request actually carried.
+   *
+   * PHI rule: booleans and character COUNTS only — never field content, never
+   * a preview, never a substring. `department`/`visitType`/`language` are
+   * non-PHI categorical identifiers, logged the same way the neighboring
+   * `SmrCompatTemplateService` resolution log ("SMR compat instruction
+   * template resolved") already does.
+   */
+  private logPreSummaryContext(body: PreSummaryRequest): void {
+    this.logger.log({
+      message: 'SMR compat pre-summary context received',
+      hasVitals: Boolean(body.formatted_vitals?.trim()),
+      hasTestResults: Boolean(body.formatted_test_results?.trim()),
+      hasPreviousVisits: Boolean(body.formatted_previous_visits?.trim()),
+      hasAge: Boolean(body.age?.trim()),
+      hasDob: Boolean(body.dob?.trim()),
+      hasGender: Boolean(body.gender?.trim()),
+      department: body.current_department?.trim() || null,
+      visitType: body.visit_type?.trim() || null,
+      language: body.language?.trim() || null,
+      vitalsChars: body.formatted_vitals?.length ?? 0,
+      testResultsChars: body.formatted_test_results?.length ?? 0,
+      previousVisitsChars: body.formatted_previous_visits?.length ?? 0,
+      correlationId: this.clsService.getId(),
+    });
+  }
+
+  /**
+   * TASK-652 §3.1 — the summary-path counterpart of `logPreSummaryContext`.
+   * `hasTestResults`/`hasPreviousVisits` are true when EITHER the structured
+   * array or its text fallback carries content, mirroring how
+   * `summary-prompt.builder.ts` actually consumes `session_data` (structured
+   * preferred, text fallback). `transcriptChars` sums only segment `text`
+   * lengths — never their content.
+   */
+  private logSummaryContext(body: SyncSummaryRequest): void {
+    const sessionData = body.session_data;
+    const segments = sessionData.conversation_segments ?? [];
+    this.logger.log({
+      message: 'SMR compat summary context received',
+      hasPatientInfo: Boolean(sessionData.patient_info && Object.keys(sessionData.patient_info).length > 0),
+      hasPreSummary: Boolean(sessionData.pre_summary_text?.trim()),
+      hasTestResults: Boolean((sessionData.test_results?.length ?? 0) > 0 || sessionData.test_results_text?.trim()),
+      hasPreviousVisits: Boolean((sessionData.previous_visits?.length ?? 0) > 0 || sessionData.previous_visits_text?.trim()),
+      transcriptSegments: segments.length,
+      transcriptChars: segments.reduce((sum, s) => sum + (s.text?.length ?? 0), 0),
+      includePreSummaryInContext: body.include_pre_summary_in_context === true,
+      translateToEnglish: body.translate_to_english === true,
+      correlationId: this.clsService.getId(),
+    });
   }
 
   /** `session_metadata.language` ("en"/"ml") drives output language; default "en". */

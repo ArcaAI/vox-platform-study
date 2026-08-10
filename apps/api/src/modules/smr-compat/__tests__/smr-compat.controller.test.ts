@@ -1,6 +1,6 @@
-import { HttpException, UnauthorizedException, ValidationPipe } from '@nestjs/common';
+import { HttpException, Logger, UnauthorizedException, ValidationPipe } from '@nestjs/common';
 import { PassThrough } from 'node:stream';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PreSummaryRequest } from '../dto/pre-summary.request';
 import type { PreSummaryResponse, SummaryResponse } from '../dto/summary.response';
 import { SyncSummaryRequest } from '../dto/sync-summary.request';
@@ -428,7 +428,10 @@ describe('SmrCompatController', () => {
 
       const smrCall = httpLocal.axiosRef.post.mock.calls.find((c: unknown[]) => String(c[0]).includes('/api/v1/generate'));
       expect(smrCall![1].prompt).toContain('EN:ചോദ്യം'); // transcript translated
-      expect(smrCall![1].system_prompt).toContain('Language: English'); // output forced to English
+      // TASK-650: the bare `Language: X` label was replaced by an explicit
+      // directive that also overrides the department template's own
+      // "content in conversation language" clause.
+      expect(smrCall![1].system_prompt).toContain('Write ALL summary content in English'); // output forced to English
       expect(smrCall![1].system_prompt).not.toContain('Malayalam');
     });
 
@@ -895,6 +898,226 @@ describe('SmrCompatController', () => {
       // Reasoning is NOT part of the answer — the result still parses cleanly.
       const result = sseEventData(res, 'result') as SummaryResponse;
       expect(result.summary.summary).toBe('y');
+    });
+  });
+
+  // TASK-652 §3.1 — an empty context must not be indistinguishable from a full
+  // one in the logs. One INFO line per pre-summary/summary request, booleans
+  // and lengths only — never field content.
+  describe('Context-presence logging (TASK-652 §3.1)', () => {
+    let logSpy: ReturnType<typeof vi.spyOn>;
+
+    beforeEach(() => {
+      logSpy = vi.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+    });
+
+    afterEach(() => {
+      logSpy.mockRestore();
+    });
+
+    /** All `logger.log` call payloads whose `message` matches. */
+    const logCallsFor = (message: string): Record<string, unknown>[] =>
+      logSpy.mock.calls.map(([arg]) => arg as Record<string, unknown>).filter((c) => c?.message === message);
+
+    describe('pre-summary', () => {
+      const populated = (): PreSummaryRequest =>
+        ({
+          current_department: 'Cardiology',
+          visit_type: 'Follow-up',
+          age: '54',
+          dob: '1970-01-01',
+          gender: 'F',
+          formatted_vitals: 'BP 142/88, HR 78 — SECRET_VITALS_MARKER',
+          formatted_test_results: 'Troponin 0.02 — SECRET_LABS_MARKER',
+          formatted_previous_visits: 'Visit 2026-01-01 — SECRET_VISITS_MARKER',
+          language: 'en',
+        }) as PreSummaryRequest;
+
+      it('logs true/populated booleans + lengths + identifiers for a fully-populated request (non-stream)', async () => {
+        const body = populated();
+        http.axiosRef.post.mockResolvedValue({ data: { content: '**Confirmed & Provisional Diagnoses**\n- HTN' } });
+
+        await invokePresummary(body);
+
+        const calls = logCallsFor('SMR compat pre-summary context received');
+        expect(calls).toHaveLength(1);
+        expect(calls[0]).toMatchObject({
+          hasVitals: true,
+          hasTestResults: true,
+          hasPreviousVisits: true,
+          hasAge: true,
+          hasDob: true,
+          hasGender: true,
+          department: 'Cardiology',
+          visitType: 'Follow-up',
+          language: 'en',
+          vitalsChars: body.formatted_vitals!.length,
+          testResultsChars: body.formatted_test_results!.length,
+          previousVisitsChars: body.formatted_previous_visits!.length,
+          correlationId: 'req-test-id',
+        });
+      });
+
+      it('logs false/0/null for an empty-context request (non-stream)', async () => {
+        http.axiosRef.post.mockResolvedValue({ data: { content: 'plain text' } });
+
+        await invokePresummary({} as PreSummaryRequest);
+
+        const calls = logCallsFor('SMR compat pre-summary context received');
+        expect(calls).toHaveLength(1);
+        expect(calls[0]).toMatchObject({
+          hasVitals: false,
+          hasTestResults: false,
+          hasPreviousVisits: false,
+          hasAge: false,
+          hasDob: false,
+          hasGender: false,
+          department: null,
+          visitType: null,
+          language: null,
+          vitalsChars: 0,
+          testResultsChars: 0,
+          previousVisitsChars: 0,
+        });
+      });
+
+      it('logs on the STREAMING path too', async () => {
+        const body = { ...populated(), stream: true } as PreSummaryRequest;
+        const smrStream = new PassThrough();
+        http.axiosRef.post.mockResolvedValue({ data: { task_id: 't-log' } });
+        http.axiosRef.get.mockResolvedValue({ data: smrStream });
+        const res = createMockRes();
+
+        const done = controller.presummary(body, {} as never, res as never);
+        smrStream.write(smrFrame('chunk', { content: '**Confirmed & Provisional Diagnoses**\n- HTN' }));
+        smrStream.write(smrFrame('done'));
+        smrStream.end();
+        await done;
+        await flushStream();
+
+        const calls = logCallsFor('SMR compat pre-summary context received');
+        expect(calls).toHaveLength(1);
+        expect(calls[0]).toMatchObject({ hasVitals: true, department: 'Cardiology' });
+      });
+
+      it('never logs the actual field content (PHI)', async () => {
+        const body = populated();
+        http.axiosRef.post.mockResolvedValue({ data: { content: '**Confirmed & Provisional Diagnoses**\n- HTN' } });
+
+        await invokePresummary(body);
+
+        const serialized = JSON.stringify(logSpy.mock.calls);
+        expect(serialized).not.toContain('SECRET_VITALS_MARKER');
+        expect(serialized).not.toContain('SECRET_LABS_MARKER');
+        expect(serialized).not.toContain('SECRET_VISITS_MARKER');
+        expect(serialized).not.toContain(body.dob);
+      });
+    });
+
+    describe('summary', () => {
+      const populated = (): SyncSummaryRequest =>
+        syncRequest({
+          include_pre_summary_in_context: true,
+          translate_to_english: false,
+          session_data: {
+            ...syncRequest().session_data,
+            patient_info: { name: 'SECRET_PATIENT_NAME' },
+            pre_summary_text: 'SECRET_PRESUMMARY_TEXT',
+            test_results_text: 'SECRET_TEST_RESULTS_TEXT',
+            previous_visits_text: 'SECRET_PREVIOUS_VISITS_TEXT',
+          },
+        });
+
+      it('logs true booleans + transcript counts for a fully-populated request (non-stream)', async () => {
+        const body = populated();
+        http.axiosRef.post.mockResolvedValue({ data: { content: JSON.stringify({ chief_complaint: 'x', summary: 'y' }) } });
+
+        await invokeSummary(body);
+
+        const calls = logCallsFor('SMR compat summary context received');
+        expect(calls).toHaveLength(1);
+        const expectedChars = body.session_data.conversation_segments!.reduce((sum, s) => sum + s.text.length, 0);
+        expect(calls[0]).toMatchObject({
+          hasPatientInfo: true,
+          hasPreSummary: true,
+          hasTestResults: true,
+          hasPreviousVisits: true,
+          transcriptSegments: 2,
+          transcriptChars: expectedChars,
+          includePreSummaryInContext: true,
+          translateToEnglish: false,
+          correlationId: 'req-test-id',
+        });
+      });
+
+      it('logs false booleans + zero transcript counts for an empty-context request (non-stream)', async () => {
+        http.axiosRef.post.mockResolvedValue({ data: { content: JSON.stringify({ chief_complaint: 'x', summary: 'y' }) } });
+        const body = syncRequest({
+          session_data: { session_id: 'sess-empty', created_at: '2026-07-27T09:30:00Z' },
+        });
+
+        await invokeSummary(body);
+
+        const calls = logCallsFor('SMR compat summary context received');
+        expect(calls).toHaveLength(1);
+        expect(calls[0]).toMatchObject({
+          hasPatientInfo: false,
+          hasPreSummary: false,
+          hasTestResults: false,
+          hasPreviousVisits: false,
+          transcriptSegments: 0,
+          transcriptChars: 0,
+          includePreSummaryInContext: false,
+          translateToEnglish: false,
+        });
+      });
+
+      it('reflects translate_to_english: true regardless of the translate call outcome', async () => {
+        // No providerConnectionService wired on this controller, and the mocked
+        // /generate response also answers the /translate POST, so translation
+        // fails to parse and fails OPEN — the log still reflects the flag the
+        // caller sent, not whether translation succeeded.
+        http.axiosRef.post.mockResolvedValue({ data: { content: JSON.stringify({ chief_complaint: 'x', summary: 'y' }) } });
+        const body = syncRequest({ translate_to_english: true });
+
+        await invokeSummary(body);
+
+        const calls = logCallsFor('SMR compat summary context received');
+        expect(calls).toHaveLength(1);
+        expect(calls[0]).toMatchObject({ translateToEnglish: true });
+      });
+
+      it('logs on the STREAMING path too', async () => {
+        const body = { ...populated(), stream: true } as SyncSummaryRequest;
+        const smrStream = new PassThrough();
+        http.axiosRef.post.mockResolvedValue({ data: { task_id: 't-log-summary' } });
+        http.axiosRef.get.mockResolvedValue({ data: smrStream });
+        const res = createMockRes();
+
+        const done = controller.summarySync(body, {} as never, res as never);
+        smrStream.write(smrFrame('chunk', { content: '{"chief_complaint":"x","summary":"y"}' }));
+        smrStream.write(smrFrame('done'));
+        smrStream.end();
+        await done;
+        await flushStream();
+
+        const calls = logCallsFor('SMR compat summary context received');
+        expect(calls).toHaveLength(1);
+        expect(calls[0]).toMatchObject({ hasPatientInfo: true, hasPreSummary: true });
+      });
+
+      it('never logs the actual field content (PHI)', async () => {
+        const body = populated();
+        http.axiosRef.post.mockResolvedValue({ data: { content: JSON.stringify({ chief_complaint: 'x', summary: 'y' }) } });
+
+        await invokeSummary(body);
+
+        const serialized = JSON.stringify(logSpy.mock.calls);
+        expect(serialized).not.toContain('SECRET_PATIENT_NAME');
+        expect(serialized).not.toContain('SECRET_PRESUMMARY_TEXT');
+        expect(serialized).not.toContain('SECRET_TEST_RESULTS_TEXT');
+        expect(serialized).not.toContain('SECRET_PREVIOUS_VISITS_TEXT');
+      });
     });
   });
 });

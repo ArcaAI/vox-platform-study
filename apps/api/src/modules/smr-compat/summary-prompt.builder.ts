@@ -50,8 +50,23 @@ export interface SummaryPromptOptions {
   dnaStyleText?: string;
 }
 
+/**
+ * The department template/governed instruction injected above (`:133-135`) is
+ * steered as AUTHORITATIVE clinical guidance and — for 13 seeded department
+ * templates — carries its own "content in conversation language, headings in
+ * English" clause. A bare `Language: X` label loses to that specific
+ * in-template clause (TASK-650 §2.4), so this directive must NAME the
+ * conflict it overrides, not just state the target language, and must default
+ * to English (R1) while still honouring an explicitly requested non-English
+ * output language (R2 — `resolveV1LanguageName` already defaults empty/unknown
+ * input to English and passes `ml` through). Section headings stay in English
+ * regardless (R4). Phrasing mirrors `V1_PRE_SUMMARY_TEMPLATE`'s
+ * `### INSTRUCTIONS` block ("Write ALL bullet content in {language_name}") so
+ * both paths read consistently.
+ */
 function languageDirective(language?: string): string {
-  return `Language: ${resolveV1LanguageName(language)}`;
+  const languageName = resolveV1LanguageName(language);
+  return `Write ALL summary content in ${languageName}, regardless of the transcript's language and regardless of any conflicting language instruction in the department instruction above (for example, an instruction to write content in the conversation language). Section headings stay in English.`;
 }
 
 /** One rendered transcript line per turn — fixes v1 F2 (whole transcript collapsed into one segment). */
@@ -184,7 +199,12 @@ export function buildSummaryPrompt(sessionData: SessionDataDto, options: Summary
   else if (sessionData.previous_visits_text?.trim()) userSections.push(`Previous visits:\n${sessionData.previous_visits_text.trim()}`);
 
   return {
-    system: systemLines.join(' '),
+    // Newline join (not space, TASK-650 §2.4): a space join lands the language
+    // directive mid-paragraph in a run-on block instead of as its own
+    // instruction. No golden/contract fixture in this module depends on the
+    // space-joined form (`buildPreSummaryPrompt`/`V1_PRE_SUMMARY_TEMPLATE`,
+    // which ARE checksum-locked, are untouched by this function).
+    system: systemLines.join('\n'),
     user: userSections.join('\n\n'),
   };
 }
