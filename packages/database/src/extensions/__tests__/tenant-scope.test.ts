@@ -99,7 +99,10 @@ describe('TENANT_SCOPED_MODELS allow-list', () => {
     // (ConsultationContextSchema + ConsultationContextSchemaVersion). Both are
     // ordinary tenant-owned rows and are deliberately NOT SYSTEM-shared reads —
     // the golden-library path copies schemas rather than sharing them.
-    expect(TENANT_SCOPED_MODELS.size).toBe(74);
+    // 74 → 75: TASK-659 adds DepartmentAgentVersion (immutable loop-config
+    // snapshot of DepartmentAgent) — same posture as its parent, NOT
+    // SYSTEM-shared.
+    expect(TENANT_SCOPED_MODELS.size).toBe(75);
   });
 
   // TASK-615 — the usage ledger, its outbox, the rollups and the whole billing

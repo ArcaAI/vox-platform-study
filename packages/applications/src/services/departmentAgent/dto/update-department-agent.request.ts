@@ -1,6 +1,6 @@
 import { IsString, IsOptional, IsObject, IsEnum, IsArray, IsInt, IsIn, MaxLength, Min } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { DepartmentAgentDnaPolicy, ResourceStatusType } from '@arcaai/domains';
+import { DepartmentAgentDnaPolicy, DepartmentAgentRole, ResourceStatusType } from '@arcaai/domains';
 
 /**
  * Update a DepartmentAgent. `departmentId` is identity and is NOT editable
@@ -97,6 +97,48 @@ export class UpdateDepartmentAgentRequest {
   @IsArray()
   @IsString({ each: true })
   tags?: string[];
+
+  // ── TASK-659 loop configuration + promotion surface. All optional.
+  @ApiPropertyOptional({ description: 'Loop role — at most one ENABLED PRIMARY per department', enum: DepartmentAgentRole })
+  @IsOptional()
+  @IsEnum(DepartmentAgentRole)
+  role?: DepartmentAgentRole;
+
+  @ApiPropertyOptional({
+    description: 'Context kinds this agent listens for: { version: 1, kinds: [{ key, filter? }] }. Kind keys are cross-checked against the resolved context schema.',
+  })
+  @IsOptional()
+  @IsObject()
+  subscribedKinds?: Record<string, unknown> | null;
+
+  @ApiPropertyOptional({ description: 'Output kinds this agent may produce: { version: 1, outputs: ["soap_note"] }' })
+  @IsOptional()
+  @IsObject()
+  writeScope?: Record<string, unknown> | null;
+
+  @ApiPropertyOptional({
+    description: 'Constrained goal (NOT a free-text prompt): { version: 1, objective, successCriteria? }',
+  })
+  @IsOptional()
+  @IsObject()
+  goal?: Record<string, unknown> | null;
+
+  @ApiPropertyOptional({ description: 'Named guardrail profile from a closed platform catalogue' })
+  @IsOptional()
+  @IsString()
+  guardrailProfile?: string | null;
+
+  @ApiPropertyOptional({ description: 'Actions this agent must always take (compliance envelope)', type: [String] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  alwaysActions?: string[] | null;
+
+  @ApiPropertyOptional({ description: 'Actions this agent must never take (compliance envelope)', type: [String] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  neverActions?: string[] | null;
 
   @ApiPropertyOptional({ description: 'Resource status', enum: ['ENABLED', 'DISABLED'] })
   @IsOptional()

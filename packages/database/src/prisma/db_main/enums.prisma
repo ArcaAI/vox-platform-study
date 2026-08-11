@@ -424,6 +424,20 @@ enum DepartmentAgentDnaPolicy {
   @@schema("core")
 }
 
+// Loop role for a DepartmentAgent (TASK-659). PRIMARY owns the consultation
+// note and gate exclusively (TASK-654 D7); SPECIALIST participates in the
+// loop scoped to `subscribedKinds`/`writeScope` but never writes the note. At
+// most one ENABLED PRIMARY per department — enforced in
+// `DepartmentAgentService` (mirrors the `isDefault` invariant), not by a
+// partial unique index. Defaults to SPECIALIST so creating an additional
+// agent in a department never silently contests an existing PRIMARY.
+enum DepartmentAgentRole {
+  PRIMARY
+  SPECIALIST
+
+  @@schema("core")
+}
+
 // Human curation verdict on a mined `GateEditExemplar` (TASK-553 F-24).
 //
 // The mining loop writes PENDING: a row is a PROPOSAL, never approved corpus.
