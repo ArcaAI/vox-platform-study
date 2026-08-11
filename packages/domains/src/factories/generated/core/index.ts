@@ -1,3 +1,4 @@
+export * from './AgentPromotionFactory';
 export * from './AgentTrajectoryStepFactory';
 export * from './AiModelFactory';
 export * from './AiProviderConnectionFactory';

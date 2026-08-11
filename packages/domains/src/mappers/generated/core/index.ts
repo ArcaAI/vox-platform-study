@@ -1,3 +1,4 @@
+export * from './AgentPromotionEntityMapper';
 export * from './AgentTrajectoryStepEntityMapper';
 export * from './AiModelEntityMapper';
 export * from './AiPriceBookEntityMapper';

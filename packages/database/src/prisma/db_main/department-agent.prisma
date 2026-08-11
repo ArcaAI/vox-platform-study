@@ -196,3 +196,87 @@ model DepartmentAgentVersion {
   @@index([agentId], name: "DepartmentAgentVersion_agentId_idx")
   @@schema("core")
 }
+
+// IMMUTABLE, WORM record of one agent promotion from a source tenant into a
+// target tenant (TASK-663). Promotion is admin-chosen, ANY tenant to ANY tenant
+// (TASK-654 D10): there is no platform environment, tier or tenant-family
+// concept, so "the actor holds manage rights on BOTH tenants" is the ENTIRE
+// authorization control, enforced in `AgentPromotionService`.
+//
+// The row is written once and never updated — re-promoting writes a NEW row, so
+// the table is the promotion history of an agent. No `resourceStatus` and no
+// `updatedAt`/`updatedBy` (listed in MODELS_WITHOUT_SOFT_DELETE), the same
+// shape as DepartmentAgentVersion / PromptVersion.
+//
+// OWNERSHIP: `tenantId` IS `toTenantId`. The promotion record is the TARGET's
+// lineage, so the target tenant owns and reads it; `AgentPromotionEntity.validate()`
+// enforces the equality so the two columns can never diverge.
+//
+// NO `@relation` ON ANY OF THE FOUR ID COLUMNS BELOW — deliberate. `agentVersionId`
+// and `sourceAgentId` name rows in the SOURCE tenant; a Prisma relation would put
+// a navigable path from a target-tenant row into another tenant's data on the
+// model. The `tenantId` column's own no-FK convention is the precedent. Integrity
+// is service-enforced at write time (both sides are loaded and authorized first).
+model AgentPromotion {
+  // meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
+
+  // multi tenant fields — ALWAYS equal to toTenantId (see header)
+  tenantId String
+
+  // the promotion itself
+  fromTenantId String
+  toTenantId   String
+
+  // SOURCE side: the exact immutable version that was promoted. Promotion
+  // copies THIS snapshot rather than re-authoring the agent in the target —
+  // the same discipline as the repo's own `promote-*` CI jobs, which re-tag a
+  // digest rather than rebuild.
+  agentVersionId String
+  sourceAgentId  String
+
+  // TARGET side: the agent row the promotion created or advanced, and the
+  // immutable snapshot written there. This is the lineage a target-tenant
+  // admin reads to answer "where did this agent come from".
+  targetAgentId        String
+  targetAgentVersionId String?
+
+  // The promoted loop-config snapshot, verbatim, plus its sha256 over the
+  // canonical JSON. Storing both makes the record self-contained (auditable
+  // without resolving the source tenant at all) and makes drift detectable:
+  // compare against the target agent's CURRENT checksum at read time.
+  configSnapshot Json   @db.JsonB
+  checksum       String
+
+  // Eval attestations — TWO columns, deliberately never conflated (TASK-654
+  // §TASK-663: "eval re-runs at the target tenant; the source EvalRun travels
+  // as an attestation"). `evalRunId` is the run executed AT THE TARGET against
+  // the target's own corpus; `sourceEvalRunId` is the source-tenant run that
+  // travelled as evidence only. GoldenCase rows hold Vault-Transit-encrypted
+  // PHI and NEVER cross a tenant boundary — not even `goldenSetId` is copied.
+  evalRunId       String?
+  sourceEvalRunId String?
+
+  // Non-blocking operator alerts issued at promotion time (e.g. "N consultations
+  // are currently running on the previous version and will complete on it"),
+  // recorded so the row shows what the operator was told.
+  warnings Json? @db.JsonB
+
+  // The actor. Named explicitly rather than leaning on `createdBy`, which
+  // carries a system default and reads as "whoever inserted the row".
+  promotedBy String?
+
+  // audit fields (immutable row: no updatedAt/updatedBy by design)
+  createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+  createdAt DateTime @default(now())
+
+  // indexes — the target's lineage read (tenantId + targetAgentId) is the hot
+  // one; fromTenantId supports "what did this tenant export".
+  @@index([tenantId], name: "AgentPromotion_tenantId_idx")
+  @@index([tenantId, targetAgentId], name: "AgentPromotion_tenantId_targetAgentId_idx")
+  @@index([fromTenantId], name: "AgentPromotion_fromTenantId_idx")
+  @@index([agentVersionId], name: "AgentPromotion_agentVersionId_idx")
+  @@schema("core")
+}

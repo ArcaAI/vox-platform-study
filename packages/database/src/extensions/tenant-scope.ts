@@ -194,6 +194,12 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   // (TASK-659). Ordinary tenant-owned rows, NOT SYSTEM-shared — same posture
   // as the parent DepartmentAgent and as ConsultationContextSchemaVersion.
   'DepartmentAgentVersion',
+  // department-agent.prisma — immutable cross-tenant promotion records
+  // (TASK-663). `tenantId` IS the TARGET tenant, so the target owns and reads
+  // its own agent lineage while the source tenant's id survives only as the
+  // plain `fromTenantId` column. Emphatically NOT SYSTEM-shared: widening this
+  // would let any tenant enumerate which agents moved between which tenants.
+  'AgentPromotion',
   // usage-ledger.prisma (5) — AI usage metering plane (TASK-615).
   // The ledger, its outbox and both rollups are tenant-scoped and NOT
   // SYSTEM-shared: one tenant's consumption (and therefore its cost profile)
