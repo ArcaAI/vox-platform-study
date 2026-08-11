@@ -1,10 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-  CONTEXT_PRIMITIVES,
-  computeDefinitionChecksum,
-  contextSchemaDefinitionProblems,
-  findKind,
-} from '../context-schema-definition';
+import { CONTEXT_PRIMITIVES, computeDefinitionChecksum, contextSchemaDefinitionProblems, findKind } from '../context-schema-definition';
 
 /** Minimal valid definition — one TEXT kind, no outputs. */
 function baseDefinition(overrides: Record<string, unknown> = {}): Record<string, unknown> {
@@ -95,13 +90,9 @@ describe('contextSchemaDefinitionProblems (TASK-658 AC-3)', () => {
 
   it('validates outputs with the same grammar as kinds', () => {
     expect(
-      contextSchemaDefinitionProblems(
-        baseDefinition({ outputs: [{ key: 'soap_note', primitive: 'STRUCTURED', fields: { type: 'object' } }] }),
-      ),
+      contextSchemaDefinitionProblems(baseDefinition({ outputs: [{ key: 'soap_note', primitive: 'STRUCTURED', fields: { type: 'object' } }] })),
     ).toEqual([]);
-    expect(
-      contextSchemaDefinitionProblems(baseDefinition({ outputs: [{ key: 'soap note', primitive: 'STRUCTURED' }] })).join(' '),
-    ).toMatch(/key/i);
+    expect(contextSchemaDefinitionProblems(baseDefinition({ outputs: [{ key: 'soap note', primitive: 'STRUCTURED' }] })).join(' ')).toMatch(/key/i);
   });
 
   it('rejects a non-object definition', () => {

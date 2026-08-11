@@ -188,9 +188,7 @@ export class ContextService extends BaseService implements IContextService {
     }
 
     if (!this.contextSchemaService) {
-      throw new BadRequestException(
-        'Tenant-defined context kinds are not available in this deployment; omit `kindKey` to add context without one.',
-      );
+      throw new BadRequestException('Tenant-defined context kinds are not available in this deployment; omit `kindKey` to add context without one.');
     }
 
     const departmentId = await this.resolveConsultationDepartmentId(consultationId);

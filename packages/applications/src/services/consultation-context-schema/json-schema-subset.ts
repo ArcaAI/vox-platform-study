@@ -48,8 +48,6 @@ const FORBIDDEN_KEYWORDS = ['if', 'then', 'else'] as const;
 const JSON_SCHEMA_TYPES = ['object', 'array', 'string', 'number', 'integer', 'boolean', 'null'] as const;
 type JsonSchemaType = (typeof JSON_SCHEMA_TYPES)[number];
 
-type Schema = Record<string, unknown>;
-
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

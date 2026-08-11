@@ -73,7 +73,7 @@ export class AddContextRequest {
 
   @ApiPropertyOptional({
     description:
-      'Structured payload for a STRUCTURED kind, validated against that kind\'s `fields` sub-schema in the PINNED ' +
+      "Structured payload for a STRUCTURED kind, validated against that kind's `fields` sub-schema in the PINNED " +
       'schema version. Requires `kindKey`. The validated payload is canonicalised and persisted through the same ' +
       'encrypted `content` column as every other text-bearing context type — there is no plaintext JSON column.',
     type: 'object',

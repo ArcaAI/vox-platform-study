@@ -121,10 +121,7 @@ export class ConsultationContextSchemaAdminController {
   @ApiResponse({ status: 201, type: ConsultationContextSchemaResponse })
   @ApiResponse({ status: 400, description: 'The definition is not publishable, or the change is breaking and unacknowledged.' })
   @ApiResponse({ status: 404, description: 'Not found (or owned by another tenant).' })
-  async publish(
-    @Param('id') id: string,
-    @Body() request: PublishConsultationContextSchemaRequest,
-  ): Promise<ConsultationContextSchemaResponse> {
+  async publish(@Param('id') id: string, @Body() request: PublishConsultationContextSchemaRequest): Promise<ConsultationContextSchemaResponse> {
     return this.service.publish(id, request);
   }
 
@@ -136,10 +133,7 @@ export class ConsultationContextSchemaAdminController {
   @ApiParam({ name: 'id', type: String })
   @ApiResponse({ status: 201, type: ConsultationContextSchemaResponse })
   @ApiResponse({ status: 404, description: 'Schema not found (or owned by another tenant), or it has no such version.' })
-  async pin(
-    @Param('id') id: string,
-    @Body() request: PinConsultationContextSchemaVersionRequest,
-  ): Promise<ConsultationContextSchemaResponse> {
+  async pin(@Param('id') id: string, @Body() request: PinConsultationContextSchemaVersionRequest): Promise<ConsultationContextSchemaResponse> {
     return this.service.pin(id, request);
   }
 

@@ -26,9 +26,7 @@ describe('classifyDefinitionChange (TASK-658 AC-6)', () => {
 
   it('ADDITIVE — a new OPTIONAL field does not require a breaking acknowledgement', () => {
     const prev = definition([structuredKind({ type: 'object', properties: { a: { type: 'string' } }, required: ['a'] })]);
-    const next = definition([
-      structuredKind({ type: 'object', properties: { a: { type: 'string' }, b: { type: 'number' } }, required: ['a'] }),
-    ]);
+    const next = definition([structuredKind({ type: 'object', properties: { a: { type: 'string' }, b: { type: 'number' } }, required: ['a'] })]);
     const result = classifyDefinitionChange(prev, next);
     expect(result.classification).toBe('ADDITIVE');
     expect(result.breakingChanges).toEqual([]);
@@ -62,12 +60,8 @@ describe('classifyDefinitionChange (TASK-658 AC-6)', () => {
 
   it('BREAKING — a changed phiClass or cardinality', () => {
     const prev = definition([structuredKind({ type: 'object' })]);
-    expect(
-      classifyDefinitionChange(prev, definition([structuredKind({ type: 'object' }, { phiClass: 'NON_PHI' })])).classification,
-    ).toBe('BREAKING');
-    expect(
-      classifyDefinitionChange(prev, definition([structuredKind({ type: 'object' }, { cardinality: 'MANY' })])).classification,
-    ).toBe('BREAKING');
+    expect(classifyDefinitionChange(prev, definition([structuredKind({ type: 'object' }, { phiClass: 'NON_PHI' })])).classification).toBe('BREAKING');
+    expect(classifyDefinitionChange(prev, definition([structuredKind({ type: 'object' }, { cardinality: 'MANY' })])).classification).toBe('BREAKING');
   });
 
   it('BREAKING — widening `required` on the kind itself', () => {

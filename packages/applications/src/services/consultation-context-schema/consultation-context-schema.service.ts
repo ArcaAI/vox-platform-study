@@ -17,11 +17,7 @@ import {
 import { ArgumentInvalidException } from '@arcaai/exceptions';
 import { BaseService } from '../../common';
 import { IActiveUserContext } from '../../interfaces';
-import {
-  IConsultationContextSchemaService,
-  ValidateContextPayloadInput,
-  ValidatedContextPayload,
-} from './IConsultationContextSchemaService';
+import { IConsultationContextSchemaService, ValidateContextPayloadInput, ValidatedContextPayload } from './IConsultationContextSchemaService';
 import {
   ConsultationContextSchemaBundleResponse,
   ConsultationContextSchemaResponse,
@@ -343,9 +339,7 @@ export class ConsultationContextSchemaService extends BaseService implements ICo
 
     const kind = findKind(version.definition, input.kindKey);
     if (!kind) {
-      throw new BadRequestException(
-        `Context schema version ${version.versionNumber} does not declare a kind '${input.kindKey}'.`,
-      );
+      throw new BadRequestException(`Context schema version ${version.versionNumber} does not declare a kind '${input.kindKey}'.`);
     }
 
     const primitive = kind.primitive as ContextPrimitive;
@@ -494,9 +488,6 @@ function isServable(schema: ConsultationContextSchemaEntity): boolean {
  * the bundle names which schema it came from.
  */
 function bundleEtag(schemaId: string, versionId: string, versionNumber: number, definition: unknown): string {
-  const digest = createHash('sha256')
-    .update(canonicalJson({ schemaId, versionId, versionNumber, definition }))
-    .digest('hex')
-    .slice(0, 32);
+  const digest = createHash('sha256').update(canonicalJson({ schemaId, versionId, versionNumber, definition })).digest('hex').slice(0, 32);
   return `"${digest}"`;
 }
