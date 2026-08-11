@@ -21,6 +21,8 @@ export * from './BillingAdjustmentRepository';
 export * from './BillingInvoiceLineRepository';
 export * from './BillingInvoiceRepository';
 export * from './ConsultationRepository';
+export * from './ConsultationContextSchemaRepository';
+export * from './ConsultationContextSchemaVersionRepository';
 export * from './ContextItemRepository';
 // Sibling that patches ContextItemRepository.prototype with
 // encryptContentIntoEntity / decryptContentFromEntity / findByIdWithDecryptedContent /

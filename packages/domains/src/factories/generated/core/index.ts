@@ -9,6 +9,8 @@ export * from './AsrPipelineVersionFactory';
 export * from './AudioRecordingFactory';
 export * from './AuditLogFactory';
 export * from './ConsultationFactory';
+export * from './ConsultationContextSchemaFactory';
+export * from './ConsultationContextSchemaVersionFactory';
 export * from './ContextItemFactory';
 export * from './ContextItemVersionFactory';
 export * from './DepartmentFactory';
