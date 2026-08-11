@@ -289,12 +289,13 @@ See **[execution-plan.md](./execution-plan.md)** for per-ticket specs, model tie
 
 ### 6.1 Sub-ticket index
 
-| Ticket | Scope | Wave | Tier |
-|---|---|---|---|
-| TASK-655 | Collapse the four-way live-snapshot resolver onto the repository helper | W0 | sonnet-5 |
-| TASK-656 | `mediaId` correctness both sides + promote `parseStorageUri` | W0 | sonnet-5 |
-| TASK-657 | Vision capability in SMR + `vlm.extract` task key + vision model seed | W0 | sonnet-5 |
-| TASK-658 | Context schema data model, validation, discovery endpoint | W1 | opus-4.8 |
+| Ticket | Scope | Wave | Tier | Status |
+|---|---|---|---|---|
+| TASK-655 | Collapse the live-snapshot resolver onto the repository helper | W0 | sonnet-5 | ✅ merged `09d8d0f7c` |
+| TASK-656 | `mediaId` correctness both sides + promote `parseStorageUri` | W0 | sonnet-5 | ✅ merged `34ff3a0ea` |
+| TASK-657 | Vision capability in SMR + `vlm.extract` task key + vision model seed | W0 | sonnet-5 | ✅ merged `b3d3fe590` |
+| TASK-669 | Remove the deprecated `apps/ui-playground` (owner-requested, added 2026-08-11) | W0 | sonnet-5 | ✅ merged `a18412a9e` |
+| TASK-658 | Context schema data model, validation, discovery endpoint | W1 | opus-4.8 | 🔄 in progress |
 | TASK-659 | Agent config extension + `DepartmentAgentVersion` + validators | W2 | sonnet-5 |
 | TASK-660 | Loop event plane: cascade widening, loop signals, `consultation:loop:{id}` SSE | W2 | sonnet-5 |
 | TASK-661 | Schema compatibility, versioning and lifecycle guarantees | W2 | sonnet-5 |
@@ -341,5 +342,12 @@ Not started. Each sub-ticket authors its own README from the spec in [execution-
 Not started.
 
 ## Change History
+
+- 2026-08-11 — **Wave 0 complete and merged to `dev-2.1`.** TASK-655 (`09d8d0f7c`), TASK-656 (`34ff3a0ea`), TASK-657 (`b3d3fe590`), TASK-669 (`a18412a9e`). Post-merge verification on `dev-2.1`: workspace 959 files / 16,369 tests passed, `@arcaai/ui` 656, `@arcaai/vox` 4,131, `compat-playground` 223, `admin-console` 1,339 — zero failures; lint 31/31 with 0 errors (65 `apps/api` warnings pre-existing and unchanged); SMR 109 failed / 1,009 passed, matching the standing TASK-639 baseline exactly.
+  Three corrections learned during execution, all now folded into `execution-plan.md`:
+  1. **Python tickets cannot gate from a worktree** — `arcaenv` editable installs pin to the main checkout, so worktree pytest imports main-tree source. Cost a false "+30 regression" reading on TASK-657 that was purely a measurement artifact. New §1.1a.
+  2. **`py:<svc>:<action>` scripts do not exist** — TASK-557 renamed them all; `.claude/rules/06-python-services.md` is stale and was copied into the original specs.
+  3. **TASK-655's premise was half wrong** — two of the four "duplicate" snapshot resolvers were already on the repository helper. The agent verified rather than trusting the spec.
+  Owner scope decisions during the wave: `apps/ui-playground` is the second exclusion **and** is to be deleted outright (TASK-669, added and completed in this wave). The `@arcaai/vox/compat` exclusion holds — verified 0 files under `src/compat/**` touched across every merge.
 
 - 2026-08-11 — Ticket opened. Seven exploration passes (harness internals, SDK context surface, gateway + Prisma model, admin console, multimodal capability, agent cardinality + promotion surface, live-documentation plane) plus two external research passes (client schema discovery; reasoning agents on durable execution). Design settled across 13 decisions (§1.2). Architecture in §4; sub-tickets TASK-655…668 specced in `execution-plan.md`. **Correction from the first draft: `LiveDocumentationService` was absent from it entirely; §3.4 and §4.4 now treat it as the reflex lane the loop dispatches rather than replaces.** Second owner scope-exclusion truncated in transmission and NOT applied — confirm before execution.
