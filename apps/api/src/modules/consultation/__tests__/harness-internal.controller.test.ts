@@ -35,6 +35,7 @@ describe('HarnessInternalController', () => {
       undefined as any,
       undefined as any,
       undefined as any,
+      undefined as any,
     );
   });
 
@@ -159,7 +160,15 @@ describe('HarnessInternalController', () => {
     }
 
     const buildController = (cls: ReturnType<typeof fakeCls>) =>
-      new HarnessInternalController(mockService as any, mockPolicyService as any, cls as any, undefined as any, undefined as any, undefined as any);
+      new HarnessInternalController(
+        mockService as any,
+        mockPolicyService as any,
+        cls as any,
+        undefined as any,
+        undefined as any,
+        undefined as any,
+        undefined as any,
+      );
 
     it('threads consultationId through to getEffectivePolicy(tenantId, { consultationId })', async () => {
       const policy = { source: 'tenant', tenantId: 't-1', coverageThreshold: 0.95 };
@@ -217,6 +226,7 @@ describe('HarnessInternalController', () => {
         mockProgressService as any,
         undefined as any,
         undefined as any,
+        undefined as any,
       );
 
     it('delegates to HarnessProgressService.reportProgress(consultationId, dto)', async () => {
@@ -243,6 +253,44 @@ describe('HarnessInternalController', () => {
     });
   });
 
+  describe('POST consultations/:id/loop-event (TASK-660)', () => {
+    const mockLoopEventService = { publishEvent: vi.fn() };
+
+    const buildController = () =>
+      new HarnessInternalController(
+        mockService as any,
+        undefined as any, // harnessPolicyService (unused by this route)
+        undefined as any, // cls (unused by this route)
+        undefined as any, // harnessProgressService (unused by this route)
+        undefined as any, // harnessAssuranceService (unused by this route)
+        undefined as any, // agentTrajectoryService (unused by this route)
+        mockLoopEventService as any,
+      );
+
+    it('delegates to ConsultationLoopEventService.publishEvent(consultationId, dto)', async () => {
+      mockLoopEventService.publishEvent.mockResolvedValue({ ok: true });
+      const dto = { tenantId: 't-1', runId: 'run-1', kind: 'action.started', label: 'Extracting entities' };
+
+      const result = await buildController().reportLoopEvent('consultation-1', dto as any);
+
+      expect(mockLoopEventService.publishEvent).toHaveBeenCalledWith('consultation-1', dto);
+      expect(result).toEqual({ ok: true });
+    });
+
+    it('relays the best-effort { ok: false } ack without throwing (loop-event must never fail the workflow)', async () => {
+      mockLoopEventService.publishEvent.mockResolvedValue({ ok: false });
+
+      const result = await buildController().reportLoopEvent('consultation-1', { tenantId: 't-1', kind: 'action.started' } as any);
+
+      expect(result).toEqual({ ok: false });
+    });
+
+    it('responds 200 (not 201): nothing is created — the ack can carry { ok: false }', () => {
+      const statusCode = Reflect.getMetadata(HTTP_CODE_METADATA, HarnessInternalController.prototype.reportLoopEvent) as number | undefined;
+      expect(statusCode).toBe(200);
+    });
+  });
+
   describe('POST consultations/:id/assurance (finalize) + assurance-event (per-claim)', () => {
     const mockAssuranceService = { reportClaim: vi.fn(), publishComplete: vi.fn() };
 
@@ -253,6 +301,7 @@ describe('HarnessInternalController', () => {
         undefined as any, // cls (unused by these routes)
         undefined as any, // harnessProgressService (unused by these routes)
         mockAssuranceService as any,
+        undefined as any,
         undefined as any,
       );
 
@@ -310,6 +359,7 @@ describe('HarnessInternalController', () => {
         undefined as any, // harnessProgressService (unused)
         undefined as any, // harnessAssuranceService (unused)
         mockTrajectoryService as any,
+        undefined as any,
       );
 
     it('maps the harness batch (ISO → Date) and delegates to recordSteps, acking 202-style', async () => {

@@ -61,6 +61,27 @@ export interface HarnessEditSignal {
   editedBy?: string;
 }
 
+/**
+ * Context-added signal payload forwarded to the harness when a
+ * `ConsultationPipelineEvent.ContextAdded` event reaches the loop event
+ * plane. Like `signalApproval`/`signalEdit` this is a best-effort
+ * notification — `LoopContextSignalService` (the caller) already treats a
+ * failed POST as fire-and-forget. The receiving `ConsultationLoopWorkflow`
+ * signal handler is built in a later ticket; until it exists the harness
+ * endpoint may 404, which the caller tolerates.
+ */
+export interface HarnessContextAddedSignal {
+  tenantId?: string;
+  /** The context item that was added. */
+  contextItemId: string;
+  /** The `ContextItem.type` (e.g. WORKNOTE, TRANSCRIPT, STRUCTURED). */
+  contextType: string;
+  /** Optional `metadata.subType` label (e.g. 'LAB_RESULT'). */
+  subType?: string;
+  /** First ~2k chars of text content, when present. */
+  contentPreview?: string;
+}
+
 /** One golden case sent to the harness eval endpoint (snake_case — the harness
  * `GoldenCase` pydantic model has `extra="forbid"`, so keys must match exactly). */
 export interface HarnessEvalCaseInput {
@@ -197,6 +218,27 @@ export class HarnessGatewayService {
     );
 
     this.logger.log({ message: 'Harness edit signal sent', consultationId });
+    return response.data;
+  }
+
+  /**
+   * Forward a ContextAdded event to the consultation loop workflow so it can
+   * resolve its `contextAdded` signal wait-condition and re-evaluate agent
+   * subscriptions. Best-effort like `signalEdit` — the apps/api ContextItem
+   * write is already durable; this is a live-loop notification only.
+   */
+  async signalContextAdded(consultationId: string, payload: HarnessContextAddedSignal): Promise<unknown> {
+    const url = `${this.harnessUrl}/api/v1/internal/workflows/${consultationId}/signal/context-added`;
+
+    const response = await this.httpService.axiosRef.post(
+      url,
+      { ...payload },
+      {
+        headers: await this.buildHeaders(),
+      },
+    );
+
+    this.logger.log({ message: 'Harness context-added signal sent', consultationId });
     return response.data;
   }
 
