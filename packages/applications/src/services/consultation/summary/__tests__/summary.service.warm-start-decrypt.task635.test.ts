@@ -167,4 +167,16 @@ describe('SummaryService.generateSummary — warm-start pre-summary (B-02/B-06)'
 
     expect(mockPromptAssemblyService.assemble).toHaveBeenCalledWith(expect.objectContaining({ preSummaryText: undefined }));
   });
+
+  // TASK-655 — `resolveWarmStartPreSummary` already delegates entirely to
+  // `findLatestPreSummaryWithDecryptedContent` (no hand-rolled copy here, so
+  // no production change was needed for this call site). This pins that a
+  // decrypt failure propagates out of `generateSummary()` rather than being
+  // silently swallowed — `generateSummary` has no try/catch around the
+  // warm-start read.
+  it('propagates a decryption failure rather than swallowing it', async () => {
+    mockContextItemRepository.findLatestPreSummaryWithDecryptedContent.mockRejectedValue(new Error('vault transit unavailable'));
+
+    await expect(service.generateSummary('c-1', {} as any)).rejects.toThrow('vault transit unavailable');
+  });
 });

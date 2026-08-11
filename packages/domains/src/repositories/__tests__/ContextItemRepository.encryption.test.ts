@@ -273,6 +273,30 @@ describe('ContextItemRepository.findLatestPreSummaryWithDecryptedContent (B-02 /
     expect(result.entity?.id).toBe('ctx-1');
     expect(result.plaintext).toBe('already-plaintext-in-memory');
   });
+
+  // TASK-655 — this is the SHARED implementation all four former call-site
+  // copies now delegate to (live-documentation's `findLiveSnapshotRow`,
+  // harness's `loadLiveSoapSnapshot`, `SummaryService`/`SummaryProcessor`'s
+  // `resolveWarmStartPreSummary`). A decrypt failure (e.g. a Vault Transit
+  // outage) must propagate rather than being swallowed — callers decide how to
+  // handle it, the helper does not silently substitute a value.
+  it('propagates a decryption failure rather than swallowing it', async () => {
+    const secrets: SecretsServiceLike = {
+      encrypt: vi.fn(),
+      decrypt: vi.fn(async () => {
+        throw new Error('vault transit unavailable');
+      }),
+    };
+    const repo = makeRepo();
+    const entity = makeEntity({
+      id: 'ctx-undecryptable',
+      content: null,
+      encryptedContent: Buffer.from('vault:v1:corrupt', 'utf8'),
+    });
+    (repo as { findPreSummaries: typeof repo.findPreSummaries }).findPreSummaries = vi.fn(async () => [entity]);
+
+    await expect(repo.findLatestPreSummaryWithDecryptedContent('consult-1', secrets)).rejects.toThrow('vault transit unavailable');
+  });
 });
 
 describe('ContextItemRepository.findByIdWithDecryptedContent (Phase 3B)', () => {
