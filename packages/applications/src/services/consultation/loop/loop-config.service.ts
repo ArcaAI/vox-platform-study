@@ -161,10 +161,7 @@ export class LoopConfigService extends BaseService implements ILoopConfigService
    * cascade (deliberately not imported; see that method's own precedent
    * relative to `ConsultationContextSchemaService`).
    */
-  private async resolveServableContextSchemaVersion(
-    tenantId: string,
-    departmentId: string,
-  ): Promise<ConsultationContextSchemaVersionEntity | null> {
+  private async resolveServableContextSchemaVersion(tenantId: string, departmentId: string): Promise<ConsultationContextSchemaVersionEntity | null> {
     const candidates = [
       await this.contextSchemaRepository.findDefaultForScope(tenantId, ConsultationContextSchemaScope.DEPARTMENT, departmentId),
       await this.contextSchemaRepository.findDefaultForScope(tenantId, ConsultationContextSchemaScope.TENANT, null),
