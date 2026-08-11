@@ -177,6 +177,15 @@ export const MODELS_WITHOUT_SOFT_DELETE: ReadonlySet<string> = new Set([
   // `ConsultationContextSchema` is deliberately NOT here — it keeps the
   // standard ENABLED/DELETED lifecycle.
   'ConsultationContextSchemaVersion',
+  // DepartmentAgentVersion (TASK-659) is an immutable snapshot of a
+  // DepartmentAgent's loop-configuration surface — the exact shape of
+  // PromptVersion / AsrPipelineVersion / ConsultationContextSchemaVersion
+  // above, and with no `resourceStatus` column for the same reason. A
+  // consultation loop pinned to version N (C1) must be able to resolve
+  // version N forever, and promotion (TASK-663) copies an immutable version
+  // verbatim. The MUTABLE head `DepartmentAgent` is deliberately NOT here —
+  // it keeps the standard ENABLED/DELETED lifecycle.
+  'DepartmentAgentVersion',
 ]);
 
 /**
