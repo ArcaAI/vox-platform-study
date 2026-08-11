@@ -1,4 +1,5 @@
 import type { ContextPrimitive } from './context-schema-definition';
+import type { DefinitionChangeClassification } from './definition-diff';
 import type {
   ConsultationContextSchemaBundleResponse,
   ConsultationContextSchemaResponse,
@@ -39,6 +40,19 @@ export interface ValidatedContextPayload {
    * needed (TASK-654 C3).
    */
   content?: string;
+  /**
+   * TASK-661 — set ONLY when the caller pinned an explicit
+   * `contextSchemaVersionId` that differs from the tenant's CURRENT servable
+   * pin. Classifies the drift between the version the write was validated
+   * against and the current one, using the SAME classifier `publish` uses
+   * (`classifyDefinitionChange` in `definition-diff.ts`) — never a second,
+   * divergent notion of compatibility.
+   *
+   * This is purely a signal for the caller (e.g. to warn a client it is
+   * falling behind); it never changes what got validated — that is always
+   * `contextSchemaVersionId`, the version the caller pinned.
+   */
+  versionSkew?: DefinitionChangeClassification;
 }
 
 /**

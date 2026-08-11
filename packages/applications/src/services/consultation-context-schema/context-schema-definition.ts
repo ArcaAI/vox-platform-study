@@ -62,9 +62,31 @@ const KIND_KEYS = [
   'fields',
   'constraints',
   'description',
+  'deprecated',
 ] as const;
 const OUTPUT_KEYS = ['key', 'label', 'primitive', 'fields', 'description'] as const;
 const CONSTRAINT_KEYS = ['mimeTypes', 'maxBytes'] as const;
+/** TASK-661 — the only keys a `deprecated` block may carry. */
+const DEPRECATED_KEYS = ['since', 'migrateBy', 'message'] as const;
+/** `YYYY-MM-DD`, deliberately loose (a calendar date, not a full timestamp). */
+const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * TASK-661 — deprecation signalling for a kind, authored INSIDE the same
+ * `definition` document a kind already lives in (no new column, no
+ * migration). Purely informational: `validateContextPayload` does not
+ * consult it — a deprecated kind is still accepted for the length of its
+ * stated migration window, which is the whole point of deprecating rather
+ * than deleting.
+ */
+export interface KindDeprecation {
+  /** ISO date (`YYYY-MM-DD`) the kind was deprecated. */
+  since: string;
+  /** ISO date after which clients should have migrated. Open-ended when absent. */
+  migrateBy?: string;
+  /** Free-text guidance surfaced to a client reading the discovery bundle. */
+  message?: string;
+}
 
 export interface ContextKindDeclaration {
   key: string;
@@ -78,6 +100,7 @@ export interface ContextKindDeclaration {
   description?: string;
   fields?: Record<string, unknown>;
   constraints?: { mimeTypes?: string[]; maxBytes?: number };
+  deprecated?: KindDeprecation;
 }
 
 export interface ContextOutputDeclaration {
@@ -206,6 +229,36 @@ function kindProblems(kind: unknown, at: string, seen: Set<string>): string[] {
 
   if (kind.constraints !== undefined) {
     problems.push(...constraintProblems(kind.constraints, `${at}.constraints`));
+  }
+
+  if (kind.deprecated !== undefined) {
+    problems.push(...deprecatedProblems(kind.deprecated, `${at}.deprecated`));
+  }
+
+  return problems;
+}
+
+/** TASK-661 — validate a `kinds[].deprecated` block. */
+function deprecatedProblems(deprecated: unknown, at: string): string[] {
+  if (!isPlainObject(deprecated)) {
+    return [`${at} must be a JSON object when present`];
+  }
+
+  const problems: string[] = [];
+  for (const key of Object.keys(deprecated)) {
+    if (!(DEPRECATED_KEYS as readonly string[]).includes(key)) {
+      problems.push(`${at}: unknown key \`${key}\``);
+    }
+  }
+
+  if (typeof deprecated.since !== 'string' || !ISO_DATE_PATTERN.test(deprecated.since)) {
+    problems.push(`${at}.since is required and must be an ISO date (YYYY-MM-DD)`);
+  }
+  if (deprecated.migrateBy !== undefined && (typeof deprecated.migrateBy !== 'string' || !ISO_DATE_PATTERN.test(deprecated.migrateBy))) {
+    problems.push(`${at}.migrateBy must be an ISO date (YYYY-MM-DD) when present`);
+  }
+  if (deprecated.message !== undefined && (typeof deprecated.message !== 'string' || deprecated.message.length > 500)) {
+    problems.push(`${at}.message must be a string of at most 500 characters when present`);
   }
 
   return problems;
