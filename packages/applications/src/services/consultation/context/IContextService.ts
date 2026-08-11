@@ -17,7 +17,10 @@ import {
 
 export abstract class IContextService {
   // Context Item CRUD
-  abstract addContext(consultationId: string, request: AddContextRequest): Promise<ContextItemResponse>;
+  // `contextSchemaVersionId` (TASK-661) — threaded from the
+  // `X-Context-Schema-Version` request header; ignored when `request.kindKey`
+  // is absent.
+  abstract addContext(consultationId: string, request: AddContextRequest, contextSchemaVersionId?: string): Promise<ContextItemResponse>;
   abstract updateContext(contextItemId: string, request: UpdateContextRequest): Promise<ContextItemResponse>;
   // Soft-delete a context item (notes / case-notes / files).
   abstract deleteContext(contextItemId: string): Promise<void>;
