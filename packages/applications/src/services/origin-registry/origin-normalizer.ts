@@ -26,16 +26,50 @@
 
 import { ArgumentInvalidException } from '@arcaai/exceptions';
 
+// ── Browser-extension schemes (TASK-653) ─────────────────────────────────────
+//
+// An extension page loads from `chrome-extension://<id>` (Chrome/Edge/Brave),
+// `moz-extension://<uuid>` (Firefox) or `safari-web-extension://<uuid>` (Safari),
+// and a browser sends exactly that as the `Origin` header. These are opaque,
+// per-install identifiers, not DNS hosts: there is no apex, no port, no path,
+// and the id is a single label (`[a-p]{32}` for Chrome, a hex+hyphen UUID for
+// Firefox/Safari). They are all secure contexts, so the http-only-loopback rule
+// below does NOT apply to them (that rule guards plaintext-over-a-network
+// credential leaks — an extension origin never travels a network at all).
+export const EXTENSION_SCHEMES = ['chrome-extension', 'moz-extension', 'safari-web-extension'] as const;
+export type ExtensionScheme = (typeof EXTENSION_SCHEMES)[number];
+export type OriginScheme = 'http' | 'https' | ExtensionScheme;
+
+/**
+ * True for a browser-extension scheme, accepting either the bare form
+ * (`'chrome-extension'`) or the WHATWG `url.protocol` form with a trailing colon
+ * (`'chrome-extension:'`) — callers hold it in both shapes, so normalize once here.
+ */
+export function isExtensionScheme(scheme: string): boolean {
+  const bare = scheme.endsWith(':') ? scheme.slice(0, -1) : scheme;
+  return (EXTENSION_SCHEMES as readonly string[]).includes(bare);
+}
+
+/**
+ * A single opaque extension-id label: the SAME LDH shape the pattern grammar's
+ * `LABEL_PATTERN` enforces (lowercase alphanumeric ends, hyphens only in the
+ * middle, no dots, no `*`). Chrome ids (`[a-p]{32}`) and Firefox/Safari UUIDs
+ * (hex + hyphens) both satisfy it; the id is lowercased before this runs so a
+ * Safari uppercase UUID matches.
+ */
+const EXTENSION_ID_PATTERN = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/;
+const MAX_EXTENSION_ID_LENGTH = 128;
+
 export interface NormalizedOrigin {
   /** Canonical `scheme://host[:port]` — default ports stripped. */
   origin: string;
-  scheme: 'http' | 'https';
+  scheme: OriginScheme;
   host: string;
   /** null when the port is the scheme default. */
   port: number | null;
 }
 
-const ALLOWED_SCHEMES = new Set(['http:', 'https:']);
+const ALLOWED_SCHEMES = new Set(['http:', 'https:', 'chrome-extension:', 'moz-extension:', 'safari-web-extension:']);
 
 /** Throws ArgumentInvalidException on any malformed / disallowed origin. */
 export function normalizeOrigin(raw: string): NormalizedOrigin {
@@ -61,7 +95,9 @@ export function normalizeOrigin(raw: string): NormalizedOrigin {
   }
 
   if (!ALLOWED_SCHEMES.has(url.protocol)) {
-    throw new ArgumentInvalidException(`Origin scheme must be http or https: ${raw}`);
+    throw new ArgumentInvalidException(
+      `Origin scheme must be http, https or a browser-extension scheme (chrome-extension, moz-extension, safari-web-extension): ${raw}`,
+    );
   }
 
   if (url.username.length > 0 || url.password.length > 0) {
@@ -81,10 +117,14 @@ export function normalizeOrigin(raw: string): NormalizedOrigin {
     throw new ArgumentInvalidException(`Origin must not contain a fragment: ${raw}`);
   }
 
-  const scheme = url.protocol.slice(0, -1) as 'http' | 'https';
+  const scheme = url.protocol.slice(0, -1) as OriginScheme;
   // WHATWG URL already lowercases the host and strips a scheme-default port
-  // (`:443` on https, `:80` on http) during parsing, so `url.hostname` and
-  // `url.port` are already canonical here.
+  // (`:443` on https, `:80` on http) during parsing FOR SPECIAL (http/https)
+  // schemes, so `url.hostname` and `url.port` are already canonical there.
+  //
+  // Extension schemes are NON-special, so their host is an OPAQUE host: it is
+  // NOT lowercased, NOT IDNA-processed, and any port present is preserved as-is
+  // — the extension branch below handles lowercasing and forbids a port.
   const host = url.hostname;
   const port = url.port === '' ? null : Number(url.port);
 
@@ -111,6 +151,34 @@ export function normalizeOrigin(raw: string): NormalizedOrigin {
   // digits, so the host is the only channel a `*` can arrive through.
   if (host.includes('*')) {
     throw new ArgumentInvalidException(`Origin must not contain a wildcard (decoded from an encoded form): ${raw}`);
+  }
+
+  // ── Browser-extension branch (TASK-653) ────────────────────────────────────
+  //
+  // An extension origin is `<scheme>://<id>` — a single opaque id label, never a
+  // DNS host. It differs from the http/https path in two deliberate ways:
+  //   • A PORT is forbidden. Browsers never attach one; a non-special scheme's
+  //     parser will happily accept `chrome-extension://id:80`, so reject it
+  //     explicitly rather than silently store a spurious port.
+  //   • The http-only-loopback rule is SKIPPED. That rule stops plaintext CORS
+  //     credentials leaking over a network; an extension origin is a secure
+  //     context that never crosses a network, so the rule is irrelevant here.
+  // The id is lowercased (Safari sends uppercase UUIDs — lowercasing both store
+  // and lookup keeps matching consistent) and validated as a single LDH label.
+  if (isExtensionScheme(scheme)) {
+    if (host.length === 0) {
+      throw new ArgumentInvalidException(`Browser-extension origin must declare an id: ${raw}`);
+    }
+    if (port !== null) {
+      throw new ArgumentInvalidException(`Browser-extension origin must not carry a port: ${raw}`);
+    }
+    const id = host.toLowerCase();
+    if (id.length > MAX_EXTENSION_ID_LENGTH || !EXTENSION_ID_PATTERN.test(id)) {
+      throw new ArgumentInvalidException(
+        `Browser-extension id must be a single label of ${MAX_EXTENSION_ID_LENGTH} chars or fewer (a-z, 0-9, hyphen; no dots): ${raw}`,
+      );
+    }
+    return { origin: `${scheme}://${id}`, scheme, host: id, port: null };
   }
 
   if (scheme === 'http' && !isLoopbackHost(host)) {
