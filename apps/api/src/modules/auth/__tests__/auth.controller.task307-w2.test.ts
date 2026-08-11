@@ -365,7 +365,7 @@ describe('auth.controller uses SecretsService only', () => {
  * `getSecretSync`. ~SECRETS_TTL_SEC (default 300s) after boot that entry
  * expires, so every sign-path 401s with "Authentication system not
  * configured" — while JwtStrategy keeps verifying tokens (it captured the
- * secret at construction). Symptom: impersonation from ui-playground fails
+ * secret at construction). Symptom: impersonation from a client app fails
  * a few minutes after the API starts, even though the admin is still
  * "logged in".
  *

@@ -6,7 +6,7 @@ Last updated: 2026-07-04
 
 ## Status
 
-No workspace package currently ships a `rollup.config.*` that imports this package — the bundled packages (`room`, `vad`, `noise-filter`, `stt`, `agentic-sdk-v2`, `ui`) all build with tsup. The package remains a devDependency of the repo root (alongside `rollup ^4`) and is copied in the `apps/api` and `apps/ui-playground` Dockerfiles for workspace installs. Treat it as available-but-dormant infrastructure.
+No workspace package currently ships a `rollup.config.*` that imports this package — the bundled packages (`room`, `vad`, `noise-filter`, `stt`, `agentic-sdk-v2`, `ui`) all build with tsup. The package remains a devDependency of the repo root (alongside `rollup ^4`) and is copied in the `apps/api` Dockerfile for workspace installs. Treat it as available-but-dormant infrastructure.
 
 ## Exports
 

@@ -15,7 +15,6 @@ const SHARED_EXCLUDE = [
   '**/*.e2e-spec.ts',
   '**/integration/**',
   '**/*.integration.ts',
-  'apps/ui-playground/**',
   // Infra-dependent suites with their own runners — not part of `test:unit`.
   // PgBouncer rig runs via `pnpm pgbv:test` (needs the pooler on :6532);
   // *.postgres.test.ts is a live-Postgres regression guard.

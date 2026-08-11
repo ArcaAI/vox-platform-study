@@ -9,9 +9,8 @@
  *   - infrastructure/docker/python-base/Dockerfile — shared BASE image only,
  *     no CMD/ENTRYPOINT, never runs as a process. Every consumer of it bakes
  *     its own build-info.json in its own final stage.
- *   - apps/example/Dockerfile, apps/ui-playground/Dockerfile — not built by
- *     any job in .gitlab/ci/build.yml (ui-playground is deprecated, example
- *     is a standalone raw-WebSocket demo); not part of the build-info schema's
+ *   - apps/example/Dockerfile — not built by any job in .gitlab/ci/build.yml
+ *     (a standalone raw-WebSocket demo); not part of the build-info schema's
  *     `service` enum.
  *   - apps/stt/docker/Dockerfile.apple — Apple-silicon local dev variant, not
  *     built by CI.

@@ -90,7 +90,6 @@ graph TB
 | `harness` | Clinical Documentation Harness — FastAPI HTTP surface + Temporal durable workflows (`HarnessDocWorkflow`) | 8866 | REST (`/api/v1`) | Temporal (gRPC 7233), NLP, SMR, API gateway internal endpoints, Qdrant + reranker (hybrid RAG), Granite Guardian judge |
 | `tts` | Text-to-speech — realtime multi-provider synthesis (Azure Speech cloud + self-hosted Kokoro / Indic Parler-TTS), English + Malayalam, OpenAI-compatible | 8865 | REST (`/api/v1`), chunked audio + SSE | Azure Speech (cloud), local ONNX/Torch models (GPU), reached via gateway `/api/v1/speech/*` |
 | `admin-console` | Governance & administration console — Next.js 16 App Router, React 19, BFF auth (encrypted httpOnly session, catch-all `/api/hope/*` proxy, stream tickets); tier-mirrored route groups `(global)` / `(shared)` / `(tenant)` | 5176 (dev) | HTTP (BFF) | API gateway (via server-side proxy) |
-| `ui-playground` | Legacy SDK playground + admin console — React 19/Vite/TanStack Router. **Deprecated** (no development/maintenance plan; superseded by `admin-console`) | 5175 (dev) | HTTP | API gateway |
 | `example` | Minimal live-transcription demo of the SDK (`live-transcription-example`) | 5173 (dev) | HTTP | API gateway |
 
 Two additional long-running processes are not HTTP services:
@@ -402,7 +401,7 @@ Infrastructure in containers; application services run on the host (Node via pnp
 
 GitOps via ArgoCD ApplicationSet (`deployment/argocd/bootstrap.{dev,prod}.yaml.example`), namespaces `hope-v2-dev` (auto-sync) and `hope-v2-prod` (manual sync), GitLab CI (`.gitlab-ci.yml`) builds per-service images on change.
 
-- Kustomize base (`deployment/k3s/base/kustomization.yaml`) deploys: `redis`, `ollama`, `lmstudio`, `api`, `guardrail`, `reranker`, `vllm`, `llama-cpp`, `smr`, `stt`, `stt-worker`, `tts`, `ui` (ui-playground image — deprecated app), `admin-console`, and a `db-migrate` Job (ArgoCD PreSync hook). An `nlp.yaml` manifest exists but is not currently listed in the kustomization resources.
+- Kustomize base (`deployment/k3s/base/kustomization.yaml`) deploys: `redis`, `ollama`, `lmstudio`, `api`, `guardrail`, `reranker`, `vllm`, `llama-cpp`, `smr`, `stt`, `stt-worker`, `tts`, `admin-console`, and a `db-migrate` Job (ArgoCD PreSync hook). An `nlp.yaml` manifest exists but is not currently listed in the kustomization resources.
 - PostgreSQL is not deployed in-cluster by the base; the platform targets the external HA Postgres cluster (Patroni + HAProxy + PgBouncer, VMs 500–502 — see `docs/research/deployments/deploy-vm500-502-postgres-ha.md`). Production requires the `DATABASE_URL` (PgBouncer 6432, transaction mode) / `DIRECT_URL` (un-pooled, migrations) split.
 - Harness + Temporal are not yet part of the k3s base (compose-profile / host-run only at this time).
 - Ingress: Traefik (k3s default). Overlays (`overlays/dev`, `overlays/prod`) patch image tags, hostnames, replicas.

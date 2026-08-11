@@ -44,7 +44,7 @@ const fetchPaginated = async (
     headers: { Authorization: `Bearer ${token}` },
     // Admin-plane list endpoints (UserController/AuditLogController) bind the
     // shared `PaginatedQuery` DTO, whose page-size key is `limit` — NOT the
-    // RBAC-only `pageSize` (see apps/ui-playground roles.ts).
+    // RBAC-only `pageSize`.
     // The global ValidationPipe (forbidNonWhitelisted) 400s any other key.
     params: { page: '1', limit: '200' },
   });

@@ -14,8 +14,9 @@ import { Authorize, ExpectedVersion, RequiresIfMatch } from '../../decorators';
  * End-user (clinician) prompt-template plane.
  *
  * The doctor-facing counterpart to the admin `PromptManagementController`.
- * Pre-Summary / Summary in the ui-playground need to populate a template
- * selector for a clinician (often under impersonation). Routing that through
+ * Pre-Summary / Summary consumers (via the `@arcaai/vox` SDK's `usePrompts`
+ * hook) need to populate a template selector for a clinician (often under
+ * impersonation). Routing that through
  * the admin `/admin/prompt-templates` list required the `manage`-derived
  * `read:PromptTemplate` ability that doctors don't have, so the call 403'd and
  * the global query-cache error handler bounced the whole app to `/403`.

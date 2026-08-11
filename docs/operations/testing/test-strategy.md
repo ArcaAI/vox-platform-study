@@ -16,9 +16,8 @@ drives clinical documentation, testing must protect four properties above all:
 3. **Clinical safety** — guardrails, summarization faithfulness, and NER correctness on medical text.
 4. **Auth & access control** — deny-by-default authorization on every route.
 
-In scope: all packages under `packages/*`, all apps under `apps/*` (except the deprecated
-`apps/ui-playground`, excluded from the default suite). Out of scope for automated CI: live-infra
-integration/E2E and the harness eval gate run only behind opt-in flags (see [`ci-gates.md`](ci-gates.md)).
+In scope: all packages under `packages/*`, all apps under `apps/*`. Out of scope for automated CI:
+live-infra integration/E2E and the harness eval gate run only behind opt-in flags (see [`ci-gates.md`](ci-gates.md)).
 
 ## 2. Test levels (the pyramid)
 

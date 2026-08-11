@@ -54,8 +54,8 @@
  *     the way the old by-hand script could), but does not validate it against
  *     the registry. The keys of theirs that ARE registry-declared appear in
  *     the generated docs table with an explicit owner column.
- *   • `apps/example`, `apps/ui-playground` — Vite demos whose vars are
- *     `import.meta.env.VITE_*`, not process env.
+ *   • `apps/example` — a Vite demo whose vars are `import.meta.env.VITE_*`,
+ *     not process env.
  *   • `.env.test`, per-app `.env.prod` — environment TEMPLATES with
  *     deliberately environment-specific values (`.env.test` runs the DEV+100
  *     port scheme of commit d84f538e), not declarations. Neither is loaded

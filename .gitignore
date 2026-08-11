@@ -117,8 +117,7 @@ yarn-error.log*
 # standalone root `.env.example` file, so the root-specific `!.env.example`
 # allowlist entry was dropped. `!**/.env.example` stays: it un-ignores the
 # unrelated `.example`-named fixtures still in use elsewhere (apps/example,
-# apps/ui-playground, docs/archive/**, docs/research/**, the pgbouncer
-# validation fixture).
+# docs/archive/**, docs/research/**, the pgbouncer validation fixture).
 # keep below
 !packages/applications/src/common/env
 

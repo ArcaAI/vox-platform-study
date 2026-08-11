@@ -255,8 +255,8 @@ describe('AgenticProvider — auto-wired token refresh', () => {
     expect(setOnUnauthorizedSpy).toHaveBeenCalledTimes(1);
   });
 
-  // A host that owns its own 401 handling (e.g. the
-  // ui-playground's impersonation-aware `useAutoRefresh`) can opt OUT of the
+  // A host that owns its own 401 handling (e.g. a consumer's
+  // impersonation-aware `useAutoRefresh`) can opt OUT of the
   // provider's default auto-wire so the single-slot `setOnUnauthorized` has a
   // deterministic owner. Default (undefined / true) preserves B2 behaviour.
   it('does NOT auto-wire setOnUnauthorized when autoWireTokenRefresh is false (F-5)', async () => {

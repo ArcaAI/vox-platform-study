@@ -296,7 +296,7 @@ publish-sdk:
     # NOTE: `.skip-on-dev-2-1` is deliberately NOT referenced here. Builds DO
     # run on dev-2.1 (.build-common-rules admits PIPELINE_TYPE == "dev"), and an
     # image that is built but never signed is precisely the gap this closes.
-    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "release_playground" || $PIPELINE_TYPE == "main"
+    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "main"
       when: never
 
 # ── C.3 — CycloneDX SBOM generation ──────────────────────────────────────────
