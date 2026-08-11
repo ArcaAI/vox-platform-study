@@ -15,6 +15,11 @@ export interface CreateContextItemProps extends BaseEntityFactoryCreateProps {
   content?: IContextItemEntity['content'];
   mediaId?: IContextItemEntity['mediaId'];
   dnaWritingStyleId?: IContextItemEntity['dnaWritingStyleId'];
+  // TASK-658 — optional; omitted by every pre-existing caller, which is the
+  // regression guarantee: a write that names no kind produces exactly the row
+  // it produced before.
+  kindKey?: IContextItemEntity['kindKey'];
+  contextSchemaVersionId?: IContextItemEntity['contextSchemaVersionId'];
   qdrantSynced?: IContextItemEntity['qdrantSynced'];
   tenantId: IContextItemEntity['tenantId'];
 
@@ -47,6 +52,8 @@ export class ContextItemFactory {
       content: props.content ?? null,
       mediaId: props.mediaId ?? null,
       dnaWritingStyleId: props.dnaWritingStyleId ?? null,
+      kindKey: props.kindKey ?? null,
+      contextSchemaVersionId: props.contextSchemaVersionId ?? null,
       qdrantSynced: props.qdrantSynced ?? false,
       qdrantSyncedAt: null,
       tenantId: props.tenantId,
