@@ -3,7 +3,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { BaseEntityFactoryCreateProps } from '../../../common';
 import { DepartmentAgentEntity, IDepartmentAgentEntity } from '../../../entities';
-import { DepartmentAgentDnaPolicy } from '../../../enums';
+import { DepartmentAgentDnaPolicy, DepartmentAgentRole } from '../../../enums';
 import { generateId } from '../../../utils';
 
 export interface CreateDepartmentAgentProps extends BaseEntityFactoryCreateProps {
@@ -32,6 +32,15 @@ export interface CreateDepartmentAgentProps extends BaseEntityFactoryCreateProps
   // bag on purpose — the default is flipped only via `setDefaultForDepartment`.
   sourceAgentTemplateSlug?: IDepartmentAgentEntity['sourceAgentTemplateSlug'];
   templateLocked?: IDepartmentAgentEntity['templateLocked'];
+  // TASK-659 — loop configuration + promotion surface. All optional;
+  // omitted ⇒ null (role ⇒ SPECIALIST, the DB default).
+  role?: IDepartmentAgentEntity['role'];
+  subscribedKinds?: IDepartmentAgentEntity['subscribedKinds'];
+  writeScope?: IDepartmentAgentEntity['writeScope'];
+  goal?: IDepartmentAgentEntity['goal'];
+  guardrailProfile?: IDepartmentAgentEntity['guardrailProfile'];
+  alwaysActions?: IDepartmentAgentEntity['alwaysActions'];
+  neverActions?: IDepartmentAgentEntity['neverActions'];
   // Template-copy lineage extras (TASK-548): provisioning/resync stamp
   // `{ sourceTemplateVersionNumber }` here so the resync sweep can prove a
   // locked clone pristine against the exact source version it was cloned from.
@@ -75,6 +84,13 @@ export class DepartmentAgentFactory {
       tags: props.tags ?? [],
       sourceAgentTemplateSlug: props.sourceAgentTemplateSlug ?? null,
       templateLocked: props.templateLocked ?? false,
+      role: props.role ?? DepartmentAgentRole.SPECIALIST,
+      subscribedKinds: props.subscribedKinds ?? null,
+      writeScope: props.writeScope ?? null,
+      goal: props.goal ?? null,
+      guardrailProfile: props.guardrailProfile ?? null,
+      alwaysActions: props.alwaysActions ?? null,
+      neverActions: props.neverActions ?? null,
       metaData: props.metaData ?? null,
     });
   }
