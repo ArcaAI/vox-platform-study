@@ -77,6 +77,16 @@ def _workflow_id(consultation_id: str) -> str:
     return f"harness-doc-{consultation_id}"
 
 
+def _loop_workflow_id(consultation_id: str) -> str:
+    """Deterministic, idempotent workflow id for a consultation's LOOP (TASK-662).
+
+    Mirrors ``consultation_loop_workflow_id`` in ``temporal.workflows``; kept as
+    a local one-liner for the same reason ``_workflow_id`` is — this module must
+    stay importable without loading the workflow sandbox.
+    """
+    return f"consultation-loop-{consultation_id}"
+
+
 class StartDocumentRequest(BaseModel):
     """Body for ``document:start`` (camelCase at the apps/api boundary)."""
 
@@ -127,6 +137,70 @@ class EditRequest(BaseModel):
     content: str
     context_item_version_id: str | None = Field(default=None, alias="contextItemVersionId")
     edited_by: str | None = Field(default=None, alias="editedBy")
+
+
+class LoopContextAddedRequest(BaseModel):
+    """Body for ``signal/context-added`` (TASK-662's receiver for TASK-660's caller).
+
+    ``contextItemId``/``contextType``/``subType``/``contentPreview`` are exactly
+    what ``HarnessGatewayService.signalContextAdded`` sends today. The remaining
+    fields are ADDITIVE-OPTIONAL so the loop's richer vocabulary (the
+    tenant-declared kind key, the emission timestamp that makes de-duplication
+    exact, and the cascade depth) can be supplied without a coordinated release:
+    ``extra="ignore"`` on both sides means neither end breaks on a field the
+    other does not yet know.
+
+    ``kindKey`` falls back to ``subType`` and then to ``contextType`` so a
+    gateway that has not yet been taught the kind key still routes against
+    SOMETHING the tenant's subscriptions can match, rather than silently
+    matching nothing.
+    """
+
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+
+    tenant_id: str | None = Field(default=None, alias="tenantId")
+    context_item_id: str = Field(alias="contextItemId")
+    context_type: str | None = Field(default=None, alias="contextType")
+    sub_type: str | None = Field(default=None, alias="subType")
+    kind_key: str | None = Field(default=None, alias="kindKey")
+    occurred_at: str | None = Field(default=None, alias="occurredAt")
+    depth: int = 0
+    source: str | None = Field(default=None)
+    content_preview: str = Field(default="", alias="contentPreview")
+    user_id: str | None = Field(default=None, alias="userId")
+    session_id: str | None = Field(default=None, alias="sessionId")
+    correlation_id: str | None = Field(default=None, alias="correlationId")
+
+    def resolved_kind_key(self) -> str | None:
+        return self.kind_key or self.sub_type or self.context_type
+
+
+class LoopEndingRequest(BaseModel):
+    """Body for ``signal/consultation-ending``."""
+
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+
+    reason: str | None = Field(default=None)
+    persist_snapshot: bool = Field(default=True, alias="persistSnapshot")
+    # The HarnessDocWorkflow start payload the loop forwards to its finalize
+    # child. Omitted ⇒ the child starts with an empty transcript, which is the
+    # correct degradation: the gateway owns the transcript, not the loop.
+    transcript_text: str = Field(default="", alias="transcriptText")
+    context_item_id: str | None = Field(default=None, alias="contextItemId")
+    job_id: str | None = Field(default=None, alias="jobId")
+    conversation_language: str = Field(default="en", alias="conversationLanguage")
+    dna_style_id: str | None = Field(default=None, alias="dnaStyleId")
+    template: str | None = Field(default=None)
+    smr_provider: str | None = Field(default=None, alias="smrProvider")
+    smr_model: str | None = Field(default=None, alias="smrModel")
+
+
+class LoopCancelRequest(BaseModel):
+    """Body for ``signal/loop-cancel`` — an orderly application-level stop."""
+
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+
+    reason: str | None = Field(default=None)
 
 
 @router.post(
@@ -297,5 +371,183 @@ async def signal_edit(
         consultation_id=consultation_id,
         workflow_id=workflow_id,
         context_item_version_id=body.context_item_version_id,
+    )
+    return {"workflowId": workflow_id, "signaled": True}
+
+
+# ---------------------------------------------------------------------------
+# Consultation loop (TASK-662)
+#
+# TASK-660 shipped the CALLER for `signal/context-added` and recorded in its §7
+# that the receiver was this ticket's job. These three routes are it.
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/workflows/{consultation_id}/signal/context-added",
+    dependencies=[Depends(require_service_token)],
+)
+async def signal_context_added(
+    consultation_id: str,
+    body: LoopContextAddedRequest,
+    request: Request,
+) -> dict[str, Any]:
+    """Deliver a context item to the consultation loop, starting it if needed.
+
+    This is a signal-WITH-start, not a signal: the loop's lifetime is the
+    consultation's, and the first context item is what brings it into
+    existence. Signal-with-start is idempotent on the deterministic workflow id
+    — a second call signals the running loop instead of racing a duplicate into
+    existence — which is why it is used here rather than a start-then-signal
+    pair that could interleave.
+
+    ``tenantId`` is required: the workflow cannot be STARTED without it, and a
+    loop with the wrong tenant would resolve another tenant's configuration.
+    """
+    from harness.temporal.models import ConsultationLoopWorkflowInput, ContextAddedSignal
+    from harness.temporal.workflows import ConsultationLoopWorkflow
+
+    if not body.tenant_id:
+        raise HTTPException(status_code=400, detail="tenantId is required")
+
+    settings = _settings(request)
+    client = await _temporal_client(request)
+    workflow_id = _loop_workflow_id(consultation_id)
+
+    wf_input = ConsultationLoopWorkflowInput(
+        consultation_id=consultation_id,
+        tenant_id=body.tenant_id,
+        user_id=body.user_id,
+        correlation_id=body.correlation_id,
+        session_id=body.session_id,
+    )
+    signal = ContextAddedSignal(
+        context_item_id=body.context_item_id,
+        kind_key=body.resolved_kind_key(),
+        context_type=body.context_type,
+        source=body.source,
+        occurred_at=body.occurred_at,
+        depth=body.depth,
+        text=body.content_preview,
+    )
+
+    memo = {"tenantId": body.tenant_id, "consultationId": consultation_id}
+    start_kwargs: dict[str, Any] = {
+        "id": workflow_id,
+        "task_queue": settings.temporal.task_queue,
+        "memo": memo,
+        "start_signal": "contextAdded",
+        "start_signal_args": [signal],
+    }
+
+    try:
+        await client.start_workflow(
+            ConsultationLoopWorkflow.run,
+            wf_input,
+            search_attributes=TypedSearchAttributes(
+                [SearchAttributePair(HARNESS_TENANT_ID_KEY, body.tenant_id)]
+            ),
+            **start_kwargs,
+        )
+    except Exception as exc:  # noqa: BLE001 — fail-safe: the SA may be unregistered
+        # Same degradation as ``start_document``: a search attribute that is not
+        # registered on the cluster must never stop a consultation.
+        logger.warning(
+            "harness.loop.signal_context_added.search_attribute_unavailable",
+            consultation_id=consultation_id,
+            workflow_id=workflow_id,
+            error=str(exc),
+        )
+        await client.start_workflow(ConsultationLoopWorkflow.run, wf_input, **start_kwargs)
+
+    logger.info(
+        "harness.loop.signal_context_added",
+        consultation_id=consultation_id,
+        workflow_id=workflow_id,
+        context_item_id=body.context_item_id,
+        kind_key=signal.kind_key,
+        depth=body.depth,
+    )
+    return {"workflowId": workflow_id, "signaled": True}
+
+
+@router.post(
+    "/workflows/{consultation_id}/signal/consultation-ending",
+    dependencies=[Depends(require_service_token)],
+)
+async def signal_consultation_ending(
+    consultation_id: str,
+    body: LoopEndingRequest,
+    request: Request,
+) -> dict[str, Any]:
+    """Tell the loop the consultation is over: drain, run ending actions, finish.
+
+    A plain signal, NOT signal-with-start: there is nothing to end when no loop
+    is running, and starting one just to immediately end it would emit a
+    spurious finalize.
+    """
+    from harness.temporal.models import ConsultationEndingSignal, LoopFinalizeRequest
+    from harness.temporal.workflows import ConsultationLoopWorkflow
+
+    client = await _temporal_client(request)
+    workflow_id = _loop_workflow_id(consultation_id)
+
+    handle = client.get_workflow_handle(workflow_id)
+    await handle.signal(
+        ConsultationLoopWorkflow.consultation_ending,
+        ConsultationEndingSignal(
+            reason=body.reason,
+            persist_snapshot=body.persist_snapshot,
+            finalize=LoopFinalizeRequest(
+                transcript_text=body.transcript_text,
+                context_item_id=body.context_item_id,
+                job_id=body.job_id,
+                conversation_language=body.conversation_language,
+                dna_style_id=body.dna_style_id,
+                template=body.template,
+                smr_provider=body.smr_provider,
+                smr_model=body.smr_model,
+            ),
+        ),
+    )
+
+    logger.info(
+        "harness.loop.signal_consultation_ending",
+        consultation_id=consultation_id,
+        workflow_id=workflow_id,
+        reason=body.reason,
+    )
+    return {"workflowId": workflow_id, "signaled": True}
+
+
+@router.post(
+    "/workflows/{consultation_id}/signal/loop-cancel",
+    dependencies=[Depends(require_service_token)],
+)
+async def signal_loop_cancel(
+    consultation_id: str,
+    body: LoopCancelRequest,
+    request: Request,
+) -> dict[str, Any]:
+    """Stop the loop WITHOUT running its ending actions (the consultation was abandoned).
+
+    Named ``loop-cancel`` rather than ``cancel`` so it is never mistaken for
+    Temporal cancellation: this is an orderly application-level stop and the
+    workflow COMPLETES, it does not fail.
+    """
+    from harness.temporal.models import CancelLoopSignal
+    from harness.temporal.workflows import ConsultationLoopWorkflow
+
+    client = await _temporal_client(request)
+    workflow_id = _loop_workflow_id(consultation_id)
+
+    handle = client.get_workflow_handle(workflow_id)
+    await handle.signal(ConsultationLoopWorkflow.cancel, CancelLoopSignal(reason=body.reason))
+
+    logger.info(
+        "harness.loop.signal_loop_cancel",
+        consultation_id=consultation_id,
+        workflow_id=workflow_id,
+        reason=body.reason,
     )
     return {"workflowId": workflow_id, "signaled": True}

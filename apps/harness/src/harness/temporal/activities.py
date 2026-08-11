@@ -2107,10 +2107,13 @@ async def fetch_loop_config(payload: FetchLoopConfigInput) -> ConsultationLoopCo
         payload.consultation_id, tenant_id=payload.tenant_id
     )
 
-    raw_budget = data.get("budget") if isinstance(data.get("budget"), dict) else {}
+    raw_budget = data.get("budget")
+    if not isinstance(raw_budget, dict):
+        raw_budget = {}
+    defaults = LoopBudget()
     budget = LoopBudget(
-        max_depth=int(raw_budget.get("maxDepth", LoopBudget().max_depth)),
-        max_actions=int(raw_budget.get("maxActions", LoopBudget().max_actions)),
+        max_depth=int(raw_budget.get("maxDepth", defaults.max_depth)),
+        max_actions=int(raw_budget.get("maxActions", defaults.max_actions)),
     )
 
     subscriptions: list[LoopSubscription] = []
