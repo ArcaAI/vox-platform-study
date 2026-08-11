@@ -366,4 +366,39 @@ export const LLM_AI_MODELS: AiModelSeed[] = [
     computeType: 'q4_0',
     tags: ['llm', 'lm-studio', 'judge'],
   },
+
+  // =========================================================================
+  // Vision (TASK-657) — first ModelCategory.VISION / IMAGE_TEXT_TO_TEXT row.
+  // Same LM Studio weights as `lms-medgemma-1.5-4b-it` above (a 4B MedGemma
+  // checkpoint is natively multimodal — one set of weights, two catalog rows
+  // for two task types; `AiModel`'s only uniqueness constraint is
+  // (tenantId, slug), not sourceUri). In-boundary (self-hosted) default —
+  // no PHI ever leaves the tenant's infrastructure — chosen over a BYOK cloud
+  // VLM (see docs/implementation/TASK-657-Vision-Capability/README.md §5 for
+  // the full tradeoff). Not loaded on the dev LM Studio instance (verified
+  // 2026-08-10, same as `lms-medgemma-1.5-4b-it`); catalogued-but-not-loaded
+  // rows are never selected by an AiTaskDefault, so `vlm.extract` has
+  // deliberately NO SYSTEM default and fails closed until an operator either
+  // loads these weights or a BYOK cloud vision credential is configured.
+  // =========================================================================
+  {
+    id: '80000000-0000-0000-0007-000000000024',
+    tenantId: SYSTEM_TENANT_ID,
+    name: 'MedGemma 1.5 4B IT — Vision (LM Studio)',
+    slug: 'lms-medgemma-1.5-4b-it-vision',
+    description:
+      'MedGemma 1.5 4B instruction-tuned via LM Studio — medical image+text vision-language extraction (TASK-657 vlm.extract). Not loaded on the dev LM Studio instance (verified 2026-08-10); the identifier is provider-correct, the weights are simply not installed there.',
+    category: ModelCategory.VISION,
+    taskType: ModelTaskType.IMAGE_TEXT_TO_TEXT,
+    modelType: ModelType.QUANTIZED_MODEL,
+    source: AiModelSource.LOCAL,
+    sourceUri: 'medgemma-1.5-4b-it',
+    sourceRevision: 'main',
+    format: AiModelFormat.GGUF,
+    provider: 'lm-studio',
+    architecture: 'gemma3',
+    memorySizeMb: 3072,
+    computeType: 'q5_k_xl',
+    tags: ['vision', 'lm-studio', 'medical'],
+  },
 ];

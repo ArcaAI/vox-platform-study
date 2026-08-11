@@ -1234,8 +1234,9 @@ describe('STT Seed Data', () => {
     });
 
     describe('Model Categories', () => {
-      it('should have valid category for all models (AUDIO or NLP)', () => {
-        const validCategories = [ModelCategory.AUDIO, ModelCategory.NLP];
+      it('should have valid category for all models (AUDIO, NLP or VISION)', () => {
+        // VISION added TASK-657 (vision-language model catalog rows).
+        const validCategories = [ModelCategory.AUDIO, ModelCategory.NLP, ModelCategory.VISION];
         DEFAULT_AI_MODELS.forEach((model) => {
           expect(validCategories).toContain(model.category);
         });
