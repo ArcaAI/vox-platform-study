@@ -1604,6 +1604,66 @@ describe('LiveDocumentationService', () => {
   });
 
   // ------------------------------------------------------------------
+  // TASK-660 — the ContextAdded gate widened to also emit for TRANSCRIPT and
+  // STRUCTURED (loop event plane). LiveDocumentationService was written for
+  // WORKNOTE/CASE_NOTE/ATTACHMENT only — it must ignore everything else so
+  // the widening does not change what folds into the running summary.
+  // ------------------------------------------------------------------
+  describe('ContextAdded kind filter (regression — TASK-660 widening)', () => {
+    type TrackedNote = { contextItemId: string; text: string };
+    const trackedNotes = (service: LiveDocumentationService, consultationId: string): TrackedNote[] =>
+      (service as unknown as { sessions: Map<string, { contextNotes: TrackedNote[] }> }).sessions.get(consultationId)!.contextNotes;
+
+    it('ignores a TRANSCRIPT ContextAdded event (no note tracked, no flush scheduled)', () => {
+      const { service } = buildDeps();
+      service.start({ consultationId: CID, tenantId: TENANT });
+
+      service.handleContextAdded({
+        consultationId: CID,
+        tenantId: TENANT,
+        timestamp: new Date().toISOString(),
+        contextItemId: 'ctx-transcript-1',
+        contextType: 'TRANSCRIPT',
+        contentPreview: 'Patient reports chest pain.',
+      });
+
+      expect(trackedNotes(service, CID)).toHaveLength(0);
+    });
+
+    it('ignores a STRUCTURED ContextAdded event (no note tracked)', () => {
+      const { service } = buildDeps();
+      service.start({ consultationId: CID, tenantId: TENANT });
+
+      service.handleContextAdded({
+        consultationId: CID,
+        tenantId: TENANT,
+        timestamp: new Date().toISOString(),
+        contextItemId: 'ctx-structured-1',
+        contextType: 'STRUCTURED',
+        contentPreview: '{"bp":"120/80"}',
+      });
+
+      expect(trackedNotes(service, CID)).toHaveLength(0);
+    });
+
+    it('still tracks the pre-existing WORKNOTE/CASE_NOTE/ATTACHMENT kinds unchanged', () => {
+      const { service } = buildDeps();
+      service.start({ consultationId: CID, tenantId: TENANT });
+
+      service.handleContextAdded({
+        consultationId: CID,
+        tenantId: TENANT,
+        timestamp: new Date().toISOString(),
+        contextItemId: 'ctx-worknote-1',
+        contextType: 'WORKNOTE',
+        contentPreview: 'Follow-up in 2 weeks',
+      });
+
+      expect(trackedNotes(service, CID)).toHaveLength(1);
+    });
+  });
+
+  // ------------------------------------------------------------------
   // OCR enrichment re-emits ContextAdded for the SAME
   // contextItemId once it has extracted text. The add path UPSERTS by
   // contextItemId so the attachment yields exactly ONE running-summary
