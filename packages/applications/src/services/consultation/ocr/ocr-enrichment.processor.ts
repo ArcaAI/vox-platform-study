@@ -3,9 +3,9 @@ import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
-import { ContextItemRepository, ContextItemType } from '@arcaai/domains';
+import { ContextItemRepository, ContextItemType, MediaRepository } from '@arcaai/domains';
 import { IBlobStorageService } from '../../baseServices/storage';
-import { assertEqualTenants, createWorkerSession, encryptPhiFields } from '../../../common';
+import { assertEqualTenants, createWorkerSession, encryptPhiFields, parseStorageUri } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 import { SecretsService } from '../../baseServices/_meta/secrets';
 import { ConsultationPipelineEvent, ContextAddedPayload } from '../events';
@@ -25,7 +25,12 @@ interface NlpExtractResult {
  * that has a `mediaId` but NO `metaData.extractedText` (i.e. the client-side
  * text-layer extractor found nothing — a scanned/image lab), it:
  *
- *   1. fetches the file bytes from the tenant bucket via `IBlobStorageService`,
+ *   1. resolves `ContextItem.mediaId` (a `Media` row UUID) to its storage
+ *      location — `mediaRepository.findById(mediaId)` → `parseStorageUri(media.uri)`
+ *      — and fetches the file bytes from THAT bucket/key via `IBlobStorageService`
+ *      (TASK-656 — mirrors `ContextService.resolveMediaUrls` /
+ *      `SmrProxyController.extractAttachmentText`; it must NOT treat `mediaId`
+ *      itself as a literal S3 key),
  *   2. calls the NLP `/api/v1/extract` endpoint (PyMuPDF + RapidOCR, in-cluster),
  *   3. persists the result onto `ContextItem.metaData.extractedText`, and
  *   4. re-emits the live `ContextAdded` preview so `LiveDocumentationService`
@@ -48,7 +53,6 @@ export class OcrEnrichmentProcessor {
   private readonly logger = new Logger(OcrEnrichmentProcessor.name);
   private readonly nlpServiceUrl: string;
   private readonly ocrEnabled: boolean;
-  private readonly ocrBucket: string;
 
   constructor(
     @Inject(IBlobStorageService) private readonly blobStorage: IBlobStorageService,
@@ -61,16 +65,18 @@ export class OcrEnrichmentProcessor {
     // arity; when wired, the OCR-extracted text is encrypted into
     // `ContextItem.encryptedContent` before persist (F-031).
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
+    // TASK-656 — resolves `ContextItem.mediaId` (a `Media` row UUID) to its
+    // actual bucket/key via `Media.uri`. Optional + trailing (mirrors
+    // ContextService's `MediaRepository` wiring) so existing positional test
+    // fixtures keep compiling; when absent, OCR degrades to a no-op instead
+    // of mistreating `mediaId` as a literal S3 key.
+    @Optional() @Inject(MediaRepository) private readonly mediaRepository?: MediaRepository,
   ) {
     this.nlpServiceUrl = this.configService.get<string>('NLP_URL') ?? 'http://localhost:8864';
     // Default ENABLED — the in-cluster RapidOCR path has no PHI egress (§C). Only
     // an explicit falsey value disables it; the A3 managed-cloud OCR provider (which
     // WOULD egress PHI) is intentionally out of scope and left as a config hook.
     this.ocrEnabled = !this.isFalsey(this.configService.get<string>('OCR_ENABLED'));
-    // The logical bucket the client uploads lab attachments to (frontend
-    // STORAGE_BUCKET = 'attachments'); the per-tenant provider is resolved by the
-    // blob-storage service from CLS, so only the bucket NAME is needed here.
-    this.ocrBucket = this.configService.get<string>('OCR_STORAGE_BUCKET') ?? 'attachments';
   }
 
   /**
@@ -116,7 +122,22 @@ export class OcrEnrichmentProcessor {
         const existing = typeof meta.extractedText === 'string' ? meta.extractedText.trim() : '';
         if (existing) return;
 
-        const bytes = await this.blobStorage.getObject({ bucket: this.ocrBucket, key: mediaId });
+        // TASK-656 — `mediaId` is a `Media` row UUID, NOT a literal S3 key.
+        // Resolve it to its actual bucket/key via the Media row's `uri`
+        // (mirrors ContextService.resolveMediaUrls / SmrProxyController.extractAttachmentText).
+        if (!this.mediaRepository) return; // no media repo wired → nothing to resolve
+        const media = await this.mediaRepository.findById(mediaId).catch(() => null);
+        if (!media) {
+          this.logger.warn({ message: 'OCR: Media row not found — skipping', consultationId, contextItemId, mediaId });
+          return;
+        }
+        const location = parseStorageUri(media.uri);
+        if (!location) {
+          this.logger.warn({ message: 'OCR: unparseable Media uri — skipping', consultationId, contextItemId, mediaId, uri: media.uri });
+          return;
+        }
+
+        const bytes = await this.blobStorage.getObject({ bucket: location.bucket, key: location.key });
         const fileName = typeof meta.fileName === 'string' ? meta.fileName : 'upload';
         const extracted = await this.callNlpExtract(bytes, fileName);
         const text = (extracted.text ?? '').trim();

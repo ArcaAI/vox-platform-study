@@ -27,7 +27,7 @@ import {
 import { BadRequestException, Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
-import { BaseService, assertParentInScope, encryptPhiFields } from '../../../common';
+import { BaseService, assertParentInScope, encryptPhiFields, parseStorageUri } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 import { SecretsService } from '../../baseServices/_meta/secrets';
 import { IBlobStorageService, deriveThumbnailKey } from '../../baseServices/storage';
@@ -69,24 +69,6 @@ const LIVE_CONTEXT_TYPES = new Set<ContextItemType>([ContextItemType.WORKNOTE, C
  * roughly as long as an admin session view.
  */
 const CONTEXT_MEDIA_URL_TTL_SECONDS = 3600;
-
-/**
- * Parse a `MediaEntity.uri` of the canonical
- * `s3://<bucket>/<key>` form (written by StorageController on upload) into a
- * provider-agnostic `{ bucket, key }` for {@link IBlobStorageService.presignGet}.
- * Returns `null` for any other shape (e.g. legacy absolute URLs) so callers
- * degrade to "no url" instead of throwing.
- */
-function parseStorageUri(uri: string | null | undefined): { bucket: string; key: string } | null {
-  if (!uri) {
-    return null;
-  }
-  const match = /^s3:\/\/([^/]+)\/(.+)$/.exec(uri);
-  if (!match) {
-    return null;
-  }
-  return { bucket: match[1], key: match[2] };
-}
 
 @Injectable()
 export class ContextService extends BaseService implements IContextService {

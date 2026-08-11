@@ -23,6 +23,15 @@ export interface StorageFile {
   size?: number;
   lastModified?: string;
   contentType?: string;
+  /**
+   * The `Media` table row UUID for this file (TASK-656). Only present on the
+   * response of an upload (`uploadFile`) — `StorageController.uploadFile`
+   * creates a `Media` row best-effort and returns its id alongside `key`.
+   * Callers that persist a reference to an uploaded file (e.g. as
+   * `ContextItem.mediaId`) MUST use `mediaId`, never `key` — `key` is the raw
+   * storage object key, not something `MediaRepository.findById` can resolve.
+   */
+  mediaId?: string;
   [key: string]: unknown;
 }
 

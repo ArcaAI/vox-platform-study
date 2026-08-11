@@ -50,7 +50,10 @@ const fakeStream = { getTracks: () => [] } as unknown as MediaStream;
 
 beforeEach(() => {
   vi.clearAllMocks();
-  h.uploadFile.mockImplementation(async (_bucket: string, file: File) => ({ key: `key-${file.name}` }));
+  // TASK-656 — key (raw storage key) and mediaId (Media table row UUID) are
+  // deliberately DIFFERENT prefixes so assertions below prove the hook sends
+  // mediaId, not key.
+  h.uploadFile.mockImplementation(async (_bucket: string, file: File) => ({ key: `key-${file.name}`, mediaId: `media-${file.name}` }));
   h.registerDualRecording.mockResolvedValue({});
 });
 
@@ -89,13 +92,13 @@ describe('useDualCapture', () => {
       h.apiClient,
       'consult-1',
       expect.objectContaining({
-        rawMediaId: 'key-raw-capture.webm',
-        processedMediaId: 'key-processed-capture.webm',
-        mediaId: 'key-processed-capture.webm',
+        rawMediaId: 'media-raw-capture.webm',
+        processedMediaId: 'media-processed-capture.webm',
+        mediaId: 'media-processed-capture.webm',
         durationMs: 1000,
       }),
     );
-    expect(res).toEqual({ rawMediaId: 'key-raw-capture.webm', processedMediaId: 'key-processed-capture.webm', processedSource: 'noise-filter' });
+    expect(res).toEqual({ rawMediaId: 'media-raw-capture.webm', processedMediaId: 'media-processed-capture.webm', processedSource: 'noise-filter' });
     expect(result.current.processedSource).toBe('noise-filter');
     expect(result.current.status).toBe('saved');
   });

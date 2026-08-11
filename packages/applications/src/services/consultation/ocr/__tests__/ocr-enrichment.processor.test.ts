@@ -2,11 +2,14 @@
  * OcrEnrichmentProcessor unit tests — orchestration.
  *
  * Event-driven: reacts to `ConsultationPipelineEvent.ContextAdded`. When an
- * ATTACHMENT has a `mediaId` but no `metaData.extractedText`, it fetches the file
- * bytes (IBlobStorageService.getObject — mocked), calls the NLP `/extract`
- * endpoint (HttpService — mocked), persists `metaData.extractedText`, and
- * re-emits the live `ContextAdded` preview. A loop guard makes the re-fire a
- * no-op (extractedText now present). Failures degrade gracefully (never throw).
+ * ATTACHMENT has a `mediaId` but no `metaData.extractedText`, it resolves
+ * `mediaId` (a `Media` row UUID) via `MediaRepository.findById` →
+ * `parseStorageUri(media.uri)` to the ACTUAL bucket/key (TASK-656 — `mediaId`
+ * is never a literal S3 key), fetches the file bytes (IBlobStorageService.getObject
+ * — mocked), calls the NLP `/extract` endpoint (HttpService — mocked), persists
+ * `metaData.extractedText`, and re-emits the live `ContextAdded` preview. A loop
+ * guard makes the re-fire a no-op (extractedText now present). Failures degrade
+ * gracefully (never throw).
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { OcrEnrichmentProcessor } from '../ocr-enrichment.processor';
@@ -19,6 +22,7 @@ const createMockContextItemRepository = () => ({
   update: vi.fn(),
   encryptContentIntoEntity: vi.fn().mockResolvedValue(undefined),
 });
+const createMockMediaRepository = () => ({ findById: vi.fn() });
 const createMockHttpService = () => ({ axiosRef: { post: vi.fn() } });
 const createMockEventEmitter = () => ({ emit: vi.fn() });
 
@@ -49,14 +53,26 @@ const createMockClsService = () => {
   };
 };
 
+// mediaId is a Media row UUID (TASK-656) — NEVER a literal S3 key.
+const MEDIA_ID = 'media-uuid-1';
+
 const createMockAttachment = (overrides: Record<string, unknown> = {}) => ({
   id: 'ctx-att-1',
   consultationId: 'consultation-1',
   type: 'ATTACHMENT',
   tenantId: 'tenant-1',
-  mediaId: 'attachments/lab-scan.pdf',
+  mediaId: MEDIA_ID,
   content: 'Lab/exam result: scan.pdf',
   metaData: { subType: 'LAB_RESULT', fileName: 'scan.pdf' },
+  ...overrides,
+});
+
+/** The `Media` row `mediaId` resolves to — `uri` written by StorageController on upload. */
+const createMockMediaRow = (overrides: Record<string, unknown> = {}) => ({
+  id: MEDIA_ID,
+  uri: 's3://attachments/lab-scan.pdf',
+  mimeType: 'application/pdf',
+  name: 'scan.pdf',
   ...overrides,
 });
 
@@ -76,12 +92,13 @@ describe('OcrEnrichmentProcessor', () => {
   let processor: OcrEnrichmentProcessor;
   let blobStorage: ReturnType<typeof createMockBlobStorage>;
   let contextItemRepository: ReturnType<typeof createMockContextItemRepository>;
+  let mediaRepository: ReturnType<typeof createMockMediaRepository>;
   let httpService: ReturnType<typeof createMockHttpService>;
   let configService: ReturnType<typeof createMockConfigService>;
   let eventEmitter: ReturnType<typeof createMockEventEmitter>;
   let cls: ReturnType<typeof createMockClsService>;
 
-  const build = (config = createMockConfigService(), secretsService?: unknown) => {
+  const build = (config = createMockConfigService(), secretsService?: unknown, media: unknown = mediaRepository) => {
     configService = config;
     return new OcrEnrichmentProcessor(
       blobStorage as never,
@@ -91,6 +108,7 @@ describe('OcrEnrichmentProcessor', () => {
       eventEmitter as never,
       cls as never,
       secretsService as never,
+      media as never,
     );
   };
 
@@ -98,22 +116,30 @@ describe('OcrEnrichmentProcessor', () => {
     vi.clearAllMocks();
     blobStorage = createMockBlobStorage();
     contextItemRepository = createMockContextItemRepository();
+    mediaRepository = createMockMediaRepository();
     httpService = createMockHttpService();
     eventEmitter = createMockEventEmitter();
     cls = createMockClsService();
     processor = build();
   });
 
-  it('enriches an ATTACHMENT with no extractedText: fetch → OCR → persist → re-emit', async () => {
+  it('enriches an ATTACHMENT with no extractedText: resolve Media → fetch → OCR → persist → re-emit', async () => {
     contextItemRepository.findById.mockResolvedValue(createMockAttachment());
+    mediaRepository.findById.mockResolvedValue(createMockMediaRow());
     blobStorage.getObject.mockResolvedValue(Buffer.from('%PDF-1.7 scanned bytes'));
     httpService.axiosRef.post.mockResolvedValue({ data: { text: 'WBC 11.2 (high); Hb 9.8', pageCount: 2, ocrUsed: true } });
     contextItemRepository.update.mockImplementation((_id: string, entity: unknown) => entity);
 
     await processor.handleContextAdded(createPayload());
 
-    // (1) fetched the bytes from the attachments bucket using mediaId as the key
-    expect(blobStorage.getObject).toHaveBeenCalledWith({ bucket: 'attachments', key: 'attachments/lab-scan.pdf' });
+    // (0) resolved the Media row by mediaId (the UUID, never treated as a literal key)
+    expect(mediaRepository.findById).toHaveBeenCalledWith(MEDIA_ID);
+
+    // (1) fetched the bytes using the bucket/key DECODED from the Media row's uri —
+    // NOT `{ bucket: 'attachments', key: mediaId }` (the pre-TASK-656 bug: mediaId
+    // treated as the literal S3 key).
+    expect(blobStorage.getObject).toHaveBeenCalledWith({ bucket: 'attachments', key: 'lab-scan.pdf' });
+    expect(blobStorage.getObject).not.toHaveBeenCalledWith({ bucket: 'attachments', key: MEDIA_ID });
 
     // (2) called the NLP /extract endpoint
     expect(httpService.axiosRef.post).toHaveBeenCalledTimes(1);
@@ -140,6 +166,49 @@ describe('OcrEnrichmentProcessor', () => {
     });
   });
 
+  it('resolves the bucket ENCODED IN the Media row uri, not a fixed default', async () => {
+    contextItemRepository.findById.mockResolvedValue(createMockAttachment());
+    mediaRepository.findById.mockResolvedValue(createMockMediaRow({ uri: 's3://tenant-uploads/nested/path/scan.pdf' }));
+    blobStorage.getObject.mockResolvedValue(Buffer.from('bytes'));
+    httpService.axiosRef.post.mockResolvedValue({ data: { text: 'ok', pageCount: 1, ocrUsed: false } });
+    contextItemRepository.update.mockImplementation((_id: string, entity: unknown) => entity);
+
+    await processor.handleContextAdded(createPayload());
+
+    expect(blobStorage.getObject).toHaveBeenCalledWith({ bucket: 'tenant-uploads', key: 'nested/path/scan.pdf' });
+  });
+
+  it('no-ops (never fetches bytes) when the Media row is not found', async () => {
+    contextItemRepository.findById.mockResolvedValue(createMockAttachment());
+    mediaRepository.findById.mockRejectedValue(new Error('not found')); // mirrors Repository.findById → DataNotFoundException
+
+    await expect(processor.handleContextAdded(createPayload())).resolves.toBeUndefined();
+
+    expect(blobStorage.getObject).not.toHaveBeenCalled();
+    expect(contextItemRepository.update).not.toHaveBeenCalled();
+    expect(eventEmitter.emit).not.toHaveBeenCalled();
+  });
+
+  it('no-ops when the Media row uri is unparseable (not an s3:// uri)', async () => {
+    contextItemRepository.findById.mockResolvedValue(createMockAttachment());
+    mediaRepository.findById.mockResolvedValue(createMockMediaRow({ uri: 'not-a-storage-uri' }));
+
+    await expect(processor.handleContextAdded(createPayload())).resolves.toBeUndefined();
+
+    expect(blobStorage.getObject).not.toHaveBeenCalled();
+    expect(contextItemRepository.update).not.toHaveBeenCalled();
+  });
+
+  it('degrades to a no-op when MediaRepository is not wired (optional dependency absent)', async () => {
+    processor = build(createMockConfigService(), undefined, undefined);
+    contextItemRepository.findById.mockResolvedValue(createMockAttachment());
+
+    await expect(processor.handleContextAdded(createPayload())).resolves.toBeUndefined();
+
+    expect(blobStorage.getObject).not.toHaveBeenCalled();
+    expect(contextItemRepository.update).not.toHaveBeenCalled();
+  });
+
   it('LOOP GUARD: no-op when extractedText is already present (re-fire is a no-op)', async () => {
     contextItemRepository.findById.mockResolvedValue(
       createMockAttachment({ metaData: { subType: 'LAB_RESULT', fileName: 'scan.pdf', extractedText: 'already extracted' } }),
@@ -147,6 +216,7 @@ describe('OcrEnrichmentProcessor', () => {
 
     await processor.handleContextAdded(createPayload());
 
+    expect(mediaRepository.findById).not.toHaveBeenCalled();
     expect(blobStorage.getObject).not.toHaveBeenCalled();
     expect(httpService.axiosRef.post).not.toHaveBeenCalled();
     expect(contextItemRepository.update).not.toHaveBeenCalled();
@@ -157,6 +227,7 @@ describe('OcrEnrichmentProcessor', () => {
     await processor.handleContextAdded(createPayload({ contextType: 'WORKNOTE' }));
 
     expect(contextItemRepository.findById).not.toHaveBeenCalled();
+    expect(mediaRepository.findById).not.toHaveBeenCalled();
     expect(blobStorage.getObject).not.toHaveBeenCalled();
     expect(contextItemRepository.update).not.toHaveBeenCalled();
   });
@@ -166,6 +237,7 @@ describe('OcrEnrichmentProcessor', () => {
 
     await processor.handleContextAdded(createPayload());
 
+    expect(mediaRepository.findById).not.toHaveBeenCalled();
     expect(blobStorage.getObject).not.toHaveBeenCalled();
     expect(contextItemRepository.update).not.toHaveBeenCalled();
     expect(eventEmitter.emit).not.toHaveBeenCalled();
@@ -173,6 +245,7 @@ describe('OcrEnrichmentProcessor', () => {
 
   it('does not persist or re-emit when OCR yields empty text (graceful label fallback)', async () => {
     contextItemRepository.findById.mockResolvedValue(createMockAttachment());
+    mediaRepository.findById.mockResolvedValue(createMockMediaRow());
     blobStorage.getObject.mockResolvedValue(Buffer.from('image-only'));
     httpService.axiosRef.post.mockResolvedValue({ data: { text: '', pageCount: 1, ocrUsed: true } });
 
@@ -188,23 +261,13 @@ describe('OcrEnrichmentProcessor', () => {
     await processor.handleContextAdded(createPayload());
 
     expect(contextItemRepository.findById).not.toHaveBeenCalled();
+    expect(mediaRepository.findById).not.toHaveBeenCalled();
     expect(blobStorage.getObject).not.toHaveBeenCalled();
-  });
-
-  it('uses a configurable OCR storage bucket', async () => {
-    processor = build(createMockConfigService({ OCR_STORAGE_BUCKET: 'tenant-uploads' }));
-    contextItemRepository.findById.mockResolvedValue(createMockAttachment());
-    blobStorage.getObject.mockResolvedValue(Buffer.from('bytes'));
-    httpService.axiosRef.post.mockResolvedValue({ data: { text: 'ok', pageCount: 1, ocrUsed: false } });
-    contextItemRepository.update.mockImplementation((_id: string, entity: unknown) => entity);
-
-    await processor.handleContextAdded(createPayload());
-
-    expect(blobStorage.getObject).toHaveBeenCalledWith({ bucket: 'tenant-uploads', key: 'attachments/lab-scan.pdf' });
   });
 
   it('never throws and does not persist when blob fetch fails', async () => {
     contextItemRepository.findById.mockResolvedValue(createMockAttachment());
+    mediaRepository.findById.mockResolvedValue(createMockMediaRow());
     blobStorage.getObject.mockRejectedValue(new Error('S3 down'));
 
     await expect(processor.handleContextAdded(createPayload())).resolves.toBeUndefined();
@@ -215,6 +278,7 @@ describe('OcrEnrichmentProcessor', () => {
 
   it('never throws and does not persist when the NLP call fails', async () => {
     contextItemRepository.findById.mockResolvedValue(createMockAttachment());
+    mediaRepository.findById.mockResolvedValue(createMockMediaRow());
     blobStorage.getObject.mockResolvedValue(Buffer.from('bytes'));
     httpService.axiosRef.post.mockRejectedValue(new Error('NLP unreachable'));
 
@@ -226,6 +290,7 @@ describe('OcrEnrichmentProcessor', () => {
 
   it('re-establishes CLS (tenantId) for the @OnEvent microtask', async () => {
     contextItemRepository.findById.mockResolvedValue(createMockAttachment());
+    mediaRepository.findById.mockResolvedValue(createMockMediaRow());
     blobStorage.getObject.mockResolvedValue(Buffer.from('bytes'));
     httpService.axiosRef.post.mockResolvedValue({ data: { text: 'ok', pageCount: 1, ocrUsed: false } });
     contextItemRepository.update.mockImplementation((_id: string, entity: unknown) => entity);
@@ -245,10 +310,10 @@ describe('OcrEnrichmentProcessor', () => {
 
   it('does not persist on a cross-tenant context item (defense in depth)', async () => {
     contextItemRepository.findById.mockResolvedValue(createMockAttachment({ tenantId: 'tenant-OTHER' }));
-    blobStorage.getObject.mockResolvedValue(Buffer.from('bytes'));
 
     await expect(processor.handleContextAdded(createPayload({ tenantId: 'tenant-1' }))).resolves.toBeUndefined();
 
+    expect(mediaRepository.findById).not.toHaveBeenCalled();
     expect(contextItemRepository.update).not.toHaveBeenCalled();
     expect(eventEmitter.emit).not.toHaveBeenCalled();
   });
@@ -265,6 +330,7 @@ describe('OcrEnrichmentProcessor', () => {
     it('sets ContextItem.content from the OCR text and encrypts it before persisting', async () => {
       processor = build(createMockConfigService(), secretsStub);
       contextItemRepository.findById.mockResolvedValue(createMockAttachment({ content: undefined }));
+      mediaRepository.findById.mockResolvedValue(createMockMediaRow());
       blobStorage.getObject.mockResolvedValue(Buffer.from('%PDF-1.7 scanned bytes'));
       httpService.axiosRef.post.mockResolvedValue({ data: { text: 'WBC 11.2 (high); Hb 9.8', pageCount: 2, ocrUsed: true } });
       contextItemRepository.update.mockImplementation((_id: string, entity: unknown) => entity);
@@ -283,6 +349,7 @@ describe('OcrEnrichmentProcessor', () => {
 
     it('still persists (without ciphertext) when no SecretsService is wired', async () => {
       contextItemRepository.findById.mockResolvedValue(createMockAttachment({ content: undefined }));
+      mediaRepository.findById.mockResolvedValue(createMockMediaRow());
       blobStorage.getObject.mockResolvedValue(Buffer.from('bytes'));
       httpService.axiosRef.post.mockResolvedValue({ data: { text: 'No cipher wired', pageCount: 1, ocrUsed: true } });
       contextItemRepository.update.mockImplementation((_id: string, entity: unknown) => entity);

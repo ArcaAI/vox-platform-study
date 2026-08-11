@@ -98,7 +98,11 @@ export function ContextPanel({ consultationId }: ContextPanelProps) {
     if (!apiClient || !labFile) return;
     setSubmitting(true);
     try {
-      const { key } = await storage.uploadFile(STORAGE_BUCKET, labFile);
+      // TASK-656 — mediaId is a Media table row UUID (resolved server-side via
+      // MediaRepository), NOT the raw storage key; sending `key` here meant
+      // every downstream mediaId lookup (presigned URLs, OCR, ...) silently
+      // found nothing.
+      const { mediaId } = await storage.uploadFile(STORAGE_BUCKET, labFile);
       // TASK-342 GAP #5 — extract trivially-readable file text (txt / csv / md /
       // json) in-browser so the CONTENTS, not just the filename, reach the live
       // summary + harness assemble. Binary / scanned files yield no text and fall
@@ -107,7 +111,7 @@ export function ContextPanel({ consultationId }: ContextPanelProps) {
       await addContextItem(apiClient, consultationId, {
         type: 'ATTACHMENT',
         content: `Lab/exam result: ${labFile.name}`,
-        mediaId: key,
+        mediaId,
         metadata: { subType: LAB_RESULT_SUBTYPE, fileName: labFile.name, ...(extractedText ? { extractedText } : {}) },
       });
       toast.success('Lab/exam result added');
