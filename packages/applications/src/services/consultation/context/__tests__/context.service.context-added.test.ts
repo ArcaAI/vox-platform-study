@@ -1,6 +1,6 @@
 /**
  * ContextService — ContextAdded fan-out + metadata persistence
- * (Clinical Workflow Playground WS2 / WS5)
+ * (Clinical Workflow Playground WS2 / WS5; widened by TASK-660)
  *
  * Verifies:
  *   - addContext emits ConsultationPipelineEvent.ContextAdded for human-authored
@@ -8,8 +8,11 @@
  *     LiveDocumentationService folds them into the running summary.
  *   - the lab/exam `metadata.subType = 'LAB_RESULT'` convention rides along in
  *     the event payload and is persisted on the entity (no new enum).
- *   - TRANSCRIPT does NOT emit ContextAdded (it drives the harness pipeline via
- *     TranscriptionCreated instead).
+ *   - TASK-660 — the gate widened: TRANSCRIPT and the tenant-declared
+ *     STRUCTURED primitive now ALSO emit ContextAdded (the loop event plane's
+ *     context bus needs transcripts and derived context to re-enter it).
+ *     TRANSCRIPT still ALSO drives the harness pipeline via
+ *     TranscriptionCreated — that emission is unrelated and unaffected.
  */
 import { ContextItemType, SysEventType } from '@arcaai/domains';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -124,15 +127,33 @@ describe('ContextService — ContextAdded fan-out + lab subType', () => {
     expect(contextAddedCalls[0][1]).toMatchObject({ contextType: ContextItemType.WORKNOTE, subType: undefined });
   });
 
-  it('does NOT emit ContextAdded for a TRANSCRIPT (harness pipeline owns that)', async () => {
+  // TASK-660 — widened: the loop event plane's context bus needs transcripts
+  // to re-enter it. TRANSCRIPT ALSO still drives the harness pipeline via a
+  // SEPARATE TranscriptionCreated emission (sttInternal.service.ts) — that is
+  // untouched by this change.
+  it('emits ContextAdded for a TRANSCRIPT (loop event plane widening)', async () => {
     await service.addContext('consultation-1', {
       type: ContextItemType.TRANSCRIPT,
       content: 'doctor: hello',
     });
 
     const contextAddedCalls = mockEventEmitter.emit.mock.calls.filter((c) => c[0] === ConsultationPipelineEvent.ContextAdded);
-    expect(contextAddedCalls).toHaveLength(0);
+    expect(contextAddedCalls).toHaveLength(1);
+    expect(contextAddedCalls[0][1]).toMatchObject({ contextType: ContextItemType.TRANSCRIPT });
     // the standard ResourceCreated sys-event still fires
     expect(mockEventEmitter.emit).toHaveBeenCalledWith(SysEventType.ResourceCreated, expect.any(Object));
+  });
+
+  // TASK-660 — the tenant-declared STRUCTURED primitive (TASK-658) is the
+  // other "derived kind" the widened gate covers.
+  it('emits ContextAdded for a STRUCTURED item (loop event plane widening)', async () => {
+    await service.addContext('consultation-1', {
+      type: ContextItemType.STRUCTURED,
+      content: '{"bp":"120/80"}',
+    });
+
+    const contextAddedCalls = mockEventEmitter.emit.mock.calls.filter((c) => c[0] === ConsultationPipelineEvent.ContextAdded);
+    expect(contextAddedCalls).toHaveLength(1);
+    expect(contextAddedCalls[0][1]).toMatchObject({ contextType: ContextItemType.STRUCTURED });
   });
 });

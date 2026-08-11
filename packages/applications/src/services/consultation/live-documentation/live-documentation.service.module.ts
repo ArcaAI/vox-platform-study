@@ -8,6 +8,8 @@ import { RedisSubscriberService } from '../../stt/realtime/redisSubscriber.servi
 import { StreamingSessionServiceModule } from '../../stt/streaming/streamingSession.service.module';
 import { LiveDocumentationService } from './live-documentation.service';
 import { OcrEnrichmentProcessor } from '../ocr/ocr-enrichment.processor';
+import { LoopContextSignalService } from '../loop/loop-context-signal.service';
+import { HarnessGatewayServiceModule } from '../harness/harness-gateway.service.module';
 import { HarnessPolicyServiceModule } from '../../harness-policy/harness-policy.service.module';
 import { AgentTrajectoryServiceModule } from '../../agent-trajectory/agent-trajectory.service.module';
 import { EffectiveSettingsModule } from '../../settings-registry/effective-settings.module';
@@ -31,6 +33,12 @@ import { LiveAgentResolutionServiceModule } from '../prompt/live-agent-resolutio
  * `ContextAdded` reaction wiring and DI (HttpModule → NLP `/extract`,
  * CoreDatabaseModule → ContextItemRepository, EventEmitterModule → re-emit;
  * IBlobStorageService + ClsService are global), so no new module is needed.
+ *
+ * TASK-660 — also hosts {@link LoopContextSignalService}, the third
+ * `@OnEvent(ContextAdded)` consumer that signals the (future) consultation
+ * loop workflow. Added the same way OcrEnrichmentProcessor was: a new
+ * provider in THIS module, no controller or route change. It additionally
+ * needs `HarnessGatewayServiceModule` for the outbound harness signal call.
  */
 @Module({
   // §2C/§2D — AgentTrajectoryServiceModule resolves the @Optional
@@ -54,8 +62,10 @@ import { LiveAgentResolutionServiceModule } from '../prompt/live-agent-resolutio
     // freezes its governed agent (prompt bytes + tool plan + LLM override) at
     // start(). Absent ⇒ the service falls open to the in-code constants.
     LiveAgentResolutionServiceModule,
+    // TASK-660 — outbound apps/api -> apps/harness adapter LoopContextSignalService signals through.
+    HarnessGatewayServiceModule,
   ],
-  providers: [LiveDocumentationService, RedisSubscriberService, OcrEnrichmentProcessor],
+  providers: [LiveDocumentationService, RedisSubscriberService, OcrEnrichmentProcessor, LoopContextSignalService],
   exports: [LiveDocumentationService],
 })
 export class LiveDocumentationServiceModule {}

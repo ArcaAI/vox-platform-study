@@ -58,11 +58,24 @@ import {
 
 /**
  * Context item types that trigger a `ConsultationPipelineEvent.ContextAdded`
- * fan-out for the live-documentation watcher (Clinical Workflow Playground WS2).
- * Human-authored notes / attachments only — transcripts and AI summaries are
- * excluded.
+ * fan-out. Originally scoped to the live-documentation watcher (Clinical
+ * Workflow Playground WS2) — human-authored notes / attachments only.
+ *
+ * Widened (loop event plane) to also cover TRANSCRIPT and the tenant-declared
+ * STRUCTURED primitive (TASK-658): the context bus the (future) consultation
+ * loop subscribes to needs transcripts and derived context to re-enter it
+ * (§4.2 of the TASK-654 design doc). Existing consumers
+ * (`LiveDocumentationService`, `OcrEnrichmentProcessor`) each carry their OWN
+ * explicit kind filter now, so this widening changes only what reaches the
+ * bus — not what either of them acts on.
  */
-const LIVE_CONTEXT_TYPES = new Set<ContextItemType>([ContextItemType.WORKNOTE, ContextItemType.CASE_NOTE, ContextItemType.ATTACHMENT]);
+const LIVE_CONTEXT_TYPES = new Set<ContextItemType>([
+  ContextItemType.WORKNOTE,
+  ContextItemType.CASE_NOTE,
+  ContextItemType.ATTACHMENT,
+  ContextItemType.TRANSCRIPT,
+  ContextItemType.STRUCTURED,
+]);
 
 /**
  * Lifetime of presigned context-attachment download URLs.

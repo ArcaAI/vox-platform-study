@@ -4,7 +4,15 @@ import { ConfigService } from '@nestjs/config';
 import { OnEvent } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
 import { Observable, ReplaySubject, type Subscription, filter, interval, map, merge, takeWhile } from 'rxjs';
-import { AgentSessionKind, AgentStepStatus, AgentStepType, ContextItemEntity, ContextItemFactory, ContextItemRepository } from '@arcaai/domains';
+import {
+  AgentSessionKind,
+  AgentStepStatus,
+  AgentStepType,
+  ContextItemEntity,
+  ContextItemFactory,
+  ContextItemRepository,
+  ContextItemType,
+} from '@arcaai/domains';
 import { IRedisCacheService } from '../../baseServices/redis';
 import { IAgentTrajectoryService } from '../../agent-trajectory/IAgentTrajectoryService';
 import type { CreateAgentTrajectoryStepInput } from '../../agent-trajectory/dto';
@@ -54,6 +62,17 @@ import { EffectiveSettingsService } from '../../settings-registry/effective-sett
 // hard cap (protects process memory).
 const TRANSCRIPT_PARTS_WARN_THRESHOLD = 10_000;
 const TRANSCRIPT_PARTS_HARD_CAP = 50_000;
+
+/**
+ * Context kinds `handleContextAdded` was written for — human-authored notes
+ * and attachments only. Mirrors `ContextService`'s `LIVE_CONTEXT_TYPES` gate
+ * as it stood before the loop event plane widened `ContextAdded` emission to
+ * TRANSCRIPT and STRUCTURED (TASK-660): this filter keeps this consumer's
+ * input set unchanged by that widening, so transcripts/derived context never
+ * get folded into the running summary via this path (transcripts already
+ * drive the live session through `ingestSegment`, not this event).
+ */
+const LIVE_DOC_CONTEXT_TYPES = new Set<string>([ContextItemType.WORKNOTE, ContextItemType.CASE_NOTE, ContextItemType.ATTACHMENT]);
 
 /** Shared SOAP output instruction — describes the four sections for prose-only providers. */
 const SOAP_OUTPUT_INSTRUCTION =
@@ -881,6 +900,10 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
    */
   @OnEvent(ConsultationPipelineEvent.ContextAdded)
   handleContextAdded(payload: ContextAddedPayload): void {
+    // TASK-660 — explicit kind filter: the ContextAdded gate now also fires
+    // for TRANSCRIPT/STRUCTURED, which this consumer was never written for.
+    if (!LIVE_DOC_CONTEXT_TYPES.has(payload.contextType)) return;
+
     const session = this.sessions.get(payload.consultationId);
     if (!session) return;
 
