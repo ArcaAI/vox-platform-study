@@ -41,6 +41,32 @@ describe('normalizeOrigin', () => {
       ['http://127.0.0.1:5173', 'http://127.0.0.1:5173', 'http', '127.0.0.1', 5173],
       // IPv6 loopback, non-default port
       ['http://[::1]:3000', 'http://[::1]:3000', 'http', '[::1]', 3000],
+      // ── Browser-extension schemes (TASK-653) — exact `<scheme>://<id>` ──────
+      // Chrome/Edge/Brave id ([a-p]{32}). No port, single opaque label.
+      [
+        'chrome-extension://abcdefghijklmnopabcdefghijklmnop',
+        'chrome-extension://abcdefghijklmnopabcdefghijklmnop',
+        'chrome-extension',
+        'abcdefghijklmnopabcdefghijklmnop',
+        null,
+      ],
+      // Firefox per-install UUID.
+      [
+        'moz-extension://a279f5e6-1b2c-4d3e-8f90-1234567890ab',
+        'moz-extension://a279f5e6-1b2c-4d3e-8f90-1234567890ab',
+        'moz-extension',
+        'a279f5e6-1b2c-4d3e-8f90-1234567890ab',
+        null,
+      ],
+      // Safari sends an UPPERCASE UUID — canonicalized lowercased so the store
+      // and lookup sides always agree.
+      [
+        'safari-web-extension://A1B2C3D4-1234-5678-9ABC-DEF012345678',
+        'safari-web-extension://a1b2c3d4-1234-5678-9abc-def012345678',
+        'safari-web-extension',
+        'a1b2c3d4-1234-5678-9abc-def012345678',
+        null,
+      ],
     ])('normalizes %s', (raw, expectedOrigin, expectedScheme, expectedHost, expectedPort) => {
       const result = normalizeOrigin(raw);
       expect(result).toEqual({
@@ -92,6 +118,19 @@ describe('normalizeOrigin', () => {
       // isLoopbackHost below) — these must NOT be treated as loopback.
       ['http on localhost-lookalike domain', 'http://localhost.evil.com'],
       ['http on 127.0.0.1-lookalike domain', 'http://127.0.0.1.evil.com'],
+      // ── Browser-extension schemes (TASK-653) — malformed exact ids ─────────
+      // A port is forbidden on an extension origin (browsers never send one).
+      ['extension origin with a port', 'chrome-extension://abcdef:80'],
+      // Empty host — `<scheme>://` alone.
+      ['extension origin with an empty host', 'chrome-extension://'],
+      // A path is a real path here, not "no path".
+      ['extension origin with a path', 'chrome-extension://abcdef/popup.html'],
+      // The id must be a SINGLE opaque label — a dot splits it into two.
+      ['extension id containing a dot', 'chrome-extension://abc.def'],
+      // Non-LDH characters in the id.
+      ['extension id with an underscore', 'chrome-extension://ab_cd'],
+      // The wildcard form is a PATTERN (normalizeOriginPattern), never an exact origin.
+      ['extension wildcard is not an exact origin', 'chrome-extension://*'],
     ])('rejects %s (%s)', (_label, raw) => {
       expect(() => normalizeOrigin(raw)).toThrow(ArgumentInvalidException);
     });

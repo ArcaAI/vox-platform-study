@@ -71,6 +71,14 @@ describe('normalizeOriginPattern — accepts + canonicalizes', () => {
     ['http://[::1]:*', 'http://[::1]:*'],
     // https over a loopback host is fine too (scheme rule only gates http)
     ['https://localhost:*', 'https://localhost:*'],
+    // ── Browser-extension "any-extension" patterns (TASK-653) ───────────────
+    // The ONLY extension pattern form: `<scheme>://*` = any extension of that
+    // scheme. Already canonical (no port segment — extensions carry none).
+    ['chrome-extension://*', 'chrome-extension://*'],
+    ['moz-extension://*', 'moz-extension://*'],
+    ['safari-web-extension://*', 'safari-web-extension://*'],
+    // scheme is case-insensitive; canonical output is lowercase
+    ['CHROME-EXTENSION://*', 'chrome-extension://*'],
   ])('normalizes %s -> %s', (raw, expected) => {
     expect(normalizeOriginPattern(raw)).toBe(expected);
   });
@@ -162,6 +170,19 @@ describe('normalizeOriginPattern — rejects (security floors)', () => {
     'data:*',
     '//*.bcmch.org:*',
     '*.bcmch.org:*',
+  ]);
+
+  // TASK-653 — a browser-extension pattern must be EXACTLY `<scheme>://*`.
+  // Exact ids carry no `*` and belong to normalizeOrigin; every other extension
+  // authority (partial-id wildcards, a port, a `*.` suffix) is rejected here.
+  rejects('browser-extension patterns other than <scheme>://*', [
+    'chrome-extension://*.x',
+    'chrome-extension://ab*',
+    'chrome-extension://*:80',
+    'chrome-extension://abcdef', // a `*`-free value is not a pattern at all
+    'moz-extension://*.*',
+    'safari-web-extension://**',
+    'chrome-extension://*.example.com',
   ]);
 
   // FLOOR 4 — the port segment is mandatory and is either `*` or plain digits
@@ -263,6 +284,51 @@ describe("matchesOriginPattern — owner's acceptance table", () => {
     ['https://*.4bits.vn:*', 'https://4bits.vn.evil.com', false],
   ])('%s vs %s -> %s', (pattern, origin, expected) => {
     expect(matchesOriginPattern(pattern, origin)).toBe(expected);
+  });
+});
+
+describe('matchesOriginPattern — browser-extension any-extension patterns (TASK-653)', () => {
+  it.each([
+    // any id of the SAME scheme matches
+    ['chrome-extension://*', 'chrome-extension://abcdefghijklmnopabcdefghijklmnop', true],
+    ['chrome-extension://*', 'chrome-extension://a279f5e6-1b2c-4d3e-8f90-1234567890ab', true],
+    ['moz-extension://*', 'moz-extension://a279f5e6-1b2c-4d3e-8f90-1234567890ab', true],
+    // scheme must match exactly — a different extension scheme does not match
+    ['chrome-extension://*', 'moz-extension://a279f5e6-1b2c-4d3e-8f90-1234567890ab', false],
+    ['moz-extension://*', 'chrome-extension://abcdefghijklmnopabcdefghijklmnop', false],
+    ['safari-web-extension://*', 'chrome-extension://abcdefghijklmnopabcdefghijklmnop', false],
+    // extension pattern never matches an http origin, and vice-versa
+    ['chrome-extension://*', 'https://sub.bcmch.org', false],
+    ['https://*.bcmch.org:*', 'chrome-extension://abcdefghijklmnopabcdefghijklmnop', false],
+    ['*', 'chrome-extension://abcdefghijklmnopabcdefghijklmnop', true], // allow-all still admits it
+  ])('%s vs %s -> %s', (pattern, origin, expected) => {
+    expect(matchesOriginPattern(pattern, origin)).toBe(expected);
+  });
+
+  it('matches an UPPERCASE Safari id (parseCanonicalOrigin lowercases both sides)', () => {
+    expect(matchesOriginPattern('safari-web-extension://*', 'safari-web-extension://A1B2C3D4-1234-5678-9ABC-DEF012345678')).toBe(true);
+  });
+
+  it('never throws on hostile extension-ish origins', () => {
+    for (const origin of [
+      'chrome-extension://', // empty id
+      'chrome-extension://*', // an origin that is itself a wildcard
+      'chrome-extension://a/b', // path
+      'chrome-extension://a:1', // port
+      'chrome-extension://a b', // whitespace
+      'chrome-extension://ab_cd', // bad id char
+    ]) {
+      const result = matchesOriginPattern('chrome-extension://*', origin);
+      expect(typeof result).toBe('boolean');
+      expect(result).toBe(false);
+    }
+  });
+});
+
+describe('patternSpecificity — any-extension rank (TASK-653)', () => {
+  it('ranks an any-extension pattern strictly above allow-all and below a concrete host pattern', () => {
+    expect(patternSpecificity('chrome-extension://*')).toBeGreaterThan(patternSpecificity(ALLOW_ALL_ORIGIN_PATTERN));
+    expect(patternSpecificity('chrome-extension://*')).toBeLessThan(patternSpecificity('https://a.io:*'));
   });
 });
 

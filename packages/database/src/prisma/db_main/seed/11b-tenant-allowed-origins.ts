@@ -217,6 +217,33 @@ export const TENANT_ALLOWED_ORIGIN_SEEDS: OriginSeed[] = [
     label: '4bits.vn — any subdomain (https, any port)',
     description: 'Developer preview hosts.',
   },
+
+  // ── ArcaAI browser-extension origins (TASK-653) ───────────────────────────
+  // `<scheme>://*` is the "any extension of that scheme" pattern: it admits any
+  // installed extension's origin for the ArcaAI tenant. Chrome ids are stable
+  // and could be pinned to exact `chrome-extension://<id>` rows later; Firefox
+  // and Safari mint a per-INSTALL id, so the wildcard is the only practical form
+  // there. This is an ORIGIN gate only — the post-auth OriginTenantBindingGuard
+  // and the WS handshake still require a valid session/token, and HTTP CORS runs
+  // credentials:false. Strings are already canonical (no port segment).
+  {
+    origin: 'chrome-extension://*',
+    tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
+    label: 'Chromium extensions — any id (Chrome/Edge/Brave)',
+    description: 'Any chrome-extension:// origin. Admits any installed Chromium extension for ArcaAI; pin specific ids as exact chrome-extension://<id> rows once known.',
+  },
+  {
+    origin: 'moz-extension://*',
+    tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
+    label: 'Firefox extensions — any id',
+    description: 'Any moz-extension:// origin. Firefox mints a per-install UUID, so the wildcard is the only practical form.',
+  },
+  {
+    origin: 'safari-web-extension://*',
+    tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
+    label: 'Safari web extensions — any id',
+    description: 'Any safari-web-extension:// origin. Safari mints a per-install UUID (sent uppercase; matched case-insensitively).',
+  },
 ];
 
 export const seedTenantAllowedOrigins = async (client: CorePrismaClient): Promise<void> => {

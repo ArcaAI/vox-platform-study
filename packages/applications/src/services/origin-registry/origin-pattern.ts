@@ -39,7 +39,7 @@
 
 import { ArgumentInvalidException } from '@arcaai/exceptions';
 
-import { isLoopbackHost } from './origin-normalizer';
+import { isExtensionScheme, isLoopbackHost, type OriginScheme } from './origin-normalizer';
 
 /**
  * The allow-any-origin token (owner scope addition). Held by the Global tenant
@@ -62,6 +62,15 @@ const SPECIFICITY_INVALID = 0;
  * traffic.
  */
 const SPECIFICITY_ALLOW_ALL = 1;
+/**
+ * An "any-extension" pattern (`<scheme>://*`, TASK-653) ranks strictly above the
+ * allow-all token (1) — it is narrower: it admits only ONE scheme's extensions,
+ * not literally every origin — and strictly below the lowest concrete host
+ * pattern (a one-character host scores 6). A small fixed rank is enough: it is
+ * used for LOG ordering only (union resolution has no precedence on the auth
+ * path — see `origin-registry.service.ts`).
+ */
+const SPECIFICITY_ANY_EXTENSION = 2;
 /** Host text dominates the two tie-breakers, which together max out at 3. */
 const SPECIFICITY_HOST_WEIGHT = 4;
 const SPECIFICITY_EXACT_HOST_BONUS = 2;
@@ -70,9 +79,15 @@ const SPECIFICITY_PINNED_PORT_BONUS = 1;
 const MAX_INPUT_LENGTH = 2048;
 const MAX_HOST_LENGTH = 253;
 const MAX_LABEL_LENGTH = 63;
+/** Extension-id cap (TASK-653) — the same bound `origin-normalizer` enforces on an exact extension id. */
+const MAX_EXTENSION_ID_LENGTH = 128;
 const MAX_PORT = 65535;
 
-const SCHEME_PREFIX_PATTERN = /^(https?):\/\//i;
+// TASK-653 — also accept the three browser-extension schemes. Used by BOTH
+// `parsePattern` (the write path, for the `<scheme>://*` any-extension pattern)
+// and `parseCanonicalOrigin` (the incoming-header path, for an exact extension
+// origin), so extension support has to live in this ONE prefix.
+const SCHEME_PREFIX_PATTERN = /^(https?|chrome-extension|moz-extension|safari-web-extension):\/\//i;
 /** Rejects path, query, fragment, userinfo, percent-encoding and backslash. */
 const FORBIDDEN_AUTHORITY_CHARS = ['/', '\\', '?', '#', '@', '%'];
 /** LDH label: alphanumeric ends, hyphens only in the middle. */
@@ -150,10 +165,18 @@ const KNOWN_SHARED_SUFFIXES = new Set([
 ]);
 
 interface ParsedPattern {
-  scheme: 'http' | 'https';
+  scheme: OriginScheme;
   /** true for the `*.<suffix>` form; false for a concrete host. */
   wildcard: boolean;
-  /** Host text that must match: the suffix when wildcard, else the whole host. */
+  /**
+   * true for the browser-extension `<scheme>://*` form (TASK-653) — "any
+   * extension of that scheme". A discriminant distinct from `wildcard` (which
+   * it also sets) so matching/specificity never confuse it with an http
+   * `*.<suffix>` host wildcard: an any-extension pattern has `matchHost: ''`,
+   * `port: null`, and does no label-boundary/port logic.
+   */
+  anyExtension: boolean;
+  /** Host text that must match: the suffix when wildcard, else the whole host. Empty for an any-extension pattern. */
   matchHost: string;
   /** null when the port pattern is `*` (matches ANY port). */
   port: number | null;
@@ -214,6 +237,15 @@ export function matchesOriginPattern(pattern: string, origin: string): boolean {
       return false;
     }
 
+    // Any-extension pattern (TASK-653): the scheme already matched exactly
+    // above, so admit any well-formed extension id. `parseCanonicalOrigin`
+    // already proved the origin's host is a single LABEL_PATTERN label with no
+    // port and no `*`, so a non-empty host is sufficient — there is no
+    // label-boundary or port logic for extensions.
+    if (parsed.anyExtension) {
+      return parsedOrigin.host.length > 0;
+    }
+
     if (parsed.wildcard) {
       // Label-boundary match: the origin host must END with `'.' + suffix` and
       // carry at least one character before that dot. This is what stops
@@ -255,6 +287,13 @@ export function patternSpecificity(pattern: string): number {
   const parsed = tryParsePattern(pattern);
   if (parsed === null) {
     return SPECIFICITY_INVALID;
+  }
+
+  // An any-extension pattern has an empty `matchHost`, so the formula below
+  // would score it 0 (== unparseable). Give it its own fixed rank instead —
+  // above allow-all, below every concrete host (TASK-653).
+  if (parsed.anyExtension) {
+    return SPECIFICITY_ANY_EXTENSION;
   }
 
   return (
@@ -306,12 +345,28 @@ function parsePattern(raw: string): ParsedPattern {
   if (schemeMatch === null) {
     throw new ArgumentInvalidException(`Origin pattern must start with http:// or https://: ${raw}`);
   }
-  const scheme = schemeMatch[1].toLowerCase() as 'http' | 'https';
+  const scheme = schemeMatch[1].toLowerCase() as OriginScheme;
 
   const authority = raw.slice(schemeMatch[0].length);
   if (authority.length === 0) {
     throw new ArgumentInvalidException(`Origin pattern must declare a host: ${raw}`);
   }
+
+  // ── Browser-extension "any-extension" pattern (TASK-653) ───────────────────
+  //
+  // The ONLY valid extension PATTERN is `<scheme>://*` — "any extension id of
+  // this scheme". An exact `<scheme>://<id>` carries no `*` and is
+  // `normalizeOrigin`'s job (`normalizeOriginPattern` already rejected any
+  // `*`-free value before reaching here). So the authority must be EXACTLY `*`:
+  // there is no host-suffix/port/label grammar for extensions, so `*.x`, `ab*`,
+  // `*:80`, `**` and a pinned id all fail this single check.
+  if (isExtensionScheme(scheme)) {
+    if (authority !== ALLOW_ALL_ORIGIN_PATTERN) {
+      throw new ArgumentInvalidException(`A browser-extension pattern must be exactly '<scheme>://*': ${raw}`);
+    }
+    return { scheme, wildcard: true, anyExtension: true, matchHost: '', port: null, canonical: `${scheme}://*` };
+  }
+
   for (const forbidden of FORBIDDEN_AUTHORITY_CHARS) {
     if (authority.includes(forbidden)) {
       throw new ArgumentInvalidException(`Origin pattern must not contain a path, query, fragment, userinfo or percent-encoding: ${raw}`);
@@ -331,7 +386,7 @@ function parsePattern(raw: string): ParsedPattern {
 
   const canonical = `${scheme}://${canonicalHost}:${port === null ? '*' : port}`;
 
-  return { scheme, wildcard, matchHost, port, canonical };
+  return { scheme, wildcard, anyExtension: false, matchHost, port, canonical };
 }
 
 /** Bracket-aware host/port split. The port segment is MANDATORY in a pattern. */
@@ -484,7 +539,7 @@ function isLikelyPublicSuffix(suffix: string): boolean {
 }
 
 interface ParsedOrigin {
-  scheme: 'http' | 'https';
+  scheme: OriginScheme;
   host: string;
   port: number | null;
 }
@@ -507,7 +562,7 @@ function parseCanonicalOrigin(origin: string): ParsedOrigin | null {
   if (schemeMatch === null) {
     return null;
   }
-  const scheme = schemeMatch[1].toLowerCase() as 'http' | 'https';
+  const scheme = schemeMatch[1].toLowerCase() as OriginScheme;
 
   const authority = origin.slice(schemeMatch[0].length);
   if (authority.length === 0) {
@@ -522,6 +577,21 @@ function parseCanonicalOrigin(origin: string): ParsedOrigin | null {
     if (authority.includes(forbidden)) {
       return null;
     }
+  }
+
+  // ── Incoming browser-extension origin (TASK-653) ───────────────────────────
+  //
+  // `<scheme>://<id>` — a single opaque id label, no port, no brackets. The
+  // authority must be exactly a lowercased LABEL_PATTERN label (a port's `:`, an
+  // IPv6 `[`, a dot-splitting host all fail `LABEL_PATTERN`). Lowercased so an
+  // uppercase Safari UUID matches a stored `<scheme>://*` pattern. Never throws
+  // — returns null on anything malformed, like the http/https path below.
+  if (isExtensionScheme(scheme)) {
+    const id = authority.toLowerCase();
+    if (id.length === 0 || id.length > MAX_EXTENSION_ID_LENGTH || !LABEL_PATTERN.test(id)) {
+      return null;
+    }
+    return { scheme, host: id, port: null };
   }
 
   let hostPart: string;

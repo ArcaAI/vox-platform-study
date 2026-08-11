@@ -619,6 +619,49 @@ describe('OriginRegistryService', () => {
   });
 
   // ═════════════════════════════════════════════════════════════════════
+  // TASK-653 — browser-extension origins in the registry. The registry needs
+  // NO logic change: it inherits extension support from normalizeOrigin (exact
+  // ids, via toLookupKey) and matchesOriginPattern (the `<scheme>://*` any-
+  // extension pattern). These tests lock that inherited behavior end-to-end.
+  // ═════════════════════════════════════════════════════════════════════
+  describe('browser-extension origins (TASK-653)', () => {
+    const CHROME_ID = 'chrome-extension://abcdefghijklmnopabcdefghijklmnop';
+    const OTHER_CHROME_ID = 'chrome-extension://ponmlkjihgfedcbaponmlkjihgfedcba';
+    const MOZ_ORIGIN = 'moz-extension://a279f5e6-1b2c-4d3e-8f90-1234567890ab';
+
+    it('a wildcard chrome-extension://* row admits any chrome extension id for its tenant, and only that tenant', async () => {
+      mockRepository.findAll.mockResolvedValueOnce([makeRow({ origin: 'chrome-extension://*', tenantId: TENANT_A })]);
+      await service.refresh();
+
+      expect(service.allows(CHROME_ID, TENANT_A)).toBe(true);
+      expect(service.allows(OTHER_CHROME_ID, TENANT_A)).toBe(true);
+      // Bound to tenant A only.
+      expect(service.allows(CHROME_ID, TENANT_B)).toBe(false);
+      // A different extension scheme is NOT covered by the chrome wildcard.
+      expect(service.allows(MOZ_ORIGIN, TENANT_A)).toBe(false);
+    });
+
+    it('a SYSTEM-owned chrome-extension://* row admits any tenant', async () => {
+      mockRepository.findAll.mockResolvedValueOnce([makeRow({ origin: 'chrome-extension://*', tenantId: SYSTEM_TENANT_ID })]);
+      await service.refresh();
+
+      expect(service.allows(CHROME_ID, TENANT_A)).toBe(true);
+      expect(service.allows(CHROME_ID, TENANT_B)).toBe(true);
+    });
+
+    it('an exact pinned chrome-extension://<id> row admits exactly that id, bound to its tenant', async () => {
+      mockRepository.findAll.mockResolvedValueOnce([makeRow({ origin: CHROME_ID, tenantId: TENANT_A })]);
+      await service.refresh();
+
+      expect(service.allows(CHROME_ID, TENANT_A)).toBe(true);
+      // A different id is not admitted (exact match only).
+      expect(service.allows(OTHER_CHROME_ID, TENANT_A)).toBe(false);
+      // Bound to tenant A only.
+      expect(service.allows(CHROME_ID, TENANT_B)).toBe(false);
+    });
+  });
+
+  // ═════════════════════════════════════════════════════════════════════
   // TASK-610 §4A.3 — the allow-all (`*`) row must announce itself. An
   // operator must never have to read the database to discover the platform
   // is admitting every unmatched — now: every, full stop, under union —
