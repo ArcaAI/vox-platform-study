@@ -32,6 +32,7 @@ import { IActiveUserContext } from '../../../interfaces';
 import { SecretsService } from '../../baseServices/_meta/secrets';
 import { IBlobStorageService, deriveThumbnailKey } from '../../baseServices/storage';
 import { IUsageLedgerService } from '../../usageLedger';
+import { IConsultationContextSchemaService, type ValidatedContextPayload } from '../../consultation-context-schema';
 import { buildLlmUsageInputFromTokenCounts } from '../summary/smr-usage';
 import { IContextService } from './IContextService';
 import { ContextDtoMapper, ResolvedMediaUrl } from './context.dto.mapper';
@@ -106,6 +107,16 @@ export class ContextService extends BaseService implements IContextService {
     // `services/baseServices`. Optional + trailing so existing positional
     // fixtures keep compiling.
     @Optional() private readonly unitOfWorkService?: CoreUnitOfWorkService,
+    // TASK-658 — the tenant-declared context-schema plane. Optional +
+    // @Inject + TRAILING, like every injection above it, so the many
+    // direct-construction fixtures keep compiling and so a write that names
+    // no `kindKey` is genuinely untouched by this ticket. When a write DOES
+    // name a kind and this is absent, the write FAILS CLOSED (see
+    // `resolveContextKind`) — silently accepting an unvalidated clinical
+    // payload is not an option in a PHI system.
+    @Optional()
+    @Inject(IConsultationContextSchemaService)
+    private readonly contextSchemaService?: IConsultationContextSchemaService,
   ) {
     super(eventEmitter, clsService, ResourceType.ContextItem);
   }
@@ -139,6 +150,73 @@ export class ContextService extends BaseService implements IContextService {
     await encryptPhiFields(this.secretsService, label, run, this.logger);
   }
 
+  /**
+   * TASK-658 — the ONE seam through which every context write consults the
+   * tenant-declared context schema. `addContext` and `updateContext` both go
+   * through it, so a rule can never be present on one write path and missing
+   * on the other.
+   *
+   * Three outcomes, in order:
+   *
+   *  1. **No `kindKey`** → `null`, and the caller behaves exactly as it did
+   *     before this ticket. This is the regression guarantee: the schema
+   *     plane is opt-in PER WRITE, so no clinician in any tenant depends on
+   *     an admin having configured a schema.
+   *  2. **`payload` without `kindKey`** → 400. There would be nothing to
+   *     validate it against, and silently persisting an unvalidated clinical
+   *     JSON blob is the failure mode this whole ticket exists to prevent.
+   *  3. **`kindKey` present** → delegate to
+   *     `IConsultationContextSchemaService.validateContextPayload`, which
+   *     resolves the PINNED version (never the latest) and returns the
+   *     canonicalised content plus the version id to stamp on the row.
+   *
+   * FAIL-CLOSED when a kind is named and the schema service is not wired: an
+   * unvalidated payload must never reach the database because a module was
+   * mis-assembled or a fixture under-constructed.
+   */
+  private async resolveContextKind(
+    kindKey: string | undefined,
+    payload: Record<string, unknown> | undefined,
+    consultationId: string,
+    contextSchemaVersionId?: string,
+  ): Promise<ValidatedContextPayload | null> {
+    if (!kindKey) {
+      if (payload !== undefined) {
+        throw new BadRequestException('`payload` requires `kindKey` — there is no declared kind to validate it against.');
+      }
+      return null;
+    }
+
+    if (!this.contextSchemaService) {
+      throw new BadRequestException(
+        'Tenant-defined context kinds are not available in this deployment; omit `kindKey` to add context without one.',
+      );
+    }
+
+    const departmentId = await this.resolveConsultationDepartmentId(consultationId);
+
+    return this.contextSchemaService.validateContextPayload({
+      kindKey,
+      payload,
+      contextSchemaVersionId,
+      departmentId,
+    });
+  }
+
+  /**
+   * The consultation's department, used to pick a DEPARTMENT-scoped schema
+   * over the tenant default. Best-effort: a lookup failure must not fail a
+   * clinical write, it just means the tenant-scoped default is used.
+   */
+  private async resolveConsultationDepartmentId(consultationId: string): Promise<string | undefined> {
+    try {
+      const consultation = await this.consultationRepository.findById(consultationId);
+      return consultation?.departmentId ?? undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
   // ============================================
   // Context Item CRUD
   // ============================================
@@ -161,9 +239,28 @@ export class ContextService extends BaseService implements IContextService {
     // consultation.
     await assertParentInScope(this.consultationRepository, consultationId, tenantId);
 
+    // TASK-658 — resolve the tenant-declared kind when the write names one.
+    //
+    // The ticket spec placed this call "after the metadata merge and before
+    // `encryptContent`". The operative half of that instruction is BEFORE
+    // `encryptContent` — the validated, canonicalised payload has to be what
+    // gets encrypted — and this position satisfies it strictly. It sits
+    // EARLIER than the letter of the spec for one concrete reason: a
+    // STRUCTURED payload BECOMES the item's `content`, so both the
+    // content-required guard immediately below and the factory call have to
+    // see it. Doing it later would mean rejecting a valid STRUCTURED write
+    // for having no `content`, then patching the entity after construction.
+    // Nothing in validation reads `metadata`, so its position relative to the
+    // metadata merge is immaterial.
+    //
+    // A write that names NO kind returns null here and every line after this
+    // behaves exactly as it did before the ticket.
+    const validatedKind = await this.resolveContextKind(request.kindKey, request.payload, consultationId);
+    const effectiveContent = validatedKind?.content ?? request.content;
+
     // Validate content for non-media types
     const isMediaType = request.type === ContextItemType.AUDIO_RECORDING || request.type === ContextItemType.ATTACHMENT;
-    if (!isMediaType && !request.content) {
+    if (!isMediaType && !effectiveContent) {
       throw new BadRequestException('Content is required for non-media types');
     }
 
@@ -172,9 +269,11 @@ export class ContextService extends BaseService implements IContextService {
       consultationId,
       type: request.type,
       source: request.source ?? ContextItemSource.USER,
-      content: request.content,
+      content: effectiveContent,
       mediaId: request.mediaId,
       dnaWritingStyleId: request.dnaWritingStyleId,
+      kindKey: validatedKind?.kindKey,
+      contextSchemaVersionId: validatedKind?.contextSchemaVersionId,
       createdBy: userId ?? undefined,
     });
 
@@ -256,8 +355,30 @@ export class ContextService extends BaseService implements IContextService {
 
     const userId = this.requestUserId ?? 'system';
 
+    // TASK-658 — a STRUCTURED edit re-validates through the SAME seam as the
+    // create path, against the version the ITEM was written with (not the
+    // tenant's current pin): a publish that lands mid-consultation must not
+    // make an existing item un-editable. Neither `kindKey` nor
+    // `contextSchemaVersionId` is accepted from the request, so a caller
+    // cannot re-point an item at a different kind or a different version.
+    let validatedContent: string | undefined;
+    if (request.payload !== undefined) {
+      if (!contextItem.kindKey) {
+        throw new BadRequestException('This context item declares no kindKey, so it has no schema to validate a payload against.');
+      }
+      const validated = await this.resolveContextKind(
+        contextItem.kindKey,
+        request.payload,
+        contextItem.consultationId,
+        contextItem.contextSchemaVersionId ?? undefined,
+      );
+      validatedContent = validated?.content;
+    }
+
     // Apply changes to the entity first
-    if (request.content !== undefined) {
+    if (validatedContent !== undefined) {
+      contextItem.content = validatedContent;
+    } else if (request.content !== undefined) {
       contextItem.content = request.content;
     }
     if (request.dnaWritingStyleId !== undefined) {
@@ -291,7 +412,8 @@ export class ContextService extends BaseService implements IContextService {
 
     // Re-encrypt only when `content` actually changed, so
     // metadata-only updates don't rewrite the ciphertext column needlessly.
-    if (request.content !== undefined) {
+    // A validated STRUCTURED payload counts — it IS the new content.
+    if (request.content !== undefined || validatedContent !== undefined) {
       await this.encryptContent(contextItem);
     }
 

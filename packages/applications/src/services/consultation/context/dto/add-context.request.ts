@@ -50,6 +50,38 @@ export class AddContextRequest {
   @IsOptional()
   @IsObject()
   metadata?: Record<string, unknown>;
+
+  // TASK-658 — the tenant-defined context plane. Both fields MUST be DECLARED
+  // here even though their contents are tenant-defined: the global pipe runs
+  // `whitelist + forbidNonWhitelisted`, so anything undeclared is stripped
+  // (silently, for `whitelist`) or rejected. The tenant-defined SHAPE rides
+  // exactly one declared envelope (`payload`) and is validated in the service
+  // layer against the pinned schema version — TASK-654 constraint C7.
+  //
+  // Omitting `kindKey` is the legacy path and is unchanged in every respect.
+  @ApiPropertyOptional({
+    description:
+      "The tenant-declared context kind this item is an instance of (`kinds[].key` of the tenant's pinned " +
+      'ConsultationContextSchema version). Omit it for the pre-TASK-658 behaviour: no schema is consulted and the ' +
+      'write proceeds exactly as before.',
+    example: 'referral_letter',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(48)
+  kindKey?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Structured payload for a STRUCTURED kind, validated against that kind\'s `fields` sub-schema in the PINNED ' +
+      'schema version. Requires `kindKey`. The validated payload is canonicalised and persisted through the same ' +
+      'encrypted `content` column as every other text-bearing context type — there is no plaintext JSON column.',
+    type: 'object',
+    additionalProperties: true,
+  })
+  @IsOptional()
+  @IsObject()
+  payload?: Record<string, unknown>;
 }
 
 /**
