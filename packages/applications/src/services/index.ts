@@ -21,6 +21,8 @@ export * from './consultation';
 export * from './consultation-context-schema';
 export * from './department';
 export * from './departmentAgent';
+// Agent promotion between tenants (TASK-663).
+export * from './agentPromotion';
 // Clinical documentation harness (eval storage + WORM audit).
 export * from './eval';
 // Institutional RAG (knowledge corpus ingestion).
