@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import time
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Any
@@ -16,9 +17,10 @@ from botocore.tokens import FrozenAuthToken
 
 from smr.core.config import BedrockConfig
 from smr.core.defaults import resolve_request_defaults
+from smr.core.exceptions import InputValidationError
 from smr.core.telemetry import get_tracer
 from smr.models.provider import ModelInfo, ProviderInfo
-from smr.models.requests import GenerateRequest, ProviderOverride
+from smr.models.requests import GenerateRequest, ImageContentPart, ProviderOverride
 from smr.models.stats import GenerationStats, stats_from_bedrock
 from smr.models.stream import StreamChunk
 from smr.providers.base import require_model
@@ -27,6 +29,25 @@ if TYPE_CHECKING:
     from opentelemetry.trace import Tracer
 
 logger = structlog.get_logger(__name__)
+
+# Bedrock Converse ``ImageBlock.format`` — the vendor's closed enum (TASK-657).
+_BEDROCK_IMAGE_FORMATS: dict[str, str] = {
+    "image/png": "png",
+    "image/jpeg": "jpeg",
+    "image/jpg": "jpeg",
+    "image/gif": "gif",
+    "image/webp": "webp",
+}
+
+
+def _bedrock_image_block(part: ImageContentPart) -> dict[str, Any]:
+    fmt = _BEDROCK_IMAGE_FORMATS.get(part.media_type.lower())
+    if fmt is None:
+        raise InputValidationError(
+            f"Bedrock does not support image media type '{part.media_type}' — "
+            f"supported: {sorted(set(_BEDROCK_IMAGE_FORMATS.values()))}."
+        )
+    return {"image": {"format": fmt, "source": {"bytes": base64.b64decode(part.data)}}}
 
 
 def _get_tracer() -> Tracer:
@@ -107,9 +128,12 @@ class BedrockProvider:
 
     def _build_converse_params(self, request: GenerateRequest) -> dict[str, Any]:
         resolved = resolve_request_defaults(request)
+        content: list[dict[str, Any]] = [{"text": request.prompt}]
+        for image in request.image_parts():
+            content.append(_bedrock_image_block(image))
         params: dict[str, Any] = {
             "modelId": self._resolve_model(request),
-            "messages": [{"role": "user", "content": [{"text": request.prompt}]}],
+            "messages": [{"role": "user", "content": content}],
             "inferenceConfig": {
                 "temperature": resolved["temperature"],
                 "maxTokens": resolved["max_tokens"],
@@ -312,4 +336,5 @@ class BedrockProvider:
             default_model=self._default_model,
             models=models,
             supports_streaming=True,
+            supports_vision=True,
         )

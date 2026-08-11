@@ -60,6 +60,22 @@ class ModelNotSelectedError(InputValidationError):
         self.error_code = "MODEL_NOT_SELECTED"
 
 
+class VisionNotSupportedError(InputValidationError):
+    """An image content part was supplied but the provider has no multimodal
+    wire capability (TASK-657 — today: llama.cpp's raw ``/completion``
+    endpoint has no chat/image concept).
+
+    Fails closed rather than silently dropping the image and degrading to a
+    text-only call: a caller that picked a text-only engine for a vision
+    request must find out, not get a quietly wrong answer.
+    """
+
+    def __init__(self, message: str, *, provider: str = "unknown"):
+        self.provider = provider
+        super().__init__(message)
+        self.error_code = "VISION_NOT_SUPPORTED"
+
+
 class ProviderCredentialsError(SmrError):
     """No usable credential for a cloud provider generation request.
 

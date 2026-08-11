@@ -129,6 +129,13 @@ const ADMIN_CONSOLE_BACKFILL_NEW_SLUGS = [
   'whisper-large-en-medical-260726-merged-ct2',
 ] as const;
 
+// TASK-657 — the first ModelCategory.VISION catalog row: the SAME LM Studio
+// weights as `lms-medgemma-1.5-4b-it` (a 4B MedGemma checkpoint is natively
+// multimodal), catalogued under a distinct slug/taskType for image+text
+// extraction. Catalogued but NOT loaded on the dev instance (see the "not
+// loaded" LM_STUDIO_SOURCE_URIS entry below) — no AiTaskDefault selects it.
+const TASK_657_NEW_SLUGS = ['lms-medgemma-1.5-4b-it-vision'] as const;
+
 const EXPECTED_CATALOG_SLUGS = [
   ...KEEPER_SLUGS,
   ...NEW_LLM_SLUGS,
@@ -140,6 +147,7 @@ const EXPECTED_CATALOG_SLUGS = [
   ...TASK_567_NEW_SLUGS,
   ...ARCAAI_ML_EN_NEW_SLUGS,
   ...ADMIN_CONSOLE_BACKFILL_NEW_SLUGS,
+  ...TASK_657_NEW_SLUGS,
 ] as const;
 
 // The 50 slugs that must be RETIRED (previous 60 minus the 10 keepers).
@@ -238,10 +246,10 @@ const bySlug = (slug: string) => catalog.find((m) => m.slug === slug);
 // =============================================================================
 
 describe('consolidated AI model catalog (26 rows) + extensions', () => {
-  it('is exactly the 45 expected slugs (26 + 2 + 9 extensions + 3 ArcaAI ML-EN + 3 admin-console backfill)', () => {
+  it('is exactly the 46 expected slugs (26 + 2 + 9 extensions + 3 ArcaAI ML-EN + 3 admin-console backfill + 1 vision)', () => {
     const slugs = catalog.map((m) => m.slug).sort();
     expect(slugs).toEqual([...EXPECTED_CATALOG_SLUGS].sort());
-    expect(catalog.length).toBe(45);
+    expect(catalog.length).toBe(46);
   });
 
   it('has unique ids and unique slugs', () => {
@@ -332,6 +340,22 @@ describe('consolidated AI model catalog (26 rows) + extensions', () => {
     expect(row?.metaData?.azureDeployment).toBe('');
   });
 
+  // TASK-657 — the first ModelCategory.VISION / IMAGE_TEXT_TO_TEXT row.
+  it('seeds lms-medgemma-1.5-4b-it-vision as the first ModelCategory.VISION row', () => {
+    const row = bySlug('lms-medgemma-1.5-4b-it-vision');
+    expect(row).toBeDefined();
+    expect(row?.category).toBe('VISION');
+    expect(row?.taskType).toBe('IMAGE_TEXT_TO_TEXT');
+    expect(row?.provider).toBe('lm-studio');
+    expect(row?.sourceUri).toBe('medgemma-1.5-4b-it');
+    expect(row?.tags).toContain('vision');
+  });
+
+  it('is the ONLY row using ModelCategory.VISION or IMAGE_TEXT_TO_TEXT before this ticket', () => {
+    const visionRows = catalog.filter((m) => m.category === 'VISION' || m.taskType === 'IMAGE_TEXT_TO_TEXT');
+    expect(visionRows.map((m) => m.slug)).toEqual(['lms-medgemma-1.5-4b-it-vision']);
+  });
+
   // ===========================================================================
   // LM Studio identifier parity with the live instance
   // ===========================================================================
@@ -363,6 +387,9 @@ describe('consolidated AI model catalog (26 rows) + extensions', () => {
     ['lms-gemma-4-medical-icd10', 'gemma-4-medical-icd10', false],
     ['lms-gemma-4-12b-qat', 'google/gemma-4-12b-qat', false],
     ['lms-medgemma-1.5-4b-it', 'medgemma-1.5-4b-it', false],
+    // TASK-657 — the vision row reuses the SAME sourceUri as the text-only
+    // row above (one set of weights, two catalog entries for two task types).
+    ['lms-medgemma-1.5-4b-it-vision', 'medgemma-1.5-4b-it', false],
   ] as const;
 
   it.each(LM_STUDIO_SOURCE_URIS)('pins the LM Studio identifier of %s to %s', (slug, sourceUri) => {

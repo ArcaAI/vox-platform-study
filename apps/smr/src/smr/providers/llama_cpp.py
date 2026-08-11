@@ -26,6 +26,7 @@ from smr.models.provider import ModelInfo, ProviderInfo
 from smr.models.requests import GenerateRequest
 from smr.models.stats import GenerationStats, stats_from_llama_cpp
 from smr.models.stream import StreamChunk
+from smr.providers.base import reject_vision
 
 if TYPE_CHECKING:
     from opentelemetry.trace import Tracer
@@ -88,6 +89,7 @@ class LlamaCppProvider:
         return payload
 
     async def generate(self, request: GenerateRequest) -> tuple[str, str, GenerationStats]:
+        reject_vision(request, provider=_ENGINE)
         resolved = resolve_request_defaults(request)
         resolved_model = self._resolve_model(request)
         with _get_tracer().start_as_current_span(
@@ -120,6 +122,7 @@ class LlamaCppProvider:
             return data.get("content", ""), "", stats
 
     async def generate_stream(self, request: GenerateRequest) -> AsyncIterator[StreamChunk]:
+        reject_vision(request, provider=_ENGINE)
         resolved = resolve_request_defaults(request)
         with _get_tracer().start_as_current_span(
             "gen_ai.generate_stream",
@@ -210,4 +213,5 @@ class LlamaCppProvider:
             default_model=self._default_model,
             models=models,
             supports_streaming=True,
+            supports_vision=False,
         )
