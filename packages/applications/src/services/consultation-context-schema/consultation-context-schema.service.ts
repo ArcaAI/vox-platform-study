@@ -35,7 +35,7 @@ import {
   findKind,
   type ContextPrimitive,
 } from './context-schema-definition';
-import { classifyDefinitionChange } from './definition-diff';
+import { classifyDefinitionChange, type DefinitionChangeClassification } from './definition-diff';
 import { jsonSchemaValueProblems } from './json-schema-subset';
 
 /** ETag served for a tenant that has not configured a context schema. */
@@ -327,14 +327,30 @@ export class ConsultationContextSchemaService extends BaseService implements ICo
   async validateContextPayload(input: ValidateContextPayloadInput): Promise<ValidatedContextPayload> {
     const tenantId = this.requireTenantId();
 
-    const version = input.contextSchemaVersionId
-      ? await this.loadVersionByIdOwned(input.contextSchemaVersionId, tenantId)
-      : (await this.resolveServableVersion(tenantId, input.departmentId))?.version;
+    // TASK-661 — an EXPLICITLY pinned version (a client built against schema
+    // vN talking to a tenant now on vM) is what gets validated against,
+    // FULL STOP — never silently upgraded to the current pin. That is what
+    // makes an old client safe rather than merely detectable as stale.
+    const explicitVersion = input.contextSchemaVersionId ? await this.loadVersionByIdOwned(input.contextSchemaVersionId, tenantId) : undefined;
+    const version = explicitVersion ?? (await this.resolveServableVersion(tenantId, input.departmentId))?.version;
 
     if (!version) {
       throw new BadRequestException(
         `Context item declares kindKey '${input.kindKey}' but this tenant has no published context schema to validate it against.`,
       );
+    }
+
+    // TASK-661 — a compatibility SIGNAL only: reuses the exact classifier
+    // `publish` uses (`classifyDefinitionChange`) to judge the drift between
+    // the version just validated against and the tenant's CURRENT pin, so a
+    // caller pinned to an old version can be told it is falling behind. It
+    // never changes `version` above — the write already validated safely.
+    let versionSkew: DefinitionChangeClassification | undefined;
+    if (explicitVersion) {
+      const servable = await this.resolveServableVersion(tenantId, input.departmentId);
+      if (servable && servable.version.id !== explicitVersion.id) {
+        versionSkew = classifyDefinitionChange(explicitVersion.definition, servable.version.definition).classification;
+      }
     }
 
     const kind = findKind(version.definition, input.kindKey);
@@ -363,7 +379,7 @@ export class ConsultationContextSchemaService extends BaseService implements ICo
       if (Buffer.byteLength(content, 'utf8') > MAX_STRUCTURED_PAYLOAD_BYTES) {
         throw new BadRequestException(`Structured payload exceeds ${MAX_STRUCTURED_PAYLOAD_BYTES} bytes.`);
       }
-      return { kindKey: input.kindKey, primitive, contextSchemaVersionId: version.id, content };
+      return { kindKey: input.kindKey, primitive, contextSchemaVersionId: version.id, content, versionSkew };
     }
 
     // Non-STRUCTURED kinds carry no `fields` contract in this ticket — the
@@ -376,7 +392,7 @@ export class ConsultationContextSchemaService extends BaseService implements ICo
       throw new BadRequestException(`Kind '${input.kindKey}' has primitive ${primitive} and does not accept a \`payload\`.`);
     }
 
-    return { kindKey: input.kindKey, primitive, contextSchemaVersionId: version.id, content: input.content };
+    return { kindKey: input.kindKey, primitive, contextSchemaVersionId: version.id, content: input.content, versionSkew };
   }
 
   // ============================================================
