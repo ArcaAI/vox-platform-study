@@ -232,6 +232,28 @@ describe('OcrEnrichmentProcessor', () => {
     expect(contextItemRepository.update).not.toHaveBeenCalled();
   });
 
+  // TASK-660 — the ContextAdded gate widened to also emit for TRANSCRIPT and
+  // STRUCTURED (loop event plane). This consumer was written for ATTACHMENT
+  // only; its existing type check already covers the new kinds, since it is
+  // a positive allowlist (`=== ATTACHMENT`), not a denylist of the old kinds.
+  it('ignores TRANSCRIPT context types (no DB read) — regression for the loop-event-plane widening', async () => {
+    await processor.handleContextAdded(createPayload({ contextType: 'TRANSCRIPT' }));
+
+    expect(contextItemRepository.findById).not.toHaveBeenCalled();
+    expect(mediaRepository.findById).not.toHaveBeenCalled();
+    expect(blobStorage.getObject).not.toHaveBeenCalled();
+    expect(contextItemRepository.update).not.toHaveBeenCalled();
+  });
+
+  it('ignores STRUCTURED context types (no DB read) — regression for the loop-event-plane widening', async () => {
+    await processor.handleContextAdded(createPayload({ contextType: 'STRUCTURED' }));
+
+    expect(contextItemRepository.findById).not.toHaveBeenCalled();
+    expect(mediaRepository.findById).not.toHaveBeenCalled();
+    expect(blobStorage.getObject).not.toHaveBeenCalled();
+    expect(contextItemRepository.update).not.toHaveBeenCalled();
+  });
+
   it('no-ops for an ATTACHMENT without a mediaId (nothing to OCR)', async () => {
     contextItemRepository.findById.mockResolvedValue(createMockAttachment({ mediaId: null }));
 
