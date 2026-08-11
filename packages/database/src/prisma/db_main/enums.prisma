@@ -232,6 +232,41 @@ enum ContextItemType {
   CASE_NOTE // Case notes - shared across linked consultations as additional context
   ATTACHMENT // Other attachments
   SIGNED_NOTE // Clinician-attested, immutable signed note (confirm-before-commit gate)
+  // Tenant-declared structured context (TASK-658). The payload is a JSON
+  // document validated against the `fields` sub-schema of the tenant's
+  // `ConsultationContextSchema` kind, then serialised into the SAME encrypted
+  // `content` column as every other text-bearing type — there is no new
+  // plaintext JSON column, so the Vault-Transit (hope-phi) path is unchanged.
+  // The tenant-facing discriminator is `ContextItem.kindKey`; this enum value
+  // only says "the content is structured", never WHICH structure.
+  STRUCTURED
+
+  @@schema("core")
+}
+
+// =============================================================================
+// CONSULTATION CONTEXT SCHEMA ENUMS (TASK-658)
+// =============================================================================
+
+// Which consultations a `ConsultationContextSchema` governs. DEPARTMENT-scoped
+// rows carry a `departmentId` and win over the TENANT-scoped default during
+// discovery resolution.
+enum ConsultationContextSchemaScope {
+  TENANT
+  DEPARTMENT
+
+  @@schema("core")
+}
+
+// Governance lifecycle of a `ConsultationContextSchema`, deliberately identical
+// in shape to `PromptTemplateStatus` (the house precedent for
+// resource → immutable version → movable pinned default): DRAFT is editable and
+// never served, PUBLISHED is served to clients, APPROVED additionally records a
+// governance sign-off.
+enum ConsultationContextSchemaStatus {
+  DRAFT
+  PUBLISHED
+  APPROVED
 
   @@schema("core")
 }
