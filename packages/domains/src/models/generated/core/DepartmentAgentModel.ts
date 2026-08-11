@@ -26,6 +26,13 @@ export class DepartmentAgent extends BaseTenantDataModel {
   public isDefault: boolean;
   public sourceAgentTemplateSlug: string | null;
   public templateLocked: boolean;
+  public role: Enums.DepartmentAgentRole;
+  public subscribedKinds: JsonValue | null;
+  public writeScope: JsonValue | null;
+  public goal: JsonValue | null;
+  public guardrailProfile: string | null;
+  public alwaysActions: JsonValue | null;
+  public neverActions: JsonValue | null;
   public resourceStatus: Enums.ResourceStatusType;
   public resourceStatusUpdatedAt: Date | null;
   public resourceStatusUpdatedBy: string | null;
@@ -34,6 +41,8 @@ export class DepartmentAgent extends BaseTenantDataModel {
   public Department: Models.Department | undefined;
   @VirtualDbProperty()
   public PromptTemplate: Models.PromptTemplate | undefined;
+  @VirtualDbProperty()
+  public Versions: Models.DepartmentAgentVersion[] | undefined;
 
   constructor(data: DepartmentAgent & BaseTenantDataModel) {
     super(data);
@@ -55,11 +64,19 @@ export class DepartmentAgent extends BaseTenantDataModel {
     this.isDefault = data.isDefault;
     this.sourceAgentTemplateSlug = data.sourceAgentTemplateSlug;
     this.templateLocked = data.templateLocked;
+    this.role = data.role;
+    this.subscribedKinds = data.subscribedKinds;
+    this.writeScope = data.writeScope;
+    this.goal = data.goal;
+    this.guardrailProfile = data.guardrailProfile;
+    this.alwaysActions = data.alwaysActions;
+    this.neverActions = data.neverActions;
     this.resourceStatus = data.resourceStatus;
     this.resourceStatusUpdatedAt = data.resourceStatusUpdatedAt;
     this.resourceStatusUpdatedBy = data.resourceStatusUpdatedBy;
     this.tags = data.tags;
     this.Department = data.Department;
     this.PromptTemplate = data.PromptTemplate;
+    this.Versions = data.Versions;
   }
 }

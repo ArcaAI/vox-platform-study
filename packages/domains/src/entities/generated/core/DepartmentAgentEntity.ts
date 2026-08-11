@@ -3,7 +3,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { BusinessException } from '@arcaai/exceptions';
 import { BaseTaggedEntity, IBaseTaggedEntity } from '../../../common';
-import { DepartmentAgentDnaPolicy } from '../../../enums';
+import { DepartmentAgentDnaPolicy, DepartmentAgentRole } from '../../../enums';
 
 // First-class agent entity (TASK-546): binds a tenant department to a
 // PromptTemplate at a PINNED or TRACKED version, plus a DNA-style gate, (later)
@@ -44,6 +44,16 @@ export interface IDepartmentAgentEntity extends IBaseTaggedEntity {
   // `isDefault` — DB defaults cover creates.
   sourceAgentTemplateSlug?: string | null;
   templateLocked?: boolean;
+  // TASK-659 — loop configuration + promotion surface. All optional; every
+  // pre-existing agent is null on all but `role` (which carries a DB
+  // default), so nothing here changes resolution behavior.
+  role?: DepartmentAgentRole;
+  subscribedKinds?: Record<string, unknown> | null;
+  writeScope?: Record<string, unknown> | null;
+  goal?: Record<string, unknown> | null;
+  guardrailProfile?: string | null;
+  alwaysActions?: string[] | null;
+  neverActions?: string[] | null;
   // `IBaseEntity.metaData` is declared but not wired on the abstract base —
   // wired locally (the AiModelEntity precedent) so template-copy lineage extras
   // (TASK-548: `sourceTemplateVersionNumber`, the pristine-detection anchor for
@@ -70,6 +80,13 @@ export class DepartmentAgentEntity extends BaseTaggedEntity {
   private _isDefault: boolean;
   private _sourceAgentTemplateSlug?: IDepartmentAgentEntity['sourceAgentTemplateSlug'];
   private _templateLocked: boolean;
+  private _role: DepartmentAgentRole;
+  private _subscribedKinds?: IDepartmentAgentEntity['subscribedKinds'];
+  private _writeScope?: IDepartmentAgentEntity['writeScope'];
+  private _goal?: IDepartmentAgentEntity['goal'];
+  private _guardrailProfile?: IDepartmentAgentEntity['guardrailProfile'];
+  private _alwaysActions?: IDepartmentAgentEntity['alwaysActions'];
+  private _neverActions?: IDepartmentAgentEntity['neverActions'];
   private _metaData?: IDepartmentAgentEntity['metaData'];
 
   constructor(init: IDepartmentAgentEntity) {
@@ -92,6 +109,13 @@ export class DepartmentAgentEntity extends BaseTaggedEntity {
     this._isDefault = init.isDefault ?? false;
     this._sourceAgentTemplateSlug = init.sourceAgentTemplateSlug ?? null;
     this._templateLocked = init.templateLocked ?? false;
+    this._role = init.role ?? DepartmentAgentRole.SPECIALIST;
+    this._subscribedKinds = init.subscribedKinds ?? null;
+    this._writeScope = init.writeScope ?? null;
+    this._goal = init.goal ?? null;
+    this._guardrailProfile = init.guardrailProfile ?? null;
+    this._alwaysActions = init.alwaysActions ?? null;
+    this._neverActions = init.neverActions ?? null;
     this._metaData = init.metaData ?? null;
   }
 
@@ -237,6 +261,62 @@ export class DepartmentAgentEntity extends BaseTaggedEntity {
 
   set templateLocked(value: boolean) {
     this.setProperty('templateLocked', value);
+  }
+
+  get role(): DepartmentAgentRole {
+    return this._role;
+  }
+
+  set role(value: DepartmentAgentRole) {
+    this.setProperty('role', value);
+  }
+
+  get subscribedKinds(): IDepartmentAgentEntity['subscribedKinds'] {
+    return this._subscribedKinds;
+  }
+
+  set subscribedKinds(value: IDepartmentAgentEntity['subscribedKinds']) {
+    this.setProperty('subscribedKinds', value);
+  }
+
+  get writeScope(): IDepartmentAgentEntity['writeScope'] {
+    return this._writeScope;
+  }
+
+  set writeScope(value: IDepartmentAgentEntity['writeScope']) {
+    this.setProperty('writeScope', value);
+  }
+
+  get goal(): IDepartmentAgentEntity['goal'] {
+    return this._goal;
+  }
+
+  set goal(value: IDepartmentAgentEntity['goal']) {
+    this.setProperty('goal', value);
+  }
+
+  get guardrailProfile(): IDepartmentAgentEntity['guardrailProfile'] {
+    return this._guardrailProfile;
+  }
+
+  set guardrailProfile(value: IDepartmentAgentEntity['guardrailProfile']) {
+    this.setProperty('guardrailProfile', value);
+  }
+
+  get alwaysActions(): IDepartmentAgentEntity['alwaysActions'] {
+    return this._alwaysActions;
+  }
+
+  set alwaysActions(value: IDepartmentAgentEntity['alwaysActions']) {
+    this.setProperty('alwaysActions', value);
+  }
+
+  get neverActions(): IDepartmentAgentEntity['neverActions'] {
+    return this._neverActions;
+  }
+
+  set neverActions(value: IDepartmentAgentEntity['neverActions']) {
+    this.setProperty('neverActions', value);
   }
 
   get metaData(): IDepartmentAgentEntity['metaData'] {

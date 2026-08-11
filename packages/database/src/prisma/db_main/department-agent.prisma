@@ -80,6 +80,46 @@ model DepartmentAgent {
   sourceAgentTemplateSlug String?
   templateLocked          Boolean @default(false)
 
+  // ── TASK-659: loop configuration + promotion surface. ALL NULLABLE (role
+  // carries a DB default); every pre-existing row is null on the other six,
+  // so resolution/behavior stays byte-identical to before this ticket.
+  //
+  // Loop role — see DepartmentAgentRole. Exactly one ENABLED PRIMARY per
+  // department, enforced in the application service.
+  role DepartmentAgentRole @default(SPECIALIST)
+  // Context kinds (TASK-658 `kinds[].key`) this agent listens for, with an
+  // optional per-kind filter. Structural shape validated in
+  // DepartmentAgentService; kind keys are additionally cross-checked against
+  // the department's resolved ConsultationContextSchemaVersion when one
+  // exists.
+  //   { version: 1, kinds: [{ key: "referral_letter", filter?: {...} }] }
+  subscribedKinds Json? @db.JsonB
+  // Output kinds (TASK-658 `outputs[].key`) this agent may produce. Same
+  // cross-check as subscribedKinds.
+  //   { version: 1, outputs: ["soap_note"] }
+  writeScope Json? @db.JsonB
+  // Constrained goal — deliberately NOT a free-text system prompt (D8): a
+  // short, length-capped objective plus optional bounded success criteria.
+  // Free-text prompt authoring stays where it already is — the
+  // approval-gated PromptTemplate bound above.
+  //   { version: 1, objective: "...", successCriteria?: ["..."] }
+  goal Json? @db.JsonB
+  // Named guardrail profile from a closed platform catalogue
+  // (GUARDRAIL_PROFILE_KEYS). Placement, not permission (D9): the actual
+  // clinical-safety enforcement runs at a boundary the agent cannot route
+  // around (TASK-654 §4.6) — this column only SELECTS which profile that
+  // boundary applies.
+  guardrailProfile String?
+  // Compliance envelope (D11 — no rule engine; subscriptions + goals with
+  // always/never as the envelope). Each entry is one of AGENT_ACTION_KEYS;
+  // the same key must never appear in both lists (validated in the service).
+  //   ["harness.finalize"]
+  alwaysActions Json? @db.JsonB
+  neverActions  Json? @db.JsonB
+
+  // relations
+  Versions DepartmentAgentVersion[]
+
   // resource status fields
   resourceStatus          ResourceStatusType @default(ENABLED)
   resourceStatusUpdatedAt DateTime?
@@ -104,5 +144,55 @@ model DepartmentAgent {
   // resolution / policy overlay / harness start) filters
   // (tenantId, departmentId, isDefault).
   @@index([tenantId, departmentId, isDefault], name: "DepartmentAgent_tenantId_departmentId_isDefault_idx")
+  @@schema("core")
+}
+
+// IMMUTABLE snapshot of a DepartmentAgent's loop-configuration surface
+// (TASK-659) — the house governance triple (TASK-654 C6) applied to the
+// agent: DepartmentAgent is the mutable head, this is the immutable version.
+// Promotion (TASK-663) copies the exact immutable version rather than
+// re-authoring the target, and a running consultation loop (TASK-662) pins
+// `agentConfigVersionId` alongside `contextSchemaVersionId` at start (C1) — a
+// mid-run edit to the agent must not change a run already underway. Written
+// once by `DepartmentAgentService.create`/`update` and never updated after
+// insert — a correction is a new version, exactly like PromptVersion /
+// ConsultationContextSchemaVersion. No `resourceStatus`, no
+// `updatedAt`/`updatedBy` by design (listed in MODELS_WITHOUT_SOFT_DELETE).
+model DepartmentAgentVersion {
+  // meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
+
+  // multi tenant fields
+  tenantId String
+
+  // parent agent
+  agentId String
+  Agent   DepartmentAgent @relation(fields: [agentId], references: [id])
+
+  // core (business) fields
+  versionNumber Int
+
+  // Canonical (key-sorted, array-order-preserved) snapshot of the seven
+  // loop-config fields on DepartmentAgent (role, subscribedKinds, writeScope,
+  // goal, guardrailProfile, alwaysActions, neverActions) at the moment of
+  // writing.
+  configSnapshot Json @db.JsonB
+
+  // sha256 over the canonical JSON of configSnapshot. Drives the
+  // no-op-write guard (identical checksum ⇒ no new version).
+  checksum String
+
+  changeReason String?
+
+  // audit fields (immutable row: no updatedAt/updatedBy by design)
+  createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+  createdAt DateTime @default(now())
+
+  // constraints + indexes
+  @@unique([agentId, versionNumber], name: "DepartmentAgentVersion_agent_versionNumber_unique")
+  @@index([tenantId], name: "DepartmentAgentVersion_tenantId_idx")
+  @@index([agentId], name: "DepartmentAgentVersion_agentId_idx")
   @@schema("core")
 }

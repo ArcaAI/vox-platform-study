@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { DepartmentAgentDnaPolicy, ResourceStatusType } from '@arcaai/domains';
+import { DepartmentAgentDnaPolicy, DepartmentAgentRole, ResourceStatusType } from '@arcaai/domains';
 import { PaginatedResponse } from '../../../common';
 
 export class DepartmentAgentResponse {
@@ -64,6 +64,28 @@ export class DepartmentAgentResponse {
 
   @ApiPropertyOptional({ description: 'Tags', type: [String] })
   tags?: string[];
+
+  // TASK-659 loop configuration + promotion surface.
+  @ApiProperty({ description: 'Loop role', enum: DepartmentAgentRole })
+  role: DepartmentAgentRole;
+
+  @ApiPropertyOptional({ description: 'Context kinds this agent listens for', nullable: true })
+  subscribedKinds?: Record<string, unknown> | null;
+
+  @ApiPropertyOptional({ description: 'Output kinds this agent may produce', nullable: true })
+  writeScope?: Record<string, unknown> | null;
+
+  @ApiPropertyOptional({ description: 'Constrained goal (not a free-text prompt)', nullable: true })
+  goal?: Record<string, unknown> | null;
+
+  @ApiPropertyOptional({ description: 'Named guardrail profile', nullable: true })
+  guardrailProfile?: string | null;
+
+  @ApiPropertyOptional({ description: 'Actions this agent must always take', type: [String], nullable: true })
+  alwaysActions?: string[] | null;
+
+  @ApiPropertyOptional({ description: 'Actions this agent must never take', type: [String], nullable: true })
+  neverActions?: string[] | null;
 
   @ApiPropertyOptional({ description: 'Resource status', enum: ['ENABLED', 'DISABLED'] })
   resourceStatus?: ResourceStatusType;

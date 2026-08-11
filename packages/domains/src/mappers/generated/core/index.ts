@@ -22,6 +22,7 @@ export * from './ConsultationContextSchemaVersionEntityMapper';
 export * from './ContextItemEntityMapper';
 export * from './ContextItemVersionEntityMapper';
 export * from './DepartmentAgentEntityMapper';
+export * from './DepartmentAgentVersionEntityMapper';
 export * from './DepartmentEntityMapper';
 export * from './DnaUsageRecordEntityMapper';
 export * from './DnaWritingStyleReportEntityMapper';

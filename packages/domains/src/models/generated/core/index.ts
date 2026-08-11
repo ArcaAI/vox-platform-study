@@ -23,6 +23,7 @@ export * from './ConsultationModel';
 export * from './ContextItemModel';
 export * from './ContextItemVersionModel';
 export * from './DepartmentAgentModel';
+export * from './DepartmentAgentVersionModel';
 export * from './DepartmentModel';
 export * from './DnaUsageRecordModel';
 export * from './DnaWritingStyleReportModel';

@@ -161,3 +161,241 @@ export function llmOverridesProblems(llmOverrides: Record<string, unknown>): { p
 
   return { problems, slugs };
 }
+
+// =============================================================================
+// TASK-659 — loop configuration + promotion surface
+// =============================================================================
+
+/**
+ * Grammar for a kind/output key referenced by `subscribedKinds`/`writeScope`.
+ * Mirrors `CONTEXT_KIND_KEY_PATTERN` in
+ * `consultation-context-schema/context-schema-definition.ts` — kept as an
+ * independent constant (not imported) so this module's structural validators
+ * stay self-contained pure functions with no cross-service dependency; the
+ * grammar itself is a platform-wide convention, not TASK-658's alone.
+ */
+export const AGENT_KIND_KEY_PATTERN = /^[a-z0-9_]{2,48}$/;
+
+/**
+ * Structural validation of a `subscribedKinds` JSONB payload. Returns the
+ * structural problems plus the referenced kind keys, so the caller can
+ * cross-check them against the department's resolved context schema (the
+ * repository-backed half lives in the service, not here — this function never
+ * throws and never does I/O). Shape:
+ *
+ *   { version: 1, kinds: [{ key: "referral_letter", filter?: {...} }] }
+ */
+export function subscribedKindsProblems(value: Record<string, unknown>): { problems: string[]; kindKeys: string[] } {
+  const problems: string[] = [];
+  const kindKeys: string[] = [];
+
+  const version = value.version;
+  if (version !== undefined && version !== 1) {
+    problems.push(`subscribedKinds.version must be 1 (got ${JSON.stringify(version)})`);
+  }
+
+  const unknownTop = Object.keys(value).filter((key) => key !== 'version' && key !== 'kinds');
+  if (unknownTop.length > 0) {
+    problems.push(`subscribedKinds contains unknown key(s): ${unknownTop.join(', ')}`);
+  }
+
+  const kinds = value.kinds;
+  if (kinds === undefined) return { problems, kindKeys };
+  if (!Array.isArray(kinds)) {
+    problems.push('subscribedKinds.kinds must be an array');
+    return { problems, kindKeys };
+  }
+
+  const seen = new Set<string>();
+  kinds.forEach((entry, index) => {
+    if (entry === null || typeof entry !== 'object' || Array.isArray(entry)) {
+      problems.push(`subscribedKinds.kinds[${index}] must be an object`);
+      return;
+    }
+    const record = entry as Record<string, unknown>;
+    const unknownEntryKeys = Object.keys(record).filter((key) => key !== 'key' && key !== 'filter');
+    if (unknownEntryKeys.length > 0) {
+      problems.push(`subscribedKinds.kinds[${index}] contains unknown key(s): ${unknownEntryKeys.join(', ')}`);
+    }
+    const key = record.key;
+    if (typeof key !== 'string' || !AGENT_KIND_KEY_PATTERN.test(key)) {
+      problems.push(`subscribedKinds.kinds[${index}].key must match ${AGENT_KIND_KEY_PATTERN.source}`);
+    } else if (seen.has(key)) {
+      problems.push(`subscribedKinds.kinds[${index}].key: duplicate kind '${key}'`);
+    } else {
+      seen.add(key);
+      kindKeys.push(key);
+    }
+    if (record.filter !== undefined && (record.filter === null || typeof record.filter !== 'object' || Array.isArray(record.filter))) {
+      problems.push(`subscribedKinds.kinds[${index}].filter must be an object when present`);
+    }
+  });
+
+  return { problems, kindKeys };
+}
+
+/**
+ * Structural validation of a `writeScope` JSONB payload. Shape:
+ *
+ *   { version: 1, outputs: ["soap_note"] }
+ */
+export function writeScopeProblems(value: Record<string, unknown>): { problems: string[]; outputKeys: string[] } {
+  const problems: string[] = [];
+  const outputKeys: string[] = [];
+
+  const version = value.version;
+  if (version !== undefined && version !== 1) {
+    problems.push(`writeScope.version must be 1 (got ${JSON.stringify(version)})`);
+  }
+
+  const unknownTop = Object.keys(value).filter((key) => key !== 'version' && key !== 'outputs');
+  if (unknownTop.length > 0) {
+    problems.push(`writeScope contains unknown key(s): ${unknownTop.join(', ')}`);
+  }
+
+  const outputs = value.outputs;
+  if (outputs === undefined) return { problems, outputKeys };
+  if (!Array.isArray(outputs)) {
+    problems.push('writeScope.outputs must be an array');
+    return { problems, outputKeys };
+  }
+
+  const seen = new Set<string>();
+  outputs.forEach((entry, index) => {
+    if (typeof entry !== 'string' || !AGENT_KIND_KEY_PATTERN.test(entry)) {
+      problems.push(`writeScope.outputs[${index}] must match ${AGENT_KIND_KEY_PATTERN.source}`);
+      return;
+    }
+    if (seen.has(entry)) {
+      problems.push(`writeScope.outputs[${index}]: duplicate output '${entry}'`);
+      return;
+    }
+    seen.add(entry);
+    outputKeys.push(entry);
+  });
+
+  return { problems, outputKeys };
+}
+
+/**
+ * Closed catalogue of named guardrail profiles a DepartmentAgent may select
+ * (TASK-654 D9): placement, not permission — the actual clinical-safety
+ * enforcement runs at a boundary the agent cannot route around; this field
+ * only SELECTS which profile that boundary applies.
+ */
+export const GUARDRAIL_PROFILE_KEYS = ['STANDARD', 'STRICT', 'RELAXED'] as const;
+
+export type GuardrailProfileKey = (typeof GUARDRAIL_PROFILE_KEYS)[number];
+
+const GUARDRAIL_PROFILE_KEY_SET: ReadonlySet<string> = new Set(GUARDRAIL_PROFILE_KEYS);
+
+export function guardrailProfileProblems(value: string): string[] {
+  if (!GUARDRAIL_PROFILE_KEY_SET.has(value)) {
+    return [`guardrailProfile must be one of ${GUARDRAIL_PROFILE_KEYS.join(', ')} (got '${value}')`];
+  }
+  return [];
+}
+
+/**
+ * The action registry names TASK-662's `ConsultationLoopWorkflow` will
+ * dispatch (TASK-654 §4.4) — `alwaysActions`/`neverActions` (D11's compliance
+ * envelope) may name only these.
+ */
+export const AGENT_ACTION_KEYS = [
+  'livedoc.start',
+  'livedoc.stop',
+  'vision.extract_text',
+  'document.extract_text',
+  'nlp.extract_entities',
+  'harness.finalize',
+  'client.emit',
+] as const;
+
+export type AgentActionKey = (typeof AGENT_ACTION_KEYS)[number];
+
+const AGENT_ACTION_KEY_SET: ReadonlySet<string> = new Set(AGENT_ACTION_KEYS);
+
+/**
+ * Structural validation of an `alwaysActions`/`neverActions` array: every
+ * entry must be a known action key, a string, and non-duplicate.
+ */
+export function actionListProblems(value: unknown[], field: 'alwaysActions' | 'neverActions'): string[] {
+  const problems: string[] = [];
+  const seen = new Set<unknown>();
+  value.forEach((entry, index) => {
+    if (typeof entry !== 'string' || !AGENT_ACTION_KEY_SET.has(entry)) {
+      problems.push(`${field}[${index}] must be one of ${AGENT_ACTION_KEYS.join(', ')} (got ${JSON.stringify(entry)})`);
+      return;
+    }
+    if (seen.has(entry)) {
+      problems.push(`${field}[${index}]: duplicate action '${entry}'`);
+      return;
+    }
+    seen.add(entry);
+  });
+  return problems;
+}
+
+/**
+ * The compliance envelope's one cross-field rule: an action cannot be both
+ * mandatory and forbidden at once.
+ */
+export function actionOverlapProblems(always: unknown[] | undefined | null, never: unknown[] | undefined | null): string[] {
+  if (!always || !never) return [];
+  const alwaysSet = new Set(always.filter((v): v is string => typeof v === 'string'));
+  const overlap = never.filter((v): v is string => typeof v === 'string' && alwaysSet.has(v));
+  if (overlap.length === 0) return [];
+  return [`the following action(s) appear in both alwaysActions and neverActions: ${overlap.join(', ')}`];
+}
+
+/**
+ * Structural validation of a `goal` JSONB payload — a CONSTRAINED goal
+ * statement, deliberately NOT a free-text system prompt (TASK-654 D8): a
+ * short, length-capped objective plus optional bounded success criteria. Free-
+ * text prompt authoring stays where it already is — the approval-gated
+ * PromptTemplate bound via `promptTemplateId`. Shape:
+ *
+ *   { version: 1, objective: "...", successCriteria?: ["..."] }
+ */
+const GOAL_OBJECTIVE_MAX_LENGTH = 280;
+const GOAL_SUCCESS_CRITERION_MAX_LENGTH = 200;
+const GOAL_MAX_SUCCESS_CRITERIA = 10;
+
+export function goalProblems(value: Record<string, unknown>): string[] {
+  const problems: string[] = [];
+
+  const version = value.version;
+  if (version !== undefined && version !== 1) {
+    problems.push(`goal.version must be 1 (got ${JSON.stringify(version)})`);
+  }
+
+  const unknownTop = Object.keys(value).filter((key) => key !== 'version' && key !== 'objective' && key !== 'successCriteria');
+  if (unknownTop.length > 0) {
+    problems.push(`goal contains unknown key(s): ${unknownTop.join(', ')}`);
+  }
+
+  const objective = value.objective;
+  if (typeof objective !== 'string' || objective.trim().length === 0 || objective.length > GOAL_OBJECTIVE_MAX_LENGTH) {
+    problems.push(`goal.objective is required and must be a non-empty string of at most ${GOAL_OBJECTIVE_MAX_LENGTH} characters`);
+  }
+
+  const successCriteria = value.successCriteria;
+  if (successCriteria !== undefined) {
+    if (!Array.isArray(successCriteria)) {
+      problems.push('goal.successCriteria must be an array when present');
+    } else {
+      if (successCriteria.length > GOAL_MAX_SUCCESS_CRITERIA) {
+        problems.push(`goal.successCriteria must not exceed ${GOAL_MAX_SUCCESS_CRITERIA} entries`);
+      }
+      successCriteria.forEach((entry, index) => {
+        if (typeof entry !== 'string' || entry.trim().length === 0 || entry.length > GOAL_SUCCESS_CRITERION_MAX_LENGTH) {
+          problems.push(
+            `goal.successCriteria[${index}] must be a non-empty string of at most ${GOAL_SUCCESS_CRITERION_MAX_LENGTH} characters`,
+          );
+        }
+      });
+    }
+  }
+
+  return problems;
+}

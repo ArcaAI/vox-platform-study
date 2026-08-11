@@ -199,6 +199,14 @@ describe('modelHasSoftDelete', () => {
       // `resourceStatus` column. The MUTABLE head `ConsultationContextSchema`
       // is deliberately NOT here — it keeps the standard lifecycle.
       'ConsultationContextSchemaVersion',
+      // TASK-659 — an immutable snapshot of a DepartmentAgent's
+      // loop-configuration surface (the same PromptVersion /
+      // ConsultationContextSchemaVersion shape). A consultation loop pinned
+      // to version N must resolve version N forever, so retraction is not
+      // available and the table carries no `resourceStatus` column. The
+      // MUTABLE head `DepartmentAgent` is deliberately NOT here — it keeps
+      // the standard lifecycle.
+      'DepartmentAgentVersion',
     ];
 
     expected.forEach((model) => {
