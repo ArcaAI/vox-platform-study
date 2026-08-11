@@ -296,7 +296,7 @@ See **[execution-plan.md](./execution-plan.md)** for per-ticket specs, model tie
 | TASK-657 | Vision capability in SMR + `vlm.extract` task key + vision model seed | W0 | sonnet-5 | ✅ merged `b3d3fe590` |
 | TASK-669 | Remove the deprecated `apps/ui-playground` (owner-requested, added 2026-08-11) | W0 | sonnet-5 | ✅ merged `a18412a9e` |
 | TASK-658 | Context schema data model, validation, discovery endpoint | W1 | opus-4.8 | ✅ merged `55fa735c5` |
-| TASK-659 | Agent config extension + `DepartmentAgentVersion` + validators | W2 | sonnet-5 |
+| TASK-659 | Agent config extension + `DepartmentAgentVersion` + validators | W2 | sonnet-5 | 🔎 Review — committed on `worktree-agent-a49c3e206b4b8528e`, not merged (explicit instruction for this run) |
 | TASK-660 | Loop event plane: cascade widening, loop signals, `consultation:loop:{id}` SSE | W2 | sonnet-5 |
 | TASK-661 | Schema compatibility, versioning and lifecycle guarantees | W2 | sonnet-5 |
 | TASK-662 | `ConsultationLoopWorkflow` — mechanical loop, actions, child finalize | W3 | opus-5 |
