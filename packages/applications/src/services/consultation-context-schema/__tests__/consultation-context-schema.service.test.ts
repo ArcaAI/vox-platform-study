@@ -173,9 +173,9 @@ describe('ConsultationContextSchemaService', () => {
     it('rejects an `if`/`then`/`else` field schema (authorable subset, AC-8)', async () => {
       mockSchemaRepository.findById.mockResolvedValue(createSchemaEntity({ status: 'DRAFT', pinnedVersionNumber: null }));
 
-      await expect(
-        service.publish('schema-1', { definition: definitionWith({ type: 'object', if: { const: 1 } }) }),
-      ).rejects.toBeInstanceOf(BadRequestException);
+      await expect(service.publish('schema-1', { definition: definitionWith({ type: 'object', if: { const: 1 } }) })).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
       expect(mockVersionRepository.create).not.toHaveBeenCalled();
     });
 
@@ -245,9 +245,7 @@ describe('ConsultationContextSchemaService', () => {
       mockSchemaRepository.findById.mockResolvedValue(entity);
       // The stored checksum must be the one the service itself computes.
       const { computeDefinitionChecksum } = await import('../context-schema-definition');
-      mockVersionRepository.findLatestForSchema.mockResolvedValue(
-        createVersionEntity(1, V1_DEFINITION, computeDefinitionChecksum(V1_DEFINITION)),
-      );
+      mockVersionRepository.findLatestForSchema.mockResolvedValue(createVersionEntity(1, V1_DEFINITION, computeDefinitionChecksum(V1_DEFINITION)));
 
       const result = await service.publish('schema-1', { definition: V1_DEFINITION });
 
@@ -295,9 +293,9 @@ describe('ConsultationContextSchemaService', () => {
     });
 
     it('REJECTS a payload that is only valid under the LATEST version', async () => {
-      await expect(
-        service.validateContextPayload({ kindKey: 'intake', payload: { severity: 'mild', onsetDays: 3 } }),
-      ).rejects.toBeInstanceOf(BadRequestException);
+      await expect(service.validateContextPayload({ kindKey: 'intake', payload: { severity: 'mild', onsetDays: 3 } })).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
     });
 
     it('rejects a kind the pinned version does not declare', async () => {

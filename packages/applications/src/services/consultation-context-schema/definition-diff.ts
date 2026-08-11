@@ -89,9 +89,7 @@ export function classifyDefinitionChange(previous: unknown, next: unknown): Defi
     breakingChanges.push(...fieldsBreakingChanges(`output \`${key}\``, before.fields, after.fields));
   }
 
-  return breakingChanges.length > 0
-    ? { classification: 'BREAKING', breakingChanges }
-    : { classification: 'ADDITIVE', breakingChanges: [] };
+  return breakingChanges.length > 0 ? { classification: 'BREAKING', breakingChanges } : { classification: 'ADDITIVE', breakingChanges: [] };
 }
 
 function kindBreakingChanges(key: string, before: Record<string, unknown>, after: Record<string, unknown>): string[] {
