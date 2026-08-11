@@ -43,6 +43,21 @@ That path is the **main checkout**. Run `pnpm smr:test` (or `harness:test`, `nlp
 
 TypeScript tickets are unaffected — pnpm workspaces resolve inside the worktree correctly.
 
+### 1.1b Build before you test, or your gates lie
+
+A fresh worktree has no built workspace dists. Two consequences, both observed:
+
+- **`pnpm test:unit` needs `room`, `noise-filter`, `vad`, `stt`, `med-ner`, `vox` and `ui` built first** — otherwise ~31 files fail on unresolved workspace entries and the run reports a false red.
+- **After `pnpm db:generate` you must rebuild `@arcaai/database` and `@arcaai/domains`** before testing. The `resourceType.enum-parity` guard reads the *generated* Prisma enum through `@arcaai/database`'s dist; a stale dist makes it fail against a correct schema. Observed on the TASK-658 merge: 1 domains failure and **197 applications files failing to load with only 1 failed assertion** — the signature of stale-dist module-load failure, not broken code. Rebuilding in dependency order returned 1,564 and 8,685 passing.
+
+Correct order: `pnpm install` → `pnpm db:generate` → `pnpm --filter @arcaai/database build` → `--filter @arcaai/domains build` → `--filter @arcaai/applications build` → tests.
+
+### 1.1c `pnpm db:migrate` is broken on `dev-2.1`
+
+The script is `prisma migrate dev --skip-generate`; **Prisma 7 removed `--skip-generate`**, so it exits 1 on the flag. `db:migrate:create` is also unusable because the local dev DB is `db push`-managed with no `_prisma_migrations` ledger.
+
+TASK-658's working recovery, until the script is fixed: generate SQL with `prisma migrate diff --from-migrations` against a throwaway shadow DB (which replays the whole ledger), re-run the diff afterwards to confirm only pre-existing drift remains, sync dev with `db:push`, and inspect in psql. Note that a **pre-existing TASK-648 index-rename drift** shows up in that diff and is not yours.
+
 ### 1.2 Completion
 
 - **Commit per ticket** on the ticket branch, then **merge to `dev-2.1` locally**.
