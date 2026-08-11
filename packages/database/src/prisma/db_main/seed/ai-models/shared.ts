@@ -45,6 +45,8 @@ export const AiModelFormat = {
 export const ModelCategory = {
   AUDIO: 'AUDIO',
   NLP: 'NLP',
+  // Vision-language models (TASK-657).
+  VISION: 'VISION',
 } as const;
 
 export const ModelTaskType = {
@@ -61,6 +63,8 @@ export const ModelTaskType = {
   TOKEN_CLASSIFICATION: 'TOKEN_CLASSIFICATION',
   TEXT_CLASSIFICATION: 'TEXT_CLASSIFICATION',
   TEXT_TO_SPEECH: 'TEXT_TO_SPEECH',
+  // Multimodal image+text → text (TASK-657 vision extraction).
+  IMAGE_TEXT_TO_TEXT: 'IMAGE_TEXT_TO_TEXT',
 } as const;
 
 export const ModelType = {

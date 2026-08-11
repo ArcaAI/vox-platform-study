@@ -99,6 +99,12 @@ class OllamaProvider:
         if request.system_prompt:
             payload["system"] = request.system_prompt
 
+        images = request.image_parts()
+        if images:
+            # Ollama's ``/api/generate`` takes bare base64 strings — no
+            # ``data:`` URI, no media-type field (TASK-657).
+            payload["images"] = [image.data for image in images]
+
         if request.response_format is not None:
             if (
                 request.response_format.type == "json_schema"
@@ -263,4 +269,5 @@ class OllamaProvider:
             default_model=self._default_model,
             models=models,
             supports_streaming=True,
+            supports_vision=True,
         )

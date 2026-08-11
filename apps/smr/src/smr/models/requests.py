@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, Field, SecretStr, field_validator
 
@@ -76,6 +76,38 @@ class ProviderOverride(BaseModel):
         return value if value in ("tenant", "platform") else "tenant"
 
 
+class TextContentPart(BaseModel):
+    """A text segment of a multimodal ``content_parts`` payload (TASK-657)."""
+
+    type: Literal["text"] = "text"
+    text: str = Field(..., min_length=1)
+
+
+class ImageContentPart(BaseModel):
+    """An image segment of a multimodal ``content_parts`` payload (TASK-657).
+
+    ``data`` is base64-encoded image bytes with NO ``data:`` URI prefix — that
+    prefix is one provider's (OpenAI) wire convention, not a property of the
+    image itself. Each adapter builds its own native wire shape from
+    ``data``/``media_type`` (OpenAI-wire prepends ``data:``, Anthropic/Bedrock/
+    Vertex decode/use the raw bytes, Ollama sends the base64 string as-is).
+    """
+
+    type: Literal["image"] = "image"
+    data: str = Field(..., min_length=1)
+    media_type: str = Field(default="image/png", min_length=1)
+
+    @field_validator("media_type")
+    @classmethod
+    def _media_type_is_image(cls, v: str) -> str:
+        if not v.startswith("image/"):
+            raise ValueError(f"media_type must be an image/* MIME type, got '{v}'")
+        return v
+
+
+ContentPart = Annotated[TextContentPart | ImageContentPart, Field(discriminator="type")]
+
+
 class GenerateRequest(BaseModel):
     prompt: str = Field(..., min_length=1, max_length=200_000)
     system_prompt: str | None = Field(default=None, max_length=50_000)
@@ -93,6 +125,12 @@ class GenerateRequest(BaseModel):
     # until a tenant configures an enabled cloud (azure/bedrock) connection —
     # override-wins-over-env/config semantics live in the provider clients.
     provider_overrides: dict[str, ProviderOverride] | None = None
+    # ADDITIVE multimodal input (TASK-657). ``None``/absent ⇒ every existing
+    # text-only caller is byte-identical to before — adapters only branch on
+    # this when ``image_parts()`` is non-empty. ``prompt`` remains the single
+    # source of the textual instruction every adapter sends; a ``TextContentPart``
+    # here is advisory (room for future fine-grained multimodal ordering).
+    content_parts: list[ContentPart] | None = None
 
     @field_validator("prompt")
     @classmethod
@@ -100,3 +138,9 @@ class GenerateRequest(BaseModel):
         if not v.strip():
             raise ValueError("Prompt must not be blank or whitespace-only")
         return v
+
+    def image_parts(self) -> list[ImageContentPart]:
+        """Return the image parts of ``content_parts`` (empty when absent)."""
+        if not self.content_parts:
+            return []
+        return [p for p in self.content_parts if isinstance(p, ImageContentPart)]

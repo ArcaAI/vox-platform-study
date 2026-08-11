@@ -23,6 +23,10 @@ import { ModelTaskType } from '@arcaai/domains';
 // `guardrail.groundedness` (MiniCheck NLI fact-checker), `harness.judge`
 // (LLM-as-judge), and `nlp.diagnosis` (the diagnosis suggester, split out of
 // the mis-keyed `nlp.classification` doc-type classifier).
+// `vlm.extract` (TASK-657) routes SMR's vision capability (image → text
+// extraction via a vision-language model). It lives in SMR's own
+// provider/adapter framework — same governance class as `smr.*` — so it is
+// tenant-admin configurable, NOT under `GLOBAL_ADMIN_ONLY_TASK_PREFIXES`.
 export const AI_TASK_KEYS = [
   'guardrail.validate',
   'guardrail.safety',
@@ -36,6 +40,7 @@ export const AI_TASK_KEYS = [
   'smr.finalize.fallback',
   'smr.test',
   'harness.judge',
+  'vlm.extract',
 ] as const;
 
 export type AiTaskKey = (typeof AI_TASK_KEYS)[number];
@@ -65,6 +70,8 @@ export const AI_TASK_MODEL_TASK_TYPES: Record<AiTaskKey, ModelTaskType> = {
   'smr.test': ModelTaskType.TEXT_GENERATION,
   // the harness LLM-as-judge is a text-generation model.
   'harness.judge': ModelTaskType.TEXT_GENERATION,
+  // vision extraction (TASK-657) — image + text in, text out.
+  'vlm.extract': ModelTaskType.IMAGE_TEXT_TO_TEXT,
 };
 
 /**

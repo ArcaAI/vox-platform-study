@@ -75,6 +75,12 @@ const META: Record<AiTaskKey, { label: string; description: string }> = {
     label: 'Harness judge model',
     description: 'Default text-generation model used as the LLM-as-judge by the clinical documentation harness (global admins only).',
   },
+  // vision extraction (TASK-657) — tenant-admin configurable, same
+  // governance class as smr.*.
+  'vlm.extract': {
+    label: 'Vision extraction model',
+    description: 'Default vision-language model used to extract text/findings from an image attachment.',
+  },
 };
 
 export const MODEL_DEFAULT_SETTINGS: SettingDescriptor[] = AI_TASK_KEYS.map<SettingDescriptor>((taskKey) => {
