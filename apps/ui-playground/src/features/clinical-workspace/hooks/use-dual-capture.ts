@@ -104,15 +104,25 @@ export function useDualCapture(consultationId: string | null): UseDualCaptureRes
         ),
       ]);
 
+      // TASK-656 — mediaId is a Media table row UUID, not the raw storage key
+      // (`.key`). The upload response's Media row creation is best-effort
+      // server-side, so a missing mediaId is possible — surface it rather than
+      // persisting an unresolvable reference.
+      if (!rawUpload.mediaId || !processedUpload.mediaId) {
+        throw new Error('Upload succeeded but no mediaId was returned');
+      }
+      const rawMediaId = rawUpload.mediaId;
+      const processedMediaId = processedUpload.mediaId;
+
       await registerDualRecording(
         apiClient,
         consultationId,
-        buildDualRecordingInput({ rawMediaId: rawUpload.key, processedMediaId: processedUpload.key, durationMs: captured.durationMs }),
+        buildDualRecordingInput({ rawMediaId, processedMediaId, durationMs: captured.durationMs }),
       );
 
       const result: DualCapturePersistResult = {
-        rawMediaId: rawUpload.key,
-        processedMediaId: processedUpload.key,
+        rawMediaId,
+        processedMediaId,
         processedSource: captured.processedSource,
       };
       setLastResult(result);

@@ -79,7 +79,10 @@ describe('ContextPanel remove control (TASK-342 GAP #3)', () => {
     queryState.isLoading = false;
     api.deleteContextItem.mockResolvedValue({ ok: true });
     api.addContextItem.mockResolvedValue({ id: 'a-1' });
-    storage.uploadFile.mockResolvedValue({ key: 'media-1' });
+    // TASK-656 — key (the raw storage object key) and mediaId (the Media table
+    // row UUID) are deliberately DIFFERENT values here so the assertion below
+    // proves the component sends mediaId, not key.
+    storage.uploadFile.mockResolvedValue({ key: 'raw-storage-key.txt', mediaId: 'media-1' });
   });
 
   it('renders a remove control for each added-context row', () => {
