@@ -14,7 +14,8 @@ const UI_SRC = fromHere('../../packages/ui/src');
  * Importer-aware `@/` resolution: files inside packages/ui/src use the UI
  * package's own `@/*` alias (its tsconfig paths), while app files use this
  * app's `@/*` -> ./src mapping. A plain resolve.alias cannot distinguish the
- * two roots, so this mirrors the resolver apps/ui-playground ships for Vite.
+ * two roots, so this resolves `@/*` based on which root the importing file
+ * lives under.
  */
 function importerAwareAtAlias(): Plugin {
   const extensions = ['.tsx', '.ts'];

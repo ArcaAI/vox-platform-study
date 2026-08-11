@@ -314,7 +314,7 @@ Retention is admin-controlled through the control plane, NOT env. Each service's
 
 ## 3. Frontend patterns
 
-`apps/ui-playground` is DEPRECATED (and `apps/admin` removed); cite `packages/ui` and `packages/agentic-sdk-v2` as the exemplars. `apps/example` is a standalone raw-WebSocket live-transcription demo — deliberately NOT an SDK consumer (see `apps/example/README.md`).
+`apps/ui-playground` and `apps/admin` were both removed; cite `packages/ui` and `packages/agentic-sdk-v2` as the exemplars. `apps/example` is a standalone raw-WebSocket live-transcription demo — deliberately NOT an SDK consumer (see `apps/example/README.md`).
 
 ### 3.1 `packages/ui` component conventions
 
@@ -327,35 +327,17 @@ Retention is admin-controlled through the control plane, NOT env. Each service's
 
 CSS-first configuration. The single token source is `packages/ui/src/styles/globals.css`: `@import "tailwindcss"`, `@custom-variant dark (&:is(.dark *))`, and the HOPE "Calm Clinical Teal" design tokens as CSS variables (brand ramps + semantic roles incl. `--ai/--hope/--success/--warning/--info`). `packages/config-tailwind/tailwind.config.ts` is effectively an empty shared shell (v4 no longer needs a JS config); do not add theme config there — add tokens to `globals.css`.
 
-### 3.3 TanStack Router
-
-File-based routing (pattern verified in the deprecated playground, still the house pattern): `src/routes/` with `__root.tsx`, layout groups `(auth)/`, `(errors)/`, and an `_authenticated/route.tsx` guard using `createFileRoute` + `beforeLoad` redirect:
-
-```4:14:apps/ui-playground/src/routes/_authenticated/route.tsx
-export const Route = createFileRoute('/_authenticated')({
-  beforeLoad: ({ context, location }) => {
-    if (!context.isAuthenticated) {
-      throw redirect({
-        to: '/login',
-        search: { redirect: location.href },
-      });
-    }
-  },
-  component: AuthLayout,
-});
-```
-
-### 3.4 Zustand in `@arcaai/vox` (`packages/agentic-sdk-v2`)
+### 3.3 Zustand in `@arcaai/vox` (`packages/agentic-sdk-v2`)
 
 Single internal vanilla store: `packages/agentic-sdk-v2/src/store/agenticStore.ts` uses `createStore` from `zustand/vanilla` + `useStore` with a React context — the store is NOT exported publicly; consumers use the hook layer (`packages/agentic-sdk-v2/src/hooks/` — `useArca.ts`, `useArcaAudio.ts`, `useArcaSession.ts`, `useConsultationChain.ts`, ~30 hooks). Core managers (AgenticClient, PluginManager, ConfigManager, ModelRegistry) live in `src/core/`. Do: add SDK state to the store and expose it via a hook. Don't: export the store or write to it from app code.
 
-### 3.5 React 19 idioms in use
+### 3.4 React 19 idioms in use
 
 - No `forwardRef` — refs are ordinary props via `React.ComponentProps<...>` spreading (all of `components/shadcn/`).
 - Types pinned via pnpm overrides: `@types/react ^19.2.14` (root `package.json`).
 - jsdom-based Vitest environment for browser packages (root `vitest.config.ts` `environmentMatchGlobs`).
 
-### 3.6 Admin data grids (standard, TASK-423)
+### 3.5 Admin data grids (standard, TASK-423)
 
 Every list/table surface in `apps/admin-console` uses `VirtualizedDataGrid` (`packages/ui/src/components/data-grid`; TanStack Table v8 + Virtual + dnd-kit). The legacy `DataTable`/`TablePagination` were removed; only non-list displays (hierarchy trees, comparison/cascade matrices) use the raw shadcn `Table`, and `FilterBar` remains only as a standalone control over non-grid sources.
 
@@ -364,7 +346,7 @@ Every list/table surface in `apps/admin-console` uses `VirtualizedDataGrid` (`pa
 - **Personalization is mandatory for real lists**: column order/size/visibility/pinning + density persist per-user in `UserSettings` under namespace `ui.data-grid/<gridId>` via `GET`/`PATCH user/me/settings` (`grid-persistence.ts` — a single shared `sharedGridLayoutPersistence` adapter, 16 KB-guarded, best-effort, settings GET deduped + cached 30 s so N grids on a page share one request (TASK-428); first paint gated on `isLayoutReady`). Only genuinely small fixed detail-tab/utility tables may leave the `column*` features off.
 - Do: give every grid a stable `gridId` and set column `meta` (`variant`, `options`) for typed filters. Don't: reintroduce `DataTable`, or read/write `UserSettings` grid keys outside the shared adapter.
 
-### 3.7 Admin screen template (standard, TASK-427)
+### 3.6 Admin screen template (standard, TASK-427)
 
 Every screen in `apps/admin-console` composes ONE standardized page frame — `ScreenTemplate` (`apps/admin-console/src/shared/page/screen-template.tsx`, Figma "09 - Screen Templates") — instead of hand-rolling a flex column. It fills the shell content region as a fixed-height flex column so only the content scrolls; pinned regions are `shrink-0` flex rows (no `position: sticky`, so they never obscure focus).
 
@@ -373,7 +355,7 @@ Every screen in `apps/admin-console` composes ONE standardized page frame — `S
 - Grid pages carry their toolbar INSIDE the grid (not the `toolbar` slot). Tabs: wrap the template in `<Tabs>`, pass `<TabsList variant="line">` (underline — the standard, not the bare `<TabsList>` pill default) to `tabs` and the `<TabsContent>` panels as `children`.
 - Do: wrap every screen (list, detail, dashboard) in `ScreenTemplate`. Don't: reintroduce ad-hoc `<div className="flex … flex-col gap-4">` page frames or let the header/toolbar scroll away. See `11-ux-ui-principles.mdc` §Screen Template.
 
-### 3.8 Admin redesign foundation (TASK-437)
+### 3.7 Admin redesign foundation (TASK-437)
 
 Shared layout/interaction infrastructure consumed by the redesigned screens (TASK-438…442). Data contracts, permission gates and OCC behaviour are unchanged.
 

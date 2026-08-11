@@ -38,7 +38,7 @@ tenancy stays authoritative; the SDK's per-tenant namespacing is defense-in-dept
 
 - **No server routes or models.** The SDK composes capabilities owned elsewhere; its "endpoints" are the gateway surfaces it consumes, cross-referenced above rather than re-owned.
 - **`med-ner` is an optional peer.** It is isolated behind the `@arcaai/vox/plugins/med-ner` entry so the ~300MB models never load for consumers that don't import it (rule 08). Bundle-size figures are deliberately not cited (they drift).
-- **The console playground is a separate consumer.** The tier-50–59 playground screens (`apps/admin-console/src/features/playground-*`) consume this SDK; they are inventoried in [`admin-console.md`](./admin-console.md) (AC3) and, for the STT-backed ones, [`transcription.md`](./transcription.md). `apps/ui-playground` (deprecated) also still consumes the SDK — no new work targets it.
+- **The console playground is a separate consumer.** The tier-50–59 playground screens (`apps/admin-console/src/features/playground-*`) consume this SDK; they are inventoried in [`admin-console.md`](./admin-console.md) (AC3) and, for the STT-backed ones, [`transcription.md`](./transcription.md).
 - **e2e depends on a live gateway.** `tests/e2e/sdk/sdk-api.e2e.spec.ts` and the package-local Playwright suite require the API on `http://localhost:8868` (`pnpm build && playwright test`).
 
 Last verified: 2026-07-21

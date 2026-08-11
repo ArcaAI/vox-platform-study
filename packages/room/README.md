@@ -11,7 +11,7 @@ Last updated: 2026-07-04
 | Consumed by | `@arcaai/noise-filter`, `@arcaai/vad`, `@arcaai/stt` | Implement `BaseProcessor` and attach to an `AudioTrack`   |
 | Consumed by | `@arcaai/med-ner`                                    | Type-only (`TrackProcessor`, `ProcessorOptions`)          |
 | Consumed by | `@arcaai/vox` (`packages/agentic-sdk-v2`)            | `TranscriptionPipeline` wires processors onto room tracks |
-| Consumed by | `apps/ui-playground` (deprecated)                    | Via `@arcaai/vox`                                         |
+| Consumed by | `apps/admin-console`                                 | Via `@arcaai/vox`                                         |
 
 Runtime dependency: `eventemitter3`. Peer dependency: `react` `^18.3.0 || ^19.0.4`.
 

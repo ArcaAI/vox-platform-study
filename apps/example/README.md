@@ -35,7 +35,7 @@ than port the app onto `<AgenticProvider>` or rename the directory:
   the recorded decision.
 
 **If you need the SDK's multi-tenant guarantees, use `@arcaai/vox` via
-`<AgenticProvider>`** (see `apps/ui-playground` and
+`<AgenticProvider>`** (see `apps/compat-playground` and
 `packages/agentic-sdk-v2/`) instead of this raw demo.
 
 ## `@arcaai/vox/compat` consultation example (TASK-563)

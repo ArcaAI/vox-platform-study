@@ -146,8 +146,8 @@ const batch = useArcaBatchTranscription({ options: { pipelineId, language: 'ml-e
 
 - **SSE construction is `new SSEClient(scope, apiClient, logger)` — the 3-argument form.** The legacy 1-argument
   `new SSEClient(logger)` is explicitly blocked inside `openWithTicket` and resolves to a permanent connection
-  failure. The deprecated `apps/ui-playground/src/hooks/use-file-transcription.ts:101` still constructs it this
-  way, which is why its batch stream never delivers a transcript — do not copy that file.
+  failure. The now-removed `apps/ui-playground/src/hooks/use-file-transcription.ts` constructed it this
+  way, which is why its batch stream never delivered a transcript — do not repeat that mistake.
 - **The ticket scope is per job — `transcription_job:<jobId>`** (`transcriptionJobScopeFor()` in
   `src/core/constants.ts`), because the route declares
   `@StreamScope({ namespace: 'transcription_job', param: 'id' })`. A generic/free-form scope string is rejected
@@ -375,8 +375,8 @@ consistent with the 404-over-403 posture used elsewhere).
   still holds — with one change that reaches both: the server-side ceilings are now enforced for EVERY caller of
   `POST /transcribe`, compat included. A compat consumer that relied on the old "100 MB and nothing else" bound
   will now also see `400` on an over-long recording and `429` when it exceeds its in-flight cap.
-- **`apps/ui-playground`**'s legacy `use-file-transcription.ts` — deprecated, no development plan, and known
-  broken (the 1-arg `SSEClient` bug named above). Not a reference implementation.
+- The now-removed **`apps/ui-playground`**'s legacy `use-file-transcription.ts` — was known
+  broken (the 1-arg `SSEClient` bug named above). Was never a reference implementation.
 - Admin-side tenant-wide job visibility (`admin-transcription-job.controller.ts`, `/admin/audio/transcription-jobs`) —
   a different controller with different (admin) authorization, not covered here.
 

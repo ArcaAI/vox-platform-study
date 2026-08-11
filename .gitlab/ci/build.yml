@@ -6,7 +6,7 @@
 #   dev-* / staging-* / prod-* / cicd branch push → build ALL images (env-tagged)
 #   git tag <SVC>-<ver> (e.g. SMR-2.1.0)          → build that service only
 #   git tag ALL-<ver>                             → build every image (+ SDK, see publish.yml)
-#   MR / feature / main / release-sdk / release-playground → no builds
+#   MR / feature / main / release-sdk → no builds
 # Builds gate on the relevant test job(s) via `needs:`; a release-tag pipeline
 # runs the full suite (rules.yml .rules-always), so nothing ships from red tests.
 
@@ -27,7 +27,7 @@
 # in deploy.yml and PIPELINE_TYPE == "tag_release").
 .build-common-rules:
   rules:
-    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "release_playground" || $PIPELINE_TYPE == "main" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "prod"
+    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "main" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "prod"
       when: never
     - if: $PIPELINE_TYPE == "dev" || $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "cicd"
 

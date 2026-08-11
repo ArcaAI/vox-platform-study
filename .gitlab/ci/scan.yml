@@ -65,7 +65,7 @@ scan-api:
   variables:
     SCAN_IMAGE: $IMAGE
   rules:
-    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "release_playground" || $PIPELINE_TYPE == "main"
+    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "main"
       when: never
     - !reference [.skip-on-dev-2-1, rules]
     - !reference [.rules-api, rules]
@@ -78,7 +78,7 @@ scan-stt:
   variables:
     SCAN_IMAGE: $IMAGE
   rules:
-    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "release_playground" || $PIPELINE_TYPE == "main"
+    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "main"
       when: never
     - !reference [.skip-on-dev-2-1, rules]
     - !reference [.rules-stt, rules]
@@ -91,7 +91,7 @@ scan-smr:
   variables:
     SCAN_IMAGE: $IMAGE
   rules:
-    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "release_playground" || $PIPELINE_TYPE == "main"
+    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "main"
       when: never
     - !reference [.skip-on-dev-2-1, rules]
     - !reference [.rules-smr, rules]
@@ -104,7 +104,7 @@ scan-nlp:
   variables:
     SCAN_IMAGE: $IMAGE
   rules:
-    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "release_playground" || $PIPELINE_TYPE == "main"
+    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "main"
       when: never
     - !reference [.skip-on-dev-2-1, rules]
     - !reference [.rules-nlp, rules]
@@ -117,7 +117,7 @@ scan-compat-playground:
   variables:
     SCAN_IMAGE: $IMAGE
   rules:
-    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "release_playground" || $PIPELINE_TYPE == "main"
+    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "main"
       when: never
     - !reference [.skip-on-dev-2-1, rules]
     - !reference [.rules-compat-playground, rules]
@@ -157,7 +157,7 @@ scan-guardrail:
   variables:
     SCAN_IMAGE: $IMAGE
   rules:
-    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "release_playground" || $PIPELINE_TYPE == "main"
+    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "main"
       when: never
     - !reference [.skip-on-dev-2-1, rules]
     - !reference [.rules-guardrail, rules]
@@ -170,7 +170,7 @@ scan-harness:
   variables:
     SCAN_IMAGE: $IMAGE
   rules:
-    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "release_playground" || $PIPELINE_TYPE == "main"
+    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "main"
       when: never
     - !reference [.skip-on-dev-2-1, rules]
     - !reference [.rules-harness, rules]
@@ -183,7 +183,7 @@ scan-tts:
   variables:
     SCAN_IMAGE: $IMAGE
   rules:
-    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "release_playground" || $PIPELINE_TYPE == "main"
+    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "main"
       when: never
     - !reference [.skip-on-dev-2-1, rules]
     - !reference [.rules-tts, rules]
@@ -196,7 +196,7 @@ scan-admin-console:
   variables:
     SCAN_IMAGE: $IMAGE
   rules:
-    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "release_playground" || $PIPELINE_TYPE == "main"
+    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "main"
       when: never
     - !reference [.skip-on-dev-2-1, rules]
     - !reference [.rules-admin-console, rules]
@@ -209,7 +209,7 @@ scan-database:
   variables:
     SCAN_IMAGE: $IMAGE
   rules:
-    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "release_playground" || $PIPELINE_TYPE == "main"
+    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "main"
       when: never
     - !reference [.skip-on-dev-2-1, rules]
     - !reference [.rules-database, rules]
@@ -222,7 +222,7 @@ scan-stt-worker:
   variables:
     SCAN_IMAGE: $IMAGE
   rules:
-    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "release_playground" || $PIPELINE_TYPE == "main"
+    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "main"
       when: never
     - !reference [.skip-on-dev-2-1, rules]
     - !reference [.rules-stt, rules]
@@ -255,7 +255,7 @@ scan-harness-worker:
   variables:
     SCAN_IMAGE: $IMAGE
   rules:
-    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "release_playground" || $PIPELINE_TYPE == "main"
+    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "main"
       when: never
     - !reference [.skip-on-dev-2-1, rules]
     - !reference [.rules-harness, rules]
@@ -324,5 +324,4 @@ scan-gitleaks:
     - if: $PIPELINE_TYPE == "dev"
     - if: $PIPELINE_TYPE == "staging"
     - if: $PIPELINE_TYPE == "release_sdk"
-    - if: $PIPELINE_TYPE == "release_playground"
     - if: $PIPELINE_TYPE == "main"

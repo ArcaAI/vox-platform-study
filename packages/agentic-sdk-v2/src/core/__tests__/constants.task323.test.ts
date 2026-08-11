@@ -1,8 +1,8 @@
 /**
  * Endpoint Constants Tests
  *
- * Verifies the new admin/storage/SMR endpoint constant groups added so the
- * ui-playground can consume the new API surfaces "via the SDK". Every path is
+ * Verifies the new admin/storage/SMR endpoint constant groups added so
+ * consuming apps can consume the new API surfaces "via the SDK". Every path is
  * source-verified against its API controller (paths omit the `/api/v1` prefix,
  * which the AgenticClient baseUrl carries).
  *
