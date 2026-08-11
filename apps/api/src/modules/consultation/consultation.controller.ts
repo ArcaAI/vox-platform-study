@@ -50,6 +50,7 @@ import {
   Param,
   Inject,
   Query,
+  Headers,
   ForbiddenException,
   NotFoundException,
   UnauthorizedException,
@@ -58,7 +59,7 @@ import {
   Sse,
   type MessageEvent,
 } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth, ApiParam, ApiProperty, ApiPropertyOptional, ApiQuery, ApiResponse, ApiOperation } from '@nestjs/swagger';
+import { ApiTags, ApiBearerAuth, ApiHeader, ApiParam, ApiProperty, ApiPropertyOptional, ApiQuery, ApiResponse, ApiOperation } from '@nestjs/swagger';
 import { Observable, interval, map, merge, type Subscription } from 'rxjs';
 import { ApiEndpoint, Authorize, RequiredScopes } from '../../decorators';
 import { TenantOwnedResource } from '../../common';
@@ -630,9 +631,22 @@ export class ConsultationController {
     by: ['id'],
   })
   @ApiParam({ name: 'id', description: 'Consultation ID' })
-  async addContext(@Param('id') id: string, @Body() request: AddContextRequest): Promise<ContextItemResponse> {
+  @ApiHeader({
+    name: 'X-Context-Schema-Version',
+    required: false,
+    description:
+      'TASK-661 — the tenant-declared context-schema version the CALLER built against (a `ConsultationContextSchemaVersion` id, ' +
+      'e.g. from the discovery bundle `contextSchemaVersionId` read at session open). When `request.kindKey` is present, the ' +
+      "payload validates against THIS version rather than the tenant's current pin — a client on an older schema version is " +
+      'never silently upgraded (or broken) by a publish that lands mid-consultation. Ignored when `kindKey` is absent.',
+  })
+  async addContext(
+    @Param('id') id: string,
+    @Body() request: AddContextRequest,
+    @Headers('x-context-schema-version') contextSchemaVersionId?: string,
+  ): Promise<ContextItemResponse> {
     await this.verifyConsultationOwnership(id);
-    return this.contextService.addContext(id, request);
+    return this.contextService.addContext(id, request, contextSchemaVersionId);
   }
 
   @ApiEndpoint({

@@ -360,6 +360,26 @@ describe('ConsultationController', () => {
         expect(result).toEqual({ id: 'ctx-1' });
       });
 
+      it('TASK-661 — threads the X-Context-Schema-Version header to the context service as contextSchemaVersionId', async () => {
+        const { controller, consultationService, contextService } = buildController();
+        consultationService.getById.mockResolvedValue(makeConsultation({ doctorId: DOCTOR_A }));
+        contextService.addContext.mockResolvedValue({ id: 'ctx-1' });
+
+        await controller.addContext(CONSULTATION_OWN, { kindKey: 'intake', payload: {} } as any, 'version-3');
+
+        expect(contextService.addContext).toHaveBeenCalledWith(CONSULTATION_OWN, { kindKey: 'intake', payload: {} }, 'version-3');
+      });
+
+      it('TASK-661 — with no header, passes `undefined` through unchanged (back-compat)', async () => {
+        const { controller, consultationService, contextService } = buildController();
+        consultationService.getById.mockResolvedValue(makeConsultation({ doctorId: DOCTOR_A }));
+        contextService.addContext.mockResolvedValue({ id: 'ctx-1' });
+
+        await controller.addContext(CONSULTATION_OWN, {} as any);
+
+        expect(contextService.addContext).toHaveBeenCalledWith(CONSULTATION_OWN, {}, undefined);
+      });
+
       it('deleteContext soft-deletes via the context service when caller is the owner', async () => {
         const { controller, consultationService, contextService } = buildController();
         consultationService.getById.mockResolvedValue(makeConsultation({ doctorId: DOCTOR_A }));
