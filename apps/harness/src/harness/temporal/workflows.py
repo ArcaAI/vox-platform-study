@@ -8,6 +8,8 @@ loop body is a deterministic workflow and guides/generate/sensors are Activities
 
 from __future__ import annotations
 
+import asyncio
+from dataclasses import dataclass
 from datetime import timedelta
 from typing import TYPE_CHECKING, Any
 
@@ -18,7 +20,12 @@ if TYPE_CHECKING:
 
 from temporalio import workflow
 from temporalio.common import RetryPolicy
-from temporalio.exceptions import ActivityError
+from temporalio.exceptions import (
+    ActivityError,
+    ChildWorkflowError,
+    WorkflowAlreadyStartedError,
+    is_cancelled_exception,
+)
 
 # Pass the activity module + the (pure) sensor aggregator through the workflow
 # sandbox unchanged — importing them at the top level keeps the workflow
@@ -34,11 +41,15 @@ with workflow.unsafe.imports_passed_through():
         apply_redaction,
         assemble_prompt,
         call_mcp_tool,
+        emit_loop_event,
         escalate_gate,
         extract_entities,
+        fetch_loop_config,
         fetch_policy,
         finalize_assurance,
         generate,
+        livedoc_start,
+        livedoc_stop,
         persist_draft,
         persist_entities,
         ping_activity,
@@ -58,13 +69,34 @@ with workflow.unsafe.imports_passed_through():
         HARNESS_PROGRESS_STAGES,
         HARNESS_PROGRESS_TERMINAL_LABEL,
         HARNESS_PROGRESS_TERMINAL_STAGE,
+        LOOP_ACTION_CLIENT_EMIT,
+        LOOP_ACTION_DOCUMENT_EXTRACT_TEXT,
+        LOOP_ACTION_HARNESS_FINALIZE,
+        LOOP_ACTION_LIVEDOC_START,
+        LOOP_ACTION_LIVEDOC_STOP,
+        LOOP_ACTION_NLP_EXTRACT_ENTITIES,
+        LOOP_ACTION_VISION_EXTRACT_TEXT,
+        LOOP_EVENT_ACTION_DISPATCHED,
+        LOOP_EVENT_ACTION_SKIPPED,
+        LOOP_SKIP_BUDGET_EXHAUSTED,
+        LOOP_SKIP_DEPTH_CAP,
+        LOOP_SKIP_UNSUPPORTED_ACTION,
         ApplyRedactionInput,
         ApprovalSignal,
         AssembleInput,
         CallMcpToolInput,
+        CancelLoopSignal,
+        ConsultationEndingSignal,
+        ConsultationLoopConfig,
+        ConsultationLoopState,
+        ConsultationLoopWorkflowInput,
+        ConsultationLoopWorkflowResult,
+        ContextAddedSignal,
         EditSignal,
+        EmitLoopEventInput,
         EscalateInput,
         ExtractEntitiesInput,
+        FetchLoopConfigInput,
         FetchPolicyInput,
         FinalizeAssuranceInput,
         GenerateInput,
@@ -72,6 +104,8 @@ with workflow.unsafe.imports_passed_through():
         HarnessDocWorkflowResult,
         HarnessGateConfig,
         HarnessPolicy,
+        LiveDocControlInput,
+        LoopFinalizeRequest,
         McpServerConfig,
         PersistDraftInput,
         PersistEntitiesInput,
@@ -1544,4 +1578,620 @@ class HarnessDocWorkflow:
             escalations=escalations,
             approved=True,
             clinician_id=approval.clinician_id,
+        )
+
+
+# ===========================================================================
+# TASK-662 — ConsultationLoopWorkflow
+#
+# Everything below is ADDITIVE. `HarnessDocWorkflow` above is frozen (TASK-654
+# C2: ~11 live `workflow.patched` eras and 12 replay fixtures depend on its
+# exact command sequence), so the loop COMPOSES it as an unmodified child.
+#
+# Being a NEW workflow type is what makes this safe: a type with no recorded
+# histories has no era to be compatible with, so nothing here needs — or may
+# have — a `workflow.patched` gate. That is the whole reason TASK-654 D1 chose
+# a new workflow over an edit.
+# ===========================================================================
+
+# Deterministic workflow id. Idempotent-on-start: a second start for the same
+# consultation collides on this id instead of creating a parallel loop, exactly
+# as `_workflow_id` does for the document workflow.
+CONSULTATION_LOOP_ID_PREFIX = "consultation-loop-"
+
+
+def consultation_loop_workflow_id(consultation_id: str) -> str:
+    """The deterministic loop workflow id for a consultation (pure)."""
+    return f"{CONSULTATION_LOOP_ID_PREFIX}{consultation_id}"
+
+
+@dataclass(frozen=True)
+class LoopActionSpec:
+    """One entry in the action registry.
+
+    ``implemented`` is deliberately part of the registry rather than expressed
+    by omission: an agent's ``alwaysActions`` may name any of TASK-659's seven
+    canonical keys, so the loop needs an entry for every one of them. A key that
+    this ticket does not yet back is dispatched as an OBSERVABLE skip
+    (``action.skipped`` / ``unsupported_action``) — never a silent no-op, which
+    would look identical to success on the client's feed.
+
+    ``lifecycle`` marks an action driven by the consultation's start/end rather
+    than by a context subscription. Lifecycle actions are counted against the
+    action budget but never BLOCKED by it: stopping live documentation and
+    finalizing the note must happen even on a run that overspent.
+    """
+
+    key: str
+    implemented: bool
+    lifecycle: bool = False
+    # "activity" | "child_workflow"
+    kind: str = "activity"
+    # Both set ONLY for child_workflow actions, and never left to the SDK
+    # default — see the note on `_start_finalize_child` for why each default is
+    # the wrong choice here.
+    parent_close_policy: workflow.ParentClosePolicy | None = None
+    child_cancellation_type: workflow.ChildWorkflowCancellationType | None = None
+
+
+LOOP_ACTION_REGISTRY: dict[str, LoopActionSpec] = {
+    LOOP_ACTION_LIVEDOC_START: LoopActionSpec(
+        key=LOOP_ACTION_LIVEDOC_START, implemented=True, lifecycle=True
+    ),
+    LOOP_ACTION_LIVEDOC_STOP: LoopActionSpec(
+        key=LOOP_ACTION_LIVEDOC_STOP, implemented=True, lifecycle=True
+    ),
+    LOOP_ACTION_CLIENT_EMIT: LoopActionSpec(key=LOOP_ACTION_CLIENT_EMIT, implemented=True),
+    LOOP_ACTION_HARNESS_FINALIZE: LoopActionSpec(
+        key=LOOP_ACTION_HARNESS_FINALIZE,
+        implemented=True,
+        lifecycle=True,
+        kind="child_workflow",
+        parent_close_policy=workflow.ParentClosePolicy.REQUEST_CANCEL,
+        child_cancellation_type=workflow.ChildWorkflowCancellationType.TRY_CANCEL,
+    ),
+    # Declared, not yet backed. The capability exists (TASK-657 shipped vision in
+    # SMR; NLP `/extract` and `extract_entities` already exist) but wiring the
+    # derived-context cascade through them is TASK-664's deliberative lane, not
+    # this ticket's mechanical one.
+    LOOP_ACTION_VISION_EXTRACT_TEXT: LoopActionSpec(
+        key=LOOP_ACTION_VISION_EXTRACT_TEXT, implemented=False
+    ),
+    LOOP_ACTION_DOCUMENT_EXTRACT_TEXT: LoopActionSpec(
+        key=LOOP_ACTION_DOCUMENT_EXTRACT_TEXT, implemented=False
+    ),
+    LOOP_ACTION_NLP_EXTRACT_ENTITIES: LoopActionSpec(
+        key=LOOP_ACTION_NLP_EXTRACT_ENTITIES, implemented=False
+    ),
+}
+
+# Activity budgets for the loop. All three side effects are best-effort by
+# contract (the activities swallow their own errors), so retries only cover
+# infra blips.
+_LOOP_CONFIG_TIMEOUT = timedelta(seconds=30)
+_LOOP_CONFIG_RETRY = RetryPolicy(maximum_attempts=3, initial_interval=timedelta(seconds=1))
+_LOOP_ACTION_TIMEOUT = timedelta(seconds=30)
+_LOOP_ACTION_RETRY = RetryPolicy(maximum_attempts=2)
+_LOOP_EVENT_TIMEOUT = timedelta(seconds=10)
+_LOOP_EVENT_RETRY = RetryPolicy(maximum_attempts=1)
+
+# Bound on the de-duplication memory. Temporal history is the constraint, not
+# RAM: this set is carried across every `continue_as_new`, so it must not grow
+# without limit. Oldest keys are evicted first — a duplicate arriving more than
+# this many DISTINCT events after the original is re-processed, which is the
+# safe direction to fail (a re-run action, not a lost one).
+_LOOP_MAX_SEEN_KEYS = 2_000
+
+
+@workflow.defn
+class ConsultationLoopWorkflow:
+    """The durable, per-consultation orchestrator — deterministic subscriptions only.
+
+    One instance per consultation, long-lived, signal-driven. It pins its
+    configuration once, then maps each arriving context item onto the actions
+    its pinned subscriptions declare, dispatching them as activities (or, for
+    `harness.finalize`, as an unmodified child workflow).
+
+    There is deliberately NO reasoning here — no planner, no specialists, no
+    adjudication. That is TASK-664. What this workflow guarantees is the
+    mechanical substrate underneath it: a pinned config, idempotent event
+    intake, bounded cascades, planned checkpoints, and a child finalize whose
+    close policy is explicit.
+
+    ### Signal safety
+
+    Three rules, all of which this class follows and none of which is optional:
+
+    1. **`@workflow.init`** — signal handlers can run BEFORE `run()` when a
+       signal is delivered with the start. Initialising in `__init__` (which
+       `@workflow.init` feeds the run arguments) means the handler always
+       mutates a fully-constructed instance.
+    2. **A handler never calls an activity.** It takes the lock, mutates state,
+       and returns; the main coroutine observes the state and acts. A handler
+       that awaited an activity would interleave with the main loop at an
+       arbitrary point and reorder the recorded command sequence.
+    3. **One `asyncio.Lock` serialises every handler and the drain**, so the
+       de-duplication set and the pending queue are never read while a handler
+       is halfway through updating them.
+    """
+
+    @workflow.init
+    def __init__(self, inp: ConsultationLoopWorkflowInput) -> None:
+        self._input = inp
+        self._lock = asyncio.Lock()
+
+        # Pinned ONCE (C1). Carried across continue_as_new via the input, so a
+        # continued execution never re-fetches — a mid-run tenant edit stays
+        # invisible for the whole consultation, not merely until the first
+        # checkpoint.
+        self._config: ConsultationLoopConfig | None = inp.pinned_config
+
+        self._pending: list[ContextAddedSignal] = list(inp.carried_pending)
+        self._seen_keys: list[str] = list(inp.carried_seen_keys)
+        self._seen: set[str] = set(inp.carried_seen_keys)
+
+        self._events_processed = inp.carried_events_processed
+        self._duplicates_ignored = inp.carried_duplicates_ignored
+        self._depth_capped = inp.carried_depth_capped
+        self._actions_dispatched = inp.carried_actions_dispatched
+        self._degraded = inp.carried_degraded
+        self._livedoc_started = inp.carried_livedoc_started
+        self._start_actions_done = inp.carried_start_actions_done
+        self._continuations = inp.carried_continuations
+
+        # Accepted THIS execution — the checkpoint trigger. Reset by design on
+        # every continuation; the cumulative figure is `_events_processed`.
+        self._accepted_this_run = 0
+
+        self._ending = False
+        self._ending_signal: ConsultationEndingSignal | None = None
+        self._cancelled = False
+        self._cancel_reason: str | None = None
+        self._finalized = False
+        self._finalize_workflow_id: str | None = None
+        self._phase = "INIT"
+
+    # -- signals / query ---------------------------------------------------
+
+    @workflow.signal(name="contextAdded")
+    async def context_added(self, payload: ContextAddedSignal) -> None:
+        """A context item reached the consultation.
+
+        Records it and returns immediately. De-duplication happens HERE, under
+        the lock, so two concurrent deliveries of the same item can never both
+        be queued; dispatch happens in the main coroutine.
+        """
+        async with self._lock:
+            key = payload.dedupe_key()
+            if key in self._seen:
+                self._duplicates_ignored += 1
+                return
+            self._seen.add(key)
+            self._seen_keys.append(key)
+            if len(self._seen_keys) > _LOOP_MAX_SEEN_KEYS:
+                evicted = self._seen_keys.pop(0)
+                self._seen.discard(evicted)
+            self._pending.append(payload)
+            self._events_processed += 1
+            self._accepted_this_run += 1
+
+    @workflow.signal(name="consultationEnding")
+    async def consultation_ending(self, payload: ConsultationEndingSignal) -> None:
+        """The consultation is over: drain, run the ending actions, complete."""
+        async with self._lock:
+            self._ending = True
+            self._ending_signal = payload
+
+    @workflow.signal(name="cancel")
+    async def cancel(self, payload: CancelLoopSignal) -> None:
+        """Stop WITHOUT running the ending actions (the consultation was abandoned)."""
+        async with self._lock:
+            self._cancelled = True
+            self._cancel_reason = payload.reason
+
+    @workflow.query(name="state")
+    def state(self) -> ConsultationLoopState:
+        """Current loop state (for ops/tests; does not affect determinism)."""
+        config = self._config
+        return ConsultationLoopState(
+            consultation_id=self._input.consultation_id,
+            phase=self._phase,
+            config_pinned=config is not None,
+            enabled=bool(config and config.enabled),
+            agent_config_version_id=config.agent_config_version_id if config else None,
+            context_schema_version_id=config.context_schema_version_id if config else None,
+            events_processed=self._events_processed,
+            duplicates_ignored=self._duplicates_ignored,
+            depth_capped=self._depth_capped,
+            actions_dispatched=self._actions_dispatched,
+            pending=len(self._pending),
+            degraded=self._degraded,
+            ending=self._ending,
+            cancelled=self._cancelled,
+            livedoc_started=self._livedoc_started,
+            finalize_workflow_id=self._finalize_workflow_id,
+            continuations=self._continuations,
+        )
+
+    # -- run ---------------------------------------------------------------
+
+    @workflow.run
+    async def run(self, inp: ConsultationLoopWorkflowInput) -> ConsultationLoopWorkflowResult:
+        await self._pin_config()
+
+        config = self._config
+        if config is None or not config.enabled:
+            # TASK-654 K7: a consultation with no loop configured (or whose
+            # config could not be resolved) behaves EXACTLY as it does today.
+            # Completing immediately is the correct expression of that: an idle
+            # workflow parked forever would be a resource leak that changes
+            # nothing about the consultation.
+            self._phase = "DISABLED"
+            return self._result()
+
+        self._phase = "RUNNING"
+        if not self._start_actions_done:
+            await self._run_lifecycle_actions(config.start_actions)
+            self._start_actions_done = True
+
+        while True:
+            await workflow.wait_condition(
+                lambda: bool(self._pending) or self._ending or self._cancelled
+            )
+            await self._drain()
+
+            if self._cancelled:
+                self._phase = "CANCELLED"
+                break
+
+            if self._ending:
+                self._phase = "ENDING"
+                # Anything that landed while the last batch was dispatching.
+                await self._drain()
+                await self._run_lifecycle_actions(config.ending_actions)
+                self._phase = "DONE"
+                break
+
+            if self._should_checkpoint():
+                self._phase = "CHECKPOINT"
+                workflow.continue_as_new(self._checkpoint_input())
+
+        return self._result()
+
+    # -- config pinning ----------------------------------------------------
+
+    async def _pin_config(self) -> None:
+        """Resolve the configuration ONCE, on the first execution only.
+
+        A continued execution already carries `pinned_config` and short-circuits
+        here — which is what makes the pin hold for the whole consultation
+        rather than only until the first checkpoint.
+        """
+        if self._config is not None:
+            return
+        self._phase = "PINNING"
+        try:
+            self._config = await workflow.execute_activity(
+                fetch_loop_config,
+                FetchLoopConfigInput(
+                    consultation_id=self._input.consultation_id,
+                    tenant_id=self._input.tenant_id,
+                ),
+                start_to_close_timeout=_LOOP_CONFIG_TIMEOUT,
+                retry_policy=_LOOP_CONFIG_RETRY,
+            )
+        except ActivityError:
+            # Retries are exhausted. Fail SAFE, not closed: an unresolvable loop
+            # config must not fail a clinical consultation, it must leave it
+            # behaving as it did before the loop existed. Recorded as degraded so
+            # the outcome is never mistaken for "no loop was configured".
+            self._degraded = True
+            self._config = None
+
+    # -- event handling ----------------------------------------------------
+
+    async def _drain(self) -> None:
+        """Dispatch every queued event, including any that arrive mid-dispatch."""
+        while True:
+            async with self._lock:
+                if not self._pending:
+                    return
+                batch = list(self._pending)
+                self._pending.clear()
+            for signal in batch:
+                await self._handle_context(signal)
+
+    async def _handle_context(self, signal: ContextAddedSignal) -> None:
+        config = self._config
+        if config is None:
+            return
+
+        actions = config.actions_for_kind(signal.kind_key)
+        if not actions:
+            # Not subscribed. Silence is correct here — an unsubscribed kind is
+            # not an anomaly, it is the common case.
+            return
+
+        if signal.depth >= config.budget.max_depth:
+            # Cascade termination (RK-4). Reported once per capped ITEM, not
+            # once per action it would have triggered.
+            self._depth_capped += 1
+            await self._emit_event(
+                LOOP_EVENT_ACTION_SKIPPED, signal=signal, reason=LOOP_SKIP_DEPTH_CAP
+            )
+            return
+
+        for action in actions:
+            await self._dispatch(action, signal)
+
+    async def _dispatch(self, action: str, signal: ContextAddedSignal) -> None:
+        spec = LOOP_ACTION_REGISTRY.get(action)
+        if spec is None or not spec.implemented:
+            await self._emit_event(
+                LOOP_EVENT_ACTION_SKIPPED,
+                signal=signal,
+                action=action,
+                reason=LOOP_SKIP_UNSUPPORTED_ACTION,
+            )
+            return
+
+        config = self._config
+        assert config is not None  # noqa: S101 - unreachable; _handle_context guards it
+        if not spec.lifecycle and self._actions_dispatched >= config.budget.max_actions:
+            # DEGRADE, never abort (TDD-4). The consultation keeps running and
+            # keeps accepting events; only further subscription-driven work is
+            # withheld, and every withholding is visible on the client feed.
+            self._degraded = True
+            await self._emit_event(
+                LOOP_EVENT_ACTION_SKIPPED,
+                signal=signal,
+                action=action,
+                reason=LOOP_SKIP_BUDGET_EXHAUSTED,
+            )
+            return
+
+        await self._run_action(spec, signal=signal)
+
+    async def _run_lifecycle_actions(self, actions: list[str]) -> None:
+        """Run the consultation's start / ending actions in declared order."""
+        for action in actions:
+            spec = LOOP_ACTION_REGISTRY.get(action)
+            if spec is None or not spec.implemented:
+                await self._emit_event(
+                    LOOP_EVENT_ACTION_SKIPPED,
+                    action=action,
+                    reason=LOOP_SKIP_UNSUPPORTED_ACTION,
+                )
+                continue
+            await self._run_action(spec, signal=None)
+
+    async def _run_action(
+        self, spec: LoopActionSpec, *, signal: ContextAddedSignal | None
+    ) -> None:
+        """Execute one registry entry. Every branch is an activity or a child."""
+        if spec.key == LOOP_ACTION_LIVEDOC_START:
+            await workflow.execute_activity(
+                livedoc_start,
+                self._livedoc_input(),
+                start_to_close_timeout=_LOOP_ACTION_TIMEOUT,
+                retry_policy=_LOOP_ACTION_RETRY,
+            )
+            self._livedoc_started = True
+        elif spec.key == LOOP_ACTION_LIVEDOC_STOP:
+            await workflow.execute_activity(
+                livedoc_stop,
+                self._livedoc_input(),
+                start_to_close_timeout=_LOOP_ACTION_TIMEOUT,
+                retry_policy=_LOOP_ACTION_RETRY,
+            )
+            self._livedoc_started = False
+        elif spec.key == LOOP_ACTION_CLIENT_EMIT:
+            # `client.emit` IS the loop event — it does not additionally
+            # announce itself, or every emission would be recorded twice.
+            await self._emit_event(
+                LOOP_EVENT_ACTION_DISPATCHED, signal=signal, action=spec.key
+            )
+        elif spec.key == LOOP_ACTION_HARNESS_FINALIZE:
+            await self._start_finalize_child(spec)
+        else:  # pragma: no cover - registry guarantees the branches above
+            return
+        self._actions_dispatched += 1
+
+    def _livedoc_input(self) -> LiveDocControlInput:
+        ending = self._ending_signal
+        return LiveDocControlInput(
+            consultation_id=self._input.consultation_id,
+            tenant_id=self._input.tenant_id,
+            user_id=self._input.user_id,
+            session_id=self._input.session_id,
+            persist_snapshot=ending.persist_snapshot if ending else True,
+        )
+
+    async def _emit_event(
+        self,
+        event_type: str,
+        *,
+        signal: ContextAddedSignal | None = None,
+        action: str | None = None,
+        reason: str | None = None,
+    ) -> None:
+        """Publish one event on the live client feed. Never fails the loop."""
+        try:
+            await workflow.execute_activity(
+                emit_loop_event,
+                EmitLoopEventInput(
+                    consultation_id=self._input.consultation_id,
+                    tenant_id=self._input.tenant_id,
+                    event_type=event_type,
+                    context_item_id=signal.context_item_id if signal else None,
+                    kind_key=signal.kind_key if signal else None,
+                    action=action,
+                    reason=reason,
+                ),
+                start_to_close_timeout=_LOOP_EVENT_TIMEOUT,
+                schedule_to_close_timeout=_LOOP_EVENT_TIMEOUT,
+                retry_policy=_LOOP_EVENT_RETRY,
+            )
+        except ActivityError:
+            pass  # the client feed is non-clinical — never block the loop
+
+    # -- child finalize ----------------------------------------------------
+
+    async def _start_finalize_child(self, spec: LoopActionSpec) -> None:
+        """Start `HarnessDocWorkflow` as an UNMODIFIED child, then await it.
+
+        Two things matter here and both are easy to get wrong.
+
+        **The close policy is explicit.** The SDK default (verified against
+        temporalio 1.30.0) is `ParentClosePolicy.TERMINATE`, which would HARD-KILL
+        an in-flight document workflow — possibly mid-`persist_draft` — the
+        moment this loop completes or is cancelled. `REQUEST_CANCEL` instead
+        propagates a cancellation the child can wind down from. (The execution
+        plan says the default is ABANDON; it is not, in this SDK. Either way the
+        remedy is the same: never inherit it.)
+
+        **The cancellation type is explicit too, and for a subtler reason.** The
+        SDK default is `WAIT_CANCELLATION_COMPLETED`: on cancel, the parent
+        blocks until the child has FINISHED cancelling. The document workflow can
+        sit at a clinician gate with a 24-hour SLA and can be mid-activity when
+        the request lands, so that default makes the loop's own cancellation
+        hostage to how quickly the child happens to wind down. Measured on
+        temporalio 1.30.0: with the default (and also with
+        `WAIT_CANCELLATION_REQUESTED`) the parent stayed RUNNING indefinitely
+        after `cancel()`, even though its history showed the child's cancel had
+        been both initiated and delivered
+        (`REQUEST_CANCEL_EXTERNAL_WORKFLOW_EXECUTION_INITIATED` →
+        `EXTERNAL_WORKFLOW_EXECUTION_CANCEL_REQUESTED`). `TRY_CANCEL` issues that
+        same request and then resolves the await immediately, which is the
+        behaviour this loop wants: the child's cancellation is guaranteed by the
+        recorded request, and the orchestrator does not hang waiting to watch it
+        happen.
+
+        **The child id is the one the gateway already uses.** Starting a second
+        document workflow for a consultation that already has one would double
+        every WORM write, so a collision is treated as success — the finalize
+        the loop wanted is already running.
+
+        The loop AWAITS the child. That is deliberate: it couples the two
+        lifetimes so a completed loop implies a completed finalize, which is what
+        lets `REQUEST_CANCEL` be safe. Starting the child and returning would
+        instead make the close policy actively harmful — the loop's own normal
+        completion would cancel the note it had just asked for.
+        """
+        request = (
+            self._ending_signal.finalize
+            if self._ending_signal and self._ending_signal.finalize
+            else LoopFinalizeRequest()
+        )
+        child_id = f"harness-doc-{self._input.consultation_id}"
+        self._finalize_workflow_id = child_id
+
+        child_input = HarnessDocWorkflowInput(
+            consultation_id=self._input.consultation_id,
+            tenant_id=self._input.tenant_id,
+            user_id=self._input.user_id,
+            job_id=request.job_id,
+            correlation_id=self._input.correlation_id,
+            context_item_id=request.context_item_id,
+            transcript_text=request.transcript_text,
+            transcript_ref=request.transcript_ref,
+            conversation_language=request.conversation_language,
+            dna_style_id=request.dna_style_id,
+            template=request.template,
+            smr_provider=request.smr_provider,
+            smr_model=request.smr_model,
+        )
+
+        try:
+            handle = await workflow.start_child_workflow(
+                HarnessDocWorkflow.run,
+                child_input,
+                id=child_id,
+                parent_close_policy=spec.parent_close_policy
+                or workflow.ParentClosePolicy.REQUEST_CANCEL,
+                cancellation_type=spec.child_cancellation_type
+                or workflow.ChildWorkflowCancellationType.WAIT_CANCELLATION_REQUESTED,
+            )
+        except WorkflowAlreadyStartedError:
+            self._finalized = True
+            return
+
+        self._finalized = True
+        try:
+            await handle
+        except ChildWorkflowError as exc:
+            if is_cancelled_exception(exc):
+                # The child was cancelled because WE were. Swallowing this would
+                # end the loop as COMPLETED and hide the abort from every
+                # dashboard; re-raising as cancellation ends it as CANCELED,
+                # which is what actually happened.
+                raise asyncio.CancelledError from exc
+            # A child that genuinely FAILED (SMR down, sensors unavailable) is a
+            # different matter: that is its own recorded outcome with its own
+            # remediation, and it must not also fail the orchestrator that asked
+            # for it.
+            self._degraded = True
+
+    # -- checkpointing -----------------------------------------------------
+
+    def _should_checkpoint(self) -> bool:
+        """True when this execution should hand over to a fresh one.
+
+        Temporal's hard ceilings are 51,200 events and 50 MB of history; a
+        long consultation with hundreds of context items would march toward
+        both. Checkpointing is therefore PLANNED — it happens at a quiet moment
+        (nothing pending, not ending, not cancelled, no child in flight) and
+        well below the ceilings, rather than being forced at whatever point the
+        limit happens to be hit.
+        """
+        if self._pending or self._ending or self._cancelled or self._finalized:
+            return False
+        if self._accepted_this_run >= self._input.checkpoint_signal_threshold:
+            return True
+        info = workflow.info()
+        return (
+            info.is_continue_as_new_suggested()
+            or info.get_current_history_length() >= self._input.checkpoint_history_events
+        )
+
+    def _checkpoint_input(self) -> ConsultationLoopWorkflowInput:
+        """The next execution's input: everything that must survive the handover."""
+        return ConsultationLoopWorkflowInput(
+            consultation_id=self._input.consultation_id,
+            tenant_id=self._input.tenant_id,
+            user_id=self._input.user_id,
+            correlation_id=self._input.correlation_id,
+            session_id=self._input.session_id,
+            # The pin travels with the run. This single line is what stops a
+            # checkpoint from silently re-resolving a tenant's config mid-consultation.
+            pinned_config=self._config,
+            checkpoint_signal_threshold=self._input.checkpoint_signal_threshold,
+            checkpoint_history_events=self._input.checkpoint_history_events,
+            carried_seen_keys=list(self._seen_keys),
+            carried_pending=list(self._pending),
+            carried_events_processed=self._events_processed,
+            carried_duplicates_ignored=self._duplicates_ignored,
+            carried_depth_capped=self._depth_capped,
+            carried_actions_dispatched=self._actions_dispatched,
+            carried_degraded=self._degraded,
+            carried_livedoc_started=self._livedoc_started,
+            carried_start_actions_done=self._start_actions_done,
+            carried_continuations=self._continuations + 1,
+        )
+
+    def _result(self) -> ConsultationLoopWorkflowResult:
+        config = self._config
+        return ConsultationLoopWorkflowResult(
+            consultation_id=self._input.consultation_id,
+            config_pinned=config is not None,
+            enabled=bool(config and config.enabled),
+            events_processed=self._events_processed,
+            duplicates_ignored=self._duplicates_ignored,
+            depth_capped=self._depth_capped,
+            actions_dispatched=self._actions_dispatched,
+            degraded=self._degraded,
+            cancelled=self._cancelled,
+            finalized=self._finalized,
+            finalize_workflow_id=self._finalize_workflow_id,
+            continuations=self._continuations,
         )

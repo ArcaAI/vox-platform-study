@@ -708,6 +708,98 @@ class ApiClient:
         )
         return ReportProgressResponse(ok=bool(data.get("ok", False)))
 
+    async def get_loop_config(self, consultation_id: str, *, tenant_id: str) -> dict[str, Any]:
+        """Read the PINNABLE loop configuration for one consultation (TASK-662).
+
+        Returns the raw camelCase ``LoopConfigResponse`` JSON; the
+        ``fetch_loop_config`` activity maps it onto
+        :class:`~harness.temporal.models.ConsultationLoopConfig`. The gateway
+        answers a DISABLED config (rather than 404) for a consultation with no
+        agent/schema configured and for a cross-tenant id — so this method
+        raises only on a genuine transport/HTTP failure.
+        """
+        return await self._get(
+            "/loop-config", {"tenantId": tenant_id, "consultationId": consultation_id}
+        )
+
+    async def live_documentation_start(
+        self,
+        consultation_id: str,
+        *,
+        tenant_id: str,
+        user_id: str | None = None,
+        session_id: str | None = None,
+    ) -> bool:
+        """Dispatch the reflex lane: ``LiveDocumentationService.start`` (TASK-662).
+
+        The loop DISPATCHES live documentation; it never absorbs it (TASK-654
+        §4.4). Idempotent gateway-side — restarting an existing session re-binds
+        the STT stream without losing accumulated state.
+        """
+        body = _prune({"tenantId": tenant_id, "userId": user_id, "sessionId": session_id})
+        data = await self._post(f"/consultations/{consultation_id}/live-documentation/start", body)
+        return bool(data.get("ok", False))
+
+    async def live_documentation_stop(
+        self,
+        consultation_id: str,
+        *,
+        tenant_id: str,
+        persist_snapshot: bool = True,
+    ) -> bool:
+        """Dispatch ``LiveDocumentationService.stop`` (TASK-662)."""
+        body = _prune({"tenantId": tenant_id, "persistSnapshot": persist_snapshot})
+        data = await self._post(f"/consultations/{consultation_id}/live-documentation/stop", body)
+        return bool(data.get("ok", False))
+
+    async def report_loop_event(
+        self,
+        consultation_id: str,
+        *,
+        tenant_id: str,
+        event_type: str,
+        run_id: str | None = None,
+        context_item_id: str | None = None,
+        kind_key: str | None = None,
+        action: str | None = None,
+        reason: str | None = None,
+        detail: dict[str, Any] | None = None,
+    ) -> bool:
+        """Publish one loop event on ``consultation:loop:{id}`` (the TASK-660 plane).
+
+        Ids/keys/labels only — NEVER note or transcript text. Raises
+        :class:`ApiServiceError` like every other method; the ``emit_loop_event``
+        *activity* is the layer that swallows errors, because a live UI feed must
+        never fail the loop.
+
+        The wire body is EXACTLY ``HarnessLoopEventRequest``
+        (``tenantId``/``runId``/``kind``/``label``/``data``) from TASK-660. The
+        gateway's global ``ValidationPipe`` runs ``forbidNonWhitelisted``, so
+        every loop-specific field (the context item, the kind key, the action,
+        the skip reason) is folded into the declared ``data`` envelope rather
+        than added as a top-level key — an undeclared field would 400 the whole
+        publish.
+        """
+        payload: dict[str, Any] = {
+            "contextItemId": context_item_id,
+            "kindKey": kind_key,
+            "action": action,
+            "reason": reason,
+        }
+        if detail:
+            payload.update(detail)
+        envelope = {key: value for key, value in payload.items() if value is not None}
+        body = _prune(
+            {
+                "tenantId": tenant_id,
+                "runId": run_id,
+                "kind": event_type,
+                "data": envelope or None,
+            }
+        )
+        data = await self._post(f"/consultations/{consultation_id}/loop-event", body)
+        return bool(data.get("ok", False))
+
     async def report_assurance_event(
         self,
         consultation_id: str,
