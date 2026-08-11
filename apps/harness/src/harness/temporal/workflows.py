@@ -20,7 +20,12 @@ if TYPE_CHECKING:
 
 from temporalio import workflow
 from temporalio.common import RetryPolicy
-from temporalio.exceptions import ActivityError, ChildWorkflowError, WorkflowAlreadyStartedError
+from temporalio.exceptions import (
+    ActivityError,
+    ChildWorkflowError,
+    WorkflowAlreadyStartedError,
+    is_cancelled_exception,
+)
 
 # Pass the activity module + the (pure) sensor aggregator through the workflow
 # sandbox unchanged — importing them at the top level keeps the workflow
@@ -1622,9 +1627,11 @@ class LoopActionSpec:
     lifecycle: bool = False
     # "activity" | "child_workflow"
     kind: str = "activity"
-    # Set ONLY for child_workflow actions. Never left to the SDK default —
-    # see the note on `_start_finalize_child`.
+    # Both set ONLY for child_workflow actions, and never left to the SDK
+    # default — see the note on `_start_finalize_child` for why each default is
+    # the wrong choice here.
     parent_close_policy: workflow.ParentClosePolicy | None = None
+    child_cancellation_type: workflow.ChildWorkflowCancellationType | None = None
 
 
 LOOP_ACTION_REGISTRY: dict[str, LoopActionSpec] = {
@@ -1641,6 +1648,7 @@ LOOP_ACTION_REGISTRY: dict[str, LoopActionSpec] = {
         lifecycle=True,
         kind="child_workflow",
         parent_close_policy=workflow.ParentClosePolicy.REQUEST_CANCEL,
+        child_cancellation_type=workflow.ChildWorkflowCancellationType.TRY_CANCEL,
     ),
     # Declared, not yet backed. The capability exists (TASK-657 shipped vision in
     # SMR; NLP `/extract` and `extract_entities` already exist) but wiring the
@@ -2042,10 +2050,33 @@ class ConsultationLoopWorkflow:
         plan says the default is ABANDON; it is not, in this SDK. Either way the
         remedy is the same: never inherit it.)
 
+        **The cancellation type is explicit too, and for a subtler reason.** The
+        SDK default is `WAIT_CANCELLATION_COMPLETED`: on cancel, the parent
+        blocks until the child has FINISHED cancelling. The document workflow can
+        sit at a clinician gate with a 24-hour SLA and can be mid-activity when
+        the request lands, so that default makes the loop's own cancellation
+        hostage to how quickly the child happens to wind down. Measured on
+        temporalio 1.30.0: with the default (and also with
+        `WAIT_CANCELLATION_REQUESTED`) the parent stayed RUNNING indefinitely
+        after `cancel()`, even though its history showed the child's cancel had
+        been both initiated and delivered
+        (`REQUEST_CANCEL_EXTERNAL_WORKFLOW_EXECUTION_INITIATED` →
+        `EXTERNAL_WORKFLOW_EXECUTION_CANCEL_REQUESTED`). `TRY_CANCEL` issues that
+        same request and then resolves the await immediately, which is the
+        behaviour this loop wants: the child's cancellation is guaranteed by the
+        recorded request, and the orchestrator does not hang waiting to watch it
+        happen.
+
         **The child id is the one the gateway already uses.** Starting a second
         document workflow for a consultation that already has one would double
         every WORM write, so a collision is treated as success — the finalize
         the loop wanted is already running.
+
+        The loop AWAITS the child. That is deliberate: it couples the two
+        lifetimes so a completed loop implies a completed finalize, which is what
+        lets `REQUEST_CANCEL` be safe. Starting the child and returning would
+        instead make the close policy actively harmful — the loop's own normal
+        completion would cancel the note it had just asked for.
         """
         request = (
             self._ending_signal.finalize
@@ -2078,6 +2109,8 @@ class ConsultationLoopWorkflow:
                 id=child_id,
                 parent_close_policy=spec.parent_close_policy
                 or workflow.ParentClosePolicy.REQUEST_CANCEL,
+                cancellation_type=spec.child_cancellation_type
+                or workflow.ChildWorkflowCancellationType.WAIT_CANCELLATION_REQUESTED,
             )
         except WorkflowAlreadyStartedError:
             self._finalized = True
@@ -2086,10 +2119,17 @@ class ConsultationLoopWorkflow:
         self._finalized = True
         try:
             await handle
-        except ChildWorkflowError:
-            # The document loop failing (SMR down, sensors unavailable) is its
-            # own recorded outcome with its own remediation. It must not also
-            # fail the orchestrator that asked for it.
+        except ChildWorkflowError as exc:
+            if is_cancelled_exception(exc):
+                # The child was cancelled because WE were. Swallowing this would
+                # end the loop as COMPLETED and hide the abort from every
+                # dashboard; re-raising as cancellation ends it as CANCELED,
+                # which is what actually happened.
+                raise asyncio.CancelledError from exc
+            # A child that genuinely FAILED (SMR down, sensors unavailable) is a
+            # different matter: that is its own recorded outcome with its own
+            # remediation, and it must not also fail the orchestrator that asked
+            # for it.
             self._degraded = True
 
     # -- checkpointing -----------------------------------------------------

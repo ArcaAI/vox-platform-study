@@ -16,9 +16,11 @@ from __future__ import annotations
 
 import asyncio
 import uuid
+from datetime import timedelta
 
 import pytest
-from temporalio.client import WorkflowFailureError
+from temporalio.api.enums.v1 import EventType
+from temporalio.client import WorkflowExecutionStatus
 from temporalio.contrib.pydantic import pydantic_data_converter
 from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Worker
@@ -43,7 +45,13 @@ from harness.temporal.models import (
 from harness.temporal.workflows import (
     LOOP_ACTION_REGISTRY,
     ConsultationLoopWorkflow,
+    HarnessDocWorkflow,
     consultation_loop_workflow_id,
+)
+from harness.tests.unit.temporal._harness_stubs import (
+    StubConfig,
+    StubRecorder,
+    make_stub_activities,
 )
 from harness.tests.unit.temporal._loop_stubs import (
     LoopStubConfig,
@@ -85,6 +93,28 @@ async def _await_state(handle, predicate, *, attempts: int = 200, delay: float =
             return last
         await asyncio.sleep(delay)
     raise AssertionError(f"loop state never satisfied the predicate; last seen: {last}")
+
+
+async def _await_status(handle, wanted: set, *, attempts: int = 200, delay: float = 0.02):
+    """Poll ``describe()`` until the execution reaches one of ``wanted``."""
+    last = None
+    for _ in range(attempts):
+        last = (await handle.describe()).status
+        if last in wanted:
+            return last
+        await asyncio.sleep(delay)
+    raise AssertionError(f"execution never reached {wanted}; last status: {last}")
+
+
+async def _await_history_event(handle, event_type, *, attempts: int = 200, delay: float = 0.02):
+    """Poll the execution's history until ``event_type`` is recorded on it."""
+    seen: list = []
+    for _ in range(attempts):
+        seen = [e.event_type async for e in handle.fetch_history_events()]
+        if event_type in seen:
+            return
+        await asyncio.sleep(delay)
+    raise AssertionError(f"{event_type} never appeared in history; saw: {seen}")
 
 
 class _LoopHarness:
@@ -457,6 +487,87 @@ class TestLifecycleActions:
 
 
 class TestChildFinalize:
+    @pytest.mark.asyncio
+    async def test_finalize_starts_harness_doc_workflow_as_a_child_and_cancel_stops_it(self):
+        """TDD-6 — cancelling the loop actually stops the child it started.
+
+        This runs the REAL `HarnessDocWorkflow` (against its own stub activity
+        set) as the child, so what is proven is propagation, not merely the
+        value of a keyword argument. The child parks at the clinician gate — it
+        is never signed — and the parent is then cancelled; both must end
+        CANCELED, which is only true because the close policy is
+        `REQUEST_CANCEL` rather than the SDK's `TERMINATE` default or the
+        `ABANDON` that would orphan it.
+        """
+        config = default_loop_config(ending_actions=[LOOP_ACTION_HARNESS_FINALIZE])
+        loop_stub = LoopStubConfig(config=config)
+        loop_recorder = LoopStubRecorder()
+        doc_recorder = StubRecorder()
+
+        env = await WorkflowEnvironment.start_time_skipping(
+            data_converter=pydantic_data_converter
+        )
+        try:
+            task_queue = f"loop-child-tq-{uuid.uuid4()}"
+            worker = Worker(
+                env.client,
+                task_queue=task_queue,
+                workflows=[ConsultationLoopWorkflow, HarnessDocWorkflow],
+                activities=[
+                    *make_loop_stub_activities(loop_stub, loop_recorder),
+                    *make_stub_activities(StubConfig(), doc_recorder),
+                ],
+            )
+            async with worker:
+                consultation_id = f"c-{uuid.uuid4()}"
+                handle = await env.client.start_workflow(
+                    ConsultationLoopWorkflow.run,
+                    _wf_input(consultation_id=consultation_id),
+                    id=consultation_loop_workflow_id(consultation_id),
+                    task_queue=task_queue,
+                )
+                await handle.signal(
+                    ConsultationLoopWorkflow.consultation_ending, ConsultationEndingSignal()
+                )
+
+                child_id = f"harness-doc-{consultation_id}"
+                state = await _await_state(handle, lambda s: s.finalize_workflow_id is not None)
+                assert state.finalize_workflow_id == child_id
+
+                child = env.client.get_workflow_handle(child_id)
+                # The child is genuinely running (parked at the un-signed gate).
+                await _await_status(child, {WorkflowExecutionStatus.RUNNING})
+
+                await handle.cancel()
+                # Nudge the time-skipping server so the cancellation request is
+                # turned into a workflow task; polling `describe()` alone never
+                # advances its clock, so an idle workflow would sit un-notified.
+                await env.sleep(timedelta(seconds=1))
+
+                # The parent must close as CANCELED (not FAILED): cancellation
+                # is not a failure, and a loop that failed here would look like
+                # a clinical error in every dashboard.
+                await _await_status(
+                    handle, {WorkflowExecutionStatus.CANCELED}, attempts=600, delay=0.05
+                )
+                # ...and the child must be told to stop. This is the assertion
+                # the ParentClosePolicy exists for: the request is issued by the
+                # parent and durably delivered to the child's own history.
+                #
+                # It deliberately asserts the REQUEST, not a terminal CANCELED
+                # status on the child. `HarnessDocWorkflow`'s body is frozen
+                # (C2) and it wraps several awaits in `except ActivityError`,
+                # which is also how an activity cancellation surfaces — so it
+                # can absorb a cancellation at those points and keep running to
+                # its next cancellable await. That is a property of the child,
+                # not of this loop, and this ticket may not change it. What the
+                # loop owes is the request; it is here, in the child's history.
+                await _await_history_event(
+                    child, EventType.EVENT_TYPE_WORKFLOW_EXECUTION_CANCEL_REQUESTED
+                )
+        finally:
+            await env.shutdown()
+
     def test_finalize_is_declared_as_a_child_with_an_explicit_parent_close_policy(self):
         """TDD-6 (declaration half) — the default must never be relied upon.
 
