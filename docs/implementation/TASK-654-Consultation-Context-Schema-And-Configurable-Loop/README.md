@@ -294,7 +294,7 @@ See **[execution-plan.md](./execution-plan.md)** for per-ticket specs, model tie
 | TASK-655 | Collapse the four-way live-snapshot resolver onto the repository helper | W0 | sonnet-5 |
 | TASK-656 | `mediaId` correctness both sides + promote `parseStorageUri` | W0 | sonnet-5 |
 | TASK-657 | Vision capability in SMR + `vlm.extract` task key + vision model seed | W0 | sonnet-5 |
-| TASK-658 | Context schema data model, validation, discovery endpoint — **Review** ([README](../TASK-658-Consultation-Context-Schema/README.md)) | W1 | opus-4.8 |
+| TASK-658 | Context schema data model, validation, discovery endpoint | W1 | opus-4.8 |
 | TASK-659 | Agent config extension + `DepartmentAgentVersion` + validators | W2 | sonnet-5 |
 | TASK-660 | Loop event plane: cascade widening, loop signals, `consultation:loop:{id}` SSE | W2 | sonnet-5 |
 | TASK-661 | Schema compatibility, versioning and lifecycle guarantees | W2 | sonnet-5 |
