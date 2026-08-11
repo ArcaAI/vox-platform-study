@@ -26,9 +26,13 @@ from temporalio.worker import Worker
 
 from harness.core.config import _DEPLOYED_ENVIRONMENTS, Settings, get_settings
 from harness.core.logging import get_logger, setup_logging
-from harness.temporal.activities import DOCUMENT_ACTIVITIES, ping_activity
+from harness.temporal.activities import DOCUMENT_ACTIVITIES, LOOP_ACTIVITIES, ping_activity
 from harness.temporal.client import get_temporal_client
-from harness.temporal.workflows import HarnessDocWorkflow, HarnessPingWorkflow
+from harness.temporal.workflows import (
+    ConsultationLoopWorkflow,
+    HarnessDocWorkflow,
+    HarnessPingWorkflow,
+)
 
 logger = get_logger(__name__)
 
@@ -243,8 +247,12 @@ async def run_worker() -> None:
     worker = Worker(
         client,
         task_queue=settings.temporal.task_queue,
-        workflows=[HarnessPingWorkflow, HarnessDocWorkflow],
-        activities=[ping_activity, *DOCUMENT_ACTIVITIES],
+        # `ConsultationLoopWorkflow` (TASK-662) runs on the SAME task queue as
+        # the document workflow it composes as a child — a child started without
+        # an explicit task_queue inherits its parent's, so they must be hosted by
+        # the same worker or the finalize would never be picked up.
+        workflows=[HarnessPingWorkflow, HarnessDocWorkflow, ConsultationLoopWorkflow],
+        activities=[ping_activity, *DOCUMENT_ACTIVITIES, *LOOP_ACTIVITIES],
         graceful_shutdown_timeout=timedelta(seconds=settings.temporal.graceful_shutdown_timeout_s),
         # F-29 — admission cap coordinated with the LLM concurrency governor
         # (HARNESS_LLM_MAX_CONCURRENCY, core/llm_concurrency.py): without this,

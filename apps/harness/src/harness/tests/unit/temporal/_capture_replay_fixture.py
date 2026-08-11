@@ -273,10 +273,130 @@ async def capture(out_path: Path, *, scenario: str = "happy") -> None:
     print(f"wrote {out_path}")
 
 
+async def capture_loop(out_path: Path) -> None:
+    """Capture a ``ConsultationLoopWorkflow`` history fixture (TASK-662).
+
+    One scenario, chosen to record every command shape the loop can issue:
+    ``fetch_loop_config`` (the pin) -> ``livedoc_start`` (start action) ->
+    ``emit_loop_event`` for a subscribed item and again for one SKIPPED over the
+    depth cap -> ``livedoc_stop`` (ending action) -> ``start_child_workflow``
+    (the unmodified ``HarnessDocWorkflow`` finalize, which is signed so the
+    parent's await resolves and the history closes).
+
+    The loop is a NEW workflow type, so unlike the document fixtures this one
+    guards nothing historical — it exists so that FUTURE edits to the loop
+    cannot silently change its command sequence. Recapture alongside any
+    intentional change (and only then).
+    """
+    from harness.temporal.models import (
+        LOOP_ACTION_HARNESS_FINALIZE,
+        LOOP_ACTION_LIVEDOC_START,
+        LOOP_ACTION_LIVEDOC_STOP,
+        ConsultationEndingSignal,
+        ConsultationLoopWorkflowInput,
+        ContextAddedSignal,
+        LoopBudget,
+    )
+    from harness.temporal.workflows import (
+        ConsultationLoopWorkflow,
+        consultation_loop_workflow_id,
+    )
+    from harness.tests.unit.temporal._loop_stubs import (
+        LoopStubConfig,
+        LoopStubRecorder,
+        default_loop_config,
+        make_loop_stub_activities,
+    )
+
+    consultation_id = "c-loop-fixture"
+    loop_config = default_loop_config(
+        budget=LoopBudget(max_depth=1, max_actions=50),
+        start_actions=[LOOP_ACTION_LIVEDOC_START],
+        ending_actions=[LOOP_ACTION_LIVEDOC_STOP, LOOP_ACTION_HARNESS_FINALIZE],
+    )
+    loop_recorder = LoopStubRecorder()
+    doc_recorder = StubRecorder()
+
+    async with await WorkflowEnvironment.start_time_skipping(
+        data_converter=pydantic_data_converter
+    ) as env:
+        task_queue = f"loop-fixture-tq-{uuid.uuid4()}"
+        async with Worker(
+            env.client,
+            task_queue=task_queue,
+            workflows=[ConsultationLoopWorkflow, HarnessDocWorkflow],
+            activities=[
+                *make_loop_stub_activities(
+                    LoopStubConfig(config=loop_config), loop_recorder
+                ),
+                *make_stub_activities(StubConfig(), doc_recorder),
+            ],
+        ):
+            handle = await env.client.start_workflow(
+                ConsultationLoopWorkflow.run,
+                ConsultationLoopWorkflowInput(
+                    consultation_id=consultation_id, tenant_id="t-1", session_id="s-1"
+                ),
+                id=consultation_loop_workflow_id(consultation_id),
+                task_queue=task_queue,
+            )
+            await handle.signal(
+                ConsultationLoopWorkflow.context_added,
+                ContextAddedSignal(
+                    context_item_id="ci-1", kind_key="transcript", depth=0, occurred_at="1"
+                ),
+            )
+            # Over the depth cap -> records the `action.skipped` emission.
+            await handle.signal(
+                ConsultationLoopWorkflow.context_added,
+                ContextAddedSignal(
+                    context_item_id="ci-2", kind_key="transcript", depth=3, occurred_at="2"
+                ),
+            )
+            await handle.signal(
+                ConsultationLoopWorkflow.consultation_ending, ConsultationEndingSignal()
+            )
+
+            # The loop awaits its finalize child, so the child must be signed for
+            # the parent to complete and the history to close.
+            child = env.client.get_workflow_handle(f"harness-doc-{consultation_id}")
+            for _ in range(400):
+                state = await handle.query(ConsultationLoopWorkflow.state)
+                if state.finalize_workflow_id:
+                    break
+                await asyncio.sleep(0.02)
+            for _ in range(400):
+                try:
+                    await child.signal(
+                        HarnessDocWorkflow.approval,
+                        ApprovalSignal(
+                            decision="SIGNED",
+                            clinician_id="doc-1",
+                            context_item_version_id="v-1",
+                            attestation_hash="h-1",
+                        ),
+                    )
+                    break
+                except Exception:  # noqa: BLE001 - the child may not be started yet
+                    await asyncio.sleep(0.02)
+
+            result = await handle.result()
+            print(
+                f"events={result.events_processed} dispatched={result.actions_dispatched} "
+                f"depth_capped={result.depth_capped} finalized={result.finalized}"
+            )
+            history = await handle.fetch_history()
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(history.to_json())
+    print(f"wrote {out_path}")
+
+
 if __name__ == "__main__":
     args = sys.argv[1:]
     scenario = "happy"
     _scenarios = (
+        "--loop",
         "--failure",
         "--optimistic",
         "--regen",
@@ -294,8 +414,13 @@ if __name__ == "__main__":
     if len(args) != 1:
         raise SystemExit(
             "usage: python -m ..._capture_replay_fixture "
-            "[--failure|--optimistic|--regen|--gate-abandon|--edit-cap|--retract"
+            "[--loop|--failure|--optimistic|--regen|--gate-abandon|--edit-cap|--retract"
             "|--claim-check|--mcp|--redaction|--redaction-audit|--assemble-reuse]"
             " <output.json>"
         )
-    asyncio.run(capture(Path(args[0]), scenario=scenario))
+    if scenario == "loop":
+        # A different workflow TYPE, so it gets its own capture entry point
+        # rather than another branch inside the document-workflow scenario tree.
+        asyncio.run(capture_loop(Path(args[0])))
+    else:
+        asyncio.run(capture(Path(args[0]), scenario=scenario))

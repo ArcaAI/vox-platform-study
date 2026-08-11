@@ -93,15 +93,23 @@ from harness.temporal.models import (
     ApplyRedactionResult,
     AssembleInput,
     CallMcpToolInput,
+    ConsultationLoopConfig,
+    EmitLoopEventInput,
+    EmitLoopEventResult,
     EntitiesResult,
     EscalateInput,
     EscalateResult,
     ExtractEntitiesInput,
+    FetchLoopConfigInput,
     FetchPolicyInput,
     FinalizeAssuranceInput,
     GenerateInput,
     HarnessPolicy,
     InferentialRunOutput,
+    LiveDocControlInput,
+    LiveDocControlResult,
+    LoopBudget,
+    LoopSubscription,
     McpToolCallResult,
     PersistDraftInput,
     PersistEntitiesInput,
@@ -2059,6 +2067,159 @@ async def escalate_gate(payload: EscalateInput) -> EscalateResult:
     return EscalateResult(escalated=True)
 
 
+# ---------------------------------------------------------------------------
+# Consultation loop (TASK-662)
+#
+# All three side effects the mechanical loop performs. They are ordinary
+# activities: the deterministic workflow body never touches HTTP, and a signal
+# handler never calls any of them (it only mutates guarded state and lets the
+# main coroutine react).
+# ---------------------------------------------------------------------------
+
+# The loop-event feed is fire-and-forget, exactly like progress/trajectory.
+_LOOP_EVENT_HTTP_TIMEOUT_S = 5.0
+
+
+def _loop_event_api_client(settings: Settings) -> ApiClient:
+    return ApiClient(
+        settings.api_base_url,
+        internal_prefix=settings.api_internal_prefix,
+        service_token=settings.service_token.get_secret_value(),
+        timeout=min(_LOOP_EVENT_HTTP_TIMEOUT_S, settings.api_timeout_s),
+    )
+
+
+@activity.defn
+async def fetch_loop_config(payload: FetchLoopConfigInput) -> ConsultationLoopConfig:
+    """Resolve the loop configuration the workflow PINS for its whole run.
+
+    Called exactly once, on the workflow's first execution; the resolved object
+    is then carried through every ``continue_as_new`` in the workflow input, so
+    a mid-consultation tenant edit is invisible to a running loop (TASK-654 C1).
+
+    RAISES on a transport/HTTP failure so Temporal's retry policy covers infra
+    blips. The workflow — not this activity — decides what an ultimately
+    unresolvable config means, and its answer is "run degraded", i.e. the
+    consultation behaves exactly as it does today (K7).
+    """
+    settings = get_settings()
+    data = await _api_client(settings).get_loop_config(
+        payload.consultation_id, tenant_id=payload.tenant_id
+    )
+
+    raw_budget = data.get("budget")
+    if not isinstance(raw_budget, dict):
+        raw_budget = {}
+    defaults = LoopBudget()
+    budget = LoopBudget(
+        max_depth=int(raw_budget.get("maxDepth", defaults.max_depth)),
+        max_actions=int(raw_budget.get("maxActions", defaults.max_actions)),
+    )
+
+    subscriptions: list[LoopSubscription] = []
+    for entry in data.get("subscriptions") or []:
+        if not isinstance(entry, dict):
+            continue
+        kind_key = entry.get("kindKey")
+        if not isinstance(kind_key, str):
+            continue
+        actions = [a for a in (entry.get("actions") or []) if isinstance(a, str)]
+        subscriptions.append(LoopSubscription(kind_key=kind_key, actions=actions))
+
+    def _strings(key: str) -> list[str]:
+        return [a for a in (data.get(key) or []) if isinstance(a, str)]
+
+    return ConsultationLoopConfig(
+        enabled=bool(data.get("enabled", False)),
+        consultation_id=data.get("consultationId") or payload.consultation_id,
+        department_id=data.get("departmentId"),
+        agent_id=data.get("agentId"),
+        agent_config_version_id=data.get("agentConfigVersionId"),
+        context_schema_version_id=data.get("contextSchemaVersionId"),
+        subscriptions=subscriptions,
+        budget=budget,
+        start_actions=_strings("startActions"),
+        ending_actions=_strings("endingActions"),
+    )
+
+
+@activity.defn
+async def livedoc_start(payload: LiveDocControlInput) -> LiveDocControlResult:
+    """Dispatch ``LiveDocumentationService.start`` — the reflex lane.
+
+    Best-effort by contract: LiveDoc has its own kill-switch and its own
+    idempotent restart semantics, and a failure to start it must not take down
+    the orchestrator that merely asked for it.
+    """
+    settings = get_settings()
+    try:
+        ok = await _api_client(settings).live_documentation_start(
+            payload.consultation_id,
+            tenant_id=payload.tenant_id,
+            user_id=payload.user_id,
+            session_id=payload.session_id,
+        )
+        return LiveDocControlResult(ok=ok)
+    except Exception as exc:  # noqa: BLE001 — best-effort by design, never raise
+        activity.logger.warning(
+            "harness.loop.livedoc_start_failed",
+            extra={"consultation_id": payload.consultation_id, "error": str(exc)},
+        )
+        return LiveDocControlResult(ok=False)
+
+
+@activity.defn
+async def livedoc_stop(payload: LiveDocControlInput) -> LiveDocControlResult:
+    """Dispatch ``LiveDocumentationService.stop``. Best-effort, as for start."""
+    settings = get_settings()
+    try:
+        ok = await _api_client(settings).live_documentation_stop(
+            payload.consultation_id,
+            tenant_id=payload.tenant_id,
+            persist_snapshot=payload.persist_snapshot,
+        )
+        return LiveDocControlResult(ok=ok)
+    except Exception as exc:  # noqa: BLE001 — best-effort by design, never raise
+        activity.logger.warning(
+            "harness.loop.livedoc_stop_failed",
+            extra={"consultation_id": payload.consultation_id, "error": str(exc)},
+        )
+        return LiveDocControlResult(ok=False)
+
+
+@activity.defn
+async def emit_loop_event(payload: EmitLoopEventInput) -> EmitLoopEventResult:
+    """Publish one loop event to the live client feed (``client.emit``).
+
+    Fire-and-forget by contract: ALL errors are swallowed so a down SSE plane
+    can never fail — or even retry-delay — the loop.
+    """
+    settings = get_settings()
+    try:
+        ok = await _loop_event_api_client(settings).report_loop_event(
+            payload.consultation_id,
+            tenant_id=payload.tenant_id,
+            event_type=payload.event_type,
+            run_id=activity.info().workflow_run_id,
+            context_item_id=payload.context_item_id,
+            kind_key=payload.kind_key,
+            action=payload.action,
+            reason=payload.reason,
+            detail=payload.detail,
+        )
+        return EmitLoopEventResult(emitted=ok)
+    except Exception as exc:  # noqa: BLE001 — best-effort by design, never raise
+        activity.logger.warning(
+            "harness.loop.emit_event_failed",
+            extra={
+                "consultation_id": payload.consultation_id,
+                "event_type": payload.event_type,
+                "error": str(exc),
+            },
+        )
+        return EmitLoopEventResult(emitted=False)
+
+
 # Registered on the worker alongside ``ping_activity``.
 DOCUMENT_ACTIVITIES: list[Callable[..., Any]] = [
     fetch_policy,
@@ -2077,4 +2238,14 @@ DOCUMENT_ACTIVITIES: list[Callable[..., Any]] = [
     record_gate_decision,
     escalate_gate,
     report_progress,
+]
+
+# Registered on the worker alongside ``DOCUMENT_ACTIVITIES``. Kept a SEPARATE
+# list so the loop's surface is legible and so nothing here can be mistaken for
+# part of the frozen document loop.
+LOOP_ACTIVITIES: list[Callable[..., Any]] = [
+    fetch_loop_config,
+    livedoc_start,
+    livedoc_stop,
+    emit_loop_event,
 ]

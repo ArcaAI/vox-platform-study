@@ -23,7 +23,7 @@ from temporalio.client import WorkflowHistory
 from temporalio.contrib.pydantic import pydantic_data_converter
 from temporalio.worker import Replayer
 
-from harness.temporal.workflows import HarnessDocWorkflow
+from harness.temporal.workflows import ConsultationLoopWorkflow, HarnessDocWorkflow
 
 _FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -330,3 +330,39 @@ class TestReplayCompatibility:
             data_converter=pydantic_data_converter,
         )
         await replayer.replay_workflow(_history("doc_workflow_post_task553_assemble_reuse_history"))
+
+
+class TestConsultationLoopReplayCompatibility:
+    """Replay guard for the TASK-662 loop — a SEPARATE workflow type.
+
+    Being a new type is exactly why the loop needed no ``workflow.patched`` era:
+    there are no histories recorded by an older definition of it, so there is
+    nothing to stay compatible WITH. What this class does is start the clock —
+    from here on, an ungated change to the loop's command sequence fails a
+    replay instead of wedging in-flight consultations after a deploy.
+    """
+
+    @pytest.mark.asyncio
+    async def test_loop_history_replays_on_current_definition(self):
+        """Forward guard for the loop's initial (TASK-662) era.
+
+        The fixture records every command shape the loop can issue:
+        ``fetch_loop_config`` (the once-only pin), ``livedoc_start`` (start
+        action), ``emit_loop_event`` for a subscribed context item AND for one
+        skipped over the depth cap, ``livedoc_stop`` (ending action), and the
+        ``start_child_workflow`` that hands off to the unmodified
+        ``HarnessDocWorkflow``.
+
+        Only the PARENT definition is registered below: a replayer replays the
+        recorded commands, it does not execute the child, so the child-start
+        command is verified without the document workflow taking part. Any
+        future change that adds, removes or reorders a loop command — including
+        moving the config fetch, or dispatching an action in a different order —
+        fails here unless it is gated behind its own ``workflow.patched()``.
+        Recapture alongside such a change (``_capture_replay_fixture.py --loop``).
+        """
+        replayer = Replayer(
+            workflows=[ConsultationLoopWorkflow],
+            data_converter=pydantic_data_converter,
+        )
+        await replayer.replay_workflow(_history("consultation_loop_task662_history"))
