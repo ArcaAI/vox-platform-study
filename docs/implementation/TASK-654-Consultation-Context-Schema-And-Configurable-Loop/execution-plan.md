@@ -39,7 +39,12 @@ That path is the **main checkout**. Run `pnpm smr:test` (or `harness:test`, `nlp
 
 - **TASK-657, TASK-662, TASK-664 run in the MAIN TREE**, serialised against each other — never concurrently, and never alongside another ticket touching the same service.
 - If a Python ticket must run in a worktree, every gate command has to be prefixed `PYTHONPATH="$PWD/apps/<svc>/src"`, and the ticket README must state that this was done. Verified working: `PYTHONPATH="$PWD/apps/smr/src" pnpm smr:test:unit` → 109 failed / 1009 passed, versus 139 / 979 without it.
-- **Always establish a baseline** before attributing Python failures to a ticket: run the same suite on `dev-2.1` without the change. SMR's standing baseline is **109 failures** (the TASK-639 module-level `app = create_app()` env leak); harness and the others have their own.
+- **Always establish a baseline** before attributing Python failures to a ticket: run the same suite on `dev-2.1` without the change. SMR's standing baseline is **109 failures** (the TASK-639 module-level `app = create_app()` env leak). Harness measured **1052 passed / 4 skipped** at `39f210ab7`, replay subset 20 (TASK-662).
+
+Two gate mechanics, both verified on TASK-662:
+- **`pnpm harness:test -- -k replay` does not work** — pnpm forwards the `--` literally. Use `pnpm harness:test -k replay`.
+- TS gates run from a bare worktree need placeholder `DATABASE_URL` / `DIRECT_URL` in the environment, since the worktree has no `.env.dev` (gitignored).
+- `conda run` invoked directly fails with `__conda_exe: permission denied` — always go through the `pnpm <svc>:*` script wrappers.
 
 TypeScript tickets are unaffected — pnpm workspaces resolve inside the worktree correctly.
 
