@@ -19,6 +19,31 @@ const TENANT = 'tenant-abc';
 const CHANNEL = `consultation:live-summary:${CID}`;
 
 /**
+ * TASK-655 — `findLiveSnapshotRow` now delegates to the repository's
+ * `findLatestPreSummaryWithDecryptedContent` (find + subType-filter +
+ * newest-wins reduce) instead of hand-rolling it. Fake repos in this file only
+ * implement `findPreSummaries`, so this helper adds the delegate on top,
+ * DELEGATING through the SAME `findPreSummaries` mock every existing test
+ * already configures — no test's `mockResolvedValue`/row-pushing setup needs
+ * to change.
+ */
+function withFindLatestPreSummaryWithDecryptedContent<T extends { findPreSummaries: (id: string) => Promise<any[]> }>(
+  repo: T,
+): T & { findLatestPreSummaryWithDecryptedContent: ReturnType<typeof vi.fn> } {
+  const augmented = repo as T & { findLatestPreSummaryWithDecryptedContent: ReturnType<typeof vi.fn> };
+  augmented.findLatestPreSummaryWithDecryptedContent = vi.fn(async (consultationId: string, _secrets: unknown, options?: { subType?: string }) => {
+    const preSummaries = await repo.findPreSummaries(consultationId);
+    const candidates = options?.subType
+      ? preSummaries.filter((p: any) => (p.metaData as Record<string, unknown> | undefined)?.subType === options.subType)
+      : preSummaries;
+    if (candidates.length === 0) return { entity: null, plaintext: null };
+    const entity = candidates.reduce((a: any, b: any) => (a.createdAt >= b.createdAt ? a : b));
+    return { entity, plaintext: entity.content ?? null };
+  });
+  return augmented;
+}
+
+/**
  * A faithful fake of `RedisSubscriberService`'s refcounted, per-channel-Subject
  * contract (mirrors the real `subscribeToChannel`/`decrementAndCleanup`):
  *   - callers SHARE one Subject per channel,
@@ -135,14 +160,19 @@ function buildDeps(httpMock = buildHttpMock(), opts: BuildDepsOpts = {}) {
     subscribeToResults: vi.fn().mockReturnValue({ subscribe: vi.fn().mockReturnValue({ unsubscribe: vi.fn() }) }),
     unsubscribeFromResults: vi.fn(),
   };
-  const contextItemRepository = opts.contextItemRepository ?? {
-    create: vi.fn().mockResolvedValue({ id: 'ctx-pre-1' }),
-    update: vi.fn().mockResolvedValue({ id: 'ctx-pre-1' }),
-    findTranscripts: vi.fn().mockResolvedValue([]),
-    // Deterministic durable-snapshot dedup hooks (C5-06 / I-1) — default: no rows.
-    findLatestPreSummary: vi.fn().mockResolvedValue(null),
-    findPreSummaries: vi.fn().mockResolvedValue([]),
-  };
+  // TASK-655 — wrapped so EVERY contextItemRepository fixture used through
+  // this factory (default or opts-supplied) gets the delegate that
+  // `findLiveSnapshotRow` now calls, regardless of which describe block built it.
+  const contextItemRepository = withFindLatestPreSummaryWithDecryptedContent(
+    opts.contextItemRepository ?? {
+      create: vi.fn().mockResolvedValue({ id: 'ctx-pre-1' }),
+      update: vi.fn().mockResolvedValue({ id: 'ctx-pre-1' }),
+      findTranscripts: vi.fn().mockResolvedValue([]),
+      // Deterministic durable-snapshot dedup hooks (C5-06 / I-1) — default: no rows.
+      findLatestPreSummary: vi.fn().mockResolvedValue(null),
+      findPreSummaries: vi.fn().mockResolvedValue([]),
+    },
+  );
   const config = opts.config ?? {};
   const configService = { get: vi.fn().mockImplementation((key: string) => config[key]) };
   // Live-doc resolves provider+model via the HarnessPolicy cascade

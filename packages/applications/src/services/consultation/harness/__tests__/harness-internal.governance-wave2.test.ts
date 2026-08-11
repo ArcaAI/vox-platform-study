@@ -67,6 +67,22 @@ function build(fixtures: Fixtures = {}) {
     findByType: vi.fn(async (_consultationId: string, type: string) => (fixtures.parentItems?.[type] ?? []) as unknown[]),
     create: vi.fn(),
     encryptContentIntoEntity: vi.fn(),
+    // TASK-655 — `loadLiveSoapSnapshot` delegates to the repository's
+    // `findLatestPreSummaryWithDecryptedContent`; mirror it here through this
+    // fixture's own `findPreSummaries` mock (no SecretsService is wired in this
+    // suite, so decrypt is never invoked — same as before the refactor).
+    findLatestPreSummaryWithDecryptedContent: vi.fn(async (consultationId: string, secrets: unknown, options?: { subType?: string }) => {
+      const preSummaries: Array<{ metaData?: unknown; createdAt: Date; content?: string | null }> = await contextItemRepository.findPreSummaries(
+        consultationId,
+      );
+      const candidates = options?.subType
+        ? preSummaries.filter((p) => (p.metaData as Record<string, unknown> | undefined)?.subType === options.subType)
+        : preSummaries;
+      if (candidates.length === 0) return { entity: null, plaintext: null };
+      const entity = candidates.reduce((a, b) => (a.createdAt >= b.createdAt ? a : b));
+      const plaintext = secrets ? entity.content : (entity.content ?? null);
+      return { entity, plaintext };
+    }),
   };
 
   const consultationRepository = {
