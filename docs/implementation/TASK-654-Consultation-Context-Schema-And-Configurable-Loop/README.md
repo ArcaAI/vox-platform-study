@@ -296,11 +296,11 @@ See **[execution-plan.md](./execution-plan.md)** for per-ticket specs, model tie
 | TASK-657 | Vision capability in SMR + `vlm.extract` task key + vision model seed | W0 | sonnet-5 | ✅ merged `b3d3fe590` |
 | TASK-669 | Remove the deprecated `apps/ui-playground` (owner-requested, added 2026-08-11) | W0 | sonnet-5 | ✅ merged `a18412a9e` |
 | TASK-658 | Context schema data model, validation, discovery endpoint | W1 | opus-4.8 | ✅ merged `55fa735c5` |
-| TASK-659 | Agent config extension + `DepartmentAgentVersion` + validators | W2 | sonnet-5 | 🔎 Review — committed on `worktree-agent-a49c3e206b4b8528e`, not merged (explicit instruction for this run) |
-| TASK-660 | Loop event plane: cascade widening, loop signals, `consultation:loop:{id}` SSE | W2 | sonnet-5 |
-| TASK-661 | Schema compatibility, versioning and lifecycle guarantees | W2 | sonnet-5 |
-| TASK-662 | `ConsultationLoopWorkflow` — mechanical loop, actions, child finalize | W3 | opus-5 |
-| TASK-663 | Agent promotion between tenants | W3 | opus-4.8 |
+| TASK-659 | Agent config extension + `DepartmentAgentVersion` + validators | W2 | sonnet-5 | ✅ merged |
+| TASK-660 | Loop event plane: cascade widening, loop signals, `consultation:loop:{id}` SSE | W2 | sonnet-5 | ✅ merged |
+| TASK-661 | Schema compatibility, versioning and lifecycle guarantees | W2 | sonnet-5 | ✅ merged `8ea84ae62` |
+| TASK-662 | `ConsultationLoopWorkflow` — mechanical loop, actions, child finalize | W3 | opus-5 | 🔄 in progress |
+| TASK-663 | Agent promotion between tenants | W3 | opus-4.8 | 🔄 in progress |
 | TASK-664 | Reasoning primary + specialists + adjudication | W4 | opus-5 |
 | TASK-665 | SDK: schema discovery, validated context add, event hook | W4 | sonnet-5 |
 | TASK-666 | Admin console: context schema editor | W4 | sonnet-5 |
