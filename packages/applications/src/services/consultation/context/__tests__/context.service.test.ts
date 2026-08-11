@@ -1071,11 +1071,15 @@ describe('ContextService', () => {
       );
     });
 
-    it('does NOT emit ContextRemoved for non-live context types (e.g. TRANSCRIPT)', async () => {
+    // TASK-660 — TRANSCRIPT moved INTO the live-context set (loop event plane
+    // widening), so it no longer illustrates a non-live type here; AUDIO_RECORDING
+    // (a media container with no text content, never gated into the live-summary
+    // path) is the still-excluded example.
+    it('does NOT emit ContextRemoved for non-live context types (e.g. AUDIO_RECORDING)', async () => {
       const existing = createMockContextItemEntity({
         id: 'context-item-id-1',
         consultationId: 'consultation-1',
-        type: 'TRANSCRIPT',
+        type: 'AUDIO_RECORDING',
       });
       mockContextItemRepository.findById.mockResolvedValue(existing);
       mockContextItemRepository.softDelete.mockResolvedValue(existing);
