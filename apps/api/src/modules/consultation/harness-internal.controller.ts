@@ -1,4 +1,5 @@
 import {
+  ConsultationLoopEventService,
   CreateAgentTrajectoryStepInput,
   HarnessAssembleRequest,
   HarnessAssuranceAck,
@@ -10,6 +11,8 @@ import {
   HarnessFinalizeAssuranceRequest,
   HarnessGateDecisionRequest,
   HarnessInternalService,
+  HarnessLoopEventAck,
+  HarnessLoopEventRequest,
   HarnessPersistEntitiesRequest,
   HarnessPolicyResponse,
   HarnessPolicyService,
@@ -179,6 +182,8 @@ export class HarnessInternalController {
     private readonly harnessAssuranceService: HarnessAssuranceService,
     // ordered-trajectory batch ingest (idempotent, tenant-scoped).
     @Inject(IAgentTrajectoryService) private readonly agentTrajectoryService: IAgentTrajectoryService,
+    // Live loop-output feed (TASK-660); ephemeral Redis publish, no CLS needed.
+    private readonly consultationLoopEventService: ConsultationLoopEventService,
   ) {}
 
   @Get('policy')
@@ -339,6 +344,22 @@ export class HarnessInternalController {
   @ApiParam({ name: 'id', description: 'Consultation ID' })
   async reportProgress(@Param('id') id: string, @Body() dto: HarnessProgressRequest): Promise<HarnessProgressAck> {
     return this.harnessProgressService.reportProgress(id, dto);
+  }
+
+  // The (future TASK-662) ConsultationLoopWorkflow posts one event
+  // here per action/output; the service publishes it verbatim to
+  // `consultation:loop:{id}` for the browser SSE relay. Best-effort by
+  // contract: always acks ({ ok: boolean }), never 5xxs the loop over a
+  // live-feed hiccup. Ephemeral append-only feed — no Idempotency-Key: unlike
+  // the WORM callbacks above, nothing durable is written here.
+  @Post('consultations/:id/loop-event')
+  // Nothing is created — the ack is best-effort and can be
+  // `{ ok: false }`, so the default POST 201 would misreport the outcome.
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Publish a consultation-loop workflow event to the live UI feed (ephemeral, best-effort)' })
+  @ApiParam({ name: 'id', description: 'Consultation ID' })
+  async reportLoopEvent(@Param('id') id: string, @Body() dto: HarnessLoopEventRequest): Promise<HarnessLoopEventAck> {
+    return this.consultationLoopEventService.publishEvent(id, dto);
   }
 
   // the harness `report_trajectory` activity POSTs the

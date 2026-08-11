@@ -15,6 +15,8 @@ import {
   HarnessAssuranceServiceModule,
   // ordered-trajectory ingest (internal route) + SSE relay.
   AgentTrajectoryServiceModule,
+  // Loop-event publish (internal route) + SSE relay (TASK-660).
+  ConsultationLoopEventServiceModule,
   RedisSubscriberService,
 } from '@arcaai/applications';
 import { CoreDatabaseModule } from '@arcaai/domains';
@@ -47,6 +49,8 @@ import { HarnessInternalController } from './harness-internal.controller';
     HarnessAssuranceServiceModule,
     // IAgentTrajectoryService for the internal ingest route.
     AgentTrajectoryServiceModule,
+    // Loop-event publish (internal route) + SSE relay (TASK-660).
+    ConsultationLoopEventServiceModule,
   ],
   controllers: [ConsultationController, AdminConsultationController, ConsultationJobController, HarnessInternalController],
   // dedicated Redis subscriber connection for the

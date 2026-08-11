@@ -607,6 +607,57 @@ export class ConsultationController {
     });
   }
 
+  // relays `consultation:loop:{id}` (each event is published there by
+  // ConsultationLoopEventService.publishEvent, POSTed by the future TASK-662
+  // ConsultationLoopWorkflow via `POST /internal/harness/consultations/:id/loop-event`).
+  // Ticket-scoped SSE, mirroring the trajectory stream precisely
+  // (@TenantOwnedResource pre-stream 404 guard + @StreamScope one-shot
+  // ticket, same merged heartbeat). Append-only feed: no snapshot late-join
+  // and no terminal `closed` event — the client closes when it navigates away.
+  @Get(':id/loop/stream')
+  @Sse()
+  @TenantOwnedResource({ modelName: 'Consultation', paramName: 'id' })
+  @StreamScope({ namespace: 'consultation_loop', param: 'id' })
+  @ApiOperation({
+    summary: 'Stream consultation-loop workflow events for a consultation via SSE',
+    description:
+      'Server-Sent Events stream relaying the Redis channel `consultation:loop:{id}`. Each event is a LoopEventDto JSON. Accepts either `Authorization: Bearer <jwt>` or a single-use `?ticket=<ticket>` issued by `POST /auth/stream-ticket` with scope `consultation_loop:<id>`.',
+  })
+  @ApiParam({ name: 'id', description: 'Consultation ID' })
+  streamLoop(@Param('id') id: string): Observable<MessageEvent> {
+    const channel = `consultation:loop:${id}`;
+
+    return new Observable<MessageEvent>((subscriber) => {
+      let inner: Subscription | null = null;
+
+      (async () => {
+        const messages$ = await this.redisSubscriber.subscribeToChannel(channel);
+        const relay$ = messages$.pipe(map((raw: string): MessageEvent => ({ data: raw }) as MessageEvent));
+        const heartbeat$ = interval(ConsultationController.TRAJECTORY_HEARTBEAT_MS).pipe(
+          map((): MessageEvent => ({ data: JSON.stringify({ type: 'heartbeat', ts: new Date().toISOString() }) }) as MessageEvent),
+        );
+
+        inner = merge(relay$, heartbeat$).subscribe({
+          next: (event) => subscriber.next(event),
+          error: (err) => subscriber.error(err),
+          complete: () => subscriber.complete(),
+        });
+      })().catch((error) => {
+        this.logger.error({
+          message: 'Failed to initialise loop SSE subscription',
+          consultationId: id,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        subscriber.next({ data: JSON.stringify({ error: 'Failed to subscribe to loop events', consultationId: id }) } as MessageEvent);
+        subscriber.complete();
+      });
+
+      // Releasing the inner subscription drives the refcounted channel cleanup
+      // (last viewer out tears the Redis subscription down).
+      return () => inner?.unsubscribe();
+    });
+  }
+
   // ─── Timeline ────────────────────────────────────────────────────
 
   @ApiEndpoint({
