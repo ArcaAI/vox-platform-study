@@ -20,6 +20,8 @@ export * from './CaptureMode';
 export * from './ChangelogAudience';
 export * from './ChangelogPublishStatus';
 export * from './ChangelogSeverity';
+export * from './ConsultationContextSchemaScope';
+export * from './ConsultationContextSchemaStatus';
 export * from './ConsultationStatus';
 export * from './ContextItemSource';
 export * from './ContextItemType';

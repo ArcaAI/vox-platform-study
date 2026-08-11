@@ -17,6 +17,8 @@ export * from './BillingAdjustmentModel';
 export * from './BillingInvoiceLineModel';
 export * from './BillingInvoiceModel';
 export * from './ChangelogEntryModel';
+export * from './ConsultationContextSchemaModel';
+export * from './ConsultationContextSchemaVersionModel';
 export * from './ConsultationModel';
 export * from './ContextItemModel';
 export * from './ContextItemVersionModel';
