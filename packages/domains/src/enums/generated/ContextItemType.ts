@@ -13,4 +13,5 @@ export enum ContextItemType {
   CASE_NOTE = 'CASE_NOTE',
   ATTACHMENT = 'ATTACHMENT',
   SIGNED_NOTE = 'SIGNED_NOTE',
+  STRUCTURED = 'STRUCTURED',
 }

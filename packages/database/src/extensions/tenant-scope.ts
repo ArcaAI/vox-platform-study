@@ -231,6 +231,14 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   'ServiceInstance',
   'ChangelogEntry',
   'UserChangelogAcknowledgement',
+  // consultation-context-schema.prisma — tenant-declared consultation context
+  // kinds (TASK-658). BOTH the mutable head and its immutable version
+  // snapshots are ordinary tenant-owned rows; they are deliberately NOT added
+  // to SYSTEM_SHARED_READ_MODELS — a tenant reads only its own schemas, and
+  // the golden-library clone path (TASK-663) copies rows rather than sharing
+  // them, exactly as `DepartmentAgent` does.
+  'ConsultationContextSchema',
+  'ConsultationContextSchemaVersion',
 ]);
 
 /**

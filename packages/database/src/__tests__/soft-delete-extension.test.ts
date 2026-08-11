@@ -192,6 +192,13 @@ describe('modelHasSoftDelete', () => {
       'ServiceInstance',
       'ChangelogEntry',
       'UserChangelogAcknowledgement',
+      // TASK-658 — an immutable published snapshot of a tenant's context
+      // declaration (the PromptVersion / AsrPipelineVersion shape). A
+      // ContextItem validated against version N must resolve version N
+      // forever, so retraction is not available and the table carries no
+      // `resourceStatus` column. The MUTABLE head `ConsultationContextSchema`
+      // is deliberately NOT here — it keeps the standard lifecycle.
+      'ConsultationContextSchemaVersion',
     ];
 
     expected.forEach((model) => {

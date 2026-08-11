@@ -95,7 +95,11 @@ describe('TENANT_SCOPED_MODELS allow-list', () => {
     // UserChangelogAcknowledgement). All four carry tenantId; the first
     // three are platform-wide (SYSTEM tenant), UserChangelogAcknowledgement
     // is scoped to the acknowledging user's own tenant.
-    expect(TENANT_SCOPED_MODELS.size).toBe(72);
+    // 72 → 74: TASK-658 adds the consultation context-schema plane
+    // (ConsultationContextSchema + ConsultationContextSchemaVersion). Both are
+    // ordinary tenant-owned rows and are deliberately NOT SYSTEM-shared reads —
+    // the golden-library path copies schemas rather than sharing them.
+    expect(TENANT_SCOPED_MODELS.size).toBe(74);
   });
 
   // TASK-615 — the usage ledger, its outbox, the rollups and the whole billing

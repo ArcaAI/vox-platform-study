@@ -1,0 +1,129 @@
+// ============================================================================
+// Consultation Context Schema (TASK-658)
+//
+// Tenants DECLARE the kinds of context a consultation carries; clients
+// discover that declaration at runtime and build their workflow from it; the
+// server validates every submitted payload against the PINNED version of it.
+//
+// Shape is the house governance triple already used by
+// PromptTemplate/PromptVersion and AsrPipeline/AsrPipelineVersion
+// (TASK-654 C6): a MUTABLE head row, an IMMUTABLE per-publish version
+// snapshot, and a MOVABLE pin naming which snapshot is currently served.
+//
+// The head row is what an admin edits and what carries the lifecycle; the
+// version row is what a client pins to and what a payload is validated
+// against. A consultation in flight therefore keeps validating against the
+// version it started with even after the tenant publishes a newer one.
+// ============================================================================
+
+model ConsultationContextSchema {
+  // meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
+
+  // multi tenant fields
+  tenantId String
+
+  // core (business) fields
+  // Stable, tenant-invented identifier used by clients and by promotion
+  // (TASK-663) to correlate the "same" schema across tenants. Unique per
+  // tenant, never reused.
+  slug        String
+  name        String
+  description String?
+
+  // Which consultations this schema governs. A DEPARTMENT-scoped row carries
+  // `departmentId` and wins over the tenant default during discovery.
+  scope        ConsultationContextSchemaScope @default(TENANT)
+  departmentId String?
+  Department   Department?                    @relation(fields: [departmentId], references: [id])
+
+  status ConsultationContextSchemaStatus @default(DRAFT)
+
+  // The MOVABLE pin: the `versionNumber` of the ConsultationContextSchemaVersion
+  // that discovery serves and that payload validation runs against. NULL until
+  // the first publish — a schema with no pin is never served.
+  pinnedVersionNumber Int?
+
+  // At most one default per (tenant, scope, departmentId) — the row discovery
+  // resolves to when the caller names no schema. Enforced in the application
+  // service (a partial unique index cannot express "among ENABLED rows only"
+  // portably here), mirroring `DepartmentAgent.isDefault`.
+  isDefault Boolean @default(false)
+
+  // Golden-library provenance (the TASK-531/548 clone + resync precedent, and
+  // the hook TASK-663 promotion writes). `sourceTemplateSlug` names the SYSTEM
+  // schema this one was cloned from; `templateLocked` means a resync may
+  // overwrite it because the tenant has not diverged.
+  sourceTemplateSlug String?
+  templateLocked     Boolean @default(false)
+
+  // resource status fields
+  resourceStatus          ResourceStatusType @default(ENABLED)
+  resourceStatusUpdatedAt DateTime?
+  resourceStatusUpdatedBy String?
+
+  // audit fields
+  createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+  updatedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // relations
+  Versions ConsultationContextSchemaVersion[]
+
+  // constraints + indexes
+  @@unique([tenantId, slug], name: "ConsultationContextSchema_tenant_slug_unique")
+  @@index([tenantId], name: "ConsultationContextSchema_tenantId_idx")
+  @@index([departmentId], name: "ConsultationContextSchema_departmentId_idx")
+  @@index([tenantId, scope, departmentId], name: "ConsultationContextSchema_tenant_scope_department_idx")
+  @@index([tenantId, isDefault], name: "ConsultationContextSchema_tenant_isDefault_idx")
+  @@schema("core")
+}
+
+// IMMUTABLE snapshot of one published `definition`. Never updated after
+// insert — a correction is a new version, exactly like PromptVersion. It
+// therefore carries NO `resourceStatus` (listed in MODELS_WITHOUT_SOFT_DELETE)
+// and no `updatedAt`/`updatedBy`.
+model ConsultationContextSchemaVersion {
+  // meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
+
+  // multi tenant fields
+  tenantId String
+
+  // parent schema
+  schemaId String
+  Schema   ConsultationContextSchema @relation(fields: [schemaId], references: [id])
+
+  // core (business) fields
+  versionNumber Int
+
+  // The declaration itself. Each `kinds[].primitive` is one of the five
+  // platform primitives (STREAM_AUDIO | TEXT | DOCUMENT | IMAGE | STRUCTURED);
+  // an unknown primitive is REJECTED at publish, which is the enforcement point
+  // that keeps tenant vocabulary on platform substrate. Shape and the
+  // authorable JSON Schema subset are validated in
+  // `@arcaai/applications` — see `context-schema-definition.ts`.
+  definition Json @db.JsonB
+
+  // sha256 over the canonical (key-sorted) JSON of `definition`. Drives
+  // idempotent republish (identical checksum ⇒ no new version, pin unmoved)
+  // and the discovery ETag.
+  checksum String
+
+  changeReason String?
+
+  // audit fields (immutable row: no updatedAt/updatedBy by design)
+  createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+  createdAt DateTime @default(now())
+
+  // constraints + indexes
+  @@unique([schemaId, versionNumber], name: "ConsultationContextSchemaVersion_schema_versionNumber_unique")
+  @@index([tenantId], name: "ConsultationContextSchemaVersion_tenantId_idx")
+  @@index([schemaId], name: "ConsultationContextSchemaVersion_schemaId_idx")
+  @@schema("core")
+}

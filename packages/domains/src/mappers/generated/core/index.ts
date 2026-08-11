@@ -17,6 +17,8 @@ export * from './BillingAdjustmentEntityMapper';
 export * from './BillingInvoiceEntityMapper';
 export * from './BillingInvoiceLineEntityMapper';
 export * from './ConsultationEntityMapper';
+export * from './ConsultationContextSchemaEntityMapper';
+export * from './ConsultationContextSchemaVersionEntityMapper';
 export * from './ContextItemEntityMapper';
 export * from './ContextItemVersionEntityMapper';
 export * from './DepartmentAgentEntityMapper';

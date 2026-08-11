@@ -58,6 +58,7 @@ import { ConsultationModule } from './modules/consultation/consultation.module';
 import { ChangelogModule } from './modules/changelog/changelog.module';
 import { DepartmentModule } from './modules/department/department.module';
 import { TenantAllowedOriginModule } from './modules/tenant-allowed-origin/tenant-allowed-origin.module';
+import { ConsultationContextSchemaModule } from './modules/consultation-context-schema/consultation-context-schema.module';
 import { DepartmentAgentModule } from './modules/department-agent/department-agent.module';
 import { DnaWritingStyleModule } from './modules/dna-writing-style/dna-writing-style.module';
 import { EntitlementsApiModule } from './modules/entitlements/entitlements.module';
@@ -323,6 +324,10 @@ const featureModules: any[] = [
   DepartmentModule,
   // TASK-610 — global-admin CRUD over the browser-origin allow-list.
   TenantAllowedOriginModule,
+  // TASK-658 — tenant-declared consultation context schemas: admin CRUD +
+  // publish/pin at /admin/consultation-context-schemas, and the client
+  // discovery bundle at /tenant/me/context-schema.
+  ConsultationContextSchemaModule,
   DepartmentAgentModule,
   DnaWritingStyleModule,
   // /admin/entitlements/* (global-admin matrix/override/kill-switch/downgrade)
