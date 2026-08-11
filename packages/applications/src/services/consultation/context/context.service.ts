@@ -220,9 +220,18 @@ export class ContextService extends BaseService implements IContextService {
   // ============================================
 
   /**
-   * Add context item to consultation
+   * Add context item to consultation.
+   *
+   * @param contextSchemaVersionId TASK-661 — the schema version the CALLER
+   *   built against (threaded from the `X-Context-Schema-Version` request
+   *   header). Ignored entirely when `request.kindKey` is absent — K7: a
+   *   write that names no kind consults nothing regardless of this header.
+   *   When present alongside a `kindKey`, it wins over the tenant's current
+   *   pin, so a client on an older schema version validates against THAT
+   *   version rather than being silently upgraded (or broken) by a publish
+   *   that landed after the client was built.
    */
-  async addContext(consultationId: string, request: AddContextRequest): Promise<ContextItemResponse> {
+  async addContext(consultationId: string, request: AddContextRequest, contextSchemaVersionId?: string): Promise<ContextItemResponse> {
     const tenantId = this.tenantId;
     const userId = this.requestUserId;
 
@@ -252,9 +261,24 @@ export class ContextService extends BaseService implements IContextService {
     // metadata merge is immaterial.
     //
     // A write that names NO kind returns null here and every line after this
-    // behaves exactly as it did before the ticket.
-    const validatedKind = await this.resolveContextKind(request.kindKey, request.payload, consultationId);
+    // behaves exactly as it did before the ticket — the header parameter is
+    // read by `resolveContextKind` only once a `kindKey` is present (K7).
+    const validatedKind = await this.resolveContextKind(request.kindKey, request.payload, consultationId, contextSchemaVersionId);
     const effectiveContent = validatedKind?.content ?? request.content;
+
+    // TASK-661 — a compatibility SIGNAL only (never changes what was
+    // validated or persisted): the caller pinned an old version that is now
+    // BREAKING relative to the tenant's current pin. Surfaced as a log for
+    // operability; the write proceeds exactly as validated.
+    if (validatedKind?.versionSkew === 'BREAKING') {
+      this.logger.warn({
+        message: 'Context write validated against a schema version that is now BREAKING relative to the tenant’s current pin',
+        reason: 'context_schema_version_skew',
+        consultationId,
+        kindKey: validatedKind.kindKey,
+        contextSchemaVersionId: validatedKind.contextSchemaVersionId,
+      });
+    }
 
     // Validate content for non-media types
     const isMediaType = request.type === ContextItemType.AUDIO_RECORDING || request.type === ContextItemType.ATTACHMENT;
