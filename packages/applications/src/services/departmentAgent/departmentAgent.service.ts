@@ -1,10 +1,14 @@
 import { Injectable, BadRequestException, ConflictException, ForbiddenException, Inject, NotFoundException, Optional } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { createHash } from 'node:crypto';
 import {
   DepartmentAgentRepository,
   DepartmentAgentFactory,
   DepartmentAgentEntity,
+  DepartmentAgentRole,
+  DepartmentAgentVersionRepository,
+  DepartmentAgentVersionFactory,
   DepartmentRepository,
   PromptTemplateRepository,
   PromptTemplateEntity,
@@ -12,6 +16,10 @@ import {
   PromptVersionRepository,
   PromptVersionFactory,
   AiModelRepository,
+  ConsultationContextSchemaRepository,
+  ConsultationContextSchemaVersionRepository,
+  ConsultationContextSchemaScope,
+  ConsultationContextSchemaStatus,
   ModelTaskType,
   ResourceType,
   ResourceStatusType,
@@ -28,7 +36,17 @@ import {
   PaginatedDepartmentAgentResponse,
 } from './dto';
 import { DepartmentAgentDtoMapper } from './departmentAgent.dto.mapper';
-import { disallowedHarnessOverrideKeys, llmOverridesProblems, toolConfigProblems } from './constants';
+import {
+  actionListProblems,
+  actionOverlapProblems,
+  disallowedHarnessOverrideKeys,
+  goalProblems,
+  guardrailProfileProblems,
+  llmOverridesProblems,
+  subscribedKindsProblems,
+  toolConfigProblems,
+  writeScopeProblems,
+} from './constants';
 import { EvalPromotionGateService } from '../eval/eval-promotion-gate.service';
 import { BaseService, PaginatedQuery, withFormattedPaginatedProps, withFormattedCountProps } from '../../common';
 import { IActiveUserContext } from '../../interfaces';
@@ -59,6 +77,19 @@ export class DepartmentAgentService extends BaseService implements IDepartmentAg
     // construct this service positionally keep compiling; when it is absent the
     // structural validation still runs and only the catalogue check is skipped.
     @Optional() @Inject(AiModelRepository) private readonly aiModelRepository?: AiModelRepository,
+    // TASK-659, same append-only OPTIONAL convention as above.
+    // Writes the immutable loop-config snapshot on create/update; when absent
+    // (existing unit fixtures) no version row is written and everything else
+    // is unaffected.
+    @Optional() @Inject(DepartmentAgentVersionRepository) private readonly agentVersionRepository?: DepartmentAgentVersionRepository,
+    // Cross-checks `subscribedKinds`/`writeScope` kind/output keys against the
+    // department's resolved ConsultationContextSchemaVersion (TASK-658). When
+    // either is absent, the structural shape checks still run and only the
+    // "does this kind exist" check is skipped — mirrors `aiModelRepository`.
+    @Optional() @Inject(ConsultationContextSchemaRepository) private readonly contextSchemaRepository?: ConsultationContextSchemaRepository,
+    @Optional()
+    @Inject(ConsultationContextSchemaVersionRepository)
+    private readonly contextSchemaVersionRepository?: ConsultationContextSchemaVersionRepository,
   ) {
     super(eventEmitter, clsService, ResourceType.DepartmentAgent);
   }
@@ -124,6 +155,13 @@ export class DepartmentAgentService extends BaseService implements IDepartmentAg
     if (dto.pinnedVersionNumber !== undefined && dto.pinnedVersionNumber !== null) {
       await this.assertPinnedVersionApproved(template, dto.pinnedVersionNumber);
     }
+    // TASK-659 — loop configuration + promotion surface.
+    await this.assertSinglePrimaryPerDepartment(tenantId, dto.departmentId, dto.role);
+    await this.validateSubscribedKinds(tenantId, dto.departmentId, dto.subscribedKinds);
+    await this.validateWriteScope(tenantId, dto.departmentId, dto.writeScope);
+    this.validateGoal(dto.goal);
+    this.validateGuardrailProfile(dto.guardrailProfile);
+    this.validateActionLists(dto.alwaysActions ?? null, dto.neverActions ?? null);
 
     const agent = DepartmentAgentFactory.CreateDepartmentAgent({
       tenantId,
@@ -143,6 +181,13 @@ export class DepartmentAgentService extends BaseService implements IDepartmentAg
       toolConfig: dto.toolConfig ?? null,
       llmOverrides: dto.llmOverrides ?? null,
       tags: dto.tags ?? [],
+      role: dto.role,
+      subscribedKinds: dto.subscribedKinds ?? null,
+      writeScope: dto.writeScope ?? null,
+      goal: dto.goal ?? null,
+      guardrailProfile: dto.guardrailProfile ?? null,
+      alwaysActions: dto.alwaysActions ?? null,
+      neverActions: dto.neverActions ?? null,
       createdBy: userId ?? undefined,
     });
 
@@ -153,6 +198,8 @@ export class DepartmentAgentService extends BaseService implements IDepartmentAg
       createdAt: saved.createdAt,
       data: { slug: saved.slug, name: saved.name, departmentId: saved.departmentId },
     });
+
+    await this.writeLoopConfigVersionIfNeeded(saved);
 
     return DepartmentAgentDtoMapper.toResponse(saved);
   }
@@ -188,6 +235,21 @@ export class DepartmentAgentService extends BaseService implements IDepartmentAg
     await this.assertCapabilityBindingsBindable(tenantId, agent.departmentId, dto);
     this.validateToolConfig(dto.toolConfig);
     await this.validateLlmOverrides(dto.llmOverrides);
+    // TASK-659 — loop configuration + promotion surface. The single-PRIMARY
+    // and always/never-overlap invariants are CROSS-FIELD, so they validate
+    // the EFFECTIVE post-write state (dto value when supplied, else the
+    // agent's current value) — a partial PATCH that only touches one side of
+    // an invariant must still be checked against the other, unchanged side.
+    if (dto.role !== undefined && dto.role !== agent.role) {
+      await this.assertSinglePrimaryPerDepartment(tenantId, agent.departmentId, dto.role, id);
+    }
+    await this.validateSubscribedKinds(tenantId, agent.departmentId, dto.subscribedKinds);
+    await this.validateWriteScope(tenantId, agent.departmentId, dto.writeScope);
+    this.validateGoal(dto.goal);
+    this.validateGuardrailProfile(dto.guardrailProfile);
+    const effectiveAlwaysActions = dto.alwaysActions !== undefined ? dto.alwaysActions : (agent.alwaysActions ?? null);
+    const effectiveNeverActions = dto.neverActions !== undefined ? dto.neverActions : (agent.neverActions ?? null);
+    this.validateActionLists(effectiveAlwaysActions, effectiveNeverActions);
 
     if (dto.name !== undefined) agent.name = dto.name;
     if (dto.slug !== undefined) agent.slug = dto.slug;
@@ -203,6 +265,13 @@ export class DepartmentAgentService extends BaseService implements IDepartmentAg
     if (dto.toolConfig !== undefined) agent.toolConfig = dto.toolConfig;
     if (dto.llmOverrides !== undefined) agent.llmOverrides = dto.llmOverrides;
     if (dto.tags !== undefined) agent.tags = dto.tags;
+    if (dto.role !== undefined) agent.role = dto.role;
+    if (dto.subscribedKinds !== undefined) agent.subscribedKinds = dto.subscribedKinds;
+    if (dto.writeScope !== undefined) agent.writeScope = dto.writeScope;
+    if (dto.goal !== undefined) agent.goal = dto.goal;
+    if (dto.guardrailProfile !== undefined) agent.guardrailProfile = dto.guardrailProfile;
+    if (dto.alwaysActions !== undefined) agent.alwaysActions = dto.alwaysActions;
+    if (dto.neverActions !== undefined) agent.neverActions = dto.neverActions;
     // `resourceStatus` is entity-managed via lifecycle methods (setters are
     // read-only on BaseEntity), mirroring PipelineService.toggle.
     if (dto.resourceStatus === ResourceStatusType.DISABLED && agent.resourceStatus !== ResourceStatusType.DISABLED) {
@@ -223,6 +292,8 @@ export class DepartmentAgentService extends BaseService implements IDepartmentAg
       resourceId: updated.id,
       data: { ...agent.changes, previousVersion, newVersion: updated.version },
     });
+
+    await this.writeLoopConfigVersionIfNeeded(updated);
 
     return DepartmentAgentDtoMapper.toResponse(updated);
   }
@@ -599,4 +670,237 @@ export class DepartmentAgentService extends BaseService implements IDepartmentAg
       throw new ForbiddenException(AGENT_TEMPLATE_LOCKED_MESSAGE);
     }
   }
+
+  // =========================================================================
+  // TASK-659 — loop configuration + promotion surface
+  // =========================================================================
+
+  /** At most one ENABLED PRIMARY agent per department. */
+  private async assertSinglePrimaryPerDepartment(
+    tenantId: string,
+    departmentId: string,
+    role: DepartmentAgentRole | undefined,
+    excludeId?: string,
+  ): Promise<void> {
+    if (role !== DepartmentAgentRole.PRIMARY) return;
+    const existing = await this.agentRepository.findPrimaryForDepartment(tenantId, departmentId, excludeId);
+    if (existing) {
+      throw new BadRequestException(
+        `Department ${departmentId} already has a PRIMARY agent ('${existing.slug}'); change its role before promoting another.`,
+      );
+    }
+  }
+
+  /**
+   * `subscribedKinds` may reference only kind keys declared in the
+   * department's resolved ConsultationContextSchemaVersion (TASK-658). When
+   * the schema repositories are not wired into this service instance, only
+   * the structural shape is checked (mirrors `validateLlmOverrides`'s
+   * catalogue-check degradation).
+   */
+  private async validateSubscribedKinds(
+    tenantId: string,
+    departmentId: string,
+    subscribedKinds?: Record<string, unknown> | null,
+  ): Promise<void> {
+    if (!subscribedKinds) return;
+    const { problems, kindKeys } = subscribedKindsProblems(subscribedKinds);
+    if (problems.length > 0) {
+      throw new BadRequestException(`Invalid subscribedKinds: ${problems.join('; ')}`);
+    }
+    if (kindKeys.length === 0) return;
+
+    const declared = await this.resolveServableContextDefinition(tenantId, departmentId);
+    if (declared === undefined) return;
+    if (declared === null) {
+      throw new BadRequestException(
+        `subscribedKinds names kind(s) ${kindKeys.join(', ')}, but this department has no published context schema to validate them against.`,
+      );
+    }
+    const unknownKinds = kindKeys.filter((key) => !declared.kinds.has(key));
+    if (unknownKinds.length > 0) {
+      throw new BadRequestException(`subscribedKinds names unknown kind(s): ${unknownKinds.join(', ')}`);
+    }
+  }
+
+  /** `writeScope` may reference only output keys declared in the resolved schema version. Same degradation as above. */
+  private async validateWriteScope(tenantId: string, departmentId: string, writeScope?: Record<string, unknown> | null): Promise<void> {
+    if (!writeScope) return;
+    const { problems, outputKeys } = writeScopeProblems(writeScope);
+    if (problems.length > 0) {
+      throw new BadRequestException(`Invalid writeScope: ${problems.join('; ')}`);
+    }
+    if (outputKeys.length === 0) return;
+
+    const declared = await this.resolveServableContextDefinition(tenantId, departmentId);
+    if (declared === undefined) return;
+    if (declared === null) {
+      throw new BadRequestException(
+        `writeScope names output(s) ${outputKeys.join(', ')}, but this department has no published context schema to validate them against.`,
+      );
+    }
+    const unknownOutputs = outputKeys.filter((key) => !declared.outputs.has(key));
+    if (unknownOutputs.length > 0) {
+      throw new BadRequestException(`writeScope names undeclared output(s): ${unknownOutputs.join(', ')}`);
+    }
+  }
+
+  /** `goal` is a constrained (not free-text) objective — see `goalProblems`. */
+  private validateGoal(goal?: Record<string, unknown> | null): void {
+    if (!goal) return;
+    const problems = goalProblems(goal);
+    if (problems.length > 0) {
+      throw new BadRequestException(`Invalid goal: ${problems.join('; ')}`);
+    }
+  }
+
+  /** `guardrailProfile` must name a profile from the closed catalogue. */
+  private validateGuardrailProfile(guardrailProfile?: string | null): void {
+    if (!guardrailProfile) return;
+    const problems = guardrailProfileProblems(guardrailProfile);
+    if (problems.length > 0) {
+      throw new BadRequestException(`Invalid guardrailProfile: ${problems.join('; ')}`);
+    }
+  }
+
+  /** `alwaysActions`/`neverActions` — the D11 compliance envelope. Callers pass the EFFECTIVE post-write value (see call sites). */
+  private validateActionLists(alwaysActions: string[] | null, neverActions: string[] | null): void {
+    const problems: string[] = [];
+    if (alwaysActions) problems.push(...actionListProblems(alwaysActions, 'alwaysActions'));
+    if (neverActions) problems.push(...actionListProblems(neverActions, 'neverActions'));
+    problems.push(...actionOverlapProblems(alwaysActions, neverActions));
+    if (problems.length > 0) {
+      throw new BadRequestException(`Invalid compliance envelope: ${problems.join('; ')}`);
+    }
+  }
+
+  /**
+   * The department's servable context-schema vocabulary (DEPARTMENT-scoped
+   * default → TENANT-scoped default → none), mirroring
+   * `ConsultationContextSchemaService`'s own discovery cascade. Three-way
+   * result: `undefined` ⇒ the schema repositories are not wired into this
+   * service instance (cross-check skipped); `null` ⇒ wired, but the
+   * department has no servable schema (any referenced kind is therefore
+   * unresolvable); an object ⇒ the declared kind/output keys.
+   */
+  private async resolveServableContextDefinition(
+    tenantId: string,
+    departmentId: string,
+  ): Promise<{ kinds: Set<string>; outputs: Set<string> } | null | undefined> {
+    if (!this.contextSchemaRepository || !this.contextSchemaVersionRepository) return undefined;
+
+    const candidates = [
+      await this.contextSchemaRepository.findDefaultForScope(tenantId, ConsultationContextSchemaScope.DEPARTMENT, departmentId),
+      await this.contextSchemaRepository.findDefaultForScope(tenantId, ConsultationContextSchemaScope.TENANT, null),
+    ];
+
+    for (const schema of candidates) {
+      if (!schema) continue;
+      const servable =
+        schema.pinnedVersionNumber != null &&
+        (schema.status === ConsultationContextSchemaStatus.PUBLISHED || schema.status === ConsultationContextSchemaStatus.APPROVED);
+      if (!servable) continue;
+      const version = await this.contextSchemaVersionRepository.findBySchemaAndVersionNumber(schema.id, schema.pinnedVersionNumber as number);
+      if (version) return extractDeclaredContextKeys(version.definition);
+    }
+    return null;
+  }
+
+  /**
+   * Write an immutable `DepartmentAgentVersion` snapshot of the seven
+   * loop-config fields when at least one is set AND the snapshot differs from
+   * the latest recorded one (a no-op write moves nothing — mirrors
+   * `ConsultationContextSchemaService.publish`'s idempotent-republish guard).
+   * No-op when `agentVersionRepository` is not wired (existing unit fixtures).
+   */
+  private async writeLoopConfigVersionIfNeeded(agent: DepartmentAgentEntity): Promise<void> {
+    if (!this.agentVersionRepository) return;
+
+    const snapshot = buildLoopConfigSnapshot(agent);
+    if (!hasLoopConfig(snapshot)) return;
+
+    const checksum = createHash('sha256').update(canonicalConfigJson(snapshot)).digest('hex');
+    const latest = await this.agentVersionRepository.findLatestForAgent(agent.id);
+    if (latest && latest.checksum === checksum) return;
+
+    const versionNumber = (latest?.versionNumber ?? 0) + 1;
+    const version = DepartmentAgentVersionFactory.CreateDepartmentAgentVersion({
+      tenantId: agent.tenantId,
+      agentId: agent.id,
+      versionNumber,
+      configSnapshot: snapshot as never,
+      checksum,
+      createdBy: this.requestUserId ?? undefined,
+    });
+    await this.agentVersionRepository.create(version);
+  }
+}
+
+/**
+ * Deterministic (key-sorted, array-order-preserved) serialization for the
+ * loop-config checksum — the same shape as `context-schema-definition.ts`'s
+ * `canonicalJson`, kept as an independent local copy so this file has no
+ * cross-service dependency (mirrors that file's own relationship to
+ * `harnessAuditHash.ts`'s canonicalJson — a third, deliberately separate copy).
+ */
+function canonicalConfigJson(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map(canonicalConfigJson).join(',')}]`;
+  }
+  if (value !== null && typeof value === 'object') {
+    const entries = Object.keys(value as Record<string, unknown>)
+      .sort()
+      .filter((key) => (value as Record<string, unknown>)[key] !== undefined)
+      .map((key) => `${JSON.stringify(key)}:${canonicalConfigJson((value as Record<string, unknown>)[key])}`);
+    return `{${entries.join(',')}}`;
+  }
+  return JSON.stringify(value ?? null);
+}
+
+/** The seven loop-config fields, snapshotted verbatim. */
+function buildLoopConfigSnapshot(agent: DepartmentAgentEntity): Record<string, unknown> {
+  return {
+    role: agent.role,
+    subscribedKinds: agent.subscribedKinds ?? null,
+    writeScope: agent.writeScope ?? null,
+    goal: agent.goal ?? null,
+    guardrailProfile: agent.guardrailProfile ?? null,
+    alwaysActions: agent.alwaysActions ?? null,
+    neverActions: agent.neverActions ?? null,
+  };
+}
+
+/** True when the agent actually configures the loop surface — SPECIALIST + all-null is "nothing configured, don't version it". */
+function hasLoopConfig(snapshot: Record<string, unknown>): boolean {
+  return (
+    snapshot.role !== DepartmentAgentRole.SPECIALIST ||
+    snapshot.subscribedKinds !== null ||
+    snapshot.writeScope !== null ||
+    snapshot.goal !== null ||
+    snapshot.guardrailProfile !== null ||
+    (Array.isArray(snapshot.alwaysActions) && snapshot.alwaysActions.length > 0) ||
+    (Array.isArray(snapshot.neverActions) && snapshot.neverActions.length > 0)
+  );
+}
+
+/** Every declared `kinds[].key` / `outputs[].key` in a ConsultationContextSchemaVersion `definition` document. */
+function extractDeclaredContextKeys(definition: unknown): { kinds: Set<string>; outputs: Set<string> } {
+  const kinds = new Set<string>();
+  const outputs = new Set<string>();
+  if (definition !== null && typeof definition === 'object' && !Array.isArray(definition)) {
+    const def = definition as Record<string, unknown>;
+    if (Array.isArray(def.kinds)) {
+      for (const kind of def.kinds) {
+        const key = (kind as Record<string, unknown> | null)?.key;
+        if (typeof key === 'string') kinds.add(key);
+      }
+    }
+    if (Array.isArray(def.outputs)) {
+      for (const output of def.outputs) {
+        const key = (output as Record<string, unknown> | null)?.key;
+        if (typeof key === 'string') outputs.add(key);
+      }
+    }
+  }
+  return { kinds, outputs };
 }
