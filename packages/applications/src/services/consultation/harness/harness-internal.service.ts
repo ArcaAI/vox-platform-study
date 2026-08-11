@@ -1251,24 +1251,33 @@ export class HarnessInternalService {
    * The live session upserts ONE PRE_SUMMARY row tagged metaData.subType =
    * 'LIVE_SOAP_SNAPSHOT'. Distinct from legacy case-notes pre-summaries, so we
    * filter on subType (findLatestPreSummary is NOT subType-aware). Returns the
-   * newest matching row (defensive sort: findPreSummaries is createdAt ASC).
-   * Shared by assemble() (injects the text) and persistDraft() (records the id)
-   * so both always agree on which row was consumed.
+   * newest matching row. Shared by assemble() (injects the text) and
+   * persistDraft() (records the id) so both always agree on which row was
+   * consumed.
    *
    * B-02: the plaintext `content` column was dropped — only `encryptedContent`
-   * is persisted — so the returned entity's `.content` is decrypted here via
-   * `decryptContentFromEntity` before it reaches callers (`assemble()` reads
-   * `.content` directly for the warm-start prompt injection). Best-effort: a
-   * missing SecretsService (dev/test, no Vault) leaves `.content` as whatever
-   * decrypt-on-read already populated (possibly null) rather than throwing.
+   * is persisted — so the returned entity's `.content` is decrypted here before
+   * it reaches callers (`assemble()` reads `.content` directly for the
+   * warm-start prompt injection). Best-effort: a missing SecretsService
+   * (dev/test, no Vault) leaves `.content` as whatever decrypt-on-read already
+   * populated (possibly null) rather than throwing.
+   *
+   * TASK-655: the find + subType-filter + newest-wins-reduce is delegated to
+   * the shared repository helper
+   * (`ContextItemRepository.findLatestPreSummaryWithDecryptedContent`) rather
+   * than hand-rolled here — this was one of four copies of that exact logic.
+   * The decrypt-only-when-secrets-wired / mutate-`.content` contract above is
+   * preserved exactly: the helper always computes a `plaintext` (degrading to
+   * the entity's transient `.content` when no SecretsService is passed), but
+   * we only splice it onto the entity when `this.secretsService` is actually
+   * wired, matching the pre-refactor behaviour byte-for-byte.
    */
   private async loadLiveSoapSnapshot(consultationId: string): Promise<ContextItemEntity | null> {
-    const preSummaries = await this.contextItemRepository.findPreSummaries(consultationId);
-    const snapshots = preSummaries.filter((p) => (p.metaData as Record<string, unknown> | undefined)?.subType === 'LIVE_SOAP_SNAPSHOT');
-    if (snapshots.length === 0) return null;
-    const entity = snapshots.reduce((a, b) => (a.createdAt >= b.createdAt ? a : b));
-    if (this.secretsService) {
-      entity.content = await this.contextItemRepository.decryptContentFromEntity(entity, this.secretsService);
+    const { entity, plaintext } = await this.contextItemRepository.findLatestPreSummaryWithDecryptedContent(consultationId, this.secretsService, {
+      subType: 'LIVE_SOAP_SNAPSHOT',
+    });
+    if (entity && this.secretsService) {
+      entity.content = plaintext;
     }
     return entity;
   }

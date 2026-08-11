@@ -78,24 +78,46 @@ const createMockClsService = () => {
   };
 };
 
-const createMockContextItemRepository = () => ({
-  findTranscripts: vi.fn().mockResolvedValue([{ id: 'tx-1', content: 'Patient reports chest pain. BP 120/80.' }]),
-  findCaseNotes: vi.fn().mockResolvedValue([]),
-  findWorknotes: vi.fn().mockResolvedValue([]),
-  findAttachments: vi.fn().mockResolvedValue([]),
-  // The live SOAP snapshot lookup; default empty
-  // (cold path) so pre-existing assemble/persistDraft tests stay green.
-  findPreSummaries: vi.fn().mockResolvedValue([]),
-  // B-02: loadLiveSoapSnapshot decrypts the selected snapshot's content.
-  // Default echoes the mock entity's own `content` field (fixtures set it
-  // directly, no real ciphertext involved) so every pre-existing snapshot
-  // fixture's `preSummaryText` assertion is unaffected.
-  decryptContentFromEntity: vi.fn().mockImplementation(async (entity: { content?: string | null }) => entity?.content ?? null),
-  create: vi.fn().mockResolvedValue({ id: 'ctx-draft-1', content: 'S: ...', tenantId: 'tenant-1' }),
-  // Encrypt-on-write helper (declaration-merged sibling): plaintext `content`
-  // has no column, so a create that skips this drops the note at rest.
-  encryptContentIntoEntity: vi.fn().mockResolvedValue(undefined),
-});
+const createMockContextItemRepository = () => {
+  const repo = {
+    findTranscripts: vi.fn().mockResolvedValue([{ id: 'tx-1', content: 'Patient reports chest pain. BP 120/80.' }]),
+    findCaseNotes: vi.fn().mockResolvedValue([]),
+    findWorknotes: vi.fn().mockResolvedValue([]),
+    findAttachments: vi.fn().mockResolvedValue([]),
+    // The live SOAP snapshot lookup; default empty
+    // (cold path) so pre-existing assemble/persistDraft tests stay green.
+    findPreSummaries: vi.fn().mockResolvedValue([]),
+    // B-02: loadLiveSoapSnapshot decrypts the selected snapshot's content.
+    // Default echoes the mock entity's own `content` field (fixtures set it
+    // directly, no real ciphertext involved) so every pre-existing snapshot
+    // fixture's `preSummaryText` assertion is unaffected.
+    decryptContentFromEntity: vi.fn().mockImplementation(async (entity: { content?: string | null }) => entity?.content ?? null),
+    create: vi.fn().mockResolvedValue({ id: 'ctx-draft-1', content: 'S: ...', tenantId: 'tenant-1' }),
+    // Encrypt-on-write helper (declaration-merged sibling): plaintext `content`
+    // has no column, so a create that skips this drops the note at rest.
+    encryptContentIntoEntity: vi.fn().mockResolvedValue(undefined),
+    // TASK-655 — `loadLiveSoapSnapshot` now delegates to the real repository's
+    // `findLatestPreSummaryWithDecryptedContent` (find + subType-filter +
+    // newest-wins reduce + decrypt), so the mock must mirror that same
+    // contract, DELEGATING through this fixture's own `findPreSummaries` /
+    // `decryptContentFromEntity` mocks so every existing `mockResolvedValue`
+    // configured on those two below still drives the right behaviour.
+    findLatestPreSummaryWithDecryptedContent: vi.fn(),
+  };
+  repo.findLatestPreSummaryWithDecryptedContent.mockImplementation(
+    async (consultationId: string, secrets: unknown, options?: { subType?: string }) => {
+      const preSummaries: Array<{ metaData?: unknown; createdAt: Date; content?: string | null }> = await repo.findPreSummaries(consultationId);
+      const candidates = options?.subType
+        ? preSummaries.filter((p) => (p.metaData as Record<string, unknown> | undefined)?.subType === options.subType)
+        : preSummaries;
+      if (candidates.length === 0) return { entity: null, plaintext: null };
+      const entity = candidates.reduce((a, b) => (a.createdAt >= b.createdAt ? a : b));
+      const plaintext = secrets ? await repo.decryptContentFromEntity(entity, secrets) : (entity.content ?? null);
+      return { entity, plaintext };
+    },
+  );
+  return repo;
+};
 
 // The AI-draft v1 snapshot sink (best-effort).
 const createMockContextItemVersionRepository = () => ({
@@ -786,6 +808,20 @@ describe('HarnessInternalService', () => {
       await expect(svc.assemble('consultation-1', { tenantId: 'tenant-1' })).resolves.toBeDefined();
       expect(contextItemRepository.decryptContentFromEntity).not.toHaveBeenCalled();
       expect(promptAssemblyService.assemble).toHaveBeenCalledWith(expect.objectContaining({ preSummaryText: 'already-plaintext' }));
+    });
+
+    // TASK-655 — a decrypt failure (e.g. Vault Transit outage) must propagate
+    // out of `assemble()` rather than being swallowed into a cold-path
+    // fallback; `assemble()` has no try/catch around the snapshot load, so
+    // this pins that pre-existing (unwrapped) behaviour through the refactor.
+    it('propagates a decryption failure from the snapshot load (does not swallow it)', async () => {
+      service = buildService(true); // warm-start ON
+      contextItemRepository.findPreSummaries.mockResolvedValue([
+        { id: 'ps-live-1', content: null, metaData: { subType: 'LIVE_SOAP_SNAPSHOT' }, createdAt: new Date() },
+      ]);
+      contextItemRepository.decryptContentFromEntity.mockRejectedValueOnce(new Error('vault transit unavailable'));
+
+      await expect(service.assemble('consultation-1', { tenantId: 'tenant-1' })).rejects.toThrow('vault transit unavailable');
     });
 
     it('omits preSummaryText when no LIVE_SOAP_SNAPSHOT exists (cold path still works)', async () => {
