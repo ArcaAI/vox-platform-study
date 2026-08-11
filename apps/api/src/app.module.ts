@@ -60,6 +60,7 @@ import { DepartmentModule } from './modules/department/department.module';
 import { TenantAllowedOriginModule } from './modules/tenant-allowed-origin/tenant-allowed-origin.module';
 import { ConsultationContextSchemaModule } from './modules/consultation-context-schema/consultation-context-schema.module';
 import { DepartmentAgentModule } from './modules/department-agent/department-agent.module';
+import { AgentPromotionModule } from './modules/agent-promotion/agent-promotion.module';
 import { DnaWritingStyleModule } from './modules/dna-writing-style/dna-writing-style.module';
 import { EntitlementsApiModule } from './modules/entitlements/entitlements.module';
 // billing: SELL rate card + invoice lifecycle + tenant self-service reads (TASK-615 WS-I).
@@ -329,6 +330,11 @@ const featureModules: any[] = [
   // discovery bundle at /tenant/me/context-schema.
   ConsultationContextSchemaModule,
   DepartmentAgentModule,
+  // TASK-663 — /admin/agent-promotions: promote an immutable agent
+  // configuration version from one tenant to another. Its own module because
+  // AgentPromotion is its own immutable resource, not another verb on the
+  // agent (the DepartmentAgentResyncController precedent).
+  AgentPromotionModule,
   DnaWritingStyleModule,
   // /admin/entitlements/* (global-admin matrix/override/kill-switch/downgrade)
   // + /entitlements/me (tenant self-snapshot). All entitlements endpoints live here.
