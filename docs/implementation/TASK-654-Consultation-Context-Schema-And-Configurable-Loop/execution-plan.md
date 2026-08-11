@@ -41,6 +41,10 @@ That path is the **main checkout**. Run `pnpm smr:test` (or `harness:test`, `nlp
 - If a Python ticket must run in a worktree, every gate command has to be prefixed `PYTHONPATH="$PWD/apps/<svc>/src"`, and the ticket README must state that this was done. Verified working: `PYTHONPATH="$PWD/apps/smr/src" pnpm smr:test:unit` → 109 failed / 1009 passed, versus 139 / 979 without it.
 - **Always establish a baseline** before attributing Python failures to a ticket: run the same suite on `dev-2.1` without the change. SMR's standing baseline is **109 failures** (the TASK-639 module-level `app = create_app()` env leak). Harness measured **1052 passed / 4 skipped** at `39f210ab7`, replay subset 20 (TASK-662).
 
+> **The harness baseline depends on whether `.env.dev` is present**, and worktrees do not have it (gitignored). With no env file: **0 failures**. With `.env.dev` present (i.e. the main tree): **4 failures** — `test_otel_tracing_task636.py::TestDeploymentEnvironmentIsNotHardcoded` ×3 and `test_qdrant_api_key.py::test_api_key_defaults_to_none`, all asserting a variable is unset that `.env.dev` sets.
+>
+> Proven 2026-08-12 by checking out the pre-Wave-3 base in a clean worktree (23 passed), copying `.env.dev` in, and re-running the same selection on the same unmodified code (4 failed, 19 passed — the identical failure set seen on merged `dev-2.1`). **State which environment your baseline was measured in**, or the two numbers look like a regression that isn't there.
+
 Two gate mechanics, both verified on TASK-662:
 - **`pnpm harness:test -- -k replay` does not work** — pnpm forwards the `--` literally. Use `pnpm harness:test -k replay`.
 - TS gates run from a bare worktree need placeholder `DATABASE_URL` / `DIRECT_URL` in the environment, since the worktree has no `.env.dev` (gitignored).
