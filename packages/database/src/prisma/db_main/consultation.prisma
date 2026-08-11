@@ -105,6 +105,21 @@ model ContextItem {
   // DNA Writing Style (reference ID, similar to mediaId pattern)
   dnaWritingStyleId String?
 
+  // TASK-658 — tenant-facing context-kind discriminator, layered ABOVE `type`.
+  // `type` keeps its exact meaning (so every existing row, query and
+  // encryption path is untouched); `kindKey` names the tenant-declared kind
+  // (`kinds[].key` of the pinned ConsultationContextSchemaVersion) and
+  // `contextSchemaVersionId` records WHICH immutable version this row was
+  // validated against — the pin is captured at write time so a later publish
+  // can never retroactively invalidate an accepted item. Both NULL for every
+  // pre-TASK-658 row and for every write that names no kind, which is exactly
+  // the legacy behaviour.
+  //
+  // Soft references (no FK), the same convention `mediaId` and
+  // `dnaWritingStyleId` above already use.
+  kindKey                String?
+  contextSchemaVersionId String?
+
   // Qdrant sync status (for semantic search). RESERVED, NO WRITER (
   // Phase 0 / SOTA gap review D2): the target `context_items` Qdrant
   // collection was never actually provisioned-and-used — its provisioning
@@ -150,6 +165,11 @@ model ContextItem {
   @@index([qdrantSynced], name: "ContextItem_qdrantSynced_idx")
   @@index([dnaWritingStyleId], name: "ContextItem_dnaWritingStyleId_idx")
   @@index([mediaId], name: "ContextItem_mediaId_idx")
+  // TASK-658 — per-consultation "give me every item of kind X" reads, and the
+  // reverse lookup "which items were validated against this schema version"
+  // that a schema-retirement check needs.
+  @@index([consultationId, kindKey], name: "ContextItem_consultation_kindKey_idx")
+  @@index([contextSchemaVersionId], name: "ContextItem_contextSchemaVersionId_idx")
   // Composite for common queries
   @@index([consultationId, type], name: "ContextItem_consultation_type_idx")
   @@index([tenantId, type, createdAt], name: "ContextItem_tenant_type_created_idx")

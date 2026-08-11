@@ -87,4 +87,10 @@ export enum ResourceType {
   ServiceInstance = 'ServiceInstance',
   ChangelogEntry = 'ChangelogEntry',
   UserChangelogAcknowledgement = 'UserChangelogAcknowledgement',
+  // Consultation context schema (TASK-658) — the MUTABLE head row is the
+  // audited resource. `ConsultationContextSchemaVersion` is deliberately NOT
+  // a ResourceType (immutable snapshot written as part of its parent's
+  // publish; the PromptVersion precedent). Parity with audit.prisma; see
+  // resourceType.enum-parity.test.ts.
+  ConsultationContextSchema = 'ConsultationContextSchema',
 }

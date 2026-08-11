@@ -18,6 +18,7 @@ export * from './user';
 export * from './webhook';
 export * from './apiKey';
 export * from './consultation';
+export * from './consultation-context-schema';
 export * from './department';
 export * from './departmentAgent';
 // Clinical documentation harness (eval storage + WORM audit).

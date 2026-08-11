@@ -29,6 +29,8 @@ import { AsrPipelineVersionRepository } from '../../../repositories/generated/co
 import { AudioRecordingRepository } from '../../../repositories/generated/core/AudioRecordingRepository';
 import { AuditLogRepository } from '../../../repositories/generated/core/AuditLogRepository';
 import { ConsultationRepository } from '../../../repositories/generated/core/ConsultationRepository';
+import { ConsultationContextSchemaRepository } from '../../../repositories/generated/core/ConsultationContextSchemaRepository';
+import { ConsultationContextSchemaVersionRepository } from '../../../repositories/generated/core/ConsultationContextSchemaVersionRepository';
 import { ContextItemRepository } from '../../../repositories/generated/core/ContextItemRepository';
 import { ContextItemVersionRepository } from '../../../repositories/generated/core/ContextItemVersionRepository';
 import { DepartmentAgentRepository } from '../../../repositories/generated/core/DepartmentAgentRepository';
@@ -112,6 +114,10 @@ const databaseProvider = {
 const repositories = [
   // Consultation domain
   ConsultationRepository,
+  // TASK-658 — tenant-declared consultation context schema plane: the mutable
+  // head and its immutable published version snapshots.
+  ConsultationContextSchemaRepository,
+  ConsultationContextSchemaVersionRepository,
   ContextItemRepository,
   ContextItemVersionRepository,
   AudioRecordingRepository,

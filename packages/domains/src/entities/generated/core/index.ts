@@ -9,6 +9,8 @@ export * from './AsrPipelineVersionEntity';
 export * from './AudioRecordingEntity';
 export * from './AuditLogEntity';
 export * from './ConsultationEntity';
+export * from './ConsultationContextSchemaEntity';
+export * from './ConsultationContextSchemaVersionEntity';
 export * from './ContextItemEntity';
 export * from './ContextItemVersionEntity';
 export * from './DepartmentEntity';

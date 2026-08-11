@@ -3,9 +3,15 @@ import { ContextService } from './context.service';
 import { IContextService } from './IContextService';
 import { CoreDatabaseModule } from '@arcaai/domains';
 import { CommonServiceModule } from '../../baseServices';
+import { ConsultationContextSchemaServiceModule } from '../../consultation-context-schema';
 
 @Module({
-  imports: [CommonServiceModule, CoreDatabaseModule],
+  // TASK-658 — `ConsultationContextSchemaServiceModule` supplies the OPTIONAL
+  // `IConsultationContextSchemaService` that `ContextService` uses to
+  // validate a write naming a `kindKey`. The dependency is one-way (the
+  // schema plane knows nothing about `ContextService`), so there is no
+  // circular-module hazard here.
+  imports: [CommonServiceModule, CoreDatabaseModule, ConsultationContextSchemaServiceModule],
   providers: [
     ContextService,
     {

@@ -168,6 +168,15 @@ export const MODELS_WITHOUT_SOFT_DELETE: ReadonlySet<string> = new Set([
   // UserChangelogAcknowledgement rows are immutable acknowledgement facts —
   // "was this admin shown the notice" must never be retractable.
   'UserChangelogAcknowledgement',
+  // ConsultationContextSchemaVersion (TASK-658) is an immutable published
+  // snapshot of a tenant's context declaration — the exact shape of
+  // PromptVersion / AsrPipelineVersion above, and with no `resourceStatus`
+  // column for the same reason. A context item validated against version N
+  // must be able to resolve version N forever; retracting a version would
+  // orphan already-accepted clinical rows. The MUTABLE head
+  // `ConsultationContextSchema` is deliberately NOT here — it keeps the
+  // standard ENABLED/DELETED lifecycle.
+  'ConsultationContextSchemaVersion',
 ]);
 
 /**

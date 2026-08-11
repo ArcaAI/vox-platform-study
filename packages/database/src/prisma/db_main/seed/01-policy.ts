@@ -214,6 +214,14 @@ export const DEFAULT_POLICIES: DefaultPolicy[] = [
       // SYSTEM-tenant rows to GLOBAL_ADMIN only (not expressible here).
       // GLOBAL_ADMIN already covers this via the wildcard `manage all` rule.
       { action: 'manage', subject: 'TenantAllowedOrigin', conditions: { tenantId: '${context.tenantId}' } },
+      // TASK-658 — tenant admins declare their OWN consultation context
+      // schemas (the kinds of context a consultation carries). Tenant-scoped;
+      // the service pins every operation to the caller's CLS tenant and
+      // answers 404 for a cross-tenant id. Unlike TenantAllowedOrigin above,
+      // this resource carries NO narrower imperative gate — the ability IS
+      // the whole boundary. Without this grant the feature would be
+      // unreachable by the audience TASK-654 R1 names.
+      { action: 'manage', subject: 'ConsultationContextSchema', conditions: { tenantId: '${context.tenantId}' } },
     ],
   },
   {

@@ -238,5 +238,16 @@ enum ResourceType {
   ChangelogEntry
   UserChangelogAcknowledgement
 
+  // Consultation context schema (TASK-658). The MUTABLE head row is the
+  // audited resource — create / update / publish / pin / delete all broadcast
+  // against it, so a reviewer sees one lifecycle per schema rather than one
+  // per snapshot. `ConsultationContextSchemaVersion` is DELIBERATELY ABSENT:
+  // an immutable version row is written as part of the publish of its parent
+  // aggregate and has no lifecycle of its own — the `PromptVersion` /
+  // `AsrPipelineVersion` / `DnaWritingStyleVersion` precedent, none of which
+  // is a ResourceType. Adding one later means adding it to BOTH enums plus an
+  // `ALTER TYPE ... ADD VALUE` migration (resourceType.enum-parity.test.ts).
+  ConsultationContextSchema
+
   @@schema("core")
 }

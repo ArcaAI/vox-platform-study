@@ -21,6 +21,15 @@ export interface IContextItemEntity extends IBaseTenantEntity {
   contentKeyVersion?: number | null;
   mediaId?: string | null;
   dnaWritingStyleId?: string | null;
+  // TASK-658 — tenant-facing context-kind discriminator layered above `type`.
+  // `kindKey` names the kind declared by the tenant's pinned
+  // ConsultationContextSchemaVersion; `contextSchemaVersionId` records WHICH
+  // immutable version this row was validated against, captured at write time
+  // so a later publish can never retroactively invalidate an accepted item.
+  // Both null for every write that names no kind — i.e. every pre-TASK-658
+  // caller.
+  kindKey?: string | null;
+  contextSchemaVersionId?: string | null;
   qdrantSynced: boolean;
   qdrantSyncedAt?: Date | null;
   Consultation?: Entities.ConsultationEntity | null;
@@ -40,6 +49,8 @@ export class ContextItemEntity extends BaseTenantEntity {
   private _contentKeyVersion?: IContextItemEntity['contentKeyVersion'];
   private _mediaId?: IContextItemEntity['mediaId'];
   private _dnaWritingStyleId?: IContextItemEntity['dnaWritingStyleId'];
+  private _kindKey?: IContextItemEntity['kindKey'];
+  private _contextSchemaVersionId?: IContextItemEntity['contextSchemaVersionId'];
   // Clinical Workflow Playground — round-trips the `_metadata` JSONB column so
   // ATTACHMENT lab/exam results can carry a `metadata.subType = 'LAB_RESULT'`
   // convention (no new enum). Mirrors the column already on BaseDataModel.
@@ -63,6 +74,8 @@ export class ContextItemEntity extends BaseTenantEntity {
     this._contentKeyVersion = init.contentKeyVersion;
     this._mediaId = init.mediaId;
     this._dnaWritingStyleId = init.dnaWritingStyleId;
+    this._kindKey = init.kindKey;
+    this._contextSchemaVersionId = init.contextSchemaVersionId;
     this._metaData = init.metaData;
     this._qdrantSynced = init.qdrantSynced ?? false;
     this._qdrantSyncedAt = init.qdrantSyncedAt;
@@ -151,6 +164,22 @@ export class ContextItemEntity extends BaseTenantEntity {
 
   set dnaWritingStyleId(value: IContextItemEntity['dnaWritingStyleId']) {
     this.setProperty('dnaWritingStyleId', value);
+  }
+
+  get kindKey(): IContextItemEntity['kindKey'] {
+    return this._kindKey;
+  }
+
+  set kindKey(value: IContextItemEntity['kindKey']) {
+    this.setProperty('kindKey', value);
+  }
+
+  get contextSchemaVersionId(): IContextItemEntity['contextSchemaVersionId'] {
+    return this._contextSchemaVersionId;
+  }
+
+  set contextSchemaVersionId(value: IContextItemEntity['contextSchemaVersionId']) {
+    this.setProperty('contextSchemaVersionId', value);
   }
 
   get metaData(): IContextItemEntity['metaData'] {
