@@ -292,6 +292,78 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
     computeType: 'float16',
     tags: ['multilingual', 'malayalam', 'english', 'code-switch', 'transformer'],
   },
+  {
+    // Backfilled from a live model created ad hoc in the admin console
+    // (referenced by the `experiment-arcaai-whisper-large-ml-en-ct2` ASR
+    // pipeline seed). CTranslate2 conversion of the same fine-tune as the
+    // arcaai-whisper-large-ml-en (transformer) row above. Source repo for the
+    // CT2 conversion was not recorded at creation time — sourceUri is
+    // provisional (mirrors the transformer repo naming) pending confirmation.
+    id: '80000000-0000-0000-0001-000000000021',
+    tenantId: SYSTEM_TENANT_ID,
+    name: 'ArcaAI Whisper Large ML-EN Code-Switch (CTranslate2)',
+    slug: 'arcaai-whisper-large-ml-en-ct2',
+    description:
+      'ArcaAI Malayalam+English code-switch full fine-tune of Whisper Large V3 Turbo, converted to CTranslate2 for the faster-whisper runtime.',
+    category: ModelCategory.AUDIO,
+    taskType: ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION,
+    modelType: ModelType.QUANTIZED_MODEL,
+    source: AiModelSource.LOCAL,
+    sourceUri: 'taphuynh/whisper-turbo-ml-en-codeswitch-fullft-2607.29.1-ct2',
+    sourceRevision: 'main',
+    format: AiModelFormat.FASTER_WHISPER,
+    provider: 'built-in',
+    architecture: 'whisper',
+    memorySizeMb: 3000,
+    computeType: 'float16',
+    tags: ['multilingual', 'malayalam', 'english', 'code-switch', 'faster-whisper', 'ctranslate2'],
+  },
+  {
+    // Backfilled from a live model created ad hoc in the admin console
+    // (2026-08-06) — ArcaAI in-house English medical fine-tune, GGUF build
+    // for the whisper.cpp runtime. Source repo/merge lineage were not
+    // recorded at creation time; sourceUri is provisional.
+    id: '80000000-0000-0000-0001-000000000022',
+    tenantId: SYSTEM_TENANT_ID,
+    name: 'ArcaAI Whisper Large EN-Medical (260726 merge, whisper.cpp GGUF)',
+    slug: 'whisper-large-en-medical-260726-merged-gguf',
+    description: 'ArcaAI in-house English medical fine-tune (260726 merge), GGUF-quantized for the whisper.cpp ggml runtime.',
+    category: ModelCategory.AUDIO,
+    taskType: ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION,
+    modelType: ModelType.QUANTIZED_MODEL,
+    source: AiModelSource.LOCAL,
+    sourceUri: 'taphuynh/whisper-large-en-medical-260726-merged-gguf',
+    sourceRevision: 'main',
+    format: AiModelFormat.WHISPER_CPP,
+    provider: 'built-in',
+    architecture: 'whisper',
+    memorySizeMb: 1700,
+    computeType: 'f16',
+    tags: ['english', 'medical', 'fine-tune', 'ggml', 'whisper.cpp'],
+  },
+  {
+    // Backfilled from a live model created ad hoc in the admin console
+    // (2026-08-06) — CTranslate2 build of the same medical fine-tune as the
+    // row above. Source repo/merge lineage were not recorded at creation
+    // time; sourceUri is provisional.
+    id: '80000000-0000-0000-0001-000000000023',
+    tenantId: SYSTEM_TENANT_ID,
+    name: 'ArcaAI Whisper Large EN-Medical (260726 merge, CTranslate2)',
+    slug: 'whisper-large-en-medical-260726-merged-ct2',
+    description: 'ArcaAI in-house English medical fine-tune (260726 merge), converted to CTranslate2 for the faster-whisper runtime.',
+    category: ModelCategory.AUDIO,
+    taskType: ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION,
+    modelType: ModelType.QUANTIZED_MODEL,
+    source: AiModelSource.LOCAL,
+    sourceUri: 'taphuynh/whisper-large-en-medical-260726-merged-ct2',
+    sourceRevision: 'main',
+    format: AiModelFormat.FASTER_WHISPER,
+    provider: 'built-in',
+    architecture: 'whisper',
+    memorySizeMb: 3000,
+    computeType: 'float16',
+    tags: ['english', 'medical', 'fine-tune', 'faster-whisper', 'ctranslate2'],
+  },
 
   // =========================================================================
   // VAD (Voice Activity Detection)

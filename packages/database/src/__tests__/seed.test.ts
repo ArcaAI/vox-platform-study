@@ -1557,7 +1557,20 @@ describe('STT Seed Data', () => {
       });
 
       it('every seeded tenant pipeline is a locked copy with template lineage', () => {
-        const tenantRows = [...CUSTOMER_TENANT_ASR_PIPELINES, ...GLOBAL_TENANT_ASR_PIPELINES];
+        // Tenant-only pipelines backfilled from live admin-console creations
+        // (ARCAAI_MANUAL_ASR_PIPELINES / GLOBAL_MANUAL_ASR_PIPELINES in
+        // 06-stt.ts) are experiments/clones observed as UNLOCKED in the
+        // cluster, not SYSTEM-template copies — excluded from this
+        // invariant on purpose (see the full-parity exception list above).
+        const MANUAL_TENANT_ONLY_SLUGS = new Set([
+          'experiment-arcaai-whisper-large-ml-en-ct2',
+          'arcaai-whisper-large-ml-en-gguf-copy',
+          'whisper-large-en-medical-260726-merged-gguf',
+          'whisper-large-en-medical-260726-merged-ct2',
+        ]);
+        const tenantRows = [...CUSTOMER_TENANT_ASR_PIPELINES, ...GLOBAL_TENANT_ASR_PIPELINES].filter(
+          (p) => !MANUAL_TENANT_ONLY_SLUGS.has(p.slug),
+        );
         expect(tenantRows.length).toBeGreaterThan(0);
 
         tenantRows.forEach((pipeline) => {
@@ -1705,16 +1718,28 @@ describe('STT Seed Data', () => {
 describe('Full-parity ASR pipeline catalog per customer tenant (policy)', () => {
   const systemSlugs = [...new Set(DEFAULT_ASR_PIPELINES.map((p) => p.slug))].sort();
 
-  it('gives the Global customer tenant the SAME slug set as SYSTEM', () => {
+  // Tenant-only pipelines backfilled from live admin-console creations
+  // (formalized into ARCAAI_MANUAL_ASR_PIPELINES / GLOBAL_MANUAL_ASR_PIPELINES
+  // in 06-stt.ts) are a deliberate, documented exception to full parity —
+  // they are tenant-specific experiments/clones, not part of the SYSTEM
+  // template catalog, so they never get mirrored to other tenants.
+  const GLOBAL_TENANT_ONLY_SLUGS = ['experiment-arcaai-whisper-large-ml-en-ct2'];
+  const ARCAAI_TENANT_ONLY_SLUGS = [
+    'arcaai-whisper-large-ml-en-gguf-copy',
+    'whisper-large-en-medical-260726-merged-gguf',
+    'whisper-large-en-medical-260726-merged-ct2',
+  ];
+
+  it('gives the Global customer tenant the SAME slug set as SYSTEM (plus its documented tenant-only exceptions)', () => {
     const globalSlugs = [...new Set(GLOBAL_TENANT_ASR_PIPELINES.filter((p) => p.tenantId === SEED_TENANT_ID).map((p) => p.slug))].sort();
-    expect(globalSlugs).toEqual(systemSlugs);
+    expect(globalSlugs).toEqual([...systemSlugs, ...GLOBAL_TENANT_ONLY_SLUGS].sort());
   });
 
-  it('gives the ArcaAI customer tenant the SAME slug set as SYSTEM', () => {
+  it('gives the ArcaAI customer tenant the SAME slug set as SYSTEM (plus its documented tenant-only exceptions)', () => {
     const arcaaiSlugs = [
       ...new Set(CUSTOMER_TENANT_ASR_PIPELINES.filter((p) => p.tenantId === SEED_CUSTOMER_TENANT_IDS.ARCAAI).map((p) => p.slug)),
     ].sort();
-    expect(arcaaiSlugs).toEqual(systemSlugs);
+    expect(arcaaiSlugs).toEqual([...systemSlugs, ...ARCAAI_TENANT_ONLY_SLUGS].sort());
   });
 
   it('keeps globally-unique IDs once every tenant carries the full catalog', () => {

@@ -120,6 +120,15 @@ const ARCAAI_ML_EN_NEW_SLUGS = [
   'arcaai-whisper-large-ml-en',
 ] as const;
 
+// Backfilled from live models created ad hoc in the admin console
+// (referenced by the ARCAAI_MANUAL_ASR_PIPELINES / GLOBAL_MANUAL_ASR_PIPELINES
+// tenant-only pipeline seeds in 06-stt.ts).
+const ADMIN_CONSOLE_BACKFILL_NEW_SLUGS = [
+  'arcaai-whisper-large-ml-en-ct2',
+  'whisper-large-en-medical-260726-merged-gguf',
+  'whisper-large-en-medical-260726-merged-ct2',
+] as const;
+
 const EXPECTED_CATALOG_SLUGS = [
   ...KEEPER_SLUGS,
   ...NEW_LLM_SLUGS,
@@ -130,6 +139,7 @@ const EXPECTED_CATALOG_SLUGS = [
   ...TASK_524_NEW_SLUGS,
   ...TASK_567_NEW_SLUGS,
   ...ARCAAI_ML_EN_NEW_SLUGS,
+  ...ADMIN_CONSOLE_BACKFILL_NEW_SLUGS,
 ] as const;
 
 // The 50 slugs that must be RETIRED (previous 60 minus the 10 keepers).
@@ -228,10 +238,10 @@ const bySlug = (slug: string) => catalog.find((m) => m.slug === slug);
 // =============================================================================
 
 describe('consolidated AI model catalog (26 rows) + extensions', () => {
-  it('is exactly the 42 expected slugs (26 + 2 + 9 extensions + 3 ArcaAI ML-EN)', () => {
+  it('is exactly the 45 expected slugs (26 + 2 + 9 extensions + 3 ArcaAI ML-EN + 3 admin-console backfill)', () => {
     const slugs = catalog.map((m) => m.slug).sort();
     expect(slugs).toEqual([...EXPECTED_CATALOG_SLUGS].sort());
-    expect(catalog.length).toBe(42);
+    expect(catalog.length).toBe(45);
   });
 
   it('has unique ids and unique slugs', () => {

@@ -1295,6 +1295,165 @@ export const CUSTOMER_TENANT_ASR_PIPELINES: AsrPipelineSeed[] = asTemplateCopies
   ...deriveRemainingTenantPipelines(SEED_CUSTOMER_TENANT_IDS.ARCAAI, '1', 'ArcaAI', EXPLICIT_TENANT_PIPELINE_SLUGS),
 ]);
 
+/**
+ * ArcaAI-tenant pipelines created ad hoc in the admin console (live UUIDv7
+ * ids, not the reserved `81000000-…` block) and formalized into the seed here
+ * so they survive a re-seed / cluster rebuild. Kept OUTSIDE `asTemplateCopies`
+ * above: unlike the full-parity mirror, these carry their own observed
+ * lineage/lock state rather than a fresh unlocked-template copy's.
+ *
+ * IDs continue the ArcaAI (1xx) discriminator sequence right after the last
+ * derived slot (…119).
+ */
+export const ARCAAI_MANUAL_ASR_PIPELINES: AsrPipelineSeed[] = [
+  {
+    // Formerly live id 019fc832-d781-7327-9f79-4118b060ecc3 — manual clone of
+    // the arcaai-whisper-large-ml-en-gguf template, config unchanged.
+    id: '81000000-0000-0000-0001-000000000120',
+    tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
+    name: 'ArcaAI [arcaai-whisper-large-ml-en gguf] Transcription Only copy',
+    slug: 'arcaai-whisper-large-ml-en-gguf-copy',
+    description:
+      'Matrix #10 — no pre-processing, ArcaAI ML-EN code-switch whisper.cpp GGUF ASR + diarization + stabilizer, no post-processing. Platform default.',
+    configYaml: PIPELINE_CONFIGS.arcaai_ml_en_gguf,
+    isDefault: false,
+    tags: ['production', 'streaming', 'real-time', 'malayalam', 'english', 'code-switch', 'whisper.cpp', 'recommended'],
+    sourceTemplateSlug: 'arcaai-whisper-large-ml-en-gguf',
+    templateLocked: false,
+  },
+  {
+    // Formerly live id 019fd5f9-346e-7ba0-95c8-996f4f0ec96b — new in-house
+    // medical fine-tune (260726 merge), whisper.cpp GGUF build.
+    id: '81000000-0000-0000-0001-000000000121',
+    tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
+    name: 'ArcaAI [whisper-large-en-medical-260726-merged-gguf]',
+    slug: 'whisper-large-en-medical-260726-merged-gguf',
+    description:
+      'ArcaAI in-house medical fine-tune (260726 merge), whisper.cpp GGUF build. Full pre/post-processing (normalize, denoise, VAD), diarization disabled.',
+    configYaml: `version: "2.0"
+
+models:
+  asr: "whisper-large-en-medical-260726-merged-gguf"
+  vad: "silero-vad"
+  embedding:
+    hf_model_id: "speechbrain/spkrec-ecapa-voxceleb"
+    engine: "pytorch"
+
+preprocessing:
+  normalize:
+    enabled: true
+  denoise:
+    enabled: true
+    strength: 0.3
+  resample:
+    enabled: true
+    target_sample_rate: 16000
+  vad:
+    enabled: true
+    threshold: 0.5
+    min_speech_duration_ms: 250
+    min_silence_duration_ms: 300
+    padding_ms: 60
+    force_emit_after_ms: 20000
+
+inference:
+  batch_size: 1
+  compute_type: auto
+  device: auto
+  language: null
+  prev_text_context_words: 0
+
+diarization:
+  enabled: false
+
+streaming:
+  commit_policy: local_agreement_2
+
+postprocessing:
+  timestamps:
+    word_timestamps: false
+    sentence_timestamps: false
+  punctuation:
+    enabled: false
+  remove_disfluencies: false
+  lowercase: false
+  segment_merge:
+    enabled: false
+`,
+    isDefault: false,
+    tags: ['medical', 'whisper.cpp', 'fine-tune'],
+    sourceTemplateSlug: null,
+    templateLocked: false,
+  },
+  {
+    // Formerly live id 019fd5fd-8a79-70b9-87fa-d0d2428db232 — CTranslate2
+    // build of the same medical fine-tune as the row above.
+    id: '81000000-0000-0000-0001-000000000122',
+    tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
+    name: 'Arcaai [whisper-large-en-medical-260726-merged-ct2]',
+    slug: 'whisper-large-en-medical-260726-merged-ct2',
+    description: 'ArcaAI in-house medical fine-tune (260726 merge), CTranslate2 (faster-whisper) build. VAD pre-processing enabled, diarization disabled.',
+    configYaml: `version: "2.0"
+
+models:
+  asr: "whisper-large-en-medical-260726-merged-ct2"
+  vad: "silero-vad"
+  embedding:
+    hf_model_id: "speechbrain/spkrec-ecapa-voxceleb"
+    engine: "pytorch"
+
+preprocessing:
+  normalize:
+    enabled: false
+  denoise:
+    enabled: false
+  resample:
+    enabled: true            # runtime floor: VAD/ASR require the target rate
+    target_sample_rate: 16000
+  vad:
+    enabled: true
+    threshold: 0.5
+    min_speech_duration_ms: 100
+    min_silence_duration_ms: 700
+    padding_ms: 200
+    force_emit_after_ms: 20000
+
+inference:
+  batch_size: 1
+  compute_type: auto
+  device: auto
+  language: null
+  prev_text_context_words: 0
+
+diarization:
+  enabled: false
+
+streaming:
+  commit_policy: local_agreement_2
+
+postprocessing:
+  timestamps:
+    word_timestamps: false
+    sentence_timestamps: false
+  punctuation:
+    enabled: false
+  remove_disfluencies: false
+  lowercase: false
+  segment_merge:
+    enabled: false
+`,
+    isDefault: false,
+    tags: ['medical', 'ctranslate2', 'fine-tune'],
+    sourceTemplateSlug: null,
+    templateLocked: false,
+  },
+];
+
+// Mutate in place — ARCAAI_MANUAL_ASR_PIPELINES must exist as its own export
+// (tests/other seeds reference it directly), so it can't be spread into the
+// CUSTOMER_TENANT_ASR_PIPELINES literal above without a forward reference.
+CUSTOMER_TENANT_ASR_PIPELINES.push(...ARCAAI_MANUAL_ASR_PIPELINES);
+
 // =============================================================================
 // GLOBAL CUSTOMER-TENANT ASR PIPELINES
 //
@@ -1371,6 +1530,71 @@ export const GLOBAL_TENANT_ASR_PIPELINES: AsrPipelineSeed[] = asTemplateCopies([
   // --- Global: remaining SYSTEM pipelines (full-parity policy) ---
   ...deriveRemainingTenantPipelines(SEED_TENANT_ID, '4', 'Global', EXPLICIT_TENANT_PIPELINE_SLUGS),
 ]);
+
+/**
+ * Global-tenant pipelines created ad hoc in the admin console (live UUIDv7
+ * ids, not the reserved `81000000-…` block) and formalized into the seed
+ * here so they survive a re-seed / cluster rebuild. Kept OUTSIDE
+ * `asTemplateCopies` above for the same reason as `ARCAAI_MANUAL_ASR_PIPELINES`.
+ *
+ * IDs continue the Global (4xx) discriminator sequence right after the last
+ * derived slot (…419).
+ */
+export const GLOBAL_MANUAL_ASR_PIPELINES: AsrPipelineSeed[] = [
+  {
+    // Formerly live id 019fbd9e-7b77-7fa0-b295-1000d36ea37d — experimental
+    // clone of production-faster-whisper-turbo-int8 with the ASR model
+    // swapped to the ArcaAI ml-en CT2 build.
+    id: '81000000-0000-0000-0001-000000000420',
+    tenantId: SEED_TENANT_ID,
+    name: 'Experiment - arcaai-whisper-large-ml-en-ct2',
+    slug: 'experiment-arcaai-whisper-large-ml-en-ct2',
+    description:
+      'Global tenant default production pipeline using whisper-large-v3-turbo CTranslate2 f16 (faster-whisper) with diarization + dual capture.',
+    configYaml: `version: "2.0"
+
+# TASK-505 matrix #7 — [faster-whisper] deepdml CT2 int8, bare.
+
+models:
+  asr: "arcaai-whisper-large-ml-en-ct2"
+
+preprocessing:
+  normalize:
+    enabled: false
+  denoise:
+    enabled: false
+  resample:
+    enabled: true            # runtime floor: VAD/ASR require the target rate
+    target_sample_rate: 16000
+  vad:
+    enabled: false           # streaming falls back to energy framing
+
+inference:
+  batch_size: 1
+  compute_type: auto
+  device: auto
+  language: null
+
+postprocessing:
+  timestamps:
+    word_timestamps: false
+    sentence_timestamps: false
+  punctuation:
+    enabled: false
+  remove_disfluencies: false
+  lowercase: false
+  segment_merge:
+    enabled: false
+`,
+    isDefault: false,
+    tags: ['faster-whisper', 'ctranslate2', 'diarization'],
+    sourceTemplateSlug: 'production-faster-whisper-turbo-int8',
+    templateLocked: false,
+  },
+];
+
+// Mutate in place — see the matching comment above CUSTOMER_TENANT_ASR_PIPELINES.push(...).
+GLOBAL_TENANT_ASR_PIPELINES.push(...GLOBAL_MANUAL_ASR_PIPELINES);
 
 // =============================================================================
 // GLOBAL SETTINGS FOR STT SERVICE
