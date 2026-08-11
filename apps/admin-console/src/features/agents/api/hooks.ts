@@ -3,9 +3,9 @@
 /**
  * TanStack Query v5 hooks for the agents surface. Mutations invalidate the
  * whole ['agents'] namespace — an admin console prefers fresh reads over
- * cache cleverness (rule 13). The one deliberate exception: useTestTemplate
- * invalidates NOTHING — a test run is a dry-run tool, and its result carries
- * the row's new OCC version directly.
+ * cache cleverness (rule 13). The deliberate exceptions: useTestTemplate and
+ * useFinalizeTemplateTest invalidate NOTHING — the ack writes nothing at all,
+ * and the finalize result carries the row's new OCC version directly.
  */
 
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -19,6 +19,7 @@ import {
   deleteDepartmentAgent,
   deleteTemplate,
   diffVersions,
+  finalizeTemplateTest,
   getDepartmentAgent,
   getTemplate,
   getUsageAnalytics,
@@ -136,10 +137,27 @@ export function useApproveTemplate() {
   });
 }
 
-/** Dry-run tool: deliberately NO cache invalidation (see module doc). */
+/**
+ * Test run ACK (BUG-018): returns immediately with the resolved provider/model
+ * plus either the assembled prompt (dry run) or the SMR task to stream. No
+ * cache invalidation — nothing is written yet (see `useFinalizeTemplateTest`).
+ */
 export function useTestTemplate() {
   return useMutation({
-    mutationFn: ({ id, body, etag }: { id: string; body: TestTemplateRequest; etag: string }) => testTemplate(id, body, etag),
+    mutationFn: ({ id, body }: { id: string; body: TestTemplateRequest }) => testTemplate(id, body),
+  });
+}
+
+/**
+ * Persists a completed test run's score/output. This IS the OCC write, so it
+ * carries If-Match; its result returns the row's new version. Deliberately no
+ * invalidation for the same reason the ack has none — the caller already holds
+ * the fresh row.
+ */
+export function useFinalizeTemplateTest() {
+  return useMutation({
+    mutationFn: ({ id, taskId, etag, versionNumber }: { id: string; taskId: string; etag: string; versionNumber?: number }) =>
+      finalizeTemplateTest(id, taskId, etag, versionNumber),
   });
 }
 

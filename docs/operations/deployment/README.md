@@ -330,6 +330,7 @@ kubectl get nodes -o wide          # same, from the cluster's own view
 ## Related
 
 - [`helm-kustomize-pattern.md`](./helm-kustomize-pattern.md) — the Helm/Kustomize hybrid pattern for vendoring third-party charts (GPU Operator, Kyverno, Prometheus Operator, Alloy) into this same repo
+- [`cdn-edge-requirements.md`](./cdn-edge-requirements.md) — strong-ETag preservation: the Cloudflare compression setting every HOPE-fronting hostname needs, without which all optimistic-concurrency writes break after deploy (silently in the admin console, as `400`s for the SDK)
 - [`docs/operations/observability/README.md`](../observability/README.md) — on-call process, alert response, and where the dashboards referenced in [§4 step 4](#4-deploy-runbook-promote-to-staging) actually live
 - [TASK-616 component-design-cicd-promotion.md](../../implementation/TASK-616-Deployment-CICD-Observability-Modernization/component-design-cicd-promotion.md) — the full CI→CD promotion design (§F5 per-environment sync matrix, §F6 sync waves, §F7 rollback)
 - [TASK-617](../../implementation/TASK-617-Dev-Environment-Correctness-And-GitOps-Recovery/README.md) — the GitOps recovery ticket that gets [§2](#2-current-state-snapshot)'s "design target" column live

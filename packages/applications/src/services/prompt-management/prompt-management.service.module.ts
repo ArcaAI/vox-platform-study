@@ -6,7 +6,8 @@ import { IPromptManagementService } from './IPromptManagementService';
 import { CoreDatabaseModule } from '@arcaai/domains';
 import { CommonServiceModule } from '../baseServices';
 import { DepartmentServiceModule } from '../department/department.service.module';
-import { HarnessPolicyServiceModule } from '../harness-policy/harness-policy.service.module';
+import { AiTaskDefaultServiceModule } from '../ai-task-default/ai-task-default.service.module';
+import { SmrRequestServiceModule } from '../smr-request/smr-request.service.module';
 import { UserProfileServiceModule } from '../user/userProfile/userProfile.service.module';
 import { EntitlementsServiceModule } from '../entitlements/entitlements.service.module';
 import { EvalServiceModule } from '../eval/eval.service.module';
@@ -14,7 +15,10 @@ import { EvalServiceModule } from '../eval/eval.service.module';
 @Module({
   // HttpModule + ConfigModule wire the SMR/text-generation client
   // used by the prompt-test endpoint (mirrors SummaryServiceModule).
-  // HarnessPolicyServiceModule supplies the SMR-selection resolver.
+  // BUG-018: AiTaskDefaultServiceModule supplies the `smr.test` model resolver
+  // (replacing the harness policy module — the test bench is not harness), and
+  // SmrRequestServiceModule supplies the shared tenant-credential + runtime-profile
+  // enrichment the SMR proxy uses.
   // UserProfileServiceModule supplies the preferred-template write.
   // EntitlementsServiceModule supplies the maxPromptTemplates quota check.
   imports: [
@@ -23,7 +27,8 @@ import { EvalServiceModule } from '../eval/eval.service.module';
     DepartmentServiceModule,
     ConfigModule,
     HttpModule,
-    HarnessPolicyServiceModule,
+    AiTaskDefaultServiceModule,
+    SmrRequestServiceModule,
     UserProfileServiceModule,
     EntitlementsServiceModule,
     EvalServiceModule,

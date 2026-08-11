@@ -44,7 +44,8 @@ const createMockService = () => ({
   getVersion: vi.fn(),
   diffVersions: vi.fn(),
   getUsageStats: vi.fn(),
-  testPromptTemplate: vi.fn(),
+  startPromptTemplateTest: vi.fn(),
+  finalizePromptTemplateTest: vi.fn(),
   getUsageAnalytics: vi.fn(),
   listUsageRecords: vi.fn(),
   softDeletePromptTemplate: vi.fn(),
@@ -314,30 +315,75 @@ describe('PromptManagementController', () => {
 
   // ─── Prompt test run ────────────────────────────────────
 
-  describe('POST /prompt-templates/:id/test (testTemplate)', () => {
+  describe('POST /prompt-templates/:id/test (testTemplate — BUG-018 submit)', () => {
+    const fakeAck = {
+      mode: 'stream' as const,
+      provider: 'azure-openai',
+      model: 'gpt-4o',
+      assembledPrompt: 'Summarize asthma',
+      taskId: 'task-1',
+      streamUrl: 'text/tasks/task-1/stream',
+    };
+
+    it('delegates to service.startPromptTemplateTest with id + body (no If-Match involved)', async () => {
+      mockService.startPromptTemplateTest.mockResolvedValue(fakeAck);
+      const body = { variables: { topic: 'asthma' } };
+
+      await controller.testTemplate('tpl-1', body as any);
+
+      expect(mockService.startPromptTemplateTest).toHaveBeenCalledWith('tpl-1', body);
+    });
+
+    it('returns the ack (taskId + streamUrl) without awaiting a completion', async () => {
+      mockService.startPromptTemplateTest.mockResolvedValue(fakeAck);
+
+      const result = await controller.testTemplate('tpl-1', {} as any);
+
+      expect(result.mode).toBe('stream');
+      expect(result.taskId).toBe('task-1');
+      expect(result.streamUrl).toBe('text/tasks/task-1/stream');
+      expect(result.assembledPrompt).toBe('Summarize asthma');
+    });
+
+    it('returns a dry-run ack carrying the assembled prompt and no task id', async () => {
+      mockService.startPromptTemplateTest.mockResolvedValue({
+        mode: 'dry-run',
+        provider: 'azure-openai',
+        model: 'gpt-4o',
+        assembledPrompt: 'Summarize asthma',
+      });
+
+      const result = await controller.testTemplate('tpl-1', { dryRun: true } as any);
+
+      expect(result.mode).toBe('dry-run');
+      expect(result.taskId).toBeUndefined();
+    });
+  });
+
+  describe('POST /prompt-templates/:id/test/finalize (finalizeTestTemplate)', () => {
     const fakeResult = { id: 'tpl-1', score: 0.92, output: 'Generated output', testedAt: '2026-06-02T00:00:00.000Z', version: 6 };
 
-    it('delegates to service.testPromptTemplate with id + body when no If-Match header', async () => {
-      mockService.testPromptTemplate.mockResolvedValue(fakeResult);
-      const body = { variables: { topic: 'asthma' }, expectedVersion: 5 };
+    it('delegates to service.finalizePromptTemplateTest with id + body when no If-Match header', async () => {
+      mockService.finalizePromptTemplateTest.mockResolvedValue(fakeResult);
+      const body = { taskId: 'task-1', expectedVersion: 5 };
 
-      await controller.testTemplate('tpl-1', body as any, undefined);
+      await controller.finalizeTestTemplate('tpl-1', body as any, undefined);
 
-      expect(mockService.testPromptTemplate).toHaveBeenCalledWith('tpl-1', body);
+      expect(mockService.finalizePromptTemplateTest).toHaveBeenCalledWith('tpl-1', body);
     });
 
     it('folds the If-Match header into expectedVersion (header wins) — OCC parity with update', async () => {
-      mockService.testPromptTemplate.mockResolvedValue(fakeResult);
+      mockService.finalizePromptTemplateTest.mockResolvedValue(fakeResult);
 
-      await controller.testTemplate('tpl-1', { variables: {}, expectedVersion: 99 } as any, 7);
+      await controller.finalizeTestTemplate('tpl-1', { taskId: 'task-1', expectedVersion: 99 } as any, 7);
 
-      expect(mockService.testPromptTemplate).toHaveBeenCalledWith('tpl-1', expect.objectContaining({ expectedVersion: 7 }));
+      expect(mockService.finalizePromptTemplateTest).toHaveBeenCalledWith('tpl-1', expect.objectContaining({ expectedVersion: 7 }));
     });
 
     it('returns the score + output result DTO from the service', async () => {
-      mockService.testPromptTemplate.mockResolvedValue(fakeResult);
+      mockService.finalizePromptTemplateTest.mockResolvedValue(fakeResult);
 
-      const result = await controller.testTemplate('tpl-1', { expectedVersion: 1 } as any, undefined);
+      const result = await controller.finalizeTestTemplate('tpl-1', { taskId: 'task-1' } as any, undefined);
 
       expect(result.score).toBe(0.92);
       expect(result.output).toBe('Generated output');

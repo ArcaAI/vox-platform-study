@@ -166,7 +166,11 @@ export interface TestTemplateRequest {
   provider?: string;
   /** Explicit model override; only meaningful alongside `provider`. */
   model?: string;
-  /** Skip persisting score/output to the row (the row's OCC version is unaffected). */
+  /**
+   * Assemble the prompt ONLY — no generation, no task, instant response
+   * (BUG-018). The ack comes back as `mode: 'dry-run'` carrying
+   * `assembledPrompt`.
+   */
   dryRun?: boolean;
   /** Test a specific pinned PromptVersion instead of the current draft content. */
   versionNumber?: number;
@@ -181,6 +185,30 @@ export interface PromptTestMetrics {
   jsonValid: boolean | null;
   variablesDeclared: number;
   variableCoverage: number | null;
+}
+
+/**
+ * POST :id/test ack (BUG-018). The endpoint returns IMMEDIATELY — a blocking
+ * 2–3½ minute generation always 524'd at the CDN. `mode: 'stream'` carries the
+ * SMR task to stream; `mode: 'dry-run'` carries the assembled prompt only and
+ * opens no stream. `provider`/`model` are the EFFECTIVE resolved selection, so
+ * the panel can show which model actually ran.
+ */
+export interface PromptTestAck {
+  mode: 'stream' | 'dry-run';
+  provider: string;
+  model: string;
+  assembledPrompt: string;
+  /** Present on `mode: 'stream'` only. */
+  taskId?: string;
+  /** Gateway SSE path (`text/tasks/<taskId>/stream`); `mode: 'stream'` only. */
+  streamUrl?: string;
+}
+
+/** POST :id/test/finalize body — persists the score once the stream is done. */
+export interface FinalizeTestRequest {
+  taskId: string;
+  expectedVersion: number;
 }
 
 /**

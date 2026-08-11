@@ -9,8 +9,9 @@
  * asserts what the client sends, not server behavior.
  */
 
-import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { toast } from 'sonner';
 import { axe } from 'vitest-axe';
 import { renderWithProviders } from '@/test/render';
 import type { PromptTemplate } from '../../api/types';
@@ -113,13 +114,74 @@ function defaultHandler(tpl: PromptTemplate, call: RecordedCall): Response | und
     return Response.json(GOLDEN_CASES);
   }
   if (call.method === 'POST' && path === `/api/hope/admin/prompt-templates/${tpl.id}/test`) {
+    const dryRun = (call.body as { dryRun?: boolean }).dryRun === true;
+    return Response.json(
+      dryRun
+        ? { mode: 'dry-run', provider: 'azure', model: 'gpt-4o', assembledPrompt: 'ASSEMBLED PROMPT TEXT' }
+        : {
+            mode: 'stream',
+            provider: 'azure',
+            model: 'gpt-4o',
+            assembledPrompt: 'ASSEMBLED PROMPT TEXT',
+            taskId: 'task-9',
+            streamUrl: 'text/tasks/task-9/stream',
+          },
+    );
+  }
+  if (call.method === 'POST' && path === `/api/hope/admin/prompt-templates/${tpl.id}/test/finalize`) {
     return Response.json({ id: 'tr-1', score: 0.9, output: 'note', testedAt: '2026-08-01T00:00:00.000Z', version: tpl.version + 1 });
+  }
+  if (call.method === 'POST' && path === '/api/auth/stream-ticket') {
+    return Response.json({ ticket: 'tkt-1', expiresAt: Date.now() + 30_000, scope: 'smr_task:task-9' });
   }
   return undefined;
 }
 
+/** Instrumented EventSource double (mirrors the use-task-stream test). */
+class FakeEventSource {
+  static instances: FakeEventSource[] = [];
+  readonly url: string;
+  readonly listeners = new Map<string, Array<(event: MessageEvent) => void>>();
+  onopen: (() => void) | null = null;
+  onmessage: ((event: MessageEvent) => void) | null = null;
+  onerror: ((event?: Event) => void) | null = null;
+  closed = false;
+
+  constructor(url: string) {
+    this.url = url;
+    FakeEventSource.instances.push(this);
+  }
+
+  addEventListener(name: string, listener: (event: MessageEvent) => void): void {
+    this.listeners.set(name, [...(this.listeners.get(name) ?? []), listener]);
+  }
+
+  close(): void {
+    this.closed = true;
+  }
+
+  emit(type: string, data: string): void {
+    for (const listener of this.listeners.get(type) ?? []) listener({ data } as MessageEvent);
+  }
+}
+
+/** Waits for the EventSource the panel opened after the ack resolves. */
+async function openedStream(): Promise<FakeEventSource> {
+  await waitFor(() => expect(FakeEventSource.instances.length).toBeGreaterThan(0));
+  const source = FakeEventSource.instances[0]!;
+  act(() => source.onopen?.());
+  return source;
+}
+
+/** Turns off the dry-run switch (default ON) so the run opens a stream. */
+async function disableDryRun(): Promise<void> {
+  fireEvent.click(await screen.findByRole('switch', { name: 'Dry run' }));
+}
+
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.clearAllMocks();
+  FakeEventSource.instances = [];
   cleanup();
 });
 
@@ -199,6 +261,83 @@ describe('TestRunPanel', () => {
     await waitFor(() => expect(calls.some((call) => call.method === 'POST')).toBe(true));
     const post = calls.find((call) => call.method === 'POST');
     expect((post?.body as { dryRun?: boolean }).dryRun).toBe(true);
+  });
+
+  it('streams chunk frames into the output as they arrive (BUG-018)', async () => {
+    vi.stubGlobal('EventSource', FakeEventSource);
+    stubFetch((call) => defaultHandler(template(), call));
+    renderWithProviders(<TestRunPanel template={template()} />);
+
+    await waitFor(() => expect(screen.getByRole('button', { name: /run test/i })).toHaveProperty('disabled', false));
+    await disableDryRun();
+    fireEvent.click(screen.getByRole('button', { name: /run test/i }));
+
+    // Queued: the ack landed, no chunk yet — a Skeleton, never a spinner or "Loading…".
+    const queued = await screen.findByTestId('test-run-output-skeleton');
+    expect(queued).toBeDefined();
+
+    const source = await openedStream();
+    act(() => source.emit('chunk', JSON.stringify({ type: 'chunk', content: 'Hello ' })));
+    act(() => source.emit('chunk', JSON.stringify({ type: 'chunk', content: 'world' })));
+
+    expect(await screen.findByText(/Hello world/)).toBeDefined();
+    // The effective model is surfaced (the reported "why LM Studio?" symptom).
+    expect(screen.getByText(/azure/)).toBeDefined();
+    expect(screen.getByText(/gpt-4o/)).toBeDefined();
+  });
+
+  it('finalizes once the stream reports done and renders the score', async () => {
+    vi.stubGlobal('EventSource', FakeEventSource);
+    const calls = stubFetch((call) => defaultHandler(template(), call));
+    renderWithProviders(<TestRunPanel template={template()} />);
+
+    await waitFor(() => expect(screen.getByRole('button', { name: /run test/i })).toHaveProperty('disabled', false));
+    await disableDryRun();
+    fireEvent.click(screen.getByRole('button', { name: /run test/i }));
+
+    const source = await openedStream();
+    act(() => source.emit('chunk', JSON.stringify({ type: 'chunk', content: 'note' })));
+    act(() => source.emit('done', JSON.stringify({ type: 'done', data: { finish_reason: 'stop' } })));
+
+    await waitFor(() => {
+      const finalize = calls.find((call) => pathOf(call).endsWith('/test/finalize'));
+      expect(finalize).toBeDefined();
+      expect((finalize?.body as { taskId?: string }).taskId).toBe('task-9');
+      // The OCC write still presents If-Match from the detail read's ETag.
+      expect(finalize?.headers['if-match']).toBe('"2"');
+    });
+    expect(await screen.findByText('90%')).toBeDefined();
+  });
+
+  it('renders the assembled prompt for a dry run and opens NO stream', async () => {
+    vi.stubGlobal('EventSource', FakeEventSource);
+    stubFetch((call) => defaultHandler(template(), call));
+    renderWithProviders(<TestRunPanel template={template()} />);
+
+    await waitFor(() => expect(screen.getByRole('button', { name: /run test/i })).toHaveProperty('disabled', false));
+    fireEvent.click(screen.getByRole('button', { name: /run test/i }));
+
+    expect(await screen.findByText('ASSEMBLED PROMPT TEXT')).toBeDefined();
+    expect(screen.getByText(/this is the prompt that would be sent, not model output/i)).toBeDefined();
+    expect(FakeEventSource.instances).toHaveLength(0);
+  });
+
+  it('toasts a stream error frame and leaves the run re-runnable with its output kept', async () => {
+    vi.stubGlobal('EventSource', FakeEventSource);
+    stubFetch((call) => defaultHandler(template(), call));
+    renderWithProviders(<TestRunPanel template={template()} />);
+
+    await waitFor(() => expect(screen.getByRole('button', { name: /run test/i })).toHaveProperty('disabled', false));
+    await disableDryRun();
+    fireEvent.click(screen.getByRole('button', { name: /run test/i }));
+
+    const source = await openedStream();
+    act(() => source.emit('chunk', JSON.stringify({ type: 'chunk', content: 'partial' })));
+    act(() => source.emit('error', JSON.stringify({ type: 'error', data: { error: 'upstream exploded' } })));
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('upstream exploded'));
+    expect(screen.getByText(/partial/)).toBeDefined();
+    expect(screen.getByRole('button', { name: /run test/i })).toHaveProperty('disabled', false);
   });
 
   it('has no axe violations', async () => {

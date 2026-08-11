@@ -95,6 +95,21 @@ export const SYSTEM_AI_TASK_DEFAULTS: AiTaskDefaultSeed[] = [
     taskKey: 'smr.finalize',
     modelSlug: 'lms-gemma-4-e2b-it-qat',
   },
+  // BUG-018 — the prompt-template Test button's own routing key. It exists so
+  // the Test path resolves through AiTaskDefault ALONE: before this row the
+  // key was consulted, missed, and the caller fell through to the HARNESS
+  // `smr.finalize` cascade to find any model at all — which is how a tenant
+  // that had selected Azure OpenAI still ran every template test on the
+  // platform's LM Studio gemma. Testing a prompt is prompt-authoring, not
+  // clinical documentation; it must not read harness policy to pick a model.
+  // Seeded at the same platform default so behaviour is unchanged for tenants
+  // that never override it; a tenant admin may repoint `smr.test` freely.
+  {
+    id: '86000000-0000-0000-0000-000000000010',
+    tenantId: SYSTEM_TENANT_ID,
+    taskKey: 'smr.test',
+    modelSlug: 'lms-gemma-4-e2b-it-qat',
+  },
   // Guardrail selection moved out of env into the DB control plane
   // (Phase B). Both keys are GLOBAL-ADMIN-only.
   {

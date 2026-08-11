@@ -6,6 +6,8 @@ export * from './prompt-version-diff.response';
 export * from './assign-department-prompt.request';
 export * from './test-prompt-template.request';
 export * from './prompt-test-result.response';
+export * from './prompt-test-ack.response';
+export * from './finalize-prompt-test.request';
 export * from './prompt-usage-analytics.response';
 export * from './prompt-usage-record.response';
 export * from './set-preferred-template.request';

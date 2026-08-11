@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { IconBuildingCommunity, IconCheck, IconPlayerPlay, IconSelector } from '@tabler/icons-react';
 import { toast } from 'sonner';
 import { cn } from '@arcaai/ui';
@@ -21,8 +21,10 @@ import { GatewayError } from '@/shared/api';
 import { useTextProviders } from '@/shared/catalog';
 import { formatDateTime, formatNumber, formatPercent, formatRelativeTime } from '@/shared/format';
 import { OccConflictAlert } from '@/shared/occ/occ-alert';
+import { useTaskStream } from '@/shared/streams';
 import {
   useAssignDepartment,
+  useFinalizeTemplateTest,
   useDepartments,
   useEvalGoldenCases,
   useEvalGoldenSets,
@@ -33,7 +35,7 @@ import {
   useUsageStats,
   useVersions,
 } from '../api/hooks';
-import type { AssignDepartmentRequest, EvalGoldenCase, PromptTemplate, PromptUsageByDay } from '../api/types';
+import type { AssignDepartmentRequest, EvalGoldenCase, PromptTemplate, PromptTestAck, PromptTestResult, PromptUsageByDay } from '../api/types';
 
 /** Sentinel Select values — Radix Select rejects an empty-string item value. */
 const TENANT_DEFAULT = '__tenant_default__';
@@ -257,13 +259,12 @@ function GoldenCasePicker({
 }
 
 /**
- * Frame 32 panel (c): dry-run the selected template (POST :id/test — an OCC
- * write with PATCH parity, so If-Match comes from the panel's own detail
- * read), assign it to a department slot, and summarize usage (analytics/usage
+ * Frame 32 panel (c): test the selected template, assign it to a department
+ * slot, and summarize usage (analytics/usage
  * + :id/usage + a usage-records peek). Parents key this by template id.
  */
 export function TestRunPanel({ template }: { template: PromptTemplate }) {
-  // Detail read keeps the ETag the test run must present as If-Match.
+  // Detail read keeps the ETag the finalize step must present as If-Match.
   const detail = useTemplate(template.id);
   const runTest = useTestTemplate();
   const usageStats = useUsageStats(template.id);
@@ -305,19 +306,72 @@ export function TestRunPanel({ template }: { template: PromptTemplate }) {
   const [versionChoice, setVersionChoice] = useState(DRAFT_VERSION);
   const versions = [...(versionsQuery.data ?? [])].sort((a, b) => b.versionNumber - a.versionNumber);
 
-  // The test result returns the row's NEW version, so consecutive runs
-  // stay OCC-consistent without refetching the detail read.
-  const etag = runTest.data ? `"${runTest.data.version}"` : (detail.data?.etag ?? null);
-  const result = runTest.data;
+  // BUG-018 run state. POST :id/test now ACKS immediately (the blocking call
+  // always 524'd at the CDN); the generation arrives over the SMR task SSE and
+  // only the finalize step writes, so the ETag is still owed to THAT call.
+  const finalize = useFinalizeTemplateTest();
+  const [ack, setAck] = useState<PromptTestAck | null>(null);
+  const [taskId, setTaskId] = useState<string | null>(null);
+  const [result, setResult] = useState<PromptTestResult | null>(null);
+  const stream = useTaskStream(taskId);
+
+  // Finalize persists the row's NEW version, so consecutive runs stay
+  // OCC-consistent without refetching the detail read.
+  const etag = result ? `"${result.version}"` : (detail.data?.etag ?? null);
   const occError =
-    runTest.error instanceof GatewayError && (runTest.error.isVersionConflict || runTest.error.isMissingPrecondition) ? runTest.error : null;
+    finalize.error instanceof GatewayError && (finalize.error.isVersionConflict || finalize.error.isMissingPrecondition) ? finalize.error : null;
   const missingGoldenCase = exampleSource === 'golden' && !goldenCaseId;
 
+  // One finalize per task, and one error toast per task — the stream's state is
+  // re-rendered many times before it settles.
+  const finalizedTaskRef = useRef<string | null>(null);
+  const notifiedTaskRef = useRef<string | null>(null);
+  // The `versionNumber` THIS run was started with. Scoring happens at finalize
+  // and reads the tested content/variables, so a pinned-version run must be
+  // finalized against the same snapshot — the version picker may well have moved
+  // on while the stream was running.
+  const runVersionRef = useRef<number | undefined>(undefined);
+
+  const finalizeMutate = finalize.mutate;
+  useEffect(() => {
+    if (!taskId || stream.status !== 'done') return;
+    if (finalizedTaskRef.current === taskId || !etag) return;
+    finalizedTaskRef.current = taskId;
+    finalizeMutate(
+      { id: template.id, taskId, etag, versionNumber: runVersionRef.current },
+      {
+        onSuccess: (persisted) => setResult(persisted),
+        onError: (error) => {
+          // A 412/428 renders the inline OCC alert instead of a toast.
+          if (error instanceof GatewayError && (error.isVersionConflict || error.isMissingPrecondition)) return;
+          toast.error(error instanceof GatewayError ? error.message : 'The run finished but its score could not be saved.');
+        },
+      },
+    );
+  }, [taskId, stream.status, etag, finalizeMutate, template.id]);
+
+  // A failed/dropped stream keeps whatever streamed so far — the panel stays
+  // re-runnable rather than resetting the user's work.
+  useEffect(() => {
+    if (!taskId || (stream.status !== 'failed' && stream.status !== 'error')) return;
+    if (notifiedTaskRef.current === taskId) return;
+    notifiedTaskRef.current = taskId;
+    toast.error(stream.error ?? 'The test run stream failed.');
+  }, [taskId, stream.status, stream.error]);
+
+  const streaming = !!taskId && (stream.status === 'connecting' || stream.status === 'streaming');
+  const running = runTest.isPending || streaming || finalize.isPending;
+
   function handleRun() {
-    if (!etag || missingGoldenCase) return;
+    if (missingGoldenCase || running) return;
     const provider = providerChoice !== TENANT_DEFAULT ? providerChoice : undefined;
     const model = provider && modelChoice !== TENANT_DEFAULT ? modelChoice : undefined;
     const versionNumber = versionChoice !== DRAFT_VERSION ? Number(versionChoice) : undefined;
+    runVersionRef.current = versionNumber;
+    setAck(null);
+    setTaskId(null);
+    setResult(null);
+    finalize.reset();
     runTest.mutate(
       {
         id: template.id,
@@ -328,14 +382,14 @@ export function TestRunPanel({ template }: { template: PromptTemplate }) {
           ...(model ? { model } : {}),
           ...(versionNumber !== undefined ? { versionNumber } : {}),
         },
-        etag,
       },
       {
-        onError: (error) => {
-          // A 412/428 renders the inline OCC alert instead of a toast.
-          if (error instanceof GatewayError && (error.isVersionConflict || error.isMissingPrecondition)) return;
-          toast.error(error instanceof GatewayError ? error.message : 'The test run failed.');
+        onSuccess: (received) => {
+          setAck(received);
+          // A dry run assembles the prompt only — no task, no stream opened.
+          if (received.mode === 'stream' && received.taskId) setTaskId(received.taskId);
         },
+        onError: (error) => toast.error(error instanceof GatewayError ? error.message : 'The test run failed.'),
       },
     );
   }
@@ -346,7 +400,7 @@ export function TestRunPanel({ template }: { template: PromptTemplate }) {
         <h2 className="flex flex-wrap items-baseline gap-x-2 text-sm leading-none font-semibold">
           Test run
           <span aria-hidden className="text-muted-foreground font-mono text-xs font-normal">
-            POST :id/test
+            POST :id/test {'\u2192'} SSE
           </span>
         </h2>
       </CardHeader>
@@ -482,26 +536,55 @@ export function TestRunPanel({ template }: { template: PromptTemplate }) {
         <div className="flex items-start justify-between gap-3 rounded-md border p-3">
           <div className="flex min-w-0 flex-col gap-0.5">
             <Label htmlFor="test-run-dry-run">Dry run</Label>
-            <p className="text-muted-foreground text-xs">Don&rsquo;t save results to the template &mdash; the row&rsquo;s OCC version is unaffected.</p>
+            <p className="text-muted-foreground text-xs">
+              Assemble the prompt only &mdash; no generation is run and nothing is saved to the template.
+            </p>
           </div>
           <Switch id="test-run-dry-run" checked={dryRun} onCheckedChange={setDryRun} />
         </div>
-        <Button size="sm" className="self-start" disabled={!etag || runTest.isPending || missingGoldenCase} onClick={handleRun}>
-          {runTest.isPending ? <Spinner /> : <IconPlayerPlay aria-hidden />}
+        <Button size="sm" className="self-start" disabled={!etag || running || missingGoldenCase} onClick={handleRun}>
+          {running ? <Spinner /> : <IconPlayerPlay aria-hidden />}
           Run test
         </Button>
-        {result ? (
+        {ack ? (
           <div className="flex flex-col gap-1.5">
             <div className="text-muted-foreground flex flex-wrap items-center gap-x-2 text-xs">
               <span>
-                Score <span className="text-foreground font-medium tabular-nums">{formatPercent(result.score * 100)}</span>
+                {ack.mode === 'dry-run' ? 'Assembled prompt' : 'Model output'} {'\u00b7'} <span className="text-foreground font-medium">{ack.provider}</span>{' '}
+                {'/'} <span className="text-foreground font-medium font-mono">{ack.model}</span>
               </span>
-              <span aria-hidden>{'\u00b7'}</span>
-              <span>{formatDateTime(result.testedAt)}</span>
+              {result ? (
+                <>
+                  <span aria-hidden>{'\u00b7'}</span>
+                  <span>
+                    Score <span className="text-foreground font-medium tabular-nums">{formatPercent(result.score * 100)}</span>
+                  </span>
+                  <span aria-hidden>{'\u00b7'}</span>
+                  <span>{formatDateTime(result.testedAt)}</span>
+                </>
+              ) : null}
             </div>
-            <pre className="bg-muted/40 max-h-56 overflow-y-auto rounded-md border p-2 font-mono text-xs break-words whitespace-pre-wrap">
-              {result.output}
-            </pre>
+            {ack.mode === 'dry-run' ? (
+              <p className="text-muted-foreground text-xs">
+                Dry run {'\u2014'} this is the prompt that would be sent, not model output. No generation was run.
+              </p>
+            ) : null}
+            {ack.mode === 'stream' && !stream.content ? (
+              // Queued: the ack landed, the first token has not. Skeleton
+              // matching the output block (rule 10 — never a spinner here).
+              <div data-testid="test-run-output-skeleton" aria-label="Waiting for the model's first tokens" className="flex flex-col gap-1.5">
+                <Skeleton className="h-4 w-full" />
+                <Skeleton className="h-4 w-11/12" />
+                <Skeleton className="h-4 w-3/5" />
+              </div>
+            ) : (
+              <pre
+                aria-live="polite"
+                className="bg-muted/40 max-h-56 overflow-y-auto rounded-md border p-2 font-mono text-xs break-words whitespace-pre-wrap"
+              >
+                {ack.mode === 'dry-run' ? ack.assembledPrompt : (result?.output ?? stream.content)}
+              </pre>
+            )}
           </div>
         ) : null}
         <Separator />

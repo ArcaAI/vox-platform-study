@@ -2,7 +2,8 @@
  * Agents & prompt-template administration (capabilities-matrix row 25). All
  * paths are gateway-relative under the /api/hope BFF proxy. Two routes are
  * optimistic-concurrency writes requiring If-Match: PATCH :id AND POST
- * :id/test (the test run persists lastTestScore/lastTestOutput). The version
+ * :id/test/finalize (which persists lastTestScore/lastTestOutput once the test
+ * stream completes — POST :id/test itself is a non-writing ack). The version
  * activate POST is server-driven (no If-Match). assign-department carries the
  * DEPARTMENT row's expectedVersion, so the dialog reads /admin/departments
  * first (that list also feeds the department filter/select).
@@ -27,6 +28,7 @@ import type {
   ListTemplatesParams,
   ListUsageRecordsParams,
   PromptTemplate,
+  PromptTestAck,
   PromptTestResult,
   PromptUsageAnalytics,
   PromptUsageRecord,
@@ -106,15 +108,32 @@ export async function approveTemplate(id: string, reason: string | undefined, et
 }
 
 /**
- * Test run — an OCC WRITE with PATCH parity (persists score/output): If-Match
- * required, expectedVersion folded into the body from the same ETag. The
- * result carries the row's NEW version so the caller can continue without a
- * re-fetch.
+ * Test run — ACK ONLY (BUG-018). The endpoint returns immediately and writes
+ * nothing, so it no longer requires If-Match: the OCC write moved to
+ * `/test/finalize`, called once the SSE stream reports done.
  */
-export async function testTemplate(id: string, body: TestTemplateRequest, etag: string): Promise<PromptTestResult> {
-  const response = await request<PromptTestResult>(`${templatePath(id)}/test`, {
+export function testTemplate(id: string, body: TestTemplateRequest): Promise<PromptTestAck> {
+  return postJson(`${templatePath(id)}/test`, body);
+}
+
+/**
+ * Persists the score/output for a completed test run. This is the OCC write:
+ * If-Match required (missing → 428, drift → 412), expectedVersion folded into
+ * the body from the same ETag. The result carries the row's NEW version so the
+ * caller can keep running without a re-fetch.
+ */
+export async function finalizeTemplateTest(
+  id: string,
+  taskId: string,
+  etag: string,
+  // Echo of the `versionNumber` the run was STARTED with. Scoring reads the
+  // tested content/variables, so a pinned-version run must be finalized against
+  // the same snapshot — omitting it scores the run against the mutable draft.
+  versionNumber?: number,
+): Promise<PromptTestResult> {
+  const response = await request<PromptTestResult>(`${templatePath(id)}/test/finalize`, {
     method: 'POST',
-    body: { ...body, expectedVersion: versionFromEtag(etag) },
+    body: { taskId, expectedVersion: versionFromEtag(etag), ...(versionNumber !== undefined ? { versionNumber } : {}) },
     etag,
   });
   return response.data;

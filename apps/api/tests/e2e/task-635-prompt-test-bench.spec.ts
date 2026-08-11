@@ -21,9 +21,12 @@
  *     uses the SAME `!goldenCase || goldenCase.tenantId !== tenantId` branch
  *     for both cases (404-over-403), so a synthetic nonexistent id exercises
  *     the identical code path a genuine cross-tenant id would.
- *   - `@RequiresIfMatch()`: missing `If-Match` → `428` on every call
- *     (including dry runs); the header is checked before the handler body
- *     runs, so it never depends on SMR.
+ *   - BUG-018: `POST :id/test` is now a SUBMIT that returns a
+ *     `PromptTestAckResponse` (`mode`, `provider`, `model`, `assembledPrompt`,
+ *     and `taskId`/`streamUrl` in stream mode) WITHOUT awaiting the LLM. It no
+ *     longer writes, so `@RequiresIfMatch()` moved to the new
+ *     `POST :id/test/finalize`, where the OCC write lives. `dryRun: true` makes
+ *     no SMR call at all, so it is fully deterministic now.
  *
  * SMR dependency (house pattern from `agent-management-contract.spec.ts`,
  * frame-33 test). Every SUCCESS branch of `testPromptTemplate` calls
@@ -78,13 +81,13 @@ interface PromptTemplateRow {
   version: number;
 }
 
-interface PromptTestResult {
-  id: string;
-  score: number;
-  output: string;
-  testedAt: string;
-  version: number;
-  metrics?: Record<string, unknown>;
+interface PromptTestAck {
+  mode: 'stream' | 'dry-run';
+  provider: string;
+  model: string;
+  assembledPrompt: string;
+  taskId?: string;
+  streamUrl?: string;
 }
 
 const auth = (token: string) => ({ Authorization: `Bearer ${token}` });
@@ -148,7 +151,7 @@ test.describe.serial('prompt-template test bench (TASK-635 Lane B · tenant_admi
 
   // ── B2 — dry-run: score/generate WITHOUT touching the resource ─────────
 
-  test('dry-run: 200 with output+score; a follow-up GET proves ETag/_version are UNCHANGED', async ({ request }) => {
+  test('dry-run: acks with the assembled prompt and leaves ETag/_version UNCHANGED (no SMR call at all)', async ({ request }) => {
     const before = await request.get(`${PROMPTS}/${promptId}`, { headers: auth(tenantAdminToken) });
     expect(before.status()).toBe(200);
     const beforeRow = (await before.json()) as PromptTemplateRow;
@@ -156,70 +159,98 @@ test.describe.serial('prompt-template test bench (TASK-635 Lane B · tenant_admi
     expect(beforeEtag, 'GET stamps an ETag from the row version').toBe(`"${beforeRow.version}"`);
 
     const res = await request.post(`${PROMPTS}/${promptId}/test`, {
-      headers: ifMatch(tenantAdminToken, beforeRow.version),
+      headers: auth(tenantAdminToken),
       data: { sampleInput: 'Patient reports 3 days of dry cough, no fever.', variables: { department: 'General Medicine' }, dryRun: true },
     });
-    // Deterministic gate: If-Match was present and correct, so the OCC/tenant
-    // checks all pass regardless of whether SMR itself answers.
-    expect(res.status(), 'If-Match present + owned template ⇒ never 428/404').not.toBe(428);
-    expect(res.status()).not.toBe(404);
+    // BUG-018: fully deterministic — a dry run never touches SMR, so this is a
+    // hard assertion, not a generation-gated one. (A 400 here means no
+    // `smr.test` AiTaskDefault is configured in the stack — a real regression.)
+    expect(GENERATION_SUCCESS_STATUSES, `dry-run submit → ${res.status()}`).toContain(res.status());
+    const ack = (await res.json()) as PromptTestAck;
+    expect(ack.mode).toBe('dry-run');
+    expect(ack.assembledPrompt).toContain('General Medicine');
+    expect(ack.assembledPrompt).toContain('dry cough');
+    expect(ack.taskId, 'a dry run submits no job').toBeUndefined();
+    expect(typeof ack.provider).toBe('string');
+    expect(typeof ack.model).toBe('string');
 
-    if (loggedGenerationAvailable(res.status(), 'dry-run test')) {
-      const result = (await res.json()) as PromptTestResult;
-      expect(typeof result.output).toBe('string');
-      expect(typeof result.score).toBe('number');
-      expect(result.score).toBeGreaterThanOrEqual(0);
-      expect(result.score).toBeLessThanOrEqual(1);
-      expect(result.version, 'dry-run response echoes the UNCHANGED row version').toBe(beforeRow.version);
-
-      const after = await request.get(`${PROMPTS}/${promptId}`, { headers: auth(tenantAdminToken) });
-      expect(after.status()).toBe(200);
-      const afterRow = (await after.json()) as PromptTemplateRow;
-      expect(afterRow.version, 'dry-run never bumps _version').toBe(beforeRow.version);
-      expect(after.headers()['etag'], 'dry-run never moves the ETag').toBe(beforeEtag);
-    }
+    const after = await request.get(`${PROMPTS}/${promptId}`, { headers: auth(tenantAdminToken) });
+    expect(after.status()).toBe(200);
+    const afterRow = (await after.json()) as PromptTemplateRow;
+    expect(afterRow.version, 'the submit never bumps _version').toBe(beforeRow.version);
+    expect(after.headers()['etag'], 'the submit never moves the ETag').toBe(beforeEtag);
   });
 
-  // ── B2 — non-dry-run (default): the run IS an OCC write ────────────────
+  // ── BUG-018 — the streaming submit acks immediately and does not write ──
 
-  test('non-dry-run (dryRun omitted): persists lastTest* and bumps _version by exactly 1', async ({ request }) => {
+  test('stream submit: returns { taskId, streamUrl } fast and leaves _version UNCHANGED', async ({ request }) => {
     const before = await request.get(`${PROMPTS}/${promptId}`, { headers: auth(tenantAdminToken) });
     const beforeRow = (await before.json()) as PromptTemplateRow;
 
+    const startedAt = Date.now();
     const res = await request.post(`${PROMPTS}/${promptId}/test`, {
-      headers: ifMatch(tenantAdminToken, beforeRow.version),
+      headers: auth(tenantAdminToken),
       data: { sampleInput: 'Patient reports 3 days of dry cough, no fever.', variables: { department: 'General Medicine' } },
     });
-    expect(res.status(), 'If-Match present + owned template ⇒ never 428/404').not.toBe(428);
-    expect(res.status()).not.toBe(404);
+    const elapsedMs = Date.now() - startedAt;
+    expect(res.status(), 'owned template ⇒ never 404, and never 428 (this route no longer writes)').not.toBe(404);
+    expect(res.status()).not.toBe(428);
 
-    if (loggedGenerationAvailable(res.status(), 'non-dry-run test')) {
-      const result = (await res.json()) as PromptTestResult;
-      expect(result.version, 'persisted run bumps _version by exactly 1').toBe(beforeRow.version + 1);
-
-      const after = await request.get(`${PROMPTS}/${promptId}`, { headers: auth(tenantAdminToken) });
-      const afterRow = (await after.json()) as PromptTemplateRow;
-      expect(afterRow.version).toBe(beforeRow.version + 1);
-      expect(after.headers()['etag']).toBe(`"${beforeRow.version + 1}"`);
+    if (loggedGenerationAvailable(res.status(), 'stream submit')) {
+      const ack = (await res.json()) as PromptTestAck;
+      expect(ack.mode).toBe('stream');
+      expect(ack.taskId, 'the ack carries the SMR generation task id').toBeTruthy();
+      expect(ack.streamUrl).toBe(`text/tasks/${ack.taskId}/stream`);
+      // The whole point of BUG-018: no CDN in front of the gateway will hold a
+      // 2-3 minute response. The submit must return long before any ceiling.
+      expect(elapsedMs, 'the submit must not await the generation').toBeLessThan(30_000);
     }
+
+    // Either way, submitting is not a write.
+    const after = await request.get(`${PROMPTS}/${promptId}`, { headers: auth(tenantAdminToken) });
+    const afterRow = (await after.json()) as PromptTemplateRow;
+    expect(afterRow.version, 'the submit is not an OCC write').toBe(beforeRow.version);
+  });
+
+  // ── BUG-018 — finalize is where the OCC write (and the If-Match gate) lives ──
+
+  test('finalize: missing If-Match → 428 (checked before the handler body)', async ({ request }) => {
+    const res = await request.post(`${PROMPTS}/${promptId}/test/finalize`, {
+      headers: auth(tenantAdminToken),
+      data: { taskId: 'no-such-task' },
+    });
+    expect(res.status()).toBe(428);
+  });
+
+  test('finalize: an unknown taskId → 404 or 400, never a write', async ({ request }) => {
+    const before = await request.get(`${PROMPTS}/${promptId}`, { headers: auth(tenantAdminToken) });
+    const beforeRow = (await before.json()) as PromptTemplateRow;
+
+    const res = await request.post(`${PROMPTS}/${promptId}/test/finalize`, {
+      headers: ifMatch(tenantAdminToken, beforeRow.version),
+      data: { taskId: 'no-such-task-635' },
+    });
+    expect([400, 404], `unknown task finalize → ${res.status()}`).toContain(res.status());
+
+    const after = await request.get(`${PROMPTS}/${promptId}`, { headers: auth(tenantAdminToken) });
+    const afterRow = (await after.json()) as PromptTemplateRow;
+    expect(afterRow.version, 'a failed finalize never writes').toBe(beforeRow.version);
   });
 
   // ── B1 — explicit provider/model ────────────────────────────────────────
 
   test('explicit provider/model: a known ENABLED pair is accepted (dry-run, 200 when SMR is up)', async ({ request }) => {
-    const before = await request.get(`${PROMPTS}/${promptId}`, { headers: auth(tenantAdminToken) });
-    const beforeRow = (await before.json()) as PromptTemplateRow;
-
     const res = await request.post(`${PROMPTS}/${promptId}/test`, {
-      headers: ifMatch(tenantAdminToken, beforeRow.version),
+      headers: auth(tenantAdminToken),
       data: { sampleInput: 'Patient reports 3 days of dry cough, no fever.', provider: KNOWN_PROVIDER, model: KNOWN_MODEL, dryRun: true },
     });
-    expect(res.status(), 'If-Match present + owned template ⇒ never 428/404').not.toBe(428);
+    expect(res.status(), 'owned template ⇒ never 428/404').not.toBe(428);
     expect(res.status()).not.toBe(404);
 
     if (loggedGenerationAvailable(res.status(), 'known provider/model test')) {
-      const result = (await res.json()) as PromptTestResult;
-      expect(typeof result.output).toBe('string');
+      const ack = (await res.json()) as PromptTestAck;
+      expect(ack.provider).toBe(KNOWN_PROVIDER);
+      expect(ack.model).toBe(KNOWN_MODEL);
     } else if (res.status() === 400) {
       // `callSmrGenerate` wraps ANY axios failure (incl. SMR unreachable) as a
       // 400 too, so a bare status check can't tell "known pair wrongly
@@ -234,11 +265,8 @@ test.describe.serial('prompt-template test bench (TASK-635 Lane B · tenant_admi
   });
 
   test('explicit provider/model: an unknown/disabled pair → 400 (validated before the SMR call, deterministic)', async ({ request }) => {
-    const before = await request.get(`${PROMPTS}/${promptId}`, { headers: auth(tenantAdminToken) });
-    const beforeRow = (await before.json()) as PromptTemplateRow;
-
     const res = await request.post(`${PROMPTS}/${promptId}/test`, {
-      headers: ifMatch(tenantAdminToken, beforeRow.version),
+      headers: auth(tenantAdminToken),
       data: { sampleInput: 'x', provider: 'no-such-provider', model: 'no-such-model', dryRun: true },
     });
     expect(res.status()).toBe(400);
@@ -247,22 +275,16 @@ test.describe.serial('prompt-template test bench (TASK-635 Lane B · tenant_admi
   // ── B2 — versionNumber: pinned PromptVersion snapshot ───────────────────
 
   test('versionNumber: an out-of-range version → 404 (checked before the SMR call, deterministic)', async ({ request }) => {
-    const before = await request.get(`${PROMPTS}/${promptId}`, { headers: auth(tenantAdminToken) });
-    const beforeRow = (await before.json()) as PromptTemplateRow;
-
     const res = await request.post(`${PROMPTS}/${promptId}/test`, {
-      headers: ifMatch(tenantAdminToken, beforeRow.version),
+      headers: auth(tenantAdminToken),
       data: { sampleInput: 'x', versionNumber: 9999, dryRun: true },
     });
     expect(res.status()).toBe(404);
   });
 
   test('versionNumber: the seeded v1 snapshot resolves (dry-run, 200 when SMR is up)', async ({ request }) => {
-    const before = await request.get(`${PROMPTS}/${promptId}`, { headers: auth(tenantAdminToken) });
-    const beforeRow = (await before.json()) as PromptTemplateRow;
-
     const res = await request.post(`${PROMPTS}/${promptId}/test`, {
-      headers: ifMatch(tenantAdminToken, beforeRow.version),
+      headers: auth(tenantAdminToken),
       data: { sampleInput: 'x', variables: { department: 'General Medicine' }, versionNumber: 1, dryRun: true },
     });
     // Deterministic gate: v1 exists (created alongside the template in
@@ -271,50 +293,34 @@ test.describe.serial('prompt-template test bench (TASK-635 Lane B · tenant_admi
     expect(res.status()).not.toBe(428);
 
     if (loggedGenerationAvailable(res.status(), 'versionNumber=1 test')) {
-      const result = (await res.json()) as PromptTestResult;
-      expect(typeof result.output).toBe('string');
+      const ack = (await res.json()) as PromptTestAck;
+      expect(ack.assembledPrompt).toContain('General Medicine');
     }
   });
 
   // ── B3 — goldenCaseId (negative-space only; see file header) ────────────
 
   test('goldenCaseId: both sampleInput AND goldenCaseId → 400 (mutually exclusive, checked before any lookup)', async ({ request }) => {
-    const before = await request.get(`${PROMPTS}/${promptId}`, { headers: auth(tenantAdminToken) });
-    const beforeRow = (await before.json()) as PromptTemplateRow;
-
     const res = await request.post(`${PROMPTS}/${promptId}/test`, {
-      headers: ifMatch(tenantAdminToken, beforeRow.version),
+      headers: auth(tenantAdminToken),
       data: { sampleInput: 'x', goldenCaseId: SYNTHETIC_GOLDEN_CASE_ID, dryRun: true },
     });
     expect(res.status()).toBe(400);
   });
 
   test('goldenCaseId: a nonexistent id → 404 (identical branch a cross-tenant id would take — see file header)', async ({ request }) => {
-    const before = await request.get(`${PROMPTS}/${promptId}`, { headers: auth(tenantAdminToken) });
-    const beforeRow = (await before.json()) as PromptTemplateRow;
-
     const res = await request.post(`${PROMPTS}/${promptId}/test`, {
-      headers: ifMatch(tenantAdminToken, beforeRow.version),
+      headers: auth(tenantAdminToken),
       data: { goldenCaseId: SYNTHETIC_GOLDEN_CASE_ID, dryRun: true },
     });
     expect(res.status()).toBe(404);
-  });
-
-  // ── If-Match gate ────────────────────────────────────────────────────────
-
-  test('missing If-Match → 428 (checked before the handler body, even for a dry run)', async ({ request }) => {
-    const res = await request.post(`${PROMPTS}/${promptId}/test`, {
-      headers: auth(tenantAdminToken),
-      data: { sampleInput: 'x', dryRun: true },
-    });
-    expect(res.status()).toBe(428);
   });
 
   // ── Cross-tenant (404-over-403, task-307 pattern) ───────────────────────
 
   test('cross-tenant: super_admin scoped to ARCAAI cannot test this __GLOBAL__ template (404, never 403/200)', async ({ request }) => {
     const res = await request.post(`${PROMPTS}/${promptId}/test`, {
-      headers: ifMatch(crossTenantToken, 1),
+      headers: auth(crossTenantToken),
       data: { sampleInput: 'x', dryRun: true },
     });
     expect(res.status(), 'cross-tenant test run is 404, never 403 (no existence disclosure)').toBe(404);
