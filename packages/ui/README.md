@@ -107,7 +107,7 @@ Consumers wire styles in one of two ways (both verified in-repo):
 @import '@arcaai/ui/styles.css';
 ```
 
-2. Source scanning (what `apps/ui-playground` does in `src/index.css`) — run Tailwind v4 in the app and point `@source` at this package so utilities used by `@arcaai/ui` components are generated in the app's own sheet:
+2. Source scanning (what `apps/compat-playground` does in `src/index.css`) — run Tailwind v4 in the app and point `@source` at this package so utilities used by `@arcaai/ui` components are generated in the app's own sheet:
 
 ```css
 @import 'tailwindcss';
@@ -190,11 +190,10 @@ The build externalizes `react`, `react-dom`, `react-hook-form`, `react-pdf`, and
 
 ## Current Consumers
 
-Verified by grep on 2026-07-04:
+Verified by grep on 2026-08-11:
 
-| Consumer             | Status                                                              |
-| -------------------- | ------------------------------------------------------------------- |
-| `apps/ui-playground` | Only app consumer (deprecated — no development or maintenance plan) |
-| In-package Storybook | Primary browsing surface for components                             |
-
-The former `apps/admin` consumer was removed; a new admin app is planned and is expected to consume this package.
+| Consumer                 | Status                            |
+| ------------------------ | ---------------------------------- |
+| `apps/admin-console`     | App consumer (Next.js admin app)   |
+| `apps/compat-playground` | App consumer                       |
+| In-package Storybook     | Primary browsing surface for components |

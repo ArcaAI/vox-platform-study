@@ -14,7 +14,6 @@ apps/
   harness/      FastAPI (8866) — clinical documentation harness + Temporal worker
   tts/       FastAPI (8865) — text-to-speech, multi-provider (Azure + local Kokoro/Indic Parler)
   admin-console/ Next.js 16 (5176) — operator UI, BFF auth + gateway proxy
-  ui-playground/ React SDK playground (5175) — DEPRECATED
   example/      Minimal live-transcription demo (5173)
 
 packages/

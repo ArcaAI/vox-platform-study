@@ -20,7 +20,7 @@ const EM_DASH = '\u2014';
  * `aggregateScores` is free-form JSON on the DTO — there is no first-class
  * pass-rate field. The frame's Cases/Pass/Score columns are therefore a
  * best-effort projection over common key spellings, falling back to the first
- * finite numeric metric (the ui-playground precedent) for the score.
+ * finite numeric metric for the score.
  */
 function numericField(scores: unknown, keys: string[]): number | null {
   if (!scores || typeof scores !== 'object' || Array.isArray(scores)) return null;

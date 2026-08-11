@@ -194,8 +194,8 @@ export interface AgenticConfig {
    * Auto-wire the provider's default 401→refresh handler
    * onto the single-slot `AgenticClient.setOnUnauthorized`. Defaults to `true`
    * (refresh works out of the box). Set to `false` when
-   * the host owns its own impersonation-aware 401 handling (e.g. the
-   * ui-playground's `useAutoRefresh`) so the slot has one deterministic owner.
+   * the host owns its own impersonation-aware 401 handling (e.g. a consumer's
+   * `useAutoRefresh`) so the slot has one deterministic owner.
    */
   autoWireTokenRefresh?: boolean;
 }

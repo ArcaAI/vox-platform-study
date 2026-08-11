@@ -3,8 +3,7 @@
 # ══════════════════════════════════════════════════════════════════════════════
 #
 # Monorepo pipeline for:
-#   TypeScript: api (NestJS), ui-playground (React/Vite — DEPRECATED: no
-#               development/maintenance plan; still built + deployed)
+#   TypeScript: api (NestJS)
 #   Python:     stt (FastAPI), smr (FastAPI), nlp (FastAPI)
 #   Infra:      database (Prisma migrations)
 #   SDK:        @arcaai/vox, @arcaai/room, @arcaai/stt, @arcaai/vad,
@@ -16,7 +15,6 @@
 #   staging              — pre-production: validate + test + manual builds + scan + deploy
 #   cicd                 — pipeline testing: all stages, builds manual
 #   release-sdk          — SDK publishing: @arcaai/vox + deps → GitLab Package Registry
-#   release-playground   — ui-playground release: build + push Docker image
 #   maintenance/*        — maintenance branches: validate + test + scan
 #   prod-*               — release-line branch: validate + test only, NO
 #                          builds/deploys (TASK-616 §F11). Production is
@@ -95,9 +93,6 @@ workflow:
     - if: $CI_COMMIT_BRANCH == "release-sdk"
       variables:
         PIPELINE_TYPE: "release_sdk"
-    - if: $CI_COMMIT_BRANCH == "release-playground"
-      variables:
-        PIPELINE_TYPE: "release_playground"
     - if: $CI_COMMIT_BRANCH =~ /^maintenance\//
       variables:
         PIPELINE_TYPE: "feature"

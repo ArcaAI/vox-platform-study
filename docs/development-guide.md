@@ -106,7 +106,7 @@ There is no `.nvmrc`; use any Node >= 22. TypeScript 5.9, Prisma 7, Vitest 4, an
 
 ## 4. Daily development
 
-The aggregate supervisor is `pnpm stack:dev` (`scripts/dev-stack.sh`): it first ensures Docker infra is up (base: core + vault + temporal + rag), then starts api (8868), stt (8861), smr (8862), guardrail (8863), nlp (8864), harness (8866), the harness Temporal worker, and the admin console (5176), tails all logs in the foreground, and stops app processes on Ctrl-C (Docker infra stays up — use `pnpm infra:dev:down` to tear it down). tts (8865) and the deprecated ui-playground are not in the default set — start them explicitly. It refuses to start over busy ports or a second Temporal worker.
+The aggregate supervisor is `pnpm stack:dev` (`scripts/dev-stack.sh`): it first ensures Docker infra is up (base: core + vault + temporal + rag), then starts api (8868), stt (8861), smr (8862), guardrail (8863), nlp (8864), harness (8866), the harness Temporal worker, and the admin console (5176), tails all logs in the foreground, and stops app processes on Ctrl-C (Docker infra stays up — use `pnpm infra:dev:down` to tear it down). tts (8865) is not in the default set — start it explicitly. It refuses to start over busy ports or a second Temporal worker.
 
 ```bash
 pnpm stack:dev                      # ensure base Docker infra, then full app stack
@@ -155,7 +155,6 @@ Support commands:
 | Harness (`apps/harness`) | 8866 | FastAPI + separate Temporal worker process |
 | TTS (`apps/tts`) | 8865 | FastAPI — multi-provider text-to-speech (Azure + local Kokoro/Indic Parler), en+ml |
 | Admin console (`apps/admin-console`) | 5176 (dev) | Next.js 16 App Router — operator UI, BFF-proxies the gateway |
-| ui-playground (`apps/ui-playground`) | 5175 (dev) | React/Vite — **deprecated**, no development plan |
 | example (`apps/example`) | 5173 (dev) | minimal live-transcription demo |
 | PostgreSQL 18 | 5432 | `hope-postgres` (TimescaleDB image, pgvector available) |
 | Redis 8 | 6379 | BullMQ DB 0, cache DB 1, STT streams DB 2, SMR streams DB 3, Dramatiq DB 5 |
@@ -218,7 +217,7 @@ All TypeScript suites load `.env.test` via dotenv-cli — the test stack is full
 
 | Suite | Command | Config | Needs |
 |---|---|---|---|
-| TS unit | `pnpm test:unit` (watch `test:unit:watch`, UI `test:unit:ui`, coverage `test:coverage`) | `vitest.config.ts` | nothing — all `*.test.ts`/`*.spec.ts` excluding integration/e2e/ui-playground/PgBouncer rig |
+| TS unit | `pnpm test:unit` (watch `test:unit:watch`, UI `test:unit:ui`, coverage `test:coverage`) | `vitest.config.ts` | nothing — all `*.test.ts`/`*.spec.ts` excluding integration/e2e/PgBouncer rig |
 | TS integration | `pnpm test:integration` | `vitest.integration.config.ts` | test infra up; runs `**/integration/**/*.test.ts` sequentially against the live test DB |
 | API E2E | `pnpm test:e2e` (UI `test:e2e:ui`, debug `test:e2e:debug`) | `playwright.config.ts` | a running test API: `pnpm test:up:api` first (8868, `.env.test`); specs in `apps/api/tests/e2e/**/*.spec.ts` |
 | Turbo E2E fan-out | `pnpm test:e2e:all` | per-package | runs the turbo `test:e2e` task across packages |

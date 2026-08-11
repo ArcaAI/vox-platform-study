@@ -8,7 +8,6 @@
 #   staging            — validate + test (change-filtered) + manual builds + scan + deploy
 #   cicd               — all stages run (no change filtering), builds manual
 #   release-sdk        — SDK publish only (@arcaai/vox → GitLab Package Registry)
-#   release-playground — ui-playground Docker build + push
 #   maintenance/*      — validate + test (change-filtered) + scan (no builds)
 #
 # NOTE: `dev` runs ALL validate/test jobs unconditionally (no `changes` filter)
@@ -340,7 +339,7 @@
         - apps/api/**/*
         - apps/compat-playground/**/*
         - packages/**/*
-    - if: $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "release_playground"
+    - if: $PIPELINE_TYPE == "release_sdk"
 
 # ── Any Python change ───────────────────────────────────────────────────────
 

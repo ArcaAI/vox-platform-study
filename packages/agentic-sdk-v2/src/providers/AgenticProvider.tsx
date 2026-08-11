@@ -916,7 +916,7 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
     const apiClient = store.apiClient;
     if (!apiClient) return;
     // A host that owns its own 401 handling can opt out
-    // (e.g. ui-playground's impersonation-aware `useAutoRefresh`), leaving the
+    // (e.g. a consumer's impersonation-aware `useAutoRefresh`), leaving the
     // single-slot `setOnUnauthorized` a single deterministic owner. Default
     // (undefined / true) preserves the B2 auto-refresh. Read via `configRef`
     // so this guarded, client-keyed effect doesn't re-run on config identity.

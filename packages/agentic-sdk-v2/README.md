@@ -14,7 +14,7 @@ Last updated: 2026-07-04
 | Optional peer | `highlight.run`                                      | Optional logging transport                                                  |
 | Optional peer | `@microsoft/clarity`                                 | Optional behavioural monitoring transport (non-production only)             |
 | Talks to      | `apps/api` (NestJS gateway, port 8868)               | REST + WebSocket/SSE (streaming ASR via the STT service behind the gateway) |
-| Consumed by   | `apps/ui-playground` (deprecated)                    | Only current in-repo consumer                                               |
+| Consumed by   | `apps/admin-console`, `apps/compat-playground`       | In-repo consumers                                                           |
 
 Peer dependencies: `react` / `react-dom` `^18.3.0 || ^19.0.4`.
 

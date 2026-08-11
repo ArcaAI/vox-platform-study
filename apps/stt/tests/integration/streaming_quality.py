@@ -8,9 +8,10 @@ metrics (``compute_metrics`` et al.) to build ONE clinical scorecard and gate it
 WHAT'S HERE
 -----------
 * ``medical_wer(ref, hyp)`` — word error rate via a self-contained word-level
-  Levenshtein with backtrace, algorithm mirrored from the TS gate
-  ``apps/ui-playground/e2e/helpers/wer.ts`` (same normalization + tie-break order)
-  so the Python and TS gates agree on the base algorithm. Medical-term-aware: an
+  Levenshtein with backtrace, algorithm mirrored from the TS gate ``wer.ts``
+  that historically shipped in the now-removed ``apps/ui-playground/e2e/helpers/``
+  (same normalization + tie-break order) so the Python and TS gates agreed on
+  the base algorithm. Medical-term-aware: an
   optional synonym map folds benign clinical spelling/abbreviation variation
   (with the map, the Python gate intentionally diverges from wer.ts — see
   ``medical_wer``).
