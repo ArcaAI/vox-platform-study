@@ -17,6 +17,8 @@ import {
   AgentTrajectoryServiceModule,
   // Loop-event publish (internal route) + SSE relay (TASK-660).
   ConsultationLoopEventServiceModule,
+  // Loop-configuration resolution (internal route, TASK-662).
+  LoopConfigServiceModule,
   RedisSubscriberService,
 } from '@arcaai/applications';
 import { CoreDatabaseModule } from '@arcaai/domains';
@@ -51,6 +53,8 @@ import { HarnessInternalController } from './harness-internal.controller';
     AgentTrajectoryServiceModule,
     // Loop-event publish (internal route) + SSE relay (TASK-660).
     ConsultationLoopEventServiceModule,
+    // Loop-configuration resolution (internal route, TASK-662).
+    LoopConfigServiceModule,
   ],
   controllers: [ConsultationController, AdminConsultationController, ConsultationJobController, HarnessInternalController],
   // dedicated Redis subscriber connection for the

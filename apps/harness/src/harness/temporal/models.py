@@ -1021,3 +1021,318 @@ class ApplyRedactionResult(BaseModel):
     changed: bool = False
     failed_closed: bool = False
     manifest: RedactionManifest = Field(default_factory=RedactionManifest)
+
+
+# ---------------------------------------------------------------------------
+# Consultation loop (TASK-662) — the durable, per-consultation orchestrator
+#
+# Every payload here is ADDITIVE: nothing in this section is read by
+# ``HarnessDocWorkflow``, whose body is frozen (TASK-654 C2). The loop composes
+# that workflow as an unmodified CHILD instead of editing it.
+# ---------------------------------------------------------------------------
+
+# The action registry vocabulary. These seven keys are canonical, defined
+# gateway-side by TASK-659 (``AGENT_ACTION_KEYS`` in
+# ``packages/applications/src/services/departmentAgent/constants.ts``) and
+# mirrored here so the two ends of the wire cannot drift silently. An agent's
+# ``alwaysActions``/``neverActions`` may name only these.
+LOOP_ACTION_LIVEDOC_START = "livedoc.start"
+LOOP_ACTION_LIVEDOC_STOP = "livedoc.stop"
+LOOP_ACTION_VISION_EXTRACT_TEXT = "vision.extract_text"
+LOOP_ACTION_DOCUMENT_EXTRACT_TEXT = "document.extract_text"
+LOOP_ACTION_NLP_EXTRACT_ENTITIES = "nlp.extract_entities"
+LOOP_ACTION_HARNESS_FINALIZE = "harness.finalize"
+LOOP_ACTION_CLIENT_EMIT = "client.emit"
+
+LOOP_ACTION_KEYS: tuple[str, ...] = (
+    LOOP_ACTION_LIVEDOC_START,
+    LOOP_ACTION_LIVEDOC_STOP,
+    LOOP_ACTION_VISION_EXTRACT_TEXT,
+    LOOP_ACTION_DOCUMENT_EXTRACT_TEXT,
+    LOOP_ACTION_NLP_EXTRACT_ENTITIES,
+    LOOP_ACTION_HARNESS_FINALIZE,
+    LOOP_ACTION_CLIENT_EMIT,
+)
+
+# Loop-event types published on ``consultation:loop:{id}`` (TASK-660's SSE plane).
+LOOP_EVENT_ACTION_DISPATCHED = "action.dispatched"
+LOOP_EVENT_ACTION_SKIPPED = "action.skipped"
+
+# Reasons carried on ``action.skipped`` — a skipped action is always OBSERVABLE.
+LOOP_SKIP_DEPTH_CAP = "depth_cap"
+LOOP_SKIP_BUDGET_EXHAUSTED = "budget_exhausted"
+LOOP_SKIP_UNSUPPORTED_ACTION = "unsupported_action"
+
+
+class LoopSubscription(BaseModel):
+    """One tenant-declared context kind and the actions it triggers.
+
+    Resolved gateway-side from the agent's ``subscribedKinds`` crossed with the
+    kind's declared primitive, minus the ``neverActions`` compliance veto.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind_key: str
+    actions: list[str] = Field(default_factory=list)
+
+
+class LoopBudget(BaseModel):
+    """Termination bounds for the cascade (TASK-654 §4.2, RK-4).
+
+    ``max_depth`` caps derived-context recursion; ``max_actions`` caps total
+    dispatches for the whole consultation. Exhausting either DEGRADES the run
+    (further dispatches are skipped and reported) — it never aborts it.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    max_depth: int = 3
+    max_actions: int = 200
+
+
+class ConsultationLoopConfig(BaseModel):
+    """The PINNED loop configuration — read ONCE, never re-read mid-run (C1).
+
+    Pinning is what makes a mid-consultation tenant edit invisible to a running
+    loop: the workflow resolves this on its first execution and then carries the
+    resolved object through every ``continue_as_new`` in its own input, so no
+    later execution re-fetches it either.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = False
+    consultation_id: str | None = None
+    department_id: str | None = None
+    agent_id: str | None = None
+    # The two immutable version ids this run is pinned to (TASK-658 / TASK-659).
+    agent_config_version_id: str | None = None
+    context_schema_version_id: str | None = None
+    subscriptions: list[LoopSubscription] = Field(default_factory=list)
+    budget: LoopBudget = Field(default_factory=LoopBudget)
+    start_actions: list[str] = Field(default_factory=list)
+    ending_actions: list[str] = Field(default_factory=list)
+
+    def actions_for_kind(self, kind_key: str | None) -> list[str]:
+        """Actions subscribed to ``kind_key`` (deterministic; pure lookup)."""
+        if kind_key is None:
+            return []
+        for subscription in self.subscriptions:
+            if subscription.kind_key == kind_key:
+                return list(subscription.actions)
+        return []
+
+
+class FetchLoopConfigInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    consultation_id: str
+    tenant_id: str
+
+
+class ContextAddedSignal(BaseModel):
+    """One context item reached the consultation (TASK-660's outbound signal).
+
+    ``depth`` is the cascade generation: context written by a human is 0, and
+    anything an action derives carries its parent's depth + 1. ``occurred_at``
+    is the gateway's emission timestamp and is part of the de-duplication
+    identity — a RE-emit of the same item with fresh content (e.g. OCR
+    enrichment) carries a NEW timestamp and is correctly a new event, which is
+    exactly the rule ``LoopContextSignalService`` already applies gateway-side.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    context_item_id: str
+    kind_key: str | None = None
+    context_type: str | None = None
+    source: str | None = None
+    occurred_at: str | None = None
+    depth: int = 0
+    # Inline-or-ref, the standard claim-check seam: a large derived payload
+    # rides a ClaimCheckRef so the loop's history stays flat no matter how many
+    # context items a long consultation accumulates.
+    text: str = ""
+    text_ref: ClaimCheckRef | None = None
+
+    def dedupe_key(self) -> str:
+        """Identity used to ignore a duplicate delivery (deterministic, pure)."""
+        return f"{self.context_item_id}:{self.occurred_at or ''}"
+
+
+class LoopFinalizeRequest(BaseModel):
+    """The ``HarnessDocWorkflow`` start payload the loop forwards on finalize.
+
+    Carried on the ending signal rather than reconstructed by the loop: the
+    gateway owns the transcript and the generation defaults, and the loop must
+    not acquire a second, divergent way of assembling them.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    transcript_text: str = ""
+    transcript_ref: ClaimCheckRef | None = None
+    context_item_id: str | None = None
+    job_id: str | None = None
+    conversation_language: str = "en"
+    dna_style_id: str | None = None
+    template: str | None = None
+    smr_provider: str | None = None
+    smr_model: str | None = None
+
+
+class ConsultationEndingSignal(BaseModel):
+    """The consultation is over: run the ending actions, then complete."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str | None = None
+    persist_snapshot: bool = True
+    finalize: LoopFinalizeRequest | None = None
+
+
+class CancelLoopSignal(BaseModel):
+    """Stop the loop WITHOUT running the ending actions.
+
+    Distinct from Temporal cancellation: this is an orderly application-level
+    stop (the consultation was abandoned), so the loop COMPLETES rather than
+    failing. Any child already started is left to its ParentClosePolicy.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str | None = None
+
+
+class LiveDocControlInput(BaseModel):
+    """Input for the ``livedoc_start`` / ``livedoc_stop`` activities.
+
+    These call ``LiveDocumentationService.start``/``stop`` through the gateway's
+    internal API. LiveDoc's internals are UNTOUCHED (TASK-654 §4.4): the loop
+    dispatches the reflex lane, it does not absorb it.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    consultation_id: str
+    tenant_id: str
+    user_id: str | None = None
+    session_id: str | None = None
+    persist_snapshot: bool = True
+
+
+class LiveDocControlResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    ok: bool = False
+
+
+class EmitLoopEventInput(BaseModel):
+    """Input for ``emit_loop_event`` — the ``client.emit`` action.
+
+    Published on ``consultation:loop:{id}`` and relayed to the client over the
+    SSE route TASK-660 shipped. Carries ids/keys/labels only, NEVER note or
+    transcript text: the channel is a live UI feed, not a PHI transport.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    consultation_id: str
+    tenant_id: str
+    event_type: str
+    context_item_id: str | None = None
+    kind_key: str | None = None
+    action: str | None = None
+    reason: str | None = None
+    detail: dict[str, Any] | None = None
+
+
+class EmitLoopEventResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    emitted: bool = False
+
+
+class ConsultationLoopWorkflowInput(BaseModel):
+    """Start payload for :class:`ConsultationLoopWorkflow`.
+
+    The ``carried_*`` fields exist ONLY to survive ``continue_as_new``: a
+    checkpoint re-starts the workflow with a fresh history and these carry the
+    state that must not reset. ``pinned_config`` is the most important of them —
+    a continued run must NEVER re-fetch its configuration (C1).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    consultation_id: str
+    tenant_id: str
+    user_id: str | None = None
+    correlation_id: str | None = None
+    session_id: str | None = None
+
+    # Pinned config. None on the FIRST execution ⇒ fetch once; set on every
+    # continuation ⇒ never fetched again.
+    pinned_config: ConsultationLoopConfig | None = None
+
+    # Checkpoint policy, snapshotted at start like every other deterministic
+    # knob in this codebase (cf. HarnessGateConfig) so it stays replay-stable.
+    # Temporal's hard ceilings are 51,200 events / 50 MB; both thresholds below
+    # sit well beneath them so a checkpoint is always PLANNED, never forced.
+    checkpoint_signal_threshold: int = 500
+    checkpoint_history_events: int = 10_000
+
+    # continue_as_new carry-over.
+    carried_seen_keys: list[str] = Field(default_factory=list)
+    carried_pending: list[ContextAddedSignal] = Field(default_factory=list)
+    carried_events_processed: int = 0
+    carried_duplicates_ignored: int = 0
+    carried_depth_capped: int = 0
+    carried_actions_dispatched: int = 0
+    carried_degraded: bool = False
+    carried_livedoc_started: bool = False
+    carried_start_actions_done: bool = False
+    carried_continuations: int = 0
+
+
+class ConsultationLoopState(BaseModel):
+    """Result of the ``state()`` query — ops/tests only; never affects determinism."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    consultation_id: str
+    phase: str = "INIT"
+    config_pinned: bool = False
+    enabled: bool = False
+    agent_config_version_id: str | None = None
+    context_schema_version_id: str | None = None
+    events_processed: int = 0
+    duplicates_ignored: int = 0
+    depth_capped: int = 0
+    actions_dispatched: int = 0
+    pending: int = 0
+    degraded: bool = False
+    ending: bool = False
+    cancelled: bool = False
+    livedoc_started: bool = False
+    finalize_workflow_id: str | None = None
+    continuations: int = 0
+
+
+class ConsultationLoopWorkflowResult(BaseModel):
+    """Terminal result of one consultation loop."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    consultation_id: str
+    config_pinned: bool = False
+    enabled: bool = False
+    events_processed: int = 0
+    duplicates_ignored: int = 0
+    depth_capped: int = 0
+    actions_dispatched: int = 0
+    degraded: bool = False
+    cancelled: bool = False
+    finalized: bool = False
+    finalize_workflow_id: str | None = None
+    continuations: int = 0
