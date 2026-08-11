@@ -190,6 +190,10 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   // _version OCC + audit). NOT SYSTEM-shared: a tenant's department agents are
   // never visible cross-tenant.
   'DepartmentAgent',
+  // department-agent.prisma — immutable loop-config version snapshots
+  // (TASK-659). Ordinary tenant-owned rows, NOT SYSTEM-shared — same posture
+  // as the parent DepartmentAgent and as ConsultationContextSchemaVersion.
+  'DepartmentAgentVersion',
   // usage-ledger.prisma (5) — AI usage metering plane (TASK-615).
   // The ledger, its outbox and both rollups are tenant-scoped and NOT
   // SYSTEM-shared: one tenant's consumption (and therefore its cost profile)
