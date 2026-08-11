@@ -8,6 +8,8 @@ import {
   ApprovePromptTemplateRequest,
   TestPromptTemplateRequest,
   PromptTestResultResponse,
+  PromptTestAckResponse,
+  FinalizePromptTestRequest,
   PromptUsageAnalyticsResponse,
   PromptVersionDiffResponse,
   PromptUsageRecordResponse,
@@ -264,23 +266,48 @@ export class PromptManagementController {
     return svc.getUsageStats(id);
   }
 
-  // ─── Prompt quality/score test run ──────────────────────
+  // ─── Prompt quality/score test run (BUG-018: two calls) ────────
 
   @ApiEndpoint({
-    returnedModel: PromptTestResultResponse,
+    returnedModel: PromptTestAckResponse,
     method: HttpMethod.POST,
     path: ':id/test',
     by: ['id'],
   })
   @Authorize(['update', 'PromptTemplate'])
+  @ApiOperation({
+    summary: 'Submit a prompt-template test run (returns immediately)',
+    description:
+      'Assembles the prompt, resolves the `smr.test` provider/model and submits a ' +
+      'STREAMING generation job to SMR, returning an ack in well under a second. ' +
+      'Open the returned `streamUrl` over SSE for tokens, then call ' +
+      '`POST :id/test/finalize` with the `taskId` to score and persist. ' +
+      '`dryRun: true` returns the assembled prompt and generates NOTHING. ' +
+      'This route no longer writes, so it carries NO `If-Match` requirement.',
+  })
+  @ApiParam({ name: 'id', description: 'Prompt template ID', type: String })
+  @ApiResponse({ status: 400, description: 'No `smr.test` model configured, or an invalid provider/model pair.' })
+  @ApiResponse({ status: 404, description: 'Template not found' })
+  async testTemplate(@Param('id') id: string, @Body() request: TestPromptTemplateRequest): Promise<PromptTestAckResponse> {
+    return this.promptService.startPromptTemplateTest(id, request);
+  }
+
+  @ApiEndpoint({
+    returnedModel: PromptTestResultResponse,
+    method: HttpMethod.POST,
+    path: ':id/test/finalize',
+    by: ['id'],
+  })
+  @Authorize(['update', 'PromptTemplate'])
   @RequiresIfMatch()
   @ApiOperation({
-    summary: 'Run a prompt template against the SMR/text-generation service',
+    summary: 'Score and persist a finished prompt-template test run',
     description:
-      'Generates an output + numeric score for the template and persists ' +
-      '`lastTestScore/lastTestOutput/lastTestAt`. This is an optimistic-' +
-      'concurrency write (parity with PATCH): the `If-Match` header is REQUIRED ' +
-      'and folds over any body-supplied `expectedVersion`. Version drift → 412.',
+      'Fetches the finished generation from SMR SERVER-SIDE by `taskId` (the generated ' +
+      'text is never accepted from the request body), scores it, and persists ' +
+      '`lastTestScore/lastTestOutput/lastTestAt`. This is the optimistic-concurrency ' +
+      'write of the test flow: the `If-Match` header is REQUIRED and folds over any ' +
+      'body-supplied `expectedVersion`. Version drift → 412.',
   })
   @ApiHeader({
     name: 'If-Match',
@@ -289,20 +316,21 @@ export class PromptManagementController {
     example: '"7"',
   })
   @ApiParam({ name: 'id', description: 'Prompt template ID', type: String })
-  @ApiResponse({ status: 404, description: 'Template not found' })
+  @ApiResponse({ status: 400, description: 'The generation task has not reached a terminal completed state.' })
+  @ApiResponse({ status: 404, description: 'Template or generation task not found' })
   @ApiResponse({ status: 412, description: 'Optimistic concurrency conflict — re-fetch and try again with the new version.' })
   @ApiResponse({ status: 428, description: 'If-Match header is required for this operation.' })
-  async testTemplate(
+  async finalizeTestTemplate(
     @Param('id') id: string,
-    @Body() request: TestPromptTemplateRequest,
+    @Body() request: FinalizePromptTestRequest,
     @ExpectedVersion() expectedFromHeader: number | undefined,
   ): Promise<PromptTestResultResponse> {
     // Header takes precedence over body when both are present (mirrors
     // `update`); on a `@RequiresIfMatch()` route the param decorator
     // already fired 428 if the header was missing.
-    const effectiveRequest: TestPromptTemplateRequest =
+    const effectiveRequest: FinalizePromptTestRequest =
       expectedFromHeader !== undefined ? { ...request, expectedVersion: expectedFromHeader } : request;
-    return this.promptService.testPromptTemplate(id, effectiveRequest);
+    return this.promptService.finalizePromptTemplateTest(id, effectiveRequest);
   }
 
   // ─── prompt governance approval ─────────────────

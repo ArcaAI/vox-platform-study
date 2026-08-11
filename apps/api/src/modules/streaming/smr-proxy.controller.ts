@@ -11,14 +11,13 @@ import {
   ITenantService,
   IUsageLedgerService,
   ModelResponse,
-  assertProviderAvailable,
   buildLlmUsageInput,
-  isCloudByoProvider,
   parseSmrUsageDetail,
   SecretsService,
   isSuperAdmin,
+  SmrRequestEnrichmentService,
 } from '@arcaai/applications';
-import type { IBlobStorageService as IBlobStorageServiceType, ResolvedProviderOverrides } from '@arcaai/applications';
+import type { IBlobStorageService as IBlobStorageServiceType } from '@arcaai/applications';
 import {
   ContextItemRepository,
   ContextItemType,
@@ -218,7 +217,16 @@ export class SmrProxyController {
     @Optional()
     @Inject(IUsageLedgerService)
     private readonly usageLedger?: IUsageLedgerService,
-  ) {}
+  ) {
+    // BUG-018 — the two enrichment steps now live in ONE applications-layer
+    // service shared with the prompt-template test bench. Constructed here from
+    // this controller's own (already injected) dependencies rather than taken as
+    // another constructor parameter: the service is stateless, and every
+    // existing positional test fixture keeps its arity and its exact behavior.
+    this.smrRequestEnrichment = new SmrRequestEnrichmentService(this.clsService, this.aiRuntimeProfileService, this.aiProviderConnectionService);
+  }
+
+  private readonly smrRequestEnrichment: SmrRequestEnrichmentService;
 
   /**
    * SDK fidelity: a caller-supplied model is forwarded
@@ -242,126 +250,28 @@ export class SmrProxyController {
   }
 
   /**
-   * Fold the caller tenant's BYO cloud credential into the forwarded
-   * body as `provider_overrides`.
+   * Fold the caller tenant's BYO cloud credential into the forwarded body as
+   * `provider_overrides`.
    *
-   * Three invariants:
-   *   - CLOUD ONLY. A self-host provider (ollama/lm-studio/vllm/llama-cpp/
-   *     built-in) is platform infrastructure; its endpoint is never a tenant
-   *     credential, and we do not even query for one.
-   *   - MINIMAL EXPOSURE. Only the entry for the RESOLVED provider is
-   *     forwarded, so a tenant holding both azure and bedrock keys never ships
-   *     the unused one to the service.
-   *   - FAIL OPEN. A resolver error injects nothing and the request proceeds on
-   *     the SYSTEM/env platform credentials — a broken BYO key must degrade,
-   *     not take generation down. This deliberately differs from the
-   *     fail-closed model-IDENTITY path above.
-   *
-   * With no tenant credential rows the forwarded body is byte-identical to
-   * today's. Until SMR consumes it, the field is
-   * inert (the service ignores unknown body fields).
+   * BUG-018 — the implementation MOVED VERBATIM to the applications-layer
+   * `SmrRequestEnrichmentService` so the prompt-template test bench (which used
+   * to POST to SMR directly, on platform credentials) shares exactly one
+   * implementation with this proxy. Semantics are unchanged: cloud-only,
+   * minimal exposure, fail-open on a resolver error, and the policy-refusal
+   * `assertProviderAvailable` check outside that catch.
    */
   private async applyTenantProviderOverrides<T extends { provider?: string }>(target: T): Promise<T> {
-    const provider = target.provider;
-    // SMR is the LLM capability, so the service discriminator is always `llm`
-    // (C2/C5). The 1-arg TASK-569 transition shims are retired here.
-    if (!this.aiProviderConnectionService || !provider || !isCloudByoProvider('llm', provider)) {
-      return target;
-    }
-    const tenantId = this.clsService.get('tenantId');
-    if (!tenantId) return target;
-
-    // TASK-643 — the resolver cascades the tenant's own row over the
-    // SYSTEM-tenant platform default, and each entry's `funding` label travels
-    // with it so SMR meters platform-funded generation as CLOUD rather than as
-    // the tenant's own BYOK.
-    let resolved: ResolvedProviderOverrides;
-    try {
-      resolved = await this.aiProviderConnectionService.resolveTenantCloudOverrides('llm', tenantId);
-    } catch (error) {
-      // Non-secret log only. The resolver itself already logs per-credential
-      // decrypt failures with `{tenantId, provider, keyVersion}`; this covers a
-      // whole-lookup failure.
-      this.logger.warn({
-        message: 'Tenant provider-credential resolution failed; forwarding with platform credentials (fail-open)',
-        provider,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      return target;
-    }
-
-    const entry = resolved.overrides[provider];
-    if (entry) {
-      (target as Record<string, unknown>).provider_overrides = { [provider]: entry };
-      return target;
-    }
-
-    // No credential for the SELECTED provider. When the SYSTEM tier was
-    // deliberately SUPPRESSED — the tenant vetoed this provider (409) or holds
-    // no platform-default entitlement (403) — say so. Deliberately OUTSIDE the
-    // fail-open catch above: a policy refusal is not a lookup failure, and
-    // swallowing it would return the unattributable 503 this exists to replace.
-    // With nothing suppressed this returns void and the pre-existing
-    // "no override → SMR uses its own configuration" path is unchanged.
-    assertProviderAvailable(resolved, 'llm', provider);
-    return target;
+    return this.smrRequestEnrichment.applyTenantProviderOverrides(target);
   }
 
   /**
    * Inject the resolved hyperparameter profile into the forwarded body.
    *
-   * Two invariants:
-   *   - CALLER WINS. Only keys the caller did NOT set are filled in, so SDK
-   *     fidelity is preserved exactly as it is for `model`.
-   *   - FAIL-OPEN. A resolver error injects nothing and the request proceeds on
-   *     the service's own env defaults. This deliberately differs from the
-   *     fail-closed model-IDENTITY path above: sending a request to the wrong
-   *     MODEL is a correctness/safety problem, whereas sending it with the
-   *     service's default temperature is the status quo.
-   *
-   * With zero profile rows seeded (the shipped state) `isEmpty` is true and the
-   * body is byte-identical to today's — a deliberate silent-change guard.
-   *
-   * Field names are snake_case to match the SMR wire contract; SMR ignores
-   * unknown body fields, so this stays inert until the service consumes them.
+   * BUG-018 — implementation MOVED VERBATIM to `SmrRequestEnrichmentService`
+   * (caller-wins merge, fail-open on resolver error). See above.
    */
   private async applySmrRuntimeProfile<T extends { provider?: string; model?: string }>(target: T): Promise<T> {
-    if (!this.aiRuntimeProfileService || !target.provider || !target.model) {
-      return target;
-    }
-
-    try {
-      const profile = await this.aiRuntimeProfileService.resolveProfile(target.provider, target.model);
-      if (profile.isEmpty) {
-        return target;
-      }
-
-      const body = target as Record<string, unknown>;
-      const assign = (key: string, value: unknown): void => {
-        // `undefined` = caller did not set it. An explicit caller value —
-        // including 0 or false — is preserved.
-        if (value !== null && body[key] === undefined) {
-          body[key] = value;
-        }
-      };
-
-      assign('temperature', profile.temperature);
-      assign('top_p', profile.topP);
-      assign('max_tokens', profile.maxTokens);
-      assign('context_length', profile.contextLength);
-      assign('timeout_s', profile.timeoutS);
-      assign('keep_alive_seconds', profile.keepAliveSeconds);
-      assign('extra', profile.extraJson);
-    } catch (error) {
-      this.logger.warn({
-        message: 'Runtime-profile resolution failed; forwarding without injected parameters (fail-open)',
-        provider: target.provider,
-        model: target.model,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
-
-    return target;
+    return this.smrRequestEnrichment.applySmrRuntimeProfile(target);
   }
 
   // The SMR base URL resolves through the

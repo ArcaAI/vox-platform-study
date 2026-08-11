@@ -27,6 +27,7 @@ import {
   listVersions,
   pinDepartmentAgent,
   setDefaultDepartmentAgent,
+  finalizeTemplateTest,
   testTemplate,
   updateDepartmentAgent,
   updateTemplate,
@@ -111,12 +112,22 @@ describe('agents client', () => {
     ]);
   });
 
-  it('runs a test as an OCC write: POST :id/test carries If-Match + expectedVersion', async () => {
+  /** BUG-018: the ack writes nothing, so it carries no If-Match. */
+  it('runs a test as a non-writing ack: POST :id/test carries neither If-Match nor expectedVersion', async () => {
     const calls = installFetchMock();
-    await testTemplate('pt-1', { sampleInput: 'Patient reports chest pain.' }, '"7"');
+    await testTemplate('pt-1', { sampleInput: 'Patient reports chest pain.' });
     expect(calls.map((call) => `${call.method} ${call.url}`)).toEqual(['POST /api/hope/admin/prompt-templates/pt-1/test']);
+    expect(calls[0].headers['if-match']).toBeUndefined();
+    expect(calls[0].body).toEqual({ sampleInput: 'Patient reports chest pain.' });
+  });
+
+  /** The OCC write moved here — finalize persists the score once the stream ends. */
+  it('finalizes a test run as an OCC write: POST :id/test/finalize carries If-Match + expectedVersion', async () => {
+    const calls = installFetchMock();
+    await finalizeTemplateTest('pt-1', 'task-9', '"7"');
+    expect(calls.map((call) => `${call.method} ${call.url}`)).toEqual(['POST /api/hope/admin/prompt-templates/pt-1/test/finalize']);
     expect(calls[0].headers['if-match']).toBe('"7"');
-    expect(calls[0].body).toEqual({ sampleInput: 'Patient reports chest pain.', expectedVersion: 7 });
+    expect(calls[0].body).toEqual({ taskId: 'task-9', expectedVersion: 7 });
   });
 
   it('reads usage: per-template stats, tenant analytics and raw run records (0-based page)', async () => {

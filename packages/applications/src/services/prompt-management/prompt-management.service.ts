@@ -35,6 +35,8 @@ import {
   ApprovePromptTemplateRequest,
   TestPromptTemplateRequest,
   PromptTestResultResponse,
+  PromptTestAckResponse,
+  FinalizePromptTestRequest,
   PromptUsageAnalyticsResponse,
   PreferredPromptTemplateResponse,
   PromptVersionDiffResponse,
@@ -45,9 +47,10 @@ import {
 } from './dto';
 import { Paginated } from '../../common/dto/paginated.response';
 import { PromptManagementDtoMapper } from './prompt-management.dto.mapper';
-import { mapSmrGenerateResponse } from '../consultation/summary/smr-generate';
 import { SecretsService } from '../baseServices/_meta/secrets';
-import { HarnessPolicyService } from '../harness-policy/harness-policy.service';
+import { IAiTaskDefaultService } from '../ai-task-default/IAiTaskDefaultService';
+import { EffectiveAiTaskDefaultResponse } from '../ai-task-default/dto';
+import { SmrRequestEnrichmentService } from '../smr-request/smr-request-enrichment.service';
 import { IDepartmentService } from '../department/IDepartmentService';
 import { IEntitlementsService } from '../entitlements/IEntitlementsService';
 // The doctor self-service "set my preferred template"
@@ -77,6 +80,16 @@ const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
 // quality score. The score is a deterministic, testable proxy for "did the
 // template produce a substantive response", not a semantic judgement.
 const FULL_SCORE_WORD_COUNT = 50;
+
+// BUG-018 — the AiTaskDefault key that selects the model a prompt-template test
+// run uses. Resolved DIRECTLY through `IAiTaskDefaultService` (tenant row →
+// SYSTEM row); there is no `smr.finalize` fallback any more — that hop was
+// harness coupling and is what made every test run on the platform's LM Studio.
+const SMR_TEST_TASK_KEY = 'smr.test';
+
+// SMR's terminal success state (`TaskStatus.COMPLETED` in
+// `apps/smr/src/smr/models/task.py`).
+const SMR_TASK_COMPLETED = 'completed';
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -165,8 +178,11 @@ export class PromptManagementService extends BaseService implements IPromptManag
     @Optional() private readonly httpService?: HttpService,
     @Optional() private readonly configService?: ConfigService,
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
-    // Resolver for the tenant's effective SMR {provider, model}.
-    @Optional() @Inject(HarnessPolicyService) private readonly harnessPolicyService?: HarnessPolicyService,
+    // BUG-018 — resolves the effective `smr.test` model DIRECTLY from the
+    // AiTaskDefault control plane. This slot used to hold the harness policy
+    // service; a prompt-authoring tool has no business reading harness policy,
+    // and that coupling is what silently ran every test on the platform model.
+    @Optional() @Inject(IAiTaskDefaultService) private readonly aiTaskDefaultService?: IAiTaskDefaultService,
     // Doctor self-service "set my preferred template"
     // delegates the WRITE to the existing UserProfile upsert (which resolution
     // reads back). Optional + trailing so existing positional unit fixtures keep
@@ -189,6 +205,11 @@ export class PromptManagementService extends BaseService implements IPromptManag
     // predefined test-run sample input. Optional + trailing; absent ⇒
     // `goldenCaseId` requests fail closed with a clear configuration error.
     @Optional() @Inject(GoldenCaseRepository) private readonly goldenCaseRepository?: GoldenCaseRepository,
+    // BUG-018 — the SHARED tenant-credential + runtime-profile enrichment used
+    // by `SmrProxyController`. Optional + trailing so existing positional
+    // fixtures keep their arity; absent ⇒ the outgoing body is unenriched
+    // (exactly the pre-BUG-018 behavior), never a failure.
+    @Optional() @Inject(SmrRequestEnrichmentService) private readonly smrRequestEnrichment?: SmrRequestEnrichmentService,
   ) {
     super(eventEmitter, clsService, ResourceType.PromptTemplate);
     this.smrServiceUrl = this.configService?.get<string>('SMR_URL') ?? 'http://localhost:8862';
@@ -831,31 +852,33 @@ export class PromptManagementService extends BaseService implements IPromptManag
   }
 
   /**
-   * Run a prompt template against the SMR/text-generation service, score the
-   * output, and — unless `dto.dryRun` — persist `lastTestScore/lastTestOutput/
-   * lastTestAt` via a Compare-And-Set write (OCC parity with the PATCH route).
+   * BUG-018 — SUBMIT a prompt-template test run. Returns an ACK in well under a
+   * second; it never awaits the generation.
    *
-   * TASK-635 Lane B:
-   *  - `dto.provider`/`dto.model` — forwarded to SMR verbatim; absent ⇒
-   *    `smr.test` → `smr.finalize` AiTaskDefault cascade (see
-   *    {@link resolveTestSmrTarget}).
-   *  - `dto.dryRun` — score/generate WITHOUT touching the repository at all
-   *    (no `lastTest*` write, no `_version` bump, no sys-event).
-   *  - `dto.versionNumber` — test the immutable pinned `PromptVersion`
-   *    snapshot instead of the mutable draft.
-   *  - `dto.goldenCaseId` — decrypted golden-case transcript as sample input
-   *    (mutually exclusive with `dto.sampleInput`).
+   * Everything up to (and including) prompt assembly is unchanged: the
+   * `sampleInput`/`goldenCaseId` mutual exclusion, the 404-over-403 template
+   * guards, the optional pinned `PromptVersion` snapshot, golden-case
+   * decryption, and `interpolateTemplate`.
    *
-   * The SMR call is an injected `HttpService` dependency so the path is
-   * unit-testable with a mock; the live SMR call is exercised in CI.
+   * What changed:
+   *  - `dto.dryRun` short-circuits BEFORE any SMR call — a dry run used to burn
+   *    a real 2-minute generation just to discard the write.
+   *  - Otherwise a STREAMING job is submitted (`stream: true`); the caller opens
+   *    the returned `streamUrl` over SSE and then calls
+   *    {@link finalizePromptTemplateTest} to score and persist.
+   *  - The outgoing body carries the tenant's BYO credentials + runtime profile
+   *    via the shared `SmrRequestEnrichmentService`, and the request carries
+   *    `X-Tenant-Id`, so the run is tenant-funded and attributable.
+   *  - Model selection reads `IAiTaskDefaultService` directly; the harness
+   *    policy service is gone from this path entirely.
    *
    * @throws ArgumentInvalidException — both `sampleInput` and `goldenCaseId`
-   *   supplied, or a caller-supplied provider/model pair is unknown/disabled.
+   *   supplied, or a caller-supplied provider/model pair is partial/unknown.
    * @throws NotFoundException — unknown/cross-tenant template, missing
    *   `versionNumber`, or unknown/cross-tenant `goldenCaseId` (404-over-403).
-   * @throws OptimisticConcurrencyException — version drift; HTTP 412 (non-dry-run only).
+   * @throws BadRequestException — `smr.test` resolves to nothing (fail-closed).
    */
-  async testPromptTemplate(id: string, dto: TestPromptTemplateRequest): Promise<PromptTestResultResponse> {
+  async startPromptTemplateTest(id: string, dto: TestPromptTemplateRequest): Promise<PromptTestAckResponse> {
     if (dto.sampleInput !== undefined && dto.goldenCaseId !== undefined) {
       throw new ArgumentInvalidException('Provide either sampleInput or goldenCaseId, not both.');
     }
@@ -886,25 +909,65 @@ export class PromptManagementService extends BaseService implements IPromptManag
     const sampleInput = dto.goldenCaseId ? await this.loadGoldenCaseSampleInput(dto.goldenCaseId) : dto.sampleInput;
 
     const prompt = this.interpolateTemplate(content, dto.variables, sampleInput, declaredVariables);
-    const output = await this.callSmrGenerate(prompt, { provider: dto.provider, model: dto.model });
+    const { provider, model } = await this.resolveTestSmrTarget({ provider: dto.provider, model: dto.model });
+
+    // Defect 4 — a dry run generates NOTHING. The author gets the exact prompt
+    // that would have been sent; no job, no tokens, no cost.
+    if (dto.dryRun) {
+      return { mode: 'dry-run', provider, model, assembledPrompt: prompt };
+    }
+
+    const { taskId, streamUrl } = await this.submitSmrGenerationJob(prompt, provider, model);
+    return { mode: 'stream', provider, model, assembledPrompt: prompt, taskId, streamUrl };
+  }
+
+  /**
+   * BUG-018 — FINALIZE a test run started by {@link startPromptTemplateTest}.
+   *
+   * The finished text is read from SMR SERVER-SIDE (`GET /api/v1/tasks/:id`,
+   * whose `content` field holds the accumulated stream). It is deliberately NOT
+   * accepted from the request body: the browser saw the same tokens over SSE,
+   * but trusting it would let any caller forge `lastTestOutput` on the row.
+   *
+   * Scoring (`scoreOutput`) and persistence (encrypt → `updateWithVersion` →
+   * `ResourceUpdated`) are unchanged from the old blocking implementation.
+   *
+   * @throws NotFoundException — unknown/cross-tenant template, or an unknown
+   *   `taskId` (404 from SMR).
+   * @throws BadRequestException — the task has not reached a terminal completed
+   *   state (the offending state is named).
+   * @throws OptimisticConcurrencyException — version drift; HTTP 412.
+   */
+  async finalizePromptTemplateTest(id: string, dto: FinalizePromptTestRequest): Promise<PromptTestResultResponse> {
+    const template = await this.promptTemplateRepository.findById(id);
+    if (!template) throw new NotFoundException(`Prompt template ${id} not found`);
+
+    this.assertOwnedByTenant(template, id);
+    this.assertCanMutate(template);
+
+    // Score against the SNAPSHOT THAT WAS TESTED. A run started with
+    // `versionNumber` ran the immutable PromptVersion's content, and the score
+    // dimensions (`jsonExpected` from the content, `variableCoverage` from the
+    // declared variables) are properties of what ran — not of whatever the
+    // mutable draft happens to say by the time the stream finishes.
+    let scoredContent = template.content;
+    let scoredVariables = template.variables as Record<string, unknown> | null;
+    if (dto.versionNumber !== undefined) {
+      const version = await this.promptVersionRepository.findByVersionNumber(id, dto.versionNumber);
+      if (!version) {
+        throw new NotFoundException(`Prompt version ${dto.versionNumber} not found for template ${id}`);
+      }
+      scoredContent = version.content ?? '';
+      scoredVariables = (version.variables as Record<string, unknown> | null) ?? scoredVariables;
+    }
+
+    const output = await this.fetchSmrTaskOutput(dto.taskId);
     const { score, metrics } = this.scoreOutput(output, {
       category: template.category,
-      content,
-      variables: declaredVariables,
+      content: scoredContent,
+      variables: scoredVariables,
     });
     const testedAt = new Date();
-
-    // B2 — dry-run: score/generate only, the resource is never touched.
-    if (dto.dryRun) {
-      return {
-        id: template.id,
-        score,
-        output,
-        testedAt: testedAt.toISOString(),
-        version: template.version,
-        metrics,
-      };
-    }
 
     template.lastTestScore = score;
     template.lastTestOutput = output;
@@ -1111,21 +1174,30 @@ export class PromptManagementService extends BaseService implements IPromptManag
   }
 
   /**
-   * TASK-635 Lane B — resolve the `{provider, model}` a test run sends to
-   * SMR. Precedence:
+   * BUG-018 — resolve the `{provider, model}` a test run sends to SMR.
+   *
+   * Precedence:
    *  1. Caller-supplied pair (`override.provider` + `override.model`, both
    *     required together) — forwarded VERBATIM (mirrors
    *     `applySmrModelSelection`'s "caller-pinned model wins" semantics),
    *     after validating it against the ENABLED AiModel registry.
-   *  2. `resolveSmrSelection(tenantId, 'test')` — the tenant `smr.test`
-   *     AiTaskDefault.
-   *  3. `resolveSmrSelection(tenantId, 'finalize')` — the pre-existing
-   *     behavior, preserved when `smr.test` is unconfigured for the tenant.
+   *  2. The `smr.test` AiTaskDefault, read DIRECTLY from
+   *     `IAiTaskDefaultService.getEffective` — whose own cascade is tenant row
+   *     → SYSTEM row. That cascade is the ONLY fallback: the old
+   *     `smr.test → smr.finalize` hop went through the harness policy service
+   *     and was pure harness coupling (it is also what silently ran every test
+   *     on the platform's LM Studio model).
+   *
+   * Fail-closed and MISS-vs-ERROR split (the old bare `catch {}` conflated
+   * them): nothing resolved ⇒ a `BadRequestException` naming the key, never a
+   * substituted platform model; a thrown lookup ⇒ logged and RETHROWN, never
+   * disguised as "unconfigured".
    *
    * @throws ArgumentInvalidException — only one of provider/model supplied,
    *   or the supplied pair does not match an ENABLED registry row.
+   * @throws BadRequestException — `smr.test` resolves to nothing.
    */
-  private async resolveTestSmrTarget(override: { provider?: string; model?: string }): Promise<{ provider?: string; model?: string }> {
+  private async resolveTestSmrTarget(override: { provider?: string; model?: string }): Promise<{ provider: string; model: string }> {
     if (override.provider !== undefined || override.model !== undefined) {
       if (!override.provider || !override.model) {
         throw new ArgumentInvalidException('provider and model must be supplied together.');
@@ -1134,13 +1206,35 @@ export class PromptManagementService extends BaseService implements IPromptManag
       return { provider: override.provider, model: override.model };
     }
 
-    if (!this.harnessPolicyService) return {};
-
-    try {
-      return await this.harnessPolicyService.resolveSmrSelection(this.tenantId, 'test');
-    } catch {
-      return await this.harnessPolicyService.resolveSmrSelection(this.tenantId, 'finalize');
+    if (!this.aiTaskDefaultService) {
+      throw new BadRequestException(`No model is configured for the '${SMR_TEST_TASK_KEY}' AI task and the task-default resolver is not wired.`);
     }
+
+    let effective: EffectiveAiTaskDefaultResponse;
+    try {
+      effective = await this.aiTaskDefaultService.getEffective(SMR_TEST_TASK_KEY, this.tenantId);
+    } catch (error) {
+      // An ERROR is not a MISS. Surface it: silently falling through would
+      // reintroduce exactly the "silently ran on the platform model" defect.
+      this.logger.warn({
+        message: `Failed to resolve the '${SMR_TEST_TASK_KEY}' AI task default for a prompt-template test run`,
+        tenantId: this.tenantId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
+
+    const model = effective.model;
+    if (!model?.provider || !model.sourceUri) {
+      throw new BadRequestException(
+        `No model is configured for the '${SMR_TEST_TASK_KEY}' AI task. Configure it under AI task defaults before running a prompt test.`,
+      );
+    }
+
+    // The registry stores Azure under `azure`; SMR registers the provider as
+    // `azure-openai`. Same mapping the rest of the SMR call path uses.
+    const provider = model.provider === 'azure' ? 'azure-openai' : model.provider;
+    return { provider, model: model.sourceUri };
   }
 
   /**
@@ -1184,29 +1278,90 @@ export class PromptManagementService extends BaseService implements IPromptManag
   }
 
   /**
-   * Call the SMR/text-generation service `/api/v1/generate` endpoint and
-   * return the generated text. Reuses `mapSmrGenerateResponse` (the same
-   * response normalizer the summary path uses).
+   * BUG-018 — SUBMIT a STREAMING generation job to SMR and return its ack.
+   *
+   * Replaces the old blocking `stream: false` POST (2–3½ minutes, CDN 524) and
+   * the direct-to-SMR bypass that lost tenant credentials and metering:
+   *  - the body goes through the SHARED `SmrRequestEnrichmentService` — the same
+   *    code path `SmrProxyController` uses — so the tenant's BYO credential
+   *    (`provider_overrides`, carrying its `funding` label) and the resolved
+   *    hyperparameter profile ride along;
+   *  - `X-Tenant-Id` is sent alongside `X-Service-Token`, so SMR no longer logs
+   *    `tenant_id: null` and the usage ledger can attribute the run.
+   *
+   * The generation itself is consumed by the caller over SSE
+   * (`GET text/tasks/:taskId/stream`, which is where the ledger row is emitted)
+   * and then finalized through {@link finalizePromptTemplateTest}.
    */
-  private async callSmrGenerate(prompt: string, override: { provider?: string; model?: string } = {}): Promise<string> {
+  private async submitSmrGenerationJob(prompt: string, provider: string, model: string): Promise<{ taskId: string; streamUrl: string }> {
     if (!this.httpService) {
       throw new BadRequestException('SMR/text-generation client is not configured');
     }
-    // Resolved BEFORE the try/post below so a validation failure
-    // (ArgumentInvalidException) or an exhausted fail-closed cascade
-    // propagates as itself, not wrapped into the generic SMR-call error.
-    const { provider, model } = await this.resolveTestSmrTarget(override);
+    const body: Record<string, unknown> = { prompt, stream: true, provider, model };
+    if (this.smrRequestEnrichment) {
+      await this.smrRequestEnrichment.applySmrRuntimeProfile(body as { provider?: string; model?: string });
+      await this.smrRequestEnrichment.applyTenantProviderOverrides(body as { provider?: string });
+    }
+
+    let data: { task_id?: string; stream_url?: string };
     try {
-      const token = (await this.secretsService?.getSecretOptional('SMR_SERVICE_TOKEN')) ?? '';
-      const response = await this.httpService.axiosRef.post(
-        `${this.smrServiceUrl}/api/v1/generate`,
-        { prompt, stream: false, provider, model },
-        { headers: { 'Content-Type': 'application/json', 'X-Service-Token': token } },
-      );
-      return mapSmrGenerateResponse(response.data).summary;
+      const response = await this.httpService.axiosRef.post(`${this.smrServiceUrl}/api/v1/generate`, body, {
+        headers: await this.smrHeaders(),
+      });
+      data = response.data ?? {};
     } catch (error) {
       throw new BadRequestException(`Failed to call SMR service: ${error}`);
     }
+
+    const taskId = data.task_id;
+    if (!taskId) {
+      throw new BadRequestException('SMR did not return a task id for the streaming generation job.');
+    }
+    // Gateway-relative SSE path (`SmrProxyController` mounts `text/*`), not the
+    // service-relative `stream_url` SMR reports — the browser talks to the
+    // gateway, with a `smr_task:<taskId>`-scoped single-use ticket.
+    return { taskId, streamUrl: `text/tasks/${taskId}/stream` };
+  }
+
+  /**
+   * BUG-018 — read the FINISHED generation for `taskId` from SMR
+   * (`GET /api/v1/tasks/:id`; `content` holds the accumulated stream text).
+   *
+   * Server-side on purpose: the client must never be the source of the text
+   * that gets persisted as `lastTestOutput`.
+   */
+  private async fetchSmrTaskOutput(taskId: string): Promise<string> {
+    if (!this.httpService) {
+      throw new BadRequestException('SMR/text-generation client is not configured');
+    }
+
+    let data: { status?: string; content?: string | null; error?: string | null };
+    try {
+      const response = await this.httpService.axiosRef.get(`${this.smrServiceUrl}/api/v1/tasks/${taskId}`, {
+        headers: await this.smrHeaders(),
+      });
+      data = response.data ?? {};
+    } catch (error) {
+      const status = (error as { response?: { status?: number } })?.response?.status;
+      if (status === 404) {
+        throw new NotFoundException(`Generation task ${taskId} not found`);
+      }
+      throw new BadRequestException(`Failed to call SMR service: ${error}`);
+    }
+
+    const state = data.status ?? 'unknown';
+    if (state !== SMR_TASK_COMPLETED) {
+      throw new BadRequestException(`Generation task ${taskId} is not complete (state: ${state}). Wait for the stream to finish before finalizing.`);
+    }
+    return data.content ?? '';
+  }
+
+  private async smrHeaders(): Promise<Record<string, string>> {
+    const token = (await this.secretsService?.getSecretOptional('SMR_SERVICE_TOKEN')) ?? '';
+    const headers: Record<string, string> = { 'Content-Type': 'application/json', 'X-Service-Token': token };
+    const tenantId = this.tenantId;
+    if (tenantId) headers['X-Tenant-Id'] = tenantId;
+    return headers;
   }
 
   /**

@@ -1,22 +1,24 @@
 /**
- * TASK-635 Lane B — `smr.test` routing-tier registration.
+ * `smr.test` routing tier for the prompt-template test bench.
  *
- * Verifies the two additive registration points the prompt-template test
- * bench depends on outside the service itself: the AiTaskDefault task key +
- * its model-task-type mapping (+ tenant-write eligibility), and the
- * `models.smr.test` settings-registry descriptor.
- *
- * `HarnessPolicyService.resolveSmrSelection(tenantId, 'test')` itself (the
- * one line added to `harness-policy.service.ts`) is exercised end-to-end via
- * `PromptManagementService.testPromptTemplate`'s smr.test → smr.finalize
- * cascade tests in `prompt-management.service.test.ts`.
+ * Two halves:
+ *  1. The additive registration points the bench depends on outside the service
+ *     itself — the AiTaskDefault task key + its model-task-type mapping (+
+ *     tenant-write eligibility), and the `models.smr.test` settings-registry
+ *     descriptor.
+ *  2. BUG-018 — model resolution reads `IAiTaskDefaultService.getEffective`
+ *     DIRECTLY. The harness policy service is not injected and never consulted,
+ *     there is no `smr.finalize` fallback, and a MISS (fail-closed 400) is
+ *     distinguished from a lookup ERROR (rethrown).
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+import { BadRequestException } from '@nestjs/common';
 import { ModelTaskType } from '@arcaai/domains';
 import { AI_TASK_KEYS, AI_TASK_MODEL_TASK_TYPES, isGlobalAdminOnlyTaskKey } from '../../ai-task-default/constants';
 import { MODEL_DEFAULT_SETTINGS } from '../../settings-registry/descriptors/model-defaults.descriptors';
+import { PromptManagementService } from '../prompt-management.service';
 
-describe('smr.test routing tier (TASK-635 Lane B)', () => {
+describe('smr.test routing tier', () => {
   it('registers smr.test as an AiTaskDefault task key mapped to TEXT_GENERATION', () => {
     expect(AI_TASK_KEYS).toContain('smr.test');
     expect(AI_TASK_MODEL_TASK_TYPES['smr.test']).toBe(ModelTaskType.TEXT_GENERATION);
@@ -39,5 +41,101 @@ describe('smr.test routing tier (TASK-635 Lane B)', () => {
       category: 'Models',
     });
     expect(descriptor?.globalOnly).toBeUndefined();
+  });
+});
+
+// ─── BUG-018: AiTaskDefault-only resolution ───────────────────────────
+
+describe('prompt-test model resolution (BUG-018 harness decoupling)', () => {
+  const template = {
+    id: 'tpl-1',
+    tenantId: 'tenant-1',
+    content: 'Summarize {{topic}}',
+    category: 'SYSTEM',
+    variables: null,
+    version: 1,
+  };
+
+  const buildService = (opts: {
+    getEffective: ReturnType<typeof vi.fn>;
+    post?: ReturnType<typeof vi.fn>;
+  }) => {
+    const post = opts.post ?? vi.fn().mockResolvedValue({ data: { task_id: 'task-1', stream_url: '/api/v1/tasks/task-1/stream' } });
+    const clsService = {
+      get: vi.fn((key: string) => (key === 'tenantId' ? 'tenant-1' : key === 'userAbility' ? { can: () => true } : null)),
+      set: vi.fn(),
+    };
+    const svc = new PromptManagementService(
+      { findById: vi.fn().mockResolvedValue(template), encryptFieldsIntoEntity: vi.fn(), updateWithVersion: vi.fn() } as never,
+      { findByVersionNumber: vi.fn() } as never,
+      {} as never,
+      {} as never,
+      { emit: vi.fn() } as never,
+      clsService as never,
+      {} as never,
+      { axiosRef: { post, get: vi.fn() } } as never,
+      { get: vi.fn().mockReturnValue('http://smr.local:8862') } as never,
+      undefined, // secretsService
+      { getEffective: opts.getEffective } as never, // IAiTaskDefaultService
+    );
+    return { svc, post };
+  };
+
+  it('resolves {provider, model} from getEffective("smr.test", tenantId) and never touches harness policy', async () => {
+    const getEffective = vi.fn().mockResolvedValue({
+      taskKey: 'smr.test',
+      model: { provider: 'lm-studio', sourceUri: 'medgemma-27b' },
+    });
+    const { svc, post } = buildService({ getEffective });
+
+    const ack = await svc.startPromptTemplateTest('tpl-1', {} as never);
+
+    expect(getEffective).toHaveBeenCalledWith('smr.test', 'tenant-1');
+    // No second lookup — the smr.finalize hop is gone.
+    expect(getEffective).toHaveBeenCalledTimes(1);
+    expect(ack.provider).toBe('lm-studio');
+    expect(ack.model).toBe('medgemma-27b');
+    const [, payload] = post.mock.calls[0];
+    expect((payload as { provider?: string }).provider).toBe('lm-studio');
+    expect((payload as { model?: string }).model).toBe('medgemma-27b');
+  });
+
+  it("maps the registry provider 'azure' onto SMR's 'azure-openai'", async () => {
+    const getEffective = vi.fn().mockResolvedValue({ model: { provider: 'azure', sourceUri: 'gpt-4o' } });
+    const { svc } = buildService({ getEffective });
+
+    const ack = await svc.startPromptTemplateTest('tpl-1', {} as never);
+
+    expect(ack.provider).toBe('azure-openai');
+    expect(ack.model).toBe('gpt-4o');
+  });
+
+  it('MISS: smr.test resolves to nothing → BadRequestException naming the key, no SMR call', async () => {
+    const getEffective = vi.fn().mockResolvedValue({ taskKey: 'smr.test', modelSlug: null, source: null, model: null });
+    const { svc, post } = buildService({ getEffective });
+
+    await expect(svc.startPromptTemplateTest('tpl-1', {} as never)).rejects.toThrow(/smr\.test/);
+    await expect(svc.startPromptTemplateTest('tpl-1', {} as never)).rejects.toThrow(BadRequestException);
+    expect(post).not.toHaveBeenCalled();
+  });
+
+  it('ERROR: a lookup failure propagates as itself — never disguised as a miss', async () => {
+    const boom = new Error('AiTaskDefault lookup exploded');
+    const getEffective = vi.fn().mockRejectedValue(boom);
+    const { svc, post } = buildService({ getEffective });
+
+    await expect(svc.startPromptTemplateTest('tpl-1', {} as never)).rejects.toThrow(boom);
+    expect(post).not.toHaveBeenCalled();
+  });
+
+  it('an explicit caller {provider, model} pair wins and skips the task-default lookup entirely', async () => {
+    const getEffective = vi.fn();
+    const { svc, post } = buildService({ getEffective });
+
+    const ack = await svc.startPromptTemplateTest('tpl-1', { provider: 'bedrock', model: 'claude' } as never);
+
+    expect(getEffective).not.toHaveBeenCalled();
+    expect(ack.provider).toBe('bedrock');
+    expect(post).toHaveBeenCalledTimes(1);
   });
 });

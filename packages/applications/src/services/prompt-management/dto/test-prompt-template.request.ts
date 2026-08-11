@@ -4,17 +4,18 @@ import { IsOptional, IsString, IsInt, IsBoolean, IsUUID, Min } from 'class-valid
 /**
  * Request body for `POST /admin/prompt-templates/:id/test`.
  *
- * Runs the template against the SMR/text-generation service and — unless
- * `dryRun` is set — persists the resulting score/output via an
- * optimistic-concurrency write, so it carries the same `expectedVersion`
- * predicate as the PATCH route (folded from the `If-Match` header at the
- * controller).
+ * BUG-018 — this call NO LONGER blocks on the LLM and NO LONGER writes. It
+ * assembles the prompt, resolves `{provider, model}`, submits a STREAMING
+ * generation job to SMR and returns a `PromptTestAckResponse` immediately.
+ * Scoring and the optimistic-concurrency persist happen on the follow-up
+ * `POST :id/test/finalize` call, which is where `expectedVersion`/`If-Match`
+ * now belong.
  *
- * TASK-635 Lane B additions:
- *  - `provider`/`model` — caller-selected LLM (forwarded verbatim; falls back
- *    to the `smr.test` → `smr.finalize` AiTaskDefault cascade when omitted).
- *  - `dryRun` — score/generate without persisting `lastTest*` or bumping
- *    `_version`.
+ *  - `provider`/`model` — caller-selected LLM (forwarded verbatim; omit both to
+ *    resolve the `smr.test` AiTaskDefault, tenant row → SYSTEM row. There is no
+ *    `smr.finalize` fallback: that was harness coupling, removed here).
+ *  - `dryRun` — assemble and return the prompt WITHOUT generating anything at
+ *    all (no SMR call, no job, no tokens billed).
  *  - `versionNumber` — test an immutable pinned `PromptVersion` snapshot
  *    instead of the mutable draft.
  *  - `goldenCaseId` — feed a decrypted golden-case transcript as the sample
@@ -33,7 +34,7 @@ export class TestPromptTemplateRequest {
   sampleInput?: string;
 
   @ApiPropertyOptional({
-    description: 'Row version for optimistic concurrency control. Echoed from `If-Match: "<version>"` (header wins when both are present).',
+    description: 'DEPRECATED on this route (BUG-018) — the test submit no longer writes. Supply it on `:id/test/finalize` instead.',
     example: 7,
   })
   @IsOptional()
@@ -43,7 +44,7 @@ export class TestPromptTemplateRequest {
   @ApiPropertyOptional({
     description:
       'Caller-selected LLM provider, forwarded to SMR verbatim (must be paired with `model`). ' +
-      'Omit both to resolve the tenant `smr.test` AiTaskDefault, falling back to `smr.finalize` when unset.',
+      'Omit both to resolve the `smr.test` AiTaskDefault (tenant row → SYSTEM row).',
     example: 'lm-studio',
   })
   @IsOptional()
@@ -59,7 +60,7 @@ export class TestPromptTemplateRequest {
   model?: string;
 
   @ApiPropertyOptional({
-    description: 'Score/generate without persisting `lastTestScore/lastTestOutput/lastTestAt` or bumping the row `_version`.',
+    description: 'Assemble and return the prompt WITHOUT calling SMR at all — no generation, no job, no tokens.',
     default: true,
   })
   @IsOptional()

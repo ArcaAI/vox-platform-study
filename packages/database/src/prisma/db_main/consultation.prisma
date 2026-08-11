@@ -176,11 +176,19 @@ model AudioRecording {
   ContextItem   ContextItem @relation(fields: [contextItemId], references: [id])
 
   // Reference to Media table (stores actual file info)
+  // NOTE: no code path resolves this (or rawMediaId/processedMediaId below) via
+  // MediaRepository today (verified 2026-08-11) — ContextDtoMapper.toAudioRecordingResponse
+  // returns all three raw. Producers historically wrote the raw storage key instead of a
+  // Media UUID here (same bug class fixed for ContextItem.mediaId in TASK-656); that fix
+  // also corrects new writes to this table, but pre-fix rows may still hold a raw key.
+  // Inert today (nothing resolves it), but a future playback/download resolver must
+  // re-check for non-UUID values before trusting these fields — see the TASK-656 backfill
+  // script (packages/database/scripts/backfill-context-item-media-id.ts) for the pattern.
   mediaId String
 
   // Dual capture — soft references to the raw vs processed (noise-cancelled /
   // VAD-trimmed / resampled) media. Nullable + additive; `mediaId` above is
-  // retained as the primary/back-compat reference.
+  // retained as the primary/back-compat reference. Same unresolved-reference caveat as above.
   rawMediaId       String?
   processedMediaId String?
 

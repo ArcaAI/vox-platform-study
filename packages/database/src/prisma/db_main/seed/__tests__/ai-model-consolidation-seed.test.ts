@@ -580,6 +580,8 @@ describe('AiTaskDefault SYSTEM seed', () => {
     // SMR generation routing keys.
     'smr.live': 'TEXT_GENERATION',
     'smr.finalize': 'TEXT_GENERATION',
+    // BUG-018 — prompt-template Test routing, independent of harness.
+    'smr.test': 'TEXT_GENERATION',
     // guardrail safety/groundedness, harness judge, diagnosis.
     'guardrail.safety': 'TOKEN_CLASSIFICATION',
     'guardrail.groundedness': 'TEXT_CLASSIFICATION',
@@ -598,10 +600,10 @@ describe('AiTaskDefault SYSTEM seed', () => {
       seedAiTaskDefault: (client: unknown) => Promise<{ created: number; skipped: number }>;
     }>;
 
-  it('seeds exactly the nine SYSTEM task defaults with deterministic ids', async () => {
+  it('seeds exactly the ten SYSTEM task defaults with deterministic ids', async () => {
     const { SYSTEM_AI_TASK_DEFAULTS } = await loadModule();
     const byKey = new Map(SYSTEM_AI_TASK_DEFAULTS.map((r) => [r.taskKey, r]));
-    expect(SYSTEM_AI_TASK_DEFAULTS.length).toBe(9);
+    expect(SYSTEM_AI_TASK_DEFAULTS.length).toBe(10);
     expect(byKey.get('guardrail.validate')?.modelSlug).toBe('granite-guardian-4.1-8b');
     expect(byKey.get('nlp.ner')?.modelSlug).toBe('medical-ner');
     // nlp.classification is the doc-type classifier (fail-closed
@@ -612,6 +614,10 @@ describe('AiTaskDefault SYSTEM seed', () => {
     // current SYSTEM SMR default registry slug.
     expect(byKey.get('smr.live')?.modelSlug).toBe('lms-gemma-4-e2b-it-qat');
     expect(byKey.get('smr.finalize')?.modelSlug).toBe('lms-gemma-4-e2b-it-qat');
+    // BUG-018 — the prompt-template Test key. Seeded so the Test path
+    // resolves through AiTaskDefault ALONE and never falls through to the
+    // harness `smr.finalize` cascade to find a model.
+    expect(byKey.get('smr.test')?.modelSlug).toBe('lms-gemma-4-e2b-it-qat');
     // guardrail safety/groundedness + harness judge selection.
     expect(byKey.get('guardrail.safety')?.modelSlug).toBe('gliner-guard-uniencoder-onnx');
     expect(byKey.get('guardrail.groundedness')?.modelSlug).toBe('minicheck-flan-t5-large');
@@ -624,7 +630,7 @@ describe('AiTaskDefault SYSTEM seed', () => {
       expect(row.tenantId).toBe(SYSTEM_TENANT_ID);
       expect(row.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
     });
-    expect(new Set(SYSTEM_AI_TASK_DEFAULTS.map((r) => r.id)).size).toBe(9);
+    expect(new Set(SYSTEM_AI_TASK_DEFAULTS.map((r) => r.id)).size).toBe(10);
   });
 
   it('references catalog slugs whose taskType matches the task key', async () => {
@@ -647,7 +653,7 @@ describe('AiTaskDefault SYSTEM seed', () => {
     };
     const result = await seedAiTaskDefault(client as never);
     expect(result.created).toBe(0);
-    expect(result.skipped).toBe(9);
+    expect(result.skipped).toBe(10);
     expect(client.aiTaskDefault.create).not.toHaveBeenCalled();
     expect(client.aiTaskDefault.update).not.toHaveBeenCalled();
   });
@@ -665,7 +671,7 @@ describe('AiTaskDefault SYSTEM seed', () => {
       },
     };
     const result = await seedAiTaskDefault(client as never);
-    expect(result.created).toBe(9);
+    expect(result.created).toBe(10);
     created.forEach(({ data }) => {
       expect(data.tenantId).toBe(SYSTEM_TENANT_ID);
       expect(data.createdBy).toBe(SYSTEM_USER_ID);

@@ -412,15 +412,19 @@ describe('PromptTemplatesScreen', () => {
     );
   });
 
-  it('runs a prompt test from the Test-run tab as an OCC write and renders the output', async () => {
+  /**
+   * BUG-018: POST :id/test is now a non-writing ACK — no If-Match, no
+   * expectedVersion. A dry run (the panel default) comes back as
+   * `mode: 'dry-run'` with the assembled prompt and opens no stream.
+   */
+  it('runs a prompt test from the Test-run tab as an ack and renders the assembled prompt', async () => {
     const calls = stubTemplates((call) => {
       if (call.method === 'POST' && pathOf(call) === '/api/hope/admin/prompt-templates/pt-1/test') {
         return Response.json({
-          id: 'pt-1',
-          score: 0.87,
-          output: 'S: Chest pain. O: Stable. A: Angina. P: Follow-up.',
-          testedAt: '2026-07-05T07:00:00.000Z',
-          version: 8,
+          mode: 'dry-run',
+          provider: 'azure',
+          model: 'gpt-4o',
+          assembledPrompt: 'S: Chest pain. O: Stable. A: Angina. P: Follow-up.',
         });
       }
       return undefined;
@@ -434,8 +438,8 @@ describe('PromptTemplatesScreen', () => {
 
     expect(await screen.findByText(/A: Angina/)).toBeDefined();
     const post = calls.find((call) => call.method === 'POST' && pathOf(call) === '/api/hope/admin/prompt-templates/pt-1/test');
-    expect(post?.headers['if-match']).toBe('"7"');
-    expect(post?.body).toEqual({ sampleInput: 'Patient reports chest pain.', dryRun: true, expectedVersion: 7 });
+    expect(post?.headers['if-match']).toBeUndefined();
+    expect(post?.body).toEqual({ sampleInput: 'Patient reports chest pain.', dryRun: true });
   });
 
   it('creates a template from the drawer create mode (no modal)', async () => {

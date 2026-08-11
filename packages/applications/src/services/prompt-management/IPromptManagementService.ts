@@ -7,6 +7,8 @@ import {
   ApprovePromptTemplateRequest,
   TestPromptTemplateRequest,
   PromptTestResultResponse,
+  PromptTestAckResponse,
+  FinalizePromptTestRequest,
   PromptUsageAnalyticsResponse,
   PreferredPromptTemplateResponse,
   PromptVersionDiffResponse,
@@ -62,7 +64,20 @@ export abstract class IPromptManagementService {
   abstract diffVersions(templateId: string, fromVersion: number, toVersion: number): Promise<PromptVersionDiffResponse>;
   abstract softDeletePromptTemplate(id: string): Promise<PromptTemplateResponse>;
   abstract assignToDepartment(dto: AssignDepartmentPromptRequest): Promise<DepartmentResponse>;
-  abstract testPromptTemplate(id: string, dto: TestPromptTemplateRequest): Promise<PromptTestResultResponse>;
+  /**
+   * BUG-018 — SUBMIT a test run. Assembles the prompt, resolves
+   * `{provider, model}` from the `smr.test` AiTaskDefault (or the caller's
+   * explicit pair) and submits a STREAMING generation job to SMR, returning
+   * immediately. `dryRun` returns the assembled prompt and calls SMR not at all.
+   * Never awaits the completion — the 2–3½ minute blocking call was the CDN 524.
+   */
+  abstract startPromptTemplateTest(id: string, dto: TestPromptTemplateRequest): Promise<PromptTestAckResponse>;
+  /**
+   * BUG-018 — FINALIZE a test run: fetch the finished generation from SMR
+   * server-side by `taskId`, score it, and persist
+   * `lastTestScore/lastTestOutput/lastTestAt` under optimistic concurrency.
+   */
+  abstract finalizePromptTemplateTest(id: string, dto: FinalizePromptTestRequest): Promise<PromptTestResultResponse>;
   abstract getUsageAnalytics(filters?: { promptTemplateId?: string }): Promise<PromptUsageAnalyticsResponse>;
   // Tenant-scoped raw run listing for the Agent Jobs surface.
   abstract listUsageRecords(filters?: { page?: number; limit?: number; promptTemplateId?: string }): Promise<Paginated<PromptUsageRecordResponse>>;
