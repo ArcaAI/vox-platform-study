@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator, Callable
 from typing import Protocol, runtime_checkable
 
-from smr.core.exceptions import ModelNotSelectedError
+from smr.core.exceptions import ModelNotSelectedError, VisionNotSupportedError
 from smr.models.provider import ProviderInfo
 from smr.models.requests import GenerateRequest
 from smr.models.stats import GenerationStats
@@ -37,9 +37,34 @@ def require_model(model: str | None, *, provider: str) -> str:
     return model
 
 
+def reject_vision(request: GenerateRequest, *, provider: str) -> None:
+    """Fail-closed guard for a provider with NO multimodal wire capability
+    (today: llama.cpp's raw ``/completion`` endpoint — TASK-657).
+
+    Raises ``VisionNotSupportedError`` when the request carries an image
+    content part, rather than silently sending the text-only prompt and
+    dropping the image. A caller that picked a text-only engine for a vision
+    request must find out with a clear typed error.
+    """
+    if request.image_parts():
+        raise VisionNotSupportedError(
+            f"Provider '{provider}' does not support vision input: an 'image' "
+            "content part was supplied but this engine has no multimodal wire "
+            "capability.",
+            provider=provider,
+        )
+
+
 @runtime_checkable
 class LLMProvider(Protocol):
-    """Contract that every LLM provider must satisfy."""
+    """Contract that every LLM provider must satisfy.
+
+    ``generate``/``generate_stream`` accept an OPTIONAL multimodal payload via
+    ``request.content_parts`` (TASK-657) — a text-only ``GenerateRequest`` (the
+    default) is unaffected; a provider with no vision wire capability must
+    raise ``VisionNotSupportedError`` (see ``reject_vision``) rather than drop
+    the image parts.
+    """
 
     # AD-1: the third element is a normalized ``GenerationStats`` (real
     # stop reason + token counts + engine-native blob), NOT a bare usage dict —

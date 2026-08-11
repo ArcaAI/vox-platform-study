@@ -100,11 +100,23 @@ class OpenAICompatProvider:
         # listing (informational) only.
         return request.model
 
-    def _build_messages(self, request: GenerateRequest) -> list[dict[str, str]]:
-        messages = []
+    def _build_messages(self, request: GenerateRequest) -> list[dict[str, Any]]:
+        messages: list[dict[str, Any]] = []
         if request.system_prompt:
             messages.append({"role": "system", "content": request.system_prompt})
-        messages.append({"role": "user", "content": request.prompt})
+        images = request.image_parts()
+        if images:
+            content: list[dict[str, Any]] = [{"type": "text", "text": request.prompt}]
+            for image in images:
+                content.append(
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:{image.media_type};base64,{image.data}"},
+                    }
+                )
+            messages.append({"role": "user", "content": content})
+        else:
+            messages.append({"role": "user", "content": request.prompt})
         return messages
 
     def _apply_response_format(self, kwargs: dict[str, Any], request: GenerateRequest) -> None:
@@ -333,4 +345,5 @@ class OpenAICompatProvider:
             default_model=self._default_model,
             models=models,
             supports_streaming=True,
+            supports_vision=True,
         )

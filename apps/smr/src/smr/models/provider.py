@@ -17,6 +17,10 @@ class ModelInfo(BaseModel):
     # context length, ...) verbatim — informational, never used for routing.
     state: str | None = None
     engine_native: dict[str, Any] | None = None
+    # Per-MODEL vision capability (TASK-657) — informational only. No adapter
+    # today introspects a vendor listing for this; ``None`` = unknown/not
+    # probed. Left unset until a future per-model capability probe exists.
+    supports_vision: bool | None = None
 
 
 class ProviderInfo(BaseModel):
@@ -26,6 +30,12 @@ class ProviderInfo(BaseModel):
     default_model: str
     models: list[ModelInfo] = Field(default_factory=list)
     supports_streaming: bool = True
+    # Provider-level (wire/protocol) vision capability (TASK-657) — True when
+    # the adapter can carry an ``ImageContentPart`` to the engine at all. This
+    # is an ARCHITECTURAL fact about the adapter, set explicitly by each
+    # provider's ``get_info()``; it is NOT a guarantee that the currently
+    # loaded/selected model is itself a vision-language model.
+    supports_vision: bool = False
     # Per-provider probe outcome, populated by the /providers
     # endpoint (not by the providers themselves). Additive/optional so the
     # gateway fallback mapper and the SMR contract test stay compatible.

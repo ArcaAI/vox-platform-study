@@ -129,12 +129,31 @@ class AnthropicProvider:
 
     def _build_create_kwargs(self, request: GenerateRequest) -> dict[str, Any]:
         resolved = resolve_request_defaults(request)
+        images = request.image_parts()
+        content: str | list[dict[str, Any]]
+        if images:
+            # Anthropic's documented ordering: image blocks before the text
+            # block they relate to.
+            content = [
+                {
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": image.media_type,
+                        "data": image.data,
+                    },
+                }
+                for image in images
+            ]
+            content.append({"type": "text", "text": request.prompt})
+        else:
+            content = request.prompt
         kwargs: dict[str, Any] = {
             "model": self._resolve_model(request),
             "max_tokens": resolved["max_tokens"],
             "temperature": resolved["temperature"],
             "top_p": resolved["top_p"],
-            "messages": [{"role": "user", "content": request.prompt}],
+            "messages": [{"role": "user", "content": content}],
         }
         if request.system_prompt:
             kwargs["system"] = request.system_prompt
@@ -375,6 +394,7 @@ class AnthropicProvider:
                 default_model=self._default_model,
                 models=models,
                 supports_streaming=True,
+                supports_vision=True,
             )
         try:
             listing = await self._client.models.list(limit=100)
@@ -392,4 +412,5 @@ class AnthropicProvider:
             default_model=self._default_model,
             models=models,
             supports_streaming=True,
+            supports_vision=True,
         )

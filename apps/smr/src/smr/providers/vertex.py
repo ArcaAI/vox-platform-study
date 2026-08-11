@@ -10,6 +10,7 @@ client authenticates with Application Default Credentials.
 
 from __future__ import annotations
 
+import base64
 import json
 import time
 from collections.abc import AsyncIterator
@@ -139,6 +140,23 @@ class VertexProvider:
             cfg_kwargs["response_mime_type"] = "application/json"
         return types.GenerateContentConfig(**cfg_kwargs)
 
+    def _build_contents(self, request: GenerateRequest) -> Any:
+        """``contents`` for ``generate_content``/``generate_content_stream``.
+
+        A bare prompt string (unchanged) when there is no image; otherwise a
+        list of parts — the ``google-genai`` SDK auto-wraps a list of
+        strings/``Part``s into a single user-role ``Content`` (TASK-657).
+        """
+        images = request.image_parts()
+        if not images:
+            return request.prompt
+        parts: list[Any] = [
+            types.Part.from_bytes(data=base64.b64decode(image.data), mime_type=image.media_type)
+            for image in images
+        ]
+        parts.append(request.prompt)
+        return parts
+
     @staticmethod
     def _raw_finish_reason(response: Any) -> str | None:
         candidates = getattr(response, "candidates", None) or []
@@ -205,7 +223,7 @@ class VertexProvider:
             start = time.monotonic()
             response = await client.aio.models.generate_content(
                 model=resolved_model,
-                contents=request.prompt,
+                contents=self._build_contents(request),
                 config=config,
             )
             total_ms = int((time.monotonic() - start) * 1000)
@@ -250,7 +268,7 @@ class VertexProvider:
 
             stream = await client.aio.models.generate_content_stream(
                 model=resolved_model,
-                contents=request.prompt,
+                contents=self._build_contents(request),
                 config=config,
             )
             async for chunk in stream:
@@ -311,4 +329,5 @@ class VertexProvider:
             default_model=self._default_model,
             models=models,
             supports_streaming=True,
+            supports_vision=True,
         )
