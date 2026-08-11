@@ -20,7 +20,7 @@ see [`environment-setup.md`](environment-setup.md).
 
 | Command | Scope | Infra |
 |---|---|---|
-| `pnpm test:unit` | all `**/*.test.ts` / `**/*.spec.ts`, excluding `integration/`, `e2e/`, `apps/ui-playground/`, the PgBouncer rig, `*.postgres.test.ts` | none |
+| `pnpm test:unit` | all `**/*.test.ts` / `**/*.spec.ts`, excluding `integration/`, `e2e/`, the PgBouncer rig, `*.postgres.test.ts` | none |
 | `pnpm test:unit:watch` | unit in watch mode | none |
 | `pnpm test:unit:ui` | unit with the Vitest UI | none |
 | `pnpm test:unit:cov` | unit + coverage | none |
@@ -132,9 +132,6 @@ pnpm infra:test:validate       # re-run infra health checks
   turbo cancels the rest, which then report exit code **130 (SIGINT)** and "Test failed". Those are
   *cancellations*, not real failures. To find the true failure, re-run the blamed package alone
   (e.g. `pnpm --filter <pkg> test`).
-- **Heavy concurrent builds.** The deprecated `apps/ui-playground` build produces very large bundles
-  and can fail under memory pressure only when run alongside the full graph. Re-run it standalone to
-  confirm it's an environment/OOM issue, not a code error.
 - **Integration/E2E "fails on boot".** Almost always infra not up or schema not seeded. Run
   `pnpm setup:test` (or use a `*:managed` runner) and retry.
 - **E2E port.** The test gateway is **8968**, not the dev 8868. Don't point specs at dev.

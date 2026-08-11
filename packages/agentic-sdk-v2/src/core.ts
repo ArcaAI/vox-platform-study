@@ -716,7 +716,7 @@ export { agenticStoreSingleton as useAgenticStore } from './store/agenticStore';
 export type { AgenticActions, AgenticState } from './store/agenticStore';
 
 // Publicly expose the per-provider, context-backed
-// store accessors. Consuming apps (e.g. apps/ui-playground) MUST read
+// store accessors. Consuming apps MUST read
 // provider-initialized state through these, NOT the inert @deprecated
 // `useAgenticStore` singleton above (no provider initializes it, so its
 // `apiClient`/`configManager`/`logger` stay `null` forever).
