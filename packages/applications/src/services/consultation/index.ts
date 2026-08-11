@@ -11,6 +11,9 @@ export * from './prompt';
 export * from './harness';
 // Per-consultation realtime live-summary watcher.
 export * from './live-documentation';
+// Loop event plane (TASK-660) — publishes ConsultationLoopWorkflow output for
+// the `consultation:loop:{id}` SSE relay.
+export * from './loop';
 // TASK-615 WS-D2 — the ONE NER usage-ledger builder, shared by the
 // consultation-scoped call sites (ner.processor.ts, summary.service.ts) and
 // the standalone `/ai/nlp/entities` playground proxy in apps/api. Exported
