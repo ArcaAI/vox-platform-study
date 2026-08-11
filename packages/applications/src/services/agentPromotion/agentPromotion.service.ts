@@ -701,7 +701,9 @@ export class AgentPromotionService extends BaseService implements IAgentPromotio
     if (!targetAgent || targetAgent.tenantId !== promotion.toTenantId) {
       return AgentPromotionDtoMapper.toResponse(promotion);
     }
-    const current = createHash('sha256').update(canonicalAgentConfigJson(buildLoopConfigSnapshot(targetAgent))).digest('hex');
+    const current = createHash('sha256')
+      .update(canonicalAgentConfigJson(buildLoopConfigSnapshot(targetAgent)))
+      .digest('hex');
     return AgentPromotionDtoMapper.toResponse(promotion, current !== promotion.checksum);
   }
 }
