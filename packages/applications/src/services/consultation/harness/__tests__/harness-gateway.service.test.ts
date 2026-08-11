@@ -169,6 +169,43 @@ describe('HarnessGatewayService', () => {
     });
   });
 
+  describe('signalContextAdded', () => {
+    it('POSTs to the harness context-added-signal endpoint with the context item payload', async () => {
+      const service = build('http://harness:8866', 'harness-token-xyz');
+
+      await service.signalContextAdded('consultation-9', {
+        tenantId: 'tenant-9',
+        contextItemId: 'ctx-1',
+        contextType: 'WORKNOTE',
+        subType: 'LAB_RESULT',
+        contentPreview: 'BP elevated',
+      });
+
+      expect(mockHttpService.axiosRef.post).toHaveBeenCalledTimes(1);
+      const [url, body, options] = mockHttpService.axiosRef.post.mock.calls[0];
+      expect(url).toBe('http://harness:8866/api/v1/internal/workflows/consultation-9/signal/context-added');
+      expect(body).toEqual(
+        expect.objectContaining({
+          tenantId: 'tenant-9',
+          contextItemId: 'ctx-1',
+          contextType: 'WORKNOTE',
+          subType: 'LAB_RESULT',
+          contentPreview: 'BP elevated',
+        }),
+      );
+      expect(options.headers['X-Service-Token']).toBe('harness-token-xyz');
+    });
+
+    it('returns the harness response payload', async () => {
+      mockHttpService.axiosRef.post.mockResolvedValue({ data: { signaled: true } });
+      const service = build('http://harness:8866', 'tok');
+
+      const result = await service.signalContextAdded('c-9', { contextItemId: 'ctx-2', contextType: 'TRANSCRIPT' });
+
+      expect(result).toEqual({ signaled: true });
+    });
+  });
+
   describe('service token resolution', () => {
     it('sends an empty X-Service-Token when no secret is configured (fail-open header, harness guard rejects)', async () => {
       const service = build('http://harness:8866', undefined);
