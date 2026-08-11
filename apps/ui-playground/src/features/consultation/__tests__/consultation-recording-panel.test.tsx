@@ -134,7 +134,12 @@ describe('ConsultationRecordingPanel (TASK-329 P2)', () => {
     recordingsState.list = vi.fn().mockResolvedValue([]);
     recordingsState.add = vi.fn().mockResolvedValue({ id: 'ctx-1' });
 
-    storageState.uploadFile = vi.fn().mockImplementation((_bucket: string, file: File) => Promise.resolve({ key: `key-${file.name}` }));
+    // TASK-656 — the real StorageController.uploadFile response carries BOTH the
+    // raw storage `key` AND a `mediaId` (a Media table row UUID); mock both so
+    // callers exercising the fixed mediaId-based flow see realistic data.
+    storageState.uploadFile = vi
+      .fn()
+      .mockImplementation((_bucket: string, file: File) => Promise.resolve({ key: `key-${file.name}`, mediaId: `media-${file.name}` }));
     configState.resolvedConfig = null;
     mediaRec.instances = [];
     vi.mocked(toast.error).mockClear();
@@ -263,7 +268,8 @@ describe('ConsultationRecordingPanel (TASK-329 P2)', () => {
       await waitFor(() => expect(recordingsState.add).toHaveBeenCalledTimes(1));
       expect(storageState.uploadFile).toHaveBeenCalledTimes(1);
       expect(storageState.uploadFile).toHaveBeenCalledWith('attachments', expect.any(File));
-      expect(recordingsState.add).toHaveBeenCalledWith('c-1', { mediaId: 'key-raw.webm' });
+      // TASK-656 — mediaId (the Media row UUID), never the raw storage key.
+      expect(recordingsState.add).toHaveBeenCalledWith('c-1', { mediaId: 'media-raw.webm' });
     });
 
     it('when the flag is OFF, stopping does NOT capture or upload anything', async () => {

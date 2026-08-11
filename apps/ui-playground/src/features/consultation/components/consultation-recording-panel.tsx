@@ -142,8 +142,15 @@ export function ConsultationRecordingPanel({ consultationId, pipelineId }: Consu
     if (active) {
       try {
         const blob = await stopAndCollectBlob(active.recorder, active.chunks);
-        const { key } = await storage.uploadFile('attachments', new File([blob], 'raw.webm', { type: blob.type || 'audio/webm' }));
-        await add(consultationId, { mediaId: key });
+        // TASK-656 — mediaId is a Media table row UUID, not the raw storage key.
+        // The upload response's Media row creation is best-effort server-side
+        // (StorageController.uploadFile), so a missing mediaId is possible —
+        // surface it rather than persisting an unresolvable reference.
+        const { mediaId } = await storage.uploadFile('attachments', new File([blob], 'raw.webm', { type: blob.type || 'audio/webm' }));
+        if (!mediaId) {
+          throw new Error('Upload succeeded but no mediaId was returned');
+        }
+        await add(consultationId, { mediaId });
       } catch (err) {
         toast.error(err instanceof Error ? err.message : 'Failed to save recording');
       }

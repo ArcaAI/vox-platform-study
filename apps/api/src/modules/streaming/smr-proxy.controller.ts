@@ -13,6 +13,7 @@ import {
   ModelResponse,
   buildLlmUsageInput,
   parseSmrUsageDetail,
+  parseStorageUri,
   SecretsService,
   isSuperAdmin,
   SmrRequestEnrichmentService,
@@ -1017,7 +1018,7 @@ export class SmrProxyController {
       return null;
     }
 
-    const location = this.parseStorageUri(media.uri);
+    const location = parseStorageUri(media.uri);
     if (!location) {
       this.logger.warn({ message: 'Unparseable media URI; skipping attachment', mediaId, uri: media.uri });
       return null;
@@ -1042,15 +1043,6 @@ export class SmrProxyController {
 
     const trimmed = text.length > ATTACHMENT_TEXT_LIMIT ? `${text.slice(0, ATTACHMENT_TEXT_LIMIT)}\n…[truncated]` : text;
     return { name: media.name, text: trimmed };
-  }
-
-  /** Parse an `s3://<bucket>/<key>` storage URI into its bucket + key parts. */
-  private parseStorageUri(uri: string): { bucket: string; key: string } | null {
-    const match = /^s3:\/\/([^/]+)\/(.+)$/.exec(uri ?? '');
-    if (!match) {
-      return null;
-    }
-    return { bucket: match[1], key: match[2] };
   }
 
   /**
