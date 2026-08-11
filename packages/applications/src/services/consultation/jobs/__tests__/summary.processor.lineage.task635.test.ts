@@ -161,4 +161,16 @@ describe('SummaryProcessor — warm-start decryption + R-N2 agent lineage (C6)',
     expect(params.pinnedAgentId).toBeUndefined();
     expect(params.preSummaryText).toBeUndefined();
   });
+
+  // TASK-655 — `resolveWarmStartPreSummary` here is byte-identical to
+  // `SummaryService`'s (already fully on `findLatestPreSummaryWithDecryptedContent`,
+  // so no production change was needed for this call site). `process()` wraps
+  // the whole body in try/catch, but re-throws after recording job failure —
+  // so a decrypt failure still surfaces as a rejected `process()` call.
+  it('propagates a decryption failure rather than swallowing it (re-thrown after job-failure bookkeeping)', async () => {
+    const { processor, findLatestPreSummaryWithDecryptedContent } = buildHarness({ entity: null, plaintext: null });
+    findLatestPreSummaryWithDecryptedContent.mockRejectedValue(new Error('vault transit unavailable'));
+
+    await expect(run(processor)).rejects.toThrow('vault transit unavailable');
+  });
 });

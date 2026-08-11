@@ -1854,15 +1854,23 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
    * `findLatestPreSummary` returns the newest PRE_SUMMARY of ANY subType, so it can
    * hand back a legacy/case-note pre-summary minted after our snapshot — which would
    * make the durable dedup mint a duplicate live row. Filter on the subType and take
-   * the newest, mirroring the harness warm-start reader (`findPreSummaries` is
-   * createdAt-ASC, so reduce to the max defensively).
+   * the newest.
+   *
+   * TASK-655: delegates to the shared repository helper
+   * (`ContextItemRepository.findLatestPreSummaryWithDecryptedContent`) instead of
+   * hand-rolling the find + subType-filter + newest-wins reduce here — this was one
+   * of four copies of that exact logic (harness's `loadLiveSoapSnapshot`,
+   * `SummaryService`/`SummaryProcessor`'s `resolveWarmStartPreSummary`). No
+   * `secrets` is passed: this caller only ever reads `.metaData` off the row (agent
+   * lineage / dedup identity), never `.content`, so there is nothing to decrypt and
+   * no behaviour change from skipping it.
    */
   private async findLiveSnapshotRow(consultationId: string): Promise<ContextItemEntity | null> {
     if (!this.contextItemRepository) return null;
-    const preSummaries = await this.contextItemRepository.findPreSummaries(consultationId);
-    const snapshots = preSummaries.filter((p) => (p.metaData as Record<string, unknown> | undefined)?.subType === 'LIVE_SOAP_SNAPSHOT');
-    if (snapshots.length === 0) return null;
-    return snapshots.reduce((a, b) => (a.createdAt >= b.createdAt ? a : b));
+    const { entity } = await this.contextItemRepository.findLatestPreSummaryWithDecryptedContent(consultationId, undefined, {
+      subType: 'LIVE_SOAP_SNAPSHOT',
+    });
+    return entity;
   }
 
   /**
