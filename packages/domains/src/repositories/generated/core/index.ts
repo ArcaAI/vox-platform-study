@@ -1,3 +1,4 @@
+export * from './AgentPromotionRepository';
 export * from './AgentTrajectoryStepRepository';
 export * from './AiModelRepository';
 export * from './AiPriceBookRepository';

@@ -93,4 +93,10 @@ export enum ResourceType {
   // publish; the PromptVersion precedent). Parity with audit.prisma; see
   // resourceType.enum-parity.test.ts.
   ConsultationContextSchema = 'ConsultationContextSchema',
+  // Agent promotion between tenants (TASK-663) — its own audited resource,
+  // unlike the immutable version rows: one promotion is one event with a
+  // lifecycle of its own, it crosses a tenant boundary, and
+  // `AgentPromotionService` broadcasts `ResourceCreated` against it. Parity
+  // with audit.prisma.
+  AgentPromotion = 'AgentPromotion',
 }

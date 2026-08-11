@@ -249,5 +249,14 @@ enum ResourceType {
   // `ALTER TYPE ... ADD VALUE` migration (resourceType.enum-parity.test.ts).
   ConsultationContextSchema
 
+  // Agent promotion between tenants (TASK-663). UNLIKE the immutable version
+  // rows above, this one IS its own audited resource: it has a lifecycle of
+  // its own (one promotion is one event, not a side effect of some other
+  // aggregate's write), it crosses a tenant boundary, and
+  // `AgentPromotionService` broadcasts `ResourceCreated` against it. A
+  // cross-tenant privileged write is exactly the thing an auditor needs to be
+  // able to enumerate.
+  AgentPromotion
+
   @@schema("core")
 }
