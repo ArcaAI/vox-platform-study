@@ -294,7 +294,11 @@ Sequence: `pnpm gen:model` → **hand-author** entity/factory/mapper/repository 
 - `fetch_loop_config` activity pins `(contextSchemaVersionId, agentConfigVersionId)` at start. Never re-read mid-run (C1).
 - Signals `contextAdded`, `consultationEnding`, `cancel`; query `state()`.
 - **Action registry** including `livedoc.start` / `livedoc.stop` → `LiveDocumentationService.start/stop` as **activities**. LiveDoc internals untouched (README §4.4).
-- `harness.finalize` starts `HarnessDocWorkflow` as an **unmodified child** with an explicit `ParentClosePolicy` (default `ABANDON` would orphan it).
+- `harness.finalize` starts `HarnessDocWorkflow` as an **unmodified child** with an explicit `ParentClosePolicy`.
+
+  > **Correction (TASK-662, verified against temporalio 1.30).** This spec originally claimed the default is `ABANDON` and would orphan the child. **That is wrong — the default is `TERMINATE`**, i.e. the opposite hazard: a child hard-killed mid-`persist_draft`. TASK-662 uses `REQUEST_CANCEL`.
+  >
+  > And the close policy alone is **not sufficient**. With `WAIT_CANCELLATION_COMPLETED` (the default) *or* `WAIT_CANCELLATION_REQUESTED`, the parent stayed **RUNNING indefinitely** after `cancel()`, even though its history showed the child's cancel both initiated and delivered. **`TRY_CANCEL` is required.** Diagnosed by dumping actual workflow history rather than reasoning from the docs.
 - Planned `continue_as_new` checkpoints (51,200-event / 50MB ceiling); `ClaimCheckRef` for payloads (>2MB soft-errors).
 - **Signal safety**: serialise handler access (`asyncio.Lock`), use `@workflow.init` for the signal-with-start race, and never call an activity from a signal handler — update state and let the main coroutine react.
 - Register in `worker.py:243-254` (`workflows=[...]`, `activities=[...]`).
@@ -339,7 +343,7 @@ Sequence: `pnpm gen:model` → **hand-author** entity/factory/mapper/repository 
 **Scope.**
 - LLM planner as a Temporal **activity** so the decision is recorded and replays (C1, D3).
 - Replanning at **checkpoints**, not per event — an intermediate frequency beats per-step (*Learning When to Plan*).
-- Specialists as **child workflows** — own history budget, own failure isolation. Explicit `ParentClosePolicy`.
+- Specialists as **child workflows** — own history budget, own failure isolation. Explicit `ParentClosePolicy` = `REQUEST_CANCEL` **plus** `TRY_CANCEL` on the cancellation type; see the correction under TASK-662 — the close policy alone leaves the parent running forever.
 - Scoped reads (subscribed kinds only) and enforced `writeScope`.
 - Adjudication by the primary, **inspectable**: one reconciled note carrying which view was taken and on what basis (E12). Clinician finalises.
 - Depth counter, per-consultation budget, `(agent, kind)` cycle detection.
