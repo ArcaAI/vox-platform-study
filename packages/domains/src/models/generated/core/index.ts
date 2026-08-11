@@ -1,3 +1,4 @@
+export * from './AgentPromotionModel';
 export * from './AgentTrajectoryStepModel';
 export * from './AiModelModel';
 export * from './AiPriceBookModel';

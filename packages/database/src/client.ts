@@ -186,6 +186,11 @@ export const MODELS_WITHOUT_SOFT_DELETE: ReadonlySet<string> = new Set([
   // verbatim. The MUTABLE head `DepartmentAgent` is deliberately NOT here —
   // it keeps the standard ENABLED/DELETED lifecycle.
   'DepartmentAgentVersion',
+  // TASK-663 — a WORM record of one agent promotion from a source tenant into
+  // a target tenant. Written once and never updated (re-promoting writes a NEW
+  // row), so the table is an audit history: retraction would defeat its whole
+  // purpose, and it carries no `resourceStatus` column.
+  'AgentPromotion',
 ]);
 
 /**
