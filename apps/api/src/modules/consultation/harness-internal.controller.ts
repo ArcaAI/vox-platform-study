@@ -11,6 +11,9 @@ import {
   HarnessFinalizeAssuranceRequest,
   HarnessGateDecisionRequest,
   HarnessInternalService,
+  HarnessLiveDocAck,
+  HarnessLiveDocStartRequest,
+  HarnessLiveDocStopRequest,
   HarnessLoopEventAck,
   HarnessLoopEventRequest,
   HarnessPersistEntitiesRequest,
@@ -21,6 +24,9 @@ import {
   HarnessProgressService,
   IActiveUserContext,
   IAgentTrajectoryService,
+  ILoopConfigService,
+  LiveDocumentationService,
+  LoopConfigResponse,
 } from '@arcaai/applications';
 import { AgentSessionKind, AgentStepStatus, AgentStepType, JsonValue } from '@arcaai/domains';
 import { BadRequestException, Body, Controller, Get, Headers, HttpCode, Inject, Param, Post, Query, UseGuards } from '@nestjs/common';
@@ -184,6 +190,13 @@ export class HarnessInternalController {
     @Inject(IAgentTrajectoryService) private readonly agentTrajectoryService: IAgentTrajectoryService,
     // Live loop-output feed (TASK-660); ephemeral Redis publish, no CLS needed.
     private readonly consultationLoopEventService: ConsultationLoopEventService,
+    // TASK-662 — deterministic loop-configuration resolution for the (future)
+    // ConsultationLoopWorkflow's first activity.
+    @Inject(ILoopConfigService) private readonly loopConfigService: ILoopConfigService,
+    // TASK-662 — the loop's `livedoc.start`/`livedoc.stop` actions call
+    // through these two routes rather than importing service internals
+    // directly (the harness is a separate deployable).
+    private readonly liveDocumentationService: LiveDocumentationService,
   ) {}
 
   @Get('policy')
@@ -411,5 +424,70 @@ export class HarnessInternalController {
     });
 
     return { accepted: steps.length };
+  }
+
+  /**
+   * TASK-662 — the (future) `ConsultationLoopWorkflow`'s first activity reads
+   * the deterministic loop configuration for a consultation: which
+   * `DepartmentAgent`/config-version/context-schema-version govern it, and
+   * the resolved per-kind action subscriptions + start/ending action lists.
+   * Every resolution failure (missing/cross-tenant consultation, no
+   * department, no default agent, no servable schema) degrades to a disabled
+   * config rather than throwing — see `LoopConfigService.resolveForConsultation`.
+   */
+  @Get('loop-config')
+  @ApiOperation({ summary: 'Resolve the deterministic loop configuration for a consultation (worker first-activity read)' })
+  @ApiQuery({ name: 'tenantId', required: true, description: 'Tenant the loop is acting on behalf of.' })
+  @ApiQuery({ name: 'consultationId', required: true, description: 'The consultation to resolve loop configuration for.' })
+  async getLoopConfig(@Query('tenantId') tenantId?: string, @Query('consultationId') consultationId?: string): Promise<LoopConfigResponse> {
+    if (!tenantId || !consultationId) {
+      throw new BadRequestException('tenantId and consultationId query parameters are required');
+    }
+
+    // Same S-3 recurrence-class guard as `getEffectivePolicy` above: this
+    // service-token route runs outside the API-edge ClsModule middleware, so
+    // CLS must be re-established BEFORE the tenant-scoped read.
+    return this.cls.run(async () => {
+      this.cls.set('tenantId', tenantId);
+      return this.loopConfigService.resolveForConsultation(tenantId, consultationId);
+    });
+  }
+
+  /**
+   * TASK-662 — the loop's `livedoc.start` action. Delegates to the existing
+   * `LiveDocumentationService.start()` (synchronous, fire-and-forget setup)
+   * verbatim; this route is the ONLY thing that changes about that service.
+   */
+  @Post('consultations/:id/live-documentation/start')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Start the live-documentation watcher for a consultation (loop livedoc.start action)' })
+  @ApiParam({ name: 'id', description: 'Consultation ID' })
+  async startLiveDocumentation(@Param('id') id: string, @Body() dto: HarnessLiveDocStartRequest): Promise<HarnessLiveDocAck> {
+    return this.cls.run(async () => {
+      this.cls.set('tenantId', dto.tenantId);
+      this.liveDocumentationService.start({
+        consultationId: id,
+        tenantId: dto.tenantId,
+        userId: dto.userId,
+        sessionId: dto.sessionId,
+      });
+      return { ok: true };
+    });
+  }
+
+  /**
+   * TASK-662 — the loop's `livedoc.stop` action. Delegates to the existing
+   * `LiveDocumentationService.stop()` verbatim.
+   */
+  @Post('consultations/:id/live-documentation/stop')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Stop the live-documentation watcher for a consultation (loop livedoc.stop action)' })
+  @ApiParam({ name: 'id', description: 'Consultation ID' })
+  async stopLiveDocumentation(@Param('id') id: string, @Body() dto: HarnessLiveDocStopRequest): Promise<HarnessLiveDocAck> {
+    return this.cls.run(async () => {
+      this.cls.set('tenantId', dto.tenantId);
+      await this.liveDocumentationService.stop(id, { persistSnapshot: dto.persistSnapshot });
+      return { ok: true };
+    });
   }
 }

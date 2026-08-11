@@ -36,6 +36,8 @@ describe('HarnessInternalController', () => {
       undefined as any,
       undefined as any,
       undefined as any,
+      undefined as any,
+      undefined as any,
     );
   });
 
@@ -168,6 +170,8 @@ describe('HarnessInternalController', () => {
         undefined as any,
         undefined as any,
         undefined as any,
+        undefined as any,
+        undefined as any,
       );
 
     it('threads consultationId through to getEffectivePolicy(tenantId, { consultationId })', async () => {
@@ -227,6 +231,8 @@ describe('HarnessInternalController', () => {
         undefined as any,
         undefined as any,
         undefined as any,
+        undefined as any,
+        undefined as any,
       );
 
     it('delegates to HarnessProgressService.reportProgress(consultationId, dto)', async () => {
@@ -265,6 +271,8 @@ describe('HarnessInternalController', () => {
         undefined as any, // harnessAssuranceService (unused by this route)
         undefined as any, // agentTrajectoryService (unused by this route)
         mockLoopEventService as any,
+        undefined as any, // loopConfigService (unused by this route)
+        undefined as any, // liveDocumentationService (unused by this route)
       );
 
     it('delegates to ConsultationLoopEventService.publishEvent(consultationId, dto)', async () => {
@@ -301,6 +309,8 @@ describe('HarnessInternalController', () => {
         undefined as any, // cls (unused by these routes)
         undefined as any, // harnessProgressService (unused by these routes)
         mockAssuranceService as any,
+        undefined as any,
+        undefined as any,
         undefined as any,
         undefined as any,
       );
@@ -359,6 +369,8 @@ describe('HarnessInternalController', () => {
         undefined as any, // harnessProgressService (unused)
         undefined as any, // harnessAssuranceService (unused)
         mockTrajectoryService as any,
+        undefined as any,
+        undefined as any,
         undefined as any,
       );
 
@@ -431,6 +443,134 @@ describe('HarnessInternalController', () => {
     it('responds 202 (accepted, async ingest) rather than the default POST 201', () => {
       const statusCode = Reflect.getMetadata(HTTP_CODE_METADATA, HarnessInternalController.prototype.reportTrajectory) as number | undefined;
       expect(statusCode).toBe(202);
+    });
+  });
+
+  // TASK-662 — the (future) ConsultationLoopWorkflow's first-activity read.
+  describe('GET internal/harness/loop-config (TASK-662)', () => {
+    const mockLoopConfigService = { resolveForConsultation: vi.fn() };
+    // Same fakeCls shape as the /policy describe block above: run() executes
+    // the callback synchronously in a store, so set-before-read is directly
+    // observable.
+    function fakeCls() {
+      const store = new Map<string, unknown>();
+      return {
+        store,
+        run: vi.fn((fn: () => unknown) => fn()),
+        set: vi.fn((key: string, value: unknown) => void store.set(key, value)),
+        get: vi.fn((key: string) => store.get(key)),
+      };
+    }
+
+    const buildController = (cls: ReturnType<typeof fakeCls>) =>
+      new HarnessInternalController(
+        mockService as any,
+        undefined as any, // harnessPolicyService (unused by this route)
+        cls as any,
+        undefined as any, // harnessProgressService (unused by this route)
+        undefined as any, // harnessAssuranceService (unused by this route)
+        undefined as any, // agentTrajectoryService (unused by this route)
+        undefined as any, // consultationLoopEventService (unused by this route)
+        mockLoopConfigService as any,
+        undefined as any, // liveDocumentationService (unused by this route)
+      );
+
+    it('delegates to LoopConfigService.resolveForConsultation(tenantId, consultationId)', async () => {
+      const config = { enabled: true, consultationId: 'consult-1' };
+      mockLoopConfigService.resolveForConsultation.mockResolvedValue(config);
+      const cls = fakeCls();
+
+      const result = await buildController(cls).getLoopConfig('t-1', 'consult-1');
+
+      expect(mockLoopConfigService.resolveForConsultation).toHaveBeenCalledWith('t-1', 'consult-1');
+      expect(result).toEqual(config);
+    });
+
+    it('re-establishes CLS pinned to the tenant BEFORE the service read (set-before-read ordering)', async () => {
+      const cls = fakeCls();
+      mockLoopConfigService.resolveForConsultation.mockImplementation(async () => {
+        expect(cls.store.get('tenantId')).toBe('t-1');
+        return { enabled: false };
+      });
+
+      await buildController(cls).getLoopConfig('t-1', 'consult-1');
+
+      expect(cls.run).toHaveBeenCalled();
+      expect(cls.set).toHaveBeenCalledWith('tenantId', 't-1');
+      const setOrder = cls.set.mock.invocationCallOrder[0];
+      const readOrder = mockLoopConfigService.resolveForConsultation.mock.invocationCallOrder[0];
+      expect(setOrder).toBeLessThan(readOrder);
+    });
+
+    it('rejects a missing tenantId without touching the service', async () => {
+      const cls = fakeCls();
+      await expect(buildController(cls).getLoopConfig(undefined, 'consult-1')).rejects.toThrow();
+      expect(mockLoopConfigService.resolveForConsultation).not.toHaveBeenCalled();
+    });
+
+    it('rejects a missing consultationId without touching the service', async () => {
+      const cls = fakeCls();
+      await expect(buildController(cls).getLoopConfig('t-1', undefined)).rejects.toThrow();
+      expect(mockLoopConfigService.resolveForConsultation).not.toHaveBeenCalled();
+    });
+  });
+
+  // TASK-662 — the loop's livedoc.start/livedoc.stop actions.
+  describe('POST consultations/:id/live-documentation/start|stop (TASK-662)', () => {
+    const mockLiveDocumentationService = { start: vi.fn(), stop: vi.fn() };
+    const mockCls = { run: vi.fn((fn: () => unknown) => fn()), set: vi.fn() };
+
+    const buildController = () =>
+      new HarnessInternalController(
+        mockService as any,
+        undefined as any, // harnessPolicyService (unused by these routes)
+        mockCls as any,
+        undefined as any, // harnessProgressService (unused by these routes)
+        undefined as any, // harnessAssuranceService (unused by these routes)
+        undefined as any, // agentTrajectoryService (unused by these routes)
+        undefined as any, // consultationLoopEventService (unused by these routes)
+        undefined as any, // loopConfigService (unused by these routes)
+        mockLiveDocumentationService as any,
+      );
+
+    it('start delegates to LiveDocumentationService.start({ consultationId, tenantId, userId, sessionId })', async () => {
+      const dto = { tenantId: 't-1', userId: 'user-1', sessionId: 'sess-1' };
+
+      const result = await buildController().startLiveDocumentation('consult-1', dto as any);
+
+      expect(mockLiveDocumentationService.start).toHaveBeenCalledWith({
+        consultationId: 'consult-1',
+        tenantId: 't-1',
+        userId: 'user-1',
+        sessionId: 'sess-1',
+      });
+      expect(result).toEqual({ ok: true });
+      expect(mockCls.set).toHaveBeenCalledWith('tenantId', 't-1');
+    });
+
+    it('stop delegates to LiveDocumentationService.stop(consultationId, { persistSnapshot })', async () => {
+      mockLiveDocumentationService.stop.mockResolvedValue(null);
+      const dto = { tenantId: 't-1', persistSnapshot: true };
+
+      const result = await buildController().stopLiveDocumentation('consult-1', dto as any);
+
+      expect(mockLiveDocumentationService.stop).toHaveBeenCalledWith('consult-1', { persistSnapshot: true });
+      expect(result).toEqual({ ok: true });
+      expect(mockCls.set).toHaveBeenCalledWith('tenantId', 't-1');
+    });
+
+    it('start responds 200 (not 201): nothing is created', () => {
+      const statusCode = Reflect.getMetadata(HTTP_CODE_METADATA, HarnessInternalController.prototype.startLiveDocumentation) as
+        | number
+        | undefined;
+      expect(statusCode).toBe(200);
+    });
+
+    it('stop responds 200 (not 201): nothing is created', () => {
+      const statusCode = Reflect.getMetadata(HTTP_CODE_METADATA, HarnessInternalController.prototype.stopLiveDocumentation) as
+        | number
+        | undefined;
+      expect(statusCode).toBe(200);
     });
   });
 });
