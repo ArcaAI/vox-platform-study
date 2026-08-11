@@ -102,7 +102,10 @@ describe('TENANT_SCOPED_MODELS allow-list', () => {
     // 74 → 75: TASK-659 adds DepartmentAgentVersion (immutable loop-config
     // snapshot of DepartmentAgent) — same posture as its parent, NOT
     // SYSTEM-shared.
-    expect(TENANT_SCOPED_MODELS.size).toBe(75);
+    // 75 → 76: TASK-663 adds AgentPromotion (immutable cross-tenant promotion
+    // record, owned by the TARGET tenant) — NOT SYSTEM-shared, or any tenant
+    // could enumerate which agents moved between which tenants.
+    expect(TENANT_SCOPED_MODELS.size).toBe(76);
   });
 
   // TASK-615 — the usage ledger, its outbox, the rollups and the whole billing

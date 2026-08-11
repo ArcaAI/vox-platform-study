@@ -23,6 +23,7 @@ import { BillingAdjustmentRepository } from '../../../repositories/generated/cor
 import { BillingInvoiceLineRepository } from '../../../repositories/generated/core/BillingInvoiceLineRepository';
 import { BillingInvoiceRepository } from '../../../repositories/generated/core/BillingInvoiceRepository';
 import { GateEditExemplarRepository } from '../../../repositories/generated/core/GateEditExemplarRepository';
+import { AgentPromotionRepository } from '../../../repositories/generated/core/AgentPromotionRepository';
 import { ApiKeyRepository } from '../../../repositories/generated/core/ApiKeyRepository';
 import { AsrPipelineRepository } from '../../../repositories/generated/core/AsrPipelineRepository';
 import { AsrPipelineVersionRepository } from '../../../repositories/generated/core/AsrPipelineVersionRepository';
@@ -175,6 +176,8 @@ const repositories = [
   DepartmentAgentRepository,
   // Immutable loop-configuration snapshots of a DepartmentAgent (TASK-659)
   DepartmentAgentVersionRepository,
+  // Immutable, WORM records of agent promotions between tenants (TASK-663)
+  AgentPromotionRepository,
   // Prompt & DNA domain
   PromptTemplateRepository,
   PromptVersionRepository,

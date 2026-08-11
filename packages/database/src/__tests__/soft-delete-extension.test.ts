@@ -207,6 +207,11 @@ describe('modelHasSoftDelete', () => {
       // MUTABLE head `DepartmentAgent` is deliberately NOT here — it keeps
       // the standard lifecycle.
       'DepartmentAgentVersion',
+      // TASK-663 — a WORM record of one agent promotion between tenants.
+      // Written once, never updated (a re-promotion writes a NEW row), so the
+      // table is an audit history whose whole value is that entries cannot be
+      // retracted. No `resourceStatus` column.
+      'AgentPromotion',
     ];
 
     expected.forEach((model) => {

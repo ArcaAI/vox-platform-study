@@ -399,3 +399,84 @@ export function goalProblems(value: Record<string, unknown>): string[] {
 
   return problems;
 }
+
+// ===========================================================================
+// Loop-config snapshot + checksum (TASK-659, shared with TASK-663)
+// ===========================================================================
+
+/**
+ * The seven loop-config fields, as a STRUCTURAL type rather than the entity.
+ * `DepartmentAgentEntity` satisfies it, and so does a `configSnapshot` read
+ * back off a `DepartmentAgentVersion` — which is the whole point: promotion
+ * (TASK-663) checksums a snapshot it read from the version table, never a live
+ * entity. Keeping the shape structural also keeps this module dependency-free,
+ * as every other validator in it is.
+ */
+export interface AgentLoopConfig {
+  role: string;
+  subscribedKinds?: Record<string, unknown> | null;
+  writeScope?: Record<string, unknown> | null;
+  goal?: Record<string, unknown> | null;
+  guardrailProfile?: string | null;
+  alwaysActions?: string[] | null;
+  neverActions?: string[] | null;
+}
+
+/**
+ * Deterministic (key-sorted, array-order-preserved) serialization for the
+ * loop-config checksum — the same shape as `context-schema-definition.ts`'s
+ * `canonicalJson`.
+ *
+ * This USED to be a module-private copy inside `departmentAgent.service.ts`,
+ * consistent with this codebase's habit of keeping such canonicalisers
+ * deliberately separate per file. TASK-663 moved it here because promotion
+ * introduces a requirement the earlier copies did not have: the checksum
+ * `DepartmentAgentService` writes onto a `DepartmentAgentVersion` and the
+ * checksum `AgentPromotionService` writes onto an `AgentPromotion` MUST agree,
+ * or drift detection compares the output of two different functions and is
+ * wrong by construction. That is a correctness coupling, not a stylistic one,
+ * so the two share one implementation.
+ */
+export function canonicalAgentConfigJson(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map(canonicalAgentConfigJson).join(',')}]`;
+  }
+  if (value !== null && typeof value === 'object') {
+    const entries = Object.keys(value as Record<string, unknown>)
+      .sort()
+      .filter((key) => (value as Record<string, unknown>)[key] !== undefined)
+      .map((key) => `${JSON.stringify(key)}:${canonicalAgentConfigJson((value as Record<string, unknown>)[key])}`);
+    return `{${entries.join(',')}}`;
+  }
+  return JSON.stringify(value ?? null);
+}
+
+/** The seven loop-config fields, snapshotted verbatim and normalised to null. */
+export function buildLoopConfigSnapshot(config: AgentLoopConfig): Record<string, unknown> {
+  return {
+    role: config.role,
+    subscribedKinds: config.subscribedKinds ?? null,
+    writeScope: config.writeScope ?? null,
+    goal: config.goal ?? null,
+    guardrailProfile: config.guardrailProfile ?? null,
+    alwaysActions: config.alwaysActions ?? null,
+    neverActions: config.neverActions ?? null,
+  };
+}
+
+/**
+ * True when the config actually configures the loop surface — `SPECIALIST` +
+ * all-null is "nothing configured", which is every agent in the catalogue that
+ * has never touched this surface.
+ */
+export function hasLoopConfig(snapshot: Record<string, unknown>): boolean {
+  return (
+    snapshot.role !== 'SPECIALIST' ||
+    snapshot.subscribedKinds !== null ||
+    snapshot.writeScope !== null ||
+    snapshot.goal !== null ||
+    snapshot.guardrailProfile !== null ||
+    (Array.isArray(snapshot.alwaysActions) && snapshot.alwaysActions.length > 0) ||
+    (Array.isArray(snapshot.neverActions) && snapshot.neverActions.length > 0)
+  );
+}

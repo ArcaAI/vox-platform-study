@@ -39,9 +39,12 @@ import { DepartmentAgentDtoMapper } from './departmentAgent.dto.mapper';
 import {
   actionListProblems,
   actionOverlapProblems,
+  buildLoopConfigSnapshot,
+  canonicalAgentConfigJson,
   disallowedHarnessOverrideKeys,
   goalProblems,
   guardrailProfileProblems,
+  hasLoopConfig,
   llmOverridesProblems,
   subscribedKindsProblems,
   toolConfigProblems,
@@ -490,6 +493,28 @@ export class DepartmentAgentService extends BaseService implements IDepartmentAg
       livePromptTemplateId: source.livePromptTemplateId ?? null,
       toolConfig: source.toolConfig ?? null,
       llmOverrides: source.llmOverrides ?? null,
+      // TASK-663 — the seven loop-config fields travel with the clone. TASK-659
+      // deliberately did NOT propagate them (its §4.5) and flagged the call for
+      // this ticket; leaving them behind meant cloning an agent silently
+      // dropped its ENTIRE loop configuration with no error. Promotion copies
+      // them, so a same-tenant clone must too, or the two copy paths disagree
+      // about what an agent IS.
+      //
+      // `role` is the ONE exception, and it needs no query to justify: a clone
+      // lands in the SAME department as its source. If the source is that
+      // department's PRIMARY then a PRIMARY clone would violate the
+      // one-PRIMARY-per-department invariant by construction; if the source is
+      // a SPECIALIST, SPECIALIST is what it already was. Either way the answer
+      // is SPECIALIST. Promotion has no such constraint (a different tenant's
+      // department may have no PRIMARY at all), so it carries `role`
+      // faithfully and validates it against the target.
+      role: DepartmentAgentRole.SPECIALIST,
+      subscribedKinds: source.subscribedKinds ?? null,
+      writeScope: source.writeScope ?? null,
+      goal: source.goal ?? null,
+      guardrailProfile: source.guardrailProfile ?? null,
+      alwaysActions: source.alwaysActions ?? null,
+      neverActions: source.neverActions ?? null,
       // A clone is never the department default (the DB defaults `isDefault`
       // false; it is flipped only via `setDefaultForDepartment`).
       // The copy is the customizable one — never locked, whatever the source is;
@@ -512,6 +537,12 @@ export class DepartmentAgentService extends BaseService implements IDepartmentAg
         sourceAgentTemplateSlug: savedAgent.sourceAgentTemplateSlug ?? null,
       },
     });
+
+    // TASK-663 — the clone carries loop config now, so it needs its own v1
+    // snapshot exactly as `create()` does. Without this a cloned agent would
+    // have a configuration but no immutable version, and would therefore be
+    // unpromotable (promotion copies a VERSION, never a live row).
+    await this.writeLoopConfigVersionIfNeeded(savedAgent);
 
     return DepartmentAgentDtoMapper.toResponse(savedAgent);
   }
@@ -819,7 +850,7 @@ export class DepartmentAgentService extends BaseService implements IDepartmentAg
     const snapshot = buildLoopConfigSnapshot(agent);
     if (!hasLoopConfig(snapshot)) return;
 
-    const checksum = createHash('sha256').update(canonicalConfigJson(snapshot)).digest('hex');
+    const checksum = createHash('sha256').update(canonicalAgentConfigJson(snapshot)).digest('hex');
     const latest = await this.agentVersionRepository.findLatestForAgent(agent.id);
     if (latest && latest.checksum === checksum) return;
 
@@ -834,53 +865,6 @@ export class DepartmentAgentService extends BaseService implements IDepartmentAg
     });
     await this.agentVersionRepository.create(version);
   }
-}
-
-/**
- * Deterministic (key-sorted, array-order-preserved) serialization for the
- * loop-config checksum — the same shape as `context-schema-definition.ts`'s
- * `canonicalJson`, kept as an independent local copy so this file has no
- * cross-service dependency (mirrors that file's own relationship to
- * `harnessAuditHash.ts`'s canonicalJson — a third, deliberately separate copy).
- */
-function canonicalConfigJson(value: unknown): string {
-  if (Array.isArray(value)) {
-    return `[${value.map(canonicalConfigJson).join(',')}]`;
-  }
-  if (value !== null && typeof value === 'object') {
-    const entries = Object.keys(value as Record<string, unknown>)
-      .sort()
-      .filter((key) => (value as Record<string, unknown>)[key] !== undefined)
-      .map((key) => `${JSON.stringify(key)}:${canonicalConfigJson((value as Record<string, unknown>)[key])}`);
-    return `{${entries.join(',')}}`;
-  }
-  return JSON.stringify(value ?? null);
-}
-
-/** The seven loop-config fields, snapshotted verbatim. */
-function buildLoopConfigSnapshot(agent: DepartmentAgentEntity): Record<string, unknown> {
-  return {
-    role: agent.role,
-    subscribedKinds: agent.subscribedKinds ?? null,
-    writeScope: agent.writeScope ?? null,
-    goal: agent.goal ?? null,
-    guardrailProfile: agent.guardrailProfile ?? null,
-    alwaysActions: agent.alwaysActions ?? null,
-    neverActions: agent.neverActions ?? null,
-  };
-}
-
-/** True when the agent actually configures the loop surface — SPECIALIST + all-null is "nothing configured, don't version it". */
-function hasLoopConfig(snapshot: Record<string, unknown>): boolean {
-  return (
-    snapshot.role !== DepartmentAgentRole.SPECIALIST ||
-    snapshot.subscribedKinds !== null ||
-    snapshot.writeScope !== null ||
-    snapshot.goal !== null ||
-    snapshot.guardrailProfile !== null ||
-    (Array.isArray(snapshot.alwaysActions) && snapshot.alwaysActions.length > 0) ||
-    (Array.isArray(snapshot.neverActions) && snapshot.neverActions.length > 0)
-  );
 }
 
 /** Every declared `kinds[].key` / `outputs[].key` in a ConsultationContextSchemaVersion `definition` document. */
