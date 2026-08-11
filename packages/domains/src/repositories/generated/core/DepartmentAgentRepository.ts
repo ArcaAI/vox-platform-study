@@ -3,7 +3,7 @@ import { Injectable } from '@nestjs/common';
 import { Repository } from '../../../common';
 import { CoreUnitOfWorkService } from '../../../common/unitsOfWork/core';
 import { DepartmentAgentEntity } from '../../../entities';
-import { ResourceStatusType } from '../../../enums';
+import { DepartmentAgentRole, ResourceStatusType } from '../../../enums';
 import { DepartmentAgentEntityMapper } from '../../../mappers';
 import { DepartmentAgent } from '../../../models';
 
@@ -64,6 +64,30 @@ export class DepartmentAgentRepository extends Repository<DepartmentAgentEntity,
       return await this.findFirst({
         filters: { tenantId, departmentId, isDefault: true, resourceStatus: ResourceStatusType.ENABLED } as never,
       });
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * The department's current ENABLED PRIMARY agent, if any (TASK-659). Mirrors
+   * `findDefaultForDepartment` — one repository call, one filter, no join.
+   * `excludeId` lets a role-changing update check "any OTHER agent" without a
+   * false positive against the row being edited.
+   */
+  async findPrimaryForDepartment(tenantId: string, departmentId: string, excludeId?: string): Promise<DepartmentAgentEntity | null> {
+    try {
+      const filters: Record<string, unknown> = {
+        tenantId,
+        departmentId,
+        role: DepartmentAgentRole.PRIMARY,
+        resourceStatus: ResourceStatusType.ENABLED,
+      };
+      if (excludeId) {
+        filters.id = { not: excludeId };
+      }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- `id: { not }` is a Prisma logical operator; DbFilters models scalar operators only (the findByBoundTemplate OR-filter precedent above).
+      return await this.findFirst({ filters: filters as any });
     } catch {
       return null;
     }

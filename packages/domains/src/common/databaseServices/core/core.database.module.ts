@@ -34,6 +34,7 @@ import { ConsultationContextSchemaVersionRepository } from '../../../repositorie
 import { ContextItemRepository } from '../../../repositories/generated/core/ContextItemRepository';
 import { ContextItemVersionRepository } from '../../../repositories/generated/core/ContextItemVersionRepository';
 import { DepartmentAgentRepository } from '../../../repositories/generated/core/DepartmentAgentRepository';
+import { DepartmentAgentVersionRepository } from '../../../repositories/generated/core/DepartmentAgentVersionRepository';
 import { DepartmentRepository } from '../../../repositories/generated/core/DepartmentRepository';
 import { DnaUsageRecordRepository } from '../../../repositories/generated/core/DnaUsageRecordRepository';
 import { DnaWritingStyleReportRepository } from '../../../repositories/generated/core/DnaWritingStyleReportRepository';
@@ -172,6 +173,8 @@ const repositories = [
   DepartmentRepository,
   // First-class department agent entity (TASK-546)
   DepartmentAgentRepository,
+  // Immutable loop-configuration snapshots of a DepartmentAgent (TASK-659)
+  DepartmentAgentVersionRepository,
   // Prompt & DNA domain
   PromptTemplateRepository,
   PromptVersionRepository,

@@ -47,6 +47,14 @@ export class DepartmentAgentEntityMapper extends BaseMapper<Entities.DepartmentA
 // need suppression. `FIELDS_NOT_WRITABLE = ['version']` above stays untouched —
 // DepartmentAgent is OCC-written, and `gen:mapper` (which would strip that guard)
 // is NEVER run.
+//
+// TASK-659 — the seven loop-configuration columns (role, subscribedKinds,
+// writeScope, goal, guardrailProfile, alwaysActions, neverActions) are
+// same-named scalar/JSONB fields for the same reason: no handler entry
+// needed. `Versions` is a relation and, like `Department`/`PromptTemplate`
+// above, is simply never surfaced on `DepartmentAgentEntity` — `AutoClassMapper`
+// only iterates fields the entity actually has, so the mapper never touches it
+// and no suppression entry is required.
 export const DepartmentAgentEntityMapperHandlers = createMapperHandlers<Entities.DepartmentAgentEntity, Models.DepartmentAgent>({
   $toPersistence: {
     // Relations are never written through this mapper.

@@ -4,6 +4,7 @@
 import { describe, it, expect } from 'vitest';
 import { DepartmentAgentFactory } from '../../../../factories/generated/core/DepartmentAgentFactory';
 import { DepartmentAgentDnaPolicy } from '../../../../enums/generated/DepartmentAgentDnaPolicy';
+import { DepartmentAgentRole } from '../../../../enums/generated/DepartmentAgentRole';
 
 const baseProps = {
   tenantId: 't-1',
@@ -23,6 +24,16 @@ describe('DepartmentAgentFactory', () => {
     expect(agent.isDefault).toBe(false);
     expect(agent.templateLocked).toBe(false);
     expect(agent.tags).toEqual([]);
+    // TASK-659 — every pre-existing/newly-created agent that names none of
+    // the loop-config fields is null on all but `role` (SPECIALIST, the DB
+    // default) — the regression guarantee at the entity layer.
+    expect(agent.role).toBe(DepartmentAgentRole.SPECIALIST);
+    expect(agent.subscribedKinds).toBeNull();
+    expect(agent.writeScope).toBeNull();
+    expect(agent.goal).toBeNull();
+    expect(agent.guardrailProfile).toBeNull();
+    expect(agent.alwaysActions).toBeNull();
+    expect(agent.neverActions).toBeNull();
   });
 
   it('GenerateSlug normalizes a name', () => {
@@ -80,5 +91,36 @@ describe('DepartmentAgentEntity.validate', () => {
     agent.pinnedVersionNumber = 2;
     expect(agent.hasChanges).toBe(true);
     expect(agent.changes).toMatchObject({ pinnedVersionNumber: 2 });
+  });
+});
+
+describe('DepartmentAgentEntity — TASK-659 loop configuration', () => {
+  it('applies role/subscribedKinds/writeScope/goal/guardrailProfile/always-neverActions from props', () => {
+    const agent = DepartmentAgentFactory.CreateDepartmentAgent({
+      ...baseProps,
+      role: DepartmentAgentRole.PRIMARY,
+      subscribedKinds: { version: 1, kinds: [{ key: 'referral_letter' }] },
+      writeScope: { version: 1, outputs: ['soap_note'] },
+      goal: { version: 1, objective: 'Draft a concise SOAP note.' },
+      guardrailProfile: 'STRICT',
+      alwaysActions: ['harness.finalize'],
+      neverActions: ['vision.extract_text'],
+    });
+
+    expect(agent.role).toBe(DepartmentAgentRole.PRIMARY);
+    expect(agent.subscribedKinds).toEqual({ version: 1, kinds: [{ key: 'referral_letter' }] });
+    expect(agent.writeScope).toEqual({ version: 1, outputs: ['soap_note'] });
+    expect(agent.goal).toEqual({ version: 1, objective: 'Draft a concise SOAP note.' });
+    expect(agent.guardrailProfile).toBe('STRICT');
+    expect(agent.alwaysActions).toEqual(['harness.finalize']);
+    expect(agent.neverActions).toEqual(['vision.extract_text']);
+  });
+
+  it('tracks changes to each of the seven fields through setProperty', () => {
+    const agent = DepartmentAgentFactory.CreateDepartmentAgent(baseProps);
+    agent.role = DepartmentAgentRole.PRIMARY;
+    agent.guardrailProfile = 'STANDARD';
+    expect(agent.hasChanges).toBe(true);
+    expect(agent.changes).toMatchObject({ role: DepartmentAgentRole.PRIMARY, guardrailProfile: 'STANDARD' });
   });
 });

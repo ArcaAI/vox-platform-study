@@ -71,6 +71,7 @@ export * from './UserVoiceProfileFactory';
 export * from './WebhookFactory';
 export * from './WebhookRunHistoryFactory';
 export * from './DepartmentAgentFactory';
+export * from './DepartmentAgentVersionFactory';
 export * from './AiPriceBookFactory';
 export * from './AiUsageEventFactory';
 export * from './AiUsageOutboxFactory';
