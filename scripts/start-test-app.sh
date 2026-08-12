@@ -73,6 +73,38 @@ cd "$PROJECT_ROOT"
 load_env_test
 
 # ----------------------------------------------------------------------------
+# TASK-679 — provision Vault BEFORE launching, exactly as scripts/test-run.sh
+# does for the managed suites.
+#
+# WHY THIS IS NOT OPTIONAL. The test env runs SECRETS_PROVIDER=vault, so every
+# `vault-kv` platform secret (HARNESS_SERVICE_TOKEN, API_KEY_PEPPER,
+# JWT_SECRET_KEY, the storage credentials, …) is resolved by SecretsService from
+# `<VAULT_KV_MOUNT>/data/<VAULT_KV_PREFIX>/<NAME>`, NOT from .env.test. The env
+# file is only ever the SEED INPUT that ensure-test-vault-creds.sh pushes into
+# that path.
+#
+# The dev and test environments share ONE Vault (hope-vault) at ONE kv prefix —
+# the test infra runs no Vault of its own, and the `hope-app` AppRole policy is
+# deliberately pinned to `secret/data/hope/*` for cluster parity. So a later
+# `pnpm setup:dev` / refresh-vault-creds.sh overwrites those keys with .env.dev's
+# values, and .env.test's differing values go silently dead. `pnpm test:e2e:managed`
+# already self-heals through test-run.sh Step 2; this two-terminal path
+# (`pnpm test:up:api` + `pnpm test:e2e`) did not, which is what made
+# .env.test's HARNESS_SERVICE_TOKEN look live while answering 401.
+#
+# Idempotent, and a no-op unless .env.test selects the Vault provider.
+# ----------------------------------------------------------------------------
+if ! "$SCRIPT_DIR/ensure-test-vault-creds.sh"; then
+    echo -e "${RED}Failed to provision Vault credentials/secrets for the test env.${NC}" >&2
+    echo "  Services run SECRETS_PROVIDER=vault and fail closed, so starting anyway would" >&2
+    echo "  only surface later as 401s on seeded API keys and internal service hops." >&2
+    exit 1
+fi
+# ensure-test-vault-creds.sh rewrites VAULT_ROLE_ID/VAULT_SECRET_ID in .env.test;
+# re-read it so this process launches with the freshly minted credentials.
+load_env_test
+
+# ----------------------------------------------------------------------------
 # Resolve the port this target will bind (worker binds none) and refuse to
 # collide with an already-running process.
 # ----------------------------------------------------------------------------

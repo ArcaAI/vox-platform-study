@@ -12,6 +12,8 @@
  * gracefully (never throw).
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { TenantSettingsService } from '../../../settings-registry/tenant-settings.service';
+import { CONSULTATION_OCR_ENABLED_KEY } from '../../consultation-gates.constants';
 import { OcrEnrichmentProcessor } from '../ocr-enrichment.processor';
 
 const CONTEXT_ADDED = 'consultation.context.added';
@@ -98,7 +100,19 @@ describe('OcrEnrichmentProcessor', () => {
   let eventEmitter: ReturnType<typeof createMockEventEmitter>;
   let cls: ReturnType<typeof createMockClsService>;
 
-  const build = (config = createMockConfigService(), secretsService?: unknown, media: unknown = mediaRepository) => {
+  // TASK-679 — OCR is gated by the `consultation.ocr.enabled` `global-kv`
+  // kill-switch, which DEFAULTS OFF, so these orchestration fixtures must turn
+  // it ON explicitly. That is the behaviour change: the retired `OCR_ENABLED`
+  // env flag defaulted enabled. The gate's own semantics (runtime flip,
+  // default-OFF, failMode) are covered in
+  // `../../__tests__/consultation-gates.tier-compliance.test.ts`.
+  const createSettingsResolver = (enabled = true) =>
+    new TenantSettingsService({
+      getValueFromCache: (key: string) => (key === CONSULTATION_OCR_ENABLED_KEY ? enabled : null),
+      getTenantValueFromCache: () => null,
+    } as never);
+
+  const build = (config = createMockConfigService(), secretsService?: unknown, media: unknown = mediaRepository, ocrEnabled = true) => {
     configService = config;
     return new OcrEnrichmentProcessor(
       blobStorage as never,
@@ -109,6 +123,7 @@ describe('OcrEnrichmentProcessor', () => {
       cls as never,
       secretsService as never,
       media as never,
+      createSettingsResolver(ocrEnabled),
     );
   };
 
@@ -277,8 +292,8 @@ describe('OcrEnrichmentProcessor', () => {
     expect(eventEmitter.emit).not.toHaveBeenCalled();
   });
 
-  it('is fully gated off when OCR_ENABLED=false', async () => {
-    processor = build(createMockConfigService({ OCR_ENABLED: 'false' }));
+  it('is fully gated off when consultation.ocr.enabled resolves false', async () => {
+    processor = build(createMockConfigService(), undefined, mediaRepository, false);
 
     await processor.handleContextAdded(createPayload());
 
