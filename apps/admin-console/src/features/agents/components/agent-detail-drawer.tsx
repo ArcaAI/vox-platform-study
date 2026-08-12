@@ -15,6 +15,12 @@
  *   - History: the bound Agent Template's version timeline (read-only reuse
  *     of `VersionsPanel` — the same content a "History" tab would show, so no
  *     separate audit surface is invented for it).
+ *   - Lineage (TASK-672): the immutable `DepartmentAgentVersion` history
+ *     TASK-659 writes on every loop-config-affecting save (changeReason +
+ *     a client-side field diff between two picked versions) and, where
+ *     present, the cross-tenant `AgentPromotion` lineage TASK-663 records.
+ *     The console surface TASK-667 OI-3 flagged as missing. See
+ *     `agent-lineage-tab.tsx`.
  *
  * A `templateLocked` row ("cloned from library") renders Settings/Loop
  * config/Version read-only and hides Delete — mirrors the AsrPipeline lineage
@@ -54,12 +60,13 @@ import {
   useVersions,
 } from '../api/hooks';
 import type { CreateDepartmentAgentRequest, DepartmentAgent, DepartmentAgentDnaPolicy } from '../api/types';
+import { AgentLineageTab } from './agent-lineage-tab';
 import { AgentRoleBadge, LoopConfigTab } from './agent-loop-config-tab';
 import { versionStateLabel } from './agents-tab';
 import { VersionsPanel } from './versions-panel';
 
-type AgentCatalogTab = 'settings' | 'loop' | 'version' | 'history';
-const AGENT_CATALOG_TABS = ['settings', 'loop', 'version', 'history'] as const;
+type AgentCatalogTab = 'settings' | 'loop' | 'version' | 'history' | 'lineage';
+const AGENT_CATALOG_TABS = ['settings', 'loop', 'version', 'history', 'lineage'] as const;
 
 const DNA_POLICY_OPTIONS: { value: DepartmentAgentDnaPolicy; label: string }[] = [
   { value: 'INHERIT', label: 'Inherit' },
@@ -101,6 +108,7 @@ function CatalogTabsList() {
       <TabsTrigger value="loop">Loop config</TabsTrigger>
       <TabsTrigger value="version">Version</TabsTrigger>
       <TabsTrigger value="history">History</TabsTrigger>
+      <TabsTrigger value="lineage">Lineage</TabsTrigger>
     </TabsList>
   );
 }
@@ -584,6 +592,9 @@ export function DepartmentAgentDetailDrawer({
             </TabsContent>
             <TabsContent value="history" className="mt-0">
               {boundTemplate ? <VersionsPanel template={boundTemplate} /> : <Skeleton className="h-40 w-full" />}
+            </TabsContent>
+            <TabsContent value="lineage" className="mt-0">
+              <AgentLineageTab agent={agent} />
             </TabsContent>
           </>
         )}

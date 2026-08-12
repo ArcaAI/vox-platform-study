@@ -13,15 +13,18 @@ import { deleteJson, getJson, getWithEtag, patchWithEtag, postJson, request, ver
 import type { Paginated, WithEtag } from '@/shared/api';
 import type {
   AgentEvalRunList,
+  AgentPromotion,
   AssignDepartmentRequest,
   CreateDepartmentAgentRequest,
   CreateTemplateRequest,
   Department,
   DepartmentAgent,
+  DepartmentAgentVersion,
   EvalGoldenCaseList,
   EvalGoldenSetList,
   EvalRunTrigger,
   ListAgentEvalRunsParams,
+  ListAgentPromotionsParams,
   ListDepartmentAgentsParams,
   ListEvalGoldenCasesParams,
   ListEvalGoldenSetsParams,
@@ -213,6 +216,15 @@ export function pinDepartmentAgent(id: string, versionNumber: number | null): Pr
 }
 
 /**
+ * The immutable loop-configuration version history (TASK-659/672), newest
+ * first — a plain array like `listVersions` on the PromptTemplate surface
+ * above, never a paginated envelope.
+ */
+export function listDepartmentAgentVersions(id: string): Promise<DepartmentAgentVersion[]> {
+  return getJson(`${departmentAgentPath(id)}/versions`);
+}
+
+/**
  * The RESOLVED consultation context schema (TASK-658) a department's loop
  * config must pick `subscribedKinds`/`writeScope` from — `GET
  * tenant/me/context-schema`, the client-discovery sibling of `/tenant/me/config`
@@ -253,4 +265,18 @@ export function listEvalGoldenCases(goldenSetId: string, params?: ListEvalGolden
 /** Synchronous run-now — tenant admins run their own sets; a SYSTEM set is global-admin-only. */
 export function runGoldenSetEval(goldenSetId: string): Promise<EvalRunTrigger> {
   return postJson(`${HARNESS_BASE}/golden-sets/${encodeURIComponent(goldenSetId)}/run`);
+}
+
+// ---------------------------------------------------------------------------
+// Cross-tenant agent promotion lineage (TASK-663/672) — a READ-only view of
+// promotions INTO the working tenant, filtered to one target agent for the
+// Lineage tab. Promotion itself (POST admin/agent-promotions) is out of this
+// ticket's scope; only the audit trail it writes is surfaced here.
+// ---------------------------------------------------------------------------
+
+const AGENT_PROMOTIONS_BASE = 'admin/agent-promotions';
+
+/** ZERO-based `page`, the platform standard (matches `listDepartmentAgents` above). */
+export function listAgentPromotions(params?: ListAgentPromotionsParams): Promise<Paginated<AgentPromotion>> {
+  return getJson(AGENT_PROMOTIONS_BASE, params);
 }
