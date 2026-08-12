@@ -1,4 +1,4 @@
-# TASK-671 — SDK deferred tails
+# TASK-673 — SDK deferred tails
 
 - **Status:** Review
 - **Type:** bugfix / feature (small)
@@ -35,7 +35,7 @@ TASK-665 shipped SDK schema discovery, validated context-add, and the loop-event
 
 ## 2. Current State Evaluation
 
-Verified against `dev-2.1` @ `d5c43c033`, before any TASK-671 code.
+Verified against `dev-2.1` @ `d5c43c033`, before any TASK-673 code.
 
 | Area | Finding |
 |---|---|
@@ -142,7 +142,7 @@ New test composes `useStorage()` and `useArcaContext()` against a shared mocked 
 
 All commands run from the worktree at `dev-2.1` @ `d5c43c033`. Per TASK-654 execution-plan §1.1b, workspace deps were built first: `pnpm install` → `pnpm --filter @arcaai/room --filter @arcaai/noise-filter --filter @arcaai/vad --filter @arcaai/stt --filter @arcaai/med-ner build`.
 
-**Measured baseline** (this worktree, before any TASK-671 change): `pnpm --filter @arcaai/vox build` clean, `pnpm --filter @arcaai/vox test` → **263 files / 4173 tests passed** — matches the number TASK-665's README recorded, confirming no drift between tickets.
+**Measured baseline** (this worktree, before any TASK-673 change): `pnpm --filter @arcaai/vox build` clean, `pnpm --filter @arcaai/vox test` → **263 files / 4173 tests passed** — matches the number TASK-665's README recorded, confirming no drift between tickets.
 
 ### `pnpm --filter @arcaai/vox build`
 
