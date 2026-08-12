@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { authorableJsonSchemaProblems } from './json-schema-subset';
+import { authorableJsonSchemaProblems } from '@arcaai/json-schema-subset';
 
 /**
  * TASK-658 — the shape of a `ConsultationContextSchemaVersion.definition`, and

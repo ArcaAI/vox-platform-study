@@ -55,7 +55,7 @@ Do / don't:
 ### 1.2 Migration workflow
 
 - Config: root `prisma.config.ts` (Prisma 7 `defineConfig`) points schema to `packages/database/src/prisma/db_main` and migrations to `.../db_main/migrations`. It loads `.env.dev`/`.env.test`/`.env.production` by `NODE_ENV`, and loads NO env file in CI/production.
-- Scripts (root `package.json` delegates to `packages/database/package.json`): `pnpm db:migrate` (= `prisma migrate dev --skip-generate`), `db:migrate:create` (`--create-only`), `db:migrate:deploy`, `db:migrate:status`, `db:push` / `db:push:force`, `db:generate` (also regenerates the barrel via `@arcaai/tools generate-prisma-index`), `db:seed`, `db:studio`.
+- Scripts (root `package.json` delegates to `packages/database/package.json`): `pnpm db:migrate` (= `prisma migrate dev` + `generate-prisma-index`; Prisma 7 removed `--skip-generate`), `db:migrate:create` (`--create-only`), `db:migrate:deploy`, `db:migrate:status`, `db:push` / `db:push:force`, `db:generate` (also regenerates the barrel via `@arcaai/tools generate-prisma-index`), `db:seed`, `db:studio`.
 - Migration folders are named `<timestamp>_task_<nnn>_<snake_case_description>` — e.g. `packages/database/src/prisma/db_main/migrations/20260702000000_task_400_password_reset_tokens/`.
 - Seeds live in `packages/database/src/prisma/db_main/seed/` (phased, FK-ordered, `XX-name.ts`); seed constants such as `SYSTEM_TENANT_ID` in `seed/00-constants.ts`.
 - Production note (from `packages/database/src/client.ts` docstring): with PgBouncer, migrations must use `DIRECT_URL`; pool size comes from `PRISMA_PG_MAX` (default 5), not the v6 `connection_limit` URL param.

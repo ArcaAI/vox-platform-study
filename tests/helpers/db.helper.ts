@@ -83,7 +83,9 @@ export async function pushSchema(): Promise<void> {
 
   try {
     console.log('Pushing schema to test database...');
-    execSync(`pnpm prisma db push --schema=${schemaPath} --skip-generate --accept-data-loss`, {
+    // NOTE: `--skip-generate` was removed in Prisma 7 (it exits 1 on the flag).
+    // `db push` no longer triggers generators, so dropping it is a no-op here.
+    execSync(`pnpm prisma db push --schema=${schemaPath} --accept-data-loss`, {
       stdio: 'inherit',
       env: {
         ...process.env,

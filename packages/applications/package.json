@@ -44,6 +44,7 @@
     "@arcaai/domains": "workspace:*",
     "@arcaai/exceptions": "workspace:*",
     "@arcaai/logger": "workspace:*",
+    "@arcaai/json-schema-subset": "workspace:*",
     "@arcaai/types": "workspace:*",
     "@arcaai/utils": "workspace:*",
     "@aws-sdk/client-s3": "^3.1079.0",

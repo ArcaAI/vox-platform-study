@@ -115,7 +115,7 @@ Package scripts (run as `pnpm --filter @arcaai/database <script>`; most have roo
 | Script                      | Command                                                             | Notes                                                                |
 | --------------------------- | ------------------------------------------------------------------- | -------------------------------------------------------------------- |
 | `db:generate`               | `prisma generate` + regenerate the client index via `@arcaai/tools` | Run after every schema change                                        |
-| `db:migrate`                | `prisma migrate dev --skip-generate`                                | Create + apply a dev migration                                       |
+| `db:migrate`                | `prisma migrate dev` + `generate-prisma-index`                      | Create + apply a dev migration (needs a migration ledger — see below) |
 | `db:migrate:create`         | `prisma migrate dev --create-only`                                  | Generate SQL for review without applying                             |
 | `db:migrate:deploy`         | `prisma migrate deploy`                                             | Production/CI migration deploy                                       |
 | `db:migrate:status`         | `prisma migrate status`                                             |                                                                      |
@@ -126,6 +126,13 @@ Package scripts (run as `pnpm --filter @arcaai/database <script>`; most have roo
 | `decrypt:row`               | `tsx scripts/decrypt-row.ts`                                        | Read-only PHI decrypt CLI                                            |
 | `build`                     | `tsc`                                                               |                                                                      |
 | `test`                      | `vitest run`                                                        | Unit tests only (excludes `integration/**` and `*.postgres.test.ts`) |
+
+> **Authoring migrations locally.** The local dev DB is `db push`-managed and has no
+> `_prisma_migrations` ledger, so `db:migrate` / `db:migrate:create` cannot run against it.
+> Author migrations against a throwaway shadow database — exact recipe in
+> `.claude/rules/02-database-prisma.md` §Migration Workflow. Note also that `-n <name>` must be
+> passed to the package-level script (`pnpm --filter @arcaai/database db:migrate:create -n …`);
+> it is not forwarded through the root `pnpm db:migrate:create` alias.
 
 Additional test entry points:
 

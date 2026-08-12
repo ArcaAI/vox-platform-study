@@ -1,0 +1,45 @@
+{
+  "name": "@arcaai/json-schema-subset",
+  "version": "0.1.0",
+  "description": "The constrained JSON Schema (draft 2020-12) subset a tenant may author for a ConsultationContextSchema, plus its value evaluator. Zero runtime dependencies.",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "clean": "rm -rf dist *.tsbuildinfo",
+    "nuke": "rimraf dist node_modules .turbo tsconfig.tsbuildinfo",
+    "lint": "eslint src",
+    "lint:fix": "eslint src --fix",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest --watch",
+    "test:cov": "vitest run --coverage"
+  },
+  "keywords": [
+    "arcaai",
+    "json-schema",
+    "validation"
+  ],
+  "author": "ArcaAI Team",
+  "license": "MIT",
+  "devDependencies": {
+    "@arcaai/config-eslint": "workspace:*",
+    "@arcaai/config-ts": "workspace:*",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.9"
+  }
+}
