@@ -15,6 +15,7 @@ import { BOOTSTRAP_ENV_SETTINGS } from './descriptors/bootstrap-env.descriptors'
 import { CONSULTATION_GATE_SETTINGS } from './descriptors/consultation-gates.descriptors';
 import { ENTITLEMENT_SETTINGS } from './descriptors/entitlements.descriptors';
 import { FEATURE_FLAG_SETTINGS } from './descriptors/feature-flags.descriptors';
+import { HARNESS_LOOP_SETTINGS } from './descriptors/harness-loop.descriptors';
 import { METERING_SETTINGS } from './descriptors/metering.descriptors';
 import { MODEL_DEFAULT_SETTINGS } from './descriptors/model-defaults.descriptors';
 import { PIPELINE_SETTINGS } from './descriptors/pipeline.descriptors';
@@ -88,6 +89,11 @@ export const HOPE_SETTINGS_REGISTRY: SettingsRegistry = new SettingsRegistry().r
   // carries a deliberate BEHAVIOUR CHANGE — `OCR_ENABLED` defaulted ON, and a
   // kill-switch must default OFF.
   ...CONSULTATION_GATE_SETTINGS,
+
+  // ── TASK-685 — consultation-loop lifecycle bounds ────────────────────────
+  // The loop's IDLE bound. A tuning knob rather than a kill-switch, and PINNED
+  // at workflow start rather than re-read per signal — see the descriptor.
+  ...HARNESS_LOOP_SETTINGS,
 
   // ╔══════════════════════════════════════════════════════════════════════════╗
   // ║ REGISTRATION POINT — TASK-558 lane E (storage config → DB + Vault)        ║
