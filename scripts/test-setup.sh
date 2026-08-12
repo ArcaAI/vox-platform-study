@@ -12,15 +12,17 @@
 # the PHI-ciphertext seed DO need Vault for secret warming + Transit encryption
 # (SECRETS_PROVIDER=vault), so this bootstrap provisions the test env's Vault
 # AppRole credentials into .env.test — the test counterpart to dev-setup's
-# `refresh-vault-creds.sh` step. Vault itself is the SHARED dev container
-# (hope-vault); the test infra does not run its own Vault.
+# `refresh-vault-creds.sh` step. TASK-689: Vault itself is now the ISOLATED
+# hope-vault-test container (tests/docker-compose.test.yml), NOT the shared
+# dev hope-vault — the test infra provisions its own Vault end to end.
 #
 # Sequence — mirrors dev-setup.sh's 0-6 shape, with ONE deliberate reorder:
 #   0. Create/overwrite .env.test from .env.sample                (TASK-583)
 #   1. Start isolated test infrastructure (Postgres:5433, Redis:6380,
-#      MinIO:9002, Qdrant:6335)
+#      MinIO:9002, Qdrant:6335, Vault:8201)
 #   2. Wait for the isolated test infra to report healthy
-#   3. Refresh Vault AppRole creds + config in .env.test (needs hope-vault up)
+#   3. Refresh Vault AppRole creds + config in .env.test (needs hope-vault-test
+#      up — already true after step 1-2, this just mints fresh AppRole creds)
 #      — this runs BEFORE the migrate+seed step on purpose, unlike dev-setup.sh:
 #      the PHI seed encrypts ciphertext via Vault Transit under
 #      SECRETS_PROVIDER=vault (test's fixed setting), and the seed is a
@@ -53,7 +55,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$REPO_ROOT"
 
 ENV_FILE="$REPO_ROOT/.env.test"
-VAULT_CONTAINER="${VAULT_CONTAINER:-hope-vault}"
+VAULT_CONTAINER="${VAULT_CONTAINER:-hope-vault-test}"
 ROOT_TOKEN="${VAULT_DEV_ROOT_TOKEN:-root}"
 
 red()    { printf "\033[31m%s\033[0m\n" "$*" >&2; }
@@ -91,11 +93,12 @@ bold "── Step 3/6: provisioning Vault AppRole creds in .env.test ───�
 # reads this file fresh from disk.
 # The test API (SECRETS_PROVIDER=vault) warms secrets + uses Transit to encrypt
 # BYO provider keys, and the PHI seed encrypts ciphertext via Transit. Both need
-# valid Vault credentials. Vault is the shared dev container (hope-vault); ensure
-# it is up (it is NOT part of the test infra), then mint reusable AppRole creds.
+# valid Vault credentials. Vault is the isolated test container (hope-vault-test,
+# TASK-689) — step 1-2 already started it as part of the test infra, but
+# defensively (re)start the test stack if it somehow isn't up.
 if ! docker ps --format '{{.Names}}' | grep -qx "$VAULT_CONTAINER"; then
-  yellow "Vault container '$VAULT_CONTAINER' is not running — starting dev infra to bring it up."
-  "$SCRIPT_DIR/dev-infra.sh" up
+  yellow "Vault container '$VAULT_CONTAINER' is not running — starting test infrastructure to bring it up."
+  "$SCRIPT_DIR/start-test-infra.sh" >/dev/null
 fi
 # Wait for the vault-init sidecar to finish bootstrapping the hope-app AppRole.
 vault_ready=0
@@ -106,8 +109,8 @@ for _ in $(seq 1 60); do
   sleep 2
 done
 if [ "$vault_ready" != "1" ]; then
-  red "ERROR: Vault AppRole 'hope-app' did not become ready (is hope-vault-init healthy?)."
-  echo "Inspect with:  docker logs ${VAULT_CONTAINER}-init"
+  red "ERROR: Vault AppRole 'hope-app' did not become ready (is hope-vault-init-test healthy?)."
+  echo "Inspect with:  docker logs hope-vault-init-test"
   exit 1
 fi
 ROLE_ID="$(vault_exec "vault read -field=role_id auth/approle/role/hope-app/role-id")"
@@ -122,7 +125,7 @@ fi
 set_env SECRETS_PROVIDER vault
 set_env PG_DYNAMIC_CREDS false
 set_env VAULT_DEV_ROOT_TOKEN "$ROOT_TOKEN"
-set_env VAULT_ADDR "${VAULT_ADDR:-http://localhost:8200}"
+set_env VAULT_ADDR "${VAULT_ADDR:-http://localhost:8201}"
 set_env VAULT_ROLE_ID "$ROLE_ID"
 set_env VAULT_SECRET_ID "$SECRET_ID"
 set_env VAULT_WRAPPED_SECRET_ID ""
@@ -155,11 +158,15 @@ bold "── Step 6/6: finalizing the env (syncing Vault kv-v2 secrets) ──�
 # (no hardcoded fallback list — that's the drift TASK-558 removed), so the
 # registry must be compiled before it can run. This matters more here than in
 # dev-setup.sh: test runs SECRETS_PROVIDER=vault unconditionally (set above),
-# so without this the API would read dev-init.sh's stale placeholder secrets
-# (e.g. MINIO_ACCESS_KEY=minio_admin) instead of .env.test's real values
-# (e.g. MINIO_ACCESS_KEY=test, matching tests/docker-compose.test.yml).
+# and test-init.sh deliberately seeds NO placeholder KV values (unlike dev's
+# vault-init), so without this step the API would find an EMPTY kv-v2 store
+# instead of .env.test's real values (e.g. MINIO_ACCESS_KEY=test, matching
+# tests/docker-compose.test.yml).
 pnpm --filter @arcaai/applications build
-"$SCRIPT_DIR/vault-seed-secrets.sh" --env-file "$ENV_FILE"
+# VAULT_CONTAINER must be exported — vault-seed-secrets.sh is a separate
+# process and otherwise falls back to its own default (hope-vault, the dev
+# container), not this script's $VAULT_CONTAINER.
+VAULT_CONTAINER="$VAULT_CONTAINER" "$SCRIPT_DIR/vault-seed-secrets.sh" --env-file "$ENV_FILE"
 
 green ""
 green "✔ Local test environment is ready."

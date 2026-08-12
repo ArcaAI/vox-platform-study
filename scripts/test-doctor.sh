@@ -17,8 +17,9 @@
 # PORTS: the TEST env is fully independent of DEV (TASK-557) — application
 #   ports are DEV + 100 (api 8968, stt 8961, smr 8962, guardrail 8963,
 #   nlp 8964, tts 8965, harness 8966, admin 5276), and the infra ports already
-#   differed (Postgres 5433, Redis 6380, MinIO 9002, Qdrant 6335). Both stacks
-#   can run side by side. Ports are read from .env.test, never hardcoded.
+#   differed (Postgres 5433, Redis 6380, MinIO 9002, Qdrant 6335, Vault 8201 —
+#   TASK-689 isolated Vault too). Both stacks can run side by side. Ports are
+#   read from .env.test, never hardcoded.
 # ============================================================================
 
 set -uo pipefail
@@ -62,6 +63,7 @@ TEST_PG_PORT=5433
 TEST_REDIS_PORT="$(env_val REDIS_PORT)"; TEST_REDIS_PORT="${TEST_REDIS_PORT:-6380}"
 TEST_MINIO_PORT=9002
 TEST_QDRANT_PORT=6335
+TEST_VAULT_PORT=8201
 T_API_PORT="$(env_val API_PORT)";  T_API_PORT="${T_API_PORT:-8968}"
 T_STT_PORT="$(env_val STT_PORT)";  T_STT_PORT="${T_STT_PORT:-8961}"
 T_SMR_PORT="$(env_val SMR_PORT)";  T_SMR_PORT="${T_SMR_PORT:-8962}"
@@ -100,6 +102,7 @@ docker_check required hope-postgres-test
 docker_check required hope-redis-test
 docker_check required hope-minio-test
 docker_check required hope-qdrant-test
+docker_check required hope-vault-test
 
 echo -e "${CYAN}── Test infrastructure health ───────────────────────────────────${NC}"
 if docker exec hope-postgres-test pg_isready -U test -d hope_test >/dev/null 2>&1; then
@@ -130,6 +133,18 @@ if docker exec hope-qdrant-test bash -c "echo > /dev/tcp/localhost/6333" 2>/dev/
     fi
 else
     fail "qdrant (test)" "localhost:$TEST_QDRANT_PORT unreachable — 'pnpm infra:test:up'"
+fi
+
+if docker exec hope-vault-test wget -q -O- http://127.0.0.1:8200/v1/sys/health 2>/dev/null | grep -q '"initialized":true'; then
+    pass "vault (test)" "localhost:$TEST_VAULT_PORT initialized"
+    vault_init_status="$(docker inspect hope-vault-init-test --format='{{.State.ExitCode}}' 2>/dev/null)"
+    if [ "$vault_init_status" = "0" ]; then
+        pass "vault approle/transit" "initialized"
+    else
+        warn "vault approle/transit" "init container exit=${vault_init_status:-unknown}"
+    fi
+else
+    fail "vault (test)" "localhost:$TEST_VAULT_PORT unreachable — 'pnpm infra:test:up'"
 fi
 
 echo -e "${CYAN}── Test database schema ─────────────────────────────────────────${NC}"

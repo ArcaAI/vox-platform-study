@@ -24,6 +24,7 @@ COPY apps/api/package.json ./apps/api/
 COPY packages/types/package.json ./packages/types/
 COPY packages/eslint-plugin-arcaai-internal/package.json ./packages/eslint-plugin-arcaai-internal/
 COPY packages/applications/package.json ./packages/applications/
+COPY packages/json-schema-subset/package.json ./packages/json-schema-subset/
 COPY packages/database/package.json ./packages/database/
 COPY packages/domains/package.json ./packages/domains/
 COPY packages/exceptions/package.json ./packages/exceptions/
@@ -115,6 +116,7 @@ COPY apps/api/package.json ./apps/api/
 COPY packages/types/package.json ./packages/types/
 COPY packages/eslint-plugin-arcaai-internal/package.json ./packages/eslint-plugin-arcaai-internal/
 COPY packages/applications/package.json ./packages/applications/
+COPY packages/json-schema-subset/package.json ./packages/json-schema-subset/
 COPY packages/database/package.json ./packages/database/
 COPY packages/domains/package.json ./packages/domains/
 COPY packages/exceptions/package.json ./packages/exceptions/
@@ -143,6 +145,10 @@ COPY --from=builder --chown=api:hope /app/apps/api/dist ./apps/api/dist
 # Copy only packages that have built dist folders (TypeScript compiled packages)
 COPY --from=builder --chown=api:hope /app/packages/applications/dist ./packages/applications/dist
 COPY --from=builder --chown=api:hope /app/packages/applications/package.json ./packages/applications/package.json
+# @arcaai/json-schema-subset is require()d at runtime by @arcaai/applications
+# (consultation-context-schema validation).
+COPY --from=builder --chown=api:hope /app/packages/json-schema-subset/dist ./packages/json-schema-subset/dist
+COPY --from=builder --chown=api:hope /app/packages/json-schema-subset/package.json ./packages/json-schema-subset/package.json
 COPY --from=builder --chown=api:hope /app/packages/domains/dist ./packages/domains/dist
 COPY --from=builder --chown=api:hope /app/packages/domains/package.json ./packages/domains/package.json
 COPY --from=builder --chown=api:hope /app/packages/exceptions/dist ./packages/exceptions/dist

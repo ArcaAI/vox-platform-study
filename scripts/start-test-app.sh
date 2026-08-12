@@ -83,14 +83,18 @@ load_env_test
 # file is only ever the SEED INPUT that ensure-test-vault-creds.sh pushes into
 # that path.
 #
-# The dev and test environments share ONE Vault (hope-vault) at ONE kv prefix —
-# the test infra runs no Vault of its own, and the `hope-app` AppRole policy is
-# deliberately pinned to `secret/data/hope/*` for cluster parity. So a later
-# `pnpm setup:dev` / refresh-vault-creds.sh overwrites those keys with .env.dev's
-# values, and .env.test's differing values go silently dead. `pnpm test:e2e:managed`
-# already self-heals through test-run.sh Step 2; this two-terminal path
-# (`pnpm test:up:api` + `pnpm test:e2e`) did not, which is what made
+# HISTORICAL NOTE (fixed by TASK-689): dev and test used to share ONE Vault
+# (hope-vault) at ONE kv prefix, so a later `pnpm setup:dev` / refresh-vault-
+# creds.sh would overwrite those keys with .env.dev's values and .env.test's
+# differing values would go silently dead — which is what made
 # .env.test's HARNESS_SERVICE_TOKEN look live while answering 401.
+# TASK-689 gives test its own isolated Vault (hope-vault-test,
+# tests/docker-compose.test.yml) with its own kv-v2 store, so that specific
+# cross-talk is now structurally impossible. The call below is still required
+# though: hope-vault-test's kv store starts EMPTY (test-init.sh seeds no
+# placeholders) and only gets populated by ensure-test-vault-creds.sh syncing
+# FROM .env.test — every launch needs that to have happened at least once
+# since the container last (re)started.
 #
 # Idempotent, and a no-op unless .env.test selects the Vault provider.
 # ----------------------------------------------------------------------------

@@ -188,6 +188,17 @@ else
     # Schema/seed may still be missing on a freshly created volume.
     if ! "$SCRIPT_DIR/test-doctor.sh" --infra-only >/dev/null 2>&1; then
         echo "  schema missing — running test:db:reset"
+        # The PHI-ciphertext seed (packages/database/.../seed/phi-encryption.ts)
+        # calls Vault Transit under .env.test's SECRETS_PROVIDER=vault, so Vault
+        # (hope-vault-test, TASK-689) must be provisioned BEFORE the seed runs —
+        # not just before app services start (Step 2 below), which never fires
+        # for suites with no services (unit/integration/py/single Python
+        # services). No-op when .env.test doesn't select the Vault provider.
+        if ! "$SCRIPT_DIR/ensure-test-vault-creds.sh"; then
+            echo -e "${RED}Failed to provision Vault credentials for the test env.${NC}" >&2
+            teardown
+            exit 1
+        fi
         # Seeding is opt-in and defaults to RUN_SEED=none (TASK-616) — managed
         # test runs need the full demo fixture set (media-seed.ts depends on
         # the seeded doctor row), so opt in explicitly, matching test-setup.sh.
@@ -227,9 +238,10 @@ if [ "${#SERVICES[@]}" -eq 0 ]; then
     step "Step 2/5: no app services required for this suite"
 else
     # Services run SECRETS_PROVIDER=vault and fail closed if .env.test's AppRole
-    # creds are stale (e.g. hope-vault was recreated → new role_id). Auto-mint
+    # creds are stale (e.g. hope-vault-test was recreated → new role_id). Auto-mint
     # fresh creds so the API boots — nobody re-provisions role_id/secret_id by
-    # hand. No-op when .env.test does not select the Vault provider.
+    # hand. No-op when .env.test does not select the Vault provider. Idempotent
+    # with the Step 1 call above (cheap re-run, harmless if both fire).
     step "Step 2/5: ensuring Vault creds + starting services (${SERVICES[*]})"
     if ! "$SCRIPT_DIR/ensure-test-vault-creds.sh"; then
         echo -e "${RED}Failed to provision Vault credentials for the test env.${NC}" >&2
