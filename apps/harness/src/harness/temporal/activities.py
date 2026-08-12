@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import hashlib
 import itertools
 import json
 import re
@@ -224,6 +225,38 @@ def _idempotency_key(*parts: str) -> str:
     info = activity.info()
     base = f"{info.workflow_run_id}:{info.activity_id}"
     return ":".join((base, *parts)) if parts else base
+
+
+def _draft_idempotency_key(consultation_id: str, content: str) -> str:
+    """Idempotency-Key for the DRAFT persist — derived from the WRITE, not the execution.
+
+    ``_idempotency_key`` above is correct for callbacks whose duplicate is always a
+    RETRY of one invocation. The draft persist is not one of those: ``HarnessDocWorkflow``
+    has TWO start sites (``ConsultationEventHandler`` via ``internal.py`` and the loop's
+    ``harness.finalize`` child), both targeting the deterministic id
+    ``harness-doc-{consultation_id}`` with no ``id_reuse_policy``. Temporal's default
+    ``ALLOW_DUPLICATE`` therefore rejects the second start ONLY while the first execution
+    is still open, so a second EXECUTION — new ``workflow_run_id`` — is routine (a legacy
+    run that already completed, or a late transcript after the loop finalized). A
+    run-scoped key makes those two writes look unrelated, and the clinical note is
+    duplicated.
+
+    The stable identity of this write is the consultation plus the note it carries:
+
+    * ``consultation_id`` — the same across every execution for this consultation, and
+      never shared with another consultation.
+    * a digest of the resolved note ``content`` — this is what keeps a LEGITIMATE
+      re-delivery working. The optimistic path re-persists a REGENERATED note through
+      this same activity, and a key that ignored the content would let the gateway's
+      replay cache swallow that better note as a "duplicate". A changed note is a
+      changed key, so it reaches the gateway and UPDATES the draft.
+
+    Deliberately NOT derived from ``workflow_run_id``/``activity_id``. This value is
+    computed inside an activity body, so the workflow records no new command and no
+    ``workflow.patched`` era is required (see the ticket README).
+    """
+    digest = hashlib.sha256(content.encode("utf-8")).hexdigest()
+    return f"draft:{consultation_id}:{digest}"
 
 
 # Progress reporting is fire-and-forget: a dedicated short HTTP
@@ -1865,7 +1898,9 @@ async def persist_draft(payload: PersistDraftInput) -> DraftResponse:
         # pre-audit-era persist ⇒ pruned client-side ⇒ byte-identical POST body.
         redaction_applied=payload.redaction_applied,
         redaction_manifest=payload.redaction_manifest,
-        idempotency_key=_idempotency_key(),
+        # NOT ``_idempotency_key()`` — see ``_draft_idempotency_key``. This callback
+        # is duplicated by a second workflow EXECUTION, not just by an activity retry.
+        idempotency_key=_draft_idempotency_key(payload.consultation_id, content),
     )
     # count the gate verdict EXACTLY ONCE per completed session.
     # The single-shot (legacy) persist carries the verdict; the optimistic early persist

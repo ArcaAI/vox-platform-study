@@ -93,6 +93,12 @@ const createMockContextItemRepository = () => {
     // fixture's `preSummaryText` assertion is unaffected.
     decryptContentFromEntity: vi.fn().mockImplementation(async (entity: { content?: string | null }) => entity?.content ?? null),
     create: vi.fn().mockResolvedValue({ id: 'ctx-draft-1', content: 'S: ...', tenantId: 'tenant-1' }),
+    // TASK-687 — persistDraft adopts its OWN prior draft (marked
+    // `metaData.subType = 'HARNESS_DRAFT'`) instead of creating a second note.
+    // Default empty ⇒ the "no prior draft" create path, so every pre-existing
+    // persistDraft test is unaffected.
+    findByType: vi.fn().mockResolvedValue([]),
+    update: vi.fn().mockImplementation(async (id: string, entity: Record<string, unknown>) => ({ ...entity, id })),
     // Encrypt-on-write helper (declaration-merged sibling): plaintext `content`
     // has no column, so a create that skips this drops the note at rest.
     encryptContentIntoEntity: vi.fn().mockResolvedValue(undefined),
@@ -1889,6 +1895,94 @@ describe('HarnessInternalService', () => {
   // a Redis throw falls through to normal processing (best-effort, mirrors the consultation-job dedup).
   // =========================================================================
 
+  describe('TASK-687: one consultation, one harness draft', () => {
+    let redisCache: ReturnType<typeof createMockRedisCache>;
+
+    beforeEach(() => {
+      redisCache = createMockRedisCache();
+      service = buildService(false, undefined, true, redisCache);
+    });
+
+    const draftBody = (content = 'S: chest pain O: BP 120/80 A: stable P: review') => ({
+      tenantId: 'tenant-1',
+      userId: 'doctor-1',
+      content,
+      modelName: 'gpt-x',
+      modelVersion: 'v9',
+    });
+
+    // The harness's OWN prior draft, as `findByType` would return it after a
+    // first persist (the marker is what persistDraft stamps on create).
+    const priorHarnessDraft = () => [{ id: 'ctx-draft-1', metaData: { subType: 'HARNESS_DRAFT' } }];
+
+    it('N workflow executions over the same input produce exactly ONE note row', async () => {
+      // Two executions of `harness-doc-{consultationId}`. Neither start site sets an
+      // id_reuse_policy, so the second runs whenever the first has closed — and it
+      // arrives with its own run-scoped key, which the Redis replay cache cannot dedup.
+      await service.persistDraft('consultation-1', draftBody() as any, 'run-A:persist_draft');
+      contextItemRepository.findByType.mockResolvedValue(priorHarnessDraft());
+      await service.persistDraft('consultation-1', draftBody() as any, 'run-B:persist_draft');
+
+      expect(contextItemRepository.create).toHaveBeenCalledTimes(1);
+      expect(summaryMetaRepository.create).toHaveBeenCalledTimes(1);
+    });
+
+    it('holds even with NO Redis at all — the invariant is the write path, not the cache', async () => {
+      // `withHarnessIdempotency` degrades to `work()` when Redis is absent, so a
+      // Redis-only guarantee is no guarantee for a clinical artifact.
+      service = buildService(false, undefined, true, undefined);
+      await service.persistDraft('consultation-1', draftBody() as any, 'run-A:persist_draft');
+      contextItemRepository.findByType.mockResolvedValue(priorHarnessDraft());
+      await service.persistDraft('consultation-1', draftBody() as any, 'run-B:persist_draft');
+
+      expect(contextItemRepository.create).toHaveBeenCalledTimes(1);
+    });
+
+    it('a second finalize over CHANGED input UPDATES the note — never silently ignored', async () => {
+      await service.persistDraft('consultation-1', draftBody('FIRST DRAFT') as any, 'run-A:persist_draft');
+      contextItemRepository.findByType.mockResolvedValue(priorHarnessDraft());
+      await service.persistDraft('consultation-1', draftBody('REVISED AFTER LATE TRANSCRIPT') as any, 'run-B:persist_draft');
+
+      expect(contextItemRepository.create).toHaveBeenCalledTimes(1);
+      expect(contextItemRepository.update).toHaveBeenCalledTimes(1);
+      const [updatedId, updatedEntity] = contextItemRepository.update.mock.calls[0];
+      expect(updatedId).toBe('ctx-draft-1');
+      expect((updatedEntity as { content?: string }).content).toBe('REVISED AFTER LATE TRANSCRIPT');
+      // The clinician must see the revision, and the caller must be told which row it is.
+      expect(summaryMetaRepository.updateWithVersion).toHaveBeenCalled();
+    });
+
+    it('returns the SAME contextItemId on the update path (the caller must not learn a new id)', async () => {
+      const first = await service.persistDraft('consultation-1', draftBody('FIRST') as any, 'run-A:persist_draft');
+      contextItemRepository.findByType.mockResolvedValue(priorHarnessDraft());
+      const second = await service.persistDraft('consultation-1', draftBody('SECOND') as any, 'run-B:persist_draft');
+
+      expect(second).toEqual(first);
+    });
+
+    it('NEVER adopts a RAW_SUMMARY written by a different generator', async () => {
+      // Five non-harness paths create RAW_SUMMARY rows for the same consultation
+      // (SummaryService, ChainSummaryService, ContextService, and the two BullMQ
+      // summary processors). Overwriting one of those with a harness draft would
+      // destroy a note this workflow never authored — strictly worse than a duplicate.
+      contextItemRepository.findByType.mockResolvedValue([
+        { id: 'ctx-from-summary-service', metaData: null },
+        { id: 'ctx-from-bullmq-processor', metaData: { subType: 'SOMETHING_ELSE' } },
+      ]);
+      await service.persistDraft('consultation-1', draftBody() as any, 'run-A:persist_draft');
+
+      expect(contextItemRepository.create).toHaveBeenCalledTimes(1);
+      expect(contextItemRepository.update).not.toHaveBeenCalled();
+    });
+
+    it('stamps the ownership marker on create so the NEXT execution can find it', async () => {
+      await service.persistDraft('consultation-1', draftBody() as any, 'run-A:persist_draft');
+
+      const created = contextItemRepository.create.mock.calls[0][0] as { metaData?: Record<string, unknown> };
+      expect(created.metaData?.subType).toBe('HARNESS_DRAFT');
+    });
+  });
+
   describe('Idempotency-Key dedup', () => {
     let redisCache: ReturnType<typeof createMockRedisCache>;
 
@@ -1922,16 +2016,22 @@ describe('HarnessInternalService', () => {
       expect(second).toEqual({ contextItemId: 'ctx-draft-1' });
     });
 
-    it('persistDraft: DIFFERENT key → NOT suppressed (create twice)', async () => {
+    it('persistDraft: DIFFERENT key → NOT suppressed, but adopts the existing draft (never a second row)', async () => {
       await service.persistDraft('consultation-1', draftBody() as any, 'run-1:persist_draft');
+      contextItemRepository.findByType.mockResolvedValue([{ id: 'ctx-draft-1', metaData: { subType: 'HARNESS_DRAFT' } }]);
       await service.persistDraft('consultation-1', draftBody() as any, 'run-2:persist_draft');
-      expect(contextItemRepository.create).toHaveBeenCalledTimes(2);
+
+      expect(contextItemRepository.create).toHaveBeenCalledTimes(1);
+      expect(contextItemRepository.update).toHaveBeenCalledTimes(1);
     });
 
-    it('persistDraft: ABSENT key → NOT suppressed (create twice)', async () => {
+    it('persistDraft: ABSENT key → NOT suppressed, but adopts the existing draft (never a second row)', async () => {
       await service.persistDraft('consultation-1', draftBody() as any);
+      contextItemRepository.findByType.mockResolvedValue([{ id: 'ctx-draft-1', metaData: { subType: 'HARNESS_DRAFT' } }]);
       await service.persistDraft('consultation-1', draftBody() as any);
-      expect(contextItemRepository.create).toHaveBeenCalledTimes(2);
+
+      expect(contextItemRepository.create).toHaveBeenCalledTimes(1);
+      expect(contextItemRepository.update).toHaveBeenCalledTimes(1);
     });
 
     it('persistDraft: Redis get throws → falls through and still processes (best-effort)', async () => {
