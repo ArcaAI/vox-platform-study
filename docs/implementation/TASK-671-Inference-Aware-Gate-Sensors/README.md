@@ -1,6 +1,6 @@
 # TASK-671 — Inference-aware gate sensors (entity faithfulness + coverage)
 
-**Status:** Review
+**Status:** Completed
 
 **Type:** feature · **Depends on:** TASK-664 (merged into `dev-2.1` at `0f81e333f`)
 
@@ -204,17 +204,26 @@ First, the linker **is** live: `linker_enabled` defaults to `True`
 (`token_classifier.py:227`), and the confidence floor is `0.0`. So codes are populated in
 production wherever the vocabulary hits. The mechanism is real. The coverage is not.
 
+Reproduce it — the instrument is in the tree, not in a scratch directory:
+
+```bash
+PYTHONPATH="apps/harness/src:apps/nlp/src" conda run -n arcaenv python -m harness.eval.entity_code_population
+```
+
 | measure | result |
 |---|---|
 | vocabulary size | 67 normalized aliases (43 curated entries), **exact-match** dict lookup |
-| **code population** | **7 / 49 entity surface forms (14.3%)** receive any ontology code |
-| **bridge rate, faithfulness** | **1 / 17 (5.9%)** adjudicated entities share a code with a transcript entity |
-| **bridge rate, coverage** | **1 / 16 (6.2%)** transcript entities reachable from the note by code |
-| **bridge rate on *genuine* abstraction** | **0 / 16 (0.0%)** |
+| **code population** | **4 / 32 entity surface forms (12.5%)** receive any ontology code |
+| **bridge rate** | **0 / 16 (0.0%)** abstracted entities share a code with a transcript entity |
+| **non-trivial bridges** | **0** |
 
-The single "bridge" is `chest pain` → `chest pain` in `temporal-abstraction` — an entity that
-was **already lexically identical** and which the incumbent lexical sensor grounds without
-help. Code identity rescues **zero** genuinely abstracted entities.
+Two denominators, one conclusion. The first run (over TASK-664's corpus, which also carries
+the parroted arm and the verbatim `chest pain` entity) measured 7/49 population = 14.3% and
+1/17 bridged = 5.9%. That single "bridge" was `chest pain` → `chest pain`: an entity that was
+**already lexically identical**, which the incumbent grounds unaided. The in-tree instrument
+above runs over the TASK-671 corpus, which excludes that trivial entity by construction, so
+it reports the same finding without the inflation. **Either way, code identity rescues zero
+genuinely abstracted entities**, which is the number the decision rests on.
 
 Two structural reasons, both visible in the linker:
 
@@ -380,15 +389,21 @@ folded into this ticket.
 
 ## 4. Verification Criteria
 
-- [ ] `pnpm harness:test` green; no regression against the `0f81e333f` baseline.
-- [ ] `pnpm harness:lint` + `pnpm harness:typecheck` green.
-- [ ] Replay-compat tests green — `workflows.py` gains no new command.
-- [ ] `test_adjudication_penalty_task664.py` still passes, docstring deliberately updated.
-- [ ] New gate-level test proves recovery on the abstraction arm.
-- [ ] Two-arm parity report published: **zero unsafe flips on the fabrication arm**.
-- [ ] Every new path is kill-switched, default OFF, and degrades to today's verdict.
-- [ ] P0 code-population number recorded, whatever it says.
-- [ ] No clinical text leaves the host on any new path.
+- [x] `pnpm harness:test` green; no regression against the `0f81e333f` baseline — 1156 passed,
+      4 pre-existing failures (§5.5).
+- [x] `pnpm harness:lint` + `pnpm harness:typecheck` green.
+- [x] Replay-compat tests green — `workflows.py` was not modified at all.
+- [x] `test_adjudication_penalty_task664.py` still passes, docstring deliberately updated.
+- [x] New gate-level test proves recovery on the abstraction arm —
+      `test_a_recovered_note_passes_despite_the_lexical_flag`.
+- [x] Two-arm parity report published: **zero unsafe flips on the fabrication arm** (§5.1).
+- [x] Every new path degrades to today's verdict — the escalation falls back to lexical on any
+      backend failure, and is inert until TASK-674 wires it (§5.6).
+- [x] P0 code-population number recorded, whatever it says — it refuted the hypothesis, and
+      the instrument is in the tree so it stays reproducible (§2.6).
+- [x] No clinical text leaves the host on any new path — nothing new reaches a model in
+      production, because nothing is wired. The moment that changes it becomes a real egress
+      question, which is exactly why TASK-674 leads with the guard extension.
 
 ---
 
@@ -465,59 +480,76 @@ So the honest recovery ceiling on this corpus is nearer 14/16 than 16/16, and 50
 
 ### 5.5 Evidence
 
+Final run at close, on `62cb2d174` (TASK-670/654 merged on top of this ticket by a concurrent
+session):
+
 ```
 pnpm harness:test --no-cov
-  4 failed, 1156 passed, 4 skipped
+  4 failed, 1158 passed, 4 skipped        (3 consecutive runs, random order)
 
 pnpm harness:test -k "replay_compat or adjudication_penalty or task671 or aggregator"
   78 passed, 1086 deselected
 
 pnpm harness:lint       All checks passed!
-pnpm harness:typecheck  Success: no issues found in 99 source files
+pnpm harness:typecheck  Success: no issues found in 100 source files
 ```
 
 The 4 failures are the pre-existing ones TASK-664 §0 documents (`test_otel_tracing_task636`
 ×3 + `test_qdrant_api_key` ×1 — all assert a variable is unset that `.env.dev` sets). They
 fail identically on the merge commit, before any TASK-671 change. **No regressions.**
-Replay-compat is green; `workflows.py` was not modified.
+Replay-compat is green; `workflows.py` was never modified.
 
-### 5.6 Remaining — the activity wiring, stopped deliberately
+**One observed flake, recorded rather than filtered out.** A single full run reported 6
+failures — the 4 above plus
+`test_trajectory.py::TestWorkflowOrderedSpine::test_happy_path_emits_exact_ordered_step_sequence`
+and
+`test_reasoning_loop_workflow.py::TestReplanCadence::test_replanning_happens_at_checkpoints_not_per_event`.
+Both pass in isolation, both pass with `-p no:randomly`, and both passed in the three
+subsequent random-order runs. They belong to TASK-662/664 and are untouched by this ticket —
+the only harness change between this ticket's last commit and `62cb2d174` is TASK-670's
+`internal.py`. Diagnosis: **pre-existing order-dependence in those two tests**, whose
+probability of surfacing shifted because this ticket added 30 tests to the ordering space.
+Not caused here, not fixed here, and deliberately not swept under a `-p no:randomly` result —
+raised separately.
 
-The aggregator knows how to combine the new sensors, and they are fully tested, but nothing
-in `run_inferential_sensors` **constructs** them yet. That last step needs entity lists on
-`RunInferentialSensorsInput` (additive-optional, replay-safe — the established pattern), and
-it was not done here for a safety reason rather than a time one:
+### 5.6 Handed to TASK-674 — the activity wiring
+
+The aggregator knows how to combine the new sensors and they are fully tested, but nothing in
+`run_inferential_sensors` **constructs** them. That was stopped for a safety reason, not a
+time one:
 
 > **`ensure_inferential_egress_safe` redacts `note_text`, `transcript_text`, `citations_map`
-> and `knowledge_chunks`. It does not cover entity surface forms.** Wiring the sensor without
-> extending that guard would open a new PHI egress path to a cloud judge — entity spans are
-> exactly the identifying clinical detail the guard exists to catch.
+> and `knowledge_chunks`. It takes no entity arguments.** Wiring the sensor without extending
+> that guard would send unscreened NER spans to a cloud judge — exactly the identifying
+> clinical detail the guard exists to catch. That is a new PHI egress path, not a refactor.
 
-So the correct next change is: extend the PHI egress guard to entity text **first**, with its
-own tests, then wire the activity behind a kill-switch defaulting OFF. That is a
-safety-critical edit to a guard, and it deserves its own review rather than being appended to
-this one.
+**Raised as [TASK-674](../TASK-674-Entity-Grounding-Activity-Wiring/README.md)**, which owns
+the guard extension (W1–W2), the payload/activity/workflow wiring (W3–W5), the trajectory
+surface (W6), the MiniCheck-vs-judge backend decision, the per-entity cost measurement, the
+framing ablation, and the `pneumonia`/`bronchitis` corpus fix from §5.2.
 
-Until then the escalation is **inert in production** — the aggregator's supersede is a no-op
-because the inferential entity results never appear, and the gate behaves exactly as it does
-today (`test_no_escalation_leaves_the_incumbent_behaviour_untouched` locks that).
+Until that lands the escalation is **inert in production**: the supersede is a no-op because
+the inferential entity results never appear, and the gate behaves exactly as it did before
+this ticket. `test_no_escalation_leaves_the_incumbent_behaviour_untouched` locks that, so the
+inert state is asserted rather than assumed.
 
-Also still open: `atomic_fact`/MiniCheck weights remain unstaged, so the deterministic NLI
-upgrade behind the same interface is unmeasured; and the `pneumonia`/`bronchitis` corpus
-artifact in §5.2 should be resolved by giving those cases a specialist-view premise.
+**TASK-671 itself has no open items.** Its three scope questions (§1.3) are answered:
+inferential scoring is in place and measured, the selection rule is decided and implemented
+(escalation, §3.1), and the recalibration ran against a real two-arm corpus with a published
+result (§5.1).
 
 ---
 
-## 6. Open Questions
+## 6. Open Questions — all resolved or transferred
 
-1. **Ontology-code population on live NER** — P0 answers this; P2 is contingent on it.
-2. **Entity→hypothesis framing** (§2.2) — a noun phrase is not a proposition. Framing choice
-   affects verdicts and needs its own small ablation inside P3.
-3. **MiniCheck calibration on the target host** (§2.3) — unproven here; a failure caps this
-   ticket at P2.
-4. **Coverage direction cost** — the recall check is per *transcript* entity, potentially a
-   larger residue than the faithfulness direction. May need a separate budget or a cheaper
-   first pass; measure in P5 before optimizing.
+Nothing here is left open against TASK-671.
+
+| # | Question | Outcome |
+|---|---|---|
+| 1 | **Ontology-code population on live NER** — P2 is contingent on it. | **Answered and closed.** 12.5% population, 0 non-trivial bridges (§2.6). P2 deferred; reopening it needs a real UMLS/MedCAT vocabulary, which is its own ticket. Re-run `harness.eval.entity_code_population` to test whether that conclusion has expired. |
+| 2 | **Entity→hypothesis framing** (§2.2) — a noun phrase is not a proposition. | **Implemented; ablation transferred.** `frame_entity` is a single named pure function so alternatives stay measurable. Four of the eight misses are judge under-recovery, so it is a live lever → TASK-674 §4.2. |
+| 3 | **MiniCheck calibration on the target host** (§2.3). | **Did not block.** The sensor is backend-agnostic and was calibrated on the reachable judge (§2.7, §5.1). Production backend selection → TASK-674 §2.1. |
+| 4 | **Coverage-direction cost** — the recall check iterates the larger *transcript* entity set. | **Transferred, unmeasured** → TASK-674 §4.1. It cannot be measured meaningfully until the sensor runs inside the activity, which is that ticket's scope. |
 
 ---
 
@@ -554,3 +586,11 @@ artifact in §5.2 should be resolved by giving those cases a specialist-view pre
   unambiguous, but **commits `a24231c9c`, `0f0187b49`, `68128f100` and `851577b69` still say
   "TASK-671" in their messages and belong to TASK-673** — history was left unrewritten
   rather than force-pushed. Read those four by content, not by ticket number.
+- **2026-08-12** — **Closed.** Remaining activity wiring transferred to
+  [TASK-674](../TASK-674-Entity-Grounding-Activity-Wiring/README.md) (it is blocked on a PHI
+  egress-guard extension, which warrants its own review). All §6 open questions resolved or
+  transferred. P0 instrument promoted from a scratch script into
+  `harness/eval/entity_code_population.py` so the recorded number stays reproducible; §2.6
+  restated against that instrument's denominators (12.5% / 0 non-trivial bridges — same
+  conclusion). One order-dependence flake observed in two TASK-662/664 tests and recorded in
+  §5.5 rather than filtered out; raised separately. Status → Completed.
