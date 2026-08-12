@@ -12,6 +12,8 @@ import {
   ConsultationContextSchemaVersionRepository,
   ConsultationRepository,
   ConsultationStatus,
+  CoreUnitOfWorkService,
+  CorePrisma,
   DepartmentAgentEntity,
   DepartmentAgentFactory,
   DepartmentAgentRepository,
@@ -91,6 +93,16 @@ export function liveConsultationsWarning(count: number): string {
  * cross-tenant). `goldenSetId` is NOT copied — not even the pointer to a
  * corpus of Vault-Transit-encrypted `GoldenCase` PHI crosses a tenant
  * boundary. See the ticket README §3.1 for the full table.
+ *
+ * ## Atomicity (TASK-677, closing TASK-663 OI-2)
+ *
+ * Everything promotion writes into the TARGET tenant — the deep-copied prompt
+ * templates, the agent (created or advanced), its immutable version row, and
+ * the `AgentPromotion` audit record — commits inside ONE `runInTransaction`.
+ * The eval re-run and the `evalRunId` write that follows it stay OUTSIDE: the
+ * eval is an external, long-running call, and holding a Postgres transaction
+ * open across it would be a worse defect than the partial-promotion window
+ * being closed (D-7 already makes the eval non-blocking and post-copy).
  */
 @Injectable()
 export class AgentPromotionService extends BaseService implements IAgentPromotionService {
@@ -112,6 +124,13 @@ export class AgentPromotionService extends BaseService implements IAgentPromotio
     private readonly contextSchemaVersionRepository: ConsultationContextSchemaVersionRepository,
     private readonly consultationRepository: ConsultationRepository,
     private readonly policyEngine: PolicyEngine,
+    // TASK-677 — the DOMAINS `CoreUnitOfWorkService`, not the identically
+    // named unwired class under `services/baseServices`. REQUIRED, not
+    // optional: promotion is a privileged cross-tenant write, and degrading
+    // silently to a non-transactional sequence when the dependency is unwired
+    // would reintroduce exactly the partial-promotion window this closes —
+    // the same reasoning D-6 applies to the context-schema repositories above.
+    private readonly unitOfWork: CoreUnitOfWorkService,
     @Optional() @Inject(EvalRunService) private readonly evalRunService?: EvalRunService,
   ) {
     super(eventEmitter, clsService, ResourceType.AgentPromotion);
@@ -201,42 +220,52 @@ export class AgentPromotionService extends BaseService implements IAgentPromotio
     // ---- 6. Non-blocking alert (AC-7) -------------------------------------
     const warnings = await this.buildWarnings(toTenantId, existing);
 
-    // ---- 7. The copy ------------------------------------------------------
-    const targetAgent = existing
-      ? await this.advanceTargetAgent(existing, source, loopConfig, toTenantId, targetDepartment.id, userId)
-      : await this.createTargetAgent(source, loopConfig, toTenantId, targetDepartment.id, userId);
-
     const checksum = createHash('sha256').update(canonicalAgentConfigJson(snapshot)).digest('hex');
-    const targetVersion = await this.writeTargetVersion(targetAgent, snapshot, checksum, fromTenantId, sourceVersion, userId);
 
-    // ---- 8. The immutable record -----------------------------------------
-    // Written LAST: a failure before this point means no promotion is recorded,
-    // which is the safe direction for an audit row (it never claims something
-    // that did not complete). The reverse window — the agent advanced but the
-    // record lost — is narrow and is not left untraceable: the target's own
-    // DepartmentAgentVersion above and the ResourceUpdated/ResourceCreated
-    // sys-event on the agent are both independent evidence of the change.
-    // A transaction would close it outright, but `Repository.update` takes no
-    // `tx` parameter (only `create` does), so a create-OR-update path cannot be
-    // wrapped without a cross-cutting repository change that is out of scope.
-    const promotion = AgentPromotionFactory.CreateAgentPromotion({
-      fromTenantId,
-      toTenantId,
-      agentVersionId: sourceVersion.id,
-      sourceAgentId: source.id,
-      targetAgentId: targetAgent.id,
-      targetAgentVersionId: targetVersion?.id ?? null,
-      configSnapshot: snapshot as never,
-      checksum,
-      sourceEvalRunId: dto.sourceEvalRunId ?? null,
-      warnings: warnings as never,
-      promotedBy: userId,
-      createdBy: userId,
-      metaData: dto.changeReason ? { changeReason: dto.changeReason } : undefined,
-    } as never);
-    promotion.validate();
-    const savedPromotion = await this.promotionRepository.create(promotion);
+    // ---- 7 + 8. The copy and its immutable record — ONE transaction -------
+    // TASK-677, closing TASK-663 OI-2. Everything the promotion produces in the
+    // TARGET tenant — the deep-copied prompt templates, the agent (created or
+    // advanced), its version row, and the AgentPromotion audit record — commits
+    // or rolls back together. Before this, the sequence was ordered so the
+    // audit row landed LAST, which guaranteed a record never claimed something
+    // that did not complete; but the reverse window stayed open, leaving a
+    // PARTIALLY-PROMOTED agent with no record saying so. `Repository.update`
+    // now takes a `tx`, so the create-OR-update path (D-10) is wrappable.
+    //
+    // Every write below therefore threads `tx`. A repository caches its
+    // database context at construction, so the CLS propagation inside
+    // `runInTransaction` would NOT reach these singletons on its own — passing
+    // `tx` explicitly is what actually enrols the write.
+    const { targetAgent, savedPromotion } = await this.unitOfWork.runInTransaction(async (tx: CorePrisma.TransactionClient) => {
+      const agent = existing
+        ? await this.advanceTargetAgent(existing, source, loopConfig, toTenantId, targetDepartment.id, userId, tx)
+        : await this.createTargetAgent(source, loopConfig, toTenantId, targetDepartment.id, userId, tx);
 
+      const targetVersion = await this.writeTargetVersion(agent, snapshot, checksum, fromTenantId, sourceVersion, userId, tx);
+
+      const promotion = AgentPromotionFactory.CreateAgentPromotion({
+        fromTenantId,
+        toTenantId,
+        agentVersionId: sourceVersion.id,
+        sourceAgentId: source.id,
+        targetAgentId: agent.id,
+        targetAgentVersionId: targetVersion?.id ?? null,
+        configSnapshot: snapshot as never,
+        checksum,
+        sourceEvalRunId: dto.sourceEvalRunId ?? null,
+        warnings: warnings as never,
+        promotedBy: userId,
+        createdBy: userId,
+        metaData: dto.changeReason ? { changeReason: dto.changeReason } : undefined,
+      } as never);
+      promotion.validate();
+
+      return { targetAgent: agent, savedPromotion: await this.promotionRepository.create(promotion, tx) };
+    });
+
+    // Announced only AFTER the commit — a sys-event for a promotion that rolled
+    // back would be a claim about something that never happened, which is the
+    // failure mode the audit row exists to prevent.
     this.broadcastSysEvent(SysEventType.ResourceCreated, {
       resourceId: savedPromotion.id,
       createdAt: savedPromotion.createdAt,
@@ -462,8 +491,9 @@ export class AgentPromotionService extends BaseService implements IAgentPromotio
     toTenantId: string,
     targetDepartmentId: string,
     userId: string,
+    tx: CorePrisma.TransactionClient,
   ): Promise<DepartmentAgentEntity> {
-    const bindings = await this.materializeBindings(source, toTenantId, targetDepartmentId, userId);
+    const bindings = await this.materializeBindings(source, toTenantId, targetDepartmentId, userId, tx);
 
     const agent = DepartmentAgentFactory.CreateDepartmentAgent({
       tenantId: toTenantId,
@@ -492,7 +522,7 @@ export class AgentPromotionService extends BaseService implements IAgentPromotio
       createdBy: userId,
     } as never);
 
-    return this.agentRepository.create(agent);
+    return this.agentRepository.create(agent, tx);
   }
 
   private async advanceTargetAgent(
@@ -502,8 +532,9 @@ export class AgentPromotionService extends BaseService implements IAgentPromotio
     toTenantId: string,
     targetDepartmentId: string,
     userId: string,
+    tx: CorePrisma.TransactionClient,
   ): Promise<DepartmentAgentEntity> {
-    const bindings = await this.materializeBindings(source, toTenantId, targetDepartmentId, userId);
+    const bindings = await this.materializeBindings(source, toTenantId, targetDepartmentId, userId, tx);
 
     existing.promptTemplateId = bindings.promptTemplateId;
     existing.newPatientTemplateId = bindings.newPatientTemplateId;
@@ -524,7 +555,10 @@ export class AgentPromotionService extends BaseService implements IAgentPromotio
     existing.neverActions = config.neverActions ?? null;
     existing.updatedBy = userId;
 
-    return this.agentRepository.update(existing.id, existing);
+    // TASK-677 — the third argument is the whole point of this ticket: before
+    // it, this line could not join the transaction and the create-OR-update
+    // path could not be wrapped at all.
+    return this.agentRepository.update(existing.id, existing, tx);
   }
 
   /**
@@ -537,14 +571,22 @@ export class AgentPromotionService extends BaseService implements IAgentPromotio
    * `PromptTemplate` is in `SYSTEM_SHARED_READ_MODELS` and the reference is
    * genuinely valid cross-tenant.
    */
-  private async materializeBindings(source: DepartmentAgentEntity, toTenantId: string, targetDepartmentId: string, userId: string) {
-    const [promptTemplateId, newPatientTemplateId, revisitTemplateId, preSummaryTemplateId, livePromptTemplateId] = await Promise.all([
-      this.materializeTemplate(source.promptTemplateId, source, toTenantId, targetDepartmentId, userId),
-      this.materializeTemplate(source.newPatientTemplateId, source, toTenantId, targetDepartmentId, userId),
-      this.materializeTemplate(source.revisitTemplateId, source, toTenantId, targetDepartmentId, userId),
-      this.materializeTemplate(source.preSummaryTemplateId, source, toTenantId, targetDepartmentId, userId),
-      this.materializeTemplate(source.livePromptTemplateId, source, toTenantId, targetDepartmentId, userId),
-    ]);
+  private async materializeBindings(
+    source: DepartmentAgentEntity,
+    toTenantId: string,
+    targetDepartmentId: string,
+    userId: string,
+    tx: CorePrisma.TransactionClient,
+  ) {
+    // Sequential, not `Promise.all`: an interactive Prisma transaction client
+    // is a SINGLE connection, so concurrent writes through one `tx` are not
+    // safe to issue in parallel.
+    const promptTemplateId = await this.materializeTemplate(source.promptTemplateId, source, toTenantId, targetDepartmentId, userId, tx);
+    const newPatientTemplateId = await this.materializeTemplate(source.newPatientTemplateId, source, toTenantId, targetDepartmentId, userId, tx);
+    const revisitTemplateId = await this.materializeTemplate(source.revisitTemplateId, source, toTenantId, targetDepartmentId, userId, tx);
+    const preSummaryTemplateId = await this.materializeTemplate(source.preSummaryTemplateId, source, toTenantId, targetDepartmentId, userId, tx);
+    const livePromptTemplateId = await this.materializeTemplate(source.livePromptTemplateId, source, toTenantId, targetDepartmentId, userId, tx);
+
     if (!promptTemplateId) {
       throw new BadRequestException(`Source agent ${source.id} binds a prompt template that no longer exists`);
     }
@@ -557,6 +599,7 @@ export class AgentPromotionService extends BaseService implements IAgentPromotio
     toTenantId: string,
     targetDepartmentId: string,
     userId: string,
+    tx: CorePrisma.TransactionClient,
   ): Promise<string | null> {
     if (!templateId) return null;
 
@@ -589,7 +632,7 @@ export class AgentPromotionService extends BaseService implements IAgentPromotio
       tags: template.tags ?? [],
       createdBy: userId,
     });
-    const saved = await this.promptTemplateRepository.create(snapshot);
+    const saved = await this.promptTemplateRepository.create(snapshot, tx);
 
     const v1 = PromptVersionFactory.CreatePromptVersion({
       tenantId: toTenantId,
@@ -601,7 +644,7 @@ export class AgentPromotionService extends BaseService implements IAgentPromotio
       changedBy: userId,
       createdBy: userId,
     });
-    await this.promptVersionRepository.create(v1);
+    await this.promptVersionRepository.create(v1, tx);
 
     return saved.id;
   }
@@ -614,7 +657,11 @@ export class AgentPromotionService extends BaseService implements IAgentPromotio
     fromTenantId: string,
     sourceVersion: DepartmentAgentVersionEntity,
     userId: string,
+    tx: CorePrisma.TransactionClient,
   ): Promise<DepartmentAgentVersionEntity | null> {
+    // Read, not write, so it stays on the ordinary client: the target agent's
+    // committed version history is what determines the next version number,
+    // and nothing written inside this transaction adds to it.
     const latest = await this.agentVersionRepository.findLatestForAgent(targetAgent.id);
     if (latest && latest.checksum === checksum) {
       // Re-promoting an identical configuration is a no-op for the version
@@ -633,7 +680,7 @@ export class AgentPromotionService extends BaseService implements IAgentPromotio
       changeReason: `Promoted from tenant ${fromTenantId} (version ${sourceVersion.versionNumber})`,
       createdBy: userId,
     });
-    return this.agentVersionRepository.create(version);
+    return this.agentVersionRepository.create(version, tx);
   }
 
   /**
