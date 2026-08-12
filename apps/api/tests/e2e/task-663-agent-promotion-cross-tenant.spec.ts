@@ -23,6 +23,21 @@ import { DEFAULT_TENANT_KEY, SEEDED_USERS, loginUser } from '../../../../tests/h
 
 /** The ArcaAI customer tenant, a sibling of __GLOBAL__'s catalog. */
 const FOREIGN_TENANT_KEY = 'ARCAAI';
+/**
+ * The prober must be a TENANT_ADMIN bound to ARCAAI — a caller that manages
+ * NEITHER side of the promotions probed below.
+ *
+ * `SEEDED_USERS.admin` (`tenant_admin`) is NOT that user: it is seeded into
+ * `__GLOBAL__` and holds no ARCAAI membership, so logging it in with
+ * `tenantKey: 'ARCAAI'` yields 401 ("User does not have access to the specified
+ * tenant") and `loginUser` returns null — every assertion below would then die
+ * on the login rather than on the wire. The ARCAAI-scoped admin is
+ * `arcaai_admin`, which is deliberately absent from `SEEDED_USERS` (that map is
+ * the `__GLOBAL__` seed); the same local-constant pattern is used by
+ * `agent-management-contract.spec.ts`.
+ */
+const ARCAAI_ADMIN_USERNAME = 'arcaai_admin';
+const SEED_PASSWORD = 'password123';
 const SYNTHETIC_ID = '019400aa-0000-7000-8000-00000000dead';
 
 function auth(token: string) {
@@ -31,7 +46,7 @@ function auth(token: string) {
 
 test.describe('cross-tenant — promote', () => {
   test('a tenant-scoped caller cannot promote out of a tenant it does not manage', async ({ request }) => {
-    const prober = await loginUser(request, SEEDED_USERS.admin.username, SEEDED_USERS.admin.password, FOREIGN_TENANT_KEY);
+    const prober = await loginUser(request, ARCAAI_ADMIN_USERNAME, SEED_PASSWORD, FOREIGN_TENANT_KEY);
     expect(prober).not.toBeNull();
 
     const response = await request.post('/api/v1/admin/agent-promotions', {
@@ -61,7 +76,7 @@ test.describe('cross-tenant — promote', () => {
     const realAgentId = agents.data[0].id;
 
     // 2. Probe BOTH ids from a tenant-scoped token that manages neither side.
-    const prober = await loginUser(request, SEEDED_USERS.admin.username, SEEDED_USERS.admin.password, FOREIGN_TENANT_KEY);
+    const prober = await loginUser(request, ARCAAI_ADMIN_USERNAME, SEED_PASSWORD, FOREIGN_TENANT_KEY);
     expect(prober).not.toBeNull();
 
     const body = (sourceAgentId: string) => ({
@@ -99,7 +114,7 @@ test.describe('cross-tenant — promote', () => {
 
 test.describe('cross-tenant — promotion records', () => {
   test("reading another tenant's promotion record is 404, never 403", async ({ request }) => {
-    const prober = await loginUser(request, SEEDED_USERS.admin.username, SEEDED_USERS.admin.password, FOREIGN_TENANT_KEY);
+    const prober = await loginUser(request, ARCAAI_ADMIN_USERNAME, SEED_PASSWORD, FOREIGN_TENANT_KEY);
     expect(prober).not.toBeNull();
 
     const response = await request.get(`/api/v1/admin/agent-promotions/${SYNTHETIC_ID}`, { headers: auth(prober!.token) });
@@ -108,7 +123,7 @@ test.describe('cross-tenant — promotion records', () => {
   });
 
   test('the promotion list is scoped to the working tenant', async ({ request }) => {
-    const prober = await loginUser(request, SEEDED_USERS.admin.username, SEEDED_USERS.admin.password, FOREIGN_TENANT_KEY);
+    const prober = await loginUser(request, ARCAAI_ADMIN_USERNAME, SEED_PASSWORD, FOREIGN_TENANT_KEY);
     expect(prober).not.toBeNull();
 
     const response = await request.get('/api/v1/admin/agent-promotions?page=1&limit=50', { headers: auth(prober!.token) });
