@@ -530,6 +530,7 @@ describe('HarnessInternalController', () => {
         undefined as any, // agentTrajectoryService (unused by these routes)
         undefined as any, // consultationLoopEventService (unused by these routes)
         undefined as any, // loopConfigService (unused by these routes)
+        undefined as any, // loopContextTextService (unused by these routes) — TASK-670 inserted this param
         mockLiveDocumentationService as any,
       );
 
