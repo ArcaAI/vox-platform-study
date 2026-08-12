@@ -67,10 +67,21 @@ export const CONSULTATION_ENDPOINTS = {
   REOPEN: (id: string) => `/consultations/${encodeURIComponent(id)}/reopen`,
   /** Live running-SOAP SSE stream (full-state snapshots) while recording. */
   LIVE_SUMMARY_STREAM: (id: string) => `/consultations/${encodeURIComponent(id)}/live-summary/stream`,
+  /**
+   * Consultation-loop workflow event SSE stream (TASK-660/665). Append-only
+   * feed relaying `consultation:loop:{id}` — each event is a discrete
+   * `LoopEvent` (action started/finished, specialist dispatched, ...), never
+   * a full-state snapshot. No server-side late-join/replay (see
+   * `useConsultationEvents`'s doc comment for the `Last-Event-Id` caveat).
+   */
+  LOOP_STREAM: (id: string) => `/consultations/${encodeURIComponent(id)}/loop/stream`,
 } as const;
 
 /** SSE ticket scope for the live running-SOAP stream (must match the gateway's per-resource scope). */
 export const liveSummaryScopeFor = (consultationId: string): string => `consultation_live_summary:${consultationId}`;
+
+/** SSE ticket scope for the consultation-loop event stream (must match `@StreamScope({ namespace: 'consultation_loop' })`). */
+export const loopEventsScopeFor = (consultationId: string): string => `consultation_loop:${consultationId}`;
 
 /**
  * Audio recording endpoints (dual-capture X8).
@@ -353,6 +364,12 @@ export const TENANT_ENDPOINTS = {
 export const MY_TENANT_ENDPOINTS = {
   INFO: '/tenant/me',
   CONFIG: '/tenant/me/config',
+  /**
+   * Discovery bundle for the caller tenant's PINNED `ConsultationContextSchema`
+   * (TASK-658/661/665). A deliberate sibling of `CONFIG` above, not an
+   * addition to it — see `ConsultationSchemaClient.ts`.
+   */
+  CONTEXT_SCHEMA: '/tenant/me/context-schema',
 } as const;
 
 // =============================================================================

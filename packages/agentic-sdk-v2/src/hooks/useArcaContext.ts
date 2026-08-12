@@ -162,7 +162,7 @@ export function useArcaContext() {
   );
 
   const addAttachment = useCallback(
-    async (content?: string, metadata?: Record<string, unknown>): Promise<ContextItem> => {
+    async (content?: string, metadata?: Record<string, unknown>, mediaId?: string): Promise<ContextItem> => {
       const logger = getLogger();
       if (!apiClient) throw new Error('SDK not initialized');
       if (!consultation) throw new Error('No active consultation');
@@ -181,9 +181,12 @@ export function useArcaContext() {
           content: content ?? '',
           source: 'USER',
           structuredData: metadata,
+          // TASK-656/665: the `Media` table row UUID from `useStorage().uploadFile()`
+          // — the id the backend can actually resolve, unlike the raw storage `key`.
+          mediaId,
         });
         addContextItem(item);
-        timer?.end(true, { attributes: { contextItemId: item.id, contentLength: (content ?? '').length } });
+        timer?.end(true, { attributes: { contextItemId: item.id, contentLength: (content ?? '').length, hasMediaId: !!mediaId } });
         return item;
       } catch (error) {
         timer?.error(error as Error);

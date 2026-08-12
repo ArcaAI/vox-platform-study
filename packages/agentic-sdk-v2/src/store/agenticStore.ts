@@ -30,6 +30,7 @@ import type { ModelRegistry } from '../core/ModelRegistry';
 import type { ConfigManager } from '../core/ConfigManager';
 import type { AppConfig } from '../core/ConfigSchema';
 import type { SDKLogger } from '../core/logger';
+import type { ConsultationSchemaBundle } from '../types/consultationSchema';
 
 // =============================================================================
 // State Interface
@@ -197,6 +198,16 @@ export interface AgenticState {
   // Tenant configuration (parsed from GlobalSettings)
   tenantConfig: TenantAudioConfig | null;
 
+  /**
+   * The tenant's PINNED consultation context schema discovery bundle
+   * (TASK-658/661/665) — fetched once at `AgenticProvider` mount (or on a
+   * same-tab tenant switch) and held for the life of the session. `null`
+   * before the first fetch resolves; never re-fetched mid-session, which is
+   * what makes the session's pin stable even if the tenant publishes a new
+   * version while a consultation is open.
+   */
+  consultationSchema: ConsultationSchemaBundle | null;
+
   // Three-tier config management
   configManager: ConfigManager | null;
   resolvedConfig: AppConfig | null;
@@ -340,6 +351,9 @@ export interface AgenticActions {
   // `TenantAudioConfig | null`).
   setTenantConfig: (config: TenantAudioConfig | null) => void;
 
+  /** Set (or clear with `null`) the session's pinned consultation context schema bundle (TASK-665). */
+  setConsultationSchema: (bundle: ConsultationSchemaBundle | null) => void;
+
   // Runtime config (ENH-05)
   updateRuntimeConfig: (patch: { logLevel?: string }) => void;
 
@@ -443,6 +457,9 @@ const initialState: AgenticState = {
 
   // Tenant config
   tenantConfig: null,
+
+  // Consultation context schema (TASK-665)
+  consultationSchema: null,
 
   // Three-tier config management
   configManager: null,
@@ -617,9 +634,9 @@ const agenticStoreInitializer: StateCreator<AgenticState & AgenticActions> = (se
   // through useArca()/useArcaConfig() (consultation, relatedConsultations,
   // contextItems, sharedContext, entities [medical NER PHI], summaries,
   // currentTranscript [raw transcript PHI], transcriptSegments, dnaStyle,
-  // tenantConfig) but NEVER touches auth/impersonation state — those drive the
-  // in-flight tenant switch and must survive it. Empty values mirror
-  // `initialState`.
+  // tenantConfig, consultationSchema) but NEVER touches auth/impersonation
+  // state — those drive the in-flight tenant switch and must survive it.
+  // Empty values mirror `initialState`.
   clearTenantSessionData: () =>
     set({
       consultation: null,
@@ -632,6 +649,10 @@ const agenticStoreInitializer: StateCreator<AgenticState & AgenticActions> = (se
       transcriptSegments: [],
       dnaStyle: null,
       tenantConfig: null,
+      // The outgoing tenant's pinned schema must not remain resident once a
+      // switch begins — re-fetched (or left null) by the incoming tenant's
+      // rehydrate effect in `AgenticProvider` (TASK-665).
+      consultationSchema: null,
       // A tenant switch ends the capture context; the outgoing tenant's
       // audio-drop signal must not bleed into the next. (`clearSensitiveData`
       // delegates here, so the security wipe is covered too.)
@@ -674,6 +695,8 @@ const agenticStoreInitializer: StateCreator<AgenticState & AgenticActions> = (se
   incrementModelRegistryVersion: () => set((state) => ({ modelRegistryVersion: state.modelRegistryVersion + 1 })),
 
   setTenantConfig: (config) => set({ tenantConfig: config }),
+
+  setConsultationSchema: (bundle) => set({ consultationSchema: bundle }),
 
   updateRuntimeConfig: (patch) => {
     const state = get();
@@ -741,6 +764,7 @@ const agenticStoreInitializer: StateCreator<AgenticState & AgenticActions> = (se
       // a fresh ConfigManager / PersonalizationManager keyed to the new user.
       preferences: {},
       tenantConfig: null,
+      consultationSchema: null,
       resolvedConfig: null,
       configReady: false,
       profileReady: false,
@@ -927,6 +951,7 @@ export const selectApiClient = (state: AgenticState) => state.apiClient;
 export const selectLogger = (state: AgenticState) => state.logger;
 export const selectPluginManager = (state: AgenticState) => state.pluginManager;
 export const selectTenantConfig = (state: AgenticState) => state.tenantConfig;
+export const selectConsultationSchema = (state: AgenticState) => state.consultationSchema;
 export const selectConfigManager = (state: AgenticState) => state.configManager;
 export const selectResolvedConfig = (state: AgenticState) => state.resolvedConfig;
 export const selectConfigReady = (state: AgenticState) => state.configReady;
