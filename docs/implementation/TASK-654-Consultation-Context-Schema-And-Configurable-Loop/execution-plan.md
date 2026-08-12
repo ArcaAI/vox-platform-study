@@ -59,7 +59,17 @@ A fresh worktree has no built workspace dists. Two consequences, both observed:
 - **`pnpm test:unit` needs `room`, `noise-filter`, `vad`, `stt`, `med-ner`, `vox` and `ui` built first** — otherwise ~31 files fail on unresolved workspace entries and the run reports a false red.
 - **After `pnpm db:generate` you must rebuild `@arcaai/database` and `@arcaai/domains`** before testing. The `resourceType.enum-parity` guard reads the *generated* Prisma enum through `@arcaai/database`'s dist; a stale dist makes it fail against a correct schema. Observed on the TASK-658 merge: 1 domains failure and **197 applications files failing to load with only 1 failed assertion** — the signature of stale-dist module-load failure, not broken code. Rebuilding in dependency order returned 1,564 and 8,685 passing.
 
-Correct order: `pnpm install` → `pnpm db:generate` → `pnpm --filter @arcaai/database build` → `--filter @arcaai/domains build` → `--filter @arcaai/applications build` → tests.
+**Use the dependency graph, not a hand-written list:**
+
+```
+pnpm install
+pnpm db:generate                              # needs placeholder DATABASE_URL / DIRECT_URL — it does not connect
+pnpm turbo build --filter=@arcaai/applications   # resolves the WHOLE chain
+```
+
+> **This paragraph previously listed `database → domains → applications` by hand and that list was wrong** — it omitted `@arcaai/json-schema-subset` (extracted mid-programme) and, in some worktrees, `@arcaai/database` itself. Four separate tickets were misled by it, each with a different signature of the same fault: **197** applications files failing to load with 1 failed assertion (TASK-658 merge), **211** failed files (TASK-680), **33** failed files of which 31 were phantom (TASK-677), and **370** files failing to import (TASK-688). Every one looked like a catastrophic regression and none of them was.
+>
+> Do not hand-maintain a package list here. `turbo` already knows the graph; let it. And **measure your own baseline** before attributing any failure to your change — every one of those four tickets would have reported a false regression if it had trusted its first run.
 
 ### 1.1c `pnpm db:migrate` — FIXED 2026-08-12; use the documented shadow-DB workflow
 
