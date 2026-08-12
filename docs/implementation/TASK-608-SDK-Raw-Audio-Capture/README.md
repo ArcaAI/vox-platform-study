@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | In Progress |
+| Status | Closed |
 | Type | feature (SDK) + investigation |
 | Branch | `dev-2.1` |
 | Packages | `@arcaai/vox` (`packages/agentic-sdk-v2`) |
@@ -174,3 +174,4 @@ permission is granted.
 | Date | Change |
 |---|---|
 | 2026-08-04 | Ticket opened. Audited the compat live path; added `audioProcessing` (SDK + compat) with 9 TDD tests; documented the multi-mic no-data investigation. |
+| 2026-08-12 | Closed — not being pursued further at this time. |

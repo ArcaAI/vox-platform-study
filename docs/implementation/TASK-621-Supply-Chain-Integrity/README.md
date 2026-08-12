@@ -1,6 +1,6 @@
 # TASK-621 — Supply Chain Integrity
 
-**Status**: Pending (plan authored 2026-08-08, awaiting owner approval)
+**Status**: Closed
 **Classification**: infrastructure
 **Created**: 2026-08-08
 **Parent**: [TASK-616 Phase 5](../TASK-616-Deployment-CICD-Observability-Modernization/README.md) · [Program index](../TASK-616-Deployment-CICD-Observability-Modernization/phase-program-index.md)
@@ -250,3 +250,4 @@ C.1a applied to the three green suites (`allow_failure` removed; `|| true` remov
 | Date | Change | Author |
 |---|---|---|
 | 2026-08-08 | Ticket created as TASK-616 Phase 5. Findings grounded in a direct read of `.gitlab/ci/scan.yml`, `.gitlab/ci/test.yml`, `.gitlab/ci/build.yml`, `.gitlab-ci.yml`, `.gitlab/ci/vault.yml` and `.gitleaks.toml` (2026-08-08). Three critical gaps confirmed live: `scan-gitleaks` fully commented out (C-01), Trivy triple-neutralized against ever failing a pipeline (C-02), and 4 of 6 Python suites `allow_failure`-flagged with their `build-*` jobs `needs:`-ing them anyway so a red suite never blocks an image (C-03). Coverage gap confirmed: only 5 of 12 built images are scanned at all (C-11). Zero cosign/SBOM/Kyverno tooling found anywhere in either repo (SC-01) — the 2026 SOTA baseline (§A7, §A12 #3) is unimplemented, not partial. Registry cleanup-policy inversion (C-20/F12) reconfirmed and explicitly shared with TASK-619 C.11 to avoid double implementation. `harness-eval-gate`'s `allow_failure` explicitly scoped out as a different defect class. Hard sequencing encoded: gitleaks working-tree-mode-first (blocked on TASK-619 F0-1 for full-history mode), cosign before SBOM before Kyverno, Kyverno by digest never tag, Audit before Enforce. Status `Pending` pending owner approval. | Claude |
+| 2026-08-12 | Closed — plan deprioritized, not being pursued at this time. | owner |

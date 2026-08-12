@@ -1,6 +1,6 @@
 # TASK-594 — Malayalam-English Code-Switch Transcription Quality
 
-**Status:** In Progress (Phase 1 — correctness)
+**Status:** Closed
 **Type:** bugfix / quality
 **Branch:** dev-2.1
 
@@ -294,3 +294,5 @@ playground's transcript template `'{speaker_id}: {text}'`
   (`mlen_scorecard.py`): greedy deepest-silence chunking (default 7.0 s) + repetition
   loop-guard. Mean CER 0.273 → 0.135; long clips fixed, no short-clip regression.
   29 adapter tests / 479 streaming+wiring+loader tests green; ruff + mypy clean.
+- 2026-08-12 — Closed — Phase 1 correctness work (whisper.cpp adapter, pipeline fixes)
+  shipped; remaining fine-tune scope deprioritized, not being pursued under this ticket.

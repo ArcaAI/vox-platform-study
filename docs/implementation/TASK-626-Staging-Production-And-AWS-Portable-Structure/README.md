@@ -1,6 +1,6 @@
 # TASK-626 — Staging + Production Environments & AWS-Portable Structure
 
-**Status**: Pending (plan authored 2026-08-08, awaiting owner approval)
+**Status**: Closed
 **Classification**: infrastructure
 **Created**: 2026-08-08
 **Parent**: [TASK-616 Phase 8](../TASK-616-Deployment-CICD-Observability-Modernization/README.md#phase-8--staging-production-and-aws-portable-structure--l) · [Program index](../TASK-616-Deployment-CICD-Observability-Modernization/phase-program-index.md)
@@ -221,3 +221,4 @@ Wave D — live registration (blocked on TASK-617/618/624/625):
 | Date | Change | Author |
 |---|---|---|
 | 2026-08-08 | Ticket created from TASK-616 Phase 8, re-verified against `arca/hope-v2-deployment` and the live Rancher/ArgoCD APIs. The 2026-08-07 design doc's "these are stubs" framing corrected: the Argo `Application`/`AppProject` layer and the staging overlay are substantially built (S-01/S-02/S-05); what remains unstarted is the `components/` split (S-09), `storageClassName` (S-08), and — the actual blocker — proof that anything committed has ever synced to the live cluster, which has exactly one HOPE namespace and one hand-made Argo `Application` today (S-03). File-ownership overlap with TASK-622 on `overlays/prod/{hpa,pdb}.yaml` recorded explicitly as ⚠ 1 in both tickets. Dependency on TASK-617/618/624/625 stated as a hard sequencing constraint, not a soft note. Status `Pending` pending owner approval. | Claude |
+| 2026-08-12 | Closed — plan deprioritized, not being pursued at this time. | Claude |

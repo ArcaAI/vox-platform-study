@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | `Pending` |
+| **Status** | `Closed` |
 | **Classification** | infrastructure / database |
 | **Created** | 2026-08-07 |
 | **Owner** | Platform / DevOps |
@@ -1446,3 +1446,4 @@ Nothing is "done" without pasted output (`.claude/rules/01-development-workflow.
 | Date | Change | By |
 |---|---|---|
 | 2026-08-07 | Ticket created. Per-environment strategy, per-phase seed audit (Class A/B/C over all 25 phases), `migration-guard.mts` + `migration-runbook.mts` as real code, migration safety rules M-1…M-10, the two blocking migrations, PreSync posture, 5-phase implementation plan. Status `Pending`. | Claude (Opus 5) |
+| 2026-08-12 | Closed — plan deprioritized, not being pursued at this time (see TASK-644 for the real-world migration-baseline execution already completed). | Claude |

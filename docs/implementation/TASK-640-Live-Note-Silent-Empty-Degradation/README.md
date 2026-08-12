@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Pending |
+| **Status** | Closed |
 | **Classification** | bugfix (clinical safety / observability) |
 | **Severity** | High — a clinician-facing surface cannot distinguish "generation failed" from "nothing said yet" |
 | **Created** | 2026-08-08 |
@@ -99,3 +99,4 @@ Execution then falls through to NER, grounding, and publish. `runningSummary` ke
 | Date | Change |
 |---|---|
 | 2026-08-08 | Ticket created from a live reproduction during TASK-635 C6 e2e work. Root cause, the three surfaces that DO record the failure versus the one that does not, and the proposed additive contract change captured. Status Pending — blocked on D-1..D-4. |
+| 2026-08-12 | Closed — deprioritized, not being pursued at this time. |

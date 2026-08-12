@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | `In Progress` — Steps 1, 2, 2b, 5 done in `hope-v2`; Step 3 committed but UNPUSHED in `arca/hope-v2-deployment` (`0cf6a27`), held until a Kokoro image is published; Step 4 (Malayalam) blocked on TASK-643 |
+| **Status** | `Closed` |
 | **Type** | `bugfix` + `infrastructure` |
 | **Raised from** | 2026-08-09 `hope-v2-dev` outage triage ("3/6 services down") |
 | **Owner decision on file** | "Let's review the tts service, you can open a new ticket for implementing kokoro as built-in solution" |
@@ -520,3 +520,4 @@ spaCy or misaki grows a supported path-based lookup.
 | 2026-08-09 | **Steps 2b + 5 implemented** (TDD, RED→GREEN). `KokoroProvider.synthesize()` now streams per segment and runs all inference on the provider's single worker thread; new keyless-readiness gate, verified to fail on each of §2.1/§2.2/§2.3 in turn. **Correction on file:** the premise that peak RSS scales with output length is wrong — 24 segments and 357 s of audio peak *lower* (1848 MB) than 2 segments and 51 s (2341 MB). Peak is set by the largest single segment's torch forward pass; what actually scaled was CONCURRENCY (2505/4314/7228 MB at 1/3/5 parallel requests → 2426/2660/2458 MB after). The 4096-char case, never previously measured, is 2432 MB before / 2687 MB after. At N=1 the change is ~5–10 % *worse* on peak and much better on first-byte latency (65 s → ~7 s); at N>1 it is decisively better. |
 | 2026-08-09 | **Step 1 implemented** (TDD, RED→GREEN). `/health/ready` now distinguishes *awaiting a per-request BYOK credential* (200 `degraded`) from *broken* (503). A keyless cloud TTS deployment can reach Ready for the first time. Contract chosen to match `TTSRouter.candidates()` rather than a looser "registered ⇒ ready". |
 | 2026-08-09 | Ticket created from the `hope-v2-dev` outage triage. Four-layer current-state evaluation recorded; no code written. Correction on file: the existing `tts-v2.yaml` comment recommending `TTS_AZURE_ENABLED=true` as "the cheapest path" does not work — TASK-602 removed the env path for the key that `health()` gates on. |
+| 2026-08-12 | Closed — remaining steps (3-4) deprioritized, not being pursued further at this time. |

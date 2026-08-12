@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | `Pending` |
+| **Status** | `Closed` |
 | **Type** | `bugfix` |
 | **Created** | 2026-08-09 |
 | **Raised from** | TASK-643's `assertMeterQuota` fail-open work — the same asymmetry, one layer up |
@@ -85,3 +85,4 @@ _Not started._
 | Date | Change |
 |---|---|
 | 2026-08-09 | Ticket created from TASK-643's fail-open work. No code written. |
+| 2026-08-12 | Closed — deprioritized, not being pursued at this time. |

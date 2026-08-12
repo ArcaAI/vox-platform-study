@@ -1,6 +1,6 @@
 # TASK-618 — PHI Security Baseline (k3s Hardening, Pod Security Admission, NetworkPolicy, Vault Cutover)
 
-**Status**: Pending (plan authored 2026-08-08, awaiting owner approval)
+**Status**: Closed
 **Classification**: infrastructure
 **Created**: 2026-08-08
 **Parent**: [TASK-616 Phase 2](../TASK-616-Deployment-CICD-Observability-Modernization/README.md#phase-2--phi-security-baseline--m) · [Program index](../TASK-616-Deployment-CICD-Observability-Modernization/phase-program-index.md)
@@ -240,3 +240,4 @@ Boundary:
 | Date | Change | Author |
 |---|---|---|
 | 2026-08-08 | Ticket created. TASK-616 Phase 2 was never spun out; this creates it and **absorbs the never-created TASK-623**, whose VM half was executed inside the parent (Track V phase 1, Appendix H) and whose remaining half — k8s auth, injector, secret migration, snapshots — is how D-01/D-02/D-03 close, so it lives here as Wave D rather than duplicating every gate in a separate ticket. Live verification on 2026-08-08 confirmed all three isolation gaps are **total, not partial**: zero PSA labels on `hope-v2-dev`, zero NetworkPolicies anywhere in the cluster except Fleet's own `default-allow-all`, and `allocated == capacity` on the node (no `system-reserved`). Recorded the four destructive-if-reordered sequencing constraints and the two Track V traps (swap-vs-`disable_mlock`, template 903's IP collision). Status `Pending` pending owner approval. | Claude |
+| 2026-08-12 | Closed — plan deprioritized, not being pursued at this time. | owner |

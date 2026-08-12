@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | In Progress (Phase 0 baseline COMPLETE; cycle 1 defined, gated on owner actions below) |
+| **Status** | Closed |
 | **Type** | assessment / research (standing program, not a one-shot ticket) |
 | **Program** | Release Readiness (TASK-536 comments · TASK-537 docs · TASK-538 traceability · TASK-539 quality) |
 | **Execution agents** | Fable 5, reasoning effort **xhigh** (assessments & synthesis); deep-research fan-out for SOTA research |
@@ -172,3 +172,4 @@ Carry these into `findings-register.md` when it is materialized at cycle-1 start
 - 2026-07-21 — Phase 0 complete (Fable-5-xhigh baseline). Risk queue, owner-decision register, quick wins, and cycle-1 order recorded; "Review = runtime-unproven" doctrine adopted; security-report deletion + OD-7 recurrence flagged to owner.
 - 2026-07-21 — Findings-register seeds S-1, S-2, S-2a, S-3 recorded and **all fixed** under the TASK-534 E2E gate. S-3 was a live platform defect, not test staleness: API-key authentication was broken for every key because `ApiKey` was tenant-scoped despite being read pre-auth. Fix follows the existing `TenantEntitlement` precedent; isolation re-verified live. One open design question carried forward (S-2a: `my-permissions` should return `action: string[]`).
 - 2026-07-22 — **Cycle-1 closing entry recorded.** Assessment-queue items 2 (config plane), 3 (harness agentic loop + stt producers), 4 (admin-console governance wave) all DONE with dated evidence docs; F-025..F-039 disposition table added (11 fully fixed, 3 fixed-with-open-tail, 1 unstarted); cycle-2 seed list updated with cycle-1 discoveries (F-032 python half, F-033, F-039 e2e half, F-025 BYO-TTS follow-up, F-034 recurrence). Status remains In Progress — this is a standing program, not a one-shot ticket; items 5/6/7 (owner-gated) and the cycle-2 seed list carry the program forward.
+- 2026-08-12 — Closed — standing program discontinued; not being pursued further at this time.
