@@ -116,7 +116,7 @@ export class AgentTemplateResyncCronService implements OnModuleInit, OnModuleDes
 
     this.logger.log({ message: 'Starting agent template resync sweep', tenantCount: targets.length });
 
-    const totals: AgentTemplateResyncSummary = { added: 0, fastForwarded: 0, skipped: 0 };
+    const totals: AgentTemplateResyncSummary = { added: 0, fastForwarded: 0, skipped: 0, configPropagated: 0, configBlocked: 0 };
 
     for (const tenant of targets) {
       try {
@@ -124,6 +124,8 @@ export class AgentTemplateResyncCronService implements OnModuleInit, OnModuleDes
         totals.added += summary.added;
         totals.fastForwarded += summary.fastForwarded;
         totals.skipped += summary.skipped;
+        totals.configPropagated += summary.configPropagated;
+        totals.configBlocked += summary.configBlocked;
       } catch (error) {
         // Per-tenant isolation: one failing tenant must not stop the sweep.
         this.logger.error({

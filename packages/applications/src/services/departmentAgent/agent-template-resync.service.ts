@@ -1,7 +1,12 @@
 import {
+  ConsultationContextSchemaRepository,
+  ConsultationContextSchemaScope,
+  ConsultationContextSchemaStatus,
+  ConsultationContextSchemaVersionRepository,
   DepartmentAgentEntity,
   DepartmentAgentFactory,
   DepartmentAgentRepository,
+  DepartmentAgentRole,
   DepartmentEntity,
   DepartmentRepository,
   PromptTemplateFactory,
@@ -16,6 +21,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
 import { BaseService } from '../../common';
 import { IActiveUserContext } from '../../interfaces';
+import { AgentLoopConfig, buildLoopConfigSnapshot, canonicalAgentConfigJson, hasLoopConfig, subscribedKindsProblems, writeScopeProblems } from './constants';
 
 /**
  * Reserved SYSTEM tenant that owns the master agent golden library. Mirrors the
@@ -33,6 +39,23 @@ export interface AgentTemplateResyncSummary {
   fastForwarded: number;
   /** Rows left alone — customized, unlocked, drifted, or already current. */
   skipped: number;
+  /**
+   * The seven loop-config fields (role/subscribedKinds/writeScope/goal/
+   * guardrailProfile/alwaysActions/neverActions, TASK-659) were copied from the
+   * golden source onto a new clone or a fast-forwarded row (OP-4). Zero today
+   * for every real tenant because no SYSTEM golden agent sets any of the seven
+   * fields yet — the counter exists so the day one does, propagation is visible
+   * rather than a silent no-op.
+   */
+  configPropagated: number;
+  /**
+   * A golden agent's loop config could NOT be safely copied onto a tenant row —
+   * it would create a second PRIMARY in the department, or reference a context
+   * kind/output the target department's schema does not declare — and was left
+   * untouched instead. Logged per-row with the specific reason(s); this counter
+   * is the summary-level signal that the sweep did not silently drop work.
+   */
+  configBlocked: number;
 }
 
 /**
@@ -67,6 +90,30 @@ export interface AgentTemplateResyncSummary {
  * golden current version, so the next run lands in the "already current" skip
  * branch and yields zeroes.
  *
+ * LOOP CONFIG (OP-4, TASK-678): the seven TASK-659 fields are copied onto a
+ * tenant row at the SAME two proven-safe points above — (i) clone creation and
+ * (ii) a content fast-forward — never independently of them. A locked row is
+ * API-immutable (`assertNotTemplateLocked` blocks its entire `update()`), so
+ * unlike template content there is no "customized by the tenant" risk to guard
+ * against; the only real risk is writing a config that does not resolve in the
+ * TARGET tenant (a `subscribedKinds`/`writeScope` kind the department's context
+ * schema does not declare, or a `role: PRIMARY` that collides with an existing
+ * PRIMARY). Both are checked with the same validation `AgentPromotionService`
+ * applies before a cross-tenant promotion write (reimplemented locally — see
+ * `loopConfigProblemsForTenant` — rather than imported, so this service and
+ * `AgentPromotionService` evolve independently). A blocked row keeps its
+ * current config, is logged, and counted in `configBlocked`; it is retried on
+ * every subsequent run rather than silently dropped.
+ *
+ * Deliberately NOT independent of content: a golden agent whose loop config
+ * changes without its template content also changing will not propagate until
+ * the next content change bumps a clone past its anchor. Tracking config
+ * staleness on its own timeline would need a second anchor (mirroring
+ * `sourceTemplateVersionNumber`) purely to detect out-of-band config edits on
+ * an API-immutable row — additional machinery with no present-day payoff, since
+ * no golden agent sets any of the seven fields yet. See the ticket README's
+ * Decisions section.
+ *
  * TENANT CONTEXT: callers run this with an elevated, tenant-less context (a
  * global admin authenticates with an empty `tenantId`; the cron has no CLS at
  * all). Both make the tenant-scope Prisma extension pass through in its elevated
@@ -83,6 +130,8 @@ export class AgentTemplateResyncService extends BaseService {
     private readonly departmentRepository: DepartmentRepository,
     private readonly promptTemplateRepository: PromptTemplateRepository,
     private readonly promptVersionRepository: PromptVersionRepository,
+    private readonly contextSchemaRepository: ConsultationContextSchemaRepository,
+    private readonly contextSchemaVersionRepository: ConsultationContextSchemaVersionRepository,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
   ) {
@@ -96,7 +145,7 @@ export class AgentTemplateResyncService extends BaseService {
       throw new BadRequestException('Cannot resync the SYSTEM tenant against itself');
     }
 
-    const summary: AgentTemplateResyncSummary = { added: 0, fastForwarded: 0, skipped: 0 };
+    const summary: AgentTemplateResyncSummary = { added: 0, fastForwarded: 0, skipped: 0, configPropagated: 0, configBlocked: 0 };
 
     const goldenAgents = await this.agentRepository.findAll({
       filters: { tenantId: SYSTEM_TENANT_ID, resourceStatus: 'ENABLED' },
@@ -120,8 +169,11 @@ export class AgentTemplateResyncService extends BaseService {
           // Reuse-only: no tenant department for this golden agent means the
           // tenant does not run that department. Skip it — do NOT provision one
           // (TASK-634 D-18).
-          if (await this.cloneGoldenIntoTenant(golden, tenantId)) {
+          const cloneResult = await this.cloneGoldenIntoTenant(golden, tenantId);
+          if (cloneResult.created) {
             summary.added += 1;
+            if (cloneResult.configPropagated) summary.configPropagated += 1;
+            if (cloneResult.configBlocked) summary.configBlocked += 1;
           } else {
             summary.skipped += 1;
             this.logger.log({
@@ -133,11 +185,14 @@ export class AgentTemplateResyncService extends BaseService {
           continue;
         }
 
-        if (await this.fastForwardIfPristine(existing, golden, tenantId)) {
+        const fastForwardResult = await this.fastForwardIfPristine(existing, golden, tenantId);
+        if (fastForwardResult.contentAdvanced) {
           summary.fastForwarded += 1;
         } else {
           summary.skipped += 1;
         }
+        if (fastForwardResult.configPropagated) summary.configPropagated += 1;
+        if (fastForwardResult.configBlocked) summary.configBlocked += 1;
       } catch (error) {
         // Per-row isolation: one bad golden agent must never abort the rest
         // (mirrors `provisionTenantAgentCatalog`).
@@ -158,13 +213,20 @@ export class AgentTemplateResyncService extends BaseService {
   /**
    * (i) The tenant has never had this golden agent — clone it in, locked.
    *
-   * Returns `false` when the tenant has no department for this golden agent, in
-   * which case NOTHING is created (TASK-634 D-18: resync reconciles agents onto
-   * the tenant's existing departments; it must never provision a department).
+   * `created: false` when the tenant has no department for this golden agent,
+   * in which case NOTHING is created (TASK-634 D-18: resync reconciles agents
+   * onto the tenant's existing departments; it must never provision one).
+   * `configBlocked: true` when the golden agent DOES carry loop config (OP-4)
+   * but it fails validation against the target department — the clone is still
+   * created (template + lineage), just without the seven fields, which the
+   * factory then defaults to "nothing configured".
    */
-  private async cloneGoldenIntoTenant(golden: DepartmentAgentEntity, tenantId: string): Promise<boolean> {
+  private async cloneGoldenIntoTenant(
+    golden: DepartmentAgentEntity,
+    tenantId: string,
+  ): Promise<{ created: boolean; configPropagated: boolean; configBlocked: boolean }> {
     const tenantDept = await this.resolveTenantDepartment(golden.departmentId, tenantId);
-    if (!tenantDept) return false;
+    if (!tenantDept) return { created: false, configPropagated: false, configBlocked: false };
 
     const goldenTemplate = await this.promptTemplateRepository.findById(golden.promptTemplateId);
     if (!goldenTemplate) {
@@ -203,6 +265,29 @@ export class AgentTemplateResyncService extends BaseService {
     });
     await this.promptVersionRepository.create(v1);
 
+    // OP-4 (TASK-678) — the golden row's seven loop-config fields (TASK-659).
+    // Applied only when the golden agent actually configures the loop surface
+    // AND the config resolves in the target department; otherwise the clone
+    // lands with the factory defaults ("nothing configured"), exactly as
+    // before this change.
+    const goldenLoopConfigSnapshot = buildLoopConfigSnapshot(golden);
+    let configBlocked = false;
+    let applyLoopConfig = false;
+    if (hasLoopConfig(goldenLoopConfigSnapshot)) {
+      const problems = await this.loopConfigProblemsForTenant(golden, tenantId, tenantDept.id);
+      if (problems.length > 0) {
+        configBlocked = true;
+        this.logger.warn({
+          message: 'Golden agent loop config could not be propagated to a new clone - leaving it unconfigured',
+          tenantId,
+          goldenAgentSlug: golden.slug,
+          problems,
+        });
+      } else {
+        applyLoopConfig = true;
+      }
+    }
+
     const clone = DepartmentAgentFactory.CreateDepartmentAgent({
       tenantId,
       departmentId: tenantDept.id,
@@ -211,6 +296,13 @@ export class AgentTemplateResyncService extends BaseService {
       description: golden.description ?? undefined,
       promptTemplateId: savedTemplate.id,
       pinnedVersionNumber: null,
+      role: applyLoopConfig ? golden.role : undefined,
+      subscribedKinds: applyLoopConfig ? golden.subscribedKinds : undefined,
+      writeScope: applyLoopConfig ? golden.writeScope : undefined,
+      goal: applyLoopConfig ? golden.goal : undefined,
+      guardrailProfile: applyLoopConfig ? golden.guardrailProfile : undefined,
+      alwaysActions: applyLoopConfig ? golden.alwaysActions : undefined,
+      neverActions: applyLoopConfig ? golden.neverActions : undefined,
       // TASK-635 RF-4 — carry the golden row's capability bindings onto the
       // clone. Every SYSTEM golden agent has these NULL today, so this is
       // future-proofing with zero present-day effect (and the seeded ArcaAI
@@ -243,6 +335,8 @@ export class AgentTemplateResyncService extends BaseService {
       await this.agentRepository.setDefaultForDepartment(tenantId, tenantDept.id, savedAgent.id, this.requestUserId ?? undefined);
     }
 
+    const configPropagated = hasLoopConfig(goldenLoopConfigSnapshot) && !configBlocked;
+
     this.broadcastSysEvent(SysEventType.ResourceCreated, {
       resourceId: savedAgent.id,
       createdAt: savedAgent.createdAt,
@@ -254,36 +348,50 @@ export class AgentTemplateResyncService extends BaseService {
         slug: savedAgent.slug,
         sourceAgentTemplateSlug: savedAgent.sourceAgentTemplateSlug ?? null,
         resyncAction: 'added',
+        configPropagated,
+        configBlocked,
       },
     });
-    return true;
+    return { created: true, configPropagated, configBlocked };
   }
 
   /**
    * (ii)/(iii)/(iv) — advance a pristine locked clone to the golden template's
-   * current content. Returns true when a fast-forward was written.
+   * current content, and (OP-4) propagate the seven loop-config fields at that
+   * SAME sync point when they differ from golden. `contentAdvanced` is true
+   * exactly when a fast-forward was written (unchanged contract). Config
+   * propagation only runs once content has been proven safe to advance —
+   * `configPropagated`/`configBlocked` are therefore always `false` whenever
+   * `contentAdvanced` is `false` (see the class doc comment for why config has
+   * no independent trigger).
    */
-  private async fastForwardIfPristine(existing: DepartmentAgentEntity, golden: DepartmentAgentEntity, tenantId: string): Promise<boolean> {
+  private async fastForwardIfPristine(
+    existing: DepartmentAgentEntity,
+    golden: DepartmentAgentEntity,
+    tenantId: string,
+  ): Promise<{ contentAdvanced: boolean; configPropagated: boolean; configBlocked: boolean }> {
+    const noOp = { contentAdvanced: false, configPropagated: false, configBlocked: false };
+
     // (iii) unlocked → the tenant owns this clone.
     if (!existing.templateLocked) {
-      return false;
+      return noOp;
     }
 
     const goldenTemplate = await this.promptTemplateRepository.findById(golden.promptTemplateId);
     if (!goldenTemplate) {
-      return false;
+      return noOp;
     }
     const goldenCurrentVersion = goldenTemplate.currentVersionNumber ?? 1;
     const anchor = this.sourceTemplateVersion(existing);
 
     // Already current — the idempotency branch.
     if (goldenCurrentVersion <= anchor) {
-      return false;
+      return noOp;
     }
 
     const tenantTemplate = await this.promptTemplateRepository.findById(existing.promptTemplateId);
     if (!tenantTemplate) {
-      return false;
+      return noOp;
     }
 
     // (iv) pristine check: the clone's bound content must still equal the golden
@@ -298,7 +406,7 @@ export class AgentTemplateResyncService extends BaseService {
         agentId: existing.id,
         slug: existing.slug,
       });
-      return false;
+      return noOp;
     }
 
     // Fast-forward the tenant template content to the golden current content,
@@ -322,6 +430,37 @@ export class AgentTemplateResyncService extends BaseService {
     });
     await this.promptVersionRepository.create(version);
 
+    // OP-4 (TASK-678) — propagate the seven loop-config fields at this SAME
+    // proven-safe sync point, when golden's config differs from what the clone
+    // already carries. A locked row is API-immutable, so "differs" can only
+    // mean golden moved or the row has never been synced — never a tenant edit.
+    const existingConfigJson = canonicalAgentConfigJson(buildLoopConfigSnapshot(existing));
+    const goldenConfigJson = canonicalAgentConfigJson(buildLoopConfigSnapshot(golden));
+    let configPropagated = false;
+    let configBlocked = false;
+    if (existingConfigJson !== goldenConfigJson) {
+      const problems = await this.loopConfigProblemsForTenant(golden, tenantId, existing.departmentId, existing.id);
+      if (problems.length > 0) {
+        configBlocked = true;
+        this.logger.warn({
+          message: "Golden agent loop config could not be propagated - leaving the clone's config unchanged",
+          tenantId,
+          agentId: existing.id,
+          slug: existing.slug,
+          problems,
+        });
+      } else {
+        existing.role = golden.role;
+        existing.subscribedKinds = golden.subscribedKinds ?? null;
+        existing.writeScope = golden.writeScope ?? null;
+        existing.goal = golden.goal ?? null;
+        existing.guardrailProfile = golden.guardrailProfile ?? null;
+        existing.alwaysActions = golden.alwaysActions ?? null;
+        existing.neverActions = golden.neverActions ?? null;
+        configPropagated = true;
+      }
+    }
+
     const previousAgentVersion = existing.version;
     existing.metaData = { ...(existing.metaData ?? {}), sourceTemplateVersionNumber: goldenCurrentVersion };
     existing.updatedBy = this.requestUserId ?? null;
@@ -337,10 +476,77 @@ export class AgentTemplateResyncService extends BaseService {
         newSourceTemplateVersionNumber: goldenCurrentVersion,
         agentVersion: updatedAgent.version,
         resyncAction: 'fastForwarded',
+        configPropagated,
+        configBlocked,
       },
     });
 
-    return true;
+    return { contentAdvanced: true, configPropagated, configBlocked };
+  }
+
+  /**
+   * Cross-tenant reference safety for propagated loop config (OP-4) — mirrors
+   * the validation `AgentPromotionService` runs before writing another
+   * tenant's agent (`assertContextKindsDeclaredInTarget` /
+   * `assertPrimaryRoleAvailable`), reimplemented locally rather than imported
+   * so this service and `AgentPromotionService` (owned by a separate ticket)
+   * can evolve independently — both are pure reads over the SAME allow-list
+   * helpers in `./constants`. Returns problem strings; empty ⇒ safe to write.
+   */
+  private async loopConfigProblemsForTenant(
+    config: AgentLoopConfig,
+    tenantId: string,
+    departmentId: string,
+    excludeAgentId?: string,
+  ): Promise<string[]> {
+    const problems: string[] = [];
+
+    if (config.role === DepartmentAgentRole.PRIMARY) {
+      const existingPrimary = await this.agentRepository.findPrimaryForDepartment(tenantId, departmentId, excludeAgentId);
+      if (existingPrimary) {
+        problems.push(`role PRIMARY would conflict with the existing PRIMARY agent '${existingPrimary.slug}' in the department`);
+      }
+    }
+
+    const kindKeys = config.subscribedKinds ? subscribedKindsProblems(config.subscribedKinds).kindKeys : [];
+    const outputKeys = config.writeScope ? writeScopeProblems(config.writeScope).outputKeys : [];
+    if (kindKeys.length > 0 || outputKeys.length > 0) {
+      const declared = await this.resolveServableContextDefinition(tenantId, departmentId);
+      if (!declared) {
+        problems.push('references context kinds/outputs but the department has no published context schema to resolve them against');
+      } else {
+        const missingKinds = kindKeys.filter((key) => !declared.kinds.has(key));
+        const missingOutputs = outputKeys.filter((key) => !declared.outputs.has(key));
+        if (missingKinds.length > 0) problems.push(`subscribes to undeclared kind(s): ${missingKinds.join(', ')}`);
+        if (missingOutputs.length > 0) problems.push(`writes undeclared output(s): ${missingOutputs.join(', ')}`);
+      }
+    }
+
+    return problems;
+  }
+
+  /**
+   * The department's servable context vocabulary — the same DEPARTMENT →
+   * TENANT cascade `ConsultationContextSchemaService`/`AgentPromotionService`
+   * use, read with an explicit `tenantId` since the extension injects nothing
+   * on this elevated, tenant-less path.
+   */
+  private async resolveServableContextDefinition(tenantId: string, departmentId: string): Promise<{ kinds: Set<string>; outputs: Set<string> } | null> {
+    const candidates = [
+      await this.contextSchemaRepository.findDefaultForScope(tenantId, ConsultationContextSchemaScope.DEPARTMENT, departmentId),
+      await this.contextSchemaRepository.findDefaultForScope(tenantId, ConsultationContextSchemaScope.TENANT, null),
+    ];
+
+    for (const schema of candidates) {
+      if (!schema) continue;
+      const servable =
+        schema.pinnedVersionNumber != null &&
+        (schema.status === ConsultationContextSchemaStatus.PUBLISHED || schema.status === ConsultationContextSchemaStatus.APPROVED);
+      if (!servable) continue;
+      const version = await this.contextSchemaVersionRepository.findBySchemaAndVersionNumber(schema.id, schema.pinnedVersionNumber as number);
+      if (version) return extractDeclaredContextKeys(version.definition);
+    }
+    return null;
   }
 
   /**
@@ -375,4 +581,31 @@ export class AgentTemplateResyncService extends BaseService {
     const raw = (agent.metaData as Record<string, unknown> | null | undefined)?.['sourceTemplateVersionNumber'];
     return typeof raw === 'number' && Number.isFinite(raw) ? raw : 1;
   }
+}
+
+/**
+ * Every declared `kinds[].key` / `outputs[].key` in a ConsultationContextSchemaVersion
+ * `definition` document — the SAME extraction `DepartmentAgentService` and
+ * `AgentPromotionService` each keep their own copy of (small, pure, dependency-free;
+ * kept local per this module's convention rather than imported).
+ */
+function extractDeclaredContextKeys(definition: unknown): { kinds: Set<string>; outputs: Set<string> } {
+  const kinds = new Set<string>();
+  const outputs = new Set<string>();
+  if (definition !== null && typeof definition === 'object' && !Array.isArray(definition)) {
+    const def = definition as Record<string, unknown>;
+    if (Array.isArray(def.kinds)) {
+      for (const kind of def.kinds) {
+        const key = (kind as Record<string, unknown> | null)?.key;
+        if (typeof key === 'string') kinds.add(key);
+      }
+    }
+    if (Array.isArray(def.outputs)) {
+      for (const output of def.outputs) {
+        const key = (output as Record<string, unknown> | null)?.key;
+        if (typeof key === 'string') outputs.add(key);
+      }
+    }
+  }
+  return { kinds, outputs };
 }
