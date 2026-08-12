@@ -53,6 +53,9 @@ export {
   useAuth,
   useConsultationChain,
   useConsultationJob,
+  // Schema discovery + the consultation-loop event stream (TASK-665)
+  useConsultationSchema,
+  useConsultationEvents,
   useDepartments,
   useDnaDashboard,
   useDnaStyle,
@@ -146,6 +149,9 @@ export type {
   UseAuthReturn,
   UseConsultationChainReturn,
   UseConsultationJobReturn,
+  UseConsultationSchemaReturn,
+  UseConsultationEventsReturn,
+  ConsultationEventsStreamStatus,
   UseDepartmentsReturn,
   UseDnaDashboardReturn,
   UseDnaStyleReturn,
@@ -291,6 +297,22 @@ export type {
 
 // Audio recording types (dual-capture X8)
 export type { AudioRecording, AddAudioRecordingInput } from './types';
+
+// =============================================================================
+// Types - Consultation Context Schema (TASK-665)
+// =============================================================================
+
+export type {
+  ConsultationContextSchemaDefinition,
+  ConsultationSchemaBundle,
+  ContextKindDeclaration,
+  ContextKindDeprecation,
+  ContextOutputDeclaration,
+  ContextPrimitive,
+  LoopEvent,
+} from './types';
+
+export { CONTEXT_PRIMITIVES, findConsultationContextKind, isConsultationContextKindDeprecated } from './types';
 
 // =============================================================================
 // Types - Audio
