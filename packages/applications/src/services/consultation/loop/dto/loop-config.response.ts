@@ -100,4 +100,22 @@ export class LoopConfigResponse {
 
   @ApiProperty({ description: 'The pinned agent roster: exactly one PRIMARY plus its specialists.', type: [LoopAgentDto] })
   agents: LoopAgentDto[];
+
+  /**
+   * TASK-685 — the loop's IDLE lifecycle bound, in seconds, or null for no
+   * bound. Added ADDITIVELY with a null default for the same reason
+   * `reasoningEnabled`/`agents` were: a harness that predates this ticket
+   * ignores it, and a config recorded before it deserialises with no bound, so
+   * the frozen loop replay fixtures never enter the `task-685-idle-timeout`
+   * patch era.
+   *
+   * Resolved HERE, gateway-side, and frozen into the pinned config, because the
+   * workflow body may not re-read configuration mid-run without breaking replay
+   * determinism (C1).
+   */
+  @ApiPropertyOptional({
+    description: 'Seconds of total silence (no context item, no ending, no cancel) after which the loop abandons the run. Null = unbounded.',
+    nullable: true,
+  })
+  idleTimeoutSeconds: number | null;
 }
