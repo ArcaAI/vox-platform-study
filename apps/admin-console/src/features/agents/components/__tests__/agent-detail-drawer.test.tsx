@@ -129,11 +129,20 @@ function defaultHandler(currentAgent: DepartmentAgent, call: RecordedCall): Resp
   if (call.method === 'GET' && path === '/api/hope/admin/harness/golden-sets') {
     return Response.json({ items: [], total: 0 });
   }
+  // Lineage tab (TASK-674) — an empty history/lineage is enough to unblock
+  // the two queries when a test does not care about their content.
+  if (call.method === 'GET' && path === `/api/hope/admin/department-agents/${currentAgent.id}/versions`) {
+    return Response.json([]);
+  }
+  if (call.method === 'GET' && path === '/api/hope/admin/agent-promotions') {
+    return Response.json({ data: [], count: 0, limit: 50, page: 0 });
+  }
   return undefined;
 }
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  document.documentElement.classList.remove('dark');
   cleanup();
 });
 
@@ -374,6 +383,106 @@ describe('DepartmentAgentDetailDrawer', () => {
     );
 
     await screen.findByRole('textbox', { name: 'Name' });
+    expect(await axe(container)).toHaveNoViolations();
+  });
+
+  it('renders config versions with a field diff, and promotion lineage, on the Lineage tab (TASK-674)', async () => {
+    stubFetch((call) => {
+      const path = pathOf(call);
+      if (call.method === 'GET' && path === '/api/hope/admin/department-agents/da-1/versions') {
+        return Response.json([
+          { id: 'dav-2', agentId: 'da-1', versionNumber: 2, configSnapshot: { role: 'PRIMARY' }, checksum: 'c2', changeReason: 'Promoted to primary', createdBy: 'dr.lee', createdAt: '2026-07-02T10:00:00.000Z' },
+          { id: 'dav-1', agentId: 'da-1', versionNumber: 1, configSnapshot: { role: 'SPECIALIST' }, checksum: 'c1', changeReason: null, createdBy: 'dr.lee', createdAt: '2026-06-01T10:00:00.000Z' },
+        ]);
+      }
+      if (call.method === 'GET' && path === '/api/hope/admin/agent-promotions') {
+        return Response.json({
+          data: [
+            {
+              id: 'promo-1',
+              fromTenantId: 'tenant-source',
+              toTenantId: 'tenant-1',
+              agentVersionId: 'dav-1',
+              sourceAgentId: 'da-source',
+              targetAgentId: 'da-1',
+              targetAgentVersionId: 'dav-1',
+              configSnapshot: { role: 'SPECIALIST' },
+              checksum: 'c1',
+              evalRunId: null,
+              sourceEvalRunId: null,
+              warnings: [],
+              promotedBy: 'admin.global',
+              drifted: false,
+              createdAt: '2026-06-01T09:00:00.000Z',
+            },
+          ],
+          count: 1,
+          limit: 50,
+          page: 0,
+        });
+      }
+      return defaultHandler(agent(), call);
+    });
+    renderWithProviders(
+      <DepartmentAgentDetailDrawer
+        agentId="da-1"
+        creating={false}
+        departmentLabel="CARD"
+        onOpenChange={() => {}}
+        onCreated={() => {}}
+        onRequestDelete={() => {}}
+        onSetDefault={() => {}}
+      />,
+      { searchParams: '?catab=lineage' },
+    );
+
+    const versionsList = await screen.findByLabelText('Loop-configuration versions');
+    expect(within(versionsList).getByText('v2')).toBeDefined();
+    expect(within(versionsList).getByText('Promoted to primary')).toBeDefined();
+    // Two versions exist, so the diff between v1 and v2 renders by default.
+    expect(await screen.findByLabelText('Changes between v1 and v2')).toBeDefined();
+
+    const promotions = await screen.findByLabelText('Promotions into this agent');
+    expect(within(promotions).getByText('tenant-source')).toBeDefined();
+    expect(within(promotions).getByText('Up to date')).toBeDefined();
+  });
+
+  it('has no axe violations on the Lineage tab in the light theme', async () => {
+    stubFetch((call) => defaultHandler(agent(), call));
+    const { container } = renderWithProviders(
+      <DepartmentAgentDetailDrawer
+        agentId="da-1"
+        creating={false}
+        departmentLabel="CARD"
+        onOpenChange={() => {}}
+        onCreated={() => {}}
+        onRequestDelete={() => {}}
+        onSetDefault={() => {}}
+      />,
+      { searchParams: '?catab=lineage' },
+    );
+
+    await screen.findByText('This agent was not created by a cross-tenant promotion.');
+    expect(await axe(container)).toHaveNoViolations();
+  });
+
+  it('has no axe violations on the Lineage tab in the dark theme', async () => {
+    document.documentElement.classList.add('dark');
+    stubFetch((call) => defaultHandler(agent(), call));
+    const { container } = renderWithProviders(
+      <DepartmentAgentDetailDrawer
+        agentId="da-1"
+        creating={false}
+        departmentLabel="CARD"
+        onOpenChange={() => {}}
+        onCreated={() => {}}
+        onRequestDelete={() => {}}
+        onSetDefault={() => {}}
+      />,
+      { searchParams: '?catab=lineage' },
+    );
+
+    await screen.findByText('This agent was not created by a cross-tenant promotion.');
     expect(await axe(container)).toHaveNoViolations();
   });
 });

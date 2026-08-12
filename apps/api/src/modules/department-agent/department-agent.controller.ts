@@ -1,6 +1,7 @@
 import {
   IDepartmentAgentService,
   DepartmentAgentResponse,
+  DepartmentAgentVersionResponse,
   PaginatedDepartmentAgentResponse,
   CreateDepartmentAgentRequest,
   UpdateDepartmentAgentRequest,
@@ -9,7 +10,7 @@ import {
   PaginatedQuery,
   HttpMethod,
 } from '@arcaai/applications';
-import { Controller, Body, Param, Query, Post, Inject } from '@nestjs/common';
+import { Controller, Body, Param, Query, Post, Get, Inject } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse } from '@nestjs/swagger';
 // `@RequiresIfMatch()` + `@ExpectedVersion()` gate the OCC-enforced PATCH route.
 import { ApiEndpoint, CanManage, RequiresIfMatch, ExpectedVersion } from '../../decorators';
@@ -36,6 +37,22 @@ export class DepartmentAgentController {
   @ApiResponse({ status: 404, description: 'Department agent not found' })
   async getById(@Param('id') id: string): Promise<DepartmentAgentResponse> {
     return this.service.getById(id);
+  }
+
+  // TASK-674 — the immutable loop-config version history TASK-659 writes.
+  // Plain `@Get`, not `@ApiEndpoint`: it returns a bare array, not one
+  // resource-shaped body — mirrors `ConsultationContextSchemaAdminController`'s
+  // `:id/versions` route.
+  @Get(':id/versions')
+  @ApiOperation({
+    summary: 'List the immutable loop-configuration versions of an agent, newest first',
+    description: 'Versions are never edited or deleted — a correction is a new version.',
+  })
+  @ApiParam({ name: 'id', description: 'Department agent id', type: String })
+  @ApiResponse({ status: 200, type: [DepartmentAgentVersionResponse] })
+  @ApiResponse({ status: 404, description: 'Department agent not found' })
+  async listVersions(@Param('id') id: string): Promise<DepartmentAgentVersionResponse[]> {
+    return this.service.listVersions(id);
   }
 
   @ApiEndpoint({ returnedModel: DepartmentAgentResponse, method: HttpMethod.POST })

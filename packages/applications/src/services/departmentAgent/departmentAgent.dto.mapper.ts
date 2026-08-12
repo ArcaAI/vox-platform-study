@@ -1,5 +1,5 @@
-import { DepartmentAgentEntity } from '@arcaai/domains';
-import { DepartmentAgentResponse } from './dto';
+import { DepartmentAgentEntity, DepartmentAgentVersionEntity } from '@arcaai/domains';
+import { DepartmentAgentResponse, DepartmentAgentVersionResponse } from './dto';
 
 export class DepartmentAgentDtoMapper {
   static toResponse(entity: DepartmentAgentEntity): DepartmentAgentResponse {
@@ -41,6 +41,20 @@ export class DepartmentAgentDtoMapper {
       updatedAt: (entity.updatedAt ?? entity.createdAt).toISOString(),
       // Surface `_version` so SDK clients can echo it back via `If-Match`.
       version: entity.version,
+    };
+  }
+
+  /** TASK-674 — one immutable `DepartmentAgentVersion` snapshot, read-only. */
+  static toVersionResponse(entity: DepartmentAgentVersionEntity): DepartmentAgentVersionResponse {
+    return {
+      id: entity.id,
+      agentId: entity.agentId,
+      versionNumber: entity.versionNumber,
+      configSnapshot: (entity.configSnapshot ?? {}) as Record<string, unknown>,
+      checksum: entity.checksum,
+      changeReason: entity.changeReason ?? null,
+      createdBy: entity.createdBy ?? null,
+      createdAt: entity.createdAt.toISOString(),
     };
   }
 }
