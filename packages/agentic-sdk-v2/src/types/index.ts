@@ -108,6 +108,26 @@ export type {
   NERData,
 } from './context';
 
+// Consultation context schema discovery types (TASK-665)
+export type {
+  ConsultationContextSchemaDefinition,
+  ConsultationSchemaBundle,
+  ContextKindDeclaration,
+  ContextKindDeprecation,
+  ContextOutputDeclaration,
+  ContextPrimitive,
+} from './consultationSchema';
+export {
+  CONTEXT_PRIMITIVES,
+  findConsultationContextKind,
+  isConsultationContextKindDeprecated,
+  parseConsultationSchemaBundle,
+  UNCONFIGURED_CONSULTATION_SCHEMA_BUNDLE,
+} from './consultationSchema';
+
+// Consultation-loop workflow event types (TASK-660/665)
+export type { LoopEvent } from './loopEvent';
+
 // Audio types
 export type {
   AudioActions,

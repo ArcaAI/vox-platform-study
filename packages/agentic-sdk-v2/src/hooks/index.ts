@@ -94,6 +94,12 @@ export { useConsultationJob, type UseConsultationJobReturn } from './useConsulta
 // Consultation chain hook — full multi-hop parent/child tree
 export { useConsultationChain, type UseConsultationChainReturn } from './useConsultationChain';
 
+// Consultation context schema discovery (TASK-665)
+export { useConsultationSchema, type UseConsultationSchemaReturn } from './useConsultationSchema';
+
+// Consultation-loop workflow event SSE stream (TASK-660/665)
+export { useConsultationEvents, type UseConsultationEventsReturn, type ConsultationEventsStreamStatus } from './useConsultationEvents';
+
 // Audio recordings hook (dual-capture X8)
 export { useAudioRecordings, type UseAudioRecordingsReturn } from './useAudioRecordings';
 

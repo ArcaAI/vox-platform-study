@@ -26,6 +26,9 @@ import { CONSULTATION_ENDPOINTS, CONTEXT_ENDPOINTS, SUMMARY_ENDPOINTS } from '..
 import { SimpleCrossTabSync, createCrossTabSync } from '../core/SimpleCrossTabSync';
 import type { ISDKLogger } from '../core/logger';
 import { openSessionOperation, loadConsultationOperation, getPatientHistoryOperation } from '../core/sessionUtils';
+import { AgenticError } from '../types';
+// TASK-665 — client-side payload validation against the session-pinned schema.
+import { validateConsultationContextPayload } from '../core/contextPayloadValidation';
 
 // =============================================================================
 // Return Type
@@ -130,11 +133,21 @@ export function useArcaSession(): UseArcaSessionReturn {
   );
 
   /**
-   * Add context to the current consultation
+   * Add context to the current consultation.
+   *
+   * TASK-665: when `input.kindKey` + `input.payload` are both present, the
+   * payload is validated CLIENT-SIDE against the session's pinned schema
+   * bundle BEFORE the request is sent — a fast-fail UX aid, never the source
+   * of truth (see `validateConsultationContextPayload`'s doc comment: an
+   * unrecognized `kindKey` is treated as "nothing to validate against, let
+   * the server decide", not a client-side error). Every write also carries
+   * `X-Context-Schema-Version` when a schema is pinned, so the server
+   * validates against the EXACT version this client built against
+   * (TASK-661) rather than whatever the tenant has since published.
    */
   const addContext = useCallback(
     async (input: AddContextInput): Promise<ContextItem> => {
-      const { apiClient, consultation } = store;
+      const { apiClient, consultation, consultationSchema } = store;
       const logger = getLogger();
       if (!apiClient) throw new Error('SDK not initialized');
       if (!consultation) throw new Error('No consultation open. Call open() first.');
@@ -142,11 +155,30 @@ export function useArcaSession(): UseArcaSessionReturn {
       const timer = logger?.startOperation('addContext', {
         component: 'useArcaSession',
         sdk: { consultationId: consultation.id },
-        attributes: { type: input.type },
+        attributes: { type: input.type, kindKey: input.kindKey },
       });
 
+      if (input.kindKey && input.payload !== undefined) {
+        const { valid, problems } = validateConsultationContextPayload(consultationSchema, input.kindKey, input.payload);
+        if (!valid) {
+          const validationError = new AgenticError(
+            'VALIDATION_ERROR',
+            `Context payload for kind "${input.kindKey}" failed client-side schema validation: ${problems.join('; ')}`,
+            { context: { kindKey: input.kindKey, problems } },
+          );
+          timer?.error(validationError);
+          throw validationError;
+        }
+      }
+
+      const pinnedSchemaVersionId = consultationSchema?.contextSchemaVersionId ?? undefined;
+
       try {
-        const contextItem = await apiClient.post<ContextItem>(CONTEXT_ENDPOINTS.ADD(consultation.id), input);
+        const contextItem = pinnedSchemaVersionId
+          ? await apiClient.postWithHeaders<ContextItem>(CONTEXT_ENDPOINTS.ADD(consultation.id), input, {
+              'X-Context-Schema-Version': pinnedSchemaVersionId,
+            })
+          : await apiClient.post<ContextItem>(CONTEXT_ENDPOINTS.ADD(consultation.id), input);
 
         // Add to local store
         store.addContextItem(contextItem);
