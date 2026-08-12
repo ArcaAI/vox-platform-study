@@ -22,10 +22,47 @@ export class LoopConfigBudgetDto {
 }
 
 /**
+ * TASK-664 — one agent in the consultation's roster, as the reasoning lane
+ * pins it at workflow start.
+ *
+ * `subscribedKinds` is the agent's READ scope and `writeScope` its WRITE scope.
+ * Both are resolved HERE, gateway-side, and frozen into the pinned config, so a
+ * mid-consultation edit to the agent cannot widen either one for a loop that is
+ * already running.
+ */
+export class LoopAgentDto {
+  @ApiProperty({ description: 'The DepartmentAgent id.' })
+  agentId: string;
+
+  @ApiProperty({ description: 'PRIMARY (owns the note and the gate) or SPECIALIST.', enum: ['PRIMARY', 'SPECIALIST'] })
+  role: string;
+
+  @ApiPropertyOptional({ description: "The agent's slug.", nullable: true })
+  slug: string | null;
+
+  @ApiPropertyOptional({ description: "The agent's constrained goal.", nullable: true })
+  goal: string | null;
+
+  @ApiProperty({ description: 'Context kinds this agent may READ (its whole read scope).', type: [String] })
+  subscribedKinds: string[];
+
+  @ApiProperty({ description: 'Output kinds this agent may WRITE. `note`/`gate` are refused for a specialist regardless.', type: [String] })
+  writeScope: string[];
+
+  @ApiPropertyOptional({ description: "The agent's latest immutable config-version snapshot id.", nullable: true })
+  agentConfigVersionId: string | null;
+}
+
+/**
  * TASK-662 — the resolved, deterministic loop configuration for one
  * consultation. Returned by `GET /internal/harness/loop-config`; every
  * resolution failure degrades to `enabled: false` rather than throwing (see
  * `LoopConfigService.resolveForConsultation`).
+ *
+ * TASK-664 added `reasoningEnabled` + `agents` ADDITIVELY, with defaults that
+ * reproduce TASK-662 behaviour exactly. That is what lets the harness's frozen
+ * loop replay fixture keep passing: a config recorded before this ticket
+ * deserialises with the reasoning lane OFF and never enters its patch era.
  */
 export class LoopConfigResponse {
   @ApiProperty({ description: 'Whether a loop is actually configured for this consultation.' })
@@ -57,4 +94,10 @@ export class LoopConfigResponse {
 
   @ApiProperty({ description: 'Actions to dispatch when the loop ends.', type: [String] })
   endingActions: string[];
+
+  @ApiProperty({ description: 'Whether the deliberative lane (planner + specialists + adjudication) runs for this consultation.' })
+  reasoningEnabled: boolean;
+
+  @ApiProperty({ description: 'The pinned agent roster: exactly one PRIMARY plus its specialists.', type: [LoopAgentDto] })
+  agents: LoopAgentDto[];
 }
