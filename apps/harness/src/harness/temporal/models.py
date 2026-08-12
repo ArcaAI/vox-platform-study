@@ -1067,6 +1067,12 @@ LOOP_SKIP_UNSUPPORTED_ACTION = "unsupported_action"
 LOOP_SKIP_CYCLE_DETECTED = "cycle_detected"
 LOOP_SKIP_SPECIALIST_BUDGET = "specialist_budget_exhausted"
 
+# TASK-685 — the loop hit its IDLE lifecycle bound and abandoned. Published on
+# the same feed so a timeout is something an operator READS, not something they
+# infer from a Temporal console. Deliberately its own event type rather than an
+# ``action.skipped`` reason: nothing was skipped, the run ended.
+LOOP_EVENT_LOOP_TIMED_OUT = "loop.timed_out"
+
 # TASK-664 reasoning-lane event types on the same ``consultation:loop:{id}`` feed.
 LOOP_EVENT_PLAN_DECIDED = "plan.decided"
 LOOP_EVENT_SPECIALIST_FAILED = "specialist.failed"
@@ -1189,6 +1195,21 @@ class ConsultationLoopConfig(BaseModel):
     # `reasoning_enabled=False` and never enters the patched era at all.
     reasoning_enabled: bool = False
     agents: list[LoopAgentSpec] = Field(default_factory=list)
+
+    # TASK-685 — the IDLE lifecycle bound, in seconds. Additive and defaulting to
+    # None (= unbounded), which is load-bearing twice over:
+    #
+    #   * it reproduces pre-TASK-685 behaviour exactly, so the frozen loop replay
+    #     fixtures deserialise with no bound and the workflow's era gate
+    #     short-circuits before ``workflow.patched`` is ever called;
+    #   * it makes "no bound" a value the config can actually express, rather
+    #     than a magic sentinel like 0.
+    #
+    # It lives on the PINNED config on purpose: the bound must be fixed for the
+    # whole consultation (C1), so an operator raising or lowering
+    # ``harness.loop.idleTimeoutSeconds`` mid-run cannot reach a loop already
+    # running. Resolved gateway-side from `global-kv`.
+    idle_timeout_seconds: float | None = None
 
     def actions_for_kind(self, kind_key: str | None) -> list[str]:
         """Actions subscribed to ``kind_key`` (deterministic; pure lookup)."""
@@ -1722,6 +1743,11 @@ class ConsultationLoopState(BaseModel):
     degraded: bool = False
     ending: bool = False
     cancelled: bool = False
+    # TASK-685. SEPARATE from `cancelled` although both abandon without running
+    # the ending actions: a cancel is an explicit decision, a timeout is a
+    # platform bound firing, and folding the second into the first would make the
+    # bound invisible to everything already reading `cancelled`.
+    timed_out: bool = False
     livedoc_started: bool = False
     finalize_workflow_id: str | None = None
     continuations: int = 0
@@ -1748,6 +1774,8 @@ class ConsultationLoopWorkflowResult(BaseModel):
     actions_dispatched: int = 0
     degraded: bool = False
     cancelled: bool = False
+    # TASK-685 — the run ended on its IDLE bound rather than on a signal.
+    timed_out: bool = False
     finalized: bool = False
     finalize_workflow_id: str | None = None
     continuations: int = 0

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { DataNotFoundException } from '@arcaai/exceptions';
@@ -20,7 +20,9 @@ import { BaseService } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 import { ContextPrimitive, findKind } from '../../consultation-context-schema/context-schema-definition';
 import { AgentActionKey, subscribedKindsProblems, writeScopeProblems } from '../../departmentAgent/constants';
+import { TenantSettingsService } from '../../settings-registry/tenant-settings.service';
 import { ILoopConfigService } from './ILoopConfigService';
+import { HARNESS_LOOP_IDLE_TIMEOUT_SECONDS_DEFAULT, HARNESS_LOOP_IDLE_TIMEOUT_SECONDS_KEY } from './loop-lifecycle.constants';
 import { LoopAgentDto, LoopConfigResponse, LoopSubscriptionDto } from './dto';
 
 /** TASK-662 — the bounded execution envelope, until per-agent overrides exist. */
@@ -42,7 +44,14 @@ const PRIMITIVE_DEFAULT_ACTIONS: Record<ContextPrimitive, AgentActionKey[]> = {
   STRUCTURED: ['client.emit'],
 };
 
-/** A fully disabled config, used for every degradation branch. */
+/**
+ * A fully disabled config, used for every degradation branch.
+ *
+ * `idleTimeoutSeconds` is null here rather than the resolved bound, and that is
+ * not an oversight: a disabled loop takes `ConsultationLoopWorkflow`'s DISABLED
+ * branch, which completes IMMEDIATELY and never reaches the wait at all. Giving
+ * it a bound would imply a wait that does not exist.
+ */
 function disabledResponse(consultationId: string | null, departmentId: string | null): LoopConfigResponse {
   return {
     enabled: false,
@@ -57,6 +66,7 @@ function disabledResponse(consultationId: string | null, departmentId: string | 
     endingActions: [],
     reasoningEnabled: false,
     agents: [],
+    idleTimeoutSeconds: null,
   };
 }
 
@@ -127,8 +137,33 @@ export class LoopConfigService extends BaseService implements ILoopConfigService
     private readonly contextSchemaVersionRepository: ConsultationContextSchemaVersionRepository,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
+    // `@Optional()` mirrors `LoopContextSignalService`: absent ⇒ the code
+    // default applies, which is a BOUNDED loop. That is the safe direction — an
+    // unwired resolver must not silently restore the unbounded wait.
+    @Optional() @Inject(TenantSettingsService) private readonly tenantSettings?: TenantSettingsService,
   ) {
     super(eventEmitter, clsService, ResourceType.Consultation);
+  }
+
+  /**
+   * The loop's IDLE bound, in seconds (TASK-685).
+   *
+   * Read HERE, once per consultation, because this is the resolution the
+   * workflow PINS at start (TASK-654 C1) — not per signal, the way the
+   * `harness.loop.enabled` kill-switch is. `resolvePlatform` is the platform
+   * lane (`maxScope: 'system'`) and is synchronous: it reads the in-memory
+   * settings cache and does no I/O.
+   *
+   * A non-positive stored value is treated as "no bound". Someone typing `0`
+   * into an admin field almost certainly means "turn this off", and the
+   * alternative — a zero-second idle bound — would abandon every consultation
+   * the instant it went quiet.
+   */
+  private resolveIdleTimeoutSeconds(): number | null {
+    const resolved = this.tenantSettings
+      ? this.tenantSettings.resolvePlatform<number>(HARNESS_LOOP_IDLE_TIMEOUT_SECONDS_KEY).value
+      : HARNESS_LOOP_IDLE_TIMEOUT_SECONDS_DEFAULT;
+    return typeof resolved === 'number' && Number.isFinite(resolved) && resolved > 0 ? resolved : null;
   }
 
   async resolveForConsultation(tenantId: string, consultationId: string): Promise<LoopConfigResponse> {
@@ -177,6 +212,8 @@ export class LoopConfigService extends BaseService implements ILoopConfigService
       // also what keeps every existing consultation unchanged.
       reasoningEnabled: agents.some((a) => a.role === DepartmentAgentRole.PRIMARY) && agents.some((a) => a.role === DepartmentAgentRole.SPECIALIST),
       agents,
+      // TASK-685 — pinned here, frozen for the whole consultation.
+      idleTimeoutSeconds: this.resolveIdleTimeoutSeconds(),
     };
   }
 

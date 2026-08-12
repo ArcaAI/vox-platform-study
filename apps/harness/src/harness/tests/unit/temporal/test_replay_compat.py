@@ -414,3 +414,54 @@ class TestConsultationLoopReplayCompatibility:
         await replayer.replay_workflow(
             _history("consultation_loop_task664_reasoning_history")
         )
+
+    @pytest.mark.asyncio
+    async def test_pre_idle_bound_loop_histories_replay_after_task685(self):
+        """TASK-685's central replay assertion.
+
+        Bounding the main ``wait_condition`` schedules a TIMER — a command an
+        unbounded wait never recorded — so it would break BOTH frozen loop
+        fixtures if issued unconditionally. It sits behind the
+        ``task-685-idle-timeout`` era, gated with the ``idle_timeout_seconds``
+        operand FIRST, and the recorded configs of both fixtures predate that
+        field entirely: they deserialise with the bound absent, so
+        ``workflow.patched`` is never even called and neither history sees a
+        timer.
+
+        Both fixtures are asserted here rather than only the older one, because
+        an in-flight consultation at deploy time is either era and neither may
+        wedge.
+        """
+        replayer = Replayer(
+            workflows=[ConsultationLoopWorkflow],
+            data_converter=pydantic_data_converter,
+        )
+        await replayer.replay_workflow(_history("consultation_loop_task662_history"))
+        await replayer.replay_workflow(
+            _history("consultation_loop_task664_reasoning_history")
+        )
+
+    @pytest.mark.asyncio
+    async def test_idle_timeout_history_replays_on_current_definition(self):
+        """Forward guard for the loop's TASK-685 (idle-bound) era.
+
+        The fixture is a run that received one context item and then nothing —
+        no ``consultation-ending``, no ``cancel`` — so it reached its pinned idle
+        bound. It carries the ``task-685-idle-timeout`` marker, the
+        ``wait_condition`` TIMER (started AND fired), the ``loop.timed_out``
+        emission, and a terminal completion with NO ending action: a timeout
+        abandons rather than fabricating a finalize.
+
+        Any FUTURE ungated change to the bounded wait — moving the timer,
+        changing what the timeout emits, or running ending actions on it — fails
+        this replay with a non-determinism error unless it is gated behind its
+        own ``workflow.patched()``. Recapture alongside such a change
+        (``_capture_replay_fixture.py --idle-timeout``).
+        """
+        replayer = Replayer(
+            workflows=[ConsultationLoopWorkflow],
+            data_converter=pydantic_data_converter,
+        )
+        await replayer.replay_workflow(
+            _history("consultation_loop_task685_idle_timeout_history")
+        )

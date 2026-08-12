@@ -2142,6 +2142,18 @@ async def fetch_loop_config(payload: FetchLoopConfigInput) -> ConsultationLoopCo
     def _strings(key: str) -> list[str]:
         return [a for a in (data.get(key) or []) if isinstance(a, str)]
 
+    # TASK-685 — the idle lifecycle bound. Absent (or non-numeric) on a gateway
+    # that predates this ticket, in which case the loop stays unbounded and
+    # behaves exactly as TASK-664 left it. Resolved gateway-side from the
+    # `harness.loop.idleTimeoutSeconds` `global-kv` setting and PINNED here: this
+    # is the once-only read, so the bound is fixed for the whole consultation.
+    raw_idle_timeout = data.get("idleTimeoutSeconds")
+    idle_timeout_seconds = (
+        float(raw_idle_timeout)
+        if isinstance(raw_idle_timeout, (int, float)) and not isinstance(raw_idle_timeout, bool)
+        else None
+    )
+
     # TASK-664 — the agent roster. Absent on a gateway that predates this ticket,
     # in which case the roster is empty, `reasoning_enabled` stays False, and the
     # loop behaves exactly as TASK-662 left it.
@@ -2181,6 +2193,7 @@ async def fetch_loop_config(payload: FetchLoopConfigInput) -> ConsultationLoopCo
         ending_actions=_strings("endingActions"),
         reasoning_enabled=bool(data.get("reasoningEnabled", False)),
         agents=agents,
+        idle_timeout_seconds=idle_timeout_seconds,
     )
 
 
