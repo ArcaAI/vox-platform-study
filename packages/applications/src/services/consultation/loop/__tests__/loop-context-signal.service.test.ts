@@ -20,7 +20,11 @@ import type { ContextAddedPayload } from '../../events';
 // `loopEnabled` genuinely `undefined` (a default param would silently
 // substitute a fallback for an explicit `undefined` argument too).
 function buildDeps(loopEnabled?: string) {
-  const harnessGatewayService = { signalContextAdded: vi.fn().mockResolvedValue({ signaled: true }) };
+  const harnessGatewayService = {
+    signalContextAdded: vi.fn().mockResolvedValue({ signaled: true }),
+    signalConsultationEnding: vi.fn().mockResolvedValue({ signaled: true }),
+    signalLoopCancel: vi.fn().mockResolvedValue({ signaled: true }),
+  };
   const configService = { get: vi.fn((key: string) => (key === 'HARNESS_LOOP_ENABLED' ? loopEnabled : undefined)) };
   const service = new LoopContextSignalService(harnessGatewayService as any, configService as any);
   return { service, harnessGatewayService, configService };
@@ -71,7 +75,47 @@ describe('LoopContextSignalService', () => {
       contextType: 'WORKNOTE',
       subType: 'LAB_RESULT',
       contentPreview: 'BP elevated',
+      kindKey: undefined,
+      occurredAt: '2026-08-11T10:00:00.000Z',
+      depth: 0,
+      content: undefined,
     });
+  });
+
+  // TASK-670 — payload completeness: kindKey/occurredAt/depth/content now
+  // ride the outbound signal.
+  it('forwards kindKey, occurredAt (the payload timestamp), depth, and the fuller content field', async () => {
+    const { service, harnessGatewayService } = buildDeps('true');
+
+    await service.handleContextAdded(
+      payload({
+        kindKey: 'referral_letter',
+        timestamp: '2026-08-12T09:00:00.000Z',
+        depth: 2,
+        content: 'The full body of the note, longer than the 2k preview.',
+      }),
+    );
+
+    expect(harnessGatewayService.signalContextAdded).toHaveBeenCalledWith(
+      'consultation-1',
+      expect.objectContaining({
+        kindKey: 'referral_letter',
+        occurredAt: '2026-08-12T09:00:00.000Z',
+        depth: 2,
+        content: 'The full body of the note, longer than the 2k preview.',
+      }),
+    );
+  });
+
+  it('defaults depth to 0 when the payload carries no depth', async () => {
+    const { service, harnessGatewayService } = buildDeps('true');
+
+    await service.handleContextAdded(payload({ depth: undefined }));
+
+    expect(harnessGatewayService.signalContextAdded).toHaveBeenCalledWith(
+      'consultation-1',
+      expect.objectContaining({ depth: 0 }),
+    );
   });
 
   it('is idempotent under duplicate emission (identical payload signals exactly once)', async () => {
@@ -99,5 +143,59 @@ describe('LoopContextSignalService', () => {
     harnessGatewayService.signalContextAdded.mockRejectedValue(new Error('harness unreachable'));
 
     await expect(service.handleContextAdded(payload())).resolves.toBeUndefined();
+  });
+
+  // TASK-670 — the two lifecycle-boundary signal callers.
+  describe('signalConsultationEnding', () => {
+    it('is a no-op when the loop is not configured', async () => {
+      const { service, harnessGatewayService } = buildDeps(undefined);
+
+      await service.signalConsultationEnding('consultation-1', { reason: 'recording_stopped' });
+
+      expect(harnessGatewayService.signalConsultationEnding).not.toHaveBeenCalled();
+    });
+
+    it('forwards the payload to the harness gateway when enabled', async () => {
+      const { service, harnessGatewayService } = buildDeps('true');
+
+      await service.signalConsultationEnding('consultation-1', { reason: 'recording_stopped', persistSnapshot: true });
+
+      expect(harnessGatewayService.signalConsultationEnding).toHaveBeenCalledWith('consultation-1', {
+        reason: 'recording_stopped',
+        persistSnapshot: true,
+      });
+    });
+
+    it('never throws when the gateway call fails (best-effort)', async () => {
+      const { service, harnessGatewayService } = buildDeps('true');
+      harnessGatewayService.signalConsultationEnding.mockRejectedValue(new Error('harness unreachable'));
+
+      await expect(service.signalConsultationEnding('consultation-1', {})).resolves.toBeUndefined();
+    });
+  });
+
+  describe('signalLoopCancel', () => {
+    it('is a no-op when the loop is not configured', async () => {
+      const { service, harnessGatewayService } = buildDeps(undefined);
+
+      await service.signalLoopCancel('consultation-1', { reason: 'abandoned' });
+
+      expect(harnessGatewayService.signalLoopCancel).not.toHaveBeenCalled();
+    });
+
+    it('forwards the payload to the harness gateway when enabled', async () => {
+      const { service, harnessGatewayService } = buildDeps('true');
+
+      await service.signalLoopCancel('consultation-1', { reason: 'abandoned' });
+
+      expect(harnessGatewayService.signalLoopCancel).toHaveBeenCalledWith('consultation-1', { reason: 'abandoned' });
+    });
+
+    it('never throws when the gateway call fails (best-effort)', async () => {
+      const { service, harnessGatewayService } = buildDeps('true');
+      harnessGatewayService.signalLoopCancel.mockRejectedValue(new Error('harness unreachable'));
+
+      await expect(service.signalLoopCancel('consultation-1', {})).resolves.toBeUndefined();
+    });
   });
 });
