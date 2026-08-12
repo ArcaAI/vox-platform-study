@@ -117,7 +117,10 @@ export const seedConsultationGateSettings = async (client: CorePrismaClient): Pr
         createdBy: CREATED_BY,
       },
     });
-    console.log(`  ${NAMESPACE}/${gate.key} = ${gate.value} (default ${gate.defaultValue})`);
+    // NB: this reports what a FIRST seed writes. On a re-seed the `value`
+    // column is deliberately left alone, so a switch an operator turned off
+    // stays off — do not read this line as "the row is now `value`".
+    console.log(`  ${NAMESPACE}/${gate.key} → ${gate.value} on create (default ${gate.defaultValue}; existing value preserved)`);
   }
 
   console.log(`Seeded ${GATES.length} consultation-gate Global Settings`);
