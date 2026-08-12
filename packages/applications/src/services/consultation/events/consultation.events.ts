@@ -115,6 +115,13 @@ export interface TranscriptionCreatedPayload extends ConsultationPipelineEventBa
  * is persisted. Carries a short content preview + the optional lab/exam
  * `metadata.subType` so the LiveDocumentationService can fold the note/lab/file
  * into the running summary without an extra DB round-trip.
+ *
+ * TASK-670 — `kindKey`/`depth` and the fuller `content` field were added so
+ * `LoopContextSignalService` can forward a payload-complete signal to the
+ * consultation loop. `contentPreview` is UNCHANGED (still the 2k-char snippet
+ * `LiveDocumentationService` folds into its live prompt) — `content` is a
+ * SEPARATE, larger field so growing the loop's inline body never changes what
+ * LiveDoc receives.
  */
 export interface ContextAddedPayload extends ConsultationPipelineEventBase {
   /** The created context item id */
@@ -128,6 +135,30 @@ export interface ContextAddedPayload extends ConsultationPipelineEventBase {
 
   /** First ~2k chars of text content, when present (notes); absent for media-only attachments */
   contentPreview?: string;
+
+  /**
+   * The tenant-declared context kind this item is an instance of
+   * (`ContextItem.kindKey`, TASK-658), when the write named one. Threaded to
+   * the loop signal so subscriptions can match on the real kind instead of
+   * falling back to `subType`/`contextType`.
+   */
+  kindKey?: string;
+
+  /**
+   * Cascade generation: a human/API-originated item is depth 0; an item
+   * written with `derivedFromContextItemId` carries its parent's depth + 1
+   * (`ContextItem.metaData.loopDepth`). Absent ⇒ 0.
+   */
+  depth?: number;
+
+  /**
+   * The full context body (up to `LOOP_SIGNAL_CONTENT_MAX_LENGTH`), threaded
+   * inline to the loop signal so a specialist (`vision.extract_text`,
+   * `nlp.extract_entities`) has real text to act on rather than the 2k-char
+   * `contentPreview`. See `context.service.ts` for the size-threshold
+   * reasoning (TASK-670).
+   */
+  content?: string;
 }
 
 /**

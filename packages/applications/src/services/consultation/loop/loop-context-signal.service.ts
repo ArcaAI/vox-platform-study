@@ -2,11 +2,13 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { OnEvent } from '@nestjs/event-emitter';
 import { ConsultationPipelineEvent, type ContextAddedPayload } from '../events';
-import { HarnessGatewayService } from '../harness/harness-gateway.service';
+import { HarnessGatewayService, type HarnessConsultationEndingSignal, type HarnessLoopCancelSignal } from '../harness/harness-gateway.service';
 
 /**
  * LoopContextSignalService — the new `@OnEvent(ContextAdded)` consumer that
- * signals the (future TASK-662) `ConsultationLoopWorkflow`.
+ * signals the `ConsultationLoopWorkflow` (TASK-662), plus (TASK-670) the two
+ * lifecycle-boundary signal callers (`signalConsultationEnding`,
+ * `signalLoopCancel`) that share its exact gating/best-effort posture.
  *
  * Added exactly like `OcrEnrichmentProcessor`: a new provider registered
  * alongside `LiveDocumentationService` in `LiveDocumentationServiceModule` —
@@ -61,6 +63,11 @@ export class LoopContextSignalService {
         contextType: payload.contextType,
         subType: payload.subType,
         contentPreview: payload.contentPreview,
+        // TASK-670 — payload completeness: kindKey/occurredAt/depth/content.
+        kindKey: payload.kindKey,
+        occurredAt: payload.timestamp,
+        depth: payload.depth ?? 0,
+        content: payload.content,
       });
     } catch (error) {
       // Best-effort — never break the context-add path over a loop-signal hiccup.
@@ -68,6 +75,43 @@ export class LoopContextSignalService {
         message: 'Failed to signal loop of new context (best-effort)',
         consultationId: payload.consultationId,
         contextItemId: payload.contextItemId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  /**
+   * TASK-670 — tell the loop the recording stopped. Same gate + best-effort
+   * posture as `handleContextAdded`; the caller (`ConsultationController
+   * .stopRecording`) never awaits a failure into a broken response.
+   */
+  async signalConsultationEnding(consultationId: string, payload: HarnessConsultationEndingSignal = {}): Promise<void> {
+    if (!this.loopEnabled) return;
+
+    try {
+      await this.harnessGatewayService.signalConsultationEnding(consultationId, payload);
+    } catch (error) {
+      this.logger.warn({
+        message: 'Failed to signal loop consultation-ending (best-effort)',
+        consultationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  /**
+   * TASK-670 — tell the loop to stop WITHOUT running its ending actions (the
+   * consultation was abandoned). Same gate + best-effort posture.
+   */
+  async signalLoopCancel(consultationId: string, payload: HarnessLoopCancelSignal = {}): Promise<void> {
+    if (!this.loopEnabled) return;
+
+    try {
+      await this.harnessGatewayService.signalLoopCancel(consultationId, payload);
+    } catch (error) {
+      this.logger.warn({
+        message: 'Failed to signal loop-cancel (best-effort)',
+        consultationId,
         error: error instanceof Error ? error.message : String(error),
       });
     }

@@ -39,6 +39,11 @@ import { LiveAgentResolutionServiceModule } from '../prompt/live-agent-resolutio
  * loop workflow. Added the same way OcrEnrichmentProcessor was: a new
  * provider in THIS module, no controller or route change. It additionally
  * needs `HarnessGatewayServiceModule` for the outbound harness signal call.
+ *
+ * TASK-670 — {@link LoopContextSignalService} is now also EXPORTED: it grew
+ * `signalConsultationEnding`/`signalLoopCancel`, called directly from
+ * `ConsultationController.stopRecording` (a real consumer outside this
+ * module, unlike the `@OnEvent` wiring, which stays internal).
  */
 @Module({
   // §2C/§2D — AgentTrajectoryServiceModule resolves the @Optional
@@ -66,6 +71,6 @@ import { LiveAgentResolutionServiceModule } from '../prompt/live-agent-resolutio
     HarnessGatewayServiceModule,
   ],
   providers: [LiveDocumentationService, RedisSubscriberService, OcrEnrichmentProcessor, LoopContextSignalService],
-  exports: [LiveDocumentationService],
+  exports: [LiveDocumentationService, LoopContextSignalService],
 })
 export class LiveDocumentationServiceModule {}

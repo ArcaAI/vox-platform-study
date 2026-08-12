@@ -8,7 +8,8 @@
  * Both MUST send `X-Service-Token: <HARNESS_SERVICE_TOKEN>` and carry `tenantId`
  * in the body. The harness service itself is mocked here (no live call).
  */
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { Logger } from '@nestjs/common';
 import { HarnessGatewayService } from '../harness-gateway.service';
 
 const createMockHttpService = () => ({
@@ -204,6 +205,79 @@ describe('HarnessGatewayService', () => {
 
       expect(result).toEqual({ signaled: true });
     });
+
+    // TASK-670 — payload completeness: kindKey/occurredAt/depth/content.
+    it('forwards kindKey, occurredAt, depth, and content when the caller supplies them', async () => {
+      const service = build('http://harness:8866', 'harness-token-xyz');
+
+      await service.signalContextAdded('consultation-9', {
+        contextItemId: 'ctx-1',
+        contextType: 'TRANSCRIPT',
+        kindKey: 'transcript',
+        occurredAt: '2026-08-12T00:00:00.000Z',
+        depth: 1,
+        content: 'doctor: hello, patient: hi doctor',
+      });
+
+      const [, body] = mockHttpService.axiosRef.post.mock.calls[0];
+      expect(body).toEqual(
+        expect.objectContaining({
+          kindKey: 'transcript',
+          occurredAt: '2026-08-12T00:00:00.000Z',
+          depth: 1,
+          content: 'doctor: hello, patient: hi doctor',
+        }),
+      );
+    });
+  });
+
+  describe('signalConsultationEnding', () => {
+    it('POSTs to the harness consultation-ending-signal endpoint with the finalize payload', async () => {
+      const service = build('http://harness:8866', 'harness-token-xyz');
+
+      await service.signalConsultationEnding('consultation-9', {
+        reason: 'recording_stopped',
+        persistSnapshot: true,
+      });
+
+      expect(mockHttpService.axiosRef.post).toHaveBeenCalledTimes(1);
+      const [url, body, options] = mockHttpService.axiosRef.post.mock.calls[0];
+      expect(url).toBe('http://harness:8866/api/v1/internal/workflows/consultation-9/signal/consultation-ending');
+      expect(body).toEqual(expect.objectContaining({ reason: 'recording_stopped', persistSnapshot: true }));
+      expect(options.headers['X-Service-Token']).toBe('harness-token-xyz');
+    });
+
+    it('returns the harness response payload', async () => {
+      mockHttpService.axiosRef.post.mockResolvedValue({ data: { workflowId: 'consultation-loop-c-9', signaled: true } });
+      const service = build('http://harness:8866', 'tok');
+
+      const result = await service.signalConsultationEnding('c-9', {});
+
+      expect(result).toEqual({ workflowId: 'consultation-loop-c-9', signaled: true });
+    });
+  });
+
+  describe('signalLoopCancel', () => {
+    it('POSTs to the harness loop-cancel-signal endpoint with the reason', async () => {
+      const service = build('http://harness:8866', 'harness-token-xyz');
+
+      await service.signalLoopCancel('consultation-9', { reason: 'abandoned' });
+
+      expect(mockHttpService.axiosRef.post).toHaveBeenCalledTimes(1);
+      const [url, body, options] = mockHttpService.axiosRef.post.mock.calls[0];
+      expect(url).toBe('http://harness:8866/api/v1/internal/workflows/consultation-9/signal/loop-cancel');
+      expect(body).toEqual(expect.objectContaining({ reason: 'abandoned' }));
+      expect(options.headers['X-Service-Token']).toBe('harness-token-xyz');
+    });
+
+    it('returns the harness response payload', async () => {
+      mockHttpService.axiosRef.post.mockResolvedValue({ data: { workflowId: 'consultation-loop-c-9', signaled: true } });
+      const service = build('http://harness:8866', 'tok');
+
+      const result = await service.signalLoopCancel('c-9', {});
+
+      expect(result).toEqual({ workflowId: 'consultation-loop-c-9', signaled: true });
+    });
   });
 
   describe('service token resolution', () => {
@@ -223,6 +297,51 @@ describe('HarnessGatewayService', () => {
 
       const [, , options] = mockHttpService.axiosRef.post.mock.calls[0];
       expect(options.headers['X-Service-Token']).toBe('');
+    });
+  });
+
+  // TASK-670 — TDD item 6: "No decrypted content appears in logs or in any
+  // non-PHI-safe field." Every signal call logs only ids/booleans (see the
+  // existing `logger.log` calls in `harness-gateway.service.ts`) — this pins
+  // that a request carrying real clinical text never leaks it into a log line.
+  describe('PHI-safe logging', () => {
+    let logSpy: ReturnType<typeof vi.spyOn>;
+
+    beforeEach(() => {
+      logSpy = vi.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+    });
+
+    afterEach(() => {
+      logSpy.mockRestore();
+    });
+
+    it('signalContextAdded never logs the content/contentPreview text', async () => {
+      const service = build('http://harness:8866', 'tok');
+      const clinicalText = 'Patient reports chest pain radiating to the left arm; BP 140/95.';
+
+      await service.signalContextAdded('c-phi', {
+        contextItemId: 'ctx-1',
+        contextType: 'TRANSCRIPT',
+        contentPreview: clinicalText.slice(0, 20),
+        content: clinicalText,
+      });
+
+      expect(logSpy).toHaveBeenCalledTimes(1);
+      const loggedPayload = JSON.stringify(logSpy.mock.calls[0]);
+      expect(loggedPayload).not.toContain(clinicalText);
+      expect(loggedPayload).not.toContain('chest pain');
+    });
+
+    it('signalConsultationEnding never logs the transcript text', async () => {
+      const service = build('http://harness:8866', 'tok');
+      const clinicalText = 'S: chest pain. O: BP 140/95. A: hypertension. P: start lisinopril.';
+
+      await service.signalConsultationEnding('c-phi', { transcriptText: clinicalText });
+
+      expect(logSpy).toHaveBeenCalledTimes(1);
+      const loggedPayload = JSON.stringify(logSpy.mock.calls[0]);
+      expect(loggedPayload).not.toContain(clinicalText);
+      expect(loggedPayload).not.toContain('lisinopril');
     });
   });
 });

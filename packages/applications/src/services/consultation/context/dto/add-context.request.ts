@@ -82,6 +82,24 @@ export class AddContextRequest {
   @IsOptional()
   @IsObject()
   payload?: Record<string, unknown>;
+
+  // TASK-670 — the loop event plane's cascade-depth lineage. Optional: a write
+  // that omits it is depth 0 (a human/API-originated item), exactly as before
+  // this field existed. A specialist (or any caller) that writes a NEW context
+  // item as a consequence of processing ANOTHER one names that item here, so
+  // `ContextService.addContext` can resolve `depth = parent.depth + 1` and cap
+  // the cascade (TASK-664's depth-cap budget). A bad/cross-tenant reference
+  // degrades to depth 0 rather than failing the write — lineage is metadata,
+  // never a reason to lose clinical content.
+  @ApiPropertyOptional({
+    description:
+      'The context item this one was DERIVED from (e.g. a specialist action writing back a finding). Used only to ' +
+      'compute the loop cascade `depth` sent on the `ContextAdded` signal — never validated against a schema and ' +
+      'never required. Omit for a normal, human/API-originated write (depth 0).',
+  })
+  @IsOptional()
+  @IsString()
+  derivedFromContextItemId?: string;
 }
 
 /**

@@ -170,6 +170,7 @@ function buildController(
     {} as any,
     {} as any,
     {} as any,
+    {} as any, // loopContextSignalService (TASK-670)
   );
 
   return {

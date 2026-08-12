@@ -142,18 +142,18 @@ class EditRequest(BaseModel):
 class LoopContextAddedRequest(BaseModel):
     """Body for ``signal/context-added`` (TASK-662's receiver for TASK-660's caller).
 
-    ``contextItemId``/``contextType``/``subType``/``contentPreview`` are exactly
-    what ``HarnessGatewayService.signalContextAdded`` sends today. The remaining
-    fields are ADDITIVE-OPTIONAL so the loop's richer vocabulary (the
-    tenant-declared kind key, the emission timestamp that makes de-duplication
-    exact, and the cascade depth) can be supplied without a coordinated release:
-    ``extra="ignore"`` on both sides means neither end breaks on a field the
-    other does not yet know.
+    As of TASK-670, ``HarnessGatewayService.signalContextAdded`` sends every
+    field below: ``kindKey``/``occurredAt``/``depth``/``content`` are no longer
+    hypothetical future additions, they are what a payload-complete signal
+    actually carries. They stay ADDITIVE-OPTIONAL regardless — ``extra="ignore"``
+    on both sides means an un-upgraded gateway (or a future field neither side
+    knows yet) never breaks the wire.
 
     ``kindKey`` falls back to ``subType`` and then to ``contextType`` so a
     gateway that has not yet been taught the kind key still routes against
     SOMETHING the tenant's subscriptions can match, rather than silently
-    matching nothing.
+    matching nothing. ``resolved_text()`` similarly prefers the fuller
+    ``content`` over the older, shorter ``contentPreview``.
     """
 
     model_config = ConfigDict(populate_by_name=True, extra="ignore")
@@ -167,12 +167,22 @@ class LoopContextAddedRequest(BaseModel):
     depth: int = 0
     source: str | None = Field(default=None)
     content_preview: str = Field(default="", alias="contentPreview")
+    # TASK-670 — the fuller context body (up to LOOP_SIGNAL_CONTENT_MAX_LENGTH
+    # chars gateway-side; see context.service.ts for the size-threshold
+    # reasoning). Additive-optional, same posture as kindKey/occurredAt/depth:
+    # an un-upgraded gateway sends none of it and `resolved_text()` falls back
+    # to `content_preview`.
+    content: str | None = Field(default=None)
     user_id: str | None = Field(default=None, alias="userId")
     session_id: str | None = Field(default=None, alias="sessionId")
     correlation_id: str | None = Field(default=None, alias="correlationId")
 
     def resolved_kind_key(self) -> str | None:
         return self.kind_key or self.sub_type or self.context_type
+
+    def resolved_text(self) -> str:
+        """The fuller `content` when the gateway sent it, else `content_preview`."""
+        return self.content or self.content_preview
 
 
 class LoopEndingRequest(BaseModel):
@@ -428,7 +438,7 @@ async def signal_context_added(
         source=body.source,
         occurred_at=body.occurred_at,
         depth=body.depth,
-        text=body.content_preview,
+        text=body.resolved_text(),
     )
 
     memo = {"tenantId": body.tenant_id, "consultationId": consultation_id}

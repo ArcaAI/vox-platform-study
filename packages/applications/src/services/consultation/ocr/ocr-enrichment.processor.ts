@@ -9,6 +9,7 @@ import { assertEqualTenants, createWorkerSession, encryptPhiFields, parseStorage
 import { IActiveUserContext } from '../../../interfaces';
 import { SecretsService } from '../../baseServices/_meta/secrets';
 import { ConsultationPipelineEvent, ContextAddedPayload } from '../events';
+import { LOOP_SIGNAL_CONTENT_MAX_LENGTH } from '../context/context.service';
 
 /** NLP `/extract` response shape. */
 interface NlpExtractResult {
@@ -165,6 +166,14 @@ export class OcrEnrichmentProcessor {
         // Re-emit the live preview so LiveDocumentationService folds the OCR text
         // into the running summary. The loop guard above makes the re-fire a no-op.
         const subType = typeof meta.subType === 'string' ? (meta.subType as string) : undefined;
+        // TASK-670 — carry the same lineage the ORIGINAL ContextAdded emission
+        // would have (this is a re-emit for the SAME contextItemId, not a new
+        // derived item, so depth is whatever the item's own recorded depth is
+        // — 0 for a human-uploaded ATTACHMENT). `content` is capped here
+        // because the NLP `/extract` result has no length ceiling of its own
+        // (unlike `AddContextRequest.content`, which `context.service.ts`
+        // already bounds at the same length).
+        const loopDepth = typeof meta.loopDepth === 'number' ? (meta.loopDepth as number) : 0;
         this.eventEmitter.emit(ConsultationPipelineEvent.ContextAdded, {
           consultationId,
           tenantId,
@@ -174,6 +183,9 @@ export class OcrEnrichmentProcessor {
           contextType: payload.contextType,
           subType,
           contentPreview: text.slice(0, 2000),
+          kindKey: item.kindKey ?? undefined,
+          depth: loopDepth,
+          content: text.slice(0, LOOP_SIGNAL_CONTENT_MAX_LENGTH),
         } satisfies ContextAddedPayload);
 
         this.logger.log({
