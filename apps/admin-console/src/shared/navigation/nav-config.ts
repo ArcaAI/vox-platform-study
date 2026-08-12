@@ -24,6 +24,7 @@ import {
   IconMicrophone,
   IconPlugConnected,
   IconRobot,
+  IconSchema,
   IconServerCog,
   IconRoute,
   IconSettings,
@@ -304,6 +305,15 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     tier: '30-49',
     icon: IconFileText,
     required: [['manage', 'PromptTemplate']],
+    implemented: true,
+  },
+  {
+    // TASK-666 — tenant-defined consultation context vocabulary (TASK-658).
+    route: '/context-schemas',
+    label: 'Context Schemas',
+    tier: '30-49',
+    icon: IconSchema,
+    required: [['manage', 'ConsultationContextSchema']],
     implemented: true,
   },
   {
