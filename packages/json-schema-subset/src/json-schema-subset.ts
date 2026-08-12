@@ -1,18 +1,56 @@
 /**
- * TASK-666 — client-side mirror of the CONSTRAINED JSON Schema (draft
- * 2020-12) subset a tenant may author for a `ConsultationContextSchema` kind
- * (TASK-658, `packages/applications/src/services/consultation-context-schema/json-schema-subset.ts`).
+ * The CONSTRAINED JSON Schema (draft 2020-12) subset a tenant may author
+ * inside a `ConsultationContextSchema` definition, plus the evaluator that
+ * validates a submitted payload against it.
  *
- * `apps/admin-console` does not depend on `@arcaai/applications` (it is a
- * server-side NestJS package), so this is a deliberate, faithful PORT of the
- * pure functions — not a re-implementation of the rules. It exists to give
- * the schema editor's field builder and sample-payload tester fast, local
- * feedback. **The server is authoritative**: `POST :id/publish` re-validates
- * the definition and is the actual enforcement point (AC-8); this module can
- * only ever narrow what an admin tries to publish, never widen it.
+ * ## One implementation, three consumers
  *
- * Keep this in lockstep with the server module — if the server's subset
- * changes, mirror the change here too.
+ * This module is the SINGLE implementation of the rule. It originated in
+ * `@arcaai/applications` (TASK-658) and was ported twice — into the browser
+ * SDK (TASK-665) and the admin console (TASK-666) — because neither can
+ * depend on a server-only NestJS package. Three copies of one clinical
+ * validation rule drift, and the drift is silent in both directions: a
+ * payload the console accepts but the server rejects, or one both accept for
+ * different reasons. Hence this package: zero runtime dependencies, so the
+ * browser SDK can bundle it without weight, and one definition all three
+ * consume.
+ *
+ * The server remains the AUTHORITATIVE enforcement point — the SDK and
+ * console call these functions as a fast-fail UX aid, never as the gate.
+ * They can now only ever agree with the server, because it is the same code.
+ *
+ * ## Why a subset, and why hand-written
+ *
+ * The definition is authored by a TENANT and is consumed by three very
+ * different things: this evaluator, the admin-console editor (TASK-666) and
+ * the SDK codegen CLI (TASK-668). A keyword that any one of them cannot
+ * express faithfully is a keyword that must not be authorable at all —
+ * otherwise the generated client and the server disagree about what a valid
+ * payload is, which in a PHI system is a correctness bug wearing a
+ * convenience hat.
+ *
+ * Two exclusions are therefore hard (execution-plan § TASK-658 "Schema
+ * language"):
+ *
+ *  - **`if` / `then` / `else`** — conditional subschemas have no clean
+ *    TypeScript equivalent; codegen would have to widen everything to
+ *    optional and drop the constraint entirely.
+ *  - **`oneOf` without an explicit `discriminator`** — without a
+ *    discriminating property a generator cannot emit a tagged union and
+ *    instead emits merged property soup, in which every branch's fields look
+ *    optional. The discriminator is also what lets THIS evaluator report the
+ *    error from the branch the author meant, rather than N confusing branch
+ *    errors.
+ *
+ * Two further limits exist for safety rather than expressiveness: a bounded
+ * nesting depth and a bounded node count. An authored document is untrusted
+ * input that is walked on every payload write.
+ *
+ * No JSON Schema library is a dependency of this package (no ajv, no zod), and
+ * that is deliberate: a general-purpose validator would happily accept the
+ * keywords above, so the subset would be documentation rather than
+ * enforcement. Keep this package dependency-free — it is bundled into
+ * `@arcaai/vox`, whose bundle size is actively policed.
  */
 
 /** Maximum nesting depth of an authored schema. */
@@ -35,6 +73,10 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
  * Structural problems with an AUTHORED schema, as human-readable strings each
  * prefixed with the JSON-pointer-ish path at which the problem sits. An empty
  * array means the schema is authorable.
+ *
+ * Returns problems rather than throwing so the caller can surface every
+ * problem in one 400 — an admin editing a large definition should not have to
+ * discover its faults one round-trip at a time.
  */
 export function authorableJsonSchemaProblems(schema: unknown, path = ''): string[] {
   const problems: string[] = [];
@@ -116,7 +158,11 @@ function walkAuthorable(schema: unknown, path: string, depth: number, problems: 
  * Supported keywords: `type`, `properties`, `required`, `additionalProperties`,
  * `items`, `enum`, `const`, `minLength`, `maxLength`, `pattern`, `minimum`,
  * `maximum`, `minItems`, `maxItems`, `anyOf`, `allOf`, and discriminated
- * `oneOf`. An empty schema (`{}`) accepts anything, per JSON Schema.
+ * `oneOf`. Anything else in the document is an annotation and is ignored —
+ * the AUTHORING gate above is what keeps unsupported *constraints* out, so
+ * "ignored here" can only ever mean "not a constraint".
+ *
+ * An empty schema (`{}`) accepts anything, per JSON Schema.
  */
 export function jsonSchemaValueProblems(schema: unknown, value: unknown, path = ''): string[] {
   if (!isPlainObject(schema)) {
@@ -150,7 +196,8 @@ export function jsonSchemaValueProblems(schema: unknown, value: unknown, path = 
     const declared = (Array.isArray(schema.type) ? schema.type : [schema.type]) as JsonSchemaType[];
     if (!declared.some((t) => matchesType(t, value))) {
       problems.push(`${at}: expected ${declared.join(' | ')}`);
-      // A type mismatch makes every keyword below meaningless.
+      // A type mismatch makes every keyword below meaningless — reporting
+      // "maxLength" on a number is noise, not help.
       return problems;
     }
   }

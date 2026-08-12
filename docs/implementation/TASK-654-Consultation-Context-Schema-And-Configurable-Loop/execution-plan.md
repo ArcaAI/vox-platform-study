@@ -61,11 +61,13 @@ A fresh worktree has no built workspace dists. Two consequences, both observed:
 
 Correct order: `pnpm install` → `pnpm db:generate` → `pnpm --filter @arcaai/database build` → `--filter @arcaai/domains build` → `--filter @arcaai/applications build` → tests.
 
-### 1.1c `pnpm db:migrate` is broken on `dev-2.1`
+### 1.1c `pnpm db:migrate` — FIXED 2026-08-12; use the documented shadow-DB workflow
 
-The script is `prisma migrate dev --skip-generate`; **Prisma 7 removed `--skip-generate`**, so it exits 1 on the flag. `db:migrate:create` is also unusable because the local dev DB is `db push`-managed with no `_prisma_migrations` ledger.
+**Resolved.** The script was `prisma migrate dev --skip-generate` and **Prisma 7 removed `--skip-generate`**, so it exited 1 on the flag. It is now `prisma migrate dev && pnpm --filter @arcaai/tools generate-prisma-index` and runs end to end.
 
-TASK-658's working recovery, until the script is fixed: generate SQL with `prisma migrate diff --from-migrations` against a throwaway shadow DB (which replays the whole ledger), re-run the diff afterwards to confirm only pre-existing drift remains, sync dev with `db:push`, and inspect in psql. Note that a **pre-existing TASK-648 index-rename drift** shows up in that diff and is not yours.
+The **TASK-648 index-rename drift** that used to appear in every `migrate diff` is also resolved, by migration `20260812020000_task_648_index_name_alignment`. A `migrate diff` against a fully-replayed ledger now returns empty. If you see drift, it IS yours.
+
+Still true, and now documented as the standard path rather than a workaround: the local dev DB is `db push`-managed with no `_prisma_migrations` ledger, so migrations are authored against a **throwaway shadow DB**. Exact commands: `.claude/rules/02-database-prisma.md` §Migration Workflow. Two traps it calls out — `-n <name>` is not forwarded through the root `db:migrate:create` alias, and `migrate dev` looks like a hang when it is really prompting on drift.
 
 ### 1.2 Completion
 

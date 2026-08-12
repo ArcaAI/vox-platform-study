@@ -36,7 +36,7 @@ import {
   type ContextPrimitive,
 } from './context-schema-definition';
 import { classifyDefinitionChange, type DefinitionChangeClassification } from './definition-diff';
-import { jsonSchemaValueProblems } from './json-schema-subset';
+import { jsonSchemaValueProblems } from '@arcaai/json-schema-subset';
 
 /** ETag served for a tenant that has not configured a context schema. */
 const UNCONFIGURED_ETAG = '"none"';

@@ -4,11 +4,13 @@
  * Sample-payload tester (TASK-666 scope) — validates a hand-authored JSON
  * payload against a STRUCTURED kind's `fields` from the CURRENT DRAFT (the
  * same `definition` state the Definition tab is editing, not the last
- * published version), using the client-side subset mirror
- * (`lib/json-schema-subset.ts`). This is a local preview: the real
+ * published version), using the shared, dependency-free evaluator
+ * (`@arcaai/json-schema-subset`) — the SAME code the server enforces with,
+ * rather than a copy of it. This is still only a local preview: the real
  * enforcement happens server-side, in `ConsultationContextSchemaService
  * #validateContextPayload`, the moment a client actually writes a context
- * item of this kind.
+ * item of this kind. Sharing the implementation means the preview can no
+ * longer disagree with that gate.
  */
 
 import { useMemo, useState } from 'react';
@@ -19,7 +21,7 @@ import { Label } from '@arcaai/ui/components/shadcn/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@arcaai/ui/components/shadcn/select';
 import { EmptyState } from '@/shared/state/empty-state';
 import type { ContextSchemaDefinition } from '../api/types';
-import { jsonSchemaValueProblems } from '../lib/json-schema-subset';
+import { jsonSchemaValueProblems } from '@arcaai/json-schema-subset';
 
 export function PayloadTester({ definition }: { definition: ContextSchemaDefinition }) {
   const structuredKinds = useMemo(() => definition.kinds.filter((kind) => kind.primitive === 'STRUCTURED' && kind.key), [definition.kinds]);

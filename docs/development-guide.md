@@ -194,7 +194,7 @@ The Prisma 7 schema is multi-file: `packages/database/src/prisma/db_main/*.prism
 
 | Command | Does |
 |---|---|
-| `pnpm db:migrate` | `prisma migrate dev --skip-generate` — create + apply a migration |
+| `pnpm db:migrate` | `prisma migrate dev` + `generate-prisma-index` — create + apply a migration. Needs a `_prisma_migrations` ledger, which the local dev DB does NOT have — author migrations against a shadow DB (`.claude/rules/02-database-prisma.md` §Migration Workflow) |
 | `pnpm db:migrate:create` | create the migration only (`--create-only`), for SQL review before applying |
 | `pnpm db:migrate:deploy` / `db:migrate:status` / `db:migrate:reset` | deploy / status / reset |
 | `pnpm db:generate` | regenerate the Prisma client + index barrel |

@@ -16,6 +16,7 @@
         "test:e2e": "playwright test"
     },
     "dependencies": {
+        "@arcaai/json-schema-subset": "workspace:*",
         "@arcaai/room": "workspace:*",
         "@arcaai/stt": "workspace:*",
         "@arcaai/ui": "workspace:*",

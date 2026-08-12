@@ -28,7 +28,7 @@ import { Label } from '@arcaai/ui/components/shadcn/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@arcaai/ui/components/shadcn/select';
 import { Switch } from '@arcaai/ui/components/shadcn/switch';
 import { Textarea } from '@arcaai/ui/components/shadcn/textarea';
-import { authorableJsonSchemaProblems } from '../lib/json-schema-subset';
+import { authorableJsonSchemaProblems } from '@arcaai/json-schema-subset';
 import {
   CONTEXT_CARDINALITIES,
   CONTEXT_LIFECYCLES,

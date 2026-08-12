@@ -56,10 +56,23 @@ import { defineConfig, type Options } from 'tsup';
 // "Invalid URL", and the `workers/`/`assets/` files never land in the SDK
 // `dist/`. Keeping them external preserves `import.meta.url` and the
 // co-located worker/wasm assets in each sub-package's own dist.
-const bundledDependencies = ['@arcaai/room', '@arcaai/vad', 'zustand', 'eventemitter3'];
+const bundledDependencies = [
+  '@arcaai/json-schema-subset',
+  '@arcaai/room',
+  '@arcaai/vad',
+  'zustand',
+  'eventemitter3',
+];
 
-// Core-only bundled dependencies (no plugin packages)
-const coreBundledDependencies = ['zustand', 'eventemitter3'];
+// Core-only bundled dependencies (no plugin packages).
+//
+// `@arcaai/json-schema-subset` MUST be here as well as in `bundledDependencies`:
+// the context-payload validator it backs is reached from `core` (and therefore
+// `compat`) via `useArcaSession`/`useConsultationSchema`, and a workspace
+// package left external stays a bare specifier that a consumer of the PUBLISHED
+// `@arcaai/vox` cannot resolve. It is dependency-free and tiny, so inlining it
+// costs the policed bundle nothing meaningful.
+const coreBundledDependencies = ['@arcaai/json-schema-subset', 'zustand', 'eventemitter3'];
 
 // Packages that consumers must install separately (true peer dependencies)
 const externalDependencies = [

@@ -1,15 +1,20 @@
 /**
  * TASK-665 — client-side context payload validation.
  *
- * Mirrors the server's `json-schema-subset.ts` (TASK-658) test coverage for
- * the shared evaluator surface, plus the orchestration semantics this ticket
- * adds: an unrecognized `kindKey` (or a kind with no `fields`) is treated as
- * "nothing to validate against", never a client-side rejection — the whole
- * point of forward compatibility (TASK-654 D2/D4).
+ * Covers ONLY the orchestration semantics this module adds: an unrecognized
+ * `kindKey` (or a kind with no `fields`) is treated as "nothing to validate
+ * against", never a client-side rejection — the whole point of forward
+ * compatibility (TASK-654 D2/D4).
+ *
+ * The evaluator itself is NOT retested here. It is no longer a port of the
+ * server's rule but literally the same code (`@arcaai/json-schema-subset`),
+ * and it owns the single test suite for that behaviour. A second copy of
+ * those cases would only pretend to guard against a drift that can no longer
+ * happen.
  */
 
 import { describe, it, expect } from 'vitest';
-import { contextPayloadProblems, validateConsultationContextPayload } from '../contextPayloadValidation';
+import { validateConsultationContextPayload } from '../contextPayloadValidation';
 import type { ConsultationSchemaBundle } from '../../types/consultationSchema';
 
 function bundleWithKind(fields: Record<string, unknown>): ConsultationSchemaBundle {
@@ -38,45 +43,6 @@ function bundleWithKind(fields: Record<string, unknown>): ConsultationSchemaBund
     },
   };
 }
-
-describe('contextPayloadProblems', () => {
-  it('accepts a value matching type/required/properties', () => {
-    const schema = { type: 'object', required: ['severity'], properties: { severity: { type: 'string' } } };
-    expect(contextPayloadProblems(schema, { severity: 'mild' })).toEqual([]);
-  });
-
-  it('reports a missing required property', () => {
-    const schema = { type: 'object', required: ['severity'], properties: { severity: { type: 'string' } } };
-    expect(contextPayloadProblems(schema, {})).toEqual(['/severity: required property is missing']);
-  });
-
-  it('reports a type mismatch and skips further checks on that node', () => {
-    const schema = { type: 'string', minLength: 5 };
-    const problems = contextPayloadProblems(schema, 42);
-    expect(problems).toEqual(['/: expected string']);
-  });
-
-  it('routes a discriminated oneOf to the matching branch only', () => {
-    const schema = {
-      oneOf: [
-        { properties: { kind: { const: 'a' }, x: { type: 'number' } }, required: ['x'] },
-        { properties: { kind: { const: 'b' }, y: { type: 'string' } }, required: ['y'] },
-      ],
-      discriminator: { propertyName: 'kind' },
-    };
-    expect(contextPayloadProblems(schema, { kind: 'a', x: 1 })).toEqual([]);
-    expect(contextPayloadProblems(schema, { kind: 'b', x: 1 })).toEqual(['/y: required property is missing']);
-  });
-
-  it('rejects an undeclared property when additionalProperties is false', () => {
-    const schema = { type: 'object', properties: { a: { type: 'string' } }, additionalProperties: false };
-    expect(contextPayloadProblems(schema, { a: 'x', b: 'y' })).toEqual(['/b: property is not declared and additionalProperties is false']);
-  });
-
-  it('accepts anything against an empty schema', () => {
-    expect(contextPayloadProblems({}, { anything: 'goes' })).toEqual([]);
-  });
-});
 
 describe('validateConsultationContextPayload', () => {
   it('is valid (nothing to check) when the bundle is null — TDD: unknown kind is ignored, not fatal', () => {

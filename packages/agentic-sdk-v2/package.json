@@ -72,6 +72,7 @@
     "test:e2e:chromium": "pnpm build && playwright test --config=e2e/playwright.config.ts --project=chromium"
   },
   "dependencies": {
+    "@arcaai/json-schema-subset": "workspace:*",
     "@arcaai/noise-filter": "workspace:*",
     "@arcaai/room": "workspace:*",
     "@arcaai/stt": "workspace:*",
