@@ -71,20 +71,22 @@ export const AGENT_ROLE_OPTIONS: { value: DepartmentAgentRole; label: string }[]
 /**
  * "Budgets" — the `maxRegen`/`gateSlaSeconds`/`gateEscalationSeconds` subset
  * of `harnessOverrides` (mirrors the "Generation"/"Clinician gate" groups of
- * `harness-policy/components/policy-fields.ts`). Global-admin-tier: the Loop
- * config tab renders these DISABLED for a non-elevated caller with the same
- * `TENANT_LOCKED_POLICY_KEYS` UX (`LOCKED_FIELD_HINT`), even though the agent-
- * level `harnessOverrides` allow-list itself does not distinguish caller role
- * server-side — see the ticket README's Decisions section.
+ * `harness-policy/components/policy-fields.ts`). Tenant-writable, not
+ * global-admin-tier: these are 3 of the "4 pipeline-shape knobs"
+ * `TENANT_TIER_HARNESS_OVERRIDE_KEYS` grants a tenant admin on an agent's
+ * `harnessOverrides` (`packages/applications/src/services/departmentAgent/
+ * constants.ts`), and the SAME keys are tenant-writable on the `HarnessPolicy`
+ * resource itself — they are NOT in `GLOBAL_ADMIN_ONLY_POLICY_KEYS`. An
+ * earlier revision of this tab rendered them disabled for a non-elevated
+ * caller on the `TENANT_LOCKED_POLICY_KEYS` precedent, which locks a
+ * DIFFERENT key set; that was a console guarantee the server never enforced.
+ * See the TASK-678 ticket README's Decisions section.
  */
 export const AGENT_BUDGET_FIELDS: { key: 'maxRegen' | 'gateSlaSeconds' | 'gateEscalationSeconds'; label: string }[] = [
   { key: 'maxRegen', label: 'Max regen budget' },
   { key: 'gateSlaSeconds', label: 'Gate SLA (seconds)' },
   { key: 'gateEscalationSeconds', label: 'Gate escalation (seconds)' },
 ];
-
-/** The copy shown under every locked Budgets control (mirrors `LOCKED_FIELD_HINT`). */
-export const LOCKED_FIELD_HINT = 'Global admins only';
 
 /** C25 — the exact phrase a caller must type to arm the weakening-acknowledgement confirm button. */
 export const C25_CONFIRM_PHRASE = 'WEAKEN';
