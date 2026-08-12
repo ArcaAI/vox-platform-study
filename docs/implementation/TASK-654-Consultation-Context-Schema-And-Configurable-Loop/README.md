@@ -1,6 +1,6 @@
 # TASK-654 — Tenant-Defined Consultation Context & Reasoning Consultation Loop
 
-- **Status:** Pending (plan approved in principle; sub-tickets not yet created)
+- **Status:** Completed (all 14 sub-tickets merged to `dev-2.1` 2026-08-12; open items in §6.4a)
 - **Type:** feature + refactor (the majority of the work extends existing machinery)
 - **Requested:** 2026-08-11 (owner)
 - **Baseline:** `dev-2.1` @ `a61df126b` (clean tree)
@@ -9,7 +9,7 @@
 
 > **Scope exclusion.** The v1 compatibility surface (`@arcaai/vox/compat`, `src/compat/**`, the `compat` tsup entry, `docs/Compat-API-Reference.md`) is **out of scope and must not be edited**. See §6.4 — compat is a thin client of core, so the exclusion extends to *shape changes* in shared SDK modules, not just to files under `src/compat/`.
 >
-> A second exclusion was stated by the owner but truncated in transmission. It has not been applied. **Confirm before execution begins.**
+> The second exclusion was later confirmed as `apps/ui-playground` — and the owner elected to **delete it outright**. Done in TASK-669.
 
 ---
 
@@ -301,11 +301,11 @@ See **[execution-plan.md](./execution-plan.md)** for per-ticket specs, model tie
 | TASK-661 | Schema compatibility, versioning and lifecycle guarantees | W2 | sonnet-5 | ✅ merged `8ea84ae62` |
 | TASK-662 | `ConsultationLoopWorkflow` — mechanical loop, actions, child finalize | W3 | opus-5 | ✅ merged `43a4dc788` |
 | TASK-663 | Agent promotion between tenants | W3 | opus-4.8 | ✅ merged — ⚠ cross-tenant e2e (OI-3) authored but NOT RUN |
-| TASK-664 | Reasoning primary + specialists + adjudication | W4 | opus-5 |
-| TASK-665 | SDK: schema discovery, validated context add, event hook | W4 | sonnet-5 |
-| TASK-666 | Admin console: context schema editor | W4 | sonnet-5 |
-| TASK-667 | Admin console: agent configuration form | W4 | sonnet-5 |
-| TASK-668 | SDK codegen CLI | W5 | sonnet-5 |
+| TASK-664 | Reasoning primary + specialists + adjudication | W4 | opus-5 | ✅ merged `0f81e333f` |
+| TASK-665 | SDK: schema discovery, validated context add, event hook | W4 | sonnet-5 | ✅ merged `ac7e76ad0` |
+| TASK-666 | Admin console: context schema editor | W4 | sonnet-5 | ✅ merged `d5c43c033` |
+| TASK-667 | Admin console: agent configuration form | W4 | sonnet-5 | ✅ merged `87a8ebe8a` |
+| TASK-668 | SDK codegen CLI | W5 | sonnet-5 | ✅ merged `014908ed5` |
 
 ### 6.2 Waves
 
@@ -340,6 +340,17 @@ Not started. Each sub-ticket authors its own README from the spec in [execution-
 ## 8. Implementation Summary
 
 Not started.
+
+### 6.4a Open items after completion
+
+| # | Item | Why it matters |
+|---|---|---|
+| OP-1 | **Real STT transcripts never enter the cascade.** `sttInternal.service.ts:353,428` emit only `TranscriptionCreated`, never `ContextAdded`. TASK-660 widened `LIVE_CONTEXT_TYPES` to include `TRANSCRIPT`, but that gate only governs writes through `ContextService`; the STT finalize path bypasses it. | **Worked example E2 is unproven end to end** — the cascade works for a client-added transcript, not for one the platform produced. |
+| OP-2 | **Nothing has run against a live stack.** TASK-663's cross-tenant promotion e2e and TASK-660's loop SSE route are authored and never executed. | The 404-over-403 posture on the promotion surface is asserted by unit tests only. |
+| OP-3 | **Promotion writes are not transactional.** `Repository.update` takes no `tx` (only `create` does). Ordering is chosen so the audit row lands last and never claims something that did not complete. | Fixing it changes the repository base class and touches every model. |
+| OP-4 | **`AgentTemplateResyncService` does not propagate the seven agent-config fields.** Deliberate — copying them unattended across every tenant would manufacture the state promotion blocks on. Became live when TASK-667's form merged. | Needs a decision, not a default. |
+| OP-5 | `loop-cancel` machinery is built and tested but has **no caller** — no consultation-cancel lifecycle exists anywhere in the codebase. | A product question, not a wiring gap. |
+| OP-6 | Console-side lock on `maxRegen`/`gateSlaSeconds`/`gateEscalationSeconds` is **defence-in-depth only** — the server's `harnessOverrides` validator does not distinguish caller role for those keys. | A UI that implies a guarantee the server does not enforce. |
 
 ## Change History
 
