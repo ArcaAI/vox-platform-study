@@ -192,6 +192,74 @@ only be consulted to *withdraw* one. That is the design in §3.1.
 
 ---
 
+### 2.6 P0 RESULT — code population is 14.3%, and the effective bridge rate is zero
+
+**Executed 2026-08-12** against the real, production `OntologyLinker`
+(`apps/nlp/src/nlp/services/ontology_linker.py`) over the exact entity surface forms of the
+six TASK-664 cases, both arms. The linker is deterministic and offline, so this is an exact
+measurement, not a sample.
+
+First, the linker **is** live: `linker_enabled` defaults to `True`
+(`apps/nlp/src/nlp/core/config.py:300`), it is wired into token classification
+(`token_classifier.py:227`), and the confidence floor is `0.0`. So codes are populated in
+production wherever the vocabulary hits. The mechanism is real. The coverage is not.
+
+| measure | result |
+|---|---|
+| vocabulary size | 67 normalized aliases (43 curated entries), **exact-match** dict lookup |
+| **code population** | **7 / 49 entity surface forms (14.3%)** receive any ontology code |
+| **bridge rate, faithfulness** | **1 / 17 (5.9%)** adjudicated entities share a code with a transcript entity |
+| **bridge rate, coverage** | **1 / 16 (6.2%)** transcript entities reachable from the note by code |
+| **bridge rate on *genuine* abstraction** | **0 / 16 (0.0%)** |
+
+The single "bridge" is `chest pain` → `chest pain` in `temporal-abstraction` — an entity that
+was **already lexically identical** and which the incumbent lexical sensor grounds without
+help. Code identity rescues **zero** genuinely abstracted entities.
+
+Two structural reasons, both visible in the linker:
+
+- **Exact-match on the whole span.** `dyspnoea` is in the vocabulary; `exertional dyspnoea`
+  is not, and `_normalize` does no head-term extraction, so the abstracted multi-word form
+  misses. Same for `bilateral peripheral oedema`, `capillary blood glucose`.
+- **The flagship case has no codes on either side.** `Tylenol`, `paracetamol`, and
+  `acetaminophen` are **all absent from the vocabulary**. The brand→generic example TASK-664
+  leads with cannot be bridged by codes, in either direction. (`albuterol`/`salbutamol` *is*
+  a coded synonym pair — but the transcript says `Ventolin`, which is also absent.)
+
+One result in the correct direction, worth recording: `pneumonia` codes on the adjudicated
+side and is **not** bridged, because the transcript never mentions it. The safety direction
+behaves as designed — codes did not manufacture a false grounding.
+
+**Decision — P2 is DEFERRED, per the gate this ticket set for itself in §3.2.** The §2.4
+lead was a good hypothesis and the measurement refuted it as a *primary* mechanism. Building
+it anyway would mean shipping a path that fires on 0% of the cases it was justified by.
+
+The mechanism is not wrong — the *vocabulary* is a 67-alias curated subset with no partial
+matching. Making it load-bearing would require a real self-hosted UMLS/MedCAT install and a
+head-term matching strategy, which is unbounded work with its own safety surface (a partial
+match is a looser match, and §1.2 applies to it). That is a separate ticket, not a work item
+here. **Extending the vocabulary inside this ticket to make the number look better is
+explicitly rejected** — it would be tuning the instrument to fit the hypothesis.
+
+**Consequence: P3 (entity-level entailment) is now the sole load-bearing mechanism**, and
+carries the full 16-entity faithfulness residue and 15-entity coverage residue.
+
+### 2.7 P3 backend availability (checked 2026-08-12)
+
+- MiniCheck weights are **not staged** on this host (`/models/harness-cache` does not exist),
+  and `HARNESS_ATOMIC_FACT_ENABLED=false` in `.env.dev`. The deterministic NLI cannot be
+  end-to-end calibrated here without provisioning weights.
+- The **LM Studio judge is live** (`localhost:1234`) with the configured
+  `HARNESS_JUDGE_MODEL=google/gemma-4-e4b-qat` — the same backend `groundedness` uses in
+  production today.
+
+So P3 is built **backend-agnostic**: the sensor takes an injected entailment backend, is
+unit-tested with deterministic fakes, and the real P5 calibration runs against the available
+LM Studio judge. MiniCheck remains the intended deterministic upgrade behind the same
+interface once weights are staged — it is not a blocker.
+
+---
+
 ## 3. Implementation Plan
 
 ### 3.1 The selection rule (scope item 2) — escalation, not replacement
@@ -211,16 +279,14 @@ entity/transcript entities
         └─ unmatched (the "residue")
                  │
                  ▼
-        code-identity check (§2.4, model-free)
-                 ├─ same ontology code ─────────────► grounded / covered
-                 └─ no match
-                          │
-                          ▼
-                 entity-level entailment (MiniCheck)
-                          ├─ entailed ──────────────► grounded / covered
-                          ├─ not entailed ──────────► FLAG (as today)
-                          └─ degraded / disabled ───► FLAG (as today)
+        entity-level entailment (injected backend)
+                 ├─ entailed ──────────────────────► grounded / covered
+                 ├─ not entailed ──────────────────► FLAG (as today)
+                 └─ degraded / disabled ───────────► FLAG (as today)
 ```
+
+_(The code-identity step originally planned between these two was **removed** after the P0
+measurement returned a 0% effective bridge rate — see §2.6.)_
 
 Why this shape:
 
@@ -252,9 +318,9 @@ expected-and-unaddressed. That is the "deliberate update" §1.2 requires.
 
 | # | Item | Gate |
 |---|---|---|
-| **P0** | **Measure ontology-code population** on real consultation NER output (both note and transcript entities, per code field). The entire §2.4 lead is contingent on this. | A recorded number, not an estimate. If population is near-zero, P2 is deferred and the ticket proceeds on P3 alone — say so explicitly rather than building on an untested assumption. |
-| **P1** | **Build the two-arm eval corpus** (§3.3). Extends `harness/eval/golden/fixtures/`. | Both arms present; the fabrication arm independently reviewed as genuinely fabricated. |
-| **P2** | **Code-identity grounding path** — an entity is grounded/covered when it shares a non-empty ontology code with a transcript entity. Model-free, deterministic. Gated by its own kill-switch, default OFF until P5 passes. | Unit tests incl. the negative case (different code ⇒ not grounded; absent code ⇒ falls through, never grounds). |
+| **P0** | ✅ **DONE** — measured ontology-code population (§2.6). | Result: 14.3% population, **0% effective bridge rate**. Gate applied as written: **P2 deferred**. |
+| **P1** | **Build the two-arm eval corpus** (§3.3). | Both arms present; the fabrication arm independently reviewed as genuinely fabricated. |
+| ~~P2~~ | ~~Code-identity grounding path~~ — **DEFERRED by the P0 result** (§2.6). Not implemented. | n/a |
 | **P3** | **Entity-level entailment sensor** — the missing adapter (§2.2). Frames an entity as a proposition against the transcript premise and reuses the `NliEntailer` protocol so MiniCheck and the overlap entailer both slot in. Covers **both** directions, closing the §2.1 recall gap. | Deterministic verdicts; degrade-on-outage proven by test; **never** returns a pass on the `DeterministicOverlapEntailer` fallback that the lexical sensor did not already return (else the fallback silently re-lexicalizes). |
 | **P4** | **Wire the escalation** (§3.1) into `run_sensors` / the aggregator path, behind a kill-switch defaulting OFF. Thresholds untouched. | Full harness suite green; replay-compat tests green (`workflows.py` must not gain a new command — resolve at activity level, as `atomic_fact` already does). |
 | **P5** | **Two-arm calibration + parity report** (§3.3). | The joint criterion below. Publish the report; a partial pass is a partial pass. |
