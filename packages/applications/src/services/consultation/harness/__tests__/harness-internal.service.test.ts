@@ -176,6 +176,11 @@ const createMockNamedEntityRepository = () => ({
       transcriptEndOffset: 26,
     },
   ]),
+  // TASK-688: persistEntities adopts its OWN prior rows for this
+  // ContextItem instead of blindly inserting a second set. Default fixture is
+  // "no prior rows" so every pre-existing test keeps the create-only path.
+  findByContextItem: vi.fn().mockResolvedValue([]),
+  update: vi.fn().mockImplementation((id, entity) => Promise.resolve({ id, ...entity })),
 });
 
 const createMockSummaryMetaRepository = () => ({
@@ -2382,5 +2387,148 @@ describe('HarnessInternalService', () => {
 
     // getEntities/assemble are READ paths, deliberately out of scope for F-10
     // (only the write-back paths listed above guard resourceStatus).
+  });
+
+  // =========================================================================
+  // TASK-688 — persistEntities idempotency across workflow EXECUTIONS
+  //
+  // `HarnessDocWorkflow` has two start sites on the deterministic id
+  // `harness-doc-{consultationId}`, neither setting `id_reuse_policy`, so
+  // Temporal's default ALLOW_DUPLICATE rejects a second start only while the
+  // first execution is still OPEN. A second EXECUTION is therefore routine, and
+  // its `Idempotency-Key` differs (it was minted per run), so the replay cache
+  // misses and the create-only write path duplicated every NamedEntity row —
+  // duplicated PHI (`encryptedText`) that also feeds the NER-priors guard.
+  //
+  // The invariant lives in the WRITE PATH, not the key: `withHarnessIdempotency`
+  // degrades to `work()` whenever Redis is absent or throws, so the key can only
+  // ever be a fast path on top of a write that is already idempotent.
+  // =========================================================================
+  describe('TASK-688: persistEntities is idempotent across executions', () => {
+    // A row this path authored in a previous execution — carries the ownership
+    // marker. Plain objects stand in for NamedEntityEntity; the service only
+    // assigns to the content fields and reads `id`/`aiModelId`.
+    const ownedRow = (id: string, over: Record<string, unknown> = {}) => ({
+      id,
+      aiModelId: 'HARNESS_NER',
+      contextItemId: 'tx-1',
+      text: 'Metformin',
+      className: 'MEDICATION',
+      startOffset: 5,
+      endOffset: 14,
+      ...over,
+    });
+
+    const body = (entities: unknown[]) => ({
+      tenantId: 'tenant-1',
+      userId: 'doctor-1',
+      contextItemId: 'tx-1',
+      entities,
+    });
+
+    it('bar 1: a SECOND execution over the same transcript produces exactly ONE set of rows', async () => {
+      // Execution 1 — nothing persisted yet.
+      await service.persistEntities('consultation-1', body([{ text: 'Metformin', type: 'MEDICATION', startOffset: 5, endOffset: 14 }]) as any);
+      expect(namedEntityRepository.createMany).toHaveBeenCalledTimes(1);
+      expect(namedEntityRepository.createMany.mock.calls[0][0]).toHaveLength(1);
+
+      // Execution 2 — a NEW run id, so a different Idempotency-Key: the replay
+      // cache cannot help. Execution 1's row is now on disk.
+      namedEntityRepository.findByContextItem.mockResolvedValue([ownedRow('ne-1')]);
+      await service.persistEntities('consultation-1', body([{ text: 'Metformin', type: 'MEDICATION', startOffset: 5, endOffset: 14 }]) as any);
+
+      // No SECOND set: the surviving row count is 1, not 2.
+      const created = namedEntityRepository.createMany.mock.calls.flatMap((c: any[]) => c[0]);
+      expect(created).toHaveLength(1);
+    });
+
+    it('bar 2: a re-extraction over CHANGED input replaces the row (not silently ignored), still ONE set', async () => {
+      namedEntityRepository.findByContextItem.mockResolvedValue([ownedRow('ne-1')]);
+
+      await service.persistEntities('consultation-1', body([{ text: 'Amoxicillin', type: 'MEDICATION', startOffset: 9, endOffset: 20 }]) as any);
+
+      // The changed entity REACHED the database — as an update of the row this
+      // path already owns, not as a second row and not as a no-op.
+      expect(namedEntityRepository.update).toHaveBeenCalledTimes(1);
+      const [id, updated] = namedEntityRepository.update.mock.calls[0];
+      expect(id).toBe('ne-1');
+      expect(updated).toEqual(expect.objectContaining({ text: 'Amoxicillin', startOffset: 9, endOffset: 20 }));
+      expect(namedEntityRepository.createMany).not.toHaveBeenCalled();
+    });
+
+    it('bar 3: a row authored by ANOTHER producer (ner.processor) is never updated and never deleted', async () => {
+      // ner.processor / summary.service / context.service all persist through
+      // `namedEntityPropsFromNlp`, which sets NO aiModelId. Such a row must be
+      // invisible to this path even when it covers the very same span.
+      const foreignRow = { id: 'ne-foreign', aiModelId: null, contextItemId: 'tx-1', text: 'Metformin', className: 'MEDICATION', startOffset: 5, endOffset: 14 };
+      namedEntityRepository.findByContextItem.mockResolvedValue([foreignRow]);
+
+      await service.persistEntities('consultation-1', body([{ text: 'Metformin', type: 'MEDICATION', startOffset: 5, endOffset: 14 }]) as any);
+
+      // Never adopted (no update against its id) …
+      expect(namedEntityRepository.update).not.toHaveBeenCalled();
+      // … and nothing on this service can delete it — the repository's
+      // hard-delete helper is never reached (NamedEntity has no soft delete).
+      expect((namedEntityRepository as any).deleteByContextItem).toBeUndefined();
+      // … and the harness still writes its OWN row (fail safe to CREATE).
+      expect(namedEntityRepository.createMany).toHaveBeenCalledTimes(1);
+      expect(namedEntityRepository.createMany.mock.calls[0][0]).toHaveLength(1);
+    });
+
+    it('every created row carries the ownership marker, so the NEXT execution can recognise it', async () => {
+      await service.persistEntities('consultation-1', body([{ text: 'Metformin', type: 'MEDICATION' }]) as any);
+      const created = namedEntityRepository.createMany.mock.calls[0][0][0];
+      expect(created).toEqual(expect.objectContaining({ aiModelId: 'HARNESS_NER' }));
+    });
+
+    it('scopes adoption to THIS ContextItem — a different consultation never collides', async () => {
+      await service.persistEntities('consultation-1', body([{ text: 'Metformin', type: 'MEDICATION' }]) as any);
+      expect(namedEntityRepository.findByContextItem).toHaveBeenCalledWith('tx-1');
+    });
+
+    it('a LATER execution with MORE entities keeps one set: prior rows adopted, the surplus created', async () => {
+      namedEntityRepository.findByContextItem.mockResolvedValue([ownedRow('ne-1')]);
+
+      await service.persistEntities(
+        'consultation-1',
+        body([
+          { text: 'Metformin', type: 'MEDICATION', startOffset: 5, endOffset: 14 },
+          { text: 'Diabetes', type: 'CONDITION', startOffset: 20, endOffset: 28 },
+        ]) as any,
+      );
+
+      expect(namedEntityRepository.update).toHaveBeenCalledTimes(1);
+      expect(namedEntityRepository.createMany).toHaveBeenCalledTimes(1);
+      expect(namedEntityRepository.createMany.mock.calls[0][0]).toHaveLength(1);
+      expect(namedEntityRepository.createMany.mock.calls[0][0][0]).toEqual(expect.objectContaining({ text: 'Diabetes' }));
+    });
+
+    // Which contribution is load-bearing? THIS one. `withHarnessIdempotency`
+    // degrades to `work()` whenever Redis is absent or throws, so the stable key
+    // added on the harness side cannot be the guarantee — with the cache down the
+    // second execution re-runs the callback and only the write path stands between
+    // the consultation and a duplicated PHI set.
+    it('holds with the replay cache DOWN and a stable key — the write path, not the key, is the guarantee', async () => {
+      const redisCache = createMockRedisCache();
+      redisCache.get.mockRejectedValue(new Error('redis down'));
+      service = buildService(false, undefined, true, redisCache);
+      const key = 'entities:consultation-1:samedigest';
+
+      await service.persistEntities('consultation-1', body([{ text: 'Metformin', type: 'MEDICATION' }]) as any, key);
+      namedEntityRepository.findByContextItem.mockResolvedValue([ownedRow('ne-1')]);
+      await service.persistEntities('consultation-1', body([{ text: 'Metformin', type: 'MEDICATION' }]) as any, key);
+
+      const created = namedEntityRepository.createMany.mock.calls.flatMap((c: any[]) => c[0]);
+      expect(created).toHaveLength(1);
+    });
+
+    it('a lookup failure fails SAFE to create rather than losing the entities', async () => {
+      namedEntityRepository.findByContextItem.mockRejectedValueOnce(new Error('db down'));
+
+      await service.persistEntities('consultation-1', body([{ text: 'Metformin', type: 'MEDICATION' }]) as any);
+
+      expect(namedEntityRepository.createMany).toHaveBeenCalledTimes(1);
+      expect(namedEntityRepository.update).not.toHaveBeenCalled();
+    });
   });
 });

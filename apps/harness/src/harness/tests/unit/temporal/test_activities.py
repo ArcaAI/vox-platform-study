@@ -455,9 +455,16 @@ class TestApiActivities:
         assert call["consultation_id"] == "c-1"
         assert call["tenant_id"] == "t-1"
         assert call["context_item_id"] == "ctx-t1"
-        # The write carries a deterministic idempotency key derived
-        # from the workflow run + this activity invocation (ActivityEnvironment defaults).
-        assert call["idempotency_key"] == "test-run:test"
+        # TASK-688: the key is derived from the WRITE (consultation + a digest
+        # of the entity set), NOT from the run — a second workflow EXECUTION
+        # duplicates this callback, which a run-scoped key cannot dedup. Every
+        # OTHER callback keeps the run-scoped key (their duplicate is only ever
+        # an activity retry).
+        assert call["idempotency_key"] == activities._entities_idempotency_key(
+            "c-1", [NEREntity(text="x", type="DISEASE", start=0, end=1)]
+        )
+        assert call["idempotency_key"].startswith("entities:c-1:")
+        assert "test-run" not in call["idempotency_key"]
 
     @pytest.mark.asyncio
     async def test_assemble_prompt_forwards_consultation(self, env, monkeypatch):
@@ -588,6 +595,75 @@ class TestApiActivities:
             PersistDraftInput(consultation_id="c-2", tenant_id="t-1", content="DRAFT"),
         )
         second = fake.calls["persist_draft"]["idempotency_key"]
+
+        assert first != second
+
+    # TASK-688 — the same three properties for the ENTITY persist. The gateway's
+    # write path is what actually guarantees one set of rows; these lock the
+    # fast path so it can never SUPPRESS a legitimate re-extraction.
+    @pytest.mark.asyncio
+    async def test_entities_key_is_byte_identical_across_workflow_executions(self, monkeypatch):
+        fake = _FakeApi()
+        monkeypatch.setattr(activities, "_api_client", lambda s: fake)
+        payload = PersistEntitiesInput(
+            consultation_id="c-1",
+            tenant_id="t-1",
+            context_item_id="ctx-t1",
+            entities=[NEREntity(text="Metformin", type="MEDICATION", start=0, end=9)],
+        )
+
+        keys = []
+        for run_id, activity_id in (("run-A", "act-3"), ("run-B", "act-91")):
+            env = ActivityEnvironment()
+            env.info = dataclasses.replace(
+                ActivityEnvironment.default_info(),
+                workflow_run_id=run_id,
+                activity_id=activity_id,
+            )
+            await env.run(activities.persist_entities, payload)
+            keys.append(fake.calls["persist_entities"]["idempotency_key"])
+
+        assert keys[0] == keys[1]
+        assert "run-A" not in keys[0] and "run-B" not in keys[0]
+
+    @pytest.mark.asyncio
+    async def test_entities_key_changes_when_the_extracted_set_changes(self, env, monkeypatch):
+        """A genuine re-extraction must NOT be swallowed as a duplicate."""
+        fake = _FakeApi()
+        monkeypatch.setattr(activities, "_api_client", lambda s: fake)
+        base = {"consultation_id": "c-1", "tenant_id": "t-1", "context_item_id": "ctx-t1"}
+
+        await env.run(
+            activities.persist_entities,
+            PersistEntitiesInput(**base, entities=[NEREntity(text="Metformin", type="MEDICATION")]),
+        )
+        first = fake.calls["persist_entities"]["idempotency_key"]
+        await env.run(
+            activities.persist_entities,
+            PersistEntitiesInput(
+                **base, entities=[NEREntity(text="Amoxicillin", type="MEDICATION")]
+            ),
+        )
+        second = fake.calls["persist_entities"]["idempotency_key"]
+
+        assert first != second
+
+    @pytest.mark.asyncio
+    async def test_entities_key_never_collides_across_consultations(self, env, monkeypatch):
+        fake = _FakeApi()
+        monkeypatch.setattr(activities, "_api_client", lambda s: fake)
+        entities = [NEREntity(text="Metformin", type="MEDICATION")]
+
+        await env.run(
+            activities.persist_entities,
+            PersistEntitiesInput(consultation_id="c-1", tenant_id="t-1", entities=entities),
+        )
+        first = fake.calls["persist_entities"]["idempotency_key"]
+        await env.run(
+            activities.persist_entities,
+            PersistEntitiesInput(consultation_id="c-2", tenant_id="t-1", entities=entities),
+        )
+        second = fake.calls["persist_entities"]["idempotency_key"]
 
         assert first != second
 
