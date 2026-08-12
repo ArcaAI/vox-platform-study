@@ -392,11 +392,116 @@ async def capture_loop(out_path: Path) -> None:
     print(f"wrote {out_path}")
 
 
+async def capture_reasoning(out_path: Path) -> None:
+    """Capture a ``ConsultationLoopWorkflow`` history WITH the reasoning lane on (TASK-664).
+
+    Records every command the deliberative lane adds, in order:
+    ``fetch_loop_config`` (the pin) -> ``document_extract_text`` (a derive action,
+    whose output re-enters as context one depth deeper) -> ``plan_reasoning``
+    (the planner activity — the decision this fixture proves replays without
+    re-invoking the model) -> a ``SpecialistWorkflow`` child -> ``emit_loop_event``
+    -> ``record_adjudication``.
+
+    Unlike the TASK-662 loop fixture, this one has something historical to guard
+    from the moment it is written: the ``task-664-reasoning`` patch era. Any
+    later ungated change to the reasoning command sequence fails its replay.
+    """
+    from harness.temporal.models import (
+        LOOP_ACTION_DOCUMENT_EXTRACT_TEXT,
+        ConsultationEndingSignal,
+        ConsultationLoopWorkflowInput,
+        ContextAddedSignal,
+        LoopBudget,
+        LoopSubscription,
+    )
+    from harness.temporal.workflows import (
+        ConsultationLoopWorkflow,
+        SpecialistWorkflow,
+        consultation_loop_workflow_id,
+    )
+    from harness.tests.unit.temporal._loop_stubs import (
+        LoopStubConfig,
+        LoopStubRecorder,
+        make_loop_stub_activities,
+        reasoning_loop_config,
+    )
+
+    consultation_id = "c-reasoning-fixture"
+    loop_config = reasoning_loop_config(
+        subscriptions=[
+            LoopSubscription(
+                kind_key="attachment", actions=[LOOP_ACTION_DOCUMENT_EXTRACT_TEXT]
+            ),
+            LoopSubscription(kind_key="transcript", actions=["client.emit"]),
+        ],
+        budget=LoopBudget(max_depth=3, max_actions=50, max_specialist_runs=5),
+    )
+    recorder = LoopStubRecorder()
+
+    async with await WorkflowEnvironment.start_time_skipping(
+        data_converter=pydantic_data_converter
+    ) as env:
+        task_queue = f"reasoning-fixture-tq-{uuid.uuid4()}"
+        async with Worker(
+            env.client,
+            task_queue=task_queue,
+            workflows=[ConsultationLoopWorkflow, SpecialistWorkflow],
+            activities=make_loop_stub_activities(
+                LoopStubConfig(config=loop_config), recorder
+            ),
+        ):
+            handle = await env.client.start_workflow(
+                ConsultationLoopWorkflow.run,
+                ConsultationLoopWorkflowInput(
+                    consultation_id=consultation_id,
+                    tenant_id="t-1",
+                    session_id="s-1",
+                    replan_interval_events=1,
+                ),
+                id=consultation_loop_workflow_id(consultation_id),
+                task_queue=task_queue,
+            )
+            # A transcript item -> the cardiology specialist is planned and run.
+            await handle.signal(
+                ConsultationLoopWorkflow.context_added,
+                ContextAddedSignal(
+                    context_item_id="ci-1", kind_key="transcript", depth=0, occurred_at="1"
+                ),
+            )
+            # An attachment -> the derive action, whose output re-enters as context.
+            await handle.signal(
+                ConsultationLoopWorkflow.context_added,
+                ContextAddedSignal(
+                    context_item_id="ci-2", kind_key="attachment", depth=0, occurred_at="2"
+                ),
+            )
+            for _ in range(400):
+                state = await handle.query(ConsultationLoopWorkflow.state)
+                if state.specialists_run >= 1 and state.derived_context >= 1:
+                    break
+                await asyncio.sleep(0.02)
+            await handle.signal(
+                ConsultationLoopWorkflow.consultation_ending, ConsultationEndingSignal()
+            )
+
+            result = await handle.result()
+            print(
+                f"plans={result.plans_made} specialists={result.specialists_run} "
+                f"derived={result.derived_context} cycles={result.cycles_suppressed}"
+            )
+            history = await handle.fetch_history()
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(history.to_json())
+    print(f"wrote {out_path}")
+
+
 if __name__ == "__main__":
     args = sys.argv[1:]
     scenario = "happy"
     _scenarios = (
         "--loop",
+        "--reasoning",
         "--failure",
         "--optimistic",
         "--regen",
@@ -414,13 +519,15 @@ if __name__ == "__main__":
     if len(args) != 1:
         raise SystemExit(
             "usage: python -m ..._capture_replay_fixture "
-            "[--loop|--failure|--optimistic|--regen|--gate-abandon|--edit-cap|--retract"
-            "|--claim-check|--mcp|--redaction|--redaction-audit|--assemble-reuse]"
+            "[--loop|--reasoning|--failure|--optimistic|--regen|--gate-abandon|--edit-cap"
+            "|--retract|--claim-check|--mcp|--redaction|--redaction-audit|--assemble-reuse]"
             " <output.json>"
         )
     if scenario == "loop":
         # A different workflow TYPE, so it gets its own capture entry point
         # rather than another branch inside the document-workflow scenario tree.
         asyncio.run(capture_loop(Path(args[0])))
+    elif scenario == "reasoning":
+        asyncio.run(capture_reasoning(Path(args[0])))
     else:
         asyncio.run(capture(Path(args[0]), scenario=scenario))
