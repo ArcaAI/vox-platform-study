@@ -1,6 +1,6 @@
 # TASK-625 — Harness Temporal Worker & Temporal Consolidation
 
-**Status**: Pending (plan authored 2026-08-08, awaiting owner approval)
+**Status**: Closed
 **Classification**: infrastructure
 **Created**: 2026-08-08
 **Parent**: [TASK-616 Phase 7c](../TASK-616-Deployment-CICD-Observability-Modernization/README.md) · [Program index](../TASK-616-Deployment-CICD-Observability-Modernization/phase-program-index.md) — depends on [TASK-617](../TASK-617-Dev-Environment-Correctness-And-GitOps-Recovery/README.md), [TASK-619](../TASK-619-GitOps-CICD-Delivery-Loop/README.md)
@@ -218,3 +218,4 @@ included; the deployment repo's CI (`render`/`schemas`/`config-refs`) passes.
 | Date | Change | Author |
 |---|---|---|
 | 2026-08-08 | Ticket created from TASK-616 Phase 7c / component design §C2. Splits the work into an image/CI/metrics track (Wave 1, monorepo), a manifest track (Wave 2, deployment repo), and an owner-decision package for the two-Temporal-servers conflict (Wave 3) that the repo's own ConfigMap comment shows is a deliberate, currently-held position — not silently overridden. Acceptance is anchored on a live `HarnessDocWorkflow` completing end-to-end, the first such proof since the worker has never run. Status `Pending` pending owner approval. | Claude |
+| 2026-08-12 | Closed — scope substantially covered by the TASK-654 program (TASK-655 through TASK-668, Loop Event Plane / ConsultationLoopWorkflow / Reasoning Primary & Specialists); remaining gap not being pursued separately. | owner |

@@ -173,7 +173,7 @@ export class BillingService extends BaseService implements IBillingService {
       lineEntities = computation.lines.map((draft) => this.toLineEntity(tenantId, invoice.id, draft));
       await this.unitOfWork.runInTransaction(async (tx) => {
         await this.invoiceRepository.create(invoice, tx);
-        await this.lineRepository.createManyInTx(lineEntities, tx);
+        await this.lineRepository.createMany(lineEntities, false, tx);
       });
       eventType = SysEventType.ResourceCreated;
     } else {
@@ -187,7 +187,7 @@ export class BillingService extends BaseService implements IBillingService {
       lineEntities = computation.lines.map((draft) => this.toLineEntity(tenantId, existing.id, draft));
       invoice = await this.unitOfWork.runInTransaction(async (tx) => {
         await this.lineRepository.softDeleteByInvoice(tenantId, existing.id, this.requestUserId, tx);
-        await this.lineRepository.createManyInTx(lineEntities, tx);
+        await this.lineRepository.createMany(lineEntities, false, tx);
         return this.invoiceRepository.updateWithVersion(existing.id, existing, existing.version, tx);
       });
       eventType = SysEventType.ResourceUpdated;

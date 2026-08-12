@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | Pending |
+| **Status** | Closed |
 | **Classification** | feature / infrastructure |
 | **Created** | 2026-08-07 |
 | **Owner** | Platform / STT |
@@ -666,6 +666,7 @@ The STT pipeline may enter the automated promotion flow when **all** of the foll
 | Date | Change | Author |
 |---|---|---|
 | 2026-08-07 | Ticket created. End-to-end trace with citations, 9-item state inventory, 12-item silent-drop inventory, 17-item gap table, best-practice review with sources, 5-phase plan, test matrix (15 TS unit / 7 pytest / 10 integration / 16 E2E / chaos honesty table), gate definition. Status: Pending — awaiting owner decisions Q1–Q8. | Claude (Opus 5) |
+| 2026-08-12 | Closed — scope substantially covered by TASK-505 (STT Pipeline Restructure), TASK-594 (ml-en Code-Switch Quality), and TASK-614 (STT Provider Switching & Fallback); remaining gap not being pursued separately. | Claude |
 
 ---
 

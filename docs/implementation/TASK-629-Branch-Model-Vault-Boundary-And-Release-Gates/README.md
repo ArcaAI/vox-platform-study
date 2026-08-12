@@ -1,6 +1,6 @@
 # TASK-629 — Branch Model, Vault CI Boundary & Release Gates
 
-**Status**: Pending
+**Status**: Closed
 **Classification**: Infrastructure
 **Date**: 2026-08-07
 **Parent**: `docs/implementation/TASK-616-Deployment-CICD-Observability-Modernization/component-design-cicd-promotion.md` §F4 (CE approval model), §F10 (Vault `bound_claims` boundary), §F11 (production trigger). This ticket operationalizes those three sections into a concrete, applied ref/environment/credential model — it does not repeat their analysis, only their conclusions where load-bearing.
@@ -332,3 +332,4 @@ Per the assignment: prove the boundary holds with a **denial**, not a UI-level f
 | Date | Change |
 |---|---|
 | 2026-08-07 | Ticket created. Requirement analysis, current-state verification (live GitLab API checks against project `arca/hope-v2` id `6`, plus static reads of `.gitlab-ci.yml`, `.gitlab/ci/{vault,rules,build,deploy,templates}.yml`, `docs/operations/vault/README.md`, `deployment/README.md`), the four/five-row ref/environment/credential matrix, Vault role JSON, protected-branch/tag payloads, release-gate table, phased implementation plan, migration runbook, verification criteria, and four open questions written. Status: Pending — no code or infrastructure changes applied yet. |
+| 2026-08-12 | Closed — Vault HA and promote-* CI gating already delivered under TASK-616 Track V; remaining scope not being pursued separately. |

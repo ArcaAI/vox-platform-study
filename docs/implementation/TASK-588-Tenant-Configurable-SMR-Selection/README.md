@@ -1,6 +1,6 @@
 # TASK-588 — Tenant-Configurable SMR Model Selection (Primary + Fallback)
 
-**Status:** In Progress · **Branch:** `dev-2.1` · **Type:** feature
+**Status:** Closed · **Branch:** `dev-2.1` · **Type:** feature
 
 ## Requirement Analysis
 
@@ -117,3 +117,4 @@ in every package; full cross-package `typecheck`/`build` + live e2e are the rema
   env hardcode removed and replaced with per-tenant `resolveSmrFallbackSelection`; cross-agent e2e
   key-count + orphaned-comment seams fixed by parent.
 - 2026-08-12: Header title typo corrected — ticket number/folder is TASK-588; the title read "TASK-587" (a copy-paste artifact). Status field left unchanged.
+- 2026-08-12 — Closed — remaining scope deprioritized; the core env-fallback removal already shipped.

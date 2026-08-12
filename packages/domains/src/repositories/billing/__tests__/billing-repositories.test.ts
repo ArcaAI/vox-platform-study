@@ -13,8 +13,9 @@ import { BillingInvoiceLineWriteRepository } from '../BillingInvoiceLineWriteRep
  * `BillingUsageAggregateRepository` runs bounded SQL AGGREGATES over the raw
  * ledger (sums, never row reads) for the two things the rollups cannot answer:
  * operation-discriminated quantities (D16/OQ1) and the BYOK notional cost sum
- * (D14). `BillingInvoiceLineWriteRepository` adds the tx-aware line-supersede
- * writes the draft recompute needs (base `softDelete`/`createMany` take no tx).
+ * (D14). `BillingInvoiceLineWriteRepository` adds the bulk PREDICATE soft-delete
+ * the draft recompute needs (base `softDelete` takes a single id); its insert
+ * half is the base `createMany(entities, false, tx)`.
  */
 
 const TENANT = '11111111-1111-1111-1111-111111111111';
@@ -110,20 +111,25 @@ describe('BillingInvoiceLineWriteRepository', () => {
     expect(args.data.version).toEqual({ increment: 1 });
   });
 
-  it('createManyInTx maps entities through the house mapper and writes through the tx', async () => {
-    await repo.createManyInTx([line], tx as never);
+  // The insert half of the supersede is the BASE `createMany(entities, false, tx)` —
+  // this repository adds no insert of its own. Covered here because the recompute
+  // depends on the base honouring the tx and the `_version` strip for these rows.
+  it('base createMany maps entities through the house mapper and writes through the tx', async () => {
+    await repo.createMany([line], false, tx as never);
 
     expect(tx.billingInvoiceLine.createMany).toHaveBeenCalledTimes(1);
     const args = tx.billingInvoiceLine.createMany.mock.calls[0][0];
     expect(args.data).toHaveLength(1);
     expect(args.data[0].id).toBe(line.id);
     expect(args.data[0].amountMicros).toBe(3000n);
+    // Supersede inserts a fresh set — a duplicate id is a bug, never a skip.
+    expect(args.skipDuplicates).toBe(false);
     // The OCC strip: `_version` is database-owned and must not be written.
     expect(args.data[0]).not.toHaveProperty('version');
   });
 
-  it('createManyInTx is a no-op for an empty batch', async () => {
-    await repo.createManyInTx([], tx as never);
+  it('base createMany is a no-op for an empty batch', async () => {
+    await repo.createMany([], false, tx as never);
     expect(tx.billingInvoiceLine.createMany).not.toHaveBeenCalled();
   });
 });

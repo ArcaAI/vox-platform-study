@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | `Pending` — plan only, no code written |
+| **Status** | `Closed` |
 | **Type** | `refactor` (cross-cutting infrastructure) |
 | **Raised by** | TASK-610 §1 follow-up — the config fetch/cache/refresh review |
 | **Blast radius** | `SecretsService` (Vault rotation), `AppSettingsService` (read by nearly everything) |
@@ -112,3 +112,4 @@ cron and shrinking its worst-case staleness from ~60 s to sub-second.
 | Date | Change |
 |---|---|
 | 2026-08-07 | Raised from the TASK-610 config review. Plan only — deliberately not implemented in TASK-610, see §1. |
+| 2026-08-12 | Closed — plan deprioritized, not being pursued at this time. |

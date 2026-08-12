@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | `Pending` |
+| **Status** | `Closed` |
 | **Type** | `bugfix` |
 | **Created** | 2026-08-08 |
 | **Scope** | `apps/smr/src/smr/tests/**` (test harness only — production code is NOT at fault) |
@@ -191,3 +191,4 @@ is gone.)*
 | Date | Change | Author |
 |---|---|---|
 | 2026-08-08 | Ticket created from TASK-636 Phase 4 verification. Root cause identified and measured: `smr/main.py`'s module-level `app = create_app()` merges the developer's real `.env.dev` into `os.environ` at import, so a live `SMR_SERVICE_TOKEN` flips the auth middleware from dev-bypass to enforcing and returns 401 to 109 unrelated tests. Five unit-test files can trigger it, which makes the failure count collection-order dependent. **Confirmed PRE-EXISTING, not a TASK-636 regression** — baseline with all trace work stashed is 134 failed / 928 passed vs 109 / 963 with it; the initial "regression" diagnosis during TASK-636 was wrong and is corrected here. Two partial fixes already landed under TASK-636 (conftest env snapshot/restore; a genuinely separate stale-mock defect in `test_xread_streaming.py` that had the file hanging). Fleet scan recorded: 5 of 6 Python services have the same module-level `app`, 3 now guarded, `stt`/`harness` share the mechanism but are not yet symptomatic, `nlp` is immune via `--factory`. | Claude |
+| 2026-08-12 | Closed — root cause documented (module-level `create_app()` leaking `.env.dev`); fix deprioritized, not being pursued at this time. | Claude |

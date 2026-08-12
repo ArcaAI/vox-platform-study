@@ -136,9 +136,9 @@ function makeWorld(config: WorldConfig = {}) {
       }
       return count;
     }),
-    createManyInTx: vi.fn(async (entities: Array<{ invoiceId: string }>) => {
+    createMany: vi.fn(async (entities: Array<{ invoiceId: string }>) => {
       for (const entity of entities) lines.push({ entity, invoiceId: entity.invoiceId, live: true });
-      return entities.length;
+      return { count: entities.length };
     }),
     findByInvoice: vi.fn(async (_tenantId: string, invoiceId: string) =>
       lines.filter((line) => line.invoiceId === invoiceId && line.live).map((line) => line.entity),

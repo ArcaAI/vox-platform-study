@@ -1,6 +1,6 @@
 # TASK-619 — GitOps CI/CD Delivery Loop
 
-**Status**: Pending (plan authored 2026-08-08, awaiting owner approval)
+**Status**: Closed
 **Classification**: infrastructure
 **Created**: 2026-08-08
 **Parent**: [TASK-616 Phase 3](../TASK-616-Deployment-CICD-Observability-Modernization/README.md#phase-3--real-gitops-cicd--l) · [Program index](../TASK-616-Deployment-CICD-Observability-Modernization/phase-program-index.md)
@@ -251,3 +251,4 @@ These are constraints of the tier, not defects. Designing past them wastes a cyc
 | Date | Change | Author |
 |---|---|---|
 | 2026-08-08 | Ticket created. TASK-616 Phase 3 was never spun out; this creates it. **The ticket's shape differs sharply from Appendix F's**: most of Appendix F's recommendation was implemented in code on 2026-08-07/08 but never pushed, applied, or executed — so this is a land-and-prove ticket, not a build ticket. Re-audit surfaced one **critical** new finding: **two live credentials are readable in `origin/main`'s history** (F0-1), plus a still-running Image Updater controller holding a registry credential and a Git write PAT (F1-live). Recorded the hard Vault sequencing constraint (protect refs *before* writing roles, and never loosen the glob instead) and the GitLab CE trap set. Status `Pending` pending owner approval. | Claude |
+| 2026-08-12 | Closed — plan deprioritized, not being pursued at this time. | owner |

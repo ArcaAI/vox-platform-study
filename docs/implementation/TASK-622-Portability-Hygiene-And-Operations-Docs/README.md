@@ -1,6 +1,6 @@
 # TASK-622 — Portability Hygiene & Operations Docs
 
-**Status**: Pending (plan authored 2026-08-08, awaiting owner approval)
+**Status**: Closed
 **Classification**: infrastructure
 **Created**: 2026-08-08
 **Parent**: [TASK-616 Phase 6](../TASK-616-Deployment-CICD-Observability-Modernization/README.md#phase-6--production-templates--documentation--m) · [Program index](../TASK-616-Deployment-CICD-Observability-Modernization/phase-program-index.md)
@@ -167,3 +167,4 @@ Wave C — scheduling primitives + TASK-596 closure:
 | Date | Change | Author |
 |---|---|---|
 | 2026-08-08 | Ticket created from TASK-616 Phase 6, re-verified against the live repo and `arca/hope-v2-deployment`. Widened beyond the original five steps: the deployment-repo README rewrite (I-04/I-05) was not named in Phase 6 but is a genuine zero-commits-since-template gap; the file-ownership overlap with TASK-626 on `overlays/prod/{hpa,pdb}.yaml` is called out explicitly as ⚠ 1 rather than left implicit; TASK-596's three remaining P0s (D2/D3/C5) are scoped as "close or defer," with the "may need its own ticket" possibility flagged as ⚠ 2 per TASK-596's own closing note. Status `Pending` pending owner approval. | Claude |
+| 2026-08-12 | Closed — plan deprioritized, not being pursued at this time. | owner |

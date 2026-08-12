@@ -1,6 +1,6 @@
 # TASK-617 — `hope-v2-dev` Correctness, GitOps Recovery & Live-Incident Triage
 
-**Status**: In Progress — Wave A (diagnosis) dispatched 2026-08-08. Waves B–D await owner approval and owner-only actions.
+**Status**: Closed
 **Classification**: infrastructure
 **Created**: 2026-08-08
 **Parent**: [TASK-616 Phase 1](../TASK-616-Deployment-CICD-Observability-Modernization/README.md#phase-1--make-staging-render-and-run-correctly--m) · [Program index](../TASK-616-Deployment-CICD-Observability-Modernization/phase-program-index.md)
@@ -408,3 +408,4 @@ patch-hygiene · secrets-examples idempotent · gitleaks clean · `hope-registry
 |---|---|---|
 | 2026-08-08 | **Wave A executed** — four read-only agents, nothing applied, nothing pushed. The 7-day delivery outage is root-caused to a single line: `bitnami/kubectl:1.31` (`vault.yaml:139`) stopped resolving after Broadcom pruned versioned tags from the `bitnami/*` Docker Hub org, wedging the `hope-vault-init` Sync hook and triggering an Argo v3.3.4 nil-deref. Confirmed independently by two agents from opposite ends. Eight plan corrections recorded in §7, the most consequential being that **`ollama` is a StatefulSet** — it has no surge, so losing the GPU scheduling race takes it to zero replicas rather than stalling safely. My §2.4 originally described the failure as "one workload `Pending` forever", which understated it. Ticket status → In Progress. | Claude |
 | 2026-08-08 | Ticket created. TASK-616 Phase 1 was never spun out; this creates it and widens it with **GitOps recovery**, which the 2026-08-07 assessment could not have seen. Two critical live findings reorder the phase: the remediation was authored but **never pushed** (LIVE-01), and Argo has been **panicking on every sync for 7 days** (LIVE-02). One plan premise corrected: the cluster exposes **2** GPU slots, not the 8 the Phase-1 table assumed, and no time-slicing ConfigMap exists (§2.4) — GPU requests must follow time-slicing activation, not precede it. Phase-1 items already closed elsewhere (DB-05, the deployment-repo CI, the `cattle-system` reap) are recorded as done and excluded. Status `Pending` pending owner approval. | Claude |
+| 2026-08-12 | Closed — Wave A (diagnosis) complete; Waves B-D (build/fix waves) deprioritized, not being pursued further at this time. | owner |

@@ -1,6 +1,6 @@
 # TASK-573 — STT BYOK: Owner Tails (Design Gate, Migration, Live E2E)
 
-- **Status**: Pending
+- **Status**: Closed
 - **Type**: verification / docs
 - **Program**: [Unified Provider-Connection Plane](../SOTA-Track/2026-07-28-unified-provider-plane-program.md) — Wave 0 (independent, starts day 1)
 - **Branch of record**: `thuynh/2607`
@@ -48,3 +48,4 @@ _(fill on completion.)_
 | Date | Author | Change |
 |---|---|---|
 | 2026-07-28 | platform review | Ticket authored (Wave 0 STT owner tails). |
+| 2026-08-12 | owner | Closed — remaining scope considered absorbed by TASK-586 (v1-Compat Runtime STT Provider Switch) and TASK-614 (STT Provider Switching & Automatic Fallback); not being pursued separately. |

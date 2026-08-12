@@ -1,6 +1,6 @@
 # TASK-593 — ArcaAI Production Day-1 Seed
 
-**Status:** In Progress
+**Status:** Closed
 **Type:** infrastructure (seed data)
 **Branch:** dev-2.1
 
@@ -133,3 +133,5 @@ onto the corresponding ArcaAI department:
   B re-scoped by owner to "one doctor per ArcaAI department" (Global left
   untouched, no demo gate). Implemented 6 new ArcaAI DOCTOR users + dept mapping;
   status Review. Still uncommitted.
+- 2026-08-12 — Closed — Phases A+B (tenant/template seed) shipped; remaining Global
+  demo-data cloning deprioritized, not being pursued further.

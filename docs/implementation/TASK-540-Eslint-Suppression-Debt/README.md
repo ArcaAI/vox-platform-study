@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | In Progress |
+| **Status** | Closed |
 | **Type** | refactor |
 | **Created** | 2026-07-21 |
 | **Origin** | Spun out of the TASK-536 comment-debt inventory (2026-07-21), which declared suppression debt out of scope for provenance cleanup |
@@ -218,3 +218,4 @@ concurrent-edit collision on the same file.
 |---|---|
 | 2026-07-21 | Ticket created from the TASK-536 comment-debt inventory. Counts re-verified (1,744 total / 848 bare / 824 outside vendored), policy + 6-phase remediation plan proposed. Status: Pending (awaiting owner ratification of policy + grandfathering choice). |
 | 2026-07-21 | Owner asked for full execution in-ticket. Ratified the three open questions (see Owner Decisions). Phase 0 shipped. Re-verification via `eslint --print-config` (not just hand-modeled glob matching) found 331 of the original 724 in-scope sites were already dead/inert; removed. Phases 1–2 complete, Phase 3 delegated to a background agent, Phase 6 14/20 done. Status: In Progress. |
+| 2026-08-12 | Closed — remaining phases (4-6) deprioritized; not being pursued further at this time. |

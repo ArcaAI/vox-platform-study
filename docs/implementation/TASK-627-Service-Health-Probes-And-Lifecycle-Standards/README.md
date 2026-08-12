@@ -1,6 +1,6 @@
 # TASK-627 — Service Health, Probe & Lifecycle Standards Across All Services
 
-**Status**: Pending
+**Status**: Closed
 **Classification**: Infrastructure
 **Created**: 2026-08-07
 **Parent**: [TASK-616 — Deployment/CI-CD/Observability Modernization](../TASK-616-Deployment-CICD-Observability-Modernization/README.md), specifically [`component-design-zero-downtime-ha.md`](../TASK-616-Deployment-CICD-Observability-Modernization/component-design-zero-downtime-ha.md) (Appendix G) and [`live-state-2026-08.md`](../TASK-616-Deployment-CICD-Observability-Modernization/live-state-2026-08.md) (Appendix B)
@@ -246,3 +246,4 @@ Scoped narrowly to *probe and restart* signals — general metrics-coverage scra
 ## 6. Change History
 
 - 2026-08-07 — Ticket created. Scope, current-state audit (§2), and implementation plan (§3) written against direct code/manifest verification; explicit non-overlap mapping against TASK-616 execution-plan.md established (§2.7).
+- 2026-08-12 — Closed — plan deprioritized, not being pursued at this time.

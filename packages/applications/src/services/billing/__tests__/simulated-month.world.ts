@@ -49,7 +49,7 @@ export function makeSimulatedWorld() {
 
   const lineRepository = {
     softDeleteByInvoice: vi.fn(async () => 0),
-    createManyInTx: vi.fn(async (entities: unknown[]) => entities.length),
+    createMany: vi.fn(async (entities: unknown[]) => ({ count: entities.length })),
     findByInvoice: vi.fn(async () => []),
   };
 

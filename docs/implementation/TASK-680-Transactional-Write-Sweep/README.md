@@ -335,7 +335,7 @@ hundreds of tests. The figures in the table above are all post-build.
 | Gap | Status |
 |---|---|
 | Bulk predicate soft-delete on the base (`softDeleteWhere`) | Would let `BillingInvoiceLineWriteRepository.softDeleteByInvoice` fold into the base class — a **new capability**, out of scope here (§4.5) |
-| `createManyInTx` is redundant with `createMany(…, false, tx)` | Predates both tickets; safe small follow-up, deliberately not bundled onto the invoice-recompute path (§4.5) |
+| `createManyInTx` is redundant with `createMany(…, false, tx)` | **Closed 2026-08-12**, as a separate follow-up after this ticket merged (not bundled onto the invoice-recompute path — §4.5). `createManyInTx` deleted; both `billing.service.ts` call sites now use `createMany(lineEntities, false, tx)`. `softDeleteByInvoice` retained per §4.5. |
 | Reads (`findById`/`findFirst`/`findAll`/`count`) take no `tx` | Unchanged from TASK-677 §6. A read inside a transaction cannot see that transaction's own in-flight writes. Note `runInTransaction` uses the **unscoped** `baseClient`, so a tx-routed read would bypass the tenant-scope and soft-delete extensions — that must be addressed before any tx-aware read lands |
 | `delete(id)` takes no `tx` | Correct as-is (§4.4) |
 
@@ -350,3 +350,12 @@ hundreds of tests. The figures in the table above are all post-build.
   `restore` plus 16 tests seen RED first and mutation-verified. Zero of 43 call sites changed. All
   six gates green with pasted output (§5), zero new lint warnings. `BillingInvoiceLineWriteRepository`
   verdict: **cannot be deleted** (§4.5). Status **Review**. Not merged, not pushed, no MR opened.
+- 2026-08-12 — Follow-up from §6 closed after this ticket merged (`3e666e29c`): `createManyInTx`
+  deleted from `BillingInvoiceLineWriteRepository`; the two `billing.service.ts` recompute call sites
+  now use the base `createMany(lineEntities, false, tx)`; domains repository tests and the two
+  applications billing mocks updated. `softDeleteByInvoice` **retained** — it is the bulk predicate
+  soft-delete the base cannot express (§4.5), and its `BillingLineTxDelegate` now declares only
+  `updateMany`. Gates: `@arcaai/domains` build + 1612 passed / 2 skipped / 9 todo; `@arcaai/applications`
+  build + 8927 passed / 4 skipped — identical to the same-commit baseline re-measured by stashing the
+  change (the 8906 figure quoted in the follow-up request was stale); `pnpm lint` 34/34 tasks, zero
+  billing findings.
