@@ -1,5 +1,6 @@
 import { ConsultationContextSchemaEntity, ConsultationContextSchemaVersionEntity } from '@arcaai/domains';
 import { ConsultationContextSchemaResponse, ConsultationContextSchemaVersionResponse } from './dto';
+import type { DefinitionChangeClassification } from './definition-diff';
 
 export class ConsultationContextSchemaDtoMapper {
   static toResponse(entity: ConsultationContextSchemaEntity): ConsultationContextSchemaResponse {
@@ -22,7 +23,10 @@ export class ConsultationContextSchemaDtoMapper {
     };
   }
 
-  static toVersionResponse(entity: ConsultationContextSchemaVersionEntity): ConsultationContextSchemaVersionResponse {
+  static toVersionResponse(
+    entity: ConsultationContextSchemaVersionEntity,
+    versionSkew?: DefinitionChangeClassification,
+  ): ConsultationContextSchemaVersionResponse {
     return {
       id: entity.id,
       schemaId: entity.schemaId,
@@ -32,6 +36,7 @@ export class ConsultationContextSchemaDtoMapper {
       changeReason: entity.changeReason ?? null,
       createdBy: entity.createdBy ?? null,
       createdAt: toIso(entity.createdAt),
+      versionSkew,
     };
   }
 }

@@ -336,6 +336,55 @@ describe('ContextSchemasScreen', () => {
     expect(pinCall?.body).toEqual({ versionNumber: 1 });
   });
 
+  it('shows the server-computed versionSkew on a non-pinned version, and none on the pinned one (TASK-674)', async () => {
+    stubScreen((call) => {
+      const path = pathOf(call);
+      if (path === '/api/hope/admin/consultation-context-schemas') return Response.json([schema({ pinnedVersionNumber: 2 })]);
+      if (path === '/api/hope/admin/consultation-context-schemas/s-1') {
+        return Response.json(schema({ pinnedVersionNumber: 2 }), { headers: { etag: '"2"' } });
+      }
+      if (path === '/api/hope/admin/consultation-context-schemas/s-1/versions') {
+        return Response.json([versionRow({ id: 'v-2', versionNumber: 2 }), versionRow({ id: 'v-1', versionNumber: 1, versionSkew: 'BREAKING' })]);
+      }
+      return undefined;
+    });
+    renderWithProviders(<ContextSchemasScreen />, { searchParams: '?schema=s-1&cstab=versions' });
+
+    expect(await screen.findByText('Pinned')).toBeDefined();
+    expect(await screen.findByText('Breaking drift')).toBeDefined();
+  });
+
+  it('has no axe violations on the Versions tab with a versionSkew badge, in both themes (TASK-674)', async () => {
+    function stubVersionsTab() {
+      return stubScreen((call) => {
+        const path = pathOf(call);
+        if (path === '/api/hope/admin/consultation-context-schemas') return Response.json([schema({ pinnedVersionNumber: 2 })]);
+        if (path === '/api/hope/admin/consultation-context-schemas/s-1') {
+          return Response.json(schema({ pinnedVersionNumber: 2 }), { headers: { etag: '"2"' } });
+        }
+        if (path === '/api/hope/admin/consultation-context-schemas/s-1/versions') {
+          return Response.json([versionRow({ id: 'v-2', versionNumber: 2 }), versionRow({ id: 'v-1', versionNumber: 1, versionSkew: 'ADDITIVE' })]);
+        }
+        return undefined;
+      });
+    }
+
+    // The drawer is portaled outside `container` and, while open, the rest of
+    // the page goes `aria-hidden` — scan the dialog itself, matching the
+    // catalog+drawer axe tests below.
+    stubVersionsTab();
+    renderWithProviders(<ContextSchemasScreen />, { searchParams: '?schema=s-1&cstab=versions' });
+    expect(await screen.findByText(/Additive drift/)).toBeDefined();
+    expect(await axe(await screen.findByRole('dialog'))).toHaveNoViolations();
+    cleanup();
+
+    document.documentElement.classList.add('dark');
+    stubVersionsTab();
+    renderWithProviders(<ContextSchemasScreen />, { searchParams: '?schema=s-1&cstab=versions' });
+    expect(await screen.findByText(/Additive drift/)).toBeDefined();
+    expect(await axe(await screen.findByRole('dialog'))).toHaveNoViolations();
+  });
+
   it('has no axe violations in the light theme (catalog, then the drawer with a kind expanded)', async () => {
     stubScreen((call) => {
       const path = pathOf(call);

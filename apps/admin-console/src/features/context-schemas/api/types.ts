@@ -30,6 +30,9 @@ export interface ConsultationContextSchema {
   updatedAt: string;
 }
 
+/** TASK-661's compatibility judgement, reused by TASK-674 for the version list. */
+export type ContextSchemaVersionSkew = 'IDENTICAL' | 'ADDITIVE' | 'BREAKING';
+
 export interface ConsultationContextSchemaVersion {
   id: string;
   schemaId: string;
@@ -40,6 +43,13 @@ export interface ConsultationContextSchemaVersion {
   changeReason: string | null;
   createdBy: string | null;
   createdAt: string;
+  /**
+   * TASK-674 — drift between this version and the schema's CURRENT pin,
+   * classified by the same rules `publish` uses to decide whether a change
+   * needs `allowBreakingChange`. Absent for the pinned version itself (and
+   * for a schema with no pin yet).
+   */
+  versionSkew?: ContextSchemaVersionSkew;
 }
 
 // ---------------------------------------------------------------------------
