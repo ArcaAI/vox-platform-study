@@ -347,7 +347,7 @@ describe('useArca API — context', () => {
       expect(returned.id).toBe('cn-1');
     });
 
-    it('should forward metadata as structuredData', async () => {
+    it('should forward metadata as the declared `metadata` field', async () => {
       mockFetch.mockResolvedValueOnce(createMockResponse(createMockContextItem()));
       const { result } = renderHook(() => useArca());
 
@@ -355,7 +355,7 @@ describe('useArca API — context', () => {
         await result.current.context.addCaseNote('note', { severity: 'high' });
       });
 
-      expect(calledBody()).toMatchObject({ structuredData: { severity: 'high' } });
+      expect(calledBody()).toMatchObject({ metadata: { severity: 'high' } });
     });
 
     it('should toggle context loading flag', async () => {
@@ -410,7 +410,7 @@ describe('useArca API — context', () => {
         type: 'ATTACHMENT',
         content: 'a scanned lab result',
         source: 'USER',
-        structuredData: { subType: 'LAB_RESULT' },
+        metadata: { subType: 'LAB_RESULT' },
       });
       expect(mockStoreData.addContextItem).toHaveBeenCalledWith(item);
       expect(returned.id).toBe('att-1');

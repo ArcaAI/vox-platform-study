@@ -1,6 +1,6 @@
 # TASK-667 — Admin Console: Agent Configuration Form
 
-- **Status:** Review
+- **Status:** Completed
 - **Type:** feature
 - **Wave:** W4 of [TASK-654](../TASK-654-Consultation-Context-Schema-And-Configurable-Loop/README.md) — depends on TASK-659 (`DepartmentAgent` loop-config fields, merged)
 - **Baseline:** `dev-2.1` @ `5a675d3d5` (`docs(TASK-654): harness baseline depends on .env.dev presence`)
@@ -334,3 +334,4 @@ was stood up in this worktree (console-only scope, no `.env.dev`) — flagged as
   then the Loop config tab UI + drawer wiring, then the 10 integration tests (schema-sourced pickers,
   locked budgets, the C25 acknowledgement gate, the PRIMARY conflict warning, both-theme axe). All
   gates green (§5). Status **Review**. Not merged, not pushed, no MR opened.
+- 2026-08-12: Status corrected to Completed — verified via git log (commit `87a8ebe8a`); implementation confirmed merged. Doc header was stale.

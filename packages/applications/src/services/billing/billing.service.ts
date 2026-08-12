@@ -366,12 +366,16 @@ export class BillingService extends BaseService implements IBillingService {
     // Close the current window and open the new one atomically, so a period is
     // never left double-covered or gapped.
     await this.unitOfWork.runInTransaction(async (tx) => {
-      // Inside runInTransaction the repositories join the tx via the shared
-      // unit-of-work context; `update(id, entity)` carries no tx param (it reads
-      // that context), while `create` also accepts it explicitly.
+      // BOTH writes must carry `tx` explicitly. A repository does NOT join an
+      // in-flight transaction on its own: it caches its database context at
+      // construction, and repositories are singletons built at boot when no
+      // transaction exists (pinned by domains'
+      // `update.transaction.task677.test.ts`). Omitting `tx` on the close
+      // committed it outside the transaction, so a failing `create` left the
+      // window closed with no successor — the gap this block exists to prevent.
       if (open) {
         open.supersedeAt(effectiveAt);
-        await this.planHistoryRepository.update(open.id, open);
+        await this.planHistoryRepository.update(open.id, open, tx);
       }
       if (newPlan !== null) {
         const next = TenantPlanHistoryFactory.CreateTenantPlanHistory({

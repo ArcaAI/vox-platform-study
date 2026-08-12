@@ -10,7 +10,7 @@ import { useAgenticStore } from '../store';
 import type { ContextItem, TranscriptionResult } from '../types';
 import { AgenticError } from '../types';
 import type { TranscriptSegment, AudioStartOptions, DualCaptureResult, ProviderSwitchInfo, ActivePipelineInfo } from '../types/audio';
-import { CONTEXT_ENDPOINTS } from '../core/constants';
+import { CONTEXT_ENDPOINTS, TRANSCRIPT_SEGMENT_SUBTYPE } from '../core/constants';
 import type { ISDKLogger } from '../core/logger';
 import { AudioContextManager, AudioMixer } from '@arcaai/room';
 import { DualStreamRecorder } from '../core/DualStreamRecorder';
@@ -781,9 +781,23 @@ export function useArcaAudio() {
                     type: 'TRANSCRIPT',
                     content: result.text,
                     source: 'TRANSCRIPTION',
-                    structuredData: {
+                    // `metadata` is the field `AddContextRequest` declares; the
+                    // old `structuredData` spelling was rejected wholesale by
+                    // the gateway's `forbidNonWhitelisted` pipe, so every one
+                    // of these posts 400'd silently (TASK-676 §3.5.2).
+                    //
+                    // `subType` marks the row as ONE UTTERANCE, not the
+                    // consultation's aggregate transcript — the STT finalize
+                    // idempotency guard keys on that distinction, and without
+                    // it the first segment row suppresses the aggregate and
+                    // no clinical note is ever generated.
+                    metadata: {
+                      subType: TRANSCRIPT_SEGMENT_SUBTYPE,
                       segments: result.segments ?? result.timestamps,
                       speakerId: result.speakerId,
+                      // Per-utterance pipeline provenance (TASK-613), mirrored
+                      // from the stored segment so the persisted row carries it too.
+                      ...(result.pipelineId ? { pipelineId: result.pipelineId } : {}),
                     },
                   })
                   .then((item) => store.addContextItem(item))

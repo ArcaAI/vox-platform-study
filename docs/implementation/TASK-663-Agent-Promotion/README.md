@@ -1,6 +1,6 @@
 # TASK-663 — Agent Promotion Between Tenants
 
-- **Status:** Review
+- **Status:** Completed
 - **Type:** feature
 - **Wave:** W3 of [TASK-654](../TASK-654-Consultation-Context-Schema-And-Configurable-Loop/README.md) (parallel to TASK-662, which owns `apps/harness/**`)
 - **Baseline:** `dev-2.1` @ `39f210ab7` (`docs(TASK-654): Wave 2 merged, Wave 3 started`)
@@ -593,3 +593,4 @@ the code and confirming the suite fails:
   (`f80b7f004`), and the API surface (`60a347b4c`). All gates green with pasted output (§5);
   every load-bearing guarantee additionally verified by mutation (breaking the code and confirming
   the suite fails). Status **Review**. Not merged, not pushed, no MR opened.
+- 2026-08-12: Status corrected to Completed — verified via git log (commit `9d79afb54`); implementation confirmed merged. Doc header was stale.

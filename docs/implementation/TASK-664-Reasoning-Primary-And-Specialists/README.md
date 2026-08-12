@@ -1,6 +1,6 @@
 # TASK-664 — Reasoning primary and specialists
 
-**Status:** Review
+**Status:** Completed
 
 **Wave:** W4 · **Tier:** opus-5 / high · **Type:** feature · **Depends on:** TASK-662 (merged)
 
@@ -468,3 +468,4 @@ green from there.
   old history never calls it (§5.0). Also found that `DepartmentAgent.goal` is a JSONB
   envelope rather than a string, which would have put `[object Object]` into every
   planner prompt.
+- 2026-08-12: Status corrected to Completed — verified via git log (commit `0f81e333f`); implementation confirmed merged. Doc header was stale.

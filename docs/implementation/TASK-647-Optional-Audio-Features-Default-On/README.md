@@ -1,5 +1,9 @@
 # TASK-647 — Optional audio features (VAD, noise cancellation, NER/embeddings) are ENABLED by default in the Vox SDK
 
+**Note:** This ticket number is shared with another, unrelated TASK-647 doc
+(`TASK-647-NLP-Image-CPU-Torch`) — a numbering collision. See that doc separately; the two
+are not related.
+
 | Field | Value |
 |---|---|
 | **Status** | Review |

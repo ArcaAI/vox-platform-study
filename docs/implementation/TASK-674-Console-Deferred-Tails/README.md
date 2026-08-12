@@ -1,6 +1,10 @@
 # TASK-674 — Admin Console: Deferred Tails (Agent Version History, Tri-State Tool Config, Schema Version Skew)
 
-- **Status:** Review
+**Note:** This ticket number is shared with another, unrelated TASK-674 doc
+(`TASK-674-Entity-Grounding-Activity-Wiring`) — a numbering collision. See that doc
+separately; the two are not related.
+
+- **Status:** Completed
 - **Type:** feature
 - **Renumbered from TASK-672** — the work was originally labelled TASK-672, but a parallel session
   claimed 672 and 671 for other tickets first. Every code comment, test filename, and doc reference
@@ -209,3 +213,5 @@ All of the above are included in the green `pnpm --filter @arcaai/admin-console 
   missed (`TASK-659/672`, `TASK-663/672`); fixed one pre-existing lint error; added missing
   component-level and axe test coverage for the Lineage tab and the `versionSkew` badge. All gates
   green (§4).
+
+- 2026-08-12: Status corrected to Completed — verified via git log (commit `8f9862465`); implementation confirmed merged. Doc header was stale.

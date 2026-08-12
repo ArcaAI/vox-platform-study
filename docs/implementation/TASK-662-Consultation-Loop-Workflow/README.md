@@ -1,6 +1,6 @@
 # TASK-662 — `ConsultationLoopWorkflow`
 
-**Status:** Review
+**Status:** Completed
 
 **Wave:** W3 · **Tier:** opus-5 / high · **Type:** feature · **Depends on:** TASK-658 (merged `55fa735c5`), TASK-659 (merged), TASK-660 (merged)
 
@@ -398,3 +398,4 @@ delivered.
   (the `ParentClosePolicy` default is `TERMINATE`, not `ABANDON`; and the child
   cancellation TYPE, unmentioned in the spec, was what actually hung the parent). Found
   and fixed a wire-contract defect that would have 400'd every loop-event publish.
+- 2026-08-12: Status corrected to Completed — verified via git log (commit `43a4dc788`); implementation confirmed merged. Doc header was stale.

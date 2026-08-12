@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | **Review** |
+| Status | **Completed** |
 | Type | `refactor` (cross-cutting repository contract) + `bugfix` (TASK-663 OI-2) |
 | Base commit | `dev-2.1` @ `62cb2d174` |
 | Closes | TASK-663 **OI-2** |
@@ -370,3 +370,5 @@ partial progress the loop currently gives. No change wanted.
 
 - 2026-08-12 — Ticket opened from TASK-663 OI-2. Worktree reset from `dev` @ `180d09d6a` to
   `dev-2.1` @ `62cb2d174`; baseline measured before any edit; plan authored before any code.
+
+- 2026-08-12: Status corrected to Completed — verified via git log (commit `9280af10b`); implementation confirmed merged. Doc header was stale.

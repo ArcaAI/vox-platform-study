@@ -1,6 +1,6 @@
 # TASK-670 — Loop Signal Payload Completeness
 
-**Status:** Review
+**Status:** Completed
 
 **Type:** feature (payload completeness / wiring). **Base commit:** `d5c43c033` on
 `dev-2.1` (`merge(TASK-666): admin console context schema editor`). This worktree
@@ -444,3 +444,4 @@ commit (final report).
 ## Change History
 
 - 2026-08-12 — Initial implementation (this document).
+- 2026-08-12: Status corrected to Completed — verified via git log (commit `48134cc2a`); implementation confirmed merged. Doc header was stale.

@@ -1,6 +1,6 @@
 # TASK-616 — Staging Deployment, CI/CD & Observability Modernization
 
-**Status**: Pending (assessment complete, plan awaiting approval)
+**Status**: In Progress (assessment complete; Vault HA Track V, DB fixes, and CI waves delivered — see Change History)
 **Classification**: infrastructure
 **Created**: 2026-08-06
 **Scope**: `arca/hope-v2-deployment` (k3s manifests) · `hope-v2/.gitlab/ci/**` · observability across dev/staging/prod
@@ -555,6 +555,7 @@ Two capabilities I do not have, and one scope caveat.
 
 ## 10. Change History
 
+- **2026-08-12** — Status corrected to In Progress — header was stale. Substantial work already delivered (Vault HA Track V live, DB fixes, CI waves); remaining Phase 4 observability scope tracked under TASK-636.
 - **2026-08-08 (🔴 correction — the Argo manifests in Git already declare `prune`+`selfHeal`)** — Surfaced while an agent rewrote the deployment repo's README and flagged that its brief contradicted the tree. Both statements were true, at different layers, and conflating them is the hazard:
   - **LIVE cluster**: exactly ONE Argo Application, `hope-v2-dev`, with `syncPolicy.automated: {}` — prune **false**, selfHeal **false**. No staging or prod Application exists.
   - **GIT** (`deployment/argocd/application-dev.yaml`, committed in `8bcc85e` and merged to `main` in `6a02e65`): `automated: {prune: true, selfHeal: true}`. Same for `application-staging.yaml`. `application-prod.yaml` is manual-sync.

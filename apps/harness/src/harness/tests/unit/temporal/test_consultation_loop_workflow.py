@@ -22,7 +22,6 @@ import pytest
 from temporalio.api.enums.v1 import EventType
 from temporalio.client import WorkflowExecutionStatus
 from temporalio.contrib.pydantic import pydantic_data_converter
-from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Worker
 from temporalio.workflow import ParentClosePolicy
 
@@ -59,6 +58,7 @@ from harness.tests.unit.temporal._loop_stubs import (
     default_loop_config,
     make_loop_stub_activities,
 )
+from harness.tests.unit.temporal._temporal_sync import await_query, start_time_skipping
 
 
 def _wf_input(**overrides) -> ConsultationLoopWorkflowInput:
@@ -78,21 +78,16 @@ def _ctx(item_id: str, *, kind: str = "transcript", depth: int = 0, at: str = "1
     )
 
 
-async def _await_state(handle, predicate, *, attempts: int = 200, delay: float = 0.02):
+async def _await_state(handle, predicate, **kwargs):
     """Poll the ``state()`` query until ``predicate`` holds.
 
     Signals are delivered asynchronously, so a test that inspects the workflow
     immediately after signalling is racing it. Polling the query is the
     supported way to synchronise with a long-lived workflow without reaching
-    into its internals.
+    into its internals. See ``_temporal_sync`` for why the poll itself has to
+    tolerate a transient RPC deadline.
     """
-    last = None
-    for _ in range(attempts):
-        last = await handle.query(ConsultationLoopWorkflow.state)
-        if predicate(last):
-            return last
-        await asyncio.sleep(delay)
-    raise AssertionError(f"loop state never satisfied the predicate; last seen: {last}")
+    return await await_query(handle, ConsultationLoopWorkflow.state, predicate, **kwargs)
 
 
 async def _await_status(handle, wanted: set, *, attempts: int = 200, delay: float = 0.02):
@@ -125,9 +120,7 @@ class _LoopHarness:
         self.recorder = LoopStubRecorder()
 
     async def __aenter__(self):
-        self._env_cm = await WorkflowEnvironment.start_time_skipping(
-            data_converter=pydantic_data_converter
-        )
+        self._env_cm = await start_time_skipping(data_converter=pydantic_data_converter)
         self.env = self._env_cm
         self.task_queue = f"loop-tq-{uuid.uuid4()}"
         self.worker = Worker(
@@ -536,9 +529,7 @@ class TestChildFinalize:
         loop_recorder = LoopStubRecorder()
         doc_recorder = StubRecorder()
 
-        env = await WorkflowEnvironment.start_time_skipping(
-            data_converter=pydantic_data_converter
-        )
+        env = await start_time_skipping(data_converter=pydantic_data_converter)
         try:
             task_queue = f"loop-child-tq-{uuid.uuid4()}"
             worker = Worker(

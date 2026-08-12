@@ -1,6 +1,6 @@
 # TASK-666 — Admin console: context schema editor
 
-- **Status:** Review
+- **Status:** Completed
 - **Type:** feature
 - **Wave:** W4 of [TASK-654](../TASK-654-Consultation-Context-Schema-And-Configurable-Loop/README.md), parallel with TASK-664/665/667
 - **Depends on:** [TASK-658](../TASK-658-Consultation-Context-Schema/README.md) (data model, validation, discovery — merged), [TASK-661](../TASK-661-Schema-Compatibility-And-Lifecycle/README.md) (version pinning, deprecation — merged)
@@ -316,3 +316,4 @@ needed.
   real bugs found by the tests themselves: `PayloadTester`'s `kindKey` never resyncing after the
   draft loaded (D-4), and a `react-hooks/set-state-in-effect` lint violation in the drawer's
   draft-seeding logic (D-3). All gates green; status **Review**. Not merged, not pushed.
+- 2026-08-12: Status corrected to Completed — verified via git log (commit `d5c43c033`); implementation confirmed merged. Doc header was stale.

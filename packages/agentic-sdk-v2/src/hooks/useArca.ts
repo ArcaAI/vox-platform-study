@@ -541,7 +541,7 @@ export function useArca(): UseArcaReturn {
           type: 'CASE_NOTE',
           content,
           source: 'USER',
-          structuredData: metadata,
+          metadata,
         });
         store.addContextItem(item);
 
@@ -581,7 +581,7 @@ export function useArca(): UseArcaReturn {
           type: 'TRANSCRIPT',
           content: text,
           source: 'TRANSCRIPTION',
-          structuredData: metadata,
+          metadata,
         });
         store.addContextItem(item);
 
@@ -625,7 +625,7 @@ export function useArca(): UseArcaReturn {
           type: 'ATTACHMENT',
           content: content ?? '',
           source: 'USER',
-          structuredData: metadata,
+          metadata,
           // TASK-656/665/671: the `Media` table row UUID from
           // `useStorage().uploadFile()` — the id the backend can actually
           // resolve, unlike the raw storage `key`.

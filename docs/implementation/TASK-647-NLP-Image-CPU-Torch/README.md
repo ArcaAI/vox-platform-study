@@ -1,5 +1,9 @@
 # TASK-647 — The NLP image ships a CUDA stack it can never use
 
+**Note:** This ticket number is shared with another, unrelated TASK-647 doc
+(`TASK-647-Optional-Audio-Features-Default-On`) — a numbering collision. See that doc
+separately; the two are not related.
+
 | Field | Value |
 |---|---|
 | **Status** | `Review` |

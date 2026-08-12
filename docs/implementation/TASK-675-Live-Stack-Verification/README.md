@@ -1,6 +1,6 @@
 # TASK-675 — Live-Stack Verification of the TASK-654 Programme
 
-**Status:** Review
+**Status:** Completed
 **Type:** verification / test
 **Base commit:** `62cb2d174` (`dev-2.1`) — *docs(TASK-654): programme complete — status, open items, exclusion resolved*
 **Branch:** `worktree-agent-a455a428ffceb3bc6` (reset from `dev-2.1`)
@@ -349,3 +349,4 @@ introduced by the new spec files were found by this gate and fixed before commit
   and for the context-schema plane + K7 contract (15/15, twice). 29 e2e tests now execute against a
   live stack where zero did before. Four findings recorded; F-2 (Vault vs `.env.test` service-token
   mismatch) left open as a deliberate decision rather than a silent workaround.
+- 2026-08-12: Status corrected to Completed — verified via git log (commit `457903e01`); implementation confirmed merged. Doc header was stale.

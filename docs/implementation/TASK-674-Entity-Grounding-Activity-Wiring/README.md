@@ -1,5 +1,9 @@
 # TASK-674 — Wire the entity-grounding escalation into the durable loop
 
+**Note:** This ticket number is shared with another, unrelated TASK-674 doc
+(`TASK-674-Console-Deferred-Tails`) — a numbering collision. See that doc separately; the
+two are not related.
+
 **Status:** Pending
 
 **Type:** feature · **Depends on:** TASK-671 (merged; the sensor + aggregator half are built,

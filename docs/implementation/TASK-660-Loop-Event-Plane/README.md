@@ -1,6 +1,6 @@
 # TASK-660 — Loop Event Plane
 
-**Status:** Review
+**Status:** Completed
 
 **Wave:** W2 · **Tier:** sonnet-5 / medium · **Depends on:** TASK-658 (merged `55fa735c5`)
 
@@ -221,3 +221,4 @@ Staged in the order the "Must not change" / risk-ordering section of the ticket 
 ## Change History
 
 - 2026-08-11 — Initial implementation (this document).
+- 2026-08-12: Status corrected to Completed — verified via git log (commit `f39c9d810`); implementation confirmed merged. Doc header was stale.
