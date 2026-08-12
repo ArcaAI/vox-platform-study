@@ -20,7 +20,7 @@ from typing import Any
 import pytest
 from prometheus_client import REGISTRY
 from temporalio.contrib.pydantic import pydantic_data_converter
-from temporalio.testing import ActivityEnvironment, WorkflowEnvironment
+from temporalio.testing import ActivityEnvironment
 from temporalio.worker import Worker
 
 from harness.core.config import Settings
@@ -46,6 +46,7 @@ from harness.temporal.models import (
 )
 from harness.temporal.workflows import HarnessDocWorkflow
 from harness.tests.unit.temporal._harness_stubs import _OK_NOTE, _results_for
+from harness.tests.unit.temporal._temporal_sync import start_time_skipping
 from harness.tests.unit.temporal.test_activities import (
     _FakeGranite,
     _StubJudge,
@@ -480,7 +481,7 @@ class TestWorkflowOrderedSpine:
         }
         _patch_real_activity_clients(monkeypatch, cap, smr_stats=smr_stats)
 
-        env = await WorkflowEnvironment.start_time_skipping(data_converter=pydantic_data_converter)
+        env = await start_time_skipping(data_converter=pydantic_data_converter)
         async with env:
             tq = f"harness-traj-{uuid.uuid4()}"
             async with Worker(
@@ -540,7 +541,7 @@ class TestWorkflowOrderedSpine:
         cap = _CapTraj()
         _patch_real_activity_clients(monkeypatch, cap, traj=_RaiseTraj())
 
-        env = await WorkflowEnvironment.start_time_skipping(data_converter=pydantic_data_converter)
+        env = await start_time_skipping(data_converter=pydantic_data_converter)
         async with env:
             tq = f"harness-traj-{uuid.uuid4()}"
             async with Worker(

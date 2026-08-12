@@ -1,6 +1,6 @@
 # TASK-661 — Schema compatibility and lifecycle
 
-- **Status:** Review
+- **Status:** Completed
 - **Type:** feature
 - **Wave:** W2 of [TASK-654](../TASK-654-Consultation-Context-Schema-And-Configurable-Loop/README.md), parallel with TASK-659 (agent configuration) and TASK-660 (loop event plane)
 - **Depends on:** [TASK-658](../TASK-658-Consultation-Context-Schema/README.md) (Wave 1 — data model, validation, discovery)
@@ -230,3 +230,4 @@ $ eslint <7 files this ticket changed, incl. the 3 new test files>
 
 - 2026-08-11 — Ticket opened from the TASK-654 execution-plan spec. Worktree reset to `dev-2.1` @ `370a3672b`. Read TASK-658's README and code in full before writing any test — confirmed the version-pinning *mechanism* (`validateContextPayload`'s explicit `contextSchemaVersionId` path) already existed but nothing supplied it on `addContext`; confirmed no deprecation vocabulary existed; confirmed no test proved a superseded version stays validatable.
 - 2026-08-11 — RED-then-GREEN in three stages: (1) `deprecated` authoring + validation, (2) `versionSkew` compatibility judgement + superseded-version readability, (3) `X-Context-Schema-Version` header threading from controller → service → validation seam, plus the extended K7 regression. All gates green; status **Review**. Not merged, not pushed.
+- 2026-08-12: Status corrected to Completed — verified via git log (commit `8ea84ae62`); implementation confirmed merged. Doc header was stale.

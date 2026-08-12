@@ -1,6 +1,6 @@
 # TASK-665 — SDK: schema discovery, validated context add, event hook
 
-- **Status:** Review
+- **Status:** Completed
 - **Type:** feature
 - **Wave:** W4 of [TASK-654](../TASK-654-Consultation-Context-Schema-And-Configurable-Loop/README.md) · Tier sonnet-5 / medium · Size M
 - **Depends on:** TASK-658 (context schema data model + discovery endpoint), TASK-661 (version pinning + `X-Context-Schema-Version` header contract), TASK-660 (loop event plane / `consultation:loop:{id}` SSE)
@@ -241,3 +241,4 @@ Matches the stated baseline (223 compat-playground tests) exactly — zero chang
 
 - 2026-08-12 — Ticket opened from the TASK-654 execution-plan spec. Worktree reset from a stale local branch to `dev-2.1` @ `5a675d3d5`. Read TASK-658/660/661's READMEs and code before writing any test — confirmed the discovery bundle shape, the `X-Context-Schema-Version` header contract, the loop-stream route/scope, and that `SSEClient` has no resume mechanism.
 - 2026-08-12 — Implemented in stages: types + core validator/client + `AgenticClient.postWithHeaders` → store slice + `AgenticProvider` mount/tenant-switch wiring → hooks (`useConsultationSchema`, `useConsultationEvents`, `addContext`/`addAttachment` changes) + barrels → 8 new test files + 1 pre-existing test fixed (URL-substring collision, §4.6). All gates green; `apps/compat-playground` build + test both green. Status **Review**. Not merged, not pushed.
+- 2026-08-12: Status corrected to Completed — verified via git log (commit `ac7e76ad0`); implementation confirmed merged. Doc header was stale.

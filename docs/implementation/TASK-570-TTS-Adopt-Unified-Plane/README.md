@@ -1,6 +1,6 @@
 # TASK-570 — TTS: Adopt the Unified Provider-Connection Plane
 
-- **Status**: Pending
+- **Status**: Completed
 - **Type**: refactor
 - **Program**: [Unified Provider-Connection Plane](../SOTA-Track/2026-07-28-unified-provider-plane-program.md) — Wave 1 adoption lane
 - **Branch of record**: `thuynh/2607`
@@ -56,3 +56,4 @@ _(fill on completion.)_
 | Date | Author | Change |
 |---|---|---|
 | 2026-07-28 | platform review | Ticket authored (Wave 1 TTS adoption). |
+| 2026-08-12 | correction | Status corrected to Completed — verified via git log (commit `5c2158ccc`); implementation confirmed merged. Doc header was stale. |

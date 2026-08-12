@@ -19,5 +19,6 @@ export * from './phi-field-encryption';
 export * from './storage-uri';
 export * from './tenant-guards';
 export * from './telemetry-scope';
+export * from './transcript-provenance';
 export * from './typed-event-emitter';
 export * from './worker-session';

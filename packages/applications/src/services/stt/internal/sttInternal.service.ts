@@ -23,7 +23,7 @@ import {
 import { BadRequestException, Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
-import { BaseService, encryptPhiFields } from '../../../common';
+import { BaseService, encryptPhiFields, isSttAggregateTranscript, STT_AGGREGATE_SUBTYPE } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 import { SecretsService } from '../../baseServices/_meta/secrets';
 import { IRedisCacheService } from '../../baseServices/redis';
@@ -324,6 +324,10 @@ export class SttInternalService extends BaseService implements ISttInternalServi
       createdBy: job.createdBy || undefined,
     });
 
+    // Mark this row as THE aggregate transcript, so a per-segment client write
+    // can never be mistaken for it (see `transcript-provenance.ts`).
+    contextItem.metaData = { subType: STT_AGGREGATE_SUBTYPE };
+
     // Encrypt the transcript text into `encryptedContent` before
     // persistence — the plaintext `content` column was dropped by the PHI
     // field-encryption migration, so an unencrypted create silently loses the
@@ -389,12 +393,19 @@ export class SttInternalService extends BaseService implements ISttInternalServi
   }
 
   private async createStreamingTranscriptInner(dto: CreateTranscriptRequest, consultationId: string): Promise<{ contextItemId: string }> {
-    // Idempotency guard (second layer): if a transcript already exists for
-    // this consultation, return it without creating a duplicate or
+    // Idempotency guard (second layer): if THIS consultation's aggregate
+    // transcript already exists, return it without creating a duplicate or
     // re-emitting the pipeline event.
+    //
+    // Keyed on the aggregate specifically, NOT on `type: TRANSCRIPT` alone:
+    // the SDK also writes one TRANSCRIPT row per final utterance, and a
+    // type-only guard let the first of those suppress the aggregate — and
+    // with it `TranscriptionCreated`, the sole trigger for harness note
+    // generation. See `transcript-provenance.ts`.
     const existing = await this.contextItemRepository.findTranscripts(consultationId);
-    if (existing.length > 0) {
-      return { contextItemId: existing[0].id };
+    const existingAggregate = existing.find((item) => isSttAggregateTranscript(item));
+    if (existingAggregate) {
+      return { contextItemId: existingAggregate.id };
     }
 
     const contextItem = ContextItemFactory.CreateContextItem({
@@ -404,6 +415,8 @@ export class SttInternalService extends BaseService implements ISttInternalServi
       source: ContextItemSource.TRANSCRIPTION,
       content: dto.transcriptText,
     });
+
+    contextItem.metaData = { subType: STT_AGGREGATE_SUBTYPE };
 
     // Encrypt the transcript text into `encryptedContent` before
     // persistence — the plaintext `content` column was dropped by the PHI

@@ -23,7 +23,6 @@ import uuid
 
 import pytest
 from temporalio.contrib.pydantic import pydantic_data_converter
-from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Worker
 from temporalio.workflow import ChildWorkflowCancellationType, ParentClosePolicy
 
@@ -71,6 +70,7 @@ from harness.tests.unit.temporal._loop_stubs import (
     make_loop_stub_activities,
     reasoning_loop_config,
 )
+from harness.tests.unit.temporal._temporal_sync import await_query, start_time_skipping
 
 PRIMARY = LoopAgentSpec(
     agent_id="agent-primary",
@@ -114,14 +114,13 @@ def _ctx(item_id: str, *, kind: str = "transcript", depth: int = 0, at: str = "1
     )
 
 
-async def _await_state(handle, predicate, *, attempts: int = 300, delay: float = 0.02):
-    last = None
-    for _ in range(attempts):
-        last = await handle.query(ConsultationLoopWorkflow.state)
-        if predicate(last):
-            return last
-        await asyncio.sleep(delay)
-    raise AssertionError(f"loop state never satisfied the predicate; last seen: {last}")
+async def _await_state(handle, predicate, **kwargs):
+    """Poll the ``state()`` query until ``predicate`` holds.
+
+    See ``_temporal_sync`` for why the poll itself has to tolerate a transient
+    RPC deadline rather than treat one as a failed assertion.
+    """
+    return await await_query(handle, ConsultationLoopWorkflow.state, predicate, **kwargs)
 
 
 class _ReasoningHarness:
@@ -132,9 +131,7 @@ class _ReasoningHarness:
         self.recorder = LoopStubRecorder()
 
     async def __aenter__(self):
-        self.env = await WorkflowEnvironment.start_time_skipping(
-            data_converter=pydantic_data_converter
-        )
+        self.env = await start_time_skipping(data_converter=pydantic_data_converter)
         self.task_queue = f"reason-tq-{uuid.uuid4()}"
         self.worker = Worker(
             self.env.client,
@@ -706,9 +703,7 @@ class TestPrimaryIsTheOnlyWriter:
         loop_recorder = LoopStubRecorder()
         doc_recorder = StubRecorder()
 
-        async with await WorkflowEnvironment.start_time_skipping(
-            data_converter=pydantic_data_converter
-        ) as env:
+        async with await start_time_skipping(data_converter=pydantic_data_converter) as env:
             task_queue = f"final-tq-{uuid.uuid4()}"
             async with Worker(
                 env.client,

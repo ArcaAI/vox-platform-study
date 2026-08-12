@@ -75,7 +75,7 @@ export function useArcaContext() {
           type: 'CASE_NOTE',
           content,
           source: 'USER',
-          structuredData: metadata,
+          metadata,
         });
         addContextItem(item);
         timer?.end(true, { attributes: { contextItemId: item.id, contentLength: content.length } });
@@ -110,7 +110,7 @@ export function useArcaContext() {
           type: 'TRANSCRIPT',
           content: text,
           source: 'TRANSCRIPTION',
-          structuredData: metadata,
+          metadata,
         });
         addContextItem(item);
         timer?.end(true, { attributes: { contextItemId: item.id, textLength: text.length } });
@@ -145,7 +145,7 @@ export function useArcaContext() {
           type: 'WORKNOTE',
           content,
           source: 'USER',
-          structuredData: metadata,
+          metadata,
         });
         addContextItem(item);
         timer?.end(true, { attributes: { contextItemId: item.id, contentLength: content.length } });
@@ -180,7 +180,7 @@ export function useArcaContext() {
           type: 'ATTACHMENT',
           content: content ?? '',
           source: 'USER',
-          structuredData: metadata,
+          metadata,
           // TASK-656/665: the `Media` table row UUID from `useStorage().uploadFile()`
           // — the id the backend can actually resolve, unlike the raw storage `key`.
           mediaId,

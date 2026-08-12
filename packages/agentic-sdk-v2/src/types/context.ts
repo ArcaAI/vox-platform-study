@@ -162,8 +162,20 @@ export interface AddContextInput {
   type: ContextItemType | string;
   /** Text content */
   content: string;
-  /** Structured data */
+  /**
+   * @deprecated The gateway never accepted this field. `AddContextRequest`
+   * declares `metadata`, and the global pipe runs `forbidNonWhitelisted`, so a
+   * body carrying `structuredData` is rejected with
+   * `400 property structuredData should not exist` (TASK-676 §3.5.2). It is
+   * kept here only so existing callers still compile — `useArcaSession.addContext`
+   * forwards it as `metadata`. Use `metadata` directly.
+   */
   structuredData?: Record<string, unknown>;
+  /**
+   * Free-form JSON metadata persisted on the context item (`metaData`).
+   * Convention: `{ subType: 'LAB_RESULT' }` on lab/exam ATTACHMENTs.
+   */
+  metadata?: Record<string, unknown>;
   /** Media ID of an uploaded file (e.g. for ATTACHMENT type) — TASK-656/665. */
   mediaId?: string;
   /**

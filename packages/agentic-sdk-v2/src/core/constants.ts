@@ -1144,3 +1144,16 @@ export const PSTUDIO_ENDPOINTS = {
 export const USER_ROLES = Object.freeze(['role_admin', 'role_doctor', 'role_patient'] as const);
 
 export type UserRole = (typeof USER_ROLES)[number];
+
+/**
+ * `metadata.subType` stamped on each per-utterance TRANSCRIPT context item the
+ * audio hook writes during a live session.
+ *
+ * It marks the row as ONE UTTERANCE rather than the consultation's aggregate
+ * transcript (which the STT service writes at finalize, marked
+ * `STT_AGGREGATE`). The gateway's finalize idempotency guard keys on that
+ * distinction: without it, the first per-segment row looks like the aggregate,
+ * the aggregate write is skipped, `TranscriptionCreated` never fires, and
+ * clinical note generation silently never starts.
+ */
+export const TRANSCRIPT_SEGMENT_SUBTYPE = 'TRANSCRIPT_SEGMENT';

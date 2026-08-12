@@ -1,6 +1,6 @@
 # TASK-574 — LLM BYOK: Runtime Verification
 
-- **Status**: Pending
+- **Status**: Completed
 - **Type**: verification
 - **Program**: [Unified Provider-Connection Plane](../SOTA-Track/2026-07-28-unified-provider-plane-program.md) — Wave 0 (independent, starts day 1)
 - **Branch of record**: `thuynh/2607`
@@ -43,3 +43,4 @@ _(fill on completion.)_
 | Date | Author | Change |
 |---|---|---|
 | 2026-07-28 | platform review | Ticket authored (Wave 0 LLM runtime verification). |
+| 2026-08-12 | correction | Status corrected to Completed — verified via git log (commit `792ba1141`, "573 e2e 13/13 + 574 e2e 3/3 green") and confirmed `apps/api/tests/e2e/byo-llm-credentials.spec.ts` exists. Doc header was stale. |

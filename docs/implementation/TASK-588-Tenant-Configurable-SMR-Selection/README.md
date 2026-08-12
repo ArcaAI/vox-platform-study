@@ -1,4 +1,4 @@
-# TASK-587 — Tenant-Configurable SMR Model Selection (Primary + Fallback)
+# TASK-588 — Tenant-Configurable SMR Model Selection (Primary + Fallback)
 
 **Status:** In Progress · **Branch:** `dev-2.1` · **Type:** feature
 
@@ -116,3 +116,4 @@ in every package; full cross-package `typecheck`/`build` + live e2e are the rema
 - 2026-07-31 — All phases implemented (applications / apps/api / admin-console), scoped tests green;
   env hardcode removed and replaced with per-tenant `resolveSmrFallbackSelection`; cross-agent e2e
   key-count + orphaned-comment seams fixed by parent.
+- 2026-08-12: Header title typo corrected — ticket number/folder is TASK-588; the title read "TASK-587" (a copy-paste artifact). Status field left unchanged.

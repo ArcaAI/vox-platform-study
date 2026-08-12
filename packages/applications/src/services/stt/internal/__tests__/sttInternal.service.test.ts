@@ -225,12 +225,16 @@ function createMockContextItemEntity(
     id?: string;
     tenantId?: string;
     consultationId?: string;
+    metaData?: Record<string, unknown> | null;
+    createdBy?: string | null;
   } = {},
 ) {
   return {
     id: overrides.id ?? 'context-item-1',
     tenantId: overrides.tenantId ?? 'tenant-1',
     consultationId: overrides.consultationId ?? 'consultation-1',
+    metaData: overrides.metaData ?? null,
+    createdBy: overrides.createdBy ?? null,
     toObject: vi.fn().mockReturnValue({ id: overrides.id ?? 'context-item-1' }),
   };
 }
@@ -1417,6 +1421,50 @@ describe('SttInternalService', () => {
       });
 
       expect(result.contextItemId).toBe('existing-transcript');
+      expect(mockContextItemRepository.create).not.toHaveBeenCalled();
+      const pipelineCalls = mockEventEmitter.emit.mock.calls.filter((c: any[]) => c[0] === 'consultation.transcription.created');
+      expect(pipelineCalls).toHaveLength(0);
+    });
+
+    // TASK-679 — the guard must key on the STT AGGREGATE, not on
+    // `type: TRANSCRIPT` alone. The SDK writes one TRANSCRIPT row per final
+    // utterance; when a type-only guard saw the first of those it skipped the
+    // aggregate AND `TranscriptionCreated` — the sole trigger for harness note
+    // generation — so no clinical note was ever produced, silently.
+    it('still writes the aggregate (and emits) when only per-segment SDK transcripts exist', async () => {
+      const segmentA = createMockContextItemEntity({ id: 'segment-a', metaData: { subType: 'TRANSCRIPT_SEGMENT' }, createdBy: 'doctor-1' });
+      const segmentB = createMockContextItemEntity({ id: 'segment-b', metaData: { subType: 'TRANSCRIPT_SEGMENT' }, createdBy: 'doctor-1' });
+      const aggregate = createMockContextItemEntity({ id: 'aggregate-ctx' });
+      mockContextItemRepository.findTranscripts.mockResolvedValue([segmentA, segmentB]);
+      mockContextItemRepository.create.mockResolvedValue(aggregate);
+
+      const result = await service.createTranscript({
+        consultationId: 'consultation-seg-1',
+        tenantId: 'tenant-seg-1',
+        transcriptText: 'full consultation transcript',
+        transcriptionSource: 'streaming',
+      });
+
+      expect(result.contextItemId).toBe('aggregate-ctx');
+      expect(mockContextItemRepository.create).toHaveBeenCalledTimes(1);
+      expect(mockContextItemRepository.create.mock.calls[0][0].metaData).toEqual({ subType: 'STT_AGGREGATE' });
+      const pipelineCalls = mockEventEmitter.emit.mock.calls.filter((c: any[]) => c[0] === 'consultation.transcription.created');
+      expect(pipelineCalls).toHaveLength(1);
+    });
+
+    it('is still idempotent against a previously written aggregate that sits among segment rows', async () => {
+      const segment = createMockContextItemEntity({ id: 'segment-a', metaData: { subType: 'TRANSCRIPT_SEGMENT' }, createdBy: 'doctor-1' });
+      const aggregate = createMockContextItemEntity({ id: 'aggregate-existing', metaData: { subType: 'STT_AGGREGATE' } });
+      mockContextItemRepository.findTranscripts.mockResolvedValue([segment, aggregate]);
+
+      const result = await service.createTranscript({
+        consultationId: 'consultation-seg-2',
+        tenantId: 'tenant-seg-2',
+        transcriptText: 'duplicate finalize',
+        transcriptionSource: 'streaming',
+      });
+
+      expect(result.contextItemId).toBe('aggregate-existing');
       expect(mockContextItemRepository.create).not.toHaveBeenCalled();
       const pipelineCalls = mockEventEmitter.emit.mock.calls.filter((c: any[]) => c[0] === 'consultation.transcription.created');
       expect(pipelineCalls).toHaveLength(0);

@@ -173,12 +173,19 @@ export function useArcaSession(): UseArcaSessionReturn {
 
       const pinnedSchemaVersionId = consultationSchema?.contextSchemaVersionId ?? undefined;
 
+      // `structuredData` is not a field the gateway declares — a body carrying
+      // it is rejected wholesale by `forbidNonWhitelisted` (TASK-676 §3.5.2).
+      // Fold the deprecated alias into the declared `metadata` field so callers
+      // written against the old shape start working rather than silently 400ing.
+      const { structuredData, ...rest } = input;
+      const body = structuredData ? { ...rest, metadata: { ...structuredData, ...(input.metadata ?? {}) } } : rest;
+
       try {
         const contextItem = pinnedSchemaVersionId
-          ? await apiClient.postWithHeaders<ContextItem>(CONTEXT_ENDPOINTS.ADD(consultation.id), input, {
+          ? await apiClient.postWithHeaders<ContextItem>(CONTEXT_ENDPOINTS.ADD(consultation.id), body, {
               'X-Context-Schema-Version': pinnedSchemaVersionId,
             })
-          : await apiClient.post<ContextItem>(CONTEXT_ENDPOINTS.ADD(consultation.id), input);
+          : await apiClient.post<ContextItem>(CONTEXT_ENDPOINTS.ADD(consultation.id), body);
 
         // Add to local store
         store.addContextItem(contextItem);

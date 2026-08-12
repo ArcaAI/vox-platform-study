@@ -1,6 +1,6 @@
 # TASK-668 — SDK codegen CLI
 
-- **Status:** Review
+- **Status:** Completed
 - **Type:** feature
 - **Wave:** W5 of [TASK-654](../TASK-654-Consultation-Context-Schema-And-Configurable-Loop/README.md) — the last ticket of the original plan · Tier sonnet-5 / medium · Size M
 - **Depends on:** TASK-665 (SDK schema discovery — shipped, present at this baseline)
@@ -378,3 +378,4 @@ output file written on the error path.
   that generated output actually compiles. Root `sdk-codegen:*` scripts added; `HOPE_API_TOKEN`/
   `HOPE_API_BASE_URL` added to `turbo.json#globalEnv`. All gates green (§6). Status **Review**. Not
   merged, not pushed.
+- 2026-08-12: Status corrected to Completed — verified via git log (commit `014908ed5`); implementation confirmed merged. Doc header was stale.
