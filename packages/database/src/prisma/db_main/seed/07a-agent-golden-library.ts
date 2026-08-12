@@ -55,10 +55,11 @@
  */
 import type { CorePrismaClient } from '../../../client';
 import { Prisma } from '../../../generated/core-prisma-client/client';
-import type { PromptTemplateCategory } from '../../../generated/core-prisma-client/enums';
+import type { DepartmentAgentRole, PromptTemplateCategory } from '../../../generated/core-prisma-client/enums';
 import { SEED_CUSTOMER_TENANT_IDS, SEED_TENANT_ID, SYSTEM_TENANT_ID, SYSTEM_USER_ID } from './00-constants';
 import { ARCAAI_CLINICAL_DEPARTMENTS, DEFAULT_DEPARTMENTS } from './04-department';
 import { DEFAULT_PROMPT_TEMPLATES, TEMPLATE_IDS } from './07-prompt-template';
+import { DAY1_AGENT_LOOP_CONFIG, agentLoopConfigChecksum, agentVersionIdFor, buildLoopConfigSnapshot, seedRowHasLoopConfig } from './07e-consultation-loop-defaults';
 
 const pad = (n: number): string => n.toString().padStart(12, '0');
 
@@ -206,6 +207,8 @@ export const GOLDEN_AGENTS = DEFAULT_DEPARTMENTS.map((dept, i) => {
     templateLocked: false,
     metaData: null as Record<string, unknown> | null,
     tags: ['golden-library'],
+    // TASK-686 — day-1 loop configuration.
+    ...DAY1_AGENT_LOOP_CONFIG,
   };
 });
 
@@ -243,6 +246,18 @@ interface AgentSeedRow {
   livePromptTemplateId?: string | null;
   toolConfig?: Record<string, unknown> | null;
   llmOverrides?: Record<string, unknown> | null;
+  // TASK-686 — the day-1 loop configuration (TASK-659's seven fields). Carried
+  // by every seeded default agent so `LoopConfigService` resolves a real
+  // subscription set instead of a running-but-inert loop. The VALUES live in
+  // `07e-consultation-loop-defaults.ts` next to the context schema whose kinds
+  // they must resolve against; they are declared here only as columns.
+  role?: string;
+  subscribedKinds?: Record<string, unknown> | null;
+  writeScope?: Record<string, unknown> | null;
+  goal?: Record<string, unknown> | null;
+  guardrailProfile?: string | null;
+  alwaysActions?: string[] | null;
+  neverActions?: string[] | null;
 }
 
 /**
@@ -285,6 +300,8 @@ export const GLOBAL_TENANT_AGENTS: AgentSeedRow[] = asAgentTemplateCopies(
       templateLocked: false,
       metaData: null,
       tags: ['golden-library'],
+      // TASK-686 — day-1 loop configuration.
+      ...DAY1_AGENT_LOOP_CONFIG,
     };
   }),
 );
@@ -382,6 +399,8 @@ export const ARCAAI_TENANT_AGENTS: AgentSeedRow[] = ARCAAI_CLINICAL_DEPARTMENTS.
     templateLocked: false,
     metaData: null,
     tags: ['arcaai', 'clinical', 'v1-parity'],
+    // TASK-686 — day-1 loop configuration.
+    ...DAY1_AGENT_LOOP_CONFIG,
   };
 });
 
@@ -436,8 +455,55 @@ export const seedAgentGoldenLibrary = async (client: CorePrismaClient) => {
     console.log(`Seeded ${versions.length} golden/snapshot prompt versions`);
 
     const agents: AgentSeedRow[] = [...GOLDEN_AGENTS, ...GLOBAL_TENANT_AGENTS, ...ARCAAI_TENANT_AGENTS];
+
+    // TASK-686 — the loop-config columns are FILL-IF-ABSENT, unlike every other
+    // column here. The rest of this row is platform-curated content a re-seed is
+    // meant to refresh; loop configuration is a TENANT decision the console
+    // (TASK-667) exists to make, so a re-seed must never revert it. Reading the
+    // current rows first is what lets an already-seeded database pick the
+    // day-1 defaults up while leaving a configured agent alone.
+    const configuredAgentIds = new Set(
+      (
+        await client.departmentAgent.findMany({
+          where: { id: { in: agents.map((agent) => agent.id) } },
+          select: {
+            id: true,
+            role: true,
+            subscribedKinds: true,
+            writeScope: true,
+            goal: true,
+            guardrailProfile: true,
+            alwaysActions: true,
+            neverActions: true,
+          },
+        })
+      )
+        .filter((row) =>
+          seedRowHasLoopConfig({
+            role: row.role,
+            subscribedKinds: (row.subscribedKinds ?? null) as Record<string, unknown> | null,
+            writeScope: (row.writeScope ?? null) as Record<string, unknown> | null,
+            goal: (row.goal ?? null) as Record<string, unknown> | null,
+            guardrailProfile: row.guardrailProfile,
+            alwaysActions: (row.alwaysActions ?? null) as string[] | null,
+            neverActions: (row.neverActions ?? null) as string[] | null,
+          }),
+        )
+        .map((row) => row.id),
+    );
+
     for (const agent of agents) {
-      const { metaData, toolConfig, llmOverrides, ...rest } = agent;
+      const { metaData, toolConfig, llmOverrides, role, subscribedKinds, writeScope, goal, guardrailProfile, alwaysActions, neverActions, ...rest } =
+        agent;
+      const loopConfig = {
+        ...(role != null ? { role: role as DepartmentAgentRole } : {}),
+        ...(subscribedKinds != null ? { subscribedKinds: subscribedKinds as Prisma.InputJsonValue } : {}),
+        ...(writeScope != null ? { writeScope: writeScope as Prisma.InputJsonValue } : {}),
+        ...(goal != null ? { goal: goal as Prisma.InputJsonValue } : {}),
+        ...(guardrailProfile != null ? { guardrailProfile } : {}),
+        ...(alwaysActions != null ? { alwaysActions: alwaysActions as Prisma.InputJsonValue } : {}),
+        ...(neverActions != null ? { neverActions: neverActions as Prisma.InputJsonValue } : {}),
+      };
       const data = {
         ...rest,
         ...(metaData != null ? { metaData: metaData as Prisma.InputJsonValue } : {}),
@@ -446,11 +512,41 @@ export const seedAgentGoldenLibrary = async (client: CorePrismaClient) => {
       };
       await client.departmentAgent.upsert({
         where: { id: agent.id },
-        update: data,
-        create: data,
+        update: configuredAgentIds.has(agent.id) ? data : { ...data, ...loopConfig },
+        create: { ...data, ...loopConfig },
       });
     }
     console.log(`Seeded ${agents.length} department agents (golden + fixture-tenant clones + ArcaAI per-visit-type defaults)`);
+
+    // TASK-686 — the immutable loop-config snapshot `LoopConfigService` resolves
+    // as `agentConfigVersionId`. Mirrors what
+    // `DepartmentAgentService.writeLoopConfigVersionIfNeeded` would have written
+    // had the agent been configured through the API: version 1, the canonical
+    // seven-field snapshot, and the same sha256 checksum (parity is asserted by
+    // `day1-loop-defaults.task686.test.ts`). CREATE-ONLY — an agent that already
+    // has ANY version row is left entirely alone.
+    let versionsCreated = 0;
+    for (const agent of agents) {
+      if (configuredAgentIds.has(agent.id)) continue;
+      const existing = await client.departmentAgentVersion.findFirst({ where: { agentId: agent.id }, select: { id: true } });
+      if (existing) continue;
+
+      const snapshot = buildLoopConfigSnapshot(agent);
+      await client.departmentAgentVersion.create({
+        data: {
+          id: agentVersionIdFor(agent.id),
+          tenantId: agent.tenantId,
+          agentId: agent.id,
+          versionNumber: 1,
+          configSnapshot: snapshot as Prisma.InputJsonValue,
+          checksum: agentLoopConfigChecksum(agent),
+          changeReason: 'Day-1 platform default loop configuration',
+          createdBy: SYSTEM_USER_ID,
+        },
+      });
+      versionsCreated += 1;
+    }
+    console.log(`Seeded ${versionsCreated} day-1 agent loop-config version(s)`);
   } catch (error) {
     console.error('Error seeding agent golden library:', error);
     throw error;
