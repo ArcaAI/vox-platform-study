@@ -23,6 +23,7 @@ import { ErrorState } from '@/shared/state/error-state';
 import { useDeleteDepartmentAgent, useDepartmentAgents, useDepartments, useSetDefaultDepartmentAgent, useTemplates } from '../api/hooks';
 import type { Department, DepartmentAgent } from '../api/types';
 import { DepartmentAgentDetailDrawer } from './agent-detail-drawer';
+import { AgentRoleBadge } from './agent-loop-config-tab';
 
 /** "Pinned to vN" vs "Tracking latest approved (vN)" — the movable-pointer distinction. */
 export function versionStateLabel(agent: DepartmentAgent, templateCurrentVersion: number | undefined): string {
@@ -41,6 +42,7 @@ function AgentRow({ agent, templateVersion, onSelect }: { agent: DepartmentAgent
         <span className="flex min-w-0 flex-wrap items-center gap-2">
           <span className="truncate font-medium">{agent.name}</span>
           {agent.isDefault ? <Badge>Default</Badge> : null}
+          <AgentRoleBadge role={agent.role} />
           {agent.templateLocked ? (
             <Badge variant="outline" className="gap-1">
               <IconLock aria-hidden className="size-3" />
