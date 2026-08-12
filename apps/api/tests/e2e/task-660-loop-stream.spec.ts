@@ -200,22 +200,30 @@ test.describe('TASK-660 — consultation-loop SSE, delivery', () => {
   });
 
   /**
-   * The publisher side is service-token guarded, and `.env.test`'s
-   * `HARNESS_SERVICE_TOKEN` is NOT usable for it: the test stack runs
+   * The publisher side is service-token guarded. The test stack runs
    * `SECRETS_PROVIDER=vault`, so `HarnessServiceTokenGuard` resolves the
    * expected value through `SecretsService` from Vault
-   * (`<VAULT_KV_MOUNT>/data/<VAULT_KV_PREFIX>/HARNESS_SERVICE_TOKEN`), and the
-   * env-file value is dead config that answers 401.
+   * (`<VAULT_KV_MOUNT>/data/<VAULT_KV_PREFIX>/HARNESS_SERVICE_TOKEN`) — NOT
+   * from the env file.
    *
-   * So this half is ENV-GATED on an operator-supplied `E2E_HARNESS_SERVICE_TOKEN`
-   * that must equal what the RUNNING gateway resolves — the same gating pattern
-   * as `harness-gate.spec.ts` and `model-retention-settings.spec.ts`. Skipping
-   * is deliberate: a fabricated pass here would be worse than no coverage.
+   * `.env.test`'s value used to be dead config that answered 401, because
+   * nothing re-seeded Vault from it on the two-terminal path. TASK-679 fixed
+   * that at the source: `scripts/start-test-app.sh` now runs
+   * `ensure-test-vault-creds.sh` before launching, exactly as
+   * `scripts/test-run.sh` already did for the managed suites, so the value the
+   * gateway resolves IS `.env.test`'s value in every supported flow.
+   *
+   * `E2E_HARNESS_SERVICE_TOKEN` is kept only as an override for a stack started
+   * outside those scripts. Skipping when neither resolves stays deliberate: a
+   * fabricated pass here would be worse than no coverage.
    */
-  const SERVICE_TOKEN = process.env.E2E_HARNESS_SERVICE_TOKEN ?? '';
+  const SERVICE_TOKEN = process.env.E2E_HARNESS_SERVICE_TOKEN ?? process.env.HARNESS_SERVICE_TOKEN ?? '';
 
   test('an event POSTed to the internal loop-event endpoint relays out of the stream', async ({ request }) => {
-    test.skip(!SERVICE_TOKEN, 'requires E2E_HARNESS_SERVICE_TOKEN set to the value the running gateway resolves (Vault when SECRETS_PROVIDER=vault)');
+    test.skip(
+      !SERVICE_TOKEN,
+      'requires HARNESS_SERVICE_TOKEN in .env.test (start the API with `pnpm test:up:api` so Vault is seeded from it), or an explicit E2E_HARNESS_SERVICE_TOKEN override',
+    );
     test.setTimeout(45_000);
 
     const serviceToken = SERVICE_TOKEN;
