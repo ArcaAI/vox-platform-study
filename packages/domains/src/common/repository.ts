@@ -291,14 +291,31 @@ export abstract class Repository<DomainEntity extends BaseEntity, DatabaseModel>
    *
    * @param id - The entity ID to soft delete
    * @param updatedBy - Optional user ID who performed the deletion
+   * @param tx - Optional transaction client. When supplied, the write routes
+   *   through it so it participates in the caller's `$transaction` and rolls
+   *   back with the rest on partial failure — mirroring the existing
+   *   `create(..., tx)` / `createMany(..., tx)` / `update(..., tx)` /
+   *   `updateWithVersion(..., tx)` contract. Without `tx` the cached extended
+   *   client (`this.db`) is used — behaviour unchanged.
+   *
+   *   The parameter is required rather than relying on the CLS propagation in
+   *   `CoreUnitOfWorkService.runInTransaction`: a repository resolves and
+   *   CACHES its database context in its constructor and is a boot-time
+   *   singleton, so an already-constructed repository never observes the CLS
+   *   tx client.
+   *
+   *   Bumping `_version` here is a state stamp, NOT a compare-and-set — there
+   *   is no version predicate. `updateWithVersion` remains the only OCC path.
    * @returns The soft-deleted entity
    * @throws Error if the model does not support soft-delete
    */
-  public async softDelete(id: EntityId, updatedBy?: EntityId): Promise<DomainEntity> {
+  public async softDelete(id: EntityId, updatedBy?: EntityId, tx?: Prisma.TransactionClient | any): Promise<DomainEntity> {
     if (!this.supportsSoftDelete) {
       throw new Error(`softDelete is not supported on model "${this._modelName}" because it has no resourceStatus column`);
     }
-    const model = await this.db.update({
+    const delegate = tx ? (tx as Record<string, any>)[this._modelName] : this.db;
+
+    const model = await delegate.update({
       where: { id },
       data: {
         resourceStatus: ResourceStatusType.DELETED,
@@ -320,14 +337,19 @@ export abstract class Repository<DomainEntity extends BaseEntity, DatabaseModel>
    *
    * @param id - The entity ID to restore
    * @param updatedBy - Optional user ID who performed the restoration
+   * @param tx - Optional transaction client, with exactly the same contract as
+   *   `softDelete(..., tx)` above. `restore` is the inverse of `softDelete`, so
+   *   the two must gain and keep the same capabilities or they drift.
    * @returns The restored entity
    * @throws Error if the model does not support soft-delete
    */
-  public async restore(id: EntityId, updatedBy?: EntityId): Promise<DomainEntity> {
+  public async restore(id: EntityId, updatedBy?: EntityId, tx?: Prisma.TransactionClient | any): Promise<DomainEntity> {
     if (!this.supportsSoftDelete) {
       throw new Error(`restore is not supported on model "${this._modelName}" because it has no resourceStatus column`);
     }
-    const model = await this.db.update({
+    const delegate = tx ? (tx as Record<string, any>)[this._modelName] : this.db;
+
+    const model = await delegate.update({
       where: { id },
       data: {
         resourceStatus: ResourceStatusType.ENABLED,
