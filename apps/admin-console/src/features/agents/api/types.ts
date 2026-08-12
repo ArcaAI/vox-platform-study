@@ -594,3 +594,55 @@ export interface EvalRunTrigger {
   failures: string[];
   aggregates: Record<string, number>;
 }
+
+// ---------------------------------------------------------------------------
+// TASK-672 — `DepartmentAgentVersion` history (`GET :id/versions`) and
+// `AgentPromotion` lineage (`GET admin/agent-promotions?targetAgentId=`).
+// Both READ-only: the immutable audit trail TASK-659/663 already write, with
+// no console surface until now (TASK-667 OI-3). Mirrors
+// `DepartmentAgentVersionResponse`/`AgentPromotionResponse` in
+// `packages/applications/src/services/{departmentAgent,agentPromotion}/dto/`.
+// ---------------------------------------------------------------------------
+
+/** One immutable loop-configuration snapshot (TASK-659). */
+export interface DepartmentAgentVersion {
+  id: string;
+  agentId: string;
+  versionNumber: number;
+  /** The seven TASK-659 loop-configuration fields, canonical snapshot. */
+  configSnapshot: Record<string, unknown>;
+  /** sha256 over the canonical (key-sorted) JSON of `configSnapshot`. */
+  checksum: string;
+  /** Why this version was written, when recorded (e.g. clone lineage). Absent on an ordinary save. */
+  changeReason: string | null;
+  createdBy: string | null;
+  createdAt: string;
+}
+
+/** One immutable cross-tenant promotion record, read from the TARGET tenant (TASK-663). */
+export interface AgentPromotion {
+  id: string;
+  fromTenantId: string;
+  toTenantId: string;
+  agentVersionId: string;
+  sourceAgentId: string;
+  targetAgentId: string;
+  targetAgentVersionId: string | null;
+  configSnapshot: Record<string, unknown>;
+  checksum: string;
+  evalRunId: string | null;
+  sourceEvalRunId: string | null;
+  warnings: string[];
+  promotedBy: string | null;
+  /** True when the target agent has been edited since this promotion. Absent when not computable. */
+  drifted?: boolean;
+  createdAt: string;
+  version: number;
+}
+
+export interface ListAgentPromotionsParams {
+  targetAgentId?: string;
+  page?: number;
+  limit?: number;
+  [key: string]: string | number | boolean | undefined | null;
+}
