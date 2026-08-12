@@ -548,3 +548,9 @@ artifact in §5.2 should be resolved by giving those cases a specialist-view pre
   measured **50% recovery / 100% retention, zero unsafe flips** against the live judge —
   joint gate PASS. Activity wiring deliberately withheld pending a PHI-egress-guard
   extension (§5.6); the escalation is inert in production until then. Status → Review.
+- **2026-08-12** — Ticket-number collision, resolved. A concurrent session also opened a
+  TASK-671 (SDK deferred tails) and renumbered itself to TASK-673
+  (`docs/implementation/TASK-673-SDK-Deferred-Tails/`, commit `61a864604`). The docs are now
+  unambiguous, but **commits `a24231c9c`, `0f0187b49`, `68128f100` and `851577b69` still say
+  "TASK-671" in their messages and belong to TASK-673** — history was left unrewritten
+  rather than force-pushed. Read those four by content, not by ticket number.
