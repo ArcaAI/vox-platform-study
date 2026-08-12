@@ -12,6 +12,7 @@ import { AGENTIC_FEWSHOT_SETTINGS } from './descriptors/agentic-fewshot.descript
 import { AGENTIC_REVISIT_SETTINGS } from './descriptors/agentic-revisit.descriptors';
 import { BATCH_TRANSCRIPTION_SETTINGS } from './descriptors/batch-transcription.descriptors';
 import { BOOTSTRAP_ENV_SETTINGS } from './descriptors/bootstrap-env.descriptors';
+import { CONSULTATION_GATE_SETTINGS } from './descriptors/consultation-gates.descriptors';
 import { ENTITLEMENT_SETTINGS } from './descriptors/entitlements.descriptors';
 import { FEATURE_FLAG_SETTINGS } from './descriptors/feature-flags.descriptors';
 import { METERING_SETTINGS } from './descriptors/metering.descriptors';
@@ -79,6 +80,14 @@ export const HOPE_SETTINGS_REGISTRY: SettingsRegistry = new SettingsRegistry().r
   ...RATE_LIMIT_TIER_SETTINGS,
   // Feature gates still read from env, carrying `targetTier: 'redis-flag'`.
   ...FEATURE_FLAG_SETTINGS,
+
+  // ── TASK-679 — configuration-tier compliance ─────────────────────────────
+  // The two consultation-pipeline `@OnEvent(ContextAdded)` kill-switches,
+  // MIGRATED off `process.env` in the same commit (so `tier` is already
+  // `global-kv`, with no `targetTier` pending). NOTE: `consultation.ocr.enabled`
+  // carries a deliberate BEHAVIOUR CHANGE — `OCR_ENABLED` defaulted ON, and a
+  // kill-switch must default OFF.
+  ...CONSULTATION_GATE_SETTINGS,
 
   // ╔══════════════════════════════════════════════════════════════════════════╗
   // ║ REGISTRATION POINT — TASK-558 lane E (storage config → DB + Vault)        ║

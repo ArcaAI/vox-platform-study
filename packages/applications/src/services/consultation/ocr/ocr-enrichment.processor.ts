@@ -8,6 +8,8 @@ import { IBlobStorageService } from '../../baseServices/storage';
 import { assertEqualTenants, createWorkerSession, encryptPhiFields, parseStorageUri } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 import { SecretsService } from '../../baseServices/_meta/secrets';
+import { TenantSettingsService } from '../../settings-registry/tenant-settings.service';
+import { CONSULTATION_OCR_ENABLED_KEY } from '../consultation-gates.constants';
 import { ConsultationPipelineEvent, ContextAddedPayload } from '../events';
 import { LOOP_SIGNAL_CONTENT_MAX_LENGTH } from '../context/context.service';
 
@@ -45,15 +47,26 @@ interface NlpExtractResult {
  * `extractedText` present and no-ops — so there is no re-OCR and no infinite loop.
  *
  * PHI posture (§C): bytes stay in-cluster (tenant bucket → NLP); no third-party
- * egress. Gated behind `OCR_ENABLED`, which DEFAULTS TO ENABLED because the
- * in-cluster RapidOCR path has no PHI egress. Every failure degrades gracefully
- * to the filename-label fallback — it never throws and never blocks the upload.
+ * egress. Every failure degrades gracefully to the filename-label fallback — it
+ * never throws and never blocks the upload.
+ *
+ * GATE (TASK-679): the `consultation.ocr.enabled` KILL-SWITCH, tier `global-kv`,
+ * resolved on EVERY event through `TenantSettingsService` so OCR can be cut
+ * without a redeploy when the NLP service is under pressure.
+ *
+ * ⚠️ THIS DEFAULTS **OFF**, which is a deliberate behaviour change. The
+ * `OCR_ENABLED` env flag it replaces defaulted ENABLED (only an explicit falsey
+ * string disabled it), and that broke two rules at once: §9.2 L1 (an env var is
+ * immutable for the process lifetime, so it could not be cut live) and §9.3 M9
+ * (a kill-switch MUST default OFF for fail-safe rollout — `SettingsRegistry`
+ * refuses to assemble a default-ON one). Enabling server-side OCR is now an
+ * explicit operator action. With the gate off a scanned attachment degrades to
+ * its filename label — exactly what a failed OCR pass already produced.
  */
 @Injectable()
 export class OcrEnrichmentProcessor {
   private readonly logger = new Logger(OcrEnrichmentProcessor.name);
   private readonly nlpServiceUrl: string;
-  private readonly ocrEnabled: boolean;
 
   constructor(
     @Inject(IBlobStorageService) private readonly blobStorage: IBlobStorageService,
@@ -72,12 +85,29 @@ export class OcrEnrichmentProcessor {
     // fixtures keep compiling; when absent, OCR degrades to a no-op instead
     // of mistreating `mediaId` as a literal S3 key.
     @Optional() @Inject(MediaRepository) private readonly mediaRepository?: MediaRepository,
+    // TASK-679 — the `consultation.ocr.enabled` kill-switch resolver. Optional +
+    // trailing so existing positional fixtures keep their arity; ABSENT ⇒ the
+    // gate reads OFF, which is both the fail-safe answer and the descriptor's
+    // declared default.
+    @Optional() @Inject(TenantSettingsService) private readonly tenantSettings?: TenantSettingsService,
   ) {
+    // `NLP_URL` stays `env`: it is TOPOLOGY (where the service lives), which the
+    // tier table keeps in env alongside `DATABASE_URL` and the other `*_URL`s.
     this.nlpServiceUrl = this.configService.get<string>('NLP_URL') ?? 'http://localhost:8864';
-    // Default ENABLED — the in-cluster RapidOCR path has no PHI egress (§C). Only
-    // an explicit falsey value disables it; the A3 managed-cloud OCR provider (which
-    // WOULD egress PHI) is intentionally out of scope and left as a config hook.
-    this.ocrEnabled = !this.isFalsey(this.configService.get<string>('OCR_ENABLED'));
+  }
+
+  /**
+   * The live kill-switch. Read PER EVENT, never cached on the instance — a
+   * `GlobalSetting` write publishes on `app-settings:invalidate` and this node's
+   * next `ContextAdded` sees the new value, with no restart.
+   *
+   * Synchronous by construction: `resolvePlatform` reads the in-memory settings
+   * cache and does no I/O. A backend error propagates rather than being
+   * disguised as the default (`SettingFailMode`).
+   */
+  private get ocrEnabled(): boolean {
+    if (!this.tenantSettings) return false;
+    return this.tenantSettings.resolvePlatform<boolean>(CONSULTATION_OCR_ENABLED_KEY).value === true;
   }
 
   /**
@@ -218,11 +248,5 @@ export class OcrEnrichmentProcessor {
       timeout: 120000, // OCR is CPU-bound (~0.9s/scanned page) — allow a generous budget
     });
     return response.data;
-  }
-
-  /** Treat unset as ENABLED; only an explicit falsey string disables OCR. */
-  private isFalsey(value: string | undefined): boolean {
-    if (value === undefined) return false;
-    return ['false', '0', 'no', 'off'].includes(value.trim().toLowerCase());
   }
 }
