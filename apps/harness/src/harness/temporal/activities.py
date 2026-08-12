@@ -89,6 +89,7 @@ from harness.temporal.claim_check import (
     maybe_offload,
 )
 from harness.temporal.models import (
+    AGENT_ROLE_SPECIALIST,
     LOOP_EVENT_ADJUDICATED,
     PRIMARY_ONLY_OUTPUT_KINDS,
     ApplyRedactionInput,
@@ -112,6 +113,7 @@ from harness.temporal.models import (
     InferentialRunOutput,
     LiveDocControlInput,
     LiveDocControlResult,
+    LoopAgentSpec,
     LoopBudget,
     LoopSubscription,
     McpToolCallResult,
@@ -2140,6 +2142,32 @@ async def fetch_loop_config(payload: FetchLoopConfigInput) -> ConsultationLoopCo
     def _strings(key: str) -> list[str]:
         return [a for a in (data.get(key) or []) if isinstance(a, str)]
 
+    # TASK-664 — the agent roster. Absent on a gateway that predates this ticket,
+    # in which case the roster is empty, `reasoning_enabled` stays False, and the
+    # loop behaves exactly as TASK-662 left it.
+    agents: list[LoopAgentSpec] = []
+    for entry in data.get("agents") or []:
+        if not isinstance(entry, dict):
+            continue
+        agent_id = entry.get("agentId")
+        if not isinstance(agent_id, str):
+            continue
+        agents.append(
+            LoopAgentSpec(
+                agent_id=agent_id,
+                role=entry.get("role") or AGENT_ROLE_SPECIALIST,
+                slug=entry.get("slug"),
+                goal=entry.get("goal"),
+                subscribed_kinds=[
+                    k for k in (entry.get("subscribedKinds") or []) if isinstance(k, str)
+                ],
+                write_scope=[
+                    k for k in (entry.get("writeScope") or []) if isinstance(k, str)
+                ],
+                agent_config_version_id=entry.get("agentConfigVersionId"),
+            )
+        )
+
     return ConsultationLoopConfig(
         enabled=bool(data.get("enabled", False)),
         consultation_id=data.get("consultationId") or payload.consultation_id,
@@ -2151,6 +2179,8 @@ async def fetch_loop_config(payload: FetchLoopConfigInput) -> ConsultationLoopCo
         budget=budget,
         start_actions=_strings("startActions"),
         ending_actions=_strings("endingActions"),
+        reasoning_enabled=bool(data.get("reasoningEnabled", False)),
+        agents=agents,
     )
 
 

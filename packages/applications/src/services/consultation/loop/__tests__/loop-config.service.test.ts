@@ -15,7 +15,10 @@ const mockClsService = { get: vi.fn(), set: vi.fn() };
 const mockEventEmitter = { emit: vi.fn() };
 
 const mockConsultationRepository = { findById: vi.fn() };
-const mockAgentRepository = { findDefaultForDepartment: vi.fn() };
+// TASK-664 added `findAllByDepartment` (the agent roster read). Defaulted to an
+// empty roster in `beforeEach` so every pre-existing case keeps asserting the
+// TASK-662 shape: no roster means `reasoningEnabled: false` and `agents: []`.
+const mockAgentRepository = { findDefaultForDepartment: vi.fn(), findAllByDepartment: vi.fn() };
 const mockAgentVersionRepository = { findLatestForAgent: vi.fn() };
 const mockContextSchemaRepository = { findDefaultForScope: vi.fn() };
 const mockContextSchemaVersionRepository = { findBySchemaAndVersionNumber: vi.fn() };
@@ -59,6 +62,7 @@ describe('LoopConfigService.resolveForConsultation — TASK-662', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockAgentRepository.findAllByDepartment.mockResolvedValue([]);
     service = buildService();
   });
 
@@ -78,6 +82,11 @@ describe('LoopConfigService.resolveForConsultation — TASK-662', () => {
       budget: DEFAULT_BUDGET,
       startActions: [],
       endingActions: [],
+      // TASK-664 — a degraded config carries an EMPTY roster and the reasoning
+      // lane OFF, so a consultation whose config could not be resolved keeps
+      // behaving exactly as it did before the deliberative lane existed.
+      reasoningEnabled: false,
+      agents: [],
     });
     expect(mockAgentRepository.findDefaultForDepartment).not.toHaveBeenCalled();
   });
@@ -274,5 +283,113 @@ describe('LoopConfigService.resolveForConsultation — TASK-662', () => {
     expect(result.enabled).toBe(false);
     expect(result.agentId).toBe('agent-1');
     expect(result.contextSchemaVersionId).toBeNull();
+  });
+});
+
+describe('LoopConfigService — agent roster (TASK-664)', () => {
+  let service: LoopConfigService;
+
+  const PRIMARY = {
+    id: 'agent-primary',
+    slug: 'primary',
+    role: 'PRIMARY',
+    goal: { version: 1, objective: 'Produce one reconciled note' },
+    subscribedKinds: { version: 1, kinds: [{ key: 'transcript' }, { key: 'worknote' }] },
+    writeScope: { version: 1, outputs: ['soap_note'] },
+    alwaysActions: null,
+    neverActions: null,
+  };
+  const SPECIALIST = {
+    id: 'agent-cardio',
+    slug: 'cardiology',
+    role: 'SPECIALIST',
+    goal: null,
+    subscribedKinds: { version: 1, kinds: [{ key: 'transcript' }] },
+    writeScope: { version: 1, outputs: ['cardiology_finding'] },
+    alwaysActions: null,
+    neverActions: null,
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    service = buildService();
+    mockConsultationRepository.findById.mockResolvedValue({ id: 'consult-1', tenantId: 'tenant-1', departmentId: 'dept-1' });
+    mockAgentRepository.findDefaultForDepartment.mockResolvedValue(PRIMARY);
+    mockAgentVersionRepository.findLatestForAgent.mockResolvedValue({ id: 'dav-1' });
+    mockContextSchemaRepository.findDefaultForScope.mockResolvedValue(null);
+  });
+
+  it('resolves each agent read scope, write scope and pinned config version', async () => {
+    mockAgentRepository.findAllByDepartment.mockResolvedValue([PRIMARY, SPECIALIST]);
+
+    const result = await service.resolveForConsultation('tenant-1', 'consult-1');
+
+    expect(result.agents).toEqual([
+      {
+        agentId: 'agent-primary',
+        role: 'PRIMARY',
+        slug: 'primary',
+        goal: 'Produce one reconciled note',
+        subscribedKinds: ['transcript', 'worknote'],
+        writeScope: ['soap_note'],
+        agentConfigVersionId: 'dav-1',
+      },
+      {
+        agentId: 'agent-cardio',
+        role: 'SPECIALIST',
+        slug: 'cardiology',
+        goal: null,
+        subscribedKinds: ['transcript'],
+        writeScope: ['cardiology_finding'],
+        agentConfigVersionId: 'dav-1',
+      },
+    ]);
+  });
+
+  it('enables reasoning ONLY when there is a primary AND at least one specialist', async () => {
+    mockAgentRepository.findAllByDepartment.mockResolvedValue([PRIMARY, SPECIALIST]);
+    expect((await service.resolveForConsultation('tenant-1', 'consult-1')).reasoningEnabled).toBe(true);
+  });
+
+  it('leaves reasoning OFF for a single-agent department (exactly TASK-662 behaviour)', async () => {
+    mockAgentRepository.findAllByDepartment.mockResolvedValue([PRIMARY]);
+
+    const result = await service.resolveForConsultation('tenant-1', 'consult-1');
+
+    expect(result.reasoningEnabled).toBe(false);
+    expect(result.agents).toHaveLength(1);
+    expect(result.agents[0].role).toBe('PRIMARY');
+  });
+
+  it('falls back to the department DEFAULT agent as primary when no agent carries the PRIMARY role', async () => {
+    // A department configured before TASK-659 has a default but no roles. The
+    // loop must still have exactly one note owner rather than none.
+    const rolelessDefault = { ...PRIMARY, role: 'SPECIALIST' };
+    mockAgentRepository.findDefaultForDepartment.mockResolvedValue(rolelessDefault);
+    mockAgentRepository.findAllByDepartment.mockResolvedValue([rolelessDefault, SPECIALIST]);
+
+    const result = await service.resolveForConsultation('tenant-1', 'consult-1');
+
+    const primaries = result.agents.filter((a) => a.role === 'PRIMARY');
+    expect(primaries).toHaveLength(1);
+    expect(primaries[0].agentId).toBe('agent-primary');
+  });
+
+  it('treats a structurally malformed writeScope as NOTHING granted, never everything', async () => {
+    const broken = { ...SPECIALIST, writeScope: { version: 99, outputs: ['anything'] } };
+    mockAgentRepository.findAllByDepartment.mockResolvedValue([PRIMARY, broken]);
+
+    const result = await service.resolveForConsultation('tenant-1', 'consult-1');
+
+    expect(result.agents[1].writeScope).toEqual([]);
+  });
+
+  it('degrades a malformed goal envelope to null rather than leaking the object into a prompt', async () => {
+    const broken = { ...SPECIALIST, goal: { version: 1, notObjective: 'x' } };
+    mockAgentRepository.findAllByDepartment.mockResolvedValue([PRIMARY, broken]);
+
+    const result = await service.resolveForConsultation('tenant-1', 'consult-1');
+
+    expect(result.agents[1].goal).toBeNull();
   });
 });

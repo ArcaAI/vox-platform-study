@@ -12,15 +12,16 @@ import {
   ConsultationRepository,
   DepartmentAgentEntity,
   DepartmentAgentRepository,
+  DepartmentAgentRole,
   DepartmentAgentVersionRepository,
   ResourceType,
 } from '@arcaai/domains';
 import { BaseService } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 import { ContextPrimitive, findKind } from '../../consultation-context-schema/context-schema-definition';
-import { AgentActionKey, subscribedKindsProblems } from '../../departmentAgent/constants';
+import { AgentActionKey, subscribedKindsProblems, writeScopeProblems } from '../../departmentAgent/constants';
 import { ILoopConfigService } from './ILoopConfigService';
-import { LoopConfigResponse, LoopSubscriptionDto } from './dto';
+import { LoopAgentDto, LoopConfigResponse, LoopSubscriptionDto } from './dto';
 
 /** TASK-662 — the bounded execution envelope, until per-agent overrides exist. */
 export const LOOP_CONFIG_MAX_DEPTH = 3;
@@ -54,7 +55,35 @@ function disabledResponse(consultationId: string | null, departmentId: string | 
     budget: { maxDepth: LOOP_CONFIG_MAX_DEPTH, maxActions: LOOP_CONFIG_MAX_ACTIONS },
     startActions: [],
     endingActions: [],
+    reasoningEnabled: false,
+    agents: [],
   };
+}
+
+/**
+ * The agent's goal OBJECTIVE as a plain sentence, or null.
+ *
+ * `DepartmentAgent.goal` is a constrained JSONB object
+ * (`{ version, objective, successCriteria[] }` — TASK-659). The loop's planner
+ * prompt wants the objective sentence, not the envelope, and a malformed blob
+ * degrades to "no goal" rather than leaking `[object Object]` into a prompt.
+ */
+function parseGoalObjective(goal: Record<string, unknown> | null | undefined): string | null {
+  if (!goal) return null;
+  const objective = goal.objective;
+  return typeof objective === 'string' && objective.trim().length > 0 ? objective.trim() : null;
+}
+
+/**
+ * Every write-scope output key, or `[]` when `writeScope` is absent or
+ * structurally malformed. Same posture as `parseSubscribedKindKeys`: a bad JSONB
+ * blob is treated as "nothing granted", never as a throw and never — critically
+ * — as "everything granted".
+ */
+function parseWriteScopeKeys(writeScope: Record<string, unknown> | null | undefined): string[] {
+  if (!writeScope) return [];
+  const { problems, outputKeys } = writeScopeProblems(writeScope);
+  return problems.length > 0 ? [] : outputKeys;
 }
 
 /**
@@ -129,6 +158,7 @@ export class LoopConfigService extends BaseService implements ILoopConfigService
     const kindKeys = parseSubscribedKindKeys(agent.subscribedKinds);
     const subscriptions = this.buildSubscriptions(kindKeys, servableVersion, agent);
     const { startActions, endingActions } = this.deriveStartAndEndingActions(kindKeys, servableVersion, agent);
+    const agents = await this.buildAgentRoster(tenantId, departmentId, agent);
 
     return {
       enabled,
@@ -141,7 +171,52 @@ export class LoopConfigService extends BaseService implements ILoopConfigService
       budget: { maxDepth: LOOP_CONFIG_MAX_DEPTH, maxActions: LOOP_CONFIG_MAX_ACTIONS },
       startActions,
       endingActions,
+      // TASK-664 — the deliberative lane is ON only when there is actually
+      // something to deliberate: a PRIMARY plus at least one SPECIALIST. A
+      // department with one agent gets exactly TASK-662's behaviour, which is
+      // also what keeps every existing consultation unchanged.
+      reasoningEnabled: agents.some((a) => a.role === DepartmentAgentRole.PRIMARY) && agents.some((a) => a.role === DepartmentAgentRole.SPECIALIST),
+      agents,
     };
+  }
+
+  /**
+   * The department's pinned agent roster (TASK-664).
+   *
+   * The PRIMARY is resolved by ROLE, falling back to the department default
+   * agent when no agent carries the PRIMARY role — a department configured
+   * before TASK-659 has a default but no roles, and the loop must still have
+   * exactly one note owner rather than none.
+   *
+   * Read and write scopes are resolved here and frozen into the pinned config.
+   * That placement is the point: the harness enforces `writeScope` at its
+   * orchestrator, but the SCOPE ITSELF is a tenant configuration decision, and
+   * pinning it means a mid-consultation edit cannot widen what a running
+   * specialist may write.
+   */
+  private async buildAgentRoster(tenantId: string, departmentId: string, defaultAgent: DepartmentAgentEntity): Promise<LoopAgentDto[]> {
+    const all = await this.departmentAgentRepository.findAllByDepartment(tenantId, departmentId);
+    if (all.length === 0) return [];
+
+    const explicitPrimary = all.find((a) => a.role === DepartmentAgentRole.PRIMARY);
+    const primaryId = explicitPrimary?.id ?? defaultAgent.id;
+
+    const roster = await Promise.all(
+      all.map(async (entity) => {
+        const latest = await this.departmentAgentVersionRepository.findLatestForAgent(entity.id);
+        return {
+          agentId: entity.id,
+          role: entity.id === primaryId ? DepartmentAgentRole.PRIMARY : DepartmentAgentRole.SPECIALIST,
+          slug: entity.slug ?? null,
+          goal: parseGoalObjective(entity.goal),
+          subscribedKinds: parseSubscribedKindKeys(entity.subscribedKinds),
+          writeScope: parseWriteScopeKeys(entity.writeScope),
+          agentConfigVersionId: latest?.id ?? null,
+        };
+      }),
+    );
+
+    return roster;
   }
 
   /** `findById` throws `DataNotFoundException` on a miss (incl. a cross-tenant id, hidden by the tenant-scope extension) — never surfaced as a throw here. */
