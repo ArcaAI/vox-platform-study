@@ -174,18 +174,40 @@ export function buildGoalPayload(objective: string, successCriteria: string[]): 
 }
 
 /**
+ * Tri-state editor value for one tool's `toolConfig.tools[key].enabled` pin
+ * (TASK-674) — mirrors the `TriState` pattern of
+ * `pipeline-policy/components/cascade.ts` (inherit/on/off over a nullable
+ * boolean), reimplemented here rather than imported because features never
+ * import each other (`13-nextjs-apps.md`). `'inherit'` round-trips to
+ * `enabled: null` — "follow the platform/env default" — instead of being
+ * coerced to `true`/`false`.
+ */
+export type ToolTriState = 'inherit' | 'on' | 'off';
+
+export function toolEnabledToTri(enabled: boolean | null | undefined): ToolTriState {
+  if (enabled === true) return 'on';
+  if (enabled === false) return 'off';
+  return 'inherit';
+}
+
+export function triToToolEnabled(tri: ToolTriState): boolean | null {
+  if (tri === 'inherit') return null;
+  return tri === 'on';
+}
+
+/**
  * Builds the `toolConfig` JSONB payload ("Tool allowlist") — every one of the
- * three tools is set EXPLICITLY (allow/deny), never omitted. The console does
- * not expose `enabled: null` ("follow the platform default") — a scoped
- * simplification recorded in the ticket README; a tenant admin using this
- * form always states allow/deny for all three tools.
+ * three tools is set EXPLICITLY, `enabled: true | false | null`, never
+ * omitted. `null` ("inherit") is preserved rather than coerced to a boolean —
+ * it means "follow the platform/env default", the same tri-state the server
+ * already validates (`toolConfigProblems` in
+ * `packages/applications/src/services/departmentAgent/constants.ts`).
  */
 export function buildToolConfigPayload(
-  enabledTools: readonly (typeof LIVE_TOOL_KEYS)[number][],
-): { version: 1; tools: Record<(typeof LIVE_TOOL_KEYS)[number], { enabled: boolean }> } {
-  const enabledSet = new Set(enabledTools);
-  const tools = {} as Record<(typeof LIVE_TOOL_KEYS)[number], { enabled: boolean }>;
-  for (const key of LIVE_TOOL_KEYS) tools[key] = { enabled: enabledSet.has(key) };
+  toolStates: Record<(typeof LIVE_TOOL_KEYS)[number], ToolTriState>,
+): { version: 1; tools: Record<(typeof LIVE_TOOL_KEYS)[number], { enabled: boolean | null }> } {
+  const tools = {} as Record<(typeof LIVE_TOOL_KEYS)[number], { enabled: boolean | null }>;
+  for (const key of LIVE_TOOL_KEYS) tools[key] = { enabled: triToToolEnabled(toolStates[key] ?? 'inherit') };
   return { version: 1, tools };
 }
 
@@ -244,12 +266,14 @@ export function parseGoal(value: Record<string, unknown> | null | undefined): { 
   return { objective, successCriteria };
 }
 
-/** Parses `agent.toolConfig` into the set of tools currently enabled. */
-export function parseToolConfig(value: Record<string, unknown> | null | undefined): (typeof LIVE_TOOL_KEYS)[number][] {
+/** Parses `agent.toolConfig` into each tool's tri-state pin (`'inherit'` when unset/null). */
+export function parseToolConfig(value: Record<string, unknown> | null | undefined): Record<(typeof LIVE_TOOL_KEYS)[number], ToolTriState> {
   const tools = value?.tools;
-  if (!tools || typeof tools !== 'object') return [];
-  return LIVE_TOOL_KEYS.filter((key) => {
-    const entry = (tools as Record<string, unknown>)[key];
-    return !!entry && typeof entry === 'object' && (entry as Record<string, unknown>).enabled === true;
-  });
+  const result = {} as Record<(typeof LIVE_TOOL_KEYS)[number], ToolTriState>;
+  for (const key of LIVE_TOOL_KEYS) {
+    const entry = tools && typeof tools === 'object' ? (tools as Record<string, unknown>)[key] : undefined;
+    const enabled = entry && typeof entry === 'object' ? (entry as Record<string, unknown>).enabled : undefined;
+    result[key] = toolEnabledToTri(typeof enabled === 'boolean' ? enabled : null);
+  }
+  return result;
 }
