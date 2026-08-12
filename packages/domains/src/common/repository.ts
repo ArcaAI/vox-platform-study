@@ -147,9 +147,32 @@ export abstract class Repository<DomainEntity extends BaseEntity, DatabaseModel>
     return props;
   }
 
-  public async update(id: EntityId, entity: DomainEntity): Promise<DomainEntity> {
+  /**
+   * Persist the entity's tracked changes.
+   *
+   * @param tx - Optional transaction client. When supplied (a multi-entity
+   *   write sequence that must be atomic, e.g. the cross-tenant agent
+   *   promotion in `AgentPromotionService`), the write routes through it so it
+   *   participates in the caller's `$transaction` and rolls back with the rest
+   *   on partial failure — mirroring the existing `create(..., tx)` /
+   *   `createMany(..., tx)` / `updateWithVersion(..., tx)` contract. Without
+   *   `tx` the cached extended client (`this.db`) is used — behaviour
+   *   unchanged.
+   *
+   *   The parameter is required rather than relying on the CLS propagation in
+   *   `CoreUnitOfWorkService.runInTransaction`: a repository resolves and
+   *   CACHES its database context in its constructor and is a boot-time
+   *   singleton, so an already-constructed repository never observes the CLS
+   *   tx client.
+   *
+   *   This is the NON-versioned write. It takes no `_version` predicate and
+   *   bumps no counter — for optimistic concurrency use `updateWithVersion`.
+   */
+  public async update(id: EntityId, entity: DomainEntity, tx?: Prisma.TransactionClient | any): Promise<DomainEntity> {
     const changes = this._mapper.toPersistenceChanges(entity);
-    const model = await this.db.update({
+    const delegate = tx ? (tx as Record<string, any>)[this._modelName] : this.db;
+
+    const model = await delegate.update({
       where: { id },
       data: changes,
       include: this._includes,

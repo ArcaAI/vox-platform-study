@@ -37,6 +37,11 @@ const mockContextSchemaVersionRepository = { findBySchemaAndVersionNumber: vi.fn
 const mockConsultationRepository = { count: vi.fn() };
 const mockPolicyEngine = { buildAbility: vi.fn() };
 const mockEvalRunService = { runGoldenSet: vi.fn() };
+// TASK-677 — the promotion write sequence runs inside one transaction. This
+// fixture executes the work immediately, so every assertion below observes the
+// same writes it did before; the atomicity properties themselves are asserted
+// in `agentPromotion.transaction.task677.test.ts`.
+const mockUnitOfWork = { runInTransaction: vi.fn(async (work: (tx: unknown) => Promise<unknown>) => work({})) };
 
 vi.mock('@arcaai/domains', async () => {
   const actual = await vi.importActual('@arcaai/domains');
@@ -126,6 +131,7 @@ function buildService() {
     mockContextSchemaVersionRepository as never,
     mockConsultationRepository as never,
     mockPolicyEngine as never,
+    mockUnitOfWork as never,
     mockEvalRunService as never,
   );
 }
@@ -153,6 +159,7 @@ describe('AgentPromotionService', () => {
     vi.clearAllMocks();
     elevatedTenantlessContext();
 
+    mockUnitOfWork.runInTransaction.mockImplementation(async (work: (tx: unknown) => Promise<unknown>) => work({}));
     mockPolicyEngine.buildAbility.mockResolvedValue({ can: () => true });
     mockAgentRepository.findById.mockResolvedValue(sourceAgent());
     mockAgentRepository.findBySlug.mockResolvedValue(null);

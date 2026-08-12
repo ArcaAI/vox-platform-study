@@ -349,7 +349,10 @@ should check hardest:
 | D-10 | Promotion is create-**or**-update on `(toTenantId, targetDepartment, slug)` | Promoting into a department that already runs that agent is a version bump — which is what makes the live-consultation alert's "running on the previous version" wording true. A brand-new target agent gets no alert, because there is no previous version to complete on. |
 | D-11 | Only SUCCESSFUL promotions are recorded | A blocked attempt throws and writes nothing. Recording attempts would be a different feature (an attempt log), and the audit row's value is that every entry describes something that actually happened. |
 
-### 4.5 Known limitation
+### 4.5 Known limitation — CLOSED by TASK-677 (2026-08-12)
+
+> Retained as the historical analysis of the window. `Repository.update` gained an optional `tx`
+> parameter, and the sequence below now runs inside one `runInTransaction`.
 
 The write sequence — target agent → target version → promotion record — is **not** wrapped in a
 transaction. `Repository.update` takes no `tx` parameter (only `create` does), so a
@@ -564,9 +567,13 @@ the code and confirming the suite fails:
   would leave a half-configured agent, which is worse than none. **The console form (TASK-667) is
   the moment this becomes live** — it is the first surface that lets anyone configure a SYSTEM
   golden agent's loop fields.
-- **OI-2** — the promotion write sequence is not transactional; see §4.5 for the failure-mode
-  analysis and why closing it needs a `tx` parameter on `Repository.update` (a cross-cutting
-  change, out of scope here).
+- **OI-2** — ~~the promotion write sequence is not transactional~~ **CLOSED by TASK-677**
+  (2026-08-12). `Repository.update` now takes an optional `tx`, so the create-**or**-update path is
+  wrappable; the deep-copied templates, the target agent, its version row and the `AgentPromotion`
+  record now commit inside one `runInTransaction`, and the sys-event moved to after the commit. The
+  eval re-run and its `evalRunId` write stay outside by design (D-7). See
+  `docs/implementation/TASK-677-Transactional-Write-Sequences/README.md`. §4.5 below is retained as
+  the historical analysis of the window that existed.
 - **OI-3** — the cross-tenant e2e spec is **authored but not executed**. `pnpm test:e2e` needs a
   live API on 8868 plus seeded test infra, which was not stood up in this worktree; the standing
   guidance is that only ONE API instance may serve e2e, and TASK-662 is running concurrently.
