@@ -459,6 +459,19 @@ export class AgenticClient {
   }
 
   /**
+   * POST request with caller-supplied extra headers.
+   *
+   * Mirrors `patchWithIfMatch` (same one-off-header shape, same thin wrapper
+   * around `request`): used by `useArcaSession.addContext` (TASK-665) to send
+   * `X-Context-Schema-Version` — the `ConsultationContextSchemaVersion` id the
+   * session pinned at `AgenticProvider` mount — so the server validates the
+   * payload against the version this client actually built against (TASK-661).
+   */
+  async postWithHeaders<T>(endpoint: string, body: unknown, headers: Record<string, string>, options?: { signal?: AbortSignal }): Promise<T> {
+    return this.request<T>('POST', endpoint, body, { headers }, options?.signal);
+  }
+
+  /**
    * GET request that returns the parsed body PLUS the `ETag` response
    * header.
    *
