@@ -23,6 +23,7 @@ import { seedAuditLog } from './10-audit-log';
 import { seedGlobalSetting } from './11-global-setting';
 import { seedPlatformKnobSettings } from './11a-platform-knob-settings';
 import { seedTenantAllowedOrigins } from './11b-tenant-allowed-origins';
+import { seedConsultationGateSettings } from './11c-consultation-gate-settings';
 import { seedRateLimitSettings } from './12-rate-limit-settings';
 import { seedHarnessPolicy } from './13-harness-policy';
 import { seedPipelinePolicy } from './14-pipeline-policy';
@@ -218,6 +219,12 @@ export const seed = async () => {
     // Platform-knob rows for the env keys TASK-558 lane I moved into the
     // `global-kv` tier, seeded at today's env values so behaviour is identical.
     await seedPlatformKnobSettings(client);
+    console.log('');
+    // The two consultation-pipeline kill-switches, turned ON for day 1
+    // (TASK-684). Descriptor defaults stay OFF — the registry refuses to
+    // assemble a kill-switch that defaults ON — so the seeded ROW is what
+    // enables them, and `defaultValue` stays at the fail-safe.
+    await seedConsultationGateSettings(client);
     console.log('');
     // Day-1 browser origins permitted to call the gateway, owned by the SYSTEM
     // tenant. Must be seeded BEFORE the production catch-all is closed
