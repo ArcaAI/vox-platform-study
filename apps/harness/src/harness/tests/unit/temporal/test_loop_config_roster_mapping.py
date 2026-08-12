@@ -118,6 +118,53 @@ class TestRosterMapping:
         assert config.budget.max_specialist_runs > 0
 
 
+class TestIdleBoundMapping:
+    """TASK-685 — ``idleTimeoutSeconds`` is the only path the bound can arrive by.
+
+    The workflow reads the bound from the PINNED config and nowhere else (C1), so
+    if this mapping is wrong the bound silently does not exist — which is exactly
+    the defect this ticket fixes, reintroduced one layer down.
+    """
+
+    @pytest.mark.asyncio
+    async def test_the_idle_bound_maps_from_its_camel_case_key(self, patch_client):
+        patch_client({**FULL_PAYLOAD, "idleTimeoutSeconds": 14400})
+
+        config = await fetch_loop_config(
+            FetchLoopConfigInput(consultation_id="c-1", tenant_id="t-1")
+        )
+
+        assert config.idle_timeout_seconds == 14400.0
+
+    @pytest.mark.asyncio
+    async def test_an_absent_bound_leaves_the_loop_unbounded(self, patch_client):
+        """The pre-TASK-685 gateway shape. None ⇒ the era gate short-circuits."""
+        patch_client(FULL_PAYLOAD)
+
+        config = await fetch_loop_config(
+            FetchLoopConfigInput(consultation_id="c-1", tenant_id="t-1")
+        )
+
+        assert config.idle_timeout_seconds is None
+
+    @pytest.mark.parametrize("raw", ["14400", None, True, {"seconds": 1}])
+    @pytest.mark.asyncio
+    async def test_a_non_numeric_bound_is_dropped_rather_than_coerced(self, patch_client, raw):
+        """A malformed bound must read as "unbounded", never as a coerced number.
+
+        ``True`` is in the list on purpose: it is an ``int`` in Python, so a naive
+        ``isinstance(raw, (int, float))`` would pin a one-SECOND idle bound and
+        abandon every consultation almost immediately.
+        """
+        patch_client({**FULL_PAYLOAD, "idleTimeoutSeconds": raw})
+
+        config = await fetch_loop_config(
+            FetchLoopConfigInput(consultation_id="c-1", tenant_id="t-1")
+        )
+
+        assert config.idle_timeout_seconds is None
+
+
 class TestUnUpgradedGateway:
     """A gateway that predates TASK-664 sends neither field."""
 
