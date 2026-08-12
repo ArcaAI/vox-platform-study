@@ -46,6 +46,7 @@ import {
   AggregateNerResponse,
   AggregateNerSource,
   AudioRecordingResponse,
+  CONTEXT_CONTENT_MAX_LENGTH,
   ContextFiltersDto,
   ContextItemResponse,
   ContextItemVersionResponse,
@@ -83,6 +84,29 @@ const LIVE_CONTEXT_TYPES = new Set<ContextItemType>([
  * roughly as long as an admin session view.
  */
 const CONTEXT_MEDIA_URL_TTL_SECONDS = 3600;
+
+/**
+ * Cap on `ContextAddedPayload.content` — the fuller body threaded to the loop
+ * signal so a specialist (`vision.extract_text`, `nlp.extract_entities`) has
+ * real text to act on (TASK-670).
+ *
+ * DECISION — inline, not a `ClaimCheckRef`: the wire body a normal write
+ * produces is already bounded by `AddContextRequest.content`'s own
+ * `CONTEXT_CONTENT_MAX_LENGTH` (200,000 chars ≈ well under a MB even at 4
+ * bytes/char), safely under Temporal's per-payload gRPC ceiling (~2MB, the
+ * `ClaimCheckRef` machinery in `apps/harness/.../claim_check.py` exists for
+ * payloads ABOVE that line — assembled prompts, generated notes, RAG chunks).
+ * A claim-check integration would also require the loop's `contextAdded`
+ * SIGNAL HANDLER to resolve the ref — structurally disallowed by its own
+ * "never call an activity from a handler" invariant (TASK-662 §Signal
+ * safety) — so genuinely oversized bodies belong to a specialist ACTIVITY
+ * fetching from the gateway directly, exactly the pattern `document.extract_text`
+ * already uses. Re-using `CONTEXT_CONTENT_MAX_LENGTH` here means this cap
+ * never actually truncates a normal add-context write; it only bounds the
+ * OCR re-emit path, whose upstream (NLP `/extract`) has no length ceiling of
+ * its own.
+ */
+export const LOOP_SIGNAL_CONTENT_MAX_LENGTH = CONTEXT_CONTENT_MAX_LENGTH;
 
 @Injectable()
 export class ContextService extends BaseService implements IContextService {
@@ -228,6 +252,28 @@ export class ContextService extends BaseService implements IContextService {
     }
   }
 
+  /**
+   * Resolve the loop cascade `depth` (TASK-670) for a write that names
+   * `derivedFromContextItemId`. A human/API-originated write (no lineage
+   * declared) is depth 0 — the overwhelming majority of calls never reach
+   * the `try` below. Best-effort, like `resolveConsultationDepartmentId`
+   * above: a missing/cross-tenant/malformed parent reference degrades to
+   * depth 0 rather than failing the write — lineage bookkeeping must never
+   * block persisting clinical content.
+   */
+  private async resolveCascadeDepth(derivedFromContextItemId: string | undefined, tenantId: string): Promise<number> {
+    if (!derivedFromContextItemId) return 0;
+    try {
+      const parent = await this.contextItemRepository.findById(derivedFromContextItemId);
+      if (parent.tenantId !== tenantId) return 0;
+      const parentMeta = parent.metaData as Record<string, unknown> | undefined;
+      const parentDepth = typeof parentMeta?.loopDepth === 'number' ? (parentMeta.loopDepth as number) : 0;
+      return parentDepth + 1;
+    } catch {
+      return 0;
+    }
+  }
+
   // ============================================
   // Context Item CRUD
   // ============================================
@@ -299,6 +345,11 @@ export class ContextService extends BaseService implements IContextService {
       throw new BadRequestException('Content is required for non-media types');
     }
 
+    // TASK-670 — cascade depth (loop event plane). Only resolved when the
+    // caller declares lineage via `derivedFromContextItemId`; a normal write
+    // (the overwhelming majority) never touches this and stays depth 0.
+    const depth = await this.resolveCascadeDepth(request.derivedFromContextItemId, tenantId);
+
     const contextItem = ContextItemFactory.CreateContextItem({
       tenantId,
       consultationId,
@@ -315,8 +366,15 @@ export class ContextService extends BaseService implements IContextService {
     // Clinical Workflow Playground (WS5) — persist optional free-form metadata
     // (e.g. `{ subType: 'LAB_RESULT' }` on ATTACHMENTs). Set before create so it
     // is included in the entity's toObject() payload.
-    if (request.metadata) {
-      contextItem.metaData = request.metadata;
+    // TASK-670 — `loopDepth` rides the same JSON column, but ONLY when the
+    // write declares `derivedFromContextItemId`: a normal write's metaData
+    // shape is completely unchanged (every reader treats an absent
+    // `loopDepth` as 0).
+    if (request.metadata || request.derivedFromContextItemId) {
+      contextItem.metaData = {
+        ...(request.metadata ?? {}),
+        ...(request.derivedFromContextItemId ? { loopDepth: depth } : {}),
+      };
     }
 
     // Encrypt `content` into the ciphertext columns before
@@ -365,6 +423,12 @@ export class ContextService extends BaseService implements IContextService {
         contextType: request.type,
         subType,
         contentPreview: preview ? preview.slice(0, 2000) : undefined,
+        // TASK-670 — payload completeness for the loop signal: the real kind
+        // key (falls back gateway/harness-side to subType/contextType when
+        // absent), the cascade depth, and the fuller inline body.
+        kindKey: saved.kindKey ?? undefined,
+        depth,
+        content: preview ? preview.slice(0, LOOP_SIGNAL_CONTENT_MAX_LENGTH) : undefined,
       } satisfies ContextAddedPayload);
     }
 

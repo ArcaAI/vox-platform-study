@@ -25,6 +25,7 @@ const mockEventEmitter = { emit: vi.fn() };
 let capturedCreateEntity: any;
 const mockContextItemRepository = {
   create: vi.fn(),
+  findById: vi.fn(),
 };
 const mockContextItemVersionRepository = {
   create: vi.fn().mockResolvedValue({ id: 'v1' }),
@@ -155,5 +156,100 @@ describe('ContextService — ContextAdded fan-out + lab subType', () => {
     const contextAddedCalls = mockEventEmitter.emit.mock.calls.filter((c) => c[0] === ConsultationPipelineEvent.ContextAdded);
     expect(contextAddedCalls).toHaveLength(1);
     expect(contextAddedCalls[0][1]).toMatchObject({ contextType: ContextItemType.STRUCTURED });
+  });
+
+  // TASK-670 — cascade depth: derived context must arrive at parent.depth + 1
+  // so TASK-664's depth-cap budget is a real bound, not a nominal field.
+  describe('cascade depth (derivedFromContextItemId)', () => {
+    it('depth 0 when no lineage is declared (regression — unchanged metaData shape)', async () => {
+      await service.addContext('consultation-1', {
+        type: ContextItemType.WORKNOTE,
+        content: 'BP elevated, monitor',
+      });
+
+      expect(mockContextItemRepository.findById).not.toHaveBeenCalled();
+      const contextAddedCalls = mockEventEmitter.emit.mock.calls.filter((c) => c[0] === ConsultationPipelineEvent.ContextAdded);
+      expect(contextAddedCalls[0][1]).toMatchObject({ depth: 0 });
+      // metaData stays undefined — no loopDepth key added for a normal write.
+      expect(capturedCreateEntity.metaData).toBeUndefined();
+    });
+
+    it('resolves depth = parent.depth + 1 and persists metaData.loopDepth on the child', async () => {
+      mockContextItemRepository.findById.mockResolvedValue({
+        id: 'ctx-parent',
+        tenantId: 'tenant-1',
+        metaData: { loopDepth: 2 },
+      });
+
+      await service.addContext('consultation-1', {
+        type: ContextItemType.STRUCTURED,
+        content: '{"finding":"elevated troponin"}',
+        derivedFromContextItemId: 'ctx-parent',
+      });
+
+      expect(mockContextItemRepository.findById).toHaveBeenCalledWith('ctx-parent');
+      const contextAddedCalls = mockEventEmitter.emit.mock.calls.filter((c) => c[0] === ConsultationPipelineEvent.ContextAdded);
+      expect(contextAddedCalls[0][1]).toMatchObject({ depth: 3 });
+      expect(capturedCreateEntity.metaData).toEqual({ loopDepth: 3 });
+    });
+
+    it('depth 1 when the named parent has no recorded loopDepth (treated as parent depth 0)', async () => {
+      mockContextItemRepository.findById.mockResolvedValue({ id: 'ctx-parent', tenantId: 'tenant-1', metaData: undefined });
+
+      await service.addContext('consultation-1', {
+        type: ContextItemType.STRUCTURED,
+        content: '{"finding":"x"}',
+        derivedFromContextItemId: 'ctx-parent',
+      });
+
+      const contextAddedCalls = mockEventEmitter.emit.mock.calls.filter((c) => c[0] === ConsultationPipelineEvent.ContextAdded);
+      expect(contextAddedCalls[0][1]).toMatchObject({ depth: 1 });
+    });
+
+    it('degrades to depth 0 (best-effort) when the named parent is cross-tenant', async () => {
+      mockContextItemRepository.findById.mockResolvedValue({ id: 'ctx-parent', tenantId: 'tenant-OTHER', metaData: { loopDepth: 5 } });
+
+      await service.addContext('consultation-1', {
+        type: ContextItemType.STRUCTURED,
+        content: '{"finding":"x"}',
+        derivedFromContextItemId: 'ctx-parent',
+      });
+
+      const contextAddedCalls = mockEventEmitter.emit.mock.calls.filter((c) => c[0] === ConsultationPipelineEvent.ContextAdded);
+      expect(contextAddedCalls[0][1]).toMatchObject({ depth: 0 });
+      // The write still SUCCEEDS and still records the (degraded) depth — lineage
+      // bookkeeping never blocks persisting clinical content.
+      expect(capturedCreateEntity.metaData).toEqual({ loopDepth: 0 });
+    });
+
+    it('degrades to depth 0 (best-effort) when the named parent does not exist', async () => {
+      mockContextItemRepository.findById.mockRejectedValue(new Error('not found'));
+
+      await service.addContext('consultation-1', {
+        type: ContextItemType.STRUCTURED,
+        content: '{"finding":"x"}',
+        derivedFromContextItemId: 'ctx-missing',
+      });
+
+      const contextAddedCalls = mockEventEmitter.emit.mock.calls.filter((c) => c[0] === ConsultationPipelineEvent.ContextAdded);
+      expect(contextAddedCalls[0][1]).toMatchObject({ depth: 0 });
+    });
+  });
+
+  // TASK-670 — payload completeness: the fuller `content` field rides
+  // alongside the pre-existing, unchanged `contentPreview` (kindKey coverage
+  // lives in the ATTACHMENT/dedicated-kind path — this asserts `content` is
+  // wired without depending on the schema-validation constructor args).
+  it('emits the fuller content field alongside the unchanged contentPreview', async () => {
+    await service.addContext('consultation-1', {
+      type: ContextItemType.WORKNOTE,
+      content: 'BP elevated, monitor closely for the next hour',
+    });
+
+    const contextAddedCalls = mockEventEmitter.emit.mock.calls.filter((c) => c[0] === ConsultationPipelineEvent.ContextAdded);
+    expect(contextAddedCalls[0][1]).toMatchObject({
+      contentPreview: 'BP elevated, monitor closely for the next hour',
+      content: 'BP elevated, monitor closely for the next hour',
+    });
   });
 });
