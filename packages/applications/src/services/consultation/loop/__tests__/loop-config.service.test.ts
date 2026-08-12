@@ -10,6 +10,9 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { DataNotFoundException } from '@arcaai/exceptions';
 import { LoopConfigService, LOOP_CONFIG_MAX_DEPTH, LOOP_CONFIG_MAX_ACTIONS } from '../loop-config.service';
+import { HARNESS_LOOP_IDLE_TIMEOUT_SECONDS_DEFAULT, HARNESS_LOOP_IDLE_TIMEOUT_SECONDS_KEY } from '../loop-lifecycle.constants';
+import { HOPE_SETTINGS_REGISTRY } from '../../../settings-registry/registry';
+import { TenantSettingsService } from '../../../settings-registry/tenant-settings.service';
 
 const mockClsService = { get: vi.fn(), set: vi.fn() };
 const mockEventEmitter = { emit: vi.fn() };
@@ -87,6 +90,9 @@ describe('LoopConfigService.resolveForConsultation — TASK-662', () => {
       // behaving exactly as it did before the deliberative lane existed.
       reasoningEnabled: false,
       agents: [],
+      // TASK-685 — no bound on a disabled config: that branch completes
+      // immediately and never reaches the wait the bound applies to.
+      idleTimeoutSeconds: null,
     });
     expect(mockAgentRepository.findDefaultForDepartment).not.toHaveBeenCalled();
   });
@@ -391,5 +397,92 @@ describe('LoopConfigService — agent roster (TASK-664)', () => {
     const result = await service.resolveForConsultation('tenant-1', 'consult-1');
 
     expect(result.agents[1].goal).toBeNull();
+  });
+});
+
+/**
+ * TASK-685 — the loop's IDLE lifecycle bound.
+ *
+ * This resolution is the ONLY path the bound can reach the workflow by: the
+ * harness pins the config at start and never re-reads it (C1), so a bound that
+ * fails to resolve here is a loop that parks forever — the exact defect the
+ * ticket fixes, reintroduced one layer up.
+ */
+describe('LoopConfigService.resolveForConsultation — TASK-685 idle bound', () => {
+  /** The same fake platform cache the settings-registry suites use. */
+  function settingsWith(value: unknown): TenantSettingsService {
+    const store = new Map<string, unknown>(value === undefined ? [] : [[HARNESS_LOOP_IDLE_TIMEOUT_SECONDS_KEY, value]]);
+    return new TenantSettingsService({
+      getValueFromCache: (key: string) => (store.has(key) ? store.get(key) : null),
+      getTenantValueFromCache: () => null,
+    } as never);
+  }
+
+  function buildWithSettings(settings?: TenantSettingsService): LoopConfigService {
+    return new LoopConfigService(
+      mockConsultationRepository as never,
+      mockAgentRepository as never,
+      mockAgentVersionRepository as never,
+      mockContextSchemaRepository as never,
+      mockContextSchemaVersionRepository as never,
+      mockEventEmitter as never,
+      mockClsService as never,
+      settings,
+    );
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockAgentRepository.findAllByDepartment.mockResolvedValue([]);
+    mockConsultationRepository.findById.mockResolvedValue({ id: 'consult-1', tenantId: 'tenant-1', departmentId: 'dept-1' });
+    mockAgentRepository.findDefaultForDepartment.mockResolvedValue({ id: 'agent-1', subscribedKinds: null, alwaysActions: null, neverActions: null });
+    mockAgentVersionRepository.findLatestForAgent.mockResolvedValue({ id: 'dav-1' });
+    mockContextSchemaRepository.findDefaultForScope.mockResolvedValue(null);
+  });
+
+  it('is a registered `global-kv` descriptor, not an env var', () => {
+    // The tier argument, asserted rather than asserted-in-prose: a value an
+    // operator must be able to change without a redeploy is not an env var
+    // (§9.2 L1), and it is below no bootstrap floor.
+    const descriptor = HOPE_SETTINGS_REGISTRY.get(HARNESS_LOOP_IDLE_TIMEOUT_SECONDS_KEY);
+    expect(descriptor).toBeDefined();
+    expect(descriptor!.tier).toBe('global-kv');
+    expect(descriptor!.dataType).toBe('number');
+    // A tuning knob: an absent row degrades to the code default, it never raises.
+    expect(descriptor!.failMode).toBe('open-to-default');
+    // NOT a kill-switch — it has a non-trivial default that "off" cannot express.
+    expect(descriptor!.killSwitch).toBeUndefined();
+    expect(descriptor!.default).toBe(HARNESS_LOOP_IDLE_TIMEOUT_SECONDS_DEFAULT);
+  });
+
+  it('resolves the code default when no platform row exists — absence is a BOUNDED loop', async () => {
+    const result = await buildWithSettings(settingsWith(undefined)).resolveForConsultation('tenant-1', 'consult-1');
+    expect(result.idleTimeoutSeconds).toBe(HARNESS_LOOP_IDLE_TIMEOUT_SECONDS_DEFAULT);
+  });
+
+  it('resolves the operator-set platform row', async () => {
+    const result = await buildWithSettings(settingsWith(900)).resolveForConsultation('tenant-1', 'consult-1');
+    expect(result.idleTimeoutSeconds).toBe(900);
+  });
+
+  it('falls back to the bounded default when the resolver is not wired at all', async () => {
+    // `@Optional()`: an unwired resolver must not silently restore the unbounded
+    // wait, which is the failure direction that matters here.
+    const result = await buildWithSettings(undefined).resolveForConsultation('tenant-1', 'consult-1');
+    expect(result.idleTimeoutSeconds).toBe(HARNESS_LOOP_IDLE_TIMEOUT_SECONDS_DEFAULT);
+  });
+
+  it.each([0, -1, Number.NaN])('treats a non-positive stored value (%s) as "no bound", never as a zero-second one', async (value) => {
+    const result = await buildWithSettings(settingsWith(value)).resolveForConsultation('tenant-1', 'consult-1');
+    expect(result.idleTimeoutSeconds).toBeNull();
+  });
+
+  it('sends no bound on a DISABLED config — that branch never reaches the wait', async () => {
+    mockConsultationRepository.findById.mockResolvedValue({ id: 'consult-1', tenantId: 'tenant-1', departmentId: null });
+
+    const result = await buildWithSettings(settingsWith(900)).resolveForConsultation('tenant-1', 'consult-1');
+
+    expect(result.enabled).toBe(false);
+    expect(result.idleTimeoutSeconds).toBeNull();
   });
 });

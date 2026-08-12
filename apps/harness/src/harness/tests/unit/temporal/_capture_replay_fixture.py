@@ -47,6 +47,11 @@ Two scenarios:
   recorded history threads the claim-check REF shape through every downstream activity. The
   command sequence is byte-identical to the inline happy path (NO new command, NO patch
   marker), so this fixture proves ref-threading is command-neutral on replay.
+* ``--idle-timeout`` — TASK-685. A ``ConsultationLoopWorkflow`` run that receives
+  one context item and then NOTHING: no ``consultation-ending``, no ``cancel``.
+  It reaches its pinned idle bound, records the ``task-685-idle-timeout`` marker,
+  the ``wait_condition`` TIMER an unbounded wait never scheduled, and the
+  ``loop.timed_out`` emission — then completes WITHOUT running any ending action.
 * ``--assemble-reuse`` — F-13. A COMPUTATIONAL regen (``REGEN`` then ``PASS``)
   so the pre-delivery loop runs twice: the second iteration takes the patch-gated
   skip, so the recorded history carries the ``task-553-assemble-reuse`` marker and
@@ -392,6 +397,92 @@ async def capture_loop(out_path: Path) -> None:
     print(f"wrote {out_path}")
 
 
+async def capture_idle_timeout(out_path: Path) -> None:
+    """Capture a ``ConsultationLoopWorkflow`` history that hits its IDLE bound (TASK-685).
+
+    Records the two commands the bound adds and nothing else that is new:
+    ``fetch_loop_config`` (the pin) -> ``emit_loop_event`` (a dispatched action,
+    proving the bound is on IDLENESS and restarts on every arrival) -> the
+    ``wait_condition`` TIMER -> ``emit_loop_event`` of the ``loop.timed_out``
+    kind -> terminal completion WITHOUT any ending action.
+
+    The timer is the whole point. An unbounded ``wait_condition`` schedules
+    nothing, so a bounded one is a command-sequence change and needs the
+    ``task-685-idle-timeout`` era. This fixture is the forward guard for that
+    era; the two frozen loop fixtures above (recorded with no
+    ``idleTimeoutSeconds`` at all) must stay green alongside it, which is what
+    proves the bound is gated rather than unconditional.
+
+    No ``consultation-ending`` and no ``cancel`` are ever sent — that IS the
+    scenario. The time-skipping environment advances the clock while the client
+    waits on the result, so the bound fires without a real wait.
+    """
+    from harness.temporal.models import (
+        ConsultationLoopWorkflowInput,
+        ContextAddedSignal,
+        LoopBudget,
+    )
+    from harness.temporal.workflows import (
+        ConsultationLoopWorkflow,
+        consultation_loop_workflow_id,
+    )
+    from harness.tests.unit.temporal._loop_stubs import (
+        LoopStubConfig,
+        LoopStubRecorder,
+        default_loop_config,
+        make_loop_stub_activities,
+    )
+
+    consultation_id = "c-idle-timeout-fixture"
+    loop_config = default_loop_config(
+        budget=LoopBudget(max_depth=2, max_actions=50),
+        # Ending actions stay EMPTY: a timeout abandons, so none of them would
+        # run anyway, and leaving `harness.finalize` configured would only add a
+        # child the fixture never starts.
+        ending_actions=[],
+        idle_timeout_seconds=60.0,
+    )
+    recorder = LoopStubRecorder()
+
+    async with await WorkflowEnvironment.start_time_skipping(
+        data_converter=pydantic_data_converter
+    ) as env:
+        task_queue = f"idle-timeout-fixture-tq-{uuid.uuid4()}"
+        async with Worker(
+            env.client,
+            task_queue=task_queue,
+            workflows=[ConsultationLoopWorkflow],
+            activities=make_loop_stub_activities(
+                LoopStubConfig(config=loop_config), recorder
+            ),
+        ):
+            handle = await env.client.start_workflow(
+                ConsultationLoopWorkflow.run,
+                ConsultationLoopWorkflowInput(
+                    consultation_id=consultation_id, tenant_id="t-1", session_id="s-1"
+                ),
+                id=consultation_loop_workflow_id(consultation_id),
+                task_queue=task_queue,
+            )
+            await handle.signal(
+                ConsultationLoopWorkflow.context_added,
+                ContextAddedSignal(
+                    context_item_id="ci-1", kind_key="transcript", depth=0, occurred_at="1"
+                ),
+            )
+
+            result = await handle.result()
+            print(
+                f"timed_out={result.timed_out} events={result.events_processed} "
+                f"dispatched={result.actions_dispatched} finalized={result.finalized}"
+            )
+            history = await handle.fetch_history()
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(history.to_json())
+    print(f"wrote {out_path}")
+
+
 async def capture_reasoning(out_path: Path) -> None:
     """Capture a ``ConsultationLoopWorkflow`` history WITH the reasoning lane on (TASK-664).
 
@@ -502,6 +593,7 @@ if __name__ == "__main__":
     _scenarios = (
         "--loop",
         "--reasoning",
+        "--idle-timeout",
         "--failure",
         "--optimistic",
         "--regen",
@@ -519,9 +611,9 @@ if __name__ == "__main__":
     if len(args) != 1:
         raise SystemExit(
             "usage: python -m ..._capture_replay_fixture "
-            "[--loop|--reasoning|--failure|--optimistic|--regen|--gate-abandon|--edit-cap"
-            "|--retract|--claim-check|--mcp|--redaction|--redaction-audit|--assemble-reuse]"
-            " <output.json>"
+            "[--loop|--reasoning|--idle-timeout|--failure|--optimistic|--regen|--gate-abandon"
+            "|--edit-cap|--retract|--claim-check|--mcp|--redaction|--redaction-audit"
+            "|--assemble-reuse] <output.json>"
         )
     if scenario == "loop":
         # A different workflow TYPE, so it gets its own capture entry point
@@ -529,5 +621,7 @@ if __name__ == "__main__":
         asyncio.run(capture_loop(Path(args[0])))
     elif scenario == "reasoning":
         asyncio.run(capture_reasoning(Path(args[0])))
+    elif scenario == "idle-timeout":
+        asyncio.run(capture_idle_timeout(Path(args[0])))
     else:
         asyncio.run(capture(Path(args[0]), scenario=scenario))

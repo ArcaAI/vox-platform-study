@@ -85,6 +85,7 @@ with workflow.unsafe.imports_passed_through():
         LOOP_EVENT_ACTION_DISPATCHED,
         LOOP_EVENT_ACTION_SKIPPED,
         LOOP_EVENT_CONTEXT_DERIVED,
+        LOOP_EVENT_LOOP_TIMED_OUT,
         LOOP_EVENT_PLAN_DECIDED,
         LOOP_EVENT_SPECIALIST_FAILED,
         LOOP_SKIP_BUDGET_EXHAUSTED,
@@ -1739,6 +1740,33 @@ _LOOP_MAX_SEEN_KEYS = 2_000
 # ---------------------------------------------------------------------------
 _PATCH_REASONING = "task-664-reasoning"
 
+# ---------------------------------------------------------------------------
+# TASK-685 — the IDLE lifecycle bound
+#
+# Same mandate, same construction as the reasoning era above, for the same
+# reason: this workflow type has frozen fixtures, so a command-sequence change
+# needs its own era. And a bound IS a command-sequence change —
+# `wait_condition(..., timeout=T)` schedules a TIMER, which an unbounded wait
+# never recorded.
+#
+# Two things keep the frozen fixtures green, and BOTH are needed:
+#
+#   1. `idle_timeout_seconds` defaults to None on `ConsultationLoopConfig`, so
+#      the old recorded configs deserialise with NO bound.
+#   2. The config operand comes FIRST in the gate below, so on those histories
+#      `workflow.patched` is never CALLED and no marker is looked for.
+#
+# There is also a third property, specific to this change and worth stating
+# because it is what lets ONE call site serve both eras: `timeout=None` issues
+# no timer at all. `workflow_wait_condition` bottoms out in
+# `asyncio.wait_for(fut, timeout)` (temporalio 1.30.0,
+# `worker/_workflow_instance.py`), and `asyncio.wait_for(fut, None)` awaits
+# without scheduling anything. So the unbounded form records a byte-identical
+# command sequence rather than merely a marker-free one, and the loop body needs
+# no `if bounded: ... else: ...` fork that could drift between the two.
+# ---------------------------------------------------------------------------
+_PATCH_IDLE_TIMEOUT = "task-685-idle-timeout"
+
 # Which activity backs each derived-context action. A MAP rather than a chain of
 # `elif`s, so adding a fourth deriver is a registry entry plus a line here and
 # cannot forget the dispatch branch.
@@ -1912,6 +1940,9 @@ class ConsultationLoopWorkflow:
         self._ending_signal: ConsultationEndingSignal | None = None
         self._cancelled = False
         self._cancel_reason: str | None = None
+        # TASK-685. Not carried across `continue_as_new`: the bound is terminal,
+        # so a run that sets this never reaches a checkpoint.
+        self._timed_out = False
         self._finalized = False
         self._finalize_workflow_id: str | None = None
         self._phase = "INIT"
@@ -1993,6 +2024,7 @@ class ConsultationLoopWorkflow:
             degraded=self._degraded,
             ending=self._ending,
             cancelled=self._cancelled,
+            timed_out=self._timed_out,
             livedoc_started=self._livedoc_started,
             finalize_workflow_id=self._finalize_workflow_id,
             continuations=self._continuations,
@@ -2025,10 +2057,43 @@ class ConsultationLoopWorkflow:
             await self._run_lifecycle_actions(config.start_actions)
             self._start_actions_done = True
 
+        # The IDLE bound (TASK-685). Resolved ONCE, from the PINNED config, and
+        # never re-read — a mid-consultation settings edit must be as invisible
+        # here as it is for subscriptions and budgets (C1). None ⇒ the legacy
+        # unbounded wait, with no timer command; see `_PATCH_IDLE_TIMEOUT`.
+        idle_bound: timedelta | None = None
+        if (
+            config.idle_timeout_seconds
+            and config.idle_timeout_seconds > 0
+            and workflow.patched(_PATCH_IDLE_TIMEOUT)
+        ):
+            idle_bound = timedelta(seconds=config.idle_timeout_seconds)
+
         while True:
-            await workflow.wait_condition(
-                lambda: bool(self._pending) or self._ending or self._cancelled
-            )
+            try:
+                await workflow.wait_condition(
+                    lambda: bool(self._pending) or self._ending or self._cancelled,
+                    timeout=idle_bound,
+                )
+            except TimeoutError:
+                # RE-CHECK before concluding. A signal can land in the same task
+                # the timer fires in, and the only safe direction to resolve that
+                # race is "there is work / an ending" — never "abandon". This is
+                # the same asymmetry TASK-683 used to refuse wiring
+                # `signalLoopCancel` to `close()`.
+                if not (self._pending or self._ending or self._cancelled):
+                    # ABANDONMENT, not a degraded end-of-consultation: the ending
+                    # actions are NOT run. `harness.finalize` would generate,
+                    # persist and WORM-audit a clinical note out of a truncated
+                    # transcript and queue it for a clinician — inventing work
+                    # nobody asked for. Nothing is skipped either: the finalize
+                    # path is a reflex to an explicit `consultation-ending`, and
+                    # that signal never arrived. Argued in full in the ticket
+                    # README §3.
+                    self._timed_out = True
+                    self._phase = "TIMED_OUT"
+                    await self._emit_event(LOOP_EVENT_LOOP_TIMED_OUT)
+                    break
             await self._drain()
 
             if self._cancelled:
@@ -2724,6 +2789,7 @@ class ConsultationLoopWorkflow:
             actions_dispatched=self._actions_dispatched,
             degraded=self._degraded,
             cancelled=self._cancelled,
+            timed_out=self._timed_out,
             finalized=self._finalized,
             finalize_workflow_id=self._finalize_workflow_id,
             continuations=self._continuations,
