@@ -39,12 +39,19 @@ export class GatewayError extends Error {
   readonly status: number;
   /** NestJS error name (e.g. "Bad Request") when the body carried one. */
   readonly code: string | undefined;
+  /**
+   * The raw parsed error body, for callers that need fields beyond `message`
+   * (e.g. `problems`/`breakingChanges` arrays on a structured 400). Undefined
+   * when the body could not be parsed as JSON.
+   */
+  readonly details: unknown;
 
-  constructor(status: number, message: string, code?: string) {
+  constructor(status: number, message: string, code?: string, details?: unknown) {
     super(message);
     this.name = 'GatewayError';
     this.status = status;
     this.code = code;
+    this.details = details;
   }
 
   get isUnauthorized(): boolean {
@@ -75,7 +82,7 @@ async function toGatewayError(response: Response): Promise<GatewayError> {
   try {
     const body = (await response.json()) as GatewayErrorBody;
     const message = Array.isArray(body.message) ? body.message.join('; ') : body.message;
-    return new GatewayError(response.status, message || fallback, body.error);
+    return new GatewayError(response.status, message || fallback, body.error, body);
   } catch {
     return new GatewayError(response.status, fallback);
   }
