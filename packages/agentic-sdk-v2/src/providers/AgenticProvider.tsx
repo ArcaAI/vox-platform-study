@@ -36,6 +36,9 @@ import { AUTH_ENDPOINTS, DEPARTMENT_ENDPOINTS, PERSONALIZATION_ENDPOINTS, USER_S
 // Single source of truth for the `arcaai-config` IDB
 // schema (now v2 with `user-preferences` and `personalization` stores).
 import { configDBGet, configDBSet, USER_PREFERENCES_STORE } from '../core/configDB';
+// TASK-665 — schema discovery, fetched exactly like `modelRegistry.loadTenantConfig()` below.
+import { fetchConsultationSchema } from '../core/ConsultationSchemaClient';
+import type { ConsultationSchemaBundle } from '../types/consultationSchema';
 
 // =============================================================================
 // IndexedDB persistence helpers (namespaced per tenant/user;
@@ -260,6 +263,9 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
   const configManagerRef = useRef<ConfigManager | null>(null);
   const namespaceRef = useRef<string>('pre-login');
   const tenantConfigPromiseRef = useRef<Promise<unknown> | null>(null);
+  // TASK-665 — cached exactly like `tenantConfigPromiseRef` so mount and a
+  // subsequent tenant switch each fan out at most one discovery-bundle fetch.
+  const consultationSchemaPromiseRef = useRef<Promise<ConsultationSchemaBundle> | null>(null);
 
   // Keep a mutable ref to the latest config so the initialization effect
   // (which intentionally has [] deps) can read the most recent values.
@@ -489,6 +495,22 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
         tenantOp.error(error as Error);
       });
 
+    // TASK-665 — cache the consultation context schema discovery-bundle fetch
+    // exactly like `tenantConfigPromise` above: kicked off once here so the
+    // store is populated as soon as it resolves even if `init()` below never
+    // runs (no credentials), then awaited AGAIN inside `init()` before
+    // `configReady` flips (Step 4.5), so a consumer that sees `configReady`
+    // can trust `consultationSchema` is already settled. `fetchConsultationSchema`
+    // never rejects — a schema-plane outage resolves to the safe "unconfigured"
+    // bundle rather than blocking readiness.
+    if (!consultationSchemaPromiseRef.current) {
+      consultationSchemaPromiseRef.current = fetchConsultationSchema(apiClient, providerLogger);
+    }
+    const consultationSchemaPromise = consultationSchemaPromiseRef.current;
+    consultationSchemaPromise.then((bundle) => {
+      store.setConsultationSchema(bundle);
+    });
+
     const hasCredentials = !!(cfg.api.accessToken || cfg.api.apiKey);
 
     const configOp = providerLogger.startOperation('initConfigManager');
@@ -630,6 +652,23 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
         });
       }
 
+      // ---- Step 4.5 (TASK-665): resolve the pinned consultation context
+      // schema before `configReady` flips, so a client's first render
+      // already has the tenant's context-kind vocabulary (or the safe
+      // "unconfigured" bundle) to build its workflow from — mirrors Step 2's
+      // `tenantConfigPromise` await. `fetchConsultationSchema` never rejects,
+      // so this try/catch is defensive-only, matching this function's style.
+      try {
+        const schemaBundle = await consultationSchemaPromise;
+        store.setConsultationSchema(schemaBundle);
+      } catch (error) {
+        providerLogger.warn('Failed to apply consultation context schema (continuing without one)', {
+          operation: 'initConfigManager',
+          component: 'AgenticProvider',
+          error: error as Error,
+        });
+      }
+
       // ---- Step 5: publish resolved config and finally flip readiness.
       store.setResolvedConfig(configManager.getResolved());
       store.setConfigReady(true);
@@ -685,6 +724,7 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
       personalizationManager.destroy();
       pluginManager.destroy();
       tenantConfigPromiseRef.current = null;
+      consultationSchemaPromiseRef.current = null;
       configManagerRef.current = null;
       logger.flush().then(() => {
         logger.shutdown();
@@ -832,6 +872,28 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
               error: error as Error,
             });
           }
+        }
+
+        // TASK-665 — re-fetch the consultation context schema discovery
+        // bundle for the INCOMING identity. `clearTenantSessionData()`
+        // already nulled `consultationSchema` synchronously above (before
+        // this async tail runs), so without this the outgoing tenant's
+        // schema would simply stay absent for the switched-in tenant rather
+        // than being replaced by tenant B's own pin — the same gap the
+        // tenant-config reload block above closes for `tenantConfig`.
+        // `fetchConsultationSchema` never rejects, so this try/catch is
+        // defensive-only, matching the surrounding blocks' style.
+        try {
+          const nextConsultationSchemaPromise = fetchConsultationSchema(apiClient, providerLogger);
+          consultationSchemaPromiseRef.current = nextConsultationSchemaPromise;
+          const nextConsultationSchema = await nextConsultationSchemaPromise;
+          store.setConsultationSchema(nextConsultationSchema);
+        } catch (error) {
+          providerLogger.warn('Consultation context schema reload after switch failed', {
+            operation: 'rehydrateUserNamespace',
+            component: 'AgenticProvider',
+            error: error as Error,
+          });
         }
 
         if (personalizationManager) {

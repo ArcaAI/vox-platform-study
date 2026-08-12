@@ -117,9 +117,15 @@ describe('AgenticProvider', () => {
         const me = await mePromise;
         return jsonResponse(me);
       }
-      if (url.includes('/tenant/me')) {
+      // `/tenant/me/config` specifically — TASK-665 added a SIBLING endpoint,
+      // `/tenant/me/context-schema`, which also matches a loose
+      // `includes('/tenant/me')` check and would otherwise double-count here.
+      if (url.includes('/tenant/me/config')) {
         tenantCfgCalls += 1;
         return jsonResponse({ defaultSttModel: 'whisper-base', features: {} });
+      }
+      if (url.includes('/tenant/me/context-schema')) {
+        return jsonResponse({ etag: 'none' });
       }
       return jsonResponse({});
     };
