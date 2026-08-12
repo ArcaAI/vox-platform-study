@@ -24,6 +24,21 @@ export interface ContextItem {
   content: string;
   /** Structured data (e.g., transcription segments, entities) */
   structuredData?: Record<string, unknown>;
+  /** Media ID of an uploaded file (ATTACHMENT / STRUCTURED-with-attachment types). TASK-656/665. */
+  mediaId?: string;
+  /**
+   * The tenant-declared context kind this item is an instance of
+   * (`kinds[].key` of the tenant's pinned `ConsultationContextSchema`
+   * version) — TASK-658/665. Absent for a pre-TASK-658 write (the legacy
+   * path, unchanged in every respect).
+   */
+  kindKey?: string;
+  /**
+   * Structured payload for a `STRUCTURED` kind, validated against that
+   * kind's `fields` sub-schema. Present only when `kindKey` names a
+   * `STRUCTURED` kind — TASK-658/665.
+   */
+  payload?: Record<string, unknown>;
   /** Source of the item */
   source: ContextSource;
   /** Derived: true if type is summary or pre_summary */
@@ -52,7 +67,23 @@ export interface ContextItem {
  * Values MUST match the API's ContextItemType enum (uppercase, underscore-separated).
  */
 export type ContextItemType =
-  'CASE_NOTE' | 'TRANSCRIPT' | 'RAW_SUMMARY' | 'MODIFIED_SUMMARY' | 'PRE_SUMMARY' | 'AUDIO_RECORDING' | 'WORKNOTE' | 'NAMED_ENTITY' | 'ATTACHMENT';
+  | 'CASE_NOTE'
+  | 'TRANSCRIPT'
+  | 'RAW_SUMMARY'
+  | 'MODIFIED_SUMMARY'
+  | 'PRE_SUMMARY'
+  | 'AUDIO_RECORDING'
+  | 'WORKNOTE'
+  | 'NAMED_ENTITY'
+  | 'ATTACHMENT'
+  /** Clinician-attested, immutable signed note (confirm-before-commit gate). Was missing from this union. */
+  | 'SIGNED_NOTE'
+  /**
+   * Tenant-declared structured context (TASK-658). The `kindKey` on
+   * `ContextItem`/`AddContextInput` says WHICH structure; this value only
+   * says "the content is structured".
+   */
+  | 'STRUCTURED';
 
 /**
  * Context item source.
@@ -133,6 +164,23 @@ export interface AddContextInput {
   content: string;
   /** Structured data */
   structuredData?: Record<string, unknown>;
+  /** Media ID of an uploaded file (e.g. for ATTACHMENT type) — TASK-656/665. */
+  mediaId?: string;
+  /**
+   * The tenant-declared context kind this item is an instance of
+   * (`kinds[].key` of the tenant's pinned `ConsultationContextSchema`
+   * version) — TASK-658/665. Omit for the pre-TASK-658 behaviour: no schema
+   * is consulted and the write proceeds exactly as before.
+   */
+  kindKey?: string;
+  /**
+   * Structured payload for a `STRUCTURED` kind, validated CLIENT-SIDE
+   * (`useArcaSession.addContext`, best-effort — see
+   * `validateConsultationContextPayload`) and again server-side against that
+   * kind's `fields` sub-schema in the pinned schema version. Requires
+   * `kindKey`.
+   */
+  payload?: Record<string, unknown>;
   /** Source (defaults to 'USER') */
   source?: ContextSource;
 }
@@ -233,8 +281,8 @@ export interface ContextActions {
   extractEntities: (contextItemId?: string) => Promise<MedicalEntity[]>;
   /** Add a worknote */
   addWorknote: (content: string, metadata?: Record<string, unknown>) => Promise<ContextItem>;
-  /** Add an attachment */
-  addAttachment: (content?: string, metadata?: Record<string, unknown>) => Promise<ContextItem>;
+  /** Add an attachment. `mediaId` threads through from `useStorage().uploadFile()` (TASK-656/665). */
+  addAttachment: (content?: string, metadata?: Record<string, unknown>, mediaId?: string) => Promise<ContextItem>;
   /** Clear local context state */
   clear: () => void;
 }
