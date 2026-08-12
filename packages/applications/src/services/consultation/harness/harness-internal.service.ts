@@ -91,6 +91,20 @@ export class HarnessInternalService {
   private readonly IDEMPOTENCY_KEY_PREFIX = 'idempotency:harness:';
   private readonly IDEMPOTENCY_TTL = 86400; // 24 hours
 
+  // TASK-687 — `metaData.subType` marker stamped on the RAW_SUMMARY ContextItem
+  // that `persistDraft` creates, so a LATER persist can recognise the harness's
+  // OWN prior draft and update it instead of adding a second note.
+  //
+  // The marker is what makes the adoption safe. FIVE other production paths create
+  // RAW_SUMMARY rows for the same consultation — `SummaryService.generateSummary`,
+  // `ChainSummaryService.generateComprehensiveSummary`, `ContextService.addRawSummary`,
+  // and the two BullMQ summary processors — none of which coordinate with the harness.
+  // Adopting the newest RAW_SUMMARY unconditionally would let a harness draft
+  // OVERWRITE a note this workflow never authored, which is strictly worse than a
+  // duplicate. Unmarked rows are therefore never touched: the lookup fails safe to
+  // create. (Same `metaData.subType` convention as `LIVE_SOAP_SNAPSHOT`.)
+  private readonly HARNESS_DRAFT_SUBTYPE = 'HARNESS_DRAFT';
+
   // F-03: attachment text (metaData.extractedText or, absent that, the raw
   // content label) is folded verbatim into the prompt with only a
   // `[highlight]`-style label prefix — no other transformation. This caps the
@@ -677,25 +691,64 @@ export class HarnessInternalService {
         const { content: strippedContent, citedSegmentIds } = await this.stripSegmentCitationMarkers(consultationId, tenantId, dto.content);
 
         // 1. RAW_SUMMARY context item for the generated note.
-        const contextItem = ContextItemFactory.CreateRawSummary(tenantId, consultationId, strippedContent, dto.dnaStyleId, userId);
-        // Pin the AI draft to v1 so the `ai_draft_v1`
-        // snapshot below IS version 1 and the doctor's first edit becomes v2.
-        contextItem.currentVersionNumber = 1;
-        // Encrypt the generated note into `encryptedContent` before
-        // persistence — the plaintext `content` column was dropped by the PHI
-        // field-encryption migration, so an unencrypted create silently loses
-        // the clinical note at rest (mirrors context.service.ts `encryptContent`).
-        await this.encryptBestEffort('ContextItem content', () =>
-          this.contextItemRepository.encryptContentIntoEntity(contextItem, this.secretsService!),
-        );
-        const savedContext = await this.contextItemRepository.create(contextItem);
-        const contextItemId = savedContext?.id ?? contextItem.id;
+        //
+        // TASK-687 — ONE consultation gets ONE harness draft. `HarnessDocWorkflow`
+        // has two start sites (`ConsultationEventHandler` → the gateway start, and
+        // `ConsultationLoopWorkflow`'s `harness.finalize` child), both targeting the
+        // deterministic id `harness-doc-{consultationId}` with NO `id_reuse_policy`.
+        // Temporal's default `ALLOW_DUPLICATE` rejects the second start only while
+        // the first execution is still OPEN, so a second execution is routine — and
+        // it arrives here with its own key, which the Redis replay cache below cannot
+        // dedup. Creating unconditionally therefore gave the consultation two clinical
+        // notes. Adopting our own prior draft makes the note-row invariant a property
+        // of the WRITE PATH, which matters because `withHarnessIdempotency` degrades
+        // to `work()` whenever Redis is absent or throws: a cache can never be the
+        // guarantee for a clinical artifact.
+        const existingDraft = await this.findOwnHarnessDraft(consultationId);
+        let contextItemId: string;
+        if (existingDraft) {
+          existingDraft.content = strippedContent;
+          existingDraft.dnaWritingStyleId = dto.dnaStyleId ?? existingDraft.dnaWritingStyleId;
+          existingDraft.updatedBy = userId;
+          await this.encryptBestEffort('ContextItem content', () =>
+            this.contextItemRepository.encryptContentIntoEntity(existingDraft, this.secretsService!),
+          );
+          await this.contextItemRepository.update(existingDraft.id, existingDraft);
+          contextItemId = existingDraft.id;
+          this.logger.log({
+            message: 'Harness draft re-delivered — existing note updated in place (no second row)',
+            consultationId,
+            contextItemId,
+          });
+        } else {
+          const contextItem = ContextItemFactory.CreateRawSummary(tenantId, consultationId, strippedContent, dto.dnaStyleId, userId);
+          // Pin the AI draft to v1 so the `ai_draft_v1`
+          // snapshot below IS version 1 and the doctor's first edit becomes v2.
+          contextItem.currentVersionNumber = 1;
+          // Ownership marker — see HARNESS_DRAFT_SUBTYPE. Written on create so the
+          // NEXT execution can find this row; rows without it are never adopted.
+          contextItem.metaData = { ...((contextItem.metaData as Record<string, unknown> | undefined) ?? {}), subType: this.HARNESS_DRAFT_SUBTYPE } as never;
+          // Encrypt the generated note into `encryptedContent` before
+          // persistence — the plaintext `content` column was dropped by the PHI
+          // field-encryption migration, so an unencrypted create silently loses
+          // the clinical note at rest (mirrors context.service.ts `encryptContent`).
+          await this.encryptBestEffort('ContextItem content', () =>
+            this.contextItemRepository.encryptContentIntoEntity(contextItem, this.secretsService!),
+          );
+          const savedContext = await this.contextItemRepository.create(contextItem);
+          contextItemId = savedContext?.id ?? contextItem.id;
 
-        // Capture the immutable AI-draft `v1` snapshot at
-        // this (harness/optimistic) generation boundary too, so the DNA
-        // edit-capture corpus is populated regardless of which path generated the
-        // draft. Best-effort: a snapshot failure must never roll back the draft.
-        await this.captureAiDraftSnapshot(savedContext ?? contextItem);
+          // Capture the immutable AI-draft `v1` snapshot at
+          // this (harness/optimistic) generation boundary too, so the DNA
+          // edit-capture corpus is populated regardless of which path generated the
+          // draft. Best-effort: a snapshot failure must never roll back the draft.
+          //
+          // Deliberately NOT re-run on the update branch above: `ContextItemVersion`
+          // rows are immutable history and `captureAiDraftSnapshot` always writes
+          // versionNumber 1, so calling it again would add a SECOND v1 for the same
+          // note. `v1` keeps its definition — the AI draft as FIRST delivered.
+          await this.captureAiDraftSnapshot(savedContext ?? contextItem);
+        }
 
         // 2. SummaryMeta — sensor score columns + full sensor detail + citation map.
         // Record warm-start provenance. The consumed
@@ -757,7 +810,17 @@ export class HarnessInternalService {
           sessionAgentPromptVersion: formatSessionAgentPromptVersion(liveLineage),
           generatedAt: new Date(),
         });
-        await this.encryptBestEffort('SummaryMeta', () => this.summaryMetaRepository.encryptFieldsIntoEntity(summaryMeta, this.secretsService!));
+        // TASK-687 — SummaryMeta is 1:1 with the ContextItem, so when the draft above
+        // was ADOPTED rather than created we must re-stamp the existing meta row, not
+        // insert a second one for the same `contextItemId`. Mirrors the read-modify-write
+        // shape of `applyAssuranceBackfillWithCas` (fresh entity ⇒ fresh change tracking).
+        const existingMeta = existingDraft ? await this.summaryMetaRepository.findByContextItem(contextItemId) : null;
+        if (existingMeta) {
+          Object.assign(existingMeta, summaryMeta, { id: existingMeta.id, contextItemId });
+          await this.encryptBestEffort('SummaryMeta', () => this.summaryMetaRepository.encryptFieldsIntoEntity(existingMeta, this.secretsService!));
+          await this.summaryMetaRepository.updateWithVersion(existingMeta.id, existingMeta, existingMeta.version ?? 1);
+        } else {
+          await this.encryptBestEffort('SummaryMeta', () => this.summaryMetaRepository.encryptFieldsIntoEntity(summaryMeta, this.secretsService!));
         // TASK-615 WS-D2 (item 1c) — INTENTIONALLY NOT metered here. `dto`
         // (HarnessDraftRequest) carries no token fields, and this generation
         // is already billed by the agent-trajectory per-step path (WS-F):
@@ -766,7 +829,8 @@ export class HarnessInternalService {
         // Emitting a second `llm:<...>` row here would double-bill the same
         // generation. See the constructor's `usageLedgerService` doc comment
         // and the double-bill-guard test in harness-internal.service.test.ts.
-        await this.summaryMetaRepository.create(summaryMeta);
+          await this.summaryMetaRepository.create(summaryMeta);
+        }
 
         // 3. Lifecycle. EARLY -> DRAFT_PENDING_SENSORS (readable, assurance pending,
         // NOT signable). LEGACY -> PENDING_REVIEW (clinician confirm-before-commit).
@@ -1178,6 +1242,27 @@ export class HarnessInternalService {
         return { recorded: true };
       }),
     );
+  }
+
+  /**
+   * The harness's OWN prior draft for this consultation, or null.
+   *
+   * Scoped by the `HARNESS_DRAFT_SUBTYPE` marker, NOT by "newest RAW_SUMMARY":
+   * five other production paths write RAW_SUMMARY rows for the same consultation,
+   * and adopting one of theirs would let a harness draft overwrite a note this
+   * workflow never authored. Unmarked rows (including any harness draft written
+   * before the marker existed) are left alone, so the worst case is the pre-existing
+   * behaviour — an extra row — never a destroyed note.
+   *
+   * Newest-wins among our own rows, matching `findLatestPreSummaryWithDecryptedContent`:
+   * a consultation that already accumulated duplicates from the defect this fixes
+   * converges onto the most recent one.
+   */
+  private async findOwnHarnessDraft(consultationId: string): Promise<ContextItemEntity | null> {
+    const rows = (await this.contextItemRepository.findByType(consultationId, ContextItemType.RAW_SUMMARY)) ?? [];
+    const owned = rows.filter((row) => (row.metaData as Record<string, unknown> | undefined)?.subType === this.HARNESS_DRAFT_SUBTYPE);
+    if (owned.length === 0) return null;
+    return owned.reduce((a, b) => ((a.createdAt ?? 0) >= (b.createdAt ?? 0) ? a : b));
   }
 
   /**

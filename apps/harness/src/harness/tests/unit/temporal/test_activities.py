@@ -9,6 +9,7 @@ returns the typed result. No network I/O.
 
 from __future__ import annotations
 
+import dataclasses
 from typing import Any
 
 import pytest
@@ -490,7 +491,12 @@ class TestApiActivities:
         assert call["content"] == "DRAFT"
         assert call["gate_decision"] == "PASS"
         assert call["sensor_scores"] == {"entity_faithfulness": 1.0}
-        assert call["idempotency_key"] == "test-run:test"
+        # TASK-687 — the DRAFT persist is keyed on the WRITE (consultation + note),
+        # not on `{run_id}:{activity_id}`: its duplicate is a second workflow
+        # EXECUTION, which a run-scoped key cannot dedup. Every OTHER callback keeps
+        # the run-scoped key (their duplicate is only ever an activity retry).
+        assert call["idempotency_key"] == activities._draft_idempotency_key("c-1", "DRAFT")
+        assert call["idempotency_key"].startswith("draft:c-1:")
 
     @pytest.mark.asyncio
     async def test_persist_draft_forwards_guardrail_decisions_and_reduced_assurance(
@@ -518,6 +524,72 @@ class TestApiActivities:
         assert call["guardrail_decisions"] == guardrail
         assert call["reduced_assurance"] is True
         assert call["rag_triad_score"] == 0.91
+
+    @pytest.mark.asyncio
+    async def test_draft_key_is_byte_identical_across_workflow_executions(self, monkeypatch):
+        """The draft persist key must identify the WRITE, never the execution.
+
+        ``HarnessDocWorkflow`` has two start sites (the legacy gateway start and the
+        loop's ``harness.finalize`` child) that both target ``harness-doc-{id}`` without
+        an ``id_reuse_policy``, so a SECOND execution runs whenever the first has already
+        closed. A key derived from ``workflow_run_id`` differs per execution, so the
+        gateway sees two unrelated writes and the consultation ends up with two notes.
+        """
+        fake = _FakeApi()
+        monkeypatch.setattr(activities, "_api_client", lambda s: fake)
+        payload = PersistDraftInput(consultation_id="c-1", tenant_id="t-1", content="DRAFT")
+
+        keys = []
+        for run_id, activity_id in (("run-A", "act-3"), ("run-B", "act-91")):
+            env = ActivityEnvironment()
+            env.info = dataclasses.replace(
+                ActivityEnvironment.default_info(),
+                workflow_run_id=run_id,
+                activity_id=activity_id,
+            )
+            await env.run(activities.persist_draft, payload)
+            keys.append(fake.calls["persist_draft"]["idempotency_key"])
+
+        assert keys[0] == keys[1], "two executions over the same input must share one key"
+        assert "run-A" not in keys[0] and "run-B" not in keys[0]
+
+    @pytest.mark.asyncio
+    async def test_draft_key_changes_when_the_note_content_changes(self, env, monkeypatch):
+        """A genuine re-delivery must NOT be swallowed as a duplicate.
+
+        The optimistic path re-persists a REGENERATED note through the same activity
+        (``_deliver_early`` is called again on the post-delivery regen). A key that
+        ignored the content would make that second, better note a blind no-op on the
+        gateway's replay cache — the failure this ticket exists to prevent.
+        """
+        fake = _FakeApi()
+        monkeypatch.setattr(activities, "_api_client", lambda s: fake)
+        base = {"consultation_id": "c-1", "tenant_id": "t-1"}
+
+        await env.run(activities.persist_draft, PersistDraftInput(**base, content="FIRST"))
+        first = fake.calls["persist_draft"]["idempotency_key"]
+        await env.run(activities.persist_draft, PersistDraftInput(**base, content="REGENERATED"))
+        second = fake.calls["persist_draft"]["idempotency_key"]
+
+        assert first != second
+
+    @pytest.mark.asyncio
+    async def test_draft_key_never_collides_across_consultations(self, env, monkeypatch):
+        fake = _FakeApi()
+        monkeypatch.setattr(activities, "_api_client", lambda s: fake)
+
+        await env.run(
+            activities.persist_draft,
+            PersistDraftInput(consultation_id="c-1", tenant_id="t-1", content="DRAFT"),
+        )
+        first = fake.calls["persist_draft"]["idempotency_key"]
+        await env.run(
+            activities.persist_draft,
+            PersistDraftInput(consultation_id="c-2", tenant_id="t-1", content="DRAFT"),
+        )
+        second = fake.calls["persist_draft"]["idempotency_key"]
+
+        assert first != second
 
     @pytest.mark.asyncio
     async def test_record_gate_decision_forwards_attestation(self, env, monkeypatch):
