@@ -151,6 +151,34 @@ describe('request', () => {
     expect(error.message).toBe('Request failed with status 502');
   });
 
+  it('carries the raw parsed error body as `details`, for callers that need fields beyond `message`', async () => {
+    // e.g. `POST admin/consultation-context-schemas/:id/publish` returns
+    // `{ message, problems: string[] }` on a structural 400 and
+    // `{ message, breakingChanges: string[] }` on a refused breaking change —
+    // both need to survive past `toGatewayError`'s `message`-only extraction.
+    installFetchMock(() =>
+      Response.json(
+        { statusCode: 400, message: 'The context schema definition is not publishable.', problems: ['kinds[0].primitive is invalid'] },
+        { status: 400 },
+      ),
+    );
+
+    const error = (await request('admin/consultation-context-schemas/s-1/publish', { method: 'POST', body: {} }).catch(
+      (caught: unknown) => caught,
+    )) as GatewayError;
+
+    expect(error.message).toBe('The context schema definition is not publishable.');
+    expect((error.details as { problems?: string[] } | undefined)?.problems).toEqual(['kinds[0].primitive is invalid']);
+  });
+
+  it('has undefined `details` when the error body could not be parsed as JSON', async () => {
+    installFetchMock(() => new Response('<html>bad gateway</html>', { status: 502, statusText: 'Bad Gateway' }));
+
+    const error = (await request('admin/tenants').catch((caught: unknown) => caught)) as GatewayError;
+
+    expect(error.details).toBeUndefined();
+  });
+
   it('maps the tenancy and concurrency statuses to semantic flags', async () => {
     const byStatus = async (status: number): Promise<GatewayError> => {
       installFetchMock(() => Response.json({ statusCode: status, message: 'x' }, { status }));
