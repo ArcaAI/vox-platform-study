@@ -39,6 +39,15 @@
  *                     `uniqueSourceIds` insertion order in
  *                     07a-agent-golden-library.ts — appending there would
  *                     couple a platform-default id to fixture ordering).
+ *   79000000-…-XXXX-…  →  Consultation Context Schemas (TASK-686 day-1 default;
+ *                     tenant slot mirrors the 78000000 agent block — 0002
+ *                     SYSTEM, 0000 Global, 0001 ArcaAI)
+ *   89000000-…-XXXX-…  →  their published ConsultationContextSchemaVersion
+ *                     snapshots (mirror slot)
+ *   D0000000-xxxx  →  DepartmentAgentVersion rows. NOT a free-standing block:
+ *                     each id is its agent's id with the `78000000` prefix
+ *                     swapped for `D0000000` (`agentVersionIdFor`), so agent
+ *                     and version stay 1:1 without a second numbering scheme.
  *   80000000-0001  →  AI Models (ASR)
  *   80000000-0002  →  AI Models (VAD)
  *   80000000-0003  →  AI Models (Noise Reduction)
