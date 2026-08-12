@@ -25,6 +25,7 @@ import {
   IActiveUserContext,
   IAgentTrajectoryService,
   ILoopConfigService,
+  ILoopContextTextService,
   LiveDocumentationService,
   LoopConfigResponse,
 } from '@arcaai/applications';
@@ -153,6 +154,12 @@ class ReportTrajectoryAck {
   accepted: number;
 }
 
+/** TASK-664 — the loop's `document.extract_text` read. Empty string, never 404. */
+class HarnessExtractedTextResponse {
+  @ApiProperty({ description: "The context item's extracted text, or '' when there is none." })
+  text: string;
+}
+
 /**
  * HarnessInternalController.
  *
@@ -193,6 +200,10 @@ export class HarnessInternalController {
     // TASK-662 — deterministic loop-configuration resolution for the (future)
     // ConsultationLoopWorkflow's first activity.
     @Inject(ILoopConfigService) private readonly loopConfigService: ILoopConfigService,
+    // TASK-664 — the loop's `document.extract_text` action reads the text the
+    // gateway's OCR pipeline already extracted, rather than the harness
+    // acquiring a second extraction path of its own.
+    @Inject(ILoopContextTextService) private readonly loopContextTextService: ILoopContextTextService,
     // TASK-662 — the loop's `livedoc.start`/`livedoc.stop` actions call
     // through these two routes rather than importing service internals
     // directly (the harness is a separate deployable).
@@ -450,6 +461,41 @@ export class HarnessInternalController {
     return this.cls.run(async () => {
       this.cls.set('tenantId', tenantId);
       return this.loopConfigService.resolveForConsultation(tenantId, consultationId);
+    });
+  }
+
+  /**
+   * TASK-664 — the loop's `document.extract_text` action.
+   *
+   * Returns the text the gateway's `OcrEnrichmentProcessor` already extracted
+   * onto `ContextItem.metaData.extractedText`. Deliberately a READ rather than
+   * an extraction trigger: one extraction path in the platform, not two that
+   * can disagree about what a document says.
+   *
+   * Answers `{ text: '' }` — never a 404 — for a missing, cross-tenant or
+   * not-yet-extracted item, so the loop reads it as "nothing derived" and ends
+   * that cascade branch instead of treating it as an error.
+   */
+  @Get('consultations/:id/context-items/:contextItemId/extracted-text')
+  @ApiOperation({ summary: 'Extracted text of a context item (loop document.extract_text action)' })
+  @ApiParam({ name: 'id', description: 'Consultation ID' })
+  @ApiParam({ name: 'contextItemId', description: 'Context item ID' })
+  @ApiQuery({ name: 'tenantId', required: true, description: 'Tenant the loop is acting on behalf of.' })
+  async getExtractedText(
+    @Param('id') id: string,
+    @Param('contextItemId') contextItemId: string,
+    @Query('tenantId') tenantId?: string,
+  ): Promise<HarnessExtractedTextResponse> {
+    if (!tenantId) {
+      throw new BadRequestException('tenantId query parameter is required');
+    }
+    // Same S-3 recurrence-class guard as `getLoopConfig`: this service-token
+    // route runs outside the API-edge ClsModule middleware, so CLS must be
+    // re-established BEFORE the tenant-scoped read.
+    return this.cls.run(async () => {
+      this.cls.set('tenantId', tenantId);
+      const text = await this.loopContextTextService.resolveExtractedText(tenantId, id, contextItemId);
+      return { text: text ?? '' };
     });
   }
 
