@@ -409,8 +409,10 @@ folded into this ticket.
 
 ## 5. Implementation Summary
 
-**Status: P0–P3, P5, P6 complete and green; P4 complete in the aggregator, NOT wired into
-the durable loop — see "Remaining" below for why that stop is deliberate.**
+**Status: P0–P3, P5, P6 complete and green. P2 deferred on its own evidence (§2.6). P4 is
+complete in the aggregator; the activity wiring is handed to
+[TASK-674](../TASK-674-Entity-Grounding-Activity-Wiring/README.md) — §5.6 explains why that
+stop is deliberate rather than unfinished.**
 
 ### 5.1 P5 RESULT — recovery 0% → 50%, retention 100%, joint gate PASS
 
