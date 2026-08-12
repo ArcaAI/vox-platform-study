@@ -259,6 +259,36 @@ def _draft_idempotency_key(consultation_id: str, content: str) -> str:
     return f"draft:{consultation_id}:{digest}"
 
 
+def _entities_idempotency_key(consultation_id: str, entities: Sequence[Any]) -> str:
+    """Idempotency-Key for the ENTITY persist — derived from the WRITE, not the execution.
+
+    Same reasoning as ``_draft_idempotency_key``: ``persist_entities`` is duplicated by a
+    second workflow EXECUTION (a new ``workflow_run_id``), not merely by an activity
+    retry, so a run-scoped key makes the two writes look unrelated and every
+    ``NamedEntity`` row — encrypted PHI — is inserted twice.
+
+    Identity = the consultation plus a digest of the extracted entity set. The digest is
+    what keeps a LEGITIMATE re-extraction working: a genuinely different entity set is a
+    different key, so it reaches the gateway instead of being swallowed as a duplicate.
+
+    This key is only the FAST PATH. ``withHarnessIdempotency`` degrades to running the
+    work whenever Redis is absent or throws, so the row invariant lives in the gateway's
+    write path (``persistEntities`` adopts its own prior rows); this merely avoids the
+    round trip when the cache is healthy.
+
+    Computed inside an activity body ⇒ no new workflow command, no ``workflow.patched``
+    era (see the ticket README).
+    """
+    payload = json.dumps(
+        [e.model_dump(mode="json") if hasattr(e, "model_dump") else e for e in entities],
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    )
+    digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()
+    return f"entities:{consultation_id}:{digest}"
+
+
 # Progress reporting is fire-and-forget: a dedicated short HTTP
 # timeout so a wedged API never holds a stage transition hostage for the full
 # standard budget.
@@ -958,7 +988,10 @@ async def persist_entities(payload: PersistEntitiesInput) -> PersistEntitiesResp
         context_item_id=payload.context_item_id,
         entities=payload.entities,
         user_id=payload.user_id,
-        idempotency_key=_idempotency_key(),
+        # NOT ``_idempotency_key()`` — see ``_entities_idempotency_key``. This
+        # callback is duplicated by a second workflow EXECUTION, not just by an
+        # activity retry.
+        idempotency_key=_entities_idempotency_key(payload.consultation_id, payload.entities),
     )
     batch = _TrajectoryBatch(settings, payload.trajectory)
     batch.record(
