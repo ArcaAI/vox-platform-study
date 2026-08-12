@@ -80,6 +80,63 @@ export interface HarnessContextAddedSignal {
   subType?: string;
   /** First ~2k chars of text content, when present. */
   contentPreview?: string;
+  /**
+   * TASK-670 — the tenant-declared kind (`ContextItem.kindKey`). The
+   * receiver falls back to `subType` then `contextType` when absent, so this
+   * is additive-optional on the wire, matching `LoopContextAddedRequest`.
+   */
+  kindKey?: string;
+  /**
+   * TASK-670 — the gateway's emission timestamp (ISO-8601). Part of the
+   * receiver's de-duplication identity alongside `contextItemId` — a re-emit
+   * of the SAME item with fresh content (e.g. OCR enrichment) carries a NEW
+   * `occurredAt` and is correctly a new event.
+   */
+  occurredAt?: string;
+  /**
+   * TASK-670 — cascade generation: 0 for a human/API-originated item,
+   * parent depth + 1 for anything written via `derivedFromContextItemId`.
+   * Absent ⇒ the receiver defaults to 0.
+   */
+  depth?: number;
+  /**
+   * TASK-670 — the fuller context body (up to `LOOP_SIGNAL_CONTENT_MAX_LENGTH`
+   * chars — see `context.service.ts` for the size-threshold reasoning), so a
+   * specialist (`vision.extract_text`, `nlp.extract_entities`) has real text
+   * to act on rather than the 2k-char `contentPreview`. Additive-optional: an
+   * un-upgraded receiver ignores it and falls back to `contentPreview`.
+   */
+  content?: string;
+}
+
+/**
+ * TASK-670 — signal payload forwarded to the harness when a consultation's
+ * recording stops, so the running `ConsultationLoopWorkflow` drains, runs its
+ * ending actions, and finalizes (starts `HarnessDocWorkflow` as its child).
+ * Best-effort like `signalContextAdded`/`signalEdit`: the caller treats a
+ * failed POST as fire-and-forget — the recording-stop path must never fail
+ * because the loop is unreachable or not configured.
+ */
+export interface HarnessConsultationEndingSignal {
+  reason?: string;
+  persistSnapshot?: boolean;
+  transcriptText?: string;
+  contextItemId?: string;
+  jobId?: string;
+  conversationLanguage?: string;
+  dnaStyleId?: string;
+  template?: string;
+  smrProvider?: string;
+  smrModel?: string;
+}
+
+/**
+ * TASK-670 — signal payload forwarded to the harness to stop the loop
+ * WITHOUT running its ending actions (the consultation was abandoned, not
+ * finished). Best-effort, same posture as the other signals.
+ */
+export interface HarnessLoopCancelSignal {
+  reason?: string;
 }
 
 /** One golden case sent to the harness eval endpoint (snake_case — the harness
@@ -239,6 +296,45 @@ export class HarnessGatewayService {
     );
 
     this.logger.log({ message: 'Harness context-added signal sent', consultationId });
+    return response.data;
+  }
+
+  /**
+   * Tell the consultation loop the recording stopped: drain, run ending
+   * actions, finalize. Best-effort — a failed POST is fire-and-forget, same
+   * as `signalContextAdded`.
+   */
+  async signalConsultationEnding(consultationId: string, payload: HarnessConsultationEndingSignal): Promise<unknown> {
+    const url = `${this.harnessUrl}/api/v1/internal/workflows/${consultationId}/signal/consultation-ending`;
+
+    const response = await this.httpService.axiosRef.post(
+      url,
+      { ...payload },
+      {
+        headers: await this.buildHeaders(),
+      },
+    );
+
+    this.logger.log({ message: 'Harness consultation-ending signal sent', consultationId });
+    return response.data;
+  }
+
+  /**
+   * Tell the consultation loop to stop WITHOUT running its ending actions
+   * (the consultation was abandoned). Best-effort, same posture.
+   */
+  async signalLoopCancel(consultationId: string, payload: HarnessLoopCancelSignal): Promise<unknown> {
+    const url = `${this.harnessUrl}/api/v1/internal/workflows/${consultationId}/signal/loop-cancel`;
+
+    const response = await this.httpService.axiosRef.post(
+      url,
+      { ...payload },
+      {
+        headers: await this.buildHeaders(),
+      },
+    );
+
+    this.logger.log({ message: 'Harness loop-cancel signal sent', consultationId });
     return response.data;
   }
 
