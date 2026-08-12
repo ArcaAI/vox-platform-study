@@ -26,6 +26,21 @@ const GOLDEN_CONTENT_V1 = 'GOLDEN CONTENT v1';
 const GOLDEN_CONTENT_V2 = 'GOLDEN CONTENT v2';
 const CUSTOM_CONTENT = 'tenant-customized content';
 
+// TASK-659 defaults ("nothing configured") — every real DepartmentAgentEntity
+// carries these; the plain mock objects here must match or `hasLoopConfig`
+// (which treats a missing `role` as "configured", since only a hydrated entity
+// defaults it to SPECIALIST) would spuriously trigger OP-4's propagation path
+// for every pre-existing test in this file.
+const NO_LOOP_CONFIG = {
+  role: 'SPECIALIST',
+  subscribedKinds: null,
+  writeScope: null,
+  goal: null,
+  guardrailProfile: null,
+  alwaysActions: null,
+  neverActions: null,
+};
+
 function goldenAgent(over: Record<string, unknown> = {}) {
   return {
     id: 'sys-agent-gen',
@@ -42,6 +57,7 @@ function goldenAgent(over: Record<string, unknown> = {}) {
     metaData: null,
     tags: ['golden-library'],
     resourceStatus: 'ENABLED',
+    ...NO_LOOP_CONFIG,
     ...over,
   };
 }
@@ -65,6 +81,7 @@ function tenantAgent(over: Record<string, unknown> = {}) {
     version: 1,
     changes: {},
     hasChanges: false,
+    ...NO_LOOP_CONFIG,
     ...over,
   };
 }
@@ -99,6 +116,7 @@ const mockAgentRepo = {
   create: vi.fn(),
   updateWithVersion: vi.fn(),
   setDefaultForDepartment: vi.fn(),
+  findPrimaryForDepartment: vi.fn(),
 };
 const mockDeptRepo = {
   findById: vi.fn(),
@@ -115,6 +133,11 @@ const mockVersionRepo = {
   findMaxVersionNumber: vi.fn(),
   create: vi.fn(),
 };
+// OP-4 (TASK-678) — cross-schema validation deps. Default to "no schema
+// declared", which is a SAFE default: it only matters (and only gets called)
+// when a test's golden agent actually sets `subscribedKinds`/`writeScope`.
+const mockContextSchemaRepo = { findDefaultForScope: vi.fn() };
+const mockContextSchemaVersionRepo = { findBySchemaAndVersionNumber: vi.fn() };
 
 describe('AgentTemplateResyncService', () => {
   let service: AgentTemplateResyncService;
@@ -140,12 +163,17 @@ describe('AgentTemplateResyncService', () => {
     mockTemplateRepo.updateWithVersion.mockImplementation(async (_id: string, e: unknown) => e);
     mockVersionRepo.findMaxVersionNumber.mockResolvedValue(1);
     mockVersionRepo.create.mockImplementation(async (e: unknown) => e);
+    mockAgentRepo.findPrimaryForDepartment.mockResolvedValue(null);
+    mockContextSchemaRepo.findDefaultForScope.mockResolvedValue(null);
+    mockContextSchemaVersionRepo.findBySchemaAndVersionNumber.mockResolvedValue(null);
 
     service = new AgentTemplateResyncService(
       mockAgentRepo as never,
       mockDeptRepo as never,
       mockTemplateRepo as never,
       mockVersionRepo as never,
+      mockContextSchemaRepo as never,
+      mockContextSchemaVersionRepo as never,
       mockEventEmitter as never,
       mockClsService as never,
     );
@@ -170,7 +198,7 @@ describe('AgentTemplateResyncService', () => {
 
     const summary = await service.resyncTenant(TARGET_TENANT);
 
-    expect(summary).toEqual({ added: 1, fastForwarded: 0, skipped: 0 });
+    expect(summary).toEqual({ added: 1, fastForwarded: 0, skipped: 0, configPropagated: 0, configBlocked: 0 });
     const createdTpl = mockTemplateRepo.create.mock.calls[0][0];
     expect(createdTpl.tenantId).toBe(TARGET_TENANT);
     expect(createdTpl.status).toBe('APPROVED');
@@ -200,7 +228,7 @@ describe('AgentTemplateResyncService', () => {
 
     const summary = await service.resyncTenant(TARGET_TENANT);
 
-    expect(summary).toEqual({ added: 0, fastForwarded: 0, skipped: 1 });
+    expect(summary).toEqual({ added: 0, fastForwarded: 0, skipped: 1, configPropagated: 0, configBlocked: 0 });
     // The whole point: nothing is materialized on a miss.
     expect(mockDeptRepo.create).not.toHaveBeenCalled();
     expect(mockAgentRepo.create).not.toHaveBeenCalled();
@@ -221,7 +249,7 @@ describe('AgentTemplateResyncService', () => {
 
     const summary = await service.resyncTenant(TARGET_TENANT);
 
-    expect(summary).toEqual({ added: 0, fastForwarded: 1, skipped: 0 });
+    expect(summary).toEqual({ added: 0, fastForwarded: 1, skipped: 0, configPropagated: 0, configBlocked: 0 });
     // The tenant template content is fast-forwarded to golden current (v2).
     const tplUpdate = mockTemplateRepo.updateWithVersion.mock.calls[0][1];
     expect(tplUpdate.content).toBe(GOLDEN_CONTENT_V2);
@@ -241,7 +269,7 @@ describe('AgentTemplateResyncService', () => {
 
     const summary = await service.resyncTenant(TARGET_TENANT);
 
-    expect(summary).toEqual({ added: 0, fastForwarded: 0, skipped: 1 });
+    expect(summary).toEqual({ added: 0, fastForwarded: 0, skipped: 1, configPropagated: 0, configBlocked: 0 });
     expect(mockTemplateRepo.updateWithVersion).not.toHaveBeenCalled();
     expect(mockAgentRepo.updateWithVersion).not.toHaveBeenCalled();
   });
@@ -255,7 +283,7 @@ describe('AgentTemplateResyncService', () => {
 
     const summary = await service.resyncTenant(TARGET_TENANT);
 
-    expect(summary).toEqual({ added: 0, fastForwarded: 0, skipped: 1 });
+    expect(summary).toEqual({ added: 0, fastForwarded: 0, skipped: 1, configPropagated: 0, configBlocked: 0 });
     expect(mockTemplateRepo.updateWithVersion).not.toHaveBeenCalled();
     expect(mockAgentRepo.updateWithVersion).not.toHaveBeenCalled();
   });
@@ -316,7 +344,7 @@ describe('AgentTemplateResyncService', () => {
 
     const summary = await service.resyncTenant(TARGET_TENANT);
 
-    expect(summary).toEqual({ added: 0, fastForwarded: 0, skipped: 1 });
+    expect(summary).toEqual({ added: 0, fastForwarded: 0, skipped: 1, configPropagated: 0, configBlocked: 0 });
     expect(mockTemplateRepo.updateWithVersion).not.toHaveBeenCalled();
   });
 
@@ -346,6 +374,146 @@ describe('AgentTemplateResyncService', () => {
   it('no golden agents → all-zero summary', async () => {
     mockAgentRepo.findAll.mockResolvedValue([]);
     const summary = await service.resyncTenant(TARGET_TENANT);
-    expect(summary).toEqual({ added: 0, fastForwarded: 0, skipped: 0 });
+    expect(summary).toEqual({ added: 0, fastForwarded: 0, skipped: 0, configPropagated: 0, configBlocked: 0 });
+  });
+
+  // =========================================================================
+  // OP-4 (TASK-678) — the seven TASK-659 loop-config fields now propagate at
+  // the SAME two proven-safe points (clone + content fast-forward), validated
+  // the same way AgentPromotionService validates a cross-tenant write, and
+  // never silently: every block is logged and counted.
+  // =========================================================================
+
+  it('OP-4 clone: propagates loop config from a golden agent that configures the loop surface', async () => {
+    mockAgentRepo.findAll.mockImplementation(async (props: any) =>
+      props.filters.tenantId === SYSTEM_TENANT_ID ? [goldenAgent({ slug: 'brand-new', guardrailProfile: 'STRICT', alwaysActions: ['harness.finalize'] })] : [],
+    );
+    mockTemplateRepo.findById.mockResolvedValue(template({ id: 'sys-tpl-gen', content: GOLDEN_CONTENT_V1, currentVersionNumber: 1 }));
+
+    const summary = await service.resyncTenant(TARGET_TENANT);
+
+    expect(summary).toEqual({ added: 1, fastForwarded: 0, skipped: 0, configPropagated: 1, configBlocked: 0 });
+    const createdAgent = mockAgentRepo.create.mock.calls[0][0];
+    expect(createdAgent.role).toBe('SPECIALIST');
+    expect(createdAgent.guardrailProfile).toBe('STRICT');
+    expect(createdAgent.alwaysActions).toEqual(['harness.finalize']);
+  });
+
+  it('OP-4 clone: a golden PRIMARY colliding with an existing target PRIMARY is blocked, logged, and counted — the clone still lands unconfigured', async () => {
+    mockAgentRepo.findAll.mockImplementation(async (props: any) =>
+      props.filters.tenantId === SYSTEM_TENANT_ID ? [goldenAgent({ slug: 'brand-new', role: 'PRIMARY' })] : [],
+    );
+    mockTemplateRepo.findById.mockResolvedValue(template({ id: 'sys-tpl-gen', content: GOLDEN_CONTENT_V1, currentVersionNumber: 1 }));
+    mockAgentRepo.findPrimaryForDepartment.mockResolvedValue({ id: 'other-primary', slug: 'existing-primary' });
+
+    const summary = await service.resyncTenant(TARGET_TENANT);
+
+    expect(summary).toEqual({ added: 1, fastForwarded: 0, skipped: 0, configPropagated: 0, configBlocked: 1 });
+    // Still created (template + lineage) — just without the seven fields, so
+    // the one-PRIMARY-per-department invariant is never put at risk.
+    const createdAgent = mockAgentRepo.create.mock.calls[0][0];
+    expect(createdAgent.role).toBe('SPECIALIST');
+  });
+
+  it('OP-4 clone: a golden subscribedKinds referencing a kind the target department has not declared is blocked and counted', async () => {
+    mockAgentRepo.findAll.mockImplementation(async (props: any) =>
+      props.filters.tenantId === SYSTEM_TENANT_ID
+        ? [goldenAgent({ slug: 'brand-new', subscribedKinds: { version: 1, kinds: [{ key: 'referral_letter' }] } })]
+        : [],
+    );
+    mockTemplateRepo.findById.mockResolvedValue(template({ id: 'sys-tpl-gen', content: GOLDEN_CONTENT_V1, currentVersionNumber: 1 }));
+    // No published context schema for the target department/tenant.
+    mockContextSchemaRepo.findDefaultForScope.mockResolvedValue(null);
+
+    const summary = await service.resyncTenant(TARGET_TENANT);
+
+    expect(summary).toEqual({ added: 1, fastForwarded: 0, skipped: 0, configPropagated: 0, configBlocked: 1 });
+    const createdAgent = mockAgentRepo.create.mock.calls[0][0];
+    expect(createdAgent.subscribedKinds).toBeNull();
+  });
+
+  it('OP-4 fast-forward: propagates a loop-config change at the SAME sync point as a content fast-forward', async () => {
+    mockAgentRepo.findAll.mockImplementation(async (props: any) =>
+      props.filters.tenantId === SYSTEM_TENANT_ID ? [goldenAgent({ guardrailProfile: 'STRICT' })] : [tenantAgent()],
+    );
+    mockTemplateRepo.findById.mockImplementation(async (id: string) => {
+      if (id === 'sys-tpl-gen') return template({ id: 'sys-tpl-gen', content: GOLDEN_CONTENT_V2, currentVersionNumber: 2 });
+      if (id === 'ten-tpl-gen') return template({ id: 'ten-tpl-gen', content: GOLDEN_CONTENT_V1, currentVersionNumber: 1 });
+      return null;
+    });
+    mockVersionRepo.findByVersionNumber.mockResolvedValue({ content: GOLDEN_CONTENT_V1 });
+
+    const summary = await service.resyncTenant(TARGET_TENANT);
+
+    expect(summary).toEqual({ added: 0, fastForwarded: 1, skipped: 0, configPropagated: 1, configBlocked: 0 });
+    const agentUpdate = mockAgentRepo.updateWithVersion.mock.calls[0][1];
+    expect(agentUpdate.guardrailProfile).toBe('STRICT');
+  });
+
+  it('OP-4 fast-forward: a golden PRIMARY colliding with a DIFFERENT existing PRIMARY is blocked — content still fast-forwards, config does not', async () => {
+    mockAgentRepo.findAll.mockImplementation(async (props: any) =>
+      props.filters.tenantId === SYSTEM_TENANT_ID ? [goldenAgent({ role: 'PRIMARY' })] : [tenantAgent()],
+    );
+    mockTemplateRepo.findById.mockImplementation(async (id: string) => {
+      if (id === 'sys-tpl-gen') return template({ id: 'sys-tpl-gen', content: GOLDEN_CONTENT_V2, currentVersionNumber: 2 });
+      if (id === 'ten-tpl-gen') return template({ id: 'ten-tpl-gen', content: GOLDEN_CONTENT_V1, currentVersionNumber: 1 });
+      return null;
+    });
+    mockVersionRepo.findByVersionNumber.mockResolvedValue({ content: GOLDEN_CONTENT_V1 });
+    // A DIFFERENT agent already holds PRIMARY in this department.
+    mockAgentRepo.findPrimaryForDepartment.mockResolvedValue({ id: 'other-primary', slug: 'existing-primary' });
+
+    const summary = await service.resyncTenant(TARGET_TENANT);
+
+    expect(summary).toEqual({ added: 0, fastForwarded: 1, skipped: 0, configPropagated: 0, configBlocked: 1 });
+    // Content DID fast-forward (the four existing rules are unaffected by OP-4).
+    const tplUpdate = mockTemplateRepo.updateWithVersion.mock.calls[0][1];
+    expect(tplUpdate.content).toBe(GOLDEN_CONTENT_V2);
+    // But the role write never happened — one-PRIMARY-per-department held.
+    const agentUpdate = mockAgentRepo.updateWithVersion.mock.calls[0][1];
+    expect(agentUpdate.role).toBe('SPECIALIST');
+  });
+
+  it('OP-4: findPrimaryForDepartment excludes the row being fast-forwarded itself, so a golden PRIMARY re-affirming the SAME row is not its own conflict', async () => {
+    // role PRIMARY on both sides (not itself a change) but guardrailProfile
+    // differs, so the config snapshot still differs and validation still runs.
+    mockAgentRepo.findAll.mockImplementation(async (props: any) =>
+      props.filters.tenantId === SYSTEM_TENANT_ID
+        ? [goldenAgent({ role: 'PRIMARY', guardrailProfile: 'STRICT' })]
+        : [tenantAgent({ role: 'PRIMARY', guardrailProfile: null })],
+    );
+    mockTemplateRepo.findById.mockImplementation(async (id: string) => {
+      if (id === 'sys-tpl-gen') return template({ id: 'sys-tpl-gen', content: GOLDEN_CONTENT_V2, currentVersionNumber: 2 });
+      if (id === 'ten-tpl-gen') return template({ id: 'ten-tpl-gen', content: GOLDEN_CONTENT_V1, currentVersionNumber: 1 });
+      return null;
+    });
+    mockVersionRepo.findByVersionNumber.mockResolvedValue({ content: GOLDEN_CONTENT_V1 });
+    // No OTHER row holds PRIMARY — the row being fast-forwarded is itself the
+    // only PRIMARY, and it must be excluded from its own conflict check.
+    mockAgentRepo.findPrimaryForDepartment.mockResolvedValue(null);
+
+    const summary = await service.resyncTenant(TARGET_TENANT);
+
+    expect(mockAgentRepo.findPrimaryForDepartment).toHaveBeenCalledWith(TARGET_TENANT, 'ten-dept-gen', 'ten-agent-gen');
+    expect(summary.configPropagated).toBe(1);
+    expect(summary.configBlocked).toBe(0);
+    const agentUpdate = mockAgentRepo.updateWithVersion.mock.calls[0][1];
+    expect(agentUpdate.guardrailProfile).toBe('STRICT');
+  });
+
+  it('OP-4: config already matching golden is a no-op even when content also fast-forwards', async () => {
+    mockAgentRepo.findAll.mockImplementation(async (props: any) =>
+      props.filters.tenantId === SYSTEM_TENANT_ID ? [goldenAgent({ guardrailProfile: 'STRICT' })] : [tenantAgent({ guardrailProfile: 'STRICT' })],
+    );
+    mockTemplateRepo.findById.mockImplementation(async (id: string) => {
+      if (id === 'sys-tpl-gen') return template({ id: 'sys-tpl-gen', content: GOLDEN_CONTENT_V2, currentVersionNumber: 2 });
+      if (id === 'ten-tpl-gen') return template({ id: 'ten-tpl-gen', content: GOLDEN_CONTENT_V1, currentVersionNumber: 1 });
+      return null;
+    });
+    mockVersionRepo.findByVersionNumber.mockResolvedValue({ content: GOLDEN_CONTENT_V1 });
+
+    const summary = await service.resyncTenant(TARGET_TENANT);
+
+    expect(summary).toEqual({ added: 0, fastForwarded: 1, skipped: 0, configPropagated: 0, configBlocked: 0 });
   });
 });
