@@ -8,9 +8,4 @@
  * `@arcaai/admin-console` (editor preview + payload tester).
  */
 
-export {
-  MAX_SCHEMA_DEPTH,
-  MAX_SCHEMA_NODES,
-  authorableJsonSchemaProblems,
-  jsonSchemaValueProblems,
-} from './json-schema-subset';
+export { MAX_SCHEMA_DEPTH, MAX_SCHEMA_NODES, authorableJsonSchemaProblems, jsonSchemaValueProblems } from './json-schema-subset';
