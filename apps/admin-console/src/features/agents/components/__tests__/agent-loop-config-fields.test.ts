@@ -200,14 +200,14 @@ describe('agent-loop-config-fields', () => {
       });
     });
 
-    it('buildToolConfigPayload sets every tool explicitly (allow/deny, never omitted)', () => {
-      expect(buildToolConfigPayload(['ner'])).toEqual({
+    it('buildToolConfigPayload sets every tool explicitly (on/off/inherit, never omitted), preserving null for inherit', () => {
+      expect(buildToolConfigPayload({ ner: 'on', vitals: 'off', groundedness: 'inherit' })).toEqual({
         version: 1,
-        tools: { ner: { enabled: true }, vitals: { enabled: false }, groundedness: { enabled: false } },
+        tools: { ner: { enabled: true }, vitals: { enabled: false }, groundedness: { enabled: null } },
       });
-      expect(buildToolConfigPayload([])).toEqual({
+      expect(buildToolConfigPayload({ ner: 'inherit', vitals: 'inherit', groundedness: 'inherit' })).toEqual({
         version: 1,
-        tools: { ner: { enabled: false }, vitals: { enabled: false }, groundedness: { enabled: false } },
+        tools: { ner: { enabled: null }, vitals: { enabled: null }, groundedness: { enabled: null } },
       });
     });
 
@@ -246,9 +246,13 @@ describe('agent-loop-config-fields', () => {
       expect(parseGoal(null)).toEqual({ objective: '', successCriteria: [] });
     });
 
-    it('parseToolConfig returns only the tools explicitly enabled', () => {
-      expect(parseToolConfig({ version: 1, tools: { ner: { enabled: true }, vitals: { enabled: false } } })).toEqual(['ner']);
-      expect(parseToolConfig(null)).toEqual([]);
+    it('parseToolConfig returns each tool’s tri-state pin, defaulting missing/null entries to inherit', () => {
+      expect(parseToolConfig({ version: 1, tools: { ner: { enabled: true }, vitals: { enabled: false }, groundedness: { enabled: null } } })).toEqual({
+        ner: 'on',
+        vitals: 'off',
+        groundedness: 'inherit',
+      });
+      expect(parseToolConfig(null)).toEqual({ ner: 'inherit', vitals: 'inherit', groundedness: 'inherit' });
     });
   });
 });

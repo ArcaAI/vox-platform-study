@@ -164,6 +164,17 @@ describe('ConsultationContextSchemaService — TASK-661 version pinning + lifecy
       expect(v1!.definition).toEqual(V1_DEFINITION);
     });
 
+    it('listVersions (TASK-674) tags every OTHER version with its versionSkew relative to the current pin, and leaves the pinned version undefined', async () => {
+      const versions = await service.listVersions('schema-1');
+      const v3 = versions.find((v) => v.versionNumber === 3);
+      const v1 = versions.find((v) => v.versionNumber === 1);
+      // The pinned version has nothing to compare itself against.
+      expect(v3!.versionSkew).toBeUndefined();
+      // v1 -> v3 is the SAME drift `validateContextPayload` classifies as
+      // BREAKING elsewhere in this file (severity renamed to severityLevel).
+      expect(v1!.versionSkew).toBe('BREAKING');
+    });
+
     it('a write pinned to the superseded version validates against it, not the current v3 pin', async () => {
       mockVersionRepository.findById.mockResolvedValue(createVersionEntity(1, V1_DEFINITION));
       mockSchemaRepository.findDefaultForScope.mockResolvedValue(createSchemaEntity({ pinnedVersionNumber: 3 }));
@@ -229,6 +240,17 @@ describe('ConsultationContextSchemaService — TASK-661 version pinning + lifecy
       expect(result.versionSkew).toBe('BREAKING');
       // Crucially: BREAKING skew does NOT change what got validated or stamped.
       expect(result.contextSchemaVersionId).toBe('version-1');
+    });
+
+    it('listVersions (TASK-674) reports ADDITIVE, not BREAKING, when the drift to the current pin is safe', async () => {
+      mockSchemaRepository.findById.mockResolvedValue(createSchemaEntity({ pinnedVersionNumber: 2 }));
+      mockVersionRepository.findAllForSchema.mockResolvedValue([createVersionEntity(2, V2_DEFINITION), createVersionEntity(1, V1_DEFINITION)]);
+
+      const versions = await service.listVersions('schema-1');
+      const v2 = versions.find((v) => v.versionNumber === 2);
+      const v1 = versions.find((v) => v.versionNumber === 1);
+      expect(v2!.versionSkew).toBeUndefined();
+      expect(v1!.versionSkew).toBe('ADDITIVE');
     });
   });
 });

@@ -19,6 +19,7 @@ const createMockService = () => ({
   setDefault: vi.fn(),
   pin: vi.fn(),
   clone: vi.fn(),
+  listVersions: vi.fn(),
 });
 
 describe('DepartmentAgentController — authorization metadata', () => {
@@ -73,5 +74,11 @@ describe('DepartmentAgentController — delegation', () => {
     service.clone.mockResolvedValue({});
     await controller.clone('a-1', { name: 'My Copy', slug: 'my-copy' } as never);
     expect(service.clone).toHaveBeenCalledWith('a-1', { name: 'My Copy', slug: 'my-copy' });
+  });
+
+  it('listVersions delegates to the service (TASK-674)', async () => {
+    service.listVersions.mockResolvedValue([{ id: 'v-1', versionNumber: 1 }]);
+    await expect(controller.listVersions('a-1')).resolves.toEqual([{ id: 'v-1', versionNumber: 1 }]);
+    expect(service.listVersions).toHaveBeenCalledWith('a-1');
   });
 });

@@ -26,7 +26,9 @@ import {
   getUsageAnalytics,
   getUsageStats,
   listAgentEvalRuns,
+  listAgentPromotions,
   listDepartmentAgents,
+  listDepartmentAgentVersions,
   listDepartments,
   listEvalGoldenCases,
   listEvalGoldenSets,
@@ -40,12 +42,13 @@ import {
   updateDepartmentAgent,
   updateTemplate,
 } from './client';
-import { agentEvalKeys, agentKeys, departmentAgentKeys } from './keys';
+import { agentEvalKeys, agentKeys, agentPromotionKeys, departmentAgentKeys } from './keys';
 import type {
   AssignDepartmentRequest,
   CreateDepartmentAgentRequest,
   CreateTemplateRequest,
   DepartmentAgent,
+  ListAgentPromotionsParams,
   ListDepartmentAgentsParams,
   ListEvalGoldenCasesParams,
   ListEvalGoldenSetsParams,
@@ -262,6 +265,33 @@ export function useResolvedContextSchema(departmentId: string | undefined) {
     queryKey: departmentAgentKeys.contextSchema(departmentId ?? ''),
     queryFn: () => getResolvedContextSchema(departmentId),
     enabled: !!departmentId,
+  });
+}
+
+/**
+ * TASK-674 — the immutable loop-configuration version history (Lineage tab).
+ * Newest first, mirroring `useVersions` for `PromptTemplate` above.
+ */
+export function useDepartmentAgentVersions(id: string) {
+  return useQuery({
+    queryKey: departmentAgentKeys.versions(id),
+    queryFn: () => listDepartmentAgentVersions(id),
+    enabled: !!id,
+  });
+}
+
+/**
+ * TASK-674 — promotions INTO the working tenant, filtered to one target
+ * agent (the Lineage tab's "promoted from" section). Held off until an agent
+ * id is known; the working tenant's own promotion rows are already scoped
+ * server-side by the tenant-scope extension.
+ */
+export function useAgentPromotionsForTarget(targetAgentId: string | undefined) {
+  const params: ListAgentPromotionsParams | undefined = targetAgentId ? { targetAgentId, limit: 50 } : undefined;
+  return useQuery({
+    queryKey: agentPromotionKeys.list(params),
+    queryFn: () => listAgentPromotions(params),
+    enabled: !!targetAgentId,
   });
 }
 

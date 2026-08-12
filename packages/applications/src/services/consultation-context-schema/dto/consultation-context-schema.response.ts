@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { ConsultationContextSchemaScope, ConsultationContextSchemaStatus } from '@arcaai/domains';
+import type { DefinitionChangeClassification } from '../definition-diff';
 
 export class ConsultationContextSchemaResponse {
   @ApiProperty() id: string;
@@ -30,6 +31,16 @@ export class ConsultationContextSchemaVersionResponse {
   @ApiPropertyOptional({ nullable: true }) changeReason: string | null;
   @ApiPropertyOptional({ nullable: true }) createdBy: string | null;
   @ApiProperty() createdAt: string;
+  /**
+   * TASK-661 computes this classification (`classifyDefinitionChange`) but
+   * previously only logged it (`ContextService`); TASK-674 surfaces it here so
+   * an admin can see whether a client still pinned to this version would keep
+   * working against the tenant's CURRENT pin. Set on every version except the
+   * currently pinned one (nothing to compare it to) — absent when the schema
+   * has no pin yet.
+   */
+  @ApiPropertyOptional({ enum: ['IDENTICAL', 'ADDITIVE', 'BREAKING'] })
+  versionSkew?: DefinitionChangeClassification;
 }
 
 /**

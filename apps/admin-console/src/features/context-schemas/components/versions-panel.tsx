@@ -8,6 +8,13 @@
  * There is no "track latest" pin-to-null here (unlike `DepartmentAgent`):
  * `publish` always advances the pin itself (TASK-658 D-3), so `pin` exists
  * only to move it back to an older, already-published version.
+ *
+ * TASK-674 — each non-pinned row also shows its `versionSkew` against the
+ * CURRENT pin (server-computed, `classifyDefinitionChange`): a client still
+ * pinned to that version keeps working if it reads ADDITIVE, and is broken if
+ * it reads BREAKING. TASK-661 already computed this for the write path but
+ * only logged it; this is the same judgement, surfaced for an admin deciding
+ * whether it is safe to leave clients on an older version.
  */
 
 import { toast } from 'sonner';
@@ -20,8 +27,27 @@ import { GatewayError } from '@/shared/api';
 import { EmptyState } from '@/shared/state/empty-state';
 import { ErrorState } from '@/shared/state/error-state';
 import { usePinContextSchemaVersion } from '../api/hooks';
-import type { ConsultationContextSchema, ConsultationContextSchemaVersion } from '../api/types';
+import type { ConsultationContextSchema, ConsultationContextSchemaVersion, ContextSchemaVersionSkew } from '../api/types';
 import { IconHistory } from '@tabler/icons-react';
+
+/** TASK-674 — drift-safety badge for a non-pinned version, next to the current pin. */
+function VersionSkewBadge({ skew }: { skew: ContextSchemaVersionSkew }) {
+  if (skew === 'BREAKING') {
+    return (
+      <Badge variant="outline" className="border-destructive/40 text-destructive">
+        Breaking drift
+      </Badge>
+    );
+  }
+  if (skew === 'ADDITIVE') {
+    return (
+      <Badge variant="outline" className="border-success/40 text-success">
+        Additive drift — clients still work
+      </Badge>
+    );
+  }
+  return <Badge variant="secondary">Identical to pinned</Badge>;
+}
 
 export function VersionsPanel({
   schema,
@@ -92,7 +118,7 @@ export function VersionsPanel({
                 <div className="flex min-w-0 flex-col gap-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-mono text-sm font-medium">v{version.versionNumber}</span>
-                    {isPinned ? <Badge>Pinned</Badge> : null}
+                    {isPinned ? <Badge>Pinned</Badge> : version.versionSkew ? <VersionSkewBadge skew={version.versionSkew} /> : null}
                     <span className="text-muted-foreground text-xs">{version.definition.kinds.length} kind(s)</span>
                   </div>
                   {version.changeReason ? <p className="text-muted-foreground truncate text-xs">{version.changeReason}</p> : null}

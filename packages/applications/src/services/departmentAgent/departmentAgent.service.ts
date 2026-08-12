@@ -33,6 +33,7 @@ import {
   UpdateDepartmentAgentRequest,
   CloneDepartmentAgentRequest,
   DepartmentAgentResponse,
+  DepartmentAgentVersionResponse,
   PaginatedDepartmentAgentResponse,
 } from './dto';
 import { DepartmentAgentDtoMapper } from './departmentAgent.dto.mapper';
@@ -133,6 +134,21 @@ export class DepartmentAgentService extends BaseService implements IDepartmentAg
     const agent = await this.loadOwned(id);
     this.broadcastSysEvent(SysEventType.ResourceViewed, { resourceId: agent.id });
     return DepartmentAgentDtoMapper.toResponse(agent);
+  }
+
+  /**
+   * TASK-674 — the immutable `DepartmentAgentVersion` history TASK-659 writes
+   * on every loop-config-affecting save (`writeLoopConfigVersionIfNeeded`),
+   * newest first. Ownership-checked exactly like every other read here
+   * (`loadOwned` — a cross-tenant id 404s before any version is read).
+   * `agentVersionRepository` mirrors the same `@Optional()` degrade every
+   * other TASK-659 read path uses: absent ⇒ empty list, never a throw.
+   */
+  async listVersions(id: string): Promise<DepartmentAgentVersionResponse[]> {
+    const agent = await this.loadOwned(id);
+    if (!this.agentVersionRepository) return [];
+    const versions = await this.agentVersionRepository.findAllForAgent(agent.id);
+    return versions.map(DepartmentAgentDtoMapper.toVersionResponse);
   }
 
   // =========================================================================
