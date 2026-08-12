@@ -17,11 +17,7 @@
 // enrichment is now OPT-IN. `harness.loop.enabled` is unaffected: it already
 // defaulted OFF, so its effective state is unchanged.
 
-import {
-  CONSULTATION_GATE_DEFAULTS,
-  CONSULTATION_OCR_ENABLED_KEY,
-  HARNESS_LOOP_ENABLED_KEY,
-} from '../../consultation/consultation-gates.constants';
+import { CONSULTATION_GATE_DEFAULTS, CONSULTATION_OCR_ENABLED_KEY, HARNESS_LOOP_ENABLED_KEY } from '../../consultation/consultation-gates.constants';
 import { SettingDescriptor } from '../registry.types';
 
 export const CONSULTATION_GATE_SETTINGS: SettingDescriptor[] = [
