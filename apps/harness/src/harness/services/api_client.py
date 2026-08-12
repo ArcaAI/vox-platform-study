@@ -722,6 +722,31 @@ class ApiClient:
             "/loop-config", {"tenantId": tenant_id, "consultationId": consultation_id}
         )
 
+    async def extract_document_text(
+        self,
+        consultation_id: str,
+        *,
+        context_item_id: str,
+        tenant_id: str,
+    ) -> str:
+        """Read the extracted text of a DOCUMENT context item (TASK-664).
+
+        The gateway already owns document extraction — `OcrEnrichmentProcessor`
+        runs OCR and NLP `/extract` on attachment upload — so the
+        `document.extract_text` action ASKS for that result rather than opening a
+        second, divergent extraction path with its own storage credentials and
+        its own PHI egress surface.
+
+        Returns `""` when nothing has been extracted, which simply ends that
+        branch of the cascade. Raises only on a genuine transport/HTTP failure.
+        """
+        data = await self._get(
+            f"/consultations/{consultation_id}/context-items/{context_item_id}/extracted-text",
+            {"tenantId": tenant_id},
+        )
+        text = data.get("text")
+        return text if isinstance(text, str) else ""
+
     async def live_documentation_start(
         self,
         consultation_id: str,

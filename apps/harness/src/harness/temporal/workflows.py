@@ -41,6 +41,7 @@ with workflow.unsafe.imports_passed_through():
         apply_redaction,
         assemble_prompt,
         call_mcp_tool,
+        document_extract_text,
         emit_loop_event,
         escalate_gate,
         extract_entities,
@@ -50,15 +51,20 @@ with workflow.unsafe.imports_passed_through():
         generate,
         livedoc_start,
         livedoc_stop,
+        nlp_extract_entities,
         persist_draft,
         persist_entities,
         ping_activity,
+        plan_reasoning,
+        record_adjudication,
         record_gate_decision,
         report_progress,
         retract_draft,
         retrieve_context,
         run_inferential_sensors,
         run_sensors,
+        run_specialist,
+        vision_extract_text,
     )
     from harness.temporal.claim_check import ClaimCheckRef
     from harness.temporal.models import (
@@ -78,9 +84,15 @@ with workflow.unsafe.imports_passed_through():
         LOOP_ACTION_VISION_EXTRACT_TEXT,
         LOOP_EVENT_ACTION_DISPATCHED,
         LOOP_EVENT_ACTION_SKIPPED,
+        LOOP_EVENT_CONTEXT_DERIVED,
+        LOOP_EVENT_PLAN_DECIDED,
+        LOOP_EVENT_SPECIALIST_FAILED,
         LOOP_SKIP_BUDGET_EXHAUSTED,
+        LOOP_SKIP_CYCLE_DETECTED,
         LOOP_SKIP_DEPTH_CAP,
+        LOOP_SKIP_SPECIALIST_BUDGET,
         LOOP_SKIP_UNSUPPORTED_ACTION,
+        PRIMARY_ONLY_OUTPUT_KINDS,
         ApplyRedactionInput,
         ApprovalSignal,
         AssembleInput,
@@ -92,6 +104,8 @@ with workflow.unsafe.imports_passed_through():
         ConsultationLoopWorkflowInput,
         ConsultationLoopWorkflowResult,
         ContextAddedSignal,
+        DeriveContextInput,
+        DeriveContextResult,
         EditSignal,
         EmitLoopEventInput,
         EscalateInput,
@@ -109,6 +123,9 @@ with workflow.unsafe.imports_passed_through():
         McpServerConfig,
         PersistDraftInput,
         PersistEntitiesInput,
+        PlanDecision,
+        PlanLoopInput,
+        RecordAdjudicationInput,
         RecordGateInput,
         RegenFeedback,
         ReportProgressInput,
@@ -117,7 +134,12 @@ with workflow.unsafe.imports_passed_through():
         RetrievedContext,
         RunInferentialSensorsInput,
         RunSensorsInput,
+        ScopedContextItem,
+        SpecialistAnalysisInput,
+        SpecialistResult,
+        SpecialistWorkflowInput,
         TrajectoryContext,
+        adjudicate,
     )
     from harness.temporal.prompt_cache import build_regen_feedback
 
@@ -1627,6 +1649,12 @@ class LoopActionSpec:
     lifecycle: bool = False
     # "activity" | "child_workflow"
     kind: str = "activity"
+    # TASK-664. True for an action whose OUTPUT re-enters the context bus as a
+    # new item one depth deeper. That re-entry is the cascade (TASK-654 §4.2) —
+    # it is what makes image -> text and audio -> transcript the same mechanism —
+    # and it is why the depth cap and the action budget are load-bearing rather
+    # than theoretical.
+    derives_context: bool = False
     # Both set ONLY for child_workflow actions, and never left to the SDK
     # default — see the note on `_start_finalize_child` for why each default is
     # the wrong choice here.
@@ -1650,18 +1678,18 @@ LOOP_ACTION_REGISTRY: dict[str, LoopActionSpec] = {
         parent_close_policy=workflow.ParentClosePolicy.REQUEST_CANCEL,
         child_cancellation_type=workflow.ChildWorkflowCancellationType.TRY_CANCEL,
     ),
-    # Declared, not yet backed. The capability exists (TASK-657 shipped vision in
-    # SMR; NLP `/extract` and `extract_entities` already exist) but wiring the
-    # derived-context cascade through them is TASK-664's deliberative lane, not
-    # this ticket's mechanical one.
+    # TASK-664 backs all three. TASK-662 declared them with `implemented=False`
+    # so an agent naming one in `alwaysActions` got an OBSERVABLE
+    # `unsupported_action` skip rather than a silent no-op; the registry entry
+    # stays, the flag flips, and the cascade they feed is now real.
     LOOP_ACTION_VISION_EXTRACT_TEXT: LoopActionSpec(
-        key=LOOP_ACTION_VISION_EXTRACT_TEXT, implemented=False
+        key=LOOP_ACTION_VISION_EXTRACT_TEXT, implemented=True, derives_context=True
     ),
     LOOP_ACTION_DOCUMENT_EXTRACT_TEXT: LoopActionSpec(
-        key=LOOP_ACTION_DOCUMENT_EXTRACT_TEXT, implemented=False
+        key=LOOP_ACTION_DOCUMENT_EXTRACT_TEXT, implemented=True, derives_context=True
     ),
     LOOP_ACTION_NLP_EXTRACT_ENTITIES: LoopActionSpec(
-        key=LOOP_ACTION_NLP_EXTRACT_ENTITIES, implemented=False
+        key=LOOP_ACTION_NLP_EXTRACT_ENTITIES, implemented=True, derives_context=True
     ),
 }
 
@@ -1681,6 +1709,143 @@ _LOOP_EVENT_RETRY = RetryPolicy(maximum_attempts=1)
 # this many DISTINCT events after the original is re-processed, which is the
 # safe direction to fail (a re-run action, not a lost one).
 _LOOP_MAX_SEEN_KEYS = 2_000
+
+# ---------------------------------------------------------------------------
+# TASK-664 — the reasoning lane
+#
+# ⚠ THE PATCH ERA BELOW IS MANDATORY, AND FOR A REASON THAT DID NOT APPLY TO
+# TASK-662.
+#
+# TASK-662 could add `ConsultationLoopWorkflow` with no `workflow.patched` gate
+# because a brand-new workflow type has no recorded history to stay compatible
+# with. That is no longer true: TASK-662 also FROZE a fixture of this type
+# (`fixtures/consultation_loop_task662_history.json`, asserted in
+# `test_replay_compat.py`). Every new command this ticket makes the loop issue —
+# the planner activity, the specialist children, the adjudication publish, the
+# derived-context activities — would therefore break that replay if issued
+# unconditionally.
+#
+# Two things keep the frozen fixture green, and BOTH are needed:
+#
+#   1. `reasoning_enabled` defaults to False on `ConsultationLoopConfig`, so the
+#      old recorded config deserialises with the lane OFF.
+#   2. Every gate is written `config.reasoning_enabled and workflow.patched(...)`
+#      — the flag operand FIRST. On the old history the flag is False, so
+#      `workflow.patched` is never even CALLED, no marker is looked for, and the
+#      recorded command sequence is reproduced exactly.
+#
+# Reversing those two operands would still be correct for a fresh run and would
+# still fail the frozen replay. Order matters.
+# ---------------------------------------------------------------------------
+_PATCH_REASONING = "task-664-reasoning"
+
+# Which activity backs each derived-context action. A MAP rather than a chain of
+# `elif`s, so adding a fourth deriver is a registry entry plus a line here and
+# cannot forget the dispatch branch.
+_DERIVE_ACTIVITIES: dict[str, Any] = {
+    LOOP_ACTION_VISION_EXTRACT_TEXT: vision_extract_text,
+    LOOP_ACTION_DOCUMENT_EXTRACT_TEXT: document_extract_text,
+    LOOP_ACTION_NLP_EXTRACT_ENTITIES: nlp_extract_entities,
+}
+
+# Bound on the rolling context window each specialist's scoped slice is cut
+# from. It lives in workflow state and is carried nowhere, so it must not grow
+# with the length of the consultation.
+_LOOP_MAX_CONTEXT_WINDOW = 200
+
+_PLAN_TIMEOUT = timedelta(seconds=90)
+_PLAN_RETRY = RetryPolicy(maximum_attempts=2)
+# One specialist child is allowed a generous wall-clock budget (a model call
+# plus its own orchestration) but only ONE attempt: a specialist that failed is
+# information, and silently retrying it would hide a persistently broken agent
+# behind a longer consultation.
+_SPECIALIST_TIMEOUT = timedelta(minutes=5)
+_DERIVE_TIMEOUT = timedelta(seconds=120)
+_DERIVE_RETRY = RetryPolicy(maximum_attempts=2)
+
+
+def specialist_workflow_id(consultation_id: str, agent_id: str, plan_id: str) -> str:
+    """Deterministic child id for one specialist run (pure).
+
+    Keyed by PLAN as well as agent: the same specialist legitimately runs again
+    under a later plan, but must never collide with its own earlier run.
+    """
+    return f"specialist-{consultation_id}-{agent_id}-{plan_id}"
+
+
+@workflow.defn
+class SpecialistWorkflow:
+    """One specialist's review, isolated as a CHILD workflow.
+
+    Isolation is the whole point and it buys two distinct things:
+
+    * **Its own history budget.** A specialist that makes several model calls
+      accumulates its events in its own history rather than in the parent's,
+      so a consultation with many specialists does not march the orchestrator
+      toward Temporal's 51,200-event ceiling.
+    * **Its own failure domain.** A specialist that fails, fails alone. The
+      parent records the failure, degrades, and carries on with the rest —
+      which is exactly what a clinical consultation needs, because losing one
+      reviewer's opinion is not a reason to lose the consultation.
+
+    **This workflow cannot write the note or the gate.** It dispatches no loop
+    actions, starts no children, and its result type has no field capable of
+    carrying note text or a gate decision. The primary's exclusivity (TASK-654
+    D7) is therefore structural here, not a convention someone must remember.
+    """
+
+    @workflow.run
+    async def run(self, inp: SpecialistWorkflowInput) -> SpecialistResult:
+        try:
+            result: SpecialistResult = await workflow.execute_activity(
+                run_specialist,
+                SpecialistAnalysisInput(
+                    consultation_id=inp.consultation_id,
+                    tenant_id=inp.tenant_id,
+                    plan_id=inp.plan_id,
+                    agent_id=inp.agent_id,
+                    agent_slug=inp.agent_slug,
+                    goal=inp.goal,
+                    kind_key=inp.kind_key,
+                    write_scope=list(inp.write_scope),
+                    context=list(inp.context),
+                ),
+                start_to_close_timeout=_SPECIALIST_TIMEOUT,
+                retry_policy=RetryPolicy(maximum_attempts=1),
+            )
+        except ActivityError:
+            # Surfaced to the parent as a child-workflow failure, which the
+            # parent turns into `degraded` — never into an aborted consultation.
+            raise
+
+        # Second enforcement pass, in the child. The parent's is authoritative
+        # (enforcement outside agent code, TASK-654 §4.6); this one means a
+        # mis-scoped finding is refused at the earliest point it exists, and the
+        # refusal travels back with the result instead of being invisible.
+        allowed = set(inp.write_scope) - PRIMARY_ONLY_OUTPUT_KINDS
+        kept = [f for f in result.findings if f.output_kind in allowed]
+        refused = [f.output_kind for f in result.findings if f.output_kind not in allowed]
+        return SpecialistResult(
+            agent_id=inp.agent_id,
+            plan_id=inp.plan_id,
+            kind_key=inp.kind_key,
+            findings=kept,
+            out_of_scope_findings=dedupe_preserving_order(
+                [*result.out_of_scope_findings, *refused]
+            ),
+            degraded=result.degraded,
+        )
+
+
+def dedupe_preserving_order(items: list[str]) -> list[str]:
+    """Order-preserving de-duplication (pure; safe inside a workflow body)."""
+    seen: set[str] = set()
+    out: list[str] = []
+    for item in items:
+        if item not in seen:
+            seen.add(item)
+            out.append(item)
+    return out
 
 
 @workflow.defn
@@ -1751,6 +1916,26 @@ class ConsultationLoopWorkflow:
         self._finalize_workflow_id: str | None = None
         self._phase = "INIT"
 
+        # -- TASK-664 reasoning lane ---------------------------------------
+        # `(agent_id, kind_key)` pairs already reviewed. CARRIED across
+        # checkpoints: dropping it at a continuation would let every pair run
+        # again, which is precisely the cycle the detector exists to stop.
+        self._agent_kind_seen: list[str] = list(inp.carried_agent_kind_seen)
+        self._agent_kind_set: set[str] = set(inp.carried_agent_kind_seen)
+        self._plans_made = inp.carried_plans_made
+        self._specialists_run = inp.carried_specialists_run
+        self._specialist_failures = inp.carried_specialist_failures
+        self._cycles_suppressed = inp.carried_cycles_suppressed
+        self._derived_context = inp.carried_derived_context
+        # Planning-checkpoint accounting. Deliberately NOT carried: a
+        # continuation starts a fresh interval, and the ending replan covers the
+        # tail either way.
+        self._events_since_plan = 0
+        self._kinds_since_plan: list[str] = []
+        # Bounded rolling window of context, used to build each specialist's
+        # SCOPED slice. Bounded because it lives in workflow state.
+        self._context_log: list[ScopedContextItem] = []
+
     # -- signals / query ---------------------------------------------------
 
     @workflow.signal(name="contextAdded")
@@ -1811,6 +1996,12 @@ class ConsultationLoopWorkflow:
             livedoc_started=self._livedoc_started,
             finalize_workflow_id=self._finalize_workflow_id,
             continuations=self._continuations,
+            reasoning_enabled=bool(config and config.reasoning_enabled),
+            plans_made=self._plans_made,
+            specialists_run=self._specialists_run,
+            specialist_failures=self._specialist_failures,
+            cycles_suppressed=self._cycles_suppressed,
+            derived_context=self._derived_context,
         )
 
     # -- run ---------------------------------------------------------------
@@ -1848,6 +2039,11 @@ class ConsultationLoopWorkflow:
                 self._phase = "ENDING"
                 # Anything that landed while the last batch was dispatching.
                 await self._drain()
+                # The FINAL planning checkpoint. Whatever arrived after the last
+                # interval boundary would otherwise never be reviewed, so the
+                # end of the consultation is always a checkpoint — regardless of
+                # how few events it has been since the previous one.
+                await self._maybe_replan(force=True)
                 await self._run_lifecycle_actions(config.ending_actions)
                 self._phase = "DONE"
                 break
@@ -1900,11 +2096,17 @@ class ConsultationLoopWorkflow:
                 self._pending.clear()
             for signal in batch:
                 await self._handle_context(signal)
+                # The PLANNING checkpoint. Evaluated per item but FIRING only
+                # every `replan_interval_events` — the intermediate frequency
+                # *Learning When to Plan* finds beats replanning per step.
+                await self._maybe_replan()
 
     async def _handle_context(self, signal: ContextAddedSignal) -> None:
         config = self._config
         if config is None:
             return
+
+        self._observe_context(signal)
 
         actions = config.actions_for_kind(signal.kind_key)
         if not actions:
@@ -1993,9 +2195,92 @@ class ConsultationLoopWorkflow:
             )
         elif spec.key == LOOP_ACTION_HARNESS_FINALIZE:
             await self._start_finalize_child(spec)
+        elif spec.derives_context:
+            # TASK-664 — the three keys TASK-662 declared but left unbacked.
+            # Gated on the patch era: an old history recorded them as
+            # `unsupported_action` SKIPS, and replaying it must reproduce that,
+            # not suddenly issue an activity command that was never recorded.
+            if not workflow.patched(_PATCH_REASONING):  # pragma: no cover - replay-only path
+                await self._emit_event(
+                    LOOP_EVENT_ACTION_SKIPPED,
+                    signal=signal,
+                    action=spec.key,
+                    reason=LOOP_SKIP_UNSUPPORTED_ACTION,
+                )
+                return
+            await self._run_derive_action(spec, signal)
         else:  # pragma: no cover - registry guarantees the branches above
             return
         self._actions_dispatched += 1
+
+    # -- derived-context cascade (TASK-664) --------------------------------
+
+    async def _run_derive_action(
+        self, spec: LoopActionSpec, signal: ContextAddedSignal | None
+    ) -> None:
+        """Run one derive action and RE-ENTER its output as context, depth + 1.
+
+        This closes the cascade TASK-654 §4.2 describes: an action's output is
+        just more context, so image -> text and audio -> transcript are the same
+        mechanism rather than two special cases. The derived item goes through
+        the identical intake path as a gateway-delivered one — same
+        de-duplication, same depth cap, same budget — which is what stops the
+        cascade being unbounded.
+        """
+        if signal is None:  # pragma: no cover - derive actions are never lifecycle
+            return
+
+        activity_fn = _DERIVE_ACTIVITIES.get(spec.key)
+        if activity_fn is None:  # pragma: no cover - registry and map are built together
+            return
+
+        result: DeriveContextResult = await workflow.execute_activity(
+            activity_fn,
+            DeriveContextInput(
+                consultation_id=self._input.consultation_id,
+                tenant_id=self._input.tenant_id,
+                action=spec.key,
+                context_item_id=signal.context_item_id,
+                kind_key=signal.kind_key,
+                text=signal.text,
+                text_ref=signal.text_ref,
+            ),
+            start_to_close_timeout=_DERIVE_TIMEOUT,
+            retry_policy=_DERIVE_RETRY,
+        )
+        if not result.derived or not result.context_item_id:
+            # Nothing extractable, or the downstream service was unavailable.
+            # That simply ends this branch of the cascade — it is not an error,
+            # and it must not degrade a consultation.
+            return
+
+        derived = ContextAddedSignal(
+            context_item_id=result.context_item_id,
+            kind_key=result.kind_key,
+            source="AI",
+            # Deterministic, and derived from the parent's own identity, so a
+            # re-delivery of the parent produces the SAME de-duplication key and
+            # cannot double-derive.
+            occurred_at=f"{signal.occurred_at or ''}:{spec.key}",
+            depth=signal.depth + 1,
+            text=result.text,
+        )
+        async with self._lock:
+            key = derived.dedupe_key()
+            if key in self._seen:
+                self._duplicates_ignored += 1
+                return
+            self._seen.add(key)
+            self._seen_keys.append(key)
+            if len(self._seen_keys) > _LOOP_MAX_SEEN_KEYS:
+                evicted = self._seen_keys.pop(0)
+                self._seen.discard(evicted)
+            self._pending.append(derived)
+            self._derived_context += 1
+
+        await self._emit_event(
+            LOOP_EVENT_CONTEXT_DERIVED, signal=derived, action=spec.key
+        )
 
     def _livedoc_input(self) -> LiveDocControlInput:
         ending = self._ending_signal
@@ -2132,6 +2417,247 @@ class ConsultationLoopWorkflow:
             # for it.
             self._degraded = True
 
+    # -- reasoning lane (TASK-664) -----------------------------------------
+
+    def _observe_context(self, signal: ContextAddedSignal) -> None:
+        """Record one item for the planning checkpoint and the scoped-read window. PURE."""
+        self._events_since_plan += 1
+        if signal.kind_key and signal.kind_key not in self._kinds_since_plan:
+            self._kinds_since_plan.append(signal.kind_key)
+        self._context_log.append(
+            ScopedContextItem(
+                context_item_id=signal.context_item_id,
+                kind_key=signal.kind_key,
+                text=signal.text,
+            )
+        )
+        if len(self._context_log) > _LOOP_MAX_CONTEXT_WINDOW:
+            self._context_log.pop(0)
+
+    async def _maybe_replan(self, *, force: bool = False) -> None:
+        """Run a planning checkpoint when one is due.
+
+        **Not per event.** *Learning When to Plan* finds that an intermediate
+        replanning frequency beats replanning at every step, which is an
+        overthinking failure mode; the cadence is
+        ``input.replan_interval_events`` and is a configurable knob rather than
+        a constant, because how densely a department produces context is a
+        property of the department, not of this code.
+
+        ``force`` is the end-of-consultation checkpoint: whatever arrived after
+        the last interval boundary must still be reviewed.
+        """
+        config = self._config
+        # The flag operand comes FIRST so `workflow.patched` is never called on a
+        # pre-TASK-664 history — see the note on `_PATCH_REASONING`.
+        if config is None or not config.reasoning_enabled:
+            return
+        if not workflow.patched(_PATCH_REASONING):  # pragma: no cover - replay-only path
+            return
+        if not force and self._events_since_plan < self._input.replan_interval_events:
+            return
+        if not self._kinds_since_plan:
+            return
+
+        trigger_kinds = list(self._kinds_since_plan)
+        self._events_since_plan = 0
+        self._kinds_since_plan = []
+
+        primary = config.primary()
+        candidates = [
+            agent
+            for agent in config.agents
+            if not agent.is_primary
+            and any(agent.reads(kind) for kind in trigger_kinds)
+        ]
+        if not candidates:
+            return
+
+        decision: PlanDecision = await workflow.execute_activity(
+            plan_reasoning,
+            PlanLoopInput(
+                consultation_id=self._input.consultation_id,
+                tenant_id=self._input.tenant_id,
+                plan_seq=self._plans_made,
+                goal=primary.goal if primary else None,
+                trigger_kinds=trigger_kinds,
+                candidates=candidates,
+            ),
+            start_to_close_timeout=_PLAN_TIMEOUT,
+            retry_policy=_PLAN_RETRY,
+        )
+        self._plans_made += 1
+        if decision.degraded:
+            # A planner that could not decide dispatches nothing and degrades the
+            # run — it never guesses a roster of clinical reviewers.
+            self._degraded = True
+        await self._emit_event(LOOP_EVENT_PLAN_DECIDED, action=decision.plan_id)
+
+        results = await self._run_specialists(config, decision)
+        if results:
+            await self._adjudicate(config, decision, results)
+
+    async def _run_specialists(
+        self, config: ConsultationLoopConfig, decision: PlanDecision
+    ) -> list[SpecialistResult]:
+        """Run the planned specialists as isolated children; collect their findings."""
+        by_id = {agent.agent_id: agent for agent in config.agents}
+        results: list[SpecialistResult] = []
+
+        for planned in decision.dispatch:
+            agent = by_id.get(planned.agent_id)
+            # A planner naming an unknown agent, the primary, or a kind outside
+            # the agent's read scope is refused HERE. The activity already
+            # filters the same three cases; this is the orchestrator's own
+            # check, and the orchestrator's is the one that counts.
+            if agent is None or agent.is_primary or not agent.reads(planned.kind_key):
+                continue
+
+            pair = f"{planned.agent_id}:{planned.kind_key}"
+            if pair in self._agent_kind_set:
+                # Cycle detection on `(agent, kind)` (TASK-654 §4.2). The same
+                # reviewer re-reviewing the same kind is the shape a cascade
+                # loops in, and suppressing it is what terminates the cascade.
+                self._cycles_suppressed += 1
+                await self._emit_event(
+                    LOOP_EVENT_ACTION_SKIPPED,
+                    action=planned.agent_id,
+                    reason=LOOP_SKIP_CYCLE_DETECTED,
+                )
+                continue
+
+            if self._specialists_run >= config.budget.max_specialist_runs:
+                # DEGRADE, never abort — same rule as the action budget. The
+                # consultation keeps running and keeps accepting context; only
+                # further specialist review is withheld, visibly.
+                self._degraded = True
+                await self._emit_event(
+                    LOOP_EVENT_ACTION_SKIPPED,
+                    action=planned.agent_id,
+                    reason=LOOP_SKIP_SPECIALIST_BUDGET,
+                )
+                continue
+
+            self._agent_kind_set.add(pair)
+            self._agent_kind_seen.append(pair)
+            self._specialists_run += 1
+
+            # SCOPED READ: the child is handed only the kinds it subscribes to.
+            # Filtering at the boundary is what makes the read scope enforceable
+            # — a specialist cannot read what it was never given.
+            scoped = [item for item in self._context_log if agent.reads(item.kind_key)]
+
+            try:
+                result: SpecialistResult = await workflow.execute_child_workflow(
+                    SpecialistWorkflow.run,
+                    SpecialistWorkflowInput(
+                        consultation_id=self._input.consultation_id,
+                        tenant_id=self._input.tenant_id,
+                        plan_id=decision.plan_id,
+                        agent_id=agent.agent_id,
+                        agent_slug=agent.slug,
+                        goal=agent.goal,
+                        kind_key=planned.kind_key,
+                        subscribed_kinds=list(agent.subscribed_kinds),
+                        write_scope=list(agent.write_scope),
+                        context=scoped,
+                    ),
+                    id=specialist_workflow_id(
+                        self._input.consultation_id, agent.agent_id, decision.plan_id
+                    ),
+                    # Both policies explicit, for the reasons TASK-662 §4.3
+                    # measured: the SDK default close policy would HARD-KILL a
+                    # child mid-run, and the default cancellation type left the
+                    # parent RUNNING forever after a cancel.
+                    parent_close_policy=workflow.ParentClosePolicy.REQUEST_CANCEL,
+                    cancellation_type=workflow.ChildWorkflowCancellationType.TRY_CANCEL,
+                )
+            except ChildWorkflowError as exc:
+                if is_cancelled_exception(exc):
+                    raise asyncio.CancelledError from exc
+                # One specialist failing is ISOLATED — that is the whole reason
+                # specialists are children. The run degrades and continues; the
+                # other reviewers still contribute.
+                self._specialist_failures += 1
+                self._degraded = True
+                await self._emit_event(
+                    LOOP_EVENT_SPECIALIST_FAILED, action=agent.agent_id
+                )
+                continue
+
+            results.append(result)
+
+        return results
+
+    async def _adjudicate(
+        self,
+        config: ConsultationLoopConfig,
+        decision: PlanDecision,
+        results: list[SpecialistResult],
+    ) -> None:
+        """The PRIMARY reconciles the specialists' findings into one record.
+
+        Two enforcement steps happen before reconciliation, in this order:
+
+        1. **Write-scope enforcement, in the orchestrator.** Every finding is
+           re-checked against its own agent's ``writeScope``. The specialist
+           checked too, but that check is inside the agent's own execution and
+           therefore not a boundary — this one is (TASK-654 §4.6).
+        2. **The primary-only floor.** ``note`` and ``gate`` are refused for any
+           specialist whatever its configured scope says, so a tenant cannot
+           misconfigure away the primary's exclusive ownership (D7).
+
+        Both are folded into ``LoopAgentSpec.may_write``. A refusal is RECORDED,
+        never silent.
+        """
+        by_id = {agent.agent_id: agent for agent in config.agents}
+        filtered: list[SpecialistResult] = []
+        dropped: list[str] = []
+
+        for result in results:
+            agent = by_id.get(result.agent_id)
+            if agent is None:  # pragma: no cover - dispatch already resolved it
+                continue
+            kept = [f for f in result.findings if agent.may_write(f.output_kind)]
+            for finding in result.findings:
+                if not agent.may_write(finding.output_kind):
+                    dropped.append(f"{result.agent_id}:{finding.output_kind}")
+            for refused in result.out_of_scope_findings:
+                entry = f"{result.agent_id}:{refused}"
+                if entry not in dropped:
+                    dropped.append(entry)
+            filtered.append(
+                SpecialistResult(
+                    agent_id=result.agent_id,
+                    plan_id=result.plan_id,
+                    kind_key=result.kind_key,
+                    findings=kept,
+                    out_of_scope_findings=result.out_of_scope_findings,
+                    degraded=result.degraded,
+                )
+            )
+
+        # PURE, and deliberately so: adjudication runs in the workflow body, so
+        # anything non-deterministic here would break replay (C1).
+        record = adjudicate(
+            self._input.consultation_id,
+            decision.plan_id,
+            filtered,
+            dropped_out_of_scope=dropped,
+        )
+
+        await workflow.execute_activity(
+            record_adjudication,
+            RecordAdjudicationInput(
+                consultation_id=self._input.consultation_id,
+                tenant_id=self._input.tenant_id,
+                record=record,
+            ),
+            start_to_close_timeout=_LOOP_EVENT_TIMEOUT,
+            schedule_to_close_timeout=_LOOP_EVENT_TIMEOUT,
+            retry_policy=_LOOP_EVENT_RETRY,
+        )
+
     # -- checkpointing -----------------------------------------------------
 
     def _should_checkpoint(self) -> bool:
@@ -2177,6 +2703,13 @@ class ConsultationLoopWorkflow:
             carried_livedoc_started=self._livedoc_started,
             carried_start_actions_done=self._start_actions_done,
             carried_continuations=self._continuations + 1,
+            replan_interval_events=self._input.replan_interval_events,
+            carried_agent_kind_seen=list(self._agent_kind_seen),
+            carried_plans_made=self._plans_made,
+            carried_specialists_run=self._specialists_run,
+            carried_specialist_failures=self._specialist_failures,
+            carried_cycles_suppressed=self._cycles_suppressed,
+            carried_derived_context=self._derived_context,
         )
 
     def _result(self) -> ConsultationLoopWorkflowResult:
@@ -2194,4 +2727,9 @@ class ConsultationLoopWorkflow:
             finalized=self._finalized,
             finalize_workflow_id=self._finalize_workflow_id,
             continuations=self._continuations,
+            plans_made=self._plans_made,
+            specialists_run=self._specialists_run,
+            specialist_failures=self._specialist_failures,
+            cycles_suppressed=self._cycles_suppressed,
+            derived_context=self._derived_context,
         )

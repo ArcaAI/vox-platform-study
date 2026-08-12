@@ -7,3 +7,6 @@ export * from './consultation-loop-event.service.module';
 export * from './ILoopConfigService';
 export * from './loop-config.service';
 export * from './loop-config.service.module';
+export * from './ILoopContextTextService';
+export * from './loop-context-text.service';
+export * from './loop-context-text.service.module';

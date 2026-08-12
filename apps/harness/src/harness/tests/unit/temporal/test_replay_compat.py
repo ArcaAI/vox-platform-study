@@ -366,3 +366,51 @@ class TestConsultationLoopReplayCompatibility:
             data_converter=pydantic_data_converter,
         )
         await replayer.replay_workflow(_history("consultation_loop_task662_history"))
+
+    @pytest.mark.asyncio
+    async def test_pre_reasoning_loop_history_replays_after_task664(self):
+        """The single most important assertion this ticket makes.
+
+        TASK-664 added commands to a workflow type that ALREADY had a recorded
+        history — the fixture replayed above. Those commands (the planner
+        activity, the specialist children, the adjudication publish, the
+        derived-context activities) would break that replay if issued
+        unconditionally, which is why they sit behind the ``task-664-reasoning``
+        patch era and why the era gate is written with the
+        ``config.reasoning_enabled`` operand FIRST: on this history the flag is
+        False, so ``workflow.patched`` is never even called.
+
+        The assertion is deliberately the SAME fixture as the test above rather
+        than a new one. A consultation that was mid-flight when TASK-664
+        deployed is exactly this history meeting exactly this definition, and
+        that is the case that must not wedge.
+        """
+        replayer = Replayer(
+            workflows=[ConsultationLoopWorkflow],
+            data_converter=pydantic_data_converter,
+        )
+        await replayer.replay_workflow(_history("consultation_loop_task662_history"))
+
+    @pytest.mark.asyncio
+    async def test_reasoning_history_replays_on_current_definition(self):
+        """Forward guard for the loop's TASK-664 (reasoning) era.
+
+        The fixture records the commands the deliberative lane adds:
+        ``plan_reasoning`` (the planner ACTIVITY — this fixture is what proves
+        its decision replays from history without re-invoking the model),
+        a ``SpecialistWorkflow`` child start, ``document_extract_text`` (a derive
+        action whose output re-enters as context one depth deeper), and
+        ``record_adjudication``.
+
+        Only the parent definition is registered: a replayer replays recorded
+        commands rather than executing children, so the child-start command is
+        verified without the specialist taking part. Recapture alongside any
+        intentional change (``_capture_replay_fixture.py --reasoning``).
+        """
+        replayer = Replayer(
+            workflows=[ConsultationLoopWorkflow],
+            data_converter=pydantic_data_converter,
+        )
+        await replayer.replay_workflow(
+            _history("consultation_loop_task664_reasoning_history")
+        )

@@ -19,6 +19,7 @@ import {
   ConsultationLoopEventServiceModule,
   // Loop-configuration resolution (internal route, TASK-662).
   LoopConfigServiceModule,
+  LoopContextTextServiceModule,
   RedisSubscriberService,
 } from '@arcaai/applications';
 import { CoreDatabaseModule } from '@arcaai/domains';
@@ -55,6 +56,7 @@ import { HarnessInternalController } from './harness-internal.controller';
     ConsultationLoopEventServiceModule,
     // Loop-configuration resolution (internal route, TASK-662).
     LoopConfigServiceModule,
+    LoopContextTextServiceModule,
   ],
   controllers: [ConsultationController, AdminConsultationController, ConsultationJobController, HarnessInternalController],
   // dedicated Redis subscriber connection for the
