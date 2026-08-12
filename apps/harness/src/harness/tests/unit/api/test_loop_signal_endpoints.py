@@ -113,6 +113,46 @@ class TestContextAddedSignal:
         assert signal.text == "sodium 139"
 
     @pytest.mark.asyncio
+    async def test_content_wins_over_content_preview_when_both_are_sent(self, harness):
+        """TASK-670 — a payload-complete signal carries the full body in
+        `content`; the receiver must prefer it over the older, shorter
+        `contentPreview` rather than silently keeping the truncated one."""
+        http, client, _handle, _settings = harness
+        resp = await http.post(
+            "/api/v1/internal/workflows/c-1/signal/context-added",
+            headers=_HEADERS,
+            json={
+                "tenantId": "t-1",
+                "contextItemId": "ci-1",
+                "contextType": "TRANSCRIPT",
+                "contentPreview": "doctor: hel",
+                "content": "doctor: hello, patient: hi doctor, how are you feeling today",
+            },
+        )
+        assert resp.status_code == 200
+        signal = client.start_workflow.call_args.kwargs["start_signal_args"][0]
+        assert signal.text == "doctor: hello, patient: hi doctor, how are you feeling today"
+
+    @pytest.mark.asyncio
+    async def test_falls_back_to_content_preview_when_content_is_absent(self, harness):
+        """An un-upgraded gateway (or a caller that only sends the short
+        preview) must still route SOMETHING to the specialist."""
+        http, client, _handle, _settings = harness
+        resp = await http.post(
+            "/api/v1/internal/workflows/c-1/signal/context-added",
+            headers=_HEADERS,
+            json={
+                "tenantId": "t-1",
+                "contextItemId": "ci-1",
+                "contextType": "WORKNOTE",
+                "contentPreview": "BP elevated",
+            },
+        )
+        assert resp.status_code == 200
+        signal = client.start_workflow.call_args.kwargs["start_signal_args"][0]
+        assert signal.text == "BP elevated"
+
+    @pytest.mark.asyncio
     async def test_kind_key_falls_back_to_context_type_when_no_sub_type(self, harness):
         http, client, _handle, _settings = harness
         await http.post(
