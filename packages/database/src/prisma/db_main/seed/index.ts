@@ -17,6 +17,7 @@ import { seedArcaaiClinicalTemplates } from './07b-arcaai-clinical-templates';
 import { seedAgentGoldenLibrary } from './07a-agent-golden-library';
 import { seedLiveAgentDefaults } from './07c-live-agent-defaults';
 import { seedDeptFreePreSummaryDefault } from './07d-dept-free-pre-summary-default';
+import { seedConsultationLoopDefaults } from './07e-consultation-loop-defaults';
 import { seedDnaWritingStyle } from './08-dna-writing-style';
 import { seedConsultation } from './09-consultation';
 import { seedAuditLog } from './10-audit-log';
@@ -193,7 +194,13 @@ export const seed = async () => {
     // two fixture tenants expressed as locked clones. FKs:
     // DepartmentAgent → Department (golden, above) + PromptTemplate (golden,
     // created here). Idempotent upsert-by-id.
-    await seedAgentGoldenLibrary(client);
+    // Day-1 consultation context schema (TASK-686): one servable TENANT-scoped
+    // default per seeded tenant. Together with the loop configuration
+    // seedAgentGoldenLibrary just wrote onto the default agents, this is what
+    // makes `LoopConfigService` resolve `enabled: true` — TASK-684 turned the
+    // SIGNALLING gate on, but the workflow's own gate is DERIVED from these two
+    // rows and neither existed on a fresh install. CREATE-ONLY.
+    await seedConsultationLoopDefaults(client);
     console.log('');
 
     // Phase 4: Depends on Phase 3
