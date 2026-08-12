@@ -141,6 +141,53 @@ describe('TASK-677 — Repository.update(id, entity, tx?)', () => {
   });
 
   // =========================================================================
+  // Why the parameter is NECESSARY — the CLS route cannot work
+  // =========================================================================
+
+  it('a constructed repository NEVER observes a later CLS tx client — so `tx` cannot be implicit', async () => {
+    const { Repository } = await import('../repository');
+
+    const cachedDelegate: any = { name: 'TestModel', update: vi.fn().mockResolvedValue({ id: 'e-1' }) };
+    const clsDelegate: any = { name: 'TestModel', update: vi.fn().mockResolvedValue({ id: 'e-1' }) };
+
+    // Mimics `CoreUnitOfWorkService.getDatabaseService()`: it returns the CLS
+    // transaction client while `runInTransaction` is in flight, and the
+    // extended client otherwise.
+    let inFlight = false;
+    const uow: any = { getDatabaseService: () => (inFlight ? { TestModel: clsDelegate } : { TestModel: cachedDelegate }) };
+    const mapper: any = {
+      toPersistence: vi.fn(),
+      toPersistenceChanges: vi.fn((e: any) => e.changes ?? {}),
+      toDomainEntity: vi.fn((m: any) => ({ ...m })),
+    };
+    class TestRepository extends Repository<TestEntity, any> {
+      constructor() {
+        super(uow, 'TestModel', mapper);
+      }
+    }
+
+    // Constructed at boot, before any transaction — like every NestJS
+    // singleton repository. `_databaseContext` is resolved and CACHED here.
+    const repo = new TestRepository();
+
+    // Now a transaction opens and publishes its client on CLS.
+    inFlight = true;
+    await repo.update('e-1', { changes: { a: 1 } } as any);
+
+    // The write went to the CACHED client — it escaped the transaction. This
+    // is why `runInTransaction`'s CLS propagation is not a substitute for the
+    // explicit parameter, and why any call site that omits `tx` while
+    // believing "the repository joins the tx via the shared context" is
+    // silently writing outside it.
+    expect(cachedDelegate.update).toHaveBeenCalledTimes(1);
+    expect(clsDelegate.update).not.toHaveBeenCalled();
+
+    // …and passing `tx` explicitly is what actually enrols the write.
+    await repo.update('e-1', { changes: { a: 1 } } as any, { TestModel: clsDelegate });
+    expect(clsDelegate.update).toHaveBeenCalledTimes(1);
+  });
+
+  // =========================================================================
   // T-3 — OCC semantics are NOT changed by this ticket
   // =========================================================================
 
