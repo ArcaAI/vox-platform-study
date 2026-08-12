@@ -173,10 +173,24 @@ export class ConsultationContextSchemaService extends BaseService implements ICo
 
   async listVersions(id: string): Promise<ConsultationContextSchemaVersionResponse[]> {
     const tenantId = this.requireTenantId();
-    await this.findOwnedOrThrow(id, tenantId);
+    const entity = await this.findOwnedOrThrow(id, tenantId);
 
     const versions = await this.versionRepository.findAllForSchema(id);
-    return versions.map(ConsultationContextSchemaDtoMapper.toVersionResponse);
+
+    // TASK-661 already classifies drift (`classifyDefinitionChange`) between a
+    // pinned-by-a-caller version and the tenant's current pin, but only LOGS
+    // it (`ContextService`). Surfacing it here — additive, response-DTO-only —
+    // lets an admin see, for every OTHER version in the list, whether a
+    // client still pinned to it would keep working (IDENTICAL/ADDITIVE) or
+    // break (BREAKING) against what discovery serves NOW. The currently
+    // pinned version itself carries no skew (nothing to compare it to).
+    const pinned = entity.pinnedVersionNumber != null ? versions.find((version) => version.versionNumber === entity.pinnedVersionNumber) : undefined;
+
+    return versions.map((version) => {
+      const versionSkew =
+        pinned && pinned.id !== version.id ? classifyDefinitionChange(version.definition, pinned.definition).classification : undefined;
+      return ConsultationContextSchemaDtoMapper.toVersionResponse(version, versionSkew);
+    });
   }
 
   // ============================================================
