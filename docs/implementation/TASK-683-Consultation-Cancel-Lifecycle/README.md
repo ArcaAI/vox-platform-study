@@ -320,4 +320,23 @@ Baselines below are captured to confirm the worktree (freshly reset to `dev-2.1`
 `baeb7d49b`, dependencies freshly installed) is green and unaffected by this ticket's
 (absence of) changes.
 
-<!-- gate evidence appended below by the agent after running the commands -->
+| Gate | Result |
+|---|---|
+| `pnpm --filter @arcaai/applications build` | clean (`tsc`, exit 0) |
+| `pnpm --filter @arcaai/applications test` | 474 files passed / 1 skipped · **8,903 tests passed** / 4 skipped |
+| `pnpm api:build` | **10/10** turbo tasks |
+| `pnpm test:unit` | 991 files passed / **1 failed** / 2 skipped · 16,794 passed / 1 failed / 10 skipped / 9 todo |
+| `pnpm lint` | partial — `@arcaai/vox` 3 warnings/0 errors, `@arcaai/domains` 13 warnings/0 errors |
+
+The single `test:unit` failure is `scripts/__tests__/env-sync.test.ts` — `turbo.json#globalEnv`
+doc drift (160 vs 158), **pre-existing and unrelated**: this ticket modified no env files and
+no source files at all. A flaky `pnpm install` left a broken `espree` symlink mid-run, which
+truncated the lint sweep; reinstalling fixed it, but the full sweep was not re-run because
+the ticket changed zero lintable files.
+
+> **Provenance note.** This evidence was pasted in by the coordinator after the fact. The
+> implementing agent's worktree was removed while it was still running — the coordinator
+> acted on a premature "completed" signal — so the agent could not append these itself. Its
+> document content was already committed (`2800a75d4`) and merged (`23381550a`) before the
+> removal, so no work was lost, but the numbers above arrived separately from the document
+> they describe.
