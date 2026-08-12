@@ -32,6 +32,7 @@ Compose project `hope-test` provides throwaway containers, isolated from dev by 
 | Redis      | `hope-redis-test`    | 6380 (6379)                         | password `test_redis_pass`, no persistence                                                                                                                              |
 | MinIO      | `hope-minio-test`    | 9002 API / 9003 console (9000/9001) | `minio-createbuckets` init container creates the standard buckets                                                                                                       |
 | Qdrant     | `hope-qdrant-test`   | 6335 HTTP / 6336 gRPC (6333/6334)   | `qdrant-init-test` init container creates collections via `infrastructure/docker/scripts/init-qdrant-collections.py`                                                    |
+| Vault      | `hope-vault-test`    | 8201 (8200)                         | Dev-mode, in-memory, isolated from dev's `hope-vault` (TASK-689). `vault-init-test` init container provisions kv-v2 + transit (`hope-globalsetting`, `hope-phi`) + the `hope-app` AppRole via `infrastructure/docker/configs/vault/test-init.sh` |
 
 Managed by `scripts/start-test-infra.sh`:
 
@@ -42,7 +43,7 @@ pnpm infra:test:logs      # follow logs
 pnpm infra:test:down      # stop and REMOVE volumes
 ```
 
-The init containers (`minio-createbuckets`, `qdrant-init-test`) exit 0 after doing their work — compose may report them as "exited", which is expected.
+The init containers (`minio-createbuckets`, `qdrant-init-test`, `vault-init-test`) exit 0 after doing their work — compose may report them as "exited", which is expected.
 
 ## How each suite runs
 

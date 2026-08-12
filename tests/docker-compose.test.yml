@@ -9,6 +9,12 @@
 #   Redis:      6380 (test) vs 6379 (dev)
 #   MinIO:      9002 (test) vs 9000 (dev)
 #   Qdrant:     6335 (test) vs 6333 (dev)
+#   Vault:      8201 (test) vs 8200 (dev)
+#
+# TASK-689 — Vault is fully isolated too (hope-vault-test), NOT the shared dev
+# hope-vault container. SECRETS_PROVIDER=vault is required for tests (most
+# platform config lives in Vault), so this stack provisions its own dev-mode
+# Vault + init sidecar rather than depending on dev infra being up.
 #
 # Usage:
 #   Start:  pnpm docker:test:up
@@ -196,6 +202,61 @@ services:
     volumes:
       - ../infrastructure/docker/scripts/init-qdrant-collections.py:/scripts/init.py:ro
     command: sh -c "pip install -q qdrant-client && python /scripts/init.py"
+    networks:
+      - hope-test-network
+
+  # ==========================================================================
+  # Vault Test Secrets Engine (TASK-689 — isolated from dev's hope-vault)
+  # ==========================================================================
+  # Dev-mode server: auto-initialized/unsealed, in-memory storage (no volume —
+  # ephemeral by design, matching this file's other services). .env.test's
+  # SECRETS_PROVIDER=vault is a hard requirement (the PHI-ciphertext seed and
+  # the test API/e2e/integration suites need real Vault Transit), so this
+  # container is required infra, not optional.
+  vault-test:
+    image: hashicorp/vault:1.18
+    container_name: hope-vault-test
+    ports:
+      - '8201:8200'
+    environment:
+      VAULT_ADDR: 'http://0.0.0.0:8200'
+      VAULT_DEV_ROOT_TOKEN_ID: root
+      VAULT_DEV_LISTEN_ADDRESS: '0.0.0.0:8200'
+    command: server -dev -dev-root-token-id=root
+    cap_add: [IPC_LOCK]
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -q -O- http://127.0.0.1:8200/v1/sys/health | grep -q "\"initialized\":true"']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - hope-test-network
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+        reservations:
+          memory: 32M
+
+  # Vault bootstrap: kv-v2 + transit (hope-globalsetting, hope-phi keys) +
+  # AppRole (hope-app). Trimmed test-scoped twin of dev's vault-init sidecar —
+  # see infrastructure/docker/configs/vault/test-init.sh for what's skipped
+  # and why (no database engine, no audit device, no KV placeholder seeding).
+  vault-init-test:
+    container_name: hope-vault-init-test
+    image: hashicorp/vault:1.18
+    depends_on:
+      vault-test:
+        condition: service_healthy
+    restart: 'no'
+    environment:
+      VAULT_ADDR: 'http://vault-test:8200'
+      VAULT_DEV_ROOT_TOKEN: root
+    volumes:
+      - ../infrastructure/docker/configs/vault/test-init.sh:/vault/init/test-init.sh:ro
+      - ../infrastructure/docker/configs/vault/policies:/vault/init/policies:ro
+    entrypoint: ['/vault/init/test-init.sh']
     networks:
       - hope-test-network
 

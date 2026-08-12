@@ -19,6 +19,7 @@
 #   Redis:      6380 (test) vs 6379 (dev)
 #   MinIO:      9002 (test) vs 9000 (dev)
 #   Qdrant:     6335 (test) vs 6333 (dev)
+#   Vault:      8201 (test) vs 8200 (dev)   — TASK-689, fully isolated
 # ============================================================================
 
 set -e
@@ -90,6 +91,22 @@ validate_services() {
         all_ok=false
     fi
 
+    # Vault (TASK-689 — isolated hope-vault-test, not the shared dev Vault)
+    if docker exec hope-vault-test wget -q -O- http://127.0.0.1:8200/v1/sys/health 2>/dev/null | grep -q '"initialized":true'; then
+        echo -e "  ${GREEN}✓${NC} Vault (port 8201) - healthy"
+
+        local vault_init_status
+        vault_init_status=$(docker inspect hope-vault-init-test --format='{{.State.ExitCode}}' 2>/dev/null)
+        if [ "$vault_init_status" = "0" ]; then
+            echo -e "  ${GREEN}✓${NC} Vault AppRole/transit - initialized"
+        else
+            echo -e "  ${YELLOW}!${NC} Vault AppRole/transit - init container may still be running"
+        fi
+    else
+        echo -e "  ${RED}✗${NC} Vault (port 8201) - not ready"
+        all_ok=false
+    fi
+
     echo ""
     if [ "$all_ok" = true ]; then
         echo -e "${GREEN}All test infrastructure services are healthy.${NC}"
@@ -154,6 +171,7 @@ case "${1:-}" in
         echo "  Redis:      6380 (test) vs 6379 (dev)"
         echo "  MinIO:      9002 (test) vs 9000 (dev)"
         echo "  Qdrant:     6335 (test) vs 6333 (dev)"
+        echo "  Vault:      8201 (test) vs 8200 (dev)"
         echo ""
         echo "Compose file: $COMPOSE_FILE"
         ;;

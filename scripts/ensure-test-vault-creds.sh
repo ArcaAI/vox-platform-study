@@ -8,18 +8,20 @@
 # The test API/services run SECRETS_PROVIDER=vault (real Vault Transit — see
 # scripts/test-setup.sh). VaultSecretsProvider.boot() FAILS CLOSED if the
 # AppRole role_id/secret_id in .env.test are stale, so the service never
-# becomes healthy. Creds go stale whenever the shared dev Vault (hope-vault)
-# is recreated or its dev-mode (in-memory) state is wiped — the role_id itself
-# changes, invalidating whatever .env.test held.
+# becomes healthy. Creds go stale whenever the isolated test Vault
+# (hope-vault-test, TASK-689) is recreated or its dev-mode (in-memory) state
+# is wiped — the role_id itself changes, invalidating whatever .env.test held.
 #
 # This is the `.env.test` twin of scripts/refresh-vault-creds.sh (which does
-# .env.dev). It is called automatically by scripts/test-run.sh before starting
-# any service, so `pnpm test:e2e:managed` (and friends) self-provision — no one
-# re-mints role_id/secret_id by hand.
+# .env.dev against the SEPARATE shared dev Vault, hope-vault). It is called
+# automatically by scripts/test-run.sh — both before the DB seed (which needs
+# Vault Transit reachable) and before starting any app service — so
+# `pnpm test:unit:managed` / `test:e2e:managed` (and friends) self-provision;
+# no one re-mints role_id/secret_id by hand.
 #
-# Idempotent: reads the CURRENT role_id from hope-vault and mints a fresh RAW
-# (reusable, ttl 720h — same rationale as refresh-vault-creds.sh) secret_id on
-# every call. Safe to run repeatedly; cheap.
+# Idempotent: reads the CURRENT role_id from hope-vault-test and mints a fresh
+# RAW (reusable, ttl 720h — same rationale as refresh-vault-creds.sh)
+# secret_id on every call. Safe to run repeatedly; cheap.
 #
 # No-op unless .env.test actually selects the Vault provider.
 #
@@ -30,7 +32,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 ENV_FILE="${REPO_ROOT}/.env.test"
-CONTAINER="${VAULT_CONTAINER:-hope-vault}"
+CONTAINER="${VAULT_CONTAINER:-hope-vault-test}"
 ROOT_TOKEN="${VAULT_DEV_ROOT_TOKEN:-root}"
 
 red()    { printf "\033[31m%s\033[0m\n" "$*" >&2; }
@@ -58,11 +60,11 @@ set_env() {
   printf '%s=%s\n' "${key}" "${val}" >> "${ENV_FILE}"
 }
 
-# hope-vault is the SHARED dev container (the test infra runs no Vault of its
-# own). Bring dev infra up if it is not running.
+# hope-vault-test (TASK-689) is owned by the ISOLATED test infra, not dev —
+# bring the test stack up if it is not running.
 if ! docker ps --format '{{.Names}}' | grep -qx "${CONTAINER}"; then
-  yellow "→ Vault container '${CONTAINER}' not running — starting dev infra to bring it up."
-  "${SCRIPT_DIR}/dev-infra.sh" up
+  yellow "→ Vault container '${CONTAINER}' not running — starting test infrastructure to bring it up."
+  "${SCRIPT_DIR}/start-test-infra.sh" >/dev/null
 fi
 
 # Wait for the vault-init sidecar to finish bootstrapping the hope-app AppRole.
@@ -74,8 +76,8 @@ for _ in $(seq 1 60); do
   sleep 2
 done
 if [ -z "${ROLE_ID}" ]; then
-  red "ERROR: Vault AppRole 'hope-app' did not become ready (is ${CONTAINER}-init healthy?)."
-  echo  "Inspect with:  docker logs ${CONTAINER}-init" >&2
+  red "ERROR: Vault AppRole 'hope-app' did not become ready (is hope-vault-init-test healthy?)."
+  echo  "Inspect with:  docker logs hope-vault-init-test" >&2
   exit 1
 fi
 
@@ -92,9 +94,13 @@ set_env VAULT_SECRET_ID "${SECRET_ID}"
 set_env VAULT_WRAPPED_SECRET_ID ""   # raw path (blank the prod-only wrapped id)
 
 # The Vault rotation worker stat()s the audit-log file on boot; create it so it
-# does not crash on ENOENT (mirrors test-setup.sh Step 3).
+# does not crash on ENOENT (mirrors test-setup.sh Step 3). .env.sample's
+# default (./temp/vault.log) is repo-root-relative and the directory does not
+# exist yet on a fresh checkout, so mkdir -p the parent first.
 AUDIT_PATH="$(grep -E '^VAULT_AUDIT_LOG_PATH=' "${ENV_FILE}" | tail -n1 | cut -d= -f2- | tr -d '"')"
-: > "${AUDIT_PATH:-/tmp/hope-vault-audit-test.log}" 2>/dev/null || true
+AUDIT_PATH="${AUDIT_PATH:-/tmp/hope-vault-audit-test.log}"
+mkdir -p "$(dirname "${AUDIT_PATH}")" 2>/dev/null || true
+: > "${AUDIT_PATH}" 2>/dev/null || true
 
 # Sync the platform kv secrets (API_KEY_PEPPER, JWT_SECRET_KEY, service tokens,
 # storage credentials, …) FROM .env.test INTO Vault kv-v2. This is NOT optional
@@ -107,7 +113,10 @@ AUDIT_PATH="$(grep -E '^VAULT_AUDIT_LOG_PATH=' "${ENV_FILE}" | tail -n1 | cut -d
 # secrets are deliberately absent from the env file.
 if [ -x "${SCRIPT_DIR}/vault-seed-secrets.sh" ]; then
   yellow "→ syncing platform kv secrets from ${ENV_FILE##*/} into Vault…"
-  if ! "${SCRIPT_DIR}/vault-seed-secrets.sh" --env-file "${ENV_FILE}"; then
+  # VAULT_CONTAINER must be exported — vault-seed-secrets.sh is a separate
+  # process and otherwise falls back to its own default (hope-vault, the dev
+  # container), not this script's ${CONTAINER}.
+  if ! VAULT_CONTAINER="${CONTAINER}" "${SCRIPT_DIR}/vault-seed-secrets.sh" --env-file "${ENV_FILE}"; then
     red "ERROR: failed to sync kv secrets into Vault — seeded API keys would be rejected (401)."
     exit 1
   fi

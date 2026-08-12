@@ -13,6 +13,7 @@ RUN npm install -g pnpm@${PNPM_VERSION} turbo@2
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json tsconfig.json ./
 COPY apps/compat-playground/package.json ./apps/compat-playground/
 COPY packages/ui/package.json ./packages/ui/
+COPY packages/json-schema-subset/package.json ./packages/json-schema-subset/
 COPY packages/agentic-sdk-v2/package.json ./packages/agentic-sdk-v2/
 COPY packages/room/package.json ./packages/room/
 COPY packages/stt/package.json ./packages/stt/

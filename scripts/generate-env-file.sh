@@ -153,6 +153,11 @@ _apply_test_overrides() {
   # The unit vitest suites need the SOFT (`!= vault`) no-op path instead; they get
   # it from a project-scoped `env: { SECRETS_PROVIDER: 'env' }` in vitest.config.ts
   # (workspace project), so the unit run is correct regardless of this file.
+  #
+  # VAULT_ADDR IS overridden: TASK-689 gives test its own isolated Vault
+  # (hope-vault-test, tests/docker-compose.test.yml) on a different port than
+  # dev's shared hope-vault, so the two can never cross-talk.
+  _set_env "$file" VAULT_ADDR "http://localhost:8201"
   _set_env "$file" DATABASE_URL "postgresql://test:test@localhost:5433/hope_test?schema=public"
   _set_env "$file" DIRECT_URL "postgresql://test:test@localhost:5433/hope_test?schema=public"
   _set_env "$file" REDIS_HOST localhost

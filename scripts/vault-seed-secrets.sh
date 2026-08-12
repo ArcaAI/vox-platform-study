@@ -159,20 +159,29 @@ elif docker ps --format '{{.Names}}' 2>/dev/null | grep -qx "${CONTAINER}"; then
   VAULT_MODE="docker"
   : "${VAULT_TOKEN:=${VAULT_DEV_ROOT_TOKEN:-root}}"
 else
-  red "ERROR: no way to reach Vault."
-  echo "Install the vault CLI, or start the dev container:"
-  echo "  pnpm infra:dev:up"
+  red "ERROR: no way to reach Vault (container '${CONTAINER}' not running)."
+  echo "Install the vault CLI, or start the relevant infra:"
+  echo "  pnpm infra:dev:up     (dev, hope-vault)"
+  echo "  pnpm infra:test:up    (test, hope-vault-test)"
   exit 1
 fi
 
 # Runs a vault command. Any stdin is forwarded, so a secret VALUE never appears
 # in argv (and therefore never in `ps`, shell history, or a CI job log).
+#
+# The docker branch ALWAYS talks to the container's internal listener
+# (127.0.0.1:8200) — never the sourced/ambient VAULT_ADDR, which is a
+# HOST-facing address (e.g. .env.test's http://localhost:8201 for
+# hope-vault-test, TASK-689). Passing the host-mapped port INTO the container
+# would try to reach a port nothing inside the container listens on. This
+# only "worked" before TASK-689 because dev's host port and internal port
+# happened to both be 8200.
 vault_cli() {
   if [ "${VAULT_MODE}" = "cli" ]; then
     vault "$@"
   else
     docker exec -i \
-      -e VAULT_ADDR="${VAULT_ADDR:-http://127.0.0.1:8200}" \
+      -e VAULT_ADDR="http://127.0.0.1:8200" \
       -e VAULT_TOKEN="${VAULT_TOKEN}" \
       "${CONTAINER}" vault "$@"
   fi
