@@ -2,19 +2,25 @@
 
 /**
  * DepartmentAgent detail drawer (TASK-547) — the console-wide `DetailDrawer`
- * hosting one Agent Catalog row. Header: name + Default/Locked badges → meta
- * line (department · Agent Template · version state) → tabs:
+ * hosting one Agent Catalog row. Header: name + Default/Primary/Locked badges
+ * → meta line (department · Agent Template · version state) → tabs:
  *   - Settings: name / Agent Template / DNA writing-style gate (the ticket's
  *     explicit edit-field list), OCC PATCH with If-Match.
+ *   - Loop config (TASK-667): the seven TASK-659 loop-configuration fields —
+ *     role, subscribed kinds/write scope (picked from the resolved context
+ *     schema), a constrained goal, tool allowlist, guardrail profile,
+ *     always/never actions, and global-admin-tier budgets. See
+ *     `agent-loop-config-tab.tsx`.
  *   - Version: current pin state + pin/track-latest controls (`POST :id/pin`).
  *   - History: the bound Agent Template's version timeline (read-only reuse
  *     of `VersionsPanel` — the same content a "History" tab would show, so no
  *     separate audit surface is invented for it).
  *
- * A `templateLocked` row ("cloned from library") renders Settings/Version
- * read-only and hides Delete — mirrors the AsrPipeline lineage lock
- * (`03-domain-layer.md` exemplar). There is no clone action yet (TASK-548);
- * per the ticket's own hazard note this stays absent rather than a stub.
+ * A `templateLocked` row ("cloned from library") renders Settings/Loop
+ * config/Version read-only and hides Delete — mirrors the AsrPipeline lineage
+ * lock (`03-domain-layer.md` exemplar). There is no clone action yet
+ * (TASK-548); per the ticket's own hazard note this stays absent rather than
+ * a stub.
  */
 
 import { useId, useState, type FormEvent } from 'react';
@@ -48,11 +54,12 @@ import {
   useVersions,
 } from '../api/hooks';
 import type { CreateDepartmentAgentRequest, DepartmentAgent, DepartmentAgentDnaPolicy } from '../api/types';
+import { AgentRoleBadge, LoopConfigTab } from './agent-loop-config-tab';
 import { versionStateLabel } from './agents-tab';
 import { VersionsPanel } from './versions-panel';
 
-type AgentCatalogTab = 'settings' | 'version' | 'history';
-const AGENT_CATALOG_TABS = ['settings', 'version', 'history'] as const;
+type AgentCatalogTab = 'settings' | 'loop' | 'version' | 'history';
+const AGENT_CATALOG_TABS = ['settings', 'loop', 'version', 'history'] as const;
 
 const DNA_POLICY_OPTIONS: { value: DepartmentAgentDnaPolicy; label: string }[] = [
   { value: 'INHERIT', label: 'Inherit' },
@@ -91,6 +98,7 @@ function CatalogTabsList() {
   return (
     <TabsList variant="line">
       <TabsTrigger value="settings">Settings</TabsTrigger>
+      <TabsTrigger value="loop">Loop config</TabsTrigger>
       <TabsTrigger value="version">Version</TabsTrigger>
       <TabsTrigger value="history">History</TabsTrigger>
     </TabsList>
@@ -510,6 +518,7 @@ export function DepartmentAgentDetailDrawer({
           agent ? (
             <>
               {agent.isDefault ? <Badge>Default</Badge> : null}
+              <AgentRoleBadge role={agent.role} />
               {agent.templateLocked ? (
                 <Badge variant="outline" className="gap-1">
                   <IconLock aria-hidden className="size-3" />
@@ -556,6 +565,19 @@ export function DepartmentAgentDetailDrawer({
                 onSaved={() => void detail.refetch()}
                 onReload={() => void detail.refetch()}
               />
+            </TabsContent>
+            <TabsContent value="loop" className="mt-0">
+              {agent.templateLocked ? (
+                <LockedHint />
+              ) : (
+                <LoopConfigTab
+                  key={`${agent.id}-${agent.updatedAt}`}
+                  agent={agent}
+                  etag={etag}
+                  onSaved={() => void detail.refetch()}
+                  onReload={() => void detail.refetch()}
+                />
+              )}
             </TabsContent>
             <TabsContent value="version" className="mt-0">
               <PinControl agent={agent} onChanged={() => void detail.refetch()} />
