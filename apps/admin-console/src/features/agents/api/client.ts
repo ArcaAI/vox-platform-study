@@ -35,6 +35,7 @@ import type {
   PromptUsageStats,
   PromptVersion,
   PromptVersionDiff,
+  ResolvedContextSchemaBundle,
   TestTemplateRequest,
   UpdateDepartmentAgentRequest,
   UpdateTemplateRequest,
@@ -209,6 +210,17 @@ export function setDefaultDepartmentAgent(id: string): Promise<DepartmentAgent> 
  */
 export function pinDepartmentAgent(id: string, versionNumber: number | null): Promise<DepartmentAgent> {
   return postJson(`${departmentAgentPath(id)}/pin`, { versionNumber });
+}
+
+/**
+ * The RESOLVED consultation context schema (TASK-658) a department's loop
+ * config must pick `subscribedKinds`/`writeScope` from — `GET
+ * tenant/me/context-schema`, the client-discovery sibling of `/tenant/me/config`
+ * (never the admin CRUD surface, which is TASK-666's own feature). A tenant
+ * with nothing configured gets a 200 with null fields, not a 404.
+ */
+export function getResolvedContextSchema(departmentId?: string): Promise<ResolvedContextSchemaBundle> {
+  return getJson('tenant/me/context-schema', departmentId ? { departmentId } : undefined);
 }
 
 // ---------------------------------------------------------------------------

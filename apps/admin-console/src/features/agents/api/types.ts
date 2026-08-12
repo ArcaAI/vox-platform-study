@@ -315,6 +315,69 @@ export interface Department {
  */
 export type DepartmentAgentDnaPolicy = 'INHERIT' | 'DISABLED';
 
+/**
+ * Loop role (TASK-659) — at most one ENABLED PRIMARY agent per department,
+ * enforced server-side (`assertSinglePrimaryPerDepartment`). Defaults to
+ * SPECIALIST so a newly created agent never silently contests an existing
+ * department PRIMARY.
+ */
+export type DepartmentAgentRole = 'PRIMARY' | 'SPECIALIST';
+
+/**
+ * Closed catalogue of named guardrail profiles (TASK-654 D9) — this field only
+ * SELECTS which profile the (out-of-scope-here) enforcement boundary applies;
+ * it never authors the boundary itself.
+ */
+export type GuardrailProfile = 'STANDARD' | 'STRICT' | 'RELAXED';
+
+/**
+ * The seven action-registry names TASK-662's loop dispatches (TASK-654 §4.4).
+ * `alwaysActions`/`neverActions` (D11's compliance envelope) may name only
+ * these — mirrors `AGENT_ACTION_KEYS` in
+ * `packages/applications/src/services/departmentAgent/constants.ts`.
+ */
+export type AgentActionKey =
+  | 'livedoc.start'
+  | 'livedoc.stop'
+  | 'vision.extract_text'
+  | 'document.extract_text'
+  | 'nlp.extract_entities'
+  | 'harness.finalize'
+  | 'client.emit';
+
+/** `subscribedKinds` JSONB shape: `{ version: 1, kinds: [{ key, filter? }] }`. */
+export interface AgentSubscribedKinds {
+  version: 1;
+  kinds: { key: string; filter?: Record<string, string> }[];
+}
+
+/** `writeScope` JSONB shape: `{ version: 1, outputs: ["soap_note"] }`. */
+export interface AgentWriteScope {
+  version: 1;
+  outputs: string[];
+}
+
+/**
+ * `goal` JSONB shape — a CONSTRAINED goal statement, deliberately NOT a
+ * free-text system prompt (TASK-654 D8): a short, length-capped objective
+ * plus optional bounded success criteria.
+ */
+export interface AgentGoal {
+  version: 1;
+  objective: string;
+  successCriteria?: string[];
+}
+
+/**
+ * `toolConfig` JSONB shape (TASK-635 RF-4) — which live-loop tools run. The
+ * "Tool allowlist" the console form exposes: a CLOSED catalogue of exactly
+ * three named tools, picked not authored.
+ */
+export interface AgentToolConfig {
+  version: 1;
+  tools?: Partial<Record<'ner' | 'vitals' | 'groundedness', { enabled: boolean | null }>>;
+}
+
 export interface DepartmentAgent {
   id: string;
   departmentId: string;
@@ -337,6 +400,23 @@ export interface DepartmentAgent {
   createdAt: string;
   updatedAt: string;
   version: number;
+
+  // ── TASK-659 loop configuration + promotion surface. Null on every agent
+  // that has never touched this surface (the entire seeded catalogue today).
+  /**
+   * Loop role. The server always populates it (DB default SPECIALIST) —
+   * optional here only so pre-TASK-667 test fixtures across this feature that
+   * predate the field keep compiling; treat an absent value as SPECIALIST.
+   */
+  role?: DepartmentAgentRole;
+  subscribedKinds?: Record<string, unknown> | null;
+  writeScope?: Record<string, unknown> | null;
+  goal?: Record<string, unknown> | null;
+  guardrailProfile?: string | null;
+  alwaysActions?: string[] | null;
+  neverActions?: string[] | null;
+  /** Live-loop tool plan (TASK-635) — "Tool allowlist" in the console. Null ⇒ platform default. */
+  toolConfig?: Record<string, unknown> | null;
 }
 
 /** GET /admin/department-agents query — platform-standard ZERO-based page. */
@@ -359,6 +439,16 @@ export interface CreateDepartmentAgentRequest {
   harnessOverrides?: Record<string, unknown>;
   goldenSetId?: string;
   tags?: string[];
+  // ── TASK-659 loop configuration. All optional; omitted ⇒ no loop
+  // participation (role still defaults server-side to SPECIALIST).
+  role?: DepartmentAgentRole;
+  subscribedKinds?: Record<string, unknown> | null;
+  writeScope?: Record<string, unknown> | null;
+  goal?: Record<string, unknown> | null;
+  guardrailProfile?: string | null;
+  alwaysActions?: string[] | null;
+  neverActions?: string[] | null;
+  toolConfig?: Record<string, unknown> | null;
 }
 
 /**
@@ -382,6 +472,40 @@ export interface UpdateDepartmentAgentRequest {
   goldenSetId?: string | null;
   tags?: string[];
   resourceStatus?: 'ENABLED' | 'DISABLED';
+  // ── TASK-659 loop configuration. All optional.
+  role?: DepartmentAgentRole;
+  subscribedKinds?: Record<string, unknown> | null;
+  writeScope?: Record<string, unknown> | null;
+  goal?: Record<string, unknown> | null;
+  guardrailProfile?: string | null;
+  alwaysActions?: string[] | null;
+  neverActions?: string[] | null;
+  toolConfig?: Record<string, unknown> | null;
+}
+
+// ---------------------------------------------------------------------------
+// Resolved consultation context schema (TASK-658) — READ-ONLY, minimal
+// projection of `GET /tenant/me/context-schema`. `subscribedKinds`/`writeScope`
+// must be picked from HERE, never typed free-hand (TASK-667 scope): the
+// server cross-checks every referenced key against exactly this resolved
+// definition and rejects an unknown one (TASK-659 AC-4). Owned by this
+// feature's read path only — the schema AUTHORING screen is TASK-666's
+// (`features/<its-own-feature>/**`); features never import each other.
+// ---------------------------------------------------------------------------
+
+/** One `definition.kinds[]` / `definition.outputs[]` entry — only the fields the picker needs. */
+export interface ResolvedContextEntry {
+  key: string;
+  label?: string;
+  primitive?: string;
+}
+
+/** `GET tenant/me/context-schema?departmentId=` (ConsultationContextSchemaBundleResponse). */
+export interface ResolvedContextSchemaBundle {
+  schemaId: string | null;
+  versionNumber: number | null;
+  definition: { kinds?: ResolvedContextEntry[]; outputs?: ResolvedContextEntry[] } | null;
+  etag: string;
 }
 
 // ---------------------------------------------------------------------------
