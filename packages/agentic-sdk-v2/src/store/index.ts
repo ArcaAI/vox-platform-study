@@ -38,6 +38,7 @@ export {
   selectLogger,
   selectPluginManager,
   selectTenantConfig,
+  selectConsultationSchema,
   selectConfigManager,
   selectResolvedConfig,
   selectConfigReady,
