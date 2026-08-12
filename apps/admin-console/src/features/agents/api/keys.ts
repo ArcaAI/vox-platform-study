@@ -33,12 +33,12 @@ export const departmentAgentKeys = {
   detail: (id: string) => [...departmentAgentKeys.root, 'detail', id] as const,
   /** Resolved context schema (TASK-658) a department's `subscribedKinds`/`writeScope` pickers source from. */
   contextSchema: (departmentId: string) => [...departmentAgentKeys.root, 'context-schema', departmentId] as const,
-  /** TASK-672 — immutable loop-config version history. */
+  /** TASK-674 — immutable loop-config version history. */
   versions: (id: string) => [...departmentAgentKeys.root, 'versions', id] as const,
 };
 
 /**
- * Cross-tenant `AgentPromotion` lineage (TASK-663/672) query-key factory —
+ * Cross-tenant `AgentPromotion` lineage (TASK-663/674) query-key factory —
  * rooted separately since it reads a different resource than `DepartmentAgent`.
  */
 export const agentPromotionKeys = {

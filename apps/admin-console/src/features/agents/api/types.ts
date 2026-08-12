@@ -596,7 +596,7 @@ export interface EvalRunTrigger {
 }
 
 // ---------------------------------------------------------------------------
-// TASK-672 — `DepartmentAgentVersion` history (`GET :id/versions`) and
+// TASK-674 — `DepartmentAgentVersion` history (`GET :id/versions`) and
 // `AgentPromotion` lineage (`GET admin/agent-promotions?targetAgentId=`).
 // Both READ-only: the immutable audit trail TASK-659/663 already write, with
 // no console surface until now (TASK-667 OI-3). Mirrors

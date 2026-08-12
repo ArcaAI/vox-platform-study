@@ -1,5 +1,5 @@
 /**
- * TASK-672 — pure diff logic for the Lineage tab's `DepartmentAgentVersion`
+ * TASK-674 — pure diff logic for the Lineage tab's `DepartmentAgentVersion`
  * history. `configSnapshot` is a small, flat, closed-shape document (the
  * seven TASK-659 loop-config fields — `role`/`subscribedKinds`/`writeScope`/
  * `goal`/`guardrailProfile`/`alwaysActions`/`neverActions`), so a per-field

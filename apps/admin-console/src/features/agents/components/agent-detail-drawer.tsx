@@ -15,7 +15,7 @@
  *   - History: the bound Agent Template's version timeline (read-only reuse
  *     of `VersionsPanel` — the same content a "History" tab would show, so no
  *     separate audit surface is invented for it).
- *   - Lineage (TASK-672): the immutable `DepartmentAgentVersion` history
+ *   - Lineage (TASK-674): the immutable `DepartmentAgentVersion` history
  *     TASK-659 writes on every loop-config-affecting save (changeReason +
  *     a client-side field diff between two picked versions) and, where
  *     present, the cross-tenant `AgentPromotion` lineage TASK-663 records.

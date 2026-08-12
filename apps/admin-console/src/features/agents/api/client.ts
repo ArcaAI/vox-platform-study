@@ -216,7 +216,7 @@ export function pinDepartmentAgent(id: string, versionNumber: number | null): Pr
 }
 
 /**
- * The immutable loop-configuration version history (TASK-659/672), newest
+ * The immutable loop-configuration version history (TASK-659/674), newest
  * first — a plain array like `listVersions` on the PromptTemplate surface
  * above, never a paginated envelope.
  */
@@ -268,7 +268,7 @@ export function runGoldenSetEval(goldenSetId: string): Promise<EvalRunTrigger> {
 }
 
 // ---------------------------------------------------------------------------
-// Cross-tenant agent promotion lineage (TASK-663/672) — a READ-only view of
+// Cross-tenant agent promotion lineage (TASK-663/674) — a READ-only view of
 // promotions INTO the working tenant, filtered to one target agent for the
 // Lineage tab. Promotion itself (POST admin/agent-promotions) is out of this
 // ticket's scope; only the audit trail it writes is surfaced here.

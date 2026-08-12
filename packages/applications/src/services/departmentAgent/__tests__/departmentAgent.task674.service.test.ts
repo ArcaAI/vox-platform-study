@@ -1,5 +1,5 @@
 /**
- * TASK-672 — `DepartmentAgentService.listVersions`.
+ * TASK-674 — `DepartmentAgentService.listVersions`.
  *
  * Covers: ownership-checked read (cross-tenant 404), newest-first mapping to
  * `DepartmentAgentVersionResponse` (incl. `changeReason`), and the
@@ -37,7 +37,7 @@ function buildService(includeVersionRepository = true) {
   );
 }
 
-describe('DepartmentAgentService.listVersions — TASK-672', () => {
+describe('DepartmentAgentService.listVersions — TASK-674', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockClsService.get.mockImplementation((key: string) => {

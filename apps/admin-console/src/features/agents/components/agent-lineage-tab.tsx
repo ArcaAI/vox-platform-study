@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * Lineage tab (TASK-672) — the console surface TASK-667 OI-3 flagged as
+ * Lineage tab (TASK-674) — the console surface TASK-667 OI-3 flagged as
  * missing: with no environment concept on this platform (TASK-654 D9/G4),
  * the immutable `DepartmentAgentVersion` history TASK-659 writes on every
  * loop-config-affecting save is the ONLY remaining control on a weakened
@@ -60,7 +60,7 @@ function ConfigVersionsSection({ agentId }: { agentId: string }) {
       <Card className="gap-3 p-4">
         <h3 className="text-sm font-semibold">Config versions</h3>
         <p className="text-muted-foreground text-sm">
-          No loop-configuration versions recorded yet — a version is written the first time this agent's role, subscribed kinds, write scope, goal,
+          No loop-configuration versions recorded yet — a version is written the first time this agent&apos;s role, subscribed kinds, write scope, goal,
           guardrail profile, or always/never actions are set.
         </p>
       </Card>

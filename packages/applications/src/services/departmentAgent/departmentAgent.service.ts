@@ -137,7 +137,7 @@ export class DepartmentAgentService extends BaseService implements IDepartmentAg
   }
 
   /**
-   * TASK-672 — the immutable `DepartmentAgentVersion` history TASK-659 writes
+   * TASK-674 — the immutable `DepartmentAgentVersion` history TASK-659 writes
    * on every loop-config-affecting save (`writeLoopConfigVersionIfNeeded`),
    * newest first. Ownership-checked exactly like every other read here
    * (`loadOwned` — a cross-tenant id 404s before any version is read).

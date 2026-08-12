@@ -269,7 +269,7 @@ export function useResolvedContextSchema(departmentId: string | undefined) {
 }
 
 /**
- * TASK-672 — the immutable loop-configuration version history (Lineage tab).
+ * TASK-674 — the immutable loop-configuration version history (Lineage tab).
  * Newest first, mirroring `useVersions` for `PromptTemplate` above.
  */
 export function useDepartmentAgentVersions(id: string) {
@@ -281,7 +281,7 @@ export function useDepartmentAgentVersions(id: string) {
 }
 
 /**
- * TASK-672 — promotions INTO the working tenant, filtered to one target
+ * TASK-674 — promotions INTO the working tenant, filtered to one target
  * agent (the Lineage tab's "promoted from" section). Held off until an agent
  * id is known; the working tenant's own promotion rows are already scoped
  * server-side by the tenant-scope extension.

@@ -39,7 +39,7 @@ export class DepartmentAgentController {
     return this.service.getById(id);
   }
 
-  // TASK-672 — the immutable loop-config version history TASK-659 writes.
+  // TASK-674 — the immutable loop-config version history TASK-659 writes.
   // Plain `@Get`, not `@ApiEndpoint`: it returns a bare array, not one
   // resource-shaped body — mirrors `ConsultationContextSchemaAdminController`'s
   // `:id/versions` route.
