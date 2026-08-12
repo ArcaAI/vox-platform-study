@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | In Progress |
+| **Status** | Review |
 | **Type** | bugfix |
 | **Branch base** | `dev-2.1` @ `40c935cb6` |
 | **Owns** | `apps/harness/**`, one additive settings descriptor + its gateway resolution |
@@ -257,12 +257,222 @@ exactly once.
 
 ## 5. Implementation Summary
 
-_(filled in below as the work lands)_
+Status: **Review**. Two commits, harness first, gateway second.
+
+| Commit | Scope |
+|---|---|
+| `1a4114344` | `fix(TASK-685)` — the bound, the patch era, the fixture, the tests |
+| `d401cee5b` | `feat(TASK-685)` — the `global-kv` descriptor and its gateway resolution |
+
+### 5.1 Files changed
+
+**`apps/harness` (owned by this ticket)**
+
+| File | Change |
+|---|---|
+| `src/harness/temporal/models.py` | `LOOP_EVENT_LOOP_TIMED_OUT` constant; `ConsultationLoopConfig.idle_timeout_seconds` (default `None`); `timed_out` on `ConsultationLoopState` and `ConsultationLoopWorkflowResult` |
+| `src/harness/temporal/workflows.py` | `_PATCH_IDLE_TIMEOUT`; `self._timed_out`; the bounded wait + `TimeoutError` handler + `TIMED_OUT` phase + the single `loop.timed_out` emission; both accessors expose `timed_out` |
+| `src/harness/temporal/activities.py` | `fetch_loop_config` maps `idleTimeoutSeconds` (bool-safe, non-numeric ⇒ `None`) |
+| `.../tests/unit/temporal/test_loop_lifecycle_bounds.py` | **new** — 10 tests |
+| `.../tests/unit/temporal/test_loop_config_roster_mapping.py` | wire-contract tests for the new field (incl. the `True`-is-an-`int` trap) |
+| `.../tests/unit/temporal/_capture_replay_fixture.py` | **new** `--idle-timeout` scenario |
+| `.../tests/unit/temporal/fixtures/consultation_loop_task685_idle_timeout_history.json` | **new** frozen fixture |
+| `.../tests/unit/temporal/test_replay_compat.py` | 2 new tests (era forward guard + both older loop fixtures re-asserted) |
+
+**`packages/applications`**
+
+| File | Change |
+|---|---|
+| `.../consultation/loop/loop-lifecycle.constants.ts` | **new** — key + default, with the tier and pinned-not-live rationale |
+| `.../settings-registry/descriptors/harness-loop.descriptors.ts` | **new** — one descriptor |
+| `.../settings-registry/registry.ts` | one import + one spread |
+| `.../consultation/loop/dto/loop-config.response.ts` | additive `idleTimeoutSeconds: number \| null` |
+| `.../consultation/loop/loop-config.service.ts` | `@Optional() TenantSettingsService`; `resolveIdleTimeoutSeconds()`; wired into both response branches |
+| `.../consultation/loop/loop-config.service.module.ts` | `CommonServiceModule` + local `TenantSettingsService` (the `RateLimitServiceModule` shape) |
+| `.../consultation/loop/__tests__/loop-config.service.test.ts` | 7 new tests; one pre-existing exact-shape assertion gains the new field |
+
+No seed file, no golden-library agent row, and no Prisma change — TASK-686's
+territory is untouched. The only shared file is `registry.ts`, edited in two
+lines.
+
+### 5.2 Patch era
+
+`task-685-idle-timeout`. Verified present in the new fixture's recorded marker
+(`markerName: "core_patch"`, payload decoding to
+`{"id":"task-685-idle-timeout","deprecated":false}`), and verified ABSENT from
+both older loop fixtures — which is why they still replay.
+
+The captured history carries exactly the two new command shapes and nothing
+else:
+
+```
+EVENT_TYPE_TIMER_STARTED          1     ← the bound; an unbounded wait recorded none
+EVENT_TYPE_TIMER_FIRED            1
+EVENT_TYPE_MARKER_RECORDED        1     ← task-685-idle-timeout
+EVENT_TYPE_ACTIVITY_TASK_SCHEDULED 3    ← fetch_loop_config, action.dispatched, loop.timed_out
+EVENT_TYPE_WORKFLOW_EXECUTION_COMPLETED 1
+```
+
+No child-workflow start and no `livedoc_stop`: the timeout abandons.
+
+### 5.3 Seeing RED
+
+The import failure was only the first RED. The behavioural RED was demonstrated
+by temporarily disarming the bound (`idle_bound = None` unconditionally) and
+re-running the central test, which then FAILED:
+
+```
+FAILED apps/harness/src/harness/tests/unit/temporal/test_loop_lifecycle_bounds.py::
+  TestIdleBound::test_an_idle_loop_terminates_at_the_bound_instead_of_parking
+====================== 1 failed, 1175 deselected in 1.39s ======================
+```
+
+The change was then restored and the same test passes.
+
+### 5.4 A note on `timeout=None`
+
+The un-patched path is byte-identical, not merely marker-free, because
+`workflow_wait_condition` bottoms out in `asyncio.wait_for(fut, timeout)`
+(temporalio 1.30.0, `worker/_workflow_instance.py:1810-1813`) and
+`asyncio.wait_for(fut, None)` awaits without scheduling anything. That is what
+allows ONE call site to serve both eras instead of an
+`if bounded: ... else: ...` fork whose two branches could drift apart.
 
 ---
 
-## 6. Change History
+## 6. Verification Evidence
+
+Measured in the **worktree** (`.claude/worktrees/agent-a617130c61925660b`), which
+has no `.env.dev` — so the harness baseline here is 0 failures, as expected. The
+main tree, which does have one, shows 4 pre-existing env-dependent failures; none
+of this ticket's tests are among them.
+
+### Baseline — BEFORE any edit
+
+```
+================= 1162 passed, 4 skipped, 1 warning in 35.76s ==================
+=============== 24 passed, 1142 deselected, 3 warnings in 5.14s ================
+```
+
+### `PYTHONPATH="$PWD/apps/harness/src" pnpm harness:test`
+
+```
+================= 1180 passed, 4 skipped, 1 warning in 55.13s ==================
+```
+
++18 tests, 0 failures. Delta: 10 (`test_loop_lifecycle_bounds.py`) + 6
+(`test_loop_config_roster_mapping.py`, one of them parametrised ×4) + 2
+(`test_replay_compat.py`).
+
+### `PYTHONPATH="$PWD/apps/harness/src" pnpm harness:test -k replay`
+
+```
+=============== 26 passed, 1158 deselected, 3 warnings in 10.06s ===============
+```
+
+24 → 26. **All 24 pre-existing tests pass unchanged, verified by name**, not by
+count:
+
+```
+test_gating_consolidation_replay.py::test_existing_replay_fixtures_stay_byte_identical[doc_workflow_pre_task345_history]   PASSED
+test_gating_consolidation_replay.py::test_existing_replay_fixtures_stay_byte_identical[doc_workflow_task345_history]       PASSED
+test_gating_consolidation_replay.py::test_existing_replay_fixtures_stay_byte_identical[doc_workflow_post_task348_history]  PASSED
+test_gating_consolidation_replay.py::test_existing_replay_fixtures_stay_byte_identical[doc_workflow_post_task355_history]  PASSED
+test_gating_consolidation_replay.py::test_existing_replay_fixtures_stay_byte_identical[doc_workflow_post_task355_regen_history] PASSED
+test_gating_consolidation_replay.py::test_inferential_input_uses_additive_optional_fields                                  PASSED
+test_reasoning_loop_workflow.py::TestPlannerIsAnActivity::test_the_recorded_decision_replays_without_re_invoking_the_model PASSED
+test_replay_compat.py::TestReplayCompatibility::test_pre_progress_feed_history_replays_on_current_definition               PASSED
+test_replay_compat.py::TestReplayCompatibility::test_progress_feed_history_replays_on_current_definition                   PASSED
+test_replay_compat.py::TestReplayCompatibility::test_post_failure_terminal_history_replays_on_current_definition           PASSED
+test_replay_compat.py::TestReplayCompatibility::test_post_optimistic_delivery_history_replays_on_current_definition        PASSED
+test_replay_compat.py::TestReplayCompatibility::test_post_assurance_signals_regen_history_replays_on_current_definition    PASSED
+test_replay_compat.py::TestReplayCompatibility::test_post_gate_terminal_abandon_history_replays_on_current_definition      PASSED
+test_replay_compat.py::TestReplayCompatibility::test_post_edit_rerun_cap_history_replays_on_current_definition             PASSED
+test_replay_compat.py::TestReplayCompatibility::test_post_optimistic_retraction_history_replays_on_current_definition      PASSED
+test_replay_compat.py::TestReplayCompatibility::test_post_claim_check_history_replays_on_current_definition                PASSED
+test_replay_compat.py::TestReplayCompatibility::test_post_mcp_history_replays_on_current_definition                        PASSED
+test_replay_compat.py::TestReplayCompatibility::test_post_redaction_history_replays_on_current_definition                  PASSED
+test_replay_compat.py::TestReplayCompatibility::test_post_redaction_audit_history_replays_on_current_definition            PASSED
+test_replay_compat.py::TestReplayCompatibility::test_post_assemble_reuse_history_replays_on_current_definition             PASSED
+test_replay_compat.py::TestConsultationLoopReplayCompatibility::test_loop_history_replays_on_current_definition            PASSED
+test_replay_compat.py::TestConsultationLoopReplayCompatibility::test_pre_reasoning_loop_history_replays_after_task664      PASSED
+test_replay_compat.py::TestConsultationLoopReplayCompatibility::test_reasoning_history_replays_on_current_definition       PASSED
+test_ping_workflow.py::TestHarnessPingWorkflow::test_ping_workflow_is_deterministic_across_replay                          PASSED
+```
+
+The two added:
+
+```
+test_replay_compat.py::TestConsultationLoopReplayCompatibility::test_pre_idle_bound_loop_histories_replay_after_task685    PASSED
+test_replay_compat.py::TestConsultationLoopReplayCompatibility::test_idle_timeout_history_replays_on_current_definition    PASSED
+```
+
+### `pnpm harness:lint`
+
+```
+> conda run -n arcaenv --no-capture-output ruff check apps/harness/src/
+
+All checks passed!
+```
+
+### `pnpm harness:typecheck`
+
+```
+> conda run -n arcaenv --no-capture-output mypy --config-file apps/harness/pyproject.toml apps/harness/src/
+
+Success: no issues found in 100 source files
+```
+
+### `pnpm --filter @arcaai/applications build && test`
+
+```
+> rimraf dist tsconfig.tsbuildinfo && tsc
+(no output — clean)
+
+ Test Files  476 passed | 1 skipped (477)
+      Tests  8941 passed | 4 skipped (8945)
+   Duration  64.01s
+```
+
+### `pnpm api:build`
+
+```
+@arcaai/api:build: > rimraf dist tsconfig.build.tsbuildinfo && nest build && tsc-alias
+
+ Tasks:    10 successful, 10 total
+  Time:    28.811s
+```
+
+### `pnpm lint`
+
+```
+ Tasks:    34 successful, 34 total
+  Time:    1m12.058s
+```
+
+Build-order note: a fresh worktree needs `pnpm install`, then
+`pnpm db:generate` (with a placeholder `DATABASE_URL`/`DIRECT_URL` — generation
+does not connect), then `pnpm turbo build --filter=@arcaai/applications`, which
+resolves the whole chain. `execution-plan.md` §1.1b omits `@arcaai/json-schema-subset`;
+`turbo` picks it up from the dependency graph, so the filtered build is the
+reliable form.
+
+---
+
+## 7. Follow-ups (out of scope, deliberately)
+
+| # | Item |
+|---|---|
+| F-1 | Nothing consumes `loop.timed_out` on the client yet — the SSE relay carries it (`kind` is free-form on `HarnessLoopEventRequest`), but no UI renders it. |
+| F-2 | The bound is platform-wide (`maxScope: 'system'`). A per-department bound would be a `db-config` row, not a wider scope on this key. |
+| F-3 | `signalLoopCancel` still has no production caller. This ticket gives the loop a reliable second exit; it does not resolve TASK-683's race. |
+
+---
+
+## 8. Change History
 
 | Date | Change |
 |---|---|
 | 2026-08-12 | Ticket opened; plan + timeout-semantics argument recorded. |
+| 2026-08-12 | `1a4114344` — harness: idle bound behind `task-685-idle-timeout`, `TIMED_OUT` phase, `loop.timed_out` event, new frozen fixture, 18 tests. |
+| 2026-08-12 | `d401cee5b` — gateway: `harness.loop.idleTimeoutSeconds` (`global-kv`) resolved into the pinned loop config, 7 tests. Status → Review. |
