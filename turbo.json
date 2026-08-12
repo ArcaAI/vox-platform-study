@@ -205,6 +205,8 @@
         "HARNESS_SERVICE_TOKEN",
         "HARNESS_URL",
         "HARNESS_WARM_START_ENABLED",
+        "HOPE_API_BASE_URL",
+        "HOPE_API_TOKEN",
         "HOST",
         "HOSTNAME",
         "JWT_SECRET_KEY",
