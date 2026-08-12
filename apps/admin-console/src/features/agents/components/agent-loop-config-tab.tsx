@@ -29,7 +29,6 @@ import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
 import { Textarea } from '@arcaai/ui/components/shadcn/textarea';
 import { ToggleGroup, ToggleGroupItem } from '@arcaai/ui/components/shadcn/toggle-group';
 import { GatewayError } from '@/shared/api';
-import { useSession } from '@/shared/auth';
 import { ConfirmDialog } from '@/shared/confirm/confirm-dialog';
 import { ErrorState } from '@/shared/state/error-state';
 import { useDepartmentAgents, useResolvedContextSchema, useUpdateDepartmentAgent } from '../api/hooks';
@@ -53,7 +52,6 @@ import {
   goalSuccessCriterionProblem,
   LIVE_TOOL_KEYS,
   LIVE_TOOL_LABELS,
-  LOCKED_FIELD_HINT,
   parseGoal,
   parseSubscribedKinds,
   parseToolConfig,
@@ -459,21 +457,24 @@ function ActionEnvelopeSection({
   );
 }
 
-/** Budgets — global-admin-tier; locked for a non-elevated caller (TENANT_LOCKED_POLICY_KEYS precedent). */
-function BudgetsSection({
-  uid,
-  isElevated,
-  values,
-  onChange,
-}: {
-  uid: string;
-  isElevated: boolean;
-  values: Record<string, string>;
-  onChange: (key: string, value: string) => void;
-}) {
+/**
+ * Budgets — the `maxRegen`/`gateSlaSeconds`/`gateEscalationSeconds` subset of
+ * `harnessOverrides`. Tenant-writable: they are the "4 pipeline-shape knobs"
+ * `TENANT_TIER_HARNESS_OVERRIDE_KEYS` (`packages/applications/src/services/
+ * departmentAgent/constants.ts`) already grants a tenant admin on an agent's
+ * `harnessOverrides`, and the SAME keys are tenant-writable — not
+ * `GLOBAL_ADMIN_ONLY_POLICY_KEYS` — on the `HarnessPolicy` resource itself
+ * (`harness-policy.service.ts`). This tab used to lock them behind
+ * `session.isElevated` on the `TENANT_LOCKED_POLICY_KEYS` precedent, which
+ * locks a DIFFERENT key set (`safetyEnabled`/`phiEnabled`/`phiFailClosed`/
+ * `safetyProvider`/`safetyModel`) — that was a UI guarantee the server never
+ * enforced for these three keys. See the TASK-678 ticket README's Decisions
+ * section.
+ */
+function BudgetsSection({ uid, values, onChange }: { uid: string; values: Record<string, string>; onChange: (key: string, value: string) => void }) {
   return (
     <Card className="gap-3 p-4" aria-labelledby={`${uid}-budgets`}>
-      <SectionHeading id={`${uid}-budgets`} title="Budgets" hint={isElevated ? undefined : LOCKED_FIELD_HINT} />
+      <SectionHeading id={`${uid}-budgets`} title="Budgets" />
       <div className="grid gap-3 sm:grid-cols-3">
         {AGENT_BUDGET_FIELDS.map((field) => {
           const id = `${uid}-budget-${field.key}`;
@@ -489,22 +490,18 @@ function BudgetsSection({
                 min={0}
                 value={values[field.key] ?? ''}
                 onChange={(event) => onChange(field.key, event.target.value)}
-                disabled={!isElevated}
                 className="h-8 font-mono text-xs"
               />
             </div>
           );
         })}
       </div>
-      {!isElevated ? <p className="text-muted-foreground text-xs">{LOCKED_FIELD_HINT}</p> : null}
     </Card>
   );
 }
 
 export function LoopConfigTab({ agent, etag, onSaved, onReload }: { agent: DepartmentAgent; etag: string | null; onSaved: () => void; onReload: () => void }) {
   const uid = useId();
-  const session = useSession();
-  const isElevated = session.data?.isElevated ?? false;
   const updateAgent = useUpdateDepartmentAgent();
   const schemaQuery = useResolvedContextSchema(agent.departmentId);
   const siblingsQuery = useDepartmentAgents({ departmentId: agent.departmentId, limit: 200 });
@@ -583,14 +580,12 @@ export function LoopConfigTab({ agent, etag, onSaved, onReload }: { agent: Depar
       neverActions: neverActions.length > 0 ? neverActions : null,
       toolConfig: buildToolConfigPayload(toolStates),
     };
-    if (isElevated) {
-      const numericBudgets: { maxRegen?: number; gateSlaSeconds?: number; gateEscalationSeconds?: number } = {};
-      for (const field of AGENT_BUDGET_FIELDS) {
-        const raw = budgets[field.key];
-        if (raw !== undefined && raw.trim() !== '') numericBudgets[field.key] = Number(raw);
-      }
-      patch.harnessOverrides = buildBudgetsHarnessOverridesPayload(agent.harnessOverrides, numericBudgets);
+    const numericBudgets: { maxRegen?: number; gateSlaSeconds?: number; gateEscalationSeconds?: number } = {};
+    for (const field of AGENT_BUDGET_FIELDS) {
+      const raw = budgets[field.key];
+      if (raw !== undefined && raw.trim() !== '') numericBudgets[field.key] = Number(raw);
     }
+    patch.harnessOverrides = buildBudgetsHarnessOverridesPayload(agent.harnessOverrides, numericBudgets);
     return patch;
   }
 
@@ -678,7 +673,7 @@ export function LoopConfigTab({ agent, etag, onSaved, onReload }: { agent: Depar
       <ToolAllowlistSection uid={uid} toolStates={toolStates} onChange={setToolTri} />
       <GuardrailProfileSection uid={uid} value={guardrailProfile} onChange={setGuardrailProfile} />
       <ActionEnvelopeSection uid={uid} alwaysActions={alwaysActions} neverActions={neverActions} onSetAlways={setAlways} onSetNever={setNever} />
-      <BudgetsSection uid={uid} isElevated={isElevated} values={budgets} onChange={(key, value) => setBudgets((prev) => ({ ...prev, [key]: value }))} />
+      <BudgetsSection uid={uid} values={budgets} onChange={(key, value) => setBudgets((prev) => ({ ...prev, [key]: value }))} />
 
       <div className="flex shrink-0 items-center justify-end gap-2">
         <Button type="submit" disabled={!etag || updateAgent.isPending}>

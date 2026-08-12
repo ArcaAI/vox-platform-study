@@ -313,10 +313,10 @@ was stood up in this worktree (console-only scope, no `.env.dev`) — flagged as
   axe cover structure/contrast-relevant semantics but not true rendered layout in either theme. Run
   the `next-dev-loop` skill against a seeded tenant admin + global admin session before shipping to
   confirm layout, focus order, and the dialog's visual placement.
-- **OI-2** — §4.4's flagged decision: Budgets are locked in the console ahead of any corresponding
-  server-side role split on `DepartmentAgent.harnessOverrides`. If the intended behavior is a hard
-  403 for tenant admins on these three keys, that's a `packages/applications` change for a follow-up
-  ticket.
+- **OI-2** — ~~§4.4's flagged decision~~ **Resolved by TASK-678**: Budgets were tenant-tier by
+  design all along (`TENANT_TIER_HARNESS_OVERRIDE_KEYS`, TASK-546/550) — the console lock was
+  based on the wrong precedent (`TENANT_LOCKED_POLICY_KEYS`, which governs a different key set on
+  the `HarnessPolicy` resource). The lock has been removed; the server was never changed.
 - **OI-3** — No console surface exists yet to view a `DepartmentAgentVersion` history (the C25
   "record"); flagged as a natural follow-up once a versions-list endpoint exists (none does today —
   confirmed by grep across `apps/api/src/modules/**`).

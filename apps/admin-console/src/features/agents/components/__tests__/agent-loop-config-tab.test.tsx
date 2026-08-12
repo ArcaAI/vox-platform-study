@@ -1,10 +1,11 @@
 /**
- * Loop config tab (TASK-667): subscribed kinds/write scope sourced from the
- * resolved context schema, budgets locked for a non-elevated caller, the C25
- * typed-acknowledgement gate on weakening a clinical check, the PRIMARY
- * conflict warning, and an axe scan. Rendered through the drawer (the Loop
- * config tab is one of its four tabs) so the OCC/session plumbing matches
- * production exactly.
+ * Loop config tab (TASK-667, budgets un-locked TASK-678 OP-6): subscribed
+ * kinds/write scope sourced from the resolved context schema, tenant-writable
+ * budgets (both a tenant admin and a global admin can edit them — see the
+ * TASK-678 README Decisions section), the C25 typed-acknowledgement gate on
+ * weakening a clinical check, the PRIMARY conflict warning, and an axe scan.
+ * Rendered through the drawer (the Loop config tab is one of its four tabs)
+ * so the OCC/session plumbing matches production exactly.
  */
 
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
@@ -186,7 +187,12 @@ describe('LoopConfigTab', () => {
     expect(screen.queryByLabelText(/SOAP note/)).toBeNull();
   });
 
-  it('locks the Budgets fields for a non-elevated (tenant admin) caller, with the "Global admins only" hint', async () => {
+  // TASK-678 (OP-6) — Budgets are tenant-writable, matching the server's
+  // `TENANT_TIER_HARNESS_OVERRIDE_KEYS` allow-list (which was never
+  // role-gated for these three keys). The earlier "locked for a non-elevated
+  // caller" behavior was a console guarantee the server never enforced; see
+  // the ticket README's Decisions section.
+  it('does not lock the Budgets fields for a non-elevated (tenant admin) caller — no "Global admins only" hint', async () => {
     stubFetch((call) => baseHandler(agent(), call, { session: SESSION }));
     renderWithProviders(
       <DepartmentAgentDetailDrawer
@@ -202,16 +208,16 @@ describe('LoopConfigTab', () => {
     );
 
     const maxRegen = (await screen.findByLabelText('Max regen budget')) as HTMLInputElement;
-    expect(maxRegen.disabled).toBe(true);
-    expect(screen.getAllByText('Global admins only').length).toBeGreaterThan(0);
+    expect(maxRegen.disabled).toBe(false);
+    expect(screen.queryByText('Global admins only')).toBeNull();
   });
 
-  it('a tenant admin cannot change Budgets — the PATCH omits harnessOverrides entirely', async () => {
+  it('a tenant admin CAN change Budgets — the PATCH carries harnessOverrides', async () => {
     const calls = stubFetch((call) => {
       if (call.method === 'PATCH' && pathnameOf(call) === '/api/hope/admin/department-agents/da-1') {
         return Response.json(agent({ version: 3 }), { headers: { etag: '"3"' } });
       }
-      return baseHandler(agent(), call, { session: SESSION });
+      return baseHandler(agent({ harnessOverrides: { toolAllowlist: ['ner'] } }), call, { session: SESSION });
     });
     renderWithProviders(
       <DepartmentAgentDetailDrawer
@@ -226,15 +232,17 @@ describe('LoopConfigTab', () => {
       { searchParams: '?catab=loop' },
     );
 
-    await screen.findByLabelText('Max regen budget');
+    const maxRegen = (await screen.findByLabelText('Max regen budget')) as HTMLInputElement;
+    expect(maxRegen.disabled).toBe(false);
+    fireEvent.change(maxRegen, { target: { value: '5' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save loop configuration' }));
 
     await waitFor(() => expect(calls.some((call) => call.method === 'PATCH')).toBe(true));
     const patch = calls.find((call) => call.method === 'PATCH');
-    expect((patch?.body as Record<string, unknown>).harnessOverrides).toBeUndefined();
+    expect((patch?.body as Record<string, unknown>).harnessOverrides).toEqual({ toolAllowlist: ['ner'], maxRegen: 5 });
   });
 
-  it('lets a global admin edit Budgets, and the PATCH carries them merged into existing harnessOverrides', async () => {
+  it('lets a global admin edit Budgets too, and the PATCH carries them merged into existing harnessOverrides', async () => {
     const calls = stubFetch((call) => {
       if (call.method === 'PATCH' && pathnameOf(call) === '/api/hope/admin/department-agents/da-1') {
         return Response.json(agent({ version: 3 }), { headers: { etag: '"3"' } });
