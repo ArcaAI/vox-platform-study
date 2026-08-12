@@ -17,6 +17,7 @@ import {
   HarnessAuditAction,
   HighlightRepository,
   ContextItemEntity,
+  NamedEntityEntity,
   ContextItemType,
   TranscriptSegmentRepository,
   McpServerRepository,
@@ -104,6 +105,24 @@ export class HarnessInternalService {
   // duplicate. Unmarked rows are therefore never touched: the lookup fails safe to
   // create. (Same `metaData.subType` convention as `LIVE_SOAP_SNAPSHOT`.)
   private readonly HARNESS_DRAFT_SUBTYPE = 'HARNESS_DRAFT';
+
+  // TASK-688 — the same ownership idea, for `persistEntities`. `NamedEntity`
+  // has no `metaData` column to mark: its `metadata` is Vault-Transit ciphertext
+  // (`encryptedMetadata`; the plaintext column was DROPPED) and encryption is a
+  // soft no-op outside `SECRETS_PROVIDER=vault`, so it is neither queryable nor
+  // reliably present. `aiModelId` is the plaintext, nullable "which recognizer
+  // produced this span" column, and it is the honest home for this: these rows
+  // ARE the harness NER pass's output.
+  //
+  // FOUR other production paths create NamedEntity rows — `ContextService`,
+  // `SummaryService`, `NerProcessor` and `ChainSummaryService`'s NER writes — all
+  // through `namedEntityPropsFromNlp`, which sets NO `aiModelId`. They routinely
+  // cover the SAME transcript ContextItem and the same spans, so scoping by
+  // `contextItemId` alone would let this path rewrite rows it never authored.
+  // Filtering on this marker means unmarked rows (including harness rows written
+  // before this change) are never read, never updated and never removed — the
+  // lookup fails safe to CREATE, exactly as `HARNESS_DRAFT_SUBTYPE` does.
+  private readonly HARNESS_NER_MODEL_ID = 'HARNESS_NER';
 
   // F-03: attachment text (metaData.extractedText or, absent that, the raw
   // content label) is folded verbatim into the prompt with only a
@@ -420,6 +439,9 @@ export class HarnessInternalService {
           NamedEntityFactory.CreateNamedEntity({
             tenantId,
             contextItemId: dto.contextItemId,
+            // Ownership marker — see HARNESS_NER_MODEL_ID. Stamped on create so
+            // a LATER execution can recognise this path's own rows.
+            aiModelId: this.HARNESS_NER_MODEL_ID,
             text: entity.text,
             className: entity.type,
             normalizedText: entity.normalizedText,
@@ -440,15 +462,45 @@ export class HarnessInternalService {
           }),
         );
 
-        for (const namedEntity of namedEntities) {
+        // TASK-688 — adopt this path's OWN prior rows instead of inserting a
+        // second set. A second workflow EXECUTION is routine (see
+        // HARNESS_NER_MODEL_ID and the ticket), and its Idempotency-Key differs,
+        // so the replay cache cannot be the guarantee — the invariant is here.
+        //
+        // Rows are paired by POSITION: the repository returns them ordered by
+        // `startOffset`, and the incoming list arrives in NLP order (also start
+        // offset ascending), so pair i is the same span of the transcript. Each
+        // adopted row is REWRITTEN in place with the freshly extracted values —
+        // a genuine re-extraction over changed input therefore replaces the
+        // entity set rather than being silently ignored — and only the surplus
+        // is created.
+        //
+        // NamedEntity is in MODELS_WITHOUT_SOFT_DELETE (no `resourceStatus`
+        // column), so `softDelete()` throws for it and hard deletes are not on
+        // the table for PHI. Nothing here removes a row: when a re-extraction
+        // yields FEWER entities than the previous one, the trailing rows this
+        // path owns are left in place. See the ticket README §4.
+        const owned = await this.findOwnHarnessEntities(dto.contextItemId);
+        const adopted = Math.min(owned.length, namedEntities.length);
+
+        for (let index = 0; index < adopted; index++) {
+          const row = owned[index];
+          this.rewriteHarnessEntity(row, namedEntities[index]);
+          await this.encryptBestEffort('NamedEntity', () => this.namedEntityRepository.encryptFieldsIntoEntity(row, this.secretsService!));
+          await this.namedEntityRepository.update(row.id, row);
+        }
+
+        const created = namedEntities.slice(adopted);
+        for (const namedEntity of created) {
           await this.encryptBestEffort('NamedEntity', () => this.namedEntityRepository.encryptFieldsIntoEntity(namedEntity, this.secretsService!));
         }
-        if (namedEntities.length > 0) {
-          await this.namedEntityRepository.createMany(namedEntities);
+        if (created.length > 0) {
+          await this.namedEntityRepository.createMany(created);
         }
-        const entityIds = namedEntities.map((e) => e.id);
 
-        this.logger.log({ message: 'Harness entities persisted', consultationId, savedCount: entityIds.length });
+        const entityIds = [...owned.slice(0, adopted).map((row) => row.id), ...created.map((e) => e.id)];
+
+        this.logger.log({ message: 'Harness entities persisted', consultationId, savedCount: entityIds.length, adopted, created: created.length });
         return { savedCount: entityIds.length, entityIds };
       }),
     );
@@ -1263,6 +1315,54 @@ export class HarnessInternalService {
     const owned = rows.filter((row) => (row.metaData as Record<string, unknown> | undefined)?.subType === this.HARNESS_DRAFT_SUBTYPE);
     if (owned.length === 0) return null;
     return owned.reduce((a, b) => ((a.createdAt ?? 0) >= (b.createdAt ?? 0) ? a : b));
+  }
+
+  /**
+   * The NamedEntity rows THIS path wrote for `contextItemId`, in transcript
+   * order. Never another producer's rows — see `HARNESS_NER_MODEL_ID`.
+   *
+   * Fails safe to CREATE: a lookup error yields an empty list, so the entities
+   * are still persisted (an extra set, the pre-existing behaviour) rather than
+   * lost. The alternative — letting the error propagate — would turn a read
+   * blip into a dropped NER layer for the whole consultation.
+   */
+  private async findOwnHarnessEntities(contextItemId: string): Promise<NamedEntityEntity[]> {
+    try {
+      const rows = (await this.namedEntityRepository.findByContextItem(contextItemId)) ?? [];
+      return rows.filter((row) => row.aiModelId === this.HARNESS_NER_MODEL_ID);
+    } catch (error) {
+      this.logger.warn({
+        message: 'Harness NER ownership lookup failed — persisting a fresh entity set',
+        contextItemId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return [];
+    }
+  }
+
+  /**
+   * Rewrite an adopted row in place from a freshly extracted entity. Assignment
+   * routes through `BaseEntity.setProperty`, so `repository.update` persists
+   * only the fields that actually moved. `contextItemId`, `tenantId` and the
+   * ownership marker are deliberately NOT touched — they are what identified
+   * this row as ours in the first place.
+   */
+  private rewriteHarnessEntity(row: NamedEntityEntity, next: NamedEntityEntity): void {
+    row.text = next.text;
+    row.className = next.className;
+    row.normalizedText = next.normalizedText;
+    row.startOffset = next.startOffset;
+    row.endOffset = next.endOffset;
+    row.confidence = next.confidence;
+    row.assertion = next.assertion;
+    row.umlsCui = next.umlsCui;
+    row.snomedCode = next.snomedCode;
+    row.rxnormCode = next.rxnormCode;
+    row.icdCode = next.icdCode;
+    row.loincCode = next.loincCode;
+    row.transcriptContextItemId = next.transcriptContextItemId;
+    row.transcriptStartOffset = next.transcriptStartOffset;
+    row.transcriptEndOffset = next.transcriptEndOffset;
   }
 
   /**
