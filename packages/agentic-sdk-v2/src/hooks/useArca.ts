@@ -191,6 +191,8 @@ export interface UseArcaContext {
   error: Error | null;
   addCaseNote: (content: string, metadata?: Record<string, unknown>) => Promise<ContextItem>;
   addTranscription: (text: string, metadata?: Record<string, unknown>) => Promise<ContextItem>;
+  /** Add an attachment. `mediaId` threads through from `useStorage().uploadFile()` (TASK-656/665/671). */
+  addAttachment: (content?: string, metadata?: Record<string, unknown>, mediaId?: string) => Promise<ContextItem>;
   updateItem: (id: string, content: string) => Promise<void>;
   /** Fetch all context items from backend with optional filters */
   getItems: (filters?: ContextFilters) => Promise<ContextItem[]>;
@@ -585,6 +587,54 @@ export function useArca(): UseArcaReturn {
 
         timer?.end(true, {
           attributes: { contextItemId: item.id, textLength: text.length },
+        });
+
+        return item;
+      } catch (error) {
+        timer?.error(error as Error);
+        store.setContextError(error as Error);
+        throw error;
+      } finally {
+        store.setContextLoading(false);
+      }
+    },
+    [store, getLogger],
+  );
+
+  // TASK-671: `useArca()`'s aggregate `context` object omitted `addAttachment`
+  // entirely (a pre-existing gap noted but left out of scope by TASK-665) —
+  // consumers of this god-hook could not attach files at all. Mirrors
+  // `addCaseNote`/`addTranscription` above and `useArcaContext().addAttachment`.
+  const addAttachment = useCallback(
+    async (content?: string, metadata?: Record<string, unknown>, mediaId?: string): Promise<ContextItem> => {
+      const { apiClient, consultation } = store;
+      const logger = getLogger();
+      if (!apiClient) throw new Error('SDK not initialized');
+      if (!consultation) throw new Error('No active consultation');
+
+      const timer = logger?.startOperation('addAttachment', {
+        component: 'useArca',
+        sdk: { consultationId: consultation.id },
+      });
+
+      store.setContextLoading(true);
+      store.setContextError(null);
+
+      try {
+        const item = await apiClient.post<ContextItem>(CONTEXT_ENDPOINTS.ADD(consultation.id), {
+          type: 'ATTACHMENT',
+          content: content ?? '',
+          source: 'USER',
+          structuredData: metadata,
+          // TASK-656/665/671: the `Media` table row UUID from
+          // `useStorage().uploadFile()` — the id the backend can actually
+          // resolve, unlike the raw storage `key`.
+          mediaId,
+        });
+        store.addContextItem(item);
+
+        timer?.end(true, {
+          attributes: { contextItemId: item.id, contentLength: (content ?? '').length, hasMediaId: !!mediaId },
         });
 
         return item;
@@ -1446,6 +1496,7 @@ export function useArca(): UseArcaReturn {
       error: store.contextError,
       addCaseNote,
       addTranscription,
+      addAttachment,
       updateItem: updateContextItem,
       getItems,
       loadSharedContext,
@@ -1465,6 +1516,7 @@ export function useArca(): UseArcaReturn {
       store.contextError,
       addCaseNote,
       addTranscription,
+      addAttachment,
       updateContextItem,
       getItems,
       loadSharedContext,

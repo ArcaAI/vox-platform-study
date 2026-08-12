@@ -390,6 +390,44 @@ describe('useArca API — context', () => {
     });
   });
 
+  // ---- context.addAttachment (TASK-671) ------------------------------------
+  describe('context.addAttachment()', () => {
+    it('should exist on the aggregate context object and POST with type=ATTACHMENT', async () => {
+      const item = createMockContextItem({ id: 'att-1', type: 'ATTACHMENT' });
+      mockFetch.mockResolvedValueOnce(createMockResponse(item));
+
+      const { result } = renderHook(() => useArca());
+      expect(typeof result.current.context.addAttachment).toBe('function');
+      let returned: any;
+
+      await act(async () => {
+        returned = await result.current.context.addAttachment('a scanned lab result', { subType: 'LAB_RESULT' });
+      });
+
+      expect(calledUrl()).toBe('http://test/consultations/cons-1/context');
+      expect(calledMethod()).toBe('POST');
+      expect(calledBody()).toMatchObject({
+        type: 'ATTACHMENT',
+        content: 'a scanned lab result',
+        source: 'USER',
+        structuredData: { subType: 'LAB_RESULT' },
+      });
+      expect(mockStoreData.addContextItem).toHaveBeenCalledWith(item);
+      expect(returned.id).toBe('att-1');
+    });
+
+    it('should forward mediaId on the POST body', async () => {
+      mockFetch.mockResolvedValueOnce(createMockResponse(createMockContextItem({ type: 'ATTACHMENT' })));
+
+      const { result } = renderHook(() => useArca());
+      await act(async () => {
+        await result.current.context.addAttachment('scan', undefined, 'media-abc-123');
+      });
+
+      expect(calledBody()).toMatchObject({ mediaId: 'media-abc-123' });
+    });
+  });
+
   // ---- context.updateItem -------------------------------------------------
   describe('context.updateItem()', () => {
     it('should PATCH the context item and update store', async () => {

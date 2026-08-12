@@ -508,7 +508,13 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
     }
     const consultationSchemaPromise = consultationSchemaPromiseRef.current;
     consultationSchemaPromise.then((bundle) => {
-      store.setConsultationSchema(bundle);
+      // TASK-671: a DEPARTMENT-scoped re-fetch (kicked once `me.departmentId`
+      // is known in Step 1 below) may already have superseded this
+      // tenant-scoped default in the ref. Guard so a late-resolving
+      // tenant-scoped response can never clobber the more specific one.
+      if (consultationSchemaPromiseRef.current === consultationSchemaPromise) {
+        store.setConsultationSchema(bundle);
+      }
     });
 
     const hasCredentials = !!(cfg.api.accessToken || cfg.api.apiKey);
@@ -538,6 +544,28 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
         });
         configOp.error(error as Error);
         return;
+      }
+
+      // TASK-671 — once `me.departmentId` is known, prefer a
+      // DEPARTMENT-scoped schema bundle over the tenant-scoped default kicked
+      // off eagerly above (before `me` was known, to cover the no-credentials
+      // path where init() never reaches this line). The discovery endpoint
+      // resolves DEPARTMENT -> TENANT, so a department-scoped bundle is
+      // always a safe, more specific choice when a department is known;
+      // falls back to the tenant-scoped promise otherwise (D-2 behaviour
+      // unchanged for the no-department case).
+      let effectiveSchemaPromise = consultationSchemaPromise;
+      if (me?.departmentId) {
+        const departmentSchemaPromise = fetchConsultationSchema(apiClient, providerLogger, {
+          departmentId: me.departmentId,
+        });
+        consultationSchemaPromiseRef.current = departmentSchemaPromise;
+        effectiveSchemaPromise = departmentSchemaPromise;
+        departmentSchemaPromise.then((bundle) => {
+          if (consultationSchemaPromiseRef.current === departmentSchemaPromise) {
+            store.setConsultationSchema(bundle);
+          }
+        });
       }
 
       if (me) {
@@ -652,14 +680,17 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
         });
       }
 
-      // ---- Step 4.5 (TASK-665): resolve the pinned consultation context
-      // schema before `configReady` flips, so a client's first render
-      // already has the tenant's context-kind vocabulary (or the safe
-      // "unconfigured" bundle) to build its workflow from — mirrors Step 2's
-      // `tenantConfigPromise` await. `fetchConsultationSchema` never rejects,
-      // so this try/catch is defensive-only, matching this function's style.
+      // ---- Step 4.5 (TASK-665, department-scoped per TASK-671): resolve the
+      // pinned consultation context schema before `configReady` flips, so a
+      // client's first render already has the tenant's (or department's)
+      // context-kind vocabulary (or the safe "unconfigured" bundle) to build
+      // its workflow from — mirrors Step 2's `tenantConfigPromise` await.
+      // Awaits `effectiveSchemaPromise` (the department-scoped fetch when
+      // Step 1 found `me.departmentId`, otherwise the tenant-scoped default).
+      // `fetchConsultationSchema` never rejects, so this try/catch is
+      // defensive-only, matching this function's style.
       try {
-        const schemaBundle = await consultationSchemaPromise;
+        const schemaBundle = await effectiveSchemaPromise;
         store.setConsultationSchema(schemaBundle);
       } catch (error) {
         providerLogger.warn('Failed to apply consultation context schema (continuing without one)', {
@@ -883,8 +914,16 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
         // tenant-config reload block above closes for `tenantConfig`.
         // `fetchConsultationSchema` never rejects, so this try/catch is
         // defensive-only, matching the surrounding blocks' style.
+        // TASK-671 — unlike mount (where `me.departmentId` isn't known until
+        // AFTER the schema fetch is kicked off), `effectiveDepartmentId` is
+        // already resolved for the INCOMING identity by the time this effect
+        // runs (same value the department cascade re-fetch below uses), so a
+        // single department-scoped fetch replaces the tenant-scoped default
+        // directly — no two-fetch dance needed here.
         try {
-          const nextConsultationSchemaPromise = fetchConsultationSchema(apiClient, providerLogger);
+          const nextConsultationSchemaPromise = fetchConsultationSchema(apiClient, providerLogger, {
+            departmentId: effectiveDepartmentId ?? undefined,
+          });
           consultationSchemaPromiseRef.current = nextConsultationSchemaPromise;
           const nextConsultationSchema = await nextConsultationSchemaPromise;
           store.setConsultationSchema(nextConsultationSchema);
