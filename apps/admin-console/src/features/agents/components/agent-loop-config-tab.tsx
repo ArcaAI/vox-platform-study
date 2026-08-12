@@ -27,6 +27,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import { Spinner } from '@arcaai/ui/components/shadcn/spinner';
 import { Textarea } from '@arcaai/ui/components/shadcn/textarea';
+import { ToggleGroup, ToggleGroupItem } from '@arcaai/ui/components/shadcn/toggle-group';
 import { GatewayError } from '@/shared/api';
 import { useSession } from '@/shared/auth';
 import { ConfirmDialog } from '@/shared/confirm/confirm-dialog';
@@ -58,8 +59,16 @@ import {
   parseToolConfig,
   parseWriteScope,
   type SelectedKind,
+  type ToolTriState,
   weakensClinicalCheck,
 } from './agent-loop-config-fields';
+
+const TOOL_TRI_STATES: ToolTriState[] = ['inherit', 'on', 'off'];
+
+function toolTriLabel(tri: ToolTriState): string {
+  if (tri === 'inherit') return 'Inherit';
+  return tri === 'on' ? 'On' : 'Off';
+}
 
 const NO_GUARDRAIL_PROFILE = '__none__';
 
@@ -313,23 +322,47 @@ function GoalSection({
   );
 }
 
-/** Tool allowlist — closed catalogue of exactly three named tools, selected not authored. */
-function ToolAllowlistSection({ uid, enabled, onToggle }: { uid: string; enabled: string[]; onToggle: (key: string, checked: boolean) => void }) {
+/**
+ * Tool allowlist — closed catalogue of exactly three named tools, each pinned
+ * tri-state (TASK-674): Inherit (`enabled: null`, follow the platform/env
+ * default) / On / Off. Mirrors the inherit/on/off `ToggleGroup` pattern of
+ * `pipeline-policy/components/scope-row-editor.tsx`.
+ */
+function ToolAllowlistSection({
+  uid,
+  toolStates,
+  onChange,
+}: {
+  uid: string;
+  toolStates: Record<(typeof LIVE_TOOL_KEYS)[number], ToolTriState>;
+  onChange: (key: (typeof LIVE_TOOL_KEYS)[number], tri: ToolTriState) => void;
+}) {
   return (
     <Card className="gap-3 p-4" aria-labelledby={`${uid}-tools`}>
-      <SectionHeading id={`${uid}-tools`} title="Tool allowlist" hint="Which live-loop tools this agent may use." />
-      <ul className="flex flex-col gap-2">
-        {LIVE_TOOL_KEYS.map((tool) => {
-          const id = `${uid}-tool-${tool}`;
-          return (
-            <li key={tool} className="flex items-center gap-2">
-              <Checkbox id={id} checked={enabled.includes(tool)} onCheckedChange={(next) => onToggle(tool, next === true)} />
-              <Label htmlFor={id} className="text-sm font-normal">
-                {LIVE_TOOL_LABELS[tool]}
-              </Label>
-            </li>
-          );
-        })}
+      <SectionHeading id={`${uid}-tools`} title="Tool allowlist" hint="Which live-loop tools this agent may use — Inherit follows the platform/env default." />
+      <ul className="flex flex-col gap-3">
+        {LIVE_TOOL_KEYS.map((tool) => (
+          <li key={tool} className="flex flex-col gap-1.5">
+            <span className="text-sm font-normal">{LIVE_TOOL_LABELS[tool]}</span>
+            <ToggleGroup
+              type="single"
+              variant="outline"
+              size="sm"
+              aria-label={LIVE_TOOL_LABELS[tool]}
+              value={toolStates[tool]}
+              onValueChange={(next) => {
+                // Radix reports '' when the active item is re-clicked; a pin always has a state.
+                if (next) onChange(tool, next as ToolTriState);
+              }}
+            >
+              {TOOL_TRI_STATES.map((tri) => (
+                <ToggleGroupItem key={tri} value={tri} className="font-mono text-xs">
+                  {toolTriLabel(tri)}
+                </ToggleGroupItem>
+              ))}
+            </ToggleGroup>
+          </li>
+        ))}
       </ul>
     </Card>
   );
@@ -482,7 +515,7 @@ export function LoopConfigTab({ agent, etag, onSaved, onReload }: { agent: Depar
   const initialGoal = parseGoal(agent.goal);
   const [objective, setObjective] = useState(initialGoal.objective);
   const [successCriteria, setSuccessCriteria] = useState<string[]>(initialGoal.successCriteria);
-  const [enabledTools, setEnabledTools] = useState<string[]>(() => parseToolConfig(agent.toolConfig));
+  const [toolStates, setToolStates] = useState<Record<(typeof LIVE_TOOL_KEYS)[number], ToolTriState>>(() => parseToolConfig(agent.toolConfig));
   const [guardrailProfile, setGuardrailProfile] = useState(agent.guardrailProfile ?? '');
   const [alwaysActions, setAlwaysActions] = useState<string[]>(agent.alwaysActions ?? []);
   const [neverActions, setNeverActions] = useState<string[]>(agent.neverActions ?? []);
@@ -525,8 +558,8 @@ export function LoopConfigTab({ agent, etag, onSaved, onReload }: { agent: Depar
     setSelectedOutputs((prev) => (checked ? [...prev, key] : prev.filter((entry) => entry !== key)));
   }
 
-  function toggleTool(tool: string, checked: boolean) {
-    setEnabledTools((prev) => (checked ? [...prev, tool] : prev.filter((entry) => entry !== tool)));
+  function setToolTri(tool: (typeof LIVE_TOOL_KEYS)[number], tri: ToolTriState) {
+    setToolStates((prev) => ({ ...prev, [tool]: tri }));
   }
 
   function setAlways(action: string, checked: boolean) {
@@ -548,7 +581,7 @@ export function LoopConfigTab({ agent, etag, onSaved, onReload }: { agent: Depar
       guardrailProfile: guardrailProfile.trim() ? guardrailProfile : null,
       alwaysActions: alwaysActions.length > 0 ? alwaysActions : null,
       neverActions: neverActions.length > 0 ? neverActions : null,
-      toolConfig: buildToolConfigPayload(enabledTools as never),
+      toolConfig: buildToolConfigPayload(toolStates),
     };
     if (isElevated) {
       const numericBudgets: { maxRegen?: number; gateSlaSeconds?: number; gateEscalationSeconds?: number } = {};
@@ -642,7 +675,7 @@ export function LoopConfigTab({ agent, etag, onSaved, onReload }: { agent: Depar
       />
       <WriteScopeSection uid={uid} availableOutputs={availableOutputs} schemaUnresolved={schemaUnresolved} selected={selectedOutputs} onToggle={toggleOutput} />
       <GoalSection uid={uid} objective={objective} onObjectiveChange={setObjective} successCriteria={successCriteria} onCriteriaChange={setSuccessCriteria} />
-      <ToolAllowlistSection uid={uid} enabled={enabledTools} onToggle={toggleTool} />
+      <ToolAllowlistSection uid={uid} toolStates={toolStates} onChange={setToolTri} />
       <GuardrailProfileSection uid={uid} value={guardrailProfile} onChange={setGuardrailProfile} />
       <ActionEnvelopeSection uid={uid} alwaysActions={alwaysActions} neverActions={neverActions} onSetAlways={setAlways} onSetNever={setNever} />
       <BudgetsSection uid={uid} isElevated={isElevated} values={budgets} onChange={(key, value) => setBudgets((prev) => ({ ...prev, [key]: value }))} />
