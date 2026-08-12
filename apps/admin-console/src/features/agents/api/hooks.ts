@@ -21,6 +21,7 @@ import {
   diffVersions,
   finalizeTemplateTest,
   getDepartmentAgent,
+  getResolvedContextSchema,
   getTemplate,
   getUsageAnalytics,
   getUsageStats,
@@ -248,6 +249,19 @@ export function usePinDepartmentAgent() {
   return useMutation({
     mutationFn: ({ id, versionNumber }: { id: string; versionNumber: number | null }) => pinDepartmentAgent(id, versionNumber),
     onSuccess: invalidate,
+  });
+}
+
+/**
+ * The department's RESOLVED context schema (TASK-658) — the closed set of
+ * kind/output keys the Loop config tab's `subscribedKinds`/`writeScope`
+ * pickers offer. Held off until a department is known.
+ */
+export function useResolvedContextSchema(departmentId: string | undefined) {
+  return useQuery({
+    queryKey: departmentAgentKeys.contextSchema(departmentId ?? ''),
+    queryFn: () => getResolvedContextSchema(departmentId),
+    enabled: !!departmentId,
   });
 }
 

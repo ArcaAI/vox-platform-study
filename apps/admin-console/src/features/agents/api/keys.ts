@@ -30,6 +30,8 @@ export const departmentAgentKeys = {
   root: ['department-agents'] as const,
   list: (params?: ListDepartmentAgentsParams) => [...departmentAgentKeys.root, 'list', params ?? {}] as const,
   detail: (id: string) => [...departmentAgentKeys.root, 'detail', id] as const,
+  /** Resolved context schema (TASK-658) a department's `subscribedKinds`/`writeScope` pickers source from. */
+  contextSchema: (departmentId: string) => [...departmentAgentKeys.root, 'context-schema', departmentId] as const,
 };
 
 /**
