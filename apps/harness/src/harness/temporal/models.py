@@ -1063,6 +1063,28 @@ LOOP_SKIP_DEPTH_CAP = "depth_cap"
 LOOP_SKIP_BUDGET_EXHAUSTED = "budget_exhausted"
 LOOP_SKIP_UNSUPPORTED_ACTION = "unsupported_action"
 
+# TASK-664 reasoning-lane skip reasons. Same rule as above: never a silent no-op.
+LOOP_SKIP_CYCLE_DETECTED = "cycle_detected"
+LOOP_SKIP_SPECIALIST_BUDGET = "specialist_budget_exhausted"
+
+# TASK-664 reasoning-lane event types on the same ``consultation:loop:{id}`` feed.
+LOOP_EVENT_PLAN_DECIDED = "plan.decided"
+LOOP_EVENT_SPECIALIST_FAILED = "specialist.failed"
+LOOP_EVENT_CONTEXT_DERIVED = "context.derived"
+LOOP_EVENT_ADJUDICATED = "adjudication.recorded"
+
+# Agent roles — mirrors the `DepartmentAgentRole` Prisma enum (TASK-659).
+AGENT_ROLE_PRIMARY = "PRIMARY"
+AGENT_ROLE_SPECIALIST = "SPECIALIST"
+
+# Output kinds NO specialist may ever write, whatever its configured
+# ``writeScope`` says (TASK-654 D7/D12 + §4.6). This is a PLATFORM FLOOR, not a
+# per-agent setting: the primary owns the note and the gate exclusively, and a
+# tenant misconfiguring a specialist's write scope must not be able to hand that
+# ownership away. Enforced by the orchestrator — outside the agent's own code —
+# which is the AWS AgentCore placement the parent ticket adopts.
+PRIMARY_ONLY_OUTPUT_KINDS: frozenset[str] = frozenset({"note", "gate"})
+
 
 class LoopSubscription(BaseModel):
     """One tenant-declared context kind and the actions it triggers.
@@ -1089,6 +1111,53 @@ class LoopBudget(BaseModel):
 
     max_depth: int = 3
     max_actions: int = 200
+    # TASK-664. Additive with a default, so a config serialised before this
+    # ticket (including the frozen TASK-662 replay fixture) still deserialises.
+    # A specialist run is far more expensive than an action dispatch — it is a
+    # child workflow plus a model call — so it gets its own, much tighter, cap.
+    max_specialist_runs: int = 20
+
+
+class LoopAgentSpec(BaseModel):
+    """One agent in the consultation's roster, as pinned at start (TASK-664).
+
+    ``subscribed_kinds`` is the agent's READ scope and ``write_scope`` its WRITE
+    scope; both are resolved gateway-side from ``DepartmentAgent`` (TASK-659) and
+    frozen into the pinned config, so a mid-consultation edit cannot widen either
+    one for a running loop.
+
+    Both predicates below are PURE — they are evaluated inside the workflow body,
+    where any I/O or wall-clock read would break determinism (C1).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    agent_id: str
+    role: str = AGENT_ROLE_SPECIALIST
+    slug: str | None = None
+    goal: str | None = None
+    subscribed_kinds: list[str] = Field(default_factory=list)
+    write_scope: list[str] = Field(default_factory=list)
+    agent_config_version_id: str | None = None
+
+    @property
+    def is_primary(self) -> bool:
+        return self.role == AGENT_ROLE_PRIMARY
+
+    def reads(self, kind_key: str | None) -> bool:
+        """True when this agent subscribes to ``kind_key`` (its whole read scope)."""
+        return kind_key is not None and kind_key in self.subscribed_kinds
+
+    def may_write(self, output_kind: str) -> bool:
+        """True when this agent may emit ``output_kind``.
+
+        The ``PRIMARY_ONLY_OUTPUT_KINDS`` check comes FIRST and is unconditional
+        for a specialist: a write scope that names ``note`` is a misconfiguration,
+        and the answer to a misconfiguration is refusal, not compliance.
+        """
+        if not self.is_primary and output_kind in PRIMARY_ONLY_OUTPUT_KINDS:
+            return False
+        return output_kind in self.write_scope
 
 
 class ConsultationLoopConfig(BaseModel):
@@ -1114,6 +1183,13 @@ class ConsultationLoopConfig(BaseModel):
     start_actions: list[str] = Field(default_factory=list)
     ending_actions: list[str] = Field(default_factory=list)
 
+    # TASK-664 — the deliberative lane. Both fields are additive with defaults
+    # that reproduce TASK-662 behaviour exactly, which is what lets the frozen
+    # loop replay fixture keep passing: an old recorded config deserialises with
+    # `reasoning_enabled=False` and never enters the patched era at all.
+    reasoning_enabled: bool = False
+    agents: list[LoopAgentSpec] = Field(default_factory=list)
+
     def actions_for_kind(self, kind_key: str | None) -> list[str]:
         """Actions subscribed to ``kind_key`` (deterministic; pure lookup)."""
         if kind_key is None:
@@ -1122,6 +1198,17 @@ class ConsultationLoopConfig(BaseModel):
             if subscription.kind_key == kind_key:
                 return list(subscription.actions)
         return []
+
+    def primary(self) -> LoopAgentSpec | None:
+        """The single PRIMARY agent, or None (pure)."""
+        for agent in self.agents:
+            if agent.is_primary:
+                return agent
+        return None
+
+    def specialists_for_kind(self, kind_key: str | None) -> list[LoopAgentSpec]:
+        """Every SPECIALIST subscribed to ``kind_key``, in roster order (pure)."""
+        return [a for a in self.agents if not a.is_primary and a.reads(kind_key)]
 
 
 class FetchLoopConfigInput(BaseModel):
@@ -1254,6 +1341,309 @@ class EmitLoopEventResult(BaseModel):
     emitted: bool = False
 
 
+# ---------------------------------------------------------------------------
+# TASK-664 — the reasoning lane
+# ---------------------------------------------------------------------------
+
+
+class PlanLoopInput(BaseModel):
+    """Input for the ``plan_reasoning`` ACTIVITY.
+
+    The planner is an activity and never a workflow-body call, for one reason
+    (C1 / TASK-654 D3): an activity's result is recorded in history, so a replay
+    reuses the recorded decision instead of asking a non-deterministic model
+    again. A planner called from the workflow body would make every replay a
+    fresh roll of the dice.
+
+    ``reasoning`` is TRUE here and has no counterpart on the note-generation
+    path. That asymmetry is the finding of arXiv 2605.24902 (LLM-judge score
+    4.10 -> 3.28 with reasoning enabled on SOAP generation) applied as a design
+    rule: reasoning goes to PLANNING and VERIFICATION, never to generation.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    consultation_id: str
+    tenant_id: str
+    # Monotonic per run; part of the plan id so two plans are never confused.
+    plan_seq: int = 0
+    goal: str | None = None
+    # The kinds accumulated since the previous planning checkpoint — the reason
+    # this replan was triggered.
+    trigger_kinds: list[str] = Field(default_factory=list)
+    candidates: list[LoopAgentSpec] = Field(default_factory=list)
+    max_specialists: int = 8
+    reasoning: bool = True
+
+
+class PlannedSpecialist(BaseModel):
+    """One specialist the planner chose to run, and on which kind."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    agent_id: str
+    kind_key: str
+    reason: str = ""
+
+
+class PlanDecision(BaseModel):
+    """The planner's recorded decision.
+
+    ``degraded`` marks a decision the planner could not actually make (model
+    unavailable, unparseable answer). A degraded decision dispatches NOTHING —
+    it never guesses, because a guessed roster of clinical specialists is worse
+    than no specialists at all.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    plan_id: str
+    dispatch: list[PlannedSpecialist] = Field(default_factory=list)
+    rationale: str = ""
+    model: str | None = None
+    degraded: bool = False
+
+
+class ScopedContextItem(BaseModel):
+    """One context item as handed to a specialist — already scope-filtered."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    context_item_id: str
+    kind_key: str | None = None
+    text: str = ""
+
+
+class SpecialistFinding(BaseModel):
+    """One claim a specialist asserts.
+
+    Deliberately a CLAIM, not prose: a specialist never authors note text (see
+    the ticket README §1.5 — routing abstracted prose into the lexical gate
+    scores it at zero). ``output_kind`` is what the write scope is checked
+    against.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    output_kind: str
+    statement: str
+    confidence: float = 0.0
+    evidence_context_item_ids: list[str] = Field(default_factory=list)
+
+
+class SpecialistWorkflowInput(BaseModel):
+    """Start payload for :class:`SpecialistWorkflow`.
+
+    ``context`` is pre-filtered by the PARENT to the agent's subscribed kinds.
+    Scoping at the boundary rather than inside the specialist is what makes the
+    read scope enforceable: a specialist cannot read what it was never handed.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    consultation_id: str
+    tenant_id: str
+    plan_id: str
+    agent_id: str
+    agent_slug: str | None = None
+    goal: str | None = None
+    kind_key: str
+    subscribed_kinds: list[str] = Field(default_factory=list)
+    write_scope: list[str] = Field(default_factory=list)
+    context: list[ScopedContextItem] = Field(default_factory=list)
+
+
+class SpecialistResult(BaseModel):
+    """What a specialist returns. Note: there is no note field, and no gate field.
+
+    That absence is load-bearing — TASK-654 D7 makes the primary the exclusive
+    writer of both, and a type that cannot express a note cannot smuggle one.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    agent_id: str
+    plan_id: str
+    kind_key: str
+    findings: list[SpecialistFinding] = Field(default_factory=list)
+    # Findings the specialist itself refused as outside its declared scope. The
+    # parent enforces independently; this is the inner half of the same check,
+    # reported so a persistently mis-scoped agent is visible.
+    out_of_scope_findings: list[str] = Field(default_factory=list)
+    degraded: bool = False
+
+
+class SpecialistAnalysisInput(BaseModel):
+    """Input for the ``run_specialist`` activity (the specialist's model call)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    consultation_id: str
+    tenant_id: str
+    plan_id: str
+    agent_id: str
+    agent_slug: str | None = None
+    goal: str | None = None
+    kind_key: str
+    write_scope: list[str] = Field(default_factory=list)
+    context: list[ScopedContextItem] = Field(default_factory=list)
+    reasoning: bool = True
+
+
+class AdjudicationView(BaseModel):
+    """One agent's position on one output kind."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    agent_id: str
+    output_kind: str
+    statement: str
+    confidence: float = 0.0
+
+
+class AdjudicationConflict(BaseModel):
+    """A disagreement, the view taken, and WHY — the inspectable unit (E12)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    output_kind: str
+    accepted: AdjudicationView
+    rejected: list[AdjudicationView] = Field(default_factory=list)
+    basis: str = ""
+
+
+class AdjudicationRecord(BaseModel):
+    """The primary's reconciliation — one record, nothing merged silently.
+
+    A conflict RETAINS the rejected views rather than dropping them. That is the
+    difference between adjudication and a silent merge, and it is what the
+    clinician needs in order to finalise the note (D12).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    consultation_id: str
+    plan_id: str
+    conflicts: list[AdjudicationConflict] = Field(default_factory=list)
+    agreements: list[AdjudicationView] = Field(default_factory=list)
+    contributing_agent_ids: list[str] = Field(default_factory=list)
+    # Findings refused by the parent's write-scope enforcement, as
+    # "<agent_id>:<output_kind>" — never dropped without a record.
+    dropped_out_of_scope: list[str] = Field(default_factory=list)
+
+
+class RecordAdjudicationInput(BaseModel):
+    """Input for the ``record_adjudication`` activity (the inspection surface)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    consultation_id: str
+    tenant_id: str
+    record: AdjudicationRecord
+
+
+class DeriveContextInput(BaseModel):
+    """Input for the three derived-context activities TASK-662 left unbacked."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    consultation_id: str
+    tenant_id: str
+    action: str
+    context_item_id: str
+    kind_key: str | None = None
+    text: str = ""
+    text_ref: ClaimCheckRef | None = None
+
+
+class DeriveContextResult(BaseModel):
+    """The derived context item, which RE-ENTERS the bus one depth deeper.
+
+    ``derived=False`` (nothing extractable, or the downstream service was
+    unavailable) simply ends that branch of the cascade — it is not an error.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    derived: bool = False
+    context_item_id: str | None = None
+    kind_key: str | None = None
+    text: str = ""
+
+
+def adjudicate(
+    consultation_id: str,
+    plan_id: str,
+    results: list[SpecialistResult],
+    *,
+    dropped_out_of_scope: list[str] | None = None,
+) -> AdjudicationRecord:
+    """Reconcile specialist findings into ONE inspectable record. PURE.
+
+    Purity is not a style preference here: this runs inside the workflow body,
+    so any non-determinism would break replay (C1). Concretely that means the
+    ordering rules below are total and data-only —
+
+    * findings are grouped by ``output_kind``;
+    * a kind on which every contributing agent says the SAME thing is an
+      AGREEMENT;
+    * a kind on which they differ is a CONFLICT: the highest-confidence view is
+      accepted, ties broken by ``agent_id`` (lexicographic), and **every**
+      rejected view is retained alongside it with the basis recorded.
+
+    Nothing is ever merged away silently. The clinician finalises, so the
+    clinician must be able to see what was overruled and on what grounds.
+    """
+    by_kind: dict[str, list[AdjudicationView]] = {}
+    contributing: list[str] = []
+    for result in results:
+        if result.agent_id not in contributing:
+            contributing.append(result.agent_id)
+        for finding in result.findings:
+            by_kind.setdefault(finding.output_kind, []).append(
+                AdjudicationView(
+                    agent_id=result.agent_id,
+                    output_kind=finding.output_kind,
+                    statement=finding.statement,
+                    confidence=finding.confidence,
+                )
+            )
+
+    conflicts: list[AdjudicationConflict] = []
+    agreements: list[AdjudicationView] = []
+    for output_kind in sorted(by_kind):
+        views = by_kind[output_kind]
+        distinct = {view.statement for view in views}
+        # Highest confidence wins; `agent_id` is the deterministic tie-break.
+        ranked = sorted(views, key=lambda v: (-v.confidence, v.agent_id))
+        if len(distinct) <= 1:
+            agreements.append(ranked[0])
+            continue
+        accepted = ranked[0]
+        rejected = [v for v in ranked[1:] if v.statement != accepted.statement]
+        conflicts.append(
+            AdjudicationConflict(
+                output_kind=output_kind,
+                accepted=accepted,
+                rejected=rejected,
+                basis=(
+                    f"{len(distinct)} differing views on '{output_kind}'; took "
+                    f"{accepted.agent_id} at confidence {accepted.confidence:.2f} over "
+                    + ", ".join(f"{v.agent_id} ({v.confidence:.2f})" for v in rejected)
+                ),
+            )
+        )
+
+    return AdjudicationRecord(
+        consultation_id=consultation_id,
+        plan_id=plan_id,
+        conflicts=conflicts,
+        agreements=agreements,
+        contributing_agent_ids=contributing,
+        dropped_out_of_scope=list(dropped_out_of_scope or []),
+    )
+
+
 class ConsultationLoopWorkflowInput(BaseModel):
     """Start payload for :class:`ConsultationLoopWorkflow`.
 
@@ -1282,6 +1672,15 @@ class ConsultationLoopWorkflowInput(BaseModel):
     checkpoint_signal_threshold: int = 500
     checkpoint_history_events: int = 10_000
 
+    # TASK-664 — the PLANNING checkpoint cadence, which is deliberately a
+    # DIFFERENT and much tighter knob than the two `continue_as_new` thresholds
+    # above. Replanning every 500 events would be no planning at all; replanning
+    # per event is the overthinking failure mode *Learning When to Plan*
+    # measures. This is the intermediate frequency, and it is configurable
+    # per-run rather than hard-coded, because the right interval depends on how
+    # densely a department's consultations produce context.
+    replan_interval_events: int = 25
+
     # continue_as_new carry-over.
     carried_seen_keys: list[str] = Field(default_factory=list)
     carried_pending: list[ContextAddedSignal] = Field(default_factory=list)
@@ -1293,6 +1692,15 @@ class ConsultationLoopWorkflowInput(BaseModel):
     carried_livedoc_started: bool = False
     carried_start_actions_done: bool = False
     carried_continuations: int = 0
+    # TASK-664 carry-over. `carried_agent_kind_seen` is the cycle-detection
+    # memory: losing it at a checkpoint would let every `(agent, kind)` pair run
+    # again, which is exactly the cycle the detector exists to stop.
+    carried_agent_kind_seen: list[str] = Field(default_factory=list)
+    carried_plans_made: int = 0
+    carried_specialists_run: int = 0
+    carried_specialist_failures: int = 0
+    carried_cycles_suppressed: int = 0
+    carried_derived_context: int = 0
 
 
 class ConsultationLoopState(BaseModel):
@@ -1317,6 +1725,13 @@ class ConsultationLoopState(BaseModel):
     livedoc_started: bool = False
     finalize_workflow_id: str | None = None
     continuations: int = 0
+    # TASK-664 reasoning-lane counters.
+    reasoning_enabled: bool = False
+    plans_made: int = 0
+    specialists_run: int = 0
+    specialist_failures: int = 0
+    cycles_suppressed: int = 0
+    derived_context: int = 0
 
 
 class ConsultationLoopWorkflowResult(BaseModel):
@@ -1336,3 +1751,9 @@ class ConsultationLoopWorkflowResult(BaseModel):
     finalized: bool = False
     finalize_workflow_id: str | None = None
     continuations: int = 0
+    # TASK-664 reasoning-lane counters.
+    plans_made: int = 0
+    specialists_run: int = 0
+    specialist_failures: int = 0
+    cycles_suppressed: int = 0
+    derived_context: int = 0

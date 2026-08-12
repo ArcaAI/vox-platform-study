@@ -26,12 +26,18 @@ from temporalio.worker import Worker
 
 from harness.core.config import _DEPLOYED_ENVIRONMENTS, Settings, get_settings
 from harness.core.logging import get_logger, setup_logging
-from harness.temporal.activities import DOCUMENT_ACTIVITIES, LOOP_ACTIVITIES, ping_activity
+from harness.temporal.activities import (
+    DOCUMENT_ACTIVITIES,
+    LOOP_ACTIVITIES,
+    REASONING_ACTIVITIES,
+    ping_activity,
+)
 from harness.temporal.client import get_temporal_client
 from harness.temporal.workflows import (
     ConsultationLoopWorkflow,
     HarnessDocWorkflow,
     HarnessPingWorkflow,
+    SpecialistWorkflow,
 )
 
 logger = get_logger(__name__)
@@ -251,8 +257,21 @@ async def run_worker() -> None:
         # the document workflow it composes as a child — a child started without
         # an explicit task_queue inherits its parent's, so they must be hosted by
         # the same worker or the finalize would never be picked up.
-        workflows=[HarnessPingWorkflow, HarnessDocWorkflow, ConsultationLoopWorkflow],
-        activities=[ping_activity, *DOCUMENT_ACTIVITIES, *LOOP_ACTIVITIES],
+        # `SpecialistWorkflow` (TASK-664) is on the same queue for the same
+        # reason: the loop starts it as a child WITHOUT an explicit task_queue,
+        # so it inherits the parent's and must be hosted by this worker.
+        workflows=[
+            HarnessPingWorkflow,
+            HarnessDocWorkflow,
+            ConsultationLoopWorkflow,
+            SpecialistWorkflow,
+        ],
+        activities=[
+            ping_activity,
+            *DOCUMENT_ACTIVITIES,
+            *LOOP_ACTIVITIES,
+            *REASONING_ACTIVITIES,
+        ],
         graceful_shutdown_timeout=timedelta(seconds=settings.temporal.graceful_shutdown_timeout_s),
         # F-29 — admission cap coordinated with the LLM concurrency governor
         # (HARNESS_LLM_MAX_CONCURRENCY, core/llm_concurrency.py): without this,
