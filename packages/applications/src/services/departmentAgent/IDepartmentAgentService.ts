@@ -19,6 +19,6 @@ export interface IDepartmentAgentService {
   setDefault(id: string): Promise<DepartmentAgentResponse>;
   pin(id: string, versionNumber: number | null): Promise<DepartmentAgentResponse>;
   clone(id: string, dto: CloneDepartmentAgentRequest): Promise<DepartmentAgentResponse>;
-  /** TASK-672 — immutable loop-configuration version history, newest first. */
+  /** TASK-674 — immutable loop-configuration version history, newest first. */
   listVersions(id: string): Promise<DepartmentAgentVersionResponse[]>;
 }

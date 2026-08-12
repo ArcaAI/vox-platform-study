@@ -76,7 +76,7 @@ describe('DepartmentAgentController — delegation', () => {
     expect(service.clone).toHaveBeenCalledWith('a-1', { name: 'My Copy', slug: 'my-copy' });
   });
 
-  it('listVersions delegates to the service (TASK-672)', async () => {
+  it('listVersions delegates to the service (TASK-674)', async () => {
     service.listVersions.mockResolvedValue([{ id: 'v-1', versionNumber: 1 }]);
     await expect(controller.listVersions('a-1')).resolves.toEqual([{ id: 'v-1', versionNumber: 1 }]);
     expect(service.listVersions).toHaveBeenCalledWith('a-1');

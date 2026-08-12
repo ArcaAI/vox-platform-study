@@ -44,7 +44,7 @@ export class DepartmentAgentDtoMapper {
     };
   }
 
-  /** TASK-672 — one immutable `DepartmentAgentVersion` snapshot, read-only. */
+  /** TASK-674 — one immutable `DepartmentAgentVersion` snapshot, read-only. */
   static toVersionResponse(entity: DepartmentAgentVersionEntity): DepartmentAgentVersionResponse {
     return {
       id: entity.id,
