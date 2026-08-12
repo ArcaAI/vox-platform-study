@@ -215,10 +215,7 @@ test.describe('TASK-660 — consultation-loop SSE, delivery', () => {
   const SERVICE_TOKEN = process.env.E2E_HARNESS_SERVICE_TOKEN ?? '';
 
   test('an event POSTed to the internal loop-event endpoint relays out of the stream', async ({ request }) => {
-    test.skip(
-      !SERVICE_TOKEN,
-      'requires E2E_HARNESS_SERVICE_TOKEN set to the value the running gateway resolves (Vault when SECRETS_PROVIDER=vault)',
-    );
+    test.skip(!SERVICE_TOKEN, 'requires E2E_HARNESS_SERVICE_TOKEN set to the value the running gateway resolves (Vault when SECRETS_PROVIDER=vault)');
     test.setTimeout(45_000);
 
     const serviceToken = SERVICE_TOKEN;

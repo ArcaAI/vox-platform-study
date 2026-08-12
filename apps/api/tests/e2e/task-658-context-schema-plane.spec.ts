@@ -293,7 +293,7 @@ test.describe.serial('TASK-658 — context-schema plane end to end', () => {
     expect((await response.json()).isCaseNote).toBe(true);
   });
 
-  test("another tenant cannot read this schema — 404, never 403", async ({ request }) => {
+  test('another tenant cannot read this schema — 404, never 403', async ({ request }) => {
     const response = await request.get(`${ADMIN_SCHEMAS}/${schemaId}`, { headers: auth(globalAdminToken) });
 
     expect(response.status()).toBe(404);
