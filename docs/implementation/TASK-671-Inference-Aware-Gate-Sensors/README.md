@@ -1,6 +1,6 @@
 # TASK-671 — Inference-aware gate sensors (entity faithfulness + coverage)
 
-**Status:** Pending
+**Status:** Review
 
 **Type:** feature · **Depends on:** TASK-664 (merged into `dev-2.1` at `0f81e333f`)
 
@@ -394,7 +394,117 @@ folded into this ticket.
 
 ## 5. Implementation Summary
 
-_(to be completed during implementation)_
+**Status: P0–P3, P5, P6 complete and green; P4 complete in the aggregator, NOT wired into
+the durable loop — see "Remaining" below for why that stop is deliberate.**
+
+### 5.1 P5 RESULT — recovery 0% → 50%, retention 100%, joint gate PASS
+
+Measured 2026-08-12 with `harness.eval.entity_grounding_parity` against the live LM Studio
+judge (`google/gemma-4-e4b-qat`), 29 entailment calls over the two-arm corpus:
+
+| | incumbent | escalation |
+|---|---|---|
+| **recovery** (abstracted entities grounded) | 0 / 16 (0.0%) | **8 / 16 (50.0%)** |
+| **retention** (fabrications still flagged) | 12 / 12 (100%) | **12 / 12 (100%)** |
+| unsafe flips | — | **0** |
+
+**Joint gate: PASS.** Half the penalty recovered with zero fabrications admitted.
+
+The two headline TASK-664 cases both resolve correctly:
+
+- `paracetamol` (for a transcript saying `Tylenol`) is **recovered**, while `tramadol`
+  against the same transcript is **retained as flagged**. That is precisely the
+  discrimination TASK-664 §1.4 said was impossible for a lexical matcher — achieved without
+  lowering a threshold or fuzzing a match.
+- `lower respiratory tract infection`, the worst-penalised case in TASK-664, is
+  **recovered**, along with `focal right basal signs`.
+
+### 5.2 The eight misses, classified
+
+Misses are safe — an unrecovered entity is simply flagged, i.e. today's behaviour. They
+split three ways, and only the first is a defect in the mechanism:
+
+| class | entities | reading |
+|---|---|---|
+| **judge under-recovery** | `salbutamol`, `nocturia`, `recurrent`, `bilateral peripheral oedema` | Should have recovered. `salbutamol`/`Ventolin` is the same brand→generic step the judge got right for `paracetamol`/`Tylenol`, so this is model capability or framing, not a design limit. A stronger judge or MiniCheck is the lever. |
+| **corpus artifact** | `pneumonia`, `bronchitis` | The judge is arguably **right**. These are the two *specialists'* differentials; the transcript alone does not establish either. The premise is transcript-only, so the corpus asks the wrong question for these two — not the mechanism failing. Fix the corpus, not the sensor. |
+| **genuinely unverifiable** | `six-day history`, `capillary blood glucose` | Correct to flag. "Six days" from "last Tuesday" needs today's date; "capillary" is a qualifier the transcript never states. |
+
+So the honest recovery ceiling on this corpus is nearer 14/16 than 16/16, and 50% is a
+**floor** measured on a 4B quantized judge — not a ceiling.
+
+### 5.3 What was built
+
+| file | role |
+|---|---|
+| `harness/eval/entity_grounding_corpus.py` | The two-arm corpus: 16 should-recover, 12 should-flag. |
+| `harness/sensors/inferential/entity_grounding.py` | The sensor: lexical floor + entailment on the residue, one class for both directions. |
+| `harness/eval/entity_grounding_parity.py` | The P5 calibration runner + `JudgeEntailer` (eval-only adapter). |
+| `harness/sensors/aggregator.py` | `SUPERSEDED_BY` + severity registration for both inferential names. |
+| `tests/unit/sensors/test_entity_grounding_corpus_task671.py` | P1 control. |
+| `tests/unit/sensors/test_entity_grounding_task671.py` | P3 contract (16 tests). |
+| `tests/unit/sensors/test_aggregator_supersede_task671.py` | P4 supersede + both failure traps (9 tests). |
+| `tests/unit/sensors/test_adjudication_penalty_task664.py` | P6 lock docstring updated, assertions unchanged. |
+
+### 5.4 Three things the process caught that a green test run would not have
+
+1. **P0 refuted its own author's best idea.** The §2.4 ontology-code lead looked strong from
+   code reading, and measured 0% effective bridge. The gate written *before* the measurement
+   is what made deferring it the default instead of a judgement call under sunk cost.
+2. **The P1 control caught a defect in the corpus itself.** `chest pain` was carried over as
+   an "abstraction" but is a verbatim repeat, which leaked lexical credit into the
+   should-recover arm and let the incumbent separate the arms 1/6. Without that control the
+   later recovery number would have been partly unearned.
+3. **The first P5 run reported a false result.** It printed "retention 100%, recovery 0%,
+   FAIL" — which is exactly what a perfectly safe, perfectly useless mechanism looks like.
+   The real cause was that LM Studio had **no model loaded**, every call raised, and the
+   sensor's (correct, production-appropriate) fallback to lexical made the outage invisible.
+   The runner now preflights the backend and **aborts without printing scores**, because an
+   instrument that cannot distinguish a dead backend from a useless mechanism is not an
+   instrument.
+
+### 5.5 Evidence
+
+```
+pnpm harness:test --no-cov
+  4 failed, 1156 passed, 4 skipped
+
+pnpm harness:test -k "replay_compat or adjudication_penalty or task671 or aggregator"
+  78 passed, 1086 deselected
+
+pnpm harness:lint       All checks passed!
+pnpm harness:typecheck  Success: no issues found in 99 source files
+```
+
+The 4 failures are the pre-existing ones TASK-664 §0 documents (`test_otel_tracing_task636`
+×3 + `test_qdrant_api_key` ×1 — all assert a variable is unset that `.env.dev` sets). They
+fail identically on the merge commit, before any TASK-671 change. **No regressions.**
+Replay-compat is green; `workflows.py` was not modified.
+
+### 5.6 Remaining — the activity wiring, stopped deliberately
+
+The aggregator knows how to combine the new sensors, and they are fully tested, but nothing
+in `run_inferential_sensors` **constructs** them yet. That last step needs entity lists on
+`RunInferentialSensorsInput` (additive-optional, replay-safe — the established pattern), and
+it was not done here for a safety reason rather than a time one:
+
+> **`ensure_inferential_egress_safe` redacts `note_text`, `transcript_text`, `citations_map`
+> and `knowledge_chunks`. It does not cover entity surface forms.** Wiring the sensor without
+> extending that guard would open a new PHI egress path to a cloud judge — entity spans are
+> exactly the identifying clinical detail the guard exists to catch.
+
+So the correct next change is: extend the PHI egress guard to entity text **first**, with its
+own tests, then wire the activity behind a kill-switch defaulting OFF. That is a
+safety-critical edit to a guard, and it deserves its own review rather than being appended to
+this one.
+
+Until then the escalation is **inert in production** — the aggregator's supersede is a no-op
+because the inferential entity results never appear, and the gate behaves exactly as it does
+today (`test_no_escalation_leaves_the_incumbent_behaviour_untouched` locks that).
+
+Also still open: `atomic_fact`/MiniCheck weights remain unstaged, so the deterministic NLI
+upgrade behind the same interface is unmeasured; and the `pneumonia`/`bronchitis` corpus
+artifact in §5.2 should be resolved by giving those cases a specialist-view premise.
 
 ---
 
@@ -433,3 +543,8 @@ _(to be completed during implementation)_
   identifies unused ontology codes already present in `SensorContext` as a deterministic
   discriminator that does not violate the §1.2 constraint. Plan status: **Pending user
   approval** — no code written.
+- **2026-08-12** — P0–P3, P5, P6 implemented; P4 complete in the aggregator only. P0 refuted
+  the ontology-code lead (0% effective bridge) and P2 was deferred per its own gate. P5
+  measured **50% recovery / 100% retention, zero unsafe flips** against the live judge —
+  joint gate PASS. Activity wiring deliberately withheld pending a PHI-egress-guard
+  extension (§5.6); the escalation is inert in production until then. Status → Review.

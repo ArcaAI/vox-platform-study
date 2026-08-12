@@ -52,7 +52,12 @@ DEFAULT_SOAP_SECTIONS: tuple[str, ...] = ("S", "O", "A", "P")
 # auto-regenerated). Inferential names are string literals (not imported) to keep
 # this module pure/dependency-light; the aggregator tests import the sensors' NAME
 # constants and assert membership here, guarding against drift.
-HIGHEST_HARM_SENSORS: tuple[str, ...] = (entity_faithfulness.NAME, numeric_dose.NAME, "safety")
+HIGHEST_HARM_SENSORS: tuple[str, ...] = (
+    entity_faithfulness.NAME,
+    "entity_faithfulness_inferential",
+    numeric_dose.NAME,
+    "safety",
+)
 
 # Sensors whose failures are plausibly fixed by re-generating the note (REGEN).
 # ``"groundedness"`` is the inferential per-claim entailment gate, and
@@ -64,11 +69,30 @@ HIGHEST_HARM_SENSORS: tuple[str, ...] = (entity_faithfulness.NAME, numeric_dose.
 REGEN_FIXABLE_SENSORS: tuple[str, ...] = (
     schema_validity.NAME,
     coverage_omission.NAME,
+    "coverage_omission_inferential",
     citation_presence.NAME,
     "groundedness",
     "citation_verify",
     "atomic_fact",
 )
+
+# The inference-aware entity sensors REPLACE their lexical counterparts in the
+# decision when they are present. Both members of a pair answer the same question over the
+# same denominator; the inferential one is the lexical verdict plus recovery of entities
+# entailed by (rather than copied from) the source, so counting both would re-apply the very
+# penalty the escalation exists to remove — the lexical result would still FLAG.
+#
+# The severity of each inferential name is registered above to MATCH its counterpart
+# (faithfulness → highest-harm FLAG, coverage → regen-fixable). Registering the supersede
+# without registering the severity would drop the entity check out of the decision entirely
+# and silently auto-PASS; ``test_superseding_preserves_severity`` guards exactly that.
+#
+# A superseded result stays in ``scores`` — the lexical number is what makes a recovery
+# visible and auditable after the fact.
+SUPERSEDED_BY: dict[str, str] = {
+    "entity_faithfulness_inferential": entity_faithfulness.NAME,
+    "coverage_omission_inferential": coverage_omission.NAME,
+}
 
 
 class GateDecision(StrEnum):
@@ -104,10 +128,22 @@ def aggregate(
     """Combine ``results`` into a :class:`Verdict` using the fail-safe policy."""
     by_name = {r.name: r for r in results}
     scores = _scores(results)
+    # Every name that RAN, captured before superseding. The ``expected`` completeness check
+    # below must run against this, not the post-supersede map — a superseded sensor did run,
+    # and treating it as missing would turn the escalation into a blanket FLAG.
+    ran = set(by_name)
+
+    # Drop each lexical entity result whose inference-aware counterpart ran. Applied
+    # BEFORE every decision branch (including the degraded check) so a superseded lexical
+    # result cannot flag through any path. ``scores`` deliberately keeps both.
+    for inferential_name, lexical_name in SUPERSEDED_BY.items():
+        if inferential_name in by_name:
+            by_name.pop(lexical_name, None)
+    results = [r for r in results if r.name in by_name]
 
     is_degraded = bool(degraded) or any(r.degraded for r in results)
     if expected is not None:
-        is_degraded = is_degraded or any(name not in by_name for name in expected)
+        is_degraded = is_degraded or any(name not in ran for name in expected)
     if is_degraded:
         flagged = dedupe(claim for r in results for claim in r.claims_flagged)
         return Verdict(decision=GateDecision.FLAG, claims_flagged=flagged, scores=scores)
