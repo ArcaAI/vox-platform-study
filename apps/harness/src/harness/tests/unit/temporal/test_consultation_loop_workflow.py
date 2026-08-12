@@ -168,14 +168,34 @@ class TestWorkflowIdentity:
         """
         assert set(LOOP_ACTION_REGISTRY) == set(LOOP_ACTION_KEYS)
 
-    def test_registry_implements_the_four_actions_this_ticket_ships(self):
+    def test_the_four_mechanical_actions_are_implemented(self):
+        """The four TASK-662 backed are still backed.
+
+        This assertion used to be an EQUALITY against exactly these four, which
+        also encoded "and the other three are not backed". TASK-664 backed the
+        remaining three (`vision.extract_text`, `document.extract_text`,
+        `nlp.extract_entities`), so the equality moved to
+        `test_reasoning_loop_workflow.py::test_every_canonical_action_is_now_backed`
+        and what belongs HERE is the narrower claim this ticket owns: the
+        mechanical four still work.
+        """
         implemented = {key for key, spec in LOOP_ACTION_REGISTRY.items() if spec.implemented}
-        assert implemented == {
+        assert implemented >= {
             LOOP_ACTION_LIVEDOC_START,
             LOOP_ACTION_LIVEDOC_STOP,
             LOOP_ACTION_CLIENT_EMIT,
             LOOP_ACTION_HARNESS_FINALIZE,
         }
+
+    def test_the_mechanical_four_do_not_derive_context(self):
+        """Only TASK-664's three derivers re-enter output as context."""
+        for key in (
+            LOOP_ACTION_LIVEDOC_START,
+            LOOP_ACTION_LIVEDOC_STOP,
+            LOOP_ACTION_CLIENT_EMIT,
+            LOOP_ACTION_HARNESS_FINALIZE,
+        ):
+            assert LOOP_ACTION_REGISTRY[key].derives_context is False
 
 
 class TestPinnedConfig:
@@ -331,10 +351,22 @@ class TestCascadeTermination:
         assert {e.reason for e in skipped} == {LOOP_SKIP_BUDGET_EXHAUSTED}
 
     @pytest.mark.asyncio
-    async def test_an_unimplemented_action_is_reported_not_silently_dropped(self):
+    async def test_an_unregistered_action_is_reported_not_silently_dropped(self):
+        """An action key with no registry entry at all is an OBSERVABLE skip.
+
+        Rewritten by TASK-664. This case originally used `vision.extract_text`,
+        which was then declared-but-unbacked; TASK-664 backed all three such
+        keys, so the only remaining way to reach this branch is a key that is not
+        in the registry — e.g. a gateway sending an action from a newer
+        vocabulary than this worker knows.
+
+        The property under test is unchanged and is the one that matters: an
+        action the loop cannot perform is REPORTED, never silently dropped. A
+        silent no-op is indistinguishable from success on the client's feed.
+        """
         config = default_loop_config(
             subscriptions=[
-                LoopSubscription(kind_key="scan", actions=["vision.extract_text"]),
+                LoopSubscription(kind_key="scan", actions=["imaging.measure_lesion"]),
             ]
         )
         async with _LoopHarness(LoopStubConfig(config=config)) as h:

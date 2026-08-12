@@ -89,11 +89,15 @@ from harness.temporal.claim_check import (
     maybe_offload,
 )
 from harness.temporal.models import (
+    LOOP_EVENT_ADJUDICATED,
+    PRIMARY_ONLY_OUTPUT_KINDS,
     ApplyRedactionInput,
     ApplyRedactionResult,
     AssembleInput,
     CallMcpToolInput,
     ConsultationLoopConfig,
+    DeriveContextInput,
+    DeriveContextResult,
     EmitLoopEventInput,
     EmitLoopEventResult,
     EntitiesResult,
@@ -113,6 +117,10 @@ from harness.temporal.models import (
     McpToolCallResult,
     PersistDraftInput,
     PersistEntitiesInput,
+    PlanDecision,
+    PlanLoopInput,
+    PlannedSpecialist,
+    RecordAdjudicationInput,
     RecordGateInput,
     ReportProgressInput,
     ReportProgressResult,
@@ -121,6 +129,9 @@ from harness.temporal.models import (
     RetrievedContext,
     RunInferentialSensorsInput,
     RunSensorsInput,
+    SpecialistAnalysisInput,
+    SpecialistFinding,
+    SpecialistResult,
     TrajectoryContext,
 )
 from harness.temporal.prompt_cache import (
@@ -2240,6 +2251,383 @@ DOCUMENT_ACTIVITIES: list[Callable[..., Any]] = [
     report_progress,
 ]
 
+# ---------------------------------------------------------------------------
+# Reasoning lane (TASK-664)
+#
+# Four concerns, all of them activities:
+#
+#   * ``plan_reasoning``     — the LLM planner. An ACTIVITY, never a workflow-body
+#                              call, so its decision is recorded in history and a
+#                              replay reuses it instead of re-rolling the model (C1).
+#   * ``run_specialist``     — one specialist's analysis (also a model call).
+#   * ``record_adjudication``— publishes the primary's reconciliation to the
+#                              inspection surface.
+#   * the three ``*_extract_*`` derivers that back the keys TASK-662 declared
+#     but left unimplemented.
+#
+# Every one of them FAILS SAFE. A planner that cannot answer returns a degraded
+# decision dispatching nothing; a deriver that cannot extract returns
+# ``derived=False``. Neither raises, because neither is allowed to take down a
+# clinical consultation — the loop degrades, it does not abort (TASK-654 K7).
+# ---------------------------------------------------------------------------
+
+_PLAN_TIMEOUT_S = 60.0
+_SPECIALIST_TIMEOUT_S = 90.0
+
+# Bounds what a single planner answer may schedule, independently of the
+# workflow's own budget. Belt and braces: a model that returns a thousand
+# specialists must not be able to spend the whole consultation's budget in one
+# decision before the workflow ever sees the list.
+_PLAN_MAX_DISPATCH = 16
+
+_PLANNER_SYSTEM_PROMPT = (
+    "You are the primary clinical documentation agent coordinating specialist "
+    "reviewers during a live consultation. Decide WHICH specialists should "
+    "review the new context, and why. Do not write clinical content, do not "
+    "summarise, and do not produce a note. Answer with JSON only: "
+    '{"dispatch": [{"agent_id": "...", "kind_key": "...", "reason": "..."}], '
+    '"rationale": "..."}'
+)
+
+_SPECIALIST_SYSTEM_PROMPT = (
+    "You are a specialist reviewer. Read the supplied consultation context and "
+    "return discrete findings within your declared output scope. Return claims, "
+    "never prose, and never a clinical note. Answer with JSON only: "
+    '{"findings": [{"output_kind": "...", "statement": "...", "confidence": 0.0}]}'
+)
+
+
+def _json_block(raw: str) -> dict[str, Any]:
+    """Best-effort JSON object out of a model answer. Never raises."""
+    text = (raw or "").strip()
+    if text.startswith("```"):
+        text = text.split("```")[1] if "```" in text[3:] else text.strip("`")
+        if text.lstrip().startswith("json"):
+            text = text.lstrip()[4:]
+    start, end = text.find("{"), text.rfind("}")
+    if start == -1 or end <= start:
+        return {}
+    try:
+        parsed = json.loads(text[start : end + 1])
+    except (ValueError, TypeError):
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+@activity.defn
+async def plan_reasoning(payload: PlanLoopInput) -> PlanDecision:
+    """Decide which specialists review the newly arrived context. RECORDED.
+
+    Being an activity is the entire point (TASK-654 D3 / C1): the returned
+    ``PlanDecision`` lands in workflow history, so replaying the workflow reuses
+    that exact decision and never calls the model again. A planner invoked from
+    the workflow body would make every replay non-deterministic.
+
+    ``reasoning`` is requested here — planning is precisely where the evidence
+    says reasoning helps. It is NOT requested anywhere on the note-generation
+    path (arXiv 2605.24902).
+
+    Fails SAFE: any transport, parse or validation failure yields a degraded
+    decision with an EMPTY dispatch list. A guessed roster of clinical
+    specialists is worse than none, so the planner never falls back to "run
+    everything".
+    """
+    plan_id = f"{payload.consultation_id}:{payload.plan_seq}"
+    candidates = payload.candidates[: payload.max_specialists]
+    if not candidates:
+        return PlanDecision(plan_id=plan_id, dispatch=[], rationale="no candidate specialists")
+
+    allowed = {agent.agent_id: agent for agent in candidates}
+    roster = "\n".join(
+        f"- {a.agent_id} (slug={a.slug or '-'}) reads={a.subscribed_kinds} "
+        f"writes={a.write_scope} goal={a.goal or '-'}"
+        for a in candidates
+    )
+    prompt = (
+        f"Consultation goal: {payload.goal or 'produce one reconciled clinical note'}\n"
+        f"New context kinds since the last plan: {sorted(set(payload.trigger_kinds))}\n"
+        f"Available specialists:\n{roster}\n\n"
+        "Dispatch only specialists whose read scope covers a new kind."
+    )
+
+    settings = get_settings()
+    try:
+        result = await _smr_client(settings).generate(
+            prompt=prompt,
+            system_prompt=_PLANNER_SYSTEM_PROMPT,
+            temperature=0.0,
+            idempotency_key=f"plan:{plan_id}",
+            context={"reasoning": payload.reasoning, "task": "harness.loop.plan"},
+        )
+    except Exception as exc:  # noqa: BLE001 — degrade, never fail the consultation
+        activity.logger.warning(
+            "harness.loop.plan_failed",
+            extra={"consultation_id": payload.consultation_id, "error": str(exc)},
+        )
+        return PlanDecision(plan_id=plan_id, dispatch=[], degraded=True, rationale=str(exc))
+
+    parsed = _json_block(result.content)
+    dispatch: list[PlannedSpecialist] = []
+    for entry in parsed.get("dispatch") or []:
+        if not isinstance(entry, dict):
+            continue
+        agent_id = entry.get("agent_id")
+        kind_key = entry.get("kind_key")
+        if not isinstance(agent_id, str) or not isinstance(kind_key, str):
+            continue
+        agent = allowed.get(agent_id)
+        # The model may only schedule an agent that EXISTS and that actually
+        # subscribes to the kind. A hallucinated agent id or a widened read scope
+        # is dropped here rather than trusted downstream.
+        if agent is None or not agent.reads(kind_key):
+            continue
+        reason = entry.get("reason")
+        dispatch.append(
+            PlannedSpecialist(
+                agent_id=agent_id,
+                kind_key=kind_key,
+                reason=reason if isinstance(reason, str) else "",
+            )
+        )
+        if len(dispatch) >= _PLAN_MAX_DISPATCH:
+            break
+
+    rationale = parsed.get("rationale")
+    return PlanDecision(
+        plan_id=plan_id,
+        dispatch=dispatch,
+        rationale=rationale if isinstance(rationale, str) else "",
+        model=result.model or None,
+        degraded=not parsed,
+    )
+
+
+@activity.defn
+async def run_specialist(payload: SpecialistAnalysisInput) -> SpecialistResult:
+    """One specialist's review of its OWN scoped slice of the consultation.
+
+    The context it receives was already filtered to its subscribed kinds by the
+    workflow — this activity cannot widen its own read scope because it is never
+    handed anything outside it.
+
+    Findings outside the declared ``write_scope`` are refused here as well as in
+    the parent. The parent's check is the authoritative one (enforcement outside
+    agent code, TASK-654 §4.6); this one exists so a mis-scoped agent is visible
+    in its own result rather than only as a parent-side drop.
+    """
+    settings = get_settings()
+    body = "\n\n".join(
+        f"[{item.kind_key or 'context'} {item.context_item_id}]\n{item.text}"
+        for item in payload.context
+    )
+    prompt = (
+        f"Your role: {payload.agent_slug or payload.agent_id}\n"
+        f"Your goal: {payload.goal or 'review the context within your specialty'}\n"
+        f"Output kinds you may emit: {payload.write_scope}\n\n"
+        f"Consultation context:\n{body}"
+    )
+
+    try:
+        result = await _smr_client(settings).generate(
+            prompt=prompt,
+            system_prompt=_SPECIALIST_SYSTEM_PROMPT,
+            temperature=0.0,
+            idempotency_key=f"spec:{payload.plan_id}:{payload.agent_id}:{payload.kind_key}",
+            context={"reasoning": payload.reasoning, "task": "harness.loop.specialist"},
+        )
+    except Exception as exc:  # noqa: BLE001 — one specialist failing is isolated
+        activity.logger.warning(
+            "harness.loop.specialist_failed",
+            extra={
+                "consultation_id": payload.consultation_id,
+                "agent_id": payload.agent_id,
+                "error": str(exc),
+            },
+        )
+        raise
+
+    allowed = set(payload.write_scope)
+    findings: list[SpecialistFinding] = []
+    refused: list[str] = []
+    for entry in _json_block(result.content).get("findings") or []:
+        if not isinstance(entry, dict):
+            continue
+        output_kind = entry.get("output_kind")
+        statement = entry.get("statement")
+        if not isinstance(output_kind, str) or not isinstance(statement, str):
+            continue
+        if output_kind not in allowed or output_kind in PRIMARY_ONLY_OUTPUT_KINDS:
+            refused.append(output_kind)
+            continue
+        raw_confidence = entry.get("confidence")
+        confidence = float(raw_confidence) if isinstance(raw_confidence, int | float) else 0.0
+        findings.append(
+            SpecialistFinding(
+                output_kind=output_kind,
+                statement=statement,
+                confidence=max(0.0, min(1.0, confidence)),
+                evidence_context_item_ids=[item.context_item_id for item in payload.context],
+            )
+        )
+
+    return SpecialistResult(
+        agent_id=payload.agent_id,
+        plan_id=payload.plan_id,
+        kind_key=payload.kind_key,
+        findings=findings,
+        out_of_scope_findings=refused,
+    )
+
+
+@activity.defn
+async def record_adjudication(payload: RecordAdjudicationInput) -> EmitLoopEventResult:
+    """Publish the primary's reconciliation to the inspection surface (E12).
+
+    Rides the existing loop-event plane rather than inventing a second transport:
+    the record carries agent ids, output kinds and short statements — the same
+    class of content the feed already relays — and never note or transcript text.
+
+    Fire-and-forget, like every other loop event: a down feed must not cost the
+    consultation its adjudication, which is also recorded in workflow history.
+    """
+    settings = get_settings()
+    try:
+        ok = await _loop_event_api_client(settings).report_loop_event(
+            payload.consultation_id,
+            tenant_id=payload.tenant_id,
+            event_type=LOOP_EVENT_ADJUDICATED,
+            run_id=activity.info().workflow_run_id,
+            detail=payload.record.model_dump(mode="json"),
+        )
+        return EmitLoopEventResult(emitted=ok)
+    except Exception as exc:  # noqa: BLE001 — best-effort by design, never raise
+        activity.logger.warning(
+            "harness.loop.adjudication_publish_failed",
+            extra={"consultation_id": payload.consultation_id, "error": str(exc)},
+        )
+        return EmitLoopEventResult(emitted=False)
+
+
+async def _resolve_derive_text(settings: Settings, payload: DeriveContextInput) -> str:
+    """The item's text, resolving a claim-check ref when the payload was offloaded.
+
+    Reuses the existing ``_resolve_ref`` edge helper rather than adding a second
+    inline-or-ref convention (TASK-662 reused ``claim_check.py`` for the same reason).
+    """
+    return await _resolve_ref(settings, payload.text, payload.text_ref)
+
+
+def _derived_kind(kind_key: str | None, suffix: str) -> str:
+    """Deterministic kind key for a derived item — `<parent>_<suffix>`."""
+    return f"{kind_key or 'context'}_{suffix}"
+
+
+@activity.defn
+async def vision_extract_text(payload: DeriveContextInput) -> DeriveContextResult:
+    """Extract text from an IMAGE context item (TASK-654 E3).
+
+    Backs `vision.extract_text`, which TASK-662 declared but left dispatching as
+    an `unsupported_action` skip. Uses the vision capability TASK-657 shipped in
+    SMR. Its output re-enters the context bus one depth deeper, which is what
+    makes image -> text the same mechanism as audio -> transcript (§4.2).
+    """
+    settings = get_settings()
+    source = await _resolve_derive_text(settings, payload)
+    try:
+        result = await _smr_client(settings).generate(
+            prompt=(
+                "Transcribe all legible text in this clinical image verbatim. "
+                "Do not interpret, diagnose or summarise.\n\n"
+                f"{source}"
+            ),
+            temperature=0.0,
+            idempotency_key=f"vision:{payload.context_item_id}",
+            context={"task": "harness.loop.vision_extract", "vision": True},
+        )
+    except Exception as exc:  # noqa: BLE001 — a dead branch of the cascade, not an error
+        activity.logger.warning(
+            "harness.loop.vision_extract_failed",
+            extra={"context_item_id": payload.context_item_id, "error": str(exc)},
+        )
+        return DeriveContextResult(derived=False)
+
+    text = (result.content or "").strip()
+    if not text:
+        return DeriveContextResult(derived=False)
+    return DeriveContextResult(
+        derived=True,
+        context_item_id=f"{payload.context_item_id}:vision",
+        kind_key=_derived_kind(payload.kind_key, "text"),
+        text=text,
+    )
+
+
+@activity.defn
+async def document_extract_text(payload: DeriveContextInput) -> DeriveContextResult:
+    """Extract text from a DOCUMENT context item (TASK-654 §4.1 DOCUMENT primitive).
+
+    Backs `document.extract_text`. The gateway owns OCR (`OcrEnrichmentProcessor`
+    -> NLP `/extract`), so this asks the gateway for the item's extracted text
+    rather than opening a second, divergent extraction path.
+    """
+    settings = get_settings()
+    try:
+        text = await _api_client(settings).extract_document_text(
+            payload.consultation_id,
+            context_item_id=payload.context_item_id,
+            tenant_id=payload.tenant_id,
+        )
+    except Exception as exc:  # noqa: BLE001 — a dead branch of the cascade, not an error
+        activity.logger.warning(
+            "harness.loop.document_extract_failed",
+            extra={"context_item_id": payload.context_item_id, "error": str(exc)},
+        )
+        return DeriveContextResult(derived=False)
+
+    text = (text or "").strip()
+    if not text:
+        return DeriveContextResult(derived=False)
+    return DeriveContextResult(
+        derived=True,
+        context_item_id=f"{payload.context_item_id}:doctext",
+        kind_key=_derived_kind(payload.kind_key, "text"),
+        text=text,
+    )
+
+
+@activity.defn
+async def nlp_extract_entities(payload: DeriveContextInput) -> DeriveContextResult:
+    """Extract clinical entities from a TEXT context item.
+
+    Backs `nlp.extract_entities` using the SAME `classify_tokens` call the
+    document workflow's `extract_entities` activity uses — one NER path, not two.
+    The derived item carries the entity surfaces so a downstream subscription can
+    act on them.
+    """
+    settings = get_settings()
+    source = await _resolve_derive_text(settings, payload)
+    if not source.strip():
+        return DeriveContextResult(derived=False)
+    try:
+        entities = await _nlp_client(settings).classify_tokens(source)
+    except Exception as exc:  # noqa: BLE001 — a dead branch of the cascade, not an error
+        activity.logger.warning(
+            "harness.loop.nlp_extract_failed",
+            extra={"context_item_id": payload.context_item_id, "error": str(exc)},
+        )
+        return DeriveContextResult(derived=False)
+
+    surfaces = [e.text for e in entities if e.text]
+    if not surfaces:
+        return DeriveContextResult(derived=False)
+    return DeriveContextResult(
+        derived=True,
+        context_item_id=f"{payload.context_item_id}:entities",
+        kind_key=_derived_kind(payload.kind_key, "entities"),
+        text="; ".join(surfaces),
+    )
+
+
 # Registered on the worker alongside ``DOCUMENT_ACTIVITIES``. Kept a SEPARATE
 # list so the loop's surface is legible and so nothing here can be mistaken for
 # part of the frozen document loop.
@@ -2248,4 +2636,17 @@ LOOP_ACTIVITIES: list[Callable[..., Any]] = [
     livedoc_start,
     livedoc_stop,
     emit_loop_event,
+]
+
+# TASK-664. A THIRD list, for the same reason `LOOP_ACTIVITIES` is a second one:
+# the deliberative lane is separable from the mechanical loop, and keeping the
+# registration surfaces distinct means a reader can see at a glance which
+# activities carry a model call.
+REASONING_ACTIVITIES: list[Callable[..., Any]] = [
+    plan_reasoning,
+    run_specialist,
+    record_adjudication,
+    vision_extract_text,
+    document_extract_text,
+    nlp_extract_entities,
 ]
