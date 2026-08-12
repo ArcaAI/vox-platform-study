@@ -35,6 +35,30 @@ regression lock on a known measurement limitation, not an aspiration: if someone
 later loosens the sensors so an adjudicated note scores like a parroted one, that
 also lets real fabrication through, and this file must be the thing that fails.
 
+TASK-671 UPDATE — the penalty is now COMPENSATED, not removed
+-------------------------------------------------------------
+TASK-671 addressed this finding, and every assertion below still holds **unchanged and
+on purpose**. It must stay that way.
+
+What TASK-671 changed is the *gate*, not these two sensors. They are still pure lexical
+matchers and still carry the full 94.4% penalty **in isolation**, which is exactly what this
+module measures. The fix
+(:mod:`harness.sensors.inferential.entity_grounding`) keeps the lexical match as the floor
+and escalates only the entities it could not ground to an entailment check, which may
+*withdraw* a flag but never create one. So the isolated-sensor penalty is deliberately
+preserved: it is the conservative floor the escalation stands on. Measured on the two-arm
+corpus, the escalation recovers 8/16 abstracted entities (0% → 50%) while retaining 12/12
+fabrications.
+
+If a future change makes these assertions fail, that means someone loosened the LEXICAL
+sensors themselves — which is the thing TASK-664 §1.4 prohibited and TASK-671 §1.2 carried
+forward, because loosening them enough to admit ``paracetamol`` for ``Tylenol`` admits a
+hallucinated drug name by the same amount. Recovery belongs in the escalation, where it can
+be measured against a fabrication arm. Fix the change, not this file.
+
+Gate-level recovery is asserted separately, in
+``test_aggregator_supersede_task671.py`` and ``test_entity_grounding_task671.py``.
+
 Report:  ``pnpm harness:test -k adjudication_penalty -s``
 """
 

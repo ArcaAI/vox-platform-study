@@ -16,7 +16,6 @@ from __future__ import annotations
 
 from harness.eval.entity_grounding_corpus import CASES, total_abstracted, total_fabricated
 from harness.sensors.base import NEREntity, SensorContext
-from harness.sensors.computational.coverage_omission import CoverageOmissionSensor
 from harness.sensors.computational.entity_faithfulness import EntityFaithfulnessSensor
 
 FAITHFULNESS_THRESHOLD = 1.0
