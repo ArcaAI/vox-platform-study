@@ -68,7 +68,7 @@ describe('env:sync — managed artifacts', () => {
         '.env.sample',
         'apps/admin-console/.env.sample',
         'apps/api/.env.sample',
-        'docs/implementation/TASK-558-Environment-Configuration-Refactor/env-surface.generated.md',
+        'env-surface.generated.md',
         'packages/tools/.env.sample',
         'turbo.json',
       ].sort(),

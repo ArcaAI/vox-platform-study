@@ -72,8 +72,6 @@ import { toEnvVarName, type SettingDescriptor } from '../packages/applications/s
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
-const TICKET_DOC = 'docs/implementation/TASK-558-Environment-Configuration-Refactor';
-
 /** Tiers whose values are supplied through the process environment. */
 const ENV_SUPPLIED_TIERS = new Set(['env', 'vault-kv']);
 
@@ -215,7 +213,7 @@ const BANNER = (source: string) =>
         '# file and the schema disagree. To change a variable, change its DECLARATION',
         '# and regenerate — editing this file is reverted by the next sync.',
         '#',
-        '# Committed example files carry PLACEHOLDERS ONLY, never secrets (plan §9.1 D3).',
+        '# Committed example files carry PLACEHOLDERS ONLY, never secrets.',
         '# ============================================================================',
     ].join('\n');
 
@@ -590,7 +588,7 @@ export function buildArtifacts(): Artifact[] {
         { path: 'packages/tools/.env.sample', content: toolsContent },
         { path: '.env.sample', content: renderConsolidatedSample(apiContent, adminConsoleContent, toolsContent) },
         { path: 'turbo.json', content: renderTurboJson(globalEnv) },
-        { path: `${TICKET_DOC}/env-surface.generated.md`, content: renderDocsTable(globalEnv) },
+        { path: 'env-surface.generated.md', content: renderDocsTable(globalEnv) },
     ];
 }
 
