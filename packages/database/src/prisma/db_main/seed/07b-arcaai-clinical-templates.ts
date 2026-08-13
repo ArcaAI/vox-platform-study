@@ -23,13 +23,18 @@
  * 23 rows: 22 department × visit-type SUMMARY templates (11 v1 departments ×
  * {new referral, follow-up} — exactly v1's `DEPT_VISIT_SCHEMAS` cardinality) +
  * 1 shared TENANT-scoped pre-summary template.
- * Each has a matching v1-content PromptVersion, and each
- * is seeded APPROVED with `approvedVersionNumber = 1` so the resolver serves the
- * pinned `PromptVersion` snapshot (never the mutable `content` row) — the F-01 /
- * F-02 integrity path (see PromptResolutionService.resolveGovernedContent).
+ * Each template carries THREE PromptVersion snapshots — versionNumber 1 (the
+ * original v1 port), 2 (the hardened v2 corpus) and 3 (the current v3 corpus) —
+ * and is seeded APPROVED pinned at `ARCAAI_CLINICAL_APPROVED_VERSION` so the
+ * resolver serves that `PromptVersion` snapshot (never the mutable `content`
+ * row) — the F-01 / F-02 integrity path (see
+ * PromptResolutionService.resolveGovernedContent). Older versions are RETAINED,
+ * never replaced: rollback is `ARCAAI_CLINICAL_APPROVED_VERSION = 2` (or an
+ * `approvedVersionNumber` edit in the console), with no content to restore.
  *
- * The verbatim v1 CONTENT strings live in 07b-arcaai-clinical-content.ts
- * (generated, byte-exact). This module owns only the structure/wiring.
+ * The verbatim CONTENT strings live in 07b-arcaai-clinical-content.ts (v1),
+ * 07b-arcaai-clinical-content-v2.ts (v2) and 07b-arcaai-clinical-content-v3.ts
+ * (v3) — all generated, byte-exact. This module owns only the structure/wiring.
  *
  * ID blocks (documented in 00-constants.ts): ArcaAI tenant templates use the
  * `71000000-…-0001-…` group, slots 010-032; their versions mirror in
@@ -64,6 +69,56 @@ import {
   SURGICAL_ONCOLOGY_FOLLOWUP_CONTENT,
   SURGICAL_ONCOLOGY_NEW_REFERRAL_CONTENT,
 } from './07b-arcaai-clinical-content';
+import {
+  BREAST_ENDOCRINE_FOLLOWUP_CONTENT_V2,
+  BREAST_ENDOCRINE_NEW_REFERRAL_CONTENT_V2,
+  DERMATOLOGY_FOLLOWUP_CONTENT_V2,
+  DERMATOLOGY_NEW_REFERRAL_CONTENT_V2,
+  DIETETICS_FOLLOWUP_CONTENT_V2,
+  DIETETICS_NEW_REFERRAL_CONTENT_V2,
+  HEMATOLOGY_NEW_REFERRAL_CONTENT_V2,
+  HEMATOLOGY_REVISIT_CONTENT_V2,
+  MEDICINE_FOLLOWUP_CONTENT_V2,
+  MEDICINE_NEW_REFERRAL_CONTENT_V2,
+  NEPHROLOGY_FOLLOWUP_CONTENT_V2,
+  NEPHROLOGY_NEW_REFERRAL_CONTENT_V2,
+  NEUROLOGY_FOLLOWUP_CONTENT_V2,
+  NEUROLOGY_NEW_REFERRAL_CONTENT_V2,
+  ORTHOPEDICS_NEW_REFERRAL_CONTENT_V2,
+  ORTHOPEDICS_REVIEW_CONTENT_V2,
+  PRE_SUMMARY_CONTENT_V2,
+  RHEUMATOLOGY_FOLLOWUP_CONTENT_V2,
+  RHEUMATOLOGY_NEW_REFERRAL_CONTENT_V2,
+  SURGERY_FOLLOWUP_CONTENT_V2,
+  SURGERY_NEW_REFERRAL_CONTENT_V2,
+  SURGICAL_ONCOLOGY_FOLLOWUP_CONTENT_V2,
+  SURGICAL_ONCOLOGY_NEW_REFERRAL_CONTENT_V2,
+} from './07b-arcaai-clinical-content-v2';
+import {
+  BREAST_ENDOCRINE_FOLLOWUP_CONTENT_V3,
+  BREAST_ENDOCRINE_NEW_REFERRAL_CONTENT_V3,
+  DERMATOLOGY_FOLLOWUP_CONTENT_V3,
+  DERMATOLOGY_NEW_REFERRAL_CONTENT_V3,
+  DIETETICS_FOLLOWUP_CONTENT_V3,
+  DIETETICS_NEW_REFERRAL_CONTENT_V3,
+  HEMATOLOGY_NEW_REFERRAL_CONTENT_V3,
+  HEMATOLOGY_REVISIT_CONTENT_V3,
+  MEDICINE_FOLLOWUP_CONTENT_V3,
+  MEDICINE_NEW_REFERRAL_CONTENT_V3,
+  NEPHROLOGY_FOLLOWUP_CONTENT_V3,
+  NEPHROLOGY_NEW_REFERRAL_CONTENT_V3,
+  NEUROLOGY_FOLLOWUP_CONTENT_V3,
+  NEUROLOGY_NEW_REFERRAL_CONTENT_V3,
+  ORTHOPEDICS_NEW_REFERRAL_CONTENT_V3,
+  ORTHOPEDICS_REVIEW_CONTENT_V3,
+  PRE_SUMMARY_CONTENT_V3,
+  RHEUMATOLOGY_FOLLOWUP_CONTENT_V3,
+  RHEUMATOLOGY_NEW_REFERRAL_CONTENT_V3,
+  SURGERY_FOLLOWUP_CONTENT_V3,
+  SURGERY_NEW_REFERRAL_CONTENT_V3,
+  SURGICAL_ONCOLOGY_FOLLOWUP_CONTENT_V3,
+  SURGICAL_ONCOLOGY_NEW_REFERRAL_CONTENT_V3,
+} from './07b-arcaai-clinical-content-v3';
 
 const ARCAAI_TENANT_ID = SEED_CUSTOMER_TENANT_IDS.ARCAAI;
 
@@ -117,8 +172,20 @@ export const ARCAAI_CLINICAL_TEMPLATE_IDS = {
 
 // The initial version of each template reuses the template UUID with the `72…`
 // (PromptVersion) prefix — the deterministic cross-reference convention from
-// 07-prompt-template.ts.
-const versionId = (templateId: string): string => `72${templateId.slice(2)}`;
+// 07-prompt-template.ts. Later versions keep that mirror and additionally carry
+// the version number in the THIRD UUID group (the fourth stays the tenant slot),
+// so v1 ids are byte-unchanged and each later version lands in a fresh,
+// collision-free block:
+//   v1  72000000-0000-0000-0001-0000000000XX
+//   v2  72000000-0000-0002-0001-0000000000XX
+//   v3  72000000-0000-0003-0001-0000000000XX
+const versionId = (templateId: string, versionNumber = 1): string => {
+  const mirrored = `72${templateId.slice(2)}`;
+  if (versionNumber === 1) return mirrored;
+  const groups = mirrored.split('-');
+  groups[2] = String(versionNumber).padStart(4, '0');
+  return groups.join('-');
+};
 
 interface ClinicalTemplateSpec {
   id: string;
@@ -376,6 +443,100 @@ const PRE_SUMMARY_SPEC: ClinicalTemplateSpec = {
 const ALL_SPECS: ClinicalTemplateSpec[] = [...SUMMARY_SPECS, PRE_SUMMARY_SPEC];
 
 /**
+ * versionNumber 2 — the "hardened" v2 prompt corpus.
+ *
+ * Same 23 templates, same ids, same headings/order/numbering (one mandated
+ * exception, see 07b-arcaai-clinical-content-v2.ts). v2 exists to close the
+ * reported defect where PREVIOUS CASE NOTES SUMMARY content was paraphrased into
+ * the note as though it had been said in today's consultation: every prompt now
+ * carries the SOURCE-OF-TRUTH PROTOCOL block, every heading declares its
+ * permitted SOURCE, and any borrowed fact must carry its date inline.
+ *
+ * v1 is NOT removed — it stays on disk (07b-arcaai-clinical-content.ts) and in
+ * the database as the versionNumber 1 PromptVersion row, so the v1 body remains
+ * diffable and is a one-field rollback (`approvedVersionNumber = 1`).
+ *
+ * Every id below must appear in ALL_SPECS; `buildVersionRows` throws otherwise,
+ * so a template added to one map and forgotten in the other fails the seed
+ * rather than silently shipping a template stuck on v1.
+ */
+const V2_CONTENT_BY_TEMPLATE_ID: Record<string, string> = {
+  [ARCAAI_CLINICAL_TEMPLATE_IDS.SURGERY_NEW_REFERRAL]: SURGERY_NEW_REFERRAL_CONTENT_V2,
+  [ARCAAI_CLINICAL_TEMPLATE_IDS.SURGERY_FOLLOWUP]: SURGERY_FOLLOWUP_CONTENT_V2,
+  [ARCAAI_CLINICAL_TEMPLATE_IDS.MEDICINE_NEW_REFERRAL]: MEDICINE_NEW_REFERRAL_CONTENT_V2,
+  [ARCAAI_CLINICAL_TEMPLATE_IDS.MEDICINE_FOLLOWUP]: MEDICINE_FOLLOWUP_CONTENT_V2,
+  [ARCAAI_CLINICAL_TEMPLATE_IDS.RHEUMATOLOGY_NEW_REFERRAL]: RHEUMATOLOGY_NEW_REFERRAL_CONTENT_V2,
+  [ARCAAI_CLINICAL_TEMPLATE_IDS.RHEUMATOLOGY_FOLLOWUP]: RHEUMATOLOGY_FOLLOWUP_CONTENT_V2,
+  [ARCAAI_CLINICAL_TEMPLATE_IDS.NEUROLOGY_NEW_REFERRAL]: NEUROLOGY_NEW_REFERRAL_CONTENT_V2,
+  [ARCAAI_CLINICAL_TEMPLATE_IDS.NEUROLOGY_FOLLOWUP]: NEUROLOGY_FOLLOWUP_CONTENT_V2,
+  [ARCAAI_CLINICAL_TEMPLATE_IDS.ORTHOPEDICS_NEW_REFERRAL]: ORTHOPEDICS_NEW_REFERRAL_CONTENT_V2,
+  [ARCAAI_CLINICAL_TEMPLATE_IDS.ORTHOPEDICS_REVIEW]: ORTHOPEDICS_REVIEW_CONTENT_V2,
+  [ARCAAI_CLINICAL_TEMPLATE_IDS.HEMATOLOGY_NEW_REFERRAL]: HEMATOLOGY_NEW_REFERRAL_CONTENT_V2,
+  [ARCAAI_CLINICAL_TEMPLATE_IDS.HEMATOLOGY_REVISIT]: HEMATOLOGY_REVISIT_CONTENT_V2,
+  [ARCAAI_CLINICAL_TEMPLATE_IDS.BREAST_ENDOCRINE_NEW_REFERRAL]: BREAST_ENDOCRINE_NEW_REFERRAL_CONTENT_V2,
+  [ARCAAI_CLINICAL_TEMPLATE_IDS.BREAST_ENDOCRINE_FOLLOWUP]: BREAST_ENDOCRINE_FOLLOWUP_CONTENT_V2,
+  [ARCAAI_CLINICAL_TEMPLATE_IDS.DERMATOLOGY_NEW_REFERRAL]: DERMATOLOGY_NEW_REFERRAL_CONTENT_V2,
+  [ARCAAI_CLINICAL_TEMPLATE_IDS.DERMATOLOGY_FOLLOWUP]: DERMATOLOGY_FOLLOWUP_CONTENT_V2,
+  [ARCAAI_CLINICAL_TEMPLATE_IDS.DIETETICS_NEW_REFERRAL]: DIETETICS_NEW_REFERRAL_CONTENT_V2,
+  [ARCAAI_CLINICAL_TEMPLATE_IDS.DIETETICS_FOLLOWUP]: DIETETICS_FOLLOWUP_CONTENT_V2,
+  [ARCAAI_CLINICAL_TEMPLATE_IDS.NEPHROLOGY_NEW_REFERRAL]: NEPHROLOGY_NEW_REFERRAL_CONTENT_V2,
+  [ARCAAI_CLINICAL_TEMPLATE_IDS.NEPHROLOGY_FOLLOWUP]: NEPHROLOGY_FOLLOWUP_CONTENT_V2,
+  [ARCAAI_CLINICAL_TEMPLATE_IDS.SURGICAL_ONCOLOGY_NEW_REFERRAL]: SURGICAL_ONCOLOGY_NEW_REFERRAL_CONTENT_V2,
+  [ARCAAI_CLINICAL_TEMPLATE_IDS.SURGICAL_ONCOLOGY_FOLLOWUP]: SURGICAL_ONCOLOGY_FOLLOWUP_CONTENT_V2,
+  [ARCAAI_CLINICAL_TEMPLATE_IDS.PRE_SUMMARY]: PRE_SUMMARY_CONTENT_V2,
+};
+
+/**
+ * versionNumber 3 — the current corpus.
+ *
+ * Same 23 templates, same ids. v3 keeps v2's Block A / per-heading `SOURCE:`
+ * machinery and adds, per INTEGRATION_NOTES_v3.md §3:
+ * - a REBUILT pre-summary — provenance date (trailing `(recorded DD-MMM-YYYY)`,
+ *   one per bullet) split from event date (inline, verbatim, never reformatted);
+ *   each diagnosis stated once; already-administered interventions kept as
+ *   status-post entries; Investigations = results only; dose changes shown
+ *   against the previous dose; vitals filtered for significance;
+ * - an English-only pre-summary. `{language_name}` is RETAINED and neutralised
+ *   in the prompt text, so the nine-placeholder contract is unchanged;
+ * - RULE 6 ASR terminology repair of NAMES, gated and always annotated
+ *   `(transcribed as "…")`, with numbers/doses/dates/laterality/site frozen;
+ * - Hematology re-worked against the department's own templates (UHID added;
+ *   Revisit heading 2 → `Primary Diagnosis / Co-morbidities` — the only heading
+ *   rename in the corpus).
+ *
+ * v1 and v2 are NOT removed — both stay on disk and in the database as their own
+ * PromptVersion rows, so each remains diffable and rollback is one field.
+ */
+const V3_CONTENT_BY_TEMPLATE_ID: Record<string, string> = {
+  [ARCAAI_CLINICAL_TEMPLATE_IDS.SURGERY_NEW_REFERRAL]: SURGERY_NEW_REFERRAL_CONTENT_V3,
+  [ARCAAI_CLINICAL_TEMPLATE_IDS.SURGERY_FOLLOWUP]: SURGERY_FOLLOWUP_CONTENT_V3,
+  [ARCAAI_CLINICAL_TEMPLATE_IDS.MEDICINE_NEW_REFERRAL]: MEDICINE_NEW_REFERRAL_CONTENT_V3,
+  [ARCAAI_CLINICAL_TEMPLATE_IDS.MEDICINE_FOLLOWUP]: MEDICINE_FOLLOWUP_CONTENT_V3,
+  [ARCAAI_CLINICAL_TEMPLATE_IDS.RHEUMATOLOGY_NEW_REFERRAL]: RHEUMATOLOGY_NEW_REFERRAL_CONTENT_V3,
+  [ARCAAI_CLINICAL_TEMPLATE_IDS.RHEUMATOLOGY_FOLLOWUP]: RHEUMATOLOGY_FOLLOWUP_CONTENT_V3,
+  [ARCAAI_CLINICAL_TEMPLATE_IDS.NEUROLOGY_NEW_REFERRAL]: NEUROLOGY_NEW_REFERRAL_CONTENT_V3,
+  [ARCAAI_CLINICAL_TEMPLATE_IDS.NEUROLOGY_FOLLOWUP]: NEUROLOGY_FOLLOWUP_CONTENT_V3,
+  [ARCAAI_CLINICAL_TEMPLATE_IDS.ORTHOPEDICS_NEW_REFERRAL]: ORTHOPEDICS_NEW_REFERRAL_CONTENT_V3,
+  [ARCAAI_CLINICAL_TEMPLATE_IDS.ORTHOPEDICS_REVIEW]: ORTHOPEDICS_REVIEW_CONTENT_V3,
+  [ARCAAI_CLINICAL_TEMPLATE_IDS.HEMATOLOGY_NEW_REFERRAL]: HEMATOLOGY_NEW_REFERRAL_CONTENT_V3,
+  [ARCAAI_CLINICAL_TEMPLATE_IDS.HEMATOLOGY_REVISIT]: HEMATOLOGY_REVISIT_CONTENT_V3,
+  [ARCAAI_CLINICAL_TEMPLATE_IDS.BREAST_ENDOCRINE_NEW_REFERRAL]: BREAST_ENDOCRINE_NEW_REFERRAL_CONTENT_V3,
+  [ARCAAI_CLINICAL_TEMPLATE_IDS.BREAST_ENDOCRINE_FOLLOWUP]: BREAST_ENDOCRINE_FOLLOWUP_CONTENT_V3,
+  [ARCAAI_CLINICAL_TEMPLATE_IDS.DERMATOLOGY_NEW_REFERRAL]: DERMATOLOGY_NEW_REFERRAL_CONTENT_V3,
+  [ARCAAI_CLINICAL_TEMPLATE_IDS.DERMATOLOGY_FOLLOWUP]: DERMATOLOGY_FOLLOWUP_CONTENT_V3,
+  [ARCAAI_CLINICAL_TEMPLATE_IDS.DIETETICS_NEW_REFERRAL]: DIETETICS_NEW_REFERRAL_CONTENT_V3,
+  [ARCAAI_CLINICAL_TEMPLATE_IDS.DIETETICS_FOLLOWUP]: DIETETICS_FOLLOWUP_CONTENT_V3,
+  [ARCAAI_CLINICAL_TEMPLATE_IDS.NEPHROLOGY_NEW_REFERRAL]: NEPHROLOGY_NEW_REFERRAL_CONTENT_V3,
+  [ARCAAI_CLINICAL_TEMPLATE_IDS.NEPHROLOGY_FOLLOWUP]: NEPHROLOGY_FOLLOWUP_CONTENT_V3,
+  [ARCAAI_CLINICAL_TEMPLATE_IDS.SURGICAL_ONCOLOGY_NEW_REFERRAL]: SURGICAL_ONCOLOGY_NEW_REFERRAL_CONTENT_V3,
+  [ARCAAI_CLINICAL_TEMPLATE_IDS.SURGICAL_ONCOLOGY_FOLLOWUP]: SURGICAL_ONCOLOGY_FOLLOWUP_CONTENT_V3,
+  [ARCAAI_CLINICAL_TEMPLATE_IDS.PRE_SUMMARY]: PRE_SUMMARY_CONTENT_V3,
+};
+
+/** The version the resolver serves. Roll back by setting this to 2 (or 1). */
+export const ARCAAI_CLINICAL_APPROVED_VERSION = 3;
+
+/**
  * ArcaAI's DEFAULT / FALLBACK templates — what to use when the request carries
  * no department, an unknown department, or a department with no configured
  * agent or visit-type template.
@@ -394,35 +555,77 @@ const ALL_SPECS: ClinicalTemplateSpec[] = [...SUMMARY_SPECS, PRE_SUMMARY_SPEC];
  * → SYSTEM_DEFAULTS.preSummaryPromptId → 503 fail-closed. This seed's PRE_SUMMARY_SPEC
  * is exactly the tenant-tier row that convention matches.
  */
-/** Full PromptTemplate rows — APPROVED + approvedVersionNumber-pinned. */
+const CONTENT_BY_VERSION: Record<number, Record<string, string>> = {
+  2: V2_CONTENT_BY_TEMPLATE_ID,
+  3: V3_CONTENT_BY_TEMPLATE_ID,
+};
+
+/**
+ * Body of `templateId` at `versionNumber`. Version 1 comes from the spec itself
+ * (the original v1 port); every later version is looked up in its own map.
+ *
+ * Throws rather than falling back, so a template added to ALL_SPECS but
+ * forgotten in a version map fails the seed instead of silently shipping a
+ * stale body under a newer version number.
+ */
+const contentFor = (spec: ClinicalTemplateSpec, versionNumber: number): string => {
+  if (versionNumber === 1) return spec.content;
+  const content = CONTENT_BY_VERSION[versionNumber]?.[spec.id];
+  if (!content) throw new Error(`No v${versionNumber} clinical prompt content for template ${spec.id}`);
+  return content;
+};
+
+/** Every version seeded, oldest first. v1 and v2 are retained, not replaced. */
+const ARCAAI_CLINICAL_SEEDED_VERSIONS = [1, 2, 3] as const;
+
+const VERSION_CHANGE_REASON: Record<(typeof ARCAAI_CLINICAL_SEEDED_VERSIONS)[number], string> = {
+  1: 'Initial version (ported from HOPE v1 SMR prompt library)',
+  2: 'v2 hardened prompt corpus — source-of-truth protocol, per-heading SOURCE lines, dated borrowed facts, gated ASR terminology repair (names only)',
+  3: 'v3 corpus — pre-summary rebuilt (provenance vs event dates, deduplicated diagnoses, status-post interventions, dose-change visibility, English-only), RULE 6 ASR name repair required and annotated, Hematology re-worked against the department templates',
+};
+
+/**
+ * Full PromptTemplate rows — APPROVED + approvedVersionNumber-pinned.
+ *
+ * `content` and the pin both track ARCAAI_CLINICAL_APPROVED_VERSION (2), so the
+ * resolver serves the v2 snapshot. The v1 body is unchanged and still seeded as
+ * the versionNumber 1 PromptVersion row below.
+ */
 export const ARCAAI_CLINICAL_TEMPLATES = ALL_SPECS.map((spec) => ({
   id: spec.id,
   tenantId: ARCAAI_TENANT_ID,
   name: spec.name,
   description: spec.description,
-  content: spec.content,
+  content: contentFor(spec, ARCAAI_CLINICAL_APPROVED_VERSION),
   category: 'SUMMARY' as PromptTemplateCategory,
   status: 'APPROVED' as PromptTemplateStatus,
   scope: spec.scope,
   variables: (spec.variables ?? null) as Prisma.InputJsonValue | null,
-  currentVersionNumber: 1,
-  // Pin the approval to v1 so the resolver serves the PromptVersion snapshot
-  // (never the mutable content row) — avoids the F-02 unpinned-latest caveat.
-  approvedVersionNumber: 1,
+  currentVersionNumber: ARCAAI_CLINICAL_APPROVED_VERSION,
+  // Pin the approval to a concrete version so the resolver serves the
+  // PromptVersion snapshot (never the mutable content row) — avoids the F-02
+  // unpinned-latest caveat.
+  approvedVersionNumber: ARCAAI_CLINICAL_APPROVED_VERSION,
   departmentId: spec.departmentId,
   tags: spec.tags,
 }));
 
-/** One v1-content PromptVersion snapshot per template. */
-export const ARCAAI_CLINICAL_VERSIONS = ARCAAI_CLINICAL_TEMPLATES.map((tpl) => ({
-  id: versionId(tpl.id),
-  tenantId: ARCAAI_TENANT_ID,
-  promptTemplateId: tpl.id,
-  versionNumber: 1,
-  content: tpl.content,
-  changeReason: 'Initial version (ported from HOPE v1 SMR prompt library)',
-  changedBy: SYSTEM_USER_ID,
-}));
+/**
+ * Two PromptVersion snapshots per template: the original v1 port, retained
+ * verbatim, and the v2 hardened body that is now approved. Ordered v1-then-v2 so
+ * the seeder writes them in version order.
+ */
+export const ARCAAI_CLINICAL_VERSIONS = ARCAAI_CLINICAL_SEEDED_VERSIONS.flatMap((versionNumber) =>
+  ALL_SPECS.map((spec) => ({
+    id: versionId(spec.id, versionNumber),
+    tenantId: ARCAAI_TENANT_ID,
+    promptTemplateId: spec.id,
+    versionNumber,
+    content: contentFor(spec, versionNumber),
+    changeReason: VERSION_CHANGE_REASON[versionNumber],
+    changedBy: SYSTEM_USER_ID,
+  })),
+);
 
 /**
  * Seed the ArcaAI clinical prompt library. Runs in Phase 3 AFTER
