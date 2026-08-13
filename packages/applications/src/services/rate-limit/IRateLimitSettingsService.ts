@@ -3,7 +3,7 @@ import { RateLimitTierName, RateLimitTierValue } from './rate-limit.constants';
 
 /**
  * A tier resolved for one tenant, carrying WHICH cascade tier supplied each
- * number (§9.2 L8). The caller needs that to place the value correctly in the
+ * number (every fallback is observable). The caller needs that to place the value correctly in the
  * throttler's precedence chain: a value that came from the TENANT's own row
  * outranks the tenant's plan tier (the tenant deliberately throttled itself
  * harder), while a value that merely fell through to the platform row or the
@@ -42,7 +42,7 @@ export interface IRateLimitSettingsService {
   getTier(name: RateLimitTierName): RateLimitTierValue;
 
   /**
-   * The kill-switch as seen by ONE tenant (TASK-558 lane I).
+   * The kill-switch as seen by ONE tenant.
    *
    * The platform-wide `rate-limit.enabled` master switch stays authoritative:
    * when an operator turns throttling off globally it is off, full stop. On top
@@ -53,7 +53,7 @@ export interface IRateLimitSettingsService {
 
   /**
    * The effective `{ limit, ttl }` for a tier as seen by ONE tenant
-   * (TASK-558 lane I) — the cascade `tenant → SYSTEM → code baseline` with the
+   * the cascade `tenant → SYSTEM → code baseline` with the
    * tenant clamp and the plan ceiling applied.
    *
    * Only the always-on `default` tier has a tenant lane; the opt-in

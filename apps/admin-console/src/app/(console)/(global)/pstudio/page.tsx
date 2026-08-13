@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 
 /**
- * TASK-532 (M-08) — `/pstudio` moved to `/db-studio`.
+ * `/pstudio` moved to `/db-studio`.
  *
  * Kept for ONE release so existing bookmarks and deep links keep working; the
  * nav entry already points at the new route. Delete this folder in the release

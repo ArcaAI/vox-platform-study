@@ -45,7 +45,7 @@ export class SttInternalController {
   constructor(
     private readonly sttInternalService: SttInternalService,
     // Resolves a tenant's decrypted BYO provider overrides for the batch-worker
-    // PULL path (TASK-567 D-3). Optional so positional test construction still
+    // PULL path. Optional so positional test construction still
     // works; the pull route rejects (500-class) when unwired in prod.
     @Optional() @Inject(ITenantSttConfigService) private readonly sttConfig?: ITenantSttConfigService,
     // Re-establishes a SYSTEM-free CLS tenant context around the tenant-scoped
@@ -55,7 +55,7 @@ export class SttInternalController {
     // `X-Internal-Tenant-Id` is honoured (BUG-013 — see `assertPlatformInternalCredential`).
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
     // Records the reaper-built usage summary on the STT-side push-back path
-    // (TASK-615 #13). Optional so positional test construction still works.
+    // . Optional so positional test construction still works.
     @Optional() private readonly streamingSession?: StreamingSessionService,
   ) {}
 
@@ -250,7 +250,7 @@ export class SttInternalController {
   }
 
   /**
-   * The batch-worker PULL path for BYO provider credentials (TASK-567 D-3).
+   * The batch-worker PULL path for BYO provider credentials.
    * Injecting a decrypted key into the Dramatiq queue message is prohibited
    * (PHI posture — secrets never at rest outside Vault ciphertext), so the
    * separate worker process pulls the tenant's decrypted overrides at execution

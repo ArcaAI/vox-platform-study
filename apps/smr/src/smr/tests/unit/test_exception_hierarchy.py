@@ -242,7 +242,7 @@ class TestExceptionHandlerStatusCodes:
 
     @pytest.mark.asyncio
     async def test_handler_returns_correct_status_for_model_not_selected(self):
-        """TASK-579: a cloud provider raising ModelNotSelectedError (no model
+        """A cloud provider raising ModelNotSelectedError (no model
         resolved — never a substituted vendor default) maps to 422, same as
         InputValidationError (its parent)."""
         from smr.core.exception_handlers import smr_exception_handler

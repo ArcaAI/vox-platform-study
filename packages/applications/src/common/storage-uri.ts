@@ -1,11 +1,11 @@
 /**
- * Shared storage-URI parsing (TASK-656).
+ * Shared storage-URI parsing.
  *
  * `MediaEntity.uri` is written by `StorageController.uploadFile` in the
  * canonical `s3://<bucket>/<key>` form. Every consumer that needs to turn a
  * `Media` row back into a `{ bucket, key }` pair for `IBlobStorageService`
  * (presigned GET, raw object fetch, ...) MUST go through this single parser
- * instead of hand-rolling its own regex — before TASK-656 `context.service.ts`
+ * instead of hand-rolling its own regex — previously `context.service.ts`
  * and `smr-proxy.controller.ts` each carried an identical private copy, which
  * is exactly the kind of duplication that lets one copy silently drift from
  * the other.

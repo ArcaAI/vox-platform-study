@@ -6,7 +6,7 @@ import { UsageLedgerServiceModule } from '../../usageLedger';
 import { SttInternalService } from './sttInternal.service';
 
 @Module({
-  // UsageLedgerServiceModule (TASK-615 WS-C) — `IUsageLedgerService` for the
+  // UsageLedgerServiceModule — `IUsageLedgerService` for the
   // `transcribe.batch` AUDIO_SECOND emission on job completion.
   // `CoreUnitOfWorkService` needs no extra import: `CoreDatabaseModule`
   // already provides + exports it.

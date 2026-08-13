@@ -1,9 +1,9 @@
 'use client';
 
 /**
- * Context Schemas screen (TASK-666, tier 30-49) — the first schema builder in
+ * Context Schemas screen (tier 30-49) — the first schema builder in
  * the product. Owns exactly one resource: `ConsultationContextSchema`
- * (TASK-658). Tenant-scoped: elevated sessions must pick a working tenant
+ * . Tenant-scoped: elevated sessions must pick a working tenant
  * before any query mounts; tenant admins are pinned and pass straight
  * through (`WorkingTenantGate`).
  */

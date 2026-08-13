@@ -126,7 +126,7 @@ describe('ApiHealthController', () => {
       expect(result.checks.process.status).toBe('healthy');
     });
 
-    it('reports the real baked build version, not the npm_package_version placeholder (TASK-648 W8)', () => {
+    it('reports the real baked build version, not the npm_package_version placeholder', () => {
       // The API container runs `node dist/main.js` directly, so
       // `npm_package_version` is never injected in any deployed environment
       // and previously always fell back to the `0.1.0` default. `/health`

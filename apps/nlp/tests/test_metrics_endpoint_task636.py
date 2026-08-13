@@ -1,16 +1,16 @@
-"""NLP ``/metrics`` endpoint contract (TASK-636 OBS-02, OBS-03).
+"""NLP ``/metrics`` endpoint contract (OBS-03).
 
 Two defects this file locks down, both found live on 2026-08-08 against
 ``hope-v2-dev`` where ``GET http://hope-nlp:8864/metrics`` returned **404**
 while ``/api/v1/health`` on the same port returned healthy:
 
-OBS-02 — the endpoint was not mounted at all. ``setup_prometheus`` passed
+— the endpoint was not mounted at all. ``setup_prometheus`` passed
 ``should_respect_env_var=True, env_var_name="ENABLE_METRICS"``, and
 ``ENABLE_METRICS`` is set in no environment, so the instrumentator skipped
 both instrumentation and exposition. Every other Python service in the fleet
 gates on its own ``metrics_enabled`` setting instead.
 
-OBS-03 — the same call passed ``metric_namespace="nlp"``, emitting
+— the same call passed ``metric_namespace="nlp"``, emitting
 ``nlp_http_*``. The fleet-wide contract is un-namespaced ``http_*``: the dev
 Prometheus ``metric_relabel_configs`` rule matches ``__name__ =~ "http_.*"``
 to stamp the ``service`` label, and ``PlatformMetricsService`` queries

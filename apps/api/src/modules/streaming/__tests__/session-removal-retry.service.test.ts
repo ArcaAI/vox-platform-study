@@ -77,7 +77,7 @@ describe('SessionRemovalRetryService', () => {
     expect(mockCache.srem).toHaveBeenCalledWith(SESSION_REMOVAL_RETRY_SET_KEY, 'sess-retry');
   });
 
-  // TASK-615 WS-C — `interrupted` is the CALLER's determination (the WS
+  // `interrupted` is the CALLER's determination (the WS
   // gateway's finalizeSession), threaded through enqueue -> every retry
   // attempt unchanged, since this service has no basis of its own to
   // recompute it.

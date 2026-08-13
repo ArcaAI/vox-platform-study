@@ -6,8 +6,8 @@
  * ## One implementation, three consumers
  *
  * This module is the SINGLE implementation of the rule. It originated in
- * `@arcaai/applications` (TASK-658) and was ported twice — into the browser
- * SDK (TASK-665) and the admin console (TASK-666) — because neither can
+ * `@arcaai/applications` and was ported twice — into the browser
+ * SDK and the admin console — because neither can
  * depend on a server-only NestJS package. Three copies of one clinical
  * validation rule drift, and the drift is silent in both directions: a
  * payload the console accepts but the server rejects, or one both accept for
@@ -22,25 +22,24 @@
  * ## Why a subset, and why hand-written
  *
  * The definition is authored by a TENANT and is consumed by three very
- * different things: this evaluator, the admin-console editor (TASK-666) and
- * the SDK codegen CLI (TASK-668). A keyword that any one of them cannot
+ * different things: this evaluator, the admin-console editor and
+ * the SDK codegen CLI. A keyword that any one of them cannot
  * express faithfully is a keyword that must not be authorable at all —
  * otherwise the generated client and the server disagree about what a valid
  * payload is, which in a PHI system is a correctness bug wearing a
  * convenience hat.
  *
- * Two exclusions are therefore hard (execution-plan § TASK-658 "Schema
- * language"):
+ * Two exclusions are therefore hard:
  *
- *  - **`if` / `then` / `else`** — conditional subschemas have no clean
- *    TypeScript equivalent; codegen would have to widen everything to
- *    optional and drop the constraint entirely.
- *  - **`oneOf` without an explicit `discriminator`** — without a
- *    discriminating property a generator cannot emit a tagged union and
- *    instead emits merged property soup, in which every branch's fields look
- *    optional. The discriminator is also what lets THIS evaluator report the
- *    error from the branch the author meant, rather than N confusing branch
- *    errors.
+ * - **`if` / `then` / `else`** — conditional subschemas have no clean
+ * TypeScript equivalent; codegen would have to widen everything to
+ * optional and drop the constraint entirely.
+ * - **`oneOf` without an explicit `discriminator`** — without a
+ * discriminating property a generator cannot emit a tagged union and
+ * instead emits merged property soup, in which every branch's fields look
+ * optional. The discriminator is also what lets THIS evaluator report the
+ * error from the branch the author meant, rather than N confusing branch
+ * errors.
  *
  * Two further limits exist for safety rather than expressiveness: a bounded
  * nesting depth and a bounded node count. An authored document is untrusted
@@ -51,7 +50,7 @@
  * keywords above, so the subset would be documentation rather than
  * enforcement. Keep this package dependency-free — it is bundled into
  * `@arcaai/vox`, whose bundle size is actively policed.
- */
+*/
 
 /** Maximum nesting depth of an authored schema. */
 export const MAX_SCHEMA_DEPTH = 12;

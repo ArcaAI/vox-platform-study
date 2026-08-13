@@ -232,7 +232,7 @@ class TestProviderOverrideNeverLogged:
         assert "byo-lane-fake-bedrock-key" not in repr(req)
 
 
-# --- TASK-572a: new cloud BYO providers (openai / anthropic / vertex) ---------
+# --- new cloud BYO providers (openai / anthropic / vertex) ---------
 
 
 class TestProviderOverrideNewFields:

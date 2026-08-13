@@ -1,10 +1,10 @@
-"""OpenTelemetry setup for TTS (TASK-636 OBS-13).
+"""OpenTelemetry setup for TTS.
 
 Manages traces, logs, and FastAPI/httpx auto-instrumentation. Mirrors the
 pattern in ``apps/smr/src/smr/core/observability.py`` (the reference
 implementation for this fleet), with one deliberate hardening: the whole
 setup is wrapped so a broken/unreachable collector degrades to no-tracing
-instead of taking the process down (TASK-411 invariant — a service may
+instead of taking the process down (a service may
 expose telemetry but must never require a reachable observability backend to
 start or serve traffic).
 

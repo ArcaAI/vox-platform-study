@@ -11,8 +11,8 @@ import { EvalServiceModule } from '../eval/eval.service.module';
 
 /**
  * The module additionally registers the agent golden-library template-resync
- * reconciler and its self-scheduling cron (TASK-548) — the DepartmentAgent
- * sibling of the pipeline resync (TASK-531). Like the pipeline module, the cron
+ * reconciler and its self-scheduling cron — the DepartmentAgent
+ * sibling of the pipeline resync. Like the pipeline module, the cron
  * relies on the app-level `ScheduleModule.forRoot()` (SchedulerRegistry) and
  * `EventEmitterModule.forRoot()` (@OnEvent) globals; `CommonServiceModule`
  * supplies `IAppSettingsService` (the enabled/cron keys, default OFF).

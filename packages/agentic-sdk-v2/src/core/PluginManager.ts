@@ -45,19 +45,19 @@ export interface PluginManagerRuntimeOptions {
   /** Optional language override (forwarded to createSession). */
   language?: string;
   /**
-   * Optional end-user language mode id (TASK-587), e.g. `'en'`, `'ml'`,
+   * Optional end-user language mode id, e.g. `'en'`, `'ml'`
    * `'ml-en'`, `'auto'`. Forwarded to the STT session; takes precedence over
    * `language` on the backend path.
    */
   languageMode?: string;
   /**
-   * Optional pre-start STT engine selection (TASK-586), `'primary'` (default)
+   * Optional pre-start STT engine selection, `'primary'` (default)
    * or `'fallback'`. Start-time only — forwarded to the STT session so it opens
    * on the tenant-admin default provider when `'fallback'`.
    */
   startOn?: 'primary' | 'fallback';
   /**
-   * Optional ceiling (ms) on the streaming-STT stop-drain (TASK-597
+   * Optional ceiling (ms) on the streaming-STT stop-drain
    * follow-up #4). Rides on the streaming TRANSPORT rather than the pipeline
    * STT config because it is a property of the socket teardown, not of what is
    * being transcribed — see `buildStreamingTransport`. Omitted / non-positive ⇒
@@ -66,13 +66,13 @@ export interface PluginManagerRuntimeOptions {
   drainTimeoutMs?: number;
   /**
    * Optional quiet window (ms) that ends the streaming-STT stop-drain early
-   * once the backend reports `finalizing` (TASK-597). Rides the streaming
+   * once the backend reports `finalizing`. Rides the streaming
    * TRANSPORT for the same reason `drainTimeoutMs` does. `0` DISABLES the early
    * resolve and is preserved; omitted / negative ⇒ the ws client's own default.
    */
   quietWindowMs?: number;
   /**
-   * Number of distinct microphone SOURCES mixed into this session (TASK-615 #12).
+   * Number of distinct microphone SOURCES mixed into this session.
    * A usage-repricing signal, not a PCM channel count (the mix is mono).
    * Defaults to 1 at the provider when omitted/≤1.
    */
@@ -114,7 +114,7 @@ export interface PluginEventCallbacks {
    */
   onAudioDrop?: (droppedFrameCount: number) => void;
   /**
-   * Streaming STT connection-health transition (TASK-567 Phase F), driven by
+   * Streaming STT connection-health transition, driven
    * the streaming client's reconnect callbacks. The vox hook maps it onto the
    * store so the UI can render a reconnecting/error/degraded banner.
    */
@@ -127,7 +127,7 @@ export interface PluginEventCallbacks {
   onProviderSwitched?: (info: ProviderSwitchInfo) => void;
   /**
    * The backend streaming session was created and reported the pipeline it
-   * RESOLVED plus the engine it actually opened on (TASK-614). Fires once per
+   * RESOLVED plus the engine it actually opened on. Fires once per
    * session, before any audio flows. Not fired by a gateway that predates the
    * echo — the consumer then keeps its request-derived value.
    */
@@ -643,14 +643,14 @@ export class PluginManager {
         location: sttConfig.provider === 'local' ? 'browser' : sttConfig.provider === 'backend' ? 'backend' : 'auto',
         provider: sttConfig.provider ?? DEFAULT_STT_CONFIG.provider,
         language: this.runtimeOptions.language ?? prefs?.language ?? sttConfig.language ?? DEFAULT_STT_CONFIG.language,
-        // End-user language mode (TASK-587). Runtime option wins, else the
+        // End-user language mode. Runtime option wins, else the
         // AudioPluginConfig value. When neither pins a mode we default to
         // 'auto' so an un-selected session AUTO-DETECTS the language (the
         // backend resolves 'auto' to no language override) rather than relying
         // on a hardcoded default — pipelines no longer pin a language
-        // (TASK-598). A dev/end-user pick (ml/en/ml-en/vi/…) still wins.
+        // A dev/end-user pick (ml/en/ml-en/vi/…) still wins.
         languageMode: this.runtimeOptions.languageMode ?? sttConfig.languageMode ?? 'auto',
-        // Pre-start engine selection (TASK-586). Start-time only — there is no
+        // Pre-start engine selection. Start-time only — there is no
         // static sttConfig.startOn — so it comes solely from the runtime option.
         ...(this.runtimeOptions.startOn ? { startOn: this.runtimeOptions.startOn } : {}),
         modelId: localConfig?.stt?.modelId ?? sttConfig.modelId,
@@ -818,7 +818,7 @@ export class PluginManager {
 
     // Wire the streaming client's connection-lifecycle callbacks — previously
     // implemented but dangling — into the plugin callback bus so the hook/store
-    // can surface a live connection-health signal (TASK-567 Phase F). The
+    // can surface a live connection-health signal. The
     // arrows read `this.callbacks` at fire time, so ordering vs. setCallbacks()
     // is irrelevant.
     wsClient.onDisconnect(() => this.callbacks.onSttConnectionState?.('reconnecting'));
@@ -826,7 +826,7 @@ export class PluginManager {
     wsClient.onReconnected(() => this.callbacks.onSttConnectionState?.('connected'));
     wsClient.onReconnectFailed(() => this.callbacks.onSttConnectionState?.('error'));
     // The gateway echoes the RESOLVED pipeline + the engine actually opened on
-    // (TASK-614). Route it out so the store's `activePipeline` is server-derived
+    // Route it out so the store's `activePipeline` is server-derived
     // rather than an echo of what the client asked for — the request is silent
     // about a caller that sent no pipelineId, a session opened on the fallback
     // by choice, and one opened there because the primary ASR failed to load.
@@ -845,7 +845,7 @@ export class PluginManager {
           fromPipeline: status.from_pipeline ?? '',
           toPipeline: status.to_pipeline ?? '',
           reason: status.reason ?? 'auto',
-          // TASK-586: forward the bidirectional-toggle direction so a switch BACK
+          // Forward the bidirectional-toggle direction so a switch BACK
           // to primary un-latches the durable fallback flag (useArcaAudio reads
           // these). Absent on a pre-586 backend ⇒ consumers infer fallback.
           ...(status.active != null ? { active: status.active } : {}),
@@ -860,18 +860,18 @@ export class PluginManager {
       wsClient,
       pipelineId,
       consultationId: this.runtimeOptions.consultationId,
-      // Per-capture stop-drain ceiling (TASK-597 follow-up #4). Spread only
+      // Per-capture stop-drain ceiling. Spread only
       // when positive so the provider keeps seeing `undefined` — and therefore
       // its own default — for every caller that does not set it.
       ...(typeof this.runtimeOptions.drainTimeoutMs === 'number' && this.runtimeOptions.drainTimeoutMs > 0
         ? { drainTimeoutMs: this.runtimeOptions.drainTimeoutMs }
         : {}),
-      // Per-capture stop-drain quiet window (TASK-597). `>= 0`, not truthiness:
+      // Per-capture stop-drain quiet window. `>= 0`, not truthiness
       // `0` means "disable the early resolve" and MUST survive this hop.
       ...(typeof this.runtimeOptions.quietWindowMs === 'number' && this.runtimeOptions.quietWindowMs >= 0
         ? { quietWindowMs: this.runtimeOptions.quietWindowMs }
         : {}),
-      // Dual-/multi-mic source count for usage repricing (TASK-615 #12). Spread
+      // Dual-/multi-mic source count for usage repricing. Spread
       // only when > 1 so a single-mic session keeps the provider's default of 1.
       ...(typeof this.runtimeOptions.channelCount === 'number' && this.runtimeOptions.channelCount > 1
         ? { channelCount: this.runtimeOptions.channelCount }
@@ -1111,7 +1111,7 @@ export class PluginManager {
   /**
    * The in-flight `destroy()` promise, or `null`.
    *
-   * SINGLE-FLIGHT (TASK-597 follow-up — the "Finalizing… for drainTimeoutMs"
+   * SINGLE-FLIGHT (the "Finalizing… for drainTimeoutMs"
    * hang). The compat layer stops ONE audio graph through TWO hooks, and each
    * `useArcaAudio` instance has its own per-instance stop guard — so both stop
    * paths reach THIS shared manager and, without this, run `destroy()`

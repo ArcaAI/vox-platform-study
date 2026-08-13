@@ -117,7 +117,7 @@ describe('AgenticProvider', () => {
         const me = await mePromise;
         return jsonResponse(me);
       }
-      // `/tenant/me/config` specifically — TASK-665 added a SIBLING endpoint,
+      // `/tenant/me/config` specifically — added a SIBLING endpoint
       // `/tenant/me/context-schema`, which also matches a loose
       // `includes('/tenant/me')` check and would otherwise double-count here.
       if (url.includes('/tenant/me/config')) {

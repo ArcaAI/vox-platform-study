@@ -2,7 +2,7 @@ import Decimal from 'decimal.js';
 import { AiCapability } from '@arcaai/domains';
 
 /**
- * Pure linear burn-rate projection for `getBudgetBurndown` (TASK-615 WS-J).
+ * Pure linear burn-rate projection for `getBudgetBurndown`.
  *
  * Simple linear projection, deliberately not a forecast model: given
  * month-to-date usage and the fraction of the month elapsed, project the

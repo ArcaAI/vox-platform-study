@@ -1,11 +1,11 @@
-// Origin normalizer (TASK-610 §4.1 / §3.3, lane W1-A).
+// Origin normalizer (/ ).
 //
-// This is the single place origin SYNTAX is decided (plan §3.3):
+// This is the single place origin SYNTAX is decided:
 //  - parse with `new URL()`; reject anything that fails to parse
 //  - require `http:` or `https:`; reject `ftp:`, `ws:`, `file:`, `data:`, and
 //    any wildcard form (`*`) — checked on the raw input AND again on the
 //    canonical host, because URL parsing can DECODE a `*` into existence
-//    (TASK-641 lane J). The invariant callers may rely on: this function never
+// . The invariant callers may rely on: this function never
 //    returns an origin containing `*`.
 //  - reject any path, query, fragment, or userinfo, and any trailing slash
 //  - lowercase scheme + host; strip the default port (`:443` on https, `:80`
@@ -26,7 +26,7 @@
 
 import { ArgumentInvalidException } from '@arcaai/exceptions';
 
-// ── Browser-extension schemes (TASK-653) ─────────────────────────────────────
+// ── Browser-extension schemes  ─────────────────────────────────────
 //
 // An extension page loads from `chrome-extension://<id>` (Chrome/Edge/Brave),
 // `moz-extension://<uuid>` (Firefox) or `safari-web-extension://<uuid>` (Safari),
@@ -82,7 +82,7 @@ export function normalizeOrigin(raw: string): NormalizedOrigin {
   // parser/host checks below.
   //
   // This RAW check is necessary but NOT sufficient: see the canonical re-check
-  // after parsing (TASK-641 lane J).
+  // after parsing.
   if (raw.includes('*')) {
     throw new ArgumentInvalidException(`Origin must not contain a wildcard: ${raw}`);
   }
@@ -128,7 +128,7 @@ export function normalizeOrigin(raw: string): NormalizedOrigin {
   const host = url.hostname;
   const port = url.port === '' ? null : Number(url.port);
 
-  // WILDCARD RE-CHECK ON THE CANONICAL HOST (TASK-641 lane J).
+  // WILDCARD RE-CHECK ON THE CANONICAL HOST.
   //
   // The raw guard above runs BEFORE `new URL()`, and parsing is not
   // value-preserving: WHATWG URL percent-decodes `%2A`/`%2a` and IDNA/NFKC-folds
@@ -153,7 +153,7 @@ export function normalizeOrigin(raw: string): NormalizedOrigin {
     throw new ArgumentInvalidException(`Origin must not contain a wildcard (decoded from an encoded form): ${raw}`);
   }
 
-  // ── Browser-extension branch (TASK-653) ────────────────────────────────────
+  // ── Browser-extension branch  ────────────────────────────────────
   //
   // An extension origin is `<scheme>://<id>` — a single opaque id label, never a
   // DNS host. It differs from the http/https path in two deliberate ways:

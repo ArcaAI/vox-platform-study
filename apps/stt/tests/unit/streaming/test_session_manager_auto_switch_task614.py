@@ -1,4 +1,4 @@
-"""Tenant auto-switch governance reaching the session (TASK-614 D-10).
+"""Tenant auto-switch governance reaching the session.
 
 ``autoSwitchEnabled`` and ``consecutiveFailureThreshold`` are real tenant
 settings — stored on ``TenantSttConfig``, resolved through
@@ -59,7 +59,7 @@ async def test_auto_switch_disabled_by_the_tenant_never_auto_switches():
 @pytest.mark.asyncio
 async def test_auto_switch_defaults_to_enabled_when_the_gateway_says_nothing():
     # Regression lock: an older gateway that sends neither field must keep the
-    # pre-614 behaviour exactly.
+    # previous behaviour exactly.
     mgr = _make_manager()
 
     await _create(mgr, fallback_pipeline_id="fb-pipe")

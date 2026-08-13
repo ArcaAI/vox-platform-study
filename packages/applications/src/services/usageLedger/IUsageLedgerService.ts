@@ -3,7 +3,7 @@ import type { CorePrisma } from '@arcaai/domains';
 import type { RecordUsageResult, UsageEventBatchInput, UsageEventInput } from './dto';
 
 /**
- * The usage-emission port (TASK-615 WS-B — FROZEN once this branch merges).
+ * The usage-emission port (FROZEN once this branch merges).
  *
  * ============================================================================
  * WHAT `recordUsage` DOES — AND POINTEDLY DOES NOT DO

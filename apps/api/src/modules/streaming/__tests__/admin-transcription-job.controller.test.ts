@@ -67,7 +67,7 @@ describe('AdminTranscriptionJobController', () => {
 
     // The guard resolves permissions with getAllAndOverride, so a
     // class-only `manage Tenant` gate actually EXCLUDED tenant admins (the
-    // seed grants them read/update Tenant, not manage). The design (§5.8)
+    // seed grants them read/update Tenant, not manage). The design
     // scopes Audio Processing on AsrPipeline, which `tenant-full-access`
     // grants — so the reads carry a handler-level `read AsrPipeline` gate,
     // mirroring TenantBucketController's class-manage + handler-read shape.

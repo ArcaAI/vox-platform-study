@@ -31,7 +31,7 @@ interface NlpExtractResult {
  *   1. resolves `ContextItem.mediaId` (a `Media` row UUID) to its storage
  *      location — `mediaRepository.findById(mediaId)` → `parseStorageUri(media.uri)`
  *      — and fetches the file bytes from THAT bucket/key via `IBlobStorageService`
- *      (TASK-656 — mirrors `ContextService.resolveMediaUrls` /
+ *      (mirrors `ContextService.resolveMediaUrls` /
  *      `SmrProxyController.extractAttachmentText`; it must NOT treat `mediaId`
  *      itself as a literal S3 key),
  *   2. calls the NLP `/api/v1/extract` endpoint (PyMuPDF + RapidOCR, in-cluster),
@@ -46,20 +46,20 @@ interface NlpExtractResult {
  * it, the re-emitted `ContextAdded` re-fires this handler, which now finds
  * `extractedText` present and no-ops — so there is no re-OCR and no infinite loop.
  *
- * PHI posture (§C): bytes stay in-cluster (tenant bucket → NLP); no third-party
+ * PHI posture: bytes stay in-cluster (tenant bucket → NLP); no third-party
  * egress. Every failure degrades gracefully to the filename-label fallback — it
  * never throws and never blocks the upload.
  *
- * GATE (TASK-679): the `consultation.ocr.enabled` KILL-SWITCH, tier `global-kv`,
+ * GATE: the `consultation.ocr.enabled` KILL-SWITCH, tier `global-kv`,
  * resolved on EVERY event through `TenantSettingsService` so OCR can be cut
  * without a redeploy when the NLP service is under pressure.
  *
  * ⚠️ THIS DEFAULTS **OFF**, which is a deliberate behaviour change. The
  * `OCR_ENABLED` env flag it replaces defaulted ENABLED (only an explicit falsey
- * string disabled it), and that broke two rules at once: §9.2 L1 (an env var is
- * immutable for the process lifetime, so it could not be cut live) and §9.3 M9
- * (a kill-switch MUST default OFF for fail-safe rollout — `SettingsRegistry`
- * refuses to assemble a default-ON one). Enabling server-side OCR is now an
+ * string disabled it), and that broke two rules at once: an env var is
+ * immutable for the process lifetime, so it could not be cut live; and a
+ * kill-switch MUST default OFF for fail-safe rollout — `SettingsRegistry`
+ * refuses to assemble a default-ON one. Enabling server-side OCR is now an
  * explicit operator action. With the gate off a scanned attachment degrades to
  * its filename label — exactly what a failed OCR pass already produced.
  */
@@ -79,13 +79,13 @@ export class OcrEnrichmentProcessor {
     // arity; when wired, the OCR-extracted text is encrypted into
     // `ContextItem.encryptedContent` before persist (F-031).
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
-    // TASK-656 — resolves `ContextItem.mediaId` (a `Media` row UUID) to its
+    // Resolves `ContextItem.mediaId` (a `Media` row UUID) to its
     // actual bucket/key via `Media.uri`. Optional + trailing (mirrors
     // ContextService's `MediaRepository` wiring) so existing positional test
     // fixtures keep compiling; when absent, OCR degrades to a no-op instead
     // of mistreating `mediaId` as a literal S3 key.
     @Optional() @Inject(MediaRepository) private readonly mediaRepository?: MediaRepository,
-    // TASK-679 — the `consultation.ocr.enabled` kill-switch resolver. Optional +
+    // The `consultation.ocr.enabled` kill-switch resolver. Optional +
     // trailing so existing positional fixtures keep their arity; ABSENT ⇒ the
     // gate reads OFF, which is both the fail-safe answer and the descriptor's
     // declared default.
@@ -153,7 +153,7 @@ export class OcrEnrichmentProcessor {
         const existing = typeof meta.extractedText === 'string' ? meta.extractedText.trim() : '';
         if (existing) return;
 
-        // TASK-656 — `mediaId` is a `Media` row UUID, NOT a literal S3 key.
+        // `mediaId` is a `Media` row UUID, NOT a literal S3 key.
         // Resolve it to its actual bucket/key via the Media row's `uri`
         // (mirrors ContextService.resolveMediaUrls / SmrProxyController.extractAttachmentText).
         if (!this.mediaRepository) return; // no media repo wired → nothing to resolve
@@ -196,7 +196,7 @@ export class OcrEnrichmentProcessor {
         // Re-emit the live preview so LiveDocumentationService folds the OCR text
         // into the running summary. The loop guard above makes the re-fire a no-op.
         const subType = typeof meta.subType === 'string' ? (meta.subType as string) : undefined;
-        // TASK-670 — carry the same lineage the ORIGINAL ContextAdded emission
+        // Carry the same lineage the ORIGINAL ContextAdded emission
         // would have (this is a re-emit for the SAME contextItemId, not a new
         // derived item, so depth is whatever the item's own recorded depth is
         // — 0 for a human-uploaded ATTACHMENT). `content` is capped here

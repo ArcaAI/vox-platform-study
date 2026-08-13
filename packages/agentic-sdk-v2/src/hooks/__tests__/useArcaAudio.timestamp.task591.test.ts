@@ -7,7 +7,7 @@
  * fell back to `Date.now()` (epoch MILLISECONDS), which downstream consumers
  * (the compat playground's `mm:ss.mmm` formatter and the `{timestamp}` text
  * template) rendered as an absurd timestamp. The fallback must be unit-safe (0),
- * and a real `vadStreamStartSec` must pass through unchanged (TASK-591).
+ * and a real `vadStreamStartSec` must pass through unchanged.
  *
  * @vitest-environment jsdom
  */
@@ -116,7 +116,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('useArcaAudio — transcript timestamp offset (TASK-591)', () => {
+describe('useArcaAudio — transcript timestamp offset', () => {
   it('passes a streaming vadStreamStartSec/EndSec through to the segment unchanged', async () => {
     const onTranscription = await captureOnTranscription();
 

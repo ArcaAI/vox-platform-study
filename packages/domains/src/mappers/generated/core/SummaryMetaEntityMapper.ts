@@ -8,7 +8,7 @@ import * as Models from '../../../models';
 // avoid Prisma "Unknown argument" errors on insert. (`updatedAt` IS a real column.)
 const FIELDS_NOT_IN_PRISMA: string[] = ['metaData', 'createdBy', 'updatedBy', 'resourceStatus', 'resourceStatusUpdatedAt', 'resourceStatusUpdatedBy'];
 
-// `_version` became a REAL column (TASK-553 F-11) so the two-phase
+// `_version` became a REAL column so the two-phase
 // optimistic-delivery backfill (`persistDraft` EARLY → `finalizeAssurance`) can
 // compare-and-set. It is DATABASE-OWNED: the only legitimate writer is
 // `Repository.updateWithVersion`. Strip it from every write path here so the

@@ -4,7 +4,7 @@ import { GatewayError } from '@/shared/api';
  * `POST :id/publish` (`consultation-context-schema.service.ts#publish`)
  * refuses a 400 in two shapes, both carrying the reasons as structured
  * arrays alongside `message` — surface those, not the generic message, so an
- * admin sees WHY a publish was refused (TASK-666 scope: "publish validation
+ * admin sees WHY a publish was refused ("publish validation
  * surfacing the server's actual rejection reasons").
  */
 export interface PublishRejection {

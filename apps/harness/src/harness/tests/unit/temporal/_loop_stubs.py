@@ -69,7 +69,7 @@ class LoopStubConfig:
     # signal lands WHILE an activity is in flight.
     dispatch_delay_s: float = 0.0
 
-    # -- TASK-664 reasoning lane ------------------------------------------
+    # -- reasoning lane ------------------------------------------
     # Findings the stub specialist returns, per agent id. A default is used for
     # any agent not named here, so most tests need not configure anything.
     specialist_findings: dict[str, list[SpecialistFinding]] = field(default_factory=dict)
@@ -177,7 +177,7 @@ def make_loop_stub_activities(
         await _delay()
         return EmitLoopEventResult(emitted=True)
 
-    # -- TASK-664 reasoning lane ------------------------------------------
+    # -- reasoning lane ------------------------------------------
 
     @activity.defn(name="plan_reasoning")
     async def plan_reasoning_stub(payload: PlanLoopInput) -> PlanDecision:

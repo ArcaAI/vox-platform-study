@@ -1,11 +1,11 @@
 #!/usr/bin/env python
-"""TASK-351 decision-gate D-2 spike (item P2-2, Option A).
+"""Cadence-Fast decision-gate spike (direct transformers load).
 
 Question: can `ai4bharat/Cadence-Fast` (Indic punctuation restoration) be loaded
 and used DIRECTLY via transformers AutoModel/AutoTokenizer with
 trust_remote_code=True under the pinned transformers==5.5.4 in conda env
 `arcaenv` — bypassing the `cadence-punctuation` wrapper package (whose 4.x-era
-dependency pin conflicts; see TASK-347)?
+dependency pin conflicts)?
 
 Usage:
     conda run -n arcaenv --no-capture-output python scripts/spike-cadence-fast.py

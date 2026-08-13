@@ -212,7 +212,7 @@ export interface PromptAssemblyParams {
   departmentId?: string;
   promptType?: 'pre-summary' | 'new-patient' | 'revisit';
   /**
-   * TASK-635 D2 — which pre-summary prompt FAMILY to resolve when
+   * Which pre-summary prompt FAMILY to resolve when
    * `promptType === 'pre-summary'`. `'v1'` (the resolver default) is the
    * v1-parity body compat requires (RF-1 wire contract, never set by native
    * callers); `'dept-free'` is the native-only fork with no
@@ -222,7 +222,7 @@ export interface PromptAssemblyParams {
   preSummaryVariant?: 'v1' | 'dept-free';
   /**
    * The consultation's visit type, rendered into v1's `{visit_type}` placeholder
-   * on a pre-summary body (TASK-634 D-08).
+   * on a pre-summary body.
    *
    * Supplied by the caller because assembly cannot see the consultation: the
    * native callers derive it from `parentConsultationId` (NULL = initial visit)
@@ -236,7 +236,7 @@ export interface PromptAssemblyParams {
   dnaStyleId?: string;
   preSummaryText?: string;
   /**
-   * TASK-635 C5 / DR-4 — the live session's frozen agent identity, read off the
+   * The live session's frozen agent identity, read off the
    * consumed `LIVE_SOAP_SNAPSHOT`'s `metaData.agent`.
    *
    * Its PRESENCE is the proof that a live agent actually ran this consultation,
@@ -250,7 +250,7 @@ export interface PromptAssemblyParams {
    */
   preSummaryLineage?: PersistedLiveAgentLineage | null;
   /**
-   * TASK-635 C5 / RF-6 — pin the resolver's agent tier to the session's agent
+   * Pin the resolver's agent tier to the session's agent
    * (see `PromptResolutionParams.pinnedAgentId`). Passed straight through.
    */
   pinnedAgentId?: string;
@@ -353,14 +353,14 @@ export class PromptAssemblyService {
     // trailing for the same reason as the two above: absent ⇒ zero-shot, which
     // is exactly the pre-B6 prompt.
     @Optional() @Inject(IGateEditExemplarRetriever) private readonly exemplarRetriever?: IGateEditExemplarRetriever,
-    // DNA writing-style decryption (TASK-599). The styleText column is
+    // DNA writing-style decryption. The styleText column is
     // Vault-Transit ciphertext (plaintext dropped in Phase 6), and the generic
     // repository findById never decrypts — so without a SecretsService the style
     // is silently never injected. @Global SecretsModule supplies this in prod;
     // @Optional + trailing so existing positional test fixtures keep their arity
     // (absent ⇒ legacy non-decrypting read, i.e. the prior latent no-op).
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
-    // v1 `{current_department}` resolution (TASK-634 D-08): a pre-summary body
+    // v1 `{current_department}` resolution: a pre-summary body
     // renders the department NAME, but callers only carry `departmentId`.
     // @Optional + trailing for the same reason as the four above (positional
     // test fixtures); absent ⇒ v1's `'General'` default, never a literal brace.
@@ -404,7 +404,7 @@ export class PromptAssemblyService {
    *
    *  * **Silent degradation.** No retriever, no tenant, no rows, or a throwing
    *    store all return `''`. A learning-loop outage must not become a
-   *    generation outage (§3.4).
+   *    generation outage.
    *  * **Redacted text only.** `redactedAfter` is the sole field read; it is the
    *    only one the mining store guarantees is PHI-free.
    *  * **Framed as style, not history.** The notes belong to OTHER encounters,
@@ -470,7 +470,7 @@ export class PromptAssemblyService {
       preSummaryVariant: params.preSummaryVariant,
       explicitTemplate: params.explicitTemplate,
       preferredPromptTemplateId: params.preferredPromptTemplateId,
-      // TASK-635 C5 — finalize pins the LIVE session's agent (§7.4).
+      // Finalize pins the LIVE session's agent.
       pinnedAgentId: params.pinnedAgentId,
     });
 
@@ -496,7 +496,7 @@ export class PromptAssemblyService {
 
     // Per-department few-shot exemplars, placed with the
     // template content and BEFORE the per-encounter transcript so the engine's
-    // prefix cache still hits across flushes (§3.4). Empty string when there is
+    // prefix cache still hits across flushes. Empty string when there is
     // nothing to show, so the zero-shot prompt stays byte-identical.
     userPrompt += await this.buildFewShotExemplarBlock(params);
 
@@ -563,7 +563,7 @@ export class PromptAssemblyService {
     // authoritative: on a scratchpad↔transcript conflict the model follows the transcript.
     // When the flag is OFF this block does not fire, restoring exact pre-Phase-C behavior
     // on the harness AND legacy paths.
-    // TASK-635 C5 / DR-4 — LINEAGE SUPERSEDES THE FLAG. `preSummaryLineage` is
+    // LINEAGE SUPERSEDES THE FLAG. `preSummaryLineage` is
     // written by the live loop itself, so its presence proves a live agent ran
     // this consultation; refusing to hand that agent's own draft to finalize
     // would be refusing R-N2. Short-circuited BEFORE the policy read, so the
@@ -590,7 +590,7 @@ export class PromptAssemblyService {
       }
     }
 
-    // DNA writing-style append-fallback (TASK-599). If the resolved template
+    // DNA writing-style append-fallback. If the resolved template
     // consumed a {style_DNA_*} placeholder the style is already substituted into
     // the body above; otherwise append it here so the style still reaches the LLM
     // (the ArcaAI governed templates declare NO placeholder — without this the
@@ -653,7 +653,7 @@ export class PromptAssemblyService {
       doctor_highlights: serializeTextBlock(params.highlights),
     };
 
-    // v1's nine pre-summary placeholders (TASK-634 D-08). The seeded
+    // v1's nine pre-summary placeholders. The seeded
     // pre-summary bodies — the ArcaAI tenant row AND the SYSTEM default
     // `71000000-…040` — are byte-exact v1 and carry `{current_department}`,
     // `{visit_type}`, `{safe_age}`, `{safe_dob}`, `{safe_gender}`,
@@ -746,7 +746,7 @@ export class PromptAssemblyService {
    * an entity whose `styleText` is always undefined in a Vault-backed environment.
    * With a `SecretsService` wired we MUST go through the decrypting repository
    * method; without one we fall back to the legacy non-decrypting read (a latent
-   * no-op in prod, but what the pre-TASK-599 code did and what secrets-less test
+   * no-op in prod, but what the previous code did and what secrets-less test
    * fixtures rely on). Never throws — DNA style is additive; on any failure we
    * proceed without it.
    */

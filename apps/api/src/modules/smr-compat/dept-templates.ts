@@ -1,5 +1,5 @@
 /**
- * v1 department- and visit-type-specific prompt template engine (TASK-560 item 2).
+ * v1 department- and visit-type-specific prompt template engine.
  *
  * Faithful port of the v1 SMR selectors:
  *   - visit-type normalization        → `prompt_selector.py:_normalize_visit_type`
@@ -17,9 +17,9 @@
  * still receives the generic summary object. General/Medicine keeps the standard
  * conversational prompt (v1 special-case, `summary_service.py:253-265`).
  *
- * **Re-verified against the LIVE v1 pod 2026-08-07** (TASK-634 D-06; Rancher
+ * **Re-verified against the LIVE v1 pod 2026-08-07** (Rancher
  * `c-9lwv8`/`apps`/`apps-smr-84c9774997-zhp2l` — never a local checkout, which
- * has diverged — see `docs/implementation/TASK-634-.../README.md` §2.2).
+ * has diverged — see `docs/implementation/TASK-634-.../README.md`).
  * `resolveDepartmentKey` below is the UNION of v1's two alias tables, which
  * are themselves NOT identical to each other in production:
  *   - `rheum`/`neuro`/`heme` and the bare `breast&endocrine` (no spaces)
@@ -61,7 +61,7 @@ function norm(text?: string | null): string {
  * to `prompts_json.py:249-261`). Any referral/new/initial/consult synonym
  * (and the empty/unknown default) → `new_referral`; any follow-up/review/revisit
  * synonym → `followup`. Re-verified against the live v1 pod 2026-08-07
- * (TASK-634 D-06) — term list and precedence order match exactly, including
+ * term list and precedence order match exactly, including
  * the misspellings (`referal`, `refferal`, `refer`, `referr`, `refd`).
  */
 export function normalizeVisitType(visitType?: string | null): VisitTypeKey {
@@ -99,7 +99,7 @@ export function normalizeVisitType(visitType?: string | null): VisitTypeKey {
  * `DepartmentKey`, or `null` when the department is not one of the 7 v1
  * departments (→ the generic conversational path).
  *
- * Re-verified against the live v1 pod 2026-08-07 (TASK-634 D-06) — see the
+ * Re-verified against the live v1 pod 2026-08-07 — see the
  * module header for exactly which alias came from which of the two
  * (non-identical) v1 tables, and the one entry (`general` bare) that comes
  * from neither and is a deliberate v2 addition.

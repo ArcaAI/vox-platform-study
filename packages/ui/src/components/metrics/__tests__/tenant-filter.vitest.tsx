@@ -32,7 +32,7 @@ function optionEls() {
   return Array.from(document.querySelectorAll<HTMLElement>('[role="option"]'));
 }
 
-describe('TenantFilter (§3.2)', () => {
+describe('TenantFilter', () => {
   it('renders a ≥44px combobox trigger that shows the current tenant name', () => {
     render(<TenantFilter tenants={TENANTS} value="t2" onChange={vi.fn()} />);
     const t = trigger();

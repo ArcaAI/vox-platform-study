@@ -3,8 +3,8 @@
 /**
  * @arcaai/vox/compat - useArcaSpeechToText
  *
- * v1 live-STT hook reproduced over v2's pull-state model (TASK-560 §5.3),
- * hardened per the frozen metadata-passthrough contract (TASK-564 §5, TASK-565).
+ * v1 live-STT hook reproduced over v2's pull-state model
+ * hardened per the frozen metadata-passthrough contract.
  *
  * v1 pushed transcripts through an `onTranscript(text, isFinal, metadata)`
  * callback; v2 exposes `transcriptSegments[]` (final) + `currentTranscript`
@@ -23,14 +23,14 @@
  *
  * `uploadAudioFile()` / `getTranscriptionStatus()` / `isUploading` /
  * `uploadProgress` are the v1 FILE-upload members. They used to throw / be
- * hardcoded; from TASK-603 they drive the real v2 batch endpoint through
+ * hardcoded; from they drive the real v2 batch endpoint through
  * `FileTranscriptionService`. Signatures are unchanged. For many files with
  * live per-file results, use `useArcaBatchTranscription` instead.
  *
- * `sendAudioData(data, metadata)` is a METADATA SINK (TASK-560 §5.3 / §6 F1): it
+ * `sendAudioData(data, metadata)` is a METADATA SINK: it
  * records `{device_id, role, chunk_id, …}`-style metadata onto a bounded,
  * capture-relative TIMELINE (E2) and NEVER pushes PCM — v2 owns capture and
- * transport. Delivered metadata is composed in the §5.2 precedence order so
+ * transport. Delivered metadata is composed in the precedence order so
  * caller keys are never silently overwritten by hook enrichments (defect F4).
  */
 
@@ -100,11 +100,11 @@ export function useArcaSpeechToText(props: UseArcaSpeechToTextProps): UseArcaSpe
 
   // v1 accepted the backend ASR pipeline via the `options` bag; v2 needs it on
   // `audio.start(...)` to build the streaming transport. Forwarding it here fixes
-  // the drop found in TASK-567 §2.4 (the pipeline id was silently discarded, so
+  // the drop found in (the pipeline id was silently discarded, so
   // the compat surface always fell back to the default pipeline). Does NOT touch
-  // the TASK-564/565 metadata timeline.
+  // the metadata timeline.
   const pipelineId = typeof options?.pipelineId === 'string' ? options.pipelineId : undefined;
-  // End-user language mode (TASK-587) — accepted through the v1 `options` bag
+  // End-user language mode — accepted through the v1 `options` bag
   // (same additive pattern as `pipelineId`), so the frozen v1 signature is
   // unchanged. When set it is forwarded to `audio.start` and takes precedence
   // over the v1 `language` string on the backend path.
@@ -121,15 +121,15 @@ export function useArcaSpeechToText(props: UseArcaSpeechToTextProps): UseArcaSpe
   // language), so if it wins the language-bearing start here is skipped and the
   // selection is lost (the pipeline default language is used instead). Backing
   // the selection with the store — which `useArcaAudio.startAudio` reads as a
-  // fallback — makes the outcome order-independent. (TASK-587)
+  // fallback — makes the outcome order-independent.
   const setAudioLanguage = useAgenticStore((s) => s.setAudioLanguage);
   const setSttLanguageMode = useAgenticStore((s) => s.setSttLanguageMode);
-  // Pre-start engine selection (TASK-586) chosen via `useArcaSttProvider` before
+  // Pre-start engine selection chosen via `useArcaSttProvider` before
   // capture — applied to `audio.start` and cleared (order-independent with
   // `useAudioCapture`, mirroring the languageMode store-fallback pattern).
   const pendingSttProvider = useAgenticStore((s) => s.pendingSttProvider);
   const setPendingSttProvider = useAgenticStore((s) => s.setPendingSttProvider);
-  // Silent-uplink watchdog signal (TASK-612 Lane D) — read from the store
+  // Silent-uplink watchdog signal — read from the store
   // directly (same pattern as `pendingSttProvider`); `?? 'ok'` keeps older
   // store doubles that predate the field green.
   const audioSignalState = useAgenticStore((s) => s.audioSignalState ?? 'ok');
@@ -139,7 +139,7 @@ export function useArcaSpeechToText(props: UseArcaSpeechToTextProps): UseArcaSpe
   }, [language, languageMode, setAudioLanguage, setSttLanguageMode]);
 
   const [error, setError] = useState<ErrorInfo | null>(null);
-  // Real upload state (TASK-603) — these two were hardcoded `false`/`0` while
+  // Real upload state — these two were hardcoded `false`/`0` while
   // `uploadAudioFile` threw.
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -154,11 +154,11 @@ export function useArcaSpeechToText(props: UseArcaSpeechToTextProps): UseArcaSpe
   onStatusRef.current = onStatus;
 
   // Connection-health / provider-switch surfacing on the already-frozen-but-
-  // unwired v1 `onStatus` prop (TASK-568 D-2). This is a BEHAVIOR addition on an
+  // unwired v1 `onStatus` prop. This is a BEHAVIOR addition on an
   // existing optional prop — zero signature change; apps that never pass
   // `onStatus` are unaffected. Reads ONLY the public v2 surface (useArcaAudio),
   // so the compat invariant holds. v1 apps could never see these transitions;
-  // TASK-567 Phase F wires the underlying reconnect / provider_switched callbacks.
+  // Wires the underlying reconnect / provider_switched callbacks.
   const prevConnRef = useRef(audio.sttConnectionState);
   const prevIsFallbackRef = useRef<boolean>(audio.activePipeline?.isFallback ?? false);
   const prevPipelineIdRef = useRef<string | undefined>(audio.activePipeline?.id);
@@ -185,7 +185,7 @@ export function useArcaSpeechToText(props: UseArcaSpeechToTextProps): UseArcaSpe
     prevPipelineIdRef.current = pipelineId;
   }, [audio.sttConnectionState, audio.activePipeline]);
 
-  // Silent-uplink watchdog surfacing (TASK-612 Lane D, AC-4) — the same
+  // Silent-uplink watchdog surfacing — the same
   // additive pattern as the reconnect events above: the frozen-but-optional
   // v1 `onStatus` learns that the open socket is carrying pure silence
   // (`no_audio_signal`) and that the signal came back
@@ -214,7 +214,7 @@ export function useArcaSpeechToText(props: UseArcaSpeechToTextProps): UseArcaSpe
   // early, and an anchor set only inside it would never exist — every
   // `sendAudioData` would stamp `atMs = 0` and `pickMetadataForFinal` would be
   // handed `undefined`, silently collapsing per-segment attribution to sticky
-  // most-recent (TASK-611). Watching `isCapturing` also covers the case where
+  // most-recent. Watching `isCapturing` also covers the case where
   // this hook mounts mid-capture and `startTranscription` is never called at all.
   //
   // Anchoring only on the false→true transition AND only while unset keeps this
@@ -241,7 +241,7 @@ export function useArcaSpeechToText(props: UseArcaSpeechToTextProps): UseArcaSpe
     for (let i = seenFinalCountRef.current; i < segments.length; i += 1) {
       const seg = segments[i];
       if (!seg?.isFinal) continue;
-      // Belt-and-braces (TASK-612 Lane F, OD-3a): useArcaAudio already suppresses
+      // Belt-and-braces: useArcaAudio already suppresses
       // whitespace-only finals before they reach the store, but skip here too in
       // case some other producer writes one — the cursor below still advances
       // to `segments.length`, so a skipped segment is never re-visited.
@@ -272,7 +272,7 @@ export function useArcaSpeechToText(props: UseArcaSpeechToTextProps): UseArcaSpe
     try {
       setError(null);
       // STT-first pre-anchor: capture has not been reported yet, so the effect
-      // above has nothing to see; it will not overwrite this (see TASK-611).
+      // above has nothing to see; it will not overwrite this (see).
       if (captureStartMsRef.current === undefined) captureStartMsRef.current = Date.now();
       await audio.start({
         language,
@@ -297,7 +297,7 @@ export function useArcaSpeechToText(props: UseArcaSpeechToTextProps): UseArcaSpe
       // Reset the timeline for a clean re-open.
       metadataTimelineRef.current = [];
       captureStartMsRef.current = undefined;
-      // TASK-612 Lane F (I-2): also reset the interim dedup ref, or an identical
+      // Also reset the interim dedup ref, or an identical
       // first interim in the NEXT session is silently swallowed as a "duplicate".
       lastInterimRef.current = '';
     } catch (err) {
@@ -310,7 +310,7 @@ export function useArcaSpeechToText(props: UseArcaSpeechToTextProps): UseArcaSpe
 
   const sendAudioData = useCallback((_audioData: ArrayBuffer, metadata?: Record<string, unknown>): void => {
     // Metadata sink ONLY — v2 owns capture/transport, so PCM is never pushed
-    // (TASK-560 §6 F1). Record the turn metadata onto the capture-relative
+    // Record the turn metadata onto the capture-relative
     // timeline for the next synthesized onTranscript(); PCM is intentionally ignored.
     if (metadata && JSON.stringify(metadata).length > MAX_METADATA_BYTES) {
       throw new Error('Audio frame metadata exceeds 8192 bytes');
@@ -323,7 +323,7 @@ export function useArcaSpeechToText(props: UseArcaSpeechToTextProps): UseArcaSpe
   }, []);
 
   // ---------------------------------------------------------------------------
-  // The v1 file-upload members (TASK-603).
+  // The v1 file-upload members.
   //
   // These four were declared by v1 and, until now, were dead in compat:
   // `uploadAudioFile`/`getTranscriptionStatus` threw "not supported" and

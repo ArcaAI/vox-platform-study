@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * Real per-session generation metrics for the scribe footer (TASK-543).
+ * Real per-session generation metrics for the scribe footer.
  *
  * Folds the AD-1 generation stats that ride the live-summary SSE
  * (`LiveSummaryEventDto.metadata.stats`, one sample per flush) into the two

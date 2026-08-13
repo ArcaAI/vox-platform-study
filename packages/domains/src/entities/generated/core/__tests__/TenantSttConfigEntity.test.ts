@@ -1,11 +1,11 @@
 /**
- * TenantSttConfig entity/factory behavior (TASK-567).
+ * TenantSttConfig entity/factory behavior.
  *
  * Locks change-tracking through `setProperty` (so `repository.update` persists
  * only `entity.changes`) and factory defaults.
  *
  * The former `TenantSttProviderCredentialEntity` coverage that lived in this
- * file was removed with the entity itself (TASK-576 — BYO credential rows now
+ * file was removed with the entity itself (BYO credential rows now
  * live in the unified `AiProviderConnection` plane, `service='stt'`).
  */
 /* eslint-disable @typescript-eslint/no-explicit-any */

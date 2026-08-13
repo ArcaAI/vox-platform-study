@@ -305,7 +305,7 @@ describe('UsageLedgerService.recordUsage — validation (derives nothing silentl
 });
 
 /**
- * TASK-643 R3 — the deployment/costBasis consistency guard.
+ * The deployment/costBasis consistency guard.
  *
  * OD-2 decided a platform-funded (SYSTEM-credential) call meters as the
  * EXISTING `CLOUD` member rather than a new enum value. That keeps every

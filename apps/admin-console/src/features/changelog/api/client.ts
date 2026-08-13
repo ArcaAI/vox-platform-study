@@ -1,4 +1,4 @@
-/** Changelog admin (TASK-648 U11) — release notes list, unseen popup, ack, authoring. */
+/** Changelog admin — release notes list, unseen popup, ack, authoring. */
 
 import { getJson, getWithEtag, patchWithEtag, postJson, request, type Paginated, type WithEtag } from '@/shared/api';
 import type { ChangelogAudience, ChangelogEntry, ChangelogSeverity, CreateChangelogEntryRequest, UpdateChangelogEntryRequest } from './types';

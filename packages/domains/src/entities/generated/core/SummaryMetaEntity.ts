@@ -26,7 +26,7 @@ export interface ISummaryMetaEntity extends IBaseTenantEntity {
   qualityScore?: number | null;
   promptResolvedFrom?: string | null;
   resolvedPromptId?: string | null;
-  // TASK-635 RF-6 — session-agent lineage frozen at recording start and carried
+  // Session-agent lineage frozen at recording start and carried
   // through the live loop into finalize. Null for non-live-session summaries.
   // `sessionAgentPromptVersion` is "<templateId>@<versionNumber>".
   sessionAgentId?: string | null;
@@ -49,7 +49,7 @@ export interface ISummaryMetaEntity extends IBaseTenantEntity {
   // Two-phase (optimistic) assurance state
   gateDecision?: string | null;
   assuranceCompletedAt?: Date | null;
-  // DNA redaction/rewrite audit (TASK-551). `redactionApplied` is a plaintext,
+  // DNA redaction/rewrite audit. `redactionApplied` is a plaintext,
   // queryable marker; `redactionManifest` is the transient plaintext audit blob
   // (rule ids / actions / spans / counts — NEVER removed PHI plaintext),
   // encrypt-on-write into `encryptedRedactionManifest` (the persisted ciphertext).

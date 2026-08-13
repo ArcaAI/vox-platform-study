@@ -5,7 +5,7 @@
  *
  * The template-grid, detail-drawer and governance cases that used to live here
  * moved to `prompt-templates-screen.test.tsx` when `PromptTemplate` got its own
- * route (TASK-634 R6) — this screen no longer renders them.
+ * route — this screen no longer renders them.
  */
 
 import { cleanup, screen } from '@testing-library/react';
@@ -148,7 +148,7 @@ function defaultHandler(call: RecordedCall): Response | undefined {
   const path = new URL(call.url, 'http://test.local').pathname;
   if (path === '/api/auth/session') return Response.json(session());
   if (path === '/api/hope/admin/departments') return Response.json(DEPARTMENTS);
-  // The Agents tab (TASK-547, default landing) — empty by default so the
+  // The Agents tab (default landing) — empty by default so the
   // Agent Templates-tab tests below (which stay unaffected by this ticket)
   // don't need to know about it.
   if (path === '/api/hope/admin/department-agents') return Response.json({ data: [], count: 0, limit: 200, page: 0 });

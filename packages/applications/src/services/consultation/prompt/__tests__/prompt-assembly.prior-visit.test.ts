@@ -1,5 +1,5 @@
 /**
- * PromptAssemblyService — re-visit carry-forward block (TASK-553 F-18).
+ * PromptAssemblyService — re-visit carry-forward block.
  *
  * Carry-forward is the highest-risk context feature in the platform (SOTA §4.5:
  * it inherits the copy-paste / cloned-note failure mode), so the tests here lock

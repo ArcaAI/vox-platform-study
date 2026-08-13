@@ -1,5 +1,5 @@
 /**
- * TASK-455 (S-10) — Shared streaming e2e helper.
+ * Shared streaming e2e helper.
  *
  * Mints a real STT streaming session + one-shot ticket through the API
  * gateway and opens an AUTHENTICATED WebSocket to `/ws/stt/stream`, plus a
@@ -205,7 +205,7 @@ export async function createStreamSession(
 }
 
 /**
- * Mint a FRESH one-shot ticket for an existing session (TASK-298 D-18). Each
+ * Mint a FRESH one-shot ticket for an existing session. Each
  * reconnect needs one because the previous ticket was consumed on first open.
  */
 export async function refreshStreamTicket(

@@ -1,5 +1,5 @@
 /**
- * TASK-679 — configuration-tier compliance for the two consultation-pipeline
+ * Configuration-tier compliance for the two consultation-pipeline
  * kill-switches (`harness.loop.enabled`, `consultation.ocr.enabled`).
  *
  * These four cases are the contract the migration off `process.env` has to buy.
@@ -10,11 +10,11 @@
  *
  *   1. RUNTIME FLIP — a kill-switch changes effect with NO restart, i.e. the
  *      reader consults the control plane per call, not once in its constructor.
- *   2. DEFAULT OFF — with no stored value, both resolve OFF (§9.3 M9), and the
+ *   2. DEFAULT OFF — with no stored value, both resolve OFF (fail-safe default), and the
  *      registry refuses to assemble a kill-switch that defaults ON.
  *   3. FAIL MODE — `open-to-default` substitutes the descriptor default for an
  *      ABSENT value, but a backend ERROR propagates and is never disguised as
- *      "the default" (registry.types.ts `SettingFailMode`, §4 B3).
+ *      "the default" (registry.types.ts `SettingFailMode` / default-source rule).
  *   4. REGRESSION — with each knob in its PREVIOUS effective state, the
  *      surrounding behaviour is byte-for-byte what it was before the migration.
  */
@@ -94,7 +94,7 @@ function ocrPayload(): ContextAddedPayload {
   };
 }
 
-describe('TASK-679 consultation-gate tier compliance', () => {
+describe('Consultation-gate tier compliance', () => {
   beforeEach(() => vi.clearAllMocks());
 
   // ── 1. A kill-switch flips at runtime, with no restart ────────────────────

@@ -145,7 +145,7 @@ export interface TranscriptionResult {
    */
   words?: TranscriptWord[];
   /**
-   * Per-utterance ASR pipeline provenance (TASK-613), carried from
+   * Per-utterance ASR pipeline provenance, carried from
    * `WsTranscriptResult.pipelineId` when the streaming transport reports one.
    * Optional/back-compatible — absent for providers that don't yet forward it.
    */
@@ -257,7 +257,7 @@ export interface TranscriptSegment {
    */
   words?: TranscriptWord[];
   /**
-   * The ASR pipeline that produced this segment (TASK-613). Per-utterance:
+   * The ASR pipeline that produced this segment. Per-utterance
    * after a mid-session engine switch, consecutive segments legitimately carry
    * different ids, which is the point — session-level state cannot express it.
    * Absent for local transcription and for backends that do not stamp results.
@@ -281,7 +281,7 @@ export interface DualCaptureResult {
  */
 /**
  * The three `MediaTrackConstraints` switches that decide whether the browser
- * hands the SDK processed or raw microphone audio (TASK-608).
+ * hands the SDK processed or raw microphone audio.
  *
  * Mirrors the WebRTC constraint names 1:1 so the values pass straight through
  * to `getUserMedia`; see {@link AudioStartOptions.audioProcessing}.
@@ -298,7 +298,7 @@ export interface AudioProcessingConstraints {
 export interface AudioStartOptions {
   language?: string;
   /**
-   * End-user STT language mode id (TASK-587), e.g. `'en'`, `'ml'`, `'ml-en'`
+   * End-user STT language mode id, e.g. `'en'`, `'ml'`, `'ml-en'`
    * (Malayalam+English code-switch), `'auto'`. Forwarded to the backend STT
    * session, which resolves it against the session engine and rejects (422) a
    * mode no configured engine can serve. Takes precedence over `language` on
@@ -306,7 +306,7 @@ export interface AudioStartOptions {
    */
   languageMode?: string;
   /**
-   * Pre-start STT engine selection (TASK-586). Default `'primary'`. `'fallback'`
+   * Pre-start STT engine selection. Default `'primary'`. `'fallback'`
    * opens the session on the tenant-admin default provider from the start while
    * keeping the primary switchable (so a later `switchToPipeline()` returns to
    * it). Threaded exactly like {@link AudioStartOptions.languageMode}. The
@@ -328,7 +328,7 @@ export interface AudioStartOptions {
   secondaryDeviceId?: string;
   /**
    * Extra microphones beyond {@link AudioStartOptions.deviceId} and
-   * {@link AudioStartOptions.secondaryDeviceId} (TASK-597). ALL selected mics
+   * {@link AudioStartOptions.secondaryDeviceId}. ALL selected mics
    * are mixed into ONE uplink stream — `AudioMixer` is N-source with per-source
    * gain and 1/sqrt(N) master normalization, so the ceiling of two was a
    * limitation of the hook, not of the mixer.
@@ -341,7 +341,7 @@ export interface AudioStartOptions {
    */
   additionalDeviceIds?: string[];
   /**
-   * Pre-built capture streams used **instead of** `getUserMedia` (TASK-597).
+   * Pre-built capture streams used **instead of** `getUserMedia`.
    *
    * When this is non-empty the hook opens NO microphone at all: the supplied
    * streams become the capture sources and flow through the identical
@@ -354,7 +354,7 @@ export interface AudioStartOptions {
    * Mutually exclusive with the deviceId fields: when set, `deviceId` /
    * `secondaryDeviceId` / `additionalDeviceIds` are ignored.
    *
-   * OWNERSHIP (TASK-612 OD-1a): injected streams are CALLER-owned. `stop()`
+   * OWNERSHIP: injected streams are CALLER-owned. `stop()`
    * (and a failed `start()`) unwires them from the graph but never stops
    * their tracks — the same stream object can be passed to the next
    * `start()` and will simply work. Only streams the SDK itself opened via
@@ -372,14 +372,14 @@ export interface AudioStartOptions {
    * resolved source list — i.e. with {@link AudioStartOptions.sourceStreams}
    * when streams are injected, otherwise with
    * `[deviceId, secondaryDeviceId, ...additionalDeviceIds]` after de-duplication
-   * (TASK-597). Missing/short entries default to `1.0`. Ignored when there is a
+   * Missing/short entries default to `1.0`. Ignored when there is a
    * single source, because a single source is fed to the pipeline directly and
    * no mixer node exists.
    */
   sourceGains?: number[];
   /**
    * Browser audio-processing switches, applied to the `getUserMedia` constraints
-   * of EVERY resolved source (TASK-608).
+   * of EVERY resolved source.
    *
    * The SDK's own graph does nothing to the signal on the backend-streaming path
    * — the noise filter and VAD are separate, opt-in pipeline stages, the level
@@ -400,7 +400,7 @@ export interface AudioStartOptions {
    */
   audioProcessing?: AudioProcessingConstraints;
   /**
-   * Opt into RUNTIME capture-source changes for this session (TASK-609).
+   * Opt into RUNTIME capture-source changes for this session.
    *
    * With this set, a mixer is built even for a SINGLE source, so
    * `useArcaAudio.addSource` / `removeSource` / `setSourceGain` can change what
@@ -423,7 +423,7 @@ export interface AudioStartOptions {
   dynamicSources?: boolean;
   /**
    * Ceiling, in ms, on the streaming-STT stop-drain performed when this capture
-   * session is torn down (TASK-597 follow-up #4).
+   * session is torn down.
    *
    * `stop()` releases the microphone synchronously and only THEN awaits the
    * drain, so this does not delay the mic going off or `isCapturing` going
@@ -440,7 +440,7 @@ export interface AudioStartOptions {
   drainTimeoutMs?: number;
   /**
    * Quiet window, in ms, that ends the streaming-STT stop-drain EARLY
-   * (TASK-597). Once the backend reports `finalizing`, the drain resolves after
+   * Once the backend reports `finalizing`, the drain resolves after
    * this much silence; every transcript received restarts the window.
    *
    * **`0` disables the early resolve**, so the drain waits for the server's
@@ -473,7 +473,7 @@ export interface AudioStartOptions {
 }
 
 // =============================================================================
-// Streaming STT connection / provider state (TASK-567 Phase F)
+// Streaming STT connection / provider state
 // =============================================================================
 
 /**
@@ -501,7 +501,7 @@ export interface ActivePipelineInfo {
 }
 
 /**
- * Payload of a backend `provider_switched` status result (TASK-567 §3.4),
+ * Payload of a backend `provider_switched` status result
  * surfaced from the streaming STT `status` frame to the hook/store.
  */
 export interface ProviderSwitchInfo {
@@ -514,7 +514,7 @@ export interface ProviderSwitchInfo {
   /** Utterance ordinal at which the swap happened, when the backend reports it. */
   utteranceIndex?: number;
   /**
-   * Engine now transcribing after the swap (TASK-586: bidirectional toggle).
+   * Engine now transcribing after the swap (bidirectional toggle).
    * `fallback` after a primary→fallback switch, `primary` after a switch back.
    * Absent on a pre-586 backend that only reports the one-way switch.
    */

@@ -1,5 +1,5 @@
 /**
- * Seed-mode gating (TASK-616)
+ * Seed-mode gating
  *
  * Seeding is OPT-IN and FAILS CLOSED.
  *

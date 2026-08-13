@@ -1,5 +1,5 @@
 /**
- * TASK-664 — LoopContextTextService.resolveExtractedText.
+ * LoopContextTextService.resolveExtractedText.
  *
  * Backs the loop's `document.extract_text` action. Two properties matter and
  * both are load-bearing:
@@ -35,7 +35,7 @@ const ITEM = {
   metaData: { extractedText: '  Referral letter: patient has AF.  ' },
 };
 
-describe('LoopContextTextService.resolveExtractedText — TASK-664', () => {
+describe('LoopContextTextService.resolveExtractedText', () => {
   let service: LoopContextTextService;
 
   beforeEach(() => {

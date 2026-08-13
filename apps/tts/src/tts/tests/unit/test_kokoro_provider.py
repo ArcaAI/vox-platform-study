@@ -75,7 +75,7 @@ def test_protocol_and_streaming_flag():
     assert provider.native_streaming is True
 
 
-# ── TASK-642 Part A: streaming synthesis + a bounded memory peak ──────────────
+# ── streaming synthesis + a bounded memory peak ──────────────
 #
 # `synthesize()` used to materialize EVERY segment of the utterance into a list
 # before yielding a single chunk, despite `native_streaming = True`. Two separate

@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CodeExample, Skeleton } from '@arcaai/ui';
 
 // =============================================================================
-// Per-tab example code (TASK-597 R2, finding A1)
+// Per-tab example code
 // =============================================================================
 //
 // Every tab ends with the REAL source of the files that tab is built from —

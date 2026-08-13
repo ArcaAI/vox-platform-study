@@ -2,9 +2,9 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 /**
  * One (capability × provider × model × unit) rollup slice, summed over the
- * requested period (TASK-615 WS-J).
+ * requested period.
  *
- * Money as integer-micros STRINGS (WS-I convention — a JSON number is an IEEE
+ * Money as integer-micros STRINGS (convention — a JSON number is an IEEE
  * double and these values are already rated in the ledger).
  */
 export class UsageSummaryLine {

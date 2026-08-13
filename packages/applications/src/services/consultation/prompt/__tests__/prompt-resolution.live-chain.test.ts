@@ -1,5 +1,5 @@
 /**
- * TASK-635 C3 — the LIVE capability chain (C1 §4.4 / DR-2).
+ * The LIVE capability chain.
  *
  * Tier 1a  agent `livePromptTemplateId` (APPROVED + pinned PromptVersion snapshot)
  * Tier 2   `SYSTEM_DEFAULTS.livePromptId` — the seeded SYSTEM live-default row
@@ -39,7 +39,7 @@ function approvedTemplate(id: string, approvedVersionNumber: number | null = 1) 
   return { id, status: 'APPROVED', approvedVersionNumber, currentVersionNumber: approvedVersionNumber, content: `mutable-content-of-${id}` };
 }
 
-describe('TASK-635 C3 — live prompt chain', () => {
+describe('Live prompt chain', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockDepartmentRepository.findById.mockResolvedValue({ id: DEPT, tenantId: TENANT, defaultSummaryTemplate: null, promptConfig: null });

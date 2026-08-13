@@ -20,21 +20,21 @@ import { usePlaygroundSession } from '../context/playground-session';
 import type { PlaygroundAudioMode } from '../context/playground-session';
 
 /**
- * Audio-source selection for the Live-transcription tab (TASK-597 lane A).
+ * Audio-source selection for the Live-transcription tab.
  *
  * Four modes, one capture graph:
  *
- *   single mic          → `audio.start({ deviceId })`
- *   multi mic (mixed)   → `+ secondaryDeviceId, additionalDeviceIds` — N mics
- *                         summed by `@arcaai/room`'s AudioMixer into ONE uplink
- *   file → single mic   → `audio.start({ sourceStreams: [oneStream] })`
- *   file(s) → multi mic → several file-backed streams, mixed the same way
+ * single mic → `audio.start({ deviceId })`
+ * multi mic (mixed) → `+ secondaryDeviceId, additionalDeviceIds` — N mics
+ * summed by `@arcaai/room`'s AudioMixer into ONE uplink
+ * file → single mic → `audio.start({ sourceStreams: [oneStream] })`
+ * file(s) → multi mic → several file-backed streams, mixed the same way
  *
  * The file modes exist so a run is deterministic and repeatable (which is what
  * makes WER/CER comparable across pipeline switches). They deliberately reuse
  * the mixer → noise-filter → VAD → STT path rather than a shortcut, so what you
  * measure is the real pipeline.
- */
+*/
 
 const MODES: { value: PlaygroundAudioMode; label: string; hint: string }[] = [
   { value: 'single-mic', label: 'One microphone', hint: 'The classic single-input consultation.' },
@@ -57,7 +57,7 @@ export function AudioSourcePanel() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const isFileMode = audio.mode === 'file-single' || audio.mode === 'file-multi';
   // ---------------------------------------------------------------------------
-  // `phase`, not `isRecording` — a deliberate choice (TASK-597 lane G).
+  // `phase`, not `isRecording` — a deliberate choice.
   //
   // Since lane B, `isRecording` goes false the instant Stop is clicked while the
   // transport keeps draining (`phase === 'stopping'`). Source selection must

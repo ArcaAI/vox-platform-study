@@ -1,5 +1,5 @@
 /**
- * AgentPromotionController unit tests (TASK-663).
+ * AgentPromotionController unit tests.
  *
  * The point of interest is the AUTH-NOTE: the class-level
  * `@CanManage('DepartmentAgent')` deliberately UNDERSTATES the real gate. A

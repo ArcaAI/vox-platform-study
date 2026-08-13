@@ -19,7 +19,7 @@ export const AI_MODEL_PROVIDERS = [
   'built-in',
   'sarvam',
   'openai',
-  // Cloud tenant-BYO LLM providers (TASK-572) — mirrors the seed addition.
+  // Cloud tenant-BYO LLM providers — mirrors the seed addition.
   'anthropic',
   'vertex',
   'vllm',

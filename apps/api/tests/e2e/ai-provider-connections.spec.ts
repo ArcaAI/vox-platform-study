@@ -7,7 +7,7 @@
  * sarvam, openai, anthropic, vertex, vllm, llama-cpp — see
  * seed/17-ai-provider-connection.ts; the legacy `/admin/ai-providers` alias
  * hard-pins `service='llm'`, so `stt`/`tts` rows never show up here).
- * Seed-authoritative posture (TASK-578): the five built-in-local engines
+ * Seed-authoritative posture: the five built-in-local engines
  * (ollama, lm-studio, built-in, vllm, llama-cpp) seed ENABLED as the Day-1
  * default; the six cloud/BYO providers (azure, bedrock, sarvam, openai,
  * anthropic, vertex) seed DISABLED until a tenant brings a key. All seed keyless.
@@ -42,7 +42,7 @@ test.describe('AI provider connections', () => {
     const res = await request.get(`/api/v1/admin/ai-providers?tenantId=${SYSTEM_TENANT_ID}`, { headers: auth() });
     expect(res.status()).toBe(200);
 
-    // Seed-authoritative (TASK-578): the built-in-local engines are the enabled
+    // Seed-authoritative: the built-in-local engines are the enabled
     // Day-1 default; cloud/BYO providers stay disabled until a tenant keys them.
     const BUILTIN_LOCAL = new Set(['ollama', 'lm-studio', 'built-in', 'vllm', 'llama-cpp']);
 

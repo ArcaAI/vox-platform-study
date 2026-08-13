@@ -224,8 +224,8 @@ describe('EntitlementsService', () => {
   });
 
   /*
-   * TASK-643 R6 — `isFeatureEnabled`, the first ENFORCING read of a boolean
-   * entitlement (§0(2): the three pre-existing feature booleans are
+   * `isFeatureEnabled`, the first ENFORCING read of a boolean
+   * entitlement (the three pre-existing feature booleans are
    * display-only, read by nothing but `getCapabilities` and the console).
    *
    * Non-throwing by design: the caller (`AiProviderConnectionService.cascadeRows`)
@@ -233,7 +233,7 @@ describe('EntitlementsService', () => {
    * which provider will be selected. Throwing there would 403 a tenant that was
    * about to use a self-hosted provider and never needed the platform key.
    */
-  describe('isFeatureEnabled (TASK-643 R6)', () => {
+  describe('isFeatureEnabled', () => {
     const arrangeTenant = (override: Record<string, unknown> | null) => {
       tenantRepository.findById.mockResolvedValue({ plan: 'PRO', trialEndsAt: null });
       planEntitlementRepository.findByPlan.mockResolvedValue(null);
@@ -343,7 +343,7 @@ describe('EntitlementsService', () => {
       expect(caps.trial.daysRemaining).toBe(3);
     });
 
-    it('TASK-615 — exposes the six new unit meters (allowance ceiling + live usage) alongside M1–M3', async () => {
+    it('Exposes the six new unit meters (allowance ceiling + live usage) alongside M1–M3', async () => {
       tenantRepository.findById.mockResolvedValue({ plan: 'PRO', trialEndsAt: null });
       planEntitlementRepository.findByPlan.mockResolvedValue(null);
       tenantEntitlementRepository.findByTenant.mockResolvedValue({ monthlyLlmTokens: 1_000_000 });
@@ -366,7 +366,7 @@ describe('EntitlementsService', () => {
       const llmTokens = caps.meters.find((m) => m.key === 'monthlyLlmTokens')!;
       expect(llmTokens).toMatchObject({ limit: 1_000_000, used: 900_000, nearLimit: true, exceeded: false });
 
-      // The other four fall through to the seeded PRO ceilings (TASK-638 §6).
+      // The other four fall through to the seeded PRO ceilings.
       const sttSeconds = caps.meters.find((m) => m.key === 'monthlySttSessionSeconds')!;
       expect(sttSeconds).toMatchObject({ limit: 660_000, used: 3_600, unlimited: false, exceeded: false });
 
@@ -427,7 +427,7 @@ describe('EntitlementsService', () => {
       expect(row.storageQuotaBytes).toBe(BigInt(10 * GIB));
     });
 
-    it('TASK-615 — converts a new allowance ceiling number into its bigint column and echoes it in the response', async () => {
+    it('Converts a new allowance ceiling number into its bigint column and echoes it in the response', async () => {
       const row = fakePlanEntity({ plan: 'PRO', version: 1 });
       planEntitlementRepository.findByPlan.mockResolvedValue(row);
       planEntitlementRepository.updateWithVersion.mockImplementation(async (_id, entity) => entity);
@@ -444,7 +444,7 @@ describe('EntitlementsService', () => {
       expect(res.monthlyTtsCharacters).toBe(500_000);
     });
 
-    it('TASK-615 — a null allowance ceiling clears it to unlimited', async () => {
+    it('A null allowance ceiling clears it to unlimited', async () => {
       const row = fakePlanEntity({ plan: 'PRO', version: 1, monthlyLlmTokens: BigInt(2_000_000) });
       planEntitlementRepository.findByPlan.mockResolvedValue(row);
       planEntitlementRepository.updateWithVersion.mockImplementation(async (_id, entity) => entity);
@@ -493,7 +493,7 @@ describe('EntitlementsService', () => {
       expect(res.maxUsers).toBe(12);
     });
 
-    it('TASK-615 — creates an override with a negotiated allowance ceiling', async () => {
+    it('Creates an override with a negotiated allowance ceiling', async () => {
       tenantEntitlementRepository.findByTenant.mockResolvedValue(null);
       tenantRepository.findById.mockResolvedValue({ id: 'tenant-1' });
       tenantEntitlementRepository.create.mockImplementation(async (entity) => entity);
@@ -505,7 +505,7 @@ describe('EntitlementsService', () => {
       expect(res.monthlyLlmTokens).toBe(50_000_000);
     });
 
-    it('TASK-615 — updates an existing override allowance under OCC', async () => {
+    it('Updates an existing override allowance under OCC', async () => {
       const row = fakeTenantEntity({ version: 3 });
       tenantEntitlementRepository.findByTenant.mockResolvedValue(row);
       tenantEntitlementRepository.updateWithVersion.mockImplementation(async (_id, entity) => entity);
@@ -525,7 +525,7 @@ describe('EntitlementsService', () => {
 
       expect(row.maxUsers).toBeNull();
       expect(row.rateLimitPerMinute).toBeNull();
-      // TASK-615 — the new allowance overrides are cleared exactly like the
+      // The new allowance overrides are cleared exactly like the
       // pre-existing ones (reversible, never deleted).
       expect(row.monthlySttSessionSeconds).toBeNull();
       expect(row.monthlyLlmTokens).toBeNull();
@@ -598,7 +598,7 @@ describe('EntitlementsService', () => {
         });
     });
 
-    it('TASK-615 — enriches the blocked-event payload with the requesting user when CLS carries one (audit-quality authorship)', async () => {
+    it('Enriches the blocked-event payload with the requesting user when CLS carries one (audit-quality authorship)', async () => {
       values.set('entitlements.enabled', true);
       asStarter();
       clsService.get.mockImplementationOnce((key: string) => (key === 'user' ? { id: 'user-42' } : undefined));
@@ -611,7 +611,7 @@ describe('EntitlementsService', () => {
       );
     });
 
-    it('TASK-615 — the blocked-event payload omits an author when CLS carries no user (background/system caller)', async () => {
+    it('The blocked-event payload omits an author when CLS carries no user (background/system caller)', async () => {
       values.set('entitlements.enabled', true);
       asStarter(); // clsService.get default returns undefined for every key
 
@@ -623,7 +623,7 @@ describe('EntitlementsService', () => {
   });
 
   describe('assertMeterQuota (meters, → 429)', () => {
-    // STARTER.monthlyConsultations = 50 in the seeded matrix (TASK-638).
+    // STARTER.monthlyConsultations = 50 in the seeded matrix.
     const asStarter = () => {
       tenantRepository.findById.mockResolvedValue({ plan: 'STARTER', trialEndsAt: null });
       planEntitlementRepository.findByPlan.mockResolvedValue(null);
@@ -751,7 +751,7 @@ describe('EntitlementsService', () => {
       });
     });
 
-    describe('TASK-615 D11 unit-allowance capabilities', () => {
+    describe('Unit-allowance capabilities', () => {
       /*
        * An unlimited (null) allowance can never block, so the metering
        * aggregate it would be compared against is pure waste — and it is a
@@ -853,7 +853,7 @@ describe('EntitlementsService', () => {
 
         // Same usage under ENTERPRISE, which seeds monthlyLlmTokens NULL (D12
         // "soft caps for paid tiers" — unlimited here means the quota gate
-        // never blocks; overage billing is the invoice engine's job, WS-I).
+        // never blocks; overage billing is the invoice engine's job).
         tenantRepository.findById.mockResolvedValue({ plan: 'ENTERPRISE', trialEndsAt: null });
         planEntitlementRepository.findByPlan.mockResolvedValue(null);
         tenantEntitlementRepository.findByTenant.mockResolvedValue(null);

@@ -1,4 +1,4 @@
-"""TASK-671 P0 — ontology-code population and the code-identity bridge rate.
+"""Ontology-code population and the code-identity bridge rate.
 
 Records the measurement that **refuted** this ticket's most promising hypothesis, and keeps
 it reproducible. `NEREntity` carries `umls_cui` / `snomed_code` / `rxnorm_code` /
@@ -6,12 +6,12 @@ it reproducible. `NEREntity` carries `umls_cui` / `snomed_code` / `rxnorm_code` 
 already consumed elsewhere in the harness — yet both lexical entity sensors compare only
 normalized surface text. Code identity looked like a way to ground `paracetamol` against a
 transcript saying `Tylenol` **without loosening the string match by one character**, which is
-the constraint TASK-664 §1.4 imposed.
+the constraint imposed.
 
 It measured 14.3% code population and a **0% bridge rate on genuine abstraction** — the one
 "bridge" is an entity that was already lexically identical. `Tylenol`, `paracetamol` and
 `acetaminophen` are all absent from the 67-alias curated vocabulary, so the flagship case has
-no codes on either side. P2 was deferred on this evidence (ticket §2.6).
+no codes on either side. P2 was deferred on this evidence.
 
 Kept in the tree because a number recorded in a README whose script lives in ``/tmp`` is not
 a reproducible measurement, and because re-running this is the check that tells you when the

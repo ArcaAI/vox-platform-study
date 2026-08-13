@@ -7,7 +7,7 @@ import { ChangelogEntryEntityMapper } from '../../../mappers';
 import { ChangelogEntry } from '../../../models';
 
 /**
- * Curated release-notes repository (TASK-648) — one row per platform
+ * Curated release-notes repository — one row per platform
  * (`ALL-`) train version, enforced by `ChangelogEntry_platformVersion_unique`.
  * The ONE human-edited, OCC model here — writes on a versioned PATCH route go
  * through `updateWithVersion`.

@@ -32,7 +32,7 @@ export interface AudioMixerAddSourceOptions {
   /**
    * Whether the mixer may stop this source's `MediaStreamTrack`s when the
    * source is removed (`removeSource`, and therefore `dispose`, which removes
-   * every source). Defaults to `true` — the behaviour every pre-TASK-612
+   * every source). Defaults to `true` — the behaviour every historical
    * caller relies on.
    *
    * Pass `false` for a stream the mixer's CALLER built and still owns (an
@@ -43,7 +43,7 @@ export interface AudioMixerAddSourceOptions {
    * `ended`, and gets a structurally valid capture whose uplink carries
    * silence. With `false` the mixer still disconnects the nodes and forgets
    * the source — only the tracks are left alone, for their owner to stop.
-   */
+*/
   stopTracksOnRemove?: boolean;
 }
 
@@ -164,7 +164,7 @@ export class AudioMixer extends TypedEventEmitter<AudioMixerEventMap> {
     // Unwiring is unconditional; STOPPING the tracks is not. A caller-owned
     // source (`stopTracksOnRemove: false`) leaves this method with its tracks
     // still `live` — the mixer has forgotten it, and its owner decides when it
-    // ends (TASK-612).
+    // ends.
     if (source.stopTracksOnRemove) source.stream.getTracks().forEach((t) => t.stop());
     this.sources.delete(id);
     this.levels.delete(id);
@@ -206,7 +206,7 @@ export class AudioMixer extends TypedEventEmitter<AudioMixerEventMap> {
   }
 
   // ===========================================================================
-  // Per-source level monitoring (TASK-597 follow-up #2)
+  // Per-source level monitoring
   // ===========================================================================
   //
   // The mixer is the ONLY place in the stack that still has the sources as
@@ -371,7 +371,7 @@ export class AudioMixer extends TypedEventEmitter<AudioMixerEventMap> {
 
     // Delegated to removeSource so disposal and removal cannot drift apart —
     // which also means dispose honours each source's `stopTracksOnRemove`:
-    // caller-owned streams survive the mixer they were mixed in (TASK-612).
+    // caller-owned streams survive the mixer they were mixed in.
     for (const [id] of this.sources) {
       this.removeSource(id);
     }

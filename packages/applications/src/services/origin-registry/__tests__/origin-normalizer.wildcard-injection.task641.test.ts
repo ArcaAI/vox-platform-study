@@ -1,5 +1,5 @@
 /**
- * Wildcard-injection through `new URL()` decoding (TASK-641 lane J, task 1).
+ * Wildcard-injection through `new URL()` decoding (task 1).
  *
  * `normalizeOrigin` guards `raw.includes('*')` BEFORE it calls `new URL(raw)`.
  * That ordering is the bug: WHATWG URL parsing percent-decodes `%2A`/`%2a` and
@@ -24,7 +24,7 @@ import { describe, expect, it } from 'vitest';
 import { normalizeOrigin } from '../origin-normalizer';
 import { isOriginPattern, matchesOriginPattern, normalizeOriginPattern } from '../origin-pattern';
 
-describe('normalizeOrigin — wildcard injection via URL decoding (TASK-641 lane J)', () => {
+describe('normalizeOrigin — wildcard injection via URL decoding', () => {
   // Both spellings decode to the SAME canonical host `*.evil.com`, which is a
   // grammatically valid `*.<suffix>` pattern — the escalating shape, not a
   // harmless one.

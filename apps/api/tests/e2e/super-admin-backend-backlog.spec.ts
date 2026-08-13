@@ -7,7 +7,7 @@
  * to `__GLOBAL__` = admin operator WITH tenant context; a second `super_admin`
  * session with NO tenant key = cross-tenant operator; `doctor` = RBAC negative).
  *
- * Coverage (ticket §Items #22–25):
+ * Coverage (#22–25):
  *   #22 policy CRUD (AUTH-SENSITIVE) · create → patch → soft-delete a throwaway
  *        TENANT policy round-trips; the seeded GLOBAL `system-full-access` /
  *        `rbac-system-manage` policies REFUSE (403) deletion, load-bearing-rule
@@ -228,7 +228,7 @@ test.describe.serial('#23 — api-key rotate', () => {
     expect(newExists.status()).toBe(200);
   });
 
-  // NOTE (auth posture — RESOLVED, see README §3.2): the shared by-id gate
+  // NOTE (auth posture — RESOLVED, see README): the shared by-id gate
   // enforces OWNER-scope on top of tenant isolation, so an
   // owner-only clinician can rotate/revoke/delete/fetch only their OWN keys;
   // GLOBAL_ADMIN and tenant-admins keep their broader scope. The full

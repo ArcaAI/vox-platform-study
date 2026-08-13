@@ -1,7 +1,7 @@
 /**
  * A parseable WAV fixture for `transcribeFile` tests.
  *
- * Since TASK-604 the upload route measures duration from the container header
+ * Since the upload route measures duration from the container header
  * and FAILS CLOSED when it cannot read one. A placeholder like
  * `Buffer.from('audio')` therefore no longer reaches the handler logic under
  * test — it is rejected as "could not determine the duration" first. Tests that

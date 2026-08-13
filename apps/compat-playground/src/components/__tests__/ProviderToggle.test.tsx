@@ -13,13 +13,13 @@ let mockReturn: {
 };
 
 /**
- * Capture phase from the console's own session context (TASK-614 E2).
+ * Capture phase from the console's own session context.
  *
  * "Is there a live session?" is answered by CAPTURE, not by `activeProvider`.
  * `activeProvider` is null for the whole session whenever capture started
  * without an explicit pipelineId, which made this card announce "no live
  * session yet — queued" in the middle of a recording.
- */
+*/
 let mockPhase: 'idle' | 'starting' | 'recording' | 'stopping';
 
 vi.mock('@arcaai/vox/compat', () => ({
@@ -93,7 +93,7 @@ describe('ProviderToggle', () => {
     expect(screen.queryByText('pending')).not.toBeInTheDocument();
   });
 
-  // TASK-614 E2 — the case that motivated the change. A recording session whose
+  // The case that motivated the change. A recording session whose
   // pipeline the client never named still has `activeProvider === null`; the old
   // gate showed "queued"/"not started" while audio was streaming.
   it('reports a LIVE session while recording even when the active pipeline is unknown', () => {

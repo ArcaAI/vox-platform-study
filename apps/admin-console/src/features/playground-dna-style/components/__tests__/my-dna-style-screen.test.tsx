@@ -423,7 +423,7 @@ describe('MyDnaStyleScreen', () => {
     await waitFor(() => expect(myStyleReads()).toBeGreaterThan(readsBefore));
   });
 
-  // ─── TASK-551 — redaction rules editor ───────────────────────────────
+  // ─── redaction rules editor ───────────────────────────────
 
   it('renders the doctor’s existing redaction rule from GET /my-style/redaction-rules', async () => {
     stubDna();

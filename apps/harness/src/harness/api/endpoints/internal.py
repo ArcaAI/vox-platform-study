@@ -78,7 +78,7 @@ def _workflow_id(consultation_id: str) -> str:
 
 
 def _loop_workflow_id(consultation_id: str) -> str:
-    """Deterministic, idempotent workflow id for a consultation's LOOP (TASK-662).
+    """Deterministic, idempotent workflow id for a consultation's LOOP.
 
     Mirrors ``consultation_loop_workflow_id`` in ``temporal.workflows``; kept as
     a local one-liner for the same reason ``_workflow_id`` is — this module must
@@ -103,9 +103,9 @@ class StartDocumentRequest(BaseModel):
     template: str | None = Field(default=None)
     smr_provider: str | None = Field(default=None, alias="smrProvider")
     smr_model: str | None = Field(default=None, alias="smrModel")
-    # TASK-551 — DNA redaction/rewrite rules resolved + decrypted gateway-side
+    # DNA redaction/rewrite rules resolved + decrypted gateway-side
     # (tenant + doctor double-gate). Default [] ⇒ the workflow's apply_redaction
-    # insertion is a no-op (byte-identical to the pre-TASK-551 start). Each entry is
+    # insertion is a no-op (byte-identical to the prior start). Each entry is
     # the RedactionRule shape ({ id, type, match, pattern, replacement?, note? }).
     redaction_rules: list[dict[str, Any]] = Field(default_factory=list, alias="redactionRules")
 
@@ -140,9 +140,9 @@ class EditRequest(BaseModel):
 
 
 class LoopContextAddedRequest(BaseModel):
-    """Body for ``signal/context-added`` (TASK-662's receiver for TASK-660's caller).
+    """Body for ``signal/context-added`` (the receiver for the caller).
 
-    As of TASK-670, ``HarnessGatewayService.signalContextAdded`` sends every
+    Now, ``HarnessGatewayService.signalContextAdded`` sends every
     field below: ``kindKey``/``occurredAt``/``depth``/``content`` are no longer
     hypothetical future additions, they are what a payload-complete signal
     actually carries. They stay ADDITIVE-OPTIONAL regardless — ``extra="ignore"``
@@ -152,7 +152,7 @@ class LoopContextAddedRequest(BaseModel):
     ``kindKey`` falls back to ``subType`` and then to ``contextType`` so a
     gateway that has not yet been taught the kind key still routes against
     SOMETHING the tenant's subscriptions can match, rather than silently
-    matching nothing. ``resolved_text()`` similarly prefers the fuller
+    matching nothing. ``resolved_text`` similarly prefers the fuller
     ``content`` over the older, shorter ``contentPreview``.
     """
 
@@ -167,7 +167,7 @@ class LoopContextAddedRequest(BaseModel):
     depth: int = 0
     source: str | None = Field(default=None)
     content_preview: str = Field(default="", alias="contentPreview")
-    # TASK-670 — the fuller context body (up to LOOP_SIGNAL_CONTENT_MAX_LENGTH
+    # The fuller context body (up to LOOP_SIGNAL_CONTENT_MAX_LENGTH
     # chars gateway-side; see context.service.ts for the size-threshold
     # reasoning). Additive-optional, same posture as kindKey/occurredAt/depth:
     # an un-upgraded gateway sends none of it and `resolved_text()` falls back
@@ -386,10 +386,10 @@ async def signal_edit(
 
 
 # ---------------------------------------------------------------------------
-# Consultation loop (TASK-662)
+# Consultation loop
 #
-# TASK-660 shipped the CALLER for `signal/context-added` and recorded in its §7
-# that the receiver was this ticket's job. These three routes are it.
+# The gateway shipped the CALLER for `signal/context-added`;
+# these three routes are the matching receiver.
 # ---------------------------------------------------------------------------
 
 

@@ -35,11 +35,11 @@ vi.mock('sonner', () => ({
 }));
 
 // The live transcript arrives through the console-wide session context
-// (TASK-597 lane 0) instead of a `transcriptLines` prop, so the card needs a
+//  instead of a `transcriptLines` prop, so the card needs a
 // session to read. Mock the hook rather than standing up the whole provider —
 // this suite is about the SMR call shape, not session wiring.
 let mockLineTexts: string[] = [];
-// `batch.handoff` is the batch-upload → summarization push (TASK-603); `null`
+// `batch.handoff` is the batch-upload → summarization push ; `null`
 // here means "nothing was handed over", which is the state every test below
 // exercises. The dedicated hand-off assertions live in BatchUploadTab.test.tsx.
 vi.mock('../../context/playground-session', () => ({

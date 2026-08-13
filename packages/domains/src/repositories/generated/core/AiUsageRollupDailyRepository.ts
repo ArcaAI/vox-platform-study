@@ -13,10 +13,10 @@ export interface AiUsageRollupDailyDimension {
   tenantId: string;
   bucketStart: Date;
   capability: AiCapability;
-  /** Ledger event operation (TASK-615 #4); "" sentinel for pre-follow-up rows. */
+  /** Ledger event operation; "" sentinel for pre-follow-up rows. */
   operation: string;
   provider: string;
-  /** Who FUNDED the call (TASK-638) — the allowance is consumed SELF_HOSTED-first. */
+  /** Who FUNDED the call — the allowance is consumed SELF_HOSTED-first. */
   deployment: AiDeploymentKind;
   /** "" sentinel when the capability selects no model — never null. */
   model: string;
@@ -102,7 +102,7 @@ export class AiUsageRollupDailyRepository extends Repository<AiUsageRollupDailyE
 
   /**
    * All-time `quantitySum` for one (capability, unit-set) of a tenant, as a
-   * `number` (TASK-615 #11 — the ledger-derived consumption read behind
+   * `number` (the ledger-derived consumption read behind
    * `PlatformMetricsService.getConsumptionRollup`, so the platform-metrics
    * dashboard agrees with `UsageAnalyticsService.getUsageSummary`). Pass
    * `tenantId = null` for the platform-wide total. Returns 0 when no rows match.

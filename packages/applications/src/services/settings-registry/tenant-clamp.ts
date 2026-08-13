@@ -1,10 +1,10 @@
-// The tenant-override clamp — TASK-558 lane I, plan §9.3 M2.
+// The tenant-override clamp.
 //
 // THE RULE, stated once: a tenant override may only make a setting MORE
 // RESTRICTIVE than the platform value, and may never exceed the tenant's plan
 // entitlement. Entitlements BOUND what a tenant MAY set; they never supply a
 // value (that is the deliberate improvement on the common 4-level pattern —
-// §9.3 M2 exists precisely so a later contributor does not "fix" entitlements
+// entitlements stay a ceiling so a later contributor does not "fix" them
 // into the cascade).
 //
 // WHY A DIRECTION TABLE RATHER THAN "tenant always wins".
@@ -78,7 +78,7 @@ export interface TenantClampResult<T> {
  * Apply the platform bound and the entitlement ceiling to one tenant override.
  *
  * Returns the value the tenant actually gets plus whether a bound bit, so the
- * caller can log the refusal (§9.2 L8: every fallback is observable) instead of
+ * caller can log the refusal (every fallback is observable) instead of
  * silently narrowing a value an admin believes they set.
  */
 export function clampTenantSetting<T>(key: string, tenantValue: T, bounds: TenantClampBounds = {}): TenantClampResult<T> {

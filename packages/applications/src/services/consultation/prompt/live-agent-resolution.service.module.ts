@@ -5,7 +5,7 @@ import { LiveAgentResolutionService } from './live-agent-resolution.service';
 import { PromptResolutionServiceModule } from './prompt-resolution.service.module';
 
 /**
- * TASK-635 C3 — provides {@link LiveAgentResolutionService} under the
+ * Provides {@link LiveAgentResolutionService} under the
  * `ILiveAgentResolver` symbol token, so `LiveDocumentationService` depends on
  * the NARROW PORT rather than on a concrete assembly service (C1 DR-3).
  *

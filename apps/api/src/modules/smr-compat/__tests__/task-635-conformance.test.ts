@@ -1,7 +1,7 @@
 /**
- * TASK-635 Lane D3 — conformance regression suite (COMPAT / API layer).
+ * Conformance regression suite (COMPAT / API layer).
  *
- * Locks the §2.0 conformance scorecard of
+ * Locks the conformance scorecard of
  * `docs/implementation/TASK-635-Summarization-Agent-Conformance/README.md`
  * as executable checks. Each `describe`/`it` is named after the requirement it
  * locks so a failure names the broken contract, not just the broken code.
@@ -14,10 +14,10 @@
  *
  * | Requirement | Scorecard row | Covered here |
  * |---|---|---|
- * | R-C1 | "no live summarization loop on compat" | route inventory (§1) |
- * | R-C2 | "agent by department AND visit type; tenant-admin LLM" | §2 |
- * | R-C3 (i) | "pre-summary resolution ignores department" | §3 |
- * | R-C3 (ii) | NON-CONFORMING BY DESIGN until Lane D2 | §4 — characterization |
+ * | R-C1 | "no live summarization loop on compat" | route inventory |
+ * | R-C2 | "agent by department AND visit type; tenant-admin LLM" | |
+ * | R-C3 (i) | "pre-summary resolution ignores department" | |
+ * | R-C3 (ii) | NON-CONFORMING BY DESIGN until Lane D2 | — characterization |
  *
  * DELIBERATELY NOT DUPLICATED (asserted elsewhere; referenced so a reader can
  * find the lock rather than re-adding it here):
@@ -29,7 +29,7 @@
  *     `packages/applications/.../prompt/__tests__/prompt-resolution.capability-bindings.test.ts`
  *   - RF-5 resolver-side ineligibility of the agent tier without a
  *     `departmentId` → same file, "is INELIGIBLE without a departmentId".
- *     §3 below locks the COMPLEMENTARY property: the compat CALL PATH is the
+ * below locks the COMPLEMENTARY property: the compat CALL PATH is the
  *     one that supplies no department.
  */
 
@@ -53,7 +53,7 @@ import {
 import { PRE_SUMMARY_DISPLAY_TITLES } from '../summary-response.mapper';
 
 // ---------------------------------------------------------------------------
-// §1 — R-C1: the compat surface carries NO live/streaming summarization route
+// R-C1: the compat surface carries NO live/streaming summarization route
 // ---------------------------------------------------------------------------
 
 /**
@@ -104,7 +104,7 @@ describe('R-C1 — the compat surface exposes no live-summarization route', () =
 });
 
 // ---------------------------------------------------------------------------
-// §2 — R-C2: department AND visit-type aware; tenant-admin LLM default honored
+// R-C2: department AND visit-type aware; tenant-admin LLM default honored
 // ---------------------------------------------------------------------------
 
 const createTemplateService = (overrides?: {
@@ -215,7 +215,7 @@ describe('R-C2 — the LLM is the default set by the tenant admin', () => {
 });
 
 // ---------------------------------------------------------------------------
-// §3 — R-C3 (i): pre-summary resolution ignores department (RF-5)
+// R-C3 (i): pre-summary resolution ignores department (RF-5)
 // ---------------------------------------------------------------------------
 
 describe('R-C3 (i) — the compat pre-summary call path supplies no department', () => {
@@ -253,7 +253,7 @@ describe('R-C3 (i) — the compat pre-summary call path supplies no department',
 });
 
 // ---------------------------------------------------------------------------
-// §4 — R-C3 (ii): CHARACTERIZATION — non-conforming by design (until D2)
+// R-C3 (ii): CHARACTERIZATION — non-conforming by design (until D2)
 // ---------------------------------------------------------------------------
 
 describe('R-C3 (ii) — CHARACTERIZATION: the compat pre-summary BODY still carries department/visit-type', () => {
@@ -266,7 +266,7 @@ describe('R-C3 (ii) — CHARACTERIZATION: the compat pre-summary BODY still carr
    * wire contract binds it: `summary-response.mapper.ts` title-matches the five
    * v1 FORMAT headings, three of which literally read "(Latest Dept Note)".
    * Renaming or removing them returns `structured_data.sections: []` to every
-   * v1 client. The TASK-634 byte-exact fidelity checksum gate locks the same
+   * v1 client. The byte-exact fidelity checksum gate locks the same
    * bytes from the seed side.
    *
    * When D2 lands, R-C3 flips to CONFORMING for the NATIVE surface only; this
@@ -303,15 +303,15 @@ describe('R-C3 (ii) — CHARACTERIZATION: the compat pre-summary BODY still carr
 });
 
 // ---------------------------------------------------------------------------
-// §5 — R-C3 (ii) flip: the NATIVE surface now conforms; compat (§4) is unchanged
+// R-C3 (ii) flip: the NATIVE surface now conforms; compat is unchanged
 // ---------------------------------------------------------------------------
 
 describe('R-C3 (ii) flip — the NATIVE dept-free fork is a DISTINCT pointer from the v1 compat default (D2)', () => {
   /**
    * RF-1's wire contract, proven from the compat side: compat's resolver call
-   * (§3 above) never carries `preSummaryVariant`, so it always defaults to
+   * (above) never carries `preSummaryVariant`, so it always defaults to
    * `'v1'` and can only ever reach `SYSTEM_DEFAULTS.preSummaryPromptId` — the
-   * SAME body §4 characterizes as still carrying `{current_department}` /
+   * SAME body characterizes as still carrying `{current_department}`
    * `{visit_type}`. The dept-free fork D2 seeds
    * (`packages/database/.../07d-dept-free-pre-summary-default.ts`, locked by
    * its own checksum test and by

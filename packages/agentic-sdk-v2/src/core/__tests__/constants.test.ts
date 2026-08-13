@@ -168,7 +168,7 @@ describe('constants', () => {
       expect(STT_ENDPOINTS.WS_STREAM).toBe('/ws/stt/stream');
     });
 
-    it('should generate SWITCH_TO_FALLBACK endpoint by session id (TASK-567)', () => {
+    it('should generate SWITCH_TO_FALLBACK endpoint by session id', () => {
       expect(STT_ENDPOINTS.SWITCH_TO_FALLBACK('sess-1')).toBe('/audio/transcription-jobs/stream/session/sess-1/switch-to-fallback');
     });
 

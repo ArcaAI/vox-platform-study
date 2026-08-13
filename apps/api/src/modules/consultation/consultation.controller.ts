@@ -43,7 +43,7 @@ import {
   HarnessAssuranceService,
   // dedicated Redis subscriber for the trajectory SSE relay.
   RedisSubscriberService,
-  // TASK-670 — consultation-loop lifecycle signal caller.
+  // Consultation-loop lifecycle signal caller.
   LoopContextSignalService,
 } from '@arcaai/applications';
 import {
@@ -174,7 +174,7 @@ export class ConsultationController {
     private readonly harnessAssuranceService: HarnessAssuranceService,
     // dedicated Redis subscriber for the trajectory SSE relay.
     private readonly redisSubscriber: RedisSubscriberService,
-    // TASK-670 — best-effort consultation-loop lifecycle signals
+    // Best-effort consultation-loop lifecycle signals
     // (`signalConsultationEnding`/`signalLoopCancel`); gated behind
     // `HARNESS_LOOP_ENABLED` and never lets a harness failure surface here.
     private readonly loopContextSignalService: LoopContextSignalService,
@@ -504,7 +504,7 @@ export class ConsultationController {
     await this.verifyConsultationOwnership(id);
     await this.liveDocumentationService.stop(id, { persistSnapshot: request?.persistSnapshot });
     const consultation = await this.consultationService.stopRecording(id);
-    // TASK-670 — tell the consultation loop the recording stopped so it can
+    // Tell the consultation loop the recording stopped so it can
     // drain, run its ending actions, and finalize. Best-effort (no-op when
     // HARNESS_LOOP_ENABLED is off, swallows a failed harness call) — never
     // lets a loop-signal hiccup break the recording-stop response.
@@ -623,7 +623,7 @@ export class ConsultationController {
   }
 
   // relays `consultation:loop:{id}` (each event is published there by
-  // ConsultationLoopEventService.publishEvent, POSTed by the future TASK-662
+  // ConsultationLoopEventService.publishEvent, POSTed by the future
   // ConsultationLoopWorkflow via `POST /internal/harness/consultations/:id/loop-event`).
   // Ticket-scoped SSE, mirroring the trajectory stream precisely
   // (@TenantOwnedResource pre-stream 404 guard + @StreamScope one-shot

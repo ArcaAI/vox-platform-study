@@ -1,4 +1,4 @@
--- TASK-344 Workstream B — Manual doctor highlighting (durable Highlight model).
+-- Manual doctor highlighting (durable Highlight model).
 --
 -- PURELY ADDITIVE. One new enum + one new table + four indexes + one FK.
 -- No DROP / DELETE / TRUNCATE / column removal / ALTER … DROP on any existing

@@ -1,5 +1,5 @@
 /**
- * Unified tenant BYO cloud-credential client (C2/C3, TASK-569/572) —
+ * Unified tenant BYO cloud-credential client (C2/C3) —
  * `admin/providers/:service/:provider` serves LLM, STT, and TTS credentials
  * through one route family, replacing the three per-capability facades this
  * screen consolidates. Paths are gateway-relative; the shared core prepends

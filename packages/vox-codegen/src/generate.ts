@@ -5,8 +5,8 @@
  * exhaustive lookups. Non-`STRUCTURED` kinds (`STREAM_AUDIO`, `TEXT`,
  * `DOCUMENT`, `IMAGE`) carry no `fields` to type — they get a one-line
  * comment instead of a payload type, since `addContext()` never validates a
- * `payload` for them (`useArcaSession.addContext`, TASK-665 §4.2).
- */
+ * `payload` for them (`useArcaSession.addContext`,).
+*/
 
 import { jsonSchemaSubsetToTs } from './schema-to-ts';
 import type { ConsultationSchemaBundle, ContextKindDeclaration, ContextOutputDeclaration } from './types';
@@ -71,7 +71,7 @@ function renderEntries<T extends ContextKindDeclaration | ContextOutputDeclarati
     }
     if (!isPlainObject(entry.fields)) {
       // A published STRUCTURED kind always carries `fields` (the server
-      // requires it — TASK-658 §4.3), but this reads untrusted wire JSON,
+      // requires it), but this reads untrusted wire JSON,
       // so stay defensive rather than throw on an otherwise-harmless gap.
       notes.push(`// \`${entry.key}\` — declared STRUCTURED but has no \`fields\`; skipped.`);
       continue;

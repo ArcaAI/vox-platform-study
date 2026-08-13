@@ -1,7 +1,7 @@
 /**
  * ConsultationLoopEventService Unit Tests.
  *
- * The ephemeral loop-output feed (TASK-660): `publishEvent` publishes ONE
+ * The ephemeral loop-output feed: `publishEvent` publishes ONE
  * self-contained event on `consultation:loop:{consultationId}` — append-only,
  * no fold/snapshot (mirrors the trajectory stream, not harness-progress).
  */

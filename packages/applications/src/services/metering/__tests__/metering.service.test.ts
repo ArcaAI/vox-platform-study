@@ -4,18 +4,18 @@
  * Verifies the authoritative behaviour, not the mock plumbing:
  *   - `getCurrentUsage` aggregates the CURRENT UTC month window and rounds
  *     transcription-minutes, and performs NO writes (read path).
- *   - `getCurrentUsage` ALSO sums the six TASK-615 ledger-derived unit meters
+ *   - `getCurrentUsage` ALSO sums the six ledger-derived unit meters
  *     from `AiUsageRollupDaily` — each mapped metric reads a fixed
  *     (capability, unit) dimension over the same window, EXCEPT
  *     `guardrailCalls`, which is a distinct-`requestId` COUNT over the raw
- *     `AiUsageEvent` ledger (the rollup carries `operation` since TASK-615 #4,
+ *     `AiUsageEvent` ledger (the rollup carries `operation` now #4,
  *     but a rollup aggregates token QUANTITY, not per-call cardinality, so a
  *     distinct-call count still reads the raw event).
  *   - LLM_TOKENS EXCLUDES the guardrail/harness operations from its sum via the
- *     rollup `operation` dimension (TASK-615 #4) — they are metered for COGS but
+ *     rollup `operation` dimension — they are metered for COGS but
  *     never billed (D16).
  *   - `reconcileTenant` upserts NINE meter rows for that window (the three
- *     business meters + the six TASK-615 unit meters) with the aggregated
+ *     business meters + the six unit meters) with the aggregated
  *     values + `reconciledAt`, and returns the usage.
  *   - `reconcileAllActiveTenants` iterates every tenant and is resilient to a
  *     per-tenant failure (keeps going, counts only successes).
@@ -39,7 +39,7 @@ function makeBaseClient(overrides: Record<string, unknown> = {}) {
     // 5 min 30 s of audio (330 000 ms) → rounds to 6 minutes.
     audioRecording: { aggregate: vi.fn().mockResolvedValue({ _sum: { duration: 330_000 } }) },
     summaryMeta: { count: vi.fn().mockResolvedValue(7) },
-    // TASK-615 — rollup-backed unit meters. Every metric maps to one
+    // Rollup-backed unit meters. Every metric maps to one
     // `aiUsageRollupDaily.aggregate` call except `guardrailCalls`.
     aiUsageRollupDaily: { aggregate: vi.fn().mockResolvedValue({ _sum: { quantitySum: decimalLike(0) } }) },
     aiUsageEvent: { findMany: vi.fn().mockResolvedValue([]) },
@@ -75,7 +75,7 @@ describe('MeteringService.getCurrentUsage', () => {
     expect(usage).toEqual({ consultations: 12, transcriptionMinutes: 6, summaries: 7, ...ZERO_UNIT_METERS });
   });
 
-  it('LLM_TOKENS excludes guardrail/harness operations; single-operation meters stay unfiltered (TASK-615 #4)', async () => {
+  it('LLM_TOKENS excludes guardrail/harness operations; single-operation meters stay unfiltered', async () => {
     await service.getCurrentUsage('tenant-1', FIXED_NOW);
 
     const wheres = baseClient.aiUsageRollupDaily.aggregate.mock.calls.map((call: [{ where: Record<string, unknown> }]) => call[0].where);
@@ -115,7 +115,7 @@ describe('MeteringService.getCurrentUsage', () => {
     expect(usage.transcriptionMinutes).toBe(0);
   });
 
-  describe('TASK-615 rollup-backed unit meters', () => {
+  describe('Rollup-backed unit meters', () => {
     it('sums STT_SESSION_SECONDS from the SESSION_SECOND unit under capability STT, over the current month window', async () => {
       baseClient.aiUsageRollupDaily.aggregate.mockImplementation(async ({ where }: { where: Record<string, unknown> }) => {
         if (where.capability === 'STT' && (where.unit as { in: string[] }).in.includes('SESSION_SECOND')) {
@@ -241,7 +241,7 @@ describe('MeteringService.getCurrentUsage', () => {
 });
 
 describe('MeteringService.reconcileTenant', () => {
-  it('upserts NINE meter rows for the window (3 business + 6 TASK-615 unit meters) and returns the usage', async () => {
+  it('upserts NINE meter rows for the window (3 business + 6 unit meters) and returns the usage', async () => {
     const baseClient = makeBaseClient();
     const service = makeService(baseClient);
 
@@ -274,7 +274,7 @@ describe('MeteringService.reconcileTenant', () => {
     )![0];
     expect(consultationCall.create).toMatchObject({
       tenantId: 'tenant-1',
-      // TASK-615 #5 — usedCount persists as BigInt.
+      // UsedCount persists as BigInt.
       usedCount: 12n,
       periodStart: WINDOW.periodStart,
       periodEnd: WINDOW.periodEnd,
@@ -282,7 +282,7 @@ describe('MeteringService.reconcileTenant', () => {
     expect(consultationCall.update).toMatchObject({ usedCount: 12n, reconciledAt: FIXED_NOW });
   });
 
-  it('upserts a TASK-615 unit meter (LLM_TOKENS) with the summed value', async () => {
+  it('upserts a unit meter (LLM_TOKENS) with the summed value', async () => {
     const baseClient = makeBaseClient();
     baseClient.aiUsageRollupDaily.aggregate.mockImplementation(async ({ where }: { where: Record<string, unknown> }) => {
       if (where.capability === 'LLM') return { _sum: { quantitySum: decimalLike(7_500) } };

@@ -32,7 +32,7 @@ describe('mapV1ConfigToAgenticConfig', () => {
   });
 
   it('never carries the v1 hardcoded default key', () => {
-    // The v1 baked-in default (TASK-560 §6 A1) must NOT appear anywhere.
+    // The v1 baked-in default must NOT appear anywhere.
     expect(() => mapV1ConfigToAgenticConfig({ ...baseConfig, credentials: {} })).toThrow();
     const cfg = mapV1ConfigToAgenticConfig(baseConfig);
     expect(cfg.api.apiKey).not.toBe('AFUTlhD/pGyyKOBTP3KTnA==');

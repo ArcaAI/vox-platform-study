@@ -254,7 +254,7 @@ class TestPersistDraft:
         body = json.loads(seen["request"].content)
         assert "guardrailDecisions" not in body
         assert "reducedAssurance" not in body
-        # TASK-551 audit marker fields are pruned when not provided ⇒ byte-identical
+        # Audit marker fields are pruned when not provided ⇒ byte-identical
         # to the pre-audit-era persist body (replay-safe when the era is off).
         assert "redactionApplied" not in body
         assert "redactionManifest" not in body
@@ -416,7 +416,7 @@ class TestGetPolicy:
 
     @pytest.mark.asyncio
     async def test_get_policy_appends_consultation_id_when_present(self):
-        # TASK-550 — a consultation_id is threaded onto the query so the gateway
+        # A consultation_id is threaded onto the query so the gateway
         # overlays the department default agent's tenant-tier harnessOverrides.
         seen: dict[str, httpx.Request] = {}
 
@@ -434,7 +434,7 @@ class TestGetPolicy:
     @pytest.mark.asyncio
     async def test_get_policy_omits_consultation_id_when_absent(self):
         # No consultation ⇒ the query carries only tenantId (byte-identical
-        # pre-TASK-550 request; other gateway callers are unaffected).
+        # prior request; other gateway callers are unaffected).
         seen: dict[str, httpx.Request] = {}
 
         def handler(request: httpx.Request) -> httpx.Response:

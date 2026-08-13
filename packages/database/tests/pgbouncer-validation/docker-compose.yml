@@ -1,7 +1,7 @@
 # packages/database/tests/pgbouncer-validation/docker-compose.yml
 #
 # Single-node PostgreSQL + PgBouncer (transaction mode) for Prisma 7
-# compatibility validation (TASK-302 Stream C Phase 1).
+# compatibility validation.
 #
 # Ports (test-isolated, distinct from dev/test infra):
 #   5532  → PostgreSQL (direct, mirrors DIRECT_URL)

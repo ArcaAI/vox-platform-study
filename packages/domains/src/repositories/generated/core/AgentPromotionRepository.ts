@@ -7,7 +7,7 @@ import { AgentPromotionEntityMapper } from '../../../mappers';
 import { AgentPromotion } from '../../../models';
 
 /**
- * TASK-663 — immutable, WORM records of agent promotions between tenants.
+ * Immutable, WORM records of agent promotions between tenants.
  *
  * Listed in `MODELS_WITHOUT_SOFT_DELETE`: the table has no `resourceStatus`
  * column, so `softDelete`/`restore` throw and reads must NOT filter on it. That

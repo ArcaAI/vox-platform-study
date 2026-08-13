@@ -30,7 +30,7 @@ const FALLBACK_META: Record<(typeof SMR_FALLBACK_TASK_KEYS)[number], { title: st
 };
 
 /**
- * Tenant-editable "SMR models" section (TASK-588 / TASK-592, /ai-configuration).
+ * Tenant-editable "SMR models" section (/ai-configuration).
  *
  * A one-action `SmrDefaultProviderControl` at the top applies a single
  * provider/model across the tenant-editable text-gen keys, above four per-key
@@ -47,7 +47,7 @@ export function SmrModelsSection() {
   const uid = useId();
   return (
     <div className="flex flex-col gap-6">
-      {/* TASK-592: one-action default across the tenant-editable text-gen (summarization) keys. */}
+      {/* One-action default across the tenant-editable text-gen (summarization) keys. */}
       <SmrDefaultProviderControl />
 
       <section aria-labelledby={`${uid}-primary`} className="flex flex-col gap-3">

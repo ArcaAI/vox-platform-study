@@ -1,4 +1,4 @@
--- TASK-511 Phase 3A — flip built-in clinician-facing templates to APPROVED.
+-- Flip built-in clinician-facing templates to APPROVED.
 --
 -- Clinical-flow prompt resolution is now approval-gated: `prompt-resolution`
 -- only resolves templates whose status = APPROVED. This UPDATE promotes the

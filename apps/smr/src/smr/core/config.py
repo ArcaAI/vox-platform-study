@@ -13,7 +13,7 @@ bootstrap fallbacks — their runtime values come from the control plane via
 The selection contract above is UNCHANGED: effective-config carries capacity and
 timeouts only, never a provider or model choice.
 
-TASK-579: the five CLOUD sub-configs (``AzureOpenAIConfig``, ``BedrockConfig``,
+the five CLOUD sub-configs (``AzureOpenAIConfig``, ``BedrockConfig``,
 ``OpenAIConfig``, ``AnthropicConfig``, ``VertexConfig``) carry no compiled-in
 vendor ``default_model`` — the field defaults to ``""`` and is retained ONLY
 as informational metadata for the ``/providers`` listing. Provider/model
@@ -32,7 +32,7 @@ from hope_env import hope_settings_sources, load_env
 from pydantic import AliasChoices, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# TASK-556: env_prefix is SMR_*; AliasChoices("…", "V2_…") + env_prefix_target
+# Env_prefix is SMR_*; AliasChoices("…", "V2_…") + env_prefix_target
 # "all" also accepts SMR_V2_* for the transition window.
 _SETTINGS_ALIASES = SettingsConfigDict(
     env_prefix="SMR_",
@@ -44,7 +44,7 @@ _SETTINGS_ALIASES = SettingsConfigDict(
 class OllamaConfig(BaseSettings):
     """Ollama provider configuration."""
 
-    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
     settings_customise_sources = hope_settings_sources
 
     model_config = SettingsConfigDict(env_prefix="SMR_OLLAMA_")
@@ -67,12 +67,12 @@ class OllamaConfig(BaseSettings):
 class AzureOpenAIConfig(BaseSettings):
     """Azure OpenAI provider configuration."""
 
-    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
     settings_customise_sources = hope_settings_sources
 
     model_config = SettingsConfigDict(env_prefix="SMR_AZURE_")
 
-    # TASK-602: Azure OpenAI is BYOK-only. The api_key is NEVER sourced from env —
+    # Azure OpenAI is BYOK-only. The api_key is NEVER sourced from env —
     # the `validation_alias` is a dead name no env var (nor Vault-Agent secrets_dir
     # file) matches, and `populate_by_name` is OFF, so `SMR_AZURE_API_KEY` cannot
     # repopulate it either. The platform default and per-tenant keys both arrive as
@@ -87,7 +87,7 @@ class AzureOpenAIConfig(BaseSettings):
     endpoint: str = ""
     api_version: str = "2024-12-01-preview"
     deployment_name: str = ""
-    # TASK-579: no compiled-in vendor model — provider/model SELECTION is
+    # No compiled-in vendor model — provider/model SELECTION is
     # failMode=closed (09-infrastructure-devops.md §Configuration Tiers).
     # Informational only (providers listing); never substituted into a
     # generation request — a missing model raises (see `providers/base.py`
@@ -105,13 +105,13 @@ class AzureOpenAIConfig(BaseSettings):
 class BedrockConfig(BaseSettings):
     """AWS Bedrock provider configuration."""
 
-    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
     settings_customise_sources = hope_settings_sources
 
     model_config = SettingsConfigDict(env_prefix="SMR_BEDROCK_")
 
     region: str = "us-east-1"
-    # TASK-579: no compiled-in vendor model — see AzureOpenAIConfig.default_model.
+    # No compiled-in vendor model — see AzureOpenAIConfig.default_model.
     default_model: str = ""
     # Bootstrap fallbacks; runtime values come from the control plane.
     timeout_s: int = 120
@@ -127,7 +127,7 @@ class BedrockConfig(BaseSettings):
 class OpenAICompatConfig(BaseSettings):
     """Generic OpenAI-compatible provider configuration."""
 
-    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
     settings_customise_sources = hope_settings_sources
 
     model_config = SettingsConfigDict(env_prefix="SMR_OPENAI_COMPAT_")
@@ -182,7 +182,7 @@ class LlamaCppConfig(BaseSettings):
     GBNF ``grammar`` / ``json_schema`` structured output are first-class.
     """
 
-    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
     settings_customise_sources = hope_settings_sources
 
     model_config = SettingsConfigDict(env_prefix="SMR_LLAMA_CPP_")
@@ -201,7 +201,7 @@ class OpenAIConfig(BaseSettings):
     governed first-class ``openai`` provider (a tenant BYO key arrives per
     request as a ``ProviderOverride``).
 
-    TASK-602: the api_key is BYOK-only — NEVER sourced from env (dead
+    the api_key is BYOK-only — NEVER sourced from env (dead
     `validation_alias`, `populate_by_name` OFF; ``SMR_OPENAI_API_KEY`` no longer
     populates it). The platform default and per-tenant keys both arrive as a
     request ``ProviderOverride``; a keyless generate raises
@@ -209,7 +209,7 @@ class OpenAIConfig(BaseSettings):
     (via ``model_copy``).
     """
 
-    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
     settings_customise_sources = hope_settings_sources
 
     model_config = SettingsConfigDict(env_prefix="SMR_OPENAI_")
@@ -219,7 +219,7 @@ class OpenAIConfig(BaseSettings):
         validation_alias="SMR_OPENAI_API_KEY__ENV_REMOVED_TASK_602",
     )
     base_url: str = "https://api.openai.com/v1"
-    # TASK-579: no compiled-in vendor model — see AzureOpenAIConfig.default_model.
+    # No compiled-in vendor model — see AzureOpenAIConfig.default_model.
     default_model: str = ""
     organization: str | None = None
     # Bootstrap fallbacks; runtime values come from the control plane.
@@ -234,14 +234,14 @@ class AnthropicConfig(BaseSettings):
 
     ``base_url`` empty ⇒ the SDK default (``https://api.anthropic.com``).
 
-    TASK-602: same BYOK-only credential rule as ``OpenAIConfig`` — the api_key is
+    same BYOK-only credential rule as ``OpenAIConfig`` — the api_key is
     NEVER sourced from env (dead `validation_alias`, `populate_by_name` OFF;
     ``SMR_ANTHROPIC_API_KEY`` no longer populates it). The credential arrives per
     request as a ``ProviderOverride``; a keyless generate raises
     ``ProviderCredentialsError`` (503).
     """
 
-    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
     settings_customise_sources = hope_settings_sources
 
     model_config = SettingsConfigDict(env_prefix="SMR_ANTHROPIC_")
@@ -251,7 +251,7 @@ class AnthropicConfig(BaseSettings):
         validation_alias="SMR_ANTHROPIC_API_KEY__ENV_REMOVED_TASK_602",
     )
     base_url: str = ""
-    # TASK-579: no compiled-in vendor model — see AzureOpenAIConfig.default_model.
+    # No compiled-in vendor model — see AzureOpenAIConfig.default_model.
     default_model: str = ""
     # Bootstrap fallbacks; runtime values come from the control plane.
     timeout_s: int = 120
@@ -271,14 +271,14 @@ class VertexConfig(BaseSettings):
     ``project`` means no platform fallback is configured.
     """
 
-    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
     settings_customise_sources = hope_settings_sources
 
     model_config = SettingsConfigDict(env_prefix="SMR_VERTEX_")
 
     project: str = ""
     location: str = "us-central1"
-    # TASK-579: no compiled-in vendor model — see AzureOpenAIConfig.default_model.
+    # No compiled-in vendor model — see AzureOpenAIConfig.default_model.
     default_model: str = ""
     # Bootstrap fallbacks; runtime values come from the control plane.
     timeout_s: int = 120
@@ -298,7 +298,7 @@ class SarvamConfig(BaseSettings):
     closed (endpoint → 503).
     """
 
-    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
     settings_customise_sources = hope_settings_sources
 
     model_config = SettingsConfigDict(env_prefix="SMR_SARVAM_")
@@ -316,7 +316,7 @@ class ExternalGuardrailConfig(BaseSettings):
     foot-gun was retired).
     """
 
-    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
     settings_customise_sources = hope_settings_sources
 
     model_config = SettingsConfigDict(env_prefix="SMR_EXTERNAL_GUARDRAIL_")
@@ -344,7 +344,7 @@ class ExternalGuardrailConfig(BaseSettings):
 
 
 class TelemetryPhiGuardConfig(BaseSettings):
-    """PHI-safe telemetry boot guard (TASK-615 WS-G).
+    """PHI-safe telemetry boot guard.
 
     ``NODE_ENV`` and ``OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT``
     are cross-process conventions read identically by every HOPE deployable —
@@ -398,7 +398,7 @@ class TelemetryPhiGuardConfig(BaseSettings):
 class RedisConfig(BaseSettings):
     """Redis configuration for task management."""
 
-    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
     settings_customise_sources = hope_settings_sources
 
     model_config = SettingsConfigDict(env_prefix="SMR_")
@@ -411,7 +411,7 @@ class RedisConfig(BaseSettings):
 class CircuitBreakerConfig(BaseSettings):
     """Circuit breaker configuration."""
 
-    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
     settings_customise_sources = hope_settings_sources
 
     model_config = SettingsConfigDict(env_prefix="SMR_CB_")
@@ -431,7 +431,7 @@ class CircuitBreakerConfig(BaseSettings):
 class QueueConfig(BaseSettings):
     """Request queue configuration."""
 
-    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
     settings_customise_sources = hope_settings_sources
 
     model_config = SettingsConfigDict(env_prefix="SMR_QUEUE_")
@@ -448,7 +448,7 @@ class Settings(BaseSettings):
     built lazily on first request.
     """
 
-    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
     settings_customise_sources = hope_settings_sources
 
     model_config = _SETTINGS_ALIASES
@@ -505,7 +505,7 @@ class Settings(BaseSettings):
         default="hope",
         validation_alias=AliasChoices("OTEL_SERVICE_NAMESPACE", "V2_OTEL_SERVICE_NAMESPACE"),
     )
-    # TASK-636 OBS-18. Resolved from the environment, defaulting to DEVELOPMENT.
+    # Resolved from the environment, defaulting to DEVELOPMENT.
     #
     # This defaulted to "production" and was the ORIGIN of the defect across the
     # fleet: `apps/smr/core/observability.py` is the reference implementation
@@ -546,7 +546,7 @@ class Settings(BaseSettings):
     llama_cpp: LlamaCppConfig = Field(default_factory=LlamaCppConfig)
     sarvam: SarvamConfig = Field(default_factory=SarvamConfig)
     external_guardrail: ExternalGuardrailConfig = Field(default_factory=ExternalGuardrailConfig)
-    # TASK-615 WS-G: raises at construction time (propagates out of
+    # Raises at construction time (propagates out of
     # `Settings()` -> `get_settings()` -> `create_app()`) when NODE_ENV=production
     # and OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT is not pinned.
     telemetry_phi_guard: TelemetryPhiGuardConfig = Field(default_factory=TelemetryPhiGuardConfig)

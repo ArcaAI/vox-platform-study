@@ -1,10 +1,10 @@
-// TASK-610 D-6 / FR-5 / T-7 — CSWSH guard for the STT WebSocket handshake.
+// T-7 — CSWSH guard for the STT WebSocket handshake.
 //
 // Browsers do not apply CORS to WebSocket handshakes, so `stt-ws.gateway.ts`
 // must consult the SAME origin registry the CORS callback uses
-// (`cors.config.ts`, lane W3-A) before accepting a connection. This is the
-// lane W3-C leaf test — colocated with, but separate from, the pre-existing
-// `stt-ws.gateway.test.ts` (per §4.4: "Test files are never shared ... each
+// (`cors.config.ts`) before accepting a connection. This is the
+// leaf test — colocated with, but separate from, the pre-existing
+// `stt-ws.gateway.test.ts` (per : "Test files are never shared ... each
 // lane creates its own `*.task610.test.ts`").
 import { Logger } from '@nestjs/common';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -59,7 +59,7 @@ const createMockRemovalRetry = () => ({
   enqueue: vi.fn(),
 });
 
-// TASK-610 §4B.4 — `IOriginRegistry` dropped `ownerOf` for `tenantsFor`/
+// `IOriginRegistry` dropped `ownerOf` for `tenantsFor`
 // `allows`. The gateway (`stt-ws.gateway.ts`) only ever calls `has()` and
 // `size()` for its CORS-equivalent admission check (D-6) — it does not do
 // tenant binding, so `tenantsFor`/`allows` are stubbed here only to satisfy
@@ -80,7 +80,7 @@ const buildReq = (sessionId: string, origin?: string): { url: string; headers: R
   headers: origin === undefined ? {} : { origin },
 });
 
-describe('SttWsGateway — origin registry CSWSH guard (TASK-610 D-6, T-7)', () => {
+describe('SttWsGateway — origin registry CSWSH guard', () => {
   let mockSessionService: ReturnType<typeof createMockSessionService>;
   let mockBridgeService: ReturnType<typeof createMockBridgeService>;
   let mockStreamTicketService: ReturnType<typeof createMockStreamTicketService>;
@@ -101,8 +101,8 @@ describe('SttWsGateway — origin registry CSWSH guard (TASK-610 D-6, T-7)', () 
 
   beforeEach(() => {
     vi.clearAllMocks();
-    // TASK-610 §4C — the CSWSH check is dormant unless `origin.enforcementEnabled`
-    // is on. Since TASK-641 FR-6 it ships ON (descriptor default `true`), so
+    // The CSWSH check is dormant unless `origin.enforcementEnabled`
+    // is on. Enforcement ships ON (descriptor default `true`), so
     // arming the switch here reproduces the shipped posture rather than
     // overriding it; the dormant/off state is pinned in
     // `stt-ws.gateway.enforcement.task610.test.ts`. It is still set explicitly
@@ -153,7 +153,7 @@ describe('SttWsGateway — origin registry CSWSH guard (TASK-610 D-6, T-7)', () 
     expect(gateway.getActiveSessionCount()).toBe(0);
   });
 
-  it('logs the offending origin on refusal (operator needs it for the §4.8 rollout)', async () => {
+  it('logs the offending origin on refusal (operator needs it for the rollout)', async () => {
     const gateway = buildGateway(mockOriginRegistry);
     const client = createMockSocket();
     const warnSpy = vi.spyOn(Logger.prototype, 'warn');
@@ -244,7 +244,7 @@ describe('SttWsGateway — origin registry CSWSH guard (TASK-610 D-6, T-7)', () 
   // cover (browsers exempt WS from CORS — D-6, the actual CSWSH vector).
   // Established sockets are unaffected: this check runs only in
   // `handleConnection`, never against a live session.
-  describe('present-but-empty registry (size() === 0) behaves exactly like an absent one — DENY (TASK-610 §4A.1, aligned with cors.config.ts)', () => {
+  describe('present-but-empty registry (size === 0) behaves exactly like an absent one — DENY (aligned with cors.config.ts)', () => {
     it('REJECTS when the registry is empty, with no env var involved at all', async () => {
       const emptyRegistry = createMockOriginRegistry(new Set());
       const gateway = buildGateway(emptyRegistry);

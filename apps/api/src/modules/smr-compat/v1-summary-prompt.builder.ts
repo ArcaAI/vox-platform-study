@@ -48,20 +48,20 @@ import {
  * ## What it is built from
  *
  * Not invented here. The five wrapper artifacts in `./v1-wrapper` were ported
- * byte-exact from the running v1 pod by TASK-634 Phase 5 and deliberately left
+ * byte-exact from the running v1 pod by and deliberately left
  * UNWIRED pending this assembly step (see `v1-wrapper/index.ts` "WIRING
  * STATUS"). This module is that step; it adds no prompt text of its own beyond
  * the two v2-specific carry-overs called out below.
  *
  * ## Deliberate v2 carry-overs (NOT v1 behaviour — do not "restore" them)
  *
- * 1. **Output language is English** (TASK-650 R1). v1's artifacts carry a
+ * 1. **Output language is English**. v1's artifacts carry a
  *    `{conversation_language}` placeholder and a monolingual policy that would
  *    otherwise write the note in the transcript's language. Rather than append a
- *    competing directive — which is what produced the drift TASK-634 corrected —
+ * competing directive — which is what produced the drift corrected
  *    the placeholder itself is substituted with `English`, so every one of v1's
  *    own language lines states the requirement in v1's own words.
- * 2. **The bilingual-transcript directive** (TASK-651). Sarvam mistranslations
+ * 2. **The bilingual-transcript directive**. Sarvam mistranslations
  *    changed a drug and inverted a severity on a real consultation; the original
  *    line stays authoritative for clinical facts.
  *
@@ -101,7 +101,7 @@ import {
  * department, making v1's WITHOUT-SCHEMA prompt branch live. The pod-extracted
  * artifacts in `./v1-wrapper` record the fallback as the always-truthy
  * `JSON_RESPONSE_SPEC` (SOAP) instead. The two v1 sources are known to have
- * diverged (TASK-634 §2.2, §2.9) and the POD is authoritative, so the SOAP
+ * diverged and the POD is authoritative, so the SOAP
  * fallback is used here. It is also the better failure mode: an unrecognized
  * department still gets a defined four-field shape rather than an unconstrained
  * one.
@@ -135,17 +135,17 @@ export interface V1SummaryPromptOptions {
   /**
    * The tenant department's governed instruction template content — for the
    * ArcaAI tenant this IS the byte-exact v1 department body (seeded by
-   * TASK-592 from `07b-arcaai-clinical-content.ts`). It becomes the PREFACE,
+   * From `07b-arcaai-clinical-content.ts`). It becomes the PREFACE,
    * exactly as v1 places it. Absent ⇒ no preface, which is also a real v1 state:
    * four of v1's eleven departments carry a schema with no body content.
    */
   governedInstruction?: string;
-  /** The requesting doctor's decrypted DNA writing-style text (TASK-599). */
+  /** The requesting doctor's decrypted DNA writing-style text. */
   dnaStyleText?: string;
 }
 
 /**
- * The output language of the clinical note (TASK-650 R1, owner decision
+ * The output language of the clinical note (owner decision
  * 2026-08-10). Substituted into v1's `{conversation_language}` placeholder so
  * v1's own monolingual-policy lines carry the requirement — see carry-over 1 in
  * the module docstring.
@@ -153,7 +153,7 @@ export interface V1SummaryPromptOptions {
 const V1_CONVERSATION_LANGUAGE = 'English';
 
 /**
- * TASK-651 — verified live on `hope-v2-dev` 2026-08-10 against one real `ml-en`
+ * Verified live on `hope-v2-dev` 2026-08-10 against one real `ml-en`
  * consultation: Sarvam alone turned `aceclofenac 100 mg PRN` into
  * "Acetaminophen 100 mg" (a DIFFERENT DRUG) and `marked … subchondral sclerosis`
  * into "mild" (an inverted severity), and dropped findings and a proper noun.
@@ -168,7 +168,7 @@ const V1_BILINGUAL_TRANSCRIPT_DIRECTIVE =
 
 /**
  * The four departments v1 carries a SCHEMA for but no body template
- * (TASK-634 D-14/D-15). `resolveDepartmentKey` knows only the seven that have
+ * (/D-15). `resolveDepartmentKey` knows only the seven that have
  * bodies, because that is all `dept-templates.ts` needs; the schema table has
  * eleven. Resolved here rather than by widening `resolveDepartmentKey`, whose
  * return type is the seven-key `DepartmentKey` union consumed by the untouched
@@ -323,7 +323,7 @@ function renderPreviousVisits(visits?: PreviousVisitRecordDto[]): string | null 
  * `session_data` carries a free-form `patient_info` map plus structured test
  * results and previous visits that v1 folded in upstream. All three are
  * rendered here so no clinical context reaching the gateway is dropped on the
- * floor (TASK-652 §3.1 — a live request carrying real vitals/labs/prior visits
+ * floor (a live request carrying real vitals/labs/prior visits
  * produced "No contextual patient data were provided").
  */
 function renderPatientInfo(sessionData: SessionDataDto): string {
@@ -438,7 +438,7 @@ export function buildV1SummaryPrompt(sessionData: SessionDataDto, options: V1Sum
  * Adherence directive for the v1 pre-summary, appended to the SYSTEM message.
  *
  * The pre-summary BODY is checksum-locked and byte-exact from v1
- * (`V1_PRE_SUMMARY_TEMPLATE`), and TASK-634 established that duplicating its
+ * (`V1_PRE_SUMMARY_TEMPLATE`), and established that duplicating its
  * instructions into the system message is what produced drift — so nothing here
  * restates a formatting, language, or content rule. It states only the ONE thing
  * the body cannot state about itself: that its FORMAT block is a hard contract
@@ -456,7 +456,7 @@ const V1_PRE_SUMMARY_ADHERENCE_DIRECTIVE =
  * Thin wrapper over `buildPreSummaryPrompt` — the body, its substitution, and
  * the governed-template override are unchanged, so the checksum-locked v1
  * template and its `PRE_SUMMARY_DISPLAY_TITLES` parser stay in lockstep. Only
- * the system message gains the directive above (the same slot TASK-599 already
+ * the system message gains the directive above (the same slot already
  * uses for DNA style).
  */
 export function buildV1PreSummaryPrompt(req: PreSummaryRequest, options: PreSummaryPromptOptions = {}): AssembledPrompt {

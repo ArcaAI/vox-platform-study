@@ -1,4 +1,4 @@
-// TASK-551 — DNA redaction/rewrite rule shape + a strict JSON-shape validator.
+// DNA redaction/rewrite rule shape + a strict JSON-shape validator.
 //
 // The rules are authored by a doctor (or an admin on their behalf) and persisted
 // encrypted-at-rest on their DNA report. They are later decrypted gateway-side and

@@ -9,8 +9,8 @@ datasources:
     isDefault: true
     editable: false
 
-  # HOPE Postgres — backs the Consumption & Cost dashboard (consumption.json,
-  # TASK-615 #10), whose panels bind to datasource uid `hope-postgres`. Reaches
+  # HOPE Postgres — backs the Consumption & Cost dashboard (consumption.json),
+  # whose panels bind to datasource uid `hope-postgres`. Reaches
   # Postgres by its compose service name on `hope-network`; app data lives in the
   # `hope` database. Dev-default credentials — a real deployment injects its own.
   - name: HOPE Postgres

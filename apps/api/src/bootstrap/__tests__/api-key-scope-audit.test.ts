@@ -1,5 +1,5 @@
 /**
- * Boot-time audit — TASK-632 B1 regression (G1 closure).
+ * Boot-time audit — B1 regression (G1 closure).
  *
  * Proves two things:
  *  1. Against the REAL controllers, every route the HOPE Node SDK calls
@@ -13,7 +13,7 @@ import { describe, it, expect } from 'vitest';
 import { RequiredScopes } from '../../decorators';
 import { auditApiKeyRequiredScopes, SDK_DAY1_SCOPED_ROUTES } from '../api-key-scope-audit';
 
-describe('boot-time API-key scope audit (TASK-632 B1)', () => {
+describe('boot-time API-key scope audit', () => {
   it('passes for the real HOPE Node SDK day-1 surface (SmrCompatController, ConsultationController, ConsultationJobController)', () => {
     expect(() => auditApiKeyRequiredScopes()).not.toThrow();
   });

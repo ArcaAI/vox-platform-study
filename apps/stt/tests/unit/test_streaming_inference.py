@@ -81,7 +81,7 @@ class TestInferenceWorkerInit:
 
 
 class TestCumulativeProcessingSeconds:
-    """TASK-615 WS-C — per-session running total of ASR-only processing
+    """Per-session running total of ASR-only processing
     time, read by SessionManager at teardown to compute the streaming RTF
     metric (stt_streaming_rtf). Distinct from stt_streaming_inference_latency_seconds
     (still observed unchanged): that is per-utterance, this is the session-wide sum."""

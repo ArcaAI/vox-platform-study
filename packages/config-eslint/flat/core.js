@@ -1,7 +1,7 @@
 /**
- * ESLint 9 FLAT foundation shared by every ARCAAI surface preset (TASK-418).
+ * ESLint 9 FLAT foundation shared by every ARCAAI surface preset.
  *
- * 1:1 translation of the legacy eslintrc `base.js` (deleted in TASK-418):
+ * 1:1 translation of the legacy eslintrc `base.js` (deleted in the flat-config migration):
  * typescript-eslint recommended + prettier-as-a-rule + turbo + the
  * `arcaai-internal` architecture rules and house conventions.
  *
@@ -11,15 +11,15 @@
  * (self-contained, does NOT spread core — see its header).
  *
  * typescript-eslint v7 → v8 recommended delta (vs the legacy base.js), kept
- * deliberately — see TASK-418 README for the parity evidence:
- *   - `ban-types` was split into `no-empty-object-type`,
- *     `no-unsafe-function-type`, `no-wrapper-object-types` (same coverage).
- *   - `no-var-requires` was superseded by `no-require-imports` (superset).
- *   - the `no-loss-of-precision` extension rule left the plugin; the base
- *     rule is re-enabled below (parity shim).
- *   - new in v8 recommended: `no-unused-expressions`,
- *     `prefer-namespace-keyword` (zero findings on the current tree).
- */
+ * deliberately — see the package README for the parity evidence:
+ * - `ban-types` was split into `no-empty-object-type`,
+ * `no-unsafe-function-type`, `no-wrapper-object-types` (same coverage).
+ * - `no-var-requires` was superseded by `no-require-imports` (superset).
+ * - the `no-loss-of-precision` extension rule left the plugin; the base
+ * rule is re-enabled below (parity shim).
+ * - new in v8 recommended: `no-unused-expressions`,
+ * `prefer-namespace-keyword` (zero findings on the current tree).
+*/
 const arcaaiInternal = require('eslint-plugin-arcaai-internal');
 const eslintComments = require('@eslint-community/eslint-plugin-eslint-comments');
 const prettierRecommended = require('eslint-plugin-prettier/recommended');
@@ -51,7 +51,7 @@ module.exports = [
         // Parity shim: flat config defaults `reportUnusedDisableDirectives`
         // to "warn"; the legacy eslintrc runs never reported unused disable
         // directives. Keep the legacy behavior so the migration introduces
-        // zero new findings (TASK-418 acceptance criterion).
+        // zero new findings (acceptance criterion).
         name: 'arcaai/linter-options',
         linterOptions: {
             reportUnusedDisableDirectives: 'off',
@@ -71,13 +71,13 @@ module.exports = [
         },
     },
     {
-        // TASK-540 — every eslint-disable comment must carry a `-- reason`
+        // Every eslint-disable comment must carry a `-- reason`
         // (ESLint's native description syntax) so a suppression is
         // reviewable without re-deriving why it exists. `no-unused-disable`
         // is a free correctness check: a disable that no longer suppresses
         // anything gets flagged instead of rotting in place.
         //
-        // Severity is 'warn' repo-wide for now — TASK-540 is remediating the
+        // Severity is 'warn' repo-wide for now — remediation is clearing the
         // pre-existing backlog of un-justified disables package by package;
         // flipping to 'error' before a package's backlog is clean would
         // just break CI on old debt. `flat/nestjs.js` (apps/api) overrides
@@ -105,7 +105,7 @@ module.exports = [
         },
     },
     {
-        // TASK-307 W6.4 (AC-24) — Controllers must route data access
+        // Controllers must route data access
         // through a service or repository. The escape hatch is
         // `/** @allowedDirectPrisma <reason> */` immediately above the
         // offending line. Allow-list SHOULD be empty — every entry is a
@@ -127,7 +127,7 @@ module.exports = [
         },
     },
     {
-        // TASK-311 AC-8 — Services in @arcaai/applications must route data
+        // Services in @arcaai/applications must route data
         // access through a domain-layer repository (UserRepository,
         // PolicyRepository, RbacRoleRepository, RolePolicyRepository, ...).
         // Service-layer analogue of the controller rule above, implemented
@@ -141,9 +141,8 @@ module.exports = [
         //
         // The `ignores` list is the flat equivalent of the legacy
         // `excludedFiles` pins:
-        //   - Sibling tickets running concurrently with TASK-311 (TASK-308 /
-        //     TASK-309 / TASK-310 own the extractions for these services).
-        //     Each entry MUST be removed when its owning ticket closes.
+        //   - Concurrent extractions still in progress for some services.
+        //     Each entry MUST be removed when that extraction closes.
         //   - `baseServices/**` is permanently allowed: it hosts the
         //     `CoreDatabaseService` / unit-of-work plumbing that LEGITIMATELY
         //     exposes `databaseService.client` to the repositories.
@@ -173,7 +172,7 @@ module.exports = [
         },
     },
     {
-        // TASK-310 E-5 (AC-5) — Forbid direct `process.env.<DOWNSTREAM_URL_KEY>`
+        // Forbid direct `process.env.<DOWNSTREAM_URL_KEY>`
         // reads inside `apps/api/src/modules/**`. All callsites must resolve
         // URLs through the typed `IConfigService.getConfigValue(...)`
         // accessor so env-loading + validation happens once at bootstrap.
@@ -208,7 +207,7 @@ module.exports = [
                     destructuredArrayIgnorePattern: '^_',
                 },
             ],
-            // TASK-305 B.5 — Guard the unscoped Prisma client.
+            // Guard the unscoped Prisma client.
             //
             // `getPlatformAdminPrismaClient_Unscoped` bypasses BOTH the
             // tenant-scope and soft-delete `$extends` extensions. It is
@@ -223,7 +222,7 @@ module.exports = [
             // soft-delete are applied automatically. To use it intentionally
             // inside an allow-listed path, add a line-level
             // `// eslint-disable-next-line no-restricted-imports` comment
-            // that names TASK-305 §B.4 and the reason.
+            // that names the allow-list rationale and the reason.
             'no-restricted-imports': [
                 'error',
                 {

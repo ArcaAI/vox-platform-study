@@ -4,12 +4,12 @@
 import { BusinessException } from '@arcaai/exceptions';
 import { BaseTenantEntity, IBaseTenantEntity } from '../../../common';
 
-// Immutable build facts (TASK-648) — one row per (serviceName, gitCommitSha,
+// Immutable build facts — one row per (serviceName, gitCommitSha,
 // releaseTag). Written once by the internal self-registration endpoint,
 // never updated (machine-written, non-OCC), always platform-wide under the
 // SYSTEM tenant. `releaseVersion` (NOT `version` — the standard template's
 // OCC counter already owns that name) carries the git-tag-derived SemVer, or
-// the `0.0.0-<branch>.<sha8>` untagged shape (see the ticket README §3.1).
+// the `0.0.0-<branch>.<sha8>` untagged shape.
 export interface IServiceReleaseEntity extends IBaseTenantEntity {
   serviceName: string;
   releaseVersion: string;

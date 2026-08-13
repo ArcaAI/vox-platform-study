@@ -71,7 +71,7 @@ export class SttInternalService extends BaseService implements ISttInternalServi
     @Optional()
     @Inject(IRedisCacheService)
     private readonly redisCache?: IRedisCacheService,
-    // TASK-615 WS-C — Optional + trailing (same arity-preserving reason).
+    // Optional + trailing (same arity-preserving reason).
     // Backs the `transcribe.batch` usage-ledger emission on job completion.
     // This is the DOMAINS `CoreUnitOfWorkService` (its `runInTransaction`
     // is the one production callers actually use — see the outbox drainer),
@@ -489,7 +489,7 @@ export class SttInternalService extends BaseService implements ISttInternalServi
   /**
    * Complete a job.
    *
-   * TASK-615 WS-C: when the STT worker sent typed `durationSeconds` +
+   * When the STT worker sent typed `durationSeconds` +
    * `engine` (both lifted OUT of the soon-to-be-encrypted `resultMetadata`
    * blob — see `InternalCompleteJobRequest`), this also emits ONE
    * `transcribe.batch` `AUDIO_SECOND` usage row through the ledger, in the

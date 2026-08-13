@@ -120,7 +120,7 @@ interface SmrCallPayload {
   options?: Record<string, unknown>;
   context?: Record<string, unknown>;
   /**
-   * TASK-635 C5 / RF-4 — the session agent's frozen `llmOverrides.finalize`
+   * The session agent's frozen `llmOverrides.finalize`
    * selection, when it named one. Takes precedence over the tenant's
    * `smr.finalize` AiTaskDefault; the A4 fallback retry stays tenant-configured.
    */
@@ -128,7 +128,7 @@ interface SmrCallPayload {
 }
 
 /**
- * TASK-635 C5 — what the warm-start read hands to finalize.
+ * What the warm-start read hands to finalize.
  *
  * `lineage` is present ONLY when the live loop wrote it (C3 stamps
  * `metaData.agent` on the LIVE_SOAP_SNAPSHOT), which is exactly why it is a
@@ -197,18 +197,18 @@ export class SummaryService extends BaseService implements ISummaryService {
     // Optional (append-only DI); enforces the plan
     // `monthlySummaries` meter on generation (kill-switch-gated, → 429 over cap).
     @Optional() @Inject(IEntitlementsService) private readonly entitlements?: IEntitlementsService,
-    // §2C — one LLM_CALL trajectory step per generate/pre-summary.
+    // One LLM_CALL trajectory step per generate/pre-summary.
     // Optional + trailing so existing positional test fixtures compile;
     // production DI (SummaryServiceModule) supplies it. Fire-and-forget: a
     // trajectory failure never rolls back the (delivered) summary.
     @Optional() @Inject(IAgentTrajectoryService) private readonly trajectoryService?: IAgentTrajectoryService,
     // Resolves the effective `nlp.ner` AiTaskDefault model for injection into
-    // the synchronous extractEntities NLP call (TASK-552 Lane A). Optional +
+    // the synchronous extractEntities NLP call. Optional +
     // trailing so existing positional test fixtures keep compiling; absent ⇒
     // posts without `model_name`, i.e. today's behavior (fail-open).
     @Optional() @Inject(IAiTaskDefaultService) private readonly aiTaskDefaultService?: IAiTaskDefaultService,
     // Resolves the cited-segment evidence rows for getSummaryProvenance
-    // (TASK-552 Lane C). Optional + trailing so existing positional test
+    // Optional + trailing so existing positional test
     // fixtures keep compiling; absent ⇒ citedSegments: [] (best-effort).
     @Optional() @Inject(TranscriptSegmentRepository) private readonly transcriptSegmentRepository?: TranscriptSegmentRepository,
     // Shared by two lanes: WS-D (generatePreSummary/generateSummary) records
@@ -218,7 +218,7 @@ export class SummaryService extends BaseService implements ISummaryService {
     // fixtures keep compiling; absent ⇒ the corresponding path is simply
     // not metered (never fails — metering is additive, not a precondition).
     @Optional() @Inject(IUsageLedgerService) private readonly usageLedger?: IUsageLedgerService,
-    // (TASK-615 WS-D) Lets the SummaryMeta write and the usage emission share
+    // Lets the SummaryMeta write and the usage emission share
     // one transaction, so neither can survive without the other.
     // This is the DOMAINS `CoreUnitOfWorkService` (provided + exported by
     // `CoreDatabaseModule`, so `@Optional()` actually resolves it), NOT the
@@ -227,11 +227,11 @@ export class SummaryService extends BaseService implements ISummaryService {
     // The token stays EXPLICIT (rather than relying on `emitDecoratorMetadata`,
     // as `SttInternalService` does) so the DI guard test can assert it.
     @Optional() @Inject(CoreUnitOfWorkService) private readonly unitOfWork?: CoreUnitOfWorkService,
-    // (TASK-615 #8) Optional + trailing: enforces the tenant's OPTIONAL monthly
+    // Optional + trailing: enforces the tenant's OPTIONAL monthly
     // spend limit before an LLM generation incurs more paid overage (→ 402).
     // Absent (or no limit set) ⇒ no-op, so metering/quotas are unaffected.
     @Optional() @Inject(IBillingService) private readonly billing?: IBillingService,
-    // TASK-635 C5 / RF-4 — the two reads behind the FINALIZE LLM override:
+    // The two reads behind the FINALIZE LLM override:
     // the session agent's `llmOverrides.finalize` slug, and the AiModel catalog
     // row it names. Optional + trailing so existing positional test fixtures
     // compile; unwired ⇒ no override is ever applied and the tenant
@@ -268,7 +268,7 @@ export class SummaryService extends BaseService implements ISummaryService {
     // Kill-switch-gated (Q9); → 429 once the tenant is over the monthly cap.
     await this.entitlements?.assertMeterQuota(tenantId, 'monthlySummaries');
 
-    // TASK-615 WS-H — LLM-token allowance pre-flight, BEFORE the (expensive)
+    // LLM-token allowance pre-flight, BEFORE the (expensive)
     // SMR call. Post-hoc debit model (D6): a request's own token count is
     // unknowable until SMR responds, so this compares month-to-date rollups
     // against the allowance rather than predicting this call's usage — same
@@ -277,7 +277,7 @@ export class SummaryService extends BaseService implements ISummaryService {
     // null (unlimited — the seeded default for every plan today).
     await this.entitlements?.assertMeterQuota(tenantId, 'monthlyLlmTokens');
 
-    // (TASK-615 #8) Optional spend-limit gate → 402 when the tenant set a
+    // Optional spend-limit gate → 402 when the tenant set a
     // monthly cap and its overage spend has reached it. No-op (no draft
     // computed) when unset — the seeded default for every tenant.
     await this.billing?.assertSpendLimit(tenantId);
@@ -307,10 +307,10 @@ export class SummaryService extends BaseService implements ISummaryService {
       // SYSTEM default (or a 503).
       tenantId,
       promptType: 'pre-summary',
-      // TASK-635 D2 — native callers resolve the department-free fork;
+      // Native callers resolve the department-free fork;
       // v1-compat is the ONLY surface that keeps the v1-parity body (RF-1).
       preSummaryVariant: 'dept-free',
-      // v1 `{visit_type}` (TASK-634 D-08). `parentConsultationId` is the
+      // v1 `{visit_type}`. `parentConsultationId` is the
       // consultation's own visit-type signal (NULL = initial visit); the
       // vocabulary is the one the seeded pre-summary template declares for this
       // variable ("new-visit or revisit").
@@ -383,7 +383,7 @@ export class SummaryService extends BaseService implements ISummaryService {
       data: { consultationId, type: 'pre_summary' },
     });
 
-    // §2C — one SUMMARY_JOB LLM_CALL step for this generation (non-fatal).
+    // One SUMMARY_JOB LLM_CALL step for this generation (non-fatal).
     await this.recordSummaryTrajectory({
       tenantId,
       consultationId,
@@ -411,7 +411,7 @@ export class SummaryService extends BaseService implements ISummaryService {
     // Kill-switch-gated (Q9); → 429 once the tenant is over the monthly cap.
     await this.entitlements?.assertMeterQuota(tenantId, 'monthlySummaries');
 
-    // TASK-615 WS-H — LLM-token allowance pre-flight, BEFORE the (expensive)
+    // LLM-token allowance pre-flight, BEFORE the (expensive)
     // SMR call. Post-hoc debit model (D6): a request's own token count is
     // unknowable until SMR responds, so this compares month-to-date rollups
     // against the allowance rather than predicting this call's usage — same
@@ -420,7 +420,7 @@ export class SummaryService extends BaseService implements ISummaryService {
     // null (unlimited — the seeded default for every plan today).
     await this.entitlements?.assertMeterQuota(tenantId, 'monthlyLlmTokens');
 
-    // (TASK-615 #8) Optional spend-limit gate → 402, as on the summary path.
+    // Optional spend-limit gate → 402, as on the summary path.
     await this.billing?.assertSpendLimit(tenantId);
 
     // (audit C-1 / C-3) — verify the parent Consultation
@@ -451,7 +451,7 @@ export class SummaryService extends BaseService implements ISummaryService {
       throw new BadRequestException('No content available for summary generation');
     }
 
-    // TASK-635 C5 — the warm-start read now also surfaces the live session's
+    // The warm-start read now also surfaces the live session's
     // frozen agent lineage and the id of the row it consumed (R-N2 provenance).
     const warmStart = await this.resolveWarmStartPreSummary(consultationId);
     const latestPreSummaryText = warmStart.text;
@@ -467,7 +467,7 @@ export class SummaryService extends BaseService implements ISummaryService {
       conversationLanguage: this.resolveConversationLanguage(request.options),
       dnaStyleId: effectiveDnaStyleId,
       preSummaryText: latestPreSummaryText ?? undefined,
-      // TASK-635 C5 / RF-6 — the SAME agent that ran live reviews and
+      // The SAME agent that ran live reviews and
       // finalizes: its lineage makes the prior-draft injection unconditional
       // (DR-4) and pins the resolver's agent tier to that exact agent, so a
       // department default re-pointed mid-visit cannot change this prompt.
@@ -482,7 +482,7 @@ export class SummaryService extends BaseService implements ISummaryService {
     const smrResponse = await this.callSmrService({
       assembledPrompt,
       options: request.options,
-      // TASK-635 RF-4 — agent `llmOverrides.finalize` outranks the tenant
+      // Agent `llmOverrides.finalize` outranks the tenant
       // `smr.finalize` AiTaskDefault. Fail-CLOSED: a named-but-unusable model
       // raises rather than silently finalizing on the tenant default.
       agentLlm: await resolveAgentFinalizeSelection(
@@ -526,7 +526,7 @@ export class SummaryService extends BaseService implements ISummaryService {
       qualityScore: smrResponse.qualityScore,
       promptResolvedFrom: assembledPrompt.resolvedFrom,
       resolvedPromptId: assembledPrompt.promptId,
-      // TASK-635 C5 / RF-6 — session-agent lineage. `sessionAgentPromptVersion`
+      // Session-agent lineage. `sessionAgentPromptVersion`
       // names the IMMUTABLE PromptVersion the LIVE loop served (distinct from
       // `promptVersion`, which names finalize's own template version). Both stay
       // null for a non-live summary — the additive-proof invariant.
@@ -567,7 +567,7 @@ export class SummaryService extends BaseService implements ISummaryService {
     // failure must never roll back the (delivered) draft.
     await this.captureAiDraftSnapshot(savedContext);
 
-    // §2C — one SUMMARY_JOB LLM_CALL step for this generation (non-fatal).
+    // One SUMMARY_JOB LLM_CALL step for this generation (non-fatal).
     await this.recordSummaryTrajectory({
       tenantId,
       consultationId,
@@ -582,7 +582,7 @@ export class SummaryService extends BaseService implements ISummaryService {
 
   /**
    * Persist a `SummaryMeta` and, in the SAME transaction, record the tokens the
-   * generation consumed (TASK-615 WS-D).
+   * generation consumed.
    *
    * The transaction is the point. A `SummaryMeta` that rolls back must not
    * leave a billed event behind, and one that commits must not lose its usage
@@ -653,7 +653,7 @@ export class SummaryService extends BaseService implements ISummaryService {
   }
 
   /**
-   * §2C — emit ONE LLM_CALL trajectory step for a summary generation.
+   * Emit ONE LLM_CALL trajectory step for a summary generation.
    * sessionKind=SUMMARY_JOB, sessionId=the generated summary's contextItem id
    * (stable job id), runId="" (non-Temporal sentinel), seq=0 (one step per job).
    * Fire-and-forget: any failure is swallowed + logged so telemetry never rolls
@@ -1095,7 +1095,7 @@ export class SummaryService extends BaseService implements ISummaryService {
   /**
    * Read-only harness provenance for a generated summary.
    * Returns the `SummaryMeta` citationsMap + sensor scores + modelName that the
-   * harness wrote, plus the cited transcript segments (TASK-552 Lane C) so a
+   * harness wrote, plus the cited transcript segments so a
    * console evidence panel can render/scroll to the source without a second
    * controller. Tenant isolation is enforced by the repository's tenant-scoped
    * client (the controller has already verified read access to the consultation).
@@ -1110,7 +1110,7 @@ export class SummaryService extends BaseService implements ISummaryService {
   }
 
   /**
-   * TASK-552 Lane C — resolve the transcript segments cited as evidence for a
+   * Resolve the transcript segments cited as evidence for a
    * summary's citationsMap, so the console evidence panel can render (speaker,
    * t0–t1) and slice a snippet without a second controller. Best-effort +
    * non-destructive, mirroring `enrichCitationsWithSegments`
@@ -1204,7 +1204,7 @@ export class SummaryService extends BaseService implements ISummaryService {
       savedCount,
     });
 
-    // TASK-615 WS-E (revised): per-invocation ner.extract usage row — keyed
+    // Per-invocation ner.extract usage row — keyed
     // on a freshly generated requestId for THIS synchronous call (this path
     // has no natural durable job id the way NerProcessor does), never on
     // consultationId (attribution only — shares buildNerUsageEvent with the
@@ -1280,7 +1280,7 @@ export class SummaryService extends BaseService implements ISummaryService {
 
     let options = payload.options;
     if (this.harnessPolicyService && tenantId) {
-      // TASK-635 RF-4 precedence: agent `llmOverrides.finalize` (frozen at the
+      // Precedence: agent `llmOverrides.finalize` (frozen at the
       // live session's agent) → tenant `smr.finalize` AiTaskDefault. The A4
       // fallback retry below stays TENANT-configured either way — an agent
       // override names the primary, never the fallback.
@@ -1558,12 +1558,12 @@ export class SummaryService extends BaseService implements ISummaryService {
     /**
      * The resolved `model_name` actually sent to NLP, or `null` when
      * resolution fail-opened (NLP's own env default applied, which this
-     * caller has no visibility into — TASK-615 WS-E never guesses it).
+     * caller has no visibility into — never guesses it).
      */
     modelUsed: string | null;
   }> {
     try {
-      // TASK-552 Lane A: inject the effective `nlp.ner` AiTaskDefault model
+      // Inject the effective `nlp.ner` AiTaskDefault model
       // (mirrors AiInferenceController's playground mapping) so a global
       // admin's re-point governs this synchronous clinical NER path too, not
       // just the playground. Fail-open: {} on any resolution hiccup.

@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * Sample-payload tester (TASK-666 scope) — validates a hand-authored JSON
+ * Sample-payload tester — validates a hand-authored JSON
  * payload against a STRUCTURED kind's `fields` from the CURRENT DRAFT (the
  * same `definition` state the Definition tab is editing, not the last
  * published version), using the shared, dependency-free evaluator

@@ -1,4 +1,4 @@
--- TASK-527 — Model source & path resolution: add `S3` to `AiModelSource`.
+-- Model source & path resolution: add `S3` to `AiModelSource`.
 --
 -- Purely ADDITIVE: one new enum value. No table, column, or row is touched.
 --

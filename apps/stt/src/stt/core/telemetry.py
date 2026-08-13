@@ -42,14 +42,14 @@ class TelemetryResult:
 def _deployment_environment() -> str:
     """Resolve the deployment environment for the telemetry resource.
 
-    TASK-636 OBS-18: this used to be the literal string ``"production"``,
+    This used to be the literal string ``"production"``,
     stamped on every span and log record wherever the service ran — including
     developer laptops. The OTel collector separately upserted ``"dev"`` over
     everything, so the two disagreed inside a single pipeline and telemetry
     outside dev was wrong from both directions.
 
     Precedence: ``DEPLOYMENT_ENVIRONMENT`` (what the collector and the k8s
-    overlays set) then ``NODE_ENV`` (the repo-wide selector, TASK-558).
+    overlays set) then ``NODE_ENV`` (the repo-wide selector).
 
     The default is **development**, not production. An unset environment on a
     laptop tagging local traces as production is the dangerous direction: a

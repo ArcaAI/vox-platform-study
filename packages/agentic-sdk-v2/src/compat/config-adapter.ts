@@ -1,9 +1,9 @@
 'use client';
 
 /**
- * @arcaai/vox/compat - v1 config → v2 AgenticConfig adapter (TASK-560 §5.1)
+ * @arcaai/vox/compat - v1 config → v2 AgenticConfig adapter
  *
- * Pure function. No baked-in default apiKey/encryptionKey (TASK-560 §6 A1):
+ * Pure function. No baked-in default apiKey/encryptionKey
  * an omitted `credentials.apiKey` THROWS.
  */
 
@@ -40,7 +40,7 @@ function ensureApiV1Base(apiEndpoint: string): string {
  * defaulted. Stating a preference explicitly is therefore the only way a compat
  * app can turn a stage ON as well as off.
  *
- * Since TASK-647 the fallback itself is also safe: `DEFAULT_AUDIO_CONFIG` declares
+ * Since the fallback itself is also safe: `DEFAULT_AUDIO_CONFIG` declares
  * VAD and noise cancellation OFF (STT stays ON). So a compat app that supplies
  * neither `audioSettings` nor `sttPipelineId` — where this returns `undefined` and
  * the provider uses the default — no longer inherits VAD/noise or triggers an
@@ -55,7 +55,7 @@ function mapAudioSettings(audio: V1AudioSettings | undefined, sttPipelineId: str
     config.noiseFilter = { enabled: !!audio.noiseSuppression, level: 'medium' };
   }
 
-  // TASK-597 — the VAD counterpart of `noiseSuppression`. `enabled: false`
+  // The VAD counterpart of `noiseSuppression`. `enabled: false`
   // removes the stage from the capture graph entirely (`TranscriptionPipeline`
   // only ever constructs processors for stages in `getEnabledStages()`), so the
   // backend receives ungated audio.

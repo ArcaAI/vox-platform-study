@@ -22,7 +22,7 @@ export interface DataGridPaginationProps<TData> {
   className?: string;
 }
 
-/** Status copy drops detail as the container narrows (§B2/§F). */
+/** Status copy drops detail as the container narrows.*/
 function offsetStatus(bp: ContainerBreakpoint, r: { first: number; last: number; total: number }): string {
   if (r.total <= 0) return 'No results';
   if (bp === 'xl' || bp === 'lg') return `Showing ${r.first}\u2013${r.last} of ${r.total}`;

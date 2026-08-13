@@ -73,17 +73,17 @@ export type AgenticErrorCode =
   | 'MODEL_LOAD_ERROR'
   | 'STORAGE_ERROR'
   | 'CONFIG_NOT_READY'
-  // TASK-545: `TranscriptionPipeline.resolveSTTRuntimeProvider()` throws this
+  // `TranscriptionPipeline.resolveSTTRuntimeProvider()` throws this
   // instead of silently falling back to on-device transcription when local
   // transcription is disabled (`LOCAL_TRANSCRIPTION_ENABLED = false` in
   // `core/constants.ts`) and no backend transport is configured.
   | 'LOCAL_TRANSCRIPTION_DISABLED'
-  // TASK-612: `useArcaAudio.startAudio` / `addSource` throw this instead of
+  // `useArcaAudio.startAudio` / `addSource` throw this instead of
   // silently streaming zeros when a caller-injected `MediaStream`
   // (`AudioStartOptions.sourceStreams`, or `addSource({ stream })`) has no
   // audio track, or no track with `readyState === 'live'`.
   | 'SOURCE_STREAM_NOT_LIVE'
-  // TASK-612 Lane C (RC-2, OD-2a): `useArcaAudio.startAudio`'s CALL-TIME
+  // `useArcaAudio.startAudio`'s CALL-TIME
   // idempotence guard throws this instead of silently dropping
   // capture-shaped options (`deviceId`, `sourceStreams`, `dynamicSources`,
   // ...) when a call lands while capture is already active — e.g. the
@@ -91,7 +91,7 @@ export type AgenticErrorCode =
   // carrying only options the running session already applies (language,
   // pipelineId) is unaffected — that stays a silent, designed no-op.
   | 'CAPTURE_OPTIONS_DROPPED'
-  // TASK-614: a provider switch was requested but this capture session cannot
+  // A provider switch was requested but this capture session cannot
   // serve one — capture has not started, or it is running on local (browser)
   // STT with no backend streaming session behind it. Distinct from a switch the
   // BACKEND refused (that surfaces as the transport's own error): this one says

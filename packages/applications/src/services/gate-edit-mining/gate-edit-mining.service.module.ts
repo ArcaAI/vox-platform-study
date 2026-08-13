@@ -14,7 +14,7 @@ import { IGateEditExemplarRetriever } from './IGateEditExemplarRetriever';
  *
  * `IGateEditExemplarRetriever` is aliased onto the SAME instance so prompt
  * assembly can consume the READ half through a narrow port without importing
- * the mining implementation (§3.4 consumption (b)).
+ * the mining implementation (consumption (b)).
  */
 @Module({
   // EffectiveSettingsModule resolves the @Optional EffectiveSettingsService that

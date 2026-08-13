@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 // Vitest runs each package's suite with cwd = the package root.
 const css = readFileSync(join(process.cwd(), 'src/styles/globals.css'), 'utf8');
 
-describe('accent token layer (TASK-437)', () => {
+describe('accent token layer', () => {
   it('teal is the attribute-less default (no data-accent="teal" block)', () => {
     expect(css).not.toContain('[data-accent="teal"]');
     // Base :root keeps the teal primary.

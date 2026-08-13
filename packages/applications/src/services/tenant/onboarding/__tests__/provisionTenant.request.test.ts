@@ -3,7 +3,7 @@ import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import { ProvisionTenantRequest } from '../dto/provisionTenant.request';
 
-describe('ProvisionTenantRequest validation (§3.5)', () => {
+describe('ProvisionTenantRequest validation', () => {
   it('is valid for mode=existing with a userId', async () => {
     const dto = plainToInstance(ProvisionTenantRequest, {
       tenantName: 'Acme Health',

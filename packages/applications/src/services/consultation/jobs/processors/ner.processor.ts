@@ -36,11 +36,11 @@ export class NerProcessor extends WorkerHost {
     // production DI (ConsultationServiceModule) always supplies it.
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
     // Resolves the effective `nlp.ner` AiTaskDefault model for injection into
-    // the NLP call (TASK-552 Lane A). Optional + trailing so existing
+    // the NLP call. Optional + trailing so existing
     // positional test fixtures keep compiling; absent ⇒ posts without
     // `model_name`, i.e. today's behavior (fail-open).
     @Optional() @Inject(IAiTaskDefaultService) private readonly aiTaskDefaultService?: IAiTaskDefaultService,
-    // Emits the consultation-batched `ner.extract` usage row (TASK-615
+    // Emits the consultation-batched `ner.extract` usage row (
     // WS-E). Optional + trailing so existing positional test fixtures keep
     // compiling; absent ⇒ no emission (fail-open — metering must never
     // block a durable NER job).
@@ -132,7 +132,7 @@ export class NerProcessor extends WorkerHost {
           namedEntities: savedEntities,
         };
 
-        // TASK-615 WS-E (revised): per-invocation ner.extract usage row —
+        // Per-invocation ner.extract usage row
         // keyed on THIS job's id, never on consultationId (which is
         // attribution only). No business transaction to join here (entity
         // persistence isn't wrapped in one), so recordUsage runs without
@@ -205,12 +205,12 @@ export class NerProcessor extends WorkerHost {
     /**
      * The resolved `model_name` actually sent to NLP, or `null` when
      * resolution fail-opened (NLP's own env default applied, which this
-     * caller has no visibility into — TASK-615 WS-E never guesses it).
+     * caller has no visibility into — never guesses it).
      */
     modelUsed: string | null;
   }> {
     try {
-      // TASK-552 Lane A: inject the effective `nlp.ner` AiTaskDefault model
+      // Inject the effective `nlp.ner` AiTaskDefault model
       // (mirrors AiInferenceController's playground mapping) so a global
       // admin's re-point governs this durable clinical NER path too, not just
       // the playground. Fail-open: {} on any resolution hiccup.

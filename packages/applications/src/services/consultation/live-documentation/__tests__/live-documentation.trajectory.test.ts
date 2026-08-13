@@ -81,7 +81,7 @@ function recordedSteps(trajectory: { recordSteps: ReturnType<typeof vi.fn> }): C
   return trajectory.recordSteps.mock.calls[0][0] as CreateAgentTrajectoryStepInput[];
 }
 
-describe('LiveDocumentationService — trajectory emitter (§2C)', () => {
+describe('LiveDocumentationService — trajectory emitter', () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.restoreAllMocks();

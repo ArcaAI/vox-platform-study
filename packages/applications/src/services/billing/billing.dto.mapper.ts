@@ -11,7 +11,7 @@ export interface InvoiceResponseExtras {
   byokNotionalCostMicros: bigint;
   rateCardVersions: string[];
   /**
-   * How the plan fee was rated (TASK-615 #6). Optional so a stored-invoice
+   * How the plan fee was rated. Optional so a stored-invoice
    * re-read (which does not recompute the segments) defaults to the pre-#6
    * PERIOD_END_PLAN label; compute-draft passes the true basis.
    */

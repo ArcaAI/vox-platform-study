@@ -1,5 +1,5 @@
 /**
- * @arcaai/room — AudioMixer per-source TRACK OWNERSHIP (TASK-612 Lane B, RC-3).
+ * @arcaai/room — AudioMixer per-source TRACK OWNERSHIP.
  *
  * The mixer used to stop a source's tracks on `removeSource()` (and therefore
  * on `dispose()`, which removes every source) unconditionally. That is right
@@ -16,7 +16,7 @@
  * forgets the source, but never touches its tracks.
  *
  * @vitest-environment jsdom
- */
+*/
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { AudioMixer } from '../core/AudioMixer.js';
@@ -77,7 +77,7 @@ type MixerStream = ReturnType<typeof makeStream>;
 
 const asStream = (s: MixerStream): MediaStream => s as unknown as MediaStream;
 
-describe('AudioMixer — per-source track ownership (TASK-612)', () => {
+describe('AudioMixer — per-source track ownership', () => {
   let mockCtx: ReturnType<typeof createMockAudioContext>;
 
   beforeEach(() => {

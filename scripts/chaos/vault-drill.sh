@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# HOPE — Vault chaos drill (TASK-312 Phase E, E.2)
+# HOPE — Vault chaos drill
 # =============================================================================
 # Injects realistic faults into a RUNNING HA Vault cluster and asserts the
 # cluster (and, optionally, the HOPE API) self-recovers — no manual unseal, no

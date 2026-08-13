@@ -54,7 +54,7 @@ def _model_identity_filtered_sources(
     Constructor kwargs (`init_settings`) still set model identity — that is the
     path the per-request cache factories use to load the DB-selected model.
 
-    The filter now covers the Vault `secrets_dir` source too. Before TASK-558-H
+    The filter now covers the Vault `secrets_dir` source too. Before
     that source was inert (no `secrets_dir` was ever configured), so leaving it
     unfiltered cost nothing; now that a Vault Agent can populate it, an
     unfiltered `secrets_dir` would reopen exactly the hole this filter closes —
@@ -109,7 +109,7 @@ def _parse_otel_resource_attributes(raw: str | None) -> dict[str, str]:
 class NLPServiceConfig(BaseSettings):
     """Main configuration for NLP service"""
 
-    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
     settings_customise_sources = hope_settings_sources
 
     name: str = Field(default="nlp")
@@ -138,8 +138,7 @@ class NLPServiceConfig(BaseSettings):
     # TTS_METRICS_ENABLED, GUARDRAIL_V2_METRICS_ENABLED, HARNESS_METRICS_ENABLED,
     # METRICS_ENABLED for STT). It used to read ONLY the gateway-scoped
     # OTEL_METRICS_ENABLED, which .env.dev sets to false — so NLP's /metrics
-    # was disabled by a variable documented under the API gateway (TASK-636
-    # OBS-02). OTEL_METRICS_ENABLED is kept as a fallback for compatibility.
+    # was disabled by a variable documented under the API gateway. OTEL_METRICS_ENABLED is kept as a fallback for compatibility.
     metrics_enabled: bool = Field(
         default=os.getenv(
             "NLP_METRICS_ENABLED", os.getenv("OTEL_METRICS_ENABLED", "true")
@@ -294,7 +293,7 @@ class OntologyLinkerConfig(BaseSettings):
     via the env_prefix. The bundled vocabulary is self-hosted — no cloud PHI.
     """
 
-    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
     settings_customise_sources = hope_settings_sources
 
     linker_enabled: bool = Field(default=True)
@@ -327,7 +326,7 @@ class MedicalSuggesterConfig(BaseSettings):
 class WebSocketConfig(BaseSettings):
     """WebSocket configuration"""
 
-    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
     settings_customise_sources = hope_settings_sources
 
     # WebSocket settings
@@ -342,7 +341,7 @@ class WebSocketConfig(BaseSettings):
 class WebSocketTokenClassificationConfig(BaseSettings):
     """WebSocket token classification configuration"""
 
-    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
     settings_customise_sources = hope_settings_sources
 
     class Config:
@@ -352,7 +351,7 @@ class WebSocketTokenClassificationConfig(BaseSettings):
 class SecurityConfig(BaseSettings):
     """Security configuration"""
 
-    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
     settings_customise_sources = hope_settings_sources
 
     cors_origins: list[str] = Field(default=["*"])
@@ -367,7 +366,7 @@ class SecurityConfig(BaseSettings):
 class TextCorrectorConfig(BaseSettings):
     """Text corrector configuration"""
 
-    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
     settings_customise_sources = hope_settings_sources
 
     dictionary_path: str = Field(default=str(get_project_root() / "data" / "dictionaries"))

@@ -1,4 +1,4 @@
-// Agentic re-visit carry-forward descriptor (TASK-553 F-18).
+// Agentic re-visit carry-forward descriptor.
 //
 // `agentic.revisit.carryForwardEnabled` governs whether a consultation that has a
 // `parentConsultationId` (a re-visit) carries its PRIOR VISIT's most authoritative
@@ -6,8 +6,8 @@
 //
 // It is **DEFAULT OFF** deliberately, and that is a clinical-safety decision, not
 // caution about the plumbing: carry-forward inherits the copy-paste / cloned-note
-// risk profile (stale or unverified content propagating into a new encounter —
-// SOTA §4.5), so it must be an explicit operator opt-in per deployment rather
+// risk profile (stale or unverified content propagating into a new encounter),
+// so it must be an explicit operator opt-in per deployment rather
 // than something that switches on with a deploy. With the knob off the assembled
 // prompt is byte-identical to the pre-feature prompt.
 //

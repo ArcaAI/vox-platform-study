@@ -1,5 +1,5 @@
 /**
- * TASK-635 C5-T1 — lineage-present warm start is UNCONDITIONAL (DR-4).
+ * Lineage-present warm start is UNCONDITIONAL.
  *
  * R-N2 ("the same specific agent reviews and finalizes") is the product
  * contract, not an opt-in optimization. Once a session has PROVABLY run the live
@@ -77,7 +77,7 @@ const assemble = (service: { assemble: (p: unknown) => Promise<{ userPrompt: str
 
 const injected = (assembled: { userPrompt: string }) => assembled.userPrompt.includes(PRIOR_DRAFT);
 
-describe('PromptAssemblyService — TASK-635 C5 finalize lineage', () => {
+describe('PromptAssemblyService — finalize lineage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockPromptResolutionService.resolve.mockResolvedValue({ promptId: 'template-warm', resolvedFrom: 'default' });

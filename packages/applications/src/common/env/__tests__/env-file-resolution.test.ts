@@ -1,7 +1,7 @@
 /**
- * TASK-558 (lane B) — the ONE place the env-file precedence contract is pinned.
+ * (lane B) — the ONE place the env-file precedence contract is pinned.
  *
- * Contract under test (plan §9.1 D4 / D7):
+ * Contract under test (D4 / D7):
  *   host env  >  env file selected by NODE_ENV  >  schema default
  * and: NO env file is read when `CI=true` or `NODE_ENV=production`.
  */

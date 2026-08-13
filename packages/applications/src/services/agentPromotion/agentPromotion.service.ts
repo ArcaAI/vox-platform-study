@@ -56,9 +56,9 @@ export function liveConsultationsWarning(count: number): string {
 }
 
 /**
- * TASK-663 — promote an agent configuration version from one tenant to another.
+ * Promote an agent configuration version from one tenant to another.
  *
- * ## Authorization is the entire control (TASK-654 D10)
+ * ## Authorization is the entire control 
  *
  * There is no platform environment, tier or tenant-family concept, so "the
  * actor holds `manage` on `DepartmentAgent` in BOTH tenants" is all that
@@ -92,9 +92,9 @@ export function liveConsultationsWarning(count: number): string {
  * into the target (except SYSTEM-owned ones, which are genuinely readable
  * cross-tenant). `goldenSetId` is NOT copied — not even the pointer to a
  * corpus of Vault-Transit-encrypted `GoldenCase` PHI crosses a tenant
- * boundary. See the ticket README §3.1 for the full table.
+ * boundary. See for the full table.
  *
- * ## Atomicity (TASK-677, closing TASK-663 OI-2)
+ * ## Atomicity (closing )
  *
  * Everything promotion writes into the TARGET tenant — the deep-copied prompt
  * templates, the agent (created or advanced), its immutable version row, and
@@ -117,14 +117,14 @@ export class AgentPromotionService extends BaseService implements IAgentPromotio
     private readonly departmentRepository: DepartmentRepository,
     private readonly promptTemplateRepository: PromptTemplateRepository,
     private readonly promptVersionRepository: PromptVersionRepository,
-    // Required, NOT optional. TASK-659's create/update path degrades to a
+    // Required, NOT optional. 's create/update path degrades to a
     // structural-only check when these are unwired; a cross-tenant privileged
     // write must not, so the compatibility gate here is unconditional.
     private readonly contextSchemaRepository: ConsultationContextSchemaRepository,
     private readonly contextSchemaVersionRepository: ConsultationContextSchemaVersionRepository,
     private readonly consultationRepository: ConsultationRepository,
     private readonly policyEngine: PolicyEngine,
-    // TASK-677 — the DOMAINS `CoreUnitOfWorkService`, not the identically
+    // The DOMAINS `CoreUnitOfWorkService`, not the identically
     // named unwired class under `services/baseServices`. REQUIRED, not
     // optional: promotion is a privileged cross-tenant write, and degrading
     // silently to a non-transactional sequence when the dependency is unwired
@@ -217,13 +217,13 @@ export class AgentPromotionService extends BaseService implements IAgentPromotio
     const existing = await this.agentRepository.findBySlug(toTenantId, targetDepartment.id, source.slug);
     await this.assertPrimaryRoleAvailable(loopConfig, toTenantId, targetDepartment.id, existing?.id);
 
-    // ---- 6. Non-blocking alert (AC-7) -------------------------------------
+    // ---- 6. Non-blocking alert -------------------------------------
     const warnings = await this.buildWarnings(toTenantId, existing);
 
     const checksum = createHash('sha256').update(canonicalAgentConfigJson(snapshot)).digest('hex');
 
     // ---- 7 + 8. The copy and its immutable record — ONE transaction -------
-    // TASK-677, closing TASK-663 OI-2. Everything the promotion produces in the
+    // , closing. Everything the promotion produces in the
     // TARGET tenant — the deep-copied prompt templates, the agent (created or
     // advanced), its version row, and the AgentPromotion audit record — commits
     // or rolls back together. Before this, the sequence was ordered so the
@@ -325,7 +325,7 @@ export class AgentPromotionService extends BaseService implements IAgentPromotio
   }
 
   /**
-   * THE authorization control (TASK-654 D10). The actor must hold `manage` on
+   * THE authorization control. The actor must hold `manage` on
    * `DepartmentAgent` in BOTH tenants; either side missing is a 403 naming
    * which side failed.
    *
@@ -373,7 +373,7 @@ export class AgentPromotionService extends BaseService implements IAgentPromotio
 
   /**
    * REUSE-ONLY, matched by department CODE — the `AgentTemplateResyncService`
-   * rule (TASK-634 D-18): promotion reconciles an agent onto a department the
+   * rule: promotion reconciles an agent onto a department the
    * target tenant already runs; it must never provision one.
    */
   private async resolveTargetDepartment(source: DepartmentAgentEntity, toTenantId: string) {
@@ -392,10 +392,10 @@ export class AgentPromotionService extends BaseService implements IAgentPromotio
   }
 
   /**
-   * AC-6 — blocked when the target lacks a context kind the promoted agent
+   * blocked when the target lacks a context kind the promoted agent
    * subscribes to (or an output kind it writes), with the missing keys NAMED.
    *
-   * Unlike TASK-659's create/update path this never degrades to a
+   * Unlike 's create/update path this never degrades to a
    * structural-only check: an unresolvable kind reference must not be written
    * into another tenant on a privileged path.
    */
@@ -469,7 +469,7 @@ export class AgentPromotionService extends BaseService implements IAgentPromotio
   }
 
   /**
-   * AC-7 — alert, never block. Only meaningful when the target agent already
+   * alert, never block. Only meaningful when the target agent already
    * exists: without a previous version there is nothing for a running
    * consultation to "complete on".
    */
@@ -555,7 +555,7 @@ export class AgentPromotionService extends BaseService implements IAgentPromotio
     existing.neverActions = config.neverActions ?? null;
     existing.updatedBy = userId;
 
-    // TASK-677 — the third argument is the whole point of this ticket: before
+    // The third argument is the whole point of this ticket: before
     // it, this line could not join the transaction and the create-OR-update
     // path could not be wrapped at all.
     return this.agentRepository.update(existing.id, existing, tx);
@@ -684,7 +684,7 @@ export class AgentPromotionService extends BaseService implements IAgentPromotio
   }
 
   /**
-   * AC-4 — the eval RE-RUNS at the target, against the TARGET's own corpus.
+   * the eval RE-RUNS at the target, against the TARGET's own corpus.
    *
    * The source's `goldenSetId` is never used and never copied: `GoldenCase`
    * rows hold Vault-Transit-encrypted PHI, and no code path moves one across a
@@ -732,7 +732,7 @@ export class AgentPromotionService extends BaseService implements IAgentPromotio
   }
 
   // =========================================================================
-  // Drift (AC-8)
+  // Drift
   // =========================================================================
 
   /**

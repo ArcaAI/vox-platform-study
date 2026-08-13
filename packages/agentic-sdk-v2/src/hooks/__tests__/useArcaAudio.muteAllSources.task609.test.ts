@@ -1,9 +1,9 @@
 /**
- * useArcaAudio — mute() must silence EVERY capture source (TASK-609).
+ * useArcaAudio — mute() must silence EVERY capture source.
  *
  * Mute acted on `store.activeStream` alone, i.e. the FIRST resolved source.
- * Since TASK-597 a session can mix N microphones into one uplink, and since
- * TASK-609 a mic can join mid-consultation — so in any multi-mic room clicking
+ * Since a session can mix N microphones into one uplink, and since
+ * A mic can join mid-consultation — so in any multi-mic room clicking
  * Mute silenced microphone 1 and left every other microphone live on the
  * socket. The clinician believes the room is muted while it is still being
  * transcribed: a privacy failure, not a UX one.
@@ -164,7 +164,7 @@ beforeEach(() => {
 
 afterEach(() => vi.unstubAllGlobals());
 
-describe('useArcaAudio — mute covers every capture source (TASK-609)', () => {
+describe('useArcaAudio — mute covers every capture source', () => {
   it('mutes and unmutes ALL three microphones of a mixed session, not just the first', async () => {
     const micA = makeStream('mic-A');
     const micB = makeStream('mic-B');

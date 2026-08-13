@@ -25,14 +25,14 @@ import { ILoopConfigService } from './ILoopConfigService';
 import { HARNESS_LOOP_IDLE_TIMEOUT_SECONDS_DEFAULT, HARNESS_LOOP_IDLE_TIMEOUT_SECONDS_KEY } from './loop-lifecycle.constants';
 import { LoopAgentDto, LoopConfigResponse, LoopSubscriptionDto } from './dto';
 
-/** TASK-662 — the bounded execution envelope, until per-agent overrides exist. */
+/** The bounded execution envelope, until per-agent overrides exist. */
 export const LOOP_CONFIG_MAX_DEPTH = 3;
 export const LOOP_CONFIG_MAX_ACTIONS = 200;
 
 /**
  * Per-primitive default action list a subscribed kind resolves to, before the
  * agent's `alwaysActions`/`neverActions` compliance-envelope adjustments
- * (TASK-654 §4.4 / D11). `STREAM_AUDIO` deliberately resolves to no per-kind
+ * `STREAM_AUDIO` deliberately resolves to no per-kind
  * actions — the audio-session lifecycle is driven by `startActions` (see
  * `deriveStartAndEndingActions`), not by a per-context-arrival action.
  */
@@ -74,7 +74,7 @@ function disabledResponse(consultationId: string | null, departmentId: string | 
  * The agent's goal OBJECTIVE as a plain sentence, or null.
  *
  * `DepartmentAgent.goal` is a constrained JSONB object
- * (`{ version, objective, successCriteria[] }` — TASK-659). The loop's planner
+ * (`{ version, objective, successCriteria[] }`). The loop's planner
  * prompt wants the objective sentence, not the envelope, and a malformed blob
  * degrades to "no goal" rather than leaking `[object Object]` into a prompt.
  */
@@ -117,7 +117,7 @@ function appendMissing(actions: string[], toAppend: readonly string[]): string[]
 }
 
 /**
- * TASK-662 — resolves the deterministic, read-only loop configuration for one
+ * Resolves the deterministic, read-only loop configuration for one
  * consultation: which `DepartmentAgent`/config-version/context-schema-version
  * govern it, and the per-kind action subscriptions + start/ending action
  * lists the (future) `ConsultationLoopWorkflow` dispatches.
@@ -146,10 +146,10 @@ export class LoopConfigService extends BaseService implements ILoopConfigService
   }
 
   /**
-   * The loop's IDLE bound, in seconds (TASK-685).
+   * The loop's IDLE bound, in seconds.
    *
    * Read HERE, once per consultation, because this is the resolution the
-   * workflow PINS at start (TASK-654 C1) — not per signal, the way the
+   * workflow PINS at start — not per signal, the way the
    * `harness.loop.enabled` kill-switch is. `resolvePlatform` is the platform
    * lane (`maxScope: 'system'`) and is synchronous: it reads the in-memory
    * settings cache and does no I/O.
@@ -206,23 +206,23 @@ export class LoopConfigService extends BaseService implements ILoopConfigService
       budget: { maxDepth: LOOP_CONFIG_MAX_DEPTH, maxActions: LOOP_CONFIG_MAX_ACTIONS },
       startActions,
       endingActions,
-      // TASK-664 — the deliberative lane is ON only when there is actually
+      // The deliberative lane is ON only when there is actually
       // something to deliberate: a PRIMARY plus at least one SPECIALIST. A
-      // department with one agent gets exactly TASK-662's behaviour, which is
+      // department with one agent gets exactly the original behaviour, which is
       // also what keeps every existing consultation unchanged.
       reasoningEnabled: agents.some((a) => a.role === DepartmentAgentRole.PRIMARY) && agents.some((a) => a.role === DepartmentAgentRole.SPECIALIST),
       agents,
-      // TASK-685 — pinned here, frozen for the whole consultation.
+      // Pinned here, frozen for the whole consultation.
       idleTimeoutSeconds: this.resolveIdleTimeoutSeconds(),
     };
   }
 
   /**
-   * The department's pinned agent roster (TASK-664).
+   * The department's pinned agent roster.
    *
    * The PRIMARY is resolved by ROLE, falling back to the department default
    * agent when no agent carries the PRIMARY role — a department configured
-   * before TASK-659 has a default but no roles, and the loop must still have
+   * previously has a default but no roles, and the loop must still have
    * exactly one note owner rather than none.
    *
    * Read and write scopes are resolved here and frozen into the pinned config.

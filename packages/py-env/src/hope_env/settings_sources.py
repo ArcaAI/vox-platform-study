@@ -180,7 +180,7 @@ def build_hope_sources(
         dotenv_env,
         # A real `env_file=` overlay, if the class declares one (only `apps/stt`
         # does, for `apps/stt/.env`). It stays BELOW the root env file, which is
-        # the precedence TASK-558 lane C established.
+        # the established precedence.
         dotenv_settings,
     )
 
@@ -213,7 +213,7 @@ hope_settings_sources = classmethod(_hope_settings_sources)
 
 
 # ---------------------------------------------------------------------------
-# Rotation (§13.2 P6)
+# Rotation
 # ---------------------------------------------------------------------------
 
 _CACHE_CLEARERS: list[Callable[[], None]] = []

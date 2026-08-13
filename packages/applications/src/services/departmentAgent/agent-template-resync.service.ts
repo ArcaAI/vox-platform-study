@@ -41,7 +41,7 @@ export interface AgentTemplateResyncSummary {
   skipped: number;
   /**
    * The seven loop-config fields (role/subscribedKinds/writeScope/goal/
-   * guardrailProfile/alwaysActions/neverActions, TASK-659) were copied from the
+   * guardrailProfile/alwaysActions/neverActions) were copied from the
    * golden source onto a new clone or a fast-forwarded row (OP-4). Zero today
    * for every real tenant because no SYSTEM golden agent sets any of the seven
    * fields yet — the counter exists so the day one does, propagation is visible
@@ -60,8 +60,8 @@ export interface AgentTemplateResyncSummary {
 
 /**
  * Reconcile ONE tenant's DepartmentAgent catalog against the SYSTEM agent
- * golden library (TASK-548). The SIBLING of `PipelineTemplateResyncService`
- * (TASK-531), applying the identical four conservative rules to a second
+ * golden library. The SIBLING of `PipelineTemplateResyncService`
+ * , applying the identical four conservative rules to a second
  * resource family. `PipelineTemplateResyncService` is NOT modified.
  *
  * Clone-on-provision (`TenantService.provisionTenantAgentCatalog`) runs exactly
@@ -90,7 +90,7 @@ export interface AgentTemplateResyncSummary {
  * golden current version, so the next run lands in the "already current" skip
  * branch and yields zeroes.
  *
- * LOOP CONFIG (OP-4, TASK-678): the seven TASK-659 fields are copied onto a
+ * LOOP CONFIG (OP-4): the seven fields are copied onto a
  * tenant row at the SAME two proven-safe points above — (i) clone creation and
  * (ii) a content fast-forward — never independently of them. A locked row is
  * API-immutable (`assertNotTemplateLocked` blocks its entire `update()`), so
@@ -111,8 +111,7 @@ export interface AgentTemplateResyncSummary {
  * staleness on its own timeline would need a second anchor (mirroring
  * `sourceTemplateVersionNumber`) purely to detect out-of-band config edits on
  * an API-immutable row — additional machinery with no present-day payoff, since
- * no golden agent sets any of the seven fields yet. See the ticket README's
- * Decisions section.
+ * no golden agent sets any of the seven fields yet. See the Decisions section.
  *
  * TENANT CONTEXT: callers run this with an elevated, tenant-less context (a
  * global admin authenticates with an empty `tenantId`; the cron has no CLS at
@@ -168,7 +167,6 @@ export class AgentTemplateResyncService extends BaseService {
         if (!existing) {
           // Reuse-only: no tenant department for this golden agent means the
           // tenant does not run that department. Skip it — do NOT provision one
-          // (TASK-634 D-18).
           const cloneResult = await this.cloneGoldenIntoTenant(golden, tenantId);
           if (cloneResult.created) {
             summary.added += 1;
@@ -214,7 +212,7 @@ export class AgentTemplateResyncService extends BaseService {
    * (i) The tenant has never had this golden agent — clone it in, locked.
    *
    * `created: false` when the tenant has no department for this golden agent,
-   * in which case NOTHING is created (TASK-634 D-18: resync reconciles agents
+   * in which case NOTHING is created (: resync reconciles agents
    * onto the tenant's existing departments; it must never provision one).
    * `configBlocked: true` when the golden agent DOES carry loop config (OP-4)
    * but it fails validation against the target department — the clone is still
@@ -265,7 +263,7 @@ export class AgentTemplateResyncService extends BaseService {
     });
     await this.promptVersionRepository.create(v1);
 
-    // OP-4 (TASK-678) — the golden row's seven loop-config fields (TASK-659).
+    // OP-4 — the golden row's seven loop-config fields.
     // Applied only when the golden agent actually configures the loop surface
     // AND the config resolves in the target department; otherwise the clone
     // lands with the factory defaults ("nothing configured"), exactly as
@@ -303,7 +301,7 @@ export class AgentTemplateResyncService extends BaseService {
       guardrailProfile: applyLoopConfig ? golden.guardrailProfile : undefined,
       alwaysActions: applyLoopConfig ? golden.alwaysActions : undefined,
       neverActions: applyLoopConfig ? golden.neverActions : undefined,
-      // TASK-635 RF-4 — carry the golden row's capability bindings onto the
+      // Carry the golden row's capability bindings onto the
       // clone. Every SYSTEM golden agent has these NULL today, so this is
       // future-proofing with zero present-day effect (and the seeded ArcaAI
       // agents make the sweep a no-op for that tenant anyway).
@@ -430,7 +428,7 @@ export class AgentTemplateResyncService extends BaseService {
     });
     await this.promptVersionRepository.create(version);
 
-    // OP-4 (TASK-678) — propagate the seven loop-config fields at this SAME
+    // OP-4 — propagate the seven loop-config fields at this SAME
     // proven-safe sync point, when golden's config differs from what the clone
     // already carries. A locked row is API-immutable, so "differs" can only
     // mean golden moved or the row has never been synced — never a tenant edit.
@@ -556,7 +554,7 @@ export class AgentTemplateResyncService extends BaseService {
    * not have one. It NEVER creates a department.
    *
    * This used to clone the golden department shape into the tenant on a miss
-   * (TASK-634 D-18). That made the SYSTEM golden catalog the de-facto source of
+   * . That made the SYSTEM golden catalog the de-facto source of
    * every tenant's department list: `GOLDEN_DEPARTMENTS` derives from the Global
    * `DEFAULT_DEPARTMENTS`, so each sweep provisioned one tenant department per
    * Global department, forever. It gave the ArcaAI tenant 15 departments in a
@@ -565,7 +563,7 @@ export class AgentTemplateResyncService extends BaseService {
    * them straight back.
    *
    * A tenant's department set is authoritative and is owned by the tenant (for
-   * ArcaAI it is pinned to HOPE v1's eleven; see the seed and TASK-634 §9).
+   * ArcaAI it is pinned to HOPE v1's eleven; see the seed and ).
    * Resync reconciles AGENTS onto departments that already exist; it is not a
    * department provisioner. A golden agent whose department the tenant lacks is
    * skipped and logged, not silently materialized.

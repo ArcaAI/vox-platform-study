@@ -26,7 +26,7 @@ const mockPromptTemplateRepository = {
 
 const mockDnaWritingStyleRepository = {
   findById: vi.fn(),
-  // Decryption path (TASK-599): the generic findById never decrypts and the
+  // Decryption path: the generic findById never decrypts and the
   // plaintext columns were dropped, so the real prompt path must use this.
   findByIdWithDecryptedFields: vi.fn(),
 };
@@ -138,7 +138,7 @@ describe('PromptAssemblyService', () => {
       undefined, // harnessPolicyService
       undefined, // cls
       undefined, // exemplarRetriever
-      mockSecretsService as any, // secretsService (TASK-599)
+      mockSecretsService as any, // secretsService
     );
   }
 
@@ -194,7 +194,7 @@ describe('PromptAssemblyService', () => {
       expect(result.userPrompt).not.toContain('{style_DNA_doctor_department_surgery}');
     });
 
-    // TASK-599 — the styleText column is Vault-Transit ciphertext (plaintext
+    // The styleText column is Vault-Transit ciphertext (plaintext
     // dropped). When a SecretsService is wired, the style MUST be fetched via the
     // decrypting repo method, not the generic non-decrypting findById.
     it('should DECRYPT DNA styleText via SecretsService and substitute the placeholder', async () => {
@@ -216,7 +216,7 @@ describe('PromptAssemblyService', () => {
       expect(result.userPrompt).not.toContain('{style_DNA_doctor_department_surgery}');
     });
 
-    // TASK-599 — ArcaAI governed templates declare NO {style_DNA_*} placeholder,
+    // ArcaAI governed templates declare NO {style_DNA_*} placeholder,
     // so decrypting alone would drop the style. When no placeholder is present the
     // decrypted style must be APPENDED as a trusted style directive.
     it('should APPEND DNA style as a directive when the template has no {style_DNA_*} placeholder', async () => {
@@ -411,7 +411,7 @@ describe('PromptAssemblyService', () => {
       expect(result.userPrompt).not.toContain('{pre_summary_text}');
     });
 
-    // Replaced the `sameDayPrequelSummary` case (TASK-553 F-18): that param and
+    // Replaced the `sameDayPrequelSummary` case: that param and
     // its {same_day_prequel_summary} variable had zero producers and were
     // removed in favour of the real re-visit carry-forward below. Full
     // behaviour (safety preamble, spotlighting, truncation) lives in

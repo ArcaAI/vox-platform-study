@@ -3,27 +3,26 @@
 /**
  * @arcaai/vox/compat - useSMR
  *
- * v1 summary hook reproduced against the TASK-562 gateway shim endpoints
- * (TASK-560 §5.4 / §5.6):
+ * v1 summary hook reproduced against the gateway shim endpoints
  *   - `summarize`/`summarizeSync` → `POST /api/smr/api/v1/summary/sync`
  *   - `preSummarize`             → `POST /api/smr/api/v1/presummary`
  *
- * `summarizeAsync` is DEPRECATED (TASK-635 B-07): the compat gateway
+ * `summarizeAsync` is DEPRECATED: the compat gateway
  * (`smr-compat.controller.ts`) has no `summary/async` route — that path
  * exists only on the native consultation controller. It always rejects
  * before any network call; see its JSDoc + `SUMMARIZE_ASYNC_DEPRECATED_MESSAGE`.
  *
- * These shim paths live OUTSIDE the gateway's `/api/v1` prefix (TASK-560 §5.6),
+ * These shim paths live OUTSIDE the gateway's `/api/v1` prefix
  * so the request origin is derived from the provider's `AgenticClient.getBaseUrl()`
- * (stripping the trailing `/api/v1`). Auth is x-api-key parity (TASK-560 D2):
+ * (stripping the trailing `/api/v1`). Auth is x-api-key parity
  * the key is read from the same `AgenticClient` the provider configured — never
- * a hardcoded default (TASK-560 §6 A1).
+ * a hardcoded default.
  *
- * F2 fix (TASK-560 §6): the request sends REAL per-turn `conversation_segments`
+ * F2 fix: the request sends REAL per-turn `conversation_segments`
  * — from `request.segments` when provided, else split from `request.text` into
  * per-line turns — never one collapsed `speaker:'user'` blob.
  *
- * Streaming (TASK-589): `{ stream: true, onDelta }` on `SMRRequest`/`PreSummaryRequest`
+ * Streaming: `{ stream: true, onDelta }` on `SMRRequest`/`PreSummaryRequest`
  * opts into SSE — `event: delta` (`data:{text}`) fires `onDelta(delta, accumulated)`,
  * the terminal `event: result` resolves the promise with the same v1-shaped body the
  * non-streaming path returns, and `event: error` rejects with `data.detail`. Omitting
@@ -49,7 +48,7 @@ export interface UseSMRReturn {
    * path exists ONLY on the native consultation controller
    * (`consultation.controller.ts` `POST .../summary/async`), not on the
    * compat controller (`smr-compat.controller.ts`). Calling this always
-   * rejects before any network request is made (TASK-635 B-07). Use
+   * rejects before any network request is made. Use
    * `summarizeSync`/`summarize` for the compat surface, or the native SDK's
    * `generateSummaryAsync` if you need out-of-band job polling.
    */
@@ -63,7 +62,7 @@ export interface UseSMRReturn {
  * The v1-compat gateway (`smr-compat.controller.ts`) has no `summary/async`
  * route — only the native consultation controller does. `summarizeAsync` is
  * deprecated and always rejects with this message before touching the
- * network (TASK-635 B-07).
+ * network.
  */
 const SUMMARIZE_ASYNC_DEPRECATED_MESSAGE =
   '[@arcaai/vox/compat] useSMR.summarizeAsync is deprecated: the v1-compat gateway has no `summary/async` route. ' +
@@ -172,7 +171,7 @@ function buildSyncPayload(request: SMRRequest, fallbackSessionId?: string): Reco
   // Top-level doctor_id lets the gateway apply that doctor's DNA writing-style
   // (kept alongside the legacy session_metadata.doctor_id). Omitted when unset.
   if (request.doctorId !== undefined) payload.doctor_id = request.doctorId;
-  // TASK-600: top-level translate_to_english lets the gateway translate the
+  // Top-level translate_to_english lets the gateway translate the
   // transcript to English before summarizing. Sent ONLY when explicitly true.
   if (request.translateToEnglish === true) payload.translate_to_english = true;
   return payload;
@@ -210,7 +209,7 @@ export function useSMR(props: UseSMROptions = {}): UseSMRReturn {
   );
 
   /**
-   * SSE variant of `request()` (TASK-589). Sends `stream:true` + `Accept:
+   * SSE variant of `request()`. Sends `stream:true` + `Accept
    * text/event-stream`, reads the response body as a stream, and parses
    * `\n\n`-delimited SSE frames: `delta` invokes `onDelta`, `result` resolves
    * with the terminal v1-shaped body, `error` throws with `data.detail`.
@@ -328,7 +327,7 @@ export function useSMR(props: UseSMROptions = {}): UseSMRReturn {
 
   /**
    * @deprecated Always rejects — see the `UseSMRReturn.summarizeAsync` JSDoc
-   * and `SUMMARIZE_ASYNC_DEPRECATED_MESSAGE` (TASK-635 B-07). Rejects
+   * and `SUMMARIZE_ASYNC_DEPRECATED_MESSAGE`. Rejects
    * synchronously-before-network: no fetch is ever issued, and `loading`
    * never flips to `true`.
    */

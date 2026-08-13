@@ -1,18 +1,19 @@
-// Feature gates — env today, `global-kv` eventually (TASK-558 lanes F + I).
+// Feature gates — env today, `global-kv` eventually.
 //
-// ── THE `redis-flag` DECISION, SETTLED (lane I) ──────────────────────────────
-// Lane F recorded `targetTier: 'redis-flag'` here from plan §3.2, and at the
-// same time recorded that NO redis-flag infrastructure exists: zero descriptors
-// use the tier and `EffectiveSettingsService` has no branch for it. Lane I
-// closed that question rather than leaving it open — the destination is
-// **`global-kv`**, not a new tier, and every `targetTier` below now says so.
+// ── THE `redis-flag` DECISION, SETTLED ───────────────────────────────────────
+// Classification recorded `targetTier: 'redis-flag'` here from the original
+// taxonomy, and at the same time recorded that NO redis-flag infrastructure
+// exists: zero descriptors use the tier and `EffectiveSettingsService` has no
+// branch for it. That question is now closed rather than left open — the
+// destination is **`global-kv`**, not a new tier, and every `targetTier` below
+// now says so.
 //
 // The reason is that the ONLY property `redis-flag` was wanted for is instant
-// fan-out (§9.3 M9: "a flag that needs a redeploy is not a kill-switch, it is a
+// fan-out ("a flag that needs a redeploy is not a kill-switch, it is a
 // build flag") — and `global-kv` already has it. `AppSettingsService` publishes
 // on `app-settings:invalidate` after every `GlobalSetting` write and subscribes
 // to it on init, so a peer node drops and reloads its cache on push; the 45s
-// cron is the backstop, not the mechanism (lane G proved this end to end).
+// cron is the backstop, not the mechanism (proved end to end).
 // Building a second flag store on the same Redis to get a property the first
 // one already has would be new infrastructure bought with no new capability —
 // plus a second write path, a second invalidation contract, and a second place
@@ -23,8 +24,8 @@
 // `tier` tracks, and it is why the flags below have NOT flipped: six of the ten
 // are read by pydantic-settings inside a Python service, so their migration is
 // a `/api/v1/internal/effective-config` route on the gateway plus a change in
-// that service's `config.py` — files this lane does not own (they belong to the
-// Python-loader lane). Flipping `tier` while a `process.env` read is still the
+// that service's `config.py` — files this catalog does not own (they belong to
+// the Python-loader path). Flipping `tier` while a `process.env` read is still the
 // authority would make the catalog LIE, which is the one thing the honesty rule
 // below forbids.
 //
@@ -34,13 +35,13 @@
 // "read by the apps/api layer (@arcaai/applications TenantIdpConfigService …)".
 // That comment is FALSE: a repo-wide grep across every `.ts` and `.py` finds no
 // read of `TENANT_IDP_ENABLED` or any camelCase equivalent — `TenantIdpConfigService`
-// never consults it. The misleading comment is very likely why lane A's dead-key
+// never consults it. The misleading comment is very likely why the dead-key
 // scan missed it. Cataloging it would enshrine a flag that gates nothing; it
-// belongs on the §2.3 dead-key list instead.
+// belongs on the dead-key list instead.
 //
 // ── KILL-SWITCH POLARITY (read before adding to this file) ───────────────────
 // `killSwitch: true` carries a HARD governance invariant — `SettingsRegistry.killSwitches()`
-// throws if any such descriptor defaults ON (fail-safe rollout, plan §9.3 M9). It
+// throws if any such descriptor defaults ON (fail-safe rollout). It
 // therefore marks an ENFORCEMENT/engine gate that ships OFF, never a PROTECTION
 // that ships ON. `harness.claimCheck.enabled` below is the second recorded
 // instance of that distinction (the first is `rate-limit.enabled` in
@@ -147,7 +148,7 @@ const FLAGS: FlagSpec[] = [
 export const FEATURE_FLAG_SETTINGS: SettingDescriptor[] = FLAGS.map<SettingDescriptor>((flag) => ({
   key: flag.key,
   tier: 'env',
-  // Corrected from `redis-flag` by lane I — see the header. The destination is
+  // Corrected from `redis-flag` — see the header. The destination is
   // the EXISTING `global-kv` tier, whose `app-settings:invalidate` fan-out
   // already delivers the instant propagation `redis-flag` was wanted for.
   targetTier: 'global-kv',
@@ -155,13 +156,13 @@ export const FEATURE_FLAG_SETTINGS: SettingDescriptor[] = FLAGS.map<SettingDescr
   sensitivity: 'internal',
   // Stays `system` until the reader moves: a governance test binds
   // `tier: 'env'` to `maxScope: 'system'` (an env var has no cascade), and
-  // plan §13.4's tenant scope for the harness/groundedness toggles is a
+  // tenant scope for the harness/groundedness toggles is a
   // property of the DB tier they are headed for, not of the env read.
   maxScope: 'system',
   editableBy: EDITABLE_BY_NONE,
   // A flag whose value cannot be read must behave as it does today: the reader's
   // own code default. Every default below is the SAFE end of its flag, so
-  // open-to-default never silently enables anything (plan §9.3 M5/M9).
+  // open-to-default never silently enables anything.
   failMode: 'open-to-default',
   ...(flag.killSwitch ? { killSwitch: true } : {}),
   category: 'Feature Flags',

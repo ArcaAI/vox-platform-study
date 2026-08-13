@@ -168,7 +168,7 @@ describe('SttCompatGateway', () => {
     });
   });
 
-  // TASK-597 follow-up #1: the bridge now relays `finalizing` (previously
+  // Follow-up #1: the bridge now relays `finalizing` (previously
   // swallowed by its non-terminal allow-list). This gateway needed NO code
   // change — it already default-forwards every status frame — but the v1 wire
   // now carries `finalizing` too, so lock that in.
@@ -214,13 +214,13 @@ describe('SttCompatGateway', () => {
     expect(status.data.isFallback).toBeUndefined();
   });
 
-  // TASK-613 C4 — the pipeline that actually produced this utterance
-  // (TASK-613 B1's camelCase `pipelineId` on the bridge transcript
+  // The pipeline that actually produced this utterance
+  // (B1's camelCase `pipelineId` on the bridge transcript
   // projection) must reach the v1-compat client in BOTH the top-level
   // `pipeline_id` field (mirroring how `chunk_id`/`detected_language` are
   // emitted) and `metadata.pipeline_id` (per OD-3), without disturbing the
-  // TASK-564 `resolveMetadata` cache.
-  it('mirrors pipelineId onto top-level pipeline_id AND metadata.pipeline_id (TASK-613 C4)', async () => {
+  // `resolveMetadata` cache.
+  it('mirrors pipelineId onto top-level pipeline_id AND metadata.pipeline_id', async () => {
     const client = createSocket();
     const results = new Subject();
     const apiKeyService = {
@@ -258,11 +258,11 @@ describe('SttCompatGateway', () => {
 
     expect(transcription.data.pipeline_id).toBe('sarvam_transcription');
     expect(transcription.data.metadata.pipeline_id).toBe('sarvam_transcription');
-    // Cached device_id metadata (TASK-564) survives the mirror.
+    // Cached device_id metadata survives the mirror.
     expect(transcription.data.metadata.device_id).toBe('mic2');
   });
 
-  it('emits pipeline_id: null and no metadata.pipeline_id key when the bridge has not stamped one (TASK-613 C4)', async () => {
+  it('emits pipeline_id: null and no metadata.pipeline_id key when the bridge has not stamped one', async () => {
     const client = createSocket();
     const results = new Subject();
     const apiKeyService = {
@@ -301,7 +301,7 @@ describe('SttCompatGateway', () => {
     expect('pipeline_id' in transcription.data.metadata).toBe(false);
   });
 
-  it('does not corrupt the cached session metadata (TASK-564) across a later message carrying no metadata of its own', async () => {
+  it('does not corrupt the cached session metadata across a later message carrying no metadata of its own', async () => {
     const client = createSocket();
     const results = new Subject();
     const apiKeyService = {
@@ -334,7 +334,7 @@ describe('SttCompatGateway', () => {
     // First utterance on the primary — stamped.
     results.next({ type: 'transcript', text: 'first', startTime: 0, endTime: 1, isFinal: true, pipelineId: 'azure_speech_transcription' });
     // Second utterance after a mid-session switch — no `metadata` field of its
-    // own, so the gateway falls back to the TASK-564 cache; the mirrored
+    // own, so the gateway falls back to the cache; the mirrored
     // pipeline_id must reflect the NEW pipeline, not stick to the first.
     results.next({ type: 'transcript', text: 'second', startTime: 1, endTime: 2, isFinal: true, pipelineId: 'sarvam_transcription' });
 
@@ -373,7 +373,7 @@ describe('SttCompatGateway', () => {
     expect(bridgeService.subscribeToResults).not.toHaveBeenCalled();
   });
 
-  // TASK-615 WS-C — without this, an abrupt disconnect (tab closed, wifi
+  // Without this, an abrupt disconnect (tab closed, wifi
   // drop — no explicit /stop_session) never tore down the upstream STT
   // session at all; it leaked until STT's OWN idle-timeout reaper finalized
   // it server-side with no gateway caller to receive the usage summary, so

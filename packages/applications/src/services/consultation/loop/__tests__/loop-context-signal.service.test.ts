@@ -1,11 +1,11 @@
 /**
  * LoopContextSignalService Unit Tests.
  *
- * The new @OnEvent(ContextAdded) consumer (TASK-660) that signals the
+ * The new @OnEvent(ContextAdded) consumer that signals the
  * (future) consultation loop workflow via HarnessGatewayService.
  * signalContextAdded.
  *
- * TASK-679 — the gate is no longer the `HARNESS_LOOP_ENABLED` env flag but the
+ * The gate is no longer the `HARNESS_LOOP_ENABLED` env flag but the
  * `harness.loop.enabled` `global-kv` kill-switch, resolved per call. These
  * fixtures therefore drive a real `TenantSettingsService` over a fake settings
  * cache; the CASES are unchanged (unset / off / on), only the tier is. The
@@ -98,7 +98,7 @@ describe('LoopContextSignalService', () => {
     });
   });
 
-  // TASK-670 — payload completeness: kindKey/occurredAt/depth/content now
+  // Payload completeness: kindKey/occurredAt/depth/content now
   // ride the outbound signal.
   it('forwards kindKey, occurredAt (the payload timestamp), depth, and the fuller content field', async () => {
     const { service, harnessGatewayService } = buildDeps(true);
@@ -161,7 +161,7 @@ describe('LoopContextSignalService', () => {
     await expect(service.handleContextAdded(payload())).resolves.toBeUndefined();
   });
 
-  // TASK-670 — the two lifecycle-boundary signal callers.
+  // The two lifecycle-boundary signal callers.
   describe('signalConsultationEnding', () => {
     it('is a no-op when the loop is not configured', async () => {
       const { service, harnessGatewayService } = buildDeps(undefined);

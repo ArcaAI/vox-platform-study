@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * Column 3 of the Consultation Scribe workspace (TASK-543): the case
+ * Column 3 of the Consultation Scribe workspace: the case
  * note. Shows the LIVE running SOAP (SSE snapshot) while recording, then the
  * PERSISTED personalized draft (`SummaryResult` — same artifact on both the
  * plain and harness paths) once one exists. The harness assurance envelope is
@@ -178,7 +178,7 @@ export interface CaseNoteColumnProps {
   onApprove: (options: { overrideSafetyFlag: boolean }) => void;
   approvePending: boolean;
   approved: boolean;
-  /** Cited transcript segments for the delivered draft (TASK-552 Lane C evidence panel). Absent/empty renders no panel. */
+  /** Cited transcript segments for the delivered draft (evidence panel). Absent/empty renders no panel. */
   citedSegments?: CitedSegment[];
   /** Persisted transcript text — the evidence panel slices it locally for the snippet. */
   transcriptText?: string | null;

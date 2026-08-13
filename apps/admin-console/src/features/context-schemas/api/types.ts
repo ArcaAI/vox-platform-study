@@ -1,6 +1,6 @@
 /**
- * TASK-666 — types for `ConsultationContextSchema` administration
- * (`/admin/consultation-context-schemas`, TASK-658). Mirrors the response/
+ * Types for `ConsultationContextSchema` administration
+ * (`/admin/consultation-context-schemas`). Mirrors the response/
  * request DTOs in `packages/applications/src/services/consultation-context-schema/dto/`
  * and the definition-document shape in `context-schema-definition.ts` — kept
  * hand-written (not imported) because `apps/admin-console` does not depend on
@@ -30,7 +30,7 @@ export interface ConsultationContextSchema {
   updatedAt: string;
 }
 
-/** TASK-661's compatibility judgement, reused by TASK-674 for the version list. */
+/** Compatibility judgement, reused for the version list. */
 export type ContextSchemaVersionSkew = 'IDENTICAL' | 'ADDITIVE' | 'BREAKING';
 
 export interface ConsultationContextSchemaVersion {
@@ -44,7 +44,7 @@ export interface ConsultationContextSchemaVersion {
   createdBy: string | null;
   createdAt: string;
   /**
-   * TASK-674 — drift between this version and the schema's CURRENT pin,
+   * drift between this version and the schema's CURRENT pin,
    * classified by the same rules `publish` uses to decide whether a change
    * needs `allowBreakingChange`. Absent for the pinned version itself (and
    * for a schema with no pin yet).
@@ -53,7 +53,7 @@ export interface ConsultationContextSchemaVersion {
 }
 
 // ---------------------------------------------------------------------------
-// The `definition` document (TASK-658 §3.1) — a tenant declares its OWN
+// The `definition` document — a tenant declares its OWN
 // vocabulary, but every kind must declare exactly one of five PLATFORM
 // PRIMITIVES. The primitive set below is CLOSED; extending it is a platform
 // change, never a tenant one — the admin console must never let an author

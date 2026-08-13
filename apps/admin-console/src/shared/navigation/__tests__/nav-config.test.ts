@@ -5,7 +5,7 @@ import { matchNavEntry, NAV_ENTRIES, NAV_SECTIONS, visibleNavEntries } from '../
 const GLOBAL_ADMIN_RULES: PermissionRule[] = [{ action: 'manage', subject: 'all' }];
 
 // Approximation of the seeded TENANT_ADMIN policy set (tenant-full-access,
-// rbac-tenant-manage, prompt-template-manage, audit-log-read). TASK-641 adds
+// rbac-tenant-manage, prompt-template-manage, audit-log-read). Adds
 // manage:TenantAllowedOrigin (own-tenant condition) to tenant-full-access.
 const TENANT_ADMIN_RULES: PermissionRule[] = [
   { action: 'read', subject: 'AuditLog' },
@@ -18,13 +18,13 @@ const TENANT_ADMIN_RULES: PermissionRule[] = [
 ];
 
 describe('NAV_ENTRIES (capabilities-matrix section 3, reviewed 2026-07-04; playground tier)', () => {
-  // TASK-634 R6 adds /prompt-templates (tier 30-49), taking 45 -> 46.
-  // TASK-638 §6 adds /ai-operations/reconciliation (tier 10-19), taking 46 -> 47.
-  // TASK-641 retiers /allowed-origins 10-19 -> 30-49 (tenant admins now reach
+  // /prompt-templates (tier 30-49), taking 45 -> 46.
+  // /ai-operations/reconciliation (tier 10-19), taking 46 -> 47.
+  // /allowed-origins retiered 10-19 -> 30-49 (tenant admins now reach
   // it for their own tenant's rows); total stays 47.
-  // TASK-648 §6 adds /releases (tier 10-19), taking 47 -> 48.
-  // TASK-666 adds /context-schemas (tier 30-49), taking 48 -> 49.
-  it('covers the full 49-route map across the four tiers (TASK-666 adds /context-schemas)', () => {
+  // /releases (tier 10-19), taking 47 -> 48.
+  // /context-schemas (tier 30-49), taking 48 -> 49.
+  it('covers the full 49-route map across the four tiers (including /context-schemas)', () => {
     expect(NAV_ENTRIES).toHaveLength(49);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '10-19')).toHaveLength(21);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '20-29')).toHaveLength(7);
@@ -32,7 +32,7 @@ describe('NAV_ENTRIES (capabilities-matrix section 3, reviewed 2026-07-04; playg
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '50-59')).toHaveLength(5);
   });
 
-  it('merges the standalone /stt-config, /tts-config and /ai-providers screens into the /ai-configuration hub (TASK-595)', () => {
+  it('merges the standalone /stt-config, /tts-config and /ai-providers screens into the /ai-configuration hub', () => {
     for (const route of ['/stt-config', '/tts-config', '/ai-providers']) {
       expect(NAV_ENTRIES.some((entry) => entry.route === route)).toBe(false);
     }
@@ -50,7 +50,7 @@ describe('NAV_ENTRIES (capabilities-matrix section 3, reviewed 2026-07-04; playg
     const tenant = NAV_ENTRIES.find((entry) => entry.route === '/ai-configuration');
     expect(tenant?.label).toBe('AI Configuration');
     expect(tenant?.tier).toBe('30-49');
-    // TASK-595: the hub spans four resources, so it is OR-gated over the four
+    // The hub spans four resources, so it is OR-gated over the four
     // reads (Models/Speech/Voice/Providers) — visible if the caller can read any.
     expect(tenant?.required).toEqual([
       ['read', 'AiTaskDefault'],
@@ -109,13 +109,13 @@ describe('NAV_ENTRIES (capabilities-matrix section 3, reviewed 2026-07-04; playg
 
   /**
    * Console IA cleanup: `/prompt-studio` folded into `/agents`, `/ai-services`
-   * took its slot. `/allowed-origins` moved OUT of tier 10-19 under TASK-641 —
+   * took its slot. `/allowed-origins` moved OUT of tier 10-19;
    * see the dedicated retier test below.
    */
   describe('console IA cleanup', () => {
     it('retires /prompt-studio (governance moved into the prompt-template Governance tab)', () => {
       expect(NAV_ENTRIES.some((entry) => entry.route === '/prompt-studio')).toBe(false);
-      // TASK-634 R6: the surface it folded into now has its own nav entry.
+      // The surface it folded into now has its own nav entry.
       const promptTemplates = NAV_ENTRIES.find((entry) => entry.route === '/prompt-templates');
       expect(promptTemplates?.tier).toBe('30-49');
       expect(promptTemplates?.required).toEqual([['manage', 'PromptTemplate']]);
@@ -142,7 +142,7 @@ describe('NAV_ENTRIES (capabilities-matrix section 3, reviewed 2026-07-04; playg
       expect(new Set(routes).size).toBe(routes.length);
     });
 
-    it('retiers /allowed-origins to tenant scope now that TENANT_ADMIN can manage their own rows (TASK-641)', () => {
+    it('retiers /allowed-origins to tenant scope now that TENANT_ADMIN can manage their own rows', () => {
       const allowedOrigins = NAV_ENTRIES.find((entry) => entry.route === '/allowed-origins');
       expect(allowedOrigins?.tier).toBe('30-49');
       expect(allowedOrigins?.required).toEqual([
@@ -208,7 +208,7 @@ describe('visibleNavEntries', () => {
     expect(visible).toContain('/account');
     expect(visible).toContain('/playground/consultation');
     expect(visible).toContain('/playground/llm');
-    // TASK-641: a tenant admin now reaches the retiered allowed-origins screen.
+    // A tenant admin now reaches the retiered allowed-origins screen.
     expect(visible).toContain('/allowed-origins');
   });
 

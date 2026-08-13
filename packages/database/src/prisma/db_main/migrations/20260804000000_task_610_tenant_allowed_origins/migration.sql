@@ -1,4 +1,4 @@
--- TASK-610 — Tenant Allowed Origins (CORS control plane)
+-- Tenant Allowed Origins (CORS control plane)
 -- Additive only: one new tenant-scoped table under the `core` schema plus one
 -- new audit ResourceType enum member. No data is touched. TenantAllowedOrigin
 -- holds one row per registered browser origin; `tenantId` is the OWNING

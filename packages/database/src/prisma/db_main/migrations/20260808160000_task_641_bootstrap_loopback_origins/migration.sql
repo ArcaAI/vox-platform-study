@@ -1,21 +1,21 @@
--- TASK-641 H-2 — bootstrap the SYSTEM loopback allowed-origin rows.
+-- Bootstrap the SYSTEM loopback allowed-origin rows.
 --
 -- WHY THIS IS A MIGRATION AND NOT SEED DATA
 -- =========================================
--- TASK-641 wave 1 made three changes that compose into a lock-out:
+-- Made three changes that compose into a lock-out:
 --   (a) `origin.enforcementEnabled` now defaults TRUE (FR-6) — enforcement is
 --       on in every environment, for every tenant, with no opt-in step;
 --   (b) the `NODE_ENV === 'development'` loopback branch was deleted from
 --       `apps/api/src/cors.config.ts` (FR-8 / B-7) — there is no code fallback
 --       left, and re-adding one is explicitly forbidden by that file's header;
---   (c) TASK-610 §4A.1 had already deleted `CORS_ALLOWED_ORIGINS`, so no env
+-- (c) had already deleted `CORS_ALLOWED_ORIGINS`, so no env
 --       var can supply an allow-list either.
--- Meanwhile TASK-616 made seeding OPT-IN (`RUN_SEED`, default `none`). An
+-- Meanwhile made seeding OPT-IN (`RUN_SEED`, default `none`). An
 -- environment that skips the seed therefore refuses EVERY browser origin,
 -- loopback included, recoverable only by direct database access.
 --
 -- The mitigation is NOT to make the seed run unconditionally: a
--- `SEED_PHASES_ALWAYS_ON` escape hatch would break TASK-616's "no DB connection
+-- `SEED_PHASES_ALWAYS_ON` escape hatch would break 's "no DB connection
 -- when `RUN_SEED` is unset" invariant and make `RUN_SEED=none` not mean none.
 -- The correct precedent is already in this directory: the SYSTEM tenant row
 -- itself is guaranteed by a MIGRATION

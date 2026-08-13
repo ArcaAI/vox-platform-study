@@ -32,7 +32,7 @@ export function ProviderSwitch() {
   });
 
   // Which side is live. `usePipeline` is now trustworthy in both directions
-  // (TASK-614): the gateway relays `active`/`is_fallback` on the switch frame,
+  // : the gateway relays `active`/`is_fallback` on the switch frame,
   // and where a backend still omits them the SDK compares the pipeline id
   // itself rather than assuming "fallback". The id comparison this component
   // used to hand-roll now lives in the SDK, so it is gone from here.

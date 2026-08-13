@@ -281,7 +281,7 @@ describe('TenantTtsConfigService — voice bindings', () => {
 });
 
 // BYO credential behavior (set/rotate/remove/resolve) moved to the unified
-// `IProviderConnectionService` (TASK-570) — see
+// `IProviderConnectionService` — see
 // `TenantTtsConfigAdminController`'s credential-route tests and
 // `SpeechProxyController`/`TtsWsGateway` injection tests, which now exercise
 // that delegation directly. `TenantTtsConfigService` no longer has a

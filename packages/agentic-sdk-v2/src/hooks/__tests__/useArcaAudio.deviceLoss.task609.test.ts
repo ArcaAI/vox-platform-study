@@ -1,5 +1,5 @@
 /**
- * useArcaAudio — capture-device LOSS and dropped-start warnings (TASK-609).
+ * useArcaAudio — capture-device LOSS and dropped-start warnings.
  *
  * Two silent failures, same observable symptom as the multi-mic bug that
  * motivated this ticket ("socket open, no audio, no error"):
@@ -147,7 +147,7 @@ beforeEach(() => {
 
 afterEach(() => vi.unstubAllGlobals());
 
-describe('useArcaAudio — device loss (TASK-609)', () => {
+describe('useArcaAudio — device loss', () => {
   it('surfaces an error when a capture device disappears mid-session', async () => {
     const stream = makeStream('USB Mic Array');
     (navigator.mediaDevices.getUserMedia as any).mockResolvedValueOnce(stream);
@@ -180,9 +180,9 @@ describe('useArcaAudio — device loss (TASK-609)', () => {
   });
 });
 
-describe('useArcaAudio — ignored start carrying source options (TASK-609)', () => {
+describe('useArcaAudio — ignored start carrying source options', () => {
   it('WARNS and REJECTS with CAPTURE_OPTIONS_DROPPED when a second start would have changed the sources', async () => {
-    // Contract updated by TASK-612 (OD-2a): the warn stays for log triage, but a
+    // Contract updated): the warn stays for log triage, but a
     // dropped capture-shaped option set is now ALSO a rejected promise — the
     // pre-612 "warn and resolve" behavior was root cause RC-2 (default mic
     // streams while the UI shows the external selection, no surfaced error).

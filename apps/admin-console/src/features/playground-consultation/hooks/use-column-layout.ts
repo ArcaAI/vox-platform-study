@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * Per-user column layout for the Consultation Scribe workspace (TASK-543).
+ * Per-user column layout for the Consultation Scribe workspace.
  *
  * The three resizable columns (consultations / live session / case note) are a
  * personalized interface setting: sizes persist per user through the SDK's own

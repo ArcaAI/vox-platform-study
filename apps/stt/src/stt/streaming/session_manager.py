@@ -79,7 +79,7 @@ _STEADY_STATE_ENQUEUE_TIMEOUT_S = 1.0
 StreamingAsrCallable = Callable[[np.ndarray, int], Awaitable[dict[str, Any]]]
 
 # Cloud ASR engines whose loaders accept a per-tenant ``provider_overrides``
-# dict (TASK-567 BYOK). For these formats the model load BYPASSES the shared
+# dict (BYOK). For these formats the model load BYPASSES the shared
 # by-slug model cache when a per-session override is present — a decrypted
 # tenant key must never be cached under a slug and served to another tenant.
 _CLOUD_ASR_OVERRIDE_FORMATS = frozenset(
@@ -179,19 +179,19 @@ class SessionManager:
         self._session_pinned_models: dict[str, list[str]] = {}
         self._consumers: dict[str, IngestionConsumer] = {}
         self._control_listeners: dict[str, ControlListener] = {}
-        # TASK-567 — per-session engine-switch state. The overrides dict and
+        # Per-session engine-switch state. The overrides dict and
         # fallback pointer are held IN MEMORY ONLY (never persisted to Redis /
         # session metadata, never logged); they are needed to lazily build the
         # fallback ASR callable on switch.
         self._switch_controllers: dict[str, EngineSwitchController] = {}
         self._provider_overrides: dict[str, dict[str, Any]] = {}
         self._fallback_pipeline_ids: dict[str, str] = {}
-        # TASK-587 — per-session end-user language mode id, resolved against the
+        # Per-session end-user language mode id, resolved against the
         # session's ASR engine at load time.
         self._session_language_modes: dict[str, str] = {}
-        # TASK-615 #12 — per-session dual-/multi-mic source count (absent ⇒ 1).
+        # Per-session dual-/multi-mic source count (absent ⇒ 1).
         self._session_channel_counts: dict[str, int] = {}
-        # TASK-615 WS-C — the ASR AiModelFormat actually loaded for this session,
+        # The ASR AiModelFormat actually loaded for this session,
         # stamped in `_load_asr_pipeline` (the single choke point for BOTH
         # session-create and every engine switch, so this can never go stale).
         # Read at teardown to resolve the usage-ledger (engine, deployment) pair
@@ -405,7 +405,7 @@ class SessionManager:
         recovered session restarts without it (Sortformer, being stateless
         per-utterance, IS reconstructed either way).
 
-        ``active_pipeline_id`` (TASK-613) is the pipeline this runtime is being
+        ``active_pipeline_id`` is the pipeline this runtime is being
         assembled FOR — i.e. the EFFECTIVE engine, which is the fallback on the
         user-selected start-on-fallback and create-time-load-failure paths, not
         the requested primary. The inference worker stamps it onto every result
@@ -836,20 +836,20 @@ class SessionManager:
                 present, selects the provider (MinIO/S3/Azure) and bucket for
                 this tenant; when absent, ``audio_bucket_name`` is used.
             provider_overrides: Optional per-tenant BYO cloud-provider
-                credential map (TASK-567, gateway-injected wire shape
+                credential map (gateway-injected wire shape
                 ``{provider: {api_key, region?, base_url?, model?}}``). Held in
                 memory only; NEVER persisted or logged. Preferred over env creds
                 by the cloud ASR loaders (fail-open per credential).
             fallback_pipeline_id: Optional tenant fallback pipeline. When set, a
                 per-session ``EngineSwitchController`` can swap the live ASR
                 engine to it (create-time / auto-outage / manual triggers).
-            language_mode: Optional end-user language mode id (TASK-587). Resolved
+            language_mode: Optional end-user language mode id. Resolved
                 against the session's ASR engine at load time into the inference
                 config's language/code_switching/streaming_english_gloss. Takes
                 precedence over ``language``. If the primary engine cannot serve
                 the mode a configured fallback is tried; if none qualifies the
                 create raises ``LanguageModeUnsupportedError`` (mapped to 422).
-            start_on: ``'primary'`` (default) or ``'fallback'`` (TASK-586 C9).
+            start_on: ``'primary'`` (default) or ``'fallback'``.
                 When ``'fallback'`` AND a ``fallback_pipeline_id`` is configured,
                 the runtime is assembled on the fallback pipeline_config from the
                 start while ``primary_pipeline_id`` stays wired, so a later
@@ -858,13 +858,13 @@ class SessionManager:
                 distinct from the load-failure ``created_on_fallback`` path. If
                 no fallback is configured, the create fails open on the primary.
             auto_switch_enabled: Tenant governance for the FAILURE-DRIVEN auto
-                switch (TASK-614). ``None`` = the controller's own default
+                switch. ``None`` = the controller's own default
                 (enabled), so an older gateway that sends nothing keeps the
-                pre-614 behaviour. Never affects a user-initiated switch — that
+                previous behaviour. Never affects a user-initiated switch — that
                 is an explicit choice, not a policy.
             consecutive_failure_threshold: Tenant governance for how many
                 consecutive threshold-class utterance failures arm the auto
-                switch (TASK-614). ``None`` = the controller's default (2).
+                switch. ``None`` = the controller's default (2).
         """
         # Check capacity
         if not await self._capacity_guard.try_acquire(session_id):
@@ -896,23 +896,23 @@ class SessionManager:
             session = StreamSession(metadata=metadata, redis=self._redis)
             await session.force_persist()
 
-            # TASK-567 — stash the in-memory-only BYO overrides + fallback
+            # Stash the in-memory-only BYO overrides + fallback
             # pointer before any load, so they are available to the primary ASR
             # load, the create-time fallback path, and later engine swaps.
             self._provider_overrides[session_id] = dict(provider_overrides or {})
             if fallback_pipeline_id:
                 self._fallback_pipeline_ids[session_id] = fallback_pipeline_id
-            # TASK-587 — stash the end-user language mode so both the primary and
+            # Stash the end-user language mode so both the primary and
             # any create-time fallback assembly resolve it against their engine.
             if language_mode:
                 self._session_language_modes[session_id] = language_mode
-            # TASK-615 #12 — stash the dual-/multi-mic source count so the teardown
+            # Stash the dual-/multi-mic source count so the teardown
             # summary (from EVERY finalize path, including the idle reaper) can
             # echo it for usage repricing.
             if channel_count and channel_count > 1:
                 self._session_channel_counts[session_id] = channel_count
 
-            # TASK-586 C9 — a user-selected start-on-fallback assembles the
+            # A user-selected start-on-fallback assembles the
             # fallback pipeline_config directly (the primary is NOT attempted at
             # create), while the primary stays wired for a later switch-back.
             # Fail-open: if no fallback is configured, proceed on the primary.
@@ -951,12 +951,12 @@ class SessionManager:
                     pipeline_config=pipeline_config,
                     build_speaker_identifier=True,
                     provider_overrides=provider_overrides,
-                    # TASK-613 — effective pipeline: the fallback IS the engine
+                    # Effective pipeline: the fallback IS the engine
                     # this session opens on.
                     active_pipeline_id=fallback_pipeline_id,
                 )
             else:
-                # One shared assembly for creation AND recovery. TASK-567
+                # One shared assembly for creation AND recovery.
                 # create-time trigger: if the PRIMARY assembly fails (e.g. the
                 # primary ASR engine's credentials/load) and a fallback is
                 # configured, open the session directly on the fallback instead
@@ -997,7 +997,7 @@ class SessionManager:
                         pipeline_config=pipeline_config,
                         build_speaker_identifier=True,
                         provider_overrides=provider_overrides,
-                        # TASK-613 — the sharpest divergence (D4): the client is
+                        # The sharpest divergence: the client is
                         # told 'active' and never learns it is on an engine it
                         # did not select. Stamp the effective one.
                         active_pipeline_id=fallback_pipeline_id,
@@ -1048,7 +1048,7 @@ class SessionManager:
             self._consumers[session_id] = consumer
             self._control_listeners[session_id] = control_listener
 
-            # TASK-567 — per-session engine-switch controller. Created for every
+            # Per-session engine-switch controller. Created for every
             # session (so the manual-switch / auto-outage paths have a target);
             # switches are no-ops when no fallback is configured.
             switch_controller = self._make_switch_controller(
@@ -1067,7 +1067,7 @@ class SessionManager:
             if created_on_fallback:
                 await switch_controller.note_switched_at_create()
             elif started_on_fallback:
-                # TASK-586 C9 — deliberate user choice: primary stays switchable
+                # Deliberate user choice: primary stays switchable
                 # and no provider_switched event is emitted.
                 await switch_controller.note_started_on_fallback()
 
@@ -1109,11 +1109,11 @@ class SessionManager:
         return self._publishers.get(session_id)
 
     def get_switch_controller(self, session_id: str) -> EngineSwitchController | None:
-        """Retrieve the engine-switch controller for a session (TASK-567)."""
+        """Retrieve the engine-switch controller for a session."""
         return self._switch_controllers.get(session_id)
 
     async def request_switch(self, session_id: str, target: str = "fallback") -> None:
-        """Request a manual mid-session engine switch (TASK-567 R4, TASK-586).
+        """Request a manual mid-session engine switch.
 
         Called by the internal ``POST /internal/streaming/sessions/{id}/switch``
         route with ``target`` ∈ {``'primary'``, ``'fallback'``}. XADDs a
@@ -1171,7 +1171,7 @@ class SessionManager:
         auto_switch_enabled: bool | None = None,
         consecutive_failure_threshold: int | None = None,
     ) -> EngineSwitchController:
-        """Build the per-session ``EngineSwitchController`` (TASK-567 §3.4).
+        """Build the per-session ``EngineSwitchController``.
 
         Wires the three injected primitives against this manager: lazily build
         the fallback ASR callable, swap the reference the inference worker reads,
@@ -1184,7 +1184,7 @@ class SessionManager:
             )
 
         async def _build_primary() -> StreamingAsrCallable:
-            # TASK-586 — rebuild the PRIMARY ASR callable so a user-initiated
+            # Rebuild the PRIMARY ASR callable so a user-initiated
             # switch BACK to the primary engine is possible. Symmetric to the
             # fallback builder; reuses the session's in-memory BYO overrides.
             return await self._build_primary_asr_callable(
@@ -1197,7 +1197,7 @@ class SessionManager:
                 # The inference worker reads this reference each utterance; a
                 # plain reassignment is the whole "seamless swap".
                 worker._asr_pipeline = new_callable
-                # TASK-613 — the per-utterance provenance stamp moves with the
+                # The per-utterance provenance stamp moves with the
                 # callable, in this same synchronous body. Do NOT split these
                 # two assignments, add an await between them, or introduce a
                 # second update path: any divergence attributes utterances to
@@ -1221,11 +1221,11 @@ class SessionManager:
                     utterance_index=utterance_index,
                 )
 
-        # TASK-614 — the tenant's auto-switch governance. Both values are real
+        # The tenant's auto-switch governance. Both values are real
         # `TenantSttConfig` settings resolved by the gateway, but nothing ever
         # sent them, so this controller always used its own defaults: a tenant
         # that turned auto-fallback OFF still got it. `None` (an older gateway
-        # that sends neither) keeps the controller's defaults, so the pre-614
+        # that sends neither) keeps the controller's defaults, so the previous
         # behaviour is byte-identical.
         governance: dict[str, Any] = {}
         if auto_switch_enabled is not None:
@@ -1251,7 +1251,7 @@ class SessionManager:
         fallback_pipeline_id: str | None,
         tenant_id: str | None,
     ) -> StreamingAsrCallable:
-        """Load the fallback pipeline and build a warm ASR callable (TASK-567).
+        """Load the fallback pipeline and build a warm ASR callable.
 
         Resolved LAZILY (only when a switch actually fires) so a configured-but-
         never-used fallback costs nothing. Reuses the session's in-memory BYO
@@ -1276,7 +1276,7 @@ class SessionManager:
         primary_pipeline_id: str,
         tenant_id: str | None,
     ) -> StreamingAsrCallable:
-        """Load the primary pipeline and build a warm ASR callable (TASK-586).
+        """Load the primary pipeline and build a warm ASR callable.
 
         Symmetric to ``_build_fallback_asr_callable`` — used when a user switches
         BACK to the primary engine. Resolved LAZILY (only when a switch-back
@@ -1320,7 +1320,7 @@ class SessionManager:
         ``complete.wav``, ``transcript.json``, and ``metadata.json``
         before cleaning up.
 
-        Returns the TASK-615 WS-C usage-attribution teardown summary (see
+        Returns the usage-attribution teardown summary (see
         ``_build_teardown_summary``) so the API Gateway can emit the
         ``transcribe.stream`` ledger row — ``None`` when the session was
         already gone, or when the forced-removal error path below was taken
@@ -1391,14 +1391,14 @@ class SessionManager:
         self._partial_tasks.pop(session_id, None)
         self._final_published_gates.pop(session_id, None)
         self._commit_policies.pop(session_id, None)
-        # TASK-567 — drop the in-memory engine-switch state (controller + BYO
+        # Drop the in-memory engine-switch state (controller + BYO
         # overrides + fallback pointer); the overrides are never persisted.
         self._switch_controllers.pop(session_id, None)
         self._provider_overrides.pop(session_id, None)
         self._fallback_pipeline_ids.pop(session_id, None)
         self._session_language_modes.pop(session_id, None)
         self._session_channel_counts.pop(session_id, None)
-        # TASK-615 WS-C — the teardown summary (if any) is built BEFORE this
+        # The teardown summary (if any) is built BEFORE this
         # runs (see `_finalize_session_locked`), so dropping the tracking dict
         # here is safe cleanup, not a lost read.
         self._session_asr_formats.pop(session_id, None)
@@ -1612,7 +1612,7 @@ class SessionManager:
         db_model_config: Any,
         provider_overrides: dict[str, Any],
     ) -> Any:
-        """Load a cloud ASR model directly through its loader (TASK-567 BYOK).
+        """Load a cloud ASR model directly through its loader (BYOK).
 
         Bypasses the shared by-slug cache so the injected ``provider_overrides``
         reach the loader and the decrypted key is never cached under a slug.
@@ -1653,7 +1653,7 @@ class SessionManager:
         The callable is ``(samples: np.ndarray, sample_rate: int) -> dict[str, Any]``
         that runs inference on a single utterance.
 
-        ``provider_overrides`` (TASK-567) carries per-tenant BYO cloud creds. For
+        ``provider_overrides`` carries per-tenant BYO cloud creds. For
         a cloud ASR engine WITH overrides the model load BYPASSES the shared
         by-slug cache and calls the loader directly, so a decrypted tenant key is
         never cached under a slug and served to another tenant.
@@ -1683,7 +1683,7 @@ class SessionManager:
 
             db_model_config = await get_model_reader().get_model_by_slug(asr_ref.slug, tenant_id)
 
-        # TASK-567 — cloud BYOK: bypass the shared by-slug cache when a per-tenant
+        # Cloud BYOK: bypass the shared by-slug cache when a per-tenant
         # override is present for a cloud ASR engine (a tenant key must not be
         # cached and reused across tenants). Env-only (no override) keeps the
         # existing cache path byte-identical.
@@ -1708,7 +1708,7 @@ class SessionManager:
                 db_model_config=db_model_config,
             )
 
-        # TASK-615 WS-C — stamp the format of whichever ASR model just loaded.
+        # Stamp the format of whichever ASR model just loaded.
         # This runs on session-create AND every engine switch (this method is
         # the sole loader for both), so the LATEST call always reflects the
         # currently active engine for usage-ledger attribution at teardown.
@@ -1730,7 +1730,7 @@ class SessionManager:
         # Use pipeline inference config directly
         inference_config = pipeline_config.inference
 
-        # TASK-587 — resolve the end-user language mode against the engine that
+        # Resolve the end-user language mode against the engine that
         # actually loaded. "Selection constrains providers": if this engine
         # cannot serve the mode, raise so create_session falls through to a
         # compatible fallback (or surfaces a 422 when none qualifies).
@@ -1753,7 +1753,7 @@ class SessionManager:
             from stt.core.initial_prompt import get_initial_prompt
 
             initial_prompt = await get_initial_prompt(initial_prompt_id)
-        # TASK-587 — prepend the code-switch priming prompt ahead of any
+        # Prepend the code-switch priming prompt ahead of any
         # template-configured initial prompt; the inference worker further
         # composes this with per-utterance carry-forward text each utterance.
         if code_switch_prompt:
@@ -2086,9 +2086,9 @@ class SessionManager:
         loaded_model: Any,
         inference_config: Any,
     ) -> StreamingAsrCallable:
-        """Sarvam per-utterance streaming callable (cloud REST, TASK-567).
+        """Sarvam per-utterance streaming callable (cloud REST).
 
-        Per plan §3.5 v1 uses per-utterance REST — HOPE already VAD-segments the
+        Uses per-utterance REST — HOPE already VAD-segments the
         stream, so each utterance is one bounded request. ``loaded_model.model``
         is a ``CloudRestConfig`` from ``SarvamLoader``.
         """
@@ -2115,9 +2115,9 @@ class SessionManager:
         loaded_model: Any,
         inference_config: Any,
     ) -> StreamingAsrCallable:
-        """OpenAI per-utterance streaming callable (cloud REST, TASK-567).
+        """OpenAI per-utterance streaming callable (cloud REST).
 
-        Per plan §3.5 v1 uses per-utterance REST
+        Uses per-utterance REST
         (``POST {base_url}/audio/transcriptions``); realtime WS is a fast-follow.
         ``loaded_model.model`` is a ``CloudRestConfig`` from ``OpenAILoader``.
         """
@@ -2432,13 +2432,13 @@ class SessionManager:
                     if result.is_final:
                         session.add_result(result)
                         session.utterance_count = utt.utterance_index + 1
-                    # TASK-567 — a clean utterance resets the consecutive-failure
+                    # A clean utterance resets the consecutive-failure
                     # run that arms the threshold auto-switch.
                     controller = self._switch_controllers.get(session.session_id)
                     if controller is not None:
                         controller.record_success()
                 except Exception as exc:
-                    # TASK-567 — classify the failure through the engine-switch
+                    # Classify the failure through the engine-switch
                     # controller; it may swap the ASR engine to the fallback.
                     switched = False
                     controller = self._switch_controllers.get(session.session_id)
@@ -2861,7 +2861,7 @@ class SessionManager:
             elif control.action == ControlAction.CANCEL:
                 await self._cancel_session(session)
             elif control.action == ControlAction.SWITCH_TO_FALLBACK:
-                # TASK-567 R4 / TASK-586 — user-initiated mid-session switch. The
+                # User-initiated mid-session switch. The
                 # control frame's ``target`` names the engine to switch to
                 # (``'fallback'`` by default; ``'primary'`` switches back). Same
                 # seamless swap as the auto-outage path.
@@ -3494,7 +3494,7 @@ class SessionManager:
         serialization two of them both reach the upload + ``create_media`` block
         and duplicate the ``Media`` rows / re-upload the blob. The lock makes
         them run one at a time, and the ``CLOSED`` short-circuit inside makes the
-        second entrant an idempotent no-op — including for the TASK-615 WS-C
+        second entrant an idempotent no-op — including for the
         teardown summary: only the entrant that actually closed the session
         returns one, so at most one HTTP caller ever attempts ledger emission
         for a given teardown (the unique idempotency key would dedup a second
@@ -3534,7 +3534,7 @@ class SessionManager:
             return 0.0
 
     def _build_teardown_summary(self, session: StreamSession) -> dict[str, Any]:
-        """The TASK-615 WS-C usage-attribution summary returned on teardown.
+        """The usage-attribution summary returned on teardown.
 
         STT has no notion of "interrupted" — that is entirely a GATEWAY-side
         concept (which code path called ``removeSession``: an explicit close
@@ -3558,7 +3558,7 @@ class SessionManager:
                 asr_format, self._provider_overrides.get(session.session_id)
             )
 
-        # TASK-615 WS-C — the streaming audio-duration histogram + real-time
+        # The streaming audio-duration histogram + real-time
         # factor the current-state review flagged as missing (batch has
         # stt_audio_duration_seconds; streaming had neither a duration signal
         # in Prometheus nor an RTF at all). `cumulative_processing_seconds` is
@@ -3601,11 +3601,11 @@ class SessionManager:
         method so that all utterances have been transcribed. Always invoked
         under the per-session finalize lock (see ``_finalize_session``).
 
-        Ordering contract (TASK-597 lane B3)::
+        Ordering contract::
 
             drain (caller) -> last transcript published -> status 'closed'
                            -> MinIO uploads -> dual capture -> durable transcript
-                           -> session.close() -> remove_session()
+                           -> session.close -> remove_session
 
         ``closed`` is the TERMINAL status: the gateway's result subscription
         COMPLETES on it and drops anything published afterwards. It is therefore
@@ -3794,7 +3794,7 @@ class SessionManager:
                     error=str(close_exc),
                 )
 
-            # TASK-615 WS-C — build the teardown summary AFTER session.close()
+            # Build the teardown summary AFTER session.close
             # (so `closed_at` is stamped) but BEFORE `remove_session()` pops
             # the per-session attribution tracking dicts. Best-effort: a
             # summary-build failure must never block teardown/cleanup, so it
@@ -3907,7 +3907,7 @@ class SessionManager:
                         sample_rate=meta.sample_rate,
                         pipeline_config=pipeline_config,
                         build_speaker_identifier=False,
-                        # TASK-613 — a recovered session emits stamped frames
+                        # A recovered session emits stamped frames
                         # too; `meta.pipeline_id` is the pipeline whose config
                         # was just loaded above.
                         active_pipeline_id=meta.pipeline_id,
@@ -4059,7 +4059,7 @@ class SessionManager:
                         )
                         await self._drain_inference_queue(session_id)
                     teardown_summary = await self._finalize_session(session)
-                    # TASK-615 #13 — the reaper is the FINALIZER here, which means
+                    # The reaper is the FINALIZER here, which means
                     # the gateway crashed and its removal retries were exhausted:
                     # no removeSession() caller received the DELETE-teardown
                     # response, so the transcribe.stream usage would be lost.
@@ -4078,7 +4078,7 @@ class SessionManager:
         return len(to_reap)
 
     async def _push_streaming_usage_back(self, summary: dict[str, Any]) -> None:
-        """POST a reaper-built teardown summary to the gateway (TASK-615 #13).
+        """POST a reaper-built teardown summary to the gateway.
 
         Best-effort by design: the gateway may still be down (it just crashed),
         so a failure here is logged and dropped — a metering side effect must

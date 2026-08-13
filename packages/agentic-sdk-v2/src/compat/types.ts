@@ -4,18 +4,18 @@
  * @arcaai/vox/compat - v1 SDK type surface
  *
  * These are the HOPE-v1 (`@arcaai/agentic-sdk`) type shapes reproduced verbatim
- * from the FROZEN canonical contracts in TASK-560 §5. They exist ONLY so a v1
+ * from the FROZEN canonical contracts. They exist ONLY so a v1
  * application keeps compiling against familiar names while the compat hooks
  * adapt them onto the v2 (`@arcaai/vox`) public API.
  *
- * NOTE: the v1 hardcoded default `apiKey`/`encryptionKey` (TASK-560 §6 A1) is
+ * NOTE: the v1 hardcoded default `apiKey`/`encryptionKey` is
  * deliberately NOT reproduced anywhere in this layer.
  */
 
 import type { LoggingConfig } from '../types';
 
 // =============================================================================
-// Config (TASK-560 §5.1)
+// Config
 // =============================================================================
 
 /** v1 audio settings subset that the config adapter maps onto v2. */
@@ -27,7 +27,7 @@ export interface V1AudioSettings {
   echoCancellation?: boolean;
   autoGainControl?: boolean;
   /**
-   * Browser voice-activity detection (TASK-597). ADDITIVE + OPTIONAL — v1 had
+   * Browser voice-activity detection. ADDITIVE + OPTIONAL — v1 had
    * no VAD switch, so omitting it leaves the frozen mapping byte-identical.
    *
    * `false` emits `vad: { enabled: false }`, which removes the VAD stage from
@@ -46,7 +46,7 @@ export interface V1SdkConfig {
   apiEndpoint: string;
   /** WebSocket base, e.g. `wss://api.arcaai.com`. */
   websocketUrl: string;
-  /** API key — REQUIRED. There is NO baked-in default (TASK-560 §6 A1). */
+  /** API key — REQUIRED. There is NO baked-in default.*/
   credentials?: { apiKey?: string };
   audioSettings?: V1AudioSettings;
   environment?: 'development' | 'staging' | 'production';
@@ -58,17 +58,17 @@ export interface V1SdkConfig {
   sttPipelineId?: string;
   /**
    * Tenant id the developer provisions alongside the API key and pipeline id
-   * (TASK-586). Accepted for API parity and for raw-compat-API symmetry; the
+   * Accepted for API parity and for raw-compat-API symmetry; the
    * v2 gateway resolves tenancy AUTHORITATIVELY from the API key, so a value
    * here is never trusted over the key and must match it. Optional.
    */
   tenantId?: string;
   /**
-   * Opt into the BIDIRECTIONAL STT provider-switch toggle (TASK-586 Lane D).
-   * v1 had no provider-switch concept at all (TASK-568 §3 D-1 — compat-native,
+   * Opt into the BIDIRECTIONAL STT provider-switch toggle.
+   * v1 had no provider-switch concept at all (compat-native
    * no v1 ancestor), so this is a new, additive field with no v1 default.
    * `false`/omitted (default): `useArcaSttProvider` only supports the
-   * one-way TASK-567/568 switch to the tenant fallback (native route).
+   * one-way switch to the tenant fallback (native route).
    * `true`: `useArcaSttProvider().switchToPipeline()` can also switch back to
    * the SDK-configured pipeline, routed through the compat gateway's
    * `POST /api/stt/switch` shim rather than the native fallback-only route.
@@ -106,7 +106,7 @@ export interface V1SdkConfig {
 }
 
 // =============================================================================
-// Errors (TASK-560 §5.2)
+// Errors
 // =============================================================================
 
 export interface ErrorInfo {
@@ -119,7 +119,7 @@ export interface ErrorInfo {
 }
 
 // =============================================================================
-// Session (TASK-560 §5.2)
+// Session
 // =============================================================================
 
 /** v1 session lifecycle status. */
@@ -157,7 +157,7 @@ export interface SessionMetadata {
 }
 
 /**
- * Synthesized v1 `MedicalSession` view (TASK-560 §5.2 — "synthesized view: id,
+ * Synthesized v1 `MedicalSession` view ("synthesized view: id
  * status, timestamps"). Built from the v2 `Consultation` + local status; the
  * heavyweight v1 audio/transcript/device sub-objects are intentionally omitted.
  */
@@ -174,7 +174,7 @@ export interface MedicalSession {
 }
 
 // =============================================================================
-// Audio (TASK-560 §5.3)
+// Audio
 // =============================================================================
 
 export interface AudioDeviceStatus {
@@ -185,7 +185,7 @@ export interface AudioDeviceStatus {
 }
 
 // =============================================================================
-// SMR summary (TASK-560 §5.4 / §5.5) — frozen v1 Enhanced/Simplified/SOAP shapes
+// SMR summary — frozen v1 Enhanced/Simplified/SOAP shapes
 // =============================================================================
 
 export interface HistoryOfPresentIllness {
@@ -409,7 +409,7 @@ export interface SMRRequest {
   text: string;
   /**
    * Per-turn conversation segments. PREFERRED over `text` — passing this array
-   * sends real per-turn segments to the backend (TASK-560 §6 F2), never one
+   * sends real per-turn segments to the backend, never one
    * collapsed `speaker:'user'` blob.
    */
   segments?: ConversationSegmentInput[];
@@ -443,20 +443,20 @@ export interface SMRRequest {
   includePreSummaryInContext?: boolean;
   useEnhancedFormat?: boolean;
   /**
-   * TASK-600: summary-only opt-in. When `true`, the summary request carries
+   * Summary-only opt-in. When `true`, the summary request carries
    * top-level `translate_to_english: true` so the gateway translates the
    * transcript to English (via Sarvam) before summarizing. Omitted from the
    * wire when unset/false; fail-open server-side. Not applied to pre-summary.
    */
   translateToEnglish?: boolean;
   /**
-   * Client-only (TASK-589): opt into SSE streaming on `summary/sync`. Only
+   * Client-only: opt into SSE streaming on `summary/sync`. Only
    * `stream` itself is sent on the wire (as `stream:true`); when omitted/false
    * the request is byte-identical to today's single-JSON-response path.
    */
   stream?: boolean;
   /**
-   * Client-only (TASK-589): fired for each SSE `delta` event when `stream:true`.
+   * Client-only: fired for each SSE `delta` event when `stream:true`.
    * NEVER sent on the wire — stripped from the request payload. `accumulated`
    * is the running concatenation of every delta seen so far, including this one.
    */
@@ -471,7 +471,7 @@ export interface SMRRequest {
 }
 
 // =============================================================================
-// Pre-summary (TASK-560 §5.5)
+// Pre-summary
 // =============================================================================
 
 export interface PreSummaryRequest {
@@ -492,13 +492,13 @@ export interface PreSummaryRequest {
    */
   doctorId?: string;
   /**
-   * Client-only (TASK-589): opt into SSE streaming on `presummary`. Only
+   * Client-only: opt into SSE streaming on `presummary`. Only
    * `stream` itself is sent on the wire (as `stream:true`); when omitted/false
    * the request is byte-identical to today's single-JSON-response path.
    */
   stream?: boolean;
   /**
-   * Client-only (TASK-589): fired for each SSE `delta` event when `stream:true`
+   * Client-only: fired for each SSE `delta` event when `stream:true`
    * (clean markdown for pre-summary). NEVER sent on the wire. `accumulated` is
    * the running concatenation of every delta seen so far, including this one.
    */
@@ -532,7 +532,7 @@ export interface PreSummaryResponse {
 }
 
 // =============================================================================
-// STT provider switching (TASK-568 — compat-NATIVE, no v1 ancestor)
+// STT provider switching (compat-NATIVE, no v1 ancestor)
 // =============================================================================
 
 /**

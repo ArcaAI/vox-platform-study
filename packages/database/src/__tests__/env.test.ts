@@ -233,7 +233,7 @@ describe('Environment Loading Utility', () => {
       expect(result.loaded).toBe(false);
     });
 
-    // TASK-558 (lane B): this package's loader must apply exactly the same
+    // This package's loader must apply exactly the same
     // precedence as the canonical declaration in
     // `packages/applications/src/common/env/env-file-resolution.ts`. It runs
     // FIRST in `apps/api` (imported transitively at module scope), so if it

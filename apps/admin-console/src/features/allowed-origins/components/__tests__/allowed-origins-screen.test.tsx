@@ -109,7 +109,7 @@ describe('AllowedOriginsScreen', () => {
     expect(await screen.findByText(/origin enforcement is on/i)).toBeDefined();
   });
 
-  // TASK-641 FR-1/FR-5: the screen moved from the (global) tier to the
+  // The screen moved from the (global) tier to the
   // (tenant) tier, so a TENANT_ADMIN session now reaches it for their own
   // tenant's rows — this inverts the previous "gates non-elevated sessions"
   // assertion.

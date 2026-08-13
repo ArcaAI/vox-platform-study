@@ -1,4 +1,4 @@
--- TASK-511 Phase 3A — add the APPROVED value to PromptTemplateStatus.
+-- Add the APPROVED value to PromptTemplateStatus.
 --
 -- Purely ADDITIVE enum extension. Postgres forbids using a newly-added enum
 -- value in the SAME transaction that adds it, so the seed flip that consumes

@@ -1,11 +1,11 @@
 /**
- * Platform-Knob Settings Seed (TASK-558 lane I)
+ * Platform-Knob Settings Seed
  *
  * Creates the platform-scope `GlobalSetting` rows for the operational knobs
  * that moved out of `process.env` into the `global-kv` tier: log level,
  * shutdown timings, API-key policy, refresh-token TTL and the rate-limit
  * baselines. (CORS origins were one of these ten at lane I, then removed
- * outright by TASK-610 §4A.1 — the allow-list is the `TenantAllowedOrigin`
+ * outright by — the allow-list is the `TenantAllowedOrigin`
  * table now, not a `global-kv` knob; there is no row and no env var for it
  * any more.)
  *

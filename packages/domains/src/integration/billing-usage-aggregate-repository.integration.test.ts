@@ -1,8 +1,8 @@
 /**
  * BillingUsageAggregateRepository — live SQL integration test.
  *
- * TASK-615 WS-K scope note: "Integration round-trip for the raw-SQL
- * aggregates WS-I flagged (BillingUsageAggregateRepository) … the unit
+ * Scope note: "Integration round-trip for the raw-SQL
+ * aggregates flagged (BillingUsageAggregateRepository) … the unit
  * suites mock $queryRaw; the SQL itself needs one live execution each."
  * `sell-rate-card`/`billing` unit tests mock `$queryRaw` entirely (they
  * assert the QUERY SHAPE, never that the SQL is syntactically valid

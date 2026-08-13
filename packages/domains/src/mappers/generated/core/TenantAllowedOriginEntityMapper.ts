@@ -9,7 +9,7 @@ import * as Models from '../../../models';
 // `_version` is owned by the database and the only legitimate writer is
 // `Repository.updateWithVersion`. Strip it from every write path here so the
 // auto-mappers cannot leak it into a Prisma update. TenantAllowedOrigin IS
-// OCC-written (versioned admin PATCH route — TASK-610).
+// OCC-written (versioned admin PATCH route).
 const FIELDS_NOT_WRITABLE: string[] = ['version'];
 
 function stripNonWritableFields<T extends object>(model: T, fields: string[]): T {

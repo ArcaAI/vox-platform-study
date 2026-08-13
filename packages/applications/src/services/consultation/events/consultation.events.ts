@@ -116,7 +116,7 @@ export interface TranscriptionCreatedPayload extends ConsultationPipelineEventBa
  * `metadata.subType` so the LiveDocumentationService can fold the note/lab/file
  * into the running summary without an extra DB round-trip.
  *
- * TASK-670 — `kindKey`/`depth` and the fuller `content` field were added so
+ * `kindKey`/`depth` and the fuller `content` field were added so
  * `LoopContextSignalService` can forward a payload-complete signal to the
  * consultation loop. `contentPreview` is UNCHANGED (still the 2k-char snippet
  * `LiveDocumentationService` folds into its live prompt) — `content` is a
@@ -138,7 +138,7 @@ export interface ContextAddedPayload extends ConsultationPipelineEventBase {
 
   /**
    * The tenant-declared context kind this item is an instance of
-   * (`ContextItem.kindKey`, TASK-658), when the write named one. Threaded to
+   * (`ContextItem.kindKey`), when the write named one. Threaded to
    * the loop signal so subscriptions can match on the real kind instead of
    * falling back to `subType`/`contextType`.
    */
@@ -156,7 +156,7 @@ export interface ContextAddedPayload extends ConsultationPipelineEventBase {
    * inline to the loop signal so a specialist (`vision.extract_text`,
    * `nlp.extract_entities`) has real text to act on rather than the 2k-char
    * `contentPreview`. See `context.service.ts` for the size-threshold
-   * reasoning (TASK-670).
+   * reasoning.
    */
   content?: string;
 }

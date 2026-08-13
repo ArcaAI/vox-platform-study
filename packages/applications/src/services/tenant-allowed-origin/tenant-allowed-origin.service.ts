@@ -20,7 +20,7 @@ import { BaseService, isSuperAdmin } from '../../common';
 import { IActiveUserContext } from '../../interfaces';
 
 /**
- * The frozen invalidation contract (README §4.1). Every successful mutation
+ * The frozen invalidation contract. Every successful mutation
  * emits this so `OriginRegistryService` (W2-A) rebuilds its
  * `Map<origin, ownerTenantId>` on the writing node immediately, rather than
  * waiting for the 45s `AppSettingsService` cron backstop.
@@ -53,20 +53,20 @@ export class TenantAllowedOriginService extends BaseService implements ITenantAl
 
   /**
    * AUTH-NOTE: WILDCARD GATE — GLOBAL_ADMIN-only, enforced imperatively here
-   * because no permission decorator can express it (TASK-641 FR-2;
+   * because no permission decorator can express it (;
    * `05-nestjs-api.md` §Imperative Privilege Checks, "global-admin-only action
    * on a tenant-manageable resource"). A TENANT_ADMIN legitimately holds
    * `manage:TenantAllowedOrigin` for its own rows — what it may NOT do is
    * register a value containing `*`. The decorator sees `action + subject`; it
    * cannot see the SHAPE of the value, and the shape is the whole boundary.
-   * TASK-610 §4A.2's mitigation for the incomplete public-suffix heuristic is
+   * 's mitigation for the incomplete public-suffix heuristic is
    * "a global admin approving a wildcard row must check the suffix by hand" —
    * a tenant admin cannot be that check. This is a 403 (privilege), NOT the
    * 404-over-403 cross-tenant posture; a cross-tenant id still 404s via
    * `findOwnedOrThrow`, which runs FIRST on the update path.
    *
    * Routes an incoming raw origin string to the correct validator BY SHAPE
-   * (TASK-610 §4A.2/§4A.3, lane W5-E): `isOriginPattern` is true for anything
+   * `isOriginPattern` is true for anything
    * containing `*` — a wildcard pattern OR the bare allow-all token — which goes
    * through `normalizeOriginPattern`; everything else goes through the
    * pre-existing `normalizeOrigin`. Both throw the SAME `ArgumentInvalidException`
@@ -97,7 +97,7 @@ export class TenantAllowedOriginService extends BaseService implements ITenantAl
    *     wildcard-vs-exact from the STORED string using the same
    *     `includes('*')` test, the canonical value is the one that actually
    *     determines trust, and therefore the one the privilege gate must
-   *     judge. Checking it here keeps FR-2 true no matter how the normalizer
+   *     judge. Checking it here keeps true no matter how the normalizer
    *     evolves.
    */
   private normalizeIncomingOrigin(raw: string): string {
@@ -118,7 +118,7 @@ export class TenantAllowedOriginService extends BaseService implements ITenantAl
 
   /**
    * AUTH-NOTE: SYSTEM-TENANT GATE — GLOBAL_ADMIN-only, enforced imperatively
-   * (TASK-641 FR-3; same rule-05 pattern as the wildcard gate above). A row
+   * (same rule-05 pattern as the wildcard gate above). A row
    * owned by the reserved SYSTEM tenant is treated as valid for EVERY tenant
    * by `OriginRegistryService.allows()`, so a SYSTEM write is a PLATFORM-WIDE
    * grant wearing the clothes of an ordinary tenant-scoped write — the
@@ -175,13 +175,13 @@ export class TenantAllowedOriginService extends BaseService implements ITenantAl
     this.assertMayWriteInResolvedTenant(tenantId);
 
     // Origin SYNTAX is decided exclusively by `normalizeOrigin` / `normalizeOriginPattern`,
-    // routed by shape (README §4A.2/§4A.3) — the NORMALIZED form, never the raw
+    // routed by shape — the NORMALIZED form, never the raw
     // input, is what gets checked and persisted. Both throw the same
     // `ArgumentInvalidException` on anything malformed. The same call carries
-    // the FR-2 wildcard privilege gate — see its AUTH-NOTE.
+    // the wildcard privilege gate — see its AUTH-NOTE.
     const normalizedOrigin = this.normalizeIncomingOrigin(dto.origin);
 
-    // §4B — a row IS a (origin, tenant) GRANT, not an owned origin. A LIVE
+    // A row IS a (origin, tenant) GRANT, not an owned origin. A LIVE
     // grant for THIS tenant on this origin is a genuine duplicate — reject
     // it up front. A grant some OTHER tenant already holds on the same
     // origin is NOT a conflict: two tenants sharing an origin is the point
@@ -266,10 +266,10 @@ export class TenantAllowedOriginService extends BaseService implements ITenantAl
    * (restore → apply fields → non-versioned `update` only if changed).
    *
    * DEFENSE-IN-DEPTH — cross-tenant ownership check (post-review follow-up,
-   * carried forward into the many-to-many model, §4B). Under the OLD
+   * carried forward into the many-to-many model). Under the OLD
    * single-owner model this guarded against reviving THE ONE row an origin
    * could ever have — reachable only if a read widened past the caller's own
-   * tenant. Under §4B there is no longer a single row to steal; the risk is
+   * tenant. Under there is no longer a single row to steal; the risk is
    * narrower but not eliminated: `deletedEntity` comes from
    * `findDeletedByOriginAndTenant(origin, tenantId)`, which now filters on
    * `tenantId` EXPLICITLY as a query parameter (not merely inferred), and is
@@ -338,16 +338,16 @@ export class TenantAllowedOriginService extends BaseService implements ITenantAl
     // "the row was already `*` and only some other field changed".
     const originBeforeUpdate = entity.origin;
 
-    // Re-normalize `origin` when the DTO changes it (README §3.3 "Re-normalize
+    // Re-normalize `origin` when the DTO changes it ("Re-normalize
     // origin if the DTO changes it"), routed by shape same as `create()`
-    // (§4A.2/§4A.3). Skip the duplicate check entirely when the normalized
+    // . Skip the duplicate check entirely when the normalized
     // value is identical to the row's current value — that is not a
     // collision with ANOTHER row, just a no-op/idempotent re-submit.
-    // §4B: the collision check is scoped to THIS tenant only — another
+    // The collision check is scoped to THIS tenant only — another
     // tenant already holding a grant on the same origin is not a conflict.
     let normalizedOrigin: string | undefined;
     if (origin !== undefined) {
-      // Carries the FR-2 wildcard privilege gate — this is the ESCALATION
+      // Carries the wildcard privilege gate — this is the ESCALATION
       // path the gate exists for (exact row -> pattern). See its AUTH-NOTE.
       normalizedOrigin = this.normalizeIncomingOrigin(origin);
       if (normalizedOrigin !== originBeforeUpdate) {
@@ -442,7 +442,7 @@ export class TenantAllowedOriginService extends BaseService implements ITenantAl
    * `findByOriginAndTenant` filters to ENABLED rows only (see its
    * repository-level doc comment), so it cannot see a soft-deleted grant
    * occupying the same (origin, tenantId) pair. Scoped to `tenantId`
-   * explicitly (§4B) — a soft-deleted grant belonging to a DIFFERENT tenant
+   * explicitly — a soft-deleted grant belonging to a DIFFERENT tenant
    * must never surface here; that tenant's create is a distinct, new grant,
    * not a restore of this one. `findFirst` throws `DataNotFoundException` on
    * a miss in production but is commonly mocked as resolving `null` in tests
@@ -468,7 +468,7 @@ export class TenantAllowedOriginService extends BaseService implements ITenantAl
   }
 
   /**
-   * Writing the `*` row (README §4A.3) admits every origin for the OWNING
+   * Writing the `*` row admits every origin for the OWNING
    * TENANT — a security-relevant state change, not "one more host". Logged at
    * `warn` (not `debug`), with a fixed, greppable `reason` so it is findable
    * in the audit trail independent of the ordinary create/restore/update log

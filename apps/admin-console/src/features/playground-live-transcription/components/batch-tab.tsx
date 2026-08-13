@@ -682,7 +682,7 @@ function MyJobsStrip({ selection, onSelectJob }: { selection: Selection; onSelec
 }
 
 /**
- * Frame 51 batch tab (TASK-605): multi-file drag-drop upload → a bounded queue
+ * Frame 51 batch tab: multi-file drag-drop upload → a bounded queue
  * (one gateway job per file) → a master/detail transcript panel fed either by a
  * queue row's live SSE segments or by a past job from the owner-scoped strip.
  */

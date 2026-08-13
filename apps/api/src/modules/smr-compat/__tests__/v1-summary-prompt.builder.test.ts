@@ -136,13 +136,13 @@ describe('buildV1SummaryPrompt — v1 artifact fidelity', () => {
 });
 
 describe('buildV1SummaryPrompt — v2 carry-overs', () => {
-  it('states the output language as English through v1’s own placeholder (TASK-650 R1)', () => {
+  it('states the output language as English through v1’s own placeholder', () => {
     const { user } = buildV1SummaryPrompt(baseSession());
     expect(user).toContain('CONVERSATION LANGUAGE:\nEnglish');
     expect(user).toContain('Use the English for all values');
   });
 
-  it('keeps the bilingual-transcript directive and renders both lines (TASK-651)', () => {
+  it('keeps the bilingual-transcript directive and renders both lines', () => {
     const session = baseSession({
       conversation_segments: [
         { speaker: 'provider', text: 'Acetaminophen 100 mg', original_text: 'aceclofenac 100 mg PRN', timestamp: '2026-08-10T07:12:30.000Z' },
@@ -158,7 +158,7 @@ describe('buildV1SummaryPrompt — v2 carry-overs', () => {
     expect(buildV1SummaryPrompt(baseSession()).system).not.toContain('machine translation');
   });
 
-  it('appends the DNA writing style to the system message without touching the schema (TASK-599)', () => {
+  it('appends the DNA writing style to the system message without touching the schema', () => {
     const { system, responseSchema } = buildV1SummaryPrompt(baseSession(), {
       department: 'Rheumatology',
       visitType: 'Follow-up',

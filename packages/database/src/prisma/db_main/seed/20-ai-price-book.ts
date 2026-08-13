@@ -3,10 +3,10 @@ import { AiCapability, AiPriceBookPlane, AiPriceRowKind, AiUsageUnit, TenantPlan
 import { SYSTEM_TENANT_ID, SEED_USER_IDS } from './00-constants';
 
 /**
- * AiPriceBook seed — platform rate card, BOTH planes (TASK-615 D4 / D10).
+ * AiPriceBook seed — platform rate card, BOTH planes (/ D10).
  *
  * ============================================================================
- * RATIFIED 2026-08-08 (TASK-638). These are the commercial rates, not
+ * RATIFIED 2026-08-08. These are the commercial rates, not
  * placeholders: COST from researched provider list prices and the self-hosted
  * COGS formula, SELL at the ratified 80% gross margin (5x markup) off a NAMED
  * managed reference per meter.
@@ -232,7 +232,7 @@ const COST_ROWS: PriceBookSeed[] = [
     note: 'PLACEHOLDER — cache read at ~10% of input (converged market discount).',
   },
 
-  // --- Managed LLM list prices (TASK-638 §1, ~Jan-2026) ---------------------
+  // --- Managed LLM list prices (~Jan-2026) ---------------------
   // Provider-keyed, so they win over the self-hosted catch-all whenever a call
   // actually runs on that vendor. $/1M tokens equals µ/token numerically.
   {
@@ -290,7 +290,7 @@ const COST_ROWS: PriceBookSeed[] = [
     unit: AiUsageUnit.CACHE_WRITE_TOKEN,
     unitPriceMicros: 4n,
     // The 5m/1h split (1.25x vs 2x input) rides the cacheTtl dimension added by
-    // TASK-615 #7; this TTL-agnostic row is the wildcard both resolve through
+    // #7; this TTL-agnostic row is the wildcard both resolve through
     // until per-TTL rows are added.
     note: 'Anthropic cache write, 5m TTL = 1.25x input. Per-TTL rows supersede via the cacheTtl dimension.',
   },
@@ -411,7 +411,7 @@ const PLAN_FEE_ROWS: PriceBookSeed[] = [
     rowKind: AiPriceRowKind.PLAN_FEE,
     planTier: TenantPlan.ENTERPRISE,
     unitPriceMicros: 4_999_000_000n,
-    // ENTERPRISE is NEGOTIATED per contract (TASK-638). This SYSTEM row is only
+    // ENTERPRISE is NEGOTIATED per contract. This SYSTEM row is only
     // the fallback list price so the invoice engine (which fails closed on a
     // missing PLAN_FEE row) can still draft; a signed contract MUST be entered
     // as a tenant-scoped SELL row, which is more specific and wins.
@@ -449,7 +449,7 @@ const OVERAGE_ROWS: PriceBookSeed[] = [
     note: 'BATCH STT overage at parity with streaming. NOT zero: OQ1 bills batch on AUDIO_SECOND (streaming audio-seconds are excluded upstream), so a 0 here would make batch transcription free.',
   },
 
-  // ── Managed-ASR add-on (TASK-638) ─────────────────────────────────────────
+  // ── Managed-ASR add-on ─────────────────────────────────────────
   // The rows above are provider-AGNOSTIC and priced off self-hosted economics.
   // These are provider-KEYED and therefore MORE SPECIFIC, so they win whenever
   // overage lands on a platform-funded managed vendor — which, under the
@@ -498,7 +498,7 @@ const OVERAGE_ROWS: PriceBookSeed[] = [
   // missing SELL rate (an invoice line cannot be "unrated"), and the pooled
   // `monthlyLlmTokens` allowance covers ALL billable token kinds — so a
   // cache-read or reasoning token falling into overage without a row here
-  // would abort the whole draft (TASK-615 WS-I).
+  // would abort the whole draft.
   {
     id: 'B1000000-0000-0000-0002-000000000008',
     plane: AiPriceBookPlane.SELL,
@@ -514,7 +514,7 @@ const OVERAGE_ROWS: PriceBookSeed[] = [
     unit: AiUsageUnit.CACHE_WRITE_TOKEN,
     unitPriceMicros: 8n,
     // Per-TTL split (5m ×1.25 vs 1h ×2.00) awaits a price dimension — the
-    // ws-b-contract §11 item; a single blended write rate until then.
+    // ws-b-contract item; a single blended write rate until then.
     note: 'Cache writes at ~1.5x the input rate; the per-TTL split rides the cacheTtl dimension.',
   },
   {

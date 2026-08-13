@@ -1,4 +1,4 @@
-"""OpenTelemetry tracing setup for harness (TASK-636 OBS-14).
+"""OpenTelemetry tracing setup for harness.
 
 Before this, harness had NO ``TracerProvider`` anywhere — the only
 ``opentelemetry`` reference in the service was a comment in ``core/config.py``
@@ -41,7 +41,7 @@ class TestOtelTracingEnabledGate:
         assert Settings().otel_tracing_enabled is False
 
     def test_flag_alone_without_endpoint_stays_off(self) -> None:
-        """TASK-411: flipping the switch with no collector configured is a no-op."""
+        """Flipping the switch with no collector configured is a no-op."""
         settings = Settings(otel_enabled=True, otel_exporter_endpoint="")
         assert settings.otel_tracing_enabled is False
 
@@ -71,7 +71,7 @@ class TestBuildTracerProvider:
     def test_never_raises_when_exporter_construction_fails(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """(d) TASK-411: an unreachable/misconfigured collector must degrade, not crash."""
+        """(d) an unreachable/misconfigured collector must degrade, not crash."""
 
         def _boom(*_args: Any, **_kwargs: Any) -> Any:
             raise RuntimeError("collector unreachable")
@@ -193,7 +193,7 @@ class TestCoexistenceWithTemporalMetricsRuntime:
 
 
 class TestDeploymentEnvironmentIsNotHardcoded:
-    """TASK-636 OBS-18 — regression guard.
+    """Regression guard.
 
     The first implementation of this config defaulted
     `otel_deployment_environment` to "production", which is the exact defect

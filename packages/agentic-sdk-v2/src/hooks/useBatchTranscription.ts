@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * @arcaai/vox - useBatchTranscription (TASK-604)
+ * @arcaai/vox - useBatchTranscription
  *
  * The native batch-transcription surface: upload up to 5 recordings of at most
  * 60 minutes each, monitor each job, collect each result.

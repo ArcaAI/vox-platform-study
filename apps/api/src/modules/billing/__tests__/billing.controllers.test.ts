@@ -1,5 +1,5 @@
 /**
- * Billing controllers unit tests (TASK-615 WS-I).
+ * Billing controllers unit tests.
  *
  * CASL `@CanManage`/`@Authorize` + `If-Match`/`@RequiresIfMatch` are exercised
  * by the guard/interceptor pipeline (+ e2e). These specs cover the

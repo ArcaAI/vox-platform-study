@@ -68,7 +68,7 @@ export class ChainSummaryService extends BaseService {
     // honors Tier-0 prompt selection. Optional + trailing so existing positional
     // test fixtures keep compiling; production DI supplies it (ChainSummaryServiceModule).
     @Optional() @Inject(ConfigResolver) private readonly configResolver?: ConfigResolver,
-    // (TASK-615 WS-D) A chain summary spans several consultations and is one
+    // A chain summary spans several consultations and is one
     // of the most expensive generations the platform runs — leaving it
     // unmetered would understate cost exactly where it is highest. Optional +
     // trailing so existing positional test fixtures keep compiling.
@@ -435,7 +435,7 @@ export class ChainSummaryService extends BaseService {
 
   /**
    * Persist the `SummaryMeta` and, in the SAME transaction, record the tokens
-   * the chain generation consumed (TASK-615 WS-D).
+   * the chain generation consumed.
    *
    * Mirrors `SummaryService.persistSummaryMetaWithUsage` exactly, including its
    * two degradations: unwired ledger ⇒ plain create, and a metering failure is

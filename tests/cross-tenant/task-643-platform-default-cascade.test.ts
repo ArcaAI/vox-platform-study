@@ -1,5 +1,5 @@
 /**
- * TASK-643 R2 — cross-tenant contract for the platform-default cascade.
+ * Cross-tenant contract for the platform-default cascade.
  *
  * R1 widens what the injection resolver READS: it now performs a second,
  * explicitly SYSTEM-pinned query in addition to the caller's own. That is
@@ -89,7 +89,7 @@ function makeService(callerTenantId: string) {
 
 beforeEach(() => vi.clearAllMocks());
 
-describe('TASK-643 — the platform-default cascade never widens across tenants', () => {
+describe('the platform-default cascade never widens across tenants', () => {
   it('reads only [caller, SYSTEM] — tenant B never queries tenant A', async () => {
     const { svc, reads } = makeService(fx.tenantB.id);
     await svc.resolveTenantCloudOverrides('llm', fx.tenantB.id);

@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# Phase 1A Task 1.2 (TASK-302 Stream B) - Vault dev-mode bootstrap.
+# Vault dev-mode bootstrap.
 #
 # Mounts the kv-v2, transit, database secrets engines plus a file audit device
 # on the local dev Vault container. Run inside the `vault-init` sidecar
@@ -28,8 +28,8 @@ vault secrets enable -path=transit transit 2>/dev/null || true
 echo "[vault-init] enabling database at path 'database'"
 vault secrets enable -path=database database 2>/dev/null || true
 
-# Audit device writes from the *vault server* process. TASK-312 A.4 moves
-# the file to /vault/audit, which docker-compose.dev.yml bind-mounts from the
+# Audit device writes from the *vault server* process. The file lives
+# at /vault/audit, which docker-compose.dev.yml bind-mounts from the
 # host (/tmp/hope-vault-audit). This makes the audit log readable by the API
 # process running on the HOST (`pnpm dev:api`), which the VaultRotationWorker
 # tails for cluster-wide cache invalidation. A named volume (the old
@@ -45,7 +45,7 @@ vault auth enable approle 2>/dev/null || true
 echo "[vault-init] writing hope-app policy"
 vault policy write hope-app /vault/init/policies/hope-app.hcl
 
-# TASK-558 lane K (K4) — dev/prod parity.
+# Dev/prod parity.
 #
 # THE LAYOUT IS THE CONTRACT, THE TRANSPORT IS NOT. In the cluster a Vault Agent
 # sidecar renders `secret/data/hope/<NAME>` into a file per secret and the pod
@@ -78,7 +78,7 @@ for CI_POLICY in hope-ci hope-ci-deploy; do
 done
 
 echo "[vault-init] creating hope-app role"
-# TASK-312 Phase A.1 — DEV-MODE config. Production overlay (Phase D)
+# DEV-MODE config. Production overlay
 # tightens to secret_id_num_uses=1, secret_id_ttl=24h. Dev posture below
 # trades single-use for daily-iteration ergonomics (laptop threat model):
 #   secret_id_ttl=720h        — one wrapped secret_id lasts 30 days
@@ -97,7 +97,7 @@ echo "[vault-init] role_id (committable):"
 vault read -field=role_id auth/approle/role/hope-app/role-id
 
 echo "[vault-init] seeding dev placeholder secrets"
-# TASK-312 Phase A.2 — full COMMON_SERVICE_WARMUP_KEYS coverage (11/11).
+# Full COMMON_SERVICE_WARMUP_KEYS coverage (11/11).
 # S3_* aliases MINIO_* in dev (HOPE talks S3 protocol to MinIO).
 # MQTT_PASS / REDIS_PASS use dev placeholders instead of empty strings so the
 # warmup pre-fetch lands a real value into the LRU cache (empty values pass
@@ -119,7 +119,7 @@ for kv in \
   vault kv put "secret/hope/${k}" value="${v}" >/dev/null
 done
 
-# TASK-330 Phase 6 — apps/api <-> apps/harness shared service token. Unlike the
+# apps/api <-> apps/harness shared service token. Unlike the
 # warmup keys above it is fetched on-demand (HarnessOpsClient / HarnessGatewayService /
 # HarnessServiceTokenGuard via SecretsService.getSecretOptional), so it lives outside
 # the warmup loop. The value MUST equal apps/harness/.env's HARNESS_SERVICE_TOKEN, or
@@ -146,7 +146,7 @@ vault kv put secret/hope/GUARDRAIL_SERVICE_TOKEN value="dev-guardrail-service-to
 vault kv put secret/hope/TTS_SERVICE_TOKEN value="dev-tts-service-token-not-for-prod" >/dev/null
 vault kv put secret/hope/API_GATEWAY_KEY value="dev-api-gateway-key-not-for-prod" >/dev/null
 
-# TASK-558 lane K (K4) — remaining SELF-HOSTED vault-kv descriptors, so the dev
+# Remaining SELF-HOSTED vault-kv descriptors, so the dev
 # Vault covers every path a cluster Vault Agent will render for guardrail and
 # harness (deployment/vault-agent/README.md § Per-service secret sets).
 #
@@ -166,7 +166,7 @@ vault kv put secret/hope/GUARDRAIL_VLLM_API_KEY value="dev-vllm-placeholder-not-
 # the same rule scripts/vault-seed-secrets.sh follows when a value is unset.
 # Set them with `vault kv put secret/hope/<NAME> value=...` when you need them.
 
-# TASK-302 Phase 4 Task 4.4 — Transit key for envelope-encrypting
+# Transit key for envelope-encrypting
 # GlobalSetting rows. The key is created idempotently (Vault returns 204
 # the first call, 400 if it already exists which we swallow). Config:
 #   min_decryption_version=1 — keeps historical ciphertexts decryptable
@@ -200,7 +200,7 @@ vault write transit/keys/hope-phi/config \
   deletion_allowed=false \
   exportable=false 2>/dev/null || true
 
-# TASK-302 Phase 5 Task 5.2 — Vault database secrets engine for short-
+# Vault database secrets engine for short-
 # lived PostgreSQL credentials. The dev container points at host
 # PostgreSQL on docker.host.internal:5432; the SRE blueprint at
 # research/deployments/deploy-vm430-432-vault.md §15 documents the
@@ -218,7 +218,7 @@ vault write transit/keys/hope-phi/config \
 # below.
 VAULT_DB_HOST="${VAULT_DB_HOST:-host.docker.internal}"
 VAULT_DB_PORT="${VAULT_DB_PORT:-5432}"
-# TASK-312 review: dev default is `hope` (the local dev DB created by
+# Dev default is `hope` (the local dev DB created by
 # `pnpm db:all`). The old `hope_main` default never matched any dev DB, so the
 # engine connection test silently failed until setup-dev-vault-db.sh re-applied
 # it. Production sets VAULT_DB_NAME explicitly.
@@ -236,7 +236,7 @@ vault write database/config/hope-main \
 
 # Role `hope-app-role` — issues short-lived PG users that inherit
 # privileges from hope_app_template (Task 5.1 SQL).
-# Capacity math (per plan §5 risk R6):
+# Capacity math:
 #   max_open_connections per role × N pods × N nodes < PG max_connections
 #   defaults: 50/role × 3 nodes = 150 < 200 (PG default). With higher
 #   pod counts the operator must tune max_open_connections downward.

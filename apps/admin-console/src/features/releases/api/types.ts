@@ -1,8 +1,8 @@
 /**
- * Wire types for the Service Release & Changelog registry (TASK-648), backed by
+ * Wire types for the Service Release & Changelog registry, backed by
  * `admin/service-releases/*`. Re-declared locally (rule 13) from the FROZEN
  * contract at `docs/implementation/TASK-648-Service-Version-And-Release-Registry/
- * contracts/service-release.api.yaml` — U7 codes against that fragment only; a
+ * contracts/service-release.api.yaml` — coded against that fragment only; a
  * field not described there is not invented here.
  */
 

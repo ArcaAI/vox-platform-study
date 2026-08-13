@@ -34,19 +34,19 @@ import { LiveAgentResolutionServiceModule } from '../prompt/live-agent-resolutio
  * CoreDatabaseModule → ContextItemRepository, EventEmitterModule → re-emit;
  * IBlobStorageService + ClsService are global), so no new module is needed.
  *
- * TASK-660 — also hosts {@link LoopContextSignalService}, the third
+ * Also hosts {@link LoopContextSignalService}, the third
  * `@OnEvent(ContextAdded)` consumer that signals the (future) consultation
  * loop workflow. Added the same way OcrEnrichmentProcessor was: a new
  * provider in THIS module, no controller or route change. It additionally
  * needs `HarnessGatewayServiceModule` for the outbound harness signal call.
  *
- * TASK-670 — {@link LoopContextSignalService} is now also EXPORTED: it grew
+ * {@link LoopContextSignalService} is now also EXPORTED: it grew
  * `signalConsultationEnding`/`signalLoopCancel`, called directly from
  * `ConsultationController.stopRecording` (a real consumer outside this
  * module, unlike the `@OnEvent` wiring, which stays internal).
  */
 @Module({
-  // §2C/§2D — AgentTrajectoryServiceModule resolves the @Optional
+  // AgentTrajectoryServiceModule resolves the @Optional
   // IAgentTrajectoryService emitter dep so the per-flush trajectory goes live.
   imports: [
     HttpModule,
@@ -61,13 +61,13 @@ import { LiveAgentResolutionServiceModule } from '../prompt/live-agent-resolutio
     // EffectiveSettingsService so `agentic.context.*` is governed by the control
     // plane's settings registry rather than by constructor-frozen env values.
     EffectiveSettingsModule,
-    // nlp.ner model-injection resolver for the live-plane NLP call (TASK-552 Lane A).
+    // nlp.ner model-injection resolver for the live-plane NLP call.
     AiTaskDefaultServiceModule,
-    // TASK-635 C3 — resolves the @Optional ILiveAgentResolver port so a session
+    // Resolves the @Optional ILiveAgentResolver port so a session
     // freezes its governed agent (prompt bytes + tool plan + LLM override) at
     // start(). Absent ⇒ the service falls open to the in-code constants.
     LiveAgentResolutionServiceModule,
-    // TASK-660 — outbound apps/api -> apps/harness adapter LoopContextSignalService signals through.
+    // Outbound apps/api -> apps/harness adapter LoopContextSignalService signals through.
     HarnessGatewayServiceModule,
   ],
   providers: [LiveDocumentationService, RedisSubscriberService, OcrEnrichmentProcessor, LoopContextSignalService],

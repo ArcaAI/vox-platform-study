@@ -1,4 +1,4 @@
-"""TASK-636 OBS-16 — trace context survives the Redis Streams boundary.
+"""Trace context survives the Redis Streams boundary.
 
 Three hops are pinned here:
 
@@ -84,7 +84,7 @@ class TestIngestionConsumerTraceCapture:
 
     @pytest.mark.asyncio
     async def test_stays_none_when_the_gateway_sent_no_trace_context(self) -> None:
-        """Tracing off end-to-end must remain the pre-TASK-636 behaviour."""
+        """Tracing off end-to-end must remain the previous behaviour."""
         consumer = IngestionConsumer(redis=object(), session_id="s1", on_frame=_noop_frame)
         await consumer._dispatch_frame("1-0", _audio_fields(1, traceparent=None))
         assert consumer.trace_context is None
@@ -211,7 +211,7 @@ class TestResultPublisherTraceInjection:
 
     @pytest.mark.asyncio
     async def test_publish_adds_no_field_when_tracing_is_off(self) -> None:
-        """TASK-411 no-op: the wire is byte-identical to pre-TASK-636."""
+        """No-op: the wire is byte-identical to the previous behaviour."""
         redis = _CapturingRedis()
         publisher = ResultPublisher(redis, "s1", maxlen=100)
 

@@ -1,4 +1,4 @@
--- TASK-509 Phase 1B — SummaryMeta generation-stats headline fields (AD-1).
+-- SummaryMeta generation-stats headline fields (AD-1).
 --
 -- Purely ADDITIVE: three nullable columns on the existing SummaryMeta table so
 -- every persisted summary can carry the normalized stop reason, time-to-first-

@@ -994,7 +994,7 @@ export const seedUser = async (client: CorePrismaClient) => {
     await client.userSettings.upsert({
       where: { id: setting.id },
       update: {
-        // `value` omitted deliberately (TASK-616 DB-03) — a UserSettings value
+        // `value` omitted deliberately — a UserSettings value
         // is that user's own preference; a re-seed must not reset it.
         name: setting.name,
         key: setting.key,
@@ -1041,7 +1041,7 @@ export const seedUser = async (client: CorePrismaClient) => {
       },
     },
     update: {
-      // `value` omitted deliberately (TASK-616 DB-03). This setting selects the
+      // `value` omitted deliberately. This setting selects the
       // live default ASR pipeline; writing it here force-repointed every
       // tenant's choice on each seed run. `defaultValue` still tracks the repo,
       // so the platform's recommendation moves without overriding a human's.
@@ -1637,7 +1637,7 @@ export const seedUser = async (client: CorePrismaClient) => {
     await client.userSettings.upsert({
       where: { id: pref.id },
       update: {
-        // `value` omitted deliberately (TASK-616 DB-03) — a UserSettings value
+        // `value` omitted deliberately — a UserSettings value
         // is that user's own preference; a re-seed must not reset it.
         name: pref.name,
         key: pref.key,
@@ -1686,7 +1686,7 @@ export const seedUser = async (client: CorePrismaClient) => {
     await client.userSettings.upsert({
       where: { id: assignment.id },
       update: {
-        // `value` omitted deliberately (TASK-616 DB-03) — a UserSettings value
+        // `value` omitted deliberately — a UserSettings value
         // is that user's own preference; a re-seed must not reset it.
         name: assignment.name,
         key: assignment.key,

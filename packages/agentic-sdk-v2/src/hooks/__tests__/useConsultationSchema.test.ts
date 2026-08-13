@@ -1,5 +1,5 @@
 /**
- * useConsultationSchema Hook Tests (TASK-665)
+ * useConsultationSchema Hook Tests
  *
  * @vitest-environment jsdom
  */

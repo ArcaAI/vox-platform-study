@@ -15,13 +15,13 @@ export interface NerUsageEventParams {
   /**
    * ATTRIBUTION only (a column on the event, not part of the identity/key).
    * May be — and normally is — the same value across many invocations for
-   * one consultation. Optional (TASK-615 WS-D2): the playground
+   * one consultation. Optional: the playground
    * `/ai/nlp/entities` call site is a standalone inference proxy with NO
    * consultation context at all — omitted rather than fabricated.
    */
   consultationId?: string | null;
   /**
-   * ATTRIBUTION only (TASK-615 WS-D2). Set for the playground call site when
+   * ATTRIBUTION only. Set for the playground call site when
    * the CLS caller is a clinician (DOCTOR/SPECIALIST/CONSULTANT); the two
    * existing consultation-scoped call sites (ner.processor, summary.service
    * extractEntities) leave it unset — the consultation's own doctorId already
@@ -35,7 +35,7 @@ export interface NerUsageEventParams {
 }
 
 /**
- * Build the NLP entity-extraction usage event (`ner.extract`, TASK-615 WS-E).
+ * Build the NLP entity-extraction usage event (`ner.extract`).
  *
  * Shared by both clinical NER call sites — `ner.processor.ts` (durable BullMQ
  * job) and `summary.service.ts` (synchronous `extractEntities`) — so the

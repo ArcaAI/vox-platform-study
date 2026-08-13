@@ -1,5 +1,5 @@
 /**
- * TASK-545 — Disable Local (In-Browser) Transcription
+ * Disable Local (In-Browser) Transcription
  *
  * `LOCAL_TRANSCRIPTION_ENABLED` (`../constants`) is `false` in production —
  * this file exercises the REAL (unmocked) flag so it proves the shipped
@@ -71,7 +71,7 @@ vi.mock('@arcaai/stt', () => ({
   createSTT: (...args: unknown[]) => createSTT(...(args as [])),
 }));
 
-describe('TranscriptionPipeline: local transcription disabled (TASK-545)', () => {
+describe('TranscriptionPipeline: local transcription disabled', () => {
   const mockTrack = {} as MediaStreamTrack;
   const mockAudioContext = {} as AudioContext;
 
@@ -96,7 +96,7 @@ describe('TranscriptionPipeline: local transcription disabled (TASK-545)', () =>
     expect(createSTT).toHaveBeenCalledWith(expect.objectContaining({ features: expect.objectContaining({ provider: 'remote' }) }));
   });
 
-  it('threads the pre-start startOn into the createSTT audio config (TASK-586)', async () => {
+  it('threads the pre-start startOn into the createSTT audio config', async () => {
     const transport = { sessionManager: {}, wsClient: {}, pipelineId: 'pipe-1' };
     const pipeline = new TranscriptionPipeline({
       noiseFilter: { enabled: false, location: 'skip' },
@@ -111,7 +111,7 @@ describe('TranscriptionPipeline: local transcription disabled (TASK-545)', () =>
     );
   });
 
-  it('omits startOn from the createSTT audio config when not selected (TASK-586)', async () => {
+  it('omits startOn from the createSTT audio config when not selected', async () => {
     const transport = { sessionManager: {}, wsClient: {}, pipelineId: 'pipe-1' };
     const pipeline = new TranscriptionPipeline({
       noiseFilter: { enabled: false, location: 'skip' },

@@ -1,5 +1,5 @@
 /**
- * SYSTEM TenantTtsConfig default seed (TASK-577, finding F1)
+ * SYSTEM TenantTtsConfig default seed (finding F1)
  *
  * Creates the ONE row that makes the Day-1 TTS routing default admin-managed DB
  * data rather than a code/env vendor order: the SYSTEM-tenant `TenantTtsConfig`.

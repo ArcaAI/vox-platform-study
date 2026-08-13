@@ -116,13 +116,13 @@ function ChangesTab({ release }: { release: ServiceRelease }) {
 }
 
 /**
- * The one console-wide detail surface (§6) for a `ServiceRelease` row —
+ * The one console-wide detail surface for a `ServiceRelease` row —
  * opened from either the Current or History tab. The Changes tab renders the
- * generated technical changelog (§3.5), grouped by Conventional Commit type,
+ * generated technical changelog, grouped by Conventional Commit type,
  * each item linking to its ticket when a `TASK-nnn`/`BUG-nnn` scope was
  * extracted. (A per-commit GitLab link is not built here — the frozen
- * contract carries no repo base URL, so we don't invent one; see the ticket
- * README / U7 report for this gap.)
+ * contract carries no repo base URL, so we don't invent one; see the
+ * README for this gap.)
  */
 export function ReleaseDetailDrawer({ release, onOpenChange }: { release: ServiceRelease | null; onOpenChange: (open: boolean) => void }) {
   const [tab, setTab] = useState<DrawerTab>('overview');

@@ -39,7 +39,7 @@ export class DepartmentAgentController {
     return this.service.getById(id);
   }
 
-  // TASK-674 — the immutable loop-config version history TASK-659 writes.
+  // The immutable loop-config version history writes.
   // Plain `@Get`, not `@ApiEndpoint`: it returns a bare array, not one
   // resource-shaped body — mirrors `ConsultationContextSchemaAdminController`'s
   // `:id/versions` route.
@@ -115,10 +115,10 @@ export class DepartmentAgentController {
     return this.service.pin(id, request.versionNumber);
   }
 
-  // Clone-to-customize (TASK-548): deep-copies the bound template into an
+  // Clone-to-customize: deep-copies the bound template into an
   // editable DRAFT tenant template and produces a NEW unlocked agent. This is
   // the sanctioned way to customize a LOCKED template copy — the console's
-  // "clone to customize" (TASK-547) calls it. A NEW row, so no If-Match.
+  // "clone to customize" calls it. A NEW row, so no If-Match.
   @Post(':id/clone')
   @ApiOperation({
     summary: 'Clone an agent into a new editable copy (clone to customize)',

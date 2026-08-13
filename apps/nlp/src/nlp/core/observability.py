@@ -45,7 +45,7 @@ def _instrument_fastapi(
 ) -> None:
     """Instrument the app, ALWAYS with the PHI sanitisation hook attached.
 
-    TASK-636 OBS-19: ``_phi_sanitization_hook`` existed since this module was
+    ``_phi_sanitization_hook`` existed since this module was
     written and was never passed to the instrumentor — dead code, while SMR's
     identical hook *was* wired. NLP receives clinical text on every request, so
     an unhooked instrumentor is free to attach request/response bodies to spans
@@ -178,9 +178,9 @@ def setup_prometheus(app: FastAPI) -> None:
     Gated on ``settings.service.metrics_enabled`` — the same switch every other
     Python service uses. It previously used the instrumentator's own
     ``should_respect_env_var``/``ENABLE_METRICS`` gate, which no environment
-    ever set, so ``/metrics`` 404'd everywhere (TASK-636 OBS-02).
+    ever set, so ``/metrics`` 404'd everywhere.
 
-    HTTP series are deliberately NOT namespaced (TASK-636 OBS-03): the
+    HTTP series are deliberately NOT namespaced: the
     fleet-wide contract is ``http_*``, which the Prometheus relabel rule
     (``__name__ =~ "http_.*"``) and ``PlatformMetricsService``'s
     ``sum by (service) (rate(http_requests_total[5m]))`` both depend on.

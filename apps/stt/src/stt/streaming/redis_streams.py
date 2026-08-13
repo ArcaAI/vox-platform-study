@@ -175,7 +175,7 @@ class IngestionConsumer:
         self._last_claim_at = 0.0
         self._group_ready = False
         #: W3C trace context the API Gateway stamped on this session's audio
-        #: (TASK-636 OBS-16). Captured ONCE — see :attr:`trace_context`.
+        #: Captured ONCE — see :attr:`trace_context`.
         self._trace_context: Any | None = None
 
     @property
@@ -196,7 +196,7 @@ class IngestionConsumer:
         telemetry halfway through.
 
         ``None`` whenever tracing is off anywhere upstream — the gateway then
-        writes no ``traceparent`` and this stays the pre-TASK-636 behaviour.
+        writes no ``traceparent`` and this stays the previous behaviour.
         """
         return self._trace_context
 
@@ -499,7 +499,7 @@ class ResultPublisher:
         producing span genuinely differs between utterances.
 
         No-op when tracing is off: :func:`inject_trace_carrier` returns ``{}``
-        and the entry is byte-identical to pre-TASK-636.
+        and the entry is byte-identical to the previous behaviour.
         """
         carrier = inject_trace_carrier()
         if not carrier:
@@ -563,7 +563,7 @@ class ResultPublisher:
         active: str = "fallback",
         utterance_index: int | None = None,
     ) -> str:
-        """Publish a ``provider_switched`` status result (TASK-567 §3.4, TASK-586).
+        """Publish a ``provider_switched`` status result.
 
         Reuses the ``status`` result type so the API gateway forwards it as the
         existing ``status`` WS frame with ZERO protocol changes; the client
@@ -571,7 +571,7 @@ class ResultPublisher:
         from/to pipeline ids, the trigger reason (``auto``|``user``), and the
         utterance ordinal at which the swap happened so the UI can correlate.
 
-        ``active`` (TASK-586) names the now-live engine (``'primary'`` or
+        ``active`` names the now-live engine (``'primary'`` or
         ``'fallback'``); ``is_fallback`` is the boolean convenience flag. Both
         are carried so clients can tell which engine is live in BOTH directions
         of a switch (the switch is now bidirectional for user requests). The

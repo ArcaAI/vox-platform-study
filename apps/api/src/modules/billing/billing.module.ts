@@ -6,7 +6,7 @@ import { MyBillingController } from './my-billing.controller';
 import { RateCardAdminController } from './rate-card-admin.controller';
 
 /**
- * The billing HTTP surface (TASK-615 WS-I): SELL rate-card administration,
+ * The billing HTTP surface: SELL rate-card administration,
  * invoice lifecycle (draft → finalize → credit memos), and tenant self-service
  * reads. All new billing endpoints live HERE.
  */

@@ -547,10 +547,10 @@ describe('StreamingAudioBridgeService', () => {
       expect('detectedLanguage' in result).toBe(false);
     });
 
-    // TASK-613 B1 — the pipeline id that actually produced this utterance
-    // (§3.2 seam in apps/stt: worker-level `_active_pipeline_id`, stamped
+    // The pipeline id that actually produced this utterance
+    // (seam in apps/stt: worker-level `_active_pipeline_id`, stamped
     // per SegmentResult and published as `pipeline_id`, omitted when unknown).
-    it('surfaces the wire `pipeline_id` as camelCase pipelineId (TASK-613 B1)', async () => {
+    it('surfaces the wire `pipeline_id` as camelCase pipelineId', async () => {
       mockXreadgroup
         .mockResolvedValueOnce([
           ['stt:result:s-1', [['1-0', ['text', 'hi', 'start_time', '0', 'end_time', '1', 'is_final', '1', 'pipeline_id', 'sarvam_transcription']]]],
@@ -574,7 +574,7 @@ describe('StreamingAudioBridgeService', () => {
       expect('pipelineId' in result).toBe(false);
     });
 
-    it('the transcript projection stays an allow-list — a novel upstream field is still dropped (TASK-613 B1)', async () => {
+    it('the transcript projection stays an allow-list — a novel upstream field is still dropped', async () => {
       // The result stream is PHI-bearing; forwarding pipelineId must never
       // become a blind spread of whatever a future publisher adds.
       mockXreadgroup
@@ -612,7 +612,7 @@ describe('StreamingAudioBridgeService', () => {
 
     it('should emit a provider_switched status result (non-terminal) so the swap reaches the client', async () => {
       // apps/stt publishes an ASR-engine swap as a `status`/`provider_switched`
-      // result (TASK-567). Previously the bridge swallowed every non-terminal
+      // result. Previously the bridge swallowed every non-terminal
       // status; it must now relay this one on the existing status frame.
       mockXreadgroup
         .mockResolvedValueOnce([
@@ -655,7 +655,7 @@ describe('StreamingAudioBridgeService', () => {
     });
 
     // -------------------------------------------------------------------------
-    // TASK-614 D-4 — `active` / `is_fallback` must reach the client.
+    // `active` / `is_fallback` must reach the client.
     //
     // apps/stt has always published both (`redis_streams.py` publish_switch);
     // this projection dropped them, so the compat gateway's `isFallback` branch
@@ -1041,7 +1041,7 @@ describe('StreamingAudioBridgeService', () => {
       const results = await lastValueFrom(obs.pipe(toArray()));
 
       // `finalizing` is relayed as an ordinary NON-terminal status frame
-      // (TASK-597 follow-up #1 — the SDK's stop-drain quiet window opens on it),
+      // (the SDK's stop-drain quiet window opens on it),
       // the tail final still relays AFTER it, and the stream completes only on
       // the following `closed`.
       expect(results).toHaveLength(2);
@@ -1060,7 +1060,7 @@ describe('StreamingAudioBridgeService', () => {
     });
 
     // Default-forward, NOT an allow-list: a status nobody thought to enumerate
-    // must still reach the client (the TASK-568 Phase-F bug class that made
+    // must still reach the client (the Phase-F bug class that made
     // `finalizing` inert). Unknown statuses are relayed and stay non-terminal.
     it('forwards an UNKNOWN non-terminal status by default (no allow-list) and keeps reading', async () => {
       mockXreadgroup

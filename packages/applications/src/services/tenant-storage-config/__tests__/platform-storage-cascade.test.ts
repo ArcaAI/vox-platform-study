@@ -1,5 +1,5 @@
 /**
- * The headline proof for TASK-558 lane E:
+ * The headline proof for:
  *
  *   changing the SYSTEM `TenantStorageConfig` row changes the resolved storage
  *   configuration with NO redeploy.

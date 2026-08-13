@@ -1,5 +1,5 @@
 /**
- * buildHarnessUsageEvent — TASK-615 WS-F.
+ * buildHarnessUsageEvent.
  *
  * Pure mapping from one persisted `AgentTrajectoryStep` (LLM_CALL, AD-1
  * GenerationStats) onto the usage-ledger's `{common, units}` batch input, or

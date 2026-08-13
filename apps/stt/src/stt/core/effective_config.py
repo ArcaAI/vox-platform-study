@@ -117,11 +117,11 @@ class EffectiveConfigClient:
         self._last_refresh_ok: bool | None = None
         self._last_refresh_at: datetime | None = None
 
-        # TASK-567 — per-tenant BYO STT provider overrides (batch-worker pull
-        # path, D-3). Cached per tenant with the same TTL/jitter window;
+        # Per-tenant BYO STT provider overrides (batch-worker pull
+        # path). Cached per tenant with the same TTL/jitter window;
         # single-flight per tenant; fail-open (a failed pull yields {} so the
         # worker falls back to env creds). Keyed by tenant so one tenant's key is
-        # never served to another (§9.3 M4).
+        # never served to another.
         self._overrides_cache: dict[str, tuple[dict[str, Any], float]] = {}
         self._overrides_locks: dict[str, asyncio.Lock] = {}
 
@@ -138,7 +138,7 @@ class EffectiveConfigClient:
             return self._snapshot
 
     async def get_provider_overrides(self, tenant_id: str) -> dict[str, Any]:
-        """Pull a tenant's decrypted BYO STT provider overrides (batch pull, D-3).
+        """Pull a tenant's decrypted BYO STT provider overrides (batch pull).
 
         Hits ``GET /internal/stt/provider-overrides?tenantId=`` on the gateway
         (service-token auth, same transport as :meth:`get`). Cached per tenant

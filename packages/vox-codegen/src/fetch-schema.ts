@@ -1,6 +1,6 @@
 /**
- * Fetches the SAME discovery bundle `@arcaai/vox` reads at session start —
- * `GET /tenant/me/context-schema` (TASK-658/661) — as a global-admin
+ * Fetches the SAME discovery bundle `@arcaai/vox` reads at session start
+ * `GET /tenant/me/context-schema` — as a global-admin
  * "manage as tenant" call: `Authorization: Bearer <token>` for a
  * GLOBAL_ADMIN whose JWT carries an empty tenant binding, plus
  * `X-Tenant-Id: <tenantId>` to select the target tenant
@@ -14,7 +14,7 @@
  * silently falls back to "no schema configured" (that would emit a types
  * file claiming a tenant has no schema when the truth is just "the gateway
  * was unreachable").
- */
+*/
 
 import { CodegenError } from './errors';
 import type { ConsultationSchemaBundle } from './types';

@@ -1,7 +1,7 @@
 #!/usr/bin/env zsh
 set -eu
 
-# Phase 0 Item 6 (TASK-302 Stream A) — fast, staged-only gitleaks scan.
+# Fast, staged-only gitleaks scan.
 # Skips silently if gitleaks is not installed (developer onboarding window).
 # CI gate (.gitlab/ci/scan.yml::scan-gitleaks) is the back-stop.
 #

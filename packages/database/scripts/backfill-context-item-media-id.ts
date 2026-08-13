@@ -1,5 +1,5 @@
 /**
- * TASK-656 — backfill `ContextItem.mediaId` rows corrupted by the producer bug.
+ * Backfill `ContextItem.mediaId` rows corrupted by the producer bug.
  *
  * WHY
  * ---
@@ -13,7 +13,7 @@
  * `mediaId` as a literal key, so OCR worked by coincidence; every OTHER
  * consumer (`ContextService.resolveMediaUrls`, `SmrProxyController.extractAttachmentText`)
  * does the CORRECT `mediaRepository.findById(mediaId)` lookup and therefore
- * silently found nothing for these rows. TASK-656 fixes the producers (they
+ * silently found nothing for these rows. A later fix covers the producers (they
  * now send `mediaId`) and the one broken consumer (`OcrEnrichmentProcessor`);
  * this script repairs the ROWS THAT ALREADY EXIST with the bad value, because
  * fixing the processor without it would break OCR for every attachment
@@ -26,7 +26,7 @@
  *   1. builds the canonical `uri = s3://<bucket>/<mediaId>` the row's `mediaId`
  *      (the raw key) must have pointed at — `--bucket` defaults to
  *      `attachments` (the frontend's `STORAGE_BUCKET` constant, and
- *      `OcrEnrichmentProcessor`'s pre-TASK-656 default);
+ * `OcrEnrichmentProcessor`'s pre- default);
  *   2. finds an existing `Media` row with that exact `uri` (dedupes when
  *      multiple ContextItems reference the same key) or CREATES one —
  *      best-effort `name`/`extension`/`mimeType` derived from the key,
@@ -144,7 +144,7 @@ export interface BackfillPlanRow {
  * Fetch every ATTACHMENT/AUDIO_RECORDING ContextItem with a non-null mediaId
  * in scope, then filter (in application code — Prisma has no portable
  * "is this a UUID" predicate) to the ones whose mediaId is NOT a valid UUID,
- * i.e. the ones carrying the pre-TASK-656 raw-key bug.
+ * i.e. the ones carrying the pre- raw-key bug.
  */
 async function findTargets(client: BackfillClient, tenantId: string | null): Promise<TargetContextItem[]> {
   const rows = await client.contextItem.findMany({

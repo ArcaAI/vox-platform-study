@@ -1,4 +1,4 @@
--- TASK-610 (D-8 roll-forward) — backfill `sarvam-saaras-v4` AiModel.format
+-- D-8 roll-forward — backfill `sarvam-saaras-v4` AiModel.format
 --
 -- Commit 7703e40f illegally amended the ALREADY-COMMITTED migration
 -- 20260803090000_task_586_backfill_cloud_asr_formats, appending an UPDATE for

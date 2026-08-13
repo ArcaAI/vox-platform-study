@@ -5,7 +5,7 @@ export const metadata: Metadata = {
   title: 'Releases',
 };
 
-/** TASK-648 §6 — Platform Releases (tier 10-19, global admins, cross-tenant). */
+/** Platform Releases (tier 10-19, global admins, cross-tenant). */
 export default function ReleasesPage() {
   return <ReleasesScreen />;
 }

@@ -37,13 +37,13 @@ export abstract class IDnaWritingStyleService {
   abstract getDnaReport(doctorId: string): Promise<DnaReportResponse | null>;
   abstract getRedactionRules(doctorId: string): Promise<RedactionRuleSet>;
   /**
-   * TASK-599 — the doctor's DECRYPTED DNA writing-style text, or `null` when DNA
+   * The doctor's DECRYPTED DNA writing-style text, or `null` when DNA
    * style is disabled (tenant AND doctor gate), the doctor has no report/style,
    * or the secrets backend is unwired. Reused by the v1-compat SMR path to inject
    * the doctor's style into the summary/pre-summary prompt. Never throws on an
    * absent/disabled style — DNA is additive.
    *
-   * `explicitTenantId` (TASK-651) supplies the tenant for callers whose CLS
+   * `explicitTenantId` supplies the tenant for callers whose CLS
    * `tenantId` is empty — notably the API-key-authenticated v1-compat surface,
    * where only the JWT strategy populates CLS. Omit it and the CLS value is used
    * as before. Tenant membership of `doctorId` is asserted either way.

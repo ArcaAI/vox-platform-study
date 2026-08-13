@@ -3,7 +3,7 @@
 /**
  * @arcaai/vox/compat - useArcaBatchTranscription
  *
- * Batch (pre-recorded file) transcription for the compat surface (TASK-603).
+ * Batch (pre-recorded file) transcription for the compat surface.
  *
  * v1's `useArcaSpeechToText` shipped a single-file `uploadAudioFile()` +
  * `getTranscriptionStatus()` polling pair. Both are still honoured verbatim on
@@ -85,7 +85,7 @@ export interface BatchQueueItem {
   /**
    * The tenant fallback pipeline that actually produced this transcript, when
    * the requested pipeline failed and the worker re-ran on the fallback
-   * (TASK-614). `null` when the requested pipeline produced it — the normal
+   * `null` when the requested pipeline produced it — the normal
    * case — or when the job has not completed.
    *
    * Which engine transcribed a consultation is clinical provenance, so it is
@@ -167,7 +167,7 @@ function asNumber(value: unknown): number | undefined {
 }
 
 /**
- * Read the fallback pipeline a completed job actually ran on (TASK-614 D-7).
+ * Read the fallback pipeline a completed job actually ran on.
  *
  * The worker stamps `usedFallbackPipelineId` into `TranscriptionResult.metadata`
  * when the primary ASR failed and it re-ran on the tenant fallback; the gateway
@@ -393,7 +393,7 @@ export function useArcaBatchTranscription(props: UseArcaBatchTranscriptionProps 
         failItem(id, new Error('SDK not initialized — no apiClient available. Mount <ArcaCompatProvider> before uploading.'), 'configuration');
         return;
       }
-      // OPTIONAL since TASK-614 (D-8): omitting it means "use the tenant's
+      // OPTIONAL since): omitting it means "use the tenant's
       // default pipeline", the same intent a live session has always been able
       // to express. The gateway resolves it (tenant default → configured
       // fallback) and 409s when the tenant has neither, so refusing here would

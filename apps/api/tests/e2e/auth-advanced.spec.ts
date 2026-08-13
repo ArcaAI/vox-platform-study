@@ -210,7 +210,7 @@ test.describe('Auth Advanced Controller', () => {
       // create a throwaway user, grant it the seeded GLOBAL_ADMIN role, assert
       // the rejection, then remove the grant + soft-delete the user via the
       // API. Fixture ops use a tenant-scoped super-admin session so the role
-      // assignment lands with a concrete tenantId (mirrors task-401 harness).
+      // assignment lands with a concrete tenantId (mirrors harness).
       const saGlobal = await loginUser(request, SEEDED_USERS.superAdmin.username, SEEDED_USERS.superAdmin.password, DEFAULT_TENANT_KEY);
       expect(saGlobal, 'tenant-scoped super_admin login failed').toBeTruthy();
       const fixtureHeaders = { Authorization: `Bearer ${saGlobal!.token}` };

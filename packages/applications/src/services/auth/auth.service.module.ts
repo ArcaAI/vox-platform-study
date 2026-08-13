@@ -107,7 +107,7 @@ const logger = new Logger('AuthServiceModule');
       inject: ['OPENID_CLIENT', IAppSettingsService, IAuthService, ClsService, SecretsService],
     },
     JwtStrategy,
-    // The `global-kv` cascade for `refreshToken.ttlSeconds` (TASK-558 lane I).
+    // The `global-kv` cascade for `refreshToken.ttlSeconds`.
     // Provided locally — its only dependency is `IAppSettingsService`, already
     // available in this graph.
     TenantSettingsService,

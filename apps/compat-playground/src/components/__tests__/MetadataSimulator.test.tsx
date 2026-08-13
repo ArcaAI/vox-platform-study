@@ -5,7 +5,7 @@ import type { ReactNode } from 'react';
 
 // --- Mocks -------------------------------------------------------------------
 //
-// TASK-597 lane C — the metadata simulator. Unlike `App.tabs.test.tsx` (which
+// The metadata simulator. Unlike `App.tabs.test.tsx` (which
 // exercises the tab shell with an idle, never-recording session), these tests
 // need a session that is ALREADY recording — the metadata controls are
 // disabled otherwise (requirement 6) — plus a controllable `getDeviceStatus`
@@ -38,7 +38,7 @@ vi.mock('@arcaai/vox/compat', () => ({
     error: null,
   }),
   useArcaSttLanguageModes: () => ({ modes: [], isLoading: false, error: null, refresh: vi.fn() }),
-  // TASK-603 — the provider also mounts the batch-upload queue; an idle stub is
+  // The provider also mounts the batch-upload queue; an idle stub is
   // all these suites need (batch behaviour is covered in BatchUploadTab.test.tsx).
   useArcaBatchTranscription: () => ({
     items: [],

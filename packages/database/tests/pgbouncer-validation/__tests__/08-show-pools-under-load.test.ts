@@ -3,8 +3,8 @@
 // Task 1.16 — capture `SHOW POOLS` mid-load and assert the rubric
 // columns are in the expected range.
 //
-// Phase 1 rubric (per plan §1.18, derived from §17 "Pool sizing decision
-// table" and §13 monitoring SLOs):
+// Phase 1 rubric (derived from "Pool sizing decision
+// table" and monitoring SLOs):
 //   * cl_waiting   = 0   sustained
 //   * maxwait      = 0   sustained
 //   * sv_active   ≥ 1    during burst (proves connections are checked out)

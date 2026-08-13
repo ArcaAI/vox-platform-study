@@ -1,7 +1,7 @@
 import { AiCostBasis, AiDeploymentKind } from '@arcaai/domains';
 
 /**
- * The ONE TTS billing classifier (TASK-643 R3 / OD-4).
+ * The ONE TTS billing classifier (OD-4).
  *
  * `SpeechProxyController` (HTTP) and `TtsWsGateway` (WS duplex) both turn a
  * served provider into a `(deployment, costBasis)` pair, and until this module
@@ -85,7 +85,7 @@ export function classifyTtsProvider(
   }
   // Platform-funded vendor call — including a platform-funded OVERRIDE, which
   // is economically identical to serving on the platform's env credential
-  // (TASK-643 OD-2: `CLOUD`, no new `AiDeploymentKind` member). `costBasis` is
+  // (: `CLOUD`, no new `AiDeploymentKind` member). `costBasis` is
   // deliberately omitted so the ledger's INTERNAL default applies.
   return { deployment: AiDeploymentKind.CLOUD };
 }

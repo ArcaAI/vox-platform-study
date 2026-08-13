@@ -2,7 +2,7 @@
  * Agentic policy governance (Phase 7 E2E, Agentic SOTA).
  *
  * Probes the agentic policy control plane across three real gateway surfaces,
- * following the task-506 governance/OCC pattern:
+ * following the governance/OCC pattern:
  *
  *  A. HarnessPolicy loop-knob writes — `PATCH /api/v1/admin/harness/policy`
  *     (`HarnessAdminController.updatePolicy`, `@RequiresIfMatch()`):

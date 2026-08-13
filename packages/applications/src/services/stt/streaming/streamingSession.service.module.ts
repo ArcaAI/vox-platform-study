@@ -14,7 +14,7 @@ import { StreamingAudioBridgeService } from './streamingAudioBridge.service';
  * Imports:
  * - HttpModule: HTTP client for calling STT internal API
  * - ConfigModule: Access to STT_URL and Redis config
- * - UsageLedgerServiceModule (TASK-615 WS-C): `IUsageLedgerService` for the
+ * - UsageLedgerServiceModule: `IUsageLedgerService` for the
  *   `transcribe.stream` emission on session teardown.
  *
  * Providers:

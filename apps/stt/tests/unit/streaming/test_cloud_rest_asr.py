@@ -1,4 +1,4 @@
-"""REST recognize + error-mapping tests for the cloud BYOK engines (TASK-567).
+"""REST recognize + error-mapping tests for the cloud BYOK engines.
 
 Mocked-httpx tier (test tier 2): validates the happy path and the
 status -> CloudASR* taxonomy mapping for both Sarvam and OpenAI without any

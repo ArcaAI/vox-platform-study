@@ -1,5 +1,5 @@
 /**
- * STT config naming (TASK-556) + v1 removal verification.
+ * STT config naming + v1 removal verification.
  *
  * Verifies that STT_PORT, LLM_PORT, and LLM_URL remain removed, and that
  * STT_URL is the canonical STT-related config key (dual-read of STT_V2_URL).
@@ -13,7 +13,7 @@ function readFile(filePath: string): string {
   return fs.readFileSync(filePath, 'utf-8');
 }
 
-describe('STT config naming (TASK-556)', () => {
+describe('STT config naming', () => {
   describe('IAppConfig interface', () => {
     const interfacePath = path.resolve(__dirname, '../../../../../../../../packages/domains/src/interfaces/IAppConfig.ts');
 
@@ -26,7 +26,7 @@ describe('STT config naming (TASK-556)', () => {
       });
     }
 
-    // TASK-556: domains IAppConfig STT_V2_URL→STT_URL is outside this
+    // domains IAppConfig STT_V2_URL→STT_URL is outside this
     // package's exclusive ownership — asserted once Sweep/Wave 2 lands.
 
     // apps/fedl was removed; the gateway no longer carries the legacy
@@ -83,7 +83,7 @@ describe('STT config naming (TASK-556)', () => {
     const projectRoot = path.resolve(__dirname, '..', '..', '..', '..', '..', '..', '..', '..');
     const envFiles = ['.env.test', 'apps/api/.env.sample', 'apps/api/.env.prod'];
 
-    // STT_PORT is a valid TASK-556 gateway key (with STT_URL); do not
+    // STT_PORT is a valid gateway key (with STT_URL); do not
     // treat it as removed v1 cruft. Env files are Nest-owned.
     const removedVars = [
       { pattern: /^STT_WS_URL=/m, label: 'STT_WS_URL' },

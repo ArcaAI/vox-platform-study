@@ -1,5 +1,5 @@
 /**
- * TASK-562 — v1-compatible SMR summary gateway shims.
+ * V1-compatible SMR summary gateway shims.
  *
  * Verifies the gateway contract for the two additive routes against a RUNNING
  * API:
@@ -8,7 +8,7 @@
  *
  * Key facts under test:
  *   - The routes are served at the LITERAL v1 paths (NO `api/v1` global prefix)
- *     — a request to them must NOT 404 (TASK-560 §5.6 exact-path reproduction).
+ * a request to them must NOT 404 (exact-path reproduction).
  *   - Deny-by-default auth: no credential → 401; a valid Bearer JWT or
  *     `x-api-key` reaches the shim.
  *   - Strict DTO validation: a missing `session_data` → 400.
@@ -24,8 +24,8 @@
 
 import { expect, test } from '@playwright/test';
 import { DEFAULT_TENANT_KEY, SEEDED_USERS, loginUser } from '../../../../tests/helpers';
-// TASK-563 — validate LIVE 200 responses against the frozen v1 schema lock
-// (§5.4/§5.5). Hermetic when SMR is down (status ≠ 200 → shape check skipped).
+// Validate LIVE 200 responses against the frozen v1 schema lock
+// (/). Hermetic when SMR is down (status ≠ 200 → shape check skipped).
 import { PreSummaryResponseSchema, SummaryResponseSchema } from '../../../../tests/contracts/smr-compat.schemas';
 
 const SUMMARY_SYNC_PATH = '/api/smr/api/v1/summary/sync';
@@ -59,7 +59,7 @@ const samplePreSummaryBody = () => ({
   language: 'en',
 });
 
-test.describe('TASK-562 v1-compatible SMR summary shims', () => {
+test.describe('V1-compatible SMR summary shims', () => {
   let token: string;
   let apiKey: string | undefined;
   const createdApiKeyIds: string[] = [];
@@ -138,7 +138,7 @@ test.describe('TASK-562 v1-compatible SMR summary shims', () => {
     expect([200, 500, 502, 503]).toContain(response.status());
     if (response.status() === 200) {
       const body = await response.json();
-      // v1 SummaryResponse shape (TASK-560 §5.4) — locked by the shared schema.
+      // v1 SummaryResponse shape — locked by the shared schema.
       const parsed = SummaryResponseSchema.safeParse(body);
       expect(parsed.success, `live response must match the v1 SummaryResponse schema: ${JSON.stringify(parsed.error?.issues)}`).toBe(true);
       expect(body.metadata).toHaveProperty('use_enhanced_format', false);
@@ -165,7 +165,7 @@ test.describe('TASK-562 v1-compatible SMR summary shims', () => {
     expect([200, 500, 502, 503]).toContain(response.status());
     if (response.status() === 200) {
       const body = await response.json();
-      // v1 PreSummaryResponse shape (TASK-560 §5.5) — locked by the shared schema.
+      // v1 PreSummaryResponse shape — locked by the shared schema.
       const parsed = PreSummaryResponseSchema.safeParse(body);
       expect(parsed.success, `live response must match the v1 PreSummaryResponse schema: ${JSON.stringify(parsed.error?.issues)}`).toBe(true);
       expect(Array.isArray(body.structured_data.sections)).toBe(true);

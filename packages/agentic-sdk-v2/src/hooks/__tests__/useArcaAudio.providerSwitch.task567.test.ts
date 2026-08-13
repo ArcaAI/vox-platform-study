@@ -1,5 +1,5 @@
 /**
- * useArcaAudio — streaming STT connection state + provider switch (TASK-567 Phase F).
+ * useArcaAudio — streaming STT connection state + provider switch.
  *
  * Locks the hook's role in surfacing the streaming connection lifecycle and the
  * on-the-fly fallback switch (R4):
@@ -137,7 +137,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('useArcaAudio — provider switch + connection state (TASK-567)', () => {
+describe('useArcaAudio — provider switch + connection state', () => {
   it('exposes sttConnectionState and activePipeline from the store', () => {
     setupStore({ sttConnectionState: 'reconnecting', activePipeline: { id: 'p1', name: 'Primary', isFallback: false } });
 
@@ -162,7 +162,7 @@ describe('useArcaAudio — provider switch + connection state (TASK-567)', () =>
     });
   });
 
-  it('forwards startOn to the plugin manager runtime options and marks the active pipeline as fallback (TASK-586)', async () => {
+  it('forwards startOn to the plugin manager runtime options and marks the active pipeline as fallback', async () => {
     const { result } = renderHook(() => useArcaAudio());
 
     await act(async () => {
@@ -181,7 +181,7 @@ describe('useArcaAudio — provider switch + connection state (TASK-567)', () =>
     });
   });
 
-  it('defaults the active pipeline to primary (isFallback false) when startOn is omitted (TASK-586)', async () => {
+  it('defaults the active pipeline to primary (isFallback false) when startOn is omitted', async () => {
     const { result } = renderHook(() => useArcaAudio());
 
     await act(async () => {
@@ -240,7 +240,7 @@ describe('useArcaAudio — provider switch + connection state (TASK-567)', () =>
   });
 
   // ---------------------------------------------------------------------------
-  // TASK-614 D-1/D-2/D-3 — `activePipeline` is SERVER-derived.
+  // `activePipeline` is SERVER-derived.
   //
   // It used to be an echo of `options.pipelineId`, which is silent about the
   // three ways the running engine differs from the requested one: no pipelineId
@@ -316,7 +316,7 @@ describe('useArcaAudio — provider switch + connection state (TASK-567)', () =>
   });
 
   // ---------------------------------------------------------------------------
-  // TASK-614 D-4 — the direction of a switch is READ, not guessed.
+  // The direction of a switch is READ, not guessed.
   //
   // The handler used to assume `isFallback = true` whenever the frame carried
   // neither `is_fallback` nor `active`. The bridge dropped both fields, so that

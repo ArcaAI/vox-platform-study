@@ -20,7 +20,7 @@ import { Authorize, ExpectedVersion, RequiresIfMatch } from '../../decorators';
  * `endpoint` on the facade's write-only request maps per provider — azure:
  * region, sarvam: base URL — exactly the convention the pre-unification
  * `TenantTtsProviderCredential.endpoint` column carried (see the program doc
- * §2.3; that table and its domain trio were DROPPED by TASK-576). Storing it
+ * ; that table and its domain trio were DROPPED by). Storing it
  * on the matching `AiProviderConnection` column reproduces the SAME
  * `provider_overrides` shape on read (C4).
  */
@@ -68,7 +68,7 @@ export class TenantTtsConfigAdminController {
   constructor(
     @Inject(ITenantTtsConfigService) private readonly configService: ITenantTtsConfigService,
     // BYO credentials live on the unified provider-connection plane
-    // (`service='tts'`, TASK-570) — the routes below are a thin facade over it.
+    // (`service='tts'`) — the routes below are a thin facade over it.
     @Inject(IProviderConnectionService) private readonly providerConnectionService: IProviderConnectionService,
     private readonly cls: ClsService<IActiveUserContext>,
   ) {}

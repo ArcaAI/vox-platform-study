@@ -50,7 +50,7 @@ export interface IEntitlementsLifecycleService {
   /**
    * Trial-expiry sweep (Q4): downgrade every `plan = TRIAL` tenant whose
    * `trialEndsAt <= now` to `STARTER`. PLAN-ONLY — `resourceStatus` is left
-   * untouched (proposal §4). The reserved system tenant is always skipped
+   * untouched. The reserved system tenant is always skipped
    * (`assertNotSystemTenant`). Idempotent: a tenant already off TRIAL is not
    * re-examined. Independent of the enforcement kill-switch (a plan relabel is
    * always safe; enforcement gates only the block/soft-disable behavior).

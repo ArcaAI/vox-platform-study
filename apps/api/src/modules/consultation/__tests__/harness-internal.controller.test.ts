@@ -143,7 +143,7 @@ describe('HarnessInternalController', () => {
     expect(mockService.recordEscalation).toHaveBeenCalledWith('consultation-1', dto, undefined);
   });
 
-  // TASK-550 — the worker `fetch_policy` GET, now accepting an optional
+  // The worker `fetch_policy` GET, now accepting an optional
   // consultationId so the department default agent's tenant-tier
   // harnessOverrides overlay onto the effective policy.
   describe('GET internal/harness/policy (fetch_policy)', () => {
@@ -259,7 +259,7 @@ describe('HarnessInternalController', () => {
     });
   });
 
-  describe('POST consultations/:id/loop-event (TASK-660)', () => {
+  describe('POST consultations/:id/loop-event', () => {
     const mockLoopEventService = { publishEvent: vi.fn() };
 
     const buildController = () =>
@@ -446,8 +446,8 @@ describe('HarnessInternalController', () => {
     });
   });
 
-  // TASK-662 — the (future) ConsultationLoopWorkflow's first-activity read.
-  describe('GET internal/harness/loop-config (TASK-662)', () => {
+  // The (future) ConsultationLoopWorkflow's first-activity read.
+  describe('GET internal/harness/loop-config', () => {
     const mockLoopConfigService = { resolveForConsultation: vi.fn() };
     // Same fakeCls shape as the /policy describe block above: run() executes
     // the callback synchronously in a store, so set-before-read is directly
@@ -515,8 +515,8 @@ describe('HarnessInternalController', () => {
     });
   });
 
-  // TASK-662 — the loop's livedoc.start/livedoc.stop actions.
-  describe('POST consultations/:id/live-documentation/start|stop (TASK-662)', () => {
+  // The loop's livedoc.start/livedoc.stop actions.
+  describe('POST consultations/:id/live-documentation/start|stop', () => {
     const mockLiveDocumentationService = { start: vi.fn(), stop: vi.fn() };
     const mockCls = { run: vi.fn((fn: () => unknown) => fn()), set: vi.fn() };
 
@@ -530,7 +530,7 @@ describe('HarnessInternalController', () => {
         undefined as any, // agentTrajectoryService (unused by these routes)
         undefined as any, // consultationLoopEventService (unused by these routes)
         undefined as any, // loopConfigService (unused by these routes)
-        undefined as any, // loopContextTextService (unused by these routes) — TASK-670 inserted this param
+        undefined as any, // loopContextTextService (unused by these routes) — inserted this param
         mockLiveDocumentationService as any,
       );
 

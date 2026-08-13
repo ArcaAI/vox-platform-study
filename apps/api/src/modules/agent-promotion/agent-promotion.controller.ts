@@ -10,7 +10,7 @@ import { ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags }
 import { CanManage } from '../../decorators';
 
 /**
- * TASK-663 — agent promotion between tenants.
+ * Agent promotion between tenants.
  *
  * A SEPARATE thin controller from `DepartmentAgentController` — the
  * `DepartmentAgentResyncController` precedent — because promotion is its own
@@ -33,7 +33,7 @@ export class AgentPromotionController {
   // real gate on this route. A permission decorator expresses `action +
   // subject`; it cannot express "…and also in that OTHER tenant". The actual
   // control — the actor holds `manage:DepartmentAgent` in BOTH the source and
-  // the target tenant (TASK-654 D10, and with no environment/tenant-family
+  // the target tenant (D10, and with no environment/tenant-family
   // concept it is the ENTIRE control) — is enforced imperatively in
   // `AgentPromotionService.assertManagesBothTenants`, which runs before any
   // read so the 403/404 difference is never an existence oracle. The route

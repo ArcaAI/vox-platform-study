@@ -31,7 +31,7 @@ class FakeEngine:
         self.name = name
         self.supported_locales = locales or {"en-IN", "ml-IN"}
         self.native_streaming = native_streaming
-        self.is_configured = configured  # TASK-602
+        self.is_configured = configured
         self._chunks = chunks
         self._healthy = healthy
         self._fail_before_emit = fail_before_emit

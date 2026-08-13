@@ -2,7 +2,7 @@
  * Price resolution precedence — the pure ranking half.
  *
  * This is CONTRACT, not an implementation detail: which row prices an event
- * decides what a tenant is charged, and WS-I's invoice engine reads the same
+ * decides what a tenant is charged, and 's invoice engine reads the same
  * function. Every rule below is asserted explicitly rather than left to emerge
  * from a query's ORDER BY, because an ORDER BY cannot be reviewed by the person
  * approving the rate card.
@@ -54,7 +54,7 @@ describe('selectMostSpecificPrice — most-specific-wins', () => {
 
   it('a NULL dimension is a wildcard, not a mismatch', () => {
     // This is what makes the seeded `provider: null` self-hosted catch-all rows
-    // work at all — they must match whichever engine id WS-C/WS-E settle on.
+    // work at all — they must match whichever engine id / settle on.
     const query = { provider: 'whisper_cpp', model: null, contextBand: null, planTier: null, tenantId: SYSTEM };
     expect(selectMostSpecificPrice([candidate({ id: 'catch' })], query)?.id).toBe('catch');
   });
@@ -82,7 +82,7 @@ describe('selectMostSpecificPrice — most-specific-wins', () => {
     expect(selectMostSpecificPrice([agnostic, longCtx, shortCtx], noBand)?.id).toBe('any');
   });
 
-  it('prefers a TTL-specific cache-write row over the TTL-agnostic wildcard (TASK-615 #7)', () => {
+  it('prefers a TTL-specific cache-write row over the TTL-agnostic wildcard', () => {
     const blended = candidate({ id: 'blend', provider: 'anthropic', model: 'claude-sonnet-5', unitPriceMicros: 100n });
     const oneHour = candidate({ id: '1h', provider: 'anthropic', model: 'claude-sonnet-5', cacheTtl: '1h', unitPriceMicros: 200n });
     const fiveMin = candidate({ id: '5m', provider: 'anthropic', model: 'claude-sonnet-5', cacheTtl: '5m', unitPriceMicros: 125n });

@@ -70,7 +70,7 @@ test-api:
       artifacts: false
   variables:
     <<: *test-env-vars
-    # TASK-558 §13.3 C1 — Vault supplies these when VAULT_ADDR is set; the
+    # Vault supplies these when VAULT_ADDR is set; the
     # *test-env-vars mappings above remain the fallback. `.test-node-base`
     # carries the fetch step, which exports over the variables of the same name.
     VAULT_SECRETS: !reference [.vault-secret-sets, ci-full]
@@ -117,13 +117,13 @@ test-packages:
     - pnpm turbo build --filter=@arcaai/exceptions
     - pnpm turbo build --filter=@arcaai/logger
     - pnpm turbo build --filter=@arcaai/domains
-    # TASK-302 Stream D Phase B (B.4) — `@arcaai/domains` is included so the
+    # `@arcaai/domains` is included so the
     # permanent Postgres regression guard for optimistic-locking CAS runs in
     # CI. DATABASE_URL is supplied via *test-env-vars; when set the
     # `updateWithVersion.postgres.test.ts` file exercises a live Postgres and
     # asserts the `_version` predicate is emitted verbatim by the driver
     # (defense against Prisma #10207 / #28840 on a future driver migration).
-    # TASK-324 — `@arcaai/applications` (180 unit specs, mocked repositories) is
+    # `@arcaai/applications` (180 unit specs, mocked repositories) is
     # included so the application-service layer is exercised in CI, matching the
     # local `pnpm test` (turbo) fan-out. Its workspace deps (exceptions/logger/
     # domains) are built above.
@@ -258,7 +258,7 @@ test-compat-playground:
 
 # ── UI component tests (Playwright Component Testing) ───────────────────────
 #
-# TASK-324 — @arcaai/ui ships 84 Playwright-CT specs (1729 cases) that mount
+# @arcaai/ui ships 84 Playwright-CT specs (1729 cases) that mount
 # components in a real browser. They need the Playwright browser image, so this
 # job is gated on packages/ui changes and kept NON-BLOCKING (`allow_failure`)
 # initially to avoid blocking MRs on browser-runner cost/flakiness. Flip
@@ -328,7 +328,7 @@ test-stt:
   image: python:3.11-slim
   # Ignored: references DATABASE_URL/REDIS_URL and no dedicated test infra
   # (esp. Redis) is provisioned. Runs but does not block the pipeline.
-  # allow_failure removed (TASK-621 C.1a) — verified green under CI-shaped env
+  # allow_failure removed — verified green under CI-shaped env
   tags: [test]
   # python:3.11-slim ships neither curl nor wget; vault-login.sh falls back to
   # python3 for both transport and JSON, so no package install is needed here.
@@ -484,7 +484,7 @@ test-guardrail:
   image: python:3.11-slim
   # Ignored: references REDIS_URL and no dedicated test Redis is provisioned.
   # Runs but does not block the pipeline.
-  # allow_failure removed (TASK-621 C.1a) — verified green under CI-shaped env
+  # allow_failure removed — verified green under CI-shaped env
   tags: [test]
   id_tokens: !reference [.vault-oidc-id-token, id_tokens]
   before_script:
@@ -527,7 +527,7 @@ test-guardrail:
 
 # ── Harness tests (pytest) ───────────────────────────────────────────────────
 #
-# TASK-414 — closes the gap where `build-harness` declared an optional
+# Closes the gap where `build-harness` declared an optional
 # `test-harness` need that didn't exist anywhere in `.gitlab/`. The suite is
 # hermetic (no DB/Redis; Temporal, LLM, and reranker clients are stubbed;
 # Qdrant runs via the qdrant-client in-memory local mode), so no external test
@@ -536,7 +536,7 @@ test-guardrail:
 #   - `rag`        — unguarded `qdrant_client` test imports (collection-time)
 #   - `guardrails` — the PHI-redactor tests exercise real Presidio redaction;
 #                    without it `_build_analyzer` raises ModuleNotFoundError and
-#                    `test_phi_redactor.py` fails 4 tests (TASK-523). No spaCy
+#                    `test_phi_redactor.py` fails 4 tests. No spaCy
 #                    model download is needed, so the suite stays hermetic.
 
 test-harness:
@@ -648,7 +648,7 @@ harness-eval-gate:
 #
 # Boots the NestJS API against the shared test database + Redis and exercises
 # the Playwright specs under `apps/api/tests/e2e/`. Currently locked to the
-# TASK-258 / TASK-259 tenant-access-control spec — the smallest blast radius
+# tenant-access-control spec — the smallest blast radius
 # that proves the boot pattern works. Future tickets can broaden the glob
 # once this job is stable.
 #
@@ -779,7 +779,7 @@ test-nlp:
   image: python:3.11-slim
   # Ignored: references DATABASE_URL/REDIS_URL and no dedicated test infra
   # (esp. Redis) is provisioned. Runs but does not block the pipeline.
-  # allow_failure removed (TASK-621 C.1a) — verified green under CI-shaped env
+  # allow_failure removed — verified green under CI-shaped env
   tags: [test]
   id_tokens: !reference [.vault-oidc-id-token, id_tokens]
   before_script:

@@ -30,7 +30,7 @@ import { HarnessOverridesSource, HarnessPolicyResponse, HarnessPolicySource, Upd
  *  - `live`     → the live-documentation delta summariser (`smr.live`).
  *  - `finalize` → the final/comprehensive summary generator (`smr.finalize`).
  *  - `test`     → the tenant-admin prompt-template test bench (`smr.test`,
- *    TASK-635 Lane B) — falls back to `finalize` at the CALLER when unresolved.
+ * — falls back to `finalize` at the CALLER when unresolved.
  * `resolveSmrSelection` consults the matching `AiTaskDefault` key FIRST, then
  * falls back to the legacy `HarnessPolicy.smrProvider/smrModel` cascade.
  */
@@ -43,7 +43,7 @@ const SMR_TASK_KEY: Record<SmrRoutingTask, string> = {
 };
 
 /**
- * TASK-588 — the per-tenant, opt-in SMR fallback selection keys. Tenant-admin
+ * The per-tenant, opt-in SMR fallback selection keys. Tenant-admin
  * configurable (the `smr.` prefix is NOT in `GLOBAL_ADMIN_ONLY_TASK_PREFIXES`);
  * `resolveSmrFallbackSelection` reads these fail-OPEN (no row ⇒ null ⇒ no
  * fallback runs — the same effect as the removed `SMR_FALLBACK_*` env being
@@ -54,7 +54,7 @@ const SMR_FALLBACK_TASK_KEY: Record<SmrRoutingTask, string> = {
   finalize: 'smr.finalize.fallback',
   // Present only for the Record<SmrRoutingTask, string> exhaustiveness check —
   // no AiTaskDefault key is registered for it and no caller resolves fallback
-  // for the 'test' task (TASK-635 Lane B has no fallback tier).
+  // for the 'test' task (has no fallback tier).
   test: 'smr.test.fallback',
 };
 
@@ -169,8 +169,8 @@ const GLOBAL_ADMIN_ONLY_POLICY_KEYS = [
 const KNOB_KEYS = Object.keys(HARNESS_POLICY_DEFAULTS) as (keyof HarnessPolicyKnobs)[];
 
 /**
- * Read-time allow-list for per-agent `harnessOverrides` (TASK-550). Reuses the
- * EXACT set TASK-546 validates on write (`TENANT_TIER_HARNESS_OVERRIDE_KEYS`) so
+ * Read-time allow-list for per-agent `harnessOverrides`. Reuses the
+ * EXACT set validates on write (`TENANT_TIER_HARNESS_OVERRIDE_KEYS`) so
  * the read and write sides can never diverge. Any override key NOT in here is a
  * global-admin-only knob (OD-2) and is dropped defense-in-depth before it can
  * reach the harness — mirroring the SYSTEM overlay of `GLOBAL_ADMIN_ONLY_POLICY_KEYS`.
@@ -272,7 +272,7 @@ export class HarnessPolicyService {
     // Settings-registry read facade for the per-run token budget.
     // Optional + trailing; absent ⇒ null budget ⇒ the harness stays unbounded.
     @Optional() @Inject(EffectiveSettingsService) private readonly effectiveSettings?: EffectiveSettingsService,
-    // TASK-550 — per-department-agent harness overrides. Both optional + trailing
+    // Per-department-agent harness overrides. Both optional + trailing
     // so existing fixtures keep their construction arity; absent ⇒ the overlay is
     // a no-op (the effective policy resolves exactly as before). Consultation →
     // departmentId → department default DepartmentAgent → tenant-tier overrides.
@@ -363,13 +363,13 @@ export class HarnessPolicyService {
    * `tenantId` defaults to the CLS tenant; the worker-facing internal endpoint
    * passes it explicitly.
    *
-   * TASK-550 — when `opts.consultationId` is supplied, the consultation's
+   * When `opts.consultationId` is supplied, the consultation's
    * department default `DepartmentAgent.harnessOverrides` is layered on top of
    * the resolved policy (tenant-tier keys ONLY; global-only keys dropped +
    * warned defense-in-depth). Resolution order becomes: code default → SYSTEM →
    * tenant → department-agent overrides (most specific wins). The overlay is
    * best-effort and never sinks the policy read; with no consultationId the
-   * result is byte-identical to the pre-TASK-550 behaviour.
+   * result is byte-identical to the prior behaviour.
    */
   async getEffectivePolicy(tenantId?: string, opts?: { consultationId?: string }): Promise<HarnessPolicyResponse> {
     const tid = tenantId ?? this.callerTenantId;
@@ -426,7 +426,7 @@ export class HarnessPolicyService {
   }
 
   /**
-   * TASK-550 — layer the consultation's department default `DepartmentAgent`
+   * Layer the consultation's department default `DepartmentAgent`
    * tenant-tier overrides on top of the resolved policy. Called on EVERY
    * `getEffectivePolicy` return path (most specific wins); a no-op when there is
    * no consultationId, no wired repositories, no consultation/department/default
@@ -567,7 +567,7 @@ export class HarnessPolicyService {
   }
 
   /**
-   * TASK-588 — resolve the tenant's per-tenant SMR FALLBACK selection for a task
+   * Resolve the tenant's per-tenant SMR FALLBACK selection for a task
    * (`smr.<task>.fallback`) via `AiTaskDefault`. Mirrors `resolveSmrSelection`'s
    * provider/model derivation (the model's `sourceUri` is the provider-native id
    * SMR expects; `azure` normalises to `azure-openai`), but is fail-OPEN by

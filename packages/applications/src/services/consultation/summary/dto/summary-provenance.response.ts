@@ -1,7 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 /**
- * One transcript segment cited as evidence for the summary (TASK-552 Lane C).
+ * One transcript segment cited as evidence for the summary.
  * Resolved server-side from `citationsMap`'s cited segment ids (both the flat
  * `segmentCitedIds` array and `claims[].evidence[].segmentId`) against the
  * consultation's persisted `TranscriptSegment` rows. Carries offsets/timing

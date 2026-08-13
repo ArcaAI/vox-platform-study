@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ReactNode } from 'react';
 
 // ---------------------------------------------------------------------------
-// TASK-597 open follow-up #2 — auto-tag attributes by the LOUDEST MIC.
+// Auto-tag attributes by the LOUDEST MIC.
 //
 // The original lane-C auto-tag could not tell which microphone was speaking
 // (the SDK exposed one mixed meter) so it rotated round-robin and said so.
@@ -78,7 +78,7 @@ vi.mock('@arcaai/vox/compat', async () => {
       error: null,
     }),
     useArcaSttLanguageModes: () => ({ modes: [], isLoading: false, error: null, refresh: vi.fn() }),
-    // TASK-603 — the provider also mounts the batch-upload queue; an idle stub is
+    // The provider also mounts the batch-upload queue; an idle stub is
     // all these suites need (batch behaviour is covered in BatchUploadTab.test.tsx).
     useArcaBatchTranscription: () => ({
       items: [],

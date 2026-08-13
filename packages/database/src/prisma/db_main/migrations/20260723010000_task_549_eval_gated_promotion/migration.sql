@@ -1,4 +1,4 @@
--- TASK-549 — Eval-gated promotion: golden-set department scoping + eval-run
+-- Eval-gated promotion: golden-set department scoping + eval-run
 -- provenance/trigger attribution. All statements are additive + idempotent
 -- (dev/test Postgres is db-push-managed; applied via psql, never a reset).
 

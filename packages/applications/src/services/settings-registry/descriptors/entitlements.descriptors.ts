@@ -19,7 +19,7 @@ export const ENTITLEMENT_SETTINGS: SettingDescriptor[] = [
     killSwitch: true,
     // Kill-switch — unset degrades to the code default (OFF), i.e. enforcement
     // stays a no-op. Fail-CLOSED here would mean "enforcement errors block every
-    // request", the opposite of a fail-safe rollout (plan §9.3 M9).
+    // request", the opposite of a fail-safe rollout.
     failMode: 'open-to-default',
     category: 'Platform',
     label: 'Entitlements enforcement',
@@ -41,7 +41,7 @@ export const ENTITLEMENT_SETTINGS: SettingDescriptor[] = [
     maxScope: 'tenant',
     editableBy: 'PlanEntitlement',
     globalOnly: true,
-    // Entitlements are a CEILING, not a cascade level (plan §9.3 M2): an absent
+    // Entitlements are a CEILING, not a cascade level: an absent
     // plan flag means "no grant", which the enforcement path already reads as
     // the descriptor default. Not a selection, so not fail-closed.
     failMode: 'open-to-default',
@@ -50,7 +50,7 @@ export const ENTITLEMENT_SETTINGS: SettingDescriptor[] = [
     description,
   })),
   /*
-   * TASK-643 R6 — declared separately from the three above, not folded into the
+   * Declared separately from the three above, not folded into the
    * `.map`, because ONE field differs and that field is the whole point.
    *
    * `failMode: 'closed'`. The other three feature descriptors are

@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { AiCapability, AiDeploymentKind, AiUsageUnit, BillingInvoiceStatus, BillingLineKind, TenantPlan } from '@arcaai/domains';
 
 /**
- * TASK-615 WS-I DoD evidence — ONE simulated month, end to end.
+ * DoD evidence — ONE simulated month, end to end.
  *
  * A PRO tenant's August 2026 combining every mechanism at once: full plan fee,
  * STT overage (streaming sessions), LLM overage with the D16 guardrail
@@ -25,7 +25,7 @@ import { AiCapability, AiDeploymentKind, AiUsageUnit, BillingInvoiceStatus, Bill
  */
 import { makeSimulatedWorld } from './simulated-month.world';
 
-describe('SIMULATED MONTH (WS-I DoD evidence)', () => {
+describe('SIMULATED MONTH (DoD evidence)', () => {
   it('produces the correct draft invoice for a composite August', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-09-02T08:00:00.000Z'));
@@ -69,7 +69,7 @@ describe('SIMULATED MONTH (WS-I DoD evidence)', () => {
     const resummed = draft.lines.reduce((acc, line) => acc + BigInt(line.amountMicros), 0n);
     expect(resummed.toString()).toBe(draft.totalMicros);
 
-    // Human-readable evidence for the ticket README.
+    // Human-readable evidence dump.
     // eslint-disable-next-line no-console -- DoD evidence rendering, test-only
     console.log(
       [

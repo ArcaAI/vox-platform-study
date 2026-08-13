@@ -128,7 +128,7 @@ def get_job_processor(request: Request) -> JobProcessor:
 # Two halves, both required: a cache built AFTER a refresh is born with the
 # current values (`_retention_kwargs`), and a cache that is ALREADY LIVE adopts
 # later changes (`apply_model_cache_retention`). Applying only at construction
-# would leave the admin knob dead for every resident cache — §3.2.
+# would leave the admin knob dead for every resident cache —
 _RETENTION_STATE_ATTR = "model_cache_retention"
 _CACHE_ATTRS = ("gliner_cache", "groundedness_scorer_cache")
 
@@ -154,7 +154,7 @@ def apply_model_cache_retention(app_state: Any, retention: dict[str, int]) -> No
     An ABSENT key keeps the current value, so a gateway outage leaves behaviour
     byte-identical. Resident models are never dropped — the new limits take
     effect on the next sweep or access. The product clamp [60, 3600] is
-    re-applied inside the shared cache (defense in depth, §3.3).
+    re-applied inside the shared cache (defense in depth).
     """
     ttl_seconds = retention.get("ttl_seconds")
     max_models = retention.get("max_models")

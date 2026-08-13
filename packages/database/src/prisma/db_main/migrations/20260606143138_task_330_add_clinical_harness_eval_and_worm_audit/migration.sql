@@ -188,7 +188,7 @@ ALTER TABLE "core"."EvalScore" ADD CONSTRAINT "EvalScore_evalRunId_fkey" FOREIGN
 ALTER TABLE "core"."EvalScore" ADD CONSTRAINT "EvalScore_goldenCaseId_fkey" FOREIGN KEY ("goldenCaseId") REFERENCES "core"."GoldenCase"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- =============================================================================
--- TASK-330 Phase 0.2 — WORM enforcement for HarnessAuditEvent (append-only)
+-- WORM enforcement for HarnessAuditEvent (append-only)
 --
 -- The bootstrap (manual/vault-admin-bootstrap.sql) sets ALTER DEFAULT
 -- PRIVILEGES so newly-created `core` tables auto-grant SELECT/INSERT/UPDATE/

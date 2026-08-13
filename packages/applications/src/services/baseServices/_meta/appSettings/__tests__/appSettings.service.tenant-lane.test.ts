@@ -1,10 +1,10 @@
 /**
- * TASK-558 lane I — the TENANT lane of the app-settings cache.
+ * The TENANT lane of the app-settings cache.
  *
- * Lane G proved that a cache keyed by setting KEY ALONE is only sound while its
- * contents are platform-only, and restricted `_cachedAppSettings` accordingly.
- * Lane I needs per-tenant overrides for the `maxScope: 'tenant'` knobs it moved
- * into the database, which means a SECOND map — and §9.3 M4 says the tenant id
+ * A cache keyed by setting KEY ALONE is only sound while its
+ * contents are platform-only, and `_cachedAppSettings` is restricted accordingly.
+ * Per-tenant overrides for the `maxScope: 'tenant'` knobs moved
+ * into the database, which means a SECOND map — and the tenant id
  * must be part of its key, not an attribute of its value.
  *
  * The contract pinned here:
@@ -44,7 +44,7 @@ const scheduler = { addCronJob: vi.fn(), getCronJob: vi.fn(), deleteCronJob: vi.
 
 const newService = () => new AppSettingsService(repo as never, events as never, cls as never, scheduler as never);
 
-describe('AppSettingsService — tenant lane (§9.3 M4)', () => {
+describe('AppSettingsService — tenant lane', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     delete process.env.APP_SETTINGS_BOOT_INVARIANT;

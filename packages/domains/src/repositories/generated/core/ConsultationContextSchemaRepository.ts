@@ -9,7 +9,7 @@ import { ConsultationContextSchemaEntityMapper } from '../../../mappers';
 import { ConsultationContextSchema } from '../../../models';
 
 /**
- * TASK-658 — the MUTABLE head of a tenant's consultation context declaration.
+ * The MUTABLE head of a tenant's consultation context declaration.
  *
  * Ordinary tenant-scoped model (the Prisma tenant-scope extension pins
  * `tenantId` on every query; `ConsultationContextSchema` is in

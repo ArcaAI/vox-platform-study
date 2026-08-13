@@ -1,5 +1,5 @@
 # =============================================================================
-# HOPE — seal Vault, PRODUCTION digest-pinned apply (TASK-312 Phase E)
+# HOPE — seal Vault, PRODUCTION digest-pinned apply
 # =============================================================================
 # Enforces the image digest pin (not just a comment): the `images:` transformer
 # rewrites `hashicorp/vault:1.21.2` -> `hashicorp/vault@sha256:…` at apply time.

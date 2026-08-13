@@ -1,5 +1,5 @@
 # =============================================================================
-# HOPE — Vault recording rules (TASK-312 Phase E, E.3)    [PrometheusRule CRD]
+# HOPE — Vault recording rules    [PrometheusRule CRD]
 # =============================================================================
 # Pre-aggregations the Grafana dashboard + alerts read so panels stay cheap and
 # expressions stay readable. Apply:  kubectl apply -f monitoring/recording-rules.yaml

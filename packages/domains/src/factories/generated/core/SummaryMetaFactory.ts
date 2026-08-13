@@ -27,7 +27,7 @@ export interface CreateSummaryMetaProps extends BaseEntityFactoryCreateProps {
   qualityScore?: ISummaryMetaEntity['qualityScore'];
   promptResolvedFrom?: ISummaryMetaEntity['promptResolvedFrom'];
   resolvedPromptId?: ISummaryMetaEntity['resolvedPromptId'];
-  // TASK-635 RF-6 — session-agent lineage (populated by C5's finalize path).
+  // Session-agent lineage (populated by the finalize path).
   sessionAgentId?: ISummaryMetaEntity['sessionAgentId'];
   sessionAgentPromptVersion?: ISummaryMetaEntity['sessionAgentPromptVersion'];
   // Clinical-harness sensor scores + citation provenance
@@ -41,7 +41,7 @@ export interface CreateSummaryMetaProps extends BaseEntityFactoryCreateProps {
   // Two-phase (optimistic) assurance state
   gateDecision?: ISummaryMetaEntity['gateDecision'];
   assuranceCompletedAt?: ISummaryMetaEntity['assuranceCompletedAt'];
-  // DNA redaction/rewrite audit (TASK-551). `redactionManifest` is the transient
+  // DNA redaction/rewrite audit. `redactionManifest` is the transient
   // plaintext audit blob (encrypt-on-write via the repository sidecar into
   // `encryptedRedactionManifest`); `redactionApplied` is the plaintext marker.
   redactionApplied?: ISummaryMetaEntity['redactionApplied'];

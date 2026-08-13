@@ -127,7 +127,7 @@ describe('deserializeFilterString — type-aware boolean coercion', () => {
   });
 });
 
-describe('deserializeFilterString — model-aware coercion (§8 generic)', () => {
+describe('deserializeFilterString — model-aware coercion (generic)', () => {
   // Coercion is now driven by the TARGET model's scalar field types (derived
   // from the generated Prisma types), so a resource passes its model NAME
   // instead of per-column opt-in lists. boolean/number/date columns coerce
@@ -243,7 +243,7 @@ describe('deserializeFilterString — model-aware coercion (§8 generic)', () =>
   });
 });
 
-describe('deserializeFilterString — enum / JSON column coercion (§8 follow-up)', () => {
+describe('deserializeFilterString — enum / JSON column coercion (follow-up)', () => {
   // Enum and JSON columns are FIRST-CLASS recognized by the model field-type
   // registry (drift-guarded by the `satisfies ModelFilterFieldTypes<T>` mapped
   // type) rather than being silently bucketed with "unknown / String".

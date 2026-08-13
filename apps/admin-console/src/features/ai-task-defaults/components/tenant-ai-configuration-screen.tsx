@@ -19,19 +19,19 @@ import { SmrModelsSection } from './smr-models-section';
 const TAB_VALUES = ['models', 'speech', 'voice', 'providers'] as const;
 
 /**
- * Tenant "AI Configuration" hub (`/ai-configuration`, tier 30-49) — TASK-595.
+ * Tenant "AI Configuration" hub (`/ai-configuration`, tier 30-49) —.
  *
  * The single tenant AI surface: it absorbs the retired standalone screens
  * `/stt-config`, `/tts-config` and `/ai-providers` into four tabs so a tenant
  * admin configures everything AI-related in one place.
  *
- *  - "Models"    — the tenant's OWN summarization selection (SMR primary +
+ *  - "Models" — the tenant's OWN summarization selection (SMR primary +
  *    optional fallback, one-action default-provider control) PLUS the
  *    READ-ONLY effective models / HarnessPolicy visibility for the
  *    platform-managed guardrail/nlp/harness keys. Backed by `AiTaskDefault`.
- *  - "Speech"    — the tenant STT fallback spec (pipeline, auto-switch, failure
+ *  - "Speech" — the tenant STT fallback spec (pipeline, auto-switch, failure
  *    threshold), OCC-edited. Backed by `TenantSttConfig`.
- *  - "Voice"     — the tenant TTS config (voices, routing, bindings), OCC-edited.
+ *  - "Voice" — the tenant TTS config (voices, routing, bindings), OCC-edited.
  *    Backed by `TenantTtsConfig`.
  *  - "Providers" — the ONE authoritative bring-your-own credential editor
  *    (LLM / STT / TTS) over the unified provider plane. Backed by `GlobalSetting`.

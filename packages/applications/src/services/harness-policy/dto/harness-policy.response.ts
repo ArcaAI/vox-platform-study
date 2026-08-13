@@ -11,7 +11,7 @@ import type { McpServerResponse } from '../../mcp-server/dto';
 export type HarnessPolicySource = 'tenant' | 'system-default' | 'code-default';
 
 /**
- * Provenance of a per-department-agent harness override overlay (TASK-550).
+ * Provenance of a per-department-agent harness override overlay.
  * Present on the effective policy ONLY when a consultation's default
  * `DepartmentAgent` supplied at least one tenant-tier override that was applied
  * on top of the resolved tenant/SYSTEM policy. Additive + observability-only —
@@ -153,7 +153,7 @@ export class HarnessPolicyResponse {
   tokenBudgetPerRun: number | null;
 
   /**
-   * Per-department-agent override provenance (TASK-550). Present only when a
+   * Per-department-agent override provenance. Present only when a
    * consultation's default `DepartmentAgent` supplied tenant-tier overrides that
    * were layered on top of the resolved policy. Additive/observability-only —
    * the worker's `fetch_policy` reads it into the trajectory step; the harness

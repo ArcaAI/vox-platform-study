@@ -1,7 +1,7 @@
 import Decimal from 'decimal.js';
 
 /**
- * Pure percentile computation for `getCostPerEncounter` (TASK-615 WS-J).
+ * Pure percentile computation for `getCostPerEncounter`.
  *
  * Nearest-rank method (no interpolation): for a sorted ascending sample of
  * size `n`, the p-th percentile is the value at index `ceil(p/100 * n) - 1`,

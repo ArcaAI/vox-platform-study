@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * The Context Schemas list (TASK-666) — `GET admin/consultation-context-schemas`
+ * The Context Schemas list — `GET admin/consultation-context-schemas`
  * has no query filters (the controller reads only the caller's tenant off
  * CLS), so this fetches the whole tenant catalog in one page (admin scale),
  * mirroring the Agent Catalog's flat-list pattern.

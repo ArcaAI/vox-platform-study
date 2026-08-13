@@ -1,7 +1,7 @@
 /**
  * BillingInvoiceEntityMapper — OCC `_version` strip.
  *
- * `BillingInvoice` is the ONE new TASK-615 model that is optimistically
+ * `BillingInvoice` is the ONE billing-plane model that is optimistically
  * concurrency-controlled: a draft is edited (and then FINALIZED) through
  * versioned PATCH routes, so `_version` → strong ETag → `If-Match` →
  * `repository.updateWithVersion` is the whole immutability story for a closed

@@ -68,7 +68,7 @@ export const CONSULTATION_ENDPOINTS = {
   /** Live running-SOAP SSE stream (full-state snapshots) while recording. */
   LIVE_SUMMARY_STREAM: (id: string) => `/consultations/${encodeURIComponent(id)}/live-summary/stream`,
   /**
-   * Consultation-loop workflow event SSE stream (TASK-660/665). Append-only
+   * Consultation-loop workflow event SSE stream. Append-only
    * feed relaying `consultation:loop:{id}` — each event is a discrete
    * `LoopEvent` (action started/finished, specialist dispatched, ...), never
    * a full-state snapshot. No server-side late-join/replay (see
@@ -366,7 +366,7 @@ export const MY_TENANT_ENDPOINTS = {
   CONFIG: '/tenant/me/config',
   /**
    * Discovery bundle for the caller tenant's PINNED `ConsultationContextSchema`
-   * (TASK-658/661/665). A deliberate sibling of `CONFIG` above, not an
+   * A deliberate sibling of `CONFIG` above, not an
    * addition to it — see `ConsultationSchemaClient.ts`.
    */
   CONTEXT_SCHEMA: '/tenant/me/context-schema',
@@ -390,7 +390,7 @@ export const MY_TENANT_ENDPOINTS = {
 export const STT_ENDPOINTS = {
   /** Create a streaming session — returns sessionId + wsUrl */
   CREATE_SESSION: '/audio/transcription-jobs/stream/session',
-  /** List selectable STT language modes + per-mode supported engines (TASK-587) */
+  /** List selectable STT language modes + per-mode supported engines*/
   LANGUAGE_MODES: '/audio/transcription-jobs/language-modes',
   /** Close/delete a streaming session */
   CLOSE_SESSION: (sessionId: string) => `/audio/transcription-jobs/stream/session/${encodeURIComponent(sessionId)}`,
@@ -401,14 +401,14 @@ export const STT_ENDPOINTS = {
    */
   REFRESH_TICKET: (sessionId: string) => `/audio/transcription-jobs/stream/session/${encodeURIComponent(sessionId)}/refresh-ticket`,
   /**
-   * Switch a live streaming session to the tenant fallback pipeline (TASK-567 R4).
+   * Switch a live streaming session to the tenant fallback pipeline.
    * The backend swaps the ASR engine in place; the client learns via the
    * `provider_switched` status frame. 409 when no fallback is configured or the
    * session is already on the fallback; 404 on a backend without the route.
    */
   SWITCH_TO_FALLBACK: (sessionId: string) => `/audio/transcription-jobs/stream/session/${encodeURIComponent(sessionId)}/switch-to-fallback`,
   /**
-   * Switch a live streaming session BACK to its primary pipeline (TASK-586 Lane H).
+   * Switch a live streaming session BACK to its primary pipeline.
    * The primary-direction counterpart of `SWITCH_TO_FALLBACK` — gives native SDK
    * consumers a 2-way pipeline↔default toggle. 409 when already on the primary or
    * the primary engine was never loaded; 404 on a backend without the route.
@@ -442,12 +442,12 @@ export const STT_ENDPOINTS = {
   RETRY_JOB: (jobId: string) => `/audio/transcription-jobs/${encodeURIComponent(jobId)}/retry`,
   /**
    * Batch upload ceilings — recordings per batch, minutes per recording, size,
-   * in-flight jobs (TASK-604). The SDK enforces the SAME numbers the gateway
+   * in-flight jobs. The SDK enforces the SAME numbers the gateway
    * does; fetching them is what keeps "5" and "60" from being hardcoded twice.
    */
   BATCH_LIMITS: '/audio/transcription-jobs/limits',
   /**
-   * The tenant's configured STT fallback pipeline (TASK-604) — lets the live
+   * The tenant's configured STT fallback pipeline — lets the live
    * provider toggle NAME the default and disable itself when none is set,
    * instead of discovering the 409 mid-consultation.
    */
@@ -554,7 +554,7 @@ export const STORAGE_KEYS = {
 // =============================================================================
 
 /**
- * Local (in-browser) transcription kill switch (TASK-545).
+ * Local (in-browser) transcription kill switch.
  *
  * The owner decided to disable on-device Whisper transcription
  * platform-wide for now — backend-based transcription only. VAD and noise

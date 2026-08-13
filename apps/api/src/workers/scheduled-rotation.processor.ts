@@ -2,7 +2,7 @@
 //
 // OPTIONAL. Disabled by default; opt-in via VAULT_ROTATION_SCHEDULE
 // (cron string, e.g. '0 3 * * 0' for weekly 03:00 Sunday). Mirrors the
-// pattern in the SRE rotation runbook (§16 of the deployment doc).
+// pattern in the SRE rotation runbook (of the deployment doc).
 //
 // What it does:
 //   1. Loads the rotation policy table (key → maxAgeDays).

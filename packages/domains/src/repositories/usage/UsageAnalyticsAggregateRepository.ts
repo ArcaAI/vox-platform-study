@@ -6,13 +6,13 @@ import { AiCapability } from '../../enums';
 
 /**
  * Bounded SQL aggregates over the raw usage ledger for the usage-analytics
- * surface (TASK-615 WS-J).
+ * surface.
  *
  * These two queries exist because neither the daily/hourly rollups nor the
  * generated `AiUsageEventRepository` can express them:
  *   - `sumCostPerConsultation` groups by `consultationId` — a dimension the
  *     rollup tuple does not carry (mirrors `BillingUsageAggregateRepository`'s
- *     rationale in the WS-I lane) — and is the source distribution for
+ *     rationale) — and is the source distribution for
  *     `getCostPerEncounter`'s p50/p90/p99.
  *   - `topTenantsByCost` / `sumByokNotionalByCapability` need to run WITHOUT a
  *     `tenantId` filter, or grouped BY `tenantId`, which the tenant-scoped

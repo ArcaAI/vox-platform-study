@@ -164,7 +164,7 @@ class TestCompleteJob:
 
             assert captured_json["resultMetadata"] == {}
 
-    # TASK-615 WS-C — typed usage-attribution fields lifted out of
+    # Typed usage-attribution fields lifted out of
     # resultMetadata (the blob is encrypted on the gateway side, so anything
     # trapped only inside it is unqueryable). These ride as SIBLING top-level
     # fields on InternalCompleteJobRequest, matching resultText/resultMetadata.

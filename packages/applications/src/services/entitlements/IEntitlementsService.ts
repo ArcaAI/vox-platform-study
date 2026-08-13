@@ -79,7 +79,7 @@ export interface IEntitlementsService {
   getCapabilities(tenantId: EntityId): Promise<EntitlementCapabilitiesResponse>;
 
   /**
-   * (TASK-643 R6) — NON-THROWING read of a boolean feature entitlement for
+   * NON-THROWING read of a boolean feature entitlement for
    * `tenantId`. Returns the resolved value (seeded plan default ← plan row ←
    * tri-state tenant override).
    *

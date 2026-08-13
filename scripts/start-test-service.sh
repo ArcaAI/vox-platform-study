@@ -123,7 +123,7 @@ load_env_test() {
 }
 
 # Fail fast with an actionable message when the service port is already bound.
-# Since TASK-557 the test env has its own ports (DEV + 100, inspector 9329), so
+# The test env has its own ports (DEV + 100, inspector 9329), so
 # a bound test port means a stale prior test instance rather than a dev stack.
 # Without this it surfaces as an unhandled EADDRINUSE deep in the Nest bootstrap.
 check_port_available() {

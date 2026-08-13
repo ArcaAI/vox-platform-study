@@ -8,7 +8,7 @@
 // Governance: `guardrail.*`, `nlp.*`, and `harness.*` keys are
 // GLOBAL-ADMIN-ONLY — `editableBy` points at the global-admin resource
 // (`'all'`, the CASL manage-everything subject) and the descriptor is flagged
-// `globalOnly`. `smr.*` is tenant-admin configurable (TASK-588): its
+// `globalOnly`. `smr.*` is tenant-admin configurable: its
 // descriptors resolve to the tenant-editable `AiTaskDefault` resource and are
 // NOT flagged `globalOnly` (driven by `GLOBAL_ADMIN_ONLY_TASK_PREFIXES`).
 
@@ -42,7 +42,7 @@ const META: Record<AiTaskKey, { label: string; description: string }> = {
     label: 'Diagnosis suggestion model',
     description: 'Default text-classification model used for symptom→disease diagnosis suggestions (global admins only).',
   },
-  // SMR generation routing (tenant-admin configurable — TASK-588).
+  // SMR generation routing (tenant-admin configurable).
   'smr.live': {
     label: 'SMR live-summary model',
     description: 'Default text-generation model for the live-documentation delta summariser.',
@@ -51,7 +51,7 @@ const META: Record<AiTaskKey, { label: string; description: string }> = {
     label: 'SMR final-summary model',
     description: 'Default text-generation model for the final/comprehensive summary generator.',
   },
-  // per-tenant SMR fallback selections (opt-in — TASK-588). No SYSTEM default;
+  // per-tenant SMR fallback selections (opt-in). No SYSTEM default;
   // when unset, no fallback runs (`resolveSmrFallbackSelection` returns null).
   'smr.live.fallback': {
     label: 'SMR live-summary fallback model',
@@ -61,7 +61,7 @@ const META: Record<AiTaskKey, { label: string; description: string }> = {
     label: 'SMR final-summary fallback model',
     description: 'Fallback text-generation model for the final/comprehensive summary generator when the primary provider fails.',
   },
-  // prompt-template test-bench routing (TASK-635 Lane B — tenant-admin
+  // prompt-template test-bench routing (tenant-admin
   // configurable, same governance class as smr.live/smr.finalize). Consulted
   // only when the caller does not supply an explicit provider/model pair on
   // `POST admin/prompt-templates/:id/test`; falls back to `smr.finalize` when
@@ -75,7 +75,7 @@ const META: Record<AiTaskKey, { label: string; description: string }> = {
     label: 'Harness judge model',
     description: 'Default text-generation model used as the LLM-as-judge by the clinical documentation harness (global admins only).',
   },
-  // vision extraction (TASK-657) — tenant-admin configurable, same
+  // vision extraction — tenant-admin configurable, same
   // governance class as smr.*.
   'vlm.extract': {
     label: 'Vision extraction model',
@@ -93,7 +93,7 @@ export const MODEL_DEFAULT_SETTINGS: SettingDescriptor[] = AI_TASK_KEYS.map<Sett
     maxScope: 'tenant',
     editableBy: globalAdminOnly ? 'all' : 'AiTaskDefault',
     ...(globalAdminOnly ? { globalOnly: true } : {}),
-    // Provider/model SELECTION — the canonical fail-closed class (plan §9.3 M5).
+    // Provider/model SELECTION — the canonical fail-closed class.
     // An unselected task must surface as unresolved, never as a null the caller
     // cannot tell apart from a deliberate value, and never as a neighbouring
     // tenant's or a global model. This mirrors guardrail's own posture

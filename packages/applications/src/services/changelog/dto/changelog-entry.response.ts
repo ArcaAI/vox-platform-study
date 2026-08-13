@@ -2,7 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { ChangelogAudience, ChangelogPublishStatus, ChangelogSeverity } from '@arcaai/domains';
 
 /**
- * Curated release note as seen by a caller (TASK-648 §3.5/§3.6, frozen
+ * Curated release note as seen by a caller (frozen
  * contract `ChangelogEntryResponse`).
  *
  * `body` is markdown and MUST be rendered sanitised by the consumer — it is

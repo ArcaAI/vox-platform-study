@@ -1,5 +1,5 @@
-// Fail-fast environment validation for the API gateway — TASK-558 lane D
-// (plan §9.2 L2: "validate before the framework boots; fail fast with the FULL
+// Fail-fast environment validation for the API gateway
+// (: "validate before the framework boots; fail fast with the FULL
 // list of problems, not the first one").
 //
 // SOURCE OF TRUTH: the schema is BUILT from setting descriptors, never from a
@@ -8,7 +8,7 @@
 // operational knobs and gates still read from env, and
 // `API_PLATFORM_ENV_SETTINGS` the gateway topology. Env-var NAMES come from
 // `toEnvVarName()` — the mechanical dotted-key ↔ SCREAMING_SNAKE mapping of plan
-// §3.3 — so a rename in the registry can never silently diverge from what this
+// so a rename in the registry can never silently diverge from what this
 // file validates. `scripts/env-sync.mts` generates `apps/api/.env.sample` and
 // `turbo.json#globalEnv` from the SAME list.
 //
@@ -19,7 +19,7 @@
 // downstream service's flag into a loud boot failure instead of a flag that
 // silently never takes effect.
 //
-// MAPPING FROM `failMode` TO THE SHAPE (the boot contract, plan §4 B4):
+// MAPPING FROM `failMode` TO THE SHAPE (the boot contract):
 //   `closed`          → REQUIRED; absence is a hard boot error.
 //   `open-to-default` → optional, defaulted from `descriptor.default`.
 //
@@ -145,7 +145,7 @@ export type ApiEnv = Record<string, string | number | boolean | undefined>;
 /**
  * Validate a raw environment against the declared surface.
  *
- * Throws ONE error listing EVERY problem (plan §9.2 L2) — a boot missing three
+ * Throws ONE error listing EVERY problem — a boot missing three
  * variables must say so once, not across three restarts.
  *
  * An empty string is treated as ABSENT: a `KEY=` line in an env file expresses
@@ -210,7 +210,7 @@ let cached: ApiEnv | null = null;
  * Lazily validated accessor. Called once from `apps/api/src/main.ts` immediately
  * after `loadEnv()` and BEFORE `NestFactory.create()`, so a missing env-tier
  * variable fails the boot rather than surfacing as an `undefined` at first use
- * (plan §9.2 L2/L3 — validate once, read the typed object thereafter).
+ * (/L3 — validate once, read the typed object thereafter).
  */
 export function apiEnv(): ApiEnv {
   cached ??= parseApiEnv(process.env);

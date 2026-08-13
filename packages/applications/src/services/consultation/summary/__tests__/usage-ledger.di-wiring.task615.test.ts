@@ -7,7 +7,7 @@ import { ChainSummaryService } from '../chain-summary.service';
 import { ChainSummaryServiceModule } from '../chain-summary.service.module';
 
 /**
- * TASK-615 WS-D2 — DI wiring guard for the metered SummaryMeta path.
+ * DI wiring guard for the metered SummaryMeta path.
  *
  * WS-D shipped `persistSummaryMetaWithUsage` on both summary services, whose
  * transactional (metered) branch is taken only when the injected
@@ -59,7 +59,7 @@ function moduleMetadata(target: any, key: string): unknown[] {
   return (Reflect.getMetadata(key, target) as unknown[]) ?? [];
 }
 
-describe('TASK-615 WS-D usage metering — NestJS DI wiring', () => {
+describe('Usage metering — NestJS DI wiring', () => {
   it('CoreDatabaseModule provides AND exports the domains CoreUnitOfWorkService', () => {
     expect(moduleMetadata(CoreDatabaseModule, MODULE_PROVIDERS_METADATA)).toContain(CoreUnitOfWorkService);
     expect(moduleMetadata(CoreDatabaseModule, MODULE_EXPORTS_METADATA)).toContain(CoreUnitOfWorkService);

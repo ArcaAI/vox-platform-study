@@ -26,7 +26,7 @@ import {
  * This is a brand-new service for STT WebSocket streaming.
  * It does NOT touch or reuse the old STT v1 WebSocket implementation.
  *
- * TASK-615 WS-C: this is also the ONE emission point for the
+ * This is also the ONE emission point for the
  * `transcribe.stream` usage-ledger row. Every caller (the DELETE controller
  * route, the WS gateway's disconnect/finalize/shutdown paths, the removal
  * retry service, and the stt-compat surface) tears a session down through
@@ -41,7 +41,7 @@ export class StreamingSessionService implements IStreamingSessionService {
   constructor(
     private readonly httpService: HttpService,
     @Optional() @Inject(IConfigService) private readonly configService?: IConfigService,
-    // Optional + trailing so every pre-TASK-615 2-arg construction (tests,
+    // Optional + trailing so every existing 2-arg construction (tests,
     // and any DI graph that doesn't wire the ledger) keeps compiling —
     // emission is simply skipped when this is absent.
     @Optional() @Inject(IUsageLedgerService) private readonly usageLedgerService?: IUsageLedgerService,
@@ -78,7 +78,7 @@ export class StreamingSessionService implements IStreamingSessionService {
   }
 
   /**
-   * Fetch the STT language-mode catalog + per-mode supported engines (TASK-587).
+   * Fetch the STT language-mode catalog + per-mode supported engines.
    *
    * Backend-authoritative source of truth for the SDK picker. The catalog is
    * static, so a short timeout + a safe empty fallback keep this read cheap and
@@ -118,10 +118,10 @@ export class StreamingSessionService implements IStreamingSessionService {
             microphone_id: dto.microphoneId,
             user_id: dto.userId,
             language: dto.language ?? null,
-            // End-user language mode (TASK-587); STT resolves it against the
+            // End-user language mode; STT resolves it against the
             // session engine and 422s a mode no configured engine can serve.
             language_mode: dto.languageMode ?? null,
-            // Pre-start default-provider selection (TASK-586 C8). STT opens the
+            // Pre-start default-provider selection. STT opens the
             // session on the fallback engine when 'fallback' and a fallback is
             // configured; otherwise proceeds on primary (fail-open).
             start_on: dto.startOn ?? null,
@@ -129,11 +129,11 @@ export class StreamingSessionService implements IStreamingSessionService {
             // Per-tenant storage descriptor (DEDICATED tenants only; null/omitted
             // for SHARED). snake_case keys already match the Python worker schema.
             storage: dto.storage ?? null,
-            // Per-tenant BYO provider credentials + fallback pointer (TASK-567).
+            // Per-tenant BYO provider credentials + fallback pointer.
             // Held by the session runtime in memory only; NEVER logged.
             provider_overrides: dto.providerOverrides ?? null,
             fallback_pipeline_id: dto.fallbackPipelineId ?? null,
-            // Tenant governance for the FAILURE-DRIVEN auto switch (TASK-614).
+            // Tenant governance for the FAILURE-DRIVEN auto switch.
             // Both are real `TenantSttConfig` settings that were resolved by the
             // gateway and then dropped here, so STT's EngineSwitchController
             // always used its own defaults — a tenant that disabled
@@ -142,7 +142,7 @@ export class StreamingSessionService implements IStreamingSessionService {
             // `false` survives.
             auto_switch_enabled: dto.autoSwitchEnabled ?? null,
             consecutive_failure_threshold: dto.consecutiveFailureThreshold ?? null,
-            // Dual-/multi-mic source count (TASK-615 #12): STT stores it and
+            // Dual-/multi-mic source count: STT stores it and
             // echoes it on the teardown summary so the usage row is repriceable.
             channel_count: dto.channelCount ?? 1,
           },
@@ -165,7 +165,7 @@ export class StreamingSessionService implements IStreamingSessionService {
         maxConcurrent: data.maxConcurrent ?? (data as any).max_concurrent,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         currentActive: data.currentActive ?? (data as any).current_active,
-        // The RESOLVED pipeline + the engine STT actually opened on (TASK-614).
+        // The RESOLVED pipeline + the engine STT actually opened on.
         // This is the client's only honest baseline: the request carries what
         // was ASKED for, which differs from what runs whenever the caller sent
         // no pipelineId, chose `startOn: 'fallback'`, or the primary ASR failed
@@ -226,7 +226,7 @@ export class StreamingSessionService implements IStreamingSessionService {
   }
 
   /**
-   * Trigger a mid-session engine switch (TASK-567 R4, TASK-586).
+   * Trigger a mid-session engine switch.
    *
    * Bidirectional for user-initiated switches: POSTs `{ target }` to the apps/stt
    * internal switch route, which XADDs a `SWITCH_TO_FALLBACK` control message
@@ -241,7 +241,7 @@ export class StreamingSessionService implements IStreamingSessionService {
   }
 
   /**
-   * Back-compat alias for `switchProvider(sessionId, 'fallback')` (TASK-567 native path).
+   * Back-compat alias for `switchProvider(sessionId, 'fallback')`.
    */
   async switchToFallback(sessionId: string): Promise<void> {
     await this.switchProvider(sessionId, 'fallback');
@@ -250,7 +250,7 @@ export class StreamingSessionService implements IStreamingSessionService {
   /**
    * Remove a streaming session (triggers finalization on STT).
    *
-   * TASK-615 WS-C: a REAL teardown now returns a usage-attribution summary
+   * A REAL teardown now returns a usage-attribution summary
    * (see `StreamingSessionTeardownSummary`), which this emits as ONE
    * `transcribe.stream` ledger row (SESSION_SECOND + AUDIO_SECOND) through
    * `IUsageLedgerService`. The idempotent "already gone" branch (204, no
@@ -330,8 +330,8 @@ export class StreamingSessionService implements IStreamingSessionService {
             engine: summary.engine,
             pipelineId: summary.pipeline_id,
             languageMode: summary.language_mode ?? null,
-            // Real dual-/multi-mic signal from the teardown summary (TASK-615 #12);
-            // defaults to 1 for a single mic or a pre-#12 STT that omits it.
+            // Real dual-/multi-mic signal from the teardown summary;
+            // defaults to 1 for a single mic or an older STT that omits it.
             channelCount: summary.channel_count ?? 1,
             streamKind: 'ws',
             interrupted,
@@ -352,7 +352,7 @@ export class StreamingSessionService implements IStreamingSessionService {
   }
 
   /**
-   * Push-back entry for the STT idle reaper (TASK-615 #13).
+   * Push-back entry for the STT idle reaper.
    *
    * Normally the gateway learns a session's usage from the DELETE-teardown
    * response and calls {@link emitStreamingUsage} itself. But when the gateway

@@ -194,14 +194,14 @@ describe('playground consultation client', () => {
     expect(calls[1].body).toEqual({ overrideSafetyFlag: true });
   });
 
-  it('reads persisted transcripts (TASK-552 Lane C evidence source)', async () => {
+  it('reads persisted transcripts (evidence source)', async () => {
     const calls = installFetchMock(() => Response.json([{ id: 'ctx-t1', type: 'TRANSCRIPT', content: 'Patient reports chest pain.' }]));
     const transcripts = await getTranscriptions('c-1');
     expect(calls.map((call) => `${call.method} ${call.url}`)).toEqual(['GET /api/hope/consultations/c-1/context/transcriptions']);
     expect(transcripts[0].content).toBe('Patient reports chest pain.');
   });
 
-  it('reads summary provenance including cited segments (TASK-552 Lane C)', async () => {
+  it('reads summary provenance including cited segments', async () => {
     const calls = installFetchMock(() =>
       Response.json({
         contextItemId: 'ctx-9',

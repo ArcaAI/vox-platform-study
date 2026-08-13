@@ -1,5 +1,5 @@
 /**
- * TASK-635 C2 — capability-keyed agent bindings in `PromptResolutionService`.
+ * Capability-keyed agent bindings in `PromptResolutionService`.
  *
  * Covers the C1 rollout invariants that belong to C2:
  *
@@ -60,7 +60,7 @@ function agent(overrides: Record<string, unknown> = {}) {
   };
 }
 
-describe('PromptResolutionService — TASK-635 capability-keyed bindings', () => {
+describe('PromptResolutionService — capability-keyed bindings', () => {
   let service: PromptResolutionService;
 
   beforeEach(() => {
@@ -97,7 +97,7 @@ describe('PromptResolutionService — TASK-635 capability-keyed bindings', () =>
       const result = await service.resolve({ departmentId: DEPT, promptType });
 
       // `selected = visitBinding ?? promptTemplateId` — with both bindings null
-      // this is exactly the pre-TASK-635 read, for BOTH visit types.
+      // this is exactly the previous read, for BOTH visit types.
       expect(result.promptId).toBe('base-tpl');
       expect(result.resolvedFrom).toBe('agent');
       expect(result.content).toBe('content-of-base-tpl-v1');
@@ -269,7 +269,7 @@ describe('PromptResolutionService — TASK-635 capability-keyed bindings', () =>
   });
 
   // =========================================================================
-  // OD-7(b) — README §3.2: the 'v1' surface excludes `dept-free` rather than
+  // OD-7(b) — the 'v1' surface excludes `dept-free` rather than
   // requiring `smr-v1`, so hand-created tenant rows keep resolving. These
   // tests drive `mockPromptTemplateRepository.findAll` through a real
   // (if partial) emulation of the Prisma `tags` list-filter semantics the

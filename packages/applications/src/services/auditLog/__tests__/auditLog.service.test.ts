@@ -887,7 +887,7 @@ describe('AuditLogService', () => {
        * factory (CLS tenant, or SYSTEM_TENANT_ID for tenant-less/system
        * logins), so the scope filter adds nothing here.
        */
-      describe('tenant-scope bypass invariant (§7)', () => {
+      describe('tenant-scope bypass invariant', () => {
         it('persists the LOGIN audit via the unscoped baseClient when CLS has no tenant context', async () => {
           // Clean-boot login: no user, no tenantId in CLS.
           mockClsService.get.mockImplementation((key: string) => {

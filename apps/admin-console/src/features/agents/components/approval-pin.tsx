@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * Approval status + the version the approval is PINNED to (TASK-634 R6).
+ * Approval status + the version the approval is PINNED to.
  *
  * `PromptResolutionService.resolveGovernedContent` serves the `PromptVersion`
  * snapshot at `approvedVersionNumber` — never the mutable `content` column. So

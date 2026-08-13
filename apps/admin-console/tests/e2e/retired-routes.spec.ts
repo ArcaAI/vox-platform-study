@@ -28,7 +28,7 @@ test.describe('retired route redirects', () => {
     // tenant before the tabs mount at all. This is NOT a regression from the
     // fold: `/prompt-studio` was `WorkingTenantGate`d too (a global-admin-only
     // screen over per-tenant data), so both surfaces required a tenant before
-    // and after. TASK-634 R6 re-pointed the target from `/agents` when the
+    // and after. Re-pointed the target from `/agents` when the
     // governance tab moved with the rest of the PromptTemplate surface.
     await selectWorkingTenant(page);
     await page.goto('/prompt-studio');

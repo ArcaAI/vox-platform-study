@@ -27,7 +27,7 @@ import { SimpleCrossTabSync, createCrossTabSync } from '../core/SimpleCrossTabSy
 import type { ISDKLogger } from '../core/logger';
 import { openSessionOperation, loadConsultationOperation, getPatientHistoryOperation } from '../core/sessionUtils';
 import { AgenticError } from '../types';
-// TASK-665 — client-side payload validation against the session-pinned schema.
+// Client-side payload validation against the session-pinned schema.
 import { validateConsultationContextPayload } from '../core/contextPayloadValidation';
 
 // =============================================================================
@@ -135,7 +135,7 @@ export function useArcaSession(): UseArcaSessionReturn {
   /**
    * Add context to the current consultation.
    *
-   * TASK-665: when `input.kindKey` + `input.payload` are both present, the
+   * When `input.kindKey` + `input.payload` are both present, the
    * payload is validated CLIENT-SIDE against the session's pinned schema
    * bundle BEFORE the request is sent — a fast-fail UX aid, never the source
    * of truth (see `validateConsultationContextPayload`'s doc comment: an
@@ -143,7 +143,7 @@ export function useArcaSession(): UseArcaSessionReturn {
    * the server decide", not a client-side error). Every write also carries
    * `X-Context-Schema-Version` when a schema is pinned, so the server
    * validates against the EXACT version this client built against
-   * (TASK-661) rather than whatever the tenant has since published.
+   * Rather than whatever the tenant has since published.
    */
   const addContext = useCallback(
     async (input: AddContextInput): Promise<ContextItem> => {
@@ -174,7 +174,7 @@ export function useArcaSession(): UseArcaSessionReturn {
       const pinnedSchemaVersionId = consultationSchema?.contextSchemaVersionId ?? undefined;
 
       // `structuredData` is not a field the gateway declares — a body carrying
-      // it is rejected wholesale by `forbidNonWhitelisted` (TASK-676 §3.5.2).
+      // it is rejected wholesale by `forbidNonWhitelisted`.
       // Fold the deprecated alias into the declared `metadata` field so callers
       // written against the old shape start working rather than silently 400ing.
       const { structuredData, ...rest } = input;

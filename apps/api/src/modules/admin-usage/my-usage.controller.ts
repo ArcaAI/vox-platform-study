@@ -6,7 +6,7 @@ import { Authorize } from '../../decorators';
 import { BudgetBurndownQuery, MyUsageSummaryQuery } from './dto';
 
 /**
- * Tenant self-service usage reads (TASK-615 WS-J, D8), mounted at
+ * Tenant self-service usage reads (D8), mounted at
  * `/usage/me/*` (global prefix → `/api/v1/usage/me/*`).
  *
  * Same posture as `MyBillingController` — `read Tenant`, always the CLS

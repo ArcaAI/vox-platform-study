@@ -1,13 +1,13 @@
 /**
- * TASK-661 — schema compatibility and lifecycle, at the
+ * Schema compatibility and lifecycle, at the
  * `ConsultationContextSchemaService` layer.
  *
- * TASK-658 already built the mechanism this ticket needs: `publish` refuses a
+ * Already built the mechanism needed here: `publish` refuses a
  * BREAKING change without `allowBreakingChange` (`classifyDefinitionChange`),
  * and `validateContextPayload` already resolves an EXPLICIT
  * `contextSchemaVersionId` over the tenant's current pin
  * (`consultation-context-schema.service.test.ts` — "honours an explicitly
- * supplied version pin over the schema default"). What TASK-661 adds:
+ * supplied version pin over the schema default"). What adds:
  *
  *  1. Proof that a SUPERSEDED version — one that is no longer the pin, and
  *     was never pinned at all if it was skipped — stays fully readable and
@@ -121,7 +121,7 @@ const createVersionEntity = (versionNumber: number, definition: Record<string, u
   version: 1,
 });
 
-describe('ConsultationContextSchemaService — TASK-661 version pinning + lifecycle', () => {
+describe('ConsultationContextSchemaService — version pinning + lifecycle', () => {
   let service: ConsultationContextSchemaService;
 
   beforeEach(() => {
@@ -164,7 +164,7 @@ describe('ConsultationContextSchemaService — TASK-661 version pinning + lifecy
       expect(v1!.definition).toEqual(V1_DEFINITION);
     });
 
-    it('listVersions (TASK-674) tags every OTHER version with its versionSkew relative to the current pin, and leaves the pinned version undefined', async () => {
+    it('listVersions tags every OTHER version with its versionSkew relative to the current pin, and leaves the pinned version undefined', async () => {
       const versions = await service.listVersions('schema-1');
       const v3 = versions.find((v) => v.versionNumber === 3);
       const v1 = versions.find((v) => v.versionNumber === 1);
@@ -242,7 +242,7 @@ describe('ConsultationContextSchemaService — TASK-661 version pinning + lifecy
       expect(result.contextSchemaVersionId).toBe('version-1');
     });
 
-    it('listVersions (TASK-674) reports ADDITIVE, not BREAKING, when the drift to the current pin is safe', async () => {
+    it('listVersions reports ADDITIVE, not BREAKING, when the drift to the current pin is safe', async () => {
       mockSchemaRepository.findById.mockResolvedValue(createSchemaEntity({ pinnedVersionNumber: 2 }));
       mockVersionRepository.findAllForSchema.mockResolvedValue([createVersionEntity(2, V2_DEFINITION), createVersionEntity(1, V1_DEFINITION)]);
 

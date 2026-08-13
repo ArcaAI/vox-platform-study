@@ -1,4 +1,4 @@
-"""TASK-615 WS-C — streaming session teardown builds a usage-attribution summary.
+"""Streaming session teardown builds a usage-attribution summary.
 
 `SessionManager._finalize_session_locked` (called by `end_session`, in turn
 called by the DELETE /internal/streaming/sessions/{id} route on EVERY
@@ -7,7 +7,7 @@ teardown — complete AND abort alike, since STT itself has no concept of
 needs to emit the `transcribe.stream` ledger row: audio seconds, wall-clock
 session seconds, and the (engine, deployment) pair resolved from the ASR
 model actually loaded for the session (stamped in `_load_asr_pipeline`,
-TASK-567's `_session_asr_formats` map — the SAME choke point used for BOTH
+'s `_session_asr_formats` map — the SAME choke point used for BOTH
 session-create and every engine switch, so it can never go stale).
 
 STT does not distinguish complete vs abort at all — that is a
@@ -105,7 +105,7 @@ class TestBuildTeardownSummary:
         assert summary["language_mode"] == "ml-en"
 
     def test_records_the_streaming_audio_duration_and_rtf_metrics(self):
-        """TASK-615 WS-C — the current-state review's telemetry gap: streaming
+        """The current-state review's telemetry gap: streaming
         had no audio-duration signal in Prometheus and no RTF at all."""
         from stt.pipeline.dto import AiModelFormat
         from stt.streaming.inference import StreamingInferenceWorker
@@ -161,7 +161,7 @@ class TestBuildTeardownSummary:
         assert summary["deployment"] == "BYOK"
 
     def test_platform_funded_cloud_engine_meters_as_cloud(self):
-        """TASK-643 R3 — a gateway-injected SYSTEM-tenant credential is
+        """A gateway-injected SYSTEM-tenant credential is
         indistinguishable from the tenant's own on the wire, so `funding`
         declares which. Platform-funded must meter as CLOUD: BYOK would zero
         its COGS contribution and rate it at baseline SELL, never invoiced."""
@@ -196,7 +196,7 @@ class TestBuildTeardownSummary:
         assert summary["deployment"] == "BYOK"
 
     def test_override_for_a_different_provider_does_not_attribute(self):
-        """The pre-R3 predicate was dict-truthy over the WHOLE override map, so
+        """The older predicate was dict-truthy over the WHOLE override map, so
         a tenant holding only a Sarvam key had its Azure-Speech call marked
         BYOK. The serving engine's own entry is the only one that counts."""
         from stt.pipeline.dto import AiModelFormat

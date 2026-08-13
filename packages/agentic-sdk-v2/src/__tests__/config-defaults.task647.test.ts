@@ -1,5 +1,5 @@
 /**
- * TASK-647 — optional audio features must default OFF.
+ * Optional audio features must default OFF.
  *
  * VAD, noise cancellation, and medical-NER auto-extract are OPTIONAL. A consumer
  * that never states a preference (the common `@arcaai/vox/compat` shape, where
@@ -36,7 +36,7 @@ vi.mock('@arcaai/noise-filter', () => ({ createNoiseFilter: (...args: unknown[])
 vi.mock('@arcaai/stt', () => ({ createSTT: vi.fn(() => ({ init: vi.fn(), on: vi.fn(), setStreamingTransport: vi.fn() })) }));
 vi.mock('@arcaai/med-ner', () => ({ createMedNER: vi.fn() }));
 
-describe('TASK-647 — optional audio features default OFF (config objects)', () => {
+describe('optional audio features default OFF (config objects)', () => {
   it('DEFAULT_AUDIO_CONFIG declares VAD and noise-filter OFF, STT ON', () => {
     // Whole-object matchers — the fields are typed `T | boolean | undefined`,
     // so direct `.enabled` access would not narrow.
@@ -54,7 +54,7 @@ describe('TASK-647 — optional audio features default OFF (config objects)', ()
   });
 });
 
-describe('TASK-647 — PluginManager resolves the DEFAULT audio config to a gated pipeline', () => {
+describe('PluginManager resolves the DEFAULT audio config to a gated pipeline', () => {
   it('vad + noiseFilter resolve DISABLED, stt resolves ENABLED', () => {
     const manager = new PluginManager(DEFAULT_AUDIO_CONFIG, createMockLogger(), undefined, false);
     const pipelineConfig = manager.getTranscriptionPipelineConfig();
@@ -65,7 +65,7 @@ describe('TASK-647 — PluginManager resolves the DEFAULT audio config to a gate
   });
 });
 
-describe('TASK-647 — a default mount never constructs the optional stages', () => {
+describe('a default mount never constructs the optional stages', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });

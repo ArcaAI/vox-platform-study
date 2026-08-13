@@ -1,4 +1,4 @@
--- TASK-635 C2 (DR-1 / DR-4) — capability-keyed agent bindings + session-agent lineage.
+-- Capability-keyed agent bindings + session-agent lineage.
 --
 -- PURELY ADDITIVE. Ten nullable columns across two existing tables; no
 -- defaults, no backfill, no index changes, no table rewrites. Every existing

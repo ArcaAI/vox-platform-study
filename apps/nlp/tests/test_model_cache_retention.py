@@ -105,7 +105,7 @@ def test_apply_retention_with_empty_payload_keeps_current_values() -> None:
 
 @pytest.mark.asyncio
 async def test_sweep_releases_idle_models_never_requested_again() -> None:
-    """The §2.2 sweeper gap: an idle model whose key is never re-requested."""
+    """The sweeper gap: an idle model whose key is never re-requested."""
     import nlp.dependencies as deps
 
     deps.reset_model_caches()

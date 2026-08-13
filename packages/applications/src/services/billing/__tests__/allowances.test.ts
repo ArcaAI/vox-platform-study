@@ -4,13 +4,13 @@ import { AiCapability, TenantPlan } from '@arcaai/domains';
 import { resolveBillingAllowances } from '../allowances';
 
 /**
- * TASK-615 WS-I — pure allowance resolution for the invoice engine.
+ * Pure allowance resolution for the invoice engine.
  *
  * The chain is `PlanEntitlement` row ← `TenantEntitlement` override (a non-null
  * override field wins; null inherits), matching `resolve-entitlements.ts`
  * precedence for the columns it covers. The invoice engine resolves the FIVE
  * per-capability allowance columns (D11) plus the tenant spend limit (D12) —
- * columns the entitlements resolver does not surface yet (WS-H's lane; this
+ * columns the entitlements resolver does not surface yet ('s lane; this
  * function reads the same two rows, so the two converge by construction).
  *
  * `null` everywhere means UNLIMITED — no overage line can ever fall out of it.

@@ -272,7 +272,7 @@ class ModelCache(SharedModelCache[LoadedModel]):
             AiModelFormat.PARAKEET_CPP: ParakeetCppLoader(),
             # whisper.cpp (lazy at load time).
             AiModelFormat.WHISPER_CPP: WhisperCppLoader(),
-            # Cloud BYOK speech engines (REST, TASK-567).
+            # Cloud BYOK speech engines (REST).
             AiModelFormat.SARVAM: SarvamLoader(),
             AiModelFormat.OPENAI: OpenAILoader(),
         }

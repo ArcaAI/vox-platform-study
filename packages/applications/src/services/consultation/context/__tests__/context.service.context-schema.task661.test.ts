@@ -1,11 +1,11 @@
 /**
- * TASK-661 — schema compatibility and lifecycle, at the `ContextService` seam.
+ * Schema compatibility and lifecycle, at the `ContextService` seam.
  *
- * TASK-658 built `resolveContextKind`/`addContext`/`updateContext` and wrote
+ * The earlier context-schema hook built `resolveContextKind`/`addContext`/`updateContext` and wrote
  * the first K7 regression
  * (`context.service.context-schema.task658.test.ts`): a write naming no
- * `kindKey` consults the schema service AT ALL. This file adds what TASK-661
- * is actually scoped to do here:
+ * `kindKey` consults the schema service AT ALL. This file adds the version-header
+ * behaviour:
  *
  *  - K7, **written first, as required** — the version-pinning HEADER this
  *    ticket introduces must have ZERO effect on a write that names no
@@ -15,7 +15,7 @@
  *    it does today) must hold with or without the header present.
  *  - The header (`contextSchemaVersionId`, threaded down from the
  *    controller) reaches `IConsultationContextSchemaService.validateContextPayload`
- *    on `addContext` — TASK-658 already wired `updateContext` to the ITEM's
+ *    on `addContext` — `updateContext` was already wired to the ITEM's
  *    own pinned version; `addContext` had no such thread yet.
  *  - A write with NO header (the overwhelmingly common case) is byte-for-byte
  *    what it was before this ticket — `contextSchemaVersionId: undefined` is
@@ -86,7 +86,7 @@ function buildService() {
   );
 }
 
-describe('ContextService — TASK-661 version header on addContext', () => {
+describe('ContextService — version header on addContext', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockClsService.get.mockImplementation((key: string) => {

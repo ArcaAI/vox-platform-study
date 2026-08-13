@@ -1,5 +1,5 @@
 /**
- * `ConsultationContextSchema` administration (TASK-658/661, capabilities
+ * `ConsultationContextSchema` administration (capabilities
  * matrix — first schema builder in the product). All paths are
  * gateway-relative under the /api/hope BFF proxy, mirroring
  * `apps/api/src/modules/consultation-context-schema/consultation-context-schema.controller.ts`.

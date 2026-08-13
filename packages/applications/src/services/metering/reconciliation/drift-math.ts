@@ -1,5 +1,5 @@
 /**
- * Pure drift-comparison math for the TASK-615 WS-K shadow-metering report.
+ * Pure drift-comparison math for the shadow-metering report.
  *
  * Deliberately dependency-free (no Prisma, no Decimal) — the report job feeds
  * plain numbers already summed by its own queries. Keeping this pure means

@@ -43,7 +43,7 @@ model Department {
   PromptTemplates  PromptTemplate[]
   UserDepartments  UserDepartment[]
   DepartmentAgents DepartmentAgent[]
-  // TASK-658 — DEPARTMENT-scoped consultation context schemas.
+  // DEPARTMENT-scoped consultation context schemas.
   ConsultationContextSchemas ConsultationContextSchema[]
 
   // Constraints

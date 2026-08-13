@@ -8,7 +8,7 @@ export class CreateTenantAllowedOriginRequest {
    * stored value, e.g. stripping a default `:443`/`:80` port). Validation is
    * NOT performed here: this DTO only enforces basic type/length; the real
    * grammar check is `normalizeOrigin()` / `normalizeOriginPattern()` in
-   * `TenantAllowedOriginService`, routed by shape (TASK-610 §4A.2/§4A.3) —
+   * `TenantAllowedOriginService`, routed by shape
    * `isOriginPattern(origin)` (true iff the value contains `*`) picks the
    * validator. Accepts THREE forms:
    *  - an EXACT origin: `scheme://host[:port]`

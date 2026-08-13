@@ -1,4 +1,4 @@
--- TASK-531 — Pipeline template governance: lineage columns on `AsrPipeline`.
+-- Pipeline template governance: lineage columns on `AsrPipeline`.
 --
 -- Owner expectation E4: the 9 SYSTEM-tenant pipelines are TEMPLATES cloned into
 -- every new tenant; tenant admins cannot edit the cloned copies (they are
@@ -6,7 +6,7 @@
 -- clones are byte-indistinguishable from hand-created pipelines, so nothing can
 -- enforce that.
 --
--- Two additive columns close it (README §3.1):
+-- Two additive columns close it:
 --
 --   sourceTemplateSlug  — provenance. Which SYSTEM template this row descends
 --                         from. Nullable: NULL means "not derived from a

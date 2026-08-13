@@ -1,5 +1,5 @@
 /**
- * TASK-592 Workstream D — VERBATIM v1 clinical prompt content.
+ * VERBATIM v1 clinical prompt content.
  *
  * GENERATED, DO NOT HAND-EDIT. Source of truth: the RUNNING HOPE v1 deployment
  *   apps/smr/src/smr/models/prompts_<dept>_<visit>.py (CONTENT strings)
@@ -24,13 +24,13 @@
  *   nephrology_new_referral        24e6eb6b735b   nephrology_followup        53841fda6205
  *   surgical_oncology_new_referral 419e577751a8   surgical_oncology_followup 6c9c122c725b
  *
- * The last four departments (8 bodies) were ported in TASK-634 Phase 8a: v1
+ * The last four departments (8 bodies) were ported in v1
  * `select_prompt_template` has ELEVEN department branches and DEPT_VISIT_SCHEMAS
  * has 22 (department, visit_type) pairs, but the original migration ported only
  * seven departments / 14 templates, leaving dermatology, dietetics, nephrology
  * and surgical oncology with no v2 counterpart at all.
  *
- * PRE_SUMMARY is byte-exact as of TASK-634 Phase 2 (sha256 309a9cd13792, 3091
+ * PRE_SUMMARY is byte-exact as of sha256 309a9cd13792, 309
  * bytes) and deliberately KEEPS v1's nine single-brace placeholders:
  * {current_department} / {visit_type} / {safe_age} / {safe_dob} / {safe_gender}
  * / {safe_vitals} / {formatted_test_results} / {formatted_previous_visits} /

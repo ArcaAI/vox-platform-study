@@ -1,5 +1,5 @@
 /**
- * AgentPromotionEntity + AgentPromotionFactory unit tests (TASK-663) — the
+ * AgentPromotionEntity + AgentPromotionFactory unit tests — the
  * immutable, WORM record of one agent promotion between two tenants.
  *
  * The invariant that earns its own suite is `tenantId === toTenantId`: the

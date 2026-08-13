@@ -31,16 +31,16 @@ import { SettingsRegistry } from './settings-registry';
 
 export const HOPE_SETTINGS_REGISTRY: SettingsRegistry = new SettingsRegistry().registerAll([
   ...PIPELINE_SETTINGS,
-  // Platform storage default: SYSTEM TenantStorageConfig row + Vault kv-v2 (lane E).
+  // Platform storage default: SYSTEM TenantStorageConfig row + Vault kv-v2.
   ...STORAGE_SETTINGS,
   ...TTS_SETTINGS,
-  // Per-tenant STT fallback pipeline pointer + BYO provider credentials (TASK-567).
+  // Per-tenant STT fallback pipeline pointer + BYO provider credentials.
   ...STT_FALLBACK_SETTINGS,
   // Batch (pre-recorded file) upload ceilings — recordings per batch, minutes
-  // per recording, size, in-flight jobs per user (TASK-604).
+  // per recording, size, in-flight jobs per user.
   ...BATCH_TRANSCRIPTION_SETTINGS,
   ...ENTITLEMENT_SETTINGS,
-  // TASK-615 WS-H — outbox-drain schedule (WS-B handoff) + the
+  // Outbox-drain schedule (ws-b-contract.md handoff) + the
   // TenantUsageMeter reconcile-sweep kill-switch + its seed-time-only default.
   ...METERING_SETTINGS,
   // AI task-model defaults (guardrail/NLP/SMR).
@@ -49,9 +49,9 @@ export const HOPE_SETTINGS_REGISTRY: SettingsRegistry = new SettingsRegistry().r
   ...AGENTIC_CONTEXT_SETTINGS,
   // agentic eval promotion-gate mode (block | warn | off).
   ...AGENTIC_EVAL_SETTINGS,
-  // Re-visit carry-forward (default OFF) — TASK-553 F-18.
+  // Re-visit carry-forward (default OFF).
   ...AGENTIC_REVISIT_SETTINGS,
-  // Few-shot exemplar curation gate (default off) — TASK-553 F-24.
+  // Few-shot exemplar curation gate (default off).
   ...AGENTIC_FEWSHOT_SETTINGS,
   // The formerly orphaned platform-ops keys (rate limiting, audit
   // retention, agent-trajectory retention). Registered at their CURRENT runtime
@@ -63,16 +63,16 @@ export const HOPE_SETTINGS_REGISTRY: SettingsRegistry = new SettingsRegistry().r
   ...SERVICE_RUNTIME_SETTINGS,
   // SMR cloud-provider (openai/anthropic/vertex) platform CONNECTION config —
   // tier `env`, read by apps/smr. Registered at their config.py defaults, so
-  // cataloging them changes no behaviour (TASK-572).
+  // cataloging them changes no behaviour.
   ...SMR_PROVIDER_CONNECTION_SETTINGS,
 
-  // ── TASK-558 lane F — taxonomy coverage ──────────────────────────────────
+  // ── Taxonomy coverage ────────────────────────────────────────────────────
   // Platform secrets (Vault kv-v2). Every one is `failMode: 'closed'`, enforced
   // by `SettingsRegistry.register`.
   ...PLATFORM_SECRET_SETTINGS,
   // The bootstrap floor: the variables required to REACH the database or
   // AUTHENTICATE to Vault. Not admin-editable (`editableBy: 'none'`) — declared
-  // so the catalog is complete and lane D can generate the per-deployable schema.
+  // so the catalog is complete and the schema generator can emit the per-deployable schema.
   ...BOOTSTRAP_ENV_SETTINGS,
   // Operational knobs still read from env, carrying `targetTier: 'global-kv'`.
   ...PLATFORM_KNOB_SETTINGS,
@@ -82,7 +82,7 @@ export const HOPE_SETTINGS_REGISTRY: SettingsRegistry = new SettingsRegistry().r
   // Feature gates still read from env, carrying `targetTier: 'redis-flag'`.
   ...FEATURE_FLAG_SETTINGS,
 
-  // ── TASK-679 — configuration-tier compliance ─────────────────────────────
+  // ── Configuration-tier compliance ────────────────────────────────────────
   // The two consultation-pipeline `@OnEvent(ContextAdded)` kill-switches,
   // MIGRATED off `process.env` in the same commit (so `tier` is already
   // `global-kv`, with no `targetTier` pending). NOTE: `consultation.ocr.enabled`
@@ -90,27 +90,26 @@ export const HOPE_SETTINGS_REGISTRY: SettingsRegistry = new SettingsRegistry().r
   // kill-switch must default OFF.
   ...CONSULTATION_GATE_SETTINGS,
 
-  // ── TASK-685 — consultation-loop lifecycle bounds ────────────────────────
+  // ── Consultation-loop lifecycle bounds ───────────────────────────────────
   // The loop's IDLE bound. A tuning knob rather than a kill-switch, and PINNED
   // at workflow start rather than re-read per signal — see the descriptor.
   ...HARNESS_LOOP_SETTINGS,
 
   // ╔══════════════════════════════════════════════════════════════════════════╗
-  // ║ REGISTRATION POINT — TASK-558 lane E (storage config → DB + Vault)        ║
+  // ║ REGISTRATION POINT — storage config → DB + Vault                         ║
   // ║                                                                          ║
-  // ║ Lane E owns `descriptors/storage.descriptors.ts`; lane F deliberately did ║
-  // ║ not create, read or modify it. To wire it in, add the import above and    ║
-  // ║ ONE line here:                                                           ║
+  // ║ Storage descriptors live in `descriptors/storage.descriptors.ts`.        ║
+  // ║ To wire them in, add the import above and ONE line here:                 ║
   // ║                                                                          ║
   // ║     ...STORAGE_SETTINGS,                                                 ║
   // ║                                                                          ║
-  // ║ CONTRACT ITS DESCRIPTORS MUST MEET (lane F, F1):                         ║
+  // ║ CONTRACT ITS DESCRIPTORS MUST MEET:                                      ║
   // ║  • `failMode` is REQUIRED on every descriptor — the build fails without   ║
   // ║    it. Storage ENDPOINT/REGION/PATH-STYLE/PREFIX are tuning →             ║
   // ║    'open-to-default'; anything `sensitivity: 'secret'` (a credentialsRef  ║
   // ║    target, a BYO tenant key) MUST be 'closed' — `register()` throws       ║
   // ║    otherwise, at module load.                                            ║
-  // ║  • If a value is still read from `MINIO_*` env after lane E, declare      ║
+  // ║  • If a value is still read from `MINIO_*` env, declare                   ║
   // ║    `tier: 'env'` + `targetTier: 'db-config'` rather than claiming the DB  ║
   // ║    tier early; flip `tier` and drop `targetTier` when the READER moves.   ║
   // ║  • env-tier descriptors use `editableBy: EDITABLE_BY_NONE`; a governance  ║

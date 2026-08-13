@@ -308,7 +308,7 @@ export interface Department {
 }
 
 /**
- * `DepartmentAgent` (TASK-546) — the first-class "Agent" row: one department
+ * `DepartmentAgent` — the first-class "Agent" row: one department
  * bound to an Agent Template at a pinned-or-tracked version, plus a DNA gate.
  * Mirrors `DepartmentAgentResponse` in `@arcaai/applications`
  * (`packages/applications/src/services/departmentAgent/dto/department-agent.response.ts`).
@@ -316,7 +316,7 @@ export interface Department {
 export type DepartmentAgentDnaPolicy = 'INHERIT' | 'DISABLED';
 
 /**
- * Loop role (TASK-659) — at most one ENABLED PRIMARY agent per department,
+ * Loop role — at most one ENABLED PRIMARY agent per department,
  * enforced server-side (`assertSinglePrimaryPerDepartment`). Defaults to
  * SPECIALIST so a newly created agent never silently contests an existing
  * department PRIMARY.
@@ -324,14 +324,14 @@ export type DepartmentAgentDnaPolicy = 'INHERIT' | 'DISABLED';
 export type DepartmentAgentRole = 'PRIMARY' | 'SPECIALIST';
 
 /**
- * Closed catalogue of named guardrail profiles (TASK-654 D9) — this field only
+ * Closed catalogue of named guardrail profiles — this field only
  * SELECTS which profile the (out-of-scope-here) enforcement boundary applies;
  * it never authors the boundary itself.
  */
 export type GuardrailProfile = 'STANDARD' | 'STRICT' | 'RELAXED';
 
 /**
- * The seven action-registry names TASK-662's loop dispatches (TASK-654 §4.4).
+ * The seven action-registry names the loop dispatches.
  * `alwaysActions`/`neverActions` (D11's compliance envelope) may name only
  * these — mirrors `AGENT_ACTION_KEYS` in
  * `packages/applications/src/services/departmentAgent/constants.ts`.
@@ -359,7 +359,7 @@ export interface AgentWriteScope {
 
 /**
  * `goal` JSONB shape — a CONSTRAINED goal statement, deliberately NOT a
- * free-text system prompt (TASK-654 D8): a short, length-capped objective
+ * free-text system prompt: a short, length-capped objective
  * plus optional bounded success criteria.
  */
 export interface AgentGoal {
@@ -369,7 +369,7 @@ export interface AgentGoal {
 }
 
 /**
- * `toolConfig` JSONB shape (TASK-635 RF-4) — which live-loop tools run. The
+ * `toolConfig` JSONB shape — which live-loop tools run. The
  * "Tool allowlist" the console form exposes: a CLOSED catalogue of exactly
  * three named tools, picked not authored.
  */
@@ -401,11 +401,11 @@ export interface DepartmentAgent {
   updatedAt: string;
   version: number;
 
-  // ── TASK-659 loop configuration + promotion surface. Null on every agent
+  // ── loop configuration + promotion surface. Null on every agent
   // that has never touched this surface (the entire seeded catalogue today).
   /**
    * Loop role. The server always populates it (DB default SPECIALIST) —
-   * optional here only so pre-TASK-667 test fixtures across this feature that
+   * optional here only so test fixtures across this feature that
    * predate the field keep compiling; treat an absent value as SPECIALIST.
    */
   role?: DepartmentAgentRole;
@@ -415,7 +415,7 @@ export interface DepartmentAgent {
   guardrailProfile?: string | null;
   alwaysActions?: string[] | null;
   neverActions?: string[] | null;
-  /** Live-loop tool plan (TASK-635) — "Tool allowlist" in the console. Null ⇒ platform default. */
+  /** Live-loop tool plan — "Tool allowlist" in the console. Null ⇒ platform default. */
   toolConfig?: Record<string, unknown> | null;
 }
 
@@ -439,7 +439,7 @@ export interface CreateDepartmentAgentRequest {
   harnessOverrides?: Record<string, unknown>;
   goldenSetId?: string;
   tags?: string[];
-  // ── TASK-659 loop configuration. All optional; omitted ⇒ no loop
+  // ── loop configuration. All optional; omitted ⇒ no loop
   // participation (role still defaults server-side to SPECIALIST).
   role?: DepartmentAgentRole;
   subscribedKinds?: Record<string, unknown> | null;
@@ -460,7 +460,7 @@ export interface CreateDepartmentAgentRequest {
  * `goldenSetId` widens to `| null` (the server DTO's declared type is bare
  * `string`, but `@IsOptional()` accepts `null` at runtime and the service only
  * skips the assignment on `undefined` — so `null` is how the Settings-tab
- * "detach" affordance clears an attached golden set; TASK-549).
+ * "detach" affordance clears an attached golden set).
  */
 export interface UpdateDepartmentAgentRequest {
   name?: string;
@@ -472,7 +472,7 @@ export interface UpdateDepartmentAgentRequest {
   goldenSetId?: string | null;
   tags?: string[];
   resourceStatus?: 'ENABLED' | 'DISABLED';
-  // ── TASK-659 loop configuration. All optional.
+  // ── loop configuration. All optional.
   role?: DepartmentAgentRole;
   subscribedKinds?: Record<string, unknown> | null;
   writeScope?: Record<string, unknown> | null;
@@ -484,12 +484,12 @@ export interface UpdateDepartmentAgentRequest {
 }
 
 // ---------------------------------------------------------------------------
-// Resolved consultation context schema (TASK-658) — READ-ONLY, minimal
+// Resolved consultation context schema — READ-ONLY, minimal
 // projection of `GET /tenant/me/context-schema`. `subscribedKinds`/`writeScope`
-// must be picked from HERE, never typed free-hand (TASK-667 scope): the
+// must be picked from HERE, never typed free-hand: the
 // server cross-checks every referenced key against exactly this resolved
-// definition and rejects an unknown one (TASK-659 AC-4). Owned by this
-// feature's read path only — the schema AUTHORING screen is TASK-666's
+// definition and rejects an unknown one. Owned by this
+// feature's read path only — the schema AUTHORING screen is the
 // (`features/<its-own-feature>/**`); features never import each other.
 // ---------------------------------------------------------------------------
 
@@ -509,7 +509,7 @@ export interface ResolvedContextSchemaBundle {
 }
 
 // ---------------------------------------------------------------------------
-// Eval-gated promotion (TASK-549) — the `/agents?tab=governance` Eval panel.
+// Eval-gated promotion — the `/agents?tab=governance` Eval panel.
 // These are READ-mostly projections of the harness admin surface
 // (`admin/harness/golden-sets` + `admin/harness/eval-runs`), duplicated here
 // rather than imported from the `harness-ops` feature (which owns golden-set
@@ -596,20 +596,20 @@ export interface EvalRunTrigger {
 }
 
 // ---------------------------------------------------------------------------
-// TASK-674 — `DepartmentAgentVersion` history (`GET :id/versions`) and
+// `DepartmentAgentVersion` history (`GET :id/versions`) and
 // `AgentPromotion` lineage (`GET admin/agent-promotions?targetAgentId=`).
-// Both READ-only: the immutable audit trail TASK-659/663 already write, with
-// no console surface until now (TASK-667 OI-3). Mirrors
+// Both READ-only: the immutable audit trail already write, with
+// no console surface until now. Mirrors
 // `DepartmentAgentVersionResponse`/`AgentPromotionResponse` in
 // `packages/applications/src/services/{departmentAgent,agentPromotion}/dto/`.
 // ---------------------------------------------------------------------------
 
-/** One immutable loop-configuration snapshot (TASK-659). */
+/** One immutable loop-configuration snapshot. */
 export interface DepartmentAgentVersion {
   id: string;
   agentId: string;
   versionNumber: number;
-  /** The seven TASK-659 loop-configuration fields, canonical snapshot. */
+  /** The seven loop-configuration fields, canonical snapshot. */
   configSnapshot: Record<string, unknown>;
   /** sha256 over the canonical (key-sorted) JSON of `configSnapshot`. */
   checksum: string;
@@ -619,7 +619,7 @@ export interface DepartmentAgentVersion {
   createdAt: string;
 }
 
-/** One immutable cross-tenant promotion record, read from the TARGET tenant (TASK-663). */
+/** One immutable cross-tenant promotion record, read from the TARGET tenant. */
 export interface AgentPromotion {
   id: string;
   fromTenantId: string;

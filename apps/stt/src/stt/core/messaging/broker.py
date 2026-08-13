@@ -44,7 +44,7 @@ def should_retry(retries_so_far: int, exception: BaseException) -> bool:
 
 
 def _add_prometheus_middleware(broker: RedisBroker) -> None:
-    """Expose Dramatiq worker metrics for Prometheus (TASK-636 OBS-05).
+    """Expose Dramatiq worker metrics for Prometheus.
 
     The batch worker is a SEPARATE process from the FastAPI app, so ``/metrics``
     on :8861 says nothing about it — job throughput, duration, retries and
@@ -66,7 +66,7 @@ def _add_prometheus_middleware(broker: RedisBroker) -> None:
        accident. ``scripts/dev-service.sh`` takes the same posture for the HTTP
        ports. Containers override via ``dramatiq_prom_host=0.0.0.0``.
 
-    Gated on ``metrics_enabled`` — the TASK-411 invariant is that every
+    Gated on ``metrics_enabled`` — the invariant is that every
     exporter sits behind a switch and no backend is ever required to start.
     """
     if not settings.metrics_enabled:
@@ -86,7 +86,7 @@ def _add_prometheus_middleware(broker: RedisBroker) -> None:
             port=os.environ["dramatiq_prom_port"],
         )
     except Exception as exc:  # pragma: no cover - defensive
-        # Never let telemetry stop the worker from consuming jobs (TASK-411).
+        # Never let telemetry stop the worker from consuming jobs.
         logger.warning("dramatiq.prometheus_setup_failed", error=str(exc))
 
 

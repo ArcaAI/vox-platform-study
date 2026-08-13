@@ -56,13 +56,13 @@ export enum ResourceType {
   // resourceType.enum-parity.test.ts).
   GateEditExemplar = 'GateEditExemplar',
   DepartmentAgent = 'DepartmentAgent',
-  // Eval run (TASK-549): the eval-gated-promotion runner broadcasts
+  // Eval run: the eval-gated-promotion runner broadcasts
   // ResourceCreated per persisted EvalRun. Parity with audit.prisma.
   EvalRun = 'EvalRun',
-  // Per-tenant STT fallback config (TASK-567).
+  // Per-tenant STT fallback config.
   // Parity with audit.prisma; see resourceType.enum-parity.test.ts.
   TenantSttConfig = 'TenantSttConfig',
-  // HARMLESS-UNUSED (TASK-576): the `TenantSttProviderCredential` table and
+  // HARMLESS-UNUSED: the `TenantSttProviderCredential` table and
   // its domain trio were dropped — credential rows now live in the unified
   // `AiProviderConnection` plane (service='stt'). Postgres cannot cheaply
   // drop a value from an enum type already in use elsewhere in this column,
@@ -71,10 +71,10 @@ export enum ResourceType {
   // resourceType.enum-parity.test.ts). Do not remove without also dropping
   // it from audit.prisma via a reviewed enum-value migration.
   TenantSttProviderCredential = 'TenantSttProviderCredential',
-  // CORS control plane (TASK-610): tenant-owned browser origin registry.
+  // CORS control plane: tenant-owned browser origin registry.
   // Parity with audit.prisma; see resourceType.enum-parity.test.ts.
   TenantAllowedOrigin = 'TenantAllowedOrigin',
-  // Usage metering + billing (TASK-615). Only the three ADMIN-MANAGED models
+  // Usage metering + billing. Only the three ADMIN-MANAGED models
   // of that plane emit sys-events: rate-card edits, the invoice lifecycle
   // (draft → finalize → void), and credit memos. The append-only ledger, its
   // outbox, the rollups and invoice LINES deliberately have no ResourceType —
@@ -87,13 +87,13 @@ export enum ResourceType {
   ServiceInstance = 'ServiceInstance',
   ChangelogEntry = 'ChangelogEntry',
   UserChangelogAcknowledgement = 'UserChangelogAcknowledgement',
-  // Consultation context schema (TASK-658) — the MUTABLE head row is the
+  // Consultation context schema — the MUTABLE head row is the
   // audited resource. `ConsultationContextSchemaVersion` is deliberately NOT
   // a ResourceType (immutable snapshot written as part of its parent's
   // publish; the PromptVersion precedent). Parity with audit.prisma; see
   // resourceType.enum-parity.test.ts.
   ConsultationContextSchema = 'ConsultationContextSchema',
-  // Agent promotion between tenants (TASK-663) — its own audited resource,
+  // Agent promotion between tenants — its own audited resource,
   // unlike the immutable version rows: one promotion is one event with a
   // lifecycle of its own, it crosses a tenant boundary, and
   // `AgentPromotionService` broadcasts `ResourceCreated` against it. Parity

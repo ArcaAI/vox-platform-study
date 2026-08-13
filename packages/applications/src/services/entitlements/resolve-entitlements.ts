@@ -31,7 +31,7 @@ export interface ResolvedLimits {
   monthlyTranscriptionMinutes: number | null;
   monthlySummaries: number | null;
   /**
-   * Per-capability INCLUDED ALLOWANCES (TASK-615 D11), over the same
+   * Per-capability INCLUDED ALLOWANCES, over the same
    * UTC-calendar-month windows as the meters above. `null` = unlimited — the
    * seeded default for every plan today (a commercial ceiling is a product
    * decision, set later through the admin plan matrix). No
@@ -50,7 +50,7 @@ export interface ResolvedFeatures {
   voiceEnrollment: boolean;
   monitoringAccess: boolean;
   /**
-   * TASK-643 R6 — may this tenant's provider-credential cascade reach the
+   * May this tenant's provider-credential cascade reach the
    * SYSTEM (platform-funded) tier when it holds no key of its own?
    *
    * The first ENFORCED boolean entitlement in the system: its three neighbours
@@ -90,7 +90,7 @@ export interface PlanEntitlementInput {
   monthlyConsultations?: number | null;
   monthlyTranscriptionMinutes?: number | null;
   monthlySummaries?: number | null;
-  // TASK-615 D11 — DB column type is `BigInt?`, same normalization as storageQuotaBytes.
+  // DB column type is `BigInt?`, same normalization as storageQuotaBytes.
   monthlySttSessionSeconds?: number | bigint | null;
   monthlyLlmTokens?: number | bigint | null;
   monthlyTtsCharacters?: number | bigint | null;
@@ -119,7 +119,7 @@ export interface TenantEntitlementOverrideInput {
   monthlyConsultations?: number | null;
   monthlyTranscriptionMinutes?: number | null;
   monthlySummaries?: number | null;
-  // TASK-615 D11 — negotiated-allowance override hook (null = inherit the plan default).
+  // Negotiated-allowance override hook (null = inherit the plan default).
   monthlySttSessionSeconds?: number | bigint | null;
   monthlyLlmTokens?: number | bigint | null;
   monthlyTtsCharacters?: number | bigint | null;
@@ -156,7 +156,7 @@ export const UNGATED_ENTITLEMENTS: ResolvedEntitlements = {
     monthlyEmbeddingTokens: null,
   },
   /*
-   * ⚠ TASK-643 §0(3) — READ BEFORE "FIXING" THE ASYMMETRY BELOW.
+   * ⚠ — READ BEFORE "FIXING" THE ASYMMETRY BELOW.
    *
    * Every other boolean here is `true`: a null-plan ("ungated-legacy") tenant
    * is unrestricted by design, and that is the right default for a DISPLAY

@@ -4,7 +4,7 @@ import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiResponse, ApiTags 
 import { CanManage, ExpectedVersion, RequiresIfMatch } from '../../decorators';
 
 /**
- * Authoring surface for the curated release notes (TASK-648 §3.5, frozen
+ * Authoring surface for the curated release notes (frozen
  * contract `/admin/changelog/*`).
  *
  * AUTH-NOTE: the class-level `@CanManage('ChangelogEntry')` UNDERSTATES the

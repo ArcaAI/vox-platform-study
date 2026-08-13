@@ -37,7 +37,7 @@ export interface AgentTemplateResyncCronConfig {
 /**
  * Settings-gated nightly sweep that runs
  * {@link AgentTemplateResyncService.resyncTenant} across every non-SYSTEM
- * tenant. The SIBLING of `PipelineTemplateResyncCronService` (TASK-531).
+ * tenant. The SIBLING of `PipelineTemplateResyncCronService`.
  *
  * Self-registers through `SchedulerRegistry`, reads its config from
  * `IAppSettingsService`, and re-syncs whenever the settings cache refreshes so

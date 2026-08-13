@@ -5,8 +5,8 @@ import { RESUME_BUFFER_SIZE, SttWsGateway, WS_CLOSE_CODES, WS_RESUME_GRACE_MS } 
 
 /**
  * The 7th `writeAudioFrame` argument is the session's W3C trace carrier
- * (TASK-636 OBS-16). With no OTel SDK running in unit tests the gateway derives
- * an EMPTY carrier, so the Redis wire is byte-identical to pre-TASK-636 — which
+ * . With no OTel SDK running in unit tests the gateway derives
+ * an EMPTY carrier, so the Redis wire is byte-identical to the previous implementation — which
  * is the no-op guarantee these assertions now also pin.
  */
 const TRACE_CARRIER_DISABLED = {};
@@ -439,7 +439,7 @@ describe('SttWsGateway', () => {
         await vi.advanceTimersByTimeAsync(WS_RESUME_GRACE_MS + 5);
 
         expect(mockBridgeService.unsubscribeFromResults).toHaveBeenCalledWith('sess-789');
-        // TASK-615 WS-C — a grace-window expiry is an ABORT: no explicit
+        // A grace-window expiry is an ABORT: no explicit
         // close was ever received, so the ledger row is marked interrupted.
         expect(mockSessionService.removeSession).toHaveBeenCalledWith('sess-789', true);
       } finally {
@@ -447,7 +447,7 @@ describe('SttWsGateway', () => {
       }
     });
 
-    // TASK-615 WS-C — the abort test, written before the interrupted flag
+    // The abort test, written before the interrupted flag
     // existed anywhere on this path: an unreachable/dropped client (grace
     // expiry) must be distinguishable from a client-driven close at the
     // ledger. Both call removeSession with the SAME sessionId (same
@@ -769,7 +769,7 @@ describe('SttWsGateway', () => {
       expect(second.seq).toBe(2);
     });
 
-    // TASK-567: apps/stt publishes a `status`/`provider_switched` result on
+    // Apps/stt publishes a `status`/`provider_switched` result on
     // the session's result stream when the ASR engine is swapped to the
     // fallback (auto or user-triggered). The gateway relays non-transcript
     // results verbatim (no seq tag), so the switch notification reaches the
@@ -805,7 +805,7 @@ describe('SttWsGateway', () => {
       expect('seq' in sent).toBe(false);
     });
 
-    // TASK-597 follow-up #1: apps/stt publishes `finalizing` before it flushes
+    // Follow-up #1: apps/stt publishes `finalizing` before it flushes
     // the tail utterance; the bridge now relays it as a non-terminal status.
     // The frame must reach the socket in exactly the shape
     // `SttWebSocketClient.isValidStatus` accepts (`status` a string, `message`
@@ -861,11 +861,11 @@ describe('SttWsGateway', () => {
       expect(sent.stableChars).toBe(5);
     });
 
-    // TASK-613 C3 — pipelineId (the ASR engine that produced THIS
-    // utterance, TASK-613 B1) is an additive bridge field; the gateway
+    // PipelineId (the ASR engine that produced THIS
+    // utterance, B1) is an additive bridge field; the gateway
     // relays it verbatim like stableChars/englishText and omits it when
     // the bridge didn't set one.
-    it('forwards pipelineId on the relayed transcript when present (TASK-613 C3)', async () => {
+    it('forwards pipelineId on the relayed transcript when present', async () => {
       const resultSubject = new Subject();
       mockBridgeService.subscribeToResults.mockReturnValue(resultSubject.asObservable());
 
@@ -887,7 +887,7 @@ describe('SttWsGateway', () => {
       expect(sent.pipelineId).toBe('sarvam_transcription');
     });
 
-    it('omits pipelineId from the relayed transcript when absent (TASK-613 C3)', async () => {
+    it('omits pipelineId from the relayed transcript when absent', async () => {
       const resultSubject = new Subject();
       mockBridgeService.subscribeToResults.mockReturnValue(resultSubject.asObservable());
 
@@ -1505,10 +1505,10 @@ describe('SttWsGateway', () => {
       expect(logSpy).toHaveBeenCalledWith(expect.objectContaining({ droppedPartialResults: 0 }));
     });
 
-    // TASK-613 C3 — pipelineId must survive the bounded final-queue path
+    // PipelineId must survive the bounded final-queue path
     // (tagAndBuffer + enqueueFinalResult), not just the immediate-send path
     // covered above.
-    it('preserves pipelineId on a final queued and flushed under backpressure (TASK-613 C3)', async () => {
+    it('preserves pipelineId on a final queued and flushed under backpressure', async () => {
       const { client, resultSubject } = await connectWithSubject('sess-bp-pipeline-id');
 
       client.bufferedAmount = THRESHOLD_BYTES + 1;

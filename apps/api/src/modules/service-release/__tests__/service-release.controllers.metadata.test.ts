@@ -1,5 +1,5 @@
 /**
- * Metadata/gate assertions for the service-release controllers (TASK-648 W8).
+ * Metadata/gate assertions for the service-release controllers.
  *
  * - internal routes carry `@Public()` (skip user-auth chain) + the
  *   `ServiceReleaseTokenGuard` class-level guard (service-token auth).

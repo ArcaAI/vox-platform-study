@@ -1,5 +1,5 @@
 /**
- * Consultation-Gate Settings Seed (TASK-684)
+ * Consultation-Gate Settings Seed
  *
  * Turns the two consultation-pipeline kill-switches ON for every environment
  * that seeds — including a fresh local `pnpm setup:dev`:

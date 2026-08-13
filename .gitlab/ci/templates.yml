@@ -7,7 +7,7 @@
 .node-base:
   image: node:22-alpine
   tags: [fast]
-  # TASK-558 lane K — the ID token is minted for every job on this base, but is
+  # The ID token is minted for every job on this base, but is
   # only USED by jobs that declare VAULT_SECRETS. Minting is local and free; the
   # token grants nothing without a Vault role whose bound_claims match the job.
   id_tokens: !reference [.vault-oidc-id-token, id_tokens]
@@ -92,8 +92,8 @@
 
 # ── Registry login + insecure-registry buildx builder ───────────────────────
 # Shared by .build-template (docker buildx build) AND the promote-* jobs in
-# deploy.yml (docker buildx imagetools inspect/create — TASK-616 Appendix F
-# §F3). imagetools talks to the registry through the active buildx builder
+# deploy.yml (docker buildx imagetools inspect/create —
+# digest promotion). imagetools talks to the registry through the active buildx builder
 # too, so it needs the same insecure-registry config as a real build.
 
 .buildx-registry-login:
@@ -150,7 +150,7 @@
       # prod-* release-line globs.
       #
       # BRANCH_SLUG is computed unconditionally below (not just in the `*` case)
-      # because TASK-648's BUILD_VERSION needs it for EVERY untagged build, not
+      # because BUILD_VERSION needs it for EVERY untagged build, not
       # only the branches that fall through to the generic case.
       BRANCH_SLUG=$(echo "${CI_COMMIT_BRANCH:-unknown}" | sed 's/[^a-zA-Z0-9]/-/g')
 
@@ -183,8 +183,8 @@
       echo "Building service=$SERVICE_NAME primary_tag=$primary_tag all_tags=$TAGS"
       echo "  commit=$CI_COMMIT_SHA branch=${CI_COMMIT_BRANCH:-} git_tag=${CI_COMMIT_TAG:-}"
 
-      # ── TASK-648 §3.2/§3.1 — build-identity args, baked into /app/build-info.json
-      # by each Dockerfile (unit U2; frozen shape: contracts/build-info.schema.json).
+      # ── build-identity args, baked into /app/build-info.json
+      # by each Dockerfile (frozen shape: contracts/build-info.schema.json).
       # BUILD_VERSION is the git tag's SemVer core (the tag IS the version — never
       # package.json/pyproject.toml), or, for an untagged build,
       # 0.0.0-<branch-slug>.<sha8> — the SAME [^a-zA-Z0-9]->- branch-slug rule as
@@ -229,12 +229,12 @@
         echo "    $image_repo:$tag"
       done
 
-      # ── TASK-648 §3.2/§7 — carry the pushed manifest digest forward as a
+      # ── carry the pushed manifest digest forward as a
       # pipeline artifact variable. This is the value the promote-* jobs in
       # deploy.yml re-resolve and attach to the SAME ServiceRelease row (keyed
       # on service+gitCommitSha+releaseTag) — promotion NEVER creates a second
       # release row, it only re-tags an already-pushed digest (see promote.sh
-      # and README §7 "Resolved decisions").
+      # and the resolved promotion-only decisions).
       #
       # Read from the build's own --metadata-file, NOT a second
       # `docker buildx imagetools inspect` round-trip to the registry. The

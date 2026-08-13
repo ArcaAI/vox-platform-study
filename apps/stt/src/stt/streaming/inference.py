@@ -146,7 +146,7 @@ class StreamingInferenceWorker:
     ) -> None:
         self._publisher = result_publisher
         self._asr_pipeline = asr_pipeline
-        # TASK-613 — the ASR pipeline id that ``_asr_pipeline`` belongs to,
+        # The ASR pipeline id that ``_asr_pipeline`` belongs to,
         # stamped onto every SegmentResult this worker constructs. It is
         # reassigned IN THE SAME function body as ``_asr_pipeline`` by the
         # engine-switch seam (``SessionManager._make_switch_controller._apply``)
@@ -224,7 +224,7 @@ class StreamingInferenceWorker:
             self._prev_text_context_words = max(0, prev_text_context_words)
         else:
             self._prev_text_context_words = InferenceConfig().prev_text_context_words
-        # TASK-615 WS-C — running total of ASR-only processing time across
+        # Running total of ASR-only processing time across
         # every utterance this worker has transcribed. Read by SessionManager
         # at teardown (`_build_teardown_summary`) to compute the streaming
         # real-time factor. Only successful `_run_inference` calls add to it
@@ -353,7 +353,7 @@ class StreamingInferenceWorker:
                 embedding = None
                 inference_out = await self._run_inference(utterance)
         except SWITCHABLE_ASR_ERRORS as exc:
-            # TASK-614 — an ASR-ENGINE failure (cloud auth/quota, model error)
+            # An ASR-ENGINE failure (cloud auth/quota, model error)
             # must PROPAGATE. The inference loop's handler is the only path to
             # ``EngineSwitchController.record_failure``, i.e. the only way the
             # automatic fallback ever arms; degrading it to an empty transcript
@@ -596,7 +596,7 @@ class StreamingInferenceWorker:
                 is_final=True,
                 utterance_index=utterance.utterance_index,
                 result_type="gloss",
-                # TASK-613 — inherit the ORIGINATING final's stamp, not the
+                # Inherit the ORIGINATING final's stamp, not the
                 # live worker's: the gloss is fire-and-forget after the final
                 # was published, so an engine switch can land in between, and
                 # the transcript this gloss republishes came from the final's

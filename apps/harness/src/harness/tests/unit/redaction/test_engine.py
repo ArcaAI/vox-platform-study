@@ -1,4 +1,4 @@
-"""Unit tests for the deterministic DNA redaction/rewrite engine (TASK-551).
+"""Unit tests for the deterministic DNA redaction/rewrite engine.
 
 The engine is PURE (no I/O, no clock, no randomness) so it is safe to run inside
 a Temporal activity and trivially hermetic. These tests pin the ticket's core

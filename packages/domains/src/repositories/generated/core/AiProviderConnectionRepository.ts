@@ -23,7 +23,7 @@ import { AiProviderConnection } from '../../../models';
  * `tenantId` to either the caller OR the SYSTEM tenant; the tenant → SYSTEM
  * cascade itself is resolved by `ProviderConnectionService.resolveConnection`.
  *
- * The lookups are `service`-first (TASK-569 unification). The pre-unification
+ * The lookups are `service`-first (unification). The pre-unification
  * `findByTenantAndProvider` / `findByTenantId` names are retained as thin
  * deprecated wrappers defaulting `service='llm'` so nothing breaks mid-migration
  * (removed by the adoption lanes once every caller passes `service`).

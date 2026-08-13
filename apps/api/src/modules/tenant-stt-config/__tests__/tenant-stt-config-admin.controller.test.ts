@@ -1,5 +1,5 @@
 /**
- * TenantSttConfigAdminController unit tests (TASK-567 Phase D, §5 item 5).
+ * TenantSttConfigAdminController unit tests (Phase D, item 5).
  *
  * CASL `@Authorize` + `If-Match`/`@RequiresIfMatch` are exercised by the
  * guard/interceptor (+ the cross-tenant e2e spec). These specs cover the

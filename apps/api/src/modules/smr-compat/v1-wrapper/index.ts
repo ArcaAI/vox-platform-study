@@ -1,5 +1,5 @@
 /**
- * TASK-634 Phase 5 — v1 SMR summary WRAPPER artifacts (D-12), byte-exact from
+ * V1 SMR summary WRAPPER artifacts (D-12), byte-exact from
  * the running v1 pod.
  *
  * `summary_service.py:212` selects the department body template
@@ -18,7 +18,7 @@
  * parity — these five artifacts are the rest of what v1 actually sends.
  *
  * WIRING STATUS: WIRED (was: deliberately unwired pending the follow-up phase
- * this note anticipated — TASK-634 README §6 Phase 5/6). The consumer is
+ * this note anticipated — README Phase 5/6). The consumer is
  * `../v1-summary-prompt.builder.ts`, which performs the assembly-time
  * placeholder substitution these templates require (see
  * `v1-summary-user-prompt-template.ts`) and is used by the two compat routes in

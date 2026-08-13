@@ -1,6 +1,6 @@
 /**
- * `attributesJson` allow-list enforcement (TASK-615 WS-B deliverable 5,
- * moved here from WS-G).
+ * `attributesJson` allow-list enforcement (deliverable 5,
+ * moved here from ).
  *
  * The usage ledger is the ONE data plane in this platform that must stay
  * provably PHI-free: it is the only plane the billing pipeline reads, and D17
@@ -93,7 +93,7 @@ describe('validateUsageAttributes — the allow-list', () => {
     expect(validateUsageAttributes({ engine: null })).toEqual([]);
   });
 
-  it('declares its allow-list as data so WS-G and the contract doc read the same list', () => {
+  it('declares its allow-list as data so and the contract doc read the same list', () => {
     expect(Object.keys(USAGE_ATTRIBUTE_KEYS).sort()).toEqual(
       [
         'cacheTtl',

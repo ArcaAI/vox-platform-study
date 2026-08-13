@@ -1,12 +1,12 @@
 /**
- * `Repository.createMany` — TASK-615 WS-D2 (item 4a).
+ * `Repository.createMany` — optional transaction client.
  *
  * `createMany` never accepted a `tx` client — every other write path on the
  * base class (`create`, `updateWithVersion`) does, precisely so a caller can
  * fold the write into a business transaction. That gap forced
- * `AgentTrajectoryService.recordSteps` (WS-F) to persist steps and emit their
+ * `AgentTrajectoryService.recordSteps` to persist steps and emit their
  * usage-ledger rows as two INDEPENDENT operations (the "sanctioned no-tx
- * fallback" the WS-F handoff flagged). These tests pin the fix through the
+ * fallback"). These tests pin the fix through the
  * concrete `AgentTrajectoryStepRepository` — the base `Repository` class
  * itself is untestable directly (`common/__tests__/repository.test.ts` is
  * disabled behind a circular-dependency `it.todo` stub), so a generated

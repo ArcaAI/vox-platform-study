@@ -1,6 +1,6 @@
 import type { UsagePeriodParams } from './types';
 
-/** Query-key factory for the Consumption & Cost reads (TASK-615 #15a). */
+/** Query-key factory for the Consumption & Cost reads. */
 export const consumptionKeys = {
   root: ['consumption-cost'] as const,
   summary: (params?: UsagePeriodParams) => [...consumptionKeys.root, 'summary', params ?? {}] as const,

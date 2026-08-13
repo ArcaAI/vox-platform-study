@@ -151,7 +151,7 @@ publish-sdk:
     - if: $PIPELINE_TYPE == "release_sdk"
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Image signing + SBOM attestation — TASK-621 Wave C, C.2 + C.3
+# Image signing + SBOM attestation
 # ══════════════════════════════════════════════════════════════════════════════
 #
 # GOAL
@@ -159,8 +159,8 @@ publish-sdk:
 #   its DIGEST and (b) a CycloneDX SBOM attached as an in-toto attestation to
 #   that same digest. Together they let the cluster answer "was this exact bag
 #   of bytes built by this pipeline, and what is in it?" at admission time —
-#   which is what the Kyverno policy in the deployment repo verifies (C.4,
-#   deployment/k8s/base/kyverno-verify-images.yaml).
+#   which is what the Kyverno policy in the deployment repo verifies
+#   (deployment/k8s/base/kyverno-verify-images.yaml).
 #
 # ── WHY BY DIGEST, NEVER BY TAG (finding SC-03) ──────────────────────────────
 #
@@ -191,7 +191,7 @@ publish-sdk:
 #       them match a self-hosted GitLab.
 #
 #   So `cosign sign` against the PUBLIC Sigstore will fail from this instance
-#   until one of the following is true (owner decision, TASK-621 §4 ⚙ 3):
+#   until one of the following is true (owner decision):
 #     1. `https://git.taphuynh.dev` is added to public Fulcio's allow-list
 #        (upstream MR + a publicly reachable OIDC discovery document), or
 #     2. a private Sigstore (Fulcio + Rekor + CTLog + TUF root) is deployed and
@@ -201,7 +201,7 @@ publish-sdk:
 #        root, and the matching `rekor.url`/`roots` in the Kyverno policy.
 #
 #   This is why the jobs are gated on COSIGN_SIGNING_ENABLED (next section) and
-#   NOT on `allow_failure: true`. TASK-621 exists because every gate in this
+#   NOT on `allow_failure: true`. Every gate in this
 #   pipeline was built and then neutralised; a job that runs, fails, and is
 #   forgiven is exactly that pattern. A job that is explicitly not-yet-armed,
 #   with the blocking prerequisite named, is the pattern .gitlab/ci/vault.yml
@@ -299,7 +299,7 @@ publish-sdk:
     - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "main"
       when: never
 
-# ── C.3 — CycloneDX SBOM generation ──────────────────────────────────────────
+# ── CycloneDX SBOM generation ────────────────────────────────────────────────
 # Reuses the Trivy image already pinned by .trivy-scan (.gitlab/ci/scan.yml:14)
 # rather than adding syft: one fewer tool in the supply chain, and 0.58.2's
 # `--format cyclonedx` was confirmed to emit CycloneDX 1.6 with the image's
@@ -361,7 +361,7 @@ publish-sdk:
     expire_in: 90 days
   allow_failure: false
 
-# ── C.2 + C.3 — keyless signature, then SBOM attestation on the same digest ──
+# ── Keyless signature, then SBOM attestation on the same digest ──────────────
 
 .cosign-sign-attest:
   stage: publish
@@ -443,7 +443,7 @@ publish-sdk:
       echo "Resolved $SIGN_IMAGE"
       echo "      -> $digest_ref"
 
-      # ── Step 2 — C.2: keyless signature on the digest ─────────────────────
+      # ── Step 2 — keyless signature on the digest ───────────────────────────
       echo ""
       echo "Signing (keyless, Fulcio=$COSIGN_FULCIO_URL Rekor=$COSIGN_REKOR_URL)"
       cosign sign \
@@ -452,7 +452,7 @@ publish-sdk:
         --rekor-url "$COSIGN_REKOR_URL" \
         "$digest_ref"
 
-      # ── Step 3 — C.3: CycloneDX SBOM as an in-toto attestation ────────────
+      # ── Step 3 — CycloneDX SBOM as an in-toto attestation ──────────────────
       # Same $digest_ref as step 2 — the attestation subject is the signed
       # artifact by construction, not by convention.
       echo ""
@@ -789,18 +789,18 @@ sign-qdrant-init:
     - if: $CI_COMMIT_TAG =~ /^ALL-/
 
 # ══════════════════════════════════════════════════════════════════════════════
-# C.5 — registry retention: stop the 90-day reap eating release tags
+# Registry retention: stop the 90-day reap eating release tags
 # ══════════════════════════════════════════════════════════════════════════════
 #
 # NOT a CI job. This is a GitLab PROJECT SETTING and is ⚙ OWNER-APPLIED; it is
 # recorded here because it protects the very digests the jobs above sign.
 #
-# ⚠ DE-DUPLICATE FIRST. TASK-619 step C.11 claims this same change. Exactly one
-#   ticket may execute it — whichever lands first runs the command, the other
+# ⚠ DE-DUPLICATE FIRST. Another change set claims this same GitLab setting.
+#   Whichever lands first runs the command; the other
 #   links to it. Do not run it twice "to be safe": the second PUT would replace
 #   whatever value the first one set.
 #
-# CURRENT STATE (TASK-621 C-20/F12, live GET /projects/6 on 2026-08-07):
+# CURRENT STATE (live GET /projects/6 on 2026-08-07):
 #   cadence: 7d · keep_n: 25 · older_than: 90d · name_regex: ".*" ·
 #   name_regex_keep: ABSENT
 # Every tag matches the reap regex, including release tags. Once name_regex_keep

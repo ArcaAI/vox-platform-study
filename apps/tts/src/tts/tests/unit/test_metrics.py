@@ -30,10 +30,9 @@ def test_counter_total_suffix_exposed() -> None:
 
 
 class TestUsageMeteringMetrics:
-    """TASK-615 WS-E: TTS was the one service missing the standardized
+    """TTS was the one service missing the standardized
     {service, model} pair (current-state-review §2.0/§2.5); it also gets its
     own character/audio-second counters (README §5.3)."""
-
     def test_metric_names(self) -> None:
         # No `_total` in the base name — prometheus_client appends it at
         # export time (see test_exposed_with_total_suffix below).

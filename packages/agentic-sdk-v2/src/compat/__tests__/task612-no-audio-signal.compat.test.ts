@@ -1,9 +1,9 @@
 /**
- * useArcaSpeechToText — `no_audio_signal` surfacing (TASK-612 Lane D, AC-4).
+ * useArcaSpeechToText — `no_audio_signal` surfacing.
  *
  * The silent-uplink watchdog publishes `audioSignalState: 'ok' | 'silent'` on
  * the store. The compat hook mirrors it onto the frozen-but-optional v1
- * `onStatus` prop — the same additive pattern TASK-568 used for
+ * `onStatus` prop — the same additive pattern used for
  * `reconnecting`/`reconnected` — so a v1 app learns "the socket is open but
  * the audio being sent is silence" without reading v2 state.
  *
@@ -73,7 +73,7 @@ beforeEach(() => {
   mockState = baseState();
 });
 
-describe('useArcaSpeechToText — no_audio_signal status (TASK-612 Lane D)', () => {
+describe('useArcaSpeechToText — no_audio_signal status', () => {
   it('emits no_audio_signal once on ok→silent and audio_signal_restored once on silent→ok', () => {
     const onStatus = vi.fn<OnStatus>();
     const { rerender } = renderCompat(onStatus);

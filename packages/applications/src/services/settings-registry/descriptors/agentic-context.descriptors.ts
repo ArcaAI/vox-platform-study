@@ -31,7 +31,7 @@ export const AGENTIC_CONTEXT_DEFAULTS = {
   'liveFlush.segmentThreshold': 3,
   // Idle debounce (ms) before a flush when the segment threshold is not met.
   'liveFlush.idleMs': 5000,
-  // NOTE: `claimCheck.minBytes` was removed (TASK-553 F-21) — the live lane never
+  // NOTE: `claimCheck.minBytes` was removed — the live lane never
   // consumed it; the real claim-check threshold is the harness-side
   // HARNESS_CLAIM_CHECK_MIN_BYTES env setting.
   // Transcript assembly mode. `windowed` still defaults to `whole`,
@@ -85,7 +85,7 @@ export const AGENTIC_CONTEXT_SETTINGS: SettingDescriptor[] = (
   editableBy: 'all',
   globalOnly: true,
   // Tuning knobs — an unset knob degrades to the code default the live loop
-  // used before the registry lane existed (plan §9.3 M5).
+  // used before the registry lane existed.
   failMode: 'open-to-default',
   category: 'Agentic Context',
   label: META[knob].label,

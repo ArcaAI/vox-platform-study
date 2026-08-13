@@ -20,7 +20,7 @@ import type { DiscoveryEntry, DiscoveryEntryStatus, DiscoveryLoadState, Discover
  * registry, with the engine's load state where the engine reports it. It is
  * strictly READ-ONLY except for the explicit per-row Register action: a model
  * running on a server does NOT enter governance until an admin says so, and a
- * failed probe never removes or disables a registry row (§3.2).
+ * failed probe never removes or disables a registry row.
  *
  * Probes are lazy — the query is gated on `open`, so the registry grid behind
  * this drawer never waits on an engine round-trip.

@@ -115,7 +115,7 @@ class _FakeApi:
         self._data = data if data is not None else dict(_POLICY_JSON)
         self._error = error
         self.calls: list[str] = []
-        # TASK-550 — records the consultation_id the activity forwarded (None when
+        # Records the consultation_id the activity forwarded (None when
         # the workflow input carried no consultation).
         self.consultation_ids: list[str | None] = []
 
@@ -145,7 +145,7 @@ class TestFetchPolicyActivity:
 
     @pytest.mark.asyncio
     async def test_fetch_policy_forwards_consultation_id(self, env, monkeypatch):
-        # TASK-550 — the activity threads the workflow's consultation_id onto the
+        # The activity threads the workflow's consultation_id onto the
         # policy GET so the department default agent's tenant-tier harnessOverrides
         # overlay onto the effective policy. Response shape is unchanged.
         fake = _FakeApi()
@@ -163,7 +163,7 @@ class TestFetchPolicyActivity:
     @pytest.mark.asyncio
     async def test_fetch_policy_omits_consultation_id_when_absent(self, env, monkeypatch):
         # No consultation on the workflow input ⇒ the activity forwards None
-        # (byte-identical pre-TASK-550 fetch).
+        # (byte-identical prior fetch).
         fake = _FakeApi()
         monkeypatch.setattr(activities, "_api_client", lambda s: fake)
 

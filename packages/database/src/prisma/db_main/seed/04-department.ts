@@ -357,7 +357,7 @@ export const DEFAULT_DEPARTMENTS = [
 ];
 
 // ArcaAI customer-tenant CLINICAL departments — the AGENT-BOUND seven
-// (TASK-592 Workstream D).
+
 //
 // ⚠ THIS IS NOT THE WHOLE SET. ArcaAI carries ELEVEN clinical departments; the
 // other four live in ARCAAI_CLINICAL_DEPARTMENTS_WITHOUT_AGENT below and the
@@ -375,10 +375,10 @@ export const DEFAULT_DEPARTMENTS = [
 // APPROVED, per-visit-type `PromptTemplate`s owned by the ArcaAI tenant (see
 // 07b-arcaai-clinical-templates.ts).
 //
-// TASK-635 RF-3 UPDATE: these departments DO now carry a default
+// UPDATE: these departments DO now carry a default
 // `DepartmentAgent` (ARCAAI_TENANT_AGENTS in 07a-agent-golden-library.ts). The
 // former "no default agent" rule existed only because a DepartmentAgent used to
-// be a single prompt pointer that ignored visit type; TASK-635 C2 gave the agent
+// be a single prompt pointer that ignored visit type; gave the agent
 // per-visit-type bindings (`newPatientTemplateId` / `revisitTemplateId`) wired to
 // exactly the ids below, so tier-1a now resolves the SAME template these columns
 // name. The columns below are therefore RETAINED as the DEPRECATED tier-1b
@@ -521,13 +521,13 @@ export const ARCAAI_CLINICAL_DEPARTMENTS = [
   },
 ];
 
-// TASK-634 Phase 8b — the remaining FOUR v1 clinical departments.
+// The remaining FOUR v1 clinical departments.
 //
 // WHY THIS ARRAY EXISTS SEPARATELY. v1 recognises ELEVEN departments (verified
 // on the running v1 SMR pod: `DEPT_VISIT_SCHEMAS` = 22 = 11 × {new_referral,
 // followup}; `select_prompt_template` = 11 branches), and the ArcaAI tenant must
 // carry exactly those eleven — no more, no fewer. The seven above were ported by
-// TASK-592; these four complete the set.
+// ; these four complete the set.
 //
 // They are held apart from ARCAAI_CLINICAL_DEPARTMENTS because
 // `ARCAAI_TENANT_AGENTS` (07a-agent-golden-library.ts) maps ONE default
@@ -539,7 +539,7 @@ export const ARCAAI_CLINICAL_DEPARTMENTS = [
 //
 // Everything else matches the seven exactly: ArcaAI-owned, both visit-type
 // columns wired to APPROVED per-department templates, and `preSummaryPromptId`
-// NULL — pre-summary has no department axis (TASK-634 §2.1).
+// NULL — pre-summary has no department axis.
 //
 // Exported for testing purposes.
 export const ARCAAI_CLINICAL_DEPARTMENTS_WITHOUT_AGENT = [

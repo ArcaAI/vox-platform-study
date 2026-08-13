@@ -1,5 +1,5 @@
 /**
- * TASK-543 — per-user resizable column layout for the scribe workspace.
+ * per-user resizable column layout for the scribe workspace.
  * The `@arcaai/vox` `useUserSettings` plane is mocked at the boundary; the
  * contract under test: load persisted sizes on mount (defaults on miss or
  * malformed value), debounce saves through `updateByKey` under the

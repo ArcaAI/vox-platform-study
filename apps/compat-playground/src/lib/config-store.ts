@@ -1,12 +1,12 @@
 /**
- * Persisted playground config (TASK-586 Lane F).
+ * Persisted playground config.
  *
  * Values live in localStorage ONLY, for developer convenience across
  * reloads — never in URL params/query string. The API key you paste here is
  * a throwaway tenant/dev SDK key for local experimentation, not a production
  * secret store; treat this the same as any other devtool that remembers
  * your last input.
- */
+*/
 
 export interface PlaygroundConfig {
   /** REST origin of the v2 gateway, e.g. `http://localhost:8868`. */
@@ -18,14 +18,14 @@ export interface PlaygroundConfig {
   /** Streaming STT pipeline id — the "ON" (SDK-configured pipeline) target. */
   pipelineId: string;
   /**
-   * Selected STT language-mode id (TASK-587 catalog, e.g. `en`/`ml`/`ml-en`/`auto`).
+   * Selected STT language-mode id (catalog, e.g. `en`/`ml`/`ml-en`/`auto`).
    * Forwarded to `useArcaSpeechToText({ options: { languageMode } })`. The live
    * selector lives in `Playground.tsx` (it needs a connected `ArcaCompatProvider`
    * to fetch the real catalog) — this field only seeds its initial value.
-   */
+*/
   languageMode: string;
   // ---------------------------------------------------------------------------
-  // Capture-graph switches (TASK-597) — CONNECTION-level.
+  // Capture-graph switches — CONNECTION-level.
   //
   // These become `V1SdkConfig.audioSettings`, which `<ArcaCompatProvider>` reads
   // ONCE at mount, so changing them requires a disconnect/reconnect. That is why
@@ -43,7 +43,7 @@ export interface PlaygroundConfig {
   voiceActivityDetection?: boolean;
 
   // ---------------------------------------------------------------------------
-  // Stop-drain knobs (TASK-597) — PER-CAPTURE.
+  // Stop-drain knobs — PER-CAPTURE.
   //
   // These ride `AudioStartOptions` on each `startRecording()`, so they can be
   // changed between runs without touching the provider. Undefined ⇒ the SDK
@@ -70,18 +70,18 @@ export interface PlaygroundConfig {
   visitType?: string;
   /**
    * Last-used SMR doctor (user id) whose DNA writing-style is applied — seeds
-   * the SummaryCard doctor picker (TASK-599 Phase E). Empty/absent ⇒ NO
+   * the SummaryCard doctor picker. Empty/absent ⇒ NO
    * `doctorId` is sent (department + visit-type only). Optional for the same
    * backward-compat reason as `department`.
-   */
+*/
   doctorId?: string;
   /**
    * Last-used SMR "translate transcript to English (Sarvam)" toggle — seeds the
-   * SummaryCard switch (TASK-600 Phase 4). When true, `summarizeSync` is called
+   * SummaryCard switch. When true, `summarizeSync` is called
    * with `translateToEnglish: true` so the backend translates the transcript
    * before summarizing. Optional for the same backward-compat reason as
    * `department`.
-   */
+*/
   translateToEnglish?: boolean;
 }
 

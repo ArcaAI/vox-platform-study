@@ -1,5 +1,5 @@
 /**
- * SELF-HOSTED-DEFAULT / MANAGED-ASR-AS-ADD-ON seed invariants (TASK-638 §6.1)
+ * SELF-HOSTED-DEFAULT / MANAGED-ASR-AS-ADD-ON seed invariants
  *
  * Static assertions over the EXPORTED seed rows (no live DB), following the
  * conventions of `tenant-tts-config-seed.test.ts` in this directory.
@@ -18,7 +18,7 @@
  * NOTE (deliberately NOT asserted here): that a managed-ASR add-on bills at a
  * premium. It cannot today — `BillingService.prefetchSellRates` resolves SELL
  * rates with `provider: null` by construction, so a provider-keyed SELL row
- * would never be read. See TASK-638 §6.2.
+ * would never be read.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -33,7 +33,7 @@ const MANAGED_STT_PROVIDERS = new Set(['azure-speech', 'azure-foundry', 'sarvam'
 /** A pipeline is managed if it is tagged cloud or carries a managed vendor tag. */
 const isManagedPipeline = (tags: readonly string[]) => tags.some((tag) => tag === 'cloud' || MANAGED_STT_PROVIDERS.has(tag));
 
-describe('managed ASR is an add-on, never the platform-funded default (TASK-638 §6.1)', () => {
+describe('managed ASR is an add-on, never the platform-funded default', () => {
   describe('the default ASR pipeline is self-hosted', () => {
     for (const [label, pipelines] of [
       ['SYSTEM', DEFAULT_ASR_PIPELINES],

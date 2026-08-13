@@ -1,4 +1,4 @@
-"""Unit tests for tolerant audio decoding (TASK-607).
+"""Unit tests for tolerant audio decoding.
 
 Regression context: an OPPO/ColorOS phone recording appends a proprietary
 ``oppoMark//oppoMark`` trailer (ASCII waveform peaks + binary marker blocks)

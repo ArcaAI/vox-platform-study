@@ -20,7 +20,7 @@ export interface ProviderReconciliationRunQuery {
 }
 
 /**
- * Provider-reconciliation audit trail (TASK-638 §6 rule 6).
+ * Provider-reconciliation audit trail.
  *
  * APPEND-ONLY: this repository deliberately exposes no update and no delete.
  * `softDelete()`/`restore()` inherited from the base throw for this model

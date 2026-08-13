@@ -92,7 +92,7 @@ export interface UpdateModelRequest {
 // Discovery (GET admin/ai-models/discovery)
 // =============================================================================
 
-/** How an entry relates to the two sides of the merge (§3.1). */
+/** How an entry relates to the two sides of the merge. */
 export type DiscoveryEntryStatus = 'registered' | 'discovered' | 'registered-missing-on-server';
 /** Engine-reported load state; `unknown` whenever the engine does not say. */
 export type DiscoveryLoadState = 'loaded' | 'not-loaded' | 'unknown';

@@ -51,7 +51,7 @@ describe('EntityCard', () => {
   });
 });
 
-describe('CardGrid (§4a.1)', () => {
+describe('CardGrid', () => {
   it('renders one gridcell per item', () => {
     renderGrid();
     expect(screen.getAllByRole('gridcell')).toHaveLength(3);

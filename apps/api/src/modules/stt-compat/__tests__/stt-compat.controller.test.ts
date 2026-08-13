@@ -219,7 +219,7 @@ describe('SttCompatController.startSession — pipelineId + fallback wiring (C4)
     );
   });
 
-  it('maps startOn:default → fallback into createSession (TASK-586 C7b)', async () => {
+  it('maps startOn:default → fallback into createSession', async () => {
     const sttConfig = {
       getEffective: vi.fn().mockResolvedValue({ fallbackPipelineId: 'fallback-pipeline' }),
       resolveProviderOverrides: vi.fn().mockResolvedValue({}),
@@ -229,20 +229,20 @@ describe('SttCompatController.startSession — pipelineId + fallback wiring (C4)
     expect(sessionService.createSession).toHaveBeenCalledWith(expect.objectContaining({ startOn: 'fallback' }));
   });
 
-  it('maps startOn:pipeline → primary into createSession (TASK-586 C7b)', async () => {
+  it('maps startOn:pipeline → primary into createSession', async () => {
     const { controller, sessionService } = wire();
     await controller.startSession({ ...request(), startOn: 'pipeline' } as StartSessionRequest, { headers: { 'x-api-key': 'legacy-key' } });
     expect(sessionService.createSession).toHaveBeenCalledWith(expect.objectContaining({ startOn: 'primary' }));
   });
 
-  it('omits startOn from createSession when not requested (TASK-586 C7b)', async () => {
+  it('omits startOn from createSession when not requested', async () => {
     const { controller, sessionService } = wire();
     await controller.startSession(request(), { headers: { 'x-api-key': 'legacy-key' } });
     const payload = sessionService.createSession.mock.calls[0][0];
     expect('startOn' in payload).toBe(false);
   });
 
-  it('is fail-closed: startOn:default with no configured fallback → 409 (TASK-586 C7b)', async () => {
+  it('is fail-closed: startOn:default with no configured fallback → 409', async () => {
     const sttConfig = {
       getEffective: vi.fn().mockResolvedValue({ fallbackPipelineId: null }),
       resolveProviderOverrides: vi.fn().mockResolvedValue({}),
@@ -381,14 +381,14 @@ describe('StartSessionRequest validation', () => {
     expect(await validate(dto)).not.toHaveLength(0);
   });
 
-  it('accepts startOn tokens pipeline/default (TASK-586 C7b)', async () => {
+  it('accepts startOn tokens pipeline/default', async () => {
     for (const startOn of ['pipeline', 'default'] as const) {
       const dto = plainToInstance(StartSessionRequest, { ...base(), startOn });
       expect(await validate(dto)).toHaveLength(0);
     }
   });
 
-  it('rejects an unknown startOn value (TASK-586 C7b)', async () => {
+  it('rejects an unknown startOn value', async () => {
     const dto = plainToInstance(StartSessionRequest, { ...base(), startOn: 'fallback' });
     expect(await validate(dto)).not.toHaveLength(0);
   });

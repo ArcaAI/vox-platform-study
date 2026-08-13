@@ -87,7 +87,7 @@ class KnowledgeQdrantStore:
             from qdrant_client import QdrantClient
 
             # api_key=None is the unauthenticated path qdrant-client already
-            # expects, so this is safe to pass unconditionally (TASK-624 Q-03).
+            # expects, so this is safe to pass unconditionally.
             self._client = QdrantClient(
                 url=url, timeout=cast(int, timeout), api_key=api_key
             )

@@ -1,4 +1,4 @@
--- TASK-330 Phase 1 — Clinical Documentation Harness (TypeScript core).
+-- Clinical Documentation Harness (TypeScript core).
 --
 -- PURELY ADDITIVE. No DROP / DELETE / TRUNCATE / column removal / ALTER … DROP.
 -- Generated from `prisma migrate diff` (snapshot → edited schema) and then

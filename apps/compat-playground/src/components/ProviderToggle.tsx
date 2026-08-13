@@ -30,7 +30,7 @@ export function ProviderToggle() {
   // would read as "the engine changed" when nothing has happened yet, so it is
   // relabelled "pending" here.
   //
-  // The gate is CAPTURE, not `activeProvider` (TASK-614 E2). `activeProvider`
+  // The gate is CAPTURE, not `activeProvider`. `activeProvider`
   // was the wrong signal for the same reason the hook's own guard was: it can
   // be null on a perfectly live session, which made this card claim "no live
   // session yet — queued" in the middle of a recording.

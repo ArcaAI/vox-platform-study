@@ -26,7 +26,7 @@ import { USAGE_OUTBOX_QUEUE } from './usage-ledger.constants';
  *     `BullModule.forRootAsync` registered by `RedisServiceModule` is global, so
  *     this binds to the same Redis connection regardless.
  *
- * `UsageOutboxPrunerService` (TASK-615 WS-K — the WS-B handoff item) is a
+ * `UsageOutboxPrunerService` (the WS-B handoff item) is a
  * self-scheduling hard-delete job for already-drained (`DISPATCHED`)
  * `AiUsageOutbox` rows, same shape as `AuditRetentionService`. It needs
  * nothing this module doesn't already import.

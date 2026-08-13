@@ -138,7 +138,7 @@ async def _sweep_model_caches_forever(
 # The worker serves no HTTP, so it has no endpoint for a kubelet httpGet probe.
 # The alternative in this repo — stt-v2-worker's manifest — ships NO probes at
 # all, which means a wedged worker is never restarted. That is the gap this
-# closes (TASK-625 W-10), so it deliberately does not copy that pattern.
+# closes, so it deliberately does not copy that pattern.
 #
 # Instead the worker touches a file on a timer and the manifest execs
 # `find <file> -mmin -1`. The file's MTIME is the signal: if the asyncio loop
@@ -223,7 +223,7 @@ async def run_worker() -> None:
     setup_logging(settings.log_level)
     _assert_claim_check_store_is_deployable(settings)
 
-    # TASK-636 OBS-14 — the worker is its own process, separate from the
+    # The worker is its own process, separate from the
     # FastAPI app, so it needs its own TracerProvider installed for the
     # TracingInterceptor wired in `get_temporal_client` (below) to export
     # workflow/activity spans instead of no-oping. No-op when tracing is off
@@ -253,11 +253,11 @@ async def run_worker() -> None:
     worker = Worker(
         client,
         task_queue=settings.temporal.task_queue,
-        # `ConsultationLoopWorkflow` (TASK-662) runs on the SAME task queue as
+        # `ConsultationLoopWorkflow` runs on the SAME task queue as
         # the document workflow it composes as a child — a child started without
         # an explicit task_queue inherits its parent's, so they must be hosted by
         # the same worker or the finalize would never be picked up.
-        # `SpecialistWorkflow` (TASK-664) is on the same queue for the same
+        # `SpecialistWorkflow` is on the same queue for the same
         # reason: the loop starts it as a child WITHOUT an explicit task_queue,
         # so it inherits the parent's and must be hosted by this worker.
         workflows=[
@@ -289,7 +289,7 @@ async def run_worker() -> None:
     sweeper = asyncio.create_task(_sweep_model_caches_forever())
     heartbeat = asyncio.create_task(_write_heartbeat_forever())
 
-    # Self-registration (TASK-648 W9): this worker has no inbound HTTP surface
+    # Self-registration: this worker has no inbound HTTP surface
     # of its own, so it registers+heartbeats independently, exactly like the
     # FastAPI app does — fire-and-forget, bounded-timeout, NEVER blocks or
     # fails boot. Registers as service "harness-worker" (distinct from the

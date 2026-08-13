@@ -1,14 +1,13 @@
 /**
- * TenantAllowedOriginService unit tests (TASK-610, lane W2-B; updated for
- * lane W6-C's §4B many-to-many model).
+ * TenantAllowedOriginService unit tests (updated for the many-to-many model).
  *
  * Mirrors the DepartmentService test conventions (mocked repository /
  * EventEmitter2 / ClsService). Beyond standard CRUD coverage, this suite
- * locks down the behaviors the ticket calls out explicitly:
+ * locks down the behaviors called out explicitly:
  *
  *  - `normalizeOrigin()` runs BEFORE persistence on both create and update
  *    (never the raw string).
- *  - §4B — a row is a (origin, tenantId) GRANT, not an owned origin. Two
+ *  - A row is a (origin, tenantId) GRANT, not an owned origin. Two
  *    DIFFERENT tenants registering the same origin is the POINT of the
  *    model and must SUCCEED as two independent grants; only the SAME tenant
  *    registering the SAME origin twice is a conflict, both via the
@@ -16,8 +15,8 @@
  *    (`findByOriginAndTenant` returns null but the write still collides on
  *    the (origin, tenantId) compound key).
  *  - Every successful mutation emits `origin-registry.invalidate` — the
- *    frozen invalidation contract W2-A's `OriginRegistryService` listens on
- *    (README §4.1). A failed mutation must NOT emit it.
+ *    frozen invalidation contract `OriginRegistryService` listens on.
+ *    A failed mutation must NOT emit it.
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
@@ -123,12 +122,12 @@ describe('TenantAllowedOriginService', () => {
     mockClsService.get.mockImplementation((key: string) => {
       switch (key) {
         case 'user':
-          // TASK-641: the acting user is made EXPLICITLY `GLOBAL_ADMIN`.
-          // Under TASK-610 this whole resource was global-admin-only at the
+          // The acting user is made EXPLICITLY `GLOBAL_ADMIN`.
+          // Under this whole resource was global-admin-only at the
           // controller, so every scenario in this suite — including its
           // wildcard/allow-all cases — was already, implicitly, a global
-          // admin acting. TASK-641 moves the wildcard boundary INTO the
-          // service (FR-2), which makes that implicit assumption load-bearing
+          // admin acting. moves the wildcard boundary INTO the
+          // service, which makes that implicit assumption load-bearing
           // and therefore something the fixture must state. Role-DEPENDENT
           // behavior is covered by `tenant-allowed-origin.privilege.task641.test.ts`,
           // which drives a real `ClsService`; this suite stays about CRUD,
@@ -260,7 +259,7 @@ describe('TenantAllowedOriginService', () => {
     });
   });
 
-  // W4-R finding, re-scoped for §4B (lane W6-C): the compound unique index
+  // W4-R finding, re-scoped for: the compound unique index
   // on (origin, tenantId) is NOT partial, so a soft-deleted GRANT still
   // occupies that pair for the tenant that held it. `findByOriginAndTenant`
   // only sees ENABLED rows, so delete -> re-add BY THE SAME TENANT must
@@ -450,12 +449,12 @@ describe('TenantAllowedOriginService', () => {
     });
   });
 
-  // TASK-610 §4B, lane W6-C. The headline case this rewrite exists for: two
+  // ,. The headline case this rewrite exists for: two
   // DIFFERENT tenants registering the SAME origin was IMPOSSIBLE under the
   // old global-unique-on-origin model (the second tenant's create 409'd).
   // Under the (origin, tenantId) compound key it must succeed as two
   // independent grants.
-  describe('§4B many-to-many — origins shared across tenants', () => {
+  describe('many-to-many — origins shared across tenants', () => {
     const setActingTenant = (tenantId: string) => {
       mockClsService.get.mockImplementation((key: string) => {
         switch (key) {
@@ -672,14 +671,14 @@ describe('TenantAllowedOriginService', () => {
     });
   });
 
-  // TASK-610 §4A.2/§4A.3, lane W5-E. Before this lane's change, `create()` and
+  // ,. Before this lane's change, `create()` and
   // `update()` ran every raw origin through `normalizeOrigin`, which rejects
   // any `*` outright — so a wildcard pattern or the allow-all token could
   // never be created through the admin API at all, only seeded. This suite
   // was watched RED against the pre-change service (a create with
   // `https://*.bcmch.org:*` threw `ArgumentInvalidException` from
   // `normalizeOrigin`, not because the pattern was invalid).
-  describe('wildcard pattern + allow-all support (TASK-610 §4A.2/§4A.3, lane W5-E)', () => {
+  describe('wildcard pattern + allow-all support', () => {
     describe('create — routes by shape', () => {
       it('accepts a wildcard pattern, normalizing via normalizeOriginPattern (not normalizeOrigin)', async () => {
         mockRepository.findByOriginAndTenant.mockResolvedValue(null);

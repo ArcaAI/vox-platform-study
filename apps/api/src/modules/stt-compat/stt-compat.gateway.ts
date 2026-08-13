@@ -136,7 +136,7 @@ export class SttCompatGateway implements OnGatewayConnection, OnGatewayDisconnec
       return;
     }
     this.closeSession(session);
-    // TASK-615 WS-C — an abrupt disconnect (tab closed, wifi drop) never
+    // An abrupt disconnect (tab closed, wifi drop) never
     // called POST /stop_session, so the upstream STT session was NEVER torn
     // down here at all: it leaked until STT's own idle-timeout reaper
     // eventually finalized it server-side with no gateway caller to receive
@@ -224,9 +224,9 @@ export class SttCompatGateway implements OnGatewayConnection, OnGatewayDisconnec
         metadata.detectedLanguage,
         session.language,
       );
-      // The ASR pipeline that actually produced THIS utterance (TASK-613
+      // The ASR pipeline that actually produced THIS utterance (
       // B1's camelCase `pipelineId` on the bridge transcript projection).
-      // Per §3.3/OD-3 it is relayed in BOTH the top-level `pipeline_id`
+      // Per /OD-3 it is relayed in BOTH the top-level `pipeline_id`
       // (mirroring chunk_id/detected_language) and `metadata.pipeline_id`.
       const pipelineId = this.firstPresent(message.pipeline_id, message.pipelineId, metadata.pipeline_id, metadata.pipelineId);
       let deliveredMetadata =
@@ -252,7 +252,7 @@ export class SttCompatGateway implements OnGatewayConnection, OnGatewayDisconnec
 
     if (message.type === 'status') {
       // Forward every status frame (never swallow a non-terminal status — the
-      // TASK-568 Phase-F bug class). TASK-586: the `provider_switched` frame
+      // Phase-F bug class). : the `provider_switched` frame
       // carries snake_case `active` + `is_fallback` in BOTH switch directions —
       // pass `active` through untouched and surface a camelCase `isFallback` for
       // the compat client.

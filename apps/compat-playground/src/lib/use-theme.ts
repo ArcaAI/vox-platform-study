@@ -24,7 +24,7 @@ function documentTheme(): Theme {
  * Flip the theme class with CSS transitions suppressed for the duration of the
  * change.
  *
- * WHY (TASK-597 follow-up #6): every `@arcaai/ui` control carries
+ * WHY: every `@arcaai/ui` control carries
  * `transition-all` or `transition-[color,box-shadow]`. Toggling `.dark` on
  * `<html>` changes `color` / `background-color` / `border-color` purely through
  * a custom-property cascade, which starts a transition on each of those
@@ -39,7 +39,7 @@ function documentTheme(): Theme {
  * which is also what a theme switch should look like. It is exactly what
  * next-themes' `disableTransitionOnChange` does for `apps/admin-console`
  * (`src/shared/providers.tsx`); this app is plain Vite, so it is spelled out.
- */
+*/
 function applyThemeWithoutTransitions(theme: Theme): void {
   const suppressor = document.createElement('style');
   suppressor.appendChild(document.createTextNode('*,*::before,*::after{transition:none !important;animation:none !important}'));

@@ -2,9 +2,9 @@ import { EntityId } from '@arcaai/domains';
 
 /**
  * The rolling-monthly meter values for one tenant/window: the three ORIGINAL
- * business meters plus the six TASK-615 ledger-derived unit meters.
+ * business meters plus the six ledger-derived unit meters.
  * `transcriptionMinutes` is whole minutes (rounded from summed audio-ms), to
- * match the integer `monthly*` limit columns; every TASK-615 field is
+ * match the integer `monthly*` limit columns; every field is
  * likewise rounded to a whole unit for the same reason (the allowance columns
  * are integers/`BigInt`, never fractional).
  *
@@ -23,7 +23,7 @@ import { EntityId } from '@arcaai/domains';
  * against a tenant's OWN generation, and guardrail/harness usage is
  * platform-mandated and never billed to the tenant (D16) — this is a known,
  * documented approximation of the current rollup schema, not a bug; see
- * `metering.service.ts` and the WS-H handoff notes for the exact tradeoff.
+ * `metering.service.ts` and the handoff notes for the exact tradeoff.
  */
 export interface MeterUsage {
   consultations: number;

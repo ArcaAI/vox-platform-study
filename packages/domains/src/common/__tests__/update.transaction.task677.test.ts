@@ -1,17 +1,16 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /**
- * TASK-677 — `Repository.update` accepts an optional transaction client.
+ * `Repository.update` accepts an optional transaction client.
  *
  * `create`, `createMany` and `updateWithVersion` already do; `update` did not,
- * which is what made a create-**or**-update write sequence impossible to wrap
- * (TASK-663 OI-2).
+ * which is what made a create-**or**-update write sequence impossible to wrap.
  *
  * Two properties are load-bearing here and each has its own test:
  *
  * 1. **Additive.** `update(id, entity)` — no third argument — must behave
  *    EXACTLY as before, through the cached extended client. Every existing
  *    call site in the monorepo passes two arguments.
- * 2. **OCC is untouched.** `updateWithVersion` already had `tx`; this ticket
+ * 2. **OCC is untouched.** `updateWithVersion` already had `tx`; this change
  *    does not modify it. The drift → `OptimisticConcurrencyException` contract
  *    is re-asserted here inside AND outside a transaction so that any future
  *    edit to the shared `update`/CAS neighbourhood that damages it fails here.
@@ -74,14 +73,14 @@ const buildHarness = async () => {
   return { repo: new TestRepository(), db, tx, txDelegate, mapper };
 };
 
-describe('TASK-677 — Repository.update(id, entity, tx?)', () => {
+describe('Repository.update(id, entity, tx?)', () => {
   let harness: Awaited<ReturnType<typeof buildHarness>>;
   beforeEach(async () => {
     harness = await buildHarness();
   });
 
   // =========================================================================
-  // T-1 — backward compatibility: the two-argument form is unchanged
+  // Backward compatibility: the two-argument form is unchanged
   // =========================================================================
 
   it('without `tx`, writes through the cached extended client — behaviour unchanged', async () => {
@@ -107,7 +106,7 @@ describe('TASK-677 — Repository.update(id, entity, tx?)', () => {
   });
 
   // =========================================================================
-  // T-2 — the new behaviour: the write joins the caller's transaction
+  // The new behaviour: the write joins the caller's transaction
   // =========================================================================
 
   it('with `tx`, writes through the transaction client and NEVER through the cached client', async () => {
@@ -188,10 +187,10 @@ describe('TASK-677 — Repository.update(id, entity, tx?)', () => {
   });
 
   // =========================================================================
-  // T-3 — OCC semantics are NOT changed by this ticket
+  // OCC semantics are NOT changed
   // =========================================================================
 
-  describe('updateWithVersion — OCC unchanged (this ticket does not touch it)', () => {
+  describe('updateWithVersion — OCC unchanged', () => {
     it('throws OptimisticConcurrencyException on drift OUTSIDE a transaction', async () => {
       harness.db.updateMany.mockResolvedValueOnce({ count: 0 });
       harness.db.findUnique.mockResolvedValueOnce({ id: 'e-1', version: 9 });

@@ -5,7 +5,7 @@ import { computeCostMicros } from '../priceBook/price-book.resolution';
 import { BillingPeriod, truncateToUtcDay, utcDayCount } from './billing-period';
 
 /**
- * The invoice engine's money math (TASK-615 WS-I, decisions D11–D15).
+ * The invoice engine's money math (decisions D11–D15).
  *
  * PURE. No repository, no clock, no DI. Every rule that decides what a tenant
  * pays lives in this file so it can be reviewed, golden-tested and reproduced
@@ -28,7 +28,7 @@ import { BillingPeriod, truncateToUtcDay, utcDayCount } from './billing-period';
  * token kinds) but SELL rates are per unit and effective-dated. Reconciling the
  * three requires an attribution rule, fixed as:
  *
- *  0. SELF-HOSTED-FIRST TIER ORDER (TASK-638). Before anything chronological,
+ *  0. SELF-HOSTED-FIRST TIER ORDER. Before anything chronological,
  *     usage is partitioned by `deployment` and the allowance is consumed in the
  *     order SELF_HOSTED → BYOK → CLOUD. The ordering is a margin decision, not
  *     a preference: managed ASR costs the platform ~13× self-hosted per
@@ -87,7 +87,7 @@ export interface DailyUnitQuantity {
 }
 
 /**
- * Allowance-consumption order (TASK-638). Cheapest-to-the-platform first, so the
+ * Allowance-consumption order. Cheapest-to-the-platform first, so the
  * bundled allowance absorbs usage the platform barely pays for and the expensive
  * platform-funded managed usage is what lands in premium-rated overage.
  */
@@ -126,7 +126,7 @@ export interface PlanFeeSegment {
 }
 
 /**
- * How the plan fee was derived (TASK-615 #6, surfaced on the response):
+ * How the plan fee was derived (surfaced on the response):
  *   - `PERIOD_END_PLAN`   — no plan-change history for the period; the plan in
  *                           force at computation time is billed for the whole period.
  *   - `TENANT_PLAN_HISTORY` — `TenantPlanHistory` supplied dated segments, so the
@@ -151,7 +151,7 @@ export interface ClampedPlanInterval {
 
 /**
  * Clamp dated plan intervals to [period.start, period.end) and drop any that
- * collapse to zero days (TASK-615 #6). An open interval (`to: null`) runs to
+ * collapse to zero days. An open interval (`to: null`) runs to
  * period end. Each surviving interval becomes one `PlanFeeSegment`, so a
  * mid-period plan change bills `fee × ownedDays / periodDays` per segment via
  * the already-multi-segment {@link computePlanFeeLines}.

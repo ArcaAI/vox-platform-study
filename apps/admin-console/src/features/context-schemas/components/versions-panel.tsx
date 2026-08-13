@@ -1,18 +1,18 @@
 'use client';
 
 /**
- * Version history tab (TASK-666 scope: "version history with pin / track-
+ * Version history tab ("version history with pin / track-
  * latest, and department default"). `ConsultationContextSchemaVersion` rows
- * are immutable (TASK-658) — this panel lists them newest-first and lets an
+ * are immutable — this panel lists them newest-first and lets an
  * admin pin the schema to any of them (`POST :id/pin`), the rollback path.
  * There is no "track latest" pin-to-null here (unlike `DepartmentAgent`):
- * `publish` always advances the pin itself (TASK-658 D-3), so `pin` exists
+ * `publish` always advances the pin itself, so `pin` exists
  * only to move it back to an older, already-published version.
  *
- * TASK-674 — each non-pinned row also shows its `versionSkew` against the
+ * each non-pinned row also shows its `versionSkew` against the
  * CURRENT pin (server-computed, `classifyDefinitionChange`): a client still
  * pinned to that version keeps working if it reads ADDITIVE, and is broken if
- * it reads BREAKING. TASK-661 already computed this for the write path but
+ * it reads BREAKING. already computed this for the write path but
  * only logged it; this is the same judgement, surfaced for an admin deciding
  * whether it is safe to leave clients on an older version.
  */
@@ -30,7 +30,7 @@ import { usePinContextSchemaVersion } from '../api/hooks';
 import type { ConsultationContextSchema, ConsultationContextSchemaVersion, ContextSchemaVersionSkew } from '../api/types';
 import { IconHistory } from '@tabler/icons-react';
 
-/** TASK-674 — drift-safety badge for a non-pinned version, next to the current pin. */
+/** Drift-safety badge for a non-pinned version, next to the current pin. */
 function VersionSkewBadge({ skew }: { skew: ContextSchemaVersionSkew }) {
   if (skew === 'BREAKING') {
     return (

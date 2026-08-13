@@ -3,7 +3,7 @@ import { AiCapability, AiDeploymentKind } from '@arcaai/domains';
 
 import { buildNerUsageEvent } from '../nerUsageEvent';
 
-describe('buildNerUsageEvent (TASK-615 WS-E, revised — per-invocation keying)', () => {
+describe('buildNerUsageEvent (revised — per-invocation keying)', () => {
   it('builds TEXT_UNIT + REQUEST units keyed to the invocation, with consultationId as attribution', () => {
     const event = buildNerUsageEvent({
       tenantId: 't1',
@@ -76,12 +76,12 @@ describe('buildNerUsageEvent (TASK-615 WS-E, revised — per-invocation keying)'
     expect(() => buildNerUsageEvent({ tenantId: 't1', requestId: '', consultationId: 'consult-1', charCount: 100, model: null })).toThrow();
   });
 
-  // TASK-615 WS-D2 (item 2) — the playground `/ai/nlp/entities` call site has
+  // The playground `/ai/nlp/entities` call site has
   // NO consultation context at all (a standalone inference proxy, not a
   // consultation write path), so consultationId must be optional; doctorId is
   // new attribution for that same call site (a clinician using the tool
   // under their own account).
-  describe('optional consultationId + doctorId attribution (TASK-615 WS-D2)', () => {
+  describe('optional consultationId + doctorId attribution', () => {
     it('omits consultationId entirely when the call carries none (playground path)', () => {
       const event = buildNerUsageEvent({ tenantId: 't1', requestId: 'req-1', charCount: 100, model: 'm1' });
       expect(event.common.consultationId).toBeNull();

@@ -495,7 +495,7 @@ describe('SttWebSocketClient', () => {
       expect(onStatus).toHaveBeenCalledWith(msg);
     });
 
-    // TASK-567: the backend publishes an ASR-engine swap as a `status`/
+    // The backend publishes an ASR-engine swap as a `status`
     // `provider_switched` result that carries typed fields but NO human
     // `message`. The validator must not drop it, and the typed fields pass
     // through to onStatus.
@@ -747,7 +747,7 @@ describe('SttWebSocketClient', () => {
     });
 
     it('a concurrent second stopAndDrain JOINS the in-flight drain — both settle on the terminal status', async () => {
-      // TASK-597 follow-up regression: the compat layer stops one audio graph
+      // Regression: the compat layer stops one audio graph
       // through two hooks, so two destroy passes can call stopAndDrain
       // concurrently. The pending-drain resolver is a single slot; before the
       // join, the second call overwrote the first caller's resolver and the
@@ -852,7 +852,7 @@ describe('SttWebSocketClient', () => {
     });
 
     // =======================================================================
-    // TASK-597 lane B2 — the drain is user-visible Stop latency, so its
+    // The drain is user-visible Stop latency, so its
     // ceiling is configuration (default lowered to 1500ms) and a `finalizing`
     // status may end it early on a quiet window instead of the full ceiling.
     // =======================================================================
@@ -2170,7 +2170,7 @@ describe('SttWebSocketClient', () => {
       client.disconnect();
     });
 
-    // Per-utterance pipeline provenance (TASK-613 D3): which ASR pipeline
+    // Per-utterance pipeline provenance: which ASR pipeline
     // actually produced this utterance, which can differ from the requested
     // one after a mid-session engine switch. Additive + dual-cased like
     // utteranceIndex/resultType above.
@@ -2241,7 +2241,7 @@ describe('SttWebSocketClient', () => {
       expect(normalized!.pipelineId).toBe('pipeline-camel');
     });
 
-    // Backward compatibility (§3.4): an OLD backend that never learned about
+    // Backward compatibility: an OLD backend that never learned about
     // per-utterance provenance sends neither casing. The SDK must degrade
     // silently — no key invented, never the literal "undefined".
     it('should omit pipelineId when neither casing is present (old backend degrade)', async () => {

@@ -16,7 +16,7 @@ type DatabaseContext = any;
  * `import { CoreUnitOfWorkService } from '@arcaai/domains'` — which
  * `CoreDatabaseModule` both provides and exports.
  *
- * This trap already cost TASK-615 WS-D a shipped-but-dead metering path (both
+ * This trap already cost a shipped-but-dead metering path (both
  * summary services took the unmetered fallback branch in production while
  * their unit tests passed). Guarded now by
  * `services/consultation/summary/__tests__/usage-ledger.di-wiring.task615.test.ts`.

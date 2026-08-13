@@ -38,7 +38,7 @@ class TestHealth:
 
     @pytest.mark.asyncio
     async def test_readiness_200_with_keyless_byok_provider(self, app, async_client):
-        """TASK-642: a registered cloud provider awaiting a per-request BYOK key is
+        """A registered cloud provider awaiting a per-request BYOK key is
         serviceable — the gateway injects the credential per request — so it must
         not hold the whole service out of the k8s Service endpoints."""
         app.state.provider_registry.register(

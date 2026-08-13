@@ -1,5 +1,5 @@
 /**
- * TASK-648 W4 — TypeScript build-info reader.
+ * TypeScript build-info reader.
  *
  * Contract: `docs/implementation/TASK-648-Service-Version-And-Release-Registry/contracts/build-info.schema.json`.
  * Mirrors `test_build_info.py` on the Python side — same behavior, same shape.

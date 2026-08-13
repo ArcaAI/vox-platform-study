@@ -1,17 +1,17 @@
 /**
- * Contract tests for `pnpm env:sync` (TASK-558 lane D).
+ * Contract tests for `pnpm env:sync`.
  *
  * The CI job `env-drift-check` runs `pnpm env:sync --check`; these tests lock the
  * PROPERTIES that make the generated output correct in the first place, so a
  * regression in the generator itself cannot be laundered through a regenerate:
  *
  *   • the managed artifact set is exactly what the header declares
- *   • the root example is the BOOTSTRAP FLOOR and nothing else (plan §3.3)
- *   • committed example files never carry a value for a secret (plan §9.1 D3)
- *   • one declaration per key per file (plan §9.1 D8)
+ *   • the root example is the BOOTSTRAP FLOOR and nothing else
+ *   • committed example files never carry a value for a secret
+ *   • one declaration per key per file
  *   • every declared key is registered in `turbo.json#globalEnv`
- *   • the §8 size targets hold
- *   • the dead keys the ticket removed cannot come back
+ *   • the size targets hold
+ *   • the dead keys that were removed cannot come back
  *   • the files on disk match the generator (the drift gate, as a unit test)
  */
 
@@ -41,9 +41,9 @@ function keysOf(content: string): string[] {
 }
 
 /** The TS-declared-surface files — root floor (via `getBootstrapFloorContent`,
- * no longer a standalone artifact, TASK-585) + the 3 generated per-app files.
+ * no longer a standalone artifact) + the 3 generated per-app files.
  * Used by checks specific to that surface (turbo.json#globalEnv registration,
- * dead-keys-in-turbo, the §8 size ceiling) — `.env.sample` deliberately also
+ * dead-keys-in-turbo, the size ceiling) — `.env.sample` deliberately also
  * carries the 6 Python services' own keys, which are NOT part of this surface
  * and must not be pulled into those TS-specific assertions. */
 const ENV_FILES = ['apps/api/.env.sample', 'apps/admin-console/.env.sample', 'packages/tools/.env.sample'];
@@ -55,7 +55,7 @@ const ENV_FILES = ['apps/api/.env.sample', 'apps/admin-console/.env.sample', 'pa
 const GENERATED_ENV_ARTIFACTS = [...ENV_FILES, '.env.sample'];
 
 /** The full TS-declared surface: bootstrap floor + the 3 generated per-app
- * files. The floor is no longer a standalone artifact (TASK-585), so it's
+ * files. The floor is no longer a standalone artifact, so it's
  * pulled in via `getBootstrapFloorContent()` rather than `ENV_FILES`. */
 function declaredTsSurfaceKeys(): Set<string> {
   return new Set([...keysOf(getBootstrapFloorContent()), ...ENV_FILES.flatMap((p) => keysOf(artifact(p)))]);
@@ -82,8 +82,8 @@ describe('env:sync — managed artifacts', () => {
   });
 });
 
-describe('env:sync — the bootstrap floor (.env.sample §1) carries only the floor', () => {
-  // TASK-585: the floor is no longer its own file (`.env.example`) — it's
+describe('env:sync — the bootstrap floor (.env.sample first section) carries only the floor', () => {
+  // The floor is no longer its own file (`.env.example`) — it's
   // `.env.sample`'s first section, exported directly so this stays testable.
   const rootKeys = keysOf(getBootstrapFloorContent());
 
@@ -98,12 +98,12 @@ describe('env:sync — the bootstrap floor (.env.sample §1) carries only the fl
     }
   });
 
-  it('stays within the plan §8 size target (≤ 60 lines)', () => {
+  it('stays within the size target (≤ 60 lines)', () => {
     expect(getBootstrapFloorContent().split('\n').length).toBeLessThanOrEqual(60);
   });
 });
 
-describe('env:sync — committed files carry placeholders only (plan §9.1 D3)', () => {
+describe('env:sync — committed files carry placeholders only', () => {
   // Any of these in a committed example would be a real credential shape.
   const SECRET_SHAPED = [/^[A-Za-z0-9+/]{32,}={0,2}$/, /^hvs\./, /^s\.[A-Za-z0-9]{20,}/, /^sk-[A-Za-z0-9]{16,}/];
 
@@ -138,7 +138,7 @@ describe('env:sync — committed files carry placeholders only (plan §9.1 D3)',
     }
   });
 
-  // TASK-585 follow-up: `sampleValue` (a ready-to-use local-dev value, distinct
+  // `sampleValue` (a ready-to-use local-dev value, distinct
   // from `default` — see registry.types.ts) renders into `.env.sample`, but a
   // secret's `CHANGE_ME` redaction still wins even if one were mistakenly set
   // (the registry itself refuses to assemble that combination — belt-and-suspenders).
@@ -161,9 +161,9 @@ describe('env:sync — committed files carry placeholders only (plan §9.1 D3)',
   });
 });
 
-describe('env:sync — one ACTIVE declaration per key per file (plan §9.1 D8)', () => {
+describe('env:sync — one ACTIVE declaration per key per file', () => {
   // `.env.sample` deliberately carries commented-out duplicates (its own
-  // de-duplication, TASK-585) — `keysOf()` only matches ACTIVE (non-commented)
+  // de-duplication) — `keysOf()` only matches ACTIVE (non-commented)
   // lines, so this still correctly asserts zero active duplicates there too,
   // the exact property that guards against the "silent last-wins" defect.
   for (const path of GENERATED_ENV_ARTIFACTS) {
@@ -189,12 +189,12 @@ describe('env:sync — turbo.json#globalEnv', () => {
   });
 });
 
-describe('env:sync — dead keys stay dead (plan §2.3 + lane D D7)', () => {
+describe('env:sync — dead keys stay dead', () => {
   // Verified 2026-07-25: no reader in any TS/Python/shell/compose source.
   //   TENANT_IDP_ENABLED        — no reader at all (see feature-flags.descriptors.ts)
   //   AZURE_OPENAI_API_KEY      — only an SMR e2e conftest fixture; the real key is SMR_AZURE_API_KEY
   //   SMR_OPENAI_COMPAT_ENABLED — SMR gates providers by config presence, it has no `enabled` field
-  //   SMR_V2_* / STT_V2_URL     — the retired rename shims (lane A/C)
+  //   SMR_V2_* / STT_V2_URL     — the retired rename shims
   const DEAD = [
     'TENANT_IDP_ENABLED',
     'AZURE_OPENAI_API_KEY',
@@ -216,13 +216,13 @@ describe('env:sync — dead keys stay dead (plan §2.3 + lane D D7)', () => {
   });
 });
 
-describe('env:sync — the declared surface stays small (plan §8)', () => {
+describe('env:sync — the declared surface stays small', () => {
   it('declares at most ~144 distinct keys', () => {
     // Bumped 130 -> 134 for 4 legitimate additions since this ceiling was set
     // (verified via `pnpm env:sync --check`, no drift): AZURE_STORAGE_ACCOUNT_KEY,
     // AZURE_STORAGE_CONNECTION_STRING, HARNESS_INTERNAL_SERVICE_TOKEN,
     // STORAGE_ACCESS_KEY_PEPPER.
-    // Bumped 134 -> 144 for 10 legitimate additions (TASK-572b, expand LLM
+    // Bumped 134 -> 144 for 10 legitimate additions (expand LLM
     // providers — verified via `pnpm env:sync --check`, no drift):
     // SMR_ANTHROPIC_API_KEY, SMR_ANTHROPIC_BASE_URL, SMR_ANTHROPIC_DEFAULT_MODEL,
     // SMR_OPENAI_API_KEY, SMR_OPENAI_BASE_URL, SMR_OPENAI_DEFAULT_MODEL,

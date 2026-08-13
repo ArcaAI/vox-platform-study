@@ -4,7 +4,7 @@ import { AgentPromotionResponse, PaginatedAgentPromotionResponse, PromoteAgentRe
 export const IAgentPromotionService = Symbol('IAgentPromotionService');
 
 /**
- * TASK-663 — agent promotion between tenants.
+ * Agent promotion between tenants.
  *
  * NOTE the two different context requirements on this one service, which is
  * deliberate and documented on each method:

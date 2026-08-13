@@ -1,4 +1,4 @@
--- TASK-400 — Password Security Hardening (fully additive: no DROP/DELETE/TRUNCATE).
+-- Password Security Hardening (fully additive: no DROP/DELETE/TRUNCATE).
 --   1. User.passwordChangedAt (nullable) — rotation tracking; NULL = legacy/unknown.
 --   2. PasswordResetToken — revocable, DB-backed, single-use reset tokens
 --      (SHA-256 hash at rest; lifecycle via expiresAt / usedAt / revokedAt).

@@ -1,7 +1,7 @@
 /**
  * PlatformMetricsService.getConsumptionRollup.
  *
- * Ledger-derived (TASK-615 #11 / G16): transcription minutes = SUM(STT
+ * Ledger-derived (/ G16): transcription minutes = SUM(STT
  * AUDIO_SECOND rollups)/60 so the dashboard agrees with getUsageSummary;
  * summaries-24h counts only generatedAt ≥ now−24h (still SummaryMeta — no ledger
  * equivalent), storageUsedBytes = SUM(Media.size), storageQuotaBytes =

@@ -272,7 +272,7 @@ export interface STTPluginConfig {
   /** Language code (e.g., 'en', 'th') */
   language?: string;
   /**
-   * End-user language mode id (TASK-587), e.g. `'en'`, `'ml'`, `'ml-en'`,
+   * End-user language mode id, e.g. `'en'`, `'ml'`, `'ml-en'`
    * `'auto'`. Default for the backend STT session; a per-capture
    * `audio.start({ languageMode })` overrides it.
    */
@@ -604,7 +604,7 @@ export const DEFAULT_LOCAL_CONFIG: LocalWorkflowConfig = {
   stt: { modelId: 'whisper-base' },
   vad: { modelId: 'silero-vad-v5', sensitivity: 0.5 },
   // Optional feature — the model id is retained for opt-in, but auto-extraction
-  // stays OFF by default (TASK-647). Medical NER pulls the ~300MB `@arcaai/med-ner`
+  // stays OFF by default. Medical NER pulls the ~300MB `@arcaai/med-ner`
   // peer; it runs only when a consumer explicitly enables `autoExtract`.
   ner: { modelId: 'biomedical', autoExtract: false },
   diarization: { enabled: false, autoEnroll: false },
@@ -621,7 +621,7 @@ export const DEFAULT_LOCAL_CONFIG: LocalWorkflowConfig = {
  * Default audio plugin configuration
  */
 /**
- * Optional audio features default OFF (TASK-647).
+ * Optional audio features default OFF.
  *
  * VAD and noise cancellation are opt-in: each pulls a runtime model on the first
  * `audio.start()` (VAD → Silero ONNX + ORT WASM from the jsDelivr CDN; noise →

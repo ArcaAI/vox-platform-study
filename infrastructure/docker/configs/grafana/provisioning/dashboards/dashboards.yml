@@ -1,5 +1,5 @@
 # ============================================================================
-# HOPE — DEV Grafana dashboard provisioning (TASK-397, builds on TASK-386)
+# HOPE — DEV Grafana dashboard provisioning
 # ============================================================================
 # Auto-discovers dashboard JSON files under /var/lib/grafana/dashboards (mounted
 # read-only from ./configs/grafana/dashboards). New/changed JSON appears within

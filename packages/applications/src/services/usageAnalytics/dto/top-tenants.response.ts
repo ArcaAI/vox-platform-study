@@ -8,7 +8,7 @@ export class TopTenantUsage {
   costMicros!: string;
 }
 
-/** GLOBAL-ADMIN-only cross-tenant rollup query (TASK-615 WS-J). */
+/** GLOBAL-ADMIN-only cross-tenant rollup query. */
 export class TopTenantsResponse {
   @ApiProperty({ description: 'Billing-period label, YYYY-MM.' })
   period!: string;

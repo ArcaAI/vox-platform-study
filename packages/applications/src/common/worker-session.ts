@@ -61,7 +61,7 @@ export interface WorkerSessionInit {
 }
 
 /**
- * (§8 F-6) — typed factory for background-worker /
+ * (F-6) — typed factory for background-worker /
  * event-handler CLS contexts.
  *
  * Replaces the ad-hoc `{ id, tenantId, roles: [], permissions: [] }

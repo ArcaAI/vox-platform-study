@@ -1,4 +1,4 @@
-"""TASK-615 WS-D — SMR usage metering: audit truth + gateway passthrough.
+"""SMR usage metering: audit truth + gateway passthrough.
 
 Three defects are locked down here:
 
@@ -10,7 +10,7 @@ Three defects are locked down here:
    way to attribute them to a tenant.
 3. **Streaming usage never reached the gateway.** The gateway can only emit
    ledger rows for tokens it is told about, and the SSE stream carried none —
-   least of all on the abort path (the TASK-470/471 dropped-tail bug class).
+   least of all on the abort path (the dropped-tail bug class).
 
 The abort case is written FIRST on purpose: a stream that dies after burning
 tokens is the case that silently loses money.

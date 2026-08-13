@@ -111,7 +111,7 @@ function buildDeps(httpMock = buildHttpMock()) {
     findTranscripts: vi.fn().mockResolvedValue([]),
     findLatestPreSummary: vi.fn().mockResolvedValue(null),
     findPreSummaries: vi.fn().mockResolvedValue([]),
-    // TASK-655 — `findLiveSnapshotRow` now delegates to this repository helper;
+    // `findLiveSnapshotRow` now delegates to this repository helper;
     // mirror it through the SAME `findPreSummaries` mock above.
     findLatestPreSummaryWithDecryptedContent: vi.fn(async (consultationId: string, _secrets: unknown, options?: { subType?: string }) => {
       const rows: Array<{ metaData?: unknown; createdAt: Date; content?: string | null }> = await contextItemRepository.findPreSummaries(

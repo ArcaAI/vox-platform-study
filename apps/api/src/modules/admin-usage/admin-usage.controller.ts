@@ -15,7 +15,7 @@ import { resolveScopedTenantId } from '../../shared/tenant-scope';
 import { CostPerEncounterQuery, TopTenantsQuery, UsageSummaryQuery, UsageTimeseriesQuery as UsageTimeseriesQueryDto } from './dto';
 
 /**
- * Admin/global usage-analytics surface (TASK-615 WS-J), mounted at
+ * Admin/global usage-analytics surface, mounted at
  * `/admin/usage/*` (global prefix → `/api/v1/admin/usage/*`).
  *
  * Gated GLOBAL_ADMIN via `@CanManage('UsageAnalytics')` — the same posture as

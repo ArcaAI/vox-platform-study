@@ -1,13 +1,13 @@
 /**
- * ESLint 9 FLAT config preset for Next.js apps (TASK-415 Phase 1b; moved
- * into the flat preset family as `flat/next.js` by TASK-418 — content
+ * ESLint 9 FLAT config preset for Next.js apps (moved
+ * into the flat preset family as `flat/next.js` by — content
  * unchanged from the former `next-flat.js`).
  *
  * Consumed by Next.js apps (e.g. `apps/admin-console`) via:
  *
- *     // eslint.config.mjs
- *     import next from '@arcaai/config-eslint/flat/next.js';
- *     export default next;
+ * // eslint.config.mjs
+ * import next from '@arcaai/config-eslint/flat/next.js';
+ * export default next;
  *
  * (or `require('@arcaai/config-eslint/flat/next')` from CJS).
  *
@@ -17,14 +17,14 @@
  * a packages/* convention — apps fail on errors.
  *
  * Composition (order matters — later entries win):
- *   1. ignores
- *   2. typescript-eslint v8 recommended (NOT type-checked — keeps lint fast)
- *   3. @next/eslint-plugin-next recommended + core-web-vitals
- *   4. eslint-plugin-react flat recommended (new-JSX-transform aware)
- *   5. eslint-plugin-react-hooks flat recommended
- *   6. house rule conventions carried over from the shared core
- *   7. eslint-config-prettier LAST to disable formatting-conflict rules
- */
+ * 1. ignores
+ * 2. typescript-eslint v8 recommended (NOT type-checked — keeps lint fast)
+ * 3. @next/eslint-plugin-next recommended + core-web-vitals
+ * 4. eslint-plugin-react flat recommended (new-JSX-transform aware)
+ * 5. eslint-plugin-react-hooks flat recommended
+ * 6. house rule conventions carried over from the shared core
+ * 7. eslint-config-prettier LAST to disable formatting-conflict rules
+*/
 const { fixupPluginRules } = require('@eslint/compat');
 const eslintComments = require('@eslint-community/eslint-plugin-eslint-comments');
 const nextPlugin = require('@next/eslint-plugin-next');
@@ -102,14 +102,14 @@ module.exports = [
                     destructuredArrayIgnorePattern: '^_',
                 },
             ],
-            // TASK-540 — same hygiene rule as the shared core: every
+            // Same hygiene rule as the shared core: every
             // eslint-disable comment must carry a `-- reason`. 'warn' until
             // this app's backlog is clean (see flat/core.js for the full
             // rationale).
             'eslint-comments/require-description': ['warn', { ignore: [] }],
             'eslint-comments/no-unlimited-disable': 'error',
             'eslint-comments/no-unused-disable': 'warn',
-            // TASK-305 B.5 — Guard the unscoped Prisma client (same guard as
+            // Guard the unscoped Prisma client (same guard as
             // the shared core). Server-side Next.js code could import
             // @arcaai/database; the unscoped client bypasses tenant-scope and
             // soft-delete.

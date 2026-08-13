@@ -14,7 +14,7 @@ import type { Response } from 'express';
 import { Authorize, CanManage, ExpectedVersion, RequiresIfMatch } from '../../decorators';
 
 /**
- * TASK-658 — admin CRUD + governance for tenant-declared consultation context
+ * Admin CRUD + governance for tenant-declared consultation context
  * schemas, at `/admin/consultation-context-schemas`.
  *
  * `tenantId` is never a route, query or body parameter: every handler is
@@ -151,7 +151,7 @@ export class ConsultationContextSchemaAdminController {
 }
 
 /**
- * TASK-658 — the CLIENT DISCOVERY surface (TASK-654 R2/D4), at
+ * The CLIENT DISCOVERY surface (/D4), at
  * `/tenant/me/context-schema`.
  *
  * A deliberate SIBLING of `GET /tenant/me/config`, not an addition to it:

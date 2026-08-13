@@ -12,7 +12,7 @@
 # Build (from repo root):
 #   docker build -f apps/nlp/Dockerfile --target production -t nlp .
 #
-# CPU-ONLY TORCH (TASK-647). The locked torch 2.8.0 PyPI wheel for linux/amd64
+# CPU-ONLY TORCH. The locked torch 2.8.0 PyPI wheel for linux/amd64
 # drags in the whole nvidia-cu12 + triton stack (~2.7 GB). `hope-nlp` requests NO
 # GPU (`base/nlp.yaml` declares no `nvidia.com/gpu`), and every GPU code path in
 # this service is already gated on `torch.cuda.is_available()` — which is False in
@@ -22,12 +22,12 @@
 #
 # `--extra-index-url` alone does NOT work here: under `--frozen` uv installs the
 # exact URL+hash recorded in the lock and ignores extra indexes, silently producing
-# the CUDA build anyway. The working form (proven by TASK-642 on apps/tts) is an
+# the CUDA build anyway. The working form (proven by on apps/tts) is an
 # explicit `--no-install-package` exclusion of the CUDA set plus a separate pinned
-# install from the PyTorch CPU index. Measured on linux/amd64: see TASK-647 §4.
+# install from the PyTorch CPU index. Measured on linux/amd64: see
 #
 # If NLP is ever given a GPU, the answer is a SECOND image variant, not putting
-# CUDA back in the default image (TASK-647 OD-1).
+# CUDA back in the default image.
 # ─────────────────────────────────────────────────────────────────────────────
 
 # Base image is parameterized so CI can inject the registry-qualified tag while
@@ -78,12 +78,12 @@ COPY apps/smr/pyproject.toml ./apps/smr/
 COPY apps/harness/pyproject.toml ./apps/harness/
 COPY apps/stt/pyproject.toml ./apps/stt/
 COPY apps/tts/pyproject.toml ./apps/tts/
-# TASK-529 — the shared model-lifecycle package is a workspace PATH dependency,
+# The shared model-lifecycle package is a workspace PATH dependency,
 # and `--no-install-project` skips only the target package, not its workspace
 # deps: uv builds this one here, so its source must be present in layer 1. It is
 # dependency-free and changes rarely, so this costs no meaningful cache churn.
 COPY packages/py-runtime-models ./packages/py-runtime-models
-# TASK-558 — shared env-file loader (`hope-env`). Same workspace path-dependency
+# Shared env-file loader (`hope-env`). Same workspace path-dependency
 # rule as py-runtime-models above: every service now declares `hope-env`, so
 # `uv sync` needs it on disk or layer 1 fails with "Distribution not found at:
 # file:///app/packages/py-env". Dependency-light and rarely changed.
@@ -133,7 +133,7 @@ ENV PYTHONPATH="/app/src" \
 COPY --from=builder --chown=hope:hope /app/.venv /app/.venv
 COPY --chown=hope:hope apps/nlp/src ./src
 
-# ── TASK-648 W3 — bake build identity, LAST layer ───────────────────────────
+# ── bake build identity, LAST layer ───────────────────────────
 # These args change on every commit; kept below every COPY/RUN so they never
 # invalidate the layer cache above them. Written to /app/build-info.json per
 # docs/implementation/TASK-648-Service-Version-And-Release-Registry/contracts/build-info.schema.json.

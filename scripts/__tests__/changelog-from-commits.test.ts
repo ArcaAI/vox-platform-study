@@ -1,14 +1,14 @@
 /**
- * TASK-648 U1 — `scripts/changelog-from-commits.ts` (README §5 W12, TDD list).
+ * Tests for `scripts/changelog-from-commits.ts`.
  *
  * Parses Conventional Commits into the shape frozen by
  * `docs/implementation/TASK-648-.../contracts/changelog-entry.schema.json`,
- * and enforces the SemVer policy of README §3.1: a release with a breaking
+ * and enforces the SemVer policy: a release with a breaking
  * commit must be a MAJOR bump.
  *
  * Pure-function tests only — git plumbing (`getCommitsInRange`,
  * `getPreviousFamilyTag`) is exercised separately via the CLI's manual run
- * against this repo's real history (see the ticket report), not unit-tested
+ * against this repo's real history, not unit-tested
  * here, so these tests never depend on repository state.
  */
 
@@ -165,7 +165,7 @@ describe('determineVersionBump', () => {
   });
 });
 
-describe('assertBreakingRequiresMajorBump — the enforcement gate (README §3.5 rule 2)', () => {
+describe('assertBreakingRequiresMajorBump — the enforcement gate', () => {
   it('does not throw when no entry is breaking', () => {
     const entries = buildChangelog([commit({ subject: 'fix(TASK-1): ok' })]);
     expect(() => assertBreakingRequiresMajorBump(entries, 'minor')).not.toThrow();
@@ -200,7 +200,7 @@ describe('assertBreakingRequiresMajorBump — the enforcement gate (README §3.5
   });
 });
 
-describe('buildDraftChangelogPayload — ALL- tag draft ChangelogEntry (README §3.5 rule 5)', () => {
+describe('buildDraftChangelogPayload — ALL- tag draft ChangelogEntry', () => {
   it('pulls feat + breaking items into title/summary/body, never publishing', () => {
     const entries = buildChangelog([
       commit({ subject: 'feat(TASK-1): add Malayalam TTS', sha: 'a'.repeat(40) }),
@@ -216,7 +216,7 @@ describe('buildDraftChangelogPayload — ALL- tag draft ChangelogEntry (README �
     // The plain fix (non-breaking, non-feat) is not pulled into the curated draft.
     expect(payload.body).not.toContain('quiet a flaky log line');
     // No publish-shaped field exists on the payload — CI only ever creates a DRAFT
-    // and publishing is a human action via the API (README §3.5).
+    // and publishing is a human action via the API.
     expect(payload).not.toHaveProperty('publishStatus');
     expect(payload).not.toHaveProperty('publishedAt');
   });

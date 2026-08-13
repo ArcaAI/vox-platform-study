@@ -5,7 +5,7 @@ import { ISellRateCardService } from './ISellRateCardService';
 import { SellRateCardService } from './sell-rate-card.service';
 
 /**
- * SELL rate-card administration (TASK-615 WS-I).
+ * SELL rate-card administration.
  *
  * `CoreDatabaseModule` supplies `AiPriceBookRepository` + `CoreUnitOfWorkService`
  * (the atomic close+insert supersede). Deliberately separate from

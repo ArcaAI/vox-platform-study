@@ -9,11 +9,11 @@
  * Source: the RUNNING v1 SMR pod (Rancher cluster c-9lwv8, namespace apps,
  * pod apps-smr-84c9774997-zhp2l), NOT a local v1 checkout — the two have
  * diverged (see docs/implementation/TASK-634-Pre-Summary-Summary-Prompt-Fidelity/README.md
- * §2.2, §2.9). Extracted 2026-08-07 via a chunked base64 pipeline (never
+ * ). Extracted 2026-08-07 via a chunked base64 pipeline (never
  * retyped) with every chunk sha256-verified against the pod before
  * concatenation, then cross-checked two independent reconstruction methods
  * (direct Python execution vs. `ast`-based literal extraction) for
- * byte-for-byte agreement. See §2.14 D-12 and the TASK-634 README Phase 5.
+ * byte-for-byte agreement. See D-12 and the README Phase 5.
  *
  * GENERATED, DO NOT HAND-EDIT — regenerate from the pod, never retype.
  * sha256 ac7cbff697bf91d6d2d7d00cf7d2c8cd266948dd5cacb37478bcd31034e82364  1464 bytes

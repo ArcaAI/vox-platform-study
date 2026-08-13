@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================================
-# TASK-557 — Managed test run (infra → services → suite → report → teardown)
+# Managed test run (infra → services → suite → report → teardown)
 # ============================================================================
 # Runs a test suite end to end without leaving anything behind:
 #
@@ -190,7 +190,7 @@ else
         echo "  schema missing — running test:db:reset"
         # The PHI-ciphertext seed (packages/database/.../seed/phi-encryption.ts)
         # calls Vault Transit under .env.test's SECRETS_PROVIDER=vault, so Vault
-        # (hope-vault-test, TASK-689) must be provisioned BEFORE the seed runs —
+        # (hope-vault-test) must be provisioned BEFORE the seed runs —
         # not just before app services start (Step 2 below), which never fires
         # for suites with no services (unit/integration/py/single Python
         # services). No-op when .env.test doesn't select the Vault provider.
@@ -199,7 +199,7 @@ else
             teardown
             exit 1
         fi
-        # Seeding is opt-in and defaults to RUN_SEED=none (TASK-616) — managed
+        # Seeding is opt-in and defaults to RUN_SEED=none — managed
         # test runs need the full demo fixture set (media-seed.ts depends on
         # the seeded doctor row), so opt in explicitly, matching test-setup.sh.
         if ! RUN_SEED=all NODE_ENV=test pnpm test:db:reset; then

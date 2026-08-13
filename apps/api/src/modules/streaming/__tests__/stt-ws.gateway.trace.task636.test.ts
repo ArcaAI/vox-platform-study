@@ -1,5 +1,5 @@
 /**
- * TASK-636 OBS-16 — the WebSocket boundary is where an STT trace is ROOTED.
+ * The WebSocket boundary is where an STT trace is ROOTED.
  *
  * `@opentelemetry/instrumentation-http` continues a trace for ordinary
  * requests, but it patches the server's `request` event — NOT `upgrade`. A
@@ -151,7 +151,7 @@ const buildReq = (headers: Record<string, string> = {}): any => ({
   headers,
 });
 
-describe('TASK-636 OBS-16 — SttWsGateway trace rooting + propagation', () => {
+describe('SttWsGateway trace rooting + propagation', () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let mocks: any;
   let gateway: SttWsGateway;

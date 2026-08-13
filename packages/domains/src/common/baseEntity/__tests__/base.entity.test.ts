@@ -336,7 +336,7 @@ describe('BaseEntity', () => {
   /*
    * Tenant is part of entity identity, not just metadata.
    *
-   * Before this ticket `BaseEntity.equals(other)` compared `id` only —
+   * Previously `BaseEntity.equals(other)` compared `id` only —
    * meaning two `BaseTenantEntity` instances with the same row id but
    * DIFFERENT `tenantId` would be reported as equal. That breaks any
    * collection-membership check (e.g. `entities.find((e) => e.equals(x))`

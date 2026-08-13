@@ -1,22 +1,22 @@
 /**
- * TASK-310 E-5 (AC-5) — no-direct-downstream-url-env
+ * no-direct-downstream-url-env
  *
  * Forbids direct `process.env.<KEY>` reads for the downstream Python
  * service URLs inside `apps/api/src/modules/**`. All callsites must
  * resolve URLs via the typed `IConfigService.getConfigValue(...)`
  * (which loads-and-validates env once at bootstrap).
  *
- *   const url = process.env.SMR_URL || 'http://localhost:8862';   // ERROR
- *   const url = process.env['STT_URL'];                            // ERROR
- *   const url = process.env['STT_V2_URL'];                         // ERROR (dual-read window)
- *   const url = this.configService.getConfigValue('SMR_URL');     // OK
+ * const url = process.env.SMR_URL || 'http://localhost:8862'; // ERROR
+ * const url = process.env['STT_URL']; // ERROR
+ * const url = process.env['STT_V2_URL']; // ERROR (dual-read window)
+ * const url = this.configService.getConfigValue('SMR_URL'); // OK
  *
- * The rule is a tight denylist on the known downstream URL keys —
+ * The rule is a tight denylist on the known downstream URL keys
  * other env reads (NODE_ENV, npm_package_version, ...) stay legal.
  * Scope is wired in `packages/config-eslint/flat/core.js` via a
  * config entry scoped to the modules glob, mirroring the
  * `no-controller-direct-prisma` precedent (W6.4).
- */
+*/
 'use strict';
 
 const BANNED_KEYS = new Set([

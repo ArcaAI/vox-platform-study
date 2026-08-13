@@ -1,7 +1,7 @@
 /**
- * Agent golden-library template resync for EXISTING tenants (TASK-548).
+ * Agent golden-library template resync for EXISTING tenants.
  *
- * The SIBLING of `PipelineTemplateResyncService` (TASK-531) — same four
+ * The SIBLING of `PipelineTemplateResyncService` — same four
  * conservative rules, applied to the DepartmentAgent family:
  *
  *   (i)   golden agent slug missing for the tenant → clone it in (locked +
@@ -26,7 +26,7 @@ const GOLDEN_CONTENT_V1 = 'GOLDEN CONTENT v1';
 const GOLDEN_CONTENT_V2 = 'GOLDEN CONTENT v2';
 const CUSTOM_CONTENT = 'tenant-customized content';
 
-// TASK-659 defaults ("nothing configured") — every real DepartmentAgentEntity
+// Defaults ("nothing configured") — every real DepartmentAgentEntity
 // carries these; the plain mock objects here must match or `hasLoopConfig`
 // (which treats a missing `role` as "configured", since only a hydrated entity
 // defaults it to SPECIALIST) would spuriously trigger OP-4's propagation path
@@ -133,7 +133,7 @@ const mockVersionRepo = {
   findMaxVersionNumber: vi.fn(),
   create: vi.fn(),
 };
-// OP-4 (TASK-678) — cross-schema validation deps. Default to "no schema
+// OP-4 — cross-schema validation deps. Default to "no schema
 // declared", which is a SAFE default: it only matters (and only gets called)
 // when a test's golden agent actually sets `subscribedKinds`/`writeScope`.
 const mockContextSchemaRepo = { findDefaultForScope: vi.fn() };
@@ -211,7 +211,7 @@ describe('AgentTemplateResyncService', () => {
     expect(mockAgentRepo.setDefaultForDepartment).toHaveBeenCalledTimes(1);
   });
 
-  // TASK-634 D-18 — resync reconciles agents onto the tenant's EXISTING
+  // Resync reconciles agents onto the tenant's EXISTING
   // departments; it must never provision a department. The old
   // `resolveOrCreateTenantDepartment` cloned the golden department shape on a
   // miss, which made the SYSTEM golden catalog the de-facto source of every
@@ -288,9 +288,9 @@ describe('AgentTemplateResyncService', () => {
     expect(mockAgentRepo.updateWithVersion).not.toHaveBeenCalled();
   });
 
-  // TASK-635 R4 — the ArcaAI hazard, closed STRUCTURALLY.
+  // The ArcaAI hazard, closed STRUCTURALLY.
   //
-  // RF-3 gave the ArcaAI tenant 7 tenant-owned per-visit-type agents seeded with
+  //  gave the ArcaAI tenant 7 tenant-owned per-visit-type agents seeded with
   // the GOLDEN SLUGS. That is deliberate and load-bearing: rule (i) clones a
   // golden agent only when its slug is ABSENT for the tenant, so matching slugs
   // make the nightly sweep add nothing, and rule (iii) ("never touch an unlocked
@@ -378,7 +378,7 @@ describe('AgentTemplateResyncService', () => {
   });
 
   // =========================================================================
-  // OP-4 (TASK-678) — the seven TASK-659 loop-config fields now propagate at
+  // OP-4 — the seven loop-config fields now propagate at
   // the SAME two proven-safe points (clone + content fast-forward), validated
   // the same way AgentPromotionService validates a cross-tenant write, and
   // never silently: every block is logged and counted.

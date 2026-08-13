@@ -4,13 +4,13 @@ import { ConsultationContextSchemaScope, ConsultationContextSchemaStatus } from 
 import { CONTEXT_KIND_KEY_PATTERN } from '../context-schema-definition';
 
 /**
- * TASK-658 request DTOs.
+ * Request DTOs.
  *
  * `tenantId` is NEVER a field on any of these: it is read from CLS by the
  * service, and the global pipe runs `forbidNonWhitelisted`, so a caller cannot
  * forge one. The tenant-defined part of the payload rides exactly ONE declared
  * envelope field (`definition`) and is validated in the service layer, which
- * is what TASK-654 constraint C7 requires.
+ * is what constraint C7 requires.
  */
 export class CreateConsultationContextSchemaRequest {
   @ApiProperty({ description: 'Stable tenant-invented identifier, unique per tenant.', example: 'general_medicine_context' })

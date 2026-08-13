@@ -1,8 +1,8 @@
 /**
  * `BillingService.recordPlanChange` is genuinely atomic.
  *
- * Closes the TASK-677 audit finding recorded in
- * `docs/implementation/TASK-677-Transactional-Write-Sequences/README.md` §6.1,
+ * Closes the audit finding recorded in
+ * `docs/implementation/TASK-677-Transactional-Write-Sequences/README.md`.
  * deliberately left unfixed there because it changes billing behaviour.
  *
  * The method wraps its two writes — CLOSE the current plan window, OPEN the
@@ -22,7 +22,7 @@
  * inside it. A failing `create` rolled back only the open, leaving the
  * tenant's plan history with a GAP — no window in force from `effectiveAt`
  * onward — which is exactly the failure the transaction was written to
- * prevent. TASK-677 (`0002b78d3`) added the optional `tx` parameter to
+ * prevent. (`0002b78d3`) added the optional `tx` parameter to
  * `Repository.update`, so the close can now join the transaction.
  *
  * Fixture style follows `agentPromotion/__tests__/agentPromotion.transaction.task677.test.ts`.
@@ -79,7 +79,7 @@ const openWindow = () => ({
   supersedeAt: vi.fn(),
 });
 
-describe('BillingService.recordPlanChange is transactional (TASK-677 §6.1)', () => {
+describe('BillingService.recordPlanChange is transactional', () => {
   let service: BillingService;
 
   beforeEach(() => {

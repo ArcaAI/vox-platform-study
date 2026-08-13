@@ -55,7 +55,7 @@ CREATE INDEX "HarnessPolicyChange_tenantId_idx" ON "core"."HarnessPolicyChange"(
 CREATE INDEX "HarnessPolicyChange_tenant_createdAt_idx" ON "core"."HarnessPolicyChange"("tenantId", "createdAt");
 
 -- =============================================================================
--- TASK-330 Phase 6 — WORM enforcement for HarnessPolicyChange (append-only)
+-- WORM enforcement for HarnessPolicyChange (append-only)
 --
 -- The bootstrap (manual/vault-admin-bootstrap.sql) sets ALTER DEFAULT
 -- PRIVILEGES so newly-created `core` tables auto-grant SELECT/INSERT/UPDATE/
@@ -84,7 +84,7 @@ END
 $worm$;
 
 -- =============================================================================
--- TASK-330 Phase 6 — bootstrap the GLOBAL-DEFAULT policy row (system tenant).
+-- Bootstrap the GLOBAL-DEFAULT policy row (system tenant).
 --
 -- Every tenant computes its effective policy as "own row OVERRIDES the system
 -- default", and the durable worker reads the effective policy through

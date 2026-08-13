@@ -1,6 +1,6 @@
 #!/bin/sh
 # =============================================================================
-# TASK-558 lane K (K1) — GitLab OIDC → Vault JWT auth, CE/Free form.
+# GitLab OIDC → Vault JWT auth, CE/Free form.
 # =============================================================================
 # Exchanges the job-scoped GitLab ID token ($VAULT_ID_TOKEN, minted by the
 # `id_tokens:` keyword) for a short-lived Vault token, reads the kv-v2 paths

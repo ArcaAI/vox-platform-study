@@ -1,7 +1,7 @@
 /**
- * Cross-tenant + secret-hygiene probes against the TASK-567 STT fallback/BYOK
+ * Cross-tenant + secret-hygiene probes against the STT fallback/BYOK
  * surface: `/api/v1/admin/stt-config` (admin) + the streaming switch endpoint.
- * Follows the task-307 / task-506 / TASK-496 pattern (see
+ * Follows the / / pattern (see
  * `ai-provider-connections-cross-tenant.spec.ts`).
  *
  * Authored now, RUN when a live stack is available (`pnpm test:up:api` then
@@ -51,7 +51,7 @@ function assertNoSecretMaterial(rawBody: string): void {
   expect(rawBody).not.toContain('vault:v');
 }
 
-test.describe('TASK-567 STT fallback + BYOK', () => {
+test.describe('STT fallback + BYOK', () => {
   let globalAdminToken: string;
   let tenantAdminToken: string;
   let foreignTenantId: string;

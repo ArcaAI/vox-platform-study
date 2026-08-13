@@ -31,7 +31,7 @@ class TemporalConfig(BaseSettings):
     container it is ``temporal:7233``.
     """
 
-    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
     settings_customise_sources = hope_settings_sources
 
     model_config = SettingsConfigDict(env_prefix="TEMPORAL_")
@@ -71,7 +71,7 @@ class SafetyGuardConfig(BaseSettings):
     ``HARNESS_SAFETY_MODEL``.
     """
 
-    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
     settings_customise_sources = hope_settings_sources
 
     model_config = SettingsConfigDict(env_prefix="HARNESS_SAFETY_")
@@ -119,7 +119,7 @@ class PhiConfig(BaseSettings):
     the local SMR) are not egress and are not listed here.
     """
 
-    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
     settings_customise_sources = hope_settings_sources
 
     model_config = SettingsConfigDict(env_prefix="HARNESS_PHI_")
@@ -154,14 +154,14 @@ class RetrievalConfig(BaseSettings):
     loaded — it MUST match both the loaded model and the Qdrant collection.
     """
 
-    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
     settings_customise_sources = hope_settings_sources
 
     model_config = SettingsConfigDict(env_prefix="HARNESS_RETRIEVAL_")
 
     enabled: bool = False
     qdrant_url: str = "http://localhost:6333"
-    # Qdrant ships with NO authentication (TASK-624 Q-04). Unauthenticated is
+    # Qdrant ships with NO authentication. Unauthenticated is
     # correct for local dev; in-cluster it means any pod in the namespace can
     # read or delete the tenant knowledge corpus. SecretStr because the settings
     # object is logged at startup. Default None, not "" — an empty string is
@@ -224,7 +224,7 @@ class ClaimCheckConfig(BaseSettings):
     unchanged: this is a deployment guard, not a default change.
     """
 
-    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
     settings_customise_sources = hope_settings_sources
 
     model_config = SettingsConfigDict(env_prefix="HARNESS_CLAIM_CHECK_")
@@ -274,7 +274,7 @@ class McpConfig(BaseSettings):
     by the server's ``authRef`` PATH — never stored or logged here.
     """
 
-    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
     settings_customise_sources = hope_settings_sources
 
     model_config = SettingsConfigDict(env_prefix="HARNESS_MCP_")
@@ -307,7 +307,7 @@ class McpConfig(BaseSettings):
 class Settings(BaseSettings):
     """Root harness application settings."""
 
-    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
     settings_customise_sources = hope_settings_sources
 
     model_config = SettingsConfigDict(env_prefix="HARNESS_")
@@ -487,18 +487,18 @@ class Settings(BaseSettings):
         """The real gate: the master switch AND a configured collector endpoint.
 
         ``otel_enabled`` alone is not enough — flipping it on with no endpoint
-        set must stay a no-op (TASK-411: never require a reachable collector to
+        set must stay a no-op (never require a reachable collector to
         start). Both ``core/observability.py`` and ``temporal/client.py`` read
         this property rather than ``otel_enabled`` directly.
         """
         return self.otel_enabled and bool(self.otel_exporter_endpoint)
 
-    # Observability — traces (TASK-636 OBS-14). Prometheus metrics + the
+    # Observability — traces. Prometheus metrics + the
     # trajectory spine cover most of the observability need, but neither one
     # replaces distributed tracing across FastAPI request handling and the
     # Temporal workflow/activity spans. ``_add_otel_context`` in core/logging.py
     # is no longer inert: `core/observability.py` is the consumer that installs a
-    # TracerProvider (default OFF — TASK-411), after which every log line carries
+    # TracerProvider (default OFF), after which every log line carries
     # the active trace/span id.
     #
     # Default OFF and requires an explicit endpoint (not just the flag) — a
@@ -508,7 +508,7 @@ class Settings(BaseSettings):
     otel_exporter_endpoint: str = ""
     otel_service_name: str = "harness"
     otel_service_namespace: str = "hope"
-    # TASK-636 OBS-18. Resolved from the environment, and defaulting to
+    # Resolved from the environment, and defaulting to
     # DEVELOPMENT — never "production".
     #
     # This is the same defect that was fixed in `apps/stt/core/telemetry.py`
@@ -518,7 +518,7 @@ class Settings(BaseSettings):
     #
     # Precedence matches STT and the OTel collector: DEPLOYMENT_ENVIRONMENT
     # (what the k8s overlays patch) then NODE_ENV (the repo-wide selector,
-    # TASK-558) then "development".
+    # ) then "development".
     otel_deployment_environment: str = Field(
         default_factory=lambda: os.getenv("DEPLOYMENT_ENVIRONMENT")
         or os.getenv("NODE_ENV")
@@ -529,7 +529,7 @@ class Settings(BaseSettings):
     metrics_enabled: bool = True
 
     # Bind address for the Temporal SDK's Prometheus exporter in the WORKER
-    # process (TASK-636 OBS-06). Separate from the FastAPI app's :8866 — the
+    # process. Separate from the FastAPI app's:8866 — the
     # worker is its own process and shares no HTTP server with it.
     #
     # Loopback by default: this is a PHI-processing service and must not become

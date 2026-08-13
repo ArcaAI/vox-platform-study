@@ -1,5 +1,5 @@
 /**
- * TASK-548 — Agent Golden Library (SYSTEM tenant).
+ * Agent Golden Library (SYSTEM tenant).
  *
  * Promotes the 18-department fixture catalog (04-department.ts +
  * 07-prompt-template.ts) into platform-curated GOLDEN rows owned by the
@@ -21,11 +21,11 @@
  * `metaData.sourceTemplateVersionNumber` so the resync sweep
  * (`AgentTemplateResyncService`) can prove it pristine.
  *
- * The ArcaAI fixture tenant is NOT a clone set: TASK-635 RF-3 gives it 7
+ * The ArcaAI fixture tenant is NOT a clone set: it has 7
  * tenant-owned, UNLOCKED per-visit-type default agents (`ARCAAI_TENANT_AGENTS`
  * below) that mirror its legacy Department prompt-id columns exactly. They reuse
- * the GOLDEN slugs so the resync sweep stays a no-op for that tenant. (TASK-592
- * Workstream D had removed ArcaAI's agents entirely; see the block comment above
+ * the GOLDEN slugs so the resync sweep stays a no-op for that tenant.
+ * (Workstream D had removed ArcaAI's agents entirely; see the block comment above
  * ARCAAI_TENANT_AGENTS for why that invariant is now retired rather than guarded.)
  *
  * ID blocks (documented in 00-constants.ts):
@@ -34,14 +34,13 @@
  *   72000000-…-0002-…  SYSTEM golden prompt versions
  *   78000000-…-XXXX-…  Department agents (0002 SYSTEM golden, 0000 Global
  *                      tenant clones, 0001 ArcaAI per-visit-type defaults —
- *                      block retired in TASK-592 Workstream D, RESTORED by
- *                      TASK-635 RF-3 now that the agent carries a visit-type
+ *                      block retired, then restored now that the agent carries a visit-type
  *                      axis)
  *
- * SYSTEM_SHARED_READ_MODELS decision (plan §1), AMENDED by TASK-635 B-12:
+ * SYSTEM_SHARED_READ_MODELS decision, amended:
  * Department and DepartmentAgent are still deliberately NOT widened. PROMPT
  * TEMPLATES ARE: `PromptTemplate`/`PromptVersion` joined SYSTEM_SHARED_READ_MODELS
- * in TASK-635 C2, because the SYSTEM-owned platform-default prompts (the
+ * because the SYSTEM-owned platform-default prompts (the
  * pre-summary tier-2 fallback …040 and the live-summarization default) were
  * otherwise unreadable from any tenant's CLS and the pre-summary chain fell
  * through to a 503. The list-surface objection this note originally raised does
@@ -207,7 +206,7 @@ export const GOLDEN_AGENTS = DEFAULT_DEPARTMENTS.map((dept, i) => {
     templateLocked: false,
     metaData: null as Record<string, unknown> | null,
     tags: ['golden-library'],
-    // TASK-686 — day-1 loop configuration.
+    // Day-1 loop configuration.
     ...DAY1_AGENT_LOOP_CONFIG,
   };
 });
@@ -237,7 +236,7 @@ interface AgentSeedRow {
   templateLocked: boolean;
   metaData: Record<string, unknown> | null;
   tags: string[];
-  // TASK-635 RF-4 capability-keyed bindings. Optional on the seed row so the
+  // Capability-keyed bindings. Optional on the seed row so the
   // 36 golden/Global rows stay written exactly as before (omitted ⇒ the column
   // is never sent ⇒ NULL ⇒ legacy behaviour). Only the ArcaAI rows set them.
   newPatientTemplateId?: string | null;
@@ -246,7 +245,7 @@ interface AgentSeedRow {
   livePromptTemplateId?: string | null;
   toolConfig?: Record<string, unknown> | null;
   llmOverrides?: Record<string, unknown> | null;
-  // TASK-686 — the day-1 loop configuration (TASK-659's seven fields). Carried
+  // The day-1 loop configuration ('s seven fields). Carried
   // by every seeded default agent so `LoopConfigService` resolves a real
   // subscription set instead of a running-but-inert loop. The VALUES live in
   // `07e-consultation-loop-defaults.ts` next to the context schema whose kinds
@@ -300,23 +299,23 @@ export const GLOBAL_TENANT_AGENTS: AgentSeedRow[] = asAgentTemplateCopies(
       templateLocked: false,
       metaData: null,
       tags: ['golden-library'],
-      // TASK-686 — day-1 loop configuration.
+      // Day-1 loop configuration.
       ...DAY1_AGENT_LOOP_CONFIG,
     };
   }),
 );
 
 // =============================================================================
-// ArcaAI customer tenant — per-visit-type default agents (TASK-635 RF-3).
+// ArcaAI customer tenant — per-visit-type default agents.
 //
-// HISTORY. TASK-592 Workstream D REMOVED ArcaAI's seeded agents and recorded the
+// HISTORY. REMOVED ArcaAI's seeded agents and recorded the
 // invariant "the ArcaAI departments MUST have no default agent". That was
 // correct at the time: a DepartmentAgent was a single prompt pointer, the
 // resolver's tier-1a consulted `promptTemplateId` regardless of visit type, and
 // a default agent would therefore have collapsed v1's new-referral vs follow-up
 // split (F-01) the moment it preempted the visit-type-faithful legacy columns.
 //
-// TASK-635 C2 (DR-1 / OD-2a) gives the agent a VISIT-TYPE AXIS —
+// Gives the agent a VISIT-TYPE AXIS
 // `newPatientTemplateId` / `revisitTemplateId`, resolved as
 // `visitBinding ?? promptTemplateId` — so the collapse is no longer possible.
 // RF-3 therefore RETIRES the zero-agent invariant instead of guarding it: the 7
@@ -399,7 +398,7 @@ export const ARCAAI_TENANT_AGENTS: AgentSeedRow[] = ARCAAI_CLINICAL_DEPARTMENTS.
     templateLocked: false,
     metaData: null,
     tags: ['arcaai', 'clinical', 'v1-parity'],
-    // TASK-686 — day-1 loop configuration.
+    // Day-1 loop configuration.
     ...DAY1_AGENT_LOOP_CONFIG,
   };
 });
@@ -456,10 +455,10 @@ export const seedAgentGoldenLibrary = async (client: CorePrismaClient) => {
 
     const agents: AgentSeedRow[] = [...GOLDEN_AGENTS, ...GLOBAL_TENANT_AGENTS, ...ARCAAI_TENANT_AGENTS];
 
-    // TASK-686 — the loop-config columns are FILL-IF-ABSENT, unlike every other
+    // The loop-config columns are FILL-IF-ABSENT, unlike every other
     // column here. The rest of this row is platform-curated content a re-seed is
     // meant to refresh; loop configuration is a TENANT decision the console
-    // (TASK-667) exists to make, so a re-seed must never revert it. Reading the
+    // exists to make, so a re-seed must never revert it. Reading the
     // current rows first is what lets an already-seeded database pick the
     // day-1 defaults up while leaving a configured agent alone.
     const configuredAgentIds = new Set(
@@ -518,7 +517,7 @@ export const seedAgentGoldenLibrary = async (client: CorePrismaClient) => {
     }
     console.log(`Seeded ${agents.length} department agents (golden + fixture-tenant clones + ArcaAI per-visit-type defaults)`);
 
-    // TASK-686 — the immutable loop-config snapshot `LoopConfigService` resolves
+    // The immutable loop-config snapshot `LoopConfigService` resolves
     // as `agentConfigVersionId`. Mirrors what
     // `DepartmentAgentService.writeLoopConfigVersionIfNeeded` would have written
     // had the agent been configured through the API: version 1, the canonical

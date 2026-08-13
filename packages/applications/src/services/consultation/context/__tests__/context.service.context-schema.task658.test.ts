@@ -1,9 +1,9 @@
 /**
- * TASK-658 — the context-schema validation hook on `ContextService`.
+ * The context-schema validation hook on `ContextService`.
  *
- * The FIRST test in this file is the most important one in the ticket: an
+ * The FIRST test in this file is the most important one: an
  * existing context write that names no `kindKey` must behave EXACTLY as it did
- * before TASK-658 — same factory call, same encryption, same version row, same
+ * before schema validation — same factory call, same encryption, same version row, same
  * sys-event, same ContextAdded fan-out, and no schema lookup whatsoever. The
  * schema plane is opt-in per write; anything else would make every clinician
  * in every tenant depend on a tenant admin having configured a schema.
@@ -74,7 +74,7 @@ function buildService(withSchemaService: boolean) {
   );
 }
 
-describe('ContextService — TASK-658 context-schema hook', () => {
+describe('ContextService — context-schema hook', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockClsService.get.mockImplementation((key: string) => {

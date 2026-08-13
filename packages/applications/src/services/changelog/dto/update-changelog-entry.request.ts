@@ -8,7 +8,7 @@ import { ChangelogAudience, ChangelogSeverity } from '@arcaai/domains';
  * controller (missing header → 428, drift → 412).
  *
  * `publishStatus` is deliberately NOT patchable — DRAFT → PUBLISHED happens
- * only through `POST /admin/changelog/{id}/publish` (TASK-648 §3.5).
+ * only through `POST /admin/changelog/{id}/publish`.
  */
 export class UpdateChangelogEntryRequest {
   @ApiPropertyOptional()

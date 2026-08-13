@@ -1,4 +1,4 @@
-"""Activity-wiring tests for ``apply_redaction`` (TASK-551).
+"""Activity-wiring tests for ``apply_redaction``.
 
 Runs the real activity body in a Temporal ``ActivityEnvironment`` with the
 client factories + ``get_settings`` / ``_phi_redactor`` monkeypatched to

@@ -62,7 +62,7 @@ export function resolveContainerBreakpoint(width: number): ContainerBreakpoint {
   return 'base';
 }
 
-/** Numbered-window radius per breakpoint (drops from the ends inward, §B2). */
+/** Numbered-window radius per breakpoint (drops from the ends inward). */
 export function getPagerRadius(bp: ContainerBreakpoint): number {
   switch (bp) {
     case 'xl':

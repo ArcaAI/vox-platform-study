@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# HOPE — rotate the hope-app wrapped secret_id (TASK-312 Phase E, Day-2)
+# HOPE — rotate the hope-app wrapped secret_id (Day-2)
 # =============================================================================
 # Mints a FRESH wrapped secret_id for the hope-app AppRole using ONLY the narrow
 # secret_id-issuer token created by configure-app-auth.sh — NO root token. Run

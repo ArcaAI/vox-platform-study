@@ -1,7 +1,7 @@
 import type { ChangelogItemType, CurrentService, ServiceRelease, TechnicalChangelogItem } from '../api/types';
 
 /**
- * A build is "untagged" when the release tag is null (§3.1 rule 3). An
+ * A build is "untagged" when the release tag is null. An
  * untagged version string is always shaped `0.0.0-<branch-slug>.<sha8>` —
  * never a real SemVer — so a released build and an untagged build can never
  * be mistaken for each other in the console.
@@ -16,7 +16,7 @@ export function shortSha(gitCommitSha: string): string {
 
 /**
  * Badge label for a release. Untagged builds render `<branch> · <sha8>`
- * (never a fabricated version number, per §6) — tagged builds render the
+ * (never a fabricated version number, per ) — tagged builds render the
  * real SemVer.
  */
 export function releaseBadgeLabel(release: Pick<ServiceRelease, 'releaseTag' | 'gitBranch' | 'gitCommitSha' | 'version'>): string {
@@ -49,7 +49,7 @@ export interface ChangelogGroup {
   items: TechnicalChangelogItem[];
 }
 
-/** Groups the technical changelog by Conventional Commit type (§3.5), in a fixed display order. */
+/** Groups the technical changelog by Conventional Commit type, in a fixed display order. */
 export function groupChangelog(changelog: TechnicalChangelogItem[] | null): ChangelogGroup[] {
   if (!changelog || changelog.length === 0) return [];
   const byType = new Map<ChangelogItemType, TechnicalChangelogItem[]>();

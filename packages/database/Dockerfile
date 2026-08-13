@@ -67,7 +67,7 @@ COPY packages/database/migrate.sh ./packages/database/
 RUN chown -R dbinit:nodejs /app && \
     chmod +x ./packages/database/migrate.sh
 
-# ── TASK-648 W3 — bake build identity, LAST layer ───────────────────────────
+# ── bake build identity, LAST layer ───────────────────────────
 # These args change on every commit; kept below every COPY/RUN so they never
 # invalidate the layer cache above them. Written to /app/build-info.json per
 # docs/implementation/TASK-648-Service-Version-And-Release-Registry/contracts/build-info.schema.json.

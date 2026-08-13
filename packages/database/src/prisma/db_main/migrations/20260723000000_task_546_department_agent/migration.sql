@@ -1,4 +1,4 @@
--- TASK-546 — DepartmentAgent: first-class agent entity.
+-- DepartmentAgent: first-class agent entity.
 --
 -- Binds a tenant department to a PromptTemplate at a pinned or tracked version,
 -- plus a DNA-style gate, (later) harness overrides and a golden set. Standard
@@ -7,12 +7,12 @@
 -- in MODELS_WITHOUT_SOFT_DELETE (it HAS soft delete).
 --
 -- Template lineage columns (`sourceAgentTemplateSlug`, `templateLocked`) mirror
--- the AsrPipeline pattern (TASK-531); consumption lands in TASK-548 but the
+-- the AsrPipeline pattern; consumption lands in but the
 -- columns are provisioned now so no later migration is needed.
 
 -- ResourceType is emitted by DepartmentAgentService.broadcastSysEvent — without
 -- this every AuditLog INSERT for the model would throw and roll back the
--- originating mutation (the TASK-366 failure mode). IF NOT EXISTS + Postgres
+-- originating mutation (the failure mode). IF NOT EXISTS + Postgres
 -- cannot drop an enum value, so this is append-only and idempotent.
 ALTER TYPE "core"."ResourceType" ADD VALUE IF NOT EXISTS 'DepartmentAgent';
 

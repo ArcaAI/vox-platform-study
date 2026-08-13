@@ -60,18 +60,18 @@ export interface STTStreamingTransport {
   consultationId?: string;
   /**
    * Optional ceiling (ms) on the stop-drain `StreamingBackendSTTProvider.destroy()`
-   * performs (TASK-597 follow-up #4). Threaded from the SDK's
+   * performs. Threaded from the SDK's
    * `AudioStartOptions.drainTimeoutMs` through `PluginManager`'s runtime
    * options. Omitted / non-positive ⇒ the ws client's own default.
-   */
+*/
   drainTimeoutMs?: number;
   /**
    * Optional quiet window (ms) that ends the stop-drain early once the backend
-   * reports `finalizing` (TASK-597). Threaded from the SDK's
+   * reports `finalizing`. Threaded from the SDK's
    * `AudioStartOptions.quietWindowMs`. `0` DISABLES the early resolve (the
    * drain then waits for the terminal status or `drainTimeoutMs`) and is
    * preserved verbatim; omitted / negative ⇒ the ws client's own default.
-   */
+*/
   quietWindowMs?: number;
 }
 
@@ -364,8 +364,8 @@ export class STTProcessor extends BaseProcessor {
   /**
    * The streaming session manager for the injected transport, or `null` for the
    * local provider / no transport. The vox hook reaches it to drive an on-the-fly
-   * provider switch (TASK-567 R4) without threading a new callback chain.
-   */
+   * provider switch without threading a new callback chain.
+*/
   getStreamingSessionManager(): StreamingSessionLike | null {
     return this.streamingTransport?.sessionManager ?? null;
   }
@@ -772,11 +772,11 @@ export class STTProcessor extends BaseProcessor {
     await provider.init({
       sessionId: this.sessionId,
       language: audio.language ?? DEFAULT_LANGUAGE_LOCALE,
-      // End-user language mode (TASK-587) — forwarded to the STT session, which
+      // End-user language mode — forwarded to the STT session, which
       // resolves it against the session engine and 422s an unservable mode.
       // Read from options directly (the default config carries no mode).
       languageMode: this.options.audio?.languageMode,
-      // Pre-start engine selection (TASK-586) — the backend opens the session
+      // Pre-start engine selection — the backend opens the session
       // on the tenant-admin default provider when 'fallback'.
       startOn: this.options.audio?.startOn,
       sampleRate: audio.sampleRate ?? WHISPER_SAMPLE_RATE,
@@ -790,11 +790,11 @@ export class STTProcessor extends BaseProcessor {
       pipelineId: transport.pipelineId,
       consultationId: transport.consultationId,
       drainTimeoutMs: transport.drainTimeoutMs,
-      // Per-session stop-drain ceiling (TASK-597 follow-up #4). The provider
+      // Per-session stop-drain ceiling. The provider
       // applies its own `> 0` guard, so an out-of-range value degrades to the
       // client default rather than to a zero-length (or unbounded) drain.
       quietWindowMs: transport.quietWindowMs,
-      // Per-session stop-drain quiet window (TASK-597). The provider guards on
+      // Per-session stop-drain quiet window. The provider guards on
       // `>= 0` here, NOT `> 0`: `0` is the documented "wait for the terminal
       // status instead of a quiet lull" setting and must not be discarded.
       prompt: this.options.prompt,

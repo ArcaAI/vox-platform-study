@@ -63,9 +63,9 @@ import { DepartmentAgentModule } from './modules/department-agent/department-age
 import { AgentPromotionModule } from './modules/agent-promotion/agent-promotion.module';
 import { DnaWritingStyleModule } from './modules/dna-writing-style/dna-writing-style.module';
 import { EntitlementsApiModule } from './modules/entitlements/entitlements.module';
-// billing: SELL rate card + invoice lifecycle + tenant self-service reads (TASK-615 WS-I).
+// billing: SELL rate card + invoice lifecycle + tenant self-service reads.
 import { BillingApiModule } from './modules/billing/billing.module';
-// usage analytics: admin/global + tenant self-service reads over the ledger rollups (TASK-615 WS-J).
+// usage analytics: admin/global + tenant self-service reads over the ledger rollups.
 import { AdminUsageApiModule } from './modules/admin-usage/admin-usage.module';
 // harness administration & observability console (/admin/harness/*).
 import { HarnessAdminModule } from './modules/harness-admin/harness-admin.module';
@@ -176,7 +176,7 @@ const guards = [
     provide: APP_GUARD,
     useClass: TenantOwnedResourceSseGuard,
   },
-  // TASK-610 FR-4 — binds a browser `Origin` to the tenant that registered it.
+  // Binds a browser `Origin` to the tenant that registered it.
   // MUST stay AFTER UnifiedAuthGuard, for the same reason as the guard above:
   // it reads the CLS tenantId. Placed EARLIER in this array it does not throw
   // and does not fail any test — the CLS tenant is simply always empty, its
@@ -248,7 +248,7 @@ const common = [
   // in `guards[]` below can be constructed via DI. Placed early so the guard's
   // dependencies resolve before the feature modules load.
   ThrottleConfigModule,
-  // TASK-610 — the origin→owner-tenant index. Root-level because
+  // The origin→owner-tenant index. Root-level because
   // `OriginTenantBindingGuard` is an APP_GUARD and resolves from this module's
   // injector; `PlatformKnobsModule` imports it separately for the CORS resolver.
   OriginRegistryServiceModule,
@@ -320,17 +320,17 @@ const featureModules: any[] = [
   AuthModule,
   AuditLogModule,
   ConsultationModule,
-  // TASK-648 — curated release notes: reader surface + global-admin authoring.
+  // Curated release notes: reader surface + global-admin authoring.
   ChangelogModule,
   DepartmentModule,
-  // TASK-610 — global-admin CRUD over the browser-origin allow-list.
+  // Global-admin CRUD over the browser-origin allow-list.
   TenantAllowedOriginModule,
-  // TASK-658 — tenant-declared consultation context schemas: admin CRUD +
+  // Tenant-declared consultation context schemas: admin CRUD +
   // publish/pin at /admin/consultation-context-schemas, and the client
   // discovery bundle at /tenant/me/context-schema.
   ConsultationContextSchemaModule,
   DepartmentAgentModule,
-  // TASK-663 — /admin/agent-promotions: promote an immutable agent
+  // Admin/agent-promotions: promote an immutable agent
   // configuration version from one tenant to another. Its own module because
   // AgentPromotion is its own immutable resource, not another verb on the
   // agent (the DepartmentAgentResyncController precedent).
@@ -340,14 +340,14 @@ const featureModules: any[] = [
   // + /entitlements/me (tenant self-snapshot). All entitlements endpoints live here.
   EntitlementsApiModule,
   // /admin/billing/rate-card + /admin/billing/invoices + /billing/me/* —
-  // SELL rate card (supersede-only) and the invoice engine (TASK-615 WS-I).
+  // SELL rate card (supersede-only) and the invoice engine.
   BillingApiModule,
   // /admin/usage/* + /usage/me/* — usage-analytics reads over the ledger
-  // rollups (TASK-615 WS-J).
+  // rollups.
   AdminUsageApiModule,
   // Applies the pre-bootstrap platform knob (`logLevel`, from the settings
-  // cascade — TASK-558 lane I) and installs the CORS origin registry resolver
-  // (TASK-610). No controllers; a binder only.
+  // cascade) and installs the CORS origin registry resolver
+  // . No controllers; a binder only.
   PlatformKnobsModule,
   // /admin/settings/catalog. MUST precede GlobalSettingModule
   // so the static `catalog` route registers before `admin/settings/:id`.

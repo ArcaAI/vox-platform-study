@@ -7,7 +7,7 @@
  * a second `super_admin` session bound to `__GLOBAL__` for tenant-scoped writes;
  * `tenant_admin`/`doctor` pinned to `__GLOBAL__`).
  *
- * Coverage (ticket §Items #8–13):
+ * Coverage (#8–13):
  *   #8  reset-password · temporary-password flow logs in; emailed-link flow mints a
  *                        single-use token → public completion → new password logs in →
  *                        replay is 400. Non-admin (doctor) is 403.
@@ -57,7 +57,7 @@ let doctorToken: string; // plain clinician in __GLOBAL__ — the RBAC negative
 const UNIQUE = Date.now();
 const CREATED_PW = 'Password123!';
 
-/** Create a throwaway user in __GLOBAL__ (mirrors task-381 U2). */
+/** Create a throwaway user in __GLOBAL__ (mirrors). */
 async function createUser(request: APIRequestContext, username: string): Promise<CreatedUser> {
   const res = await request.post('/api/v1/admin/users', {
     headers: bearer(saGlobalToken),
@@ -82,7 +82,7 @@ function asArray<T>(raw: unknown): T[] {
 /**
  * Create a throwaway user that can actually AUTHENTICATE into __GLOBAL__. Login
  * (non-super-admin) requires an active role AND an active department in the
- * tenant (auth.controller), so we mirror task-381 U2a/U11:
+ * tenant (auth.controller), so we mirror a/U11:
  * create → assign a role → assign a department. Used by #8 so the reset flows
  * can be proven by a real login without mutating any seeded account.
  */

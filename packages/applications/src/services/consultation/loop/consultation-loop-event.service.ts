@@ -14,7 +14,7 @@ import type { HarnessLoopEventAck, HarnessLoopEventRequest, LoopEventDto } from 
  *
  * `publishEvent` is the internal-POST target
  * (`POST /internal/harness/consultations/:id/loop-event`, the future
- * `ConsultationLoopWorkflow` client — TASK-662); the SSE relay
+ * `ConsultationLoopWorkflow` client); the SSE relay
  * (`ConsultationController.streamLoop`) subscribes to the SAME channel
  * directly via `RedisSubscriberService`, mirroring `streamTrajectory`.
  *

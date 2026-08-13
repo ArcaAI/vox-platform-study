@@ -29,7 +29,7 @@ function serviceWith(
   // Backs the global-kv lane. Omitted ⇒ no stored row at any scope, so
   // global-kv keys resolve to their descriptor default.
   //
-  // TASK-558 lane I: the lane is now the full cascade
+  // The lane is now the full cascade
   // (tenant → SYSTEM → default) behind `TenantSettingsService`, so the facade
   // takes THAT service rather than reading `IAppSettingsService` with a
   // key-only lookup. A real `TenantSettingsService` is constructed over a fake
@@ -86,12 +86,12 @@ describe('EffectiveSettingsService', () => {
   // `agentic.context.*` short-circuited to the descriptor default and a value
   // written to the KV store was invisible here, so the read surface lied.
   describe('global-kv override lane', () => {
-    // SUPERSEDED BY TASK-558 lane I — `sourceScope` was the literal tier name
+    // SUPERSEDED — `sourceScope` was the literal tier name
     // `'global-kv'`, which said WHERE the value is stored, not WHICH scope set
     // it. With six knobs now `maxScope: 'tenant'`, "stored in the KV" no longer
     // identifies the answer, so the lane reports the winning CASCADE tier
     // (`tenant` | `system` | `code-default`) — the same vocabulary the pipeline
-    // branch above already uses, and what §9.2 L8 asks for.
+    // branch above already uses, and what observability of fallbacks asks for.
     it('reports a stored platform row with sourceScope system', async () => {
       const svc = serviceWith(resolved(), undefined, { platform: { 'agentic.context.liveDelta.maxChars': 9000 } });
 
@@ -182,9 +182,9 @@ describe('EffectiveSettingsService', () => {
       expect(getEffective).toHaveBeenCalledWith('nlp.ner', 'tnt-1');
     });
 
-    // TASK-558 lane F (plan §9.3 M5): an UNRESOLVED model selection now FAILS
+    // An UNRESOLVED model selection now FAILS
     // CLOSED. This test previously asserted `{ value: null, sourceScope: 'none' }`
-    // — i.e. it locked in exactly the silent fail-open M5 forbids: a caller
+    // — i.e. it locked in exactly the silent fail-open that is forbidden: a caller
     // reading "the effective model" got a null that is indistinguishable from a
     // deliberately-null value. `models.*` descriptors declare `failMode: 'closed'`,
     // so the facade raises instead of inventing an answer.
@@ -209,7 +209,7 @@ describe('EffectiveSettingsService', () => {
     });
   });
 
-  // TASK-558 lane F — the declared failure mode, honoured by the read facade.
+  // The declared failure mode, honoured by the read facade.
   describe('failMode', () => {
     it('open-to-default: an unset global-kv tuning knob resolves to the descriptor default', async () => {
       const appSettings = { getValueWithDefault: vi.fn(() => null) };

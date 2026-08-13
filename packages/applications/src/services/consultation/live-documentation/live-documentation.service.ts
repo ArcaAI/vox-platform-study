@@ -67,7 +67,7 @@ const TRANSCRIPT_PARTS_HARD_CAP = 50_000;
  * Context kinds `handleContextAdded` was written for — human-authored notes
  * and attachments only. Mirrors `ContextService`'s `LIVE_CONTEXT_TYPES` gate
  * as it stood before the loop event plane widened `ContextAdded` emission to
- * TRANSCRIPT and STRUCTURED (TASK-660): this filter keeps this consumer's
+ * TRANSCRIPT and STRUCTURED: this filter keeps this consumer's
  * input set unchanged by that widening, so transcripts/derived context never
  * get folded into the running summary via this path (transcripts already
  * drive the live session through `ingestSegment`, not this event).
@@ -100,7 +100,7 @@ export const LIVE_SOAP_STABLE_SYSTEM_PREFIX =
 /**
  * The SMR `system_prompt` for the live running-note call.
  *
- * TASK-635 C3: LIFTED VERBATIM out of the inline `callSmr` literal — the bytes
+ * LIFTED VERBATIM out of the inline `callSmr` literal — the bytes
  * are unchanged (the paired sha256 guards in `live-soap-prompt-checksum.test.ts`
  * and `system-live-soap-default-checksum.test.ts` pin them, and C2's seed
  * carries the identical string under `metaData.promptConfig.systemPrompt`).
@@ -232,7 +232,7 @@ interface LiveSession {
   /** Epoch ms when the watcher session started — surfaced in the admin stats snapshot. */
   startedAt: number;
   /**
-   * §2C — stable, per-instance trajectory session id used as the
+   * Stable, per-instance trajectory session id used as the
    * `sessionId` on every emitted step. Distinct across stop→restart of the same
    * consultation so the `(tenantId, sessionId, runId, seq)` composite-unique key
    * never collides (which would make `skipDuplicates` silently drop the restarted
@@ -240,10 +240,10 @@ interface LiveSession {
    * stream attaches, so grouping stays stable for the session's whole lifetime.
    */
   trajectorySessionId: string;
-  /** §2C — monotonic trajectory-step sequence within this LIVE_DOC session. */
+  /** Monotonic trajectory-step sequence within this LIVE_DOC session. */
   trajectorySeq: number;
   /**
-   * TASK-635 RF-6 — the session's FROZEN agent identity.
+   * The session's FROZEN agent identity.
    *
    * `agentPromise` is kicked off (memoized) at `start()`; `agentSnapshot` caches
    * its value on first use. Every flush reads the CACHED snapshot, so the loop
@@ -381,7 +381,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
   private readonly groundednessMaxRetries: number;
   private readonly groundednessRetryBackoffMs: number;
   /**
-   * TASK-635 C4 — the config-driven tool layer. Owns the two executors the flush
+   * The config-driven tool layer. Owns the two executors the flush
    * dispatches (`nlp.classify-tokens`, `guardrail.groundedness`) and answers
    * "does the session's frozen plan enable this key?". Executors are constructed
    * lazily inside it, so a plan that disables a tool never builds one.
@@ -402,7 +402,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // fixtures and non-DI construction paths compile; when unset an empty token is
     // sent (the guardrail's empty-token dev bypass).
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
-    // §2C — ordered per-flush trajectory emitter. Optional + trailing so
+    // Ordered per-flush trajectory emitter. Optional + trailing so
     // existing positional test fixtures and non-DI paths compile; production DI
     // (apps/api consultation module) supplies it. A trajectory failure is
     // fire-and-forget and can NEVER break the live flush (see recordFlushTrajectory).
@@ -412,7 +412,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // ⇒ env/code-default resolution.
     @Optional() @Inject(EffectiveSettingsService) private readonly effectiveSettings?: EffectiveSettingsService,
     // Resolves the effective `nlp.ner` AiTaskDefault model for injection into
-    // the live-plane NLP call (TASK-552 Lane A). Optional + trailing so
+    // the live-plane NLP call. Optional + trailing so
     // existing positional fixtures keep their arity; absent ⇒ posts without
     // `model_name`, i.e. today's behavior (fail-open).
     @Optional() @Inject(IAiTaskDefaultService) private readonly aiTaskDefaultService?: IAiTaskDefaultService,
@@ -422,7 +422,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // existing positional fixtures keep their arity; absent ⇒ the resolver call
     // is skipped defensively — see `NlpExtractionTool` in `live-tool-registry.ts`.
     @Optional() private readonly cls?: ClsService<IActiveUserContext>,
-    // TASK-635 C3 — the NARROW port that resolves the session's governed agent
+    // The NARROW port that resolves the session's governed agent
     // ONCE at start(). Deliberately NOT PromptAssemblyService (C1 DR-3): the
     // live prompt is a bespoke prefix-cache-ordered concatenation, not the
     // template-assembly pipeline. Optional + trailing so existing positional
@@ -471,7 +471,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     this.groundednessMaxRetries = Number(this.configService.get('LIVE_DOC_GROUNDEDNESS_MAX_RETRIES') ?? 1);
     this.groundednessRetryBackoffMs = Number(this.configService.get('LIVE_DOC_GROUNDEDNESS_RETRY_BACKOFF_MS') ?? 200);
 
-    // TASK-635 C4 — `envDefaults` is the PRE-C4 answer for every tool: NER and
+    // `envDefaults` is the PRE-C4 answer for every tool: NER and
     // vitals always ran; groundedness ran iff `LIVE_DOC_GROUNDEDNESS_ENABLED`.
     // A plan entry of `enabled: null` ("follow the platform default", distinct
     // from `false`) resolves to exactly these — which is why an unconfigured
@@ -590,7 +590,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // forget so `start` stays synchronous for the recording controller.
     void this.claimOwnership(session);
 
-    // TASK-635 RF-6 — resolve and FREEZE the session's governing agent once,
+    // Resolve and FREEZE the session's governing agent once,
     // here. Kicked off fire-and-forget (same shape as `claimOwnership`) so
     // `start()` stays synchronous for the recording controller; `flush()` awaits
     // the memoized promise, which is already settled by the second flush.
@@ -604,11 +604,11 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
   }
 
   // ------------------------------------------------------------------
-  // TASK-635 — frozen agent identity (RF-6)
+  // Frozen agent identity
   // ------------------------------------------------------------------
 
   /**
-   * The in-code fail-open snapshot (tier 3 of the live chain, C1 §4.4). Its
+   * The in-code fail-open snapshot (tier 3 of the live chain). Its
    * bytes are PROVEN identical to the seeded SYSTEM live default by the paired
    * sha256 guards, which is the only reason a fail-open tier is acceptable on a
    * clinical surface: it degrades to identical behavior, not different behavior.
@@ -630,7 +630,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
 
   /**
    * Resolve-and-freeze the session's agent, with THREE recovery tiers so a
-   * cross-instance restart or a crash re-pins the IDENTICAL agent (C1 §6.2):
+   * cross-instance restart or a crash re-pins the IDENTICAL agent:
    *
    *   1. **Redis adopt** — a snapshot mirrored by the previous owner is adopted
    *      VERBATIM. This is what makes a re-attach on another instance serve the
@@ -900,7 +900,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
    */
   @OnEvent(ConsultationPipelineEvent.ContextAdded)
   handleContextAdded(payload: ContextAddedPayload): void {
-    // TASK-660 — explicit kind filter: the ContextAdded gate now also fires
+    // Explicit kind filter: the ContextAdded gate now also fires
     // for TRANSCRIPT/STRUCTURED, which this consumer was never written for.
     if (!LIVE_DOC_CONTEXT_TYPES.has(payload.contextType)) return;
 
@@ -978,7 +978,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     session.lastFlushAt = Date.now();
     session.pendingSegments = 0;
 
-    // TASK-635 RF-6 — the session's FROZEN agent. Resolved once at `start()`;
+    // The session's FROZEN agent. Resolved once at `start`;
     // from the second flush on this is a settled promise, i.e. a microtask and
     // ZERO blocking I/O. The very first flush of a session may await the
     // in-flight start-time resolution (bounded, ≤4 reads, once per session).
@@ -1156,7 +1156,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // mention that survives only in the note with no transcript support is never a candidate
     // here (NER never sees the note) and is therefore never surfaced.
     //
-    // TASK-635 C4 — WHICH tools run is now the session's frozen `toolPlan`
+    // WHICH tools run is now the session's frozen `toolPlan`
     // (OD-5(b): config-driven, NOT a model-initiated loop). `ner` and `vitals`
     // are two plan keys served by ONE executor and ONE HTTP call — disabling
     // `vitals` filters the block off that same response rather than saving a
@@ -1237,7 +1237,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       // attach the AD-1 stats when present; omit the envelope
       // entirely on a stats-less flush (SMR failure / legacy cache hit) so the
       // feed degrades cleanly rather than publishing an empty metadata block.
-      // TASK-635 RF-6 — the session's agent identity, additively, under the same
+      // The session's agent identity, additively, under the same
       // optional envelope. Emitted only when a GOVERNED tier resolved: on the
       // code-default tier there is no agent identity to report, and inventing a
       // metadata block there would change the published shape for a tenant that
@@ -1287,7 +1287,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       summaryChars: runningSummary.length,
     });
 
-    // §2C — emit the ordered per-flush trajectory. Non-fatal: a
+    // Emit the ordered per-flush trajectory. Non-fatal: a
     // trajectory failure NEVER breaks the live flush (recordFlushTrajectory
     // swallows + logs). Runs after the payload is published/persisted.
     await this.recordFlushTrajectory(session, {
@@ -1310,7 +1310,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * §2C — record the ordered trajectory for one flush:
+   * Record the ordered trajectory for one flush:
    *   [LLM_CALL:flush, TOOL_CALL:nlp.classify-tokens (when NLP ran),
    *    GUARDRAIL:groundedness (when the gate ran), PHASE:publish].
    * sessionKind=LIVE_DOC, runId="" (non-Temporal sentinel), consultationId set,
@@ -1358,7 +1358,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
         endedAt: new Date(now),
         durationMs: ctx.smrLatencyMs,
         stats: (ctx.smrStats ?? undefined) as CreateAgentTrajectoryStepInput['stats'],
-        // TASK-635 — WHICH agent/prompt version produced this flush (additive).
+        // WHICH agent/prompt version produced this flush (additive).
         ...(session.agentSnapshot
           ? {
               payloadRef: {
@@ -1575,7 +1575,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       session.sttSubscription = this.audioBridge.subscribeToResults(sessionId).subscribe({
         next: (msg) => {
           // The result stream now also carries non-transcript status frames
-          // (provider_switched, TASK-567); narrow to transcripts before reading
+          // (provider_switched); narrow to transcripts before reading
           // transcript-only fields.
           if (msg?.type === 'transcript' && msg.isFinal && msg.text?.trim()) {
             this.ingestSegment(session.consultationId, { text: msg.text, isFinal: true });
@@ -1700,7 +1700,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
         this.teardownLocal(this.sessions.get(consultationId));
         return;
       }
-      // TASK-635: the frozen-agent pin rides the SAME renewal as the ownership
+      // The frozen-agent pin rides the SAME renewal as the ownership
       // it belongs to, so a long consultation's snapshot can never expire out
       // from under a session that is still being served (risk R3).
       await this.refreshAgentSnapshotTtl(consultationId);
@@ -1713,7 +1713,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  /** Extend the frozen-agent key's TTL alongside the fenced owner-lock renewal (TASK-635 R3). */
+  /** Extend the frozen-agent key's TTL alongside the fenced owner-lock renewal. */
   private async refreshAgentSnapshotTtl(consultationId: string): Promise<void> {
     try {
       await this.cacheService.expire(this.agentKey(consultationId), this.LOCK_TTL);
@@ -1807,7 +1807,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     if (!content) return;
 
     session.lastDurableAt = Date.now();
-    // TASK-635 RF-6 — the `agent` block is the LINEAGE HAND-OFF to finalize
+    // The `agent` block is the LINEAGE HAND-OFF to finalize
     // (Lane C5 reads it off this exact row and stamps `SummaryMeta`). It carries
     // the version PIN, never the prompt bytes, and it is ADDITIVE: `subType`,
     // `lastSegmentId` and `updatedAt` keep their meaning and position, so the
@@ -1879,7 +1879,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
    * make the durable dedup mint a duplicate live row. Filter on the subType and take
    * the newest.
    *
-   * TASK-655: delegates to the shared repository helper
+   * Delegates to the shared repository helper
    * (`ContextItemRepository.findLatestPreSummaryWithDecryptedContent`) instead of
    * hand-rolling the find + subType-filter + newest-wins reduce here — this was one
    * of four copies of that exact logic (harness's `loadLiveSoapSnapshot`,
@@ -2022,7 +2022,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // than the end-of-visit finalize model. Omitting the task argument defaults to
     // 'finalize', which is what left `smr.live` inert despite being seeded+registered.
     //
-    // TASK-635 RF-4 — an agent's `llmOverrides.live` wins and is served FROZEN
+    // An agent's `llmOverrides.live` wins and is served FROZEN
     // (resolved once at session start), so a live session's model can never
     // drift mid-consultation. WITHOUT an override the per-flush tenant resolve
     // below runs exactly as before, which is what keeps an admin re-point
@@ -2059,7 +2059,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // This call omitted it, so wherever SMR actually enforces a token — i.e.
     // every environment where `SMR_SERVICE_TOKEN` is non-empty — the live loop
     // was rejected with `invalid_or_missing_token` and the flush degraded to an
-    // empty note (TASK-640). It "worked" only in dev, where an empty token
+    // empty note. It "worked" only in dev, where an empty token
     // trips SMR's bypass. Same resolution the sibling SMR callers use
     // (`prompt-management.service.ts`, `dna-writing-style.processor.ts`); `??
     // ''` preserves the dev bypass when no secret is configured.
@@ -2070,7 +2070,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       signal,
     });
     const stats = this.parseGenerationStats(response.data);
-    // TASK-552 Lane B — stamp WHICH AiTaskDefault routing key served this
+    // Stamp WHICH AiTaskDefault routing key served this
     // flush (`smr.live`, never `smr.finalize` — this method is the live tier
     // exclusively, see the `resolveSmrSelection(tenantId, 'live')` call above).
     // SMR itself has no notion of this key; it only echoes back the
@@ -2100,7 +2100,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     return rest as LiveSummaryStatsDto;
   }
 
-  // TASK-635 C4: `callNlp` + `mapVitals` were RELOCATED VERBATIM to
+  // `callNlp` + `mapVitals` were RELOCATED VERBATIM to
   // `live-tool-registry.ts` (`NlpExtractionTool`) — same URL, same payload,
   // same mapping, same 30s timeout. The flush reaches them via the registry.
 
@@ -2149,7 +2149,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     return grounded;
   }
 
-  // TASK-635 C4: `checkGroundedness` + `mapGroundednessResponse` were RELOCATED
+  // `checkGroundedness` + `mapGroundednessResponse` were RELOCATED
   // VERBATIM to `live-tool-registry.ts` (`GuardrailGroundednessTool`) — same
   // endpoint, same bounded retry, same fail-CLOSED mapping.
 
@@ -2168,7 +2168,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * TASK-635 — the session's FROZEN agent snapshot (RF-6). TTL = `LOCK_TTL`,
+   * The session's FROZEN agent snapshot. TTL = `LOCK_TTL`,
    * refreshed by the fenced lock-renewal loop, so the pin lives exactly as long
    * as the ownership it belongs to.
    */

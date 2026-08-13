@@ -1,4 +1,4 @@
--- TASK-644 — restore the UserVoiceProfile partial unique index.
+-- Restore the UserVoiceProfile partial unique index.
 --
 -- WHY THIS MIGRATION EXISTS
 -- ==========================
@@ -11,7 +11,7 @@
 -- Prisma's schema language CANNOT express a partial index (there is no
 -- `@@unique(..., where: ...)` construct), so `user.prisma` only ever declared
 -- the plain, non-unique `@@index([userId, isActive])`. `hope-v2-dev` was
--- built by `prisma db push` (see TASK-644 baseline README §3.1), which
+-- built by `prisma db push` (see baseline), which
 -- reads only `.prisma` files, so the partial unique index was NEVER created
 -- there — a catalog-wide scan confirmed zero partial indexes anywhere in the
 -- `core` schema. The invariant "at most one active, enabled voice profile per
@@ -19,7 +19,7 @@
 -- database, even though the migration that is supposed to create it has
 -- existed in the repo since 2026-04-13.
 --
--- The TASK-644 baseline resolved 20260413000000_add_user_voice_profile as
+-- The baseline resolved 20260413000000_add_user_voice_profile as
 -- already-applied, which is correct for its other four effects (the table,
 -- its two plain indexes, and the FK) but permanently strands the partial
 -- index: `migrate deploy` only replays UNAPPLIED migrations from history, it
@@ -32,7 +32,7 @@
 --
 -- REPO-WIDE TRAP THIS DOCUMENTS
 -- ==============================
--- Any environment bootstrapped via `db push` (dev policy per TASK-630 §1.1)
+-- Any environment bootstrapped via `db push` (dev policy)
 -- will silently be missing EVERY partial index expressed only in a
 -- migration's raw SQL, because there is no schema-level representation for
 -- Prisma to push. If a future migration adds another partial index, the same
@@ -47,7 +47,7 @@
 --
 -- PRE-CHECK (2026-08-09, read-only, `hope-v2-dev`/`vox-dev`)
 -- ============================================================
--- Re-verified the TASK-644 baseline README's data-state claim immediately
+-- Re-verified the baseline README's data-state claim immediately
 -- before authoring this file, via a throwaway read-only pod:
 --   total UserVoiceProfile rows                                    : 5
 --   rows matching isActive=true AND resourceStatus='ENABLED'       : 3

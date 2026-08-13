@@ -28,7 +28,7 @@ const HARNESS_OPERATION = 'harness.step';
  * LLM_TOKENS meter (D16): guardrail is platform-mandated safety and harness is
  * internal agentic COGS — neither is ever quota-blocked or invoiced. Excluded
  * from the LLM_TOKENS sum now that `AiUsageRollupDaily` carries `operation`
- * (TASK-615 #4); before the dimension existed the meter over-counted by these.
+ * ; before the dimension existed the meter over-counted by these.
  */
 const NON_BILLABLE_LLM_OPERATIONS: string[] = [GUARDRAIL_OPERATION, HARNESS_OPERATION];
 
@@ -105,7 +105,7 @@ export class MeteringService implements IMeteringService, OnModuleInit, OnModule
       this.upsertMeter(tenantId, UsageMeterMetric.CONSULTATIONS, periodStart, periodEnd, usage.consultations, now),
       this.upsertMeter(tenantId, UsageMeterMetric.TRANSCRIPTION_MINUTES, periodStart, periodEnd, usage.transcriptionMinutes, now),
       this.upsertMeter(tenantId, UsageMeterMetric.SUMMARIES, periodStart, periodEnd, usage.summaries, now),
-      // TASK-615 — the six ledger-derived unit meters, same window, same
+      // The six ledger-derived unit meters, same window, same
       // upsert primitive. GUARDRAIL_CALLS is persisted too (informational —
       // no allowance column reads it, but the reconcile snapshot is a
       // uniform sweep over every UsageMeterMetric, not just the gated ones).
@@ -192,7 +192,7 @@ export class MeteringService implements IMeteringService, OnModuleInit, OnModule
    *   - TRANSCRIPTION_MINUTES = round(SUM(AudioRecording.duration ms ∈ window)/60000)
    *   - SUMMARIES             = COUNT(SummaryMeta WHERE generatedAt ∈ window)
    *
-   * TASK-615 — six more, all read from `AiUsageRollupDaily` (D5) EXCEPT
+   * Six more, all read from `AiUsageRollupDaily` (D5) EXCEPT
    * `guardrailCalls` (raw ledger — see `MeterUsage`'s doc comment for why).
    * The daily rollup is never behind the hourly one for "today": the outbox
    * drainer increments BOTH in the SAME transaction on every drain pass
@@ -238,7 +238,7 @@ export class MeteringService implements IMeteringService, OnModuleInit, OnModule
    * Sum `AiUsageRollupDaily.quantitySum` for one (capability, unit-set) over
    * the window, rounded to a whole unit (allowances are integer/`BigInt`).
    * `unit` is ALWAYS an `{ in: [...] }` filter, even for a single-unit metric,
-   * so every TASK-615 metric reads through one shape.
+   * so every metric reads through one shape.
    */
   private async sumRollupQuantity(
     tenantId: EntityId,
@@ -254,7 +254,7 @@ export class MeteringService implements IMeteringService, OnModuleInit, OnModule
         capability,
         unit: { in: units },
         bucketStart: window,
-        // TASK-615 #4 — drop COGS-only operations (guardrail/harness) from a
+        // Drop COGS-only operations (guardrail/harness) from a
         // billable capability's sum. Omitted entirely when not filtering so the
         // query plan is unchanged for the single-operation capabilities.
         ...(excludeOperations && excludeOperations.length > 0 ? { operation: { notIn: excludeOperations } } : {}),
@@ -291,7 +291,7 @@ export class MeteringService implements IMeteringService, OnModuleInit, OnModule
     usedCount: number,
     reconciledAt: Date,
   ): Promise<void> {
-    // usedCount is a BigInt column (TASK-615 #5) — the aggregates arrive as
+    // usedCount is a BigInt column — the aggregates arrive as
     // rounded integers, safely below Number.MAX_SAFE_INTEGER, so BigInt() is
     // exact; the widened column only removes the Int32 ceiling at the DB.
     const usedCountBig = BigInt(usedCount);

@@ -170,7 +170,7 @@ function buildController(
     {} as any,
     {} as any,
     {} as any,
-    {} as any, // loopContextSignalService (TASK-670)
+    {} as any, // loopContextSignalService
   );
 
   return {
@@ -361,7 +361,7 @@ describe('ConsultationController', () => {
         expect(result).toEqual({ id: 'ctx-1' });
       });
 
-      it('TASK-661 — threads the X-Context-Schema-Version header to the context service as contextSchemaVersionId', async () => {
+      it('Threads the X-Context-Schema-Version header to the context service as contextSchemaVersionId', async () => {
         const { controller, consultationService, contextService } = buildController();
         consultationService.getById.mockResolvedValue(makeConsultation({ doctorId: DOCTOR_A }));
         contextService.addContext.mockResolvedValue({ id: 'ctx-1' });
@@ -371,7 +371,7 @@ describe('ConsultationController', () => {
         expect(contextService.addContext).toHaveBeenCalledWith(CONSULTATION_OWN, { kindKey: 'intake', payload: {} }, 'version-3');
       });
 
-      it('TASK-661 — with no header, passes `undefined` through unchanged (back-compat)', async () => {
+      it('With no header, passes `undefined` through unchanged (back-compat)', async () => {
         const { controller, consultationService, contextService } = buildController();
         consultationService.getById.mockResolvedValue(makeConsultation({ doctorId: DOCTOR_A }));
         contextService.addContext.mockResolvedValue({ id: 'ctx-1' });

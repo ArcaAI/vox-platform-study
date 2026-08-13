@@ -1,4 +1,4 @@
-// Consultation-pipeline enforcement gates — `global-kv` kill-switches (TASK-679).
+// Consultation-pipeline enforcement gates — `global-kv` kill-switches.
 //
 // The two `@OnEvent(ContextAdded)` consumers that hang off the consultation
 // pipeline — `LoopContextSignalService` and `OcrEnrichmentProcessor` — each
@@ -8,9 +8,9 @@
 //
 //   • the BOOTSTRAP FLOOR — a variable stays in `env` only if it is required to
 //     REACH THE DATABASE or AUTHENTICATE TO VAULT. Neither gate is;
-//   • §9.2 L1 — env vars are IMMUTABLE for the process lifetime, so anything
+// • env vars are IMMUTABLE for the process lifetime, so anything
 //     that must change without a restart is not an env var. A kill-switch that
-//     needs a redeploy is a build flag, not a kill-switch (§9.3 M9).
+// needs a redeploy is a build flag, not a kill-switch.
 //
 // Both keys therefore live in `GlobalSetting` (`global-kv`), are resolved at
 // CALL time through `TenantSettingsService.resolvePlatform`, and propagate on
@@ -31,7 +31,7 @@
 // immutability defect it exists to remove. There is also nothing to preserve —
 // `OCR_ENABLED` and `HARNESS_LOOP_ENABLED` appear in NEITHER `.env.sample` NOR
 // `turbo.json#globalEnv`, so neither was ever settable through the supported
-// config path in any HOPE environment (see the TASK-679 audit table).
+// config path in any HOPE environment (see the audit table).
 
 /** `GlobalSetting` key for the consultation-loop signal gate. */
 export const HARNESS_LOOP_ENABLED_KEY = 'harness.loop.enabled';
@@ -42,7 +42,7 @@ export const CONSULTATION_OCR_ENABLED_KEY = 'consultation.ocr.enabled';
 /**
  * Code defaults — the last fallback in the cascade, and the single source of
  * truth shared by the descriptors and their consumers. Both OFF: a kill-switch
- * MUST default OFF (fail-safe rollout, §9.3 M9).
+ * MUST default OFF (fail-safe default; a kill-switch must not require a redeploy).
  */
 export const CONSULTATION_GATE_DEFAULTS = {
   [HARNESS_LOOP_ENABLED_KEY]: false,

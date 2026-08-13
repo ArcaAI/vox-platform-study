@@ -1,5 +1,5 @@
 /**
- * TASK-636 OBS-16 — the browser SDK must emit a traceparent the SERVER accepts.
+ * The browser SDK must emit a traceparent the SERVER accepts.
  *
  * `AgenticClient` derives the trace id from the logger's correlation id:
  *
@@ -26,7 +26,7 @@ import { toW3CTraceId } from '../utils';
 /** The same validity rule a W3C propagator applies. */
 const VALID_TRACE_ID = /^[0-9a-f]{32}$/;
 
-describe('TASK-636 OBS-16 — toW3CTraceId', () => {
+describe('toW3CTraceId', () => {
   it('derives a valid trace id from a UUID correlation id (the default path)', () => {
     const traceId = toW3CTraceId('4bf92f35-77b3-4da6-a3ce-929d0e0e4736');
     expect(traceId).toBe('4bf92f3577b34da6a3ce929d0e0e4736');

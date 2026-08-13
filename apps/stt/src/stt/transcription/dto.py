@@ -219,7 +219,7 @@ class TranscriptionResult:
     processed_audio_uri: str | None = None
     transcript_uri: str | None = None
 
-    # TASK-615 WS-C — usage-ledger attribution (`resolve_usage_attribution`
+    # Usage-ledger attribution (`resolve_usage_attribution`
     # in batch_service.py). Deliberately NOT included in `to_dict()` / the
     # resultMetadata blob (see that method): these ride the gateway callback
     # as separate TYPED top-level fields (`APIGatewayClient.complete_job`)

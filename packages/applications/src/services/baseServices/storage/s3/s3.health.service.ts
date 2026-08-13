@@ -136,7 +136,7 @@ export class S3HealthService {
    */
   private checkConfiguration(): { present: string[]; missing: string[] } {
     // S3_ACCESS_KEY / S3_SECRET_KEY are NOT AppSettings rows — they are
-    // secrets resolved through SecretsService (TASK-558 §9.3 M10, lane G G4).
+    // secrets resolved through SecretsService.
     // Listing them here reported a permanent, misleading "missing" once the
     // plaintext GlobalSetting rows were removed; readiness for the credentials
     // is covered by `S3Service.isConfigured()`, which this service already calls.

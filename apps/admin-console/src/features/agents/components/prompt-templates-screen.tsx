@@ -1,24 +1,24 @@
 'use client';
 
 /**
- * Prompt Instruction Templates (tier 30-49, TASK-634 R6) — the tenant-admin
+ * Prompt Instruction Templates (tier 30-49) — the tenant-admin
  * surface for viewing, creating, updating, versioning, diffing and approving
  * the prompts that drive pre-summary and summary generation.
  *
  * Why its own route rather than a tab of `/agents`: the templates and the
  * governance surface were buried two tabs deep inside a screen titled "Agent
  * Catalog", which is why the pre-summary/summary distinction (the actual
- * subject of TASK-634) had nowhere to live. `/agents` now owns exactly one
+ * subject of ) had nowhere to live. `/agents` now owns exactly one
  * resource — the `DepartmentAgent` catalog — and this screen owns
  * `PromptTemplate` end to end, keeping one authoritative editor per backend
  * resource (rule 13).
  *
  * Tabs:
- *   Fallbacks   — the resolution map: which template is the tenant-wide
+ *   Fallbacks — the resolution map: which template is the tenant-wide
  *                 pre-summary, and the department x visit-type summary matrix.
- *   Templates   — the grid + detail slide-over (create / edit / versions /
+ *   Templates — the grid + detail slide-over (create / edit / versions /
  *                 diff / test run). Moved verbatim from `/agents`.
- *   Governance  — version history, field-level diff and clinical approval.
+ *   Governance — version history, field-level diff and clinical approval.
  *                 Elevated-only in the console; the server is the authority.
  *
  * Tenant-scoped: a global admin must pick a working tenant before any query

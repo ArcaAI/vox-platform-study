@@ -1,9 +1,9 @@
 /**
- * @arcaai/vox - useConsultationSchema Hook (TASK-665)
+ * @arcaai/vox - useConsultationSchema Hook
  *
  * Read-only view over the SESSION-PINNED consultation context schema bundle
  * `AgenticProvider` fetches at mount (and re-fetches on a same-tab tenant
- * switch) from `GET /tenant/me/context-schema` (TASK-658/661). This hook does
+ * switch) from `GET /tenant/me/context-schema`. This hook does
  * NOT fetch — the discovery fetch is owned by the provider so every consumer
  * in the tree observes the SAME pinned version for the life of the session,
  * which is what makes `X-Context-Schema-Version` on `useArcaSession().addContext()`
@@ -32,7 +32,7 @@ export interface UseConsultationSchemaReturn {
    * comment for why this is forward-compatible by design.
    */
   findKind: (kindKey: string) => ContextKindDeclaration | undefined;
-  /** Whether a resolved kind carries a `deprecated` block (TASK-661). */
+  /** Whether a resolved kind carries a `deprecated` block.*/
   isDeprecated: (kind: ContextKindDeclaration | undefined) => boolean;
   /** Validate a `{ kindKey, payload }` pair against the pinned bundle — see `validateConsultationContextPayload`'s doc comment for its permissive-by-design semantics. */
   validatePayload: (kindKey: string, payload: Record<string, unknown> | undefined) => ContextPayloadValidationResult;

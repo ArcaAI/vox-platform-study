@@ -36,7 +36,7 @@ function formatDrift(value: string | null): string {
 }
 
 /**
- * Provider reconciliation — the audit trail (TASK-638 §6 rule 6).
+ * Provider reconciliation — the audit trail.
  *
  * PLATFORM-WIDE, not tenant-scoped: a vendor bills the platform, so this screen
  * has no working-tenant gate, unlike its neighbours under `/ai-operations`.

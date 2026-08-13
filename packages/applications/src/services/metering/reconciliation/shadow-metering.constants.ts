@@ -1,7 +1,7 @@
 import { AiUsageUnit, UsageMeterMetric } from '@arcaai/domains';
 
 /**
- * Shadow-metering report job (TASK-615 WS-K).
+ * Shadow-metering report job.
  *
  * research-findings.md §6: "shadow-meter one full billing cycle before
  * enforcing anything … alert on drift > 2%". This job never enforces
@@ -9,7 +9,7 @@ import { AiUsageUnit, UsageMeterMetric } from '@arcaai/domains';
  * agree within tolerance:
  *   1. Ledger totals (`AiUsageRollupDaily` — the system of record, same
  *      source `MeteringService` reads).
- *   2. `SummaryMeta` token-column sums (LLM only — the pre-TASK-615 legacy
+ *   2. `SummaryMeta` token-column sums (LLM only — the prior legacy
  *      capture path, kept as an independent cross-check).
  *   3. Persisted `TenantUsageMeter` rows (catches a stalled/failed reconcile
  *      job — a stale snapshot IS a drift even though it is computed from the
@@ -34,12 +34,12 @@ export const SHADOW_METERING_DEFAULTS = {
 /** research-findings.md §6 — the alert threshold, restated here for the settings description. */
 export const SHADOW_METERING_DRIFT_THRESHOLD_PCT = 2;
 
-/** The event name emitted (via `EventEmitter2`) when any comparison in a tenant's report breaches. Mirrors `ENTITLEMENTS_QUOTA_BLOCKED_EVENT` — a narrow, purpose-built payload, not a full `SysEvent`. No consumer is wired in this lane (WS-K owns the reconciliation folder only, not `sysEvent.service.ts`); a future subscriber can persist an audit row the same way `handleEntitlementsQuotaBlockedEvent` does. */
+/** The event name emitted (via `EventEmitter2`) when any comparison in a tenant's report breaches. Mirrors `ENTITLEMENTS_QUOTA_BLOCKED_EVENT` — a narrow, purpose-built payload, not a full `SysEvent`. No consumer is wired in this lane (owns the reconciliation folder only, not `sysEvent.service.ts`); a future subscriber can persist an audit row the same way `handleEntitlementsQuotaBlockedEvent` does. */
 export const SHADOW_METERING_DRIFT_DETECTED_EVENT = 'metering.shadow-drift-detected';
 
 /**
  * Emitted when a PROVIDER's own usage/cost report disagrees with the ledger by
- * more than the threshold (TASK-638 §6 rule 5). Alert-only by design: the
+ * more than the threshold (rule 5). Alert-only by design: the
  * append-only ledger is corrected by a compensating event after a human looks,
  * never by the reconciler assuming the vendor is right.
  */

@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * TASK-586 Lane D — `StreamingSessionManager` compat provider-switch routing.
+ * `StreamingSessionManager` compat provider-switch routing.
  *
  * Lives under `compat/__tests__/` (Lane D's file-ownership boundary) even
  * though it exercises a core class, because `StreamingSessionManager.ts` is
@@ -11,7 +11,7 @@
  * shim origin) with `target: 'pipeline' | 'default'`; with compat mode OFF
  * (the default — every native SDK consumer), each direction hits its native
  * route via `apiClient` — `SWITCH_TO_FALLBACK` for `'fallback'` and, since
- * TASK-586 Lane H, `SWITCH_TO_PRIMARY` for `'primary'` (native 2-way switch).
+ * `SWITCH_TO_PRIMARY` for `'primary'` (native 2-way switch).
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
@@ -21,7 +21,7 @@ import { AgenticClient } from '../../core/AgenticClient';
 import { STT_ENDPOINTS } from '../../core/constants';
 import type { StreamingSessionResponse } from '../../types/stt';
 
-describe('StreamingSessionManager — compat provider switch (TASK-586 Lane D)', () => {
+describe('StreamingSessionManager — compat provider switch', () => {
   let manager: StreamingSessionManager;
   let apiClient: AgenticClient;
   let mockLogger: ReturnType<typeof createMockLogger>;
@@ -77,7 +77,7 @@ describe('StreamingSessionManager — compat provider switch (TASK-586 Lane D)',
       expect(url).toContain(STT_ENDPOINTS.SWITCH_TO_FALLBACK('sess-compat-1'));
     });
 
-    it('switchProvider("primary") now POSTs the native SWITCH_TO_PRIMARY route (TASK-586 Lane H — native 2-way switch)', async () => {
+    it('switchProvider("primary") now POSTs the native SWITCH_TO_PRIMARY route (native 2-way switch)', async () => {
       mockFetch.mockResolvedValueOnce(createMockResponse({ switched: true }));
 
       await manager.switchProvider('primary');

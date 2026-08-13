@@ -1,6 +1,6 @@
 /**
  * The agentic-loop knob descriptors surfaced by the global Agentic Policy
- * editor ( loop toggles + the safety/PHI kill-switches on the
+ * editor (loop toggles + the safety/PHI kill-switches on the
  * HarnessPolicy row). One descriptor list keeps the form and the sparse-patch
  * builder in lockstep, mirroring the harness-policy feature's `policy-fields`.
  *

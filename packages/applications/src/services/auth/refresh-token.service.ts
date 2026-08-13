@@ -36,7 +36,7 @@ import { TenantSettingsService } from '../settings-registry/tenant-settings.serv
  *   refresh-token-family:<family>:<sha256>     → "1" (membership marker)
  *   refresh-token-consumed:<sha256>            → "<family>"
  *
- * TTL is the `global-kv` setting `refreshToken.ttlSeconds` (TASK-558 lane I),
+ * TTL is the `global-kv` setting `refreshToken.ttlSeconds`,
  * resolved PER TENANT on every `issue()`; default 7 days (`604800`) per a
  * deliberate, locked product decision. `REFRESH_TOKEN_TTL_SECONDS` remains the
  * bootstrap fallback for a graph with no settings resolver.
@@ -62,10 +62,10 @@ import { TenantSettingsService } from '../settings-registry/tenant-settings.serv
  *     rotation + attacker replay both winning). Race-replay covered by
  *     the `Promise.all([consume(t), consume(t)])` unit test.
  *
- *   - **TTL resolution moved out of the constructor** (TASK-558 lane I).
+ *   - **TTL resolution moved out of the constructor**.
  *     It used to be a single `process.env.REFRESH_TOKEN_TTL_SECONDS` read at
  *     construction, which made the value process-wide AND restart-bound —
- *     both of which plan §9.2 L1 rules out for something an admin tunes.
+ *     both of which rule it out for something an admin tunes.
  *     `resolveTtlSeconds()` now walks the `global-kv` cascade per issue, so a
  *     tenant can hold a shorter session than the platform and a platform
  *     change lands without a restart. The env var survives as the documented
@@ -177,7 +177,7 @@ export class RefreshTokenService implements IRefreshTokenService {
 
   constructor(
     @Inject(IRedisCacheService) private readonly cache: IRedisCacheService,
-    // TASK-558 lane I — `refreshToken.ttlSeconds` is a `global-kv` key at
+    // `refreshToken.ttlSeconds` is a `global-kv` key at
     // `maxScope: 'tenant'`. Optional so a graph without the settings module
     // (and the pre-existing fixtures) keeps the env-var behaviour exactly.
     @Optional() private readonly tenantSettings?: TenantSettingsService,
@@ -188,7 +188,8 @@ export class RefreshTokenService implements IRefreshTokenService {
    *
    * Resolved on EVERY issue, not once in the constructor: the whole point of
    * moving this key into the database is that a change must take effect
-   * without a restart (§9.2 L1). A tenant may only SHORTEN it
+   * without a restart (env vars are immutable for the process lifetime). A
+   * tenant may only SHORTEN it
    * (`tenant-clamp.ts`: lower-is-stricter), so this cannot be used to extend a
    * session past the platform's own ceiling.
    *

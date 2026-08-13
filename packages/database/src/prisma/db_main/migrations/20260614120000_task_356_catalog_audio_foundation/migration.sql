@@ -1,4 +1,4 @@
--- TASK-356 — Catalog plane (Phase 1) + Audio console (Phase 4) shared DB foundation.
+-- Catalog plane (Phase 1) + Audio console (Phase 4) shared DB foundation.
 --
 -- PURELY ADDITIVE. No DROP / DELETE / TRUNCATE / RENAME / column removal / ALTER … DROP.
 -- Generated from `prisma migrate diff` (live datasource → edited datamodel) and

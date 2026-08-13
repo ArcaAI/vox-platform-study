@@ -1,6 +1,6 @@
 /**
  * Read-only HarnessPolicy summary for the `/ai-configuration` "Effective
- * models" tab (TASK-547 requirement 4 — OD-2: a read-only effective-config
+ * models" tab (a read-only effective-config
  * view is the accepted alternative to devolving global-only knobs).
  *
  * `/harness/policy` (the `harness-policy` feature) is the ONE authoritative

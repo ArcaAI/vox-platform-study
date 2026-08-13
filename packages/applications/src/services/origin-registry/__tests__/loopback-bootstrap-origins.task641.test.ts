@@ -1,5 +1,5 @@
 /**
- * TASK-641 lane G — the six SYSTEM loopback rows are canonical, and cover what
+ * The six SYSTEM loopback rows are canonical, and cover what
  * the deleted `development_loopback` branch covered.
  *
  * WHY THIS FILE EXISTS SEPARATELY FROM
@@ -15,7 +15,7 @@
  * the mechanical check that the migration's six literals are the canonical
  * forms, and that they actually admit the origins a local browser sends.
  *
- * The parity claim being pinned: the branch TASK-641 B-7 deleted from
+ * The parity claim being pinned: the branch deleted from
  * `cors.config.ts` called `isLoopbackHost()`, which admits
  * `localhost` ∪ `127.0.0.0/8` ∪ `::1` on EITHER scheme. Two http rows were
  * narrower than that. Six rows close the gap for the three canonical loopback
@@ -43,7 +43,7 @@ const BOOTSTRAP_LOOPBACK_PATTERNS = [
   'https://[::1]:*',
 ] as const;
 
-describe('TASK-641 bootstrap loopback origins are already canonical', () => {
+describe('Bootstrap loopback origins are already canonical', () => {
   it.each(BOOTSTRAP_LOOPBACK_PATTERNS)('%s round-trips unchanged through normalizeOriginPattern', (pattern) => {
     expect(normalizeOriginPattern(pattern)).toBe(pattern);
   });
@@ -57,7 +57,7 @@ describe('TASK-641 bootstrap loopback origins are already canonical', () => {
   });
 });
 
-describe('TASK-641 bootstrap loopback origins admit what a local browser sends', () => {
+describe('Bootstrap loopback origins admit what a local browser sends', () => {
   const admitted: Array<[string, string]> = [
     ['http://localhost:*', 'http://localhost:5176'],
     ['http://localhost:*', 'http://localhost'],
@@ -85,7 +85,7 @@ describe('TASK-641 bootstrap loopback origins admit what a local browser sends',
   });
 });
 
-describe('TASK-641 KNOWN GAP — 127.0.0.2-127.0.0.255 are not expressible', () => {
+describe('KNOWN GAP — 127.0.0.2-127.0.0.255 are not expressible', () => {
   it('the deleted isLoopbackHost branch covered the whole of 127.0.0.0/8; the rows do not', () => {
     expect(matchesOriginPattern('http://127.0.0.1:*', 'http://127.0.0.2:5176')).toBe(false);
   });

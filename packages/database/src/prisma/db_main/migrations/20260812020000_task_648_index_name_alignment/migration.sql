@@ -1,11 +1,11 @@
--- Align the four TASK-648 unique-index names with what Prisma derives from the schema.
+-- Align the four unique-index names with what Prisma derives from the schema.
 --
 -- Root cause: `platform.prisma` declares these constraints as
 --   @@unique([...], name: "ServiceRelease_service_commit_tag_unique")
 -- On `@@unique`, `name:` sets the CLIENT-facing compound key (the
 -- `where: { ServiceRelease_service_commit_tag_unique: {...} }` argument) — the
 -- DATABASE index name is set by `map:`, which is absent, so Prisma expects its
--- default `Model_field_field_key`. The TASK-648 migration created the indexes
+-- default `Model_field_field_key`. The migration created the indexes
 -- under the `name:` value instead, leaving every migration-built database
 -- permanently drifted from the schema (visible as four RenameIndex statements
 -- in `prisma migrate diff` / an unwanted drift migration in `migrate dev`).
@@ -16,7 +16,7 @@
 -- Rolling forward with the rename (rather than adding `map:`) keeps the client
 -- API unchanged and matches what `db push`-managed environments already have.
 --
--- Guarded: environments baselined by TASK-644 may have been `db push`-built and
+-- Guarded: environments baselined by may have been `db push`-built and
 -- already carry the default names, so each rename is conditional.
 
 DO $$

@@ -1,5 +1,5 @@
 /**
- * DepartmentAgentService unit tests (TASK-546).
+ * DepartmentAgentService unit tests.
  *
  * Covers the validation invariants the ticket enumerates: factory usage +
  * sys-event on create, 404-over-403 cross-tenant, pin validation (missing
@@ -240,7 +240,7 @@ describe('DepartmentAgentService', () => {
       expect(agent.pinnedVersionNumber).toBeNull();
     });
 
-    // ─── eval promotion gate on pin re-point (OD-3, TASK-549) ───
+    // ─── eval promotion gate on pin re-point  ───
     describe('eval promotion gate', () => {
       const mockGate = { evaluatePromotion: vi.fn() };
 

@@ -2,7 +2,7 @@ import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
 import { IsBoolean, IsInt, IsISO8601, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
 
-/** Query for `GET admin/usage/reconciliation/runs` — the provider-reconciliation audit trail (TASK-638 §6). */
+/** Query for `GET admin/usage/reconciliation/runs` — the provider-reconciliation audit trail. */
 export class ReconciliationRunsQuery {
   @ApiPropertyOptional({ description: 'Restrict to one vendor slug, e.g. "openai".' })
   @IsOptional()

@@ -1,5 +1,5 @@
 /**
- * Shared v1 pre-summary variable substitution (TASK-634 Phase 2b, D-08).
+ * Shared v1 pre-summary variable substitution.
  *
  * These are the pure pieces LIFTED OUT of
  * `apps/api/src/modules/smr-compat/summary-prompt.builder.ts` so BOTH SDK

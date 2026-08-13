@@ -24,7 +24,7 @@ QDRANT_API_KEY = os.getenv("QDRANT_API_KEY", None)
 
 # STT Speaker Embeddings Collection
 
-# Knowledge Chunks Collection (TASK-330 Phase 3 — institutional RAG / hybrid retrieval).
+# Knowledge Chunks Collection (institutional RAG / hybrid retrieval).
 # Tenant + document + approval-scoped chunks of the institutional knowledge corpus,
 # stored with a NAMED dense vector ("dense") + a NAMED sparse BM25 vector ("bm25")
 # so the harness retriever can run the Qdrant Query API hybrid (prefetch dense +
@@ -39,7 +39,7 @@ DISTANCE_METRIC = Distance.COSINE
 
 
 def create_knowledge_chunks_collection(client: QdrantClient):
-    """Create the institutional-knowledge collection (TASK-330 Phase 3).
+    """Create the institutional-knowledge collection.
 
     Additive + idempotent: if the collection already exists it is left untouched
     (no DROP/recreate), so re-running the init script is safe. Named dense +
@@ -131,7 +131,7 @@ def main():
 
     print()
 
-    # The stt_speaker_embeddings collection is NOT created (TASK-624 Q-06).
+    # The stt_speaker_embeddings collection is NOT created.
     #
     # STT diarization is in-memory and session-scoped; cross-session speaker
     # identity comes from the PostgreSQL UserVoiceProfile row via

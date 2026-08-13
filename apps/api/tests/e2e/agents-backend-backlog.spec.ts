@@ -6,7 +6,7 @@
  * harness of users-backend-backlog.spec.ts (seeded `super_admin` bound
  * to `__GLOBAL__` = admin operator with tenant context; `doctor` = RBAC negative).
  *
- * Coverage (ticket §Items #14–15):
+ * Coverage (#14–15):
  *   #14 server diff · a NEW server-side field-level version-diff endpoint
  *        (`GET /admin/prompt-templates/:id/versions/:from/diff/:to`) returns the
  *        combined `changes[]`/`patch`/`stats` (what the SDK `compareVersions`

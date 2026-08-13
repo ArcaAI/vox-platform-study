@@ -1,4 +1,4 @@
-"""Unit tests for the language-mode streaming API wiring (TASK-587)."""
+"""Unit tests for the language-mode streaming API wiring."""
 
 from __future__ import annotations
 
@@ -28,7 +28,7 @@ def mock_session_manager():
     guard.max_streams = 10
     guard.active_count = 1
     mgr.capacity_guard = guard
-    # get_switch_controller (TASK-613) is a SYNCHRONOUS method on the real
+    # get_switch_controller is a SYNCHRONOUS method on the real
     # SessionManager; explicitly set as a plain MagicMock so routes.py's
     # synchronous call site gets None back instead of an unawaited coroutine.
     mgr.get_switch_controller = MagicMock(return_value=None)

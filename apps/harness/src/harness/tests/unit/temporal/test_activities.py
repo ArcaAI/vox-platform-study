@@ -455,7 +455,7 @@ class TestApiActivities:
         assert call["consultation_id"] == "c-1"
         assert call["tenant_id"] == "t-1"
         assert call["context_item_id"] == "ctx-t1"
-        # TASK-688: the key is derived from the WRITE (consultation + a digest
+        # The key is derived from the WRITE (consultation + a digest
         # of the entity set), NOT from the run — a second workflow EXECUTION
         # duplicates this callback, which a run-scoped key cannot dedup. Every
         # OTHER callback keeps the run-scoped key (their duplicate is only ever
@@ -498,7 +498,7 @@ class TestApiActivities:
         assert call["content"] == "DRAFT"
         assert call["gate_decision"] == "PASS"
         assert call["sensor_scores"] == {"entity_faithfulness": 1.0}
-        # TASK-687 — the DRAFT persist is keyed on the WRITE (consultation + note),
+        # The DRAFT persist is keyed on the WRITE (consultation + note),
         # not on `{run_id}:{activity_id}`: its duplicate is a second workflow
         # EXECUTION, which a run-scoped key cannot dedup. Every OTHER callback keeps
         # the run-scoped key (their duplicate is only ever an activity retry).
@@ -598,7 +598,7 @@ class TestApiActivities:
 
         assert first != second
 
-    # TASK-688 — the same three properties for the ENTITY persist. The gateway's
+    # The same three properties for the ENTITY persist. The gateway's
     # write path is what actually guarantees one set of rows; these lock the
     # fast path so it can never SUPPRESS a legitimate re-extraction.
     @pytest.mark.asyncio

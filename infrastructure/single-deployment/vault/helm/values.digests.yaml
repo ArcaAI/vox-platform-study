@@ -1,5 +1,5 @@
 # =============================================================================
-# HOPE — Vault image DIGEST pins (TASK-312 Phase E)  [PRODUCTION VALUES OVERLAY]
+# HOPE — Vault image DIGEST pins  [PRODUCTION VALUES OVERLAY]
 # =============================================================================
 # Supply-chain hardening: pin the chart-managed images by immutable digest so a
 # mutated/republished tag can never silently change what runs. These are the

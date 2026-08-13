@@ -124,7 +124,7 @@ async def test_retention_comes_from_control_plane() -> None:
 
 @pytest.mark.asyncio
 async def test_live_cache_reconfigured_not_just_new_ones() -> None:
-    """§3.2 — a provider already holding a loaded pipeline must follow changes."""
+    """A provider already holding a loaded pipeline must follow changes."""
     from tts.core.effective_config import refresh_model_cache_retention
     from tts.providers.base import AudioFormat, SynthesisRequest
 
@@ -222,7 +222,7 @@ async def test_clamp_applied_client_side(served: int, expected: int) -> None:
         assert _ttl(provider) == expected
 
 
-# ── §3.4 — the service/key namespace trap ───────────────────────────────────
+# ── the service/key namespace trap ───────────────────────────────────
 
 
 @pytest.mark.asyncio

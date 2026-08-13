@@ -134,7 +134,7 @@ function ObservabilityBody() {
         <GoldenSetsPanel />
         <EditBurdenCard />
         {/* GAP-A1 candidate stream — clinician approve-vs-edit signal, with the
-            "promote to golden case" affordance (TASK-549). */}
+            "promote to golden case" affordance. */}
         <GateEditExemplarsPanel />
       </div>
     </ScreenTemplate>

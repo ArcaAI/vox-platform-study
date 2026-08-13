@@ -4,7 +4,7 @@ import * as Models from '../../../models';
 
 // `_version` is owned by the database and the only legitimate writer is
 // `Repository.updateWithVersion`. Strip it from every write path here so the
-// auto-mappers cannot leak it into a Prisma update — the invoice is the ONE optimistically-concurrency-controlled model of TASK-615 — draft edits and the FINALIZE transition are guarded by _version, so letting it reach a Prisma update would let two concurrent finalizes both win on a money document.
+// auto-mappers cannot leak it into a Prisma update — the invoice is the ONE optimistically-concurrency-controlled model of the billing plane — draft edits and the FINALIZE transition are guarded by _version, so letting it reach a Prisma update would let two concurrent finalizes both win on a money document.
 // Mirrors the `DepartmentEntityMapper` / `AiTaskDefaultEntityMapper` treatment.
 //
 // `resourceStatus*` is NOT stripped: unlike its append-only siblings in this

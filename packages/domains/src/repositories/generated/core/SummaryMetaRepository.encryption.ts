@@ -58,7 +58,7 @@ SummaryMetaRepository.prototype.encryptFieldsIntoEntity = async function (
     keyVersion = guardrailDecisions.keyVersion;
   }
 
-  // TASK-551 redaction manifest — same Vault-Transit path; no-op when the
+  // Redaction manifest — same Vault-Transit path; no-op when the
   // transient plaintext is null (so a finalize backfill that never loads it
   // leaves the previously-persisted ciphertext untouched).
   const redactionManifest = await encryptJsonToCiphertext(secrets, entity.redactionManifest);

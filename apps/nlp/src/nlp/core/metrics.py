@@ -86,7 +86,7 @@ class NLPMetrics:
         self, entity_count: int, entity_type: str, model: str = "token_classifier"
     ) -> None:
         self.entity_count.add(entity_count, {"entity_type": entity_type, "model": model})
-        # TASK-615 WS-E: the OTel counter above is exported via OTLP gRPC only
+        # The OTel counter above is exported via OTLP gRPC only
         # (not Prometheus-scrapable — see the module docstring). The
         # platform-metrics backend reads Prometheus, so this call ALSO feeds
         # the Prometheus-native counter below. Same call site, two sinks.
@@ -103,7 +103,7 @@ nlp_metrics = NLPMetrics()
 
 
 # ---------------------------------------------------------------------------
-# Usage-metering counters (TASK-615 WS-E)
+# Usage-metering counters
 # ---------------------------------------------------------------------------
 # Prometheus-scrapable counterparts of NLPMetrics.entity_count/inference_count
 # (current-state-review §2.4: those are OTel-only). record_entities() (above)

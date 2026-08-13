@@ -63,9 +63,9 @@ import {
  * Workflow Playground WS2) — human-authored notes / attachments only.
  *
  * Widened (loop event plane) to also cover TRANSCRIPT and the tenant-declared
- * STRUCTURED primitive (TASK-658): the context bus the (future) consultation
- * loop subscribes to needs transcripts and derived context to re-enter it
- * (§4.2 of the TASK-654 design doc). Existing consumers
+ * STRUCTURED primitive: the context bus the (future) consultation
+ * loop subscribes to needs transcripts and derived context to re-enter it.
+ * Existing consumers
  * (`LiveDocumentationService`, `OcrEnrichmentProcessor`) each carry their OWN
  * explicit kind filter now, so this widening changes only what reaches the
  * bus — not what either of them acts on.
@@ -88,7 +88,7 @@ const CONTEXT_MEDIA_URL_TTL_SECONDS = 3600;
 /**
  * Cap on `ContextAddedPayload.content` — the fuller body threaded to the loop
  * signal so a specialist (`vision.extract_text`, `nlp.extract_entities`) has
- * real text to act on (TASK-670).
+ * real text to act on.
  *
  * DECISION — inline, not a `ClaimCheckRef`: the wire body a normal write
  * produces is already bounded by `AddContextRequest.content`'s own
@@ -98,8 +98,8 @@ const CONTEXT_MEDIA_URL_TTL_SECONDS = 3600;
  * payloads ABOVE that line — assembled prompts, generated notes, RAG chunks).
  * A claim-check integration would also require the loop's `contextAdded`
  * SIGNAL HANDLER to resolve the ref — structurally disallowed by its own
- * "never call an activity from a handler" invariant (TASK-662 §Signal
- * safety) — so genuinely oversized bodies belong to a specialist ACTIVITY
+ * "never call an activity from a handler" invariant — so genuinely oversized
+ * bodies belong to a specialist ACTIVITY
  * fetching from the gateway directly, exactly the pattern `document.extract_text`
  * already uses. Re-using `CONTEXT_CONTENT_MAX_LENGTH` here means this cap
  * never actually truncates a normal add-context write; it only bounds the
@@ -132,7 +132,7 @@ export class ContextService extends BaseService implements IContextService {
     // CoreDatabaseModule / the @Global storage module in the NestJS runtime.
     @Optional() @Inject(MediaRepository) private readonly mediaRepository?: MediaRepository,
     @Optional() @Inject(IBlobStorageService) private readonly blobStorage?: IBlobStorageService,
-    // TASK-615 WS-D2 (item 1b) — records the bare inputTokens/outputTokens
+    // Records the bare inputTokens/outputTokens
     // `addRawSummary` receives (this write path makes NO SMR call of its
     // own). Optional + trailing so existing positional fixtures keep
     // compiling; absent ⇒ the SummaryMeta persists unmetered.
@@ -144,7 +144,7 @@ export class ContextService extends BaseService implements IContextService {
     // `services/baseServices`. Optional + trailing so existing positional
     // fixtures keep compiling.
     @Optional() private readonly unitOfWorkService?: CoreUnitOfWorkService,
-    // TASK-658 — the tenant-declared context-schema plane. Optional +
+    // The tenant-declared context-schema plane. Optional +
     // @Inject + TRAILING, like every injection above it, so the many
     // direct-construction fixtures keep compiling and so a write that names
     // no `kindKey` is genuinely untouched by this ticket. When a write DOES
@@ -188,7 +188,7 @@ export class ContextService extends BaseService implements IContextService {
   }
 
   /**
-   * TASK-658 — the ONE seam through which every context write consults the
+   * The ONE seam through which every context write consults the
    * tenant-declared context schema. `addContext` and `updateContext` both go
    * through it, so a rule can never be present on one write path and missing
    * on the other.
@@ -253,7 +253,7 @@ export class ContextService extends BaseService implements IContextService {
   }
 
   /**
-   * Resolve the loop cascade `depth` (TASK-670) for a write that names
+   * Resolve the loop cascade `depth` for a write that names
    * `derivedFromContextItemId`. A human/API-originated write (no lineage
    * declared) is depth 0 — the overwhelming majority of calls never reach
    * the `try` below. Best-effort, like `resolveConsultationDepartmentId`
@@ -281,7 +281,7 @@ export class ContextService extends BaseService implements IContextService {
   /**
    * Add context item to consultation.
    *
-   * @param contextSchemaVersionId TASK-661 — the schema version the CALLER
+   * @param contextSchemaVersionId the schema version the CALLER
    *   built against (threaded from the `X-Context-Schema-Version` request
    *   header). Ignored entirely when `request.kindKey` is absent — K7: a
    *   write that names no kind consults nothing regardless of this header.
@@ -305,7 +305,7 @@ export class ContextService extends BaseService implements IContextService {
     // consultation.
     await assertParentInScope(this.consultationRepository, consultationId, tenantId);
 
-    // TASK-658 — resolve the tenant-declared kind when the write names one.
+    // Resolve the tenant-declared kind when the write names one.
     //
     // The ticket spec placed this call "after the metadata merge and before
     // `encryptContent`". The operative half of that instruction is BEFORE
@@ -325,7 +325,7 @@ export class ContextService extends BaseService implements IContextService {
     const validatedKind = await this.resolveContextKind(request.kindKey, request.payload, consultationId, contextSchemaVersionId);
     const effectiveContent = validatedKind?.content ?? request.content;
 
-    // TASK-661 — a compatibility SIGNAL only (never changes what was
+    // A compatibility SIGNAL only (never changes what was
     // validated or persisted): the caller pinned an old version that is now
     // BREAKING relative to the tenant's current pin. Surfaced as a log for
     // operability; the write proceeds exactly as validated.
@@ -345,7 +345,7 @@ export class ContextService extends BaseService implements IContextService {
       throw new BadRequestException('Content is required for non-media types');
     }
 
-    // TASK-670 — cascade depth (loop event plane). Only resolved when the
+    // Cascade depth (loop event plane). Only resolved when the
     // caller declares lineage via `derivedFromContextItemId`; a normal write
     // (the overwhelming majority) never touches this and stays depth 0.
     const depth = await this.resolveCascadeDepth(request.derivedFromContextItemId, tenantId);
@@ -366,7 +366,7 @@ export class ContextService extends BaseService implements IContextService {
     // Clinical Workflow Playground (WS5) — persist optional free-form metadata
     // (e.g. `{ subType: 'LAB_RESULT' }` on ATTACHMENTs). Set before create so it
     // is included in the entity's toObject() payload.
-    // TASK-670 — `loopDepth` rides the same JSON column, but ONLY when the
+    // `loopDepth` rides the same JSON column, but ONLY when the
     // write declares `derivedFromContextItemId`: a normal write's metaData
     // shape is completely unchanged (every reader treats an absent
     // `loopDepth` as 0).
@@ -423,7 +423,7 @@ export class ContextService extends BaseService implements IContextService {
         contextType: request.type,
         subType,
         contentPreview: preview ? preview.slice(0, 2000) : undefined,
-        // TASK-670 — payload completeness for the loop signal: the real kind
+        // Payload completeness for the loop signal: the real kind
         // key (falls back gateway/harness-side to subType/contextType when
         // absent), the cascade depth, and the fuller inline body.
         kindKey: saved.kindKey ?? undefined,
@@ -454,7 +454,7 @@ export class ContextService extends BaseService implements IContextService {
 
     const userId = this.requestUserId ?? 'system';
 
-    // TASK-658 — a STRUCTURED edit re-validates through the SAME seam as the
+    // A STRUCTURED edit re-validates through the SAME seam as the
     // create path, against the version the ITEM was written with (not the
     // tenant's current pin): a publish that lands mid-consultation must not
     // make an existing item un-editable. Neither `kindKey` nor
@@ -680,7 +680,7 @@ export class ContextService extends BaseService implements IContextService {
     // entry pointing into another tenant would otherwise be persisted
     // verbatim and later regurgitated as "context" by chain summarisers.
     // The returned entity also supplies doctorId/departmentId attribution
-    // for the usage-ledger row below (TASK-615 WS-D2).
+    // for the usage-ledger row below.
     const consultation = await assertParentInScope(this.consultationRepository, consultationId, tenantId);
     await this.assertContextItemsInTenant(tenantId, request.caseNoteIds);
     await this.assertContextItemsInTenant(tenantId, request.preSummaryIds);
@@ -757,7 +757,7 @@ export class ContextService extends BaseService implements IContextService {
 
   /**
    * Persist a `SummaryMeta` and, in the SAME transaction, record the bare
-   * `inputTokens`/`outputTokens` it carries (TASK-615 WS-D2). `addRawSummary`
+   * `inputTokens`/`outputTokens` it carries. `addRawSummary`
    * makes NO SMR call of its own — the caller already ran the generation and
    * supplied the token counts directly — so there is no real `SmrUsageDetail`
    * (no provider, no endpointKind); `buildLlmUsageInputFromTokenCounts`

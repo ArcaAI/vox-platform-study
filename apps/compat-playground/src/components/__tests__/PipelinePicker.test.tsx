@@ -58,7 +58,7 @@ describe('PipelinePicker', () => {
     expect(onChange).toHaveBeenCalledWith('x');
   });
 
-  // TASK-597 lane G (carried from lane E): the Connection tab re-renders on
+  // The Connection tab re-renders on
   // every keystroke, so an undebounced effect sent a partially-typed API key to
   // the gateway once per character. Never a correctness race — the stale-response
   // guard already handled that — but real credential leakage into gateway logs.

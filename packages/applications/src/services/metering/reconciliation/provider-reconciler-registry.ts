@@ -1,7 +1,7 @@
 /**
- * Credential-gated provider reconcilers (TASK-638 §6).
+ * Credential-gated provider reconcilers.
  *
- * This replaces the hardcoded "always unavailable" stubs from TASK-615 WS-K.
+ * This replaces the hardcoded "always unavailable" stubs from.
  * Availability is now DERIVED from two independent gates, so the day a
  * credential lands in Vault nothing here needs editing:
  *
@@ -17,7 +17,7 @@
  * exactly that reason.
  *
  * ============================================================================
- * WHAT A RECONCILER IS ALLOWED TO ASK FOR (§6 rules 1-2)
+ * WHAT A RECONCILER IS ALLOWED TO ASK FOR (rules 1-2)
  * ============================================================================
  * - A **platform-wide, org-level** control total. No cloud vendor exposes
  *   per-tenant cost, so a reconciler answers "what did this provider bill the
@@ -52,7 +52,7 @@ export interface ProviderReconcilerSpec {
 
 /**
  * The providers the platform can be billed by. Sourced from
- * research-findings.md §11.2 and TASK-638 §6; every entry names the exact
+ * research-findings.md §11.2; every entry names the exact
  * credential an operator has to provision.
  *
  * Deliberately NOT here: self-hosted engines (`whisper_cpp`, `kokoro`,
@@ -89,7 +89,7 @@ export const PROVIDER_RECONCILER_SPECS: readonly ProviderReconcilerSpec[] = [
 /**
  * One provider's reconciler. Never throws for "not configured" — reconciliation
  * is a diagnostic, and a missing credential must not fail the sweep closed
- * (§6 rule 7).
+ * (rule 7).
  */
 export class CredentialGatedReconciler implements IProviderReconciler {
   constructor(
@@ -134,7 +134,7 @@ export class CredentialGatedReconciler implements IProviderReconciler {
   }
 }
 
-/** Build the registry against a secrets lookup. Shape is unchanged from the WS-K stub registry. */
+/** Build the registry against a secrets lookup. Shape is unchanged from the stub registry. */
 export function buildProviderReconcilerRegistry(
   lookupSecret: SecretLookup,
   specs: readonly ProviderReconcilerSpec[] = PROVIDER_RECONCILER_SPECS,

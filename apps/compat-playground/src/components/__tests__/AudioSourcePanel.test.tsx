@@ -3,12 +3,12 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
- * `AudioSourcePanel` (TASK-597 lane A) — the four capture modes.
+ * `AudioSourcePanel` — the four capture modes.
  *
  * The session context is stubbed: this suite is about the PANEL's behaviour
  * (permission affordance, mode switching, locking while a session is live,
  * file-playback following the recording lifecycle), not about the SDK.
- */
+*/
 
 const session = vi.hoisted(() => ({ value: null as unknown }));
 
@@ -58,7 +58,7 @@ function setSession(overrides: Overrides = {}) {
   // (`playground-session.tsx`) so a fixture can keep saying `isRecording: true`
   // and still exercise the real gating. Tests that care about the drain window
   // pass `phase: 'stopping'` explicitly — it is the one state that has no
-  // `isRecording`/`isStarting` spelling (TASK-597 lane B/G).
+  // `isRecording`/`isStarting` spelling (G).
   const isRecording = Boolean(overrides.capture?.isRecording);
   const isStarting = Boolean(overrides.capture?.isStarting);
   const capture = {
@@ -212,7 +212,7 @@ describe('AudioSourcePanel — locking', () => {
     expect(screen.queryByText(/locked while a session is live/i)).not.toBeInTheDocument();
   });
 
-  // TASK-597 lane G: `isRecording` goes false at the Stop CLICK, so gating on
+  // `isRecording` goes false at the Stop CLICK, so gating on
   // it alone re-enabled source selection while the transport was still
   // finalizing — a window in which the panel would describe a configuration the
   // just-closed run never used.

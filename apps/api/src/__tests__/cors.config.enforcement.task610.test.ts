@@ -1,11 +1,11 @@
 /**
- * TASK-610 §4C — the PERMISSIVE side of the origin-enforcement switch.
+ * The PERMISSIVE side of the origin-enforcement switch.
  *
- * TITLE CORRECTED BY TASK-641 (lane G). This file used to be headed "origin
- * enforcement is OFF BY DEFAULT", quoting the TASK-610 owner directive "make
+ * This file used to be headed "origin
+ * enforcement is OFF BY DEFAULT", quoting the owner directive "make
  * sure by default (apply to all tenants including SYSTEM, GLOBAL) no origin
  * checks, ALL is ALLOWED for calling and using our APIs". That directive was
- * reversed: TASK-641 FR-6 sets `origin.enforcementEnabled` DEFAULT `true`, so
+ * reversed: `origin.enforcementEnabled` DEFAULT is `true`, so
  * enforcement is now the platform default in every environment.
  *
  * None of the assertions below changed, because none of them was ever about the
@@ -19,7 +19,7 @@
  * This file pins the PERMISSIVE side of the switch. The enforcing side is
  * `cors.config.test.ts`, which now installs `setOriginEnforcementResolver(() =>
  * true)` and is otherwise unchanged — that pairing is the point: turning the
- * switch on must restore §3–§4B exactly, and turning it off must bypass all of
+ * switch on must restore the enforcing path exactly, and turning it off must bypass all of
  * it without deleting any of it.
  *
  * The load-bearing assertion is `never consults the registry`. "Allowed" alone
@@ -49,7 +49,7 @@ function spyRegistry(entries: Record<string, string[]> = {}) {
   };
 }
 
-describe('origin enforcement switch (TASK-610 §4C)', () => {
+describe('origin enforcement switch', () => {
   beforeEach(() => {
     setOriginRegistryResolver(null);
     setOriginEnforcementResolver(null);
@@ -85,16 +85,16 @@ describe('origin enforcement switch (TASK-610 §4C)', () => {
     });
 
     it('admits an unregistered origin even when NO registry is wired (the pre-boot case)', () => {
-      // Pre-§4C this exact case was the fail-closed `origin_registry_unavailable`
-      // deny. §4C made it permissive so a request landing before the binder is
+      // Pre- this exact case was the fail-closed `origin_registry_unavailable`
+      // deny. made it permissive so a request landing before the binder is
       // up is not refused on the strength of a guess.
       //
-      // This is NOT "a deployment cannot lock itself out" any more — TASK-641
-      // FR-6 defaults enforcement ON, so once the binder installs the resolver
+      // This is NOT "a deployment cannot lock itself out" any more
+      // defaults enforcement ON, so once the binder installs the resolver
       // an origin with no matching row IS refused. What prevents the lock-out is
       // that the six SYSTEM loopback rows are guaranteed by a migration
       // (`20260808160000_task_641_bootstrap_loopback_origins`) rather than by
-      // the opt-in seed — see `cors.config.ts` §4C and TASK-641 H-2.
+      // the opt-in seed — see `cors.config.ts` and.
       expect(isOriginAllowed('https://anything.example.com', 'production')).toBe(true);
     });
   });
@@ -142,7 +142,7 @@ describe('origin enforcement switch (TASK-610 §4C)', () => {
     });
   });
 
-  describe('enforcement ENABLED restores §3–§4B exactly', () => {
+  describe('enforcement ENABLED restores the enforcing path exactly', () => {
     beforeEach(() => setOriginEnforcementResolver(() => true));
 
     it('refuses an unregistered origin and consults the registry to decide', () => {
@@ -154,19 +154,19 @@ describe('origin enforcement switch (TASK-610 §4C)', () => {
       expect(registry.has).toHaveBeenCalledWith('https://evil.example.com');
     });
 
-    it('still fails CLOSED when the registry is unavailable (§4A.1 — no env fallback)', () => {
+    it('still fails CLOSED when the registry is unavailable (no env fallback)', () => {
       expect(isOriginAllowed('https://anything.example.com', 'production')).toBe(false);
     });
   });
 });
 
-describe('buildCorsOptions (TASK-610 §4C.2 — credentials: false)', () => {
+describe('buildCorsOptions (credentials: false)', () => {
   /**
    * Allow-all origins WITH credentials is a cross-origin read primitive: any
    * site a logged-in user visits could issue authenticated requests and read
    * the responses, PHI included. `credentials: false` is what keeps a permissive
    * posture an ordinary public-API one instead of a data-leak path — so it is
-   * pinned here rather than left to review. TASK-641 FR-6 narrowed that window
+   * pinned here rather than left to review. narrowed that window
    * (enforcement now defaults ON) but did not close it: an operator may still
    * turn the switch off, and H-4 records that `credentials` stays `false`
    * regardless, so nobody "restores" it as a tidy-up.

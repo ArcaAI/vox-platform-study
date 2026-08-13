@@ -1,7 +1,7 @@
 /**
- * TASK-615 WS-K — synthetic usage flow through the LIVE outbox drainer.
+ * Synthetic usage flow through the LIVE outbox drainer.
  *
- * No internal/test HTTP route writes to the ledger (WS-B's contract is a
+ * No internal/test HTTP route writes to the ledger ('s contract is a
  * TypeScript service method, `IUsageLedgerService.recordUsage`, not an HTTP
  * endpoint), so this seeds a `PENDING` `AiUsageOutbox` row directly against
  * the database — the documented fallback ("an internal/test route if one
@@ -81,7 +81,7 @@ async function pollUntilDispatched(db: DbClient, outboxId: string, timeoutMs = 6
 // explicitly disabled the drainer, `pollUntilDispatched` times out with a
 // message naming the setting — the fast, legible failure mode instead of a
 // silent false-negative.
-test.describe('TASK-615 usage ledger — synthetic drain-and-rollup flow', () => {
+test.describe('Usage ledger — synthetic drain-and-rollup flow', () => {
   let tenantAdminToken: string;
   let tenantId: string;
   let outboxId: string;
@@ -169,7 +169,7 @@ test.describe('TASK-615 usage ledger — synthetic drain-and-rollup flow', () =>
     expect(resp.status()).toBe(200);
     const body = (await resp.json()) as { usage?: Record<string, unknown> };
     // The snapshot must at minimum be well-formed and reachable for this tenant post-drain; the
-    // exact LLM_TOKENS field name/shape is WS-H's (owned by a different lane) — this spec only
+    // exact LLM_TOKENS field name/shape is 's (owned by a different lane) — this spec only
     // proves the drain-to-snapshot pipe is unbroken, not the meter's internal field naming.
     expect(body).toBeTruthy();
   });

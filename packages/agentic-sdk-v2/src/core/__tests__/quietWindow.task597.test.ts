@@ -1,5 +1,5 @@
 /**
- * Stop-drain QUIET WINDOW threading (TASK-597).
+ * Stop-drain QUIET WINDOW threading.
  *
  * `SttWebSocketClient` has always supported `quietWindowMs`, but only at
  * construction — nothing per-capture could reach it, so the documented

@@ -1,5 +1,5 @@
 /**
- * TASK-528 §3.5 / §5.3 — AiModel provider-list contract.
+ * AiModel provider-list contract.
  *
  * Two independent declarations of the canonical runtime provider ids exist:
  *   - the SEED list (`packages/database/.../seed/ai-models/shared.ts`), which is
@@ -7,7 +7,7 @@
  *   - the DTO allow-list (`@arcaai/applications` `AI_MODEL_PROVIDERS`), which
  *     `@IsIn(...)` enforces on create/update/register.
  *
- * They drifted (TASK-528 §2.5): the DTO list was missing `vllm`/`llama-cpp`, so
+ * They drifted: the DTO list was missing `vllm`/`llama-cpp`, so
  * a seeded — or discovered — vLLM/llama.cpp model could not be written through
  * the API at all. This test pins them together so the drift cannot return.
  */

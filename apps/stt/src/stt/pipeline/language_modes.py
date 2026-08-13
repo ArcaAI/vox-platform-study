@@ -1,4 +1,4 @@
-"""Language-mode catalog and per-engine capability matrix (TASK-587).
+"""Language-mode catalog and per-engine capability matrix.
 
 The gateway/SDK let an end user pick a *language mode* for the STT pipeline —
 a single language ("English", "Malayalam"), a bilingual code-switch mode

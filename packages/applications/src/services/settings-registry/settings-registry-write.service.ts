@@ -28,7 +28,7 @@ const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
 /**
  * Tenants that own PLATFORM configuration. A `tenant`-scope write may never
  * target one of these: it would land in the key-only (platform) lane of the
- * settings cache and silently become a platform-wide change (§9.3 M4 — that
+ * settings cache and silently become a platform-wide change (that
  * lane is sound only because its contents are platform-only). Mirrors
  * `PLATFORM_TENANT_IDS` in `AppSettingsService`.
  */
@@ -61,7 +61,7 @@ export interface WriteRegistrySettingResult {
 }
 
 /**
- * The settings WRITE LANE (AD-1: a single enforcement point).
+ * The settings WRITE LANE (a single enforcement point).
  *
  * Before this service there was no write route for ANY registry key anywhere in
  * the gateway: descriptors declared `globalOnly` / `editableBy` / `maxScope`,
@@ -120,10 +120,10 @@ export class SettingsRegistryWriteService extends BaseService {
     const scope: SettingScope = options.scope ?? 'system';
     HOPE_SETTINGS_REGISTRY.assertWithinMaxScope(key, scope);
 
-    // 4b. WHICH ROW this write targets (TASK-558 lane I). `globalOnly` gates the
+    // 4b. WHICH ROW this write targets. `globalOnly` gates the
     //     KEY; this gates the SCOPE, and the two are independent: a key a tenant
     //     admin may set for ITSELF (`rateLimit.maxRequests`) is still a
-    //     platform-wide change when written at `system` scope. Before lane I a
+    //     platform-wide change when written at `system` scope. Previously a
     //     `scope: 'tenant'` write passed the clamp and then wrote the PLATFORM
     //     row regardless — the clamp said yes and the value landed in the wrong
     //     place.

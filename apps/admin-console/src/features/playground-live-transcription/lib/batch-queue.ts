@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * TASK-605 — client-side batch queue for the live-transcription playground.
+ * client-side batch queue for the live-transcription playground.
  *
  * The gateway takes ONE file per `POST /audio/transcription-jobs/transcribe`
  * and there is no batch endpoint, so N files are N independent jobs. This hook

@@ -70,7 +70,7 @@ export class ConsultationEventHandler {
     // Optional + trailing so existing positional fixtures keep compiling; when
     // absent the resolver falls back to DEFAULT_PIPELINE_CONFIG (legacy behaviour).
     @Optional() @Inject(ConfigResolver) private readonly configResolver?: ConfigResolver,
-    // TASK-551 — the last-mile DNA-redaction resolution deps (harness path only).
+    // The last-mile DNA-redaction resolution deps (harness path only).
     // The rules live encrypted-at-rest on the doctor's latest DNA report; the
     // repository reads + the SecretsService decrypts. The DepartmentAgent repo
     // supplies the department default-agent DNA-policy gate. All optional +
@@ -162,7 +162,7 @@ export class ConsultationEventHandler {
             });
           }
 
-          // TASK-551 — resolve + decrypt the doctor's DNA redaction rules when
+          // Resolve + decrypt the doctor's DNA redaction rules when
           // the tenant + doctor double-gate (and the department default-agent DNA
           // policy) permit it. Fail-SAFE: any failure yields NO rules, which
           // makes the workflow's apply_redaction insertion a byte-identical no-op
@@ -515,7 +515,7 @@ export class ConsultationEventHandler {
   }
 
   // =========================================================================
-  // TASK-551 — DNA redaction rule resolution (harness path)
+  // DNA redaction rule resolution (harness path)
   // =========================================================================
 
   /**

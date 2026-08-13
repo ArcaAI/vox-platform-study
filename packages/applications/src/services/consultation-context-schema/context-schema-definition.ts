@@ -2,10 +2,10 @@ import { createHash } from 'node:crypto';
 import { authorableJsonSchemaProblems } from '@arcaai/json-schema-subset';
 
 /**
- * TASK-658 — the shape of a `ConsultationContextSchemaVersion.definition`, and
+ * The shape of a `ConsultationContextSchemaVersion.definition`, and
  * the validator that decides whether a tenant may publish one.
  *
- * ## The load-bearing idea (TASK-654 D2 / §4.1)
+ * ## The load-bearing idea (/ )
  *
  * A tenant invents its OWN vocabulary — `referral_letter`, `triage_form`,
  * whatever its clinic actually uses — but every kind must declare exactly one
@@ -66,13 +66,13 @@ const KIND_KEYS = [
 ] as const;
 const OUTPUT_KEYS = ['key', 'label', 'primitive', 'fields', 'description'] as const;
 const CONSTRAINT_KEYS = ['mimeTypes', 'maxBytes'] as const;
-/** TASK-661 — the only keys a `deprecated` block may carry. */
+/** The only keys a `deprecated` block may carry. */
 const DEPRECATED_KEYS = ['since', 'migrateBy', 'message'] as const;
 /** `YYYY-MM-DD`, deliberately loose (a calendar date, not a full timestamp). */
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 /**
- * TASK-661 — deprecation signalling for a kind, authored INSIDE the same
+ * Deprecation signalling for a kind, authored INSIDE the same
  * `definition` document a kind already lives in (no new column, no
  * migration). Purely informational: `validateContextPayload` does not
  * consult it — a deprecated kind is still accepted for the length of its
@@ -188,7 +188,7 @@ function kindProblems(kind: unknown, at: string, seen: Set<string>): string[] {
     problems.push(`${at}.label must be a non-empty string of at most 120 characters`);
   }
 
-  // THE enforcement point (TASK-654 §4.1): tenant vocabulary is free, the
+  // THE enforcement point: tenant vocabulary is free, the
   // substrate it maps onto is not.
   if (!(CONTEXT_PRIMITIVES as readonly unknown[]).includes(kind.primitive)) {
     problems.push(`${at}.primitive \`${String(kind.primitive)}\` is not one of ${CONTEXT_PRIMITIVES.join(' | ')}`);
@@ -238,7 +238,7 @@ function kindProblems(kind: unknown, at: string, seen: Set<string>): string[] {
   return problems;
 }
 
-/** TASK-661 — validate a `kinds[].deprecated` block. */
+/** Validate a `kinds[].deprecated` block. */
 function deprecatedProblems(deprecated: unknown, at: string): string[] {
   if (!isPlainObject(deprecated)) {
     return [`${at} must be a JSON object when present`];

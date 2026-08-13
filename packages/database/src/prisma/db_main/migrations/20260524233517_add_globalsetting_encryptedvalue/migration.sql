@@ -1,4 +1,4 @@
--- TASK-302 Phase 4 Task 4.2 — additive schema migration for Vault-Transit
+-- Additive schema migration for Vault-Transit
 -- envelope encryption of GlobalSetting rows. Adds two nullable columns:
 --   encryptedValue (BYTEA) — Vault-Transit-encrypted ciphertext blob.
 --   keyVersion     (INTEGER) — Transit key version that produced the

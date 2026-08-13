@@ -1,4 +1,4 @@
--- TASK-638 §6 rule 6 — provider-reconciliation audit trail.
+-- Rule 6 — provider-reconciliation audit trail.
 --
 -- One row per (provider, run): what we compared, over which settled window,
 -- against which vendor total, and what we concluded. This is the financial

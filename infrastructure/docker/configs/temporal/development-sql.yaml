@@ -4,7 +4,7 @@
 # and referenced via DYNAMIC_CONFIG_FILE_PATH. Mirrors the upstream
 # temporalio/docker-compose dynamicconfig for a Postgres-backed dev server.
 #
-# TASK-330 (Clinical Documentation Harness) — dev/opt-in only.
+# Clinical Documentation Harness — dev/opt-in only.
 limit.maxIDLength:
   - value: 255
     constraints: {}

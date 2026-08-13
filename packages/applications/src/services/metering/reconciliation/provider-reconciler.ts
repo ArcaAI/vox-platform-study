@@ -1,6 +1,6 @@
 /**
- * Provider usage/cost-API reconciler INTERFACE (TASK-615 WS-K, credential
- * gating added in TASK-638). Implementations live in
+ * Provider usage/cost-API reconciler INTERFACE (credential
+ * gating added in ). Implementations live in
  * `provider-reconciler-registry.ts`.
  *
  * Per research-findings.md §11.2, no cloud provider gives per-request,
@@ -35,9 +35,9 @@ export interface IProviderReconciler {
 
   /**
    * Credential/config check — NO network call to the vendor, but async because
-   * resolving a credential means asking Vault (TASK-638). Must never throw:
+   * resolving a credential means asking Vault. Must never throw:
    * "unconfigured" is a normal answer, and reconciliation must not fail the
-   * sweep closed (§6 rule 7).
+   * sweep closed (rule 7).
    */
   checkAvailability(): Promise<ProviderReconcilerAvailability>;
 
@@ -55,6 +55,6 @@ export interface IProviderReconciler {
  * ({@link CredentialGatedReconciler}), which derives availability from a real
  * Vault lookup plus whether a vendor client exists. The hardcoded
  * always-unavailable stub registry that used to live here was removed in
- * TASK-638: it could not tell "no credential provisioned" from "no client
+ * It could not tell "no credential provisioned" from "no client
  * written", and those need different actions from an operator.
  */

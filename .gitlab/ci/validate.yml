@@ -16,7 +16,7 @@ lint-ts:
     - job: install-node
       optional: true
   variables:
-    # TASK-558 lane K (K2): `prisma generate` + `turbo lint` never OPEN a
+    # `prisma generate` + `turbo lint` never OPEN a
     # connection, they only require `env("DATABASE_URL")` to resolve. This job
     # used to be handed the real CI_DATABASE_URL, putting a live credential in
     # a job that cannot use it. A syntactically-valid placeholder is enough —
@@ -63,7 +63,7 @@ typecheck:
 # output. Reads Prisma schema files directly via @prisma/internals (DMMF) — no
 # database connection or `db:generate` required.
 #
-# TASK-368 — the generator is now the authoritative source-of-truth for the
+# The generator is now the authoritative source-of-truth for the
 # committed generated layer (`generate-data-model:check` is green), so this gate
 # is STRICT: any drift between the Prisma schema and the committed
 # packages/domains/src/**/generated files fails the pipeline. Regenerate with
@@ -82,7 +82,7 @@ generate-data-model-check:
     - !reference [.rules-data-model, rules]
 
 # ── Entity layer drift gate ──────────────────────────────────────────────────
-# TASK-370 — the entity generator now reproduces the hand-curated
+# The entity generator now reproduces the hand-curated
 # packages/domains/src/entities/generated layer verbatim and keeps its barrels in
 # sync. This gate is STRICT: it fails the pipeline if the committed entity files
 # or barrels drift from generator output (e.g. an entity added/removed without
@@ -101,7 +101,7 @@ generate-data-entity-check:
     - !reference [.rules-data-model, rules]
 
 # ── Factory layer drift gate ─────────────────────────────────────────────────
-# TASK-370 — the factory generator now reproduces the hand-curated
+# The factory generator now reproduces the hand-curated
 # packages/domains/src/factories/generated layer verbatim and keeps its barrels in
 # sync. This gate is STRICT: it fails the pipeline if the committed factory files
 # or barrels drift from generator output. Reconcile with
@@ -120,7 +120,7 @@ generate-factory-check:
     - !reference [.rules-data-model, rules]
 
 # ── Environment declaration drift gate ───────────────────────────────────────
-# TASK-558 lane D — the same shape as the three `generate-*-check` gates above,
+# The same shape as the three `generate-*-check` gates above,
 # for the environment surface instead of the domain layer.
 #
 # `pnpm env:sync` regenerates every managed artifact from ONE declared surface:
@@ -175,7 +175,7 @@ lint-python:
     - ruff check apps/smr/src/ --output-format=gitlab || LINT_FAILED=1
     - ruff check apps/nlp/src/ apps/nlp/tests/ --output-format=gitlab || LINT_FAILED=1
     - ruff check apps/guardrail/src/ --output-format=gitlab || LINT_FAILED=1
-    # TASK-414 — harness joins the gate (tests live in-package under src/).
+    # Harness joins the gate (tests live in-package under src/).
     - ruff check apps/harness/src/ --output-format=gitlab || LINT_FAILED=1
     - ruff check apps/tts/src/ --output-format=gitlab || LINT_FAILED=1
     - |
@@ -187,7 +187,7 @@ lint-python:
     - !reference [.skip-on-dev-2-1, rules]
     - !reference [.rules-any-python, rules]
 
-# ── Release tag grammar gate (TASK-648 §3.1/§5 W1) ───────────────────────────
+# ── Release tag grammar gate ─────────────────────────────────────────────────
 # Rejects a `<SVC>-`/`ALL-` release tag that does not match the frozen SemVer
 # grammar in packages/utils/src/version-grammar.ts. Runs only on the `release`
 # pipeline type — the tag family `.gitlab-ci.yml`'s workflow rules put there

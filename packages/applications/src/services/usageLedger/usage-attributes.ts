@@ -1,5 +1,5 @@
 /**
- * `AiUsageEvent.attributesJson` allow-list (TASK-615 WS-B deliverable 5).
+ * `AiUsageEvent.attributesJson` allow-list (deliverable 5).
  *
  * ============================================================================
  * WHY AN ALLOW-LIST AND NOT A DENY-LIST

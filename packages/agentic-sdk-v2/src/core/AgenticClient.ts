@@ -216,8 +216,7 @@ export class AgenticClient {
       headers['X-Correlation-ID'] = correlationId;
       // Add W3C traceparent header for OpenTelemetry compatibility
       // A correlation id that is not 32 hex chars would make the traceparent
-      // INVALID, and a W3C propagator silently starts a new trace (TASK-636
-      // OBS-16). `toW3CTraceId` derives when it can and generates when it cannot.
+      // INVALID, and a W3C propagator silently starts a new trace. `toW3CTraceId` derives when it can and generates when it cannot.
       const traceId = toW3CTraceId(correlationId);
       headers['traceparent'] = createTraceparent(traceId, spanId);
     }
@@ -462,10 +461,10 @@ export class AgenticClient {
    * POST request with caller-supplied extra headers.
    *
    * Mirrors `patchWithIfMatch` (same one-off-header shape, same thin wrapper
-   * around `request`): used by `useArcaSession.addContext` (TASK-665) to send
+   * around `request`): used by `useArcaSession.addContext` to send
    * `X-Context-Schema-Version` — the `ConsultationContextSchemaVersion` id the
    * session pinned at `AgenticProvider` mount — so the server validates the
-   * payload against the version this client actually built against (TASK-661).
+   * payload against the version this client actually built against.
    */
   async postWithHeaders<T>(endpoint: string, body: unknown, headers: Record<string, string>, options?: { signal?: AbortSignal }): Promise<T> {
     return this.request<T>('POST', endpoint, body, { headers }, options?.signal);
@@ -832,8 +831,7 @@ export class AgenticClient {
     if (correlationId) {
       headers['X-Correlation-ID'] = correlationId;
       // A correlation id that is not 32 hex chars would make the traceparent
-      // INVALID, and a W3C propagator silently starts a new trace (TASK-636
-      // OBS-16). `toW3CTraceId` derives when it can and generates when it cannot.
+      // INVALID, and a W3C propagator silently starts a new trace. `toW3CTraceId` derives when it can and generates when it cannot.
       const traceId = toW3CTraceId(correlationId);
       headers['traceparent'] = createTraceparent(traceId, spanId);
     }
@@ -970,8 +968,7 @@ export class AgenticClient {
     if (correlationId) {
       headers['X-Correlation-ID'] = correlationId;
       // A correlation id that is not 32 hex chars would make the traceparent
-      // INVALID, and a W3C propagator silently starts a new trace (TASK-636
-      // OBS-16). `toW3CTraceId` derives when it can and generates when it cannot.
+      // INVALID, and a W3C propagator silently starts a new trace. `toW3CTraceId` derives when it can and generates when it cannot.
       const traceId = toW3CTraceId(correlationId);
       headers['traceparent'] = createTraceparent(traceId, spanId);
     }

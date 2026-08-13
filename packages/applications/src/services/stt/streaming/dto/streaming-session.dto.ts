@@ -29,21 +29,21 @@ export interface CreateStreamingSessionRequest {
   /** Override pipeline language (ISO 639-1 code) */
   language?: string;
   /**
-   * End-user language mode id (TASK-587), e.g. `'en'`, `'ml'`, `'ml-en'`
+   * End-user language mode id, e.g. `'en'`, `'ml'`, `'ml-en'`
    * (Malayalam+English code-switch), `'auto'`. Forwarded to STT, which resolves
    * it against the session's engine and rejects (422) a mode no configured
    * engine can serve. Takes precedence over `language`.
    */
   languageMode?: string;
   /**
-   * Pre-start default-provider selection (TASK-586 C8). `'fallback'` opens the
+   * Pre-start default-provider selection. `'fallback'` opens the
    * session directly on the tenant-admin default (fallback) engine from frame 1
    * (the primary stays switchable back); `'primary'` (default) opens on the
    * SDK-configured pipeline. Forwarded to STT as `start_on`.
    */
   startOn?: 'primary' | 'fallback';
   /**
-   * Number of distinct microphone SOURCES mixed into this session (TASK-615 #12).
+   * Number of distinct microphone SOURCES mixed into this session.
    * Forwarded to STT as `channel_count` and echoed on teardown for usage
    * repricing; bills 1× (OQ2). Defaults to 1 when omitted.
    */
@@ -57,27 +57,27 @@ export interface CreateStreamingSessionRequest {
    */
   storage?: StorageDescriptor | null;
   /**
-   * Decrypted per-tenant BYO provider credentials (TASK-567). Held by the
+   * Decrypted per-tenant BYO provider credentials. Held by the
    * apps/stt session runtime IN MEMORY ONLY — never persisted, never logged.
    * snake_case entries match the Python wire shape:
    * `{[provider]: {api_key, region?, base_url?, endpoint?, model?}}`.
    */
   providerOverrides?: Record<string, { api_key: string; region?: string; base_url?: string; endpoint?: string; model?: string }>;
   /**
-   * Tenant-level default fallback pipeline id (TASK-567). Forwarded so the
+   * Tenant-level default fallback pipeline id. Forwarded so the
    * session runtime can lazily resolve + swap to the fallback ASR engine on a
    * classified outage without tearing the WebSocket.
    */
   fallbackPipelineId?: string | null;
   /**
-   * Tenant governance for the FAILURE-DRIVEN auto switch (TASK-614). Omitted /
+   * Tenant governance for the FAILURE-DRIVEN auto switch. Omitted /
    * `null` ⇒ STT's `EngineSwitchController` default (enabled). Never governs a
    * user-initiated switch — that is an explicit choice, not a policy.
    */
   autoSwitchEnabled?: boolean | null;
   /**
    * Tenant governance for how many consecutive threshold-class utterance
-   * failures arm the auto switch (TASK-614). Omitted / `null` ⇒ STT default (2).
+   * failures arm the auto switch. Omitted / `null` ⇒ STT default (2).
    */
   consecutiveFailureThreshold?: number | null;
 }
@@ -98,7 +98,7 @@ export interface StreamingSessionStatus {
   /** Number of currently active sessions */
   currentActive: number;
   /**
-   * The RESOLVED ASR pipeline this session opened with (TASK-614). Differs from
+   * The RESOLVED ASR pipeline this session opened with. Differs from
    * the requested id whenever the caller sent none (STT/gateway resolve one) or
    * a slug resolved to a different identifier. `undefined` against an STT that
    * predates the echo.
@@ -107,14 +107,14 @@ export interface StreamingSessionStatus {
   /**
    * The engine actually live at create: `'primary'`, or `'fallback'` when the
    * session opened on the tenant fallback — by choice (`startOn`) or because
-   * the primary ASR failed to load (TASK-614). `undefined` against an older STT.
+   * the primary ASR failed to load. `undefined` against an older STT.
    */
   activeEngine?: 'primary' | 'fallback';
 }
 
 /**
  * A selectable STT language mode + the catalog-wide set of engines that can
- * serve it (TASK-587). Mirrors the STT `/internal/streaming/language-modes`
+ * serve it. Mirrors the STT `/internal/streaming/language-modes`
  * payload. `kind` distinguishes a single language, a bilingual code-switch
  * mode, and auto-detect.
  */
@@ -133,7 +133,7 @@ export interface SttLanguageModeCatalog {
 }
 
 /**
- * TASK-615 WS-C — the usage-attribution summary a REAL session teardown
+ * The usage-attribution summary a REAL session teardown
  * returns (`StreamingSessionTeardownResponse` in `apps/stt`). Kept in the
  * WIRE (snake_case) shape rather than mapped to camelCase: this is read
  * exactly once, inside `StreamingSessionService.removeSession`, to build the
@@ -156,8 +156,8 @@ export interface StreamingSessionTeardownSummary {
   deployment: string | null;
   language_mode: string | null;
   /**
-   * Distinct microphone source count echoed from STT for usage repricing
-   * (TASK-615 #12). Absent from a pre-#12 STT ⇒ the gateway defaults it to 1.
+   * Distinct microphone source count echoed from STT for usage repricing.
+   * Absent from an older STT ⇒ the gateway defaults it to 1.
    */
   channel_count?: number;
 }
@@ -244,7 +244,7 @@ export interface StreamingTranscriptMessage {
    */
   detectedLanguage?: string;
   /**
-   * The ASR pipeline that actually produced THIS utterance (TASK-613 B1),
+   * The ASR pipeline that actually produced THIS utterance,
    * stamped per-segment by the stt worker (`SegmentResult.pipeline_id`).
    * Can differ from the session's requested pipeline after a mid-session
    * engine switch. Absent when the upstream stt worker doesn't set it
@@ -272,11 +272,11 @@ export interface StreamingStatusMessage {
   status: string;
   /**
    * Human-readable message. Optional: structured status results (the
-   * `provider_switched` ASR-engine swap, TASK-567) carry typed fields below
+   * `provider_switched` ASR-engine swap) carry typed fields below
    * instead of prose.
    */
   message?: string;
-  // ---- provider_switched passthrough (TASK-567 §3.4) ----
+  // ---- provider_switched passthrough ----
   // apps/stt publishes an in-session engine swap as a `status` result; the
   // bridge relays these snake_case fields verbatim (the wire contract the SDK
   // client reads). Present only when `status === 'provider_switched'`.
@@ -287,7 +287,7 @@ export interface StreamingStatusMessage {
   /** Switch trigger: 'auto' (outage/exception) or 'user' (clinician-initiated). */
   reason?: string;
   /**
-   * The now-live engine (TASK-586 wire field, relayed since TASK-614). Names the
+   * The now-live engine (wire field). Names the
    * side of the BIDIRECTIONAL switch, so a client can tell a return to the
    * selected pipeline from a move to the tenant default.
    */

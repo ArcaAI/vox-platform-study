@@ -205,7 +205,7 @@ describe('IdpResolverService.resolveByProviderId (callback path, no cache-warmth
   });
 });
 
-describe('IdpResolverService.buildSamlClient (§6 — hardened, non-negotiable options)', () => {
+describe('IdpResolverService.buildSamlClient (hardened, non-negotiable options)', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('builds a client with the pinned IdP cert, SP entityId, and hardened security options', async () => {

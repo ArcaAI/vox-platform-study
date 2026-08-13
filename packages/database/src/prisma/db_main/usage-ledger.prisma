@@ -1,6 +1,6 @@
 // =============================================================================
 // AI Usage Metering — append-only ledger, transactional outbox, price book,
-// and Postgres-first rollups (TASK-615, decisions D2–D5, D10).
+// and Postgres-first rollups (decisions D2–D5, D10).
 //
 // The five models here are the METERING plane. `billing.prisma` builds the
 // invoice plane on top of them; the two are deliberately separate files because
@@ -217,7 +217,7 @@ model AiPriceBook {
   // Optional context-window band ("0-128k", "128k+") — several vendors price
   // long-context requests differently for the same model.
   contextBand String?
-  // Optional cache-write TTL band (TASK-615 follow-up #7): Anthropic prices a 5m
+  // Optional cache-write TTL band (follow-up #7): Anthropic prices a 5m
   // ephemeral cache write at ×1.25 and a 1h write at ×2.00 of base input. A row
   // with a null `cacheTtl` is the TTL-agnostic wildcard (back-compat: every
   // existing CACHE_WRITE_TOKEN row keeps rating unchanged); a row keyed to
@@ -282,7 +282,7 @@ model AiUsageRollupHourly {
   // Truncated to the hour, UTC.
   bucketStart DateTime
   capability  AiCapability
-  // Operation dimension (TASK-615 follow-up #4): the ledger event's operation
+  // Operation dimension (follow-up #4): the ledger event's operation
   // (generate · guardrail.validate · harness.step · tts.synthesize · …). Without
   // it the LLM_TOKENS meter summed guardrail + harness tokens that must NEVER be
   // quota-blocked (D16); the meter now filters on operation. "" sentinel keeps
@@ -290,7 +290,7 @@ model AiUsageRollupHourly {
   // header) and stamps pre-follow-up rows created before this column existed.
   operation   String       @default("")
   provider    String
-  // Deployment dimension (TASK-638): who FUNDS the call — SELF_HOSTED, CLOUD
+  // Deployment dimension: who FUNDS the call — SELF_HOSTED, CLOUD
   // (platform-funded managed vendor) or BYOK (tenant's own key). Billing needs
   // it because the pooled allowance is consumed SELF_HOSTED-first so managed
   // usage spills into premium-rated overage, and because BYOK must never pay a
@@ -334,13 +334,13 @@ model AiUsageRollupDaily {
   // billing periods use, so a period sum is a clean range scan.
   bucketStart DateTime
   capability  AiCapability
-  // Operation dimension (TASK-615 follow-up #4) — same contract and sentinel as
+  // Operation dimension (follow-up #4) — same contract and sentinel as
   // the hourly rollup. Lets the LLM_TOKENS / GUARDRAIL_CALLS meters and the
   // consumption screens read a single capability's billable operations without
   // the raw-ledger side query WS-H needed.
   operation   String       @default("")
   provider    String
-  // Deployment dimension (TASK-638) — see the hourly model for why provider
+  // Deployment dimension — see the hourly model for why provider
   // alone cannot answer "who funded this call".
   deployment  AiDeploymentKind @default(SELF_HOSTED)
   model       String       @default("")
@@ -360,7 +360,7 @@ model AiUsageRollupDaily {
   @@schema("core")
 }
 
-/// Provider reconciliation audit trail (TASK-638 §6 rule 6).
+/// Provider reconciliation audit trail (rule 6).
 ///
 /// ONE ROW PER (provider, run) — the financial control that answers an invoice
 /// dispute: what we compared, over which settled window, against which vendor

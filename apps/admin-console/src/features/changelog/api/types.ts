@@ -1,5 +1,5 @@
 /**
- * Types for the changelog surfaces (TASK-648 U11), matching the frozen contract
+ * Types for the changelog surfaces, matching the frozen contract
  * `docs/implementation/TASK-648-Service-Version-And-Release-Registry/contracts/service-release.api.yaml`
  * `/changelog/*` paths. Do not add fields the contract does not define.
  */

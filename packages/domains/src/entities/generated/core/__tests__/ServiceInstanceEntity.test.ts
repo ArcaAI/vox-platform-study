@@ -1,5 +1,5 @@
 /**
- * ServiceInstanceEntity + ServiceInstanceFactory unit tests (TASK-648).
+ * ServiceInstanceEntity + ServiceInstanceFactory unit tests.
  */
 import { describe, it, expect } from 'vitest';
 import { ServiceInstanceFactory } from '../../../../factories/generated/core/ServiceInstanceFactory';

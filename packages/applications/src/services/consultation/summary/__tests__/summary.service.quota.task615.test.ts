@@ -1,5 +1,5 @@
 /**
- * TASK-615 WS-H — LLM-token quota pre-flight at the summary generation entry
+ * LLM-token quota pre-flight at the summary generation entry
  * points.
  *
  * `assertMeterQuota` (existing 429 semantics, kill-switch-gated, null
@@ -118,7 +118,7 @@ function makeService(overrides: { entitlements?: unknown } = {}) {
   return { service, httpService, entitlements: entitlements as { assertMeterQuota: ReturnType<typeof vi.fn> } };
 }
 
-describe('SummaryService — TASK-615 WS-H LLM-token quota pre-flight', () => {
+describe('SummaryService — LLM-token quota pre-flight', () => {
   let harness: ReturnType<typeof makeService>;
 
   beforeEach(() => {

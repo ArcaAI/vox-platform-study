@@ -1,5 +1,5 @@
 /**
- * SummaryService.callSmrService — tenant SMR fallback on finalize (TASK-635 A4, B-03)
+ * SummaryService.callSmrService — tenant SMR fallback on finalize
  *
  * `resolveSmrFallbackSelection` (`smr.finalize.fallback`) was configurable in
  * the admin UI but INERT on the native finalize path — only smr-compat ever

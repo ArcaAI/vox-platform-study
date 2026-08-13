@@ -1,7 +1,7 @@
 import { Logger } from '@nestjs/common';
 
 /**
- * Boot-time PHI-safe telemetry audit (TASK-615 WS-G).
+ * Boot-time PHI-safe telemetry audit.
  *
  * OpenTelemetry's GenAI semantic-convention instrumentation defaults to NOT
  * capturing prompt/completion content, but the opt-in switch —

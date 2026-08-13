@@ -376,7 +376,7 @@ class TestWorkerWithConsultation:
         complete_kwargs = api.complete_job.call_args.kwargs
         assert complete_kwargs["result_metadata"]["context_item_id"] == "ctx-55"
 
-    # TASK-615 WS-C — the typed usage-attribution fields
+    # The typed usage-attribution fields
     # (duration_seconds/processing_time_seconds/engine/deployment) must ride
     # as separate kwargs on the complete_job() call, mirroring
     # `TranscriptionResult`'s own fields, NOT smuggled into result_metadata.

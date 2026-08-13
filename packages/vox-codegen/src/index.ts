@@ -1,12 +1,12 @@
 /**
  * @arcaai/vox-codegen — build-time TypeScript codegen for a tenant's
- * consultation context schema (TASK-668).
+ * consultation context schema.
  *
  * Programmatic surface, for anything that wants to call this in-process
  * instead of shelling out to the `vox-codegen` bin. See the package README
  * for the CLI, the placement decision, and the `oneOf`-discrimination /
  * fail-loudly rules.
- */
+*/
 
 export { CodegenError } from './errors';
 export { jsonSchemaSubsetToTs, type SchemaToTsOptions } from './schema-to-ts';

@@ -1,5 +1,5 @@
 /**
- * DepartmentAgent detail drawer (TASK-547): Settings (OCC PATCH, name/Agent
+ * DepartmentAgent detail drawer: Settings (OCC PATCH, name/Agent
  * Template/DNA gate), Version (pin/track-latest via `POST :id/pin`), History
  * (read-only reuse of `VersionsPanel`), locked-template treatment, and create
  * mode. Rendered standalone.
@@ -124,12 +124,12 @@ function defaultHandler(currentAgent: DepartmentAgent, call: RecordedCall): Resp
   if (call.method === 'GET' && path === `/api/hope/admin/prompt-templates/${currentAgent.promptTemplateId}/versions`) {
     return Response.json([version(5), version(4, { changedBy: 'minh.tran' }), version(3, { changedBy: 'dr.chen' })]);
   }
-  // Settings-tab golden-set picker (TASK-549) — the Eval panel's own suite
+  // Settings-tab golden-set picker — the Eval panel's own suite
   // covers real sets; here an empty page is enough to unblock the query.
   if (call.method === 'GET' && path === '/api/hope/admin/harness/golden-sets') {
     return Response.json({ items: [], total: 0 });
   }
-  // Lineage tab (TASK-674) — an empty history/lineage is enough to unblock
+  // Lineage tab — an empty history/lineage is enough to unblock
   // the two queries when a test does not care about their content.
   if (call.method === 'GET' && path === `/api/hope/admin/department-agents/${currentAgent.id}/versions`) {
     return Response.json([]);
@@ -196,7 +196,7 @@ describe('DepartmentAgentDetailDrawer', () => {
     expect(await screen.findByText(/changed by another admin after you loaded it/i)).toBeDefined();
   });
 
-  it('attaches a golden set (TASK-549 eval gate) via the Settings-tab picker', async () => {
+  it('attaches a golden set (eval gate) via the Settings-tab picker', async () => {
     const calls = stubFetch((call) => {
       if (call.method === 'GET' && pathOf(call) === '/api/hope/admin/harness/golden-sets') {
         return Response.json({
@@ -386,7 +386,7 @@ describe('DepartmentAgentDetailDrawer', () => {
     expect(await axe(container)).toHaveNoViolations();
   });
 
-  it('renders config versions with a field diff, and promotion lineage, on the Lineage tab (TASK-674)', async () => {
+  it('renders config versions with a field diff, and promotion lineage, on the Lineage tab', async () => {
     stubFetch((call) => {
       const path = pathOf(call);
       if (call.method === 'GET' && path === '/api/hope/admin/department-agents/da-1/versions') {

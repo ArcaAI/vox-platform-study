@@ -192,7 +192,7 @@ describe('StreamingSessionService', () => {
     );
   });
 
-  it('forwards language_mode (snake_case) in createSession POST body (TASK-587)', async () => {
+  it('forwards language_mode (snake_case) in createSession POST body', async () => {
     httpService.post.mockReturnValue(
       of({ data: { session_id: 's-7', status: 'active', max_concurrent: 4, current_active: 1 } }),
     );
@@ -213,7 +213,7 @@ describe('StreamingSessionService', () => {
     );
   });
 
-  it('createSession sends language_mode: null when unset (TASK-587)', async () => {
+  it('createSession sends language_mode: null when unset', async () => {
     httpService.post.mockReturnValue(
       of({ data: { session_id: 's-8', status: 'active', max_concurrent: 4, current_active: 1 } }),
     );
@@ -229,7 +229,7 @@ describe('StreamingSessionService', () => {
     );
   });
 
-  it('forwards start_on (snake_case) in createSession POST body (TASK-586 C8)', async () => {
+  it('forwards start_on (snake_case) in createSession POST body', async () => {
     httpService.post.mockReturnValue(
       of({ data: { session_id: 's-9', status: 'active', max_concurrent: 4, current_active: 1 } }),
     );
@@ -250,7 +250,7 @@ describe('StreamingSessionService', () => {
     );
   });
 
-  it('createSession sends start_on: null when unset (TASK-586 C8)', async () => {
+  it('createSession sends start_on: null when unset', async () => {
     httpService.post.mockReturnValue(
       of({ data: { session_id: 's-10', status: 'active', max_concurrent: 4, current_active: 1 } }),
     );
@@ -266,7 +266,7 @@ describe('StreamingSessionService', () => {
     );
   });
 
-  it('getLanguageModes fetches the STT catalog (TASK-587)', async () => {
+  it('getLanguageModes fetches the STT catalog', async () => {
     httpService.get.mockReturnValue(
       of({
         data: {
@@ -286,7 +286,7 @@ describe('StreamingSessionService', () => {
     expect(result.modes.map((m) => m.id)).toEqual(['en', 'ml-en']);
   });
 
-  it('getLanguageModes returns an empty catalog when STT is unreachable (TASK-587)', async () => {
+  it('getLanguageModes returns an empty catalog when STT is unreachable', async () => {
     httpService.get.mockReturnValue(throwError(() => new Error('ECONNREFUSED')));
 
     const service = new StreamingSessionService(httpService, configWithSttUrl('http://stt.internal:9000'));
@@ -297,7 +297,7 @@ describe('StreamingSessionService', () => {
   });
 
   /**
-   * TASK-614 D-5 / AC-2 — the create response is the client's baseline.
+   * The create response is the client's baseline.
    *
    * STT now echoes the RESOLVED pipeline and the engine it actually opened on
    * (`pipeline_id` / `active_engine`), which is the only honest source for the
@@ -305,7 +305,7 @@ describe('StreamingSessionService', () => {
    * on the fallback by choice (`start_on`), and one opened there because the
    * primary ASR failed to load are all invisible to the request alone.
    */
-  describe('createSession — server-derived pipeline baseline (TASK-614)', () => {
+  describe('createSession — server-derived pipeline baseline', () => {
     it('maps pipeline_id and active_engine from the STT response', async () => {
       httpService.post.mockReturnValue(
         of({
@@ -340,7 +340,7 @@ describe('StreamingSessionService', () => {
   });
 
   /**
-   * TASK-614 D-10 — the tenant's auto-switch governance must reach STT.
+   * The tenant's auto-switch governance must reach STT.
    *
    * `autoSwitchEnabled` and `consecutiveFailureThreshold` are stored on
    * `TenantSttConfig`, resolved by `resolveEffectiveSttConfig`, and returned by
@@ -348,7 +348,7 @@ describe('StreamingSessionService', () => {
    * `EngineSwitchController` always used its own defaults. A tenant that turned
    * auto-fallback OFF still got auto-fallback.
    */
-  describe('StreamingSessionService.createSession — auto-switch governance (TASK-614)', () => {
+  describe('StreamingSessionService.createSession — auto-switch governance', () => {
     const okResponse = () => of({ data: { session_id: 's-9', status: 'active', max_concurrent: 4, current_active: 1 } });
 
     it('forwards auto_switch_enabled and consecutive_failure_threshold', async () => {
@@ -402,9 +402,9 @@ describe('StreamingSessionService', () => {
   });
 
   // ===========================================================================
-  // TASK-615 WS-C — removeSession() usage emission
+  // removeSession() usage emission
   // ===========================================================================
-  describe('removeSession — transcribe.stream usage emission (TASK-615 WS-C)', () => {
+  describe('removeSession — transcribe.stream usage emission', () => {
     const teardownSummary = (overrides: Record<string, unknown> = {}) => ({
       session_id: 's-1',
       tenant_id: 'tenant-1',
@@ -508,7 +508,7 @@ describe('StreamingSessionService', () => {
 
     it('does NOT emit and does NOT throw when the ledger itself is not wired', async () => {
       httpService.delete.mockReturnValue(of({ status: 200, data: teardownSummary() }));
-      // Exactly the 2-arg construction every pre-TASK-615 caller uses.
+      // Exactly the 2-arg construction every existing caller uses.
       const service = new StreamingSessionService(httpService, configWithSttUrl('http://stt.internal:9000'));
 
       await expect(service.removeSession('s-1')).resolves.toBeUndefined();

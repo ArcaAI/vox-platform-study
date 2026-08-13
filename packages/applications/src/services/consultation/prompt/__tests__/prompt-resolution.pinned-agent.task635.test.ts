@@ -1,9 +1,9 @@
 /**
- * TASK-635 C5-T2 — `pinnedAgentId` in the summary chain (DR-2 / DR-4 / §7.4).
+ * `pinnedAgentId` in the summary chain.
  *
  * The finalize prompt must be decided by the agent that actually RAN the live
  * session, not by whatever the department default happens to be at finalize
- * time. These tests lock the four behaviours of §7.4:
+ * time. These tests lock the four behaviours of pinned-agent resolution:
  *
  *   1. a pinned agent BEATS a re-pointed department default;
  *   2. a pinned agent that no longer exists / belongs to another tenant or
@@ -57,7 +57,7 @@ function agent(overrides: Record<string, unknown> = {}) {
   };
 }
 
-describe('PromptResolutionService — TASK-635 C5 pinnedAgentId', () => {
+describe('PromptResolutionService — pinnedAgentId', () => {
   let service: PromptResolutionService;
 
   beforeEach(() => {

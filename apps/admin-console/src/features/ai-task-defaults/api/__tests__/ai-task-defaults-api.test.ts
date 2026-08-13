@@ -38,7 +38,7 @@ afterEach(() => {
 });
 
 describe('task keys', () => {
-  // This mirror had drifted to 3 keys while the backend carried 9; TASK-588 then
+  // This mirror had drifted to 3 keys while the backend carried 9; then
   // added the two SMR fallback keys (11 total). It must stay in lockstep with
   // AI_TASK_KEYS in packages/applications/src/services/ai-task-default/constants.ts.
   it('mirrors all backend task keys (incl. the SMR fallback keys) and the SYSTEM tenant id', () => {

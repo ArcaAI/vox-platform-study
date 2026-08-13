@@ -200,7 +200,7 @@ describe('AccountScreen', () => {
   });
 
   /**
-   * TASK-545: local (in-browser) transcription is disabled platform-wide —
+   * Local (in-browser) transcription is disabled platform-wide —
    * the "Local" workflow-mode option is disabled (not removed, so an
    * existing doctor's stored "local" selection still renders) and a hint
    * explains why.

@@ -294,9 +294,9 @@ async def _transcribe_file_async(
 
         audio_filename = audio_uri.rsplit("/", 1)[-1] if audio_uri else None
 
-        # TASK-567 — PULL the tenant's decrypted BYO provider overrides at
+        # PULL the tenant's decrypted BYO provider overrides at
         # execution time (injecting a key into the Dramatiq queue message is
-        # prohibited — D-3). Fail-open: {} on any error ⇒ env creds.
+        # prohibited). Fail-open: {} on any error ⇒ env creds.
         provider_overrides = await get_effective_config_client().get_provider_overrides(tenant_id)
 
         async def _do_transcribe(pc: Any) -> Any:
@@ -317,7 +317,7 @@ async def _transcribe_file_async(
         try:
             result = await _do_transcribe(pipeline_config)
         except (CloudASRError, ModelError) as asr_exc:
-            # TASK-567 — batch fallback dispatch. On a cloud-ASR/model failure
+            # Batch fallback dispatch. On a cloud-ASR/model failure
             # with a configured fallback, re-run ONCE on the fallback pipeline
             # within this same Dramatiq attempt (CloudASRAuthError → straight to
             # fallback; retrying a bad key is pointless). No fallback configured
@@ -402,7 +402,7 @@ async def _transcribe_file_async(
                 "transcript_uri": transcript_uri,
                 "context_item_id": context_item_id,
             },
-            # TASK-615 WS-C — typed usage-attribution fields lifted OUT of the
+            # Typed usage-attribution fields lifted OUT of the
             # (soon-to-be-encrypted) resultMetadata blob above; the gateway
             # reads these to emit the transcribe.batch AUDIO_SECOND ledger
             # row. None (unresolved engine, e.g. an unusual pipeline shape)
@@ -440,7 +440,7 @@ async def _transcribe_file_async(
         return
 
     except AudioProcessingError as e:
-        # TASK-607 — the file itself is unusable (undecodable, wrong format,
+        # The file itself is unusable (undecodable, wrong format,
         # too short). Report the specific code and let the broker skip retries;
         # re-reading the same bytes can only fail the same way.
         logger.error(f"[{job_id}] Audio error ({e.error_code}): {e}")

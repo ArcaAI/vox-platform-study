@@ -1,5 +1,5 @@
 /**
- * TASK-543 — case-note column: the personalized draft, the folded-in
+ * case-note column: the personalized draft, the folded-in
  * harness assurance envelope, and the safety-gated sign-off. Pure component.
  */
 
@@ -153,7 +153,7 @@ describe('CaseNoteColumn', () => {
     expect(screen.getByText('98%')).toBeTruthy();
   });
 
-  // TASK-552 Lane C — click-to-source evidence panel at sign-off.
+  // click-to-source evidence panel at sign-off.
   describe('citation evidence panel', () => {
     const SEGMENTS = [{ id: 'seg-1', idx: 0, t0Ms: 0, t1Ms: 3000, speaker: 'patient', charStart: 0, charEnd: 27 }];
 

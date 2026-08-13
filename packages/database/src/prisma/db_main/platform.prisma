@@ -1,5 +1,5 @@
 // ============================================================================
-// Service Version & Release Registry (TASK-648)
+// Service Version & Release Registry
 //
 // Answers, from the admin console, "what version of each service is running,
 // from which commit, since when" — captured at build time (baked
@@ -18,14 +18,14 @@
 // standard template's OCC counter field is already called `version`
 // (`@map("_version")`) on every model, and Prisma forbids two fields of the
 // same name. `releaseVersion` carries the git-tag-derived SemVer (or the
-// `0.0.0-<branch>.<sha8>` untagged shape, §3.1 of the ticket README).
+// `0.0.0-<branch>.<sha8>` untagged shape).
 //
 // Neither `ServiceRelease` nor `ServiceInstance` is human-edited — both are
 // non-OCC (machine-written by the internal self-registration endpoint), so
 // neither needs the `FIELDS_NOT_WRITABLE = ['version']` mapper guard (that is
 // reserved for `ChangelogEntry` below, the one human-edited model here).
 // Neither carries a `resourceStatus` column — rows are pruned wholesale by the
-// existing scheduler surface (30-day retention, §4 of the README), not
+// existing scheduler surface (30-day retention, of the README), not
 // individually soft-deleted, so both are listed in `MODELS_WITHOUT_SOFT_DELETE`.
 // ============================================================================
 
@@ -49,7 +49,7 @@ model ServiceRelease {
   imageDigest     String? // filled by the CI publish step after push
   ciPipelineId    String?
   ciPipelineUrl   String?
-  changelog       Json? @db.JsonB // generated technical changelog (§3.5), immutable
+  changelog       Json? @db.JsonB // generated technical changelog, immutable
   firstSeenAt     DateTime @default(now())
 
   // resource status fields
@@ -103,7 +103,7 @@ model ServiceInstance {
 }
 
 // ============================================================================
-// Changelog — two audiences, two artifacts (§3.5 of the ticket README).
+// Changelog — two audiences, two artifacts.
 //
 // `ChangelogEntry` is the CURATED release-notes artifact ("What's New"), one
 // row per platform (`ALL-`) train version. CI creates a DRAFT pre-filled from
@@ -149,10 +149,10 @@ model ChangelogEntry {
 }
 
 // One row per (user, changelog entry) acknowledgement of the one-time
-// "What's New" popup (§3.6). Server-side and per-user so support can answer
+// "What's New" popup. Server-side and per-user so support can answer
 // "was this admin actually shown the breaking-change notice" — deliberately
 // NOT localStorage and NOT a single `lastSeenChangelogVersion` column (see
-// §3.6 of the ticket README for the rejected alternatives). Scoped to the
+// for the rejected alternatives). Scoped to the
 // ACKNOWLEDGING USER'S tenant (the one exception among these four models —
 // everything else here is platform-wide SYSTEM-tenant data).
 model UserChangelogAcknowledgement {
@@ -169,7 +169,7 @@ model UserChangelogAcknowledgement {
   changelogEntryId String
   ChangelogEntry   ChangelogEntry @relation(fields: [changelogEntryId], references: [id])
   acknowledgedAt   DateTime @default(now())
-  autoAcknowledged Boolean  @default(false) // true when back-filled for a new user (§3.6 rule 6)
+  autoAcknowledged Boolean  @default(false) // true when back-filled for a new user (rule 6)
 
   // audit fields
   createdBy String?  @default("60000000-0000-0000-0000-000000000000")

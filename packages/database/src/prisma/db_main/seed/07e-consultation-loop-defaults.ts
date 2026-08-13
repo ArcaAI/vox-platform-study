@@ -1,10 +1,10 @@
 /**
- * TASK-686 — the day-1 default consultation context schema, and the loop
+ * The day-1 default consultation context schema, and the loop
  * configuration the seeded default agents carry.
  *
  * ## Why this file exists
  *
- * TASK-684 turned the SIGNALLING gate (`harness.loop.enabled`) on, so a real
+ * A prior change turned the SIGNALLING gate (`harness.loop.enabled`) on, so a real
  * `context.added` now starts `ConsultationLoopWorkflow`. The workflow then
  * completed `phase: "DISABLED"`, because its pinned config's `enabled` is
  * DERIVED, never stored
@@ -21,7 +21,7 @@
  *
  * The owner's worked example E1 — "a consultation schema that: audio stream,
  * work note, case note, attachment" — mapped onto the five platform primitives
- * of TASK-654 §4.1. Nothing beyond E1 is declared: every kind here becomes the
+ * of Nothing beyond E1 is declared: every kind here becomes the
  * platform's default clinical vocabulary for every tenant, so the bar for
  * adding one is a producer that actually exists.
  *
@@ -49,7 +49,7 @@
  * `.stop`). Subscribing it would issue a SECOND start and a SECOND stop per
  * consultation on every fresh install. The kind is the tenant's vocabulary and
  * belongs in the schema; arming the action is a tenant decision, made in the
- * console (TASK-667).
+ * console.
  *
  * ## Idempotency
  *
@@ -234,8 +234,8 @@ export const DAY1_CONTEXT_SCHEMA_DEFINITION: Record<string, unknown> = {
 
 export const DAY1_AGENT_LOOP_CONFIG: AgentLoopConfigSeed = {
   // One seeded default agent per department, so PRIMARY never contests another
-  // (TASK-659 AC-7). With no SPECIALIST alongside it the deliberative lane stays
-  // OFF, which is exactly TASK-662's behaviour.
+  // (AC-7). With no SPECIALIST alongside it the deliberative lane stays
+  // OFF, which is exactly 's behaviour.
   role: 'PRIMARY',
   // `audio_stream` is deliberately absent — see the file header.
   subscribedKinds: {

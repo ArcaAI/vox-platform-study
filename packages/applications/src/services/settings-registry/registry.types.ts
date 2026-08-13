@@ -35,7 +35,7 @@ export type SettingDataType = 'boolean' | 'number' | 'string' | 'string[]' | 'en
 
 /**
  * What happens when NO tier supplies a value — declared on the descriptor, never
- * decided at the call site (plan §4 B3, §9.3 M5).
+ * decided at the call site.
  *
  *  - `closed`          throw. NEVER substitute a default. Mandatory for secrets
  *                     and for provider/model SELECTION, so an unresolved
@@ -51,7 +51,7 @@ export type SettingDataType = 'boolean' | 'number' | 'string' | 'string[]' | 'en
  * SCOPE: this governs an ABSENT VALUE only. A backend/transport error is NOT a
  * failure mode — those propagate unchanged, so a fail-open knob can never mask
  * an unreachable control plane as "the default". Bounded-staleness / negative
- * caching on backend errors is the read-path concern (plan §4 B2/B3).
+ * caching on backend errors is the read-path concern.
  */
 export type SettingFailMode = 'closed' | 'open-to-default';
 
@@ -63,7 +63,7 @@ export type SettingFailMode = 'closed' | 'open-to-default';
 export const EDITABLE_BY_NONE = 'none';
 
 /**
- * Mechanical dotted-key → env-var name mapping (plan §3.3): dotted lowerCamel
+ * Mechanical dotted-key → env-var name mapping: dotted lowerCamel
  * segments become SCREAMING_SNAKE joined by `_`.
  *
  *   storage.minio.endpoint        →  STORAGE_MINIO_ENDPOINT
@@ -123,9 +123,9 @@ export interface SettingDescriptor {
    * The tier this key will EVENTUALLY live in, when that differs from `tier`.
    *
    * `tier` is always the honest present-tense answer — where the value lives
-   * TODAY. TASK-558 lane F classifies without migrating any value, so a key that
-   * is still read from `process.env` is `tier: 'env'` even where the plan (§3.2)
-   * targets it for `global-kv`. `targetTier` records that target so the pending
+   * TODAY. Classification does not migrate any value, so a key that
+   * is still read from `process.env` is `tier: 'env'` even where the intended
+   * home is `global-kv`. `targetTier` records that target so the pending
    * migration is queryable instead of buried in prose. Absent ⇒ `tier` is final.
    */
   targetTier?: StorageTier;

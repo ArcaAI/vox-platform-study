@@ -4,7 +4,7 @@
  * `ROLE_POLICIES_INCLUDE` so the admin console's list chips render without one
  * request per row.
  *
- * Tenant-scoping decision (README §Open item 1): the nested `_count` is NOT
+ * Tenant-scoping decision (item 1): the nested `_count` is NOT
  * intercepted by the tenant-scope `$extends` (query extensions only touch the
  * TOP-LEVEL args of the dispatched model), so the service builds the filter
  * explicitly from CLS — `tenantId` pinned when the caller carries a tenant

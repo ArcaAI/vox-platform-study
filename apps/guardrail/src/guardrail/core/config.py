@@ -17,7 +17,7 @@ class OllamaConfig(BaseSettings):
     Granite Guardian protocol. Select it via ``GUARDRAIL_V2_PROVIDER=ollama``.
     """
 
-    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
     settings_customise_sources = hope_settings_sources
 
     model_config = SettingsConfigDict(env_prefix="GUARDRAIL_OLLAMA_")
@@ -60,7 +60,7 @@ class OpenAICompatConfig(BaseSettings):
     ``GUARDRAIL_V2_PROVIDER=lm-studio``.
     """
 
-    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
     settings_customise_sources = hope_settings_sources
 
     model_config = SettingsConfigDict(env_prefix="GUARDRAIL_OPENAI_COMPAT_")
@@ -154,7 +154,7 @@ class LlamaCppConfig(OpenAICompatConfig):
 class GlinerConfig(BaseSettings):
     """GLiNER ONNX provider configuration for content safety/adversarial/PII."""
 
-    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
     settings_customise_sources = hope_settings_sources
 
     model_config = SettingsConfigDict(env_prefix="GUARDRAIL_GLINER_")
@@ -182,7 +182,7 @@ class GroundednessConfig(BaseSettings):
     without the model actually entailing the segment.
     """
 
-    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
     settings_customise_sources = hope_settings_sources
 
     model_config = SettingsConfigDict(env_prefix="GUARDRAIL_V2_GROUNDEDNESS_")
@@ -234,7 +234,7 @@ class GroundednessConfig(BaseSettings):
 class RedisConfig(BaseSettings):
     """Redis configuration for job queue and caching."""
 
-    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
     settings_customise_sources = hope_settings_sources
 
     model_config = SettingsConfigDict(env_prefix="GUARDRAIL_REDIS_")
@@ -248,7 +248,7 @@ class RedisConfig(BaseSettings):
 class QueueConfig(BaseSettings):
     """Job queue configuration."""
 
-    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
     settings_customise_sources = hope_settings_sources
 
     model_config = SettingsConfigDict(env_prefix="GUARDRAIL_V2_QUEUE_")
@@ -269,7 +269,7 @@ class DatabaseConfig(BaseSettings):
     the service uses only the env-selected engine (``GUARDRAIL_V2_PROVIDER``).
     """
 
-    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
     settings_customise_sources = hope_settings_sources
 
     model_config = SettingsConfigDict(env_prefix="GUARDRAIL_")
@@ -326,7 +326,7 @@ class DatabaseConfig(BaseSettings):
 class Settings(BaseSettings):
     """Root application settings."""
 
-    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
     settings_customise_sources = hope_settings_sources
 
     model_config = SettingsConfigDict(env_prefix="GUARDRAIL_V2_")

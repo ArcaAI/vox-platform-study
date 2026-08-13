@@ -13,7 +13,7 @@ import { BillingInvoice } from '../../../models';
  * Invoice repository.
  *
  * `BillingInvoice` is the ONE optimistically-concurrency-controlled model of
- * TASK-615: draft edits and the FINALIZE transition go through the inherited
+ * the billing plane: draft edits and the FINALIZE transition go through the inherited
  * `updateWithVersion`, so a stale writer gets an `OptimisticConcurrencyException`
  * (→ 412) instead of silently overwriting another admin's totals. Its mapper
  * carries the `FIELDS_NOT_WRITABLE = ['version']` strip that makes that work.

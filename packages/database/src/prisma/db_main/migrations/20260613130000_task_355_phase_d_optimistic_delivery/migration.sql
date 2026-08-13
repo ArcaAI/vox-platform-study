@@ -1,4 +1,4 @@
--- TASK-355 Phase D — Optimistic draft delivery (two-phase assurance).
+-- Optimistic draft delivery (two-phase assurance).
 --
 -- PURELY ADDITIVE. No DROP / DELETE / TRUNCATE / column removal / ALTER … DROP.
 -- Generated from `prisma migrate diff` (live datasource → edited datamodel) and

@@ -1,5 +1,5 @@
 /**
- * TASK-635 C6 — R-N1/R-N2 end-to-end: ONE agent, live through finalize.
+ * R-N1/R-N2 end-to-end: ONE agent, live through finalize.
  *
  * Proves the whole chain over real HTTP against a running stack:
  *
@@ -61,7 +61,7 @@
  * RUN: `pnpm test:up:api` (terminal 1), then
  *      `pnpm test:e2e -- task-635-live-agent-lineage.spec.ts`
  *
- * @see docs/implementation/TASK-635-Summarization-Agent-Conformance/c1-live-agent-architecture.md §DR-4, §C5/C6
+ * @see docs/implementation/TASK-635-Summarization-Agent-Conformance/c1-live-agent-architecture.md
  */
 import { test, expect } from '@playwright/test';
 import { randomUUID } from 'crypto';
@@ -245,7 +245,7 @@ async function readFirstAgentFromSse(baseURL: string, consultationId: string, to
 // the session R-N1 starts, so the order is load-bearing. Running the three tests
 // on parallel workers also re-ran `beforeAll` per worker, and the concurrent
 // agent creations collided on a unique constraint (409, observed 2026-08-08).
-test.describe.serial('TASK-635 C6 — live agent lineage survives into finalize (R-N1 → R-N2)', () => {
+test.describe.serial('Live agent lineage survives into finalize (R-N1 → R-N2)', () => {
   let token: string;
   let departmentId: string;
   let consultationId: string;
@@ -302,7 +302,7 @@ test.describe.serial('TASK-635 C6 — live agent lineage survives into finalize 
     // (departmentAgent.service.ts assertTemplateBindable). Picking blindly off
     // the available list binds a DEPARTMENT_DEFAULT row from some OTHER
     // department and is rejected with a 400 (observed 2026-08-08). The SYSTEM
-    // live-default seeded by TASK-635 C2 is `departmentId: null` and
+    // live-default seeded by is `departmentId: null` and
     // SYSTEM-owned, so it satisfies both rules and is the semantically right
     // thing for a live binding.
     const SYSTEM_LIVE_DEFAULT_TEMPLATE_ID = '71000000-0000-0000-0004-000000000001';

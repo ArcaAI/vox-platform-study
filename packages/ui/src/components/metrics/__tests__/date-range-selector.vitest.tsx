@@ -10,7 +10,7 @@ function items(container: HTMLElement) {
   return Array.from(container.querySelectorAll<HTMLElement>('[data-slot="toggle-group-item"]'));
 }
 
-describe('DateRangeSelector (§3.2)', () => {
+describe('DateRangeSelector', () => {
   it('emits the start/end of week via date-fns when "Week" is picked', () => {
     const onChange = vi.fn();
     render(<DateRangeSelector value={{ ...VALUE, preset: 'month' }} onChange={onChange} />);

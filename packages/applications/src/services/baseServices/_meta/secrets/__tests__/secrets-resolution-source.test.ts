@@ -1,4 +1,4 @@
-// TASK-558 lane J (J2) — plan §9.2 L8: "every fallback is observable".
+// "Every fallback is observable".
 //
 // A resolved secret must be able to say WHICH TIER supplied it. Before this,
 // `getSecret('JWT_SECRET_KEY')` returned a string and nothing distinguished
@@ -22,7 +22,7 @@ import { InMemorySecretsProvider } from '../providers/in-memory-secrets.provider
 
 const SECRET_VALUE = 'super-secret-material-that-must-never-be-logged';
 
-describe('SecretsService resolution source (plan §9.2 L8)', () => {
+describe('SecretsService resolution source', () => {
   const originalNodeEnv = process.env.NODE_ENV;
   let warn: ReturnType<typeof vi.spyOn>;
 

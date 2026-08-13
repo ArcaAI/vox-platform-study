@@ -8,9 +8,9 @@
  * carries a `title` so the provider's schema name is stable.
  *
  * Shapes mirror the v1 `SimplifiedMedicalSummary` / `EnhancedMedicalSummary`
- * contracts (`SMR_Summary_Endpoints.md` §3.3, frozen in TASK-560 §5.4).
+ * contracts (`SMR_Summary_Endpoints.md` §3.3, frozen).
  *
- * STRICT-MODE COMPLIANCE (TASK-602 follow-up): Azure OpenAI (and OpenAI)
+ * STRICT-MODE COMPLIANCE (follow-up): Azure OpenAI (and OpenAI)
  * structured outputs in `strict` mode require, for EVERY object:
  *   1. `additionalProperties: false`, and
  *   2. every declared property listed in `required`.

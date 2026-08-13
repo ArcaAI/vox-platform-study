@@ -1,5 +1,5 @@
 /**
- * TASK-648 — the release version grammar (ticket README §3.1).
+ * The release version grammar.
  *
  * ONE definition of what a version is, shared by the CI tag gate, the
  * build-info readers, the release registry and the console badges. The git tag
@@ -7,9 +7,9 @@
  * (the latter is unset in every container, which is why the API gateway
  * reported `0.1.0` in production for as long as it has been deployed).
  *
- *   <SVC>-<MAJOR>.<MINOR>.<PATCH>[-<prerelease>]   e.g. SMR-2.1.0, STT-3.0.0-rc.1
- *   ALL-<MAJOR>.<MINOR>.<PATCH>                    the platform release train
- */
+ * <SVC>-<MAJOR>.<MINOR>.<PATCH>[-<prerelease>] e.g. SMR-2.1.0, STT-3.0.0-rc.1
+ * ALL-<MAJOR>.<MINOR>.<PATCH> the platform release train
+*/
 
 /**
  * Service prefixes that trigger an image build. Kept in lockstep with the

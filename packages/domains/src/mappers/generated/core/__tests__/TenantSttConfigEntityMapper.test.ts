@@ -1,5 +1,5 @@
 /**
- * TenantSttConfigEntityMapper — round-trip + OCC-guard tests (TASK-567).
+ * TenantSttConfigEntityMapper — round-trip + OCC-guard tests.
  *
  * TenantSttConfig is OCC-written, so `_version` MUST be stripped from every
  * write path. Mirrors the AiProviderConnectionEntityMapper suite.

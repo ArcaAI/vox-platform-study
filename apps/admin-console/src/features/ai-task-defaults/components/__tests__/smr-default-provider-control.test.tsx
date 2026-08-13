@@ -1,5 +1,5 @@
 /**
- * "Default text-generation provider" control (TASK-592).
+ * "Default text-generation provider" control.
  *
  * A convenience writer over the EXISTING per-key `PUT
  * admin/ai-task-defaults/row?taskKey=` endpoint. The load-bearing behavior: one

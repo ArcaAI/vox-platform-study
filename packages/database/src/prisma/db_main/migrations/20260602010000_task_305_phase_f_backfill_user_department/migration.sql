@@ -1,4 +1,4 @@
--- TASK-305 Phase F — User<->Tenant membership backfill (role + department).
+-- User<->Tenant membership backfill (role + department).
 --
 -- WHY:
 --   Phase F enforces the invariant "a non-exempt user must belong to a tenant

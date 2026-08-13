@@ -46,7 +46,7 @@ class AzureFoundryLoader(BaseModelLoader):
                 "enable explicitly once GA + data residency are signed off."
             )
 
-        # Per-tenant BYOK override (TASK-567): the `azure-speech` credential row
+        # Per-tenant BYOK override: the `azure-speech` credential row
         # carries the Foundry endpoint/key too (a Foundry resource IS an Azure
         # Speech resource). Override wins over env; env fallback preserved.
         override = None

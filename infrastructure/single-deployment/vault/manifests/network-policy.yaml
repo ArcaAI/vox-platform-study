@@ -1,5 +1,5 @@
 # =============================================================================
-# HOPE — Vault NetworkPolicy (TASK-312 Phase C, C.6)
+# HOPE — Vault NetworkPolicy
 # =============================================================================
 # Default-deny ingress to the Vault SERVER pods, then allow exactly:
 #   - app namespace (default: hope)            -> 8200 (API)

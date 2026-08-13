@@ -1,6 +1,6 @@
-"""Tests for the consultation-loop signal endpoints (TASK-662).
+"""Tests for the consultation-loop signal endpoints.
 
-TASK-660 shipped the CALLER for ``POST /signal/context-added`` and recorded that
+shipped the CALLER for ``POST /signal/context-added`` and recorded that
 the receiver did not exist yet. These tests pin the receiver's contract: the
 deterministic loop id, signal-WITH-start on the context path, plain signals on
 the ending/cancel paths, the shared service-token guard, and — the part most
@@ -114,7 +114,7 @@ class TestContextAddedSignal:
 
     @pytest.mark.asyncio
     async def test_content_wins_over_content_preview_when_both_are_sent(self, harness):
-        """TASK-670 — a payload-complete signal carries the full body in
+        """A payload-complete signal carries the full body in
         `content`; the receiver must prefer it over the older, shorter
         `contentPreview` rather than silently keeping the truncated one."""
         http, client, _handle, _settings = harness

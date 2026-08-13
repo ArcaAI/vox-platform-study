@@ -196,7 +196,7 @@ describe('DnaWritingStyleReportRepository encryption (Phase 3C)', () => {
       ...baseInit,
       reportData: { tone: 'concise' },
       styleText: 'prefers short sentences',
-      // TASK-551 — structured redaction rules encrypted alongside the style text.
+      // Structured redaction rules encrypted alongside the style text.
       redactionRules: { rules: [{ id: 'r1', type: 'remove', match: 'literal', pattern: 'employer' }] },
     } as any);
 
@@ -329,7 +329,7 @@ describe('PromptTemplateRepository encryption (Phase 3C)', () => {
   });
 });
 
-describe('SummaryMetaRepository encryption (Phase 3C) — TASK-551 redaction manifest', () => {
+describe('SummaryMetaRepository encryption (Phase 3C) — redaction manifest', () => {
   const summaryInit = {
     ...baseInit,
     contextItemId: '02000000-0000-0000-0000-000000000001',
@@ -342,7 +342,7 @@ describe('SummaryMetaRepository encryption (Phase 3C) — TASK-551 redaction man
       ...summaryInit,
       citationsMap: { claim1: ['seg-1'] },
       guardrailDecisions: { safety: 'PASS' },
-      // TASK-551 audit manifest — spans + counts only, never removed PHI plaintext.
+      // Audit manifest — spans + counts only, never removed PHI plaintext.
       redactionManifest: {
         applied: true,
         total_hits: 2,

@@ -1,4 +1,4 @@
--- TASK-295 C-3: Add IMPERSONATED_ACTION to the AuditAction enum so that
+-- Add IMPERSONATED_ACTION to the AuditAction enum so that
 -- per-request audit rows produced under impersonation can be distinguished
 -- from regular LOGIN/CRUD actions and queried for HIPAA actor-on-subject
 -- traceability reports.

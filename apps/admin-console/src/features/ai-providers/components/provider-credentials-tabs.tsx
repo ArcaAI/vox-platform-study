@@ -15,10 +15,10 @@ const TAB_LABEL: Record<ProviderService, string> = {
 
 /**
  * Providers tab body — the LLM / STT / TTS bring-your-own credential editor
- * over the unified `admin/providers/:service/:provider` plane (TASK-575).
+ * over the unified `admin/providers/:service/:provider` plane.
  *
  * Extracted from the retired standalone `/ai-providers` screen so the
- * `/ai-configuration` hub can compose it as its "Providers" tab (TASK-595).
+ * `/ai-configuration` hub can compose it as its "Providers" tab.
  * This is the ONE authoritative BYO-credential editor (rule 13); the former
  * per-capability credential tabs on `/stt-config`, `/tts-config` and the
  * read-only summary on `/ai-configuration` were removed in favour of it.

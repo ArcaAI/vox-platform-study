@@ -1,5 +1,5 @@
 /**
- * TASK-635 C2-T1 (database half) — byte lock for the SYSTEM live-summarization
+ * -T1 (database half) — byte lock for the SYSTEM live-summarization
  * default prompt.
  *
  * PAIRED with
@@ -36,7 +36,7 @@ import {
 } from '../prisma/db_main/seed/07c-live-agent-defaults';
 
 /**
- * Pinned sha256 of the live-loop prompt constants as of TASK-635 C2.
+ * Pinned sha256 of the live-loop prompt constants as of.
  * THE SAME TWO LITERALS appear in the applications-side test — change both or
  * neither.
  */
@@ -45,7 +45,7 @@ const PINNED_SYSTEM_PROMPT_SHA256 = '25769ec9be08696e4e9fb8576de59e9b12fbef58f01
 
 const sha256Hex = (content: string): string => createHash('sha256').update(content, 'utf8').digest('hex');
 
-describe('TASK-635 C2-T1 — SYSTEM live-summarization default prompt byte lock', () => {
+describe('-T1 — SYSTEM live-summarization default prompt byte lock', () => {
   it('SYSTEM_LIVE_SOAP_PROMPT_CONTENT matches the pinned sha256 of LIVE_SOAP_STABLE_SYSTEM_PREFIX', () => {
     expect(
       sha256Hex(SYSTEM_LIVE_SOAP_PROMPT_CONTENT),

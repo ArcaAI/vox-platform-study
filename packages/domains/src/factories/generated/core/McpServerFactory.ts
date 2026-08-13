@@ -39,7 +39,7 @@ export class McpServerFactory {
       name: props.name,
       description: props.description ?? null,
       baseUrl: props.baseUrl,
-      // Only "streamable-http" is supported in this ticket; default it.
+      // Only "streamable-http" is supported; default it.
       transport: props.transport ?? 'streamable-http',
       authRef: props.authRef ?? null,
       toolAllowlist: props.toolAllowlist ?? null,

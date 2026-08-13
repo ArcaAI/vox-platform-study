@@ -1,18 +1,17 @@
 /**
  * @arcaai/vox/compat — golden fixtures for the metadata-passthrough contract
- * (TASK-566, locking TASK-564 §5.2 / §4.3).
  *
  * Concrete INSTANCES of the frozen delivered-metadata shape — one canned
  * `{ seg, isFinal, callerMeta }` input per case with its EXACT expected
  * `composeDeliveredMetadata(...)` output. `metadata-passthrough.contract.test.ts`
- * runs each case through the real pure helpers, so any regression in the §5.2
+ * runs each case through the real pure helpers, so any regression in the
  * precedence order (a caller key clobbered, chunk_id/detected_language no longer
- * overlaid last) or the §4.3 resolution chains fails CI here.
+ * overlaid last) or the resolution chains fails CI here.
  *
  * Co-located inside the package (not repo-root tests/fixtures) so the vox
  * `vitest run` stays hermetic and self-contained — the golden must be importable
  * by the package's own test runner. Do NOT restate the schema here; these are
- * instances of TASK-564 §5, which is authoritative.
+ * instances of the frozen metadata-passthrough contract, which is authoritative.
  */
 
 import type { EnrichmentSeg } from '../../speechToTextMetadata';
@@ -22,7 +21,7 @@ export interface ComposeCase {
   seg: EnrichmentSeg;
   isFinal: boolean;
   callerMeta: Record<string, unknown> | undefined;
-  /** Exact expected delivered-metadata object (§5.2). */
+  /** Exact expected delivered-metadata object. */
   expected: Record<string, unknown>;
 }
 
@@ -39,7 +38,7 @@ export const COMPOSE_GOLDEN: readonly ComposeCase[] = [
       startTime: 1,
       endTime: 3,
       isFinal: true,
-      // §4.3: detected_language falls back to seg.language even without caller metadata.
+      // detected_language falls back to seg.language even without caller metadata.
       detected_language: 'en',
     },
   },
@@ -57,7 +56,7 @@ export const COMPOSE_GOLDEN: readonly ComposeCase[] = [
       isFinal: true,
       role: 'clinician',
       device_id: 'mic-1',
-      // §4.3: detected_language resolves from detected_language → detectedLanguage
+      // detected_language resolves from detected_language → detectedLanguage
       // → seg.language ONLY. A caller `language` override does NOT feed it, so it
       // stays the segment language 'en' here (proves the chain, not the `language` key).
       detected_language: 'en',
@@ -81,7 +80,7 @@ export const COMPOSE_GOLDEN: readonly ComposeCase[] = [
     },
   },
   {
-    name: '§4.3 chunk_id resolves chunkId when chunk_id absent',
+    name: 'chunk_id resolves chunkId when chunk_id absent',
     seg: {},
     isFinal: true,
     callerMeta: { chunkId: 'c2' },
@@ -98,7 +97,7 @@ export const COMPOSE_GOLDEN: readonly ComposeCase[] = [
     },
   },
   {
-    name: '§4.3 chunk_id resolves `other` when chunk_id/chunkId absent',
+    name: 'chunk_id resolves `other` when chunk_id/chunkId absent',
     seg: {},
     isFinal: true,
     callerMeta: { other: 'c3' },
@@ -128,7 +127,7 @@ export const COMPOSE_GOLDEN: readonly ComposeCase[] = [
     },
   },
   {
-    // TASK-613 D4: seg.pipelineId (the v2-resolved per-utterance pipeline)
+    // Seg.pipelineId (the v2-resolved per-utterance pipeline)
     // is overlaid as pipeline_id, same precedence tier as chunk_id/detected_language.
     name: 'pipeline_id resolves from seg.pipelineId when caller supplies none',
     seg: { language: 'en', startTime: 1, endTime: 2, pipelineId: 'pipeline-fallback-abc' },
@@ -146,7 +145,7 @@ export const COMPOSE_GOLDEN: readonly ComposeCase[] = [
     },
   },
   {
-    // Backward compatibility (§3.4): an old backend never resolves a
+    // Backward compatibility: an old backend never resolves a
     // pipeline id on the segment, and the caller never supplies one — the
     // key must be OMITTED, never written as literal undefined/null.
     name: 'omits pipeline_id when neither caller nor seg provide one (old-backend degrade)',
@@ -164,7 +163,7 @@ export const COMPOSE_GOLDEN: readonly ComposeCase[] = [
   },
 ];
 
-/** §4.3 chunk_id resolution chain — priority `chunk_id → chunkId → other`. */
+/** chunk_id resolution chain — priority `chunk_id → chunkId → other`.*/
 export const CHUNK_ID_GOLDEN: readonly { meta: Record<string, unknown> | undefined; expected: unknown }[] = [
   { meta: { chunk_id: 'a', chunkId: 'b', other: 'c' }, expected: 'a' },
   { meta: { chunkId: 'b', other: 'c' }, expected: 'b' },
@@ -173,7 +172,7 @@ export const CHUNK_ID_GOLDEN: readonly { meta: Record<string, unknown> | undefin
   { meta: undefined, expected: undefined },
 ];
 
-/** §4.3 detected_language chain — `detected_language → detectedLanguage → seg.language`. */
+/** detected_language chain — `detected_language → detectedLanguage → seg.language`.*/
 export const DETECTED_LANGUAGE_GOLDEN: readonly {
   meta: Record<string, unknown> | undefined;
   seg: EnrichmentSeg;
@@ -186,7 +185,7 @@ export const DETECTED_LANGUAGE_GOLDEN: readonly {
 ];
 
 /**
- * TASK-613 §3.3 pipeline_id chain — `pipeline_id → pipelineId → seg.pipelineId`.
+ * Pipeline_id chain — `pipeline_id → pipelineId → seg.pipelineId`.
  * Mirrors the detected_language chain: caller-supplied wins, otherwise the
  * v2-resolved value from the segment; `undefined` when nothing provides it.
  */

@@ -1,6 +1,6 @@
-"""TASK-671 — the two-arm entity-grounding corpus.
+"""The two-arm entity-grounding corpus.
 
-TASK-664's corpus has only a **should-pass** arm: six clinically correct, lexically
+the corpus has only a **should-pass** arm: six clinically correct, lexically
 divergent notes. Calibrating against it alone is trivially gameable — any change that
 grounds everything scores 100%. So every case here carries a paired **should-flag** arm:
 entities of the *same lexical shape* (absent from the transcript, plausibly clinical) that
@@ -9,7 +9,7 @@ are **not** entailed by it.
 That pairing is the whole point. Under the incumbent lexical sensors both arms score
 identically — neither appears verbatim in the transcript, so both are flagged. A mechanism
 that "fixes" the penalty by grounding more things indiscriminately will therefore ground the
-fabrications too, and the retention half of the gate (§3.3: **zero unsafe flips**) will catch
+fabrications too, and the retention half of the gate (**zero unsafe flips**) will catch
 it. The corpus is built to make that failure visible, not to make a fix look good.
 
 Directional note: the same case data serves **both** gate directions, because entity
@@ -151,7 +151,7 @@ CASES: tuple[GroundingCase, ...] = (
             "The chest pain started last Tuesday and he had a similar episode back in March."
         ),
         transcript_entities=("chest pain", "last Tuesday", "March"),
-        # NOTE: TASK-664's arm also carried "chest pain", which the note legitimately
+        # NOTE: the arm also carried "chest pain", which the note legitimately
         # retains verbatim. It is dropped here because it is not an abstraction — the
         # lexical sensor grounds it unaided, so including it would give the should-recover
         # arm partial lexical credit and let the incumbent separate the two arms without

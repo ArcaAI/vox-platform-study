@@ -1,5 +1,5 @@
-// The admin console's declared environment surface — TASK-558 lane D
-// (plan §9.1 D1: schema is the source of truth, example files are generated).
+// The admin console's declared environment surface
+// (schema is the source of truth, example files are generated).
 //
 // ONE declaration, three consumers:
 //   * `env.ts`              builds the zod schema for the SERVER-scoped vars.
@@ -12,7 +12,7 @@
 // that package is the NestJS application layer. Importing it here would drag the
 // whole server-side dependency graph into a Next.js app's module graph for the
 // sake of one interface. The fields below map 1:1 onto the registry vocabulary
-// (`required` ⇔ `failMode: 'closed'`, plan §4 B4), and because each entry states
+// (`required` ⇔ `failMode: 'closed'`), and because each entry states
 // its ENV VAR NAME directly there is no dotted-key mapping to duplicate — the
 // `toEnvVarName()` obligation applies only to registry-sourced dotted keys.
 //

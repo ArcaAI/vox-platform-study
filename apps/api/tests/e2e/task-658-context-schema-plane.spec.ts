@@ -1,9 +1,9 @@
 /**
- * Live-stack proof of the tenant-declared context-schema plane (TASK-658/661/665)
- * and of the regression contract that makes the whole TASK-654 programme opt-in.
+ * Live-stack proof of the tenant-declared context-schema plane
+ * and of the regression contract that makes the whole programme opt-in.
  *
  * Everything below was previously asserted by unit tests against mocked
- * repositories only — TASK-654 OP-2 / TASK-675. Two things are proven here that
+ * repositories only — /. Two things are proven here that
  * a mock cannot:
  *
  *   1. **The plane works end to end** — create a DRAFT, publish an immutable
@@ -75,7 +75,7 @@ function auth(token: string) {
 // ===========================================================================
 // K7 — the regression contract, on a tenant that has NO schema at all.
 // ===========================================================================
-test.describe('TASK-654 K7 — a tenant with no context schema is untouched by the programme', () => {
+test.describe('A tenant with no context schema is untouched by the programme', () => {
   let doctorToken: string;
 
   test.beforeAll(async ({ request }) => {
@@ -125,7 +125,7 @@ test.describe('TASK-654 K7 — a tenant with no context schema is untouched by t
 // ===========================================================================
 // The plane itself, end to end, in ARCAAI.
 // ===========================================================================
-test.describe.serial('TASK-658 — context-schema plane end to end', () => {
+test.describe.serial('Context-schema plane end to end', () => {
   let adminToken: string;
   let arcaaiDoctorToken: string;
   let globalAdminToken: string;

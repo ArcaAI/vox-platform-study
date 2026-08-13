@@ -19,7 +19,7 @@ class TestDefaults:
         assert s.sample_rate == 24000
 
     def test_no_routing_vendor_default_in_config(self) -> None:
-        # TASK-577 / F1: provider SELECTION is DB-sourced (SYSTEM TenantTtsConfig),
+        # Provider SELECTION is DB-sourced (SYSTEM TenantTtsConfig),
         # so Settings carries NO routing chain — env can no longer bake a vendor
         # order and the router fails closed when nothing is injected.
         s = Settings()
@@ -44,7 +44,7 @@ class TestEnvPrefix:
 
 
 class TestAzureCredentialByok:
-    """TASK-602: the Azure Speech KEY is BYOK-only — never sourced from env. The
+    """The Azure Speech KEY is BYOK-only — never sourced from env. The
     non-secret REGION still resolves from its env aliases."""
 
     def test_api_key_not_read_from_prefixed_env(self, monkeypatch) -> None:
@@ -63,7 +63,7 @@ class TestAzureCredentialByok:
 
 
 class TestSarvamCredentialByok:
-    """TASK-602: the Sarvam KEY is BYOK-only — never sourced from env."""
+    """The Sarvam KEY is BYOK-only — never sourced from env."""
 
     def test_api_key_not_read_from_env(self, monkeypatch) -> None:
         from tts.core.config import SarvamConfig

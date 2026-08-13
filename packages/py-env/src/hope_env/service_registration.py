@@ -1,14 +1,14 @@
-"""Self-registration + heartbeat client (TASK-648 U8, W9 shared helper).
+"""Self-registration + heartbeat client (shared helper).
 
 Every HOPE process registers its baked build identity with the gateway on
-boot, then heartbeats every 5 minutes. Contract (frozen by U0):
+boot, then heartbeats every 5 minutes. Contract (frozen):
 ``docs/implementation/TASK-648-Service-Version-And-Release-Registry/
 contracts/service-release.api.yaml`` ``POST /internal/service-releases`` —
 idempotent upsert keyed on ``(service, gitCommitSha, releaseTag)`` for the
 release and ``(serviceName, environment, instanceId)`` for the instance. A
 repeat call IS the heartbeat — there is no separate heartbeat path.
 
-THE CRITICAL RULE (ticket §3.7): registration is best-effort and must NEVER
+THE CRITICAL RULE: registration is best-effort and must NEVER
 block or fail process boot. Every function here swallows every exception,
 logs a warning, and returns — nothing propagates past this module. The
 5-minute heartbeat is the retry mechanism, so no aggressive retry is
@@ -40,7 +40,7 @@ from hope_env.build_info import BuildInfo
 
 logger = logging.getLogger(__name__)
 
-#: Ticket §3.4 — "heartbeats every 5 minutes".
+#: Heartbeats every 5 minutes.
 DEFAULT_HEARTBEAT_INTERVAL_S = 300.0
 
 #: Bounded — this must never hang a heartbeat, let alone process boot.
@@ -145,7 +145,7 @@ async def _run(
     # Initial registration, then heartbeat forever on the interval. A failed
     # attempt (down gateway, timeout, 500) is swallowed inside `_post_once` —
     # the next scheduled heartbeat IS the retry, deliberately with no
-    # aggressive backoff (ticket §3.4/§3.7).
+    # aggressive backoff.
     await _post_once(http_client, gateway_url, service_token, payload, timeout_s)
     while True:
         await asyncio.sleep(interval_s)

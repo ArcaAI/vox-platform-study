@@ -135,19 +135,19 @@ describe('PluginManager.getTranscriptionPipelineConfig', () => {
     expect(cfg.stt.language).toBe('th');
   });
 
-  it('threads the pre-start startOn runtime option into the stt config (TASK-586)', () => {
+  it('threads the pre-start startOn runtime option into the stt config', () => {
     manager.setRuntimeOptions({ pipelineId: 'p', startOn: 'fallback' });
     const cfg = manager.getTranscriptionPipelineConfig();
     expect((cfg.stt as { startOn?: 'primary' | 'fallback' }).startOn).toBe('fallback');
   });
 
-  it('omits startOn from the stt config when no runtime selection is set (TASK-586)', () => {
+  it('omits startOn from the stt config when no runtime selection is set', () => {
     manager.setRuntimeOptions({ pipelineId: 'p' });
     const cfg = manager.getTranscriptionPipelineConfig();
     expect((cfg.stt as { startOn?: 'primary' | 'fallback' }).startOn).toBeUndefined();
   });
 
-  it("defaults languageMode to 'auto' when neither runtime nor static config pins one (TASK-598)", () => {
+  it("defaults languageMode to 'auto' when neither runtime nor static config pins one", () => {
     // Constructor stt config carries no languageMode; no runtime pick either.
     manager.setRuntimeOptions({ pipelineId: 'p' });
     const cfg = manager.getTranscriptionPipelineConfig();
@@ -156,7 +156,7 @@ describe('PluginManager.getTranscriptionPipelineConfig', () => {
     expect(cfg.stt.languageMode).toBe('auto');
   });
 
-  it('a runtime languageMode pick still overrides the auto default (TASK-587/598)', () => {
+  it('a runtime languageMode pick still overrides the auto default', () => {
     manager.setRuntimeOptions({ pipelineId: 'p', languageMode: 'ml-en' });
     const cfg = manager.getTranscriptionPipelineConfig();
     expect(cfg.stt.languageMode).toBe('ml-en');

@@ -11,7 +11,7 @@
  *       from `UserProfile.preferredPromptTemplateId`.
  *     Tier-1a (agent)      — the department's default `DepartmentAgent`, serving
  *       `newPatientTemplateId` / `revisitTemplateId` ?? the base
- *       `promptTemplateId` (TASK-635 DR-1 — the VISIT-TYPE AXIS that closes
+ *       `promptTemplateId` (the VISIT-TYPE AXIS that closes
  *       F-01; an agent with null bindings resolves exactly as it did before).
  *     Tier-1b (department) — the department's visit-type prompt column.
  *       DEPRECATED fallback (RF-3), retained for departments with no agent.
@@ -132,7 +132,7 @@ export interface ResolvedPromptConfig {
  * never reports it, and the pre-summary chain never reports
  * `'preferred' | 'agent' | 'department'`.
  *
- * `'code-default'` is LIVE-ONLY (TASK-635 C1 §4.4): the live chain's fail-open
+ * `'code-default'` is LIVE-ONLY: the live chain's fail-open
  * tail, meaning "no governed template could be resolved — serve the in-code
  * constants". It is never reported by the summary or pre-summary chains, which
  * keep their fail-closed / SYSTEM-default posture.
@@ -179,12 +179,12 @@ export interface PromptResolutionParams {
   /**
    * Prompt type — selects the CAPABILITY CHAIN (see the file header), not just
    * a column: `'pre-summary'` runs the tenant chain, `'live'` the live chain
-   * (TASK-635 C3), everything else the summary chain.
+   * everything else the summary chain.
    */
   promptType?: 'pre-summary' | 'new-patient' | 'revisit' | 'live';
 
   /**
-   * TASK-635 RF-2 — which PRE-SUMMARY template FAMILY the caller wants.
+   * Which PRE-SUMMARY template FAMILY the caller wants.
    *
    * NOT a compat/native flag (RF-5 forbids that for agent eligibility, which
    * stays derived from the call signature): a NATIVE consultation may
@@ -202,7 +202,7 @@ export interface PromptResolutionParams {
   preSummaryVariant?: 'v1' | 'dept-free';
 
   /**
-   * TASK-635 C5 / RF-6 — finalize PINS the summary chain's agent tier to the
+   * Finalize PINS the summary chain's agent tier to the
    * agent that actually ran the LIVE session, instead of re-resolving
    * `findDefaultForDepartment` at finalize time.
    *
@@ -278,7 +278,7 @@ export const SYSTEM_DEFAULTS = {
 const PRE_SUMMARY_TEMPLATE_TAG = 'pre-summary';
 
 /**
- * TASK-635 RF-2 — the SURFACE tag that discriminates the two pre-summary
+ * The SURFACE tag that discriminates the two pre-summary
  * families within one tenant.
  *
  * With a department-free fork (Lane D2) a tenant may legitimately own TWO
@@ -286,7 +286,7 @@ const PRE_SUMMARY_TEMPLATE_TAG = 'pre-summary';
  * fork would recreate B-01 (two candidates, first-by-createdAt silently wins),
  * so the single-candidate rule becomes per-(tenant, SURFACE).
  *
- * OD-7(b) (§3.2 of the README) — the two surfaces are NOT symmetric queries:
+ * OD-7(b) — the two surfaces are NOT symmetric queries:
  *   - `'dept-free'` is a POSITIVE opt-in match, requiring BOTH tags
  *     (`hasEvery(['pre-summary', 'dept-free'])`) — a row must OPT IN to being
  *     the fork, never be inferred into it.
@@ -323,7 +323,7 @@ export class PromptResolutionService {
   constructor(
     private readonly departmentRepository: DepartmentRepository,
     private readonly promptTemplateRepository: PromptTemplateRepository,
-    // TASK-546 tier-1a: department default agent (movable-pointer resolution).
+    // Tier-1a: department default agent (movable-pointer resolution).
     private readonly departmentAgentRepository: DepartmentAgentRepository,
     private readonly promptVersionRepository: PromptVersionRepository,
   ) {}
@@ -443,7 +443,7 @@ export class PromptResolutionService {
       trace.departmentPromptId = departmentPromptId;
     }
 
-    // Tier-1a (TASK-546): the department's DEFAULT DepartmentAgent, inserted
+    // Tier-1a: the department's DEFAULT DepartmentAgent, inserted
     // BEFORE the legacy department prompt-id columns and only when no doctor-
     // preferred template took tier-0. It serves the IMMUTABLE PromptVersion
     // snapshot content at `pinnedVersionNumber ?? latest APPROVED`, never the
@@ -456,12 +456,12 @@ export class PromptResolutionService {
         department.tenantId,
         params.departmentId,
         (agent) =>
-          // TASK-635 DR-1/F-01: the agent tier is now VISIT-TYPE AWARE. The
+          // The agent tier is now VISIT-TYPE AWARE. The
           // capability binding wins; the base `promptTemplateId` is the
-          // within-tier fallback, which is what makes every pre-TASK-635 row
+          // within-tier fallback, which is what makes every previous row
           // (all six columns null) resolve byte-identically to before.
           (params.promptType === 'revisit' ? agent.revisitTemplateId : agent.newPatientTemplateId) ?? agent.promptTemplateId,
-        // TASK-635 C5 / §7.4 — finalize pins the SESSION's agent here.
+        // Finalize pins the SESSION's agent here.
         params.pinnedAgentId,
       );
       if (agentResolution) {
@@ -534,7 +534,7 @@ export class PromptResolutionService {
     const tenantId = params.tenantId ?? department?.tenantId ?? null;
     const variant = params.preSummaryVariant ?? 'v1';
 
-    // Tier-1a′ (TASK-635 DR-5, scope extension) — the department default
+    // Tier-1a′ (scope extension) — the department default
     // agent's `preSummaryTemplateId`.
     //
     // ELIGIBILITY IS SIGNATURE-DERIVED (RF-5), not flag-driven: this tier is
@@ -581,7 +581,7 @@ export class PromptResolutionService {
     }
 
     // Tier-2 — the SYSTEM default FOR THE REQUESTED SURFACE. The v1 branch
-    // (…040) is reachable cross-tenant since the TASK-635 B-12 fold-in re-owned
+    // (…040) is reachable cross-tenant since the fold-in re-owned
     // it to the SYSTEM tenant and PromptTemplate/PromptVersion joined
     // SYSTEM_SHARED_READ_MODELS; before that, any tenant without its own row
     // fell straight through to the 503 below.
@@ -607,11 +607,11 @@ export class PromptResolutionService {
   }
 
   /**
-   * LIVE chain (TASK-635 C1 §4.4) — agent `livePromptTemplateId` → the seeded
+   * LIVE chain — agent `livePromptTemplateId` → the seeded
    * SYSTEM live default → the in-code constants.
    *
    * THIS METHOD NEVER THROWS, and that is the point. It is the DOCUMENTED
-   * EXCEPTION to the fail-closed doctrine (README §4.4 C1 item 5, binding): a
+   * EXCEPTION to the fail-closed doctrine (binding): a
    * live consultation must never be failed by a prompt-resolution error —
    * patient-safety of the running clinical view outranks selection strictness.
    * The exception is safe ONLY because tier 3's bytes are proven byte-identical
@@ -707,7 +707,7 @@ export class PromptResolutionService {
    * letting Postgres tie-break; extra candidates are logged as a warning so
    * the ambiguity is visible rather than silent.
    *
-   * SURFACE MATCH (TASK-635 RF-2, refined by OD-7(b), README §3.2) — the two
+   * SURFACE MATCH (refined by OD-7(b)) — the two
    * surfaces are asymmetric queries over the SAME `pre-summary` tag:
    *   - `'dept-free'` is a POSITIVE opt-in match: `hasEvery(['pre-summary',
    *     'dept-free'])`. A row must explicitly carry the `dept-free` tag; it
@@ -816,7 +816,7 @@ export class PromptResolutionService {
   }
 
   /**
-   * Agent-tier resolution (TASK-546, capability-keyed since TASK-635): the
+   * Agent-tier resolution (capability-keyed since): the
    * department's default DepartmentAgent → the template chosen by
    * `selectTemplateId` → the immutable PromptVersion snapshot content at
    * `pinnedVersionNumber ?? template.approvedVersionNumber ?? latest`. Returns
@@ -838,7 +838,7 @@ export class PromptResolutionService {
     pinnedAgentId?: string,
   ): Promise<{ templateId: string; content: string; versionNumber: number; agentId: string } | null> {
     try {
-      // TASK-635 C5 §7.4 — WHICH agent, before WHICH binding. A pinned session
+      // WHICH agent, before WHICH binding. A pinned session
       // agent replaces the default lookup entirely, but only when it is still
       // the same tenant's, the same department's, and ENABLED; otherwise the
       // department default answers as it always did (no error, no 500).
@@ -847,7 +847,7 @@ export class PromptResolutionService {
         (await this.departmentAgentRepository.findDefaultForDepartment(tenantId, departmentId));
       if (!agent) return null;
 
-      // TASK-635 DR-1: WHICH of the agent's bindings to serve is the CAPABILITY
+      // WHICH of the agent's bindings to serve is the CAPABILITY
       // chain's decision, passed in as a selector; this method owns only the
       // shared approval + snapshot discipline. Exactly ONE attempt: if the
       // selected template fails a check the whole tier returns null and
@@ -882,7 +882,7 @@ export class PromptResolutionService {
   }
 
   /**
-   * TASK-635 C5 §7.4 — load the SESSION-pinned agent, or null.
+   * Load the SESSION-pinned agent, or null.
    *
    * Total by construction: `Repository.findById` THROWS `DataNotFoundException`
    * on a missing row, and a re-departmented / cross-tenant / disabled agent is

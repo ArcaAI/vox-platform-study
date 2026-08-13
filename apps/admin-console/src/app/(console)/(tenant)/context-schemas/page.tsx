@@ -3,7 +3,7 @@ import { ContextSchemasScreen } from '@/features/context-schemas/components/cont
 
 export const metadata: Metadata = { title: 'Context Schemas' };
 
-/** Context Schemas — tenant-defined consultation context vocabulary (tier 30-49, TASK-658/666). */
+/** Context Schemas — tenant-defined consultation context vocabulary (tier 30-49). */
 export default function ContextSchemasPage() {
   return <ContextSchemasScreen />;
 }

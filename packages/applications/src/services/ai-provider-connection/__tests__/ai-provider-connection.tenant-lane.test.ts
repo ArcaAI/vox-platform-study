@@ -119,7 +119,7 @@ describe('resolveTenantCloudOverrides — BYO injection resolver', () => {
     });
 
     const { overrides } = await svc.resolveTenantCloudOverrides(TENANT_A);
-    // TASK-643 — every entry now carries who paid for it, derived from the row
+    // Every entry now carries who paid for it, derived from the row
     // that supplied it. This IS the wire shape; asserted exactly, not loosely.
     expect(overrides).toEqual({
       azure: {
@@ -143,7 +143,7 @@ describe('resolveTenantCloudOverrides — BYO injection resolver', () => {
 
   it('skips a DISABLED row so resolution falls through to SYSTEM/env', async () => {
     const { svc } = makeService({ rows: [makeRow({ provider: 'azure', enabled: false })] });
-    // …and, since TASK-643, records WHY: a disabled tenant row is a veto, so
+    // …and, now, records WHY: a disabled tenant row is a veto, so
     // the platform default is suppressed for that provider too.
     await expect(svc.resolveTenantCloudOverrides(TENANT_A)).resolves.toMatchObject({ overrides: {} });
   });

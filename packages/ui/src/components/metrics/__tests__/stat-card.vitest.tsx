@@ -12,7 +12,7 @@ function delta(container: HTMLElement) {
   return container.querySelector('[data-slot="stat-card-delta"]') as HTMLElement;
 }
 
-describe('StatCard (§3.2)', () => {
+describe('StatCard', () => {
   it('renders the label, value and hint', () => {
     render(<StatCard label="Active tenants" value={27} hint="across all regions" icon={Activity} />);
     expect(screen.getByText('Active tenants')).toBeInTheDocument();

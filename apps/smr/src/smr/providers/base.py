@@ -39,7 +39,7 @@ def require_model(model: str | None, *, provider: str) -> str:
 
 def reject_vision(request: GenerateRequest, *, provider: str) -> None:
     """Fail-closed guard for a provider with NO multimodal wire capability
-    (today: llama.cpp's raw ``/completion`` endpoint — TASK-657).
+    (today: llama.cpp's raw ``/completion`` endpoint).
 
     Raises ``VisionNotSupportedError`` when the request carries an image
     content part, rather than silently sending the text-only prompt and
@@ -60,7 +60,7 @@ class LLMProvider(Protocol):
     """Contract that every LLM provider must satisfy.
 
     ``generate``/``generate_stream`` accept an OPTIONAL multimodal payload via
-    ``request.content_parts`` (TASK-657) — a text-only ``GenerateRequest`` (the
+    ``request.content_parts`` — a text-only ``GenerateRequest`` (the
     default) is unaffected; a provider with no vision wire capability must
     raise ``VisionNotSupportedError`` (see ``reject_vision``) rather than drop
     the image parts.

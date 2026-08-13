@@ -5,7 +5,7 @@ import { truncateToUtcDay } from './billing-period';
 import { DailyUnitQuantity } from './invoice-math';
 
 /**
- * Billable-usage construction (TASK-615 WS-I, D13/D16/OQ1).
+ * Billable-usage construction (D13/D16/OQ1).
  *
  * ============================================================================
  * WHY ROLLUPS ALONE ARE NOT ENOUGH — the `operation` dimension gap
@@ -21,7 +21,7 @@ import { DailyUnitQuantity } from './invoice-math';
  *     recorded for repricing only. Batch STT emits ONLY audio-seconds. The
  *     rollup AUDIO_SECOND bucket mixes both, so it cannot be billed as-is.
  *
- * The rollup grain DID grow an `operation` dimension (TASK-615 follow-up #4),
+ * The rollup grain DID grow an `operation` dimension,
  * but rows written before that migration carry the `""` sentinel, so the
  * compensation path stays: it is the only thing that reads those historical
  * buckets correctly. The engine takes a bounded LEDGER AGGREGATE (SQL
@@ -48,7 +48,7 @@ export const BILLABLE_UNITS: Record<AiCapability, readonly AiUsageUnit[]> = {
   // OQ1: session-seconds for streaming; audio-seconds ONLY from batch (replaced source).
   [AiCapability.STT]: [AiUsageUnit.SESSION_SECOND, AiUsageUnit.AUDIO_SECOND],
   // All billable token kinds pool into `monthlyLlmTokens`. GPU_SECOND is the
-  // self-hosted cost-truth unit and is never sold (research §3).
+  // self-hosted cost-truth unit and is never sold (research ).
   [AiCapability.LLM]: [
     AiUsageUnit.INPUT_TOKEN,
     AiUsageUnit.OUTPUT_TOKEN,
@@ -71,7 +71,7 @@ export const STT_BATCH_OPERATION = 'transcribe.batch';
 /**
  * Per-(day, unit, provider, deployment) sums, already summed across `model`.
  *
- * `provider` and `deployment` survive into billing (TASK-638) because the pooled
+ * `provider` and `deployment` survive into billing because the pooled
  * allowance is consumed SELF_HOSTED-first and the SELL rate is resolved per
  * provider. Collapsing them here — as this type did before — is what made a
  * managed-ASR premium unpriceable.

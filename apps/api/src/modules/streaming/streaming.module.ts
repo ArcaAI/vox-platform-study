@@ -40,7 +40,7 @@ import { TranscriptionJobController } from './transcription-job.controller';
     PipelineServiceModule,
     CoreDatabaseModule,
     HarnessPolicyServiceModule, // SMR-selection resolver for SmrProxyController
-    // TASK-610 D-6 — supplies `IOriginRegistry` to `SttWsGateway`'s CSWSH
+    // Supplies `IOriginRegistry` to `SttWsGateway`'s CSWSH
     // handshake check. Browsers do NOT apply CORS to WebSockets, so this is the
     // only place the allow-list reaches the socket path. The gateway injects it
     // `@Optional()` and fails OPEN, so omitting this import does not break the
@@ -69,8 +69,8 @@ import { TranscriptionJobController } from './transcription-job.controller';
     // Resolves the caller tenant's STT fallback pointer + BYO provider
     // overrides for `createStreamSession` injection + `switch-to-fallback`.
     TenantSttConfigServiceModule,
-    // TASK-615 — `IUsageLedgerService` for `SmrProxyController`'s (WS-D)
-    // generate.stream emission AND `StreamingSessionService`'s (WS-C)
+    // `IUsageLedgerService` for `SmrProxyController`'s
+    // generate.stream emission AND `StreamingSessionService`'s
     // transcribe.stream emission. Both are constructor-injected at THIS
     // module's level (SmrProxyController is declared directly below;
     // StreamingSessionServiceModule importing it only satisfies its OWN

@@ -1,7 +1,7 @@
--- TASK-576 — Legacy Credential-Table Cleanup (Wave 2, runs LAST)
+-- Legacy Credential-Table Cleanup (Wave 2, runs LAST)
 --
 -- DESTRUCTIVE. Drops the two legacy per-capability BYO provider-credential
--- tables now that TASK-570 (TTS) and TASK-571 (STT) have repointed every
+-- tables now that TTS and STT have repointed every
 -- reader/writer at the unified "core"."AiProviderConnection" plane
 -- (`service` discriminator: 'llm' | 'stt' | 'tts'). A grep of `packages/**`
 -- and `apps/**` at authoring time found zero remaining live reads/writes of
@@ -11,7 +11,7 @@
 --
 -- ┌─────────────────────────────── RESTORE PATH ───────────────────────────┐
 -- │ This migration is NOT reversible by re-creating the dropped tables with │
--- │ live data — but no data is actually at risk. TASK-569                   │
+-- │ live data — but no data is actually at risk. │
 -- │ (20260728120000_task_569_provider_connection_service_discriminator)     │
 -- │ already COPIED (never moved) every row from both legacy tables into     │
 -- │ "core"."AiProviderConnection" (service='tts' / service='stt' rows,      │
@@ -25,7 +25,7 @@
 -- │   - 20260728000000_task_567_tenant_stt_fallback_config/migration.sql    │
 -- │     (TenantSttProviderCredential)                                       │
 -- │ then re-populate from AiProviderConnection with the inverse of the      │
--- │ TASK-569 copy (filter service='tts'|'stt', map baseUrl→endpoint).       │
+-- │ copy (filter service='tts'|'stt', map baseUrl→endpoint). │
 -- └───────────────────────────────────────────────────────────────────────┘
 --
 -- `ResourceType` enum member handling: Postgres cannot cheaply DROP a VALUE

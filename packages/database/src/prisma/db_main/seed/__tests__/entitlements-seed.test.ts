@@ -1,5 +1,5 @@
 /**
- * seedEntitlements — TASK-615 WS-H addition.
+ * seedEntitlements — addition.
  *
  * Two GlobalSetting kill-switches now seed off the SAME env-driven pattern:
  *   - `entitlements.enabled`        (ENTITLEMENTS_ENABLED_DEFAULT)   — pre-existing (WS-A)
@@ -111,12 +111,12 @@ describe('seedEntitlements — metering.reconcile.enabled GlobalSetting row', ()
 });
 
 /*
- * TASK-643 test 40 — OD-7, seed side.
+ * Test 40 — OD-7, seed side.
  *
  * `featurePlatformDefaultCredential` grants a tenant's provider-credential
  * cascade access to the SYSTEM (platform-funded) tier. NO plan tier carries it:
  * a plan-level `true` on PRO or ENTERPRISE would hand every tenant on that plan
- * a platform-funded cloud path, reopening exactly the margin hole TASK-638
+ * a platform-funded cloud path, reopening exactly the margin hole
  * closed when it ratified "SYSTEM default stays self-hosted, managed cloud is a
  * paid add-on" (see `managed-asr-addon-posture.test.ts`, whose posture this
  * upholds). Grants are per tenant, via `TenantEntitlement`.
@@ -124,7 +124,7 @@ describe('seedEntitlements — metering.reconcile.enabled GlobalSetting row', ()
  * Seed-side counterpart of the resolver-side test in
  * `packages/applications/src/services/entitlements/__tests__/resolve-entitlements.test.ts`.
  */
-describe('seedEntitlements — featurePlatformDefaultCredential (TASK-643 OD-7)', () => {
+describe('seedEntitlements — featurePlatformDefaultCredential', () => {
   it('seeds all four plan rows with the grant OFF', () => {
     expect(PLAN_ENTITLEMENTS).toHaveLength(4);
     PLAN_ENTITLEMENTS.forEach((row) => {

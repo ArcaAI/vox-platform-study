@@ -1,8 +1,8 @@
 'use client';
 
 /**
- * Definition tab (TASK-666): the kind editor + output-kind editor + publish
- * flow over `POST :id/publish` (TASK-658 §3.2). The draft lives in the
+ * Definition tab: the kind editor + output-kind editor + publish
+ * flow over `POST :id/publish`. The draft lives in the
  * parent drawer (`ContextSchemaDetailDrawer`) so the Tester tab can validate
  * sample payloads against the SAME in-progress draft, not a stale published
  * copy.

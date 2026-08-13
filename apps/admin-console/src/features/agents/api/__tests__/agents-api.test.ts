@@ -166,7 +166,7 @@ describe('departmentAgentKeys', () => {
   });
 });
 
-describe('department-agents client (TASK-546 admin/department-agents)', () => {
+describe('department-agents client (admin/department-agents)', () => {
   it('lists (0-based page), creates, reads and soft-deletes agents', async () => {
     const calls = installFetchMock();
     await listDepartmentAgents({ departmentId: 'd-1', page: 0, limit: 20 });

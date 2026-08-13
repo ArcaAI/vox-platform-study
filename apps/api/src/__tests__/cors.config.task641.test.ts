@@ -1,10 +1,10 @@
 /**
- * TASK-641 T-10 — FR-8: **no env var participates in ANY CORS decision.**
+ * **no env var participates in ANY CORS decision.**
  *
  * > "no env var may participate in any CORS decision — not as an allow-list,
  * >  and not as a behavioural branch."
  *
- * TASK-610 §4A.1 already deleted the last allow-list env var
+ * The last allow-list env var was already deleted
  * (`CORS_ALLOWED_ORIGINS`). B-7 was the last *behavioural* one: a
  * `NODE_ENV === 'development'` branch in `isOriginAllowed` that admitted
  * loopback origins the registry had refused. It is gone; local development is
@@ -14,12 +14,12 @@
  *
  * ── WHY THIS FILE EXISTS AT ALL ─────────────────────────────────────────────
  *
- * The behavioural half (below, §A) proves the branch is gone *today*. It does
+ * The behavioural half (below) proves the branch is gone *today*. It does
  * not stop it growing back: someone re-adding `if (nodeEnv === 'development')`
- * would be reverting a security posture, and §A's cases would go red only for
- * the exact origins they happen to enumerate. The source-level half (§B) fails
+ * would be reverting a security posture, and the behavioural cases would go red only for
+ * the exact origins they happen to enumerate. The source-level half fails
  * for ANY env read anywhere in the decision path, enumerated or not — the same
- * reason TASK-610 shipped a source-reading guard for the `main.ts` bootstrap
+ * reason a source-reading guard shipped for the `main.ts` bootstrap
  * log (`platform-knobs.binder.enforcement.task610.test.ts`, "does NOT claim a
  * posture it cannot know").
  *
@@ -29,10 +29,10 @@
  * `debug` line. That read is DELIBERATELY LEFT IN PLACE and is deliberately
  * excluded here. It gates LOG VERBOSITY, not admission: both of that function's
  * branches `return allowed` unchanged, so no value of `NODE_ENV` can move an
- * origin from refused to admitted or back. FR-8 governs the CORS *decision*;
+ * origin from refused to admitted or back. No env var governs the CORS *decision*;
  * deleting a diagnostic would cost the operator the only per-origin trace they
- * have and buy no security. §B therefore excises exactly that one function and
- * asserts over everything else — and §B.1 proves the excision is honest by
+ * have and buy no security. The source-level half therefore excises exactly that one function and
+ * asserts over everything else — and a planted-env-read case proves the excision is honest by
  * running the identical pipeline over a source that DOES plant an env read in
  * the decision path, and requiring it to be caught.
  */
@@ -65,12 +65,12 @@ const EMPTY_REGISTRY = { has: () => false, allows: () => false };
 /** Every environment string the gateway is ever started with. */
 const ALL_NODE_ENVS = ['development', 'test', 'staging', 'production'] as const;
 
-describe('§A — behaviour: the environment is not an input to the decision (FR-8, B-7)', () => {
+describe('behaviour: the environment is not an input to the decision', () => {
   const savedNodeEnv = process.env.NODE_ENV;
 
   beforeEach(() => {
     setOriginRegistryResolver(null);
-    // FR-6: enforcement is ON. Under the permissive default nothing below would
+    // enforcement is ON. Under the permissive default nothing below would
     // discriminate — every origin is admitted regardless of environment, so the
     // suite would pass with the dev branch fully restored.
     setOriginEnforcementResolver(() => true);
@@ -131,7 +131,7 @@ describe('§A — behaviour: the environment is not an input to the decision (FR
    * The `nodeEnv` PARAMETER is now inert. It is kept in the signature because
    * `getCorsOrigins`/`buildCorsOptions` are called from `main.ts` with it and
    * removing it is a wider change than this lane owns — so pin that it cannot
-   * influence anything, which is the property FR-8 actually cares about.
+   * influence anything, which is the property actually cares about.
    */
   it('returns the same verdict for every value of the nodeEnv argument, seeded or not', () => {
     setOriginRegistryResolver(() => seededLoopbackRegistry());
@@ -157,7 +157,7 @@ describe('§A — behaviour: the environment is not an input to the decision (FR
 });
 
 // ───────────────────────────────────────────────────────────────────────────
-// §B — source: the branch cannot grow back
+// source: the branch cannot grow back
 // ───────────────────────────────────────────────────────────────────────────
 
 /**
@@ -199,11 +199,11 @@ function exciseFunction(code: string, name: string): string | null {
  * `apps/api` compiles as CommonJS and `tsc` rejects `import.meta` (TS1343), so
  * the path is resolved from `cwd` — which is the repo root or `apps/api`
  * depending on how vitest was invoked. Both are tried, and a miss FAILS.
- * (Lifted from TASK-610's `main.ts` bootstrap-log guard, same constraint.)
+ * (Lifted from 's `main.ts` bootstrap-log guard, same constraint.)
  */
 const CORS_CONFIG = ['apps/api/src/cors.config.ts', 'src/cors.config.ts'].map((c) => resolve(process.cwd(), c)).find(existsSync);
 
-describe('§B — source: no env read anywhere in the CORS decision path (FR-8, T-10)', () => {
+describe('source: no env read anywhere in the CORS decision path', () => {
   const source = CORS_CONFIG ? readFileSync(CORS_CONFIG, 'utf8') : '';
   const code = stripComments(source);
   const decisionPath = exciseFunction(code, 'logCorsDecision');
@@ -269,7 +269,7 @@ describe('§B — source: no env read anywhere in the CORS decision path (FR-8, 
   });
 
   /**
-   * H-4. `credentials: false` is security-load-bearing (TASK-610 §4C.2) and is
+   * `credentials: false` is security-load-bearing and is
    * pinned behaviourally in `cors.config.enforcement.task610.test.ts`. It is
    * restated at the source level here because this lane deletes lines from this
    * file, and "tidying up" that literal while nearby is the plausible accident.

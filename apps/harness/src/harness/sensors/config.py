@@ -28,7 +28,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class SensorThresholds(BaseSettings):
     """``passed`` thresholds for the computational sensors."""
 
-    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
     settings_customise_sources = hope_settings_sources
 
     model_config = SettingsConfigDict(env_prefix="HARNESS_SENSOR_")

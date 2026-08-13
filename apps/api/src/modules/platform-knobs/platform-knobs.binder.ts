@@ -5,13 +5,13 @@ import { isOriginEnforcementEnabled, setOriginEnforcementResolver, setOriginRegi
 
 /**
  * Applies the PRE-BOOTSTRAP platform knobs whose readers exist before the Nest
- * module graph does: the `logLevel` GlobalSetting (TASK-558 lane I), the CORS
- * origin registry resolver (TASK-610), and the `origin.enforcementEnabled`
- * switch that decides whether that registry is consulted at all (§4C). They are
+ * module graph does: the `logLevel` GlobalSetting, the CORS
+ * origin registry resolver, and the `origin.enforcementEnabled`
+ * switch that decides whether that registry is consulted at all. They are
  * not the same KIND of knob — `logLevel` and `origin.enforcementEnabled` are
  * `GlobalSetting`-backed values (the first with an env bootstrap default, the
  * second with none — its descriptor default IS the platform posture), while the
- * CORS ALLOW-LIST has no knob and no env fallback at all since §4A.1, only the
+ * CORS ALLOW-LIST has no knob and no env fallback at all, only the
  * `TenantAllowedOrigin`-backed registry described below.
  *
  * WHY A BINDER AND NOT A PLAIN READ. Both are consumed before the Nest module
@@ -27,7 +27,7 @@ import { isOriginEnforcementEnabled, setOriginEnforcementResolver, setOriginRegi
  * It re-applies on `app-settings.cache-refreshed`, which `AppSettingsService`
  * emits after every refresh — including the one driven by the
  * `app-settings:invalidate` fan-out lane G proved end to end. Propagation is
- * therefore push, not poll (§9.2 L4).
+ * therefore push, not poll (L4).
  *
  * Both dependencies are `@Optional()` so a graph that wires neither still
  * boots — `logLevel` on its env-seeded default, CORS denying every browser
@@ -66,18 +66,18 @@ export class PlatformKnobsBinder implements OnModuleInit {
   }
 
   /**
-   * TASK-610 — hand the origin REGISTRY to the pre-bootstrap CORS code.
+   * Hand the origin REGISTRY to the pre-bootstrap CORS code.
    *
-   * This replaces the `corsAllowedOrigins` string resolver TASK-558 lane I
+   * This replaces the `corsAllowedOrigins` string resolver
    * installed here. Allowed origins are `TenantAllowedOrigin` rows now, so the
    * lazily-resolved thing is the reverse index rather than a comma-separated
-   * setting. There is no env-var fallback of any kind any more — TASK-610
-   * §4A.1 retired `CORS_ALLOWED_ORIGINS` outright (owner directive: no env var
+   * setting. There is no env-var fallback of any kind any more
+   * retired `CORS_ALLOWED_ORIGINS` outright (owner directive: no env var
    * ever controls the CORS allow-list). `cors.config.ts` now DENIES whenever
    * this resolver reports `null`.
    *
    * WHY THE EMPTY INDEX IS STILL REPORTED AS `null` RATHER THAN THE (EMPTY)
-   * REGISTRY ITSELF. Functionally the two are equivalent post-§4A.1 — an
+   * REGISTRY ITSELF. Functionally the two are equivalent post- — an
    * empty registry's `has()` would answer `false` for every origin anyway, so
    * either encoding DENIES. The collapse is kept purely for DIAGNOSTICS: it
    * gives `cors.config.ts` a way to log a DISTINCT, greppable reason
@@ -106,7 +106,7 @@ export class PlatformKnobsBinder implements OnModuleInit {
   }
 
   /**
-   * TASK-610 §4C — hand the `origin.enforcementEnabled` switch to the
+   * Hand the `origin.enforcementEnabled` switch to the
    * pre-bootstrap CORS code.
    *
    * Resolved EXACTLY like `logLevel`: through `TenantSettingsService` against
@@ -116,7 +116,7 @@ export class PlatformKnobsBinder implements OnModuleInit {
    *
    *   • a value captured at init would freeze the switch at whatever the
    *     settings cache held at boot, so an operator's write would appear to do
-   *     nothing until the next restart — the §9.2 L1 anti-pattern this whole
+   * nothing until the next restart — the L1 anti-pattern this whole
    *     settings tier exists to avoid;
    *   • unlike `logLevel`, there is nothing to "apply" on a refresh — the value
    *     is consulted inside the per-request origin decision — so this is
@@ -125,7 +125,7 @@ export class PlatformKnobsBinder implements OnModuleInit {
    *
    * With no settings service wired, no resolver is installed and
    * `isOriginEnforcementEnabled()` answers `false`: enforcement stays OFF. That
-   * is NO LONGER the platform default — TASK-641 FR-6 made the descriptor
+   * is NO LONGER the platform default — made the descriptor
    * default `true` — it is the fallback for a process that has no way to read
    * the switch at all, and refusing every browser origin on the strength of a
    * value nobody could read is the wrong direction. What prevents a lock-out
@@ -162,7 +162,7 @@ export class PlatformKnobsBinder implements OnModuleInit {
    * correctly refused an unregistered origin seconds later. The behaviour was
    * never wrong (the resolver is lazy, so every REQUEST saw the true value);
    * only the announcement was, which is worse than silence — it is a signal that
-   * lies about a security posture, in a ticket whose §5.2 lesson is exactly that.
+   * lies about a security posture, in a ticket whose lesson is exactly that.
    *
    * Driven by `app-settings.cache-refreshed` because that event is emitted by
    * `AppSettingsService.cacheAppSettings()` — including the INITIAL warm — so it

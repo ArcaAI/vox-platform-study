@@ -1,10 +1,10 @@
-// TASK-558 lane J (J4) — the three secrets that MUST NEVER move into Vault.
+// (J4) — the three secrets that MUST NEVER move into Vault.
 //
 // `VAULT_SECRET_ID`, `VAULT_WRAPPED_SECRET_ID` and `VAULT_DB_ADMIN_PASS` are the
 // credentials used *to reach* Vault (and the one Vault itself uses to reach
 // PostgreSQL). Storing them in Vault is circular: the process would need the
 // secret in order to fetch the secret. They are the irreducible bootstrap floor
-// (plan §13.1) and the only secrets a deployed host env or a CI variable should
+// and the only secrets a deployed host env or a CI variable should
 // ever carry.
 //
 // This is not a style preference — "finishing the migration" by reclassifying
@@ -20,12 +20,12 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { resolve, sep } from 'node:path';
 import { BOOTSTRAP_ENV_SETTINGS, PLATFORM_SECRET_SETTINGS, toEnvVarName } from '@arcaai/applications';
 
-/** The circular three (plan §13.1). */
+/** The circular three. */
 const BOOTSTRAP_ONLY_SECRETS = ['VAULT_SECRET_ID', 'VAULT_WRAPPED_SECRET_ID', 'VAULT_DB_ADMIN_PASS'] as const;
 
 const REPO_ROOT = resolve(__dirname, '../../../../..');
 
-describe('the Vault-reaching credentials stay in env, permanently (plan §13.1)', () => {
+describe('the Vault-reaching credentials stay in env, permanently', () => {
   const byName = new Map(BOOTSTRAP_ENV_SETTINGS.map((d) => [toEnvVarName(d.key), d]));
 
   it.each(BOOTSTRAP_ONLY_SECRETS)('%s is declared at tier `env`', (name) => {

@@ -9,7 +9,7 @@ import { ConsultationContextSchemaVersionEntityMapper } from '../../../mappers';
 import { ConsultationContextSchemaVersion } from '../../../models';
 
 /**
- * TASK-658 — immutable published snapshots of a `ConsultationContextSchema`.
+ * Immutable published snapshots of a `ConsultationContextSchema`.
  *
  * Listed in `MODELS_WITHOUT_SOFT_DELETE`: the table has no `resourceStatus`
  * column, so `softDelete`/`restore` throw and reads must NOT filter on it. A

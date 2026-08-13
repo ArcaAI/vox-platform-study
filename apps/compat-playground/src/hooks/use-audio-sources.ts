@@ -6,17 +6,17 @@ import { FileAudioSourceGroup, type FileAudioInput } from '../lib/file-audio-sou
 import type { PlaygroundAudioSlice, PlaygroundAudioMode, PlaygroundAudioSource } from '../context/playground-session';
 
 /**
- * Audio-source selection for the console (TASK-597 lane A).
+ * Audio-source selection for the console.
  *
  * Owns the four capture modes and turns whichever is active into the exact
  * option bag `useAudioCapture` forwards to `audio.start(...)`:
  *
- * | mode          | what the SDK receives                                    |
+ * | mode | what the SDK receives |
  * |---------------|----------------------------------------------------------|
- * | `single-mic`  | `deviceId`                                               |
- * | `multi-mic`   | `deviceId` + `secondaryDeviceId` + `additionalDeviceIds`  |
- * | `file-single` | `sourceStreams: [oneFileStream]`                         |
- * | `file-multi`  | `sourceStreams: [n file streams]`                        |
+ * | `single-mic` | `deviceId` |
+ * | `multi-mic` | `deviceId` + `secondaryDeviceId` + `additionalDeviceIds` |
+ * | `file-single` | `sourceStreams: [oneFileStream]` |
+ * | `file-multi` | `sourceStreams: [n file streams]` |
  *
  * All four end up in the SAME mixer → noise-filter → VAD → STT graph — the
  * file modes are not a parallel code path, they are the same path fed from
@@ -24,7 +24,7 @@ import type { PlaygroundAudioSlice, PlaygroundAudioMode, PlaygroundAudioSource }
  *
  * Called ONCE, by `<PlaygroundSessionProvider>`, above the tabs — the decoded
  * buffers and the live streams must survive a tab switch exactly like the mic.
- */
+*/
 export function useAudioSources(): PlaygroundAudioSlice {
   const [mode, setModeState] = useState<PlaygroundAudioMode>('single-mic');
 

@@ -83,7 +83,7 @@ test.describe('Health & Monitoring', () => {
   });
 
   test.describe('API Response Headers', () => {
-    // TASK-610 §4C.2 — INVERTED DELIBERATELY. This used to assert
+    // INVERTED DELIBERATELY. This used to assert
     // `access-control-allow-credentials` was PRESENT. It must now be ABSENT:
     // permitting credentials alongside a reflected arbitrary origin would be a
     // cross-origin READ primitive — any site a logged-in user visits could
@@ -91,7 +91,7 @@ test.describe('Health & Monitoring', () => {
     // included. Bearer auth is unaffected (the SDK sets the `Authorization`
     // header explicitly) and nothing reads `req.session`.
     //
-    // TASK-641 FR-6 flipped `origin.enforcementEnabled` to default `true`, so
+    // Flipped `origin.enforcementEnabled` to default `true`, so
     // the permissive posture this originally guarded is no longer the default —
     // but it is still reachable (an operator turning the switch off, and the
     // pre-boot window before `PlatformKnobsBinder` installs the resolver), and

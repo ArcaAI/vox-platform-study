@@ -1,5 +1,5 @@
 # ============================================================================
-# HOPE — DEV Grafana datasource provisioning (TASK-397, builds on TASK-386)
+# HOPE — DEV Grafana datasource provisioning
 # ============================================================================
 # Single Prometheus datasource for the dev platform-metrics profile. Grafana
 # and Prometheus share the compose `hope-network`, so Grafana reaches Prometheus
@@ -24,7 +24,7 @@ datasources:
       httpMethod: POST
 
   # ==========================================================================
-  # HOPE Postgres — the AI usage/billing plane (TASK-615 #10).
+  # HOPE Postgres — the AI usage/billing plane.
   # The Consumption & Cost dashboard (uid `hope-consumption`) binds every panel
   # to datasource uid `hope-postgres`; without this row the dashboard shows
   # "datasource not found". Grafana reaches Postgres by its compose service name

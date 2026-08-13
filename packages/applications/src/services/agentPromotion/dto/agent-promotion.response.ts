@@ -2,7 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { PaginatedResponse } from '../../../common';
 
 /**
- * TASK-663 — one immutable promotion record, read from the TARGET tenant.
+ * One immutable promotion record, read from the TARGET tenant.
  */
 export class AgentPromotionResponse {
   @ApiProperty({ description: 'Promotion id' })

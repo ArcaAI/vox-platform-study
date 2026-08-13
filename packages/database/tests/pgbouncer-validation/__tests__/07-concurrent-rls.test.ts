@@ -11,7 +11,7 @@
 // DISCARD ALL or pinning the SET LOCAL to the open transaction, at least
 // one txn would observe a foreign tag → test fails.
 //
-// Phase 1 rubric (per plan §1.18):
+// Phase 1 rubric:
 //   * R-CRLS-1 — all 100 concurrent txns return their own tag
 //   * R-CRLS-2 — zero rejected promises (no pool exhaustion / errors)
 

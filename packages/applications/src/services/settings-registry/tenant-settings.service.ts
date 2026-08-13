@@ -1,26 +1,26 @@
-// The `global-kv` cascade — TASK-558 lane I (plan §9.3 M1/M2/M4, §9.2 L8).
+// The `global-kv` cascade.
 //
-// WHAT THIS IS FOR. Waves 1–3 classified every key; lane I moves the values.
-// Ten operational knobs and the flags that had no home but `process.env` now
-// live in `GlobalSetting`, and the ones a plan tier differentiates resolve
+// WHAT THIS IS FOR. Classification recorded every key; this service moves the
+// values. Ten operational knobs and the flags that had no home but `process.env`
+// now live in `GlobalSetting`, and the ones a plan tier differentiates resolve
 // PER TENANT. This service is the one place that walk happens:
 //
 //     tenant override  →  SYSTEM/platform row  →  descriptor default
 //
 // THREE PROPERTIES THAT ARE NOT NEGOTIABLE
 //
-//  • §9.3 M4 — the tenant lane is a `${tenantId}::${key}` map inside
-//    `AppSettingsService`. The key-only map stays platform-only (lane G's
-//    fix); this service never mixes them, and a tenant lookup has no slot it
-//    could collide with another tenant's row in.
+//  • The tenant lane is a `${tenantId}::${key}` map inside
+//    `AppSettingsService`. The key-only map stays platform-only; this service
+//    never mixes them, and a tenant lookup has no slot it could collide with
+//    another tenant's row in.
 //
-//  • §9.3 M2 — entitlements are a CEILING, not a cascade level. The caller
+//  • Entitlements are a CEILING, not a cascade level. The caller
 //    passes the tenant's plan bound; `clampTenantSetting` applies it (plus the
 //    monotone platform bound) to the TENANT value only. The platform value is
 //    never clamped: a ceiling bounds what a tenant may SET, it does not lower
 //    what the platform already decided.
 //
-//  • §9.3 M1 — the scope clamp is honoured on READ, not only on write. A key
+//  • The scope clamp is honoured on READ, not only on write. A key
 //    declared `maxScope: 'system'` skips the tenant lane entirely, so a row
 //    planted under a tenant (by a future bug, a bad migration, or the legacy
 //    `GlobalSettingController` CRUD over the same table) can never govern a
@@ -29,8 +29,8 @@
 // SYNCHRONOUS ON PURPOSE. Both accessors read the in-memory cache and do no
 // I/O, because the first consumer is `TieredThrottlerGuard` — a per-request hot
 // path. Propagation is push, not poll: a registry write refreshes the cache and
-// publishes on `app-settings:invalidate`, which lane G proved end to end, so
-// both lanes converge without a TTL wait (§9.2 L4).
+// publishes on `app-settings:invalidate`, proved end to end, so
+// both lanes converge without a TTL wait.
 
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ArgumentInvalidException } from '@arcaai/exceptions';
@@ -39,7 +39,7 @@ import { HOPE_SETTINGS_REGISTRY } from './registry';
 import type { SettingDescriptor } from './registry.types';
 import { clampTenantSetting } from './tenant-clamp';
 
-/** Which tier of the cascade supplied the value (§9.2 L8 — every fallback is observable). */
+/** Which tier of the cascade supplied the value (every fallback is observable). */
 export type SettingSourceScope = 'tenant' | 'system' | 'code-default';
 
 export interface ResolvedTenantSetting<T = unknown> {
@@ -62,8 +62,7 @@ export interface ResolveTenantSettingOptions {
 }
 
 /**
- * Apply the DECLARED failure mode when every tier came back empty
- * (plan §4 B3, §9.3 M5).
+ * Apply the DECLARED failure mode when every tier came back empty.
  *
  * `closed`          → raise; no default is substituted (secrets and
  *                     provider/model SELECTION never fall back).
@@ -124,7 +123,7 @@ export class TenantSettingsService {
 
     const platform = this.appSettings.getValueFromCache(key);
 
-    // The tenant lane — gated on the DECLARED max scope (§9.3 M1), so the read
+    // The tenant lane — gated on the DECLARED max scope, so the read
     // path enforces the same clamp the write path does.
     if (tenantId && descriptor.maxScope !== 'system') {
       const stored = this.appSettings.getTenantValueFromCache(tenantId, key);
@@ -152,7 +151,7 @@ export class TenantSettingsService {
   }
 
   /**
-   * §9.2 L8 — a narrowed value must be observable, or an admin sees their
+   * A narrowed value must be observable, or an admin sees their
    * setting "not take effect" with no explanation. Logged once per
    * (key, tenant) so a per-request resolution cannot flood the log.
    */

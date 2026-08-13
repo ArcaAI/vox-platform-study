@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================================
-# TASK-557 — TEST app-stack supervisor
+# TEST app-stack supervisor
 # ============================================================================
 # Test counterpart of scripts/dev-stack.sh: brings up the isolated TEST
 # infrastructure, then starts HOPE services configured from .env.test so an
@@ -21,7 +21,7 @@
 #     then verifies the schema is pushed via test-doctor.sh --infra-only.
 #   - Every service is launched through scripts/start-test-app.sh, so it gets
 #     .env.test with `dotenv -o` (test values override the ambient shell).
-#   - REFUSES to start onto a bound port. Since TASK-557 the test env owns its
+#   - REFUSES to start onto a bound port. The test env owns its
 #     own ports (DEV + 100), so a dev stack may run alongside; a bound port now
 #     means a second TEST instance, not a dev/test clash.
 #   - After spawning, waits for each service's health endpoint (up to

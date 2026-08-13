@@ -18,7 +18,7 @@ vi.mock('../../hooks/useArcaAudio', () => ({
   useArcaAudio: vi.fn(),
 }));
 
-// TASK-603 — the frozen v1 upload members are now real, so the file-transcription
+// The frozen v1 upload members are now real, so the file-transcription
 // service is stubbed the same way the batch-hook suite stubs it.
 const fileServiceMocks = vi.hoisted(() => {
   const upload = vi.fn();
@@ -43,15 +43,15 @@ vi.mock('../../store/agenticStore', async (importOriginal) => {
 type MockState = {
   transcriptSegments: unknown[];
   currentTranscript: string;
-  // TASK-587 — useArcaSpeechToText publishes the selected language/mode into the
+  // useArcaSpeechToText publishes the selected language/mode into the
   // store; `installStore` fills these action selectors (optional so tests can
   // declare the state with just the transcript fields).
   setAudioLanguage?: (language: string) => void;
   setSttLanguageMode?: (mode: string | undefined) => void;
-  // TASK-586 — the pre-start engine selection consumed at `audio.start`.
+  // The pre-start engine selection consumed at `audio.start`.
   pendingSttProvider?: 'primary' | 'fallback' | null;
   setPendingSttProvider?: (v: 'primary' | 'fallback' | null) => void;
-  // TASK-603 — the client the (now real) v1 upload members run through.
+  // The client the (now real) v1 upload members run through.
   apiClient?: unknown;
   logger?: unknown;
 };
@@ -78,8 +78,8 @@ const audioMock = {
   isCapturing: false,
   start: vi.fn().mockResolvedValue(undefined),
   stop: vi.fn().mockResolvedValue(undefined),
-  // Streaming STT connection / active-pipeline surface (TASK-567 Phase F) that
-  // the onStatus wiring (TASK-568 D-2) observes. Reset in beforeEach.
+  // Streaming STT connection / active-pipeline surface that
+  // the onStatus wiring observes. Reset in beforeEach.
   sttConnectionState: 'connected' as string,
   activePipeline: null as { id: string; name?: string; isFallback: boolean } | null,
 };
@@ -91,7 +91,7 @@ const baseProps = {
 };
 
 // ---------------------------------------------------------------------------
-// Pure helpers (the contract crux — TASK-564 §5.2 / §4.3)
+// Pure helpers (the contract crux)
 // ---------------------------------------------------------------------------
 
 describe('composeDeliveredMetadata — F4 precedence', () => {
@@ -119,7 +119,7 @@ describe('composeDeliveredMetadata — F4 precedence', () => {
     });
     // caller wins over the seg.language enrichment
     expect(out.language).toBe('ml');
-    // detected_language (§4.3) is independent — caller set no detected_language/detectedLanguage,
+    // detected_language is independent — caller set no detected_language/detectedLanguage
     // so it normalizes off seg.language, NOT the caller's `language` key
     expect(out.detected_language).toBe('en');
   });
@@ -142,7 +142,7 @@ describe('composeDeliveredMetadata — F4 precedence', () => {
   });
 });
 
-describe('resolveChunkId (§4.3 priority)', () => {
+describe('resolveChunkId (priority)', () => {
   it('prefers chunk_id → chunkId → other', () => {
     expect(resolveChunkId({ chunk_id: 'c1', chunkId: 'c2', other: 'c3' })).toBe('c1');
     expect(resolveChunkId({ chunkId: 'c2', other: 'c3' })).toBe('c2');
@@ -152,7 +152,7 @@ describe('resolveChunkId (§4.3 priority)', () => {
   });
 });
 
-describe('resolveDetectedLanguage (§4.3 priority)', () => {
+describe('resolveDetectedLanguage (priority)', () => {
   it('prefers detected_language → detectedLanguage → seg.language', () => {
     expect(resolveDetectedLanguage({ detected_language: 'ml', detectedLanguage: 'hi' }, { language: 'en' })).toBe('ml');
     expect(resolveDetectedLanguage({ detectedLanguage: 'hi' }, { language: 'en' })).toBe('hi');
@@ -203,7 +203,7 @@ describe('useArcaSpeechToText', () => {
     vi.restoreAllMocks();
   });
 
-  it('publishes language + languageMode to the store so a capture-first start honors the selection (TASK-587)', () => {
+  it('publishes language + languageMode to the store so a capture-first start honors the selection', () => {
     const state: MockState = { transcriptSegments: [], currentTranscript: '' } as MockState;
     installStore(state);
 
@@ -217,7 +217,7 @@ describe('useArcaSpeechToText', () => {
     expect(state.setSttLanguageMode).toHaveBeenCalledWith('en');
   });
 
-  it('startTranscription passes the pending pre-start provider as startOn and clears it (TASK-586)', async () => {
+  it('startTranscription passes the pending pre-start provider as startOn and clears it', async () => {
     const state: MockState = { transcriptSegments: [], currentTranscript: '', pendingSttProvider: 'fallback' } as MockState;
     installStore(state);
 
@@ -232,7 +232,7 @@ describe('useArcaSpeechToText', () => {
     expect(state.setPendingSttProvider).toHaveBeenCalledWith(null);
   });
 
-  it('startTranscription omits startOn when no pre-start selection is pending (TASK-586)', async () => {
+  it('startTranscription omits startOn when no pre-start selection is pending', async () => {
     const state: MockState = { transcriptSegments: [], currentTranscript: '' } as MockState;
     installStore(state);
 
@@ -321,11 +321,11 @@ describe('useArcaSpeechToText', () => {
     const meta = onTranscript.mock.calls[onTranscript.mock.calls.length - 1][2] as Record<string, unknown>;
     expect(meta.speaker_id).toBe('app-x'); // caller over diarization
     expect(meta.confidence).toBe(0.1); // caller over seg.confidence
-    expect(meta.chunk_id).toBe('c1'); // §4.3 overlay
+    expect(meta.chunk_id).toBe('c1'); // chunk_id overlay
     expect(meta.language).toBe('en'); // enrichment fills unset key
   });
 
-  it('normalizes chunk_id and detected_language onto delivered finals (§4.3)', () => {
+  it('normalizes chunk_id and detected_language onto delivered finals', () => {
     const onTranscript = vi.fn();
     const state: MockState = { transcriptSegments: [], currentTranscript: '' };
     installStore(state);
@@ -459,10 +459,10 @@ describe('useArcaSpeechToText', () => {
     audioMock.isCapturing = false;
   });
 
-  // TASK-567 §2.4: v1 accepted the backend ASR pipeline via `options`; the
+  // V1 accepted the backend ASR pipeline via `options`; the
   // compat hook previously dropped it, always falling back to the default
   // pipeline. It must now forward `options.pipelineId` to audio.start(...).
-  it('forwards options.pipelineId to audio.start (fixes the §2.4 drop)', async () => {
+  it('forwards options.pipelineId to audio.start (fixes the drop)', async () => {
     installStore({ transcriptSegments: [], currentTranscript: '' });
     audioMock.start.mockClear();
     const { result } = renderHook(() => useArcaSpeechToText({ ...baseProps, options: { pipelineId: 'azure_speech_transcription' } }));
@@ -482,7 +482,7 @@ describe('useArcaSpeechToText', () => {
     expect(audioMock.start).toHaveBeenCalledWith({ language: 'en' });
   });
 
-  // TASK-568 D-2: the already-frozen-but-unwired `onStatus` prop now surfaces the
+  // The already-frozen-but-unwired `onStatus` prop now surfaces the
   // v2 provider_switched + reconnect transitions. Zero signature change.
   it('fires onStatus("provider_switched", {fromPipeline,toPipeline}) when the active pipeline flips to fallback', () => {
     const onStatus = vi.fn();
@@ -523,9 +523,9 @@ describe('useArcaSpeechToText', () => {
     expect(() => act(() => rerender())).not.toThrow();
   });
 
-  // TASK-568 §5.6: a provider switch must NOT disturb the metadata timeline —
+  // A provider switch must NOT disturb the metadata timeline
   // capture never stops, so entries recorded before the switch still correlate
-  // to finals after it (extends the TASK-565 timeline tests).
+  // to finals after it (extends the timeline tests).
   it('metadata timeline survives a provider switch (caller metadata still correlates to post-switch finals)', async () => {
     const onTranscript = vi.fn();
     const state: MockState = { transcriptSegments: [], currentTranscript: '' };
@@ -558,14 +558,14 @@ describe('useArcaSpeechToText', () => {
 });
 
 // ---------------------------------------------------------------------------
-// The frozen v1 upload members, now real (TASK-603)
+// The frozen v1 upload members, now real
 //
 // v1's `useArcaSpeechToText` shipped `uploadAudioFile` / `getTranscriptionStatus`
 // / `isUploading` / `uploadProgress`; compat used to throw on the first two and
 // hardcode the last two. These tests pin the real behaviour AND the fact that
 // the signature did not move — a migrating v1 app must keep compiling.
 // ---------------------------------------------------------------------------
-describe('useArcaSpeechToText — v1 file upload (TASK-603)', () => {
+describe('useArcaSpeechToText — v1 file upload', () => {
   beforeEach(() => {
     fileServiceMocks.upload.mockReset();
     fileServiceMocks.getJob.mockReset();

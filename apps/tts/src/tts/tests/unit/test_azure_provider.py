@@ -204,7 +204,7 @@ def make_fake_stream_sdk(*, cancel=False):
 
 
 def _config(key: str = "secret-key", region: str = "eastus") -> AzureSpeechConfig:
-    # TASK-602: api_key/region are no longer name-populatable (BYOK-only key,
+    # Api_key/region are no longer name-populatable (BYOK-only key,
     # aliased region); construct via model_copy as the router applies an override.
     cfg = AzureSpeechConfig(enabled=True)
     return cfg.model_copy(update={"api_key": SecretStr(key), "region": region})

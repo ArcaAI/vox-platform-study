@@ -36,12 +36,12 @@ async function bootstrap() {
   // variable already present in `process.env`, and reads nothing when CI=true
   // or NODE_ENV=production.
   //
-  // SCHEMA SEAM (TASK-558 lane D): the zod env schema validates *here*, right
+  // SCHEMA SEAM: the zod env schema validates *here*, right
   // after loadEnv() and before NestFactory.create(), so a missing env-tier var
-  // fails fast at boot with the full list of problems (plan §9.2 L2).
+  // fails fast at boot with the full list of problems.
   loadEnv();
 
-  // PHI-safe telemetry (TASK-615 WS-G): refuse to boot in production unless
+  // PHI-safe telemetry: refuse to boot in production unless
   // OTel GenAI content-capture is pinned off. Placed immediately after
   // `loadEnv()` — the earliest point `process.env` carries the fully
   // resolved (host env > env file) value — and before the zod schema below,
@@ -53,8 +53,8 @@ async function bootstrap() {
   // descriptors) and read the pre-bootstrap values from the TYPED result rather
   // than from `process.env` — the three reads below (`LOG_LEVEL`, `PORT`,
   // `SHUTDOWN_*_MS`) all happen before the Nest module graph exists, so they
-  // are exactly the ones plan §4 B5 requires to move behind the schema. CORS
-  // has no env entry at all any more (TASK-610 §4A.1) — `TenantAllowedOrigin`
+  // are exactly the ones requires to move behind the schema. CORS
+  // has no env entry at all any more — `TenantAllowedOrigin`
   // rows are the only source. Throws ONE error listing every problem; the
   // process exits before any port is bound.
   const env = apiEnv();
@@ -102,9 +102,9 @@ async function bootstrap() {
   app.setGlobalPrefix(globalPrefix, {
     exclude: [
       '/metrics',
-      // v1-compat SMR summary shims (TASK-562). Excluded from the `api/v1`
+      // v1-compat SMR summary shims. Excluded from the `api/v1`
       // global prefix so `@Controller('api/smr/api/v1')` yields the LITERAL v1
-      // paths existing clients already call (TASK-560 §5.6), instead of being
+      // paths existing clients already call, instead of being
       // rewritten to `/api/v1/api/smr/api/v1/...`.
 
       // v1-compatibility
@@ -183,15 +183,15 @@ async function bootstrap() {
 
   // Route the OTel flush through Nest's own shutdown sequence instead of the
   // competing SIGTERM handler `instrumentation.ts` used to install itself
-  // (TASK-616 G0.1). `beforeApplicationShutdown` runs this alongside every
+  // . `beforeApplicationShutdown` runs this alongside every
   // other cleanup callback, under its own timeout, after the readiness gate
   // has already closed and connections have started draining.
   gracefulShutdownService.registerCleanupCallback('otel-flush', flushOtel);
 
-  // Self-registration (TASK-648 W9): the gateway is the ONLY process that
+  // Self-registration: the gateway is the ONLY process that
   // registers IN-PROCESS — it already holds `IServiceReleaseService`, so it
   // calls `registerInstance()` directly rather than making a self-HTTP call
-  // (ticket §3.4). Fire-and-forget, bounded-timeout, and — like every other
+  // . Fire-and-forget, bounded-timeout, and — like every other
   // process — must NEVER block or fail boot; failures are logged and
   // swallowed inside `startServiceReleaseRegistration` itself.
   const serviceReleaseHandle = startServiceReleaseRegistration(app.get(IServiceReleaseService), new BuildInfoService(), nodeEnv, {
@@ -210,7 +210,7 @@ async function bootstrap() {
   );
 
   // CORS options — assembled in `cors.config.ts` so `credentials: false`
-  // (TASK-610 §4C.2) is unit-testable rather than buried in this closure.
+  // is unit-testable rather than buried in this closure.
   app.enableCors(buildCorsOptions(nodeEnv));
 
   // Add security headers while maintaining SDK compatibility
@@ -236,18 +236,18 @@ async function bootstrap() {
   // the code as it stands — a stale policy label here sends someone hunting a
   // behavior that no longer exists. It has been wrong twice already: it said
   // `allow_all` for three tickets after dev was pinned to localhost, and it
-  // said `allowlist_then_any_https` for the few hours between TASK-610 landing
-  // the header fixes and TASK-610 deleting the catch-all it named.
+  // said `allowlist_then_any_https` for the few hours between landing
+  // the header fixes and deleting the catch-all it named.
   //
-  // Since TASK-610 the allow-list is the `TenantAllowedOrigin` table, indexed
+  // Since the allow-list is the `TenantAllowedOrigin` table, indexed
   // by `OriginRegistryService` and consulted PER REQUEST — so there is no
-  // static list to print here any more. Since §4A.1 there is also no env
+  // static list to print here any more. There is also no env
   // bootstrap fallback: an unreachable or not-yet-loaded registry DENIES
   // every browser origin (see `cors.config.ts`'s `origin_registry_unavailable`
   // reason) rather than falling back to `CORS_ALLOWED_ORIGINS`, which no
   // longer exists.
   //
-  // …AND SINCE §4C ALL OF THAT IS GATED by `origin.enforcementEnabled`, which
+  // …AND SINCE ALL OF THAT IS GATED by `origin.enforcementEnabled`, which
   // THIS LINE DELIBERATELY DOES NOT REPORT.
   //
   // It tried to, and it was wrong: read here — right after NestFactory.create()
@@ -288,7 +288,7 @@ async function bootstrap() {
   auditAdminRoutePermissions(app);
 
   // Refuses to start if any route on the HOPE Node SDK's day-1 summarization
-  // surface (TASK-632 B1) lost its `@RequiredScopes(...)` metadata — closes
+  // surface lost its `@RequiredScopes(...)` metadata — closes
   // G1 (a leaked API key reaching every RBAC-permitted route unscoped) and
   // guards against a future refactor silently dropping the decorator.
   auditApiKeyRequiredScopes();

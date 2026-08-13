@@ -1,5 +1,5 @@
 /**
- * TASK-548 — agent golden-library provisioning + resync, end-to-end.
+ * Agent golden-library provisioning + resync, end-to-end.
  *
  * Exercises the two runtime halves through the real gateway:
  *   - Part 2: creating a tenant clones the SYSTEM agent golden library into it
@@ -12,7 +12,7 @@
  *     idempotent, and refusing to resync the SYSTEM tenant against itself.
  *
  * The reconciler is the DepartmentAgent sibling of the pipeline resync
- * (TASK-531); its cross-tenant privilege posture is asserted the same way.
+ * ; its cross-tenant privilege posture is asserted the same way.
  *
  * A SINGLE global-admin token is acquired in `beforeAll` and reused across
  * tests — the login endpoint is tiered-rate-limited (strict tier), so a

@@ -5,7 +5,7 @@ import { IPriceBookService, ResolvePlanePriceInput, ResolveUsagePriceInput, Reso
 import { PriceCandidate, selectMostSpecificPrice } from './price-book.resolution';
 
 /**
- * Effective-dated rate resolution (TASK-615 WS-B deliverable 3).
+ * Effective-dated rate resolution (deliverable 3).
  *
  * ============================================================================
  * TENANT CARD BEATS PLATFORM CARD — the outermost precedence axis

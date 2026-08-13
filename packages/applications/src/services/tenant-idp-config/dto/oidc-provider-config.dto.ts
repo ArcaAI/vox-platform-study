@@ -7,7 +7,7 @@ import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsObject, IsOptional, IsString,
  * `TenantIdentityProvider.config` (Json). `defaultRoleId`/`defaultDepartmentId`
  * are loose refs (validated for shape only — the service resolves them against
  * the configuring tenant). `groupToRoleMap` maps an IdP group claim value to a
- * HOPE `Role.externalName` (D5/§3.D); `GLOBAL_ADMIN` is never assignable via
+ * HOPE `Role.externalName` (D5/); `GLOBAL_ADMIN` is never assignable via
  * this map (enforced by `FederatedAuthService`, not the DTO).
  */
 export class ClaimMappingsDto {

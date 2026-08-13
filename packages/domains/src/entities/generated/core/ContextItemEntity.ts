@@ -21,12 +21,12 @@ export interface IContextItemEntity extends IBaseTenantEntity {
   contentKeyVersion?: number | null;
   mediaId?: string | null;
   dnaWritingStyleId?: string | null;
-  // TASK-658 — tenant-facing context-kind discriminator layered above `type`.
+  // Tenant-facing context-kind discriminator layered above `type`.
   // `kindKey` names the kind declared by the tenant's pinned
   // ConsultationContextSchemaVersion; `contextSchemaVersionId` records WHICH
   // immutable version this row was validated against, captured at write time
   // so a later publish can never retroactively invalidate an accepted item.
-  // Both null for every write that names no kind — i.e. every pre-TASK-658
+  // Both null for every write that names no kind — i.e. every historical
   // caller.
   kindKey?: string | null;
   contextSchemaVersionId?: string | null;

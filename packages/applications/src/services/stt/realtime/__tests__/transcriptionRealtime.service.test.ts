@@ -248,10 +248,10 @@ describe('TranscriptionRealtimeService', () => {
   });
 
   // -----------------------------------------------------------------------
-  // dispatchDramatiqJob — fallback pipeline (TASK-614 D-6)
+  // dispatchDramatiqJob — fallback pipeline
   //
   // `transcribe_file` re-runs a failed primary ASR on `fallback_pipeline_id`
-  // within the same Dramatiq attempt (TASK-567), but the argument was never
+  // within the same Dramatiq attempt, but the argument was never
   // sent, so batch auto-fallback never ran in production.
   //
   // It rides as a KWARG, deliberately. The actor's positional order is

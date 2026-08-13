@@ -1,6 +1,6 @@
 """OpenAI speech-to-text loader (cloud REST ASR engine).
 
-TASK-567. Mirrors :mod:`stt.models.sarvam_loader`: downloads no weights,
+Mirrors :mod:`stt.models.sarvam_loader`: downloads no weights,
 resolves the API key (per-tenant override first, then ``OPENAI_API_KEY`` env),
 and returns a ``LoadedModel`` whose ``.model`` is a :class:`CloudRestConfig`.
 ``base_url`` supports Azure-OpenAI-compatible endpoints. Transcription is done

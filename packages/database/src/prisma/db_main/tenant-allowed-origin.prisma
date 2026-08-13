@@ -4,11 +4,11 @@
 // DB-backed, global-admin-editable registry of browser origins permitted to
 // call the gateway. Modeled on tenant-stt-config.prisma. Origin resolution
 // (CORS callback + WS handshake) and the tenant-isolation binding guard are
-// built in packages/applications / apps/api (TASK-610, layers 3-4); this
+// built in packages/applications / apps/api (layers 3-4); this
 // model is the leaf schema layer only.
 //
 //   TenantAllowedOrigin — one row per (origin, tenant) GRANT, not one row per
-//   origin. Several tenants legitimately share an origin (README §4B — "many
+// origin. Several tenants legitimately share an origin (— "many
 //   tenants ... share the same origins"), so a row does not have a single
 //   owner; it grants ONE tenant permission to act from that origin. The
 //   reserved SYSTEM tenant (00000000-0000-0000-0000-000000000000) still owns
@@ -45,7 +45,7 @@ model TenantAllowedOrigin {
   // (packages/applications) — this column stores its output, not raw input.
   // Uniqueness lives on the (origin, tenantId) PAIR — see `@@unique` below,
   // not here. A bare field-level `@unique` would forbid two tenants from
-  // sharing an origin, which README §4B requires.
+  // sharing an origin, which requires.
   origin String
 
   // Human-readable name shown in the admin list (e.g. "BCMCH pre-production").

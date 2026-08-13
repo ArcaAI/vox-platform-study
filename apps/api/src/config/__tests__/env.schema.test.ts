@@ -1,6 +1,6 @@
 /**
- * Fail-fast environment schema for the API gateway (TASK-558 lane D, plan §9.1
- * D1 / §9.2 L2-L3).
+ * Fail-fast environment schema for the API gateway (
+ * D1 / L2-L3).
  *
  * The schema is BUILT FROM the settings-registry descriptors — never a
  * hand-copied key list — so a descriptor added in

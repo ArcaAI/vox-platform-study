@@ -1,5 +1,5 @@
 /**
- * Browser-side duration probe (TASK-604 lane C).
+ * Browser-side duration probe.
  *
  * The gateway rejects an over-long recording, but doing so costs the user a
  * full upload of a file that was never going to be accepted — for a 60-minute

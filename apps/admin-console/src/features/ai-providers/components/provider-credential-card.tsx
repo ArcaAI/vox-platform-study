@@ -40,7 +40,7 @@ function CardSkeleton() {
  * `CredentialCard` interaction (Configured / None + enabled badges, a
  * WRITE-ONLY password field, inline remove confirmation, toasts, OCC
  * If-Match) generalized over the unified `admin/providers/:service` route
- * (C2/C3, TASK-569) so ONE component drives the LLM, STT, and TTS tabs.
+ * (C2/C3) so ONE component drives the LLM, STT, and TTS tabs.
  *
  * Composes the interaction already proven by the LLM lane's
  * `ByoCredentialCard` (`features/ai-task-defaults/components/byo-credential-card.tsx`)

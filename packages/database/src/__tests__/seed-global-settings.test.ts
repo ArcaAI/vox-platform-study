@@ -55,7 +55,7 @@ const PLATFORM_WIDE_KEYS = [
   'RATE_LIMIT_TIER_RELAXED_LIMIT',
   'RATE_LIMIT_TIER_RELAXED_TTL',
   'ENTITLEMENTS_ENABLED',
-  // TASK-615 WS-H — the metering reconcile-sweep kill-switch joins the
+  // The metering reconcile-sweep kill-switch joins the
   // same platform-tenant-only block, seeded alongside ENTITLEMENTS_ENABLED.
   'METERING_RECONCILE_ENABLED',
 ] as const;
@@ -69,7 +69,7 @@ const SYSTEM_WIDE_KEYS = [
   'SYSTEM_FF_LOCAL_RAW_CAPTURE',
   'SYSTEM_PIPELINE_TEMPLATE_RESYNC_ENABLED',
   'SYSTEM_PIPELINE_TEMPLATE_RESYNC_CRON',
-  // Agent golden-library resync sweep (TASK-548).
+  // Agent golden-library resync sweep.
   'SYSTEM_AGENT_TEMPLATE_RESYNC_ENABLED',
   'SYSTEM_AGENT_TEMPLATE_RESYNC_CRON',
 ] as const;

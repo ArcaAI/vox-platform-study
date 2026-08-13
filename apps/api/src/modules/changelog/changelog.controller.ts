@@ -10,7 +10,7 @@ import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagg
 import { Authorize } from '../../decorators';
 
 /**
- * Reader surface for the curated release notes (TASK-648 §3.5/§3.6, frozen
+ * Reader surface for the curated release notes (/, frozen
  * contract `/changelog/*`).
  *
  * Open to ANY authenticated user — `@Authorize()` with no ability, exactly

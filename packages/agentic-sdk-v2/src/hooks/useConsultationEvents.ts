@@ -1,8 +1,8 @@
 /**
- * @arcaai/vox - useConsultationEvents Hook (TASK-665)
+ * @arcaai/vox - useConsultationEvents Hook
  *
  * SDK-native subscription to the consultation-loop workflow event stream
- * (`GET /consultations/:id/loop/stream`, TASK-660) — an APPEND-ONLY feed of
+ * (`GET /consultations/:id/loop/stream`) — an APPEND-ONLY feed of
  * discrete `LoopEvent`s (an action started/finished, a specialist dispatched,
  * derived context re-entering the bus), unlike `useArcaLiveSummary`'s
  * full-state snapshots. Modeled on `useArcaLiveSummary` (the leaner of the

@@ -1,15 +1,15 @@
-// TASK-610 §4C — the binding guard is DORMANT while origin enforcement is off.
+// The binding guard is DORMANT while origin enforcement is off.
 //
 // `origin-tenant-binding.guard.task610.test.ts` pins the ENFORCING behaviour
 // (and installs `setOriginEnforcementResolver(() => true)` to get it). This file
 // pins the other half: with the switch off, a request whose tenant matches no
-// grant on its origin must pass, not 404. §4C.3 states the consequence plainly:
+// grant on its origin must pass, not 404. The consequence is:
 // "a request from any origin may act on any tenant it can authenticate to".
 // Authentication and tenancy remain the controls; the ORIGIN binding simply
 // does not apply.
 //
-// "the switch off" is NO LONGER THE DEFAULT (TASK-641 FR-6 flipped
-// `origin.enforcementEnabled` to default `true`). The cases below still hold
+// Enforcement-off is NO LONGER THE DEFAULT (`origin.enforcementEnabled`
+// now defaults `true`). The cases below still hold
 // unchanged, because they set the resolver explicitly — `null` here is this
 // process's pre-boot state, not the platform posture. Only the wording changed.
 import { ExecutionContext } from '@nestjs/common';
@@ -46,7 +46,7 @@ const createContext = (headers: Record<string, unknown> = {}): ExecutionContext 
     getClass: () => 'classRef',
   }) as unknown as ExecutionContext;
 
-describe('OriginTenantBindingGuard — enforcement disabled (TASK-610 §4C)', () => {
+describe('OriginTenantBindingGuard — enforcement disabled', () => {
   let registry: IOriginRegistry;
 
   beforeEach(() => {

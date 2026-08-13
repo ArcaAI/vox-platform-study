@@ -84,7 +84,7 @@ export interface UpdateSummaryRequest {
  * Response body of `GET /api/v1/consultations/:id` — the ONLY consultation
  * read this SDK exposes (`hope.consultations.get(id)`), scoped to what the
  * P0.5 summarization flow needs to validate an id, not full consultation
- * CRUD (out of day-1 scope per the ticket plan §3.4).
+ * CRUD (out of day-1 scope).
  *
  * The real backend DTO is `ConsultationResponse`
  * (`packages/applications/src/services/consultation/consultation/dto/consultation.response.ts`)
@@ -96,7 +96,7 @@ export interface UpdateSummaryRequest {
  * transcript/summary content-item shape for a "does this id exist" check.
  * This type is a genuine PARTIAL VIEW of that DTO — reach for the fields
  * below only; anything else on the wire is simply not represented.
- */
+*/
 export interface ConsultationGetResponse {
   id: string;
   patientId: string;

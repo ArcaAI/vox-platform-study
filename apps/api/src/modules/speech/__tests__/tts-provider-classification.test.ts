@@ -1,5 +1,5 @@
 /**
- * TASK-643 R3 + OD-4 — the ONE TTS billing classifier.
+ * + OD-4 — the ONE TTS billing classifier.
  *
  * Two things are under test here and they are separable:
  *

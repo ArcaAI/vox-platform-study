@@ -1,5 +1,5 @@
 /**
- * useAudioCapture — CAPTURE_OPTIONS_DROPPED propagation (TASK-612 Lane C, AC-3).
+ * useAudioCapture — CAPTURE_OPTIONS_DROPPED propagation.
  *
  * `useArcaAudio.startAudio`'s CALL-TIME idempotence guard now REJECTS (instead
  * of silently returning) when a second `start()` call lands while capture is
@@ -58,7 +58,7 @@ function installStore() {
   );
 }
 
-describe('useAudioCapture — CAPTURE_OPTIONS_DROPPED propagation (TASK-612 Lane C, AC-3)', () => {
+describe('useAudioCapture — CAPTURE_OPTIONS_DROPPED propagation', () => {
   beforeEach(() => {
     installStore();
   });

@@ -1078,7 +1078,7 @@ export const DEFAULT_ASR_PIPELINES: AsrPipelineSeed[] = [
     tags: ['matrix', 'streaming', 'parakeet.cpp'],
   },
   {
-    // TASK-567 — cloud BYOK fallback pipeline (Sarvam). A tenant points
+    // Cloud BYOK fallback pipeline (Sarvam). A tenant points
     // TenantSttConfig.fallbackPipelineId at a clone of this to fail over off a
     // local/GPU primary onto a cloud provider. Reaches the SARVAM engine via the
     // `provider :: model` shorthand (no DB slug for the superset engine).
@@ -1091,7 +1091,7 @@ export const DEFAULT_ASR_PIPELINES: AsrPipelineSeed[] = [
     tags: ['cloud', 'sarvam', 'byok', 'fallback'],
   },
   {
-    // TASK-567 — cloud BYOK fallback pipeline (OpenAI). See the sarvam row.
+    // Cloud BYOK fallback pipeline (OpenAI). See the sarvam row.
     id: '81000000-0000-0000-0001-000000000017',
     tenantId: DEFAULT_TENANT_ID,
     name: '[openai] OpenAI Speech-to-Text',
@@ -1657,7 +1657,7 @@ export const DEFAULT_STT_SETTINGS = [
     dataType: ValueType.String,
     description: 'S3-compatible storage endpoint (MinIO)',
   },
-  // TASK-558 §9.3 M10 (lane G, G4) — `S3_ACCESS_KEY` and `S3_SECRET_KEY` were
+  // `S3_ACCESS_KEY` and `S3_SECRET_KEY` were
   // seeded here as PLAINTEXT `GlobalSetting` rows (ids …0011 / …0012). A
   // credential never belongs in a DB column in the clear; these now live in
   // Vault kv-v2 under the `s3.accessKey` / `s3.secretKey` descriptors
@@ -2133,7 +2133,7 @@ export const switchDefaultSttPipelineToGgufTurbo = async (client: CorePrismaClie
 
 /**
  * Keys whose plaintext `GlobalSetting` rows are superseded by Vault kv-v2
- * (TASK-558 §9.3 M10, lane G G4). Removing them from `DEFAULT_STT_SETTINGS`
+ * (lane G G4). Removing them from `DEFAULT_STT_SETTINGS`
  * stops NEW databases getting them, but existing databases still hold the
  * credential in the clear — so sweep them here.
  */
@@ -2214,7 +2214,7 @@ export const seedSttSettings = async (client: CorePrismaClient) => {
 };
 
 /**
- * Seed the SYSTEM-tenant TenantSttConfig row (TASK-567) — the PLATFORM-DEFAULT
+ * Seed the SYSTEM-tenant TenantSttConfig row — the PLATFORM-DEFAULT
  * STT config every tenant merges under its own row (TenantSttConfigService
  * .getEffective, Phase C). No fallback by default: `fallbackPipelineId` stays
  * NULL because the fallback is an explicit per-tenant choice, and auto-switch is
@@ -2226,7 +2226,7 @@ export const SYSTEM_TENANT_STT_CONFIG = {
   tenantId: SYSTEM_TENANT_ID,
   // No platform-default fallback — fallback is an explicit tenant choice.
   //
-  // This NULL is load-bearing for unit economics (TASK-638 §6.1): pointing it at
+  // This NULL is load-bearing for unit economics: pointing it at
   // a CLOUD pipeline would route every tenant's fallback traffic to a managed
   // ASR vendor on PLATFORM credentials, and managed ASR costs ~13× self-hosted
   // per audio-second — enough to take PRO from ~93% gross margin to ~7%. Managed
@@ -2302,7 +2302,7 @@ export const seedStt = async (client: CorePrismaClient) => {
     await seedSttSettings(client);
     console.log('');
 
-    // SYSTEM TenantSttConfig platform-default row (TASK-567).
+    // SYSTEM TenantSttConfig platform-default row.
     await seedTenantSttConfig(client);
     console.log('');
 

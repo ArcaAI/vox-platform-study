@@ -1,5 +1,5 @@
 /**
- * TASK-615 WS-K — invoice lifecycle: compute draft → verify lines →
+ * Invoice lifecycle: compute draft → verify lines →
  * finalize with If-Match (428 without, 412 stale) → immutability 409 →
  * credit memo → adjusted read model.
  *
@@ -37,7 +37,7 @@ interface InvoiceBody {
   lines: unknown[];
 }
 
-test.describe('TASK-615 invoice lifecycle', () => {
+test.describe('Invoice lifecycle', () => {
   let globalAdminToken: string;
   let tenantId: string;
   const period = pastPeriod();

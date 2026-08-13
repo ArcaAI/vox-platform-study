@@ -177,7 +177,7 @@ export default defineConfig([
   },
 
   // ==========================================================================
-  // Compat build - v1-compatibility hooks (TASK-561). Light like `core`: no
+  // Compat build - v1-compatibility hooks. Light like `core`: no
   // plugin bundling (external plugin packages); only consumes the public v2 API.
   // ==========================================================================
   {

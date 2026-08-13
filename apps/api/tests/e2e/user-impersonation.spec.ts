@@ -3,7 +3,7 @@
  *
  * Real HTTP round-trips against the live dev stack
  * (`SKIP_DB_PRECHECK=true`, `API_URL=http://localhost:8968/api/v1`). Harness
- * mirrors task-400 (seeded users; throwaway targets; UPDATE-only fixtures —
+ * mirrors (seeded users; throwaway targets; UPDATE-only fixtures
  * never DELETE/TRUNCATE; throwaway users are soft-deleted via the API).
  *
  * Coverage:

@@ -51,14 +51,14 @@ def _resolve_active_pipeline(mgr: SessionManager, session: Any) -> tuple[str, st
     """``(effective pipeline id, active engine)`` for a session.
 
     Reads the per-session ``EngineSwitchController`` the manager already
-    installs for every session (TASK-567) via its public
+    installs for every session via its public
     ``get_switch_controller`` accessor, so BOTH values are truthful for the
-    start_on=fallback (D3) and create-time-load-failure (D4) cases, where the
+    start_on=fallback and create-time-load-failure cases, where the
     controller's ``active_engine`` is flipped to ``'fallback'`` at create.
 
     ``session.pipeline_id`` is the pipeline the caller REQUESTED, so returning
-    it unconditionally made a D3/D4 session report ``active_engine: 'fallback'``
-    beside a ``pipeline_id`` naming the primary (TASK-613 A3). The controller
+    it unconditionally made a session report ``active_engine: 'fallback'``
+    beside a ``pipeline_id`` naming the primary. The controller
     owns both ends of that pair, so it is the single source for them; it is
     also the same object the swap seam updates, so the response cannot drift
     from the engine that is actually live. Falls back to the requested id when
@@ -72,7 +72,7 @@ def _resolve_active_pipeline(mgr: SessionManager, session: Any) -> tuple[str, st
 
 
 # -------------------------------------------------------------------------
-# GET /internal/streaming/language-modes — STT language-mode catalog (TASK-587)
+# GET /internal/streaming/language-modes — STT language-mode catalog
 # -------------------------------------------------------------------------
 
 
@@ -142,7 +142,7 @@ async def create_streaming_session(
             channel_count=request.channel_count,
         )
     except LanguageModeUnsupportedError as exc:
-        # TASK-587 — the selected mode fits none of the session's engines
+        # The selected mode fits none of the session's engines
         # (primary + configured fallback). Surface a 422 that names the modes
         # the engine CAN serve, so the client can re-select.
         logger.warning(
@@ -263,7 +263,7 @@ async def get_streaming_session(session_id: str) -> StreamingSessionResponse:
     response_model=StreamingSessionTeardownResponse | None,
     status_code=200,
     responses={
-        200: {"description": "Session removed; usage-attribution summary returned (TASK-615 WS-C)"},
+        200: {"description": "Session removed; usage-attribution summary returned"},
         204: {
             "description": "Session already gone, or a summary could not be built (idempotent no-op either way)"
         },
@@ -275,7 +275,7 @@ async def delete_streaming_session(
 ) -> StreamingSessionTeardownResponse | None:
     """Remove a streaming session. Idempotent: returns 204 even if already removed.
 
-    TASK-615 WS-C: a REAL teardown returns 200 with the usage-attribution
+    A REAL teardown returns 200 with the usage-attribution
     summary (``StreamingSessionTeardownResponse``) the API Gateway needs to
     emit the ``transcribe.stream`` ledger row — 204/no-body when the session
     was already gone (nothing to summarize) OR when ``end_session`` could not
@@ -350,7 +350,7 @@ async def switch_streaming_session(
     session_id: str,
     request: SwitchProviderRequest | None = None,
 ) -> SwitchProviderResponse:
-    """Request a mid-session engine switch (TASK-567 R4, TASK-586).
+    """Request a mid-session engine switch.
 
     Body ``{"target": "primary" | "fallback"}``; absent ⇒ ``"fallback"``
     (back-compat). Called by the API Gateway's switch endpoint. XADDs a

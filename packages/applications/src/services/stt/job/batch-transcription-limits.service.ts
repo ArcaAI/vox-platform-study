@@ -1,4 +1,4 @@
-// Batch-transcription limit resolution (TASK-604).
+// Batch-transcription limit resolution.
 //
 // The one place the `stt.batch.*` knobs turn into numbers. The gateway's upload
 // route, its `/limits` read surface, and the SDK that mirrors them client-side

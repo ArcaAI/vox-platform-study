@@ -1,4 +1,4 @@
-"""TASK-615 WS-D — guardrail's own token spend stops being invisible.
+"""Guardrail's own token spend stops being invisible.
 
 ``GuardrailCallStats`` was computed for every LLM call and then **thrown away**:
 the endpoint never read ``result["stats"]``, so guardrail — a service that runs

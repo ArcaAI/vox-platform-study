@@ -1,7 +1,7 @@
 /**
- * Credential-gated provider reconcilers (TASK-638 §6).
+ * Credential-gated provider reconcilers.
  *
- * Replaces the WS-K stub-registry suite: availability is no longer hardcoded,
+ * Replaces the stub-registry suite: availability is no longer hardcoded,
  * so what is worth testing is that the TWO gates (client implemented,
  * credential provisioned) are reported separately and that nothing here can
  * fail the sweep closed.

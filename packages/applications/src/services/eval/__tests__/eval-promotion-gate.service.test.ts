@@ -12,7 +12,7 @@ import { EvalPromotionGateService } from '../eval-promotion-gate.service';
 const TENANT = 'tenant-1';
 const TPL = 'tpl-1';
 
-// TASK-635 R5 — the gate now looks agents up through `findByBoundTemplate`,
+// The gate now looks agents up through `findByBoundTemplate`,
 // which ORs across the base binding AND the four capability-keyed columns, so a
 // template bound only via (say) `revisitTemplateId` can no longer escape the
 // gate at approve time.

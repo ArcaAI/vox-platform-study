@@ -13,7 +13,7 @@ const MODELS: ModelInfo[] = [
   { id: 'guard-1', name: 'Guardrail', status: 'error', version: '0.9', size: '320 MB' },
 ];
 
-describe('ModelsList (§3.8)', () => {
+describe('ModelsList', () => {
   it('renders a status badge, size and monospace version per model', () => {
     const { container } = render(<ModelsList models={MODELS} />);
     const rows = container.querySelectorAll('[data-slot="item-list-row"]');

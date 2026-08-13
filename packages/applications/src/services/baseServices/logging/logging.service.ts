@@ -52,7 +52,7 @@ export class LoggingService implements ILoggingService, LoggerService, OnModuleI
   private readonly pid: number;
   /**
    * Deployment-specific PHI field names, on top of the canonical list in
-   * `redactor.ts`. Comma-separated via `LOG_REDACT_FIELDS` (TASK-636 OBS-19).
+   * `redactor.ts`. Comma-separated via `LOG_REDACT_FIELDS`.
    */
   private readonly extraRedactFields: string[];
 
@@ -292,7 +292,7 @@ export class LoggingService implements ILoggingService, LoggerService, OnModuleI
    * Dispatch log entry to all transports
    */
   private dispatch(entry: LogEntry): void {
-    // TASK-636 OBS-19 — PHI redaction happens HERE, once, before any transport
+    // PHI redaction happens HERE, once, before any transport
     // sees the entry. Redacting inside each transport would mean every future
     // transport re-implements it and one of them eventually forgets; this is
     // also where the browser SDK applies it, so the two runtimes match.

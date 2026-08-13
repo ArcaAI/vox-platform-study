@@ -4,7 +4,7 @@ import { ChangelogAudience, ChangelogSeverity } from '@arcaai/domains';
 
 /**
  * Create a release note. Always lands as `DRAFT` — the entry becomes visible
- * only through the explicit `publish` action (TASK-648 §3.5: an auto-published
+ * only through the explicit `publish` action (an auto-published
  * changelog is an unreviewed broadcast to every customer admin).
  */
 export class CreateChangelogEntryRequest {

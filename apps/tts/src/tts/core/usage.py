@@ -1,4 +1,4 @@
-"""Usage-metering primitives for TASK-615 WS-E (TTS characters + audio-seconds).
+"""Usage-metering primitives for (TTS characters + audio-seconds).
 
 Two pure, side-effect-free functions the endpoints (``api/endpoints/speech.py``,
 ``api/endpoints/stream_ws.py``) and the router's RTF metric share, so the byte
@@ -26,7 +26,7 @@ UNKNOWN_PROVIDER = "none"
 def count_characters(text: str) -> int:
     """Accepted-input character count — 1 Unicode CODE POINT = 1 character.
 
-    Frozen contract (``ws-b-contract.md`` §3 / TASK-615 README §3): no CJK/Indic
+    Frozen contract (``ws-b-contract.md`` / README ): no CJK/Indic
     double-counting. Python 3 ``str`` already stores actual code points (PEP
     393, not UTF-16 code units), so ``len(text)`` IS the code-point count —
     including astral-plane characters (most emoji) as a single unit.
@@ -69,9 +69,7 @@ def record_usage_metrics(
     *, provider: str | None, locale: str, characters: int, audio_seconds: float | None, status: str
 ) -> None:
     """Shared Prometheus recorder for both TTS entry points (HTTP
-    ``/audio/speech`` and the WS-duplex ``/audio/stream``) — TASK-615 WS-E.
-
-    The gateway (not this counter) is the usage-LEDGER's source of truth
+    ``/audio/speech`` and the WS-duplex ``/audio/stream``) — The gateway (not this counter) is the usage-LEDGER's source of truth
     (D3); this is the platform-metrics/Grafana signal.
     """
     labels = {"provider": provider or UNKNOWN_PROVIDER, "locale": locale, "status": status}

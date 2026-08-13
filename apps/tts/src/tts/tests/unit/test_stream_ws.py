@@ -29,7 +29,7 @@ def test_init_ready_then_binary_frames_then_done():
     app = _app(providers={"azure": FakeEngine("azure", native_streaming=False, chunks=1)})
     with TestClient(app) as client:
         with client.websocket_connect("/api/v1/audio/stream") as ws:
-            # routing chain is gateway-injected on the init frame (TASK-577).
+            # routing chain is gateway-injected on the init frame.
             ws.send_json(
                 {
                     "type": "init",
@@ -117,7 +117,7 @@ def test_valid_service_token_accepted():
 
 
 class TestUsageMetering:
-    """TASK-615 WS-E: the WS-duplex session accumulates accepted characters
+    """The WS-duplex session accumulates accepted characters
     (every pushed "text" frame) and synthesized audio bytes, and surfaces both
     in a final ``{"type":"usage",...}`` frame at teardown — success OR abort —
     so the gateway (which fronts this socket, never the browser directly) can

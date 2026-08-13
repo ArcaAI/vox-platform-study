@@ -162,7 +162,7 @@ describe('modelHasSoftDelete', () => {
       // Gate-edit mining store: derived append-only corpus, pruned
       // wholesale rather than soft-deleted, so it has no resourceStatus column.
       'GateEditExemplar',
-      // TASK-615 — the usage ledger and everything derived from it. All four
+      // The usage ledger and everything derived from it. All four
       // are APPEND-ONLY metering artifacts with hard retention (raw events 18
       // months, rollups indefinitely) rather than the ENABLED/DELETED
       // soft-delete lifecycle, so none carries a `resourceStatus` column and
@@ -172,17 +172,17 @@ describe('modelHasSoftDelete', () => {
       'AiUsageOutbox',
       'AiUsageRollupHourly',
       'AiUsageRollupDaily',
-      // TASK-638 §6 rule 6 — the provider-reconciliation audit trail.
+      // Rule 6 — the provider-reconciliation audit trail.
       'ProviderReconciliationRun',
-      // TASK-615 — a credit memo against a FINALIZED invoice. Finalized
+      // A credit memo against a FINALIZED invoice. Finalized
       // periods are immutable, so an adjustment can never be retracted by
       // deleting it; the correction path is another adjustment. No
       // `resourceStatus` column.
       'BillingAdjustment',
-      // TASK-615 #6 — append-only plan-change facts for fee proration. A plan
+      // #6 — append-only plan-change facts for fee proration. A plan
       // window is corrected by appending, never by deleting closed history.
       'TenantPlanHistory',
-      // TASK-648 — Service Version & Release Registry. ServiceInstance is a
+      // Service Version & Release Registry. ServiceInstance is a
       // heartbeated runtime observation pruned wholesale by the existing
       // scheduler surface, not soft-deleted. ChangelogEntry moves
       // DRAFT -> PUBLISHED only. UserChangelogAcknowledgement rows are
@@ -192,14 +192,14 @@ describe('modelHasSoftDelete', () => {
       'ServiceInstance',
       'ChangelogEntry',
       'UserChangelogAcknowledgement',
-      // TASK-658 — an immutable published snapshot of a tenant's context
+      // An immutable published snapshot of a tenant's context
       // declaration (the PromptVersion / AsrPipelineVersion shape). A
       // ContextItem validated against version N must resolve version N
       // forever, so retraction is not available and the table carries no
       // `resourceStatus` column. The MUTABLE head `ConsultationContextSchema`
       // is deliberately NOT here — it keeps the standard lifecycle.
       'ConsultationContextSchemaVersion',
-      // TASK-659 — an immutable snapshot of a DepartmentAgent's
+      // An immutable snapshot of a DepartmentAgent's
       // loop-configuration surface (the same PromptVersion /
       // ConsultationContextSchemaVersion shape). A consultation loop pinned
       // to version N must resolve version N forever, so retraction is not
@@ -207,7 +207,7 @@ describe('modelHasSoftDelete', () => {
       // MUTABLE head `DepartmentAgent` is deliberately NOT here — it keeps
       // the standard lifecycle.
       'DepartmentAgentVersion',
-      // TASK-663 — a WORM record of one agent promotion between tenants.
+      // A WORM record of one agent promotion between tenants.
       // Written once, never updated (a re-promotion writes a NEW row), so the
       // table is an audit history whose whole value is that entries cannot be
       // retracted. No `resourceStatus` column.

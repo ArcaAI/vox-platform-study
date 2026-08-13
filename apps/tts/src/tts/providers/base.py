@@ -50,7 +50,7 @@ class AudioChunk:
     # Stamped by the ROUTER only (never a provider adapter) with the name of
     # the provider that actually produced this chunk. A request doesn't know
     # which candidate in the failover chain won until the first byte ships, so
-    # this is how a caller (the usage-metering endpoints, TASK-615 WS-E)
+    # this is how a caller (the usage-metering endpoints)
     # learns it without re-deriving router-internal failover state.
     provider: str | None = None
 
@@ -72,7 +72,7 @@ class TTSEngine(Protocol):
     name: str
     supported_locales: set[str]
     native_streaming: bool
-    # TASK-602: True when the engine has a usable credential/configuration. A cloud
+    # True when the engine has a usable credential/configuration. A cloud
     # BYOK engine registered from empty platform config is `False` and the router
     # excludes it from candidates (it can still serve via a per-request override
     # engine); self-hosted engines are always `True`.

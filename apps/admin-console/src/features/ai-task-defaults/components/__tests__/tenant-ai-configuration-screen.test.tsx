@@ -1,12 +1,12 @@
 /**
- * Tenant "AI Configuration" hub (tier 30-49, /ai-configuration) — TASK-595.
+ * Tenant "AI Configuration" hub (tier 30-49, /ai-configuration) —.
  *
  * The single tenant AI surface, absorbing the retired standalone `/stt-config`,
  * `/tts-config` and `/ai-providers` screens into four tabs:
- *   - "Models"    — tenant SMR selection (editable) + read-only effective
+ *   - "Models" — tenant SMR selection (editable) + read-only effective
  *     guardrail/nlp/harness models & HarnessPolicy. Backed by `AiTaskDefault`.
- *   - "Speech"    — tenant STT fallback editor. Backed by `TenantSttConfig`.
- *   - "Voice"     — tenant TTS config editor. Backed by `TenantTtsConfig`.
+ *   - "Speech" — tenant STT fallback editor. Backed by `TenantSttConfig`.
+ *   - "Voice" — tenant TTS config editor. Backed by `TenantTtsConfig`.
  *   - "Providers" — the one authoritative BYO credential editor (LLM/STT/TTS).
  *     Backed by `GlobalSetting`.
  *
@@ -211,7 +211,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('TenantAiConfigurationScreen — hub structure (TASK-595)', () => {
+describe('TenantAiConfigurationScreen — hub structure', () => {
   it('renders all four tab triggers for a tenant admin with full abilities', async () => {
     stubFetch();
     renderWithProviders(<TenantAiConfigurationScreen />);

@@ -24,15 +24,15 @@ members = [
     "apps/harness",
     "apps/stt",
     "apps/tts",
-    # TASK-529 — shared model-lifecycle contract consumed by the five
+    # Shared model-lifecycle contract consumed by the five
     # in-process services. Dependency-free by design, so adding it as a member
     # cannot perturb the resolution of anything else in this lock.
     "packages/py-runtime-models",
-    # TASK-558 — the ONE env-file loader for every Python service (NODE_ENV →
+    # The ONE env-file loader for every Python service (NODE_ENV →
     # .env.<env>, host env wins). Its single dependency (python-dotenv) is
     # already declared by every member, so it adds nothing to this resolution.
     "packages/py-env",
-    # TASK-636 OBS-16 follow-up — the ONE W3C trace-propagation helper for
+    # The ONE W3C trace-propagation helper for
     # services that cross a Redis-Stream boundary (currently stt, smr).
     # Consolidates what was a deliberate, time-boxed duplicate in each service.
     # Its single dependency (opentelemetry-api) is already declared by every

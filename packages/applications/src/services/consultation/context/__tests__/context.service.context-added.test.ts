@@ -1,6 +1,6 @@
 /**
  * ContextService — ContextAdded fan-out + metadata persistence
- * (Clinical Workflow Playground WS2 / WS5; widened by TASK-660)
+ * (Clinical Workflow Playground WS2 / WS5; later widened)
  *
  * Verifies:
  *   - addContext emits ConsultationPipelineEvent.ContextAdded for human-authored
@@ -8,7 +8,7 @@
  *     LiveDocumentationService folds them into the running summary.
  *   - the lab/exam `metadata.subType = 'LAB_RESULT'` convention rides along in
  *     the event payload and is persisted on the entity (no new enum).
- *   - TASK-660 — the gate widened: TRANSCRIPT and the tenant-declared
+ *   - the gate widened: TRANSCRIPT and the tenant-declared
  *     STRUCTURED primitive now ALSO emit ContextAdded (the loop event plane's
  *     context bus needs transcripts and derived context to re-enter it).
  *     TRANSCRIPT still ALSO drives the harness pipeline via
@@ -128,7 +128,7 @@ describe('ContextService — ContextAdded fan-out + lab subType', () => {
     expect(contextAddedCalls[0][1]).toMatchObject({ contextType: ContextItemType.WORKNOTE, subType: undefined });
   });
 
-  // TASK-660 — widened: the loop event plane's context bus needs transcripts
+  // Widened: the loop event plane's context bus needs transcripts
   // to re-enter it. TRANSCRIPT ALSO still drives the harness pipeline via a
   // SEPARATE TranscriptionCreated emission (sttInternal.service.ts) — that is
   // untouched by this change.
@@ -145,7 +145,7 @@ describe('ContextService — ContextAdded fan-out + lab subType', () => {
     expect(mockEventEmitter.emit).toHaveBeenCalledWith(SysEventType.ResourceCreated, expect.any(Object));
   });
 
-  // TASK-660 — the tenant-declared STRUCTURED primitive (TASK-658) is the
+  // The tenant-declared STRUCTURED primitive is the
   // other "derived kind" the widened gate covers.
   it('emits ContextAdded for a STRUCTURED item (loop event plane widening)', async () => {
     await service.addContext('consultation-1', {
@@ -158,8 +158,8 @@ describe('ContextService — ContextAdded fan-out + lab subType', () => {
     expect(contextAddedCalls[0][1]).toMatchObject({ contextType: ContextItemType.STRUCTURED });
   });
 
-  // TASK-670 — cascade depth: derived context must arrive at parent.depth + 1
-  // so TASK-664's depth-cap budget is a real bound, not a nominal field.
+  // Cascade depth: derived context must arrive at parent.depth + 1
+  // so depth-cap budget is a real bound, not a nominal field.
   describe('cascade depth (derivedFromContextItemId)', () => {
     it('depth 0 when no lineage is declared (regression — unchanged metaData shape)', async () => {
       await service.addContext('consultation-1', {
@@ -236,7 +236,7 @@ describe('ContextService — ContextAdded fan-out + lab subType', () => {
     });
   });
 
-  // TASK-670 — payload completeness: the fuller `content` field rides
+  // Payload completeness: the fuller `content` field rides
   // alongside the pre-existing, unchanged `contentPreview` (kindKey coverage
   // lives in the ATTACHMENT/dedicated-kind path — this asserts `content` is
   // wired without depending on the schema-validation constructor args).

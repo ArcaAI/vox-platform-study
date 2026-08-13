@@ -12,7 +12,7 @@ export interface ListSellRatesQuery {
 }
 
 /**
- * GLOBAL_ADMIN CRUD over the SELL plane of `AiPriceBook` (TASK-615 WS-I, D10).
+ * GLOBAL_ADMIN CRUD over the SELL plane of `AiPriceBook` (D10).
  *
  * CREATE + SUPERSEDE ONLY. There is deliberately no update method: mutating an
  * effective price row in place would silently re-rate history, so the absence

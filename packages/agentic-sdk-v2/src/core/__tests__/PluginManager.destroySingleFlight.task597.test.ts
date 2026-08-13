@@ -1,5 +1,5 @@
 /**
- * PluginManager — single-flight destroy (TASK-597 follow-up).
+ * PluginManager — single-flight destroy.
  *
  * The compat layer stops ONE audio graph through TWO hooks, each with its own
  * per-instance stop guard, so BOTH stop paths reach this shared manager.
@@ -14,7 +14,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { PluginManager } from '../PluginManager';
 
-describe('PluginManager.destroy — single flight (TASK-597)', () => {
+describe('PluginManager.destroy — single flight', () => {
   it('concurrent destroy() calls share ONE teardown pass', async () => {
     const manager = new PluginManager({});
     let release!: () => void;

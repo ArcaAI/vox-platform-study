@@ -249,11 +249,11 @@ describe('ExceptionInterceptor — QuotaExceededException → precise client sta
     expect(caught.getStatus()).toBe(HttpStatus.TOO_MANY_REQUESTS);
   });
 
-  // TASK-615 D11 — the five new ledger-derived unit-allowance capabilities
+  // D11 — the five new ledger-derived unit-allowance capabilities
   // are rolling-monthly METERS, same retry-later semantics as
   // monthlyConsultations/monthlyTranscriptionMinutes/monthlySummaries above.
   it.each(['monthlySttSessionSeconds', 'monthlyLlmTokens', 'monthlyTtsCharacters', 'monthlyNlpTextUnits', 'monthlyEmbeddingTokens'])(
-    'maps the TASK-615 unit-allowance capability (%s) to 429 Too Many Requests',
+    'maps the unit-allowance capability (%s) to 429 Too Many Requests',
     async (capability) => {
       const caught = await catchHttp(new QuotaExceededException('limit', { capability, limit: 1000, used: 1000, requested: 1, tenantId: 't-1' }));
       expect(caught.getStatus()).toBe(HttpStatus.TOO_MANY_REQUESTS);
@@ -285,7 +285,7 @@ describe('ExceptionInterceptor — QuotaExceededException → precise client sta
     expect(body.metadata?.capability).toBe('maxApiKeys');
   });
 
-  // TASK-643 — the FIRST exercise of the `startsWith('feature')` branch. It has
+  // The FIRST exercise of the `startsWith('feature')` branch. It has
   // been wired since the entitlements plane landed and never fired, because no
   // boolean entitlement had an enforcement call site until the platform-default
   // gate. A regression here would turn a commercial denial into a 409 that
@@ -301,7 +301,7 @@ describe('ExceptionInterceptor — QuotaExceededException → precise client sta
 });
 
 // ───────────────────────────────────────────────────────────────────────────
-// ProviderCredentialVetoedException → 409 Conflict (TASK-643 R4).
+// ProviderCredentialVetoedException → 409 Conflict.
 //
 // Deliberately a DIFFERENT status from the 403 above, because the remediation
 // is different: a veto is the tenant's own disabled connection row, which a

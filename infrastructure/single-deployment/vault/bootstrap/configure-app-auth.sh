@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# HOPE — app auth config for the HA cluster (TASK-312 Phase C)
+# HOPE — app auth config for the HA cluster
 # =============================================================================
 # Idempotent. Configures everything the NestJS API needs and delivers AppRole
 # creds in the FILE shape the app already expects (VAULT_ROLE_ID_FILE /

@@ -1,9 +1,9 @@
 /**
- * TASK-558 lane G (G4) — the S3 readiness gate must consult SecretsService,
+ * The S3 readiness gate must consult SecretsService,
  * not plaintext `GlobalSetting` rows.
  *
  * `seed/06-stt.ts` seeded `S3_ACCESS_KEY` / `S3_SECRET_KEY` as PLAINTEXT
- * `GlobalSetting` rows (§9.3 M10 violation). The credential VALUES were already
+ * `GlobalSetting` rows (secrets never sit in a DB column). The credential VALUES were already
  * migrated to `SecretsService.getSecretSync()` (see `getS3Configuration`), so
  * those rows no longer supply anything the client uses — but
  * `hasRequiredConfiguration()` still gated readiness on their PRESENCE in the

@@ -1,18 +1,18 @@
-"""TASK-579 — SMR cloud provider/model SELECTION is failMode=closed.
+"""SMR cloud provider/model SELECTION is failMode=closed.
 
 Program: docs/implementation/SOTA-Track/2026-07-28-provider-plane-day1-defaults-followups.md
 (finding F3). Ticket: docs/implementation/TASK-579-SMR-Cloud-Default-Model-Fail-Closed/README.md
 
 Decision A (owner-confirmed): the five CLOUD sub-configs (Azure/Bedrock/OpenAI/
 Anthropic/Vertex) carry no compiled-in vendor ``default_model`` and a cloud
-``generate()``/``generate_stream()`` call that resolves no model RAISES a typed
+``generate``/``generate_stream`` call that resolves no model RAISES a typed
 selection error — it never silently substitutes a vendor model.
 
 RED-first (TDD): written before the GREEN provider-adapter edits landed. Locks:
-  * ``_resolve_model()`` never falls back to the configured (informational)
+  * ``_resolve_model`` never falls back to the configured (informational)
     ``default_model`` — the precise regression this closes: ``VertexProvider``
     used to return ``self._default_model`` when the caller omitted a model.
-  * ``generate()`` / ``generate_stream()`` raise ``ModelNotSelectedError``
+  * ``generate`` / ``generate_stream`` raise ``ModelNotSelectedError``
     (422 via the shared exception map — see ``core/exception_handlers.py``)
     when no model resolves, for EVERY cloud provider.
   * A caller-supplied model still succeeds unchanged (regression).

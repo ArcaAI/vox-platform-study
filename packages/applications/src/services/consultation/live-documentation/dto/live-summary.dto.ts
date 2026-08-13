@@ -197,7 +197,7 @@ export class LiveSummaryStatsDto {
 }
 
 /**
- * TASK-635 RF-6 — the agent identity FROZEN for this live session.
+ * The agent identity FROZEN for this live session.
  *
  * Resolved once at recording start and served unchanged for the whole session,
  * so every event of a session reports the same `(promptTemplateId,

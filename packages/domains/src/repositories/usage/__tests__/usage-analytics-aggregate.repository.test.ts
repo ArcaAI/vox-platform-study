@@ -5,9 +5,9 @@ import { AiCapability } from '../../../enums';
 import { UsageAnalyticsAggregateRepository } from '../UsageAnalyticsAggregateRepository';
 
 /**
- * TASK-615 WS-J — hand-written usage-analytics repository extensions.
+ * Hand-written usage-analytics repository extensions.
  *
- * Mirrors the WS-I `BillingUsageAggregateRepository` test style: mock
+ * Mirrors the `BillingUsageAggregateRepository` test style: mock
  * `$queryRaw`, assert the bound parameters, and assert bigint/decimal parsing.
  */
 

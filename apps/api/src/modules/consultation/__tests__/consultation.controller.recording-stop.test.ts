@@ -1,5 +1,5 @@
 /**
- * ConsultationController — `POST :id/recording/stop` loop-ending signal (TASK-670).
+ * ConsultationController — `POST :id/recording/stop` loop-ending signal.
  *
  * `stopRecording` already tears down the LiveDocumentationService session and
  * flips the consultation status back to OPEN. This ticket adds a THIRD,

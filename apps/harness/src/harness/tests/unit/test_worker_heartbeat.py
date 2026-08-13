@@ -1,4 +1,4 @@
-"""Liveness heartbeat (TASK-625 W-10).
+"""Liveness heartbeat.
 
 The manifest's livenessProbe execs `find /tmp/harness-worker-heartbeat -mmin -1`,
 so the file's MTIME is the signal, not its existence. These tests pin the two

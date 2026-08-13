@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildRowMetadata, type MetadataMicRow } from '../playground-session';
 
-// Pure-function coverage for the per-mic-row metadata guard (TASK-597 lane C,
+// Pure-function coverage for the per-mic-row metadata guard (,
 // R5 requirement 4) — no React needed. `.tsx` extension only because the app's
 // vitest config collects `src/**/*.test.tsx` exclusively (see vitest.config.ts).
 

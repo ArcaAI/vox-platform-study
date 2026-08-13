@@ -24,7 +24,7 @@ networks:
         driver: bridge
 
 volumes:
-    # At-rest encryption (TASK-369 Phase 1): this named volume lives under the
+    # At-rest encryption: this named volume lives under the
     # Docker data root on the HOST. PostgreSQL has no built-in transparent
     # at-rest encryption, so the backing filesystem MUST be encrypted to protect
     # PHI on stolen disks/VM snapshots. Dev relies on host full-disk encryption
@@ -100,7 +100,7 @@ services:
         environment:
             MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minio_admin}
             MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minio_admin}
-            # At-rest SSE (TASK-369 Phase 1): server-side encryption needs a KMS.
+            # At-rest SSE: server-side encryption needs a KMS.
             # Dev can use MinIO's built-in single-key KMS (DEV ONLY); production
             # uses KES backed by a real KMS/Vault. Uncomment, then enable SSE per
             # bucket in minio-setup below. Generate a dev key:
@@ -173,7 +173,7 @@ services:
         environment:
             REDIS_PASSWORD: ${REDIS_PASSWORD:-redis_password}
         # Minimal Redis config for local development.
-        # At-rest (TASK-369 Phase 1): persistence is DISABLED here (--appendonly no
+        # At-rest: persistence is DISABLED here (--appendonly no
         # + --save "") so nothing is written to disk — the safest posture if Redis
         # ever caches PHI. If a deployment must enable RDB/AOF persistence, put the
         # Redis data dir on a LUKS-encrypted volume (see the at-rest runbook).

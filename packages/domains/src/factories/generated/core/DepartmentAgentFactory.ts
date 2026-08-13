@@ -17,7 +17,7 @@ export interface CreateDepartmentAgentProps extends BaseEntityFactoryCreateProps
   dnaStylePolicy?: IDepartmentAgentEntity['dnaStylePolicy'];
   harnessOverrides?: IDepartmentAgentEntity['harnessOverrides'];
   goldenSetId?: IDepartmentAgentEntity['goldenSetId'];
-  // TASK-635 RF-4 — capability-keyed bindings + live-loop config. All optional;
+  // Capability-keyed bindings + live-loop config. All optional;
   // omitted ⇒ null ⇒ the legacy behavior for that capability.
   newPatientTemplateId?: IDepartmentAgentEntity['newPatientTemplateId'];
   revisitTemplateId?: IDepartmentAgentEntity['revisitTemplateId'];
@@ -26,13 +26,13 @@ export interface CreateDepartmentAgentProps extends BaseEntityFactoryCreateProps
   toolConfig?: IDepartmentAgentEntity['toolConfig'];
   llmOverrides?: IDepartmentAgentEntity['llmOverrides'];
   tags?: IDepartmentAgentEntity['tags'];
-  // Template lineage — set only by the paths that produce template copies
-  // (TASK-548). Omitted everywhere else, so a hand-created agent is unlocked
+  // Template lineage — set only by the paths that produce template copies.
+  // Omitted everywhere else, so a hand-created agent is unlocked
   // with no provenance (the DB defaults). `isDefault` stays out of this props
   // bag on purpose — the default is flipped only via `setDefaultForDepartment`.
   sourceAgentTemplateSlug?: IDepartmentAgentEntity['sourceAgentTemplateSlug'];
   templateLocked?: IDepartmentAgentEntity['templateLocked'];
-  // TASK-659 — loop configuration + promotion surface. All optional;
+  // Loop configuration + promotion surface. All optional;
   // omitted ⇒ null (role ⇒ SPECIALIST, the DB default).
   role?: IDepartmentAgentEntity['role'];
   subscribedKinds?: IDepartmentAgentEntity['subscribedKinds'];
@@ -41,7 +41,7 @@ export interface CreateDepartmentAgentProps extends BaseEntityFactoryCreateProps
   guardrailProfile?: IDepartmentAgentEntity['guardrailProfile'];
   alwaysActions?: IDepartmentAgentEntity['alwaysActions'];
   neverActions?: IDepartmentAgentEntity['neverActions'];
-  // Template-copy lineage extras (TASK-548): provisioning/resync stamp
+  // Template-copy lineage extras: provisioning/resync stamp
   // `{ sourceTemplateVersionNumber }` here so the resync sweep can prove a
   // locked clone pristine against the exact source version it was cloned from.
   metaData?: IDepartmentAgentEntity['metaData'];

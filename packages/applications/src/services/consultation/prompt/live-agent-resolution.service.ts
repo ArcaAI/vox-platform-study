@@ -1,5 +1,5 @@
 /**
- * TASK-635 C3 — `ILiveAgentResolver` implementation (C1 §6.1).
+ * `ILiveAgentResolver` implementation.
  *
  * Composes the pieces the live loop must NOT know about: the consultation's
  * department, the capability-keyed prompt chain, and the agent row's
@@ -183,7 +183,7 @@ export class LiveAgentResolutionService implements ILiveAgentResolver {
   }
 
   /**
-   * The system-role string served for this session (C1 §6.1 step 4).
+   * The system-role string served for this session (step 4).
    *
    * Reads the resolved template's `metaData.promptConfig.systemPrompt` —
    * surfaced via a hand-authored accessor on `PromptTemplateEntity` (mirrors

@@ -3,8 +3,8 @@
 The production harness image installs the ``rag``/``guardrails``/``atomic-fact``
 extras (0.1), but nothing should require them just to *import* the app or the
 Temporal worker — a slim/partial image (or a dependency install that lags the
-Dockerfile change) must degrade gracefully rather than crash at import. As of
-this ticket, ``harness.guides.retrieval.{qdrant_store,retriever,sparse}``
+Dockerfile change) must degrade gracefully rather than crash at import. Now,
+``harness.guides.retrieval.{qdrant_store,retriever,sparse}``
 import ``qdrant_client``/``fastembed`` at module top level, so importing
 ``harness.main``/``harness.temporal.worker`` hard-crashes without the ``rag``
 extra installed (0.2 fixes this by moving those imports into the

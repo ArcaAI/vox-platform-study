@@ -1,11 +1,11 @@
--- TASK-490 — UserVoiceProfile.tenantId (voice-profile tenant scoping).
+-- UserVoiceProfile.tenantId (voice-profile tenant scoping).
 --
 -- WHY:
 --   The speaker `embedding` on `core."UserVoiceProfile"` is biometric PHI, but
 --   the table carried no `tenantId`, so the STT diarization preseed lookups
---   could not be tenant-scoped (TASK-474 finding B-04; the filter in
+-- could not be tenant-scoped (; the filter in
 --   `apps/stt/src/stt/core/database/voice_profile_model.py` was a
---   documented TASK-296 M-6 TODO awaiting this column — master roadmap P2-5).
+-- documented TODO awaiting this column — master roadmap P2-5).
 --   This migration adds the column so every voice-profile read filters by
 --   tenant: a cross-tenant lookup returns nothing (404-over-403 posture).
 --
@@ -26,13 +26,13 @@
 --   enrolls a profile per tenant; a profile enrolled under tenant A is never
 --   served to a session of tenant B (see `TENANT_SCOPED_MODELS` in
 --   `packages/database/src/extensions/tenant-scope.ts`, also updated by
---   TASK-490).
+-- ).
 --
 -- IDEMPOTENCY / SAFETY:
 --   Runs once via Prisma Migrate. Step 2 only touches rows where `tenantId`
 --   IS NULL (all rows at that point in the migration); no rows are deleted
 --   and the biometric payload is untouched. Diarization preseed is off by
---   default (enabled by TASK-475), so there is no live read path racing this
+-- default (enabled by), so there is no live read path racing this
 --   backfill.
 
 -- 1) Add the column NULLABLE for the backfill.

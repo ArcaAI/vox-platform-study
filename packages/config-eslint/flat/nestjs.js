@@ -1,5 +1,5 @@
 /**
- * Flat preset for NestJS apps (`apps/api`) — TASK-418.
+ * Flat preset for NestJS apps (`apps/api`).
  *
  * Exactly the shared core: NO `only-warn`, so the arcaai-internal
  * architecture rules (controller/service Prisma boundaries, downstream-URL
@@ -9,7 +9,7 @@
  * Note: the legacy eslintrc `nestjs.js` (relaxed no-explicit-any etc.) had
  * zero consumers — apps/api linted against plain `base.js` — so those
  * relaxations were deliberately NOT carried over.
- */
+*/
 const core = require('./core');
 
 /** @type {import('eslint').Linter.Config[]} */

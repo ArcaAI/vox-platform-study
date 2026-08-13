@@ -1,6 +1,6 @@
 /**
  * BYO cloud-credential probes against AiProviderConnectionController
- * (`/api/v1/admin/ai-providers`), following the task-307 / task-506 pattern.
+ * (`/api/v1/admin/ai-providers`), following the / pattern.
  *
  * The e2e job needs a live gateway +
  * seeded DB; `pnpm test:api:up` then `pnpm test:e2e`.

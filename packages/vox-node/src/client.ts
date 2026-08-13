@@ -6,11 +6,11 @@
  * request logic lives here.
  *
  * Named `HopeClient` (a client for the HOPE gateway), not `VoxNodeClient` —
- * per the ticket plan §3.2, the package brand (`@arcaai/vox-node`) and the
+ * by design, the package brand (`@arcaai/vox-node`) and the
  * client class name are deliberately different: the package name carries
  * brand continuity with the browser `@arcaai/vox` SDK, while the class name
  * says what it actually talks to.
- */
+*/
 
 import { Transport } from './core/transport';
 import { ConsultationsResource, JobsResource, SummarizationResource } from './resources';
@@ -25,10 +25,10 @@ import { ConsultationsResource, JobsResource, SummarizationResource } from './re
  * non-content fields (method, path, status, requestId).
  *
  * Not yet wired to `core/transport.ts#Transport`, which has no logging hook
- * of its own (verified against the already-frozen transport core — see the
- * top-level task report). Accepted here for forward compatibility with the
- * `HopeClient` constructor shape in the ticket plan §3.2; currently inert.
- */
+ * of its own (verified against the already-frozen transport core). Accepted
+ * here for forward compatibility with the `HopeClient` constructor shape;
+ * currently inert.
+*/
 export interface HopeLogger {
   debug?(message: string, meta?: Record<string, unknown>): void;
   info?(message: string, meta?: Record<string, unknown>): void;

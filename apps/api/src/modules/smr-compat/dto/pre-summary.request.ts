@@ -3,7 +3,7 @@ import { IsBoolean, IsInt, IsNumber, IsOptional, IsString, Max, Min } from 'clas
 
 /**
  * v1 `PreSummaryRequest` for `POST /api/smr/api/v1/presummary`.
- * (SMR_Summary_Endpoints.md §4.1; frozen TASK-560 §5.5.)
+ * (SMR_Summary_Endpoints.md §4.1; frozen)
  *
  * All fields optional. `temperature`/`max_tokens` defaults (0.2 / 800) are
  * applied by the controller so an omitted value round-trips as absent through

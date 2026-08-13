@@ -1,8 +1,8 @@
-"""TASK-671 P5 — two-arm calibration for the entity-grounding escalation.
+"""Two-arm calibration for the entity-grounding escalation.
 
 Scores the :class:`~harness.sensors.inferential.entity_grounding.EntityGroundingSensor`
 over :mod:`harness.eval.entity_grounding_corpus` with a real entailment backend, and
-reports the **joint** criterion from the ticket's §3.3. Both halves are required, because
+reports the **joint** criterion. Both halves are required, because
 either alone is trivially gameable:
 
 * **recovery** — of the abstraction arm (16 entities the incumbent flags), how many does the

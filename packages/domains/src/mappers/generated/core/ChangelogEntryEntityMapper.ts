@@ -3,7 +3,7 @@ import * as Entities from '../../../entities';
 import * as Models from '../../../models';
 
 // ChangelogEntry is the ONE human-edited model in the Service Version &
-// Release Registry (TASK-648) — the "What's New" curated release notes. It
+// Release Registry — the "What's New" curated release notes. It
 // carries real OCC: `_version` is owned by the database and the only
 // legitimate writer is `Repository.updateWithVersion`. Strip it from every
 // write path here so the auto-mappers cannot leak it into a Prisma update.

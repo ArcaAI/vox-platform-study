@@ -57,7 +57,7 @@ export class TenantFrontendConfigService extends BaseService implements ITenantF
   }
 
   /**
-   * TASK-545 — local (in-browser) transcription is disabled platform-wide.
+   * Local (in-browser) transcription is disabled platform-wide.
    * Clamps the SERVED value so callers (admin console, SDK tenant-config
    * reads) always see `transcriptionMode: BACKEND` and
    * `transcriptionModeLocked: true`, regardless of what the tenant row

@@ -1,10 +1,10 @@
 import { JobQueue } from '@arcaai/domains';
 
 /**
- * Outbox-drainer tuning (TASK-615 WS-B).
+ * Outbox-drainer tuning.
  *
  * Retry state lives on the OUTBOX ROW (`attempts` / `availableAt` / `lastError`)
- * rather than in BullMQ's job options. That is WS-A's design and it is the right
+ * rather than in BullMQ's job options. That is 's design and it is the right
  * one: retry state survives a Redis flush, a worker redeploy and a queue rename,
  * none of which a money pipeline should be able to lose. BullMQ here is a
  * scheduler and a cross-replica lock, not the retry mechanism.
@@ -14,7 +14,7 @@ import { JobQueue } from '@arcaai/domains';
  * BullMQ queue name.
  *
  * Promoted into the shared `JobQueue` enum home (`@arcaai/domains`) per the
- * WS-B handoff (TASK-615 WS-D2 item 4c) — the value is unchanged
+ * WS-B handoff — the value is unchanged
  * (`'AiUsageOutboxDrain'`), only the source of truth moved so a rename of one
  * can never silently drift from the other. `BullModule.forRootAsync` is
  * registered globally by `RedisServiceModule`, so `registerQueue` here still
@@ -60,7 +60,7 @@ export const DRAIN_DEFAULTS = {
   intervalSeconds: 30,
 } as const;
 
-// ── DISPATCHED-outbox pruning (TASK-615 WS-K — the WS-B handoff item) ───────
+// ── DISPATCHED-outbox pruning (the WS-B handoff item) ───────
 //
 // A `DISPATCHED` outbox row has already produced its `AiUsageEvent` (or been
 // permanently unrated) — it is a completed work item, not history. Pruning it

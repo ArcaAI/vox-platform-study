@@ -1,6 +1,6 @@
 /**
- * TASK-667 — pure field catalogues + validators for the Loop config tab
- * (TASK-659's seven `DepartmentAgent` fields, plus the pre-existing
+ * pure field catalogues + validators for the Loop config tab
+ * (the seven `DepartmentAgent` fields, plus the pre-existing
  * `toolConfig` "Tool allowlist" and a "Budgets" subset of `harnessOverrides`).
  *
  * Every catalogue here MIRRORS an allow-list the server already enforces
@@ -13,7 +13,7 @@
 
 import type { DepartmentAgentRole, GuardrailProfile } from '../api/types';
 
-/** Mirrors `AGENT_ACTION_KEYS` — the seven action-registry names the loop dispatches (TASK-654 §4.4). */
+/** Mirrors `AGENT_ACTION_KEYS` — the seven action-registry names the loop dispatches. */
 export const AGENT_ACTION_KEYS = [
   'livedoc.start',
   'livedoc.stop',
@@ -36,7 +36,7 @@ export const AGENT_ACTION_LABELS: Record<(typeof AGENT_ACTION_KEYS)[number], str
 
 /**
  * The two action-registry entries that are clinical-safety-relevant for C25
- * purposes (TASK-654 §4.6): forbidding either via `neverActions` disables a
+ * purposes: forbidding either via `neverActions` disables a
  * clinical check on this agent's note. `client.emit`/`livedoc.*` are plumbing,
  * not a check.
  */
@@ -51,10 +51,10 @@ export const GUARDRAIL_PROFILE_LABELS: Record<GuardrailProfile, string> = {
   RELAXED: 'Relaxed',
 };
 
-/** The weakest profile in the catalogue — transitioning INTO it is the C25 trigger (§4.6). */
+/** The weakest profile in the catalogue — transitioning INTO it is the C25 trigger. */
 export const WEAKEST_GUARDRAIL_PROFILE: GuardrailProfile = 'RELAXED';
 
-/** Mirrors `LIVE_TOOL_KEYS` — the "Tool allowlist" catalogue (`toolConfig.tools`, TASK-635). */
+/** Mirrors `LIVE_TOOL_KEYS` — the "Tool allowlist" catalogue (`toolConfig.tools`). */
 export const LIVE_TOOL_KEYS = ['ner', 'vitals', 'groundedness'] as const;
 
 export const LIVE_TOOL_LABELS: Record<(typeof LIVE_TOOL_KEYS)[number], string> = {
@@ -80,7 +80,7 @@ export const AGENT_ROLE_OPTIONS: { value: DepartmentAgentRole; label: string }[]
  * earlier revision of this tab rendered them disabled for a non-elevated
  * caller on the `TENANT_LOCKED_POLICY_KEYS` precedent, which locks a
  * DIFFERENT key set; that was a console guarantee the server never enforced.
- * See the TASK-678 ticket README's Decisions section.
+ * See the Decisions section.
  */
 export const AGENT_BUDGET_FIELDS: { key: 'maxRegen' | 'gateSlaSeconds' | 'gateEscalationSeconds'; label: string }[] = [
   { key: 'maxRegen', label: 'Max regen budget' },
@@ -118,7 +118,7 @@ export function actionOverlap(always: string[], never: string[]): string[] {
 }
 
 /**
- * C25 (TASK-654 §4.6) — does this pending edit disable a clinical check?
+ * C25 — does this pending edit disable a clinical check?
  * Returns human-readable reasons; empty ⇒ no acknowledgement needed. Two
  * triggers, both grounded in what this ticket's seven fields can actually
  * express:
@@ -177,7 +177,7 @@ export function buildGoalPayload(objective: string, successCriteria: string[]): 
 
 /**
  * Tri-state editor value for one tool's `toolConfig.tools[key].enabled` pin
- * (TASK-674) — mirrors the `TriState` pattern of
+ *  — mirrors the `TriState` pattern of
  * `pipeline-policy/components/cascade.ts` (inherit/on/off over a nullable
  * boolean), reimplemented here rather than imported because features never
  * import each other (`13-nextjs-apps.md`). `'inherit'` round-trips to

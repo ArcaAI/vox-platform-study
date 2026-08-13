@@ -70,13 +70,13 @@ export interface AgenticState {
   transcriptSegments: TranscriptSegment[];
   audioLanguage: string;
   /**
-   * End-user STT language mode id (TASK-587), e.g. `'en'`, `'ml'`, `'ml-en'`,
+   * End-user STT language mode id, e.g. `'en'`, `'ml'`, `'ml-en'`
    * `'auto'`. Undefined ⇒ no mode selected (pipeline default). Re-applied on a
    * reconnect/fallback restart, alongside `audioLanguage`.
    */
   sttLanguageMode?: string;
   /**
-   * Pre-start STT engine selection (TASK-586). `null` ⇒ no pending selection
+   * Pre-start STT engine selection. `null` ⇒ no pending selection
    * (session opens on the primary engine). Set by the compat provider-switch
    * hook when the user picks the default (fallback) provider BEFORE capture
    * starts; consumed and cleared by whichever start hook calls `audio.start`.
@@ -110,7 +110,7 @@ export interface AgenticState {
    */
   audioUplinkBitrate: number;
   /**
-   * Silent-uplink watchdog signal (TASK-612 Lane D). `'silent'` means a
+   * Silent-uplink watchdog signal. `'silent'` means a
    * STREAMING session's input level has been zero for a sustained window —
    * the socket is open and carrying structurally valid frames of nothing
    * (wrong/default mic, OS-muted device, a suspended caller AudioContext
@@ -123,7 +123,6 @@ export interface AgenticState {
    * capture-source order `useArcaAudio.start()` computed — i.e. with
    * `AudioStartOptions.sourceStreams`, else with
    * `[deviceId, secondaryDeviceId, ...additionalDeviceIds]` after de-duplication
-   * (TASK-597 follow-up #2).
    *
    * This is the signal `audioLevel` cannot give: `audioLevel` measures the ONE
    * mixed capture graph, so it can say "someone is speaking" but never "mic 2
@@ -139,7 +138,7 @@ export interface AgenticState {
    */
   audioSourceLevels: number[];
   /**
-   * Ids of the capture sources currently in the mix (TASK-609), index-aligned
+   * Ids of the capture sources currently in the mix, index-aligned
    * with {@link AgenticState.audioSourceLevels} — so `audioSourceIds[i]` names
    * the source whose level is `audioSourceLevels[i]`, and that id is what
    * `useArcaAudio.removeSource` / `setSourceGain` take.
@@ -150,7 +149,7 @@ export interface AgenticState {
    */
   audioSourceIds: string[];
   /**
-   * Live connection health of the streaming STT session (TASK-567 Phase F).
+   * Live connection health of the streaming STT session.
    * Driven by the streaming client's reconnect callbacks and the backend
    * `provider_switched` status. `connected` is the nominal value (also the
    * pre-capture default); the UI renders a banner only when it is not.
@@ -200,7 +199,7 @@ export interface AgenticState {
 
   /**
    * The tenant's PINNED consultation context schema discovery bundle
-   * (TASK-658/661/665) — fetched once at `AgenticProvider` mount (or on a
+   * Fetched once at `AgenticProvider` mount (or on a
    * same-tab tenant switch) and held for the life of the session. `null`
    * before the first fetch resolves; never re-fetched mid-session, which is
    * what makes the session's pin stable even if the tenant publishes a new
@@ -351,7 +350,7 @@ export interface AgenticActions {
   // `TenantAudioConfig | null`).
   setTenantConfig: (config: TenantAudioConfig | null) => void;
 
-  /** Set (or clear with `null`) the session's pinned consultation context schema bundle (TASK-665). */
+  /** Set (or clear with `null`) the session's pinned consultation context schema bundle.*/
   setConsultationSchema: (bundle: ConsultationSchemaBundle | null) => void;
 
   // Runtime config (ENH-05)
@@ -458,7 +457,7 @@ const initialState: AgenticState = {
   // Tenant config
   tenantConfig: null,
 
-  // Consultation context schema (TASK-665)
+  // Consultation context schema
   consultationSchema: null,
 
   // Three-tier config management
@@ -651,7 +650,7 @@ const agenticStoreInitializer: StateCreator<AgenticState & AgenticActions> = (se
       tenantConfig: null,
       // The outgoing tenant's pinned schema must not remain resident once a
       // switch begins — re-fetched (or left null) by the incoming tenant's
-      // rehydrate effect in `AgenticProvider` (TASK-665).
+      // rehydrate effect in `AgenticProvider`.
       consultationSchema: null,
       // A tenant switch ends the capture context; the outgoing tenant's
       // audio-drop signal must not bleed into the next. (`clearSensitiveData`

@@ -1,8 +1,8 @@
 /**
- * TASK-663 — the TASK-659 §4.5 clone() gap, closed.
+ * The clone() gap, closed.
  *
- * TASK-659 added seven loop-config fields to `DepartmentAgent` and deliberately
- * did NOT propagate them in `clone()`, flagging the call for this ticket. The
+ * Added seven loop-config fields to `DepartmentAgent` and deliberately
+ * did NOT propagate them in `clone()`. The
  * consequence was silent: cloning an agent dropped its ENTIRE loop
  * configuration with no error. Promotion is the feature that copies agents, so
  * the two copy paths must agree on what an agent IS.
@@ -91,7 +91,7 @@ function buildService() {
   );
 }
 
-describe('DepartmentAgentService.clone — TASK-663 (closing the TASK-659 §4.5 gap)', () => {
+describe('DepartmentAgentService.clone — (closing the gap)', () => {
   let service: DepartmentAgentService;
 
   beforeEach(() => {

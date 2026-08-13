@@ -132,7 +132,7 @@ export const DEFAULT_POLICIES: DefaultPolicy[] = [
       // departments and audio (ASR) pipelines, both tenant-scoped.
       { action: 'manage', subject: 'Department', conditions: { tenantId: '${context.tenantId}' } },
       { action: 'manage', subject: 'AsrPipeline', conditions: { tenantId: '${context.tenantId}' } },
-      // First-class department agents (TASK-546). M-12: a DEDICATED
+      // First-class department agents. M-12: a DEDICATED
       // subject (not HarnessPolicy reuse); tenant admins self-serve their
       // own tenant's agents, tenant-scoped.
       { action: 'manage', subject: 'DepartmentAgent', conditions: { tenantId: '${context.tenantId}' } },
@@ -190,7 +190,7 @@ export const DEFAULT_POLICIES: DefaultPolicy[] = [
       // the caller's tenant. `manage` implies `read` (used by the GET routes).
       { action: 'manage', subject: 'TenantTtsConfig', conditions: { tenantId: '${context.tenantId}' } },
       // Tenant admins manage their own tenant's STT fallback config + BYO
-      // provider credentials (TASK-567). Tenant-scoped; the controller pins
+      // provider credentials. Tenant-scoped; the controller pins
       // every op to the caller's tenant. `manage` implies `read` (GET routes).
       { action: 'manage', subject: 'TenantSttConfig', conditions: { tenantId: '${context.tenantId}' } },
       // Tenant admins read + manage their own tenant's AI
@@ -209,18 +209,18 @@ export const DEFAULT_POLICIES: DefaultPolicy[] = [
       // all` rule above.
       { action: 'manage', subject: 'TenantIdentityProvider', conditions: { tenantId: '${context.tenantId}' } },
       // Tenant admins manage their own tenant's Vox SDK CORS
-      // allowed-origin rows (TASK-641). Tenant-scoped; the service pins every
+      // allowed-origin rows. Tenant-scoped; the service pins every
       // op to the caller's tenant and gates wildcard/pattern origins +
       // SYSTEM-tenant rows to GLOBAL_ADMIN only (not expressible here).
       // GLOBAL_ADMIN already covers this via the wildcard `manage all` rule.
       { action: 'manage', subject: 'TenantAllowedOrigin', conditions: { tenantId: '${context.tenantId}' } },
-      // TASK-658 — tenant admins declare their OWN consultation context
+      // Tenant admins declare their OWN consultation context
       // schemas (the kinds of context a consultation carries). Tenant-scoped;
       // the service pins every operation to the caller's CLS tenant and
       // answers 404 for a cross-tenant id. Unlike TenantAllowedOrigin above,
       // this resource carries NO narrower imperative gate — the ability IS
       // the whole boundary. Without this grant the feature would be
-      // unreachable by the audience TASK-654 R1 names.
+      // unreachable by the audience names.
       { action: 'manage', subject: 'ConsultationContextSchema', conditions: { tenantId: '${context.tenantId}' } },
     ],
   },

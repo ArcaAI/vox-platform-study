@@ -1,5 +1,5 @@
 /**
- * Agents tab (TASK-547) — department-grouped `DepartmentAgent` catalog over
+ * Agents tab — department-grouped `DepartmentAgent` catalog over
  * `admin/department-agents`. Rendered standalone (no `WorkingTenantGate`
  * wrapper — that's applied one level up by `AgentsScreen`).
  */

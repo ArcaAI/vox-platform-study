@@ -6,7 +6,7 @@ import { CanManage } from '../../decorators';
 import { ReconciliationRunsQuery } from './dto';
 
 /**
- * Provider-reconciliation audit trail (TASK-638 §6 rule 6), mounted at
+ * Provider-reconciliation audit trail (rule 6), mounted at
  * `/admin/usage/reconciliation/*`.
  *
  * READ-ONLY. There is deliberately no route to create, edit or delete a run:

@@ -6,7 +6,7 @@ import { CommonServiceModule } from '../../baseServices';
 import { ConsultationContextSchemaServiceModule } from '../../consultation-context-schema';
 
 @Module({
-  // TASK-658 — `ConsultationContextSchemaServiceModule` supplies the OPTIONAL
+  // `ConsultationContextSchemaServiceModule` supplies the OPTIONAL
   // `IConsultationContextSchemaService` that `ContextService` uses to
   // validate a write naming a `kindKey`. The dependency is one-way (the
   // schema plane knows nothing about `ContextService`), so there is no

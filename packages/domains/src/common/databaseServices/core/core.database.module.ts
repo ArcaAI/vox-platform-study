@@ -116,7 +116,7 @@ const databaseProvider = {
 const repositories = [
   // Consultation domain
   ConsultationRepository,
-  // TASK-658 — tenant-declared consultation context schema plane: the mutable
+  // Tenant-declared consultation context schema plane: the mutable
   // head and its immutable published version snapshots.
   ConsultationContextSchemaRepository,
   ConsultationContextSchemaVersionRepository,
@@ -172,11 +172,11 @@ const repositories = [
   // API & Organization domain
   ApiKeyRepository,
   DepartmentRepository,
-  // First-class department agent entity (TASK-546)
+  // First-class department agent entity
   DepartmentAgentRepository,
-  // Immutable loop-configuration snapshots of a DepartmentAgent (TASK-659)
+  // Immutable loop-configuration snapshots of a DepartmentAgent
   DepartmentAgentVersionRepository,
-  // Immutable, WORM records of agent promotions between tenants (TASK-663)
+  // Immutable, WORM records of agent promotions between tenants
   AgentPromotionRepository,
   // Prompt & DNA domain
   PromptTemplateRepository,
@@ -186,7 +186,7 @@ const repositories = [
   DnaUsageRecordRepository,
   PromptUsageRecordRepository,
   // Storage domain
-  // TASK-610 CORS control plane — browser-origin allow-list.
+  // CORS control plane — browser-origin allow-list.
   TenantAllowedOriginRepository,
   TenantBucketRepository,
   StorageAccessKeyRepository,
@@ -194,11 +194,11 @@ const repositories = [
   // Voice profile domain
   UserVoiceProfileRepository,
   // Per-tenant STT configuration (credential rows live in the unified
-  // AiProviderConnection plane, service='stt' — TASK-576 dropped
+  // AiProviderConnection plane, service='stt' — dropped
   // TenantSttProviderCredential)
   TenantSttConfigRepository,
   // Per-tenant TTS configuration (credential rows live in the unified
-  // AiProviderConnection plane, service='tts' — TASK-576 dropped
+  // AiProviderConnection plane, service='tts' — dropped
   // TenantTtsProviderCredential)
   TenantTtsConfigRepository,
   // Clinical documentation harness domain
@@ -223,7 +223,7 @@ const repositories = [
   TenantIdentityProviderRepository,
   FederatedIdentityRepository,
   TenantIdentityProviderDomainRepository,
-  // AI usage metering plane (TASK-615). The ledger, its transactional outbox
+  // AI usage metering plane. The ledger, its transactional outbox
   // and the two rollups are tenant-scoped APPEND-ONLY facts — soft-delete and
   // sys-event exempt (see the repository/entity docs). AiPriceBook is the one
   // admin-managed model of the plane: standard lifecycle, sys-events, and a
@@ -235,8 +235,8 @@ const repositories = [
   AiUsageRollupDailyRepository,
   ProviderReconciliationRunRepository,
   AiPriceBookRepository,
-  // Tenant billing plane (TASK-615). BillingInvoice is the ONE
-  // OCC-written model of the ticket (draft edits + the immutable FINALIZE
+  // Tenant billing plane. BillingInvoice is the ONE
+  // OCC-written model of the plane (draft edits + the immutable FINALIZE
   // transition); BillingAdjustment is append-only — a credit memo against a
   // finalized period cannot be retracted by deletion.
   BillingInvoiceRepository,
@@ -245,7 +245,7 @@ const repositories = [
   // Append-only plan-change facts feeding the invoice engine's plan-fee basis
   // (no soft delete, no sys-events — see the repository doc).
   TenantPlanHistoryRepository,
-  // Service Version & Release Registry (TASK-648). ServiceRelease is
+  // Service Version & Release Registry. ServiceRelease is
   // immutable build facts; ServiceInstance is a heartbeated runtime
   // observation (no soft delete). ChangelogEntry is the one human-edited, OCC
   // model; UserChangelogAcknowledgement is its per-user ack trail.

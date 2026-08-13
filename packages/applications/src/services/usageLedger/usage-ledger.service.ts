@@ -7,7 +7,7 @@ import { RecordUsageResult, USAGE_OUTBOX_PAYLOAD_VERSION, UsageEventBatchInput, 
 import { expandUsageBatch, serializeUsageEvent, validateUsageEventInput } from './usage-event.validation';
 
 /**
- * The usage-emission write path (TASK-615 WS-B deliverable 1).
+ * The usage-emission write path (deliverable 1).
  *
  * See {@link IUsageLedgerService} for the contract. Two implementation notes
  * that are load-bearing and not obvious from the interface:
@@ -109,7 +109,7 @@ export class UsageLedgerService implements IUsageLedgerService {
    *    contributes `0` to every COGS rollup for a `BYOK_NOTIONAL` row
    *    (`usage-outbox.drainer.ts`), and billing resolves the provider-agnostic
    *    baseline SELL price rather than the managed-vendor row. Added by
-   *    TASK-643 R3: since a platform-funded call meters as the EXISTING `CLOUD`
+   * Since a platform-funded call meters as the EXISTING `CLOUD`
    *    member (OD-2), a mis-attributed one carries no novel enum value and no
    *    "did something unknown appear" check can ever catch it. Shadow metering
    *    filters to `CLOUD`, so the mis-stamped events drop out of the one

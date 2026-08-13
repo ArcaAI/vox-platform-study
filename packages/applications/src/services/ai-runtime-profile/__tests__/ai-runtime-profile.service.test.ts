@@ -1,5 +1,5 @@
 /**
- * AiRuntimeProfileService — unit tests (§5 tests 6–8).
+ * AiRuntimeProfileService — unit tests (tests 6–8).
  *
  * The three contracts locked here:
  *   6. The per-field cascade — a model-scoped profile (`modelSlug = <slug>`)
@@ -62,7 +62,7 @@ function makeService(opts: { roles?: string[] } = {}) {
 // 6. The per-field cascade
 // ===========================================================================
 
-describe('AiRuntimeProfileService — resolveProfile cascade (§5 test 6)', () => {
+describe('AiRuntimeProfileService — resolveProfile cascade (test 6)', () => {
   it('lets a model-scoped value win over the provider default', async () => {
     const { svc, repo } = makeService();
     repo.findByTenantProviderAndModel.mockImplementation(async (_t: string, _p: string, modelSlug: string) =>
@@ -121,7 +121,7 @@ describe('AiRuntimeProfileService — resolveProfile cascade (§5 test 6)', () =
 // 7. Range clamps
 // ===========================================================================
 
-describe('AiRuntimeProfileService — range validation (§5 test 7)', () => {
+describe('AiRuntimeProfileService — range validation (test 7)', () => {
   it.each([
     ['temperature', 3],
     ['temperature', -0.1],
@@ -156,7 +156,7 @@ describe('AiRuntimeProfileService — range validation (§5 test 7)', () => {
 // 8. Global-admin + SYSTEM-only governance
 // ===========================================================================
 
-describe('AiRuntimeProfileService — governance (§5 test 8)', () => {
+describe('AiRuntimeProfileService — governance (test 8)', () => {
   it('rejects a write from a non-global-admin with 403', async () => {
     const { svc } = makeService({ roles: [] });
     await expect(svc.upsertProfile('lm-studio', '', { temperature: 0.5 })).rejects.toBeInstanceOf(ForbiddenException);

@@ -1,4 +1,4 @@
--- TASK-524 — Config-plane core: AiProviderConnection + AiRuntimeProfile.
+-- Config-plane core: AiProviderConnection + AiRuntimeProfile.
 --
 -- Purely ADDITIVE: two new tables, no changes to any existing column or row.
 --
@@ -101,7 +101,7 @@ CREATE INDEX IF NOT EXISTS "AiRuntimeProfile_provider_idx" ON "core"."AiRuntimeP
 -- Both services emit `broadcastSysEvent(...)` on every mutation, which writes an
 -- AuditLog row carrying `resourceType`. Without these values that INSERT throws
 -- ("Invalid value for argument `resourceType`") and rolls the originating
--- mutation back into a 500 — the TASK-366 failure mode the enum-parity guard
+-- mutation back into a 500 — the failure mode the enum-parity guard
 -- (`resourceType.enum-parity.test.ts`) exists to prevent.
 --
 -- Append-only ADD VALUE, guarded so re-application is a no-op.

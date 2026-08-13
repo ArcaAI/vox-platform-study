@@ -1,4 +1,4 @@
-// Consultation-loop LIFECYCLE bound — `global-kv` (TASK-685).
+// Consultation-loop LIFECYCLE bound — `global-kv`.
 //
 // One knob, deliberately in its own file rather than appended to
 // `consultation-gates.descriptors.ts`: that file is the two consultation-pipeline

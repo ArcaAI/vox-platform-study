@@ -11,7 +11,7 @@ import { GracefulShutdownService, IGracefulShutdownService } from './graceful-sh
 @Global()
 @Module({
   // `CommonServiceModule` supplies `IAppSettingsService`, which backs the
-  // `global-kv` cascade for `shutdown.*` (TASK-558 lane I).
+  // `global-kv` cascade for `shutdown.*`.
   imports: [CommonServiceModule],
   providers: [
     TenantSettingsService,

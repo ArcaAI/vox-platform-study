@@ -11,7 +11,7 @@ import { CascadeTier, walkCascade } from '../settings-registry/scope-cascade';
  *
  * short-circuiting at the first tier that supplies a non-null value, while
  * clamping every setting to its configured MAX SCOPE (so e.g. `harnessEnabled`
- * can never be set per-doctor — §12 Q7). Also threads the consulting doctor's
+ * can never be set per-doctor — Q7). Also threads the consulting doctor's
  * `UserProfile.preferredPromptTemplateId` (read-only here) for every generation
  * path. NO writes happen here — the doctor-scope writes live elsewhere.
  */
@@ -19,7 +19,7 @@ import { CascadeTier, walkCascade } from '../settings-registry/scope-cascade';
 /** The realtime cascade knobs ConfigResolver resolves. */
 export type PipelineToggleKey = 'autoSummaryEnabled' | 'autoNerEnabled' | 'harnessEnabled' | 'dnaStyleEnabled' | 'dnaRedactionEnabled';
 
-/** Which cascade tier supplied a resolved value (audit trace, README §4.1). */
+/** Which cascade tier supplied a resolved value (audit trace). */
 export type ConfigResolutionSource = 'doctor' | 'department' | 'tenant' | 'system-default' | 'code-default';
 
 export interface ConfigResolutionContext {
@@ -27,7 +27,7 @@ export interface ConfigResolutionContext {
   departmentId?: string | null;
   doctorId?: string | null;
   /**
-   * TASK-551 — the consultation's default DepartmentAgent gate. When its
+   * The consultation's default DepartmentAgent gate. When its
    * `dnaStylePolicy` is `DISABLED`, DNA redaction is forced OFF for that agent
    * regardless of the tenant/doctor gates. Resolved by the caller (which already
    * knows the department's default agent) and passed in as a plain flag so the
@@ -68,7 +68,7 @@ interface SettingDescriptor {
 }
 
 /**
- * The setting registry (README §4.1 / §12 Q7):
+ * The setting registry (/ Q7):
  *  - `autoSummaryEnabled` / `autoNerEnabled` may be set down to DOCTOR scope.
  *  - `harnessEnabled` is capped at DEPARTMENT (never per-doctor) and code-defaults
  *    to `false` (fail-closed) when nothing resolves.
@@ -79,7 +79,7 @@ export const PIPELINE_SETTING_DESCRIPTORS: Record<PipelineToggleKey, SettingDesc
   autoNerEnabled: { codeDefault: true, maxScope: PipelinePolicyScope.DOCTOR },
   harnessEnabled: { codeDefault: false, maxScope: PipelinePolicyScope.DEPARTMENT },
   dnaStyleEnabled: { codeDefault: false, maxScope: PipelinePolicyScope.DOCTOR },
-  // TASK-551 — the TENANT-level enablement gate for DNA redaction; the doctor
+  // The TENANT-level enablement gate for DNA redaction; the doctor
   // opt-in is the doctor's DNA toggle (see resolveEffectiveDnaRedactionEnabled).
   dnaRedactionEnabled: { codeDefault: false, maxScope: PipelinePolicyScope.TENANT },
 };
@@ -200,7 +200,7 @@ export class ConfigResolver {
   }
 
   /**
-   * TASK-551 — resolve the effective DNA REDACTION decision for a
+   * Resolve the effective DNA REDACTION decision for a
    * consultation context. Mirrors {@link resolveEffectiveDnaStyleEnabled} as a
    * DOUBLE gate, plus the DepartmentAgent gate:
    *

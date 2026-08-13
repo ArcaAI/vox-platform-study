@@ -1,5 +1,5 @@
 /**
- * TASK-635 Lane B5 — extended prompt-template test-bench E2E
+ * Extended prompt-template test-bench E2E
  * (`POST /admin/prompt-templates/:id/test`).
  *
  * Backend contract under test (`prompt-management.service.ts#testPromptTemplate`,
@@ -54,12 +54,12 @@
  * owns a throwaway `SUMMARY` template created in `beforeAll` and soft-deleted
  * in `afterAll` — mirrors `agent-management-contract.spec.ts` so this spec
  * never touches seeded rows. Cross-tenant probe reuses `super_admin` scoped
- * to the `ARCAAI` tenant (the task-307 cross-tenant pattern, per
+ * to the `ARCAAI` tenant (the cross-tenant pattern, per
  * `ai-task-defaults-cross-tenant.spec.ts`).
  *
  * @see apps/api/src/modules/prompt-management/prompt-management.controller.ts
  * @see packages/applications/src/services/prompt-management/prompt-management.service.ts
- * @see docs/implementation/TASK-635-Summarization-Agent-Conformance/README.md §4.3 (B5)
+ * @see docs/implementation/TASK-635-Summarization-Agent-Conformance/README.md
  */
 import { test, expect } from '@playwright/test';
 import { DEFAULT_TENANT_KEY, SEEDED_USERS, loginUser } from '../../../../tests/helpers';
@@ -110,7 +110,7 @@ function loggedGenerationAvailable(status: number, label: string): boolean {
   return false;
 }
 
-test.describe.serial('prompt-template test bench (TASK-635 Lane B · tenant_admin · __GLOBAL__)', () => {
+test.describe.serial('prompt-template test bench (tenant_admin · __GLOBAL__)', () => {
   let tenantAdminToken: string;
   /** super_admin scoped to the ARCAAI tenant — foreign to the __GLOBAL__ throwaway template below. */
   let crossTenantToken: string;
@@ -316,7 +316,7 @@ test.describe.serial('prompt-template test bench (TASK-635 Lane B · tenant_admi
     expect(res.status()).toBe(404);
   });
 
-  // ── Cross-tenant (404-over-403, task-307 pattern) ───────────────────────
+  // ── Cross-tenant (404-over-403, pattern) ───────────────────────
 
   test('cross-tenant: super_admin scoped to ARCAAI cannot test this __GLOBAL__ template (404, never 403/200)', async ({ request }) => {
     const res = await request.post(`${PROMPTS}/${promptId}/test`, {

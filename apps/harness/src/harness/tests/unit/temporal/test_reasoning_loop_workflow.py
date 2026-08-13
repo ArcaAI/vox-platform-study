@@ -1,4 +1,4 @@
-"""Reasoning-lane tests for the consultation loop (TASK-664).
+"""Reasoning-lane tests for the consultation loop.
 
 Every test runs the REAL workflow definitions against stub activities in
 Temporal's time-skipping environment, so what is exercised is orchestration: the
@@ -7,12 +7,12 @@ scoped reads, enforced ``writeScope``, inspectable adjudication, cycle detection
 and the specialist budget.
 
 The mechanical loop's own properties (pinning, de-duplication, depth cap, action
-budget, ``continue_as_new``, child finalize) are TASK-662's and are covered in
+budget, ``continue_as_new``, child finalize) are covered in
 ``test_consultation_loop_workflow.py`` — not re-tested here.
 
-**Replay note.** Unlike TASK-662, this ticket edits a workflow type that ALREADY
+**Replay note.** This suite edits a workflow type that ALREADY
 has a recorded history (``consultation_loop_task662_history``), so every new
-command it issues sits behind the ``task-664-reasoning`` patch era. That the
+command it issues sits behind the ``-reasoning`` patch era. That the
 frozen fixture still replays is asserted in ``test_replay_compat.py``.
 """
 
@@ -156,7 +156,7 @@ class _ReasoningHarness:
 
 
 # ===========================================================================
-# Registry — the three keys TASK-662 declared but did not back
+# Registry — the three keys declared but did not back
 # ===========================================================================
 
 
@@ -165,7 +165,7 @@ class TestActionRegistryIsFullyBacked:
         assert set(LOOP_ACTION_REGISTRY) == set(LOOP_ACTION_KEYS)
 
     def test_the_three_task662_placeholders_are_now_implemented(self):
-        """TASK-662 §5 left these dispatching as `unsupported_action` skips."""
+        """Left these dispatching as `unsupported_action` skips."""
         for key in (
             LOOP_ACTION_VISION_EXTRACT_TEXT,
             LOOP_ACTION_DOCUMENT_EXTRACT_TEXT,
@@ -326,7 +326,7 @@ class TestSpecialistWriteScope:
 
         Even a MISCONFIGURED specialist whose `writeScope` names `note` is
         refused: the primary-only outputs are a platform floor, not a per-agent
-        setting (TASK-654 §4.6 — enforcement outside agent code).
+        setting (enforcement outside agent code).
         """
         rogue = LoopAgentSpec(
             agent_id="agent-rogue",
@@ -446,7 +446,7 @@ class TestSpecialistFailureIsIsolated:
 
 class TestSpecialistChildPolicies:
     def test_specialist_children_carry_both_explicit_policies(self):
-        """The close policy alone leaves the parent running forever (TASK-662 §4.3)."""
+        """The close policy alone leaves the parent running forever."""
         spec = LOOP_ACTION_REGISTRY["harness.finalize"]
         assert spec.parent_close_policy is ParentClosePolicy.REQUEST_CANCEL
         assert spec.child_cancellation_type is ChildWorkflowCancellationType.TRY_CANCEL
@@ -601,7 +601,7 @@ class TestAdjudicationIsInspectable:
 class TestCycleDetection:
     @pytest.mark.asyncio
     async def test_a_repeated_agent_kind_pair_terminates_the_cascade(self):
-        """TDD-6 — `(agent, kind)` is the cycle identity (TASK-654 §4.2)."""
+        """TDD-6 — `(agent, kind)` is the cycle identity."""
         async with _ReasoningHarness() as h:
             handle = await h.start(_wf_input())
             for i in range(4):
@@ -729,7 +729,7 @@ class TestPrimaryIsTheOnlyWriter:
                 )
 
                 # The loop AWAITS its finalize child, so the child must be signed
-                # for the parent to complete (the TASK-662 fixture does the same).
+                # for the parent to complete (the fixture does the same).
                 child = env.client.get_workflow_handle(f"harness-doc-{consultation_id}")
                 await _await_state(handle, lambda s: s.finalize_workflow_id is not None)
                 for _ in range(400):
@@ -771,7 +771,7 @@ class TestPrimaryIsTheOnlyWriter:
 class TestDerivedContextCascade:
     @pytest.mark.asyncio
     async def test_a_derive_action_re_enters_its_output_as_context_one_depth_deeper(self):
-        """TASK-654 §4.2 — an action's output re-enters the bus as context."""
+        """An action's output re-enters the bus as context."""
         config = reasoning_loop_config(
             subscriptions=[
                 LoopSubscription(kind_key="attachment", actions=[LOOP_ACTION_DOCUMENT_EXTRACT_TEXT]),
@@ -801,7 +801,7 @@ class TestDerivedContextCascade:
 
     @pytest.mark.asyncio
     async def test_the_derived_cascade_still_terminates_at_the_depth_cap(self):
-        """The cascade is real, so the TASK-662 depth cap must actually bound it."""
+        """The cascade is real, so the depth cap must actually bound it."""
         config = reasoning_loop_config(
             subscriptions=[
                 LoopSubscription(kind_key="attachment", actions=[LOOP_ACTION_DOCUMENT_EXTRACT_TEXT]),
@@ -862,7 +862,7 @@ class TestReasoningPlacement:
 
 
 # ===========================================================================
-# Reasoning is opt-in — a config without it behaves exactly as TASK-662 did
+# Reasoning is opt-in — a config without it behaves exactly as did
 # ===========================================================================
 
 

@@ -3,7 +3,7 @@ import { IsEnum } from 'class-validator';
 import { ExemplarCurationStatus } from '@arcaai/domains';
 
 /**
- * Body for `PATCH /admin/harness/gate-edit-exemplars/:id/curation` (TASK-553 F-24).
+ * Body for `PATCH /admin/harness/gate-edit-exemplars/:id/curation` (F-24).
  *
  * `status` is the ONLY writable field on a mined exemplar. Everything else is
  * derived from the WORM audit trail and the redacted RAW→SIGNED diff, so a wider

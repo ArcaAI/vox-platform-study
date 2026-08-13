@@ -1,5 +1,5 @@
 /**
- * TASK-558 lane I — seed ↔ registry parity for the migrated platform knobs.
+ * Seed ↔ registry parity for the migrated platform knobs.
  *
  * `packages/database` must not depend on `@arcaai/applications` (the constraint
  * `12-rate-limit-settings.ts` documents), so `seed/11a-platform-knob-settings.ts`

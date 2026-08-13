@@ -1,5 +1,5 @@
 /**
- * DepartmentRepository — deterministic ordering (TASK-634 D-05).
+ * DepartmentRepository — deterministic ordering.
  *
  * `findAllByTenant` previously sorted by `name asc` ONLY. ArcaAI has two
  * departments both named "General Medicine" (one carries the tenant's
@@ -13,7 +13,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { DepartmentRepository } from '../DepartmentRepository';
 
-describe('DepartmentRepository — deterministic ordering (TASK-634 D-05)', () => {
+describe('DepartmentRepository — deterministic ordering', () => {
   let findMany: ReturnType<typeof vi.fn>;
   let repo: DepartmentRepository;
 

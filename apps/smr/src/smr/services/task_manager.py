@@ -96,11 +96,11 @@ class TaskManager:
         return await self.update_task(task_id, status=TaskStatus.CANCELLED)
 
     async def append_chunk(self, task_id: str, chunk: StreamChunk) -> str:
-        # TASK-636 OBS-16: stamp the GENERATING context onto the entry. The SSE
+        # Stamp the GENERATING context onto the entry. The SSE
         # reader is a different HTTP request (often a different connection), so
         # this field is the only thing that can join a streamed chunk to the
         # generation that produced it. Empty (and the entry byte-identical to
-        # pre-TASK-636) when tracing is off.
+        # prior) when tracing is off.
         fields: dict[str, str] = {"data": chunk.model_dump_json()}
         fields.update(inject_trace_carrier())
         msg_id = await self._redis.xadd(
@@ -146,7 +146,7 @@ class TaskManager:
 
         ``(msg_id, chunk, carrier)``. The carrier is ``{}`` when the producing
         side was untraced. Built from the RAW Redis fields — the generated text
-        in ``data`` is never handed to a propagator (TASK-636 OBS-16).
+        in ``data`` is never handed to a propagator.
         """
         stream_key = self._stream_key(task_id)
         result = await self._redis.xread(

@@ -1,7 +1,7 @@
 /**
- * Tenant Allowed Origin Seed (TASK-610, corrected by TASK-641 §3.1 step 2)
+ * Tenant Allowed Origin Seed (corrected by step 2)
  *
- * The day-1 CORS allow-list. Since TASK-610 §4A.1 there is NO env-var control
+ * The day-1 CORS allow-list. Since there is NO env-var control
  * of CORS at all — `CORS_ALLOWED_ORIGINS` is gone — so these rows (plus whatever
  * an admin adds through `admin/allowed-origins`) are the ONLY thing that lets a
  * browser call the gateway. An empty table means every browser origin is
@@ -24,7 +24,7 @@
  * ── THE SIX LOOPBACK ROWS ARE ALSO BOOTSTRAP MIGRATION DATA (H-2) ───────────
  * They are duplicated, deliberately, in
  * `migrations/20260808160000_task_641_bootstrap_loopback_origins/migration.sql`.
- * Since TASK-616 made seeding opt-in (`RUN_SEED`, default `none`) and TASK-641
+ * Since made seeding opt-in (`RUN_SEED`, default `none`) and
  * turned enforcement on with no code fallback left, an environment that skips
  * the seed would refuse EVERY browser origin. The migration GUARANTEES those
  * six rows exist everywhere; this seed RECONCILES their `label`/`description`
@@ -37,7 +37,7 @@
  * would 404 the new tenant with no obvious cause.
  *
  * ── WILDCARD PATTERNS ───────────────────────────────────────────────────────
- * Canonical grammar is frozen in the ticket README §4A.2. A value is a PATTERN
+ * Canonical grammar is frozen A value is a PATTERN
  * iff it contains `*`; patterns share the `origin` column with exact origins and
  * the same global-uniqueness guarantee.
  *
@@ -48,7 +48,7 @@
  *   `http://127.0.0.1:*`     → the loopback IP literal — a SEPARATE row, because
  *                              `http://localhost:*` has a CONCRETE host pattern
  *                              (`localhost` contains no `*`) and does not match
- *                              `127.0.0.1` (TASK-641 B-8). The same reasoning
+ * `127.0.0.1`. The same reasoning
  *                              gives `[::1]` its own row, and the exact scheme
  *                              comparison gives each of the three hosts an
  *                              https twin.
@@ -90,21 +90,21 @@ interface OriginSeed {
   description: string;
 }
 
-/** Exported for the TASK-641 seed-correctness test — see the `__tests__` sibling. */
+/** Exported for the seed-correctness test — see the `__tests__` sibling.*/
 export const TENANT_ALLOWED_ORIGIN_SEEDS: OriginSeed[] = [
   // ── Platform-wide (SYSTEM) ────────────────────────────────────────────────
   //
-  // ⚠️ DO NOT RE-ADD A GLOBAL `*` ROW. (TASK-641 H-1 — read before "fixing" this.)
+  // ⚠️ DO NOT RE-ADD A GLOBAL `*` ROW. (— read before "fixing" this.)
   //
-  // A Global-tenant `origin: '*'` row used to live here (TASK-610 §4A.3). It
+  // A Global-tenant `origin: '*'` row used to live here. It
   // was removed on owner confirmation because `OriginRegistryService.has(origin)`
   // is `tenantsFor(origin).size > 0`, and a `*` row matches EVERY origin — so
   // for as long as it exists, `tenantsFor()` is never empty and CORS admits
   // every origin NO MATTER WHAT `origin.enforcementEnabled` says. Flipping
-  // enforcement on (TASK-641 FR-6) buys nothing at the CORS layer while this
+  // enforcement on (FR-6) buys nothing at the CORS layer while this
   // row is present; only `OriginTenantBindingGuard` would still be doing real
   // work, and the Global tenant itself would stay wide open regardless.
-  // TASK-610 §4A.3 seeded it under the assumption Global was scratch/demo
+  // Seeded it under the assumption Global was scratch/demo
   // data. It is not: Global holds 21 users, 9 consultations, 18 departments —
   // more than the ArcaAI customer tenant. A wildcard grant that broad belongs
   // to a specific tenant admin's deliberate choice (FR-2 still gates it
@@ -116,7 +116,7 @@ export const TENANT_ALLOWED_ORIGIN_SEEDS: OriginSeed[] = [
     description:
       'Loopback for SDK/playground/admin-console development. SYSTEM-owned so a developer can work against any tenant. `http` is permitted here and ONLY here — browsers treat loopback as a secure context.',
   },
-  // `http://localhost:*` does NOT also cover `127.0.0.1` (TASK-641 B-8/FR-7).
+  // `http://localhost:*` does NOT also cover `127.0.0.1` (/FR-7).
   // Verified against `parseHostPattern` in origin-pattern.ts: the `localhost`
   // host segment contains no `*`, so it parses as a CONCRETE host
   // (`wildcard: false, matchHost: 'localhost'`), and `matchesOriginPattern`
@@ -130,7 +130,7 @@ export const TENANT_ALLOWED_ORIGIN_SEEDS: OriginSeed[] = [
     description:
       'Loopback for SDK/playground/admin-console development via the literal 127.0.0.1 address (does not match the localhost hostname pattern above). SYSTEM-owned so a developer can work against any tenant. `http` is permitted here and ONLY here — browsers treat loopback as a secure context.',
   },
-  // The remaining FOUR loopback spellings (TASK-641 lane G, task 2 — the parity
+  // The remaining FOUR loopback spellings (task 2 — the parity
   // gap lane D found). The deleted `development_loopback` branch called
   // `isLoopbackHost()`, which admits `localhost` ∪ `127.0.0.0/8` ∪ `::1` on
   // EITHER scheme; two http rows are narrower than that in two ways that both
@@ -218,7 +218,7 @@ export const TENANT_ALLOWED_ORIGIN_SEEDS: OriginSeed[] = [
     description: 'Developer preview hosts.',
   },
 
-  // ── ArcaAI browser-extension origins (TASK-653) ───────────────────────────
+  // ── ArcaAI browser-extension origins ───────────────────────────
   // `<scheme>://*` is the "any extension of that scheme" pattern: it admits any
   // installed extension's origin for the ArcaAI tenant. Chrome ids are stable
   // and could be pinned to exact `chrome-extension://<id>` rows later; Firefox
@@ -251,7 +251,7 @@ export const seedTenantAllowedOrigins = async (client: CorePrismaClient): Promis
 
   for (const originRow of TENANT_ALLOWED_ORIGIN_SEEDS) {
     await client.tenantAllowedOrigin.upsert({
-      // The GRANT key: (origin, tenantId). Since README §4B the same origin may
+      // The GRANT key: (origin, tenantId). Since the same origin may
       // be granted to several tenants, so an origin alone no longer identifies
       // a row — upserting by `origin` would collide across tenants.
       //
@@ -280,7 +280,7 @@ export const seedTenantAllowedOrigins = async (client: CorePrismaClient): Promis
         createdBy: CREATED_BY,
       },
     });
-    // No row is Global-owned any more (TASK-641 H-1 removed the `*` row) — the
+    // No row is Global-owned any more (removed the `*` row) — the
     // only owners left are SYSTEM and the ArcaAI customer tenant.
     const owner = originRow.tenantId === SYSTEM_TENANT_ID ? 'SYSTEM' : 'ArcaAI';
     console.log(`  ${originRow.origin.padEnd(40)} [${owner}] ${originRow.label}`);

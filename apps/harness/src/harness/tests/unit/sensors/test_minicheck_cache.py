@@ -109,7 +109,7 @@ def _install_builder(monkeypatch: pytest.MonkeyPatch, builds: list[FakeLlama], *
 def test_load_minicheck_entailer_signature_unchanged() -> None:
     """`_atomic_fact_entailer` is a plain `def` — this loader must stay sync.
 
-    §2.1: the decision to add a SYNC cache rather than convert the entailer path
+    the decision to add a SYNC cache rather than convert the entailer path
     to async rests entirely on this signature. If it ever grows an `async`, the
     blast radius moves into the clinical activity chain.
     """

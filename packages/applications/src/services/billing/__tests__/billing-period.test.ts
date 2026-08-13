@@ -4,7 +4,7 @@ import { ArgumentInvalidException } from '@arcaai/exceptions';
 import { parseBillingPeriod, truncateToUtcDay, utcDayCount } from '../billing-period';
 
 /**
- * TASK-615 WS-I — billing-period arithmetic.
+ * Billing-period arithmetic.
  *
  * A billing period is a HALF-OPEN UTC calendar month `[start, end)` — the same
  * window `TenantUsageMeter` and the rollup day buckets use, so allowances and

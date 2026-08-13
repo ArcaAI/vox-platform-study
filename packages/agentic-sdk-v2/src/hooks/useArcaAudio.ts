@@ -24,7 +24,7 @@ export type { UseArcaAudio } from './useArca';
  * `TranscriptionPipeline.getStreamingSessionManager()` (in `@arcaai/vox`
  * core, outside this file's edit scope) declares only the pre-586
  * `getSessionId`/`switchToFallback` members; this WIDENS that view locally so
- * `switchProvider` can reach the TASK-586 Lane D additions
+ * `switchProvider` can reach the additions
  * (`switchProvider`/`setCompatSwitchEnabled`) on the real
  * `StreamingSessionManager` instance without changing the shared duck-typed
  * interface.
@@ -60,7 +60,7 @@ function deriveSpeakerLabel(speakerId?: string | null): string | undefined {
 }
 
 /**
- * Liveness check for a single caller-supplied capture stream (TASK-612
+ * Liveness check for a single caller-supplied capture stream
  * Lane A, RC-3) — used both for `AudioStartOptions.sourceStreams` at start
  * and for `addSource({ stream })` at runtime.
  *
@@ -76,7 +76,7 @@ function deriveSpeakerLabel(speakerId?: string | null): string | undefined {
 const LEVEL_METER_INTERVAL_MS = 100;
 /**
  * Sustained zero-level window after which a STREAMING session is declared
- * silent (TASK-612 Lane D, RC-4): long enough that a pause between sentences
+ * silent: long enough that a pause between sentences
  * never trips it, short enough to be noticed before a consultation is lost.
  */
 const SILENT_UPLINK_WATCHDOG_MS = 5000;
@@ -111,7 +111,7 @@ function injectedStreamLivenessViolation(stream: MediaStream): 'no audio track' 
  */
 /**
  * Number of distinct microphone SOURCES a `start()` request asks for
- * (TASK-615 #12). Injected caller-owned streams win; otherwise the unique set of
+ * Injected caller-owned streams win; otherwise the unique set of
  * `deviceId` + `secondaryDeviceId` + `additionalDeviceIds`. Always ≥ 1 (a bare
  * `start()` is one implicit default mic). The mix always collapses to one mono
  * uplink, so this is a metadata signal for usage repricing, never a PCM count.
@@ -140,7 +140,7 @@ export function useArcaAudio() {
   // the dual-capture recorder (+ its delivery callback) for F2.
   const mixerRef = useRef<AudioMixer | null>(null);
   /**
-   * REF CONTRACT (TASK-597 lane A) — read this before touching teardown.
+   * REF CONTRACT — read this before touching teardown.
    *
    * Holds EVERY stream the current capture session owns, in resolved source
    * order: the primary mic, each extra mic, and any caller-injected
@@ -153,13 +153,13 @@ export function useArcaAudio() {
    *   - `startAudio` registers streams AS THEY ARE ACQUIRED, so a mid-way
    *     failure still leaves every already-open track reachable for cleanup.
    *   - Any teardown path must iterate this array, stop every SDK-OWNED
-   *     track — skipping streams in `callerOwnedStreamsRef` (TASK-612
-   *     OD-1a) — then reset it to `[]`. Nothing else needs to know how many
+   * track — skipping streams in `callerOwnedStreamsRef` — then reset it to `[]`. Nothing else needs to know how many
+   * 
    *     sources there were.
    */
   const sourceStreamsRef = useRef<MediaStream[]>([]);
   /**
-   * OWNERSHIP companion to `sourceStreamsRef` (TASK-612 Lane B, OD-1a).
+   * OWNERSHIP companion to `sourceStreamsRef`.
    *
    * Membership means the CALLER built this stream (`sourceStreams`,
    * `addSource({ stream })`) and owns its lifecycle: every teardown path
@@ -173,26 +173,26 @@ export function useArcaAudio() {
    * it cannot retain a stream the session has forgotten.
    */
   const callerOwnedStreamsRef = useRef<WeakSet<MediaStream>>(new WeakSet());
-  // Self-contained input-level meter (TASK-543): the transcription pipeline
+  // Self-contained input-level meter: the transcription pipeline
   // never surfaced an amplitude to the store, so meters/waveforms sat at 0.
   // An AnalyserNode on the capture graph (analysis-only — never routed to the
   // destination, so it adds no playback) samples RMS into `store.setAudioLevel`.
   const levelMeterRef = useRef<{ analyser: AnalyserNode; source: MediaStreamAudioSourceNode; timer: ReturnType<typeof setInterval> } | null>(null);
   /**
-   * LIVE mute flag for the meter's watchdog tick (TASK-612 Lane D). The timer
+   * LIVE mute flag for the meter's watchdog tick. The timer
    * closure captures the render-time `store` snapshot, which goes stale the
    * moment mute changes — this ref is the imperative channel `muteAudio` /
    * `unmuteAudio` write, so the watchdog never warns about silence the
    * clinician asked for. Re-anchored to the store snapshot at each start.
    */
   const isMutedRef = useRef(false);
-  // Live uplink-bitrate poller (TASK-543): samples the streaming STT transport's
+  // Live uplink-bitrate poller: samples the streaming STT transport's
   // cumulative bytes-sent once a second and publishes the delta*8 as bits/sec.
   const uplinkTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const dualRecorderRef = useRef<DualStreamRecorder | null>(null);
   const onDualCaptureRef = useRef<((result: DualCaptureResult) => void) | undefined>(undefined);
   /**
-   * The pipeline baseline the GATEWAY reported for this session (TASK-614),
+   * The pipeline baseline the GATEWAY reported for this session
    * captured by `onStreamingSessionCreated` during `pluginManager.initialize()`.
    * A ref, not state: it is written and read inside one `startAudio` pass, well
    * before any re-render. Cleared on start and stop so it can never leak a
@@ -201,12 +201,12 @@ export function useArcaAudio() {
   const serverPipelineRef = useRef<ActivePipelineInfo | null>(null);
 
   // ---------------------------------------------------------------------------
-  // Runtime source management (TASK-609)
+  // Runtime source management
   // ---------------------------------------------------------------------------
   /** Mixer source ids in mix order — the array published to `store.audioSourceIds`. */
   const sourceIdsRef = useRef<string[]>([]);
   /**
-   * id → stream association for `sourceIdsRef` (TASK-611). `sourceStreamsRef`
+   * id → stream association for `sourceIdsRef`. `sourceStreamsRef`
    * is positional with no id of its own, so removing a source BY ID needs a
    * lookup to find which entry of that array to drop. Populated everywhere an
    * id is minted (`nextSourceId`'s two call sites: the initial mixer build and
@@ -238,7 +238,7 @@ export function useArcaAudio() {
   }, [store]);
 
   /**
-   * Watch a capture source for DEVICE LOSS (TASK-609).
+   * Watch a capture source for DEVICE LOSS.
    *
    * A microphone unplugged mid-consultation ends its track: the graph stays
    * wired, the socket stays open, and the audio just stops. Nothing detected
@@ -289,7 +289,7 @@ export function useArcaAudio() {
       const logger = getLogger();
       if (!pluginManager) throw new Error('SDK not initialized');
 
-      // CALL-TIME idempotence (TASK-597 follow-up). The compat layer drives ONE
+      // CALL-TIME idempotence. The compat layer drives ONE
       // audio graph through TWO hooks (`useAudioCapture.startRecording` and
       // `useArcaSpeechToText.startTranscription`), each guarded only by a
       // RENDER-TIME `isCapturing` snapshot — so a consumer that starts both in
@@ -302,7 +302,7 @@ export function useArcaAudio() {
       // closures are not. Optional-chained: test doubles without the getter
       // keep the pre-guard behaviour.
       //
-      // TASK-612 Lane C (RC-2, OD-2a): the ignored call's contract now depends
+      // The ignored call's contract now depends
       // on WHAT it was carrying. Capture-shaped options (`deviceId`,
       // `sourceStreams`, `dynamicSources`, ...) would have changed WHAT IS
       // RECORDED, so silently dropping them is a bug, not idempotence — that
@@ -349,11 +349,11 @@ export function useArcaAudio() {
         return;
       }
 
-      // …and with no server pipeline baseline carried over (TASK-614): the
+      // …and with no server pipeline baseline carried over: the
       // previous session's engine must never be reported for this one.
       serverPipelineRef.current = null;
 
-      // A new capture session starts with a clean source registry (TASK-609):
+      // A new capture session starts with a clean source registry
       // ids restart at `source-1`, and nothing from the previous session's
       // mixer can be addressed by a stale id held by the UI.
       sourceIdsRef.current = [];
@@ -366,14 +366,14 @@ export function useArcaAudio() {
       // only, so it survives reconnect but never leaks across capture sessions).
       store.resetAudioDropped();
       // …and with a clean audio-signal verdict; the watchdog's live mute
-      // channel re-anchors to the snapshot (TASK-612 Lane D).
+      // channel re-anchors to the snapshot.
       store.setAudioSignalState?.('ok');
       isMutedRef.current = store.isMuted === true;
 
       if (options?.language) {
         store.setAudioLanguage(options.language);
       }
-      // TASK-587 — remember the end-user language mode so a reconnect/fallback
+      // Remember the end-user language mode so a reconnect/fallback
       // restart re-applies it (mirrors how `audioLanguage` is used on line 564).
       if (options?.languageMode) {
         store.setSttLanguageMode(options.languageMode);
@@ -392,32 +392,31 @@ export function useArcaAudio() {
         // reads `language` (not `languageMode`), so without this a non-default
         // pick would degrade to the DEFAULT locale there. `audioLanguage` is the
         // per-capture SDK language, so this honours the documented
-        // `runtimeOptions > userPreferences` precedence. (TASK-587)
+        // `runtimeOptions > userPreferences` precedence.
         language: options?.language ?? store.audioLanguage,
         // Fall back to the store-held mode so a start triggered WITHOUT a
         // languageMode (e.g. compat `useAudioCapture.startRecording()`, which
         // only knows the pipelineId) still honours the user's selection
         // published by `useArcaSpeechToText`. The backend resolves the mode to
-        // the actual language, so this alone is sufficient. (TASK-587 compat
-        // start-coordination fix.)
+        // the actual language, so this alone is sufficient. (compat start-coordination fix.)
         // When nobody has picked a mode, default to 'auto' so the session
         // AUTO-DETECTS the language instead of a hardcoded default — pipelines
-        // no longer pin a language (TASK-598). A dev/end-user pick still wins.
+        // no longer pin a language. A dev/end-user pick still wins.
         languageMode: options?.languageMode ?? store.sttLanguageMode ?? 'auto',
-        // Pre-start engine selection (TASK-586). Start-time only — the session
+        // Pre-start engine selection. Start-time only — the session
         // opens on the tenant-admin default provider when 'fallback'.
         startOn: options?.startOn,
-        // Stop-drain ceiling (TASK-597 follow-up #4). Non-positive values are
+        // Stop-drain ceiling. Non-positive values are
         // dropped HERE as well as at the provider, so a `0`/`-1` from a caller
         // can never be mistaken for "drain forever" or "do not drain".
         ...(typeof options?.drainTimeoutMs === 'number' && options.drainTimeoutMs > 0 ? { drainTimeoutMs: options.drainTimeoutMs } : {}),
-        // Stop-drain quiet window (TASK-597). Guarded on `>= 0`, NOT on
+        // Stop-drain quiet window. Guarded on `>= 0`, NOT on
         // truthiness: `0` is the documented "disable the early resolve" value,
         // so a `!== 0` / falsy guard here would silently drop exactly the
         // setting a caller went out of their way to ask for. Only negatives
         // (meaningless) fall back to the client default.
         ...(typeof options?.quietWindowMs === 'number' && options.quietWindowMs >= 0 ? { quietWindowMs: options.quietWindowMs } : {}),
-        // Dual-/multi-mic source count for STT usage repricing (TASK-615 #12).
+        // Dual-/multi-mic source count for STT usage repricing.
         // Derived from the REQUESTED sources — injected streams, else the unique
         // deviceId/secondaryDeviceId/additionalDeviceIds set — so it is known at
         // create time (the resolved mix below always collapses to one mono track).
@@ -432,7 +431,7 @@ export function useArcaAudio() {
 
       try {
         // ------------------------------------------------------------------
-        // Resolve the capture sources (TASK-597).
+        // Resolve the capture sources.
         //
         // ONE code path serves all four source modes — a single mic, N mics
         // mixed, one file-backed stream, N file-backed streams mixed — because
@@ -451,7 +450,7 @@ export function useArcaAudio() {
         // ------------------------------------------------------------------
         const injectedStreams = (options?.sourceStreams ?? []).filter((s): s is MediaStream => Boolean(s));
 
-        // TASK-612 Lane A (RC-3) — fail loudly on a dead/trackless injected
+        // Fail loudly on a dead/trackless injected
         // stream instead of silently streaming zeros. This runs BEFORE
         // anything teardown-sensitive is armed: source-loss watchers, the
         // level meter, `sourceStreamsRef` registration (a few lines down),
@@ -486,8 +485,8 @@ export function useArcaAudio() {
                 ),
               );
 
-        // Browser audio-processing switches (TASK-608), resolved ONCE per
-        // session and parked on a ref: a mic added at runtime (TASK-609) must
+        // Browser audio-processing switches, resolved ONCE per
+        // session and parked on a ref: a mic added at runtime must
         // arrive under the SAME constraints, or the mix ends up half-DSP'd.
         // Only stated keys are kept, so an empty/omitted object leaves the
         // request shape untouched — `{ audio: true }` for the default mic, not
@@ -541,7 +540,7 @@ export function useArcaAudio() {
           }
         }
 
-        // Watch every source for device loss (TASK-609) — before anything can
+        // Watch every source for device loss — before anything can
         // fail below, so a mic that disappears during initialize is still seen.
         sourceStreams.forEach(watchSourceForLoss);
 
@@ -567,12 +566,12 @@ export function useArcaAudio() {
         // several sources the mixer's per-source analysers own that array (see
         // the mixer block further down) and this meter stays the MIXED level.
         // (…unless a mixer exists anyway because runtime source changes were
-        // requested — then its analysers own the per-source array, TASK-609.)
+        // requested — then its analysers own the per-source array,.)
         const isSingleSource = sourceStreams.length === 1 && !usesMixer;
 
         // Live input-level meter — best-effort + guarded so a runtime without
         // Web Audio analysis (or a test double) simply leaves the level at 0.
-        // The silent-uplink watchdog (TASK-612 Lane D) rides this meter's
+        // The silent-uplink watchdog rides this meter's
         // tick, so where the meter is unavailable the watchdog is too.
         try {
           if (typeof audioContext.createMediaStreamSource === 'function' && typeof audioContext.createAnalyser === 'function') {
@@ -583,7 +582,7 @@ export function useArcaAudio() {
             source.connect(analyser); // analysis only — deliberately NOT connected to destination
             if (typeof analyser.getFloatTimeDomainData === 'function') {
               const buffer = new Float32Array(analyser.fftSize);
-              // Silent-uplink watchdog (TASK-612 Lane D, RC-4) — rides this
+              // Silent-uplink watchdog — rides this
               // same tick rather than a second timer. Streaming-only: with no
               // pipeline there is no uplink to be silent on.
               const streamingSession = Boolean(options?.pipelineId);
@@ -648,7 +647,7 @@ export function useArcaAudio() {
         // through with no mixer node in the graph — the pre-597 behaviour of
         // `start()` / `start({ deviceId })`.
         let track = stream.getAudioTracks()[0];
-        // Defensive (TASK-612 RC-3) — every INJECTED stream was already
+        // Defensive — every INJECTED stream was already
         // validated above, and a getUserMedia stream should always carry the
         // track it was requested with, but an unguarded index read here used
         // to let a trackless first source through as `undefined`: capture
@@ -659,7 +658,7 @@ export function useArcaAudio() {
           throw new AgenticError('SOURCE_STREAM_NOT_LIVE', 'useArcaAudio.start: capture source has no audio track.');
         }
         // A mixer is built for N > 1 sources — and ALSO for a single source when
-        // the caller opted into runtime source changes (TASK-609). The reason is
+        // the caller opted into runtime source changes. The reason is
         // structural: the pipeline is initialized with ONE track and the
         // transport hangs off it, so sources can only be added or dropped
         // mid-session when that track is the mixer's stable output. Without the
@@ -680,7 +679,7 @@ export function useArcaAudio() {
           mixerRef.current = mixer;
           publishSourceIds();
 
-          // PER-SOURCE input levels (TASK-597 follow-up #2).
+          // PER-SOURCE input levels.
           //
           // The mixer is the only object that still holds the inputs as
           // separate signals — one node chain each, before the summation. An
@@ -730,7 +729,7 @@ export function useArcaAudio() {
             if (result.isFinal) {
               store.setCurrentTranscript('');
 
-              // OD-3a (TASK-612): a whitespace-only final carries no clinical
+              // a whitespace-only final carries no clinical
               // value, so suppress the segment, the context POST, and the NER
               // trigger below — the interim clear above still runs, since the
               // interim window did end.
@@ -745,7 +744,7 @@ export function useArcaAudio() {
               // `startTime`/`endTime` are seconds relative to stream start. When
               // a result carries no VAD/streaming offset, fall back to 0 — NOT
               // `Date.now()`, whose epoch-millisecond magnitude would be
-              // mis-rendered as an absurd `mm:ss` timestamp downstream (TASK-591).
+              // mis-rendered as an absurd `mm:ss` timestamp downstream.
               const segment: TranscriptSegment = {
                 text: result.text,
                 startTime: result.vadStreamStartSec ?? 0,
@@ -760,7 +759,7 @@ export function useArcaAudio() {
                 // Carry word-level timings through to
                 // the store so consumers read words from audio.transcriptSegments.
                 words: result.words,
-                // Per-utterance pipeline provenance (TASK-613).
+                // Per-utterance pipeline provenance.
                 // Spread-conditional so an older backend leaves the key absent
                 // rather than writing `undefined` into every stored segment.
                 ...(result.pipelineId ? { pipelineId: result.pipelineId } : {}),
@@ -784,7 +783,7 @@ export function useArcaAudio() {
                     // `metadata` is the field `AddContextRequest` declares; the
                     // old `structuredData` spelling was rejected wholesale by
                     // the gateway's `forbidNonWhitelisted` pipe, so every one
-                    // of these posts 400'd silently (TASK-676 §3.5.2).
+                    // of these posts 400'd silently.
                     //
                     // `subType` marks the row as ONE UTTERANCE, not the
                     // consultation's aggregate transcript — the STT finalize
@@ -795,7 +794,7 @@ export function useArcaAudio() {
                       subType: TRANSCRIPT_SEGMENT_SUBTYPE,
                       segments: result.segments ?? result.timestamps,
                       speakerId: result.speakerId,
-                      // Per-utterance pipeline provenance (TASK-613), mirrored
+                      // Per-utterance pipeline provenance, mirrored
                       // from the stored segment so the persisted row carries it too.
                       ...(result.pipelineId ? { pipelineId: result.pipelineId } : {}),
                     },
@@ -864,16 +863,14 @@ export function useArcaAudio() {
             store.incrementDroppedFrames();
           },
           // Streaming connection-health transitions from the STT client's
-          // reconnect callbacks (TASK-567 Phase F). `switched_fallback` is set by
+          // reconnect callbacks. `switched_fallback` is set
           // onProviderSwitched below, not here, so a post-switch reconnect that
           // reports `connected` never erases the durable `activePipeline.isFallback`.
           onSttConnectionState: (state) => {
             store.setSttConnectionState(state);
           },
-          // The backend swapped the session's ASR engine (TASK-586 Lane D:
-          // BIDIRECTIONAL — primary→fallback OR fallback→primary). The
+          // The backend swapped the session's ASR engine (BIDIRECTIONAL — primary→fallback OR fallback→primary). The
           // direction is READ from the frame, in descending order of certainty
-          // (TASK-614 D-4):
           //
           //   1. `isFallback` — the backend said so outright.
           //   2. `active` — the backend named the live engine.
@@ -884,12 +881,11 @@ export function useArcaAudio() {
           //      enough to send neither field, the one-way primary→fallback
           //      auto-switch is the only switch that existed.
           //
-          // Step 3 exists because steps 1–2 were unreachable until TASK-614
-          // fixed the bridge, which made step 4 run on EVERY switch — latching
+          // Step 3 exists because steps 1–2 were unreachable until fixed the bridge, which made step 4 run on EVERY switch — latching
           // sessions that had returned to their selected pipeline as "fallback"
           // for the rest of their life.
           // The gateway echoed the RESOLVED pipeline + the engine it actually
-          // opened on (TASK-614). Fires during `initialize()`, i.e. BEFORE the
+          // opened on. Fires during `initialize()`, i.e. BEFORE the
           // `setActivePipeline` below, so the ref is what that line reads.
           // Also written to the store here so a consumer subscribed before the
           // start resolves sees the truth immediately.
@@ -910,7 +906,7 @@ export function useArcaAudio() {
                     : true;
             // A switch BACK to primary un-latches the durable fallback flag and
             // returns the connection to the nominal `connected` state — the
-            // TASK-568 durable latch was one-way by construction; this is the
+            // Durable latch was one-way by construction; this is the
             // explicit un-latch path for the new primary-direction frame.
             store.setSttConnectionState(isFallback ? 'switched_fallback' : 'connected');
             store.setActivePipeline({ id: info.toPipeline, name: info.toPipeline, isFallback });
@@ -934,7 +930,7 @@ export function useArcaAudio() {
         // pipeline).
         //
         // SERVER-derived when the gateway echoed the resolved baseline
-        // (TASK-614): the REQUEST is silent about a caller that sent no
+        // The REQUEST is silent about a caller that sent no
         // pipelineId (the gateway resolves one — the session then had a null
         // `activePipeline` for its whole life), about a session opened on the
         // fallback by `startOn`, and about one opened there because the primary
@@ -1008,7 +1004,7 @@ export function useArcaAudio() {
         });
       } catch (error) {
         // Detach the loss watchers first, or the cleanup below trips them and
-        // overwrites the REAL start error with "device disconnected" (TASK-609).
+        // overwrites the REAL start error with "device disconnected".
         releaseSourceWatchers();
         sourceIdsRef.current = [];
         sourceIdToStreamRef.current.clear();
@@ -1021,7 +1017,6 @@ export function useArcaAudio() {
         // stop() — which the caller never reaches on a throw — released it.
         // Caller-owned (injected) streams are skipped: the failure is the
         // SDK's, and destroying the caller's reusable stream over it was
-        // RC-3 (TASK-612 OD-1a).
         for (const source of sourceStreamsRef.current) {
           if (callerOwnedStreamsRef.current.has(source)) continue;
           source.getTracks().forEach((t) => t.stop());
@@ -1031,7 +1026,7 @@ export function useArcaAudio() {
         // meters are pure diagnostics with no `stop()` path of their own on a
         // failed start, so a throw after they were armed (e.g. plugin
         // initialize rejecting) would leave them ticking for the life of the
-        // page against a graph that no longer exists (TASK-597 follow-up #2).
+        // page against a graph that no longer exists.
         // Only the TIMERS/taps are released here — track teardown is the loop
         // above, deliberately left as the single place that stops tracks.
         if (levelMeterRef.current) {
@@ -1055,7 +1050,7 @@ export function useArcaAudio() {
   );
 
   /**
-   * Add a capture source to the LIVE mix (TASK-609).
+   * Add a capture source to the LIVE mix.
    *
    * The mixed track the pipeline reads does not change identity when a source
    * joins, so the STT stage, the WebSocket session and the transcript continue
@@ -1085,14 +1080,14 @@ export function useArcaAudio() {
       }
 
       // A caller-built stream is used as-is; a deviceId is opened under the
-      // SAME processing constraints the session started with (TASK-608), so a
+      // SAME processing constraints the session started with, so a
       // late-joining mic cannot arrive DSP'd into a raw-capture mix.
       let stream = input.stream;
       if (!stream) {
         if (!input.deviceId) throw new Error('useArcaAudio.addSource: provide either `deviceId` or `stream`.');
         stream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: { exact: input.deviceId }, ...audioProcessingRef.current } });
       } else {
-        // TASK-612 Lane A (RC-3) — the same liveness contract `start()`
+        // The same liveness contract `start()`
         // applies to `sourceStreams`, extended to this runtime seam. Checked
         // BEFORE `nextSourceId()` / `mixer.addSource()` below, so a rejected
         // add mutates NEITHER the published source-id registry nor the
@@ -1152,11 +1147,10 @@ export function useArcaAudio() {
   );
 
   /**
-   * Drop a capture source from the live mix (TASK-609). For an SDK-owned
+   * Drop a capture source from the live mix. For an SDK-owned
    * source (opened from a `deviceId`) the mixer stops its tracks, releasing
    * the microphone immediately; a caller-owned stream (`addSource({ stream })`,
    * `sourceStreams`) is unwired but left LIVE for its owner to stop
-   * (TASK-612 OD-1a).
    *
    * Removing the LAST source is refused: an empty mix is not a capture state,
    * it is silence on an open socket — indistinguishable, downstream, from the
@@ -1174,7 +1168,7 @@ export function useArcaAudio() {
       mixer.removeSource(id);
       sourceIdsRef.current = sourceIdsRef.current.filter((existing) => existing !== id);
 
-      // Drop the stream from the teardown/mute set too (TASK-611) — otherwise
+      // Drop the stream from the teardown/mute set too — otherwise
       // it lingers in `sourceStreamsRef` for the rest of the session: dead to
       // the mixer but still walked by `applyEnabledToAllSources` and
       // `stopAudio`'s teardown loop. `sourceStreamsRef` is positional with no
@@ -1198,7 +1192,7 @@ export function useArcaAudio() {
 
   /**
    * Set a source's linear gain in the live mix (`1.0` = unity) — the balance
-   * control for "the room mic is much quieter than the headset" (TASK-609).
+   * control for "the room mic is much quieter than the headset".
    * Independent of the mixer's own `1/√N` master normalization.
    */
   const setSourceGain = useCallback((id: string, gain: number): void => {
@@ -1309,7 +1303,6 @@ export function useArcaAudio() {
 
       // ---------------------------------------------------------------------
       // 2. USER-VISIBLE TEARDOWN — deliberately BEFORE the transport drain
-      //    (TASK-597 finding D2).
       //
       // This whole block is synchronous, so by the time `stopAudio` yields to
       // its first `await` the microphone is released, the browser's recording
@@ -1342,7 +1335,7 @@ export function useArcaAudio() {
 
       // Detach the device-loss watchers BEFORE the tracks are stopped, so the
       // teardown's own `track.stop()` cannot fire an `ended` handler and post a
-      // "device disconnected" error for a perfectly normal Stop (TASK-609).
+      // "device disconnected" error for a perfectly normal Stop.
       releaseSourceWatchers();
       sourceIdsRef.current = [];
       sourceIdToStreamRef.current.clear();
@@ -1350,7 +1343,7 @@ export function useArcaAudio() {
 
       // Tear down the N-source mixer (its dispose() removes every source —
       // stopping the tracks of SDK-owned sources only, per each source's
-      // `stopTracksOnRemove` (TASK-612) — and stops per-source level
+      // `stopTracksOnRemove` — and stops per-source level
       // monitoring, so no analyser tap or sampling timer can outlive the
       // capture session).
       if (mixerRef.current) {
@@ -1362,7 +1355,7 @@ export function useArcaAudio() {
       // with the mixer dispose (a mixer that threw while adopting sources
       // would otherwise leave the rest live), and the only release path for a
       // source when there is no mixer at all. Caller-owned streams are
-      // skipped — the SDK unwires but never stops them (TASK-612 OD-1a).
+      // skipped — the SDK unwires but never stops them.
       // `activeStream` is excluded because the block below releases it —
       // releasing the microphone EXACTLY once is an asserted contract
       // (`useArca.audio-unification.test.ts`).
@@ -1395,7 +1388,7 @@ export function useArcaAudio() {
       // synchronous block as the mic release so a consumer can never read a
       // stale "mic 2 is speaking" level while the transport drains.
       store.setAudioSourceLevels?.([]);
-      // …and no audio-signal verdict either (TASK-612 Lane D) — a 'silent'
+      // …and no audio-signal verdict either — a 'silent'
       // latched mid-session must not outlive the session that earned it.
       store.setAudioSignalState?.('ok');
       store.setCurrentTranscript('');
@@ -1438,11 +1431,11 @@ export function useArcaAudio() {
   }, [store, getLogger, releaseSourceWatchers]);
 
   /**
-   * Switch the live streaming session's ASR engine (TASK-586 Lane D —
-   * generalized from the TASK-567 R4 one-way `switchToFallback`).
+   * Switch the live streaming session's ASR engine
+   * generalized from the one-way `switchToFallback`).
    *
    * Primary path: POST the switch route via the streaming session manager.
-   * BOTH directions are native (TASK-586 Lane H): `target: 'fallback'` POSTs
+   * BOTH directions are native: `target: 'fallback'` POSTs
    * `.../switch-to-fallback` and `target: 'primary'` POSTs
    * `.../switch-to-primary`. Compat mode only REROUTES them through the
    * `/api/stt/switch` shim when a compat session opted in — it is not required
@@ -1533,10 +1526,10 @@ export function useArcaAudio() {
 
   /**
    * Apply an `enabled` state to the audio tracks of EVERY source the session
-   * owns (TASK-609).
+   * owns.
    *
    * Mute used to act on `store.activeStream` alone — the FIRST resolved source.
-   * With N mixed microphones (TASK-597) or a mic added at runtime, that muted
+   * With N mixed microphones or a mic added at runtime, that muted
    * microphone 1 and left the rest of the room live on the socket while the UI
    * said "muted": a privacy failure in a consultation, not a cosmetic one.
    *
@@ -1567,7 +1560,7 @@ export function useArcaAudio() {
   const muteAudio = useCallback(() => {
     const logger = getLogger();
     store.setIsMuted(true);
-    isMutedRef.current = true; // live channel for the watchdog tick (TASK-612)
+    isMutedRef.current = true; // live channel for the watchdog tick
     const trackCount = applyEnabledToAllSources(false);
     logger?.debug('Muting audio', { operation: 'muteAudio', component: 'useArcaAudio', attributes: { trackCount } });
   }, [store, getLogger, applyEnabledToAllSources]);
@@ -1575,7 +1568,7 @@ export function useArcaAudio() {
   const unmuteAudio = useCallback(() => {
     const logger = getLogger();
     store.setIsMuted(false);
-    isMutedRef.current = false; // live channel for the watchdog tick (TASK-612)
+    isMutedRef.current = false; // live channel for the watchdog tick
     const trackCount = applyEnabledToAllSources(true);
     logger?.debug('Unmuting audio', { operation: 'unmuteAudio', component: 'useArcaAudio', attributes: { trackCount } });
   }, [store, getLogger, applyEnabledToAllSources]);
@@ -1673,20 +1666,20 @@ export function useArcaAudio() {
       // Live outbound uplink bitrate (bits/sec) over the last ~1s; 0 when not streaming.
       uplinkBitrate: store.audioUplinkBitrate,
       // PER-SOURCE input levels (0-100), index-aligned with the resolved
-      // capture-source order (TASK-597 follow-up #2). `[]` = no per-source
+      // capture-source order. `[]` = no per-source
       // signal (no session, or a runtime that cannot analyse) — consumers must
       // NOT infer attribution from an empty array. `level` above is unchanged:
       // it stays the single MIXED level every existing consumer reads.
       sourceLevels: store.audioSourceLevels ?? [],
-      // Ids of the sources in the live mix (TASK-609), index-aligned with
+      // Ids of the sources in the live mix, index-aligned with
       // `sourceLevels`. `[]` when there is no mixer — see `dynamicSources`.
       sourceIds: store.audioSourceIds ?? [],
-      // Streaming STT connection health + active pipeline (TASK-567 Phase F).
+      // Streaming STT connection health + active pipeline.
       sttConnectionState: store.sttConnectionState,
       activePipeline: store.activePipeline,
       start: startAudio,
       startFromPreferences,
-      // Runtime source management (TASK-609) — mid-session, session-preserving.
+      // Runtime source management — mid-session, session-preserving.
       addSource,
       removeSource,
       setSourceGain,

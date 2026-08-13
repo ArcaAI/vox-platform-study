@@ -1,5 +1,5 @@
 /**
- * TASK-310 E-5 (AC-5) — RuleTester pins for
+ * RuleTester pins for
  * `no-direct-downstream-url-env`.
  *
  * The rule forbids direct `process.env.<DOWNSTREAM_URL_KEY>` reads
@@ -10,12 +10,12 @@
  *
  * Banned keys (the live downstream Python services + the legacy
  * SMR_SERVICE_URL alias + STT_V2_URL during the STT_URL dual-read window):
- *   SMR_URL, SMR_SERVICE_URL, STT_URL, STT_V2_URL, NLP_URL, GUARDRAIL_URL, HARNESS_URL
+ * SMR_URL, SMR_SERVICE_URL, STT_URL, STT_V2_URL, NLP_URL, GUARDRAIL_URL, HARNESS_URL
  *
  * Everything else under `process.env.*` stays legal (NODE_ENV,
  * npm_package_version, etc.) so the rule is a tight denylist, not a
  * blanket process.env ban.
- */
+*/
 'use strict';
 
 const { RuleTester } = require('@arcaai/config-eslint/node_modules/eslint');

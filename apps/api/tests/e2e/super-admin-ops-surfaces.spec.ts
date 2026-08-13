@@ -3,7 +3,7 @@
  *
  * Real HTTP round-trips against the live API (`pnpm test:e2e`, or a dev stack via
  * `SKIP_DB_PRECHECK=true API_URL=http://localhost:8968/api/v1`). Harness mirrors
- * task-398 (seeded personas via `tests/helpers`).
+ * (seeded personas via `tests/helpers`).
  *
  * Coverage:
  *   CASL  · every ops endpoint → 401 unauthenticated, 403 for tenant_admin and

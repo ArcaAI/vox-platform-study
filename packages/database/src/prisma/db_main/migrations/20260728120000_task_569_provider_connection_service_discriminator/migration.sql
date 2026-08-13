@@ -1,11 +1,11 @@
--- TASK-569 — Unified Provider-Connection Plane (foundation)
+-- Unified Provider-Connection Plane (foundation)
 --
 -- ADDITIVE + REVERSIBLE. Adds the `service` discriminator to
 -- "core"."AiProviderConnection", re-keys it on (tenantId, service, provider),
 -- rebuilds indexes, and COPIES (never moves) the legacy per-capability
 -- credential rows into the unified table. The legacy tables
 -- ("TenantTtsProviderCredential" / "TenantSttProviderCredential") are left
--- INTACT — TASK-576 drops them once every gateway has repointed.
+-- INTACT — drops them once every gateway has repointed.
 --
 -- Idempotent: the ADD COLUMN uses IF NOT EXISTS via a guarded block, the index
 -- swaps use IF [NOT] EXISTS, and the data copies use ON CONFLICT DO NOTHING, so

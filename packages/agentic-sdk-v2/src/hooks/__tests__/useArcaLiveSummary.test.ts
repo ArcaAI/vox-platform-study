@@ -1,5 +1,5 @@
 /**
- * useArcaLiveSummary Hook Tests (TASK-543)
+ * useArcaLiveSummary Hook Tests
  *
  * @vitest-environment jsdom
  */

@@ -91,7 +91,7 @@ class AzureSpeechLoader(BaseModelLoader):
             provider_overrides: Optional per-tenant credential map (gateway
                 wire shape). The ``azure-speech`` entry (``api_key``/``region``/
                 ``endpoint``), when present, takes precedence over the inline
-                config and env credentials (TASK-567 BYOK). Env fallback
+                config and env credentials (BYOK). Env fallback
                 preserved.
 
         Returns:

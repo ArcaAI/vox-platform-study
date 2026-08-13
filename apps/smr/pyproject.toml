@@ -45,11 +45,11 @@ dependencies = [
     "opentelemetry-instrumentation-httpx>=0.60b1",
     "opentelemetry-exporter-otlp-proto-grpc>=1.39.0",
     "opentelemetry-instrumentation-logging>=0.60b1",
-    # --- Shared runtime contracts (TASK-529) ---
+    # --- Shared runtime contracts ---
     "hope-runtime-models",
-    # --- Shared env-file loader (TASK-558): NODE_ENV -> .env.<env>, host env wins ---
+    # --- Shared env-file loader: NODE_ENV -> .env.<env>, host env wins ---
     "hope-env",
-    # --- Shared OTel trace-propagation helper (TASK-636 OBS-16) ---
+    # --- Shared OTel trace-propagation helper ---
     "hope-otel",
 ]
 

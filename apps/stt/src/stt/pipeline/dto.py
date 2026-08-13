@@ -53,7 +53,7 @@ class AiModelFormat(StrEnum):
     # whisper.cpp (ggml runtime, ggml-org/whisper.cpp) for GGUF
     # whisper-large-v3-turbo. CPU/Metal/CUDA, via the pywhispercpp binding.
     WHISPER_CPP = "WHISPER_CPP"
-    # Cloud BYOK speech providers (REST, no local model). TASK-567 tenant
+    # Cloud BYOK speech providers (REST, no local model). tenant
     # fallback engines. Superset of the Prisma AiModelFormat enum (like KSERVE
     # on AiModelSource) — reachable via the `provider :: model` YAML shorthand,
     # not a DB `format` value, so no Prisma enum migration is implied.
@@ -416,7 +416,7 @@ class ModelRef:
         "azure-foundry": "AZURE_FOUNDRY",
         "parakeet.cpp": "PARAKEET_CPP",
         "whisper.cpp": "WHISPER_CPP",
-        # Cloud BYOK speech providers (TASK-567). Shorthand examples:
+        # Cloud BYOK speech providers. Shorthand examples:
         # `sarvam :: saaras-v4`, `openai :: gpt-4o-transcribe`.
         "sarvam": "SARVAM",
         "openai": "OPENAI",

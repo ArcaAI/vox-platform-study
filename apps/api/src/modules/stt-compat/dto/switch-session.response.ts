@@ -1,5 +1,5 @@
 /**
- * v1-compatible mid-session engine switch response (TASK-586 C3).
+ * v1-compatible mid-session engine switch response.
  *
  * `active` echoes the now-live engine back in compat vocabulary:
  *   - `pipeline` — the SDK-configured session pipeline (normalized `primary`)

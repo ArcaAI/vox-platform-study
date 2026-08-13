@@ -8,7 +8,7 @@ import { BillingService } from '../billing.service';
 import { AddAdjustmentRequest } from '../dto';
 
 /**
- * TASK-615 WS-I — the invoice engine, golden-file style at service level.
+ * The invoice engine, golden-file style at service level.
  *
  * The in-memory world below reproduces the repository contracts the service
  * relies on (OCC versions, soft-delete supersede of lines, tenant scoping).
@@ -40,7 +40,7 @@ interface WorldConfig {
   /** Optional reprice: from this August day on, rates double. */
   repriceFromDay?: number;
   planFees?: Partial<Record<TenantPlan, bigint>>;
-  /** TenantPlanHistory windows (TASK-615 #6): [plan, fromDay, toDay|null]. */
+  /** TenantPlanHistory windows: [plan, fromDay, toDay|null]. */
   planHistory?: Array<[TenantPlan, number, number | null]>;
 }
 
@@ -171,7 +171,7 @@ function makeWorld(config: WorldConfig = {}) {
         capability,
         unit,
         provider: 'test',
-        // TASK-638: the compensation aggregate below must agree on
+        // The compensation aggregate below must agree on
         // (provider, deployment) or its deduction lands in a different bucket.
         deployment: AiDeploymentKind.SELF_HOSTED,
         model: '',
@@ -227,7 +227,7 @@ function makeWorld(config: WorldConfig = {}) {
     resolveUsagePrice: vi.fn(),
   };
 
-  // ---- plan history (TASK-615 #6) — empty by default => single PERIOD_END_PLAN segment ----
+  // ---- plan history — empty by default => single PERIOD_END_PLAN segment ----
   const planHistoryRepository = {
     findOverlappingPeriod: vi.fn(async () =>
       (config.planHistory ?? []).map(([tier, fromDay, toDay]) => ({
@@ -354,7 +354,7 @@ describe('BillingService.computeDraft', () => {
     expect(fee.description).toContain('PRO');
   });
 
-  it('golden (c2): mid-period change WITH plan history prorates the fee per segment (TASK-615 #6)', async () => {
+  it('golden (c2): mid-period change WITH plan history prorates the fee per segment', async () => {
     // Same STARTER→PRO mid-August upgrade, but now TenantPlanHistory supplies
     // dated segments: STARTER for days 1–15, PRO from day 16. The fee is prorated
     // per segment instead of the whole-period PERIOD_END_PLAN approximation.
@@ -384,7 +384,7 @@ describe('BillingService.computeDraft', () => {
     expect(pro.amountMicros).toBe('515612903');
   });
 
-  it('recordPlanChange: closes the open window and opens a new one; idempotent no-op on the same plan (TASK-615 #6)', async () => {
+  it('recordPlanChange: closes the open window and opens a new one; idempotent no-op on the same plan', async () => {
     const world = makeWorld({});
     const at = day(16);
 
@@ -721,7 +721,7 @@ describe('BillingService reads', () => {
   });
 });
 
-describe('BillingService.assertSpendLimit (TASK-615 #8 — 402 gate)', () => {
+describe('BillingService.assertSpendLimit (402 gate)', () => {
   it('no-op (and cheap — no draft computed) when the tenant set no limit', async () => {
     const { service, priceBook } = makeWorld({ override: null });
     await expect(service.assertSpendLimit(TENANT, PERIOD)).resolves.toBeUndefined();

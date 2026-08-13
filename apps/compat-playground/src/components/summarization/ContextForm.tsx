@@ -5,11 +5,11 @@ import { fetchDoctors, type DoctorOption } from '../../lib/doctors';
 
 /**
  * The department + visit type + clinical context form for the Summarization
- * tab (TASK-597 lane F, split out of `SummaryCard.tsx`). Presentational: the
+ * tab (split out of `SummaryCard.tsx`). Presentational: the
  * orchestrator (`SummaryCard`) owns `department`/`visitType`/context field
  * state and passes it down controlled — this component owns only UI-local
  * toggle state (list-vs-custom mode) and the department fetch.
- */
+*/
 
 /**
  * The preset visit types. v1 recognizes exactly TWO canonical categories —

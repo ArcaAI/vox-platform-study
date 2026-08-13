@@ -1,4 +1,4 @@
--- TASK-496 — Per-Tenant TTS Configuration
+-- Per-Tenant TTS Configuration
 -- Additive only: two new tenant-scoped tables under the `core` schema. No data
 -- is touched. TenantTtsConfig holds one row per tenant (SYSTEM tenant = platform
 -- default); TenantTtsProviderCredential holds optional per-(tenant,provider)

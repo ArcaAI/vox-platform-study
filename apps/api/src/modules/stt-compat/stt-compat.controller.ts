@@ -69,7 +69,7 @@ export class SttCompatController {
     @Optional() @Inject(IApiKeyService) private readonly apiKeyService?: IApiKeyService,
     @Optional() private readonly sessionMetadataService?: SttCompatSessionMetadataService,
     // Resolves the caller tenant's STT fallback spec + BYO provider overrides
-    // (TASK-567/586). Optional so positional test construction still works and a
+    // . Optional so positional test construction still works and a
     // stack without the module degrades gracefully; injection is fail-open.
     @Optional() @Inject(ITenantSttConfigService) private readonly sttConfig?: ITenantSttConfigService,
   ) {}
@@ -116,7 +116,7 @@ export class SttCompatController {
       // or absent config must never block session creation).
       const { providerOverrides, fallbackPipelineId, autoSwitchEnabled, consecutiveFailureThreshold } = await this.resolveSttFallbackConfig(tenantId);
 
-      // Pre-start default-provider selection (TASK-586 C7b). Map the compat
+      // Pre-start default-provider selection. Map the compat
       // vocabulary (pipeline≡primary, default≡fallback) to the applications
       // `startOn`. Fail-closed: opening on the default engine requires a
       // resolved fallback pipeline (mirrors the C3 switch guard).
@@ -134,7 +134,7 @@ export class SttCompatController {
         language: body.language ?? undefined,
         providerOverrides,
         fallbackPipelineId,
-        // Tenant auto-switch governance (TASK-614). `!== undefined`, not
+        // Tenant auto-switch governance. `!== undefined`, not
         // truthiness — `false` is the choice worth carrying.
         ...(autoSwitchEnabled !== undefined ? { autoSwitchEnabled } : {}),
         ...(consecutiveFailureThreshold !== undefined ? { consecutiveFailureThreshold } : {}),
@@ -150,7 +150,7 @@ export class SttCompatController {
         this.sessionMetadataService?.setLanguage(body.session_id, body.language),
       ]);
 
-      // Echo the RESOLVED baseline (TASK-614) — additive, so v1 clients that
+      // Echo the RESOLVED baseline — additive, so v1 clients that
       // ignore unknown keys are unaffected. Spread only when STT reported it.
       return {
         ...response,
@@ -173,7 +173,7 @@ export class SttCompatController {
   }
 
   /**
-   * v1-compatible mid-session engine switch (TASK-586 C3).
+   * v1-compatible mid-session engine switch.
    *
    * x-api-key auth; the tenant is resolved exactly as `startSession` does. The
    * session is tenant-owned: BOTH native and compat sessions are tracked in the
@@ -254,7 +254,7 @@ export class SttCompatController {
 
   /**
    * Resolve the tenant's effective fallback pipeline + decrypted BYO provider
-   * overrides for a new compat streaming session (TASK-567/586). FAIL-OPEN: any
+   * overrides for a new compat streaming session. FAIL-OPEN: any
    * resolve/decrypt error (or an unwired config service) yields no overrides and
    * no fallback so the session is still created on platform env creds — a broken
    * BYO key must never block transcription. Decrypted overrides are handed
@@ -274,7 +274,7 @@ export class SttCompatController {
       return {
         providerOverrides: Object.keys(overrides).length > 0 ? overrides : undefined,
         fallbackPipelineId: effective.fallbackPipelineId ?? undefined,
-        // TASK-614 — the governance half of the same resolved config.
+        // The governance half of the same resolved config.
         autoSwitchEnabled: effective.autoSwitchEnabled ?? undefined,
         consecutiveFailureThreshold: effective.consecutiveFailureThreshold ?? undefined,
       };

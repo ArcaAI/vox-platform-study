@@ -1,5 +1,5 @@
 /**
- * Context Schemas screen (TASK-666) — fetch is stubbed at the network
+ * Context Schemas screen — fetch is stubbed at the network
  * boundary. Covers the working-tenant gate, the schema catalog, the primitive
  * allow-list enforcement (closed `<Select>`), publish rejection surfacing
  * (structural `problems` and refused `breakingChanges`), deprecation
@@ -336,7 +336,7 @@ describe('ContextSchemasScreen', () => {
     expect(pinCall?.body).toEqual({ versionNumber: 1 });
   });
 
-  it('shows the server-computed versionSkew on a non-pinned version, and none on the pinned one (TASK-674)', async () => {
+  it('shows the server-computed versionSkew on a non-pinned version, and none on the pinned one', async () => {
     stubScreen((call) => {
       const path = pathOf(call);
       if (path === '/api/hope/admin/consultation-context-schemas') return Response.json([schema({ pinnedVersionNumber: 2 })]);
@@ -354,7 +354,7 @@ describe('ContextSchemasScreen', () => {
     expect(await screen.findByText('Breaking drift')).toBeDefined();
   });
 
-  it('has no axe violations on the Versions tab with a versionSkew badge, in both themes (TASK-674)', async () => {
+  it('has no axe violations on the Versions tab with a versionSkew badge, in both themes', async () => {
     function stubVersionsTab() {
       return stubScreen((call) => {
         const path = pathOf(call);

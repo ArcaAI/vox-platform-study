@@ -12,17 +12,17 @@
 -- `type "core.UsageMeterMetric" does not exist`.
 --
 -- This migration is timestamped BEFORE `20260806000000` so it orders ahead of
--- that TASK-615 migration and supplies the objects it extends.
+-- that migration and supplies the objects it extends.
 --
--- IMPORTANT — this creates the PRE-TASK-615 shape:
+-- IMPORTANT — this creates the PRE- shape:
 --   * the enum carries ONLY its three original values (CONSULTATIONS,
 --     TRANSCRIPTION_MINUTES, SUMMARIES); the six ledger-derived meters are added
---     by the `ALTER TYPE ... ADD VALUE` block in the TASK-615 migration.
+-- by the `ALTER TYPE ... ADD VALUE` block in the migration.
 --   * PlanEntitlement / TenantEntitlement OMIT the per-capability allowance
 --     BIGINT columns (and TenantEntitlement's `monthlySpendLimitMicros`); those
---     are added by the `ALTER TABLE ... ADD COLUMN` blocks in the TASK-615
+-- are added by the `ALTER TABLE ... ADD COLUMN` blocks in the
 --     migration.
--- Replaying [this] -> [TASK-615] therefore reproduces the current schema
+-- Replaying [this] -> therefore reproduces the current schema
 -- exactly (verified: the resulting `prisma migrate diff` against the schema is
 -- empty).
 --
@@ -123,7 +123,7 @@ CREATE TABLE IF NOT EXISTS "core"."TenantEntitlement" (
 
 -- ---------------------------------------------------------------------------
 -- 4. TenantUsageMeter — rolling-monthly windowed consumption counter.
---    (Untouched by TASK-615; created here in full.)
+-- (Untouched by; created here in full.)
 -- ---------------------------------------------------------------------------
 
 -- CreateTable

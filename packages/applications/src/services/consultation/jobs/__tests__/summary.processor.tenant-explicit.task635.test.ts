@@ -1,5 +1,5 @@
 /**
- * SummaryProcessor.callSmrService — explicit tenant id (TASK-635 A5, B-04)
+ * SummaryProcessor.callSmrService — explicit tenant id
  *
  * `resolveSmrSelection()` used to be called with NO tenantId, relying on
  * `HarnessPolicyService`'s own CLS fallback. `callSmrService` now takes the
@@ -38,7 +38,7 @@ describe('SummaryProcessor.callSmrService — explicit tenant id (B-04)', () => 
       findById: vi.fn(),
       findTranscripts: vi.fn().mockResolvedValue([{ content: 'transcript text' }]),
       findLatestPreSummary: vi.fn().mockResolvedValue(null),
-      // TASK-635 C6 — the processor now reads the warm start through the
+      // The processor now reads the warm start through the
       // decrypting, subType-aware accessor (B-02/B-06 parity with SummaryService).
       findLatestPreSummaryWithDecryptedContent: vi.fn().mockResolvedValue({ entity: null, plaintext: null }),
       create: vi.fn().mockResolvedValue({ id: 'sid', content: 'S' }),

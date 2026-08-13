@@ -1,10 +1,10 @@
-# TASK-558 lane K (K3) — Vault policy for the Kubernetes auth role
+# Vault policy for the Kubernetes auth role
 # `hope-smr`, bound to the `hope-smr` ServiceAccount.
 #
 # LEAST PRIVILEGE BY ENUMERATION, NOT BY GLOB. Each path is one secret this
 # workload actually reads (see deployment/vault-agent/README.md § Per-service
 # secret sets). A `secret/data/hope/*` glob would let any compromised pod read
-# every platform credential, which is the posture this ticket is removing.
+# every platform credential, which is the posture this policy is removing.
 #
 # Every name below is a `vault-kv` SettingDescriptor rendered through
 # toEnvVarName(); adding one here without a descriptor means
@@ -14,7 +14,7 @@ path "secret/data/hope/SMR_SERVICE_TOKEN" {
   capabilities = ["read"]
 }
 
-# TASK-602: SMR_AZURE_API_KEY removed — SMR's Azure OpenAI credential is now
+# SMR_AZURE_API_KEY removed — SMR's Azure OpenAI credential is now
 # BYOK-only (db-secret / AiProviderConnection), never a Vault-kv platform secret.
 # (OpenAI/Anthropic platform keys were likewise removed from the registry.)
 

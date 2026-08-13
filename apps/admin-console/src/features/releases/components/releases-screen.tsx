@@ -102,7 +102,7 @@ function StatsStrip({ current, isLoading }: { current: CurrentService[]; isLoadi
 /**
  * Platform Releases (`/(console)/(global)/releases`, tier 10-19). What version
  * of each service is running, which build produced it, and the technical
- * changelog behind it (TASK-648 §6). Read-only observability — no rollback or
+ * changelog behind it. Read-only observability — no rollback or
  * promotion actions here.
  */
 export function ReleasesScreen() {

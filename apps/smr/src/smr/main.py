@@ -84,7 +84,7 @@ def _register_provider_factories(
     # env credential/endpoint is configured. They are therefore registered
     # UNCONDITIONALLY (env config is only the platform fallback / fail-open target).
     #
-    # TASK-602: Azure was previously gated on ``settings.azure.endpoint`` — but a
+    # Azure was previously gated on ``settings.azure.endpoint`` — but a
     # pure-BYOK tenant has NO platform endpoint (it lives in the tenant's
     # AiProviderConnection row and rides the per-request override), so the gate
     # made SMR answer 404 for a valid BYOK override — the exact failure openai/
@@ -282,7 +282,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
         app.state.shutdown_manager = ShutdownManager()
 
-    # Self-registration (TASK-648 W9): fire-and-forget, bounded-timeout, NEVER
+    # Self-registration: fire-and-forget, bounded-timeout, NEVER
     # blocks or fails boot. Reuses the shared `http_client` above (already
     # closed on shutdown below) rather than opening a second one.
     app.state.service_release_task = None

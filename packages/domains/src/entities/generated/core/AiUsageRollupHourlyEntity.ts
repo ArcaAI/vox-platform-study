@@ -36,7 +36,7 @@ export interface IAiUsageRollupHourlyEntity extends IBaseTenantEntity {
    */
   operation?: string;
   provider: string;
-  /** Who FUNDED the call (TASK-638): SELF_HOSTED | CLOUD | BYOK. */
+  /** Who FUNDED the call: SELF_HOSTED | CLOUD | BYOK. */
   deployment?: Enums.AiDeploymentKind;
   /** "" sentinel when the capability selects no model — never null. */
   model?: string;

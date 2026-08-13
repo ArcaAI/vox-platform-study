@@ -9,7 +9,7 @@ import { ApiHealthController } from './health.controller';
   // `BuildInfoService` is a plain class (no `@Injectable()` — its constructor
   // takes a path + test seams, not injectable services), so it is provided
   // via factory rather than relying on Nest's constructor-param reflection.
-  // Read once at boot and cached (TASK-648 W4).
+  // Read once at boot and cached.
   providers: [{ provide: BuildInfoService, useFactory: () => new BuildInfoService() }],
 })
 export class HealthModule {}

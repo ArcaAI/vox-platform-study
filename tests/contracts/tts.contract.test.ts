@@ -3,7 +3,7 @@
  *
  * Validates the request/response contract between the API Gateway and the TTS
  * (text-to-speech) Python service. Restores the contract coverage removed when
- * the legacy TTS service was deleted (TASK-488).
+ * the legacy TTS service was deleted.
  */
 
 import { describe, expect, it } from 'vitest';

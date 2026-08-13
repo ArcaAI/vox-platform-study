@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # ============================================================================
-# TASK-312 Phase A.3/A.7 - Refresh local-dev Vault AppRole credentials
+# Refresh local-dev Vault AppRole credentials
 # ============================================================================
 # Mints a fresh RAW secret_id for the `hope-app` AppRole and rewrites
 # VAULT_ROLE_ID + VAULT_SECRET_ID in .env.dev (and blanks the prod-only
 # VAULT_WRAPPED_SECRET_ID so the raw path is taken).
 #
-# WHY RAW (not response-wrapped) FOR DEV — TASK-312 A.7:
+# WHY RAW (not response-wrapped) FOR DEV:
 #   A response-wrapping token is SINGLE-USE: VaultSecretsProvider.boot()
 #   unwraps it on every process start, so the SECOND boot fails with
 #   "wrapping token is not valid". `nest start --watch` restarts the API on

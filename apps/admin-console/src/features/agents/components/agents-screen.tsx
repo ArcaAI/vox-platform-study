@@ -14,7 +14,7 @@ import { AgentsTab } from './agents-tab';
  *
  * Owns exactly one resource: `DepartmentAgent`. The "Agent Templates" and
  * "Governance" tabs this screen used to carry moved to `/prompt-templates`
- * when prompt instruction templates got their own route (TASK-634 R6) —
+ * when prompt instruction templates got their own route —
  * `PromptTemplate` now has one authoritative editor instead of being a
  * secondary tab of a screen named after a different resource (rule 13).
  * Existing deep links keep working: `?template=` / `?tab=governance` are

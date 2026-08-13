@@ -1,5 +1,5 @@
 /**
- * TASK-615 WS-D — the comprehensive-summary path meters too.
+ * The comprehensive-summary path meters too.
  *
  * A chain summary spans several consultations and is one of the most expensive
  * generations the platform runs, so leaving it unmetered would understate cost

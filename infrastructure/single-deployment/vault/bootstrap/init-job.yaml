@@ -1,5 +1,5 @@
 # =============================================================================
-# HOPE — HA cluster init Job (TASK-312 Phase C, C.5)
+# HOPE — HA cluster init Job
 # =============================================================================
 # Runs ONCE after `helm install`. Because the cluster is Transit-auto-unsealed,
 # `vault operator init` yields RECOVERY keys (not unseal keys) and every node

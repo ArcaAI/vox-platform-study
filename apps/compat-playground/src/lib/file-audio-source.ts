@@ -1,7 +1,7 @@
 /**
  * File-backed capture sources — "simulate a recording" for the developer console.
  *
- * The SDK's `audio.start({ sourceStreams })` seam (TASK-597) accepts any
+ * The SDK's `audio.start({ sourceStreams })` seam accepts any
  * `MediaStream`, so a decoded audio FILE can drive the exact same
  * mixer → noise-filter → VAD → STT graph a microphone drives. That identity is
  * the whole point: a deterministic, repeatable run is only meaningful for
@@ -9,14 +9,14 @@
  *
  * The chain per virtual mic is:
  *
- *   File → decodeAudioData → AudioBuffer → AudioBufferSourceNode
- *        → MediaStreamAudioDestinationNode → .stream  ⟶  sourceStreams[i]
+ * File → decodeAudioData → AudioBuffer → AudioBufferSourceNode
+ * → MediaStreamAudioDestinationNode →.stream ⟶ sourceStreams[i]
  *
  * Web Audio has no pause/seek on a source node — a node is one-shot. So the
  * group below models playback as (bufferStartedAt, offset) and rebuilds the
  * nodes on every play/seek, which is the standard approach and keeps every
  * virtual mic sample-aligned because they all restart from the same offset.
- */
+*/
 
 /** One decoded virtual microphone: a mono buffer plus the stream it feeds. */
 export interface FileAudioSourceTrack {

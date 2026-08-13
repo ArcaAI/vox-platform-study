@@ -1,12 +1,12 @@
 'use client';
 
 /**
- * DepartmentAgent detail drawer (TASK-547) — the console-wide `DetailDrawer`
+ * DepartmentAgent detail drawer — the console-wide `DetailDrawer`
  * hosting one Agent Catalog row. Header: name + Default/Primary/Locked badges
  * → meta line (department · Agent Template · version state) → tabs:
- *   - Settings: name / Agent Template / DNA writing-style gate (the ticket's
+ *   - Settings: name / Agent Template / DNA writing-style gate (the
  *     explicit edit-field list), OCC PATCH with If-Match.
- *   - Loop config (TASK-667): the seven TASK-659 loop-configuration fields —
+ *   - Loop config: the seven loop-configuration fields —
  *     role, subscribed kinds/write scope (picked from the resolved context
  *     schema), a constrained goal, tool allowlist, guardrail profile,
  *     always/never actions, and global-admin-tier budgets. See
@@ -15,18 +15,17 @@
  *   - History: the bound Agent Template's version timeline (read-only reuse
  *     of `VersionsPanel` — the same content a "History" tab would show, so no
  *     separate audit surface is invented for it).
- *   - Lineage (TASK-674): the immutable `DepartmentAgentVersion` history
- *     TASK-659 writes on every loop-config-affecting save (changeReason +
+ *   - Lineage: the immutable `DepartmentAgentVersion` history
+ *     written on every loop-config-affecting save (changeReason +
  *     a client-side field diff between two picked versions) and, where
- *     present, the cross-tenant `AgentPromotion` lineage TASK-663 records.
- *     The console surface TASK-667 OI-3 flagged as missing. See
+ *     present, the cross-tenant `AgentPromotion` lineage recorded.
+ *     The previously missing console surface. See
  *     `agent-lineage-tab.tsx`.
  *
  * A `templateLocked` row ("cloned from library") renders Settings/Loop
  * config/Version read-only and hides Delete — mirrors the AsrPipeline lineage
- * lock (`03-domain-layer.md` exemplar). There is no clone action yet
- * (TASK-548); per the ticket's own hazard note this stays absent rather than
- * a stub.
+ * lock (`03-domain-layer.md` exemplar). There is no clone action yet;
+ * per the hazard note this stays absent rather than a stub.
  */
 
 import { useId, useState, type FormEvent } from 'react';
@@ -73,7 +72,7 @@ const DNA_POLICY_OPTIONS: { value: DepartmentAgentDnaPolicy; label: string }[] =
   { value: 'DISABLED', label: 'Disabled' },
 ];
 
-/** Radix `Select` rejects an empty-string item value, so "no golden set" needs a sentinel (TASK-549). */
+/** Radix `Select` rejects an empty-string item value, so "no golden set" needs a sentinel. */
 const NO_GOLDEN_SET = '__none__';
 
 function useAgentCatalogTab() {
@@ -255,7 +254,7 @@ function CreateAgentForm({ onCreated, onCancel }: { onCreated: (agent: Departmen
   );
 }
 
-/** Settings tab: name / Agent Template / DNA gate — the ticket's explicit edit-field list. */
+/** Settings tab: name / Agent Template / DNA gate — the explicit edit-field list. */
 function SettingsForm({
   agent,
   etag,

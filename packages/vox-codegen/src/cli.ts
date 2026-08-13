@@ -1,13 +1,13 @@
 /**
- * `vox-codegen` — the `bin` entry (TASK-668).
+ * `vox-codegen` — the `bin` entry.
  *
- *   npx @arcaai/vox-codegen --tenant <id> [--watch] [--out <path>]
+ * npx @arcaai/vox-codegen --tenant <id> [--watch] [--out <path>]
  *
  * Zero CLI-parsing dependencies: `node:util`'s `parseArgs` (Node >= 18) is
  * enough for this flag set, and this package otherwise carries zero runtime
  * dependencies (matches `@arcaai/vox-node`'s posture — see the package
  * README's placement decision).
- */
+*/
 
 import { parseArgs } from 'node:util';
 import process from 'node:process';

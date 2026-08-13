@@ -12,11 +12,11 @@ import {
 } from '../scoring';
 
 /**
- * TASK-597 lane D — parity guard for `src/lib/scoring.ts`.
+ * — parity guard for `src/lib/scoring.ts`.
  *
  * The `PYTHON_PARITY` block below is the load-bearing part. Every expected CER
  * was produced by running the REAL `_norm` + `cer` from
- * `apps/stt/scripts/mlen_scorecard.py` (the TASK-594 quality-gate reference)
+ * `apps/stt/scripts/mlen_scorecard.py` (the quality-gate reference)
  * over the exact same strings, and asserted to full float precision. If a change
  * to `scoring.ts` makes any of these drift, the playground has stopped agreeing
  * with the regression baseline and the change is wrong — fix the port, don't
@@ -27,7 +27,7 @@ import {
  * `pnpm --filter @arcaai/compat-playground test` runs. A `.test.ts` here would
  * be silently skipped by the app suite and picked up by the root node project
  * instead.)
- */
+*/
 
 interface ParityCase {
   name: string;
@@ -78,7 +78,7 @@ describe('CER parity with apps/stt/scripts/mlen_scorecard.py', () => {
   });
 
   it('reports the Malayalam code-switch CER the quality gate would report', () => {
-    // Sanity anchor: this clip's CER sits inside the TASK-594 baseline's
+    // Sanity anchor: this clip's CER sits inside the baseline's
     // observed range (mean 0.325, ceiling 0.40) rather than being an outlier.
     const score = scoreTranscript(PYTHON_PARITY[0].ref, PYTHON_PARITY[0].hyp);
     expect(score.cer).toBeCloseTo(0.1373, 4);

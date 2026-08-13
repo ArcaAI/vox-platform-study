@@ -1,6 +1,6 @@
 #!/usr/bin/env tsx
 /**
- * TASK-648 U1 — CI tag-grammar gate (README §5 W1).
+ * CI tag-grammar gate.
  *
  * Rejects a release tag that does not match the frozen grammar defined in
  * `packages/utils/src/version-grammar.ts` (`RELEASE_TAG_PATTERN`). Imports
@@ -9,7 +9,7 @@
  *
  * SDK release tags (`SDK-<semver>`) are a pre-existing, separate scheme — the
  * SDK family stays in npm-SemVer lockstep publishing via `publish-sdk`
- * (README §1 "Out of scope", §3.1 rule 5) — and are intentionally NOT
+ * (out of scope for this grammar) — and are intentionally NOT
  * governed by this grammar. They are skipped, not rejected.
  *
  * Invoked by the `validate-release-tag` job in `.gitlab/ci/validate.yml`,
@@ -37,7 +37,7 @@ if (!RELEASE_TAG_PATTERN.test(tag)) {
     `Release tag "${tag}" does not match the grammar <SVC>-<MAJOR>.<MINOR>.<PATCH>[-<prerelease>] ` +
       `(service ∈ ${SERVICE_TAG_PREFIXES.join(', ')}). Build metadata ("+...") is rejected — an image is ` +
       `identified by its digest, not a second, weaker version string. ` +
-      `See docs/implementation/TASK-648-Service-Version-And-Release-Registry/README.md §3.1.`,
+      `See docs/implementation/TASK-648-Service-Version-And-Release-Registry/README.md.`,
   );
   process.exit(1);
 }

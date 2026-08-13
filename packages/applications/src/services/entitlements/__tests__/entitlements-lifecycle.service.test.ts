@@ -93,7 +93,7 @@ describe('EntitlementsLifecycleService.expireTrials', () => {
     expect(baseClient.tenant.update).toHaveBeenCalledTimes(1);
     const call = (baseClient.tenant.update as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(call).toMatchObject({ where: { id: 't-expired' }, data: { plan: TenantPlan.STARTER } });
-    // PLAN-ONLY — resourceStatus must NOT be part of the update (proposal §4).
+    // PLAN-ONLY — resourceStatus must NOT be part of the update.
     expect(call.data).not.toHaveProperty('resourceStatus');
     expect(eventEmitter.emit).toHaveBeenCalledWith(ENTITLEMENTS_TRIAL_EXPIRED_EVENT, expect.objectContaining({ tenantId: 't-expired' }));
   });

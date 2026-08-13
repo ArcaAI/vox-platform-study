@@ -1,11 +1,11 @@
 // The API gateway's env-tier declarations that the settings registry does not
-// (yet) carry — TASK-558 lane D, plan §3.2 / §9.1 D1.
+// (yet) carry.
 //
 // WHY THIS FILE EXISTS
 // Lane F registered the bootstrap floor (`BOOTSTRAP_ENV_SETTINGS`), the platform
 // knobs, the feature gates and the platform secrets. It did NOT register the
 // gateway's SERVICE TOPOLOGY (`*_URL` / `*_PORT`) or its process-level
-// observability / Vault-client / storage knobs, even though plan §3.2 assigns
+// observability / Vault-client / storage knobs, even though the env-tier plan assigns
 // all of them to the `env` tier ("all `*_PORT`, all `*_URL` service endpoints,
 // `OTEL_*`, `LOG_FILE_*`, `SERVICE_NAME`, `HOSTNAME`, `CI`").
 //
@@ -22,7 +22,7 @@
 //   * `tier: 'env'` — a deploy-time value with no admin write path, so
 //     `editableBy: EDITABLE_BY_NONE` (the governance invariant lane F binds
 //     both ways).
-//   * `failMode` follows the boot contract of plan §4 B4: `closed` ⇒ the reader
+// * `failMode` follows the boot contract: `closed` ⇒ the reader
 //     has NO fallback and absence must fail fast; `open-to-default` ⇒ the reader
 //     has a code fallback, transcribed into `default`.
 //
@@ -123,7 +123,7 @@ const TOPOLOGY: SettingDescriptor[] = [
  * `scripts/test-doctor.sh` — not by TypeScript, which is why they carry no
  * `process.env` reader. Declared anyway so the ONE port topology is documented in
  * ONE generated place: `.env.test` runs every application port at DEV + 100
- * (TASK-557 / commit d84f538e), and the defaults below are the DEV half.
+ * (commit d84f538e), and the defaults below are the DEV half.
  *
  * `SMR_PORT` / `NLP_PORT` / `TTS_PORT` are in the topology group above instead —
  * `ConfigService` really does read those three.
@@ -197,8 +197,7 @@ const PROCESS_IDENTITY: SettingDescriptor[] = [
   // cannot see them. They were therefore absent from `turbo.json#globalEnv`
   // entirely, so a fully-implemented transport had no declared config path and
   // Turbo never invalidated its cache when the destination changed
-  // (TASK-636 OBS-10).
-  // PHI redaction (TASK-636 OBS-19). The canonical PHI key list lives in
+  // PHI redaction. The canonical PHI key list lives in
   // `logging/redactor.ts` and always applies; this only ADDS deployment-
   // specific field names. Declared here for the same reason as the Loki keys:
   // the reader goes through `getEnvString`, which the env-sync scanner cannot
@@ -251,7 +250,7 @@ const OBSERVABILITY: SettingDescriptor[] = [
     'Interval of the simplified monitoring collector.',
     15000,
   ),
-  // TASK-615 WS-G: PHI-safe telemetry, layer 1 of 4 (docs/operations/
+  // PHI-safe telemetry, layer 1 of 4 (docs/operations
   // telemetry-phi-guardrails.md). This is a cross-process OTel
   // instrumentation-library convention — the SAME bare name is read by
   // apps/smr's `TelemetryPhiGuardConfig` (Python) — so it carries no

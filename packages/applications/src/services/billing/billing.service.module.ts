@@ -6,7 +6,7 @@ import { BillingService } from './billing.service';
 import { IBillingService } from './IBillingService';
 
 /**
- * The invoice engine (TASK-615 WS-I).
+ * The invoice engine.
  *
  * IMPORTS
  *   - `CoreDatabaseModule` — the generated repositories + `CoreUnitOfWorkService`.
@@ -14,7 +14,7 @@ import { IBillingService } from './IBillingService';
  *     surface the COST rater uses; two planes, one mechanism, D10).
  *
  * The two hand-written billing repository extensions live in
- * `packages/domains/src/repositories/billing/` (WS-I's lane) and are PROVIDED
+ * `packages/domains/src/repositories/billing/` ('s lane) and are PROVIDED
  * HERE rather than in `CoreDatabaseModule` — that module is another lane's
  * file mid-wave, and these classes only need `CoreUnitOfWorkService`, which
  * `CoreDatabaseModule` exports. Fold them into the shared module in a

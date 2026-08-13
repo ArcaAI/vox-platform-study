@@ -1,4 +1,4 @@
-"""TASK-671 P3 — the entity-grounding sensor's contract.
+"""The entity-grounding sensor's contract.
 
 Behaviour under test, in the order it matters:
 

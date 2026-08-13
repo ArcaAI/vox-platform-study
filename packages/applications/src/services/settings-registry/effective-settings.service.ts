@@ -24,7 +24,7 @@ export interface EffectiveSettingResult {
 
 /**
  * The single place the declared failure mode is applied — called wherever a
- * cascade bottoms out with NO value (plan §4 B3, §9.3 M5).
+ * cascade bottoms out with NO value.
  *
  * `closed`          → raise. The caller gets an explicit "unresolved", never a
  *                     substituted value it did not ask for.
@@ -52,7 +52,7 @@ export class EffectiveSettingsService {
     // settings (and existing unit tests) keep working; an unwired resolver
     // simply falls back to the descriptor default.
     //
-    // TASK-558 lane I: this used to be `IAppSettingsService` read directly with
+    // This used to be `IAppSettingsService` read directly with
     // a key-only lookup, which could only ever answer with the PLATFORM value.
     // Now that six knobs are `maxScope: 'tenant'`, the facade must answer for
     // the CALLER'S tenant or it would report a value that is not the one the
@@ -96,13 +96,13 @@ export class EffectiveSettingsService {
       return { key, tier: descriptor.tier, value: effective.modelSlug, sourceScope: effective.source ?? 'none' };
     }
 
-    // The `global-kv` lane — the full cascade (TASK-558 lane I):
+    // The `global-kv` lane — the full cascade:
     //
     //   tenant override  →  SYSTEM/platform row  →  descriptor.default
     //   sourceScope:  'tenant'  →  'system'  →  'code-default'
     //
     // The reported `sourceScope` is the tier that actually answered, so a
-    // caller can see WHY a value is what it is (§9.2 L8). `ctx.tenantId` is the
+    // caller can see WHY a value is what it is. `ctx.tenantId` is the
     // tenant the caller is asking about — for a tenant admin that is its own
     // tenant, for a global admin the working tenant resolved by the controller.
     if (descriptor.tier === 'global-kv') {

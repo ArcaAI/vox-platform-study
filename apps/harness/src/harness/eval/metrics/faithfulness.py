@@ -4,7 +4,7 @@ Faithfulness = (# claims supported by the context) / (# total claims), computed
 by **claim decomposition** (split the note into atomic factual statements) +
 **per-claim support checking** (does the transcript/evidence entail the claim?).
 This mirrors RAGAS's faithfulness metric and the entity/claim-level entailment
-approach that dominates clinical groundedness work (research doc 06, §"Faithfulness").
+approach that dominates clinical groundedness work (research doc 06).
 
 Both steps are model-agnostic — they run through a
 :class:`~harness.eval.judge.base.JudgeClient`, so the same local ≤20B model

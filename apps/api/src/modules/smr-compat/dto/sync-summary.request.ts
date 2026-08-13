@@ -5,7 +5,7 @@ import { SessionDataDto } from './session-data.dto';
 
 /**
  * v1 `SyncSummaryRequest` for `POST /api/smr/api/v1/summary/sync`.
- * (SMR_Summary_Endpoints.md §3.1; frozen TASK-560 §5.4.)
+ * (SMR_Summary_Endpoints.md §3.1; frozen)
  *
  * Strict DTO — the global `ValidationPipe` runs `whitelist +
  * forbidNonWhitelisted + forbidUnknownValues`, so every accepted field is

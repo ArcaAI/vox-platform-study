@@ -17,7 +17,7 @@ export interface SummaryMappingMeta {
   encounterType?: string | null;
   /** Set only when enrichment was applied — echoed into metadata. */
   preSummaryText?: string | null;
-  /** v1-parity display labels (TASK-560 item 4) — cosmetic, no logic consumes them. */
+  /** v1-parity display labels — cosmetic, no logic consumes them. */
   llmProvider?: string | null;
   modelName?: string | null;
   parsingMethod?: string | null;
@@ -143,7 +143,7 @@ export function mapGenerateToV1Summary(content: string, meta: SummaryMappingMeta
       language: meta.language,
       specialty: meta.specialty ?? null,
       encounter_type: meta.encounterType ?? null,
-      // v1-parity display labels (TASK-560 item 4).
+      // v1-parity display labels.
       llm_provider: meta.llmProvider ?? null,
       model_name: meta.modelName ?? null,
       parsing_method: meta.parsingMethod ?? null,
@@ -164,9 +164,9 @@ export function mapGenerateToV1Summary(content: string, meta: SummaryMappingMeta
  * `summary-prompt.builder.ts`); any drift silently absorbs the unmatched headers
  * into the preceding section and pads the rest with "Not available".
  *
- * ⚠ TASK-634 D-09 asserted the opposite (`Latest Dept Note`, and this list in a
+ * ⚠ asserted the opposite (`Latest Dept Note`, and this list in a
  * different order), citing the running v1 pod. That was wrong: a byte diff of
- * the v1 source body against TASK-634's own output differs in the FORMAT block
+ * the v1 source body against 's own output differs in the FORMAT block
  * ALONE, and the `309a9cd13792` hash it recorded as v1 provenance is the hash of
  * its own rewrite. Restored to v1 (`previous_visit_service.py:215-221`) together
  * with the template. Do not "correct" these back without re-deriving from

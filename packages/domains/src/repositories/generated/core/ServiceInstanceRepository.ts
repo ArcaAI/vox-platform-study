@@ -7,7 +7,7 @@ import { ServiceInstanceEntityMapper } from '../../../mappers';
 import { ServiceInstance } from '../../../models';
 
 /**
- * Heartbeated runtime-observation repository (TASK-648) — one row per
+ * Heartbeated runtime-observation repository — one row per
  * (serviceName, environment, instanceId), enforced by
  * `ServiceInstance_service_env_instance_unique`. Always the SYSTEM tenant.
  */

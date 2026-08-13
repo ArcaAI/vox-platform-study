@@ -1,4 +1,4 @@
-"""TASK-597 lane B3 — finalize must publish the terminal ``closed`` status EARLY.
+"""Finalize must publish the terminal ``closed`` status EARLY.
 
 ``closed`` is the terminal entry on the result stream: the gateway's Redis
 subscription COMPLETES on it, and the SDK's ``stopAndDrain`` blocks until it
@@ -10,7 +10,7 @@ The order that must hold::
 
     drain (caller) -> last transcript -> status 'closed'
                    -> blob uploads -> dual capture -> durable transcript
-                   -> session.close() -> remove_session()
+                   -> session.close -> remove_session
 
 These tests lock BOTH halves of that: nothing transcript-shaped may be published
 after ``closed``, and none of the durability work may precede it. The durability

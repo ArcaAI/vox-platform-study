@@ -1,19 +1,19 @@
 /**
- * TASK-635 Lane D3 — conformance regression suite (APPLICATIONS layer).
+ * Conformance regression suite (APPLICATIONS layer).
  *
- * Locks the §2.0 conformance scorecard of
+ * Locks the conformance scorecard of
  * `docs/implementation/TASK-635-Summarization-Agent-Conformance/README.md`.
  * Sibling file (COMPAT / API layer — R-C1/R-C2/R-C3):
  *   apps/api/src/modules/smr-compat/__tests__/task-635-conformance.test.ts
  *
  * | Requirement | Scorecard row | Covered here |
  * |---|---|---|
- * | R-T1 | "tenant admin can test any prompt template with predefined OR given example data" | §1 |
- * | R-T2 | "tenant admin can select the LLM provider for the test run" | §1 |
+ * | R-T1 | "tenant admin can test any prompt template with predefined OR given example data" | |
+ * | R-T2 | "tenant admin can select the LLM provider for the test run" | |
  *
  * F-01 / R-C3(i) / RF-2 / B-12 (resolver-level) are locked in the SAME
  * directory's `prompt-resolution.capability-bindings.test.ts` (C2's own suite,
- * already RED→GREEN per the README §7 evidence table) — referenced rather than
+ * already RED→GREEN per evidence table) — referenced rather than
  * duplicated:
  *   - F-01 closure complement ("an agent with ALL-NULL bindings resolves
  *     exactly as pre-C2") → describe('C2-T7 — an agent with NULL visit
@@ -37,7 +37,7 @@
  * silently regresses (the global pipe runs `whitelist + forbidNonWhitelisted`,
  * so a field that loses its class-validator decorator is not merely
  * undocumented — it is STRIPPED from every request, and the capability
- * silently reverts to its pre-TASK-635 behaviour with no test failing):
+ * silently reverts to its previous behaviour with no test failing):
  *   - per-field validation semantics (types, ranges, UUID) →
  *     `prompt-management/__tests__/test-prompt-template.request.test.ts`
  *   - caller-supplied provider/model forwarded verbatim + the
@@ -92,7 +92,7 @@ describe('R-T1 / R-T2 — the prompt-template test route accepts the full test-b
 });
 
 // ---------------------------------------------------------------------------
-// §2 — R-C3 (ii) flip: `preSummaryVariant: 'dept-free'` resolves the D2 fork
+// R-C3 (ii) flip: `preSummaryVariant: 'dept-free'` resolves the D2 fork
 // ---------------------------------------------------------------------------
 
 describe("R-C3 (ii) flip — preSummaryVariant: 'dept-free' resolves the seeded SYSTEM fork (D2)", () => {

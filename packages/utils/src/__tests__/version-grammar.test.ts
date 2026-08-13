@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { RELEASE_TAG_PATTERN, SERVICE_TAG_PREFIXES, formatUntaggedVersion, isPlatformTrainTag, parseReleaseTag } from '../version-grammar';
 
-// TASK-648 U0 — the frozen version grammar (ticket README §3.1).
+// The frozen version grammar.
 // Every consumer (CI tag gate, build-info readers, release rows, console badges)
 // resolves a version through THIS module. It is the contract, so its tests are
 // written against the documented grammar, not against an implementation.
@@ -91,7 +91,7 @@ describe('formatUntaggedVersion', () => {
   });
 
   it('falls back to a placeholder rather than throwing when git data is missing', () => {
-    // A build-info reader must never crash a service boot (README §3.7).
+    // A build-info reader must never crash a service boot.
     expect(formatUntaggedVersion('', '')).toBe('0.0.0-unknown.unknown');
   });
 });

@@ -1,7 +1,7 @@
 /**
- * TASK-686 — the day-1 default context schema + agent loop configuration.
+ * The day-1 default context schema + agent loop configuration.
  *
- * TASK-684 turned the SIGNALLING gate on, so a real `context.added` now starts
+ * The signalling gate is on, so a real `context.added` now starts
  * `ConsultationLoopWorkflow`. The workflow then completes `phase: "DISABLED"`,
  * because its pinned config's `enabled` is DERIVED
  * (`loop-config.service.ts:156`) and neither of its two sources exists on a
@@ -13,15 +13,15 @@
  *
  *  - the seeded `definition` is publishable by the REAL publish validator
  *    (`contextSchemaDefinitionProblems`), not by a hand-rolled restatement of it;
- *  - the seeded agent loop-config passes the REAL TASK-659 validators, and every
+ *  - the seeded agent loop-config passes the REAL validators, and every
  *    `subscribedKinds` key / `writeScope` output resolves against the seeded
  *    definition — an agent subscribed to a kind nobody declares produces a
  *    running-but-inert loop, which is worse than DISABLED;
  *  - the seeded rows, fed through the REAL `LoopConfigService`, resolve
  *    `enabled: true`;
  *  - removing the schema again returns the loop to `enabled: false` cleanly —
- *    TASK-654 K7 ("a consultation with no loop configured behaves EXACTLY as it
- *    does today") must survive this ticket.
+ *    ("a consultation with no loop configured behaves EXACTLY as it
+ *    does today") must still hold.
  *
  * `packages/database` must not depend on `@arcaai/applications` (that would
  * close a cycle: applications → domains → database), so the seed carries its own
@@ -58,7 +58,7 @@ import { ARCAAI_TENANT_AGENTS, GLOBAL_TENANT_AGENTS, GOLDEN_AGENTS } from '../..
 // 1. The seeded definition is publishable by the real validator
 // =============================================================================
 
-describe('TASK-686 — the seeded context-schema definition', () => {
+describe('The seeded context-schema definition', () => {
   it('is accepted by the real publish validator with zero problems', () => {
     expect(contextSchemaDefinitionProblems(DAY1_CONTEXT_SCHEMA_DEFINITION)).toEqual([]);
   });
@@ -90,7 +90,7 @@ describe('TASK-686 — the seeded context-schema definition', () => {
 //    (`LoopConfigService.resolveServableContextSchemaVersion`)
 // =============================================================================
 
-describe('TASK-686 — the seeded schema rows are servable', () => {
+describe('The seeded schema rows are servable', () => {
   it('are TENANT-scoped defaults, ENABLED, PUBLISHED, with a non-null pin that resolves to a seeded version', () => {
     expect(DAY1_CONTEXT_SCHEMAS.length).toBeGreaterThan(0);
 
@@ -121,8 +121,8 @@ describe('TASK-686 — the seeded schema rows are servable', () => {
 
 const ALL_SEEDED_AGENTS = [...GOLDEN_AGENTS, ...GLOBAL_TENANT_AGENTS, ...ARCAAI_TENANT_AGENTS];
 
-describe('TASK-686 — the seeded agent loop configuration', () => {
-  it('passes every TASK-659 structural validator', () => {
+describe('The seeded agent loop configuration', () => {
+  it('passes every structural validator', () => {
     expect(subscribedKindsProblems(DAY1_AGENT_LOOP_CONFIG.subscribedKinds).problems).toEqual([]);
     expect(writeScopeProblems(DAY1_AGENT_LOOP_CONFIG.writeScope).problems).toEqual([]);
     expect(goalProblems(DAY1_AGENT_LOOP_CONFIG.goal)).toEqual([]);
@@ -182,10 +182,10 @@ describe('TASK-686 — the seeded agent loop configuration', () => {
 });
 
 // =============================================================================
-// 4. Exactly one PRIMARY per department (TASK-659 AC-7)
+// 4. Exactly one PRIMARY per department
 // =============================================================================
 
-describe('TASK-686 — the one-PRIMARY-per-department invariant', () => {
+describe('The one-PRIMARY-per-department invariant', () => {
   it('seeds at most one PRIMARY agent per (tenant, department)', () => {
     const primariesByDepartment = new Map<string, string[]>();
     for (const agent of ALL_SEEDED_AGENTS) {
@@ -240,7 +240,7 @@ function buildService(): LoopConfigService {
   );
 }
 
-describe('TASK-686 — LoopConfigService against the seeded rows', () => {
+describe('LoopConfigService against the seeded rows', () => {
   let service: LoopConfigService;
 
   beforeEach(() => {
@@ -295,7 +295,7 @@ describe('TASK-686 — LoopConfigService against the seeded rows', () => {
   });
 
   /**
-   * TASK-654 K7. A tenant that soft-deletes, unpublishes, un-defaults or
+   * A tenant that soft-deletes, unpublishes, un-defaults or
    * un-pins the seeded schema must fall back to exactly today's behaviour.
    * `findDefaultForScope` filters on `resourceStatus: ENABLED`, so a soft delete
    * shows up here as the repository answering null.

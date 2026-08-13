@@ -8,7 +8,7 @@ export default defineConfig({
     exclude: ['**/node_modules/**', '**/dist/**'],
     testTimeout: 30000,
     hookTimeout: 30000,
-    // TASK-634 D-17: `.env.test` sets `SECRETS_PROVIDER=vault` (the correct
+    // `.env.test` sets `SECRETS_PROVIDER=vault` (the correct
     // default for integration/e2e suites, which run against a real
     // Vault-backed SecretsService). Plain unit tests in this package build
     // services directly, without a SecretsService, so the shared PHI-field

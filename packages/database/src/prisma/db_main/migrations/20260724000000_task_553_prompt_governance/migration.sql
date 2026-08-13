@@ -1,4 +1,4 @@
--- TASK-553 — prompt governance: eval-gate bypass fix (F-02) + hot-path index (F-16).
+-- Prompt governance: eval-gate bypass fix (F-02) + hot-path index (F-16).
 --
 -- Purely ADDITIVE. No DROP / DELETE / TRUNCATE. Safe to re-apply on the
 -- db-push-managed dev/test databases, which sit ahead of migration history

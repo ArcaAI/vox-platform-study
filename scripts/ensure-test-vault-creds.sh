@@ -9,7 +9,7 @@
 # scripts/test-setup.sh). VaultSecretsProvider.boot() FAILS CLOSED if the
 # AppRole role_id/secret_id in .env.test are stale, so the service never
 # becomes healthy. Creds go stale whenever the isolated test Vault
-# (hope-vault-test, TASK-689) is recreated or its dev-mode (in-memory) state
+# (hope-vault-test) is recreated or its dev-mode (in-memory) state
 # is wiped — the role_id itself changes, invalidating whatever .env.test held.
 #
 # This is the `.env.test` twin of scripts/refresh-vault-creds.sh (which does
@@ -60,7 +60,7 @@ set_env() {
   printf '%s=%s\n' "${key}" "${val}" >> "${ENV_FILE}"
 }
 
-# hope-vault-test (TASK-689) is owned by the ISOLATED test infra, not dev —
+# hope-vault-test is owned by the ISOLATED test infra, not dev —
 # bring the test stack up if it is not running.
 if ! docker ps --format '{{.Names}}' | grep -qx "${CONTAINER}"; then
   yellow "→ Vault container '${CONTAINER}' not running — starting test infrastructure to bring it up."

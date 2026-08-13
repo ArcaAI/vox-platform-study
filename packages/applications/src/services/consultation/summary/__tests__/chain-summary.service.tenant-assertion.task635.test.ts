@@ -1,5 +1,5 @@
 /**
- * ChainSummaryService.callSmrService — explicit tenant assertion (TASK-635 A5, B-04)
+ * ChainSummaryService.callSmrService — explicit tenant assertion
  *
  * `resolveSmrSelection()` used to be called with NO tenantId, relying on
  * `HarnessPolicyService`'s own CLS fallback — a worker/CLS-less caller could

@@ -72,7 +72,7 @@ export interface UpdateMyReportRequest {
   reportData?: Record<string, unknown>;
   styleText?: string;
   /**
-   * TASK-551 — the doctor's DNA redaction/rewrite rule set. Sent as
+   * the doctor's DNA redaction/rewrite rule set. Sent as
    * `{ rules: [...] }`; the gateway validates the shape on write and stores it
    * encrypted-at-rest. Pass `{ rules: [] }` to clear.
    */

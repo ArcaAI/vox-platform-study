@@ -5,7 +5,7 @@ import { AiCapability, AiUsageUnit } from '@arcaai/domains';
 import { BILLABLE_UNITS, NON_BILLABLE_LLM_OPERATIONS, buildBillableUsage } from '../billable-usage';
 
 /**
- * TASK-615 WS-I — billable-usage construction (D13/D16).
+ * Billable-usage construction (D13/D16).
  *
  * Rollups are the invoice-time source, but they carry no `operation` dimension,
  * and two D-rules are operation-shaped:

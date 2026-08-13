@@ -19,7 +19,7 @@ describe('isValidMediaId', () => {
     expect(isValidMediaId('550E8400-E29B-41D4-A716-446655440000')).toBe(true);
   });
 
-  it('rejects a raw storage key (the pre-TASK-656 bug value)', () => {
+  it('rejects a raw storage key (the pre- bug value)', () => {
     expect(isValidMediaId('attachments/lab-scan.pdf')).toBe(false);
     expect(isValidMediaId('raw-capture.webm')).toBe(false);
   });

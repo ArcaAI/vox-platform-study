@@ -21,7 +21,7 @@ function makeController(ctx: Ctx) {
     upsertRow: vi.fn(),
     getPlatformCatalog: vi.fn(),
   };
-  // Unified provider-connection plane (`service='tts'`, TASK-570) — backs the
+  // Unified provider-connection plane (`service='tts'`) — backs the
   // credential facade routes.
   const providerConnectionService = {
     list: vi.fn(),

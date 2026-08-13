@@ -1,4 +1,4 @@
-"""TASK-567: `provider :: model` shorthand parses for the new cloud engines.
+"""`Provider :: model` shorthand parses for the new cloud engines.
 
 Tier-1 (YAML/DTO) test — no mocks, no network. Also locks forward-tolerance:
 the shorthand vocabulary stays consistent with ``_PROVIDER_ALIASES``.

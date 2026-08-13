@@ -13,10 +13,10 @@ export interface AiUsageRollupHourlyDimension {
   tenantId: string;
   bucketStart: Date;
   capability: AiCapability;
-  /** Ledger event operation (TASK-615 #4); "" sentinel for pre-follow-up rows. */
+  /** Ledger event operation; "" sentinel for pre-follow-up rows. */
   operation: string;
   provider: string;
-  /** Who FUNDED the call (TASK-638) — the allowance is consumed SELF_HOSTED-first. */
+  /** Who FUNDED the call — the allowance is consumed SELF_HOSTED-first. */
   deployment: AiDeploymentKind;
   /** "" sentinel when the capability selects no model — never null. */
   model: string;

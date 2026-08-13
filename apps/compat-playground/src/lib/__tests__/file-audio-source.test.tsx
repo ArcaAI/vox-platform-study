@@ -2,16 +2,16 @@ import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { FileAudioSourceGroup, FileAudioSourceError } from '../file-audio-source';
 
 /**
- * `FileAudioSourceGroup` — file → virtual microphone decoding (TASK-597 lane A).
+ * `FileAudioSourceGroup` — file → virtual microphone decoding.
  *
  * happy-dom has no Web Audio implementation, so the whole AudioContext surface
  * is stubbed. What is under test is the MAPPING — how many virtual mics come
- * out, which channel each one carries, and that dispose() ends every track —
+ * out, which channel each one carries, and that dispose() ends every track
  * not Web Audio itself.
  *
  * The file lives under `__tests__/*.test.tsx` because the app's vitest config
  * only collects `.tsx` suites (the root node config owns `.test.ts`).
- */
+*/
 
 interface FakeTrack {
   kind: string;

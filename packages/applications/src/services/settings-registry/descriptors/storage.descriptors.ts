@@ -1,4 +1,4 @@
-// Storage descriptors — the worked example of TASK-558 §3.2: the platform
+// Storage descriptors — the platform
 // object-store configuration moves out of deploy-time env into
 // admin-managed data.
 //
@@ -6,7 +6,7 @@
 // (`tenantId = SYSTEM_TENANT_ID`, `bucketId = NULL`). Non-secret fields are
 // `db-config`; the MinIO/S3 key PAIR is NOT one of them — it lives in Vault
 // kv-v2 at `platform/storage/minio` and is referenced by `credentialsRef`
-// (§9.3 M10: per-tenant/platform secrets never sit in a DB column).
+// (per-tenant/platform secrets never sit in a DB column).
 //
 // Governance: every key here is GLOBAL-ADMIN-ONLY (`globalOnly: true`,
 // `editableBy: 'all'`), enforced imperatively by
@@ -110,7 +110,7 @@ export const STORAGE_SETTINGS: SettingDescriptor[] = [
     editableBy: 'all',
     globalOnly: true,
     category: 'Credentials',
-    // Secret: never silently substitute another value (lane F: register() enforces
+    // Secret: never silently substitute another value (`register()` enforces
     // `secret` => `closed`).
     failMode: 'closed',
     label: 'Platform storage credentials (Vault kv-v2)',
@@ -120,7 +120,7 @@ export const STORAGE_SETTINGS: SettingDescriptor[] = [
     default: 'platform/storage/minio',
   },
   {
-    // Key is `minio.endpoint`, not `storage.bootstrap.*`: the plan's §3.3 rule is a
+    // Key is `minio.endpoint`, not `storage.bootstrap.*`: the env-name mapping is a
     // MECHANICAL 1:1 with the live variable name, which is `MINIO_ENDPOINT`. A
     // `storage.bootstrap.` prefix would derive `STORAGE_BOOTSTRAP_MINIO_ENDPOINT`
     // and break the mapping the registry test enforces.
@@ -131,7 +131,7 @@ export const STORAGE_SETTINGS: SettingDescriptor[] = [
     maxScope: 'system',
     // `env` tier has no write path, so it declares the `none` sentinel rather than
     // a CASL subject — naming one would advertise an editor that does not exist
-    // (lane F invariant: env ⇒ editableBy 'none'). `globalOnly` is omitted for the
+    // (env-tier invariant: env ⇒ editableBy 'none'). `globalOnly` is omitted for the
     // same reason: there is nothing to gate. The ADMIN-editable counterpart of this
     // value is `storage.platformDefault.endpoint` above.
     editableBy: 'none',

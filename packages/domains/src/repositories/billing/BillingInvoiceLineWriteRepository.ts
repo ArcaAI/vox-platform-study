@@ -18,7 +18,7 @@ interface BillingLineTxDelegate {
 }
 
 /**
- * Tx-aware invoice-line supersede write (TASK-615 WS-I).
+ * Tx-aware invoice-line supersede write.
  *
  * Recomputing a DRAFT replaces its lines idempotently: the OLD lines are
  * soft-deleted and the NEW set is inserted, in the SAME transaction that

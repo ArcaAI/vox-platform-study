@@ -39,7 +39,7 @@ export const INSTANCE_LIVENESS_THRESHOLD_MS = 15 * 60 * 1000;
 export const SERVICE_REGISTRY_TENANT_ID = '00000000-0000-0000-0000-000000000000';
 
 /**
- * Service Version & Release Registry (TASK-648 W7).
+ * Service Version & Release Registry.
  *
  * The one behaviour to preserve above all others: a HEARTBEAT IS SILENT. Every
  * pod boot and every 5-minute heartbeat broadcasting a sys-event would write

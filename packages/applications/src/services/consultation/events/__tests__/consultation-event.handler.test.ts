@@ -1132,7 +1132,7 @@ describe('ConsultationEventHandler', () => {
   // cascade (ConfigResolver: doctor → department → tenant → SYSTEM default)
   // rather than reading the consultation metadata alone. The per-consultation
   // `metadata.pipelineConfig` stays the TOP overlay (back-compat). The legacy
-  // auto path also threads the doctor-preferred prompt id (§2.5 correction).
+  // auto path also threads the doctor-preferred prompt id (correction).
   // A dedicated handler instance is wired WITH the resolver (the suite above
   // intentionally exercises the resolver-absent legacy fallback).
   // =========================================================================
@@ -1251,7 +1251,7 @@ describe('ConsultationEventHandler', () => {
 });
 
 // =============================================================================
-// TASK-551 — DNA redaction rule last-mile wiring (harness path)
+// DNA redaction rule last-mile wiring (harness path)
 //
 // On the harness branch the handler resolves the effective DNA-redaction
 // decision (tenant + doctor double-gate + the department default-agent DNA
@@ -1260,7 +1260,7 @@ describe('ConsultationEventHandler', () => {
 // resolution/decrypt failure yields NO rules (empty) and NEVER blocks the start.
 // =============================================================================
 
-describe('ConsultationEventHandler — DNA redaction wiring (TASK-551)', () => {
+describe('ConsultationEventHandler — DNA redaction wiring', () => {
   const REDACTION_RULE = { id: 'r1', type: 'remove', match: 'literal', pattern: "patient's employer" };
 
   let handler: ConsultationEventHandler;

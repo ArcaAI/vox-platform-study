@@ -1,9 +1,8 @@
 /**
  * useArcaAudio — `removeSource(id)` must drop the removed stream from the
  * session's stream registry, not just from the mixer and `sourceIdsRef`
- * (TASK-611).
  *
- * TASK-609's `removeSource` called `mixer.removeSource(id)` (which stops that
+ * `removeSource` called `mixer.removeSource(id)` (which stops that
  * source's tracks) and filtered the id out of `sourceIdsRef`, but never
  * touched `sourceStreamsRef` — the array `applyEnabledToAllSources` (mute/
  * unmute) and `stopAudio` teardown both walk (see its REF CONTRACT docblock,
@@ -67,7 +66,7 @@ import { useAgenticStore } from '../../store';
 /**
  * `enabled` is a counting accessor, not a plain field — the "no further
  * writes" assertion is only observable via the write log, exactly as in the
- * TASK-609 mute suite.
+ * Mute suite.
  */
 function makeStream(label: string) {
   let enabled = true;
@@ -172,7 +171,7 @@ beforeEach(() => {
 
 afterEach(() => vi.unstubAllGlobals());
 
-describe('useArcaAudio — removeSource drops the stream from the session registry (TASK-611)', () => {
+describe('useArcaAudio — removeSource drops the stream from the session registry', () => {
   it('stops muting/unmuting a removed source while the remaining sources keep working', async () => {
     const micA = makeStream('mic-A');
     const micB = makeStream('mic-B');

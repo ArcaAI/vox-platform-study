@@ -24,19 +24,19 @@ export interface ContextItem {
   content: string;
   /** Structured data (e.g., transcription segments, entities) */
   structuredData?: Record<string, unknown>;
-  /** Media ID of an uploaded file (ATTACHMENT / STRUCTURED-with-attachment types). TASK-656/665. */
+  /** Media ID of an uploaded file (ATTACHMENT / STRUCTURED-with-attachment types)..*/
   mediaId?: string;
   /**
    * The tenant-declared context kind this item is an instance of
    * (`kinds[].key` of the tenant's pinned `ConsultationContextSchema`
-   * version) — TASK-658/665. Absent for a pre-TASK-658 write (the legacy
+   * version) —. Absent for a write (the legacy
    * path, unchanged in every respect).
    */
   kindKey?: string;
   /**
    * Structured payload for a `STRUCTURED` kind, validated against that
    * kind's `fields` sub-schema. Present only when `kindKey` names a
-   * `STRUCTURED` kind — TASK-658/665.
+   * `STRUCTURED` kind —.
    */
   payload?: Record<string, unknown>;
   /** Source of the item */
@@ -79,7 +79,7 @@ export type ContextItemType =
   /** Clinician-attested, immutable signed note (confirm-before-commit gate). Was missing from this union. */
   | 'SIGNED_NOTE'
   /**
-   * Tenant-declared structured context (TASK-658). The `kindKey` on
+   * Tenant-declared structured context. The `kindKey` on
    * `ContextItem`/`AddContextInput` says WHICH structure; this value only
    * says "the content is structured".
    */
@@ -166,7 +166,7 @@ export interface AddContextInput {
    * @deprecated The gateway never accepted this field. `AddContextRequest`
    * declares `metadata`, and the global pipe runs `forbidNonWhitelisted`, so a
    * body carrying `structuredData` is rejected with
-   * `400 property structuredData should not exist` (TASK-676 §3.5.2). It is
+   * `400 property structuredData should not exist`. It is
    * kept here only so existing callers still compile — `useArcaSession.addContext`
    * forwards it as `metadata`. Use `metadata` directly.
    */
@@ -176,12 +176,12 @@ export interface AddContextInput {
    * Convention: `{ subType: 'LAB_RESULT' }` on lab/exam ATTACHMENTs.
    */
   metadata?: Record<string, unknown>;
-  /** Media ID of an uploaded file (e.g. for ATTACHMENT type) — TASK-656/665. */
+  /** Media ID of an uploaded file (e.g. for ATTACHMENT type) —.*/
   mediaId?: string;
   /**
    * The tenant-declared context kind this item is an instance of
    * (`kinds[].key` of the tenant's pinned `ConsultationContextSchema`
-   * version) — TASK-658/665. Omit for the pre-TASK-658 behaviour: no schema
+   * version) —. Omit for the behaviour: no schema
    * is consulted and the write proceeds exactly as before.
    */
   kindKey?: string;
@@ -293,7 +293,7 @@ export interface ContextActions {
   extractEntities: (contextItemId?: string) => Promise<MedicalEntity[]>;
   /** Add a worknote */
   addWorknote: (content: string, metadata?: Record<string, unknown>) => Promise<ContextItem>;
-  /** Add an attachment. `mediaId` threads through from `useStorage().uploadFile()` (TASK-656/665). */
+  /** Add an attachment. `mediaId` threads through from `useStorage().uploadFile()`.*/
   addAttachment: (content?: string, metadata?: Record<string, unknown>, mediaId?: string) => Promise<ContextItem>;
   /** Clear local context state */
   clear: () => void;

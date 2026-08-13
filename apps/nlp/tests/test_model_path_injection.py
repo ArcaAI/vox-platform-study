@@ -51,7 +51,7 @@ class TestEnvCannotSetModelPath:
 
 
 class TestVaultSecretsDirCannotSetModelIdentity:
-    """TASK-558-H: the Vault `secrets_dir` tier is filtered too.
+    """The Vault `secrets_dir` tier is filtered too.
 
     Before 558-H the secrets source was inert (no `secrets_dir` was ever
     configured), so leaving it unfiltered cost nothing. Now that a Vault Agent

@@ -184,10 +184,10 @@ export class TranscriptionPipeline {
           ...(runtimeProvider === 'remote' && sttSocket ? { sttSocket } : {}),
           audio: {
             language: this.getSTTLanguage(),
-            // End-user language mode (TASK-587) — the backend resolves it per
+            // End-user language mode — the backend resolves it per
             // engine; the local path ignores it.
             ...(this.config.stt.languageMode ? { languageMode: this.config.stt.languageMode } : {}),
-            // Pre-start engine selection (TASK-586) — the backend opens the
+            // Pre-start engine selection — the backend opens the
             // session on the fallback engine when 'fallback'; local path ignores it.
             ...(this.config.stt.startOn ? { startOn: this.config.stt.startOn } : {}),
           },
@@ -567,7 +567,7 @@ export class TranscriptionPipeline {
   /**
    * The streaming session manager backing the STT stage, or `null` for local
    * STT / no streaming transport. `useArcaAudio` reaches it to read the live
-   * session id and drive an on-the-fly provider switch (TASK-567 R4). Duck-typed
+   * session id and drive an on-the-fly provider switch. Duck-typed
    * (the concrete `StreamingSessionManager` lives in vox; the stage processor is
    * `@arcaai/stt`) and guarded so a processor/mock without the getter is a no-op.
    */
@@ -618,7 +618,7 @@ export class TranscriptionPipeline {
   // =========================================================================
 
   private resolveSTTRuntimeProvider(): STTRuntimeProvider {
-    // TASK-545: local (in-browser) transcription is disabled
+    // Local (in-browser) transcription is disabled
     // platform-wide by default. When the flag is off, the resolution below
     // (transcriptionMode / provider / location cascade) never runs — a
     // backend transport resolves to 'remote'; with none, we fail loud instead
@@ -664,7 +664,7 @@ export class TranscriptionPipeline {
   }
 
   /**
-   * TASK-545 resolution path used while `LOCAL_TRANSCRIPTION_ENABLED` is
+   * Resolution path used while `LOCAL_TRANSCRIPTION_ENABLED` is
    * `false`. Never returns `'local'`: a configured backend transport
    * (`sttSocket`/`streamingTransport`) resolves to `'remote'` regardless of
    * what `transcriptionMode`/`provider`/`location` say; with no transport it

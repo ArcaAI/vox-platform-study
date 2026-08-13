@@ -45,7 +45,7 @@ export class SummaryDtoMapper {
       sensorScores: (meta.guardrailDecisions ?? null) as Record<string, unknown> | null,
       citationsMap: meta.citationsMap ?? null,
       generatedAt: meta.generatedAt ? meta.generatedAt.toISOString() : null,
-      // TASK-552 Lane C — cited transcript segments, resolved by the service
+      // Cited transcript segments, resolved by the service
       // (best-effort; [] when unresolvable, never blocking this read).
       citedSegments,
     };

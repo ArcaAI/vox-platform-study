@@ -75,7 +75,7 @@ function build(ctx: Ctx) {
 const TENANT_USER: Ctx = { user: { id: 'user-1', roles: ['TENANT_ADMIN'], tenantId: 'tenant-1' }, tenantId: 'tenant-1' };
 const GLOBAL_ADMIN: Ctx = { user: { id: 'admin-1', roles: ['GLOBAL_ADMIN'] }, tenantId: null };
 
-describe('ChangelogService — listUnseen (TASK-648 §3.6)', () => {
+describe('ChangelogService — listUnseen', () => {
   let harness: ReturnType<typeof build>;
 
   beforeEach(() => {

@@ -1,5 +1,5 @@
 /**
- * BatchTranscriptionQueue — the native (non-compat) batch engine (TASK-604 lane C).
+ * BatchTranscriptionQueue — the native (non-compat) batch engine.
  *
  * The requirement it implements: upload up to 5 recordings of at most 60 minutes
  * each, monitor each one, and collect its result. The engine is framework-free

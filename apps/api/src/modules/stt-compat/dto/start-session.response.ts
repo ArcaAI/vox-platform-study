@@ -18,7 +18,7 @@ export interface StartSessionResponse {
   audio_config: AudioConfig;
   provider: string;
   /**
-   * The RESOLVED ASR pipeline this session opened with (TASK-614). ADDITIVE —
+   * The RESOLVED ASR pipeline this session opened with. ADDITIVE
    * v1 clients ignore unknown keys. `provider` above is only the coarse enum
    * the caller sent, so it cannot answer "which pipeline is actually running"
    * for a caller that sent no `pipelineId` or opened on the tenant default.
@@ -27,7 +27,7 @@ export interface StartSessionResponse {
   /**
    * The engine live at create: `'primary'`, or `'fallback'` when the session
    * opened on the tenant fallback — by choice (`startOn: 'default'`) or because
-   * the primary ASR failed to load (TASK-614).
+   * the primary ASR failed to load.
    */
   active_engine?: 'primary' | 'fallback';
 }

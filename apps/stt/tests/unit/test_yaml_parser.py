@@ -2166,12 +2166,11 @@ class TestRealtimeStreamingActivatesTentativeTail:
         # The exact top-level block added to the realtime seed YAML(s),
         # including the inline comments — proving the parser (which ignores YAML
         # comments) still resolves commit_policy under the streaming mapping.
-        realtime_yaml = """
-version: "1.1"
+        realtime_yaml = """version: "1.1"
 models:
   asr: whisper-large-v3-turbo
 streaming:
-  # TASK-471 A1 — activate LocalAgreement-2 so partials carry stable_chars and
+  # Activate LocalAgreement-2 so partials carry stable_chars and
   # the (already-built) tentative-tail render lights up. Commit logic unchanged.
   commit_policy: local_agreement_2
 """

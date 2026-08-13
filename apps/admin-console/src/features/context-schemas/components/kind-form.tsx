@@ -1,13 +1,13 @@
 'use client';
 
 /**
- * Kind editor (TASK-666 scope: key, label, primitive, PHI class, cardinality,
+ * Kind editor (key, label, primitive, PHI class, cardinality,
  * lifecycle, producedBy, a field builder, constraints, deprecation).
  *
  * **The primitive allow-list is enforced here by construction**: `primitive`
  * renders as a closed `<Select>` populated ONLY from `CONTEXT_PRIMITIVES` —
  * there is no free-text entry, so an author cannot even TYPE an unknown
- * primitive. The server re-enforces this at publish (TASK-658 AC-3); the UI
+ * primitive. The server re-enforces this at publish; the UI
  * makes the wrong state unrepresentable instead of merely rejecting it later.
  *
  * `fields` (the JSON Schema subset for a STRUCTURED kind) is authored in the

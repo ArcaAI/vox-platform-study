@@ -45,7 +45,7 @@ const createMockDnaReportRepository = () => ({
   updateWithVersion: vi.fn(),
   // Repository-level pagination for the admin list.
   findPaginated: vi.fn().mockResolvedValue({ data: [], count: 0 }),
-  // Ciphertext decryption (TASK-551/599) — returns the plaintext view.
+  // Ciphertext decryption — returns the plaintext view.
   decryptFieldsFromEntity: vi.fn(),
   $: vi.fn(),
 });
@@ -1552,7 +1552,7 @@ describe('DnaWritingStyleService', () => {
       svc = buildSvc();
     });
 
-    // ── getEffectiveStyleText (TASK-599) ──
+    // ── getEffectiveStyleText  ──
     it('getEffectiveStyleText returns the decrypted styleText when the gate is effective', async () => {
       policy.getDnaSettings.mockResolvedValue({ effective: true, tenantEnabled: true, doctorToggle: true, version: 1 });
       mockReportRepo.findLatestForDoctor.mockResolvedValue({ id: 'rep-1', doctorId: 'doctor-id-1' });
@@ -1575,7 +1575,7 @@ describe('DnaWritingStyleService', () => {
     });
 
     /**
-     * TASK-651 — the v1-compat summary surface authenticates with an API KEY, and
+     * The v1-compat summary surface authenticates with an API KEY, and
      * that path leaves CLS `tenantId` EMPTY (only the JWT strategy populates it;
      * `SmrCompatController.requireTenantId` therefore falls back to
      * `apiKey.tenantId`). Every other resolver on that path is handed the

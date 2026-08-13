@@ -3,7 +3,7 @@
  *  - the versioned config ROW (fallback pointer + auto-switch knobs; OCC If-Match),
  *  - the fallback-candidate pipelines (read-only picker options),
  *  - the versioned BYO CREDENTIALS (write-only key, masked reads; OCC If-Match —
- *    the TASK-526 credential-OCC divergence from the TTS precedent).
+ *    the credential-OCC divergence from the TTS precedent).
  * Paths are gateway-relative; the shared core prepends the BFF proxy mount.
  */
 

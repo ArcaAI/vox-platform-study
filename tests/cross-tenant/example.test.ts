@@ -1,5 +1,5 @@
 /**
- * Cross-tenant fixture shape check — TASK-305 Phase E.1.
+ * Cross-tenant fixture shape check.
  *
  * This file is the pinning test for `createCrossTenantFixture()`.
  * It asserts the synthetic-object shape that downstream tests rely on

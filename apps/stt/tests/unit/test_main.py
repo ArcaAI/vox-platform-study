@@ -102,30 +102,30 @@ class TestCreateApp:
 
 
 class TestNoCompetingSigtermHandler:
-    """TASK-616 G0.0/G0.1 — `stt.main` must NOT install its own SIGTERM handler.
+    """`stt.main` must NOT install its own SIGTERM handler.
 
-    Verified defect: `uvicorn.Server.serve()` installs its own SIGTERM/SIGINT
-    handlers (via plain `signal.signal`, inside `capture_signals()`) BEFORE
-    `config.load()` imports the string app target (`"stt.main:app"`). Because
+    Verified defect: `uvicorn.Server.serve` installs its own SIGTERM/SIGINT
+    handlers (via plain `signal.signal`, inside `capture_signals`) BEFORE
+    `config.load` imports the string app target (`"stt.main:app"`). Because
     that import happens strictly *after* uvicorn's handler is installed, the
     module-level `signal.signal(signal.SIGTERM, handle_sigterm)` this file
     used to carry always ran second and clobbered uvicorn's handler — for
     every invocation shape (`uvicorn stt.main:app` CLI, `python -m uvicorn
     stt.main:app`, and the `stt = "stt.main:main"` console script), since all
-    of them pass the app as a string and let uvicorn's `Config.load()` do the
+    of them pass the app as a string and let uvicorn's `Config.load` do the
     import.
 
     `handle_sigterm` just did `raise SystemExit(0)` — raised inside whatever
     coroutine the event loop was running, unwinding straight out of
-    `asyncio.run()` without ever calling `self.should_exit = True` or
-    `Server.shutdown()`. That skips the ASGI `lifespan` shutdown event
-    entirely, so `shutdown_streaming()` (`stt.main.lifespan`, post-`yield`)
+    `asyncio.run` without ever calling `self.should_exit = True` or
+    `Server.shutdown`. That skips the ASGI `lifespan` shutdown event
+    entirely, so `shutdown_streaming` (`stt.main.lifespan`, post-`yield`)
     never runs on a real k8s SIGTERM.
 
     Fix: remove the handler and its registration — let uvicorn own SIGTERM
     exclusively, which drives its normal graceful path
-    (`should_exit` -> `main_loop()` notices -> `Server.shutdown()` -> ASGI
-    `lifespan.shutdown` -> our `lifespan()` post-`yield` cleanup).
+    (`should_exit` -> `main_loop` notices -> `Server.shutdown` -> ASGI
+    `lifespan.shutdown` -> our `lifespan` post-`yield` cleanup).
     """
 
     def test_handle_sigterm_no_longer_exists(self):

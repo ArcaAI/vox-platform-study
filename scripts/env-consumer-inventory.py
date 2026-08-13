@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
 """
-Env-key consumer inventory (TASK-616 E4.1 prerequisite).
+Env-key consumer inventory.
 
 Answers one question per key: **which services actually read this?**
 
 Why this exists
 ---------------
 `hope-config` is a single ConfigMap consumed by 11 workloads via `envFrom`.
-Appendix E4.1 wants it split into a platform map plus per-service maps, but
-splitting a shared `envFrom` map has a SILENT failure mode: a service that loses
+Splitting it into a platform map plus per-service maps has a SILENT failure mode: a service that loses
 a key it reads gets an undefined variable, not an error. `check-config-refs.py`
 in the deployment repo cannot help — it only sees explicit `configMapKeyRef`s,
 never `envFrom` keys.

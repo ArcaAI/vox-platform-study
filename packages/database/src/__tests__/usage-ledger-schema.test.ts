@@ -1,5 +1,5 @@
 /**
- * TASK-615 — schema-level guards for the usage ledger and its rollups.
+ * Schema-level guards for the usage ledger and its rollups.
  *
  * These read `db_main/*.prisma` off disk (the tenant-scope drift guard's
  * technique) because the invariants they protect live in the SCHEMA, not in any
@@ -88,9 +88,9 @@ describe.each([
   const body = modelBody('usage-ledger.prisma', model);
 
   it('is unique on the FULL dimension tuple', () => {
-    // TASK-615 #4 — `operation` joins the grain so the LLM_TOKENS meter can
+    // #4 — `operation` joins the grain so the LLM_TOKENS meter can
     // exclude guardrail.validate/harness.step; empty-string sentinel like `model`.
-    // TASK-638 — `deployment` joins it so billing can consume the allowance
+    // `deployment` joins it so billing can consume the allowance
     // SELF_HOSTED-first and keep BYOK off the managed premium.
     expect(uniqueTuple(body)).toEqual(['tenantId', 'bucketStart', 'capability', 'operation', 'provider', 'deployment', 'model', 'unit']);
   });

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================================
-# TASK-583 — Auto-create local .env.dev / .env.test from .env.sample
+# Auto-create local .env.dev / .env.test from .env.sample
 # ============================================================================
 # Shared by scripts/dev-setup.sh and scripts/test-setup.sh (source this file
 # to get `ensure_env_file`), and runnable standalone:
@@ -11,7 +11,7 @@
 #   - ALWAYS (re)builds <target> from the consolidated `.env.sample` (repo root)
 #     on every run, so sample changes and newly-added keys propagate — a stale
 #     <target> can never silently miss a key again. For mode=test it then applies
-#     the known dev->test overrides (DEV+100 ports per TASK-557, isolated
+#     the known dev->test overrides (DEV+100 ports, isolated
 #     test-infra endpoints, test-only fake secrets); mode=dev applies none
 #     (.env.sample's own values are already dev-shaped).
 #   - Overwrite is NON-DESTRUCTIVE to secrets: before rebuilding it snapshots the
@@ -140,8 +140,8 @@ _report_remaining_placeholders() {
   fi
 }
 
-# The dev -> test delta (TASK-557 DEV+100 port scheme + isolated test infra +
-# test-only fake secrets). Matches the pre-TASK-583 hand-maintained .env.test
+# The dev -> test delta (DEV+100 port scheme + isolated test infra +
+# test-only fake secrets). Matches the previously hand-maintained .env.test
 # baseline, minus the Vault block (that's test-setup.sh's own job, below).
 _apply_test_overrides() {
   local file="$1"
@@ -154,7 +154,7 @@ _apply_test_overrides() {
   # it from a project-scoped `env: { SECRETS_PROVIDER: 'env' }` in vitest.config.ts
   # (workspace project), so the unit run is correct regardless of this file.
   #
-  # VAULT_ADDR IS overridden: TASK-689 gives test its own isolated Vault
+  # VAULT_ADDR IS overridden: test has its own isolated Vault
   # (hope-vault-test, tests/docker-compose.test.yml) on a different port than
   # dev's shared hope-vault, so the two can never cross-talk.
   _set_env "$file" VAULT_ADDR "http://localhost:8201"

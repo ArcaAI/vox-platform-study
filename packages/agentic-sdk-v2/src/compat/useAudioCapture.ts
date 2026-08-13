@@ -3,16 +3,16 @@
 /**
  * @arcaai/vox/compat - useAudioCapture
  *
- * v1 capture hook reproduced over v2's `useArcaAudio` (TASK-560 §5.3).
+ * v1 capture hook reproduced over v2's `useArcaAudio`.
  *
- * Coordination (TASK-561 §3.2 option a): this hook and `useArcaSpeechToText`
+ * Coordination: this hook and `useArcaSpeechToText`
  * both drive the SAME per-provider `useArcaAudio()` instance. `startRecording()`
  * calls `audio.start(...)` guarded by `audio.isCapturing`, so pairing the two
  * hooks never double-starts the mic. `stopRecording()` calls `audio.stop()`
  * guarded likewise.
  *
  * `onAudioData` is retained for source-compat but is NEVER invoked — v2 owns the
- * capture→mix→noise→VAD→STT pipeline and transport (TASK-560 §2.2.3).
+ * capture→mix→noise→VAD→STT pipeline and transport.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -25,7 +25,7 @@ export interface UseAudioCaptureProps {
   options?: Partial<V1SdkConfig>;
   autoStart?: boolean;
   /**
-   * End-user STT language + TASK-587 language mode, chosen BEFORE start. v1's
+   * End-user STT language + language mode, chosen BEFORE start. v1's
    * `useAudioCapture` had no language (its STT WS was language-flat); v2 pins the
    * language on `audio.start(...)`. This hook and `useArcaSpeechToText` both drive
    * the SAME `useArcaAudio()` and whichever calls `audio.start` FIRST wins — the
@@ -37,7 +37,7 @@ export interface UseAudioCaptureProps {
   language?: string;
   languageMode?: string;
   /**
-   * Audio SOURCE selection (TASK-597), forwarded verbatim to
+   * Audio SOURCE selection, forwarded verbatim to
    * `useArcaAudio.start(...)`. Before 597 this hook silently dropped every
    * source option: v1's `useAudioCapture` had no device selection, so a v2
    * consumer pairing it with `useArcaSpeechToText` could only ever record the
@@ -67,7 +67,7 @@ export interface UseAudioCaptureProps {
   /** Per-source linear mixer gain, index-aligned with the resolved source list. */
   sourceGains?: number[];
   /**
-   * Build an `AudioMixer` even for a SINGLE capture source (TASK-609),
+   * Build an `AudioMixer` even for a SINGLE capture source
    * forwarded verbatim to `audio.start(...)`. Without this, a single-source
    * session captures straight to the STT transport with no mixer in the
    * path, so sources can only be added/removed by tearing down and reopening
@@ -80,7 +80,7 @@ export interface UseAudioCaptureProps {
    */
   dynamicSources?: boolean;
   /**
-   * Browser audio-processing switches (TASK-608), forwarded verbatim to
+   * Browser audio-processing switches, forwarded verbatim to
    * `audio.start(...)` and applied to every capture source's `getUserMedia`
    * constraints. Pass `{ echoCancellation: false, noiseSuppression: false,
    * autoGainControl: false }` for raw, un-gained capture.
@@ -97,7 +97,7 @@ export interface UseAudioCaptureProps {
   audioProcessing?: AudioProcessingConstraints;
   /**
    * Ceiling (ms) on the streaming-STT stop-drain awaited by `stopRecording()`
-   * (TASK-597 follow-up #4). Forwarded verbatim to `audio.start(...)`; omit for
+   * Forwarded verbatim to `audio.start(...)`; omit for
    * the SDK default (1500 ms). Non-positive values are ignored. The mic is
    * released synchronously on stop regardless — this only bounds how long the
    * returned promise waits for the server's last transcript.
@@ -105,7 +105,7 @@ export interface UseAudioCaptureProps {
   drainTimeoutMs?: number;
   /**
    * Quiet window (ms) that ends the streaming-STT stop-drain early once the
-   * backend reports `finalizing` (TASK-597). Forwarded verbatim to
+   * backend reports `finalizing`. Forwarded verbatim to
    * `audio.start(...)`; omit for the SDK default (250 ms).
    *
    * **`0` disables the early resolve** and is PRESERVED — only negative values
@@ -127,7 +127,6 @@ export interface UseAudioCaptureReturn {
    * PER-SOURCE input levels (0–100 each), index-aligned with the resolved
    * capture-source order — i.e. with `sourceStreams` when streams are injected,
    * otherwise with `[deviceId, secondaryDeviceId, ...additionalDeviceIds]`
-   * (TASK-597 follow-up #2).
    *
    * REACTIVE, unlike `getDeviceStatus()`: it re-renders as the levels change,
    * so a consumer attributing a turn to a microphone does not have to poll.
@@ -153,7 +152,7 @@ export interface UseAudioCaptureReturn {
    */
   uplinkBitrate: number;
   /**
-   * Session-sticky latch off the store's `audioLostThisSession` (TASK-612
+   * Session-sticky latch off the store's `audioLostThisSession`
    * finding I-3): true once outbound audio was dropped at the streaming STT
    * transport's backpressure watermark THIS capture session. Survives
    * reconnect; clears only on the next start. `false` when the store field
@@ -195,12 +194,12 @@ export function useAudioCapture(props: UseAudioCaptureProps = {}): UseAudioCaptu
     onError,
   } = props;
   const audio = useArcaAudio();
-  // Pre-start engine selection (TASK-586) chosen via `useArcaSttProvider` before
+  // Pre-start engine selection chosen via `useArcaSttProvider` before
   // capture — applied to `audio.start` and cleared, mirroring the languageMode
   // store-fallback pattern (order-independent with `useArcaSpeechToText`).
   const pendingSttProvider = useAgenticStore((s) => s.pendingSttProvider);
   const setPendingSttProvider = useAgenticStore((s) => s.setPendingSttProvider);
-  // Diagnostics parity (TASK-612 Lane E, AC-5) — atomic per-field selectors,
+  // Diagnostics parity — atomic per-field selectors
   // one per store field, so this hook re-renders only on the field it reads
   // rather than the whole audio slice.
   const uplinkBitrate = useAgenticStore((s) => s.audioUplinkBitrate);
@@ -221,26 +220,26 @@ export function useAudioCapture(props: UseAudioCaptureProps = {}): UseAudioCaptu
         ...(language ? { language } : {}),
         ...(languageMode ? { languageMode } : {}),
         ...(pendingSttProvider ? { startOn: pendingSttProvider } : {}),
-        // Source selection (TASK-597) — spread only when supplied so a caller
+        // Source selection — spread only when supplied so a caller
         // that selects nothing still produces the exact pre-597 options object.
         ...(deviceId ? { deviceId } : {}),
         ...(secondaryDeviceId ? { secondaryDeviceId } : {}),
         ...(additionalDeviceIds?.length ? { additionalDeviceIds } : {}),
         ...(sourceStreams?.length ? { sourceStreams } : {}),
         ...(sourceGains?.length ? { sourceGains } : {}),
-        // Mixer-for-single-source opt-in (TASK-609) — spread only on `true`,
+        // Mixer-for-single-source opt-in — spread only on `true`
         // so a caller that doesn't ask for it still produces the exact
         // pre-609 options object.
         ...(dynamicSources ? { dynamicSources } : {}),
-        // Browser DSP switches (TASK-608) — spread only when at least one key is
+        // Browser DSP switches — spread only when at least one key is
         // stated, so a caller that says nothing still produces the exact
         // pre-608 options object.
         ...(audioProcessing && Object.keys(audioProcessing).length > 0 ? { audioProcessing } : {}),
-        // Stop-drain ceiling (TASK-597 follow-up #4) — spread only when
+        // Stop-drain ceiling — spread only when
         // positive, so the pre-597 options object is byte-identical for every
         // caller that does not set it (and a `0` cannot mean "no drain").
         ...(typeof drainTimeoutMs === 'number' && drainTimeoutMs > 0 ? { drainTimeoutMs } : {}),
-        // Quiet window (TASK-597) — spread on `>= 0`, NOT on truthiness. `0` is
+        // Quiet window — spread on `>= 0`, NOT on truthiness. `0` is
         // the "wait for the terminal status, not a lull" setting, so a falsy
         // guard here would drop the one value worth passing explicitly.
         ...(typeof quietWindowMs === 'number' && quietWindowMs >= 0 ? { quietWindowMs } : {}),
@@ -315,7 +314,7 @@ export function useAudioCapture(props: UseAudioCaptureProps = {}): UseAudioCaptu
   return {
     isRecording: audio.isCapturing,
     deviceStatus,
-    // Per-source levels straight off the store (TASK-597 follow-up #2) — no
+    // Per-source levels straight off the store — no
     // polling, no derived state, and `[]` when the SDK has no signal to give.
     sourceLevels: audio.sourceLevels ?? [],
     startRecording,
@@ -323,7 +322,7 @@ export function useAudioCapture(props: UseAudioCaptureProps = {}): UseAudioCaptu
     getDeviceStatus,
     error,
     isReady: true,
-    // Diagnostics parity (TASK-612 Lane E) — straight off the store, no
+    // Diagnostics parity — straight off the store, no
     // polling, no derived computation; degrade to 0/false when a test-double
     // store never set the field.
     uplinkBitrate: uplinkBitrate ?? 0,

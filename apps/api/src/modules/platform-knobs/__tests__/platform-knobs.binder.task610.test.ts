@@ -5,11 +5,11 @@ import { isOriginAllowed, setOriginEnforcementResolver, setOriginRegistryResolve
 import { PlatformKnobsBinder } from '../platform-knobs.binder';
 
 /**
- * TASK-610 — the binder is what makes CORS DB-backed, and it owns one rule
+ * The binder is what makes CORS DB-backed, and it owns one rule
  * `cors.config.ts` cannot express on its own: an EMPTY index is reported as
  * `null` ("not loaded"), not as a loaded-but-empty registry.
  *
- * Since §4A.1 removed the `CORS_ALLOWED_ORIGINS` bootstrap fallback entirely,
+ * Since the `CORS_ALLOWED_ORIGINS` bootstrap fallback was removed entirely,
  * that split no longer changes the OUTCOME — both a `null` resolver and a
  * loaded-but-empty registry deny every origin (`cors.config.ts` denies
  * whenever `queryRegistry` returns `null`, and an empty registry's `has()`
@@ -22,10 +22,10 @@ import { PlatformKnobsBinder } from '../platform-knobs.binder';
  * database — it keeps its previous (at boot: empty) index — so a real DB
  * outage and a merely-unseeded table both present as `size() === 0` and both
  * deserve the systemic signal, not one log line per attempted origin (plan
- * §3.8).
+ *
  */
 /**
- * Map value is the set of tenants GRANTED that origin — since §4B an origin is
+ * Map value is the set of tenants GRANTED that origin — since an origin is
  * granted to many tenants rather than owned by one.
  */
 function fakeRegistry(origins: Record<string, string[]>): IOriginRegistry {
@@ -44,8 +44,8 @@ const SYSTEM_TENANT = '00000000-0000-0000-0000-000000000000';
 describe('PlatformKnobsBinder — origin registry resolver', () => {
   beforeEach(() => {
     setOriginRegistryResolver(null);
-    // TASK-610 §4C — the registry only decides anything while enforcement is
-    // ON, which since TASK-641 FR-6 is the shipped default. These cases are
+    // The registry only decides anything while enforcement is
+    // ON, which since is the shipped default. These cases are
     // about the REGISTRY resolver, so the switch is armed to make them
     // observable — explicitly, because a unit test has no `PlatformKnobsBinder`
     // feeding the descriptor default into `cors.config.ts`. The enforcement
@@ -66,7 +66,7 @@ describe('PlatformKnobsBinder — origin registry resolver', () => {
     expect(isOriginAllowed('https://evil.example.com', 'production')).toBe(false);
   });
 
-  it('reports an EMPTY registry as unloaded, so CORS denies every origin (TASK-610 §4A.1: no bootstrap fallback)', () => {
+  it('reports an EMPTY registry as unloaded, so CORS denies every origin (no bootstrap fallback)', () => {
     new PlatformKnobsBinder(undefined, undefined, fakeRegistry({})).onModuleInit();
 
     expect(isOriginAllowed('https://anything.example.com', 'production')).toBe(false);

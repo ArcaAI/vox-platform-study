@@ -1,6 +1,6 @@
 import type { InvoiceListParams } from './types';
 
-/** Query-key factory for the Billing reads (TASK-615 #15b). */
+/** Query-key factory for the Billing reads. */
 export const billingKeys = {
   root: ['billing'] as const,
   invoices: (params?: InvoiceListParams) => [...billingKeys.root, 'invoices', params ?? {}] as const,

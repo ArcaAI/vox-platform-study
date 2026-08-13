@@ -173,7 +173,7 @@ describe('useSMR', () => {
     expect('doctor_id' in body).toBe(false);
   });
 
-  it('summarizeSync sends top-level translate_to_english:true when translateToEnglish is true (TASK-600)', async () => {
+  it('summarizeSync sends top-level translate_to_english:true when translateToEnglish is true', async () => {
     const { result } = renderHook(() => useSMR());
     await act(async () => {
       await result.current.summarizeSync({ text: 'a', translateToEnglish: true });
@@ -182,7 +182,7 @@ describe('useSMR', () => {
     expect(body.translate_to_english).toBe(true);
   });
 
-  it('summarizeSync omits translate_to_english when translateToEnglish is not provided (TASK-600)', async () => {
+  it('summarizeSync omits translate_to_english when translateToEnglish is not provided', async () => {
     const { result } = renderHook(() => useSMR());
     await act(async () => {
       await result.current.summarizeSync({ text: 'a' });
@@ -265,13 +265,13 @@ describe('useSMR', () => {
   });
 
   // ---------------------------------------------------------------------
-  // summarizeAsync deprecation (TASK-635 B-07 / A9-i) — the compat gateway
+  // summarizeAsync deprecation (i) — the compat gateway
   // has no `summary/async` route (that path exists only on the native
   // consultation controller), so the method must reject BEFORE any network
   // call rather than 404 at fetch time.
   // ---------------------------------------------------------------------
 
-  describe('summarizeAsync (deprecated — TASK-635 B-07)', () => {
+  describe('summarizeAsync (deprecated)', () => {
     it('rejects synchronously-before-network with a descriptive error and issues no fetch', async () => {
       const { result } = renderHook(() => useSMR());
 
@@ -299,10 +299,10 @@ describe('useSMR', () => {
   });
 
   // ---------------------------------------------------------------------
-  // Streaming (TASK-589) — `stream:true` + `onDelta`
+  // Streaming — `stream:true` + `onDelta`
   // ---------------------------------------------------------------------
 
-  describe('streaming (TASK-589)', () => {
+  describe('streaming', () => {
     it('summarizeSync({stream:true, onDelta}) parses SSE deltas + terminal result, resolves and fires onComplete', async () => {
       const finalResult = { session_id: 's1', summary: { subjective: 'x', objective: '', assessment: '', plan: '' }, created_at: 'now' };
       fetchMock.mockResolvedValue(

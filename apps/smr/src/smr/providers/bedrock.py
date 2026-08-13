@@ -30,7 +30,7 @@ if TYPE_CHECKING:
 
 logger = structlog.get_logger(__name__)
 
-# Bedrock Converse ``ImageBlock.format`` — the vendor's closed enum (TASK-657).
+# Bedrock Converse ``ImageBlock.format`` — the vendor's closed enum.
 _BEDROCK_IMAGE_FORMATS: dict[str, str] = {
     "image/png": "png",
     "image/jpeg": "jpeg",

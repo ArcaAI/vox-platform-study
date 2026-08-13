@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================================
-# TASK-557 — Confirmation guard for the destructive domain-layer generators
+# Confirmation guard for the destructive domain-layer generators
 # ============================================================================
 # Two of the five `gen:*` commands are not safe to run casually:
 #

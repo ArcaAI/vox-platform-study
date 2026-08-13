@@ -12,7 +12,7 @@ import { SttInternalController } from './stt-internal.controller';
 @Module({
   // EffectiveConfigServiceModule backs the per-service config pull.
   // TenantSttConfigServiceModule backs the batch-worker BYO override pull.
-  // StreamingSessionServiceModule backs the reaper usage push-back (TASK-615 #13).
+  // StreamingSessionServiceModule backs the reaper usage push-back.
   imports: [SttInternalServiceModule, EffectiveConfigServiceModule, TenantSttConfigServiceModule, StreamingSessionServiceModule],
   controllers: [SttInternalController, EffectiveConfigController],
   // Applied via `@UseGuards` on the controller, but provided here so Nest can

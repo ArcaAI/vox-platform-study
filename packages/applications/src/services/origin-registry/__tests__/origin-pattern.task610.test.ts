@@ -1,9 +1,9 @@
-// TASK-610 lane W5-A — wildcard origin PATTERN tests.
+// Wildcard origin PATTERN tests.
 //
 // Written FIRST per `01-development-workflow.md` TDD gate: this file is run and
 // observed RED before `../origin-pattern.ts` exists.
 //
-// The contract under test is the FROZEN grammar of README §4A.2:
+// The contract under test is the FROZEN grammar:
 //
 //   pattern     := <scheme>://<hostPattern>:<portPattern>
 //     scheme      := 'http' | 'https'   http ONLY when hostPattern is loopback
@@ -27,7 +27,7 @@ describe('isOriginPattern', () => {
     'https://*.bcmch.org:4433',
     // the allow-all token
     '*',
-    // Classification is purely "contains a `*`" (§4A.2). It deliberately does
+    // Classification is purely "contains a `*`". It deliberately does
     // NOT imply the value is a VALID pattern — that is normalizeOriginPattern's
     // job at write time. A stored row can only be one or the other.
     'https://**.evil.com:*',
@@ -71,7 +71,7 @@ describe('normalizeOriginPattern — accepts + canonicalizes', () => {
     ['http://[::1]:*', 'http://[::1]:*'],
     // https over a loopback host is fine too (scheme rule only gates http)
     ['https://localhost:*', 'https://localhost:*'],
-    // ── Browser-extension "any-extension" patterns (TASK-653) ───────────────
+    // ── Browser-extension "any-extension" patterns ──────────────────────────
     // The ONLY extension pattern form: `<scheme>://*` = any extension of that
     // scheme. Already canonical (no port segment — extensions carry none).
     ['chrome-extension://*', 'chrome-extension://*'],
@@ -172,7 +172,7 @@ describe('normalizeOriginPattern — rejects (security floors)', () => {
     '*.bcmch.org:*',
   ]);
 
-  // TASK-653 — a browser-extension pattern must be EXACTLY `<scheme>://*`.
+  // A browser-extension pattern must be EXACTLY `<scheme>://*`.
   // Exact ids carry no `*` and belong to normalizeOrigin; every other extension
   // authority (partial-id wildcards, a port, a `*.` suffix) is rejected here.
   rejects('browser-extension patterns other than <scheme>://*', [
@@ -287,7 +287,7 @@ describe("matchesOriginPattern — owner's acceptance table", () => {
   });
 });
 
-describe('matchesOriginPattern — browser-extension any-extension patterns (TASK-653)', () => {
+describe('matchesOriginPattern — browser-extension any-extension patterns', () => {
   it.each([
     // any id of the SAME scheme matches
     ['chrome-extension://*', 'chrome-extension://abcdefghijklmnopabcdefghijklmnop', true],
@@ -325,7 +325,7 @@ describe('matchesOriginPattern — browser-extension any-extension patterns (TAS
   });
 });
 
-describe('patternSpecificity — any-extension rank (TASK-653)', () => {
+describe('patternSpecificity — any-extension rank', () => {
   it('ranks an any-extension pattern strictly above allow-all and below a concrete host pattern', () => {
     expect(patternSpecificity('chrome-extension://*')).toBeGreaterThan(patternSpecificity(ALLOW_ALL_ORIGIN_PATTERN));
     expect(patternSpecificity('chrome-extension://*')).toBeLessThan(patternSpecificity('https://a.io:*'));
@@ -578,7 +578,7 @@ describe('precedence — the allow-all token must rank strictly lowest', () => {
 
   // The owner's three-row resolution table.
   it('row 1 — an exact origin is not a pattern at all, so the registry can prefer it', () => {
-    // "exact row beats every pattern" is enforced by the registry (lane W5-B)
+    // "exact row beats every pattern" is enforced by the registry
     // looking up exact rows first; this module's contribution is that an exact
     // origin is never classified as a pattern.
     expect(isOriginPattern('https://arcaai-u2204.bcmch.org')).toBe(false);

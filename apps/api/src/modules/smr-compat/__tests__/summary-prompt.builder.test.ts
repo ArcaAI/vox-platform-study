@@ -15,7 +15,7 @@ import {
 } from '../summary-prompt.builder';
 
 /**
- * v1 corpus extracted from the RUNNING v1 SMR pod (TASK-634 §2.10) — never
+ * v1 corpus extracted from the RUNNING v1 SMR pod — never
  * retyped. `rendered-*.txt` were produced by Python's own `str.format()` over
  * `template.txt`, i.e. v1's interpolation engine, so they are goldens for what
  * v2 must assemble.
@@ -50,7 +50,7 @@ describe('buildSummaryPrompt', () => {
     expect(system).toContain('New Referral');
   });
 
-  // TASK-599 — the doctor's DNA writing-style is folded into the system prompt as
+  // The doctor's DNA writing-style is folded into the system prompt as
   // style guidance when provided; omitted entirely when absent (D5).
   it('folds the DNA writing style into the system prompt when dnaStyleText is provided', () => {
     const { system } = buildSummaryPrompt(baseSession(), { dnaStyleText: 'Terse, active voice, no abbreviations.' });
@@ -89,7 +89,7 @@ describe('buildSummaryPrompt', () => {
     expect(user).toContain('2026-05 Cardiology: BP review.');
   });
 
-  // TASK-650 — the department template is injected as AUTHORITATIVE steering
+  // The department template is injected as AUTHORITATIVE steering
   // and 13 seeded templates instruct "content in conversation language,
   // headings in English". A bare `Language: X` label loses to that specific
   // clause. The gateway's directive must explicitly name and override the
@@ -131,7 +131,7 @@ describe('buildSummaryPrompt', () => {
     expect(system).toContain('Section headings stay in English');
   });
 
-  // TASK-650 §2.4 — a space join lands the directive mid-paragraph; it must be
+  // A space join lands the directive mid-paragraph; it must be
   // its own distinct line so it reads as an instruction, not run-on prose.
   it('emits the language directive as its own line, not mid-paragraph', () => {
     const { system } = buildSummaryPrompt(baseSession(), { language: 'ml' });
@@ -172,7 +172,7 @@ describe('buildSummaryPrompt', () => {
     expect(system).not.toContain('Department-specific documentation focus');
   });
 
-  it('injects the governed instruction and suppresses the static dept guidance (TASK-592)', () => {
+  it('injects the governed instruction and suppresses the static dept guidance', () => {
     const { system } = buildSummaryPrompt(baseSession(), {
       department: 'Surgery',
       visitType: 'New Referral',
@@ -187,7 +187,7 @@ describe('buildSummaryPrompt', () => {
 });
 
 /**
- * TASK-651 — Sarvam pre-translation is a general-purpose MT engine with no
+ * Sarvam pre-translation is a general-purpose MT engine with no
  * clinical vocabulary. Verified live against `hope-v2-dev` 2026-08-10 on a real
  * `ml-en` consultation: it rendered `aceclofenac 100 mg` as "Acetaminophen"
  * (a different drug class), turned `marked ... subchondral sclerosis` into
@@ -250,7 +250,7 @@ describe('buildSummaryPrompt — bilingual transcript (Sarvam translation + orig
   });
 });
 
-describe('buildPreSummaryPrompt (v1 1:1 — TASK-634 D-08)', () => {
+describe('buildPreSummaryPrompt (v1 1:1)', () => {
   /** Mirrors the kwargs used to render `rendered-full.txt` with Python `str.format`. */
   const req = (): PreSummaryRequest =>
     ({
@@ -362,12 +362,12 @@ describe('buildPreSummaryPrompt (v1 1:1 — TASK-634 D-08)', () => {
     expect(renderPreSummaryTemplate('{not_a_v1_variable}', {} as PreSummaryRequest)).toBe('{not_a_v1_variable}');
   });
 
-  it('uses the governed tenant template as the body when one resolves (TASK-592)', () => {
+  it('uses the governed tenant template as the body when one resolves', () => {
     const { user } = buildPreSummaryPrompt(req(), { governedInstruction: 'Highlight {current_department} risk stratification.' });
     expect(user).toBe('Highlight Cardiology risk stratification.');
   });
 
-  // TASK-599 — DNA writing style folded into the pre-summary system prompt.
+  // DNA writing style folded into the pre-summary system prompt.
   it('appends the DNA writing style to the system prompt, leaving the body untouched', () => {
     const { system, user } = buildPreSummaryPrompt(req(), { dnaStyleText: 'Bullet points, minimal prose.' });
     expect(system.startsWith(readFixture('system.txt'))).toBe(true);

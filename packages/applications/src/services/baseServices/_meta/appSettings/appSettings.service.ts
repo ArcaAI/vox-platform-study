@@ -24,7 +24,7 @@ const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
 /**
  * The ONLY tenants whose rows may enter this cache, highest precedence first.
  *
- * TASK-558 §9.3 M4 — `tenantId` must be part of every config cache key. This
+ * `tenantId` must be part of every config cache key. This
  * cache is deliberately keyed by setting KEY ALONE, because every consumer of
  * it is platform-scoped (JWT TTLs, rate limits, password policy, cron
  * schedules, storage endpoints, and the `global-kv` lane of
@@ -54,7 +54,7 @@ const platformRank = (tenantId: string): number => PLATFORM_TENANT_IDS.indexOf(t
  */
 const REGISTRY_NAMESPACE = 'registry';
 
-/** Cache key for the TENANT lane. The tenant id is part of the KEY, never of the value (§9.3 M4). */
+/** Cache key for the TENANT lane. The tenant id is part of the KEY, never of the value. */
 const tenantCacheKey = (tenantId: string, key: string): string => `${tenantId}::${key}`;
 
 /**
@@ -87,8 +87,8 @@ export class AppSettingsService implements IAppSettingsService, OnModuleInit {
   private _cachedAppSettings!: Map<string, GlobalSettingEntity>;
 
   /**
-   * The TENANT lane (TASK-558 lane I) — per-tenant overrides for the
-   * `maxScope: 'tenant'` knobs, keyed `${tenantId}::${key}` so §9.3 M4 holds by
+   * The TENANT lane — per-tenant overrides for the
+   * `maxScope: 'tenant'` knobs, keyed `${tenantId}::${key}` so tenant isolation holds by
    * construction: there is no slot a lookup for tenant B could collide with
    * tenant A's row in.
    *
@@ -236,7 +236,7 @@ export class AppSettingsService implements IAppSettingsService, OnModuleInit {
    * Deliberately does NOT fall back to the platform value: the cascade
    * (tenant → SYSTEM → descriptor default) belongs to `TenantSettingsService`,
    * which needs to know WHICH tier answered in order to report the source
-   * (§9.2 L8) and to apply the tenant clamp (§9.3 M2) against the platform
+   * (every fallback is observable) and to apply the tenant clamp against the platform
    * value. A silent fallback here would make those two impossible.
    */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- mirrors the untyped `any` return of the sibling key-only accessors; the cache stores heterogeneous parsed setting values
@@ -325,11 +325,11 @@ export class AppSettingsService implements IAppSettingsService, OnModuleInit {
       // the live one. Genuine duplicates (2× live rows) still refuse to start.
       const liveSettings = fetchedSettings.filter((s) => s.resourceStatus !== ResourceStatusType.DELETED);
 
-      // §9.3 M4 — admit ONLY platform-reserved tenants. See
+      // Admit ONLY platform-reserved tenants. See
       // PLATFORM_TENANT_IDS above for why a key-only cache requires this.
       const globalSettings = liveSettings.filter((s) => platformRank(s.tenantId) !== -1);
 
-      // The TENANT lane (lane I): registry-namespace overrides owned by a
+      // The TENANT lane: registry-namespace overrides owned by a
       // CUSTOMER tenant, keyed by `${tenantId}::${key}`. Built here rather than
       // in a separate loader so both maps are produced by the same read and
       // swapped together — which makes the existing `app-settings:invalidate`

@@ -4,7 +4,7 @@ import { IsBoolean, IsIn, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString, IsU
 export const AUDIO_BUCKET = 'hope-audio';
 
 /**
- * STATIC hard ceiling for the multipart interceptor (TASK-604).
+ * STATIC hard ceiling for the multipart interceptor.
  *
  * A `@UseInterceptors` decorator is evaluated once at class definition, so it
  * cannot read the per-tenant `stt.batch.maxFileSizeMb` knob. This bound exists
@@ -45,7 +45,7 @@ export const ALLOWED_AUDIO_MIMES = new Set([
 
 export class TranscribeFileRequest {
   /**
-   * OPTIONAL since TASK-614: omit it to transcribe on the tenant's default
+   * OPTIONAL since : omit it to transcribe on the tenant's default
    * pipeline, the same "I don't care which, use ours" intent a live session has
    * always been able to express. The gateway resolves the tenant default and
    * 409s when the tenant has neither a default nor a fallback — it never guesses
@@ -145,7 +145,7 @@ export class StreamSessionResponse {
   currentActive!: number;
 
   /**
-   * The RESOLVED ASR pipeline the session opened with (TASK-614). Differs from
+   * The RESOLVED ASR pipeline the session opened with. Differs from
    * the requested id whenever the caller sent none. The SDK uses this as its
    * `activePipeline` baseline instead of echoing back its own request — which
    * left it null for every session started without an explicit pipeline.
@@ -159,7 +159,7 @@ export class StreamSessionResponse {
   /**
    * The engine actually live at create: `'primary'`, or `'fallback'` when the
    * session opened on the tenant fallback — by choice (`startOn`) or because
-   * the primary ASR failed to load (TASK-614).
+   * the primary ASR failed to load.
    */
   @ApiPropertyOptional({ description: "Engine live at create: 'primary' or 'fallback'", enum: ['primary', 'fallback'] })
   @IsOptional()
@@ -205,7 +205,7 @@ export class BatchTranscribeResponse {
 }
 
 /**
- * The batch ceilings a client must respect (TASK-604), resolved from the
+ * The batch ceilings a client must respect, resolved from the
  * admin-configurable `stt.batch.*` settings. Served by
  * `GET /audio/transcription-jobs/limits` so the SDK enforces the SAME numbers
  * the gateway does rather than hardcoding them a second time.
@@ -228,7 +228,7 @@ export class BatchTranscriptionLimitsResponse {
 }
 
 /**
- * The tenant's configured STT fallback pipeline (TASK-604), for the live
+ * The tenant's configured STT fallback pipeline, for the live
  * pipeline↔default toggle. Identity only — never credential material.
  * `configured: false` means the toggle should be disabled rather than offered
  * and failed with a 409 mid-consultation.

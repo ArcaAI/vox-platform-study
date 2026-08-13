@@ -86,7 +86,7 @@ function markerVersions(container: HTMLElement) {
   return Array.from(container.querySelectorAll('[data-slot="timeline-marker"]')).map((m) => m.textContent?.match(/v\d+\.\d+\.\d+/)?.[0]);
 }
 
-describe('ScrollSpyTimeline (§4a.3)', () => {
+describe('ScrollSpyTimeline', () => {
   it('renders rail markers newest-first for desc and reversed for asc', () => {
     const { container, rerender } = render(<ScrollSpyTimeline milestones={MILESTONES} aria-label="Releases" />);
     expect(markerVersions(container)).toEqual(['v2.4.0', 'v2.3.0', 'v2.2.0']);

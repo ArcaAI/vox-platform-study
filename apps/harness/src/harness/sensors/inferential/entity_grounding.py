@@ -1,11 +1,11 @@
-"""TASK-671 — entity-level grounding by entailment, escalated from the lexical floor.
+"""Entity-level grounding by entailment, escalated from the lexical floor.
 
 The two computational entity sensors (:mod:`harness.sensors.computational.entity_faithfulness`
 and :mod:`~harness.sensors.computational.coverage_omission`) are pure lexical matchers.
-TASK-664 §1 measured what that costs: a **0.944 absolute / 94.4% relative** penalty on
+That costs a **0.944 absolute / 94.4% relative** penalty on
 clinically correct but abstracted notes — writing ``paracetamol`` where the transcript said
 ``Tylenol`` reads as a fabrication, and the disappearance of ``Tylenol`` reads as a separate
-omission. This sensor is the fix, and its shape is dictated by the constraint TASK-664
+omission. This sensor is the fix, and its shape is dictated by the constraint
 attached to it: **the lexical thresholds must not be lowered and the matchers must not be
 fuzzed**, because loosening them enough to admit a generic-drug substitution loosens them by
 exactly the amount that also admits a hallucinated drug name.
@@ -23,12 +23,12 @@ entailment can only ever *withdraw* a flag, never create one. Consequences:
 (*is what the note says supported?*). Omission is the opposite question. Both are the same
 computation with the premise swapped, so one class serves both directions:
 
-===================  ==========================  =========================
+=================== ========================== =========================
 direction            hypothesis                  premise
-===================  ==========================  =========================
+=================== ========================== =========================
 ``FAITHFULNESS``     a **note** entity           the transcript
 ``COVERAGE``         a **transcript** entity     the note
-===================  ==========================  =========================
+=================== ========================== =========================
 
 **Deliberate deviation from its sibling inferential sensors: this one does NOT degrade.**
 `groundedness` / `atomic_fact` return :func:`degraded_result` on backend failure, which the
@@ -66,7 +66,7 @@ def frame_entity(entity_text: str) -> str:
     a proposition — an entailment backend needs something that can be true or false. This is
     the whole adapter between the entity-level sensors and the claim-level inferential lane,
     and the framing measurably affects verdicts, so it is a single named pure function rather
-    than an inline f-string: the framing ablation (ticket §6 Q2) varies exactly this.
+    than an inline f-string: the framing ablation (Q2) varies exactly this.
 
     Kept deliberately minimal and clinically neutral — it asserts only that the concept is
     part of this consultation's record, which is precisely the question both directions ask.

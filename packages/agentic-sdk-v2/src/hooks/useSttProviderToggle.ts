@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * @arcaai/vox - useSttProviderToggle (TASK-586 Lane H)
+ * @arcaai/vox - useSttProviderToggle
  *
  * The NATIVE (non-compat) end-user affordance for the 2-way runtime STT
  * provider toggle: pipeline (primary) ↔ default (fallback). It gives a v2 app
@@ -19,7 +19,7 @@
  * `audio.activePipeline.isFallback` — the single source of truth this hook
  * reads for `activeProvider` / `usePipeline`.
  *
- * Degraded posture (TASK-614): a switch is possible whenever CAPTURE is running.
+ * Degraded posture: a switch is possible whenever CAPTURE is running.
  * Before capture, both methods reject with `AgenticError('SWITCH_UNSUPPORTED')`.
  * During capture on a local (browser) STT session there is no backend session to
  * switch, and the rejection comes from `useArcaAudio.switchProvider` — either
@@ -37,7 +37,7 @@ import { useArcaAudio } from './useArcaAudio';
 type ProviderSwitchTarget = 'primary' | 'fallback';
 
 /**
- * The tenant's configured fallback pipeline (TASK-604), read from
+ * The tenant's configured fallback pipeline, read from
  * `GET /audio/transcription-jobs/fallback`.
  *
  * Without it a UI can only render an unlabelled "Default" and the user finds
@@ -148,7 +148,7 @@ export function useSttProviderToggle(): UseSttProviderToggleReturn {
   const switchTo = useCallback(
     async (target: ProviderSwitchTarget): Promise<void> => {
       // Whether a switch is POSSIBLE is decided by capture, not by
-      // `activePipeline` (TASK-614 D-3). `activePipeline` is request-derived —
+      // `activePipeline`. `activePipeline` is request-derived
       // null for the whole session whenever capture started without an explicit
       // `pipelineId` — so gating on it refused switches on live sessions.
       if (!audio.isCapturing) {

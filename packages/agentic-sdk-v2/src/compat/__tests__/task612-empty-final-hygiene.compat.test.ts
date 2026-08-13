@@ -1,5 +1,5 @@
 /**
- * useArcaSpeechToText — empty-final hygiene + interim-ref reset (TASK-612
+ * useArcaSpeechToText — empty-final hygiene + interim-ref reset
  * Lane F, findings I-1/I-2, OD-3a).
  *
  * Belt-and-braces at the compat layer: even though `useArcaAudio` now
@@ -71,7 +71,7 @@ beforeEach(() => {
   audioMock.isCapturing = false;
 });
 
-describe('useArcaSpeechToText — empty-final segment skip (TASK-612 Lane F, OD-3a)', () => {
+describe('useArcaSpeechToText — empty-final segment skip', () => {
   it('(1) a whitespace-only segment never fires onTranscript; a later real final still fires exactly once', () => {
     const onTranscript = vi.fn();
     mockState = baseState({
@@ -98,7 +98,7 @@ describe('useArcaSpeechToText — empty-final segment skip (TASK-612 Lane F, OD-
   });
 });
 
-describe('useArcaSpeechToText — lastInterimRef reset on stop (TASK-612 Lane F, I-2)', () => {
+describe('useArcaSpeechToText — lastInterimRef reset on stop', () => {
   it('(2) the same interim text fires again in a new session after stopTranscription resets lastInterimRef', async () => {
     const onTranscript = vi.fn();
     mockState = baseState({ currentTranscript: 'hello' });

@@ -12,7 +12,7 @@
  *       tri-condition of `GlobalSettingDtoMapper.isSecretEntity`); false
  *       returns only non-secrets. The rows' own `isSecret` flag is the oracle.
  *
- * Harness mirrors task-402: seeded `super_admin` on `__GLOBAL__`, throwaway
+ * Harness mirrors : seeded `super_admin` on `__GLOBAL__`, throwaway
  * rows only, cleanup via the service soft-delete path.
  */
 import { test, expect, type APIRequestContext } from '@playwright/test';

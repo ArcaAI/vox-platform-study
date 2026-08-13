@@ -251,7 +251,7 @@ describe('ConfigResolver.resolveEffectiveDnaStyleEnabled', () => {
   });
 });
 
-describe('ConfigResolver.resolveEffectiveDnaRedactionEnabled (TASK-551 double-gate)', () => {
+describe('ConfigResolver.resolveEffectiveDnaRedactionEnabled (double-gate)', () => {
   let resolver: ConfigResolver;
 
   beforeEach(() => {

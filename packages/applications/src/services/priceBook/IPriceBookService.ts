@@ -36,7 +36,7 @@ export interface ResolveUsagePriceInput {
   /** Plan tier — SELL-plane only; COST rows are tier-agnostic. */
   planTier?: TenantPlan | null;
   /**
-   * Cache-write TTL band ("5m"/"1h") for a CACHE_WRITE_TOKEN event (TASK-615 #7).
+   * Cache-write TTL band ("5m"/"1h") for a CACHE_WRITE_TOKEN event.
    * A TTL-keyed row wins over the TTL-agnostic wildcard; null resolves the
    * blended wildcard rate exactly as before this dimension existed.
    */
@@ -49,12 +49,12 @@ export interface ResolvePlanePriceInput extends ResolveUsagePriceInput {
 }
 
 /**
- * Effective-dated rate resolution over `AiPriceBook` (TASK-615 D4 / D10).
+ * Effective-dated rate resolution over `AiPriceBook` (/ D10).
  *
  * TWO PLANES, ONE MECHANISM:
  *   - **COST** — what a call costs the PLATFORM. Read by the at-ingest rater in
  *     the outbox drainer; stamped onto every `AiUsageEvent`.
- *   - **SELL** — the tenant-facing card. Read only by WS-I's invoice engine.
+ *   - **SELL** — the tenant-facing card. Read only by 's invoice engine.
  *
  * They are never conflated: COST moves when a vendor reprices, SELL moves when
  * the product decides to.

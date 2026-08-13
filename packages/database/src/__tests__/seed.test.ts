@@ -100,7 +100,7 @@ describe('Seed Constants (00-constants)', () => {
     expect(Object.keys(SEED_DEPARTMENT_IDS).length).toBe(29);
   });
 
-  it('should define the 11 ArcaAI clinical department IDs — v1 parity (TASK-634 Phase 8b)', () => {
+  it('should define the 11 ArcaAI clinical department IDs — v1 parity', () => {
     expect(SEED_DEPARTMENT_IDS.GEN_ARCAAI).toBeDefined();
     expect(SEED_DEPARTMENT_IDS.SURG_ARCAAI).toBeDefined();
     expect(SEED_DEPARTMENT_IDS.RHEUM_ARCAAI).toBeDefined();
@@ -121,7 +121,7 @@ describe('Seed Constants (00-constants)', () => {
     arcaaiIds.forEach((id) => expect(id.startsWith('70000000-0000-0000-0001-')).toBe(true));
   });
 
-  it('should have retired the ArcaAI CARD + ER demo department IDs (TASK-592 Workstream D)', () => {
+  it('should have retired the ArcaAI CARD + ER demo department IDs', () => {
     expect((SEED_DEPARTMENT_IDS as Record<string, string>).CARD_ARCAAI).toBeUndefined();
     expect((SEED_DEPARTMENT_IDS as Record<string, string>).ER_ARCAAI).toBeUndefined();
   });
@@ -365,7 +365,7 @@ describe('Policy Seed Data', () => {
     // `read`) on HarnessEval: unconditional at platform scope, pinned to
     // the caller's tenant at tenant scope. HarnessAudit stays read-only.
     it.each(['harness-platform-manage', 'harness-tenant-manage', 'tenant-full-access'])(
-      'should grant manage HarnessEval in %s (TASK-419 item 1)',
+      'should grant manage HarnessEval in %s',
       (policyName) => {
         const policy = DEFAULT_POLICIES.find((p) => p.name === policyName);
         const rule = policy?.rules.find((r) => r.subject === 'HarnessEval');
@@ -394,7 +394,7 @@ describe('Policy Seed Data', () => {
       ['harness-tenant-manage', 'AgentTrajectory', 'read'],
       ['tenant-full-access', 'McpServer', 'manage'],
       ['tenant-full-access', 'AgentTrajectory', 'read'],
-    ])('should grant %s → %s (%s) after the M-12 subject swap (TASK-532)', (policyName, subject, action) => {
+    ])('should grant %s → %s (%s) after the M-12 subject swap', (policyName, subject, action) => {
       const policy = DEFAULT_POLICIES.find((p) => p.name === policyName);
       const rule = policy?.rules.find((r) => r.subject === subject);
       expect(rule, `${policyName} is missing a ${subject} rule`).toBeDefined();
@@ -704,7 +704,7 @@ describe('Department Seed Data', () => {
 });
 
 // =============================================================================
-// ARCAAI CLINICAL DEPARTMENT CATALOG (TASK-592 Workstream D)
+// ARCAAI CLINICAL DEPARTMENT CATALOG
 // =============================================================================
 
 describe('ArcaAI Clinical Department Seed Data', () => {
@@ -712,7 +712,7 @@ describe('ArcaAI Clinical Department Seed Data', () => {
 
   // ---------------------------------------------------------------------------
   // HOPE v1's canonical department set — ELEVEN, and the owner's strict rule for
-  // TASK-634 Phase 8b is that the ArcaAI tenant carries EXACTLY these and no
+  // Is that the ArcaAI tenant carries EXACTLY these and no
   // others.
   //
   // Source of truth is the RUNNING v1 SMR pod (rancher cluster c-9lwv8,
@@ -757,7 +757,7 @@ describe('ArcaAI Clinical Department Seed Data', () => {
   });
 
   it('should give the four Phase 8b departments NO default DepartmentAgent', () => {
-    // An agent binding is per-department; before TASK-635 C2 it ignored visit
+    // An agent binding is per-department; before it ignored visit
     // type entirely, and even now an agent is an extra resolution tier these
     // rows do not need — the visit-type columns below are the v1-faithful path.
     const agentFreeIds = new Set(ARCAAI_CLINICAL_DEPARTMENTS_WITHOUT_AGENT.map((d) => d.id));
@@ -840,7 +840,7 @@ describe('ArcaAI Clinical Department Seed Data', () => {
 });
 
 // =============================================================================
-// ARCAAI CLINICAL PROMPT LIBRARY (TASK-592 Workstream D)
+// ARCAAI CLINICAL PROMPT LIBRARY
 // =============================================================================
 
 describe('ArcaAI Clinical Prompt Library Seed Data', () => {
@@ -962,7 +962,7 @@ describe('Department Prompt Configuration', () => {
   });
 
   describe('Unified Pre-Summary Template', () => {
-    // TASK-634: pre-summary has NO department axis and NO visit-type axis — v1
+    // Pre-summary has NO department axis and NO visit-type axis — v1
     // has exactly ONE pre-summary prompt per tenant, with department and visit
     // type as VARIABLES inside it. Pointing every department at the unified
     // template was harmless-looking but re-created the category error that let
@@ -1235,7 +1235,7 @@ describe('STT Seed Data', () => {
 
     describe('Model Categories', () => {
       it('should have valid category for all models (AUDIO, NLP or VISION)', () => {
-        // VISION added TASK-657 (vision-language model catalog rows).
+        // VISION added vision-language model catalog rows.
         const validCategories = [ModelCategory.AUDIO, ModelCategory.NLP, ModelCategory.VISION];
         DEFAULT_AI_MODELS.forEach((model) => {
           expect(validCategories).toContain(model.category);
@@ -1316,7 +1316,7 @@ describe('STT Seed Data', () => {
       // The legacy ASR rows are RETIRED (soft-DELETED by
       // retireLegacyAiModels), no longer part of the seeded catalog.
       it.each(['whisper-large-v3', 'whisper-medium', 'faster-whisper-large-v3', 'parakeet-ctc-1.1b'])(
-        'should NOT seed retired ASR model %s (TASK-506)',
+        'should NOT seed retired ASR model %s',
         (slug) => {
           expect(DEFAULT_AI_MODELS.find((m) => m.slug === slug)).toBeUndefined();
         },
@@ -1526,7 +1526,7 @@ describe('STT Seed Data', () => {
       });
 
       it('SYSTEM catalog has exactly 14 base pipelines with one isDefault', () => {
-        // 9 TASK-505/507 matrix pipelines + 2 TASK-567 cloud BYOK
+        // 9 pipelines + 2 cloud BYOK
         // fallback candidates (sarvam-transcription, openai-transcription)
         // + 3 ArcaAI ML-EN code-switch (GGUF f16 + GGUF q8_0 + transformer).
         expect(DEFAULT_ASR_PIPELINES).toHaveLength(14);

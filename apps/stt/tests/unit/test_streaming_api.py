@@ -42,7 +42,7 @@ def mock_session_manager():
     mgr._guard.active_count = 2
     mgr._guard.available_slots = 8
     mgr.capacity_guard = mgr._guard
-    # get_switch_controller (TASK-613) is a SYNCHRONOUS method on the real
+    # get_switch_controller is a SYNCHRONOUS method on the real
     # SessionManager; explicitly set it as a plain (non-async) MagicMock so
     # routes.py's synchronous call site gets a real value/None back instead of
     # an unawaited coroutine from the AsyncMock default.
@@ -331,7 +331,7 @@ class TestCreateSession:
     def test_create_session_response_includes_pipeline_id(
         self, client, mock_session_manager, mock_session
     ):
-        """AC-2 (TASK-613): the create response echoes the resolved pipeline_id
+        """The create response echoes the resolved pipeline_id
         and active_engine baseline, not just the coarse request echo."""
         mock_session_manager.create_session = AsyncMock(return_value=mock_session)
 
@@ -376,7 +376,7 @@ class TestCreateSession:
     def test_create_response_pipeline_id_agrees_with_active_engine_on_fallback(
         self, client, mock_session_manager, mock_session
     ):
-        """TASK-613 A3: a D3/D4 session used to report ``active_engine:
+        """A session used to report ``active_engine:
         'fallback'`` beside a ``pipeline_id`` naming the PRIMARY — a
         self-contradictory baseline. The id must name the EFFECTIVE pipeline."""
         mock_session_manager.create_session = AsyncMock(return_value=mock_session)
@@ -497,7 +497,7 @@ class TestGetSession:
 class TestDeleteSession:
     """Tests for the session removal endpoint.
 
-    TASK-615 WS-C — a real teardown now returns 200 with the usage-attribution
+    A real teardown now returns 200 with the usage-attribution
     summary the API Gateway needs to emit the transcribe.stream ledger row
     (previously a bare 204). The idempotent "already gone" branch keeps its
     original 204-no-body contract unchanged — there is nothing new to
@@ -1014,8 +1014,8 @@ class TestApiSchemas:
         assert resp.reason is None
 
     def test_session_response_requires_pipeline_id_and_active_engine(self):
-        """pipeline_id/active_engine (TASK-613) are required on the wire — the
-        internal create/status response is the AC-2 baseline echo."""
+        """pipeline_id/active_engine are required on the wire — the
+        internal create/status response is the baseline echo."""
         from pydantic import ValidationError
 
         from stt.streaming.api.schemas import StreamingSessionResponse

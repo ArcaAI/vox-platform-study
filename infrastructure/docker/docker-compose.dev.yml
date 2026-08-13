@@ -34,12 +34,12 @@ networks:
 volumes:
   vault-data:
   qdrant-data:
-  # TASK-330 Phase 3: HF TEI reranker model/weights cache (avoids re-downloading
+  # HF TEI reranker model/weights cache (avoids re-downloading
   # BAAI/bge-reranker-v2-m3 on every `up`).
   reranker-data:
-  # TASK-386: Prometheus TSDB for the dev platform-metrics backend.
+  # Prometheus TSDB for the dev platform-metrics backend.
   prometheus-data:
-  # TASK-397: Grafana state (users, starred dashboards) for the dev
+  # Grafana state (users, starred dashboards) for the dev
   # platform-metrics profile. Provisioning (datasource + dashboards) is mounted
   # read-only from ./configs/grafana, so this only persists runtime UI state.
   grafana-data:
@@ -52,7 +52,7 @@ volumes:
 
 services:
   # HashiCorp Vault - Secret Management
-  # Phase 1A (TASK-302 Stream B): opt-in via `--profile vault`.
+  # Opt-in via `--profile vault`.
   # Default `docker compose up` does NOT start Vault — local dev keeps using
   # EnvSecretsProvider against .env.dev. Devs opt in with:
   #   docker compose -f infrastructure/docker/docker-compose.dev.yml --profile vault up -d
@@ -67,7 +67,7 @@ services:
       - '8200:8200'
     volumes:
       - vault-data:/vault/file
-      # TASK-312 A.4 — audit log on a host bind-mount so the API process
+      # Audit log on a host bind-mount so the API process
       # (which runs on the HOST via `pnpm dev:api`, not in a container) can
       # tail it for the VaultRotationWorker. A named volume would not be
       # host-readable at a stable path. /tmp is portable across dev machines
@@ -89,7 +89,7 @@ services:
       start_period: 15s
 
   # Vault init sidecar - mounts engines + audit log on profile up
-  # Phase 1A Task 1.3 (TASK-302 Stream B). Runs once per `up`, exits 0.
+  # Runs once per `up`, exits 0.
   vault-init:
     container_name: hope-vault-init
     image: hashicorp/vault:1.18
@@ -148,7 +148,7 @@ services:
 
   # ==========================================================================
   # Temporal — durable-workflow substrate for the Clinical Documentation
-  # Harness (TASK-330, apps/harness).
+  # Harness (apps/harness).
   #
   # OPT-IN by design: both services below are gated behind the `temporal`
   # profile, so a plain `docker compose up` (and `start-infra.sh --all`, which
@@ -161,7 +161,7 @@ services:
   # databases (TEMPORAL_DB_NAME=`temporal` + TEMPORAL_VISIBILITY_DB_NAME=
   # `temporal_visibility`) alongside the app `hope` DB — the app database is
   # never touched, and Temporal's data inherits the same encrypted-at-rest
-  # volume as the app DB (TASK-369). Dropping the dedicated container removes a
+  # volume as the app DB. Dropping the dedicated container removes a
   # whole Postgres from dev. Because `temporal` now `depends_on: postgres`
   # (defined in the core compose file), ALWAYS pass BOTH -f files — the wrappers
   # (scripts/dev-infra.sh) and the commands below already do.
@@ -230,12 +230,12 @@ services:
 
   # ==========================================================================
   # hope-reranker — HF Text-Embeddings-Inference cross-encoder reranker
-  # (TASK-330 Phase 3, institutional RAG). Serves BAAI/bge-reranker-v2-m3 on
+  # (institutional RAG). Serves BAAI/bge-reranker-v2-m3 on
   # container port 80; the harness hybrid retriever posts query/document pairs to
   # its OpenAI-style ``/rerank`` endpoint (HARNESS_RETRIEVAL_RERANKER_BASE_URL).
   #
   # Profile-gated (`rag`) so a bare `docker compose up` without profiles does
-  # NOT pull the model. TASK-555: the base tier (`pnpm infra:up` / `dev:setup` /
+  # NOT pull the model. The base tier (`pnpm infra:up` / `dev:setup` /
   # `dev:stack`) always enables `rag`. Prefer those entry points over raw
   # compose.
   #
@@ -262,12 +262,12 @@ services:
       - reranker-data:/data
 
   # ==========================================================================
-  # Prometheus — DEV platform-metrics backend (TASK-386). Scrapes the API
+  # Prometheus — DEV platform-metrics backend. Scrapes the API
   # gateway + every Python service /metrics (running on the HOST, reached via
   # host.docker.internal) and answers the NestJS PrometheusQueryService at
   # PROMETHEUS_URL=http://localhost:9090.
   #
-  # OPT-IN observability tier (TASK-386/397/555): gated behind `prometheus`
+  # OPT-IN observability tier: gated behind `prometheus`
   # (alias `observability`) so the base tier does NOT start it. Start with:
   #   pnpm infra:up -- -o
   #   pnpm dev:setup-o / pnpm dev:stack-o
@@ -307,13 +307,13 @@ services:
       start_period: 10s
 
   # ==========================================================================
-  # Grafana — DEV visualization for the platform metrics (TASK-397, builds on
-  # TASK-386). Provisions a single Prometheus datasource (pointing at the
+  # Grafana — DEV visualization for the platform metrics.
+  # Provisions a single Prometheus datasource (pointing at the
   # in-network `prometheus:9090`) + a starter "HOPE Platform Metrics" dashboard
   # (running instances, per-model inference p95/avg latency, request rates).
   #
   # Same profile(s) as Prometheus. Start via `pnpm infra:up -- -o` /
-  # `pnpm dev:setup-o` / `pnpm dev:stack-o` (TASK-555).
+  # `pnpm dev:setup-o` / `pnpm dev:stack-o`.
   #
   #   Grafana UI: http://localhost:${GRAFANA_PORT:-3001}  (dev login admin/admin;
   #   anonymous Viewer is enabled so dashboards open without signing in).
@@ -343,7 +343,7 @@ services:
       GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
     volumes:
       - ./configs/grafana/provisioning:/etc/grafana/provisioning:ro
-      # TASK-636 OBS-30: this mounted ./configs/grafana/dashboards, which held a
+      # This mounted ./configs/grafana/dashboards, which held a
       # SINGLE dashboard, while the nine purpose-built ones (SMR overview /
       # resilience / security / cache-friendliness, consumption,
       # agentic-trajectory, model-retention, optimistic-locking, pgbouncer) sat
@@ -360,7 +360,7 @@ services:
 
   # ==========================================================================
   # Production-inference engines. OPT-IN behind the `inference` profile —
-  # the base tier does NOT start them. TASK-555 entry points:
+  # the base tier does NOT start them. Entry points:
   #   pnpm infra:up -- -e
   #   pnpm dev:setup-e / pnpm dev:stack-e
   # This profile stages the PRODUCTION engine matrix (AD-4) for a GPU dev host;
@@ -368,7 +368,7 @@ services:
   # `dev-infra.sh -e` warns when the NVIDIA runtime is missing.
   #
   # Wire SMR to them via .env.dev (see apps/smr/.env.prod for the production
-  # reference values, TASK-584):
+  # reference values):
   #   SMR_VLLM_BASE_URL=http://localhost:8000/v1
   #   SMR_LLAMA_CPP_BASE_URL=http://localhost:8080
   #

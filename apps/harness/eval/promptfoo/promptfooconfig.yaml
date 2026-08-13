@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=https://promptfoo.dev/config-schema.json
 #
-# TASK-330 Phase 0 — PDSQI-9 judge output-contract gate (promptfoo).
+# PDSQI-9 judge output-contract gate (promptfoo).
 #
 # Release-blocking check run via `npx promptfoo eval` in CI. Pinned to the
 # golden-set version below. Offline-deterministic by default (mock provider);

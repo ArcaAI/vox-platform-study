@@ -2,16 +2,16 @@
 
 /**
  * Fallbacks tab — the conceptual map of HOW a prompt instruction template is
- * chosen (TASK-634 R6).
+ * chosen.
  *
  * The bug this screen exists to prevent was invisible in the console: the
  * pre-summary and summary capabilities have DIFFERENT SHAPES, and every admin
  * surface rendered them as one undifferentiated list of "prompt templates".
  *
- *   Pre-summary  — exactly ONE per tenant. No department axis, no visit-type
+ *   Pre-summary — exactly ONE per tenant. No department axis, no visit-type
  *                  axis. Department and visit type are VARIABLES INSIDE the
  *                  single prompt, never selectors for a different prompt.
- *   Summary      — a (department x visit type) matrix, plus one
+ *   Summary — a (department x visit type) matrix, plus one
  *                  department-agnostic SYSTEM fallback.
  *
  * The resolution chains are mirrored from `PromptResolutionService`
@@ -23,7 +23,7 @@
  *                It consults NEITHER the doctor-preferred tier, NOR the
  *                department default agent, NOR the department visit-type
  *                columns.
- *   summary:     doctor-preferred -> department default Agent (visit-type
+ *   summary: doctor-preferred -> department default Agent (visit-type
  *                aware) -> department column (newPatient / revisit, APPROVED
  *                only) -> SYSTEM default (CATCHALL_SOAP).
  *
@@ -117,7 +117,7 @@ function PreSummaryCard({
 }) {
   const candidates = useMemo(() => preSummaryCandidates(templates), [templates]);
   const resolved = candidates[0] ?? null;
-  // Legacy per-department pre-summary overrides. TASK-634 removed the column
+  // Legacy per-department pre-summary overrides. removed the column
   // from the ArcaAI seed because pre-summary has no department axis; any row
   // still carrying one is stale config and worth surfacing.
   const legacyOverrides = departments.filter((row) => !!row.preSummaryPromptId);

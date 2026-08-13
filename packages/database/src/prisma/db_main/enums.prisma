@@ -232,7 +232,7 @@ enum ContextItemType {
   CASE_NOTE // Case notes - shared across linked consultations as additional context
   ATTACHMENT // Other attachments
   SIGNED_NOTE // Clinician-attested, immutable signed note (confirm-before-commit gate)
-  // Tenant-declared structured context (TASK-658). The payload is a JSON
+  // Tenant-declared structured context. The payload is a JSON
   // document validated against the `fields` sub-schema of the tenant's
   // `ConsultationContextSchema` kind, then serialised into the SAME encrypted
   // `content` column as every other text-bearing type — there is no new
@@ -245,7 +245,7 @@ enum ContextItemType {
 }
 
 // =============================================================================
-// CONSULTATION CONTEXT SCHEMA ENUMS (TASK-658)
+// CONSULTATION CONTEXT SCHEMA ENUMS
 // =============================================================================
 
 // Which consultations a `ConsultationContextSchema` governs. DEPARTMENT-scoped
@@ -340,8 +340,8 @@ enum AiModelFormat {
   PARAKEET_CPP // parakeet.cpp ggml runtime (Parakeet/Nemotron)
   CLOUD_API // Generic cloud-API engine (Sarvam TTS, Azure OpenAI catalog rows)
   WHISPER_CPP // whisper.cpp ggml runtime (whisper-large-v3-turbo GGUF)
-  SARVAM // Cloud — Sarvam AI speech-to-text (saaras family, code-switch). First-class so a slug ref binds it like AZURE_SPEECH (TASK-586).
-  OPENAI // Cloud — OpenAI speech-to-text (gpt-4o-transcribe). First-class so a slug ref binds it like AZURE_SPEECH (TASK-586).
+  SARVAM // Cloud — Sarvam AI speech-to-text (saaras family, code-switch). First-class so a slug ref binds it like AZURE_SPEECH.
+  OPENAI // Cloud — OpenAI speech-to-text (gpt-4o-transcribe). First-class so a slug ref binds it like AZURE_SPEECH.
 
   @@schema("core")
 }
@@ -414,7 +414,7 @@ enum IdpProtocol {
   @@schema("core")
 }
 
-// DNA writing-style gate for a DepartmentAgent (TASK-546).
+// DNA writing-style gate for a DepartmentAgent.
 // INHERIT = inherit the department/doctor DNA-style resolution as today;
 // DISABLED = the agent explicitly opts out of the DNA-style gate.
 enum DepartmentAgentDnaPolicy {
@@ -424,8 +424,8 @@ enum DepartmentAgentDnaPolicy {
   @@schema("core")
 }
 
-// Loop role for a DepartmentAgent (TASK-659). PRIMARY owns the consultation
-// note and gate exclusively (TASK-654 D7); SPECIALIST participates in the
+// Loop role for a DepartmentAgent. PRIMARY owns the consultation
+// note and gate exclusively; SPECIALIST participates in the
 // loop scoped to `subscribedKinds`/`writeScope` but never writes the note. At
 // most one ENABLED PRIMARY per department — enforced in
 // `DepartmentAgentService` (mirrors the `isDefault` invariant), not by a
@@ -438,7 +438,7 @@ enum DepartmentAgentRole {
   @@schema("core")
 }
 
-// Human curation verdict on a mined `GateEditExemplar` (TASK-553 F-24).
+// Human curation verdict on a mined `GateEditExemplar`.
 //
 // The mining loop writes PENDING: a row is a PROPOSAL, never approved corpus.
 // APPROVED is an explicit human decision that the exemplar may be shown to the
@@ -466,12 +466,12 @@ enum IdpStatus {
 }
 
 // =============================================================================
-// AI usage metering + tenant billing (TASK-615)
+// AI usage metering + tenant billing
 //
 // The vocabulary of the append-only `AiUsageEvent` ledger, the effective-dated
 // `AiPriceBook`, and the invoice plane built on top of them. See
 // `usage-ledger.prisma` / `billing.prisma` for the models and
-// docs/implementation/TASK-615-Usage-Metering-And-Billing/README.md §4 for the
+// docs/implementation/TASK-615-Usage-Metering-And-Billing/README.md for the
 // decisions (D2, D10–D17) each value encodes.
 // =============================================================================
 
@@ -494,7 +494,7 @@ enum AiCapability {
 // output, cache-read, …) rather than one wide row, so a new unit never needs a
 // migration and provider-specific token kinds stay separable.
 //
-// Trap encoded here (research §3): cache and reasoning tokens are SEPARATE units
+// Trap encoded here: cache and reasoning tokens are SEPARATE units
 // because providers disagree about whether they are already included in
 // `input_tokens` (Anthropic/Bedrock exclude, OpenAI/Gemini include). Normalizing
 // into distinct rows is what makes the two reconcilable.
@@ -596,13 +596,13 @@ enum BillingLineKind {
   @@schema("core")
 }
 
-// Service Version & Release Registry — ChangelogEntry (TASK-648). Exact
+// Service Version & Release Registry — ChangelogEntry. Exact
 // member values are frozen in the ticket's
 // contracts/service-release.api.yaml — do not rename without updating that
 // contract.
 
 // Drives badge colour and whether an entry is pinned in the "What's New"
-// popup (§3.5/§3.6 of the ticket README).
+// popup.
 enum ChangelogSeverity {
   INFO
   IMPORTANT
@@ -621,7 +621,7 @@ enum ChangelogAudience {
 }
 
 // CI creates DRAFT on an ALL- tag; a global admin PUBLISHes it. Nothing
-// reaches admins' screens automatically (§3.5).
+// reaches admins' screens automatically.
 enum ChangelogPublishStatus {
   DRAFT
   PUBLISHED

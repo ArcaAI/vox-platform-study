@@ -99,7 +99,7 @@ describe('useDataGrid (headless controller)', () => {
     );
   });
 
-  it('filters to the union of selected values for a multiSelect column with no explicit filterFn (TASK-500)', () => {
+  it('filters to the union of selected values for a multiSelect column with no explicit filterFn', () => {
     const { result } = renderHook(() => useDataGrid<Person>({ data: makeData(4), columns: COLUMNS, getRowId: (r) => r.id }));
 
     act(() => result.current.setFilter({ id: 'status', operator: 'inArray', value: ['ACTIVE'], variant: 'multiSelect' }, 'status'));
@@ -217,7 +217,7 @@ describe('VirtualizedDataGrid (shell)', () => {
 
   it('renders an empty state when data is empty and not loading', () => {
     renderGrid({ data: [] });
-    // The pager status also reads "No results" for 0 rows (§F); scope to the grid body.
+    // The pager status also reads "No results" for 0 rows ; scope to the grid body.
     expect(within(screen.getByRole('grid')).getByText('No results')).toBeInTheDocument();
   });
 
@@ -297,7 +297,7 @@ describe('VirtualizedDataGrid (shell)', () => {
     expect(results).toHaveNoViolations();
   });
 
-  it('height-constrains body cells to the fixed virtual row so oversized content clips instead of covering row borders (TASK-429)', () => {
+  it('height-constrains body cells to the fixed virtual row so oversized content clips instead of covering row borders', () => {
     renderGrid({ data: makeData(3) });
     const cells = screen.getAllByRole('gridcell');
     expect(cells.length).toBeGreaterThan(0);

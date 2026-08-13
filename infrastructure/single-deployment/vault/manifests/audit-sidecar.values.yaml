@@ -1,5 +1,5 @@
 # =============================================================================
-# HOPE — audit-log shipper sidecar (TASK-312 Phase C, C.8)  [VALUES OVERLAY]
+# HOPE — audit-log shipper sidecar  [VALUES OVERLAY]
 # =============================================================================
 # This is a Helm VALUES overlay, not a standalone manifest: a sidecar on the
 # chart-managed StatefulSet must be added via `server.extraContainers`, so a raw

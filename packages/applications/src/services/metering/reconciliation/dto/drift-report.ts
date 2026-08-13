@@ -13,7 +13,7 @@ export interface TenantDriftReport {
 }
 
 /**
- * One provider's reconciliation outcome for a settled window (TASK-638 §6).
+ * One provider's reconciliation outcome for a settled window.
  *
  * PLATFORM-WIDE, never a tenant slice: no vendor exposes per-tenant cost, so
  * this compares the ledger's own CLOUD-only control total against what the

@@ -18,7 +18,7 @@ function listScope(container: HTMLElement) {
   return container.querySelector('[data-slot="service-status-list"]') as HTMLElement;
 }
 
-describe('ServiceStatusItem (§3.2)', () => {
+describe('ServiceStatusItem', () => {
   it('maps each status to the correct dot color role and badge label', () => {
     const { container, rerender } = render(<ServiceStatusItem name="API" status="healthy" />);
     let item = container.querySelector('[data-slot="service-status-item"]')!;
@@ -54,7 +54,7 @@ describe('ServiceStatusItem (§3.2)', () => {
   });
 });
 
-describe('ServiceStatusBar (§3.2)', () => {
+describe('ServiceStatusBar', () => {
   it('is a polite live status region', () => {
     const { container } = render(<ServiceStatusBar services={SERVICES} />);
     const bar = container.querySelector('[data-slot="service-status-bar"]')!;

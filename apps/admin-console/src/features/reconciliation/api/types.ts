@@ -1,5 +1,5 @@
 /**
- * Wire types for the provider-reconciliation audit trail (TASK-638 §6 rule 6),
+ * Wire types for the provider-reconciliation audit trail,
  * backed by `admin/usage/reconciliation/*`. Re-declared locally (rule 13).
  *
  * Quantities ride as STRINGS (Decimal columns), and `null` is MEANINGFUL: a

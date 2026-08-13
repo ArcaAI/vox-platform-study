@@ -1,4 +1,4 @@
-// Batch (pre-recorded file) transcription limit descriptors (TASK-604 lane A).
+// Batch (pre-recorded file) transcription limit descriptors.
 //
 // WHAT THESE REPLACE. The batch upload route enforced exactly one bound — a
 // hardcoded `MAX_FILE_SIZE = 100 MB` in `apps/api/.../dto/transcription-job.dto.ts`.
@@ -30,9 +30,9 @@ import { SettingDescriptor } from '../registry.types';
  * gateway enforcement, and the limits read surface the SDK consumes.
  */
 export const BATCH_TRANSCRIPTION_DEFAULTS = {
-  /** Recordings a client may submit as one batch (TASK-604 requirement: 5). */
+  /** Recordings a client may submit as one batch (requirement: 5). */
   maxFilesPerBatch: 5,
-  /** Per-recording duration ceiling in minutes (TASK-604 requirement: 60). */
+  /** Per-recording duration ceiling in minutes (requirement: 60). */
   maxDurationMinutes: 60,
   /**
    * Per-file size ceiling in MB. Raised from the hardcoded 100 MB so that the

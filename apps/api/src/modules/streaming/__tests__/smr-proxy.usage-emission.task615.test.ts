@@ -5,11 +5,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { SmrProxyController } from '../smr-proxy.controller';
 
 /**
- * TASK-615 WS-D — the SSE proxy meters what flows through it.
+ * The SSE proxy meters what flows through it.
  *
  * The proxy is a byte pipe: SMR generates, the browser reads, and nothing in
  * between ever knew how many tokens were spent. This is also the path where the
- * TASK-470/471 bug class lives — a stream that dies late loses its tail, and
+ * Bug class lives — a stream that dies late loses its tail, and
  * with it every token the provider is about to bill for. So the abort case is
  * asserted alongside the happy one, and both must produce the SAME idempotency
  * key: a stream that aborts and then also runs teardown would otherwise bill

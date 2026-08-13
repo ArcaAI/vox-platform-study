@@ -49,8 +49,8 @@ def _worker_service_name(configured: str) -> str:
     (``stt``) reports as ``stt-worker``. But deployments set
     ``OTEL_SERVICE_NAME`` on the worker Deployment directly — in-cluster it is
     ``hope-stt-v2-worker`` — and appending unconditionally produced the
-    ``hope-stt-v2-worker-worker`` label observed live in Loki
-    (TASK-636 OBS-09). Only append when the operator has not already named it.
+    ``hope-stt-v2-worker-worker`` label observed live in Loki.
+    Only append when the operator has not already named it.
     """
     return configured if configured.endswith("-worker") else f"{configured}-worker"
 
@@ -180,17 +180,16 @@ def _worker_build_info() -> Any:
 
 
 def _start_service_release_registration() -> dict[str, Any]:
-    """Self-registration (TASK-648 W9): this worker has no inbound HTTP
+    """Self-registration: this worker has no inbound HTTP
 
     surface of its own, so it registers+heartbeats independently — fire-and-
     forget, bounded-timeout, NEVER blocks or fails boot.
 
-    The Dramatiq worker's `main()` is synchronous (it blocks on
-    `shutdown_event.wait()`), so there is no ambient asyncio event loop alive
+    The Dramatiq worker's `main` is synchronous (it blocks on
+    `shutdown_event.wait`), so there is no ambient asyncio event loop alive
     for the process lifetime. This runs the registration + heartbeat loop on
     a dedicated background event-loop thread instead. `DEPLOYMENT_ENVIRONMENT`
-    / `NODE_ENV` is the same repo-wide convention used elsewhere (TASK-636
-    OBS-18); stt has no dedicated `environment` settings field.
+    / `NODE_ENV` is the same repo-wide convention used elsewhere; stt has no dedicated `environment` settings field.
     """
     box: dict[str, Any] = {"loop": None, "task": None, "client": None}
     ready = threading.Event()

@@ -17,8 +17,8 @@ export interface TopTenantsQuery {
 }
 
 /**
- * Read-only usage-analytics queries over the TASK-615 ledger rollups
- * (WS-J). Complements — does not duplicate — the WS-I billing read models
+ * Read-only usage-analytics queries over the ledger rollups
+ * . Complements — does not duplicate — the billing read models
  * (`IBillingService`): this surface answers "what happened and how much did
  * it cost", billing answers "what does the tenant owe".
  *

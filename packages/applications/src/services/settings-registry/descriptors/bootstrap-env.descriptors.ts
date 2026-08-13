@@ -1,17 +1,17 @@
-// The bootstrap floor — tier `env` (TASK-558 lane F, plan §3.2).
+// The bootstrap floor — tier `env`.
 //
-// THE GOVERNING PRINCIPLE (plan §3.2): a variable MUST stay in env if it is
+// THE GOVERNING PRINCIPLE: a variable MUST stay in env if it is
 // required *to reach the database* or *to authenticate to Vault*. Everything
 // else is a candidate for DB or Vault. That test is objective and settles every
 // case below without debate.
 //
 // WHY DECLARE THEM AT ALL, IF THEY ARE NOT ADMIN-EDITABLE?
-// Because a catalog with a hole in it is not a catalog. Plan §8 requires "zero
-// keys declared-but-unread"; the mirror obligation is zero keys READ-but-
+// Because a catalog with a hole in it is not a catalog. Zero keys
+// declared-but-unread; the mirror obligation is zero keys READ-but-
 // undeclared. Declaring the floor makes it EXPLICIT — a reviewer can see exactly
-// which variables a deployable must be handed before it can boot, and lane D can
-// GENERATE the per-deployable zod schema and `.env.sample` from this list
-// instead of hand-maintaining one (plan §9.1 D1/D2).
+// which variables a deployable must be handed before it can boot, and the
+// schema generator can emit the per-deployable zod schema and `.env.sample`
+// from this list instead of hand-maintaining one.
 //
 // FIELD SEMANTICS FOR THIS TIER
 //   - `editableBy: 'none'`  There is NO admin write path for a deploy-time value.
@@ -21,7 +21,7 @@
 //   - `failMode`            DECLARATIVE here, not behavioural: `EffectiveSettingsService`
 //                           has no `env` branch (an env key raises "no effective
 //                           resolver" — deliberately, since env is not a control
-//                           plane). It encodes the BOOT contract of plan §4 B4:
+//                           plane). It encodes the BOOT contract:
 //                             `closed`          → required; absence must fail fast
 //                                                 at boot (zod `.required()`).
 //                             `open-to-default` → optional; the reader has a code

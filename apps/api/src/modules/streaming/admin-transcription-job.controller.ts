@@ -18,7 +18,7 @@ import { CanManage, CanRead } from '../../decorators';
  *   - Each read carries a handler-level `@CanRead('AsrPipeline')`
  *     which OVERRIDES the class gate (the guard uses `getAllAndOverride`).
  *     `TranscriptionJob` is not a CASL subject; the audio surface is scoped on
- *     `AsrPipeline` per the §5.8 design permissions, which `tenant-full-access`
+ * `AsrPipeline` per the design permissions, which `tenant-full-access`
  *     grants tenant admins — a class-only `manage Tenant` had locked them out
  *     (the seed gives tenant admins read/update Tenant, not manage).
  *

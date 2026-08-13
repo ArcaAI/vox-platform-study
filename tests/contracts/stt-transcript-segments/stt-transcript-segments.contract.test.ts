@@ -1,11 +1,11 @@
 /**
- * stt → apps/api transcript-segment CONSUMER contract (TASK-533 D-22).
+ * stt → apps/api transcript-segment CONSUMER contract.
  *
  * The producer half is asserted in
  * `apps/stt/tests/unit/test_transcript_segment_contract.py`. Both suites read
  * the SAME checked-in fixture, so a producer shape change that this consumer
  * cannot read fails one side or the other — the cross-boundary lock that did not
- * exist when D-22 shipped.
+ * exist when this contract shipped.
  *
  * Why the pre-existing tests missed it: `sttInternal.service.test.ts` hand-feeds
  * ideal camelCase-with-text payloads that NO producer ever emitted. Streaming sent

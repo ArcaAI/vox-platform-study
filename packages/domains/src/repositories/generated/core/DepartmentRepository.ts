@@ -64,7 +64,7 @@ export class DepartmentRepository extends Repository<DepartmentEntity, Departmen
   /**
    * Find all departments for a tenant
    *
-   * Sorted `name asc, id asc` (TASK-634 D-05): a name-only sort leaves rows
+   * Sorted `name asc, id asc`: a name-only sort leaves rows
    * with the same name ordered non-deterministically by Postgres. ArcaAI
    * carries two rows named "General Medicine" — without the `id` tiebreak,
    * `matchTenantDepartment`'s "first hit wins" could resolve either row on

@@ -1,8 +1,8 @@
 #!/bin/bash
 # ============================================================================
-# TASK-557 — Shared process supervisor for the dev and test app stacks
+# Shared process supervisor for the dev and test app stacks
 # ============================================================================
-# Extracted verbatim from the TASK-346/555 dev-stack supervisor so that
+# Extracted verbatim from the prior dev-stack supervisor so that
 # scripts/dev-stack.sh and scripts/test-stack.sh cannot drift apart. This file
 # is a LIBRARY: source it, do not execute it.
 #

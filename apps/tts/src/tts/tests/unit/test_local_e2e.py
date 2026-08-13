@@ -37,7 +37,7 @@ async def client():
 
 @pytest.mark.asyncio
 async def test_english_voice_routes_to_kokoro(client):
-    # Built-in-first default (TASK-577): the SYSTEM TenantTtsConfig routes en to
+    # Built-in-first default: the SYSTEM TenantTtsConfig routes en to
     # the local Kokoro engine. Injecting ["kokoro"] mirrors that resolved chain —
     # synthesis goes to the built-in engine, never a cloud vendor.
     resp = await client.post(
@@ -55,7 +55,7 @@ async def test_english_voice_routes_to_kokoro(client):
 
 @pytest.mark.asyncio
 async def test_malayalam_voice_routes_to_parler_with_resample(client):
-    # Built-in-first default (TASK-577): the SYSTEM TenantTtsConfig routes ml to
+    # Built-in-first default: the SYSTEM TenantTtsConfig routes ml to
     # the local Indic Parler engine. Injecting ["indic_parler"] mirrors it.
     resp = await client.post(
         "/api/v1/audio/speech",

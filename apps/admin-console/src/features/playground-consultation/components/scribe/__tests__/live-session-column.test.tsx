@@ -1,5 +1,5 @@
 /**
- * TASK-552 Lane C — LiveSessionColumn's transcript-review mode: once a
+ * LiveSessionColumn's transcript-review mode: once a
  * persisted transcript is supplied (post-recording review) and capture is
  * NOT active, the column renders it (with an optional highlighted +
  * auto-scrolled cited span) instead of the SDK's live segment view.

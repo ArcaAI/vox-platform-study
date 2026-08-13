@@ -1,5 +1,5 @@
 /**
- * TASK-547 naming rollout — regression lock (source-scan, node project so it
+ * naming rollout — regression lock (source-scan, node project so it
  * doesn't need jsdom/happy-dom).
  *
  * Family 2 (clinician-facing): the shared NER capability is "Insight" and the
@@ -27,7 +27,7 @@ function readSrc(relativePath: string): string {
   return readFileSync(`${SRC_ROOT}${relativePath}`, 'utf8');
 }
 
-describe('naming rollout (TASK-544 OD-1 Family 2/6)', () => {
+describe('naming rollout (Family 2/6)', () => {
   it('never renders "NER agent" on a clinician-facing playground surface', () => {
     for (const file of CLINICIAN_FACING_FILES) {
       const source = readSrc(file);

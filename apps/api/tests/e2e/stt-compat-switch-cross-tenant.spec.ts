@@ -1,5 +1,5 @@
 /**
- * Cross-tenant + fail-closed probes against the TASK-586 v1-compat STT switch
+ * Cross-tenant + fail-closed probes against the v1-compat STT switch
  * endpoint `POST /api/stt/switch` (note: the compat surface is OUTSIDE the
  * `/api/v1` global prefix). Mirrors `stt-fallback-cross-tenant.spec.ts` for the
  * native `/switch-to-fallback` route.
@@ -21,7 +21,7 @@ import { DEFAULT_TENANT_KEY, SEEDED_USERS, loginUser } from '../../../../tests/h
 
 const SWITCH = '/api/stt/switch';
 
-test.describe('TASK-586 STT compat switch', () => {
+test.describe('STT compat switch', () => {
   let tenantAdminToken: string;
 
   test.beforeAll(async ({ request }) => {

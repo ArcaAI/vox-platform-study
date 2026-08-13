@@ -7,7 +7,7 @@ import { ServiceReleaseTokenGuard } from './service-release-token.guard';
 /**
  * ServiceReleaseInternalController.
  *
- * Service-to-service self-registration + heartbeat (TASK-648 W8, U8 → U6).
+ * Service-to-service self-registration + heartbeat (U8 → U6).
  * `@Public()` only exempts these routes from the user-JWT/permission chain
  * (and the boot-time deny-by-default route-permission audit); they are
  * authenticated by the class-level `ServiceReleaseTokenGuard` instead. Never

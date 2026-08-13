@@ -1,6 +1,6 @@
 /**
- * Pure-logic unit tests for the Loop config tab's TASK-659 field helpers
- * (TASK-667). These mirror the shape of the server-side validators in
+ * Pure-logic unit tests for the Loop config tab's field helpers
+ * . These mirror the shape of the server-side validators in
  * `packages/applications/src/services/departmentAgent/constants.ts` without
  * importing them (features/console never imports a server package) — a
  * client-side mirror keeps the picker offering only values the server would

@@ -1,7 +1,7 @@
--- TASK-610 §4B — Many-to-many origins <-> tenants (owner-directed)
+-- Many-to-many origins <-> tenants (owner-directed)
 -- Supersedes the GLOBAL uniqueness on `TenantAllowedOrigin.origin` introduced
 -- in 20260804000000_task_610_tenant_allowed_origins. Several tenants may
--- legitimately share one origin (README §4B — "different tenant admin can
+-- legitimately share one origin (— "different tenant admin can
 -- have many tenants, and they also share the same origins"); a row is now a
 -- grant of ONE tenant's permission to act from that origin, not a claim on
 -- the origin itself. Uniqueness moves to the (origin, tenantId) PAIR: the

@@ -26,7 +26,7 @@ function TableSkeleton() {
 }
 
 /**
- * Read-only "effective harness policy" summary (TASK-547 requirement 4 —
+ * Read-only "effective harness policy" summary (
  * OD-2). One `GET admin/harness/policy` round-trip; every runtime knob
  * labeled with WHO controls it. `/harness/policy` owns the WRITE (rule 13's
  * one-authoritative-editor pattern) — this card is visibility only, so there

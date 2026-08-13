@@ -11,7 +11,7 @@ export interface IDnaWritingStyleReportEntity extends IBaseTenantEntity {
   departmentId?: string | null;
   reportData?: Record<string, unknown> | null;
   styleText?: string | null;
-  // TASK-551 — structured DNA redaction/rewrite rules
+  // Structured DNA redaction/rewrite rules
   // ({ rules: [{ id, type, match, pattern, replacement?, note? }] }). Transient
   // plaintext (repopulated by decrypt-on-read); persisted ONLY as the
   // `encryptedRedactionRules` ciphertext below.

@@ -36,7 +36,7 @@ export const AiModelFormat = {
   CLOUD_API: 'CLOUD_API',
   // whisper.cpp ggml runtime (whisper-large-v3-turbo GGUF).
   WHISPER_CPP: 'WHISPER_CPP',
-  // First-class cloud STT engines (TASK-586) — a bare-slug pipeline ref binds
+  // First-class cloud STT engines — a bare-slug pipeline ref binds
   // them like AZURE_SPEECH (no inline engine / provider-shorthand override).
   SARVAM: 'SARVAM',
   OPENAI: 'OPENAI',
@@ -45,7 +45,7 @@ export const AiModelFormat = {
 export const ModelCategory = {
   AUDIO: 'AUDIO',
   NLP: 'NLP',
-  // Vision-language models (TASK-657).
+  // Vision-language models.
   VISION: 'VISION',
 } as const;
 
@@ -63,7 +63,7 @@ export const ModelTaskType = {
   TOKEN_CLASSIFICATION: 'TOKEN_CLASSIFICATION',
   TEXT_CLASSIFICATION: 'TEXT_CLASSIFICATION',
   TEXT_TO_SPEECH: 'TEXT_TO_SPEECH',
-  // Multimodal image+text → text (TASK-657 vision extraction).
+  // Multimodal image+text → text (vision extraction).
   IMAGE_TEXT_TO_TEXT: 'IMAGE_TEXT_TO_TEXT',
 } as const;
 
@@ -86,7 +86,7 @@ export const AI_MODEL_PROVIDERS = [
   'built-in',
   'sarvam',
   'openai',
-  // Cloud tenant-BYO LLM providers (TASK-572). `openai` above already served
+  // Cloud tenant-BYO LLM providers. `openai` above already served
   // the STT OpenAI ASR engine; these two are net-new. Governance lives in
   // `CLOUD_BYO_PROVIDERS.llm` (@arcaai/applications); their SMR adapters are
   // `apps/smr/src/smr/providers/{anthropic,vertex}.py`.

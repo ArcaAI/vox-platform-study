@@ -1,4 +1,4 @@
--- TASK-551 — DNA redaction/rewrite AUDIT TRAIL persisted on SummaryMeta.
+-- DNA redaction/rewrite AUDIT TRAIL persisted on SummaryMeta.
 --
 -- The harness workflow computes a RedactionManifest (rule ids, actions, spans,
 -- removed lengths — NEVER removed PHI plaintext) whenever the DNA redaction

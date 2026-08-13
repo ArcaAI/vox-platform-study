@@ -3,7 +3,7 @@
  *
  * Probes `AgentTrajectoryController` at `/api/v1/admin/agent-trajectory/*`
  * (class-gated by `@CanManage('HarnessPolicy')`; tenant scoping via
- * `resolveScopedTenantId`), following the task-506 / task-348 cross-tenant
+ * `resolveScopedTenantId`), following the / cross-tenant
  * patterns.
  *
  * Locked contracts:

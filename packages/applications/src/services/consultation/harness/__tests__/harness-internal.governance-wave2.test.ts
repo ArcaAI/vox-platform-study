@@ -1,5 +1,5 @@
 /**
- * HarnessInternalService — TASK-553 Wave 2 governance behaviour.
+ * HarnessInternalService — governance behaviour.
  *
  *  * **F-18 re-visit carry-forward.** A consultation with a `parentConsultationId`
  *    may carry its prior visit's most authoritative note into the prompt — but
@@ -67,7 +67,7 @@ function build(fixtures: Fixtures = {}) {
     findByType: vi.fn(async (_consultationId: string, type: string) => (fixtures.parentItems?.[type] ?? []) as unknown[]),
     create: vi.fn(),
     encryptContentIntoEntity: vi.fn(),
-    // TASK-655 — `loadLiveSoapSnapshot` delegates to the repository's
+    // `loadLiveSoapSnapshot` delegates to the repository's
     // `findLatestPreSummaryWithDecryptedContent`; mirror it here through this
     // fixture's own `findPreSummaries` mock (no SecretsService is wired in this
     // suite, so decrypt is never invoked — same as before the refactor).

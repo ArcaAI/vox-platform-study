@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# TASK-689 — isolated TEST Vault dev-mode bootstrap.
+# Isolated TEST Vault dev-mode bootstrap.
 #
 # Trimmed twin of dev-init.sh, run inside the `vault-init-test` sidecar
 # (tests/docker-compose.test.yml) against the standalone `hope-vault-test`

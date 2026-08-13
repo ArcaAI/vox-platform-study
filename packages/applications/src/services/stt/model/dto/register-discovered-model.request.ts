@@ -13,7 +13,7 @@ import { DISCOVERABLE_AI_MODEL_PROVIDERS } from './create-model.request';
  *
  * `slug` stays optional and is normally derived from `modelName`. It becomes
  * REQUIRED only when the derived slug is already taken — deliberately no silent
- * suffixing, so governance rows are always named on purpose (§3.4).
+ * suffixing, so governance rows are always named on purpose.
  */
 export class RegisterDiscoveredModelRequest {
   @ApiProperty({

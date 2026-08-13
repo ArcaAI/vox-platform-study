@@ -181,7 +181,7 @@ export function useArcaContext() {
           content: content ?? '',
           source: 'USER',
           metadata,
-          // TASK-656/665: the `Media` table row UUID from `useStorage().uploadFile()`
+          // The `Media` table row UUID from `useStorage().uploadFile()`
           // — the id the backend can actually resolve, unlike the raw storage `key`.
           mediaId,
         });

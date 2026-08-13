@@ -32,7 +32,7 @@ export interface UsageOutboxPruneResult {
  * Prunes `AiUsageOutbox` rows that have already been drained (`status:
  * DISPATCHED`) and are older than a configurable retention window (WS-B
  * handoff, ws-b-contract.md §11: "Outbox retention/pruning for DISPATCHED
- * rows. | Owner: WS-K").
+ * rows. | Owner: ").
  *
  * `AiUsageOutboxRepository`'s own doc comment already frames the model this
  * way: "Rows are WORK ITEMS, not history: append-only, no soft delete

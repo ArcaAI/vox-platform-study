@@ -1,5 +1,5 @@
 // =============================================================================
-// Tenant Billing — invoice lifecycle (TASK-615, decisions D12–D15, D17).
+// Tenant Billing — invoice lifecycle (decisions D12–D15, D17).
 //
 // The SELL side of the metering plane. Monthly computation reads the ROLLUPS in
 // `usage-ledger.prisma` (never raw events at invoice time) against the SELL rows
@@ -27,7 +27,7 @@
 
 /// One tenant's invoice for one billing period.
 ///
-/// OCC: this is the one TASK-615 model that is optimistically
+/// OCC: this is the one model that is optimistically
 /// concurrency-controlled. Draft edits and the finalize transition go through
 /// `_version` → strong ETag → `If-Match` → `repository.updateWithVersion`, so
 /// two concurrent finalizes cannot both win and clobber each other's totals.

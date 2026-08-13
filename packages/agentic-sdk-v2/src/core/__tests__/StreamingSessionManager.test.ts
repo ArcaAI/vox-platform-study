@@ -643,7 +643,7 @@ describe('StreamingSessionManager', () => {
   });
 
   // ===========================================================================
-  // switchToFallback (TASK-567 R4)
+  // switchToFallback
   // ===========================================================================
 
   describe('switchToFallback', () => {
@@ -680,7 +680,7 @@ describe('StreamingSessionManager', () => {
   });
 
   // ===========================================================================
-  // switchProvider('primary') — native 2-way switch (TASK-586 Lane H)
+  // switchProvider('primary') — native 2-way switch
   // ===========================================================================
 
   describe("switchProvider('primary') — native primary-direction switch", () => {

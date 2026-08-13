@@ -116,7 +116,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 logger=logger,
             )
 
-    # Self-registration (TASK-648 W9): fire-and-forget, bounded-timeout, NEVER
+    # Self-registration: fire-and-forget, bounded-timeout, NEVER
     # blocks or fails boot. Dedicated short-lived httpx client, closed below.
     app.state.service_release_task = None
     app.state.service_release_http_client = None
@@ -198,8 +198,8 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
     app.include_router(speech_router, prefix="/api/v1")
     app.include_router(stream_ws_router, prefix="/api/v1")
 
-    # TASK-636 OBS-13: default OFF — activates only when BOTH the master
-    # switch AND an endpoint are set (TASK-411 invariant: never require a
+    # Default OFF — activates only when BOTH the master
+    # switch AND an endpoint are set (never require a
     # reachable observability backend to start or serve traffic). The
     # WebSocket streaming surface is deliberately NOT instrumented here.
     if settings.otel_enabled and settings.otel_exporter_endpoint:

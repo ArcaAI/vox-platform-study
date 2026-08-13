@@ -1,5 +1,5 @@
 /**
- * TASK-615 WS-D2 (item 1b) — `ContextService#addRawSummary` is one of the two
+ * `ContextService#addRawSummary` is one of the two
  * unmetered `SummaryMeta` writers flagged in the WS-D handoff ("compat"
  * path). Unlike `comprehensive-summary.processor.ts` (item 1a), this write
  * path makes NO SMR call of its own — confirmed by an exhaustive search: zero
@@ -63,7 +63,7 @@ function makeHarness(overrides: { usageLedgerService?: unknown; unitOfWorkServic
   return { service, summaryMetaRepository, consultationRepository, usageLedgerService: usageLedgerService as { recordUsage: ReturnType<typeof vi.fn> }, unitOfWorkService };
 }
 
-describe('ContextService#addRawSummary — usage-ledger emission (TASK-615 WS-D2)', () => {
+describe('ContextService#addRawSummary — usage-ledger emission', () => {
   let harness: ReturnType<typeof makeHarness>;
 
   beforeEach(() => {

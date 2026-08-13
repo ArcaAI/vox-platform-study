@@ -1,5 +1,5 @@
 # =============================================================================
-# HOPE — Vault ServiceMonitor (TASK-312 Phase C, C.7)
+# HOPE — Vault ServiceMonitor
 # =============================================================================
 # Prometheus Operator CRD. Scrapes Vault's native telemetry at
 # /v1/sys/metrics?format=prometheus. Unauthenticated scrape works because

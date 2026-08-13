@@ -66,7 +66,7 @@ class TestAzureOpenAIConfig:
         cfg = AzureOpenAIConfig()
         assert cfg.api_key.get_secret_value() == ""
         assert cfg.endpoint == ""
-        # TASK-579: cloud providers carry no compiled-in vendor model default —
+        # Cloud providers carry no compiled-in vendor model default —
         # provider/model SELECTION is failMode=closed (informational-only field).
         assert cfg.default_model == ""
         assert cfg.tpm_limit == 80_000
@@ -82,7 +82,7 @@ class TestAzureOpenAIConfig:
         assert cfg.deployment_name == "gpt-4o"
 
     def test_api_key_not_read_from_env(self, monkeypatch):
-        # TASK-602: api_key is BYOK-only — SMR_AZURE_API_KEY no longer populates it.
+        # Api_key is BYOK-only — SMR_AZURE_API_KEY no longer populates it.
         monkeypatch.setenv("SMR_AZURE_API_KEY", "env-key")
         monkeypatch.setenv("SMR_AZURE_RPM_LIMIT", "1000")
         cfg = AzureOpenAIConfig()
@@ -97,7 +97,7 @@ class TestBedrockConfig:
         assert cfg.max_pool_connections == 150
         assert cfg.tpm_limit == 100_000
         assert cfg.rpm_limit == 100
-        # TASK-579: no compiled-in vendor model default (informational-only field).
+        # No compiled-in vendor model default (informational-only field).
         assert cfg.default_model == ""
 
     def test_override(self):
@@ -111,7 +111,7 @@ class TestBedrockConfig:
 
 
 class TestOpenAIConfig:
-    """TASK-579: no compiled-in vendor model default (informational-only field)."""
+    """No compiled-in vendor model default (informational-only field)."""
 
     def test_defaults(self, monkeypatch):
         _clear_smr_env(monkeypatch)
@@ -121,7 +121,7 @@ class TestOpenAIConfig:
 
 
 class TestAnthropicConfig:
-    """TASK-579: no compiled-in vendor model default (informational-only field)."""
+    """No compiled-in vendor model default (informational-only field)."""
 
     def test_defaults(self, monkeypatch):
         _clear_smr_env(monkeypatch)
@@ -130,7 +130,7 @@ class TestAnthropicConfig:
 
 
 class TestVertexConfig:
-    """TASK-579: no compiled-in vendor model default (informational-only field)."""
+    """No compiled-in vendor model default (informational-only field)."""
 
     def test_defaults(self, monkeypatch):
         _clear_smr_env(monkeypatch)
@@ -168,7 +168,7 @@ class TestQueueConfig:
 
 
 class TestTelemetryPhiGuardConfig:
-    """TASK-615 WS-G: PHI-safe telemetry boot guard.
+    """PHI-safe telemetry boot guard.
 
     Mirrors the gateway's `assertGenaiContentCaptureDisabled` posture:
     `NODE_ENV=production` + a content-capture value other than the literal

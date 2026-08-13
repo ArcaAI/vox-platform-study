@@ -117,7 +117,7 @@ register_processor(
     traits=("word_timestamps",),
 )
 
-# Cloud BYOK speech providers (TASK-567): REST engines, no local compute.
+# Cloud BYOK speech providers: REST engines, no local compute.
 register_processor(
     kind="asr",
     name="sarvam",

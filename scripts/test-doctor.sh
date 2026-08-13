@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================================
-# TASK-557 — TEST-environment doctor (read-only)
+# TEST-environment doctor (read-only)
 # ============================================================================
 # Test counterpart of scripts/dev-doctor.sh. Probes the ISOLATED test
 # infrastructure (Postgres 5433, Redis 6380, MinIO 9002, Qdrant 6335) and any
@@ -14,11 +14,11 @@
 #   required = test infra (postgres/redis/minio/qdrant) + schema presence
 #   optional = the app services (they are only up while a suite is running)
 #
-# PORTS: the TEST env is fully independent of DEV (TASK-557) — application
+# PORTS: the TEST env is fully independent of DEV — application
 #   ports are DEV + 100 (api 8968, stt 8961, smr 8962, guardrail 8963,
 #   nlp 8964, tts 8965, harness 8966, admin 5276), and the infra ports already
 #   differed (Postgres 5433, Redis 6380, MinIO 9002, Qdrant 6335, Vault 8201 —
-#   TASK-689 isolated Vault too). Both stacks can run side by side. Ports are
+#   isolated Vault too). Both stacks can run side by side. Ports are
 #   read from .env.test, never hardcoded.
 # ============================================================================
 
@@ -185,7 +185,7 @@ http_check optional "guardrail ($T_GUARDRAIL_PORT)" "http://localhost:$T_GUARDRA
 http_check optional "harness ($T_HARNESS_PORT)"     "http://localhost:$T_HARNESS_PORT/api/v1/health"
 
 echo -e "${CYAN}── Dev/test isolation ───────────────────────────────────────────${NC}"
-# Since TASK-557 the two environments use disjoint ports, so both may run at
+# The two environments use disjoint ports, so both may run at
 # once. What still matters is that .env.test has not drifted back onto a dev
 # port — that would silently point a suite at the dev stack.
 collisions=""

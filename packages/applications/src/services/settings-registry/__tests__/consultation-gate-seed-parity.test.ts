@@ -1,5 +1,5 @@
 /**
- * TASK-684 — seed ↔ registry parity for the two consultation-pipeline
+ * Seed ↔ registry parity for the two consultation-pipeline
  * kill-switches (`harness.loop.enabled`, `consultation.ocr.enabled`).
  *
  * The owner requirement is "the consultation loop is enabled on day 1, in every
@@ -66,7 +66,7 @@ function fakeAppSettings(store: Map<string, unknown>) {
   } as never;
 }
 
-describe('TASK-684 consultation-gate seed ↔ registry parity', () => {
+describe('consultation-gate seed ↔ registry parity', () => {
   it('seeds exactly the two consultation-pipeline gate keys', () => {
     expect(seededKeys().sort()).toEqual([...GATE_KEYS].sort());
   });
@@ -105,7 +105,7 @@ describe('TASK-684 consultation-gate seed ↔ registry parity', () => {
 
   // Idempotency is also enforced globally by
   // `seed/__tests__/seed-idempotency.test.ts`, which scans every `NN-name.ts`
-  // phase file; restated here so this ticket's own contract is self-contained.
+  // phase file; restated here so this contract is self-contained.
   it('never clobbers an operator override on re-seed — `value` is create-only', () => {
     const source = seedSource();
     const update = source.slice(source.indexOf('update: {'), source.indexOf('create: {'));
@@ -120,7 +120,7 @@ describe('TASK-684 consultation-gate seed ↔ registry parity', () => {
   });
 });
 
-describe('TASK-684 the seeded row resolves the gates ON', () => {
+describe('the seeded row resolves the gates ON', () => {
   it('resolves OFF with no row — absence is still fail-safe', () => {
     const settings = new TenantSettingsService(fakeAppSettings(new Map()));
     for (const key of GATE_KEYS) {

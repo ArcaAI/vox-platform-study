@@ -28,7 +28,7 @@ export interface TrialInfo {
   expired: boolean;
 }
 
-/** One resolved capability with its live usage (proposal §2). */
+/** One resolved capability with its live usage (proposal). */
 export interface CapabilityUsageRow {
   key: string;
   limit?: number | null;

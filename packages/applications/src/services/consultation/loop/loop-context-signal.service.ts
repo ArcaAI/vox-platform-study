@@ -7,7 +7,7 @@ import { HarnessGatewayService, type HarnessConsultationEndingSignal, type Harne
 
 /**
  * LoopContextSignalService — the new `@OnEvent(ContextAdded)` consumer that
- * signals the `ConsultationLoopWorkflow` (TASK-662), plus (TASK-670) the two
+ * signals the `ConsultationLoopWorkflow`, plus the two
  * lifecycle-boundary signal callers (`signalConsultationEnding`,
  * `signalLoopCancel`) that share its exact gating/best-effort posture.
  *
@@ -18,11 +18,11 @@ import { HarnessGatewayService, type HarnessConsultationEndingSignal, type Harne
  * No-op when the loop is not enabled for this deployment. The gate is the
  * `harness.loop.enabled` KILL-SWITCH (tier `global-kv`), resolved on EVERY
  * signal through `TenantSettingsService`, so an operator can stop a
- * misbehaving loop with no redeploy (TASK-679).
+ * misbehaving loop with no redeploy.
  *
  * It used to be a plain `HARNESS_LOOP_ENABLED` env read in this constructor,
  * mirroring `OCR_ENABLED`'s posture — and that precedent was itself the
- * configuration-tier violation: §9.2 L1 says an env var is immutable for the
+ * configuration-tier violation: an env var is immutable for the
  * process lifetime, so a flag that needs a restart is a build flag, not a
  * kill-switch. A real per-tenant/per-consultation loop POLICY remains a
  * separate concern (`ILoopConfigService`), not a cascade level of this switch.
@@ -82,7 +82,7 @@ export class LoopContextSignalService {
         contextType: payload.contextType,
         subType: payload.subType,
         contentPreview: payload.contentPreview,
-        // TASK-670 — payload completeness: kindKey/occurredAt/depth/content.
+        // Payload completeness: kindKey/occurredAt/depth/content.
         kindKey: payload.kindKey,
         occurredAt: payload.timestamp,
         depth: payload.depth ?? 0,
@@ -100,7 +100,7 @@ export class LoopContextSignalService {
   }
 
   /**
-   * TASK-670 — tell the loop the recording stopped. Same gate + best-effort
+   * Tell the loop the recording stopped. Same gate + best-effort
    * posture as `handleContextAdded`; the caller (`ConsultationController
    * .stopRecording`) never awaits a failure into a broken response.
    */
@@ -119,7 +119,7 @@ export class LoopContextSignalService {
   }
 
   /**
-   * TASK-670 — tell the loop to stop WITHOUT running its ending actions (the
+   * Tell the loop to stop WITHOUT running its ending actions (the
    * consultation was abandoned). Same gate + best-effort posture.
    */
   async signalLoopCancel(consultationId: string, payload: HarnessLoopCancelSignal = {}): Promise<void> {

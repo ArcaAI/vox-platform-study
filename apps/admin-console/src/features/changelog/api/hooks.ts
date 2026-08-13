@@ -16,7 +16,7 @@ import type { ChangelogSeverity, CreateChangelogEntryRequest, UpdateChangelogEnt
 /**
  * Drives the one-time What's New dialog. Callers gate rendering on
  * impersonation and on "already shown this session" themselves — this hook
- * only fetches (§3.6). Disabled entirely via `enabled` while impersonating.
+ * only fetches. Disabled entirely via `enabled` while impersonating.
  */
 export function useUnseenChangelog(enabled: boolean) {
   return useQuery({ queryKey: changelogKeys.unseen(), queryFn: listUnseenChangelog, enabled, staleTime: Number.POSITIVE_INFINITY });

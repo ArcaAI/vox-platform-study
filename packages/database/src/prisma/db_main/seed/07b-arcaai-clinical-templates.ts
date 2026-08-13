@@ -1,21 +1,21 @@
 /**
- * TASK-592 Workstream D — ArcaAI clinical prompt library.
+ * ArcaAI clinical prompt library.
  *
  * Ports HOPE v1's department × visit-type clinical instruction templates into
  * the v2 seed for the **ArcaAI customer tenant** (50000000-…0001), wired so
  * `PromptResolutionService` resolves them PER VISIT TYPE.
  *
  * Wiring model — TWO paths that resolve the SAME template, by construction:
- *   - tier-1a (preferred, since TASK-635 RF-3): the SEVEN departments seeded by
- *     TASK-592 have ONE default `DepartmentAgent` whose per-visit-type bindings
+ * - tier-1a (preferred, since): the SEVEN departments seeded by
+ * Have ONE default `DepartmentAgent` whose per-visit-type bindings
  *     (`newPatientTemplateId` / `revisitTemplateId`) name the ids below —
  *     ARCAAI_TENANT_AGENTS in 07a-agent-golden-library.ts. The FOUR departments
- *     added by TASK-634 Phase 8b carry NO agent and reach their templates
+ * added by carry NO agent and reach their templates
  *     through tier-1b only;
  *   - tier-1b: the LEGACY Department prompt-id columns (`newPatientPromptId` /
  *     `revisitPromptId` in 04-department.ts), set on all eleven and pointing at
  *     the very same ids.
- * Before TASK-635 the agent tier could not be used at all here, because a
+ * Before the agent tier could not be used at all here, because a
  * DepartmentAgent was a single prompt pointer that ignored visit type and would
  * have collapsed v1's new-referral vs follow-up split. C2 added the visit-type
  * axis, which is what makes the agent tier safe for this tenant.
@@ -103,7 +103,7 @@ export const ARCAAI_CLINICAL_TEMPLATE_IDS = {
   BREAST_ENDOCRINE_NEW_REFERRAL: '71000000-0000-0000-0001-000000000022',
   BREAST_ENDOCRINE_FOLLOWUP: '71000000-0000-0000-0001-000000000023',
   PRE_SUMMARY: '71000000-0000-0000-0001-000000000024',
-  // TASK-634 Phase 8b — the four remaining v1 departments. Slots continue after
+  // The four remaining v1 departments. Slots continue after
   // the pre-summary (…024); the block is contiguous, not grouped by department.
   DERMATOLOGY_NEW_REFERRAL: '71000000-0000-0000-0001-000000000025',
   DERMATOLOGY_FOLLOWUP: '71000000-0000-0000-0001-000000000026',
@@ -388,7 +388,7 @@ const ALL_SPECS: ClinicalTemplateSpec[] = [...SUMMARY_SPECS, PRE_SUMMARY_SPEC];
  * an empty department schema rather than to another department's prompt.
  *
  * NOTE — the pre-summary chain (PromptResolutionService.resolvePreSummaryPromptId,
- * TASK-634) deliberately skips the preferred/agent/department tiers and resolves
+ * ) deliberately skips the preferred/agent/department tiers and resolves
  * tenant TENANT_DEFAULT row (tag-convention lookup: scope=TENANT_DEFAULT,
  * departmentId null, tag 'pre-summary', APPROVED, via findTenantPreSummaryTemplateId)
  * → SYSTEM_DEFAULTS.preSummaryPromptId → 503 fail-closed. This seed's PRE_SUMMARY_SPEC

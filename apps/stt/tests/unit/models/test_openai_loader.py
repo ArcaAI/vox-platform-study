@@ -1,4 +1,4 @@
-"""Unit tests for the OpenAI speech-to-text loader (TASK-567).
+"""Unit tests for the OpenAI speech-to-text loader.
 
 Mirrors ``test_sarvam_loader.py``: BYOK-override-first / env-fallback, the
 CloudASRAuthError when neither source has a key, base_url override, and the
@@ -84,7 +84,7 @@ class TestOpenAILoaderLoad:
 
     @pytest.mark.asyncio
     async def test_env_key_is_ignored_byok_only(self):
-        """TASK-602: an env-set OpenAI key must NOT satisfy the loader — BYOK-only."""
+        """An env-set OpenAI key must NOT satisfy the loader — BYOK-only."""
         loader = OpenAILoader()
         with patch("stt.models.openai_loader.get_settings") as gs:
             gs.return_value = _settings(SecretStr("env-openai-key"))

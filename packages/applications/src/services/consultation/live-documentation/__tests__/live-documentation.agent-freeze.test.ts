@@ -1,5 +1,5 @@
 /**
- * TASK-635 C3 invariants (C1 §10 rollout table, tests C3-T1…C3-T5).
+ * Live-session freeze invariants (rollout table).
  *
  * The governing property of this lane: **an unconfigured tenant sees zero
  * behavior change.** The live loop stops hardcoding its prompt and starts
@@ -99,7 +99,7 @@ function buildService(opts: {
     //
     // `getSecretOptional` is REQUIRED, not decorative: `callSmr` resolves
     // `SMR_SERVICE_TOKEN` through it for the authenticated gateway→SMR hop
-    // (TASK-640). A stand-in missing the method throws inside the flush's try,
+    // A stand-in missing the method throws inside the flush's try,
     // which the catch turns into "SMR failed" — so every assertion about the
     // SMR payload silently sees zero calls instead of failing loudly.
     { encrypt: vi.fn(), decrypt: vi.fn(), getSecretOptional: vi.fn().mockResolvedValue('') } as never,
@@ -116,7 +116,7 @@ const settle = async (): Promise<void> => {
   await new Promise((resolve) => setImmediate(resolve));
 };
 
-describe('TASK-640 — the gateway→SMR hop is authenticated', () => {
+describe('The gateway→SMR hop is authenticated', () => {
   it('sends X-Service-Token resolved from SMR_SERVICE_TOKEN', async () => {
     const calls: SmrCall[] = [];
     const http = recordingHttpMock(calls);
@@ -134,7 +134,7 @@ describe('TASK-640 — the gateway→SMR hop is authenticated', () => {
     expect(generate, 'the live loop must reach SMR').toBeTruthy();
     // Without this header SMR answers `invalid_or_missing_token` in every
     // environment where the token is set, and the flush degrades to an empty
-    // note (TASK-640) — silently, because the failure never reaches the SSE payload.
+    // note — silently, because the failure never reaches the SSE payload.
     expect(generate![2].headers['X-Service-Token']).toBe('smr-token');
   });
 });
@@ -284,7 +284,7 @@ describe('C3-T2 — freeze semantics and three-tier recovery', () => {
     const created: { metaData?: Record<string, unknown> }[] = [];
     const contextItemRepository = {
       findPreSummaries: vi.fn().mockResolvedValue([]),
-      // TASK-655 — `findLiveSnapshotRow` now delegates to this repository
+      // `findLiveSnapshotRow` now delegates to this repository
       // helper; mirror it through the SAME `findPreSummaries` mock above so
       // the create-vs-reuse dedup this test drives is unaffected.
       findLatestPreSummaryWithDecryptedContent: vi.fn(

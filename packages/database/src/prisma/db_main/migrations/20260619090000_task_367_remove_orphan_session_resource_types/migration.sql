@@ -1,4 +1,4 @@
--- TASK-367 — Remove dead/orphan `Session` / `SessionEvent` / `SessionSyncLog`
+-- Remove dead/orphan `Session` / `SessionEvent` / `SessionSyncLog`
 -- values from `core."ResourceType"`.
 --
 -- These three labels were declared in the very first commit (`d10c1775`,

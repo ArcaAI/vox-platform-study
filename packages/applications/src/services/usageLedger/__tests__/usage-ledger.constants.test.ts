@@ -1,5 +1,5 @@
 /**
- * TASK-615 WS-D2 (item 4c) — the outbox-drain BullMQ queue name is promoted
+ * (item 4c) — the outbox-drain BullMQ queue name is promoted
  * into the shared `JobQueue` enum home (`@arcaai/domains`), per the WS-B
  * handoff ("Promoting AiUsageOutboxDrain into the shared JobQueue enum").
  *

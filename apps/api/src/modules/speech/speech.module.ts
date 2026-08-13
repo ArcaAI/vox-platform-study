@@ -13,8 +13,8 @@ import { TtsWsGateway } from './tts-ws.gateway';
 // (under the app's @Global core), and StreamTicketService is @Global, so this
 // module only needs the HTTP client, the per-tenant TTS spec resolver, the
 // unified provider-connection plane (BYO credential injection, `service='tts'`,
-// TASK-570), the usage-ledger emission port (TASK-615 WS-E), the
-// entitlements quota port (TASK-615 WS-H, monthlyTtsCharacters pre-flight —
+// ), the usage-ledger emission port, the
+// entitlements quota port (monthlyTtsCharacters pre-flight
 // neither is @Global, so every consuming module imports it explicitly), and
 // to register the WS-duplex gateway.
 @Module({

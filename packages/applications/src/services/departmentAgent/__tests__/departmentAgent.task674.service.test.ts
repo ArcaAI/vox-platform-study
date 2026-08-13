@@ -1,10 +1,10 @@
 /**
- * TASK-674 — `DepartmentAgentService.listVersions`.
+ * `DepartmentAgentService.listVersions`.
  *
  * Covers: ownership-checked read (cross-tenant 404), newest-first mapping to
  * `DepartmentAgentVersionResponse` (incl. `changeReason`), and the
  * `@Optional()` degrade to an empty list when `agentVersionRepository` is not
- * wired — mirrors every other TASK-659 read path's fixture-arity convention.
+ * wired — mirrors every other read path's fixture-arity convention.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { NotFoundException } from '@nestjs/common';
@@ -37,7 +37,7 @@ function buildService(includeVersionRepository = true) {
   );
 }
 
-describe('DepartmentAgentService.listVersions — TASK-674', () => {
+describe('DepartmentAgentService.listVersions', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockClsService.get.mockImplementation((key: string) => {

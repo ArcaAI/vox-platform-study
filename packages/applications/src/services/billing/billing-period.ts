@@ -1,7 +1,7 @@
 import { ArgumentInvalidException } from '@arcaai/exceptions';
 
 /**
- * Billing-period arithmetic (TASK-615 WS-I).
+ * Billing-period arithmetic.
  *
  * A billing period is a HALF-OPEN UTC calendar month `[start, end)` — the same
  * boundary the daily rollups and `TenantUsageMeter` use (D13), so allowances,

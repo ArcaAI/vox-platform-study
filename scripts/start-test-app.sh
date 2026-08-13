@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================================
-# TASK-557 — Start ONE app/service/worker against the TEST environment
+# Start ONE app/service/worker against the TEST environment
 # ============================================================================
 # Replaces the former per-service start-test-{api,stt,smr,nlp}.sh scripts,
 # which each re-implemented a uvicorn command that scripts/dev-service.sh
@@ -21,7 +21,7 @@
 #   - schema pushed + seeded        (pnpm test:db:reset)
 #   - conda env 'arcaenv'           (Python targets only; pnpm setup:python)
 #
-# PORTS: the TEST env owns its own application ports (DEV + 100, TASK-557), so
+# PORTS: the TEST env owns its own application ports (DEV + 100), so
 # a dev stack may keep running alongside. Ports are read from .env.test; a bound
 # port is still refused, since that means a second TEST instance.
 # ============================================================================
@@ -73,7 +73,7 @@ cd "$PROJECT_ROOT"
 load_env_test
 
 # ----------------------------------------------------------------------------
-# TASK-679 — provision Vault BEFORE launching, exactly as scripts/test-run.sh
+# Provision Vault BEFORE launching, exactly as scripts/test-run.sh
 # does for the managed suites.
 #
 # WHY THIS IS NOT OPTIONAL. The test env runs SECRETS_PROVIDER=vault, so every
@@ -83,12 +83,12 @@ load_env_test
 # file is only ever the SEED INPUT that ensure-test-vault-creds.sh pushes into
 # that path.
 #
-# HISTORICAL NOTE (fixed by TASK-689): dev and test used to share ONE Vault
+# HISTORICAL NOTE: dev and test used to share ONE Vault
 # (hope-vault) at ONE kv prefix, so a later `pnpm setup:dev` / refresh-vault-
 # creds.sh would overwrite those keys with .env.dev's values and .env.test's
 # differing values would go silently dead — which is what made
 # .env.test's HARNESS_SERVICE_TOKEN look live while answering 401.
-# TASK-689 gives test its own isolated Vault (hope-vault-test,
+# Test now has its own isolated Vault (hope-vault-test,
 # tests/docker-compose.test.yml) with its own kv-v2 store, so that specific
 # cross-talk is now structurally impossible. The call below is still required
 # though: hope-vault-test's kv store starts EMPTY (test-init.sh seeds no

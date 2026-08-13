@@ -1,5 +1,5 @@
 /**
- * TASK-635 C2 — DepartmentAgent capability-binding write path (RF-4 / DR-9).
+ * DepartmentAgent capability-binding write path (/ DR-9).
  *
  * The tenant opt-in surface for the whole live-agent design is the EXISTING
  * DepartmentAgent REST API — there is no new UI in this ticket — so these
@@ -86,7 +86,7 @@ const baseCreate = {
   promptTemplateId: 'tpl-base',
 };
 
-describe('DepartmentAgentService — TASK-635 capability bindings', () => {
+describe('DepartmentAgentService — capability bindings', () => {
   let service: DepartmentAgentService;
 
   beforeEach(() => {
@@ -207,7 +207,7 @@ describe('DepartmentAgentService — TASK-635 capability bindings', () => {
   });
 
   describe('llmOverrides validation', () => {
-    it('rejects a task key outside { live, finalize } — one global model field is forbidden by RF-4', async () => {
+    it('rejects a task key outside { live, finalize } — one global model field is forbidden by', async () => {
       await expect(service.create({ ...baseCreate, llmOverrides: { aiModelSlug: 'lms-gemma' } })).rejects.toThrow(/unknown task/);
       await expect(service.create({ ...baseCreate, llmOverrides: { test: { aiModelSlug: 'x' } } })).rejects.toThrow(/unknown task 'test'/);
     });

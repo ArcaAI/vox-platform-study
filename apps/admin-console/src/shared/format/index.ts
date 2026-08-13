@@ -75,7 +75,7 @@ export function formatPercent(value: number | null | undefined): string {
 const currencyFormat = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
 
 /**
- * Integer-micros string (1e-6 of the currency unit — the TASK-615 WS-I money
+ * Integer-micros string (1e-6 of the currency unit — the WS-I money
  * convention, where money always rides a string, never a JSON double) to a
  * display currency string: "199029940" -> "$199.03". Display-ONLY: it parses
  * through a JS number, exact for any realistic invoice (< ~$9e9); the micros

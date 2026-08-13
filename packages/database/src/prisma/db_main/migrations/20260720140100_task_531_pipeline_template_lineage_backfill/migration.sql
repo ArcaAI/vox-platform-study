@@ -1,4 +1,4 @@
--- TASK-531 — Backfill template lineage onto existing tenant pipeline copies.
+-- Backfill template lineage onto existing tenant pipeline copies.
 --
 -- Companion to `…_task_531_pipeline_template_lineage`, which added the columns.
 -- This migration is DATA-ONLY: it decides which pre-existing tenant rows are
@@ -13,7 +13,7 @@
 -- customized, and the resync reconciler would later fast-forward it back to the
 -- SYSTEM YAML — destroying their work.
 --
--- So a row is locked only when BOTH predicates hold (README §3.3):
+-- So a row is locked only when BOTH predicates hold:
 --
 --   (a) its `slug` is one of the 9 SYSTEM template slugs, and it is not itself
 --       a SYSTEM row; AND
@@ -37,7 +37,7 @@
 -- `sourceTemplateSlug` (provenance) is set on EVERY slug-matched tenant row,
 -- including the ambiguous/customized ones. Lineage alone confers no lock, and
 -- recording it is exactly what lets an operator answer "which tenants diverged
--- from template X, and how" (README §3.5).
+-- from template X, and how".
 --
 -- The 9 slugs are inlined below because a migration cannot import TypeScript.
 -- `task-531-pipeline-template-lineage-migration.test.ts` is the drift gate: it

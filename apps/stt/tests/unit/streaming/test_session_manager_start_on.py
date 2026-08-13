@@ -1,4 +1,4 @@
-"""Unit tests for user-selected start-on-fallback at session create (TASK-586 C9).
+"""Unit tests for user-selected start-on-fallback at session create.
 
 Exercises ``SessionManager.create_session(start_on=...)`` in isolation: the
 heavy assembly is mocked, but the REAL ``_make_switch_controller`` is bound so

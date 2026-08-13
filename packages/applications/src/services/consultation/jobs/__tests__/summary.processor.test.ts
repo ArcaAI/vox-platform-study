@@ -22,7 +22,7 @@ const createMockContextItemRepository = () => ({
   findById: vi.fn(),
   findTranscripts: vi.fn(),
   findLatestPreSummary: vi.fn().mockResolvedValue(null),
-  // TASK-635 C6 — the processor now reads the warm start through the
+  // The processor now reads the warm start through the
   // decrypting, subType-aware accessor (B-02/B-06 parity with SummaryService).
   findLatestPreSummaryWithDecryptedContent: vi.fn().mockResolvedValue({ entity: null, plaintext: null }),
   create: vi.fn(),
@@ -200,7 +200,7 @@ describe('SummaryProcessor', () => {
     );
   });
 
-  // ── (§2.5): the BullMQ path threads the preferred prompt id ──
+  // ── : the BullMQ path threads the preferred prompt id ──
   describe('preferred-prompt threading (Phase 5)', () => {
     let mockConfigResolver: ReturnType<typeof createMockConfigResolver>;
     let processorWithResolver: SummaryProcessor;

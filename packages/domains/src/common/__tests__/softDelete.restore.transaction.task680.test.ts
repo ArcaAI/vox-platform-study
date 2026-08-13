@@ -1,11 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /**
- * TASK-680 — `Repository.softDelete` and `Repository.restore` accept an
+ * `Repository.softDelete` and `Repository.restore` accept an
  * optional transaction client.
  *
- * `create`, `createMany`, `updateWithVersion` and (since TASK-677) `update` all
- * do; these two did not. TASK-677 §6.2 recorded what that already cost: TASK-615
- * needed a transactional soft-delete for invoice lines, could not use the base
+ * `create`, `createMany`, `updateWithVersion` and `update` all
+ * do; these two did not. Earlier work recorded what that already cost:
+ * invoice-line writes needed a transactional soft-delete, could not use the base
  * class, and hand-wrote `BillingInvoiceLineWriteRepository` — duplicating
  * OCC-sensitive logic (`resourceStatus`, `resourceStatusUpdatedAt`,
  * `version: { increment: 1 }`) outside the one place the rules say it belongs.
@@ -18,7 +18,7 @@
  * 1. **Additive.** The one- and two-argument forms must behave EXACTLY as
  *    before, through the cached extended client. All 43 existing non-test call
  *    sites (37 `softDelete`, 6 `restore`) pass at most two arguments and are
- *    untouched by this ticket — backward compatibility by construction, not by
+ *    untouched — backward compatibility by construction, not by
  *    assertion: when `tx` is absent the delegate resolves to `this.db`, the
  *    identical expression the method used before.
  * 2. **OCC is untouched.** Neither method may acquire compare-and-set
@@ -27,7 +27,7 @@
  *    same thing as a `_version` PREDICATE. `updateWithVersion` remains the only
  *    CAS path.
  * 3. **The write genuinely enrols in the caller's transaction**, so a rollback
- *    covers it. Pinned by a journalling harness (T-8) rather than by asserting
+ *    covers it. Pinned by a journalling harness rather than by asserting
  *    on which mock was called, because the latter passes vacuously against a
  *    method that never writes at all.
  *
@@ -88,17 +88,17 @@ const buildHarness = async (modelName: string = SOFT_DELETE_MODEL) => {
   return { repo: new TestRepository(), db, tx, txDelegate, mapper };
 };
 
-describe('TASK-680 — Repository.softDelete(id, updatedBy?, tx?) / restore(id, updatedBy?, tx?)', () => {
+describe('Repository.softDelete(id, updatedBy?, tx?) / restore(id, updatedBy?, tx?)', () => {
   let harness: Awaited<ReturnType<typeof buildHarness>>;
   beforeEach(async () => {
     harness = await buildHarness();
   });
 
   // =========================================================================
-  // T-1 / T-4 — backward compatibility: the existing forms are unchanged
+  // Backward compatibility: the existing forms are unchanged
   // =========================================================================
 
-  describe('without `tx` — behaviour identical to before this ticket', () => {
+  describe('without `tx` — behaviour identical to the two-argument form', () => {
     it('softDelete writes DELETED through the cached extended client', async () => {
       harness.db.update.mockResolvedValueOnce({ id: 'e-1' });
 
@@ -150,7 +150,7 @@ describe('TASK-680 — Repository.softDelete(id, updatedBy?, tx?) / restore(id, 
   });
 
   // =========================================================================
-  // T-2 / T-5 — the new behaviour: the write joins the caller's transaction
+  // The new behaviour: the write joins the caller's transaction
   // =========================================================================
 
   describe('with `tx` — the write joins the transaction and never escapes it', () => {
@@ -178,7 +178,7 @@ describe('TASK-680 — Repository.softDelete(id, updatedBy?, tx?) / restore(id, 
       expect(harness.db.update).not.toHaveBeenCalled();
     });
 
-    // T-3 — the optional-stamp branch must survive the signature change: a
+    // The optional-stamp branch must survive the signature change: a
     // caller that wants a tx but has no acting user must not be forced to
     // invent one, and must not silently write `resourceStatusUpdatedBy: undefined`.
     it('omits resourceStatusUpdatedBy when `updatedBy` is undefined but `tx` IS supplied', async () => {
@@ -209,7 +209,7 @@ describe('TASK-680 — Repository.softDelete(id, updatedBy?, tx?) / restore(id, 
   });
 
   // =========================================================================
-  // T-6 — the soft-delete support guard is unchanged and still fires FIRST
+  // The soft-delete support guard is unchanged and still fires FIRST
   // =========================================================================
 
   describe('the supportsSoftDelete guard still throws before any write', () => {
@@ -235,7 +235,7 @@ describe('TASK-680 — Repository.softDelete(id, updatedBy?, tx?) / restore(id, 
   });
 
   // =========================================================================
-  // T-7 — OCC semantics are NOT acquired by this ticket
+  // OCC semantics are NOT acquired
   // =========================================================================
 
   describe('neither method acquires OCC semantics', () => {
@@ -257,7 +257,7 @@ describe('TASK-680 — Repository.softDelete(id, updatedBy?, tx?) / restore(id, 
   });
 
   // =========================================================================
-  // T-8 — the defect, modelled: does the write actually roll back?
+  // The defect, modelled: does the write actually roll back?
   // =========================================================================
 
   describe('a soft-delete inside a failing transaction leaves nothing behind', () => {
@@ -352,12 +352,12 @@ describe('TASK-680 — Repository.softDelete(id, updatedBy?, tx?) / restore(id, 
       expect(committed).toEqual(['soft-delete']);
     });
 
-    it('WITHOUT `tx` the write escapes the rollback — the gap this ticket closes', async () => {
+    it('WITHOUT `tx` the write escapes the rollback', async () => {
       const { committed, runInTransaction } = journallingTransaction(harness);
 
       await expect(
         runInTransaction(async () => {
-          // The pre-TASK-680 call shape: no tx to pass, so the write goes to
+          // The two-argument call shape: no tx to pass, so the write goes to
           // the cached extended client and commits independently.
           await harness.repo.softDelete('e-1', 'admin-1');
           throw new Error('later write failed');
@@ -365,7 +365,7 @@ describe('TASK-680 — Repository.softDelete(id, updatedBy?, tx?) / restore(id, 
       ).rejects.toThrow('later write failed');
 
       // The soft-delete SURVIVED a rolled-back transaction. This is the exact
-      // failure shape that cost TASK-615 a hand-written repository subclass.
+      // failure shape that cost a hand-written repository subclass.
       expect(committed).toEqual(['soft-delete']);
       expect(harness.db.update).toHaveBeenCalledTimes(1);
     });

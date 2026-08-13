@@ -1,19 +1,19 @@
 /**
- * @arcaai/room — AudioMixer PER-SOURCE level monitoring (TASK-597 follow-up #2).
+ * @arcaai/room — AudioMixer PER-SOURCE level monitoring.
  *
  * Why this exists: the mixer is the last place in the stack where the inputs
  * are still separate signals. Everything downstream sees one summed track, so
  * "which microphone is speaking" is answerable HERE and nowhere else. These
  * tests pin the four properties the SDK/app rely on:
  *
- *   1. a per-source level really is per-source (two sources, different signals,
- *      different levels — not one shared mixed number),
- *   2. the analyser taps are analysis-only (never connected to the mix),
- *   3. a muted source reads 0,
- *   4. nothing survives `stopLevelMonitoring()` / `dispose()` — no timer, no tap.
+ * 1. a per-source level really is per-source (two sources, different signals,
+ * different levels — not one shared mixed number),
+ * 2. the analyser taps are analysis-only (never connected to the mix),
+ * 3. a muted source reads 0,
+ * 4. nothing survives `stopLevelMonitoring()` / `dispose()` — no timer, no tap.
  *
  * @vitest-environment jsdom
- */
+*/
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { AudioMixer } from '../core/AudioMixer.js';

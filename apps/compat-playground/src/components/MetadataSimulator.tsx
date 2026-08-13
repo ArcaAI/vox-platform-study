@@ -16,7 +16,7 @@ import {
 import { usePlaygroundSession, type PlaygroundAutoTagMode, type PlaygroundCapturePhase } from '../context/playground-session';
 
 /**
- * When metadata may be attached (TASK-597 lane G — deliberate `phase` choice).
+ * When metadata may be attached (deliberate `phase` choice).
  *
  * Metadata is replayed onto the NEXT `onTranscript`, and since lane B tail
  * finals keep arriving through the whole `stopping` window — the mic is off,
@@ -24,7 +24,7 @@ import { usePlaygroundSession, type PlaygroundAutoTagMode, type PlaygroundCaptur
  * tag the turn that is about to land, and gating on `isRecording` (false from
  * the Stop click) disabled the form exactly when the last lines were coming in.
  * `starting` stays disabled: there is no session to attach to yet.
- */
+*/
 function canAttachMetadata(phase: PlaygroundCapturePhase): boolean {
   return phase === 'recording' || phase === 'stopping';
 }
@@ -32,22 +32,22 @@ function canAttachMetadata(phase: PlaygroundCapturePhase): boolean {
 /**
  * The metadata simulator — the Live-transcription tab's `{"mic":"1","speaker":"1"}`
  * demo from the reference screenshot. Two independent surfaces, both driven by
- * `usePlaygroundSession().metadata` (extracted from `ControllerColumn`, TASK-597
+ * `usePlaygroundSession().metadata` (extracted from `ControllerColumn`,
  * lane C):
  *
- *  1. The frozen single-shot "Simulate metadata" form (TASK-564) — unchanged
- *     behaviour, now with an inline 8 KB field error instead of a bare toast.
- *  2. Per-mic rows (R5): one `{mic, speaker, ...json}` row per configured
- *     source, sent by hand OR auto-tagged from the LIVE PER-SOURCE input level
- *     — the loudest mic above the threshold owns the turn (TASK-597
- *     follow-up #2). It falls back to a round-robin rotation only when the SDK
- *     reports no per-source signal, and says which of the two is running.
+ * 1. The frozen single-shot "Simulate metadata" form — unchanged
+ * behaviour, now with an inline 8 KB field error instead of a bare toast.
+ * 2. Per-mic rows (R5): one `{mic, speaker, ...json}` row per configured
+ * source, sent by hand OR auto-tagged from the LIVE PER-SOURCE input level
+ * — the loudest mic above the threshold owns the turn (
+ * follow-up #2). It falls back to a round-robin rotation only when the SDK
+ * reports no per-source signal, and says which of the two is running.
  *
  * Both surfaces share the SAME honesty note: on the v2 wire this metadata
  * never reaches the STT socket (see the callout below) — stated plainly here,
  * not buried in the README, because this app is what a migrating developer
  * reads to decide how metadata attribution actually works.
- */
+*/
 export function MetadataSimulator() {
   return (
     <>

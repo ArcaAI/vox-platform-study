@@ -75,7 +75,7 @@ function toAllowanceNumber(value: bigint | null | undefined): number | null {
 
 /**
  * `MeterCapabilityKey` → the `MeterUsage` field it reads. Replaces a chained
- * ternary as the capability set grew from 3 to 8 (TASK-615 D11): a map keeps
+ * ternary as the capability set grew from 3 to 8: a map keeps
  * `assertMeterQuota` a flat, exhaustively-typed lookup instead of an
  * if/else-if ladder, and `Record<MeterCapabilityKey, ...>` means TypeScript
  * itself refuses to compile if a capability is ever added to the union
@@ -215,7 +215,7 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
       buildCapabilityRow('monthlyConsultations', resolved.limits.monthlyConsultations, meterUsage.consultations),
       buildCapabilityRow('monthlyTranscriptionMinutes', resolved.limits.monthlyTranscriptionMinutes, meterUsage.transcriptionMinutes),
       buildCapabilityRow('monthlySummaries', resolved.limits.monthlySummaries, meterUsage.summaries),
-      // TASK-615 D11 — the five ledger-derived unit-allowance meters.
+      // The five ledger-derived unit-allowance meters.
       buildCapabilityRow('monthlySttSessionSeconds', resolved.limits.monthlySttSessionSeconds, meterUsage.sttSessionSeconds),
       buildCapabilityRow('monthlyLlmTokens', resolved.limits.monthlyLlmTokens, meterUsage.llmTokens),
       buildCapabilityRow('monthlyTtsCharacters', resolved.limits.monthlyTtsCharacters, meterUsage.ttsCharacters),
@@ -244,7 +244,7 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
   }
 
   /**
-   * TASK-643 R6 — the first ENFORCING read of a boolean entitlement.
+   * The first ENFORCING read of a boolean entitlement.
    *
    * The three pre-existing feature booleans are display-only: nothing but
    * `getCapabilities`, the SDK's `useEntitlements` and the console reads them.
@@ -300,7 +300,7 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
     // Q10 — block the NEW action only; existing resources are grandfathered.
     // Emit an audit event (subscribers persist it), then throw the
     // typed error the API maps to 409/429.
-    // TASK-615 — `responsibleEntityId` (from CLS, when a request is in
+    // `responsibleEntityId` (from CLS, when a request is in
     // flight) lets the sys-event consumer author the resulting audit-log row
     // instead of leaving it authorless; a background/system caller with no
     // CLS user emits `undefined`, same as `broadcastSysEvent` already tolerates.
@@ -546,7 +546,7 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
     this.applyLimitField(request, 'monthlyConsultations', (v) => (row.monthlyConsultations = v));
     this.applyLimitField(request, 'monthlyTranscriptionMinutes', (v) => (row.monthlyTranscriptionMinutes = v));
     this.applyLimitField(request, 'monthlySummaries', (v) => (row.monthlySummaries = v));
-    // TASK-615 D11 — per-capability allowance ceilings (same bigint conversion as storageQuotaBytes above).
+    // Per-capability allowance ceilings (same bigint conversion as storageQuotaBytes above).
     this.applyBigIntField(request.monthlySttSessionSeconds, (v) => (row.monthlySttSessionSeconds = v));
     this.applyBigIntField(request.monthlyLlmTokens, (v) => (row.monthlyLlmTokens = v));
     this.applyBigIntField(request.monthlyTtsCharacters, (v) => (row.monthlyTtsCharacters = v));
@@ -612,7 +612,7 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
       monthlyConsultations: request.monthlyConsultations ?? null,
       monthlyTranscriptionMinutes: request.monthlyTranscriptionMinutes ?? null,
       monthlySummaries: request.monthlySummaries ?? null,
-      // TASK-615 D11 — negotiated per-capability allowance overrides.
+      // Negotiated per-capability allowance overrides.
       monthlySttSessionSeconds:
         request.monthlySttSessionSeconds === null || request.monthlySttSessionSeconds === undefined ? null : BigInt(request.monthlySttSessionSeconds),
       monthlyLlmTokens: request.monthlyLlmTokens === null || request.monthlyLlmTokens === undefined ? null : BigInt(request.monthlyLlmTokens),
@@ -657,7 +657,7 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
     existing.monthlyConsultations = null;
     existing.monthlyTranscriptionMinutes = null;
     existing.monthlySummaries = null;
-    // TASK-615 D11 — clear the new allowance overrides too (reversible, never deleted).
+    // Clear the new allowance overrides too (reversible, never deleted).
     existing.monthlySttSessionSeconds = null;
     existing.monthlyLlmTokens = null;
     existing.monthlyTtsCharacters = null;
@@ -705,7 +705,7 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
   }
 
   /**
-   * TASK-615 D11 — assign a `number | null` allowance field as its `bigint |
+   * Assign a `number | null` allowance field as its `bigint |
    * null` column, only when the caller supplied it (`undefined` = "leave
    * unchanged"). Same conversion `storageQuotaBytes` already uses; factored out
    * because there are now five of these instead of one.

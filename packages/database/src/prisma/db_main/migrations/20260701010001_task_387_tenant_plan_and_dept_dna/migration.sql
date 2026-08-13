@@ -1,4 +1,4 @@
--- TASK-387 (#3 + #7) — Tenant.plan + Department.dnaWritingStylePromptId.
+-- #3 + #7 — Tenant.plan + Department.dnaWritingStylePromptId.
 -- Fully additive: creates a new enum type, adds a nullable plan column (existing
 -- rows read NULL = "unspecified"), and adds a nullable loose prompt-ref column to
 -- Department (mirrors the existing preSummary/newPatient/revisit prompt refs).

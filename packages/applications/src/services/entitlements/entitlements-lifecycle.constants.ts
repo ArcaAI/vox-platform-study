@@ -3,7 +3,7 @@
  *
  * The trial-expiry job flips `plan = STARTER` for every tenant whose trial
  * clock has elapsed (`trialEndsAt <= now`) — a PURE plan change, leaving
- * `resourceStatus` untouched (proposal §4). It ships OFF by default and is
+ * `resourceStatus` untouched. It ships OFF by default and is
  * scheduled exactly like the metering reconcile / audit-retention purge:
  * cron + enabled read live off `IAppSettingsService`, re-synced on
  * `app-settings.cache-refreshed`.

@@ -1,6 +1,6 @@
 /**
- * TASK-648 U11 — `/changelog` screen. Covers the one XSS-shaped surface in
- * the ticket: `body` is markdown rendered into every admin's browser and MUST
+ * `/changelog` screen. Covers the one XSS-shaped surface in
+ * this screen: `body` is markdown rendered into every admin's browser and MUST
  * be sanitised. Asserts a `<script>`/`onerror` payload never survives as
  * executable markup — it renders as inert text, never a live DOM node.
  */

@@ -1,7 +1,7 @@
 /**
- * Self-registration (TASK-648 W9) — admin-console registers its build
+ * Self-registration — admin-console registers its build
  * identity with the gateway on boot, then heartbeats every 5 minutes.
- * Contract (frozen by U0): `docs/implementation/TASK-648-Service-Version-
+ * Contract: `docs/implementation/TASK-648-Service-Version-
  * And-Release-Registry/contracts/service-release.api.yaml`
  * `POST /internal/service-releases` — idempotent upsert; a repeat call IS
  * the heartbeat, there is no separate heartbeat path.
@@ -10,7 +10,7 @@
  * runtime only (`NEXT_RUNTIME === 'nodejs'`) — this must never run at the
  * edge or during the build.
  *
- * THE CRITICAL RULE (ticket §3.7): registration is best-effort and must
+ * THE CRITICAL RULE: registration is best-effort and must
  * NEVER block or fail process boot. `register()` never awaits the initial
  * call, every call carries a bounded timeout, and no exception escapes past
  * this module.
@@ -25,7 +25,7 @@
 
 const DEFAULT_BUILD_INFO_PATH = '/app/build-info.json';
 
-/** Ticket §3.4 — "heartbeats every 5 minutes". */
+/** "heartbeats every 5 minutes". */
 const HEARTBEAT_INTERVAL_MS = 5 * 60 * 1000;
 
 /** Bounded — this must never hang a heartbeat, let alone process boot. */
@@ -131,7 +131,7 @@ async function registerOnce(): Promise<void> {
   // that guard's owner adds one. `API_GATEWAY_KEY` is reused here as the
   // least-bad existing candidate (it is the one KNOWN_SECRETS entry not
   // scoped to a single named Python service) rather than inventing a new
-  // env var; every attempt is swallowed either way (§3.7).
+  // env var; every attempt is swallowed either way.
   const serviceToken = process.env.API_GATEWAY_KEY || '';
 
   const buildInfo = await readBuildInfo();
@@ -161,7 +161,7 @@ async function registerOnce(): Promise<void> {
       console.warn('[service-release] registration rejected', response.status);
     }
   } catch (error) {
-    // NEVER throws past this point (§3.7) — a down/unreachable/timed-out
+    // NEVER throws past this point — a down/unreachable/timed-out
     // gateway logs a warning and the process keeps serving traffic.
     console.warn('[service-release] registration failed (non-fatal):', (error as Error)?.message ?? error);
   } finally {

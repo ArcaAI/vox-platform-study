@@ -525,7 +525,7 @@ export const PLATFORM_SETTINGS: SettingDef[] = [
     description: 'Cron expression for the nightly SYSTEM-template resync sweep (TASK-531). Locked — only GLOBAL_ADMIN may change it.',
     locked: true,
   },
-  // Agent golden-library resync sweep (TASK-548) — the DepartmentAgent
+  // Agent golden-library resync sweep — the DepartmentAgent
   // sibling of the pipeline resync above. Same fail-safe governance: the
   // descriptor default is OFF (kill-switch), this platform VALUE turns it on,
   // `defaultValue` stays 'false' for reset, and `locked` keeps the flip
@@ -619,7 +619,7 @@ export const seedGlobalSetting = async (client: CorePrismaClient) => {
         },
       },
       update: {
-        // `value` is deliberately ABSENT (TASK-616 DB-03). It is the operator's
+        // `value` is deliberately ABSENT. It is the operator's
         // choice; a re-seed runs on every Argo sync and would revert it. Only
         // code-owned metadata is refreshed here — the same contract the
         // PLATFORM_SETTINGS loop below already follows. `create` still supplies

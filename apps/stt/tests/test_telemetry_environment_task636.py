@@ -1,4 +1,4 @@
-"""STT telemetry resource must not hardcode the environment (TASK-636 OBS-18).
+"""STT telemetry resource must not hardcode the environment.
 
 `_build_resource` stamped `deployment.environment: "production"` on every span
 and log record regardless of where it actually ran. Combined with the OTel
@@ -35,7 +35,7 @@ def test_environment_is_read_from_env_not_hardcoded(
 
 
 def test_falls_back_to_node_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    """NODE_ENV is the repo-wide environment selector (TASK-558)."""
+    """NODE_ENV is the repo-wide environment selector."""
     monkeypatch.delenv("DEPLOYMENT_ENVIRONMENT", raising=False)
     monkeypatch.setenv("NODE_ENV", "test")
 

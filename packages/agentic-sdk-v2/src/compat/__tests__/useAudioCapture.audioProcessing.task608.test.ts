@@ -1,5 +1,5 @@
 /**
- * compat `useAudioCapture` — `audioProcessing` forwarding (TASK-608).
+ * compat `useAudioCapture` — `audioProcessing` forwarding.
  *
  * A v1-migrating app starts the mic HERE (before
  * `useArcaSpeechToText.startTranscription()`), so this hook is the boundary at
@@ -25,7 +25,7 @@ vi.mock('../../store/agenticStore', async (importOriginal) => {
   return { ...actual, useAgenticStore: vi.fn() };
 });
 
-describe('useAudioCapture — audioProcessing (TASK-608)', () => {
+describe('useAudioCapture — audioProcessing', () => {
   let audioMock: { isCapturing: boolean; level: number; start: ReturnType<typeof vi.fn>; stop: ReturnType<typeof vi.fn> };
 
   beforeEach(() => {

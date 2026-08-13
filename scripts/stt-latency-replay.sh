@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================================
-# TASK-351 P2-5 — STT streaming latency replay harness (AC-11 evidence)
+# STT streaming latency replay harness (AC-11 evidence)
 # ============================================================================
 # Replays reference audio into a RUNNING stt over the real Redis Streams
 # wire protocol at realtime pace and reports TTFW, partial cadence, and

@@ -1,8 +1,8 @@
-"""Lifecycle-bound tests for :class:`ConsultationLoopWorkflow` (TASK-685).
+"""Lifecycle-bound tests for :class:`ConsultationLoopWorkflow`.
 
 The loop's main wait was unbounded, so a consultation that never sent
-``consultation-ending`` (and ``loop-cancel`` has no production caller — TASK-683)
-left the workflow RUNNING forever. The DISABLED branch of the same ``run()``
+``consultation-ending`` (and ``loop-cancel`` has no production caller)
+left the workflow RUNNING forever. The DISABLED branch of the same ``run``
 already refuses to do that, in as many words: *"an idle workflow parked forever
 would be a resource leak that changes nothing about the consultation"*
 (``workflows.py``, the ``config is None or not config.enabled`` branch).
@@ -11,8 +11,7 @@ What is asserted here is the bound and its SEMANTICS. A timeout is an
 ABANDONMENT, not a degraded end-of-consultation: it terminates in its own
 queryable phase and it does NOT run ``ending_actions``, because
 ``harness.finalize`` would fabricate a clinical note — persisted, WORM-audited,
-queued for a clinician — out of a consultation nobody said had ended. The
-argument in full is in the ticket README §3.
+queued for a clinician — out of a consultation nobody said had ended.
 
 Every test runs the REAL workflow definition against stub activities in
 Temporal's time-skipping environment. Replay compatibility for the patch era

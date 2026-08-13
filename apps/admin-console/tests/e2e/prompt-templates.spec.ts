@@ -1,12 +1,12 @@
 /**
- * Prompt Instruction Templates (TASK-634 R6) against a RUNNING stack (rule 12
+ * Prompt Instruction Templates against a RUNNING stack (rule 12
  * gate 3): the Fallbacks resolution map, the template grid + detail
  * slide-over, create/delete, filters, and axe scans in both themes. Skips with
  * actionable messages when the app or gateway is down.
  *
  * Moved from `agents.spec.ts` with the screen. That file had also drifted:
  * it still asserted the level-1 heading "Agents & Prompt Templates", renamed
- * to "Agent Catalog" by TASK-547, so all 11 of its cases were failing before
+ * to "Agent Catalog", so all 11 of its cases were failing before
  * this change.
  */
 

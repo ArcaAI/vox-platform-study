@@ -1,5 +1,5 @@
 /**
- * DepartmentAgentEntity + DepartmentAgentFactory unit tests (TASK-546).
+ * DepartmentAgentEntity + DepartmentAgentFactory unit tests.
  */
 import { describe, it, expect } from 'vitest';
 import { DepartmentAgentFactory } from '../../../../factories/generated/core/DepartmentAgentFactory';
@@ -24,7 +24,7 @@ describe('DepartmentAgentFactory', () => {
     expect(agent.isDefault).toBe(false);
     expect(agent.templateLocked).toBe(false);
     expect(agent.tags).toEqual([]);
-    // TASK-659 — every pre-existing/newly-created agent that names none of
+    // Every pre-existing/newly-created agent that names none of
     // the loop-config fields is null on all but `role` (SPECIALIST, the DB
     // default) — the regression guarantee at the entity layer.
     expect(agent.role).toBe(DepartmentAgentRole.SPECIALIST);
@@ -41,7 +41,7 @@ describe('DepartmentAgentFactory', () => {
   });
 });
 
-describe('DepartmentAgentEntity metaData (TASK-548 clone lineage)', () => {
+describe('DepartmentAgentEntity metaData (clone lineage)', () => {
   it('round-trips metaData through the factory (clone lineage carrier)', () => {
     const agent = DepartmentAgentFactory.CreateDepartmentAgent({
       ...baseProps,
@@ -94,7 +94,7 @@ describe('DepartmentAgentEntity.validate', () => {
   });
 });
 
-describe('DepartmentAgentEntity — TASK-659 loop configuration', () => {
+describe('DepartmentAgentEntity — loop configuration', () => {
   it('applies role/subscribedKinds/writeScope/goal/guardrailProfile/always-neverActions from props', () => {
     const agent = DepartmentAgentFactory.CreateDepartmentAgent({
       ...baseProps,

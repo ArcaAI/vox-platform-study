@@ -80,7 +80,7 @@ model AgentTrajectoryStep {
   // NULL runId would make the composite unique below non-idempotent, because
   // Postgres treats each NULL as distinct — two retried batches with the same
   // (tenantId, sessionId, seq) and runId=NULL would NOT conflict, defeating the
-  // `skipDuplicates`/ON CONFLICT DO NOTHING ingest contract (§2B). "" makes the
+  // `skipDuplicates`/ON CONFLICT DO NOTHING ingest contract. "" makes the
   // unique behave uniformly across all four session kinds.
   runId       String @default("")
   seq         Int // per-(sessionId,runId) monotonic, emitter-assigned

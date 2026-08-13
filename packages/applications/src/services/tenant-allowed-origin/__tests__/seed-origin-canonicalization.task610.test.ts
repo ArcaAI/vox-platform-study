@@ -1,6 +1,5 @@
 /**
- * Seed canonicalization guard (TASK-610 §4A.2 lane W5-E; re-pointed at the real
- * array by TASK-641 lane J, task 2).
+ * Seed canonicalization guard (re-pointed at the real seed array).
  *
  * `packages/database` CANNOT import `@arcaai/applications` (see
  * `02-database-prisma.md` — the application layer depends on the database
@@ -13,12 +12,12 @@
  * `normalizeOrigin` / `normalizeOriginPattern` OUTPUT, never the raw seed text.
  *
  * ── WHY THIS FILE IMPORTS THE SEED ARRAY INSTEAD OF RE-DECLARING IT ─────────
- * It used to keep its own hand-typed copy of the list, and by TASK-641 that
+ * It used to keep its own hand-typed copy of the list, and that
  * copy had drifted THREE ways while still passing — it round-tripped only its
  * own array, so it could not observe the seed at all:
- *   • it still carried the global `'*'` row that TASK-641 H-1 deleted,
+ *   • it still carried the global `'*'` row that H-1 deleted,
  *   • it never gained `http://127.0.0.1:*`,
- *   • it lacked the four loopback patterns lane G added
+ *   • it lacked the four loopback patterns added for local browsers
  *     (`https://localhost:*`, `https://127.0.0.1:*`, `http://[::1]:*`,
  *     `https://[::1]:*`).
  * A guard that mirrors its subject by hand is a guard that stops guarding. It
@@ -64,7 +63,7 @@ describe('seed/11b-tenant-allowed-origins.ts strings are canonical', () => {
     expect(SEED_ORIGINS.filter((origin) => !isOriginPattern(origin)).length).toBeGreaterThan(0);
   });
 
-  it('never re-introduces the bare allow-all `*` row (TASK-641 H-1)', () => {
+  it('never re-introduces the bare allow-all `*` row (H-1)', () => {
     // `OriginRegistryService.has(origin)` is `tenantsFor(origin).size > 0`, and
     // a `*` row matches EVERY origin — so while it exists, CORS admits every
     // origin no matter what `origin.enforcementEnabled` says. A grant that

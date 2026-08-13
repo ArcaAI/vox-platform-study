@@ -315,7 +315,7 @@ export class TenantTtsConfigService extends BaseService implements ITenantTtsCon
   }
 
   // BYO credential storage/resolution moved to the unified provider-connection
-  // plane (TASK-570). `TenantTtsConfigService` now owns TTS SPEC only — see
+  // plane. `TenantTtsConfigService` now owns TTS SPEC only — see
   // `TenantTtsConfigAdminController` (credential routes) and
   // `SpeechProxyController`/`TtsWsGateway` (injection), which call
   // `IProviderConnectionService` with `service='tts'` directly.

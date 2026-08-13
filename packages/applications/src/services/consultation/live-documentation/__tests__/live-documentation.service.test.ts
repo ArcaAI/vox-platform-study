@@ -19,7 +19,7 @@ const TENANT = 'tenant-abc';
 const CHANNEL = `consultation:live-summary:${CID}`;
 
 /**
- * TASK-655 — `findLiveSnapshotRow` now delegates to the repository's
+ * `findLiveSnapshotRow` now delegates to the repository's
  * `findLatestPreSummaryWithDecryptedContent` (find + subType-filter +
  * newest-wins reduce) instead of hand-rolling it. Fake repos in this file only
  * implement `findPreSummaries`, so this helper adds the delegate on top,
@@ -130,7 +130,7 @@ interface BuildDepsOpts {
   // Vault-Transit encryption service — undefined by default (matches every
   // other buildDeps fixture's soft-no-op posture in dev/test).
   secretsService?: any;
-  // TASK-552 Lane A — nlp.ner model-injection resolver deps. Both undefined by
+  // Nlp.ner model-injection resolver deps. Both undefined by
   // default (matches production's optional-DI absent-service posture): the
   // resolver's own "not wired" guard short-circuits before touching `cls`.
   aiTaskDefaultService?: any;
@@ -160,7 +160,7 @@ function buildDeps(httpMock = buildHttpMock(), opts: BuildDepsOpts = {}) {
     subscribeToResults: vi.fn().mockReturnValue({ subscribe: vi.fn().mockReturnValue({ unsubscribe: vi.fn() }) }),
     unsubscribeFromResults: vi.fn(),
   };
-  // TASK-655 — wrapped so EVERY contextItemRepository fixture used through
+  // Wrapped so EVERY contextItemRepository fixture used through
   // this factory (default or opts-supplied) gets the delegate that
   // `findLiveSnapshotRow` now calls, regardless of which describe block built it.
   const contextItemRepository = withFindLatestPreSummaryWithDecryptedContent(
@@ -333,9 +333,9 @@ describe('LiveDocumentationService', () => {
   });
 
   // ------------------------------------------------------------------
-  // TASK-552 Lane A — nlp.ner AiTaskDefault model injection (fail-open)
+  // Nlp.ner AiTaskDefault model injection (fail-open)
   // ------------------------------------------------------------------
-  describe('nlp.ner model injection (TASK-552 Lane A)', () => {
+  describe('nlp.ner model injection', () => {
     function makeCls() {
       return { run: vi.fn((callback: () => unknown) => callback()), set: vi.fn(), get: vi.fn() };
     }
@@ -507,11 +507,11 @@ describe('LiveDocumentationService', () => {
       });
     });
 
-    // TASK-552 Lane B — the live plane routes through the `smr.live`
+    // The live plane routes through the `smr.live`
     // AiTaskDefault key (not `smr.finalize`); surface that provenance on the
-    // flush's stats so the console/TASK-543 stat cards can show WHICH tier
+    // flush's stats so the console/ stat cards can show WHICH tier
     // (and therefore which admin-managed model) served this flush.
-    it('stamps metadata.stats.task_key as smr.live (TASK-552 Lane B provenance)', async () => {
+    it('stamps metadata.stats.task_key as smr.live (provenance)', async () => {
       const { service } = buildDeps(statsHttpMock(POPULATED_STATS));
       service.start({ consultationId: CID, tenantId: TENANT });
       service.ingestSegment(CID, { text: 'hello', isFinal: true, segmentId: 's1' });
@@ -1604,12 +1604,12 @@ describe('LiveDocumentationService', () => {
   });
 
   // ------------------------------------------------------------------
-  // TASK-660 — the ContextAdded gate widened to also emit for TRANSCRIPT and
+  // The ContextAdded gate widened to also emit for TRANSCRIPT and
   // STRUCTURED (loop event plane). LiveDocumentationService was written for
   // WORKNOTE/CASE_NOTE/ATTACHMENT only — it must ignore everything else so
   // the widening does not change what folds into the running summary.
   // ------------------------------------------------------------------
-  describe('ContextAdded kind filter (regression — TASK-660 widening)', () => {
+  describe('ContextAdded kind filter (regression — kind widening)', () => {
     type TrackedNote = { contextItemId: string; text: string };
     const trackedNotes = (service: LiveDocumentationService, consultationId: string): TrackedNote[] =>
       (service as unknown as { sessions: Map<string, { contextNotes: TrackedNote[] }> }).sessions.get(consultationId)!.contextNotes;

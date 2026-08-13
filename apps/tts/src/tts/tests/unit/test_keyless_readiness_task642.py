@@ -1,4 +1,4 @@
-"""TASK-642 Step 5 — regression gate: TTS is Ready with NO cloud credential.
+"""Regression gate: TTS is Ready with NO cloud credential.
 
 This is the condition that had been silently false since the service was first
 deployed: `hope-tts` answered `/health/ready` with 503 forever, so its Service
@@ -6,17 +6,17 @@ carried no endpoints and `TTS_URL` resolved to nothing.
 
 Unlike `test_health.py`, which exercises the readiness *logic* against a
 hand-built registry of fakes, this module exercises the *wiring*: the real
-`create_app()` running the real lifespan, with the provider set derived from
+`create_app` running the real lifespan, with the provider set derived from
 `Settings` read out of the environment exactly as it is in the container. It
-fails if any of the four layers in the ticket's §2 regresses:
+fails if any of the four layers in regresses:
 
-* §2.1 — readiness contract: a keyless deployment must reach 200;
-* §2.2 — the image: `kokoro` must be a dependency of the DEFAULT image, not of
+* readiness contract: a keyless deployment must reach 200;
+* the image: `kokoro` must be a dependency of the DEFAULT image, not of
   a `[local]` extra nobody builds;
-* §2.3 — enablement: `TTS_KOKORO_ENABLED=true` must actually register the
+* enablement: `TTS_KOKORO_ENABLED=true` must actually register the
   provider (and it must be the flag that does it — the manifest's suggested
-  `TTS_AZURE_ENABLED` path cannot work, §2.1);
-* §2.4 — routing: the SYSTEM row routes `en` to `kokoro`, so `kokoro` is the
+  `TTS_AZURE_ENABLED` path cannot work);
+* routing: the SYSTEM row routes `en` to `kokoro`, so `kokoro` is the
   name that has to be present and healthy.
 
 Hermeticity: registration is deliberately lazy — `KokoroProvider` imports the
@@ -55,7 +55,7 @@ def keyless_env(monkeypatch: pytest.MonkeyPatch) -> None:
     for key in list(os.environ):
         if key.startswith(_CREDENTIAL_ENV_PREFIXES):
             monkeypatch.delenv(key, raising=False)
-    # `hope_env.load_env()` reads no file when CI is truthy (TASK-558), so the
+    # `hope_env.load_env` reads no file when CI is truthy, so the
     # developer's gitignored `.env.dev` cannot smuggle a key into this test.
     monkeypatch.setenv("CI", "true")
     monkeypatch.setenv("TTS_KOKORO_ENABLED", "true")
@@ -82,7 +82,7 @@ async def test_ready_with_no_cloud_credential_present_at_all(keyless_client) -> 
     assert settings.azure.api_key.get_secret_value() == ""
     assert settings.sarvam.api_key.get_secret_value() == ""
 
-    # §2.3 + §2.4 — the flag registers the provider the SYSTEM row routes `en` to.
+    # + the flag registers the provider the SYSTEM row routes `en` to.
     assert app.state.provider_registry.list_providers() == ["kokoro"]
 
     response = await client.get("/api/v1/health/ready")
@@ -116,7 +116,7 @@ async def test_reaching_ready_opens_no_network_connection(
 async def test_azure_alone_cannot_make_the_service_synthesizable(
     keyless_env: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Pins §2.1's correction of the `tts-v2.yaml` header comment.
+    """Pins 's correction of the `tts-v2.yaml` header comment.
 
     `TTS_AZURE_ENABLED=true` — "the cheapest path" the manifest recommends —
     yields a pod that is schedulable (200, thanks to Step 1) but only `degraded`:
@@ -139,11 +139,11 @@ async def test_azure_alone_cannot_make_the_service_synthesizable(
 
 
 def test_kokoro_is_a_dependency_of_the_default_image() -> None:
-    """§2.2 — the deployed image must actually contain the engine.
+    """the deployed image must actually contain the engine.
 
     Deterministic proxy for "is it in the image": the `kokoro` extra declares the
     engine, and the Dockerfile's `uv sync` lines install that extra. Before
-    TASK-642 Step 2 the engine lived in a `[local]` extra that the Dockerfile
+     the engine lived in a `[local]` extra that the Dockerfile
     explicitly did NOT install, and the "separate GPU image variant" its comment
     deferred to was never built.
     """

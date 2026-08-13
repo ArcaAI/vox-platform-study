@@ -1,5 +1,5 @@
 /*
- * TASK-643 §3.5.7 (test 41) — the plan matrix has TWO copies and, until this
+ * (test 41) — the plan matrix has TWO copies and, until this
  * file, NO drift guard at all.
  *
  *   Copy A  packages/database/src/prisma/db_main/seed/15-entitlements.ts
@@ -24,8 +24,8 @@
  * `@arcaai/database` public barrel and the package's `exports` map has no
  * matching subpath, so a package-name import cannot reach it. This file uses a
  * relative source import instead — the same thing the database package's own
- * seed tests do, one directory further out. `PLAN_ENTITLEMENTS` was exported by
- * this ticket for exactly this purpose (it was module-private before).
+ * seed tests do, one directory further out. `PLAN_ENTITLEMENTS` was exported
+ * for exactly this purpose (it was module-private before).
  */
 import { describe, expect, it } from 'vitest';
 import { TenantPlan } from '@arcaai/domains';
@@ -72,7 +72,7 @@ const MATRIX_FIELDS = [
  */
 const normalize = (value: unknown): unknown => (typeof value === 'bigint' ? Number(value) : value);
 
-describe('plan matrix parity — seed 15-entitlements.ts vs entitlements.constants.ts (TASK-643 §3.5.7)', () => {
+describe('plan matrix parity — seed 15-entitlements.ts vs entitlements.constants.ts', () => {
   it('the two copies describe the same four plans', () => {
     const seeded = PLAN_ENTITLEMENTS.map((row) => row.plan).sort();
     const constants = Object.keys(PLAN_ENTITLEMENT_DEFAULTS).sort();

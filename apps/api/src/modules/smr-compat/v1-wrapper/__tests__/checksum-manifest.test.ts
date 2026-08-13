@@ -33,7 +33,7 @@ function byteLength(value: string): number {
 }
 
 /**
- * TASK-634 Phase 5 regression gate (mirrors the department-template sha256
+ * Regression gate (mirrors the department-template sha256
  * fixture pattern already used for `../dept-templates.ts`): every constant in
  * this directory must keep hashing to the value recorded when it was
  * extracted byte-exact from the running v1 pod
@@ -42,7 +42,7 @@ function byteLength(value: string): number {
  * (forbidden — these are GENERATED) or the fixture drifted; investigate,
  * don't just update the fixture.
  */
-describe('v1-wrapper checksum manifest (TASK-634 D-12 regression gate)', () => {
+describe('v1-wrapper checksum manifest (regression gate)', () => {
   it('V1_SUMMARY_SYSTEM_PROMPT matches its recorded fingerprint', () => {
     const expected = checksumManifest.system_prompt_base;
     expect(sha256(V1_SUMMARY_SYSTEM_PROMPT)).toBe(expected.sha256);

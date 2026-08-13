@@ -3,7 +3,7 @@
 //
 // DB-backed, tenant-admin-editable STT "spec", resolved at request time by the
 // apps/api gateway and injected into the STATELESS apps/stt service (the Python
-// service never touches Postgres). Mirrors the TASK-496 TTS pair
+// service never touches Postgres). Mirrors the TTS pair
 // (tenant-tts-config.prisma) file-for-file.
 //
 //   TenantSttConfig — ONE row per tenant (tenantId @unique). The reserved
@@ -16,7 +16,7 @@
 //   escape hatch (mirrors TenantTtsConfig.configJson).
 //
 // The former per-(tenant, provider) BYO credential model, TenantSttProviderCredential,
-// was DROPPED in TASK-576 — its rows were copied (TASK-569) into the unified
+// was DROPPED in — its rows were copied into the unified
 // `AiProviderConnection` table (`service='stt'`), which is now the ONLY
 // credential/connection store for STT. `ResourceType.TenantSttProviderCredential`
 // remains a harmless-unused enum member (see audit.prisma) so enum-parity stays

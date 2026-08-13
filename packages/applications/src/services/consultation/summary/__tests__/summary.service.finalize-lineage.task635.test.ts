@@ -1,5 +1,5 @@
 /**
- * TASK-635 C5-T3 — finalize lineage on `SummaryService.generateSummary`.
+ * Finalize lineage on `SummaryService.generateSummary`.
  *
  * R-N2: the agent that ran the live session is the agent that reviews and
  * finalizes. This suite locks the three observable consequences:
@@ -62,7 +62,7 @@ const createMockConfigService = () => ({
   }),
 });
 
-describe('SummaryService.generateSummary — TASK-635 C5 finalize lineage', () => {
+describe('SummaryService.generateSummary — finalize lineage', () => {
   let contextItemRepository: ReturnType<typeof createMockContextItemRepository>;
   let summaryMetaRepository: { create: ReturnType<typeof vi.fn>; encryptFieldsIntoEntity: ReturnType<typeof vi.fn> };
   let promptAssemblyService: { assemble: ReturnType<typeof vi.fn> };
@@ -170,7 +170,7 @@ describe('SummaryService.generateSummary — TASK-635 C5 finalize lineage', () =
 
     /**
      * The full positional constructor: everything before `harnessPolicyService`
-     * (index 14) and the two trailing TASK-635 repositories (23, 24).
+     * (index 14) and the two trailing repositories (23, 24).
      */
     function buildService(agent: unknown) {
       // Positional indices 10…22: secretsService(10) … billing(22).

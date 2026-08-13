@@ -14,7 +14,7 @@
 // GLOBAL_ADMIN_ONLY_TASK_PREFIXES in
 // packages/applications/src/services/ai-task-default/constants.ts. For those,
 // tenants only CONSUME the SYSTEM-row platform default and runtime resolution
-// ignores per-tenant override rows. EXCEPTION (TASK-588): the `smr.` prefix —
+// ignores per-tenant override rows. EXCEPTION: the `smr.` prefix
 // `smr.live` / `smr.finalize` and their `.fallback` variants — is tenant-admin
 // configurable: tenants may write their own rows and runtime resolution honours
 // them (tenant row → SYSTEM row).

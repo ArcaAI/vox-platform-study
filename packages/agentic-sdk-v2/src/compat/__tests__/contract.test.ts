@@ -1,17 +1,17 @@
 /**
  * @vitest-environment jsdom
  *
- * TASK-563 — cross-version SDK contract lock for `@arcaai/vox/compat`.
+ * Cross-version SDK contract lock for `@arcaai/vox/compat`.
  *
  * Asserts the compat hook RETURN SHAPES and the v1 TYPE SURFACE still match the
- * frozen contracts in TASK-560 §5.2 / §5.3 / §5.4, so a future v2 change that
+ * frozen contracts, so a future v2 change that
  * would silently alter what a migrated v1 app receives fails CI here.
  *
  * Two layers:
  *  - type-level (`expectTypeOf`) — the hook return interfaces expose the v1
  *    members with the v1 signatures;
  *  - runtime — the compat barrel exports the v1 hook names, `mapV2StatusToV1`
- *    honors §5.2, and `useSMR` passes the shim response through UNCHANGED (§5.4).
+ * honors the frozen status mapping, and `useSMR` passes the shim response through UNCHANGED.
  */
 
 import { describe, it, expect, beforeEach, vi, expectTypeOf } from 'vitest';
@@ -44,7 +44,7 @@ vi.mock('../../store/agenticStore', async (importOriginal) => {
 });
 
 // ===========================================================================
-// Runtime: the compat barrel ships the v1 names (TASK-561 §3 / TASK-560 §5).
+// Runtime: the compat barrel ships the v1 names.
 // ===========================================================================
 describe('@arcaai/vox/compat barrel', () => {
   it('exports the five v1 runtime members + the config adapter', () => {
@@ -59,9 +59,9 @@ describe('@arcaai/vox/compat barrel', () => {
 });
 
 // ===========================================================================
-// Type-level: §5.2 session hook contract.
+// Type-level: session hook contract.
 // ===========================================================================
-describe('useArcaSessionManager return shape (TASK-560 §5.2)', () => {
+describe('useArcaSessionManager return shape', () => {
   it('exposes the v1 session-manager members with v1 signatures', () => {
     expectTypeOf<UseArcaSessionManagerReturn['session']>().toEqualTypeOf<MedicalSession | null>();
     expectTypeOf<UseArcaSessionManagerReturn['isLoading']>().toEqualTypeOf<boolean>();
@@ -95,9 +95,9 @@ describe('useArcaSessionManager return shape (TASK-560 §5.2)', () => {
 });
 
 // ===========================================================================
-// Type-level: §5.3 audio + STT hook contracts.
+// Type-level: audio + STT hook contracts.
 // ===========================================================================
-describe('audio + STT hook shapes (TASK-560 §5.3)', () => {
+describe('audio + STT hook shapes', () => {
   it('useAudioCapture exposes the v1 capture members', () => {
     expectTypeOf<UseAudioCaptureReturn['isRecording']>().toEqualTypeOf<boolean>();
     expectTypeOf<UseAudioCaptureReturn['startRecording']>().returns.resolves.toBeVoid();
@@ -117,9 +117,9 @@ describe('audio + STT hook shapes (TASK-560 §5.3)', () => {
 });
 
 // ===========================================================================
-// Type-level: §5.4 / §5.5 SMR hook contract + v1 response shapes.
+// Type-level: / SMR hook contract + v1 response shapes.
 // ===========================================================================
-describe('useSMR contract + v1 response shapes (TASK-560 §5.4/§5.5)', () => {
+describe('useSMR contract + v1 response shapes', () => {
   it('exposes summarize/summarizeSync/summarizeAsync/preSummarize', () => {
     expectTypeOf<UseSMRReturn['summarize']>().returns.resolves.toEqualTypeOf<SummaryResponse>();
     expectTypeOf<UseSMRReturn['summarizeSync']>().returns.resolves.toEqualTypeOf<SummaryResponse>();
@@ -141,7 +141,7 @@ describe('useSMR contract + v1 response shapes (TASK-560 §5.4/§5.5)', () => {
     expectTypeOf<SummaryResponse>().toHaveProperty('token_usage');
   });
 
-  it('PreSummaryRequest/Response honor §5.5', () => {
+  it('PreSummaryRequest/Response honor the frozen pre-summary contract', () => {
     expectTypeOf<PreSummaryRequest>().toHaveProperty('current_department');
     expectTypeOf<PreSummaryResponse['pre_summary']>().toEqualTypeOf<string>();
     expectTypeOf<PreSummaryResponse['structured_data']>().toHaveProperty('sections');
@@ -149,9 +149,9 @@ describe('useSMR contract + v1 response shapes (TASK-560 §5.4/§5.5)', () => {
 });
 
 // ===========================================================================
-// Runtime: §5.2 status mapping.
+// Runtime: status mapping.
 // ===========================================================================
-describe('mapV2StatusToV1 (TASK-560 §5.2)', () => {
+describe('mapV2StatusToV1', () => {
   it('maps v2 status onto the v1 SessionStatus enum', () => {
     expect(mapV2StatusToV1('OPEN')).toBe('IDLE');
     expect(mapV2StatusToV1('RECORDING')).toBe('ACTIVE');
@@ -162,19 +162,19 @@ describe('mapV2StatusToV1 (TASK-560 §5.2)', () => {
 });
 
 // ===========================================================================
-// Type-level: TASK-568/TASK-586 STT provider-switch hook — ADDITIVE-ONLY.
+// Type-level: STT provider-switch hook — ADDITIVE-ONLY.
 //
-// `UseArcaSttProviderReturn` has no v1 ancestor (TASK-568 §3 D-1), so nothing
-// here is "frozen" in the v1 sense — but TASK-586 Lane D generalized it into a
+// `UseArcaSttProviderReturn` has no v1 ancestor, so nothing
+// here is "frozen" in the v1 sense — but it was generalized into a
 // bidirectional toggle, and this lock proves that generalization only ADDED
 // members (`usePipeline`/`switchToPipeline`/`switchToDefault`) onto the
-// TASK-568 shape rather than renaming/removing any of it. Likewise
+// original shape rather than renaming/removing any of it. Likewise
 // `V1SdkConfig` gained `enableProviderSwitch` as a new optional field — every
 // v1-frozen field on it (asserted elsewhere via `mapV1ConfigToAgenticConfig`
 // usage) is untouched.
 // ===========================================================================
-describe('useArcaSttProvider return shape (TASK-568, generalized additively by TASK-586)', () => {
-  it('keeps every TASK-568 member with its original signature', () => {
+describe('useArcaSttProvider return shape', () => {
+  it('keeps every member with its original signature', () => {
     expectTypeOf<UseArcaSttProviderReturn['activeProvider']>().toEqualTypeOf<{
       pipelineId: string;
       name?: string;
@@ -187,7 +187,7 @@ describe('useArcaSttProvider return shape (TASK-568, generalized additively by T
     expectTypeOf<UseArcaSttProviderReturn['switchToFallback']>().returns.resolves.toBeVoid();
   });
 
-  it('TASK-586 Lane D members are additive — the bidirectional toggle', () => {
+  it('members are additive — the bidirectional toggle', () => {
     expectTypeOf<UseArcaSttProviderReturn['usePipeline']>().toEqualTypeOf<boolean>();
     expectTypeOf<UseArcaSttProviderReturn['switchToPipeline']>().parameters.toEqualTypeOf<[]>();
     expectTypeOf<UseArcaSttProviderReturn['switchToPipeline']>().returns.resolves.toBeVoid();
@@ -205,10 +205,10 @@ describe('useArcaSttProvider return shape (TASK-568, generalized additively by T
 });
 
 // ===========================================================================
-// Runtime: §5.4 useSMR response pass-through — the shim body is returned
+// Runtime: useSMR response pass-through — the shim body is returned
 // UNCHANGED to the app (no re-mapping / key-stripping on the SDK side).
 // ===========================================================================
-describe('useSMR response pass-through (TASK-560 §5.4)', () => {
+describe('useSMR response pass-through', () => {
   const mockClient = {
     getBaseUrl: vi.fn(() => 'https://api.arcaai.com/api/v1'),
     getApiKey: vi.fn(() => 'tenant-key-123'),
@@ -223,7 +223,7 @@ describe('useSMR response pass-through (TASK-560 §5.4)', () => {
     fetchMock.mockReset();
   });
 
-  it('returns the exact §5.4 SummaryResponse body the shim sent', async () => {
+  it('returns the exact SummaryResponse body the shim sent', async () => {
     // A frozen, schema-complete v1 SummaryResponse envelope.
     const shimBody = {
       session_id: 'sess-1',
@@ -255,7 +255,7 @@ describe('useSMR response pass-through (TASK-560 §5.4)', () => {
     expect(out).toEqual(shimBody);
   });
 
-  it('returns the §5.5 PreSummaryResponse body unchanged', async () => {
+  it('returns the PreSummaryResponse body unchanged', async () => {
     const preBody = {
       pre_summary: '# Pre-Summary of Medical History\n- HTN on lisinopril',
       structured_data: { title: 'Pre-Summary of Medical History', sections: [] },

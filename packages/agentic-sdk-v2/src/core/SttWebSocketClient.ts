@@ -121,7 +121,7 @@ export interface WsBackpressureOptions {
 }
 
 /**
- * Stop-drain tuning (TASK-597 lane B).
+ * Stop-drain tuning.
  *
  * `stopAndDrain` keeps the socket open after the finalize control frame so a
  * tail final still reaches `onTranscript`. How long it is willing to wait —
@@ -168,7 +168,7 @@ export class SttWebSocketClient {
   /** Default bufferedAmount watermark — 1 MiB. */
   static readonly DEFAULT_BUFFERED_AMOUNT_HIGH_WATERMARK = 1 * 1024 * 1024;
   /**
-   * Default stop-drain ceiling (TASK-597 lane B2). Lowered from 5000ms: the
+   * Default stop-drain ceiling. Lowered from 5000ms: the
    * server now publishes its terminal `closed` status as soon as the last
    * transcript is on the stream, BEFORE the blob uploads and durable transcript
    * persistence it used to sit behind, so the old ceiling only ever measured
@@ -236,7 +236,7 @@ export class SttWebSocketClient {
   /**
    * The in-flight {@link stopAndDrain} promise, or `null`.
    *
-   * SINGLE-FLIGHT (TASK-597 follow-up): the drain resolver above is a single
+   * SINGLE-FLIGHT: the drain resolver above is a single
    * slot, so a second concurrent `stopAndDrain` used to OVERWRITE the first
    * caller's resolver — the server's terminal status then settled only one of
    * them and the other waited out the full `drainTimeoutMs` ceiling. Concurrent
@@ -244,7 +244,7 @@ export class SttWebSocketClient {
    */
   private drainInFlight: Promise<void> | null = null;
   /**
-   * TASK-597: progress channel into an in-flight drain. `handleMessage` calls
+   * Progress channel into an in-flight drain. `handleMessage` calls
    * it on every transcript and on a `finalizing` status so the drain can end on
    * a quiet window instead of the full timeout. Null when no drain is pending.
    */
@@ -521,7 +521,7 @@ export class SttWebSocketClient {
    * {@link onTranscript} callback — until whichever of these comes first:
    *
    * 1. the server's terminal `status` (`closed` or `cancelled`);
-   * 2. TASK-597: a `finalizing` status followed by `quietWindowMs` with no
+   * 2.: a `finalizing` status followed by `quietWindowMs` with no
    *    further transcript (each transcript restarts the window, so a tail
    *    still streaming is never cut off);
    * 3. `drainTimeoutMs` (default {@link SttWebSocketClient.DEFAULT_DRAIN_TIMEOUT_MS}).
@@ -566,8 +566,7 @@ export class SttWebSocketClient {
     // threading defect anywhere in the option chain (hook → PluginManager →
     // transport → provider → here) is otherwise invisible in a browser: the
     // socket just closes at the default quiet window and the tail final
-    // silently never arrives (TASK-597/594 field defect — a stale @arcaai/stt
-    // bundle dropped both values and nothing logged it).
+    // silently never arrives (field defect — a stale @arcaai/stt bundle dropped both values and nothing logged it).
     this.logger?.info('stopAndDrain: effective drain options', {
       operation: 'stopAndDrain',
       component: 'SttWebSocketClient',
@@ -947,7 +946,7 @@ export class SttWebSocketClient {
       normalized.language = detectedLanguage;
     }
 
-    // Per-utterance ASR pipeline provenance (TASK-613). The gateway relays it
+    // Per-utterance ASR pipeline provenance. The gateway relays it
     // as `pipelineId`; raw wire payloads may defensively carry `pipeline_id`.
     // Additive — absent on backends that predate per-utterance stamping, so
     // consumers degrade to their request-derived pipeline id.
@@ -1040,7 +1039,7 @@ export class SttWebSocketClient {
       return false;
     }
     // `status` is the only required field. `message` is optional: structured
-    // status results (e.g. `provider_switched`, TASK-567) carry typed fields
+    // status results (e.g. `provider_switched`) carry typed fields
     // instead of a human message, so requiring `message` here silently dropped
     // the provider-switch notification.
     const candidate = msg as { status?: unknown; message?: unknown };
@@ -1170,7 +1169,7 @@ export class SttWebSocketClient {
           if ((msg.status === 'closed' || msg.status === 'cancelled') && this.pendingDrainResolve) {
             this.pendingDrainResolve();
           } else if (msg.status === 'finalizing') {
-            // TASK-597: `finalizing` means the server has stopped accepting
+            // `finalizing` means the server has stopped accepting
             // audio and is emitting whatever tail remains. Open the quiet
             // window so the drain ends on silence rather than the ceiling.
             this.pendingDrainNudge?.('finalizing');

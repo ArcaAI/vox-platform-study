@@ -8,7 +8,7 @@ import * as Enums from '../../../enums';
 /**
  * One tenant's invoice for one billing period.
  *
- * The ONE optimistically-concurrency-controlled model of TASK-615: draft edits
+ * The ONE optimistically-concurrency-controlled model of the billing plane: draft edits
  * and the FINALIZE transition run through `_version` → strong ETag → `If-Match`
  * → `repository.updateWithVersion`, so two concurrent finalizes cannot both win
  * on a money document. Its mapper therefore keeps the
@@ -16,7 +16,7 @@ import * as Enums from '../../../enums';
  *
  * IMMUTABILITY is the invariant this entity exists to protect: once
  * `finalizedAt` is set, nothing about the invoice may change. Corrections are
- * `BillingAdjustment` credit memos (D13). `finalize()` and `void()` below are
+ * `BillingAdjustment` credit memos. `finalize()` and `void()` below are
  * the only sanctioned state transitions; the structural guard here backs up the
  * service-layer checks so no code path can quietly reopen a closed period.
  *

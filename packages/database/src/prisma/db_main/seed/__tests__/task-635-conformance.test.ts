@@ -1,7 +1,7 @@
 /**
- * TASK-635 Lane D3 — conformance regression suite (DATABASE / seed layer).
+ * Conformance regression suite (DATABASE / seed layer).
  *
- * Locks the seed- and scoping-side properties of the §2.0 conformance scorecard
+ * Locks the seed- and scoping-side properties of the conformance scorecard
  * in `docs/implementation/TASK-635-Summarization-Agent-Conformance/README.md`.
  * Sibling files carry the other layers:
  *   - apps/api/src/modules/smr-compat/__tests__/task-635-conformance.test.ts (R-C1/R-C2/R-C3)
@@ -10,14 +10,14 @@
  *
  * | Property | Origin | Covered here |
  * |---|---|---|
- * | RF-2 | §3.1 refinement — at most ONE tenant pre-summary candidate per (tenant, surface tag) | §1 |
- * | B-12 | §2.4 defect — SYSTEM pre-summary default must be readable cross-tenant | §2 |
+ * | RF-2 | refinement — at most ONE tenant pre-summary candidate per (tenant, surface tag) | |
+ * | B-12 | defect — SYSTEM pre-summary default must be readable cross-tenant | |
  *
  * DELIBERATELY NOT DUPLICATED:
  *   - per-TENANT (surface-agnostic) pre-summary candidate uniqueness →
  *     `pre-summary-candidate-uniqueness.test.ts` (Lane A1). That test's own NOTE
  *     says the assertion must become per-(tenant, surface-tag) once the D2 fork
- *     exists; §1 below IS that per-surface assertion, added alongside rather
+ *     exists; the suite below IS that per-surface assertion, added alongside rather
  *     than replacing it (the A1 test still guards the surface-less legacy case).
  *   - agent-tier vs legacy-column seed equality for the 7 ArcaAI departments ×
  *     2 visit types → `arcaai-agent-column-equality.test.ts` (C2).
@@ -33,7 +33,7 @@ import { ARCAAI_CLINICAL_TEMPLATES } from '../07b-arcaai-clinical-templates';
 import { SYSTEM_DEPT_FREE_PRE_SUMMARY_CONTENT, SYSTEM_DEPT_FREE_PRE_SUMMARY_TEMPLATE } from '../07d-dept-free-pre-summary-default';
 
 // ---------------------------------------------------------------------------
-// §1 — RF-2: at most one tenant pre-summary candidate per (tenant, surface tag)
+// RF-2: at most one tenant pre-summary candidate per (tenant, surface tag)
 // ---------------------------------------------------------------------------
 
 /**
@@ -45,7 +45,7 @@ import { SYSTEM_DEPT_FREE_PRE_SUMMARY_CONTENT, SYSTEM_DEPT_FREE_PRE_SUMMARY_TEMP
  * the rule per-surface so the D2 dept-free fork does not recreate B-01.
  *
  * The tag predicate itself is NOT symmetric across surfaces (OD-7(b), README
- * §3.2): `'dept-free'` is a positive opt-in match (`hasEvery(['pre-summary',
+ * ): `'dept-free'` is a positive opt-in match (`hasEvery(['pre-summary',
  * <surface tag>])`), but `'v1'` is `has('pre-summary')` MINUS any row also
  * tagged `dept-free` — a hand-created tenant row tagged only `pre-summary`
  * must keep resolving on the `'v1'` surface rather than silently falling
@@ -84,10 +84,10 @@ const ALL_SEEDED_TEMPLATES: SeedTemplateLike[] = [
   ...(DEFAULT_PROMPT_TEMPLATES as unknown as SeedTemplateLike[]),
   ...(CUSTOMER_PROMPT_TEMPLATES as unknown as SeedTemplateLike[]),
   ...(ARCAAI_CLINICAL_TEMPLATES as unknown as SeedTemplateLike[]),
-  // TASK-635 D2 — the department-free pre-summary fork (07d). It is seeded
+  // The department-free pre-summary fork (07d). It is seeded
   // through its own dedicated function (`seedDeptFreePreSummaryDefault`, like
   // C2's live default), not via one of the arrays above, so it must be added
-  // here explicitly for §1's per-surface candidate-uniqueness scan to see it.
+  // here explicitly for per-surface candidate-uniqueness scan to see it.
   SYSTEM_DEPT_FREE_PRE_SUMMARY_TEMPLATE as unknown as SeedTemplateLike,
 ];
 
@@ -127,7 +127,7 @@ describe('RF-2 — at most ONE tenant pre-summary candidate per (tenant, surface
 });
 
 // ---------------------------------------------------------------------------
-// §2 — B-12: the SYSTEM pre-summary default is readable from a non-owning tenant
+// B-12: the SYSTEM pre-summary default is readable from a non-owning tenant
 // ---------------------------------------------------------------------------
 
 describe('B-12 — the SYSTEM-owned pre-summary default is reachable cross-tenant', () => {
@@ -164,7 +164,7 @@ describe('B-12 — the SYSTEM-owned pre-summary default is reachable cross-tenan
 });
 
 // ---------------------------------------------------------------------------
-// §3 — R-C3 (ii) flip: the seeded dept-free fork (D2)
+// R-C3 (ii) flip: the seeded dept-free fork (D2)
 // ---------------------------------------------------------------------------
 
 describe('R-C3 (ii) flip — the seeded department-free pre-summary fork (D2)', () => {
@@ -187,7 +187,7 @@ describe('R-C3 (ii) flip — the seeded department-free pre-summary fork (D2)', 
     expect(SYSTEM_DEPT_FREE_PRE_SUMMARY_CONTENT).not.toContain('(Latest Dept Note)');
   });
 
-  it("§1's dept-free surface scan now sees exactly this one candidate for the SYSTEM tenant", () => {
+  it("dept-free surface scan now sees exactly this one candidate for the SYSTEM tenant", () => {
     const candidates = candidatesFor('dept-free');
     expect(candidates.get(SYSTEM_TENANT_ID)).toEqual([SYSTEM_DEPT_FREE_PRE_SUMMARY_TEMPLATE_ID]);
   });

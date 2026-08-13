@@ -17,7 +17,7 @@
 
 Before the architecture, the four discoveries that changed the answer:
 
-1. **Only ONE service actually needs a GPU.** STT (`hope-stt-v2` + `hope-stt-v2-worker`) is the sole CUDA consumer. NLP deliberately excludes the CUDA stack (TASK-647), TTS is CPU-pinned torch, guardrail is ONNX-CPU + llama.cpp CPU, SMR holds no local model at all. The GPU bill is therefore **one instance family, not a fleet** — this is the single biggest cost fact in the design.
+1. ~~**Only ONE service actually needs a GPU.**~~ **SUPERSEDED 2026-08-13 — see §2A.** This was true of the *manifests* and false of the *platform*. STT is the only workload declaring `nvidia.com/gpu`, but SMR, guardrail, and harness all depend on LLM inference served by **LM Studio at `10.10.1.10:1234`** — a host process with no manifest, invisible to a manifest audit. It serves at least three models to five roles. On AWS it must become something, and every option is a GPU. Worse, `apps/{smr,harness,guardrail}/.env.prod` already point at `http://hope-vllm:8000/v1`, so the production intent is self-hosted vLLM. §2A replaces this finding.
 
 2. **The budget ceiling and the zero-downtime requirement are in direct conflict, and the resolution is a scoping decision, not an engineering one.** Zero-downtime *inside the 06:00–20:00 service window* is affordable. Zero-downtime *24/7* forbids the scale-to-zero that makes a 14-hour duty cycle worth having, and doubles the GPU line. **This design commits to: zero-downtime during service hours; 20:00–06:00 is a declared maintenance window.** If that is wrong, say so — it changes the number by roughly $500/month.
 
@@ -116,6 +116,195 @@ It still loses, because the ml-en code-switch fine-tune is a clinical-quality re
 > Models hosted **natively** in ap-south-1 are Mistral, Gemma, and MiniMax. Claude and Nova reach Indian customers through **Global Cross-Region Inference (CRIS)** (`global.anthropic.claude-*`), which by definition routes inference outside the region.
 >
 > You did not select "all PHI stays in India" as a hard constraint, so this design does not forbid it. But for a healthcare platform that may become ABDM/HRP-registered — where India-residency *is* the operative requirement — sending clinical text to a cross-region endpoint is a decision that needs an explicit, recorded owner sign-off, not a default. **If residency is required: use an ap-south-1-native Bedrock model, or self-host the summarization LLM on the same GPU node during off-peak.**
+
+---
+
+## 2A. GPU Tier — REVISED (supersedes §0.1 and parts of §2.3)
+
+Added 2026-08-13 after a second audit pass across all six Python services plus AWS GPU-hardware research. Three facts below invalidate earlier conclusions; they are marked ⚠.
+
+### 2A.1 The GPU surface is five roles, not one service
+
+`hope-stt-v2` is the only workload declaring `nvidia.com/gpu`, but **LM Studio at `10.10.1.10:1234` serves at least three models to five roles**, and it has no manifest — which is why the first audit missed it:
+
+| Role | Model | Config default |
+|---|---|---|
+| SMR summarization | `gemma-4-e2b-it-qat` (~2B, QAT) | `apps/smr/src/smr/core/config.py:135,146` |
+| Guardrail guardian | `granite-guardian-4.1-8b` (4.9 GB, `q4_k_s`) | `apps/guardrail/src/guardrail/core/config.py:69,337` |
+| Harness safety guard | `granite-guardian-4.1-8b` | `apps/harness/src/harness/core/config.py:81,84` |
+| Harness eval judge | `google/gemma-4-e4b` | `apps/harness/src/harness/eval/config.py:49` |
+| Harness embeddings | `bge-m3` (1024-dim) | `apps/harness/src/harness/core/config.py:173` |
+
+Plus `bge-reranker-v2-m3` on TEI at `:8870`. Harness loads **nothing** locally except MiniCheck (`n_gpu_layers=0`, default-disabled). SMR has zero ML dependencies — no `torch`, no `transformers`.
+
+**LM Studio does multi-model on-demand load/unload. vLLM does not** — one model per instance. So this is not a swap; it is either N vLLM instances, or Ollama, or consolidating roles. **The guardian and the judge are two separate 8B-class models doing closely-related evaluation work — collapsing them is the cheapest VRAM you will ever recover.**
+
+Production intent is already vLLM: `apps/{smr,harness}/.env.prod` point at `http://hope-vllm:8000/v1`; `apps/guardrail/.env.prod` sets the URL with `ENABLED=false`. ⚠ **Unresolved:** these per-app `.env.prod` files are not part of the `NODE_ENV`-selected env contract, and the cluster actually reads generated ConfigMaps. Confirm which is authoritative — it changes the GPU count.
+
+### 2A.2 ⚠ The concurrency target is decided by a hardcoded bucket table, not by benchmarking
+
+`apps/stt/src/stt/streaming/execution_profile.py:299-358` picks `max_concurrent_streams` from a **literal lookup keyed on VRAM and GPU count** — nothing scales continuously:
+
+| Detection | Max concurrent streams | Batch |
+|---|---|---|
+| CUDA, primary VRAM **≥ 40 GB** | **100** | 32 |
+| CUDA, VRAM < 40 GB, ≥ 2 GPUs | 40 | 8 |
+| CUDA, VRAM < 40 GB, 1 GPU | **20** | 8 |
+| Apple Silicon / CPU | 5–50 | 2–4 |
+
+`CapacityGuard` (`streaming/capacity_guard.py:59-66`) enforces this and returns **HTTP 503 + `Retry-After`** past the ceiling.
+
+**Consequence for a <50-concurrent target:**
+
+- `g5.xlarge` (A10G, 24 GB) → falls in the `< 40 GB, 1 GPU` bucket → **20 streams. Does not reach 50.**
+- `g6.xlarge` (L4, 24 GB) → same bucket → **20 streams.**
+- 2× `g5.xlarge` → still one STT pod per node detecting one GPU → **20 each.**
+- `g6e.xlarge` (**L40S, 48 GB**) → crosses the 40 GB threshold → **100 streams.**
+
+`STREAMING_MAX_CONCURRENT` can override the bucket, but the buckets encode real VRAM limits — overriding without a benchmark is how you OOM. **Under the profile logic as written, `g6e.xlarge` is the only single-card option that reaches the stated pilot target.**
+
+### 2A.3 ⚠ The "Transcribe as free failover" recommendation does not work today
+
+§2.3 proposed Transcribe as the registered failover to buy zero-downtime without a standby GPU. **The code cannot fire that failover on a GPU failure.**
+
+`EngineSwitchController` only switches on `SWITCHABLE_ASR_ERRORS` = `CloudASRAuthError`, `CloudASRQuotaError`, `CloudASRTranscriptionError`, `ModelError` (`streaming/engine_switch.py:49-60`). But **no local ASR engine wraps CUDA failures into `ModelError`** — verified absent across `faster_whisper_asr.py`, `whisper_cpp_asr.py`, `parakeet_cpp_asr.py`. A `torch.cuda.OutOfMemoryError` or driver loss raises a bare `RuntimeError`, which lands in the generic handler at `streaming/inference.py:372-383` and **degrades silently to an empty transcript without calling `record_failure`**.
+
+So a GPU dying mid-session produces no failover, no error, and no alert — just missing transcript. **Prerequisite: wrap CUDA/OOM errors into `ModelError` in the local engine adapters.** Small change, entirely load-bearing for the availability story.
+
+Guardrail has the mirror-image problem: no circuit breaker, no retry, no cross-provider fallback, and it **fails open** (`safe: True`) on any LLM error (`providers/openai_compat.py:409-426`). A GPU loss there means clinical content passes safety screening unchecked. **This is why the generation pool cannot go on spot** — reversing §5.3's earlier suggestion.
+
+### 2A.4 Hardware selection
+
+Verified against the official AWS region-instance-types page: **`g6e` IS offered in ap-south-1** (family list: `G4dn | G5 | G6 | G6e | G6f | Gr6 | Gr6f | G7e | Inf1 | Inf2 | P4d | P5 | P5en | P6-B200 | Trn1`). The earlier source contradiction is resolved. Confirm actual `xlarge` capacity via `DescribeInstanceTypeOfferings` before committing.
+
+| | A10G (`g5.xlarge`) | L4 (`g6.xlarge`) | L40S (`g6e.xlarge`) |
+|---|---|---|---|
+| VRAM | 24 GB | 24 GB | **48 GB** |
+| Bandwidth | 600 GB/s | 300 GB/s | **864 GB/s** |
+| FP8 | No (Ampere) | Yes | Yes |
+| MIG | No | No | No |
+| $/hr | 1.208 | 0.9664 | 2.235 |
+| STT bucket | 20 streams | 20 streams | **100 streams** |
+
+**`g6` is 20 % cheaper but has half A10G's memory bandwidth.** LLM decode is bandwidth-bound, so A10G should deliver ~2× the tok/s for 1.25× the price — roughly **1.6× better $/token**. This is spec-derived, not a matched benchmark; L4 could win on prefill-heavy workloads where its FP8 tensor cores engage. Benchmark with your real input/output length ratio.
+
+Two claims to discard: A10G does **not** support FP8 (Ampere cc 8.6 has no FP8 tensor cores, despite one source asserting otherwise), and **MIG is unavailable on all three** — partitioning requires A100/H100-class silicon.
+
+**`inf2` is a trap at pilot scale.** Available in ap-south-1 at $0.9857/hr, and vLLM-on-Neuron is real. But Whisper on Neuron has no established support, and GGUF/CTranslate2 — your actual ASR serving stack — have no Neuron path at all. Everything needs AOT `neuronx-cc` compilation to NEFF. Revisit when the ASR piece has a reference implementation.
+
+### 2A.5 GPU sharing on Kubernetes
+
+- **Time-slicing gives no memory isolation.** All processes share one VRAM address space; when the card is exhausted, the CUDA OOM hits **whichever process allocates next — possibly an innocent neighbour**, not the offending pod.
+- **MPS gives soft limits only**, and a crashing client can hang or corrupt its neighbours.
+- **MIG is unavailable** on A10G/L4/L40S.
+- Industry practice is **one pod per GPU for latency-SLA production serving**; sharing is positioned for dev, CI, and notebooks.
+
+Combined with §2A.3 — a silently-swallowed CUDA OOM — co-location on a 24 GB card is a genuinely poor risk on a clinical path. **48 GB is what makes sharing defensible**, not a cleverer isolation mechanism.
+
+### 2A.6 Recommended GPU options
+
+| | **A — Lean** | **B — Target** ✅ | ~~C — Isolated~~ |
+|---|---|---|---|
+| Hardware | 1× `g5.xlarge` | 1× **`g6e.xlarge`** | 2× `g5.xlarge` |
+| GPU $/mo (14 h) | **515** | **952** | 1,030 |
+| ASR concurrency | 20 | **100** | 20 |
+| LLM | **Bedrock** | self-hosted vLLM | split |
+| LLM $/mo | ~17–133 | 0 | 0 |
+| VRAM used | ~8 of 24 GB | ~32 of 48 GB | — |
+| Residency | data leaves region | **stays in region** | stays |
+| **Total** | **~$532–648** | **~$952** | ~$1,030 |
+
+**Option C is dominated** — costs more than B, delivers a fifth of the concurrency, and still shares a card. Reject it.
+
+**Option A** if the budget ceiling binds and 20 concurrent streams is acceptable. Bedrock small-model pricing makes self-hosting indefensible at pilot volume:
+
+```
+Bedrock ap-south-1 (Mistral Large 3, Mumbai-confirmed):  $0.59 in / $1.76 out per 1M
+Bedrock small-model (Gemma 3 4B, US rate):               $0.04 in / $0.08 out per 1M
+Ministral 8B (US rate):                                  $0.15 / $0.15 per 1M
+
+Your volume ≈ 50 consultations/day × 75k tokens ≈ 114M tokens/month
+  → Gemma 3 4B class:   ~$6/month
+  → Ministral 8B class: ~$17/month
+  → Mistral Large 3:    ~$133/month
+
+Self-hosted break-even vs Ministral 8B: $515 ÷ $0.15/1M ≈ 3.4 BILLION tokens/month
+```
+
+You are roughly **30× below the break-even**. Your current seeded default is a ~2B QAT model; the `.env.prod` jump to Qwen3-8B fp16 is an ~8× increase in served-model size, and *that*, not AWS, is what forces a bigger card.
+
+**Option B** if residency binds, or if 50 concurrent streams is a real requirement. One 48 GB card fits everything without quantizing:
+
+| Component | VRAM |
+|---|---|
+| vLLM Qwen3-8B fp16 + KV cache (`--gpu-memory-utilization 0.5`) | ~24 GB |
+| Whisper large-v3-turbo fp16 | ~2.5 GB |
+| TEI embeddings + reranker (needs a new GPU image — see below) | ~2.4 GB |
+| GLiNER ONNX + MiniCheck | ~1.7 GB |
+| Overhead / second CUDA context | ~2 GB |
+| **Total** | **~32.6 of 48 GB** |
+
+⚠ **vLLM's `--gpu-memory-utilization` defaults to `0.90`** and claims that share of the *whole card*, not of free memory. Left at the default it will starve every co-tenant. Capping it is mandatory.
+
+### 2A.7 Work this creates that does not exist yet
+
+| Item | Evidence |
+|---|---|
+| **Wrap CUDA/OOM into `ModelError`** in local ASR adapters | §2A.3 — blocks any ASR failover |
+| **Fix guardrail's fail-open** or keep its LLM on on-demand capacity | §2A.3 |
+| **TEI GPU image** | Both TEI services pinned `cpu-1.9`; a repo-wide grep for `turing-`/`hopper-`/`cuda-` tags returns nothing |
+| **NLP GPU image variant** | `apps/nlp/Dockerfile:15-30,49-64` strips CUDA deliberately. All three models auto-select GPU via `torch.cuda.is_available()`, but the image can never satisfy it. Its `fp16` config fields are dead — never read. |
+| **TTS GPU image variant + a Kokoro bug** | `apps/tts/Dockerfile:46-61,88-90` force-installs `torch==2.8.0+cpu`. `KokoroConfig.device` is **never passed to `KPipeline`** (`kokoro.py:111`) — setting it does nothing. Parler/IndicF5 do honour theirs. |
+| **Re-point the seeded LM Studio URL** | `seed/17-ai-provider-connection.ts:81-82` seeds `baseUrl: 'http://localhost:1234/v1'` as the SYSTEM-tenant default; on EKS every pod resolves that to itself. Propagation is up to 60 s — guardrail's tenant-config cache has **no invalidation channel** (`core/tenant_config.py:55-59`). |
+| **GPU telemetry** | **No service exports any GPU metric.** No pynvml, DCGM, or `nvidia-smi` anywhere. A DCGM exporter must be added. |
+| **`llama-cpp` has no GPU config** | Framed in compose comments as the "production GGUF-tier engine" but declares no device reservation and passes no `-ngl`. |
+
+### 2A.7b Two things that will bite on cutover
+
+**⚠ `Qwen3-8B` has no production catalog row.** The `.env.prod` vLLM config names `Qwen/Qwen3-8B`, but a search of `seed/ai-models/*.ts` finds **no `AiModel` row for it** — it exists only as an API test fixture and as `SMR_E2E_VLLM_MODEL` in `apps/smr/src/smr/tests/e2e/test_vllm_live.py:12,24`. Provider/model selection is `failMode: closed`, so resolution against a missing row raises rather than substituting. **Standing up vLLM with this config would 503 until the catalog row and `AiTaskDefault` mapping are seeded.**
+
+**⚠ Losing LM Studio degrades three ways, one of them silent.** Worth knowing precisely, because the AWS cutover *is* a controlled version of this event:
+
+| Service | Behaviour on LM Studio loss |
+|---|---|
+| Guardrail | **Silent fail-open** — `providers/openai_compat.py:150-165` catches the connection error and returns `{"safe": True}`. Every content-safety, PII, and prompt-injection check passes unchecked. |
+| SMR | Hard failure — no try/except around `chat.completions.create` (`providers/openai_compat.py:168`); the exception propagates and summarization fails |
+| Harness RAG embeddings | Hard failure — `EmbeddingsServiceError` (`services/embeddings_client.py:60-61`) |
+| Harness eval judge | Hard failure — `JudgeConnectionError`; eval-only, not a production path |
+| Harness reranker | Unaffected — separate TEI container on `:8870` |
+
+**⚠ The eval gates that would validate a quantized swap mostly do not run.** This weakens §2A's quantization lever further than the missing `clinical_v1.json` alone:
+
+| Gate | Status |
+|---|---|
+| Harness offline calibration / faithfulness / PDSQI unit suite | ✅ **Runs** in the `test-harness` CI job |
+| Guardrail groundedness unit suite | ✅ **Runs** in `test-guardrail` |
+| Judge-backed golden-set gate (`python -m harness.eval.ci`) | ❌ `when: never` unless `RUN_INFRA_TESTS=true`, and the job comment concedes it "currently fails closed (connection error) rather than producing a real PASS/FAIL verdict" — no judge backend is wired to the runner |
+| **STT CER/WER regression gate** (`mlen_quality_gate`) | ❌ **Never runs in CI** — `test-stt` passes `--ignore=tests/integration/` (`.gitlab/ci/test.yml:369`). Self-skips locally without the PHI clips + GGUF. The README's documented command is also stale: it says `pnpm py:stt:test:integration`, which does not exist; the real script is `stt:test:integration`. |
+| Retrieval eval against live bge-m3 | ❌ Dense embedder deliberately stubbed (`eval/retrieval_eval.py:246`) |
+
+So a model or quantization change today gets signal from two unit suites and nothing end-to-end. **Any GPU-tier change that swaps a model needs those gates armed first** — otherwise the migration's own validation story is hollow.
+
+Note: `.github/workflows/harness-eval.yml` already exists as an unenforced mirror — the GitHub Actions migration has a starting point.
+
+### 2A.8 Autoscaling — what exists and what is missing
+
+Every HPA scales on CPU%, and the GPU workloads are pinned `min1/max1` (deliberately inert on the single `dell` box). **CPU% will scale a GPU pod at the wrong moment.** Move to KEDA on demand signals.
+
+The good news: a **cross-service metric contract already exists** — `model_running_instances{service,model}` and `model_inference_latency_seconds{service,model}`, documented as byte-identical and confirmed present in STT, SMR, NLP, Guardrail, and TTS. Harness carries only the `model_cache_*` four.
+
+| Service | Usable scaling signal | Status |
+|---|---|---|
+| SMR | **`smr_queue_size{provider}`** | ✅ ready |
+| STT | `stt_streaming_sessions_active` | ⚠ exists, but **`CapacityGuard` occupancy is not exported** — confirm they track the same counter |
+| TTS | `tts_active_streams{provider}` | ✅ ready. Note Kokoro serialises on a **single worker thread** (`kokoro.py:148-150`) — TTS scales by replica, not in-pod concurrency, so its target must be far lower |
+| Guardrail | none | ❌ queue depth only via a REST `/jobs/stats` Redis scan |
+| Harness | none | ❌ no Temporal backlog gauge; `pendingActivities` is an admin JSON field |
+| All | GPU utilisation / VRAM | ❌ nothing anywhere |
+
+Also add a **KEDA cron scaler warming the GPU tier at 05:30 IST**. Karpenter cold start is 3–8 min typical and 8–15 min worst case; the vLLM healthcheck already carries `start_period: 600s`, and STT's startup probe tolerates 15 min. Use **SOCI parallel pull** and `instanceStorePolicy: RAID0` on GPU nodes — the vLLM image alone is ~10 GB.
+
+Three dead-config findings worth cleaning while in here: `AzureSpeechConfig.max_concurrent` / `SarvamConfig.max_concurrent` (TTS), `QueueConfig.max_retries` / `retry_backoff_s` (guardrail), and NLP's three `fp16` fields — all declared, none read.
 
 ---
 
@@ -268,13 +457,16 @@ Revisit Secrets Manager after the pilot, as a deliberate ticket.
 | CloudWatch, Route 53, misc | | ~15 | 15 |
 | **Subtotal always-on** | | **~$744** | **~$571** |
 
-**Service-hours only (14 h × 30.4 = 426 hr/mo)**
+**Service-hours only (14 h × 30.4 = 426 hr/mo)** — REVISED per §2A.6
 
 | Item | Spec | $/mo |
 |---|---|---|
-| GPU node (live ASR) | 1× `g5.xlarge`, on-demand | 515 |
+| GPU node — Option A (20 concurrent, LLM on Bedrock) | 1× `g5.xlarge`, on-demand | 515 |
+| GPU node — **Option B (100 concurrent, self-hosted LLM)** | 1× **`g6e.xlarge`**, on-demand | **952** |
 | GPU burst (batch STT) | `g5.xlarge` spot, queue-driven | ~60 |
-| **Subtotal GPU** | | **~$575** |
+| **Subtotal GPU** | A: ~$575 · **B: ~$1,012** | |
+
+⚠ Spot is **not** available for the guardian LLM — see §2A.3. Batch STT only.
 
 **Consumption**
 
@@ -288,19 +480,27 @@ Revisit Secrets Manager after the pilot, as a deliberate ticket.
 
 ### 5.2 Three budget tiers
 
-| | **Lean** | **Recommended** | **Full SLA** |
+REVISED per §2A.6. The GPU line now dominates the spread.
+
+| | **Lean** | **Recommended** | **Target-scale** |
 |---|---|---|---|
 | App nodes | 2× m7g.xlarge, 2 AZ | 3× m7g.xlarge, 3 AZ | 3× m7g.xlarge, 3 AZ |
-| RDS | `db.t4g.medium` Single-AZ | `db.m7g.large` **Multi-AZ** | `db.m7g.large` Multi-AZ + read replica |
+| RDS | `db.t4g.medium` Single-AZ | `db.m7g.large` **Multi-AZ** | `db.m7g.large` Multi-AZ |
 | Redis | single `cache.t4g.micro` | 2-node Multi-AZ | 2-node Multi-AZ |
-| GPU | 1× g5.xlarge **spot**, 14 h | 1× g5.xlarge **on-demand**, 14 h | 2× g5.xlarge on-demand, 14 h |
-| ASR failover | none | **Transcribe** | Transcribe + hot standby |
-| Observability | CloudWatch only | in-cluster stack | AMP + AMG |
-| **On-demand $/mo** | **~$780** | **~$1,430** | **~$2,100** |
-| **With 1-yr commitments** | **~$620** | **~$1,150** | **~$1,700** |
-| Zero-downtime? | ❌ | ✅ **in-window** | ✅ in-window, faster RTO |
+| GPU | 1× `g5.xlarge`, 14 h | 1× `g5.xlarge`, 14 h | 1× **`g6e.xlarge`**, 14 h |
+| **ASR concurrency** | **20** | **20** | **100** |
+| LLM | Bedrock | Bedrock (~$17–133) | self-hosted vLLM |
+| Residency | leaves region | leaves region | **stays in region** |
+| Observability | CloudWatch only | in-cluster stack | in-cluster stack |
+| **On-demand $/mo** | **~$780** | **~$1,430** | **~$1,870** |
+| **With 1-yr commitments** | **~$620** | **~$1,150** | **~$1,590** |
+| Zero-downtime? | ❌ | ✅ in-window¹ | ✅ in-window¹ |
 
-**The Recommended tier is the one that satisfies your stated zero-downtime constraint at the lowest cost: ~$1,150/month with 1-year commitments, ~$1,430 on-demand.**
+¹ Conditional on the §2A.3 fix. **Until CUDA errors are wrapped into `ModelError`, no tier delivers ASR failover** — a GPU loss silently drops transcripts.
+
+**Two tiers now satisfy zero-downtime, and the choice between them is not cost — it is whether you need 50 concurrent streams and in-region inference.** Recommended (~$1,150 committed) caps ASR at 20 concurrent and sends LLM traffic to Bedrock. Target-scale (~$1,590 committed) reaches 100 concurrent and keeps everything in ap-south-1, for +$440/month.
+
+Given the stated pilot target of "<50 concurrent consultations," **Recommended does not actually meet the requirement** — it tops out at 20. Either the target is aspirational and Recommended is right, or the target is real and Target-scale is the floor. This is question 7 in §8.
 
 ### 5.3 Where the savings actually come from
 
@@ -404,6 +604,9 @@ No SAST (add **CodeQL** — free on GitHub), no dependency scanning (add **Depen
 4. **EKS + Karpenter or EKS Auto Mode?** Team-shape question (§3.4).
 5. **Ticket number** — confirm TASK-690.
 6. **Per-customer stamps?** You selected shared-pilot, but `hope-v2-deployment` is described as a self-hosting template. If per-hospital isolated stacks are coming, the per-stamp floor (~$744 always-on) is the number that matters, and the design should shift toward shared control planes.
+7. **Is "<50 concurrent consultations" a real requirement or a ceiling?** §2A.2: the hardcoded `ExecutionProfile` bucket caps a 24 GB card at **20 streams**. Reaching 50 needs `g6e.xlarge` (48 GB → 100 streams) at +$440/month, or an `STREAMING_MAX_CONCURRENT` override validated by benchmark. **This is now the single largest open cost driver.**
+8. **Which config source is authoritative for the cluster** — the per-app `.env.prod` files (which already point at `hope-vllm`) or the deployment repo's generated ConfigMaps? §2A.1. It determines whether self-hosted vLLM is already a committed decision.
+9. **Can the guardian and the eval judge be the same model?** They are two separate 8B-class models doing related evaluation work. Collapsing them is the cheapest VRAM recovery available (§2A.1).
 
 ---
 
@@ -411,6 +614,9 @@ No SAST (add **CodeQL** — free on GitHub), no dependency scanning (add **Depen
 
 | ID | Risk | Severity | Mitigation |
 |---|---|---|---|
+| R-0a | **A GPU failure silently drops transcripts.** No local ASR engine wraps CUDA/OOM into `ModelError`, so `EngineSwitchController` never fires and `inference.py:372-383` returns an empty transcript with no error and no alert. Clinical data loss with no signal. | **Critical** | Wrap CUDA/OOM into `ModelError` in the local engine adapters — prerequisite to any ASR failover claim (§2A.3) |
+| R-0b | **Guardrail fails open on LLM loss.** No circuit breaker, no retry, no cross-provider fallback; any error returns `safe: True`. A GPU node loss means clinical content passes safety screening unchecked. | **Critical** | Keep the guardian on on-demand capacity (never spot), and fix the fail-open posture. Note the tenant-config cache has no invalidation — redirecting traffic takes up to 60 s (§2A.3) |
+| R-0c | **The 50-concurrent target is unreachable on a 24 GB card** under the hardcoded `ExecutionProfile` bucket (20 streams). | **High** | `g6e.xlarge` (+$440/mo) or a benchmarked `STREAMING_MAX_CONCURRENT` override (§2A.2) |
 | R-1 | **CI tests target LAN-only Postgres `10.10.1.250` / Redis `10.10.1.120`** — unreachable from any cloud runner | **Critical** | Service containers per job (postgres:18 + redis:8). The TASK-689 isolated-test-Vault work suggests this is already in motion. |
 | R-2 | **`PIPELINE_TYPE` + `extends`/`!reference` rewrite introduces silent behavior drift** across ~90 jobs | **Critical** | Port branch-by-branch; diff the effective job set per trigger against GitLab before cutover |
 | R-3 | **arm64 rebuild breaks a native dependency** (llama-cpp-python, onnxruntime, GLiNER, torch CPU) | High | P4 gate. All have arm64 support, but each needs proving. Fallback: keep specific services on `m7i` (x86) at ~45 % higher cost. |

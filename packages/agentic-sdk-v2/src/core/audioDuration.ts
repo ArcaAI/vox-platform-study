@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * @arcaai/vox - browser audio duration probe (TASK-604)
+ * @arcaai/vox - browser audio duration probe
  *
  * Reads a local file's duration through a detached `<audio>` element, so the
  * batch queue can refuse an over-long recording BEFORE uploading it. Without

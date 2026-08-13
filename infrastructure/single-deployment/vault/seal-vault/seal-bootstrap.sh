@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# HOPE — seal-Vault bootstrap (TASK-312 Phase C, C.3)
+# HOPE — seal-Vault bootstrap
 # =============================================================================
 # Initialises + unseals the single-node seal Vault, enables Transit, creates the
 # `autounseal` key + a tightly-scoped token, and stores that token as the k8s

@@ -1,11 +1,11 @@
-// Metering descriptors (TASK-615 WS-H).
+// Metering descriptors.
 //
 // Two families, both already-live `global-kv` settings that were never
 // cataloged (the platform-ops.descriptors.ts pattern — registering them
 // changes ZERO runtime behaviour, every default below is transcribed
 // verbatim from the consuming service's own fallback constant):
 //
-//   - `metering.outbox.drain.*` — WS-B's handoff (ws-b-contract.md §11):
+//   - `metering.outbox.drain.*` — handoff (ws-b-contract.md §11):
 //     the outbox-drainer schedule, already read via
 //     `IAppSettingsService.getValueWithDefault` in
 //     `usage-outbox.processor.ts#UsageOutboxScheduler.getConfig`.
@@ -20,7 +20,7 @@
 // (feature-flags.descriptors.ts) exactly: SEED-TIME ONLY, read by
 // `seed/15-entitlements.ts` to decide the value of the
 // `metering.reconcile.enabled` GlobalSetting row on a FRESH database.
-// POLICY (TASK-638): ON in every DEPLOYED environment (hope-v2-dev, staging,
+// POLICY: ON in every DEPLOYED environment (hope-v2-dev, staging,
 // production) — each sets `METERING_RECONCILE_ENABLED_DEFAULT=true` in its
 // host env / deploy overlay — and OFF only in LOCAL development (the committed
 // `.env.sample` default) and test/CI. Its migration path is the same as its
@@ -45,7 +45,7 @@ import {
 } from '../../metering/reconciliation/shadow-metering.constants';
 
 export const METERING_SETTINGS: SettingDescriptor[] = [
-  // ── Outbox drain schedule (WS-B handoff) ──────────────────────────────────
+  // ── Outbox drain schedule (ws-b-contract.md §11) ───────────────────────────
   {
     key: DRAIN_ENABLED_KEY,
     tier: 'global-kv',
@@ -114,7 +114,7 @@ export const METERING_SETTINGS: SettingDescriptor[] = [
     default: false,
   },
 
-  // ── Shadow-metering drift report (TASK-615 WS-K) ────────────────────────
+  // ── Shadow-metering drift report ────────────────────────────────────────
   {
     key: SHADOW_METERING_ENABLED_KEY,
     tier: 'global-kv',
@@ -146,7 +146,7 @@ export const METERING_SETTINGS: SettingDescriptor[] = [
     default: SHADOW_METERING_DEFAULTS.cron,
   },
 
-  // ── DISPATCHED-outbox pruning (TASK-615 WS-K — WS-B handoff, ws-b-contract.md §11) ──
+  // ── DISPATCHED-outbox pruning (ws-b-contract.md §11) ──
   {
     key: PRUNE_ENABLED_KEY,
     tier: 'global-kv',

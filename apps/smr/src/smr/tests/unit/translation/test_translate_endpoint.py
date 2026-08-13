@@ -1,4 +1,4 @@
-"""TDD tests for POST /api/v1/translate (TASK-600).
+"""TDD tests for POST /api/v1/translate.
 
 A minimal FastAPI app mounts only the translate router; the registry dependency
 is overridden so no lifespan/redis/provider wiring is needed. Verifies the happy

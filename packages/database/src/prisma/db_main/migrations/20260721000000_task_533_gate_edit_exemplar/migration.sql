@@ -1,4 +1,4 @@
--- TASK-533 B6 (§3.4) — gate-edit mining store.
+-- Gate-edit mining store.
 --
 -- A DERIVED, append-only learning corpus built from the clinician
 -- approve-vs-edit signal. The WORM `HarnessAuditEvent` remains the audit

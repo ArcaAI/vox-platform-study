@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # ============================================================================
-# TASK-312 A.5 / TASK-555 — One-command local development bootstrap
+# One-command local development bootstrap
 # ============================================================================
 # Brings a freshly-cloned (or freshly-reset) checkout to a state where
 # `pnpm api:dev` boots cleanly against Vault with dynamic Postgres creds.
 #
 # Sequence:
-#   0. Create/overwrite .env.dev from .env.sample              (TASK-583)
+#   0. Create/overwrite .env.dev from .env.sample
 #   1. Start infrastructure (core + vault + temporal + rag; optional -o/-e)
 #   2. Wait for Postgres + Vault (and the vault-init AppRole bootstrap) to be ready
 #   3. Apply Prisma migrations + seed                            (pnpm db:all)
@@ -50,7 +50,7 @@ read_env() {
   if [ -z "$value" ]; then printf '%s' "$def"; else printf '%s' "$value"; fi
 }
 
-# Profile flags for dev-infra.sh (TASK-555).
+# Profile flags for dev-infra.sh.
 INFRA_FLAGS=()
 for arg in "$@"; do
   [ "$arg" = "--" ] && continue
@@ -104,7 +104,7 @@ fi
 green "→ Postgres ready; Vault AppRole bootstrap complete."
 
 bold "── Step 3/6: applying migrations + seed (pnpm db:all) ───────────────"
-# Seeding is opt-in and defaults to RUN_SEED=none (TASK-616) — this local dev
+# Seeding is opt-in and defaults to RUN_SEED=none — this local dev
 # bootstrap wants the full demo fixture set (incl. the super_admin login), so
 # it opts in explicitly. NODE_ENV=development satisfies seed-mode.ts's guard
 # that RUN_SEED=all is refused unless the environment is explicitly stated.
@@ -118,7 +118,7 @@ bold "── Step 5/6: bootstrapping Vault dynamic DB credentials ────�
 
 bold "── Step 6/6: finalizing the env (syncing Vault kv-v2 secrets) ───────"
 # vault-seed-secrets.sh derives its key list from the built settings registry
-# (no hardcoded fallback list — that's the drift TASK-558 removed), so the
+# (no hardcoded fallback list — that's the drift this script exists to remove), so the
 # registry must be compiled before it can run.
 pnpm --filter @arcaai/applications build
 "$SCRIPT_DIR/vault-seed-secrets.sh" --env-file "$REPO_ROOT/.env.dev"

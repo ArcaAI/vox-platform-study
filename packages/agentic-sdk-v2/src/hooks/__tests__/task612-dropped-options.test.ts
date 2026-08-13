@@ -1,8 +1,7 @@
 /**
  * useArcaAudio — start-race dropped capture options become a surfaced error
- * (TASK-612 Lane C, RC-2, OD-2a).
  *
- * The CALL-TIME idempotence guard in `startAudio` (TASK-597 follow-up) exists
+ * The CALL-TIME idempotence guard in `startAudio` exists
  * because the compat layer drives ONE audio graph through TWO hooks
  * (`useAudioCapture.startRecording` and `useArcaSpeechToText.startTranscription`),
  * each guarded only by a RENDER-TIME `isCapturing` snapshot. When both land in

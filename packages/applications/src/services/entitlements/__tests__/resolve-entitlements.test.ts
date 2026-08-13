@@ -11,7 +11,7 @@ describe('resolveEntitlements', () => {
       expect(r.plan).toBeNull();
       expect(r.limits).toEqual(UNGATED_ENTITLEMENTS.limits);
       expect(Object.values(r.limits).every((v) => v === null)).toBe(true);
-      // TASK-643 §0(3): `platformDefaultCredential` is the ONE feature that is
+      // `platformDefaultCredential` is the ONE feature that is
       // NOT `true` for a null-plan tenant — see the dedicated test below.
       expect(r.features).toEqual({ dnaReports: true, voiceEnrollment: true, monitoringAccess: true, platformDefaultCredential: false });
       expect(r.modelTier).toBe('full_custom');
@@ -34,7 +34,7 @@ describe('resolveEntitlements', () => {
       expect(r.limits.maxDepartments).toBe(2);
       expect(r.limits.storageQuotaBytes).toBe(5 * GIB);
       expect(r.limits.maxConcurrentSessions).toBe(5);
-      // TASK-638: STARTER = $50/mo bundling 50 consultations.
+      // STARTER = $50/mo bundling 50 consultations.
       expect(r.limits.monthlyConsultations).toBe(50);
       expect(r.features).toEqual({ dnaReports: false, voiceEnrollment: false, monitoringAccess: false, platformDefaultCredential: false });
       expect(r.modelTier).toBe('base');
@@ -57,7 +57,7 @@ describe('resolveEntitlements', () => {
       expect(r.limits.maxUsers).toBe(100);
       expect(r.limits.maxConcurrentSessions).toBe(100);
       expect(r.limits.storageQuotaBytes).toBe(1_000 * GIB);
-      // TASK-638: ENTERPRISE usage is negotiated — unlimited by default.
+      // ENTERPRISE usage is negotiated — unlimited by default.
       expect(r.limits.monthlyConsultations).toBeNull();
       expect(r.features.monitoringAccess).toBe(true);
       expect(r.modelTier).toBe('full_custom');
@@ -136,10 +136,10 @@ describe('resolveEntitlements', () => {
     });
   });
 
-  describe('TASK-615 D11 per-capability allowances (monthlySttSessionSeconds/monthlyLlmTokens/monthlyTtsCharacters/monthlyNlpTextUnits/monthlyEmbeddingTokens)', () => {
-    it('seeds the ratified per-capability ceilings on the paid tiers (TASK-638)', () => {
+  describe('Per-capability allowances (monthlySttSessionSeconds/monthlyLlmTokens/monthlyTtsCharacters/monthlyNlpTextUnits/monthlyEmbeddingTokens)', () => {
+    it('seeds the ratified per-capability ceilings on the paid tiers', () => {
       // Derived from each plan's business ceilings × intensity constants × 2
-      // headroom — see TASK-638 §6. They are runaway guards, so they must sit
+      // headroom — see They are runaway guards, so they must sit
       // well ABOVE what the consultation cap alone permits.
       const starter = resolveEntitlements(TenantPlan.STARTER);
       expect(starter.limits.monthlySttSessionSeconds).toBe(132_000);
@@ -213,22 +213,22 @@ describe('resolveEntitlements', () => {
   });
 
   /*
-   * TASK-643 R6 — `featurePlatformDefaultCredential`.
+   * `featurePlatformDefaultCredential`.
    *
    * The grant that decides whether a tenant's provider-credential cascade may
    * reach the SYSTEM (platform-funded) tier. Resolution shape is identical to
    * the three existing booleans (plan default ← tri-state tenant override);
    * what is deliberately DIFFERENT is the ungated-legacy fallback and the
-   * seeded plan matrix, both of which are `false`. See §0(3) and §3.5.2.
+   * seeded plan matrix, both of which are `false`. See and 
    */
-  describe('TASK-643 platformDefaultCredential grant', () => {
+  describe('platformDefaultCredential grant', () => {
     // 22
     it('a plan row granting featurePlatformDefaultCredential resolves the feature true', () => {
       const r = resolveEntitlements(TenantPlan.STARTER, { featurePlatformDefaultCredential: true });
       expect(r.features.platformDefaultCredential).toBe(true);
     });
 
-    // 23 — the primary sales path (§3.5.2: no plan grants it; grants are per tenant).
+    // 23 — the primary sales path (no plan grants it; grants are per tenant).
     it('a per-tenant override grants it over a plan default of false', () => {
       const r = resolveEntitlements(TenantPlan.PRO, { featurePlatformDefaultCredential: false }, { featurePlatformDefaultCredential: true });
       expect(r.features.platformDefaultCredential).toBe(true);
@@ -250,14 +250,14 @@ describe('resolveEntitlements', () => {
     });
 
     /*
-     * 26 — TASK-643 §0(3). `UNGATED_ENTITLEMENTS` resolves every OTHER boolean
+     * 26. `UNGATED_ENTITLEMENTS` resolves every OTHER boolean
      * feature `true` (a null-plan "ungated-legacy" tenant is unrestricted by
      * design). This one must be the FIRST to resolve `false`: the grant governs
      * whether the platform SPENDS MONEY on a tenant's behalf, so the ungated
      * fallback has to fail CLOSED. Restoring the "ungated ⇒ everything on"
      * symmetry silently grants the platform default to every null-plan tenant.
      */
-    it('UNGATED_ENTITLEMENTS resolves platformDefaultCredential FALSE — the one asymmetric feature (§0(3))', () => {
+    it('UNGATED_ENTITLEMENTS resolves platformDefaultCredential FALSE — the one asymmetric feature', () => {
       expect(UNGATED_ENTITLEMENTS.features.platformDefaultCredential).toBe(false);
       // …while its three neighbours stay `true`, so the asymmetry is deliberate
       // and visible rather than an oversight in one direction or the other.

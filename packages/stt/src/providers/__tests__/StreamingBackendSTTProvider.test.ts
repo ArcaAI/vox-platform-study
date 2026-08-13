@@ -103,7 +103,7 @@ describe('StreamingBackendSTTProvider', () => {
       expect(provider.isReady()).toBe(true);
     });
 
-    it('forwards the end-user languageMode to createSession (TASK-587)', async () => {
+    it('forwards the end-user languageMode to createSession', async () => {
       await provider.init({
         sessionId: 'x',
         language: 'ml',
@@ -122,7 +122,7 @@ describe('StreamingBackendSTTProvider', () => {
       expect(session.createSession).toHaveBeenCalledWith(expect.objectContaining({ languageMode: 'ml-en' }));
     });
 
-    it('forwards the pre-start startOn selection to createSession (TASK-586)', async () => {
+    it('forwards the pre-start startOn selection to createSession', async () => {
       await provider.init({
         sessionId: 'x',
         language: 'en',
@@ -141,7 +141,7 @@ describe('StreamingBackendSTTProvider', () => {
       expect(session.createSession).toHaveBeenCalledWith(expect.objectContaining({ startOn: 'fallback' }));
     });
 
-    it('forwards the dual-/multi-mic channelCount to createSession (TASK-615 #12)', async () => {
+    it('forwards the dual-/multi-mic channelCount to createSession', async () => {
       await provider.init({
         sessionId: 'x',
         language: 'en',
@@ -236,7 +236,7 @@ describe('StreamingBackendSTTProvider', () => {
       expect(wsClient.sendAudioFrame).not.toHaveBeenCalled();
     });
 
-    it('accumulates sent bytes for the uplink-bitrate poll (TASK-543)', async () => {
+    it('accumulates sent bytes for the uplink-bitrate poll', async () => {
       expect(provider.getBytesSent()).toBe(0);
       // 16 kHz input → 4 Int16 samples → 8 bytes.
       await provider.processAudio(new Float32Array([0.0, 0.5, -0.5, 1.0]), 16000);
@@ -252,7 +252,7 @@ describe('StreamingBackendSTTProvider', () => {
       expect(provider.getDroppedFrameCount()).toBe(1);
     });
 
-    it('skips sending empty frames after resampling (TASK-612 Lane G)', async () => {
+    it('skips sending empty frames after resampling', async () => {
       // A very short input (1 sample at 48 kHz) resamples to 0 samples at 16 kHz.
       // Empty frames must never reach the wire.
       const droppedCountBefore = provider.getDroppedFrameCount();
@@ -468,7 +468,7 @@ describe('StreamingBackendSTTProvider', () => {
       expect(result.words).toBeUndefined();
     });
 
-    // TASK-591 — the per-utterance stream-relative offset (seconds) MUST reach the
+    // The per-utterance stream-relative offset (seconds) MUST reach the
     // SDK as `vadStreamStartSec`/`vadStreamEndSec`, the fields `useArcaAudio` reads
     // to stamp `segment.startTime`. Collapsing them into `duration` only (the old
     // behavior) left those fields undefined on the streaming path, so the hook fell
@@ -529,7 +529,7 @@ describe('StreamingBackendSTTProvider', () => {
       expect(provider.isReady()).toBe(false);
     });
 
-    // TASK-597 lane B — the second serial blocker on click→idle.
+    // The second serial blocker on click→idle.
     //
     // `closeSession()` DELETEs the backend session, which re-enters
     // `_finalize_session` and therefore contends on the same per-session
@@ -613,7 +613,7 @@ describe('StreamingBackendSTTProvider', () => {
       expect(provider.isReady()).toBe(false);
     });
 
-    // TASK-597 lane B2 — `destroy()` awaits the drain, so its ceiling IS the
+    // `destroy()` awaits the drain, so its ceiling IS the
     // teardown latency a caller observes on Stop. It must be configurable, and
     // must defer to the ws client's own (lower) default when unset.
     it('defers the drain ceiling to the ws client when no drainTimeoutMs is configured', async () => {
@@ -684,7 +684,7 @@ describe('StreamingBackendSTTProvider', () => {
       expect(stopAndDrain).toHaveBeenCalledWith(undefined, undefined);
     });
 
-    // TASK-597 — the quiet window is the OTHER half of the drain, and its `0`
+    // The quiet window is the OTHER half of the drain, and its `0`
     // means something (disable the early resolve) where a `0` timeout does not.
     it('PRESERVES quietWindowMs: 0 through to stopAndDrain', async () => {
       const stopAndDrain = vi.fn().mockResolvedValue(undefined);

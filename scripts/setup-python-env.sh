@@ -6,8 +6,8 @@
 #   - stt     (Speech-to-Text)
 #   - smr     (Summary Agent / SMR)
 #   - nlp     (Medical NLP)
-#   - harness (Clinical Documentation Harness orchestrator — TASK-330)
-#   - guardrail (AI content-safety / medical-context validation — TASK-338)
+#   - harness (Clinical Documentation Harness orchestrator)
+#   - guardrail (AI content-safety / medical-context validation)
 #   - tts     (Realtime multi-provider Text-to-Speech)
 #
 # Usage:
@@ -469,7 +469,7 @@ install_dependencies() {
     print_step "Upgrading pip..."
     "${CR[@]}" pip install --upgrade pip setuptools wheel
 
-    # --- shared runtime contracts (TASK-529) ---
+    # --- shared runtime contracts ---
     # Installed FIRST: every service below declares it as a workspace
     # dependency, and pip would otherwise try to resolve `hope-runtime-models`
     # from PyPI (where it does not exist). Dependency-free, so this is instant.
@@ -479,7 +479,7 @@ install_dependencies() {
         "${CR[@]}" pip install -e "${runtime_models_dir}"
     fi
 
-    # TASK-558 — the shared env-file loader. Same reason as above: every service
+    # The shared env-file loader. Same reason as above: every service
     # declares `hope-env` as a workspace dependency and pip would otherwise look
     # for it on PyPI. Its only dependency (python-dotenv) is already required by
     # every service.

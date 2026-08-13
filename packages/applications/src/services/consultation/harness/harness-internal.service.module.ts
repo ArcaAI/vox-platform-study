@@ -47,7 +47,7 @@ import { UsageLedgerServiceModule } from '../../usageLedger';
     // plane rather than a redeploy. Unwired ⇒ carry-forward stays OFF.
     EffectiveSettingsModule,
     // Supplies the @Optional IUsageLedgerService the constructor injects but
-    // NEVER calls (TASK-615 WS-D2, item 1c — double-bill guard; see the
+    // NEVER calls (double-bill guard; see the
     // service's constructor doc comment).
     UsageLedgerServiceModule,
   ],

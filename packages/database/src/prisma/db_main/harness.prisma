@@ -473,7 +473,7 @@ model GateEditExemplar {
   modelName        String?
   promptTemplateId String?
 
-  // Human curation gate (TASK-553 F-24). Mining writes PENDING; a curator
+  // Human curation gate. Mining writes PENDING; a curator
   // moves the row to APPROVED/REJECTED through the admin curation endpoint.
   // The few-shot retriever only FILTERS on this when
   // `agentic.fewshot.curationMode = 'enforce'` — default `off` keeps today's

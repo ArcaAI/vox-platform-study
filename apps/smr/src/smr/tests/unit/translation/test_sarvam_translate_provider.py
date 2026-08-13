@@ -1,4 +1,4 @@
-"""TDD tests for the Sarvam translate provider (TASK-600) — BYOK-only.
+"""TDD tests for the Sarvam translate provider — BYOK-only.
 
 Sarvam's api_key NEVER comes from env/config; it arrives per request as a
 ``ProviderOverride``. httpx is mocked at the import site

@@ -15,7 +15,7 @@ import { CanManage, ExpectedVersion, RequiresIfMatch } from '../../decorators';
 import { resolveScopedTenantId } from '../../shared/tenant-scope';
 
 /**
- * Invoice admin surface (TASK-615 WS-I, D13), mounted at
+ * Invoice admin surface (D13), mounted at
  * `/admin/billing/invoices` (global prefix → `/api/v1/admin/billing/invoices`).
  *
  * Lifecycle: compute-draft (idempotent recompute) → finalize (If-Match OCC,

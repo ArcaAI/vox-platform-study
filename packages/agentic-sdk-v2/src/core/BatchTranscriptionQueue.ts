@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * @arcaai/vox - BatchTranscriptionQueue (TASK-604)
+ * @arcaai/vox - BatchTranscriptionQueue
  *
  * The native batch-transcription engine: upload N pre-recorded files, monitor
  * each job, collect each result. Framework-free on purpose — React owns

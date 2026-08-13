@@ -1,5 +1,5 @@
 /**
- * TASK-635 C2 — SYSTEM platform defaults for the live-summarization agent.
+ * SYSTEM platform defaults for the live-summarization agent.
  *
  * Seeds ONE SYSTEM-tenant `PromptTemplate` (+ its v1 `PromptVersion` snapshot)
  * whose content is BYTE-IDENTICAL to the live loop's currently hardcoded

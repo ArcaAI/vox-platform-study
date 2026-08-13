@@ -1,6 +1,6 @@
 """LocalAgreement-2 streaming processor (whisper_streaming / Macháček 2023).
 
-⚠️ EXPERIMENTAL — NOT WIRED INTO THE SESSION (TASK-594). Built and unit-tested,
+⚠️ EXPERIMENTAL — NOT WIRED INTO THE SESSION. Built and unit-tested,
 then validated offline against the labeled ml-en clips with the real adapter's
 word timestamps: it scored **CER ~0.59 vs ~0.32 for the shipped adapter path** —
 a regression. Root cause: the LocalAgreement-2 algorithm needs reliable WORD

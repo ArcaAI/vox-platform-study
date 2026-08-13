@@ -1,4 +1,4 @@
-"""Unit tests for the Sarvam speech-to-text loader (TASK-567).
+"""Unit tests for the Sarvam speech-to-text loader.
 
 Covers BYOK-override-first / env-fallback credential resolution, the
 CloudASRAuthError when neither source has a key, and the security invariant
@@ -84,7 +84,7 @@ class TestSarvamLoaderLoad:
 
     @pytest.mark.asyncio
     async def test_env_key_is_ignored_byok_only(self):
-        """TASK-602: an env-set Sarvam key must NOT satisfy the loader — Sarvam is
+        """An env-set Sarvam key must NOT satisfy the loader — Sarvam is
         BYOK-only. With no override, the loader fails closed even if the (legacy)
         settings field somehow held a value."""
         loader = SarvamLoader()
@@ -109,7 +109,7 @@ class TestSarvamLoaderLoad:
 
     @pytest.mark.asyncio
     async def test_override_without_key_raises(self):
-        """TASK-602: an override carrying no api_key does NOT fall back to env —
+        """An override carrying no api_key does NOT fall back to env —
         it fails closed (BYOK-only)."""
         loader = SarvamLoader()
         with patch("stt.models.sarvam_loader.get_settings") as gs:

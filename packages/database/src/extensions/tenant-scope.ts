@@ -120,12 +120,12 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   'PipelinePolicyChange', // append-only WORM change log (no soft-delete)
   // tenant-tts-config.prisma (1) — per-tenant TTS config. The former
   // per-(tenant,provider) BYO-credential model, TenantTtsProviderCredential,
-  // was DROPPED in TASK-576 — those rows now live in the unified
+  // was DROPPED in — those rows now live in the unified
   // AiProviderConnection plane (service='tts').
   'TenantTtsConfig', // also a SYSTEM-shared read model (platform-default row, below)
   // tenant-stt-config.prisma (1) — per-tenant STT fallback config. The former
   // per-(tenant,provider) BYO-credential model, TenantSttProviderCredential,
-  // was DROPPED in TASK-576 — those rows now live in the unified
+  // was DROPPED in — those rows now live in the unified
   // AiProviderConnection plane (service='stt').
   'TenantSttConfig', // also a SYSTEM-shared read model (platform-default row, below)
   // ai-task-default.prisma (1) — per-tenant default model per AI task.
@@ -151,7 +151,7 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   // throttler + global-admin cross-tenant override CRUD read it through the
   // extended client without a matching CLS tenant).
   'TenantUsageMeter',
-  // entitlement.prisma (1) — append-only plan-change history (TASK-615 #6).
+  // entitlement.prisma (1) — append-only plan-change history (#6).
   // Tenant-scoped and NOT SYSTEM-shared: a tenant's plan timeline is its own.
   // Soft-delete EXEMPT (append-only fact, no resourceStatus column) — see
   // MODELS_WITHOUT_SOFT_DELETE in client.ts.
@@ -185,22 +185,22 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   // soft-delete EXEMPT (no resourceStatus column) — see
   // MODELS_WITHOUT_SOFT_DELETE in client.ts.
   'GateEditExemplar',
-  // department-agent.prisma — first-class agent entity (TASK-546). A STANDARD
+  // department-agent.prisma — first-class agent entity. A STANDARD
   // tenant-scoped config model (tenantId + resourceStatus soft-delete +
   // _version OCC + audit). NOT SYSTEM-shared: a tenant's department agents are
   // never visible cross-tenant.
   'DepartmentAgent',
   // department-agent.prisma — immutable loop-config version snapshots
-  // (TASK-659). Ordinary tenant-owned rows, NOT SYSTEM-shared — same posture
+  // . Ordinary tenant-owned rows, NOT SYSTEM-shared — same posture
   // as the parent DepartmentAgent and as ConsultationContextSchemaVersion.
   'DepartmentAgentVersion',
   // department-agent.prisma — immutable cross-tenant promotion records
-  // (TASK-663). `tenantId` IS the TARGET tenant, so the target owns and reads
+  // . `tenantId` IS the TARGET tenant, so the target owns and reads
   // its own agent lineage while the source tenant's id survives only as the
   // plain `fromTenantId` column. Emphatically NOT SYSTEM-shared: widening this
   // would let any tenant enumerate which agents moved between which tenants.
   'AgentPromotion',
-  // usage-ledger.prisma (5) — AI usage metering plane (TASK-615).
+  // usage-ledger.prisma (5) — AI usage metering plane.
   // The ledger, its outbox and both rollups are tenant-scoped and NOT
   // SYSTEM-shared: one tenant's consumption (and therefore its cost profile)
   // must never surface in another's reads. All four are soft-delete EXEMPT
@@ -210,7 +210,7 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   'AiUsageOutbox',
   'AiUsageRollupHourly',
   'AiUsageRollupDaily',
-  // TASK-638: SYSTEM-owned platform records (a vendor bills the platform, not a
+  // SYSTEM-owned platform records (a vendor bills the platform, not a
   // tenant). Scoped here so a customer tenant's reads can never surface
   // aggregate platform vendor spend; global-admin reads go through the service.
   'ProviderReconciliationRun',
@@ -219,7 +219,7 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   // also a SYSTEM-shared read model (below). Standard soft-delete + sys-events
   // (it is admin-managed, unlike its append-only siblings).
   'AiPriceBook',
-  // billing.prisma (3) — tenant invoice plane (TASK-615).
+  // billing.prisma (3) — tenant invoice plane.
   // Money documents: strictly tenant-scoped, never SYSTEM-shared.
   // BillingInvoice/Line keep soft delete (a draft is withdrawn, not purged);
   // BillingAdjustment is append-only (a credit memo against a FINALIZED,
@@ -228,13 +228,13 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   'BillingInvoice',
   'BillingInvoiceLine',
   'BillingAdjustment',
-  // tenant-allowed-origin.prisma — CORS control plane (TASK-610). A STANDARD
+  // tenant-allowed-origin.prisma — CORS control plane. A STANDARD
   // tenant-scoped config model (tenantId + resourceStatus soft-delete +
   // _version OCC + audit). Admin CRUD stays tenant-filtered; SYSTEM-owned rows
   // (platform-operated origins, valid for every tenant) are resolved by the
   // application-layer OriginRegistryService, not by widening this read here.
   'TenantAllowedOrigin',
-  // platform.prisma — Service Version & Release Registry (TASK-648). All
+  // platform.prisma — Service Version & Release Registry. All
   // four are platform-wide (SYSTEM tenant), EXCEPT UserChangelogAcknowledgement
   // which is scoped to the acknowledging user's own tenant.
   'ServiceRelease',
@@ -242,10 +242,10 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   'ChangelogEntry',
   'UserChangelogAcknowledgement',
   // consultation-context-schema.prisma — tenant-declared consultation context
-  // kinds (TASK-658). BOTH the mutable head and its immutable version
+  // kinds. BOTH the mutable head and its immutable version
   // snapshots are ordinary tenant-owned rows; they are deliberately NOT added
   // to SYSTEM_SHARED_READ_MODELS — a tenant reads only its own schemas, and
-  // the golden-library clone path (TASK-663) copies rows rather than sharing
+  // the golden-library clone path copies rows rather than sharing
   // them, exactly as `DepartmentAgent` does.
   'ConsultationContextSchema',
   'ConsultationContextSchemaVersion',
@@ -339,7 +339,7 @@ export const SYSTEM_SHARED_READ_MODELS: ReadonlySet<string> = new Set([
   // row), the `encryptedApiKey` ciphertext is inert without gateway-side
   // Vault-Transit decrypt, and NO read DTO ever carries it (`hasKey` boolean
   // only). This is the unified plane for LLM/STT/TTS BYO credentials
-  // (`service` discriminator) — TASK-576 dropped the former per-capability
+  // (`service` discriminator) — dropped the former per-capability
   // `TenantTtsProviderCredential` / `TenantSttProviderCredential` tables,
   // which had no SYSTEM row at all, so widening them would have bought
   // nothing.
@@ -355,7 +355,7 @@ export const SYSTEM_SHARED_READ_MODELS: ReadonlySet<string> = new Set([
   // [caller, SYSTEM]; WRITES are NOT widened (registry mutation is global-admin
   // only at the service layer, the guardrail.* precedent).
   'McpServer',
-  // TASK-648 — the release registry and the curated changelog are PLATFORM
+  // The release registry and the curated changelog are PLATFORM
   // facts owned by the SYSTEM tenant, read by callers acting under their own
   // tenant CLS. Without widening, `/changelog` and `/changelog/unseen` return
   // NOTHING for every tenant user, and `/releases` returns nothing for a
@@ -397,7 +397,7 @@ export const SYSTEM_SHARED_READ_MODELS: ReadonlySet<string> = new Set([
   // WRITES are NOT widened (a tenant can never mutate a SYSTEM-owned setting),
   // and customer tenants stay excluded (the IN list is exactly [caller, SYSTEM]).
   'GlobalSetting',
-  // The PLATFORM RATE CARD (TASK-615). Both price planes — COST (COGS,
+  // The PLATFORM RATE CARD. Both price planes — COST (COGS,
   // consumed by the at-ingest rater) and SELL (the tenant-facing card,
   // consumed by the invoice engine) — live as SYSTEM-tenant rows. Every
   // tenant's rater resolves "the row effective at this event's occurredAt"
@@ -409,7 +409,7 @@ export const SYSTEM_SHARED_READ_MODELS: ReadonlySet<string> = new Set([
   // tenant-owned row is reserved for a negotiated enterprise rate. No secret
   // material: prices are integer micros.
   'AiPriceBook',
-  // TASK-635 B-12 fold-in (C1 §8). The PLATFORM-DEFAULT prompt catalog lives
+  // . The PLATFORM-DEFAULT prompt catalog lives
   // under the SYSTEM tenant and every tenant's PromptResolutionService chain
   // must read it while running under that tenant's own CLS:
   //   - `SYSTEM_DEFAULTS.preSummaryPromptId` (…040), re-owned to SYSTEM by
@@ -430,7 +430,7 @@ export const SYSTEM_SHARED_READ_MODELS: ReadonlySet<string> = new Set([
   // encrypted `lastTestOutput` ciphertext is inert without a gateway-side
   // Vault-Transit decrypt and never appears in a read DTO.
   //
-  // LIST-SURFACE CAVEAT (C1 §12 R1): the objection recorded in
+  // LIST-SURFACE CAVEAT: the objection recorded in
   // seed/07a-agent-golden-library.ts was that widening would surface SYSTEM
   // rows inside tenants' own template pickers. It does not, because every
   // list/count read in `PromptManagementService` pins an EXPLICIT

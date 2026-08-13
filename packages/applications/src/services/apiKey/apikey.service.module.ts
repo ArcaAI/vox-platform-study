@@ -11,7 +11,7 @@ import { TenantSettingsService } from '../settings-registry/tenant-settings.serv
   imports: [CommonServiceModule, CoreDatabaseModule, EntitlementsServiceModule],
   providers: [
     // The `global-kv` cascade for `apiKey.maxLifetimeDays` /
-    // `apiKey.allowQueryParam` (TASK-558 lane I). Provided locally — its only
+    // `apiKey.allowQueryParam`. Provided locally — its only
     // dependency is `IAppSettingsService`, already exported by
     // `CommonServiceModule`, so importing the whole `EffectiveSettingsModule`
     // (pipeline resolver + AI task defaults) would be dead weight.

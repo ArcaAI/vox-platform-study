@@ -1,5 +1,5 @@
 /**
- * TASK-615 — mapper posture for the APPEND-ONLY metering/billing models.
+ * Mapper posture for the APPEND-ONLY metering/billing models.
  *
  * These five tables carry `_metadata` / `_version` / audit columns (so the rows
  * still round-trip through the shared BaseTenantEntity + Repository machinery)

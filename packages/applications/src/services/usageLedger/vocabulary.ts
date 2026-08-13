@@ -1,5 +1,5 @@
 /**
- * Frozen operation + provider vocabulary for the usage ledger (TASK-615 WS-B).
+ * Frozen operation + provider vocabulary for the usage ledger.
  *
  * `AiUsageEvent.operation` and `.provider` are `String` columns on purpose — a
  * new emitter must not need a migration. But they are also ROLLUP DIMENSIONS,
@@ -28,16 +28,16 @@
  *
  * | operation            | emitted by                                   |
  * |----------------------|----------------------------------------------|
- * | `transcribe.stream`  | WS-C — live STT socket teardown              |
- * | `transcribe.batch`   | WS-C — batch transcription job completion    |
- * | `generate`           | WS-D — non-streaming SMR generation          |
- * | `generate.stream`    | WS-D — streaming SMR generation (incl. abort)|
- * | `presummarize`       | WS-D — pre-summary pass                      |
- * | `guardrail.validate` | WS-D — guardrail LLM calls (metered, never quota-blocked, never invoiced) |
- * | `ner.extract`        | WS-E — NLP entity extraction                 |
- * | `tts.synthesize`     | WS-E — speech synthesis                      |
- * | `harness.step`       | WS-F — one agentic-loop step                 |
- * | `embed`              | WS-E/WS-D — retrieval + diarization embeddings |
+ * | `transcribe.stream` | — live STT socket teardown |
+ * | `transcribe.batch` | — batch transcription job completion |
+ * | `generate` | — non-streaming SMR generation |
+ * | `generate.stream` | — streaming SMR generation (incl. abort)|
+ * | `presummarize` | — pre-summary pass |
+ * | `guardrail.validate` | — guardrail LLM calls (metered, never quota-blocked, never invoiced) |
+ * | `ner.extract` | — NLP entity extraction |
+ * | `tts.synthesize` | — speech synthesis |
+ * | `harness.step` | — one agentic-loop step |
+ * | `embed` | / — retrieval + diarization embeddings |
  */
 export const USAGE_OPERATIONS = [
   'transcribe.stream',

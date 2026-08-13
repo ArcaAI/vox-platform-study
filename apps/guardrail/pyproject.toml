@@ -33,7 +33,7 @@ dependencies = [
     "python-dotenv>=1.2.0",
     "prometheus-client>=0.24.1",
     "prometheus-fastapi-instrumentator>=7.1.0",
-    # OpenTelemetry tracing (TASK-636 OBS-12). Mirrors apps/smr's dependency
+    # OpenTelemetry tracing. Mirrors apps/smr's dependency
     # set: guardrail auto-instruments FastAPI + httpx (the LM Studio/Ollama/
     # vLLM/llama.cpp engine calls) and exports spans via OTLP/gRPC.
     "opentelemetry-api>=1.39.1",
@@ -41,7 +41,7 @@ dependencies = [
     "opentelemetry-instrumentation-fastapi>=0.60b1",
     "opentelemetry-instrumentation-httpx>=0.60b1",
     "opentelemetry-exporter-otlp-proto-grpc>=1.39.0",
-    # Async DB access for per-tenant config resolution (TASK-338; mirrors STT).
+    # Async DB access for per-tenant config resolution (mirrors STT).
     # SQLAlchemy has no `asyncpg` extra — the async driver must be declared explicitly.
     "sqlalchemy[asyncio]>=2.0.47",
     "asyncpg>=0.31.0",
@@ -49,13 +49,13 @@ dependencies = [
     "gliner2-onnx",
     "transformers>=5.0",
     "onnxruntime>=1.18.0",
-    # TASK-527 — MinIO-compatible client for `s3://` model sources. Imported
+    # MinIO-compatible client for `s3://` model sources. Imported
     # LAZILY inside `core/model_source.py::_make_s3_client`, so a deployment
     # that never declares an s3:// source_uri never imports it.
     "minio>=7.2.20",
-    # --- Shared runtime contracts (TASK-529) ---
+    # --- Shared runtime contracts ---
     "hope-runtime-models",
-    # --- Shared env-file loader (TASK-558): NODE_ENV -> .env.<env>, host env wins ---
+    # --- Shared env-file loader: NODE_ENV -> .env.<env>, host env wins ---
     "hope-env",
 ]
 
@@ -84,7 +84,7 @@ test = [
     "fakeredis[lua]>=2.21.0",
 ]
 
-# Self-hosted MiniCheck-Flan-T5 GGUF groundedness scorer (TASK-479; owner directive
+# Self-hosted MiniCheck-Flan-T5 GGUF groundedness scorer (owner directive
 # 2026-07-11 — GGUF/llama.cpp backend). OPTIONAL: the scorer lazy-imports llama_cpp and
 # the gate is default-OFF, so base installs / CI skip it. Enable on a staging host with
 # `uv sync --extra groundedness` (or `pip install 'guardrail[groundedness]'`).

@@ -1,11 +1,11 @@
-"""Deterministic DNA redaction/rewrite engine (TASK-551).
+"""Deterministic DNA redaction/rewrite engine.
 
 A PURE function of ``(text, rules)`` — no I/O, no clock, no randomness — so it is
 safe to run inside a Temporal activity and trivially hermetic to test.
 
 Rule kinds (``match``):
 
-* ``literal``  — an exact substring.
+* ``literal`` — an exact substring.
 * ``regex``    — a Python regular-expression source (compiled here; a malformed
   pattern raises :class:`RedactionEngineError` so the activity fails CLOSED
   rather than passing the note through unredacted).
@@ -15,7 +15,7 @@ Rule kinds (``match``):
 
 Rule actions (``type``):
 
-* ``remove``  — delete the matched span.
+* ``remove`` — delete the matched span.
 * ``rewrite`` — replace the matched span with the rule's literal ``replacement``.
   A ``rewrite`` rule with NO ``replacement`` is a *semantic* rewrite handled by
   the SMR pass in the activity, NOT here — constructing one for the deterministic

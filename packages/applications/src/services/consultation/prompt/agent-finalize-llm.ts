@@ -1,5 +1,5 @@
 /**
- * TASK-635 C5 / RF-4 — the FINALIZE half of the per-task agent LLM override.
+ * The FINALIZE half of the per-task agent LLM override.
  *
  * Precedence (RF-4, binding): agent `llmOverrides.finalize` → the tenant's
  * `smr.finalize` AiTaskDefault → fail-closed. This helper owns only the first
@@ -18,7 +18,7 @@
  * degradation. Two postures ⇒ two implementations, each stated at its call site.
  *
  * NEVER ONE GLOBAL OVERRIDE FIELD: `llmOverrides` is keyed by task precisely so
- * a low-latency live model cannot silently drive finalize (C1 §3.1).
+ * a low-latency live model cannot silently drive finalize.
  */
 
 import { Logger, ServiceUnavailableException } from '@nestjs/common';
@@ -54,7 +54,7 @@ export async function resolveAgentFinalizeSelection(
   let llmOverrides: unknown;
   try {
     // A deleted / tidied-up agent is NOT a finalize failure — the same
-    // fall-through posture as `pinnedAgentId` in the resolver (C1 §7.4).
+    // fall-through posture as `pinnedAgentId` in the resolver.
     const agent = await deps.departmentAgentRepository.findById(agentId);
     llmOverrides = agent?.llmOverrides ?? null;
   } catch (error) {

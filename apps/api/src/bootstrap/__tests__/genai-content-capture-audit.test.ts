@@ -1,5 +1,5 @@
 /**
- * Boot-time PHI-safe telemetry audit (TASK-615 WS-G).
+ * Boot-time PHI-safe telemetry audit.
  *
  * OTel GenAI instrumentation defaults to NOT capturing prompt/completion
  * content, but the switch (`OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT`)

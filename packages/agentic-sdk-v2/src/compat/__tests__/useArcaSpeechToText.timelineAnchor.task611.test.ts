@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * TASK-611 — the delivered-metadata timeline anchor is lost when CAPTURE starts first.
+ * The delivered-metadata timeline anchor is lost when CAPTURE starts first.
  *
  * The compat layer drives ONE audio graph through TWO hooks. `useAudioCapture`
  * is the only one carrying device/source selection, so an app that lets a user
@@ -14,7 +14,7 @@
  *  - `sendAudioData(pcm, metadata)` stamps `atMs = 0` on EVERY timeline entry,
  *    so the timeline collapses onto a single instant;
  *  - `pickMetadataForFinal(..., captureStartMs = undefined)` degrades to sticky
- *    "most-recent", so per-segment metadata attribution (TASK-564/565) is lost —
+ * "most-recent", so per-segment metadata attribution is lost
  *    a clinician's `role`/`device_id` lands on the wrong utterance.
  *
  * These tests observe the anchor the only way an app can: through WHICH caller
@@ -81,7 +81,7 @@ const audioMock = {
 
 const baseProps = { sessionId: 'session-1', language: 'en' };
 
-describe('useArcaSpeechToText — capture-relative timeline anchor (TASK-611)', () => {
+describe('useArcaSpeechToText — capture-relative timeline anchor', () => {
   let now: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {

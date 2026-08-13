@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { authorableJsonSchemaProblems, jsonSchemaValueProblems } from '../json-schema-subset';
 
-describe('authorableJsonSchemaProblems — the constrained draft 2020-12 subset (TASK-658 AC-8)', () => {
+describe('authorableJsonSchemaProblems — the constrained draft 2020-12 subset', () => {
   it('accepts a plain object schema', () => {
     expect(
       authorableJsonSchemaProblems({

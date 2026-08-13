@@ -1,5 +1,5 @@
 /**
- * TASK-648 W3 — every runnable image must bake `/app/build-info.json` from the
+ * Every runnable image must bake `/app/build-info.json` from the
  * eight BUILD_* args CI passes (see .gitlab/ci/build.yml SERVICE_NAME per job
  * and docs/implementation/TASK-648-Service-Version-And-Release-Registry/
  * contracts/build-info.schema.json). This test asserts the invariant across
@@ -64,7 +64,7 @@ function readDockerfile(relativePath: string): string {
   return readFileSync(resolve(REPO_ROOT, relativePath), 'utf-8');
 }
 
-describe('TASK-648 W3 — build-info.json bake contract', () => {
+describe('build-info.json bake contract', () => {
   it.each(RUNNABLE_DOCKERFILES)('$label declares all eight BUILD_* args', ({ path }) => {
     const contents = readDockerfile(path);
     for (const arg of REQUIRED_ARGS) {

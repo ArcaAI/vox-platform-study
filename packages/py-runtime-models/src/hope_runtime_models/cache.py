@@ -125,8 +125,8 @@ class _CacheCore(Generic[T]):
     than unloading them: unload hooks may block, await, or touch the GPU, so they
     always run outside the lock.
 
-    Eviction order under pressure is always **ttl → lru → vram** (§3.1 clause 2).
-    """
+    Eviction order under pressure is always **ttl → lru → vram**.
+"""
 
     def __init__(
         self,
@@ -165,7 +165,7 @@ class _CacheCore(Generic[T]):
         self._loads = 0
         self._all_pinned_warnings = 0
         self._evictions: dict[str, int] = {reason: 0 for reason in EVICTION_REASONS}
-        #: Flipped off permanently the first time the probe raises (§3.4).
+        #: Flipped off permanently the first time the probe raises.
         self._vram_probe_enabled = vram_probe is not None
 
     # ── introspection ───────────────────────────────────────────────────────
@@ -322,9 +322,9 @@ class _CacheCore(Generic[T]):
     def _idle_limit(self) -> float:
         """Effective idle limit — never below the 60 s min-residency floor.
 
-        Anti-thrash guard (§7): with a small TTL and a small `max_size`, bursty
+        Anti-thrash guard: with a small TTL and a small `max_size`, bursty
         traffic could otherwise cycle load/evict on every request.
-        """
+"""
         return max(self._ttl_seconds, _TTL_MIN_SECONDS)
 
     def _make_room_locked(self, incoming_key: str) -> list[tuple[str, T]]:
@@ -384,7 +384,7 @@ class _CacheCore(Generic[T]):
             newest = next(reversed(self._entries))
             victim = self._pick_lru_victim_locked(exclude=newest)
             if victim is None:
-                # Soft ceiling (§3.1 clause 4): exceeding max_size beats dropping
+                # Soft ceiling: exceeding max_size beats dropping
                 # a model that is currently serving a request.
                 self._all_pinned_warnings += 1
                 logger.warning(

@@ -2,7 +2,7 @@ import { act, render } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
- * `drain` group — the stop-drain knobs reach `useAudioCapture` (TASK-597).
+ * `drain` group — the stop-drain knobs reach `useAudioCapture`.
  *
  * The SDK threads `quietWindowMs` all the way from `AudioStartOptions` to
  * `SttWebSocketClient.stopAndDrain`, but the console is the LAST hop: if the
@@ -12,9 +12,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  * The assertion that matters is `quietWindowMs: 0`. `0` is the value that
  * disables the quiet-window early resolve — the one setting that lets a tail
  * final land on a slow ASR pipeline — and it is the value a truthiness spread
- * (`...(quietWindowMs ? {quietWindowMs} : {})`) silently discards while still
+ * (`...(quietWindowMs ? {quietWindowMs}: {})`) silently discards while still
  * passing every test written with a "nice" number.
- */
+*/
 
 const captureProps: Array<Record<string, unknown>> = [];
 
@@ -45,7 +45,7 @@ vi.mock('@arcaai/vox/compat', () => ({
     error: null,
   }),
   useArcaSttLanguageModes: () => ({ modes: [], isLoading: false, error: null, refresh: vi.fn() }),
-  // TASK-603 — the provider also mounts the batch-upload queue; an idle stub is
+  // The provider also mounts the batch-upload queue; an idle stub is
   // all these suites need (batch behaviour is covered in BatchUploadTab.test.tsx).
   useArcaBatchTranscription: () => ({
     items: [],
@@ -94,7 +94,7 @@ function latestCaptureProps() {
   return captureProps[captureProps.length - 1]!;
 }
 
-describe('playground-session — drain knobs reach useAudioCapture (TASK-597)', () => {
+describe('playground-session — drain knobs reach useAudioCapture', () => {
   beforeEach(() => {
     captureProps.length = 0;
     clearStoredConfig();

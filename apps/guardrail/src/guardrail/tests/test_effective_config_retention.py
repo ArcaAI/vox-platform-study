@@ -29,7 +29,7 @@ ENV_TTL_S = 600
 
 
 def _payload(ttl_seconds: int | None = None, max_models: int | None = None) -> dict[str, Any]:
-    """The gateway's `guardrail` subset — retention only (§2.2)."""
+    """The gateway's `guardrail` subset — retention only."""
     return {
         "service": "guardrail",
         "generatedAt": "2026-07-20T00:00:00.000Z",
@@ -103,7 +103,7 @@ async def test_both_aux_caches_adopt_the_control_plane_value() -> None:
 
 @pytest.mark.asyncio
 async def test_live_cache_reconfigured_not_just_new_ones() -> None:
-    """§3.2 — the acceptance criterion this ticket exists for.
+    """The acceptance criterion this change exists for.
 
     A cache that is already alive with a resident model must adopt a new
     control-plane TTL, WITHOUT dropping what it holds.

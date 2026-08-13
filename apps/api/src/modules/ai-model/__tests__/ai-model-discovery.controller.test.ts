@@ -48,7 +48,7 @@ const dbRow = (over: Record<string, unknown> = {}) => ({
 });
 
 // =============================================================================
-// Merge rule (§3.1)
+// Merge rule
 // =============================================================================
 describe('AiModelDiscoveryService.discover — merge rule', () => {
   it('tags a live-only model as discovered', async () => {
@@ -150,7 +150,7 @@ describe('AiModelDiscoveryService.discover — merge rule', () => {
 });
 
 // =============================================================================
-// Register (§3.4 / R2)
+// Register (R2)
 // =============================================================================
 describe('AiModelDiscoveryService.register', () => {
   it('delegates to AiModelService.create with a derived slug and the verbatim sourceUri', async () => {

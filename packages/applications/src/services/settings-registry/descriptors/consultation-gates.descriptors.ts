@@ -1,4 +1,4 @@
-// Consultation-pipeline kill-switches — MIGRATED from env to `global-kv` (TASK-679).
+// Consultation-pipeline kill-switches — MIGRATED from env to `global-kv`.
 //
 // Two `@OnEvent(ContextAdded)` gates that were plain `process.env` flags read
 // once in a constructor. The rationale, the polarity rule and the deliberate

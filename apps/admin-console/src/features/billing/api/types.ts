@@ -1,5 +1,5 @@
 /**
- * Wire types for the Billing screen (TASK-615 #15b), backed by the gateway
+ * Wire types for the Billing screen, backed by the gateway
  * `admin/billing/*` surface. Re-declared locally (rule 13). Money is ALWAYS an
  * integer-micros STRING; a versioned invoice carries a numeric `version` for the
  * If-Match/ETag optimistic-concurrency finalize/void path.
@@ -98,7 +98,7 @@ export interface SellRate {
 }
 
 /**
- * Supersede one SELL rate row (TASK-638 §7). Dimensions are INHERITED — a
+ * Supersede one SELL rate row. Dimensions are INHERITED — a
  * supersede reprices a row, it never re-shapes it, so only the price, the
  * effective instant and the book label are settable.
  */

@@ -46,7 +46,7 @@ async def stream_task(
 
             for msg_id, chunk, carrier in entries:
                 cursor = msg_id
-                # TASK-636 OBS-16: relay each chunk under the trace context of
+                # Relay each chunk under the trace context of
                 # the GENERATION that produced it, not this SSE request's. The
                 # two are separate HTTP requests — without this, the work of
                 # emitting a chunk (and every log line it writes, via
@@ -74,7 +74,7 @@ async def stream_task(
                 ):
                     return
 
-    # W3C Trace Context Level 2 `traceresponse` (TASK-636 OBS-16). SSE is
+    # W3C Trace Context Level 2 `traceresponse`. SSE is
     # one-way once open, so this header is the ONLY point at which the server
     # can tell the caller which trace served the stream. The API Gateway's SSE
     # proxy relays raw chunks, so without it a caller correlating a long-lived

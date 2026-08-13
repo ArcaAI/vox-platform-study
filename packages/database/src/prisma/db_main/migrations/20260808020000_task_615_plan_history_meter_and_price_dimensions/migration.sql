@@ -1,4 +1,4 @@
--- TASK-615 schema follow-ups (README §7 items #4–#7). All changes are additive
+-- Schema follow-ups (items #4–#7). All changes are additive
 -- and back-compatible with the usage-ledger + billing plane created in
 -- 20260806000000_task_615_usage_ledger_and_billing:
 --   #5 TenantUsageMeter.usedCount Int32 -> BigInt (token/character meters overflow Int32).

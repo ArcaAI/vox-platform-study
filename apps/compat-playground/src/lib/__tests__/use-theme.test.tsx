@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useTheme } from '../use-theme';
 
 /**
- * Regression cover for TASK-597 open follow-up #6 — "stale text colour survives
+ * Regression cover for — "stale text colour survives
  * a theme change until the element repaints".
  *
  * The visual symptom itself (a frozen `color` interpolation) is a browser paint
@@ -11,14 +11,14 @@ import { useTheme } from '../use-theme';
  * compositor. What CAN be pinned here are the two properties of the hook that
  * remove the trigger, and both were RED before the fix:
  *
- *  1. it ADOPTS the class the pre-paint bootstrap script left on `<html>`,
- *     instead of re-deriving the theme and re-applying it after first paint;
- *  2. it flips the class with CSS transitions SUPPRESSED, so no colour
- *     transition is ever started by a theme change.
+ * 1. it ADOPTS the class the pre-paint bootstrap script left on `<html>`,
+ * instead of re-deriving the theme and re-applying it after first paint;
+ * 2. it flips the class with CSS transitions SUPPRESSED, so no colour
+ * transition is ever started by a theme change.
  *
  * Note `documentElement.classList` — not a `matchMedia` mock — is the source of
  * truth in test 1: that is precisely the behaviour that changed.
- */
+*/
 
 const SUPPRESSOR = /transition:\s*none/;
 

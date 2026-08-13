@@ -1,10 +1,10 @@
-// TASK-610 §3.3 / §4.1 — OriginRegistryService (lane W2-A).
+// OriginRegistryService.
 //
-// REWRITTEN §4B.4 (lane W6-B) — many-to-many origins ↔ tenants. `ownerOf`
+// REWRITTEN — many-to-many origins ↔ tenants. `ownerOf`
 // (single owner) is GONE. `TenantAllowedOrigin` moved from a global unique on
-// `origin` to a unique on `(origin, tenantId)` (§4B.2) — a `(origin)` row is
+// `origin` to a unique on `(origin, tenantId)` — a `(origin)` row is
 // now potentially several GRANTS, one per tenant, and resolution is a UNION
-// of every matching grant's tenant, with no precedence/tie-break (§4B.3):
+// of every matching grant's tenant, with no precedence/tie-break:
 //
 //   tenantsFor(origin) = ⋃ { row.tenantId : row is exact-equal OR row is a
 //                            pattern matching origin }
@@ -13,12 +13,12 @@
 // `Map<normalized origin, Set<tenantId>>` (+ a pattern tier, same shape)
 // built from every `TenantAllowedOrigin` row across every tenant. This is the
 // index the CORS callback (pre-auth, browser-facing/advisory) and
-// `OriginTenantBindingGuard` (post-auth, the real isolation control, FR-4)
+// `OriginTenantBindingGuard` (post-auth, the real isolation control)
 // both read via `has()`/`allows()` — see the diagram in `IOriginRegistry.ts`.
 //
-// §4A.2 heritage — wildcard host patterns. A stored row is a PATTERN iff its
-// `origin` text contains `*` (`isOriginPattern`, `origin-pattern.ts`, lane
-// W5-A — frozen grammar/match rules, not re-designed here). The index still
+// Heritage — wildcard host patterns. A stored row is a PATTERN iff its
+// `origin` text contains `*` (`isOriginPattern`, `origin-pattern.ts` —
+// frozen grammar/match rules, not re-designed here). The index still
 // has two tiers, but resolution no longer walks them in "most specific
 // first, return first match" order:
 //
@@ -28,7 +28,7 @@
 //      contributes its tenant set to the result. There is no early return.
 //
 // `patternSpecificity` (`origin-pattern.ts`) is NO LONGER on the
-// authorization path — union has nothing to break a tie between (§4B.3: "the
+// authorization path — union has nothing to break a tie between ("the
 // old precedence — exact beats pattern, longest suffix wins — disappears").
 // It is kept here ONLY to give `refresh()`'s log output (and the `patterns`
 // array in general) a stable, human-meaningful iteration order — most
@@ -77,12 +77,12 @@ export class OriginRegistryService implements IOriginRegistry, OnModuleInit {
   private index: Map<string, Set<string>> = new Map();
 
   /**
-   * Pattern rows (§4A.2), one entry per DISTINCT pattern text — several
+   * Pattern rows, one entry per DISTINCT pattern text — several
    * tenants granted the same pattern collapse into that entry's `tenants`
    * set (grouped in `buildIndex()`, mirroring how the exact map groups
    * grants of the same origin). Sorted most-specific-first
    * (`patternSpecificity` descending) for deterministic LOG ordering only
-   * (§4B.3 — union resolution has no precedence left to preserve; see the
+   * (union resolution has no precedence left to preserve; see the
    * file header). `tenantsFor()` walks every entry unconditionally — it does
    * NOT stop at the first match. Always REPLACED wholesale alongside
    * `index` — see the comment on that field above, which applies here
@@ -111,12 +111,12 @@ export class OriginRegistryService implements IOriginRegistry, OnModuleInit {
   }
 
   /**
-   * §4B.3 union resolution: the union of the exact-map entry's tenants (if
+   * Union resolution: the union of the exact-map entry's tenants (if
    * any) and EVERY pattern entry whose pattern matches this origin — no
    * early return, no precedence. A matching `*` allow-all row therefore
    * always contributes its tenant(s), even when a more specific pattern or
    * an exact row also matched; see the file header for why that is the
-   * deliberate, owner-directed behavior (§4B.3's note on the Global `*`
+   * deliberate, owner-directed behavior ('s note on the Global `*`
    * row).
    */
   tenantsFor(origin: string): ReadonlySet<string> {
@@ -151,7 +151,7 @@ export class OriginRegistryService implements IOriginRegistry, OnModuleInit {
   }
 
   /**
-   * The ONE place the SYSTEM rule lives (§4B.4 frozen contract) — the guard
+   * The ONE place the SYSTEM rule lives (frozen contract) — the guard
    * and the WS handshake must call this rather than re-deriving it.
    */
   allows(origin: string, tenantId: string): boolean {
@@ -176,7 +176,7 @@ export class OriginRegistryService implements IOriginRegistry, OnModuleInit {
   }
 
   /**
-   * Independent backstop refresh (plan §4.1 follow-up — adversarial review,
+   * Independent backstop refresh (follow-up — adversarial review,
    * MEDIUM finding). Propagation is normally event-driven
    * (`onInvalidationEvent()` below, fired on a mutation or on
    * `AppSettingsService`'s own cache refresh) — this timer does NOT replace
@@ -202,7 +202,7 @@ export class OriginRegistryService implements IOriginRegistry, OnModuleInit {
    *     depend on (its own `DEFAULT_CACHE_REFRESH_INTERVAL = '45 * * * * *'`
    *     comment claims "every 45 seconds"; it actually fires once per
    *     minute at :45, i.e. up to ~60s worst case — the adversarial review
-   *     caught that this ticket's own §4.1 table inherited that same wrong
+   *     caught that the original table inherited that same wrong
    *     "≤45s" claim).
    *   - It matches this package's existing precedent for a FIXED
    *     (non-settings-configurable) backstop:
@@ -233,7 +233,7 @@ export class OriginRegistryService implements IOriginRegistry, OnModuleInit {
   }
 
   /**
-   * Event-listener entry point for the two invalidation signals (plan §4.1
+   * Event-listener entry point for the two invalidation signals (
    * frozen contract). Its ONLY job is guaranteeing `refresh()` (below) never
    * executes while a REQUEST's CLS store is attached. `refresh()` itself
    * stays a pure, directly-callable operation — `onModuleInit()` still calls
@@ -241,7 +241,7 @@ export class OriginRegistryService implements IOriginRegistry, OnModuleInit {
    * all.
    *
    * ═══════════════════════════════════════════════════════════════════════
-   * CONFIRMED DEFECT this wrapper exists to close (found by the TASK-610
+   * CONFIRMED DEFECT this wrapper exists to close (found by the 
    * adversarial review, W4-R):
    *
    * `TenantAllowedOriginService` emits `origin-registry.invalidate`
@@ -309,7 +309,7 @@ export class OriginRegistryService implements IOriginRegistry, OnModuleInit {
    * Rebuild the in-memory index from the database.
    *
    * ═══════════════════════════════════════════════════════════════════════
-   * HAZARD (plan §3.3, §4.1 — read this before changing a single line here):
+   * HAZARD (read this before changing a single line here):
    *
    * This method MUST NOT be called from inside a request CLS scope.
    * `TenantAllowedOrigin` is listed in `TENANT_SCOPED_MODELS`
@@ -317,7 +317,7 @@ export class OriginRegistryService implements IOriginRegistry, OnModuleInit {
    * Prisma extension injects the CALLING tenant's `tenantId` into every read
    * against it WHENEVER a CLS tenant context exists. Call `refresh()` from a
    * request handler (a controller, a service method invoked mid-request, OR
-   * — as TASK-610's adversarial review confirmed — an `@OnEvent` listener
+   * as 's adversarial review confirmed — an `@OnEvent` listener
    * invoked synchronously from inside a write request) and
    * `repository.findAll({})` silently stops meaning "every tenant's rows" —
    * it becomes "this one caller's rows". The index would then rebuild with
@@ -409,7 +409,7 @@ export class OriginRegistryService implements IOriginRegistry, OnModuleInit {
    *   but that is ASSERTED here rather than assumed: a transaction-client
    *   read that bypasses the soft-delete extension, or a row touched by
    *   direct SQL, must not resurrect a removed origin into the live index.
-   * - §4B.2/§4B.3 — GROUPS rather than picks a winner. Two (or more) rows
+   * - — GROUPS rather than picks a winner. Two (or more) rows
    *   for the same origin — now legitimately different tenants, since the
    *   DB constraint moved to `@@unique([origin, tenantId])` — collapse into
    *   ONE map entry whose value is the SET of every granted tenant. This
@@ -428,7 +428,7 @@ export class OriginRegistryService implements IOriginRegistry, OnModuleInit {
    *   deterministic run-to-run regardless of what order the repository
    *   happened to return rows in, which keeps `refresh()`'s log output
    *   stable and any future debug tooling reproducible.
-   * - §4A.2: a row whose `origin` text contains `*` (`isOriginPattern`) is
+   * - a row whose `origin` text contains `*` (`isOriginPattern`) is
    *   split into the `patterns` tier instead of the exact `Map`, GROUPED the
    *   same way by pattern text, then sorted MOST-specific first
    *   (`patternSpecificity` descending) for LOG ordering only — see the
@@ -459,8 +459,8 @@ export class OriginRegistryService implements IOriginRegistry, OnModuleInit {
   }
 
   /**
-   * §4A.3 — an allow-all (`*`) row means every origin is admitted for its
-   * granted tenant(s) (§4B.3: under union, literally every origin, not just
+   * An allow-all (`*`) row means every origin is admitted for its
+   * granted tenant(s) (under union, literally every origin, not just
    * ones nothing more specific matched). That is a legitimate, deliberate
    * owner decision, but an operator must never have to read the database to
    * discover the platform is in that state — so this logs at `warn` on
@@ -468,7 +468,7 @@ export class OriginRegistryService implements IOriginRegistry, OnModuleInit {
    * exactly the same reason `refresh()`'s own success log runs
    * unconditionally on every call rather than only on a change.
    *
-   * §4B.4: a `*` row can now be granted to MULTIPLE tenants (same
+   * A `*` row can now be granted to MULTIPLE tenants (same
    * many-to-many model as any other origin) — this reports ALL of them, not
    * a single `ownerTenantId`.
    */

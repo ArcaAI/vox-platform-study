@@ -15,7 +15,7 @@
  *     entity validate() refuses empty/null/undefined). Global-scope
  *     audits now belong to SYSTEM_TENANT_ID, not a literal NULL.
  *   - data / previousData / metadata: track-only Json (no structural validation
- *     per ticket policy — Conservative Defaults)
+ *     — Conservative Defaults)
  */
 
 import { describe, it, expect } from 'vitest';

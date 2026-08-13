@@ -60,7 +60,7 @@ export class SecretsService implements OnModuleDestroy {
   // ---------------------------------------------------------------------------
   //
   // A pinned version and "latest" are DIFFERENT values under one name (that is
-  // the whole point of staged rotation, plan §9.2 L6), so a version-blind cache
+  // the whole point of staged rotation), so a version-blind cache
   // key would serve v3 to a caller that asked for v2. Unversioned reads keep the
   // bare key as their cache key, so nothing about the existing entries changes.
 
@@ -80,7 +80,7 @@ export class SecretsService implements OnModuleDestroy {
   }
 
   // ---------------------------------------------------------------------------
-  // Resolution source — plan §9.2 L8, "every fallback is observable"
+  // Resolution source — "every fallback is observable"
   // ---------------------------------------------------------------------------
   //
   // `getSecret()` returns a string and, before this, nothing distinguished
@@ -92,9 +92,9 @@ export class SecretsService implements OnModuleDestroy {
   // We record the supplying tier for every resolved key, and warn ONCE per key
   // when the `env` tier supplies a value in a non-development runtime. There is
   // deliberately NO cross-tier fallback: a `vault` provider that cannot resolve
-  // a key throws (secrets are `failMode: 'closed'` — plan §4 B3). Silently
+  // a key throws (secrets are `failMode: 'closed'`). Silently
   // reading `process.env` behind a Vault miss would authenticate as whatever
-  // happened to be in the environment, which is the failure this ticket exists
+  // happened to be in the environment, which is the failure this module exists
   // to make impossible. `SECRETS_PROVIDER=env` remains fully supported: it is
   // the dev and CI path, and it is the PROVIDER, not a fallback, there.
 
@@ -126,7 +126,7 @@ export class SecretsService implements OnModuleDestroy {
     this.resolutionSource.set(key, source);
     if (source !== 'env' || !this.isDeployedRuntime() || this.warnedFallbackKeys.has(key)) return;
     this.warnedFallbackKeys.add(key);
-    // Names the key and the tier only — never the value (plan §9.3 M10).
+    // Names the key and the tier only — never the value.
     this.logger.warn(
       `Secret '${key}' was supplied by the 'env' tier (process environment), not by a secrets backend. ` +
         `SECRETS_PROVIDER is unset or 'env' in NODE_ENV=${process.env.NODE_ENV}. Deployed environments should read platform ` +
@@ -254,7 +254,7 @@ export class SecretsService implements OnModuleDestroy {
   // warms the keys once; this loop re-fetches them at half the TTL so a warmed
   // key is ALWAYS present. Using `{ refresh: true }` also makes the loop a
   // bounded-staleness backstop for rotations (the `arca:secrets:invalidate`
-  // pub/sub channel remains the fast propagation path — plan §9.2 L4).
+  // pub/sub channel remains the fast propagation path).
 
   private warmupKeys: readonly string[] = [];
   private reWarmTimer: ReturnType<typeof setInterval> | null = null;
@@ -288,7 +288,7 @@ export class SecretsService implements OnModuleDestroy {
     const results = await Promise.allSettled(this.warmupKeys.map((k) => this.getSecret(k, { refresh: true })));
     const failed = this.warmupKeys.filter((_, i) => results[i]?.status === 'rejected');
     if (failed.length > 0) {
-      // Names keys only, never values (plan §9.3 M10). Existing cache entries are
+      // Names keys only, never values. Existing cache entries are
       // retained; the sync path keeps serving the last-good token until recovery.
       this.logger.warn(
         `SecretsService re-warm miss for ${failed.length}/${this.warmupKeys.length} key(s): ${failed.join(', ')} (last-good values retained)`,

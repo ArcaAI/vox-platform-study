@@ -23,12 +23,12 @@ function readAlreadyShown(): boolean {
 type PopupState = { status: 'idle' | 'shown' } | { status: 'open'; entries: ChangelogEntry[] };
 
 /**
- * One-time "What's New" popup (§3.6 / §6b). Mounted once in `(console)/layout.tsx`
+ * One-time "What's New" popup. Mounted once in `(console)/layout.tsx`
  * so it fires on the first console load after login, not on every navigation —
  * the layout persists across client-side route changes, and the session-storage
  * guard covers a full reload within the same tab.
  *
- * Never renders while impersonating (§3.6 rule 4): the server already excludes
+ * Never renders while impersonating: the server already excludes
  * entries from `/changelog/unseen` in that case, but this is defense-in-depth —
  * a support session must never silently acknowledge a notice on behalf of the
  * real user.
@@ -89,7 +89,7 @@ export function WhatsNewDialog() {
   }
 
   // Never render while impersonating, and never render with nothing to show —
-  // no wrapper, no flash (per the U11 brief).
+  // no wrapper, no flash (per the brief).
   if (isImpersonating || popup.status !== 'open' || shownEntries.length === 0) {
     return null;
   }

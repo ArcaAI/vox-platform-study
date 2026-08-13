@@ -8,7 +8,7 @@ import {
 } from '../TabExampleCode';
 
 /**
- * The guard the mechanism needs (TASK-597 lane G, R2).
+ * The guard the mechanism needs.
  *
  * `import.meta.glob` is analysed STATICALLY by Vite: only the literal paths in
  * the glob array get a loader. A path listed on a tab but missing from that
@@ -18,7 +18,7 @@ import {
  * So: load every file of every tab and assert it has real content. A typo, a
  * renamed component, or a forgotten glob entry fails here instead of shipping
  * an empty "example".
- */
+*/
 
 const TABS: Array<[string, ExampleFile[]]> = [
   ['Connection', CONNECTION_EXAMPLE_FILES],

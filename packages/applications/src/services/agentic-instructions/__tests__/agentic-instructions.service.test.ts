@@ -117,7 +117,7 @@ describe('AgenticInstructionsService.getEffectiveInstructions', () => {
     expect(out.promptTier.promptType).toBe('new-patient');
   });
 
-  // TASK-634 Phase 1 follow-up: this surface accepts `promptType: 'pre-summary'`,
+  // This surface accepts `promptType: 'pre-summary'`,
   // whose chain has NO department axis and cannot derive the tenant from a
   // Department row — omitting it makes the inventory report the SYSTEM default
   // (or raise a 503) instead of the tenant's own pre-summary template.

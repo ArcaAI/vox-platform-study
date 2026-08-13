@@ -1,5 +1,5 @@
 /**
- * useArcaAudio — silent-uplink watchdog (TASK-612 Lane D, RC-4, AC-4).
+ * useArcaAudio — silent-uplink watchdog.
  *
  * A session can stream STRUCTURALLY VALID frames of pure zeros — a wrong or
  * default microphone, a muted-at-OS device, a caller's suspended
@@ -244,7 +244,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('useArcaAudio — silent-uplink watchdog (TASK-612 Lane D)', () => {
+describe('useArcaAudio — silent-uplink watchdog', () => {
   it('(a) streaming session + 5s of zero-level ticks -> setAudioSignalState("silent") once + one logger.warn', async () => {
     const store = setupStore();
     const { result } = renderHook(() => useArcaAudio());

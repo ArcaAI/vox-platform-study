@@ -1,4 +1,4 @@
-// TASK-610 §4.1 — OriginRegistryService module (lane W2-A).
+// OriginRegistryService module.
 //
 // `EventEmitterModule.forRoot()` is registered once, globally, in
 // `apps/api/src/app.module.ts` (`@nestjs/event-emitter`'s `forRoot()` marks

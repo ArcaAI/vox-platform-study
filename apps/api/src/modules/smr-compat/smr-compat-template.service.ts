@@ -27,7 +27,7 @@ export interface GovernedInstructionAudit {
 
 /**
  * Bridges the v1-compat SMR shim to HOPE v2's real tenant `Department` +
- * governed `PromptTemplate` domain (TASK-592).
+ * governed `PromptTemplate` domain.
  *
  * The v1 endpoints carry a free-form department NAME string; the canonical
  * `PromptResolutionService` needs a Department UUID. This service resolves the
@@ -36,7 +36,7 @@ export interface GovernedInstructionAudit {
  * governed content the non-compat summary processors use. When no real
  * department matches (or it carries no department-specific governed template),
  * it returns `undefined` so the caller falls back to the static dept×visit
- * field-set steering (`dept-templates.ts`), preserving pre-TASK-592 behavior.
+ * field-set steering (`dept-templates.ts`), preserving the previous implementation behavior.
  *
  * It NEVER throws — a resolution failure must degrade to the static path, never
  * fail the summarization request.
@@ -63,7 +63,7 @@ export class SmrCompatTemplateService {
    * otherwise `undefined` (→ caller uses the static field-set steering). Never
    * throws.
    *
-   * TASK-634 — the two capabilities take DIFFERENT routes:
+   * The two capabilities take DIFFERENT routes:
    *
    * - `'new-patient' | 'revisit'` (summary): the free-form department name is
    *   matched to a real tenant `Department` row, whose governed visit-type

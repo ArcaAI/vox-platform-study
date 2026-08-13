@@ -93,7 +93,7 @@ const createMockContextItemRepository = () => {
     // fixture's `preSummaryText` assertion is unaffected.
     decryptContentFromEntity: vi.fn().mockImplementation(async (entity: { content?: string | null }) => entity?.content ?? null),
     create: vi.fn().mockResolvedValue({ id: 'ctx-draft-1', content: 'S: ...', tenantId: 'tenant-1' }),
-    // TASK-687 — persistDraft adopts its OWN prior draft (marked
+    // PersistDraft adopts its OWN prior draft (marked
     // `metaData.subType = 'HARNESS_DRAFT'`) instead of creating a second note.
     // Default empty ⇒ the "no prior draft" create path, so every pre-existing
     // persistDraft test is unaffected.
@@ -102,7 +102,7 @@ const createMockContextItemRepository = () => {
     // Encrypt-on-write helper (declaration-merged sibling): plaintext `content`
     // has no column, so a create that skips this drops the note at rest.
     encryptContentIntoEntity: vi.fn().mockResolvedValue(undefined),
-    // TASK-655 — `loadLiveSoapSnapshot` now delegates to the real repository's
+    // `loadLiveSoapSnapshot` now delegates to the real repository's
     // `findLatestPreSummaryWithDecryptedContent` (find + subType-filter +
     // newest-wins reduce + decrypt), so the mock must mirror that same
     // contract, DELEGATING through this fixture's own `findPreSummaries` /
@@ -176,7 +176,7 @@ const createMockNamedEntityRepository = () => ({
       transcriptEndOffset: 26,
     },
   ]),
-  // TASK-688: persistEntities adopts its OWN prior rows for this
+  // PersistEntities adopts its OWN prior rows for this
   // ContextItem instead of blindly inserting a second set. Default fixture is
   // "no prior rows" so every pre-existing test keeps the create-only path.
   findByContextItem: vi.fn().mockResolvedValue([]),
@@ -198,7 +198,7 @@ const createMockSummaryMetaRepository = () => ({
     assuranceCompletedAt: null,
   }),
   update: vi.fn().mockImplementation((id, entity) => Promise.resolve({ id, ...entity })),
-  // TASK-553 F-11: SummaryMeta gained `_version`, so `finalizeAssurance`
+  // SummaryMeta gained `_version`, so `finalizeAssurance`
   // backfills through the versioned compare-and-set path rather than a blind
   // `update`. The early meta fixture above has no explicit `version`, so the
   // service passes the `?? 1` fallback.
@@ -321,7 +321,7 @@ describe('HarnessInternalService', () => {
     redisCache?: ReturnType<typeof createMockRedisCache>,
     transcriptSegmentRepository?: ReturnType<typeof createMockTranscriptSegmentRepository>,
     harnessPolicyService?: { getEffectivePolicy: ReturnType<typeof vi.fn> },
-    // TASK-615 WS-D2 (item 1c) — never called by persistDraft; wired only so
+    // Never called by persistDraft; wired only so
     // the double-bill-guard test can assert on it.
     usageLedgerService?: { recordUsage: ReturnType<typeof vi.fn> },
   ) => {
@@ -677,7 +677,7 @@ describe('HarnessInternalService', () => {
         contextItemRepository.findPreSummaries.mockResolvedValue([SNAPSHOT]);
       });
 
-      // TASK-635 C5 §7.5: the snapshot LOAD is now unconditional — the load is
+      // : the snapshot LOAD is now unconditional — the load is
       // what tells finalize whether a live agent ran at all (`metaData.agent`).
       // The observable contract is unchanged and is what is asserted here: with
       // no lineage on the row, flag=false still injects NOTHING.
@@ -687,7 +687,7 @@ describe('HarnessInternalService', () => {
         expect(assembledPreSummary()).toBeUndefined();
       });
 
-      // ── TASK-635 C5-T4 — agent lineage supersedes the flag (DR-4 / §7.5) ──
+      // ── Agent lineage supersedes the flag ──
       const LINEAGE_SNAPSHOT = {
         id: 'ps-live-agent',
         content: 'S: chest pain O: BP 120/80',
@@ -821,7 +821,7 @@ describe('HarnessInternalService', () => {
       expect(promptAssemblyService.assemble).toHaveBeenCalledWith(expect.objectContaining({ preSummaryText: 'already-plaintext' }));
     });
 
-    // TASK-655 — a decrypt failure (e.g. Vault Transit outage) must propagate
+    // A decrypt failure (e.g. Vault Transit outage) must propagate
     // out of `assemble()` rather than being swallowed into a cold-path
     // fallback; `assemble()` has no try/catch around the snapshot load, so
     // this pins that pre-existing (unwrapped) behaviour through the refactor.
@@ -885,7 +885,7 @@ describe('HarnessInternalService', () => {
 
       const call = (promptAssemblyService.assemble as ReturnType<typeof vi.fn>).mock.calls.at(-1)![0];
       expect(call.preSummaryText).toBeUndefined();
-      // TASK-635 C5 §7.5: the load is unconditional now (it is how lineage is
+      // : the load is unconditional now (it is how lineage is
       // detected); with no `metaData.agent` on the row the flag still decides,
       // so nothing is injected and nothing is pinned.
       expect(call.preSummaryLineage).toBeUndefined();
@@ -1097,7 +1097,7 @@ describe('HarnessInternalService', () => {
       expect(result).toEqual({ contextItemId: 'ctx-draft-1' });
     });
 
-    // ── DNA redaction/rewrite audit trail (TASK-551) ──
+    // ── DNA redaction/rewrite audit trail ──
     it('threads the redaction marker + manifest onto SummaryMeta and encrypts it', async () => {
       const manifest = { applied: true, total_hits: 2, hits_by_rule: { 'r-employer': 2 } };
       await service.persistDraft('consultation-1', {
@@ -1350,7 +1350,7 @@ describe('HarnessInternalService', () => {
 
       await service.persistDraft('consultation-1', draftBody());
 
-      // TASK-635 C5 §7.5: unconditional load, flag-gated provenance when the
+      // : unconditional load, flag-gated provenance when the
       // row carries no agent lineage — empty `preSummaryIds`, null lineage.
       expect(SummaryMetaFactory.CreateSummaryMeta).toHaveBeenCalledWith(
         expect.objectContaining({ preSummaryIds: [], sessionAgentId: null, sessionAgentPromptVersion: null }),
@@ -1359,7 +1359,7 @@ describe('HarnessInternalService', () => {
   });
 
   // =========================================================================
-  // persistDraft — double-bill guard (TASK-615 WS-D2, item 1c)
+  // persistDraft — double-bill guard
   //
   // Harness-originated generations are already metered PER-STEP by the
   // agent-trajectory path (WS-F, `harness:step:<...>` idempotency keys) —
@@ -1900,7 +1900,7 @@ describe('HarnessInternalService', () => {
   // a Redis throw falls through to normal processing (best-effort, mirrors the consultation-job dedup).
   // =========================================================================
 
-  describe('TASK-687: one consultation, one harness draft', () => {
+  describe('One consultation, one harness draft', () => {
     let redisCache: ReturnType<typeof createMockRedisCache>;
 
     beforeEach(() => {
@@ -2390,7 +2390,7 @@ describe('HarnessInternalService', () => {
   });
 
   // =========================================================================
-  // TASK-688 — persistEntities idempotency across workflow EXECUTIONS
+  // PersistEntities idempotency across workflow EXECUTIONS
   //
   // `HarnessDocWorkflow` has two start sites on the deterministic id
   // `harness-doc-{consultationId}`, neither setting `id_reuse_policy`, so
@@ -2404,7 +2404,7 @@ describe('HarnessInternalService', () => {
   // degrades to `work()` whenever Redis is absent or throws, so the key can only
   // ever be a fast path on top of a write that is already idempotent.
   // =========================================================================
-  describe('TASK-688: persistEntities is idempotent across executions', () => {
+  describe('PersistEntities is idempotent across executions', () => {
     // A row this path authored in a previous execution — carries the ownership
     // marker. Plain objects stand in for NamedEntityEntity; the service only
     // assigns to the content fields and reads `id`/`aiModelId`.

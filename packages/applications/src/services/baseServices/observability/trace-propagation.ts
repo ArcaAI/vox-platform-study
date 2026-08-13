@@ -1,5 +1,5 @@
 /**
- * W3C trace-context propagation across async boundaries (TASK-636 OBS-16).
+ * W3C trace-context propagation across async boundaries.
  *
  * WHY THIS EXISTS
  * Before this module, `traceparent` appeared in exactly ONE place server-side:
@@ -24,7 +24,7 @@
  *     `../logging/redactor.ts`). A trace id is an internal identifier, in the
  *     same class as the ids that redactor deliberately PRESERVES.
  *
- *   - **Free when tracing is off (TASK-411).** With no global propagator
+ *   - **Free when tracing is off.** With no global propagator
  *     registered — the state of any process that never starts the OTel SDK —
  *     `propagation.inject` is a no-op and {@link injectTraceCarrier} returns
  *     `{}`. Callers then add zero fields to their write. With a propagator

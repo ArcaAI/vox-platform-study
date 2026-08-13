@@ -60,7 +60,7 @@ class AnthropicProvider:
     def __init__(self, config: AnthropicConfig) -> None:
         self._config = config
         self._default_model = config.default_model
-        # TASK-602: BYOK — the shared platform client is built ONLY when an
+        # BYOK — the shared platform client is built ONLY when an
         # explicit api_key is present (never from env; see AnthropicConfig). In
         # production api_key is empty ⇒ None, and the credential must arrive per
         # request as a ProviderOverride. Never hand an empty key to the SDK.
@@ -85,7 +85,7 @@ class AnthropicProvider:
 
     def _shared_or_raise(self) -> AsyncAnthropic:
         """The shared platform client, or ``ProviderCredentialsError`` (503) when
-        none was configured. TASK-602: BYOK, fail-closed — no env fallback, so a
+        none was configured. BYOK, fail-closed — no env fallback, so a
         request with no usable override and no platform client fails cleanly
         rather than 401-ing an empty-keyed client."""
         if self._client is None:
@@ -359,7 +359,7 @@ class AnthropicProvider:
             yield StreamChunk(type="done", data={"finish_reason": raw_stop or "end_turn"})
 
     async def health_check(self) -> bool:
-        # TASK-602: no platform key ⇒ no shared client to probe (still BYOK-usable
+        # No platform key ⇒ no shared client to probe (still BYOK-usable
         # per request via an override).
         if self._client is None:
             return False
@@ -375,7 +375,7 @@ class AnthropicProvider:
             return False
 
     async def get_info(self) -> ProviderInfo:
-        # TASK-579: default_model is informational-only (may be unset now that
+        # Default_model is informational-only (may be unset now that
         # cloud configs carry no compiled-in vendor model) — never advertise an
         # empty-named model.
         models: list[ModelInfo] = (
@@ -384,7 +384,7 @@ class AnthropicProvider:
             else []
         )
         status = "available"
-        # TASK-602: no platform key ⇒ unavailable at the platform level (still
+        # No platform key ⇒ unavailable at the platform level (still
         # BYOK-usable per request).
         if self._client is None:
             return ProviderInfo(

@@ -85,7 +85,7 @@ export class TranscriptionJobController {
     userId?: string;
     audioBucketName?: string;
     storage?: StorageDescriptor | null;
-    /** Tenant fallback pipeline the worker re-runs on if the primary ASR fails (TASK-614). */
+    /** Tenant fallback pipeline the worker re-runs on if the primary ASR fails. */
     fallbackPipelineId?: string;
   }): Promise<void> {
     const service = this.realtimeService as unknown as {
@@ -113,10 +113,10 @@ export class TranscriptionJobController {
     @Inject(IEntitlementsService)
     private readonly entitlements: IEntitlementsService,
     // Resolves the caller tenant's STT fallback spec + BYO provider overrides
-    // (TASK-567). Optional so positional test construction still works and a
+    // . Optional so positional test construction still works and a
     // stack without the module degrades gracefully; injection is fail-open.
     @Optional() @Inject(ITenantSttConfigService) private readonly sttConfig?: ITenantSttConfigService,
-    // Resolves the admin-configurable `stt.batch.*` ceilings (TASK-604).
+    // Resolves the admin-configurable `stt.batch.*` ceilings.
     // Optional so positional test construction and a stack without the settings
     // module still work — the ceilings then apply at their CODE DEFAULTS. The
     // limit is never SKIPPED when this is absent, only made non-configurable.
@@ -207,7 +207,7 @@ export class TranscriptionJobController {
   }
 
   /**
-   * The pipeline to use when a batch request names none (TASK-614 D11).
+   * The pipeline to use when a batch request names none (D11).
    *
    * Order: the pipeline the tenant marked default, then the configured STT
    * fallback. Both absent ⇒ 409 rather than a guess — running a consultation
@@ -229,7 +229,7 @@ export class TranscriptionJobController {
 
   /**
    * Resolve the tenant's effective fallback pipeline + decrypted BYO provider
-   * overrides for a new streaming session (TASK-567). FAIL-OPEN: any resolve or
+   * overrides for a new streaming session. FAIL-OPEN: any resolve or
    * decrypt error (or an unwired config service) yields no overrides and no
    * fallback so the session is still created on platform env creds — a broken
    * BYO key must never block transcription. The decrypted overrides are handed
@@ -249,7 +249,7 @@ export class TranscriptionJobController {
       return {
         providerOverrides: Object.keys(overrides).length > 0 ? overrides : undefined,
         fallbackPipelineId: effective.fallbackPipelineId ?? undefined,
-        // TASK-614 — the governance half of the same resolved config. It was
+        // The governance half of the same resolved config. It was
         // read here and then dropped, so STT never learned that a tenant had
         // turned auto-fallback off.
         autoSwitchEnabled: effective.autoSwitchEnabled ?? undefined,
@@ -324,7 +324,7 @@ export class TranscriptionJobController {
 
     const tenantId = this.getTenantId();
 
-    // 1b. Admin-configurable ceilings (TASK-604). Every rejection below happens
+    // 1b. Admin-configurable ceilings. Every rejection below happens
     // BEFORE object storage, the job row, and the worker dispatch — an upload
     // that is going to be refused must not cost a 200 MB write first. These run
     // ahead of pipeline resolution (1c) for the same reason: they are pure
@@ -341,7 +341,7 @@ export class TranscriptionJobController {
     // client-declared MIME type.
     const durationSeconds = probeAudioDurationSeconds(file.buffer, file.mimetype);
     if (durationSeconds === null) {
-      // FAIL-CLOSED (TASK-604 owner decision): a duration that cannot be
+      // FAIL-CLOSED (owner decision): a duration that cannot be
       // established is not evidence of a recording within the limit. Typically a
       // live/streamed capture whose container never recorded its own length.
       throw new BadRequestException(
@@ -360,7 +360,7 @@ export class TranscriptionJobController {
     // limit. Without it "5 per batch" is bypassed by sending five batches.
     await this.assertBatchConcurrency(limits.maxActiveJobsPerUser);
 
-    // 1c. Resolve the pipeline. `pipelineId` is optional since TASK-614: omitting
+    // 1c. Resolve the pipeline. `pipelineId` is optional since : omitting
     //     it means "use the tenant's default", the same intent a live session has
     //     always been able to express. Resolution order — the pipeline the tenant
     //     marked default, then the configured STT fallback. If the tenant has
@@ -429,8 +429,8 @@ export class TranscriptionJobController {
 
       // 7. Dispatch Dramatiq message to stt_batch queue. `fallbackPipelineId`
       //    (resolved above) lets a cloud-ASR/model failure in the worker re-run
-      //    on the tenant fallback instead of failing the job (TASK-614 D-6):
-      //    `transcribe_file` has accepted it since TASK-567, but nothing ever
+      // on the tenant fallback instead of failing the job:
+      // `transcribe_file` has accepted it, but nothing ever
       //    supplied it, so the whole batch-fallback path was unreachable.
       const user = this.cls.get('user');
       await this.dispatchBatchJob({
@@ -496,7 +496,7 @@ export class TranscriptionJobController {
   }
 
   /**
-   * The batch ceilings a client must respect (TASK-604). Read-only, non-admin,
+   * The batch ceilings a client must respect. Read-only, non-admin,
    * and declared BEFORE `@Get(':id')` so the literal path is not parsed as a job
    * id. Exists so the SDK enforces the SAME numbers the gateway does instead of
    * hardcoding "5" and "60" a second time — an operator who lowers a knob moves
@@ -517,7 +517,7 @@ export class TranscriptionJobController {
   }
 
   /**
-   * The tenant's configured STT fallback provider (TASK-604).
+   * The tenant's configured STT fallback provider.
    *
    * The live pipeline↔default toggle previously had no way to NAME the target
    * or to know whether one exists — a user only found out by switching
@@ -608,12 +608,12 @@ export class TranscriptionJobController {
     const [, { audioBucketName, storage }] = await Promise.all([this.assertPipelineOwnership(body.pipelineId), resolveAudioBucket()]);
 
     // Resolve the tenant's STT fallback pointer + decrypted BYO provider
-    // overrides and forward both to the session runtime (TASK-567 D-3). Fails
+    // overrides and forward both to the session runtime. Fails
     // OPEN: a config/decrypt error creates the session WITHOUT overrides or a
     // fallback (transcription proceeds on platform env creds) — never a 500.
     const { providerOverrides, fallbackPipelineId, autoSwitchEnabled, consecutiveFailureThreshold } = await this.resolveSttFallbackConfig(tenantId);
 
-    // Pre-start default-provider selection (TASK-586 C7). Fail-closed: opening
+    // Pre-start default-provider selection. Fail-closed: opening
     // directly on the fallback engine requires a resolved fallback pipeline —
     // never silently start on primary (mirrors the C3 switch guard).
     if (body.startOn === 'fallback' && !fallbackPipelineId) {
@@ -634,12 +634,12 @@ export class TranscriptionJobController {
       ...(providerOverrides ? { providerOverrides } : {}),
       ...(fallbackPipelineId ? { fallbackPipelineId } : {}),
       // Spread on `!== undefined`, NOT truthiness — `false` is the whole point
-      // of `autoSwitchEnabled` (TASK-614), and a truthy guard would drop
+      // of `autoSwitchEnabled`, and a truthy guard would drop
       // exactly the tenant choice that matters.
       ...(autoSwitchEnabled !== undefined ? { autoSwitchEnabled } : {}),
       ...(consecutiveFailureThreshold !== undefined ? { consecutiveFailureThreshold } : {}),
       ...(body.startOn ? { startOn: body.startOn } : {}),
-      // Dual-/multi-mic source count for STT usage repricing (TASK-615 #12).
+      // Dual-/multi-mic source count for STT usage repricing.
       ...(body.channelCount !== undefined ? { channelCount: body.channelCount } : {}),
     } as Parameters<StreamingSessionService['createSession']>[0];
 
@@ -682,7 +682,7 @@ export class TranscriptionJobController {
       ticket: issuedTicket.ticket,
       ticketExpiresAt: issuedTicket.expiresAt,
       voiceProfileSeeded,
-      // The RESOLVED baseline (TASK-614). Spread only when STT echoed it, so an
+      // The RESOLVED baseline. Spread only when STT echoed it, so an
       // older STT yields an unchanged response rather than null fields the SDK
       // would have to distinguish from "opened on primary".
       ...(result.pipelineId ? { pipelineId: result.pipelineId } : {}),
@@ -756,7 +756,7 @@ export class TranscriptionJobController {
   }
 
   /**
-   * Manual mid-session switch to the tenant's fallback pipeline (TASK-567 R4) —
+   * Manual mid-session switch to the tenant's fallback pipeline
    * the end-user "I don't want this provider" affordance. Guarded exactly like
    * `closeStreamSession` (`@TenantOwnedResource` 404s cross-tenant probes with no
    * existence leak). Fail-CLOSED on selection: a tenant with no fallback
@@ -802,7 +802,7 @@ export class TranscriptionJobController {
 
   /**
    * Manual mid-session switch BACK to the SDK-configured primary pipeline
-   * (TASK-586 Lane H) — the primary-direction counterpart of
+   * the primary-direction counterpart of
    * `switchStreamSessionToFallback`, so native SDK consumers get a 2-way
    * pipeline↔default toggle. Guarded exactly like `closeStreamSession`
    * (`@TenantOwnedResource` 404s cross-tenant probes with no existence leak).

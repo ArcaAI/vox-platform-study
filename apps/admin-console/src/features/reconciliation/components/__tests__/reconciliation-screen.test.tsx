@@ -1,5 +1,5 @@
 /**
- * Provider-reconciliation audit trail screen (TASK-638 §6 rule 6).
+ * Provider-reconciliation audit trail screen.
  *
  * What is worth pinning here is the SEMANTICS the trail exists for: a skipped
  * run must show WHY (that is the actionable part today, since no vendor

@@ -1,10 +1,10 @@
-// Few-shot exemplar curation descriptor (TASK-553 F-24).
+// Few-shot exemplar curation descriptor.
 //
 // `agentic.fewshot.curationMode` governs whether the gate-edit few-shot retriever
 // honours the human curation verdict on `GateEditExemplar.curationStatus`:
 //
 //   'off' (default) — every mined APPROVED_CLEAN row is eligible, exactly the
-//                     pre-TASK-553 behaviour.
+//                     prior behaviour.
 //   'enforce'       — only rows a curator moved to APPROVED are shown to the model.
 //
 // Default `off` so adding the column + endpoint changes nothing until a

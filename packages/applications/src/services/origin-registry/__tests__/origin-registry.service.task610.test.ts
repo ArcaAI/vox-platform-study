@@ -1,6 +1,6 @@
-// TASK-610 lane W2-A — OriginRegistryService tests (T-3).
-// UPDATED §4B.4 (lane W6-B) — many-to-many origins ↔ tenants; resolution is
-// now a UNION (§4B.3), `ownerOf` is REMOVED in favor of `tenantsFor`/`allows`.
+// OriginRegistryService tests (T-3).
+// UPDATED — many-to-many origins ↔ tenants; resolution is
+// now a UNION, `ownerOf` is REMOVED in favor of `tenantsFor`/`allows`.
 //
 // Written FIRST per `01-development-workflow.md` TDD gate: this file must be
 // run and observed RED against the OLD single-owner implementation (which
@@ -9,14 +9,14 @@
 //
 // Covers, per the W6-B brief:
 //  - initial load (onModuleInit)
-//  - rebuild wired to BOTH invalidation events (§4.1 frozen contract)
+//  - rebuild wired to BOTH invalidation events (frozen contract)
 //  - stale index preserved on a failed refresh (never emptied by an error)
-//  - many-to-many union resolution (§4B.3) — REPLACES the old T-3
+//  - many-to-many union resolution — REPLACES the old T-3
 //    duplicate-origin-is-an-error test; two tenants sharing one origin is now
 //    normal, expected data, not a conflict to log and pick a winner for
 //  - soft-deleted rows excluded from the index
 //  - a malformed lookup returns an empty set / false rather than throwing
-//  - the cross-tenant visibility property (the §3.3 HAZARD this lane exists to prove)
+//  - the cross-tenant visibility property (the HAZARD this lane exists to prove)
 //
 // REOPENED — adversarial review (W4-R) confirmed a HIGH defect: `refresh()`
 // was wired DIRECTLY to `@OnEvent`, but both invalidation events are emitted
@@ -32,7 +32,7 @@
 // + REAL `EventEmitterModule` + the REAL service, because a mocked
 // repository cannot observe CLS narrowing (that is exactly why the original
 // tests below passed against the broken code). This machinery is preserved
-// UNCHANGED by the §4B.4 rewrite — only origin↔tenant resolution changed.
+// UNCHANGED by the rewrite — only origin↔tenant resolution changed.
 
 import { Logger } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
@@ -130,7 +130,7 @@ describe('OriginRegistryService', () => {
     });
   });
 
-  describe('invalidation wiring (§4.1 frozen contract)', () => {
+  describe('invalidation wiring (frozen contract)', () => {
     it('onInvalidationEvent() is wired to BOTH origin-registry.invalidate and app-settings.cache-refreshed', () => {
       // NOTE: the listener is `onInvalidationEvent()`, NOT `refresh()`.
       // `refresh()` must NOT carry `@OnEvent` directly — see the CONFIRMED
@@ -343,7 +343,7 @@ describe('OriginRegistryService', () => {
   });
 
   // ═════════════════════════════════════════════════════════════════════
-  // §4B.3/§4B.4 — many-to-many union resolution. REPLACES the old T-3
+  // Many-to-many union resolution. REPLACES the old T-3
   // "duplicate origin across tenants is an error, keep a deterministic
   // winner" test outright: under the many-to-many model two tenants sharing
   // one origin is NORMAL, EXPECTED data (the DB constraint moved from a
@@ -352,7 +352,7 @@ describe('OriginRegistryService', () => {
   // `logger.error` call anywhere in this file for this case — asserted
   // explicitly below.
   // ═════════════════════════════════════════════════════════════════════
-  describe('many-to-many union resolution (§4B.3 — supersedes single-owner precedence)', () => {
+  describe('many-to-many union resolution (supersedes single-owner precedence)', () => {
     it('one origin granted to TWO tenants → tenantsFor returns both; allows() is true for each; false for a third', async () => {
       mockRepository.findAll.mockResolvedValueOnce([
         makeRow({ origin: 'http://localhost:5173', tenantId: TENANT_A }),
@@ -479,7 +479,7 @@ describe('OriginRegistryService', () => {
     });
   });
 
-  describe('cross-tenant visibility (the §3.3 HAZARD this lane exists to prove)', () => {
+  describe('cross-tenant visibility (the HAZARD this lane exists to prove)', () => {
     it('calls findAll with an EMPTY filter (no tenantId), and the resulting index holds every tenant’s origins simultaneously', async () => {
       mockRepository.findAll.mockResolvedValueOnce([
         makeRow({ origin: 'https://platform.example', tenantId: SYSTEM_TENANT_ID }),
@@ -520,18 +520,18 @@ describe('OriginRegistryService', () => {
   });
 
   // ═════════════════════════════════════════════════════════════════════
-  // TASK-610 §4A.2 / §4B.3 — wildcard pattern UNION (not precedence).
+  // Wildcard pattern UNION (not precedence).
   //
   // Under the single-owner model this precedence walk (exact beats pattern,
   // longest suffix beats a shorter one, `*` beats nothing) decided a single
   // winner. Under the many-to-many union model there is no winner to
   // decide: EVERY matching grant — exact or pattern, including a matching
   // `*` allow-all row — contributes its tenant(s) to the result. This is a
-  // deliberate, owner-directed consequence (§4B.3): a Global `*` row now
+  // deliberate, owner-directed consequence: a Global `*` row now
   // means "every origin may act on Global", literally, for every origin,
   // not just ones nothing more specific matches.
   // ═════════════════════════════════════════════════════════════════════
-  describe('wildcard pattern union (§4A.2 / §4B.3)', () => {
+  describe('wildcard pattern union (/ )', () => {
     const ARCAAI_TENANT_ID = '30000000-0000-0000-0000-000000000003';
     const GLOBAL_TENANT_ID = '50000000-0000-0000-0000-000000000000';
 
@@ -619,12 +619,12 @@ describe('OriginRegistryService', () => {
   });
 
   // ═════════════════════════════════════════════════════════════════════
-  // TASK-653 — browser-extension origins in the registry. The registry needs
+  // Browser-extension origins in the registry. The registry needs
   // NO logic change: it inherits extension support from normalizeOrigin (exact
   // ids, via toLookupKey) and matchesOriginPattern (the `<scheme>://*` any-
   // extension pattern). These tests lock that inherited behavior end-to-end.
   // ═════════════════════════════════════════════════════════════════════
-  describe('browser-extension origins (TASK-653)', () => {
+  describe('browser-extension origins', () => {
     const CHROME_ID = 'chrome-extension://abcdefghijklmnopabcdefghijklmnop';
     const OTHER_CHROME_ID = 'chrome-extension://ponmlkjihgfedcbaponmlkjihgfedcba';
     const MOZ_ORIGIN = 'moz-extension://a279f5e6-1b2c-4d3e-8f90-1234567890ab';
@@ -662,16 +662,16 @@ describe('OriginRegistryService', () => {
   });
 
   // ═════════════════════════════════════════════════════════════════════
-  // TASK-610 §4A.3 — the allow-all (`*`) row must announce itself. An
+  // The allow-all (`*`) row must announce itself. An
   // operator must never have to read the database to discover the platform
   // is admitting every unmatched — now: every, full stop, under union —
   // origin for one or more tenants.
   //
-  // §4B.4 UPDATE: since a `*` row can now be granted to MULTIPLE tenants
+  // UPDATE: since a `*` row can now be granted to MULTIPLE tenants
   // (same many-to-many model as any other origin), the warning must report
   // ALL of them, not a single `ownerTenantId`.
   // ═════════════════════════════════════════════════════════════════════
-  describe('allow-all (`*`) row announces itself on every successful refresh (§4A.3 / §4B.4)', () => {
+  describe('allow-all (`*`) row announces itself on every successful refresh (/ )', () => {
     const GLOBAL_TENANT_ID = '50000000-0000-0000-0000-000000000000';
 
     it('logs at warn with the owning tenant id when a `*` row is present', async () => {
@@ -743,7 +743,7 @@ describe('OriginRegistryService', () => {
 // request's CLS store. This block uses a REAL `ClsModule`, a REAL
 // `EventEmitterModule`, and the REAL `OriginRegistryService` wired through
 // Nest DI, so the actual dispatch path production uses is exercised. This
-// machinery is UNCHANGED by the §4B.4 union-resolution rewrite.
+// machinery is UNCHANGED by the union-resolution rewrite.
 // ═══════════════════════════════════════════════════════════════════════
 describe('invalidation event handler runs outside the request CLS scope (adversarial regression)', () => {
   async function buildRealModule(repositoryStub: { findAll: ReturnType<typeof vi.fn> }) {

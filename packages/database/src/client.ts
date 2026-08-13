@@ -132,7 +132,7 @@ export const MODELS_WITHOUT_SOFT_DELETE: ReadonlySet<string> = new Set([
   // AudioRecording it has NO `resourceStatus` column — segments live and die
   // with their parent transcript rather than being independently soft-deleted.
   'TranscriptSegment',
-  // AI usage metering plane (TASK-615). The ledger and everything
+  // AI usage metering plane. The ledger and everything
   // derived from it are APPEND-ONLY FACTS under hard retention (18 months raw,
   // rollups indefinite) rather than the ENABLED/DELETED soft-delete lifecycle,
   // so none carries a `resourceStatus` column. Correcting a usage fact is a
@@ -143,7 +143,7 @@ export const MODELS_WITHOUT_SOFT_DELETE: ReadonlySet<string> = new Set([
   'AiUsageOutbox',
   'AiUsageRollupHourly',
   'AiUsageRollupDaily',
-  // TASK-638 §6 rule 6 — the provider-reconciliation audit trail. An audit
+  // Rule 6 — the provider-reconciliation audit trail. An audit
   // record that can be withdrawn is not a control.
   'ProviderReconciliationRun',
   // A credit memo against a FINALIZED (immutable) invoice.
@@ -152,23 +152,23 @@ export const MODELS_WITHOUT_SOFT_DELETE: ReadonlySet<string> = new Set([
   // `BillingInvoice` / `BillingInvoiceLine` are NOT here — a DRAFT invoice is
   // editable and a withdrawn one is soft-deleted.
   'BillingAdjustment',
-  // TenantPlanHistory (TASK-615 #6) — append-only plan-change facts feeding
+  // TenantPlanHistory (#6) — append-only plan-change facts feeding
   // mid-period fee proration. A plan segment is corrected by appending, never by
   // deleting a closed window, so it has no `resourceStatus` column.
   'TenantPlanHistory',
-  // Service Version & Release Registry (TASK-648). ServiceInstance is a
+  // Service Version & Release Registry. ServiceInstance is a
   // heartbeated runtime observation — stale rows are pruned wholesale by the
   // existing scheduler surface (30-day retention), never individually
   // soft-deleted, so it has no `resourceStatus` column. `ServiceRelease` is
   // DELIBERATELY NOT here — it keeps the standard lifecycle.
   'ServiceInstance',
-  // ChangelogEntry moves DRAFT -> PUBLISHED only (§3.5); withdrawing an entry
+  // ChangelogEntry moves DRAFT -> PUBLISHED only; withdrawing an entry
   // is out of this ticket's scope, so it carries no `resourceStatus` column.
   'ChangelogEntry',
   // UserChangelogAcknowledgement rows are immutable acknowledgement facts —
   // "was this admin shown the notice" must never be retractable.
   'UserChangelogAcknowledgement',
-  // ConsultationContextSchemaVersion (TASK-658) is an immutable published
+  // ConsultationContextSchemaVersion is an immutable published
   // snapshot of a tenant's context declaration — the exact shape of
   // PromptVersion / AsrPipelineVersion above, and with no `resourceStatus`
   // column for the same reason. A context item validated against version N
@@ -177,16 +177,16 @@ export const MODELS_WITHOUT_SOFT_DELETE: ReadonlySet<string> = new Set([
   // `ConsultationContextSchema` is deliberately NOT here — it keeps the
   // standard ENABLED/DELETED lifecycle.
   'ConsultationContextSchemaVersion',
-  // DepartmentAgentVersion (TASK-659) is an immutable snapshot of a
+  // DepartmentAgentVersion is an immutable snapshot of a
   // DepartmentAgent's loop-configuration surface — the exact shape of
   // PromptVersion / AsrPipelineVersion / ConsultationContextSchemaVersion
   // above, and with no `resourceStatus` column for the same reason. A
   // consultation loop pinned to version N (C1) must be able to resolve
-  // version N forever, and promotion (TASK-663) copies an immutable version
+  // version N forever, and promotion copies an immutable version
   // verbatim. The MUTABLE head `DepartmentAgent` is deliberately NOT here —
   // it keeps the standard ENABLED/DELETED lifecycle.
   'DepartmentAgentVersion',
-  // TASK-663 — a WORM record of one agent promotion from a source tenant into
+  // A WORM record of one agent promotion from a source tenant into
   // a target tenant. Written once and never updated (re-promoting writes a NEW
   // row), so the table is an audit history: retraction would defeat its whole
   // purpose, and it carries no `resourceStatus` column.

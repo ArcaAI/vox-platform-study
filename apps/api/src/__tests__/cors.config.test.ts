@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getCorsOrigins, isOriginAllowed, setOriginEnforcementResolver, setOriginRegistryResolver } from '../cors.config';
 
 /**
- * TASK-610 T-4 — CORS origin admission is a REGISTRY LOOKUP.
+ * CORS origin admission is a REGISTRY LOOKUP.
  *
  * This file replaces the D-1 test that pinned the dev RegExp's `source`
  * string. Pinning a RegExp source is what made it brittle: commit `7703e40f`
@@ -30,7 +30,7 @@ import { getCorsOrigins, isOriginAllowed, setOriginEnforcementResolver, setOrigi
  * `Pick<IOriginRegistry, 'has' | 'allows'>` shape; nothing in this file asserts
  * on it.
  *
- * The map value is the set of tenants granted that origin — since §4B an
+ * The map value is the set of tenants granted that origin — since an
  * origin is granted to MANY tenants rather than owned by one.
  */
 function fakeRegistry(entries: Record<string, string[]>) {
@@ -43,7 +43,7 @@ function fakeRegistry(entries: Record<string, string[]>) {
 
 const SYSTEM_TENANT = '00000000-0000-0000-0000-000000000000';
 
-/** The four day-1 origins from plan §1, as a loaded registry. */
+/** The four day-1 origins from, as a loaded registry. */
 const DAY_ONE = fakeRegistry({
   'http://localhost:5173': [SYSTEM_TENANT],
   'https://arcaai-u2204.bcmch.org': [SYSTEM_TENANT],
@@ -54,8 +54,8 @@ const DAY_ONE = fakeRegistry({
 describe('cors.config', () => {
   beforeEach(() => {
     setOriginRegistryResolver(null);
-    // TASK-610 §4C — every case in THIS file describes the ENFORCING posture.
-    // Since TASK-641 FR-6 that IS the shipped default (`origin.enforcementEnabled`
+    // Every case in THIS file describes the ENFORCING posture.
+    // Since that IS the shipped default (`origin.enforcementEnabled`
     // defaults `true`), so arming the switch here reproduces production rather
     // than overriding it. It must still be set explicitly: `cors.config.ts` gets
     // the value from a resolver, and in a unit test no `PlatformKnobsBinder` has
@@ -88,7 +88,7 @@ describe('cors.config', () => {
     beforeEach(() => setOriginRegistryResolver(() => DAY_ONE));
 
     /**
-     * Every origin below was ALLOWED by the pre-TASK-610 implementation:
+     * Every origin below was ALLOWED by the the previous implementation implementation:
      * the first group by `https_sdk_allowed` (any https:// origin at all),
      * the rest by the hardcoded domain list, the tunnel/preview wildcards,
      * and the `compat-playground.taphuynh.dev` source literal (D-2).
@@ -121,7 +121,7 @@ describe('cors.config', () => {
       expect(isOriginAllowed('https://arcaai-u2204.bcmch.org.evil.test', 'production')).toBe(false);
     });
 
-    // Title corrected by TASK-641 B-7: development does not "allow it" any
+    // Title corrected by : development does not "allow it" any
     // more either — see the `development is NOT a special case` block below.
     it('refuses an unregistered loopback origin in production', () => {
       expect(isOriginAllowed('http://localhost:9999', 'production')).toBe(false);
@@ -140,7 +140,7 @@ describe('cors.config', () => {
     });
   });
 
-  describe('registry unavailable — fail CLOSED (TASK-610 §4A.1: no env-var fallback of any kind)', () => {
+  describe('registry unavailable — fail CLOSED (no env-var fallback of any kind)', () => {
     it('denies when no resolver is installed at all', () => {
       expect(isOriginAllowed('https://anything.example.com', 'production')).toBe(false);
     });
@@ -195,7 +195,7 @@ describe('cors.config', () => {
   });
 
   /**
-   * TASK-641 B-7 / FR-8 — THIS BLOCK USED TO ASSERT THE OPPOSITE.
+   * THIS BLOCK USED TO ASSERT THE OPPOSITE.
    *
    * It pinned a `nodeEnv === 'development'` branch that admitted any loopback
    * origin with an EMPTY registry. That branch was the last environment
@@ -204,7 +204,7 @@ describe('cors.config', () => {
    * allow-list, and not as a behavioural branch."*
    *
    * Local development is covered instead by SEEDED SYSTEM-tenant rows
-   * (`http://localhost:*`, `http://127.0.0.1:*` — TASK-641 §3.1 step 2), which
+   * (`http://localhost:*`, `http://127.0.0.1:*` — step 2), which
    * are ordinary registry rows and therefore take the ordinary path. That is
    * the point: there is now exactly ONE way in, in every environment.
    *
@@ -213,9 +213,9 @@ describe('cors.config', () => {
    * loopback included. That is hazard H-2, and the mitigation is making those
    * rows unconditional bootstrap data — NOT a code fallback here.
    *
-   * FR-8's general form is pinned in `cors.config.task641.test.ts`.
+   * 's general form is pinned in `cors.config.task641.test.ts`.
    */
-  describe('development is NOT a special case (TASK-641 B-7 — the loopback branch is deleted)', () => {
+  describe('development is NOT a special case (the loopback branch is deleted)', () => {
     it.each([
       'http://localhost',
       'http://localhost:5173',
@@ -261,7 +261,7 @@ describe('cors.config', () => {
   });
 
   describe('a broken registry never takes the gateway down', () => {
-    it('does not throw when the resolver itself throws, and DENIES (no bootstrap fallback since §4A.1)', () => {
+    it('does not throw when the resolver itself throws, and DENIES (no bootstrap fallback)', () => {
       setOriginRegistryResolver(() => {
         throw new Error('registry exploded');
       });

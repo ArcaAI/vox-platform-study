@@ -1,4 +1,4 @@
-"""TASK-602 — SMR cloud providers are BYOK-only: no env credential fallback.
+"""SMR cloud providers are BYOK-only: no env credential fallback.
 
 The unified provider-connection plane (AiProviderConnection) is the sole store for
 Azure OpenAI / OpenAI / Anthropic credentials; the gateway resolves tenant → SYSTEM
@@ -7,7 +7,7 @@ three guarantees that make that true end-to-end in SMR:
 
   1. The three cloud configs NEVER source ``api_key`` from env (the ``SMR_*_API_KEY``
      vars are dead — removed from turbo globalEnv / Vault policies in this ticket).
-  2. A cloud ``generate()`` with neither a request override nor a configured
+  2. A cloud ``generate`` with neither a request override nor a configured
      platform key fails CLOSED with ``ProviderCredentialsError`` (503) — it never
      builds an empty-keyed SDK client that would 401 downstream.
   3. Azure OpenAI is BYO-FIRST: it registers whenever an ENDPOINT is configured
@@ -65,7 +65,7 @@ class TestApiKeyNotEnvSourced:
 class TestGenerateFailsClosedWithoutCredential:
     """No override + no platform key ⇒ ProviderCredentialsError (never a keyless
     client that 401s). A model IS supplied so the guard is the credential, not the
-    separate ModelNotSelectedError contract (TASK-579)."""
+    separate ModelNotSelectedError contract."""
 
     @pytest.mark.asyncio
     async def test_azure_generate_raises(self):

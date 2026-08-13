@@ -1,6 +1,6 @@
 /**
- * `OriginTenantBindingGuard` — TASK-610 FR-4, plan §3.0 / §3.4, revised for
- * §4B (many-to-many origins ↔ tenants).
+ * `OriginTenantBindingGuard` — post-auth tenant isolation for browser
+ * origins (many-to-many origins ↔ tenants).
  *
  * CORS is ADVISORY BROWSER BEHAVIOUR. It proves nothing about a caller: any
  * non-browser client ignores it outright, and a browser only ever declines to
@@ -13,14 +13,13 @@
  *     the request carries `Origin: X`, and X is granted to a SET of tenants —
  *     is the tenant this request resolved to a member of that set?
  *
- * §4B.4 froze `IOriginRegistry.allows(origin, tenantId)` as the ONE place the
+ * `IOriginRegistry.allows(origin, tenantId)` is the ONE place the
  * SYSTEM-admits-every-tenant rule is implemented. This guard MUST NOT
  * re-derive that rule itself (e.g. by reading `tenantsFor()` and comparing to
  * a locally-declared SYSTEM constant) — this ticket already paid for that
- * mistake once (§4B.4: "W5-C first 'fixed' an HTTP/WS disagreement by copying
- * the rule into both, and the Integrator had to consolidate it").
+ * mistake once (copying the HTTP/WS rule into both places, then consolidating).
  *
- * SINCE §4C, ALL OF THIS IS GATED BY `origin.enforcementEnabled`, which
+ * ALL OF THIS IS GATED BY `origin.enforcementEnabled`, which
  * DEFAULTS TO FALSE. While it is off (rule 0 below) this guard passes every
  * request. Nothing here is deleted — one settings write re-arms it.
  *
@@ -28,7 +27,7 @@
  * requests are simply allowed, or the platform quietly breaks):
  *
  *  0. Origin enforcement disabled (the DEFAULT) → PASS THROUGH, without
- *     consulting the registry. Owner directive §4C.1.
+ * consulting the registry.
  *
  *  1. No `Origin` header  → PASS THROUGH. Server-to-server, CLI, worker and
  *     internal callers send none, and CORS already admits them
@@ -88,13 +87,13 @@ export class OriginTenantBindingGuard implements CanActivate {
   ) {}
 
   canActivate(context: ExecutionContext): boolean {
-    // RULE 0 (TASK-610 §4C, default reversed by TASK-641 FR-6) — origin
+    // RULE 0 — origin
     // enforcement is now ON BY DEFAULT (`origin.enforcementEnabled` defaults
     // `true`), so this guard is LIVE unless an operator has turned the switch
     // off — or the process has not yet installed the resolver (the pre-boot
     // window; see `cors.config.ts`). While it IS off this guard is a
     // pass-through: it never 404s a tenant mismatch and never touches the
-    // registry. §4C.3 states the consequence of that state plainly —
+    // registry. The consequence of that state is:
     // "a request from any origin may act on any tenant it can authenticate to";
     // authentication and tenancy remain the enforcing controls, the ORIGIN
     // binding simply does not apply.
@@ -102,7 +101,7 @@ export class OriginTenantBindingGuard implements CanActivate {
     // `isOriginEnforcementEnabled()` is imported rather than re-resolved here:
     // it is the ONE source of truth shared with `cors.config.ts` and
     // `SttWsGateway`, so the three points can never disagree about whether the
-    // switch is on (§4B.4 — this ticket has already paid for a rule that lived
+    // switch is on (this ticket has already paid for a rule that lived
     // in two places).
     if (!isOriginEnforcementEnabled()) {
       return true;
@@ -110,7 +109,7 @@ export class OriginTenantBindingGuard implements CanActivate {
 
     // HTTP only. The WebSocket handshake is NOT covered here — browsers exempt
     // WS from CORS entirely, and `SttWsGateway` runs its own registry check
-    // against the handshake `Origin` (D-6, lane W3-C). Returning true for a WS
+    // against the handshake `Origin`. Returning true for a WS
     // context is a delegation, not a gap.
     if (context.getType() !== 'http') {
       return true;
@@ -143,8 +142,8 @@ export class OriginTenantBindingGuard implements CanActivate {
     // loopback allowance in `cors.config.ts`, which deliberately admits
     // origins that have no registry row so a fresh clone with an empty
     // database still works, (b) the CORS gate DENIED this origin (registry
-    // miss, or the registry unavailable — TASK-610 §4A.1 removed the
-    // `CORS_ALLOWED_ORIGINS` bootstrap fallback that used to admit it instead)
+    // miss, or the registry unavailable — the
+    // `CORS_ALLOWED_ORIGINS` bootstrap fallback that used to admit it instead was removed)
     // but the request reached the gateway anyway — CORS is enforced by the
     // BROWSER refusing to hand the response to page script, not by the server
     // refusing to route the request, so a non-preflighted "simple" request
@@ -159,11 +158,11 @@ export class OriginTenantBindingGuard implements CanActivate {
     //     would only inconvenience an attacker who chose the noisier of two
     //     equivalent paths, while breaking real callers.
     // Registration is enforced one layer up, at the CORS gate, which is the
-    // layer that owns "which origins exist at all" — and which, since §4A.1,
+    // layer that owns "which origins exist at all" — and which now
     // fails CLOSED rather than degrading to an env allow-list.
     //
     // It is logged at warn so a registry miss is diagnosable in one grep
-    // (plan §3.8: ship the registry-miss log line in the same release that
+    // (ship the registry-miss log line in the same release that
     // closes the catch-all).
     if (!this.registry.has(origin)) {
       this.logger.warn({
