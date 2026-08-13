@@ -30,10 +30,12 @@ import {
 } from '../prisma/db_main/seed/04-department';
 import { ARCAAI_TENANT_AGENTS } from '../prisma/db_main/seed/07a-agent-golden-library';
 import {
+  ARCAAI_CLINICAL_APPROVED_VERSION,
   ARCAAI_CLINICAL_TEMPLATES,
   ARCAAI_CLINICAL_VERSIONS,
   ARCAAI_CLINICAL_TEMPLATE_IDS,
 } from '../prisma/db_main/seed/07b-arcaai-clinical-templates';
+import { PRE_SUMMARY_CONTENT, SURGERY_NEW_REFERRAL_CONTENT } from '../prisma/db_main/seed/07b-arcaai-clinical-content';
 import {
   DEFAULT_AI_MODELS,
   DEFAULT_ASR_PIPELINES,
@@ -857,12 +859,12 @@ describe('ArcaAI Clinical Prompt Library Seed Data', () => {
     ARCAAI_CLINICAL_VERSIONS.forEach((v) => expect(v.tenantId).toBe(ARCAAI));
   });
 
-  it('should seed every template APPROVED, SUMMARY, and pinned at approvedVersionNumber 1', () => {
+  it('should seed every template APPROVED, SUMMARY, and pinned at the approved version', () => {
     ARCAAI_CLINICAL_TEMPLATES.forEach((t) => {
       expect(t.status).toBe('APPROVED');
       expect(t.category).toBe('SUMMARY');
-      expect(t.currentVersionNumber).toBe(1);
-      expect(t.approvedVersionNumber).toBe(1);
+      expect(t.currentVersionNumber).toBe(ARCAAI_CLINICAL_APPROVED_VERSION);
+      expect(t.approvedVersionNumber).toBe(ARCAAI_CLINICAL_APPROVED_VERSION);
     });
   });
 
@@ -892,14 +894,117 @@ describe('ArcaAI Clinical Prompt Library Seed Data', () => {
     });
   });
 
-  it('should have exactly one version per template with byte-identical content', () => {
-    expect(ARCAAI_CLINICAL_VERSIONS.length).toBe(ARCAAI_CLINICAL_TEMPLATES.length);
-    const contentById = new Map(ARCAAI_CLINICAL_TEMPLATES.map((t) => [t.id, t.content]));
+  it('should keep every version per template — v1 and v2 retained, v3 approved', () => {
+    // Older versions are not replaced by newer ones; they stay seeded so the
+    // approved pin is a one-field rollback with no content to restore.
+    const SEEDED_VERSIONS = [1, 2, 3];
+    expect(ARCAAI_CLINICAL_APPROVED_VERSION).toBe(3);
+    expect(ARCAAI_CLINICAL_VERSIONS.length).toBe(ARCAAI_CLINICAL_TEMPLATES.length * SEEDED_VERSIONS.length);
+
+    const byTemplate = new Map<string, number[]>();
+    ARCAAI_CLINICAL_VERSIONS.forEach((v) => byTemplate.set(v.promptTemplateId, [...(byTemplate.get(v.promptTemplateId) ?? []), v.versionNumber]));
+    expect(byTemplate.size).toBe(ARCAAI_CLINICAL_TEMPLATES.length);
+    byTemplate.forEach((versions) => expect([...versions].sort()).toEqual(SEEDED_VERSIONS));
+
+    // Version ids are unique, and carry the version number in the third UUID
+    // group (v1 keeps its original `…-0000-0001-…` mirror slot).
+    const ids = ARCAAI_CLINICAL_VERSIONS.map((v) => v.id);
+    expect(new Set(ids).size).toBe(ids.length);
     ARCAAI_CLINICAL_VERSIONS.forEach((v) => {
-      expect(v.versionNumber).toBe(1);
-      expect(v.content).toBe(contentById.get(v.promptTemplateId));
-      expect(v.id.startsWith('72000000-0000-0000-0001-')).toBe(true);
+      const group = v.versionNumber === 1 ? '0000' : String(v.versionNumber).padStart(4, '0');
+      expect(v.id.startsWith(`72000000-0000-${group}-0001-`)).toBe(true);
+      expect(v.content.length).toBeGreaterThan(0);
     });
+
+    // v1 differs from every later version for every template.
+    byTemplate.forEach((_versions, templateId) => {
+      const [v1, ...later] = [1, 2, 3].map((n) => ARCAAI_CLINICAL_VERSIONS.find((v) => v.promptTemplateId === templateId && v.versionNumber === n)!.content);
+      later.forEach((body, i) => expect(body, `v${i + 2} of ${templateId} is byte-identical to v1`).not.toBe(v1));
+    });
+
+    // v3 vs v2 is DELIBERATELY asymmetric, and this asserts it rather than
+    // letting it drift unnoticed: the v3 release changed ONLY the pre-summary.
+    // The 22 department bodies are byte-identical to v2 — v3's own version
+    // history credits itself with the RULE 6 ASR-repair rewrite, but that text
+    // was already present in the v2 corpus, so there is nothing new to seed for
+    // them. They are still versioned to 3 because the corpus ships as a matched
+    // set: the department prompts depend on the v3 pre-summary's `(recorded …)`
+    // stamp to tell history from what was said today, so a single uniform pin
+    // keeps the pair from being rolled back independently.
+    const differsFromV2 = ARCAAI_CLINICAL_TEMPLATES.filter((t) => {
+      const [v2, v3] = [2, 3].map((n) => ARCAAI_CLINICAL_VERSIONS.find((v) => v.promptTemplateId === t.id && v.versionNumber === n)!.content);
+      return v2 !== v3;
+    }).map((t) => t.id);
+    expect(differsFromV2).toEqual([ARCAAI_CLINICAL_TEMPLATE_IDS.PRE_SUMMARY]);
+
+    // The template's mutable `content` column mirrors the APPROVED version.
+    const approvedById = new Map(ARCAAI_CLINICAL_VERSIONS.filter((v) => v.versionNumber === ARCAAI_CLINICAL_APPROVED_VERSION).map((v) => [v.promptTemplateId, v.content]));
+    ARCAAI_CLINICAL_TEMPLATES.forEach((t) => expect(t.content).toBe(approvedById.get(t.id)));
+
+    // ...and v1 still holds the v1 body, byte-for-byte.
+    const v1ById = new Map(ARCAAI_CLINICAL_VERSIONS.filter((v) => v.versionNumber === 1).map((v) => [v.promptTemplateId, v.content]));
+    expect(v1ById.get(ARCAAI_CLINICAL_TEMPLATE_IDS.PRE_SUMMARY)).toBe(PRE_SUMMARY_CONTENT);
+    expect(v1ById.get(ARCAAI_CLINICAL_TEMPLATE_IDS.SURGERY_NEW_REFERRAL)).toBe(SURGERY_NEW_REFERRAL_CONTENT);
+  });
+
+  it.each([2, 3])('should carry the source-of-truth protocol on every v%i department prompt', (versionNumber) => {
+    // The defect v2 introduced Block A to close, and v3 keeps: prior case-note
+    // content restyled as today's findings. It must be present and identical in
+    // all 22 department prompts of the version.
+    const blockA = new Set<string>();
+    const prompts = ARCAAI_CLINICAL_VERSIONS.filter((v) => v.versionNumber === versionNumber && v.promptTemplateId !== ARCAAI_CLINICAL_TEMPLATE_IDS.PRE_SUMMARY);
+    expect(prompts).toHaveLength(22);
+    prompts.forEach((v) => {
+      const match = /=== SOURCE-OF-TRUTH PROTOCOL[\s\S]*?=== END SOURCE-OF-TRUTH PROTOCOL ===/.exec(v.content);
+      expect(match, `no SOURCE-OF-TRUTH PROTOCOL block in ${v.promptTemplateId}`).not.toBeNull();
+      blockA.add(match![0]);
+      expect(v.content).toContain('SOURCE:');
+    });
+    expect(blockA.size, 'Block A must be byte-identical across all 22 department prompts').toBe(1);
+  });
+
+  it.each([2, 3])('should keep the v%i pre-summary literal and its parsing contracts intact', (versionNumber) => {
+    const preSummary = ARCAAI_CLINICAL_VERSIONS.find((v) => v.versionNumber === versionNumber && v.promptTemplateId === ARCAAI_CLINICAL_TEMPLATE_IDS.PRE_SUMMARY);
+    expect(preSummary).toBeDefined();
+
+    // The five FORMAT titles are title-matched by PRE_SUMMARY_DISPLAY_TITLES;
+    // renaming one returns an EMPTY structured_data.sections.
+    [
+      'Confirmed & Provisional Diagnoses:',
+      'Investigations (Latest Dept Note):',
+      'Diagnostics & Trends:',
+      'Plan of Care (Latest Dept Note):',
+      'Medications Prescribed (Latest Dept Note):',
+    ].forEach((title) => expect(preSummary!.content).toContain(`- ${title}`));
+
+    // The nine single-brace placeholders survive (markdown escaped them in the
+    // source; extraction unescapes). A lost placeholder ships a literal brace.
+    // v3 makes the pre-summary English-only but RETAINS {language_name}, so the
+    // contract with renderPreSummaryTemplate is unchanged across versions.
+    ['current_department', 'visit_type', 'safe_age', 'safe_dob', 'safe_gender', 'safe_vitals', 'formatted_test_results', 'formatted_previous_visits', 'language_name'].forEach((name) =>
+      expect(preSummary!.content).toContain(`{${name}}`),
+    );
+
+    // The pre-summary reads typed EMR text, not ASR output — the RULE 6
+    // terminology-repair licence must NOT leak into it.
+    expect(preSummary!.content).not.toContain('=== SOURCE-OF-TRUTH PROTOCOL');
+  });
+
+  it('should require annotated ASR name repair on every v3 department prompt', () => {
+    // v3 RULE 6 requires repairing mangled names ("shell cal" → Shelcal), and
+    // the `(transcribed as "…")` annotation is the entire safety argument for
+    // permitting repair at all — it must not be dropped from any prompt.
+    ARCAAI_CLINICAL_VERSIONS.filter((v) => v.versionNumber === 3 && v.promptTemplateId !== ARCAAI_CLINICAL_TEMPLATE_IDS.PRE_SUMMARY).forEach((v) => {
+      expect(v.content, `no ASR repair annotation form in ${v.promptTemplateId}`).toContain('transcribed as');
+    });
+  });
+
+  it('should split provenance from event dating in the v3 pre-summary', () => {
+    // The v3 pre-summary defect: one date parenthesis meant both "filed on" and
+    // "measured on", so an old result inside a recent note read as new.
+    const v3 = ARCAAI_CLINICAL_VERSIONS.find((v) => v.versionNumber === 3 && v.promptTemplateId === ARCAAI_CLINICAL_TEMPLATE_IDS.PRE_SUMMARY);
+    expect(v3).toBeDefined();
+    ['Provenance date', 'Event date', '(recorded '].forEach((marker) => expect(v3!.content).toContain(marker));
   });
 });
 

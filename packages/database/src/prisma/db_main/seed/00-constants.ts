@@ -22,6 +22,12 @@
  *   72000000-xxxx  →  Prompt Versions
  *   72000000-…-0001-0000000000XX  →  ArcaAI-tenant prompt versions (mirror of
  *                     the template slot above)
+ *   72000000-0000-000V-0001-0000000000XX  →  versionNumber V of that template.
+ *                     The THIRD group carries the version number (the fourth
+ *                     stays the tenant slot); `…-0000-…` is versionNumber 1, so
+ *                     the original v1 ids are unchanged. The ArcaAI clinical
+ *                     prompt snapshots are `…-0002-0001-…` (v2, "hardened") and
+ *                     `…-0003-0001-…` (v3, current).
  *   73000000-xxxx  →  DNA Writing Style Reports
  *   74000000-xxxx  →  DNA Writing Style Versions
  *   75000000-xxxx  →  DNA Usage Records
