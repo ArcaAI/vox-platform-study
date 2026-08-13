@@ -209,3 +209,4 @@ cd apps/api && npx vitest run smr-compat   → 9 files, 234 tests passed
 |---|---|
 | 2026-08-13 | Initial implementation — v2 corpus seeded as `versionNumber 2` across all 23 ArcaAI clinical templates; v1 retained. |
 | 2026-08-13 | v3 corpus seeded as `versionNumber 3` and approved; v1 and v2 retained. Department bodies found byte-identical to v2 — only the pre-summary changed; versioned uniformly anyway because the corpus is a matched set, with a test asserting the asymmetry. |
+| 2026-08-13 | Stripped the author-only `FILE METADATA — DO NOT PASTE INTO HOPE` HTML comment from the seeded v3 pre-summary body. The comment lived at the top of `PRE_SUMMARY_PROMPT_v3.md` and was ingested because the generator copied the whole document. The 22 department prompts were already fence-extracted and never contained it. Both generators now strip the comment (and abort if it leaks) so regeneration cannot put it back. |

@@ -60,9 +60,19 @@ for (const body of bodies.values()) {
 }
 if (blockA.size !== 1) throw new Error(`Block A has ${blockA.size} variants, expected 1`);
 
-// Pre-summary: whole document, markdown escapes removed so {placeholders} survive.
-const preContent = pre.replace(/\\([*_])/g, '$1');
+// Author-only HTML comment (`<!-- FILE METADATA — DO NOT PASTE INTO HOPE ... -->`)
+// is not part of the prompt. v2's source has none today; strip anyway so a later
+// corpus that adds one cannot leak it into the seeded body.
+function stripAuthorFileMetadata(text) {
+  return text.replace(/<!--[\s\S]*?FILE METADATA[\s\S]*?-->\s*/g, '');
+}
+
+// Pre-summary: prompt body only, markdown escapes removed so {placeholders} survive.
+const preContent = stripAuthorFileMetadata(pre).replace(/\\([*_])/g, '$1');
 if (/\\/.test(preContent)) throw new Error('residual backslash in pre-summary');
+if (!preContent.startsWith('## Medical AI Pre-Summary Prompt')) {
+  throw new Error('pre-summary must start at the prompt heading');
+}
 const PLACEHOLDERS = [
   'current_department', 'visit_type', 'safe_age', 'safe_dob', 'safe_gender',
   'safe_vitals', 'formatted_test_results', 'formatted_previous_visits', 'language_name',
@@ -85,13 +95,19 @@ const entries = [
   ...Object.entries(BY_SECTION).map(([n, name]) => [name, bodies.get(Number(n))]),
   ['PRE_SUMMARY', preContent],
 ];
+for (const [name, body] of entries) {
+  if (body.includes('FILE METADATA') || body.includes('DO NOT PASTE INTO HOPE')) {
+    throw new Error(`${name}: author FILE METADATA comment leaked into prompt body`);
+  }
+}
 
 const header = `/**
  * VERBATIM v2 clinical prompt content ("hardened" prompt set).
  *
  * GENERATED, DO NOT HAND-EDIT. Source of truth: the client-supplied v2 corpus
  *   DEPARTMENT_PROMPTS_v2.md   (22 fenced \`\`\`text blocks, one per department x visit type)
- *   PRE_SUMMARY_PROMPT_v2.md   (the whole document)
+ *   PRE_SUMMARY_PROMPT_v2.md   (the prompt body; any author-only HTML comment
+ *     at the top of the source file is stripped and is never seeded)
  * plus the rationale in PROMPT_REVIEW_FINDINGS.md, which explains what each
  * change fixes and what was deliberately left alone.
  *

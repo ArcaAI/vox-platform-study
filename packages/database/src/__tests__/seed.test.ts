@@ -1006,6 +1006,20 @@ describe('ArcaAI Clinical Prompt Library Seed Data', () => {
     expect(v3).toBeDefined();
     ['Provenance date', 'Event date', '(recorded '].forEach((marker) => expect(v3!.content).toContain(marker));
   });
+
+  it('should not seed author FILE METADATA comments into any ArcaAI prompt body', () => {
+    // PRE_SUMMARY_PROMPT_v3.md prefixes the source file with an HTML comment
+    // titled "FILE METADATA — DO NOT PASTE INTO HOPE". That annotation is for
+    // authors/generators, not the model. Extraction must strip it. Department
+    // bodies are fence-extracted and never contained it; this still scans every
+    // seeded version so a later corpus cannot leak it unnoticed.
+    [...ARCAAI_CLINICAL_VERSIONS, ...ARCAAI_CLINICAL_TEMPLATES].forEach((row) => {
+      expect(row.content, `FILE METADATA leaked into ${'promptTemplateId' in row ? row.promptTemplateId : row.id}`).not.toContain(
+        'FILE METADATA',
+      );
+      expect(row.content).not.toContain('DO NOT PASTE INTO HOPE');
+    });
+  });
 });
 
 // =============================================================================

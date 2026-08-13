@@ -1,4 +1,5 @@
 import type { CorePrismaClient } from '../../../client';
+import { getNodeEnv, isCI, loadDatabaseEnv } from '../../../env';
 import { TenantPlan, ValueType } from '../../../generated/core-prisma-client/client.js';
 import { SEED_TENANT_ID, SEED_USER_IDS, SEED_GLOBAL_SETTING_IDS, SEED_PLAN_ENTITLEMENT_IDS } from './00-constants';
 
@@ -10,14 +11,15 @@ import { SEED_TENANT_ID, SEED_USER_IDS, SEED_GLOBAL_SETTING_IDS, SEED_PLAN_ENTIT
  *      `TenantPlan`). This is the proposed STARTER → TRIAL → PRO → ENTERPRISE
  *      matrix anchored at ~100 seats for ENTERPRISE. `null` = unlimited.
  *   2. The entitlements enforcement kill-switch (`entitlements.enabled`
- *      GlobalSetting) under the platform tenant. Ships **OFF** by default so
- *      the epic lands safely dark; the fresh-DB seed value is **env-driven**
- *      so every DEPLOYED env (hope-v2-dev, staging, production) comes up **ON**
- *      while LOCAL dev and TEST/CI stay **OFF** — see the
- * `ENTITLEMENTS_ENABLED_DEFAULT` note below (policy).
+ *      GlobalSetting) under the platform tenant. The fresh-DB seed value is
+ *      **derived**: every DEPLOYED env (hope-v2-dev, staging, production) comes
+ *      up **ON**, while LOCAL dev and TEST/CI stay **OFF** — see the
+ *      {@link ENTITLEMENTS_ENFORCEMENT_SEED_DEFAULT} note below (policy), which
+ *      also records why the previous env-var-only form never actually turned it
+ *      on in any deployed environment.
  * 3.: the metering reconcile-sweep kill-switch
  *      (`metering.reconcile.enabled` GlobalSetting), same platform tenant,
- *      same env-driven fresh-DB pattern (OQ3) via a SEPARATE
+ *      same fresh-DB resolution (OQ3) via a SEPARATE
  *      `METERING_RECONCILE_ENABLED_DEFAULT` var — the two switches gate
  *      different things (quota/feature enforcement vs. a snapshot-persist
  *      job) and must be flippable independently.
@@ -36,39 +38,89 @@ const CREATED_BY = SEED_USER_IDS.SUPER_ADMIN;
 const GIB = 1024 ** 3;
 
 /**
- * The kill-switch's SEED-TIME initial value is
- * environment-driven so a DEPLOYED env comes up with enforcement already ON
- * without any code change, while keeping the LOCAL/committed default SAFE (OFF).
- * POLICY: enforcement is ON in every DEPLOYED environment and OFF
- * only on a developer laptop and in test/CI:
+ * The kill-switch's SEED-TIME initial value.
  *
- *   - LOCAL DEV → the committed `.env.sample`/`.env.dev` leaves the var **false** →
- *     fresh local seed = OFF, so a developer never fights quota locally.
- *   - `hope-v2-dev` CLUSTER → its deploy/host env sets `ENTITLEMENTS_ENABLED_DEFAULT=true`
- *     → ON (a deployed env is host-env-only; it does NOT read `.env.dev`).
- *   - STAGING → its deploy/host env sets `ENTITLEMENTS_ENABLED_DEFAULT=true` → ON on the
- *     next deploy+seed (staging uses host env; there is no committed `.env.staging`).
- *   - PRODUCTION → its host env sets `ENTITLEMENTS_ENABLED_DEFAULT=true` → ON.
- *   - TEST/CI → `.env.test` (and CI) never set the var → default **false** → OFF, so the
- *     shared E2E baseline stays OFF even after a `pnpm test:db:reset`.
+ * POLICY: enforcement is ON in every DEPLOYED environment and OFF only on a
+ * developer laptop and in test/CI.
+ *
+ * That policy is unchanged. What changed is HOW a deployed env is recognised.
+ * This used to require the deploy/host env to SET `ENTITLEMENTS_ENABLED_DEFAULT=true`,
+ * and the comment here asserted that `hope-v2-dev` did so. It never did — the
+ * var appears in no ConfigMap, no `turbo.json#globalEnv`, and no `.env.sample`
+ * anywhere in the repo, so the "deployed ⇒ ON" half of the policy was
+ * documentation, not behaviour. Worse, it was unfixable by adding the key alone:
+ * the GitOps `db-migrate` Job deliberately carries NO `envFrom` (the DB-05 fix),
+ * so a ConfigMap value would never have reached this process. Every fresh
+ * cluster seed came up OFF, and TASK-643's platform-default credential gate —
+ * which only takes effect when this switch is ON — sat inert.
+ *
+ * So the default is now INVERTED and derived, not stamped:
+ *
+ *   - explicit env var still WINS, in both directions (`true|1|yes|on` ⇒ ON,
+ *     `false|0|no|off` ⇒ OFF). An operator can still force either posture.
+ *   - unset ⇒ {@link isDeployedEnvironment}: ON in a deployed env, OFF locally
+ *     and in test/CI.
+ *
+ * Per-environment outcome (identical to the policy above, now actually enforced):
+ *   - LOCAL DEV → loads `.env.dev` ⇒ OFF, so a developer never fights quota locally.
+ *   - `hope-v2-dev` / STAGING / PRODUCTION → host-env-only, no file ⇒ **ON**, with
+ *     no ConfigMap key and no `envFrom` on the migrate Job.
+ *   - TEST/CI → `NODE_ENV=test` / `CI` ⇒ OFF, so the shared E2E baseline stays OFF
+ *     even after a `pnpm test:db:reset`.
  *
  * This only affects a FRESH row (the `create` branch). On an existing DB the
  * kill-switch upsert's `update` branch intentionally omits `value`, so a re-seed
  * NEVER clobbers a live operator toggle (flip it any time via
- * `PUT /admin/entitlements/enabled`). `defaultValue` stays the canonical `'false'`.
+ * `PUT /admin/entitlements/enabled`). `defaultValue` stays the canonical `'false'`
+ * — it is the RESET target (the safe value an operator reverts to), not the
+ * fresh-seed value.
+ *
+ * KNOWN CONSEQUENCE: with enforcement ON by default in deployed envs, the open
+ * fail-closed gap in `resolveForTenant` (TASK-646) becomes reachable there — a
+ * failed read of the billing-only entitlements tables raises instead of falling
+ * back, which can surface as a 500 on the clinical path. Accepted deliberately;
+ * TASK-646 is the fix.
  */
 const TRUTHY_ENV = new Set(['1', 'true', 'yes', 'on']);
-const ENTITLEMENTS_ENFORCEMENT_SEED_DEFAULT = TRUTHY_ENV.has((process.env.ENTITLEMENTS_ENABLED_DEFAULT ?? '').trim().toLowerCase());
+const FALSY_ENV = new Set(['0', 'false', 'no', 'off']);
 
 /**
- * Same env-driven fresh-DB pattern as
- * {@link ENTITLEMENTS_ENFORCEMENT_SEED_DEFAULT}, for the metering
- * reconcile-sweep kill-switch. Independent variable (`METERING_RECONCILE_ENABLED_DEFAULT`)
- * on purpose: the two switches gate unrelated things (quota/feature
- * enforcement vs. a `TenantUsageMeter` snapshot-persist job) and an operator
- * must be able to flip one without the other.
+ * A deployed environment is HOST-ENV-ONLY: it reads no env file. That is the
+ * repo's own env contract (`src/env.ts`, mirroring
+ * `packages/applications/src/common/env/env-file-resolution.ts`), so it is
+ * reused here rather than inventing a second signal. `loadDatabaseEnv()` is
+ * idempotent (`override: false`) and already ran at import of `../../../env`;
+ * calling it again only re-reports whether a file was found.
+ *
+ * Edge case, deliberate: a checkout with no `.env.dev` at all counts as
+ * deployed and seeds ON. That is the contract read literally — no file means
+ * host env is the only configuration source — and it is the safe direction for
+ * a switch that must default ON.
  */
-const METERING_RECONCILE_SEED_DEFAULT = TRUTHY_ENV.has((process.env.METERING_RECONCILE_ENABLED_DEFAULT ?? '').trim().toLowerCase());
+function isDeployedEnvironment(): boolean {
+  if (isCI()) return false;
+  if (getNodeEnv() === 'test') return false;
+  return !loadDatabaseEnv().loaded;
+}
+
+function resolveKillSwitchSeedDefault(raw: string | undefined): boolean {
+  const value = (raw ?? '').trim().toLowerCase();
+  if (TRUTHY_ENV.has(value)) return true;
+  if (FALSY_ENV.has(value)) return false;
+  return isDeployedEnvironment();
+}
+
+const ENTITLEMENTS_ENFORCEMENT_SEED_DEFAULT = resolveKillSwitchSeedDefault(process.env.ENTITLEMENTS_ENABLED_DEFAULT);
+
+/**
+ * Same resolution as {@link ENTITLEMENTS_ENFORCEMENT_SEED_DEFAULT}, for the
+ * metering reconcile-sweep kill-switch. Independent variable
+ * (`METERING_RECONCILE_ENABLED_DEFAULT`) on purpose: the two switches gate
+ * unrelated things (quota/feature enforcement vs. a `TenantUsageMeter`
+ * snapshot-persist job) and an operator must be able to flip one without the
+ * other.
+ */
+const METERING_RECONCILE_SEED_DEFAULT = resolveKillSwitchSeedDefault(process.env.METERING_RECONCILE_ENABLED_DEFAULT);
 
 interface PlanEntitlementSeed {
   id: string;
@@ -249,7 +301,8 @@ export const seedEntitlements = async (client: CorePrismaClient) => {
       namespace: 'entitlements',
       name: 'Entitlements Enabled',
       key: 'entitlements.enabled',
-      // Fresh-DB initial value is env-driven (DEV/STAGING=ON, TEST/CI/PROD=OFF).
+      // Fresh-DB initial value is derived (DEPLOYED=ON, LOCAL/TEST/CI=OFF),
+      // overridable either way by the env var.
       // `defaultValue` stays the canonical safe 'false' (reset target).
       value: String(ENTITLEMENTS_ENFORCEMENT_SEED_DEFAULT),
       defaultValue: 'false',
@@ -264,8 +317,8 @@ export const seedEntitlements = async (client: CorePrismaClient) => {
   );
 
   // 3. — metering reconcile-sweep kill-switch. Same platform
-  //    tenant + upsert shape as the entitlements switch above, independently
-  //    env-driven (METERING_RECONCILE_ENABLED_DEFAULT). Seeded OFF: capability/
+  //    tenant + upsert shape as the entitlements switch above, resolved
+  //    independently (METERING_RECONCILE_ENABLED_DEFAULT). Off locally: capability/
   //    usage READS never depend on it (MeteringService.getCurrentUsage is
   //    always a live aggregate) — the job only warms a persisted snapshot.
   await client.globalSetting.upsert({
@@ -288,7 +341,8 @@ export const seedEntitlements = async (client: CorePrismaClient) => {
       namespace: 'metering',
       name: 'Metering Reconcile Enabled',
       key: 'metering.reconcile.enabled',
-      // Fresh-DB initial value is env-driven (DEV/STAGING=ON, TEST/CI/PROD=OFF).
+      // Fresh-DB initial value is derived (DEPLOYED=ON, LOCAL/TEST/CI=OFF),
+      // overridable either way by the env var.
       // `defaultValue` stays the canonical safe 'false' (reset target).
       value: String(METERING_RECONCILE_SEED_DEFAULT),
       defaultValue: 'false',
