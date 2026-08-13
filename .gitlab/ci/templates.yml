@@ -116,6 +116,16 @@
   image: docker:27
   timeout: 30m
   interruptible: false
+  # Image builds are idempotent — the push is content-addressed, so re-running a
+  # job re-pushes identical layers under identical tags. That makes a retry safe,
+  # and it absorbs the infra-level flakes that abort a build mid-script (see the
+  # digest note below for the exit-255 case that motivated this).
+  retry:
+    max: 1
+    when:
+      - runner_system_failure
+      - stuck_or_timeout_failure
+      - script_failure
   variables:
     SERVICE_NAME: ""
     DOCKER_CONTEXT: "."
@@ -191,6 +201,7 @@
 
       docker buildx build \
         --push \
+        --metadata-file /tmp/buildx-metadata.json \
         --cache-from type=registry,ref=$cache_repo \
         --cache-to   type=registry,ref=$cache_repo,mode=max,compression=zstd \
         --label org.opencontainers.image.source=$CI_PROJECT_URL \
@@ -218,13 +229,34 @@
         echo "    $image_repo:$tag"
       done
 
-      # ── TASK-648 §3.2/§7 — resolve the manifest digest AFTER the push (it does
-      # not exist before) and carry it forward as a pipeline artifact variable.
-      # This is the value the promote-* jobs in deploy.yml re-resolve and attach
-      # to the SAME ServiceRelease row (keyed on service+gitCommitSha+releaseTag)
-      # — promotion NEVER creates a second release row, it only re-tags an
-      # already-pushed digest (see promote.sh and README §7 "Resolved decisions").
-      digest=$(docker buildx imagetools inspect "$image_repo:$primary_tag" | awk '/^Digest:/ {print $2; exit}')
+      # ── TASK-648 §3.2/§7 — carry the pushed manifest digest forward as a
+      # pipeline artifact variable. This is the value the promote-* jobs in
+      # deploy.yml re-resolve and attach to the SAME ServiceRelease row (keyed
+      # on service+gitCommitSha+releaseTag) — promotion NEVER creates a second
+      # release row, it only re-tags an already-pushed digest (see promote.sh
+      # and README §7 "Resolved decisions").
+      #
+      # Read from the build's own --metadata-file, NOT a second
+      # `docker buildx imagetools inspect` round-trip to the registry. The
+      # inspect form was BOTH flaky and unable to report its own failure:
+      #   * flaky — it intermittently killed the job with a bare exit 255 and
+      #     no stderr, immediately after a fully successful build+push
+      #     (pipeline 910 build-stt-worker, pipeline 908 build-qdrant-init —
+      #     unrelated images, same runner, same silent signature);
+      #   * silent — with `digest=$(inspect | awk ...)` and no pipefail, the
+      #     substitution's status is AWK's, always 0. A failed inspect (or any
+      #     output without a `Digest:` line) yielded an EMPTY digest that
+      #     `set -eu` could not catch, shipping `DIGEST=` to promote-*, which
+      #     breaks digest promotion quietly instead of loudly.
+      # buildx already knows the digest it just pushed, so this needs no
+      # network call at all — and the guard below makes an unresolvable digest
+      # a hard failure.
+      digest=$(sed -n 's/.*"containerimage.digest"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' /tmp/buildx-metadata.json)
+      if [ -z "$digest" ]; then
+        echo "FATAL: no containerimage.digest in /tmp/buildx-metadata.json" >&2
+        cat /tmp/buildx-metadata.json >&2 || true
+        exit 1
+      fi
       echo "  digest: $digest"
 
       echo "IMAGE=$image_repo:$primary_tag" >> build.env
