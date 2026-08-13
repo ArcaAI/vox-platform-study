@@ -32,9 +32,9 @@ import { UsageLedgerServiceModule } from '../../usageLedger';
     PromptResolutionServiceModule, // Required for prompt fallback chain
     HarnessGatewayServiceModule, // harnessEnabled routing in ConsultationEventHandler
     HarnessPolicyServiceModule, // SMR-selection resolver for the summary/pre-summary/comprehensive processors
-    AiTaskDefaultServiceModule, // nlp.ner model-injection resolver for NerProcessor (TASK-552 Lane A)
+    AiTaskDefaultServiceModule, // nlp.ner model-injection resolver for NerProcessor
     ConfigResolverModule, // Realtime cascade + preferred-prompt threading (handler + summary processor)
-    UsageLedgerServiceModule, // ner.extract usage emission for NerProcessor (TASK-615 WS-E)
+    UsageLedgerServiceModule, // ner.extract usage emission for NerProcessor
     EventEmitterModule, // Required for @OnEvent handlers and EventEmitter2 injection
     RedisCacheModule.register(), // For job status storage and pub/sub
     BullModule.registerQueue(

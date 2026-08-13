@@ -2,7 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsBoolean, IsInt, IsNumber, IsOptional, IsString, Min } from 'class-validator';
 
 /**
- * Body of `POST /api/v1/internal/stt/streaming/usage` (TASK-615 #13).
+ * Body of `POST /api/v1/internal/stt/streaming/usage`.
  *
  * The STT idle reaper finalizes a session whose gateway caller crashed and
  * whose removal retries were exhausted; it builds a `transcribe.stream` teardown

@@ -15,7 +15,7 @@ import type { ISDKLogger } from './logger';
 import type { CreateStreamingSessionRequest, StreamingSessionResponse } from '../types/stt';
 import { classifyHttpError } from '../utils/errorUtils';
 
-/** Direction of a live-session provider switch (TASK-586 Lane D). */
+/** Direction of a live-session provider switch.*/
 export type ProviderSwitchTarget = 'primary' | 'fallback';
 
 /**
@@ -70,7 +70,7 @@ export class StreamingSessionManager {
   private status: SessionManagerStatus = 'idle';
   /**
    * When `true`, `switchProvider` routes through the compat gateway's literal
-   * `/api/stt/switch` shim (TASK-586 Lane D, contract C3) instead of the
+   * `/api/stt/switch` shim instead of the
    * native in-place-switch route. ONLY `@arcaai/vox/compat` turns this on
    * (via {@link setCompatSwitchEnabled}) — native SDK consumers never do, so
    * the default is `false` and existing native behavior is untouched.
@@ -262,7 +262,7 @@ export class StreamingSessionManager {
   }
 
   /**
-   * Enable/disable compat provider-switch routing (TASK-586 Lane D). ONLY
+   * Enable/disable compat provider-switch routing. ONLY
    * `@arcaai/vox/compat` calls this — it is how a v1-migrated app opts the
    * live session into the bidirectional `/api/stt/switch` shim instead of the
    * native one-way fallback route. Native SDK consumers never call this, so
@@ -274,12 +274,12 @@ export class StreamingSessionManager {
   }
 
   /**
-   * Switch the live streaming session's ASR engine (TASK-586 Lane D).
+   * Switch the live streaming session's ASR engine.
    *   - `target: 'fallback'` — the tenant-admin default provider. In compat
    *     mode this POSTs `/api/stt/switch`; otherwise it is identical to the
-   *     native {@link switchToFallback} (TASK-567 R4).
+   * native {@link switchToFallback}.
    *   - `target: 'primary'` — switch BACK to the SDK-configured pipeline. Now
-   *     supported natively (TASK-586 Lane H): POSTs the native
+   * supported natively: POSTs the native
    *     `SWITCH_TO_PRIMARY` route, the primary-direction counterpart of the
    *     one-way fallback switch. In compat mode it still routes through the
    *     `/api/stt/switch` shim.
@@ -304,7 +304,7 @@ export class StreamingSessionManager {
 
   /**
    * Request an in-place switch of the live session to the tenant fallback
-   * pipeline (TASK-567 R4). Alias for `switchProvider('fallback')` — kept for
+   * pipeline. Alias for `switchProvider('fallback')` — kept for
    * native callers (backward compatibility; zero behavior change).
    *
    * @throws if no session exists, or with the backend error on failure.
@@ -327,7 +327,7 @@ export class StreamingSessionManager {
 
   /**
    * Request an in-place switch of the live session BACK to its primary pipeline
-   * (TASK-586 Lane H) — the native primary-direction counterpart of
+   * The native primary-direction counterpart of
    * {@link nativeSwitchToFallback}. POSTs the `SWITCH_TO_PRIMARY` route; the
    * backend swaps the ASR engine while the WebSocket/session survive and the
    * client learns the new pipeline from the `provider_switched` status frame.
@@ -347,7 +347,7 @@ export class StreamingSessionManager {
   }
 
   /**
-   * Compat provider-switch transport (TASK-586 Lane D, contract C3). The
+   * Compat provider-switch transport. The
    * shim route (`POST /api/stt/switch`) lives OUTSIDE the gateway's
    * `/api/v1` prefix — same shape as `useSMR`'s `/api/smr/...` shim calls —
    * so this derives the origin off `apiClient.getBaseUrl()` and hits `fetch`

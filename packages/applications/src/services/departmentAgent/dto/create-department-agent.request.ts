@@ -51,7 +51,7 @@ export class CreateDepartmentAgentRequest {
   @IsString()
   goldenSetId?: string;
 
-  // ── TASK-635 RF-4 capability-keyed bindings. All optional; omitted/null ⇒ the
+  // ──  capability-keyed bindings. All optional; omitted/null ⇒ the
   // LEGACY behaviour for that capability. Every field must be declared here —
   // the gateway's global `forbidNonWhitelisted` pipe rejects undeclared fields,
   // so this is mandatory, not cosmetic. `templateLocked` stays deliberately
@@ -101,7 +101,7 @@ export class CreateDepartmentAgentRequest {
   @IsString({ each: true })
   tags?: string[];
 
-  // ── TASK-659 loop configuration + promotion surface. All optional;
+  // ──  loop configuration + promotion surface. All optional;
   // omitted/null ⇒ no loop participation for this agent (role still defaults
   // to SPECIALIST — see DepartmentAgentFactory).
   @ApiPropertyOptional({ description: 'Loop role — at most one ENABLED PRIMARY per department', enum: DepartmentAgentRole })

@@ -73,7 +73,7 @@ describe('model-cache retention descriptors', () => {
 
   it('does NOT introduce a competing models.retention.* namespace', () => {
     // Two key families for one knob is the redundancy the Completion & Cleanup
-    // Doctrine (program plan §2.5) forbids.
+    // Doctrine forbids.
     expect(DESCRIPTORS.filter((d) => d.key.startsWith('models.retention.'))).toEqual([]);
   });
 });

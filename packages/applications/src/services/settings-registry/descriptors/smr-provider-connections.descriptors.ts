@@ -1,6 +1,6 @@
-// SMR cloud-provider CONNECTION config — tier `env` (TASK-572).
+// SMR cloud-provider CONNECTION config — tier `env`.
 //
-// The three cloud LLM providers added in TASK-572 (OpenAI / Anthropic / Google
+// The three cloud LLM providers (OpenAI / Anthropic / Google
 // Vertex) each carry a small PLATFORM-level connection surface in
 // `apps/smr/src/smr/core/config.py` (`OpenAIConfig` / `AnthropicConfig` /
 // `VertexConfig`, `SMR_OPENAI_` / `SMR_ANTHROPIC_` / `SMR_VERTEX_` prefixes).
@@ -19,7 +19,7 @@
 //                           fallback, transcribed verbatim into `default`.
 //   - `default`            the SMR config class's ACTUAL fallback (config.py).
 //
-// TASK-602: the CREDENTIALS themselves (`SMR_OPENAI_API_KEY`,
+// The CREDENTIALS themselves (`SMR_OPENAI_API_KEY`,
 // `SMR_ANTHROPIC_API_KEY`, `SMR_AZURE_API_KEY`) are BYOK-only and NO LONGER
 // registered anywhere — they are `db-secret` (Vault-Transit ciphertext in
 // `AiProviderConnection`, with the SYSTEM row as the platform default), never an

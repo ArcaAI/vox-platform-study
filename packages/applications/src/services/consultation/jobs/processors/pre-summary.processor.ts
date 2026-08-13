@@ -104,7 +104,7 @@ export class PreSummaryProcessor extends WorkerHost {
           // lands on the SYSTEM default (or a 503).
           tenantId: consultation.tenantId,
           promptType: 'pre-summary',
-          // TASK-635 D2 — native callers resolve the department-free fork;
+          // Native callers resolve the department-free fork;
           // v1-compat is the ONLY surface that keeps the v1-parity body (RF-1).
           preSummaryVariant: 'dept-free',
           preferredPromptTemplateId: preferredPromptTemplateId ?? undefined,
@@ -142,10 +142,10 @@ export class PreSummaryProcessor extends WorkerHost {
           // resolution, and that is the one whose body reaches the LLM.
           tenantId: consultation.tenantId,
           promptType: 'pre-summary',
-          // TASK-635 D2 — native callers resolve the department-free fork;
+          // Native callers resolve the department-free fork;
           // v1-compat is the ONLY surface that keeps the v1-parity body (RF-1).
           preSummaryVariant: 'dept-free',
-          // v1 `{visit_type}` (TASK-634 D-08). `parentConsultationId` is the
+          // v1 `{visit_type}`. `parentConsultationId` is the
           // consultation's own visit-type signal (NULL = initial visit); the
           // vocabulary is the one the seeded pre-summary template declares for
           // this variable ("new-visit or revisit").
@@ -246,7 +246,7 @@ export class PreSummaryProcessor extends WorkerHost {
       resolvedFrom: PromptResolutionTier;
     },
     request: GeneratePreSummaryJobPayload['request'],
-    // TASK-635 A5 (B-04) — the tenant id `process()` already fail-closed
+    // The tenant id `process` already fail-closed
     // validated (job.data.tenantId) is threaded through EXPLICITLY here
     // rather than trusting `resolveSmrSelection()`'s own CLS fallback, so
     // this call can never silently serve the SYSTEM default model.

@@ -1,5 +1,5 @@
 /**
- * TASK-612 Lane I — external-microphone / injected-stream browser harness.
+ * External-microphone / injected-stream browser harness.
  *
  * WHY A SECOND HARNESS (and not `index.html`)
  * -------------------------------------------
@@ -18,11 +18,11 @@
  * `@arcaai/room` `AudioContextManager` + `AudioMixer`, the real Zustand store,
  * and the real `useArcaAudio` hook under test. That is the entire point of this
  * lane: the unit suites only ever saw doubles, so nothing until now proved the
- * TASK-612 contracts against a real audio graph.
+ * Contracts against a real audio graph.
  *
  * Doubled: the `PluginManager` only. It stands in for the STT/VAD/noise-filter
  * stack, which needs ONNX/WASM models and a live gateway — neither of which
- * this suite has, and neither of which any TASK-612 contract depends on. Its
+ * this suite has, and neither of which any contract depends on. Its
  * shape mirrors the double the unit suites use
  * (`src/hooks/__tests__/task612-*.test.ts`).
  *

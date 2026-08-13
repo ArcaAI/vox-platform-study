@@ -214,7 +214,7 @@ export class ExceptionInterceptor implements NestInterceptor {
           return throwError(() => new HttpException(err.toJSON(), status));
         }
 
-        // The caller's OWN tenant forbids this provider (TASK-643 R4): its
+        // The caller's OWN tenant forbids this provider: its
         // connection row for the (service, provider) is disabled, which is a
         // VETO of the platform-default credential rather than "unused". 409,
         // deliberately distinct from the 403 a missing entitlement produces
@@ -233,7 +233,7 @@ export class ExceptionInterceptor implements NestInterceptor {
           return throwError(() => new HttpException(err.toJSON(), HttpStatus.CONFLICT));
         }
 
-        // The tenant hit its optional monthly SPEND limit (TASK-615 #8, D12).
+        // The tenant hit its optional monthly SPEND limit (D12).
         // RFC maps a payment/credit exhaustion to 402 Payment Required — a
         // distinct signal from the 429 throughput / 409 quantity quotas above.
         // Body is `err.toJSON()` (`code: 'DOMAIN.SPEND_LIMIT_EXCEEDED'` +
@@ -333,7 +333,7 @@ const QUOTA_RATE_CAPABILITIES = new Set([
   // A simultaneous-session cap is retry-later, not a permanent conflict; 429
   // lets the caller back off and retry once a session frees up.
   'maxConcurrentSessions',
-  // TASK-615 D11 — the five ledger-derived unit-allowance meters
+  // D11 — the five ledger-derived unit-allowance meters
   // (MeterCapabilityKey in @arcaai/applications' entitlements/enforcement.ts).
   // Same rolling-monthly-meter semantics as the three above; no
   // 'monthlyGuardrailCalls' — guardrail has no allowance column (D6/D16, never

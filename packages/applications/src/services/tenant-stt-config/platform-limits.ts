@@ -17,9 +17,9 @@ export const BYO_STT_PROVIDERS = ['azure-speech', 'sarvam', 'openai'] as const;
 /**
  * Decrypted provider credentials, injected by the gateway into apps/stt
  * (streaming) or pulled by the batch worker. snake_case matches the Python wire
- * shape (§3.3). Never persisted, never logged, never returned by a read API.
+ * shape. Never persisted, never logged, never returned by a read API.
  *
- * `funding` (TASK-643) says WHO PAID for the entry — the caller's own row
+ * `funding` says WHO PAID for the entry — the caller's own row
  * (`tenant`) or the SYSTEM-tenant platform default (`platform`). It is REQUIRED
  * here because this type is built by copying fields off the resolved entry, and
  * a field this shape forgets to copy is a field that silently reverts to
@@ -33,14 +33,14 @@ export type SttProviderOverrides = Record<
 /** Code defaults for the fallback spec (last fallback in the cascade). */
 export const STT_FALLBACK_DEFAULTS = {
   autoSwitchEnabled: true,
-  // §3.4 auto-switch after N consecutive utterance failures on a threshold-class error.
+  // Auto-switch after N consecutive utterance failures on a threshold-class error.
   consecutiveFailureThreshold: 2,
 } as const;
 
 /**
  * Cloud STT providers (the `provider::model` shorthand prefix, lower-cased) and
  * cloud AiModel formats. A fallback pipeline must be backed by one of these —
- * a local GPU pipeline is not a meaningful outage escape (§3.2).
+ * a local GPU pipeline is not a meaningful outage escape.
  */
 export const CLOUD_STT_PROVIDERS: ReadonlySet<string> = new Set(['azure', 'azure-speech', 'azure-foundry', 'sarvam', 'openai']);
 
@@ -48,7 +48,7 @@ export const CLOUD_STT_FORMATS: ReadonlySet<string> = new Set<string>([
   AiModelFormat.AZURE_SPEECH,
   AiModelFormat.AZURE_FOUNDRY,
   AiModelFormat.CLOUD_API,
-  // TASK-586: SARVAM / OPENAI are now first-class AiModelFormat members, so a
+  // SARVAM / OPENAI are now first-class AiModelFormat members, so a
   // bare-slug fallback pipeline pointing at the Sarvam/OpenAI catalog row resolves
   // to a cloud format here exactly like Azure.
   AiModelFormat.SARVAM,
@@ -59,7 +59,7 @@ export const CLOUD_STT_FORMATS: ReadonlySet<string> = new Set<string>([
  * Cloud engines that are BATCH-ONLY and therefore CANNOT serve as a live
  * fallback: the runtime fallback is a mid-session streaming engine swap, so a
  * batch-only engine (e.g. Azure AI Foundry / MAI-Transcribe 1.5 — PREVIEW,
- * batch-only per TASK-505 D4) would fail at switch time. These are cloud-backed
+ * batch-only per ) would fail at switch time. These are cloud-backed
  * but must be excluded from the fallback picker AND rejected on write, so a
  * tenant never points `fallbackPipelineId` at a target that can't stream.
  * Classified by both the `provider::model` shorthand prefix and the AiModel

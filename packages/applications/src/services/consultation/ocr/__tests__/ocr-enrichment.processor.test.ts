@@ -4,7 +4,7 @@
  * Event-driven: reacts to `ConsultationPipelineEvent.ContextAdded`. When an
  * ATTACHMENT has a `mediaId` but no `metaData.extractedText`, it resolves
  * `mediaId` (a `Media` row UUID) via `MediaRepository.findById` →
- * `parseStorageUri(media.uri)` to the ACTUAL bucket/key (TASK-656 — `mediaId`
+ * `parseStorageUri(media.uri)` to the ACTUAL bucket/key (`mediaId`
  * is never a literal S3 key), fetches the file bytes (IBlobStorageService.getObject
  * — mocked), calls the NLP `/extract` endpoint (HttpService — mocked), persists
  * `metaData.extractedText`, and re-emits the live `ContextAdded` preview. A loop
@@ -55,7 +55,7 @@ const createMockClsService = () => {
   };
 };
 
-// mediaId is a Media row UUID (TASK-656) — NEVER a literal S3 key.
+// mediaId is a Media row UUID — NEVER a literal S3 key.
 const MEDIA_ID = 'media-uuid-1';
 
 const createMockAttachment = (overrides: Record<string, unknown> = {}) => ({
@@ -100,7 +100,7 @@ describe('OcrEnrichmentProcessor', () => {
   let eventEmitter: ReturnType<typeof createMockEventEmitter>;
   let cls: ReturnType<typeof createMockClsService>;
 
-  // TASK-679 — OCR is gated by the `consultation.ocr.enabled` `global-kv`
+  // OCR is gated by the `consultation.ocr.enabled` `global-kv`
   // kill-switch, which DEFAULTS OFF, so these orchestration fixtures must turn
   // it ON explicitly. That is the behaviour change: the retired `OCR_ENABLED`
   // env flag defaulted enabled. The gate's own semantics (runtime flip,
@@ -151,7 +151,7 @@ describe('OcrEnrichmentProcessor', () => {
     expect(mediaRepository.findById).toHaveBeenCalledWith(MEDIA_ID);
 
     // (1) fetched the bytes using the bucket/key DECODED from the Media row's uri —
-    // NOT `{ bucket: 'attachments', key: mediaId }` (the pre-TASK-656 bug: mediaId
+    // NOT `{ bucket: 'attachments', key: mediaId }` (the previous bug: mediaId
     // treated as the literal S3 key).
     expect(blobStorage.getObject).toHaveBeenCalledWith({ bucket: 'attachments', key: 'lab-scan.pdf' });
     expect(blobStorage.getObject).not.toHaveBeenCalledWith({ bucket: 'attachments', key: MEDIA_ID });
@@ -247,7 +247,7 @@ describe('OcrEnrichmentProcessor', () => {
     expect(contextItemRepository.update).not.toHaveBeenCalled();
   });
 
-  // TASK-660 — the ContextAdded gate widened to also emit for TRANSCRIPT and
+  // The ContextAdded gate widened to also emit for TRANSCRIPT and
   // STRUCTURED (loop event plane). This consumer was written for ATTACHMENT
   // only; its existing type check already covers the new kinds, since it is
   // a positive allowlist (`=== ATTACHMENT`), not a denylist of the old kinds.

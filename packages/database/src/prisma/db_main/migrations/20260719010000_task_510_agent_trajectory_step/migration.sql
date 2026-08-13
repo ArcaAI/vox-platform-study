@@ -1,4 +1,4 @@
--- TASK-510 Phase 2A — Ordered session trajectory (AgentTrajectoryStep).
+-- Ordered session trajectory (AgentTrajectoryStep).
 --
 -- Purely ADDITIVE: three new enums + one new table. The table is the ordered,
 -- typed, per-session step stream (owner ask 2), tenant-scoped and pruned by

@@ -335,7 +335,7 @@ export class SysEventService implements ISysEventService {
   }
 
   /**
-   * TASK-615 WS-H — the first real consumer of `ENTITLEMENTS_QUOTA_BLOCKED_EVENT`
+   * The first real consumer of `ENTITLEMENTS_QUOTA_BLOCKED_EVENT`
    * (emitted by `EntitlementsService.assertQuantityQuota` / `assertMeterQuota` /
    * `assertConcurrencyQuota`). Before this handler existed nobody listened for
    * the event at all: the typed `QuotaExceededException` still reached the

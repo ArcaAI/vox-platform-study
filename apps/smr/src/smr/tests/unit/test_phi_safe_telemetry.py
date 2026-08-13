@@ -1,4 +1,4 @@
-"""PHI-safe telemetry CI guard (TASK-615 WS-G).
+"""PHI-safe telemetry CI guard.
 
 Static allow-list test: cheap, CI-stable, no OTel runtime needed. Scans the
 `smr` source tree for `gen_ai.*` attribute-name string literals -- the OTel
@@ -47,7 +47,7 @@ ALLOWED_GEN_AI_ATTRIBUTES = frozenset(
 )
 
 # Content-bearing attributes that must NEVER be stamped (research-findings.md
-# §2 / §10: "Content-bearing attributes to never set"). Exact names plus the
+# / "Content-bearing attributes to never set"). Exact names plus the
 # prefix families the OTel GenAI spec groups under "content".
 BANNED_GEN_AI_ATTRIBUTES = frozenset(
     {

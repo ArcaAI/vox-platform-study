@@ -1,5 +1,5 @@
 /**
- * @arcaai/vox - Client-side context payload validation (TASK-665)
+ * @arcaai/vox - Client-side context payload validation
  *
  * `useArcaSession().addContext()` calls `validateConsultationContextPayload`
  * BEFORE sending a `kindKey` + `payload` write, so a caller gets an immediate,
@@ -63,7 +63,7 @@ export interface ContextPayloadValidationResult {
  *    `{ valid: true, problems: [] }`. The kind may be genuinely unknown to
  *    THIS build of the SDK (a tenant published it after the client shipped)
  *    — rejecting locally would break a client that is one release behind,
- *    which is exactly the forward-compatibility guarantee TASK-654 requires.
+ * which is exactly the forward-compatibility guarantee requires.
  *    The server is always the final authority and validates independently.
  *  - A resolved kind with no `fields` (non-`STRUCTURED`, or `payload`
  *    omitted) → nothing to validate against.

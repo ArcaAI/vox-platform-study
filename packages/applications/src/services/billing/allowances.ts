@@ -2,12 +2,12 @@ import Decimal from 'decimal.js';
 import { AiCapability, TenantPlan } from '@arcaai/domains';
 
 /**
- * Pure allowance resolution for the invoice engine (TASK-615 D11/D12).
+ * Pure allowance resolution for the invoice engine (/D12).
  *
  * Chain: `PlanEntitlement` row ← `TenantEntitlement` override — a non-null
  * override field wins, a null one inherits, exactly the `pick()` precedence of
  * `resolve-entitlements.ts`. That resolver does not surface the five allowance
- * columns yet (they are WS-H's lane); this function reads THE SAME two rows,
+ * columns yet (they are 's lane); this function reads THE SAME two rows,
  * so the two resolutions converge by construction and can be merged later
  * without a behavior change.
  *

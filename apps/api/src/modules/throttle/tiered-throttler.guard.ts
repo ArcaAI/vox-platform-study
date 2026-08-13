@@ -81,7 +81,7 @@ export class TieredThrottlerGuard extends ThrottlerGuard {
 
     // The caller's tenant, decoded (unverified) from the bearer/SSE token —
     // resolved ONCE here because both the kill-switch and the tier lane now
-    // need it (TASK-558 lane I).
+    // need it.
     const tenantId = this.extractTenantIdPreAuth(context);
 
     // (1) Kill-switch: the platform master switch, then the tenant's own view
@@ -104,7 +104,7 @@ export class TieredThrottlerGuard extends ThrottlerGuard {
 
     // (3a) The tenant's plan tier, applied only to the always-on `default`
     // tier. Resolved BEFORE the tier lane so its limit can serve as the
-    // entitlement CEILING for a tenant's own override (§9.3 M2: a tenant may
+    // entitlement CEILING for a tenant's own override (M2: a tenant may
     // throttle itself harder than its plan, never softer).
     const plan = name === 'default' ? await this.resolvePlanRateLimit(context, settings) : undefined;
 

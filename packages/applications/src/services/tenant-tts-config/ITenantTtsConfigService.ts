@@ -3,7 +3,7 @@ import { EffectiveTtsConfigResponse, TenantTtsConfigResponse, TtsPlatformCatalog
 /**
  * Per-tenant TTS configuration service — the non-credential SPEC only (voices,
  * routing, platform limits). BYO provider credentials live on the unified
- * `IProviderConnectionService` (`service='tts'`, TASK-570) — see
+ * `IProviderConnectionService` (`service='tts'`) — see
  * `TenantTtsConfigAdminController`'s credential routes and the gateway
  * injection sites (`SpeechProxyController`, `TtsWsGateway`), which inject that
  * token directly rather than going through this service.

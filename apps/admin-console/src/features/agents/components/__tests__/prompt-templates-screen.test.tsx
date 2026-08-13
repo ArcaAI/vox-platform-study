@@ -1,5 +1,5 @@
 /**
- * Prompt Instruction Templates screen (TASK-634 R6) — the tenant-admin surface
+ * Prompt Instruction Templates screen — the tenant-admin surface
  * for the prompts behind pre-summary and summary generation.
  *
  * fetch is stubbed at the network boundary. Coverage: the working-tenant gate,
@@ -254,7 +254,7 @@ describe('PromptTemplatesScreen', () => {
   /**
    * The reason this screen exists: pre-summary is tenant-wide with no
    * department or visit-type axis, while summary is a department x visit-type
-   * matrix. If that distinction stops being visible, the TASK-634 class of bug
+   * matrix. If that distinction stops being visible, that class of bug
    * becomes invisible again.
    */
   describe('Fallbacks tab (the resolution map)', () => {

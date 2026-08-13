@@ -13,7 +13,7 @@ export class SettingsRegistry {
 
   /**
    * Register one descriptor. Throws on a duplicate key so assembly fails loudly,
-   * and enforces the fail-closed invariant for secrets (plan §9.3 M5).
+   * and enforces the fail-closed invariant for secrets.
    *
    * The secret check runs HERE — at true assembly time — rather than in a
    * lister like `killSwitches()`, because it is a per-descriptor invariant with

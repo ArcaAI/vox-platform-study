@@ -1,5 +1,5 @@
 /**
- * T-6 (TASK-610 D-4 / D-5) — the two header lists the SDK's OCC round trip
+ * T-6 (D-5) — the two header lists the SDK's OCC round trip
  * depends on.
  *
  * Both defects were invisible from the server's side: the routes, the guard and
@@ -20,7 +20,7 @@ import { CORS_ALLOWED_HEADERS, CORS_EXPOSED_HEADERS } from '../cors.headers';
 const includesHeader = (list: readonly string[], name: string): boolean =>
   list.some((h) => h.toLowerCase() === name.toLowerCase());
 
-describe('CORS header lists (TASK-610)', () => {
+describe('CORS header lists', () => {
   describe('D-4 — allowed request headers', () => {
     it('permits If-Match, without which every versioned PATCH fails preflight', () => {
       expect(includesHeader(CORS_ALLOWED_HEADERS, 'If-Match')).toBe(true);

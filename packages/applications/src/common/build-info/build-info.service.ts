@@ -5,7 +5,7 @@ import { formatUntaggedVersion } from '@arcaai/utils';
 
 import { BuildInfo } from './build-info.types';
 
-/** Where CI bakes the contract in every image (TASK-648 §3.2). */
+/** Where CI bakes the contract in every image. */
 export const DEFAULT_BUILD_INFO_PATH = '/app/build-info.json';
 
 /** Placeholder identity when neither the baked file nor git produce anything real. */
@@ -79,7 +79,7 @@ function degradedBuildInfo(runGit: GitRunner): BuildInfo {
  * Reads `/app/build-info.json` once at process boot and caches the result.
  *
  * NEVER throws — this runs on the boot path of PHI-serving services
- * (TASK-648 §3.7). A missing, unreadable, or malformed file logs a warning
+ * . A missing, unreadable, or malformed file logs a warning
  * and degrades to a best-effort identity (git, when available; otherwise the
  * `unknown` placeholder), never an exception that could block startup.
  */

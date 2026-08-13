@@ -19,7 +19,7 @@ const ROWS = [
   { service: 'STT', p95: 240, uptime: '99.90%', version: '2.0.1' },
 ];
 
-describe('MetricTable (§3.2)', () => {
+describe('MetricTable', () => {
   it('renders a caption and column headers with scope="col"', () => {
     const { container } = render(<MetricTable columns={COLUMNS} rows={ROWS} caption="Per-service metrics" />);
     expect(container.querySelector('caption')).toHaveTextContent('Per-service metrics');

@@ -1,6 +1,6 @@
-"""TASK-607 — undecodable audio must fail once, with its own error code.
+"""Undecodable audio must fail once, with its own error code.
 
-Before this ticket an unreadable upload surfaced as a generic
+Previously an unreadable upload surfaced as a generic
 ``TRANSCRIPTION_ERROR`` (retryable, four attempts) and the client saw
 libsndfile's "Unspecified internal error". Audio-processing failures now carry
 their own error code and skip the retry loop.

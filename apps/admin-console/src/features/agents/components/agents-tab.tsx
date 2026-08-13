@@ -1,8 +1,8 @@
 'use client';
 
 /**
- * Agents tab (TASK-547) — the Agent Catalog: department-grouped `DepartmentAgent`
- * rows over TASK-546's `admin/department-agents` API. One row = one "Agent"
+ * Agents tab — the Agent Catalog: department-grouped `DepartmentAgent`
+ * rows over the `admin/department-agents` API. One row = one "Agent"
  * (admin vocabulary, Family 6: Agent Template → Agent → Version → Default →
  * Draft). Uses the console-wide `DetailDrawer` for create/edit, exactly like
  * the sibling Agent Templates tab.

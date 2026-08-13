@@ -1,6 +1,6 @@
 /**
  * v1 response shapes for the compat summary endpoints
- * (SMR_Summary_Endpoints.md §3.2/§3.3/§4.2; frozen TASK-560 §5.4/§5.5).
+ * (SMR_Summary_Endpoints.md §3.2/§3.3/§4.2; frozen).
  *
  * These are response types only — they never pass through the request
  * `ValidationPipe`, so plain TypeScript interfaces (not class-validator DTOs)
@@ -18,7 +18,7 @@ export interface TokenUsage {
 /**
  * Non-secret provider/format details echoed back.
  *
- * v1-parity labels (TASK-560 item 4): `llm_provider` / `model_name` /
+ * v1-parity labels: `llm_provider` / `model_name`
  * `parsing_method` / `raw_llm_content` mirror v1's frontend-sanitized metadata
  * (`summary_service.py:_sanitize_response_for_frontend`, which explicitly keeps
  * `raw_llm_content` and `parsing_method`). They are cosmetic display labels — no

@@ -1,8 +1,8 @@
--- TASK-498 — Tenant-Scoped External Identity Provider (OIDC v1)
+-- Tenant-Scoped External Identity Provider (OIDC v1)
 -- Additive only: two new enums + three new tenant-scoped tables under the
 -- `core` schema. No data is touched. `IdpProtocol` ships both OIDC and SAML
 -- values now (protocol-neutral data model, D1) — v1 service-layer validation
--- accepts OIDC only; SAML lands on this same schema via TASK-499.
+-- accepts OIDC only; SAML lands on this same schema via.
 
 -- CreateEnum
 CREATE TYPE "core"."IdpProtocol" AS ENUM ('OIDC', 'SAML');

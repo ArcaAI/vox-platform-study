@@ -1,15 +1,15 @@
 /**
- * TASK-307 W6.4 — eslint-plugin-arcaai-internal
+ * eslint-plugin-arcaai-internal
  *
  * Local ESLint plugin packaging for arcaai's repo-internal lint rules.
  * Listed in `@arcaai/config-eslint`'s dependencies as `workspace:*`; the
  * flat presets (`flat/core.js`) register it as a plain object under the
- * `arcaai-internal` namespace (TASK-418), so rule IDs stay
+ * `arcaai-internal` namespace, so rule IDs stay
  * `arcaai-internal/<rule>`.
  *
  * Add new rules by exporting them from this file's `rules` map. Each
  * rule lives in its own file under `./rules/`.
- */
+*/
 'use strict';
 
 module.exports = {

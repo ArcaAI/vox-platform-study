@@ -39,7 +39,7 @@ export interface DrainReport {
 }
 
 /**
- * The outbox drainer (TASK-615 WS-B deliverable 2).
+ * The outbox drainer (deliverable 2).
  *
  * Converts PENDING `AiUsageOutbox` rows into rated `AiUsageEvent` appends plus
  * hourly/daily rollup increments.
@@ -58,7 +58,7 @@ export interface DrainReport {
  *
  * So the insert and both upserts run inside ONE `runInTransaction`. Either all
  * three commit or none do, and a redrain of a rolled-back attempt inserts
- * cleanly. The rollup upserts use in-database `increment` (WS-A's
+ * cleanly. The rollup upserts use in-database `increment` ('s
  * `accumulate`), so concurrent drainers on different replicas accumulate rather
  * than clobber.
  *
@@ -163,7 +163,7 @@ export class UsageOutboxDrainer {
       provider: event.provider,
       model: event.model,
       contextBand: event.attributesJson?.contextBand ?? null,
-      // Cache-write TTL band (TASK-615 #7): only CACHE_WRITE_TOKEN rows carry it;
+      // Cache-write TTL band: only CACHE_WRITE_TOKEN rows carry it;
       // for every other unit it is null and resolves the TTL-agnostic wildcard.
       cacheTtl: event.attributesJson?.cacheTtl ?? null,
       occurredAt,
@@ -221,12 +221,12 @@ export class UsageOutboxDrainer {
     const dimension = {
       tenantId: event.tenantId,
       capability: event.capability,
-      // Operation dimension (TASK-615 #4): keeps guardrail.validate / harness.step
+      // Operation dimension: keeps guardrail.validate / harness.step
       // LLM rows out of the tenant-billable LLM_TOKENS meter. Always present on an
       // event (closed vocabulary); "" only for pre-follow-up rollup rows.
       operation: event.operation ?? '',
       provider: event.provider,
-      // Deployment dimension (TASK-638): billing consumes the pooled allowance
+      // Deployment dimension: billing consumes the pooled allowance
       // SELF_HOSTED-first, and BYOK must never be rated at a managed premium —
       // neither is derivable from `provider` (the same slug is CLOUD on a
       // platform key and BYOK on a tenant key).

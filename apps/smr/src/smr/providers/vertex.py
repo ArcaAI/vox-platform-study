@@ -113,7 +113,7 @@ class VertexProvider:
             return self._client
 
     def _resolve_model(self, request: GenerateRequest) -> str | None:
-        # TASK-579: no in-gateway default — the caller-supplied model is
+        # No in-gateway default — the caller-supplied model is
         # authoritative. ``_default_model`` is retained for the providers
         # listing (informational) only and is NEVER substituted into a
         # generation request (provider/model SELECTION is failMode=closed —
@@ -145,7 +145,7 @@ class VertexProvider:
 
         A bare prompt string (unchanged) when there is no image; otherwise a
         list of parts — the ``google-genai`` SDK auto-wraps a list of
-        strings/``Part``s into a single user-role ``Content`` (TASK-657).
+        strings/``Part``s into a single user-role ``Content``.
         """
         images = request.image_parts()
         if not images:
@@ -313,7 +313,7 @@ class VertexProvider:
             return False
 
     async def get_info(self) -> ProviderInfo:
-        # TASK-579: default_model is informational-only (may be unset now that
+        # Default_model is informational-only (may be unset now that
         # cloud configs carry no compiled-in vendor model) — never advertise an
         # empty-named model.
         models: list[ModelInfo] = (

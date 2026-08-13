@@ -2,9 +2,9 @@
  * JSON Schema (draft 2020-12) subset → TypeScript type expression.
  *
  * Mirrors the AUTHORABLE subset the server enforces at publish time
- * (`packages/applications/.../json-schema-subset.ts`, TASK-658) and the
+ * (`packages/applications/.../json-schema-subset.ts`,) and the
  * client-side VALUE evaluator ported into `@arcaai/vox`
- * (`contextPayloadValidation.ts`, TASK-665): `type`, `properties`,
+ * (`contextPayloadValidation.ts`,): `type`, `properties`,
  * `required`, `additionalProperties`, `items`, `enum`, `const`, `minLength`,
  * `maxLength`, `pattern`, `minimum`, `maximum`, `minItems`, `maxItems`,
  * `anyOf`, `allOf`, and discriminated `oneOf`. Constraint keywords
@@ -28,7 +28,7 @@
  * `CodegenError` rather than silently ignoring the keyword and emitting a
  * type that lies about the payload shape. `cli.ts` surfaces that error to
  * the operator instead of writing a file.
- */
+*/
 
 import { CodegenError } from './errors';
 
@@ -90,7 +90,7 @@ export function jsonSchemaSubsetToTs(schema: unknown, options: SchemaToTsOptions
 
   // A discriminated `oneOf` becomes a real TS union, one member per branch —
   // never merged property soup. An `oneOf` WITHOUT a sibling discriminator
-  // is exactly the construct AC-8 (TASK-658) forbids at publish; seeing one
+  // is exactly the construct AC-8 forbids at publish; seeing one
   // here means either a bug upstream or a hand-built fixture, and either way
   // this function refuses to guess how to discriminate it.
   if (Array.isArray(schema.oneOf)) {

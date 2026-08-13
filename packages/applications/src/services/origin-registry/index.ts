@@ -1,4 +1,4 @@
-// Origin registry barrel (TASK-610).
+// Origin registry barrel.
 export * from './origin-normalizer';
 export * from './origin-pattern';
 export * from './IOriginRegistry';

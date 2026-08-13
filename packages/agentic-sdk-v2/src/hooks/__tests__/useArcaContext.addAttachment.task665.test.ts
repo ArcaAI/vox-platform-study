@@ -1,7 +1,7 @@
 /**
- * useArcaContext — `addAttachment` mediaId threading (TASK-665).
+ * useArcaContext — `addAttachment` mediaId threading.
  *
- * TASK-656 gave `StorageFile` (`useStorage.ts`) a `mediaId` field on upload —
+ * Gave `StorageFile` (`useStorage.ts`) a `mediaId` field on upload
  * the `Media` table row id the backend can actually resolve, unlike the raw
  * storage `key`. This closes the other half: `addAttachment` accepts that id
  * and forwards it on the POST body, so a caller that just uploaded a file
@@ -61,7 +61,7 @@ vi.mock('../../store', () => {
   };
 });
 
-describe('useArcaContext — addAttachment mediaId threading (TASK-665)', () => {
+describe('useArcaContext — addAttachment mediaId threading', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     (mockStore.apiClient.post as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'ctx-attach-1', type: 'ATTACHMENT' });

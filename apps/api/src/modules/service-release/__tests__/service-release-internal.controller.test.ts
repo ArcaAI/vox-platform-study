@@ -1,5 +1,5 @@
 /**
- * ServiceReleaseInternalController unit tests (TASK-648 W8).
+ * ServiceReleaseInternalController unit tests.
  *
  * @vitest-environment node
  */

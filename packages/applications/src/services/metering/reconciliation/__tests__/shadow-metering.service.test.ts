@@ -124,7 +124,7 @@ describe('ShadowMeteringService.runForTenant', () => {
 
     const report = await service.runForTenant('tenant-1', FIXED_NOW);
 
-    // One row per billable vendor (TASK-638 credential-gated registry).
+    // One row per billable vendor (credential-gated registry).
     expect(report.providerAvailability.length).toBeGreaterThanOrEqual(4);
     expect(report.providerAvailability.every((p) => p.available === false)).toBe(true);
     // Every row says WHY, so the run log is actionable rather than just empty.
@@ -192,7 +192,7 @@ describe('ShadowMeteringService scheduling', () => {
   });
 });
 
-describe('ShadowMeteringService.reconcileProviders (TASK-638 §6)', () => {
+describe('ShadowMeteringService.reconcileProviders', () => {
   it('skips every provider with a reason while no credentials are provisioned, and never throws', async () => {
     const { service, eventEmitter } = makeService(makeBaseClient());
 
@@ -312,7 +312,7 @@ describe('ShadowMeteringService.reconcileProviders (TASK-638 §6)', () => {
   });
 });
 
-describe('reconciliation run audit trail (TASK-638 §6 rule 6)', () => {
+describe('reconciliation run audit trail (rule 6)', () => {
   it('records SKIPPED runs too — the gap is what an auditor asks about', async () => {
     const { service, runRepository } = makeService(makeBaseClient());
 

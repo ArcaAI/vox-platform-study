@@ -798,7 +798,7 @@ describe('PromptManagementService', () => {
   // ─── listPromptTemplates ────────────────────────────────────
 
   describe('listPromptTemplates', () => {
-    // TASK-635 B-12 / R1 — regression lock. `PromptTemplate` is now a
+    // / R1 — regression lock. `PromptTemplate` is now a
     // SYSTEM-shared READ model, so a read that supplies no `tenantId` gets
     // `tenantId IN [caller, SYSTEM]` injected and would surface the 13 SYSTEM
     // golden templates plus the platform defaults inside tenant pickers. An
@@ -2779,7 +2779,7 @@ describe('PromptManagementService', () => {
     });
   });
 
-  // ─── approveTemplate eval promotion gate (OD-3, TASK-549) ───
+  // ─── approveTemplate eval promotion gate  ───
   describe('approveTemplate eval promotion gate', () => {
     const mockGate = { evaluatePromotion: vi.fn() };
 

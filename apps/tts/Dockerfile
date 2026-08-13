@@ -3,7 +3,7 @@
 # Multi-stage build: builder → production. Built from the REPO ROOT context so
 # it consumes the single uv workspace lock (/uv.lock).
 #
-# This image installs the base deps PLUS the `[kokoro]` extra (TASK-642): Kokoro
+# This image installs the base deps PLUS the `[kokoro]` extra: Kokoro
 # is the built-in, credential-free English engine that the SYSTEM TenantTtsConfig
 # row already routes `en` to, so it must be present for the service to be Ready
 # without a cloud key. torch comes from the PyTorch CPU wheel index — the PyPI
@@ -19,7 +19,7 @@
 #
 # Kokoro model weights are NOT baked in: `KPipeline` pulls hexgrad/Kokoro-82M
 # (~327 MB, Apache-2.0, ungated) from huggingface.co on first synth. See
-# TASK-642 §5 OD-2 — to bake them instead, add a builder-stage
+# To bake them instead, add a builder-stage
 # `huggingface_hub.snapshot_download` into ${HF_HOME} and COPY it into the
 # production stage; nothing else here has to change.
 #
@@ -69,12 +69,12 @@ COPY apps/guardrail/pyproject.toml ./apps/guardrail/
 COPY apps/nlp/pyproject.toml ./apps/nlp/
 COPY apps/harness/pyproject.toml ./apps/harness/
 COPY apps/stt/pyproject.toml ./apps/stt/
-# TASK-529 — shared model-lifecycle package. `--no-install-project` skips only
+# Shared model-lifecycle package. `--no-install-project` skips only
 # the TARGET package, not its workspace path dependencies (verified: omitting
 # this COPY fails layer 1 with "Distribution not found"). Dependency-free and
 # rarely changed, so it costs no meaningful layer-cache churn.
 COPY packages/py-runtime-models ./packages/py-runtime-models
-# TASK-558 — shared env-file loader (`hope-env`). Same workspace path-dependency
+# Shared env-file loader (`hope-env`). Same workspace path-dependency
 # rule as py-runtime-models above: every service now declares `hope-env`, so
 # `uv sync` needs it on disk or layer 1 fails with "Distribution not found at:
 # file:///app/packages/py-env". Dependency-light and rarely changed.
@@ -133,7 +133,7 @@ ENV PYTHONPATH="/app/src" \
 COPY --from=builder --chown=hope:hope /app/.venv /app/.venv
 COPY --chown=hope:hope apps/tts/src ./src
 
-# TASK-642 OD-2 is OPEN: the Kokoro weights (hexgrad/Kokoro-82M, ~327 MB,
+# Is OPEN: the Kokoro weights (hexgrad/Kokoro-82M, ~327 MB,
 # Apache-2.0, ungated) are NOT baked in — they are fetched from huggingface.co on
 # first synth into the directory below. To close OD-2 the other way, add a builder
 # stage that runs `huggingface_hub.snapshot_download` and `COPY` its output here;
@@ -141,7 +141,7 @@ COPY --chown=hope:hope apps/tts/src ./src
 # survive pod restarts.
 RUN mkdir -p /app/.cache/huggingface && chown -R hope:hope /app/.cache
 
-# ── TASK-648 W3 — bake build identity, LAST layer ───────────────────────────
+# ── bake build identity, LAST layer ───────────────────────────
 # These args change on every commit; kept below every COPY/RUN so they never
 # invalidate the layer cache above them. Written to /app/build-info.json per
 # docs/implementation/TASK-648-Service-Version-And-Release-Registry/contracts/build-info.schema.json.

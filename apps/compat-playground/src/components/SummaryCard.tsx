@@ -25,7 +25,7 @@ const EMPTY_CONTEXT: ClinicalContextValues = {
  * The pre-summarization → summarization surface for the Summarization tab,
  * wired to the v1-compat SMR API through `useSMR()`. Orchestrator: owns every
  * piece of state and the two request handlers; `ContextForm`,
- * `TranscriptSource`, and the `SummaryResultView` family (TASK-597 lane F
+ * `TranscriptSource`, and the `SummaryResultView` family (
  * split, ~467 LOC → 4 files) are presentational.
  *
  * Pick a REAL tenant department (so the gateway resolver can match it to a
@@ -34,7 +34,7 @@ const EMPTY_CONTEXT: ClinicalContextValues = {
  * the streaming toggle threads `{stream:true, onDelta}` through to the
  * already-shipped SDK/gateway SSE path — see `useSMR.ts` and
  * `smr-compat.controller.ts`.
- */
+*/
 export function SummaryCard({ config }: SummaryCardProps) {
   const { preSummarize, summarizeSync, loading } = useSMR();
 
@@ -42,7 +42,7 @@ export function SummaryCard({ config }: SummaryCardProps) {
   // this card lives in the Summarization tab while the transcript is produced
   // in the Live-transcription tab, and the two panels never see each other.
   const transcriptLines = usePlaygroundSession().transcript.lineTexts;
-  // Batch-upload hand-off (TASK-603): a completed job's transcript pushed over
+  // Batch-upload hand-off: a completed job's transcript pushed over
   // from the Batch-upload tab. Same cross-tab route as the live transcript —
   // through the console-wide session context, never a prop.
   const batchHandoff = usePlaygroundSession().batch.handoff;

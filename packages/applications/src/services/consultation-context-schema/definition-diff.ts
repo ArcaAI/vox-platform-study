@@ -1,7 +1,7 @@
 import { computeDefinitionChecksum } from './context-schema-definition';
 
 /**
- * TASK-658 AC-6 — classify a candidate definition against the currently
+ * Classify a candidate definition against the currently
  * published one.
  *
  * ## What "requires a version bump" actually means here

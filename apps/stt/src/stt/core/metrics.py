@@ -44,7 +44,7 @@ TRANSCRIPTION_AUDIO_DURATION = Histogram(
 )
 
 # ---------------------------------------------------------------------------
-# Cloud ASR / provider-fallback metrics (TASK-567)
+# Cloud ASR / provider-fallback metrics
 # ---------------------------------------------------------------------------
 
 # Classified cloud-ASR failures, emitted at the REST error-mapping boundary of
@@ -86,7 +86,7 @@ STREAMING_INFERENCE_LATENCY = Histogram(
     buckets=[0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0],
 )
 
-# TASK-615 WS-C — the streaming counterpart to the batch-only
+# The streaming counterpart to the batch-only
 # stt_audio_duration_seconds (that one intentionally stays unlabeled; batch
 # gets pipeline/engine/status on the separate stt_transcription_* series
 # instead). Recorded ONCE per session at teardown (`record_streaming_teardown`,

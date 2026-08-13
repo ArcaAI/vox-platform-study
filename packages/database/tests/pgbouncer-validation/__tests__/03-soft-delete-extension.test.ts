@@ -6,7 +6,7 @@
 // transaction-pooling mode (i.e. the extension is a CLIENT-side wrapper,
 // not a server-side one, so DISCARD ALL between txns must not disturb it).
 //
-// Phase 1 rubric (per plan §1.18):
+// Phase 1 rubric:
 //   * R-SD-1 — extended `findMany()` hides DELETED rows
 //   * R-SD-2 — extended `findFirst()` hides DELETED rows
 //   * R-SD-3 — base (non-extended) `findMany()` returns DELETED rows

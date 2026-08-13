@@ -1,5 +1,5 @@
 /**
- * ConsultationController — loop-event SSE route (TASK-660).
+ * ConsultationController — loop-event SSE route.
  *
  * Verifies the `GET :id/loop/stream` SSE relay subscribes to the Redis
  * channel `consultation:loop:{id}` and carries the same auth metadata as the

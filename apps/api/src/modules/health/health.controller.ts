@@ -61,7 +61,7 @@ export class ApiHealthController {
     private readonly httpService: HttpService,
     @Inject(IConfigService)
     private readonly configService: IConfigService,
-    // Baked build identity (TASK-648 W4/W8) — replaces the always-`0.1.0`
+    // Baked build identity (/W8) — replaces the always-`0.1.0`
     // `process.env.npm_package_version` read: the API container runs
     // `node dist/main.js` directly, so pnpm never injects that var in any
     // deployed environment. `/health` surfaces only `version`; branch/SHA/CI

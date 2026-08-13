@@ -14,7 +14,7 @@
 //   a configJson forward-compat escape hatch).
 //
 // The former per-(tenant, provider) BYO credential model, TenantTtsProviderCredential
-// (D1), was DROPPED in TASK-576 — its rows were copied (TASK-569) into the
+// (D1), was DROPPED in — its rows were copied into the
 // unified `AiProviderConnection` table (`service='tts'`), which is now the
 // ONLY credential/connection store for TTS. It never carried its own
 // `ResourceType` member (mutations broadcast under `ResourceType.TenantTtsConfig`),

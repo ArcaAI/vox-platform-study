@@ -70,7 +70,7 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
     // comprehensive path threads it into BOTH resolution and assembly (was dropped
     // here before). Optional + trailing so existing positional fixtures keep compiling.
     @Optional() @Inject(ConfigResolver) private readonly configResolver?: ConfigResolver,
-    // TASK-615 WS-D2 (item 1a) — records the LLM (+ guardrail, when SMR
+    // Records the LLM (+ guardrail, when SMR
     // forwarded one) token consumption this generation produced. Optional +
     // trailing so existing positional fixtures keep compiling; absent ⇒ the
     // SummaryMeta persists unmetered (see `persistSummaryMetaWithUsage`).
@@ -311,7 +311,7 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
     request: GenerateComprehensiveSummaryJobPayload['request'],
     // Doctor's preferred prompt id, threaded into assembly below.
     preferredPromptTemplateId: string | null | undefined,
-    // TASK-635 A5 (B-04) — the tenant id `process()` already fail-closed
+    // The tenant id `process` already fail-closed
     // validated (job.data.tenantId) is threaded through EXPLICITLY here
     // rather than trusting `resolveSmrSelection()`'s own CLS fallback, so
     // this call can never silently serve the SYSTEM default model.
@@ -324,7 +324,7 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
     processingTimeMs?: number;
     inputTokens?: number;
     outputTokens?: number;
-    /** SMR's billing passthrough for this call (TASK-615 WS-D2). */
+    /** SMR's billing passthrough for this call. */
     usage: SmrUsageDetail | null;
     /** The guardrail call this generation triggered, forwarded by SMR. */
     guardrailUsage: SmrUsageDetail | null;
@@ -419,7 +419,7 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
 
   /**
    * Persist a `SummaryMeta` and, in the SAME transaction, record the tokens
-   * the generation consumed (TASK-615 WS-D2 — mirrors
+   * the generation consumed (mirrors
    * `SummaryService.persistSummaryMetaWithUsage` exactly).
    *
    * TWO deliberate degradations:

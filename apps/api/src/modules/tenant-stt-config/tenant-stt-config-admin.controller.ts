@@ -34,7 +34,7 @@ import { Authorize, ExpectedVersion, RequiresIfMatch } from '../../decorators';
  *    tenant may target (the picker's valid options).
  *  - `GET/PUT/DELETE 'credentials/:provider'` → masked BYO credentials; the key
  *    is write-only (Vault-encrypted, never returned). PUT is OCC-guarded too
- *    (TASK-526 credential-OCC divergence).
+ * (credential-OCC divergence).
  *  - `POST 'credentials/:provider/test'` → ephemeral "Test connection" probe of
  *    an apiKey/region/endpoint BEFORE it is saved. Never persisted, no OCC.
  *

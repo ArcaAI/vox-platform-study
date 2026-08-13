@@ -1,5 +1,5 @@
 /**
- * TASK-643 R6 (entitlement gate) × R4 (opt-out veto).
+ * (entitlement gate) × R4 (opt-out veto).
  *
  * Two independent reasons the SYSTEM tier may not serve a tenant, with
  * deliberately different errors because the remediation differs:

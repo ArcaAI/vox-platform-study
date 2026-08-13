@@ -20,7 +20,7 @@ export class CapabilityBurndownLine {
   utilizationPercent!: number | null;
 }
 
-/** Allowances vs month-to-date usage vs days elapsed, with a linear exceed projection (TASK-615 WS-J). */
+/** Allowances vs month-to-date usage vs days elapsed, with a linear exceed projection. */
 export class BudgetBurndownResponse {
   @ApiProperty({ description: 'Billing-period label, YYYY-MM.' })
   period!: string;

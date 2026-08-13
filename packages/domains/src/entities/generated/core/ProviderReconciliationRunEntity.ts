@@ -7,7 +7,7 @@ import { BaseTenantEntity, IBaseTenantEntity } from '../../../common';
 import * as Enums from '../../../enums';
 
 /**
- * One provider-reconciliation attempt (TASK-638 §6 rule 6).
+ * One provider-reconciliation attempt.
  *
  * The financial control behind a drift alert: months later, "why did we bill
  * this?" is answered by a row here — the settled window, the ledger's own

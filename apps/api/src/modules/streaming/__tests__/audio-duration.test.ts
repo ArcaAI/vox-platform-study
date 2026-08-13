@@ -1,5 +1,5 @@
 /**
- * Audio duration probe (TASK-604 lane B).
+ * Audio duration probe.
  *
  * The batch upload route enforces "each recording at most 60 minutes", so it
  * needs the DURATION of an uploaded buffer before it dispatches any work. This

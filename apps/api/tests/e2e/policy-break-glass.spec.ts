@@ -3,7 +3,7 @@
  *
  * Real HTTP round-trips against the live dev stack
  * (`SKIP_DB_PRECHECK=true API_URL=http://localhost:8968/api/v1`). Harness
- * mirrors task-390 (seeded `super_admin` bound to `__GLOBAL__`; `doctor` as the
+ * mirrors (seeded `super_admin` bound to `__GLOBAL__`; `doctor` as the
  * RBAC negative). All mutable fixtures are THROWAWAY policies/roles created by
  * this spec and soft-deleted through the API afterwards — seeded rows are only
  * ever targeted by guard NEGATIVES (rejected before any write).

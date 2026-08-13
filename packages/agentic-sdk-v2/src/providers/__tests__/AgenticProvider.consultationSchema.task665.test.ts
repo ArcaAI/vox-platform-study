@@ -1,5 +1,5 @@
 /**
- * AgenticProvider — consultation context schema discovery (TASK-665).
+ * AgenticProvider — consultation context schema discovery.
  *
  * TDD coverage this file owns:
  *  - The schema fetch happens once at mount, cached exactly like
@@ -156,7 +156,7 @@ function handlerFor(me: { id?: string; tenantId?: string; departmentId?: string 
   };
 }
 
-describe('AgenticProvider — consultation context schema discovery (TASK-665)', () => {
+describe('AgenticProvider — consultation context schema discovery', () => {
   it('fetches the schema once at mount and resolves it BEFORE configReady flips', async () => {
     handler = handlerFor({ id: USER_A, tenantId: TENANT_A }, { [TENANT_A]: 'version-A1' });
 

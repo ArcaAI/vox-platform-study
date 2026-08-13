@@ -15,7 +15,7 @@ import {
 import { usePlaygroundSession } from '../context/playground-session';
 
 /**
- * Stop-drain controls (TASK-597).
+ * Stop-drain controls.
  *
  * WHY THESE LIVE HERE, and not on the Connection tab: they are
  * `AudioStartOptions` fields, read on every `startRecording()`. A developer can
@@ -31,7 +31,7 @@ import { usePlaygroundSession } from '../context/playground-session';
  * later, so the 250 ms default quiet window closes the socket first and the
  * tail final never reaches the browser. Raising the timeout alone does not help
  * — the quiet window fires before it.
- */
+*/
 export function DrainSettings() {
   const { drain, capture } = usePlaygroundSession();
 

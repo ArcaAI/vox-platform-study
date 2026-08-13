@@ -1,4 +1,4 @@
-"""Guardrail OpenTelemetry tracing (TASK-636 OBS-12).
+"""Guardrail OpenTelemetry tracing.
 
 Guardrail — the platform's content-safety / PII / prompt-injection engine —
 shipped with ZERO OTel code (``grep -rl opentelemetry apps/guardrail/src``
@@ -9,7 +9,7 @@ and `/api/medical/*`. This suite locks down the new
 `apps/smr/src/smr/core/observability.py`, the fleet's reference
 implementation) plus its wiring into `guardrail.main.create_app`.
 
-Four minimum guarantees (brief §HARD REQUIREMENTS):
+Four minimum guarantees:
   (a) tracing is off by default
   (b) it turns on only when the master switch AND an endpoint are both set
   (c) the PHI-sanitization hook is actually passed to the FastAPI instrumentor
@@ -17,7 +17,7 @@ Four minimum guarantees (brief §HARD REQUIREMENTS):
       already fixed once in NLP; this must not recur in guardrail
   (d) setup never raises when the exporter cannot be constructed — a
       reachable collector must never be a boot- or request-path dependency
-      (TASK-411 default-OFF invariant)
+      (default-OFF invariant)
 
 RED: written before ``guardrail/core/observability.py`` exists.
 """

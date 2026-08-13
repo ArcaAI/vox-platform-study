@@ -17,7 +17,7 @@ def _app(providers: dict | None = None):
     # Explicit empty service_token (dev-mode bypass) — otherwise pydantic-settings
     # picks up a real TTS_SERVICE_TOKEN from the host/.env.dev environment and
     # every unauthenticated test client call 401s (pre-existing env-coupling,
-    # unrelated to TASK-615; test_stream_ws.py's `_app()` already does this).
+    # unrelated to; test_stream_ws.py's `_app` already does this).
     app = create_app(settings_override=Settings(debug=True, service_token=""))
     for name, engine in (providers or {}).items():
         app.state.provider_registry.register(name, engine)
@@ -141,7 +141,7 @@ class TestVoices:
 
 
 class TestUsageMetering:
-    """TASK-615 WS-E: accepted-input character count + synthesized
+    """Accepted-input character count + synthesized
     audio-seconds, surfaced in the response so the gateway can emit
     CHARACTER + AUDIO_SECOND ledger rows without re-deriving TTS internals."""
 

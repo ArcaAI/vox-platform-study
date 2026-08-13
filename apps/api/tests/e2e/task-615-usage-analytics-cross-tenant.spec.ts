@@ -1,7 +1,7 @@
 /**
- * TASK-615 #9 — cross-tenant posture for the usage-analytics surface
+ * Cross-tenant posture for the usage-analytics surface
  * (AdminUsageController `admin/usage/*` + MyUsageController `usage/me/*`),
- * following the task-307 pattern (see `ai-task-defaults-cross-tenant.spec.ts`
+ * following the pattern (see `ai-task-defaults-cross-tenant.spec.ts`
  * and `task-615-billing-cross-tenant.spec.ts` for the canonical probe shape).
  *
  * Two governance postures are exercised, per rule 05:
@@ -33,7 +33,7 @@ const FOREIGN_TENANT_KEY = 'ARCAAI';
 
 const bearer = (token: string) => ({ Authorization: `Bearer ${token}` });
 
-test.describe('TASK-615 usage-analytics cross-tenant posture', () => {
+test.describe('Usage-analytics cross-tenant posture', () => {
   let globalAdminToken: string;
   let tenantAdminToken: string; // DEFAULT_TENANT_KEY (__GLOBAL__)
   let foreignTenantId: string;

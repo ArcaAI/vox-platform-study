@@ -20,7 +20,7 @@ function baseDefinition(overrides: Record<string, unknown> = {}): Record<string,
   };
 }
 
-describe('contextSchemaDefinitionProblems (TASK-658 AC-3)', () => {
+describe('contextSchemaDefinitionProblems', () => {
   it('accepts a minimal valid definition', () => {
     expect(contextSchemaDefinitionProblems(baseDefinition())).toEqual([]);
   });

@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * Column 1 of the Consultation Scribe workspace (TASK-543): the
+ * Column 1 of the Consultation Scribe workspace: the
  * clinician's consultation list. Real rows from the SDK's `listConsultations`
  * (working tenant), client-side search, status badges, a New form (patient ID →
  * `session.open`, the SDK's get-or-create), and selection → `session.load`.

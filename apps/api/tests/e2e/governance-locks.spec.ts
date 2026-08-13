@@ -1,8 +1,8 @@
 /**
  * Harness policy governance locks — safetyEnabled / phiFailClosed are
- * GLOBAL_ADMIN-only, even on the tenant-scoped policy route (TASK-532 gap).
+ * GLOBAL_ADMIN-only, even on the tenant-scoped policy route (gap).
  *
- * `agentic-policy.spec.ts` (task-506 pattern) already covers the OCC chain on
+ * `agentic-policy.spec.ts` (pattern) already covers the OCC chain on
  * `PATCH admin/harness/policy` (428/412/version-bump) and the `policy/global`
  * privilege wall for an ORDINARY knob (`maxRegen`, which is NOT one of the
  * locked fields). It never exercises the safety-flag lock itself. The

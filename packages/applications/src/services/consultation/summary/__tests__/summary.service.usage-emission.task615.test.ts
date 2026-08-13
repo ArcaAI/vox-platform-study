@@ -1,5 +1,5 @@
 /**
- * TASK-615 WS-D — `SummaryMeta` writes co-emit ledger rows, in one transaction.
+ * `SummaryMeta` writes co-emit ledger rows, in one transaction.
  *
  * The rule the contract cares about is not "usage gets recorded" but
  * "usage and the work that produced it commit together". A generation whose

@@ -1,5 +1,5 @@
 /**
- * TASK-635 C2-T1 (applications half) — byte lock for the live-summarization
+ * (applications half) — byte lock for the live-summarization
  * prompt constants.
  *
  * PAIRED with `packages/database/src/__tests__/system-live-soap-default-checksum.test.ts`,
@@ -48,7 +48,7 @@ const sha256Hex = (content: string): string => createHash('sha256').update(conte
  * constant already did), which is precisely what the still-green pins prove.
  */
 
-describe('TASK-635 C2-T1 — live-summarization prompt constants byte lock', () => {
+describe('Live-summarization prompt constants byte lock', () => {
   it('LIVE_SOAP_STABLE_SYSTEM_PREFIX matches the pinned sha256 (= the seeded SYSTEM live template content)', () => {
     expect(
       sha256Hex(LIVE_SOAP_STABLE_SYSTEM_PREFIX),

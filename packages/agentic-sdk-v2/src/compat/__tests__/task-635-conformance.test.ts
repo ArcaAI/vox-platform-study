@@ -1,10 +1,10 @@
 /**
  * @vitest-environment jsdom
  *
- * TASK-635 Lane D3 — conformance regression suite (COMPAT SDK layer).
+ * Conformance regression suite (COMPAT SDK layer).
  *
- * Locks the SDK half of R-C1 from the §2.0 scorecard in
- * `docs/implementation/TASK-635-Summarization-Agent-Conformance/README.md`:
+ * Locks the SDK half of R-C1 from the scorecard in
+ * `docs/implementation/TASK-635-Summarization-Agent-Conformance/README.md`
  *
  *   R-C1 — "Start recording → realtime TRANSCRIPT ONLY (no live summarization
  *   loop)". The API half (no live route on `smr-compat`) is locked in
@@ -17,7 +17,7 @@
  *
  * DELIBERATELY NOT DUPLICATED: the compat barrel's positive export contract
  * (which v1 hook names and return shapes it DOES ship) is locked by
- * `contract.test.ts` (TASK-563). This file asserts only the NEGATIVE space.
+ * `contract.test.ts`. This file asserts only the NEGATIVE space.
  */
 
 import { describe, expect, it } from 'vitest';

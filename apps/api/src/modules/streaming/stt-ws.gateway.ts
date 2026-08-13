@@ -176,7 +176,7 @@ interface SessionInfo {
    */
   freshlyCreated?: boolean;
   /**
-   * The session-scoped trace span (TASK-636 OBS-16). A streaming session is
+   * The session-scoped trace span. A streaming session is
    * ONE logical operation lasting the length of a consultation, so it gets one
    * span, ended in `finalizeSession`. `undefined` when tracing is disabled —
    * `trace.getTracer()` then hands back a no-op tracer whose spans have an
@@ -229,7 +229,7 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
     @Optional()
     @Inject(ISocketRegistryService)
     private readonly socketRegistry?: ISocketRegistryService,
-    // CSWSH guard (TASK-610 D-6): registry-backed allow-list for the
+    // CSWSH guard: registry-backed allow-list for the
     // `Origin` header, the same reverse index `cors.config.ts` consults.
     // Optional so the gateway still boots in stacks that don't wire
     // `OriginRegistryServiceModule` — see `isOriginAllowed` for the
@@ -275,7 +275,7 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
       // Match finalizeSession: drop the tenant binding so no ticket can be
       // minted against the session we're finalizing on shutdown (F-36).
       void this.sessionBinding.clear(session.sessionId);
-      // TASK-615 WS-C — a SIGTERM/rolling-deploy teardown is always an
+      // A SIGTERM/rolling-deploy teardown is always an
       // abort: no client-driven close was ever received for these sessions.
       removals.push(this.sessionService.removeSession(session.sessionId, true).catch(() => {}));
     }
@@ -327,7 +327,7 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
   }
 
   /**
-   * Registry lookup backing the CSWSH guard (TASK-610 D-6, FR-5). Fails
+   * Registry lookup backing the CSWSH guard. Fails
    * CLOSED on an unavailable registry (absent / empty / throwing) — DENY,
    * with the same distinct, greppable `origin_registry_unavailable` reason
    * `cors.config.ts` uses, kept separate from the ordinary
@@ -366,16 +366,16 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
    * session.)
    */
   private isOriginAllowed(origin: string): boolean {
-    // TASK-610 §4C, default reversed by TASK-641 FR-6 — origin enforcement is
+    // , default reversed by — origin enforcement is
     // now ON BY DEFAULT (`origin.enforcementEnabled` defaults `true`), so this
     // CSWSH check is LIVE unless an operator turned the switch off (or the
     // process has not yet installed the resolver — the pre-boot window; see
     // `cors.config.ts`). While it IS off the handshake accepts every origin and
     // the registry is never consulted. The switch is READ from `cors.config.ts`
     // rather than resolved here, so the WS gate can never disagree with the HTTP
-    // gate about whether enforcement is on (§4B.4: the rule lives in ONE place).
+    // gate about whether enforcement is on (: the rule lives in ONE place).
     //
-    // §4C.3 calls this out as the surface that would concern us most if
+    // calls this out as the surface that would concern us most if
     // `credentials` were ever set back to `true` — browsers exempt WebSockets
     // from CORS entirely, so nothing upstream checks `Origin` here. That is
     // precisely why `credentials: false` ships in the same change
@@ -423,11 +423,11 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
   }
 
   async handleConnection(client: WebSocket, req: IncomingMessage): Promise<void> {
-    // CSWSH guard (TASK-610 D-6). Browsers do not apply CORS to the
+    // CSWSH guard. Browsers do not apply CORS to the
     // WebSocket handshake, so — unlike every other route behind this
     // gateway — nothing upstream has already checked `Origin`. Checked
     // FIRST, before sessionId/ticket parsing, mirroring the CORS callback's
-    // pre-auth position in the architecture (plan §3.0): it is a
+    // pre-auth position in the architecture: it is a
     // browser-facing, advisory check, not the tenant-isolation control.
     //
     // No `Origin` header → ALLOW. A missing header means a non-browser
@@ -603,7 +603,7 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
   }
 
   /**
-   * Root the trace for one streaming session (TASK-636 OBS-16).
+   * Root the trace for one streaming session.
    *
    * WHY THE GATEWAY AND NOT AUTO-INSTRUMENTATION
    * `@opentelemetry/instrumentation-http` patches the HTTP server's `request`
@@ -629,7 +629,7 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
    * `trace.getTracer()` returns the no-op tracer, `startSpan` a non-recording
    * span with an INVALID span context, and `injectTraceCarrier` therefore `{}`.
    * No allocation that matters, no propagator work, and the audio wire is
-   * byte-identical to pre-TASK-636.
+   * byte-identical to the previous implementation.
    */
   private startSessionTrace(sessionId: string, req: IncomingMessage): { span: Span; carrier: TraceCarrier } {
     const parentContext = extractTraceCarrier(req.headers as Record<string, string>) ?? context.active();
@@ -986,7 +986,7 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
    * state. Idempotent. Called on an explicit `close` or when the resume grace
    * window expires with no reconnect.
    *
-   * TASK-615 WS-C: `reason` also decides the ledger's `interrupted` flag —
+   * `reason` also decides the ledger's `interrupted` flag
    * `'session closed by client'` is the only non-abort reason; anything else
    * (today just `'grace window expired'`, permissively any future reason
    * too) is an abort. STT itself has no notion of this; it is purely a
@@ -1123,7 +1123,7 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
    * `lastSeq` resume protocol handles recovery.
    */
   private forwardAudioFrame(session: SessionInfo, seq: number, data: Buffer): void {
-    // The carrier was derived ONCE at handshake (TASK-636 OBS-16) — passing it
+    // The carrier was derived ONCE at handshake — passing it
     // here is a reference copy, not propagator work, so the 10–125 frames/s/session
     // path keeps its cost profile.
     this.bridgeService.writeAudioFrame(session.sessionId, seq, data, session.sampleRate, 'pcm_s16le', false, session.traceCarrier).catch((err) => {

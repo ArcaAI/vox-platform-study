@@ -215,7 +215,7 @@ class TestAzureSpeechFullFlowMocked:
     boundary to avoid requiring real credentials.
     """
 
-    # TASK-602: Azure Speech is BYOK-only — the key arrives via the gateway
+    # Azure Speech is BYOK-only — the key arrives via the gateway
     # provider override, never env. Only the (non-secret) region is env-set.
     _BYOK_OVERRIDE = {"azure-speech": {"api_key": "e2e-test-key-12345"}}
 
@@ -521,7 +521,7 @@ class TestAzureSpeechRealTranscription:
             ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION
         )
         loader = AzureSpeechLoader()
-        # TASK-602: Azure Speech is BYOK-only — pass the real key (from the env the
+        # Azure Speech is BYOK-only — pass the real key (from the env the
         # skipif gate requires) as a gateway-shaped provider override, not via
         # settings.
         real_override = {"azure-speech": {"api_key": os.environ["AZURE_SPEECH_KEY"]}}

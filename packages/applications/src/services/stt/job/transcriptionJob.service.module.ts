@@ -9,7 +9,7 @@ import { EffectiveSettingsModule } from '../../settings-registry/effective-setti
 
 @Module({
   // EffectiveSettingsModule backs `BatchTranscriptionLimitsService` — the
-  // registry-resolved `stt.batch.*` ceilings the upload route enforces (TASK-604).
+  // registry-resolved `stt.batch.*` ceilings the upload route enforces.
   imports: [CoreDatabaseModule, EventEmitterModule, ClsModule, EntitlementsServiceModule, EffectiveSettingsModule],
   providers: [TranscriptionJobService, BatchTranscriptionLimitsService],
   exports: [TranscriptionJobService, BatchTranscriptionLimitsService],

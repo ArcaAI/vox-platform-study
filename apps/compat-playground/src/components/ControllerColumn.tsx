@@ -8,14 +8,14 @@ import { usePlaygroundSession } from '../context/playground-session';
  * The controls column of the Live-transcription tab. Everything the operator
  * drives during a session: the STT language mode, the ON/OFF pipeline-vs-default
  * engine toggle, the start/stop recording controls, and the metadata simulator
- * (`MetadataSimulator`, TASK-597 lane C). Read-side output lives in
+ * (`MetadataSimulator`,). Read-side output lives in
  * `TranscriptColumn` next to it.
  *
  * Props-free by design: every value comes from `usePlaygroundSession()`, which
  * lives ABOVE the tabs so the session survives tab switches. Lane E takes
  * ownership of the engine/pipeline controls from here; the remaining card
  * contents are unchanged from the pre-tab-split version.
- */
+*/
 export function ControllerColumn() {
   const { session, capture, transcript, language } = usePlaygroundSession();
 
@@ -76,7 +76,7 @@ export function ControllerColumn() {
           <div className="flex items-center gap-2">
             {/* Start stays disabled through `stopping` too: the mic is already
                 released during the drain, so `isRecording` alone would re-arm
-                Start on top of a half-closed session (TASK-597 lane B). */}
+                Start on top of a half-closed session. */}
             <Button onClick={capture.start} disabled={capture.phase !== 'idle'}>
               {capture.isStarting ? 'Starting…' : 'Start consultation'}
             </Button>
@@ -95,7 +95,7 @@ export function ControllerColumn() {
       </Card>
 
       {/* Per-capture stop-drain knobs — directly under Recording, because that
-          is the button whose behaviour they change (TASK-597). */}
+          is the button whose behaviour they change. */}
       <DrainSettings />
 
       <MetadataSimulator />

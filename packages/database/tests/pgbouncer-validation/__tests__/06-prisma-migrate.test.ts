@@ -12,7 +12,7 @@
 // DATABASE is allowed (not a destructive op); the database stays around
 // until the next `pgbv:down -v` wipes the volume.
 //
-// Phase 1 rubric (per plan §1.18):
+// Phase 1 rubric:
 //   * R-MIG-1 — `prisma migrate deploy` via DIRECT_URL applies all 4
 //               migration directories, _prisma_migrations has 4 rows
 

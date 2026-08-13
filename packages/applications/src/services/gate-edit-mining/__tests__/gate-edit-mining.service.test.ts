@@ -203,7 +203,7 @@ describe('GateEditMiningService — retrieval', () => {
 });
 
 /**
- * §3.4 consumption (a) — the eval regression-corpus export.
+ * Consumption (a) — the eval regression-corpus export.
  *
  * The SME gate is the whole point of this half: mined rows are PROPOSALS, and
  * the golden-set programme decides what becomes corpus. So the export must

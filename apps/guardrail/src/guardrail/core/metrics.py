@@ -72,7 +72,7 @@ def track_model_inference(model: str, service: str = SERVICE_NAME) -> Iterator[N
 
 
 # ---------------------------------------------------------------------------
-# Guardrail LLM consumption (TASK-615)
+# Guardrail LLM consumption
 # ---------------------------------------------------------------------------
 # Guardrail runs an LLM on every generation the platform serves and, until now,
 # reported no domain counters at all — its cost was structurally invisible.

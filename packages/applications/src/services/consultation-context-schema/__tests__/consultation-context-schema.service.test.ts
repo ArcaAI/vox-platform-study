@@ -1,15 +1,15 @@
 /**
- * ConsultationContextSchemaService unit tests (TASK-658).
+ * ConsultationContextSchemaService unit tests.
  *
  * Mirrors the DepartmentService / TenantAllowedOriginService conventions
  * (mocked repositories, EventEmitter2, ClsService) and locks the acceptance
  * criteria the ticket calls out by name:
  *
- *  - AC-3 a kind declaring an unknown primitive is REJECTED AT PUBLISH
- *  - AC-4 a payload validates against the PINNED version, not the latest
- *  - AC-5 a cross-tenant schema id answers 404, never 403
- *  - AC-6 an additive change publishes unacknowledged; a rename does not
- *  - AC-7 the discovery ETag moves only when the SERVED version moves
+ *  - a kind declaring an unknown primitive is REJECTED AT PUBLISH
+ *  - a payload validates against the PINNED version, not the latest
+ *  - a cross-tenant schema id answers 404, never 403
+ *  - an additive change publishes unacknowledged; a rename does not
+ *  - the discovery ETag moves only when the SERVED version moves
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
@@ -159,7 +159,7 @@ describe('ConsultationContextSchemaService', () => {
     );
   });
 
-  describe('publish — definition validation (AC-3)', () => {
+  describe('publish — definition validation', () => {
     it('REJECTS a kind declaring a primitive outside the closed five-value set', async () => {
       mockSchemaRepository.findById.mockResolvedValue(createSchemaEntity({ status: 'DRAFT', pinnedVersionNumber: null }));
 
@@ -170,7 +170,7 @@ describe('ConsultationContextSchemaService', () => {
       expect(mockVersionRepository.create).not.toHaveBeenCalled();
     });
 
-    it('rejects an `if`/`then`/`else` field schema (authorable subset, AC-8)', async () => {
+    it('rejects an `if`/`then`/`else` field schema (authorable subset)', async () => {
       mockSchemaRepository.findById.mockResolvedValue(createSchemaEntity({ status: 'DRAFT', pinnedVersionNumber: null }));
 
       await expect(service.publish('schema-1', { definition: definitionWith({ type: 'object', if: { const: 1 } }) })).rejects.toBeInstanceOf(
@@ -195,7 +195,7 @@ describe('ConsultationContextSchemaService', () => {
     });
   });
 
-  describe('publish — change classification (AC-6)', () => {
+  describe('publish — change classification', () => {
     it('an ADDITIVE change (new optional field) publishes with NO acknowledgement', async () => {
       mockSchemaRepository.findById.mockResolvedValue(createSchemaEntity());
       mockVersionRepository.findLatestForSchema.mockResolvedValue(createVersionEntity(1, V1_DEFINITION));
@@ -240,7 +240,7 @@ describe('ConsultationContextSchemaService', () => {
       expect(result.pinnedVersionNumber).toBe(2);
     });
 
-    it('an IDENTICAL republish writes NO new version and leaves the pin alone (AC-7)', async () => {
+    it('an IDENTICAL republish writes NO new version and leaves the pin alone', async () => {
       const entity = createSchemaEntity();
       mockSchemaRepository.findById.mockResolvedValue(entity);
       // The stored checksum must be the one the service itself computes.
@@ -254,7 +254,7 @@ describe('ConsultationContextSchemaService', () => {
     });
   });
 
-  describe('tenant isolation (AC-5)', () => {
+  describe('tenant isolation', () => {
     it('a cross-tenant schema id answers 404, never 403', async () => {
       mockSchemaRepository.findById.mockResolvedValue(createSchemaEntity({ tenantId: 'tenant-OTHER' }));
       await expect(service.getById('schema-1')).rejects.toBeInstanceOf(NotFoundException);
@@ -273,7 +273,7 @@ describe('ConsultationContextSchemaService', () => {
     });
   });
 
-  describe('validateContextPayload — pinned, not latest (AC-4)', () => {
+  describe('validateContextPayload — pinned, not latest', () => {
     beforeEach(() => {
       // Latest is v2 (which accepts `onsetDays`); the schema is PINNED to v1
       // (which does not, because additionalProperties is false).
@@ -323,7 +323,7 @@ describe('ConsultationContextSchemaService', () => {
     });
   });
 
-  describe('getEffectiveBundle — discovery (AC-7)', () => {
+  describe('getEffectiveBundle — discovery', () => {
     it('serves the PINNED version with a strong ETag', async () => {
       mockSchemaRepository.findDefaultForScope.mockImplementation(async (_t: string, scope: string) =>
         scope === 'TENANT' ? createSchemaEntity({ pinnedVersionNumber: 1 }) : null,

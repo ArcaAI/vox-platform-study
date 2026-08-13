@@ -1,12 +1,12 @@
 /**
  * HOPE v1 → v2 compat example — full consultation workflow on `@arcaai/vox/compat`.
  *
- * Demonstrates the exact workflow TASK-560 protects, written with the v1-named
+ * Demonstrates the exact workflow this example protects, written with the v1-named
  * compat hooks:
- *   1. session → `useArcaSessionManager` (createSession + startSession)
- *   2. record  → `useAudioCapture` (mic) + `useArcaSpeechToText` (live transcript)
- *   3. stop    → stopTranscription + stopRecording + endSession
- *   4. summary → `useSMR().summarizeSync` → render the Enhanced summary
+ * 1. session → `useArcaSessionManager` (createSession + startSession)
+ * 2. record → `useAudioCapture` (mic) + `useArcaSpeechToText` (live transcript)
+ * 3. stop → stopTranscription + stopRecording + endSession
+ * 4. summary → `useSMR().summarizeSync` → render the Enhanced summary
  *
  * This component is deliberately framework-light (plain React + inline styles) so
  * a v1 team recognizes their own code. The ONLY structural change from a v1 app is
@@ -14,7 +14,7 @@
  * below (`@arcaai/vox/compat` instead of `@arcaai/agentic-sdk`).
  *
  * See ../../../docs/implementation/TASK-560-v1-v2-consultation-migration/MIGRATION_GUIDE.md
- */
+*/
 
 import { useRef, useState } from 'react';
 import {
@@ -30,7 +30,7 @@ import {
 interface TranscriptLine {
   text: string;
   isFinal: boolean;
-  /** Delivered metadata off onTranscript (TASK-564 §5.2, normalized §4.3). */
+  /** Delivered metadata off onTranscript (normalized). */
   meta?: Record<string, unknown>;
 }
 type SttProvider = 'azure' | 'sarvam';
@@ -68,7 +68,7 @@ export function CompatConsultation({ provider: initialProvider = 'azure', apiBas
   //     The third arg is the delivered metadata: caller keys you tagged via
   //     sendAudioData (device_id/role/chunk_id), normalized with chunk_id /
   //     detected_language, plus derived speaker_id (diarization). See
-  //     ../../docs/implementation/TASK-564-.../METADATA_PASSTHROUGH.md.
+  //     ../../docs/implementation/TASK-564-live-transcription-metadata-passthrough/METADATA_PASSTHROUGH.md.
   const stt = useArcaSpeechToText({
     sessionId: mgr.session?.id ?? '',
     language: 'en',
@@ -82,7 +82,7 @@ export function CompatConsultation({ provider: initialProvider = 'azure', apiBas
     },
   });
 
-  // Per-chunk metadata tagging (TASK-564). PCM is ignored in v2 (the hook is a
+  // Per-chunk metadata tagging. PCM is ignored in v2 (the hook is a
   // metadata sink), so pass an empty buffer and change the tag only at logical
   // TURN boundaries — the tag round-trips onto the next transcript(s).
   const chunkRef = useRef(0);
@@ -95,7 +95,7 @@ export function CompatConsultation({ provider: initialProvider = 'azure', apiBas
     });
   };
 
-  // Provider switching — the ONE compat import with no v1 ancestor (TASK-568).
+  // Provider switching — the ONE compat import with no v1 ancestor.
   // It answers "which STT provider am I on?" and drives the user switch flow.
   // `onProviderSwitched` fires for BOTH the user button below AND a backend
   // auto-switch on an outage, so this one banner covers both.
@@ -245,7 +245,7 @@ export function CompatConsultation({ provider: initialProvider = 'azure', apiBas
       </p>
 
       {/* Metadata tagging — tag the CURRENT turn; it round-trips onto the next
-          transcript line (TASK-564). Only enabled while recording. */}
+          transcript line. Only enabled while recording. */}
       <div style={{ display: 'flex', gap: '0.5rem', margin: '0 0 1rem', alignItems: 'center' }}>
         <span style={{ color: '#666', fontSize: '0.85rem' }}>Tag turn:</span>
         <button onClick={() => tagTurn(0)} disabled={isStarting || !capture.isRecording}>
@@ -263,7 +263,7 @@ export function CompatConsultation({ provider: initialProvider = 'azure', apiBas
             <li key={i}>
               {l.text}
               {/* device_id / chunk_id are what you tagged; speaker_id is derived
-                  from diarization (the only post-mix source signal — §4/E3). */}
+                  from diarization (the only post-mix source signal). */}
               <small style={{ color: '#888', marginLeft: '0.5rem' }}>
                 [{String(l.meta?.device_id ?? '—')} · {String(l.meta?.chunk_id ?? '—')} · {String(l.meta?.speaker_id ?? '—')}]
               </small>

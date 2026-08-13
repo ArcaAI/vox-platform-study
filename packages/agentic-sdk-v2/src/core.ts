@@ -53,7 +53,7 @@ export {
   useAuth,
   useConsultationChain,
   useConsultationJob,
-  // Schema discovery + the consultation-loop event stream (TASK-665)
+  // Schema discovery + the consultation-loop event stream
   useConsultationSchema,
   useConsultationEvents,
   useDepartments,
@@ -299,7 +299,7 @@ export type {
 export type { AudioRecording, AddAudioRecordingInput } from './types';
 
 // =============================================================================
-// Types - Consultation Context Schema (TASK-665)
+// Types - Consultation Context Schema
 // =============================================================================
 
 export type {

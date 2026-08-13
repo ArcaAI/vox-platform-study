@@ -90,7 +90,7 @@ class HarnessDocWorkflowInput(BaseModel):
     transcript_ref: ClaimCheckRef | None = None
     conversation_language: str = "en"
     dna_style_id: str | None = None
-    # TASK-551 — DNA redaction/rewrite rules resolved gateway-side (tenant + doctor
+    # DNA redaction/rewrite rules resolved gateway-side (tenant + doctor
     # double-gate; decrypted from the doctor's DNA report). ADDITIVE-OPTIONAL: an
     # empty list (the default, and every legacy start payload) makes the workflow's
     # ``apply_redaction`` insertion short-circuit BEFORE ``workflow.patched`` — no
@@ -204,11 +204,11 @@ class FetchPolicyInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     tenant_id: str
-    # TASK-550 — ADDITIVE-OPTIONAL consultation id. When present the activity
+    # ADDITIVE-OPTIONAL consultation id. When present the activity
     # threads it onto the policy GET so the consultation's department default
     # DepartmentAgent tenant-tier harnessOverrides overlay onto the effective
     # policy. Default None ⇒ replay-safe (an old input deserializes it to None ⇒
-    # the pre-TASK-550 tenant-only fetch).
+    # the prior tenant-only fetch).
     consultation_id: str | None = None
     # ADDITIVE-OPTIONAL trajectory context (workflow-owned seq
     # + session meta). Default None ⇒ command-neutral / replay-safe (an old input
@@ -301,7 +301,7 @@ class HarnessPolicy(BaseModel):
     # F-26 — parsed for payload/replay compatibility only; intentionally UNREAD by
     # the Python loop (grep-confirmed: no reference in workflows.py/activities.py).
     # The warm-start switch lives entirely on the TS side (prompt-assembly's
-    # `resolveWarmStartEnabled` gate, TASK-533 A3) — do not wire a second, competing
+    # `resolveWarmStartEnabled` gate) — do not wire a second, competing
     # warm-start switch here; keep the field (removing it would break replay of any
     # history that recorded a non-null value).
     warm_start_enabled: bool | None = None
@@ -813,7 +813,7 @@ class PersistDraftInput(BaseModel):
     # ⇒ early persist: readable draft now, verdict withheld, assurance deferred to
     # ``finalize_assurance``.
     phase: str | None = None
-    # DNA redaction/rewrite AUDIT marker (TASK-551, gated behind the
+    # DNA redaction/rewrite AUDIT marker (gated behind the
     # ``task-551-redaction-audit`` workflow era). ``redaction_applied`` is the
     # plaintext queryable marker (the transform ran AND changed the note);
     # ``redaction_manifest`` is the compact audit summary (rule ids, actions, span
@@ -974,7 +974,7 @@ class ReportProgressResult(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# DNA redaction/rewrite (TASK-551) — a separate, auditable post-generation transform
+# DNA redaction/rewrite — a separate, auditable post-generation transform
 # ---------------------------------------------------------------------------
 
 
@@ -982,7 +982,7 @@ class ApplyRedactionInput(BaseModel):
     """Inputs for the ``apply_redaction`` activity.
 
     ADDITIVE-OPTIONAL everywhere: an empty ``rules`` list (the default, and every
-    legacy history) makes the transform a no-op — byte-identical to the pre-TASK-551
+    legacy history) makes the transform a no-op — byte-identical to the prior
     behaviour — so the workflow insertion is safe behind its ``workflow.patched``
     era. The note is threaded inline-or-ref (same claim-check contract as the other
     text-carrying activities); the SMR fields drive the OPTIONAL semantic-rewrite pass.
@@ -1024,15 +1024,15 @@ class ApplyRedactionResult(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Consultation loop (TASK-662) — the durable, per-consultation orchestrator
+# Consultation loop — the durable, per-consultation orchestrator
 #
 # Every payload here is ADDITIVE: nothing in this section is read by
-# ``HarnessDocWorkflow``, whose body is frozen (TASK-654 C2). The loop composes
+# ``HarnessDocWorkflow``, whose body is frozen. The loop composes
 # that workflow as an unmodified CHILD instead of editing it.
 # ---------------------------------------------------------------------------
 
 # The action registry vocabulary. These seven keys are canonical, defined
-# gateway-side by TASK-659 (``AGENT_ACTION_KEYS`` in
+# gateway-side by (``AGENT_ACTION_KEYS`` in
 # ``packages/applications/src/services/departmentAgent/constants.ts``) and
 # mirrored here so the two ends of the wire cannot drift silently. An agent's
 # ``alwaysActions``/``neverActions`` may name only these.
@@ -1054,7 +1054,7 @@ LOOP_ACTION_KEYS: tuple[str, ...] = (
     LOOP_ACTION_CLIENT_EMIT,
 )
 
-# Loop-event types published on ``consultation:loop:{id}`` (TASK-660's SSE plane).
+# Loop-event types published on ``consultation:loop:{id}`` (the SSE plane).
 LOOP_EVENT_ACTION_DISPATCHED = "action.dispatched"
 LOOP_EVENT_ACTION_SKIPPED = "action.skipped"
 
@@ -1063,28 +1063,28 @@ LOOP_SKIP_DEPTH_CAP = "depth_cap"
 LOOP_SKIP_BUDGET_EXHAUSTED = "budget_exhausted"
 LOOP_SKIP_UNSUPPORTED_ACTION = "unsupported_action"
 
-# TASK-664 reasoning-lane skip reasons. Same rule as above: never a silent no-op.
+# Reasoning-lane skip reasons. Same rule as above: never a silent no-op.
 LOOP_SKIP_CYCLE_DETECTED = "cycle_detected"
 LOOP_SKIP_SPECIALIST_BUDGET = "specialist_budget_exhausted"
 
-# TASK-685 — the loop hit its IDLE lifecycle bound and abandoned. Published on
+# The loop hit its IDLE lifecycle bound and abandoned. Published on
 # the same feed so a timeout is something an operator READS, not something they
 # infer from a Temporal console. Deliberately its own event type rather than an
 # ``action.skipped`` reason: nothing was skipped, the run ended.
 LOOP_EVENT_LOOP_TIMED_OUT = "loop.timed_out"
 
-# TASK-664 reasoning-lane event types on the same ``consultation:loop:{id}`` feed.
+# Reasoning-lane event types on the same ``consultation:loop:{id}`` feed.
 LOOP_EVENT_PLAN_DECIDED = "plan.decided"
 LOOP_EVENT_SPECIALIST_FAILED = "specialist.failed"
 LOOP_EVENT_CONTEXT_DERIVED = "context.derived"
 LOOP_EVENT_ADJUDICATED = "adjudication.recorded"
 
-# Agent roles — mirrors the `DepartmentAgentRole` Prisma enum (TASK-659).
+# Agent roles — mirrors the `DepartmentAgentRole` Prisma enum.
 AGENT_ROLE_PRIMARY = "PRIMARY"
 AGENT_ROLE_SPECIALIST = "SPECIALIST"
 
 # Output kinds NO specialist may ever write, whatever its configured
-# ``writeScope`` says (TASK-654 D7/D12 + §4.6). This is a PLATFORM FLOOR, not a
+# ``writeScope`` says (/D12 + ). This is a PLATFORM FLOOR, not a
 # per-agent setting: the primary owns the note and the gate exclusively, and a
 # tenant misconfiguring a specialist's write scope must not be able to hand that
 # ownership away. Enforced by the orchestrator — outside the agent's own code —
@@ -1106,7 +1106,7 @@ class LoopSubscription(BaseModel):
 
 
 class LoopBudget(BaseModel):
-    """Termination bounds for the cascade (TASK-654 §4.2, RK-4).
+    """Termination bounds for the cascade (RK-4).
 
     ``max_depth`` caps derived-context recursion; ``max_actions`` caps total
     dispatches for the whole consultation. Exhausting either DEGRADES the run
@@ -1117,18 +1117,18 @@ class LoopBudget(BaseModel):
 
     max_depth: int = 3
     max_actions: int = 200
-    # TASK-664. Additive with a default, so a config serialised before this
-    # ticket (including the frozen TASK-662 replay fixture) still deserialises.
+    # Additive with a default, so a config serialised before this
+    # ticket (including the frozen replay fixture) still deserialises.
     # A specialist run is far more expensive than an action dispatch — it is a
     # child workflow plus a model call — so it gets its own, much tighter, cap.
     max_specialist_runs: int = 20
 
 
 class LoopAgentSpec(BaseModel):
-    """One agent in the consultation's roster, as pinned at start (TASK-664).
+    """One agent in the consultation's roster, as pinned at start.
 
     ``subscribed_kinds`` is the agent's READ scope and ``write_scope`` its WRITE
-    scope; both are resolved gateway-side from ``DepartmentAgent`` (TASK-659) and
+    scope; both are resolved gateway-side from ``DepartmentAgent`` and
     frozen into the pinned config, so a mid-consultation edit cannot widen either
     one for a running loop.
 
@@ -1181,7 +1181,7 @@ class ConsultationLoopConfig(BaseModel):
     consultation_id: str | None = None
     department_id: str | None = None
     agent_id: str | None = None
-    # The two immutable version ids this run is pinned to (TASK-658 / TASK-659).
+    # The two immutable version ids this run is pinned to ( / ).
     agent_config_version_id: str | None = None
     context_schema_version_id: str | None = None
     subscriptions: list[LoopSubscription] = Field(default_factory=list)
@@ -1189,17 +1189,17 @@ class ConsultationLoopConfig(BaseModel):
     start_actions: list[str] = Field(default_factory=list)
     ending_actions: list[str] = Field(default_factory=list)
 
-    # TASK-664 — the deliberative lane. Both fields are additive with defaults
-    # that reproduce TASK-662 behaviour exactly, which is what lets the frozen
+    # The deliberative lane. Both fields are additive with defaults
+    # that reproduce behaviour exactly, which is what lets the frozen
     # loop replay fixture keep passing: an old recorded config deserialises with
     # `reasoning_enabled=False` and never enters the patched era at all.
     reasoning_enabled: bool = False
     agents: list[LoopAgentSpec] = Field(default_factory=list)
 
-    # TASK-685 — the IDLE lifecycle bound, in seconds. Additive and defaulting to
+    # The IDLE lifecycle bound, in seconds. Additive and defaulting to
     # None (= unbounded), which is load-bearing twice over:
     #
-    #   * it reproduces pre-TASK-685 behaviour exactly, so the frozen loop replay
+    # * it reproduces prior behaviour exactly, so the frozen loop replay
     #     fixtures deserialise with no bound and the workflow's era gate
     #     short-circuits before ``workflow.patched`` is ever called;
     #   * it makes "no bound" a value the config can actually express, rather
@@ -1240,7 +1240,7 @@ class FetchLoopConfigInput(BaseModel):
 
 
 class ContextAddedSignal(BaseModel):
-    """One context item reached the consultation (TASK-660's outbound signal).
+    """One context item reached the consultation (the outbound signal).
 
     ``depth`` is the cascade generation: context written by a human is 0, and
     anything an action derives carries its parent's depth + 1. ``occurred_at``
@@ -1317,7 +1317,7 @@ class LiveDocControlInput(BaseModel):
     """Input for the ``livedoc_start`` / ``livedoc_stop`` activities.
 
     These call ``LiveDocumentationService.start``/``stop`` through the gateway's
-    internal API. LiveDoc's internals are UNTOUCHED (TASK-654 §4.4): the loop
+    internal API. LiveDoc's internals are UNTOUCHED: the loop
     dispatches the reflex lane, it does not absorb it.
     """
 
@@ -1340,7 +1340,7 @@ class EmitLoopEventInput(BaseModel):
     """Input for ``emit_loop_event`` — the ``client.emit`` action.
 
     Published on ``consultation:loop:{id}`` and relayed to the client over the
-    SSE route TASK-660 shipped. Carries ids/keys/labels only, NEVER note or
+    SSE route shipped. Carries ids/keys/labels only, NEVER note or
     transcript text: the channel is a live UI feed, not a PHI transport.
     """
 
@@ -1363,7 +1363,7 @@ class EmitLoopEventResult(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# TASK-664 — the reasoning lane
+# The reasoning lane
 # ---------------------------------------------------------------------------
 
 
@@ -1371,7 +1371,7 @@ class PlanLoopInput(BaseModel):
     """Input for the ``plan_reasoning`` ACTIVITY.
 
     The planner is an activity and never a workflow-body call, for one reason
-    (C1 / TASK-654 D3): an activity's result is recorded in history, so a replay
+    (C1 / ): an activity's result is recorded in history, so a replay
     reuses the recorded decision instead of asking a non-deterministic model
     again. A planner called from the workflow body would make every replay a
     fresh roll of the dice.
@@ -1439,7 +1439,7 @@ class SpecialistFinding(BaseModel):
     """One claim a specialist asserts.
 
     Deliberately a CLAIM, not prose: a specialist never authors note text (see
-    the ticket README §1.5 — routing abstracted prose into the lexical gate
+    routing abstracted prose into the lexical gate
     scores it at zero). ``output_kind`` is what the write scope is checked
     against.
     """
@@ -1477,7 +1477,7 @@ class SpecialistWorkflowInput(BaseModel):
 class SpecialistResult(BaseModel):
     """What a specialist returns. Note: there is no note field, and no gate field.
 
-    That absence is load-bearing — TASK-654 D7 makes the primary the exclusive
+    That absence is load-bearing — makes the primary the exclusive
     writer of both, and a type that cannot express a note cannot smuggle one.
     """
 
@@ -1564,7 +1564,7 @@ class RecordAdjudicationInput(BaseModel):
 
 
 class DeriveContextInput(BaseModel):
-    """Input for the three derived-context activities TASK-662 left unbacked."""
+    """Input for the three derived-context activities left unbacked."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -1693,7 +1693,7 @@ class ConsultationLoopWorkflowInput(BaseModel):
     checkpoint_signal_threshold: int = 500
     checkpoint_history_events: int = 10_000
 
-    # TASK-664 — the PLANNING checkpoint cadence, which is deliberately a
+    # The PLANNING checkpoint cadence, which is deliberately a
     # DIFFERENT and much tighter knob than the two `continue_as_new` thresholds
     # above. Replanning every 500 events would be no planning at all; replanning
     # per event is the overthinking failure mode *Learning When to Plan*
@@ -1713,7 +1713,7 @@ class ConsultationLoopWorkflowInput(BaseModel):
     carried_livedoc_started: bool = False
     carried_start_actions_done: bool = False
     carried_continuations: int = 0
-    # TASK-664 carry-over. `carried_agent_kind_seen` is the cycle-detection
+    # Carry-over. `carried_agent_kind_seen` is the cycle-detection
     # memory: losing it at a checkpoint would let every `(agent, kind)` pair run
     # again, which is exactly the cycle the detector exists to stop.
     carried_agent_kind_seen: list[str] = Field(default_factory=list)
@@ -1743,7 +1743,7 @@ class ConsultationLoopState(BaseModel):
     degraded: bool = False
     ending: bool = False
     cancelled: bool = False
-    # TASK-685. SEPARATE from `cancelled` although both abandon without running
+    # SEPARATE from `cancelled` although both abandon without running
     # the ending actions: a cancel is an explicit decision, a timeout is a
     # platform bound firing, and folding the second into the first would make the
     # bound invisible to everything already reading `cancelled`.
@@ -1751,7 +1751,7 @@ class ConsultationLoopState(BaseModel):
     livedoc_started: bool = False
     finalize_workflow_id: str | None = None
     continuations: int = 0
-    # TASK-664 reasoning-lane counters.
+    # Reasoning-lane counters.
     reasoning_enabled: bool = False
     plans_made: int = 0
     specialists_run: int = 0
@@ -1774,12 +1774,12 @@ class ConsultationLoopWorkflowResult(BaseModel):
     actions_dispatched: int = 0
     degraded: bool = False
     cancelled: bool = False
-    # TASK-685 — the run ended on its IDLE bound rather than on a signal.
+    # The run ended on its IDLE bound rather than on a signal.
     timed_out: bool = False
     finalized: bool = False
     finalize_workflow_id: str | None = None
     continuations: int = 0
-    # TASK-664 reasoning-lane counters.
+    # Reasoning-lane counters.
     plans_made: int = 0
     specialists_run: int = 0
     specialist_failures: int = 0

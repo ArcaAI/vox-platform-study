@@ -3,7 +3,7 @@ import { ProviderReconciliationRunEntity } from '@arcaai/domains';
 
 /**
  * One provider-reconciliation attempt, as read by the audit report
- * (TASK-638 §6 rule 6).
+ * (rule 6).
  *
  * Quantities ride as STRINGS, like every other number on this plane: these are
  * Decimal(38,6) columns and a JSON double would silently lose precision on a

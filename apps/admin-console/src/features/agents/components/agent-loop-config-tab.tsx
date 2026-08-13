@@ -1,8 +1,8 @@
 'use client';
 
 /**
- * Loop config tab (TASK-667) — the constrained goal/tool/guardrail authoring
- * surface for the seven TASK-659 `DepartmentAgent` fields, D8: NOT a rule
+ * Loop config tab — the constrained goal/tool/guardrail authoring
+ * surface for the seven `DepartmentAgent` fields, D8: NOT a rule
  * builder and NOT a free-text prompt box. Every pickable value comes from a
  * closed catalogue (role, guardrail profile, tool allowlist, the seven
  * action-registry keys) or the tenant's own RESOLVED consultation context
@@ -322,7 +322,7 @@ function GoalSection({
 
 /**
  * Tool allowlist — closed catalogue of exactly three named tools, each pinned
- * tri-state (TASK-674): Inherit (`enabled: null`, follow the platform/env
+ * tri-state: Inherit (`enabled: null`, follow the platform/env
  * default) / On / Off. Mirrors the inherit/on/off `ToggleGroup` pattern of
  * `pipeline-policy/components/scope-row-editor.tsx`.
  */
@@ -366,7 +366,7 @@ function ToolAllowlistSection({
   );
 }
 
-/** Guardrail profile — a closed catalogue selection, never an authored boundary (TASK-654 D9). */
+/** Guardrail profile — a closed catalogue selection, never an authored boundary. */
 function GuardrailProfileSection({
   uid,
   value,
@@ -468,8 +468,7 @@ function ActionEnvelopeSection({
  * `session.isElevated` on the `TENANT_LOCKED_POLICY_KEYS` precedent, which
  * locks a DIFFERENT key set (`safetyEnabled`/`phiEnabled`/`phiFailClosed`/
  * `safetyProvider`/`safetyModel`) — that was a UI guarantee the server never
- * enforced for these three keys. See the TASK-678 ticket README's Decisions
- * section.
+ * enforced for these three keys. See the Decisions section.
  */
 function BudgetsSection({ uid, values, onChange }: { uid: string; values: Record<string, string>; onChange: (key: string, value: string) => void }) {
   return (
@@ -608,8 +607,8 @@ export function LoopConfigTab({ agent, etag, onSaved, onReload }: { agent: Depar
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    // C25 (TASK-654 §4.6): a clinical-check weakening is a speed bump with a
-    // record, not a blocker. The record itself is TASK-659's automatic
+    // C25: a clinical-check weakening is a speed bump with a
+    // record, not a blocker. The record itself is the automatic
     // `DepartmentAgentVersion` snapshot the server writes on every
     // loop-config-affecting save — this dialog is the acknowledgement gate.
     const reasons = weakensClinicalCheck({

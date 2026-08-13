@@ -1,5 +1,5 @@
 /**
- * TASK-659 — DepartmentAgentService loop-configuration + promotion surface.
+ * DepartmentAgentService loop-configuration + promotion surface.
  *
  * Covers: unknown subscribedKinds kind rejected; writeScope naming an
  * undeclared output rejected; harnessOverrides global-admin-only key still
@@ -97,7 +97,7 @@ const mockAgent = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
-/** Full DI graph, including the TASK-659 optional trailing dependencies. */
+/** Full DI graph, including the optional trailing dependencies. */
 function buildService() {
   return new DepartmentAgentService(
     mockAgentRepository as never,
@@ -114,7 +114,7 @@ function buildService() {
   );
 }
 
-describe('DepartmentAgentService — TASK-659', () => {
+describe('DepartmentAgentService', () => {
   let service: DepartmentAgentService;
 
   beforeEach(() => {
@@ -144,7 +144,7 @@ describe('DepartmentAgentService — TASK-659', () => {
 
   const baseCreateDto = { departmentId: 'dept-1', name: 'X', slug: 'x', promptTemplateId: 'tpl-1' };
 
-  describe('regression — no TASK-659 fields set', () => {
+  describe('regression — no fields set', () => {
     it('creating without any of the seven new fields behaves exactly as before and writes NO config version', async () => {
       const res = await service.create(baseCreateDto);
 

@@ -47,7 +47,7 @@ function toNumberSafe(value: unknown): number {
 }
 
 /**
- * Shadow-metering reconciliation report (TASK-615 WS-K).
+ * Shadow-metering reconciliation report.
  *
  * Read-only, self-scheduling, OFF by default — see
  * `shadow-metering.constants.ts` for the full design rationale. Structured
@@ -56,7 +56,7 @@ function toNumberSafe(value: unknown): number {
  * `SHADOW_METERING_DRIFT_DETECTED_EVENT` fires per tenant whose report
  * contains at least one breach so a future subscriber can persist an audit
  * row (this lane does not own `sysEvent.service.ts` — wiring a handler there
- * is a follow-up, not part of WS-K's file ownership).
+ * is a follow-up, not part of 's file ownership).
  */
 @Injectable()
 export class ShadowMeteringService implements IShadowMeteringService, OnModuleInit, OnModuleDestroy {
@@ -71,14 +71,14 @@ export class ShadowMeteringService implements IShadowMeteringService, OnModuleIn
     @Inject('CORE_DATABASE_SERVICE') private readonly databaseService: CoreDatabaseService,
     // Optional so the service still constructs (and the sweep still runs, with
     // every provider reported unavailable) in a deployment with no secrets
-    // backend wired — §6 rule 7, fail open.
+    // backend wired — rule 7, fail open.
     private readonly runRepository: ProviderReconciliationRunRepository,
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
   ) {}
 
   /**
    * The UNSCOPED client, used for every `ProviderReconciliationRun` read and
-   * write (TASK-638).
+   * write.
    *
    * These rows are SYSTEM-owned PLATFORM records — a vendor bills the platform,
    * not a tenant — so they can neither be written nor read under a customer
@@ -119,7 +119,7 @@ export class ShadowMeteringService implements IShadowMeteringService, OnModuleIn
     const comparisons: DriftComparison[] = [];
 
     // ── Surface 1: ledger LLM tokens vs SummaryMeta token columns ─────────
-    // Known, documented drift source (WS-H handoff): the ledger's LLM_TOKENS
+    // Known, documented drift source (handoff): the ledger's LLM_TOKENS
     // rollup also carries `guardrail.validate` and `harness.step` rows (D16 —
     // metered for COGS, never SMR-attributed), so the ledger total is
     // EXPECTED to run higher than SummaryMeta's SMR-only capture. A breach
@@ -247,13 +247,13 @@ export class ShadowMeteringService implements IShadowMeteringService, OnModuleIn
 
   /**
    * Reconcile the ledger against each provider's own usage/cost report for the
-   * last SETTLED window (TASK-638 §6).
+   * last SETTLED window.
    *
    * Four rules are enforced here rather than left to each vendor client:
    *   - **CLOUD only** (rule 2). BYOK runs on the tenant's account, so the
    *     platform is not billed for it and must not expect it in a vendor total;
    *     self-hosted has no vendor bill at all. The ledger side filters on
-   *     `deployment: CLOUD` — which is only expressible because TASK-638 put
+   *     `deployment: CLOUD` — which is only expressible because put
    *     `deployment` on the rollup grain.
    *   - **Trailing window** (rule 4) — see `provider-reconciliation-window.ts`.
    *   - **Alert, never auto-correct** (rule 5). A breach emits; nothing writes
@@ -355,7 +355,7 @@ export class ShadowMeteringService implements IShadowMeteringService, OnModuleIn
   }
 
   /**
-   * The audit report (TASK-638 §6 rule 6) — newest first.
+   * The audit report (rule 6) — newest first.
    *
    * GLOBAL_ADMIN-only at the call site: these are PLATFORM vendor totals, and a
    * tenant must never see aggregate platform spend.
@@ -376,7 +376,7 @@ export class ShadowMeteringService implements IShadowMeteringService, OnModuleIn
    * openai since March because the credential expired" is invisible if only
    * successful comparisons are stored, and that gap is exactly what an auditor
    * asks about. Persistence failures are swallowed: the sweep is a diagnostic
-   * and must not fail closed (§6 rule 7).
+   * and must not fail closed (rule 7).
    */
   private async persistRuns(results: ProviderReconciliationResult[]): Promise<void> {
     for (const result of results) {

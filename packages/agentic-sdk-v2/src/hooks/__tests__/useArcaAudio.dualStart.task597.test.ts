@@ -1,5 +1,5 @@
 /**
- * useArcaAudio — coordinated dual-hook START (TASK-597 follow-up).
+ * useArcaAudio — coordinated dual-hook START.
  *
  * The defect class: the compat layer drives ONE audio graph through TWO hooks
  * (`useAudioCapture.startRecording()` then `useArcaSpeechToText.startTranscription()`),
@@ -158,7 +158,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('useArcaAudio — second start() joins instead of clobbering (TASK-597)', () => {
+describe('useArcaAudio — second start() joins instead of clobbering', () => {
   it('a second start() while capture is active is a no-op: runtime options (incl. drain knobs) survive', async () => {
     const pm = createLifecyclePluginManager();
     setupStore({ pluginManager: pm });

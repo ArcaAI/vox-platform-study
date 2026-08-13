@@ -1,5 +1,5 @@
 /**
- * Consumption & Cost screen (TASK-615 #15a): KPI strip (total cost, BYOK
+ * Consumption & Cost screen: KPI strip (total cost, BYOK
  * notional, mean cost/encounter, encounters), cost-by-capability chart, usage
  * detail + cost-per-encounter + top-tenants tables, empty state, the working-
  * tenant gate, and axe-cleanliness.

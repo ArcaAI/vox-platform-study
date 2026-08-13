@@ -1,15 +1,15 @@
-"""Contract tests for the HOPE pydantic-settings source ordering (TASK-558-H).
+"""Contract tests for the HOPE pydantic-settings source ordering.
 
 The five-tier precedence every HOPE Python service must implement::
 
-    init  >  host env  >  secrets_dir (Vault Agent)  >  .env.<NODE_ENV>  >  field default
+    init > host env > secrets_dir (Vault Agent) >.env.<NODE_ENV> > field default
 
 pydantic-settings' DEFAULT order is ``init > env > dotenv > file_secret`` — the
 secret file LAST. That is the bug these tests pin: a Vault Agent re-renders
 ``/vault/secrets/JWT_SECRET_KEY`` in place, and a stale dotenv must not outrank
 it.
 
-The subtlety that makes a naive reorder useless here: :func:`hope_env.load_env`
+The subtlety that makes a naive reorder useless here::func:`hope_env.load_env`
 merges the dotenv INTO ``os.environ``, so by the time pydantic runs there is a
 single ``EnvSettingsSource`` holding host env *and* dotenv values with nothing
 to tell them apart. Splitting that source by provenance is the whole job.

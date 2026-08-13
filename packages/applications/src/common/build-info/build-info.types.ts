@@ -1,5 +1,5 @@
 /**
- * TASK-648 W4 — shape of the baked build-info contract.
+ * Shape of the baked build-info contract.
  *
  * Mirrors `docs/implementation/TASK-648-Service-Version-And-Release-Registry/contracts/build-info.schema.json`.
  * Kept hand-in-sync with that JSON Schema rather than generated from it —

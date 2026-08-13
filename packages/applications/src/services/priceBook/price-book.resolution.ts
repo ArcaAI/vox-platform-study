@@ -2,7 +2,7 @@ import Decimal from 'decimal.js';
 import { TenantPlan } from '@arcaai/domains';
 
 /**
- * Price resolution precedence + money arithmetic (TASK-615 WS-B).
+ * Price resolution precedence + money arithmetic.
  *
  * PURE. No repository, no clock, no DI — the rule that decides what a tenant
  * pays has to be reviewable and reproducible on its own, and an `ORDER BY`
@@ -46,7 +46,7 @@ export interface PriceCandidate {
   model: string | null;
   contextBand: string | null;
   planTier: TenantPlan | null;
-  /** Cache-write TTL band ("5m"/"1h"); null = TTL-agnostic wildcard (TASK-615 #7). */
+  /** Cache-write TTL band ("5m"/"1h"); null = TTL-agnostic wildcard. */
   cacheTtl: string | null;
   unitPriceMicros: bigint;
   bookVersion: string;
@@ -62,7 +62,7 @@ export interface PriceQueryDimensions {
   contextBand: string | null;
   planTier: TenantPlan | null;
   /**
-   * From `attributesJson.cacheTtl` on a CACHE_WRITE_TOKEN event (TASK-615 #7).
+   * From `attributesJson.cacheTtl` on a CACHE_WRITE_TOKEN event.
    * Optional because it applies to a single unit — omitting it (like a null)
    * resolves the TTL-agnostic wildcard row, the pre-#7 behavior for every other
    * unit.
@@ -73,7 +73,7 @@ export interface PriceQueryDimensions {
 // Powers of two so each dimension's presence dominates the sum of all
 // less-significant ones (a provider match can never be out-ranked by
 // model+contextBand+planTier+cacheTtl combined). `cacheTtl` is the LEAST
-// significant new dimension (TASK-615 #7): it leaves the existing
+// significant new dimension: it leaves the existing
 // provider > model > contextBand > planTier precedence untouched and only lets
 // a TTL-specific cache-write row beat the TTL-agnostic wildcard.
 const WEIGHT_PROVIDER = 16;
@@ -116,7 +116,7 @@ export function selectMostSpecificPrice(candidates: readonly PriceCandidate[], q
  * GPU seconds) and prices are integer micros; doing this in JS floats produces
  * `37.037034000000004` for a figure that must be exactly 37, and the errors
  * compound across a month of events. HALF-UP at the micro is the ONE documented
- * rounding rule for this platform — WS-I applies the same rule at the invoice
+ * rounding rule for this platform — applies the same rule at the invoice
  * line, so a total never disagrees with the sum of its parts.
  *
  * A price of 0 is a legitimate answer (see the seeded zero-cost rows), so this

@@ -1,5 +1,5 @@
 # =============================================================================
-# HOPE — App-side Vault alert rules (TASK-312 Phase E)    [PrometheusRule CRD]
+# HOPE — App-side Vault alert rules    [PrometheusRule CRD]
 # =============================================================================
 # These alert on metrics the HOPE **API** exports about ITS OWN Vault client
 # (token TTL, AppRole-token / lease renewal health) — complementary to the

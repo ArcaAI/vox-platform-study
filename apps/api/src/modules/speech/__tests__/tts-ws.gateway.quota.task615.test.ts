@@ -1,5 +1,5 @@
 /**
- * TASK-615 WS-H — TTS character-allowance PRE-FLIGHT on the WS-duplex gateway.
+ * TTS character-allowance PRE-FLIGHT on the WS-duplex gateway.
  *
  * Unlike the REST `synthesize` endpoint (the whole `input` string is known
  * upfront — see `speech-proxy.controller.quota.task615.test.ts`), a WS
@@ -50,7 +50,7 @@ const createMockConfig = () => ({ getConfigValue: vi.fn((k: string) => (k === 'T
 const createMockSecrets = () => ({ getSecretSync: vi.fn(() => undefined) });
 const req = (qs: string) => ({ url: `/ws/tts/stream${qs}` }) as never;
 
-describe('TtsWsGateway — TASK-615 WS-H TTS character quota pre-flight', () => {
+describe('TtsWsGateway — TTS character quota pre-flight', () => {
   let ticketService: ReturnType<typeof createMockTicketService>;
   let config: ReturnType<typeof createMockConfig>;
   let secrets: ReturnType<typeof createMockSecrets>;

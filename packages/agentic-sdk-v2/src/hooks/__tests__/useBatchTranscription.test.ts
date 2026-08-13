@@ -1,5 +1,5 @@
 /**
- * useBatchTranscription — the native batch hook (TASK-604 lane D).
+ * useBatchTranscription — the native batch hook.
  *
  * The engine (`BatchTranscriptionQueue`) owns the caps, the scheduling and the
  * transport, and is tested on its own. What is left to pin here is the React

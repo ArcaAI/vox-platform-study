@@ -6,7 +6,7 @@
 // against older PgBouncer; the txn-mode workaround relies on
 // `max_prepared_statements > 0` per PgBouncer 1.21+).
 //
-// Phase 1 rubric (per plan §1.18):
+// Phase 1 rubric:
 //   * R-SELECT-1 — pooled `SELECT 1` returns 1 row, no client error
 //   * R-SELECT-2 — pooled `findMany()` against a real schema model returns
 //                   without prepared-statement collisions

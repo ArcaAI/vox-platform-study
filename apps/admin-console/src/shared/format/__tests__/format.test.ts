@@ -3,7 +3,7 @@ import { formatBytes, formatDateTime, formatMicros, formatNumber, formatRelative
 
 describe('formatMicros', () => {
   it('renders integer-micros strings as USD currency', () => {
-    expect(formatMicros('199029940')).toBe('$199.03'); // the TASK-615 live-evidence total
+    expect(formatMicros('199029940')).toBe('$199.03'); // the live-evidence total
     expect(formatMicros('0')).toBe('$0.00');
     expect(formatMicros('3000')).toBe('$0.00'); // 3000 micros rounds to a cent
     expect(formatMicros('999000000')).toBe('$999.00');
@@ -22,7 +22,7 @@ describe('formatMicros', () => {
 });
 
 describe('formatUnitRate', () => {
-  // REGRESSION (found in live verification of the TASK-638 rate card): unit
+  // REGRESSION (found in live verification of the rate card): unit
   // rates are sub-cent by nature, so formatMicros — correct for invoice totals,
   // see the '3000' case above — collapsed the ENTIRE card to "$0.00". The 6µ
   // self-hosted baseline and the 1,390µ managed-ASR premium rendered

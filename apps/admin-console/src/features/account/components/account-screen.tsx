@@ -286,7 +286,7 @@ export function AccountScreen() {
                         <SelectValue placeholder="Not set" />
                       </SelectTrigger>
                       <SelectContent>
-                        {/* TASK-545: local (in-browser) transcription is disabled
+                        {/* Local (in-browser) transcription is disabled
                                                 platform-wide — disabled, not removed, so an existing
                                                 doctor's stored "local" selection still renders. */}
                         <SelectItem value="local" disabled>

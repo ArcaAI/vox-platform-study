@@ -1,7 +1,7 @@
 /**
- * TASK-563 — v1-compatible SMR summary shim CONTRACT tests (hermetic).
+ * v1-compatible SMR summary shim CONTRACT tests (hermetic).
  *
- * Locks the frozen v1 response shapes (TASK-560 §5.4/§5.5) by validating the
+ * Locks the frozen v1 response shapes by validating the
  * golden fixtures against the zod schemas in `smr-compat.schemas.ts`, and proves
  * the lock BITES by asserting that dropping a v1-required key fails. A future v2
  * change that reshapes a contract fails here before it can reach a migrated app.
@@ -25,13 +25,13 @@ import {
   SummaryResponseSchema,
 } from './smr-compat.schemas';
 
-describe('SMR compat request contract (§5.4 SessionData)', () => {
+describe('SMR compat request contract (SessionData)', () => {
   it('accepts the golden SessionData', () => {
     const result = SessionDataSchema.safeParse(GOLDEN_SESSION_DATA);
     expect(result.success).toBe(true);
   });
 
-  it('carries real per-turn conversation_segments (F2 — not one collapsed blob)', () => {
+  it('carries real per-turn conversation_segments (not one collapsed blob)', () => {
     expect(GOLDEN_SESSION_DATA.conversation_segments.length).toBeGreaterThan(1);
     const speakers = new Set(GOLDEN_SESSION_DATA.conversation_segments.map((s) => s.speaker));
     expect(speakers.size).toBeGreaterThan(1);
@@ -43,7 +43,7 @@ describe('SMR compat request contract (§5.4 SessionData)', () => {
   });
 });
 
-describe('SimplifiedMedicalSummary contract (§5.4, use_enhanced_format:false)', () => {
+describe('SimplifiedMedicalSummary contract (use_enhanced_format:false)', () => {
   it('accepts the golden Simplified summary', () => {
     expect(SimplifiedMedicalSummarySchema.safeParse(GOLDEN_SIMPLIFIED_SUMMARY).success).toBe(true);
   });
@@ -64,7 +64,7 @@ describe('SimplifiedMedicalSummary contract (§5.4, use_enhanced_format:false)',
   });
 });
 
-describe('EnhancedMedicalSummary contract (§5.4, use_enhanced_format:true)', () => {
+describe('EnhancedMedicalSummary contract (use_enhanced_format:true)', () => {
   it('accepts the golden Enhanced summary', () => {
     expect(EnhancedMedicalSummarySchema.safeParse(GOLDEN_ENHANCED_SUMMARY).success).toBe(true);
   });
@@ -83,7 +83,7 @@ describe('EnhancedMedicalSummary contract (§5.4, use_enhanced_format:true)', ()
   });
 });
 
-describe('SummaryResponse envelope contract (§5.4)', () => {
+describe('SummaryResponse envelope contract', () => {
   it('accepts the golden SummaryResponse', () => {
     expect(SummaryResponseSchema.safeParse(GOLDEN_SUMMARY_RESPONSE).success).toBe(true);
   });
@@ -105,7 +105,7 @@ describe('SummaryResponse envelope contract (§5.4)', () => {
   });
 });
 
-describe('PreSummaryResponse contract (§5.5)', () => {
+describe('PreSummaryResponse contract', () => {
   it('accepts the golden PreSummaryResponse', () => {
     expect(PreSummaryResponseSchema.safeParse(GOLDEN_PRE_SUMMARY_RESPONSE).success).toBe(true);
   });

@@ -1,5 +1,5 @@
 /**
- * TranscriptionJobController — TASK-567 Phase D STT fallback behaviour (§5 items 6, 7).
+ * TranscriptionJobController — Phase D STT fallback behaviour (items 6, 7).
  *
  * Covers ONLY the new fallback surface:
  *  - `createStreamSession` resolves the tenant's effective fallback + decrypted
@@ -16,7 +16,7 @@ import { ConflictException, NotFoundException } from '@nestjs/common';
 import { TranscriptionJobController } from '../transcription-job.controller';
 import { wavFixture } from './wav-fixture';
 
-// `getStatusCountsForOwner` backs the TASK-604 in-flight cap. Zero in flight so
+// `getStatusCountsForOwner` backs the in-flight cap. Zero in flight so
 // these tests exercise pipeline resolution, not the concurrency guard.
 const createMockJobService = () => ({
   createBatchJob: vi.fn(),
@@ -122,28 +122,28 @@ describe('TranscriptionJobController.createStreamSession — STT fallback inject
     expect('fallbackPipelineId' in payload).toBe(false);
   });
 
-  it('forwards the end-user languageMode to the session payload (TASK-587)', async () => {
+  it('forwards the end-user languageMode to the session payload', async () => {
     const { controller, mocks } = build();
     await controller.createStreamSession({ pipelineId: 'primary-pipe', languageMode: 'ml-en' } as never);
     const payload = mocks.sessionService.createSession.mock.calls[0][0];
     expect(payload.languageMode).toBe('ml-en');
   });
 
-  it('forwards startOn into the session payload (TASK-586 C7)', async () => {
+  it('forwards startOn into the session payload', async () => {
     const { controller, mocks } = build();
     await controller.createStreamSession({ pipelineId: 'primary-pipe', startOn: 'fallback' } as never);
     const payload = mocks.sessionService.createSession.mock.calls[0][0];
     expect(payload.startOn).toBe('fallback');
   });
 
-  it('omits startOn when not requested (TASK-586 C7)', async () => {
+  it('omits startOn when not requested', async () => {
     const { controller, mocks } = build();
     await controller.createStreamSession({ pipelineId: 'primary-pipe' } as never);
     const payload = mocks.sessionService.createSession.mock.calls[0][0];
     expect('startOn' in payload).toBe(false);
   });
 
-  it('is fail-closed: startOn=fallback with no configured fallback → 409 (TASK-586 C7)', async () => {
+  it('is fail-closed: startOn=fallback with no configured fallback → 409', async () => {
     const sttConfig = createMockSttConfig();
     sttConfig.getEffective.mockResolvedValue({
       tenantId: 'tenant-1',
@@ -160,7 +160,7 @@ describe('TranscriptionJobController.createStreamSession — STT fallback inject
   });
 });
 
-describe('TranscriptionJobController.getLanguageModes (TASK-587)', () => {
+describe('TranscriptionJobController.getLanguageModes', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('delegates to the streaming session service catalog', async () => {
@@ -212,7 +212,7 @@ describe('TranscriptionJobController.switchStreamSessionToFallback', () => {
   });
 });
 
-describe('TranscriptionJobController.switchStreamSessionToPrimary (TASK-586 Lane H)', () => {
+describe('TranscriptionJobController.switchStreamSessionToPrimary', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('requests the primary-direction switch and returns {switched:true} on the happy path', async () => {
@@ -241,23 +241,23 @@ describe('TranscriptionJobController.switchStreamSessionToPrimary (TASK-586 Lane
 });
 
 /**
- * TASK-614 D-6 — batch auto-fallback was never dispatched.
+ * Batch auto-fallback was never dispatched.
  *
  * `transcribe_file.py:317-336` has implemented the batch fallback since
- * TASK-567: on a cloud-ASR/model failure it re-runs ONCE on
+ * On a cloud-ASR/model failure it re-runs ONCE on
  * `fallback_pipeline_id` within the same Dramatiq attempt and stamps
  * `usedFallbackPipelineId` on the result. But nothing ever SUPPLIED that
  * argument — the gateway's dispatch stops at `userId` and its only kwarg is
  * `storage` — so the whole path was unreachable in production and a failing
  * primary simply failed the job.
  *
- * Streaming sessions have resolved the tenant fallback since TASK-567
+ * Streaming sessions have resolved the tenant fallback since
  * (`createStreamSession` above); batch is the half that was missed.
  */
-describe('TranscriptionJobController.transcribeFile — batch fallback dispatch (TASK-614 D-6)', () => {
+describe('TranscriptionJobController.transcribeFile — batch fallback dispatch', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  // A 5-minute WAV: comfortably inside the TASK-604 ceilings, so these tests
+  // A 5-minute WAV: comfortably inside the ceilings, so these tests
   // still assert pipeline resolution rather than the new duration guard.
   const audioFile = () => wavFixture(300);
 
@@ -299,14 +299,14 @@ describe('TranscriptionJobController.transcribeFile — batch fallback dispatch 
 });
 
 /**
- * TASK-614 D-10 — the tenant's auto-switch governance reaches the session.
+ * The tenant's auto-switch governance reaches the session.
  *
  * `getEffective` has always returned `autoSwitchEnabled` /
  * `consecutiveFailureThreshold`; the controller read the object and used only
  * `fallbackPipelineId`, so the governance never left the gateway and STT's
  * controller silently used its own defaults.
  */
-describe('TranscriptionJobController.createStreamSession — auto-switch governance (TASK-614)', () => {
+describe('TranscriptionJobController.createStreamSession — auto-switch governance', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it("forwards the tenant's autoSwitchEnabled and consecutiveFailureThreshold", async () => {
@@ -340,7 +340,7 @@ describe('TranscriptionJobController.createStreamSession — auto-switch governa
 });
 
 /**
- * TASK-614 D-5 / AC-2 — the create response carries the RESOLVED baseline.
+ * AC-2 — the create response carries the RESOLVED baseline.
  *
  * Until now both create paths returned only what the caller already knew. A
  * client that sent no pipelineId, a session opened on the fallback by choice,
@@ -348,7 +348,7 @@ describe('TranscriptionJobController.createStreamSession — auto-switch governa
  * indistinguishable from a normal primary session — which is why the SDK's
  * `activePipeline` had to be derived from the request and went null.
  */
-describe('TranscriptionJobController.createStreamSession — resolved pipeline echo (TASK-614)', () => {
+describe('TranscriptionJobController.createStreamSession — resolved pipeline echo', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('returns the resolved pipelineId and activeEngine from the session service', async () => {
@@ -380,16 +380,16 @@ describe('TranscriptionJobController.createStreamSession — resolved pipeline e
 });
 
 /**
- * TASK-614 D-8/D11 — batch can say "use the tenant default".
+ * D11 — batch can say "use the tenant default".
  *
  * Live sessions have always been able to omit the pipeline (the gateway
  * resolves one), but batch hard-required it all the way down to the SDK queue,
  * so there was no way to express the same intent for an upload.
  */
-describe('TranscriptionJobController.transcribeFile — tenant-default pipeline (TASK-614 D11)', () => {
+describe('TranscriptionJobController.transcribeFile — tenant-default pipeline', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  // A 5-minute WAV: comfortably inside the TASK-604 ceilings, so these tests
+  // A 5-minute WAV: comfortably inside the ceilings, so these tests
   // still assert pipeline resolution rather than the new duration guard.
   const audioFile = () => wavFixture(300);
 

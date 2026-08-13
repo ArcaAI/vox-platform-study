@@ -105,14 +105,14 @@ model ContextItem {
   // DNA Writing Style (reference ID, similar to mediaId pattern)
   dnaWritingStyleId String?
 
-  // TASK-658 — tenant-facing context-kind discriminator, layered ABOVE `type`.
+  // Tenant-facing context-kind discriminator, layered ABOVE `type`.
   // `type` keeps its exact meaning (so every existing row, query and
   // encryption path is untouched); `kindKey` names the tenant-declared kind
   // (`kinds[].key` of the pinned ConsultationContextSchemaVersion) and
   // `contextSchemaVersionId` records WHICH immutable version this row was
   // validated against — the pin is captured at write time so a later publish
   // can never retroactively invalidate an accepted item. Both NULL for every
-  // pre-TASK-658 row and for every write that names no kind, which is exactly
+  // pre- row and for every write that names no kind, which is exactly
   // the legacy behaviour.
   //
   // Soft references (no FK), the same convention `mediaId` and
@@ -165,7 +165,7 @@ model ContextItem {
   @@index([qdrantSynced], name: "ContextItem_qdrantSynced_idx")
   @@index([dnaWritingStyleId], name: "ContextItem_dnaWritingStyleId_idx")
   @@index([mediaId], name: "ContextItem_mediaId_idx")
-  // TASK-658 — per-consultation "give me every item of kind X" reads, and the
+  // Per-consultation "give me every item of kind X" reads, and the
   // reverse lookup "which items were validated against this schema version"
   // that a schema-retirement check needs.
   @@index([consultationId, kindKey], name: "ContextItem_consultation_kindKey_idx")
@@ -199,10 +199,10 @@ model AudioRecording {
   // NOTE: no code path resolves this (or rawMediaId/processedMediaId below) via
   // MediaRepository today (verified 2026-08-11) — ContextDtoMapper.toAudioRecordingResponse
   // returns all three raw. Producers historically wrote the raw storage key instead of a
-  // Media UUID here (same bug class fixed for ContextItem.mediaId in TASK-656); that fix
+  // Media UUID here (same bug class fixed for ContextItem.mediaId in); that fix
   // also corrects new writes to this table, but pre-fix rows may still hold a raw key.
   // Inert today (nothing resolves it), but a future playback/download resolver must
-  // re-check for non-UUID values before trusting these fields — see the TASK-656 backfill
+  // re-check for non-UUID values before trusting these fields — see the backfill
   // script (packages/database/scripts/backfill-context-item-media-id.ts) for the pattern.
   mediaId String
 
@@ -306,7 +306,7 @@ model SummaryMeta {
   promptResolvedFrom String? // 'preferred' | 'department' | 'default'
   resolvedPromptId   String? // the promptId actually used
 
-  // TASK-635 RF-6 — session-agent lineage: the DepartmentAgent identity frozen
+  // Session-agent lineage: the DepartmentAgent identity frozen
   // at recording start and carried live-flushes → LIVE_SOAP_SNAPSHOT metaData →
   // finalize. Null for every non-live-session summary (and for every summary
   // produced before the live agent loop shipped). `sessionAgentPromptVersion`
@@ -343,12 +343,12 @@ model SummaryMeta {
   encryptedGuardrailDecisions Bytes?
   keyVersion                  Int?
 
-  // DNA redaction/rewrite audit (TASK-551). `redactionApplied` is a plaintext,
+  // DNA redaction/rewrite audit. `redactionApplied` is a plaintext,
   // queryable marker: the redaction transform ran and changed the note. The
   // manifest DETAIL (rule ids, actions, spans, counts — NEVER removed PHI
   // plaintext) is Vault-Transit (hope-phi) ciphertext, mirroring citationsMap;
   // it shares the `keyVersion` above. Both nullable/additive: absent ⇒ no
-  // redaction ran (or a pre-TASK-551 history).
+  // redaction ran (or a pre- history).
   redactionApplied           Boolean?
   encryptedRedactionManifest Bytes?
 

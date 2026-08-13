@@ -1,4 +1,4 @@
--- TASK-648 — Service Version & Release Registry.
+-- Service Version & Release Registry.
 --
 -- Four new tables, purely ADDITIVE:
 --   - ServiceRelease  — immutable build facts, one row per (service, build).

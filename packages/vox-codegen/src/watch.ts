@@ -1,20 +1,20 @@
 /**
  * `--watch` — regenerate whenever the tenant's schema changes.
  *
- * Polling, not streaming. TASK-654 §4.7 named an "MCP-style `listChanged`
+ * Polling, not streaming. The design named an "MCP-style `listChanged`
  * notification riding the SSE plane" as the eventual client contract, but
- * nothing implements it yet: TASK-661 explicitly deferred a response-level
- * version-skew signal, and the loop event stream TASK-660/665 shipped
+ * nothing implements it yet: a later change explicitly deferred a response-level
+ * version-skew signal, and the loop event stream shipped
  * (`useConsultationEvents` / `consultation:loop:{id}`) carries AGENT actions
  * for one consultation, not a schema-change notification — there is no
  * `listChanged` channel to subscribe to. Polling the same discovery endpoint
  * on an interval, comparing `etag`, is the honest implementation available
  * at this baseline; it is also exactly what the SDK does NOT do (the SDK
- * pins its version for a session and never re-fetches — TASK-665 §4.2), so
+ * pins its version for a session and never re-fetches), so
  * this tool intentionally behaves differently from a running consultation
  * client. If a `listChanged` SSE notification ships later, this is the
  * function to point at it instead.
- */
+*/
 
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';

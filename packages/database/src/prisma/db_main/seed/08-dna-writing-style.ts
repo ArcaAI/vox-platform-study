@@ -586,7 +586,7 @@ export const seedDnaWritingStyle = async (client: CorePrismaClient) => {
           key: setting.key,
         },
       },
-      // `value` omitted deliberately (TASK-616 DB-03) — operator-owned.
+      // `value` omitted deliberately — operator-owned.
       update: { description: setting.description },
       create: setting,
     });

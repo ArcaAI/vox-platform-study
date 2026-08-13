@@ -1,4 +1,4 @@
--- TASK-519 — Segment-level transcript + evidence links (TranscriptSegment).
+-- Segment-level transcript + evidence links (TranscriptSegment).
 --
 -- Purely ADDITIVE: one new table, no changes to existing columns/data. Each row
 -- is an ordered segment (diarized turn / VAD segment) of a TRANSCRIPT context
@@ -6,7 +6,7 @@
 -- label, and the [charStart, charEnd) character offsets into the parent
 -- transcript's already-encrypted content). The segment text itself is NOT
 -- duplicated — it is a slice of the transcript recoverable via the offsets — so
--- this table introduces no new plaintext-PHI surface (TASK-369 posture).
+-- this table introduces no new plaintext-PHI surface (posture).
 --
 -- Like NamedEntity / AudioRecording it is TENANT-SCOPED but soft-delete EXEMPT
 -- (no `resourceStatus` column; listed in MODELS_WITHOUT_SOFT_DELETE) — segments

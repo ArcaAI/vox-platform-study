@@ -1,5 +1,5 @@
 /**
- * AgenticClient.getStreamBaseUrl (TASK-543)
+ * AgenticClient.getStreamBaseUrl
  *
  * SSE opens against the gateway directly when a `wsUrl` gateway base is set
  * (BFF-split deployment), else against the REST base — never proxying a

@@ -23,11 +23,11 @@ import { BillingServiceModule } from '../../billing/billing.service.module';
   // HarnessPolicyServiceModule supplies the SMR-selection resolver.
   // EntitlementsServiceModule supplies the monthlySummaries meter.
   // AiTaskDefaultServiceModule supplies the nlp.ner model-injection resolver
-  // for extractEntities (TASK-552 Lane A).
+  // for extractEntities.
   // UsageLedgerServiceModule supplies IUsageLedgerService: WS-D uses it so a
   // generated summary's token consumption is recorded in the same
   // transaction as its SummaryMeta, and WS-E uses it for the ner.extract
-  // usage row extractEntities emits (TASK-615).
+  // usage row extractEntities emits.
   imports: [
     CommonServiceModule,
     CoreDatabaseModule,
@@ -38,13 +38,13 @@ import { BillingServiceModule } from '../../billing/billing.service.module';
     HarnessGatewayServiceModule,
     HarnessPolicyServiceModule,
     EntitlementsServiceModule,
-    // §2C/§2D — resolves the @Optional IAgentTrajectoryService emitter
+    // Resolves the @Optional IAgentTrajectoryService emitter
     // dep so a summary generation records its LLM_CALL trajectory step.
     AgentTrajectoryServiceModule,
     AiTaskDefaultServiceModule,
     UsageLedgerServiceModule,
     // BillingServiceModule supplies IBillingService for the optional
-    // spend-limit precheck on LLM generation (TASK-615 #8 → 402).
+    // spend-limit precheck on LLM generation (402).
     BillingServiceModule,
   ],
   providers: [

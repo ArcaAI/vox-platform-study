@@ -1,14 +1,14 @@
-"""Wire-contract tests for the agent roster in ``fetch_loop_config`` (TASK-664).
+"""Wire-contract tests for the agent roster in ``fetch_loop_config``.
 
 The gateway answers camelCase (`LoopConfigResponse`); the activity maps it onto
-the snake_case `ConsultationLoopConfig` the workflow pins. TASK-662 shipped a
+the snake_case `ConsultationLoopConfig` the workflow pins. shipped a
 wire-contract DEFECT of exactly this class — a body shaped for the wrong DTO
 that would have 400'd every loop-event publish in production — so the mapping
 gets its own tests rather than being assumed correct.
 
 The two properties that matter most are both about a gateway that has NOT been
 upgraded: an old gateway sends no `agents` and no `reasoningEnabled`, and the
-loop must then behave exactly as TASK-662 left it rather than half-enabling a
+loop must then behave exactly as left it rather than half-enabling a
 deliberative lane with an empty roster.
 """
 
@@ -119,7 +119,7 @@ class TestRosterMapping:
 
 
 class TestIdleBoundMapping:
-    """TASK-685 — ``idleTimeoutSeconds`` is the only path the bound can arrive by.
+    """``idleTimeoutSeconds`` is the only path the bound can arrive by.
 
     The workflow reads the bound from the PINNED config and nowhere else (C1), so
     if this mapping is wrong the bound silently does not exist — which is exactly
@@ -138,7 +138,7 @@ class TestIdleBoundMapping:
 
     @pytest.mark.asyncio
     async def test_an_absent_bound_leaves_the_loop_unbounded(self, patch_client):
-        """The pre-TASK-685 gateway shape. None ⇒ the era gate short-circuits."""
+        """The prior gateway shape. None ⇒ the era gate short-circuits."""
         patch_client(FULL_PAYLOAD)
 
         config = await fetch_loop_config(
@@ -166,7 +166,7 @@ class TestIdleBoundMapping:
 
 
 class TestUnUpgradedGateway:
-    """A gateway that predates TASK-664 sends neither field."""
+    """A gateway that predates sends neither field."""
 
     @pytest.mark.asyncio
     async def test_an_absent_roster_leaves_the_reasoning_lane_off(self, patch_client):
@@ -179,7 +179,7 @@ class TestUnUpgradedGateway:
 
         assert config.reasoning_enabled is False
         assert config.agents == []
-        # ...and everything TASK-662 resolved is untouched.
+        # ...and everything resolved is untouched.
         assert config.enabled is True
         assert [s.kind_key for s in config.subscriptions] == ["transcript"]
         assert config.ending_actions == ["harness.finalize"]

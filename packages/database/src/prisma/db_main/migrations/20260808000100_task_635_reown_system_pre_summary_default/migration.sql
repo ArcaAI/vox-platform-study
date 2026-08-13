@@ -1,4 +1,4 @@
--- TASK-635 B-12 fold-in (C1 §8) — re-own the SYSTEM pre-summary default to the
+-- Re-own the SYSTEM pre-summary default to the
 -- SYSTEM tenant and pin its approval snapshot.
 --
 -- PROBLEM. `PromptTemplate`/`PromptVersion` are tenant-scoped
@@ -31,7 +31,7 @@
 -- @@unique([tenantId, departmentId, ownerUserId, name]). The moved row is named
 -- 'Pre-Summary Default Template' with departmentId = NULL and ownerUserId =
 -- NULL. The SYSTEM tenant owns 13 golden templates (seed/07a-agent-golden-library.ts,
--- named after DEFAULT_PROMPT_TEMPLATES summary rows) plus the TASK-635 live
+-- named after DEFAULT_PROMPT_TEMPLATES summary rows) plus the live
 -- default ('Live SOAP Running Note — System Default'); none carries this name,
 -- so neither index can collide. `PromptVersion` is unique on
 -- (promptTemplateId, versionNumber) — untouched by a tenantId move.

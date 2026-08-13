@@ -1,5 +1,5 @@
 # ============================================================================
-# HOPE — DEV Prometheus scrape config (TASK-386 Platform Runtime Metrics)
+# HOPE — DEV Prometheus scrape config (platform runtime metrics)
 # ============================================================================
 # Scrapes the API gateway + every Python service /metrics endpoint and feeds
 # the NestJS PrometheusQueryService (PROMETHEUS_URL=http://localhost:9090).
@@ -95,8 +95,8 @@ scrape_configs:
   # model in {Medical-NER, symps-disease-bert}). Domain metrics use OTel/OTLP
   # (NOT scraped here).
   #
-  # TASK-636 OBS-02/OBS-03: this comment previously claimed NLP had been
-  # "aligned with the rest of the fleet" — it had not. Until TASK-636 the
+  # This comment previously claimed NLP had been
+  # "aligned with the rest of the fleet" — it had not. Previously the
   # instrumentator passed metric_namespace="nlp" (emitting nlp_http_*, which
   # the regex below cannot match) AND gated exposition on an ENABLE_METRICS
   # env var that no environment set, so /metrics returned 404 outright.
@@ -128,7 +128,7 @@ scrape_configs:
   # http_* (instrumentator, gated on TTS_METRICS_ENABLED) + tts_* domain
   # metrics. TTS runs local models (Kokoro / Indic Parler) alongside Azure.
   #
-  # TASK-636 OBS-04: TTS has exposed /metrics since it was built, but was the
+  # TTS has exposed /metrics since it was built, but was the
   # one service never added to this file — six of seven services were scraped.
   - job_name: tts
     metrics_path: /metrics

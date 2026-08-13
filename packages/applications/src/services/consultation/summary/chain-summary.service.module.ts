@@ -13,7 +13,7 @@ import { UsageLedgerServiceModule } from '../../usageLedger/usage-ledger.service
 @Module({
   // HarnessPolicyServiceModule supplies the SMR-selection resolver.
   // ConfigResolverModule supplies the preferred-prompt resolver.
-  // UsageLedgerServiceModule (TASK-615 WS-D) supplies IUsageLedgerService so a
+  // UsageLedgerServiceModule supplies IUsageLedgerService so a
   // chain generation's token consumption is recorded with its SummaryMeta.
   imports: [
     CommonServiceModule,

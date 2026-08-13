@@ -1,8 +1,8 @@
 /**
- * @arcaai/vox - ConsultationSchemaClient (TASK-665)
+ * @arcaai/vox - ConsultationSchemaClient
  *
  * Fetches the tenant's discovery bundle from `GET /tenant/me/context-schema`
- * (TASK-658/661) — the RESOLVED, PINNED `ConsultationContextSchema`
+ * The RESOLVED, PINNED `ConsultationContextSchema`
  * declaration a client builds its workflow from, never simply the latest
  * published version.
  *

@@ -9,7 +9,7 @@ import {
 import { CanManage } from '../../decorators';
 
 /**
- * Admin-triggered SYSTEM agent-library resync (TASK-548). A SEPARATE thin
+ * Admin-triggered SYSTEM agent-library resync. A SEPARATE thin
  * controller sharing the `admin/department-agents` prefix — the
  * `TenantPipelineResyncController` precedent — so the reconciler carries the
  * GLOBAL_ADMIN gate rather than the tenant-admin `manage:DepartmentAgent` of the

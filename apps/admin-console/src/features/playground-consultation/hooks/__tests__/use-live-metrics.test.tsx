@@ -1,5 +1,5 @@
 /**
- * TASK-543 — real per-session generation metrics folded from the
+ * real per-session generation metrics folded from the
  * live-summary SSE stats (`metadata.stats`). Contract: latest tok/s wins,
  * latency p95 is computed over the session's accumulated `total_ms` samples,
  * absent stats contribute nothing (never fabricated), and reset() clears the

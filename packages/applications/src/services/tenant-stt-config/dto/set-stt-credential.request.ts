@@ -7,7 +7,7 @@ import { IsBoolean, IsInt, IsOptional, IsString, MaxLength, Min, MinLength } fro
  * `region` is the classic Azure Speech region; `endpoint` is the Azure Foundry
  * resource / OpenAI-compatible base URL; `model` (Foundry model / Sarvam /
  * OpenAI model id) is persisted under `extraJson`. `expectedVersion` is the OCC
- * token (`0` = create, `>0` = compare-and-set; TASK-526 credential-OCC divergence
+ * token (`0` = create, `>0` = compare-and-set; credential-OCC divergence
  * from the TTS precedent).
  */
 export class SetSttCredentialRequest {

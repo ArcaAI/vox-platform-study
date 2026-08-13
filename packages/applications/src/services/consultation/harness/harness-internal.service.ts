@@ -92,7 +92,7 @@ export class HarnessInternalService {
   private readonly IDEMPOTENCY_KEY_PREFIX = 'idempotency:harness:';
   private readonly IDEMPOTENCY_TTL = 86400; // 24 hours
 
-  // TASK-687 — `metaData.subType` marker stamped on the RAW_SUMMARY ContextItem
+  // `metaData.subType` marker stamped on the RAW_SUMMARY ContextItem
   // that `persistDraft` creates, so a LATER persist can recognise the harness's
   // OWN prior draft and update it instead of adding a second note.
   //
@@ -106,7 +106,7 @@ export class HarnessInternalService {
   // create. (Same `metaData.subType` convention as `LIVE_SOAP_SNAPSHOT`.)
   private readonly HARNESS_DRAFT_SUBTYPE = 'HARNESS_DRAFT';
 
-  // TASK-688 — the same ownership idea, for `persistEntities`. `NamedEntity`
+  // The same ownership idea, for `persistEntities`. `NamedEntity`
   // has no `metaData` column to mark: its `metadata` is Vault-Transit ciphertext
   // (`encryptedMetadata`; the plaintext column was DROPPED) and encryption is a
   // soft no-op outside `SECRETS_PROVIDER=vault`, so it is neither queryable nor
@@ -209,7 +209,7 @@ export class HarnessInternalService {
     // existing positional unit fixtures keep their arity; absent ⇒ the code
     // default (carry-forward OFF), which is also the fail-safe direction.
     @Optional() @Inject(EffectiveSettingsService) private readonly effectiveSettings?: EffectiveSettingsService,
-    // TASK-615 WS-D2 (item 1c) — injected but DELIBERATELY NEVER CALLED.
+    // Injected but DELIBERATELY NEVER CALLED.
     // `persistDraft`'s `HarnessDraftRequest` carries no token fields, and
     // harness-originated LLM calls are already metered PER-STEP by the
     // agent-trajectory path (WS-F: `harness:step:<sessionId>:<runId>:<seq>`
@@ -462,7 +462,7 @@ export class HarnessInternalService {
           }),
         );
 
-        // TASK-688 — adopt this path's OWN prior rows instead of inserting a
+        // Adopt this path's OWN prior rows instead of inserting a
         // second set. A second workflow EXECUTION is routine (see
         // HARNESS_NER_MODEL_ID and the ticket), and its Idempotency-Key differs,
         // so the replay cache cannot be the guarantee — the invariant is here.
@@ -479,7 +479,7 @@ export class HarnessInternalService {
         // column), so `softDelete()` throws for it and hard deletes are not on
         // the table for PHI. Nothing here removes a row: when a re-extraction
         // yields FEWER entities than the previous one, the trailing rows this
-        // path owns are left in place. See the ticket README §4.
+        // path owns are left in place.
         const owned = await this.findOwnHarnessEntities(dto.contextItemId);
         const adopted = Math.min(owned.length, namedEntities.length);
 
@@ -608,7 +608,7 @@ export class HarnessInternalService {
       // {pre_summary_text} so the model refines it. Cold path when absent.
       // Gated behind the kill-switch (default OFF): when disabled we skip the
       // snapshot lookup entirely so nothing is injected.
-      // TASK-635 C5 §7.5 — the snapshot load is now UNCONDITIONAL, because the
+      // The snapshot load is now UNCONDITIONAL, because the
       // load is what tells us whether a live agent ran at all. Lineage present
       // (the live loop stamped `metaData.agent`) ⇒ inject unconditionally, per
       // R-N2 / DR-4; lineage absent ⇒ the flag gates the injection exactly as
@@ -658,7 +658,7 @@ export class HarnessInternalService {
         attachments,
         highlights,
         preSummaryText: injectPriorDraft ? (liveSnapshot?.content ?? undefined) : undefined,
-        // TASK-635 C5 / RF-6 — same agent reviews and finalizes: unconditional
+        // Same agent reviews and finalizes: unconditional
         // injection on the lineage path + the resolver's agent tier pinned to
         // that exact agent. Both absent for every non-live consultation.
         preSummaryLineage: liveLineage ?? undefined,
@@ -744,7 +744,7 @@ export class HarnessInternalService {
 
         // 1. RAW_SUMMARY context item for the generated note.
         //
-        // TASK-687 — ONE consultation gets ONE harness draft. `HarnessDocWorkflow`
+        // ONE consultation gets ONE harness draft. `HarnessDocWorkflow`
         // has two start sites (`ConsultationEventHandler` → the gateway start, and
         // `ConsultationLoopWorkflow`'s `harness.finalize` child), both targeting the
         // deterministic id `harness-doc-{consultationId}` with NO `id_reuse_policy`.
@@ -809,7 +809,7 @@ export class HarnessInternalService {
         // row via the shared helper (deterministic post-stop) and write its id.
         // Gated behind the kill-switch (default OFF): when disabled we skip the
         // lookup and record empty provenance.
-        // TASK-635 C5 §7.5 — same rule as `assemble()` above, driven by the same
+        // Same rule as `assemble` above, driven by the same
         // deterministic (post-stop) helper so both call sites always agree on
         // WHICH row was consumed: lineage present ⇒ recorded regardless of the
         // flag; lineage absent ⇒ flag-gated, i.e. unchanged.
@@ -848,21 +848,21 @@ export class HarnessInternalService {
           guardrailDecisions: (isEarly ? null : (dto.guardrailDecisions ?? null)) as never,
           gateDecision: isEarly ? null : (dto.gateDecision ?? null),
           assuranceCompletedAt: isEarly ? null : new Date(),
-          // DNA redaction/rewrite audit (TASK-551). Stable data (unlike the verdict):
+          // DNA redaction/rewrite audit. Stable data (unlike the verdict):
           // it lands on the SAME persist that carries the redacted note, so it is
           // recorded at BOTH the early and the legacy persist (never withheld/backfilled).
           // The manifest is encrypted-on-write below (encryptFieldsIntoEntity).
           redactionApplied: dto.redactionApplied ?? null,
           redactionManifest: (dto.redactionManifest ?? null) as never,
           preSummaryIds: liveSnapshot ? [liveSnapshot.id] : [],
-          // TASK-635 C5 / RF-6 — session-agent lineage, stamped identically to
+          // Session-agent lineage, stamped identically to
           // the synchronous `SummaryService.generateSummary` path. Null for
           // every summary that no live agent produced.
           sessionAgentId: liveLineage?.agentId ?? null,
           sessionAgentPromptVersion: formatSessionAgentPromptVersion(liveLineage),
           generatedAt: new Date(),
         });
-        // TASK-687 — SummaryMeta is 1:1 with the ContextItem, so when the draft above
+        // SummaryMeta is 1:1 with the ContextItem, so when the draft above
         // was ADOPTED rather than created we must re-stamp the existing meta row, not
         // insert a second one for the same `contextItemId`. Mirrors the read-modify-write
         // shape of `applyAssuranceBackfillWithCas` (fresh entity ⇒ fresh change tracking).
@@ -873,7 +873,7 @@ export class HarnessInternalService {
           await this.summaryMetaRepository.updateWithVersion(existingMeta.id, existingMeta, existingMeta.version ?? 1);
         } else {
           await this.encryptBestEffort('SummaryMeta', () => this.summaryMetaRepository.encryptFieldsIntoEntity(summaryMeta, this.secretsService!));
-        // TASK-615 WS-D2 (item 1c) — INTENTIONALLY NOT metered here. `dto`
+        // INTENTIONALLY NOT metered here. `dto`
         // (HarnessDraftRequest) carries no token fields, and this generation
         // is already billed by the agent-trajectory per-step path (WS-F):
         // the harness calls SMR via its own SmrClient, never through this
@@ -1447,7 +1447,7 @@ export class HarnessInternalService {
    * (dev/test, no Vault) leaves `.content` as whatever decrypt-on-read already
    * populated (possibly null) rather than throwing.
    *
-   * TASK-655: the find + subType-filter + newest-wins-reduce is delegated to
+   * The find + subType-filter + newest-wins-reduce is delegated to
    * the shared repository helper
    * (`ContextItemRepository.findLatestPreSummaryWithDecryptedContent`) rather
    * than hand-rolled here — this was one of four copies of that exact logic.

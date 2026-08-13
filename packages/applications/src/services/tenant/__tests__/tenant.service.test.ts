@@ -97,7 +97,7 @@ const mockAiModelRepository = {
 };
 
 // Mock DepartmentAgentRepository — the agent golden library clone
-// (TASK-548) writes tenant DepartmentAgent copies and atomically flips the
+//  writes tenant DepartmentAgent copies and atomically flips the
 // per-department default.
 const mockDepartmentAgentRepository = {
   isSlugUnique: vi.fn(),
@@ -129,7 +129,7 @@ const mockExtendedClient = {
   summaryMeta: { count: vi.fn().mockResolvedValue(0) },
   consultation: { count: vi.fn().mockResolvedValue(0) },
 };
-// The agent golden library clone (TASK-548) reads the SYSTEM golden
+// The agent golden library clone reads the SYSTEM golden
 // agents / departments / templates through the UNSCOPED baseClient. Delegates
 // default to empty so the provisioning step is a safe no-op for suites that
 // don't exercise it; the agent-clone tests below override them with golden rows.
@@ -795,7 +795,7 @@ describe('TenantService', () => {
       });
     });
 
-    // TASK-548 — clone the SYSTEM agent golden library into the new tenant:
+    // Clone the SYSTEM agent golden library into the new tenant:
     // a tenant Department copy + APPROVED template snapshot + locked
     // DepartmentAgent clone per golden agent, atomic per-department default.
     describe('create — provisionTenantAgentCatalog (agent golden library)', () => {

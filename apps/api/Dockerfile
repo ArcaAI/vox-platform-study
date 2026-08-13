@@ -133,7 +133,7 @@ RUN pnpm install --prod --no-frozen-lockfile && \
 
 # Fail the build loudly if sharp's native binary can't load in THIS image,
 # instead of silently degrading thumbnailUrl to the full-size URL at runtime
-# (TASK-375 sharp follow-up). Resolved from @arcaai/applications, which owns the
+# (sharp follow-up). Resolved from @arcaai/applications, which owns the
 # `sharp` dep — pnpm's isolated node_modules does NOT hoist it to /app/node_modules,
 # so `node -e "require('sharp')"` from the app root would falsely fail.
 RUN cd /app/packages/applications && \
@@ -181,7 +181,7 @@ COPY --from=builder --chown=api:hope /app/build-artifacts/prisma /app/schema
 
 RUN mkdir -p /app/logs && chown -R api:hope /app/logs
 
-# ── TASK-648 W3 — bake build identity, LAST layer ───────────────────────────
+# ── bake build identity, LAST layer ──
 # These args change on every commit; kept below every COPY/RUN so they never
 # invalidate the layer cache above them. Written to /app/build-info.json per
 # docs/implementation/TASK-648-Service-Version-And-Release-Registry/contracts/build-info.schema.json.

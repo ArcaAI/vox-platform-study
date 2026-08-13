@@ -1,4 +1,4 @@
--- TASK-615 — AI Usage Metering, Consumption Monitoring & Tenant Billing.
+-- AI Usage Metering, Consumption Monitoring & Tenant Billing.
 --
 -- STRICTLY ADDITIVE. Nine new enum types, thirteen new enum VALUES on two
 -- existing types, eleven new nullable columns on the two entitlement tables, and
@@ -21,7 +21,7 @@
 --
 -- Enum ADD VALUEs use IF NOT EXISTS: dev/test Postgres is `db push`-managed, so
 -- the type may already carry the value when this migration is first applied
--- there (same treatment as the TASK-549 / TASK-567 enum migrations).
+-- there (same treatment as the enum migrations).
 
 -- ---------------------------------------------------------------------------
 -- 1. New enum types (metering + billing vocabulary)

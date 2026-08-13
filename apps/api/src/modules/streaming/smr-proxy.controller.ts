@@ -90,7 +90,7 @@ interface SmrGenerateRequest {
       project?: string;
       location?: string;
       /**
-       * TASK-643 R3 — WHO PAID for this credential: the caller tenant's own
+       * WHO PAID for this credential: the caller tenant's own
        * connection row (`'tenant'`) or the SYSTEM-tenant platform default
        * (`'platform'`). SMR reads it to stamp `usage_detail.byok`, which
        * becomes `deployment`/`costBasis` on the ledger row.
@@ -212,7 +212,7 @@ export class SmrProxyController {
     @Optional()
     @Inject(IProviderConnectionService)
     private readonly aiProviderConnectionService?: IProviderConnectionService,
-    // (TASK-615 WS-D) Records the tokens a proxied stream consumed, on
+    // Records the tokens a proxied stream consumed, on
     // teardown. @Optional so existing positional test fixtures keep compiling;
     // absent ⇒ the stream is simply not metered (it is never failed).
     @Optional()
@@ -595,7 +595,7 @@ export class SmrProxyController {
 
     let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 
-    // TASK-615 WS-D — meter what flows through the pipe.
+    // Meter what flows through the pipe.
     //
     // The proxy stays a byte pipe: every chunk is forwarded VERBATIM and the
     // usage block is read from a side copy. `usageTail` holds only the bytes
@@ -695,7 +695,7 @@ export class SmrProxyController {
       stream.on('error', (err: Error) => {
         if (heartbeatTimer) clearInterval(heartbeatTimer);
         // The tokens seen before the socket died were still spent — emit them
-        // (TASK-470/471: this is where a dropped tail becomes lost revenue).
+        // (: this is where a dropped tail becomes lost revenue).
         emitUsageOnce();
         this.logger.error({
           message: 'SSE stream error from SMR',

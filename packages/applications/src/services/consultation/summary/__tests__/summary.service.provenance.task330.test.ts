@@ -76,7 +76,7 @@ describe('SummaryService.getSummaryProvenance (provenance over HTTP)', () => {
       sensorScores: { entityFaithfulness: 0.95, coverage: 0.9, schemaValid: 1 },
       citationsMap: { claims: [{ id: 'claim-1', text: 'lisinopril', status: 'verified' }] },
       generatedAt: '2026-06-06T00:00:00.000Z',
-      // No transcriptSegmentRepository wired in this fixture (TASK-552 Lane C
+      // No transcriptSegmentRepository wired in this fixture (
       // is best-effort) — degrades to [] rather than blocking the read.
       citedSegments: [],
     });
@@ -148,9 +148,9 @@ describe('SummaryService.getSummaryProvenance (provenance over HTTP)', () => {
     await expect(service.getSummaryProvenance('missing-ctx')).rejects.toThrow(NotFoundException);
   });
 
-  // TASK-552 Lane C — cited transcript segments, resolved against the
+  // Cited transcript segments, resolved against the
   // consultation's persisted TranscriptSegment rows.
-  describe('citedSegments (TASK-552 Lane C)', () => {
+  describe('citedSegments', () => {
     function buildWithSegments(segments: unknown[]) {
       const contextItemRepository = {
         findById: vi.fn().mockResolvedValue({ id: 'ctx-sum-1', consultationId: 'consult-1', tenantId: 'tenant-1' }),

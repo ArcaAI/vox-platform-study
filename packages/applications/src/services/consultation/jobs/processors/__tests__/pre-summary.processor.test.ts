@@ -1,7 +1,7 @@
 /**
  * PreSummaryProcessor — the async native Vox SDK v2 pre-summary path.
  *
- * Covers the TASK-634 Phase 2b wiring:
+ * Covers the wiring:
  *  - the tenant reaches BOTH resolutions (the pre-summary chain has no
  *    department axis, so a consultation with no department would otherwise skip
  *    the tenant tier and land on the SYSTEM default or a 503);
@@ -83,7 +83,7 @@ const job = () =>
     },
   }) as any;
 
-describe('PreSummaryProcessor (TASK-634 Phase 2b)', () => {
+describe('PreSummaryProcessor', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it("passes the consultation's tenant to prompt resolution", async () => {

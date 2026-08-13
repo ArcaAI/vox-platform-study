@@ -7,7 +7,7 @@ import { UserChangelogAcknowledgementEntityMapper } from '../../../mappers';
 import { UserChangelogAcknowledgement } from '../../../models';
 
 /**
- * Per-user, per-entry acknowledgement repository (TASK-648) — one row per
+ * Per-user, per-entry acknowledgement repository — one row per
  * (userId, changelogEntryId), enforced by `UserChangelogAck_user_entry_unique`.
  * Scoped to the acknowledging user's own tenant.
  */

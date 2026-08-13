@@ -1,5 +1,5 @@
 /**
- * TASK-661 — deprecation signalling on a `kinds[]` declaration.
+ * Deprecation signalling on a `kinds[]` declaration.
  *
  * A kind is marked deprecated with a stated migration window rather than
  * deleted outright. This is authored INSIDE the existing `definition` JSON
@@ -12,7 +12,7 @@
  *  - Marking a kind deprecated is NOT a breaking change under
  *    `classifyDefinitionChange` — the kind's substrate (`primitive`,
  *    `phiClass`, `cardinality`, `fields`) is untouched, so old clients keep
- *    working exactly as TASK-661's "additive-only enforcement" requires.
+ *    working exactly as 's "additive-only enforcement" requires.
  *  - `getEffectiveBundle` returns the full `definition` verbatim, so the
  *    `deprecated` block is already surfaced to any client reading the
  *    discovery bundle — proven here via `contextSchemaDefinitionProblems` +
@@ -43,8 +43,8 @@ function definitionWithDeprecatedKind(deprecated: Record<string, unknown> | unde
   };
 }
 
-describe('deprecation signalling — authored on the kind (TASK-661)', () => {
-  it('accepts a kind with no `deprecated` block (the default, unchanged from TASK-658)', () => {
+describe('deprecation signalling — authored on the kind', () => {
+  it('accepts a kind with no `deprecated` block (the default, unchanged from )', () => {
     expect(contextSchemaDefinitionProblems(definitionWithDeprecatedKind(undefined))).toEqual([]);
   });
 

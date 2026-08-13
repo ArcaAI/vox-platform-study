@@ -5,7 +5,7 @@
  * slide-over (create / edit / versions / diff / test run).
  *
  * Moved verbatim out of `agents-screen.tsx` when prompt instruction templates
- * got their own route (`/prompt-templates`, TASK-634 R6). `/agents` keeps the
+ * got their own route (`/prompt-templates`). `/agents` keeps the
  * `DepartmentAgent` catalog and links here — one authoritative editor per
  * backend resource (rule 13). Behaviour, URL params (`?template=`, `?atab=`)
  * and grid persistence key are unchanged, so existing deep links keep working.

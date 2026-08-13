@@ -1719,14 +1719,14 @@ def _rules() -> list[RedactionRule]:
 
 
 class TestRedaction:
-    """TASK-551 — the separate, auditable ``apply_redaction`` transform inserted
+    """The separate, auditable ``apply_redaction`` transform inserted
     after the computational loop settles and BEFORE persist/delivery."""
 
     @pytest.mark.asyncio
     async def test_no_rules_never_calls_apply_redaction(self):
         """No redaction rules ⇒ the activity is never invoked and the note is
         persisted verbatim (the ``and workflow.patched`` short-circuit — byte-identical
-        to the pre-TASK-551 path)."""
+        to the prior path)."""
         recorder = StubRecorder()
         config = StubConfig(verdicts=["PASS"], redaction_text=_REDACTED_NOTE)
         async with await _env() as env:
@@ -1880,7 +1880,7 @@ class TestRedaction:
 
     @pytest.mark.asyncio
     async def test_audit_marker_threaded_to_legacy_persist(self):
-        """TASK-551 audit era — a changing redaction threads the ``redaction_applied``
+        """Audit era — a changing redaction threads the ``redaction_applied``
         marker + a compact manifest (rule ids / counts, NEVER PHI) into the legacy
         ``persist_draft`` so apps/api records it on SummaryMeta."""
         recorder = StubRecorder()
@@ -1913,7 +1913,7 @@ class TestRedaction:
 
     @pytest.mark.asyncio
     async def test_audit_marker_threaded_to_optimistic_early_persist(self):
-        """TASK-551 audit era — on the optimistic path the marker + manifest ride the
+        """Audit era — on the optimistic path the marker + manifest ride the
         EARLY ``persist_draft`` (the redaction runs before ``_deliver_early``)."""
         recorder = StubRecorder()
         config = StubConfig(

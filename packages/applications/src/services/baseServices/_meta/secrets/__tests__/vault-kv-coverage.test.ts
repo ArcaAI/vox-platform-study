@@ -1,4 +1,4 @@
-// TASK-558 lane J (J1 / J6) — the seeding surface must equal the read surface.
+// The seeding surface must equal the read surface.
 //
 // `scripts/vault-seed-secrets.sh` derives the set of secrets it writes into
 // Vault kv-v2 from `PLATFORM_SECRET_SETTINGS` — deliberately, so no shell script

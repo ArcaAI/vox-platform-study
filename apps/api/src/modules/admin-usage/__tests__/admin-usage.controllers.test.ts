@@ -1,5 +1,5 @@
 /**
- * Usage-analytics controllers unit tests (TASK-615 WS-J).
+ * Usage-analytics controllers unit tests.
  *
  * `@CanManage`/`@Authorize` are exercised by the guard pipeline (+ e2e). These
  * specs cover the controllers' OWN logic: tenant scoping (global-admin

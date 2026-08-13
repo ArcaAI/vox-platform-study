@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * @arcaai/med-ner — Playwright E2E webserver (TASK-281)
+ * @arcaai/med-ner — Playwright E2E webserver
  *
  * Wraps `http-server`'s programmatic API to inject the COOP/COEP headers
  * required for `SharedArrayBuffer` (the Worker-mode E2E suite). The CLI
@@ -8,19 +8,19 @@
  * drive its `createServer({ headers, before })` factory directly.
  *
  * Why serve the package root (not `e2e/fixtures/`)?
- *   The fixture loads the built bundles at `dist/index.js` and
- *   `dist/workers/medner.worker.js`. `tsup` writes those to
- *   `packages/med-ner/dist/`, which lives outside `e2e/fixtures/`.
- *   Serving the package root exposes both the fixture and the bundles
- *   under a single origin, so the page can reference them with absolute
- *   `/e2e/fixtures/...` and `/dist/...` paths.
+ * The fixture loads the built bundles at `dist/index.js` and
+ * `dist/workers/medner.worker.js`. `tsup` writes those to
+ * `packages/med-ner/dist/`, which lives outside `e2e/fixtures/`.
+ * Serving the package root exposes both the fixture and the bundles
+ * under a single origin, so the page can reference them with absolute
+ * `/e2e/fixtures/...` and `/dist/...` paths.
  *
  * Why the `/` redirect?
- *   The Playwright specs call `await page.goto('/')` (with `baseURL` of
- *   `http://localhost:8080`). A `before` middleware redirects `/` to
- *   `/e2e/fixtures/index.html` so the suite can land on the fixture
- *   without spec-side changes.
- */
+ * The Playwright specs call `await page.goto('/')` (with `baseURL` of
+ * `http://localhost:8080`). A `before` middleware redirects `/` to
+ * `/e2e/fixtures/index.html` so the suite can land on the fixture
+ * without spec-side changes.
+*/
 
 import httpServer from 'http-server';
 import path from 'node:path';

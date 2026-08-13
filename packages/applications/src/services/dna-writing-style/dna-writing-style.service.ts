@@ -166,7 +166,7 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
   }
 
   /**
-   * TASK-551 — read the doctor's decrypted DNA redaction/rewrite rule set from
+   * Read the doctor's decrypted DNA redaction/rewrite rule set from
    * their latest report. Same tenant PHI guard as {@link getDnaReport}. Returns
    * an empty rule set when the doctor has no report or no rules configured (never
    * null — the caller always gets a well-formed `{ rules: [] }`).
@@ -182,7 +182,7 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
     if (!report) return { rules: [] };
 
     // Decrypt the ciphertext column (no-op when the secrets backend is unwired in
-    // dev/test). A report predating TASK-551 has no rules ⇒ empty set.
+    // dev/test). A report predating has no rules ⇒ empty set.
     if (this.secretsService) {
       const { redactionRules } = await this.dnaReportRepository.decryptFieldsFromEntity(report, this.secretsService);
       if (redactionRules) return validateRedactionRuleSet(redactionRules);
@@ -191,7 +191,7 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
   }
 
   /**
-   * TASK-599 — the doctor's DECRYPTED DNA writing-style text for prompt
+   * The doctor's DECRYPTED DNA writing-style text for prompt
    * injection, or `null` when DNA style is not applicable. Composes the same
    * pieces the doctor-facing reads use: the tenant PHI guard, the effective
    * on/off gate (`tenant AND doctor`), the latest report, and ciphertext
@@ -200,7 +200,7 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
    * purely additive.
    */
   async getEffectiveStyleText(doctorId: string, explicitTenantId?: string): Promise<string | null> {
-    // TASK-651 — `explicitTenantId` exists because the CLS getter is not always
+    // `explicitTenantId` exists because the CLS getter is not always
     // populated: the v1-compat SMR surface authenticates by API KEY, and only the
     // JWT strategy writes CLS `tenantId`. Its controller already resolves the
     // authoritative tenant (`requireTenantId` → CLS, else `apiKey.tenantId`) and
@@ -343,7 +343,7 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
       throw new ForbiddenException("Cannot update another doctor's DNA report");
     }
 
-    // TASK-551 — validate the redaction rule set's JSON shape up front (a 400
+    // Validate the redaction rule set's JSON shape up front (a 400
     // here beats a fail-closed FLAG mid-consultation). Normalized copy persists.
     const redactionRules = dto.redactionRules !== undefined ? validateRedactionRuleSet(dto.redactionRules) : undefined;
 

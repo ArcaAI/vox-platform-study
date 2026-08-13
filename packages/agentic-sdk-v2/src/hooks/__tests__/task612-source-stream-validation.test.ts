@@ -1,5 +1,5 @@
 /**
- * useArcaAudio — injected-stream LIVENESS validation (TASK-612 Lane A, RC-3).
+ * useArcaAudio — injected-stream LIVENESS validation.
  *
  * `AudioStartOptions.sourceStreams` lets a caller hand the SDK an already-built
  * `MediaStream` (external mic, file playback, a reused stream from a prior
@@ -17,7 +17,6 @@
  * registration, `getUserMedia`) and throws a named `AgenticError`
  * (`SOURCE_STREAM_NOT_LIVE`) naming the offending index/indices instead. The
  * same contract applies to the runtime `addSource({ stream })` seam
- * (TASK-609).
  *
  * @vitest-environment jsdom
  */
@@ -329,7 +328,7 @@ describe('useArcaAudio — injected sourceStreams liveness validation (start)', 
 });
 
 // ===========================================================================
-// addSource({ stream }) — same liveness contract at runtime (TASK-609 seam)
+// addSource({ stream }) — same liveness contract at runtime (addSource seam)
 // ===========================================================================
 describe('useArcaAudio — injected stream liveness validation (addSource)', () => {
   it('(e) rejects a dead injected stream and leaves the running session usable for a subsequent valid add', async () => {
@@ -370,7 +369,7 @@ describe('useArcaAudio — injected stream liveness validation (addSource)', () 
       id = await result.current.addSource({ stream: liveStream as unknown as MediaStream });
     });
     expect(id).toBe('source-2');
-    // 4th arg since TASK-612 Lane B: a caller-built stream registers
+    // 4th arg since: a caller-built stream registers
     // caller-owned, so the mixer must not stop its tracks on removal.
     expect(roomMocks.addSource).toHaveBeenCalledWith('source-2', liveStream, 1.0, { stopTracksOnRemove: false });
   });

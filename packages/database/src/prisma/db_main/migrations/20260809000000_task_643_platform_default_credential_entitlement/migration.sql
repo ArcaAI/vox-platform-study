@@ -1,4 +1,4 @@
--- TASK-643 R6 — the platform-default-credential entitlement grant.
+-- The platform-default-credential entitlement grant.
 --
 -- Two additive boolean columns. They decide whether a tenant's provider-
 -- credential cascade may reach the SYSTEM (platform-funded) tier — i.e. whether

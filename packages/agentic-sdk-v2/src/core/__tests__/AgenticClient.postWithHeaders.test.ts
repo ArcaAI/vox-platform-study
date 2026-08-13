@@ -1,11 +1,11 @@
 /**
- * AgenticClient — `postWithHeaders<T>` (TASK-665)
+ * AgenticClient — `postWithHeaders<T>`
  *
  * A thin wrapper around the private `request`, exactly mirroring
  * `patchWithIfMatch`'s shape (see `AgenticClient.optimistic-locking.test.ts`).
  * Used by `useArcaSession.addContext` to send `X-Context-Schema-Version` on
- * a context write once the session has a pinned schema (TASK-661's header
- * contract). Only the new-method-specific behavior (header propagation) is
+ * a context write once the session has a pinned schema (header contract).
+ * Only the new-method-specific behavior (header propagation) is
  * asserted here — auth/retry/rate-limit machinery is shared and already
  * covered by `AgenticClient.test.ts`.
  *

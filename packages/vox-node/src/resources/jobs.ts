@@ -4,13 +4,13 @@
  * (`consultations/jobs/:jobId*`), the endpoints returned by
  * `ConsultationSummariesResource.generateAsync`/`generatePreSummaryAsync`.
  *
- * **G5 (plan §2.4)** — `POST :id/summary/async`'s `AsyncJobResponse.status`
+ * **G5** — `POST :id/summary/async`'s `AsyncJobResponse.status`
  * (`pending|processing|completed|failed`) and this module's
  * `JobStatusResponse.status` (`PENDING|RUNNING|COMPLETED|FAILED|CANCELLED`)
  * are TWO DIFFERENT VOCABULARIES on the same logical job lifecycle — a
  * gateway inconsistency (tracked separately), not something this SDK
  * silently normalizes. {@link isTerminalJobStatus} accepts both.
- */
+*/
 
 import { encodePathSegment } from '../core/url';
 import { parseSseStream } from '../core/sse';

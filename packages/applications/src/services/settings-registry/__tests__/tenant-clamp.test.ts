@@ -1,4 +1,4 @@
-// TASK-558 lane I — the tenant-override clamp (§9.3 M2).
+// The tenant-override clamp.
 //
 // The rule under test: a tenant override may only make a setting MORE
 // restrictive than the platform value, and may never exceed the tenant's plan
@@ -52,7 +52,7 @@ describe('clampTenantSetting — platform bound (monotone-stricter)', () => {
   });
 });
 
-describe('clampTenantSetting — entitlement ceiling (§9.3 M2)', () => {
+describe('clampTenantSetting — entitlement ceiling', () => {
   it('clamps a tenant to its PLAN limit even when the platform value is higher', () => {
     // Platform allows 100/min; the tenant's plan only entitles it to 30.
     const result = clampTenantSetting('rateLimit.maxRequests', 80, { platform: 100, entitlement: 30 });

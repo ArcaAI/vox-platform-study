@@ -14,7 +14,7 @@
 // collector lag (PG18) made the counter underreport real activity for
 // short-lived bursts. Log-line counting is authoritative and synchronous.
 //
-// Phase 1 rubric (per plan §1.18):
+// Phase 1 rubric:
 //   * R-DA-1 — non-LOCAL GUC set in txn A is gone in txn B (functional)
 //   * R-DA-2 — DISCARD ALL log-line Δ in `docker logs pgbv-postgres` is ≥ N
 

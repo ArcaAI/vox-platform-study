@@ -1,5 +1,5 @@
 /**
- * Cross-tenant probes against the agent-promotion surface (TASK-663).
+ * Cross-tenant probes against the agent-promotion surface.
  *
  * Promotion is the first surface in the product that deliberately CROSSES a
  * tenant boundary, so it is also the first place the house 404-over-403 posture

@@ -1,11 +1,11 @@
 /**
- * Pipeline catalog fetch (TASK-597 Lane E, G1).
+ * Pipeline catalog fetch.
  *
  * The Connection tab lets a v1-migrating developer pick a REAL tenant
  * pipeline instead of hand-typing a `pipelineId`. We hit the public pipeline
  * listing route directly with the same `x-api-key` the `<ArcaCompatProvider>`
  * is configured with — identical auth parity to `lib/departments.ts`
- * (TASK-560/592 D2).
+ *.
  *
  * The global prefix is `api/v1`, so the URL is
  * `{apiEndpoint}/api/v1/audio/pipelines`. The controller
@@ -14,7 +14,7 @@
  * any of the common paginated envelopes (`data`/`items`/`results`) — so a
  * future change to a wrapped response shape does not silently break the
  * picker. Mirrors `lib/departments.ts` deliberately; keep the two in sync.
- */
+*/
 
 /** One selectable pipeline. `value` is what we submit as `pipelineId`. */
 export interface PipelineOption {

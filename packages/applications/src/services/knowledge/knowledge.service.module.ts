@@ -17,7 +17,7 @@ import { IngestKnowledgeDocumentProcessor } from './ingest-knowledge-document.pr
  * via ConfigModule + the @Global SecretsModule (same convention as
  * HarnessGatewayService). CoreDatabaseModule provides the tenant-scoped
  * KnowledgeDocument/KnowledgeChunk repositories. UsageLedgerServiceModule
- * supplies IUsageLedgerService for the TASK-615 WS-D2 `embed` usage-ledger
+ * supplies IUsageLedgerService for the `embed` usage-ledger
  * emission in IngestKnowledgeDocumentProcessor (injected @Optional so unit
  * fixtures can still construct it without one).
  */

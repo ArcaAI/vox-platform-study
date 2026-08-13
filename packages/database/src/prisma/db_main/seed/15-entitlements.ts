@@ -14,8 +14,8 @@ import { SEED_TENANT_ID, SEED_USER_IDS, SEED_GLOBAL_SETTING_IDS, SEED_PLAN_ENTIT
  *      the epic lands safely dark; the fresh-DB seed value is **env-driven**
  *      so every DEPLOYED env (hope-v2-dev, staging, production) comes up **ON**
  *      while LOCAL dev and TEST/CI stay **OFF** — see the
- *      `ENTITLEMENTS_ENABLED_DEFAULT` note below (TASK-638 policy).
- *   3. TASK-615 WS-H: the metering reconcile-sweep kill-switch
+ * `ENTITLEMENTS_ENABLED_DEFAULT` note below (policy).
+ * 3.: the metering reconcile-sweep kill-switch
  *      (`metering.reconcile.enabled` GlobalSetting), same platform tenant,
  *      same env-driven fresh-DB pattern (OQ3) via a SEPARATE
  *      `METERING_RECONCILE_ENABLED_DEFAULT` var — the two switches gate
@@ -39,7 +39,7 @@ const GIB = 1024 ** 3;
  * The kill-switch's SEED-TIME initial value is
  * environment-driven so a DEPLOYED env comes up with enforcement already ON
  * without any code change, while keeping the LOCAL/committed default SAFE (OFF).
- * POLICY (TASK-638): enforcement is ON in every DEPLOYED environment and OFF
+ * POLICY: enforcement is ON in every DEPLOYED environment and OFF
  * only on a developer laptop and in test/CI:
  *
  *   - LOCAL DEV → the committed `.env.sample`/`.env.dev` leaves the var **false** →
@@ -61,7 +61,7 @@ const TRUTHY_ENV = new Set(['1', 'true', 'yes', 'on']);
 const ENTITLEMENTS_ENFORCEMENT_SEED_DEFAULT = TRUTHY_ENV.has((process.env.ENTITLEMENTS_ENABLED_DEFAULT ?? '').trim().toLowerCase());
 
 /**
- * TASK-615 WS-H — same env-driven fresh-DB pattern as
+ * Same env-driven fresh-DB pattern as
  * {@link ENTITLEMENTS_ENFORCEMENT_SEED_DEFAULT}, for the metering
  * reconcile-sweep kill-switch. Independent variable (`METERING_RECONCILE_ENABLED_DEFAULT`)
  * on purpose: the two switches gate unrelated things (quota/feature
@@ -83,7 +83,7 @@ interface PlanEntitlementSeed {
   monthlyConsultations: number | null;
   monthlyTranscriptionMinutes: number | null;
   monthlySummaries: number | null;
-  // Per-capability included allowances (TASK-615 D11), derived in TASK-638 §6
+  // Per-capability included allowances, derived in
   // from the RATIFIED business ceilings above:
   //
   //   sttSessionSeconds = transcriptionMinutes × 60 × 1.1 (session ≥ audio)
@@ -108,11 +108,11 @@ interface PlanEntitlementSeed {
   featureDnaReports: boolean;
   featureVoiceEnrollment: boolean;
   featureMonitoringAccess: boolean;
-  // TASK-643 R6 — may this plan's tenants consume the PLATFORM-DEFAULT
+  // May this plan's tenants consume the PLATFORM-DEFAULT
   // (SYSTEM-tenant) provider credential? `false` on every plan (OD-7): the
   // grant is sold per tenant via `TenantEntitlement`, because a plan-level
   // grant would hand every tenant on that tier a platform-funded cloud path —
-  // the margin hole TASK-638 closed. Kept in sync by
+  // the margin hole closed. Kept in sync by
   // `packages/applications/src/services/entitlements/__tests__/plan-matrix-parity.test.ts`.
   featurePlatformDefaultCredential: boolean;
   modelTier: string;
@@ -128,7 +128,7 @@ const PRO_VALUES = {
   maxApiKeys: 10,
   storageQuotaBytes: BigInt(100 * GIB),
   maxConcurrentSessions: 25,
-  // RATIFIED 2026-08-08 (TASK-638): PRO = $100/mo bundling 250 consultations.
+  // RATIFIED 2026-08-08: PRO = $100/mo bundling 250 consultations.
   monthlyConsultations: 250,
   monthlyTranscriptionMinutes: 5_000, // 250 × 20-min average
   monthlySummaries: 250,
@@ -147,7 +147,7 @@ const PRO_VALUES = {
 };
 
 /**
- * The seeded per-plan matrix. EXPORTED (TASK-643 §3.5.7) so the parity guard in
+ * The seeded per-plan matrix. EXPORTED so the parity guard in
  * `@arcaai/applications` can assert it field-for-field against
  * `PLAN_ENTITLEMENT_DEFAULTS` — the two copies are hand-synced and, until that
  * test, nothing checked them. Follows the same export-for-test convention as
@@ -164,7 +164,7 @@ export const PLAN_ENTITLEMENTS: PlanEntitlementSeed[] = [
     maxApiKeys: 2,
     storageQuotaBytes: BigInt(5 * GIB),
     maxConcurrentSessions: 5,
-    // RATIFIED 2026-08-08 (TASK-638): STARTER = $50/mo bundling 50 consultations.
+    // RATIFIED 2026-08-08: STARTER = $50/mo bundling 50 consultations.
     monthlyConsultations: 50,
     monthlyTranscriptionMinutes: 1_000, // 50 × 20-min average
     monthlySummaries: 50,
@@ -193,7 +193,7 @@ export const PLAN_ENTITLEMENTS: PlanEntitlementSeed[] = [
     maxApiKeys: 50,
     storageQuotaBytes: BigInt(1_000 * GIB),
     maxConcurrentSessions: 100,
-    // RATIFIED 2026-08-08 (TASK-638): ENTERPRISE is NEGOTIATED — usage is
+    // RATIFIED 2026-08-08: ENTERPRISE is NEGOTIATED — usage is
     // unlimited by default; a signed contract sets tenant-scoped overrides.
     // Structural caps (seats/departments/storage) stay finite on purpose.
     monthlyConsultations: null,
@@ -263,7 +263,7 @@ export const seedEntitlements = async (client: CorePrismaClient) => {
     `  entitlements/entitlements.enabled = ${ENTITLEMENTS_ENFORCEMENT_SEED_DEFAULT} (fresh-DB seed default; env ENTITLEMENTS_ENABLED_DEFAULT)`,
   );
 
-  // 3. TASK-615 WS-H — metering reconcile-sweep kill-switch. Same platform
+  // 3. — metering reconcile-sweep kill-switch. Same platform
   //    tenant + upsert shape as the entitlements switch above, independently
   //    env-driven (METERING_RECONCILE_ENABLED_DEFAULT). Seeded OFF: capability/
   //    usage READS never depend on it (MeteringService.getCurrentUsage is

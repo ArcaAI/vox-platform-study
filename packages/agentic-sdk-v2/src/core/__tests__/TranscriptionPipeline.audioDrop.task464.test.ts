@@ -59,7 +59,7 @@ vi.mock('@arcaai/stt', () => ({
   createSTT: vi.fn(() => sttMocks.processor),
 }));
 
-// TASK-545: local (in-browser) transcription is disabled platform-wide by
+// Local (in-browser) transcription is disabled platform-wide
 // default (`LOCAL_TRANSCRIPTION_ENABLED = false` in `../constants`). This
 // test only cares that an STT stage initializes and wires its backpressure
 // push channel — irrespective of local/remote — so force the flag back on

@@ -1,13 +1,13 @@
 #!/bin/bash
 # ============================================================================
-# TASK-346 / BUG-011 — Single-service dev launcher (Python services + workers)
+# Single-service dev launcher (Python services + workers)
 # ============================================================================
 # Starts one HOPE Python service. This script owns PROCESS SHAPE only — bind
 # address, port, conda env, the uvicorn/worker command. It is NOT a config
 # source.
 #
 # Application configuration comes from the service itself: every Python
-# service now calls the shared loader `hope_env.load_env()` (TASK-558), which
+# service now calls the shared loader `hope_env.load_env()`, which
 # reads the SAME NODE_ENV-selected root file the TypeScript gateway reads
 # (.env.dev / .env.test), with host env always winning. Defaults that merely
 # restated an env-file declaration or a pydantic field default were removed
@@ -178,7 +178,7 @@ RELOAD_DIR=""
 # and it differs from the pydantic defaults — SMR's is `google/gemma-4-e4b`,
 # harness's `smr_provider`/`smr_model` are None. Removed from here it would
 # silently change which model dev requests, and it has no declaration in the
-# root env files yet. When TASK-558 lane D generates those, this moves to
+# root env files yet. When those env files are generated, this moves to
 # .env.dev and these functions disappear.
 #
 # Everything else this script used to export is gone: SMR_OPENAI_COMPAT_ENABLED

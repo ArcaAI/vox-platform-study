@@ -1,5 +1,5 @@
 /**
- * ChangelogEntryEntity + ChangelogEntryFactory unit tests (TASK-648).
+ * ChangelogEntryEntity + ChangelogEntryFactory unit tests.
  */
 import { describe, it, expect } from 'vitest';
 import { ChangelogEntryFactory } from '../../../../factories/generated/core/ChangelogEntryFactory';

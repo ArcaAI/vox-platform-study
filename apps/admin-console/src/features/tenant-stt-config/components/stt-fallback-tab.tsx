@@ -48,7 +48,7 @@ function FallbackTabSkeleton() {
 /**
  * Speech (STT fallback) tab body — effective resolve card + the OCC
  * fallback-row editor. Extracted from the retired `/stt-config` screen so the
- * `/ai-configuration` hub can compose it as its "Speech" tab (TASK-595). The
+ * `/ai-configuration` hub can compose it as its "Speech" tab. The
  * BYO STT credentials formerly living beside it are now edited only in the
  * hub's Providers tab (the unified provider plane) — the one authoritative
  * credential editor (rule 13).

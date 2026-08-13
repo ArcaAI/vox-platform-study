@@ -1,5 +1,5 @@
 /**
- * useArcaDevices — runtime audio-input discovery (TASK-609).
+ * useArcaDevices — runtime audio-input discovery.
  *
  * Every integrator that lets a clinician pick a microphone was rebuilding the
  * same three-part dance, and getting it wrong in the same three ways:
@@ -51,7 +51,7 @@ function stubMediaDevices(initial: MediaDeviceInfo[]) {
 beforeEach(() => vi.clearAllMocks());
 afterEach(() => vi.unstubAllGlobals());
 
-describe('useArcaDevices (TASK-609)', () => {
+describe('useArcaDevices', () => {
   it('lists audio inputs only, dropping outputs and cameras', async () => {
     stubMediaDevices([
       device('mic-1', 'Built-in Microphone'),

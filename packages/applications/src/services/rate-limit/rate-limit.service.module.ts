@@ -20,7 +20,7 @@ import { RateLimitAdminService } from './rate-limit-admin.service';
 @Module({
   imports: [CommonServiceModule, GlobalSettingServiceModule],
   providers: [
-    // The `global-kv` cascade backing the per-tenant lane (TASK-558 lane I).
+    // The `global-kv` cascade backing the per-tenant lane.
     // Provided LOCALLY rather than by importing `EffectiveSettingsModule`: that
     // module also pulls the pipeline resolver and the AI task-default service,
     // none of which the throttler needs, and this service's only dependency is

@@ -11,7 +11,7 @@
 /**
  * BYO providers + decrypted-credential injection now live on the unified
  * `IProviderConnectionService` (`service='tts'`, `CLOUD_BYO_PROVIDERS.tts` —
- * TASK-570). This module keeps only the non-credential spec resolver.
+ * ). This module keeps only the non-credential spec resolver.
  */
 
 /**

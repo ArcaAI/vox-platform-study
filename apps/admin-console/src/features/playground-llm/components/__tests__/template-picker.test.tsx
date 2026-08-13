@@ -1,5 +1,5 @@
 /**
- * TASK-635 lane B4 — searchable template picker for assembled mode's
+ * searchable template picker for assembled mode's
  * `prompt_template_id` field (replaces the raw text Input at
  * `prompt-editor-card.tsx:249-257`). Covers the happy path (GET
  * admin/prompt-templates powers the combobox) and the escape hatch: a failed

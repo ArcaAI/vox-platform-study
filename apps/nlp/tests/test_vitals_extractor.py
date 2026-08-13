@@ -1,4 +1,4 @@
-"""TASK-543 — deterministic vitals extraction.
+"""Deterministic vitals extraction.
 
 The parser is cue-gated and range-guarded: a mis-parse must fail SAFE to
 ``None`` rather than emit a wrong number, and nothing is ever fabricated.

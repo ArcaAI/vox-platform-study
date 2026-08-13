@@ -1,7 +1,7 @@
 /**
- * TASK-651 §2.2 — department x visit-type template-selection matrix guard.
+ * Department x visit-type template-selection matrix guard.
  *
- * Why this exists (TASK-651 §2.1 / §2.3): template selection for the ArcaAI
+ * Why this exists: template selection for the ArcaAI
  * tenant is BELIEVED correct — all 11 departments wired, all APPROVED — but
  * nothing LOCKS it. Tier-1b (the legacy `newPatientPromptId` /
  * `revisitPromptId` department columns,
@@ -15,7 +15,7 @@
  * Pure data/consistency test over the seed constants — no database. Reads the seed
  * constants directly.
  *
- * Lives in `packages/database` (not `apps/api`, where TASK-651 filed it):
+ * Lives in `packages/database` (not `apps/api`, where filed it):
  * that package exports only `.` and `./client`, so an apps/api home would
  * need a relative import ACROSS the package boundary — which Vitest tolerates
  * (esbuild strips types) but `tsc` rejects with TS6059 'not under rootDir'.
@@ -32,7 +32,7 @@ import {
 // Build once: every template id this seed produces, plus its governance state.
 const templatesById = new Map(ARCAAI_CLINICAL_TEMPLATES.map((template) => [template.id, template]));
 
-describe('TASK-651 §2.2 — ArcaAI department x visit-type template-selection matrix', () => {
+describe('ArcaAI department x visit-type template-selection matrix', () => {
   it('covers all eleven ArcaAI clinical departments (v1 parity — no more, no fewer)', () => {
     // Guards against the matrix silently shrinking or growing without this
     // test's per-department assertions below being updated deliberately.
@@ -101,9 +101,9 @@ describe('TASK-651 §2.2 — ArcaAI department x visit-type template-selection m
     }
   });
 
-  it('no ArcaAI clinical department sets a department-scoped preSummaryPromptId (pre-summary has no department axis — TASK-651 §2.4)', () => {
+  it('no ArcaAI clinical department sets a department-scoped preSummaryPromptId (pre-summary has no department axis —)', () => {
     // Deliberate v1 behaviour, not an oversight (see this seed's own header
-    // and TASK-651 §2.4): every ArcaAI department must be
+    // and): every ArcaAI department must be
     // `preSummaryPromptId: null`. Locking it here means a future edit that
     // adds one is a conscious, reviewed change, not a silent divergence from
     // the documented cascade.

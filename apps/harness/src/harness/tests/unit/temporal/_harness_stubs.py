@@ -132,7 +132,7 @@ class StubConfig:
     # Empty (default) ⇒ GenerateInput.segment_citations stays empty (byte-identical
     # prompt). Non-empty ⇒ workflow must thread them into both GenerateInput sites.
     segment_citations: list[SegmentCitationRef] = field(default_factory=list)
-    # TASK-551 redaction. The ``apply_redaction`` stub returns
+    # Redaction. The ``apply_redaction`` stub returns
     # ``redaction_text`` (changed=True) when set, else echoes the input note
     # (changed=False). ``redaction_failed_closed`` makes it report a fail-closed
     # transform (the workflow forces a FLAG). Only exercised when the start payload
@@ -168,7 +168,7 @@ class StubRecorder:
     retrieve_inputs: list[RetrieveContextInput] = field(default_factory=list)
     generate_inputs: list[GenerateInput] = field(default_factory=list)
     run_sensors_inputs: list[RunSensorsInput] = field(default_factory=list)
-    # TASK-551 — the ApplyRedactionInput of each redaction pass.
+    # The ApplyRedactionInput of each redaction pass.
     apply_redaction_inputs: list[ApplyRedactionInput] = field(default_factory=list)
     progress_inputs: list[ReportProgressInput] = field(default_factory=list)
     # The schedule_to_close_timeout each report_progress
@@ -461,7 +461,7 @@ def make_stub_activities(config: StubConfig, recorder: StubRecorder) -> list:
 
     @activity.defn(name="apply_redaction")
     async def apply_redaction(payload: ApplyRedactionInput) -> ApplyRedactionResult:
-        # TASK-551 — DNA redaction/rewrite. Returns the configured redacted
+        # DNA redaction/rewrite. Returns the configured redacted
         # text (changed) or echoes the note (no change); ``redaction_failed_closed``
         # reports a fail-closed transform the workflow must turn into a forced FLAG.
         recorder.calls["apply_redaction"] += 1

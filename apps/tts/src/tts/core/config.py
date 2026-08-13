@@ -3,7 +3,7 @@
 Root settings use the ``TTS_`` env prefix; each provider sub-config carries
 its own prefix (``TTS_AZURE_``, ``TTS_KOKORO_``, ``TTS_PARLER_``).
 
-TASK-602: cloud credentials (Azure Speech, Sarvam) are BYOK-only — the
+cloud credentials (Azure Speech, Sarvam) are BYOK-only — the
 subscription KEY is never sourced from env; it arrives per request as a
 provider override (tenant → SYSTEM ``AiProviderConnection``). Only the non-secret
 Azure ``REGION`` remains env-set (``TTS_AZURE_REGION`` / ``AZURE_SPEECH_REGION``).
@@ -29,13 +29,13 @@ def _split_csv(value: Any) -> Any:
 class AzureSpeechConfig(BaseSettings):
     """Azure AI Speech TTS provider configuration (primary managed cloud path)."""
 
-    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
     settings_customise_sources = hope_settings_sources
 
     model_config = SettingsConfigDict(env_prefix="TTS_AZURE_")
 
     enabled: bool = False
-    # TASK-602: Azure Speech is BYOK-only. The subscription KEY is never sourced
+    # Azure Speech is BYOK-only. The subscription KEY is never sourced
     # from env — the `validation_alias` is a dead name no env var matches, and
     # `populate_by_name` is intentionally OFF so the field name cannot re-open an
     # env path either. The platform default and per-tenant keys both arrive as a
@@ -58,7 +58,7 @@ class AzureSpeechConfig(BaseSettings):
 class KokoroConfig(BaseSettings):
     """Self-hosted Kokoro (English) engine configuration."""
 
-    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
     settings_customise_sources = hope_settings_sources
 
     model_config = SettingsConfigDict(env_prefix="TTS_KOKORO_")
@@ -71,7 +71,7 @@ class KokoroConfig(BaseSettings):
 class IndicParlerConfig(BaseSettings):
     """Self-hosted AI4Bharat Indic Parler-TTS (Malayalam) engine configuration."""
 
-    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
     settings_customise_sources = hope_settings_sources
 
     model_config = SettingsConfigDict(env_prefix="TTS_PARLER_")
@@ -100,7 +100,7 @@ class IndicF5Config(BaseSettings):
     TTS_INDICF5_ENABLED=true in production without written clearance.
     """
 
-    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
     settings_customise_sources = hope_settings_sources
 
     model_config = SettingsConfigDict(env_prefix="TTS_INDICF5_")
@@ -121,13 +121,13 @@ class SarvamConfig(BaseSettings):
     enabling for real patient data.
     """
 
-    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
     settings_customise_sources = hope_settings_sources
 
     model_config = SettingsConfigDict(env_prefix="TTS_SARVAM_")
 
     enabled: bool = False
-    # TASK-602: Sarvam is BYOK-only. The api-subscription-KEY is never sourced from
+    # Sarvam is BYOK-only. The api-subscription-KEY is never sourced from
     # env — the `validation_alias` is a dead name and `populate_by_name` is OFF, so
     # neither `TTS_SARVAM_API_KEY` nor the field name populates it. The key arrives
     # as a request `provider_override`, applied by the router via `model_copy`.
@@ -148,7 +148,7 @@ class SarvamConfig(BaseSettings):
 class Settings(BaseSettings):
     """Root TTS service settings."""
 
-    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
     settings_customise_sources = hope_settings_sources
 
     model_config = SettingsConfigDict(env_prefix="TTS_")
@@ -170,7 +170,7 @@ class Settings(BaseSettings):
     default_format: str = "pcm"
     sample_rate: int = 24000
 
-    # NOTE: there is deliberately NO `routing_en` / `routing_ml` here (TASK-577 /
+    # NOTE: there is deliberately NO `routing_en` / `routing_ml` here ( /
     # F1). Per-locale provider SELECTION is DB-sourced — the SYSTEM
     # `TenantTtsConfig` default, resolved by the gateway and injected per request
     # — so env can no longer bake a vendor order. The router fails CLOSED when no
@@ -199,7 +199,7 @@ class Settings(BaseSettings):
     # via `core/effective_config.py`.
     model_cache_ttl_seconds: int = 600
 
-    # Observability (TASK-636 OBS-13). Default OFF (TASK-411 invariant: never
+    # Observability. Default OFF (never
     # require a reachable collector to boot/serve). `otel_exporter_endpoint`
     # defaults to empty (no hardcoded localhost target) so tracing activates
     # ONLY when BOTH `otel_enabled` AND an endpoint are explicitly set — see
@@ -209,7 +209,7 @@ class Settings(BaseSettings):
     otel_exporter_endpoint: str = ""
     otel_service_name: str = "tts"
     otel_service_namespace: str = "hope"
-    # TASK-636 OBS-18. Resolved from the environment, defaulting to DEVELOPMENT.
+    # Resolved from the environment, defaulting to DEVELOPMENT.
     # Copied "production" from the SMR reference, which was itself the origin of
     # this defect fleet-wide. A hardcoded "production" tags a developer laptop's
     # spans as production data — a mislabelled dev span is noise, a mislabelled

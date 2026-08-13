@@ -8,7 +8,7 @@
  *   1. CALLER WINS — a parameter present on the request body is never clobbered.
  *   2. Otherwise the resolved profile value is injected.
  *   3. With NO profile rows (the shipped seed state) the forwarded body is
- *      BYTE-IDENTICAL to today's — the ticket §7 silent-change guard.
+ * BYTE-IDENTICAL to today's — silent-change guard.
  *   4. A throwing resolver is FAIL-OPEN for parameters (the request still
  *      goes out), in contrast to the fail-closed model-identity path.
  */

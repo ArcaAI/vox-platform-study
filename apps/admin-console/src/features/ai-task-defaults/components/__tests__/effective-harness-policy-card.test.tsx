@@ -1,8 +1,8 @@
 /**
- * Read-only effective HarnessPolicy summary (TASK-547 requirement 4 — OD-2).
+ * Read-only effective HarnessPolicy summary.
  * Renders resolved values + a per-key "who controls this" label; asserts NO
  * mutating controls exist anywhere on the card (per the TDD test list item
- * 5: "effective-config view ... no mutating controls present").
+ * 5: "effective-config view... no mutating controls present").
  */
 
 import { cleanup, screen, waitFor } from '@testing-library/react';

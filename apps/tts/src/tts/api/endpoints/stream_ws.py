@@ -45,7 +45,7 @@ _CLOSE_AUTH = 4401
 
 class _SessionUsage:
     """Accumulates one session's accepted characters + synthesized audio bytes
-    (TASK-615 WS-E). Shared mutable state between the main audio loop and the
+. Shared mutable state between the main audio loop and the
     ``_pump_input`` reader task, since "characters accepted" is everything the
     client pushed regardless of whether it was ever successfully synthesized.
     """
@@ -170,7 +170,7 @@ async def audio_stream(ws: WebSocket) -> None:
         {"type": "ready", "sample_rate": settings.sample_rate, "format": "pcm", "channels": 1}
     )
 
-    # TASK-615 WS-E: accumulated across the whole session (every "text" frame
+    # Accumulated across the whole session (every "text" frame
     # pushed, every binary PCM frame sent) and surfaced at teardown — success
     # OR abort — so the gateway (which fronts this socket) can emit CHARACTER
     # + AUDIO_SECOND ledger rows. `locale` is resolved once, up front — the
@@ -262,7 +262,7 @@ async def _send_error(ws: WebSocket, code: str, message: str) -> None:
 async def _send_error_frame(ws: WebSocket, code: str, message: str) -> None:
     """Same error frame as ``_send_error``, WITHOUT closing the socket.
 
-    Used from the main audio loop's except branches (TASK-615 WS-E): the
+    Used from the main audio loop's except branches: the
     ``finally`` block still has a usage frame to send after this, so closing
     here would ship before it. The early up-front-rejection paths (before any
     stream/reader exists — nothing to report usage for) keep using

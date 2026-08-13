@@ -1,4 +1,4 @@
-// Batch-limit resolution (TASK-604 lane A/B seam).
+// Batch-limit resolution.
 //
 // The gateway must never hardcode "5" or "60" again: it asks this service, which
 // reads the registry-declared `stt.batch.*` knobs through EffectiveSettingsService.

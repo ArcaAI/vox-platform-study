@@ -10,13 +10,13 @@ import { TenantAllowedOriginEntityMapper } from '../../../mappers';
 import { TenantAllowedOrigin } from '../../../models';
 
 /**
- * TASK-610 CORS control plane — one row per (origin, tenant) GRANT.
+ * CORS control plane — one row per (origin, tenant) GRANT.
  *
  * HAND-AUTHORED — `gen:repository` is broken (fails on a bad argument); this
  * follows the `AiProviderConnectionRepository` / `TenantSttConfigRepository`
  * precedent in this folder.
  *
- * §4B superseded single ownership: an origin does not belong to exactly one
+ * Single ownership was superseded: an origin does not belong to exactly one
  * tenant, it grants a SET of tenants permission to act on it. Uniqueness is
  * therefore scoped to the (origin, tenantId) PAIR (`TenantAllowedOrigin_origin_tenantId_unique`)
  * — the same tenant cannot register the same origin twice, but two different

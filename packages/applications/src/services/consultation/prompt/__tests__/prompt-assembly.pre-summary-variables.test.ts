@@ -1,5 +1,5 @@
 /**
- * TASK-634 Phase 2b — the NATIVE Vox v2 pre-summary path must interpolate v1's
+ * The NATIVE Vox v2 pre-summary path must interpolate v1's
  * nine single-brace placeholders (D-08).
  *
  * The seeded pre-summary bodies (the ArcaAI tenant row AND the SYSTEM default
@@ -196,7 +196,7 @@ describe('PromptAssemblyService — v1 pre-summary variables (native Vox v2 path
   });
 
   /**
-   * TASK-634 Phase 1 follow-up. The pre-summary chain has NO department axis, so
+   * Follow-up. The pre-summary chain has NO department axis, so
    * `resolvePreSummaryPromptId` needs the tenant explicitly: without it a
    * consultation with no department skips the tenant tier and lands on the
    * SYSTEM default — or a 503. `assemble()` runs its own `resolve()` (the one

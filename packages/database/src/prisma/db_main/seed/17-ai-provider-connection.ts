@@ -9,7 +9,7 @@ import { SYSTEM_TENANT_ID, SYSTEM_USER_ID } from './00-constants';
  * the platform-default catalog entry recording WHERE a provider lives and (once
  * an admin sets one) HOW to authenticate to it.
  *
- * SEED-AUTHORITATIVE Day-1 posture (TASK-578, OD-1). The SYSTEM rows — not env —
+ * SEED-AUTHORITATIVE Day-1 posture (OD-1). The SYSTEM rows — not env
  * are the authoritative default source. Two classes of row:
  *
  *   - BUILT-IN-LOCAL llm engines (`ollama`, `lm-studio`, `built-in`, `vllm`,
@@ -30,7 +30,7 @@ import { SYSTEM_TENANT_ID, SYSTEM_USER_ID } from './00-constants';
  * overwritten — the connection is admin-tunable at runtime and a re-seed must
  * not clobber an admin's endpoint or key.
  *
- * UNIFIED PLANE (TASK-569): rows now carry a `service` discriminator. The `llm`
+ * UNIFIED PLANE: rows now carry a `service` discriminator. The `llm`
  * service seeds every canonical serving provider (AI_MODEL_PROVIDERS + the new
  * cloud providers anthropic/vertex); `stt` and `tts` seed only their CLOUD
  * providers (self-host STT/TTS engines are not credential-bearing here).
@@ -151,7 +151,7 @@ export const SYSTEM_AI_PROVIDER_CONNECTIONS: AiProviderConnectionSeed[] = [
     metaData: null,
   },
   {
-    // OpenAI (cloud) — speech-to-text (TASK-567) and OpenAI-compatible LLM
+    // OpenAI (cloud) — speech-to-text and OpenAI-compatible LLM
     // endpoints. baseUrl blank; a global admin fills it in. NOTE: the public
     // API is not PHI-safe — point at an Azure OpenAI / VPC host before enabling
     // for patient data.
@@ -199,9 +199,9 @@ export const SYSTEM_AI_PROVIDER_CONNECTIONS: AiProviderConnectionSeed[] = [
     metaData: { note: 'Base URL from SMR_LLAMA_CPP_BASE_URL (k3s Service; env-tier connection identity).' },
   },
 
-  // ── New LLM cloud providers (TASK-569 freeze; functional in TASK-572) ──────
+  // ── New LLM cloud providers (freeze; functional in) ──────
   {
-    // Anthropic Messages API (cloud). Catalog-only until TASK-572 lands the SMR
+    // Anthropic Messages API (cloud). Catalog-only until lands the SMR
     // adapter. NOTE: the public API is not PHI-safe — route via a compliant
     // endpoint before enabling for patient data.
     id: '87000000-0000-0000-0000-00000000000a',
@@ -218,7 +218,7 @@ export const SYSTEM_AI_PROVIDER_CONNECTIONS: AiProviderConnectionSeed[] = [
     metaData: null,
   },
   {
-    // Google Vertex AI (cloud). Catalog-only until TASK-572 lands the SMR
+    // Google Vertex AI (cloud). Catalog-only until lands the SMR
     // adapter. NOTE: the public API is not PHI-safe — use a compliant project.
     id: '87000000-0000-0000-0000-00000000000b',
     tenantId: SYSTEM_TENANT_ID,
@@ -316,7 +316,7 @@ export const SYSTEM_AI_PROVIDER_CONNECTIONS: AiProviderConnectionSeed[] = [
 
 /**
  * Compile-time guard: the LLM service must cover every canonical serving
- * provider. Scoped to `service === 'llm'` under the unified plane (TASK-569) —
+ * provider. Scoped to `service === 'llm'` under the unified plane
  * the STT/TTS catalog rows are cloud-only and additive. Kept as a type-level
  * assertion so adding a provider to `AI_MODEL_PROVIDERS` without an `llm` seed
  * row fails the build, not just the test.

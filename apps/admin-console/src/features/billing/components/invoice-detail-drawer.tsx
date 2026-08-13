@@ -33,7 +33,7 @@ function toastError(err: unknown, fallback: string) {
 
 /** Right slide-over for one invoice: summary + lines + adjustments, with the
  * DRAFT→FINALIZE/VOID lifecycle (If-Match OCC) and a credit-memo dialog for
- * FINALIZED periods (TASK-615 #15b). */
+ * FINALIZED periods. */
 export function InvoiceDetailDrawer({ invoiceId, onClose }: { invoiceId: string | null; onClose: () => void }) {
   const detail = useInvoice(invoiceId);
   const invoice = detail.data?.data ?? null;

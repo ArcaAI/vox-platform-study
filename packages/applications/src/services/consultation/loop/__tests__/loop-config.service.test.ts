@@ -1,5 +1,5 @@
 /**
- * TASK-662 — LoopConfigService.resolveForConsultation.
+ * LoopConfigService.resolveForConsultation.
  *
  * Every resolution failure degrades to the disabled config rather than
  * throwing: missing/cross-tenant consultation, no department, no default
@@ -18,9 +18,9 @@ const mockClsService = { get: vi.fn(), set: vi.fn() };
 const mockEventEmitter = { emit: vi.fn() };
 
 const mockConsultationRepository = { findById: vi.fn() };
-// TASK-664 added `findAllByDepartment` (the agent roster read). Defaulted to an
+// Added `findAllByDepartment` (the agent roster read). Defaulted to an
 // empty roster in `beforeEach` so every pre-existing case keeps asserting the
-// TASK-662 shape: no roster means `reasoningEnabled: false` and `agents: []`.
+// Shape: no roster means `reasoningEnabled: false` and `agents: []`.
 const mockAgentRepository = { findDefaultForDepartment: vi.fn(), findAllByDepartment: vi.fn() };
 const mockAgentVersionRepository = { findLatestForAgent: vi.fn() };
 const mockContextSchemaRepository = { findDefaultForScope: vi.fn() };
@@ -60,7 +60,7 @@ function definitionWithKind(kindKey: string, primitive: string) {
 
 const SCHEMA_ROW = { id: 'schema-1', pinnedVersionNumber: 3, status: 'PUBLISHED' };
 
-describe('LoopConfigService.resolveForConsultation — TASK-662', () => {
+describe('LoopConfigService.resolveForConsultation', () => {
   let service: LoopConfigService;
 
   beforeEach(() => {
@@ -85,12 +85,12 @@ describe('LoopConfigService.resolveForConsultation — TASK-662', () => {
       budget: DEFAULT_BUDGET,
       startActions: [],
       endingActions: [],
-      // TASK-664 — a degraded config carries an EMPTY roster and the reasoning
+      // A degraded config carries an EMPTY roster and the reasoning
       // lane OFF, so a consultation whose config could not be resolved keeps
       // behaving exactly as it did before the deliberative lane existed.
       reasoningEnabled: false,
       agents: [],
-      // TASK-685 — no bound on a disabled config: that branch completes
+      // No bound on a disabled config: that branch completes
       // immediately and never reaches the wait the bound applies to.
       idleTimeoutSeconds: null,
     });
@@ -292,7 +292,7 @@ describe('LoopConfigService.resolveForConsultation — TASK-662', () => {
   });
 });
 
-describe('LoopConfigService — agent roster (TASK-664)', () => {
+describe('LoopConfigService — agent roster', () => {
   let service: LoopConfigService;
 
   const PRIMARY = {
@@ -357,7 +357,7 @@ describe('LoopConfigService — agent roster (TASK-664)', () => {
     expect((await service.resolveForConsultation('tenant-1', 'consult-1')).reasoningEnabled).toBe(true);
   });
 
-  it('leaves reasoning OFF for a single-agent department (exactly TASK-662 behaviour)', async () => {
+  it('leaves reasoning OFF for a single-agent department (exactly the original behaviour)', async () => {
     mockAgentRepository.findAllByDepartment.mockResolvedValue([PRIMARY]);
 
     const result = await service.resolveForConsultation('tenant-1', 'consult-1');
@@ -368,7 +368,7 @@ describe('LoopConfigService — agent roster (TASK-664)', () => {
   });
 
   it('falls back to the department DEFAULT agent as primary when no agent carries the PRIMARY role', async () => {
-    // A department configured before TASK-659 has a default but no roles. The
+    // A department configured with a default but no roles. The
     // loop must still have exactly one note owner rather than none.
     const rolelessDefault = { ...PRIMARY, role: 'SPECIALIST' };
     mockAgentRepository.findDefaultForDepartment.mockResolvedValue(rolelessDefault);
@@ -401,14 +401,14 @@ describe('LoopConfigService — agent roster (TASK-664)', () => {
 });
 
 /**
- * TASK-685 — the loop's IDLE lifecycle bound.
+ * The loop's IDLE lifecycle bound.
  *
  * This resolution is the ONLY path the bound can reach the workflow by: the
  * harness pins the config at start and never re-reads it (C1), so a bound that
  * fails to resolve here is a loop that parks forever — the exact defect the
  * ticket fixes, reintroduced one layer up.
  */
-describe('LoopConfigService.resolveForConsultation — TASK-685 idle bound', () => {
+describe('LoopConfigService.resolveForConsultation — idle bound', () => {
   /** The same fake platform cache the settings-registry suites use. */
   function settingsWith(value: unknown): TenantSettingsService {
     const store = new Map<string, unknown>(value === undefined ? [] : [[HARNESS_LOOP_IDLE_TIMEOUT_SECONDS_KEY, value]]);
@@ -443,7 +443,8 @@ describe('LoopConfigService.resolveForConsultation — TASK-685 idle bound', () 
   it('is a registered `global-kv` descriptor, not an env var', () => {
     // The tier argument, asserted rather than asserted-in-prose: a value an
     // operator must be able to change without a redeploy is not an env var
-    // (§9.2 L1), and it is below no bootstrap floor.
+    // (env vars are immutable for the process lifetime), and it is below no
+    // bootstrap floor.
     const descriptor = HOPE_SETTINGS_REGISTRY.get(HARNESS_LOOP_IDLE_TIMEOUT_SECONDS_KEY);
     expect(descriptor).toBeDefined();
     expect(descriptor!.tier).toBe('global-kv');

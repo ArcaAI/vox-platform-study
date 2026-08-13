@@ -1,10 +1,10 @@
--- TASK-567 — Per-Tenant STT Fallback Configuration + BYOK
+-- Per-Tenant STT Fallback Configuration + BYOK
 -- Additive only: two new tenant-scoped tables under the `core` schema plus two
 -- new audit ResourceType enum members. No data is touched. TenantSttConfig holds
 -- one row per tenant (SYSTEM tenant = platform default) carrying the fallback
 -- pointer + auto-switch flag; TenantSttProviderCredential holds optional
 -- per-(tenant,provider) bring-your-own API keys as Vault-Transit ciphertext
--- (encryptedApiKey/keyVersion). Mirrors TASK-496 (tenant TTS config).
+-- (encryptedApiKey/keyVersion). Mirrors tenant TTS config.
 
 -- CreateTable
 CREATE TABLE "core"."TenantSttConfig" (

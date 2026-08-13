@@ -1,5 +1,5 @@
 /**
- * TASK-687 real-database proof — the note-row invariant, against live Postgres.
+ * Real-database proof — the note-row invariant, against live Postgres.
  *
  * Not a unit test. Runs against the ISOLATED test database on port 5433 ONLY
  * (documented throwaway; `pnpm infra:test:down` removes its volumes):

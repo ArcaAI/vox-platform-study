@@ -36,7 +36,7 @@ import { AUTH_ENDPOINTS, DEPARTMENT_ENDPOINTS, PERSONALIZATION_ENDPOINTS, USER_S
 // Single source of truth for the `arcaai-config` IDB
 // schema (now v2 with `user-preferences` and `personalization` stores).
 import { configDBGet, configDBSet, USER_PREFERENCES_STORE } from '../core/configDB';
-// TASK-665 — schema discovery, fetched exactly like `modelRegistry.loadTenantConfig()` below.
+// Schema discovery, fetched exactly like `modelRegistry.loadTenantConfig()` below.
 import { fetchConsultationSchema } from '../core/ConsultationSchemaClient';
 import type { ConsultationSchemaBundle } from '../types/consultationSchema';
 
@@ -263,7 +263,7 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
   const configManagerRef = useRef<ConfigManager | null>(null);
   const namespaceRef = useRef<string>('pre-login');
   const tenantConfigPromiseRef = useRef<Promise<unknown> | null>(null);
-  // TASK-665 — cached exactly like `tenantConfigPromiseRef` so mount and a
+  // Cached exactly like `tenantConfigPromiseRef` so mount and a
   // subsequent tenant switch each fan out at most one discovery-bundle fetch.
   const consultationSchemaPromiseRef = useRef<Promise<ConsultationSchemaBundle> | null>(null);
 
@@ -495,7 +495,7 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
         tenantOp.error(error as Error);
       });
 
-    // TASK-665 — cache the consultation context schema discovery-bundle fetch
+    // Cache the consultation context schema discovery-bundle fetch
     // exactly like `tenantConfigPromise` above: kicked off once here so the
     // store is populated as soon as it resolves even if `init()` below never
     // runs (no credentials), then awaited AGAIN inside `init()` before
@@ -508,7 +508,7 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
     }
     const consultationSchemaPromise = consultationSchemaPromiseRef.current;
     consultationSchemaPromise.then((bundle) => {
-      // TASK-671: a DEPARTMENT-scoped re-fetch (kicked once `me.departmentId`
+      // A DEPARTMENT-scoped re-fetch (kicked once `me.departmentId`
       // is known in Step 1 below) may already have superseded this
       // tenant-scoped default in the ref. Guard so a late-resolving
       // tenant-scoped response can never clobber the more specific one.
@@ -546,7 +546,7 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
         return;
       }
 
-      // TASK-671 — once `me.departmentId` is known, prefer a
+      // Once `me.departmentId` is known, prefer a
       // DEPARTMENT-scoped schema bundle over the tenant-scoped default kicked
       // off eagerly above (before `me` was known, to cover the no-credentials
       // path where init() never reaches this line). The discovery endpoint
@@ -680,7 +680,7 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
         });
       }
 
-      // ---- Step 4.5 (TASK-665, department-scoped per TASK-671): resolve the
+      // ---- Step 4.5 (department-scoped): resolve the
       // pinned consultation context schema before `configReady` flips, so a
       // client's first render already has the tenant's (or department's)
       // context-kind vocabulary (or the safe "unconfigured" bundle) to build
@@ -905,7 +905,7 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
           }
         }
 
-        // TASK-665 — re-fetch the consultation context schema discovery
+        // Re-fetch the consultation context schema discovery
         // bundle for the INCOMING identity. `clearTenantSessionData()`
         // already nulled `consultationSchema` synchronously above (before
         // this async tail runs), so without this the outgoing tenant's
@@ -914,7 +914,7 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
         // tenant-config reload block above closes for `tenantConfig`.
         // `fetchConsultationSchema` never rejects, so this try/catch is
         // defensive-only, matching the surrounding blocks' style.
-        // TASK-671 — unlike mount (where `me.departmentId` isn't known until
+        // Unlike mount (where `me.departmentId` isn't known until
         // AFTER the schema fetch is kicked off), `effectiveDepartmentId` is
         // already resolved for the INCOMING identity by the time this effect
         // runs (same value the department cascade re-fetch below uses), so a

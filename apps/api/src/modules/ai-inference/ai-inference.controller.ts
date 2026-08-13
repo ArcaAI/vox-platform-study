@@ -60,7 +60,7 @@ export class AiInferenceController {
     @Optional()
     @Inject(IAiRuntimeProfileService)
     private readonly aiRuntimeProfileService?: IAiRuntimeProfileService,
-    // TASK-615 WS-D2 (item 2) — tenantId + clinician-attribution source for
+    // (item 2) — tenantId + clinician-attribution source for
     // the playground NER usage-ledger row. Optional (mirrors AiInferenceClient's
     // own `cls` field) so unit fixtures compile without a mock; absent ⇒ no
     // tenantId is resolvable, so emission simply doesn't happen (see below).
@@ -130,7 +130,7 @@ export class AiInferenceController {
   }
 
   /**
-   * Emit the playground `ner.extract` usage row (TASK-615 WS-D2). This is the
+   * Emit the playground `ner.extract` usage row. This is the
    * ONE NER call site with no consultation context — `buildNerUsageEvent`
    * (shared with ner.processor.ts / summary.service.ts) omits
    * `consultationId` here and attributes `doctorId` instead, when the CLS

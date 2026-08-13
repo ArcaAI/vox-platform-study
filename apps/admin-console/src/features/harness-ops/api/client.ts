@@ -81,7 +81,7 @@ export function createGoldenCase(goldenSetId: string, body: CreateGoldenCaseBody
 
 /**
  * Export gate-edit corpus candidates for the "promote to golden case"
- * affordance (TASK-549 / GAP-A1). Requires `manage:HarnessPolicy` (the
+ * affordance (/ GAP-A1). Requires `manage:HarnessPolicy` (the
  * gateway gates this GET on `manage`, unusually for a read — the payload is
  * unreviewed clinical-derived proposals, not a plain catalog listing).
  */

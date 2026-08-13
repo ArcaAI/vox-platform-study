@@ -1,5 +1,5 @@
 /**
- * Trailing reconciliation window (TASK-638 §6 rule 4).
+ * Trailing reconciliation window (rule 4).
  *
  * The rule these tests protect: NEVER reconcile a day the provider has not
  * finished counting. A drift alert that only means "the vendor is still

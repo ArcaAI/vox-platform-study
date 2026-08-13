@@ -1,10 +1,10 @@
-"""TDD tests for TASK-615 WS-E: wiring the dead ``record_entities()`` metric.
+"""TDD tests for wiring the dead ``record_entities()`` metric.
 
 current-state-review.md §2.4: ``record_entities()`` had ZERO call-sites outside
 its own definition/docstring — the advertised entities/documents-processed
 count was computed nowhere, and the only place an entity count was observed
 was a prose log line (``classify.py:87``). This wires it at the real
-call-site (``TokenClassifier.process()``, the shared implementation behind
+call-site (``TokenClassifier.process``, the shared implementation behind
 both the REST and WebSocket token-classification routes) and proves the
 Prometheus-scrapable counters move — the existing OTel-only export stays,
 Prometheus is the ADDITION, not a replacement.

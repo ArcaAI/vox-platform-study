@@ -16,7 +16,7 @@ import { useSupersedeSellRate } from '../api/hooks';
 import type { SellRate } from '../api/types';
 
 /**
- * Supersede one SELL rate row (TASK-638 §7) — the write half of the rate card.
+ * Supersede one SELL rate row — the write half of the rate card.
  *
  * A supersede REPRICES a row: the dimensions (capability · unit · provider ·
  * plan tier) are inherited server-side and shown read-only here, because

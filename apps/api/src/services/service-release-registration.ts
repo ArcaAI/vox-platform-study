@@ -2,21 +2,21 @@ import * as os from 'node:os';
 import { BuildInfo, BuildInfoService, IServiceReleaseService, RegisterInstanceRequest } from '@arcaai/applications';
 
 /**
- * Gateway self-registration (TASK-648 W9).
+ * Gateway self-registration.
  *
  * The gateway is the ONLY process that registers in-process — it already
  * holds `IServiceReleaseService`, so it calls `registerInstance()` directly
- * rather than making a self-HTTP call (ticket §3.4). Every other HOPE
+ * rather than making a self-HTTP call. Every other HOPE
  * process (the 6 Python services, admin-console, the 2 workers) POSTs to
  * `/api/v1/internal/service-releases` instead.
  *
- * THE CRITICAL RULE (ticket §3.7): registration is best-effort and must
+ * THE CRITICAL RULE: registration is best-effort and must
  * NEVER block or fail process boot. `startServiceReleaseRegistration` never
  * awaits the initial call, every call is wrapped in a bounded timeout, and
  * no exception escapes past this module.
  */
 
-/** Ticket §3.4 — "heartbeats every 5 minutes". */
+/** "heartbeats every 5 minutes". */
 export const DEFAULT_HEARTBEAT_INTERVAL_MS = 5 * 60 * 1000;
 
 /** Bounded — this must never hang a heartbeat, let alone process boot. */

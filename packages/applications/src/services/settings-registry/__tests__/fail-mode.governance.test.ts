@@ -1,10 +1,10 @@
-// TASK-558 lane F — `failMode` semantics + the taxonomy governance invariants.
+// `failMode` semantics + the taxonomy governance invariants.
 //
 // `failMode` answers ONE question: what happens when NO tier supplies a value?
 //   - `closed`          → throw. Never substitute a default. (secrets, provider/model SELECTION)
 //   - `open-to-default` → fall back to `descriptor.default`.  (tuning knobs, feature flags)
 //
-// Plan §4 B3 / §9.3 M5. The reference behaviour being generalised is
+// The reference behaviour being generalised is
 // `apps/guardrail/src/guardrail/core/tenant_config.py` — "Selection is DB-only
 // (fail-closed at the dependency layer when the resolved config is empty) …
 // the caller must not fall back to env for provider/model selection."
@@ -51,7 +51,7 @@ describe('SettingsRegistry — secret ⇒ fail-closed (assembly invariant)', () 
     expect(r.secrets().map((d) => d.key)).toEqual(['b']);
   });
 
-  // TASK-585 follow-up: `sampleValue` puts a ready-to-use value into a
+  // `sampleValue` puts a ready-to-use value into a
   // COMMITTED template file (`.env.sample`) — it must never coexist with
   // `sensitivity: 'secret'`, or a "sample" becomes a real leaked credential.
   it('rejects a secret-sensitivity descriptor that declares a sampleValue', () => {
@@ -124,7 +124,7 @@ describe('HOPE_SETTINGS_REGISTRY — failMode governance', () => {
     }
   });
 
-  // `targetTier` records the eventual home when this ticket's honest `tier` is
+  // `targetTier` records the eventual home when the present-tense `tier` is
   // NOT where the key ends up. Setting it equal to `tier` is meaningless noise.
   it('targetTier, when present, differs from the current tier', () => {
     for (const d of HOPE_SETTINGS_REGISTRY.list()) {
@@ -133,7 +133,7 @@ describe('HOPE_SETTINGS_REGISTRY — failMode governance', () => {
   });
 });
 
-describe('toEnvVarName — the mechanical dotted-key ↔ env-var 1:1 (plan §3.3)', () => {
+describe('toEnvVarName — the mechanical dotted-key ↔ env-var 1:1', () => {
   it('maps dotted lowerCamel segments to SCREAMING_SNAKE', () => {
     expect(toEnvVarName('jwt.secretKey')).toBe('JWT_SECRET_KEY');
     expect(toEnvVarName('storage.minio.endpoint')).toBe('STORAGE_MINIO_ENDPOINT');
@@ -182,7 +182,7 @@ describe('env/vault-kv descriptor keys resolve to the real variable names', () =
     'minio.secretKey': 'MINIO_SECRET_KEY',
     's3.accessKey': 'S3_ACCESS_KEY',
     's3.secretKey': 'S3_SECRET_KEY',
-    // TASK-602: azure.speechKey / smrAzure.apiKey / smrOpenai.apiKey /
+    // azure.speechKey / smrAzure.apiKey / smrOpenai.apiKey /
     // smrAnthropic.apiKey / ttsSarvam.apiKey were removed from the registry — the
     // STT/TTS/SMR cloud credentials are BYOK-only (db-secret / AiProviderConnection),
     // no longer vault-kv platform secrets. azure.foundryApiKey stays (out of scope).
@@ -191,7 +191,7 @@ describe('env/vault-kv descriptor keys resolve to the real variable names', () =
     'harnessJudgeOpenaiCompat.apiKey': 'HARNESS_JUDGE_OPENAI_COMPAT_API_KEY',
     'harness.claimCheck.accessKey': 'HARNESS_CLAIM_CHECK_ACCESS_KEY',
     'harness.claimCheck.secretKey': 'HARNESS_CLAIM_CHECK_SECRET_KEY',
-    // ── env (SMR cloud-provider connection config — TASK-572) ──
+    // ── env (SMR cloud-provider connection config) ──
     'smrOpenai.baseUrl': 'SMR_OPENAI_BASE_URL',
     'smrOpenai.organization': 'SMR_OPENAI_ORGANIZATION',
     'smrOpenai.defaultModel': 'SMR_OPENAI_DEFAULT_MODEL',
@@ -217,11 +217,11 @@ describe('env/vault-kv descriptor keys resolve to the real variable names', () =
     'vault.dbAdminPass': 'VAULT_DB_ADMIN_PASS',
     secretsProvider: 'SECRETS_PROVIDER',
     // Storage bootstrap fallback, superseded by the SYSTEM TenantStorageConfig row
-    // once seeded (TASK-558 lane E).
+    // once seeded.
     'minio.endpoint': 'MINIO_ENDPOINT',
     port: 'PORT',
     logLevel: 'LOG_LEVEL',
-    // `corsAllowedOrigins` is deliberately ABSENT — TASK-610 §4A.1 removed the
+    // `corsAllowedOrigins` is deliberately ABSENT — the origin-enforcement work removed the
     // descriptor entirely (no env var ever controls the CORS allow-list; the
     // `TenantAllowedOrigin` table is the sole source). It is `global-kv`-tier
     // anyway (filtered out by the `env`/`vault-kv` guard below), so its
@@ -236,7 +236,7 @@ describe('env/vault-kv descriptor keys resolve to the real variable names', () =
     'rateLimit.windowMs': 'RATE_LIMIT_WINDOW_MS',
     'registration.selfSignupEnabled': 'REGISTRATION_SELF_SIGNUP_ENABLED',
     'entitlements.enabledDefault': 'ENTITLEMENTS_ENABLED_DEFAULT',
-    // TASK-615 WS-H — seed-time-only default for the metering reconcile
+    // Seed-time-only default for the metering reconcile
     // sweep, mirroring entitlements.enabledDefault exactly (see
     // metering.descriptors.ts).
     'metering.reconcile.enabledDefault': 'METERING_RECONCILE_ENABLED_DEFAULT',
@@ -257,7 +257,7 @@ describe('env/vault-kv descriptor keys resolve to the real variable names', () =
    * Descriptors whose value is addressed by a Vault kv-v2 PATH rather than by an
    * environment variable, so the dotted↔env 1:1 does not apply to them.
    *
-   * `storage.platformDefault.credentials` (TASK-558 lane E) describes the
+   * `storage.platformDefault.credentials` describes the
    * `TenantStorageConfig.credentialsRef` pointer — the platform storage row names a
    * Vault path instead of carrying keys. The values BEHIND that pointer are the
    * ordinary env-bound secrets `minio.accessKey` / `minio.secretKey`, which are
@@ -284,7 +284,7 @@ describe('env/vault-kv descriptor keys resolve to the real variable names', () =
   });
 });
 
-describe('API_KEY_PEPPER — staged, keyVersion-aware rotation (plan §9.2 L6)', () => {
+describe('API_KEY_PEPPER — staged, keyVersion-aware rotation', () => {
   const pepper = () => HOPE_SETTINGS_REGISTRY.getOrThrow('api.keyPepper');
 
   it('is a vault-kv secret that fails closed', () => {

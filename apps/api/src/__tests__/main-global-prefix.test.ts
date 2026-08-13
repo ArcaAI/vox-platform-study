@@ -154,8 +154,8 @@ describe('main.ts configuration regression guards', () => {
     });
   });
 
-  // TASK-558 lane D moved the pre-bootstrap `process.env` reads (PORT,
-  // LOG_LEVEL, SHUTDOWN_*_MS) behind the validated env schema (plan §4 B5),
+  // Moved the pre-bootstrap `process.env` reads (PORT,
+  // LOG_LEVEL, SHUTDOWN_*_MS) behind the validated env schema,
   // so the source no longer carries an inline `|| 8868`
   // fallback. The DEFAULT itself did not change — it is now declared on the
   // `port` descriptor and asserted behaviourally in

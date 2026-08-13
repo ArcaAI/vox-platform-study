@@ -1,11 +1,11 @@
 /**
  * Cross-tenant + governance probes against `TenantAllowedOriginController`
- * (`/api/v1/admin/allowed-origins`) — TASK-641 T-16.
+ * (`/api/v1/admin/allowed-origins`) —.
  *
  * There was NO e2e coverage at all for this surface before this file
  * (confirmed: nothing under `apps/api/tests/e2e/` matched `origin` or
- * `task-610`). It matters now because TASK-641 relaxed the surface from
- * GLOBAL_ADMIN-only to TENANT_ADMIN-reachable (README §3.1 steps 4/6):
+ * `task-610`). It matters now because relaxed the surface from
+ * GLOBAL_ADMIN-only to TENANT_ADMIN-reachable (README steps 4/6):
  *
  *  - The blanket `assertGlobalAdmin()` imperative gate is GONE from every
  *    handler; the class-level `@CanManage('TenantAllowedOrigin')` now
@@ -13,7 +13,7 @@
  *    scoped to `conditions.tenantId` (seed `01-policy.ts`).
  *  - Two privilege boundaries moved INTO `TenantAllowedOriginService`,
  *    imperatively, because a permission decorator cannot see the SHAPE of a
- *    value: a wildcard/pattern origin (FR-2) and a SYSTEM-tenant write (FR-3)
+ * value: a wildcard/pattern origin and a SYSTEM-tenant write
  *    stay GLOBAL_ADMIN-only on both `create` and `update` — `update` is the
  *    escalation path (PATCHing an exact row's `origin` into a pattern).
  *  - Cross-tenant reads/writes by id are unaffected and still resolve via
@@ -71,7 +71,7 @@ async function createOrigin(
   return { status: resp.status(), body };
 }
 
-test.describe('TenantAllowedOrigin admin surface (cross-tenant + FR-2/FR-3 governance) — TASK-641', () => {
+test.describe('TenantAllowedOrigin admin surface (cross-tenant + governance)', () => {
   let tenantAAdminToken: string; // TENANT_ADMIN of tenant A (__GLOBAL__)
   let tenantBAdminToken: string; // TENANT_ADMIN of tenant B (ARCAAI)
   let globalAdminOnATenantToken: string; // GLOBAL_ADMIN, working tenant = A
@@ -95,7 +95,7 @@ test.describe('TenantAllowedOrigin admin surface (cross-tenant + FR-2/FR-3 gover
     globalAdminOnBTenantToken = gaB!.token;
   });
 
-  test.describe('FR-1 — TENANT_ADMIN full CRUD on an exact origin, own tenant only', () => {
+  test.describe('TENANT_ADMIN full CRUD on an exact origin, own tenant only', () => {
     test('create / list / update / delete an exact origin', async ({ request }) => {
       const origin = uniqueExactOrigin('fr1-crud');
 
@@ -177,7 +177,7 @@ test.describe('TenantAllowedOrigin admin surface (cross-tenant + FR-2/FR-3 gover
     });
   });
 
-  test.describe('FR-2 — wildcard registration stays GLOBAL_ADMIN-only', () => {
+  test.describe('wildcard registration stays GLOBAL_ADMIN-only', () => {
     test('TENANT_ADMIN registering a subdomain wildcard → 403', async ({ request }) => {
       const resp = await createOrigin(request, tenantAAdminToken, 'https://*.example.org:*', 'Lane I e2e — wildcard attempt');
       expect(resp.status, JSON.stringify(resp.body)).toBe(403);
@@ -208,7 +208,7 @@ test.describe('TenantAllowedOrigin admin surface (cross-tenant + FR-2/FR-3 gover
     });
   });
 
-  test.describe('FR-5 — GLOBAL_ADMIN retains full capability (no regression)', () => {
+  test.describe('GLOBAL_ADMIN retains full capability (no regression)', () => {
     test('GLOBAL_ADMIN can register a wildcard and the bare allow-all token', async ({ request }) => {
       const pattern = await createOrigin(request, globalAdminOnATenantToken, `https://*.ga-${Date.now()}.example.org:*`, 'Lane I e2e — GA wildcard');
       expect(pattern.status, JSON.stringify(pattern.body)).toBe(201);
@@ -246,7 +246,7 @@ test.describe('TenantAllowedOrigin admin surface (cross-tenant + FR-2/FR-3 gover
     });
   });
 
-  test.describe('FR-4 — enforcement posture disclosure', () => {
+  test.describe('enforcement posture disclosure', () => {
     test('GET /admin/allowed-origins/posture returns { enforcementEnabled: boolean }', async ({ request }) => {
       const resp = await request.get(`${BASE}/posture`, { headers: { Authorization: `Bearer ${tenantAAdminToken}` } });
       expect(resp.status()).toBe(200);

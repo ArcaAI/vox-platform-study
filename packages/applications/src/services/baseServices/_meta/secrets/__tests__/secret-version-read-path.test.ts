@@ -1,16 +1,16 @@
-// TASK-558 lane J (J5) — the kv-v2 VERSIONED read path.
+// The kv-v2 VERSIONED read path.
 //
 // `API_KEY_PEPPER` is the one platform secret whose rotation is a cliff rather
 // than a blip: an ApiKey hash computed under pepper vN can never be verified
-// under vN+1, so swapping it invalidates every issued key at once (plan §9.2 L6,
-// and the descriptor's own long-form note). The staged alternative the plan
-// prescribes needs exactly two things:
+// under vN+1, so swapping it invalidates every issued key at once
+// (see the descriptor's own long-form note). The staged alternative
+// needs exactly two things:
 //
 //   1. a per-row record of WHICH pepper version produced the stored hash, and
 //   2. a read path that can fetch THAT version rather than "latest".
 //
 // (1) is a schema change on `ApiKey` plus the domain trio and the issue/verify
-// services — out of this lane's scope and explicitly reported as such. (2) is
+// services — out of this file's scope and explicitly reported as such. (2) is
 // the SecretsService/Vault surface, which is this lane's, and is what this test
 // pins. Vault kv-v2 retains prior versions natively, so the mechanism exists;
 // nothing in the codebase could ADDRESS it before.
@@ -62,7 +62,7 @@ function bootedVaultProvider(valueByPath: Record<string, string>) {
   return { provider, reads: fake.reads };
 }
 
-describe('kv-v2 versioned secret reads (plan §9.2 L6 — staged rotation)', () => {
+describe('kv-v2 versioned secret reads (staged rotation)', () => {
   it('reads the latest version when no version is requested', async () => {
     const { provider, reads } = bootedVaultProvider({ 'secret/data/hope/API_KEY_PEPPER': 'pepper-v3' });
 

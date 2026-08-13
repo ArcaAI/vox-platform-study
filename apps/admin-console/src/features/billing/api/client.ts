@@ -13,7 +13,7 @@ import type {
 } from './types';
 
 /**
- * Typed calls over the BFF proxy (TASK-615 #15b). Reads use `getJson`;
+ * Typed calls over the BFF proxy. Reads use `getJson`;
  * `getInvoice` captures the row ETag for the finalize/void OCC path. Finalize
  * and void send If-Match (`etag`) AND the derived `expectedVersion` in the body
  * — the house pattern (missing → 428, drift → 412). All routes are
@@ -66,7 +66,7 @@ export function addAdjustment(id: string, body: AddAdjustmentRequest): Promise<B
 
 /**
  * Supersede a rate row: close it at the successor's `effectiveFrom` and insert
- * the successor, atomically (TASK-638 §7). If-Match carries the row version the
+ * the successor, atomically. If-Match carries the row version the
  * list read returned — missing → 428, drift → 412.
  *
  * A supersede REPRICES; it never re-shapes. Dimensions are inherited server-side,

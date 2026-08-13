@@ -1,4 +1,4 @@
--- TASK-551 — DNA redaction/rewrite rules (encrypted at rest).
+-- DNA redaction/rewrite rules (encrypted at rest).
 --
 -- Adds the Vault-Transit (hope-phi) ciphertext column carrying each doctor's
 -- structured redaction/rewrite rules to the DNA report and its version snapshot.

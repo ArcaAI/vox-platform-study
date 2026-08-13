@@ -4,7 +4,7 @@
 // Both answer a question of the form "which secret NAMES does the running
 // gateway actually ask `SecretsService` for?", and both must answer it from the
 // SOURCE rather than from a hand-kept list — a hand-kept list is precisely the
-// drift TASK-558 exists to remove.
+// drift this scanner exists to remove.
 //
 // Only STRING-LITERAL arguments are collected. `s3.service.ts` iterates a
 // `requiredSecretKeys` array and calls `getSecretSync(key)` with a variable; the

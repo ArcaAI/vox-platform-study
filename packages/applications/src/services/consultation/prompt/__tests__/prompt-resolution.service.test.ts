@@ -6,7 +6,7 @@
  *    column → SYSTEM default;
  *  - pre-summary: tenant TENANT_DEFAULT → SYSTEM pre-summary default → fail
  *    closed. It consults neither the preferred tier, nor the department default
- *    agent, nor the department visit-type columns (TASK-634 D-01).
+ *    agent, nor the department visit-type columns.
  *
  * Coverage areas:
  * - System defaults when no department
@@ -14,7 +14,7 @@
  * - promptType: pre-summary, new-patient, revisit
  * - explicitTemplate override
  * - contextVariables from promptConfig
- * - `resolvedFrom` names the tier that produced the promptId (TASK-634 D-02)
+ * - `resolvedFrom` names the tier that produced the promptId
  * - No dnaStyleId in resolved config
  */
 
@@ -33,12 +33,12 @@ const mockDepartmentRepository = {
 
 const mockPromptTemplateRepository = {
   findById: vi.fn(),
-  // TASK-634: the tenant pre-summary tier queries by (tenant, scope, status,
+  // The tenant pre-summary tier queries by (tenant, scope, status,
   // departmentId, tag). Default: the tenant has no pre-summary template.
   findAll: vi.fn(),
 };
 
-// TASK-546 tier-1a. Default: no department default agent → the agent tier is
+// Tier-1a. Default: no department default agent → the agent tier is
 // skipped and resolution is byte-identical to the pre-change behaviour (this is
 // the regression lock; tests that exercise the agent tier override these).
 const mockDepartmentAgentRepository = {
@@ -471,7 +471,7 @@ describe('PromptResolutionService', () => {
   });
 
   // =========================================================================
-  // Tier-1a: department default DepartmentAgent (TASK-546)
+  // Tier-1a: department default DepartmentAgent
   // =========================================================================
   describe('resolve — department default agent (tier-1a)', () => {
     const agent = (overrides: Record<string, unknown> = {}) => ({
@@ -632,7 +632,7 @@ describe('PromptResolutionService', () => {
   });
 
   // =========================================================================
-  // TASK-634 — the pre-summary capability chain (D-01 / D-03 / D-13)
+  // The pre-summary capability chain
   //
   // Pre-summary has NO department axis and NO visit-type axis: there is exactly
   // ONE pre-summary prompt per tenant, and department/visit type are VARIABLES
@@ -665,7 +665,7 @@ describe('PromptResolutionService', () => {
       expect(result.resolvedFrom).toBe('tenant');
       expect(result.content).toBe('TENANT pre-summary body');
       expect(result.resolvedAgentId).toBeUndefined();
-      // TASK-635 DR-5 — DELIBERATE CHANGE. This used to assert
+      // DELIBERATE CHANGE. This used to assert
       // `findDefaultForDepartment` was NEVER called for pre-summary, because the
       // agent tier could only have served a clinical NOTE prompt. C2 gives the
       // agent a dedicated `preSummaryTemplateId` binding, so the tier IS now
@@ -789,7 +789,7 @@ describe('PromptResolutionService', () => {
   });
 
   // =========================================================================
-  // TASK-634 — the summary chain is UNCHANGED (regression lock) + D-02
+  // The summary chain is UNCHANGED (regression lock) + D-02
   // =========================================================================
   describe('resolve — summary chain regression lock (new-patient / revisit)', () => {
     it('new-patient with a department default agent resolves exactly as before the pre-summary split', async () => {
@@ -820,7 +820,7 @@ describe('PromptResolutionService', () => {
         content: 'PINNED v3 body',
         resolvedVersionNumber: 3,
         resolvedAgentId: 'agent-1',
-        // TASK-635 — additive trace/telemetry field naming which capability
+        // Additive trace/telemetry field naming which capability
         // chain ran. Nothing branches on it; it is asserted here only because
         // this is a whole-object deep-equal regression lock.
         resolvedCapability: 'summary',

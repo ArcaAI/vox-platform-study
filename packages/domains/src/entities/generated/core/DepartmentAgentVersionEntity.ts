@@ -6,12 +6,12 @@ import { BaseTenantEntity, IBaseTenantEntity } from '../../../common';
 import { JsonValue } from '../../../interfaces';
 import * as Entities from '../../../entities';
 
-// TASK-659 — an IMMUTABLE snapshot of a DepartmentAgent's loop-configuration
+// An IMMUTABLE snapshot of a DepartmentAgent's loop-configuration
 // surface. Written once by `DepartmentAgentService.create`/`update` and never
 // updated: a correction is a new version, exactly like `PromptVersion` /
 // `ConsultationContextSchemaVersion`. That immutability is what lets a
-// running consultation loop pin `agentConfigVersionId` at start (TASK-654 C1)
-// and what promotion (TASK-663) copies verbatim into a target tenant.
+// running consultation loop pin `agentConfigVersionId` at start
+// and what promotion copies verbatim into a target tenant.
 //
 // The row therefore carries no `resourceStatus` (see MODELS_WITHOUT_SOFT_DELETE)
 // and no `updatedAt`/`updatedBy` — the mapper strips those, mirroring

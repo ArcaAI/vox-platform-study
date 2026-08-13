@@ -158,7 +158,7 @@ def _coerce_stats(result: Any, *, provider: str, model: str, latency_ms: int) ->
 def _used_byok_credential(request_body: GenerateRequest) -> bool:
     """True when the call was served on the TENANT's own credential.
 
-    TASK-643 R3. The presence of an override entry is no longer the answer:
+    The presence of an override entry is no longer the answer:
     the gateway can inject a credential from the SYSTEM-tenant platform default
     as well as from the caller's own connection row, and those are identical on
     the wire. A platform-funded call is ordinary platform vendor spend and must
@@ -652,7 +652,7 @@ async def generate(
             provider=request_body.provider,
         ) from None
     except ProviderCredentialsError:
-        # TASK-602: a missing BYOK credential is a platform-CONFIG gap, not a
+        # A missing BYOK credential is a platform-CONFIG gap, not a
         # provider health failure — do NOT record a circuit-breaker failure (it
         # would open the breaker for a provider that never handled a request) and
         # do NOT collapse it into a generic 502. Mark the task failed for a
@@ -894,7 +894,7 @@ async def _run_streaming_generation(
         logger.error("streaming_generation.failed", task_id=task_id, error=str(exc), exc_info=True)
         await task_manager.update_task(task_id, status=TaskStatus.FAILED, error=str(exc))
         # The interrupted stream still burned whatever tokens it had already
-        # reported — emit them. Dropping the tail here is the TASK-470/471 bug
+        # reported — emit them. Dropping the tail here is the bug
         # class: the provider bills for work whose only record we threw away.
         # The block carries the SAME ``task_id`` a clean completion would, so the
         # gateway's idempotency key converges instead of double-billing.

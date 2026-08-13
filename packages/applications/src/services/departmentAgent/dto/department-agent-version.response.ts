@@ -1,7 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 /**
- * TASK-674 — one immutable `DepartmentAgentVersion` snapshot (TASK-659), read-
+ * One immutable `DepartmentAgentVersion` snapshot, read-
  * only. Mirrors `ConsultationContextSchemaVersionResponse`
  * (`consultation-context-schema/dto/consultation-context-schema.response.ts`)
  * exactly: an `id`/`agentId`/`versionNumber` header, the canonical JSON

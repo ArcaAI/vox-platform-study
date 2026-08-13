@@ -1,7 +1,7 @@
 /**
- * TASK-615 WS-K — cross-tenant 404 posture for the billing plane's by-id
+ * Cross-tenant 404 posture for the billing plane's by-id
  * surfaces (BillingAdminController, RateCardAdminController), following the
- * task-307 cross-tenant pattern (see `ai-task-defaults-cross-tenant.spec.ts`
+ * cross-tenant pattern (see `ai-task-defaults-cross-tenant.spec.ts`
  * for the canonical shape of these probes).
  *
  * Two distinct governance postures are exercised, per rule 05:
@@ -40,7 +40,7 @@ function currentPeriod(): string {
   return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
 }
 
-test.describe('TASK-615 billing cross-tenant posture', () => {
+test.describe('Billing cross-tenant posture', () => {
   let globalAdminToken: string;
   let tenantAdminToken: string; // DEFAULT_TENANT_KEY (__GLOBAL__)
   let foreignTenantId: string;

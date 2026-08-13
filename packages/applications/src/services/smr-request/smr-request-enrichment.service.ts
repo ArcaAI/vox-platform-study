@@ -54,14 +54,14 @@ export class SmrRequestEnrichmentService {
   async applyTenantProviderOverrides<T extends { provider?: string }>(target: T): Promise<T> {
     const provider = target.provider;
     // SMR is the LLM capability, so the service discriminator is always `llm`
-    // (C2/C5). The 1-arg TASK-569 transition shims are retired here.
+    // (C2/C5). The 1-arg transition shims are retired here.
     if (!this.aiProviderConnectionService || !provider || !isCloudByoProvider('llm', provider)) {
       return target;
     }
     const tenantId = this.clsService.get('tenantId');
     if (!tenantId) return target;
 
-    // TASK-643 — the resolver cascades the tenant's own row over the
+    // The resolver cascades the tenant's own row over the
     // SYSTEM-tenant platform default, and each entry's `funding` label travels
     // with it so SMR meters platform-funded generation as CLOUD rather than as
     // the tenant's own BYOK.

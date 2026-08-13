@@ -1,4 +1,4 @@
-"""TASK-643 R3 — funding attribution on the SMR lane.
+"""Funding attribution on the SMR lane.
 
 RED before GREEN. Before this ticket, `_used_byok_credential` decided a call's
 billing tier from the mere PRESENCE of an override entry for the resolved

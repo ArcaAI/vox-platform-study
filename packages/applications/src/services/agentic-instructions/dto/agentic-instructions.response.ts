@@ -18,9 +18,9 @@ export class ResolvedPromptTierResponse {
   @ApiProperty({ description: 'Prompt registry id resolved for the (department, promptType).' })
   promptId!: string;
 
-  // `tenant` is the TASK-634 pre-summary tenant-default tier; keep this union
+  // `tenant` is the pre-summary tenant-default tier; keep this union
   // in step with `PromptResolutionTier`.
-  // `code-default` is the TASK-635 live chain's fail-open tail; it can only be
+  // `code-default` is the live chain's fail-open tail; it can only be
   // reported for `promptType: 'live'`, never for the summary/pre-summary tiers
   // this endpoint currently reports — but the union must stay in step.
   @ApiProperty({

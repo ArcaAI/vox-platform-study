@@ -368,13 +368,13 @@ export const LLM_AI_MODELS: AiModelSeed[] = [
   },
 
   // =========================================================================
-  // Vision (TASK-657) — first ModelCategory.VISION / IMAGE_TEXT_TO_TEXT row.
+  // Vision — first ModelCategory.VISION / IMAGE_TEXT_TO_TEXT row.
   // Same LM Studio weights as `lms-medgemma-1.5-4b-it` above (a 4B MedGemma
   // checkpoint is natively multimodal — one set of weights, two catalog rows
   // for two task types; `AiModel`'s only uniqueness constraint is
   // (tenantId, slug), not sourceUri). In-boundary (self-hosted) default —
   // no PHI ever leaves the tenant's infrastructure — chosen over a BYOK cloud
-  // VLM (see docs/implementation/TASK-657-Vision-Capability/README.md §5 for
+  // VLM (see docs/implementation/TASK-657-Vision-Capability/README.md for
   // the full tradeoff). Not loaded on the dev LM Studio instance (verified
   // 2026-08-10, same as `lms-medgemma-1.5-4b-it`); catalogued-but-not-loaded
   // rows are never selected by an AiTaskDefault, so `vlm.extract` has

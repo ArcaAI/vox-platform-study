@@ -3,12 +3,12 @@
 /**
  * @arcaai/vox/compat - useArcaSttProvider
  *
- * The ONE compat import with NO v1 ancestor (TASK-568 §3 D-1). v1 never had STT
+ * The ONE compat import with NO v1 ancestor. v1 never had STT
  * provider switching, so this is a compat-NATIVE extension: it lets a migrated
  * v1 app build the "switch transcription provider" control flow with a single
  * hook — no v2 store knowledge, no `useArcaAudio` adoption, no WS awareness.
  *
- * TASK-586 Lane D generalizes the original TASK-567/568 one-way switch into a
+ * Generalizes the original one-way switch into a
  * BIDIRECTIONAL toggle: ON = the SDK-configured pipeline (primary), OFF = the
  * tenant-admin default provider (fallback). `switchToFallback` is kept as an
  * alias of the new `switchToDefault` — every pre-586 caller keeps compiling
@@ -25,7 +25,7 @@
  *    flip (true→false now fires too, not just false→true).
  *  - `onSwitchFailed` fires when a user-requested switch rejects.
  *
- * When a switch happens (TASK-614): `audio.isCapturing` decides. Before capture
+ * When a switch happens: `audio.isCapturing` decides. Before capture
  * the pick is remembered as a pre-start preference and applied at `audio.start`;
  * during capture the live in-place switch is issued. `activePipeline` is NOT the
  * gate — it is request-derived and stays `null` for the whole session whenever
@@ -36,7 +36,7 @@
  * session to switch, so both methods reject with `SWITCH_UNSUPPORTED` — never a
  * crash and never a silent no-op resolution. Switching back to the primary
  * pipeline additionally requires `enableProviderSwitch: true` in the
- * `<ArcaCompatProvider>` config (TASK-586 §C3) — without it, the native
+ * `<ArcaCompatProvider>` config — without it, the native
  * streaming route has no primary-direction endpoint and `switchToPipeline()`
  * rejects with `SWITCH_FAILED`.
  */
@@ -65,13 +65,13 @@ export interface UseArcaSttProviderReturn {
   /**
    * True when the session is transcribing on the SDK-configured (primary)
    * pipeline; false when it's on the tenant-admin default (fallback). This is
-   * the bidirectional-toggle read (TASK-586 Lane D) — `true` before any
+   * the bidirectional-toggle read — `true` before any
    * capture session exists (primary is the nominal/default state).
    */
   usePipeline: boolean;
   switchStatus: 'idle' | 'switching' | 'switched' | 'failed';
   /**
-   * User control flow entry point (TASK-567/568 R4). Alias of
+   * User control flow entry point. Alias of
    * {@link UseArcaSttProviderReturn.switchToDefault} — kept so every pre-586
    * caller keeps compiling and behaving identically. Idempotent — a call while
    * already on the fallback resolves without a second v2 call. Rejects with an
@@ -80,7 +80,7 @@ export interface UseArcaSttProviderReturn {
    */
   switchToFallback: () => Promise<void>;
   /**
-   * Switch (back) to the SDK-configured primary pipeline (TASK-586 Lane D).
+   * Switch (back) to the SDK-configured primary pipeline.
    * Idempotent — a call while already on the pipeline resolves without a
    * second v2 call. Requires `enableProviderSwitch: true` on
    * `<ArcaCompatProvider>` — without it this rejects with `SWITCH_FAILED`
@@ -88,7 +88,7 @@ export interface UseArcaSttProviderReturn {
    */
   switchToPipeline: () => Promise<void>;
   /**
-   * Switch to the tenant-admin default (fallback) provider (TASK-586 Lane D).
+   * Switch to the tenant-admin default (fallback) provider.
    * Same underlying call as {@link UseArcaSttProviderReturn.switchToFallback} —
    * the two names exist so a migrating app can read `switchToDefault` as the
    * bidirectional-toggle counterpart of `switchToPipeline`.
@@ -121,7 +121,7 @@ export function useArcaSttProvider(props: UseArcaSttProviderProps = {}): UseArca
   const audio = useArcaAudio();
   const { enableProviderSwitch } = useCompatFeatureFlags();
   const activePipeline = audio.activePipeline ?? null;
-  // Pre-start selection (TASK-586): remembered in the store when the user picks
+  // Pre-start selection: remembered in the store when the user picks
   // a provider BEFORE capture exists, then applied + cleared at `audio.start`.
   const pendingSttProvider = useAgenticStore((s) => s.pendingSttProvider);
   const setPendingSttProvider = useAgenticStore((s) => s.setPendingSttProvider);
@@ -174,12 +174,12 @@ export function useArcaSttProvider(props: UseArcaSttProviderProps = {}): UseArca
 
   const switchTo = useCallback(
     async (target: ProviderSwitchTarget): Promise<void> => {
-      // Capture not started → record a PRE-START selection (TASK-586) instead
+      // Capture not started → record a PRE-START selection instead
       // of rejecting. The pending pick is applied at `audio.start` by whichever
       // start hook runs first (order-independent, mirroring the `languageMode`
       // store-fallback pattern) and reflected in the read state below.
       //
-      // The gate is `isCapturing`, NOT `activePipeline` (TASK-614 D-2). The
+      // The gate is `isCapturing`, NOT `activePipeline`. The
       // latter is request-derived and stays null for the WHOLE session whenever
       // the app started capture without an explicit `pipelineId` — so keying off
       // it turned every mid-session switch into a silent pre-start no-op that
@@ -223,7 +223,7 @@ export function useArcaSttProvider(props: UseArcaSttProviderProps = {}): UseArca
   const switchToDefault = useCallback(() => switchTo('fallback'), [switchTo]);
   const switchToPipeline = useCallback(() => switchTo('primary'), [switchTo]);
 
-  // Before a session exists, reflect the pending pre-start selection (TASK-586)
+  // Before a session exists, reflect the pending pre-start selection
   // so the toggle reads the right side from the first render; once live, the
   // durable `activePipeline.isFallback` is authoritative.
   const pendingIsFallback = pendingSttProvider === 'fallback';

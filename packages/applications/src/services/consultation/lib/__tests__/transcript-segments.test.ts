@@ -139,7 +139,7 @@ describe('transcript-segments (pure helpers)', () => {
     });
   });
 
-  // TASK-552 Lane C — the evidence-panel read side collects cited segment ids
+  // The evidence-panel read side collects cited segment ids
   // from BOTH shapes citationsMap can carry.
   describe('collectCitedSegmentIds', () => {
     it('collects ids from the flat segmentCitedIds array (StrictCitations / EARLY-draft lane)', () => {

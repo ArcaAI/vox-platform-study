@@ -78,7 +78,7 @@ const createMockClsService = () => ({
   }),
   set: vi.fn(),
   // Bare passthrough — only exercised by resolveNerModelInjection's
-  // SYSTEM-pin nested scope (TASK-552 Lane A); every other codepath in this
+  // SYSTEM-pin nested scope; every other codepath in this
   // suite never calls `run`.
   run: vi.fn((callback: () => unknown) => callback()),
 });
@@ -273,10 +273,10 @@ describe('SummaryService', () => {
       expect(body.model).toBe('resolved-medgemma');
     });
 
-    // TASK-552 Lane B — generateSummary is a one-shot/finalize path: it must
+    // GenerateSummary is a one-shot/finalize path: it must
     // keep resolving the DEFAULT ('finalize') tier, never the live tier, so a
     // global admin's `smr.live` re-point never leaks into final summaries.
-    // TASK-635 A5 (B-04) — the tenant id is now resolved EXPLICITLY (never a
+    // The tenant id is now resolved EXPLICITLY (never a
     // bare no-arg call trusting the callee's own CLS fallback), so a worker
     // path with unpopulated CLS fails loudly instead of silently serving the
     // SYSTEM default model.
@@ -766,10 +766,10 @@ describe('SummaryService', () => {
   });
 
   // ===========================================================================
-  // TASK-552 Lane A — nlp.ner AiTaskDefault model injection (fail-open)
+  // Nlp.ner AiTaskDefault model injection (fail-open)
   // ===========================================================================
 
-  describe('extractEntities — nlp.ner model injection (TASK-552 Lane A)', () => {
+  describe('extractEntities — nlp.ner model injection', () => {
     it('injects the effective nlp.ner model_name when the AiTaskDefault service resolves one', async () => {
       const aiTaskDefaultService = {
         getEffective: vi.fn().mockResolvedValue({
@@ -2298,10 +2298,10 @@ describe('SummaryService', () => {
   });
 
   // ===========================================================================
-  // TASK-615 WS-E — extractEntities (sync path) usage-ledger emission
+  // ExtractEntities (sync path) usage-ledger emission
   // ===========================================================================
 
-  describe('extractEntities — usage-ledger emission (TASK-615 WS-E)', () => {
+  describe('extractEntities — usage-ledger emission', () => {
     const createMockUsageLedger = () => ({ recordUsage: vi.fn().mockResolvedValue({ outboxIds: ['o1'], events: 2 }) });
 
     const buildServiceWithLedger = (usageLedger: unknown, aiTaskDefaultService?: unknown) =>

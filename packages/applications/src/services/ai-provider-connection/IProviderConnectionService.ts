@@ -20,7 +20,7 @@ export interface ResolvedProviderConnection {
 }
 
 /**
- * WHO PAID for a credential (TASK-643 R3).
+ * WHO PAID for a credential.
  *
  * `tenant` — the caller's own BYO row. Metered `BYOK` + `BYOK_NOTIONAL`: the
  * platform bore no vendor cost, so the call is rated notionally and not
@@ -74,7 +74,7 @@ export interface ProviderOverrideEntry {
 export type ProviderOverrides = Record<string, ProviderOverrideEntry>;
 
 /**
- * WHY the SYSTEM (platform-default) tier did not contribute (TASK-643 §3.5.4).
+ * WHY the SYSTEM (platform-default) tier did not contribute.
  *
  * Both facts are carried because both can be true at once, and they are not
  * alternatives: the veto is per `(service, provider)` while the entitlement
@@ -88,7 +88,7 @@ export type ProviderOverrides = Record<string, ProviderOverrideEntry>;
 export interface PlatformDefaultOutcome {
   /** The gate denied the whole SYSTEM tier: no `featurePlatformDefaultCredential`. */
   entitlementSuppressed: boolean;
-  /** Providers the tenant explicitly vetoed by disabling its own row (§3.4). */
+  /** Providers the tenant explicitly vetoed by disabling its own row. */
   vetoed: string[];
 }
 
@@ -119,7 +119,7 @@ export type LlmProviderOverrides = ProviderOverrides;
  * DI token for the unified provider-connection service. The pre-unification
  * `IAiProviderConnectionService` symbol below is an ALIAS to this same value, so
  * existing `@Inject(IAiProviderConnectionService)` sites (smr-proxy) keep
- * resolving until TASK-572 repoints them.
+ * resolving until it is repointed them.
  */
 export const IProviderConnectionService = Symbol('IProviderConnectionService');
 
@@ -155,8 +155,8 @@ export interface IProviderConnectionService {
    * env configuration" signal. Server-side only; the result carries ciphertext
    * and is never serialized to a client.
    *
-   * Shares ONE cascade helper with `resolveTenantCloudOverrides` (TASK-643
-   * OD-5), so the veto (§3.4) and the entitlement gate (§3.5) apply here too —
+   * Shares ONE cascade helper with `resolveTenantCloudOverrides` (
+   * ), so the veto and the entitlement gate apply here too
    * there is exactly one `if` in the codebase deciding whether a tenant may see
    * the platform default. The gate applies to CLOUD BYO providers only: a
    * SYSTEM row for a self-host engine is platform INFRASTRUCTURE, not platform
@@ -173,7 +173,7 @@ export interface IProviderConnectionService {
    * the Python service body. Gateway-only: the result carries plaintext key
    * material and is NEVER returned by any read API.
    *
-   * TWO TIERS, merged PER PROVIDER (TASK-643 R1): the caller's own rows over the
+   * TWO TIERS, merged PER PROVIDER: the caller's own rows over the
    * SYSTEM-tenant platform default. A tenant holding an `azure` key but no
    * `sarvam` key still receives platform `sarvam` — never a whole-map
    * "tenant if non-empty" short-circuit. Every entry carries `funding`, derived
@@ -198,11 +198,11 @@ export interface IProviderConnectionService {
    * classes.
    *
    * The 1-arg overload is a `@deprecated` transition shim (assumes
-   * `service='llm'`) so the (TASK-572-owned) smr-proxy keeps compiling until it
-   * repoints; TASK-572 removes it.
+   * `service='llm'`) so the smr-proxy keeps compiling until it
+   * repoints; removes it.
    */
   resolveTenantCloudOverrides(service: ProviderService, tenantId: string): Promise<ResolvedProviderOverrides>;
-  /** @deprecated 1-arg form assumes `service='llm'`; kept for the smr-proxy transition (TASK-572 removes it). */
+  /** @deprecated 1-arg form assumes `service='llm'`; kept for the smr-proxy transition (removes it). */
   resolveTenantCloudOverrides(tenantId: string): Promise<ResolvedProviderOverrides>;
 }
 

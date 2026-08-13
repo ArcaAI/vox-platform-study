@@ -1,12 +1,12 @@
 /**
- * TenantAllowedOrigin entity/factory behavior (TASK-610 — CORS control plane).
+ * TenantAllowedOrigin entity/factory behavior (CORS control plane).
  *
  * Locks change-tracking through `setProperty` (so `repository.update`
  * persists only `entity.changes`), factory defaults, and the structural
  * `validate()` backstop. `validate()` deliberately does NOT reimplement
  * origin grammar — that is `normalizeOrigin`'s job
- * (`packages/applications/src/services/origin-registry/origin-normalizer.ts`,
- * TASK-610 lane W1-A) — it only rejects values that plainly never went
+ * (`packages/applications/src/services/origin-registry/origin-normalizer.ts`)
+ * — it only rejects values that plainly never went
  * through it (empty, padded with whitespace, trailing slash).
  */
 import { describe, it, expect } from 'vitest';

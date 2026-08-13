@@ -1,8 +1,8 @@
 /**
- * Wire types for the Consumption & Cost screen (TASK-615 #15a).
+ * Wire types for the Consumption & Cost screen.
  *
  * Re-declared locally rather than shared (rule 13 — features never import one
- * another). Money is ALWAYS an integer-micros STRING (the TASK-615 WS-I money
+ * another). Money is ALWAYS an integer-micros STRING (the WS-I money
  * convention); it never rides a JSON number. Backed by the gateway
  * `admin/usage/*` surface (UsageAnalyticsService).
  */

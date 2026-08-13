@@ -322,8 +322,8 @@ export class TranscriptionRealtimeService implements ITranscriptionRealtimeServi
     storage?: StorageDescriptor | null;
     /**
      * Tenant fallback pipeline the worker re-runs on when the primary ASR
-     * fails (TASK-614 D-6). `transcribe_file` has accepted this since
-     * TASK-567, but nothing ever supplied it — so batch auto-fallback was
+     * fails. `transcribe_file` has accepted this for a while,
+     * but nothing ever supplied it — so batch auto-fallback was
      * unreachable in production and a failing primary just failed the job.
      */
     fallbackPipelineId?: string;
@@ -353,7 +353,7 @@ export class TranscriptionRealtimeService implements ITranscriptionRealtimeServi
       kwargs: {
         // Per-tenant storage descriptor — DEDICATED tenants only.
         ...(params.storage ? { storage: params.storage } : {}),
-        // Tenant fallback pipeline for the worker's in-attempt re-run (TASK-614).
+        // Tenant fallback pipeline for the worker's in-attempt re-run.
         ...(params.fallbackPipelineId ? { fallback_pipeline_id: params.fallbackPipelineId } : {}),
       },
       options: {

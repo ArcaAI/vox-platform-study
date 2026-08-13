@@ -1,9 +1,9 @@
 /**
- * Upload -> attach -> context-item `mediaId` round trip (TASK-671).
+ * Upload -> attach -> context-item `mediaId` round trip.
  *
- * TASK-656 fixed the SERVER so `StorageController.uploadFile` creates a
+ * Fixed the SERVER so `StorageController.uploadFile` creates a
  * `Media` row and returns its id (`mediaId`) alongside the raw storage `key`.
- * TASK-665 threaded that id through the SDK client: `StorageFile.mediaId`
+ * Threaded that id through the SDK client: `StorageFile.mediaId`
  * (`useStorage.ts`), `AddContextInput`/`ContextItem.mediaId`
  * (`types/context.ts`), and `addAttachment`'s third parameter
  * (`useArcaContext.ts`). No test proved the two hooks compose correctly end
@@ -63,7 +63,7 @@ vi.mock('../../store', () => ({
   selectAttachments: (s: { contextItems: { type?: string }[] }) => s.contextItems.filter((i) => i.type === 'ATTACHMENT'),
 }));
 
-describe('upload -> attach -> context-item mediaId round trip (TASK-671)', () => {
+describe('upload -> attach -> context-item mediaId round trip', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockStore.contextItems = [];
@@ -83,7 +83,7 @@ describe('upload -> attach -> context-item mediaId round trip (TASK-671)', () =>
     const { result: storageResult } = renderHook(() => useStorage());
     const { result: contextResult } = renderHook(() => useArcaContext());
 
-    // Step 1: upload a file — the server (TASK-656) returns `mediaId`
+    // Step 1: upload a file — the server returns `mediaId`
     // alongside the raw storage `key`.
     let uploaded: { key: string; mediaId?: string } | undefined;
     await act(async () => {

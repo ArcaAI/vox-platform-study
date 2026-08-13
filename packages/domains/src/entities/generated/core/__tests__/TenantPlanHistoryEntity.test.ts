@@ -1,5 +1,5 @@
 /**
- * TenantPlanHistory entity/factory behavior (TASK-615 #6 — plan-fee proration).
+ * TenantPlanHistory entity/factory behavior (plan-fee proration).
  *
  * Locks the append-only lifecycle: a window is opened by the factory
  * (`effectiveTo` defaults to null = in force), closed exactly once via

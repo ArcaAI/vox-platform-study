@@ -435,7 +435,7 @@ describe('LiveTranscriptionScreen', () => {
     await waitFor(() => expect(FakeEventSource.instances.length).toBe(1));
     expect(FakeEventSource.instances[0].url).toContain('/api/v1/audio/transcription-jobs/j-8841/stream?ticket=');
 
-    // TASK-605: the file now lives in the batch queue (one row per file), and
+    // The file now lives in the batch queue (one row per file), and
     // the row carries the job id + its live backend progress.
     const queue = within(await screen.findByRole('region', { name: /batch queue/i }));
     expect(queue.getByText('j-8841')).toBeDefined();

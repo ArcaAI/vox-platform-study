@@ -190,7 +190,7 @@ class TestAzureSpeechLoaderLoad:
     def loader(self):
         return AzureSpeechLoader()
 
-    # TASK-602: Azure Speech is BYOK-only. The subscription KEY comes solely from
+    # Azure Speech is BYOK-only. The subscription KEY comes solely from
     # the per-tenant / SYSTEM provider-connection override (gateway wire:
     # provider_overrides["azure-speech"]["api_key"]); env is never a key source and
     # the compute_type "key:" inline path is removed. The REGION stays env/config.
@@ -257,7 +257,7 @@ class TestAzureSpeechLoaderLoad:
 
     @pytest.mark.asyncio
     async def test_load_raises_when_no_key(self, loader):
-        """TASK-602: no override key raises CloudASRAuthError (env is not a key source)."""
+        """No override key raises CloudASRAuthError (env is not a key source)."""
         config = create_azure_model_config()
 
         with patch("stt.models.azure_speech_loader.get_settings") as mock_settings:
@@ -313,7 +313,7 @@ class TestAzureSpeechLoaderLoad:
 
     @pytest.mark.asyncio
     async def test_load_compute_type_key_prefix_is_not_a_key_source(self, loader):
-        """TASK-602: the removed compute_type 'key:' inline-secret path no longer
+        """The removed compute_type 'key:' inline-secret path no longer
         supplies a key — with no override it fails closed."""
         config = create_azure_model_config(
             compute_type="key:inline-secret-key",

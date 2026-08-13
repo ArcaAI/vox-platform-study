@@ -1,4 +1,4 @@
-"""Deterministic vital-sign extraction (TASK-543).
+"""Deterministic vital-sign extraction.
 
 A conservative, rules-based parser that pulls structured vital signs
 (BP / HR / SpO2 / temperature / weight) out of clinical narration — spoken

@@ -1,10 +1,10 @@
 /**
- * TASK-558 lane I — `REFRESH_TOKEN_TTL_SECONDS` moves from `process.env` to the
+ * `REFRESH_TOKEN_TTL_SECONDS` moves from `process.env` to the
  * `global-kv` cascade at `maxScope: 'tenant'`.
  *
  * Two defects this closes at once:
  *   • the TTL was read ONCE in the constructor, so changing it needed a restart
- *     (§9.2 L1 — anything that must change without a restart is not an env var);
+ *     (env vars are immutable for the process lifetime — anything that must change without a restart is not an env var);
  *   • it was one number for the whole platform, so a customer that wants a
  *     4-hour session could not have one.
  *

@@ -6,7 +6,7 @@ import { BaseTenantEntity, IBaseTenantEntity } from '../../../common';
 import * as Enums from '../../../enums';
 import * as Entities from '../../../entities';
 
-// TASK-658 — the MUTABLE head of a tenant's consultation context declaration.
+// The MUTABLE head of a tenant's consultation context declaration.
 // Carries identity (slug/name), governance (scope/status/isDefault), the
 // MOVABLE `pinnedVersionNumber` naming which immutable
 // `ConsultationContextSchemaVersion` discovery serves, and golden-library

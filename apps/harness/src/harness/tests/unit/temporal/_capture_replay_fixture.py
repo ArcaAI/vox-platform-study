@@ -9,52 +9,52 @@ Two scenarios:
 * ``happy`` (default) — PASS verdict, immediate approval, policy endpoint
   unavailable -> code defaults. Captures the full success path.
 * ``--failure`` — PASS verdict but ``persist_draft`` raises AFTER the inferential
-  pass, so the workflow runs ``run_inferential_sensors``, then hits ``run()``'s
-  ``except Exception`` block: it records the ``task-348-failure-terminal`` patch
+  pass, so the workflow runs ``run_inferential_sensors``, then hits ``run``'s
+  ``except Exception`` block: it records the ``-failure-terminal`` patch
   marker, emits the failed terminal progress, and re-raises. The recorded history
-  therefore carries BOTH patch gates (``task-345-harness-progress`` +
-  ``task-348-failure-terminal``) and the ``run_inferential_sensors`` command —
+  therefore carries BOTH patch gates (``arness-progress`` +
+  ``-failure-terminal``) and the ``run_inferential_sensors`` command —
   the failure-terminal forward-guard fixture.
 * ``--optimistic`` — PASS verdict with the optimistic delivery flag ON, so
   the workflow takes the patch-gated reorder: computational settle -> early
   ``persist_draft(phase=DRAFT_PENDING_SENSORS)`` -> terminal progress ->
   ``run_inferential_sensors`` (assurance) -> ``finalize_assurance`` -> gate ->
   ``record_gate_decision``. The recorded history carries the
-  ``task-355-optimistic-delivery`` marker + the reordered command sequence — the
+  ``-optimistic-delivery`` marker + the reordered command sequence — the
   optimistic-delivery forward-guard fixture.
 * ``--regen`` — optimistic flag ON + an inferential REGEN-then-SAFE sequence so the
   workflow takes the regen-if-untouched path: early deliver ->
   ``run_inferential_sensors`` (REGEN) -> regenerate (assemble/generate/extract/
   run_sensors) -> re-deliver ``persist_draft`` -> ``run_inferential_sensors`` (SAFE)
   -> ``finalize_assurance``. The recorded history carries BOTH the
-  ``task-355-optimistic-delivery`` AND ``task-355-assurance-signals`` markers + the
+  ``-optimistic-delivery`` AND ``-assurance-signals`` markers + the
   regen reorder — the assurance-signals forward-guard fixture.
 * ``--gate-abandon`` — a never-signed gate with a low escalation bound
   so it escalates to the terminal bound and ABANDONS (approved=False): two
   ``escalate_gate`` calls (the second terminal) then a terminal completion WITHOUT
-  ``record_gate_decision``. Records the ``task-458-gate-terminal-abandon`` marker — the
+  ``record_gate_decision``. Records the ``-gate-terminal-abandon`` marker — the
   gate-terminal forward-guard fixture.
 * ``--edit-cap`` — an optimistic run with edits on TWO assurance passes
   and ``max_edit_reruns=1`` so the loop CAPS the edit-driven re-runs (ONE re-run, not
-  two). Records the ``task-458-edit-rerun-cap`` marker — the edit-cap forward-guard fixture.
+  two). Records the ``-edit-rerun-cap`` marker — the edit-cap forward-guard fixture.
 * ``--retract`` — an optimistic run whose post-delivery assurance FLAGs
   (inferential UNSAFE), so the delivered draft is RETRACTED: early
   ``persist_draft(phase=DRAFT_PENDING_SENSORS)`` -> ``run_inferential_sensors`` (FLAG) ->
   ``retract_draft`` -> terminal completion (retracted, no gate/finalize). Records the
-  ``task-481-optimistic-retraction`` marker — the retraction forward-guard fixture.
+  ``-optimistic-retraction`` marker — the retraction forward-guard fixture.
 * ``--claim-check`` — the happy path with the ``generate`` + ``assemble_prompt``
   stubs returning OFFLOADED results (content/prompt emptied + a ``ClaimCheckRef``), so the
   recorded history threads the claim-check REF shape through every downstream activity. The
   command sequence is byte-identical to the inline happy path (NO new command, NO patch
   marker), so this fixture proves ref-threading is command-neutral on replay.
-* ``--idle-timeout`` — TASK-685. A ``ConsultationLoopWorkflow`` run that receives
+* ``--idle-timeout`` — A ``ConsultationLoopWorkflow`` run that receives
   one context item and then NOTHING: no ``consultation-ending``, no ``cancel``.
-  It reaches its pinned idle bound, records the ``task-685-idle-timeout`` marker,
+  It reaches its pinned idle bound, records the ``-idle-timeout`` marker,
   the ``wait_condition`` TIMER an unbounded wait never scheduled, and the
   ``loop.timed_out`` emission — then completes WITHOUT running any ending action.
 * ``--assemble-reuse`` — F-13. A COMPUTATIONAL regen (``REGEN`` then ``PASS``)
   so the pre-delivery loop runs twice: the second iteration takes the patch-gated
-  skip, so the recorded history carries the ``task-553-assemble-reuse`` marker and
+  skip, so the recorded history carries the ``-assemble-reuse`` marker and
   only ONE ``assemble_prompt`` command for TWO ``generate`` commands. The
   assemble-reuse forward-guard fixture.
 
@@ -71,7 +71,7 @@ Fixture provenance notes:
   be regenerated from newer code — it is the frozen "old era" contract.
 - ``doc_workflow_task345_history.json`` — happy path, with the progress feed.
 - ``doc_workflow_post_task348_history.json`` — ``--failure`` scenario, with the
-  failure-terminal gate. Recapture whenever a ``workflow.patched()`` gate is added so
+  failure-terminal gate. Recapture whenever a ``workflow.patched`` gate is added so
   future definition changes stay replay-compatible with every era still in flight.
 - ``doc_workflow_post_task458_gate_abandon_history.json`` — ``--gate-abandon``
   scenario (gate terminal abandon).
@@ -279,7 +279,7 @@ async def capture(out_path: Path, *, scenario: str = "happy") -> None:
 
 
 async def capture_loop(out_path: Path) -> None:
-    """Capture a ``ConsultationLoopWorkflow`` history fixture (TASK-662).
+    """Capture a ``ConsultationLoopWorkflow`` history fixture.
 
     One scenario, chosen to record every command shape the loop can issue:
     ``fetch_loop_config`` (the pin) -> ``livedoc_start`` (start action) ->
@@ -398,7 +398,7 @@ async def capture_loop(out_path: Path) -> None:
 
 
 async def capture_idle_timeout(out_path: Path) -> None:
-    """Capture a ``ConsultationLoopWorkflow`` history that hits its IDLE bound (TASK-685).
+    """Capture a ``ConsultationLoopWorkflow`` history that hits its IDLE bound.
 
     Records the two commands the bound adds and nothing else that is new:
     ``fetch_loop_config`` (the pin) -> ``emit_loop_event`` (a dispatched action,
@@ -408,7 +408,7 @@ async def capture_idle_timeout(out_path: Path) -> None:
 
     The timer is the whole point. An unbounded ``wait_condition`` schedules
     nothing, so a bounded one is a command-sequence change and needs the
-    ``task-685-idle-timeout`` era. This fixture is the forward guard for that
+    ``-idle-timeout`` era. This fixture is the forward guard for that
     era; the two frozen loop fixtures above (recorded with no
     ``idleTimeoutSeconds`` at all) must stay green alongside it, which is what
     proves the bound is gated rather than unconditional.
@@ -484,7 +484,7 @@ async def capture_idle_timeout(out_path: Path) -> None:
 
 
 async def capture_reasoning(out_path: Path) -> None:
-    """Capture a ``ConsultationLoopWorkflow`` history WITH the reasoning lane on (TASK-664).
+    """Capture a ``ConsultationLoopWorkflow`` history WITH the reasoning lane on.
 
     Records every command the deliberative lane adds, in order:
     ``fetch_loop_config`` (the pin) -> ``document_extract_text`` (a derive action,
@@ -493,8 +493,8 @@ async def capture_reasoning(out_path: Path) -> None:
     re-invoking the model) -> a ``SpecialistWorkflow`` child -> ``emit_loop_event``
     -> ``record_adjudication``.
 
-    Unlike the TASK-662 loop fixture, this one has something historical to guard
-    from the moment it is written: the ``task-664-reasoning`` patch era. Any
+    Unlike the loop fixture, this one has something historical to guard
+    from the moment it is written: the ``-reasoning`` patch era. Any
     later ungated change to the reasoning command sequence fails its replay.
     """
     from harness.temporal.models import (

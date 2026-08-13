@@ -2,7 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsObject, IsOptional, IsString, MaxLength } from 'class-validator';
 
 /**
- * One event the (future) `ConsultationLoopWorkflow` (TASK-662) reports for
+ * One event the (future) `ConsultationLoopWorkflow` reports for
  * the live client feed — e.g. an action started/finished, a specialist
  * dispatched, derived context re-entering the bus. Carries NO PHI: kind/label
  * ids only, mirroring `HarnessProgressRequest`'s payload-bound posture.

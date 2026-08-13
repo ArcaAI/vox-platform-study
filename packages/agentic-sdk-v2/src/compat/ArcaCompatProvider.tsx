@@ -5,7 +5,7 @@
  *
  * Convenience wrapper so a migrating v1 app adds ONE provider taking its
  * familiar `SDK_CONFIG_OPTIONS` object, instead of hand-building an
- * `AgenticConfig`. It maps the v1 config (TASK-560 §5.1) and renders the v2
+ * `AgenticConfig`. It maps the v1 config and renders the v2
  * `<AgenticProvider>`.
  */
 
@@ -21,7 +21,7 @@ export interface ArcaCompatProviderProps {
 }
 
 /**
- * Compat-only feature flags (TASK-586 Lane D). These have no v1 ancestor and
+ * Compat-only feature flags. These have no v1 ancestor and
  * are NOT part of the v2 `AgenticConfig` — they only matter to compat hooks,
  * so they ride a small compat-local context instead of widening the shared
  * `AgenticConfig`/`AudioPluginConfig` types.

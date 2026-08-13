@@ -14,7 +14,7 @@
  *
  * v2 has NO `str.format()`-style interpolator wired to this template today —
  * `interpolateTemplate` (`prompt-management.service.ts:985`) is `{{var}}`-style
- * and test-path only (TASK-634 §2.10 D-08). A consumer of this constant MUST
+ * and test-path only (D-08). A consumer of this constant MUST
  * substitute all five placeholders itself (e.g. `String.prototype.replaceAll`
  * per token) before sending it to an LLM, or literal `{braces}` reach the
  * model. This module deliberately does NOT wire that substitution — see the
@@ -23,11 +23,11 @@
  * Source: the RUNNING v1 SMR pod (Rancher cluster c-9lwv8, namespace apps,
  * pod apps-smr-84c9774997-zhp2l), NOT a local v1 checkout — the two have
  * diverged (see docs/implementation/TASK-634-Pre-Summary-Summary-Prompt-Fidelity/README.md
- * §2.2, §2.9). Extracted 2026-08-07 via a chunked base64 pipeline (never
+ * ). Extracted 2026-08-07 via a chunked base64 pipeline (never
  * retyped) with every chunk sha256-verified against the pod before
  * concatenation, then cross-checked two independent reconstruction methods
  * (direct Python execution vs. `ast`-based literal extraction) for
- * byte-for-byte agreement. See §2.14 D-12 and the TASK-634 README Phase 5.
+ * byte-for-byte agreement. See D-12 and the README Phase 5.
  *
  * GENERATED, DO NOT HAND-EDIT — regenerate from the pod, never retype.
  * sha256 e322b23fba40846904bc11c33025cb948c5e2dc65768a5f062ad534fcb3d4ddd  1840 bytes

@@ -1,5 +1,5 @@
 /**
- * TASK-635 lane B4 — Test Bench extensions to `TestRunPanel`: provider/model
+ * Test Bench extensions to `TestRunPanel`: provider/model
  * picker (fed by the `text/providers` catalog via the shared
  * `useTextProviders` hook), the "Paste sample" / "Golden case" example-data
  * toggle (XOR payload), the dry-run switch (default ON), and the version

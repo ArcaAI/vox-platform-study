@@ -1,13 +1,13 @@
 'use client';
 
 /**
- * Scribe workspace footer (TASK-543): the transcription-Listener (ASR
+ * Scribe workspace footer: the transcription-Listener (ASR
  * pipeline) and note-assistant model selectors, plus real per-session metric
  * cards. Metrics are REAL or an em-dash — throughput/latency come from the
  * live-summary SSE stats (`useLiveMetrics`); bandwidth stays em-dash until the
- * SDK uplink-bitrate signal lands (TASK-543 SDK follow-up), never fabricated.
+ * SDK uplink-bitrate signal lands (SDK follow-up), never fabricated.
  *
- * Naming (TASK-547 Family 2 clinician vocabulary): the ASR pipeline is the
+ * Naming (Family 2 clinician vocabulary): the ASR pipeline is the
  * "Listener" capability — never labeled an "agent" on this clinician-facing
  * surface.
  */
@@ -41,7 +41,7 @@ export interface ScribeFooterProps {
   selectedTranscriptionId: string;
   onTranscriptionChange: (id: string) => void;
   transcriptionLoading: boolean;
-  /** Selectable STT language modes (TASK-587). */
+  /** Selectable STT language modes. */
   languageModes: SttLanguageModeOption[];
   selectedLanguageMode: string;
   onLanguageModeChange: (id: string) => void;

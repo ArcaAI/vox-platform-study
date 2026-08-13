@@ -1,5 +1,5 @@
 /**
- * Frame 50 — Consultation Scribe workspace (matrix row 34; TASK-543).
+ * Frame 50 — Consultation Scribe workspace (matrix row 34).
  * The `@arcaai/vox` module is mocked at the boundary (the SDK has its own
  * suite); fetch is stubbed by pathname. Covers the NoTenant gate and the
  * live 3-column structure: the real consultation list (SDK `listConsultations`),

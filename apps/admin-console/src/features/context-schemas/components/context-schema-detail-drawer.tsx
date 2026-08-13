@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * `ConsultationContextSchema` detail drawer (TASK-666) — the console-wide
+ * `ConsultationContextSchema` detail drawer — the console-wide
  * `DetailDrawer` hosting one schema. Tabs: Settings (metadata OCC PATCH) →
  * Definition (kind/output editor + publish) → Versions (history + pin) →
  * Tester (sample-payload tester against the in-progress draft).

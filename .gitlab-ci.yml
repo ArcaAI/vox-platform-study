@@ -17,7 +17,7 @@
 #   release-sdk          — SDK publishing: @arcaai/vox + deps → GitLab Package Registry
 #   maintenance/*        — maintenance branches: validate + test + scan
 #   prod-*               — release-line branch: validate + test only, NO
-#                          builds/deploys (TASK-616 §F11). Production is
+#                          builds/deploys. Production is
 #                          reached by pushing a protected `vX.Y.Z` tag, which
 #                          promotes the digest a dev-*/staging-* pipeline
 #                          already built — see promote-prod in deploy.yml.
@@ -74,7 +74,7 @@ workflow:
     - if: $CI_COMMIT_BRANCH =~ /^staging-/
       variables:
         PIPELINE_TYPE: "staging"
-    # TASK-616 §F11/§F12 — branch model is dev-* / staging-* / prod-*.
+    # Branch model is dev-* / staging-* / prod-*.
     #
     # RESOLVED 2026-08-07 (owner): `prod-*` is the production release line.
     # `production-*` is RETIRED and deliberately NOT matched here — it falls
@@ -123,12 +123,12 @@ variables:
   DOCKER_TLS_CERTDIR: ""
   DOCKER_BUILDKIT: "1"
   REGISTRY: 10.10.1.110:5050
-  # GITHUB_REPO_URL removed (TASK-558 lane K, K2): nothing read it. The
+  # GITHUB_REPO_URL removed: nothing read it. The
   # github-backup job builds its remote URL from a literal in .gitlab/ci/notify.yml.
   GITHUB_BACKUP_BRANCH: "back-up"
   RUN_NOTIFY_ONLY: ""
   #
-  # ── Vault via GitLab OIDC (TASK-558 §13.3 C1) ──────────────────────────────
+  # ── Vault via GitLab OIDC ──────────────────────────────────────────────────
   # VAULT_ADDR EMPTY = the mechanism is off and every job uses its CI variables
   # exactly as before. Set it (Settings → CI/CD → Variables, NOT masked — it is
   # topology, not a secret) to switch the whole pipeline over. See
@@ -155,11 +155,11 @@ variables:
   # ── Test environment ───────────────────────────────────────────────────────
   # These provide defaults for test jobs.
   #
-  # PREFERRED PATH (TASK-558 §13.3 C1): the test credentials live in Vault at
+  # PREFERRED PATH: the test credentials live in Vault at
   # `secret/ci/*` and reach the job through .gitlab/ci/vault.yml — no long-lived
   # token in project settings, scoped by the role's bound_claims, auditable.
   #
-  # FALLBACK (§13.3 C2 — masked variables are a fallback, not the design):
+  # FALLBACK (masked variables are a fallback, not the design):
   # while VAULT_ADDR is empty the jobs read these CI/CD Variables instead.
   # Masking prevents casual echo; it does not scope, expire, or audit.
   #

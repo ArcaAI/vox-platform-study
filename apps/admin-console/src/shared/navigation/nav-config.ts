@@ -104,7 +104,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     implemented: true,
   },
   {
-    // TASK-648 §6 — service version & release registry. Same gate as
+    // service version & release registry. Same gate as
     // `/monitoring` and `/health/services` (frozen contract): grouped
     // together in the sidebar.
     route: '/releases',
@@ -189,7 +189,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     implemented: true,
   },
   {
-    // TASK-638 §6 — the provider-reconciliation audit trail. Platform-wide
+    // the provider-reconciliation audit trail. Platform-wide
     // (a vendor bills the platform, not a tenant), so tier 10-19 with no
     // working-tenant gate, unlike its /ai-operations neighbours.
     route: '/ai-operations/reconciliation',
@@ -270,7 +270,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     ],
     implemented: true,
   },
-  // Retiered from 10-19 (TASK-641): tenant admins now manage their own
+  // Retiered from 10-19: tenant admins now manage their own
   // exact-origin rows; wildcard/SYSTEM rows stay GLOBAL_ADMIN-only, enforced
   // in the service, not the nav gate.
   {
@@ -296,7 +296,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     implemented: true,
   },
   { route: '/agents', label: 'Agents', tier: '30-49', icon: IconRobot, required: [['manage', 'PromptTemplate']], implemented: true },
-  // Prompt instruction templates got their own route (TASK-634 R6): the
+  // Prompt instruction templates got their own route: the
   // pre-summary/summary resolution map, template CRUD + versions, and clinical
   // approval, previously buried as tabs 2 and 3 of the Agent Catalog.
   {
@@ -308,7 +308,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     implemented: true,
   },
   {
-    // TASK-666 — tenant-defined consultation context vocabulary (TASK-658).
+    // tenant-defined consultation context vocabulary.
     route: '/context-schemas',
     label: 'Context Schemas',
     tier: '30-49',
@@ -388,7 +388,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     ],
     implemented: true,
   },
-  // TASK-595: the single tenant AI hub. The former standalone screens
+  // the single tenant AI hub. The former standalone screens
   // `/stt-config`, `/tts-config` and `/ai-providers` were merged into four tabs
   // here (Models · Speech · Voice · Providers), closing the credential-editor
   // duplication (rule 13, "one authoritative editor"). Each tab spans a

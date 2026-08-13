@@ -1,4 +1,4 @@
--- TASK-553 Wave 2 — governance schema: SummaryMeta OCC (F-11) + GateEditExemplar
+-- Governance schema: SummaryMeta OCC (F-11) + GateEditExemplar
 -- curation gate (F-24).
 --
 -- Purely ADDITIVE. No DROP / DELETE / TRUNCATE. Every statement is
@@ -16,7 +16,7 @@
 --    enforce-mode retrieval filter.
 --
 -- NOTE: no ResourceType ADD VALUE is needed — 'GateEditExemplar' is already a
--- member (added by the TASK-533 gate-edit-exemplar migration), and the curation
+-- member (added by the gate-edit-exemplar migration), and the curation
 -- write reuses it for its ResourceUpdated sys-event.
 
 -- 1. SummaryMeta optimistic-concurrency counter.

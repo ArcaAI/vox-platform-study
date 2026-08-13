@@ -10,7 +10,7 @@
  *   - resourceTypeName: required, non-empty trimmed, <= 100 chars
  *   - hashedSecret: optional; <= 255 chars when present
  *   - resourceId: optional; non-empty trimmed when present
- *   - subscriptionMetadata: track-only (no structural validation per ticket policy)
+ *   - subscriptionMetadata: track-only (no structural validation)
  */
 
 import { describe, it, expect } from 'vitest';

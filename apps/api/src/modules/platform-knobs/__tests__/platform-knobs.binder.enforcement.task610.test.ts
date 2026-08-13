@@ -1,4 +1,4 @@
-// TASK-610 §4C — the binder is what connects `origin.enforcementEnabled` to the
+// The binder is what connects `origin.enforcementEnabled` to the
 // pre-bootstrap CORS code, exactly as it already connects `logLevel` to the
 // logger: lazily, per call, so a settings write takes effect with no restart.
 //
@@ -9,9 +9,9 @@
 // to "enabled" by accident — refusing browser traffic on the strength of an
 // exception rather than a resolved value.
 //
-// TASK-641 FR-6 note: enforcement is now the DESCRIPTOR default (`true`), so
+// Note: enforcement is now the DESCRIPTOR default (`true`), so
 // "enabled" is no longer an accident by itself — the accident is arriving there
-// via a thrown lookup instead of a read. The lock-out §4C worried about is now
+// via a thrown lookup instead of a read. The lock-out worried about is now
 // prevented by the bootstrap migration that guarantees the SYSTEM loopback rows
 // (`20260808160000_task_641_bootstrap_loopback_origins`, H-2), not by a
 // permissive default. Every case below installs its own fake resolver, so none
@@ -31,7 +31,7 @@ const fakeSettings = (resolve: (key: string) => unknown): TenantSettingsService 
     resolvePlatform: (key: string) => ({ value: resolve(key) }),
   }) as unknown as TenantSettingsService;
 
-describe('PlatformKnobsBinder — origin enforcement resolver (TASK-610 §4C)', () => {
+describe('PlatformKnobsBinder — origin enforcement resolver', () => {
   beforeEach(() => {
     setOriginRegistryResolver(null);
     setOriginEnforcementResolver(null);
@@ -63,7 +63,7 @@ describe('PlatformKnobsBinder — origin enforcement resolver (TASK-610 §4C)', 
     expect(keys).toContain('origin.enforcementEnabled');
   });
 
-  // Reworded by TASK-641: `false` is no longer the descriptor default (FR-6
+  // Reworded by : `false` is no longer the descriptor default (
   // made it `true`), so this now pins an OPERATOR-DISABLED platform, not a
   // fresh-database one. The assertion is unchanged — the binder must report
   // whatever the settings service resolves, either way.
@@ -96,7 +96,7 @@ describe('PlatformKnobsBinder — origin enforcement resolver (TASK-610 §4C)', 
 });
 
 /**
- * TASK-610 §4C, Deliverable 4 — WHO gets to state the posture, and WHEN.
+ * , Deliverable 4 — WHO gets to state the posture, and WHEN.
  *
  * The first cut of this got it wrong in the most instructive way: `bootstrap()`
  * took a ONE-SHOT reading right after `NestFactory.create()` and printed it. At
@@ -117,7 +117,7 @@ describe('PlatformKnobsBinder — origin enforcement resolver (TASK-610 §4C)', 
  * announced on CHANGE, so it stays truthful for the life of the process instead
  * of being a snapshot that ages badly.
  */
-describe('PlatformKnobsBinder — origin enforcement posture logging (TASK-610 §4C, Deliverable 4)', () => {
+describe('PlatformKnobsBinder — origin enforcement posture logging (Deliverable 4)', () => {
   let warnSpy: ReturnType<typeof vi.spyOn>;
 
   /** The posture lines only — `warn` also carries the no-settings-wired notice. */

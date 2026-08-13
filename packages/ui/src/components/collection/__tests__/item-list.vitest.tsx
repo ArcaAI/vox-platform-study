@@ -57,7 +57,7 @@ function triggers(container: HTMLElement) {
   return Array.from(container.querySelectorAll<HTMLButtonElement>('[data-slot="item-list-row-trigger"]'));
 }
 
-describe('ItemList (§4a.2)', () => {
+describe('ItemList', () => {
   it('renders a listitem per item', () => {
     renderList();
     expect(screen.getAllByRole('listitem')).toHaveLength(3);

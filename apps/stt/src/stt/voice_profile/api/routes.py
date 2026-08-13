@@ -64,7 +64,7 @@ async def extract_voice_embedding(files: list[UploadFile]) -> ExtractionResponse
             raise HTTPException(status_code=400, detail=f"File {i + 1} is empty")
 
         try:
-            # TASK-607 — same tolerant decode as batch: libsndfile, then ffmpeg,
+            # Same tolerant decode as batch: libsndfile, then ffmpeg,
             # so phone recordings with vendor trailers are accepted here too.
             samples, sr = decode_audio(audio_bytes)
         except AudioProcessingError as exc:

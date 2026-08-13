@@ -128,7 +128,7 @@ export interface UseArcaAudio {
    * PER-SOURCE input levels (0–100 each), index-aligned with the resolved
    * capture-source order — `AudioStartOptions.sourceStreams` when streams are
    * injected, otherwise `[deviceId, secondaryDeviceId, ...additionalDeviceIds]`
-   * after de-duplication (TASK-597 follow-up #2). Sampled from an
+   * after de-duplication. Sampled from an
    * analysis-only `AnalyserNode` per source inside the mixer.
    *
    * This answers "WHICH microphone is speaking", which {@link UseArcaAudio.level}
@@ -142,7 +142,7 @@ export interface UseArcaAudio {
    */
   sourceLevels: number[];
   /**
-   * Live connection health of the streaming STT session (TASK-567 Phase F).
+   * Live connection health of the streaming STT session.
    * `connected` is nominal; drive a reconnecting/error/switched banner off the
    * non-`connected` values.
    */
@@ -191,7 +191,7 @@ export interface UseArcaContext {
   error: Error | null;
   addCaseNote: (content: string, metadata?: Record<string, unknown>) => Promise<ContextItem>;
   addTranscription: (text: string, metadata?: Record<string, unknown>) => Promise<ContextItem>;
-  /** Add an attachment. `mediaId` threads through from `useStorage().uploadFile()` (TASK-656/665/671). */
+  /** Add an attachment. `mediaId` threads through from `useStorage().uploadFile()`.*/
   addAttachment: (content?: string, metadata?: Record<string, unknown>, mediaId?: string) => Promise<ContextItem>;
   updateItem: (id: string, content: string) => Promise<void>;
   /** Fetch all context items from backend with optional filters */
@@ -601,8 +601,8 @@ export function useArca(): UseArcaReturn {
     [store, getLogger],
   );
 
-  // TASK-671: `useArca()`'s aggregate `context` object omitted `addAttachment`
-  // entirely (a pre-existing gap noted but left out of scope by TASK-665) —
+  // `useArca()`'s aggregate `context` object omitted `addAttachment`
+  // entirely (a pre-existing gap noted but left out of earlier schema-discovery work) —
   // consumers of this god-hook could not attach files at all. Mirrors
   // `addCaseNote`/`addTranscription` above and `useArcaContext().addAttachment`.
   const addAttachment = useCallback(
@@ -626,7 +626,7 @@ export function useArca(): UseArcaReturn {
           content: content ?? '',
           source: 'USER',
           metadata,
-          // TASK-656/665/671: the `Media` table row UUID from
+          // The `Media` table row UUID from
           // `useStorage().uploadFile()` — the id the backend can actually
           // resolve, unlike the raw storage `key`.
           mediaId,

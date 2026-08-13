@@ -2,7 +2,7 @@ import { AutoClassMapper, AutoEntityChangeMapper, BaseMapper, createMapperHandle
 import * as Entities from '../../../entities';
 import * as Models from '../../../models';
 
-// TASK-663 — the promotion table is an IMMUTABLE, WORM record: it has no
+// The promotion table is an IMMUTABLE, WORM record: it has no
 // `updatedAt`/`updatedBy` and no `resourceStatus*` columns in Prisma, but
 // `BaseTenantEntity` surfaces them, so they must be stripped or every insert is
 // a Prisma validation error. Exactly the `DepartmentAgentVersionEntityMapper` /

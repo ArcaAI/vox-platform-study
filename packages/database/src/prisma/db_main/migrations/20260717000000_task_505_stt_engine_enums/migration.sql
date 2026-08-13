@@ -1,6 +1,6 @@
--- TASK-505 P5 — Prisma↔Python AiModelFormat/ModelTaskType enum sync.
+-- Prisma↔Python AiModelFormat/ModelTaskType enum sync.
 -- Purely ADDITIVE (ALTER TYPE ... ADD VALUE); safe to apply via psql on
--- db-push-managed dev databases (see docs/implementation/TASK-505 README).
+-- db-push-managed dev databases (see docs/implementation/).
 
 ALTER TYPE core."AiModelFormat" ADD VALUE IF NOT EXISTS 'ONNX_OPTIMUM';
 ALTER TYPE core."AiModelFormat" ADD VALUE IF NOT EXISTS 'AZURE_SPEECH';

@@ -1,11 +1,11 @@
 /**
- * Department catalog fetch (Workstream B, TASK-592).
+ * Department catalog fetch (Workstream B,).
  *
  * The SummaryCard lets a v1-migrating developer pick a REAL tenant department
  * so the gateway's Workstream-A resolver can match it (by code, name, or v1
  * synonym) to a governed instruction template. We hit the admin listing route
  * directly with the same `x-api-key` the `<ArcaCompatProvider>` was configured
- * with — the SDK's `useSMR` uses the identical auth parity (TASK-560 D2).
+ * with — the SDK's `useSMR` uses the identical auth parity.
  *
  * The global prefix is `api/v1`, so the URL is
  * `{apiEndpoint}/api/v1/admin/departments`. The controller
@@ -13,7 +13,7 @@
  * `DepartmentResponse[]`, but we map DEFENSIVELY — accepting an array or any of
  * the common paginated envelopes (`data`/`items`/`results`) — so a future
  * change to a wrapped response shape does not silently break the picker.
- */
+*/
 
 /** One selectable department. `value` is what we submit as `departmentId`. */
 export interface DepartmentOption {

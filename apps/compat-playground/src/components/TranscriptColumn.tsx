@@ -26,8 +26,7 @@ function MetadataCell({ meta }: { meta?: Record<string, unknown> }) {
         {/* `mic` / `speaker` are the literal keys the per-mic metadata rows send
             (MetadataSimulator → sendAudioData). Mic attribution is the whole
             point of the multi-mic timeline, so they get first-class badges
-            instead of being buried in the raw-JSON block below (TASK-597 lane
-            G, carried from lane C). The label is spelled out in text — the
+            instead of being buried in the raw-JSON block below (carried from lane C). The label is spelled out in text — the
             badge variant is decoration, never the only signal. */}
         {meta.mic !== undefined ? <Badge variant="default">mic: {String(meta.mic)}</Badge> : null}
         {meta.speaker !== undefined ? <Badge variant="secondary">speaker: {String(meta.speaker)}</Badge> : null}

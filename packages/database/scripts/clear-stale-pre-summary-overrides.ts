@@ -1,9 +1,9 @@
 /**
- * TASK-634 D-22 — clear the inert per-department pre-summary overrides.
+ * Clear the inert per-department pre-summary overrides.
  *
  * WHY
  * ---
- * Before TASK-634 Phase 1, `Department.preSummaryPromptId` selected the
+ * Before, `Department.preSummaryPromptId` selected the
  * pre-summary prompt for that department. Phase 1 established that pre-summary
  * has NO department axis: `PromptResolutionService.resolvePreSummaryPromptId()`
  * explicitly records `trace.departmentPromptId = null` and never reads the

@@ -20,10 +20,10 @@ export const BUSINESS = 'DOMAIN.BUSINESS';
 // A plan-entitlement quantity/meter limit was reached. The API gateway maps
 // this to 409 Conflict (create) / 429 (meter).
 export const QUOTA_EXCEEDED = 'DOMAIN.QUOTA_EXCEEDED';
-// The tenant's optional monthly spend limit was reached (TASK-615 #8, D12). The
+// The tenant's optional monthly spend limit was reached. The
 // API gateway maps this to 402 Payment Required.
 export const SPEND_LIMIT_EXCEEDED = 'DOMAIN.SPEND_LIMIT_EXCEEDED';
-// The tenant's OWN configuration forbids a provider (TASK-643 R4): its
+// The tenant's OWN configuration forbids a provider: its
 // connection row for that (service, provider) is disabled, which is a VETO of
 // the platform-default credential, not merely "unused". The API gateway maps
 // this to 409 Conflict — a tenant admin can clear it in the console, which is

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // @ts-check
 /**
- * verify-doc-claims.mjs — TASK-537 Wave-3 checker
+ * verify-doc-claims.mjs — documentation claim checker
  *
  * Scans docs/**\/*.md plus every README.md in the repo and verifies two kinds of
  * backtick-quoted claim:

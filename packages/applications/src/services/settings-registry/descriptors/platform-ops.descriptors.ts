@@ -15,7 +15,7 @@
 //   - audit-retention.*   `audit-retention/audit-retention.service.ts`
 //   - agentic.trajectory.* `agent-trajectory-retention/agent-trajectory-retention.service.ts`
 
-// Every descriptor here is `failMode: 'open-to-default'` (plan §4 B3): these are
+// Every descriptor here is `failMode: 'open-to-default'`: these are
 // schedules, retention windows and enable-flags, so a control-plane miss must
 // resolve to the SAME code default the consuming service already falls back to.
 // Fail-closed would turn an unwritten row into a broken sweep or a lifted
@@ -180,7 +180,7 @@ export const PLATFORM_OPS_SETTINGS: SettingDescriptor[] = [
     description: 'Cron expression for the nightly SYSTEM-template resync sweep.',
     default: '0 3 * * *',
   },
-  // ── Agent golden-library template resync (TASK-548) ────
+  // ── Agent golden-library template resync ────
   {
     key: 'departmentAgent.templateResync.enabled',
     tier: 'global-kv',
@@ -211,23 +211,23 @@ export const PLATFORM_OPS_SETTINGS: SettingDescriptor[] = [
     description: 'Cron expression for the nightly SYSTEM agent-library resync sweep.',
     default: '0 4 * * *',
   },
-  // ── Origin (CORS) enforcement — TASK-610 §4C, reversed by TASK-641 FR-6 ───
+  // ── Origin (CORS) enforcement ────────────────────────────────────────────
   //
-  // The ONE switch that decides whether any of TASK-610's origin machinery
+  // The ONE switch that decides whether any of the origin machinery
   // enforces. Unlike its neighbours above, this key was not transcribed from an
   // existing service fallback — its DEFAULT IS THE PLATFORM POSTURE. No row is
   // seeded for it — the descriptor default is the value on a fresh database,
   // and the registry write lane creates the row when an operator first sets it.
   //
-  // TASK-610 shipped this defaulting OFF (permissive: every origin admitted)
-  // on an explicit owner directive. TASK-641 reverses that directive — "no
+  // This originally defaulted OFF (permissive: every origin admitted)
+  // on an explicit owner directive. That directive was reversed — "no
   // default is off" — so the default below is now `true`: enforcing, out of
   // the box, in every environment including a fresh local `pnpm setup:dev`,
-  // with no row present and no opt-in step. This is safe ONLY because TASK-641
-  // also makes the SYSTEM allowed-origin rows unconditional bootstrap data
+  // with no row present and no opt-in step. This is safe ONLY because
+  // the SYSTEM allowed-origin rows are unconditional bootstrap data
   // (`seed/11b-tenant-allowed-origins.ts`, no longer `RUN_SEED`-gated) — an
   // unseeded environment would otherwise refuse every browser origin with no
-  // escape hatch (see that ticket's H-2).
+  // escape hatch.
   //
   // WHY IT IS NOT `killSwitch: true`. The `killSwitch` invariant
   // (`SettingsRegistry.killSwitches()`) requires a DEFAULT-OFF value (fail-safe
@@ -247,8 +247,8 @@ export const PLATFORM_OPS_SETTINGS: SettingDescriptor[] = [
     maxScope: 'system',
     editableBy: 'all',
     globalOnly: true,
-    // `failMode: 'open-to-default'` is unchanged from TASK-610, but its
-    // consequence inverts with the default below (TASK-641 H-3). Previously
+    // `failMode: 'open-to-default'` is unchanged, but its
+    // consequence inverts with the default below. Previously
     // "fails open" meant an unreadable control plane fell back to permissive —
     // the comment here used to argue that was the only acceptable outcome,
     // because failing the other way would turn a settings outage into a
@@ -262,8 +262,8 @@ export const PLATFORM_OPS_SETTINGS: SettingDescriptor[] = [
     // the database it lives in is otherwise up is not a state this platform
     // tolerates gracefully anywhere else either (the registry itself has its
     // own fail-closed behaviour on an unreadable table; this key does not
-    // invent a second, different failure mode on top of it — see the plan's
-    // explicit instruction not to touch `failMode`). (2) TASK-641's whole
+    // invent a second, different failure mode on top of it — `failMode` itself
+    // is left untouched). (2) The whole
     // premise is that browser-origin enforcement is the platform's default
     // SECURITY STANCE, not an opt-in hardening step an operator remembers to
     // flip — so the fail-open-to-default behaviour failing into that same

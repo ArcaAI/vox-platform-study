@@ -182,7 +182,7 @@ describe('TieredThrottlerGuard (DB-backed live overrides)', () => {
     isEnabled: () => stub.enabled,
     getTier: () => stub.tier,
     getRouteOverride: () => stub.routeOverride,
-    // TASK-558 lane I — this suite has NO tenant lane wired, so the tenant
+    // This suite has NO tenant lane wired, so the tenant
     // accessors resolve to the platform answer and every assertion below keeps
     // its original meaning. `limitSource: 'system'` is what tells the guard the
     // value did not come from a tenant's own row, which is what keeps the
@@ -316,7 +316,7 @@ describe('TieredThrottlerGuard (per-tenant plan rate-limits)', () => {
     // default tier is generous; strict tier is tight (2/min).
     getTier: (name) => tierOf(name),
     getRouteOverride: () => undefined,
-    // TASK-558 lane I — no tenant lane wired here either, so these report
+    // No tenant lane wired here either, so these report
     // `system` and the PLAN tier keeps winning, exactly as this suite asserts.
     isEnabledForTenant: () => true,
     getTierForTenant: (name) => ({ ...tierOf(name), limitSource: 'system', ttlSource: 'system' }),
@@ -391,7 +391,7 @@ describe('TieredThrottlerGuard (per-tenant plan rate-limits)', () => {
 });
 
 /**
- * TASK-558 lane I — THE HEADLINE PROOF, at the HTTP layer.
+ * THE HEADLINE PROOF, at the HTTP layer.
  *
  * "Changing a rate limit for ONE tenant changes that tenant's behaviour and no
  * other, with no redeploy."
@@ -429,7 +429,7 @@ class LaneIController {
   }
 }
 
-describe('TieredThrottlerGuard (per-tenant DB rate limits — TASK-558 lane I)', () => {
+describe('TieredThrottlerGuard (per-tenant DB rate limits)', () => {
   let app: INestApplication;
   const prevEnabled = process.env.RATE_LIMIT_ENABLED;
 

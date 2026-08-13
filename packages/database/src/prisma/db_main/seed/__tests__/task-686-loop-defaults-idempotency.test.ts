@@ -1,5 +1,5 @@
 /**
- * TASK-686 — idempotency of the day-1 loop defaults.
+ * Idempotency of the day-1 loop defaults.
  *
  * The repo-wide guard in `seed-idempotency.test.ts` only covers models whose
  * operator-owned state lives in a column literally called `value`
@@ -7,7 +7,7 @@
  * cover what this ticket seeds: a whole `ConsultationContextSchema` row whose
  * `definition`, `status`, `pinnedVersionNumber` and `isDefault` are ALL the
  * tenant's, and seven loop-config columns on `DepartmentAgent` that a tenant
- * admin owns through the console (TASK-667).
+ * admin owns through the console.
  *
  * So this file is that guard, and it is behavioural rather than static: it runs
  * the two real seed phases against an in-memory fake Prisma client (the
@@ -89,7 +89,7 @@ function fakeClient() {
 
 const ALL_SEEDED_AGENT_IDS = [...GOLDEN_AGENTS, ...GLOBAL_TENANT_AGENTS, ...ARCAAI_TENANT_AGENTS].map((a) => a.id);
 
-describe('TASK-686 — day-1 loop defaults are idempotent', () => {
+describe('day-1 loop defaults are idempotent', () => {
   beforeEach(() => {
     vi.spyOn(console, 'log').mockImplementation(() => undefined);
   });

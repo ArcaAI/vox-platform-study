@@ -40,7 +40,7 @@ import { ProviderService, isCloudByoProvider } from './constants';
 import { AiProviderConnectionResponse, UpsertAiProviderConnectionRequest } from './dto';
 
 /**
- * Unified provider-connection service (TASK-569).
+ * Unified provider-connection service.
  *
  * Owns WHERE a serving provider lives and HOW to authenticate to it — as the DB
  * control plane for ALL THREE AI capabilities (llm | stt | tts), keyed by
@@ -72,7 +72,7 @@ export class AiProviderConnectionService extends BaseService implements IProvide
     protected override readonly clsService: ClsService<IActiveUserContext>,
     // Optional so non-Vault deploys still run; key writes then reject.
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
-    // The platform-default entitlement gate (TASK-643 R6). Optional so this
+    // The platform-default entitlement gate. Optional so this
     // service still constructs in unit tests and in any composition that does
     // not import the entitlements module — but an ABSENT gate DENIES the SYSTEM
     // tier rather than granting it. Failing open here would spend the
@@ -269,11 +269,11 @@ export class AiProviderConnectionService extends BaseService implements IProvide
    * ONE deliberate improvement: the per-credential catch is not silent.
    *
    * The 1-arg overload is a `@deprecated` transition shim (assumes
-   * `service='llm'`) so the TASK-572-owned smr-proxy keeps compiling until it
+   * `service='llm'`) so smr-proxy keeps compiling until it
    * repoints to the service-first form.
    */
   async resolveTenantCloudOverrides(service: ProviderService, tenantId: string): Promise<ResolvedProviderOverrides>;
-  /** @deprecated 1-arg form assumes `service='llm'`; kept for the smr-proxy transition (TASK-572 removes it). */
+  /** @deprecated 1-arg form assumes `service='llm'`; kept for the smr-proxy transition (removes it). */
   async resolveTenantCloudOverrides(tenantId: string): Promise<ResolvedProviderOverrides>;
   async resolveTenantCloudOverrides(a: ProviderService | string, b?: string): Promise<ResolvedProviderOverrides> {
     const service = (b === undefined ? 'llm' : a) as ProviderService;
@@ -354,7 +354,7 @@ export class AiProviderConnectionService extends BaseService implements IProvide
    * `resolveTenantCloudOverrides` (all six production injection sites) and
    * `resolveConnection` — comes through here, so there is exactly one
    * precedence rule, one veto set and one entitlement `if` in the codebase
-   * (TASK-643 §3.1 option C, OD-5).
+   * (option C).
    *
    * `provider` selects the read SHAPE, not the policy: given, both tiers are
    * read by (service, provider); omitted, both are read as whole-service maps.

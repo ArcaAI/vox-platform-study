@@ -1,5 +1,5 @@
 /**
- * useArcaSession.addContext — schema-aware writes (TASK-665).
+ * useArcaSession.addContext — schema-aware writes.
  *
  *  - A payload is validated CLIENT-SIDE against the session-pinned schema
  *    bundle before the request is sent; an invalid payload never reaches
@@ -9,7 +9,7 @@
  *    the write proceeds and the server is the final authority.
  *  - When the session has a pinned `contextSchemaVersionId`, every write
  *    carries it as `X-Context-Schema-Version` via `postWithHeaders`.
- *  - With no pinned schema (the pre-TASK-658 path), `addContext` behaves
+ * - With no pinned schema (the path), `addContext` behaves
  *    byte-identically to before — plain `apiClient.post`, no header.
  *
  * @vitest-environment jsdom
@@ -66,7 +66,7 @@ const PINNED_BUNDLE: ConsultationSchemaBundle = {
   },
 };
 
-describe('useArcaSession.addContext — schema-aware writes (TASK-665)', () => {
+describe('useArcaSession.addContext — schema-aware writes', () => {
   let mockApiClient: AgenticClient;
   let mockLogger: ReturnType<typeof createMockLogger>;
   let mockStore: any;

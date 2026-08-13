@@ -1,5 +1,5 @@
 /**
- * useArcaAudio — empty-final hygiene (TASK-612 Lane F, finding I-1, OD-3a).
+ * useArcaAudio — empty-final hygiene (finding I-1).
  *
  * The backend can emit `text: ''`/whitespace finals for silence windows.
  * Before this change every guard between the STT client and the store passed
@@ -212,7 +212,7 @@ async function startAndGetCallbacks() {
   return { store, callbacks, apiClientPost };
 }
 
-describe('useArcaAudio — empty-final hygiene (TASK-612 Lane F, OD-3a)', () => {
+describe('useArcaAudio — empty-final hygiene', () => {
   it('(a) whitespace-only final: no segment added, no context POST', async () => {
     const { store, callbacks, apiClientPost } = await startAndGetCallbacks();
 

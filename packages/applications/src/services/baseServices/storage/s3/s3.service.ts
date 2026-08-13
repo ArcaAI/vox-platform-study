@@ -148,7 +148,7 @@ export class S3Service implements IS3Service, OnModuleInit {
       // under SECRETS_PROVIDER=env). The gate MUST read from the same source
       // `getS3Configuration()` builds the client from — gating on plaintext
       // `GlobalSetting` rows made a correctly-configured box look unconfigured
-      // once those rows were removed (TASK-558 §9.3 M10, lane G G4).
+      // once those rows were removed.
       const requiredSecretKeys = ['S3_ACCESS_KEY', 'S3_SECRET_KEY'];
 
       for (const key of requiredSecretKeys) {

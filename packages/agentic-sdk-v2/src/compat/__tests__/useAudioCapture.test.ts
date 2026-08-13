@@ -25,8 +25,7 @@ function makeAudioMock(overrides: Record<string, unknown> = {}) {
   };
 }
 
-// Reactive store mock for the TASK-586 pre-start selection plus the TASK-612
-// Lane E diagnostics fields. The diagnostics are optional on the mock shape
+// Reactive store mock for the pre-start selection plus the diagnostics fields. The diagnostics are optional on the mock shape
 // (not just the value) so `installStore()` with no third argument reproduces
 // a test-double store that never set them at all — the "undefined" case the
 // hook must degrade from, not merely a store that set them to a falsy value.
@@ -81,7 +80,7 @@ describe('useAudioCapture', () => {
     expect(audioMock.start).toHaveBeenCalledWith({ pipelineId: 'p1', language: 'en', languageMode: 'en' });
   });
 
-  it('forwards the pending pre-start provider selection as startOn and clears it (TASK-586)', async () => {
+  it('forwards the pending pre-start provider selection as startOn and clears it', async () => {
     installStore('fallback');
     const { result } = renderHook(() => useAudioCapture({ options: { sttPipelineId: 'p1' } }));
     await act(async () => {
@@ -91,7 +90,7 @@ describe('useAudioCapture', () => {
     expect(storeState.setPendingSttProvider).toHaveBeenCalledWith(null);
   });
 
-  it('omits startOn from audio.start when no pre-start selection is pending (TASK-586)', async () => {
+  it('omits startOn from audio.start when no pre-start selection is pending', async () => {
     const { result } = renderHook(() => useAudioCapture({ options: { sttPipelineId: 'p1' } }));
     await act(async () => {
       await result.current.startRecording();
@@ -108,7 +107,7 @@ describe('useAudioCapture', () => {
     expect(audioMock.start).toHaveBeenCalledWith({ pipelineId: 'p1' });
   });
 
-  // TASK-597 — audio source selection. Before it, these fields were dropped on
+  // Audio source selection. Before it, these fields were dropped on
   // the floor and a compat consumer could only ever record the default mic.
   it('forwards mic selection (deviceId/secondaryDeviceId/additionalDeviceIds) + gains to audio.start', async () => {
     const { result } = renderHook(() =>
@@ -188,11 +187,11 @@ describe('useAudioCapture', () => {
     expect(onAudioData).not.toHaveBeenCalled();
   });
 
-  // TASK-612 Lane E (AC-5) — compat diagnostics parity. Backpressure audio
+  // Compat diagnostics parity. Backpressure audio
   // loss and uplink bitrate previously lived only on the v2 store (finding
   // I-3); these fields let a compat integrator tell "silence is being sent"
   // from "nothing is being sent" without reaching into the store directly.
-  describe('diagnostics fields (TASK-612 Lane E)', () => {
+  describe('diagnostics fields', () => {
     it('reflects uplinkBitrate/audioLost/droppedFrames from the store and updates reactively as the store writes them', () => {
       installStore(null, { audioUplinkBitrate: 128_000, audioLostThisSession: true, audioDroppedFrameCount: 3 });
       const { result, rerender } = renderHook(() => useAudioCapture({}));

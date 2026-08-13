@@ -1,17 +1,17 @@
 'use client';
 
 /**
- * Column 2 of the Consultation Scribe workspace (TASK-543): the live
+ * Column 2 of the Consultation Scribe workspace: the live
  * session. A recording bar (REC pill + elapsed timer + level-driven waveform +
  * start/stop) over the canonical `LiveTranscript` composite fed straight from
  * the SDK (`audio.transcriptSegments` + `audio.currentTranscript`).
  *
  * The waveform renders a rolling buffer of the SDK's `audio.level` — one
  * amplitude source of truth (no second `getUserMedia`). `audio.level` is now
- * live: the SDK samples an AnalyserNode on the capture graph (TASK-543), so the
+ * live: the SDK samples an AnalyserNode on the capture graph, so the
  * bars track the mic input while recording.
  *
- * TASK-552 Lane C — click-to-source review mode: `audio.transcriptSegments`
+ * click-to-source review mode: `audio.transcriptSegments`
  * are the SDK's LIVE, in-browser STT segments (ephemeral, no relationship to
  * the persisted transcript's character offsets a citation resolves to). Once
  * a `reviewTranscriptText` prop is supplied (the persisted transcript,
@@ -67,7 +67,7 @@ export function toLiveTranscriptSegments(segments: readonly SdkTranscriptSegment
   }));
 }
 
-/** A character span to highlight within `reviewTranscriptText` (TASK-552 Lane C). */
+/** A character span to highlight within `reviewTranscriptText`. */
 export interface TranscriptReviewHighlight {
   charStart: number;
   charEnd: number;
@@ -121,11 +121,11 @@ export interface LiveSessionColumnProps {
   interim: string;
   onStart: () => void;
   onStop: () => void;
-  /** Persisted transcript text (TASK-552 Lane C) — renders in place of the live SDK view while not capturing. */
+  /** Persisted transcript text — renders in place of the live SDK view while not capturing. */
   reviewTranscriptText?: string | null;
   /** The cited span to highlight + scroll to within `reviewTranscriptText`. */
   reviewHighlight?: TranscriptReviewHighlight | null;
-  /** SDK `audio.sttConnectionState` — drives the reconnecting/error/switch banner (TASK-567). */
+  /** SDK `audio.sttConnectionState` — drives the reconnecting/error/switch banner. */
   sttConnectionState?: 'connected' | 'reconnecting' | 'switched_fallback' | 'error';
   /** True once the live session has switched to the tenant fallback pipeline (SDK `audio.activePipeline.isFallback`). */
   onFallback?: boolean;
@@ -201,7 +201,7 @@ export function LiveSessionColumn({
         <div aria-hidden className="text-primary min-w-0 flex-1">
           <Waveform data={displayWave} active={isCapturing} height={40} />
         </div>
-        {/* On-the-fly switch to the tenant fallback pipeline (TASK-567 R4). */}
+        {/* On-the-fly switch to the tenant fallback pipeline. */}
         {isCapturing && onSwitchToFallback && !onFallback ? (
           <Button variant="outline" onClick={onSwitchToFallback} disabled={captureBusy} className="shrink-0">
             <IconArrowsExchange aria-hidden />
@@ -220,7 +220,7 @@ export function LiveSessionColumn({
           </Button>
         )}
       </div>
-      {/* Switch / connection banner (TASK-567): shown only off the nominal state. */}
+      {/* Switch / connection banner: shown only off the nominal state. */}
       {onFallback || sttConnectionState === 'reconnecting' || sttConnectionState === 'error' ? (
         <div
           role="status"

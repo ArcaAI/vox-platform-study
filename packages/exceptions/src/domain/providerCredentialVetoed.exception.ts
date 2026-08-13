@@ -16,7 +16,7 @@ export interface ProviderCredentialVetoedMetadata {
 
 /**
  * The caller's tenant holds a DISABLED connection row for this
- * `(service, provider)` (TASK-643 R4, OD-1 option (a)).
+ * `(service, provider)` (option (a)).
  *
  * A disabled tenant row is a **veto**, not an absence: it fails CLOSED for that
  * provider — no tenant credential, no platform-default credential, and never a
@@ -27,7 +27,7 @@ export interface ProviderCredentialVetoedMetadata {
  * Mapped to **409 Conflict**, deliberately distinct from the **403** a missing
  * `featurePlatformDefaultCredential` entitlement produces: this one a tenant
  * admin can fix themselves, that one they cannot.
- */
+*/
 export class ProviderCredentialVetoedException extends BaseDomainException {
   static readonly code = PROVIDER_CREDENTIAL_VETOED;
   constructor(message: string, metadata?: ProviderCredentialVetoedMetadata, cause?: Error) {

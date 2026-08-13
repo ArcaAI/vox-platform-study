@@ -1,4 +1,4 @@
-"""TDD tests for TASK-657 vision capability (RED — written before implementation).
+"""TDD tests for vision capability (RED — written before implementation).
 
 Verifies:
   1. ``GenerateRequest`` gains an ADDITIVE ``content_parts`` union; every
@@ -7,7 +7,7 @@ Verifies:
   2. An image part reaches each adapter in that provider's native shape.
   3. ``llama_cpp`` rejects an image request with a clear typed error instead
      of silently dropping it.
-  4. ``supports_vision`` is reported correctly per provider via ``get_info()``.
+  4. ``supports_vision`` is reported correctly per provider via ``get_info``.
 """
 
 from __future__ import annotations

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================================
-# TASK-312 A.5 — Bootstrap Vault dynamic Postgres credentials for LOCAL DEV
+# Bootstrap Vault dynamic Postgres credentials for LOCAL DEV
 # ============================================================================
 # Makes `PG_DYNAMIC_CREDS=true` actually work in development by performing the
 # three steps the app cannot do for itself at boot:

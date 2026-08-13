@@ -125,7 +125,7 @@ describe('AppSettingsService', () => {
     },
   ) => ({
     id: `setting-${key}`,
-    // `GlobalSetting.tenantId` is NOT NULL, and since TASK-558 §9.3 M4 the
+    // `GlobalSetting.tenantId` is NOT NULL, and the
     // cache admits platform-reserved tenants only — so a fixture without a
     // tenant is not a row the loader can ever see.
     tenantId: '50000000-0000-0000-0000-000000000000',

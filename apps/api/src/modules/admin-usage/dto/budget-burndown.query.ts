@@ -1,7 +1,7 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { IsOptional, Matches } from 'class-validator';
 
-/** query for `GET usage/me/burndown` (TASK-615 WS-J). */
+/** query for `GET usage/me/burndown`. */
 export class BudgetBurndownQuery {
   @ApiPropertyOptional({ description: 'YYYY-MM (UTC calendar month). Defaults to the current UTC month.' })
   @IsOptional()

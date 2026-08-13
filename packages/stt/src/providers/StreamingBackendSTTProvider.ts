@@ -43,18 +43,18 @@ export interface StreamingRemoteProviderConfig extends ProviderConfig {
   microphoneId?: string;
   /**
    * Ceiling, in ms, on the stop-drain performed by {@link StreamingBackendSTTProvider.destroy}
-   * (TASK-597 lane B2). `destroy()` awaits the drain, so this is the worst-case
+   *. `destroy()` awaits the drain, so this is the worst-case
    * teardown latency a caller can observe on Stop. Omitted → the ws client's own
    * default (`SttWebSocketClient.DEFAULT_DRAIN_TIMEOUT_MS`, 1500ms).
    *
    * The drain normally ends far sooner: the backend publishes its terminal
    * `closed` status as soon as the last transcript is on the stream, before the
    * recording uploads and durable transcript persistence.
-   */
+*/
   drainTimeoutMs?: number;
   /**
    * Quiet window, in ms, after the backend's `finalizing` status that ends the
-   * stop-drain early (TASK-597). Every transcript received restarts it.
+   * stop-drain early. Every transcript received restarts it.
    *
    * **`0` disables the early resolve** — the drain then ends only on the
    * terminal `closed`/`cancelled` status or {@link StreamingRemoteProviderConfig.drainTimeoutMs}.
@@ -65,13 +65,13 @@ export interface StreamingRemoteProviderConfig extends ProviderConfig {
    * `0` is therefore GUARDED ON `>= 0`, not `> 0` — unlike `drainTimeoutMs`,
    * where `0` would be meaningless. Omitted / negative ⇒ the ws client's own
    * default.
-   */
+*/
   quietWindowMs?: number;
   /**
-   * Number of distinct microphone SOURCES mixed into this session (TASK-615 #12).
+   * Number of distinct microphone SOURCES mixed into this session.
    * A metadata signal for usage repricing, not a PCM channel count (the mix is
    * always mono). Defaults to 1 when omitted.
-   */
+*/
   channelCount?: number;
 }
 
@@ -101,11 +101,11 @@ export interface StreamingTranscriptPayload {
    */
   wordTimestamps?: WordTimestamp[];
   /**
-   * The ASR pipeline that produced THIS utterance (TASK-613). Per-utterance,
+   * The ASR pipeline that produced THIS utterance. Per-utterance,
    * not per-session: a mid-session engine switch means consecutive transcripts
    * legitimately name different pipelines. Absent from an older backend that
    * does not stamp results.
-   */
+*/
   pipelineId?: string;
 }
 
@@ -155,10 +155,10 @@ export interface StreamingSessionLike {
     sampleRate?: number;
     language?: string;
     languageMode?: string;
-    /** Pre-start STT engine selection (TASK-586); default 'primary'. */
+    /** Pre-start STT engine selection ; default 'primary'.*/
     startOn?: 'primary' | 'fallback';
     microphoneId?: string;
-    /** Dual-/multi-mic source count for usage repricing (TASK-615 #12). */
+    /** Dual-/multi-mic source count for usage repricing.*/
     channelCount?: number;
   }): Promise<{
     sessionId: string;
@@ -176,9 +176,9 @@ export interface StreamingSessionLike {
   getSessionId(): string | null;
   /**
    * Request an in-place switch of the live session to the tenant fallback
-   * pipeline (TASK-567 R4). Optional: only the vox `StreamingSessionManager`
+   * pipeline. Optional: only the vox `StreamingSessionManager`
    * implements it. The backend swaps the ASR engine while the session survives.
-   */
+*/
   switchToFallback?(): Promise<void>;
 }
 
@@ -268,13 +268,13 @@ export class StreamingBackendSTTProvider extends BaseSTTProvider {
       consultationId: streamingConfig.consultationId,
       sampleRate: streamingConfig.sampleRate,
       language: streamingConfig.language,
-      // End-user language mode (TASK-587); the backend resolves it per engine.
+      // End-user language mode ; the backend resolves it per engine.
       languageMode: streamingConfig.languageMode,
-      // Pre-start engine selection (TASK-586); opens the session on the
+      // Pre-start engine selection ; opens the session on the
       // tenant-admin default provider when 'fallback'.
       startOn: streamingConfig.startOn,
       microphoneId: streamingConfig.microphoneId,
-      // Dual-/multi-mic source count for usage repricing (TASK-615 #12).
+      // Dual-/multi-mic source count for usage repricing.
       channelCount: streamingConfig.channelCount,
     });
 
@@ -357,7 +357,7 @@ export class StreamingBackendSTTProvider extends BaseSTTProvider {
     } catch {
       // best-effort; client may already be disconnected.
     }
-    // Fire-and-forget on purpose (TASK-597 lane B).
+    // Fire-and-forget on purpose.
     //
     // This DELETE lands on the STT `end_session` route, which calls
     // `_finalize_session` and therefore contends on the SAME per-session
@@ -441,7 +441,7 @@ export class StreamingBackendSTTProvider extends BaseSTTProvider {
       duration: Math.max(0, payload.endTime - payload.startTime),
       // Preserve the per-utterance stream-relative offset (seconds) so the SDK
       // hook can stamp `segment.startTime` with a real timeline position instead
-      // of falling back to an epoch-ms wall clock (TASK-591). The backend emits
+      // of falling back to an epoch-ms wall clock. The backend emits
       // these as seconds since stream start; keep them as-is.
       vadStreamStartSec: payload.startTime,
       vadStreamEndSec: payload.endTime,
@@ -457,7 +457,7 @@ export class StreamingBackendSTTProvider extends BaseSTTProvider {
     if (payload.wordTimestamps && payload.wordTimestamps.length > 0) {
       result.words = payload.wordTimestamps;
     }
-    // Per-utterance pipeline provenance (TASK-613). Set only
+    // Per-utterance pipeline provenance. Set only
     // when the backend stamped one, so an older backend leaves the key absent
     // rather than surfacing `undefined` to consumers.
     if (payload.pipelineId) {

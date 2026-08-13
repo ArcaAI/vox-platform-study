@@ -127,7 +127,7 @@ class EffectiveConfigClient:
         self._expires_at = None
 
     def diagnostics(self) -> dict[str, Any]:
-        """The `/health` block (§3.7) — source labels and timestamps only."""
+        """The `/health` block — source labels and timestamps only."""
         return {
             "last_refresh_at": self._last_refresh_at.isoformat() if self._last_refresh_at else None,
             "last_refresh_ok": self._last_refresh_ok,

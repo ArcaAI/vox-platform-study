@@ -1,8 +1,8 @@
-"""TDD tests for TTS OpenTelemetry tracing (TASK-636 OBS-13).
+"""TDD tests for TTS OpenTelemetry tracing.
 
 TTS had ZERO OTel code before this — no traces, no PHI-redaction hook on the
 HTTP surface that receives clinical text to synthesise. This file locks down
-the TASK-411 invariant (default OFF, never require a reachable collector to
+the invariant (default OFF, never require a reachable collector to
 boot/serve) plus the OBS-19 lesson from NLP: a PHI-sanitisation hook that
 exists but is never passed to ``FastAPIInstrumentor`` is the same as no hook
 at all.
@@ -150,11 +150,11 @@ class TestCreateAppOtelWiring:
 
     def test_app_boots_with_otel_enabled_and_unreachable_endpoint(self) -> None:
         """Startup must not fail even with a real (unreachable) collector
-        endpoint configured — TASK-411 invariant.
+        endpoint configured — invariant.
 
         ``FastAPIInstrumentor``/``HTTPXClientInstrumentor`` are mocked here
         (matching the SMR reference test suite, which never runs real
-        instrumentation): ``HTTPXClientInstrumentor().instrument()`` patches
+        instrumentation): ``HTTPXClientInstrumentor.instrument`` patches
         ``httpx`` at the PROCESS level, which would otherwise break every
         other test's ``httpx.AsyncClient(transport=ASGITransport(...))``
         client for the rest of the session. Resource/TracerProvider/exporter
@@ -324,7 +324,7 @@ class TestShutdownOpentelemetry:
 
 
 class TestDeploymentEnvironmentIsNotHardcoded:
-    """TASK-636 OBS-18 — fleet-wide regression guard.
+    """Fleet-wide regression guard.
 
     `apps/smr/core/config.py` is the reference every service's OTel setup was
     copied from, and it defaulted to "production". TTS, harness and STT all

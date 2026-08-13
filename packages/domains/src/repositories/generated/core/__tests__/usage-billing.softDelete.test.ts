@@ -1,5 +1,5 @@
 /**
- * TASK-615 — soft-delete posture of the metering + billing repositories.
+ * Soft-delete posture of the metering + billing repositories.
  *
  * The platform default is soft delete. Five of the eight new models
  * deliberately opt OUT because they are APPEND-ONLY facts, not managed
@@ -54,7 +54,7 @@ const SOFT_DELETABLE: [string, new (uow: never) => { supportsSoftDelete: boolean
   ['BillingInvoiceLine', BillingInvoiceLineRepository as never],
 ];
 
-describe('TASK-615 append-only models reject soft delete', () => {
+describe('append-only models reject soft delete', () => {
   it.each(APPEND_ONLY)('%s: supportsSoftDelete is false', (_name, Repo) => {
     expect(new Repo(unitOfWork()).supportsSoftDelete).toBe(false);
   });
@@ -68,7 +68,7 @@ describe('TASK-615 append-only models reject soft delete', () => {
   });
 });
 
-describe('TASK-615 managed models keep soft delete', () => {
+describe('managed models keep soft delete', () => {
   it.each(SOFT_DELETABLE)('%s: supportsSoftDelete is true', (_name, Repo) => {
     expect(new Repo(unitOfWork()).supportsSoftDelete).toBe(true);
   });

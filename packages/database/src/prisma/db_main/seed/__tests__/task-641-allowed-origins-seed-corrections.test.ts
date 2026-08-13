@@ -1,10 +1,10 @@
 /**
- * TASK-641 Lane A — three seed corrections to `11b-tenant-allowed-origins.ts`.
+ * Three seed corrections to `11b-tenant-allowed-origins.ts`.
  *
  * 1. The Global `*` row is removed (H-1). `OriginRegistryService.has(origin)` is
  *    `tenantsFor(origin).size > 0`, and a `*` row matches every origin, so while
  *    it exists CORS admits everything regardless of `origin.enforcementEnabled`
- *    — enforcement becomes a no-op at the CORS layer. TASK-610 §4A.3 seeded it
+ * enforcement becomes a no-op at the CORS layer. seeded it
  *    when Global was assumed to be scratch data; it is not (21 users, 9
  *    consultations, 18 departments).
  *
@@ -87,7 +87,7 @@ describe('TenantAllowedOrigin seed — all six loopback forms are SYSTEM rows (B
   it('these six are the rows the bootstrap MIGRATION also guarantees (H-2)', () => {
     // `migrations/20260808160000_task_641_bootstrap_loopback_origins` inserts the
     // same six rows with `ON CONFLICT (origin, tenantId) DO NOTHING`, because
-    // TASK-616 made seeding opt-in and enforcement now defaults ON with no code
+    // Made seeding opt-in and enforcement now defaults ON with no code
     // fallback left. If a row is added or renamed here without being added
     // there, an unseeded environment loses it — this assertion is the reminder.
     expect(EXPECTED_LOOPBACK_ORIGINS).toHaveLength(6);

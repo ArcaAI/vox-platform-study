@@ -1,8 +1,8 @@
-"""Unit tests for the per-session EngineSwitchController (TASK-567 §3.4, TASK-586).
+"""Unit tests for the per-session EngineSwitchController.
 
 Tier-1 style: no Redis, no models — the controller is exercised in isolation
 with fakes for the injected primitives (build primary / build fallback / apply /
-publish). Covers every trigger path in plan §5 item 12, plus the TASK-586
+publish). Covers every trigger path, plus the
 bidirectional user-initiated switch, its cooldown, and the auto-path one-way
 invariant.
 """
@@ -43,7 +43,7 @@ class _Recorder:
         self.build_calls = 0
         self.primary_build_calls = 0
         self.applied: list[Any] = []
-        # TASK-613 — the swap carries the target pipeline id alongside the
+        # The swap carries the target pipeline id alongside the
         # callable, so the worker's per-utterance provenance stamp is updated
         # in the same body.
         self.applied_pipeline_ids: list[str | None] = []
@@ -373,7 +373,7 @@ async def test_build_failure_propagates_and_stays_on_primary():
 
 @pytest.mark.asyncio
 async def test_note_started_on_fallback_keeps_primary_switchable_and_emits_nothing():
-    """User-selected start-on-fallback (TASK-586 C9): the session opens on the
+    """User-selected start-on-fallback: the session opens on the
     fallback by deliberate choice, so unlike a create-time load failure the
     primary stays available/switchable and NO provider_switched event is
     emitted (there is no transition to announce)."""

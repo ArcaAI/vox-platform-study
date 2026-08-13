@@ -93,7 +93,7 @@ export class SettingsRegistryWriteController {
     // the interceptor deliberately emits no ETag for a non-positive version —
     // which is correct: there is nothing to precondition a first write against.
     //
-    // TASK-558 lane I: `scope` selects WHICH row that version comes from. With
+    // `scope` selects WHICH row that version comes from. With
     // `maxScope: 'tenant'` keys there are now two rows per key (the platform
     // one and the caller tenant's override), and preconditioning a tenant write
     // on the platform row's version would 412 forever.

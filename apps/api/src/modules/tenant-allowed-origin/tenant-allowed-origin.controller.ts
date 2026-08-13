@@ -9,7 +9,7 @@ import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiProperty, ApiRespo
 import { isOriginEnforcementEnabled } from '../../cors.config';
 import { CanManage, ExpectedVersion, RequiresIfMatch } from '../../decorators';
 
-/** FR-4 / TASK-641 §3.2 option A — the one fact a tenant admin needs, nothing else. */
+/** option A — the one fact a tenant admin needs, nothing else. */
 export class AllowedOriginEnforcementPostureResponse {
   @ApiProperty({
     description:
@@ -21,20 +21,20 @@ export class AllowedOriginEnforcementPostureResponse {
 }
 
 /**
- * TASK-610 admin CRUD surface for the CORS control-plane allow-list —
+ * Admin CRUD surface for the CORS control-plane allow-list
  * `TenantAllowedOrigin` rows — mounted at `/admin/allowed-origins` (global
  * prefix → `/api/v1/admin/allowed-origins`). Read/write goes through
  * `ITenantAllowedOriginService` (`@arcaai/applications`), which is
  * tenant-scoped off CLS (no `?tenantId=` query — mirrors
  * `TenantStorageConfigAdminController#listConfigs`).
  *
- * AUTH-NOTE (TASK-641): governance is NO LONGER global-admin-only on every
+ * AUTH-NOTE: governance is NO LONGER global-admin-only on every
  * route — that blanket `assertGlobalAdmin()` imperative gate is gone. The
  * class-level `@CanManage('TenantAllowedOrigin')` now actually gates:
  * `tenant-full-access` (seed `01-policy.ts`) grants `manage:TenantAllowedOrigin`
  * scoped to `conditions.tenantId`, so a `TENANT_ADMIN` reaches this surface for
  * THEIR OWN tenant's rows, and `GLOBAL_ADMIN` reaches it unchanged via
- * `manage:all` (FR-1, FR-5). `tenantId` itself is never a route/body
+ * `manage:all`. `tenantId` itself is never a route/body
  * parameter — every handler is scoped by whatever `ITenantAllowedOriginService`
  * reads off CLS, so a caller cannot forge, read, or steal another tenant's
  * row (see the service's `findOwnedOrThrow` — cross-tenant ids answer 404,
@@ -44,7 +44,7 @@ export class AllowedOriginEnforcementPostureResponse {
  * `create`/`update`: two narrower privilege boundaries still exist, and are
  * enforced IMPERATIVELY one layer down in `TenantAllowedOriginService`, NOT
  * duplicated here — `05-nestjs-api.md` §"Imperative Privilege Checks", and
- * TASK-610 §5.2 lesson 3 ("copying a rule into two places re-creates the
+ * Lesson 3 ("copying a rule into two places re-creates the
  * defect it was meant to fix"):
  *
  *   - A wildcard/pattern origin (anything `isOriginPattern()` accepts, incl.
@@ -56,8 +56,8 @@ export class AllowedOriginEnforcementPostureResponse {
  * Both are 403 privilege boundaries — never the 404-over-403 cross-tenant
  * posture described above.
  *
- * `getPosture()` (FR-4) is deliberately outside all of this: it reports a
- * single platform-wide boolean (`isOriginEnforcementEnabled()`, TASK-610's
+ * `getPosture` is deliberately outside all of this: it reports a
+ * single platform-wide boolean (`isOriginEnforcementEnabled`, 's
  * frozen accessor — not re-derived here), not a `TenantAllowedOrigin` row,
  * so it carries no per-tenant scoping of its own.
  */

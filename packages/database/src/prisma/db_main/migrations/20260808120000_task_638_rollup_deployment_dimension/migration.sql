@@ -1,4 +1,4 @@
--- TASK-638 — deployment dimension on the usage rollups.
+-- Deployment dimension on the usage rollups.
 --
 -- Billing consumes a capability's pooled allowance SELF_HOSTED-first so that
 -- platform-funded managed usage spills into premium-rated overage, and so that

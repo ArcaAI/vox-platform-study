@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { TranscriptColumn, type TranscriptLine } from '../TranscriptColumn';
 
 /**
- * Mic attribution on the timeline (TASK-597 lane G, carried from lane C).
+ * Mic attribution on the timeline (carried from lane C).
  *
  * The per-mic metadata rows send the LITERAL keys `mic` and `speaker`
  * (`buildRowMetadata` in `context/playground-session.tsx`), which is exactly
@@ -11,7 +11,7 @@ import { TranscriptColumn, type TranscriptLine } from '../TranscriptColumn';
  * badges for `speaker_id`/`detected_language`/`chunk_id`/`startTime`/`endTime`,
  * so the one thing the screenshot is about — which mic said this line — was
  * visible only after expanding the raw-JSON `<details>`.
- */
+*/
 
 const line = (meta: Record<string, unknown>): TranscriptLine => ({ text: 'വേദന ഉണ്ടോ?', meta, timestamp: '00:03.120' });
 

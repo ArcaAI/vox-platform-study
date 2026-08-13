@@ -1,9 +1,9 @@
 /**
- * @arcaai/vox — external microphones / injected MediaStreams (TASK-612 Lane I, AC-8)
+ * @arcaai/vox — external microphones / injected MediaStreams
  *
  * WHAT THIS SUITE IS FOR
  * ----------------------
- * Every TASK-612 contract (Lanes A–D) was landed against Vitest doubles: fake
+ * Every contract (Lanes A–D) was landed against Vitest doubles: fake
  * `MediaStream`s whose `stop()` flips a plain string field, a mocked
  * `AudioMixer`, a mocked store. Those prove the LOGIC. They cannot prove the
  * contracts hold against a real browser audio graph — real
@@ -22,7 +22,7 @@
  * ---------------------------------
  * The harness stubs exactly one collaborator — the `PluginManager` — because
  * the STT/VAD/noise-filter stack needs ONNX/WASM models and a live gateway,
- * and no TASK-612 contract depends on it (see `e2e/fixtures/task612-harness.tsx`).
+ * and no contract depends on it (see `e2e/fixtures/task612-harness.tsx`).
  * Consequently this suite deliberately does NOT assert uplink bitrate or
  * arriving transcripts: with a stubbed pipeline `audioUplinkBitrate` would be
  * reporting the stub's own numbers, not the SDK's. Those belong to a live-stack
@@ -92,7 +92,7 @@ async function armAudio(page: Page): Promise<void> {
   await page.evaluate(() => window.__T612.clearLogs());
 }
 
-test.describe('TASK-612 — external microphones / injected streams', () => {
+test.describe('external microphones / injected streams', () => {
   test.beforeAll(() => {
     // The harness is bundled here rather than by `tsup` so the suite owns its
     // own fixture end-to-end (`pnpm build` does not know about it). esbuild is

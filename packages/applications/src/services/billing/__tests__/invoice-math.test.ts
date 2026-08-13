@@ -16,7 +16,7 @@ import {
 } from '../invoice-math';
 
 /**
- * TASK-615 WS-I golden tests — the invoice math itself.
+ * Golden tests — the invoice math itself.
  *
  * Every number in this file is computed BY HAND in the comments next to it.
  * The ONE documented rounding rule: integer micros end to end, HALF-UP at
@@ -242,7 +242,7 @@ describe('computeCapabilityOverage', () => {
     expect(result.lines[0].amountMicros).toBe(200n);
   });
 
-  describe('SELF_HOSTED-first allowance allocation (TASK-638)', () => {
+  describe('SELF_HOSTED-first allowance allocation', () => {
     // A managed vendor priced at a premium over the self-hosted baseline.
     const tieredResolver: SellRateResolver = (provider) =>
       provider === 'azure-speech' ? rate(1_390n, 'sell-azure') : rate(500n, 'sell-baseline');
@@ -518,7 +518,7 @@ describe('property: Σ line amounts == invoice total, HALF-UP at line level, for
       const buckets: DailyUnitQuantity[] = [];
       const bucketCount = 1 + Math.floor(rand() * 12);
       for (let b = 0; b < bucketCount; b++) {
-        // TASK-638: deployment varies so the SELF_HOSTED-first tier ordering is
+        // Deployment varies so the SELF_HOSTED-first tier ordering is
         // exercised by every scenario, not just the single-tier happy path.
         const tiers = [AiDeploymentKind.SELF_HOSTED, AiDeploymentKind.BYOK, AiDeploymentKind.CLOUD];
         buckets.push({

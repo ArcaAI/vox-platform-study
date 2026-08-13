@@ -1,10 +1,10 @@
 /**
  * Minimal local mirror of the discovery bundle served by
- * `GET /tenant/me/context-schema` (TASK-658/661) and re-declared client-side
- * in `@arcaai/vox`'s `src/types/consultationSchema.ts` (TASK-665).
+ * `GET /tenant/me/context-schema` and re-declared client-side
+ * in `@arcaai/vox`'s `src/types/consultationSchema.ts`.
  *
  * Hand-typed here rather than imported from `@arcaai/vox`, for the same
- * reason TASK-665 hand-ported the JSON-Schema-subset evaluator instead of
+ * reason hand-ported the JSON-Schema-subset evaluator instead of
  * importing a shared package: `@arcaai/json-schema-subset` does not exist at
  * this baseline (dev-2.1 @ d5c43c033) — there is nothing to share against
  * yet, and importing `@arcaai/vox`'s TYPES ONLY would still pull this
@@ -14,9 +14,9 @@
  * posture) is worth the small, well-contained duplication. If a shared types
  * package for the discovery bundle is ever extracted, this is the first
  * candidate to migrate onto it.
- */
+*/
 
-/** The CLOSED set of platform primitives (TASK-654 §4.1). */
+/** The CLOSED set of platform primitives.*/
 export const CONTEXT_PRIMITIVES = ['STREAM_AUDIO', 'TEXT', 'DOCUMENT', 'IMAGE', 'STRUCTURED'] as const;
 export type ContextPrimitive = (typeof CONTEXT_PRIMITIVES)[number];
 
@@ -59,8 +59,8 @@ export interface ConsultationContextSchemaDefinition {
  * The DISCOVERY bundle — the resolved, PINNED declaration a client (or this
  * codegen tool) builds against. Every field is nullable: "this tenant has
  * not configured a context schema" is an ordinary 200 response with
- * `etag: "none"`, never a 404 (TASK-658 §4.4 D-5).
- */
+ * `etag: "none"`, never a 404.
+*/
 export interface ConsultationSchemaBundle {
   schemaId: string | null;
   slug: string | null;

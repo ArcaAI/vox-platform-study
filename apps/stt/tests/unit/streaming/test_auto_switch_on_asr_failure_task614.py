@@ -1,4 +1,4 @@
-"""The failure-driven auto-switch must arm from an ASR error (TASK-614 D-11).
+"""The failure-driven auto-switch must arm from an ASR error.
 
 ``EngineSwitchController.record_failure`` — the only thing that arms automatic
 outage-driven fallback — has exactly ONE production call site: the inference
@@ -6,7 +6,7 @@ loop's ``except`` block (``session_manager.py``). That ``except`` can only fire
 if ``StreamingInferenceWorker.process_utterance`` raises. But
 ``process_utterance`` wrapped the embedding + ASR gather in a broad
 ``except Exception`` that converted ANY inference failure into an empty
-``_InferenceResult()`` and returned normally.
+``_InferenceResult`` and returned normally.
 
 So a cloud auth rejection, an exhausted quota, or a model error was logged as
 "Inference failed", produced an empty transcript, and never reached
@@ -163,7 +163,7 @@ async def test_transcription_failures_through_the_real_loop_switch_at_the_thresh
 
 
 async def test_a_tenant_who_disabled_auto_switch_still_gets_no_switch():
-    """The propagation must not bypass the tenant's governance (TASK-614 D-10)."""
+    """The propagation must not bypass the tenant's governance."""
     mgr = _make_manager()
     await _create(mgr, fallback_pipeline_id="fb-pipe", auto_switch_enabled=False)
     ctrl = mgr._switch_controllers["s1"]

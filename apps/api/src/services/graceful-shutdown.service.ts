@@ -41,7 +41,7 @@ export class GracefulShutdownService implements OnModuleInit, OnModuleDestroy, B
   private readonly cleanupCallbacks: Map<string, () => Promise<void>> = new Map();
 
   constructor(
-    // TASK-558 lane I — `shutdown.timeoutMs` / `shutdown.drainDelayMs` are
+    // `shutdown.timeoutMs` / `shutdown.drainDelayMs` are
     // `global-kv` platform settings. Optional so a graph without the settings
     // module keeps the env-var behaviour exactly.
     @Optional() private readonly tenantSettings?: TenantSettingsService,
@@ -57,7 +57,7 @@ export class GracefulShutdownService implements OnModuleInit, OnModuleDestroy, B
    * Shutdown timeout in milliseconds — resolved AT USE, not at construction.
    *
    * These used to be `process.env` reads captured in the constructor, which
-   * made them restart-bound (plan §9.2 L1). Resolving them when a drain
+   * made them restart-bound. Resolving them when a drain
    * actually starts means an operator can widen the window during a bad deploy
    * and the very next pod to terminate honours it. Platform-only:
    * `maxScope: 'system'`, so there is no tenant lane to consult.

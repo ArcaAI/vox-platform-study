@@ -1,5 +1,5 @@
 /**
- * TASK-659 — pure structural validators for the agent loop-configuration
+ * Pure structural validators for the agent loop-configuration
  * surface (subscribedKinds, writeScope, goal, guardrailProfile,
  * alwaysActions/neverActions). Mirrors the existing constants.ts test style
  * (`departmentAgent.service.test.ts` covers the service wrapper; this file

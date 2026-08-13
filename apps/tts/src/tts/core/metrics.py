@@ -62,9 +62,9 @@ TTS_PROVIDER_ERRORS = Counter(
 )
 
 # ---------------------------------------------------------------------------
-# Usage-metering counters (TASK-615 WS-E)
+# Usage-metering counters
 # ---------------------------------------------------------------------------
-# Accepted input characters (1 Unicode code point = 1 char, TASK-615 §3) and
+# Accepted input characters (1 Unicode code point = 1 char) and
 # synthesized output audio-seconds, both by provider/locale/status. The
 # gateway is the ledger emitter (D3); these are the platform-metrics/Grafana
 # signal, not the billing source of truth.

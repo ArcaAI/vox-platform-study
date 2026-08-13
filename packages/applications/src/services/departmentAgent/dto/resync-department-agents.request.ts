@@ -2,7 +2,7 @@ import { ApiPropertyOptional } from '@nestjs/swagger';
 import { IsOptional, IsString } from 'class-validator';
 
 /**
- * Trigger the SYSTEM agent-library resync (TASK-548).
+ * Trigger the SYSTEM agent-library resync.
  *
  * `tenantId` is OPTIONAL: when supplied, only that tenant is reconciled; when
  * omitted, every non-SYSTEM tenant is swept (the same all-tenant reconcile the

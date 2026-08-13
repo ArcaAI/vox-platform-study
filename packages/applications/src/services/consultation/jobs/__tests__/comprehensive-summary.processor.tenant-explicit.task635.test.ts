@@ -1,5 +1,5 @@
 /**
- * ComprehensiveSummaryProcessor.callSmrService — explicit tenant id (TASK-635 A5, B-04)
+ * ComprehensiveSummaryProcessor.callSmrService — explicit tenant id
  *
  * `resolveSmrSelection()` used to be called with NO tenantId, relying on
  * `HarnessPolicyService`'s own CLS fallback. `callSmrService` now takes the

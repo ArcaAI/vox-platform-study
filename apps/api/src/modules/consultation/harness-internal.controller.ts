@@ -154,7 +154,7 @@ class ReportTrajectoryAck {
   accepted: number;
 }
 
-/** TASK-664 — the loop's `document.extract_text` read. Empty string, never 404. */
+/** The loop's `document.extract_text` read. Empty string, never 404. */
 class HarnessExtractedTextResponse {
   @ApiProperty({ description: "The context item's extracted text, or '' when there is none." })
   text: string;
@@ -195,16 +195,16 @@ export class HarnessInternalController {
     private readonly harnessAssuranceService: HarnessAssuranceService,
     // ordered-trajectory batch ingest (idempotent, tenant-scoped).
     @Inject(IAgentTrajectoryService) private readonly agentTrajectoryService: IAgentTrajectoryService,
-    // Live loop-output feed (TASK-660); ephemeral Redis publish, no CLS needed.
+    // Live loop-output feed; ephemeral Redis publish, no CLS needed.
     private readonly consultationLoopEventService: ConsultationLoopEventService,
-    // TASK-662 — deterministic loop-configuration resolution for the (future)
+    // Deterministic loop-configuration resolution for the (future)
     // ConsultationLoopWorkflow's first activity.
     @Inject(ILoopConfigService) private readonly loopConfigService: ILoopConfigService,
-    // TASK-664 — the loop's `document.extract_text` action reads the text the
+    // The loop's `document.extract_text` action reads the text the
     // gateway's OCR pipeline already extracted, rather than the harness
     // acquiring a second extraction path of its own.
     @Inject(ILoopContextTextService) private readonly loopContextTextService: ILoopContextTextService,
-    // TASK-662 — the loop's `livedoc.start`/`livedoc.stop` actions call
+    // The loop's `livedoc.start`/`livedoc.stop` actions call
     // through these two routes rather than importing service internals
     // directly (the harness is a separate deployable).
     private readonly liveDocumentationService: LiveDocumentationService,
@@ -213,9 +213,9 @@ export class HarnessInternalController {
   @Get('policy')
   @ApiOperation({ summary: 'Effective harness policy for a tenant (worker fetch_policy activity)' })
   @ApiQuery({ name: 'tenantId', required: true, description: 'Tenant whose effective policy to resolve.' })
-  // TASK-550 — optional consultationId lets the worker request the effective
+  // Optional consultationId lets the worker request the effective
   // policy WITH the consultation's department-default DepartmentAgent tenant-tier
-  // harnessOverrides layered on top. Omitted ⇒ byte-identical to the pre-TASK-550
+  // harnessOverrides layered on top. Omitted ⇒ byte-identical to the the previous implementation
   // policy (other callers exist).
   @ApiQuery({
     name: 'consultationId',
@@ -244,7 +244,7 @@ export class HarnessInternalController {
   /**
    * Resolve an MCP server credential for the worker.
    *
-   * The harness has no Vault client by design (ticket §3.1): secret material stays
+   * The harness has no Vault client by design: secret material stays
    * on the gateway side of the boundary. The worker calls this INSIDE the activity
    * that performs the MCP call, uses the token, and discards it — it is never put
    * into workflow state, activity inputs, or heartbeats, because Temporal history
@@ -370,7 +370,7 @@ export class HarnessInternalController {
     return this.harnessProgressService.reportProgress(id, dto);
   }
 
-  // The (future TASK-662) ConsultationLoopWorkflow posts one event
+  // The (future) ConsultationLoopWorkflow posts one event
   // here per action/output; the service publishes it verbatim to
   // `consultation:loop:{id}` for the browser SSE relay. Best-effort by
   // contract: always acks ({ ok: boolean }), never 5xxs the loop over a
@@ -438,7 +438,7 @@ export class HarnessInternalController {
   }
 
   /**
-   * TASK-662 — the (future) `ConsultationLoopWorkflow`'s first activity reads
+   * The (future) `ConsultationLoopWorkflow`'s first activity reads
    * the deterministic loop configuration for a consultation: which
    * `DepartmentAgent`/config-version/context-schema-version govern it, and
    * the resolved per-kind action subscriptions + start/ending action lists.
@@ -465,7 +465,7 @@ export class HarnessInternalController {
   }
 
   /**
-   * TASK-664 — the loop's `document.extract_text` action.
+   * The loop's `document.extract_text` action.
    *
    * Returns the text the gateway's `OcrEnrichmentProcessor` already extracted
    * onto `ContextItem.metaData.extractedText`. Deliberately a READ rather than
@@ -500,7 +500,7 @@ export class HarnessInternalController {
   }
 
   /**
-   * TASK-662 — the loop's `livedoc.start` action. Delegates to the existing
+   * The loop's `livedoc.start` action. Delegates to the existing
    * `LiveDocumentationService.start()` (synchronous, fire-and-forget setup)
    * verbatim; this route is the ONLY thing that changes about that service.
    */
@@ -522,7 +522,7 @@ export class HarnessInternalController {
   }
 
   /**
-   * TASK-662 — the loop's `livedoc.stop` action. Delegates to the existing
+   * The loop's `livedoc.stop` action. Delegates to the existing
    * `LiveDocumentationService.stop()` verbatim.
    */
   @Post('consultations/:id/live-documentation/stop')

@@ -11,9 +11,9 @@ import { IAgentTrajectoryService } from './IAgentTrajectoryService';
  * - CommonServiceModule → config + globals (the @Global RedisCacheModule supplies
  *   `IRedisCacheService` for the live-view republish; injected @Optional).
  * - CoreDatabaseModule  → `AgentTrajectoryStepRepository` AND the DOMAINS
- *   `CoreUnitOfWorkService` (TASK-615 WS-D2) that folds `createMany` + the
+ *   `CoreUnitOfWorkService` that folds `createMany` + the
  *   usage-ledger emission into one transaction in `recordSteps`.
- * - UsageLedgerServiceModule → `IUsageLedgerService` for the TASK-615 WS-F
+ * - UsageLedgerServiceModule → `IUsageLedgerService` for the 
  *   usage-ledger emission hook in `recordSteps` (injected @Optional so unit
  *   fixtures can still construct the service without it).
  *

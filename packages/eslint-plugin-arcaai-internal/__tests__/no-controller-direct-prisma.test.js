@@ -1,20 +1,20 @@
 /**
- * TASK-307 W6.4 — RuleTester pins for `no-controller-direct-prisma`.
+ * RuleTester pins for `no-controller-direct-prisma`.
  *
  * Coverage:
- *   - bare `this.databaseService.client.foo.bar(...)` → ERROR
- *   - aliased `const prisma = this.databaseService.client; prisma.foo` → ERROR
- *     (the alias itself is the offending access; downstream calls are NOT
- *      re-flagged because the rule fires only on the `.client` step)
- *   - escape hatch via `/** @allowedDirectPrisma <reason> *\/` on the
- *     immediately-preceding line                                    → CLEAN
- *   - escape hatch on the enclosing statement                       → CLEAN
- *   - benign chain (no `databaseService`)                           → CLEAN
- *   - service-layer-style access NOT wrapped in `this.databaseService`
- *     (e.g. `prisma.foo.bar` where prisma is a free identifier)     → CLEAN
- *     (covered by service-layer Prisma access which the rule does NOT
- *      restrict — controllers are the scoped target)
- */
+ * - bare `this.databaseService.client.foo.bar(...)` → ERROR
+ * - aliased `const prisma = this.databaseService.client; prisma.foo` → ERROR
+ * (the alias itself is the offending access; downstream calls are NOT
+ * re-flagged because the rule fires only on the `.client` step)
+ * - escape hatch via `/** @allowedDirectPrisma <reason> *\/` on the
+ * immediately-preceding line → CLEAN
+ * - escape hatch on the enclosing statement → CLEAN
+ * - benign chain (no `databaseService`) → CLEAN
+ * - service-layer-style access NOT wrapped in `this.databaseService`
+ * (e.g. `prisma.foo.bar` where prisma is a free identifier) → CLEAN
+ * (covered by service-layer Prisma access which the rule does NOT
+ * restrict — controllers are the scoped target)
+*/
 'use strict';
 
 // Pin to the workspace ESLint v9 that `@arcaai/config-eslint` resolves (the

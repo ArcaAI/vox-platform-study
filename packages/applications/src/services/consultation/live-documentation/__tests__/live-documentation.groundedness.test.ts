@@ -103,7 +103,7 @@ function buildDeps(httpMock = buildHttpMock(), opts: BuildDepsOpts = {}) {
     findTranscripts: vi.fn().mockResolvedValue([]),
     findLatestPreSummary: vi.fn().mockResolvedValue(null),
     findPreSummaries: vi.fn().mockResolvedValue([]),
-    // TASK-655 — `findLiveSnapshotRow` now delegates to this repository helper;
+    // `findLiveSnapshotRow` now delegates to this repository helper;
     // mirror it through the SAME `findPreSummaries` mock above.
     findLatestPreSummaryWithDecryptedContent: vi.fn(async (consultationId: string, _secrets: unknown, options?: { subType?: string }) => {
       const rows: Array<{ metaData?: unknown; createdAt: Date; content?: string | null }> = await contextItemRepository.findPreSummaries(
@@ -232,7 +232,7 @@ describe('LiveDocumentationService — output groundedness gate', () => {
     expect(payload!.entities).toEqual([{ text: 'amlodipine', type: 'MEDICATION', confidence: 0.92, start: 6, end: 16 }]);
   });
 
-  it('carries the NLP ontology ICD-10 code through to the published entity (TASK-543)', async () => {
+  it('carries the NLP ontology ICD-10 code through to the published entity', async () => {
     const httpMock = buildHttpMock({
       summary: 'Assessment: essential hypertension, stable on therapy.',
       classifyEntities: [
@@ -249,7 +249,7 @@ describe('LiveDocumentationService — output groundedness gate', () => {
     expect(payload!.entities[0]).toMatchObject({ text: 'hypertension', type: 'DISEASE_DISORDER', icd10: 'I10' });
   });
 
-  it('maps the NLP vitals (snake_case) onto the published payload (TASK-543)', async () => {
+  it('maps the NLP vitals (snake_case) onto the published payload', async () => {
     const httpMock = buildHttpMock({
       classifyVitals: { systolic: 138, diastolic: 88, heart_rate: 78, spo2: 98, temperature_c: 36.8, weight_kg: 71 },
     });

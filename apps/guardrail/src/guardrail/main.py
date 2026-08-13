@@ -175,11 +175,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         )
         logger.info("guardrail.job_processor_started")
 
-    # Self-registration (TASK-648 W9): fire-and-forget, bounded-timeout, NEVER
+    # Self-registration: fire-and-forget, bounded-timeout, NEVER
     # blocks or fails boot. Reuses the shared `http_client` above. Guardrail
     # has no dedicated `environment` settings field; `DEPLOYMENT_ENVIRONMENT`
     # / `NODE_ENV` is the same repo-wide convention `_deployment_environment()`
-    # uses for OTel elsewhere (TASK-636 OBS-18).
+    # uses for OTel elsewhere.
     app.state.service_release_task = None
     try:
         app.state.service_release_task = start_registration(
@@ -275,7 +275,7 @@ def create_app() -> FastAPI:
     app.include_router(groundedness_router, prefix="/api", tags=["groundedness"])
     app.include_router(jobs_router, prefix="/api", tags=["jobs"])
 
-    # OpenTelemetry tracing (TASK-636 OBS-12). Default-OFF: both the master
+    # OpenTelemetry tracing. Default-OFF: both the master
     # switch AND a non-empty collector endpoint are required, so an unset
     # endpoint can never make a truthy flag start dialing a collector that
     # was never configured.

@@ -1,5 +1,5 @@
 /**
- * TASK-615 WS-D2 (item 1a) — `ComprehensiveSummaryProcessor` makes its own
+ * `ComprehensiveSummaryProcessor` makes its own
  * SMR `/generate` call (`callSmrService`) and was flagged in the WS-D
  * handoff as an unmetered `SummaryMeta` writer. This mirrors the
  * `summary.service.ts`/`chain-summary.service.ts` treatment: the SummaryMeta
@@ -157,7 +157,7 @@ function makeHarness(overrides: { usageLedgerService?: unknown; unitOfWorkServic
   return { processor, summaryMetaRepo, httpService, usageLedgerService: usageLedgerService as { recordUsage: ReturnType<typeof vi.fn> }, unitOfWorkService };
 }
 
-describe('ComprehensiveSummaryProcessor — usage-ledger emission (TASK-615 WS-D2)', () => {
+describe('ComprehensiveSummaryProcessor — usage-ledger emission', () => {
   let harness: ReturnType<typeof makeHarness>;
 
   beforeEach(() => {

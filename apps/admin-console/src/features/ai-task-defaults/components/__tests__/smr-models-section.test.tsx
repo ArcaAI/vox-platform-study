@@ -1,5 +1,5 @@
 /**
- * Tenant "SMR models" section (TASK-588).
+ * Tenant "SMR models" section.
  *
  * Four `TaskDefaultCard`s (primary smr.live/smr.finalize + optional fallback
  * smr.live.fallback/smr.finalize.fallback), rendered in isolation. The load-
@@ -83,7 +83,7 @@ describe('SmrModelsSection', () => {
     expect((await screen.findAllByRole('button', { name: /save .* if-match/i })).length).toBe(4);
   });
 
-  it('renders the one-action default text-generation provider control above the per-key cards (TASK-592)', async () => {
+  it('renders the one-action default text-generation provider control above the per-key cards', async () => {
     stubFetch();
     renderWithProviders(<SmrModelsSection />);
 

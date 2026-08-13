@@ -195,13 +195,13 @@ export class PromptManagementService extends BaseService implements IPromptManag
     // When present, approving a template whose bound agent references a golden
     // set runs the eval and blocks (409) on a gate failure in block-mode.
     @Optional() @Inject(EvalPromotionGateService) private readonly promotionGate?: EvalPromotionGateService,
-    // TASK-635 Lane B — validates a caller-supplied test-run provider/model
+    // Validates a caller-supplied test-run provider/model
     // pair against the ENABLED AiModel registry (same source `GET
     // /text/providers` reads). Optional + trailing so existing fixtures keep
     // their arity; absent ⇒ validation is skipped (best-effort, never blocks
     // policy-resolved selections).
     @Optional() @Inject(AiModelRepository) private readonly aiModelRepository?: AiModelRepository,
-    // TASK-635 Lane B — loads a golden case's decrypted transcript as
+    // Loads a golden case's decrypted transcript as
     // predefined test-run sample input. Optional + trailing; absent ⇒
     // `goldenCaseId` requests fail closed with a clear configuration error.
     @Optional() @Inject(GoldenCaseRepository) private readonly goldenCaseRepository?: GoldenCaseRepository,
@@ -579,7 +579,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
   }
 
   /**
-   * TASK-635 B-12 — THE EXPLICIT `tenantId` PIN ON EVERY LIST/COUNT READ IN THIS
+   * THE EXPLICIT `tenantId` PIN ON EVERY LIST/COUNT READ IN THIS
    * SERVICE IS LOAD-BEARING, NOT REDUNDANT.
    *
    * `PromptTemplate` / `PromptVersion` joined `SYSTEM_SHARED_READ_MODELS`
@@ -1257,7 +1257,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
   }
 
   /**
-   * TASK-635 Lane B — load a golden case's decrypted transcript as
+   * Load a golden case's decrypted transcript as
    * predefined test-run sample input. Tenant-scoped: a missing OR
    * cross-tenant id is 404 (404-over-403 — "not yours" is indistinguishable
    * from "missing"). The decrypted plaintext is returned to the caller for

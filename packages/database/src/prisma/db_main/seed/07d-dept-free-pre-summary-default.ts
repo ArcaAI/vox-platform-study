@@ -1,7 +1,7 @@
 /**
- * TASK-635 D2 — the department-free pre-summary FORK served to NATIVE callers.
+ * The department-free pre-summary FORK served to NATIVE callers.
  *
- * Owner decision OD-1(b) + refinement RF-1 (README §3.1): R-C3 flagged that the
+ * Owner decision OD-1(b) + refinement RF-1: R-C3 flagged that the
  * pre-summary resolution chain is department-agnostic in SELECTION but the
  * v1-parity prompt BODY still interpolates `{current_department}`/`{visit_type}`
  * and its three "(Latest Dept Note)" FORMAT headings. RF-1 forbids stripping

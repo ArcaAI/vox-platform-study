@@ -16,7 +16,7 @@ describe('ArcaAI clinical template department references', () => {
       ORTH: 'persisted-orth-id',
       HEME: 'persisted-heme-id',
       BREN: 'persisted-bren-id',
-      // TASK-634 Phase 8b — the four departments that complete v1's eleven.
+      // The four departments that complete v1's eleven.
       DERM: 'persisted-derm-id',
       DIET: 'persisted-diet-id',
       NEPH: 'persisted-neph-id',

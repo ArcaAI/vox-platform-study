@@ -8,7 +8,7 @@ const depts: DepartmentLike[] = [
   { id: 'dep-null', code: null, name: null },
 ];
 
-describe('matchTenantDepartment (TASK-592)', () => {
+describe('matchTenantDepartment', () => {
   it('matches by exact code, case-insensitively', () => {
     expect(matchTenantDepartment(depts, 'card')?.id).toBe('dep-card');
     expect(matchTenantDepartment(depts, 'CARD')?.id).toBe('dep-card');
@@ -41,7 +41,7 @@ describe('matchTenantDepartment (TASK-592)', () => {
   });
 });
 
-describe('matchTenantDepartment — v1 alias table coverage (TASK-634 D-06, verified against the live v1 pod)', () => {
+describe('matchTenantDepartment — v1 alias table coverage (verified against the live v1 pod)', () => {
   const canonical: DepartmentLike[] = [
     { id: 'dep-medicine', code: null, name: 'General Medicine' },
     { id: 'dep-surgery', code: null, name: 'Surgery' },
@@ -112,7 +112,7 @@ describe('matchTenantDepartment — v1 alias table coverage (TASK-634 D-06, veri
   });
 });
 
-describe('matchTenantDepartment — deterministic selection on duplicate department names (TASK-634 D-05)', () => {
+describe('matchTenantDepartment — deterministic selection on duplicate department names', () => {
   // ArcaAI carries two rows named "General Medicine": one with all prompt
   // columns + a default agent, one with none. `DepartmentRepository.findAllByTenant`
   // now sorts `name asc, id asc`, so the array this function receives is in a

@@ -1,7 +1,7 @@
 /**
  * MCP external-tools registry admin (Phase 7 E2E, Agentic SOTA).
  *
- * Probes `McpAdminController` at `/api/v1/admin/mcp-servers` (mirrors the task-506
+ * Probes `McpAdminController` at `/api/v1/admin/mcp-servers` (mirrors the
  * governance/OCC pattern; `@CanRead/@CanManage('HarnessPolicy')`, `If-Match` OCC,
  * `resolveScopedTenantIdOptional`).
  *

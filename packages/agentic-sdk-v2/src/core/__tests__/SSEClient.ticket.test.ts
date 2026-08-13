@@ -307,7 +307,7 @@ describe('SSEClient ticket-based auth', () => {
   it('throws NOT_INITIALIZED via legacy constructor when connect() is called without scope/apiClient', async () => {
     // Backward-compat: the constructor still accepts (logger?) so that
     // pre-migration callers compile, but connect() must surface a clear
-    // error. See README §5 Deviations.
+    // error. See README Deviations.
     const onError = vi.fn();
     const client = new (SSEClient as any)(createMockLogger()) as SSEClient;
     client.onError(onError);

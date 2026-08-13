@@ -1,5 +1,5 @@
 /**
- * useArcaAudio — caller-owned stream LIFECYCLE (TASK-612 Lane B, RC-3, OD-1a).
+ * useArcaAudio — caller-owned stream LIFECYCLE.
  *
  * Before this change every teardown path stopped EVERY track the session had
  * seen — including tracks on `MediaStream`s the CALLER built and injected via
@@ -201,7 +201,7 @@ afterEach(() => {
 // ===========================================================================
 // stop() — ownership decides which tracks are released
 // ===========================================================================
-describe('useArcaAudio — caller-owned stream lifecycle (TASK-612 Lane B)', () => {
+describe('useArcaAudio — caller-owned stream lifecycle', () => {
   it('(1) stop() leaves a caller-injected single source LIVE — the activeStream teardown honors ownership', async () => {
     const injected = makeStream('external-mic');
     const { result } = renderHook(() => useArcaAudio());

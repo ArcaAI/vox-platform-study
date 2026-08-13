@@ -38,7 +38,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     await websocket_service.initialize()
 
-    # Self-registration (TASK-648 W9): fire-and-forget, bounded-timeout, NEVER
+    # Self-registration: fire-and-forget, bounded-timeout, NEVER
     # blocks or fails boot. Dedicated short-lived httpx client, closed below.
     app.state.service_release_task = None
     app.state.service_release_http_client = None

@@ -83,7 +83,7 @@ export interface CreateStreamingSessionRequest {
   /** ISO 639-1 language code (e.g., "en", "th") */
   language?: string;
   /**
-   * End-user language mode id (TASK-587), e.g. `"en"`, `"ml"`, `"ml-en"`
+   * End-user language mode id, e.g. `"en"`, `"ml"`, `"ml-en"`
    * (Malayalam+English code-switch), `"auto"`. POSTed verbatim to the gateway
    * (`languageMode`), which forwards it to STT. STT resolves it against the
    * session engine and returns 422 when no configured engine can serve it.
@@ -92,7 +92,7 @@ export interface CreateStreamingSessionRequest {
    */
   languageMode?: string;
   /**
-   * Pre-start STT engine selection (TASK-586). Default `'primary'`. POSTed
+   * Pre-start STT engine selection. Default `'primary'`. POSTed
    * verbatim (camelCase `startOn`) to the gateway; `'fallback'` opens the
    * session on the tenant-admin default provider. Fail-closed on the gateway
    * (409) when no fallback is configured.
@@ -113,7 +113,7 @@ export interface CreateStreamingSessionRequest {
   microphoneId?: string;
   /**
    * Number of distinct microphone SOURCES mixed into this session's uplink
-   * (TASK-615 #12). 1 for a single mic; 2+ for a dual-/multi-mic recording
+   * 1 for a single mic; 2+ for a dual-/multi-mic recording
    * (a secondary device or `additionalDeviceIds`). The audio is always mixed
    * down to ONE mono track, so this is a metadata signal, NOT a PCM channel
    * count: it bills 1× (OQ2) but is kept on the usage row for repricing. POSTed
@@ -125,7 +125,7 @@ export interface CreateStreamingSessionRequest {
 
 /**
  * A selectable STT language mode + the catalog-wide set of engines that can
- * serve it (TASK-587). Mirrors an entry of
+ * serve it. Mirrors an entry of
  * `GET /audio/transcription-jobs/language-modes`. The backend owns this
  * capability matrix; the SDK only renders it (see `useArcaSttLanguageModes`).
  */
@@ -144,7 +144,7 @@ export interface LanguageMode {
   supportedEngines: string[];
 }
 
-/** Response of `GET /audio/transcription-jobs/language-modes` (TASK-587). */
+/** Response of `GET /audio/transcription-jobs/language-modes`.*/
 export interface LanguageModeCatalog {
   modes: LanguageMode[];
 }
@@ -175,7 +175,7 @@ export interface StreamingSessionResponse {
   /** Epoch milliseconds when the stream ticket expires. */
   ticketExpiresAt?: number;
   /**
-   * The RESOLVED ASR pipeline this session opened with (TASK-614). Differs from
+   * The RESOLVED ASR pipeline this session opened with. Differs from
    * the requested id whenever the client sent none — the gateway resolves one,
    * and before this echo existed the SDK had no way to learn which. Optional:
    * absent against a gateway that predates it.
@@ -321,7 +321,7 @@ export interface WsTranscriptResult {
   /** Backend inference/processing time in seconds */
   inference?: number;
   /**
-   * Per-utterance ASR pipeline provenance (TASK-613): the pipeline that
+   * Per-utterance ASR pipeline provenance: the pipeline that
    * actually produced THIS utterance, which can differ from the one the
    * session requested after a mid-session engine switch. The gateway relays
    * it as `pipelineId`. Optional for backward compat with older backends
@@ -411,11 +411,11 @@ export interface WsStatusMessage {
   status: string;
   /**
    * Human-readable status message. Optional: structured status results
-   * (e.g. `provider_switched`, TASK-567) carry typed fields instead of prose,
+   * (e.g. `provider_switched`) carry typed fields instead of prose
    * so the gateway forwards them without a `message`.
    */
   message?: string;
-  // ---- provider_switched passthrough (TASK-567 §3.4) ----
+  // ---- provider_switched passthrough
   // The backend publishes an ASR engine swap as a `status` result with
   // `status === 'provider_switched'` (zero WS protocol change); the gateway
   // relays these snake_case fields verbatim.
@@ -428,7 +428,7 @@ export interface WsStatusMessage {
   /** Utterance ordinal at which the swap happened (string on the wire, coerced by consumers). */
   utterance_index?: number | string;
   /**
-   * Engine now transcribing after the swap (TASK-586: bidirectional). Present on
+   * Engine now transcribing after the swap (bidirectional). Present on
    * a backend that supports the compat pipeline↔default toggle so consumers can
    * tell a switch BACK to primary from the one-way primary→fallback switch.
    */

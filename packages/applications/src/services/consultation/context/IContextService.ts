@@ -17,7 +17,7 @@ import {
 
 export abstract class IContextService {
   // Context Item CRUD
-  // `contextSchemaVersionId` (TASK-661) — threaded from the
+  // `contextSchemaVersionId` — threaded from the
   // `X-Context-Schema-Version` request header; ignored when `request.kindKey`
   // is absent.
   abstract addContext(consultationId: string, request: AddContextRequest, contextSchemaVersionId?: string): Promise<ContextItemResponse>;

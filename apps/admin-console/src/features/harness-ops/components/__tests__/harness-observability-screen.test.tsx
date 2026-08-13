@@ -141,7 +141,7 @@ const GOLDEN_SETS: GoldenSetList = {
   total: 1,
 };
 
-/** The board also mounts the gate-edit-exemplars panel (GAP-A1, TASK-549). */
+/** The board also mounts the gate-edit-exemplars panel (GAP-A1). */
 const GATE_EDIT_EXPORT: GateEditCorpusExport = { tenantId: 'tnt-1', reviewStatus: 'PENDING_SME_REVIEW', count: 0, candidates: [] };
 
 function stubRoutes(overrides: { audit?: Response | HarnessAuditList; workingTenantId?: string | null } = {}) {

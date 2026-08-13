@@ -33,7 +33,7 @@ export class DepartmentAgentResponse {
   @ApiPropertyOptional({ description: 'Golden set id' })
   goldenSetId?: string;
 
-  // TASK-635 RF-4 capability-keyed bindings + live-loop config. Null on every
+  // Capability-keyed bindings + live-loop config. Null on every
   // agent that has not opted in, which is the entire seeded catalogue.
   @ApiPropertyOptional({ description: 'Summary template for NEW-PATIENT visits (null ⇒ promptTemplateId)', nullable: true })
   newPatientTemplateId?: string | null;
@@ -65,7 +65,7 @@ export class DepartmentAgentResponse {
   @ApiPropertyOptional({ description: 'Tags', type: [String] })
   tags?: string[];
 
-  // TASK-659 loop configuration + promotion surface.
+  // Loop configuration + promotion surface.
   @ApiProperty({ description: 'Loop role', enum: DepartmentAgentRole })
   role: DepartmentAgentRole;
 

@@ -14,7 +14,7 @@ function indicator(container: HTMLElement) {
   return container.querySelector('[data-slot="status-dot-indicator"]') as HTMLElement;
 }
 
-describe('StatusDot (§3.2)', () => {
+describe('StatusDot', () => {
   it('maps each color role to its semantic background token', () => {
     const { container, rerender } = render(<StatusDot colorRole="success" aria-label="Healthy" />);
     expect(root(container)).toHaveAttribute('data-color-role', 'success');

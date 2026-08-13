@@ -14,7 +14,7 @@ if (process.env.OTEL_DEBUG === 'true') {
 }
 
 // Telemetry export is explicit opt-in — no localhost fallback. Resolution
-// rules (incl. `OTEL_TRACES_ENABLED`, TASK-636 OBS-16) live in
+// rules (incl. `OTEL_TRACES_ENABLED`) live in
 // `instrumentation.flags.ts` so they are unit-testable; this module cannot be
 // imported in a test without starting an SDK.
 const plan = resolveTelemetryPlan(process.env);
@@ -36,7 +36,7 @@ if (!plan.sdkEnabled) {
       'service.namespace': 'hope',
       'deployment.environment.name': process.env.NODE_ENV || 'production',
     }),
-    // TASK-636 OBS-16 — `OTEL_TRACES_ENABLED=false` means "emit no spans",
+    // `OTEL_TRACES_ENABLED=false` means "emit no spans",
     // NOT "stop understanding traces".
     //
     // An explicit EMPTY `spanProcessors` list is what expresses that. NodeSDK
@@ -70,7 +70,7 @@ if (!plan.sdkEnabled) {
  * Flush and shut down the OTel SDK.
  *
  * This file MUST NOT install its own SIGTERM/SIGINT handlers or a force-exit
- * timer (TASK-616 G0.1). It previously did both: a second, uncoordinated
+ * timer. It previously did both: a second, uncoordinated
  * `process.on('SIGTERM', ...)` handler here raced Nest's own shutdown
  * sequence (`GracefulShutdownService`), and its 25s `process.exit(1)` timeout
  * force-killed the pod well inside the 60s `terminationGracePeriodSeconds`

@@ -1,7 +1,7 @@
 import { Badge, Button, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Textarea } from '@arcaai/ui';
 
 /**
- * Transcript source control for the Summarization tab (TASK-597 R9).
+ * Transcript source control for the Summarization tab.
  *
  * Requirement A3/R9 background: the live caption is produced on the
  * Live-transcription tab and read here from the console-wide session context
@@ -10,16 +10,16 @@ import { Badge, Button, Label, Select, SelectContent, SelectItem, SelectTrigger,
  * silently won over the live transcript with no indication in the UI. This
  * component makes the choice an explicit selector instead, with three modes:
  *
- *  - `live`              — the live transcript, verbatim, read-only preview.
- *  - `pasted`             — a fully independent editable transcript; never
- *                            touches the live buffer. "Copy live transcript"
- *                            seeds it from a ONE-TIME snapshot (a COPY) so the
- *                            developer can edit without ever mutating the
- *                            growing live buffer.
- *  - `live-plus-context`  — the live transcript (read-only) plus a separate
- *                            editable "additional context" field appended
- *                            after it.
- */
+ * - `live` — the live transcript, verbatim, read-only preview.
+ * - `pasted` — a fully independent editable transcript; never
+ * touches the live buffer. "Copy live transcript"
+ * seeds it from a ONE-TIME snapshot (a COPY) so the
+ * developer can edit without ever mutating the
+ * growing live buffer.
+ * - `live-plus-context` — the live transcript (read-only) plus a separate
+ * editable "additional context" field appended
+ * after it.
+*/
 
 export type TranscriptSourceMode = 'live' | 'pasted' | 'live-plus-context';
 

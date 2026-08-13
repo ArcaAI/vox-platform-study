@@ -46,7 +46,7 @@ function toTimelineItem(entry: ChangelogEntry): TimelineItemModel {
 
 /**
  * `/(console)/(shared)/changelog` — tier 20-29: both global and tenant admins.
- * Reverse-chronological timeline (narrative, not a data grid — §6b).
+ * Reverse-chronological timeline (narrative, not a data grid).
  */
 export function ChangelogScreen() {
   const { data: session } = useSession();

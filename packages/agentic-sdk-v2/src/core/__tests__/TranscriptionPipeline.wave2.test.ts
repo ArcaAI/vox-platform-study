@@ -59,7 +59,7 @@ vi.mock('@arcaai/stt', () => ({
   createSTT: vi.fn(() => mockSTT),
 }));
 
-// TASK-545: local (in-browser) transcription is disabled platform-wide by
+// Local (in-browser) transcription is disabled platform-wide
 // default (`LOCAL_TRANSCRIPTION_ENABLED = false` in `../constants`). This
 // file specifically exercises the local-provider option-mapping path
 // (voiceProfile/task forwarding "for local provider"), which remains fully

@@ -57,7 +57,7 @@ export type { UseNoiseFilterOptions, UseNoiseFilterReturn } from '@arcaai/noise-
 export { useArcaAudio } from './hooks/useArcaAudio';
 
 // Native 2-way STT provider toggle (pipeline ↔ default) — a thin adapter over
-// `useArcaAudio`, so it ships alongside it here (TASK-586 Lane H).
+// `useArcaAudio`, so it ships alongside it here.
 export { useSttProviderToggle, type UseSttProviderToggleReturn } from './hooks/useSttProviderToggle';
 
 // `useTtsPlayback` — streamed TTS audio playback (summary read-aloud).

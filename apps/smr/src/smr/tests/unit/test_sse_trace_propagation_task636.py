@@ -1,11 +1,11 @@
-"""TASK-636 OBS-16 — trace context survives SMR's SSE / task-stream boundary.
+"""Trace context survives SMR's SSE / task-stream boundary.
 
 THE BREAK THIS CLOSES
 SMR's streaming is two SEPARATE HTTP requests plus a Redis Stream between them:
 
     POST /api/v1/generate        -> creates a task, generation runs async
-        (worker) append_chunk()  -> XADD smr:stream:{task_id}
-    GET  /api/v1/tasks/{id}/stream (a DIFFERENT request, often a different
+        (worker) append_chunk -> XADD smr:stream:{task_id}
+    GET /api/v1/tasks/{id}/stream (a DIFFERENT request, often a different
         connection) -> XREAD -> sse_starlette EventSourceResponse
 
 `FastAPIInstrumentor` continues the trace for each of those two requests

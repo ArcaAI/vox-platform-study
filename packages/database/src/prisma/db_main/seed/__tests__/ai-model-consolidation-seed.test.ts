@@ -49,7 +49,7 @@ const retireSupersededGlobalSettings = (globalSetting as Record<string, unknown>
   ((client: unknown) => Promise<{ retired: number }>) | undefined;
 
 // =============================================================================
-// Expected catalog — the 10 keepers + 16 new rows (spec §4.1/§4.3)
+// Expected catalog — the 10 keepers + 16 new rows
 // =============================================================================
 
 const KEEPER_SLUGS = [
@@ -107,7 +107,7 @@ const TASK_524_NEW_SLUGS = [
   'wespeaker-voxceleb-resnet34',
 ] as const;
 
-// TASK-567 — tenant BYOK STT fallback engines (cloud REST catalog metadata for
+// Tenant BYOK STT fallback engines (cloud REST catalog metadata for
 // the fallback-candidate picker; the pipeline YAML reaches them via the
 // `provider :: model` shorthand, so their Prisma `format` is CLOUD_API).
 const TASK_567_NEW_SLUGS = ['sarvam-saaras-v4', 'openai-gpt4o-transcribe'] as const;
@@ -129,7 +129,7 @@ const ADMIN_CONSOLE_BACKFILL_NEW_SLUGS = [
   'whisper-large-en-medical-260726-merged-ct2',
 ] as const;
 
-// TASK-657 — the first ModelCategory.VISION catalog row: the SAME LM Studio
+// The first ModelCategory.VISION catalog row: the SAME LM Studio
 // weights as `lms-medgemma-1.5-4b-it` (a 4B MedGemma checkpoint is natively
 // multimodal), catalogued under a distinct slug/taskType for image+text
 // extraction. Catalogued but NOT loaded on the dev instance (see the "not
@@ -340,7 +340,7 @@ describe('consolidated AI model catalog (26 rows) + extensions', () => {
     expect(row?.metaData?.azureDeployment).toBe('');
   });
 
-  // TASK-657 — the first ModelCategory.VISION / IMAGE_TEXT_TO_TEXT row.
+  // The first ModelCategory.VISION / IMAGE_TEXT_TO_TEXT row.
   it('seeds lms-medgemma-1.5-4b-it-vision as the first ModelCategory.VISION row', () => {
     const row = bySlug('lms-medgemma-1.5-4b-it-vision');
     expect(row).toBeDefined();
@@ -351,7 +351,7 @@ describe('consolidated AI model catalog (26 rows) + extensions', () => {
     expect(row?.tags).toContain('vision');
   });
 
-  it('is the ONLY row using ModelCategory.VISION or IMAGE_TEXT_TO_TEXT before this ticket', () => {
+  it('is the ONLY row using ModelCategory.VISION or IMAGE_TEXT_TO_TEXT before this', () => {
     const visionRows = catalog.filter((m) => m.category === 'VISION' || m.taskType === 'IMAGE_TEXT_TO_TEXT');
     expect(visionRows.map((m) => m.slug)).toEqual(['lms-medgemma-1.5-4b-it-vision']);
   });
@@ -387,7 +387,7 @@ describe('consolidated AI model catalog (26 rows) + extensions', () => {
     ['lms-gemma-4-medical-icd10', 'gemma-4-medical-icd10', false],
     ['lms-gemma-4-12b-qat', 'google/gemma-4-12b-qat', false],
     ['lms-medgemma-1.5-4b-it', 'medgemma-1.5-4b-it', false],
-    // TASK-657 — the vision row reuses the SAME sourceUri as the text-only
+    // The vision row reuses the SAME sourceUri as the text-only
     // row above (one set of weights, two catalog entries for two task types).
     ['lms-medgemma-1.5-4b-it-vision', 'medgemma-1.5-4b-it', false],
   ] as const;

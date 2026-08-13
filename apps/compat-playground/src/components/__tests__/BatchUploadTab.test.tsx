@@ -212,7 +212,7 @@ describe('Batch upload tab', () => {
   });
 });
 
-describe('All-results view (TASK-606)', () => {
+describe('All-results view', () => {
   it('defaults to the selected-file view — the existing master-detail flow is unchanged', async () => {
     const user = userEvent.setup();
     render(<App />);

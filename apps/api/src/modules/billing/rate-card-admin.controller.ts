@@ -11,7 +11,7 @@ import { AiCapability, AiPriceRowKind, AiUsageUnit, TenantPlan } from '@arcaai/d
 import { CanManage, ExpectedVersion, RequiresIfMatch } from '../../decorators';
 
 /**
- * SELL rate-card admin surface (TASK-615 WS-I, D10/D12), mounted at
+ * SELL rate-card admin surface (D10/D12), mounted at
  * `/admin/billing/rate-card` (global prefix → `/api/v1/admin/billing/rate-card`).
  *
  * SUPERSEDE-ONLY: there is deliberately NO PATCH/PUT/DELETE here. A price is

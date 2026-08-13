@@ -8,7 +8,7 @@ import { BaseTenantEntity, IBaseTenantEntity } from '../../../common';
 // per (tenant, SERVICE, provider); the reserved SYSTEM tenant row is the
 // platform default. The UNIFIED provider-connection plane for all three AI
 // capabilities (llm | stt | tts) — unifies the former
-// TenantTtsProviderCredential / TenantSttProviderCredential tables (TASK-569).
+// TenantTtsProviderCredential / TenantSttProviderCredential tables.
 //
 // `encryptedApiKey` is Vault-Transit ciphertext produced by
 // `encryptSecretField` — the entity NEVER sees plaintext and no read DTO ever

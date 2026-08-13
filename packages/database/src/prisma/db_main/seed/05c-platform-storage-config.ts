@@ -1,5 +1,5 @@
 /**
- * Platform-Default Storage Config Seed (TASK-558 lane E)
+ * Platform-Default Storage Config Seed
  *
  * Creates the ONE row that makes the platform object-store configuration
  * admin-managed data rather than deploy-time env: the SYSTEM-tenant

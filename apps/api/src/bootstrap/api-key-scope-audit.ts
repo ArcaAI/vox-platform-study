@@ -1,12 +1,12 @@
 /**
  * Boot-time audit: the HOPE Node SDK's day-1 summarization surface
- * (TASK-632 B1) must never silently lose API-key scope enforcement.
+ * must never silently lose API-key scope enforcement.
  *
- * G1 (docs/implementation/TASK-632-HOPE-Node-SDK/README.md §2.4): before B1,
+ * (docs/implementation/TASK-632-HOPE-Node-SDK/README.md): previously,
  * `API_KEY_SCOPE_REGISTRY` and `UnifiedAuthGuard.enforceApiKeyScopes` both
  * existed, but no decorator ever SET `API_KEY_REQUIRED_SCOPES` metadata, so
  * `requiredScopes` was always `undefined` and any valid API key reached
- * every route RBAC permitted. B1 closed the gap on the routes below by
+ * every route RBAC permitted. That gap closed on the routes below by
  * applying `@RequiredScopes(...)`. This audit is the regression guard: it
  * fails the boot if a future refactor (renamed method, moved decorator,
  * route rewritten) drops that metadata without anyone noticing.
@@ -15,7 +15,7 @@
  * (unlike `admin-route-permission-audit.ts`'s full sweep). It checks
  * exactly the fixed list of routes the Node SDK calls day-1. Widening it
  * into a gateway-wide "every API-key-reachable route must have scopes"
- * policy is out of scope for TASK-632; see the ticket's G1 gap note.
+ * policy is out of scope; see the gap note on that README.
  *
  * Reads `Reflect` metadata directly off the controller prototypes via a
  * plain `Reflector` — no `INestApplicationContext` / DI graph needed, since
@@ -36,7 +36,7 @@ interface ScopedRoute {
   method: string;
 }
 
-/** The HOPE Node SDK's day-1 surface (TASK-632 §3.2 P0 + P0.5). */
+/** The HOPE Node SDK's day-1 surface. */
 export const SDK_DAY1_SCOPED_ROUTES: ScopedRoute[] = [
   { controller: SmrCompatController, method: 'summarySync' },
   { controller: SmrCompatController, method: 'presummary' },

@@ -5,22 +5,22 @@ import { usePlaygroundSession, type PlaygroundAudioSlice } from '../context/play
 import { buildRunExport, formatRate, parseReferenceText, REFERENCE_FILE_ACCEPT, scoreTranscript, type AlignmentOp } from '../lib/scoring';
 
 /**
- * WER/CER scorecard for the Live-transcription tab (TASK-597 lane D, R6).
+ * WER/CER scorecard for the Live-transcription tab.
  *
  * Paste or upload a reference transcript and the streamed hypothesis is scored
  * against it live, so a pipeline or provider switch can be judged on numbers
  * instead of vibes. The metrics come from `../lib/scoring`, whose normalization
  * and CER are a behavioural port of `apps/stt/scripts/mlen_scorecard.py` — the
- * same code the TASK-594 Malayalam-English quality gate runs. That is the whole
+ * same code the Malayalam-English quality gate runs. That is the whole
  * point: a CER shown here and a CER in the regression baseline mean the same
  * thing.
  *
  * State is deliberately LOCAL to this panel. The reference transcript is a
  * scoring input, not session state, and keeping it here means the panel can be
  * dropped into (or out of) the tab without touching the shared session context.
- */
+*/
 
-/** Per-op presentation: colour AND a text marker — never colour alone (§11). */
+/** Per-op presentation: colour AND a text marker — never colour alone.*/
 const OP_STYLES: Record<AlignmentOp['kind'], { marker: string; className: string; label: string }> = {
   equal: { marker: '=', className: 'text-foreground', label: 'match' },
   substitution: { marker: '~', className: 'bg-warning text-warning-foreground rounded px-1', label: 'substitution' },
@@ -71,7 +71,7 @@ function DiffLegend() {
 
 /**
  * Human description of what the run was fed from, for the JSON export's
- * `run.audioSource` (TASK-597 lane G — lane D left this `null` because lane A's
+ * `run.audioSource` (lane D left this `null` because lane A's
  * `audio` context group did not exist yet).
  *
  * Shape: `"<mode> — mic 1: Built-in Microphone + mic 2: clip-b.wav @0.60×"`.
@@ -80,7 +80,7 @@ function DiffLegend() {
  * describe: a file mode with no file loaded has no source, and a mic mode with
  * no explicit selection is whatever the OS calls default, which the browser
  * will not tell us.
- */
+*/
 export function describeAudioSource(audio: Pick<PlaygroundAudioSlice, 'mode' | 'sources'>): string | null {
   if (audio.sources.length === 0) {
     const isFileMode = audio.mode === 'file-single' || audio.mode === 'file-multi';

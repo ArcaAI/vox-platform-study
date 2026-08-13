@@ -1,11 +1,11 @@
-"""TASK-671 P1 — the two-arm corpus control.
+"""The two-arm corpus control.
 
 Before any mechanism is built, this establishes the property that makes the corpus a
 valid instrument: under the **incumbent lexical sensors**, the should-recover arm and the
 should-flag arm are **indistinguishable**. Both are flagged, at the same rate, for the same
 reason — neither appears verbatim in the transcript.
 
-That is what makes the §3.3 joint criterion non-trivial. If the two arms scored differently
+That is what makes the joint criterion non-trivial. If the two arms scored differently
 today, a mechanism could separate them without doing any inference at all, and the recovery
 number would prove nothing.
 

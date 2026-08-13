@@ -4,7 +4,7 @@
 import { BusinessException } from '@arcaai/exceptions';
 import { BaseTenantEntity, IBaseTenantEntity } from '../../../common';
 
-// Runtime observation (TASK-648) — one row per running process, heartbeated
+// Runtime observation — one row per running process, heartbeated
 // (`lastSeenAt`) every 5 minutes. NO `resourceStatus` column: stale rows are
 // pruned wholesale by the existing scheduler surface (30-day retention),
 // never individually soft-deleted (see MODELS_WITHOUT_SOFT_DELETE). Always

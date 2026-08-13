@@ -1,5 +1,5 @@
 /**
- * DepartmentAgent — shared constants (TASK-546).
+ * DepartmentAgent — shared constants.
  */
 
 /**
@@ -10,7 +10,7 @@
  * overrides — a tenant admin editing an agent may only nudge the tenant-tier
  * knobs (the 5 assurance-sensor thresholds + the 4 pipeline-shape knobs).
  *
- * Exported so TASK-550 (harness-override CONSUMPTION) reuses the exact same
+ * Exported so (harness-override CONSUMPTION) reuses the exact same
  * allow-list rather than re-deriving it.
  */
 export const TENANT_TIER_HARNESS_OVERRIDE_KEYS = [
@@ -40,14 +40,14 @@ export function disallowedHarnessOverrideKeys(overrides: Record<string, unknown>
 }
 
 // =============================================================================
-// TASK-635 RF-4 — live-loop tool plan + per-task LLM override
+// Live-loop tool plan + per-task LLM override
 // =============================================================================
 
 /**
  * The tool keys a DepartmentAgent's `toolConfig.tools` object may name.
  *
  * SINGLE ALLOW-LIST, two consumers: `DepartmentAgentService` validates writes
- * against it (400 on an unknown key), and the `LiveToolRegistry` (TASK-635 C4)
+ * against it (400 on an unknown key), and the `LiveToolRegistry` 
  * dispatches reads from it (warn + ignore on an unknown key — the
  * defense-in-depth mirror of `applyAgentOverrides` in the harness policy
  * service). C4 owns the executors; it MUST key them to exactly these names
@@ -66,7 +66,7 @@ const LIVE_TOOL_KEY_SET: ReadonlySet<string> = new Set(LIVE_TOOL_KEYS);
 
 /**
  * The `SmrRoutingTask` subset an agent may override. Deliberately NOT one
- * global field (RF-4): a low-latency live model must never silently drive
+ * global field: a low-latency live model must never silently drive
  * finalize, so the override is keyed per task and each key falls back
  * independently to the tenant's `AiTaskDefault` (`smr.live` / `smr.finalize`).
  */
@@ -163,7 +163,7 @@ export function llmOverridesProblems(llmOverrides: Record<string, unknown>): { p
 }
 
 // =============================================================================
-// TASK-659 — loop configuration + promotion surface
+// Loop configuration + promotion surface
 // =============================================================================
 
 /**
@@ -172,7 +172,7 @@ export function llmOverridesProblems(llmOverrides: Record<string, unknown>): { p
  * `consultation-context-schema/context-schema-definition.ts` — kept as an
  * independent constant (not imported) so this module's structural validators
  * stay self-contained pure functions with no cross-service dependency; the
- * grammar itself is a platform-wide convention, not TASK-658's alone.
+ * grammar itself is a platform-wide convention, not 's alone.
  */
 export const AGENT_KIND_KEY_PATTERN = /^[a-z0-9_]{2,48}$/;
 
@@ -279,7 +279,7 @@ export function writeScopeProblems(value: Record<string, unknown>): { problems: 
 
 /**
  * Closed catalogue of named guardrail profiles a DepartmentAgent may select
- * (TASK-654 D9): placement, not permission — the actual clinical-safety
+ * placement, not permission — the actual clinical-safety
  * enforcement runs at a boundary the agent cannot route around; this field
  * only SELECTS which profile that boundary applies.
  */
@@ -297,8 +297,8 @@ export function guardrailProfileProblems(value: string): string[] {
 }
 
 /**
- * The action registry names TASK-662's `ConsultationLoopWorkflow` will
- * dispatch (TASK-654 §4.4) — `alwaysActions`/`neverActions` (D11's compliance
+ * The action registry names 's `ConsultationLoopWorkflow` will
+ * dispatch — `alwaysActions`/`neverActions` (D11's compliance
  * envelope) may name only these.
  */
 export const AGENT_ACTION_KEYS = [
@@ -350,7 +350,7 @@ export function actionOverlapProblems(always: unknown[] | undefined | null, neve
 
 /**
  * Structural validation of a `goal` JSONB payload — a CONSTRAINED goal
- * statement, deliberately NOT a free-text system prompt (TASK-654 D8): a
+ * statement, deliberately NOT a free-text system prompt: a
  * short, length-capped objective plus optional bounded success criteria. Free-
  * text prompt authoring stays where it already is — the approval-gated
  * PromptTemplate bound via `promptTemplateId`. Shape:
@@ -401,14 +401,14 @@ export function goalProblems(value: Record<string, unknown>): string[] {
 }
 
 // ===========================================================================
-// Loop-config snapshot + checksum (TASK-659, shared with TASK-663)
+// Loop-config snapshot + checksum (shared with )
 // ===========================================================================
 
 /**
  * The seven loop-config fields, as a STRUCTURAL type rather than the entity.
  * `DepartmentAgentEntity` satisfies it, and so does a `configSnapshot` read
  * back off a `DepartmentAgentVersion` — which is the whole point: promotion
- * (TASK-663) checksums a snapshot it read from the version table, never a live
+ *  checksums a snapshot it read from the version table, never a live
  * entity. Keeping the shape structural also keeps this module dependency-free,
  * as every other validator in it is.
  */
@@ -429,7 +429,7 @@ export interface AgentLoopConfig {
  *
  * This USED to be a module-private copy inside `departmentAgent.service.ts`,
  * consistent with this codebase's habit of keeping such canonicalisers
- * deliberately separate per file. TASK-663 moved it here because promotion
+ * deliberately separate per file. moved it here because promotion
  * introduces a requirement the earlier copies did not have: the checksum
  * `DepartmentAgentService` writes onto a `DepartmentAgentVersion` and the
  * checksum `AgentPromotionService` writes onto an `AgentPromotion` MUST agree,

@@ -62,7 +62,7 @@ class ModelNotSelectedError(InputValidationError):
 
 class VisionNotSupportedError(InputValidationError):
     """An image content part was supplied but the provider has no multimodal
-    wire capability (TASK-657 — today: llama.cpp's raw ``/completion``
+    wire capability (today: llama.cpp's raw ``/completion``
     endpoint has no chat/image concept).
 
     Fails closed rather than silently dropping the image and degrading to a
@@ -79,7 +79,7 @@ class VisionNotSupportedError(InputValidationError):
 class ProviderCredentialsError(SmrError):
     """No usable credential for a cloud provider generation request.
 
-    TASK-602: cloud providers (Azure OpenAI / OpenAI / Anthropic) are BYOK — the
+    cloud providers (Azure OpenAI / OpenAI / Anthropic) are BYOK — the
     credential arrives per request as a gateway-injected ``ProviderOverride``
     (tenant → SYSTEM cascade), never from an env fallback. When neither a request
     override nor a configured platform key is present, the adapter raises this

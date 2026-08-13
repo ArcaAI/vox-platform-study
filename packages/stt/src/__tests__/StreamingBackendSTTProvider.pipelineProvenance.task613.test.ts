@@ -1,5 +1,5 @@
 /**
- * TASK-613 AC-1 — per-utterance pipeline provenance must survive the
+ * — per-utterance pipeline provenance must survive the
  * `@arcaai/stt` transport hop.
  *
  * The backend stamps every transcript with the pipeline that produced THAT
@@ -7,7 +7,7 @@
  * `pipelineId`. This provider is the bridge between that client and the SDK
  * store, so a drop here makes the whole chain pointless for every consumer
  * reading `audio.transcriptSegments`.
- */
+*/
 import { describe, it, expect } from 'vitest';
 import { StreamingBackendSTTProvider, type StreamingTranscriptPayload } from '../providers/StreamingBackendSTTProvider.js';
 
@@ -49,7 +49,7 @@ function basePayload(overrides: Partial<StreamingTranscriptPayload> = {}): Strea
   };
 }
 
-describe('StreamingBackendSTTProvider — pipeline provenance (TASK-613)', () => {
+describe('StreamingBackendSTTProvider — pipeline provenance', () => {
   it('forwards the per-utterance pipelineId to the transcription result', () => {
     const provider = makeProvider();
     const result = normalize(provider, basePayload({ pipelineId: 'pipe-primary-001' }));

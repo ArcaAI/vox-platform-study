@@ -1,9 +1,9 @@
 #!/usr/bin/env tsx
 /**
- * TASK-648 U1 — Changelog generation from Conventional Commits (README §3.5, §5 W12).
+ * Changelog generation from Conventional Commits.
  *
  * Two distinct outputs, both derived from the same commit range, never conflated
- * (README §3.5 — conflating them is the usual changelog failure):
+ * (conflating them is the usual changelog failure):
  *
  *   1. The TECHNICAL changelog: every commit since the previous tag of the same
  *      SERVICE family, grouped by type. Shape frozen by
@@ -13,12 +13,12 @@
  *   2. On an `ALL-<ver>` platform-train tag only: a DRAFT `ChangelogEntry`
  *      payload (title/summary/body) pulled from the `feat` + breaking items.
  *      This function NEVER sets a publish-shaped field — CI creates drafts
- *      only; publishing is always a human action (README §3.5 rule 5, §6b).
+ *      only; publishing is always a human action.
  *
  * Enforcement: `assertBreakingRequiresMajorBump` throws when any entry is
  * `breaking: true` and the release is not a MAJOR bump. This is what makes
- * the SemVer policy of README §3.1 enforced rather than aspirational — wired
- * into the CLI below so a release-tag pipeline fails outright.
+ * the SemVer policy (MAJOR = breaking change) enforced rather than aspirational
+ * — wired into the CLI below so a release-tag pipeline fails outright.
  *
  * Git plumbing (`getCommitsInRange`, `getPreviousFamilyTag`) is intentionally
  * separated from the pure parsing/grouping/enforcement functions above so the
@@ -84,7 +84,7 @@ function isConventionalType(candidate: string): candidate is ConventionalCommitT
  * Parse one commit into a `ChangelogEntry`. Never throws — a commit that does
  * not match the Conventional Commits grammar lands as `type: "other"` with
  * its raw subject preserved verbatim, so the technical changelog is always
- * complete (README §3.5 rule 4).
+ * complete.
  */
 export function parseConventionalCommit(commit: RawCommit): ChangelogEntry {
   const match = CONVENTIONAL_HEADER.exec(commit.subject.trim());
@@ -142,7 +142,7 @@ export function groupByType(entries: ChangelogEntry[]): Partial<Record<Changelog
   return grouped;
 }
 
-// ─── SemVer bump detection + enforcement (README §3.1, §3.5 rule 2) ─────────
+// ─── SemVer bump detection + enforcement ────────────────────────────────────
 
 /**
  * Classify the bump from `previous` to `current`. `null` previous means no
@@ -159,7 +159,7 @@ export function determineVersionBump(previous: SemverCore | null, current: Semve
 
 /**
  * THE enforcement gate: fails the pipeline when any entry is `breaking: true`
- * and the release is not a MAJOR (or initial) bump. Without this, §3.1's
+ * and the release is not a MAJOR (or initial) bump. Without this, the
  * "MAJOR = breaking change" rule is just a comment nobody has to honour.
  */
 export function assertBreakingRequiresMajorBump(entries: ChangelogEntry[], bump: VersionBump): void {
@@ -172,17 +172,17 @@ export function assertBreakingRequiresMajorBump(entries: ChangelogEntry[], bump:
   const subjects = breaking.map((e) => `  - ${e.sha.slice(0, 8)} ${e.subject}`).join('\n');
   throw new Error(
     `Release contains ${breaking.length} breaking commit(s) but the tag is only a ${bump.toUpperCase()} bump. ` +
-      `A breaking change requires a MAJOR version bump (README §3.1).\n${subjects}\nSHAs: ${shas}`,
+      `A breaking change requires a MAJOR version bump.\n${subjects}\nSHAs: ${shas}`,
   );
 }
 
-// ─── Draft ChangelogEntry payload (ALL- tags only, README §3.5 rule 5) ──────
+// ─── Draft ChangelogEntry payload (ALL- tags only) ──────────────────────────
 
 /**
  * Curated draft payload for a platform-train (`ALL-`) release: the `feat` and
  * breaking items only — a `fix` alone is not "what's new" copy. Deliberately
  * has NO publish-shaped field: CI creates a DRAFT via `POST /admin/changelog`
- * and a human edits + publishes it (README §3.5, §6b). Never throws.
+ * and a human edits + publishes it. Never throws.
  */
 export function buildDraftChangelogPayload(entries: ChangelogEntry[], platformVersion: string): DraftChangelogPayload {
   const highlights = entries.filter((e) => e.type === 'feat' || e.breaking);
@@ -309,7 +309,7 @@ function main(): void {
 
     if (parsedTag.isPlatformTrain) {
       const draft = buildDraftChangelogPayload(entries, parsedTag.version);
-      console.log('# Draft ChangelogEntry payload (ALL- tag — never auto-published, README §3.5 rule 5):');
+      console.log('# Draft ChangelogEntry payload (ALL- tag — never auto-published):');
       console.log(JSON.stringify(draft, null, 2));
     }
   }

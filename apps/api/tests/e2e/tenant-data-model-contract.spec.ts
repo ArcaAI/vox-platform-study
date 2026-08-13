@@ -7,7 +7,7 @@
  * a second `super_admin` session bound to `__GLOBAL__` for tenant-scoped writes;
  * `tenant_admin`/`doctor` pinned to `__GLOBAL__`).
  *
- * Coverage (ticket §Items):
+ * Coverage:
  *   #3 plan   · create surfaces `plan`; fetch reflects it; PATCH updates it (OCC).
  *   #2 tags   · PUT /admin/tenants/:id/tags replaces the set; GET reads it back.
  *   #1 F6     · POST suspend/archive/restore transitions `resourceStatus`.
@@ -130,7 +130,7 @@ test.describe.serial('tenant plan / tags / lifecycle (#1/#2/#3)', () => {
     const patch = await request.patch(`/api/v1/admin/tenants/${tenantId}`, {
       headers: { ...bearer(superToken), ...ifMatch(t.version) },
       // `expectedVersion` is required in the body too (OCC belt-and-suspenders
-      // with the If-Match header — mirrors task-379's edit contract).
+      // with the If-Match header — mirrors 's edit contract).
       data: { plan: 'PRO', expectedVersion: t.version },
     });
     expect(patch.status(), 'plan PATCH succeeds').toBe(200);

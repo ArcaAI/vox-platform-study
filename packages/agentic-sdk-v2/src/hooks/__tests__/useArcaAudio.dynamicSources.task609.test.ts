@@ -1,5 +1,5 @@
 /**
- * useArcaAudio — RUNTIME capture-source management (TASK-609).
+ * useArcaAudio — RUNTIME capture-source management.
  *
  * An end user with several microphones must be able to add or drop one MID
  * CONSULTATION. Before 609 the only way was stop() + start(), which tears down
@@ -141,7 +141,7 @@ beforeEach(() => {
 
 afterEach(() => vi.unstubAllGlobals());
 
-describe('useArcaAudio — runtime source management (TASK-609)', () => {
+describe('useArcaAudio — runtime source management', () => {
   it('builds the mixer for a SINGLE source when dynamicSources is set, so the pipeline input is swappable', async () => {
     const { result } = renderHook(() => useArcaAudio());
 
@@ -175,7 +175,7 @@ describe('useArcaAudio — runtime source management (TASK-609)', () => {
     });
 
     expect(navigator.mediaDevices.getUserMedia).toHaveBeenLastCalledWith({ audio: { deviceId: { exact: 'mic-B' } } });
-    // 4th arg since TASK-612 Lane B: a deviceId source is SDK-owned, so the
+    // 4th arg since: a deviceId source is SDK-owned, so the
     // mixer releases its tracks on removal.
     expect(roomMocks.addSource).toHaveBeenLastCalledWith(id, expect.objectContaining({ label: 'mic-B' }), 0.8, { stopTracksOnRemove: true });
     expect(mockStoreData.setAudioSourceIds).toHaveBeenLastCalledWith(['source-1', id]);
@@ -217,7 +217,7 @@ describe('useArcaAudio — runtime source management (TASK-609)', () => {
     });
 
     expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledTimes(1); // start only
-    // 4th arg since TASK-612 Lane B: a caller-built stream is caller-owned —
+    // 4th arg since: a caller-built stream is caller-owned
     // the mixer must not stop its tracks on removal.
     expect(roomMocks.addSource).toHaveBeenLastCalledWith(expect.any(String), injected, 1.0, { stopTracksOnRemove: false });
   });

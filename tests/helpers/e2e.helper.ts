@@ -64,10 +64,10 @@ export const SEEDED_API_KEY_DOCTOR2 = 'hope_sk_test_b7d8f67y65d5548gce8df8eef0_7
 
 /**
  * Service-account key (`SEED_API_KEY_RAW.SERVICE_ACCOUNT` in 00-constants.ts).
- * TASK-430 made service accounts API-key-only principals — they cannot sign in
+ * Service accounts are API-key-only principals — they cannot sign in
  * interactively — so this key is the ONLY way for a test to reach that
- * principal. (It authenticated for the first time after TASK-539 finding S-3;
- * before that fix every API key on the platform returned 401.)
+ * principal. (It authenticated for the first time after a 401-on-every-key
+ * bug; before that fix every API key on the platform returned 401.)
  */
 export const SEEDED_API_KEY_SERVICE_ACCOUNT = 'hope_sa_test_d9f0h89a87f7760ieg0fh0ggh2_964571';
 
@@ -399,7 +399,7 @@ export async function deleteTestRole(
   token: string,
   roleId: string,
   /**
-   * TASK-409 — role deletion requires break-glass step-up (caller's current
+   * Role deletion requires break-glass step-up (caller's current
    * password + the exact role name). Defaults to the seeded test password;
    * the name is fetched from the API when not supplied.
    */
@@ -500,7 +500,7 @@ export async function deleteTestPolicy(
   token: string,
   policyId: string,
   /**
-   * TASK-409 — policy deletion requires break-glass step-up (caller's current
+   * Policy deletion requires break-glass step-up (caller's current
    * password + the exact policy name). Defaults to the seeded test password;
    * the name is fetched from the API when not supplied.
    */

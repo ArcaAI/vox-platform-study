@@ -1,4 +1,4 @@
--- TASK-516 Phase 5 — MCP external-tools registry (McpServer).
+-- MCP external-tools registry (McpServer).
 --
 -- Purely ADDITIVE: one new table. McpServer is a STANDARD tenant-scoped config
 -- model (tenantId + resourceStatus soft-delete + _version OCC + audit),

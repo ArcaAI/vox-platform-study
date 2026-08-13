@@ -1,5 +1,5 @@
 /**
- * SummaryService — warm-start pre-summary decrypt + subType fix (TASK-635 A2/A3, B-02/B-06)
+ * SummaryService — warm-start pre-summary decrypt + subType fix
  *
  * B-02: `generateSummary` used to read `latestPreSummary?.content` off the
  * plain (non-decrypting) `findLatestPreSummary` finder — empty text in
@@ -168,7 +168,7 @@ describe('SummaryService.generateSummary — warm-start pre-summary (B-02/B-06)'
     expect(mockPromptAssemblyService.assemble).toHaveBeenCalledWith(expect.objectContaining({ preSummaryText: undefined }));
   });
 
-  // TASK-655 — `resolveWarmStartPreSummary` already delegates entirely to
+  // `resolveWarmStartPreSummary` already delegates entirely to
   // `findLatestPreSummaryWithDecryptedContent` (no hand-rolled copy here, so
   // no production change was needed for this call site). This pins that a
   // decrypt failure propagates out of `generateSummary()` rather than being

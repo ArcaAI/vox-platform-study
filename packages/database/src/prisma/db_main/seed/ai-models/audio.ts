@@ -129,8 +129,8 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
     tags: ['cloud', 'azure-foundry', 'preview', 'multilingual'],
   },
   {
-    // TASK-567 — tenant BYOK fallback engine (cloud REST). Catalog metadata for
-    // the fallback-candidate picker. TASK-586: `format` is now the first-class
+    // Tenant BYOK fallback engine (cloud REST). Catalog metadata for
+    // the fallback-candidate picker.: `format` is now the first-class
     // AiModelFormat.SARVAM (previously the generic CLOUD_API), so the pipeline
     // binds this engine via a BARE SLUG ref (`asr: "sarvam-saaras-v4"`) exactly
     // like the Azure Speech row — no inline `engine:`/`sarvam::` override needed.
@@ -154,8 +154,8 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
     tags: ['cloud', 'sarvam', 'byok', 'multilingual'],
   },
   {
-    // TASK-567 — tenant BYOK fallback engine (cloud REST). See the sarvam row
-    // above. TASK-586: `format` is now the first-class AiModelFormat.OPENAI, so a
+    // Tenant BYOK fallback engine (cloud REST). See the sarvam row
+    // above.: `format` is now the first-class AiModelFormat.OPENAI, so a
     // bare-slug pipeline ref (`asr: "openai-gpt4o-transcribe"`) binds this engine
     // like Azure Speech — no `openai::` shorthand override required.
     id: '80000000-0000-0000-0001-000000000017',

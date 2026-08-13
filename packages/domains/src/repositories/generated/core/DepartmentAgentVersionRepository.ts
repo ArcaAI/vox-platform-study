@@ -8,11 +8,11 @@ import { DepartmentAgentVersionEntityMapper } from '../../../mappers';
 import { DepartmentAgentVersion } from '../../../models';
 
 /**
- * TASK-659 — immutable loop-configuration snapshots of a `DepartmentAgent`.
+ * Immutable loop-configuration snapshots of a `DepartmentAgent`.
  *
  * Listed in `MODELS_WITHOUT_SOFT_DELETE`: the table has no `resourceStatus`
  * column, so `softDelete`/`restore` throw and reads must NOT filter on it. A
- * consultation loop pinned to version N (TASK-654 C1) has to resolve version N
+ * consultation loop pinned to version N has to resolve version N
  * forever, which is precisely why retraction is not available here.
  *
  * `update` is never called on this model. Every write creates a NEW row.

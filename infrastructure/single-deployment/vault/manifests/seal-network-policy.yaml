@@ -1,5 +1,5 @@
 # =============================================================================
-# HOPE — seal-Vault NetworkPolicy (TASK-312 Phase C, C.6b)
+# HOPE — seal-Vault NetworkPolicy
 # =============================================================================
 # The seal Vault is the cluster's ROOT OF TRUST (holds the `autounseal` transit
 # key). Lock its network surface to the bare minimum: default-deny, then allow

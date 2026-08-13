@@ -2,7 +2,7 @@
  * Frame 32 — Agent Catalog against a RUNNING stack (rule 12 gate 3).
  *
  * This screen now owns exactly one resource, the `DepartmentAgent` catalog:
- * TASK-634 R6 moved the prompt-template grid and the governance surface to
+ * the prompt-template grid and the governance surface moved to
  * `/prompt-templates` (covered by `prompt-templates.spec.ts`), so what remains
  * here is the catalog smoke, the deep link out, and the axe gate.
  */

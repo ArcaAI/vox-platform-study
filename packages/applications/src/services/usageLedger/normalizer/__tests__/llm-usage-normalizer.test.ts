@@ -1,7 +1,7 @@
 /**
  * Provider usage-object normalizer — golden tests.
  *
- * These are the FROZEN semantics wave-1 emitters (WS-D, WS-F) code against.
+ * These are the FROZEN semantics wave-1 emitters code against.
  * Every case below is one of the five defects research-findings.md §3 ranks as
  * most likely to corrupt a meter; a green suite here is the only thing standing
  * between a cached Anthropic request and a 10x mis-bill.
@@ -286,7 +286,7 @@ describe('reduceStreamingUsage', () => {
   });
 
   it('an interrupted Anthropic stream still yields the usage seen so far (abort path)', () => {
-    // TASK-470/471 bug class: teardown on abort must emit whatever was observed
+    // Bug class: teardown on abort must emit whatever was observed
     // rather than nothing at all.
     const chunks = [
       { type: 'message_start', message: { usage: { input_tokens: 25, output_tokens: 0 } } },

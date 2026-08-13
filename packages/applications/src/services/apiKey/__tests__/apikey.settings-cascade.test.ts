@@ -1,5 +1,5 @@
 /**
- * TASK-558 lane I — `API_KEY_MAX_LIFETIME_DAYS` / `API_KEY_ALLOW_QUERY_PARAM`
+ * `API_KEY_MAX_LIFETIME_DAYS` / `API_KEY_ALLOW_QUERY_PARAM`
  * move from `process.env` to the `global-kv` cascade.
  *
  * `apiKey.maxLifetimeDays` is `maxScope: 'tenant'`: the ceiling on how long a

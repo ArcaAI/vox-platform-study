@@ -5,7 +5,7 @@
  * the control is permanently dead. The reason must be visible AND programmatically
  * associated with the button.
  *
- * TASK-605 — the tab now takes MANY files: one queue row (and one backend job)
+ * the tab now takes MANY files: one queue row (and one backend job)
  * per file, a bounded number in flight at a time, and a master/detail transcript
  * panel fed either by a queue row or by a past job from the recent-jobs table.
  */

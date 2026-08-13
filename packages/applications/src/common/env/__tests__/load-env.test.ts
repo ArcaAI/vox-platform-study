@@ -1,5 +1,5 @@
 /**
- * TASK-558 (lane B) — `loadEnv()` is the single TS env-loading implementation.
+ * (lane B) — `loadEnv()` is the single TS env-loading implementation.
  * These tests exercise the real dotenv round-trip so the precedence contract is
  * proven end to end, not just in the resolver.
  */

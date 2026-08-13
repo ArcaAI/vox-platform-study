@@ -12,7 +12,7 @@ import { CanAny } from '../../decorators';
 /**
  * ServiceReleaseAdminController.
  *
- * Read side of the Service Version & Release Registry (TASK-648 W8). Same
+ * Read side of the Service Version & Release Registry. Same
  * admin posture as the existing `/health/services` route: either a global
  * admin (`manage all`) or a tenant admin holding `read:TenantTelemetry`. A
  * plain doctor holds neither and is rejected. Branch/SHA/CI detail is

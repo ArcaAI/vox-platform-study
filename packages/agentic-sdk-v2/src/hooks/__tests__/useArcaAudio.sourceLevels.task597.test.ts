@@ -1,6 +1,5 @@
 /**
- * useArcaAudio — PER-SOURCE input levels + `drainTimeoutMs` threading
- * (TASK-597 open follow-ups #2 and #4).
+ * useArcaAudio — PER-SOURCE input levels + `drainTimeoutMs` threading.
  *
  * #2. Before this change the SDK exposed exactly ONE level meter, on the mixed
  *     capture graph, so a consumer could know "someone is speaking" but never
@@ -382,7 +381,7 @@ describe('useArcaAudio — per-source meters never outlive the capture session',
 // ===========================================================================
 // #4 — drainTimeoutMs threading
 // ===========================================================================
-describe('useArcaAudio — drainTimeoutMs (TASK-597 follow-up #4)', () => {
+describe('useArcaAudio — drainTimeoutMs', () => {
   it('forwards a positive drainTimeoutMs to the plugin manager runtime options', async () => {
     const pluginManager = createMockPluginManager();
     setupStore({ pluginManager });
@@ -422,14 +421,14 @@ describe('useArcaAudio — drainTimeoutMs (TASK-597 follow-up #4)', () => {
 });
 
 // ===========================================================================
-// quietWindowMs threading (TASK-597)
+// quietWindowMs threading
 //
 // The guard here is `>= 0`, deliberately UNLIKE `drainTimeoutMs` above. `0` is
 // the documented "disable the early resolve and wait for the terminal status"
 // value, so it must reach the plugin manager rather than be swallowed by a
 // truthiness check copied from the timeout knob.
 // ===========================================================================
-describe('useArcaAudio — quietWindowMs (TASK-597)', () => {
+describe('useArcaAudio — quietWindowMs', () => {
   it('PRESERVES quietWindowMs: 0 through setRuntimeOptions', async () => {
     const pluginManager = createMockPluginManager();
     setupStore({ pluginManager });

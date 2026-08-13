@@ -2,7 +2,7 @@
 # packages/database/tests/pgbouncer-validation/pgbench/run-baseline.sh
 #
 # Task 1.14 — pgbench baseline (direct vs pooled) for the PgBouncer
-# validation rig (TASK-302 Stream C Phase 1).
+# validation rig.
 #
 # Workload:  TPC-B-like (pgbench's default --builtin=tpcb-like)
 # Scale:     10  → ~150K rows in pgbench_accounts, ~1 GB footprint
@@ -32,7 +32,7 @@ DB="hope"
 USER="hope_app"
 export PGPASSWORD="hope_app_local"
 
-# Defaults match the rubric in 03-pgbouncer-rollout.md §1.14:
+# Defaults match the rubric in 03-pgbouncer-rollout.md:
 #   -c 50 -j 4 -T 60 -P 10 -M prepared
 # Override via env: PGBENCH_SCALE / PGBENCH_CLIENTS / PGBENCH_DURATION / PGBENCH_JOBS.
 SCALE="${PGBENCH_SCALE:-10}"

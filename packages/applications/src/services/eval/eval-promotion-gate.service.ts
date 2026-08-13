@@ -78,14 +78,14 @@ export class EvalPromotionGateService {
     // Find the agents bound to this template that carry a golden set. For a pin
     // re-point we gate only the one agent; for an approve we gate every bound agent.
     //
-    // TASK-635 R5: this used to filter on `promptTemplateId` alone, which sees
+    // This used to filter on `promptTemplateId` alone, which sees
     // only the BASE binding. Since C2 an agent can bind a template SOLELY through
     // a capability column (`newPatientTemplateId` / `revisitTemplateId` /
     // `preSummaryTemplateId` / `livePromptTemplateId`), and such an agent would
     // have escaped the gate entirely at approve time. `findByBoundTemplate` ORs
     // across all five columns.
     //
-    // DOCUMENTED LIMITATION (C1 §DR-1): the golden-set eval judges
+    // DOCUMENTED LIMITATION (C1 -1): the golden-set eval judges
     // transcript→final-note quality, which is meaningless for a live DELTA prompt
     // or a pre-summary prompt. The gate therefore governs the SUMMARY bindings in
     // substance; live/pre-summary bindings are gated by APPROVED status alone.

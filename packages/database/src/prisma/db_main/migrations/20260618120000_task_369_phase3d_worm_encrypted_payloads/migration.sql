@@ -1,4 +1,4 @@
--- TASK-369 (Data Encryption Initiative) Phase 3D — WORM / hash-chained tables.
+-- Data Encryption Initiative — WORM / hash-chained tables.
 --
 -- Encrypt-before-hash for the append-only WORM audit/policy-change tables. For
 -- every encrypted JSON payload we add a nullable `encrypted<Field>` BYTEA column

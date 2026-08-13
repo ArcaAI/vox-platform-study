@@ -18,11 +18,11 @@ let prisma: CorePrismaClient | null = null;
  *
  * Uses the unscoped (platform-admin) client because test fixtures must
  * be able to set up rows across tenants before any CLS context exists.
- * TASK-305 B.4 allow-list — tests/ is a recognised legitimate caller.
+ * tests/ is a recognised legitimate caller.
  */
 async function loadDatabase() {
   const db = await import('@arcaai/database');
-  // eslint-disable-next-line no-restricted-imports -- TASK-305 B.4 allow-list: e2e test helper, no CLS context available pre-request
+  // eslint-disable-next-line no-restricted-imports -- e2e test helper, no CLS context available pre-request
   return { client: db.getPlatformAdminPrismaClient_Unscoped(), mod: db };
 }
 

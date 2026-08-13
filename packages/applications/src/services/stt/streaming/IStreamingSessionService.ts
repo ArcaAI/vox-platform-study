@@ -13,7 +13,7 @@ export interface IStreamingSessionService {
   checkAvailability(): Promise<StreamingAvailability>;
 
   /**
-   * Fetch the STT language-mode catalog + per-mode supported engines (TASK-587).
+   * Fetch the STT language-mode catalog + per-mode supported engines.
    * Backend-authoritative source of truth for the end-user language picker.
    */
   getLanguageModes(): Promise<SttLanguageModeCatalog>;
@@ -35,7 +35,7 @@ export interface IStreamingSessionService {
   getSessionStatus(sessionId: string): Promise<StreamingSessionStatus | null>;
 
   /**
-   * Trigger a mid-session engine switch (TASK-567 R4, TASK-586).
+   * Trigger a mid-session engine switch.
    *
    * Bidirectional for user-initiated switches: `'fallback'` swaps to the
    * tenant's fallback pipeline, `'primary'` swaps back to the primary. POSTs
@@ -47,7 +47,7 @@ export interface IStreamingSessionService {
   switchProvider(sessionId: string, target: 'primary' | 'fallback'): Promise<void>;
 
   /**
-   * Back-compat alias for `switchProvider(sessionId, 'fallback')` (TASK-567).
+   * Back-compat alias for `switchProvider(sessionId, 'fallback')`.
    *
    * @param sessionId - The session identifier
    */
@@ -56,7 +56,7 @@ export interface IStreamingSessionService {
   /**
    * Finalize and remove a streaming session.
    *
-   * TASK-615 WS-C: on a real teardown, emits ONE `transcribe.stream` usage
+   * on a real teardown, emits ONE `transcribe.stream` usage
    * row (SESSION_SECOND + AUDIO_SECOND). `interrupted` is a purely
    * gateway-side decision (STT has no concept of it) — pass `true` from an
    * abort path (resume-grace expiry, shutdown); leave the `false` default

@@ -12,9 +12,9 @@
  * These assertions fail closed if the dev seed ever drops the harness token, or
  * if `apps/api/.env.sample` stops DECLARING the variable.
  *
- * TASK-558 lane D — the second assertion used to compare the seeded value with a
+ * The second assertion used to compare the seeded value with a
  * literal token committed in `apps/api/.env.sample`. That file is now generated
- * and carries placeholders only (plan §9.1 D3: "committed files contain no
+ * and carries placeholders only (: "committed files contain no
  * secrets"), so the contract moved: `dev-init.sh` is the single source of the dev
  * token value, and the example file's job is to declare the KEY. Pinning a real
  * shared service token in a committed file is the posture lane A removed.

@@ -1,4 +1,4 @@
-"""Batch fallback dispatch tests (TASK-567 §3.4, plan §5 item 13).
+"""Batch fallback dispatch tests.
 
 Verifies ``_transcribe_file_async``:
 - re-dispatches ONCE on the configured fallback pipeline on a retryable cloud
@@ -197,7 +197,7 @@ async def test_success_path_never_touches_fallback():
 
 
 # ---------------------------------------------------------------------------
-# TASK-614 D-6 — the gateway↔worker wire contract for the fallback.
+# The gateway↔worker wire contract for the fallback.
 #
 # The tests above call `_transcribe_file_async` directly, so they proved the
 # fallback BRANCH worked while nothing in production ever reached it: the API
@@ -206,7 +206,7 @@ async def test_success_path_never_touches_fallback():
 # It now rides as a KWARG next to `storage`, with the same 10 positional args
 # as before. This locks that exact shape against the actor's signature — a
 # renamed kwarg or a changed positional count silently disables batch fallback
-# again, which is precisely how it stayed dead since TASK-567.
+# again, which is precisely how it stayed dead originally.
 # ---------------------------------------------------------------------------
 
 # The positional args the gateway emits, in order (transcriptionRealtime.service.ts):

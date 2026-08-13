@@ -6,7 +6,7 @@ against the same frozen contract, exposing the ONLY subset tts consumes:
 IndicParler, IndicF5). The cloud providers (Azure, Sarvam) hold no weights and
 expose no retention seam, so they are skipped.
 
-THE NAMESPACE TRAP (§3.4) — the gateway registers this service as `tts` but
+THE NAMESPACE TRAP — the gateway registers this service as `tts` but
 resolves its keys under the `tts` prefix (`effective-config.service.ts:116`:
 `case 'tts': return { ...base, retention: await this.resolveRetention('tts') }`).
 So the client MUST send `service=tts` (sending `tts` is rejected by
@@ -185,7 +185,7 @@ class EffectiveConfigClient:
 async def refresh_model_cache_retention(app_state: Any) -> None:
     """Pull control-plane retention and apply it to every LIVE local provider.
 
-    §3.2 — `configure_retention` reaches the provider's ALREADY-CONSTRUCTED
+    `configure_retention` reaches the provider's ALREADY-CONSTRUCTED
     cache, so a resident pipeline adopts the new TTL without being dropped.
     Applying retention only at provider construction would leave the admin knob
     dead for every running process.

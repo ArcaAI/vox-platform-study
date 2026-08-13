@@ -10,7 +10,7 @@ export { useArca, type UseArcaReturn, type UseArcaSession, type UseArcaAudio, ty
 
 // Focused domain hooks (REFACTOR-01)
 export { useArcaAudio } from './useArcaAudio';
-// Runtime audio-input discovery for device pickers (TASK-609). Provider-free.
+// Runtime audio-input discovery for device pickers. Provider-free.
 export {
   useArcaDevices,
   type ArcaAudioDevice,
@@ -94,10 +94,10 @@ export { useConsultationJob, type UseConsultationJobReturn } from './useConsulta
 // Consultation chain hook — full multi-hop parent/child tree
 export { useConsultationChain, type UseConsultationChainReturn } from './useConsultationChain';
 
-// Consultation context schema discovery (TASK-665)
+// Consultation context schema discovery
 export { useConsultationSchema, type UseConsultationSchemaReturn } from './useConsultationSchema';
 
-// Consultation-loop workflow event SSE stream (TASK-660/665)
+// Consultation-loop workflow event SSE stream
 export { useConsultationEvents, type UseConsultationEventsReturn, type ConsultationEventsStreamStatus } from './useConsultationEvents';
 
 // Audio recordings hook (dual-capture X8)
@@ -110,13 +110,13 @@ export type { Pipeline, CreatePipelineInput, UpdatePipelineInput, PipelineValida
 // Health check hook
 export { useHealthCheck, type UseHealthCheckReturn } from './useHealthCheck';
 
-// STT language-mode catalog hook (TASK-587)
+// STT language-mode catalog hook
 export { useArcaSttLanguageModes, type UseArcaSttLanguageModesReturn } from './useArcaSttLanguageModes';
 
-// Native 2-way STT provider toggle — pipeline (primary) ↔ default (fallback) (TASK-586 Lane H)
+// Native 2-way STT provider toggle — pipeline (primary) ↔ default (fallback)
 export { useSttProviderToggle, type UseSttProviderToggleReturn, type SttFallbackProvider } from './useSttProviderToggle';
 // Batch (pre-recorded file) transcription — up to N recordings, monitored to
-// completion (TASK-604).
+// completion.
 export {
   useBatchTranscription,
   type UseBatchTranscriptionProps,

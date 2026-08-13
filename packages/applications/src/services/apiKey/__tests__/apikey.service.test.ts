@@ -1193,7 +1193,7 @@ describe('ApiKeyService', () => {
       expect(service.hasScope(apiKey as any, 'tts:synthesize')).toBe(false);
     });
 
-    // TASK-632: the registry advertises category wildcards (`consultation:*`, `stt:*`, …) as
+    // The registry advertises category wildcards (`consultation:*`, `stt:*`, …) as
     // assignable "full access" scopes and `isValidScope` accepts them, so the console will issue
     // such keys. Before scope enforcement was wired up (no decorator set the metadata key) this
     // was inert. Now that routes declare `@RequiredScopes`, a category wildcard that does not

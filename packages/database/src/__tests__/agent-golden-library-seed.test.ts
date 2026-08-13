@@ -1,5 +1,5 @@
 /**
- * TASK-548 — Agent Golden Library inventory locks.
+ * Agent Golden Library inventory locks.
  *
  * The SYSTEM tenant owns the platform-curated day-1 catalog (departments +
  * default agents + APPROVED prompt templates). Every fixture-tenant agent row
@@ -26,7 +26,7 @@ const fixtureTemplateById = new Map(DEFAULT_PROMPT_TEMPLATES.map((t) => [t.id, t
 const goldenTemplateById = new Map(GOLDEN_PROMPT_TEMPLATES.map((t) => [t.id, t]));
 const goldenDepartmentById = new Map(GOLDEN_DEPARTMENTS.map((d) => [d.id, d]));
 
-describe('Agent Golden Library seed (TASK-548)', () => {
+describe('Agent Golden Library seed', () => {
   describe('SYSTEM golden departments', () => {
     it('promotes the full 18-department catalog to the SYSTEM tenant', () => {
       expect(GOLDEN_DEPARTMENTS).toHaveLength(18);
@@ -137,7 +137,7 @@ describe('Agent Golden Library seed (TASK-548)', () => {
       });
     });
 
-    // TASK-592 Workstream D: the ArcaAI fixture tenant no longer receives
+    // The ArcaAI fixture tenant no longer receives
     // seeded default agents (its clinical departments resolve via the
     // visit-type-faithful legacy prompt-id columns), so the golden library only
     // clones into the Global fixture tenant now.

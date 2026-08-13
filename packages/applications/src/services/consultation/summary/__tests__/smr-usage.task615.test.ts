@@ -5,7 +5,7 @@ import { KNOWN_PROVIDERS } from '../../../usageLedger/vocabulary';
 import { buildGuardrailUsageInput, buildLlmUsageInput, buildLlmUsageInputFromTokenCounts, parseSmrUsageDetail, toLedgerProvider } from '../smr-usage';
 
 /**
- * TASK-615 WS-D — turning an SMR response into ledger rows.
+ * Turning an SMR response into ledger rows.
  *
  * Two independent vocabularies meet here and neither is allowed to bleed into
  * the other: SMR names its providers for its own registry (`azure-openai`,
@@ -192,7 +192,7 @@ describe('buildLlmUsageInput', () => {
     expect(input.common.costBasis).toBe(AiCostBasis.BYOK_NOTIONAL);
   });
 
-  it('TASK-643 R3: a PLATFORM-FUNDED cloud call is CLOUD + INTERNAL, not BYOK', () => {
+  it('A PLATFORM-FUNDED cloud call is CLOUD + INTERNAL, not BYOK', () => {
     // The gateway injected `provider_overrides` for this call — but from the
     // SYSTEM-tenant platform default, not the tenant's own credential. SMR is
     // told which it was via `provider_overrides[<provider>].funding` and
@@ -318,7 +318,7 @@ describe('buildGuardrailUsageInput', () => {
   });
 });
 
-// TASK-615 WS-D2 (item 1b) — context.service.ts#addRawSummary is a WRITE
+// Context.service.ts#addRawSummary is a WRITE
 // PATH THAT NEVER CALLS SMR ITSELF (confirmed: zero httpService/axios
 // references in that file). It exists to persist a summary + bare
 // inputTokens/outputTokens the CALLER already computed, so there is no real

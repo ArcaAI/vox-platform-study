@@ -204,7 +204,7 @@ def load_env(*, start_dir: Path | None = None) -> LoadEnvResult:
     env_file = root / ENV_FILE_BY_NODE_ENV[node_env]
     if not env_file.is_file() and node_env == _DEFAULT_NODE_ENV:
         # Parity with the TS loader's development-only fallback. Retired with
-        # the `.env` file itself (TASK-558 phase 2).
+        # the `.env` file itself.
         legacy = root / ".env"
         if legacy.is_file():
             env_file = legacy

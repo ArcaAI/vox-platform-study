@@ -1,5 +1,5 @@
 /**
- * TASK-635 C4 — the config-driven live tool layer (OD-5(b)).
+ * The config-driven live tool layer.
  *
  * C4-T1  null/absent toolConfig ⇒ executor sequence + HTTP calls identical to pre-C4
  *        (one NLP call producing entities+vitals; groundedness iff env-enabled).
@@ -149,7 +149,7 @@ describe('NlpExtractionTool (C4-T4 + relocation parity)', () => {
     expect(body.text).toBe('TRANSCRIPT DELTA');
   });
 
-  it('authenticates the gateway→NLP hop with X-Service-Token (TASK-640 regression)', async () => {
+  it('authenticates the gateway→NLP hop with X-Service-Token (regression)', async () => {
     const post = vi.fn().mockResolvedValue({ data: { entities: [] } });
     const { deps } = makeDeps(post);
     deps.nlp.secretsService = { getSecretOptional: vi.fn().mockResolvedValue('nlp-token') } as never;

@@ -3,7 +3,7 @@ import { IsEnum, IsISO8601, IsOptional, IsString, IsUUID, Length, Matches, MaxLe
 import { AiCapability, AiPriceRowKind, AiUsageUnit, TenantPlan } from '@arcaai/domains';
 
 /**
- * Create one SELL-plane rate row (TASK-615 D10/D12).
+ * Create one SELL-plane rate row (/D12).
  *
  * The plane is NOT a field — this surface manages the SELL card only and the
  * service pins it. `unitPriceMicros` is a decimal-integer STRING because money

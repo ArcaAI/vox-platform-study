@@ -41,7 +41,7 @@ class JudgeProvider(StrEnum):
 class OpenAICompatJudgeConfig(BaseSettings):
     """OpenAI-compatible local endpoint (LM Studio default)."""
 
-    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
     settings_customise_sources = hope_settings_sources
 
     model_config = SettingsConfigDict(env_prefix="HARNESS_JUDGE_OPENAI_COMPAT_")
@@ -60,7 +60,7 @@ class OpenAICompatJudgeConfig(BaseSettings):
 class AzureJudgeConfig(BaseSettings):
     """Azure OpenAI judge endpoint."""
 
-    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
     settings_customise_sources = hope_settings_sources
 
     model_config = SettingsConfigDict(env_prefix="HARNESS_JUDGE_AZURE_")
@@ -74,7 +74,7 @@ class AzureJudgeConfig(BaseSettings):
 class BedrockJudgeConfig(BaseSettings):
     """AWS Bedrock judge endpoint."""
 
-    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
     settings_customise_sources = hope_settings_sources
 
     model_config = SettingsConfigDict(env_prefix="HARNESS_JUDGE_BEDROCK_")
@@ -85,7 +85,7 @@ class BedrockJudgeConfig(BaseSettings):
 class JudgeConfig(BaseSettings):
     """Root, model-agnostic judge configuration."""
 
-    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
     settings_customise_sources = hope_settings_sources
 
     model_config = SettingsConfigDict(env_prefix="HARNESS_JUDGE_")
@@ -201,7 +201,7 @@ class JudgeConfig(BaseSettings):
 class EvalConfig(BaseSettings):
     """Eval-run thresholds + golden-set pin (the release-gate knobs)."""
 
-    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
     settings_customise_sources = hope_settings_sources
 
     model_config = SettingsConfigDict(env_prefix="HARNESS_EVAL_")

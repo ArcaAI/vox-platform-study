@@ -59,7 +59,7 @@ function makeController(ctx: Ctx) {
       count: 0,
       candidates: [],
     }),
-    // TASK-553 F-24: the curation write half.
+    // F-24: the curation write half.
     curateExemplar: vi.fn().mockResolvedValue({
       id: 'ex-1',
       tenantId: 'tenant-1',
@@ -426,7 +426,7 @@ describe('HarnessAdminController — golden sets', () => {
     expect(evalService.addGoldenSet).not.toHaveBeenCalled();
   });
 
-  // TASK-549 tail: GoldenSet.departmentId on the create lane — the body field
+  // Tail: GoldenSet.departmentId on the create lane — the body field
   // threads straight through to the service, which owns the department/tenant
   // validation (404-over-403; covered at the service-unit level).
   it('createGoldenSet threads an optional departmentId through to the service', async () => {
@@ -524,7 +524,7 @@ describe('HarnessAdminController — gate-edit corpus export', () => {
 });
 
 /**
- * The curation WRITE half (TASK-553 F-24). Same tenancy posture as the export
+ * The curation WRITE half (F-24). Same tenancy posture as the export
  * beside it — a foreign `?tenantId=` is a 403 that never reaches the store —
  * plus the one property specific to a write: the verdict body reaches the
  * service verbatim, so an admin console cannot smuggle extra fields through.

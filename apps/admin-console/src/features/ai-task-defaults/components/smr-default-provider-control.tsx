@@ -56,7 +56,7 @@ function ControlSkeleton() {
 }
 
 /**
- * "Default text-generation provider" control (TASK-592, top of the SMR tab).
+ * "Default text-generation provider" control (top of the SMR tab).
  *
  * A convenience writer over the EXISTING per-key `PUT
  * admin/ai-task-defaults/row?taskKey=` endpoint: pick ONE model and apply it, in

@@ -39,7 +39,7 @@ export interface IPromptTemplateEntity extends IBaseTaggedEntity {
   Owner?: Entities.UserEntity | null;
   // `IBaseEntity.metaData` is declared but not wired on the abstract base —
   // wired locally (the DepartmentAgentEntity / AiModelEntity precedent) so the
-  // live-agent resolver (TASK-635 C3) can read a per-template custom
+  // live-agent resolver can read a per-template custom
   // `metaData.promptConfig.systemPrompt` through the repository.
   metaData?: Record<string, unknown> | null;
 }

@@ -1,8 +1,7 @@
 """OpenAI speech-to-text — per-utterance / whole-audio REST recognition.
 
-TASK-567. Mirrors :mod:`stt.streaming.sarvam_asr`. Transcribes one audio buffer
-via OpenAI's ``POST {base_url}/audio/transcriptions`` REST endpoint (per plan
-§3.5: per-utterance REST in v1; realtime WS is a fast-follow). Plain ``httpx``,
+Mirrors :mod:`stt.streaming.sarvam_asr`. Transcribes one audio buffer
+via OpenAI's ``POST {base_url}/audio/transcriptions`` REST endpoint (per-utterance REST in v1; realtime WS is a fast-follow). Plain ``httpx``,
 no vendor SDK; ``base_url`` supports Azure-OpenAI-compatible endpoints.
 """
 

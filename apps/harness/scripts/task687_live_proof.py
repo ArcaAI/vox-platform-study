@@ -1,4 +1,4 @@
-"""TASK-687 live proof — real Temporal server, both HarnessDocWorkflow start sites.
+"""Live proof — real Temporal server, both HarnessDocWorkflow start sites.
 
 Not a unit test. Run against an ISOLATED Temporal on :7234 (never dev's 7233):
 

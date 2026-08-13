@@ -18,7 +18,7 @@ const mockGoldenSetRepository = { create: vi.fn(echo), findById: vi.fn(), findAl
 const mockGoldenCaseRepository = { create: vi.fn(echo), findById: vi.fn(), findAll: vi.fn(), getByGoldenSet: vi.fn(), count: vi.fn() };
 const mockEvalRunRepository = { create: vi.fn(echo), findById: vi.fn(), findAll: vi.fn(), getByGoldenSet: vi.fn() };
 const mockEvalScoreRepository = { create: vi.fn(echo), findById: vi.fn(), findAll: vi.fn(), getByEvalRun: vi.fn() };
-// TASK-549 tail: department-scoped golden sets — appended (never inserted)
+// Tail: department-scoped golden sets — appended (never inserted)
 // after the optional secretsService slot so the existing 4-arg construction
 // above keeps working untouched.
 const mockDepartmentRepository = { findById: vi.fn() };
@@ -283,12 +283,12 @@ describe('EvalService', () => {
   });
 
   // ===========================================================================
-  // GoldenSet.departmentId on the create lane (TASK-549 tail). The department
+  // GoldenSet.departmentId on the create lane (tail). The department
   // must belong to the SAME tenant as the set — 404-over-403: a cross-tenant
   // or nonexistent department id is indistinguishable from "not found", never
   // a 403 (mirrors DepartmentAgentService.assertDepartmentInTenant).
   // ===========================================================================
-  describe('createGoldenSet — department scoping (TASK-549 tail)', () => {
+  describe('createGoldenSet — department scoping (tail)', () => {
     function makeServiceWithDepartments(): EvalService {
       return new EvalService(
         mockGoldenSetRepository as any,

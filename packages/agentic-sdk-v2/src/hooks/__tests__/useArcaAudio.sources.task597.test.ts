@@ -1,5 +1,5 @@
 /**
- * useArcaAudio — audio SOURCE selection (TASK-597 lane A).
+ * useArcaAudio — audio SOURCE selection.
  *
  * The developer console needs four capture modes, all through the SAME
  * mixer → noise-filter → VAD → STT graph:
@@ -319,7 +319,7 @@ describe('useArcaAudio — injected source streams (sourceStreams)', () => {
 // Teardown — the invariant the ref-shape change exists for
 // ===========================================================================
 describe('useArcaAudio — source teardown', () => {
-  it('ends EVERY mic track after stop() (N > 2 leaked before TASK-597)', async () => {
+  it('ends EVERY mic track after stop() (N > 2 leaked before)', async () => {
     const streams = ['mic-A', 'mic-B', 'mic-C'].map(makeStream);
     streams.forEach((s) => (navigator.mediaDevices.getUserMedia as any).mockResolvedValueOnce(s));
 

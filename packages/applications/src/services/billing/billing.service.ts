@@ -55,7 +55,7 @@ import {
 } from './invoice-math';
 
 /**
- * The invoice engine (TASK-615 WS-I, decisions D11–D15, D17).
+ * The invoice engine (decisions D11–D15, D17).
  *
  * This class fetches inputs and persists outputs; every money decision lives
  * in the PURE modules next to it (`invoice-math`, `billable-usage`,
@@ -354,7 +354,7 @@ export class BillingService extends BaseService implements IBillingService {
   }
 
   // ═════════════════════════════════════════════════════════════════════════
-  // recordPlanChange — append-only plan-history writer (TASK-615 #6)
+  // recordPlanChange — append-only plan-history writer
   // ═════════════════════════════════════════════════════════════════════════
 
   async recordPlanChange(tenantId: string, newPlan: TenantPlan | null, effectiveAt: Date, changeReason?: string): Promise<void> {
@@ -418,7 +418,7 @@ export class BillingService extends BaseService implements IBillingService {
     const bookVersions = new Set<string>();
 
     // --- plan fee (multi-segment from TenantPlanHistory, else PERIOD_END_PLAN) --
-    // TASK-615 #6: when the tenant has dated plan segments overlapping the period
+    // When the tenant has dated plan segments overlapping the period
     // the fee is prorated PER SEGMENT (`fee × ownedDays / periodDays`); with no
     // history the single whole-period segment reproduces the pre-#6 behavior
     // exactly (a whole-period single segment bills the fee to the micro). The
@@ -487,7 +487,7 @@ export class BillingService extends BaseService implements IBillingService {
           day: rollup.bucketStart,
           unit: rollup.unit,
           provider: rollup.provider,
-          // Pre-TASK-638 rows have no deployment; the column defaults to
+          // Pre- rows have no deployment; the column defaults to
           // SELF_HOSTED, which is the conservative reading (consumes allowance
           // first, never retroactively re-rated at a managed premium).
           deployment: rollup.deployment ?? AiDeploymentKind.SELF_HOSTED,
@@ -570,7 +570,7 @@ export class BillingService extends BaseService implements IBillingService {
       const key = `${bucket.provider}::${bucket.unit}::${day.getTime()}`;
       if (rates.has(key)) continue;
 
-      // TASK-638: `provider` participates so a managed-vendor SELL row (more
+      // `provider` participates so a managed-vendor SELL row (more
       // specific) prices above the provider-agnostic baseline. BYOK deliberately
       // resolves the BASELINE — a managed premium recovers platform COGS, and on
       // a tenant's own key the platform bears none.

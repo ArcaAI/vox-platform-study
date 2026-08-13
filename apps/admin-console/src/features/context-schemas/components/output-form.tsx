@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * Output-kind editor (TASK-666 scope: "what the loop may emit back"). A
+ * Output-kind editor ("what the loop may emit back"). A
  * narrower sibling of `KindForm` — outputs carry no `phiClass`/`cardinality`/
  * `lifecycle`/`producedBy`/`required`/`constraints`/`deprecated`, matching the
  * server's `OUTPUT_KEYS` allow-list (`context-schema-definition.ts`).

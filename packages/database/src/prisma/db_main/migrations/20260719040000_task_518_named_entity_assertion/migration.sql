@@ -1,4 +1,4 @@
--- TASK-518 — Negation/assertion polarity on NamedEntity.
+-- Negation/assertion polarity on NamedEntity.
 --
 -- Purely ADDITIVE: one new NULLABLE column, no changes to existing columns or
 -- data. `assertion` records the ConText/NegEx-style claim a mention makes about

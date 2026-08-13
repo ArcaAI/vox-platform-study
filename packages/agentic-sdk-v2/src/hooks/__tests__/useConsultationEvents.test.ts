@@ -1,5 +1,5 @@
 /**
- * useConsultationEvents Hook Tests (TASK-665)
+ * useConsultationEvents Hook Tests
  *
  * Modeled directly on `useArcaLiveSummary.test.ts` (the leaner SSE-hook
  * exemplar this hook copies).

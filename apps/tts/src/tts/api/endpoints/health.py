@@ -47,12 +47,12 @@ async def liveness() -> dict[str, str]:
 async def readiness(request: Request) -> dict[str, Any] | JSONResponse:
     """Kubernetes readiness probe — 503 until the service can serve a request.
 
-    Three states, not two (TASK-642):
+    Three states, not two:
 
-    * a registered provider whose ``health()`` is true → **healthy**;
+    * a registered provider whose ``health`` is true → **healthy**;
     * a registered provider that is unhealthy *solely* because it holds no
       platform credential (``is_configured is False``) → **degraded, but ready**.
-      That is the BYOK contract TASK-602 established: the platform is not allowed
+      That is the BYOK contract established: the platform is not allowed
       to hold the key, the gateway decrypts and injects it per request, and the
       router builds a keyed engine from that override
       (``TTSRouter._build_override_engine``). Such a provider is exactly as
@@ -67,7 +67,7 @@ async def readiness(request: Request) -> dict[str, Any] | JSONResponse:
     reads only the status code, but an operator reading the payload must be able
     to tell "ready and able to synthesize" from "ready, but every request needs to
     bring its own key" — the router will still refuse a request that arrives
-    without one (``candidates()`` skips ``is_configured is False`` providers
+    without one (``candidates`` skips ``is_configured is False`` providers
     unless the request carries an override).
     """
     registry = getattr(request.app.state, "provider_registry", None)

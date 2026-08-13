@@ -5,7 +5,7 @@ import { BusinessException } from '@arcaai/exceptions';
 import { BaseTaggedEntity, IBaseTaggedEntity } from '../../../common';
 import { DepartmentAgentDnaPolicy, DepartmentAgentRole } from '../../../enums';
 
-// First-class agent entity (TASK-546): binds a tenant department to a
+// First-class agent entity: binds a tenant department to a
 // PromptTemplate at a PINNED or TRACKED version, plus a DNA-style gate, (later)
 // harness overrides and a golden set. Only STRUCTURAL invariants live here;
 // binding-visibility, pin-approval and harness-override key validation are
@@ -22,7 +22,7 @@ export interface IDepartmentAgentEntity extends IBaseTaggedEntity {
   dnaStylePolicy?: DepartmentAgentDnaPolicy;
   harnessOverrides?: Record<string, unknown> | null;
   goldenSetId?: string | null;
-  // TASK-635 RF-4 — capability-keyed bindings. All optional/nullable; null ⇒
+  // Capability-keyed bindings. All optional/nullable; null ⇒
   // the legacy behavior for that capability (summary falls back to
   // `promptTemplateId`; pre-summary and live fall through to the tenant/SYSTEM
   // tiers). Loose template-id refs — visibility/approval are cross-aggregate
@@ -40,11 +40,11 @@ export interface IDepartmentAgentEntity extends IBaseTaggedEntity {
   // (DB default = false); the tenant default is flipped only via the
   // repository transaction (`setDefaultForDepartment`).
   isDefault?: boolean;
-  // Template lineage (consumed by TASK-548). Optional for the same reason as
+  // Template lineage. Optional for the same reason as
   // `isDefault` — DB defaults cover creates.
   sourceAgentTemplateSlug?: string | null;
   templateLocked?: boolean;
-  // TASK-659 — loop configuration + promotion surface. All optional; every
+  // Loop configuration + promotion surface. All optional; every
   // pre-existing agent is null on all but `role` (which carries a DB
   // default), so nothing here changes resolution behavior.
   role?: DepartmentAgentRole;
@@ -56,7 +56,7 @@ export interface IDepartmentAgentEntity extends IBaseTaggedEntity {
   neverActions?: string[] | null;
   // `IBaseEntity.metaData` is declared but not wired on the abstract base —
   // wired locally (the AiModelEntity precedent) so template-copy lineage extras
-  // (TASK-548: `sourceTemplateVersionNumber`, the pristine-detection anchor for
+  // (`sourceTemplateVersionNumber`, the pristine-detection anchor for
   // the resync sweep) survive the entity ⇄ model round-trip.
   metaData?: Record<string, unknown> | null;
 }

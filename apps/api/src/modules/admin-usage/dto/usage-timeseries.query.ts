@@ -2,7 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { AiCapability, AiUsageUnit } from '@arcaai/domains';
 import { IsEnum, IsISO8601, IsIn, IsOptional, IsString } from 'class-validator';
 
-/** query for `GET admin/usage/timeseries` (TASK-615 WS-J). */
+/** query for `GET admin/usage/timeseries`. */
 export class UsageTimeseriesQuery {
   @ApiProperty({ enum: AiCapability })
   @IsEnum(AiCapability)

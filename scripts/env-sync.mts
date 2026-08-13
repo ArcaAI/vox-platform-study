@@ -3,15 +3,13 @@
  * `pnpm env:sync` — generate every managed environment artifact from the ONE
  * declared surface, and `pnpm env:sync --check` — fail on drift.
  *
- * TASK-558 lane D (plan §9.1 D1/D2/D8, §5 Phase 3).
- *
  * ─── THE DECLARED SURFACE (the only source of truth) ─────────────────────────
  *   1. `HOPE_SETTINGS_REGISTRY`  — the settings-registry catalog. Only the
  *      ENV-SUPPLIED tiers are rendered: `env` (deploy-time) and `vault-kv`
  *      (Vault kv-v2, but read from `process.env` under the `env` secrets
  *      provider — same NAME either way). `db-config` / `global-kv` /
  *      `db-secret` / `entitlement` are CONTROL-PLANE tiers: putting them in an
- *      env file would re-create the drift this ticket exists to remove.
+ *      env file would re-create the drift this generator exists to remove.
  *   2. `API_ENV_DESCRIPTORS`     — the gateway's own declarations
  *      (`apps/api/src/config/`), which also build its boot-time zod schema.
  *   3. `ADMIN_CONSOLE_ENV_SETTINGS` — the console's declarations
@@ -20,7 +18,7 @@
  *      has no config module of its own, so it is declared below.
  *
  * Env-var names come from `toEnvVarName()` for every registry-sourced dotted
- * key — never hand-copied (plan §3.3).
+ * key — never hand-copied.
  *
  * ─── MANAGED OUTPUTS ─────────────────────────────────────────────────────────
  *   • `apps/api/.env.sample`               the platform contract beyond the floor
@@ -29,18 +27,18 @@
  *   • `.env.sample`                        CONSOLIDATED — the bootstrap floor
  *                                          + the 3 files above + the 6 Python
  *                                          services' own `.env.sample` files,
- *                                          assembled into ONE root artifact
- *                                          (TASK-585). This is what
+ *                                          assembled into ONE root artifact.
+ *                                          This is what
  *                                          `pnpm setup:dev`/`pnpm setup:test`
  *                                          copy to create `.env.dev`/`.env.test`.
  *   • `turbo.json#globalEnv`                declared surface ∪ real TS reads
  *   • `docs/implementation/TASK-558-Environment-Configuration-Refactor/env-surface.generated.md`
  *
- * (TASK-558 originally wrote the bootstrap floor to its own `.env.example`
- * file. TASK-583 then hand-assembled a SEPARATE `.env.sample` that wrapped
+ * (The bootstrap floor originally lived in its own `.env.example`
+ * file. A SEPARATE `.env.sample` was then hand-assembled that wrapped
  * `.env.example`'s content as its first section — two overlapping root
- * files, kept in sync by a script run by hand. TASK-585 removed that
- * duplication: the floor is now rendered directly into `.env.sample`'s first
+ * files, kept in sync by a script run by hand. That
+ * duplication is gone: the floor is now rendered directly into `.env.sample`'s first
  * section by THIS generator, `.env.example` no longer exists, and `--check`
  * covers the whole consolidated file end to end.)
  *
@@ -48,7 +46,7 @@
  *   • `apps/{stt,smr,guardrail,nlp,harness,tts}/.env.sample` — their schema is
  *     pydantic-settings, which the drift gate cannot import (CI has no Python
  *     service environment), and whose FULL field surface is ~500 keys against
- *     the plan's ~120-key target (§8). Their operator documentation therefore
+ *     the ~120-key target. Their operator documentation therefore
  *     stays hand-maintained — this generator reads their CURRENT content
  *     verbatim into `.env.sample` (so that assembly can't drift out of sync
  *     the way the old by-hand script could), but does not validate it against
@@ -59,7 +57,7 @@
  *   • `.env.test`, per-app `.env.prod` — environment TEMPLATES with
  *     deliberately environment-specific values (`.env.test` runs the DEV+100
  *     port scheme of commit d84f538e), not declarations. Neither is loaded
- *     directly by any application (TASK-583/584) — `.env.test` is generated
+ *     directly by any application — `.env.test` is generated
  *     at setup time, and `.env.prod` files are ops reference only.
  */
 
@@ -103,7 +101,7 @@ const TOOLS_ENV_SETTINGS: SettingDescriptor[] = [
 export interface EnvVar {
     name: string;
     tier: SettingDescriptor['tier'];
-    /** True ⇔ `failMode: 'closed'` — absence must fail fast (plan §4 B4). */
+    /** True ⇔ `failMode: 'closed'` — absence must fail fast. */
     required: boolean;
     secret: boolean;
     default?: unknown;
@@ -116,7 +114,7 @@ export interface EnvVar {
     owner: string;
 }
 
-/** Which deployable owns a variable, from the prefix convention of plan §3.3 R5.1. */
+/** Which deployable owns a variable, from the prefix convention. */
 const SERVICE_PREFIX: ReadonlyArray<readonly [string, string]> = [
     ['STT_', 'apps/stt'],
     ['SMR_', 'apps/smr'],
@@ -194,7 +192,7 @@ const platformSurface = [...apiDeclared, ...registryEnvSupplied.filter((v) => !a
 const adminConsoleSurface = ADMIN_CONSOLE_ENV_SETTINGS.map(fromAdminConsole);
 const toolsSurface = TOOLS_ENV_SETTINGS.map((d) => fromDescriptor(d, 'packages/tools'));
 
-/** Every declared key, deduplicated by name — the surface plan §8 counts. */
+/** Every declared key, deduplicated by name — the surface this generator counts. */
 export const declaredSurface: EnvVar[] = (() => {
     const byName = new Map<string, EnvVar>();
     for (const v of [...bootstrapFloor, ...platformSurface, ...adminConsoleSurface, ...toolsSurface]) {
@@ -222,11 +220,11 @@ const BANNER = (source: string) =>
     ].join('\n');
 
 /**
- * The value written for a variable: never a real secret (plan §9.1 D3).
+ * The value written for a variable: never a real secret.
  *   secret                    → `CHANGE_ME` (wins even over `sampleValue` —
  *                                belt-and-suspenders alongside the registry's
  *                                own assembly-time throw, see `settings-registry.ts`)
- *   sampleValue declared      → that value (template-only, TASK-585 follow-up —
+ *   sampleValue declared      → that value (template-only —
  *                                never fed back into a runtime fallback, unlike `default`)
  *   required, no code default → `CHANGE_ME` (the operator MUST supply one)
  *   otherwise                 → the declared default, or empty for "unset by default"
@@ -376,7 +374,7 @@ function renderToolsExample(): string {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// `.env.sample` — the consolidated root artifact (TASK-585)
+// `.env.sample` — the consolidated root artifact
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** One key=value declaration line, keyed by name for de-duplication. */
@@ -599,7 +597,7 @@ export function buildArtifacts(): Artifact[] {
 /**
  * The bootstrap-floor content, exported so tests can assert its properties
  * (exact key set, ≤60 lines, no key beyond the floor) directly — it is no
- * longer a standalone file (TASK-585), so this is the only way to reach it.
+ * longer a standalone file, so this is the only way to reach it.
  */
 export function getBootstrapFloorContent(): string {
     return renderRootExample();

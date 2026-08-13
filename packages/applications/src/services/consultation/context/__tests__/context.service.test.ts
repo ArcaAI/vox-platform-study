@@ -1071,7 +1071,7 @@ describe('ContextService', () => {
       );
     });
 
-    // TASK-660 — TRANSCRIPT moved INTO the live-context set (loop event plane
+    // TRANSCRIPT moved INTO the live-context set (loop event plane
     // widening), so it no longer illustrates a non-live type here; AUDIO_RECORDING
     // (a media container with no text content, never gated into the live-summary
     // path) is the still-excluded example.

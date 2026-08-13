@@ -1,9 +1,9 @@
 /**
- * TASK-558 lane I — TENANT-SCOPE writes through the single enforcement point.
+ * TENANT-SCOPE writes through the single enforcement point.
  *
- * Lane F declared `maxScope` and lane I made it mean something: six knobs are
- * now `maxScope: 'tenant'`, so the write lane has to be able to persist a row
- * that belongs to a TENANT rather than to the platform. Before this lane
+ * Classification declared `maxScope` and the write path made it mean something:
+ * six knobs are now `maxScope: 'tenant'`, so the write lane has to be able to
+ * persist a row that belongs to a TENANT rather than to the platform. Previously
  * `write()` accepted `scope: 'tenant'` (the clamp allowed it) and then wrote
  * the platform row anyway — the clamp passed and the value landed in the wrong
  * place.
@@ -16,7 +16,7 @@
  *      settings cache and nowhere else;
  *   3. a tenant-scope write with no working tenant (a global admin who has not
  *      selected one) is refused rather than silently becoming a platform write;
- *   4. the OCC + sys-event + cache-refresh path (§9.3 M8) is unchanged.
+ *   4. the OCC + sys-event + cache-refresh path is unchanged.
  */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -90,7 +90,7 @@ describe('tenant-scope write persists under the caller tenant', () => {
     });
   });
 
-  it('still broadcasts the sys-event and refreshes the read cache (§9.3 M8)', async () => {
+  it('still broadcasts the sys-event and refreshes the read cache', async () => {
     const { svc, emitter, appSettings } = makeService({ roles: [], tenantId: CUSTOMER_TENANT });
 
     await svc.write('rateLimit.maxRequests', 10, { scope: 'tenant' });

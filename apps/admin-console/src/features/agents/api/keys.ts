@@ -31,14 +31,14 @@ export const departmentAgentKeys = {
   root: ['department-agents'] as const,
   list: (params?: ListDepartmentAgentsParams) => [...departmentAgentKeys.root, 'list', params ?? {}] as const,
   detail: (id: string) => [...departmentAgentKeys.root, 'detail', id] as const,
-  /** Resolved context schema (TASK-658) a department's `subscribedKinds`/`writeScope` pickers source from. */
+  /** Resolved context schema a department's `subscribedKinds`/`writeScope` pickers source from. */
   contextSchema: (departmentId: string) => [...departmentAgentKeys.root, 'context-schema', departmentId] as const,
-  /** TASK-674 — immutable loop-config version history. */
+  /** Immutable loop-config version history. */
   versions: (id: string) => [...departmentAgentKeys.root, 'versions', id] as const,
 };
 
 /**
- * Cross-tenant `AgentPromotion` lineage (TASK-663/674) query-key factory —
+ * Cross-tenant `AgentPromotion` lineage query-key factory —
  * rooted separately since it reads a different resource than `DepartmentAgent`.
  */
 export const agentPromotionKeys = {
@@ -47,7 +47,7 @@ export const agentPromotionKeys = {
 };
 
 /**
- * Eval-gated promotion (TASK-549) query-key factory — rooted separately at
+ * Eval-gated promotion query-key factory — rooted separately at
  * ['agent-eval'] so `useRunGoldenSetEval`'s invalidation never touches the
  * unrelated PromptTemplate/DepartmentAgent caches above.
  */

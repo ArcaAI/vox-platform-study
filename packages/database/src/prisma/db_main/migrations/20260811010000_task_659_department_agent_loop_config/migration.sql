@@ -1,4 +1,4 @@
--- TASK-659 — Agent configuration extension: DepartmentAgent becomes the unit
+-- Agent configuration extension: DepartmentAgent becomes the unit
 -- of loop configuration and of promotion.
 --
 -- Adds seven loop-configuration columns to DepartmentAgent (role,

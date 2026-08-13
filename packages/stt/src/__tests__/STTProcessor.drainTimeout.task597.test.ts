@@ -1,5 +1,5 @@
 /**
- * @arcaai/stt — `drainTimeoutMs` reaches the transport (TASK-597 follow-up #4).
+ * @arcaai/stt — `drainTimeoutMs` reaches the transport.
  *
  * Lane B2 made the stop-drain ceiling configurable on
  * `StreamingRemoteProviderConfig`, but nothing upstream could set it: the SDK
@@ -9,7 +9,7 @@
  * a wrong wiring is invisible until a real Stop takes the wrong amount of time.
  *
  * @vitest-environment jsdom
- */
+*/
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { STTProcessor } from '../core/STTProcessor.js';
@@ -70,7 +70,7 @@ async function runTeardown(drainTimeoutMs?: number, quietWindowMs?: number) {
   return wsClient;
 }
 
-describe('STTProcessor — drainTimeoutMs threading (TASK-597 follow-up #4)', () => {
+describe('STTProcessor — drainTimeoutMs threading', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -93,7 +93,7 @@ describe('STTProcessor — drainTimeoutMs threading (TASK-597 follow-up #4)', ()
   });
 });
 
-describe('STTProcessor — quietWindowMs threading (TASK-597)', () => {
+describe('STTProcessor — quietWindowMs threading', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });

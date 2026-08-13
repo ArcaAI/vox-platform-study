@@ -2,7 +2,7 @@ import { Badge } from '@arcaai/ui';
 import type { EnhancedMedicalSummary, SimplifiedMedicalSummary, SoapMedicalSummary, MedicalSummary, SummaryResponse } from '@arcaai/vox/compat';
 
 /**
- * Result rendering for the Summarization tab (TASK-597 lane F): the
+ * Result rendering for the Summarization tab: the
  * Enhanced/Simplified/SOAP shape discriminators + renderers (moved verbatim
  * out of `SummaryCard.tsx`), plus `StreamingPreview` — the live-token view
  * shown while `stream:true` is in flight (R10). The SSE `delta` payload is the
@@ -12,7 +12,7 @@ import type { EnhancedMedicalSummary, SimplifiedMedicalSummary, SoapMedicalSumma
  * structured `SummaryView` below takes over once the terminal `result` event
  * resolves the request with the same v1-shaped body the non-streaming path
  * returns.
- */
+*/
 
 // =============================================================================
 // Shape discriminators

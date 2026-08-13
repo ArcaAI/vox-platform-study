@@ -173,10 +173,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # (PRELOAD_PIPELINES, empty by default) remains available below.
     await _preload_pipeline_models()
 
-    # Self-registration (TASK-648 W9): fire-and-forget, bounded-timeout, NEVER
+    # Self-registration: fire-and-forget, bounded-timeout, NEVER
     # blocks or fails boot. `DEPLOYMENT_ENVIRONMENT` / `NODE_ENV` is the same
     # repo-wide convention `stt.core.telemetry._deployment_environment` uses
-    # (TASK-636 OBS-18); stt has no dedicated `environment` settings field.
+    # stt has no dedicated `environment` settings field.
     app.state.service_release_task = None
     app.state.service_release_http_client = None
     try:
@@ -290,7 +290,7 @@ def create_app() -> FastAPI:
 # Create application instance
 app = create_app()
 
-# NOTE (TASK-616 G0.0/G0.1): this module must NOT install its own SIGTERM
+# NOTE: this module must NOT install its own SIGTERM
 # handler. `stt.main:app` is always passed to uvicorn as a STRING target
 # (`uvicorn stt.main:app`, `python -m uvicorn stt.main:app`, and the
 # `stt = "stt.main:main"` console script all do this), so `Config.load()`

@@ -1,10 +1,10 @@
--- TASK-366 — Reconcile the database `core."ResourceType"` enum with the
+-- Reconcile the database `core."ResourceType"` enum with the
 -- application `ResourceType` enum (`@arcaai/domains`).
 --
 -- Several services emit these values as the audit `resourceType` via
 -- `broadcastSysEvent(...)`, but the values were never added to the database
 -- enum when their owning tables were introduced:
---   * Highlight            (TASK-344 `add_highlight` added the table, not the enum value)
+-- * Highlight (`add_highlight` added the table, not the enum value)
 --   * UserVoiceProfile     (`add_user_voice_profile` added the table, not the enum value)
 --   * UserDepartment       (emitted by UserService / UserDepartmentService)
 --   * TenantFrontendConfig (emitted by TenantFrontendConfigService)

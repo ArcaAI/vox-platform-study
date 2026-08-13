@@ -1,4 +1,4 @@
--- TASK-369 (Data Encryption Initiative) Phase 3C — roll the ContextItem.content
+-- Data Encryption Initiative — roll the ContextItem.content
 -- encryption recipe out to the remaining free-text clinical PHI fields.
 --
 -- For every encrypted field we add a nullable `encrypted<Field>` BYTEA column

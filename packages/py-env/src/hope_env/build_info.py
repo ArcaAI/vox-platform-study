@@ -1,4 +1,4 @@
-"""Reads the baked build-identity contract at process boot (TASK-648 W4).
+"""Reads the baked build-identity contract at process boot.
 
 Uniform contract shared with the TypeScript reader
 (``packages/applications/src/common/build-info/build-info.service.ts``):
@@ -7,8 +7,7 @@ Uniform contract shared with the TypeScript reader
 This is immutable artifact data written once by the Dockerfile at build time —
 read once here, never re-read per request.
 
-NEVER throws. This runs on the boot path of PHI-serving services (ticket
-§3.7): a missing, unreadable, or malformed file logs a warning and degrades to
+NEVER throws. This runs on the boot path of PHI-serving services: a missing, unreadable, or malformed file logs a warning and degrades to
 a best-effort identity instead of raising, so version reporting can never
 become a new startup dependency.
 
@@ -36,7 +35,7 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-#: Where CI bakes the contract in every image (TASK-648 §3.2).
+#: Where CI bakes the contract in every image.
 DEFAULT_BUILD_INFO_PATH = Path("/app/build-info.json")
 
 _UNKNOWN_SHA = "unknown"

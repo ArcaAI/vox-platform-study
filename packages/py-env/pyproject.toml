@@ -21,7 +21,7 @@ requires-python = ">=3.11,<3.12"
 # `pydantic-settings>=2.13.1`, which is also the floor the source-ordering API
 # used by `settings_sources.py` requires (verified against the installed 2.14.2).
 #
-# `httpx` (TASK-648 U8): every workspace member already declares
+# `httpx`: every workspace member already declares
 # `httpx>=0.28.1` for its own outbound calls (gateway effective-config client,
 # provider clients, ...), so `service_registration.py`'s self-registration
 # POST reuses that same ubiquitous, already-vetted client rather than adding a

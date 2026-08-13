@@ -3,7 +3,7 @@ import { getJson } from '@/shared/api';
 import type { CostPerEncounterResponse, TopTenantsResponse, UsagePeriodParams, UsageSummaryResponse } from './types';
 
 /**
- * Typed reads over the BFF proxy (TASK-615 #15a). Paths are gateway-relative
+ * Typed reads over the BFF proxy. Paths are gateway-relative
  * (relative to `/api/v1`, no leading slash). `summary` / `cost-per-encounter`
  * are tenant-scoped (the proxy attaches `X-Tenant-Id` from the working tenant);
  * `top-tenants` is cross-tenant (GLOBAL_ADMIN, enforced server-side).

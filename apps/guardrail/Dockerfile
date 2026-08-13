@@ -36,12 +36,12 @@ COPY apps/smr/pyproject.toml ./apps/smr/
 COPY apps/harness/pyproject.toml ./apps/harness/
 COPY apps/stt/pyproject.toml ./apps/stt/
 COPY apps/tts/pyproject.toml ./apps/tts/
-# TASK-529 — shared model-lifecycle package. `--no-install-project` skips only
+# Shared model-lifecycle package. `--no-install-project` skips only
 # the TARGET package, not its workspace path dependencies (verified: omitting
 # this COPY fails layer 1 with "Distribution not found"). Dependency-free and
 # rarely changed, so it costs no meaningful layer-cache churn.
 COPY packages/py-runtime-models ./packages/py-runtime-models
-# TASK-558 — shared env-file loader (`hope-env`). Same workspace path-dependency
+# Shared env-file loader (`hope-env`). Same workspace path-dependency
 # rule as py-runtime-models above: every service now declares `hope-env`, so
 # `uv sync` needs it on disk or layer 1 fails with "Distribution not found at:
 # file:///app/packages/py-env". Dependency-light and rarely changed.
@@ -83,7 +83,7 @@ COPY --chown=hope:hope apps/guardrail/src ./src
 # HuggingFace model cache dir (mount a volume here for persistence).
 RUN mkdir -p /app/.hf-cache && chown -R hope:hope /app/.hf-cache
 
-# ── TASK-648 W3 — bake build identity, LAST layer ───────────────────────────
+# ── bake build identity, LAST layer ───────────────────────────
 # These args change on every commit; kept below every COPY/RUN so they never
 # invalidate the layer cache above them. Written to /app/build-info.json per
 # docs/implementation/TASK-648-Service-Version-And-Release-Registry/contracts/build-info.schema.json.

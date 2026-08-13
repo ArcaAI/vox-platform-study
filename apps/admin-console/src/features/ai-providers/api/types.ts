@@ -1,6 +1,6 @@
 /**
  * Wire types for the unified tenant BYO cloud-credential lane (C1/C2/C3,
- * TASK-569). Hand-declared to mirror the gateway DTO (BFF boundary — no
+ * ). Hand-declared to mirror the gateway DTO (BFF boundary — no
  * server import).
  * Source: apps/api/src/modules/ai-provider-connection/ai-provider-connection.controller.ts
  *         packages/applications/src/services/ai-provider-connection/dto/

@@ -112,7 +112,7 @@ export class DnaWritingStyleController {
     return report;
   }
 
-  // TASK-551 — the caller's decrypted DNA redaction/rewrite rule set. Read-only
+  // The caller's decrypted DNA redaction/rewrite rule set. Read-only
   // companion to the redaction editor (rules are WRITTEN via the report PATCH's
   // `redactionRules` field). The set is always well-formed (`{ rules: [] }` when
   // the doctor has no report or no rules), so the editor never 404s here.

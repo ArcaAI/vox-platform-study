@@ -34,7 +34,7 @@ import { buildV1PreSummaryPrompt, buildV1SummaryPrompt } from './v1-summary-prom
 const CONNECT_PHASE_CODES = new Set(['ECONNREFUSED', 'ENOTFOUND']);
 // v1 `/presummary` defaults (`routes.py`: `request.temperature or 0.2`,
 // `request.max_tokens or 800`). The 800-token ceiling is what enforces the
-// prompt's "CRISP" instruction — raising it is what made v2 verbose (TASK-634
+// prompt's "CRISP" instruction — raising it is what made v2 verbose (
 // D-10). Caller-supplied values still win, exactly as in v1.
 const PRE_SUMMARY_DEFAULT_TEMPERATURE = 0.2;
 const PRE_SUMMARY_DEFAULT_MAX_TOKENS = 800;
@@ -71,7 +71,7 @@ function firstNonEmptyMetadata(metadata: Record<string, unknown>, keys: readonly
 /**
  * Resolve the effective department + visit type for prompt selection, mirroring
  * v1 `extract_department_and_visit_type` (`prompt_selector.py:157-176`) and the
- * frozen TASK-560 wire contract:
+ * frozen wire contract:
  *   department  = body.department (non-empty) ELSE session_metadata[dept aliases]
  *   visit_type  = body.visit_type (non-empty) ELSE session_metadata[visit aliases]
  *                 ELSE session_data.session_type
@@ -113,7 +113,7 @@ interface SmrGenerateRequest {
   max_tokens?: number;
   response_format?: SmrResponseFormat;
   stream?: boolean;
-  // TASK-602 follow-up: per-request BYOK credential for a cloud provider, keyed
+  // Follow-up: per-request BYOK credential for a cloud provider, keyed
   // by the request's provider name. SMR no longer reads cloud creds from env, so
   // an azure/openai/anthropic selection (primary OR fallback) must carry its key
   // here or SMR fails closed with ProviderCredentialsError (503).
@@ -147,7 +147,7 @@ interface SmrGenerateResponse {
 }
 
 /**
- * v1-compatible SMR summary gateway shims (TASK-562).
+ * v1-compatible SMR summary gateway shims.
  *
  * Reproduces the v1 endpoints `POST /api/smr/api/v1/summary/sync` and
  * `POST /api/smr/api/v1/presummary` as STATELESS shims over SMR
@@ -170,21 +170,21 @@ export class SmrCompatController {
     @Inject(IConfigService) private readonly configService: IConfigService,
     private readonly clsService: ClsService<IActiveUserContext>,
     private readonly harnessPolicyService: HarnessPolicyService,
-    // TASK-592: resolves the tenant's real Department → governed instruction template.
+    // Resolves the tenant's real Department → governed instruction template.
     private readonly templateService: SmrCompatTemplateService,
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
-    // TASK-599: resolves the requesting doctor's decrypted DNA writing-style
+    // Resolves the requesting doctor's decrypted DNA writing-style
     // (gate-checked). @Optional so the shim degrades to department+visit-type
     // steering if the DNA module is ever absent — DNA is additive, never required.
     @Optional() @Inject(IDnaWritingStyleService) private readonly dnaWritingStyleService?: IDnaWritingStyleService,
-    // TASK-600: resolves per-tenant Sarvam BYOK from the unified provider plane
+    // Resolves per-tenant Sarvam BYOK from the unified provider plane
     // for the pre-summarization transcript translation (now served by SMR).
     // @Optional so the shim degrades gracefully (platform key) when absent.
     @Optional() @Inject(IProviderConnectionService) private readonly providerConnectionService?: IProviderConnectionService,
   ) {}
 
   /**
-   * TASK-600 — when `translate_to_english` is set, return a copy of `body` whose
+   * When `translate_to_english` is set, return a copy of `body` whose
    * transcript segments are translated to English via SMR's `/api/v1/translate`
    * (the Sarvam translate capability). Per-tenant Sarvam BYOK is resolved from the
    * unified provider plane (`resolveTenantCloudOverrides('stt','sarvam')` — one
@@ -221,7 +221,7 @@ export class SmrCompatController {
       if (!Array.isArray(translations) || translations.length !== segments.length) {
         throw new Error('SMR /api/v1/translate returned an unexpected shape');
       }
-      // TASK-651 — keep the speaker's own words alongside the translation.
+      // Keep the speaker's own words alongside the translation.
       // Sarvam still produces the English the note is written from, but it is a
       // general-purpose MT engine: on a real ml-en consultation it substituted
       // acetaminophen for aceclofenac and turned a "marked" radiology finding
@@ -235,7 +235,7 @@ export class SmrCompatController {
           ...body.session_data,
           conversation_segments: translatedSegments,
           // The transcript is now English, so the SUMMARY must be English too
-          // (TASK-600 AC: translate_to_english ⇒ English summary). Force the
+          // (AC: translate_to_english ⇒ English summary). Force the
           // output-language directive to 'en'; otherwise `resolveLanguage` reads
           // the source language ('ml'/'hi') from session_metadata and the prompt
           // orders the model to write the summary back in the source language —
@@ -254,7 +254,7 @@ export class SmrCompatController {
   }
 
   /**
-   * TASK-600 — resolve the effective Sarvam credential (decrypted) from the
+   * Resolve the effective Sarvam credential (decrypted) from the
    * unified provider plane: the tenant admin's own row first, then the global
    * admin's platform (SYSTEM-tenant) credential. Sarvam is BYOK-only — there is
    * NO env fallback. Returns `undefined` when neither tier has an enabled Sarvam
@@ -262,7 +262,7 @@ export class SmrCompatController {
    * subscription key serves every capability, so the `stt`/`sarvam` connection
    * row is the source.
    *
-   * TASK-643 — this used to hand-roll the tenant→SYSTEM cascade by calling the
+   * This used to hand-roll the tenant→SYSTEM cascade by calling the
    * resolver TWICE, and it was the only place in the codebase that reached the
    * platform tier at all. It now rides the shared cascade, so the veto, the
    * entitlement gate and the `funding` label apply here exactly as everywhere
@@ -275,7 +275,7 @@ export class SmrCompatController {
   }
 
   /**
-   * TASK-599 — the requesting doctor's decrypted DNA writing-style text, or
+   * The requesting doctor's decrypted DNA writing-style text, or
    * `undefined` when no `doctor_id` was supplied (D5: department + visit-type
    * only), the DNA service is unavailable, the tenant/doctor gate is off, or the
    * doctor has no style. Never throws — DNA is additive; any failure degrades to
@@ -285,7 +285,7 @@ export class SmrCompatController {
     const id = doctorId?.trim();
     if (!id || !this.dnaWritingStyleService) return undefined;
     try {
-      // TASK-651 — pass the tenant this request already resolved. The service
+      // Pass the tenant this request already resolved. The service
       // otherwise reads CLS `tenantId`, which the API-key path never populates,
       // so this threw 'Tenant ID is required' on EVERY compat summary and the
       // fail-open below swallowed it into a warning: no clinician's DNA style
@@ -356,7 +356,7 @@ export class SmrCompatController {
     //
     // `use_enhanced_format: true` is EXEMPT and keeps the pre-existing generic
     // assembly. That flag is an explicit request for the declared
-    // `EnhancedMedicalSummary` wire contract (§3.3, frozen in TASK-560 §5.4);
+    // `EnhancedMedicalSummary` wire contract (frozen);
     // serving template-shaped keys to a caller that asked for it by name would
     // break them. Those callers therefore do NOT get template adherence — the
     // enhanced contract has no room to express a department's sections. Moving
@@ -436,7 +436,7 @@ export class SmrCompatController {
   }
 
   /**
-   * TASK-592: resolve the tenant's governed department instruction template for
+   * Resolve the tenant's governed department instruction template for
    * this summary request, or `undefined` when no real tenant department matches
    * (→ the builder uses the static dept×visit steering). The visit type maps to
    * the resolver's `new-patient` / `revisit` prompt bucket. Never throws.
@@ -457,7 +457,7 @@ export class SmrCompatController {
    */
   private async computeSummary(body: SyncSummaryRequest, tenantId: string): Promise<SummaryResponse> {
     this.logSummaryContext(body);
-    // TASK-600: translate the transcript to English first when requested (fail-open).
+    // Translate the transcript to English first when requested (fail-open).
     const workingBody = await this.maybeTranslateBody(body, tenantId);
     const governed = await this.resolveSummaryGoverned(workingBody, tenantId);
     const dnaStyleText = await this.resolveDnaStyleText(workingBody.doctor_id, tenantId);
@@ -474,7 +474,7 @@ export class SmrCompatController {
       primaryError = err;
     }
 
-    // TASK-588: per-tenant SMR fallback — ONE retry against the tenant's
+    // Per-tenant SMR fallback — ONE retry against the tenant's
     // configured fallback provider/model for provider-side failures (LLM error /
     // unparseable content / non-connect upstream error). Skipped when SMR itself
     // was unreachable (a connect-phase failure — a second call cannot help), so
@@ -487,7 +487,7 @@ export class SmrCompatController {
       if (fallback && fallback.provider !== baseRequest.provider) {
         const fallbackRequest: SmrGenerateRequest = { ...baseRequest, provider: fallback.provider, model: fallback.model };
         // The fallback provider differs from the primary — re-resolve its BYOK
-        // credential (the spread copied the primary's, if any). TASK-602 follow-up.
+        // credential (the spread copied the primary's, if any). follow-up.
         await this.attachLlmByok(fallbackRequest, tenantId);
         try {
           const generated = await this.postGenerate(fallbackRequest, 'Summary generation (tenant fallback)');
@@ -521,7 +521,7 @@ export class SmrCompatController {
    */
   private async streamSummary(res: Response, body: SyncSummaryRequest, tenantId: string, _request: RequestWithAuth): Promise<void> {
     this.logSummaryContext(body);
-    // TASK-600: translate the transcript to English first when requested (fail-open).
+    // Translate the transcript to English first when requested (fail-open).
     const workingBody = await this.maybeTranslateBody(body, tenantId);
     const governed = await this.resolveSummaryGoverned(workingBody, tenantId);
     const dnaStyleText = await this.resolveDnaStyleText(workingBody.doctor_id, tenantId);
@@ -543,7 +543,7 @@ export class SmrCompatController {
             correlationId: this.clsService.getId(),
           });
           const fallbackRequest: SmrGenerateRequest = { ...primaryRequest, provider: fallback.provider, model: fallback.model };
-          await this.attachLlmByok(fallbackRequest, tenantId); // TASK-602 follow-up: fallback provider's BYOK
+          await this.attachLlmByok(fallbackRequest, tenantId); // Follow-up: fallback provider's BYOK
           return fallbackRequest;
         }
         return null;
@@ -606,7 +606,7 @@ export class SmrCompatController {
 
   /**
    * Non-streaming pre-summary path — returns the v1 `PreSummaryResponse`.
-   * TASK-592: department-aware (governed template) AND provider-fallback parity
+   * Department-aware (governed template) AND provider-fallback parity
    * with the summary path — ONE retry against the tenant's configured fallback
    * for a provider-side failure (LLM error / unparseable content), fail-open when
    * no fallback is configured. `mapSummaryError` routes transport vs parse to the
@@ -634,7 +634,7 @@ export class SmrCompatController {
       const fallback = await this.harnessPolicyService.resolveSmrFallbackSelection(tenantId, 'finalize');
       if (fallback && fallback.provider !== smrRequest.provider) {
         const fallbackRequest: SmrGenerateRequest = { ...smrRequest, provider: fallback.provider, model: fallback.model };
-        await this.attachLlmByok(fallbackRequest, tenantId); // TASK-602 follow-up: fallback provider's BYOK
+        await this.attachLlmByok(fallbackRequest, tenantId); // Follow-up: fallback provider's BYOK
         try {
           const generated = await this.postGenerate(fallbackRequest, 'Pre-summary generation (tenant fallback)');
           this.logger.warn({
@@ -657,7 +657,7 @@ export class SmrCompatController {
   }
 
   /**
-   * Streaming pre-summary path. TASK-592: department-aware (governed template)
+   * Streaming pre-summary path. : department-aware (governed template)
    * AND, at parity with the summary stream, a pre-stream START failure may retry
    * ONCE on the tenant's configured fallback provider; a half-emitted stream
    * cannot restart, so mid-stream failures surface as a single `error` event.
@@ -686,7 +686,7 @@ export class SmrCompatController {
             correlationId: this.clsService.getId(),
           });
           const fallbackRequest: SmrGenerateRequest = { ...primaryRequest, provider: fallback.provider, model: fallback.model };
-          await this.attachLlmByok(fallbackRequest, tenantId); // TASK-602 follow-up: fallback provider's BYOK
+          await this.attachLlmByok(fallbackRequest, tenantId); // Follow-up: fallback provider's BYOK
           return fallbackRequest;
         }
         return null;
@@ -695,7 +695,7 @@ export class SmrCompatController {
   }
 
   /**
-   * TASK-652 §3.1 — ONE INFO line per pre-summary request recording which
+   * ONE INFO line per pre-summary request recording which
    * context blocks were present and how large they were. Today an empty
    * context is indistinguishable from a full one in the logs: a live request
    * carrying real vitals/labs/prior visits produced "No contextual patient
@@ -728,7 +728,7 @@ export class SmrCompatController {
   }
 
   /**
-   * TASK-652 §3.1 — the summary-path counterpart of `logPreSummaryContext`.
+   * The summary-path counterpart of `logPreSummaryContext`.
    * `hasTestResults`/`hasPreviousVisits` are true when EITHER the structured
    * array or its text fallback carries content, mirroring how
    * `summary-prompt.builder.ts` actually consumes `session_data` (structured
@@ -748,7 +748,7 @@ export class SmrCompatController {
       transcriptChars: segments.reduce((sum, s) => sum + (s.text?.length ?? 0), 0),
       includePreSummaryInContext: body.include_pre_summary_in_context === true,
       // The caller's FLAG and the EFFECTIVE decision are different facts, so both
-      // are logged. Since TASK-650 R2, translation also fires on a non-English
+      // are logged. Since, translation also fires on a non-English
       // source with no flag set — logging the flag alone reported `false` on
       // requests that were in fact translated, the opposite of the truth for
       // anyone reading this line to debug a translation problem.
@@ -768,7 +768,7 @@ export class SmrCompatController {
   /**
    * Should the transcript be translated to English before summarization?
    *
-   * TASK-650 R2 (owner decision 2026-08-10): Sarvam is the medium for ANY
+   * (owner decision 2026-08-10): Sarvam is the medium for ANY
    * non-English consultation, and the caller no longer has to remember a flag.
    * Before this, translation fired ONLY on an explicit `translate_to_english`,
    * which nothing in the product ever set — so a Malayalam consultation reached
@@ -803,7 +803,7 @@ export class SmrCompatController {
   }
 
   /**
-   * TASK-602 follow-up: inject the tenant's LLM cloud BYOK credential for
+   * Follow-up: inject the tenant's LLM cloud BYOK credential for
    * `request.provider`. Mirrors `SmrProxyController` — SMR no longer holds env
    * credentials, so a cloud provider (azure/openai/anthropic) selected as
    * PRIMARY or FALLBACK must receive its key/endpoint as a per-request
@@ -825,7 +825,7 @@ export class SmrCompatController {
       request.provider_overrides = { [request.provider]: entry };
       return;
     }
-    // TASK-643 — a SUPPRESSED platform tier (tenant veto → 409, no
+    // A SUPPRESSED platform tier (tenant veto → 409, no
     // entitlement → 403) is reported instead of degrading to SMR's
     // unattributable 503. Nothing suppressed ⇒ returns void and the fail-open
     // behaviour above is unchanged.
@@ -843,7 +843,7 @@ export class SmrCompatController {
    * however, are set DIRECTLY on the Express request by the auth pipeline on every
    * route, so we read the tenant off the request — exactly as the `apiKey` branch
    * already does. Rejects with `401 Tenant context is required` when none is
-   * present — no SYSTEM-default leak (§9.3 M4); a global-admin's EMPTY tenant
+   * present — no SYSTEM-default leak (M4); a global-admin's EMPTY tenant
    * still trips it (they must act through a tenant-scoped credential).
    * Defense-in-depth: a correctly tenant-scoped key or JWT never trips it.
    */
@@ -1222,7 +1222,7 @@ export class SmrCompatController {
   }
 
   /**
-   * Map an SMR transport failure to the v1 error shapes (§3.4/§4.3):
+   * Map an SMR transport failure to the v1 error shapes (/):
    *   - no upstream response (unreachable) → `{ error, requestId, timestamp }`;
    *   - upstream responded with an error → `{ detail: "<label> failed: ..." }`.
    * The raw upstream body is NEVER forwarded or logged — it can echo the

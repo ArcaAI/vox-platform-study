@@ -1,5 +1,5 @@
 /**
- * TASK-665 — `fetchConsultationSchema` fail-open behaviour.
+ * `fetchConsultationSchema` fail-open behaviour.
  *
  * Mirrors `ModelRegistry.loadTenantConfig`'s test posture: a network/HTTP
  * failure resolves to the safe fallback bundle rather than rejecting, so a

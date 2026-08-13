@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * Frame 50 — Consultation Scribe workspace (matrix row 34; TASK-543
+ * Frame 50 — Consultation Scribe workspace (matrix row 34;
  * redesign of the former two-tab demo). A single live 3-column clinical-scribe
  * view built on `@arcaai/vox`: a real consultation list (col 1), the live
  * session — level-driven waveform + `LiveTranscript` (col 2), and the
@@ -196,11 +196,11 @@ function ScribeWorkspace() {
   const [captureBusy, setCaptureBusy] = useState(false);
   const [approved, setApproved] = useState(false);
   const [pipelineChoice, setPipelineChoice] = useState('');
-  // TASK-587 — end-user STT language mode. Empty ⇒ pipeline default. The
+  // end-user STT language mode. Empty ⇒ pipeline default. The
   // backend guarantees the chosen mode fits the session's engines (422 otherwise).
   const [languageMode, setLanguageMode] = useState('');
   const languageModes = useArcaSttLanguageModes();
-  // TASK-552 Lane C — the citation currently highlighted in the live-session
+  // the citation currently highlighted in the live-session
   // column's transcript-review pane (click-to-source from the case-note
   // column's evidence panel).
   const [selectedCitationId, setSelectedCitationId] = useState<string | null>(null);
@@ -225,7 +225,7 @@ function ScribeWorkspace() {
   const progress = useHarnessProgressStream(consultationId, !!consultationId);
   const assurance = useHarnessAssuranceStream(consultationId, !!consultationId);
 
-  // TASK-552 Lane C — the evidence panel + its transcript-review highlight
+  // the evidence panel + its transcript-review highlight
   // only apply once a persisted draft exists (the reviewable artifact); both
   // reads are best-effort and never block the rest of the workspace.
   const draftId = draft.data?.id ?? null;

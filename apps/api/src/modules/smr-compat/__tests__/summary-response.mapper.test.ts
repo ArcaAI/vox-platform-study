@@ -128,7 +128,7 @@ describe('mapGenerateToV1Summary', () => {
 
 describe('parseSections / mapGenerateToV1PreSummary (v1 5-section guarantee)', () => {
   // v1's order + naming (`Latest Department Note`), taken from
-  // `previous_visit_service.py:215-221`. TASK-634 D-09 asserted a different
+  // `previous_visit_service.py:215-221`. asserted a different
   // order and `Latest Dept Note` on a running-pod claim that a byte diff of the
   // v1 source disproved — see PRE_SUMMARY_DISPLAY_TITLES for the full note.
   const EXPECTED_TITLES = [

@@ -3,7 +3,7 @@
  *
  * Real HTTP round-trips against the live API (`pnpm test:e2e`, or a dev stack
  * via `SKIP_DB_PRECHECK=true API_URL=http://localhost:8968/api/v1`). Harness
- * mirrors task-388 (seeded `super_admin` bound to `__GLOBAL__`; throwaway
+ * mirrors (seeded `super_admin` bound to `__GLOBAL__`; throwaway
  * loginable users so no seed account is mutated).
  *
  * Coverage:

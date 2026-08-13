@@ -79,7 +79,7 @@ function recordedStep(trajectory: { recordSteps: ReturnType<typeof vi.fn> }): Cr
   return batch[0];
 }
 
-describe('SummaryService — trajectory emitter (§2C)', () => {
+describe('SummaryService — trajectory emitter', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('emits one SUMMARY_JOB LLM_CALL step on generateSummary', async () => {

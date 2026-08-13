@@ -253,7 +253,7 @@ def _draft_idempotency_key(consultation_id: str, content: str) -> str:
 
     Deliberately NOT derived from ``workflow_run_id``/``activity_id``. This value is
     computed inside an activity body, so the workflow records no new command and no
-    ``workflow.patched`` era is required (see the ticket README).
+    ``workflow.patched`` era is required.
     """
     digest = hashlib.sha256(content.encode("utf-8")).hexdigest()
     return f"draft:{consultation_id}:{digest}"
@@ -277,7 +277,7 @@ def _entities_idempotency_key(consultation_id: str, entities: Sequence[Any]) -> 
     round trip when the cache is healthy.
 
     Computed inside an activity body ⇒ no new workflow command, no ``workflow.patched``
-    era (see the ticket README).
+    era.
     """
     payload = json.dumps(
         [e.model_dump(mode="json") if hasattr(e, "model_dump") else e for e in entities],
@@ -669,7 +669,7 @@ async def fetch_policy(payload: FetchPolicyInput) -> HarnessPolicy:
     """
     settings = get_settings()
     started = _now()
-    # TASK-550 — thread the consultation id (when present) so the gateway overlays
+    # Thread the consultation id (when present) so the gateway overlays
     # the department default agent's tenant-tier harnessOverrides. Omitting the
     # kwarg when absent keeps the request byte-identical for non-agent runs.
     client = _api_client(settings)
@@ -1190,7 +1190,7 @@ async def generate(payload: GenerateInput) -> SmrGenerationResult:
     llm_stats: dict[str, Any] = dict(result.stats or {})
     llm_stats["prompt_chars"] = prompt_chars
     llm_stats["prompt_tokens_est"] = prompt_tokens_est
-    # TASK-615 WS-F — the gateway's usage-ledger emission hook (co-emitted on
+    # The gateway's usage-ledger emission hook (co-emitted on
     # trajectory persistence) needs `provider`/`model` on every LLM_CALL step to
     # attribute cost. AD-1 GenerationStats normally carries both
     # (``stats.provider``/``stats.model``), but a legacy SMR response with no
@@ -1752,7 +1752,7 @@ def _build_rewrite_prompt(text: str, rules: list[RedactionRule]) -> str:
 
 @activity.defn
 async def apply_redaction(payload: ApplyRedactionInput) -> ApplyRedactionResult:
-    """DNA redaction/rewrite — a SEPARATE, auditable post-generation transform (TASK-551).
+    """DNA redaction/rewrite — a SEPARATE, auditable post-generation transform.
 
     Runs AFTER the computational-sensor loop settles and BEFORE persist/delivery so the
     persisted/delivered note is the redacted one and the sensors validate the FINAL text.
@@ -1783,7 +1783,7 @@ async def apply_redaction(payload: ApplyRedactionInput) -> ApplyRedactionResult:
     batch = _TrajectoryBatch(settings, payload.trajectory)
 
     async def _emit(result: ApplyRedactionResult) -> ApplyRedactionResult:
-        # ONE GUARDRAIL trajectory step per armed transform (TASK-551 audit clause).
+        # ONE GUARDRAIL trajectory step per armed transform (audit clause).
         # Carries manifest STATS ONLY — counts + rule ids + fail-closed marker, never
         # removed PHI plaintext. Fire-and-forget flush (never fails the clinical loop).
         batch.record(
@@ -1927,7 +1927,7 @@ async def persist_draft(payload: PersistDraftInput) -> DraftResponse:
         gate_decision=payload.gate_decision,
         is_auto_generated=payload.is_auto_generated,
         phase=payload.phase,
-        # DNA redaction/rewrite audit marker (TASK-551, audit era). None on every
+        # DNA redaction/rewrite audit marker (audit era). None on every
         # pre-audit-era persist ⇒ pruned client-side ⇒ byte-identical POST body.
         redaction_applied=payload.redaction_applied,
         redaction_manifest=payload.redaction_manifest,
@@ -2149,7 +2149,7 @@ async def escalate_gate(payload: EscalateInput) -> EscalateResult:
 
 
 # ---------------------------------------------------------------------------
-# Consultation loop (TASK-662)
+# Consultation loop
 #
 # All three side effects the mechanical loop performs. They are ordinary
 # activities: the deterministic workflow body never touches HTTP, and a signal
@@ -2176,7 +2176,7 @@ async def fetch_loop_config(payload: FetchLoopConfigInput) -> ConsultationLoopCo
 
     Called exactly once, on the workflow's first execution; the resolved object
     is then carried through every ``continue_as_new`` in the workflow input, so
-    a mid-consultation tenant edit is invisible to a running loop (TASK-654 C1).
+    a mid-consultation tenant edit is invisible to a running loop.
 
     RAISES on a transport/HTTP failure so Temporal's retry policy covers infra
     blips. The workflow — not this activity — decides what an ultimately
@@ -2210,9 +2210,9 @@ async def fetch_loop_config(payload: FetchLoopConfigInput) -> ConsultationLoopCo
     def _strings(key: str) -> list[str]:
         return [a for a in (data.get(key) or []) if isinstance(a, str)]
 
-    # TASK-685 — the idle lifecycle bound. Absent (or non-numeric) on a gateway
+    # The idle lifecycle bound. Absent (or non-numeric) on a gateway
     # that predates this ticket, in which case the loop stays unbounded and
-    # behaves exactly as TASK-664 left it. Resolved gateway-side from the
+    # behaves exactly as left it. Resolved gateway-side from the
     # `harness.loop.idleTimeoutSeconds` `global-kv` setting and PINNED here: this
     # is the once-only read, so the bound is fixed for the whole consultation.
     raw_idle_timeout = data.get("idleTimeoutSeconds")
@@ -2222,9 +2222,9 @@ async def fetch_loop_config(payload: FetchLoopConfigInput) -> ConsultationLoopCo
         else None
     )
 
-    # TASK-664 — the agent roster. Absent on a gateway that predates this ticket,
+    # The agent roster. Absent on a gateway that predates this ticket,
     # in which case the roster is empty, `reasoning_enabled` stays False, and the
-    # loop behaves exactly as TASK-662 left it.
+    # loop behaves exactly as left it.
     agents: list[LoopAgentSpec] = []
     for entry in data.get("agents") or []:
         if not isinstance(entry, dict):
@@ -2363,7 +2363,7 @@ DOCUMENT_ACTIVITIES: list[Callable[..., Any]] = [
 ]
 
 # ---------------------------------------------------------------------------
-# Reasoning lane (TASK-664)
+# Reasoning lane
 #
 # Four concerns, all of them activities:
 #
@@ -2373,13 +2373,13 @@ DOCUMENT_ACTIVITIES: list[Callable[..., Any]] = [
 #   * ``run_specialist``     — one specialist's analysis (also a model call).
 #   * ``record_adjudication``— publishes the primary's reconciliation to the
 #                              inspection surface.
-#   * the three ``*_extract_*`` derivers that back the keys TASK-662 declared
+# * the three ``*_extract_*`` derivers that back the keys declared
 #     but left unimplemented.
 #
 # Every one of them FAILS SAFE. A planner that cannot answer returns a degraded
 # decision dispatching nothing; a deriver that cannot extract returns
 # ``derived=False``. Neither raises, because neither is allowed to take down a
-# clinical consultation — the loop degrades, it does not abort (TASK-654 K7).
+# clinical consultation — the loop degrades, it does not abort.
 # ---------------------------------------------------------------------------
 
 _PLAN_TIMEOUT_S = 60.0
@@ -2429,7 +2429,7 @@ def _json_block(raw: str) -> dict[str, Any]:
 async def plan_reasoning(payload: PlanLoopInput) -> PlanDecision:
     """Decide which specialists review the newly arrived context. RECORDED.
 
-    Being an activity is the entire point (TASK-654 D3 / C1): the returned
+    Being an activity is the entire point ( / C1): the returned
     ``PlanDecision`` lands in workflow history, so replaying the workflow reuses
     that exact decision and never calls the model again. A planner invoked from
     the workflow body would make every replay non-deterministic.
@@ -2523,7 +2523,7 @@ async def run_specialist(payload: SpecialistAnalysisInput) -> SpecialistResult:
 
     Findings outside the declared ``write_scope`` are refused here as well as in
     the parent. The parent's check is the authoritative one (enforcement outside
-    agent code, TASK-654 §4.6); this one exists so a mis-scoped agent is visible
+    agent code); this one exists so a mis-scoped agent is visible
     in its own result rather than only as a parent-side drop.
     """
     settings = get_settings()
@@ -2623,7 +2623,7 @@ async def _resolve_derive_text(settings: Settings, payload: DeriveContextInput) 
     """The item's text, resolving a claim-check ref when the payload was offloaded.
 
     Reuses the existing ``_resolve_ref`` edge helper rather than adding a second
-    inline-or-ref convention (TASK-662 reused ``claim_check.py`` for the same reason).
+    inline-or-ref convention (reused ``claim_check.py`` for the same reason).
     """
     return await _resolve_ref(settings, payload.text, payload.text_ref)
 
@@ -2635,12 +2635,12 @@ def _derived_kind(kind_key: str | None, suffix: str) -> str:
 
 @activity.defn
 async def vision_extract_text(payload: DeriveContextInput) -> DeriveContextResult:
-    """Extract text from an IMAGE context item (TASK-654 E3).
+    """Extract text from an IMAGE context item.
 
-    Backs `vision.extract_text`, which TASK-662 declared but left dispatching as
-    an `unsupported_action` skip. Uses the vision capability TASK-657 shipped in
+    Backs `vision.extract_text`, which declared but left dispatching as
+    an `unsupported_action` skip. Uses the vision capability shipped in
     SMR. Its output re-enters the context bus one depth deeper, which is what
-    makes image -> text the same mechanism as audio -> transcript (§4.2).
+    makes image -> text the same mechanism as audio -> transcript.
     """
     settings = get_settings()
     source = await _resolve_derive_text(settings, payload)
@@ -2675,7 +2675,7 @@ async def vision_extract_text(payload: DeriveContextInput) -> DeriveContextResul
 
 @activity.defn
 async def document_extract_text(payload: DeriveContextInput) -> DeriveContextResult:
-    """Extract text from a DOCUMENT context item (TASK-654 §4.1 DOCUMENT primitive).
+    """Extract text from a DOCUMENT context item (DOCUMENT primitive).
 
     Backs `document.extract_text`. The gateway owns OCR (`OcrEnrichmentProcessor`
     -> NLP `/extract`), so this asks the gateway for the item's extracted text
@@ -2749,7 +2749,7 @@ LOOP_ACTIVITIES: list[Callable[..., Any]] = [
     emit_loop_event,
 ]
 
-# TASK-664. A THIRD list, for the same reason `LOOP_ACTIVITIES` is a second one:
+# A THIRD list, for the same reason `LOOP_ACTIVITIES` is a second one:
 # the deliberative lane is separable from the mechanical loop, and keeping the
 # registration surfaces distinct means a reader can see at a glance which
 # activities carry a model call.

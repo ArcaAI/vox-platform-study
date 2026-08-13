@@ -90,7 +90,7 @@ async def test_retention_comes_from_control_plane() -> None:
 async def test_live_cache_reconfigured_not_just_new_ones(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """§3.2 — a resident GGUF must follow a later control-plane change."""
+    """A resident GGUF must follow a later control-plane change."""
     from harness.sensors.inferential import minicheck_entailer
     from harness.temporal.worker import _refresh_model_cache_retention_once
 
@@ -162,7 +162,7 @@ async def test_clamp_applied_client_side(served: int, expected: int) -> None:
     assert minicheck_entailer.entailer_cache_stats().ttl_seconds == expected
 
 
-# ── §2.4 — process placement: the WORKER, never the FastAPI app ─────────────
+# ── process placement: the WORKER, never the FastAPI app ─────────────
 
 
 @pytest.mark.asyncio

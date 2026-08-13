@@ -22,7 +22,7 @@
  *
  * TARGET flows (tenant tags, SUSPENDED/ARCHIVED archive, storage quota/usage
  * roll-ups) are intentionally NOT asserted — they have no backend and are drawn
- * disabled/em-dash in the UI (README §4.6). Nothing here fabricates them.
+ * disabled/em-dash in the UI (README). Nothing here fabricates them.
  *
  * Non-destructive: the create/update/enable/disable lifecycle runs on a THROWAWAY
  * tenant that is deleted in afterAll; the department flow runs on a throwaway

@@ -1,5 +1,5 @@
 /**
- * Backend PHI log redaction (TASK-636 OBS-19).
+ * Backend PHI log redaction.
  *
  * The logging package DECLARED `redactFields?: string[]` on its config type
  * (`transports/types.ts`) and never read it — zero call sites. So on a
@@ -143,7 +143,7 @@ describe('redactEntry', () => {
   });
 });
 
-describe('LoggingService dispatch integration (OBS-19)', () => {
+describe('LoggingService dispatch integration', () => {
   it('redacts before ANY transport sees the entry', async () => {
     const { LoggingService } = await import('../logging.service');
 

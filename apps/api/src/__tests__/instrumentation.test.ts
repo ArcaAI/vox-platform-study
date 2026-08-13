@@ -193,7 +193,7 @@ describe('instrumentation', () => {
       expect(mockSdkStart).toHaveBeenCalledTimes(1);
     });
 
-    it('should NOT register its own SIGTERM/SIGINT handlers — Nest owns the shutdown sequence via GracefulShutdownService (TASK-616 G0.1)', async () => {
+    it('should NOT register its own SIGTERM/SIGINT handlers — Nest owns the shutdown sequence via GracefulShutdownService', async () => {
       await import('../instrumentation');
 
       expect(signalRegistrations()).toHaveLength(0);

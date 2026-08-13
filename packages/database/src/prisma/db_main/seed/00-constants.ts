@@ -15,8 +15,8 @@
  *   71000000-xxxx  →  Prompt Templates
  *   71000000-…-0001-0000000000XX  →  ArcaAI-tenant prompt templates
  *                     (001-004 demo cross-tenant set; 010-024 = the first 15
- *                     ArcaAI clinical templates — TASK-592 Workstream D;
- *                     025-032 = the 8 added by TASK-634 Phase 8b, bringing the
+ * ArcaAI clinical templates —;
+ * 025-032 = the 8 added by, bringing the
  *                     set to 23 = 11 departments × 2 visit types + 1 shared
  *                     pre-summary)
  *   72000000-xxxx  →  Prompt Versions
@@ -28,18 +28,18 @@
  *   76000000-xxxx  →  Prompt Usage Records
  *   77000000-xxxx  →  DNA Regeneration Settings
  *   78000000-xxxx  →  Department Agents (0002 SYSTEM golden, 0000 Global-tenant
- *                     clones, 0001 ArcaAI clones — TASK-548 agent golden library)
- *   70000000-…-0002-…  →  SYSTEM golden departments (TASK-548)
- *   71000000-…-0002-…  →  SYSTEM golden prompt templates (TASK-548)
- *   72000000-…-0002-…  →  SYSTEM golden prompt versions (TASK-548)
- *   71000000-…-0004-…  →  SYSTEM platform-default prompt templates (TASK-635)
+ * clones, 0001 ArcaAI clones — agent golden library)
+ * 70000000-…-0002-… → SYSTEM golden departments
+ * 71000000-…-0002-… → SYSTEM golden prompt templates
+ * 72000000-…-0002-… → SYSTEM golden prompt versions
+ * 71000000-…-0004-… → SYSTEM platform-default prompt templates
  *   72000000-…-0004-…  →  their v1 PromptVersion snapshots (mirror slot)
  *                     A fresh STATIC block, deliberately NOT the golden
  *                     `…-0002-…` generator (whose ids derive from
  *                     `uniqueSourceIds` insertion order in
  *                     07a-agent-golden-library.ts — appending there would
  *                     couple a platform-default id to fixture ordering).
- *   79000000-…-XXXX-…  →  Consultation Context Schemas (TASK-686 day-1 default;
+ * 79000000-…-XXXX-… → Consultation Context Schemas (day-1 default;
  *                     tenant slot mirrors the 78000000 agent block — 0002
  *                     SYSTEM, 0000 Global, 0001 ArcaAI)
  *   89000000-…-XXXX-…  →  their published ConsultationContextSchemaVersion
@@ -74,7 +74,7 @@
  *                     Not used by any seed file: these ids are allocated by
  *                     `migrations/20260808160000_task_641_bootstrap_loopback_origins`,
  *                     which guarantees the six SYSTEM loopback rows exist in
- *                     environments that never run the seed (TASK-641 H-2).
+ * environments that never run the seed.
  *                     Listed here so the block is not handed out twice.
  */
 
@@ -231,8 +231,8 @@ export const SEED_DEPARTMENT_IDS = {
   DIET: '70000000-0000-0000-0000-000000000016',
   NEPH: '70000000-0000-0000-0000-000000000017',
   SONC: '70000000-0000-0000-0000-000000000018',
-  // ArcaAI customer-tenant CLINICAL departments (TASK-592 Workstream D;
-  // completed to v1 parity by TASK-634 Phase 8b).
+  // ArcaAI customer-tenant CLINICAL departments (;
+  // completed to v1 parity by).
   //
   // The ArcaAI tenant carries the ELEVEN v1 clinical departments — and exactly
   // eleven. v1 has no Department table; its department set is defined by what
@@ -248,10 +248,10 @@ export const SEED_DEPARTMENT_IDS = {
   // (newPatientPromptId / revisitPromptId) to its own APPROVED, per-visit-type
   // `PromptTemplate`s (see 07b-arcaai-clinical-templates.ts).
   // `preSummaryPromptId` is deliberately NULL on every one of them: pre-summary
-  // has no department axis (TASK-634).
+  // has no department axis.
   //
   // The first seven ALSO carry a per-visit-type default `DepartmentAgent`
-  // (TASK-635 RF-3, ARCAAI_TENANT_AGENTS in 07a-agent-golden-library.ts),
+  // (ARCAAI_TENANT_AGENTS in 07a-agent-golden-library.ts),
   // binding the same ids. The four added by Phase 8b carry NO default agent —
   // the visit-type columns are the v1-faithful path and an agent tier adds
   // nothing here.
@@ -261,8 +261,8 @@ export const SEED_DEPARTMENT_IDS = {
   // CARD_ARCAAI / ER_ARCAAI demo departments were retired.
   //
   // 4th UUID group 0001 = ArcaAI tenant; trailing slot 001 = General Medicine
-  // (kept), 010-015 = the six specialty departments added by TASK-592,
-  // 016-019 = the four added by TASK-634 Phase 8b.
+  // (kept), 010-015 = the six specialty departments added by,
+  // 016-019 = the four added by.
   GEN_ARCAAI: '70000000-0000-0000-0001-000000000001',
   SURG_ARCAAI: '70000000-0000-0000-0001-000000000010',
   RHEUM_ARCAAI: '70000000-0000-0000-0001-000000000011',
@@ -352,10 +352,10 @@ export const SEED_TEMPLATE_IDS = {
 } as const;
 
 // =============================================================================
-// SYSTEM PLATFORM-DEFAULT PROMPT TEMPLATES (TASK-635, `…-0004-…` block)
+// SYSTEM PLATFORM-DEFAULT PROMPT TEMPLATES (`…-0004-…` block)
 //
 // Owned by the SYSTEM tenant and readable by EVERY tenant (PromptTemplate /
-// PromptVersion joined `SYSTEM_SHARED_READ_MODELS` in the C2 B-12 fold-in), so
+// PromptVersion joined `SYSTEM_SHARED_READ_MODELS`), so
 // a tenant with no configuration of its own still resolves a governed prompt.
 // Distinct from the `…-0002-…` golden LIBRARY (which is a per-tenant CLONE
 // source): these rows are resolved DIRECTLY, by explicit id, from
@@ -366,7 +366,7 @@ export const SYSTEM_LIVE_SOAP_TEMPLATE_ID = '71000000-0000-0000-0004-00000000000
 export const SYSTEM_LIVE_SOAP_VERSION_ID = '72000000-0000-0000-0004-000000000001';
 
 /**
- * RESERVED for TASK-635 Lane D2 (OD-1b / RF-1): the department-free pre-summary
+ * RESERVED for: the department-free pre-summary
  * fork served to NATIVE callers. Declared here so the id is claimed and cannot
  * be reused; D2 seeds the row and flips the native call sites to
  * `preSummaryVariant: 'dept-free'`. Nothing resolves it before then.
@@ -685,7 +685,7 @@ export const SEED_GLOBAL_SETTING_IDS = {
   SYSTEM_PIPELINE_TEMPLATE_RESYNC_CRON: '00000000-0000-0000-0002-000000000003',
 
   // Platform controls for the nightly SYSTEM agent-library resync sweep
-  // (TASK-548). Same `0002` system-tenant block; read flat by key from the
+  // . Same `0002` system-tenant block; read flat by key from the
   // AppSettings boot cache.
   SYSTEM_AGENT_TEMPLATE_RESYNC_ENABLED: '00000000-0000-0000-0002-000000000004',
   SYSTEM_AGENT_TEMPLATE_RESYNC_CRON: '00000000-0000-0000-0002-000000000005',
@@ -705,7 +705,7 @@ export const SEED_GLOBAL_SETTING_IDS = {
   // Seeded OFF (Q9); flip per-env to turn quota/feature enforcement on.
   ENTITLEMENTS_ENABLED: '85000000-0000-0000-0000-000000000400',
 
-  // TASK-615 WS-H — TenantUsageMeter reconcile-sweep kill-switch (platform
+  // TenantUsageMeter reconcile-sweep kill-switch (platform
   // tenant only). Same `0400` block as ENTITLEMENTS_ENABLED; seeded OFF by
   // default, env-driven ON for a fresh DEV/STAGING database (OQ3) via
   // METERING_RECONCILE_ENABLED_DEFAULT — mirrors ENTITLEMENTS_ENABLED_DEFAULT.

@@ -1,5 +1,5 @@
 /**
- * TASK-615 WS-H — TTS character-allowance PRE-FLIGHT on the batch/streaming
+ * TTS character-allowance PRE-FLIGHT on the batch/streaming
  * REST synthesize path.
  *
  * Unlike the WS-duplex gateway (no fixed upfront text — see
@@ -65,7 +65,7 @@ function buildController(opts: { entitlements?: unknown; cls?: unknown } = {}) {
   return { controller, http, entitlements: entitlements as { assertMeterQuota: ReturnType<typeof vi.fn> } };
 }
 
-describe('SpeechProxyController — TASK-615 WS-H TTS character quota pre-flight', () => {
+describe('SpeechProxyController — TTS character quota pre-flight', () => {
   it('checks monthlyTtsCharacters with the EXACT input code-point count, before calling upstream TTS', async () => {
     const { controller, http, entitlements } = buildController();
     http.axiosRef.post.mockResolvedValue({ headers: {}, data: makeStream() });

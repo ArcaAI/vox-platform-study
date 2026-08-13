@@ -3,7 +3,7 @@
 /**
  * @arcaai/vox/compat - useArcaSessionManager
  *
- * v1 session hook reproduced over v2's `useArcaSession` (TASK-560 §5.2).
+ * v1 session hook reproduced over v2's `useArcaSession`.
  *
  * Mapping:
  * - `createSession(meta)` + `startSession()` both collapse onto a SINGLE
@@ -49,7 +49,7 @@ export interface UseArcaSessionManagerReturn {
 
 /**
  * Map a v2 `ConsultationStatus` onto the v1 `SessionStatus` enum
- * (TASK-560 §5.2: `OPEN`→`IDLE`, `RECORDING`→`ACTIVE`, `CLOSED`→`TERMINATED`).
+ * (`OPEN`→`IDLE`, `RECORDING`→`ACTIVE`, `CLOSED`→`TERMINATED`).
  */
 export function mapV2StatusToV1(status: ConsultationStatus | undefined): SessionStatus {
   switch (status) {
@@ -189,7 +189,7 @@ export function useArcaSessionManager(props: UseArcaSessionManagerProps): UseArc
     [run, ensureOpen],
   );
 
-  // No v2 equivalent — local status only (documented, TASK-560 §5.2).
+  // No v2 equivalent — local status only (documented).
   const pauseSession = useCallback(async (): Promise<void> => {
     setLocalStatus('PAUSED');
   }, []);

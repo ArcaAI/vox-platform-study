@@ -1,7 +1,7 @@
 /**
  * Unit tests for the shared `nlp.ner` model-injection resolver.
  *
- * Covers the TASK-552 Lane A contract: fail-open on any resolution hiccup
+ * Covers the contract: fail-open on any resolution hiccup
  * (never throws, never blocks the caller), and the SYSTEM-pin CLS discipline
  * (the SYSTEM-only read must not depend on — or leak into — the caller's
  * ambient CLS tenant).

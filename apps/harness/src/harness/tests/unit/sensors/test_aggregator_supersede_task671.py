@@ -1,4 +1,4 @@
-"""TASK-671 P4 — the aggregator's supersede rule.
+"""The aggregator's supersede rule.
 
 When an inference-aware entity sensor ran, it REPLACES its lexical counterpart in the gate
 decision. The rule is three lines; the ways it can go wrong are not:

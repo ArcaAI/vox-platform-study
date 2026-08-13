@@ -1,4 +1,4 @@
--- TASK-369 (Data Encryption Initiative) Phase 3B — pilot field encryption on
+-- Data Encryption Initiative — pilot field encryption on
 -- ContextItem.content (highest-volume free-text clinical PHI).
 --
 -- Adds two nullable columns mirroring the GlobalSetting recipe:

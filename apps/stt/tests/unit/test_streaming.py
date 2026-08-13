@@ -240,7 +240,7 @@ class TestSegmentResult:
         assert restored.word_timestamps == []
 
     def test_pipeline_id_omitted_when_unset(self):
-        """pipeline_id (TASK-613) is omitted from the wire dict when unknown —
+        """pipeline_id is omitted from the wire dict when unknown —
         same conditional pattern as `language` (never emitted as empty string)."""
         from stt.streaming.schemas import SegmentResult
 

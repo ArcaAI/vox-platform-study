@@ -402,7 +402,7 @@ export class PipelinePolicyService {
   /**
    * Reject any supplied toggle whose registered MAX SCOPE is shallower than the
    * row's scope (e.g. `harnessEnabled` pinned at DOCTOR). This is the write-side
-   * guard that complements the `ConfigResolver` read-side clamp (§7).
+   * guard that complements the `ConfigResolver` read-side clamp.
    */
   /**
    * PRIVILEGE boundary, descriptor-driven.

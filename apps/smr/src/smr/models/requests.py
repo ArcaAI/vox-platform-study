@@ -19,7 +19,7 @@ class ResponseFormat(BaseModel):
 
 
 ProviderFunding = Literal["tenant", "platform"]
-"""WHO PAID for an injected credential (TASK-643 R3).
+"""WHO PAID for an injected credential.
 
 The gateway can inject a credential from two tiers — the caller tenant's own
 connection row, or the SYSTEM-tenant platform default — and they are the same
@@ -52,7 +52,7 @@ class ProviderOverride(BaseModel):
     # so both travel with the override. Ignored by every non-Vertex provider.
     project: str | None = None
     location: str | None = None
-    # TASK-643 R3 — funding origin. Carried PER ENTRY rather than once per
+    # Funding origin. Carried PER ENTRY rather than once per
     # request because the platform-default cascade merges tenant-over-platform
     # per provider: one request can legitimately hold a tenant-funded entry and
     # a platform-funded one, which a request-level field cannot express.
@@ -77,14 +77,14 @@ class ProviderOverride(BaseModel):
 
 
 class TextContentPart(BaseModel):
-    """A text segment of a multimodal ``content_parts`` payload (TASK-657)."""
+    """A text segment of a multimodal ``content_parts`` payload."""
 
     type: Literal["text"] = "text"
     text: str = Field(..., min_length=1)
 
 
 class ImageContentPart(BaseModel):
-    """An image segment of a multimodal ``content_parts`` payload (TASK-657).
+    """An image segment of a multimodal ``content_parts`` payload.
 
     ``data`` is base64-encoded image bytes with NO ``data:`` URI prefix — that
     prefix is one provider's (OpenAI) wire convention, not a property of the
@@ -125,7 +125,7 @@ class GenerateRequest(BaseModel):
     # until a tenant configures an enabled cloud (azure/bedrock) connection —
     # override-wins-over-env/config semantics live in the provider clients.
     provider_overrides: dict[str, ProviderOverride] | None = None
-    # ADDITIVE multimodal input (TASK-657). ``None``/absent ⇒ every existing
+    # ADDITIVE multimodal input. ``None``/absent ⇒ every existing
     # text-only caller is byte-identical to before — adapters only branch on
     # this when ``image_parts()`` is non-empty. ``prompt`` remains the single
     # source of the textual instruction every adapter sends; a ``TextContentPart``

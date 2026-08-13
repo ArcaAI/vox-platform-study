@@ -1,5 +1,5 @@
 /**
- * TASK-558 lane I — THE HEADLINE PROOF.
+ * THE HEADLINE PROOF.
  *
  * "Changing a rate limit for ONE tenant changes that tenant's behaviour and no
  * other, with no redeploy."
@@ -11,7 +11,7 @@
  * at `maxScope: 'tenant'`, resolved on the request path.
  *
  * Also pinned here, because a per-tenant limit is only safe with them:
- *   • the entitlement CEILING (§9.3 M2) — a tenant cannot raise itself above
+ *   • the entitlement CEILING — a tenant cannot raise itself above
  *     its plan;
  *   • the platform bound — a tenant cannot raise itself above the platform
  *     value, or switch its own throttling off.
@@ -46,7 +46,7 @@ describe('RateLimitSettingsService — per-tenant default tier', () => {
   it('serves ONE tenant its own limit and leaves every other tenant untouched', () => {
     const service = build({ 'rateLimit.maxRequests': 100, 'rateLimit.windowMs': 60_000 }, { [TENANT_A]: { 'rateLimit.maxRequests': 5 } });
 
-    // Tenant A gets its own number, and the source says WHY (§9.2 L8) — which
+    // Tenant A gets its own number, and the source says WHY — which
     // is what puts it ahead of the plan tier in the throttler's chain.
     expect(service.getTierForTenant('default', TENANT_A)).toMatchObject({ limit: 5, ttl: 60_000, limitSource: 'tenant' });
     expect(service.getTierForTenant('default', TENANT_B)).toMatchObject({ limit: 100, ttl: 60_000, limitSource: 'system' });
@@ -67,7 +67,7 @@ describe('RateLimitSettingsService — per-tenant default tier', () => {
     expect(service.getTierForTenant('default', TENANT_A).limit).toBe(100);
   });
 
-  it('clamps a tenant to its PLAN entitlement (§9.3 M2)', () => {
+  it('clamps a tenant to its PLAN entitlement', () => {
     const service = build({ 'rateLimit.maxRequests': 1000 }, { [TENANT_A]: { 'rateLimit.maxRequests': 900 } });
     expect(service.getTierForTenant('default', TENANT_A, { entitlement: 60 }).limit).toBe(60);
     // Within plan → untouched.

@@ -1,5 +1,5 @@
 /**
- * TASK-634 Phase 7 — pinned v1 sha256 checksums for the 23 ArcaAI clinical
+ * Pinned v1 sha256 checksums for the 23 ArcaAI clinical
  * prompt templates (22 department x visit-type summary bodies + the
  * tenant-wide pre-summary).
  *
@@ -11,7 +11,7 @@
  *
  * WHY THIS EXISTS
  *
- * The v1 -> v2 migration (TASK-592 Workstream D) silently altered 7 of these
+ * The v1 -> v2 migration silently altered 7 of these
  * 15 templates while porting them into
  * `packages/database/src/prisma/db_main/seed/07b-arcaai-clinical-content.ts`:
  * two were replaced with entirely different documents (Surgery x2), one was
@@ -133,7 +133,7 @@ export const V1_CLINICAL_PROMPT_CHECKSUMS: readonly V1ClinicalPromptChecksum[] =
     templateId: '71000000-0000-0000-0001-000000000024',
     v1Sha256: 'd1b718001948db0aa05607803e96f30b429946e73774964eb6353c95b039b5ef',
   },
-  // TASK-634 Phase 8a — the four departments the original migration never ported.
+  // The four departments the original migration never ported.
   {
     contentConstant: 'DERMATOLOGY_NEW_REFERRAL_CONTENT',
     templateId: '71000000-0000-0000-0001-000000000025',

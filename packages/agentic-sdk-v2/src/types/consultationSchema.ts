@@ -1,8 +1,8 @@
 /**
- * @arcaai/vox - Consultation Context Schema Types (TASK-665)
+ * @arcaai/vox - Consultation Context Schema Types
  *
  * Client-side mirror of the discovery bundle served by
- * `GET /tenant/me/context-schema` (TASK-658/661). The server resolves the
+ * `GET /tenant/me/context-schema`. The server resolves the
  * tenant's (optionally department-scoped) PINNED `ConsultationContextSchema`
  * declaration — never simply the latest published version — and returns it
  * as a flat envelope plus the raw `definition` JSON document.
@@ -15,12 +15,12 @@
  * bundled dependency — see `ConfigSchema.ts`/`ModelRegistry.ts`) exactly like
  * `parseTenantConfig` guards `GET /tenant/me/config`.
  *
- * `definition.kinds[]` is TENANT-AUTHORED and open-ended by design (TASK-654
- * D2): a tenant can declare new kinds, new optional fields, or a `deprecated`
- * block at any time without an SDK release. Typing it as anything other than
+ * `definition.kinds[]` is TENANT-AUTHORED and open-ended by design: a tenant can
+ * declare new kinds, new optional fields, or a `deprecated` block at any time
+ * without an SDK release. Typing it as anything other than
  * `Record<string, unknown>` plus permissive runtime guards would mean this
  * SDK breaks (or silently drops data) the moment a tenant publishes a schema
- * shape one release ahead of it — the opposite of TASK-654's additive-only
+ * shape one release ahead of it — the opposite of additive-only
  * compatibility contract. `ContextKindDeclaration` below is therefore a
  * best-effort VIEW for callers who want typed access to well-known fields,
  * not a strict parser: `findConsultationContextKind` returns `undefined`
@@ -31,12 +31,12 @@
 
 import * as v from 'valibot';
 
-/** The CLOSED set of platform primitives (TASK-654 §4.1), mirrored read-only. */
+/** The CLOSED set of platform primitives, mirrored read-only.*/
 export const CONTEXT_PRIMITIVES = ['STREAM_AUDIO', 'TEXT', 'DOCUMENT', 'IMAGE', 'STRUCTURED'] as const;
 export type ContextPrimitive = (typeof CONTEXT_PRIMITIVES)[number];
 
 /**
- * Deprecation signal a tenant may author on a kind (TASK-661). Purely
+ * Deprecation signal a tenant may author on a kind. Purely
  * informational — the server still accepts a deprecated kind for the length
  * of its stated migration window; the SDK never enforces the window.
  */
@@ -90,10 +90,10 @@ export interface ConsultationContextSchemaDefinition {
 }
 
 /**
- * The DISCOVERY bundle (TASK-654 D4/R2) — the resolved, PINNED declaration a
+ * The DISCOVERY bundle — the resolved, PINNED declaration a
  * client builds its workflow from. Every field is nullable: "this tenant has
  * not configured a context schema" is an ordinary, expected state (server
- * returns 200, never 404 — see TASK-658 §4.4 D-5), and a fetch failure is
+ * returns 200, never 404 — see), and a fetch failure is
  * treated identically on the client (see `ConsultationSchemaClient.ts`) so a
  * consumer never has to distinguish "not configured" from "couldn't reach
  * the server" to decide whether to fall back to its built-in flow.
@@ -182,7 +182,7 @@ export function findConsultationContextKind(
   return definition.kinds.find((kind) => isPlainObject(kind) && kind.key === kindKey) as ContextKindDeclaration | undefined;
 }
 
-/** Whether a resolved kind carries a `deprecated` block (TASK-661). */
+/** Whether a resolved kind carries a `deprecated` block.*/
 export function isConsultationContextKindDeprecated(kind: ContextKindDeclaration | undefined): boolean {
   return isPlainObject(kind?.deprecated);
 }

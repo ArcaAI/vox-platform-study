@@ -1,13 +1,13 @@
 /**
- * SettingsRegistryWriteService — unit tests (§5 tests 9–13).
+ * SettingsRegistryWriteService — unit tests.
  *
- * This is the SINGLE enforcement point for registry-key writes (AD-1). The
+ * This is the SINGLE enforcement point for registry-key writes. The
  * point of these tests is that enforcement is DESCRIPTOR-DRIVEN — the service
  * must contain no hand-rolled per-key allow-list. Each guard is therefore
  * asserted against a key whose descriptor metadata carries the relevant flag,
  * and `assertWithinMaxScope` is asserted via a SPY so we prove the registry
- * method really is the enforcement point (this ticket makes it its first
- * production caller — it had zero before).
+ * method really is the enforcement point (its first production caller — it had
+ * zero before).
  */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -49,14 +49,14 @@ beforeEach(() => {
 // 9. globalOnly derived from descriptor metadata
 // ===========================================================================
 
-describe('SettingsRegistryWriteService — globalOnly enforcement (§5 test 9)', () => {
+describe('SettingsRegistryWriteService — globalOnly enforcement', () => {
   it('rejects a globalOnly key for a tenant admin with 403', async () => {
     const { svc } = makeService({ roles: [] });
     // `agentic.context.liveDelta.maxChars` carries globalOnly: true.
     await expect(svc.write('agentic.context.liveDelta.maxChars', 9000)).rejects.toBeInstanceOf(ForbiddenException);
   });
 
-  // SUPERSEDED BY TASK-558 lane I — the assertion, not the intent.
+  // SUPERSEDED — the assertion, not the intent.
   //
   // This case used to write a (descriptor-patched) NON-globalOnly key at the
   // DEFAULT `system` scope as a tenant admin and expect success. That success
@@ -64,7 +64,7 @@ describe('SettingsRegistryWriteService — globalOnly enforcement (§5 test 9)',
   // reserved platform tenant, and the Prisma tenant-scope extension refuses a
   // `GlobalSetting` create whose `tenantId` is not the caller's CLS tenant — so
   // in a running gateway the same call raised `TenantScope: tenantId mismatch`
-  // as a bare 500. Lane I turns that into the intended answer (403: a
+  // as a bare 500. That is now the intended answer (403: a
   // platform-wide write is a global-admin surface) and gives a tenant admin the
   // scope it can actually write at.
   //
@@ -90,7 +90,7 @@ describe('SettingsRegistryWriteService — globalOnly enforcement (§5 test 9)',
 // 10. maxScope clamp — assertWithinMaxScope is THE enforcement point
 // ===========================================================================
 
-describe('SettingsRegistryWriteService — maxScope clamp (§5 test 10)', () => {
+describe('SettingsRegistryWriteService — maxScope clamp', () => {
   it('routes the clamp through SettingsRegistry.assertWithinMaxScope', async () => {
     const spy = vi.spyOn(HOPE_SETTINGS_REGISTRY, 'assertWithinMaxScope');
     const { svc } = makeService();
@@ -109,7 +109,7 @@ describe('SettingsRegistryWriteService — maxScope clamp (§5 test 10)', () => 
 // 11. Key/tier/type gates + the successful write
 // ===========================================================================
 
-describe('SettingsRegistryWriteService — gates and persistence (§5 test 11)', () => {
+describe('SettingsRegistryWriteService — gates and persistence', () => {
   it('rejects an unknown key with 400', async () => {
     const { svc } = makeService();
     await expect(svc.write('does.not.exist', 1)).rejects.toBeInstanceOf(ArgumentInvalidException);
@@ -180,7 +180,7 @@ describe('SettingsRegistryWriteService — gates and persistence (§5 test 11)',
 // 13. Boot-time kill-switch governance guard
 // ===========================================================================
 
-describe('Registry kill-switch governance (§5 test 13)', () => {
+describe('Registry kill-switch governance', () => {
   it('passes for the assembled catalog as shipped', () => {
     expect(() => HOPE_SETTINGS_REGISTRY.killSwitches()).not.toThrow();
   });

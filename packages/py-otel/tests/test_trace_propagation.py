@@ -1,4 +1,4 @@
-"""TASK-636 OBS-16 — W3C trace-context propagation seam (Python side).
+"""W3C trace-context propagation seam (Python side).
 
 Mirrors ``…/observability/__tests__/trace-propagation.task636.test.ts`` under
 ``packages/applications/src/services/baseServices``.
@@ -69,7 +69,7 @@ class TestGoldenWireFormat:
 
 
 class TestNoOpPosture:
-    """TASK-411: zero cost and zero new failure modes when tracing is off."""
+    """Zero cost and zero new failure modes when tracing is off."""
 
     def test_inject_is_empty_when_there_is_no_active_span(self) -> None:
         assert inject_trace_carrier() == {}

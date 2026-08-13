@@ -1,5 +1,5 @@
 /**
- * TASK-635 C5 / RF-4 — finalize LLM precedence.
+ * Finalize LLM precedence.
  *
  * agent `llmOverrides.finalize` → tenant `smr.finalize` AiTaskDefault →
  * fail-closed. Model SELECTION is fail-CLOSED on finalize (rule 09
@@ -26,7 +26,7 @@ const deps = (agent: unknown, models: unknown[] = [enabledModel()]) => ({
   aiModelRepository: { findAll: vi.fn().mockResolvedValue(models) },
 });
 
-describe('resolveAgentFinalizeSelection — TASK-635 RF-4', () => {
+describe('resolveAgentFinalizeSelection', () => {
   it('resolves the agent override to a concrete {provider, model}', async () => {
     const d = deps({ llmOverrides: { finalize: { aiModelSlug: 'gpt-4-1' } } });
 

@@ -13,7 +13,7 @@ const TASKS: RunningTask[] = [
   { id: 'job_03', name: 'Guardrail scan', status: 'failed', updatedAt: new Date(Date.now() - 2 * 60 * 1000) },
 ];
 
-describe('RunningTasksList (§3.8)', () => {
+describe('RunningTasksList', () => {
   it('renders each task with a status dot, mono id, progress bar and relative time', () => {
     const { container } = render(<RunningTasksList tasks={TASKS} />);
     const rows = container.querySelectorAll('[data-slot="item-list-row"]');

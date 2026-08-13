@@ -1,5 +1,5 @@
 /**
- * Seed idempotency — operator-owned state survives a re-seed (TASK-616 DB-03)
+ * Seed idempotency — operator-owned state survives a re-seed
  *
  * The seed runs on every Argo sync. A phase that writes operator-owned state in
  * its `upsert.update` payload therefore REVERTS whatever an admin configured,

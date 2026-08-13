@@ -1,5 +1,5 @@
 /**
- * compat `useAudioCapture` — `quietWindowMs` forwarding (TASK-597).
+ * compat `useAudioCapture` — `quietWindowMs` forwarding.
  *
  * The compat playground starts the mic HERE (before
  * `useArcaSpeechToText.startTranscription()`), so whichever options this hook
@@ -25,7 +25,7 @@ vi.mock('../../store/agenticStore', async (importOriginal) => {
   return { ...actual, useAgenticStore: vi.fn() };
 });
 
-describe('useAudioCapture — quietWindowMs (TASK-597)', () => {
+describe('useAudioCapture — quietWindowMs', () => {
   let audioMock: { isCapturing: boolean; level: number; start: ReturnType<typeof vi.fn>; stop: ReturnType<typeof vi.fn> };
 
   beforeEach(() => {

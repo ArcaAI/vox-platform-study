@@ -6,11 +6,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 // The panel reads the live hypothesis from the console-wide session context
-// (TASK-597 lane 0). Mock the hook rather than standing up the whole provider:
+// . Mock the hook rather than standing up the whole provider:
 // this suite is about scoring + presentation, not session wiring.
 let mockLineTexts: string[] = [];
 // Lane A's `audio` group — the export's `run.audioSource` is derived from it
-// (TASK-597 lane G; lane D had to leave that field `null`).
+// (had to leave that field `null`).
 let mockAudio: { mode: string; sources: Array<{ id: string; micLabel: string; sourceLabel: string; gain: number }> } = {
   mode: 'single-mic',
   sources: [],

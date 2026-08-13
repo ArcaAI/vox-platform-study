@@ -1,8 +1,8 @@
--- TASK-417 — Consolidate SUPER_ADMIN into GLOBAL_ADMIN (data migration, no DDL).
+-- Consolidate SUPER_ADMIN into GLOBAL_ADMIN (data migration, no DDL).
 --
 -- WHY:
 --   SUPER_ADMIN and GLOBAL_ADMIN were treated identically by the code-side
---   guard (`tenant-guards.ELEVATED_ROLES`). TASK-417 collapses the pair into a
+-- guard (`tenant-guards.ELEVATED_ROLES`). collapses the pair into a
 --   single canonical elevated role: GLOBAL_ADMIN. After this migration the
 --   SUPER_ADMIN role is retired (soft-deleted) and every user that held it
 --   holds an equivalent GLOBAL_ADMIN assignment instead.
@@ -10,7 +10,7 @@
 -- WHAT THIS MIGRATION DOES (in order):
 --   1. Ensures the GLOBAL_ADMIN role row exists (seed-reserved id …0003) when
 --      a live SUPER_ADMIN row exists — for environments seeded before
---      TASK-336 introduced GLOBAL_ADMIN.
+-- Introduced GLOBAL_ADMIN.
 --   2. Copies every live RolePolicy attachment from SUPER_ADMIN to
 --      GLOBAL_ADMIN so GLOBAL_ADMIN carries everything SUPER_ADMIN had
 --      (system-full-access, rbac-system-manage, global-settings-manage, …).

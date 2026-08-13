@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * @arcaai/vox - useArcaDevices (TASK-609)
+ * @arcaai/vox - useArcaDevices
  *
  * Runtime discovery of audio INPUT devices for a microphone picker.
  *

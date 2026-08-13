@@ -7,7 +7,7 @@ type ResultsView = 'selected' | 'all';
 
 /**
  * Switches the results column between the existing master-detail single-file
- * view (`BatchJobResult`) and the new "all results" view (TASK-606) that
+ * view (`BatchJobResult`) and the new "all results" view that
  * lists every queued file's transcript at once.
  *
  * Defaults to `selected` — dropping ONE file (or clicking a queue row) reads
@@ -15,7 +15,7 @@ type ResultsView = 'selected' | 'all';
  * scanning or exporting a bigger batch. Only one of the two is ever mounted,
  * so there is never a second Card header stacked on top of the single view's
  * own header (`11-ux-ui-principles.mdc` §2).
- */
+*/
 export function BatchResultsPanel() {
   const [view, setView] = useState<ResultsView>('selected');
 

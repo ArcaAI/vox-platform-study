@@ -169,7 +169,7 @@ export function listDepartments(): Promise<Department[]> {
 }
 
 /**
- * `DepartmentAgent` CRUD (TASK-546, `admin/department-agents`) — the Agent
+ * `DepartmentAgent` CRUD (`admin/department-agents`) — the Agent
  * Catalog's first-class rows. ZERO-based `page`, the platform standard (this
  * endpoint does NOT share the ONE-based deviation of `admin/prompt-templates`
  * above).
@@ -216,7 +216,7 @@ export function pinDepartmentAgent(id: string, versionNumber: number | null): Pr
 }
 
 /**
- * The immutable loop-configuration version history (TASK-659/674), newest
+ * The immutable loop-configuration version history, newest
  * first — a plain array like `listVersions` on the PromptTemplate surface
  * above, never a paginated envelope.
  */
@@ -225,10 +225,10 @@ export function listDepartmentAgentVersions(id: string): Promise<DepartmentAgent
 }
 
 /**
- * The RESOLVED consultation context schema (TASK-658) a department's loop
+ * The RESOLVED consultation context schema a department's loop
  * config must pick `subscribedKinds`/`writeScope` from — `GET
  * tenant/me/context-schema`, the client-discovery sibling of `/tenant/me/config`
- * (never the admin CRUD surface, which is TASK-666's own feature). A tenant
+ * (never the admin CRUD surface, which is its own feature). A tenant
  * with nothing configured gets a 200 with null fields, not a 404.
  */
 export function getResolvedContextSchema(departmentId?: string): Promise<ResolvedContextSchemaBundle> {
@@ -236,7 +236,7 @@ export function getResolvedContextSchema(departmentId?: string): Promise<Resolve
 }
 
 // ---------------------------------------------------------------------------
-// Eval-gated promotion (TASK-549) — golden-set picker + scoped eval-run read
+// Eval-gated promotion — golden-set picker + scoped eval-run read
 // + run-now for the Governance tab's Eval panel. Golden-set CRUD and the full
 // eval-runs grid stay on `/harness/observability` (one authoritative editor
 // per resource, rule 13) — this is a read-mostly, agent-scoped view.
@@ -268,7 +268,7 @@ export function runGoldenSetEval(goldenSetId: string): Promise<EvalRunTrigger> {
 }
 
 // ---------------------------------------------------------------------------
-// Cross-tenant agent promotion lineage (TASK-663/674) — a READ-only view of
+// Cross-tenant agent promotion lineage — a READ-only view of
 // promotions INTO the working tenant, filtered to one target agent for the
 // Lineage tab. Promotion itself (POST admin/agent-promotions) is out of this
 // ticket's scope; only the audit trail it writes is surfaced here.

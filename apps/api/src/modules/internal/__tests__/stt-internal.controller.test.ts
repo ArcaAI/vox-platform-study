@@ -95,7 +95,7 @@ describe('SttInternalController.ensureInternalApiKey', () => {
   });
 });
 
-// TASK-567 §5 item 8: the batch-worker BYO override PULL route.
+// Item 8: the batch-worker BYO override PULL route.
 describe('SttInternalController.getProviderOverrides', () => {
   let sttInternalService: any;
   let sttConfig: any;

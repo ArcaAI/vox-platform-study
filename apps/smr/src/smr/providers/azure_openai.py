@@ -36,7 +36,7 @@ class AzureOpenAIProvider:
     def __init__(self, config: AzureOpenAIConfig) -> None:
         self._config = config
         self._default_model = config.default_model
-        # TASK-602: BYOK — the shared platform client is built ONLY when an
+        # BYOK — the shared platform client is built ONLY when an
         # explicit api_key is present (never from env; see AzureOpenAIConfig).
         # In production api_key is empty, so this is None and the credential must
         # arrive per request as a ProviderOverride (tenant→SYSTEM). Never hand an
@@ -66,7 +66,7 @@ class AzureOpenAIProvider:
         request-scoped client (the shared client is never mutated) so concurrent
         requests for different tenants can never interfere.
 
-        TASK-602 (BYOK, fail-closed): absent an override, the shared client is
+         (BYOK, fail-closed): absent an override, the shared client is
         reused ONLY when a platform key was configured; when neither an override
         nor a platform client exists, raise ``ProviderCredentialsError`` (503)
         rather than 401-ing an empty-keyed client downstream. There is no env
@@ -137,7 +137,7 @@ class AzureOpenAIProvider:
                 "model": resolved_model,
                 "messages": self._build_messages(request),
                 "temperature": resolved["temperature"],
-                # TASK-602 follow-up: newer Azure OpenAI models (gpt-5.x / o-series,
+                # Follow-up: newer Azure OpenAI models (gpt-5.x / o-series,
                 # e.g. gpt-5.4-mini) reject `max_tokens` and require
                 # `max_completion_tokens`; it is accepted across chat models on the
                 # configured api-version, so send it unconditionally.
@@ -225,7 +225,7 @@ class AzureOpenAIProvider:
                 "model": resolved_model,
                 "messages": self._build_messages(request),
                 "temperature": resolved["temperature"],
-                # TASK-602 follow-up: newer Azure OpenAI models (gpt-5.x / o-series,
+                # Follow-up: newer Azure OpenAI models (gpt-5.x / o-series,
                 # e.g. gpt-5.4-mini) reject `max_tokens` and require
                 # `max_completion_tokens`; it is accepted across chat models on the
                 # configured api-version, so send it unconditionally.
@@ -295,7 +295,7 @@ class AzureOpenAIProvider:
             yield StreamChunk(type="done", data={"finish_reason": finish_reason or "stop"})
 
     async def health_check(self) -> bool:
-        # TASK-602: no platform key ⇒ no shared client to probe. The provider is
+        # No platform key ⇒ no shared client to probe. The provider is
         # still registered (BYOK — usable per request via an override), but the
         # platform connection itself is unhealthy.
         if self._client is None:
@@ -311,7 +311,7 @@ class AzureOpenAIProvider:
             return False
 
     async def get_info(self) -> ProviderInfo:
-        # TASK-579: default_model is informational-only (may be unset now that
+        # Default_model is informational-only (may be unset now that
         # cloud configs carry no compiled-in vendor model) — never advertise an
         # empty-named model.
         models: list[ModelInfo] = (
@@ -319,7 +319,7 @@ class AzureOpenAIProvider:
             if self._default_model
             else []
         )
-        # TASK-602: no platform key ⇒ no shared client to probe ⇒ unavailable at
+        # No platform key ⇒ no shared client to probe ⇒ unavailable at
         # the platform level (still BYOK-usable per request).
         status = "available"
         if self._client is None:

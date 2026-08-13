@@ -183,28 +183,28 @@ enum ResourceType {
   // Gate-edit mining store; the mining job broadcasts
   // ResourceCreated per persisted exemplar.
   GateEditExemplar
-  // First-class department agent entity (TASK-546): binds a department to a
+  // First-class department agent entity: binds a department to a
   // prompt template at a pinned/tracked version. Emitted as audit
   // `resourceType` by DepartmentAgentService.broadcastSysEvent.
   DepartmentAgent
-  // Eval run (TASK-549): the eval-gated-promotion runner broadcasts
+  // Eval run: the eval-gated-promotion runner broadcasts
   // ResourceCreated per persisted EvalRun.
   EvalRun
-  // Per-tenant STT fallback config (TASK-567).
+  // Per-tenant STT fallback config.
   // Emitted as audit `resourceType` by TenantSttConfigService.broadcastSysEvent.
   TenantSttConfig
-  // HARMLESS-UNUSED (TASK-576): the `TenantSttProviderCredential` table was
+  // HARMLESS-UNUSED: the `TenantSttProviderCredential` table was
   // DROPPED (credential rows now live in the unified `AiProviderConnection`
   // plane, service='stt') but this enum VALUE is kept — Postgres cannot
   // cheaply drop a value already used by historical rows in this column, and
   // the domains-layer `ResourceType` TS enum must stay in parity with this
   // one (resourceType.enum-parity.test.ts). Never emitted again.
   TenantSttProviderCredential
-  // CORS control plane (TASK-610): tenant-owned browser origin registry.
+  // CORS control plane: tenant-owned browser origin registry.
   // Emitted as audit `resourceType` by TenantAllowedOriginService.broadcastSysEvent.
   TenantAllowedOrigin
 
-  // USAGE METERING + BILLING (TASK-615).
+  // USAGE METERING + BILLING.
   //
   // Only the three ADMIN-MANAGED models of the metering/billing plane appear
   // here — these are the mutations a compliance reviewer or a billing dispute
@@ -225,10 +225,10 @@ enum ResourceType {
   BillingInvoice
   BillingAdjustment
 
-  // Service Version & Release Registry (TASK-648). Only the first
+  // Service Version & Release Registry. Only the first
   // registration of a previously-unseen ServiceRelease broadcasts
   // ResourceCreated — heartbeats and ServiceInstance upserts deliberately do
-  // NOT (see §3.4 of the ticket README: ~15 processes heartbeating every 5
+  // NOT (~15 processes heartbeating every 5
   // minutes would otherwise flood the audit trail with ~4,300 noise rows/day).
   // ChangelogEntry create/update/publish and UserChangelogAcknowledgement are
   // included for parity with their sys-event-emitting services (W7/W13,
@@ -238,7 +238,7 @@ enum ResourceType {
   ChangelogEntry
   UserChangelogAcknowledgement
 
-  // Consultation context schema (TASK-658). The MUTABLE head row is the
+  // Consultation context schema. The MUTABLE head row is the
   // audited resource — create / update / publish / pin / delete all broadcast
   // against it, so a reviewer sees one lifecycle per schema rather than one
   // per snapshot. `ConsultationContextSchemaVersion` is DELIBERATELY ABSENT:
@@ -249,7 +249,7 @@ enum ResourceType {
   // `ALTER TYPE ... ADD VALUE` migration (resourceType.enum-parity.test.ts).
   ConsultationContextSchema
 
-  // Agent promotion between tenants (TASK-663). UNLIKE the immutable version
+  // Agent promotion between tenants. UNLIKE the immutable version
   // rows above, this one IS its own audited resource: it has a lifecycle of
   // its own (one promotion is one event, not a side effect of some other
   // aggregate's write), it crosses a tenant boundary, and

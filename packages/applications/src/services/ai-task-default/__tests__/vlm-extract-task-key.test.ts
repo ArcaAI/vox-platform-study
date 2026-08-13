@@ -1,5 +1,5 @@
 /**
- * TASK-657 — `vlm.extract` task key (TDD, written before the constant is added).
+ * `vlm.extract` task key (TDD, written before the constant is added).
  *
  * Verifies: the key exists in `AI_TASK_KEYS`, maps to `IMAGE_TEXT_TO_TEXT`
  * (the multimodal task type — see `enums.prisma`), and is tenant-admin
@@ -13,7 +13,7 @@ import { describe, expect, it } from 'vitest';
 import { AI_TASK_KEYS, AI_TASK_MODEL_TASK_TYPES, isGlobalAdminOnlyTaskKey } from '../constants';
 import { HOPE_SETTINGS_REGISTRY } from '../../settings-registry/registry';
 
-describe('vlm.extract task key (TASK-657)', () => {
+describe('vlm.extract task key', () => {
   it('is registered in AI_TASK_KEYS', () => {
     expect(AI_TASK_KEYS).toContain('vlm.extract');
   });

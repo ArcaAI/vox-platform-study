@@ -45,7 +45,7 @@ class SarvamProvider:
     def __init__(self, config: SarvamConfig, *, client: httpx.AsyncClient | None = None) -> None:
         self._config = config
         self._client = client  # injectable for tests
-        # TASK-602: a keyless instance (empty platform config) is NOT usable — the
+        # A keyless instance (empty platform config) is NOT usable — the
         # router excludes it from candidates. A per-tenant override builds its own
         # keyed instance via the router's `_build_override_engine`.
         self.is_configured = bool(config.api_key.get_secret_value())

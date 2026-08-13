@@ -1,5 +1,5 @@
 /**
- * HarnessPolicyService — per-department-agent harness overrides (TASK-550).
+ * HarnessPolicyService — per-department-agent harness overrides.
  *
  * When `getEffectivePolicy` is called with a `consultationId`, the consultation's
  * department default `DepartmentAgent.harnessOverrides` is layered on top of the

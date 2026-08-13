@@ -6,7 +6,7 @@ import { ADMIN_CONSOLE_ENV_SETTINGS, type AdminConsoleEnvVar } from './env.descr
  * Server-side environment (rule 13): validated with zod, never exposed to the
  * client bundle.
  *
- * TASK-558 lane D — the shape is BUILT from `env.descriptors.ts`, so the schema,
+ * The shape is BUILT from `env.descriptors.ts`, so the schema,
  * `apps/admin-console/.env.sample` and `turbo.json#globalEnv` all derive from
  * ONE declaration and cannot drift. `pnpm env:sync --check` is the gate.
  */
@@ -24,7 +24,7 @@ const REFINEMENTS: Record<string, z.ZodType<string>> = {
 
 function leaf(descriptor: AdminConsoleEnvVar): z.ZodType {
   const base = REFINEMENTS[descriptor.name] ?? z.string();
-  // `required` ⇔ `failMode: 'closed'` (plan §4 B4): absence fails fast and is
+  // `required` ⇔ `failMode: 'closed'`: absence fails fast and is
   // never silently defaulted.
   if (descriptor.required) return base;
   return descriptor.default === undefined ? base.optional() : base.default(descriptor.default as never);

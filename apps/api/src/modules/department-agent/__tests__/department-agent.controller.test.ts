@@ -1,5 +1,5 @@
 /**
- * DepartmentAgentController unit tests (TASK-546).
+ * DepartmentAgentController unit tests.
  *
  * Verifies the class-level `@CanManage('DepartmentAgent')` authorization
  * metadata (the deny-by-default boot audit relies on it), the OCC If-Match
@@ -76,7 +76,7 @@ describe('DepartmentAgentController — delegation', () => {
     expect(service.clone).toHaveBeenCalledWith('a-1', { name: 'My Copy', slug: 'my-copy' });
   });
 
-  it('listVersions delegates to the service (TASK-674)', async () => {
+  it('listVersions delegates to the service', async () => {
     service.listVersions.mockResolvedValue([{ id: 'v-1', versionNumber: 1 }]);
     await expect(controller.listVersions('a-1')).resolves.toEqual([{ id: 'v-1', versionNumber: 1 }]);
     expect(service.listVersions).toHaveBeenCalledWith('a-1');

@@ -11,7 +11,7 @@
 #   Qdrant:     6335 (test) vs 6333 (dev)
 #   Vault:      8201 (test) vs 8200 (dev)
 #
-# TASK-689 — Vault is fully isolated too (hope-vault-test), NOT the shared dev
+# Vault is fully isolated too (hope-vault-test), NOT the shared dev
 # hope-vault container. SECRETS_PROVIDER=vault is required for tests (most
 # platform config lives in Vault), so this stack provisions its own dev-mode
 # Vault + init sidecar rather than depending on dev infra being up.
@@ -206,7 +206,7 @@ services:
       - hope-test-network
 
   # ==========================================================================
-  # Vault Test Secrets Engine (TASK-689 — isolated from dev's hope-vault)
+  # Vault Test Secrets Engine (isolated from dev's hope-vault)
   # ==========================================================================
   # Dev-mode server: auto-initialized/unsealed, in-memory storage (no volume —
   # ephemeral by design, matching this file's other services). .env.test's

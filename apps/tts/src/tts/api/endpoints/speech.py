@@ -63,7 +63,7 @@ async def create_speech(body: SpeechRequest, request: Request) -> Response:
 
     if len(body.input) > settings.max_input_chars:
         # 413 — nothing was accepted, so nothing is recorded: no headers, no
-        # Prometheus counters (TASK-615 §"a 413-rejected request emits nothing").
+        # Prometheus counters.
         raise HTTPException(
             status_code=413,
             detail=f"input exceeds max_input_chars ({settings.max_input_chars})",
@@ -73,7 +73,7 @@ async def create_speech(body: SpeechRequest, request: Request) -> Response:
     except VoiceNotFoundError as exc:
         raise HTTPException(status_code=404, detail=f"unknown voice: {body.voice}") from exc
 
-    # ACCEPTED input length (TASK-615 §3 contract: 1 Unicode code point = 1
+    # ACCEPTED input length (contract: 1 Unicode code point = 1
     # character) — computed here, past every rejection path, never re-derived
     # downstream from a re-encoded/truncated copy of the text.
     character_count = count_characters(body.input)
@@ -102,7 +102,7 @@ async def create_speech(body: SpeechRequest, request: Request) -> Response:
 
     # Prime the generator so provider-availability errors become an HTTP status
     # BEFORE any streaming headers are committed. This ALSO resolves which
-    # provider won failover (AudioChunk.provider, TASK-615 WS-E) before any
+    # provider won failover (AudioChunk.provider) before any
     # response is built, so it can go in a header on every response mode.
     try:
         first: AudioChunk | None = await stream.__anext__()

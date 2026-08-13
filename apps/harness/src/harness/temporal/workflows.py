@@ -441,7 +441,7 @@ class HarnessDocWorkflow:
         try:
             policy = await workflow.execute_activity(
                 fetch_policy,
-                # TASK-550 — carry consultation_id so the activity can request the
+                # Carry consultation_id so the activity can request the
                 # policy WITH the department default agent's tenant-tier
                 # harnessOverrides overlaid. Additive input field only (no new
                 # command / branch), so this is replay-safe — the replay suite is
@@ -972,7 +972,7 @@ class HarnessDocWorkflow:
                 continue
             break
 
-        # 2b) DNA redaction/rewrite (TASK-551) — a SEPARATE, auditable transform that
+        # 2b) DNA redaction/rewrite — a SEPARATE, auditable transform that
         #     runs AFTER the computational loop settles and BEFORE persist/delivery, so
         #     the persisted/delivered note is the REDACTED one and the (re-run) cheap
         #     sensors validate the FINAL text. Conditional-patch: an EMPTY ``redaction_rules``
@@ -983,7 +983,7 @@ class HarnessDocWorkflow:
         #     transformed text, and a fail-closed transform forces a FLAG (a note the doctor
         #     expected redacted must never slip through silently).
         redaction_failed_closed = False
-        # DNA redaction AUDIT marker (TASK-551) threaded to persist so apps/api records
+        # DNA redaction AUDIT marker threaded to persist so apps/api records
         # it on SummaryMeta. None on every pre-audit-era history (the marker is computed
         # only inside the audit patch gate), so ``_prune`` drops it ⇒ byte-identical
         # persist body ⇒ replay-safe when the audit era is off.
@@ -1113,7 +1113,7 @@ class HarnessDocWorkflow:
                         gate_decision=None,
                         is_auto_generated=True,
                         phase=HARNESS_DRAFT_PHASE_EARLY,
-                        # DNA redaction audit marker (TASK-551, audit era). None when
+                        # DNA redaction audit marker (audit era). None when
                         # the era is off ⇒ pruned ⇒ byte-identical early-persist body.
                         redaction_applied=redaction_marker_applied,
                         redaction_manifest=redaction_marker_manifest,
@@ -1373,7 +1373,7 @@ class HarnessDocWorkflow:
                     continue
                 break
             decision = str(verdict.decision)
-            # A fail-closed redaction (TASK-551) forces a FLAG regardless of the
+            # A fail-closed redaction forces a FLAG regardless of the
             # assurance verdict — the delivered draft is then RETRACTED below.
             if redaction_failed_closed:
                 decision = str(GateDecision.FLAG)
@@ -1468,7 +1468,7 @@ class HarnessDocWorkflow:
             # the first aggregate, and it never reaches this branch.
             assert verdict is not None
             decision = str(verdict.decision)
-            # A fail-closed redaction (TASK-551) forces a FLAG — the note the doctor
+            # A fail-closed redaction forces a FLAG — the note the doctor
             # expected redacted must not persist to PENDING_REVIEW as a clean draft.
             if redaction_failed_closed:
                 decision = str(GateDecision.FLAG)
@@ -1502,7 +1502,7 @@ class HarnessDocWorkflow:
                     dna_style_id=inp.dna_style_id,
                     gate_decision=decision,
                     is_auto_generated=True,
-                    # DNA redaction audit marker (TASK-551, audit era). None when the
+                    # DNA redaction audit marker (audit era). None when the
                     # era is off ⇒ pruned ⇒ byte-identical legacy persist body.
                     redaction_applied=redaction_marker_applied,
                     redaction_manifest=redaction_marker_manifest,
@@ -1605,16 +1605,15 @@ class HarnessDocWorkflow:
 
 
 # ===========================================================================
-# TASK-662 — ConsultationLoopWorkflow
+# ConsultationLoopWorkflow
 #
-# Everything below is ADDITIVE. `HarnessDocWorkflow` above is frozen (TASK-654
-# C2: ~11 live `workflow.patched` eras and 12 replay fixtures depend on its
+# Everything below is ADDITIVE. `HarnessDocWorkflow` above is frozen (~11 live `workflow.patched` eras and 12 replay fixtures depend on its
 # exact command sequence), so the loop COMPOSES it as an unmodified child.
 #
 # Being a NEW workflow type is what makes this safe: a type with no recorded
 # histories has no era to be compatible with, so nothing here needs — or may
-# have — a `workflow.patched` gate. That is the whole reason TASK-654 D1 chose
-# a new workflow over an edit.
+# have — a `workflow.patched` gate. That is the whole reason a new workflow
+# was chosen over an edit.
 # ===========================================================================
 
 # Deterministic workflow id. Idempotent-on-start: a second start for the same
@@ -1633,7 +1632,7 @@ class LoopActionSpec:
     """One entry in the action registry.
 
     ``implemented`` is deliberately part of the registry rather than expressed
-    by omission: an agent's ``alwaysActions`` may name any of TASK-659's seven
+    by omission: an agent's ``alwaysActions`` may name any of the seven
     canonical keys, so the loop needs an entry for every one of them. A key that
     this ticket does not yet back is dispatched as an OBSERVABLE skip
     (``action.skipped`` / ``unsupported_action``) — never a silent no-op, which
@@ -1650,8 +1649,8 @@ class LoopActionSpec:
     lifecycle: bool = False
     # "activity" | "child_workflow"
     kind: str = "activity"
-    # TASK-664. True for an action whose OUTPUT re-enters the context bus as a
-    # new item one depth deeper. That re-entry is the cascade (TASK-654 §4.2) —
+    # True for an action whose OUTPUT re-enters the context bus as a
+    # new item one depth deeper. That re-entry is the cascade —
     # it is what makes image -> text and audio -> transcript the same mechanism —
     # and it is why the depth cap and the action budget are load-bearing rather
     # than theoretical.
@@ -1679,7 +1678,7 @@ LOOP_ACTION_REGISTRY: dict[str, LoopActionSpec] = {
         parent_close_policy=workflow.ParentClosePolicy.REQUEST_CANCEL,
         child_cancellation_type=workflow.ChildWorkflowCancellationType.TRY_CANCEL,
     ),
-    # TASK-664 backs all three. TASK-662 declared them with `implemented=False`
+    # Backs all three. They were declared with `implemented=False`
     # so an agent naming one in `alwaysActions` got an OBSERVABLE
     # `unsupported_action` skip rather than a silent no-op; the registry entry
     # stays, the flag flips, and the cascade they feed is now real.
@@ -1712,14 +1711,13 @@ _LOOP_EVENT_RETRY = RetryPolicy(maximum_attempts=1)
 _LOOP_MAX_SEEN_KEYS = 2_000
 
 # ---------------------------------------------------------------------------
-# TASK-664 — the reasoning lane
+# The reasoning lane
 #
 # ⚠ THE PATCH ERA BELOW IS MANDATORY, AND FOR A REASON THAT DID NOT APPLY TO
-# TASK-662.
 #
-# TASK-662 could add `ConsultationLoopWorkflow` with no `workflow.patched` gate
+# The original loop could add `ConsultationLoopWorkflow` with no `workflow.patched` gate
 # because a brand-new workflow type has no recorded history to stay compatible
-# with. That is no longer true: TASK-662 also FROZE a fixture of this type
+# with. That is no longer true: a fixture of this type was also frozen
 # (`fixtures/consultation_loop_task662_history.json`, asserted in
 # `test_replay_compat.py`). Every new command this ticket makes the loop issue —
 # the planner activity, the specialist children, the adjudication publish, the
@@ -1741,7 +1739,7 @@ _LOOP_MAX_SEEN_KEYS = 2_000
 _PATCH_REASONING = "task-664-reasoning"
 
 # ---------------------------------------------------------------------------
-# TASK-685 — the IDLE lifecycle bound
+# The IDLE lifecycle bound
 #
 # Same mandate, same construction as the reasoning era above, for the same
 # reason: this workflow type has frozen fixtures, so a command-sequence change
@@ -1818,8 +1816,7 @@ class SpecialistWorkflow:
 
     **This workflow cannot write the note or the gate.** It dispatches no loop
     actions, starts no children, and its result type has no field capable of
-    carrying note text or a gate decision. The primary's exclusivity (TASK-654
-    D7) is therefore structural here, not a convention someone must remember.
+    carrying note text or a gate decision. The primary's exclusivity is therefore structural here, not a convention someone must remember.
     """
 
     @workflow.run
@@ -1847,7 +1844,7 @@ class SpecialistWorkflow:
             raise
 
         # Second enforcement pass, in the child. The parent's is authoritative
-        # (enforcement outside agent code, TASK-654 §4.6); this one means a
+        # (enforcement outside agent code); this one means a
         # mis-scoped finding is refused at the earliest point it exists, and the
         # refusal travels back with the result instead of being invisible.
         allowed = set(inp.write_scope) - PRIMARY_ONLY_OUTPUT_KINDS
@@ -1886,7 +1883,7 @@ class ConsultationLoopWorkflow:
     `harness.finalize`, as an unmodified child workflow).
 
     There is deliberately NO reasoning here — no planner, no specialists, no
-    adjudication. That is TASK-664. What this workflow guarantees is the
+    adjudication. That is What this workflow guarantees is the
     mechanical substrate underneath it: a pinned config, idempotent event
     intake, bounded cascades, planned checkpoints, and a child finalize whose
     close policy is explicit.
@@ -1895,7 +1892,7 @@ class ConsultationLoopWorkflow:
 
     Three rules, all of which this class follows and none of which is optional:
 
-    1. **`@workflow.init`** — signal handlers can run BEFORE `run()` when a
+    1. **`@workflow.init`** — signal handlers can run BEFORE `run` when a
        signal is delivered with the start. Initialising in `__init__` (which
        `@workflow.init` feeds the run arguments) means the handler always
        mutates a fully-constructed instance.
@@ -1940,14 +1937,14 @@ class ConsultationLoopWorkflow:
         self._ending_signal: ConsultationEndingSignal | None = None
         self._cancelled = False
         self._cancel_reason: str | None = None
-        # TASK-685. Not carried across `continue_as_new`: the bound is terminal,
+        # Not carried across `continue_as_new`: the bound is terminal,
         # so a run that sets this never reaches a checkpoint.
         self._timed_out = False
         self._finalized = False
         self._finalize_workflow_id: str | None = None
         self._phase = "INIT"
 
-        # -- TASK-664 reasoning lane ---------------------------------------
+        # -- reasoning lane ---------------------------------------
         # `(agent_id, kind_key)` pairs already reviewed. CARRIED across
         # checkpoints: dropping it at a continuation would let every pair run
         # again, which is precisely the cycle the detector exists to stop.
@@ -2044,7 +2041,7 @@ class ConsultationLoopWorkflow:
 
         config = self._config
         if config is None or not config.enabled:
-            # TASK-654 K7: a consultation with no loop configured (or whose
+            # A consultation with no loop configured (or whose
             # config could not be resolved) behaves EXACTLY as it does today.
             # Completing immediately is the correct expression of that: an idle
             # workflow parked forever would be a resource leak that changes
@@ -2057,7 +2054,7 @@ class ConsultationLoopWorkflow:
             await self._run_lifecycle_actions(config.start_actions)
             self._start_actions_done = True
 
-        # The IDLE bound (TASK-685). Resolved ONCE, from the PINNED config, and
+        # The IDLE bound. Resolved ONCE, from the PINNED config, and
         # never re-read — a mid-consultation settings edit must be as invisible
         # here as it is for subscriptions and budgets (C1). None ⇒ the legacy
         # unbounded wait, with no timer command; see `_PATCH_IDLE_TIMEOUT`.
@@ -2079,7 +2076,7 @@ class ConsultationLoopWorkflow:
                 # RE-CHECK before concluding. A signal can land in the same task
                 # the timer fires in, and the only safe direction to resolve that
                 # race is "there is work / an ending" — never "abandon". This is
-                # the same asymmetry TASK-683 used to refuse wiring
+                # the same asymmetry used to refuse wiring
                 # `signalLoopCancel` to `close()`.
                 if not (self._pending or self._ending or self._cancelled):
                     # ABANDONMENT, not a degraded end-of-consultation: the ending
@@ -2088,8 +2085,7 @@ class ConsultationLoopWorkflow:
                     # transcript and queue it for a clinician — inventing work
                     # nobody asked for. Nothing is skipped either: the finalize
                     # path is a reflex to an explicit `consultation-ending`, and
-                    # that signal never arrived. Argued in full in the ticket
-                    # README §3.
+                    # that signal never arrived.
                     self._timed_out = True
                     self._phase = "TIMED_OUT"
                     await self._emit_event(LOOP_EVENT_LOOP_TIMED_OUT)
@@ -2261,7 +2257,7 @@ class ConsultationLoopWorkflow:
         elif spec.key == LOOP_ACTION_HARNESS_FINALIZE:
             await self._start_finalize_child(spec)
         elif spec.derives_context:
-            # TASK-664 — the three keys TASK-662 declared but left unbacked.
+            # The three keys declared but left unbacked.
             # Gated on the patch era: an old history recorded them as
             # `unsupported_action` SKIPS, and replaying it must reproduce that,
             # not suddenly issue an activity command that was never recorded.
@@ -2278,14 +2274,14 @@ class ConsultationLoopWorkflow:
             return
         self._actions_dispatched += 1
 
-    # -- derived-context cascade (TASK-664) --------------------------------
+    # -- derived-context cascade --------------------------------
 
     async def _run_derive_action(
         self, spec: LoopActionSpec, signal: ContextAddedSignal | None
     ) -> None:
         """Run one derive action and RE-ENTER its output as context, depth + 1.
 
-        This closes the cascade TASK-654 §4.2 describes: an action's output is
+        This closes the cascade describes: an action's output is
         just more context, so image -> text and audio -> transcript are the same
         mechanism rather than two special cases. The derived item goes through
         the identical intake path as a gateway-delivered one — same
@@ -2482,7 +2478,7 @@ class ConsultationLoopWorkflow:
             # for it.
             self._degraded = True
 
-    # -- reasoning lane (TASK-664) -----------------------------------------
+    # -- reasoning lane -----------------------------------------
 
     def _observe_context(self, signal: ContextAddedSignal) -> None:
         """Record one item for the planning checkpoint and the scoped-read window. PURE."""
@@ -2514,7 +2510,7 @@ class ConsultationLoopWorkflow:
         """
         config = self._config
         # The flag operand comes FIRST so `workflow.patched` is never called on a
-        # pre-TASK-664 history — see the note on `_PATCH_REASONING`.
+        # prior history — see the note on `_PATCH_REASONING`.
         if config is None or not config.reasoning_enabled:
             return
         if not workflow.patched(_PATCH_REASONING):  # pragma: no cover - replay-only path
@@ -2580,7 +2576,7 @@ class ConsultationLoopWorkflow:
 
             pair = f"{planned.agent_id}:{planned.kind_key}"
             if pair in self._agent_kind_set:
-                # Cycle detection on `(agent, kind)` (TASK-654 §4.2). The same
+                # Cycle detection on `(agent, kind)`. The same
                 # reviewer re-reviewing the same kind is the shape a cascade
                 # loops in, and suppressing it is what terminates the cascade.
                 self._cycles_suppressed += 1
@@ -2630,7 +2626,7 @@ class ConsultationLoopWorkflow:
                     id=specialist_workflow_id(
                         self._input.consultation_id, agent.agent_id, decision.plan_id
                     ),
-                    # Both policies explicit, for the reasons TASK-662 §4.3
+                    # Both policies explicit, for the reasons
                     # measured: the SDK default close policy would HARD-KILL a
                     # child mid-run, and the default cancellation type left the
                     # parent RUNNING forever after a cancel.
@@ -2667,7 +2663,7 @@ class ConsultationLoopWorkflow:
         1. **Write-scope enforcement, in the orchestrator.** Every finding is
            re-checked against its own agent's ``writeScope``. The specialist
            checked too, but that check is inside the agent's own execution and
-           therefore not a boundary — this one is (TASK-654 §4.6).
+           therefore not a boundary — this one is.
         2. **The primary-only floor.** ``note`` and ``gate`` are refused for any
            specialist whatever its configured scope says, so a tenant cannot
            misconfigure away the primary's exclusive ownership (D7).

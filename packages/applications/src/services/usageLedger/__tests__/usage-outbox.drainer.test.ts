@@ -227,7 +227,7 @@ describe('UsageOutboxDrainer — ledger append + rollup maintenance', () => {
     expect(mockDailyRepository.accumulate.mock.calls[0][2]).toBe(0n);
   });
 
-  it('TASK-643 R3: a PLATFORM-FUNDED call contributes its FULL cost to the rollups', async () => {
+  it('A PLATFORM-FUNDED call contributes its FULL cost to the rollups', async () => {
     // A call served on the platform's own (SYSTEM-tenant) cloud credential is
     // platform vendor spend, so it meters as CLOUD + INTERNAL (OD-2) and its
     // cost must reach the COGS rollups. Asserted alongside its mis-stamp below

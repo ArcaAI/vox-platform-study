@@ -1,9 +1,9 @@
 /**
- * DepartmentAgentRepository.findByBoundTemplate — TASK-635 R5.
+ * DepartmentAgentRepository.findByBoundTemplate.
  *
  * The eval promotion gate used to find bound agents with
  * `findAll({ filters: { tenantId, promptTemplateId } })`, which sees only the
- * BASE binding. Since C2 an agent can bind a template SOLELY through a
+ * BASE binding. An agent can bind a template SOLELY through a
  * capability column, and such an agent would have escaped the gate at approve
  * time. This lookup ORs across all five binding columns.
  */

@@ -1,5 +1,5 @@
 /**
- * Batch upload ceilings + the two read surfaces (TASK-604 lane B).
+ * Batch upload ceilings + the two read surfaces.
  *
  * The requirement is "up to 5 recordings, each at most 60 minutes". Before this
  * ticket the route enforced neither: its only bound was a hardcoded 100 MB,

@@ -1,5 +1,5 @@
 /**
- * Trailing-window arithmetic for provider reconciliation (TASK-638 §6 rule 4).
+ * Trailing-window arithmetic for provider reconciliation (rule 4).
  *
  * PURE — no clock of its own, no I/O — so the one rule that decides WHICH days
  * get reconciled is testable without a database or a provider account.
@@ -48,7 +48,7 @@ export const RECONCILIATION_WINDOW_DEFAULTS = { lagDays: 2, windowDays: 1 } as c
  * The settled window to reconcile as of `now`.
  *
  * Both inputs are clamped at 0/1 rather than throwing: this feeds a diagnostic
- * job that must never fail closed on a mis-set config value (§6 rule 7). A
+ * job that must never fail closed on a mis-set config value (rule 7). A
  * nonsensical `lagDays: -5` degrades to "no lag", which reconciles a possibly
  * unsettled day and shows up as drift — visible and recoverable, unlike a job
  * that stopped running.

@@ -1186,7 +1186,7 @@ describe('agenticStore', () => {
   // erases the "audio was lost" signal exactly when loss happened.
   // =========================================================================
 
-  describe('streaming STT connection state (TASK-567)', () => {
+  describe('streaming STT connection state', () => {
     it('starts nominal with no active pipeline', () => {
       const state = useAgenticStore.getState();
       expect(state.sttConnectionState).toBe('connected');

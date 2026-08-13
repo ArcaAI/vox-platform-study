@@ -45,7 +45,7 @@ const UNCONFIGURED_ETAG = '"none"';
 const MAX_STRUCTURED_PAYLOAD_BYTES = 200_000;
 
 /**
- * TASK-658 — tenant-declared consultation context schemas.
+ * Tenant-declared consultation context schemas.
  *
  * See `IConsultationContextSchemaService` for the surface contract and the two
  * rules that are easy to get wrong (pinned-not-latest; 404-over-403).
@@ -177,7 +177,7 @@ export class ConsultationContextSchemaService extends BaseService implements ICo
 
     const versions = await this.versionRepository.findAllForSchema(id);
 
-    // TASK-661 already classifies drift (`classifyDefinitionChange`) between a
+    // Already classifies drift (`classifyDefinitionChange`) between a
     // pinned-by-a-caller version and the tenant's current pin, but only LOGS
     // it (`ContextService`). Surfacing it here — additive, response-DTO-only —
     // lets an admin see, for every OTHER version in the list, whether a
@@ -216,7 +216,7 @@ export class ConsultationContextSchemaService extends BaseService implements ICo
     const checksum = computeDefinitionChecksum(dto.definition);
 
     // Idempotent republish: identical canonical bytes write nothing and move
-    // nothing, so the discovery ETag does not change either (AC-7).
+    // nothing, so the discovery ETag does not change either.
     if (latest && latest.checksum === checksum) {
       return ConsultationContextSchemaDtoMapper.toResponse(entity);
     }
@@ -341,7 +341,7 @@ export class ConsultationContextSchemaService extends BaseService implements ICo
   async validateContextPayload(input: ValidateContextPayloadInput): Promise<ValidatedContextPayload> {
     const tenantId = this.requireTenantId();
 
-    // TASK-661 — an EXPLICITLY pinned version (a client built against schema
+    // An EXPLICITLY pinned version (a client built against schema
     // vN talking to a tenant now on vM) is what gets validated against,
     // FULL STOP — never silently upgraded to the current pin. That is what
     // makes an old client safe rather than merely detectable as stale.
@@ -354,7 +354,7 @@ export class ConsultationContextSchemaService extends BaseService implements ICo
       );
     }
 
-    // TASK-661 — a compatibility SIGNAL only: reuses the exact classifier
+    // A compatibility SIGNAL only: reuses the exact classifier
     // `publish` uses (`classifyDefinitionChange`) to judge the drift between
     // the version just validated against and the tenant's CURRENT pin, so a
     // caller pinned to an old version can be told it is falling behind. It
@@ -397,9 +397,9 @@ export class ConsultationContextSchemaService extends BaseService implements ICo
     }
 
     // Non-STRUCTURED kinds carry no `fields` contract in this ticket — the
-    // primitive alone decides the substrate (TASK-654 §4.1) and the per-
+    // primitive alone decides the substrate and the per-
     // primitive constraint checks (mimeTypes/maxBytes on DOCUMENT/IMAGE) land
-    // with the loop that actually fetches the media, in TASK-660/662. A
+    // with the loop that actually fetches the media, in. A
     // `payload` on such a kind is a caller error and is refused rather than
     // silently dropped.
     if (input.payload !== undefined) {

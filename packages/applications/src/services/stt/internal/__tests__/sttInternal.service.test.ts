@@ -278,7 +278,7 @@ const mockJobRepository = {
   updateWithVersion: vi.fn(),
 };
 
-// TASK-615 WS-C — usage-ledger emission collaborators. A distinguishable
+// Usage-ledger emission collaborators. A distinguishable
 // sentinel `tx` object lets tests assert the SAME transaction client flows
 // into both the job persist and the ledger emission (ws-b-contract.md §5).
 const FAKE_TX = { __fakeTx: true };
@@ -641,7 +641,7 @@ describe('SttInternalService', () => {
     });
 
     // =========================================================================
-    // TASK-615 WS-C — transcribe.batch usage emission
+    // transcribe.batch usage emission
     // =========================================================================
     describe('usage emission (transcribe.batch)', () => {
       it('emits one AUDIO_SECOND row via the ledger, in the SAME transaction as the completing update', async () => {
@@ -757,7 +757,7 @@ describe('SttInternalService', () => {
 
       it('skips emission entirely when the ledger/unit-of-work are not wired (older DI graph)', async () => {
         // Reconstruct without the two new trailing deps — exactly the arity
-        // every pre-TASK-615 caller (and the encryption test file) still uses.
+        // every existing caller (and the encryption test file) still uses.
         const bareService = new SttInternalService(
           mockJobRepository as any,
           mockContextItemRepository as any,
@@ -1426,7 +1426,7 @@ describe('SttInternalService', () => {
       expect(pipelineCalls).toHaveLength(0);
     });
 
-    // TASK-679 — the guard must key on the STT AGGREGATE, not on
+    // The guard must key on the STT AGGREGATE, not on
     // `type: TRANSCRIPT` alone. The SDK writes one TRANSCRIPT row per final
     // utterance; when a type-only guard saw the first of those it skipped the
     // aggregate AND `TranscriptionCreated` — the sole trigger for harness note

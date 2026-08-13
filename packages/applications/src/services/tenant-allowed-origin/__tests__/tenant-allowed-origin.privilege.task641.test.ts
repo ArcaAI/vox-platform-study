@@ -1,17 +1,17 @@
 /**
- * TASK-641 lane E — privilege boundaries inside `TenantAllowedOriginService`.
+ * Privilege boundaries inside `TenantAllowedOriginService`.
  *
- * TASK-610 governed this resource entirely at the controller
- * (`assertGlobalAdmin()` on every handler). TASK-641 relaxes that so a
- * `TENANT_ADMIN` can self-serve their own origins (FR-1), which moves two
+ * Previously this resource was governed entirely at the controller
+ * (`assertGlobalAdmin()` on every handler). That is now relaxed so a
+ * `TENANT_ADMIN` can self-serve their own origins, which moves two
  * boundaries INTO the service, where the shape of the value is actually
  * visible:
  *
- *  - **FR-2** — a wildcard (anything containing `*`, including the bare
+ *  - **Wildcard gate** — a wildcard (anything containing `*`, including the bare
  *    allow-all token) stays GLOBAL_ADMIN-only, on create **and** on update.
  *    `update` is the escalation path: a tenant admin holding an exact row
  *    could otherwise PATCH its `origin` into `https://*.evil.com:*`.
- *  - **FR-3** — a write whose resolved tenant is SYSTEM stays
+ *  - **SYSTEM gate** — a write whose resolved tenant is SYSTEM stays
  *    GLOBAL_ADMIN-only regardless of role, because a SYSTEM row is valid for
  *    EVERY tenant (`OriginRegistry.allows()` treats SYSTEM as universal).
  *
@@ -19,7 +19,7 @@
  * a cross-tenant id must still 404, and that is asserted here too.
  *
  * ── Why a REAL `ClsService` ──────────────────────────────────────────────
- * TASK-610 §5.2 lesson 1: *"a mocked dependency cannot observe an
+ * Lesson 1: *"a mocked dependency cannot observe an
  * ambient-context defect"*. Both boundaries under test are decided from
  * AMBIENT request state (`this.requestUser.roles`, `this.tenantId`), so a
  * `{ get: vi.fn() }` stub would let the suite pass by construction — it would
@@ -65,7 +65,7 @@ function makeEntity(overrides: Partial<{ id: string; tenantId: string; origin: s
   });
 }
 
-describe('TenantAllowedOriginService — privilege boundaries (TASK-641 FR-2/FR-3)', () => {
+describe('TenantAllowedOriginService — privilege boundaries', () => {
   let service: TenantAllowedOriginService;
   let cls: ClsService;
   let emitter: EventEmitter2;
@@ -128,7 +128,7 @@ describe('TenantAllowedOriginService — privilege boundaries (TASK-641 FR-2/FR-
       expect(invalidateEmitted()).toBe(true);
     });
 
-    it('ignores a DTO-supplied tenantId — the row is stamped from CLS (FR-1 rests on this)', async () => {
+    it('ignores a DTO-supplied tenantId — the row is stamped from CLS (rests on this)', async () => {
       await actingAs(tenantAdmin, TENANT_A, () =>
         service.create({ origin: 'https://app.tenant-a.example', label: 'x', tenantId: TENANT_B } as never),
       );
@@ -148,7 +148,7 @@ describe('TenantAllowedOriginService — privilege boundaries (TASK-641 FR-2/FR-
       expect(invalidateEmitted()).toBe(false);
     });
 
-    it('allows a GLOBAL_ADMIN the identical write (FR-5 — no regression)', async () => {
+    it('allows a GLOBAL_ADMIN the identical write (no regression)', async () => {
       const result = await actingAs(globalAdmin, TENANT_A, () =>
         service.create({ origin: 'https://*.bcmch.org:*', label: 'BCMCH subdomains' } as never),
       );
@@ -169,7 +169,7 @@ describe('TenantAllowedOriginService — privilege boundaries (TASK-641 FR-2/FR-
       expect(repository.create).not.toHaveBeenCalled();
     });
 
-    it('allows a GLOBAL_ADMIN (FR-5)', async () => {
+    it('allows a GLOBAL_ADMIN', async () => {
       const result = await actingAs(globalAdmin, TENANT_A, () => service.create({ origin: '*', label: 'everything' } as never));
 
       expect(result.origin).toBe('*');
@@ -190,23 +190,23 @@ describe('TenantAllowedOriginService — privilege boundaries (TASK-641 FR-2/FR-
   // Neither raw string contains `*`, so a raw-only gate calls both "exact" and
   // lets them through — and the value that lands in the table is a literal
   // `https://*.evil.com`, which `OriginRegistryService` then matches AS A
-  // WILDCARD (its own dispatch is the same `includes('*')`). That is FR-2
+  // WILDCARD (its own dispatch is the same `includes('*')`). That is
   // defeated end to end by a five-character encoding trick. The gate therefore
   // has to judge the CANONICAL value — the one actually persisted and actually
   // matched — not merely the text the caller typed.
   //
-  // RESOLVED BY TASK-641 LANE J — this block's original note called the
+  // RESOLVED BY LANE J — this block's original note called the
   // decode-after-check ordering "a defect in `origin-normalizer.ts` (not this
   // lane's file)" and said it pinned the service-side gate "regardless of how
   // that is resolved". It has since been resolved at source: `normalizeOrigin`
   // now re-checks the CANONICAL host and throws `ArgumentInvalidException`, so
   // these inputs are rejected as malformed (400) before the service ever gets
   // to classify their shape. Both outcomes refuse the write and leave the
-  // repository untouched, which is the FR-2 property that matters; the
+  // repository untouched, which is the property that matters; the
   // assertion below tracks the layer that actually fires so that reverting
   // either layer surfaces here rather than passing silently.
   //
-  // Lane E's canonical-value gate in `TenantAllowedOriginService` STAYS — it is
+  // 's canonical-value gate in `TenantAllowedOriginService` STAYS — it is
   // deliberate defence in depth, and it remains directly exercised by T-3 (bare
   // `*`) and T-4 (`https://*.evil.com:*`), both of which still assert 403.
   describe('T-3b · create · wildcard smuggled through encoding (defense in depth)', () => {
@@ -259,7 +259,7 @@ describe('TenantAllowedOriginService — privilege boundaries (TASK-641 FR-2/FR-
       expect(invalidateEmitted()).toBe(false);
     });
 
-    it('allows a GLOBAL_ADMIN the identical PATCH (FR-5)', async () => {
+    it('allows a GLOBAL_ADMIN the identical PATCH', async () => {
       repository.findById.mockResolvedValue(makeEntity({ id: 'row-1', tenantId: TENANT_A, origin: 'https://app.tenant-a.example' }));
 
       await actingAs(globalAdmin, TENANT_A, () => service.update('row-1', { origin: 'https://*.bcmch.org:*', expectedVersion: 1 } as never));
@@ -291,7 +291,7 @@ describe('TenantAllowedOriginService — privilege boundaries (TASK-641 FR-2/FR-
   });
 
   // ── T-6 ────────────────────────────────────────────────────────────────
-  describe('T-6 · SYSTEM-tenant writes (FR-3)', () => {
+  describe('T-6 · SYSTEM-tenant writes', () => {
     it('refuses a non-global caller creating a SYSTEM row — a SYSTEM row is valid for EVERY tenant', async () => {
       await expect(
         actingAs(tenantAdmin, SYSTEM_TENANT_ID, () => service.create({ origin: 'https://console.example', label: 'console' } as never)),
@@ -318,7 +318,7 @@ describe('TenantAllowedOriginService — privilege boundaries (TASK-641 FR-2/FR-
       expect(repository.softDelete).not.toHaveBeenCalled();
     });
 
-    it('allows a GLOBAL_ADMIN every SYSTEM-tenant write (FR-5)', async () => {
+    it('allows a GLOBAL_ADMIN every SYSTEM-tenant write', async () => {
       await actingAs(globalAdmin, SYSTEM_TENANT_ID, () => service.create({ origin: 'https://console.example', label: 'console' } as never));
       expect((repository.create.mock.calls[0][0] as TenantAllowedOriginEntity).tenantId).toBe(SYSTEM_TENANT_ID);
 
@@ -332,8 +332,8 @@ describe('TenantAllowedOriginService — privilege boundaries (TASK-641 FR-2/FR-
     });
   });
 
-  // ── FR-5 tenant-admin happy paths that must NOT be caught by the gates ──
-  describe('FR-1 · TENANT_ADMIN retains ordinary exact-origin CRUD in its own tenant', () => {
+  // ──  tenant-admin happy paths that must NOT be caught by the gates ──
+  describe('· TENANT_ADMIN retains ordinary exact-origin CRUD in its own tenant', () => {
     it('updates an exact origin to another exact origin', async () => {
       repository.findById.mockResolvedValue(makeEntity({ id: 'row-1', tenantId: TENANT_A }));
 

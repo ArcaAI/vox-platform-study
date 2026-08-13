@@ -1,5 +1,5 @@
 /**
- * Contract test (plan §4.3 step 12): a foreign/unknown consultation id must
+ * Contract test: a foreign/unknown consultation id must
  * yield {@link NotFoundError}, never {@link PermissionError}.
  *
  * HOPE's tenancy posture is 404-over-403 (`.claude/rules/05-nestjs-api.md`
@@ -10,7 +10,7 @@
  * against every route this lane implements that takes a consultation/summary
  * id, proving none of them ever manufacture a `PermissionError` out of a 404
  * body — whatever the body's message happens to say.
- */
+*/
 import { describe, expect, it, vi } from 'vitest';
 
 import { NotFoundError, PermissionError } from '../../core/errors';

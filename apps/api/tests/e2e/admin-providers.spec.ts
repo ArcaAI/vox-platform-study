@@ -1,6 +1,6 @@
 /**
  * Unified provider-connection admin surface e2e — `admin/providers/:service`
- * (TASK-572, C3).
+ * (C3).
  *
  * Live-stack requirement: the dev stack (`pnpm test:api:up`) plus a seeded
  * database (`pnpm db:seed`), which supplies the DISABLED SYSTEM
@@ -43,7 +43,7 @@ test.describe('Unified provider connections — admin/providers/llm', () => {
 
     const rows = await res.json();
     const providers = new Set<string>(rows.map((r: { provider: string }) => r.provider));
-    // The new cloud LLM providers (TASK-572) plus the incumbents must all seed.
+    // The new cloud LLM providers plus the incumbents must all seed.
     for (const p of ['azure', 'bedrock', 'openai', 'anthropic', 'vertex']) {
       expect(providers.has(p), `llm connection for '${p}' must seed`).toBe(true);
     }

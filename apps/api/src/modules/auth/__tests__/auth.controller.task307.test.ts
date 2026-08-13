@@ -391,7 +391,7 @@ describe('AuthController — refresh endpoint defense', () => {
     expect(decoded.tenantId).not.toBe('tenant-B');
   });
 
-  it('W1.3 — rotates the refresh token within the SAME family (single-use rotation, RFC 6749 §10.4)', async () => {
+  it('rotates the refresh token within the SAME family (single-use rotation, RFC 6749 §10.4)', async () => {
     const refreshTokenService = createMockRefreshTokenService();
     refreshTokenService.consume.mockResolvedValueOnce({
       userId: 'doctor-001',

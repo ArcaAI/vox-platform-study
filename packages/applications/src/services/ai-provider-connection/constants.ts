@@ -1,5 +1,5 @@
 /**
- * Provider-connection governance vocabulary (UNIFIED plane — TASK-569, C5).
+ * Provider-connection governance vocabulary (UNIFIED plane —, C5).
  *
  * The connection plane is keyed by (tenant, SERVICE, provider). `service` is the
  * capability discriminator; `provider` is capability-scoped (the same name can
@@ -28,7 +28,7 @@ export const PROVIDER_SERVICES = ['llm', 'stt', 'tts'] as const;
  * `ai-task-default`.
  *
  * NOTE: the three new LLM entries (`openai`, `anthropic`, `vertex`) are frozen
- * here at unification time but only become functional when TASK-572 lands their
+ * here at unification time but only become functional when that lands their
  * SMR adapters + seed rows.
  */
 export const CLOUD_BYO_PROVIDERS: Record<ProviderService, readonly string[]> = {
@@ -41,7 +41,7 @@ export const CLOUD_BYO_PROVIDERS: Record<ProviderService, readonly string[]> = {
 export type CloudByoProvider = (typeof CLOUD_BYO_PROVIDERS)[ProviderService][number];
 
 /**
- * The three-state meaning of a connection row's `enabled` flag (TASK-643 R4).
+ * The three-state meaning of a connection row's `enabled` flag.
  *
  * ONE wording, referenced by the request DTO, the response DTO and the
  * controller's Swagger annotations, so the semantics cannot drift between the
@@ -58,11 +58,11 @@ export const CONNECTION_ENABLED_SEMANTICS =
  * Whether a tenant may hold its own connection row for `(service, provider)`.
  *
  * The 1-arg form is a `@deprecated` transition shim that assumes `service='llm'`
- * so the (TASK-572-owned) `smr-proxy.controller` keeps compiling until it
+ * so the `smr-proxy.controller` keeps compiling until it
  * repoints to the service-first form; do not use it in new code.
  */
 export function isCloudByoProvider(service: ProviderService, provider: string): boolean;
-/** @deprecated 1-arg form assumes `service='llm'`; kept for the smr-proxy transition (TASK-572 removes it). */
+/** @deprecated 1-arg form assumes `service='llm'`; kept for the smr-proxy transition (removes it). */
 export function isCloudByoProvider(provider: string): boolean;
 export function isCloudByoProvider(a: string, b?: string): boolean {
   const service = (b === undefined ? 'llm' : a) as ProviderService;

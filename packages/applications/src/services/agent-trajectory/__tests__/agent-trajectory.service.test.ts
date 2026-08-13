@@ -4,7 +4,7 @@
  *  - recordSteps: IDEMPOTENT batch insert (createMany + skipDuplicates), NO
  *    sys-event, and per-consultation republish to `consultation:trajectory:{id}`.
  *  - recordSteps: tenant scoping (single-tenant batch; CLS-context match).
- *  - recordSteps: usage-ledger emission (TASK-615 WS-F) — co-emits ledger rows
+ *  - recordSteps: usage-ledger emission — co-emits ledger rows
  *    for LLM_CALL steps, converges retries on the same idempotency key, and
  *    never lets an emission failure fail trajectory persistence.
  *  - listSteps: ordered by seq asc, keyset-paginated, 404-over-403 cross-tenant.
@@ -154,7 +154,7 @@ describe('AgentTrajectoryService', () => {
     });
   });
 
-  describe('recordSteps — usage-ledger emission (TASK-615 WS-F)', () => {
+  describe('recordSteps — usage-ledger emission', () => {
     const LLM_STATS = { prompt_tokens: 100, predicted_tokens: 40, provider: 'lm-studio', model: 'phi-4' };
 
     it('co-emits INPUT_TOKEN/OUTPUT_TOKEN rows for a persisted LLM_CALL step', async () => {
@@ -235,12 +235,12 @@ describe('AgentTrajectoryService', () => {
     });
   });
 
-  // TASK-615 WS-D2 (item 4b) — upgrade from the WS-F "sanctioned no-tx
+  // (item 4b) — upgrade from the "sanctioned no-tx
   // fallback" now that `Repository.createMany` accepts a `tx` client. When
   // the unit-of-work is wired, step persistence and usage emission share ONE
   // transaction; when it is not wired (legacy fixtures), behavior is
   // byte-identical to the pre-upgrade sequential calls.
-  describe('recordSteps — createMany + usage emission share one transaction (TASK-615 WS-D2)', () => {
+  describe('recordSteps — createMany + usage emission share one transaction', () => {
     const LLM_STATS = { prompt_tokens: 100, predicted_tokens: 40, provider: 'lm-studio', model: 'phi-4' };
     const TX = { __brand: 'tx' } as const;
 

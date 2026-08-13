@@ -1,4 +1,4 @@
-"""Per-utterance pipeline provenance (TASK-613 AC-1, lanes A3/A4).
+"""Per-utterance pipeline provenance.
 
 Every transcript result must carry the pipeline id that produced *that*
 utterance, so a mid-session engine switch is visible per-utterance rather than
@@ -144,7 +144,7 @@ class TestSwitchStamp:
 
     @pytest.mark.asyncio
     async def test_switch_back_to_primary_restores_the_primary_id(self):
-        """The switch is bidirectional (TASK-586); the stamp must follow it
+        """The switch is bidirectional; the stamp must follow it
         back, not latch on the fallback."""
         worker = StreamingInferenceWorker(
             asr_pipeline=lambda samples, sr: "primary text",

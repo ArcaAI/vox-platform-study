@@ -16,8 +16,8 @@
 #     - !reference [.build-common-rules, rules]
 #     - if: $CI_COMMIT_TAG =~ /^SMR-/ || $CI_COMMIT_TAG =~ /^ALL-/
 #
-# TASK-616 §F11 item 4 — `prod`/`production` deliberately do NOT appear in
-# the build-triggering condition below. Under digest promotion (§F3),
+# `prod`/`production` deliberately do NOT appear in
+# the build-triggering condition below. Under digest promotion,
 # production is reached by copying the SAME sha-<sha8> manifest a dev/staging
 # pipeline already built and scanned — a rebuild on a prod-*/production-*
 # branch push would produce a structurally different image (base-layer cache
@@ -117,7 +117,7 @@ build-api:
     SERVICE_NAME: api
     DOCKER_CONTEXT: "."
     DOCKERFILE: apps/api/Dockerfile
-    # TASK-558 lane K (K2): the `--build-arg DATABASE_URL=$DATABASE_URL` that
+    # The `--build-arg DATABASE_URL=$DATABASE_URL` that
     # was here passed an EMPTY value — no job or global variable named
     # DATABASE_URL exists at the build stage — so the Dockerfile's own
     # generate-only placeholder (`${DATABASE_URL:-postgresql://postgres:...}`,
@@ -232,7 +232,7 @@ build-harness:
     - job: warm-up-base-images
       optional: true
     - job: build-python-base
-    # TASK-625 1.3 made this need NON-optional so a red or absent harness suite
+    # This need is NON-optional so a red or absent harness suite
     # could stop a publish. That is the right posture, but it is incompatible
     # with the dev-2.1 shim (.gitlab-ci.yml sets SKIP_TESTS=true, which deletes
     # `test-harness` while the build still runs) — the pipeline then fails to be
@@ -271,7 +271,7 @@ build-harness-worker:
     - !reference [.build-common-rules, rules]
     - if: $CI_COMMIT_TAG =~ /^HARNESS-/ || $CI_COMMIT_TAG =~ /^ALL-/
 
-# ── Qdrant collection provisioning (TASK-624 Q-02/Q-07) ─────────────────────
+# ── Qdrant collection provisioning ──────────────────────────────────────────
 # One-shot init image for the Argo `Sync`-hook Job that creates
 # `knowledge_chunks` (deployment/k8s/base/qdrant-init.yaml in
 # hope-v2-deployment) — bakes the script + qdrant-client so the Job never

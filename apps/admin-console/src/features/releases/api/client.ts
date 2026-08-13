@@ -9,12 +9,12 @@ import type { CurrentService, Environment, ServiceRelease, ServiceReleaseListPar
  */
 const BASE = 'admin/service-releases';
 
-/** Latest LIVE instance per service for one environment (§ current). */
+/** Latest LIVE instance per service for one environment. */
 export function getCurrentReleases(environment: Environment): Promise<CurrentService[]> {
   return getJson(`${BASE}/current`, { environment });
 }
 
-/** Release history across all services, newest build first (§ history). */
+/** Release history across all services, newest build first. */
 export function listServiceReleases(params?: ServiceReleaseListParams): Promise<Paginated<ServiceRelease>> {
   return getJson(BASE, params);
 }

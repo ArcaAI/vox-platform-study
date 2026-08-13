@@ -15,7 +15,7 @@
 //      (Compose-configured) wipes non-LOCAL settings between assignments
 //   3. Together: no GUC leak across `$transaction` boundaries
 //
-// Phase 1 rubric (per plan §1.18):
+// Phase 1 rubric:
 //   * R-RLS-1 — SET LOCAL inside $transaction is visible only inside it
 //   * R-RLS-2 — Even SET (non-LOCAL) is wiped between assignments (DISCARD ALL)
 //   * R-RLS-3 — 30 sequential transactions never see a leaked tenant_id

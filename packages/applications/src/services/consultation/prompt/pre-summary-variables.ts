@@ -1,5 +1,5 @@
 /**
- * v1 pre-summary template variables — the SHARED substituter (TASK-634 D-08).
+ * v1 pre-summary template variables — the SHARED substituter.
  *
  * The seeded pre-summary bodies are byte-exact v1 (sha256 `309a9cd13792`,
  * 3091 B) and therefore carry v1's NINE single-brace placeholders. Two surfaces
@@ -43,7 +43,7 @@ export type PreSummaryVariableName = (typeof PRE_SUMMARY_TEMPLATE_VARIABLES)[num
 
 /**
  * v1 `LANGUAGE_MAP` (`previous_visit_service.py`): a language CODE is rendered
- * into the prompt by NAME. v1 has no "answer in English" directive — TASK-634
+ * into the prompt by NAME. v1 has no "answer in English" directive
  * D-11: v2 used to carry one for BOTH `en` and `ml`, so every Malayalam request
  * was told to write English.
  */

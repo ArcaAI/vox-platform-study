@@ -1,5 +1,5 @@
 /**
- * TASK-635 C5 — the ONE reader of the live session's agent lineage.
+ * The ONE reader of the live session's agent lineage.
  *
  * C3 stamps a {@link PersistedLiveAgentLineage} block onto the durable
  * `LIVE_SOAP_SNAPSHOT` ContextItem's `metaData.agent`. Both finalize paths
@@ -25,7 +25,7 @@ export function readLiveAgentLineage(entity: { metaData?: unknown } | null | und
 /**
  * The `SummaryMeta.sessionAgentPromptVersion` string: `"<templateId>@<n>"` —
  * the IMMUTABLE PromptVersion the LIVE loop served. `code-default@0` records a
- * session that ran on the in-code fail-open tier (C1 §4.4 tier 3), which is
+ * session that ran on the in-code fail-open tier (tier 3), which is
  * genuine provenance, not a missing value.
  */
 export function formatSessionAgentPromptVersion(lineage: PersistedLiveAgentLineage | null | undefined): string | null {

@@ -1,5 +1,5 @@
 /**
- * DepartmentAgentResyncController unit tests (TASK-548).
+ * DepartmentAgentResyncController unit tests.
  *
  * Verifies the GLOBAL_ADMIN gate (`@CanManage('Tenant')` — the same privilege
  * posture as tenant provisioning, NOT the tenant-admin `manage:DepartmentAgent`

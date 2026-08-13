@@ -237,12 +237,12 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
    * @param encoding - Audio encoding (default pcm_s16le)
    * @param isFinal - Whether this is the last frame
    * @param traceCarrier - Pre-computed W3C trace carrier for the SESSION
-   *   (TASK-636 OBS-16). Deliberately a parameter rather than something this
+   *   (W3C trace context). Deliberately a parameter rather than something this
    *   method derives: audio is the latency-sensitive hop (tens of frames a
    *   second per session) and a streaming session's trace parent does not
    *   change mid-stream, so the WS gateway computes it ONCE at connect and the
    *   hot path only spreads two extra XADD arguments. Omitted / empty ⇒ the
-   *   frame is byte-identical to the pre-TASK-636 wire.
+   *   frame is byte-identical to the previous wire.
    */
   async writeAudioFrame(
     sessionId: string,
@@ -643,7 +643,7 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
    * `reason` / `active` / `is_fallback` / `utterance_index`
    * (`apps/stt/src/stt/streaming/redis_streams.py`). None of them carry text.
    *
-   * `active` / `is_fallback` ARE relayed (TASK-614, closing the TASK-586 gap
+   * `active` / `is_fallback` ARE relayed (closing the gap
    * this comment used to describe). Without them the v1-compat gateway's
    * `isFallback` branch was unreachable and the SDK fell back to "absent ⇒
    * fallback" — correct for primary→fallback, wrong for every switch back, so a
@@ -683,11 +683,11 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
    * reader down one entry too early and orphan the closing final in Redis — the
    * session's last spoken utterance would never reach the client.
    *
-   * Every NON-terminal status is RELAYED (TASK-597 follow-up #1), then the
+   * Every NON-terminal status is RELAYED, then the
    * reader keeps reading. This is deliberately a default-forward, not an
    * allow-list: the previous `provider_switched`-only list silently swallowed
    * `finalizing`, which is exactly what the SDK's stop-drain quiet window
-   * ({@link SttWebSocketClient.stopAndDrain}) listens for — the TASK-568
+   * ({@link SttWebSocketClient.stopAndDrain}) listens for — the
    * Phase-F bug class the v1-compat gateway already guards against ("forward
    * every status frame"). Terminal statuses stay UNEMITTED: the WS gateway
    * synthesizes its own closing frame in `complete:`, so relaying them would
@@ -695,7 +695,7 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
    */
   private parseAndEmitResult(subject: Subject<StreamingServerMessage>, fields: string[]): boolean {
     // The STT worker stamps its producing trace context on every result entry
-    // (TASK-636 OBS-16). Lift it out of the RAW field array — never out of the
+    // (W3C trace context). Lift it out of the RAW field array — never out of the
     // parsed `data` object below, which holds transcript text — and emit under
     // it, so whatever a subscriber does synchronously with this transcript
     // (LiveDocumentationService persistence, the WS relay) hangs off the STT
@@ -742,7 +742,7 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
     // v2 client and the v1-compat gateway read a REAL detection instead of an
     // echo of the requested language/mode.
     const detectedLanguage = data.language || data.detected_language || undefined;
-    // The pipeline that actually produced THIS utterance (TASK-613 B1);
+    // The pipeline that actually produced THIS utterance;
     // absent when the upstream stt worker doesn't stamp it.
     const pipelineId = data.pipeline_id || undefined;
 

@@ -216,7 +216,7 @@ export function attachSegmentEvidence(
 
 /**
  * Collect every segment id referenced by a `citationsMap`, from BOTH shapes it
- * can carry (TASK-552 Lane C): the flat `segmentCitedIds` array (the
+ * can carry: the flat `segmentCitedIds` array (the
  * StrictCitations / EARLY-draft lane — `mergeSegmentCitedIds` above) and the
  * nested `claims[].evidence[].segmentId` (the NER-claims lane, annotated by
  * `attachSegmentEvidence`). Deduped, order-stable (`segmentCitedIds` first,

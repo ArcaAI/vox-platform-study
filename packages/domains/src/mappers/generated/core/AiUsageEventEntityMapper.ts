@@ -15,7 +15,7 @@ import * as Models from '../../../models';
  *
  * Mirrors `AgentTrajectoryStepEntityMapper`. NOTE this is NOT the OCC
  * `FIELDS_NOT_WRITABLE` treatment — that one strips `version` only and belongs
- * to `BillingInvoiceEntityMapper`, the single OCC-written model of this ticket.
+ * to `BillingInvoiceEntityMapper`, the single OCC-written model of the billing plane.
  */
 const FIELDS_NOT_IN_PRISMA: string[] = ['version', 'resourceStatus', 'resourceStatusUpdatedAt', 'resourceStatusUpdatedBy'];
 

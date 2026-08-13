@@ -24,7 +24,7 @@ import { SYSTEM_TENANT_ID, SYSTEM_USER_ID } from './00-constants';
  * GLOBAL_ADMIN_ONLY_TASK_PREFIXES in
  * packages/applications/src/services/ai-task-default/constants.ts. For those,
  * tenants only CONSUME the SYSTEM-row platform default and runtime resolution
- * ignores per-tenant override rows. EXCEPTION (TASK-588): the `smr.` prefix is
+ * ignores per-tenant override rows. EXCEPTION: the `smr.` prefix is
  * tenant-admin configurable — the SYSTEM rows below are still seeded as the
  * platform default, but tenants may override them with their own rows. The
  * per-tenant `smr.live.fallback` / `smr.finalize.fallback` keys are opt-in and
@@ -80,7 +80,7 @@ export const SYSTEM_AI_TASK_DEFAULTS: AiTaskDefaultSeed[] = [
   // default (HarnessPolicy SYSTEM smrProvider/smrModel = lm-studio /
   // gemma-4-e2b-it-qat, registry slug `lms-gemma-4-e2b-it-qat`). Both live and
   // finalize point at the same platform default today; a global admin OR a
-  // tenant admin (TASK-588) may split or override them later.
+  // tenant admin may split or override them later.
   // `resolveSmrSelection` consults these keys FIRST. NOTE: the per-tenant
   // `smr.<task>.fallback` keys are opt-in and intentionally NOT seeded here.
   {

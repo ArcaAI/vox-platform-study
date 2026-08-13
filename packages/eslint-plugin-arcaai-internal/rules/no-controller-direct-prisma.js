@@ -1,14 +1,14 @@
 /**
- * TASK-307 W6.4 (AC-24) — no-controller-direct-prisma
+ * no-controller-direct-prisma
  *
  * Forbids the `<receiver>.databaseService.client[...]` access chain inside
  * controller files. Controllers must go through a service or repository
  * (audit C-10 / F-1 / H-9). The rule is intentionally narrow — it
- * targets the canonical pattern used by the three pre-W6 offenders
+ * targets the canonical pattern used by the three original offenders
  * (`AuthController`, `PoliciesController`, `RolesController`):
  *
- *     this.databaseService.client.user.findMany(...)
- *     const prisma = this.databaseService.client;
+ * this.databaseService.client.user.findMany(...)
+ * const prisma = this.databaseService.client;
  *
  * Escape hatch: place a TSDoc block comment containing
  * `@allowedDirectPrisma <reason>` immediately above the offending line
@@ -16,8 +16,8 @@
  * required. The allow-list should be empty after W6 ships; every entry
  * is a deliberate exception that must be reviewed.
  *
- *     /** @allowedDirectPrisma TASK-XXX: <one-sentence justification> *\/
- *     const row = await this.databaseService.client.foo.findFirst(...);
+ * /** @allowedDirectPrisma TASK-XXX: <one-sentence justification> *\/
+ * const row = await this.databaseService.client.foo.findFirst(...);
  *
  * The escape-hatch comment must appear within the previous 3 source
  * lines so reviewers can see the justification next to the bypass.
@@ -27,7 +27,7 @@
  * directory (in practice apps/api) — it does not affect domain /
  * application / database packages where direct Prisma access is
  * legitimate (service layer).
- */
+*/
 'use strict';
 
 const MAX_LINES_LOOK_BACK = 3;

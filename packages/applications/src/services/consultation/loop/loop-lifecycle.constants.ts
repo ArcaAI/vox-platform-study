@@ -1,9 +1,9 @@
-// Consultation-loop LIFECYCLE bound — a `global-kv` tuning knob (TASK-685).
+// Consultation-loop LIFECYCLE bound — a `global-kv` tuning knob.
 //
 // `ConsultationLoopWorkflow` waits for `contextAdded` / `consultation-ending` /
 // `loop-cancel`. That wait used to be UNBOUNDED, so a consultation that never
 // sent an ending left the workflow running forever — and `signalLoopCancel` has
-// no production caller (TASK-683 concluded that wiring it to `close()` is unsafe
+// no production caller (concluded that wiring it to `close` is unsafe
 // because a `_cancelled`-before-`_ending` race would skip finalize and lose the
 // note), so there was no reliable second exit.
 //
@@ -12,7 +12,7 @@
 //
 //   • the BOOTSTRAP FLOOR — a variable stays in `env` only if it is required to
 //     REACH THE DATABASE or AUTHENTICATE TO VAULT. This is neither;
-//   • §9.2 L1 — env vars are IMMUTABLE for the process lifetime. An operator
+// • env vars are IMMUTABLE for the process lifetime. An operator
 //     discovering that a department's consultations legitimately go quiet for
 //     longer than the bound must be able to raise it without a redeploy.
 //
@@ -23,7 +23,7 @@
 // PINNED, NOT LIVE. Unlike `harness.loop.enabled` — which is resolved on EVERY
 // signal precisely so a misbehaving loop can be stopped mid-flight — this value
 // is read ONCE, when `LoopConfigService` resolves the config the workflow pins
-// at start, and is then frozen for the whole consultation (TASK-654 C1). It has
+// at start, and is then frozen for the whole consultation. It has
 // to be: the workflow body may not re-read configuration mid-run without
 // breaking replay determinism, and a bound that changed underneath a running
 // loop would be exactly the non-determinism the pinned-config design exists to

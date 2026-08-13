@@ -1,4 +1,4 @@
--- TASK-586 — promote the Sarvam & OpenAI cloud STT engines to first-class
+-- Promote the Sarvam & OpenAI cloud STT engines to first-class
 -- AiModelFormat values so a bare-slug pipeline `models.asr` reference binds them
 -- exactly like AZURE_SPEECH (previously they were stored as the generic CLOUD_API
 -- and required an inline `engine:`/`provider::model` override — the seed-shape

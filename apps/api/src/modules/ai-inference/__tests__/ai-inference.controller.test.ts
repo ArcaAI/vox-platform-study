@@ -194,8 +194,8 @@ describe('AiInferenceController — NER entities', () => {
   });
 });
 
-// TASK-615 WS-D2 (item 2) — playground NER usage-ledger emission.
-describe('AiInferenceController — NER usage-ledger emission (TASK-615 WS-D2)', () => {
+// (item 2) — playground NER usage-ledger emission.
+describe('AiInferenceController — NER usage-ledger emission', () => {
   const aiTaskDefaults = () => ({ getEffective: vi.fn().mockResolvedValue(effectiveWithModel('nlp.ner', 'blaze999/Medical-NER')) });
   const clsFor = (user: { id: string; roles?: string[] } | undefined, tenantId = 't1') => ({
     get: vi.fn((key: string) => (key === 'tenantId' ? tenantId : key === 'user' ? user : undefined)),

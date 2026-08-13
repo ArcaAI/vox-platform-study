@@ -3,10 +3,10 @@
 The golden set is read through a small :class:`GoldenSetSource` interface so the
 source is swappable: today a synthetic JSON fixture ships with the package;
 tomorrow a clinician-authored set (DB/S3/Git) can be dropped in by implementing
-``load()`` — no runner changes required.
+``load`` — no runner changes required.
 
 .. note::
-   **OPEN PREREQUISITE (HLD §7.5 #1 / #3, implementation-plan §0).** The shipped
+   **OPEN PREREQUISITE (HLD §7.5 #1 / #3).** The shipped
    fixture is *synthetic* and exists only to exercise the harness end-to-end and
    keep CI hermetic. The Phase-0 exit gate ("golden set ≥50 cases scored; judge
    ICC ≥0.8") requires the **REAL clinician-authored golden set** — transcript→note

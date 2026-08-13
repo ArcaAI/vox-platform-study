@@ -1,8 +1,8 @@
-// TASK-641 T-11 (FR-9) — governance test locking in "no CORS config in Vault".
+// Governance test locking in "no CORS config in Vault".
 //
-// Owner directive (README §1.1 FR-9): origins and the enforcement switch are
+// Owner directive: origins and the enforcement switch are
 // tenant/platform *config*, not secrets — no CORS-related setting may live
-// behind a Vault-backed tier. README §2.4 verified this is ALREADY true by
+// behind a Vault-backed tier. Inspection verified this is ALREADY true by
 // inspection: the one descriptor in this family, `origin.enforcementEnabled`
 // (`platform-ops.descriptors.ts`), is `global-kv` (-> `GlobalSetting`), and
 // `TenantAllowedOrigin` rows are a plain `core` table (`db-config` tier,
@@ -24,7 +24,7 @@
 // RED/GREEN evidence for this file (planted a `origin.vaultLeakProbe`
 // descriptor with `tier: 'vault-kv'` in `platform-ops.descriptors.ts`, ran
 // the suite, observed the second test fail, then removed the plant) is
-// recorded in the TASK-641 README Change History / the Lane I report.
+// recorded in the origin-enforcement change history.
 
 import { describe, expect, it } from 'vitest';
 import { HOPE_SETTINGS_REGISTRY } from '../registry';
@@ -43,7 +43,7 @@ function isOriginOrCorsDescriptor(d: SettingDescriptor): boolean {
   return d.key.toLowerCase().startsWith('origin.') || /\bcors\b/.test(haystack) || /allowed[- ]?origin/.test(haystack);
 }
 
-describe('Settings registry governance — no CORS/origin config in Vault (TASK-641 FR-9)', () => {
+describe('Settings registry governance — no CORS/origin config in Vault', () => {
   it('the origin/CORS descriptor family is non-empty — this test can actually exercise something', () => {
     // A guard against the filter itself silently matching nothing (e.g. after
     // a rename) and the assertion below passing vacuously forever.

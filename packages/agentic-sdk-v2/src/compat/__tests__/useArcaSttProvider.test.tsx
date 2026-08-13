@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * TASK-568 / TASK-586 Lane D — `useArcaSttProvider` (compat-native STT
+ * `useArcaSttProvider` (compat-native STT
  * provider-switch surface, now a BIDIRECTIONAL toggle).
  *
  * Covers:
@@ -10,7 +10,7 @@
  *     rejects PIPELINE_UNAVAILABLE.
  *  2. user switch to fallback: idle → switching → switched; onProviderSwitched
  *     reason 'user'; idempotent second call (no duplicate v2 call).
- *  3. user switch BACK to primary (TASK-586): idle → switching → switched;
+ * 3. user switch BACK to primary: idle → switching → switched
  *     onProviderSwitched fires for the fallback→primary direction too;
  *     idempotent second call.
  *  4. v2 rejection: switchStatus 'failed'; onSwitchFailed SWITCH_FAILED; recoverable.
@@ -66,7 +66,7 @@ function installFeatureFlags(enableProviderSwitch: boolean) {
   (useCompatFeatureFlags as unknown as ReturnType<typeof vi.fn>).mockReturnValue({ enableProviderSwitch });
 }
 
-// Reactive store mock for the TASK-586 pre-start selection. `setPendingSttProvider`
+// Reactive store mock for the pre-start selection. `setPendingSttProvider`
 // mutates the SAME object so a `rerender()` reads the updated value.
 let storeState: { pendingSttProvider: 'primary' | 'fallback' | null; setPendingSttProvider: (v: 'primary' | 'fallback' | null) => void };
 function installStore() {
@@ -89,7 +89,7 @@ describe('useArcaSttProvider', () => {
   });
   afterEach(() => vi.restoreAllMocks());
 
-  it('before capture (TASK-586 Lane K): switchToDefault records a pending pre-start selection (resolves, no reject), flips usePipeline; switchToPipeline resets it', async () => {
+  it('before capture: switchToDefault records a pending pre-start selection (resolves, no reject), flips usePipeline; switchToPipeline resets it', async () => {
     const { result, rerender } = renderHook(() => useArcaSttProvider());
 
     expect(result.current.activeProvider).toBeNull();
@@ -163,7 +163,7 @@ describe('useArcaSttProvider', () => {
     expect(audioMock.switchProvider).toHaveBeenCalledTimes(1);
   });
 
-  it('user switch BACK to primary (TASK-586): idle → switching → switched, onProviderSwitched fires, idempotent second call', async () => {
+  it('user switch BACK to primary: idle → switching → switched, onProviderSwitched fires, idempotent second call', async () => {
     const onProviderSwitched = vi.fn();
     installAudio({ isCapturing: true, activePipeline: { id: 'fallback', name: 'Fallback', isFallback: true } });
     installFeatureFlags(true);
@@ -266,7 +266,7 @@ describe('useArcaSttProvider', () => {
   });
 
   it('export surface is append-only and the hook return shape is locked', () => {
-    // The TASK-561/564 frozen runtime members are all still present …
+    // The frozen runtime members are all still present …
     for (const name of [
       'ArcaCompatProvider',
       'mapV1ConfigToAgenticConfig',
@@ -281,8 +281,8 @@ describe('useArcaSttProvider', () => {
     // … plus the new compat-native addition.
     expect(typeof compat.useArcaSttProvider).toBe('function');
 
-    // Every TASK-568 member is still present with its original signature —
-    // TASK-586 only ADDS members (usePipeline/switchToPipeline/switchToDefault).
+    // Every member is still present with its original signature
+    // Only ADDS members (usePipeline/switchToPipeline/switchToDefault).
     expectTypeOf<UseArcaSttProviderReturn['fallbackAvailable']>().toEqualTypeOf<boolean>();
     expectTypeOf<UseArcaSttProviderReturn['isFallbackActive']>().toEqualTypeOf<boolean>();
     expectTypeOf<UseArcaSttProviderReturn['switchStatus']>().toEqualTypeOf<'idle' | 'switching' | 'switched' | 'failed'>();
@@ -293,7 +293,7 @@ describe('useArcaSttProvider', () => {
       isFallback: boolean;
     } | null>();
 
-    // New TASK-586 members.
+    // New members.
     expectTypeOf<UseArcaSttProviderReturn['usePipeline']>().toEqualTypeOf<boolean>();
     expectTypeOf<UseArcaSttProviderReturn['switchToPipeline']>().returns.resolves.toBeVoid();
     expectTypeOf<UseArcaSttProviderReturn['switchToDefault']>().returns.resolves.toBeVoid();
@@ -301,7 +301,7 @@ describe('useArcaSttProvider', () => {
 });
 
 /**
- * TASK-614 D-2/D-5/D-7 — "is there a live session?" is answered by CAPTURE.
+ * "is there a live session?" is answered by CAPTURE.
  *
  * `activePipeline` is request-derived: it is `null` for the whole session
  * whenever the app started capture without an explicit `pipelineId` (the
@@ -313,7 +313,7 @@ describe('useArcaSttProvider', () => {
  * The distinction the hook actually needs is "has capture started", which
  * `audio.isCapturing` answers directly.
  */
-describe('useArcaSttProvider — live switch is gated on capture, not on activePipeline (TASK-614)', () => {
+describe('useArcaSttProvider — live switch is gated on capture, not on activePipeline', () => {
   beforeEach(() => {
     installAudio();
     installFeatureFlags(false);
@@ -372,7 +372,7 @@ describe('useArcaSttProvider — live switch is gated on capture, not on activeP
     expect(onSwitchFailed).toHaveBeenCalledWith(expect.objectContaining({ code: 'SWITCH_UNSUPPORTED' }));
   });
 
-  it('still records a PRE-START preference before capture begins (TASK-586 behaviour preserved)', async () => {
+  it('still records a PRE-START preference before capture begins (behaviour preserved)', async () => {
     installAudio({ isCapturing: false, activePipeline: null });
     const { result } = renderHook(() => useArcaSttProvider());
 

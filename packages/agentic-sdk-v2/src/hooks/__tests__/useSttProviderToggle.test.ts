@@ -1,5 +1,5 @@
 /**
- * useSttProviderToggle — native 2-way STT provider toggle (TASK-586 Lane H).
+ * useSttProviderToggle — native 2-way STT provider toggle.
  *
  * Locks the native (non-compat) end-user affordance:
  *   - `switchToPipeline()` → `audio.switchProvider('primary')` (native route);
@@ -23,7 +23,7 @@ vi.mock('../useArcaAudio', () => ({
   useArcaAudio: vi.fn(() => mockAudio),
 }));
 
-// The toggle now also READS the tenant's configured fallback (TASK-604) so a UI
+// The toggle now also READS the tenant's configured fallback so a UI
 // can name the target and disable the control when none is set. That goes
 // through the provider store, which is mocked here for the same reason
 // `useArcaAudio` is: this hook is an adapter, and its dependencies are contracts.
@@ -127,7 +127,7 @@ describe('useSttProviderToggle — switching (both directions)', () => {
     expect(result.current.switchStatus).toBe('switched');
   });
 
-  // TASK-614 D-3: this used to assert that a null `activePipeline` blocked the
+  // This used to assert that a null `activePipeline` blocked the
   // switch. That premise was wrong — `activePipeline` is request-derived and is
   // null for the WHOLE session whenever capture started without an explicit
   // `pipelineId`, so the guard fired mid-session on a perfectly live session.
@@ -182,7 +182,7 @@ describe('useSttProviderToggle — switching (both directions)', () => {
   });
 });
 
-// ── TASK-604 additions ──────────────────────────────────────────────────────
+// ── additions ──────────────────────────────────────────────────────
 
 describe('useSttProviderToggle — fallback discovery', () => {
   it('names the tenant’s configured fallback so the control is not labelled blindly', async () => {

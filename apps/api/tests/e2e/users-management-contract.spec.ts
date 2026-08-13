@@ -3,13 +3,13 @@
  *
  * Proves the **REAL** server flows the Users surface depends on, against a live
  * seeded API (`process.env.API_URL`, default `http://localhost:8968`). Scope =
- * README §2 "REAL" only — we never assert a TARGET flow (reset-password,
+ * README "REAL" only — we never assert a TARGET flow (reset-password,
  * Excel/PDF export, bulk server endpoint, cross-user DNA generate, per-user
  * prompt scope, admin-edit-another preferences UI).
  *
  * Coverage (cross-links TRACEABILITY-MATRIX U1–U13 + X1/X2/X6/X7):
  *  - U1   GET /admin/users — list / sort / search / filter / paginate
- *  - U2   POST /admin/users — create (valid no-email path; see §V1 note)
+ * - U2 POST /admin/users — create (valid no-email path; see note)
  *  - U2a  GET /admin/rbac/roles + POST /admin/users/:id/roles — list & assign
  *  - U11  POST :id/departments ×2 + setPrimary PATCH :id/departments/:aid w/ OCC
  *         (If-Match 428 missing · 412 stale · 200 correct)
@@ -20,7 +20,7 @@
  *  - X2   DELETE /admin/users/:id — soft-delete (no longer ACTIVE)
  *  - X7   default-deny — a clinician cannot create/delete users (403)
  *
- * Persona model (mirrors optimistic-locking.spec.ts + task-326):
+ * Persona model (mirrors optimistic-locking.spec.ts +):
  *  - `saToken`        — super_admin, NO tenant → cross-tenant operator (reads).
  *  - `saGlobalToken`  — super_admin logged INTO `__GLOBAL__` → mutations. We use
  *    super-admin (not tenant_admin) for `__GLOBAL__` writes because the Phase-0
@@ -134,7 +134,7 @@ test.describe('Users Management (backend contract)', () => {
     doctorToken = doc!.token;
 
     // arcaai_admin is seeded for the ARCAAI tenant (frontend auth fixture +
-    // manual-tests README §5) but is NOT in the typed SEEDED_USERS map; log in
+    // manual-tests README) but is NOT in the typed SEEDED_USERS map; log in
     // by literal and tolerate absence so the isolation probe self-skips.
     const arcaai = await loginUser(request, 'arcaai_admin', 'password123', ARCAAI_TENANT_KEY);
     arcaaiToken = arcaai?.token ?? null;

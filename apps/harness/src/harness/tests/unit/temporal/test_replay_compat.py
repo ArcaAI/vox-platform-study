@@ -257,20 +257,20 @@ class TestReplayCompatibility:
 
     @pytest.mark.asyncio
     async def test_post_redaction_history_replays_on_current_definition(self):
-        """Forward guard for the (TASK-551) DNA redaction/rewrite era.
+        """Forward guard for the DNA redaction/rewrite era.
 
         The fixture is a happy-path history recorded with the redaction path ARMED — the
         start payload carries a ``redaction_rules`` entry and the ``apply_redaction`` stub
         returns a CHANGED note, so the workflow took the patch-gated branch: it carries the
-        ``task-551-redaction`` patch marker AND the new command sequence (``apply_redaction``
+        ``-redaction`` patch marker AND the new command sequence (``apply_redaction``
         -> ``extract_entities`` -> ``run_sensors`` re-run) inserted after the computational
         loop settles and before persist.
 
         Replaying it through the current definition proves an in-flight redaction-armed
         execution survives a redeploy, and forward-guards the command-sequence change: any
         FUTURE ungated change to the redaction path fails this replay with a non-determinism
-        error unless gated behind its own ``workflow.patched()``. The empty-rules fixtures
-        above (which NEVER call ``workflow.patched("task-551-redaction")`` — the ``and``
+        error unless gated behind its own ``workflow.patched``. The empty-rules fixtures
+        above (which NEVER call ``workflow.patched("-redaction")`` — the ``and``
         short-circuit) also stay green, proving the feature is command-neutral when unarmed.
         Recapture alongside every new patch gate (see ``_capture_replay_fixture.py --redaction``).
         """
@@ -282,17 +282,17 @@ class TestReplayCompatibility:
 
     @pytest.mark.asyncio
     async def test_post_redaction_audit_history_replays_on_current_definition(self):
-        """Forward guard for the (TASK-551) DNA redaction AUDIT era.
+        """Forward guard for the DNA redaction AUDIT era.
 
         The fixture is a redaction-armed history recorded against the CURRENT definition,
-        so it carries BOTH the ``task-551-redaction`` marker AND the new
-        ``task-551-redaction-audit`` marker (the manifest marker + compact manifest are
+        so it carries BOTH the ``-redaction`` marker AND the new
+        ``-redaction-audit`` marker (the manifest marker + compact manifest are
         threaded into ``persist_draft`` behind that second gate). Replaying it proves an
         in-flight audit-armed execution survives a redeploy.
 
         Crucially, the FROZEN ``doc_workflow_post_task551_redaction_history`` fixture above
         — recorded BEFORE the audit era existed, so it lacks the audit marker — must ALSO
-        stay green: on replay ``workflow.patched("task-551-redaction-audit")`` returns
+        stay green: on replay ``workflow.patched("-redaction-audit")`` returns
         False, so the marker is never computed and the persist body stays byte-identical.
         Together they forward-guard the audit-trail change as gated + replay-safe.
         Recapture alongside every new patch gate (``_capture_replay_fixture.py --redaction-audit``).
@@ -333,7 +333,7 @@ class TestReplayCompatibility:
 
 
 class TestConsultationLoopReplayCompatibility:
-    """Replay guard for the TASK-662 loop — a SEPARATE workflow type.
+    """Replay guard for the loop — a SEPARATE workflow type.
 
     Being a new type is exactly why the loop needed no ``workflow.patched`` era:
     there are no histories recorded by an older definition of it, so there is
@@ -344,7 +344,7 @@ class TestConsultationLoopReplayCompatibility:
 
     @pytest.mark.asyncio
     async def test_loop_history_replays_on_current_definition(self):
-        """Forward guard for the loop's initial (TASK-662) era.
+        """Forward guard for the loop's initial era.
 
         The fixture records every command shape the loop can issue:
         ``fetch_loop_config`` (the once-only pin), ``livedoc_start`` (start
@@ -358,7 +358,7 @@ class TestConsultationLoopReplayCompatibility:
         command is verified without the document workflow taking part. Any
         future change that adds, removes or reorders a loop command — including
         moving the config fetch, or dispatching an action in a different order —
-        fails here unless it is gated behind its own ``workflow.patched()``.
+        fails here unless it is gated behind its own ``workflow.patched``.
         Recapture alongside such a change (``_capture_replay_fixture.py --loop``).
         """
         replayer = Replayer(
@@ -371,17 +371,17 @@ class TestConsultationLoopReplayCompatibility:
     async def test_pre_reasoning_loop_history_replays_after_task664(self):
         """The single most important assertion this ticket makes.
 
-        TASK-664 added commands to a workflow type that ALREADY had a recorded
+         added commands to a workflow type that ALREADY had a recorded
         history — the fixture replayed above. Those commands (the planner
         activity, the specialist children, the adjudication publish, the
         derived-context activities) would break that replay if issued
-        unconditionally, which is why they sit behind the ``task-664-reasoning``
+        unconditionally, which is why they sit behind the ``-reasoning``
         patch era and why the era gate is written with the
         ``config.reasoning_enabled`` operand FIRST: on this history the flag is
         False, so ``workflow.patched`` is never even called.
 
         The assertion is deliberately the SAME fixture as the test above rather
-        than a new one. A consultation that was mid-flight when TASK-664
+        than a new one. A consultation that was mid-flight when
         deployed is exactly this history meeting exactly this definition, and
         that is the case that must not wedge.
         """
@@ -393,7 +393,7 @@ class TestConsultationLoopReplayCompatibility:
 
     @pytest.mark.asyncio
     async def test_reasoning_history_replays_on_current_definition(self):
-        """Forward guard for the loop's TASK-664 (reasoning) era.
+        """Forward guard for the loop's (reasoning) era.
 
         The fixture records the commands the deliberative lane adds:
         ``plan_reasoning`` (the planner ACTIVITY — this fixture is what proves
@@ -417,12 +417,12 @@ class TestConsultationLoopReplayCompatibility:
 
     @pytest.mark.asyncio
     async def test_pre_idle_bound_loop_histories_replay_after_task685(self):
-        """TASK-685's central replay assertion.
+        """The central replay assertion.
 
         Bounding the main ``wait_condition`` schedules a TIMER — a command an
         unbounded wait never recorded — so it would break BOTH frozen loop
         fixtures if issued unconditionally. It sits behind the
-        ``task-685-idle-timeout`` era, gated with the ``idle_timeout_seconds``
+        ``-idle-timeout`` era, gated with the ``idle_timeout_seconds``
         operand FIRST, and the recorded configs of both fixtures predate that
         field entirely: they deserialise with the bound absent, so
         ``workflow.patched`` is never even called and neither history sees a
@@ -443,11 +443,11 @@ class TestConsultationLoopReplayCompatibility:
 
     @pytest.mark.asyncio
     async def test_idle_timeout_history_replays_on_current_definition(self):
-        """Forward guard for the loop's TASK-685 (idle-bound) era.
+        """Forward guard for the loop's (idle-bound) era.
 
         The fixture is a run that received one context item and then nothing —
         no ``consultation-ending``, no ``cancel`` — so it reached its pinned idle
-        bound. It carries the ``task-685-idle-timeout`` marker, the
+        bound. It carries the ``-idle-timeout`` marker, the
         ``wait_condition`` TIMER (started AND fired), the ``loop.timed_out``
         emission, and a terminal completion with NO ending action: a timeout
         abandons rather than fabricating a finalize.
@@ -455,7 +455,7 @@ class TestConsultationLoopReplayCompatibility:
         Any FUTURE ungated change to the bounded wait — moving the timer,
         changing what the timeout emits, or running ending actions on it — fails
         this replay with a non-determinism error unless it is gated behind its
-        own ``workflow.patched()``. Recapture alongside such a change
+        own ``workflow.patched``. Recapture alongside such a change
         (``_capture_replay_fixture.py --idle-timeout``).
         """
         replayer = Replayer(

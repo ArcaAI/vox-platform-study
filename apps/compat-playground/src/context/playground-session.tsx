@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-// `useArcaSttLanguageModes` is a v2-native hook (TASK-587) with no v1 ancestor.
+// `useArcaSttLanguageModes` is a v2-native hook with no v1 ancestor.
 // It MUST be imported from `@arcaai/vox/compat` — the SAME entry bundle as
 // `<ArcaCompatProvider>` — because the store React context does not cross
 // entry-point bundles (tsup `splitting: false`). Importing it from
@@ -66,24 +66,24 @@ export interface PlaygroundSessionSlice {
 }
 
 /**
- * Where the capture session is in its lifecycle (TASK-597 lane B).
+ * Where the capture session is in its lifecycle.
  *
  * `stopping` is the state that did not exist before: from 597 the mic is
  * released the instant Stop is clicked, but the STT transport keeps draining
  * behind it so tail finals still land. That window is a REAL state — the mic is
  * already off, the session is not idle yet — and hiding it behind `isRecording`
  * is what made Stop look either frozen or prematurely finished.
- */
+*/
 export type PlaygroundCapturePhase = 'idle' | 'starting' | 'recording' | 'stopping';
 
 /**
  * Mic/transport lifecycle.
  *
- * **Lane B (TASK-597 D2/D3)** added `phase` and reordered `stop()` so the
+ * **Lane B ** added `phase` and reordered `stop()` so the
  * capture graph is released before the drain is awaited. `isRecording` and
  * `isStarting` are kept as-is — several consumers read them — and are now
  * simply projections of `phase`.
- */
+*/
 export interface PlaygroundCaptureSlice {
   /** Mic live. Goes false the moment Stop is clicked, NOT when the drain ends. */
   isRecording: boolean;
@@ -117,7 +117,7 @@ export interface PlaygroundTranscriptSlice {
 }
 
 /**
- * Stop-drain tuning (TASK-597) — PER-CAPTURE, unlike the noise-suppression/VAD
+ * Stop-drain tuning — PER-CAPTURE, unlike the noise-suppression/VAD
  * switches, which are connection-level and live on the Connection tab.
  *
  * These ride `AudioStartOptions` on each `startRecording()`, so a developer can
@@ -125,7 +125,7 @@ export interface PlaygroundTranscriptSlice {
  *
  * Both are `undefined` by default, which means "use the SDK default"
  * (1500 ms ceiling / 250 ms quiet window) — nothing changes unless opted into.
- */
+*/
 export interface PlaygroundDrainSlice {
   /** Hard ceiling on the drain wait. `undefined` ⇒ SDK default. */
   timeoutMs: number | undefined;
@@ -154,7 +154,7 @@ export interface PlaygroundDrainSlice {
  */
 export const WAIT_FOR_TAIL_FINAL_TIMEOUT_MS = 60_000;
 
-/** STT language-mode catalog + selection (TASK-587). Owned by lane 0. */
+/** STT language-mode catalog + selection. Owned by lane 0.*/
 export interface PlaygroundLanguageSlice {
   /** Backend catalog when available, static fallback otherwise. */
   modes: SttLanguageModeOption[];
@@ -166,16 +166,16 @@ export interface PlaygroundLanguageSlice {
 
 /**
  * `MAX_METADATA_BYTES` mirrors the frozen guard in
- * `packages/agentic-sdk-v2/src/compat/speechToTextMetadata.ts` (TASK-564/565).
+ * `packages/agentic-sdk-v2/src/compat/speechToTextMetadata.ts`.
  * That constant is internal to the SDK package — not re-exported from the
  * public `@arcaai/vox/compat` barrel — so this is a deliberate, documented
  * duplicate of a value the hook itself already enforces (it throws past this
  * size); duplicating it here lets the UI catch the violation BEFORE the throw
  * and render it as an inline field error instead of a toast/exception.
- */
+*/
 const MAX_METADATA_BYTES = 8192;
 
-/** One `{mic, speaker}` row — the screenshot's per-source tagging shape (TASK-597 R5). */
+/** One `{mic, speaker}` row — the screenshot's per-source tagging shape.*/
 export interface MetadataMicRow {
   id: string;
   mic: string;
@@ -188,9 +188,9 @@ type RowMetadataResult = { metadata: Record<string, unknown> } | { error: string
 
 /**
  * Build the `sendAudioData` payload for a row and validate it against the 8 KB
- * guard BEFORE sending (TASK-597 R5 requirement 4). Pure + exported so the
+ * guard BEFORE sending (requirement 4). Pure + exported so the
  * guard is unit-testable without mounting the provider.
- */
+*/
 export function buildRowMetadata(row: MetadataMicRow): RowMetadataResult {
   let extra: Record<string, unknown> = {};
   if (row.json.trim()) {
@@ -220,7 +220,7 @@ const INITIAL_METADATA_ROWS: MetadataMicRow[] = [
 ];
 
 /**
- * The metadata simulator (TASK-564 client-side passthrough). **Lane C** owns
+ * The metadata simulator (client-side passthrough). **Lane C** owns
  * this group from here on: per-mic rows, auto-tagging on level, and the 8 KB
  * `MAX_METADATA_BYTES` guard.
  *
@@ -229,7 +229,7 @@ const INITIAL_METADATA_ROWS: MetadataMicRow[] = [
  * `audio.sources` is populated. `syncRowsFromSources` is an opt-in bridge the
  * UI calls with `audio.sources` when that list is non-empty — this group
  * never reads `audio` itself, so it was never blocked on lane A landing.
- */
+*/
 export interface PlaygroundMetadataSlice {
   speakerId: string;
   setSpeakerId: (v: string) => void;
@@ -328,12 +328,12 @@ export interface PlaygroundAudioFilePlayback {
 }
 
 /**
- * Audio-source selection (TASK-597 lane A) — which microphone(s), or which
+ * Audio-source selection — which microphone(s), or which
  * audio file(s), the capture graph is fed from. Owned by lane A.
  *
  * Lane C reads `sources` (ordered, with `micLabel`) to attribute per-mic
  * metadata; nothing else in the console writes this group.
- */
+*/
 export interface PlaygroundAudioSlice {
   mode: PlaygroundAudioMode;
   setMode: (mode: PlaygroundAudioMode) => void;
@@ -372,14 +372,14 @@ export interface PlaygroundAudioSlice {
   sources: PlaygroundAudioSource[];
   /**
    * Live PER-SOURCE input level (0–100), index-aligned with {@link sources}
-   * (TASK-597 follow-up #2). Sampled from an analysis-only `AnalyserNode` per
+   *. Sampled from an analysis-only `AnalyserNode` per
    * mixer source inside the SDK — this is what makes "which mic is speaking"
    * answerable at all; the mixed `getDeviceStatus().audioLevel` cannot.
    *
    * `[]` = the SDK has no per-source signal (not recording, or a runtime
    * without Web Audio analysis). Consumers must degrade honestly on `[]`
    * rather than inferring attribution.
-   */
+*/
   sourceLevels: number[];
   setGain: (sourceId: string, gain: number) => void;
   /** Exactly what is spread into `useAudioCapture(...)` on the next start. */
@@ -393,7 +393,7 @@ export interface PlaygroundAudioSlice {
 }
 
 /**
- * Batch (pre-recorded file) transcription — the Batch-upload tab (TASK-603).
+ * Batch (pre-recorded file) transcription — the Batch-upload tab.
  *
  * A NEW top-level group rather than a widening of `audio`: `audio` is the LIVE
  * capture graph (mics, decoded files fed through the mixer, per-source levels),
@@ -402,7 +402,7 @@ export interface PlaygroundAudioSlice {
  * It lives here, above the tabs, for the same reason the capture session does:
  * an upload takes minutes and its SSE result stream must survive a tab switch.
  * Everything except the local UI state is `useArcaBatchTranscription()` verbatim.
- */
+*/
 export interface PlaygroundBatchSlice {
   /** One row per queued file, in enqueue order. */
   items: BatchQueueItem[];
@@ -464,7 +464,7 @@ export interface PlaygroundSessionContextValue {
 
 const PlaygroundSessionContext = createContext<PlaygroundSessionContextValue | null>(null);
 
-/** Static fallback when the TASK-587 catalog hook yields nothing (loading/empty/error). */
+/** Static fallback when the catalog hook yields nothing (loading/empty/error).*/
 export const FALLBACK_LANGUAGE_MODES: SttLanguageModeOption[] = [
   { id: 'en', label: 'English', kind: 'single' },
   { id: 'ml', label: 'Malayalam', kind: 'single' },
@@ -501,10 +501,10 @@ export function PlaygroundSessionProvider({ config, children }: PlaygroundSessio
   const [interim, setInterim] = useState('');
   const [isStarting, setIsStarting] = useState(false);
   // True from the Stop click until the STT transport has finished draining —
-  // the mic is already off for all of it (TASK-597 lane B).
+  // the mic is already off for all of it.
   const [isStopping, setIsStopping] = useState(false);
   const [languageMode, setLanguageMode] = useState(config.languageMode || 'en');
-  // Stop-drain knobs (TASK-597), seeded from the persisted config. Per-capture,
+  // Stop-drain knobs, seeded from the persisted config. Per-capture,
   // so they are plain state here rather than part of the provider config.
   const [drainTimeoutMs, setDrainTimeoutMs] = useState<number | undefined>(config.drainTimeoutMs);
   const [quietWindowMs, setQuietWindowMs] = useState<number | undefined>(config.quietWindowMs);
@@ -513,11 +513,11 @@ export function PlaygroundSessionProvider({ config, children }: PlaygroundSessio
   // when a final segment carries no numeric `meta.startTime`.
   const captureStartRef = useRef<number | null>(null);
 
-  // TASK-587 — the backend-authoritative language-mode catalog.
+  // The backend-authoritative language-mode catalog.
   const languageModes = useArcaSttLanguageModes();
   const modes = languageModes.modes.length > 0 ? languageModes.modes : FALLBACK_LANGUAGE_MODES;
 
-  // Metadata-simulation state (TASK-564 client-side passthrough demo).
+  // Metadata-simulation state (client-side passthrough demo).
   const [simSpeakerId, setSimSpeakerId] = useState('');
   const [simLanguage, setSimLanguage] = useState('');
   const [simMetadataJson, setSimMetadataJson] = useState('{}');
@@ -525,7 +525,7 @@ export function PlaygroundSessionProvider({ config, children }: PlaygroundSessio
   /** Inline 8 KB field error for the manual form above — set BEFORE the throw, never a toast. */
   const [sendError, setSendError] = useState<string | null>(null);
 
-  // Per-mic metadata rows (TASK-597 lane C, R5) + the auto-tag mode that
+  // Per-mic metadata rows + the auto-tag mode that
   // alternates through them on a detected input-level crossing.
   const [rows, setRows] = useState<MetadataMicRow[]>(INITIAL_METADATA_ROWS);
   const [rowErrors, setRowErrors] = useState<Record<string, string | null>>({});
@@ -544,7 +544,7 @@ export function PlaygroundSessionProvider({ config, children }: PlaygroundSessio
   // Index of the source that owned the last emitted turn, in per-source mode.
   // A CHANGE of loudest source while the level stays up is a speaker change, so
   // it re-tags without waiting for silence — that is the whole point of having
-  // a per-mic signal (TASK-597 follow-up #2).
+  // a per-mic signal.
   const autoTagDominantRef = useRef<number | null>(null);
 
   const mgr = useArcaSessionManager({
@@ -553,20 +553,20 @@ export function PlaygroundSessionProvider({ config, children }: PlaygroundSessio
     patientId: 'compat-playground-patient',
     patientName: 'Demo Patient',
   });
-  // Audio-source selection (TASK-597 lane A). Mounted here, above the tabs, so
+  // Audio-source selection. Mounted here, above the tabs, so
   // decoded file buffers and live streams survive a tab switch like the mic does.
   const audio = useAudioSources();
   // Forward the end-user language selection to the capture hook too: it starts
   // the mic BEFORE `stt.startTranscription()` and wins the shared-audio start
-  // race, so the language must ride along here or the pick is dropped (TASK-587).
+  // race, so the language must ride along here or the pick is dropped.
   // The source options ride the SAME hook for the same reason: whichever hook
-  // calls `audio.start(...)` first wins, and that is this one (TASK-597).
-  // The drain knobs (TASK-597) ride the SAME hook for the same reason: they are
+  // calls `audio.start(...)` first wins, and that is this one.
+  // The drain knobs ride the SAME hook for the same reason: they are
   // `AudioStartOptions` fields, applied by whichever hook wins the start race,
   // and that is this one. Spread on `!== undefined` — `0` is a real value for
   // `quietWindowMs` (it disables the early resolve), so a truthiness check here
   // would drop exactly the setting a tail-final run depends on.
-  // And the PIPELINE ID rides it for the same reason (TASK-614 D-1): passing it
+  // And the PIPELINE ID rides it for the same reason: passing it
   // only to `useArcaSpeechToText` below meant the winning start carried none, so
   // the session ran the gateway-resolved tenant default and `activePipeline`
   // stayed null — which `useArcaSttProvider` reads as "capture has not started",
@@ -587,7 +587,7 @@ export function PlaygroundSessionProvider({ config, children }: PlaygroundSessio
   // ever gets a chance to fire.
   const getDeviceStatusRef = useRef(capture.getDeviceStatus);
   getDeviceStatusRef.current = capture.getDeviceStatus;
-  // Live PER-SOURCE levels (TASK-597 follow-up #2). Same "keep it fresh" ref
+  // Live PER-SOURCE levels. Same "keep it fresh" ref
   // pattern and for the same reason: the array is a new identity on every
   // ~100ms store tick, so it must not be an effect dependency.
   const sourceLevels = capture.sourceLevels ?? [];
@@ -601,9 +601,9 @@ export function PlaygroundSessionProvider({ config, children }: PlaygroundSessio
     language: languageMode,
     // The stream-relative time already shows on the first line (the `mm:ss.mmm`
     // label), so drop `{timestamp}` from the templated transcript line to avoid
-    // rendering the raw seconds twice. Speaker + text only (TASK-591).
+    // rendering the raw seconds twice. Speaker + text only.
     transcriptTemplate: '{speaker_id}: {text}',
-    // End-user language mode (TASK-587) forwarded via the frozen v1 `options`
+    // End-user language mode forwarded via the frozen v1 `options`
     // bag; takes precedence over `language` on the backend path.
     options: { pipelineId: config.pipelineId.trim() || undefined, languageMode },
     onTranscript: (text, isFinal, meta) => {
@@ -620,7 +620,7 @@ export function PlaygroundSessionProvider({ config, children }: PlaygroundSessio
   });
 
   // ---------------------------------------------------------------------------
-  // Batch upload (TASK-603) — mounted HERE, above the tabs, so a multi-minute
+  // Batch upload — mounted HERE, above the tabs, so a multi-minute
   // upload and its SSE result stream survive every tab switch, exactly like the
   // live capture session does.
   // ---------------------------------------------------------------------------
@@ -697,7 +697,7 @@ export function PlaygroundSessionProvider({ config, children }: PlaygroundSessio
   };
 
   // ---------------------------------------------------------------------------
-  // Stop — capture FIRST, drain second (TASK-597 lane B, finding D2).
+  // Stop — capture FIRST, drain second.
   //
   // The old order awaited `stopTranscription()` (which blocks on the WebSocket
   // drain) and only then released the mic, so the browser's recording indicator
@@ -803,7 +803,7 @@ export function PlaygroundSessionProvider({ config, children }: PlaygroundSessio
     }
     try {
       // Empty buffer: v2 owns capture/transport, this hook is a metadata sink
-      // (TASK-564 §6 F1) — the metadata round-trips onto the NEXT onTranscript.
+      //  — the metadata round-trips onto the NEXT onTranscript.
       stt.sendAudioData(new ArrayBuffer(0), metadata);
       setLastSentMetadata(metadata);
       toast.success('Metadata queued — check the next transcript line for the round-trip.');
@@ -813,7 +813,7 @@ export function PlaygroundSessionProvider({ config, children }: PlaygroundSessio
   };
 
   // ---------------------------------------------------------------------------
-  // Per-mic rows + auto-tag (TASK-597 lane C, R5).
+  // Per-mic rows + auto-tag.
   // ---------------------------------------------------------------------------
 
   const addRow = useCallback(() => {
@@ -897,13 +897,13 @@ export function PlaygroundSessionProvider({ config, children }: PlaygroundSessio
   );
 
   /**
-   * PER-SOURCE emit (TASK-597 follow-up #2): tag the turn with the row that
+   * PER-SOURCE emit: tag the turn with the row that
    * belongs to the source the SDK says is loudest.
    *
    * Rows and sources line up 1:1 after "Sync rows from audio sources"; the
    * modulo keeps a hand-edited shorter list usable instead of silently
    * dropping the tag for the extra mics.
-   */
+*/
   const fireAutoTagForSource = useCallback(
     (sourceIndex: number) => {
       const currentRows = rowsRef.current;
@@ -939,7 +939,7 @@ export function PlaygroundSessionProvider({ config, children }: PlaygroundSessio
   }, [stt.sendAudioData]);
 
   // ---------------------------------------------------------------------------
-  // Auto-tag poll (TASK-597 follow-up #2 — real per-mic attribution).
+  // Auto-tag poll (real per-mic attribution).
   //
   // TWO paths, and which one runs is decided by what the SDK actually offers:
   //
@@ -1072,7 +1072,7 @@ export function PlaygroundSessionProvider({ config, children }: PlaygroundSessio
     },
     // Lane A's slice, with ONE field replaced: the hook cannot see the capture
     // graph (it runs before `useAudioCapture` to build its options), so the
-    // live per-source levels are joined on here (TASK-597 follow-up #2).
+    // live per-source levels are joined on here.
     audio: { ...audio, sourceLevels },
     batch: {
       items: batch.items,

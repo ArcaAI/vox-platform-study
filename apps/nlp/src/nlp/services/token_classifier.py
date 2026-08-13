@@ -130,7 +130,7 @@ class TransformerTokenClassifier(TokenClassifier):
             if self.configs.assertion_enabled and entities:
                 entities = self.assertion_classifier.classify(request.text, entities)
 
-            # TASK-615 WS-E: wire the previously dead record_entities() at the
+            # Wire the previously dead record_entities at the
             # real call-site (current-state-review §2.4 — zero call-sites
             # outside its own definition). One call per DISTINCT entity_type so
             # the label stays bounded (the model's own fixed BIO-tag label set,
@@ -165,7 +165,7 @@ class TransformerTokenClassifier(TokenClassifier):
             )
 
     def _record_usage_metrics(self, entities: list[Entity]) -> None:
-        """TASK-615 WS-E: entities-by-type (dual OTel+Prometheus write via
+        """Entities-by-type (dual OTel+Prometheus write via
         ``nlp_metrics.record_entities``) + one documents-processed increment.
         Grouped by type so the label is bounded by the model's own fixed
         BIO-tag label set, never a per-entity free-text value.

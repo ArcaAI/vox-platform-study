@@ -194,7 +194,7 @@ class TestActivityEmission:
 
     @pytest.mark.asyncio
     async def test_generate_backfills_provider_model_when_stats_omits_them(self, env, monkeypatch):
-        """TASK-615 WS-F: the gateway's usage-ledger emission hook needs
+        """The gateway's usage-ledger emission hook needs
         `provider`/`model` on every LLM_CALL step to attribute cost. A legacy /
         cache-hit SMR response with no `stats` block still carries `provider`/
         `model` on `SmrGenerationResult` itself — backfill from there so the
@@ -391,7 +391,7 @@ class _FakeApi:
         # code-default policy (safety on, phi on, no custom SMR model) but
         # WITH the SYSTEM harness.judge selection, so the real inferential pass builds
         # the (stubbed) judge instead of failing closed on a missing selection.
-        # TASK-550 — accepts the consultation_id the workflow now threads through.
+        # Accepts the consultation_id the workflow now threads through.
         return {"judgeProvider": "openai_compat", "judgeModel": "stub-judge"}
 
     async def persist_entities(self, consultation_id: str, **kw: Any) -> PersistEntitiesResponse:

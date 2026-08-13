@@ -160,7 +160,7 @@ class EffectiveConfigClient:
         self._expires_at = None
 
     def diagnostics(self) -> dict[str, Any]:
-        """The `/health` block (§3.7).
+        """The `/health` block.
 
         Health is auth-exempt, so this reports SOURCE LABELS and timestamps only
         — never a resolved value.

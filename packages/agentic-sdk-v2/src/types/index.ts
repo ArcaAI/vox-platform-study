@@ -108,7 +108,7 @@ export type {
   NERData,
 } from './context';
 
-// Consultation context schema discovery types (TASK-665)
+// Consultation context schema discovery types
 export type {
   ConsultationContextSchemaDefinition,
   ConsultationSchemaBundle,
@@ -125,7 +125,7 @@ export {
   UNCONFIGURED_CONSULTATION_SCHEMA_BUNDLE,
 } from './consultationSchema';
 
-// Consultation-loop workflow event types (TASK-660/665)
+// Consultation-loop workflow event types
 export type { LoopEvent } from './loopEvent';
 
 // Audio types
@@ -300,7 +300,7 @@ export type {
   CreateStreamingSessionRequest,
   StreamingSessionResponse,
   StreamingSessionStatus,
-  // Language modes (TASK-587)
+  // Language modes
   LanguageMode,
   LanguageModeCatalog,
   // Transcription jobs

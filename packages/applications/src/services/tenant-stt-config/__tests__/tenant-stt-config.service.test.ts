@@ -45,7 +45,7 @@ function makeService() {
   const cls = {
     get: vi.fn((k: string) => (k === 'user' ? { id: 'u1' } : k === 'tenantId' ? TENANT : undefined)),
   };
-  // The unified provider-connection plane (TASK-569/571) — the ONLY credential
+  // The unified provider-connection plane — the ONLY credential
   // store. `TenantSttConfigService` no longer touches a credential repository
   // or Vault directly; every BYO STT credential path delegates here with
   // `service='stt'`.
@@ -179,7 +179,7 @@ describe('TenantSttConfigService — setFallbackPipeline validation', () => {
     );
   });
 
-  it('accepts a Sarvam fallback via a BARE SLUG ref (TASK-586 canonical shape — like Azure) resolved to the SARVAM AiModel format', async () => {
+  it('accepts a Sarvam fallback via a BARE SLUG ref (canonical shape — like Azure) resolved to the SARVAM AiModel format', async () => {
     // The seeded Sarvam pipeline now uses `asr: "sarvam-saaras-v4"` (bare slug),
     // identical in shape to the Azure Speech pipeline. The slug resolves to the
     // AiModel whose format is the first-class SARVAM (a cloud STT format).
@@ -338,7 +338,7 @@ describe('TenantSttConfigService — resolveProviderOverrides (delegated to IPro
       'azure-speech': { api_key: 'AZ-KEY', funding: 'tenant', region: 'eastus' },
       sarvam: { api_key: 'SV-KEY', funding: 'platform', base_url: 'https://api.sarvam.ai', model: 'saaras:v4' },
     });
-    // TASK-643 — the `model` used to be re-read with `list()`, which is pinned
+    // The `model` used to be re-read with `list()`, which is pinned
     // to the CALLER's tenant: a SYSTEM-sourced override would silently lose its
     // model id the moment the cascade started supplying one.
     expect(ctx.providerConnectionService.list).not.toHaveBeenCalled();

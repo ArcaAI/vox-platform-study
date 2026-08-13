@@ -12,7 +12,7 @@ import {
 import { Authorize } from '../../decorators';
 
 /**
- * Tenant self-service billing reads (TASK-615 WS-I, D8/D12), mounted at
+ * Tenant self-service billing reads (D8/D12), mounted at
  * `/billing/me/*` (global prefix → `/api/v1/billing/me/*`).
  *
  * Gated with `read Tenant` — the same posture as `/entitlements/me`: a tenant

@@ -1,18 +1,18 @@
 /**
- * Playground config store — the TASK-597 audio + drain settings.
+ * Playground config store — the audio + drain settings.
  *
  * Two classes of value with deliberately different defaulting rules, and both
  * are easy to get wrong in the same way (`||` instead of `??`, truthiness
  * instead of a presence check):
  *
- *  - NOISE SUPPRESSION / VAD are booleans that must round-trip `false`
- *    faithfully. They are connection-level and always end up as a real boolean
- *    in `V1SdkConfig.audioSettings`, because "unset" there would silently mean
- *    "off" with no way back on.
- *  - DRAIN TIMEOUT / QUIET WINDOW are optional numbers where `undefined` means
- *    "use the SDK default" and `0` is a MEANINGFUL setting (disable the
- *    quiet-window early resolve). Those two must never collapse into each other.
- */
+ * - NOISE SUPPRESSION / VAD are booleans that must round-trip `false`
+ * faithfully. They are connection-level and always end up as a real boolean
+ * in `V1SdkConfig.audioSettings`, because "unset" there would silently mean
+ * "off" with no way back on.
+ * - DRAIN TIMEOUT / QUIET WINDOW are optional numbers where `undefined` means
+ * "use the SDK default" and `0` is a MEANINGFUL setting (disable the
+ * quiet-window early resolve). Those two must never collapse into each other.
+*/
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { defaultConfig, saveStoredConfig, clearStoredConfig, type PlaygroundConfig } from '../config-store';
@@ -25,7 +25,7 @@ const BASE: PlaygroundConfig = {
   languageMode: 'ml-en',
 };
 
-describe('config-store — noise suppression / VAD round-trip (TASK-597)', () => {
+describe('config-store — noise suppression / VAD round-trip', () => {
   beforeEach(() => {
     clearStoredConfig();
   });
@@ -71,7 +71,7 @@ describe('config-store — noise suppression / VAD round-trip (TASK-597)', () =>
   });
 });
 
-describe('config-store — stop-drain knobs (TASK-597)', () => {
+describe('config-store — stop-drain knobs', () => {
   beforeEach(() => {
     clearStoredConfig();
   });

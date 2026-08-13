@@ -79,7 +79,7 @@ export class HarnessAdminController {
     // positionally in its unit tests, so a mid-list insertion silently shifts
     // `cls` and fails ~35 unrelated specs with "this.cls.get is not a function".
     private readonly gateEditMiningService: GateEditMiningService,
-    // APPENDED (TASK-549): backs `POST golden-sets/:id/run`.
+    // APPENDED: backs `POST golden-sets/:id/run`.
     private readonly evalRunService: EvalRunService,
   ) {}
 
@@ -366,7 +366,7 @@ export class HarnessAdminController {
   // The learning loop's export half. Mined rows are
   // PROPOSALS: the golden-set programme's SME review decides what becomes
   // corpus, and the payload carries `reviewStatus` so no consumer can mistake
-  // this for approved eval data (§3.4 consumption (a)).
+  // this for approved eval data (consumption (a)).
   @Get('gate-edit-exemplars')
   @Authorize(['manage', 'HarnessPolicy'])
   @ApiOperation({
@@ -395,7 +395,7 @@ export class HarnessAdminController {
     });
   }
 
-  // The curation half of the learning loop (TASK-553 F-24). Export shows a
+  // The curation half of the learning loop (F-24). Export shows a
   // human the unreviewed proposals; this records what they decided. It is the
   // ONLY write on this table — and it may write exactly one field, because every
   // other column is derived from the WORM audit trail and the redacted diff.

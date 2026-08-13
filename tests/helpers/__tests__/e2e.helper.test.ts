@@ -1,5 +1,5 @@
 /**
- * Focused unit tests for e2e.helper.ts diagnostics behavior (TASK-260, Fix 1).
+ * Focused unit tests for e2e.helper.ts diagnostics behavior.
  *
  * Scope:
  * - `loginUser` 200 → returns parsed body.

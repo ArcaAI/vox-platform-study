@@ -4,12 +4,12 @@
 @custom-variant dark (&:is(.dark *));
 
 /* ============================================================================
- * HOPE Design System — "Calm Clinical Teal" (TASK-371 tokens, adopted via
- * TASK-372 D1). Single token source for @arcaai/ui. CSS variable NAMES are
+ * HOPE Design System — "Calm Clinical Teal" (tokens, adopted via
+ *). Single token source for @arcaai/ui. CSS variable NAMES are
  * kept stable so existing consumers don't break; only VALUES changed
  * (green→teal), plus added HOPE roles (--ai/--hope/--success/--warning/--info).
  * later in this file. The rainbow --color-1..5 tokens (magicui) are preserved.
- * ========================================================================== */
+ * ==========================================================================*/
 :root {
   /* --- Brand ramps (raw) ------------------------------------------------- */
   --teal-50: #ecfbfc;
@@ -153,7 +153,7 @@
   --color-4: oklch(80.2% 0.134 225);
   --color-5: oklch(90.7% 0.231 133);
 
-  /* --- Code editor surface (TASK-437) ----------------------------------- */
+  /* --- Code editor surface -----------------------------------*/
   /* A FIXED dark editor surface shared by both themes (artboard 5c). Defined
      only in :root so `.dark` does not remap it — the editor looks the same in
      light and dark. Syntax colours clear AA (>=4.5:1) on --code-editor-bg. */
@@ -235,7 +235,7 @@
 }
 
 /* ============================================================================
- * Accent themes (TASK-437). Teal is the no-attribute default (above) — zero
+ * Accent themes. Teal is the no-attribute default (above) — zero
  * visual change without opt-in. Setting `data-accent` on <html> remaps only the
  * accent-derived semantic tokens (primary/accent/ring/sidebar/chart-1) from the
  * existing raw ramps; no component is restyled. The "amber" accent maps to the
@@ -248,11 +248,11 @@
  * The dark blocks match BOTH the accented element itself (`.dark[data-accent]`,
  * the production case: next-themes puts `.dark` and `data-accent` on the same
  * <html>) AND any nested `.dark` region under an accented root
- * (`[data-accent] .dark`) — otherwise a nested `.dark` wrapper (e.g. Storybook's
+ * (`[data-accent].dark`) — otherwise a nested `.dark` wrapper (e.g. Storybook's
  * theme decorator) re-declares the base teal tokens and clobbers the accent for
  * its subtree. Contrast (primary-on-background, both themes) is spot-checked in
  * the "Foundation/Accent Themes" Storybook story.
- * ========================================================================== */
+ * ==========================================================================*/
 :root[data-accent="indigo"] {
   --primary: var(--indigo-600);
   --primary-foreground: #ffffff;
@@ -370,7 +370,7 @@
   --color-input: var(--input);
   --color-ring: var(--ring);
 
-  /* HOPE brand semantics (TASK-372 D1) */
+  /* HOPE brand semantics*/
   --color-ai: var(--ai);
   --color-ai-foreground: var(--ai-foreground);
   --color-hope: var(--hope);

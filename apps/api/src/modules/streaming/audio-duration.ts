@@ -1,5 +1,5 @@
 /**
- * Container-header audio duration probe (TASK-604 lane B).
+ * Container-header audio duration probe.
  *
  * WHY THIS EXISTS. The batch upload route must enforce "each recording at most
  * 60 minutes" BEFORE it writes to object storage or dispatches a worker job.
@@ -23,7 +23,7 @@
  * can label any payload `audio/wav`.
  *
  * `null` means UNDECIDABLE, and the caller treats it as a rejection
- * (TASK-604 decided fail-closed): a duration that cannot be established is not
+ * (decided fail-closed): a duration that cannot be established is not
  * evidence that the recording is within the limit. Known `null` cases: a
  * live/streamed WebM whose `Duration` element was never written (common in
  * `MediaRecorder` output), a truncated header, and a zero-length recording.

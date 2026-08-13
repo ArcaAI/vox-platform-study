@@ -1,4 +1,4 @@
-"""Unit tests for the STT language-mode capability matrix (TASK-587)."""
+"""Unit tests for the STT language-mode capability matrix."""
 
 from __future__ import annotations
 

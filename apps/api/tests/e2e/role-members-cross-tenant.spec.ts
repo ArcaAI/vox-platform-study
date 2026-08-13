@@ -2,7 +2,7 @@
  * Role-members cross-tenant contract
  * (`GET /api/v1/admin/rbac/roles/:id/members` + `memberCount` on the role reads).
  *
- * Mirrors the task-307 cross-tenant posture specs: live-stack proof that the
+ * Mirrors the cross-tenant posture specs: live-stack proof that the
  * members listing is TENANT-SCOPED and that cross-tenant access never leaks
  * (404-over-403; other tenants' member rows are simply absent).
  *

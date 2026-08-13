@@ -1,8 +1,8 @@
 /**
- * Loop config tab (TASK-667, budgets un-locked TASK-678 OP-6): subscribed
+ * Loop config tab (budgets unlocked): subscribed
  * kinds/write scope sourced from the resolved context schema, tenant-writable
  * budgets (both a tenant admin and a global admin can edit them — see the
- * TASK-678 README Decisions section), the C25 typed-acknowledgement gate on
+ * README Decisions section), the C25 typed-acknowledgement gate on
  * weakening a clinical check, the PRIMARY conflict warning, and an axe scan.
  * Rendered through the drawer (the Loop config tab is one of its four tabs)
  * so the OCC/session plumbing matches production exactly.
@@ -187,11 +187,11 @@ describe('LoopConfigTab', () => {
     expect(screen.queryByLabelText(/SOAP note/)).toBeNull();
   });
 
-  // TASK-678 (OP-6) — Budgets are tenant-writable, matching the server's
+  // Budgets are tenant-writable, matching the server's
   // `TENANT_TIER_HARNESS_OVERRIDE_KEYS` allow-list (which was never
   // role-gated for these three keys). The earlier "locked for a non-elevated
   // caller" behavior was a console guarantee the server never enforced; see
-  // the ticket README's Decisions section.
+  // the Decisions section.
   it('does not lock the Budgets fields for a non-elevated (tenant admin) caller — no "Global admins only" hint', async () => {
     stubFetch((call) => baseHandler(agent(), call, { session: SESSION }));
     renderWithProviders(

@@ -12,7 +12,7 @@
 //
 // The first three are BUSINESS-OBJECT meters counted from the clinical tables
 // (consultations created, audio minutes recorded, summaries generated). The six
-// added by TASK-615 are UNIT meters derived from the `AiUsageEvent` ledger via
+// added by are UNIT meters derived from the `AiUsageEvent` ledger via
 // `AiUsageRollupDaily` (D5) — they measure what the platform actually consumed
 // per capability, which is what the new per-capability allowances (D11) are
 // denominated in.
@@ -21,7 +21,7 @@ enum UsageMeterMetric {
   TRANSCRIPTION_MINUTES
   SUMMARIES
 
-  // Ledger-derived unit meters (TASK-615).
+  // Ledger-derived unit meters.
   // STT is quota'd and billed on SESSION seconds — socket open→close — not
   // audio seconds (OQ1); audio seconds are still recorded for repricing.
   STT_SESSION_SECONDS
@@ -40,7 +40,7 @@ enum UsageMeterMetric {
 }
 
 // ---------------------------------------------------------------------------
-// PlanEntitlement — platform-wide per-plan default matrix (proposal §2 / Q1).
+// PlanEntitlement — platform-wide per-plan default matrix (/ Q1).
 // One row per `TenantPlan`. NOT tenant-scoped (a platform reference table, like
 // Permission/Role): it has no `tenantId` column, so the tenant-scope Prisma
 // extension never filters it. A null quantity/meter column = "unlimited". The
@@ -75,7 +75,7 @@ model PlanEntitlement {
   monthlySummaries            Int?
 
   // Per-capability INCLUDED ALLOWANCES over the same UTC-calendar-month windows
-  // (TASK-615 D11). Usage above an allowance is billed as overage at the SELL
+  // . Usage above an allowance is billed as overage at the SELL
   // rate rather than blocked — soft caps for paid tiers, hard caps only for
   // TRIAL (D12).
   //
@@ -100,7 +100,7 @@ model PlanEntitlement {
   featureVoiceEnrollment  Boolean @default(false)
   featureMonitoringAccess Boolean @default(false)
 
-  // TASK-643 R6 — may this plan's tenants consume the PLATFORM-DEFAULT
+  // May this plan's tenants consume the PLATFORM-DEFAULT
   // (SYSTEM-tenant) provider credential when they have no key of their own?
   //
   // Unlike its three neighbours this flag is ENFORCING, not display-only: it
@@ -109,7 +109,7 @@ model PlanEntitlement {
   //
   // `false` on all four seeded plans (OD-7). Granting it plan-wide on PRO or
   // ENTERPRISE would hand every tenant on that plan a platform-funded cloud
-  // path, reopening the margin hole TASK-638 closed. Grants are per tenant, via
+  // path, reopening the margin hole closed. Grants are per tenant, via
   // `TenantEntitlement.featurePlatformDefaultCredential`.
   featurePlatformDefaultCredential Boolean @default(false)
 
@@ -183,13 +183,13 @@ model TenantEntitlement {
   featureVoiceEnrollment  Boolean?
   featureMonitoringAccess Boolean?
 
-  // TASK-643 R6 — the per-tenant platform-default-credential grant, and the
+  // The per-tenant platform-default-credential grant, and the
   // ONLY way it is ever granted (no plan carries it — OD-7). Tri-state:
   //   null  = inherit the plan value (which is `false` on every seeded plan)
   //   true  = GRANT — this tenant's credential cascade may reach the SYSTEM tier
   //   false = explicit DENY, even if a plan row is later flipped on
   // A tenant's own DISABLED provider row remains a stronger, per-provider VETO
-  // that this grant can never override (§3.5.5).
+  // that this grant can never override.
   featurePlatformDefaultCredential Boolean?
 
   // model + rate-limit overrides (null = inherit) — Q7 "increase on demand"
@@ -231,7 +231,7 @@ model TenantUsageMeter {
   metric       UsageMeterMetric
   periodStart  DateTime
   periodEnd    DateTime
-  // BigInt (TASK-615 follow-up #5): token/character meters accumulate monthly
+  // BigInt (follow-up #5): token/character meters accumulate monthly
   // per-tenant totals that overflow Int32 (~2.1B) for a heavy tenant. The meter
   // is a summed count, never negative, so the widened range is the only change.
   usedCount    BigInt    @default(0)
@@ -255,7 +255,7 @@ model TenantUsageMeter {
 
 // ---------------------------------------------------------------------------
 // TenantPlanHistory — append-only record of a tenant's plan over time
-// (TASK-615 follow-up #6). Enables TRUE mid-period plan-fee proration (D15):
+// (follow-up #6). Enables TRUE mid-period plan-fee proration (D15):
 // the invoice engine's `computePlanFeeLines` is already multi-segment and
 // golden-tested, so with a source of dated plan segments the engine bills
 // `fee × ownedDays / periodDays` per segment instead of the whole-period

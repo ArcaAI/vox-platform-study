@@ -32,7 +32,7 @@ export interface CreateAgentPromotionProps extends Omit<BaseEntityFactoryCreateP
 
 export class AgentPromotionFactory {
   /**
-   * One immutable, WORM promotion record (TASK-663).
+   * One immutable, WORM promotion record.
    *
    * `checksum` is supplied by the caller rather than computed here so the SAME
    * canonicalisation the service uses to build the snapshot is the one

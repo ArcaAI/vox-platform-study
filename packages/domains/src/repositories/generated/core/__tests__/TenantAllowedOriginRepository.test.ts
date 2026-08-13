@@ -1,5 +1,5 @@
 /**
- * TenantAllowedOriginRepository — repository shape (TASK-610 §4B).
+ * TenantAllowedOriginRepository — repository shape.
  *
  * `findByOriginAndTenant` is scoped to the (origin, tenantId) PAIR —
  * uniqueness moved from a global `origin` index to the composite

@@ -274,7 +274,7 @@ describe('ContextItemRepository.findLatestPreSummaryWithDecryptedContent (B-02 /
     expect(result.plaintext).toBe('already-plaintext-in-memory');
   });
 
-  // TASK-655 — this is the SHARED implementation all four former call-site
+  // This is the SHARED implementation all four former call-site
   // copies now delegate to (live-documentation's `findLiveSnapshotRow`,
   // harness's `loadLiveSoapSnapshot`, `SummaryService`/`SummaryProcessor`'s
   // `resolveWarmStartPreSummary`). A decrypt failure (e.g. a Vault Transit

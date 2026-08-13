@@ -77,7 +77,7 @@ function ConfigTabSkeleton() {
 /**
  * Voice (TTS config) tab body — effective resolve card + the OCC row editor.
  * Extracted from the retired `/tts-config` screen so the `/ai-configuration`
- * hub can compose it as its "Voice" tab (TASK-595). The BYO TTS credentials
+ * hub can compose it as its "Voice" tab. The BYO TTS credentials
  * formerly beside it are now edited only in the hub's Providers tab (the
  * unified provider plane) — the one authoritative credential editor (rule 13).
  */

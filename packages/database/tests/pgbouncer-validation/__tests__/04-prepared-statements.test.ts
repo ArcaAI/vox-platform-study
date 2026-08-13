@@ -11,7 +11,7 @@
 //   * `prepared statement "sN" already exists` — collision under high concurrency
 // across 100 concurrent statements that overlap multiple backends.
 //
-// Phase 1 rubric (per plan §1.18):
+// Phase 1 rubric:
 //   * R-PS-1   — 100 concurrent typed `findFirst()` calls succeed
 //   * R-PS-2   — 100 concurrent `$queryRaw` calls (Prisma.sql template, also named) succeed
 //   * R-PS-3   — bouncer reports zero prepared-statement errors after the burst

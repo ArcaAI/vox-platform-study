@@ -24,7 +24,7 @@
  *          /health/services is method-gated at health.controller.ts:182).
  *
  * Deliberately NOT asserted (TARGET — no backend; drawn em-dash on the surfaces,
- * see README §2 + TRACEABILITY-MATRIX T1): requests/min, error-rate, sockets/min,
+ * see README + TRACEABILITY-MATRIX T1): requests/min, error-rate, sockets/min,
  * total-sockets, per-service P95, per-model running + avg-latency, and the
  * request-volume time-series. These have no endpoint to hit.
  */

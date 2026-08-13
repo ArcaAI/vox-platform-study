@@ -3,7 +3,7 @@ import { DEFAULT_API_KEYS } from '../prisma/db_main/seed/02-apikey';
 import { SEED_API_KEY_IDS } from '../prisma/db_main/seed/00-constants';
 
 /**
- * TASK-632 — the seeded SDK keys must be able to exercise the day-1 Node SDK surface.
+ * The seeded SDK keys must be able to exercise the day-1 Node SDK surface.
  *
  * Background: the summarization routes now declare `@RequiredScopes(...)`, which the
  * `UnifiedAuthGuard` enforces for API-key callers. Before that, NO route declared scopes, so a

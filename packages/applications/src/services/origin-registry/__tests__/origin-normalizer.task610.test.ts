@@ -1,4 +1,4 @@
-// TASK-610 lane W1-A — OriginNormalizer tests (T-1).
+// OriginNormalizer tests (T-1).
 //
 // Written FIRST per `01-development-workflow.md` TDD gate: this file must be
 // run and observed RED against the frozen contract stub
@@ -41,7 +41,7 @@ describe('normalizeOrigin', () => {
       ['http://127.0.0.1:5173', 'http://127.0.0.1:5173', 'http', '127.0.0.1', 5173],
       // IPv6 loopback, non-default port
       ['http://[::1]:3000', 'http://[::1]:3000', 'http', '[::1]', 3000],
-      // ── Browser-extension schemes (TASK-653) — exact `<scheme>://<id>` ──────
+      // ── Browser-extension schemes  — exact `<scheme>://<id>` ──────
       // Chrome/Edge/Brave id ([a-p]{32}). No port, single opaque label.
       [
         'chrome-extension://abcdefghijklmnopabcdefghijklmnop',
@@ -118,7 +118,7 @@ describe('normalizeOrigin', () => {
       // isLoopbackHost below) — these must NOT be treated as loopback.
       ['http on localhost-lookalike domain', 'http://localhost.evil.com'],
       ['http on 127.0.0.1-lookalike domain', 'http://127.0.0.1.evil.com'],
-      // ── Browser-extension schemes (TASK-653) — malformed exact ids ─────────
+      // ── Browser-extension schemes  — malformed exact ids ─────────
       // A port is forbidden on an extension origin (browsers never send one).
       ['extension origin with a port', 'chrome-extension://abcdef:80'],
       // Empty host — `<scheme>://` alone.

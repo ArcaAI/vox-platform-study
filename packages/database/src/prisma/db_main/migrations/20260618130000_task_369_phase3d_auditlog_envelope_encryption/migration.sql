@@ -1,4 +1,4 @@
--- TASK-369 (Data Encryption Initiative) Phase 3D — AuditLog envelope encryption.
+-- Data Encryption Initiative — AuditLog envelope encryption.
 --
 -- AuditLog is the highest-volume write path, so a Vault Transit round-trip PER
 -- ROW is too costly. Approach = ENVELOPE ENCRYPTION with a cached Data Encryption

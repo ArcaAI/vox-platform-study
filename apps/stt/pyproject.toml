@@ -82,9 +82,9 @@ dependencies = [
     "cadence-punctuation>=1.1.0",
     # --- Shared runtime contracts ---
     "hope-runtime-models",
-    # --- Shared env-file loader (TASK-558): NODE_ENV -> .env.<env>, host env wins ---
+    # --- Shared env-file loader: NODE_ENV -> .env.<env>, host env wins ---
     "hope-env",
-    # --- Shared OTel trace-propagation helper (TASK-636 OBS-16) ---
+    # --- Shared OTel trace-propagation helper ---
     "hope-otel",
 ]
 

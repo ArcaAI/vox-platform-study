@@ -1,5 +1,5 @@
 /**
- * TenantAllowedOriginEntityMapper — round-trip tests (TASK-610).
+ * TenantAllowedOriginEntityMapper — round-trip tests.
  *
  * Mirrors the `AiTaskDefaultEntityMapper` / `AiProviderConnectionEntityMapper`
  * version-round-trip suite:

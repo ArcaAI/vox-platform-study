@@ -17,7 +17,7 @@ import { SellRateCardService } from '../sell-rate-card.service';
 import { CreateSellRateRequest, SupersedeSellRateRequest } from '../dto';
 
 /**
- * TASK-615 WS-I golden (i) — the supersede-only SELL rate card.
+ * Golden (i) — the supersede-only SELL rate card.
  *
  * A price is NEVER edited in place: repricing closes the current row
  * (`effectiveTo` = successor's `effectiveFrom`) and inserts the successor,

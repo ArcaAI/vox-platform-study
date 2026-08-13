@@ -1,14 +1,14 @@
-// TASK-610 §3.6 T-5 — OriginTenantBindingGuard (lane W3-B), revised for §4B
-// (many-to-many origins ↔ tenants — lane W6-D).
+// OriginTenantBindingGuard, revised for
+// many-to-many origins ↔ tenants.
 //
-// This guard is FR-4: the ACTUAL tenant-isolation control for browser
+// This guard is the ACTUAL tenant-isolation control for browser
 // origins. CORS is advisory browser behaviour and proves nothing about a
 // caller; this guard is what stops a browser on tenant A's origin acting on
 // tenant B's data. Every rule below has a failure mode that is SILENT — the
 // wrong requests are simply allowed (or the platform quietly breaks) with
 // nothing going red — so each one is pinned here.
 //
-// §4B.4 replaced `ownerOf(origin) → string | null` with
+// `ownerOf(origin) → string | null` was replaced with
 // `tenantsFor`/`has`/`allows`. The registry double below mirrors the real
 // `OriginRegistryService`'s semantics: a Set of tenants per origin, `has`
 // true iff that set is non-empty, and `allows` encapsulating the
@@ -40,7 +40,7 @@ const TENANT_C = '33333333-3333-3333-3333-333333333333';
  * guard pre-processed (or mis-cased) the header itself.
  *
  * Takes `Record<origin, tenantId[]>` — a list of tenants each origin is
- * GRANTED to (§4B.2: one row per (origin, tenant) grant; the union of grants
+ * GRANTED to (: one row per (origin, tenant) grant; the union of grants
  * is what `tenantsFor`/`allows` expose).
  */
 const createRegistry = (rows: Record<string, string[]>): IOriginRegistry => {
@@ -94,13 +94,13 @@ const createContext = (headers: Record<string, unknown> = {}, type: 'http' | 'ws
   } as unknown as ExecutionContext;
 };
 
-describe('OriginTenantBindingGuard (TASK-610 T-5, FR-4, §4B many-to-many)', () => {
+describe('OriginTenantBindingGuard (many-to-many)', () => {
   let registry: IOriginRegistry;
 
   beforeEach(() => {
     vi.clearAllMocks();
-    // TASK-610 §4C — this guard is a pass-through unless `origin.enforcementEnabled`
-    // is on. Since TASK-641 FR-6 it ships ON (descriptor default `true`), so
+    // This guard is a pass-through unless `origin.enforcementEnabled`
+    // is on. Enforcement ships ON (descriptor default `true`), so
     // arming the switch here reproduces the shipped posture rather than
     // overriding it; the dormant/off state is pinned in
     // `origin-tenant-binding.guard.enforcement.task610.test.ts`. It is still set
@@ -113,7 +113,7 @@ describe('OriginTenantBindingGuard (TASK-610 T-5, FR-4, §4B many-to-many)', () 
       'https://b.example': [TENANT_B],
       'https://x.org': [TENANT_A],
       'https://port.example:4433': [TENANT_A],
-      // The high-value §4B case: one origin granted to BOTH tenant A and
+      // The high-value case: one origin granted to BOTH tenant A and
       // tenant B — impossible under the old single-owner index (a global
       // unique index on `origin` made the second tenant's grant a 409).
       'https://shared.example': [TENANT_A, TENANT_B],
@@ -124,7 +124,7 @@ describe('OriginTenantBindingGuard (TASK-610 T-5, FR-4, §4B many-to-many)', () 
     setOriginEnforcementResolver(null);
   });
 
-  describe('the §4B many-to-many case this lane exists for', () => {
+  describe('the many-to-many case this lane exists for', () => {
     it('allows a shared origin for tenant A', () => {
       const guard = new OriginTenantBindingGuard(createCls({ tenantId: TENANT_A }), registry);
 

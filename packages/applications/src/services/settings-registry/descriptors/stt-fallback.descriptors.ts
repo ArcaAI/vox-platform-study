@@ -1,11 +1,11 @@
-// STT fallback + BYOK descriptors (TASK-567, §3.7).
+// STT fallback + BYOK descriptors.
 //
 // Mirrors the TTS BYO-credential posture: per-tenant STT provider keys are the
 // data-class-2 secret example (Vault-Transit ciphertext in a DB column,
 // write-only + masked). The fallback pipeline pointer is provider SELECTION, so
 // it fails CLOSED like `models.*`; the auto-switch knobs are tuning that degrade
 // to their code default. Editable by tenant admins (`editableBy: 'TenantSttConfig'`)
-// — STT is already tenant-admin self-service (§3.2), NOT the GLOBAL-ADMIN lock.
+// — STT is already tenant-admin self-service, NOT the GLOBAL-ADMIN lock.
 
 import { SettingDescriptor } from '../registry.types';
 
@@ -37,7 +37,7 @@ export const STT_FALLBACK_SETTINGS: SettingDescriptor[] = [
     maxScope: 'tenant',
     editableBy: 'TenantSttConfig',
     // Provider/pipeline SELECTION — an unresolvable fallback must never silently
-    // become another tenant's or a global pipeline (§3.3 selection-fail-closed).
+    // become another tenant's or a global pipeline (selection fail-closed).
     failMode: 'closed',
     category: 'Speech',
     label: 'STT fallback pipeline',

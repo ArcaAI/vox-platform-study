@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================================
-# TASK-633 — Vox SDK family publisher (manual releases)
+# Vox SDK family publisher (manual releases)
 # ============================================================================
 # Version-bumps, builds, and publishes the vox SDK family — the browser SDK
 # (room/vad/noise-filter/stt/med-ner/vox) in dependency order, plus the

@@ -1,12 +1,12 @@
 /**
- * TASK-563 — golden fixtures for the v1-compatible SMR summary shims.
+ * Golden fixtures for the v1-compatible SMR summary shims.
  *
- * Frozen sample payloads for the compat endpoints (TASK-560 §5.4/§5.5). They
+ * Frozen sample payloads for the compat endpoints. They
  * are the regression anchor for `tests/contracts/smr-compat.contract.test.ts`
- * (schema lock) and the live-response assertions in the TASK-562 e2e spec. If a
+ * (schema lock) and the live-response assertions in the e2e spec. If a
  * future change reshapes a v1 contract, validating these fixtures fails.
  *
- * Do NOT restate schemas here divergently from TASK-560 §5 — these are concrete
+ * Do NOT restate schemas here divergently — these are concrete
  * INSTANCES of those shapes, not the schema.
  */
 
@@ -15,7 +15,7 @@ import type { EnhancedMedicalSummary, SimplifiedMedicalSummary } from '@arcaai/v
 /**
  * Golden `SessionData` — the request body a v1 app sends to
  * `POST /api/smr/api/v1/summary/sync` (SMR_Summary_Endpoints.md §3.1.1). Real
- * per-turn `conversation_segments` (F2 — never one collapsed blob).
+ * per-turn `conversation_segments` (never one collapsed blob).
  */
 export const GOLDEN_SESSION_DATA = {
   session_id: 'golden-sess-001',
@@ -105,7 +105,7 @@ export const GOLDEN_ENHANCED_SUMMARY: EnhancedMedicalSummary = {
   quality_metrics: { completeness_score: 0.82, confidence_level: 'Medium', missing_information: ['physical exam detail'], documentation_flags: [] },
 };
 
-/** Golden `SummaryResponse` envelope (§5.4) — the shim's 200 body, Simplified. */
+/** Golden `SummaryResponse` envelope — the shim's 200 body, Simplified. */
 export const GOLDEN_SUMMARY_RESPONSE = {
   session_id: 'golden-sess-001',
   summary: GOLDEN_SIMPLIFIED_SUMMARY,
@@ -124,7 +124,7 @@ export const GOLDEN_SUMMARY_RESPONSE = {
   },
 } as const;
 
-/** Golden `PreSummaryResponse` (§5.5) — `sections: []`, `pre_summary` is source of truth. */
+/** Golden `PreSummaryResponse` — `sections: []`, `pre_summary` is source of truth. */
 export const GOLDEN_PRE_SUMMARY_RESPONSE = {
   pre_summary:
     '# Pre-Summary of Medical History\n\n**Confirmed & Provisional Diagnoses**\n- Hypertension on lisinopril\n\n**Plan of Care**\n- Continue current medications',
@@ -138,7 +138,7 @@ export const GOLDEN_PRE_SUMMARY_RESPONSE = {
   created_at: '2026-07-28T00:00:00.000Z',
 } as const;
 
-/** Golden pre-summary request (§5.5). */
+/** Golden pre-summary request. */
 export const GOLDEN_PRE_SUMMARY_REQUEST = {
   current_department: 'Cardiology',
   visit_type: 'Follow-up',

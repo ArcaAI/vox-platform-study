@@ -57,7 +57,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             error=str(exc),
         )
 
-    # Self-registration (TASK-648 W9): fire-and-forget, bounded-timeout, NEVER
+    # Self-registration: fire-and-forget, bounded-timeout, NEVER
     # blocks or fails boot. A dedicated short-lived httpx client (kept out of
     # any request-serving pool) — closed on shutdown below.
     app.state.service_release_task = None

@@ -259,7 +259,7 @@ export class VaultSecretsProvider implements ISecretsProvider, OnModuleDestroy {
   /**
    * kv-v2 data path for a secret. With `version` it addresses that specific
    * kv-v2 version (`?version=N`) instead of the latest — the read half of the
-   * staged-rotation contract in plan §9.2 L6. Without one the behaviour is
+   * staged-rotation contract. Without one the behaviour is
    * unchanged, so the query string only ever appears when a caller asked.
    */
   private kvPath(key: string, version?: number): string {
@@ -300,7 +300,7 @@ export class VaultSecretsProvider implements ISecretsProvider, OnModuleDestroy {
    * Run a Vault read with bounded exponential-backoff retries on transient
    * errors. Wraps only the network call; the caller's 404/empty-value handling
    * runs against the final outcome. This closes the "100ms Vault blip → 5xx to
-   * the user" gap (plan §2.2 #7) without masking auth errors.
+   * the user" gap without masking auth errors.
    */
   private async withRetry<T>(op: () => Promise<T>): Promise<T> {
     let lastErr: unknown;

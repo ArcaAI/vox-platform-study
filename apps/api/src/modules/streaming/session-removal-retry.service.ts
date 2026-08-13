@@ -58,7 +58,7 @@ export class SessionRemovalRetryService implements OnModuleDestroy {
    * Park a session whose upstream removal failed and start the bounded
    * backoff retries. Fire-and-forget safe: never throws.
    *
-   * TASK-615 WS-C: `interrupted` carries through to every retry's
+   * `interrupted` carries through to every retry's
    * `removeSession` call. This method is ONLY ever reached from the WS
    * gateway's `finalizeSession` (an explicit close's removeSession failing
    * is just as retryable as an abort's), so the caller's own `interrupted`

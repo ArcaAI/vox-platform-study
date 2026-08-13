@@ -37,11 +37,11 @@ export interface ValidatedContextPayload {
    * The text to persist. For a STRUCTURED kind this is the canonical JSON of
    * the validated payload, so it rides the EXISTING Vault-Transit encryption
    * path on `ContextItem.content` — no new plaintext PHI column exists or is
-   * needed (TASK-654 C3).
+   * needed.
    */
   content?: string;
   /**
-   * TASK-661 — set ONLY when the caller pinned an explicit
+   * Set ONLY when the caller pinned an explicit
    * `contextSchemaVersionId` that differs from the tenant's CURRENT servable
    * pin. Classifies the drift between the version the write was validated
    * against and the current one, using the SAME classifier `publish` uses
@@ -56,7 +56,7 @@ export interface ValidatedContextPayload {
 }
 
 /**
- * TASK-658 — tenant-declared consultation context schemas.
+ * Tenant-declared consultation context schemas.
  *
  * ## The three surfaces, and who calls them
  *
@@ -73,7 +73,7 @@ export interface ValidatedContextPayload {
  *    invalidate a write the client made against version N. The pin is
  *    captured on the `ContextItem` at write time for exactly this reason.
  * 2. **Cross-tenant ids answer 404, not 403.** Every by-id path goes through
- *    the same owned-or-throw helper (TASK-654 C5).
+ *    the same owned-or-throw helper.
  */
 export const IConsultationContextSchemaService = Symbol('IConsultationContextSchemaService');
 

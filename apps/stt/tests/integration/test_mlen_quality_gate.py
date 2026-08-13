@@ -1,4 +1,4 @@
-"""Malayalam-English code-switch STT regression gate (TASK-594).
+"""Malayalam-English code-switch STT regression gate.
 
 Runs the shipped whisper.cpp adapter path over a private labeled fixture set and
 asserts CER has not regressed past the committed baseline

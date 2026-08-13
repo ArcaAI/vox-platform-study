@@ -493,18 +493,18 @@ describe('SMR Service Contract', () => {
 });
 
 /**
- * TASK-528 §3.3 / §5.3 — `GET /api/v1/providers` probe contract.
+ * `GET /api/v1/providers` probe contract.
  *
  * The SMR-side additions are ADDITIVE and OPTIONAL: the gateway's transition
  * fallback mapper (`smr-proxy.controller.ts#getProviders`) spreads the payload
- * untouched, so a pre-TASK-528 SMR (no probe fields) must still validate.
+ * untouched, so an SMR without probe fields must still validate.
  */
 describe('SMR Providers Listing Contract', () => {
   const ModelInfoSchema = z.object({
     name: z.string(),
     supports_streaming: z.boolean().optional(),
     context_window: z.number().nullable().optional(),
-    // Additive (TASK-528): engine-reported load state + engine-native extras.
+    // Additive: engine-reported load state + engine-native extras.
     state: z.enum(['loaded', 'not-loaded']).nullable().optional(),
     engine_native: z.record(z.string(), z.unknown()).nullable().optional(),
   });
@@ -516,7 +516,7 @@ describe('SMR Providers Listing Contract', () => {
     default_model: z.string(),
     models: z.array(ModelInfoSchema),
     supports_streaming: z.boolean().optional(),
-    // Additive (TASK-528): per-provider probe outcome.
+    // Additive: per-provider probe outcome.
     probe_status: z.enum(['ok', 'timeout', 'error', 'skipped']).nullable().optional(),
     probe_latency_ms: z.number().nullable().optional(),
     probe_error: z.string().nullable().optional(),

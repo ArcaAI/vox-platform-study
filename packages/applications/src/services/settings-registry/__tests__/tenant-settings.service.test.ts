@@ -1,13 +1,13 @@
-// TASK-558 lane I — the `global-kv` cascade: tenant → SYSTEM → descriptor default.
+// The `global-kv` cascade: tenant → SYSTEM → descriptor default.
 //
 // This is the read half of "allocate env vars to the database for multi-tenant
-// support". It pins the four properties the lane exists to deliver:
+// support". It pins the four properties the cascade exists to deliver:
 //   1. a tenant override BEATS the platform row;
 //   2. the entitlement CEILING clamps a tenant trying to exceed its plan
-//      (§9.3 M2 — entitlements bound what a tenant MAY set, they never supply);
+//      (entitlements bound what a tenant MAY set, they never supply);
 //   3. an absent row falls back to the descriptor default;
-//   4. NO cache serves one tenant's value to another (§9.3 M4).
-// Plus §9.2 L8: the resolved value always says WHICH tier supplied it.
+//   4. NO cache serves one tenant's value to another.
+// Plus: the resolved value always says WHICH tier supplied it.
 
 import { describe, expect, it, vi } from 'vitest';
 import { ArgumentInvalidException } from '@arcaai/exceptions';
@@ -69,7 +69,7 @@ describe('TenantSettingsService — cascade', () => {
     });
   });
 
-  it('never serves one tenant the other tenant’s override (§9.3 M4)', () => {
+  it('never serves one tenant the other tenant’s override', () => {
     const service = build({ 'rateLimit.maxRequests': 250 }, { [TENANT_A]: { 'rateLimit.maxRequests': 40 } });
     expect(service.resolve('rateLimit.maxRequests', TENANT_A).value).toBe(40);
     expect(service.resolve('rateLimit.maxRequests', TENANT_B)).toEqual({
@@ -93,7 +93,7 @@ describe('TenantSettingsService — cascade', () => {
   });
 });
 
-describe('TenantSettingsService — entitlement ceiling (§9.3 M2)', () => {
+describe('TenantSettingsService — entitlement ceiling', () => {
   it('clamps a tenant that tries to exceed its PLAN limit and reports the bound', () => {
     const service = build({ 'rateLimit.maxRequests': 250 }, { [TENANT_A]: { 'rateLimit.maxRequests': 200 } });
     expect(service.resolve('rateLimit.maxRequests', TENANT_A, { entitlement: 30 })).toEqual({
@@ -143,7 +143,7 @@ describe('TenantSettingsService — entitlement ceiling (§9.3 M2)', () => {
   });
 });
 
-describe('TenantSettingsService — declared failure mode (§4 B3)', () => {
+describe('TenantSettingsService — declared failure mode', () => {
   it('throws for an unknown key', () => {
     expect(() => build().resolve('no.such.key', TENANT_A)).toThrow(ArgumentInvalidException);
   });

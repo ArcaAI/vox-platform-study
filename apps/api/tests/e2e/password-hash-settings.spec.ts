@@ -2,7 +2,7 @@
  * Live API contract for the two pre-existing-defect fixes.
  *
  * Run against the live test stack (`SKIP_DB_PRECHECK=true API_URL=http://localhost:8968/api/v1`),
- * harness mirrors task-400 (seeded `super_admin` on `__GLOBAL__`; throwaway
+ * harness mirrors (seeded `super_admin` on `__GLOBAL__`; throwaway
  * rows only; cleanup is soft-delete via the service path — never SQL DELETE).
  *
  * Defect 1 — admin-created passwords must be bcrypt-hashed:

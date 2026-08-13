@@ -1,5 +1,5 @@
 # =============================================================================
-# HOPE — bootstrap init Job, PRODUCTION digest-pinned apply (TASK-312 Phase E)
+# HOPE — bootstrap init Job, PRODUCTION digest-pinned apply
 # =============================================================================
 # Enforces the image digest pin (not just a comment): the `images:` transformer
 # rewrites `alpine/k8s:1.33.1` -> `alpine/k8s@sha256:…` at apply time.

@@ -91,7 +91,7 @@ describe('HarnessGatewayService', () => {
       );
     });
 
-    it('forwards redactionRules (TASK-551) when present', async () => {
+    it('forwards redactionRules when present', async () => {
       const service = build('http://harness:8866', 'tok');
       const rules = [{ id: 'r1', type: 'remove', match: 'literal', pattern: 'employer' }];
 
@@ -101,7 +101,7 @@ describe('HarnessGatewayService', () => {
       expect(body.redactionRules).toEqual(rules);
     });
 
-    it('omits redactionRules from the body when empty (byte-identical to pre-TASK-551)', async () => {
+    it('omits redactionRules from the body when empty (byte-identical to previous)', async () => {
       const service = build('http://harness:8866', 'tok');
 
       await service.start('c-8', { tenantId: 'tenant-8', redactionRules: [] });
@@ -206,7 +206,7 @@ describe('HarnessGatewayService', () => {
       expect(result).toEqual({ signaled: true });
     });
 
-    // TASK-670 — payload completeness: kindKey/occurredAt/depth/content.
+    // Payload completeness: kindKey/occurredAt/depth/content.
     it('forwards kindKey, occurredAt, depth, and content when the caller supplies them', async () => {
       const service = build('http://harness:8866', 'harness-token-xyz');
 
@@ -300,7 +300,7 @@ describe('HarnessGatewayService', () => {
     });
   });
 
-  // TASK-670 — TDD item 6: "No decrypted content appears in logs or in any
+  // TDD item 6: "No decrypted content appears in logs or in any
   // non-PHI-safe field." Every signal call logs only ids/booleans (see the
   // existing `logger.log` calls in `harness-gateway.service.ts`) — this pins
   // that a request carrying real clinical text never leaks it into a log line.

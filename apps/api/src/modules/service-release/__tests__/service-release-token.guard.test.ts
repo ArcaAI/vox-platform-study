@@ -1,5 +1,5 @@
 /**
- * ServiceReleaseTokenGuard unit tests (TASK-648 W8).
+ * ServiceReleaseTokenGuard unit tests.
  *
  * @vitest-environment node
  */

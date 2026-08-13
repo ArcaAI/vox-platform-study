@@ -1,5 +1,5 @@
 /**
- * PluginManager — streaming client connection/provider-switch wiring (TASK-567).
+ * PluginManager — streaming client connection/provider-switch wiring.
  *
  * `buildStreamingTransport` must wire the previously-dangling SttWebSocketClient
  * lifecycle callbacks (onDisconnect/onReconnect/onReconnected/onReconnectFailed)
@@ -23,7 +23,7 @@ const captured: Record<string, ((...args: any[]) => void) | undefined> = {};
 vi.mock('../StreamingSessionManager', () => ({
   StreamingSessionManager: class {
     refreshTicket = vi.fn(async () => 'ticket');
-    // Captured like the ws-client callbacks below so the TASK-614 session-create
+    // Captured like the ws-client callbacks below so the session-create
     // echo can be driven from a test.
     onSessionCreated(cb: (response: unknown) => void) {
       captured.onSessionCreated = cb;
@@ -60,7 +60,7 @@ function makeApiClient(): AgenticClient {
   return { post: vi.fn(), get: vi.fn(), put: vi.fn(), delete: vi.fn(), getBaseUrl: vi.fn(() => 'https://api.test') } as unknown as AgenticClient;
 }
 
-describe('PluginManager — provider-switch / connection wiring (TASK-567)', () => {
+describe('PluginManager — provider-switch / connection wiring', () => {
   let manager: PluginManager;
   let onSttConnectionState: ReturnType<typeof vi.fn<(state: SttConnectionState) => void>>;
   let onProviderSwitched: ReturnType<typeof vi.fn<(info: ProviderSwitchInfo) => void>>;
@@ -74,7 +74,7 @@ describe('PluginManager — provider-switch / connection wiring (TASK-567)', () 
     manager.buildStreamingTransport({ enabled: true, provider: 'backend' }, 'pipe-1');
   });
 
-  // TASK-614 — the session-create echo is routed to the plugin bus so the store's
+  // The session-create echo is routed to the plugin bus so the store's
   // `activePipeline` can be server-derived instead of an echo of the request.
   it('routes a session-create echo to onStreamingSessionCreated', () => {
     const onStreamingSessionCreated = vi.fn();
@@ -131,7 +131,7 @@ describe('PluginManager — provider-switch / connection wiring (TASK-567)', () 
     });
   });
 
-  it('forwards the bidirectional active/is_fallback fields on a primary→fallback frame (TASK-586)', () => {
+  it('forwards the bidirectional active/is_fallback fields on a primary→fallback frame', () => {
     captured.onStatus?.({
       type: 'status',
       status: 'provider_switched',
@@ -151,7 +151,7 @@ describe('PluginManager — provider-switch / connection wiring (TASK-567)', () 
     });
   });
 
-  it('forwards active=primary / is_fallback=false on a switch BACK to primary (TASK-586)', () => {
+  it('forwards active=primary / is_fallback=false on a switch BACK to primary', () => {
     captured.onStatus?.({
       type: 'status',
       status: 'provider_switched',

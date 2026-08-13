@@ -173,13 +173,13 @@ describe('IngestKnowledgeDocumentProcessor', () => {
     expect(knowledgeDocumentRepository.update).not.toHaveBeenCalled();
   });
 
-  // TASK-615 WS-D2 (item 3) — the harness knowledge-ingest path embeds
+  // (item 3) — the harness knowledge-ingest path embeds
   // through the self-hosted LM Studio OpenAI-compatible endpoint (see
   // apps/harness/src/harness/services/embeddings_client.py + core/config.py
   // `embeddings_base_url: http://localhost:1234/v1`), NOT a TEI reranker
   // instance — so the ledger provider slug is `lm-studio`, an id already in
   // KNOWN_PROVIDERS.
-  describe('embedding usage emission (TASK-615 WS-D2)', () => {
+  describe('embedding usage emission', () => {
     it('emits ONE embed INPUT_TOKEN row summing every chunk tokenCount for the ingest call', async () => {
       const usageLedgerService = { recordUsage: vi.fn().mockResolvedValue({ outboxIds: ['o-1'], events: 1 }) };
       const { processor, knowledgeDocumentRepository, ingestClient } = buildHarness({ usageLedgerService });

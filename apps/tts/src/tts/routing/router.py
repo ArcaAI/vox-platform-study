@@ -55,7 +55,7 @@ class AllProvidersUnavailableError(RuntimeError):
 class TtsRoutingUnconfiguredError(AllProvidersUnavailableError):
     """No routing chain was injected for this locale — FAIL CLOSED.
 
-    The router carries NO code/env vendor default (TASK-577 / F1): the per-locale
+    The router carries NO code/env vendor default: the per-locale
     provider order is DB-sourced (the SYSTEM ``TenantTtsConfig`` default, resolved
     by the gateway and injected per request). When nothing is injected we raise
     rather than substitute a vendor. Subclasses ``AllProvidersUnavailableError``
@@ -179,7 +179,7 @@ class TTSRouter:
         The chain comes ONLY from the per-request ``routing_en``/``routing_ml``
         the gateway injects from the tenant's resolved config (SYSTEM
         ``TenantTtsConfig`` default → tenant overrides). There is NO code/env
-        vendor fallback (TASK-577 / F1): an empty/absent chain FAILS CLOSED with
+        vendor fallback: an empty/absent chain FAILS CLOSED with
         ``TtsRoutingUnconfiguredError`` rather than substituting a provider order.
         """
         base = locale.split("-")[0]
@@ -208,7 +208,7 @@ class TTSRouter:
         for name in self.resolve_chain(voice.locale, routing_en=routing_en, routing_ml=routing_ml):
             if allow is not None and name not in allow:
                 continue
-            # TASK-602: a registered cloud provider with no platform credential
+            # A registered cloud provider with no platform credential
             # (is_configured=False) is NOT a usable candidate — it would 401 the
             # live API. It counts as available only via a per-tenant override
             # (override_providers), which builds a keyed engine. Self-hosted
@@ -296,7 +296,7 @@ class TTSRouter:
                     else self._sentence_adapter(engine, req)
                 )
                 # Per-model (= per-provider) running gauge + inference
-                # latency — TASK-615 WS-E cross-service {service, model} pair.
+                # latency — cross-service {service, model} pair.
                 with track_model_inference(name):
                     async with aclosing(source) as stream:
                         async for chunk in stream:
@@ -306,7 +306,7 @@ class TTSRouter:
                                 )
                                 emitted = True
                             audio_bytes += len(chunk.data)
-                            # Stamp the winning provider (TASK-615 WS-E usage
+                            # Stamp the winning provider (usage
                             # attribution) — a caller doesn't know which
                             # candidate won until the first byte ships.
                             yield replace(chunk, provider=name)
@@ -407,7 +407,7 @@ class TTSRouter:
         self, name: str, req: SynthesisRequest, audio_bytes: int, gen_s: float
     ) -> None:
         # Shares its byte math with the usage-metering audio-seconds
-        # derivation (tts.core.usage.compute_audio_seconds, TASK-615 WS-E) so
+        # derivation (tts.core.usage.compute_audio_seconds) so
         # the SLO metric and the billed quantity never drift apart. WAV/MP3
         # aren't RTF-observed here (this metric predates format support
         # beyond PCM); compute_audio_seconds itself DOES handle WAV.

@@ -39,7 +39,7 @@ interface SpeechSynthesizeRequest {
   routing_en?: string[];
   routing_ml?: string[];
   allowed_providers?: string[];
-  // `funding` (TASK-643 R3) labels WHO PAID for the credential: the caller
+  // `funding` labels WHO PAID for the credential: the caller
   // tenant's own connection row, or the SYSTEM-tenant platform default. tts
   // ignores it (it reads named credential keys only); the gateway reads it back
   // when it stamps the usage row. Absent ⇒ `'tenant'`.
@@ -75,16 +75,16 @@ export class SpeechProxyController {
     // Optional so positional test construction (and internal service-token calls
     // without a tenant context) still work; injection is a no-op when absent.
     @Optional() @Inject(ITenantTtsConfigService) private readonly tenantTtsConfig?: ITenantTtsConfigService,
-    // BYO provider credential injection (`service='tts'`, TASK-570) — the
+    // BYO provider credential injection (`service='tts'`) — the
     // unified provider-connection plane. Optional for the same reason as above.
     @Optional() @Inject(IProviderConnectionService) private readonly providerConnectionService?: IProviderConnectionService,
     @Optional() private readonly cls?: ClsService<IActiveUserContext>,
-    // TASK-615 WS-E: emits CHARACTER + AUDIO_SECOND usage rows at stream
+    // Emits CHARACTER + AUDIO_SECOND usage rows at stream
     // teardown. Optional/trailing so existing positional test fixtures keep
     // compiling; absent (or no resolvable tenantId) ⇒ no emission, fail-open —
     // metering must never block synthesis.
     @Optional() @Inject(IUsageLedgerService) private readonly usageLedger?: IUsageLedgerService,
-    // TASK-615 WS-H: PRE-FLIGHT monthlyTtsCharacters allowance check, BEFORE
+    // PRE-FLIGHT monthlyTtsCharacters allowance check, BEFORE
     // the upstream TTS call — characters are knowable upfront here (the whole
     // `input` string is in the request body), unlike the WS-duplex gateway.
     // Optional/trailing so existing positional test fixtures keep compiling;
@@ -109,7 +109,7 @@ export class SpeechProxyController {
           ? this.providerConnectionService.resolveTenantCloudOverrides('tts', tenantId)
           : Promise.resolve({ overrides: {} as ProviderOverrides }),
       ]);
-      // TASK-643 — the map now spans two tiers (the tenant's own rows over the
+      // The map now spans two tiers (the tenant's own rows over the
       // SYSTEM-tenant platform default) and each entry carries its `funding`,
       // which `classifyTtsProvider` reads back to stamp the usage row.
       const overrides = resolved.overrides;
@@ -207,7 +207,7 @@ export class SpeechProxyController {
   }
 
   /**
-   * TASK-615 WS-E: accepted characters are tts's own count (X-Tts-Characters,
+   * Accepted characters are tts's own count (X-Tts-Characters,
    * computed AFTER its 413 guard — the single source of truth for what was
    * actually accepted). A missing/malformed header falls back to counting
    * code points on the exact forwarded input — defensive only, never the
@@ -250,7 +250,7 @@ export class SpeechProxyController {
     const base = this.getTtsBaseUrl();
     const forwardBody = await this.applyTenantConfig(body);
 
-    // TASK-615 WS-H — PRE-FLIGHT monthlyTtsCharacters check, before any
+    // PRE-FLIGHT monthlyTtsCharacters check, before any
     // upstream call. `applyTenantConfig` never touches `input`, so this counts
     // the same text that will actually be synthesized. Unicode CODE POINTS
     // (`[...input].length`), matching the CHARACTER unit's counting rule
@@ -286,7 +286,7 @@ export class SpeechProxyController {
       res.setHeader('X-Accel-Buffering', 'no');
       res.flushHeaders();
 
-      // TASK-615 WS-E: accumulated across the whole proxy lifetime and
+      // Accumulated across the whole proxy lifetime and
       // recorded exactly once at teardown — success or abort (client
       // disconnect / upstream stream error). requestId is minted fresh per
       // HTTP call since this proxy has no client-supplied one; one physical

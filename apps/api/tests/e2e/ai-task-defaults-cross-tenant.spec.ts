@@ -1,10 +1,10 @@
 /**
  * Cross-tenant + governance probes against AiTaskDefaultAdminController
- * (`/api/v1/admin/ai-task-defaults`), following the task-307 cross-tenant pattern.
+ * (`/api/v1/admin/ai-task-defaults`), following the cross-tenant pattern.
  *
  * Governance contracts (`GLOBAL_ADMIN_ONLY_TASK_PREFIXES` in
  * `packages/applications/src/services/ai-task-default/constants.ts` covers
- * `guardrail.`, `nlp.` AND `harness.`. TASK-588 REMOVED `smr.` — the `smr.*`
+ * `guardrail.`, `nlp.` AND `harness.`. REMOVED `smr.` — the `smr.*`
  * keys are now TENANT-ADMIN configurable, so a tenant admin may write them for
  * their OWN tenant while the other prefixes stay global-admin-only):
  *  1. Tenant scoping — a tenant admin is pinned to their CLS tenant; an explicit
@@ -15,7 +15,7 @@
  *     their OWN tenant (a privilege verdict, deliberately raised BEFORE the OCC
  *     compare — so a tenant admin sees 403, not 412, on any version). The
  *     un-locked `smr.*` keys are the exception: a tenant admin PUT succeeds for
- *     their own tenant (TASK-588).
+ * their own tenant.
  *  3. Global admin acts cross-tenant via `?tenantId=` (PUT succeeds).
  *  4. RFC 7232 OCC — PUT without `If-Match` → 428; stale `If-Match` → 412
  *     (asserted on the seeded SYSTEM row, where a version ≥ 1 exists).
@@ -76,7 +76,7 @@ test.describe('AiTaskDefault admin surface (cross-tenant + guardrail governance)
     expect(Array.isArray(body)).toBe(true);
     // The full registry: guardrail.validate/safety/groundedness,
     // nlp.ner/classification/diagnosis, smr.live/finalize + the tenant-configurable
-    // smr.*.fallback keys (TASK-588), and harness.judge.
+    // smr.*.fallback keys, and harness.judge.
     expect(body.map((e) => e.taskKey)).toEqual([
       'guardrail.validate',
       'guardrail.safety',
@@ -130,7 +130,7 @@ test.describe('AiTaskDefault admin surface (cross-tenant + guardrail governance)
 
   test('GOVERNANCE: a still-locked prefix stays global-only — nlp.ner PUT by a tenant admin → 403', async ({ request }) => {
     // guardrail./nlp./harness. remain GLOBAL-ADMIN-ONLY (only smr. was un-locked
-    // by TASK-588). The 403 fires BEFORE the OCC compare, so any valid If-Match
+    // by). The 403 fires BEFORE the OCC compare, so any valid If-Match
     // sees it.
     const row = await readRowVersion(request, tenantAdminToken, 'nlp.ner');
     const resp = await request.put(`${BASE}/row?taskKey=nlp.ner`, {
@@ -141,8 +141,8 @@ test.describe('AiTaskDefault admin surface (cross-tenant + guardrail governance)
     expect(JSON.stringify(await resp.json())).toContain('global administrators only');
   });
 
-  test('TASK-588: tenant admin CAN write an smr.* key (smr.finalize) for their OWN tenant → 200', async ({ request }) => {
-    // `smr.` left GLOBAL_ADMIN_ONLY_TASK_PREFIXES (TASK-588): the smr.* keys are
+  test('Tenant admin CAN write an smr.* key (smr.finalize) for their OWN tenant → 200', async ({ request }) => {
+    // `smr.` left GLOBAL_ADMIN_ONLY_TASK_PREFIXES: the smr.* keys are
     // now tenant-admin configurable. Unlike the guardrail/nlp negative probes
     // above, this write is accepted for the caller's own CLS-pinned tenant. On a
     // fresh seed the tenant row is a version-0 placeholder, so this PUT travels

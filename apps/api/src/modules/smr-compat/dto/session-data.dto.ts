@@ -4,7 +4,7 @@ import { IsArray, IsNumber, IsObject, IsOptional, IsString, Max, Min, ValidateNe
 
 /**
  * v1 `ConversationSegment` — one transcript turn.
- * (SMR_Summary_Endpoints.md §3.1.1; frozen TASK-560 §5.4.)
+ * (SMR_Summary_Endpoints.md §3.1.1; frozen)
  */
 export class ConversationSegmentDto {
   @ApiProperty({ description: 'Speaker label, e.g. "patient" / "provider"' })
@@ -24,7 +24,7 @@ export class ConversationSegmentDto {
    * a caller that already holds a bilingual transcript can supply it directly.
    *
    * Present ⇒ `buildSummaryPrompt` renders both lines and makes THIS one
-   * authoritative for clinical facts (TASK-651).
+   * authoritative for clinical facts.
    */
   @ApiPropertyOptional({ description: 'Original untranslated text, when `text` is a machine translation' })
   @IsOptional()
@@ -137,7 +137,7 @@ export class PreviousVisitRecordDto {
 
 /**
  * v1 `SessionData` — the session to summarize.
- * (SMR_Summary_Endpoints.md §3.1.1; frozen TASK-560 §5.4.)
+ * (SMR_Summary_Endpoints.md §3.1.1; frozen)
  */
 export class SessionDataDto {
   // No consultation/session is required to summarize: `session_id` is an OPTIONAL

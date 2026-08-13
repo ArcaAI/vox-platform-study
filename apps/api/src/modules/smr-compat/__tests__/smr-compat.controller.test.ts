@@ -83,11 +83,11 @@ const createMockSecrets = () => ({
 });
 const createMockHarnessPolicy = () => ({
   resolveSmrSelection: vi.fn(async () => ({ provider: 'lm-studio', model: 'gemma-4' })),
-  // TASK-588: per-tenant fallback resolver (fail-open — null = no fallback configured).
+  // Per-tenant fallback resolver (fail-open — null = no fallback configured).
   resolveSmrFallbackSelection: vi.fn(async (): Promise<{ provider: string; model: string } | null> => null),
 });
 
-// TASK-592: department→governed-template resolver. Default returns undefined
+// Department→governed-template resolver. Default returns undefined
 // (no real tenant department matched) so every pre-existing test keeps the
 // static dept×visit steering path unchanged.
 const createMockTemplateService = () => ({
@@ -112,7 +112,7 @@ const syncRequest = (overrides: Partial<SyncSummaryRequest> = {}): SyncSummaryRe
     ...overrides,
   }) as SyncSummaryRequest;
 
-describe('resolveDepartmentVisit (frozen wire contract, TASK-560 item 1)', () => {
+describe('resolveDepartmentVisit (frozen wire contract)', () => {
   it('prefers the top-level department/visit_type when non-empty', () => {
     const r = resolveDepartmentVisit(
       { department: 'Cardiology', visit_type: 'Follow-up' },
@@ -330,7 +330,7 @@ describe('SmrCompatController', () => {
       expect(res.summary.summary).toBe('y');
     });
 
-    // TASK-599 — the requesting doctor's DNA writing-style is resolved by
+    // The requesting doctor's DNA writing-style is resolved by
     // doctor_id and injected into the SMR system_prompt; omitted entirely when no
     // doctor_id is supplied (D5: department + visit-type only).
     it('injects the doctor DNA writing style into the SMR system_prompt when doctor_id is provided', async () => {
@@ -349,7 +349,7 @@ describe('SmrCompatController', () => {
       const res = createMockRes();
       await controllerWithDna.summarySync(syncRequest({ doctor_id: 'doctor-1' }), {} as never, res as never);
 
-      // TASK-651 — the resolved tenant now travels with the doctor id; the
+      // The resolved tenant now travels with the doctor id; the
       // service no longer re-derives it from CLS (empty on the API-key path).
       expect(dna.getEffectiveStyleText).toHaveBeenCalledWith('doctor-1', 'tenant-1');
       const [, body] = http.axiosRef.post.mock.calls[0];
@@ -377,7 +377,7 @@ describe('SmrCompatController', () => {
       expect(body.system_prompt).not.toContain('SHOULD NOT APPEAR');
     });
 
-    // TASK-600 — translate the transcript to English via SMR /api/v1/translate
+    // Translate the transcript to English via SMR /api/v1/translate
     // before summarizing; BYOK resolved from the unified provider plane; fail-open
     // to the original transcript on error; no call when the flag is absent.
     it('translates the transcript via SMR /api/v1/translate (with tenant BYOK) before summarizing', async () => {
@@ -417,7 +417,7 @@ describe('SmrCompatController', () => {
       expect(smrCall![1].prompt).toContain('EN:Chest tightness.');
     });
 
-    // TASK-651 — Sarvam stays enabled, but its output is no longer the only text
+    // Sarvam stays enabled, but its output is no longer the only text
     // the model sees. On a real ml-en consultation the translation alone swapped
     // aceclofenac for acetaminophen and "marked" for "mild"; the untranslated
     // turn now travels with it and outranks it for clinical facts.
@@ -451,7 +451,7 @@ describe('SmrCompatController', () => {
       expect(smrCall![1].system_prompt).toMatch(/take the value from the original line/i);
     });
 
-    // TASK-651 — DNA writing style on the API-KEY path. CLS `tenantId` is empty
+    // DNA writing style on the API-KEY path. CLS `tenantId` is empty
     // there (only the JWT strategy sets it), so the service's own CLS read threw
     // 'Tenant ID is required' and fail-open swallowed it: no clinician's style
     // was EVER applied on this surface. Verified live on hope-v2-dev 2026-08-10.
@@ -506,7 +506,7 @@ describe('SmrCompatController', () => {
       expect(smrCall![1].system_prompt).not.toContain('machine translation');
     });
 
-    // TASK-650 R2 (owner decision 2026-08-10): Sarvam fires for ANY non-English
+    // (owner decision 2026-08-10): Sarvam fires for ANY non-English
     // source, with no flag from the caller. Nothing in the product ever set
     // `translate_to_english`, so before this every Malayalam consultation was
     // summarized from an untranslated transcript.
@@ -584,7 +584,7 @@ describe('SmrCompatController', () => {
       // A Malayalam-language consultation WITH the translate flag ON: the
       // transcript is translated to English, so the output-language directive
       // must switch from 'ml' to 'en' (otherwise the model writes an English
-      // transcript back up as a Malayalam summary — the TASK-600 defect).
+      // transcript back up as a Malayalam summary — the defect).
       const mlBody = syncRequest({
         translate_to_english: true,
         session_data: {
@@ -602,7 +602,7 @@ describe('SmrCompatController', () => {
 
       const smrCall = httpLocal.axiosRef.post.mock.calls.find((c: unknown[]) => String(c[0]).includes('/api/v1/generate'));
       expect(smrCall![1].prompt).toContain('EN:ചോദ്യം'); // transcript translated
-      // TASK-650 R1 survives the v1 assembly: rather than appending a directive
+      // Survives the v1 assembly: rather than appending a directive
       // that competes with the department template's own "content in
       // conversation language" clause, `{conversation_language}` — the very
       // token that clause defers to — is substituted with English, so v1's own
@@ -639,7 +639,7 @@ describe('SmrCompatController', () => {
       expect(res.jsonBody).toBeTruthy(); // summary still produced
     });
 
-    // TASK-643 — this used to prove the CONTROLLER called the resolver twice
+    // This used to prove the CONTROLLER called the resolver twice
     // (its own hand-rolled tenant→SYSTEM cascade, the only one in the codebase).
     // The cascade now lives in the resolver, so the controller makes ONE call
     // and the platform tier arrives labelled `funding: 'platform'` — which is
@@ -740,7 +740,7 @@ describe('SmrCompatController', () => {
     });
   });
 
-  describe('Per-tenant SMR fallback (TASK-588)', () => {
+  describe('Per-tenant SMR fallback', () => {
     const good = JSON.stringify({ chief_complaint: 'x', summary: 'y' });
 
     // (a) primary fails + resolver returns a target → ONE retry on that provider/model.
@@ -841,7 +841,7 @@ describe('SmrCompatController', () => {
       const res = await invokePresummary(preRequest());
 
       const [, body] = http.axiosRef.post.mock.calls[0];
-      // TASK-634 D-10 — v1 `routes.py`: temperature 0.2, max_tokens 800 (the
+      // V1 `routes.py`: temperature 0.2, max_tokens 800 (the
       // 800-token ceiling is what enforces the prompt's "CRISP" instruction).
       expect(body.temperature).toBe(0.2);
       expect(body.max_tokens).toBe(800);
@@ -861,7 +861,7 @@ describe('SmrCompatController', () => {
     });
   });
 
-  describe('Department-aware governed template steering (TASK-592)', () => {
+  describe('Department-aware governed template steering', () => {
     it('resolves the governed instruction for the resolved tenant + department/visit and injects it into the SMR system_prompt', async () => {
       template.resolveGovernedInstruction.mockResolvedValue('Cardiology instruction: capture ejection fraction and rhythm.');
       http.axiosRef.post.mockResolvedValue({ data: { content: JSON.stringify({ chief_complaint: 'x', summary: 'y' }) } });
@@ -897,7 +897,7 @@ describe('SmrCompatController', () => {
 
       expect(template.resolveGovernedInstruction).toHaveBeenCalledWith('tenant-1', 'Cardiology', 'pre-summary', expect.any(Object));
       const [, body] = http.axiosRef.post.mock.calls[0];
-      // TASK-634: the governed template IS the user prompt (v1 shape); the
+      // The governed template IS the user prompt (v1 shape); the
       // system prompt stays v1's dedicated pre-summary system message.
       expect(body.prompt).toContain('Cardiology pre-summary instruction');
       expect(body.system_prompt).toContain('department-aware pre-summaries from EMR context');
@@ -926,7 +926,7 @@ describe('SmrCompatController', () => {
     });
   });
 
-  describe('Mandatory tenant-id enforcement (TASK-589)', () => {
+  describe('Mandatory tenant-id enforcement', () => {
     beforeEach(() => {
       // No CLS tenant and (by default) no api key → nothing resolves.
       cls.get.mockReturnValue(undefined);
@@ -952,7 +952,7 @@ describe('SmrCompatController', () => {
     });
   });
 
-  describe('Streaming (stream:true) (TASK-589)', () => {
+  describe('Streaming (stream:true)', () => {
     // Drive a summary stream: primary START ok → task_id, then feed SMR frames.
     const runSummaryStream = async (frames: string[]) => {
       const smrStream = new PassThrough();
@@ -1084,10 +1084,10 @@ describe('SmrCompatController', () => {
     });
   });
 
-  // TASK-652 §3.1 — an empty context must not be indistinguishable from a full
+  // An empty context must not be indistinguishable from a full
   // one in the logs. One INFO line per pre-summary/summary request, booleans
   // and lengths only — never field content.
-  describe('Context-presence logging (TASK-652 §3.1)', () => {
+  describe('Context-presence logging', () => {
     let logSpy: ReturnType<typeof vi.spyOn>;
 
     beforeEach(() => {
@@ -1274,8 +1274,8 @@ describe('SmrCompatController', () => {
         expect(calls[0]).toMatchObject({ translateToEnglishRequested: true, willTranslate: true });
       });
 
-      // TASK-651 — the flag alone used to be the whole story, and it lied: since
-      // TASK-650 R2 a non-English source translates with NO flag set, so the log
+      // The flag alone used to be the whole story, and it lied: since
+      // A non-English source translates with NO flag set, so the log
       // reported `false` on a request that was translated. `willTranslate` is the
       // effective decision; `translateToEnglishRequested` is what the caller asked.
       it('reports willTranslate on a non-English source even though the caller set no flag', async () => {

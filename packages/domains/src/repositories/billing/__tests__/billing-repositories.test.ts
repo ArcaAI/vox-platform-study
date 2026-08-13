@@ -8,12 +8,13 @@ import { BillingUsageAggregateRepository } from '../BillingUsageAggregateReposit
 import { BillingInvoiceLineWriteRepository } from '../BillingInvoiceLineWriteRepository';
 
 /**
- * TASK-615 WS-I — hand-written billing repository extensions.
+ * Hand-written billing repository extensions.
  *
  * `BillingUsageAggregateRepository` runs bounded SQL AGGREGATES over the raw
  * ledger (sums, never row reads) for the two things the rollups cannot answer:
- * operation-discriminated quantities (D16/OQ1) and the BYOK notional cost sum
- * (D14). `BillingInvoiceLineWriteRepository` adds the bulk PREDICATE soft-delete
+ * operation-discriminated quantities (guardrail/harness never billed;
+ * batch-only audio-seconds) and the BYOK notional cost sum.
+ * `BillingInvoiceLineWriteRepository` adds the bulk PREDICATE soft-delete
  * the draft recompute needs (base `softDelete` takes a single id); its insert
  * half is the base `createMany(entities, false, tx)`.
  */

@@ -1,6 +1,6 @@
 """Citation-verify inferential sensor — per-claim entailment vs the CITED chunk.
 
-Forked from :mod:`harness.sensors.inferential.groundedness` (plan §E). Where
+Forked from :mod:`harness.sensors.inferential.groundedness`. Where
 groundedness entails each claim against the consultation transcript, citation-verify
 entails each *cited* claim against the **institutional knowledge chunk(s) it cited**
 — i.e. it checks that a StrictCitations citation actually supports the statement.

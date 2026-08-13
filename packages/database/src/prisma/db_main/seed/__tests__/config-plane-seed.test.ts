@@ -4,7 +4,7 @@
  * Static assertions over the EXPORTED seed data (no live DB), following the
  * conventions of `ai-model-consolidation-seed.test.ts` in this directory.
  *
- * SEED-AUTHORITATIVE Day-1 posture (TASK-578, OD-1). The seed is now the
+ * SEED-AUTHORITATIVE Day-1 posture (OD-1). The seed is now the
  * authoritative source of the built-in-local connection defaults —
  * NOT env. Concretely —
  *
@@ -20,7 +20,7 @@
  *      opinion" — the injection cascade falls through to the service's own
  *      pydantic/env default, so forwarded requests stay byte-identical.
  *
- * Plus the allow-list drift guard (§5 test 19): both models must be
+ * Plus the allow-list drift guard (test 19): both models must be
  * tenant-scoped, SYSTEM-shared for reads, and soft-deleting.
  */
 
@@ -39,7 +39,7 @@ import { SYSTEM_AI_RUNTIME_PROFILES } from '../18-ai-runtime-profile';
 
 /**
  * The built-in-local `llm` engines the platform runs itself — these are the ONLY
- * rows enabled Day-1 (TASK-578). `sarvam`/`azure`/`bedrock`/`openai`/`anthropic`/
+ * rows enabled Day-1. `sarvam`/`azure`/`bedrock`/`openai`/`anthropic`/
  * `vertex` are cloud providers and stay disabled (they need a tenant key).
  */
 const BUILT_IN_LOCAL_LLM_PROVIDERS = ['ollama', 'lm-studio', 'built-in', 'vllm', 'llama-cpp'] as const;
@@ -51,7 +51,7 @@ const isBuiltInLocalLlm = (c: { service: string; provider: string }): boolean =>
 describe('AiProviderConnection SYSTEM seed rows', () => {
   it('seeds one llm row per canonical serving provider', () => {
     // `anthropic` / `vertex` are now first-class members of AI_MODEL_PROVIDERS
-    // (TASK-572), so the llm seed rows must equal it exactly — no manual append.
+    // so the llm seed rows must equal it exactly — no manual append.
     const llmProviders = SYSTEM_AI_PROVIDER_CONNECTIONS.filter((c) => c.service === 'llm')
       .map((c) => c.provider)
       .sort();
@@ -115,13 +115,13 @@ describe('AiProviderConnection SYSTEM seed rows', () => {
   });
 
   /*
-   * TASK-643 test 39 — the cascade's arming switch.
+   * Test 39 — the cascade's arming switch.
    *
    * Once the platform-default cascade lands, an ENABLED + KEYED SYSTEM row is
    * the single thing that makes a cloud provider reachable on the PLATFORM's
    * money for every tenant that lacks its own key. The seed must therefore keep
    * every cloud-BYO SYSTEM row disabled and keyless, so arming one stays a
-   * deliberate, per-provider act by a global admin (§2.5).
+   * deliberate, per-provider act by a global admin.
    *
    * The pair list is spelled out here rather than derived: it mirrors
    * `CLOUD_BYO_PROVIDERS` in `@arcaai/applications`, which the database package
@@ -149,7 +149,7 @@ describe('AiProviderConnection SYSTEM seed rows', () => {
     });
   });
 
-  it('keeps every cloud-BYO SYSTEM row DISABLED and KEYLESS (TASK-643 — the cascade stays unarmed until an admin arms it)', () => {
+  it('keeps every cloud-BYO SYSTEM row DISABLED and KEYLESS (— the cascade stays unarmed until an admin arms it)', () => {
     const cloudByo = SYSTEM_AI_PROVIDER_CONNECTIONS.filter((c) => (CLOUD_BYO_SEED_PAIRS as readonly string[]).includes(`${c.service}:${c.provider}`));
     expect(cloudByo).toHaveLength(CLOUD_BYO_SEED_PAIRS.length);
 
@@ -182,7 +182,7 @@ describe('AiRuntimeProfile seed', () => {
 });
 
 // =============================================================================
-// 3. Allow-list drift guard (§5 test 19)
+// 3. Allow-list drift guard (test 19)
 // =============================================================================
 
 describe('client extension allow-lists', () => {

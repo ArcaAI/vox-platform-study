@@ -5,7 +5,7 @@
  * Mirrors the `rate-limit.constants.ts` registry: every entitlement knob and
  * the enforcement kill-switch is declared here so the resolver, the service,
  * the admin API, and the seed all reference the same literals. The concrete
- * numbers are the PROPOSED starting matrix (proposal §2 / Q2) — DB-backed and
+ * numbers are the PROPOSED starting matrix (/ Q2) — DB-backed and
  * tunable, with enforcement OFF by default (Q9), so exactness is not blocking.
  */
 
@@ -29,7 +29,7 @@ export const entitlementsEnabledKey = (): string => `${ENTITLEMENTS_NAMESPACE}.e
  * A named event (not a `SysEventType`) keeps the audit/websocket wiring a
  * Phase-4 concern; subscribers can persist it to `AuditLog` there.
  *
- * TASK-615 WS-H: `SysEventService.handleEntitlementsQuotaBlockedEvent`
+ * `SysEventService.handleEntitlementsQuotaBlockedEvent`
  * (`../sysEvent/sysEvent.service.ts`) is that subscriber.
  */
 export const ENTITLEMENTS_QUOTA_BLOCKED_EVENT = 'entitlements.quota-blocked';
@@ -93,7 +93,7 @@ export const isModelTier = (v: string): v is ModelTier => (MODEL_TIERS as readon
 export const GIB = 1024 ** 3;
 
 /**
- * The per-plan default matrix (proposal §2). `null` = unlimited/ungated for
+ * The per-plan default matrix. `null` = unlimited/ungated for
  * that dimension. These are the seeded `PlanEntitlement` row values AND the
  * in-code fallback the resolver uses when a DB row is missing.
  */
@@ -110,7 +110,7 @@ export interface PlanEntitlementValues {
   monthlyTranscriptionMinutes: number | null;
   monthlySummaries: number | null;
   /**
-   * Per-capability included allowances (TASK-615 D11), derived in TASK-638 §6
+   * Per-capability included allowances, derived in 
    * from each plan's ratified business ceilings and then DOUBLED:
    *
    *   sttSessionSeconds = transcriptionMinutes × 60 × 1.1
@@ -132,7 +132,7 @@ export interface PlanEntitlementValues {
   featureVoiceEnrollment: boolean;
   featureMonitoringAccess: boolean;
   /**
-   * TASK-643 R6 — may this plan's tenants consume the PLATFORM-DEFAULT
+   * May this plan's tenants consume the PLATFORM-DEFAULT
    * (SYSTEM-tenant) provider credential when they hold no key of their own?
    *
    * Unlike its three neighbours this flag is ENFORCED, not display-only: it
@@ -141,7 +141,7 @@ export interface PlanEntitlementValues {
    *
    * `false` on all four plans (OD-7). A plan-level grant on PRO or ENTERPRISE
    * would hand every tenant on that tier a platform-funded cloud path — the
-   * margin hole TASK-638 closed when it ratified "SYSTEM stays self-hosted,
+   * margin hole closed when it ratified "SYSTEM stays self-hosted,
    * managed cloud is a paid add-on". Grants are per tenant, through
    * `TenantEntitlement`, which is also how ENTERPRISE is actually sold.
    */
@@ -160,7 +160,7 @@ const PRO_VALUES: PlanEntitlementValues = {
   storageQuotaBytes: 100 * GIB,
   // PRO/TRIAL ≈ 25 concurrent doctors (anchored to the seat cap).
   maxConcurrentSessions: 25,
-  // RATIFIED 2026-08-08 (TASK-638): PRO = $100/mo bundling 250 consultations.
+  // RATIFIED 2026-08-08: PRO = $100/mo bundling 250 consultations.
   monthlyConsultations: 250,
   monthlyTranscriptionMinutes: 5_000, // 250 × 20-min average
   monthlySummaries: 250,
@@ -187,7 +187,7 @@ export const PLAN_ENTITLEMENT_DEFAULTS: Record<TenantPlan, PlanEntitlementValues
     storageQuotaBytes: 5 * GIB,
     // STARTER ≈ 5 concurrent doctors.
     maxConcurrentSessions: 5,
-    // RATIFIED 2026-08-08 (TASK-638): STARTER = $50/mo bundling 50 consultations.
+    // RATIFIED 2026-08-08: STARTER = $50/mo bundling 50 consultations.
     monthlyConsultations: 50,
     monthlyTranscriptionMinutes: 1_000, // 50 × 20-min average
     monthlySummaries: 50,
@@ -214,7 +214,7 @@ export const PLAN_ENTITLEMENT_DEFAULTS: Record<TenantPlan, PlanEntitlementValues
     storageQuotaBytes: 1_000 * GIB,
     // ENTERPRISE ≈ 100 concurrent doctors.
     maxConcurrentSessions: 100,
-    // RATIFIED 2026-08-08 (TASK-638): ENTERPRISE is NEGOTIATED — usage
+    // RATIFIED 2026-08-08: ENTERPRISE is NEGOTIATED — usage
     // unlimited by default; structural caps stay finite on purpose.
     monthlyConsultations: null,
     monthlyTranscriptionMinutes: null,

@@ -31,7 +31,7 @@ def _router(providers: dict) -> TTSRouter:
 
 
 # The gateway always injects the tenant's resolved routing chain (built-in-first
-# by default — TASK-577); the router no longer carries a code default and fails
+# by default); the router no longer carries a code default and fails
 # closed without one, so these tests inject the chain the way production does.
 _DEFAULT_ROUTING_EN = ["azure", "kokoro"]
 _DEFAULT_ROUTING_ML = ["azure", "sarvam", "indic_parler"]

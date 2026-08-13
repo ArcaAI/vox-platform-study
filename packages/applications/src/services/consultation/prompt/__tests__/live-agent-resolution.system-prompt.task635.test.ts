@@ -1,5 +1,5 @@
 /**
- * TASK-635 C3 deferred item — CLOSED. Custom per-agent live system prompt.
+ * CLOSED. Custom per-agent live system prompt.
  *
  * `LiveAgentResolutionService#systemPromptFor` now reads the resolved live
  * template's `metaData.promptConfig.systemPrompt` (surfaced via a
@@ -8,7 +8,7 @@
  * is declared but not wired on the abstract base) and falls back to the
  * in-code `LIVE_SOAP_SYSTEM_PROMPT` constant when the value is absent or
  * malformed. `metaData` is untrusted JSON: these tests lock the defensive
- * parsing AND the resolver's totality contract (never throws — C1 §6.1 step 4).
+ * parsing AND the resolver's totality contract (never throws — step 4).
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -31,7 +31,7 @@ function baseResolved(overrides: Record<string, unknown> = {}) {
   };
 }
 
-describe('LiveAgentResolutionService — TASK-635 C3 deferred item — custom per-agent system prompt', () => {
+describe('LiveAgentResolutionService — custom per-agent system prompt', () => {
   let consultationRepository: { findById: ReturnType<typeof vi.fn> };
   let promptResolutionService: { resolve: ReturnType<typeof vi.fn> };
   let departmentAgentRepository: { findById: ReturnType<typeof vi.fn> };

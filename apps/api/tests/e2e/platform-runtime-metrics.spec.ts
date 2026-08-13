@@ -7,7 +7,7 @@
  * operator, logs in WITHOUT a tenantKey; `tenant_admin`/`doctor` log in with the
  * default tenant key).
  *
- * Coverage (plan §4.4):
+ * Coverage:
  *   PM1 · GET /admin/platform/metrics      → 200 + E1 shape.
  *   PM2 · GET /admin/platform/sockets      → 200; `open` ≥ 0 integer (#17).
  *   PM3 · GET /admin/platform/consumption  → 200; numeric Postgres roll-ups (#18).

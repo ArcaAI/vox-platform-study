@@ -56,7 +56,7 @@ describe('Phase 3 — secrets migration grep', () => {
 // AppRole credentials arrive via file mounts. Pin the secret-free shape so a
 // future edit can't silently reintroduce a plaintext secret.
 //
-// TASK-584: this file now also carries the K8s-posture section (relocated
+// This file now also carries the K8s-posture section (relocated
 // from the monorepo-root `.env.production`), whose keys are declared empty
 // with a trailing inline comment (`KEY=                # explanation`) —
 // the regexes below require a NON-whitespace character immediately after

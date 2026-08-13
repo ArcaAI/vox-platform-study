@@ -1,5 +1,5 @@
 /**
- * TDD tests for `EvalRunsPanel` (TASK-549 tail).
+ * TDD tests for `EvalRunsPanel`.
  *
  * `EvalRun.triggerType` (MANUAL | PROMOTION | CI) is now on the wire
  * (EvalRunResponse) — the grid should badge it so an admin can tell an

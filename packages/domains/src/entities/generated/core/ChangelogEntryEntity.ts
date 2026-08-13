@@ -5,7 +5,7 @@ import { BusinessException } from '@arcaai/exceptions';
 import { BaseTenantEntity, IBaseTenantEntity } from '../../../common';
 import { ChangelogAudience, ChangelogPublishStatus, ChangelogSeverity } from '../../../enums';
 
-// Curated release notes ("What's New", TASK-648 §3.5/§3.6) — one row per
+// Curated release notes ("What's New") — one row per
 // platform (`ALL-`) train version. CI creates a DRAFT pre-filled from
 // Conventional Commits; a global admin edits it into human language and
 // PUBLISHes it. This is the ONE model in the Service Version & Release

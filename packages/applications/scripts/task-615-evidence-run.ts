@@ -1,11 +1,11 @@
 /**
- * TASK-615 WS-K — live evidence run (README §5.4 gate).
+ * Live evidence run (gate).
  *
  * Runs the full metering→billing chain against the shared DEV Postgres
  * (localhost:5432/hope) with NO NestJS bootstrap and NO API server: every
  * service/repository is constructed directly, the same way
  * `packages/domains/src/integration/*.test.ts` construct a repository
- * against a real database. This is intentional per the WS-K task brief
+ * against a real database. This is intentional per the task brief
  * ("invoke the drain method directly from the script — don't require the
  * API server").
  *
@@ -345,7 +345,7 @@ async function main() {
     const currentUsage = await meteringService.getCurrentUsage(ARCAAI_TENANT_ID, now);
     log('3. MeteringService.getCurrentUsage (current month, includes pre-existing dev usage)', currentUsage);
 
-    // ── 4a. Draft with the tenant's ACTUAL current state (expect zero overage: allowances are NULL — WS-H) ──
+    // ── 4a. Draft with the tenant's ACTUAL current state (expect zero overage: allowances are NULL — ) ──
     const period = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
     const draftBefore = await billingService.computeDraft(ARCAAI_TENANT_ID, period);
     createdInvoiceId = draftBefore.id;
@@ -418,7 +418,7 @@ async function main() {
       console.log('deleted AiUsageOutbox rows by id:', { attempted: createdOutboxIds.length, deleted: outboxDelete.count });
     }
 
-    // Restore the daily-rollup rows this run's (capability, provider, model, unit, today) tuples touched to their EXACT pre-run snapshot (§ baseline capture above) — precise, not a guessed decrement.
+    // Restore the daily-rollup rows this run's (capability, provider, model, unit, today) tuples touched to their EXACT pre-run snapshot (baseline capture above) — precise, not a guessed decrement.
     const restoredDims = new Set<string>();
     let rollupRestored = 0;
     let rollupDeleted = 0;

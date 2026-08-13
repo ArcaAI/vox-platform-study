@@ -1,6 +1,6 @@
 /**
  * UserChangelogAcknowledgementEntity + UserChangelogAcknowledgementFactory
- * unit tests (TASK-648).
+ * unit tests.
  */
 import { describe, it, expect } from 'vitest';
 import { UserChangelogAcknowledgementFactory } from '../../../../factories/generated/core/UserChangelogAcknowledgementFactory';

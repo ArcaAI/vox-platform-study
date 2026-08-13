@@ -1,12 +1,12 @@
 /**
- * TASK-635 C2-T3 (RF-3) — ArcaAI agent bindings === the legacy Department columns.
+ * -T3 (RF-3) — ArcaAI agent bindings === the legacy Department columns.
  *
  * REPLACES `arcaai-zero-department-agents.test.ts`, which asserted the OPPOSITE
  * invariant ("ArcaAI must have ZERO DepartmentAgent rows") and is deleted in this
  * change. That invariant existed only because a DepartmentAgent used to be a
  * single prompt pointer: the resolver's tier-1a consulted `promptTemplateId`
  * regardless of visit type, so giving ArcaAI a default agent would have collapsed
- * v1's new-referral vs follow-up split (F-01). TASK-635 C2 gives the agent a
+ * v1's new-referral vs follow-up split (F-01). gives the agent a
  * VISIT-TYPE AXIS (`newPatientTemplateId` / `revisitTemplateId`, DR-1), so the
  * right move per RF-3 is to RETIRE the zero-agent invariant rather than guard it:
  * ArcaAI now gets 7 default agents whose per-visit-type bindings point at exactly
@@ -27,7 +27,7 @@ import { ARCAAI_TENANT_AGENTS, GOLDEN_AGENTS, GLOBAL_TENANT_AGENTS } from '../07
 
 const ARCAAI_TENANT_ID = SEED_CUSTOMER_TENANT_IDS.ARCAAI;
 
-describe('ArcaAI DepartmentAgents mirror the legacy Department columns (TASK-635 RF-3)', () => {
+describe('ArcaAI DepartmentAgents mirror the legacy Department columns', () => {
   it('seeds exactly one default agent per ArcaAI clinical department', () => {
     expect(ARCAAI_TENANT_AGENTS).toHaveLength(ARCAAI_CLINICAL_DEPARTMENTS.length);
     expect(ARCAAI_TENANT_AGENTS.every((agent) => agent.tenantId === ARCAAI_TENANT_ID)).toBe(true);
@@ -76,7 +76,7 @@ describe('ArcaAI DepartmentAgents mirror the legacy Department columns (TASK-635
     // only when its SLUG is absent there. Matching slugs make the sweep add
     // nothing; rule (iii) then protects these unlocked, tenant-owned rows
     // forever. This closes the "sweep silently re-adds an agent and collapses
-    // visit types" hazard STRUCTURALLY rather than with a kill-switch (C1 §5.2).
+    // visit types" hazard STRUCTURALLY rather than with a kill-switch.
     const goldenSlugs = new Set(GOLDEN_AGENTS.map((agent) => agent.slug));
     for (const agent of ARCAAI_TENANT_AGENTS) {
       expect(goldenSlugs.has(agent.slug), `ArcaAI agent slug '${agent.slug}' is not a golden slug`).toBe(true);

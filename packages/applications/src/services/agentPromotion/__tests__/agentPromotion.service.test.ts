@@ -1,5 +1,5 @@
 /**
- * TASK-663 — AgentPromotionService.
+ * AgentPromotionService.
  *
  * Covers the ticket's TDD list: manage-rights-on-BOTH-tenants (403, and
  * evaluated BEFORE any read so there is no existence oracle); the target
@@ -37,7 +37,7 @@ const mockContextSchemaVersionRepository = { findBySchemaAndVersionNumber: vi.fn
 const mockConsultationRepository = { count: vi.fn() };
 const mockPolicyEngine = { buildAbility: vi.fn() };
 const mockEvalRunService = { runGoldenSet: vi.fn() };
-// TASK-677 — the promotion write sequence runs inside one transaction. This
+// The promotion write sequence runs inside one transaction. This
 // fixture executes the work immediately, so every assertion below observes the
 // same writes it did before; the atomicity properties themselves are asserted
 // in `agentPromotion.transaction.task677.test.ts`.
@@ -348,7 +348,7 @@ describe('AgentPromotionService', () => {
   // =======================================================================
 
   describe('what promotion carries', () => {
-    it('a promoted agent arrives with its loop configuration INTACT (the TASK-659 gap)', async () => {
+    it('a promoted agent arrives with its loop configuration INTACT (the gap)', async () => {
       const promoted = loopSnapshot({
         role: 'PRIMARY',
         goal: { version: 1, objective: 'Draft an accurate SOAP note' },

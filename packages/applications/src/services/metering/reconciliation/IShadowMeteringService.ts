@@ -6,7 +6,7 @@ import type { ProviderReconciliationRunQuery } from '@arcaai/domains';
 export const IShadowMeteringService = Symbol('IShadowMeteringService');
 
 /**
- * Read-only shadow-metering report job (TASK-615 WS-K). Never blocks,
+ * Read-only shadow-metering report job. Never blocks,
  * throttles, or corrects anything — it only compares surfaces and reports.
  */
 export interface IShadowMeteringService {
@@ -16,7 +16,7 @@ export interface IShadowMeteringService {
   /** Sweeps every tenant; used by the scheduled tick and available for an on-demand run. */
   runForAllActiveTenants(now?: Date): Promise<ShadowMeteringSweepResult>;
 
-  /** Reconcile the ledger against each provider's own report for the last settled window (TASK-638 §6). */
+  /** Reconcile the ledger against each provider's own report for the last settled window. */
   reconcileProviders(now?: Date): Promise<ProviderReconciliationSweepResult>;
 
   /** The audit report — newest first. GLOBAL_ADMIN-only at the call site: these are PLATFORM vendor totals. */

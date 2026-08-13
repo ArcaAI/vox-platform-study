@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { BadRequestException } from '@nestjs/common';
 import { validateRedactionRuleSet } from '../redaction-rules';
 
-describe('validateRedactionRuleSet (TASK-551)', () => {
+describe('validateRedactionRuleSet', () => {
   it('accepts a well-formed rule set and normalizes unknown keys away', () => {
     const out = validateRedactionRuleSet({
       rules: [

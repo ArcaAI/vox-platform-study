@@ -1,5 +1,5 @@
 /**
- * useArcaAudio — browser audio-processing constraints (TASK-608).
+ * useArcaAudio — browser audio-processing constraints.
  *
  * The SDK applies no gain, no noise suppression and no VAD gating of its own on
  * the backend-streaming path, but it called `getUserMedia` with NO audio
@@ -125,7 +125,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('useArcaAudio — audioProcessing constraints (TASK-608)', () => {
+describe('useArcaAudio — audioProcessing constraints', () => {
   it('requests the default mic with browser DSP disabled when asked for raw capture', async () => {
     const { result } = renderHook(() => useArcaAudio());
 

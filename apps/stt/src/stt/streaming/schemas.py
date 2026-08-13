@@ -39,7 +39,7 @@ class ControlAction(StrEnum):
     PAUSE = "pause"
     RESUME = "resume"
     CANCEL = "cancel"
-    # TASK-567 — manual (user-initiated) mid-session switch to the tenant's
+    # Manual (user-initiated) mid-session switch to the tenant's
     # configured fallback pipeline. Routed by ``ControlListener`` to the
     # per-session ``EngineSwitchController``. Unknown to older services, which
     # log it as an unknown action and no-op (graceful degrade).
@@ -274,7 +274,7 @@ class SessionControl:
 
     Actions: finalize, pause, resume, cancel, switch_to_fallback.
 
-    ``target`` (TASK-586) is only meaningful for ``switch_to_fallback`` and
+    ``target`` is only meaningful for ``switch_to_fallback`` and
     names the engine to switch to (``'primary'`` or ``'fallback'``). It defaults
     to ``'fallback'`` so an older producer that omits the field (or any
     non-switch action) is read as a switch to the fallback — the original

@@ -4,8 +4,8 @@
 import { BusinessException } from '@arcaai/exceptions';
 import { BaseTenantEntity, IBaseTenantEntity } from '../../../common';
 
-// Per-user, per-entry acknowledgement of the one-time "What's New" popup
-// (TASK-648 §3.6) — server-side and per-user so support can answer "was this
+// Per-user, per-entry acknowledgement of the one-time "What's New" popup —
+// server-side and per-user so support can answer "was this
 // admin actually shown the breaking-change notice". Immutable once written.
 // Scoped to the ACKNOWLEDGING USER'S OWN tenant — the one exception among the
 // four Service Version & Release Registry models; everything else is

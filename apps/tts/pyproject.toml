@@ -36,11 +36,11 @@ dependencies = [
     "prometheus-fastapi-instrumentator>=7.1.0",
     "pysbd>=0.3.4",
     "azure-cognitiveservices-speech>=1.42.0",
-    # --- Shared runtime contracts (TASK-529) ---
+    # --- Shared runtime contracts ---
     "hope-runtime-models",
-    # --- Shared env-file loader (TASK-558): NODE_ENV -> .env.<env>, host env wins ---
+    # --- Shared env-file loader: NODE_ENV -> .env.<env>, host env wins ---
     "hope-env",
-    # --- OpenTelemetry tracing (TASK-636 OBS-13) ---
+    # --- OpenTelemetry tracing ---
     "opentelemetry-api>=1.39.1",
     "opentelemetry-sdk>=1.39.1",
     "opentelemetry-instrumentation-fastapi>=0.60b1",
@@ -54,7 +54,7 @@ hope-runtime-models = { workspace = true }
 hope-env = { workspace = true }
 
 [project.optional-dependencies]
-# --- Self-hosted local engines, split by engine (TASK-642 Step 2) ---
+# --- Self-hosted local engines, split by engine ---
 #
 # `kokoro` is BUILT INTO the default image (see apps/tts/Dockerfile): it is
 # Apache-2.0, needs no credential, and the SYSTEM TenantTtsConfig row already

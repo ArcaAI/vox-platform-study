@@ -1,4 +1,4 @@
-"""W3C trace-context propagation across async boundaries (TASK-636 OBS-16).
+"""W3C trace-context propagation across async boundaries.
 
 WHY THIS EXISTS
 Two services cross non-HTTP boundaries the OTel auto-instrumentation cannot
@@ -48,12 +48,12 @@ DESIGN CONSTRAINTS
   seam. Audio bytes, transcript text, and generated text are PHI or
   PHI-adjacent clinical content and are never handed to a propagator, nor
   stamped onto a span.
-* **Free when tracing is off (TASK-411).** With no tracer provider configured
+* **Free when tracing is off.** With no tracer provider configured
   the current span is ``INVALID_SPAN``; the W3C propagator then writes nothing
-  and :func:`inject_trace_carrier` returns ``{}``. Callers add no stream fields
+  and:func:`inject_trace_carrier` returns ``{}``. Callers add no stream fields
   and pay one function call.
 * **Never a new failure mode.** Nothing here raises. A missing, malformed or
-  truncated carrier yields ``None`` and the caller simply starts a fresh trace —
+  truncated carrier yields ``None`` and the caller simply starts a fresh trace
   the behaviour that existed before this module. A broken trace is an
   observability defect; a broken audio/generation stream is a clinical one.
 """

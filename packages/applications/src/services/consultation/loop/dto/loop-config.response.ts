@@ -22,7 +22,7 @@ export class LoopConfigBudgetDto {
 }
 
 /**
- * TASK-664 — one agent in the consultation's roster, as the reasoning lane
+ * One agent in the consultation's roster, as the reasoning lane
  * pins it at workflow start.
  *
  * `subscribedKinds` is the agent's READ scope and `writeScope` its WRITE scope.
@@ -54,13 +54,13 @@ export class LoopAgentDto {
 }
 
 /**
- * TASK-662 — the resolved, deterministic loop configuration for one
+ * The resolved, deterministic loop configuration for one
  * consultation. Returned by `GET /internal/harness/loop-config`; every
  * resolution failure degrades to `enabled: false` rather than throwing (see
  * `LoopConfigService.resolveForConsultation`).
  *
- * TASK-664 added `reasoningEnabled` + `agents` ADDITIVELY, with defaults that
- * reproduce TASK-662 behaviour exactly. That is what lets the harness's frozen
+ * Added `reasoningEnabled` + `agents` ADDITIVELY, with defaults that
+ * reproduce behaviour exactly. That is what lets the harness's frozen
  * loop replay fixture keep passing: a config recorded before this ticket
  * deserialises with the reasoning lane OFF and never enters its patch era.
  */
@@ -102,7 +102,7 @@ export class LoopConfigResponse {
   agents: LoopAgentDto[];
 
   /**
-   * TASK-685 — the loop's IDLE lifecycle bound, in seconds, or null for no
+   * The loop's IDLE lifecycle bound, in seconds, or null for no
    * bound. Added ADDITIVELY with a null default for the same reason
    * `reasoningEnabled`/`agents` were: a harness that predates this ticket
    * ignores it, and a config recorded before it deserialises with no bound, so

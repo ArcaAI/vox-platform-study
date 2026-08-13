@@ -1,6 +1,6 @@
 /**
  * compat config adapter — VAD switch, and proof that `enabled:false` genuinely
- * skips the stage (TASK-597).
+ * skips the stage.
  *
  * Two separate claims are pinned here, because passing the first without the
  * second would be a config knob that quietly does nothing:
@@ -38,7 +38,7 @@ const BASE = {
   credentials: { apiKey: 'k-1' },
 };
 
-describe('mapV1ConfigToAgenticConfig — voiceActivityDetection (TASK-597)', () => {
+describe('mapV1ConfigToAgenticConfig — voiceActivityDetection', () => {
   it('emits a DISABLED vad entry when the v1 config asks for VAD off', () => {
     const cfg = mapV1ConfigToAgenticConfig({ ...BASE, sttPipelineId: 'pipe-1', audioSettings: { voiceActivityDetection: false } });
     expect(cfg.audio?.vad).toEqual({ enabled: false });
@@ -67,7 +67,7 @@ describe('mapV1ConfigToAgenticConfig — voiceActivityDetection (TASK-597)', () 
   });
 });
 
-describe('a disabled stage is genuinely skipped, not merely bypassed (TASK-597)', () => {
+describe('a disabled stage is genuinely skipped, not merely bypassed', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });

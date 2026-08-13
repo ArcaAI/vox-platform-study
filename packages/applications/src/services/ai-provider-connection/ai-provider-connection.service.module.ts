@@ -8,10 +8,10 @@ import { AiProviderConnectionService } from './ai-provider-connection.service';
 // `IProviderConnectionService` and the deprecated `IAiProviderConnectionService`
 // alias are the SAME symbol value, so registering the token once resolves both
 // `@Inject(IProviderConnectionService)` and the legacy `@Inject(IAiProviderConnectionService)`
-// (smr-proxy) until TASK-572 repoints.
+// (smr-proxy) until it is repointed.
 @Module({
   // `EntitlementsServiceModule` supplies the platform-default gate
-  // (TASK-643 R6). It is the ONLY consumer-visible reason this module grew an
+  // . It is the ONLY consumer-visible reason this module grew an
   // import: without it the resolver denies the SYSTEM credential tier outright
   // (fail-closed), which is correct but silently disables the cascade.
   imports: [CommonServiceModule, CoreDatabaseModule, EntitlementsServiceModule],

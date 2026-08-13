@@ -12,7 +12,7 @@ import { ClaimMappingsDto } from './oidc-provider-config.dto';
  * reads both through identical `claims[key]` lookups. `spCertificatePem` is
  * SERVER-GENERATED (`generateSamlSpKeyPair`, D5) — any value supplied on
  * create/update is ignored by the service. `wantAssertionsSigned` is
- * deliberately NOT a field here: D4/§6 makes it non-negotiable (hardcoded
+ * deliberately NOT a field here: D4/ makes it non-negotiable (hardcoded
  * `true` in `IdpResolverService.buildSamlClient`), not a tenant-admin knob.
  */
 export class SamlProviderConfigDto {

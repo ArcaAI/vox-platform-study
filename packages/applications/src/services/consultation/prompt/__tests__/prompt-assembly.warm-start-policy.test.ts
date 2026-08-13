@@ -10,7 +10,7 @@
  * The contract this pins:
  *   1. the effective POLICY value wins over the env var, both directions
  *   2. a null policy value falls back to env — so an untouched deployment behaves
- *      byte-for-byte as it did before (program risk rule, README §7)
+ *      byte-for-byte as it did before (program risk rule)
  *   3. resolution is PER-CALL: a policy change is picked up with no redeploy and
  *      no service reconstruction (the construction-time cache is gone)
  *   4. a policy-resolution failure degrades to env rather than throwing

@@ -6,12 +6,12 @@ import { Skeleton } from '../shadcn/skeleton';
 import { IconLanguage } from '@tabler/icons-react';
 
 /**
- * A selectable STT language mode (TASK-587). Structurally matches an entry of
+ * A selectable STT language mode. Structurally matches an entry of
  * `@arcaai/vox`'s `LanguageMode`, but the field set is intentionally minimal so
  * this presentational picker stays decoupled from the SDK. The consuming app
  * feeds it from `useArcaSttLanguageModes()` and passes the chosen `id` to
  * `audio.start({ languageMode })`.
- */
+*/
 export interface SttLanguageModeOption {
   /** Stable mode id, e.g. 'en', 'ml', 'ml-en', 'auto'. */
   id: string;

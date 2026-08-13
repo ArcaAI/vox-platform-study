@@ -1,13 +1,13 @@
 /**
- * TASK-558 lane G (G3) — INVALIDATION PROOF, write lane → second instance.
+ * INVALIDATION PROOF, write lane → second instance.
  *
  * Required evidence: "a settings write evicts the entry on a second
  * node/instance without waiting for the TTL".
  *
- * FINDING (corrects plan §4 B2 / §9.2 L4): for the `global-kv` tier the
- * propagation path was ALREADY push-based, not TTL-based — F-007 built a
- * dedicated `app-settings:invalidate` Redis channel. The plan asserted that
- * settings had no invalidation and that TTL was the propagation mechanism; that
+ * FINDING (corrects an earlier TTL-based assumption): for the `global-kv` tier the
+ * propagation path was ALREADY push-based, not TTL-based — a dedicated
+ * `app-settings:invalidate` Redis channel already existed. An earlier assumption
+ * was that settings had no invalidation and that TTL was the propagation mechanism; that
  * is stale. Nothing needed to be moved onto the SecretsService channel (whose
  * payload contract is per-key secret eviction, a different concern).
  *

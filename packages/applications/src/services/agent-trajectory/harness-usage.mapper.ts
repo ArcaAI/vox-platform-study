@@ -2,7 +2,7 @@ import { AgentStepStatus, AgentStepType, AgentTrajectoryStepEntity, AiCapability
 import { NormalizedLlmUsage, toUsageUnitQuantities, UsageEventBatchInput, UsageIdempotencyKey } from '../usageLedger';
 
 /**
- * `AgentTrajectoryStep` -> usage-ledger emission hook (TASK-615 WS-F).
+ * `AgentTrajectoryStep` -> usage-ledger emission hook.
  *
  * `buildHarnessUsageEvent` is a PURE mapper: one persisted LLM_CALL step in,
  * one `{common, units}` ledger batch input out (or `null` when the step
@@ -11,7 +11,7 @@ import { NormalizedLlmUsage, toUsageUnitQuantities, UsageEventBatchInput, UsageI
  * logic has its own focused test surface, mirroring the WS-B normalizer's own
  * pure-function style (`llm-usage-normalizer.ts`).
  *
- * SCOPE (deliberately narrow — see the WS-F cheat sheet in
+ * SCOPE (deliberately narrow — see the cheat sheet in
  * docs/implementation/TASK-615-Usage-Metering-And-Billing/ws-b-contract.md):
  *   - LLM_CALL steps only. TOOL_CALL/SENSOR/RETRIEVAL/GUARDRAIL/THINKING/
  *     SIGNAL/GATE/PHASE steps never call an LLM through this path.
@@ -20,7 +20,7 @@ import { NormalizedLlmUsage, toUsageUnitQuantities, UsageEventBatchInput, UsageI
  *     breakdown on the LLM_CALL step itself — a non-empty reasoning count is
  *     recorded on a SEPARATE `THINKING` step
  *     (`_reasoning_tokens` in apps/harness activities.py), which this lane
- *     does NOT bill (flagged as a follow-up in the WS-F report; never
+ *     does NOT bill (flagged as a follow-up in the report; never
  *     invented here — "never invent" per the contract).
  */
 
@@ -34,7 +34,7 @@ import { NormalizedLlmUsage, toUsageUnitQuantities, UsageEventBatchInput, UsageI
  * while the ledger's canonical connection id is `azure` — exactly the
  * "spelling trap" the WS-B contract calls out. A provider not listed here is
  * passed through UNCHANGED: `KNOWN_PROVIDERS` is open, not closed (contract
- * §3) — a tenant can register a real `AiProviderConnection` this mapper has
+ * — a tenant can register a real `AiProviderConnection` this mapper has
  * never heard of, and rejecting it would drop real usage to protect a naming
  * convention.
  */
@@ -142,7 +142,7 @@ export function buildHarnessUsageEvent(step: AgentTrajectoryStepEntity): UsageEv
     common: {
       tenantId: step.tenantId,
       idempotencyKey: UsageIdempotencyKey.harnessStep(stepId),
-      // Event time = when the call finished, matching WS-D's `completedAt`
+      // Event time = when the call finished, matching 's `completedAt`
       // convention; falls back to `startedAt` only when `endedAt` is somehow
       // absent (every real `_TrajectoryBatch.record()` call sets it).
       occurredAt: step.endedAt ?? step.startedAt,
@@ -152,7 +152,7 @@ export function buildHarnessUsageEvent(step: AgentTrajectoryStepEntity): UsageEv
       model,
       deployment: classifyDeployment(provider),
       // costBasis intentionally omitted (defaults to INTERNAL): AD-1
-      // GenerationStats carries no BYOK signal for this lane — see the WS-F
+      // GenerationStats carries no BYOK signal for this lane — see the
       // report's "known gaps" section rather than guessing BYOK_NOTIONAL.
       consultationId: step.consultationId ?? null,
       requestId: step.runId || step.sessionId,

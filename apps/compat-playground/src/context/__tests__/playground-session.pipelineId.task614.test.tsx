@@ -2,7 +2,7 @@ import { render } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
- * `pipelineId` plumbing — TASK-614 Lane E1 (defect D-1).
+ * `pipelineId` plumbing — (defect D-1).
  *
  * The console mounts BOTH compat hooks against the same audio graph and starts
  * capture FIRST (`playground-session.tsx` → `capture.startRecording()` then
@@ -13,16 +13,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  * So the pipeline id has to ride the hook that STARTS — `useAudioCapture`. It
  * did not, and the consequences were not cosmetic:
  *
- *  1. every "SDK-configured pipeline" session actually ran the tenant default
- *     (the gateway resolves one when the client sends none), and
- *  2. `activePipeline` stayed `null` for the whole session, which is the state
- *     `useArcaSttProvider` reads as "capture has not started" — so the STT-engine
- *     toggle silently recorded a pre-start preference mid-session and never
- *     issued the switch (D-2).
+ * 1. every "SDK-configured pipeline" session actually ran the tenant default
+ * (the gateway resolves one when the client sends none), and
+ * 2. `activePipeline` stayed `null` for the whole session, which is the state
+ * `useArcaSttProvider` reads as "capture has not started" — so the STT-engine
+ * toggle silently recorded a pre-start preference mid-session and never
+ * issued the switch (D-2).
  *
  * These tests assert the id reaches the STARTING hook. Asserting it on
  * `useArcaSpeechToText` alone would have passed throughout the defect.
- */
+*/
 
 const captured = vi.hoisted(() => ({
   audioCapture: null as null | Record<string, unknown>,
@@ -96,7 +96,7 @@ beforeEach(() => {
   window.localStorage.clear();
 });
 
-describe('playground pipelineId plumbing (TASK-614 D-1)', () => {
+describe('playground pipelineId plumbing', () => {
   it('gives the configured pipeline id to the hook that STARTS capture', () => {
     mount({ pipelineId: 'pipeline-abc' });
 

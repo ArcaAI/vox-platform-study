@@ -8,7 +8,7 @@ cd /app
 echo "Generating Prisma client..."
 ./packages/database/node_modules/.bin/prisma generate --schema=packages/database/src/prisma/db_main
 
-# Always `migrate deploy` (TASK-616).
+# Always `migrate deploy`.
 #
 # This script only ever runs inside the deployed container image, where the
 # schema must be applied from reviewed, versioned migrations. The previous
@@ -23,7 +23,7 @@ echo "Generating Prisma client..."
 echo "Deploying migrations..."
 ./packages/database/node_modules/.bin/prisma migrate deploy --schema=packages/database/src/prisma/db_main
 
-# Seeding is OPT-IN (TASK-616).
+# Seeding is OPT-IN.
 #
 # This invocation used to sit OUTSIDE the environment branch above, so the seed
 # ran unconditionally everywhere: fabricated rows upserted into the HIPAA audit

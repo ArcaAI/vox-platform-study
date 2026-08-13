@@ -7,7 +7,7 @@ import { consumptionKeys } from './keys';
 import type { CostPerEncounterResponse, TopTenantsResponse, UsagePeriodParams, UsageSummaryResponse } from './types';
 
 /**
- * TanStack Query hooks for the Consumption & Cost screen (TASK-615 #15a).
+ * TanStack Query hooks for the Consumption & Cost screen.
  * Each returns a thin view-model (`isPending`/`error`/`refetch`/`data`) so the
  * screen never dereferences `undefined`. `enabled` gates the tenant-scoped reads
  * until a working tenant is selected (WorkingTenantGate).

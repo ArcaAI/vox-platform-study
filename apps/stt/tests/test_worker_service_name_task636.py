@@ -1,4 +1,4 @@
-"""STT worker OTel service-name derivation (TASK-636 OBS-09).
+"""STT worker OTel service-name derivation.
 
 Observed live 2026-08-08: Loki's ``service_name`` label set contained
 ``hope-stt-v2-worker-worker``. The worker appended ``-worker`` to

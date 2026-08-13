@@ -1,10 +1,10 @@
 /**
- * TASK-665 — client-side context payload validation.
+ * Client-side context payload validation.
  *
  * Covers ONLY the orchestration semantics this module adds: an unrecognized
  * `kindKey` (or a kind with no `fields`) is treated as "nothing to validate
  * against", never a client-side rejection — the whole point of forward
- * compatibility (TASK-654 D2/D4).
+ * compatibility.
  *
  * The evaluator itself is NOT retested here. It is no longer a port of the
  * server's rule but literally the same code (`@arcaai/json-schema-subset`),

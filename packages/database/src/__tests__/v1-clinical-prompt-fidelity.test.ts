@@ -1,15 +1,14 @@
 /**
- * TASK-634 Phase 7 — regression gate for v1 clinical prompt fidelity.
+ * Regression gate for v1 clinical prompt fidelity.
  *
- * The v1 -> v2 migration (TASK-592 Workstream D) silently altered 7 of the
+ * The v1 -> v2 migration silently altered 7 of the
  * 15 ArcaAI clinical prompt templates while porting them into
  * `07b-arcaai-clinical-content.ts` — two replaced with different documents,
  * one paraphrased with a heading dropped, one had a review-interval checkbox
  * flipped pre-ticked by a two-character edit, two had content added, and the
  * pre-summary was de-parameterized. Nothing detected it because nothing
  * pinned the expected content (see
- * docs/implementation/TASK-634-Pre-Summary-Summary-Prompt-Fidelity/README.md
- * section 2.9, D-07).
+ * docs/implementation/TASK-634-Pre-Summary-Summary-Prompt-Fidelity/README.md).
  *
  * This test asserts every seeded ArcaAI clinical content constant still
  * hashes to its pinned v1 sha256 (`./v1-clinical-prompt-checksums.fixture.ts`),
@@ -79,7 +78,7 @@ function sha256Hex(content: string): string {
   return createHash('sha256').update(content, 'utf8').digest('hex');
 }
 
-describe('TASK-634 Phase 7 — v1 clinical prompt fidelity fixture', () => {
+describe('v1 clinical prompt fidelity fixture', () => {
   it('pins exactly the 23 ArcaAI clinical content constants', () => {
     expect(V1_CLINICAL_PROMPT_CHECKSUMS).toHaveLength(23);
     expect(Object.keys(CONTENT_BY_CONSTANT_NAME)).toHaveLength(23);

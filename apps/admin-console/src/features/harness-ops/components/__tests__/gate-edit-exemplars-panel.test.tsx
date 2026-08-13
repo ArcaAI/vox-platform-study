@@ -1,5 +1,5 @@
 /**
- * TDD tests for `GateEditExemplarsPanel` (TASK-549 / GAP-A1) — the clinician
+ * TDD tests for `GateEditExemplarsPanel` (/ GAP-A1) — the clinician
  * approve-vs-edit learning-loop export, with a "promote to golden case"
  * affordance per candidate row.
  *

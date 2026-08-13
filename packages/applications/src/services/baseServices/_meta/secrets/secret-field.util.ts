@@ -7,7 +7,7 @@
 // ciphertext handling is audited in exactly one place instead of copy-pasted
 // per feature. (The former per-capability `TenantTtsProviderCredential` /
 // `TenantSttProviderCredential` tables that used to be listed here were
-// dropped by TASK-576.)
+// dropped.)
 //
 // Layering note: this lives in the applications layer alongside SecretsService.
 // A behaviour-identical twin of parseKeyVersionFromCiphertext also exists in the

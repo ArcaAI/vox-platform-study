@@ -23,7 +23,7 @@ export interface HarnessStartContext {
    */
   transcriptText?: string;
   /**
-   * TASK-551 — DNA redaction/rewrite rules resolved + decrypted by the caller
+   * DNA redaction/rewrite rules resolved + decrypted by the caller
    * (tenant + doctor double-gate via `ConfigResolver.resolveEffectiveDnaRedactionEnabled`
    * + the doctor's decrypted DNA `redactionRules`). Omitted/empty ⇒ the workflow's
    * apply_redaction insertion is a no-op. Each entry is the RedactionRule shape
@@ -81,26 +81,26 @@ export interface HarnessContextAddedSignal {
   /** First ~2k chars of text content, when present. */
   contentPreview?: string;
   /**
-   * TASK-670 — the tenant-declared kind (`ContextItem.kindKey`). The
+   * The tenant-declared kind (`ContextItem.kindKey`). The
    * receiver falls back to `subType` then `contextType` when absent, so this
    * is additive-optional on the wire, matching `LoopContextAddedRequest`.
    */
   kindKey?: string;
   /**
-   * TASK-670 — the gateway's emission timestamp (ISO-8601). Part of the
+   * The gateway's emission timestamp (ISO-8601). Part of the
    * receiver's de-duplication identity alongside `contextItemId` — a re-emit
    * of the SAME item with fresh content (e.g. OCR enrichment) carries a NEW
    * `occurredAt` and is correctly a new event.
    */
   occurredAt?: string;
   /**
-   * TASK-670 — cascade generation: 0 for a human/API-originated item,
+   * Cascade generation: 0 for a human/API-originated item,
    * parent depth + 1 for anything written via `derivedFromContextItemId`.
    * Absent ⇒ the receiver defaults to 0.
    */
   depth?: number;
   /**
-   * TASK-670 — the fuller context body (up to `LOOP_SIGNAL_CONTENT_MAX_LENGTH`
+   * The fuller context body (up to `LOOP_SIGNAL_CONTENT_MAX_LENGTH`
    * chars — see `context.service.ts` for the size-threshold reasoning), so a
    * specialist (`vision.extract_text`, `nlp.extract_entities`) has real text
    * to act on rather than the 2k-char `contentPreview`. Additive-optional: an
@@ -110,7 +110,7 @@ export interface HarnessContextAddedSignal {
 }
 
 /**
- * TASK-670 — signal payload forwarded to the harness when a consultation's
+ * Signal payload forwarded to the harness when a consultation's
  * recording stops, so the running `ConsultationLoopWorkflow` drains, runs its
  * ending actions, and finalizes (starts `HarnessDocWorkflow` as its child).
  * Best-effort like `signalContextAdded`/`signalEdit`: the caller treats a
@@ -131,7 +131,7 @@ export interface HarnessConsultationEndingSignal {
 }
 
 /**
- * TASK-670 — signal payload forwarded to the harness to stop the loop
+ * Signal payload forwarded to the harness to stop the loop
  * WITHOUT running its ending actions (the consultation was abandoned, not
  * finished). Best-effort, same posture as the other signals.
  */
@@ -225,7 +225,7 @@ export class HarnessGatewayService {
       correlationId: ctx.correlationId,
       contextItemId: ctx.contextItemId,
       transcriptText: ctx.transcriptText,
-      // TASK-551 — omit entirely when empty so the request stays byte-identical
+      // Omit entirely when empty so the request stays byte-identical
       // to the pre-redaction body (the harness defaults redactionRules to []).
       ...(ctx.redactionRules && ctx.redactionRules.length > 0 ? { redactionRules: ctx.redactionRules } : {}),
     };

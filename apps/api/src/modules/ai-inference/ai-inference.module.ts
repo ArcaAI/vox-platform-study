@@ -14,7 +14,7 @@ import { AiInferenceController } from './ai-inference.controller';
  * is validated against the registry before being forwarded. Kept separate
  * from AiServiceAdminModule so the read-only admin plane stays untouched.
  * `UsageLedgerServiceModule` supplies `IUsageLedgerService` for the
- * TASK-615 WS-D2 playground `ner.extract` usage-ledger emission.
+ * Playground `ner.extract` usage-ledger emission.
  */
 @Module({
   // AiRuntimeProfileServiceModule supplies the hyperparameter

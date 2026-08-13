@@ -24,7 +24,7 @@ export interface StorageFile {
   lastModified?: string;
   contentType?: string;
   /**
-   * The `Media` table row UUID for this file (TASK-656). Only present on the
+   * The `Media` table row UUID for this file. Only present on the
    * response of an upload (`uploadFile`) — `StorageController.uploadFile`
    * creates a `Media` row best-effort and returns its id alongside `key`.
    * Callers that persist a reference to an uploaded file (e.g. as

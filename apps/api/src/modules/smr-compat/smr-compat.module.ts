@@ -11,7 +11,7 @@ import { SmrCompatController } from './smr-compat.controller';
 import { SmrCompatTemplateService } from './smr-compat-template.service';
 
 /**
- * v1-compatible SMR summary gateway shims (TASK-562).
+ * v1-compatible SMR summary gateway shims.
  *
  *
  * Registered in `AppModule`; the two routes are added to the `setGlobalPrefix`
@@ -25,11 +25,11 @@ import { SmrCompatTemplateService } from './smr-compat-template.service';
       maxRedirects: 3,
     }),
     HarnessPolicyServiceModule,
-    // TASK-592: real tenant Department → governed instruction-template resolution.
+    // Real tenant Department → governed instruction-template resolution.
     PromptResolutionServiceModule,
-    // TASK-599: requesting doctor's DNA writing-style resolution (IDnaWritingStyleService).
+    // Requesting doctor's DNA writing-style resolution (IDnaWritingStyleService).
     DnaWritingStyleServiceModule,
-    // TASK-600: per-tenant Sarvam BYOK resolution (unified provider plane) for the
+    // Per-tenant Sarvam BYOK resolution (unified provider plane) for the
     // SMR-served transcript translation.
     AiProviderConnectionServiceModule,
     CoreDatabaseModule,

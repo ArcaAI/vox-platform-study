@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================================
-# TASK-558 (lane F) — Seed the platform secrets into Vault kv-v2
+# Seed the platform secrets into Vault kv-v2
 # ============================================================================
 # Writes every `vault-kv` SettingDescriptor's value into
 #   <VAULT_KV_MOUNT>/data/<VAULT_KV_PREFIX>/<NAME>   field: value
@@ -10,8 +10,8 @@
 # THE KEY LIST IS NOT MAINTAINED HERE.
 #   It is derived at runtime from PLATFORM_SECRET_SETTINGS in
 #   packages/applications/src/services/settings-registry/descriptors/platform-secrets.descriptors.ts,
-#   mapped through `toEnvVarName()` (the plan §3.3 mechanical 1:1). A hardcoded
-#   list in a shell script is exactly the drift this ticket exists to remove, so
+#   mapped through `toEnvVarName()` (mechanical 1:1). A hardcoded
+#   list in a shell script is exactly the drift this exists to remove, so
 #   if the registry cannot be read this script FAILS — it never falls back to a
 #   stale copy.
 #
@@ -56,7 +56,7 @@
 #
 #   --dry-run          Report what WOULD happen. Performs reads, no writes.
 #   --env-file PATH    Source PATH before reading values. Omit to use host env
-#                      only (the correct mode for CI/production, per §9.1 D7).
+#                      only (the correct mode for CI/production).
 #   --allow-non-dev    Permit a non-dev Vault. Required for staging/production.
 #   --only NAME[,NAME] Restrict to specific secret names (still registry-checked).
 #
@@ -172,9 +172,9 @@ fi
 # The docker branch ALWAYS talks to the container's internal listener
 # (127.0.0.1:8200) — never the sourced/ambient VAULT_ADDR, which is a
 # HOST-facing address (e.g. .env.test's http://localhost:8201 for
-# hope-vault-test, TASK-689). Passing the host-mapped port INTO the container
+# hope-vault-test). Passing the host-mapped port INTO the container
 # would try to reach a port nothing inside the container listens on. This
-# only "worked" before TASK-689 because dev's host port and internal port
+# only "worked" before isolated test Vault because dev's host port and internal port
 # happened to both be 8200.
 vault_cli() {
   if [ "${VAULT_MODE}" = "cli" ]; then

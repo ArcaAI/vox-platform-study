@@ -1,5 +1,5 @@
 /**
- * TASK-635 C4 — flush-level tool DISPATCH invariants.
+ * Flush-level tool DISPATCH invariants.
  *
  * The headline invariant (C4-T1): with a null/absent `toolConfig` the flush is
  * behavior-identical to pre-C4 — the same single NLP call, the same entities and

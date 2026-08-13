@@ -6,9 +6,9 @@ import { BaseTenantEntity, IBaseTenantEntity } from '../../../common';
 import { JsonValue } from '../../../interfaces';
 import * as Entities from '../../../entities';
 
-// TASK-663 — the immutable, WORM record of one agent promotion from a source
+// The immutable, WORM record of one agent promotion from a source
 // tenant into a target tenant. Promotion is admin-chosen, ANY tenant to ANY
-// tenant (TASK-654 D10); "the actor holds manage rights on BOTH tenants" is the
+// tenant; "the actor holds manage rights on BOTH tenants" is the
 // entire authorization control and is enforced in `AgentPromotionService`.
 //
 // Written once and never updated — a re-promotion writes a NEW row — so the

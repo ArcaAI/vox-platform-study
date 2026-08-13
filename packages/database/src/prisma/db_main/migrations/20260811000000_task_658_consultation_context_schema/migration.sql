@@ -1,4 +1,4 @@
--- TASK-658 — Consultation Context Schema: data model, validation, discovery.
+-- Consultation Context Schema: data model, validation, discovery.
 --
 -- Adds the tenant-declared context-schema plane (a mutable head + immutable
 -- published version snapshots), the two tenant-facing discriminator columns on

@@ -15,7 +15,7 @@ from pydantic import SecretStr
 
 from smr.core.config import Settings
 
-# TASK-636 — test-environment isolation (same defect class fixed in
+# Test-environment isolation (same defect class fixed in
 # apps/tts/src/tts/tests/conftest.py).
 #
 # `smr/main.py` ends with a module-level `app = create_app()`, which the
@@ -32,7 +32,7 @@ from smr.core.config import Settings
 # unit suite, all with the same root cause and none of them about the code
 # under test.
 #
-# This was LATENT, not new: it only surfaced when the TASK-636 trace-helper
+# This was LATENT, not new: it only surfaced when the trace-helper
 # refactor changed the import graph enough to alter collection order. Fixing
 # the leak here removes the ordering dependency entirely.
 #
@@ -49,7 +49,7 @@ _C = TypeVar("_C")
 def keyed(config: _C, key: str = "test-key") -> _C:
     """Return a copy of a cloud provider config with an explicit ``api_key``.
 
-    TASK-602: the cloud configs (Azure OpenAI / OpenAI / Anthropic) are BYOK-only
+    the cloud configs (Azure OpenAI / OpenAI / Anthropic) are BYOK-only
     — ``api_key`` is no longer name- or env-populatable, so tests can no longer
     pass ``api_key=`` to the constructor. This mirrors exactly how the gateway/
     router applies a credential in production: ``model_copy(update=...)`` sets the

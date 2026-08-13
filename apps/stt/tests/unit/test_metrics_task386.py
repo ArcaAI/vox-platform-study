@@ -112,7 +112,7 @@ class TestStreamingMetrics:
 
 
 class TestStreamingTeardownMetrics:
-    """TASK-615 WS-C — stt_streaming_audio_duration_seconds + stt_streaming_rtf,
+    """Stt_streaming_audio_duration_seconds + stt_streaming_rtf,
     the streaming counterparts to the batch-only stt_audio_duration_seconds /
     RTF gap noted in the current-state review. Labels bounded to
     {pipeline, engine, status} — no tenant label (the PHI-free telemetry

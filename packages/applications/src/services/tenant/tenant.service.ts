@@ -419,7 +419,7 @@ export class TenantService extends BaseService implements ITenantService {
   }
 
   /**
-   * Clones the SYSTEM **agent golden library** (TASK-548) into the newly
+   * Clones the SYSTEM **agent golden library** into the newly
    * created tenant: every SYSTEM golden department gets a tenant-owned
    * `Department` copy, and every SYSTEM golden `DepartmentAgent` gets a
    * tenant-owned clone bound to an APPROVED PromptTemplate snapshot. This is
@@ -452,7 +452,7 @@ export class TenantService extends BaseService implements ITenantService {
    *    creation); idempotent per (department, slug) via `isSlugUnique`.
    *  - EMPTY golden set → safe no-op (logged): the bare `GEN` from
    *    `provisionDefaultDepartment` remains the tenant's only department, which
-   *    is the pre-TASK-548 fallback behaviour.
+   *    is the prior fallback behaviour.
    */
   private async provisionTenantAgentCatalog(newTenantId: string): Promise<void> {
     const client = this.databaseService.baseClient;

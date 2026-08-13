@@ -1,7 +1,7 @@
 /**
- * compat `useAudioCapture` — `dynamicSources` forwarding (TASK-609).
+ * compat `useAudioCapture` — `dynamicSources` forwarding.
  *
- * TASK-609 taught `useArcaAudio.start()` to build an `AudioMixer` for a SINGLE
+ * Taught `useArcaAudio.start()` to build an `AudioMixer` for a SINGLE
  * capture source when `dynamicSources: true` is passed, so sources can be
  * added/removed mid-session without tearing down the WebSocket session. This
  * hook is the boundary at which a v1-migrating app actually starts capture —
@@ -22,7 +22,7 @@ vi.mock('../../store/agenticStore', async (importOriginal) => {
   return { ...actual, useAgenticStore: vi.fn() };
 });
 
-describe('useAudioCapture — dynamicSources (TASK-609)', () => {
+describe('useAudioCapture — dynamicSources', () => {
   let audioMock: { isCapturing: boolean; level: number; start: ReturnType<typeof vi.fn>; stop: ReturnType<typeof vi.fn> };
 
   beforeEach(() => {

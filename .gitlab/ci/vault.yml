@@ -1,5 +1,5 @@
 # ══════════════════════════════════════════════════════════════════════════════
-# Vault via GitLab OIDC — TASK-558 §13.3 C1/C2 (lane K)
+# Vault via GitLab OIDC
 # ══════════════════════════════════════════════════════════════════════════════
 #
 # GOAL
@@ -80,7 +80,7 @@
 #       "token_ttl": "10m", "token_max_ttl": "20m", "token_num_uses": 20 }
 #     EOF
 #
-#     # Deploy / mirror credentials — TASK-616 §F10: one shared `hope-ci-deploy`
+#     # Deploy / mirror credentials — one shared `hope-ci-deploy`
 #     # role let a staging pipeline mint credentials that could write the prod
 #     # overlay, AND its `ref` globs didn't match the real branch names anyway
 #     # (`"staging"`/`"dev"` are literals — `staging-2.1` never matches; `prod-*`
@@ -111,7 +111,7 @@
 #       "token_ttl": "10m", "token_max_ttl": "20m", "token_num_uses": 20 }
 #     EOF
 #
-#     # prod is TAG-triggered, not branch-triggered (§F11) — prod-*
+#     # prod is TAG-triggered, not branch-triggered — prod-*
 #     # branches build/deploy nothing (build.yml, .gitlab-ci.yml), so there is
 #     # deliberately no hope-ci-deploy-prod role bound to a `prod-*` branch ref.
 #     vault policy write hope-ci-deploy-prod infrastructure/docker/configs/vault/policies/hope-ci-deploy.hcl
@@ -142,14 +142,14 @@
 #   protected refs are `main` and `release`. None of `dev-*`, `staging-*`,
 #   `prod-*`, `production-*`, or the `v*` tag pattern is protected, so
 #   `ref_protected: "true"` above would deny EVERY promote-* job today — that
-#   is by design (§F10: protect the refs first, then tighten the claims, or
+#   is by design (protect the refs first, then tighten the claims, or
 #   CI breaks). Until the refs are protected, drop `ref_protected` from the
 #   three roles above, or the deploy jobs get a Vault auth denial instead of a
 #   credential.
 #
 #   Consequences, in order of preference:
 #     1. Protect `dev-*`, `staging-*`, `prod-*`, `production-*` (branches) and
-#        `v*` (tag) — TASK-629 per §F12 — then add `"ref_protected":"true"`
+#        `v*` (tag), then add `"ref_protected":"true"`
 #        to all three roles above (already written in). `ref_protected` is
 #        asserted by GitLab and cannot be forged by a pipeline author, which
 #        makes it the only claim here that is a real privilege boundary.
@@ -166,14 +166,14 @@
 #   (read from the project API on 2026-07-26) — keep bound_subject, if you add
 #   one, consistent with that ordering.
 #
-# ── C2: WHAT STAYS A MASKED CI VARIABLE ──────────────────────────────────────
+# ── WHAT STAYS A MASKED CI VARIABLE ──────────────────────────────────────────
 #
-#   Only the irreducible floor of §13.1 — values needed to REACH the thing that
+#   Only the irreducible floor — values needed to REACH the thing that
 #   holds the secrets, and GitLab-native credentials Vault cannot issue:
 #     VAULT_ADDR                (not secret; topology)
 #     CI_REGISTRY_USER/PASSWORD (GitLab-issued, per-job, already ephemeral)
 #     CI_JOB_TOKEN              (GitLab-issued)
-#   Everything else in §13.1's `vault-kv` bucket belongs at `secret/ci/*` or
+#   Everything else in the `vault-kv` bucket belongs at `secret/ci/*` or
 #   `secret/deploy/*` and reaches the job through this template.
 #
 # ══════════════════════════════════════════════════════════════════════════════
@@ -243,13 +243,13 @@
   # Redis only.
   ci-redis: "ci/REDIS_URL=REDIS_URL"
   # Deployment-repo write credential — consumed by promote-dev/-staging/-prod
-  # (deploy.yml, TASK-616 §F3). One shared secret VALUE for all three: there
+  # (deploy.yml). One shared secret VALUE for all three: there
   # is only one hope-v2-deployment repo/branch (main), so the write
   # capability is inherently repo-wide, not per-overlay. Environment
   # isolation comes from WHICH Vault role a pipeline can authenticate as
-  # (hope-ci-deploy-dev/-staging/-prod, §F10 above) — a staging pipeline
+  # (hope-ci-deploy-dev/-staging/-prod, above) — a staging pipeline
   # cannot obtain the prod role's token even though the KV path is the same.
-  # Protected refs only, once §F12's TASK-629 lands.
+  # Protected refs only, once those refs are protected.
   deploy: "deploy/DEPLOY_TOKEN=DEPLOY_TOKEN"
   # PgBouncer smoke test — SSH identity + the two PostgreSQL role passwords.
   pgbouncer-smoke: >-

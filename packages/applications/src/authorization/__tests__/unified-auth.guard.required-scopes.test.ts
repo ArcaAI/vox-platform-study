@@ -1,7 +1,7 @@
 /**
- * UnifiedAuthGuard + @RequiredScopes — TASK-632 B1 regression.
+ * UnifiedAuthGuard + @RequiredScopes — regression.
  *
- * G1 (docs/implementation/TASK-632-HOPE-Node-SDK/README.md §2.4): `API_KEY_SCOPE_REGISTRY`
+ * G1 (docs/implementation/TASK-632-HOPE-Node-SDK/README.md): `API_KEY_SCOPE_REGISTRY`
  * and `enforceApiKeyScopes` both existed, but no decorator ever SET
  * `API_KEY_REQUIRED_SCOPES` metadata, so `requiredScopes` was always
  * `undefined` and any valid API key reached every route RBAC permitted.
@@ -51,7 +51,7 @@ const buildApiKey = (scopes: string[] | null) => ({
   allowedIps: [],
 });
 
-describe('UnifiedAuthGuard + @RequiredScopes (TASK-632 B1)', () => {
+describe('UnifiedAuthGuard + @RequiredScopes', () => {
   let guard: UnifiedAuthGuard;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let apiKeyService: any;
@@ -98,7 +98,7 @@ describe('UnifiedAuthGuard + @RequiredScopes (TASK-632 B1)', () => {
 
   // `API_KEY_SCOPE_REGISTRY` lists "consultation:*" as a valid, assignable "full
   // consultation access" scope, so the console issues keys carrying it. Until
-  // TASK-632, `ApiKeyService.hasScope` only treated a BARE parent ("consultation",
+  // , `ApiKeyService.hasScope` only treated a BARE parent ("consultation",
   // no ":*") as a prefix grant — `requiredScope.startsWith(`${scope}:`)` never matches
   // when `scope` itself contains a literal "*" — so such a key gained nothing.
   //

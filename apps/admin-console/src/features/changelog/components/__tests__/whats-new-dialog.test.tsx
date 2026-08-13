@@ -1,5 +1,5 @@
 /**
- * TASK-648 U11 — the one-time "What's New" dialog (§3.6 / §6b). Covers the
+ * the one-time "What's New" dialog. Covers the
  * rules that are the actual point of this unit: caps at 3 newest-first,
  * dismissal acks every shown entry, never renders while impersonating, does
  * not re-render on the next navigation, focus returns to the trigger on

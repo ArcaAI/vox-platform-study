@@ -1,4 +1,4 @@
--- TASK-294 DEF-C1: Add personal-overlay support to PromptTemplate
+-- Add personal-overlay support to PromptTemplate
 -- Backward-compatible: every change is additive. Existing rows are
 -- backfilled to scope = 'TENANT_DEFAULT' via UPDATE (no DELETE/DROP/TRUNCATE).
 

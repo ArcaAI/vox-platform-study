@@ -40,7 +40,7 @@ function build(
   const connections = {
     resolveTenantCloudOverrides: vi.fn(async () => {
       if (opts.resolverThrows) throw new Error('vault unreachable');
-      // TASK-643 — the resolver returns the two-tier result, not a bare map.
+      // The resolver returns the two-tier result, not a bare map.
       return { overrides: opts.overrides ?? {}, ...(opts.platformDefault ? { platformDefault: opts.platformDefault } : {}) };
     }),
   };
@@ -137,7 +137,7 @@ describe('SMR proxy — tenant BYO credential injection', () => {
     expect(forwardedBody(http)).not.toHaveProperty('provider_overrides');
   });
 
-  // TASK-643 — a SUPPRESSED platform tier is REPORTED, not degraded into SMR's
+  // A SUPPRESSED platform tier is REPORTED, not degraded into SMR's
   // generic missing-credential 503. Both errors are raised before dispatch, so
   // no vendor request and no usage event is produced.
   it('raises the 409 veto instead of dispatching, when the tenant disabled this provider', async () => {

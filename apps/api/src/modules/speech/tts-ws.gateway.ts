@@ -16,7 +16,7 @@ import { OnGatewayConnection, OnGatewayDisconnect, WebSocketGateway } from '@nes
 import type { IncomingMessage } from 'http';
 import WebSocket from 'ws';
 import { StreamTicketService } from '../auth/stream-ticket.service';
-// TASK-643 OD-4: the classifier + self-hosted allow-list used to exist as a
+// The classifier + self-hosted allow-list used to exist as a
 // verbatim copy here AND in SpeechProxyController. One definition now.
 import { classifyTtsProvider } from './tts-provider-classification';
 
@@ -57,7 +57,7 @@ function isTtsUsageFrame(value: unknown): value is TtsUsageFrame {
 export const TTS_WS_CLOSE_CODES = {
   AUTH_FAILED: 4401,
   UPSTREAM_ERROR: 1011,
-  // TASK-615 WS-H — distinct from AUTH_FAILED on purpose: the ticket WAS
+  // Distinct from AUTH_FAILED on purpose: the ticket WAS
   // valid and the tenant IS identified here, so there is no enumeration
   // concern to hide behind a generic reason (unlike the handshake-failure
   // codes above). Private-use range (RFC 6455 4000-4999), loosely mirroring
@@ -95,7 +95,7 @@ interface Bridge {
   providerOverrides: ProviderOverrides | null;
   /** The client's first `init` frame is enriched with the tenant config exactly once. */
   initEnriched: boolean;
-  // TASK-615 WS-E: carried so the usage-frame handler can build the ledger
+  // Carried so the usage-frame handler can build the ledger
   // event without threading extra params through the message callback.
   sessionId: string;
   tenantId: string | null;
@@ -118,14 +118,14 @@ export class TtsWsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
     // Resolve the ticket tenant's TTS spec and inject it into the init frame.
     @Optional() @Inject(ITenantTtsConfigService) private readonly tenantTtsConfig?: ITenantTtsConfigService,
-    // BYO provider credential injection (`service='tts'`, TASK-570) — the
+    // BYO provider credential injection (`service='tts'`) — the
     // unified provider-connection plane.
     @Optional() @Inject(IProviderConnectionService) private readonly providerConnectionService?: IProviderConnectionService,
-    // TASK-615 WS-E: emits CHARACTER + AUDIO_SECOND from tts's final "usage"
+    // Emits CHARACTER + AUDIO_SECOND from tts's final "usage"
     // control frame. Optional/trailing so existing positional test fixtures
     // keep compiling; absent (or no tenantId on the ticket) ⇒ no emission.
     @Optional() @Inject(IUsageLedgerService) private readonly usageLedger?: IUsageLedgerService,
-    // TASK-615 WS-H: PRE-FLIGHT monthlyTtsCharacters allowance check, before
+    // PRE-FLIGHT monthlyTtsCharacters allowance check, before
     // the upstream tts socket ever opens. Optional/trailing so existing
     // positional test fixtures keep compiling; absent (or no tenantId on the
     // ticket) ⇒ no check.
@@ -154,7 +154,7 @@ export class TtsWsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       return this.reject(client, 'ticket scope mismatch', sessionId);
     }
 
-    // TASK-615 WS-H — PRE-FLIGHT monthlyTtsCharacters check, BEFORE the
+    // PRE-FLIGHT monthlyTtsCharacters check, BEFORE the
     // upstream tts socket opens (before any synthesis can start). A WS
     // session streams text incrementally with no fixed total known upfront
     // (unlike the REST `synthesize` endpoint), so this uses `increment: 0` —
@@ -192,7 +192,7 @@ export class TtsWsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   /**
-   * TASK-615 WS-H — quota-block close. Deliberately NOT `reject()`: the
+   * Quota-block close. Deliberately NOT `reject`: the
    * ticket was valid and the tenant is already identified, so this is not an
    * auth failure and there is nothing to hide behind a generic reason.
    */
@@ -219,7 +219,7 @@ export class TtsWsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     let providerOverrides: ProviderOverrides | null = null;
     if (this.tenantTtsConfig && tenantId) {
       try {
-        // TASK-643 — two tiers (tenant rows over the SYSTEM-tenant platform
+        // Two tiers (tenant rows over the SYSTEM-tenant platform
         // default); each entry carries the `funding` label the teardown usage
         // stamp reads back.
         const [eff, resolved] = await Promise.all([
@@ -275,7 +275,7 @@ export class TtsWsGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     // Upstream → browser: verbatim relay (binary PCM frames + JSON control),
     // with egress backpressure onto the upstream when the browser saturates —
-    // EXCEPT the final "usage" control frame (TASK-615 WS-E), which is an
+    // EXCEPT the final "usage" control frame, which is an
     // internal signal between tts and this gateway: consumed here to emit the
     // ledger row, never forwarded (the browser client's protocol has no
     // "usage" message type).
@@ -367,7 +367,7 @@ export class TtsWsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   /**
-   * TASK-615 WS-E: consume tts's final ``{"type":"usage",...}`` frame and
+   * Consume tts's final ``{"type":"usage",...}`` frame and
    * emit CHARACTER + AUDIO_SECOND ledger rows. Fail-open throughout — a
    * malformed frame, a missing ledger, or a missing tenantId all just mean
    * "no emission", never a thrown error into the relay path.

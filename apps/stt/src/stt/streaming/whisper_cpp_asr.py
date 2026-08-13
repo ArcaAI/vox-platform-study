@@ -546,7 +546,7 @@ class WhisperCppAsrAdapter:
                 max_len=1 if self._want_word_timestamps else 0,
                 # ``None`` is coerced to ``""`` by the binding's setter — both
                 # mean auto-detect, which is the measured, load-bearing
-                # behaviour for code-switch pairs (TASK-594).
+                # behaviour for code-switch pairs.
                 language=self._language if self._language else None,
                 # The setter rejects ``None`` for ``initial_prompt``; ``""`` is
                 # its neutral (tokenizes to nothing).

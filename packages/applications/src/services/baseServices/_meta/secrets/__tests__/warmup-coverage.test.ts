@@ -1,4 +1,4 @@
-// TASK-558 lane J (J3) — the warmup list must cover every SYNCHRONOUS reader.
+// The warmup list must cover every SYNCHRONOUS reader.
 //
 // `SecretsService.getSecretSync()` is cache-only BY DESIGN: it never falls back
 // to the provider, because it exists for call sites that cannot await (passport

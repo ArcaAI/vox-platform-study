@@ -56,7 +56,7 @@ export class GateEditExemplarRepository extends Repository<GateEditExemplarEntit
     qualitySignal: string;
     limit: number;
     /**
-     * Human curation gate (TASK-553 F-24). OMITTED ⇒ no curation predicate at
+     * Human curation gate. OMITTED ⇒ no curation predicate at
      * all, which is byte-identical to the pre-gate query — the caller decides,
      * because the gate is governed by a default-off knob and this repository must
      * not invent a policy. When supplied, the `(tenantId, curationStatus)` index

@@ -54,7 +54,7 @@ function sectionEntry(container: HTMLElement, id: string, isIntersecting: boolea
   return { target, isIntersecting, boundingClientRect: { top } };
 }
 
-describe('useScrollSpy (§4a.3)', () => {
+describe('useScrollSpy', () => {
   beforeEach(() => {
     MockIntersectionObserver.instances = [];
     (globalThis as { IntersectionObserver?: unknown }).IntersectionObserver = MockIntersectionObserver;

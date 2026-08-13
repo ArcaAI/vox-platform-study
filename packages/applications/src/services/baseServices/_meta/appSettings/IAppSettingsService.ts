@@ -21,10 +21,10 @@ export interface IAppSettingsService {
 
   /**
    * The parsed value of ONE tenant's registry override for `key`, or `null`
-   * when that tenant has not overridden it (TASK-558 lane I).
+   * when that tenant has not overridden it.
    *
    * The tenant lane is a SEPARATE, `${tenantId}::${key}`-keyed map — the
-   * key-only accessors above stay platform-only (§9.3 M4). No fallback to the
+   * key-only accessors above stay platform-only. No fallback to the
    * platform value happens here; the cascade + clamp live in
    * `TenantSettingsService`, which must know which tier answered.
    * @param tenantId - The tenant whose override is being read

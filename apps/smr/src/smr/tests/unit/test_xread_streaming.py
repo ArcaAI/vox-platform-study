@@ -32,8 +32,7 @@ def _make_task_manager_mock(**overrides) -> AsyncMock:
 
     NOTE: `read_chunks_blocking` overrides are mirrored onto
     `read_chunk_entries_blocking` (as 3-tuples) so existing call sites that
-    only know the 2-tuple shape keep working after TASK-636 OBS-16.
-    """
+    only know the 2-tuple shape keep working after """
     tm = AsyncMock(spec=TaskManager)
     tm.get_task = AsyncMock(
         return_value=TaskState(
@@ -44,7 +43,7 @@ def _make_task_manager_mock(**overrides) -> AsyncMock:
         )
     )
     tm.read_chunks_blocking = AsyncMock(return_value=[])
-    # TASK-636 OBS-16: the SSE endpoint now calls the trace-aware variant, which
+    # The SSE endpoint now calls the trace-aware variant, which
     # returns (msg_id, chunk, carrier) triples. Without this the AsyncMock(spec=)
     # returns a mock instead of a list and the stream loop misbehaves.
     tm.read_chunk_entries_blocking = AsyncMock(return_value=[])
@@ -52,7 +51,7 @@ def _make_task_manager_mock(**overrides) -> AsyncMock:
     for k, v in overrides.items():
         setattr(tm, k, v)
 
-    # TASK-636 OBS-16: a test that overrides the 2-tuple reader must also
+    # A test that overrides the 2-tuple reader must also
     # drive the 3-tuple one the SSE endpoint actually calls, or the
     # override is silently ignored and the AsyncMock(spec=) default wins.
     if 'read_chunks_blocking' in overrides and 'read_chunk_entries_blocking' not in overrides:

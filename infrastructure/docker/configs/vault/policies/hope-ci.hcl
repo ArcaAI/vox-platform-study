@@ -1,4 +1,4 @@
-# TASK-558 lane K (K1) — policy for the GitLab CI JWT role `hope-ci`.
+# Policy for the GitLab CI JWT role `hope-ci`.
 #
 # Attached to a token minted by exchanging a job-scoped GitLab ID token at
 # auth/jwt-gitlab. Read-only, and scoped to `secret/ci/*` ONLY.

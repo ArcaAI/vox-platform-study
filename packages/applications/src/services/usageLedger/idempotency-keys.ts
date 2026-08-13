@@ -1,7 +1,7 @@
 import { AiUsageUnit } from '@arcaai/domains';
 
 /**
- * Idempotency-key recipes (TASK-615 WS-B — part of the frozen contract).
+ * Idempotency-key recipes (part of the frozen contract).
  *
  * ============================================================================
  * THE ONE RULE: A KEY IS DERIVED FROM INTENT, NEVER FROM CHANCE.
@@ -46,8 +46,8 @@ const IDEMPOTENCY_KEY = /^[\x21-\x7e]{1,255}$/;
  * | Embeddings          | `embed:<requestId>`          | `embed:<requestId>:INPUT_TOKEN`           |
  * | Harness step        | `harness:step:<stepId>`      | `harness:step:<stepId>:OUTPUT_TOKEN`      |
  *
- * NOTE on the NLP recipe: §3 batches NLP to CONSULTATION granularity, so the
- * `<requestId>` a WS-E emitter passes is the per-consultation batch id, not a
+ * NOTE on the NLP recipe: batches NLP to CONSULTATION granularity, so the
+ * `<requestId>` a emitter passes is the per-consultation batch id, not a
  * per-utterance one. The recipe does not change; what it identifies does.
  */
 export const UsageIdempotencyKey = {

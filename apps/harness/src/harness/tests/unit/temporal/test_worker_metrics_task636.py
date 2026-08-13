@@ -1,4 +1,4 @@
-"""Temporal worker metrics runtime (TASK-636 OBS-06).
+"""Temporal worker metrics runtime.
 
 The Temporal worker is a SEPARATE process (`pnpm worker:dev` →
 `python -m harness.temporal.worker`). The harness FastAPI app's `/metrics` on
@@ -43,7 +43,7 @@ def test_build_runtime_returns_runtime_when_metrics_enabled() -> None:
 
 
 def test_build_runtime_returns_none_when_metrics_disabled() -> None:
-    """TASK-411 invariant: exporters stay behind a switch."""
+    """Invariant: exporters stay behind a switch."""
     settings = Settings(metrics_enabled=False)
 
     assert build_runtime(settings) is None

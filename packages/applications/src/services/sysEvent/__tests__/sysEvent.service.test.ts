@@ -1067,7 +1067,7 @@ describe('SysEventService', () => {
     });
   });
 
-  describe('handleEntitlementsQuotaBlockedEvent (TASK-615 WS-H)', () => {
+  describe('handleEntitlementsQuotaBlockedEvent', () => {
     /**
      * The payload `EntitlementsService.assertQuantityQuota` /
      * `assertConcurrencyQuota` actually emit on `ENTITLEMENTS_QUOTA_BLOCKED_EVENT`

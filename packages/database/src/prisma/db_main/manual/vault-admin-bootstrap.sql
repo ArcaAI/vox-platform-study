@@ -1,4 +1,4 @@
--- TASK-302 Phase 5 Task 5.1 (Stream B) — Vault DB-Engine bootstrap.
+-- Vault DB-Engine bootstrap.
 --
 -- ⚠ MANUAL SQL — NOT A PRISMA MIGRATION ⚠
 -- Run ONCE per environment as the PostgreSQL superuser (e.g. `postgres`)
@@ -39,7 +39,7 @@
 
 \set ON_ERROR_STOP 1
 
--- TASK-312 A.5 — the target database name is parameterized. It defaults
+-- The target database name is parameterized. It defaults
 -- to `hope_main` (production) but callers override it with
 -- `-v db_name=<db>`; the local-dev database is `hope`. Requires psql >= 11
 -- for the :{?var} "is-defined" test.
@@ -93,7 +93,7 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA core
 ALTER DEFAULT PRIVILEGES IN SCHEMA core
   GRANT USAGE, SELECT ON SEQUENCES TO hope_app_template;
 
--- 6b. TASK-312 A.5 — audit schema is environment-optional. Apply the
+-- 6b. — audit schema is environment-optional. Apply the
 --     same privilege set ONLY when an `audit` schema exists, so this
 --     script is correct whether the target DB carves audit tables into
 --     a dedicated schema (some production layouts) or keeps everything

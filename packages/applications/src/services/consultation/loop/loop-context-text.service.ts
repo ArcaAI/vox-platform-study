@@ -8,7 +8,7 @@ import { IActiveUserContext } from '../../../interfaces';
 import { ILoopContextTextService } from './ILoopContextTextService';
 
 /**
- * TASK-664 — reads the extracted text of a context item for the loop's
+ * Reads the extracted text of a context item for the loop's
  * `document.extract_text` action.
  *
  * **Why the harness asks the gateway instead of extracting for itself.** The

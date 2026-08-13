@@ -1,4 +1,4 @@
--- TASK-663 — Agent promotion between tenants.
+-- Agent promotion between tenants.
 --
 -- Adds the immutable, WORM `AgentPromotion` record and the matching
 -- `ResourceType` enum value.
@@ -25,7 +25,7 @@
 -- PromptVersion. Listed in MODELS_WITHOUT_SOFT_DELETE.
 
 -- AlterEnum
--- `IF NOT EXISTS` mirrors the TASK-516 MCP-server-registry precedent
+-- `IF NOT EXISTS` mirrors the MCP-server-registry precedent
 -- (migrations/20260719020000_task_516_mcp_server_registry/migration.sql:46).
 -- The value is only ADDED here, never used in this same transaction, which is
 -- what makes the statement safe inside Prisma's migration transaction.

@@ -9,7 +9,7 @@ import { EvalServiceModule } from '../eval/eval.service.module';
 import { AuthorizationModule } from '../../authorization/authorization.module';
 
 /**
- * TASK-663 — agent promotion between tenants.
+ * Agent promotion between tenants.
  *
  * `AuthorizationModule` is imported for `PolicyEngine`, which is what makes
  * "the actor holds manage rights on BOTH tenants" answerable from a service

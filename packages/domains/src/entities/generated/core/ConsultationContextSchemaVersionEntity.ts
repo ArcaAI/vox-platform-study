@@ -6,7 +6,7 @@ import { BaseTenantEntity, IBaseTenantEntity } from '../../../common';
 import { JsonValue } from '../../../interfaces';
 import * as Entities from '../../../entities';
 
-// TASK-658 — an IMMUTABLE published snapshot of one `definition`. Written once
+// An IMMUTABLE published snapshot of one `definition`. Written once
 // by `ConsultationContextSchemaService.publish` and never updated: a
 // correction is a new version, exactly like `PromptVersion`. That immutability
 // is what lets a consultation pin a version at open and keep validating

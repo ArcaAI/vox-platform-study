@@ -94,7 +94,7 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
     // Optional (append-only DI); enforces the plan
     // `maxApiKeys` quota on create (kill-switch-gated, no-op when OFF).
     @Optional() @Inject(IEntitlementsService) private readonly entitlements?: IEntitlementsService,
-    // TASK-558 lane I — the `global-kv` cascade backing
+    // The `global-kv` cascade backing
     // `apiKey.maxLifetimeDays` (per-tenant) and `apiKey.allowQueryParam`
     // (platform-only). Optional so legacy fixtures that construct this service
     // directly keep the env-var behaviour exactly as it was.
@@ -105,7 +105,7 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
 
   /**
    * The API-key lifetime ceiling for `tenantId`, in days, or `null` for
-   * unlimited (TASK-558 lane I).
+   * unlimited.
    *
    * Cascade: the tenant's own row → the SYSTEM row → the descriptor default
    * (unset ⇒ unlimited). `API_KEY_MAX_LIFETIME_DAYS` remains the BOOTSTRAP
@@ -293,7 +293,7 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
       await this.entitlements.assertQuantityQuota(effectiveTenantId, 'maxApiKeys', currentCount);
     }
 
-    // Resolved for the KEY'S tenant, not the process (TASK-558 lane I).
+    // Resolved for the KEY'S tenant, not the process.
     const maxLifetimeDays = this.resolveMaxLifetimeDays(effectiveTenantId ?? null);
 
     let expiresAt = request.expiresAt ? new Date(request.expiresAt) : null;
@@ -958,7 +958,7 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
       (request.headers['x-internal-service-key'] as string);
 
     if (!apiKey && request.query?.apiKey) {
-      // PLATFORM-ONLY (TASK-558 lane I): this runs while the request is still
+      // PLATFORM-ONLY: this runs while the request is still
       // ANONYMOUS — it is the step that pulls the credential out in order to
       // discover who is calling — so there is no tenant to scope it at, and the
       // descriptor is `maxScope: 'system'`. `API_KEY_ALLOW_QUERY_PARAM` remains

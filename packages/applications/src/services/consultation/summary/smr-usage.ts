@@ -13,7 +13,7 @@ import type { UsageAttributes } from '../../usageLedger/usage-attributes';
 import type { UsageOperation } from '../../usageLedger/vocabulary';
 
 /**
- * TASK-615 WS-D — turning an SMR `/generate` response into ledger rows.
+ * Turning an SMR `/generate` response into ledger rows.
  *
  * SMR answers with a `usage_detail` block (and, when a guardrail check ran, a
  * `guardrail_usage` block) on the sync path, and with the same block on the

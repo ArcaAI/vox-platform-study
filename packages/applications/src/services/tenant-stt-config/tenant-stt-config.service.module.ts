@@ -9,7 +9,7 @@ import { TenantSttConfigService } from './tenant-stt-config.service';
 @Module({
   // AiProviderConnectionServiceModule supplies `IProviderConnectionService` —
   // the unified plane `TenantSttConfigService` now delegates BYO STT
-  // credential storage/resolution to (TASK-571).
+  // credential storage/resolution to.
   imports: [CommonServiceModule, CoreDatabaseModule, PipelineServiceModule, AiProviderConnectionServiceModule],
   providers: [
     TenantSttConfigService,

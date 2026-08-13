@@ -1,16 +1,16 @@
-// Platform knobs — MIGRATED from env to `global-kv` (TASK-558 lane I).
+// Platform knobs — MIGRATED from env to `global-kv`.
 //
-// WHAT CHANGED FROM LANE F. Lane F classified these ten keys and recorded
-// `tier: 'env'` + `targetTier: 'global-kv'`, because at that point every one of
-// them was still read from `process.env`. Lane I performs the migration the
-// `targetTier` recorded: the values now live in `GlobalSetting`, resolved
+// WHAT CHANGED FROM CLASSIFICATION. Classification recorded these ten keys and
+// recorded `tier: 'env'` + `targetTier: 'global-kv'`, because at that point every
+// one of them was still read from `process.env`. The migration the
+// `targetTier` recorded is now done: the values now live in `GlobalSetting`, resolved
 // through `TenantSettingsService`, and `targetTier` is dropped because `tier`
 // is final. The HONESTY RULE is unchanged and still binding — `tier` states
 // where the value lives TODAY, so a key whose reader has not moved does not get
 // flipped (see `feature-flags.descriptors.ts` for the keys that stayed).
 //
 // `corsAllowedOrigins` WAS ONE OF THE TEN, briefly demoted to an inert row by
-// an earlier TASK-610 wave, and is now REMOVED OUTRIGHT (§4A.1, owner
+// an earlier origin-enforcement wave, and is now REMOVED OUTRIGHT (owner
 // directive: no env var ever controls the CORS allow-list). Nine keys remain
 // below. CORS origin admission is not a `global-kv` knob at all any more — it
 // is the `TenantAllowedOrigin` table, resolved per request by
@@ -18,30 +18,30 @@
 // `PlatformKnobsBinder`, with no descriptor, no env fallback, and no
 // `GlobalSetting` row.
 //
-// WHY THEY QUALIFIED — plan §9.2 L1: "environment variables are immutable for
+// WHY THEY QUALIFIED: environment variables are immutable for
 // the lifetime of the process. Anything that must change without a restart is
-// NOT an env var." Every knob here fails that test: an operator tightening a
+// NOT an env var. Every knob here fails that test: an operator tightening a
 // rate limit or shortening an API-key lifetime should not need a redeploy.
 //
 // ── THE ENV VAR IS NOT GONE — IT IS THE BOOTSTRAP FALLBACK ──────────────────
 // Each key keeps its `<KEY>` env variable as a DOCUMENTED first-boot fallback,
-// exactly as lane E kept `MINIO_ENDPOINT` behind the SYSTEM storage row: a
+// exactly as `MINIO_ENDPOINT` is kept behind the SYSTEM storage row: a
 // process must be able to come up before the `GlobalSetting` rows exist (fresh
 // database, pre-seed, disaster recovery), and `logLevel` is consumed before the
 // Nest module graph exists at all. The env value is therefore the SEED for the
 // platform row (`seed/11a-platform-knob-settings.ts`) and the last resort when
 // no row is readable — and whenever it is the tier that answered, that fact is
-// logged (§9.2 L8). `apps/api/src/config/env.schema.ts` keeps validating the
+// logged. `apps/api/src/config/env.schema.ts` keeps validating the
 // variables for exactly that reason. This pattern does NOT apply to CORS: it
 // has no env tier to fall back to (see above).
 //
-// ── SCOPE ASSIGNMENT (plan §13.4) ───────────────────────────────────────────
+// ── SCOPE ASSIGNMENT ────────────────────────────────────────────────────────
 // Platform-only (`maxScope: 'system'`, `globalOnly: true`) — operational,
 // never per-tenant:  logLevel · shutdown.*
 // Tenant-overridable (`maxScope: 'tenant'`) — the knobs a plan tier
 // differentiates:    rateLimit.* · apiKey.maxLifetimeDays · refreshToken.ttlSeconds
 //
-// ONE ASSIGNMENT §13.4 DID NOT MAKE, decided here on evidence rather than
+// ONE ASSIGNMENT THE SCOPE TABLE DID NOT MAKE, decided here on evidence rather than
 // guessed: `apiKey.allowQueryParam` is PLATFORM-ONLY. Its only reader is
 // `ApiKeyService.extractApiKeyFromRequest`, which runs while the request is
 // still ANONYMOUS — it is the step that pulls the credential out in order to
@@ -53,7 +53,7 @@
 // escalation path if a tenant could LOOSEN it by writing its own row. It
 // cannot: `tenant-clamp.ts` declares, per key, which direction is stricter, and
 // `TenantSettingsService` refuses the other one — plus the entitlement ceiling
-// (§9.3 M2) bounds anything the plan differentiates. A tenant may throttle
+// bounds anything the plan differentiates. A tenant may throttle
 // itself harder or shorten its own token lifetimes; it can never do the
 // reverse.
 //
@@ -188,7 +188,7 @@ export const PLATFORM_KNOB_SETTINGS: SettingDescriptor[] = [
     'tenant',
     'Platform Operations',
     'Default tier request limit',
-    'Requests per window for the always-on `default` throttler tier, resolved PER TENANT on the hot path by `TieredThrottlerGuard`. A tenant may only LOWER it, and never above its plan entitlement (§9.3 M2 — the entitlement ceiling). `RATE_LIMIT_MAX_REQUESTS` remains the module-bootstrap baseline.',
+    'Requests per window for the always-on `default` throttler tier, resolved PER TENANT on the hot path by `TieredThrottlerGuard`. A tenant may only LOWER it, and never above its plan entitlement (the entitlement ceiling). `RATE_LIMIT_MAX_REQUESTS` remains the module-bootstrap baseline.',
     RATE_LIMIT_TIER_DEFAULTS.default.limit,
   ),
   migratedGlobalKv(
@@ -203,7 +203,7 @@ export const PLATFORM_KNOB_SETTINGS: SettingDescriptor[] = [
 ];
 
 /**
- * The rate-limit TIER policy keys — `global-kv` since before this ticket.
+ * The rate-limit TIER policy keys — `global-kv` since before cataloging.
  *
  * `RateLimitSettingsService` already resolves each of these from `GlobalSetting`
  * via `IAppSettingsService`, falling back to `RATE_LIMIT_TIER_DEFAULTS`. They
@@ -214,7 +214,7 @@ export const PLATFORM_KNOB_SETTINGS: SettingDescriptor[] = [
  *
  * Keys use the service's own key builders' grammar
  * (`rate-limit.tier.<tier>.<limit|ttl>`) — a hyphenated legacy namespace that
- * predates the plan §3.3 dotted-lowerCamel convention and is therefore NOT
+ * predates the dotted-lowerCamel convention and is therefore NOT
  * env-name-mapped (renaming it would orphan every already-written row).
  *
  * They stay `maxScope: 'system'`: the per-tenant lane for the `default` tier is

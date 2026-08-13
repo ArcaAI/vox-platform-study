@@ -21,7 +21,7 @@ import { ISellRateCardService, ListSellRatesQuery } from './ISellRateCardService
 import { SellRateDtoMapper } from './sell-rate-card.dto.mapper';
 
 /**
- * SELL rate-card administration (TASK-615 WS-I, D10/D12).
+ * SELL rate-card administration (D10/D12).
  *
  * SUPERSEDE-ONLY BY CONSTRUCTION: the service exposes create, list and
  * supersede — no update method exists, so "mutating an effective row" is not a

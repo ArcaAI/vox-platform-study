@@ -1,7 +1,6 @@
-"""TASK-616 G0.0 — `/health/ready` must fail closed on a Redis outage.
+"""`/health/ready` must fail closed on a Redis outage.
 
-Verified defect (TASK-627 finding, re-confirmed while implementing TASK-616
-Wave-0 task 0.0): `readiness_check` in `guardrail/api/endpoints/health.py`
+Verified defect (re-confirmed while implementing Wave-0): `readiness_check` in `guardrail/api/endpoints/health.py`
 always returns HTTP 200 — including when Redis is unreachable — because it
 catches the exception and reports `{"ready": False}` in the body instead of
 raising. The k8s readiness probe only looks at the status code, so the pod is

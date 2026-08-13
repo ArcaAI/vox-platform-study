@@ -1,4 +1,4 @@
-# Phase 1A Task 1.4 (TASK-302 Stream B) - hope-app AppRole policy.
+# hope-app AppRole policy.
 #
 # Scope: minimum capabilities required by the NestJS API pod at runtime.
 # Mirrored in production blueprint (research/deployments/deploy-vm430-432-vault.md).

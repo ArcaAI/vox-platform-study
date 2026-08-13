@@ -1,7 +1,7 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { IsOptional, IsString, Matches } from 'class-validator';
 
-/** query for `GET admin/usage/summary` (TASK-615 WS-J). */
+/** query for `GET admin/usage/summary`. */
 export class UsageSummaryQuery {
   @ApiPropertyOptional({ description: 'YYYY-MM (UTC calendar month). Defaults to the current UTC month.' })
   @IsOptional()

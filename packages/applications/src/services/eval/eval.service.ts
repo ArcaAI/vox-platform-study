@@ -97,7 +97,7 @@ export class EvalService {
     // Vault/SecretsService is not provisioned; in that soft (non-vault) mode the
     // write is a no-op for these fields (there are no plaintext columns).
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
-    // APPENDED (TASK-549 tail), never inserted — existing 4-arg direct
+    // APPENDED (tail), never inserted — existing 4-arg direct
     // constructions in unit tests keep working untouched. Always present via
     // CoreDatabaseModule in production DI; only undefined in hand-built test
     // doubles that never pass a `departmentId` (so it's never dereferenced).

@@ -142,7 +142,7 @@ function AggregateScoreBadges({ aggregates }: { aggregates: unknown }) {
 }
 
 /**
- * Eval gate panel (TASK-549) — a golden-set picker scoped to the department
+ * Eval gate panel — a golden-set picker scoped to the department
  * agents bound to this template, the last runs + scores for the picked set,
  * and a manual run-now. This is independent of the promotion gate that runs
  * automatically on Approve (and on a DepartmentAgent pin re-point) — running

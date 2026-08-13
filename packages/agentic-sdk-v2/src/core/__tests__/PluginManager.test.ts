@@ -47,7 +47,7 @@ vi.mock('@arcaai/stt', () => ({
   })),
 }));
 
-// TASK-545: local (in-browser) transcription is disabled platform-wide by
+// Local (in-browser) transcription is disabled platform-wide
 // default (`LOCAL_TRANSCRIPTION_ENABLED = false` in `../constants`). This
 // file exercises PluginManager lifecycle/state-tracking behavior with several
 // fixtures that configure `stt` with no backend transport — irrelevant to

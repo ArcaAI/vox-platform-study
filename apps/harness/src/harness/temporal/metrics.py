@@ -1,4 +1,4 @@
-"""Temporal SDK metrics runtime (TASK-636 OBS-06).
+"""Temporal SDK metrics runtime.
 
 The Temporal worker is a separate process from the FastAPI app, so the
 harness's ``/metrics`` on :8866 says nothing about it. Task-queue latency,
@@ -31,7 +31,7 @@ def build_runtime(settings: Settings) -> Runtime | None:
     start. Callers pass the result straight to ``Client.connect(runtime=...)``,
     where ``None`` means "SDK default runtime, no metrics" — so a telemetry
     failure degrades to an unmonitored worker, never to a worker that will not
-    start (TASK-411).
+    start.
     """
     global _runtime, _built
 

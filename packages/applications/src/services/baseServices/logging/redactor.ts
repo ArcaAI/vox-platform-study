@@ -1,5 +1,5 @@
 /**
- * Backend PHI log redaction (TASK-636 OBS-19).
+ * Backend PHI log redaction.
  *
  * WHY THIS EXISTS
  * `LoggingConfig.redactFields?: string[]` was declared in `transports/types.ts`

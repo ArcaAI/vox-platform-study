@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================================
-# TASK-346 / TASK-555 — Docker infra wrapper (profile tiers)
+# Docker infra wrapper (profile tiers)
 # ============================================================================
 # Brings up/down the full local-dev Docker stack in one command.
 #
@@ -22,10 +22,10 @@
 # Flags:
 #   -o / --observability   add prometheus profile
 #   -e / --inference       add inference profile
-#   --rag                  no-op (rag is default since TASK-555; kept for compat)
+#   --rag                  no-op (rag is default; kept for compat)
 #   --print                print the compose command only
 #
-# TASK-557: this script is now the ONLY dev-infra entrypoint. The former
+# This script is now the ONLY dev-infra entrypoint. The former
 # start-infra.sh (pnpm docker:dev:*) started core services only — no Temporal,
 # Vault or rag — which silently produced a half-working stack. It was removed;
 # `down` still tears down its legacy `hope-infra` compose project so containers
@@ -42,7 +42,7 @@ COMPOSE_CORE="infrastructure/docker/docker-compose.yml"
 COMPOSE_DEV="infrastructure/docker/docker-compose.dev.yml"
 
 # ---------------------------------------------------------------------------
-# TASK-558 (D6) — infra interpolation is NOT application configuration.
+# Infra interpolation is NOT application configuration.
 #
 # This script used to `cp .env.example .env`, which turned a 905-line
 # application-config template into docker compose's substitution file AND into
@@ -134,7 +134,7 @@ for arg in "$@"; do
     # pnpm may forward a literal `--` separator (pnpm infra:dev:up -- -o)
     [ "$arg" = "--" ] && continue
     case "$arg" in
-        --rag) ;; # no-op: rag is default (TASK-555)
+        --rag) ;; # no-op: rag is default
         -o|--observability) WANT_OBS=1 ;;
         -e|--inference) WANT_INF=1 ;;
         --print) PRINT=1 ;;

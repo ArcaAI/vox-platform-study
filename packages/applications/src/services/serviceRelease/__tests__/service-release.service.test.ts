@@ -1,5 +1,5 @@
 /**
- * ServiceReleaseService unit tests (TASK-648 W7 / U5).
+ * ServiceReleaseService unit tests (/ U5).
  *
  * The load-bearing behaviour under test is the sys-event posture: a heartbeat
  * must broadcast NOTHING (~15 processes × every 5 minutes would otherwise

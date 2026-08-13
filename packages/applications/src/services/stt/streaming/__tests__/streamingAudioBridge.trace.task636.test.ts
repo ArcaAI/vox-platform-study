@@ -1,5 +1,5 @@
 /**
- * TASK-636 OBS-16 — trace context survives the gateway's Redis Streams hops.
+ * Trace context survives the gateway's Redis Streams hops.
  *
  * The gateway is BOTH a producer and a consumer on this boundary:
  *
@@ -141,7 +141,7 @@ function lastXaddArgs(): string[] {
   return mockXadd.mock.calls[mockXadd.mock.calls.length - 1] as unknown as string[];
 }
 
-describe('TASK-636 OBS-16 — StreamingAudioBridgeService trace propagation', () => {
+describe('StreamingAudioBridgeService trace propagation', () => {
   let service: StreamingAudioBridgeService;
 
   beforeEach(async () => {
@@ -175,7 +175,7 @@ describe('TASK-636 OBS-16 — StreamingAudioBridgeService trace propagation', ()
       expect(args[idx + 1]).toBe(GOLDEN_TRACEPARENT);
     });
 
-    it('writes a byte-identical frame to pre-TASK-636 when no carrier is supplied', async () => {
+    it('writes a byte-identical frame to the previous wire when no carrier is supplied', async () => {
       await service.writeAudioFrame('s-1', 1, Buffer.alloc(4));
 
       const args = lastXaddArgs();

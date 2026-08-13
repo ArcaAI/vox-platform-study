@@ -11,12 +11,11 @@
 // Deliberately a pure function: no DI, no I/O, no logging. The caller supplies
 // the already-fetched SYSTEM row, the AppSettings snapshot and `process.env`,
 // so the precedence rules are unit-testable in isolation and the caller decides
-// how to log the resolved tier (TASK-558 §9.2 L8 — every fallback is
-// observable).
+// how to log the resolved tier (every fallback is observable).
 //
 // CREDENTIALS ARE NEVER RESOLVED HERE and never live in the database: the
 // SYSTEM row carries only a `credentialsRef` (a Vault kv-v2 path), which the
-// caller hands to `SecretsService` (§9.3 M10).
+// caller hands to `SecretsService`.
 
 import { StorageProviderType, TenantStorageConfigEntity } from '@arcaai/domains';
 

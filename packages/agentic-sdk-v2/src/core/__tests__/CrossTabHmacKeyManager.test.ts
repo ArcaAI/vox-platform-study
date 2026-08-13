@@ -7,7 +7,7 @@
  * the same origin) sign with the SAME secret, so each verifies the other's
  * HMACs — which was impossible under the prior per-process singleton.
  *
- * Approach (locked in §3.4 of the ticket): we install a `globalThis.SharedWorker`
+ * Approach: we install a `globalThis.SharedWorker`
  * mock that maps any URL to a single shared in-memory worker impl and routes
  * RPC messages back to the originating port. A separate fallback test deletes
  * the mock and asserts the per-session secret path still signs/verifies.

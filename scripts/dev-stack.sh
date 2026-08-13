@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================================
-# TASK-346 / TASK-555 / TASK-557 — DEV app-stack supervisor
+# DEV app-stack supervisor
 # ============================================================================
 # Starts the full local clinical-workspace stack in one command:
 #   api (8868), stt (8861), stt-worker (Dramatiq batch queue), smr (8862),
@@ -23,7 +23,7 @@
 #     core + vault + temporal + rag; optional -o/--observability, -e/--inference.
 #   - REFUSES to start if any requested port is already bound (protects an
 #     already-running stack; run `pnpm stack:dev:doctor` to see what is up).
-#     Since TASK-557 the test stack uses its own ports (dev + 100), so a test
+#     The test stack uses its own ports (dev + 100), so a test
 #     stack may run alongside this one.
 #   - REFUSES to start a second harness worker (it would consume from the
 #     same Temporal task queue). There is deliberately NO such guard for

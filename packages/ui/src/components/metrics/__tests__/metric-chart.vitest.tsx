@@ -38,7 +38,7 @@ function renderChart(props: Partial<React.ComponentProps<typeof MetricChart>> = 
   return render(<MetricChart kind="bar" data={DATA} xKey="day" series={SERIES} aria-label="Consultation sessions per day" {...props} />);
 }
 
-describe('MetricChart (§3.2)', () => {
+describe('MetricChart', () => {
   it('renders a bar chart for the given series', () => {
     const { container } = renderChart({ kind: 'bar' });
     expect(container.querySelector('[data-slot="metric-chart"]')).toHaveAttribute('data-kind', 'bar');

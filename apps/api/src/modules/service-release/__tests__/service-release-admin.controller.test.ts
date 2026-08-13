@@ -1,5 +1,5 @@
 /**
- * ServiceReleaseAdminController unit tests (TASK-648 W8).
+ * ServiceReleaseAdminController unit tests.
  *
  * @vitest-environment node
  */

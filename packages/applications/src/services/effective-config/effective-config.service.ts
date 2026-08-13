@@ -189,7 +189,7 @@ export class EffectiveConfigService implements IEffectiveConfigService {
   /**
    * A control-plane read failure is NOT an endpoint failure: it degrades to
    * `env-fallback` with a null value, so the client keeps its bootstrap value
-   * and the service behaves exactly as it does today (§3.1 deterministic
+   * and the service behaves exactly as it does today (deterministic
    * degradation). Logged once per read so the condition stays visible.
    */
   private async resolveKey(key: ServiceRuntimeKey): Promise<ResolvedKey> {

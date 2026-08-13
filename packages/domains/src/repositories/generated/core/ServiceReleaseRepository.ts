@@ -7,7 +7,7 @@ import { ServiceReleaseEntityMapper } from '../../../mappers';
 import { ServiceRelease } from '../../../models';
 
 /**
- * Immutable build-facts repository (TASK-648) — one row per
+ * Immutable build-facts repository — one row per
  * (serviceName, gitCommitSha, releaseTag), enforced by
  * `ServiceRelease_service_commit_tag_unique`. Always the SYSTEM tenant.
  */

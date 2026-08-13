@@ -19,7 +19,7 @@
  * — i.e. type alone — so the FIRST per-segment row would satisfy it, the
  * aggregate would be skipped, and no note would ever be generated. Silently.
  * (Historically masked by a DTO mismatch that rejected every per-segment POST
- * with a 400; see TASK-676 §3.5.)
+ * with a 400; see )
  *
  * The predicate below is evaluated SERVER-SIDE and does not trust the client:
  *

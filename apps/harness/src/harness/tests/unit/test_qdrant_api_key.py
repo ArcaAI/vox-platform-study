@@ -1,4 +1,4 @@
-"""Qdrant API-key auth (TASK-624 Q-03/Q-04).
+"""Qdrant API-key auth.
 
 Qdrant ships with NO authentication. Deploying it into the cluster without an
 API key means any pod in the namespace can read or delete the tenant knowledge

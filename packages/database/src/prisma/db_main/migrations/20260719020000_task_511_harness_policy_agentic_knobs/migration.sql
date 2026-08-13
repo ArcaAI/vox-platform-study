@@ -1,4 +1,4 @@
--- TASK-511 Phase 3A — HarnessPolicy agentic loop knobs (control-plane consolidation).
+-- HarnessPolicy agentic loop knobs (control-plane consolidation).
 --
 -- Purely ADDITIVE: seven nullable columns on the existing HarnessPolicy table so
 -- the agentic loop knobs the workflow reads become DB-editable per tenant. Every

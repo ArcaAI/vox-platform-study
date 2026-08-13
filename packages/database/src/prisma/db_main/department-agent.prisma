@@ -1,5 +1,5 @@
 // ============================================================================
-// Department Agent — first-class agent entity (TASK-546)
+// Department Agent — first-class agent entity
 //
 // The DepartmentAgent is the first-class "agent" the catalog/console/marketing
 // can name (admin vocabulary: Agent Template → Agent → Version → Default). One
@@ -8,13 +8,13 @@
 //     `pinnedVersionNumber` null ⇒ track latest APPROVED; consumers resolve the
 //     pointer, never the raw latest),
 //   - a DNA-style gate (`dnaStylePolicy`),
-//   - (later, TASK-550) harness overrides (`harnessOverrides`, tenant-tier
+// - (later) harness overrides (`harnessOverrides`, tenant-tier
 //     HarnessPolicy keys only — validated in the application service),
-//   - (later, TASK-549) a golden set (`goldenSetId`).
+// - (later) a golden set (`goldenSetId`).
 //
 // Template lineage columns (`sourceAgentTemplateSlug`, `templateLocked`) mirror
-// the shipped AsrPipeline pattern (TASK-531); their CONSUMPTION lands in
-// TASK-548 but the columns are provisioned now so no later migration is needed.
+// the shipped AsrPipeline pattern; their CONSUMPTION lands in
+// But the columns are provisioned now so no later migration is needed.
 // `templateLocked` is deliberately absent from every request DTO, so the
 // gateway's whitelist pipe rejects attempts to flip it over the API.
 // ============================================================================
@@ -41,9 +41,9 @@ model DepartmentAgent {
   pinnedVersionNumber Int? // null ⇒ track latest APPROVED version
   dnaStylePolicy      DepartmentAgentDnaPolicy @default(INHERIT) // INHERIT | DISABLED
   harnessOverrides    Json?  @db.JsonB // tenant-tier HarnessPolicy keys ONLY (validated in service)
-  goldenSetId         String? // consumed by TASK-549
+  goldenSetId         String? // consumed by
 
-  // ── Capability-keyed bindings (TASK-635 RF-4 / DR-1). ALL NULLABLE; null ⇒
+  // ── Capability-keyed bindings (/ DR-1). ALL NULLABLE; null ⇒
   // the LEGACY behavior for that capability (base `promptTemplateId` for
   // summary, the tenant/SYSTEM tiers for pre-summary and live). Every existing
   // row is null on all six, so resolution is byte-identical to before.
@@ -63,7 +63,7 @@ model DepartmentAgent {
   //   { version: 1, tools: { ner: {enabled}, vitals: {enabled}, groundedness: {enabled|null} } }
   // Null ⇒ the platform default (today's NER + vitals, groundedness per env).
   // Validated against LIVE_TOOL_KEYS in the application service; consumed by
-  // the LiveToolRegistry (TASK-635 C4).
+  // the LiveToolRegistry.
   toolConfig Json? @db.JsonB
   // Optional per-task LLM override, keyed by the SmrRoutingTask subset:
   //   { live?: { aiModelSlug }, finalize?: { aiModelSlug } }   (OD-3b)
@@ -76,25 +76,25 @@ model DepartmentAgent {
   // one default agent per department
   isDefault Boolean @default(false)
 
-  // template lineage (consumed by TASK-548; columns land now)
+  // template lineage (consumed by; columns land now)
   sourceAgentTemplateSlug String?
   templateLocked          Boolean @default(false)
 
-  // ── TASK-659: loop configuration + promotion surface. ALL NULLABLE (role
+  // ──: loop configuration + promotion surface. ALL NULLABLE (role
   // carries a DB default); every pre-existing row is null on the other six,
   // so resolution/behavior stays byte-identical to before this ticket.
   //
   // Loop role — see DepartmentAgentRole. Exactly one ENABLED PRIMARY per
   // department, enforced in the application service.
   role DepartmentAgentRole @default(SPECIALIST)
-  // Context kinds (TASK-658 `kinds[].key`) this agent listens for, with an
+  // Context kinds (`kinds.key`) this agent listens for, with an
   // optional per-kind filter. Structural shape validated in
   // DepartmentAgentService; kind keys are additionally cross-checked against
   // the department's resolved ConsultationContextSchemaVersion when one
   // exists.
   //   { version: 1, kinds: [{ key: "referral_letter", filter?: {...} }] }
   subscribedKinds Json? @db.JsonB
-  // Output kinds (TASK-658 `outputs[].key`) this agent may produce. Same
+  // Output kinds (`outputs.key`) this agent may produce. Same
   // cross-check as subscribedKinds.
   //   { version: 1, outputs: ["soap_note"] }
   writeScope Json? @db.JsonB
@@ -107,7 +107,7 @@ model DepartmentAgent {
   // Named guardrail profile from a closed platform catalogue
   // (GUARDRAIL_PROFILE_KEYS). Placement, not permission (D9): the actual
   // clinical-safety enforcement runs at a boundary the agent cannot route
-  // around (TASK-654 §4.6) — this column only SELECTS which profile that
+  // around — this column only SELECTS which profile that
   // boundary applies.
   guardrailProfile String?
   // Compliance envelope (D11 — no rule engine; subscriptions + goals with
@@ -148,10 +148,10 @@ model DepartmentAgent {
 }
 
 // IMMUTABLE snapshot of a DepartmentAgent's loop-configuration surface
-// (TASK-659) — the house governance triple (TASK-654 C6) applied to the
+// the house governance triple applied to the
 // agent: DepartmentAgent is the mutable head, this is the immutable version.
-// Promotion (TASK-663) copies the exact immutable version rather than
-// re-authoring the target, and a running consultation loop (TASK-662) pins
+// Promotion copies the exact immutable version rather than
+// re-authoring the target, and a running consultation loop pins
 // `agentConfigVersionId` alongside `contextSchemaVersionId` at start (C1) — a
 // mid-run edit to the agent must not change a run already underway. Written
 // once by `DepartmentAgentService.create`/`update` and never updated after
@@ -198,8 +198,8 @@ model DepartmentAgentVersion {
 }
 
 // IMMUTABLE, WORM record of one agent promotion from a source tenant into a
-// target tenant (TASK-663). Promotion is admin-chosen, ANY tenant to ANY tenant
-// (TASK-654 D10): there is no platform environment, tier or tenant-family
+// target tenant. Promotion is admin-chosen, ANY tenant to ANY tenant
+// there is no platform environment, tier or tenant-family
 // concept, so "the actor holds manage rights on BOTH tenants" is the ENTIRE
 // authorization control, enforced in `AgentPromotionService`.
 //
@@ -250,9 +250,9 @@ model AgentPromotion {
   configSnapshot Json   @db.JsonB
   checksum       String
 
-  // Eval attestations — TWO columns, deliberately never conflated (TASK-654
-  // §TASK-663: "eval re-runs at the target tenant; the source EvalRun travels
-  // as an attestation"). `evalRunId` is the run executed AT THE TARGET against
+  // Eval attestations — TWO columns, deliberately never conflated:
+  // "eval re-runs at the target tenant; the source EvalRun travels
+  // as an attestation". `evalRunId` is the run executed AT THE TARGET against
   // the target's own corpus; `sourceEvalRunId` is the source-tenant run that
   // travelled as evidence only. GoldenCase rows hold Vault-Transit-encrypted
   // PHI and NEVER cross a tenant boundary — not even `goldenSetId` is copied.

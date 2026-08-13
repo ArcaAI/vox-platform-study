@@ -1,5 +1,5 @@
 /**
- * TASK-635 C6 — the SECOND finalize path (`SummaryProcessor`, BullMQ
+ * The SECOND finalize path (`SummaryProcessor`, BullMQ
  * `JobQueue.GenerateSummary`) must behave exactly like `SummaryService` after
  * Wave 1 (A2/A3 — B-02/B-06) and C5 (R-N2 lineage):
  *
@@ -162,7 +162,7 @@ describe('SummaryProcessor — warm-start decryption + R-N2 agent lineage (C6)',
     expect(params.preSummaryText).toBeUndefined();
   });
 
-  // TASK-655 — `resolveWarmStartPreSummary` here is byte-identical to
+  // `resolveWarmStartPreSummary` here is byte-identical to
   // `SummaryService`'s (already fully on `findLatestPreSummaryWithDecryptedContent`,
   // so no production change was needed for this call site). `process()` wraps
   // the whole body in try/catch, but re-throws after recording job failure —

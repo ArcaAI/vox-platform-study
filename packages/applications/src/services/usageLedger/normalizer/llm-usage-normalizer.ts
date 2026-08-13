@@ -1,7 +1,7 @@
 import { AiUsageUnit } from '@arcaai/domains';
 
 /**
- * Provider usage-object normalizer (TASK-615 WS-B, research-findings.md §3).
+ * Provider usage-object normalizer (research-findings.md §3).
  *
  * Every LLM vendor reports token usage in a different shape, and — worse — with
  * different ARITHMETIC. Two providers can return the identical field name and
@@ -201,7 +201,7 @@ export function anthropicCacheTtlSplit(rawUsage: unknown): { ephemeral5m: number
  *
  * Both branches are abort-safe by construction: whatever chunks were observed
  * before the client hung up still reduce to the usage seen so far, which is
- * exactly what the abort path must emit (the TASK-470/471 bug class).
+ * exactly what the abort path must emit (the bug class).
  *
  * @returns the raw usage object to feed {@link normalizeLlmUsage}, or `null`
  *          when the stream carried no usage at all.

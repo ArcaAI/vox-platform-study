@@ -229,7 +229,7 @@ describe('HarnessObservabilityService', () => {
       expect(result.items[0].startedAt).toBe('2026-01-01T00:00:00.000Z');
     });
 
-    // TASK-549 tail: `triggerType`/`promptVersionNumber` are persisted on
+    // Tail: `triggerType`/`promptVersionNumber` are persisted on
     // `EvalRun` (promotion-gate attribution) but were never surfaced through
     // this read projection — the console badge (MANUAL/PROMOTION/CI) has
     // nothing to render without them.

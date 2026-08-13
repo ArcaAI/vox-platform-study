@@ -9,7 +9,7 @@
  * SQL literal list. This suite is the drift gate for that duplication: the SQL
  * list must set-equal the exported `ASR_TEMPLATE_SLUGS` seed constant, and the
  * backfill must keep the "pristine-only" double predicate that stops it locking
- * a pipeline a tenant already customized (README §3.3).
+ * a pipeline a tenant already customized.
  *
  * Precedent: `role-consolidation-migration.test.ts`.
  */
@@ -78,7 +78,7 @@ describe('pipeline template lineage — backfill migration', () => {
     expect(dir).toMatch(/^\d{14}_task_531_pipeline_template_lineage_backfill$/);
   });
 
-  it('inlines the frozen TASK-531 template set, all still real templates', () => {
+  it('inlines the frozen template set, all still real templates', () => {
     const sql = stripSqlComments(readMigrationSql(BACKFILL_SUFFIX));
 
     // The slug list is declared exactly once, as the `template_slugs` ARRAY[…]
@@ -91,7 +91,7 @@ describe('pipeline template lineage — backfill migration', () => {
 
     // The 531 backfill is HISTORICAL: it locked clones of the templates that
     // existed when it shipped (the frozen 9). A tenant could not have cloned a
-    // template before it existed, so post-531 additions (e.g. the TASK-567
+    // template before it existed, so post-531 additions (e.g. the
     // sarvam/openai fallback templates) are deliberately NOT in this migration's
     // literal — and the committed migration SQL is immutable. The drift gate is
     // therefore: the migration inlines exactly its frozen 9, and every one of
@@ -109,7 +109,7 @@ describe('pipeline template lineage — backfill migration', () => {
     expect(exclusions.length).toBeGreaterThanOrEqual(3);
   });
 
-  it('locks only pristine copies — slug match AND config equality (README §3.3)', () => {
+  it('locks only pristine copies — slug match AND config equality', () => {
     const sql = stripSqlComments(readMigrationSql(BACKFILL_SUFFIX));
     // Predicate (a): slug is one of the templates.
     expect(sql).toMatch(/"slug"\s*=\s*ANY\(template_slugs\)/i);

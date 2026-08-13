@@ -14,7 +14,7 @@ function norm(value?: string | null): string {
 /**
  * Match a free-form department string (the v1 `department` / session-metadata
  * value) to one of the TENANT's real `Department` rows so the compat shim can
- * resolve that department's governed instruction template (TASK-592).
+ * resolve that department's governed instruction template.
  *
  * Precedence, first hit wins:
  *   1. exact `code`  (the DB business key is `(tenantId, code)`) — case-insensitive;
@@ -24,7 +24,7 @@ function norm(value?: string | null): string {
  *      matches a row named "General Medicine" and "Ortho" matches "Orthopedics".
  *
  * Returns `null` when nothing matches — the caller then falls back to the static
- * dept×visit field-set steering, preserving the pre-TASK-592 behavior.
+ * dept×visit field-set steering, preserving the the previous implementation behavior.
  */
 export function matchTenantDepartment<T extends DepartmentLike>(departments: readonly T[], needle?: string | null): T | null {
   const n = norm(needle);

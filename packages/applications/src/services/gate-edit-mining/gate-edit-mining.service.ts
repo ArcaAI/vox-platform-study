@@ -63,7 +63,7 @@ export interface GateEditCorpusCandidate {
 
 /**
  * `reviewStatus` is part of the payload, not the docs: the golden-set SME gate
- * (§3.4) is only real if every consumer is told, in-band, that these rows are
+ *  is only real if every consumer is told, in-band, that these rows are
  * unreviewed proposals.
  */
 export interface GateEditCorpusExport {
@@ -132,7 +132,7 @@ export class GateEditMiningService extends BaseService {
     // Optional so fixtures compile without one — but note the consequence is
     // fail-CLOSED, not fail-open: with no redactor nothing is ever mined.
     @Optional() @Inject(IPhiRedactor) private readonly phiRedactor?: IPhiRedactor,
-    // Governed read of `agentic.fewshot.curationMode` (TASK-553 F-24). Optional
+    // Governed read of `agentic.fewshot.curationMode` (F-24). Optional
     // + trailing so existing positional fixtures keep their arity; absent ⇒ the
     // code default `off`, i.e. the pre-gate behaviour.
     @Optional() @Inject(EffectiveSettingsService) private readonly effectiveSettings?: EffectiveSettingsService,
@@ -266,7 +266,7 @@ export class GateEditMiningService extends BaseService {
   }
 
   /**
-   * Eval regression-corpus candidates (§3.4 consumption (a)).
+   * Eval regression-corpus candidates (consumption (a)).
    *
    * These are **proposals, not corpus rows** — the golden-set programme's SME
    * review decides what is admitted. The payload says so in `reviewStatus`

@@ -1,5 +1,5 @@
 /**
- * Seed-mode gating (TASK-616)
+ * Seed-mode gating
  *
  * `packages/database/migrate.sh` ran the seed UNCONDITIONALLY in every
  * environment — the `NODE_ENV` if/else only chose the migration mechanism, and

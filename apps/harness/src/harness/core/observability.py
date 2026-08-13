@@ -1,4 +1,4 @@
-"""OpenTelemetry tracing setup for harness (TASK-636 OBS-14).
+"""OpenTelemetry tracing setup for harness.
 
 Before this module, harness had NO ``TracerProvider`` anywhere: the only
 ``opentelemetry`` reference in the service was a comment in ``core/config.py``
@@ -15,7 +15,7 @@ Two processes need a provider:
   .TracingInterceptor`` (wired in ``temporal/client.py``) would resolve
   against the SDK's default no-op provider and never export.
 
-Both call :func:`build_tracer_provider`. Default OFF (TASK-411): tracing
+Both call :func:`build_tracer_provider`. Default OFF: tracing
 requires ``HARNESS_OTEL_ENABLED=true`` AND a configured
 ``HARNESS_OTEL_EXPORTER_ENDPOINT`` (``Settings.otel_tracing_enabled``), and a
 collector that is unreachable or an exporter that fails to construct degrades
@@ -77,12 +77,12 @@ def build_tracer_provider(settings: Settings) -> TracerProvider | None:
     Returns ``None`` — never raises — when tracing is off
     (``Settings.otel_tracing_enabled`` is False, the default) or when the
     OTLP exporter cannot be constructed, so a bad/unreachable collector
-    degrades to no-tracing instead of blocking startup (TASK-411).
+    degrades to no-tracing instead of blocking startup.
 
     Shared by the FastAPI app (``main.py``) and the Temporal worker
     (``temporal/worker.py``): those are separate processes, so each must call
     this itself to get its own provider installed as the process-global one
-    that ``opentelemetry.trace.get_tracer()`` (used internally by
+    that ``opentelemetry.trace.get_tracer`` (used internally by
     ``temporalio.contrib.opentelemetry.TracingInterceptor``, wired in
     ``temporal/client.py``) resolves against.
     """

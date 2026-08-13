@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * useArcaBatchTranscription (TASK-603) — the compat-entry batch/file
+ * useArcaBatchTranscription — the compat-entry batch/file
  * transcription queue.
  *
  * The regression this suite exists for above all others is the SSEClient
@@ -201,7 +201,7 @@ describe('useArcaBatchTranscription', () => {
   });
 
   // ---------------------------------------------------------------------------
-  // TASK-614 D-7 — batch fallback provenance.
+  // Batch fallback provenance.
   //
   // When the primary ASR fails, the worker re-runs on the tenant fallback and
   // stamps `usedFallbackPipelineId` into the result metadata. That value does
@@ -246,7 +246,7 @@ describe('useArcaBatchTranscription', () => {
     expect(result.current.items[0].usedFallbackPipelineId).toBeNull();
   });
 
-  // TASK-614 D-8/D11 — batch can say "use the tenant default".
+  // Batch can say "use the tenant default".
   it('uploads without a pipelineId and lets the gateway resolve the tenant default', async () => {
     const { result } = renderHook(() => useArcaBatchTranscription({ options: {} }));
 
@@ -412,7 +412,7 @@ describe('useArcaBatchTranscription', () => {
     expect(mocks.MockSSEClient.instances[0].connected).toBe(false);
   });
 
-  // CONTRACT CHANGE (TASK-614 D-8/D11). This used to assert that an upload with
+  // CONTRACT CHANGE. This used to assert that an upload with
   // no resolvable pipeline failed client-side. That refused a request the
   // backend can serve: omitting the pipeline now means "use the tenant's
   // default", which the gateway resolves (tenant default → configured

@@ -1,5 +1,5 @@
 /**
- * Telemetry enablement rules for the API gateway (TASK-636 OBS-16).
+ * Telemetry enablement rules for the API gateway.
  *
  * Split out of `instrumentation.ts` because that module starts the OTel SDK as
  * an import side effect (it is preloaded with `node --import`), which makes it
@@ -44,7 +44,7 @@ export interface TelemetryPlan {
  * Deliberately an explicit list rather than `!== 'true'`: an unrecognised value
  * (a typo, an unexpanded template) resolves to ENABLED. Failing open here is
  * the right direction — silently losing traces is precisely the defect class
- * OBS-16 exists to close, and it is the one that took months to notice.
+ * exists to close, and it is the one that took months to notice.
  */
 const FALSY = new Set(['false', '0', 'no', 'off']);
 
@@ -72,7 +72,7 @@ export function resolveTelemetryPlan(env: NodeJS.ProcessEnv | Record<string, str
     return disabled('OTEL_SDK_DISABLED=true');
   }
 
-  // Telemetry export is explicit opt-in — no localhost fallback (TASK-411).
+  // Telemetry export is explicit opt-in — no localhost fallback.
   if (!env.OTEL_EXPORTER_OTLP_ENDPOINT) {
     return disabled('OTEL_EXPORTER_OTLP_ENDPOINT not set');
   }

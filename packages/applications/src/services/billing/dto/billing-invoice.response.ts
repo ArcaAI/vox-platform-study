@@ -3,7 +3,7 @@ import { AiCapability, AiUsageUnit, BillingInvoiceStatus, BillingLineKind, Tenan
 import type { PlanFeeBasis } from '../invoice-math';
 
 /**
- * Invoice read model (TASK-615 D13).
+ * Invoice read model.
  *
  * Money micros travel as decimal-integer STRINGS (bigint-safe in JSON);
  * quantities as decimal strings; timestamps as ISO strings. Nothing here is

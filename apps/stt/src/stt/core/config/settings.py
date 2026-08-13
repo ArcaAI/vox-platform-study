@@ -13,14 +13,14 @@ _SERVICE_ROOT = Path(__file__).resolve().parents[4]  # …/apps/stt
 # Service-local overlay, ranked BELOW os.environ by pydantic-settings and so
 # below both the host env and the root `.env.<env>` the shared loader applies.
 # Retained because API_GATEWAY_KEY has no declaration in the root env files yet
-# (TASK-558 lane D owns moving it there).
+# (it still needs to move there).
 _ENV_FILE = _SERVICE_ROOT / ".env"
 
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
 
-    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
     settings_customise_sources = hope_settings_sources
 
     model_config = SettingsConfigDict(
@@ -245,7 +245,7 @@ class Settings(BaseSettings):
         return str(v).strip()
 
     # Azure Speech (cloud ASR engine)
-    # TASK-602: Azure Speech is BYOK-only. The subscription KEY is NOT an env var
+    # Azure Speech is BYOK-only. The subscription KEY is NOT an env var
     # and NOT a settings field — it is resolved per request from the
     # provider-connection plane (tenant / SYSTEM AiProviderConnection). Only the
     # non-secret REGION remains here.
@@ -275,8 +275,8 @@ class Settings(BaseSettings):
         description="MAI transcription model name for enhancedMode",
     )
 
-    # Sarvam AI speech-to-text (engine SARVAM, TASK-567 cloud engine).
-    # TASK-602: Sarvam is BYOK-only. The api-subscription-KEY is NOT an env var and
+    # Sarvam AI speech-to-text (engine SARVAM, cloud engine).
+    # Sarvam is BYOK-only. The api-subscription-KEY is NOT an env var and
     # NOT a settings field — it is resolved per request from the provider-connection
     # plane. Only the non-secret base URL remains here.
     sarvam_base_url: str = Field(
@@ -284,9 +284,9 @@ class Settings(BaseSettings):
         description="Sarvam AI API base URL",
     )
 
-    # OpenAI speech-to-text (engine OPENAI, TASK-567 cloud engine).
+    # OpenAI speech-to-text (engine OPENAI, cloud engine).
     # base_url supports Azure-OpenAI-compatible endpoints (env: OPENAI_BASE_URL).
-    # TASK-602: OpenAI ASR is BYOK-only. The api KEY is NOT an env var and NOT a
+    # OpenAI ASR is BYOK-only. The api KEY is NOT an env var and NOT a
     # settings field — it is resolved per request from the provider-connection
     # plane. Only the non-secret base URL remains here.
     openai_base_url: str = Field(
@@ -881,5 +881,5 @@ def get_settings() -> Settings:
 # a Vault Agent rewriting `/vault/secrets/*` in place would otherwise be served the
 # pre-rotation value forever. Registering the cache lets `hope_env.reload_secrets()`
 # drop it; the other five build a fresh `Settings()` per `get_settings()` call and
-# need no bookkeeping (§13.2 P6).
+# need no bookkeeping.
 register_settings_cache(get_settings.cache_clear)

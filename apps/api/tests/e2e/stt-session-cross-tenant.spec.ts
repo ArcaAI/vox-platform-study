@@ -36,7 +36,7 @@
  * Live-stack requirement: the mint fail-closed probes need only the API +
  * Redis. The live-session group additionally needs STT running (session
  * create forwards to it) — those tests skip with an explicit reason when the
- * streaming service is unavailable, mirroring the task-307 conventions.
+ * streaming service is unavailable, mirroring the conventions.
  */
 import { test, expect, type APIRequestContext } from '@playwright/test';
 import WebSocket from 'ws';

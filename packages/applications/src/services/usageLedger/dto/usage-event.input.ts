@@ -4,9 +4,9 @@ import type { UsageAttributes } from '../usage-attributes';
 import type { UsageOperation } from '../vocabulary';
 
 /**
- * `UsageEventInput` — THE FROZEN EMISSION CONTRACT (TASK-615 WS-B).
+ * `UsageEventInput` — THE FROZEN EMISSION CONTRACT.
  *
- * Every wave-1 emitter (WS-C STT, WS-D SMR/guardrail, WS-E TTS/NLP, WS-F
+ * Every wave-1 emitter (STT, SMR/guardrail, TTS/NLP, 
  * harness) builds this shape and nothing else. It is deliberately NOT a
  * class-validator DTO: it never crosses an HTTP boundary, it is constructed in
  * process by a service, and its validation is `recordUsage`'s own (which

@@ -276,7 +276,7 @@ class AzureSpeechEngine(AsrEngine):
 
 class SarvamEngine(AsrEngine):
     """Sarvam AI speech-to-text (cloud REST). Per-utterance streaming + whole-
-    audio batch via the same async recognize helper (TASK-567)."""
+    audio batch via the same async recognize helper."""
 
     async def run_batch(
         self,
@@ -310,7 +310,7 @@ class SarvamEngine(AsrEngine):
 
 class OpenAIEngine(AsrEngine):
     """OpenAI speech-to-text (cloud REST). Per-utterance streaming (REST in v1)
-    + whole-audio batch via the same async recognize helper (TASK-567)."""
+    + whole-audio batch via the same async recognize helper."""
 
     async def run_batch(
         self,

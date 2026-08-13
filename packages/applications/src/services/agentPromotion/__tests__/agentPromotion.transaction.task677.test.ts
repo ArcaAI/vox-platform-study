@@ -1,12 +1,12 @@
 /**
- * TASK-677 — the agent-promotion write sequence is atomic.
+ * The agent-promotion write sequence is atomic.
  *
- * Closes TASK-663 **OI-2**. Before this ticket the sequence
+ * Closes an open write-sequence gap. Previously the sequence
  *
  *   deep-copied prompt templates → target agent (create OR update)
  *     → target agent version → AgentPromotion audit record
  *
- * was issued as four-to-fourteen independent writes. TASK-663 mitigated the
+ * was issued as four-to-fourteen independent writes. Ordering the audit row LAST mitigated the
  * exposure by ordering the audit row LAST, so a failure could never record a
  * promotion that did not happen — but the reverse window stayed open: a
  * failure after the agent was advanced left the target tenant with a
@@ -25,7 +25,7 @@
  * The eval and the `evalRunId` write that follows it are deliberately OUTSIDE
  * the transaction: the eval is an external, long-running call, and holding a
  * Postgres transaction open across it would be a worse defect than the one
- * being fixed. TASK-663 D-7 already establishes that the eval runs after the
+ * being fixed. The eval already runs after the
  * copy and never blocks a promotion.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
@@ -169,7 +169,7 @@ const baseDto = { sourceAgentId: 'source-agent', fromTenantId: FROM, toTenantId:
  */
 const dtoWithEval = { ...baseDto, targetGoldenSetId: 'target-golden-set' };
 
-describe('TASK-677 — AgentPromotionService.promote is transactional', () => {
+describe('AgentPromotionService.promote is transactional', () => {
   let service: AgentPromotionService;
 
   beforeEach(() => {
@@ -315,7 +315,7 @@ describe('TASK-677 — AgentPromotionService.promote is transactional', () => {
       // Non-vacuity: the agent and its version were genuinely ATTEMPTED, and
       // attempted THROUGH the transaction. Without these three lines the
       // `committed` assertion below would pass on a service that opens no
-      // transaction at all — the exact pre-TASK-677 behaviour.
+      // transaction at all — the exact prior behaviour.
       expect(mockUnitOfWork.runInTransaction).toHaveBeenCalledTimes(1);
       expect(mockAgentRepository.create).toHaveBeenCalledWith(expect.anything(), TX);
       expect(mockAgentVersionRepository.create).toHaveBeenCalledWith(expect.anything(), TX);

@@ -14,8 +14,8 @@
  *
  * Pins:
  *   - platform row wins over a tenant clone in BOTH orderings;
- *   - (TASK-558 M4) a key that exists ONLY on customer tenants is not cached;
- *   - (TASK-558 M4) two tenant clones without a platform row cache nothing.
+ *   - a key that exists ONLY on customer tenants is not cached;
+ *   - two tenant clones without a platform row cache nothing.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { AppSettingsService } from '../appSettings.service';
@@ -72,10 +72,10 @@ describe('AppSettingsService — platform row wins over tenant clones', () => {
     expect(svc.getFromCache(KEY)?.tenantId).toBe(GLOBAL_TENANT_ID);
   });
 
-  // SUPERSEDED by TASK-558 §9.3 M4. The two cases below previously pinned the
-  // residual behaviour this ticket deliberately left alone ("unchanged"): a key
+  // SUPERSEDED. The two cases below previously pinned the
+  // residual behaviour this test deliberately left alone ("unchanged"): a key
   // with no platform row still resolved to a CUSTOMER tenant's row. That is the
-  // cross-tenant leak M4 names — for a platform-only namespace like
+  // cross-tenant leak — for a platform-only namespace like
   // `rate-limit.*` it means one tenant's value governs the whole platform, and
   // the `getFromCache(key)` → `update(row.id)` admin-write path mutates that
   // tenant's row. The cache now admits platform-reserved tenants only, so a

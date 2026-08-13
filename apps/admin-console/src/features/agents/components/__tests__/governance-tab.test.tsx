@@ -1,5 +1,5 @@
 /**
- * Governance tab (TASK-549 Eval panel): selecting a template shows the Eval
+ * Governance tab (Eval panel): selecting a template shows the Eval
  * gate panel — a golden-set picker scoped to the department agents bound to
  * that template, the last runs + scores for the picked set, and a manual
  * run-now (independent of the promotion gate that runs automatically on
@@ -133,7 +133,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('GovernanceTab — Eval panel (TASK-549)', () => {
+describe('GovernanceTab — Eval panel', () => {
   it('defaults the golden-set picker to the set attached to a bound agent and shows its last runs', async () => {
     stubFetch((call) => defaultHandler(call, [agent({ goldenSetId: 'gs-1' })]));
     renderWithProviders(<GovernanceTab />);
@@ -182,7 +182,7 @@ describe('GovernanceTab — Eval panel (TASK-549)', () => {
     expect(within(runs).getByText(/overall: 0.91/)).toBeDefined();
   });
 
-  // TASK-549 tail: EvalRun.triggerType (MANUAL/PROMOTION/CI) is now on the
+  // EvalRun.triggerType (MANUAL/PROMOTION/CI) is now on the
   // wire (EvalRunResponse) — the "last runs" list should badge it so an admin
   // can tell an automatic promotion-gate run from a manual check.
   it('badges each run with its trigger type (MANUAL/PROMOTION/CI)', async () => {

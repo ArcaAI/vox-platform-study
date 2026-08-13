@@ -75,19 +75,19 @@ export class DepartmentAgentService extends BaseService implements IDepartmentAg
     // re-pointing this agent's pin to a new version runs the eval (if the agent
     // references a golden set) and blocks (409) on a gate failure in block-mode.
     @Optional() @Inject(EvalPromotionGateService) private readonly promotionGate?: EvalPromotionGateService,
-    // TASK-635 RF-4: validates `llmOverrides` model slugs against the ENABLED
+    // Validates `llmOverrides` model slugs against the ENABLED
     // TEXT_GENERATION catalogue. Appended as an OPTIONAL trailing dependency
     // (the established fixture-arity convention) so existing unit fixtures that
     // construct this service positionally keep compiling; when it is absent the
     // structural validation still runs and only the catalogue check is skipped.
     @Optional() @Inject(AiModelRepository) private readonly aiModelRepository?: AiModelRepository,
-    // TASK-659, same append-only OPTIONAL convention as above.
+    // , same append-only OPTIONAL convention as above.
     // Writes the immutable loop-config snapshot on create/update; when absent
     // (existing unit fixtures) no version row is written and everything else
     // is unaffected.
     @Optional() @Inject(DepartmentAgentVersionRepository) private readonly agentVersionRepository?: DepartmentAgentVersionRepository,
     // Cross-checks `subscribedKinds`/`writeScope` kind/output keys against the
-    // department's resolved ConsultationContextSchemaVersion (TASK-658). When
+    // department's resolved ConsultationContextSchemaVersion. When
     // either is absent, the structural shape checks still run and only the
     // "does this kind exist" check is skipped — mirrors `aiModelRepository`.
     @Optional() @Inject(ConsultationContextSchemaRepository) private readonly contextSchemaRepository?: ConsultationContextSchemaRepository,
@@ -137,12 +137,12 @@ export class DepartmentAgentService extends BaseService implements IDepartmentAg
   }
 
   /**
-   * TASK-674 — the immutable `DepartmentAgentVersion` history TASK-659 writes
+   * The immutable `DepartmentAgentVersion` history writes
    * on every loop-config-affecting save (`writeLoopConfigVersionIfNeeded`),
    * newest first. Ownership-checked exactly like every other read here
    * (`loadOwned` — a cross-tenant id 404s before any version is read).
    * `agentVersionRepository` mirrors the same `@Optional()` degrade every
-   * other TASK-659 read path uses: absent ⇒ empty list, never a throw.
+   * other read path uses: absent ⇒ empty list, never a throw.
    */
   async listVersions(id: string): Promise<DepartmentAgentVersionResponse[]> {
     const agent = await this.loadOwned(id);
@@ -174,7 +174,7 @@ export class DepartmentAgentService extends BaseService implements IDepartmentAg
     if (dto.pinnedVersionNumber !== undefined && dto.pinnedVersionNumber !== null) {
       await this.assertPinnedVersionApproved(template, dto.pinnedVersionNumber);
     }
-    // TASK-659 — loop configuration + promotion surface.
+    // Loop configuration + promotion surface.
     await this.assertSinglePrimaryPerDepartment(tenantId, dto.departmentId, dto.role);
     await this.validateSubscribedKinds(tenantId, dto.departmentId, dto.subscribedKinds);
     await this.validateWriteScope(tenantId, dto.departmentId, dto.writeScope);
@@ -254,7 +254,7 @@ export class DepartmentAgentService extends BaseService implements IDepartmentAg
     await this.assertCapabilityBindingsBindable(tenantId, agent.departmentId, dto);
     this.validateToolConfig(dto.toolConfig);
     await this.validateLlmOverrides(dto.llmOverrides);
-    // TASK-659 — loop configuration + promotion surface. The single-PRIMARY
+    // Loop configuration + promotion surface. The single-PRIMARY
     // and always/never-overlap invariants are CROSS-FIELD, so they validate
     // the EFFECTIVE post-write state (dto value when supplied, else the
     // agent's current value) — a partial PATCH that only touches one side of
@@ -421,7 +421,7 @@ export class DepartmentAgentService extends BaseService implements IDepartmentAg
   /**
    * Clone an agent into a new, EDITABLE copy ("clone to customize" — the
    * sanctioned way to customize a LOCKED template copy). Mirrors
-   * `PipelineService.clone` (TASK-531):
+   * `PipelineService.clone`:
    *  - The bound PromptTemplate is DEEP-COPIED into a fresh tenant-owned
    *    template in DRAFT status (a v1 PromptVersion snapshot is written so the
    *    copy starts with an honest version history), carrying lineage in
@@ -434,7 +434,7 @@ export class DepartmentAgentService extends BaseService implements IDepartmentAg
    *
    * The source is resolved through the tenant-ownership guard, so a cross-tenant
    * id surfaces as 404 (never leaks a foreign agent). This is what the console's
-   * "clone to customize" (TASK-547) calls.
+   * "clone to customize" calls.
    */
   async clone(id: string, dto: CloneDepartmentAgentRequest): Promise<DepartmentAgentResponse> {
     const tenantId = this.requireTenant();
@@ -496,7 +496,7 @@ export class DepartmentAgentService extends BaseService implements IDepartmentAg
       dnaStylePolicy: source.dnaStylePolicy,
       harnessOverrides: source.harnessOverrides ?? null,
       goldenSetId: source.goldenSetId ?? null,
-      // TASK-635 — capability bindings travel with the clone. Note the
+      // Capability bindings travel with the clone. Note the
       // ASYMMETRY with the BASE binding, which is deliberate: only
       // `promptTemplateId` is deep-copied into a fresh editable DRAFT template,
       // because that is the one the tenant customizes. The capability bindings
@@ -509,8 +509,8 @@ export class DepartmentAgentService extends BaseService implements IDepartmentAg
       livePromptTemplateId: source.livePromptTemplateId ?? null,
       toolConfig: source.toolConfig ?? null,
       llmOverrides: source.llmOverrides ?? null,
-      // TASK-663 — the seven loop-config fields travel with the clone. TASK-659
-      // deliberately did NOT propagate them (its §4.5) and flagged the call for
+      // The seven loop-config fields travel with the clone.
+      // deliberately did NOT propagate them (its ) and flagged the call for
       // this ticket; leaving them behind meant cloning an agent silently
       // dropped its ENTIRE loop configuration with no error. Promotion copies
       // them, so a same-tenant clone must too, or the two copy paths disagree
@@ -554,7 +554,7 @@ export class DepartmentAgentService extends BaseService implements IDepartmentAg
       },
     });
 
-    // TASK-663 — the clone carries loop config now, so it needs its own v1
+    // The clone carries loop config now, so it needs its own v1
     // snapshot exactly as `create()` does. Without this a cloned agent would
     // have a configuration but no immutable version, and would therefore be
     // unpromotable (promotion copies a VERSION, never a live row).
@@ -719,7 +719,7 @@ export class DepartmentAgentService extends BaseService implements IDepartmentAg
   }
 
   // =========================================================================
-  // TASK-659 — loop configuration + promotion surface
+  // Loop configuration + promotion surface
   // =========================================================================
 
   /** At most one ENABLED PRIMARY agent per department. */
@@ -740,7 +740,7 @@ export class DepartmentAgentService extends BaseService implements IDepartmentAg
 
   /**
    * `subscribedKinds` may reference only kind keys declared in the
-   * department's resolved ConsultationContextSchemaVersion (TASK-658). When
+   * department's resolved ConsultationContextSchemaVersion. When
    * the schema repositories are not wired into this service instance, only
    * the structural shape is checked (mirrors `validateLlmOverrides`'s
    * catalogue-check degradation).

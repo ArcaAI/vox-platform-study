@@ -1,5 +1,5 @@
 /**
- * SYSTEM TenantTtsConfig default seed invariants (TASK-577, finding F1)
+ * SYSTEM TenantTtsConfig default seed invariants (finding F1)
  *
  * Static assertions over the EXPORTED seed row (no live DB), following the
  * conventions of `config-plane-seed.test.ts` / `ai-model-consolidation-seed.test.ts`

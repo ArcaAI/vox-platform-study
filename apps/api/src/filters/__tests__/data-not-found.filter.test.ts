@@ -12,7 +12,7 @@
  *
  * The filter MUST return a generic `{ statusCode: 404, message:
  * "Resource not found" }` body in production. Per the user-locked
- * decision in §10 Q2 of the plan README, the filter is SCOPED ONLY to
+ * decision in Q2 of the plan README, the filter is SCOPED ONLY to
  * `DataNotFoundException` — the W5.1.3 / W5.2 / W5.3 service-layer
  * guards already throw `NotFoundException('Resource not found')`
  * directly with the right message and do NOT need filter wrapping.

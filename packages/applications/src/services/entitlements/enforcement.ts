@@ -17,7 +17,7 @@ export type EntitlementLimitKey = keyof ResolvedLimits;
  * by `TenantUsageMeter` / live Postgres aggregation. Over-limit here maps to
  * HTTP 429 (not 409) at the API gateway.
  *
- * TASK-615 D11 adds the five ledger-derived unit-allowance capabilities.
+ * Adds the five ledger-derived unit-allowance capabilities.
  * Deliberately NO `monthlyGuardrailCalls` — guardrail has no allowance column
  * (D6/D16: metered, never quota-blocked), so the type itself makes
  * "gate a guardrail call on quota" impossible to express at a call site.

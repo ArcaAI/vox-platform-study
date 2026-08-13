@@ -1,4 +1,4 @@
-"""STT Dramatiq worker Prometheus exposition (TASK-636 OBS-05).
+"""STT Dramatiq worker Prometheus exposition.
 
 The batch worker is a SEPARATE process from the FastAPI app. `/metrics` on
 :8861 is served by the API process and says nothing about the worker, so batch
@@ -6,7 +6,7 @@ transcription throughput, job duration, queue depth and failure rate were
 entirely unmeasurable — the worker configured OTel *logs* only.
 
 Why dramatiq's own middleware rather than a hand-rolled exporter: dramatiq
-FORKS worker processes (`--processes N`). A naive `start_http_server()` in each
+FORKS worker processes (`--processes N`). A naive `start_http_server` in each
 fork collides on the port, and plain `prometheus_client` counters would be
 per-fork and silently wrong. `dramatiq.middleware.prometheus.Prometheus` is
 built for this — it sets `PROMETHEUS_MULTIPROC_DIR`, aggregates across forks,
@@ -54,7 +54,7 @@ def test_prometheus_middleware_is_registered_when_metrics_enabled(
 def test_prometheus_middleware_absent_when_metrics_disabled(
     restore_broker, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """TASK-411 invariant: every exporter stays behind a switch."""
+    """Invariant: every exporter stays behind a switch."""
     broker_mod = restore_broker
     monkeypatch.setattr(broker_mod.settings, "metrics_enabled", False, raising=False)
 

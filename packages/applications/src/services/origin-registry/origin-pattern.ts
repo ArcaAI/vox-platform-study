@@ -1,12 +1,12 @@
-// Origin PATTERN grammar (TASK-610 §4A.2, lane W5-A).
+// Origin PATTERN grammar.
 //
 // `origin-normalizer.ts` owns EXACT origins and still rejects every `*` — an
 // Origin header never contains one, so that rejection is correct and untouched.
 // This module owns the separate, explicitly-opted-into concept of a stored
-// PATTERN. A stored value is a pattern iff it contains `*` (§4A.2); the two
+// PATTERN. A stored value is a pattern iff it contains `*`; the two
 // forms share the `origin` column and its global-uniqueness guarantee.
 //
-// Frozen grammar (§4A.2 — implemented literally, not re-designed):
+// Frozen grammar (implemented literally, not re-designed):
 //
 //   pattern     := <scheme>://<hostPattern>:<portPattern>
 //     scheme      := 'http' | 'https'    http ONLY when hostPattern is loopback
@@ -18,7 +18,7 @@
 // `https://*.4bits.vn:*` · `http://localhost:*`.
 //
 // SECURITY POSTURE — a wildcard delegates credentialed CORS to every subdomain
-// that exists now or later, including a dangling DNS record (§4A.2). Everything
+// that exists now or later, including a dangling DNS record. Everything
 // below is written to make the blast radius as small as the grammar allows:
 //
 //  1. `*` is only ever the leftmost host label and must be followed by `.`.
@@ -63,7 +63,7 @@ const SPECIFICITY_INVALID = 0;
  */
 const SPECIFICITY_ALLOW_ALL = 1;
 /**
- * An "any-extension" pattern (`<scheme>://*`, TASK-653) ranks strictly above the
+ * An "any-extension" pattern (`<scheme>://*`) ranks strictly above the
  * allow-all token (1) — it is narrower: it admits only ONE scheme's extensions,
  * not literally every origin — and strictly below the lowest concrete host
  * pattern (a one-character host scores 6). A small fixed rank is enough: it is
@@ -79,11 +79,11 @@ const SPECIFICITY_PINNED_PORT_BONUS = 1;
 const MAX_INPUT_LENGTH = 2048;
 const MAX_HOST_LENGTH = 253;
 const MAX_LABEL_LENGTH = 63;
-/** Extension-id cap (TASK-653) — the same bound `origin-normalizer` enforces on an exact extension id. */
+/** Extension-id cap — the same bound `origin-normalizer` enforces on an exact extension id. */
 const MAX_EXTENSION_ID_LENGTH = 128;
 const MAX_PORT = 65535;
 
-// TASK-653 — also accept the three browser-extension schemes. Used by BOTH
+// Also accept the three browser-extension schemes. Used by BOTH
 // `parsePattern` (the write path, for the `<scheme>://*` any-extension pattern)
 // and `parseCanonicalOrigin` (the incoming-header path, for an exact extension
 // origin), so extension support has to live in this ONE prefix.
@@ -169,7 +169,7 @@ interface ParsedPattern {
   /** true for the `*.<suffix>` form; false for a concrete host. */
   wildcard: boolean;
   /**
-   * true for the browser-extension `<scheme>://*` form (TASK-653) — "any
+   * true for the browser-extension `<scheme>://*` form — "any
    * extension of that scheme". A discriminant distinct from `wildcard` (which
    * it also sets) so matching/specificity never confuse it with an http
    * `*.<suffix>` host wildcard: an any-extension pattern has `matchHost: ''`,
@@ -237,7 +237,7 @@ export function matchesOriginPattern(pattern: string, origin: string): boolean {
       return false;
     }
 
-    // Any-extension pattern (TASK-653): the scheme already matched exactly
+    // Any-extension pattern: the scheme already matched exactly
     // above, so admit any well-formed extension id. `parseCanonicalOrigin`
     // already proved the origin's host is a single LABEL_PATTERN label with no
     // port and no `*`, so a non-empty host is sufficient — there is no
@@ -274,7 +274,7 @@ export function matchesOriginPattern(pattern: string, origin: string): boolean {
 
 /**
  * Specificity for precedence — higher wins. Used by the registry to break
- * overlaps: longest suffix wins, ties break by earliest id (§4A.2).
+ * overlaps: longest suffix wins, ties break by earliest id.
  *
  * "Exact row beats any pattern" is NOT expressed here — exact origins are not
  * patterns, so the registry enforces that by looking up exact rows first.
@@ -291,7 +291,7 @@ export function patternSpecificity(pattern: string): number {
 
   // An any-extension pattern has an empty `matchHost`, so the formula below
   // would score it 0 (== unparseable). Give it its own fixed rank instead —
-  // above allow-all, below every concrete host (TASK-653).
+  // above allow-all, below every concrete host.
   if (parsed.anyExtension) {
     return SPECIFICITY_ANY_EXTENSION;
   }
@@ -352,7 +352,7 @@ function parsePattern(raw: string): ParsedPattern {
     throw new ArgumentInvalidException(`Origin pattern must declare a host: ${raw}`);
   }
 
-  // ── Browser-extension "any-extension" pattern (TASK-653) ───────────────────
+  // ── Browser-extension "any-extension" pattern  ───────────────────
   //
   // The ONLY valid extension PATTERN is `<scheme>://*` — "any extension id of
   // this scheme". An exact `<scheme>://<id>` carries no `*` and is
@@ -510,7 +510,7 @@ function canonicalizeHost(host: string, raw: string): string {
  * Best-effort public-suffix rejection WITHOUT a public-suffix list.
  *
  * RESIDUAL RISK — this is deliberately PARTIAL and cannot be made complete by
- * hand. §4A.2 claims the ">= 2 labels" floor rejects `*.co.uk`; it does not
+ * hand. claims the ">= 2 labels" floor rejects `*.co.uk`; it does not
  * (`co.uk` is two labels), so this heuristic carries that stated intent. It
  * catches (a) a 2-label suffix whose TLD is a 2-letter ccTLD and whose second
  * level is a known registry label, and (b) a short list of shared-hosting
@@ -579,7 +579,7 @@ function parseCanonicalOrigin(origin: string): ParsedOrigin | null {
     }
   }
 
-  // ── Incoming browser-extension origin (TASK-653) ───────────────────────────
+  // ── Incoming browser-extension origin  ───────────────────────────
   //
   // `<scheme>://<id>` — a single opaque id label, no port, no brackets. The
   // authority must be exactly a lowercased LABEL_PATTERN label (a port's `:`, an

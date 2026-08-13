@@ -1,7 +1,7 @@
 /**
- * TASK-652 §3.2 — guard against a de-parameterized pre-summary body.
+ * Guard against a de-parameterized pre-summary body.
  *
- * The shipped defect (TASK-652 §2.1): the governed ArcaAI pre-summary row on
+ * The shipped defect: the governed ArcaAI pre-summary row on
  * dev had its nine v1 `{placeholder}` variables replaced with the literal
  * phrase "provided in the request context". The prompt still PROMISED
  * context ("vitals: provided in the request context") but supplied none, so
@@ -69,7 +69,7 @@ function deParameterize(body: string): string {
   return result;
 }
 
-describe('TASK-652 §3.2 — seeded pre-summary bodies still carry all v1 placeholders', () => {
+describe('seeded pre-summary bodies still carry all v1 placeholders', () => {
   it('this package’s local placeholder list matches the seed module’s local list (07b-arcaai-clinical-templates.ts, PRE_SUMMARY_VARIABLES)', () => {
     // `PRE_SUMMARY_VARIABLES` (07b-arcaai-clinical-templates.ts:144-154) is
     // private (not exported), but it is assigned verbatim to the `variables`

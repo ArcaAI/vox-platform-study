@@ -18,7 +18,7 @@ export interface IPlanEntitlementEntity extends Omit<IBaseEntity, 'tenantId'> {
   monthlyTranscriptionMinutes?: number | null;
   monthlySummaries?: number | null;
   // Per-capability included allowances over the UTC-calendar-month window
-  // (TASK-615 D11). BigInt: enterprise token/character counts exceed Int32.
+  // BigInt: enterprise token/character counts exceed Int32.
   // null = unlimited (same convention as every meter column above).
   monthlySttSessionSeconds?: bigint | null;
   monthlyLlmTokens?: bigint | null;

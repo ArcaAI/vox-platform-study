@@ -104,7 +104,7 @@ export function makeSimulatedWorld() {
               day: day(10),
               unit: AiUsageUnit.INPUT_TOKEN,
               operation: 'guardrail.validate',
-              // Must match the rollup bucket it deducts from (TASK-638 key).
+              // Must match the rollup bucket it deducts from (key).
               provider: 'test',
               deployment: AiDeploymentKind.SELF_HOSTED,
               quantity: new Decimal(200_000),

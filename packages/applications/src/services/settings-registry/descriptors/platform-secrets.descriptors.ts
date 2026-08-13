@@ -1,10 +1,10 @@
-// Platform secrets — the `vault-kv` tier (TASK-558 lane F, plan §3.2).
+// Platform secrets — the `vault-kv` tier.
 //
 // Data class 1: a SHARED platform credential, operator-set, living in Vault
 // kv-v2 at `<VAULT_KV_MOUNT>/data/<VAULT_KV_PREFIX>/<NAME>` (defaults
 // `secret/data/hope/<NAME>`) and read through `SecretsService.getSecret(NAME)`.
-// `NAME` is exactly `toEnvVarName(descriptor.key)` — the mechanical 1:1 of plan
-// §3.3 — which is why the seeding script (`scripts/vault-seed-secrets.sh`) needs
+// `NAME` is exactly `toEnvVarName(descriptor.key)` — the mechanical 1:1
+// mapping — which is why the seeding script (`scripts/vault-seed-secrets.sh`) needs
 // no key table of its own.
 //
 // CLASSIFICATION RULES APPLIED HERE
@@ -41,7 +41,7 @@
 //                             anywhere" — that was wrong; corrected at the wave-3 merge.)
 //   - `AZURE_OPENAI_API_KEY`— read ONLY by `apps/smr/src/smr/tests/e2e/conftest.py`
 //                             (a test fixture parsing a dotenv file directly). No
-//                             runtime reader. TASK-602: SMR's Azure credential
+//                             runtime reader. SMR's Azure credential
 //                             (`SMR_AZURE_API_KEY`) is no longer a platform-secret
 //                             either — it is BYOK-only (`db-secret`, resolved from
 //                             `AiProviderConnection`), so nothing is registered here.
@@ -92,7 +92,7 @@ export const PLATFORM_SECRET_SETTINGS: SettingDescriptor[] = [
   ),
   {
     ...platformSecret('api.keyPepper', 'API key pepper', '', 'Authentication'),
-    // The one secret whose rotation is a CLIFF rather than a blip (plan §9.2 L6).
+    // The one secret whose rotation is a CLIFF rather than a blip.
     description:
       'Server-side pepper mixed into every API-key hash. CHANGING IT INVALIDATES EVERY ISSUED API KEY AT THE INSTANT IT CHANGES — a stored hash computed under pepper vN can never be verified under vN+1. ' +
       'ROTATION IS THEREFORE STAGED, NEVER SWAPPED, and is keyVersion-aware in exactly the way `GlobalSetting` already models secret material (`encryptedValue` + `keyVersion`): ' +
@@ -202,7 +202,7 @@ export const PLATFORM_SECRET_SETTINGS: SettingDescriptor[] = [
   ),
 
   // ── AI provider credentials (platform-owned; BYO tenant keys are db-secret) ─
-  // TASK-602: the STT/TTS/SMR cloud credentials (`AZURE_SPEECH_KEY`,
+  // The STT/TTS/SMR cloud credentials (`AZURE_SPEECH_KEY`,
   // `TTS_SARVAM_API_KEY`, `SMR_AZURE_API_KEY`, `SMR_OPENAI_API_KEY`,
   // `SMR_ANTHROPIC_API_KEY`) are NO LONGER platform-secrets. They moved fully to
   // the `db-secret` tier: a platform default is a SYSTEM-tenant row in
@@ -211,7 +211,7 @@ export const PLATFORM_SECRET_SETTINGS: SettingDescriptor[] = [
   // them, so registering them here (which would seed a `vault-kv` secret and add
   // them to `turbo#globalEnv`) is wrong — they are removed. Bedrock/Vertex use
   // ambient cloud credentials (no static key). `azure.foundryApiKey` stays: it is a
-  // disabled-by-default preview engine, out of TASK-602 scope.
+  // disabled-by-default preview engine, out of that credential-move's scope.
   platformSecret('azure.foundryApiKey', 'Azure AI Foundry key', 'Azure AI Foundry credential used by the STT Foundry model loader.', 'AI Providers'),
   platformSecret(
     'guardrailVllm.apiKey',

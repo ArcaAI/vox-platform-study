@@ -1,5 +1,5 @@
 # =============================================================================
-# HOPE — "seal" Vault (TASK-312 Phase C, C.3)
+# HOPE — "seal" Vault
 # =============================================================================
 # A SINGLE-NODE Vault whose ONLY job is to hold one Transit key (`autounseal`)
 # that the 3-node HA cluster uses to auto-unseal. This is the only Vault in the

@@ -1,14 +1,14 @@
 'use client';
 
 /**
- * @arcaai/vox/compat - useArcaSpeechToText metadata helpers (TASK-565)
+ * @arcaai/vox/compat - useArcaSpeechToText metadata helpers
  *
- * Pure functions implementing the frozen metadata-passthrough contract
- * (TASK-564 §5). Kept separate so the F4 fix (§5.2 precedence) and §4.3
+ * Pure functions implementing the frozen metadata-passthrough contract.
+ * Kept separate so caller-override precedence and
  * normalization are unit-testable in isolation.
  */
 
-/** v1-parity default when `transcriptTemplate` is absent (TASK-564 §5.2). */
+/** v1-parity default when `transcriptTemplate` is absent. */
 export const DEFAULT_TRANSCRIPT_TEMPLATE = '{timestamp} {speaker_id}: {text}';
 
 /** Fields the hook derives from a v2 `TranscriptSegment` (all optional). */
@@ -18,12 +18,12 @@ export interface EnrichmentSeg {
   language?: string;
   startTime?: number;
   endTime?: number;
-  /** Per-utterance ASR pipeline provenance (TASK-613), when the segment carries one. */
+  /** Per-utterance ASR pipeline provenance, when the segment carries one.*/
   pipelineId?: string;
 }
 
 /**
- * §4.3 `chunk_id` normalization: caller `chunk_id → chunkId → other` (v1 priority).
+ * `chunk_id` normalization: caller `chunk_id → chunkId → other` (v1 priority).
  * v2 has no server-assigned chunk id — it echoes what the caller supplied.
  */
 export function resolveChunkId(meta: Record<string, unknown> | undefined): unknown | undefined {
@@ -35,7 +35,7 @@ export function resolveChunkId(meta: Record<string, unknown> | undefined): unkno
 }
 
 /**
- * §4.3 `detected_language` normalization:
+ * `detected_language` normalization
  * caller `detected_language → detectedLanguage → seg.language`.
  * v2 uses the session-configured language (not per-utterance detection) unless
  * code-switching populates `seg.language`.
@@ -47,7 +47,7 @@ export function resolveDetectedLanguage(meta: Record<string, unknown> | undefine
 }
 
 /**
- * TASK-613 §3.3 `pipeline_id` normalization: caller `pipeline_id → pipelineId
+ * `pipeline_id` normalization: caller `pipeline_id → pipelineId
  * → seg.pipelineId`. Same precedence style as `resolveDetectedLanguage` —
  * the caller's own value wins, otherwise the v2-resolved per-utterance
  * pipeline id from the segment. `undefined` when nothing provides one, which
@@ -61,15 +61,15 @@ export function resolvePipelineId(meta: Record<string, unknown> | undefined, seg
 }
 
 /**
- * Compose the delivered metadata in the EXACT §5.2 precedence order
+ * Compose the delivered metadata in the EXACT precedence order
  * (lowest → highest), fixing defect F4:
  *   1. v2 ASR/diarization enrichments   — LOWEST (caller may override)
  *   2. caller-supplied correlated meta  — OVERRIDES enrichments
- *   3. v1-canonical normalized keys      — HIGHEST (overlay last, matches v1 §4.3)
+ * 3. v1-canonical normalized keys — HIGHEST (overlay last, matches v1)
  *
  * A caller who sets `speaker_id`/`confidence`/`language`/`isFinal` now sees
  * THEIR value; only `chunk_id`/`detected_language`/`pipeline_id` are overlaid
- * on top (the last one added by TASK-613 D4, same overlay tier).
+ * on top (the last one added by, same overlay tier).
  */
 export function composeDeliveredMetadata(args: {
   seg: EnrichmentSeg;
@@ -111,12 +111,12 @@ export const MAX_METADATA_BYTES = 8192;
 
 /**
  * Correlate a FINAL segment (has stream-relative `startTime` seconds) to caller
- * metadata via the capture-relative timeline (TASK-564 §5.3):
+ * metadata via the capture-relative timeline
  *  - choose the LATEST entry with `atMs ≤ startTime*1000`;
  *  - if none precedes (or the base is unknown), fall back to the MOST-RECENT
  *    entry (pure sticky — never worse than today's single-bag behavior).
  *
- * TIME BASE (§5.3 RISK): `atMs` is `Date.now() - captureStartMs` (capture-relative
+ * TIME BASE (RISK): `atMs` is `Date.now() - captureStartMs` (capture-relative
  * wall clock); `startTime` is stream-relative seconds anchored at the same capture
  * start (`vadStreamStartSec`). Both count forward from ~capture start, so the
  * comparison is meaningful. When `captureStartMs`/`startTime` is unknown we degrade

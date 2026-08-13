@@ -1,5 +1,5 @@
 /**
- * Cross-tenant fixture scaffold — TASK-305 Phase E.1.
+ * Cross-tenant fixture scaffold.
  *
  * Pure synthetic fixtures (NO database, NO Prisma) used by cross-tenant
  * tests across the monorepo. Returns two tenants, two non-elevated
@@ -18,7 +18,7 @@
  * callers in any package (including monorepo-root tests) can import it
  * without pulling in NestJS DI. The literal 'GLOBAL_ADMIN' string mirrors
  * `GLOBAL_ADMIN_ROLE` from `packages/applications/src/services/tenant/
- * constants.ts` (TASK-417 — SUPER_ADMIN was consolidated into it).
+ * constants.ts` (SUPER_ADMIN was consolidated into it).
  */
 
 export interface CrossTenant {

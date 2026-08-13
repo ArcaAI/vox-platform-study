@@ -1,13 +1,13 @@
 // ============================================================================
-// Consultation Context Schema (TASK-658)
+// Consultation Context Schema
 //
 // Tenants DECLARE the kinds of context a consultation carries; clients
 // discover that declaration at runtime and build their workflow from it; the
 // server validates every submitted payload against the PINNED version of it.
 //
 // Shape is the house governance triple already used by
-// PromptTemplate/PromptVersion and AsrPipeline/AsrPipelineVersion
-// (TASK-654 C6): a MUTABLE head row, an IMMUTABLE per-publish version
+// PromptTemplate/PromptVersion and AsrPipeline/AsrPipelineVersion:
+// a MUTABLE head row, an IMMUTABLE per-publish version
 // snapshot, and a MOVABLE pin naming which snapshot is currently served.
 //
 // The head row is what an admin edits and what carries the lifecycle; the
@@ -27,7 +27,7 @@ model ConsultationContextSchema {
 
   // core (business) fields
   // Stable, tenant-invented identifier used by clients and by promotion
-  // (TASK-663) to correlate the "same" schema across tenants. Unique per
+  // to correlate the "same" schema across tenants. Unique per
   // tenant, never reused.
   slug        String
   name        String
@@ -52,8 +52,8 @@ model ConsultationContextSchema {
   // portably here), mirroring `DepartmentAgent.isDefault`.
   isDefault Boolean @default(false)
 
-  // Golden-library provenance (the TASK-531/548 clone + resync precedent, and
-  // the hook TASK-663 promotion writes). `sourceTemplateSlug` names the SYSTEM
+  // Golden-library provenance (the clone + resync precedent, and
+  // the hook promotion writes). `sourceTemplateSlug` names the SYSTEM
   // schema this one was cloned from; `templateLocked` means a resync may
   // overwrite it because the tenant has not diverged.
   sourceTemplateSlug String?

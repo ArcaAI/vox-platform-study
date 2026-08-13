@@ -1,8 +1,8 @@
 /**
  * Model-cache retention TTL — settings-registry write lane → effective-config
- * read round trip (TASK-529 gap).
+ * read round trip (gap).
  *
- * `settings-registry-write.spec.ts` (task-524) proves the write lane's generic
+ * `settings-registry-write.spec.ts` proves the write lane's generic
  * enforcement (unknown key, type mismatch, unwritable tier, globalOnly 403) and
  * that the retention keys are CATALOGED. It never PUTs one of the retention
  * TTLs and checks that the write actually reaches the effective-config read

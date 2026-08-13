@@ -1,4 +1,4 @@
-"""Orchestration tests for :class:`ConsultationLoopWorkflow` (TASK-662).
+"""Orchestration tests for :class:`ConsultationLoopWorkflow`.
 
 Every test runs the REAL workflow definition against stub activities in
 Temporal's time-skipping environment, so what is exercised is pure
@@ -7,7 +7,7 @@ budget degradation, ``continue_as_new`` state carry-over, signal safety under a
 long-running activity, and the child-finalize ``ParentClosePolicy``.
 
 The loop is a NEW workflow type, so it needs no ``workflow.patched`` era —
-that is precisely why TASK-654 D1 composes ``HarnessDocWorkflow`` as a child
+that is precisely why ``HarnessDocWorkflow`` is composed as a child
 rather than editing it. Replay compatibility is covered separately in
 ``test_replay_compat.py``.
 """
@@ -147,12 +147,12 @@ class _LoopHarness:
 
 class TestWorkflowIdentity:
     def test_workflow_id_is_deterministic_and_consultation_scoped(self):
-        """Idempotent-on-start requires a pure, deterministic id (execution-plan §TASK-662)."""
+        """Idempotent-on-start requires a pure, deterministic id."""
         assert consultation_loop_workflow_id("abc") == "consultation-loop-abc"
         assert consultation_loop_workflow_id("abc") == consultation_loop_workflow_id("abc")
 
     def test_action_registry_declares_every_canonical_action_key(self):
-        """The registry must cover TASK-659's `AGENT_ACTION_KEYS` vocabulary exactly.
+        """The registry must cover the `AGENT_ACTION_KEYS` vocabulary exactly.
 
         An agent may put any of those seven keys in `alwaysActions`, so the loop
         has to have an entry for each — even where the entry says "not
@@ -162,10 +162,10 @@ class TestWorkflowIdentity:
         assert set(LOOP_ACTION_REGISTRY) == set(LOOP_ACTION_KEYS)
 
     def test_the_four_mechanical_actions_are_implemented(self):
-        """The four TASK-662 backed are still backed.
+        """The four backed are still backed.
 
         This assertion used to be an EQUALITY against exactly these four, which
-        also encoded "and the other three are not backed". TASK-664 backed the
+        also encoded "and the other three are not backed". backed the
         remaining three (`vision.extract_text`, `document.extract_text`,
         `nlp.extract_entities`), so the equality moved to
         `test_reasoning_loop_workflow.py::test_every_canonical_action_is_now_backed`
@@ -181,7 +181,7 @@ class TestWorkflowIdentity:
         }
 
     def test_the_mechanical_four_do_not_derive_context(self):
-        """Only TASK-664's three derivers re-enter output as context."""
+        """Only the three derivers re-enter output as context."""
         for key in (
             LOOP_ACTION_LIVEDOC_START,
             LOOP_ACTION_LIVEDOC_STOP,
@@ -229,7 +229,7 @@ class TestPinnedConfig:
         """An unreachable loop-config endpoint must not fail the clinical run.
 
         The loop is additive orchestration; when it cannot pin a config the
-        correct outcome is TASK-654 K7 — the consultation behaves exactly as it
+        correct outcome is the consultation behaves exactly as it
         does today — not a failed workflow.
         """
         async with _LoopHarness(LoopStubConfig(fetch_fails=True)) as h:
@@ -347,8 +347,8 @@ class TestCascadeTermination:
     async def test_an_unregistered_action_is_reported_not_silently_dropped(self):
         """An action key with no registry entry at all is an OBSERVABLE skip.
 
-        Rewritten by TASK-664. This case originally used `vision.extract_text`,
-        which was then declared-but-unbacked; TASK-664 backed all three such
+        Rewritten by This case originally used `vision.extract_text`,
+        which was then declared-but-unbacked; backed all three such
         keys, so the only remaining way to reach this branch is a key that is not
         in the registry — e.g. a gateway sending an action from a newer
         vocabulary than this worker knows.

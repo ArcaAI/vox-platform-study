@@ -92,8 +92,8 @@ class TestSettings:
             assert settings.transcription_stride_length_s == "4,2"
 
     def test_byok_credentials_are_not_settings_fields(self):
-        """TASK-602: Sarvam / OpenAI / Azure-Speech subscription keys are BYOK-only
-        — they are NOT Settings fields at all (resolved per request from the
+        """Sarvam / OpenAI / Azure-Speech subscription keys are BYOK-only
+        they are NOT Settings fields at all (resolved per request from the
         provider-connection plane). Their env vars are silently ignored (extra=ignore)
         and the attributes do not exist on Settings. The non-secret region / base_url
         fields remain."""
@@ -239,7 +239,7 @@ class TestSettings:
     def test_azure_speech_region_defaults(self):
         """Test Azure Speech region default (None when not set).
 
-        TASK-602: the Azure Speech KEY is no longer a settings field (BYOK-only);
+        The Azure Speech KEY is no longer a settings field (BYOK-only);
         only the non-secret region remains.
         """
         with patch.dict(os.environ, {}, clear=True):
@@ -250,7 +250,7 @@ class TestSettings:
     def test_azure_speech_region_env_override(self):
         """Test the non-secret Azure Speech region env override.
 
-        TASK-602: AZURE_SPEECH_KEY is intentionally ignored (BYOK-only, no field).
+        AZURE_SPEECH_KEY is intentionally ignored (BYOK-only, no field).
         """
         env_vars = {
             "AZURE_SPEECH_KEY": "test-azure-key-123",  # ignored (no field)
@@ -362,10 +362,10 @@ class TestGetSettings:
 
 
 class TestSecretRedaction:
-    """TASK-558-H (§13.2 P4) — credentials must never render in the clear.
+    """Credentials must never render in the clear.
 
     These fields become Vault-Agent-rendered files in the cloud, so a plain
-    ``str`` here would put live credentials into any ``repr()``, ``model_dump()``
+    ``str`` here would put live credentials into any ``repr``, ``model_dump``
     or traceback that captures the settings object.
     """
 
@@ -376,7 +376,7 @@ class TestSecretRedaction:
         "AZURE_STORAGE_CONNECTION_STRING": "leak-azure-conn",
         "API_GATEWAY_KEY": "leak-gateway",
         "HUGGINGFACE_TOKEN": "leak-hf",
-        # TASK-602: AZURE_SPEECH_KEY is no longer a settings field (BYOK-only).
+        # AZURE_SPEECH_KEY is no longer a settings field (BYOK-only).
         "AZURE_FOUNDRY_API_KEY": "leak-foundry",
     }
 

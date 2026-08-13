@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# HOPE — Vault HA end-to-end test on kind (TASK-312 Phase C, C.9)
+# HOPE — Vault HA end-to-end test on kind
 # =============================================================================
 # Proves the whole Phase C stack on a throwaway local cluster:
 #   1. seal Vault up + transit auto-unseal token (Shamir 1/1 for speed)

@@ -1,7 +1,6 @@
 #!/bin/sh
 # ══════════════════════════════════════════════════════════════════════════════
-# Digest promotion — TASK-616 Appendix F (component-design-cicd-promotion.md)
-# §F1-F3, F9.
+# Digest promotion (component-design-cicd-promotion.md).
 #
 # Copies each service's already-built `sha-<sha8>` image to an environment
 # tag with ZERO rebuild (docker buildx imagetools create), then pins the
@@ -9,7 +8,7 @@
 # `main` (the branch Argo CD actually reads).
 #
 # Replaces:
-#   - the Argo CD Image Updater (§F2 — wrong tag regex, wrong write-back
+#   - the Argo CD Image Updater (wrong tag regex, wrong write-back
 #     branch, stale image names, and a Git-write PAT it holds in plaintext
 #     alongside registry creds; decommissioned, see deployment/argocd/).
 #   - the old `deploy-staging` job, which edited a Helm-values layout
@@ -29,10 +28,10 @@
 # where `.build-common-rules` still builds unconditionally) OR in an earlier
 # pipeline on the same commit (prod: a `vX.Y.Z` tag does not move the commit,
 # so `$CI_COMMIT_SHA` is identical to the staging pipeline that already built
-# it — see §F11). If no such tag exists, `imagetools inspect` fails cleanly
+# it — see the tag_release / promote-prod workflow). If no such tag exists, `imagetools inspect` fails cleanly
 # instead of silently rebuilding.
 #
-# TASK-648 §7 "Resolved decisions" (prod is promotion-only) — this script's
+# Prod is promotion-only — this script's
 # existing CI_COMMIT_SHA-keyed digest resolution (above) is exactly the
 # mechanism that invariant depends on:
 #   - A `v*` promote-prod pipeline BUILDS NOTHING (`.build-common-rules` in
@@ -41,13 +40,13 @@
 #     only CI_COMMIT_SHA, which is what SOURCE_TAG is built from below.
 #   - The ServiceRelease row for that commit was created earlier by the
 #     dev-*/staging-* pipeline that actually built `sha-<sha8>` (via the
-#     self-registration path, README §3.4/§9 W8/W9) and is looked up by
+#     self-registration path) and is looked up by
 #     (serviceName, gitCommitSha, releaseTag) — the SAME key this script's
 #     SOURCE_TAG is derived from.
 #   - This script has ZERO database access and creates NO release row for any
 #     environment — it only re-tags an already-pushed digest and pins the
 #     deployment overlay. Digest attachment to the release row happens
-#     through the internal service-release API once it exists (README §5 W8),
+#     through the internal service-release API once it exists,
 #     keyed the same way. Promoting twice is therefore idempotent by
 #     construction: same CI_COMMIT_SHA in, same digest out, no second row.
 # ══════════════════════════════════════════════════════════════════════════════
@@ -87,7 +86,7 @@ esac
 
 echo "── Promoting ${SOURCE_TAG} → ${DEPLOY_ENV} (env tag: ${ENV_TAG}) ──"
 
-# §F9 — the canonical 11-service list, plus the two job images: `database`
+# The canonical 11-service list, plus the two job images: `database`
 # (the migration Job) and `qdrant-init` (the Argo PreSync collection-bootstrap
 # Job). Both are built by build.yml and referenced by the deployment repo's
 # base/, so both must be pinned or they deploy as an unresolvable

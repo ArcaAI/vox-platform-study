@@ -16,7 +16,7 @@ from tts.routing.router import (
 from tts.tests.fakes import FakeEngine
 
 # The gateway ALWAYS injects the tenant's resolved routing chain (built-in-first
-# by default — TASK-577). These mirror that injection so the router tests
+# by default). These mirror that injection so the router tests
 # exercise the same shape production does; the router itself no longer carries a
 # code/env vendor default and FAILS CLOSED when no chain is injected.
 _DEFAULT_ROUTING_EN = ["azure", "kokoro"]
@@ -156,7 +156,7 @@ class TestRouting:
 
 
 class TestUnconfiguredProviderExclusion:
-    """TASK-602: a registered cloud provider with no platform credential
+    """A registered cloud provider with no platform credential
     (is_configured=False) is excluded from candidates — it would 401 the live API.
     It counts as available only via a per-tenant override."""
 
@@ -191,7 +191,7 @@ class TestUnconfiguredProviderExclusion:
 
 
 class TestFailClosedRouting:
-    """The router carries NO code/env vendor default (TASK-577 / F1): when the
+    """The router carries NO code/env vendor default: when the
     gateway injects no routing chain, it FAILS CLOSED instead of substituting a
     provider order. Day-1 routing is DB-sourced (SYSTEM TenantTtsConfig)."""
 
@@ -243,7 +243,7 @@ class TestFailClosedRouting:
 
 
 class TestProviderAttribution:
-    """TASK-615 WS-E: the router stamps ``AudioChunk.provider`` with the
+    """The router stamps ``AudioChunk.provider`` with the
     winning candidate so a caller (the usage-metering endpoints) learns which
     provider served the request without re-deriving failover state."""
 
@@ -272,7 +272,7 @@ class TestProviderAttribution:
 
 
 class TestModelInferenceTracking:
-    """TASK-615 WS-E: every provider synthesis call is wrapped in the
+    """Every provider synthesis call is wrapped in the
     cross-service ``track_model_inference`` gauge/histogram (provider name is
     the "model" label — TTS has no separate per-request model concept)."""
 

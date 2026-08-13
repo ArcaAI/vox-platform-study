@@ -1,12 +1,12 @@
 'use client';
 
 /**
- * Lineage tab (TASK-674) — the console surface TASK-667 OI-3 flagged as
- * missing: with no environment concept on this platform (TASK-654 D9/G4),
- * the immutable `DepartmentAgentVersion` history TASK-659 writes on every
+ * Lineage tab — the previously missing console surface:
+ * with no environment concept on this platform,
+ * the immutable `DepartmentAgentVersion` history written on every
  * loop-config-affecting save is the ONLY remaining control on a weakened
  * clinical check, so an admin must be able to see what changed, when, and by
- * whom — and, where present, which cross-tenant promotion (TASK-663) brought
+ * whom — and, where present, which cross-tenant promotion brought
  * this agent's configuration in.
  *
  * Two read-only sections: "Config versions" (the version list + a client-side

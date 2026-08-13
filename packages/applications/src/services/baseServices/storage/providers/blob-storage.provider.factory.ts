@@ -150,7 +150,7 @@ export class BlobStorageProviderFactory {
 
   /**
    * Log the tier that supplied the platform configuration exactly ONCE per
-   * distinct tier (TASK-558 §9.2 L8 — every fallback is observable, and an
+   * distinct tier (every fallback is observable, and an
    * operator can tell whether the DB row or the env bootstrap is live).
    */
   private logPlatformSource(source: PlatformStorageSource): void {

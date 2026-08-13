@@ -1,5 +1,5 @@
 /**
- * Doctor (clinician) catalog fetch (TASK-599 Phase E).
+ * Doctor (clinician) catalog fetch.
  *
  * The SummaryCard lets a v1-migrating developer pick WHOSE DNA writing-style
  * the gateway applies to the generated summary. The chosen user id is forwarded
@@ -20,7 +20,7 @@
  * designation. There is therefore no clinical-role field to filter on, so we
  * list every human user and only drop service accounts (never a hard fail if
  * that field is absent).
- */
+*/
 
 /** One selectable doctor. `id` is submitted as `doctorId`. */
 export interface DoctorOption {

@@ -115,7 +115,7 @@ describe('DnaWritingStyleService.updateDnaReport — field encryption', () => {
     );
   });
 
-  it('TASK-551: a redaction-rules edit validates, sets the entity, encrypts, and snapshots the version', async () => {
+  it('A redaction-rules edit validates, sets the entity, encrypts, and snapshots the version', async () => {
     const { service, mockReportRepo, mockVersionRepo } = buildService(true);
     const report = reportEntity();
     mockReportRepo.findById.mockResolvedValue(report);
@@ -137,7 +137,7 @@ describe('DnaWritingStyleService.updateDnaReport — field encryption', () => {
     expect(mockVersionRepo.create).toHaveBeenCalledTimes(1);
   });
 
-  it('TASK-551: a malformed rule set is rejected before any write', async () => {
+  it('A malformed rule set is rejected before any write', async () => {
     const { service, mockReportRepo, mockVersionRepo } = buildService(true);
     const report = reportEntity();
     mockReportRepo.findById.mockResolvedValue(report);

@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
 # Assert the Vault Agent injection contract on a set of rendered manifests.
-# TASK-558 lane K (K3).
 # =============================================================================
 # Usage:
 #   deployment/vault-agent/check-contract.sh                    # the reference manifest
@@ -21,8 +20,7 @@
 #   4. The kv path is `<mount>/data/<prefix>/<X>` and its last segment equals
 #      <X> — the layout dev-init.sh and vault-seed-secrets.sh both use.
 #   5. `HOPE_SECRETS_DIR` (if set) equals `secret-volume-path` (or its default).
-#   6. No `envFrom: secretRef:` — materialized k8s Secrets are the posture
-#      §9.2 L7 rejects for PHI.
+#   6. No `envFrom: secretRef:` — materialized k8s Secrets are rejected for PHI.
 #   7. `agent-run-as-user` is set (the injector's default 100 cannot be read by
 #      the app's uid 1001, and the failure looks like an empty secret).
 # =============================================================================

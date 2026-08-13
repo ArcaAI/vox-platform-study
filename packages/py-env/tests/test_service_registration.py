@@ -1,11 +1,11 @@
-"""Tests for the shared self-registration + heartbeat helper (TASK-648 U8).
+"""Tests for the shared self-registration + heartbeat helper.
 
 Contract: `docs/implementation/TASK-648-Service-Version-And-Release-Registry/
-contracts/service-release.api.yaml` `POST /internal/service-releases` —
+contracts/service-release.api.yaml` `POST /internal/service-releases`
 idempotent upsert; a repeat call (heartbeat) is the SAME endpoint.
 
 Critical rule under test: registration must NEVER block or fail process boot
-(TASK-648 §3.7). A down/timeout/500 gateway must not raise past
+. A down/timeout/500 gateway must not raise past
 `start_registration`/`stop_registration`, and the heartbeat task must be
 cleanly cancellable with no leaked task.
 """

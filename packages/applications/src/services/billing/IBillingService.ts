@@ -3,7 +3,7 @@ import { BillingInvoiceStatus, TenantPlan } from '@arcaai/domains';
 import { AddAdjustmentRequest, BillingInvoiceResponse, BillingInvoiceSummaryResponse, SpendStatusResponse } from './dto';
 
 /**
- * The invoice engine (TASK-615 WS-I, decisions D11–D15).
+ * The invoice engine (decisions D11–D15).
  *
  * Lifecycle: DRAFT → FINALIZED (immutable) · DRAFT → VOID. Corrections to a
  * finalized period are `BillingAdjustment` credit memos, never mutations —
@@ -42,7 +42,7 @@ export interface IBillingService {
   getSpendStatus(tenantId: string, period: string): Promise<SpendStatusResponse>;
 
   /**
-   * Enforcement precheck for the optional tenant spend limit (TASK-615 #8, D12).
+   * Enforcement precheck for the optional tenant spend limit (D12).
    * Throws `SpendLimitExceededException` (→ HTTP 402) when the tenant has SET a
    * monthly limit and its SELL-rated overage spend has reached it. Opt-in and
    * cheap by construction: a tenant with no limit set (the default — every
@@ -53,7 +53,7 @@ export interface IBillingService {
   assertSpendLimit(tenantId: string, period?: string): Promise<void>;
 
   /**
-   * Append a plan-change fact to `TenantPlanHistory` (TASK-615 #6) — the source
+   * Append a plan-change fact to `TenantPlanHistory` — the source
    * the invoice engine prorates the plan fee from. Closes the tenant's open
    * window at `effectiveAt` and opens a new one for `newPlan` (or leaves it
    * closed when `newPlan` is null = plan removed). Idempotent: re-recording the

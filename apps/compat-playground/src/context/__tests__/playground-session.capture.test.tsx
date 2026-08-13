@@ -2,7 +2,7 @@ import { act, render } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
- * `capture` group — stop ordering and the `stopping` phase (TASK-597 lane B).
+ * `capture` group — stop ordering and the `stopping` phase.
  *
  * The defect (finding D2) was an ordering one at TWO layers. This suite owns
  * the app layer: the console must release the microphone before it waits on the
@@ -14,7 +14,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  * `isRecording` SYNCHRONOUSLY and returns a promise that stays pending for the
  * drain. Anything that reads as "recording" or "idle" during that window is the
  * bug this file exists to catch.
- */
+*/
 
 const sdk = vi.hoisted(() => {
   const calls: string[] = [];
@@ -86,7 +86,7 @@ vi.mock('@arcaai/vox/compat', () => ({
     };
   },
   useArcaSttLanguageModes: () => ({ modes: [], isLoading: false, error: null, refresh: vi.fn() }),
-  // TASK-603 — the provider also mounts the batch-upload queue; an idle stub is
+  // The provider also mounts the batch-upload queue; an idle stub is
   // all these suites need (batch behaviour is covered in BatchUploadTab.test.tsx).
   useArcaBatchTranscription: () => ({
     items: [],
@@ -136,7 +136,7 @@ beforeEach(() => {
   window.localStorage.clear();
 });
 
-describe('playground capture — stop ordering (TASK-597 D2)', () => {
+describe('playground capture — stop ordering', () => {
   it('stops capture BEFORE the STT transport, and joins the same teardown', async () => {
     mount();
     await act(async () => {

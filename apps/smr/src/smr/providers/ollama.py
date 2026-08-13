@@ -102,7 +102,7 @@ class OllamaProvider:
         images = request.image_parts()
         if images:
             # Ollama's ``/api/generate`` takes bare base64 strings — no
-            # ``data:`` URI, no media-type field (TASK-657).
+            # ``data:`` URI, no media-type field.
             payload["images"] = [image.data for image in images]
 
         if request.response_format is not None:

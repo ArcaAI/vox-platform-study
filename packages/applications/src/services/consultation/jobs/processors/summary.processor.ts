@@ -41,7 +41,7 @@ export class SummaryProcessor extends WorkerHost {
     @Optional() @Inject(NamedEntityRepository) private readonly namedEntityRepository?: NamedEntityRepository,
     // Resolver for the tenant's effective SMR {provider, model}.
     @Optional() @Inject(HarnessPolicyService) private readonly harnessPolicyService?: HarnessPolicyService,
-    // (§2.5) — load the consulting doctor's preferred prompt id
+    // load the consulting doctor's preferred prompt id
     // so the legacy BullMQ summary path threads it (was previously dropped here).
     // Optional + trailing so existing positional fixtures keep compiling.
     @Optional() @Inject(ConfigResolver) private readonly configResolver?: ConfigResolver,
@@ -97,7 +97,7 @@ export class SummaryProcessor extends WorkerHost {
         // payload whose tenantId no longer matches the persisted record.
         assertEqualTenants(consultation, { tenantId });
 
-        // (§2.5) — resolve the consulting doctor's preferred
+        // resolve the consulting doctor's preferred
         // prompt id once so BOTH the prompt resolution and assembly threads it
         // (legacy BullMQ path previously dropped it). Null-safe + no-op when the
         // resolver isn't wired.
@@ -145,7 +145,7 @@ export class SummaryProcessor extends WorkerHost {
           throw new Error('No content available for summary generation');
         }
 
-        // TASK-635 C6 — this BullMQ processor is the SECOND finalize path.
+        // This BullMQ processor is the SECOND finalize path.
         // It used to read the pre-summary through the plain, NON-decrypting,
         // NON-subType-aware `findLatestPreSummary` (B-02/B-06), so its warm
         // start was empty in Vault-backed environments and could be shadowed by
@@ -165,7 +165,7 @@ export class SummaryProcessor extends WorkerHost {
           conversationLanguage: this.resolveConversationLanguage(request.options),
           dnaStyleId: request.dnaStyleId,
           preSummaryText: warmStart.text ?? undefined,
-          // TASK-635 C6 / RF-6 — the SAME agent that ran live reviews and
+          // The SAME agent that ran live reviews and
           // finalizes on this path too: lineage makes the prior-draft injection
           // unconditional (DR-4) and pins the resolver's agent tier to that exact
           // agent. Both `undefined` for every non-live consultation ⇒ unchanged.
@@ -282,7 +282,7 @@ export class SummaryProcessor extends WorkerHost {
       resolvedFrom: PromptResolutionTier;
     },
     request: GenerateSummaryJobPayload['request'],
-    // TASK-635 A5 (B-04) — the tenant id `process()` already fail-closed
+    // The tenant id `process` already fail-closed
     // validated (job.data.tenantId) is threaded through EXPLICITLY here
     // rather than trusting `resolveSmrSelection()`'s own CLS fallback, so
     // this call can never silently serve the SYSTEM default model.
@@ -333,7 +333,7 @@ export class SummaryProcessor extends WorkerHost {
   }
 
   /**
-   * TASK-635 C6 — the warm-start read, identical in contract to
+   * The warm-start read, identical in contract to
    * `SummaryService.resolveWarmStartPreSummary`: prefer the newest
    * `LIVE_SOAP_SNAPSHOT` (the note the live agent actually produced), else fall
    * back to the newest pre-summary of ANY subType (legacy case-notes flow).

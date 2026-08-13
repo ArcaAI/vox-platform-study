@@ -2,7 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsInt, IsNotEmpty, IsOptional, IsString, MaxLength, Min } from 'class-validator';
 
 /**
- * TASK-663 — promote one immutable agent configuration version from a source
+ * Promote one immutable agent configuration version from a source
  * tenant into a target tenant.
  *
  * `fromTenantId` is REQUIRED even though it could be derived by reading

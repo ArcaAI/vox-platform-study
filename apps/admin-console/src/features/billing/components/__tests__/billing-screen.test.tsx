@@ -1,5 +1,5 @@
 /**
- * Billing screen (TASK-615 #15b): spend banner, invoice list + compute-draft,
+ * Billing screen: spend banner, invoice list + compute-draft,
  * the invoice detail drawer (summary/lines/adjustments + DRAFT finalize/void),
  * empty state, the working-tenant gate, and axe-cleanliness.
  */
@@ -184,7 +184,7 @@ describe('BillingScreen', () => {
     expect(await axe(container)).toHaveNoViolations();
   });
 
-  describe('rate card (TASK-638 §7 — the write half)', () => {
+  describe('rate card (the write half)', () => {
     async function openRateCardTab() {
       renderWithProviders(<BillingScreen />);
       // Radix Tabs activates on mousedown, not click.

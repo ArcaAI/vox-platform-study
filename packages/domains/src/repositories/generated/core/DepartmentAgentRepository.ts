@@ -8,7 +8,7 @@ import { DepartmentAgentEntityMapper } from '../../../mappers';
 import { DepartmentAgent } from '../../../models';
 
 /**
- * First-class department-agent repository (TASK-546).
+ * First-class department-agent repository.
  *
  * A STANDARD tenant-scoped model — one row binds a department to a prompt
  * template at a pinned/tracked version. The `(tenantId, departmentId, slug)`
@@ -70,7 +70,7 @@ export class DepartmentAgentRepository extends Repository<DepartmentAgentEntity,
   }
 
   /**
-   * The department's current ENABLED PRIMARY agent, if any (TASK-659). Mirrors
+   * The department's current ENABLED PRIMARY agent, if any. Mirrors
    * `findDefaultForDepartment` — one repository call, one filter, no join.
    * `excludeId` lets a role-changing update check "any OTHER agent" without a
    * false positive against the row being edited.
@@ -95,17 +95,17 @@ export class DepartmentAgentRepository extends Repository<DepartmentAgentEntity,
 
   /**
    * Every ENABLED agent in the tenant that binds `promptTemplateId` through ANY
-   * of its five binding columns (TASK-635 RF-4).
+   * of its five binding columns.
    *
    * The eval promotion gate used to look agents up with
    * `findAll({ filters: { tenantId, promptTemplateId } })`, which only sees the
    * BASE binding. With capability-keyed bindings a template can be bound solely
    * via `newPatientTemplateId` / `revisitTemplateId` / `preSummaryTemplateId` /
    * `livePromptTemplateId`, and such an agent would have escaped the gate at
-   * approve time. The OR-filter closes that (C1 §DR-1, R5).
+   * approve time. The OR-filter closes that.
    *
    * An admin-time query over a table of dozens of rows per tenant — deliberately
-   * NOT indexed (C1 §3.1: the resolution hot path is unchanged and still covered
+   * NOT indexed (the resolution hot path is unchanged and still covered
    * by `DepartmentAgent_tenantId_departmentId_isDefault_idx`).
    */
   async findByBoundTemplate(tenantId: string, promptTemplateId: string): Promise<DepartmentAgentEntity[]> {

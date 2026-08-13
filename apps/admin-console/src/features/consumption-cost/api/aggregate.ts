@@ -1,7 +1,7 @@
 import type { UsageSummaryLine } from './types';
 
 /**
- * Pure, React-free rollups for the Consumption & Cost screen (TASK-615 #15a).
+ * Pure, React-free rollups for the Consumption & Cost screen.
  * Kept out of the component so they can be unit-tested directly. Micros are
  * summed as BigInt so a busy tenant's total never loses precision.
  */

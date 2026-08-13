@@ -1,7 +1,7 @@
 export * from './dto';
 export * from './consultation-loop-event.service';
 export * from './consultation-loop-event.service.module';
-// TASK-670 — LoopContextSignalService IS now exported: it grew two
+// LoopContextSignalService IS now exported: it grew two
 // lifecycle-boundary signal callers (`signalConsultationEnding`,
 // `signalLoopCancel`) that `ConsultationController.stopRecording` calls
 // directly (mirrors how `HarnessGatewayService.signalApproval`/`signalEdit`

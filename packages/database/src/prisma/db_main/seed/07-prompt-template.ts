@@ -228,7 +228,7 @@ const PRE_SUMMARY_SYSTEM_PROMPT = `You are a medical AI assistant producing clin
  * checksum-locked by `v1-clinical-prompt-fidelity.test.ts`). The two are
  * NOT the same constant and are NOT kept in sync automatically — do not edit
  * one without consciously deciding whether the other needs the same change
- * (TASK-635 B-10). Do NOT add this constant to the 15-entry ArcaAI fidelity
+ * . Do NOT add this constant to the 15-entry ArcaAI fidelity
  * fixture; that fixture asserts exactly 15 entries with v1-pod provenance and
  * this constant has none.
  */
@@ -1595,7 +1595,7 @@ When the current encounter's department is **Hematology** (or "Haematology") and
     variables: null,
     currentVersionNumber: 1,
     departmentId: null,
-    // NOTE (TASK-635 B-01 / OD-4b): deliberately NOT tagged `pre-summary`. This
+    // NOTE (/ OD-4b): deliberately NOT tagged `pre-summary`. This
     // is a system-role stub, not the tenant's pre-summary default; carrying the
     // tag made it a second candidate for `findTenantPreSummaryTemplateId`'s
     // tag-convention lookup alongside `PRE_SUMMARY_DEFAULT` (…040) below, and the
@@ -1619,7 +1619,7 @@ When the current encounter's department is **Hematology** (or "Haematology") and
   },
   // Unified Pre-Summary Template (tenant-level default for all departments)
   //
-  // NOTE (TASK-635 B-12, C2): this is the SYSTEM_DEFAULTS.preSummaryPromptId
+  // NOTE (C2): this is the SYSTEM_DEFAULTS.preSummaryPromptId
   // platform-wide fallback, and it is now owned by the SYSTEM tenant — NOT the
   // GLOBAL customer tenant it was seeded under originally. It had to move:
   // PromptTemplate is tenant-scoped, the read handler injects the CALLER's
@@ -2212,7 +2212,7 @@ export const DEFAULT_PROMPT_VERSIONS = DEFAULT_PROMPT_TEMPLATES.map((t, i) => ({
   id: VERSION_IDS[`V${String(i + 1).padStart(2, '0')}` as keyof typeof VERSION_IDS],
   // Follows the TEMPLATE's owner rather than hardcoding the Global tenant: a
   // version row must never end up in a different tenant from its template, and
-  // PRE_SUMMARY_DEFAULT (…040 / V40) is SYSTEM-owned since TASK-635 B-12.
+  // PRE_SUMMARY_DEFAULT (…040 / V40) is SYSTEM-owned since.
   tenantId: t.tenantId,
   promptTemplateId: t.id,
   versionNumber: 1,
@@ -2316,7 +2316,7 @@ export const CUSTOMER_PROMPT_TEMPLATES = [
     },
     currentVersionNumber: 1,
     // departmentId is null: the former ArcaAI CARD department was retired in
-    // TASK-592 Workstream D (the ArcaAI tenant now carries the 7 v1 clinical
+    // The ArcaAI tenant now carries the 7 v1 clinica
     // departments). This demo cross-tenant-switcher template stays as a
     // tenant-level CUSTOM cardiology prompt with no department binding.
     departmentId: null,

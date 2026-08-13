@@ -6,23 +6,22 @@ import { CoreUnitOfWorkService } from '../../common/unitsOfWork/core';
 import { AiCapability, AiDeploymentKind, AiUsageUnit } from '../../enums';
 
 /**
- * Bounded SQL aggregates over the raw usage ledger for the invoice engine
- * (TASK-615 WS-I).
+ * Bounded SQL aggregates over the raw usage ledger for the invoice engine.
  *
- * D13 forbids reading raw EVENTS at invoice time — that rule exists so a busy
+ * Reading raw EVENTS at invoice time is forbidden — that rule exists so a busy
  * tenant's invoice never fans out over millions of rows. These two queries are
  * SUMS pushed into Postgres (one aggregate row per day×unit×operation, riding
  * `AiUsageEvent_tenant_capability_occurredAt_idx`), which is the same shape a
  * rollup read has. They exist because the rollup dimension tuple carries no
  * `operation` and no `costBasis`:
  *
- *   - `sumDailyQuantitiesByOperation` — the D16 (guardrail/harness never
- *     billed) and OQ1 (batch-only audio-seconds) compensation terms.
- *   - `sumByokNotionalCostMicros` — the tenant's D14 notional BYOK spend,
+ *   - `sumDailyQuantitiesByOperation` — the guardrail/harness-never-billed
+ *     and batch-only audio-seconds compensation terms.
+ *   - `sumByokNotionalCostMicros` — the tenant's notional BYOK spend,
  *     surfaced on the invoice DTO as a product feature, never as a line.
  *
  * Both become plain rollup reads if/when the rollup grain grows an `operation`
- * (or `billable`) dimension — flagged as a WS-A follow-up migration.
+ * (or `billable`) dimension — flagged as a follow-up migration.
  *
  * RAW SQL NOTES: every dimension is a BOUND PARAMETER (`Prisma.sql`), never
  * interpolated; `tenantId` is an explicit predicate because `$queryRaw`
@@ -36,7 +35,7 @@ export interface OperationDayUnitSum {
   unit: AiUsageUnit;
   operation: string;
   /**
-   * Funding + vendor of the compensated usage (TASK-638). These sums are
+   * Funding + vendor of the compensated usage. These sums are
    * SUBTRACTED FROM or REPLACE rollup buckets that are themselves keyed by
    * (provider, deployment), so the compensation must carry the same dimensions
    * or it would deduct one provider's usage from another's bucket — and the

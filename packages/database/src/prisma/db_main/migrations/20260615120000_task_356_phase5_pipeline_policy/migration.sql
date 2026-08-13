@@ -53,7 +53,7 @@ CREATE INDEX "PipelinePolicyChange_tenantId_idx" ON "core"."PipelinePolicyChange
 CREATE INDEX "PipelinePolicyChange_tenant_createdAt_idx" ON "core"."PipelinePolicyChange"("tenantId", "createdAt");
 
 -- =============================================================================
--- TASK-356 Phase 5 — WORM enforcement for PipelinePolicyChange (append-only)
+-- WORM enforcement for PipelinePolicyChange (append-only)
 --
 -- The bootstrap (manual/vault-admin-bootstrap.sql) sets ALTER DEFAULT
 -- PRIVILEGES so newly-created `core` tables auto-grant SELECT/INSERT/UPDATE/
@@ -82,7 +82,7 @@ END
 $worm$;
 
 -- =============================================================================
--- TASK-356 Phase 5 — bootstrap the GLOBAL-DEFAULT pipeline policy (system tenant).
+-- Bootstrap the GLOBAL-DEFAULT pipeline policy (system tenant).
 --
 -- The realtime cascade (ConfigResolver) resolves each toggle
 -- DOCTOR → DEPARTMENT → TENANT → SYSTEM-default → code-default. Seeding exactly

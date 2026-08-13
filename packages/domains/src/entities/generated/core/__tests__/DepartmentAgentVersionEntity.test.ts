@@ -1,6 +1,6 @@
 /**
  * DepartmentAgentVersionEntity + DepartmentAgentVersionFactory unit tests
- * (TASK-659) — the immutable loop-config snapshot table.
+ * for the immutable loop-config snapshot table.
  */
 import { describe, it, expect } from 'vitest';
 import { DepartmentAgentVersionFactory } from '../../../../factories/generated/core/DepartmentAgentVersionFactory';

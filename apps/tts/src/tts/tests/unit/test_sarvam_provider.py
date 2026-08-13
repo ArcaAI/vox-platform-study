@@ -39,7 +39,7 @@ class _FakeClient:
 
 
 def _cfg(**kw) -> SarvamConfig:
-    # TASK-602: api_key is no longer env/name-populatable (BYOK-only); construct
+    # Api_key is no longer env/name-populatable (BYOK-only); construct
     # via model_copy exactly as the router applies a per-tenant override.
     api_key = kw.pop("api_key", "sarvam-key")
     cfg = SarvamConfig(enabled=True, **kw)
@@ -117,7 +117,7 @@ class TestCatalogAndRouting:
     @pytest.mark.asyncio
     async def test_router_uses_sarvam_for_ml(self):
         # sarvam is routable when the gateway injects an ml chain that includes
-        # it (a BYO/PHI-enabled tenant). Routing is DB-sourced (TASK-577) — the
+        # it (a BYO/PHI-enabled tenant). Routing is DB-sourced — the
         # router no longer carries a code default, so the chain is injected here.
         reg = ProviderRegistry()
         sarvam = FakeEngine("sarvam", chunks=2)

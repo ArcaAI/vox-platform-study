@@ -82,33 +82,33 @@ describe('TENANT_SCOPED_MODELS allow-list', () => {
     // read pre-auth by the API-key authentication lookup, so it can never
     // carry a CLS tenant. (The drift guard below is the durable check; this
     // count stays as a quick human-readable tripwire.)
-    // 57 → 65: TASK-615 adds eight tenantId-bearing usage-metering / billing
+    // 57 → 65: adds eight tenantId-bearing usage-metering / billing
     // models (AiUsageEvent, AiUsageOutbox, AiPriceBook, AiUsageRollupHourly,
     // AiUsageRollupDaily, BillingInvoice, BillingInvoiceLine,
     // BillingAdjustment).
-    // 65 → 66: TASK-610 adds TenantAllowedOrigin (CORS control plane).
-    // 66 → 67: TASK-615 #6 adds TenantPlanHistory (append-only plan-fee proration).
-    // 67 → 68: TASK-638 §6 adds ProviderReconciliationRun (SYSTEM-owned audit trail;
+    // 65 → 66: adds TenantAllowedOrigin (CORS control plane).
+    // 66 → 67: #6 adds TenantPlanHistory (append-only plan-fee proration).
+    // 67 → 68: adds ProviderReconciliationRun (SYSTEM-owned audit trail;
     // scoped so a tenant can never read aggregate platform vendor spend).
-    // 68 → 72: TASK-648 adds the Service Version & Release Registry
+    // 68 → 72: adds the Service Version & Release Registry
     // (ServiceRelease, ServiceInstance, ChangelogEntry,
     // UserChangelogAcknowledgement). All four carry tenantId; the first
     // three are platform-wide (SYSTEM tenant), UserChangelogAcknowledgement
     // is scoped to the acknowledging user's own tenant.
-    // 72 → 74: TASK-658 adds the consultation context-schema plane
+    // 72 → 74: adds the consultation context-schema plane
     // (ConsultationContextSchema + ConsultationContextSchemaVersion). Both are
     // ordinary tenant-owned rows and are deliberately NOT SYSTEM-shared reads —
     // the golden-library path copies schemas rather than sharing them.
-    // 74 → 75: TASK-659 adds DepartmentAgentVersion (immutable loop-config
+    // 74 → 75: adds DepartmentAgentVersion (immutable loop-config
     // snapshot of DepartmentAgent) — same posture as its parent, NOT
     // SYSTEM-shared.
-    // 75 → 76: TASK-663 adds AgentPromotion (immutable cross-tenant promotion
+    // 75 → 76: adds AgentPromotion (immutable cross-tenant promotion
     // record, owned by the TARGET tenant) — NOT SYSTEM-shared, or any tenant
     // could enumerate which agents moved between which tenants.
     expect(TENANT_SCOPED_MODELS.size).toBe(76);
   });
 
-  // TASK-615 — the usage ledger, its outbox, the rollups and the whole billing
+  // The usage ledger, its outbox, the rollups and the whole billing
   // plane are tenant-scoped: a tenant's consumption and its invoices must never
   // be readable cross-tenant. `AiPriceBook` is tenant-scoped too, but is
   // additionally a SYSTEM-shared READ model (the platform rate card lives on
@@ -129,7 +129,7 @@ describe('TENANT_SCOPED_MODELS allow-list', () => {
     }
   });
 
-  // TASK-610 — the CORS control plane is tenant-scoped: a tenant's browser
+  // The CORS control plane is tenant-scoped: a tenant's browser
   // origin registry must never be readable cross-tenant. SYSTEM-owned rows are
   // resolved by OriginRegistryService, not by widening this read.
   it('includes the CORS control-plane model', () => {
@@ -299,7 +299,7 @@ describe('TENANT_SCOPED_MODELS stays in sync with the Prisma schema', () => {
     expect(found).toContain('KnowledgeChunk'); // knowledge.prisma
   });
 
-  it('lists every schema tenantId model in TENANT_SCOPED_MODELS (drift = []) ', () => {
+  it('lists every schema tenantId model in TENANT_SCOPED_MODELS (drift =)', () => {
     const missing = schemaModelsWithTenantId().filter((m) => !TENANT_SCOPED_MODELS.has(m) && !INTENTIONALLY_UNSCOPED.has(m));
     // Empty once F2/F3 are fixed; the failure diff names any drifted model.
     expect(missing).toEqual([]);
@@ -351,7 +351,7 @@ describe('SYSTEM_SHARED_READ_MODELS allow-list', () => {
         'TenantSttConfig',
         'AiTaskDefault',
         'McpServer',
-        // TASK-648 — SYSTEM-owned platform facts read under the caller's own
+        // SYSTEM-owned platform facts read under the caller's own
         // tenant CLS. Without widening, /changelog and /releases return nothing
         // for a tenant-scoped reader even though the rows exist. Writes are not
         // widened; UserChangelogAcknowledgement is deliberately excluded (a
@@ -366,7 +366,7 @@ describe('SYSTEM_SHARED_READ_MODELS allow-list', () => {
         // CLS; writes stay global-admin only. Carries a Vault `credentialsRef`
         // path, never credentials.
         'TenantStorageConfig',
-        // TASK-615 — the price book's SYSTEM-tenant rows ARE the platform rate
+        // The price book's SYSTEM-tenant rows ARE the platform rate
         // card (both COST and SELL planes). Every tenant's at-ingest rater and
         // the invoice engine resolve the row effective at `occurredAt` while
         // running under that tenant's CLS, so without widening the read the
@@ -375,7 +375,7 @@ describe('SYSTEM_SHARED_READ_MODELS allow-list', () => {
         // GLOBAL_ADMIN-only at the service layer, the AiTaskDefault precedent).
         // No secrets on the model — prices are integer micros.
         'AiPriceBook',
-        // TASK-635 B-12 — the platform-default PROMPT catalog is SYSTEM-owned
+        // The platform-default PROMPT catalog is SYSTEM-owned
         // and must be readable from every tenant's own CLS: the pre-summary
         // tier-2 fallback (…040, re-owned to SYSTEM by migration
         // 20260808000100), the SYSTEM live-summarization default, and the 13
@@ -391,7 +391,7 @@ describe('SYSTEM_SHARED_READ_MODELS allow-list', () => {
     );
   });
 
-  // TASK-635 B-12 — the widening is READ-ONLY, and its exact shape matters:
+  // The widening is READ-ONLY, and its exact shape matters:
   // an explicit caller-supplied tenantId must survive untouched (that is what
   // keeps SYSTEM rows out of tenant list surfaces), while a read that supplies
   // no tenantId gets `IN [caller, SYSTEM]`.

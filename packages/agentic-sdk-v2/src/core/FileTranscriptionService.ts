@@ -30,7 +30,7 @@ type BatchTranscribeResponse = {
  */
 export interface FileTranscribeOptions {
   /**
-   * Pipeline UUID or slug. OPTIONAL since TASK-614: omit it to transcribe on
+   * Pipeline UUID or slug. OPTIONAL since: omit it to transcribe on
    * the tenant's default pipeline — the gateway resolves tenant-default →
    * configured STT fallback and 409s when the tenant has neither, so it never
    * guesses. Passing one explicitly is unchanged.
@@ -82,7 +82,7 @@ export class FileTranscriptionService {
 
     const formData = new FormData();
     formData.append('file', file);
-    // Appended only when supplied (TASK-614): the gateway validates `pipelineId`
+    // Appended only when supplied: the gateway validates `pipelineId`
     // as a slug/UUID, so sending an empty field would 400 the very request that
     // means "use the tenant default".
     if (options.pipelineId) {
@@ -153,7 +153,7 @@ export class FileTranscriptionService {
 
     const formData = new FormData();
     formData.append('file', file);
-    // Appended only when supplied (TASK-614): the gateway validates `pipelineId`
+    // Appended only when supplied: the gateway validates `pipelineId`
     // as a slug/UUID, so sending an empty field would 400 the very request that
     // means "use the tenant default".
     if (options.pipelineId) {
@@ -246,7 +246,7 @@ export class FileTranscriptionService {
       jobType: TranscriptionJobType.BATCH,
       // The minimal batch response carries no pipeline, so this echoes what was
       // REQUESTED. Empty when the caller let the tenant default apply
-      // (TASK-614) — the authoritative value arrives with the terminal
+      // The authoritative value arrives with the terminal
       // `getJob()` read, which the queue uses for the completed item.
       pipelineId: pipelineId ?? '',
       status,

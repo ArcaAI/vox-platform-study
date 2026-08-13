@@ -32,8 +32,8 @@ export class ConsultationContextSchemaVersionResponse {
   @ApiPropertyOptional({ nullable: true }) createdBy: string | null;
   @ApiProperty() createdAt: string;
   /**
-   * TASK-661 computes this classification (`classifyDefinitionChange`) but
-   * previously only logged it (`ContextService`); TASK-674 surfaces it here so
+   * Computes this classification (`classifyDefinitionChange`) but
+   * previously only logged it (`ContextService`); surfaces it here so
    * an admin can see whether a client still pinned to this version would keep
    * working against the tenant's CURRENT pin. Set on every version except the
    * currently pinned one (nothing to compare it to) — absent when the schema
@@ -44,7 +44,7 @@ export class ConsultationContextSchemaVersionResponse {
 }
 
 /**
- * The DISCOVERY bundle (TASK-654 D4/R2) — the resolved, pinned declaration a
+ * The DISCOVERY bundle (/R2) — the resolved, pinned declaration a
  * client builds its workflow from.
  *
  * Every field is nullable because "this tenant has not configured a context

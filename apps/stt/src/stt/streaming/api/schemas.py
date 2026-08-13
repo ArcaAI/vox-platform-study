@@ -27,7 +27,7 @@ class CreateStreamingSessionRequest(BaseModel):
     language_mode: str | None = Field(
         default=None,
         description=(
-            "End-user language mode id (TASK-587), e.g. 'en', 'ml', 'ml-en' "
+            "End-user language mode id, e.g. 'en', 'ml', 'ml-en' "
             "(Malayalam+English code-switch), 'auto'. Resolved against the "
             "session's engine into language/code_switching/streaming_english_gloss. "
             "Takes precedence over 'language'. An engine that cannot serve the "
@@ -50,7 +50,7 @@ class CreateStreamingSessionRequest(BaseModel):
     provider_overrides: dict[str, Any] | None = Field(
         default=None,
         description=(
-            "Optional per-tenant BYO cloud-provider credential map (TASK-567), "
+            "Optional per-tenant BYO cloud-provider credential map, "
             "gateway-injected: {provider: {api_key, region?, base_url?, model?}}. "
             "Held by the session runtime IN MEMORY ONLY — never persisted, never "
             "logged. Preferred over env creds by the cloud ASR loaders."
@@ -59,7 +59,7 @@ class CreateStreamingSessionRequest(BaseModel):
     fallback_pipeline_id: str | None = Field(
         default=None,
         description=(
-            "Optional tenant fallback pipeline (TASK-567). When set, the session "
+            "Optional tenant fallback pipeline. When set, the session "
             "can swap its live ASR engine to it on create-time load failure, "
             "classified outage, or a user-initiated switch."
         ),
@@ -68,17 +68,17 @@ class CreateStreamingSessionRequest(BaseModel):
         default=None,
         description=(
             "'primary' (default) or 'fallback' — open the session directly on the "
-            "tenant fallback engine while keeping the primary switchable "
-            "(TASK-586). When 'fallback' but no fallback is configured, the "
+            "tenant fallback engine while keeping the primary switchable. "
+            "When 'fallback' but no fallback is configured, the "
             "session proceeds on the primary (fail-open)."
         ),
     )
     auto_switch_enabled: bool | None = Field(
         default=None,
         description=(
-            "Tenant governance for the FAILURE-DRIVEN auto switch (TASK-614). "
+            "Tenant governance for the FAILURE-DRIVEN auto switch. "
             "None ⇒ the engine-switch controller's default (enabled), so an "
-            "older gateway that omits it keeps the pre-614 behaviour. Never "
+            "older gateway that omits it keeps the previous behaviour. Never "
             "affects a user-initiated switch — that is an explicit choice."
         ),
     )
@@ -87,7 +87,7 @@ class CreateStreamingSessionRequest(BaseModel):
         ge=1,
         description=(
             "Tenant governance for how many consecutive threshold-class "
-            "utterance failures arm the auto switch (TASK-614). None ⇒ the "
+            "utterance failures arm the auto switch. None ⇒ the "
             "controller's default (2)."
         ),
     )
@@ -95,8 +95,8 @@ class CreateStreamingSessionRequest(BaseModel):
         default=1,
         ge=1,
         description=(
-            "Number of distinct microphone SOURCES mixed into this session "
-            "(TASK-615 #12). Stored and echoed on the teardown summary so the "
+            "Number of distinct microphone SOURCES mixed into this session. "
+            "Stored and echoed on the teardown summary so the "
             "usage row is repriceable; the audio itself is always one mono "
             "uplink, so this is a metadata signal, not a PCM channel count."
         ),
@@ -104,7 +104,7 @@ class CreateStreamingSessionRequest(BaseModel):
 
 
 class SwitchProviderRequest(BaseModel):
-    """Request body for ``POST /internal/streaming/sessions/{id}/switch`` (TASK-586).
+    """Request body for ``POST /internal/streaming/sessions/{id}/switch``.
 
     ``target`` names the engine to switch to. Absent ⇒ ``'fallback'`` (one-way
     back-compat with the original switch-to-fallback route).
@@ -117,7 +117,7 @@ class SwitchProviderRequest(BaseModel):
 
 
 class SwitchProviderResponse(BaseModel):
-    """Response for ``POST /internal/streaming/sessions/{id}/switch`` (TASK-586)."""
+    """Response for ``POST /internal/streaming/sessions/{id}/switch``."""
 
     switched: bool = Field(..., description="Whether the requested switch was accepted")
     active: Literal["primary", "fallback"] = Field(
@@ -144,7 +144,7 @@ class StreamingSessionResponse(BaseModel):
 
 class StreamingSessionTeardownResponse(BaseModel):
     """Response for a REAL ``DELETE /internal/streaming/sessions/{id}``
-    teardown (TASK-615 WS-C).
+    teardown.
 
     The usage-attribution summary the API Gateway needs to emit the
     ``transcribe.stream`` ledger row (AUDIO_SECOND + SESSION_SECOND). STT has
@@ -176,13 +176,13 @@ class StreamingSessionTeardownResponse(BaseModel):
         default=None, description="SELF_HOSTED | CLOUD | BYOK; null alongside a null engine"
     )
     language_mode: str | None = Field(
-        default=None, description="End-user language mode id (TASK-587), e.g. 'ml-en'"
+        default=None, description="End-user language mode id, e.g. 'ml-en'"
     )
     channel_count: int = Field(
         default=1,
         ge=1,
         description=(
-            "Distinct microphone source count for this session (TASK-615 #12), "
+            "Distinct microphone source count for this session, "
             "echoed for usage repricing; 1 for a single-mic session."
         ),
     )

@@ -1,6 +1,6 @@
 /**
  * ProviderConnectionService — the UNIFIED plane's `service` discriminator
- * (TASK-569 §3.4). These lock the pieces the pre-unification suites do not:
+ * . These lock the pieces the pre-unification suites do not:
  *
  *   - C5 governance map is exactly `{ llm, stt, tts }` with the frozen provider
  *     lists; `isCloudByoProvider` is per-service.

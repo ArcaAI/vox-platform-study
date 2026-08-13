@@ -1,5 +1,5 @@
 /**
- * GateEditMiningService — human curation gate (TASK-553 F-24).
+ * GateEditMiningService — human curation gate (F-24).
  *
  * The mined few-shot corpus reaches EVERY generation's prompt. It is
  * PHI-redacted at write, but until now nothing human ever approved a row before

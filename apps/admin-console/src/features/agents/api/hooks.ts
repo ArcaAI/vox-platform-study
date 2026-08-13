@@ -171,7 +171,7 @@ export function useAssignDepartment() {
 }
 
 // ---------------------------------------------------------------------------
-// DepartmentAgent (TASK-546) — the Agent Catalog rows. A separate root
+// DepartmentAgent — the Agent Catalog rows. A separate root
 // (['department-agents']) from the PromptTemplate `agentKeys` above, so
 // mutations here never invalidate the unrelated template cache.
 // ---------------------------------------------------------------------------
@@ -256,7 +256,7 @@ export function usePinDepartmentAgent() {
 }
 
 /**
- * The department's RESOLVED context schema (TASK-658) — the closed set of
+ * The department's RESOLVED context schema — the closed set of
  * kind/output keys the Loop config tab's `subscribedKinds`/`writeScope`
  * pickers offer. Held off until a department is known.
  */
@@ -269,7 +269,7 @@ export function useResolvedContextSchema(departmentId: string | undefined) {
 }
 
 /**
- * TASK-674 — the immutable loop-configuration version history (Lineage tab).
+ * The immutable loop-configuration version history (Lineage tab).
  * Newest first, mirroring `useVersions` for `PromptTemplate` above.
  */
 export function useDepartmentAgentVersions(id: string) {
@@ -281,7 +281,7 @@ export function useDepartmentAgentVersions(id: string) {
 }
 
 /**
- * TASK-674 — promotions INTO the working tenant, filtered to one target
+ * promotions INTO the working tenant, filtered to one target
  * agent (the Lineage tab's "promoted from" section). Held off until an agent
  * id is known; the working tenant's own promotion rows are already scoped
  * server-side by the tenant-scope extension.
@@ -296,7 +296,7 @@ export function useAgentPromotionsForTarget(targetAgentId: string | undefined) {
 }
 
 // ---------------------------------------------------------------------------
-// Eval-gated promotion (TASK-549) — golden-set picker + run-now for the
+// Eval-gated promotion — golden-set picker + run-now for the
 // Governance tab's Eval panel. See client.ts for the rationale on why these
 // duplicate (rather than import) the harness-ops feature's own copies.
 // ---------------------------------------------------------------------------

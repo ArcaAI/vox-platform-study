@@ -390,7 +390,7 @@ describe('useArca API — context', () => {
     });
   });
 
-  // ---- context.addAttachment (TASK-671) ------------------------------------
+  // ---- context.addAttachment
   describe('context.addAttachment()', () => {
     it('should exist on the aggregate context object and POST with type=ATTACHMENT', async () => {
       const item = createMockContextItem({ id: 'att-1', type: 'ATTACHMENT' });

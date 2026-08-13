@@ -1,24 +1,24 @@
 /**
- * TASK-563 — JSON-schema lock for the v1-compatible SMR summary shim contracts.
+ * JSON-schema lock for the v1-compatible SMR summary shim contracts.
  *
- * Zod schemas mirroring the FROZEN v1 shapes in TASK-560 §5.4 / §5.5
+ * Zod schemas mirroring the FROZEN v1 shapes
  * (SMR_Summary_Endpoints.md §3.2/§3.3/§4.2). They are the drift guard for the
- * TASK-562 gateway endpoints:
+ * gateway compat endpoints:
  *   - `tests/contracts/smr-compat.contract.test.ts` validates the golden
  *     fixtures against them (hermetic);
- *   - the TASK-562 e2e spec validates a LIVE 200 response against them when SMR
+ *   - the e2e spec validates a LIVE 200 response against them when SMR
  *     is up.
  *
  * Contract intent: the v1-REQUIRED keys are enforced; UNKNOWN keys are tolerated
  * (zod strips them, parse still succeeds) so the LLM may emit extra fields
  * without breaking a migrated app — mirrors the forward-compat posture of the
- * existing SMR contract tests. Do not restate §5 divergently; these encode it.
+ * existing SMR contract tests. Do not restate these shapes divergently; these encode them.
  */
 
 import { z } from 'zod';
 
 // ============================================================================
-// §5.4 — SimplifiedMedicalSummary (use_enhanced_format: false)
+// SimplifiedMedicalSummary (use_enhanced_format: false)
 // Required set matches the as-built SIMPLIFIED_SUMMARY_SCHEMA: chief_complaint + summary.
 // ============================================================================
 export const SimplifiedMedicalSummarySchema = z.object({
@@ -33,7 +33,7 @@ export const SimplifiedMedicalSummarySchema = z.object({
 });
 
 // ============================================================================
-// §5.4 — EnhancedMedicalSummary (use_enhanced_format: true)
+// EnhancedMedicalSummary (use_enhanced_format: true)
 // Required set matches the as-built ENHANCED_SUMMARY_SCHEMA:
 // encounter_summary, clinical_assessment, clinical_summary.
 // ============================================================================
@@ -66,7 +66,7 @@ export const EnhancedMedicalSummarySchema = z.object({
 });
 
 // ============================================================================
-// §5.4 — SummaryResponse envelope (the /summary/sync 200 body)
+// SummaryResponse envelope (the /summary/sync 200 body)
 // ============================================================================
 export const SummaryResponseMetadataSchema = z.object({
   use_enhanced_format: z.boolean(),
@@ -92,7 +92,7 @@ export const SummaryResponseSchema = z.object({
 });
 
 // ============================================================================
-// §5.5 — PreSummaryResponse (the /presummary 200 body)
+// PreSummaryResponse (the /presummary 200 body)
 // ============================================================================
 export const PreSummarySectionSchema = z.object({
   title: z.string(),
@@ -111,7 +111,7 @@ export const PreSummaryResponseSchema = z.object({
 });
 
 // ============================================================================
-// Request-side schema (golden SessionData lock) — §5.4 request body.
+// Request-side schema (golden SessionData lock) — request body.
 // ============================================================================
 export const ConversationSegmentSchema = z.object({
   speaker: z.string(),

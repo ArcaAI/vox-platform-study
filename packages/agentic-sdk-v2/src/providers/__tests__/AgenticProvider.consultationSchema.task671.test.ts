@@ -1,8 +1,8 @@
 /**
  * AgenticProvider — department-scoped consultation context schema discovery
- * (TASK-671, deferred from TASK-665's D-2).
+ * (deferred from).
  *
- * TASK-665 wired the tenant-scoped default fetch only, because
+ * Wired the tenant-scoped default fetch only, because
  * `me.departmentId` isn't known until `/auth/me` resolves INSIDE `init()`,
  * while the schema fetch is kicked off EAGERLY before `init()` runs (to
  * cover the no-credentials path). This file proves the follow-up: once
@@ -166,7 +166,7 @@ function handlerFor(
   };
 }
 
-describe('AgenticProvider — department-scoped consultation context schema discovery (TASK-671)', () => {
+describe('AgenticProvider — department-scoped consultation context schema discovery', () => {
   it('prefers the DEPARTMENT-scoped bundle when a department is known at mount', async () => {
     handler = handlerFor(
       { id: USER_A, tenantId: TENANT_A, departmentId: DEPT_A },

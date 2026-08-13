@@ -1,5 +1,5 @@
 /**
- * useArcaAudio — stop ORDERING (TASK-597 lane B, finding D2).
+ * useArcaAudio — stop ORDERING.
  *
  * The defect: `stopAudio` awaited `pluginManager.destroy()` — which blocks on
  * the streaming STT drain — and only THEN stopped the media tracks and cleared

@@ -22,7 +22,7 @@
 #   0  all smoke tests pass
 #   1  any precondition or assertion failed
 #
-# TASK-302 Stream C Phase 3 prep (§3 of 03-pgbouncer-rollout.md).
+# PgBouncer cutover Phase 3 prep (03-pgbouncer-rollout.md).
 set -euo pipefail
 setopt PIPE_FAIL
 

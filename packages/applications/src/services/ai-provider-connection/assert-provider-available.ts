@@ -13,7 +13,7 @@ export const PLATFORM_DEFAULT_CAPABILITY = 'featurePlatformDefaultCredential';
 /**
  * Turn "this provider has no credential" into an ATTRIBUTABLE error — call it
  * at the point of SELECTION, once a provider is chosen and found to have no
- * entry in `overrides` (TASK-643 §3.5.4).
+ * entry in `overrides`.
  *
  * Three outcomes, three remediations, three different people:
  *
@@ -23,7 +23,7 @@ export const PLATFORM_DEFAULT_CAPABILITY = 'featurePlatformDefaultCredential';
  * | No `featurePlatformDefaultCredential` grant | `QuotaExceededException` | 403 | the account owner / a global admin |
  * | Neither — genuinely nothing configured | *(returns void)* | 503 downstream | a global admin, by keying a SYSTEM row |
  *
- * VETO BEATS GRANT (§3.5.5): a tenant's refusal to send PHI to a shared vendor
+ * VETO BEATS GRANT: a tenant's refusal to send PHI to a shared vendor
  * account outranks a commercial grant, so the veto is checked first. The third
  * case is deliberately NOT an error here — an unconfigured provider is the
  * pre-existing downstream 503 and this helper must not convert it into

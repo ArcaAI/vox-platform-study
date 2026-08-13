@@ -1,5 +1,5 @@
 /**
- * AiProviderConnectionService — unit tests (§5 tests 1–5).
+ * AiProviderConnectionService — unit tests (tests 1–5).
  *
  * Mirrors the `ai-task-default` / `tenant-tts-config` test style: repositories,
  * EventEmitter2, ClsService and the Vault SecretsService are mocked.
@@ -67,7 +67,7 @@ function makeService(opts: { roles?: string[]; clsTenantId?: string | null; with
           decrypt: vi.fn(async () => Buffer.from('plaintext-key', 'utf8')),
           supportsTransit: vi.fn(() => true),
         };
-  // TASK-643 — the platform-default entitlement gate. Defaults to GRANTED here
+  // The platform-default entitlement gate. Defaults to GRANTED here
   // so these pre-existing cascade cases keep testing the cascade rather than
   // the gate (which `ai-provider-connection.platform-default-gate.test.ts`
   // owns); pass `entitled: false` to exercise a denial.
@@ -94,7 +94,7 @@ function deepKeys(value: unknown, acc: string[] = []): string[] {
 // 1 + 2. The tenant-lane rule
 // ===========================================================================
 
-describe('AiProviderConnectionService — tenant lane (§5 tests 1–2)', () => {
+describe('AiProviderConnectionService — tenant lane (tests 1–2)', () => {
   it('rejects a tenant-scoped row for a self-host provider with 403, not 404', async () => {
     const { svc } = makeService();
     await expect(svc.upsertRow('llm', 'ollama', { enabled: true }, TENANT)).rejects.toBeInstanceOf(ForbiddenException);
@@ -125,7 +125,7 @@ describe('AiProviderConnectionService — tenant lane (§5 tests 1–2)', () => 
 // 3. Secret containment
 // ===========================================================================
 
-describe('AiProviderConnectionService — secret containment (§5 test 3)', () => {
+describe('AiProviderConnectionService — secret containment (test 3)', () => {
   it('exposes hasKey but never the ciphertext, at any depth of the read DTO', async () => {
     const { svc, repo } = makeService();
     repo.findByTenantServiceProvider.mockResolvedValue(makeRow({ encryptedApiKey: Buffer.from('vault:v3:cipher', 'utf8'), keyVersion: 3 }));
@@ -276,7 +276,7 @@ describe('AiProviderConnectionService — secret containment (§5 test 3)', () =
 // 4. SYSTEM-row governance + sys-events
 // ===========================================================================
 
-describe('AiProviderConnectionService — SYSTEM governance (§5 test 4)', () => {
+describe('AiProviderConnectionService — SYSTEM governance (test 4)', () => {
   it('rejects a SYSTEM-row write from a non-global-admin with 403', async () => {
     const { svc } = makeService({ roles: [] });
     await expect(svc.upsertRow('llm', 'ollama', { enabled: true }, SYSTEM_TENANT_ID)).rejects.toBeInstanceOf(ForbiddenException);
@@ -316,7 +316,7 @@ describe('AiProviderConnectionService — SYSTEM governance (§5 test 4)', () =>
 // 5. Resolution cascade
 // ===========================================================================
 
-describe('AiProviderConnectionService — resolveConnection cascade (§5 test 5)', () => {
+describe('AiProviderConnectionService — resolveConnection cascade (test 5)', () => {
   it('prefers an ENABLED tenant row over the SYSTEM row', async () => {
     const { svc, repo } = makeService({ roles: ['GLOBAL_ADMIN'] });
     repo.findByTenantServiceProvider.mockImplementation(async (_service: string, _provider: string, tenantId: string) =>
@@ -341,7 +341,7 @@ describe('AiProviderConnectionService — resolveConnection cascade (§5 test 5)
     expect(resolved?.source).toBe('system');
   });
 
-  it('does NOT fall through a DISABLED tenant row — TASK-643 R4 makes that a VETO', async () => {
+  it('does NOT fall through a DISABLED tenant row — makes that a VETO', async () => {
     // CONTRACT CHANGE, deliberate: this case used to resolve the SYSTEM row.
     // A disabled tenant row is now the tenant REFUSING that provider (a shared
     // vendor account is a PHI decision), so it fails closed instead of quietly

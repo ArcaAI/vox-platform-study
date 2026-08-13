@@ -1,11 +1,11 @@
 /**
- * TASK-679 — the SDK ↔ `AddContextRequest` wire contract.
+ * The SDK ↔ `AddContextRequest` wire contract.
  *
  * The gateway's global pipe runs `whitelist + forbidNonWhitelisted +
  * forbidUnknownValues` (`apps/api/src/main.ts`), so ANY field the DTO does not
  * declare rejects the whole request with a 400. The SDK sent `structuredData`,
  * which is not declared — every per-segment transcript POST 400'd, silently,
- * for as long as the field has existed (TASK-676 §3.5.2).
+ * for as long as the field has existed.
  *
  * These tests replay the exact SDK bodies through a pipe configured identically
  * to `main.ts`, so the mismatch cannot come back unnoticed.

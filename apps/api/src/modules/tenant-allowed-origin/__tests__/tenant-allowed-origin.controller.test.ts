@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { NotFoundException } from '@nestjs/common';
 import { TenantAllowedOriginController } from '../tenant-allowed-origin.controller';
 
-// TASK-641: the blanket `assertGlobalAdmin()` imperative gate is GONE from
+// The blanket `assertGlobalAdmin` imperative gate is GONE from
 // this controller — see the rewritten class AUTH-NOTE. The controller no
 // longer reads `user`/`roles` off CLS at all; it unconditionally delegates
 // to `ITenantAllowedOriginService`, which is CLS-tenant-scoped on its own
@@ -50,14 +50,14 @@ describe('TenantAllowedOriginController', () => {
 
   function build() {
     // No ClsService/user argument — the controller has no role awareness of
-    // its own post-TASK-641. Any caller-role gate that survives lives in the
+    // its own after that change. Any caller-role gate that survives lives in the
     // service (wildcard/SYSTEM) or in `@CanManage`/`UnifiedAuthGuard`
     // upstream of the handler (neither reachable from a unit test that
     // instantiates the controller directly).
     return new TenantAllowedOriginController(mockService as any);
   }
 
-  describe('T-7 — every CRUD route is reachable regardless of caller role (FR-1, FR-5)', () => {
+  describe('every CRUD route is reachable regardless of caller role', () => {
     it('getAll delegates straight to the service with no imperative gate', async () => {
       const rows = [createMockRow()];
       mockService.getAll.mockResolvedValue(rows);
@@ -154,7 +154,7 @@ describe('TenantAllowedOriginController', () => {
     });
   });
 
-  describe('GET /admin/allowed-origins/posture (FR-4, §3.2 option A)', () => {
+  describe('GET /admin/allowed-origins/posture (option A)', () => {
     it('reports enforcement ON when isOriginEnforcementEnabled() is true', () => {
       vi.mocked(isOriginEnforcementEnabled).mockReturnValue(true);
       const controller = build();

@@ -19,7 +19,7 @@
 #   Redis:      6380 (test) vs 6379 (dev)
 #   MinIO:      9002 (test) vs 9000 (dev)
 #   Qdrant:     6335 (test) vs 6333 (dev)
-#   Vault:      8201 (test) vs 8200 (dev)   — TASK-689, fully isolated
+#   Vault:      8201 (test) vs 8200 (dev)   — fully isolated
 # ============================================================================
 
 set -e
@@ -91,7 +91,7 @@ validate_services() {
         all_ok=false
     fi
 
-    # Vault (TASK-689 — isolated hope-vault-test, not the shared dev Vault)
+    # Vault (isolated hope-vault-test, not the shared dev Vault)
     if docker exec hope-vault-test wget -q -O- http://127.0.0.1:8200/v1/sys/health 2>/dev/null | grep -q '"initialized":true'; then
         echo -e "  ${GREEN}✓${NC} Vault (port 8201) - healthy"
 

@@ -12,12 +12,12 @@
 # the PHI-ciphertext seed DO need Vault for secret warming + Transit encryption
 # (SECRETS_PROVIDER=vault), so this bootstrap provisions the test env's Vault
 # AppRole credentials into .env.test — the test counterpart to dev-setup's
-# `refresh-vault-creds.sh` step. TASK-689: Vault itself is now the ISOLATED
+# `refresh-vault-creds.sh` step. Vault itself is now the ISOLATED
 # hope-vault-test container (tests/docker-compose.test.yml), NOT the shared
 # dev hope-vault — the test infra provisions its own Vault end to end.
 #
 # Sequence — mirrors dev-setup.sh's 0-6 shape, with ONE deliberate reorder:
-#   0. Create/overwrite .env.test from .env.sample                (TASK-583)
+#   0. Create/overwrite .env.test from .env.sample
 #   1. Start isolated test infrastructure (Postgres:5433, Redis:6380,
 #      MinIO:9002, Qdrant:6335, Vault:8201)
 #   2. Wait for the isolated test infra to report healthy
@@ -93,8 +93,8 @@ bold "── Step 3/6: provisioning Vault AppRole creds in .env.test ───�
 # reads this file fresh from disk.
 # The test API (SECRETS_PROVIDER=vault) warms secrets + uses Transit to encrypt
 # BYO provider keys, and the PHI seed encrypts ciphertext via Transit. Both need
-# valid Vault credentials. Vault is the isolated test container (hope-vault-test,
-# TASK-689) — step 1-2 already started it as part of the test infra, but
+# valid Vault credentials. Vault is the isolated test container (hope-vault-test)
+# — step 1-2 already started it as part of the test infra, but
 # defensively (re)start the test stack if it somehow isn't up.
 if ! docker ps --format '{{.Names}}' | grep -qx "$VAULT_CONTAINER"; then
   yellow "Vault container '$VAULT_CONTAINER' is not running — starting test infrastructure to bring it up."
@@ -143,7 +143,7 @@ green "→ .env.test Vault config provisioned (role_id ${ROLE_ID:0:8}…, raw re
 bold "── Step 4/6: applying migrations + seed ─────────────────────────────"
 pnpm db:generate
 pnpm test:db:push
-# Seeding is opt-in and defaults to RUN_SEED=none (TASK-616) — this local test
+# Seeding is opt-in and defaults to RUN_SEED=none — this local test
 # bootstrap wants the full demo fixture set (incl. the super_admin login), so
 # it opts in explicitly. NODE_ENV=test satisfies seed-mode.ts's guard that
 # RUN_SEED=all is refused unless the environment is explicitly stated.
@@ -155,7 +155,7 @@ yellow "  (DATABASE_URL=...test:test@localhost:5433/hope_test, PG_DYNAMIC_CREDS=
 
 bold "── Step 6/6: finalizing the env (syncing Vault kv-v2 secrets) ───────"
 # vault-seed-secrets.sh derives its key list from the built settings registry
-# (no hardcoded fallback list — that's the drift TASK-558 removed), so the
+# (no hardcoded fallback list — that's the drift this script exists to remove), so the
 # registry must be compiled before it can run. This matters more here than in
 # dev-setup.sh: test runs SECRETS_PROVIDER=vault unconditionally (set above),
 # and test-init.sh deliberately seeds NO placeholder KV values (unlike dev's

@@ -1,6 +1,6 @@
 """Shared primitives for cloud BYOK speech engines (Sarvam, OpenAI).
 
-TASK-567. These cloud engines transcribe over plain REST (``httpx``) with a
+These cloud engines transcribe over plain REST (``httpx``) with a
 per-tenant or platform-env API key. Unlike the local loaders they download no
 weights; the loader validates the key and returns a lightweight
 ``CloudRestConfig`` held in ``LoadedModel.model``.

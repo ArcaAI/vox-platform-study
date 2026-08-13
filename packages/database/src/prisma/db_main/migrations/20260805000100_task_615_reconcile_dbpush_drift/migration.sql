@@ -2,7 +2,7 @@
 -- replaying the committed migrations into a clean database and diffing the
 -- result against `src/prisma/db_main`.
 --
--- Two classes of drift are covered, neither of which is related to TASK-615 —
+-- Two classes of drift are covered, neither of which is related to
 -- they are folded in here because the same replay-and-diff audit surfaced them,
 -- and they must be resolved for a from-migrations database to match the schema
 -- (and the db-push-managed dev/test databases).

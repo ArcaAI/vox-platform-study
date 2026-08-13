@@ -294,7 +294,7 @@ export function VirtualizedDataGrid<TData>(props: VirtualizedDataGridProps<TData
   // them so aria-rowindex never exceeds aria-rowcount.
   const groupHeaderCount = displayRows.length - rows.length;
 
-  // Scroll-driven affordances (Δ5 / §A): header elevation once scrolled, and the
+  // Scroll-driven affordances (Δ5): header elevation once scrolled, and the
   // pinned-column divider only while horizontally overflowing.
   const [scrolled, setScrolled] = React.useState(false);
   const [overflowX, setOverflowX] = React.useState(false);

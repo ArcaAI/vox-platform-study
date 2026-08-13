@@ -1,4 +1,4 @@
-"""OpenTelemetry tracing setup for Guardrail (TASK-636 OBS-12).
+"""OpenTelemetry tracing setup for Guardrail.
 
 Guardrail — the platform's content-safety / PII / prompt-injection engine —
 previously shipped with ZERO OTel code, so none of its request paths were
@@ -10,11 +10,11 @@ Mirrors ``apps/smr/src/smr/core/observability.py`` (the fleet's reference
 implementation): resource attributes, ``BatchSpanProcessor`` +
 ``OTLPSpanExporter`` for traces, FastAPI + httpx auto-instrumentation, and a
 mandatory PHI-sanitization ``server_request_hook``. The hook existing but
-never being *passed* to the instrumentor was the exact defect fixed under
-OBS-19 in NLP (``apps/nlp/src/nlp/core/observability.py``) — this module
+never being *passed* to the instrumentor was the exact defect already fixed
+in NLP (``apps/nlp/src/nlp/core/observability.py``) — this module
 wires it from the start so it cannot regress the same way.
 
-Default-OFF (TASK-411 invariant): ``setup_opentelemetry`` is only invoked by
+Default-OFF invariant: ``setup_opentelemetry`` is only invoked by
 ``guardrail.main.create_app`` when BOTH ``Settings.otel_enabled`` is true AND
 ``Settings.otel_exporter_endpoint`` is non-empty. Every failure mode inside
 this module (unreachable/misconfigured collector, instrumentation error) is

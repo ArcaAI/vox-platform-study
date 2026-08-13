@@ -1,5 +1,5 @@
 # =============================================================================
-# HOPE — Vault alert rules (TASK-312 Phase E, E.4)        [PrometheusRule CRD]
+# HOPE — Vault alert rules        [PrometheusRule CRD]
 # =============================================================================
 # Consumed by the Prometheus Operator (same operator that owns the Phase C
 # ServiceMonitor at manifests/service-monitor.yaml). Apply:

@@ -10,11 +10,11 @@ import { ModelTaskType } from '@arcaai/domains';
 // `smr.live` / `smr.finalize` route the two SMR generation
 // flows (live-documentation delta vs. final/comprehensive summary). They are the
 // AiTaskDefault-first precedence source for `HarnessPolicyService.resolveSmrSelection`.
-// `smr.live.fallback` / `smr.finalize.fallback` (TASK-588) are the per-tenant,
+// `smr.live.fallback` / `smr.finalize.fallback` are the per-tenant,
 // opt-in fallback selections `resolveSmrFallbackSelection` reads (fail-OPEN: no
 // row ⇒ no fallback). SMR selection is tenant-admin configurable (NOT in
 // `GLOBAL_ADMIN_ONLY_TASK_PREFIXES`).
-// `smr.test` (TASK-635 Lane B) routes the tenant-admin prompt-template test
+// `smr.test` routes the tenant-admin prompt-template test
 // bench when the caller does not supply an explicit provider/model pair;
 // `PromptManagementService.callSmrGenerate` falls back to `smr.finalize` when
 // `smr.test` is unconfigured for the tenant.
@@ -23,7 +23,7 @@ import { ModelTaskType } from '@arcaai/domains';
 // `guardrail.groundedness` (MiniCheck NLI fact-checker), `harness.judge`
 // (LLM-as-judge), and `nlp.diagnosis` (the diagnosis suggester, split out of
 // the mis-keyed `nlp.classification` doc-type classifier).
-// `vlm.extract` (TASK-657) routes SMR's vision capability (image → text
+// `vlm.extract`  routes SMR's vision capability (image → text
 // extraction via a vision-language model). It lives in SMR's own
 // provider/adapter framework — same governance class as `smr.*` — so it is
 // tenant-admin configurable, NOT under `GLOBAL_ADMIN_ONLY_TASK_PREFIXES`.
@@ -63,14 +63,14 @@ export const AI_TASK_MODEL_TASK_TYPES: Record<AiTaskKey, ModelTaskType> = {
   // SMR generation models are text-generation models in the registry.
   'smr.live': ModelTaskType.TEXT_GENERATION,
   'smr.finalize': ModelTaskType.TEXT_GENERATION,
-  // per-tenant SMR fallback selections (TASK-588) — same task type.
+  // per-tenant SMR fallback selections — same task type.
   'smr.live.fallback': ModelTaskType.TEXT_GENERATION,
   'smr.finalize.fallback': ModelTaskType.TEXT_GENERATION,
-  // prompt-template test-bench routing (TASK-635 Lane B) — same task type.
+  // prompt-template test-bench routing — same task type.
   'smr.test': ModelTaskType.TEXT_GENERATION,
   // the harness LLM-as-judge is a text-generation model.
   'harness.judge': ModelTaskType.TEXT_GENERATION,
-  // vision extraction (TASK-657) — image + text in, text out.
+  // vision extraction — image + text in, text out.
   'vlm.extract': ModelTaskType.IMAGE_TEXT_TO_TEXT,
 };
 
@@ -83,7 +83,7 @@ export const AI_TASK_MODEL_TASK_TYPES: Record<AiTaskKey, ModelTaskType> = {
  * - `nlp.`
  * - `harness.`
  *
- * NOTE: `smr.` is intentionally NOT here (TASK-588). SMR summarization model
+ * NOTE: `smr.` is intentionally NOT here. SMR summarization model
  * selection — primary (`smr.live` / `smr.finalize`) AND per-tenant fallback
  * (`smr.<task>.fallback`) — is tenant-admin configurable: `getEffective`
  * honours per-tenant override rows and `upsertRow` permits tenant writes.

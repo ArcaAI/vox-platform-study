@@ -1,11 +1,11 @@
-"""Per-session STT engine-switch controller (TASK-567 §3.4, TASK-586).
+"""Per-session STT engine-switch controller.
 
 Owns the engine transitions for a single streaming session: classification of
 per-utterance inference failures, the consecutive-failure threshold, the auto/
 manual triggers, and the observable ``provider_switched`` publication +
 Prometheus counter.
 
-Two transition policies live here and are deliberately asymmetric (TASK-586):
+Two transition policies live here and are deliberately asymmetric:
 
 * **Automatic, failure-driven** (``record_failure``) is ONE-WAY
   ``primary → fallback``. A failing engine is never auto-selected again for the
@@ -52,7 +52,7 @@ _IMMEDIATE_SWITCH_ERRORS = (CloudASRAuthError, CloudASRQuotaError)
 _THRESHOLD_SWITCH_ERRORS = (CloudASRTranscriptionError, ModelError)
 
 # The union of both, PUBLIC because the inference worker must let exactly these
-# propagate for ``record_failure`` below to ever see them (TASK-614 D-11). Its
+# propagate for ``record_failure`` below to ever see them. Its
 # broad ``except Exception`` used to convert every ASR failure into an empty
 # transcript, so auto-fallback was deaf to the failure class it exists for.
 # Keep this the single source of truth: a class added to one tuple above and
@@ -72,7 +72,7 @@ _DEFAULT_MANUAL_SWITCH_COOLDOWN_S = 1.5
 
 
 class EngineSwitchController:
-    """Per-session engine switch: one-way auto, bidirectional manual (TASK-586)."""
+    """Per-session engine switch: one-way auto, bidirectional manual."""
 
     def __init__(
         self,
@@ -82,7 +82,7 @@ class EngineSwitchController:
         primary_pipeline_id: str,
         fallback_pipeline_id: str | None,
         build_fallback: Callable[[], Awaitable[Any]],
-        # TASK-613 — the swap carries the TARGET pipeline id alongside the new
+        # The swap carries the TARGET pipeline id alongside the new
         # callable so the inference worker's per-utterance provenance stamp is
         # updated in the same function body as the callable it names.
         apply_callable: Callable[[Any, str | None], None],
@@ -123,7 +123,7 @@ class EngineSwitchController:
 
     @property
     def active_pipeline_id(self) -> str | None:
-        """The pipeline id of the engine currently live (TASK-613).
+        """The pipeline id of the engine currently live.
 
         The session-create/status response uses this rather than the REQUESTED
         pipeline id, so a session that opened on the fallback (``start_on=
@@ -187,7 +187,7 @@ class EngineSwitchController:
     async def switch_manual(
         self, target: str = _FALLBACK, *, utterance_index: int | None = None
     ) -> bool:
-        """User-initiated switch (R4, TASK-586). Bidirectional; ignores the
+        """User-initiated switch. Bidirectional; ignores the
         auto-switch toggle (a manual request is an explicit user choice).
 
         ``target`` defaults to ``'fallback'`` for native-path back-compat.
@@ -230,7 +230,7 @@ class EngineSwitchController:
             await self._emit_switch(_FALLBACK, REASON_AUTO, utterance_index)
 
     async def note_started_on_fallback(self) -> None:
-        """Record a user-selected start-on-fallback (TASK-586 C9): the session
+        """Record a user-selected start-on-fallback: the session
         opened directly on the fallback because the caller asked for it
         (``start_on='fallback'``), NOT because the primary failed to load.
 

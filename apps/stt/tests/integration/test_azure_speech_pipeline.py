@@ -74,7 +74,7 @@ def azure_model_config():
     )
 
 
-# TASK-602: Azure Speech is BYOK-only — the key comes from the gateway-injected
+# Azure Speech is BYOK-only — the key comes from the gateway-injected
 # provider override, never env. Region still comes from settings.
 _BYOK_OVERRIDE = {"azure-speech": {"api_key": "integration-test-key-12345"}}
 

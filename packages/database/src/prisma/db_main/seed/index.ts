@@ -78,7 +78,7 @@ import { resolveSeedMode, isPhaseEnabled } from './seed-mode';
  *  12. Audit Log
  */
 export const seed = async () => {
-  // Seeding is OPT-IN via RUN_SEED and defaults to "none" (TASK-616). This
+  // Seeding is OPT-IN via RUN_SEED and defaults to "none". This
   // resolves BEFORE a client is created, so `RUN_SEED` unset means the seed
   // opens no connection and writes nothing. `resolveSeedMode` throws rather
   // than guessing — see `seed-mode.ts` for why permission is never inferred
@@ -117,7 +117,7 @@ export const seed = async () => {
     console.log('');
     await provisionTenantBuckets(client);
     console.log('');
-    // The SYSTEM-tenant platform storage default (TASK-558 lane E) — the third
+    // The SYSTEM-tenant platform storage default — the third
     // tier of `bucket row → tenant default → SYSTEM default → env`. Depends
     // only on the reserved SYSTEM tenant (seedTenant, above); CREATE-ONLY, so a
     // re-seed never reverts a global admin's edit.
@@ -143,7 +143,7 @@ export const seed = async () => {
     // models). CREATE-ONLY; needs the AiModel catalog (seedStt above).
     await seedAiTaskDefault(client);
     console.log('');
-    // SYSTEM config-plane rows. Seed-authoritative Day-1 (TASK-578, OD-1):
+    // SYSTEM config-plane rows. Seed-authoritative Day-1 (OD-1):
     // the built-in-local llm connections (ollama/lm-studio/built-in/vllm/
     // llama-cpp) seed ENABLED, so `resolveConnection('llm', …)` returns the
     // SYSTEM row and env is a pure fallback; cloud-BYO rows stay inert until a
@@ -154,7 +154,7 @@ export const seed = async () => {
     console.log('');
     await seedAiRuntimeProfile(client);
     console.log('');
-    // SYSTEM TenantTtsConfig platform default (TASK-577 / F1): built-in-first
+    // SYSTEM TenantTtsConfig platform default (/ F1): built-in-first
     // TTS routing (kokoro / indic_parler) so an unconfigured tenant defaults to
     // a LOCAL engine, never a cloud vendor. CREATE-ONLY; needs the TTS AiModel
     // catalog (seedStt above) and the reserved SYSTEM tenant (Phase 1).
@@ -164,16 +164,16 @@ export const seed = async () => {
     // Phase 3: Depends on Phase 2 (PromptTemplate.departmentId → Department)
     await seedPromptTemplate(client);
     console.log('');
-    // ArcaAI clinical prompt library (TASK-592 Workstream D): the 7 ArcaAI
+    // ArcaAI clinical prompt library: the 7 ArcaAI
     // clinical departments' per-visit-type summary templates + a shared
     // pre-summary, all APPROVED and owned by the ArcaAI tenant. The ArcaAI
     // departments (04-department) reference these via their legacy prompt-id
-    // columns AND (since TASK-635 C2 / RF-3) by per-visit-type DepartmentAgent
+    // columns AND (since / RF-3) by per-visit-type DepartmentAgent
     // bindings that point at exactly the same 14 templates — behaviour-identical
     // by construction, proven by arcaai-agent-column-equality.test.ts.
     await seedArcaaiClinicalTemplates(client);
     console.log('');
-    // SYSTEM live-summarization default (TASK-635 C2): one SYSTEM-tenant
+    // SYSTEM live-summarization default: one SYSTEM-tenant
     // PromptTemplate + v1 version whose content is byte-identical to the live
     // loop's in-code constants, so the live chain's SYSTEM-default tier and its
     // code-default fail-open tier serve the same bytes. Readable from every
@@ -181,7 +181,7 @@ export const seed = async () => {
     // SYSTEM_SHARED_READ_MODELS in the same change (B-12 fold-in).
     await seedLiveAgentDefaults(client);
     console.log('');
-    // SYSTEM department-free pre-summary default (TASK-635 D2 / OD-1b / RF-1):
+    // SYSTEM department-free pre-summary default (/ OD-1b / RF-1):
     // one SYSTEM-tenant PromptTemplate + v1 version, native-only fork of the
     // v1-parity pre-summary body with no {current_department}/{visit_type}
     // placeholder. Resolved directly by SYSTEM_DEFAULTS.deptFreePreSummaryPromptId
@@ -189,15 +189,15 @@ export const seed = async () => {
     // surface never requests this variant (RF-1 wire contract).
     await seedDeptFreePreSummaryDefault(client);
     console.log('');
-    // Agent Golden Library (TASK-548): SYSTEM golden departments +
+    // Agent Golden Library: SYSTEM golden departments +
     // APPROVED prompt templates + one default agent per department, plus the
     // two fixture tenants expressed as locked clones. FKs:
     // DepartmentAgent → Department (golden, above) + PromptTemplate (golden,
     // created here). Idempotent upsert-by-id.
-    // Day-1 consultation context schema (TASK-686): one servable TENANT-scoped
+    // Day-1 consultation context schema: one servable TENANT-scoped
     // default per seeded tenant. Together with the loop configuration
     // seedAgentGoldenLibrary just wrote onto the default agents, this is what
-    // makes `LoopConfigService` resolve `enabled: true` — TASK-684 turned the
+    // makes `LoopConfigService` resolve `enabled: true` — turned the
     // SIGNALLING gate on, but the workflow's own gate is DERIVED from these two
     // rows and neither existed on a fresh install. CREATE-ONLY.
     await seedConsultationLoopDefaults(client);
@@ -223,19 +223,19 @@ export const seed = async () => {
     console.log('');
     await seedGlobalSetting(client);
     console.log('');
-    // Platform-knob rows for the env keys TASK-558 lane I moved into the
+    // Platform-knob rows for the env keys moved into the
     // `global-kv` tier, seeded at today's env values so behaviour is identical.
     await seedPlatformKnobSettings(client);
     console.log('');
     // The two consultation-pipeline kill-switches, turned ON for day 1
-    // (TASK-684). Descriptor defaults stay OFF — the registry refuses to
+    // . Descriptor defaults stay OFF — the registry refuses to
     // assemble a kill-switch that defaults ON — so the seeded ROW is what
     // enables them, and `defaultValue` stays at the fail-safe.
     await seedConsultationGateSettings(client);
     console.log('');
     // Day-1 browser origins permitted to call the gateway, owned by the SYSTEM
     // tenant. Must be seeded BEFORE the production catch-all is closed
-    // (TASK-610 §4.8) — an empty registry plus a closed catch-all locks every
+    // an empty registry plus a closed catch-all locks every
     // browser app out.
     await seedTenantAllowedOrigins(client);
     console.log('');
@@ -245,7 +245,7 @@ export const seed = async () => {
     // Plan entitlement matrix + enforcement kill-switch (OFF).
     await seedEntitlements(client);
     console.log('');
-    // AI rate card, both planes (TASK-615). SYSTEM-tenant rows only, all
+    // AI rate card, both planes. SYSTEM-tenant rows only, all
     // prices PLACEHOLDER. Ordered after the entitlement matrix because the SELL
     // PLAN_FEE rows are keyed by the same `TenantPlan` values that matrix
     // defines, and CREATE-ONLY like it.

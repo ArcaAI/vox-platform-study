@@ -1,5 +1,5 @@
 /**
- * @arcaai/vox - Live running-SOAP stream types (TASK-543).
+ * @arcaai/vox - Live running-SOAP stream types.
  *
  * Mirrors the gateway `LiveSummaryEventDto` (full-state snapshot published on
  * `consultation:live-summary:{id}` while recording). All stat/code fields are

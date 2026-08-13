@@ -173,7 +173,7 @@ describe('HOPE_SETTINGS_REGISTRY (assembled catalog)', () => {
     }
   });
 
-  // TASK-587 — the two per-tenant SMR fallback keys are TEXT_GENERATION.
+  // The two per-tenant SMR fallback keys are TEXT_GENERATION.
   it('maps the smr fallback task keys to TEXT_GENERATION model task types', () => {
     expect(AI_TASK_MODEL_TASK_TYPES['smr.live.fallback']).toBe(ModelTaskType.TEXT_GENERATION);
     expect(AI_TASK_MODEL_TASK_TYPES['smr.finalize.fallback']).toBe(ModelTaskType.TEXT_GENERATION);
@@ -183,7 +183,7 @@ describe('HOPE_SETTINGS_REGISTRY (assembled catalog)', () => {
     // These task-model defaults are platform-owned: guardrail (owner directive),
     // nlp (revoked tenant writes), and harness.judge. All resolve to the
     // global-admin resource and carry globalOnly. SMR is NOT in this set —
-    // its selection is tenant-configurable (TASK-587).
+    // its selection is tenant-configurable.
     for (const key of [
       'models.guardrail.validate',
       'models.guardrail.safety',
@@ -199,7 +199,7 @@ describe('HOPE_SETTINGS_REGISTRY (assembled catalog)', () => {
     }
   });
 
-  // TASK-587 — SMR summarization model selection (primary + per-tenant fallback)
+  // SMR summarization model selection (primary + per-tenant fallback)
   // is tenant-admin configurable: the descriptors resolve to the tenant-editable
   // AiTaskDefault resource and are NOT flagged globalOnly.
   it('flags smr.* task-model defaults (primary + fallback) as tenant-editable (editableBy AiTaskDefault, not globalOnly)', () => {

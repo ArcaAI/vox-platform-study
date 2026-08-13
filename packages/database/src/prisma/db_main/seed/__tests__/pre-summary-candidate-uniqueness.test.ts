@@ -10,7 +10,7 @@ import { ARCAAI_CLINICAL_TEMPLATES } from '../07b-arcaai-clinical-templates';
  * first-class pointer: tenantId + scope=TENANT_DEFAULT + status=APPROVED +
  * departmentId=null + resourceStatus=ENABLED + tags includes 'pre-summary'.
  *
- * TASK-635 B-01: the Global tenant seeded TWO rows matching this convention —
+ * The Global tenant seeded TWO rows matching this convention
  * `…026` PRE_SUMMARY_SYSTEM (a one-paragraph system-role stub) and `…040`
  * PRE_SUMMARY_DEFAULT (the full body). The multi-candidate branch resolves the
  * first by `createdAt asc, id asc`, so the stub silently won over the intended
@@ -24,12 +24,12 @@ import { ARCAAI_CLINICAL_TEMPLATES } from '../07b-arcaai-clinical-templates';
  * since a naive read of the raw seed objects would miss `…026` (it omits both
  * fields and relies on the defaults).
  *
- * NOTE (TASK-635 RF-2): once the dept-free pre-summary fork lands (Lane D2 /
+ * NOTE: once the dept-free pre-summary fork lands (Lane D2 /
  * OD-1b), a tenant may legitimately carry TWO pre-summary rows — the v1-parity
  * body (tag `smr-v1`) and the dept-free fork (a distinct surface tag, e.g.
  * `dept-free`). At that point this assertion must become per-(tenant,
  * surface-tag) uniqueness rather than per-tenant uniqueness — see RF-2 in
- * docs/implementation/TASK-635-Summarization-Agent-Conformance/README.md §3.1.
+ * docs/implementation/TASK-635-Summarization-Agent-Conformance/README.md
  */
 
 // Mirrors the (unexported) `resolvePromptStatus` in ../07-prompt-template.ts.
@@ -65,7 +65,7 @@ const matchesPreSummaryConvention = (template: SeedTemplateLike): boolean => {
 };
 
 /**
- * TASK-635 C2 (B-12 fold-in) — DELIBERATE EXPECTATION SHIFT.
+ * DELIBERATE EXPECTATION SHIFT.
  *
  * `…040` PRE_SUMMARY_DEFAULT no longer belongs to the GLOBAL customer tenant: C2
  * re-owned it to the SYSTEM tenant (seed 07-prompt-template.ts + migration
@@ -80,7 +80,7 @@ const matchesPreSummaryConvention = (template: SeedTemplateLike): boolean => {
  * accidental re-own back to a customer tenant fails loudly instead of quietly
  * satisfying "at most one".
  */
-describe('pre-summary convention candidate uniqueness (TASK-635 B-01 / OD-4b)', () => {
+describe('pre-summary convention candidate uniqueness (/ OD-4b)', () => {
   it('has at most one pre-summary-tag candidate per tenant', () => {
     const candidatesByTenant = new Map<string, string[]>();
     for (const template of ALL_SEEDED_TEMPLATES) {

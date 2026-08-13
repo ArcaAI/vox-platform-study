@@ -92,7 +92,7 @@ export function getTranscriptions(consultationId: string): Promise<TranscriptCon
   return getJson(consultationPath(consultationId, 'context/transcriptions'));
 }
 
-/** Read-only citation/sensor provenance for a generated summary (TASK-552 Lane C evidence panel). */
+/** Read-only citation/sensor provenance for a generated summary (evidence panel). */
 export function getSummaryProvenance(consultationId: string, contextItemId: string): Promise<SummaryProvenance> {
   return getJson(consultationPath(consultationId, `summary/${encodeURIComponent(contextItemId)}/provenance`));
 }

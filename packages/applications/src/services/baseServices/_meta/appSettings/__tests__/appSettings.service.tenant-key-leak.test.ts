@@ -1,5 +1,5 @@
 /**
- * TASK-558 lane G — §9.3 M4: `tenantId` MUST be part of every config cache key.
+ * `tenantId` MUST be part of every config cache key.
  *
  * `AppSettingsService` caches into a `Map<key, GlobalSettingEntity>` keyed by the
  * setting KEY ALONE, while `cacheAppSettings()` loads `findAll({})` — every

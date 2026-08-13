@@ -1,5 +1,5 @@
 /**
- * TASK-636 OBS-16 — W3C trace-context propagation seam (TypeScript side).
+ * W3C trace-context propagation seam (TypeScript side).
  *
  * These tests pin the three properties the streaming hot path depends on:
  *
@@ -100,7 +100,7 @@ class TestW3CPropagator implements TextMapPropagator {
  * This double also documents a real dependency: `context.with` only propagates
  * when a ContextManager is registered. In `apps/api` the NodeSDK registers one
  * — and when the SDK is DISABLED, `context.with` degrades to a plain call,
- * which is precisely the no-op posture TASK-411 requires.
+ * which is precisely the no-op posture a default-off tracer requires.
  */
 class StackContextManager implements ContextManager {
   private stack: Context[] = [ROOT_CONTEXT];
@@ -148,14 +148,14 @@ function contextWithGoldenSpan(): Context {
   });
 }
 
-describe('TASK-636 OBS-16 — trace-propagation seam', () => {
+describe('trace-propagation seam', () => {
   beforeEach(() => {
     propagation.disable();
     context.disable();
     context.setGlobalContextManager(new StackContextManager().enable());
   });
 
-  describe('no-op posture (TASK-411: default-off, zero hot-path cost)', () => {
+  describe('no-op posture (default-off, zero hot-path cost)', () => {
     it('injectTraceCarrier returns an empty carrier when no propagator is registered', () => {
       const carrier = injectTraceCarrier(contextWithGoldenSpan());
       expect(carrier).toEqual({});

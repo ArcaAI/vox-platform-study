@@ -1,11 +1,11 @@
 /**
- * Live-stack probes against the consultation-loop SSE plane (TASK-660).
+ * Live-stack probes against the consultation-loop SSE plane.
  *
  * `GET /consultations/:id/loop/stream` was shipped with unit coverage only: its
  * relay/heartbeat behaviour is asserted with fake timers, and its 404-over-403
  * posture is asserted by reading `@TenantOwnedResource` decorator METADATA
- * (TASK-660 §3.5). Nothing had ever exercised the route over HTTP — TASK-654
- * OP-2 / TASK-675. This spec is that wire proof, and it covers the three claims
+ * . Nothing had ever exercised the route over HTTP
+ * OP-2 /. This spec is that wire proof, and it covers the three claims
  * the metadata assertion cannot reach:
  *
  *   1. **The tenant guard actually fires.** A caller in tenant ARCAAI probing a
@@ -118,7 +118,7 @@ async function readSseUntil(
   }
 }
 
-test.describe('TASK-660 — consultation-loop SSE, cross-tenant posture', () => {
+test.describe('Consultation-loop SSE, cross-tenant posture', () => {
   let doctorToken: string;
   let arcaaiAdminToken: string;
 
@@ -190,7 +190,7 @@ test.describe('TASK-660 — consultation-loop SSE, cross-tenant posture', () => 
   });
 });
 
-test.describe('TASK-660 — consultation-loop SSE, delivery', () => {
+test.describe('Consultation-loop SSE, delivery', () => {
   let doctorToken: string;
 
   test.beforeAll(async ({ request }) => {
@@ -207,7 +207,7 @@ test.describe('TASK-660 — consultation-loop SSE, delivery', () => {
    * from the env file.
    *
    * `.env.test`'s value used to be dead config that answered 401, because
-   * nothing re-seeded Vault from it on the two-terminal path. TASK-679 fixed
+   * nothing re-seeded Vault from it on the two-terminal path. fixed
    * that at the source: `scripts/start-test-app.sh` now runs
    * `ensure-test-vault-creds.sh` before launching, exactly as
    * `scripts/test-run.sh` already did for the managed suites, so the value the

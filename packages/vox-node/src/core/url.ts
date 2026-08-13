@@ -44,7 +44,7 @@ export interface BuildUrlOptions {
  * Strip trailing slashes, then, if the result ends with `/api/v1`, strip
  * that too.
  *
- * DECISION (documented per plan §Step 1): a `baseUrl` that already includes
+ * DECISION: a `baseUrl` that already includes
  * `/api/v1` — e.g. a consumer copies the origin straight from a browser tab
  * that was pointed at the Swagger docs at `/api/v1/docs` — is normalized
  * down to the bare origin/base path first. `buildUrl` then re-applies the
@@ -54,7 +54,7 @@ export interface BuildUrlOptions {
  * and exempt paths. The alternative (trust the caller's baseUrl verbatim)
  * would silently double-prefix non-exempt paths for exactly the consumer
  * this decision protects.
- */
+*/
 function normalizeBaseUrl(baseUrl: string): string {
   let base = baseUrl.trim().replace(/\/+$/, '');
   const suffix = `/${API_PREFIX}`;

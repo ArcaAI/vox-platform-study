@@ -24,16 +24,16 @@ import { computeCostDistribution } from './percentile';
 import { validateTimeseriesRange } from './range-bounds';
 
 /**
- * Read-only usage-analytics surface over the TASK-615 ledger rollups (WS-J).
+ * Read-only usage-analytics surface over the ledger rollups.
  *
- * DATA SOURCES — same posture as the WS-I invoice engine (D13): reads
+ * DATA SOURCES — same posture as the invoice engine (D13): reads
  * ROLLUPS, never raw ledger events, for anything that scans a full period.
  * The two exceptions are bounded SQL AGGREGATES (`UsageAnalyticsAggregateRepository`,
  * same rationale as `BillingUsageAggregateRepository`) for the two shapes the
  * rollup dimension tuple cannot express: cost-per-CONSULTATION and
  * cross-TENANT top-N.
  *
- * G16 (CLOSED, TASK-615 #11): `PlatformMetricsService.getConsumptionRollup` now
+ * G16 (CLOSED): `PlatformMetricsService.getConsumptionRollup` now
  * derives `transcriptionMinutes` from the STT `AUDIO_SECOND` rollups
  * (`AiUsageRollupDailyRepository.sumQuantityForCapabilityUnits`), so that field
  * agrees with this module's `getUsageSummary` instead of summing raw

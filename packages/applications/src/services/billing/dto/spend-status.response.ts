@@ -1,7 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 /**
- * Month-to-date rated spend vs the tenant-set spend limit (TASK-615 D12).
+ * Month-to-date rated spend vs the tenant-set spend limit.
  *
  * "Rated spend" = the SELL-rated OVERAGE amount so far — spend BEYOND the
  * plan's included allowances, which is exactly what

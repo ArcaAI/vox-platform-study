@@ -158,7 +158,7 @@ describe('TtsWsGateway', () => {
       }),
     });
 
-    // TASK-643 — the resolver returns `{overrides, platformDefault?}` (two
+    // The resolver returns `{overrides, platformDefault?}` (two
     // tiers merged per provider), not a bare map.
     const makeProviderConnectionService = (overrides: Record<string, unknown> = {}) => ({
       resolveTenantCloudOverrides: vi.fn().mockResolvedValue({ overrides }),
@@ -228,7 +228,7 @@ describe('TtsWsGateway', () => {
       expect(upstream.send).toHaveBeenCalledWith(raw, { binary: false });
     });
 
-    // TASK-570 — provider_overrides now resolves through the unified
+    // Provider_overrides now resolves through the unified
     // IProviderConnectionService (`service='tts'`). Shape unchanged (C4).
     it('injects provider_overrides into the first init frame via IProviderConnectionService', async () => {
       const OVERRIDES = { sarvam: { api_key: 'THE-KEY', funding: 'tenant', base_url: 'https://vpc.sarvam' } };
@@ -272,12 +272,12 @@ describe('TtsWsGateway', () => {
     });
   });
 
-  // TASK-615 WS-E: tts sends a final {"type":"usage",...} control frame at
+  // Tts sends a final {"type":"usage",...} control frame at
   // session teardown (success OR abort — see stream_ws.py). The gateway
   // consumes it to emit CHARACTER + AUDIO_SECOND ledger rows and — since the
   // browser client's protocol has no "usage" message type — strips it from
   // the upstream→client relay so the SDK never sees an unrecognized frame.
-  describe('usage-frame consumption (TASK-615 WS-E)', () => {
+  describe('usage-frame consumption', () => {
     const createMockUsageLedger = () => ({ recordUsage: vi.fn().mockResolvedValue({ outboxIds: ['o1'], events: 1 }) });
 
     const buildGateway = (usageLedger: unknown) =>
@@ -377,7 +377,7 @@ describe('TtsWsGateway', () => {
       expect(call.common).toMatchObject({ provider: 'azure', deployment: 'BYOK', costBasis: 'BYOK_NOTIONAL' });
     });
 
-    it('TASK-643 R3: a PLATFORM-FUNDED override resolves to deployment CLOUD, not BYOK', async () => {
+    it('A PLATFORM-FUNDED override resolves to deployment CLOUD, not BYOK', async () => {
       // Same bridge, same injected init frame — the only difference is WHOSE
       // credential the resolver supplied. A SYSTEM-tenant (platform) key is
       // platform vendor spend, so it must reach the COGS rollups (OD-2).

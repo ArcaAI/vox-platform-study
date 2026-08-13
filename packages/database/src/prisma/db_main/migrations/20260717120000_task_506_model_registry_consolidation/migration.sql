@@ -1,4 +1,4 @@
--- TASK-506 — AI model registry consolidation groundwork.
+-- AI model registry consolidation groundwork.
 -- Additive only: one enum value, two nullable AiModel columns + index, and the
 -- new AiTaskDefault per-tenant task-default table. Dev/test DBs are
 -- `db push`-managed and behind migration history — apply this file via psql
@@ -9,7 +9,7 @@
 ALTER TYPE "core"."AiModelFormat" ADD VALUE 'CLOUD_API';
 
 -- AlterEnum — audit ResourceType for AiTaskDefaultService broadcastSysEvent
--- writes (TASK-366/TASK-498 pattern: a missing value fails the AuditLog write
+-- writes (pattern: a missing value fails the AuditLog write
 -- and therefore the originating mutation).
 ALTER TYPE "core"."ResourceType" ADD VALUE IF NOT EXISTS 'AiTaskDefault';
 

@@ -15,7 +15,7 @@ export interface CreateContextItemProps extends BaseEntityFactoryCreateProps {
   content?: IContextItemEntity['content'];
   mediaId?: IContextItemEntity['mediaId'];
   dnaWritingStyleId?: IContextItemEntity['dnaWritingStyleId'];
-  // TASK-658 — optional; omitted by every pre-existing caller, which is the
+  // Optional; omitted by every pre-existing caller, which is the
   // regression guarantee: a write that names no kind produces exactly the row
   // it produced before.
   kindKey?: IContextItemEntity['kindKey'];

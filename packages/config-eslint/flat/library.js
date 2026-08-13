@@ -1,6 +1,6 @@
 /**
  * Flat preset for TypeScript library packages (`packages/*`) — the flat
- * successor of the legacy eslintrc `library.js` (TASK-418).
+ * successor of the legacy eslintrc `library.js`.
  *
  * core + `eslint-plugin-only-warn`: loading the plugin patches the running
  * ESLint's `Linter#verify` so every non-fatal error is downgraded to a
@@ -12,7 +12,7 @@
  * behavior: `no-undef` (the only rule globals feed) is disabled on TS files
  * by typescript-eslint's eslint-recommended and never enabled otherwise.
  * The globals are kept for documentation parity; the env is not.
- */
+*/
 const onlyWarn = require('eslint-plugin-only-warn');
 
 const core = require('./core');

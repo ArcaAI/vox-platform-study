@@ -91,21 +91,21 @@ export interface AudioSourceConfig {
   language?: LanguageLocale;
 
   /**
-   * End-user language mode id (TASK-587), e.g. `'en'`, `'ml'`, `'ml-en'`
+   * End-user language mode id, e.g. `'en'`, `'ml'`, `'ml-en'`
    * (Malayalam+English code-switch), `'auto'`. When set on the streaming
    * (backend) path it is forwarded to the STT session, which resolves it
    * against the session engine and rejects a mode no configured engine can
    * serve. Takes precedence over `language` on the backend. Ignored by the
    * local (browser) STT path.
-   */
+*/
   languageMode?: string;
 
   /**
-   * Pre-start STT engine selection (TASK-586), `'primary'` (default) or
+   * Pre-start STT engine selection, `'primary'` (default) or
    * `'fallback'`. Forwarded to the STT session on the streaming/backend path so
    * it opens on the tenant-admin default provider when `'fallback'`. Ignored by
    * the local (browser) STT path.
-   */
+*/
   startOn?: 'primary' | 'fallback';
 
   /**
@@ -137,7 +137,7 @@ export interface AudioSourceConfig {
 /**
  * Default audio source configuration.
  */
-// `languageMode` (TASK-587) and `startOn` (TASK-586) are genuinely optional —
+// `languageMode` and `startOn` are genuinely optional
 // absent means "use the pipeline default / start on primary" — so they are
 // excluded from the required set rather than given a meaningless placeholder.
 export const DEFAULT_AUDIO_CONFIG: Required<Omit<AudioSourceConfig, 'languageMode' | 'startOn'>> = {
@@ -478,10 +478,10 @@ export interface TranscriptionResult {
   words?: WordTimestamp[];
 
   /**
-   * The ASR pipeline that produced this result (TASK-613). Per-utterance, so a
+   * The ASR pipeline that produced this result. Per-utterance, so a
    * mid-session engine switch is visible transcript-by-transcript. Absent for
    * local providers and for backends that do not stamp results.
-   */
+*/
   pipelineId?: string;
 
   /**
@@ -852,17 +852,17 @@ export interface ProviderConfig {
   language: LanguageLocale;
 
   /**
-   * End-user language mode id (TASK-587). Forwarded to the STT session on the
+   * End-user language mode id. Forwarded to the STT session on the
    * streaming/backend path; takes precedence over `language` there. Ignored by
    * local providers.
-   */
+*/
   languageMode?: string;
 
   /**
-   * Pre-start STT engine selection (TASK-586). Forwarded to the STT session on
+   * Pre-start STT engine selection. Forwarded to the STT session on
    * the streaming/backend path so it opens on the tenant-admin default provider
    * when `'fallback'`. Ignored by local providers.
-   */
+*/
   startOn?: 'primary' | 'fallback';
 
   /**

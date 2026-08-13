@@ -383,7 +383,7 @@ class TestBatchTranscriptionService:
     async def test_transcribe_preserves_non_retryable_audio_error(
         self, service, pipeline_config, audio_bytes
     ):
-        """TASK-607: an undecodable file must not be re-wrapped as retryable.
+        """An undecodable file must not be re-wrapped as retryable.
 
         Wrapping it in ``TranscriptionError`` cost four attempts on a file that
         can never decode.

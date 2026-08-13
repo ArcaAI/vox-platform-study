@@ -168,7 +168,7 @@ describe('SpeechProxyController', () => {
       getEffective: vi.fn().mockResolvedValue(makeEffective(voiceBindings)),
     });
 
-    // TASK-643 — the resolver returns the two-tier result `{overrides, platformDefault?}`,
+    // The resolver returns the two-tier result `{overrides, platformDefault?}`,
     // not a bare map; entries carry `funding`.
     const makeProviderConnectionService = (overrides: Record<string, unknown> = {}) => ({
       resolveTenantCloudOverrides: vi.fn().mockResolvedValue({ overrides }),
@@ -212,7 +212,7 @@ describe('SpeechProxyController', () => {
       expect('voice_bindings' in body).toBe(false);
     });
 
-    // TASK-570 — provider_overrides now resolves through the unified
+    // Provider_overrides now resolves through the unified
     // IProviderConnectionService (`service='tts'`) instead of
     // TenantTtsConfigService.resolveProviderOverrides. The injected
     // provider_overrides SHAPE is unchanged (C4 — byte-identical body).
@@ -268,14 +268,14 @@ describe('SpeechProxyController', () => {
     });
   });
 
-  // TASK-615 WS-E: gateway emits CHARACTER + AUDIO_SECOND usage rows using the
+  // Gateway emits CHARACTER + AUDIO_SECOND usage rows using the
   // headers tts's /audio/speech endpoint surfaces (X-Tts-Characters,
   // X-Tts-Provider, X-Tts-Sample-Rate, X-Tts-Audio-Format, and — batch only —
   // X-Tts-Audio-Seconds). Streaming responses don't carry a final duration
   // header (unknowable before headers commit), so the gateway derives it from
   // the byte count it observes while proxying, using the SAME PCM/WAV byte
   // math tts uses internally.
-  describe('POST /speech/synthesize — usage-ledger emission (TASK-615 WS-E)', () => {
+  describe('POST /speech/synthesize — usage-ledger emission', () => {
     const buildController = (usageLedger: unknown = createMockUsageLedger(), cls: unknown = createMockCls()) =>
       new SpeechProxyController(http as any, config as any, createMockSecrets('svc-token') as any, undefined, undefined, cls as any, usageLedger as any);
 
@@ -398,7 +398,7 @@ describe('SpeechProxyController', () => {
       expect(call.common).toMatchObject({ provider: 'azure', deployment: 'BYOK', costBasis: 'BYOK_NOTIONAL' });
     });
 
-    it('TASK-643 R3: a PLATFORM-FUNDED override is deployment CLOUD, not BYOK', async () => {
+    it('A PLATFORM-FUNDED override is deployment CLOUD, not BYOK', async () => {
       // The cascade injects the SYSTEM-tenant platform credential for a tenant
       // that has none of its own. An override IS present — but the platform is
       // paying, so this must meter exactly like any other platform-funded
@@ -421,7 +421,7 @@ describe('SpeechProxyController', () => {
       expect(call.common.costBasis).toBeUndefined();
     });
 
-    it('TASK-643 R3: an override for a DIFFERENT provider never marks this call BYOK', async () => {
+    it('An override for a DIFFERENT provider never marks this call BYOK', async () => {
       const usageLedger = createMockUsageLedger();
       const ctrl = buildController(usageLedger);
       const stream = makeStream();

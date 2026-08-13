@@ -274,7 +274,7 @@ export interface TranscriptContextItem {
 }
 
 /**
- * One transcript segment cited as evidence for a summary (TASK-552 Lane C —
+ * One transcript segment cited as evidence for a summary (
  * `CitedSegmentResponse`). Carries offsets/timing only; the console slices the
  * already-fetched transcript text by `[charStart, charEnd)` for the snippet.
  */

@@ -1337,10 +1337,10 @@ Chinese: 發燒 (fever)
   });
 
   // ===========================================================================
-  // TASK-552 Lane A — nlp.ner AiTaskDefault model injection (fail-open)
+  // Nlp.ner AiTaskDefault model injection (fail-open)
   // ===========================================================================
 
-  describe('nlp.ner model injection (TASK-552 Lane A)', () => {
+  describe('nlp.ner model injection', () => {
     it('injects the effective nlp.ner model_name when the AiTaskDefault service resolves one', async () => {
       const aiTaskDefaultService = {
         getEffective: vi.fn().mockResolvedValue({
@@ -1440,10 +1440,10 @@ Chinese: 發燒 (fever)
   });
 
   // ===========================================================================
-  // TASK-615 WS-E — consultation-batched ner.extract usage-ledger emission
+  // Consultation-batched ner.extract usage-ledger emission
   // ===========================================================================
 
-  describe('usage-ledger emission (TASK-615 WS-E)', () => {
+  describe('usage-ledger emission', () => {
     const createMockUsageLedger = () => ({ recordUsage: vi.fn().mockResolvedValue({ outboxIds: ['o1'], events: 2 }) });
 
     const buildProcessorWithLedger = (usageLedger: unknown, aiTaskDefaultService?: unknown) =>

@@ -1,5 +1,5 @@
 /**
- * DepartmentAgentEntityMapper — round-trip tests (TASK-546).
+ * DepartmentAgentEntityMapper — round-trip tests.
  *
  * DepartmentAgent is OCC-written, so `_version` MUST be stripped from every
  * write path. Mirrors the AiTaskDefaultEntityMapper suite.

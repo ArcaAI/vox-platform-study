@@ -1,10 +1,10 @@
-// Metering descriptor contract tests (TASK-615 WS-H).
+// Metering descriptor contract tests.
 //
-// WS-B's handoff (ws-b-contract.md §11): the outbox-drainer schedule
+// Handoff (ws-b-contract.md §11): the outbox-drainer schedule
 // (`metering.outbox.drain.enabled` / `.intervalSeconds`) was live and
 // consumed (`usage-outbox.processor.ts#UsageOutboxScheduler.getConfig`)
 // but never cataloged. `metering.reconcile.enabled` mirrors
-// `entitlements.enabled`'s env-driven fresh-DB seed pattern (TASK-638 policy:
+// `entitlements.enabled`'s env-driven fresh-DB seed pattern (policy:
 // ON in every DEPLOYED env — hope-v2-dev/staging/production — OFF in local dev
 // and test/CI) via a companion `.enabledDefault` SEED-TIME-ONLY key, exactly
 // like `entitlements.enabledDefault` (feature-flags.descriptors.ts) already does.

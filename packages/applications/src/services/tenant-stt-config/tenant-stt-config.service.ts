@@ -61,12 +61,12 @@ export class TenantSttConfigService extends BaseService implements ITenantSttCon
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
     // BYO credential storage — delegated to the UNIFIED provider-connection
-    // plane (`service='stt'`, TASK-571). `AiProviderConnectionService` owns
+    // plane (`service='stt'`). `AiProviderConnectionService` owns
     // Vault encryption/decryption, masking, OCC, and the
     // ResourceCreated/Updated/Deleted sys-event broadcasts for every credential
     // mutation; this service no longer touches Vault or a credential
     // repository/table directly — the legacy `TenantSttProviderCredential`
-    // table and its domain trio were DROPPED by TASK-576 in favor of
+    // table and its domain trio were DROPPED by in favor of
     // `AiProviderConnection`.
     @Inject(IProviderConnectionService) private readonly providerConnectionService: IProviderConnectionService,
   ) {
@@ -158,7 +158,7 @@ export class TenantSttConfigService extends BaseService implements ITenantSttCon
    * The fallback target must exist, be tenant-visible (a cross-tenant id resolves
    * to null via the extended client → 404, honouring the 404-over-403 posture),
    * be ENABLED, and be backed by a cloud ASR engine (a local GPU pipeline is not
-   * a meaningful outage escape — §3.2).
+   * a meaningful outage escape — ).
    */
   private async assertValidFallbackPipeline(tenantId: string, pipelineId: string): Promise<void> {
     const pipeline = await this.pipelineService.getById(pipelineId);
@@ -293,7 +293,7 @@ export class TenantSttConfigService extends BaseService implements ITenantSttCon
     return value as Record<string, unknown>;
   }
 
-  // ─────────────────────── BYO credentials (unified plane, TASK-571) ───────────────────────
+  // ─────────────────────── BYO credentials (unified plane) ───────────────────────
 
   /** Masked list of a tenant's BYO credentials (never the key). */
   async getCredentials(tenantId: string): Promise<SttCredentialResponse[]> {
@@ -303,7 +303,7 @@ export class TenantSttConfigService extends BaseService implements ITenantSttCon
 
   /**
    * Set or rotate a tenant's BYO key for a provider. Encryption, masking, OCC
-   * (`expectedVersion: 0` creates, `>0` compare-and-sets — TASK-526
+   * (`expectedVersion: 0` creates, `>0` compare-and-sets
    * credential-OCC divergence from the TTS precedent), and the
    * ResourceCreated/ResourceUpdated sys-event broadcast are all owned by
    * `IProviderConnectionService.upsertRow('stt', ...)` now — this method only
@@ -494,7 +494,7 @@ export class TenantSttConfigService extends BaseService implements ITenantSttCon
    * the pre-unification `foundryModel` spelling), so the injectable shape this
    * method returns is unchanged: `{api_key, funding, region?, base_url?, model?}`.
    *
-   * TASK-643 — two things changed here and both are load-bearing:
+   * Two things changed here and both are load-bearing:
    *
    *   1. `funding` is FORWARDED. This method rebuilds each entry field by
    *      field, so anything it does not copy is dropped; dropping the funding

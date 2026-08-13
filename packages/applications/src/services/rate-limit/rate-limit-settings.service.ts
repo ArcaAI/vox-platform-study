@@ -28,7 +28,7 @@ export class RateLimitSettingsService implements IRateLimitSettingsService {
     @Inject(IAppSettingsService)
     private readonly appSettings: IAppSettingsService,
     /**
-     * The `global-kv` cascade (TASK-558 lane I). `@Optional()` so the graphs
+     * The `global-kv` cascade. `@Optional()` so the graphs
      * that wire only this service — and the pre-existing unit tests — keep
      * their exact platform-only behaviour: without it, `*ForTenant` degrades
      * to the platform answer rather than failing.

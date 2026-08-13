@@ -17,7 +17,7 @@ const structuredKind = (fields: Record<string, unknown>, overrides: Record<strin
   ...overrides,
 });
 
-describe('classifyDefinitionChange (TASK-658 AC-6)', () => {
+describe('classifyDefinitionChange', () => {
   it('reports IDENTICAL for byte-equivalent definitions (key order ignored)', () => {
     const prev = definition([structuredKind({ type: 'object', properties: { a: { type: 'string' } } })]);
     const next = definition([structuredKind({ properties: { a: { type: 'string' } }, type: 'object' })]);

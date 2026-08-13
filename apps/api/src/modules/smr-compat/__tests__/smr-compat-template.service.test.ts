@@ -84,7 +84,7 @@ describe('SmrCompatTemplateService — INFO resolution audit', () => {
   });
 });
 
-describe('SmrCompatTemplateService (TASK-592)', () => {
+describe('SmrCompatTemplateService', () => {
   let repo: ReturnType<typeof createDeptRepo>;
   let resolver: ReturnType<typeof createResolver>;
   let service: SmrCompatTemplateService;
@@ -153,9 +153,9 @@ describe('SmrCompatTemplateService (TASK-592)', () => {
   });
 
   // =======================================================================
-  // TASK-634 — pre-summary has no department axis
+  // Pre-summary has no department axis
   // =======================================================================
-  describe('resolveGovernedInstruction — pre-summary (TASK-634)', () => {
+  describe('resolveGovernedInstruction — pre-summary', () => {
     const tenantPreSummary = {
       template: 'SOAP',
       promptId: 'presummary-tpl',

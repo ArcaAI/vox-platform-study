@@ -19,7 +19,7 @@ logger = get_logger(__name__)
 def _tracing_interceptors(settings: Settings) -> list[Interceptor]:
     """The Temporal SDK's OTel tracing interceptor, gated the same as HTTP tracing.
 
-    TASK-636 OBS-14. ``TracingInterceptor`` (from
+    ``TracingInterceptor`` (from
     ``temporalio.contrib.opentelemetry``) applies to BOTH client calls
     (e.g. workflow starts) and, once passed to ``Client.connect``, to the
     Worker built from that client — see its docstring: "This should be
@@ -29,7 +29,7 @@ def _tracing_interceptors(settings: Settings) -> list[Interceptor]:
     wiring is needed there.
 
     Empty (not just a disabled interceptor) when tracing is off, matching
-    the TASK-411 default-off posture — and never raises: a construction
+    the default-off posture — and never raises: a construction
     failure degrades to an untraced client rather than a failed connect.
     """
     if not settings.otel_tracing_enabled:
@@ -56,11 +56,11 @@ async def get_temporal_client(settings: Settings | None = None) -> Client:
         settings.temporal.address,
         namespace=settings.temporal.namespace,
         data_converter=pydantic_data_converter,
-        # TASK-636 OBS-06 — SDK metrics (task-queue latency, workflow-task
+        # SDK metrics (task-queue latency, workflow-task
         # timeouts, activity failures, poller health). `None` means the SDK's
         # default runtime with no metrics, so a disabled or failed exporter
         # degrades to an unmonitored client rather than a failed connect.
         runtime=build_runtime(settings),
-        # TASK-636 OBS-14 — workflow/activity trace spans (default OFF).
+        # Workflow/activity trace spans (default OFF).
         interceptors=_tracing_interceptors(settings),
     )

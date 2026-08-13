@@ -11,7 +11,7 @@ providers:
       path: /var/lib/grafana/dashboards
       foldersFromFilesStructure: false
 
-  # TASK-302 Stream C Phase 2A — PgBouncer pool stats dashboard.
+  # PgBouncer pool stats dashboard.
   # Provisioned from infrastructure/grafana/dashboards/pgbouncer.json.
   - name: PgBouncer
     orgId: 1

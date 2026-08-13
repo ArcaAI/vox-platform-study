@@ -21,7 +21,7 @@ export * from './consultation';
 export * from './consultation-context-schema';
 export * from './department';
 export * from './departmentAgent';
-// Agent promotion between tenants (TASK-663).
+// Agent promotion between tenants.
 export * from './agentPromotion';
 // Clinical documentation harness (eval storage + WORM audit).
 export * from './eval';
@@ -73,13 +73,13 @@ export * from './tenant-frontend-config';
 export * from './queue-admin';
 // DB-backed, admin-controlled rate-limit configuration.
 export * from './rate-limit';
-// Tenant billing: invoice engine + lifecycle (TASK-615 WS-I).
+// Tenant billing: invoice engine + lifecycle.
 export * from './billing';
 // DB-backed plan entitlements (matrix + per-tenant override + kill-switch).
 export * from './entitlements';
 // Rolling-monthly usage metering (live aggregate + reconcile job).
 export * from './metering';
-// Shadow-metering drift report + provider-reconciler stubs (TASK-615 WS-K).
+// Shadow-metering drift report + provider-reconciler stubs.
 export * from './metering/reconciliation';
 // Per-request AI usage ledger: emission port, outbox drainer, provider
 // usage normalizer, allow-listed attributes and the frozen vocabulary.
@@ -89,7 +89,7 @@ export * from './usageLedger';
 export * from './priceBook';
 // RBAC services exposed for controllers (closes C-10 / H-9).
 export * from './rbac';
-// Read-only usage-analytics surface over the ledger rollups (TASK-615 WS-J).
+// Read-only usage-analytics surface over the ledger rollups.
 export * from './usageAnalytics';
 // Platform runtime metrics (E1/E2/E3) + multi-instance socket registry.
 export * from './platform-metrics';

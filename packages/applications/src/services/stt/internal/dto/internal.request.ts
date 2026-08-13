@@ -185,7 +185,7 @@ export class InternalCompleteJobRequest {
   @IsOptional()
   resultMetadata?: JsonValue;
 
-  // TASK-615 WS-C — typed top-level fields lifted out of `resultMetadata`.
+  // Typed top-level fields lifted out of `resultMetadata`.
   // The blob above is encrypted into ciphertext columns on the completing
   // persist (`SttInternalService.completeJob`), so anything trapped only
   // inside it is unqueryable afterwards — including the two fields the usage

@@ -1,5 +1,5 @@
 /**
- * TASK-543 — consultation list column. Pure component: real rows in,
+ * consultation list column. Pure component: real rows in,
  * search/select/open callbacks out. No SDK or SSE.
  */
 

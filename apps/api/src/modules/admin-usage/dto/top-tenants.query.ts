@@ -3,7 +3,7 @@ import { AiCapability } from '@arcaai/domains';
 import { Type } from 'class-transformer';
 import { IsEnum, IsInt, IsOptional, Matches, Max, Min } from 'class-validator';
 
-/** query for `GET admin/usage/top-tenants` — GLOBAL_ADMIN-only cross-tenant rollup (TASK-615 WS-J). */
+/** query for `GET admin/usage/top-tenants` — GLOBAL_ADMIN-only cross-tenant rollup. */
 export class TopTenantsQuery {
   @ApiPropertyOptional({ description: 'YYYY-MM (UTC calendar month). Defaults to the current UTC month.' })
   @IsOptional()

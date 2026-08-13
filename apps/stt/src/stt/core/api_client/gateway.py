@@ -199,7 +199,7 @@ class APIGatewayClient:
         an ``InternalCompleteJobRequest`` body with ``resultText`` and
         optional ``resultMetadata``.
 
-        TASK-615 WS-C: ``duration_seconds``/``processing_time_seconds``/
+``duration_seconds``/``processing_time_seconds``/
         ``engine``/``deployment`` ride as TYPED, top-level sibling fields —
         NOT nested inside ``result_metadata`` — because the gateway encrypts
         that blob into ciphertext on the completing persist
@@ -232,11 +232,11 @@ class APIGatewayClient:
     async def record_streaming_usage(
         self, summary: dict[str, Any], interrupted: bool
     ) -> dict[str, Any]:
-        """Push a reaper-built streaming teardown summary to the gateway (TASK-615 #13).
+        """Push a reaper-built streaming teardown summary to the gateway.
 
         Calls NestJS ``POST /internal/stt/streaming/usage`` so a session finalized
         by the STT inactivity reaper — after the gateway crashed and its removal
-        retries were exhausted, leaving no ``removeSession()`` caller to receive
+        retries were exhausted, leaving no ``removeSession`` caller to receive
         the DELETE-teardown response — still has its ``transcribe.stream`` usage
         metered. Idempotent on the session id at the ledger, so a push-back that
         races a late DELETE teardown never double-bills. ``tenant_id`` (from the

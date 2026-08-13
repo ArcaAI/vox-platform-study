@@ -1,5 +1,5 @@
 /**
- * TASK-552 Lane C — CitationEvidencePanel: click-to-source evidence panel.
+ * CitationEvidencePanel: click-to-source evidence panel.
  * Pure component; segment metadata comes from `useSummaryProvenance`, the
  * transcript text from `useTranscriptions` — both stubbed here as props.
  */

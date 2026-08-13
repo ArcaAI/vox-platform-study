@@ -84,7 +84,7 @@ class TestStartDocument:
 
     @pytest.mark.asyncio
     async def test_start_threads_redaction_rules_into_workflow_input(self, harness):
-        """TASK-551 — camelCase redactionRules parse into RedactionRule payloads on
+        """CamelCase redactionRules parse into RedactionRule payloads on
         HarnessDocWorkflowInput; an omitted field defaults to an empty (no-op) list."""
         http, client, _handle, _settings = harness
         resp = await http.post(

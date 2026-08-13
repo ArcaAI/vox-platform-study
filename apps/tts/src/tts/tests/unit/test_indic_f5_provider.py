@@ -76,7 +76,7 @@ def test_protocol_and_gated_off_by_default():
 
 def test_catalog_binding_present_but_not_in_default_routing():
     # Bound so it's routable when explicitly opted in, but NOT in the built-in
-    # Day-1 default (TASK-577): the SYSTEM TenantTtsConfig default routes ml to
+    # Day-1 default: the SYSTEM TenantTtsConfig default routes ml to
     # `indic_parler`, and enabling indic_f5 requires TTS_INDICF5_ENABLED=true AND
     # a tenant admin adding it to the DB-sourced routing chain.
     assert VoiceCatalog().get("ml-female-1").bindings["indic_f5"] == "ml-ref-1"

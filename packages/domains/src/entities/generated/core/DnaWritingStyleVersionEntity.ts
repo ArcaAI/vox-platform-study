@@ -10,7 +10,7 @@ export interface IDnaWritingStyleVersionEntity extends IBaseTenantEntity {
   versionNumber?: number | null;
   reportData?: Record<string, unknown> | null;
   styleText?: string | null;
-  // TASK-551 — snapshot of the report's structured redaction/rewrite rules
+  // Snapshot of the report's structured redaction/rewrite rules
   // (transient plaintext; persisted only as `encryptedRedactionRules`).
   redactionRules?: Record<string, unknown> | null;
   // Vault-Transit (hope-phi) ciphertext of the snapshot

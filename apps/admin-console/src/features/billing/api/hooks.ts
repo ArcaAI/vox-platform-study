@@ -18,7 +18,7 @@ import type {
 } from './types';
 
 /**
- * TanStack Query hooks for Billing (TASK-615 #15b). Mutations invalidate the
+ * TanStack Query hooks for Billing. Mutations invalidate the
  * whole `billing` namespace (the console prefers fresh reads over cache-patching);
  * toasts/OCC handling live at the call site so hooks stay reusable.
  */

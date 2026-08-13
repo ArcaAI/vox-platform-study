@@ -64,7 +64,7 @@ export class PlatformMetricsService implements IPlatformMetricsService {
     @Inject(IRedisCacheService) private readonly cache: IRedisCacheService,
     // The consumption roll-up reads route through domain
     // repositories instead of the raw Prisma client.
-    // TASK-615 #11: transcriptionMinutes now derives from the ledger rollups
+    // TranscriptionMinutes now derives from the ledger rollups
     // (via AiUsageRollupDailyRepository) so the platform-metrics dashboard
     // agrees with UsageAnalyticsService.getUsageSummary (G16). summaries24h
     // stays on SummaryMeta — a summary COUNT has no ledger equivalent (the
@@ -123,7 +123,7 @@ export class PlatformMetricsService implements IPlatformMetricsService {
       const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
       const [sttAudioSeconds, summaries24h, sizeSum, quotaSum, totalConsultations, consultationsToday] = await Promise.all([
-        // TASK-615 #11 — ledger-derived: metered STT audio-seconds (the consumed
+        // Ledger-derived: metered STT audio-seconds (the consumed
         // transcription audio), so this agrees with getUsageSummary's STT figure
         // rather than the raw AudioRecording durations it used to sum.
         this.rollupDailyRepository.sumQuantityForCapabilityUnits(tenantId, AiCapability.STT, [AiUsageUnit.AUDIO_SECOND]),

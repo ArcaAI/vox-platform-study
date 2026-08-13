@@ -67,8 +67,8 @@ export class PlanEntitlementFactory {
       featureDnaReports: props.featureDnaReports ?? false,
       featureVoiceEnrollment: props.featureVoiceEnrollment ?? false,
       featureMonitoringAccess: props.featureMonitoringAccess ?? false,
-      // TASK-643: fail-CLOSED default — a plan never grants the platform-default
-      // credential unless someone says so explicitly (OD-7).
+      // Fail-CLOSED default — a plan never grants the platform-default
+      // credential unless someone says so explicitly.
       featurePlatformDefaultCredential: props.featurePlatformDefaultCredential ?? false,
       modelTier: props.modelTier ?? 'full',
       rateLimitTier: props.rateLimitTier ?? 'default',

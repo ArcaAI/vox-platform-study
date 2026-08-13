@@ -1,5 +1,5 @@
 /**
- * TASK-635 C3 / C1 §6.1 — the NARROW port through which the live loop learns
+ * The NARROW port through which the live loop learns
  * which agent governs a session.
  *
  * WHY A PORT AND NOT `PromptAssemblyService`. The live prompt is not the
@@ -18,7 +18,7 @@
  * NEVER THROWS. `resolveForSession` is contractually total: any failure yields
  * the code-default snapshot (the in-code constants). A live consultation must
  * never be failed by a prompt-resolution error — the documented fail-open
- * exception of C1 §4.4, safe only because the code-default bytes are proven
+ * exception of, safe only because the code-default bytes are proven
  * byte-identical to the seeded SYSTEM default (paired sha256 guards).
  */
 
@@ -27,7 +27,7 @@ import type { LiveToolKey } from '../../departmentAgent/constants';
 /** DI token for {@link ILiveAgentResolver}. */
 export const ILiveAgentResolver = Symbol('ILiveAgentResolver');
 
-/** Which tier of the live chain (C1 §4.4) produced the frozen snapshot. */
+/** Which tier of the live chain produced the frozen snapshot. */
 export type LiveAgentTier = 'agent' | 'default' | 'code-default';
 
 /** A single tool's frozen decision. `null` ⇒ follow the platform/env default. */
@@ -100,7 +100,7 @@ export function normalizeToolPlan(toolConfig: unknown): ResolvedToolPlan {
  *
  * `promptTemplateId` + `promptVersionNumber` pin an IMMUTABLE `PromptVersion`,
  * never "latest" — which is what makes cross-instance adoption and crash
- * recovery reconstruct a byte-identical agent (C1 §6.2 three-tier recovery).
+ * recovery reconstruct a byte-identical agent (three-tier recovery).
  */
 export interface FrozenLiveAgentSnapshot {
   resolvedFrom: LiveAgentTier;

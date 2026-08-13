@@ -37,7 +37,7 @@ vi.mock('@arcaai/vox/compat', () => ({
     error: null,
   }),
   useArcaSttLanguageModes: () => ({ modes: [], isLoading: false, error: null, refresh: vi.fn() }),
-  // TASK-603 — the provider also mounts the batch-upload queue; an idle stub is
+  // The provider also mounts the batch-upload queue; an idle stub is
   // all these suites need (batch behaviour is covered in BatchUploadTab.test.tsx).
   useArcaBatchTranscription: () => ({
     items: [],

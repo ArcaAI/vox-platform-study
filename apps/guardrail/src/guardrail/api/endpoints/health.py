@@ -92,7 +92,7 @@ async def readiness_check(
 
     Must return a non-200 status on failure — the k8s readiness probe only
     inspects the status code, not the body, so a 200 with `ready: false`
-    never pulls the pod from Service endpoints (TASK-616 G0.0).
+    never pulls the pod from Service endpoints.
     """
     try:
         await redis.ping()

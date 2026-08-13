@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // @ts-check
 /**
- * verify-traceability.mjs — TASK-538 Wave-4 checker
+ * verify-traceability.mjs — traceability drift checker
  *
  * Verifies that the per-domain traceability docs under docs/traceability/*.md do
  * not drift from the code they claim to map. It parses capability-table rows and

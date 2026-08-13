@@ -6,10 +6,10 @@ export class TenantAllowedOriginDtoMapper {
     return {
       id: entity.id,
       tenantId: entity.tenantId,
-      // Derived, not persisted (plan §3.1 "prefer omitting [from the entity]").
+      // Derived, not persisted ("prefer omitting [from the entity]").
       // The reserved SYSTEM tenant owns platform-operated origins and is
       // valid for every tenant — the OriginRegistryService/BindingGuard fan-out
-      // rule (README §3.0), surfaced here purely as a display convenience.
+      // rule, surfaced here purely as a display convenience.
       isPlatform: entity.tenantId === SYSTEM_TENANT_ID,
       origin: entity.origin,
       label: entity.label,

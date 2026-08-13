@@ -403,11 +403,11 @@ describe('TenantFrontendConfigService', () => {
   });
 
   // ===========================================================================
-  // TASK-545 — disable local (in-browser) transcription platform-wide.
+  // Disable local (in-browser) transcription platform-wide.
   // The SERVED value is clamped to BACKEND/locked regardless of what the
   // tenant row stores; the stored column itself is untouched (reversible).
   // ===========================================================================
-  describe('transcriptionMode clamp (TASK-545)', () => {
+  describe('transcriptionMode clamp', () => {
     it('getByTenant serves BACKEND/locked=true even when the stored row says LOCAL/unlocked', async () => {
       const { TenantFrontendConfigFactory, TranscriptionMode } = await import('@arcaai/domains');
       const entity = TenantFrontendConfigFactory.CreateTenantFrontendConfig({

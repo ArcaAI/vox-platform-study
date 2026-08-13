@@ -65,7 +65,7 @@ from .preprocessing import get_preprocessor
 logger = logging.getLogger(__name__)
 
 # Cloud ASR engines whose loaders accept a per-tenant ``provider_overrides``
-# dict (TASK-567 BYOK). For these the batch ASR load bypasses the shared by-slug
+# dict (BYOK). For these the batch ASR load bypasses the shared by-slug
 # cache when an override is present. Mirrors the streaming set in session_manager.
 _CLOUD_ASR_OVERRIDE_FORMATS = frozenset(
     {
@@ -76,7 +76,7 @@ _CLOUD_ASR_OVERRIDE_FORMATS = frozenset(
     }
 )
 
-# TASK-615 WS-C — the one AiModelFormat whose lowercased value does NOT match
+# The one AiModelFormat whose lowercased value does NOT match
 # its seeded AiProviderConnection id (see KNOWN_PROVIDERS in
 # packages/applications/src/services/usageLedger/vocabulary.ts): AZURE_SPEECH
 # lowercases to "azure_speech" but the connection id is "azure-speech"
@@ -87,7 +87,7 @@ _ENGINE_ID_OVERRIDES: dict[AiModelFormat, str] = {
     AiModelFormat.AZURE_SPEECH: "azure-speech",
 }
 
-# TASK-643 R3 — which ``provider_overrides`` KEY each cloud ASR format reads
+# Which ``provider_overrides`` KEY each cloud ASR format reads
 # its credential from. This is NOT the same as the ledger engine id above:
 # AZURE_FOUNDRY meters as its own engine but takes its credential from the
 # ``azure-speech`` entry (``azure_foundry_loader.py``). Kept in lockstep with
@@ -111,7 +111,7 @@ def resolve_usage_attribution(
     was served on the TENANT's own credential; otherwise it is platform-funded
     ``"CLOUD"``.
 
-    Two corrections over the pre-TASK-643 rule, both of which misattributed
+    Two corrections over the previous rule, both of which misattributed
     real money:
 
     1. **Key-specific, not dict-truthy.** The old predicate was
@@ -121,13 +121,12 @@ def resolve_usage_attribution(
     2. **Funding is declared, not inferred.** The gateway can inject a
        credential from the SYSTEM-tenant platform default as well as from the
        caller's own row; on the wire they are identical. ``entry["funding"]``
-       says which, and a platform-funded call meters as ``"CLOUD"`` (TASK-643
-       OD-2) so its cost reaches the COGS rollups instead of being zeroed as
+       says which, and a platform-funded call meters as ``"CLOUD"`` so its cost reaches the COGS rollups instead of being zeroed as
        ``BYOK_NOTIONAL``.
 
     An ABSENT ``funding`` means ``"tenant"``: a gateway that does not stamp it
     has no platform tier to draw from, so every credential it can inject is the
-    caller's own. That makes the default exact for pre-R3 senders rather than a
+    caller's own. That makes the default exact for older senders rather than a
     guess, and an unrecognized value degrades the same conservative way.
     """
     is_cloud = asr_format in _CLOUD_ASR_OVERRIDE_FORMATS
@@ -595,7 +594,7 @@ class BatchTranscriptionService:
             # ----------------------------------------------------------
             timing.total_seconds = time.time() - pipeline_start
             result.processing_time_seconds = timing.total_seconds
-            # TASK-615 WS-C — usage-ledger attribution, forwarded as typed
+            # Usage-ledger attribution, forwarded as typed
             # top-level fields on the complete_job() gateway callback (never
             # inside result.metadata — see TranscriptionResult.engine).
             result.engine, result.deployment = resolve_usage_attribution(
@@ -897,12 +896,11 @@ class BatchTranscriptionService:
         pipeline: PipelineConfig,
         provider_overrides: dict[str, Any] | None = None,
     ) -> dict[str, LoadedModel | None]:
-        """
-        Load all models required by pipeline.
+        """        Load all models required by pipeline.
 
         Handles both slug references (from database) and inline model definitions.
 
-        ``provider_overrides`` (TASK-567) carries per-tenant BYO cloud creds; for
+        ``provider_overrides`` carries per-tenant BYO cloud creds; for
         a cloud ASR engine WITH overrides the ASR load bypasses the shared
         by-slug cache and calls the loader directly (a tenant key must never be
         cached under a slug and served to another tenant). Env-only keeps the
@@ -935,7 +933,7 @@ class BatchTranscriptionService:
                 resolve_engine_binding("asr", _engine_name, mode="batch")
         except Exception:  # noqa: BLE001 — advisory only, never block loading
             logger.debug("Batch engine capability check skipped", exc_info=True)
-        # TASK-567 — cloud BYOK: which format does this ASR ref bind?
+        # Cloud BYOK: which format does this ASR ref bind?
         _asr_format = asr_ref.inline.engine if asr_ref.is_inline and asr_ref.inline else None
         if _asr_format is None and asr_ref.slug and asr_ref.slug in model_configs:
             _asr_format = getattr(model_configs[asr_ref.slug], "format", None)

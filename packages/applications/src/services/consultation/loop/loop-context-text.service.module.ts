@@ -6,7 +6,7 @@ import { LoopContextTextService } from './loop-context-text.service';
 import { ILoopContextTextService } from './ILoopContextTextService';
 
 /**
- * LoopContextTextService DI module — TASK-664.
+ * LoopContextTextService DI module —.
  *
  * Domain-repository-only wiring, mirroring `LoopConfigServiceModule`:
  * `CoreDatabaseModule` already registers `ContextItemRepository`.

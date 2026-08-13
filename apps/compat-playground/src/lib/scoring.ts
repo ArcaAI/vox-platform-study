@@ -1,11 +1,11 @@
 /**
- * WER / CER scoring for the compat playground (TASK-597 lane D, finding G2).
+ * WER / CER scoring for the compat playground.
  *
  * ## Source of truth
  *
  * The normalization and the CER algorithm here are a **behavioural port of**
- * `apps/stt/scripts/mlen_scorecard.py` (`_norm` at :43-44, `cer` at :47-57) —
- * the reference implementation that produces the TASK-594 Malayalam-English
+ * `apps/stt/scripts/mlen_scorecard.py` (`_norm` at:43-44, `cer` at:47-57)
+ * the reference implementation that produces the Malayalam-English
  * quality gate's numbers (`apps/stt/tests/integration/test_mlen_quality_gate.py`,
  * baseline `apps/stt/tests/integration/mlen_scorecard_baseline.json`).
  *
@@ -19,7 +19,7 @@
  *
  * ```python
  * def _norm(s: str) -> str:
- *     return re.sub(r"\s+", " ", unicodedata.normalize("NFC", s)).strip()
+ * return re.sub(r"\s+", " ", unicodedata.normalize("NFC", s)).strip()
  * ```
  *
  * 1. Unicode **NFC** normalization.
@@ -34,18 +34,18 @@
  * ## Two Unicode details that make the port exact
  *
  * - Python iterates a `str` by **code point**; JavaScript indexes by UTF-16
- *   code unit. Every character-level operation below goes through
- *   {@link toCharacters}, which splits on code points, so an astral character
- *   costs 1 edit here just as it does in Python. (Malayalam is entirely BMP, so
- *   this only matters for emoji/rare scripts — but "only matters sometimes" is
- *   how divergence starts.)
+ * code unit. Every character-level operation below goes through
+ * {@link toCharacters}, which splits on code points, so an astral character
+ * costs 1 edit here just as it does in Python. (Malayalam is entirely BMP, so
+ * this only matters for emoji/rare scripts — but "only matters sometimes" is
+ * how divergence starts.)
  * - Python's `\s` and JavaScript's `\s` are *not* the same set: Python adds
- *   U+001C–U+001F and U+0085, JavaScript adds U+FEFF. The class below is
- *   spelled out explicitly to match Python's, which is also exactly the set
- *   `str.strip()` removes.
+ * U+001C–U+001F and U+0085, JavaScript adds U+FEFF. The class below is
+ * spelled out explicitly to match Python's, which is also exactly the set
+ * `str.strip()` removes.
  *
  * Everything in this module is a pure function — no React, no DOM.
- */
+*/
 
 // ---------------------------------------------------------------------------
 // Normalization — the ported `_norm`
@@ -98,10 +98,10 @@ export function toWords(text: string): string[] {
  * The Python gate has the same behaviour; callers that need a bounded display
  * value clamp at the UI layer, not here.
  *
- * DELIBERATE — do not "fix" this. Reviewed 2026-08-01 (TASK-597 follow-up #3)
+ * DELIBERATE — do not "fix" this. Reviewed 2026-08-01
  * and kept as-is by owner decision: the alternatives (excluding empty-reference
  * clips, or clamping to 1.0) both change aggregate scores and would force a
- * regeneration of the TASK-594 `mlen_scorecard_baseline.json`. Parity with the
+ * regeneration of the `mlen_scorecard_baseline.json`. Parity with the
  * Python gate is worth more than a tidier edge case, because the whole point of
  * this port is that the playground and the quality gate agree. If it ever does
  * change, it MUST change on both sides in the same commit.
@@ -110,7 +110,7 @@ export function toWords(text: string): string[] {
  * the Python loop. A pair of 5 000-character transcripts is ~25 M cell updates,
  * which runs in well under a second; nothing here is worth optimizing further
  * for a developer console.
- */
+*/
 export function characterErrorRate(reference: string, hypothesis: string): number {
   const r = toCharacters(normalizeForScoring(reference));
   const h = toCharacters(normalizeForScoring(hypothesis));
@@ -269,7 +269,7 @@ export function wordErrorRate(reference: string, hypothesis: string): WordScore 
 // ---------------------------------------------------------------------------
 
 export interface Scorecard extends WordScore {
-  /** From {@link characterErrorRate} — the number the TASK-594 gate reports. */
+  /** From {@link characterErrorRate} — the number the gate reports.*/
   cer: number;
   referenceCharacters: number;
   hypothesisCharacters: number;
@@ -384,7 +384,7 @@ export function parseReferenceText(raw: string, filename?: string): string {
 export interface ScorecardRunContext {
   /** The pipeline the run streamed through, or `null` for the tenant default. */
   pipelineId: string | null;
-  /** STT language mode (TASK-587), e.g. `ml-en`. */
+  /** STT language mode, e.g. `ml-en`.*/
   languageMode: string;
   /** v2 consultation id, when one exists. */
   sessionId: string | null;

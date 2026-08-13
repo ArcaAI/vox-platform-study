@@ -1,4 +1,4 @@
-// Batch-transcription limit descriptors (TASK-604 lane A).
+// Batch-transcription limit descriptors.
 //
 // The four knobs that make "up to 5 recordings, each at most 60 minutes"
 // admin-controllable instead of hardcoded. They are platform CAPACITY knobs, so
@@ -19,7 +19,7 @@ describe('batch-transcription limit descriptors', () => {
     }
   });
 
-  it('carries the TASK-604 requirement as its code defaults', () => {
+  it('carries the product requirement as its code defaults', () => {
     // These two ARE the requirement — 5 recordings, 60 minutes each.
     expect(BATCH_TRANSCRIPTION_DEFAULTS.maxFilesPerBatch).toBe(5);
     expect(BATCH_TRANSCRIPTION_DEFAULTS.maxDurationMinutes).toBe(60);

@@ -1,4 +1,4 @@
--- TASK-369 (Data Encryption Initiative) Phase 6 — DROP the plaintext PHI columns.
+-- Data Encryption Initiative — DROP the plaintext PHI columns.
 --
 -- All free-text clinical PHI is now persisted exclusively as Vault-Transit
 -- ciphertext in the sibling `encrypted*` Bytes columns (written on every

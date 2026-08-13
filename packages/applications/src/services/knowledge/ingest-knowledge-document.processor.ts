@@ -74,7 +74,7 @@ export class IngestKnowledgeDocumentProcessor extends WorkerHost {
     // keep their arity; when wired, each chunk's `text` is encrypted into the
     // `encryptedText` column before persist (dual-write soak).
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
-    // TASK-615 WS-D2 (item 3) — emits ONE `embed` INPUT_TOKEN row per ingest
+    // (item 3) — emits ONE `embed` INPUT_TOKEN row per ingest
     // call, summing every returned chunk's tokenCount. Optional + trailing so
     // existing positional fixtures keep their arity; absent ⇒ no emission
     // (fail-open — metering must never block institutional-RAG ingestion).
@@ -152,7 +152,7 @@ export class IngestKnowledgeDocumentProcessor extends WorkerHost {
       document.updatedBy = userId ?? null;
       await this.knowledgeDocumentRepository.update(document.id, document);
 
-      // TASK-615 WS-D2 (item 3) — best-effort; a metering hiccup must never
+      // (item 3) — best-effort; a metering hiccup must never
       // fail an otherwise-successful ingestion.
       await this.emitEmbeddingUsage(tenantId, jobId ?? String(job.id), response);
 

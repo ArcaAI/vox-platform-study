@@ -1,4 +1,4 @@
-"""DNA redaction/rewrite — a separate, auditable post-generation transform (TASK-551).
+"""DNA redaction/rewrite — a separate, auditable post-generation transform.
 
 Style never alters fact selection; redaction is its OWN stage with its own audit
 trail. This package holds the PURE deterministic transform engine

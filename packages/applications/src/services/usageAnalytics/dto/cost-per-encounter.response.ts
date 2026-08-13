@@ -1,6 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 
-/** Distribution of Σ costMicros per consultation over the period (TASK-615 WS-J). */
+/** Distribution of Σ costMicros per consultation over the period. */
 export class CostPerEncounterResponse {
   @ApiProperty({ description: 'Billing-period label, YYYY-MM.' })
   period!: string;

@@ -22,7 +22,7 @@ import {
 export interface DnaWritingStyleReportPlaintext {
   reportData: unknown | null;
   styleText: string | null;
-  // TASK-551 — decrypted structured redaction/rewrite rules.
+  // Decrypted structured redaction/rewrite rules.
   redactionRules: unknown | null;
 }
 

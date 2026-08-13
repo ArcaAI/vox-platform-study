@@ -8,7 +8,7 @@ import { LoopConfigService } from './loop-config.service';
 import { ILoopConfigService } from './ILoopConfigService';
 
 /**
- * LoopConfigService DI module — TASK-662.
+ * LoopConfigService DI module —.
  *
  * Domain-repository wiring (no HTTP, no Redis): `CoreDatabaseModule`
  * supplies `ConsultationRepository`, `DepartmentAgentRepository`,
@@ -16,7 +16,7 @@ import { ILoopConfigService } from './ILoopConfigService';
  * and `ConsultationContextSchemaVersionRepository`, all already registered
  * there.
  *
- * TASK-685 adds the `global-kv` read for the loop's idle bound.
+ * Adds the `global-kv` read for the loop's idle bound.
  * `CommonServiceModule` already exports `IAppSettingsService` (the cached read
  * path), which is `TenantSettingsService`'s only dependency, so the resolver is
  * provided LOCALLY rather than by importing `EffectiveSettingsModule` — that

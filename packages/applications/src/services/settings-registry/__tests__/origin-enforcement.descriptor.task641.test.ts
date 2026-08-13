@@ -1,11 +1,11 @@
-// TASK-641 §3.1 step 3 / T-9 — `origin.enforcementEnabled` flips from
-// permissive-by-default (TASK-610 §4C) to enforcing-by-default.
+// `origin.enforcementEnabled` flips from
+// permissive-by-default to enforcing-by-default.
 //
 // Owner directive: "no default is off." The descriptor's `default` IS the
 // platform posture on a fresh database (no row is seeded for this key — see
 // `origin-enforcement.descriptor.task610.test.ts` for the properties that stay
 // unchanged: tier/dataType/maxScope/globalOnly/failMode). This test pins ONLY
-// the value that TASK-641 reverses, so a silent revert to permissive-by-default
+// the reversed default, so a silent revert to permissive-by-default
 // is caught here rather than discovered as a production CORS regression.
 import { describe, expect, it } from 'vitest';
 
@@ -13,18 +13,18 @@ import { HOPE_SETTINGS_REGISTRY } from '../registry';
 
 const KEY = 'origin.enforcementEnabled';
 
-describe('origin.enforcementEnabled descriptor (TASK-641 — enforcement ON by default)', () => {
+describe('origin.enforcementEnabled descriptor (enforcement ON by default)', () => {
   const descriptor = HOPE_SETTINGS_REGISTRY.get(KEY);
 
   it('is registered in the assembled catalog', () => {
     expect(descriptor, `no descriptor registered for '${KEY}'`).toBeDefined();
   });
 
-  it('defaults to TRUE — enforcing by default, for every tenant including SYSTEM and GLOBAL (FR-6)', () => {
+  it('defaults to TRUE — enforcing by default, for every tenant including SYSTEM and GLOBAL', () => {
     expect(descriptor!.default).toBe(true);
   });
 
-  it('keeps failMode open-to-default — an unreadable control plane fails INTO enforcement, a deliberate trade (H-3)', () => {
+  it('keeps failMode open-to-default — an unreadable control plane fails INTO enforcement, a deliberate trade', () => {
     expect(descriptor!.failMode).toBe('open-to-default');
   });
 

@@ -1,9 +1,9 @@
 /**
- * TASK-643 R1 — the platform-default (SYSTEM-tenant) credential cascade.
+ * The platform-default (SYSTEM-tenant) credential cascade.
  *
  * `ai-provider-connection.tenant-lane.test.ts` locks the TENANT tier of
  * `resolveTenantCloudOverrides`. THIS file locks the second tier and the
- * precedence between them (§3.1 option C, §3.2):
+ * precedence between them (option C):
  *
  *   1. tenant row (ENABLED + keyed) → 2. SYSTEM row (ENABLED + keyed) → absent.
  *

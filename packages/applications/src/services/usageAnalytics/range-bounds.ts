@@ -1,7 +1,7 @@
 import { ArgumentInvalidException } from '@arcaai/exceptions';
 
 /**
- * Bounded-range validation for `getUsageTimeseries` (TASK-615 WS-J).
+ * Bounded-range validation for `getUsageTimeseries`.
  *
  * A tenant timeseries reads rollup buckets, not raw events, but an unbounded
  * range is still an unbounded query (and an unbounded response payload).

@@ -481,7 +481,7 @@ export class FederatedAuthService {
     return user;
   }
 
-  /** D3(a)/§3.D — IdP group claim → `Role.externalName`, scoped to the configuring tenant. No match → null (caller falls back to defaultRoleId). */
+  /** D3(a)/ — IdP group claim → `Role.externalName`, scoped to the configuring tenant. No match → null (caller falls back to defaultRoleId). */
   private async resolveGroupRoleId(claims: Record<string, unknown>, config: OidcPersistedConfig): Promise<string | null> {
     if (!config.groupToRoleMap) {
       return null;

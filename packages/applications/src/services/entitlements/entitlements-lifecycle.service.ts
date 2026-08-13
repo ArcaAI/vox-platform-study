@@ -99,7 +99,7 @@ export class EntitlementsLifecycleService extends BaseService implements IEntitl
 
       try {
         await this.runForTenant(tenant.id, null, async () => {
-          // PLAN-ONLY change (proposal §4): flip TRIAL → STARTER, leave
+          // PLAN-ONLY change: flip TRIAL → STARTER, leave
           // `resourceStatus` exactly as-is (plan and lifecycle are orthogonal).
           await this.databaseService.baseClient.tenant.update({
             where: { id: tenant.id },

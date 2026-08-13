@@ -51,12 +51,12 @@ export class AddContextRequest {
   @IsObject()
   metadata?: Record<string, unknown>;
 
-  // TASK-658 — the tenant-defined context plane. Both fields MUST be DECLARED
+  // The tenant-defined context plane. Both fields MUST be DECLARED
   // here even though their contents are tenant-defined: the global pipe runs
   // `whitelist + forbidNonWhitelisted`, so anything undeclared is stripped
   // (silently, for `whitelist`) or rejected. The tenant-defined SHAPE rides
   // exactly one declared envelope (`payload`) and is validated in the service
-  // layer against the pinned schema version — TASK-654 constraint C7.
+  // layer against the pinned schema version.
   //
   // Omitting `kindKey` is the legacy path and is unchanged in every respect.
   @ApiPropertyOptional({
@@ -83,12 +83,12 @@ export class AddContextRequest {
   @IsObject()
   payload?: Record<string, unknown>;
 
-  // TASK-670 — the loop event plane's cascade-depth lineage. Optional: a write
+  // The loop event plane's cascade-depth lineage. Optional: a write
   // that omits it is depth 0 (a human/API-originated item), exactly as before
   // this field existed. A specialist (or any caller) that writes a NEW context
   // item as a consequence of processing ANOTHER one names that item here, so
   // `ContextService.addContext` can resolve `depth = parent.depth + 1` and cap
-  // the cascade (TASK-664's depth-cap budget). A bad/cross-tenant reference
+  // the cascade (depth-cap budget). A bad/cross-tenant reference
   // degrades to depth 0 rather than failing the write — lineage is metadata,
   // never a reason to lose clinical content.
   @ApiPropertyOptional({

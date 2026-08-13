@@ -1,5 +1,5 @@
 /**
- * @arcaai/vox - useArcaSttLanguageModes Hook (TASK-587)
+ * @arcaai/vox - useArcaSttLanguageModes Hook
  *
  * Fetches the backend-authoritative STT language-mode catalog
  * (`GET /audio/transcription-jobs/language-modes`) so a UI can render a

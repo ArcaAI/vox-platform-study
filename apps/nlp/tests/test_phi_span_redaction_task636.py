@@ -1,4 +1,4 @@
-"""NLP PHI span-redaction hook is actually wired (TASK-636 OBS-19).
+"""NLP PHI span-redaction hook is actually wired.
 
 `_phi_sanitization_hook` has existed in `nlp/core/observability.py` since the
 module was written and was **never passed to the instrumentor** — dead code.
@@ -6,7 +6,7 @@ SMR's identical hook *is* wired (`server_request_hook=_phi_sanitization_hook`),
 so the two services silently disagreed about whether request/response bodies
 get scrubbed off spans.
 
-That matters the moment tracing is enabled fleet-wide (TASK-636 Phase 4): NLP
+That matters the moment tracing is enabled fleet-wide: NLP
 receives clinical text on every request, and an unhooked FastAPI instrumentor
 is free to attach request/response bodies to spans that land in Tempo.
 

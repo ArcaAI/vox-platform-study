@@ -1,5 +1,5 @@
 /**
- * TASK-636 OBS-16 — `OTEL_TRACES_ENABLED` is now a real control.
+ * `OTEL_TRACES_ENABLED` is now a real control.
  *
  * The k8s overlays, both service Dockerfiles and `.gitlab-ci.yml` all set this
  * variable. Before this change the ONLY code that read it was
@@ -18,8 +18,8 @@
 import { describe, expect, it } from 'vitest';
 import { resolveTelemetryPlan } from '../instrumentation.flags';
 
-describe('TASK-636 OBS-16 — resolveTelemetryPlan', () => {
-  describe('the endpoint remains the master switch (TASK-411: explicit opt-in, no localhost fallback)', () => {
+describe('ResolveTelemetryPlan', () => {
+  describe('the endpoint remains the master switch (explicit opt-in, no localhost fallback)', () => {
     it('disables everything when no endpoint is configured', () => {
       const plan = resolveTelemetryPlan({});
       expect(plan.sdkEnabled).toBe(false);
@@ -63,7 +63,7 @@ describe('TASK-636 OBS-16 — resolveTelemetryPlan', () => {
 
     it('treats an unrecognised value as ENABLED rather than silently going dark', () => {
       // Failing open on a typo is the right direction: losing traces silently
-      // is exactly the class of defect OBS-16 exists to close.
+      // is exactly the class of defect exists to close.
       expect(resolveTelemetryPlan({ ...endpoint, OTEL_TRACES_ENABLED: 'maybe' }).tracesEnabled).toBe(true);
     });
 

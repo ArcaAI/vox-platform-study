@@ -45,12 +45,12 @@ function readCurrentVersion(body: unknown): number | undefined {
 /**
  * Parse a `Retry-After` header value (RFC 9110 §10.2.3) into milliseconds.
  * Accepts either form:
- *   - delta-seconds: `"30"` → 30_000
- *   - HTTP-date: `"Wed, 21 Oct 2026 07:28:00 GMT"` → (date - now), clamped to 0
+ * - delta-seconds: `"30"` → 30_000
+ * - HTTP-date: `"Wed, 21 Oct 2026 07:28:00 GMT"` → (date - now), clamped to 0
  *
  * Exported so `core/retry.ts` reuses the same parser for its own retry
  * scheduling instead of duplicating the delta-seconds-vs-HTTP-date logic.
- */
+*/
 export function parseRetryAfterMs(headerValue: string | null | undefined): number | undefined {
   if (!headerValue) return undefined;
   const trimmed = headerValue.trim();

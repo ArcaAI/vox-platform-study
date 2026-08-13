@@ -332,7 +332,7 @@ async def test_sweep_keeps_entries_within_ttl(kind: str) -> None:
 
 
 async def test_min_residency_floor_blocks_sub_60s_ttl_eviction(kind: str) -> None:
-    """Anti-thrash (§7): never TTL-evict an entry idle < 60 s, whatever the TTL."""
+    """Anti-thrash: never TTL-evict an entry idle < 60 s, whatever the TTL."""
     clock, factory = FakeClock(), make_factory(kind)
     # 30 is below the clamp minimum, so the clamp lifts it to 60 anyway.
     cache = build_cache(kind, factory, clock=clock, ttl_seconds=30)
@@ -569,7 +569,7 @@ async def test_unload_hook_called_on_evict_and_tolerates_sync_and_async(kind: st
 
     if kind == "async":
         # Only the asyncio cache can await an unload hook; the sync sibling has
-        # no loop to await on (§3.1), which is exactly why it is a sibling.
+        # no loop to await on, which is exactly why it is a sibling.
         async def async_unload(key: str, _instance: str) -> None:
             unloaded.append(f"async::{key}")
 

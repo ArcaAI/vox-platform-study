@@ -1,7 +1,7 @@
 /**
- * Tenant BYO cloud credential → SMR generate round-trip (TASK-526 gap).
+ * Tenant BYO cloud credential → SMR generate round-trip (gap).
  *
- * `ai-provider-connections-cross-tenant.spec.ts` (task-526) already locks down
+ * `ai-provider-connections-cross-tenant.spec.ts` already locks down
  * `AiProviderConnectionController` itself: secret-never-echoed, self-host-403,
  * and the cross-tenant read/write posture — exclusively against the `azure`
  * row. NONE of that proves the credential actually reaches SMR — that only

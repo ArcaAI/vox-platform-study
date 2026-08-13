@@ -1,13 +1,13 @@
 """Unit tests for `stt.transcription.batch_service.resolve_usage_attribution`.
 
-TASK-615 WS-C — maps the loaded ASR model's `AiModelFormat` (+ whether a
-tenant BYOK provider override was actually resolved, TASK-567) to the
+Maps the loaded ASR model's `AiModelFormat` (+ whether a
+tenant BYOK provider override was actually resolved) to the
 usage-ledger `(engine, deployment)` pair `transcribe_file.py` forwards to
-`APIGatewayClient.complete_job()`.
+`APIGatewayClient.complete_job`.
 
 Pure function, no I/O — exercises the exact spelling traps called out in
 `docs/implementation/TASK-615-Usage-Metering-And-Billing/ws-b-contract.md`
-§3 (provider vocabulary): self-hosted engine ids are snake_case
+(provider vocabulary): self-hosted engine ids are snake_case
 (`whisper_cpp`, `faster_whisper` — already the lowercased `AiModelFormat`
 value, no remapping needed) and `AZURE_SPEECH` is the one format whose
 lowercased value (`azure_speech`) does NOT match its seeded connection id
@@ -113,9 +113,9 @@ class TestResolveUsageAttributionByok:
 
 
 class TestResolveUsageAttributionIsKeySpecific:
-    """TASK-643 R3 — the override map must be inspected BY KEY.
+    """The override map must be inspected BY KEY.
 
-    The pre-R3 rule was ``bool(provider_overrides)`` on the whole dict, so an
+    The older rule was ``bool(provider_overrides)`` on the whole dict, so an
     override for one provider marked a call served by a *different* provider
     as BYOK. That already misattributes today (a tenant holding a Sarvam key
     while the pipeline runs Azure Speech), and the platform-default cascade
@@ -150,7 +150,7 @@ class TestResolveUsageAttributionIsKeySpecific:
 
 
 class TestResolveUsageAttributionFunding:
-    """TASK-643 R3 — explicit funding origin beats inference.
+    """Explicit funding origin beats inference.
 
     A platform-funded (SYSTEM-tenant) credential is economically a
     platform-funded vendor call, so it meters as ``CLOUD`` (OD-2) even though

@@ -1,5 +1,5 @@
 /**
- * @arcaai/vox - useArcaLiveSummary Hook (TASK-543)
+ * @arcaai/vox - useArcaLiveSummary Hook
  *
  * SDK-native subscription to the LIVE running-SOAP stream a consultation emits
  * while recording (`GET /consultations/:id/live-summary/stream`). The server

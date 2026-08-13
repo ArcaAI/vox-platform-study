@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * Click-to-source evidence panel (TASK-552 Lane C; GAP-A2 UI half).
+ * Click-to-source evidence panel (GAP-A2 UI half).
  *
  * The segment-citation chain is closed end-to-end server-side (F-032): a
  * signed-off draft's `citationsMap` names the transcript segments that

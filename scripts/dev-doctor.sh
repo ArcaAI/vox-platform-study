@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================================
-# TASK-346 — Local dev-stack doctor (read-only)
+# Local dev-stack doctor (read-only)
 # ============================================================================
 # Answers "why is X broken?" in one shot: probes every service port/health
 # endpoint, docker infra containers, LM Studio / Ollama, Temporal, the two

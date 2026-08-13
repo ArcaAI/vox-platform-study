@@ -1,6 +1,6 @@
 """`AiModelFormat` lives in FOUR places that must stay aligned, or streaming
 session creation 500s with a SQLAlchemy ``LookupError`` while hydrating an
-``AiModelRead`` row (the TASK-586 SARVAM/OPENAI regression):
+``AiModelRead`` row (the SARVAM/OPENAI regression):
 
 1. the Postgres ``core."AiModelFormat"`` enum — authored in ``enums.prisma``;
 2. the SQLAlchemy read-mirror ``AiModelFormatType`` in ``core/database/models.py``
@@ -103,7 +103,7 @@ class TestRuntimeFormatsAreDbValid:
         )
 
     def test_sarvam_and_openai_are_present_everywhere(self) -> None:
-        # Direct regression anchor for the TASK-586 crash.
+        # Direct regression anchor for the crash.
         for value in ("SARVAM", "OPENAI"):
             assert value in SQLALCHEMY_VALUES, f"{value} missing from SQLAlchemy mirror"
             assert value in DTO_VALUES, f"{value} missing from dto.AiModelFormat"

@@ -351,7 +351,7 @@ describe('HarnessPolicyService', () => {
     });
   });
 
-  // TASK-588 — tenant-configurable SMR fallback selection (fail-OPEN).
+  // Tenant-configurable SMR fallback selection (fail-OPEN).
   describe('resolveSmrFallbackSelection', () => {
     it('resolves the smr.finalize.fallback key to {provider, sourceUri} when a model is enabled', async () => {
       const svc = makeServiceWithAiTaskDefault();

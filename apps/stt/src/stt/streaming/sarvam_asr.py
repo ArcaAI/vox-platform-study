@@ -1,6 +1,6 @@
 """Sarvam AI speech-to-text — per-utterance / whole-audio REST recognition.
 
-TASK-567. An async helper that transcribes one audio buffer (a VAD-segmented
+An async helper that transcribes one audio buffer (a VAD-segmented
 utterance in streaming, or a whole file in batch) via Sarvam's REST
 speech-to-text endpoint. Plain ``httpx`` — no vendor SDK. The caller awaits it
 directly (unlike the Azure SDK, which needs ``asyncio.to_thread``).

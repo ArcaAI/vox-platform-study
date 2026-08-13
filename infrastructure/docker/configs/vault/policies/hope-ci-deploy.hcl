@@ -1,4 +1,4 @@
-# TASK-558 lane K (K1) — policy for the GitLab CI JWT role `hope-ci-deploy`.
+# Policy for the GitLab CI JWT role `hope-ci-deploy`.
 #
 # Deployment-time credentials: the hope-deployments write token, the PgBouncer
 # smoke-test SSH identity and PostgreSQL role passwords, and the GitHub backup

@@ -28,7 +28,7 @@ import {
   UpdateChangelogEntryRequest,
 } from './dto';
 
-/** §3.6 rule 2 — the popup shows at most three notes; more than that is noise. */
+/** Rule 2 — the popup shows at most three notes; more than that is noise. */
 const UNSEEN_CAP = 3;
 
 /**
@@ -39,7 +39,7 @@ const UNSEEN_CAP = 3;
 const UNSEEN_SCAN_WINDOW = 50;
 
 /**
- * Curated release notes — the "What's New" plane of TASK-648 (§3.5/§3.6).
+ * Curated release notes — the "What's New" plane.
  *
  * Two distinct surfaces share this service:
  *   • reader surface (`/changelog`, `/changelog/unseen`, `/changelog/acknowledge`)
@@ -121,7 +121,7 @@ export class ChangelogService extends BaseService implements IChangelogService {
     const user = this.requestUser;
     if (!user?.id) return [];
 
-    // §3.6 rule 4 — NEVER while impersonating. A support session would
+    // Rule 4 — NEVER while impersonating. A support session would
     // otherwise write the acknowledgement on behalf of the real user, who then
     // never sees a breaking-change notice.
     if (user.impersonatedBy) return [];
@@ -141,7 +141,7 @@ export class ChangelogService extends BaseService implements IChangelogService {
     const unacknowledged = published.filter((entry) => !acknowledgedIds.has(entry.id));
     if (unacknowledged.length === 0) return [];
 
-    // §3.6 rule 6 — a new user's first login does not replay history. Entries
+    // Rule 6 — a new user's first login does not replay history. Entries
     // published before the user existed are auto-acked (flagged, so support can
     // tell "read it" from "predated them") and never shown.
     const userCreatedAt = await this.userCreatedAt(user.id);
@@ -185,7 +185,7 @@ export class ChangelogService extends BaseService implements IChangelogService {
     this.assertGlobalAdmin();
 
     // Always DRAFT, always SYSTEM-tenant: a release note is platform-wide, and
-    // publishing is a separate, explicit human action (§3.5).
+    // publishing is a separate, explicit human action.
     const entity = ChangelogEntryFactory.CreateChangelogEntry({
       tenantId: SYSTEM_TENANT_ID,
       platformVersion: dto.platformVersion,

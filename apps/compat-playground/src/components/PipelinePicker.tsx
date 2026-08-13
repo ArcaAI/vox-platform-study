@@ -17,9 +17,8 @@ const CUSTOM_PIPELINE = '__custom__';
  * character. Stale responses were already discarded (the `cancelled` guard
  * below), so this was never a correctness race — it is credential hygiene and
  * gateway log noise. 400 ms is past a normal inter-keystroke gap and well under
- * the time it takes to reach for the Connect button (TASK-597 lane G, carried
- * from lane E).
- */
+ * the time it takes to reach for the Connect button.
+*/
 export const PIPELINE_FETCH_DEBOUNCE_MS = 400;
 
 export interface PipelinePickerProps {
@@ -35,7 +34,7 @@ export interface PipelinePickerProps {
 }
 
 /**
- * Pipeline picker for the Connection tab (TASK-597 Lane E, G1).
+ * Pipeline picker for the Connection tab.
  *
  * Same three-state pattern as the department picker in `SummaryCard.tsx`
  * (`loading | list | freetext`): fetch the tenant's real pipelines via
@@ -48,7 +47,7 @@ export interface PipelinePickerProps {
  * A `Custom…` option is always present in the list state so a developer can
  * switch to free text even when the fetch succeeds (e.g. to test an id that
  * isn't in this tenant's catalog).
- */
+*/
 export function PipelinePicker({
   id = 'pipeline-picker',
   apiEndpoint,

@@ -1,5 +1,5 @@
 /**
- * TASK-635 B-10 — drift lock for the SYSTEM default pre-summary body.
+ * Drift lock for the SYSTEM default pre-summary body.
  *
  * `SYSTEM_PRE_SUMMARY_DEFAULT_CONTENT` (`TEMPLATE_IDS.PRE_SUMMARY_DEFAULT`,
  * id `71000000-0000-0000-0000-000000000040`) is the SYSTEM-tier pre-summary
@@ -15,7 +15,7 @@
  * pre-summary (`PRE_SUMMARY_CONTENT` in `07b-arcaai-clinical-content.ts`,
  * checksum-locked by `v1-clinical-prompt-fidelity.test.ts`) but was, before
  * this test, free to drift silently — no test pinned its content. This test
- * locks it to its CURRENT (as of TASK-635) sha256 so a future edit is a
+ * locks it to its CURRENT (as of) sha256 so a future edit is a
  * conscious, reviewed change rather than silent drift.
  *
  * Deliberately NOT added to `v1-clinical-prompt-checksums.fixture.ts`: that
@@ -36,14 +36,14 @@ import { describe, it, expect } from 'vitest';
 
 import { SYSTEM_PRE_SUMMARY_DEFAULT_CONTENT } from '../prisma/db_main/seed/07-prompt-template';
 
-/** Pinned sha256 of `SYSTEM_PRE_SUMMARY_DEFAULT_CONTENT` as of TASK-635. */
+/** Pinned sha256 of `SYSTEM_PRE_SUMMARY_DEFAULT_CONTENT` as of.*/
 const PINNED_SHA256 = 'be6be5760819c34c22029ac1293474b452e0f75a34c885fb9f0eeab3ce05335a';
 
 function sha256Hex(content: string): string {
   return createHash('sha256').update(content, 'utf8').digest('hex');
 }
 
-describe('TASK-635 B-10 — SYSTEM default pre-summary content drift lock', () => {
+describe('SYSTEM default pre-summary content drift lock', () => {
   it('SYSTEM_PRE_SUMMARY_DEFAULT_CONTENT matches its pinned sha256', () => {
     const actualSha256 = sha256Hex(SYSTEM_PRE_SUMMARY_DEFAULT_CONTENT);
 

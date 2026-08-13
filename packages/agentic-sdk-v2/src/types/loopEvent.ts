@@ -1,5 +1,5 @@
 /**
- * @arcaai/vox - Consultation-loop workflow event types (TASK-660/665).
+ * @arcaai/vox - Consultation-loop workflow event types.
  *
  * Mirrors the gateway `LoopEventDto` published on `consultation:loop:{id}`
  * and relayed verbatim over `GET /consultations/:id/loop/stream`. Carries NO

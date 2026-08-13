@@ -3,8 +3,8 @@
 #
 # Bakes infrastructure/docker/scripts/init-qdrant-collections.py + qdrant-client
 # into an image so the Argo `Sync`-hook Job (deployment/k8s/base/qdrant-init.yaml
-# in hope-v2-deployment) never installs a package over the network at pod start
-# (TASK-624 Q-02/Q-07). The dev docker-compose `qdrant-init` sidecar's
+# in hope-v2-deployment) never installs a package over the network at pod start.
+# The dev docker-compose `qdrant-init` sidecar's
 # `pip install -q qdrant-client && python init.py` pattern is fine for local
 # dev; it is not acceptable for a PHI-adjacent cluster.
 #
@@ -42,7 +42,7 @@ RUN groupadd --gid 1001 hope && \
 WORKDIR /app
 COPY --chown=hope:hope infrastructure/docker/scripts/init-qdrant-collections.py ./init-qdrant-collections.py
 
-# ── TASK-648 W3 — bake build identity, LAST layer ───────────────────────────
+# ── bake build identity, LAST layer ─────────────────────────────────────────
 # These args change on every commit; kept below every COPY/RUN so they never
 # invalidate the layer cache above them. Written to /app/build-info.json per
 # docs/implementation/TASK-648-Service-Version-And-Release-Registry/contracts/build-info.schema.json.

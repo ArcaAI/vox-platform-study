@@ -1,5 +1,5 @@
 /**
- * ServiceReleaseEntity + ServiceReleaseFactory unit tests (TASK-648).
+ * ServiceReleaseEntity + ServiceReleaseFactory unit tests.
  */
 import { describe, it, expect } from 'vitest';
 import { ServiceReleaseFactory } from '../../../../factories/generated/core/ServiceReleaseFactory';

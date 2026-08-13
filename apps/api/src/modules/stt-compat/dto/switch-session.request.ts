@@ -2,7 +2,7 @@ import { ApiProperty } from '@nestjs/swagger';
 import { IsIn, IsString } from 'class-validator';
 
 /**
- * v1-compatible mid-session engine switch request (TASK-586 C3).
+ * v1-compatible mid-session engine switch request.
  *
  * The compat vocabulary is `pipeline`/`default`; the newer bidirectional
  * vocabulary is `primary`/`fallback`. Both are accepted and normalized:

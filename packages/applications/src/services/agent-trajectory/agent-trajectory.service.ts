@@ -55,7 +55,7 @@ const MAX_GENERATION_METRICS_ROWS = 5000;
  *   - `pruneOlderThan` is the ONLY hard-delete path in the service and operates
  *     EXCLUSIVELY on `AgentTrajectoryStep` (soft-delete-exempt, hard retention).
  *   - `recordSteps` co-emits usage-ledger rows for LLM_CALL steps that carry
- *     billable AD-1 `GenerationStats` (TASK-615 WS-F) — see `emitUsage` below.
+ *     billable AD-1 `GenerationStats` — see `emitUsage` below.
  *
  * Extends `BaseService` for the CLS tenant getter; a placeholder
  * `ResourceType` is passed only to satisfy the base constructor — this service
@@ -78,13 +78,13 @@ export class AgentTrajectoryService extends BaseService implements IAgentTraject
     // imported by this service's own module) always supplies it; a fixture
     // that omits it simply gets no ledger emission (see `emitUsage`).
     @Optional() @Inject(IUsageLedgerService) private readonly usageLedgerService?: IUsageLedgerService,
-    // TASK-615 WS-D2 — Optional + trailing (arity-preserving). This is the
+    // Optional + trailing (arity-preserving). This is the
     // DOMAINS `CoreUnitOfWorkService` (its `runInTransaction` is the one
     // production callers actually use — see the outbox drainer / sttInternal
-    // WS-C precedent), NOT the identically-named, unwired class under
+    //  precedent), NOT the identically-named, unwired class under
     // `services/baseServices`. When wired, `recordSteps` folds the
     // `createMany` batch insert and the usage-ledger emission into ONE
-    // transaction (upgrading the WS-F "sanctioned no-tx fallback" now that
+    // transaction (upgrading the "sanctioned no-tx fallback" now that
     // `Repository.createMany` accepts a `tx` client). Unwired fixtures fall
     // back to the pre-upgrade sequential (no-tx) calls, unchanged.
     @Optional() private readonly unitOfWorkService?: CoreUnitOfWorkService,
@@ -139,9 +139,9 @@ export class AgentTrajectoryService extends BaseService implements IAgentTraject
     // so a re-delivered duplicate batch (same composite unique) persists nothing.
     // NO sys-event here — telemetry exemption (see class header).
     //
-    // TASK-615 WS-D2: when the unit-of-work is wired, the batch insert and the
+    // When the unit-of-work is wired, the batch insert and the
     // usage-ledger emission (see `emitUsage`) share ONE transaction — upgrading
-    // the WS-F "sanctioned no-tx fallback" now that `Repository.createMany`
+    // the "sanctioned no-tx fallback" now that `Repository.createMany`
     // accepts a `tx` client. Unwired fixtures keep the pre-upgrade sequential
     // (no-tx) calls, byte-identical to before. Either way `emitUsage` catches
     // its OWN per-row failures (see below), so a metering hiccup never rolls
@@ -356,7 +356,7 @@ export class AgentTrajectoryService extends BaseService implements IAgentTraject
   }
 
   /**
-   * Co-emit usage-ledger rows (TASK-615 WS-F) for every LLM_CALL step that
+   * Co-emit usage-ledger rows for every LLM_CALL step that
    * carries billable AD-1 `GenerationStats` — `buildHarnessUsageEvent` maps
    * the step, `null` for anything else (wrong step type, no stats, no
    * positive token count, no provider).
@@ -380,7 +380,7 @@ export class AgentTrajectoryService extends BaseService implements IAgentTraject
    * NOT wrapped in the same DB transaction as `createMany` today:
    * `AgentTrajectoryStepRepository.createMany` has no `tx` parameter (only
    * `create`/`updateWithVersion` do — see `packages/domains/src/common/repository.ts`),
-   * and extending it is outside this service's boundary. See the WS-F ticket
+   * and extending it is outside this service's boundary. See the
    * report for the recommended follow-up.
    */
   private async emitUsage(entities: AgentTrajectoryStepEntity[], tx?: CorePrisma.TransactionClient): Promise<void> {

@@ -1,4 +1,4 @@
-"""TDD tests for TTS usage-metering primitives (TASK-615 WS-E).
+"""TDD tests for TTS usage-metering primitives.
 
 Character counting is Unicode CODE POINTS (frozen contract §3/README §3): a
 CJK/Indic character counts as 1, and an astral-plane emoji (outside the BMP)

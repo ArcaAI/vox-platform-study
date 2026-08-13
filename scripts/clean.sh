@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================================
-# TASK-557 — Workspace cleaner (build artifacts / caches / dependencies)
+# Workspace cleaner (build artifacts / caches / dependencies)
 # ============================================================================
 # One cleaner for the whole monorepo, in tiers. Deliberately implemented with
 # `find` rather than `turbo run clean`, so it still works when node_modules is

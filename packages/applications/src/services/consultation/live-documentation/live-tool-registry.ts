@@ -1,5 +1,5 @@
 /**
- * TASK-635 C4 / C1 §C4 — the config-driven live TOOL LAYER (decision OD-5(b)).
+ * The config-driven live TOOL LAYER (decision OD-5(b)).
  *
  * WHAT THIS IS. The live flush used to hardcode its tool orchestration: one NLP
  * `classify/tokens` call for entities+vitals, then an env-gated guardrail
@@ -10,7 +10,7 @@
  * WHAT THIS IS NOT (OD-5(b), not (a)). There is NO model-initiated tool-calling
  * loop here, and no `tools` field is added to the SMR payload. A live flush must
  * hold a ~5s budget; a model-driven loop costs ≥1 extra serial LLM round-trip
- * per call with an unbounded worst case (C1 §9). The sanctioned path to OD-5(a)
+ * per call with an unbounded worst case. The sanctioned path to OD-5(a)
  * later is {@link LiveToolExecutor.describe} + {@link LiveToolRegistry.describeAll}:
  * the descriptors are already tool-schema shaped, so that feature can arrive
  * without churning this interface or the `toolConfig` JSONB.
@@ -174,7 +174,7 @@ export class NlpExtractionTool implements ExtractionToolExecutor {
   }
 
   async execute(input: ExtractionToolInput, signal?: AbortSignal): Promise<ExtractionToolOutput> {
-    // TASK-552 Lane A: inject the effective `nlp.ner` AiTaskDefault model
+    // Inject the effective `nlp.ner` AiTaskDefault model
     // (mirrors AiInferenceController's playground mapping) so a global
     // admin's re-point governs the live plane too, not just the playground.
     // Fail-open: {} on any resolution hiccup, or when CLS isn't wired (the
@@ -184,7 +184,7 @@ export class NlpExtractionTool implements ExtractionToolExecutor {
     // guardrail executor below already does it. This call omitted the header,
     // so wherever NLP enforces a token (`NLP_SERVICE_TOKEN` non-empty) entity
     // extraction was rejected and the live note silently lost its highlights —
-    // the NLP twin of the SMR defect in `callSmr` (TASK-640).
+    // the NLP twin of the SMR defect in `callSmr`.
     const serviceToken = (await this.deps.secretsService?.getSecretOptional('NLP_SERVICE_TOKEN')) ?? '';
     const response = await this.deps.httpService.axiosRef.post(
       `${this.deps.nlpServiceUrl}/api/v1/classify/tokens`,

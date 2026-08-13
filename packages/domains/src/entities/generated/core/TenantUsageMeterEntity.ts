@@ -10,7 +10,7 @@ export interface ITenantUsageMeterEntity extends IBaseTenantEntity {
   periodStart: Date;
   periodEnd: Date;
   /**
-   * Monthly consumed total (TASK-615 #5): `bigint` so token/character meters do
+   * Monthly consumed total: `bigint` so token/character meters do
    * not overflow Int32 (~2.1B) for a heavy tenant. Maps to the `BigInt`
    * `usedCount` column.
    */

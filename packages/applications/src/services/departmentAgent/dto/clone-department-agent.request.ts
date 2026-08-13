@@ -4,7 +4,7 @@ import { IsString, IsNotEmpty, Matches, MaxLength, MinLength } from 'class-valid
 /**
  * Clone a department agent into a new, editable copy ("clone to customize").
  *
- * Mirrors `ClonePipelineRequest` (TASK-531): deliberately NARROW — the clone
+ * Mirrors `ClonePipelineRequest`: deliberately NARROW — the clone
  * takes only its own identity (`name` + `slug`) and inherits everything else
  * (bound-template content, DNA policy, harness overrides, description, tags)
  * from the source. The caller customizes the copy afterwards through the normal

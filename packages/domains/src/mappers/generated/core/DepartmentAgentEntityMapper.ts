@@ -39,7 +39,7 @@ export class DepartmentAgentEntityMapper extends BaseMapper<Entities.DepartmentA
   }
 }
 
-// TASK-635 RF-4 — the six capability-keyed columns (newPatientTemplateId,
+// The six capability-keyed columns (newPatientTemplateId,
 // revisitTemplateId, preSummaryTemplateId, livePromptTemplateId, toolConfig,
 // llmOverrides) need NO handler entries: `AutoClassMapper`/`AutoEntityChangeMapper`
 // map same-named fields automatically (stripping the entity's `_` prefix), which
@@ -48,7 +48,7 @@ export class DepartmentAgentEntityMapper extends BaseMapper<Entities.DepartmentA
 // DepartmentAgent is OCC-written, and `gen:mapper` (which would strip that guard)
 // is NEVER run.
 //
-// TASK-659 — the seven loop-configuration columns (role, subscribedKinds,
+// The seven loop-configuration columns (role, subscribedKinds,
 // writeScope, goal, guardrailProfile, alwaysActions, neverActions) are
 // same-named scalar/JSONB fields for the same reason: no handler entry
 // needed. `Versions` is a relation and, like `Department`/`PromptTemplate`
