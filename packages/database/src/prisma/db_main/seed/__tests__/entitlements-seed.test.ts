@@ -1,15 +1,17 @@
 /**
  * seedEntitlements — addition.
  *
- * Two GlobalSetting kill-switches now seed off the SAME env-driven pattern:
+ * Two GlobalSetting kill-switches seed off the SAME resolution:
  *   - `entitlements.enabled`        (ENTITLEMENTS_ENABLED_DEFAULT)   — pre-existing (WS-A)
  *   - `metering.reconcile.enabled`  (METERING_RECONCILE_ENABLED_DEFAULT) — new
  *
- * Both read a `*_DEFAULT` env var at MODULE LOAD TIME to decide the value of a
- * FRESH row only (`create` branch); an existing row's `update` branch never
+ * Both resolve at MODULE LOAD TIME to the value of a FRESH row only (`create`
+ * branch): an explicit `*_DEFAULT` env var wins in either direction, and when
+ * unset the value is DERIVED — ON in a deployed (host-env-only) environment,
+ * OFF on a laptop and in test/CI. An existing row's `update` branch never
  * touches `value`, so a re-seed can never clobber a live operator toggle
  * (OQ3). `vi.resetModules()` + dynamic import per test is required because the
- * env read happens once, at import — mirrors `phi-encryption.test.ts`.
+ * resolution happens once, at import — mirrors `phi-encryption.test.ts`.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SEED_GLOBAL_SETTING_IDS, SEED_TENANT_ID } from '../00-constants';
@@ -23,6 +25,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllEnvs();
+  vi.doUnmock('../../../../env');
 });
 
 async function loadSeedEntitlements() {
@@ -93,6 +96,69 @@ describe('seedEntitlements — metering.reconcile.enabled GlobalSetting row', ()
     // …but the `update` branch (applied on re-seed) must not carry `value` at
     // all, so an operator's live toggle is never clobbered.
     expect(meteringUpsert.update).not.toHaveProperty('value');
+  });
+
+  /**
+   * The fresh-row default is DERIVED, not stamped: unset ⇒ ON in a deployed
+   * env, OFF locally and in test/CI. These four cases pin both halves plus the
+   * explicit overrides, because the previous env-var-only form silently never
+   * turned enforcement on in ANY deployed environment (the var was set in no
+   * ConfigMap, and the GitOps db-migrate Job has no `envFrom` to carry it).
+   *
+   * "Deployed" is `!isCI() && NODE_ENV !== 'test' && no env file loaded`, so it
+   * is simulated by stubbing NODE_ENV/CI and mocking the env module's
+   * `loadDatabaseEnv` to report that no file was found.
+   */
+  async function loadWithEnvPosture(opts: { nodeEnv: string; ci: string; envFileLoaded: boolean }) {
+    vi.stubEnv('NODE_ENV', opts.nodeEnv);
+    vi.stubEnv('CI', opts.ci);
+    vi.doMock('../../../../env', async (importOriginal) => {
+      const actual = await importOriginal<typeof import('../../../../env')>();
+      return { ...actual, loadDatabaseEnv: () => ({ loaded: opts.envFileLoaded }) };
+    });
+    return (await import('../15-entitlements')).seedEntitlements;
+  }
+
+  it('defaults BOTH switches ON when unset in a DEPLOYED env (host-env-only: not CI, not test, no env file)', async () => {
+    const seedEntitlements = await loadWithEnvPosture({ nodeEnv: 'development', ci: '', envFileLoaded: false });
+    const { client, upserts } = makeMockClient();
+
+    await seedEntitlements(client as never);
+
+    expect(upserts.find((u) => (u.create as { key?: string }).key === 'entitlements.enabled')!.create.value).toBe('true');
+    expect(upserts.find((u) => (u.create as { key?: string }).key === 'metering.reconcile.enabled')!.create.value).toBe('true');
+  });
+
+  it('defaults BOTH switches OFF when unset on a developer laptop (an env file was loaded)', async () => {
+    const seedEntitlements = await loadWithEnvPosture({ nodeEnv: 'development', ci: '', envFileLoaded: true });
+    const { client, upserts } = makeMockClient();
+
+    await seedEntitlements(client as never);
+
+    expect(upserts.find((u) => (u.create as { key?: string }).key === 'entitlements.enabled')!.create.value).toBe('false');
+    expect(upserts.find((u) => (u.create as { key?: string }).key === 'metering.reconcile.enabled')!.create.value).toBe('false');
+  });
+
+  it('defaults BOTH switches OFF in CI even with no env file (the E2E baseline must not flip)', async () => {
+    const seedEntitlements = await loadWithEnvPosture({ nodeEnv: 'development', ci: 'true', envFileLoaded: false });
+    const { client, upserts } = makeMockClient();
+
+    await seedEntitlements(client as never);
+
+    expect(upserts.find((u) => (u.create as { key?: string }).key === 'entitlements.enabled')!.create.value).toBe('false');
+    expect(upserts.find((u) => (u.create as { key?: string }).key === 'metering.reconcile.enabled')!.create.value).toBe('false');
+  });
+
+  it('an EXPLICIT falsy env var still forces OFF in a deployed env (operator override survives the inverted default)', async () => {
+    vi.stubEnv('ENTITLEMENTS_ENABLED_DEFAULT', 'false');
+    const seedEntitlements = await loadWithEnvPosture({ nodeEnv: 'development', ci: '', envFileLoaded: false });
+    const { client, upserts } = makeMockClient();
+
+    await seedEntitlements(client as never);
+
+    expect(upserts.find((u) => (u.create as { key?: string }).key === 'entitlements.enabled')!.create.value).toBe('false');
+    // …while the independent metering switch still takes the deployed default.
+    expect(upserts.find((u) => (u.create as { key?: string }).key === 'metering.reconcile.enabled')!.create.value).toBe('true');
   });
 
   it('the metering switch is independently env-driven from the entitlements switch', async () => {
