@@ -72,7 +72,7 @@
     "vitest": "^4.1.9"
   },
   "publishConfig": {
-    "access": "public",
+    "access": "restricted",
     "registry": "https://npm.pkg.github.com"
   },
   "repository": {
