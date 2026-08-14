@@ -254,6 +254,7 @@
     "db:migrate:deploy": "pnpm --filter @arcaai/database db:migrate:deploy",
     "db:migrate:status": "pnpm --filter @arcaai/database db:migrate:status",
     "db:migrate:reset": "pnpm --filter @arcaai/database db:migrate:reset",
+    "db:migrate:compat": "tsx scripts/check-migration-compat.ts",
     "db:push": "pnpm --filter @arcaai/database db:push",
     "db:push:force": "pnpm --filter @arcaai/database db:push:force",
     "db:studio": "pnpm --filter @arcaai/database db:studio",
