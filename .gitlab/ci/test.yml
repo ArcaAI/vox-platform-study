@@ -163,8 +163,12 @@ test-sdk:
     <<: *test-env-vars
   script:
     - echo "── Test infra → PostgreSQL=${CI_DATABASE_URL:+set} Redis=${CI_REDIS_URL:+set} ──"
-    - pnpm turbo build --filter=@arcaai/utils
-    - pnpm turbo test --filter=@arcaai/vox --filter=@arcaai/vox-node --filter=@arcaai/room --filter=@arcaai/vad --filter=@arcaai/stt --filter=@arcaai/noise-filter --filter=@arcaai/med-ner --filter=@arcaai/ui
+    # --concurrency=2: turbo defaults to one task per core, so the @arcaai/ui
+    # build (tsup + tsc over 57 primitives) ran alongside the vox build and the
+    # vitest workers and was OOM-killed (exit 137). Peak RSS, not total work,
+    # is the constraint on this shared runner.
+    - pnpm turbo build --concurrency=2 --filter=@arcaai/utils
+    - pnpm turbo test --concurrency=2 --filter=@arcaai/vox --filter=@arcaai/vox-node --filter=@arcaai/room --filter=@arcaai/vad --filter=@arcaai/stt --filter=@arcaai/noise-filter --filter=@arcaai/med-ner --filter=@arcaai/ui
   rules:
     - if: $SKIP_TESTS == "true"
       when: never
@@ -226,8 +230,13 @@ test-admin-console:
   variables:
     <<: *test-env-vars
   script:
-    - pnpm turbo build --filter=@arcaai/admin-console^...
-    - pnpm --filter @arcaai/admin-console test
+    - pnpm turbo build --concurrency=2 --filter=@arcaai/admin-console^...
+    # --maxWorkers=2: 178 test files across two projects spawned one worker per
+    # core next to every other test job on this runner; the suite took 252s
+    # (2070s of import time) and tests started tripping the timeout.
+    # `pnpm --filter <pkg> test -- <flag>` does NOT forward the flag (same trap
+    # as db:migrate:create); `exec` runs the binary directly so it lands.
+    - pnpm --filter @arcaai/admin-console exec vitest run --maxWorkers=2
   rules:
     - if: $SKIP_TESTS == "true"
       when: never

@@ -52,6 +52,12 @@ export default defineConfig({
   test: {
     globals: true,
     setupFiles: [fromHere('./src/test/setup.ts')],
+    // The 5s default is comfortable locally (this suite's slowest file spends
+    // ~300ms in tests) but not on a shared CI runner, where every test job of
+    // a manually-triggered pipeline competes for the same box and `findBy*`
+    // waits have timed out mid-render. Raise the ceiling in CI only — a real
+    // hang still fails, just 20s later.
+    testTimeout: process.env.CI ? 20_000 : 5_000,
     projects: [
       {
         extends: true,
