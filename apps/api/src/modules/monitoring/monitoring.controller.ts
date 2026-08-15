@@ -12,7 +12,7 @@ import { HeartbeatRecord, ServiceUptime, SessionsResponse, UptimeResponse } from
 // without `manage all`.
 // Service uptime/heartbeats/session-counts are platform-infra status (no PHI,
 // no per-tenant rows), so there is nothing tenant-specific to filter out here;
-// GLOBAL_ADMIN still passes via `manage:all`, and a plain DOCTOR (neither grant)
+// SUPER_ADMIN still passes via `manage:all`, and a plain DOCTOR (neither grant)
 // is still rejected.
 @CanAny(['manage', 'all'], ['read', 'TenantTelemetry'])
 @Throttle({ default: { limit: 300, ttl: 60000 } })

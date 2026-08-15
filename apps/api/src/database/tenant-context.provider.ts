@@ -15,7 +15,7 @@
  *                       extension behave as a pass-through, which is the
  *                       behaviour seed scripts and CLI tools depend on.
  *  - `isSuperAdmin()` — true when the current user's `roles` array contains
- *                       any `ELEVATED_ROLES` member (GLOBAL_ADMIN),
+ *                       any `ELEVATED_ROLES` member (SUPER_ADMIN),
  *                       OR when no CLS context exists at
  *                       all (system/startup path). The latter "no context =
  *                       elevated" stance keeps the extension permissive in
@@ -26,7 +26,7 @@
  * Intentionally tiny — no business logic lives here. All it does is read CLS.
  */
 
-import { GLOBAL_ADMIN_ROLE } from '@arcaai/applications';
+import { SUPER_ADMIN_ROLE } from '@arcaai/applications';
 import type { IActiveUserContext } from '@arcaai/applications';
 import { setTenantContextProvider, type TenantContextProvider } from '@arcaai/database';
 import { Injectable, Logger, Module, OnApplicationBootstrap, OnApplicationShutdown } from '@nestjs/common';
@@ -39,8 +39,10 @@ import { ClsModule, ClsService } from 'nestjs-cls';
  * hard dependency on the applications elevated-set export, matching the same
  * deliberate cross-layer duplication documented in `common/tenant-guards.ts`.
  */
-// SUPER_ADMIN has been consolidated into GLOBAL_ADMIN (single elevated role).
-const ELEVATED_ROLES: readonly string[] = [GLOBAL_ADMIN_ROLE];
+// The former (retired) SUPER_ADMIN role was consolidated into GLOBAL_ADMIN
+// (TASK-417); GLOBAL_ADMIN was itself later renamed to SUPER_ADMIN
+// (TASK-707) — still the single elevated role, unrelated to the retired id.
+const ELEVATED_ROLES: readonly string[] = [SUPER_ADMIN_ROLE];
 
 @Injectable()
 export class ClsTenantContextProvider implements TenantContextProvider, OnApplicationBootstrap, OnApplicationShutdown {

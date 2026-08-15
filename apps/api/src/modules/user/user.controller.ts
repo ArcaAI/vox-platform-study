@@ -141,7 +141,7 @@ export class UserController {
   async fetchAll(@Query() queryParams: PaginatedQuery): Promise<PaginatedUserResponse> {
     // Tenant-scope guard: mirrors the AuditLogController guard — non-global-admins
     // are routed to the by-tenant service path scoped to their effective CLS
-    // tenant; GLOBAL_ADMIN keeps the cross-tenant read (prevents platform-wide
+    // tenant; SUPER_ADMIN keeps the cross-tenant read (prevents platform-wide
     // user enumeration by non-global-admins).
     const user = this.cls.get('user');
     const callerTenantId = this.cls.get('tenantId');
@@ -233,7 +233,7 @@ export class UserController {
     let result;
     if (query.tenantId) {
       // Explicit tenant scope from the in-page tenant filter. Same guard as the
-      // by-tenant list route: GLOBAL_ADMIN may export any tenant, every other
+      // by-tenant list route: SUPER_ADMIN may export any tenant, every other
       // caller only their own CLS tenant.
       this.assertCanReadTenant(query.tenantId);
       result = await this.userService.fetchAllByTenantId({ ...params, tenantId: query.tenantId });
@@ -297,7 +297,7 @@ export class UserController {
     // Tenant-scope guard: the class-level `@CanManage('User')` action check does
     // NOT constrain WHICH tenant, so this route asserts it explicitly. Mirrors
     // `fetchAll`: a non-global-admin may only read their own CLS tenant;
-    // GLOBAL_ADMIN keeps the cross-tenant read.
+    // SUPER_ADMIN keeps the cross-tenant read.
     this.assertCanReadTenant(tenantId);
 
     const result = await this.userService.fetchAllByTenantId({
@@ -308,7 +308,7 @@ export class UserController {
   }
 
   /**
-   * Shared caller-tenant guard for the by-tenant read routes. GLOBAL_ADMIN
+   * Shared caller-tenant guard for the by-tenant read routes. SUPER_ADMIN
    * reads any tenant; every other `manage:User` holder is confined to their
    * own CLS tenant. Throws `ForbiddenException` otherwise.
    */
@@ -332,7 +332,7 @@ export class UserController {
    * asserted explicitly. Resolves the target's ENABLED tenant memberships via
    * `UserRoleAssignment` and throws `NotFoundException` (404, NOT 403, to avoid
    * disclosing the existence of a cross-tenant user) when the caller's active
-   * tenant is not among them. GLOBAL_ADMIN is platform-wide and exempt.
+   * tenant is not among them. SUPER_ADMIN is platform-wide and exempt.
    */
   private async assertUserInScope(id: string): Promise<void> {
     const user = this.cls.get('user');

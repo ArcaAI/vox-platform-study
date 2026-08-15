@@ -26,7 +26,7 @@ export class SettingCatalogItemResponse {
   @ApiProperty({ description: 'Server-side taxonomy bucket.', example: 'Pipeline' })
   category!: string;
 
-  @ApiPropertyOptional({ description: 'True = GLOBAL_ADMIN-only surface.' })
+  @ApiPropertyOptional({ description: 'True = SUPER_ADMIN-only surface.' })
   globalOnly?: boolean;
 
   @ApiPropertyOptional()

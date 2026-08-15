@@ -63,7 +63,7 @@ export class BillingAdminController {
 
   @Post('compute-draft')
   @ApiOperation({
-    summary: 'Compute — or idempotently recompute — the DRAFT invoice for one tenant-month. GLOBAL_ADMIN only.',
+    summary: 'Compute — or idempotently recompute — the DRAFT invoice for one tenant-month. SUPER_ADMIN only.',
     description:
       'Reads daily rollups (never raw events), the PlanEntitlement←TenantEntitlement allowance chain and the SELL card. ' +
       "A recompute supersedes the draft's lines in one transaction. FINALIZED/VOID periods → 409. Incomplete rate card → 409 (fail-closed).",
@@ -84,7 +84,7 @@ export class BillingAdminController {
   @Post(':id/finalize')
   @RequiresIfMatch()
   @ApiOperation({
-    summary: 'DRAFT → FINALIZED under If-Match OCC. Immutable after; only once the period has ended. GLOBAL_ADMIN only.',
+    summary: 'DRAFT → FINALIZED under If-Match OCC. Immutable after; only once the period has ended. SUPER_ADMIN only.',
     description: 'Missing If-Match → 428; version drift → 412; already finalized/void → 409; period still running → 400.',
   })
   @ApiResponse({ status: 201, type: BillingInvoiceResponse })
@@ -98,7 +98,7 @@ export class BillingAdminController {
 
   @Post(':id/void')
   @RequiresIfMatch()
-  @ApiOperation({ summary: 'DRAFT → VOID under If-Match OCC (one-way; a voided period stays void). GLOBAL_ADMIN only.' })
+  @ApiOperation({ summary: 'DRAFT → VOID under If-Match OCC (one-way; a voided period stays void). SUPER_ADMIN only.' })
   @ApiResponse({ status: 201, type: BillingInvoiceResponse })
   void(
     @Param('id', ParseUUIDPipe) id: string,
@@ -110,7 +110,7 @@ export class BillingAdminController {
 
   @Post(':id/adjustments')
   @ApiOperation({
-    summary: 'Issue a credit/debit memo against a FINALIZED invoice — the only correction path for a closed period. GLOBAL_ADMIN only.',
+    summary: 'Issue a credit/debit memo against a FINALIZED invoice — the only correction path for a closed period. SUPER_ADMIN only.',
     description:
       'Never mutates lines or stored totals; the memo nets as an ADJUSTMENT line on the draft of the period it is issued in. DRAFT target → 409.',
   })

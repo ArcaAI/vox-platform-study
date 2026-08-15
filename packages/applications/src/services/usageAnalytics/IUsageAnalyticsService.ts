@@ -24,7 +24,7 @@ export interface TopTenantsQuery {
  *
  * `tenantId` on every per-tenant method is the CALLER-SCOPED tenant, resolved
  * by the controller (`resolveScopedTenantId`); `getTopTenants` is the one
- * deliberately cross-tenant exception (GLOBAL_ADMIN only).
+ * deliberately cross-tenant exception (SUPER_ADMIN only).
  */
 export interface IUsageAnalyticsService {
   /** Units + rated cost per capability × provider × model for a billing period. BYOK notional split out. */

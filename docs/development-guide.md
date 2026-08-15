@@ -125,7 +125,7 @@ Per-service dev commands (Python services run inside conda `arcaenv` via `script
 | `pnpm api:dev` | API gateway :8868 | `NODE_ENV=development`, turbo `dev` task |
 | `pnpm api:dev:watch` | API + applications in watch mode | rebuild on change across both packages |
 | `pnpm stt:dev` | STT :8861 | no reload by default (protects the ~4 GB model warm-up) |
-| `pnpm smr:dev` | SMR :8862 | registers the LM Studio provider (`LM_STUDIO_MODEL`, default `gemma-4-e4b-it-qat`) |
+| `pnpm text:dev` | SMR :8862 | registers the LM Studio provider (`LM_STUDIO_MODEL`, default `gemma-4-e4b-it-qat`) |
 | `pnpm nlp:dev` | NLP :8864 | |
 | `pnpm guardrail:dev` | Guardrail :8863 | |
 | `pnpm harness:dev` | Harness API :8866 | boots even when Temporal is down |
@@ -149,7 +149,7 @@ Support commands:
 |---|---|---|
 | API gateway (`apps/api`) | 8868 | NestJS 11 — REST `/api/v1`, WS `/ws/stt/stream`, SSE |
 | STT (`apps/stt`) | 8861 | FastAPI + Dramatiq batch worker (no port) |
-| SMR (`apps/smr`) | 8862 | FastAPI, SSE streaming |
+| SMR (`apps/text`) | 8862 | FastAPI, SSE streaming |
 | Guardrail (`apps/guardrail`) | 8863 | FastAPI (health at `/api/health`, not `/api/v1`) |
 | NLP (`apps/nlp`) | 8864 | FastAPI + WS classify endpoints |
 | Harness (`apps/harness`) | 8866 | FastAPI + separate Temporal worker process |
@@ -225,7 +225,7 @@ All TypeScript suites load `.env.test` via dotenv-cli — the test stack is full
 | Contracts | included in `pnpm test:unit` | `vitest.config.ts` | nothing — zod schema validation in `tests/contracts/` (STT and SMR contracts) |
 | Cross-tenant | included in `pnpm test:unit` + `task-307-*` e2e specs | — | fixture in `tests/cross-tenant/fixtures.ts` |
 | Python: STT | `pnpm stt:test` (`:unit`, `:integration`, `:cov`) | `apps/stt/pyproject.toml` | conda `arcaenv` |
-| Python: SMR | `pnpm smr:test` (`:unit`, `:cov`) | `apps/smr/pyproject.toml` | conda `arcaenv` |
+| Python: SMR | `pnpm text:test` (`:unit`, `:cov`) | `apps/text/pyproject.toml` | conda `arcaenv` |
 | Python: NLP | `pnpm nlp:test` | `apps/nlp/pyproject.toml` | conda `arcaenv` |
 | Python: Guardrail | `pnpm guardrail:test` (`:cov`) | `apps/guardrail/pyproject.toml` | conda `arcaenv` |
 | Python: Harness | `pnpm harness:test` (`:unit`, `:cov`) | `apps/harness/pyproject.toml` | conda `arcaenv`; runs in CI as `test-harness` (hermetic — no DB/Redis) |
@@ -259,7 +259,7 @@ Architecture lint rules you will actually hit (defined in `packages/config-eslin
 
 - `arcaai-internal/no-controller-direct-prisma` — controllers must not touch `databaseService.client`; go through a service + repository.
 - Service-layer `no-restricted-syntax` — application services must not use `databaseService.client` either; route through a domain repository.
-- `arcaai-internal/no-direct-downstream-url-env` — never read `process.env.SMR_URL|STT_URL|NLP_URL|GUARDRAIL_URL|HARNESS_URL` in gateway modules; inject `IConfigService.getConfigValue(...)`.
+- `arcaai-internal/no-direct-downstream-url-env` — never read `process.env.TEXT_URL|STT_URL|NLP_URL|GUARDRAIL_URL|HARNESS_URL` in gateway modules; inject `IConfigService.getConfigValue(...)`.
 - `no-restricted-imports` — the unscoped Prisma client (`getPlatformAdminPrismaClient_Unscoped`) is banned everywhere except seeds, back-fill scripts, and test fixtures — it bypasses both tenant scoping and soft-delete filtering.
 
 Caveat: inside `packages/*` these rules are downgraded to warnings (`eslint-plugin-only-warn` in `flat/library.js`); in `apps/api` (`flat/nestjs.js`) they are hard errors. Treat warnings in packages as errors anyway — CI lint gates run over both.
@@ -293,7 +293,7 @@ Run `pnpm stack:dev:doctor` first — it pinpoints most of these. Issues below a
 | API boot: `failed to find entry for connection with name: "hope-main"` | Vault's database engine is not wired to the dev DB — `./scripts/setup-dev-vault-db.sh` (requires migrations applied first). |
 | API boot: `wrapping token is not valid` on the second start (first watch reload) | `VAULT_WRAPPED_SECRET_ID` (single-use, prod shape) is set in dev. Blank it and use the raw reusable `VAULT_SECRET_ID` — re-run `./scripts/refresh-vault-creds.sh`. |
 | TypeScript cannot resolve the Prisma client / types drift after pulling schema changes | The generated client is stale — `pnpm db:generate`, then rebuild. |
-| SMR is up but every generate 404s; live summary never appears | SMR has zero LLM providers registered (the doctor's "smr providers registered" check). Start it via `pnpm smr:dev` (registers the LM Studio provider) and ensure LM Studio is serving on :1234 with a model loaded (`LM_STUDIO_MODEL`, default `gemma-4-e4b-it-qat`). |
+| SMR is up but every generate 404s; live summary never appears | SMR has zero LLM providers registered (the doctor's "smr providers registered" check). Start it via `pnpm text:dev` (registers the LM Studio provider) and ensure LM Studio is serving on :1234 with a model loaded (`LM_STUDIO_MODEL`, default `gemma-4-e4b-it-qat`). |
 | STT internal calls all return 401 | `API_GATEWAY_KEY` is missing or a placeholder. Diagnose with `./scripts/dev-service.sh --check-stt-key`; set a real key in `apps/stt/.env` (the dev-seed service-account key is in `packages/database/src/prisma/db_main/seed/00-constants.ts`) or generate one with `pnpm gen:api-key`. |
 | STT first start takes forever / restarts keep interrupting it | Model downloads + ~4 GB warm-up on first boot (HuggingFace; set `HUGGINGFACE_TOKEN` if rate-limited). This is why `pnpm stt:dev` runs without reload — use `dev:stt:watch` only when you need it (reload is scoped to the service's own src dir). |
 | Ran `pnpm db:all` and lost local data | Expected — it force-resets the schema. Non-destructive path: `pnpm gen:prisma push --all && pnpm db:seed` (or `pnpm db:push` + `pnpm db:seed`). |

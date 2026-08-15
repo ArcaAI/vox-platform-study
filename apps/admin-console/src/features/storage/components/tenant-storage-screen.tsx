@@ -318,7 +318,7 @@ function ProvisionBucketsDialog({ open, onOpenChange }: { open: boolean; onOpenC
 /** Frame 14 — Tenant storage administration: buckets, defaults, configs, keys. */
 /**
  * The buckets list works CROSS-TENANT for an unscoped elevated
- * session (GLOBAL_ADMIN with no working tenant): the backend returns every
+ * session (SUPER_ADMIN with no working tenant): the backend returns every
  * tenant's buckets and the grid shows a Tenant column + filter. Defaults,
  * configs and access keys remain per-tenant wiring, so those tabs still ask
  * for a working tenant when the session is unscoped.

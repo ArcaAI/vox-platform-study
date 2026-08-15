@@ -105,14 +105,14 @@ export function classifyHttpError(status: number): AgenticErrorCode {
 }
 
 /**
- * Map an SMR (`apps/smr`) error payload to an
+ * Map an SMR (`apps/text`) error payload to an
  * `AgenticErrorCode`. The backend SMR proxy returns errors shaped as
  * `{ detail?, message?, error_code? }`; this helper picks the
  * `error_code` first (when present) and falls back to HTTP-status
  * classification. We intentionally do NOT throw if the inputs are
  * missing — `UNKNOWN_ERROR` is a safe default.
  *
- * SMR `error_code` taxonomy (`apps/smr/app/errors.py`):
+ * SMR `error_code` taxonomy (`apps/text/app/errors.py`):
  *   - `model_not_found`         → `NOT_FOUND`
  *   - `provider_unavailable`    → `API_ERROR`
  *   - `provider_timeout`        → `API_ERROR`

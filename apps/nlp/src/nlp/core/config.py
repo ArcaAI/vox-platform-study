@@ -134,7 +134,7 @@ class NLPServiceConfig(BaseSettings):
     # Gates the Prometheus /metrics endpoint AND the OTLP metric reader.
     #
     # Reads NLP_METRICS_ENABLED first (the fleet convention — every other
-    # service uses its own prefixed switch: SMR_METRICS_ENABLED,
+    # service uses its own prefixed switch: TEXT_METRICS_ENABLED,
     # TTS_METRICS_ENABLED, GUARDRAIL_V2_METRICS_ENABLED, HARNESS_METRICS_ENABLED,
     # METRICS_ENABLED for STT). It used to read ONLY the gateway-scoped
     # OTEL_METRICS_ENABLED, which .env.dev sets to false — so NLP's /metrics

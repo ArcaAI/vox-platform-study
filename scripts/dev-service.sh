@@ -18,7 +18,7 @@
 # model pairing below); anything you export in your shell still wins.
 #
 # USAGE:
-#   ./scripts/dev-service.sh <stt|stt-worker|smr|nlp|guardrail|harness|tts|worker> [--watch] [--print]
+#   ./scripts/dev-service.sh <stt|stt-worker|text|nlp|guardrail|harness|tts|worker> [--watch] [--print]
 #   ./scripts/dev-service.sh --check-stt-key      # preflight only (used by dev:doctor)
 #
 # FLAGS:
@@ -29,7 +29,7 @@
 #             (also: DRY_RUN=1). Secrets are never printed.
 #
 # PORT OVERRIDES (for side-by-side verification etc.):
-#   STT_PORT (8861), SMR_PORT (8862), GUARDRAIL_PORT (8863), NLP_PORT (8864),
+#   STT_PORT (8861), TEXT_PORT (8862), GUARDRAIL_PORT (8863), NLP_PORT (8864),
 #   HARNESS_PORT (8866), TTS_PORT (8865)
 #
 # BIND ADDRESS:
@@ -47,7 +47,7 @@
 #
 # MACHINE-SPECIFIC MODEL:
 #   LM_STUDIO_MODEL (default: gemma-4-e4b-it-qat) feeds both the SMR default
-#   model and the harness worker's HARNESS_SMR_MODEL. Export it in your shell
+#   model and the harness worker's HARNESS_TEXT_MODEL. Export it in your shell
 #   profile if your LM Studio has a different model loaded.
 # ============================================================================
 
@@ -151,7 +151,7 @@ for arg in "$@"; do
         --watch) WATCH=1 ;;
         --print) PRINT=1 ;;
         --help|-h) usage; exit 0 ;;
-        stt|stt-worker|smr|nlp|guardrail|harness|tts|worker) SERVICE="$arg" ;;
+        stt|stt-worker|text|nlp|guardrail|harness|tts|worker) SERVICE="$arg" ;;
         *) echo -e "${RED}Unknown argument: $arg${NC}" >&2; usage >&2; exit 2 ;;
     esac
 done
@@ -181,27 +181,27 @@ RELOAD_DIR=""
 # root env files yet. When those env files are generated, this moves to
 # .env.dev and these functions disappear.
 #
-# Everything else this script used to export is gone: SMR_OPENAI_COMPAT_ENABLED
+# Everything else this script used to export is gone: TEXT_OPENAI_COMPAT_ENABLED
 # (read by NOTHING — SMR has no `enabled` field; a provider is available iff its
-# connection config is present), SMR_OPENAI_COMPAT_BASE_URL,
-# SMR_EXTERNAL_GUARDRAIL_ENABLED, HARNESS_{SMR,NLP,API}_BASE_URL and
+# connection config is present), TEXT_OPENAI_COMPAT_BASE_URL,
+# TEXT_EXTERNAL_GUARDRAIL_ENABLED, HARNESS_{SMR,NLP,API}_BASE_URL and
 # HARNESS_RETRIEVAL_ENABLED (all identical to the pydantic field default), and
 # HARNESS_SERVICE_TOKEN (the harness API *and* the worker now read .env.dev
 # themselves through hope_env.load_env(), which is what the hand-rolled `sed`
 # of .env.dev was standing in for).
 apply_smr_env() {
-    : "${SMR_OPENAI_COMPAT_DEFAULT_MODEL:=${LM_STUDIO_MODEL}}"
-    export SMR_OPENAI_COMPAT_DEFAULT_MODEL
-    ENV_REPORT+=("SMR_OPENAI_COMPAT_DEFAULT_MODEL=$SMR_OPENAI_COMPAT_DEFAULT_MODEL")
+    : "${TEXT_OPENAI_COMPAT_DEFAULT_MODEL:=${LM_STUDIO_MODEL}}"
+    export TEXT_OPENAI_COMPAT_DEFAULT_MODEL
+    ENV_REPORT+=("TEXT_OPENAI_COMPAT_DEFAULT_MODEL=$TEXT_OPENAI_COMPAT_DEFAULT_MODEL")
 }
 
 apply_harness_env() {
-    : "${HARNESS_SMR_PROVIDER:=lm-studio}"
-    : "${HARNESS_SMR_MODEL:=${LM_STUDIO_MODEL}}"
-    export HARNESS_SMR_PROVIDER HARNESS_SMR_MODEL
+    : "${HARNESS_TEXT_PROVIDER:=lm-studio}"
+    : "${HARNESS_TEXT_MODEL:=${LM_STUDIO_MODEL}}"
+    export HARNESS_TEXT_PROVIDER HARNESS_TEXT_MODEL
     ENV_REPORT+=(
-        "HARNESS_SMR_PROVIDER=$HARNESS_SMR_PROVIDER"
-        "HARNESS_SMR_MODEL=$HARNESS_SMR_MODEL"
+        "HARNESS_TEXT_PROVIDER=$HARNESS_TEXT_PROVIDER"
+        "HARNESS_TEXT_MODEL=$HARNESS_TEXT_MODEL"
     )
 }
 
@@ -228,12 +228,12 @@ case "$SERVICE" in
             WATCH=0
         fi
         ;;
-    smr)
-        : "${SMR_PORT:=8862}"
+    text)
+        : "${TEXT_PORT:=8862}"
         apply_smr_env
-        ENV_REPORT+=("HOST=$HOST" "SMR_PORT=$SMR_PORT")
-        CMD=(uvicorn smr.main:app --host "$HOST" --port "$SMR_PORT" --app-dir apps/smr/src)
-        RELOAD_DIR="apps/smr/src"
+        ENV_REPORT+=("HOST=$HOST" "TEXT_PORT=$TEXT_PORT")
+        CMD=(uvicorn text.main:app --host "$HOST" --port "$TEXT_PORT" --app-dir apps/text/src)
+        RELOAD_DIR="apps/text/src"
         ;;
     nlp)
         : "${NLP_PORT:=8864}"

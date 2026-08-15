@@ -46,7 +46,7 @@ export abstract class BaseService implements IBaseService {
    * foreign-tenant payload be misattributed to the active tenant context (or
    * vice versa).
    *
-   * When CLS carries no tenant at all (a GLOBAL_ADMIN authenticates
+   * When CLS carries no tenant at all (a SUPER_ADMIN authenticates
    * with an empty `tenantId` and stays unscoped until they elevate to a
    * working tenant, or a truly tenant-less resource is mutated), falling back
    * to `null` made `AuditLogProcessor`'s fail-closed guard reject the job

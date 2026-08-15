@@ -18,10 +18,10 @@ export class ExportUsersQuery extends PaginatedQuery {
    * Scope the export to ONE tenant. Backs the users list's in-page
    * tenant filter (users have no `tenantId` column, so the CSV filter grammar
    * cannot express the membership join). Guarded by the same
-   * `assertCanReadTenant` as the by-tenant list route: GLOBAL_ADMIN may pass
+   * `assertCanReadTenant` as the by-tenant list route: SUPER_ADMIN may pass
    * any tenant, everyone else only their own CLS tenant.
    */
-  @ApiPropertyOptional({ description: 'Scope the export to one tenant (membership-based; GLOBAL_ADMIN may pass any tenant)' })
+  @ApiPropertyOptional({ description: 'Scope the export to one tenant (membership-based; SUPER_ADMIN may pass any tenant)' })
   @IsOptional()
   @IsString()
   tenantId?: string;

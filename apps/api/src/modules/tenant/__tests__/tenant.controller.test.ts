@@ -25,7 +25,7 @@ function createMockTenantService() {
 // Default CLS = global-admin so the existing pre-W5.5 test blocks below
 // remain agnostic to the W5.5 tenant-scope guard.
 function createMockCls(
-  user: { id?: string; tenantId?: string | null; roles?: string[] } | null = { id: 'admin', tenantId: null, roles: ['GLOBAL_ADMIN'] },
+  user: { id?: string; tenantId?: string | null; roles?: string[] } | null = { id: 'admin', tenantId: null, roles: ['SUPER_ADMIN'] },
 ) {
   return {
     get: vi.fn((key: string) => {
@@ -82,7 +82,7 @@ describe('TenantController', () => {
   // The class-level guard is @CanAny(['manage','Tenant'], ['update','Tenant']) (mode OR)
   // so a TENANT_ADMIN (who holds tenant-scoped update:Tenant, not manage)
   // clears the controller guard for self-service tenant config reads/updates.
-  // create()/delete() stay GLOBAL_ADMIN-only via method-level @CanManage('Tenant')
+  // create()/delete() stay SUPER_ADMIN-only via method-level @CanManage('Tenant')
   // — covered behaviorally by the inline-guard block below and by the
   // PolicyEngine TENANT_ADMIN regression in @arcaai/applications.
   describe('Authorization metadata (@CanAny manage|update Tenant)', () => {
@@ -191,7 +191,7 @@ describe('TenantController', () => {
   });
 
   // Every per-row endpoint must
-  // inline-assert that the caller is either a GLOBAL_ADMIN or operating
+  // inline-assert that the caller is either a SUPER_ADMIN or operating
   // on their own tenant. The class-level @CanManage('Tenant') was
   // insufficient because that policy is `tenantId: ${user.tenantId}`
   // and these methods take an arbitrary `:id` path parameter.
@@ -219,11 +219,11 @@ describe('TenantController', () => {
         expect(tenantService.update).not.toHaveBeenCalled();
       });
 
-      it('allows the call when caller is GLOBAL_ADMIN even if id != user.tenantId', async () => {
+      it('allows the call when caller is SUPER_ADMIN even if id != user.tenantId', async () => {
         const { controller, tenantService } = buildWithCls({
           id: 'u-1',
           tenantId: 't-OWN',
-          roles: ['GLOBAL_ADMIN'],
+          roles: ['SUPER_ADMIN'],
         });
         await controller.update('t-OTHER', { name: 'x' } as any, 1);
         expect(tenantService.update).toHaveBeenCalledTimes(1);
@@ -251,11 +251,11 @@ describe('TenantController', () => {
         expect(tenantService.deleteById).not.toHaveBeenCalled();
       });
 
-      it('allows the call when caller is GLOBAL_ADMIN', async () => {
+      it('allows the call when caller is SUPER_ADMIN', async () => {
         const { controller, tenantService } = buildWithCls({
           id: 'u-1',
           tenantId: 't-OWN',
-          roles: ['GLOBAL_ADMIN'],
+          roles: ['SUPER_ADMIN'],
         });
         await controller.delete('t-OTHER');
         expect(tenantService.deleteById).toHaveBeenCalledTimes(1);
@@ -273,11 +273,11 @@ describe('TenantController', () => {
         expect(tenantService.getUsageStats).not.toHaveBeenCalled();
       });
 
-      it('allows the call when caller is GLOBAL_ADMIN', async () => {
+      it('allows the call when caller is SUPER_ADMIN', async () => {
         const { controller, tenantService } = buildWithCls({
           id: 'u-1',
           tenantId: 't-OWN',
-          roles: ['GLOBAL_ADMIN'],
+          roles: ['SUPER_ADMIN'],
         });
         await controller.getUsage('t-OTHER');
         expect(tenantService.getUsageStats).toHaveBeenCalledTimes(1);
@@ -311,11 +311,11 @@ describe('TenantController', () => {
         await expect(controller.fetchByCodeName('other-clinic')).rejects.toBeInstanceOf(ForbiddenException);
       });
 
-      it('allows the call when caller is GLOBAL_ADMIN even for foreign code-name', async () => {
+      it('allows the call when caller is SUPER_ADMIN even for foreign code-name', async () => {
         const { controller, tenantService } = buildWithCls({
           id: 'u-1',
           tenantId: 't-OWN',
-          roles: ['GLOBAL_ADMIN'],
+          roles: ['SUPER_ADMIN'],
         });
         tenantService.fetchByCodeName.mockResolvedValue({
           id: 't-OTHER',
@@ -349,7 +349,7 @@ describe('TenantController', () => {
   // class-level @CanManage('Tenant') admits any TENANT_ADMIN (their policy is
   // tenantId-conditioned). Without an explicit guard a tenant admin could
   // enumerate EVERY tenant via GET /admin/tenants. Non-global-admins must see
-  // only their own tenant; GLOBAL_ADMIN keeps the full cross-tenant listing.
+  // only their own tenant; SUPER_ADMIN keeps the full cross-tenant listing.
   //
   // (fetchById / fetchByCodeName / fetchTenantConfigs are already tenant-scoped
   // at the service layer, so they are intentionally not
@@ -374,8 +374,8 @@ describe('TenantController', () => {
       expect(res.data[0].id).toBe('t-OWN');
     });
 
-    it('GLOBAL_ADMIN gets the full tenant list via tenantService.fetchAll', async () => {
-      const { controller, svc } = build({ id: 'admin', tenantId: null, roles: ['GLOBAL_ADMIN'] });
+    it('SUPER_ADMIN gets the full tenant list via tenantService.fetchAll', async () => {
+      const { controller, svc } = build({ id: 'admin', tenantId: null, roles: ['SUPER_ADMIN'] });
       svc.fetchAll.mockResolvedValue({
         data: [
           { id: 't-1', toObject: () => ({ id: 't-1' }) },
@@ -440,8 +440,8 @@ describe('TenantController', () => {
         expect(svc.fetchTenantConfigs).toHaveBeenCalledTimes(1);
       });
 
-      it('lets a GLOBAL_ADMIN read any tenant', async () => {
-        const { controller, svc } = build({ id: 'admin', tenantId: null, roles: ['GLOBAL_ADMIN'] });
+      it('lets a SUPER_ADMIN read any tenant', async () => {
+        const { controller, svc } = build({ id: 'admin', tenantId: null, roles: ['SUPER_ADMIN'] });
         await controller.fetchTenantConfigs(FOREIGN_UUID, {} as any);
         expect(svc.fetchTenantConfigs).toHaveBeenCalledTimes(1);
       });
@@ -457,7 +457,7 @@ describe('TenantController', () => {
       });
 
       it('forwards ONLY the allow-listed keys (id, value, description, expectedVersion) to the service', async () => {
-        const { controller, svc } = build({ id: 'admin', tenantId: null, roles: ['GLOBAL_ADMIN'] });
+        const { controller, svc } = build({ id: 'admin', tenantId: null, roles: ['SUPER_ADMIN'] });
         await controller.updateTenantConfigs(OWN_UUID, [
           {
             id: 'c1',

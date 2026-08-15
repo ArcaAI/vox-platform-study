@@ -55,7 +55,7 @@ function buildAuthController(fixture: AuthFixture) {
   };
   const userRoleAssignmentService = {
     findActiveRolesForUser: vi.fn(async (userId: string) =>
-      (userId === 'admin-A' ? ['GLOBAL_ADMIN'] : ['DOCTOR']).map((name) => ({ id: `role-${name}`, name, permissions: [] })),
+      (userId === 'admin-A' ? ['SUPER_ADMIN'] : ['DOCTOR']).map((name) => ({ id: `role-${name}`, name, permissions: [] })),
     ),
     findActiveTenantIdsForUser: vi.fn(async () => ['tenant-001']),
     findActiveAssignmentForUserInTenant: vi.fn(async () => ({ id: 'ura-1' })),
@@ -101,7 +101,7 @@ function buildAdminController(target: Record<string, unknown>) {
   const eventEmitter = { emit: vi.fn() };
   const userRoleAssignmentService = {
     findActiveRolesForUser: vi.fn(async (userId: string) =>
-      (userId === 'admin-A' ? ['GLOBAL_ADMIN'] : ['DOCTOR']).map((name) => ({ id: `role-${name}`, name, permissions: [] })),
+      (userId === 'admin-A' ? ['SUPER_ADMIN'] : ['DOCTOR']).map((name) => ({ id: `role-${name}`, name, permissions: [] })),
     ),
     findActiveTenantIdsForUser: vi.fn(async () => ['tenant-B']),
     findActiveAssignmentForUserInTenant: vi.fn(async () => null),

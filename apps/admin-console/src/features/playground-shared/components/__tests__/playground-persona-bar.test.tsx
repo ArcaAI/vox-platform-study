@@ -27,7 +27,7 @@ function stubSessionFetch() {
       const url = typeof input === 'string' ? input : input.toString();
       if (url.includes('/api/auth/session')) {
         const body = {
-          user: { id: 'admin-1', username: 'alice-admin', email: 'alice@hope.test', roles: ['GLOBAL_ADMIN'], tenantId: null },
+          user: { id: 'admin-1', username: 'alice-admin', email: 'alice@hope.test', roles: ['SUPER_ADMIN'], tenantId: null },
           isElevated: true,
           workingTenantId: null,
           workingTenantName: null,
@@ -37,7 +37,7 @@ function stubSessionFetch() {
             id: 'admin-1',
             username: 'alice-admin',
             email: 'alice@hope.test',
-            roles: ['GLOBAL_ADMIN'],
+            roles: ['SUPER_ADMIN'],
             tenantId: null,
             departmentId: null,
           },

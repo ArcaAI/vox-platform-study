@@ -182,7 +182,7 @@ describe('TenantOwnedResourceInterceptor', () => {
     it('allows an unscoped global admin on explicitly global-admin scoped routes', async () => {
       const harness = buildHarness({
         reflectorReturns: { modelName: 'TenantBucket', paramName: 'id', scope: 'global-admin' },
-        clsState: { user: { roles: ['GLOBAL_ADMIN'] } },
+        clsState: { user: { roles: ['SUPER_ADMIN'] } },
         params: { id: 'bucket-1' },
       });
 
@@ -196,7 +196,7 @@ describe('TenantOwnedResourceInterceptor', () => {
     it('keeps global-admin scoped routes tenant-scoped when global admin selected a tenant', async () => {
       const harness = buildHarness({
         reflectorReturns: { modelName: 'TenantBucket', paramName: 'id', scope: 'global-admin' },
-        clsState: { tenantId: SENTINEL_TENANT_A, user: { roles: ['GLOBAL_ADMIN'] } },
+        clsState: { tenantId: SENTINEL_TENANT_A, user: { roles: ['SUPER_ADMIN'] } },
         params: { id: 'bucket-1' },
       });
       harness.repos.tenantBucket.findById.mockResolvedValueOnce({ id: 'bucket-1', tenantId: SENTINEL_TENANT_B });

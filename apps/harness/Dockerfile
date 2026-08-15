@@ -47,7 +47,7 @@ COPY pyproject.toml uv.lock ./
 COPY apps/harness/pyproject.toml ./apps/harness/
 COPY apps/guardrail/pyproject.toml ./apps/guardrail/
 COPY apps/nlp/pyproject.toml ./apps/nlp/
-COPY apps/smr/pyproject.toml ./apps/smr/
+COPY apps/text/pyproject.toml ./apps/text/
 COPY apps/stt/pyproject.toml ./apps/stt/
 COPY apps/tts/pyproject.toml ./apps/tts/
 # Shared model-lifecycle package. `--no-install-project` skips only

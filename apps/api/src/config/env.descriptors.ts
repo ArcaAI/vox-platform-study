@@ -69,8 +69,8 @@ function envKnob(
 const TOPOLOGY: SettingDescriptor[] = [
   envKnob('url', 'string', 'Topology', 'Gateway base URL', 'Public base URL the gateway advertises for itself.', 'http://localhost'),
   envKnob('stt.url', 'string', 'Topology', 'STT service URL', 'Speech-to-text service base URL (apps/stt, port 8861).', 'http://localhost:8861'),
-  envKnob('smr.url', 'string', 'Topology', 'SMR service URL', 'Summarization service base URL (apps/smr, port 8862).', 'http://localhost:8862'),
-  envKnob('smr.port', 'number', 'Topology', 'SMR port', 'Port apps/smr binds; the gateway keeps it only to build health-probe URLs.', 8862),
+  envKnob('text.url', 'string', 'Topology', 'Text service URL', 'Summarization service base URL (apps/text, port 8862).', 'http://localhost:8862'),
+  envKnob('text.port', 'number', 'Topology', 'Text port', 'Port apps/text binds; the gateway keeps it only to build health-probe URLs.', 8862),
   envKnob(
     'guardrail.url',
     'string',
@@ -125,7 +125,7 @@ const TOPOLOGY: SettingDescriptor[] = [
  * ONE generated place: `.env.test` runs every application port at DEV + 100
  * (commit d84f538e), and the defaults below are the DEV half.
  *
- * `SMR_PORT` / `NLP_PORT` / `TTS_PORT` are in the topology group above instead —
+ * `TEXT_PORT` / `NLP_PORT` / `TTS_PORT` are in the topology group above instead —
  * `ConfigService` really does read those three.
  */
 const PORTS: SettingDescriptor[] = [
@@ -253,7 +253,7 @@ const OBSERVABILITY: SettingDescriptor[] = [
   // PHI-safe telemetry, layer 1 of 4 (docs/operations
   // telemetry-phi-guardrails.md). This is a cross-process OTel
   // instrumentation-library convention — the SAME bare name is read by
-  // apps/smr's `TelemetryPhiGuardConfig` (Python) — so it carries no
+  // apps/text's `TelemetryPhiGuardConfig` (Python) — so it carries no
   // per-service prefix. Deliberately no runtime `default`: the boot audit
   // (`bootstrap/genai-content-capture-audit.ts`, called from `main.ts`
   // immediately after `loadEnv()`) must be able to tell "unset" apart from

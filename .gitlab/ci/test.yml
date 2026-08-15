@@ -20,7 +20,7 @@
 # ── Skip controls ────────────────────────────────────────────────────────────
 # Set SKIP_TESTS=true to skip ALL test jobs, or use the granular variants:
 #   SKIP_TESTS_TS — skip TypeScript tests (test-api, test-packages, test-sdk, test-apps, test-ui-ct)
-#   SKIP_TESTS_PY — skip Python tests (test-stt, test-smr, test-guardrail, test-nlp, test-harness)
+#   SKIP_TESTS_PY — skip Python tests (test-stt, test-text, test-guardrail, test-nlp, test-harness)
 #
 # Usage:
 #   GitLab UI → Run pipeline → add variable SKIP_TESTS = true
@@ -47,8 +47,8 @@
   API_URL: "http://localhost:8868"
   STT_PORT: "8861"
   STT_URL: "http://localhost:8861"
-  SMR_PORT: "8862"
-  SMR_URL: "http://localhost:8862"
+  TEXT_PORT: "8862"
+  TEXT_URL: "http://localhost:8862"
   NLP_PORT: "8864"
   NLP_URL: "http://localhost:8864"
   GUARDRAIL_URL: "http://localhost:8863"
@@ -390,7 +390,7 @@ test-stt:
 
 # ── SMR tests (pytest) ──────────────────────────────────────────────────────
 
-test-smr:
+test-text:
   stage: test
   image: python:3.11-slim
   # allow_failure removed — the suite is green under a CI-shaped env
@@ -426,7 +426,7 @@ test-smr:
     CELERY_BROKER_URL: $CI_REDIS_URL
     CELERY_RESULT_BACKEND: $CI_REDIS_URL
   cache:
-    - key: pip-smr
+    - key: pip-text
       paths:
         - .pip-cache/
       policy: pull-push
@@ -437,20 +437,20 @@ test-smr:
     - pip install --quiet --retries 5 --timeout 120 packages/py-runtime-models
     - pip install --quiet --retries 5 --timeout 120 packages/py-env
     - pip install --quiet --retries 5 --timeout 120 packages/py-otel
-    - cd apps/smr
+    - cd apps/text
     - pip install --quiet --retries 5 --timeout 120 ".[test]"
-    - PYTHONPATH=src python -m pytest src/smr/tests/ -v --tb=short --junitxml=../../junit-smr.xml -x
+    - PYTHONPATH=src python -m pytest src/text/tests/ -v --tb=short --junitxml=../../junit-text.xml -x
   artifacts:
     when: always
     reports:
-      junit: junit-smr.xml
+      junit: junit-text.xml
     expire_in: 30 days
   rules:
     - if: $SKIP_TESTS == "true"
       when: never
     - if: $SKIP_TESTS_PY == "true"
       when: never
-    - !reference [.rules-smr, rules]
+    - !reference [.rules-text, rules]
 
 # ── TTS tests (pytest) ──────────────────────────────────────────────────────
 # Hermetic — providers/models are mocked/injected, so no DB/Redis/Azure needed.

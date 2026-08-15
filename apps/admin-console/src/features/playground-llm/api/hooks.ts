@@ -6,7 +6,7 @@ import { analyzeGuardrail, extractEntities } from './inference-client';
 import { playgroundLlmKeys } from './keys';
 import type { AssembledGenerateRequest, GenerateTextRequest, GuardrailType, ListPromptTemplatesParams } from './types';
 
-export function useSmrProviders(tenantKey?: string) {
+export function useTextProviders(tenantKey?: string) {
   return useQuery({ queryKey: playgroundLlmKeys.providers(tenantKey), queryFn: () => listProviders(tenantKey) });
 }
 
@@ -25,7 +25,7 @@ export function usePromptTemplates(params?: ListPromptTemplatesParams, options?:
   });
 }
 
-export function useSmrGuardrailProviders(tenantKey?: string) {
+export function useTextGuardrailProviders(tenantKey?: string) {
   return useQuery({ queryKey: playgroundLlmKeys.guardrailProviders(tenantKey), queryFn: () => listGuardrailProviders(tenantKey) });
 }
 
@@ -37,7 +37,7 @@ const TERMINAL_TASK_STATUSES = new Set(['completed', 'failed', 'cancelled']);
  * is still non-terminal upstream it keeps polling so the pane can recover the
  * full content once the task completes server-side.
  */
-export function useSmrTask(taskId: string | null, enabled: boolean) {
+export function useTextTask(taskId: string | null, enabled: boolean) {
   return useQuery({
     queryKey: playgroundLlmKeys.task(taskId ?? 'none'),
     queryFn: () => getTask(taskId as string),

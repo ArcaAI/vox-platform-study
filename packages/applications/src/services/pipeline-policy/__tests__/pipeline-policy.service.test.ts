@@ -66,14 +66,14 @@ function makeService(): PipelinePolicyService {
 }
 
 /**
- * A GLOBAL_ADMIN caller. The two locked toggles
+ * A SUPER_ADMIN caller. The two locked toggles
  * (`harnessEnabled`, `autoNerEnabled`) are writable only by this caller shape;
  * the default `cls` above is a plain tenant admin (no roles).
  */
 const elevatedCls = {
   get: vi.fn((key: string) => {
     if (key === 'tenantId') return TENANT;
-    if (key === 'user') return { id: USER, roles: ['GLOBAL_ADMIN'] };
+    if (key === 'user') return { id: USER, roles: ['SUPER_ADMIN'] };
     return undefined;
   }),
 };

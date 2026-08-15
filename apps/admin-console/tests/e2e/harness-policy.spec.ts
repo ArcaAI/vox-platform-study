@@ -78,7 +78,7 @@ test.describe('harness policy & live config \u2014 tenant policy editor (frame 3
   });
 
   /**
-   * "Safety provider" is a `GLOBAL_ADMIN_ONLY_POLICY_KEYS` key, so a tenant
+   * "Safety provider" is a `SUPER_ADMIN_ONLY_POLICY_KEYS` key, so a tenant
    * PATCH against it always 403s — this spec instead edits a genuinely
    * tenant-writable knob (clinical gate SLA); the two safety inputs render
    * read-only alongside the safety/PHI toggles.

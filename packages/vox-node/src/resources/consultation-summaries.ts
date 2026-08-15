@@ -2,7 +2,7 @@
  * P0.5 — v2 native, consultation-bound summarization (persisted). Backed by
  * `apps/api/src/modules/consultation/consultation.controller.ts`'s `:id/summary*`
  * routes, all of which sit behind the gateway's `api/v1` prefix (not exempt —
- * only the v1-compat SMR shims in `./summarization.ts` are).
+ * only the v1-compat summarization shims in `./summarization.ts` are).
  */
 
 import { encodePathSegment } from '../core/url';

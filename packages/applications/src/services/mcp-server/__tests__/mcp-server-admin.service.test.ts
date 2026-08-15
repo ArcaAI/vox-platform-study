@@ -65,7 +65,7 @@ describe('McpServerAdminService — write governance (GLOBAL-ADMIN only)', () =>
   });
 
   it('a global admin can create a SYSTEM registry row + broadcasts ResourceCreated', async () => {
-    const { svc, repo, emitter } = makeService({ roles: ['GLOBAL_ADMIN'], clsTenantId: null });
+    const { svc, repo, emitter } = makeService({ roles: ['SUPER_ADMIN'], clsTenantId: null });
     const res = await svc.create({ name: 'fhir-terminology', baseUrl: 'https://terminology.internal/mcp', phiBoundary: 'in-boundary' } as any);
     expect(repo.create).toHaveBeenCalledTimes(1);
     // Cross-tenant lane: SYSTEM target ≠ CLS tenant (null) ⇒ routed via the base client.
@@ -77,7 +77,7 @@ describe('McpServerAdminService — write governance (GLOBAL-ADMIN only)', () =>
 
 describe('McpServerAdminService — secret hygiene', () => {
   it('never echoes secret material — authRef is only ever a Vault path', async () => {
-    const { svc, repo } = makeService({ roles: ['GLOBAL_ADMIN'], clsTenantId: null });
+    const { svc, repo } = makeService({ roles: ['SUPER_ADMIN'], clsTenantId: null });
     const res = await svc.create({
       name: 'svc',
       baseUrl: 'https://x/mcp',
@@ -95,13 +95,13 @@ describe('McpServerAdminService — secret hygiene', () => {
 
 describe('McpServerAdminService — OCC + cross-tenant 404', () => {
   it('update without an If-Match version raises OptimisticConcurrencyException', async () => {
-    const { svc, repo } = makeService({ roles: ['GLOBAL_ADMIN'], clsTenantId: null });
+    const { svc, repo } = makeService({ roles: ['SUPER_ADMIN'], clsTenantId: null });
     repo.findEnabledById.mockResolvedValue(makeRow());
     await expect(svc.update('id-1', { name: 'renamed' } as any, undefined)).rejects.toBeInstanceOf(OptimisticConcurrencyException);
   });
 
   it('update CASes with the supplied version + broadcasts ResourceUpdated', async () => {
-    const { svc, repo, emitter } = makeService({ roles: ['GLOBAL_ADMIN'], clsTenantId: null });
+    const { svc, repo, emitter } = makeService({ roles: ['SUPER_ADMIN'], clsTenantId: null });
     const row = makeRow();
     repo.findEnabledById.mockResolvedValue(row);
     await svc.update(row.id, { name: 'renamed' } as any, 1);
@@ -126,7 +126,7 @@ describe('McpServerAdminService — OCC + cross-tenant 404', () => {
   });
 
   it('remove soft-deletes via CAS + broadcasts ResourceDeleted', async () => {
-    const { svc, repo, emitter } = makeService({ roles: ['GLOBAL_ADMIN'], clsTenantId: null });
+    const { svc, repo, emitter } = makeService({ roles: ['SUPER_ADMIN'], clsTenantId: null });
     const row = makeRow();
     repo.findEnabledById.mockResolvedValue(row);
     await svc.remove(row.id, 1);

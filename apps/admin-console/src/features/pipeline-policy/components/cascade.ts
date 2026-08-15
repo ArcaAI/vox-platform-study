@@ -30,7 +30,7 @@ export const TOGGLE_COLUMNS: ToggleColumn[] = [
 ];
 
 /**
- * Toggles only a GLOBAL_ADMIN may write.
+ * Toggles only a SUPER_ADMIN may write.
  *
  * `harnessEnabled` gates guardrail's primary caller (the harness) and
  * `autoNerEnabled` gates NLP auto-extraction; per the owner directive both AI

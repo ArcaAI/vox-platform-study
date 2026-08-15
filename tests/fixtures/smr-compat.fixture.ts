@@ -14,7 +14,7 @@ import type { EnhancedMedicalSummary, SimplifiedMedicalSummary } from '@arcaai/v
 
 /**
  * Golden `SessionData` — the request body a v1 app sends to
- * `POST /api/smr/api/v1/summary/sync` (SMR_Summary_Endpoints.md §3.1.1). Real
+ * `POST /api/smr/api/v1/summary/sync` (TEXT_Summary_Endpoints.md §3.1.1). Real
  * per-turn `conversation_segments` (never one collapsed blob).
  */
 export const GOLDEN_SESSION_DATA = {

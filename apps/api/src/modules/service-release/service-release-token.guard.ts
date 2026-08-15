@@ -26,7 +26,7 @@ export class ServiceReleaseTokenGuard implements CanActivate {
 
   /** Secret names this guard will accept a match against — mirrors `InternalServiceTokenGuard`. */
   private static readonly KNOWN_SECRETS: readonly string[] = [
-    'SMR_SERVICE_TOKEN',
+    'TEXT_SERVICE_TOKEN',
     'NLP_SERVICE_TOKEN',
     'GUARDRAIL_SERVICE_TOKEN',
     'HARNESS_SERVICE_TOKEN',

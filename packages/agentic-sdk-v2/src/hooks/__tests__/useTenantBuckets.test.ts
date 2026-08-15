@@ -1,7 +1,7 @@
 /**
  * useTenantBuckets Hook Tests
  *
- * Per-tenant storage bucket management for TENANT_ADMIN / GLOBAL_ADMIN.
+ * Per-tenant storage bucket management for TENANT_ADMIN / SUPER_ADMIN.
  *
  * @vitest-environment jsdom
  */

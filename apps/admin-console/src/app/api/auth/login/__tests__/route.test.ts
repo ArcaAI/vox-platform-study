@@ -28,7 +28,7 @@ const gatewayLoginBody = {
     id: 'user-1',
     username: 'root',
     email: 'root@example.com',
-    roles: ['GLOBAL_ADMIN'],
+    roles: ['SUPER_ADMIN'],
     permissions: [],
   },
   token: 'access-1',

@@ -66,7 +66,7 @@ export function ScopeRowEditor({
   previewSubject: string;
   context: { department: string | null; doctor: string | null };
   /**
-   * GLOBAL_ADMIN callers may write the governed toggles
+   * SUPER_ADMIN callers may write the governed toggles
    * (`harnessEnabled`, `autoNerEnabled`); everyone else sees them read-only,
    * because `PipelinePolicyService.upsertRow` 403s on those keys for a
    * non-elevated caller. The server remains the authority — this only avoids

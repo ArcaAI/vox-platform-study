@@ -208,12 +208,12 @@ describe('TenantBucketService', () => {
       expect(result).toEqual([]);
     });
 
-    // An unscoped GLOBAL_ADMIN (no working tenant) lists buckets
+    // An unscoped SUPER_ADMIN (no working tenant) lists buckets
     // across ALL tenants instead of getting "Tenant ID is required".
-    it('lists buckets cross-tenant for an unscoped GLOBAL_ADMIN', async () => {
+    it('lists buckets cross-tenant for an unscoped SUPER_ADMIN', async () => {
       mockClsService.get.mockImplementation((key: string) => {
         if (key === 'tenantId') return null;
-        if (key === 'user') return { id: 'user-id-1', roles: ['GLOBAL_ADMIN'] };
+        if (key === 'user') return { id: 'user-id-1', roles: ['SUPER_ADMIN'] };
         return null;
       });
       mockTenantBucketRepository.findAllCrossTenant.mockResolvedValue([

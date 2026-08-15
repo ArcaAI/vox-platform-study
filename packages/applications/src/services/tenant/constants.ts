@@ -20,10 +20,12 @@ export const GLOBAL_TENANT_KEY = '__GLOBAL__';
  * gate for sensitive tenant-config operations such as editing locked rows or
  * mutating the master `__GLOBAL__` tenant defaults.
  *
- * The former `SUPER_ADMIN` role was consolidated into
- * `GLOBAL_ADMIN`; this is the single elevated role literal.
+ * This is the single elevated role literal. History: an earlier, unrelated
+ * legacy `SUPER_ADMIN` role was consolidated into `GLOBAL_ADMIN` and retired
+ * (TASK-417); `GLOBAL_ADMIN` was then itself renamed to `SUPER_ADMIN`
+ * (TASK-707) — the two `SUPER_ADMIN` names do not refer to the same role.
  */
-export const GLOBAL_ADMIN_ROLE = 'GLOBAL_ADMIN';
+export const SUPER_ADMIN_ROLE = 'SUPER_ADMIN';
 
 /**
  * Seeded `Role.id` for `TENANT_ADMIN` (`packages/database/.../seed/03-role.ts`

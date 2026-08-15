@@ -3,7 +3,7 @@
 // These are the SERVICE-LEVEL knobs the stt and nlp services consume through
 // `GET /api/v1/internal/effective-config`. They are deliberately
 // NOT per-request model selection: SMR's stateless-gateway contract
-// (`apps/smr/src/smr/core/config.py:1-9`) stays intact, and SMR's own tunables
+// (`apps/text/src/text/core/config.py:1-9`) stays intact, and SMR's own tunables
 // arrive as `AiRuntimeProfile` rows rather than registry keys.
 //
 // Registering them changes ZERO runtime behaviour: every `default` below is

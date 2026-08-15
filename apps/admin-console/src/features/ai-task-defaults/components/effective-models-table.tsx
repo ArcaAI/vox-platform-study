@@ -71,10 +71,10 @@ function TableSkeleton() {
  *
  * ONE `GET admin/ai-task-defaults` round-trip returns the resolved default for
  * every task key. This surface is deliberately READ-ONLY: model selection for
- * guardrail/nlp/harness is a GLOBAL_ADMIN-only write, so a tenant admin sees
+ * guardrail/nlp/harness is a SUPER_ADMIN-only write, so a tenant admin sees
  * which model serves each of those tasks and which cascade tier decided it —
- * visibility, not control. SMR selection is now tenant-editable and
- * lives in the "SMR models" section, so it is excluded from this table.
+ * visibility, not control. Text-generation selection is now tenant-editable
+ * and lives in the "Text models" section, so it is excluded from this table.
  */
 export function EffectiveModelsTable() {
   const uid = useId();
@@ -95,7 +95,7 @@ export function EffectiveModelsTable() {
         </h2>
         <p className="text-muted-foreground text-sm">
           The model that actually serves each guardrail, NLP and harness task for this tenant, and which tier decided it. Selection for these tasks is
-          managed by global administrators &mdash; this view is read-only. Summarization (SMR) models are configured in the &ldquo;SMR models&rdquo;
+          managed by global administrators &mdash; this view is read-only. Summarization models are configured above, in the &ldquo;Models&rdquo;
           tab.
         </p>
       </div>

@@ -920,8 +920,8 @@ export const DEFAULT_TENANT_FEATURES: TenantFeatureFlags = {
 export const TENANT_CONFIG_KEYS = {
   DEFAULT_STT_MODEL: 'default-stt-model',
   VAD_SENSITIVITY: 'vad-sensitivity',
-  DEFAULT_SMR_PROVIDER: 'default-smr-provider',
-  DEFAULT_SMR_MODEL: 'default-smr-model',
+  DEFAULT_TEXT_PROVIDER: 'default-smr-provider',
+  DEFAULT_TEXT_MODEL: 'default-smr-model',
   DEFAULT_LANGUAGE: 'default-language',
   ENABLE_REAL_TIME_TRANSCRIPTION: 'enable-real-time-transcription',
   ENABLE_NER_EXTRACTION: 'enable-ner-extraction',
@@ -993,8 +993,8 @@ export function parseTenantConfig(settings: TenantSettingRecord[]): TenantAudioC
   return {
     defaultSttModel: settingValue(settings, K.DEFAULT_STT_MODEL),
     vadSensitivity: settingFloat(settings, K.VAD_SENSITIVITY),
-    defaultSmrProvider: settingValue(settings, K.DEFAULT_SMR_PROVIDER),
-    defaultSmrModel: settingValue(settings, K.DEFAULT_SMR_MODEL),
+    defaultSmrProvider: settingValue(settings, K.DEFAULT_TEXT_PROVIDER),
+    defaultSmrModel: settingValue(settings, K.DEFAULT_TEXT_MODEL),
     defaultLanguage: settingValue(settings, K.DEFAULT_LANGUAGE),
     features: {
       realTimeTranscription: settingBool(settings, K.ENABLE_REAL_TIME_TRANSCRIPTION, D.realTimeTranscription),

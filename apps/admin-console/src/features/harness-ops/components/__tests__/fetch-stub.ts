@@ -12,7 +12,7 @@ export type FetchHandler = (call: RecordedCall) => Response | unknown;
 export function sessionPayload(overrides: { isElevated?: boolean; workingTenantId?: string | null } = {}) {
   const isElevated = overrides.isElevated ?? true;
   const workingTenantId = overrides.workingTenantId === undefined ? 'tnt-1' : overrides.workingTenantId;
-  const user = { id: 'u-1', username: 'admin', email: 'a@x.io', roles: isElevated ? ['GLOBAL_ADMIN'] : ['TENANT_ADMIN'] };
+  const user = { id: 'u-1', username: 'admin', email: 'a@x.io', roles: isElevated ? ['SUPER_ADMIN'] : ['TENANT_ADMIN'] };
   return {
     user,
     isElevated,

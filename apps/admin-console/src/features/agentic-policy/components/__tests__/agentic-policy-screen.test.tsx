@@ -1,7 +1,7 @@
 /**
  * TDD screen tests screen 3 (Agentic Policy): the global-default
  * knob editor with If-Match OCC + tri-state overrides, the engine kill-switch,
- * the read-only agentic.* catalog, the GLOBAL_ADMIN-only gate and axe-cleanliness
+ * the read-only agentic.* catalog, the SUPER_ADMIN-only gate and axe-cleanliness
  * — against a URL-branching fetch stub covering the BFF session route.
  */
 
@@ -58,7 +58,7 @@ const CATALOG: SettingCatalog = {
       dataType: 'number',
       sensitivity: 'internal',
       maxScope: 'tenant',
-      editableBy: 'GLOBAL_ADMIN',
+      editableBy: 'SUPER_ADMIN',
       category: 'Agentic Context',
       globalOnly: true,
       label: 'Context window',
@@ -70,7 +70,7 @@ const CATALOG: SettingCatalog = {
       dataType: 'boolean',
       sensitivity: 'internal',
       maxScope: 'tenant',
-      editableBy: 'GLOBAL_ADMIN',
+      editableBy: 'SUPER_ADMIN',
       category: 'Pipeline',
     },
   ],
@@ -78,13 +78,13 @@ const CATALOG: SettingCatalog = {
 };
 
 const SESSION = {
-  user: { id: 'u-1', username: 'super_admin', email: 'admin@arca.ai', roles: ['GLOBAL_ADMIN'] },
+  user: { id: 'u-1', username: 'super_admin', email: 'admin@arca.ai', roles: ['SUPER_ADMIN'] },
   isElevated: true,
   workingTenantId: null as string | null,
   workingTenantName: null as string | null,
   impersonatingUserId: null,
   impersonatingUsername: null,
-  effectiveUser: { id: 'u-1', username: 'super_admin', email: 'admin@arca.ai', roles: ['GLOBAL_ADMIN'], tenantId: null, departmentId: null },
+  effectiveUser: { id: 'u-1', username: 'super_admin', email: 'admin@arca.ai', roles: ['SUPER_ADMIN'], tenantId: null, departmentId: null },
   effectiveIsElevated: true,
   effectiveTenantId: null as string | null,
 };

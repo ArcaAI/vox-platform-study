@@ -20,7 +20,7 @@ import { BaseService, FetchResponse, PaginatedQuery, withFormattedCountProps, wi
 import { assertParentInScope, assertUserBelongsToTenant } from '../../common/tenant-guards';
 import { IActiveUserContext } from '../../interfaces';
 import { SecretsService } from '../baseServices/_meta/secrets';
-import { GLOBAL_ADMIN_ROLE } from '../tenant/constants';
+import { SUPER_ADMIN_ROLE } from '../tenant/constants';
 
 /**
  * Ciphertext columns that must never cross an audit /
@@ -98,10 +98,10 @@ export class NotificationService extends BaseService implements INotificationSer
    *      tenant.
    *
    * The flow is:
-   *   - Pin the working `tenantId` to CLS unless the caller is GLOBAL_ADMIN
+   *   - Pin the working `tenantId` to CLS unless the caller is SUPER_ADMIN
    *     and explicitly overrides via `request.tenantId` (mirrors the
    *     UserRoleAssignment pattern).
-   *   - Assert `targetUserId` membership in the effective tenant. GLOBAL_ADMIN
+   *   - Assert `targetUserId` membership in the effective tenant. SUPER_ADMIN
    *     does NOT bypass — sending notifications to users in other tenants is
    *     a data-leak vector (notifications carry PHI hints).
    *   - When `resourceSubscriptionId` is supplied, assert the subscription
@@ -148,7 +148,7 @@ export class NotificationService extends BaseService implements INotificationSer
 
   /**
    * List endpoint scoped to the caller's tenant. Mirrors the
-   * `AuditLogService.fetchAll` D.8 pattern: GLOBAL_ADMIN bypasses the filter,
+   * `AuditLogService.fetchAll` D.8 pattern: SUPER_ADMIN bypasses the filter,
    * everyone else is pinned to CLS `tenantId`.
    */
   async fetchAll(props: PaginatedQuery): Promise<FetchResponse<NotificationEntity>> {
@@ -182,7 +182,7 @@ export class NotificationService extends BaseService implements INotificationSer
   /**
    * Refuse cross-tenant list reads driven by the DTO `tenantId` — without this
    * guard any caller could enumerate another tenant's notifications by
-   * supplying a foreign `tenantId`. GLOBAL_ADMIN bypasses for admin-tooling
+   * supplying a foreign `tenantId`. SUPER_ADMIN bypasses for admin-tooling
    * cross-tenant listing.
    */
   async fetchAllByTenantId(props: PaginatedQuery & { tenantId: string }): Promise<FetchResponse<NotificationEntity>> {
@@ -314,10 +314,10 @@ export class NotificationService extends BaseService implements INotificationSer
   /**
    * Resolve the tenantId to use for a write. The DTO's `tenantId` is allowed
    * only when (a) it equals CLS `tenantId` (already-pinned UI flow) or (b)
-   * the caller is `GLOBAL_ADMIN` (cross-tenant administrative dispatch). A
-   * non-GLOBAL_ADMIN explicit mismatch is a privilege-escalation attempt and
+   * the caller is `SUPER_ADMIN` (cross-tenant administrative dispatch). A
+   * non-SUPER_ADMIN explicit mismatch is a privilege-escalation attempt and
    * is rejected with `ForbiddenException`. Missing CLS context for a
-   * non-GLOBAL_ADMIN caller fails closed via the helper-side `BadRequestException`.
+   * non-SUPER_ADMIN caller fails closed via the helper-side `BadRequestException`.
    */
   private resolveEffectiveTenantId(requestedTenantId?: string | null): string {
     const callerTenantId = this.tenantId ?? null;
@@ -338,19 +338,19 @@ export class NotificationService extends BaseService implements INotificationSer
   }
 
   /**
-   * True when the active request user carries the GLOBAL_ADMIN role. Mirrors
+   * True when the active request user carries the SUPER_ADMIN role. Mirrors
    * the strict-default behaviour in `TenantService.isSuperAdmin()` and
    * `AuditLogService` — falls back to `false` whenever the role list is
    * missing, so the most restrictive policy applies.
    */
   private isSuperAdmin(): boolean {
     const roles = this.requestUser?.roles;
-    return Array.isArray(roles) && roles.includes(GLOBAL_ADMIN_ROLE);
+    return Array.isArray(roles) && roles.includes(SUPER_ADMIN_ROLE);
   }
 
   /**
    * Build a Prisma `where` clause that always scopes to the caller's CLS
-   * tenantId, unless the caller is GLOBAL_ADMIN. Throws `NotFoundException`
+   * tenantId, unless the caller is SUPER_ADMIN. Throws `NotFoundException`
    * when a non-super-admin caller has no tenantId in CLS so the query never
    * widens to all tenants by accident (Prisma treats `tenantId: undefined`
    * as "no filter"). Mirrors `AuditLogService.buildTenantWhere`.
@@ -368,7 +368,7 @@ export class NotificationService extends BaseService implements INotificationSer
   }
 
   /**
-   * Assert the loaded entity belongs to the caller's tenant. GLOBAL_ADMIN
+   * Assert the loaded entity belongs to the caller's tenant. SUPER_ADMIN
    * bypasses. Throws `NotFoundException` (not `ForbiddenException`) so the
    * API never reveals that a record exists for another tenant.
    */

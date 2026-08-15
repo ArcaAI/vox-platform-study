@@ -115,7 +115,7 @@ export interface EnvVar {
 /** Which deployable owns a variable, from the prefix convention. */
 const SERVICE_PREFIX: ReadonlyArray<readonly [string, string]> = [
     ['STT_', 'apps/stt'],
-    ['SMR_', 'apps/smr'],
+    ['TEXT_', 'apps/text'],
     ['GUARDRAIL_', 'apps/guardrail'],
     ['NLP_', 'apps/nlp'],
     ['HARNESS_', 'apps/harness'],
@@ -388,7 +388,7 @@ const PYTHON_SAMPLE_SECTIONS: ReadonlyArray<{ path: string; title: string; note:
     { path: 'apps/guardrail/.env.sample', title: 'GUARDRAIL — Safety Engine (apps/guardrail, :8863)', note: 'Hand-maintained (pydantic-settings; too large for this generator to validate). Content audited TASK-582.' },
     { path: 'apps/harness/.env.sample', title: 'HARNESS — Clinical Documentation (apps/harness, :8866)', note: 'Hand-maintained. Content audited TASK-582.' },
     { path: 'apps/nlp/.env.sample', title: 'NLP — Medical NLP (apps/nlp, :8864)', note: 'Hand-maintained. Content audited TASK-582.' },
-    { path: 'apps/smr/.env.sample', title: 'SMR — LLM Summarization (apps/smr, :8862)', note: 'Hand-maintained. Content audited TASK-582.' },
+    { path: 'apps/text/.env.sample', title: 'SMR — LLM Summarization (apps/text, :8862)', note: 'Hand-maintained. Content audited TASK-582.' },
     { path: 'apps/stt/.env.sample', title: 'STT — Speech-to-Text (apps/stt, :8861)', note: 'Hand-maintained. Content audited TASK-582.' },
     { path: 'apps/tts/.env.sample', title: 'TTS — Text-to-Speech (apps/tts, :8865)', note: 'Hand-maintained. Created TASK-582 (previously the only Python service with no example file).' },
 ];

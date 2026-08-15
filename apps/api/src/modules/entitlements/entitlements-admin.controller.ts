@@ -15,10 +15,10 @@ import { Authorize } from '../../decorators';
 import { EntitlementsEnabledResponse, SetEnforcementEnabledRequest, TriggerDowngradeRequest } from './dto';
 
 /**
- * GLOBAL_ADMIN surface for the DB-backed plan-entitlements
+ * SUPER_ADMIN surface for the DB-backed plan-entitlements
  * system. Reachable at `/api/v1/admin/entitlements`.
  *
- * Gated to GLOBAL_ADMIN via `@Authorize(['manage','all'])` — exactly like
+ * Gated to SUPER_ADMIN via `@Authorize(['manage','all'])` — exactly like
  * {@link RateLimitAdminController}: `manage all` is granted ONLY by the
  * `system-full-access` policy, so a tenant admin (who holds tenant-scoped
  * `manage GlobalSetting`) can never retune the platform-wide matrix or flip the

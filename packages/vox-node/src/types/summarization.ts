@@ -3,7 +3,7 @@
  *
  * Wire shapes are snake_case and FROZEN — they mirror the v1 SMR contract
  * served by `POST /api/smr/api/v1/presummary` and `POST /api/smr/api/v1/summary/sync`
- * (`apps/api/src/modules/smr-compat/`). No consultation is required: the
+ * (`apps/api/src/modules/text-compat/`). No consultation is required: the
  * caller posts a transcript and gets a summary back. Renaming any field here
  * would break the wire format — do not camelCase these.
  */
@@ -79,11 +79,11 @@ export interface PreviousVisitRecord {
 
 /**
  * The session to summarize — body of `SyncSummaryRequest.session_data`.
- * Mirrors v1 `SessionData` (frozen v1 contract, `smr-compat/dto/session-data.dto.ts`).
+ * Mirrors v1 `SessionData` (frozen v1 contract, `text-compat/dto/session-data.dto.ts`).
  *
  * `session_id` is an OPTIONAL free-form correlation string (NOT a v2
  * Consultation id) — it is echoed back on `SummaryResponse.session_id`; the
- * gateway synthesizes a `smr-...` value when omitted.
+ * gateway synthesizes a `text-...` value when omitted.
  */
 export interface SessionData {
   /** Optional session correlation id; echoed back. Not a v2 Consultation id. */
@@ -313,7 +313,7 @@ export interface PreSummaryResponse {
 
 /**
  * One frame of the SSE stream emitted by `POST /api/smr/api/v1/summary/sync`
- * (`stream: true`). Frame shapes verified against `smr-compat.controller.ts`
+ * (`stream: true`). Frame shapes verified against `text-compat.controller.ts`
  * `writeSse` calls: `delta`/`reasoning` carry accumulating text, `result`
  * carries the terminal `SummaryResponse`, `error` carries a PHI-redacted
  * detail string (never upstream content). `:keepalive` comment frames are

@@ -24,13 +24,13 @@ afterEach(() => {
 
 function session(overrides: Partial<SafeSession> = {}): SafeSession {
   return {
-    user: { id: 'admin-1', username: 'alice-admin', email: 'alice@hope.test', roles: ['GLOBAL_ADMIN'], tenantId: null },
+    user: { id: 'admin-1', username: 'alice-admin', email: 'alice@hope.test', roles: ['SUPER_ADMIN'], tenantId: null },
     isElevated: true,
     workingTenantId: null,
     workingTenantName: null,
     impersonatingUserId: null,
     impersonatingUsername: null,
-    effectiveUser: { id: 'admin-1', username: 'alice-admin', email: 'alice@hope.test', roles: ['GLOBAL_ADMIN'], tenantId: null, departmentId: null },
+    effectiveUser: { id: 'admin-1', username: 'alice-admin', email: 'alice@hope.test', roles: ['SUPER_ADMIN'], tenantId: null, departmentId: null },
     effectiveIsElevated: true,
     effectiveTenantId: null,
     ...overrides,

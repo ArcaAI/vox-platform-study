@@ -967,7 +967,7 @@ REDIS_PASS=<dev-password>
 REDIS_URL=redis://:${REDIS_PASS}@10.10.1.120:6379/5
 
 # SMR — Task state + Streams (db3)
-SMR_REDIS_URL=redis://:${REDIS_PASS}@10.10.1.120:6379/3
+TEXT_REDIS_URL=redis://:${REDIS_PASS}@10.10.1.120:6379/3
 
 # Celery — Broker + results (db4)
 CELERY_BROKER_URL=redis://:${REDIS_PASS}@10.10.1.120:6379/4
@@ -989,7 +989,7 @@ REDIS_PASS=<staging-password>
 REDIS_URL=redis://:${REDIS_PASS}@10.10.1.121:6379/5
 
 # SMR
-SMR_REDIS_URL=redis://:${REDIS_PASS}@10.10.1.121:6379/3
+TEXT_REDIS_URL=redis://:${REDIS_PASS}@10.10.1.121:6379/3
 
 # Celery
 CELERY_BROKER_URL=redis://:${REDIS_PASS}@10.10.1.121:6379/4

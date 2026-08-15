@@ -1,7 +1,7 @@
 /**
  * @arcaai/vox - useTenantBuckets Hook
  *
- * Per-tenant storage bucket management for TENANT_ADMIN / GLOBAL_ADMIN. The
+ * Per-tenant storage bucket management for TENANT_ADMIN / SUPER_ADMIN. The
  * server gates `/admin/tenants/storage/buckets` with `@CanManage('Tenant')`,
  * so a plain DOCTOR is denied (403) — surfaced as a clean `AgenticError`.
  */

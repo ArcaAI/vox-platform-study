@@ -321,7 +321,7 @@ describe('ContextInterceptor', () => {
     });
 
     it('elevates: sets CLS tenantId to the header for a global-admin with an empty JWT tenant', async () => {
-      const cls = buildCls({ id: 'admin-1', tenantId: '', roles: ['GLOBAL_ADMIN'] });
+      const cls = buildCls({ id: 'admin-1', tenantId: '', roles: ['SUPER_ADMIN'] });
       interceptor = await buildInterceptor(cls);
 
       const context = createMockContext({ headers: { 'x-tenant-id': VALID_TENANT } });
@@ -331,7 +331,7 @@ describe('ContextInterceptor', () => {
     });
 
     it('emits a structured audit log line naming the elevated tenant', async () => {
-      const cls = buildCls({ id: 'admin-1', tenantId: '', roles: ['GLOBAL_ADMIN'] });
+      const cls = buildCls({ id: 'admin-1', tenantId: '', roles: ['SUPER_ADMIN'] });
       interceptor = await buildInterceptor(cls);
       const logSpy = vi.spyOn(interceptor['logger'], 'log');
 
@@ -349,7 +349,7 @@ describe('ContextInterceptor', () => {
 
     it('throws BadRequest("Invalid x-tenant-id format") when a global-admin passes a malformed header', async () => {
       const { BadRequestException } = await import('@nestjs/common');
-      const cls = buildCls({ id: 'admin-1', tenantId: '', roles: ['GLOBAL_ADMIN'] });
+      const cls = buildCls({ id: 'admin-1', tenantId: '', roles: ['SUPER_ADMIN'] });
       interceptor = await buildInterceptor(cls);
 
       const context = createMockContext({ headers: { 'x-tenant-id': 'not-a-uuid' } });
@@ -366,7 +366,7 @@ describe('ContextInterceptor', () => {
     });
 
     it('does NOT elevate a global-admin when no x-tenant-id header is present', async () => {
-      const cls = buildCls({ id: 'admin-1', tenantId: '', roles: ['GLOBAL_ADMIN'] });
+      const cls = buildCls({ id: 'admin-1', tenantId: '', roles: ['SUPER_ADMIN'] });
       interceptor = await buildInterceptor(cls);
 
       const context = createMockContext({ headers: {} });

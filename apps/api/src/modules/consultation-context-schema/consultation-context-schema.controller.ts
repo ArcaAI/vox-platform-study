@@ -29,7 +29,7 @@ import { Authorize, CanManage, ExpectedVersion, RequiresIfMatch } from '../../de
  * `TenantAllowedOriginController` there is nothing here that the decorator
  * understates. `tenant-full-access` grants the ability scoped to
  * `conditions.tenantId` (seed `01-policy.ts`), so a TENANT_ADMIN manages its
- * own tenant's schemas and GLOBAL_ADMIN reaches it via `manage:all`.
+ * own tenant's schemas and SUPER_ADMIN reaches it via `manage:all`.
  */
 @ApiBearerAuth()
 @ApiTags('admin-consultation-context-schemas')

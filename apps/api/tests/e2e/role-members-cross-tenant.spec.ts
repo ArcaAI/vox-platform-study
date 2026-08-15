@@ -10,7 +10,7 @@
  *   M1. Envelope — `{ data, total, page, pageSize }`; rows carry the
  *       RoleMemberResponse projection (assignmentId, userId, tenantId,
  *       username, displayName, resourceStatus, assignedAt).
- *   M2. Unscoped GLOBAL_ADMIN (no CLS tenant) sees assignments across ALL
+ *   M2. Unscoped SUPER_ADMIN (no CLS tenant) sees assignments across ALL
  *       tenants, and the role read's `memberCount` equals the listing total.
  *   M3. A global admin acting AS a tenant (`X-Tenant-Id`) sees ONLY that
  *       tenant's assignments; `memberCount` follows the working tenant and
@@ -25,7 +25,7 @@
  *       and consecutive pages return distinct assignments.
  *
  * Seeded anchors (dev/test seed, `packages/database/src/prisma/db_main/seed/`):
- *   - GLOBAL_ADMIN role (00000000-…-0003): its holders (`super_admin`,
+ *   - SUPER_ADMIN role (00000000-…-0003): its holders (`super_admin`,
  *     `global_admin`) live under the SYSTEM tenant 00000000-…-0000, so any
  *     listing scoped to the default tenant 50000000-…-0000 must NOT show them.
  *   - DOCTOR role (00000000-…-0010): many members across more than one
@@ -54,10 +54,10 @@ const DEFAULT_TENANT_ID = '50000000-0000-0000-0000-000000000000';
 
 /**
  * Unscoped platform admin. The seeded `global_admin` (like `super_admin`) is
- * GLOBAL_ADMIN and logs in WITHOUT a tenant key — its JWT carries
+ * SUPER_ADMIN and logs in WITHOUT a tenant key — its JWT carries
  * `tenantId: ''`, i.e. no CLS tenant, the unscoped read posture under test.
  */
-const GLOBAL_ADMIN = { username: 'global_admin', password: 'password123' };
+const SUPER_ADMIN = { username: 'global_admin', password: 'password123' };
 
 /** uuidv7-shaped id no role has ever had — the 404 shape probe. */
 const SYNTHETIC_ROLE_ID = '018f0000-0000-7200-8000-000000000000';
@@ -141,7 +141,7 @@ test.describe('role members — cross-tenant contract', () => {
     // Logins may sit out several 60s throttle windows on the shared gateway.
     test.setTimeout(300_000);
 
-    globalAdminToken = await loginWithBackoff(request, GLOBAL_ADMIN.username, GLOBAL_ADMIN.password);
+    globalAdminToken = await loginWithBackoff(request, SUPER_ADMIN.username, SUPER_ADMIN.password);
     tenantAdminToken = await loginWithBackoff(
       request,
       SEEDED_USERS.admin.username, // tenant_admin — TENANT_ADMIN on the default tenant
@@ -157,9 +157,9 @@ test.describe('role members — cross-tenant contract', () => {
     expect(res.status(), `roles list → ${await res.text()}`).toBe(200);
     const roles = ((await res.json()) as { data: RoleRow[] }).data;
     const byName = (name: string) => roles.find((role) => role.name === name);
-    const globalAdminRole = byName('GLOBAL_ADMIN');
+    const globalAdminRole = byName('SUPER_ADMIN');
     const doctorRole = byName('DOCTOR');
-    expect(globalAdminRole, 'seeded GLOBAL_ADMIN role present').toBeTruthy();
+    expect(globalAdminRole, 'seeded SUPER_ADMIN role present').toBeTruthy();
     expect(doctorRole, 'seeded DOCTOR role present').toBeTruthy();
     globalAdminRoleId = globalAdminRole!.id;
     doctorRoleId = doctorRole!.id;
@@ -185,7 +185,7 @@ test.describe('role members — cross-tenant contract', () => {
   });
 
   test('M2 — unscoped global admin sees members across tenants; memberCount matches', async ({ request }) => {
-    // GLOBAL_ADMIN holders live under the SYSTEM tenant — an unscoped
+    // SUPER_ADMIN holders live under the SYSTEM tenant — an unscoped
     // platform read must surface them.
     const members = await fetchMembers(request, globalAdminToken, globalAdminRoleId);
     expect(members.total).toBeGreaterThanOrEqual(1);
@@ -204,7 +204,7 @@ test.describe('role members — cross-tenant contract', () => {
   });
 
   test('M3 — X-Tenant-Id scopes the listing AND memberCount to the working tenant', async ({ request }) => {
-    // Acting on the default tenant: SYSTEM-tenant GLOBAL_ADMIN holders
+    // Acting on the default tenant: SYSTEM-tenant SUPER_ADMIN holders
     // must vanish from BOTH the listing and the count.
     const members = await fetchMembers(request, globalAdminToken, globalAdminRoleId, 'page=1&pageSize=50', DEFAULT_TENANT_ID);
     for (const row of members.data) {
@@ -235,7 +235,7 @@ test.describe('role members — cross-tenant contract', () => {
     const doctorRole = await fetchRole(request, tenantAdminToken, doctorRoleId);
     expect(doctorRole.memberCount, 'tenant-scoped memberCount equals listing total').toBe(doctors.total);
 
-    // GLOBAL_ADMIN's holders are all SYSTEM-tenant: for a tenant admin the
+    // SUPER_ADMIN's holders are all SYSTEM-tenant: for a tenant admin the
     // listing must be EMPTY — platform admin identities (usernames,
     // emails) never cross the tenant boundary.
     const members = await fetchMembers(request, tenantAdminToken, globalAdminRoleId);

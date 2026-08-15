@@ -1,7 +1,7 @@
 """OpenTelemetry setup for TTS.
 
 Manages traces, logs, and FastAPI/httpx auto-instrumentation. Mirrors the
-pattern in ``apps/smr/src/smr/core/observability.py`` (the reference
+pattern in ``apps/text/src/text/core/observability.py`` (the reference
 implementation for this fleet), with one deliberate hardening: the whole
 setup is wrapped so a broken/unreachable collector degrades to no-tracing
 instead of taking the process down (a service may

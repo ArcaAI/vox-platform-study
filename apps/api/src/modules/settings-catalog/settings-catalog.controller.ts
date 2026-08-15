@@ -12,7 +12,7 @@ import { EffectiveSettingResponse, SettingCatalogItemResponse, SettingCatalogRes
  * Serves the machine-readable inventory of admin-controllable settings from the
  * `HOPE_SETTINGS_REGISTRY` (tier / scope / sensitivity / category / editor). It
  * returns METADATA only — never a value — so it is safe for any admin to read.
- * A tenant admin does not see GLOBAL_ADMIN-only entries (they cannot edit them);
+ * A tenant admin does not see SUPER_ADMIN-only entries (they cannot edit them);
  * a global-admin sees everything.
  *
  * Route note: mounted at `admin/settings/catalog`. `SettingsCatalogModule` is

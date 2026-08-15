@@ -9,7 +9,7 @@
  *   3. Start API: pnpm dev:api:test (in separate terminal)
  *   4. (Optional) Start Python services for full-stack E2E:
  *      - pnpm dev:stt:test
- *      - pnpm dev:smr:test
+ *      - pnpm dev:text:test
  *      - pnpm dev:nlp:test
  *   5. Run E2E tests: pnpm test:e2e
  *
@@ -80,9 +80,9 @@ function getServiceConfigs(): ServiceConfig[] {
     },
     {
       name: 'SMR',
-      url: process.env.SMR_URL || 'http://localhost:8962',
+      url: process.env.TEXT_URL || 'http://localhost:8962',
       healthPath: '/api/v1/health',
-      envVar: 'SMR_URL',
+      envVar: 'TEXT_URL',
       required: false,
     },
     {

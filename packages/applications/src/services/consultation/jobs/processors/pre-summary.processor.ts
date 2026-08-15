@@ -11,7 +11,7 @@ import { PromptResolutionService, type PromptResolutionTier } from '../../prompt
 import { PromptAssemblyService } from '../../prompt/prompt-assembly.service';
 import { JobMetricsService } from '../../../baseServices/observability/job-metrics.service';
 import { SecretsService } from '../../../baseServices/_meta/secrets';
-import { buildSmrGeneratePayload, mapSmrGenerateResponse } from '../../summary/smr-generate';
+import { buildSmrGeneratePayload, mapSmrGenerateResponse } from '../../summary/text-generate';
 import { HarnessPolicyService } from '../../../harness-policy/harness-policy.service';
 import { ConfigResolver } from '../../../config-resolver';
 import { IActiveUserContext } from '../../../../interfaces';
@@ -50,7 +50,7 @@ export class PreSummaryProcessor extends WorkerHost {
     @Optional() @Inject(INoteGenerationService) private readonly noteGenerationService?: INoteGenerationService,
   ) {
     super();
-    this.smrServiceUrl = this.configService.get<string>('SMR_URL') ?? 'http://localhost:8862';
+    this.smrServiceUrl = this.configService.get<string>('TEXT_URL') ?? 'http://localhost:8862';
   }
 
   /**
@@ -289,7 +289,7 @@ export class PreSummaryProcessor extends WorkerHost {
         dnaStyleId: request.dnaStyleId,
         summaryType: 'pre-summary',
       });
-      const smrServiceToken = (await this.secretsService?.getSecretOptional('SMR_SERVICE_TOKEN')) ?? '';
+      const smrServiceToken = (await this.secretsService?.getSecretOptional('TEXT_SERVICE_TOKEN')) ?? '';
       const response = await this.httpService.axiosRef.post(`${this.smrServiceUrl}/api/v1/generate`, smrPayload, {
         timeout: 120000,
         headers: {

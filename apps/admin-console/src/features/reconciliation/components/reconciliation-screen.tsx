@@ -102,7 +102,7 @@ export function ReconciliationScreen() {
       footer={
         <StatusFooter
           start={<span>Alert-only — a drift finding never rewrites the ledger; corrections are compensating events</span>}
-          end={<span className="font-mono">GLOBAL_ADMIN</span>}
+          end={<span className="font-mono">SUPER_ADMIN</span>}
         />
       }
     >

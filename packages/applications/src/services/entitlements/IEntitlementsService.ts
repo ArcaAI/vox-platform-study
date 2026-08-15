@@ -59,7 +59,7 @@ export interface IEntitlementsService {
 
   /**
    * Flip the enforcement kill-switch and force an `AppSettingsService` cache
-   * refresh so the new value is live for subsequent requests. GLOBAL_ADMIN-gated
+   * refresh so the new value is live for subsequent requests. SUPER_ADMIN-gated
    * at the HTTP layer; used by the enforcement-ON E2E to toggle in-test.
    */
   setEnforcementEnabled(enabled: boolean): Promise<boolean>;

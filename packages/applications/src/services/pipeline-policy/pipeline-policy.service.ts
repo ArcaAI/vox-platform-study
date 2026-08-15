@@ -408,7 +408,7 @@ export class PipelinePolicyService {
    * PRIVILEGE boundary, descriptor-driven.
    *
    * Reject any supplied toggle whose registry descriptor carries
-   * `globalOnly: true` when the caller is not a GLOBAL_ADMIN. Today that is
+   * `globalOnly: true` when the caller is not a SUPER_ADMIN. Today that is
    * `harnessEnabled` (guardrail's primary caller) and `autoNerEnabled` (NLP
    * auto-extraction) — but this method deliberately holds NO key list: adding
    * `globalOnly` to a `pipeline.*` descriptor is the only edit needed to govern

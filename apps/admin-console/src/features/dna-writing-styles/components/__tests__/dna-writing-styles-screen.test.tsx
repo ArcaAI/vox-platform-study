@@ -114,7 +114,7 @@ function stubFetch(handler: FetchHandler): RecordedCall[] {
 
 function session(overrides: Partial<{ isElevated: boolean; workingTenantId: string | null }> = {}) {
   const base = {
-    user: { id: 'u-1', username: 'g_admin', email: 'g_admin@hope.local', roles: ['GLOBAL_ADMIN'] },
+    user: { id: 'u-1', username: 'g_admin', email: 'g_admin@hope.local', roles: ['SUPER_ADMIN'] },
     isElevated: true,
     workingTenantId: 'tnt-1',
     workingTenantName: 'Sunrise Medical Group',

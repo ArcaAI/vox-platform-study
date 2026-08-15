@@ -50,7 +50,7 @@ path "secret/data/hope/S3_SECRET_KEY" {
   capabilities = ["read"]
 }
 
-path "secret/data/hope/SMR_SERVICE_TOKEN" {
+path "secret/data/hope/TEXT_SERVICE_TOKEN" {
   capabilities = ["read"]
 }
 

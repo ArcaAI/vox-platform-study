@@ -61,9 +61,9 @@ const buildBus = () => {
 };
 
 // `rate-limit.enabled` is a `globalOnly` descriptor, so the writer must be a
-// GLOBAL_ADMIN (the imperative privilege check in the write lane).
+// SUPER_ADMIN (the imperative privilege check in the write lane).
 const cls = {
-  get: vi.fn((key?: string) => (key === 'user' ? { id: 'global-admin', roles: ['GLOBAL_ADMIN'], tenantId: GLOBAL_TENANT_ID } : undefined)),
+  get: vi.fn((key?: string) => (key === 'user' ? { id: 'global-admin', roles: ['SUPER_ADMIN'], tenantId: GLOBAL_TENANT_ID } : undefined)),
   set: vi.fn(),
 };
 const scheduler = { addCronJob: vi.fn(), getCronJob: vi.fn(), deleteCronJob: vi.fn() };

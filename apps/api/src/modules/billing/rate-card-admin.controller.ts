@@ -51,7 +51,7 @@ export class RateCardAdminController {
   }
 
   @Post()
-  @ApiOperation({ summary: 'Create a new open-ended SELL rate row (overage rate or PLAN_FEE). GLOBAL_ADMIN only.' })
+  @ApiOperation({ summary: 'Create a new open-ended SELL rate row (overage rate or PLAN_FEE). SUPER_ADMIN only.' })
   @ApiResponse({ status: 201, type: SellRateResponse })
   create(@Body() request: CreateSellRateRequest): Promise<SellRateResponse> {
     return this.sellRateCard.createSellRate(request);
@@ -61,7 +61,7 @@ export class RateCardAdminController {
   @RequiresIfMatch()
   @ApiOperation({
     summary:
-      "Supersede a rate row: close it at the successor's effectiveFrom and insert the successor — atomic, If-Match OCC on the close. GLOBAL_ADMIN only.",
+      "Supersede a rate row: close it at the successor's effectiveFrom and insert the successor — atomic, If-Match OCC on the close. SUPER_ADMIN only.",
     description:
       'Missing If-Match → 428; version drift → 412; an already-superseded row → 409-class business error. Dimensions are inherited — a supersede reprices, it never re-shapes.',
   })

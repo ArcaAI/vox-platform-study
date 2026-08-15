@@ -169,10 +169,10 @@ describe('UserController', () => {
     mockUserDepartmentService = createMockUserDepartmentService();
     mockUserPasswordService = createMockUserPasswordService();
     mockUserExportService = createMockUserExportService();
-    // Default to a GLOBAL_ADMIN context so the generic CRUD specs below
+    // Default to a SUPER_ADMIN context so the generic CRUD specs below
     // exercise the cross-tenant operator path (fetchAll). Tenant-scoping
     // specs construct their own per-case CLS mock.
-    const mockCls = createMockCls({ id: 'admin', tenantId: null, roles: ['GLOBAL_ADMIN'] }, null);
+    const mockCls = createMockCls({ id: 'admin', tenantId: null, roles: ['SUPER_ADMIN'] }, null);
     controller = new UserController(
       mockUserService as any,
       mockApiKeyService as any,
@@ -210,7 +210,7 @@ describe('UserController', () => {
 
   // PATCH /admin/users/:id/departments bulk-reconciles a user's memberships,
   // then returns the refreshed user (the SDK `assignDepartments` contract).
-  // GLOBAL_ADMIN default context bypasses the per-id scope guard.
+  // SUPER_ADMIN default context bypasses the per-id scope guard.
   describe('PATCH /admin/users/:id/departments (setDepartments — V2 bulk reconcile)', () => {
     it('reconciles departments via the service then returns the refreshed user', async () => {
       mockUserService.fetchById.mockResolvedValue(fakeUserEntity);
@@ -322,7 +322,7 @@ describe('UserController', () => {
   // -------------------------------------------------------------------------
   // GET /admin/users tenant scoping: a TENANT_ADMIN with `manage:User` must
   // not be able to enumerate users platform-wide. Non-global-admins are
-  // routed to the by-tenant service path; GLOBAL_ADMIN keeps cross-tenant.
+  // routed to the by-tenant service path; SUPER_ADMIN keeps cross-tenant.
   // -------------------------------------------------------------------------
   describe('GET /admin/users tenant scoping', () => {
     const buildController = (cls: ReturnType<typeof createMockCls>) =>
@@ -358,9 +358,9 @@ describe('UserController', () => {
       expect(mockUserService.fetchAllByTenantId).not.toHaveBeenCalled();
     });
 
-    it('lets a GLOBAL_ADMIN read cross-tenant via the unscoped fetchAll path', async () => {
+    it('lets a SUPER_ADMIN read cross-tenant via the unscoped fetchAll path', async () => {
       mockUserService.fetchAll.mockResolvedValue(fakeFetchResponse);
-      const cls = createMockCls({ id: 'admin', tenantId: null, roles: ['GLOBAL_ADMIN'] }, null);
+      const cls = createMockCls({ id: 'admin', tenantId: null, roles: ['SUPER_ADMIN'] }, null);
 
       await buildController(cls).fetchAll({ page: 1, pageSize: 10 } as any);
 
@@ -368,13 +368,13 @@ describe('UserController', () => {
       expect(mockUserService.fetchAllByTenantId).not.toHaveBeenCalled();
     });
 
-    // When a GLOBAL_ADMIN selects a tenant in the console, the
+    // When a SUPER_ADMIN selects a tenant in the console, the
     // ContextInterceptor elevates `x-tenant-id` into CLS `tenantId`.
     // `fetchAll` must honour it and scope the listing to that tenant instead
     // of silently enumerating every tenant.
-    it('scopes a GLOBAL_ADMIN to the elevated CLS tenant (X-Tenant-Id) when present', async () => {
+    it('scopes a SUPER_ADMIN to the elevated CLS tenant (X-Tenant-Id) when present', async () => {
       mockUserService.fetchAllByTenantId.mockResolvedValue(fakeFetchResponse);
-      const cls = createMockCls({ id: 'admin', tenantId: null, roles: ['GLOBAL_ADMIN'] }, 't-PICKED');
+      const cls = createMockCls({ id: 'admin', tenantId: null, roles: ['SUPER_ADMIN'] }, 't-PICKED');
 
       await buildController(cls).fetchAll({ page: 1, pageSize: 10 } as any);
 
@@ -426,7 +426,7 @@ describe('UserController', () => {
   // GET /admin/users/tenant/:tenantId needs a caller-tenant guard, else any
   // `manage:User` holder (e.g. a TENANT_ADMIN) could enumerate ANY tenant's
   // users by UUID. Mirrors `fetchAll`'s tenant-scope guard: a non-global-admin
-  // may only read their OWN tenant; GLOBAL_ADMIN keeps the cross-tenant read.
+  // may only read their OWN tenant; SUPER_ADMIN keeps the cross-tenant read.
   // -------------------------------------------------------------------------
   describe('GET /admin/users/tenant/:tenantId caller-tenant guard', () => {
     const buildController = (cls: ReturnType<typeof createMockCls>) =>
@@ -460,9 +460,9 @@ describe('UserController', () => {
       expect(mockUserService.fetchAllByTenantId).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 't-A', page: 1, pageSize: 10 }));
     });
 
-    it('lets a GLOBAL_ADMIN read ANY tenant cross-tenant', async () => {
+    it('lets a SUPER_ADMIN read ANY tenant cross-tenant', async () => {
       mockUserService.fetchAllByTenantId.mockResolvedValue(fakeFetchResponse);
-      const cls = createMockCls({ id: 'admin', tenantId: null, roles: ['GLOBAL_ADMIN'] }, null);
+      const cls = createMockCls({ id: 'admin', tenantId: null, roles: ['SUPER_ADMIN'] }, null);
 
       await buildController(cls).fetchByTenant('t-OTHER', { page: 1 } as any);
 
@@ -794,7 +794,7 @@ describe('UserController', () => {
 
     it('records a per-item service failure (e.g. AC-02 tier guard) and keeps processing', async () => {
       mockUserRoleAssignmentService.create
-        .mockRejectedValueOnce(new Error('Only a GLOBAL_ADMIN may assign the GLOBAL_ADMIN role'))
+        .mockRejectedValueOnce(new Error('Only a SUPER_ADMIN may assign the SUPER_ADMIN role'))
         .mockResolvedValueOnce(fakeUserRoleAssignmentEntity);
 
       const result = await controller.bulkActions(
@@ -806,7 +806,7 @@ describe('UserController', () => {
       expect(result.results).toContainEqual({
         id: 'user-1',
         success: false,
-        error: 'Only a GLOBAL_ADMIN may assign the GLOBAL_ADMIN role',
+        error: 'Only a SUPER_ADMIN may assign the SUPER_ADMIN role',
       });
     });
 
@@ -1078,7 +1078,7 @@ describe('UserController', () => {
   // extension level, so a TENANT_ADMIN with `manage:User` could read/mutate
   // ANY tenant's user by UUID. The fix resolves the TARGET user's tenant
   // membership (via UserRoleAssignment) and throws 404 (no existence leak)
-  // when the target is outside the caller's active tenant. GLOBAL_ADMIN is
+  // when the target is outside the caller's active tenant. SUPER_ADMIN is
   // platform-wide and exempt.
   // -------------------------------------------------------------------------
   describe('AC-01 — by-id tenant-scope guard (cross-tenant User IDOR)', () => {
@@ -1116,9 +1116,9 @@ describe('UserController', () => {
       expect(mockUserService.fetchById).toHaveBeenCalledWith('member');
     });
 
-    it('fetchById: GLOBAL_ADMIN bypasses the scope check (cross-tenant read, membership never resolved)', async () => {
+    it('fetchById: SUPER_ADMIN bypasses the scope check (cross-tenant read, membership never resolved)', async () => {
       mockUserService.fetchById.mockResolvedValue(fakeUserEntity);
-      const cls = createMockCls({ id: 'root', tenantId: null, roles: ['GLOBAL_ADMIN'] }, null);
+      const cls = createMockCls({ id: 'root', tenantId: null, roles: ['SUPER_ADMIN'] }, null);
 
       await buildController(cls).fetchById('anyone');
 

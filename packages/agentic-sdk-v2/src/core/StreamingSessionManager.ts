@@ -349,7 +349,7 @@ export class StreamingSessionManager {
   /**
    * Compat provider-switch transport. The
    * shim route (`POST /api/stt/switch`) lives OUTSIDE the gateway's
-   * `/api/v1` prefix — same shape as `useSMR`'s `/api/smr/...` shim calls —
+   * `/api/v1` prefix — same shape as `useText`'s `/api/smr/...` shim calls —
    * so this derives the origin off `apiClient.getBaseUrl()` and hits `fetch`
    * directly (never through `apiClient`, which always prefixes `/api/v1`).
    * Body maps `target` onto the wire vocabulary: `primary` → `pipeline`,

@@ -658,7 +658,7 @@ describe('DepartmentService', () => {
    * `NotFoundException` (not `ForbiddenException`) on tenant mismatch
    * to avoid leaking the parent's existence.
    *
-   * GLOBAL_ADMIN is intentionally NOT bypassed here (unlike D.7's
+   * SUPER_ADMIN is intentionally NOT bypassed here (unlike D.7's
    * cross-tenant role assignment): a cross-tenant parent would
    * produce a malformed tree regardless of the caller's role, so the
    * guard is unconditional.
@@ -689,11 +689,11 @@ describe('DepartmentService', () => {
         expect(mockDepartmentRepository.create).not.toHaveBeenCalled();
       });
 
-      it('rejects cross-tenant parent even when caller is GLOBAL_ADMIN (no bypass)', async () => {
+      it('rejects cross-tenant parent even when caller is SUPER_ADMIN (no bypass)', async () => {
         mockClsService.get.mockImplementation((key: string) => {
           switch (key) {
             case 'user':
-              return { id: 'super-1', roles: ['GLOBAL_ADMIN'] };
+              return { id: 'super-1', roles: ['SUPER_ADMIN'] };
             case 'tenantId':
               return 'tenant-1';
             default:

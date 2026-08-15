@@ -7,7 +7,7 @@ import { resolveActiveTenant } from '../resolve-active-tenant';
 // helper decides whether that header may elevate the active tenant.
 describe('resolveActiveTenant', () => {
   const VALID_TENANT = '0190b6e2-7e7a-7c3a-8b1a-2c3d4e5f6a7b';
-  const superAdmin = { id: 'admin-1', tenantId: '', roles: ['GLOBAL_ADMIN'] };
+  const superAdmin = { id: 'admin-1', tenantId: '', roles: ['SUPER_ADMIN'] };
 
   it('elevates to the header tenant for a global-admin with an empty JWT tenant and a valid UUID header', () => {
     expect(resolveActiveTenant(superAdmin, VALID_TENANT)).toEqual({
@@ -38,7 +38,7 @@ describe('resolveActiveTenant', () => {
   });
 
   it('does NOT elevate a tenant-bound caller (truthy JWT tenant) — divergence is the interceptor’s job', () => {
-    const boundUser = { id: 'u-2', tenantId: 'tenant-A', roles: ['GLOBAL_ADMIN'] };
+    const boundUser = { id: 'u-2', tenantId: 'tenant-A', roles: ['SUPER_ADMIN'] };
     expect(resolveActiveTenant(boundUser, VALID_TENANT)).toEqual({ type: 'none' });
   });
 

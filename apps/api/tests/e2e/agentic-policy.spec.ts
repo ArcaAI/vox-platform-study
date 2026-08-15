@@ -9,16 +9,16 @@
  *       - missing `If-Match` → 428; stale `If-Match: "999"` → 412; a correct
  *         `If-Match: "<version>"` succeeds and BUMPS `version` (the `agentic.*`
  *         loop knobs live on this same policy row).
- *  B. GLOBAL_ADMIN-only writes — `PATCH /api/v1/admin/harness/policy/global`
+ *  B. SUPER_ADMIN-only writes — `PATCH /api/v1/admin/harness/policy/global`
  *     (SYSTEM GLOBAL-DEFAULT): a tenant admin → 403 (deliberate privilege wall,
  *     `assertPlatform`), even with a valid `If-Match` (so the 403 is the
  *     privilege verdict, not the 428 header gate).
  *  C. Prompt governance approval — `POST /api/v1/admin/prompt-templates/:id/approve`
- * (`PromptManagementController.approve`, Phase 3A, GLOBAL_ADMIN-only,
+ * (`PromptManagementController.approve`, Phase 3A, SUPER_ADMIN-only,
  *     `@RequiresIfMatch()`):
  *       - a tenant admin → 403 (service `isSuperAdmin` privilege check);
  *       - missing `If-Match` → 428; stale `If-Match: "999"` → 412;
- *       - a GLOBAL_ADMIN with a correct `If-Match` flips a DRAFT template to
+ *       - a SUPER_ADMIN with a correct `If-Match` flips a DRAFT template to
  *         `status = APPROVED` (the status the prompt-resolution gate requires).
  *  D. DRAFT-prompt resolution skip — `GET /api/v1/admin/agentic/instructions`
  *     (`AgenticAdminController`, the effective-instruction resolution/read plane):
@@ -58,8 +58,8 @@ interface AgenticInstructions {
   promptTier: { promptId: string; template: string; resolvedFrom: string; promptType: string };
 }
 
-test.describe('agentic policy governance (OCC + GLOBAL_ADMIN privilege walls)', () => {
-  /** GLOBAL_ADMIN acting on tenant __GLOBAL__ (same tenant as the tenant admin, so 403s are privilege verdicts). */
+test.describe('agentic policy governance (OCC + SUPER_ADMIN privilege walls)', () => {
+  /** SUPER_ADMIN acting on tenant __GLOBAL__ (same tenant as the tenant admin, so 403s are privilege verdicts). */
   let globalAdminToken: string;
   let tenantAdminToken: string;
 
@@ -125,12 +125,12 @@ test.describe('agentic policy governance (OCC + GLOBAL_ADMIN privilege walls)', 
     expect(after.version).toBeGreaterThan(mid.version);
   });
 
-  // ─────────────── B. GLOBAL_ADMIN-only global policy ───────────────
+  // ─────────────── B. SUPER_ADMIN-only global policy ───────────────
 
   test('B: a tenant admin cannot PATCH the SYSTEM global-default policy → 403 (privilege wall, not the 428 gate)', async ({ request }) => {
     const resp = await request.patch(`${HARNESS_POLICY}/global`, {
       // Supply a valid If-Match so the 428 header gate is bypassed and the 403
-      // verdict is unambiguously the GLOBAL_ADMIN privilege check.
+      // verdict is unambiguously the SUPER_ADMIN privilege check.
       headers: { ...bearer(tenantAdminToken), 'If-Match': '"1"' },
       data: { maxRegen: 2 },
     });
@@ -190,7 +190,7 @@ test.describe('agentic policy governance (OCC + GLOBAL_ADMIN privilege walls)', 
       // tenant, so approval exercises the tenant-owned branch of
       // assertCanApprove: a caller holding manage:PromptTemplate for that
       // tenant may approve it. Only SYSTEM/library templates (tenantId =
-      // SYSTEM) stay GLOBAL_ADMIN-only — see test B for that privilege wall,
+      // SYSTEM) stay SUPER_ADMIN-only — see test B for that privilege wall,
       // and .claude/rules/05-nestjs-api.md's Imperative Privilege Checks table.
       const resp = await request.post(`${PROMPT_TEMPLATES}/${tenantOwnedId}/approve`, {
         headers: { ...bearer(tenantAdminToken), 'If-Match': '"1"' },
@@ -227,7 +227,7 @@ test.describe('agentic policy governance (OCC + GLOBAL_ADMIN privilege walls)', 
       expect(resp.status()).toBe(412);
     });
 
-    test('C: a GLOBAL_ADMIN with the current If-Match flips the template to APPROVED', async ({ request }) => {
+    test('C: a SUPER_ADMIN with the current If-Match flips the template to APPROVED', async ({ request }) => {
       const get = await request.get(`${PROMPT_TEMPLATES}/${templateId}`, { headers: bearer(globalAdminToken) });
       expect(get.status()).toBe(200);
       const current = (await get.json()) as PromptTemplate;

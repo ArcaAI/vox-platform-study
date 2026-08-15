@@ -45,7 +45,7 @@ function policy(overrides: Partial<HarnessPolicy> = {}): HarnessPolicy {
 const GLOBAL_POLICY = policy({ id: 'hp-sys', tenantId: '00000000-0000-0000-0000-000000000000', source: 'system-default', maxRegen: 1, version: 3 });
 
 const SESSION = {
-  user: { id: 'u-1', username: 'super_admin', email: 'admin@arca.ai', roles: ['GLOBAL_ADMIN'] },
+  user: { id: 'u-1', username: 'super_admin', email: 'admin@arca.ai', roles: ['SUPER_ADMIN'] },
   isElevated: true,
   workingTenantId: 'tnt-1' as string | null,
   workingTenantName: 'Sunrise Medical Group' as string | null,
@@ -53,7 +53,7 @@ const SESSION = {
   impersonatingUsername: null,
   // WorkingTenantGate now reads the effective identity; this
   // fixture never impersonates, so it mirrors the operator fields.
-  effectiveUser: { id: 'u-1', username: 'super_admin', email: 'admin@arca.ai', roles: ['GLOBAL_ADMIN'], tenantId: null, departmentId: null },
+  effectiveUser: { id: 'u-1', username: 'super_admin', email: 'admin@arca.ai', roles: ['SUPER_ADMIN'], tenantId: null, departmentId: null },
   effectiveIsElevated: true,
   effectiveTenantId: 'tnt-1' as string | null,
 };
@@ -281,7 +281,7 @@ describe('HarnessPolicyScreen', () => {
   describe('E3-L1 locked safety/PHI switches', () => {
     // Every key the TENANT route rejects must render read-only.
     // `Safety provider`/`Safety model` were already in
-    // GLOBAL_ADMIN_ONLY_POLICY_KEYS before this ticket, yet the tenant tab
+    // SUPER_ADMIN_ONLY_POLICY_KEYS before this ticket, yet the tenant tab
     // still offered them as editable inputs whose save could only 403 — the
     // same defect A-1c fixes for the three toggles.
     const LOCKED = ['Safety guardrail', 'PHI detection', 'PHI fail-closed', 'Safety provider', 'Safety model'];

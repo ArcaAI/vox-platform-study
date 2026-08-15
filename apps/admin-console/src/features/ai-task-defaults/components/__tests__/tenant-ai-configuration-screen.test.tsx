@@ -3,7 +3,7 @@
  *
  * The single tenant AI surface, absorbing the retired standalone `/stt-config`,
  * `/tts-config` and `/ai-providers` screens into four tabs:
- *   - "Models" — tenant SMR selection (editable) + read-only effective
+ *   - "Models" — tenant text-generation selection (editable) + read-only effective
  *     guardrail/nlp/harness models & HarnessPolicy. Backed by `AiTaskDefault`.
  *   - "Speech" — tenant STT fallback editor. Backed by `TenantSttConfig`.
  *   - "Voice" — tenant TTS config editor. Backed by `TenantTtsConfig`.
@@ -20,7 +20,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
 import { renderWithProviders } from '@/test/render';
 import type { PermissionRule } from '@/shared/auth/ability';
-import { AI_TASK_KEYS, READ_ONLY_TASK_KEYS, SMR_FALLBACK_TASK_KEYS, SMR_PRIMARY_TASK_KEYS } from '../../api/types';
+import { AI_TASK_KEYS, READ_ONLY_TASK_KEYS, TEXT_FALLBACK_TASK_KEYS, TEXT_PRIMARY_TASK_KEYS } from '../../api/types';
 import type { EffectiveAiTaskDefault, TaskModelOption } from '../../api/types';
 import { TenantAiConfigurationScreen } from '../tenant-ai-configuration-screen';
 
@@ -47,7 +47,7 @@ const TENANT_SESSION = {
 
 const ELEVATED_WITH_TENANT_SESSION = {
   ...TENANT_SESSION,
-  user: { id: 'u-9', username: 'global_admin', email: 'root@arca.ai', roles: ['GLOBAL_ADMIN'] },
+  user: { id: 'u-9', username: 'global_admin', email: 'root@arca.ai', roles: ['SUPER_ADMIN'] },
   isElevated: true,
   effectiveIsElevated: true,
 };
@@ -234,19 +234,19 @@ describe('TenantAiConfigurationScreen — hub structure', () => {
 });
 
 describe('TenantAiConfigurationScreen — Models tab (default)', () => {
-  it('shows the tenant-editable SMR cards plus the read-only effective models table', async () => {
+  it('shows the tenant-editable text-generation cards plus the read-only effective models table', async () => {
     stubFetch();
     renderWithProviders(<TenantAiConfigurationScreen />);
 
-    // Editable SMR cards (primary + fallback).
-    for (const key of [...SMR_PRIMARY_TASK_KEYS, ...SMR_FALLBACK_TASK_KEYS]) {
+    // Editable text-generation cards (primary + fallback).
+    for (const key of [...TEXT_PRIMARY_TASK_KEYS, ...TEXT_FALLBACK_TASK_KEYS]) {
       expect(await screen.findByText(key)).toBeDefined();
     }
     // Read-only effective rows for the platform-managed keys.
     for (const key of READ_ONLY_TASK_KEYS) {
       expect(await screen.findByText(key)).toBeDefined();
     }
-    // If-Match save per editable SMR card.
+    // If-Match save per editable text-generation card.
     expect((await screen.findAllByRole('button', { name: /save .* if-match/i })).length).toBe(4);
   });
 

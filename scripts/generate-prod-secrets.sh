@@ -134,7 +134,7 @@ GENERATE_KEYS=(
   SESSION_SECRET_KEY
   API_KEY_PEPPER
   STORAGE_ACCESS_KEY_PEPPER
-  SMR_SERVICE_TOKEN
+  TEXT_SERVICE_TOKEN
   NLP_SERVICE_TOKEN
   GUARDRAIL_SERVICE_TOKEN
   HARNESS_SERVICE_TOKEN
@@ -147,7 +147,7 @@ GENERATE_KEYS=(
 PASSTHROUGH_KEYS=(
   OIDC_CLIENT_SECRET
   AZURE_SPEECH_KEY AZURE_FOUNDRY_API_KEY
-  SMR_AZURE_API_KEY SMR_OPENAI_API_KEY SMR_ANTHROPIC_API_KEY
+  TEXT_AZURE_API_KEY TEXT_OPENAI_API_KEY TEXT_ANTHROPIC_API_KEY
   TTS_SARVAM_API_KEY GUARDRAIL_VLLM_API_KEY HARNESS_JUDGE_OPENAI_COMPAT_API_KEY
   AZURE_STORAGE_CONNECTION_STRING AZURE_STORAGE_ACCOUNT_KEY
   REDIS_PASS MQTT_PASS
@@ -224,7 +224,7 @@ if [ "${#missing[@]}" -gt 0 ]; then
   yellow "Pass-throughs NOT in this bundle (supply real values before/at seed time,"
   yellow "or leave unset to keep that provider/integration off — consumers fail closed):"
   printf '     %s\n' "${missing[@]}" >&2
-  dim   "   e.g.  SMR_OPENAI_API_KEY=sk-… REDIS_PASS=… ./scripts/generate-prod-secrets.sh --force"
+  dim   "   e.g.  TEXT_OPENAI_API_KEY=sk-… REDIS_PASS=… ./scripts/generate-prod-secrets.sh --force"
 fi
 
 echo ""

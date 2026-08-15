@@ -114,11 +114,11 @@ export const TEMPLATE_IDS = {
   SOAP_SUMMARY: '71000000-0000-0000-0000-000000000002',
   DNA_ANALYSIS: '71000000-0000-0000-0000-000000000003',
   CARD_CUSTOM: '71000000-0000-0000-0000-000000000004',
-  SMR_SYSTEM_BASE: '71000000-0000-0000-0000-000000000005',
-  SMR_SYSTEM_ER: '71000000-0000-0000-0000-000000000006',
-  SMR_SYSTEM_PEDS: '71000000-0000-0000-0000-000000000007',
-  SMR_SYSTEM_CARD: '71000000-0000-0000-0000-000000000008',
-  SMR_SYSTEM_PSYCH: '71000000-0000-0000-0000-000000000009',
+  TEXT_SYSTEM_BASE: '71000000-0000-0000-0000-000000000005',
+  TEXT_SYSTEM_ER: '71000000-0000-0000-0000-000000000006',
+  TEXT_SYSTEM_PEDS: '71000000-0000-0000-0000-000000000007',
+  TEXT_SYSTEM_CARD: '71000000-0000-0000-0000-000000000008',
+  TEXT_SYSTEM_PSYCH: '71000000-0000-0000-0000-000000000009',
   SURGERY_NEW_REFERRAL: '71000000-0000-0000-0000-000000000010',
   SURGERY_REVISIT: '71000000-0000-0000-0000-000000000011',
   MEDICINE_NEW_REFERRAL: '71000000-0000-0000-0000-000000000012',
@@ -225,7 +225,7 @@ const DEPT = {
 } as const;
 
 // Content constants from Python sources (exact copy)
-const SMR_SYSTEM_BASE_CONTENT = `You are an expert medical AI assistant specialized in analyzing medical conversations between healthcare providers and patients. Your role is to create clear, accurate, and clinically relevant summaries in structured JSON format with markdown-formatted content.
+const TEXT_SYSTEM_BASE_CONTENT = `You are an expert medical AI assistant specialized in analyzing medical conversations between healthcare providers and patients. Your role is to create clear, accurate, and clinically relevant summaries in structured JSON format with markdown-formatted content.
 
 Key responsibilities:
 - Extract all clinically significant information accurately
@@ -479,11 +479,11 @@ export const DEFAULT_PROMPT_TEMPLATES = [
   },
   // ID 05: SMR System Prompt - Base
   {
-    id: TEMPLATE_IDS.SMR_SYSTEM_BASE,
+    id: TEMPLATE_IDS.TEXT_SYSTEM_BASE,
     tenantId: DEFAULT_TENANT_ID,
     name: 'SMR System Prompt - Base',
     description: 'Base system prompt for SMR medical conversation summarization',
-    content: SMR_SYSTEM_BASE_CONTENT,
+    content: TEXT_SYSTEM_BASE_CONTENT,
     category: 'SYSTEM',
     variables: null,
     currentVersionNumber: 1,
@@ -492,7 +492,7 @@ export const DEFAULT_PROMPT_TEMPLATES = [
   },
   // ID 06: SMR System Prompt - Emergency Medicine
   {
-    id: TEMPLATE_IDS.SMR_SYSTEM_ER,
+    id: TEMPLATE_IDS.TEXT_SYSTEM_ER,
     tenantId: DEFAULT_TENANT_ID,
     name: 'SMR System Prompt - Emergency Medicine',
     description: 'Emergency medicine specialty overlay for SMR',
@@ -510,7 +510,7 @@ export const DEFAULT_PROMPT_TEMPLATES = [
   },
   // ID 07: SMR System Prompt - Pediatrics
   {
-    id: TEMPLATE_IDS.SMR_SYSTEM_PEDS,
+    id: TEMPLATE_IDS.TEXT_SYSTEM_PEDS,
     tenantId: DEFAULT_TENANT_ID,
     name: 'SMR System Prompt - Pediatrics',
     description: 'Pediatrics specialty overlay for SMR',
@@ -528,7 +528,7 @@ export const DEFAULT_PROMPT_TEMPLATES = [
   },
   // ID 08: SMR System Prompt - Cardiology
   {
-    id: TEMPLATE_IDS.SMR_SYSTEM_CARD,
+    id: TEMPLATE_IDS.TEXT_SYSTEM_CARD,
     tenantId: DEFAULT_TENANT_ID,
     name: 'SMR System Prompt - Cardiology',
     description: 'Cardiology specialty overlay for SMR',
@@ -546,7 +546,7 @@ export const DEFAULT_PROMPT_TEMPLATES = [
   },
   // ID 09: SMR System Prompt - Psychiatry
   {
-    id: TEMPLATE_IDS.SMR_SYSTEM_PSYCH,
+    id: TEMPLATE_IDS.TEXT_SYSTEM_PSYCH,
     tenantId: DEFAULT_TENANT_ID,
     name: 'SMR System Prompt - Psychiatry',
     description: 'Psychiatry specialty overlay for SMR',

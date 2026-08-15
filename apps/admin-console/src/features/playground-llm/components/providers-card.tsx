@@ -8,12 +8,12 @@ import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import { Switch } from '@arcaai/ui/components/shadcn/switch';
 import { StatusBadge } from '@arcaai/ui/components/shared/status-badge';
 import { ErrorBanner } from '@/shared/state/error-state';
-import type { SmrProvider } from '../api/types';
+import type { TextProvider } from '../api/types';
 
 interface CatalogListProps {
   title: string;
   endpoint: string;
-  items: SmrProvider[] | undefined;
+  items: TextProvider[] | undefined;
   isLoading: boolean;
   error: unknown;
   onRetry: () => void;
@@ -60,10 +60,10 @@ function CatalogList({ title, endpoint, items, isLoading, error, onRetry }: Cata
 }
 
 interface ProvidersCardProps {
-  providers: SmrProvider[] | undefined;
+  providers: TextProvider[] | undefined;
   providersLoading: boolean;
   providersError: unknown;
-  guardrails: SmrProvider[] | undefined;
+  guardrails: TextProvider[] | undefined;
   guardrailsLoading: boolean;
   guardrailsError: unknown;
   onRefresh: () => void;

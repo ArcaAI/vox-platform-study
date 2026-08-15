@@ -29,7 +29,7 @@ export const COMMON_SERVICE_WARMUP_KEYS = [
   'MINIO_SECRET_KEY',
   'S3_ACCESS_KEY',
   'S3_SECRET_KEY',
-  'SMR_SERVICE_TOKEN',
+  'TEXT_SERVICE_TOKEN',
   // Read ONLY through `getSecretSync` (SpeechProxyController.getForwardHeaders,
   // TtsWsGateway.openBridge) — both are on paths that cannot await. Because
   // `getSecretSync` is cache-only by design, an unwarmed key resolves to

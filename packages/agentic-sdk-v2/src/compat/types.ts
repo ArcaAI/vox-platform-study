@@ -185,7 +185,7 @@ export interface AudioDeviceStatus {
 }
 
 // =============================================================================
-// SMR summary — frozen v1 Enhanced/Simplified/SOAP shapes
+// Text-generation summary — frozen v1 Enhanced/Simplified/SOAP shapes
 // =============================================================================
 
 export interface HistoryOfPresentIllness {
@@ -357,7 +357,7 @@ export interface SummaryResponse {
   metadata?: Record<string, unknown>;
 }
 
-export interface SMRJobStatus {
+export interface TextJobStatus {
   job_id: string;
   status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled';
   created_at: string;
@@ -371,6 +371,9 @@ export interface SMRJobStatus {
   max_retries?: number;
   metadata?: Record<string, unknown>;
 }
+
+/** @deprecated Renamed to {@link TextJobStatus} (naming-alignment: `smr` → `text`). Kept as a type alias for one release. */
+export type SMRJobStatus = TextJobStatus;
 
 export interface TestResult {
   test_name: string;
@@ -403,8 +406,8 @@ export interface ConversationSegmentInput {
   confidence?: number;
 }
 
-/** v1 `SMRRequest` (subset relevant to the workflow). */
-export interface SMRRequest {
+/** v1 `TextRequest` (subset relevant to the workflow). */
+export interface TextRequest {
   /** Full transcript text. Split per-line into per-turn segments when `segments` is absent. */
   text: string;
   /**
@@ -469,6 +472,9 @@ export interface SMRRequest {
    */
   onReasoning?: (reasoning: string, accumulated: string) => void;
 }
+
+/** @deprecated Renamed to {@link TextRequest} (naming-alignment: `smr` → `text`). Kept as a type alias for one release. */
+export type SMRRequest = TextRequest;
 
 // =============================================================================
 // Pre-summary

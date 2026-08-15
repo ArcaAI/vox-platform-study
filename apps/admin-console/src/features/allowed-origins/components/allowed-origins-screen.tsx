@@ -29,7 +29,7 @@ const STATUS_OPTIONS: FilterOption[] = [
 /**
  * Enforcement disclosure (FR-4). `origin.enforcementEnabled` is a single
  * platform-wide boolean (`GET /admin/allowed-origins/posture`), never
- * per-tenant — reachable by TENANT_ADMIN and GLOBAL_ADMIN alike. When it is
+ * per-tenant — reachable by TENANT_ADMIN and SUPER_ADMIN alike. When it is
  * OFF the rows below have NO effect (every browser origin is admitted
  * regardless of what is registered), so that state gets a prominent warning;
  * ON only needs a quiet confirmation.
@@ -65,7 +65,7 @@ function EnforcementBanner() {
   );
 }
 
-/** Allowed origins (/allowed-origins, tier 30-49 — TENANT_ADMIN for their own tenant's rows, GLOBAL_ADMIN unchanged). */
+/** Allowed origins (/allowed-origins, tier 30-49 — TENANT_ADMIN for their own tenant's rows, SUPER_ADMIN unchanged). */
 export function AllowedOriginsScreen() {
   return (
     <WorkingTenantGate

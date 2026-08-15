@@ -40,7 +40,7 @@ const CONFIG_FIELDS = [
  * The SYSTEM default is an ordinary `TenantStorageConfig` row owned by the
  * reserved SYSTEM tenant with `bucketId = NULL` — deliberately NOT a second
  * table, because the model already carries every field the platform needs and
- * already declares this exact resolution order. It is GLOBAL_ADMIN-managed: the
+ * already declares this exact resolution order. It is SUPER_ADMIN-managed: the
  * permission decorators express `action + subject` and cannot express "global
  * admins only", so that boundary is enforced imperatively here (rule 05;
  * `globalOnly: true` on the `storage.platformDefault` descriptor).
@@ -147,7 +147,7 @@ export class TenantStorageConfigService extends BaseService implements ITenantSt
   }
 
   // ---------------------------------------------------------------------------
-  // Platform default (SYSTEM tenant row) — GLOBAL_ADMIN only
+  // Platform default (SYSTEM tenant row) — SUPER_ADMIN only
   // ---------------------------------------------------------------------------
 
   async getPlatformDefault(): Promise<TenantStorageConfigResponse> {
@@ -293,7 +293,7 @@ export class TenantStorageConfigService extends BaseService implements ITenantSt
   }
 
   /**
-   * AUTH-NOTE: GLOBAL_ADMIN-only boundary. The permission decorators express
+   * AUTH-NOTE: SUPER_ADMIN-only boundary. The permission decorators express
    * `action + subject` and cannot express "global admins only" — a tenant admin
    * legitimately holds `manage:Storage` for its OWN rows. This is a 403
    * (privilege), NOT the 404-over-403 cross-tenant posture.

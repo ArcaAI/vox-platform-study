@@ -493,7 +493,7 @@ describe('NotificationService', () => {
    * list Tenant-B notifications by passing `tenantId: 'tenant-B'`. The guard
    * short-circuits with `NotFoundException` (no existence leak) when the DTO
    * `tenantId` does not match the CLS-supplied caller `tenantId`, except for
-   * GLOBAL_ADMIN callers, who retain the cross-tenant bypass (admin tooling).
+   * SUPER_ADMIN callers, who retain the cross-tenant bypass (admin tooling).
    */
   describe('fetchAllByTenantId tenant-scoped', () => {
     const setRequestUserRoles = (roles: string[] | undefined) => {
@@ -548,8 +548,8 @@ describe('NotificationService', () => {
       expect(mockNotificationRepository.findAll).not.toHaveBeenCalled();
     });
 
-    it('returns rows for a cross-tenant GLOBAL_ADMIN read (bypass)', async () => {
-      setRequestUserRoles(['GLOBAL_ADMIN']);
+    it('returns rows for a cross-tenant SUPER_ADMIN read (bypass)', async () => {
+      setRequestUserRoles(['SUPER_ADMIN']);
       const notifications = [createMockNotificationEntity({ id: 'notification-x', tenantId: 'tenant-B' })];
       mockNotificationRepository.findAll.mockResolvedValue(notifications);
       mockNotificationRepository.count.mockResolvedValue(1);
@@ -752,7 +752,7 @@ describe('NotificationService', () => {
     it('rejects creation when CLS has neither user nor tenant context', async () => {
       // Pre-D.5 this happily wrote a notification with
       // a DTO-supplied tenantId and no caller. After D.5 we fail closed:
-      // a non-GLOBAL_ADMIN call with mismatched DTO/CLS tenant is a
+      // a non-SUPER_ADMIN call with mismatched DTO/CLS tenant is a
       // privilege-escalation attempt.
       mockClsService.get.mockImplementation((key: string) => {
         if (key === 'user') return null;
@@ -872,12 +872,12 @@ describe('NotificationService', () => {
    * Read-side audit-log pattern: `fetchAll` / `fetchAllCreatedByUser`
    * inject CLS `tenantId`; `fetchById` / `update` / `deleteById` load and
    * assert `entity.tenantId === this.tenantId`, throwing `NotFoundException`
-   * (never `Forbidden`) on mismatch. GLOBAL_ADMIN bypasses the read-side
+   * (never `Forbidden`) on mismatch. SUPER_ADMIN bypasses the read-side
    * scope but NOT the write-side `targetUserId` membership check.
    */
   describe('Multi-tenant scoping', () => {
     describe('create', () => {
-      it('rejects when caller has no CLS tenantId and is not GLOBAL_ADMIN', async () => {
+      it('rejects when caller has no CLS tenantId and is not SUPER_ADMIN', async () => {
         mockClsService.get.mockImplementation((key: string) => {
           if (key === 'user') return { id: 'doctor-1', roles: ['Doctor'] };
           if (key === 'tenantId') return null;
@@ -903,7 +903,7 @@ describe('NotificationService', () => {
         expect(mockNotificationRepository.create).not.toHaveBeenCalled();
       });
 
-      it('rejects when DTO tenantId differs from CLS and caller is not GLOBAL_ADMIN', async () => {
+      it('rejects when DTO tenantId differs from CLS and caller is not SUPER_ADMIN', async () => {
         await expect(
           service.create({
             tenantId: 'tenant-other',
@@ -943,9 +943,9 @@ describe('NotificationService', () => {
         expect(mockNotificationRepository.create).not.toHaveBeenCalled();
       });
 
-      it('does NOT bypass targetUser membership check for GLOBAL_ADMIN (data-leak guard)', async () => {
+      it('does NOT bypass targetUser membership check for SUPER_ADMIN (data-leak guard)', async () => {
         mockClsService.get.mockImplementation((key: string) => {
-          if (key === 'user') return { id: 'super-admin-1', roles: ['GLOBAL_ADMIN'] };
+          if (key === 'user') return { id: 'super-admin-1', roles: ['SUPER_ADMIN'] };
           if (key === 'tenantId') return 'tenant-1';
           return null;
         });
@@ -988,9 +988,9 @@ describe('NotificationService', () => {
         expect(mockNotificationRepository.create).not.toHaveBeenCalled();
       });
 
-      it('allows GLOBAL_ADMIN to override DTO tenantId for cross-tenant dispatch', async () => {
+      it('allows SUPER_ADMIN to override DTO tenantId for cross-tenant dispatch', async () => {
         mockClsService.get.mockImplementation((key: string) => {
-          if (key === 'user') return { id: 'super-admin-1', roles: ['GLOBAL_ADMIN'] };
+          if (key === 'user') return { id: 'super-admin-1', roles: ['SUPER_ADMIN'] };
           if (key === 'tenantId') return 'tenant-1';
           return null;
         });
@@ -1050,9 +1050,9 @@ describe('NotificationService', () => {
         );
       });
 
-      it('does NOT inject tenantId for GLOBAL_ADMIN caller', async () => {
+      it('does NOT inject tenantId for SUPER_ADMIN caller', async () => {
         mockClsService.get.mockImplementation((key: string) => {
-          if (key === 'user') return { id: 'super-admin', roles: ['GLOBAL_ADMIN'] };
+          if (key === 'user') return { id: 'super-admin', roles: ['SUPER_ADMIN'] };
           if (key === 'tenantId') return 'tenant-1';
           return null;
         });
@@ -1093,9 +1093,9 @@ describe('NotificationService', () => {
         expect(mockEventEmitter.emit).not.toHaveBeenCalled();
       });
 
-      it('returns the entity for GLOBAL_ADMIN reading a cross-tenant row', async () => {
+      it('returns the entity for SUPER_ADMIN reading a cross-tenant row', async () => {
         mockClsService.get.mockImplementation((key: string) => {
-          if (key === 'user') return { id: 'super-admin', roles: ['GLOBAL_ADMIN'] };
+          if (key === 'user') return { id: 'super-admin', roles: ['SUPER_ADMIN'] };
           if (key === 'tenantId') return 'tenant-1';
           return null;
         });
@@ -1137,9 +1137,9 @@ describe('NotificationService', () => {
         expect(mockNotificationRepository.softDelete).not.toHaveBeenCalled();
       });
 
-      it('soft-deletes for GLOBAL_ADMIN even on a cross-tenant row', async () => {
+      it('soft-deletes for SUPER_ADMIN even on a cross-tenant row', async () => {
         mockClsService.get.mockImplementation((key: string) => {
-          if (key === 'user') return { id: 'super-admin', roles: ['GLOBAL_ADMIN'] };
+          if (key === 'user') return { id: 'super-admin', roles: ['SUPER_ADMIN'] };
           if (key === 'tenantId') return 'tenant-1';
           return null;
         });

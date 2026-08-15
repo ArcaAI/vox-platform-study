@@ -9,7 +9,7 @@ import { StatusBadge } from '@arcaai/ui/components/shared/status-badge';
 import { CopyButton } from '@/shared/copy-button';
 import { formatNumber } from '@/shared/format';
 import type { TaskStreamState } from '../api/use-task-stream';
-import type { AssembledDebugMeta, GenerateTextResponse, SmrTask, SmrTokenUsage } from '../api/types';
+import type { AssembledDebugMeta, GenerateTextResponse, TextTask, TextTokenUsage } from '../api/types';
 
 /** What the output pane is currently showing (screen-owned). */
 export type RunState =
@@ -24,7 +24,7 @@ interface OutputPaneProps {
   /** Generate POST in flight (sync ack not yet received). */
   isPending: boolean;
   /** Post-mortem GET /text/tasks/:taskId after a transport drop. */
-  postMortem: SmrTask | undefined;
+  postMortem: TextTask | undefined;
   /** Effective provider/model for the in-flight stream request (streams never echo it back). */
   streamProviderModel: string;
   onCancel: () => void;
@@ -57,8 +57,8 @@ function ResultSummary({
   finishReason,
   providerModel,
 }: {
-  usage?: SmrTokenUsage | null;
-  /** undefined: not shown on a stream (SMR stream frames carry no latency). */
+  usage?: TextTokenUsage | null;
+  /** undefined: not shown on a stream (text-generation stream frames carry no latency). */
   latencyMs?: number;
   finishReason?: string | null;
   providerModel?: string;
@@ -150,18 +150,18 @@ function ReasoningPanel({ reasoning, live }: { reasoning: string; live: boolean 
   );
 }
 
-/** Designed 422 error variant: SMR failed CLOSED, no toast, a real panel. */
+/** Designed 422 error variant: the service failed CLOSED, no toast, a real panel. */
 function FailClosedPanel({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
     <div role="alert" className="bg-destructive/5 flex flex-col gap-2 rounded-lg p-4">
       <div className="flex items-center gap-2">
         <IconAlertTriangle aria-hidden className="text-destructive size-4 shrink-0" />
-        <p className="text-destructive text-sm font-semibold">422, SMR fail-closed</p>
+        <p className="text-destructive text-sm font-semibold">422, text-generation fail-closed</p>
       </div>
       <p className="text-sm font-medium">No model resolved for this tenant.</p>
       <p className="text-muted-foreground text-sm">{message}</p>
       <p className="text-muted-foreground text-xs">
-        Provider and model were omitted and the tenant’s HarnessPolicy cascade produced no effective model, SMR refuses to guess. Pick an explicit
+        Provider and model were omitted and the tenant’s HarnessPolicy cascade produced no effective model, the service refuses to guess. Pick an explicit
         provider/model or fix the tenant policy.
       </p>
       <div>

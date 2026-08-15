@@ -25,12 +25,12 @@ export interface PolicyFieldGroup {
  * Knobs the TENANT editor renders read-only.
  *
  * The gateway rejects a tenant PATCH carrying any of these with 403 (they joined
- * `GLOBAL_ADMIN_ONLY_POLICY_KEYS`, which also overlays the SYSTEM value at read
+ * `SUPER_ADMIN_ONLY_POLICY_KEYS`, which also overlays the SYSTEM value at read
  * time). Disabling them here is the console half of that contract: the server is
  * still the authority, this only stops the user aiming at a control that cannot
  * succeed. The GLOBAL editor passes no locked keys — it may write all of them.
  *
- * Keep in step with `GLOBAL_ADMIN_ONLY_POLICY_KEYS` in
+ * Keep in step with `SUPER_ADMIN_ONLY_POLICY_KEYS` in
  * `packages/applications/src/services/harness-policy/harness-policy.service.ts`.
  * This list is the INTERSECTION of that one with the fields the tenant tab
  * actually renders — the remaining locked keys (SMR routing, agentic loop

@@ -344,7 +344,7 @@ export class PromptManagementController {
   // `.claude/rules/05-nestjs-api.md` §"Imperative privilege checks".
   //
   // OD-3 split gate (in `PromptManagementService.approveTemplate`):
-  // - SYSTEM/library template (tenantId = SYSTEM) → GLOBAL_ADMIN-only privilege
+  // - SYSTEM/library template (tenantId = SYSTEM) → SUPER_ADMIN-only privilege
   //   (403; the shared library is globally visible, so existence is not hidden).
   // - Tenant-owned template → a caller holding `manage:PromptTemplate` for that
   //   tenant (or a global admin) may approve; cross-tenant ids stay 404 via
@@ -366,7 +366,7 @@ export class PromptManagementController {
     description:
       'Sets `status = APPROVED` (required by prompt resolution for clinical ' +
       'flows), pins a PromptVersion snapshot, and records a WORM-style audit ' +
-      'change row. OD-3 split gate: SYSTEM/library templates are GLOBAL_ADMIN-' +
+      'change row. OD-3 split gate: SYSTEM/library templates are SUPER_ADMIN-' +
       'only; tenant-owned templates require `manage:PromptTemplate` for that ' +
       'tenant — 403 otherwise. Optimistic ' +
       'concurrency: `If-Match` REQUIRED (folds over body `expectedVersion`); ' +
@@ -383,7 +383,7 @@ export class PromptManagementController {
   @ApiResponse({ status: 200, description: 'Approved (or already-approved) template', type: PromptTemplateResponse })
   @ApiResponse({
     status: 403,
-    description: 'Forbidden — SYSTEM/library approval is GLOBAL_ADMIN-only; tenant templates require manage:PromptTemplate.',
+    description: 'Forbidden — SYSTEM/library approval is SUPER_ADMIN-only; tenant templates require manage:PromptTemplate.',
   })
   @ApiResponse({ status: 404, description: 'Template not found (or cross-tenant).' })
   @ApiResponse({ status: 412, description: 'Optimistic concurrency conflict — re-fetch and retry with the new version.' })

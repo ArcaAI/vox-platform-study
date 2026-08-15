@@ -64,7 +64,7 @@ describe('AuthorizationAuditService', () => {
     mockCacheService.publish.mockResolvedValue(undefined);
     mockCacheService.setex.mockResolvedValue(undefined);
 
-    // Default CLS context: Tenant A admin (no GLOBAL_ADMIN role)
+    // Default CLS context: Tenant A admin (no SUPER_ADMIN role)
     mockClsService.get.mockImplementation((key: string) => {
       switch (key) {
         case 'tenantId':
@@ -1094,7 +1094,7 @@ describe('AuthorizationAuditService', () => {
    * `getRecentDenials`, and `getDenialCount` bypassed `AuditLogRepository`
    * via `(prisma as any).auditLog.findMany(...)` with NO tenant scoping,
    * letting any caller query across all tenants. Methods MUST now inject
-   * `tenantId` from CLS into the `where` clause; only GLOBAL_ADMIN may bypass.
+   * `tenantId` from CLS into the `where` clause; only SUPER_ADMIN may bypass.
    */
   describe('Multi-tenant scoping', () => {
     describe('getAuthorizationHistory', () => {
@@ -1114,13 +1114,13 @@ describe('AuthorizationAuditService', () => {
         );
       });
 
-      it('should NOT inject tenantId for GLOBAL_ADMIN caller', async () => {
+      it('should NOT inject tenantId for SUPER_ADMIN caller', async () => {
         mockClsService.get.mockImplementation((key: string) => {
           switch (key) {
             case 'tenantId':
               return 'tenant-a';
             case 'user':
-              return { id: 'super-admin-id', roles: ['GLOBAL_ADMIN'] };
+              return { id: 'super-admin-id', roles: ['SUPER_ADMIN'] };
             default:
               return null;
           }
@@ -1167,13 +1167,13 @@ describe('AuthorizationAuditService', () => {
         );
       });
 
-      it('should NOT inject tenantId for GLOBAL_ADMIN caller (cross-tenant denial query)', async () => {
+      it('should NOT inject tenantId for SUPER_ADMIN caller (cross-tenant denial query)', async () => {
         mockClsService.get.mockImplementation((key: string) => {
           switch (key) {
             case 'tenantId':
               return 'tenant-a';
             case 'user':
-              return { id: 'super-admin-id', roles: ['GLOBAL_ADMIN'] };
+              return { id: 'super-admin-id', roles: ['SUPER_ADMIN'] };
             default:
               return null;
           }
@@ -1198,13 +1198,13 @@ describe('AuthorizationAuditService', () => {
         expect(callWhere.responsibleUserId).toBe('user-123');
       });
 
-      it('should NOT scope by tenant for GLOBAL_ADMIN caller', async () => {
+      it('should NOT scope by tenant for SUPER_ADMIN caller', async () => {
         mockClsService.get.mockImplementation((key: string) => {
           switch (key) {
             case 'tenantId':
               return 'tenant-a';
             case 'user':
-              return { id: 'super-admin-id', roles: ['GLOBAL_ADMIN'] };
+              return { id: 'super-admin-id', roles: ['SUPER_ADMIN'] };
             default:
               return null;
           }
@@ -1219,8 +1219,8 @@ describe('AuthorizationAuditService', () => {
     });
 
     describe('Missing tenantId in CLS', () => {
-      it('should still inject undefined tenantId (Prisma treats as no filter — log only, no enforcement) — guarded only by GLOBAL_ADMIN path', async () => {
-        // When CLS has no tenantId AND caller is not GLOBAL_ADMIN we still
+      it('should still inject undefined tenantId (Prisma treats as no filter — log only, no enforcement) — guarded only by SUPER_ADMIN path', async () => {
+        // When CLS has no tenantId AND caller is not SUPER_ADMIN we still
         // refuse to widen the query to all tenants by leaving the
         // explicit `tenantId: undefined` out of the where. This means
         // Prisma matches every row. To prevent that, we filter on a

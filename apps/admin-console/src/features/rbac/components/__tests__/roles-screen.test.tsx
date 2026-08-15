@@ -77,7 +77,7 @@ const BILLING_MEMBERS: RoleMember[] = [
 /** SYSTEM-role policy unlock reads `effectiveIsElevated` off the BFF session. */
 function session(overrides: { roles?: string[]; effectiveIsElevated?: boolean } = {}) {
   const roles = overrides.roles ?? ['TENANT_ADMIN'];
-  const effectiveIsElevated = overrides.effectiveIsElevated ?? roles.includes('GLOBAL_ADMIN');
+  const effectiveIsElevated = overrides.effectiveIsElevated ?? roles.includes('SUPER_ADMIN');
   return {
     user: { id: 'u-1', username: 'admin', email: 'admin@arca.ai', roles, tenantId: null },
     isElevated: effectiveIsElevated,
@@ -92,7 +92,7 @@ function session(overrides: { roles?: string[]; effectiveIsElevated?: boolean } 
 }
 
 const TENANT_ADMIN_SESSION = session({ roles: ['TENANT_ADMIN'] });
-const GLOBAL_ADMIN_SESSION = session({ roles: ['GLOBAL_ADMIN'] });
+const SUPER_ADMIN_SESSION = session({ roles: ['SUPER_ADMIN'] });
 
 const POLICY_CATALOG: Policy[] = [
   {
@@ -201,7 +201,7 @@ describe('RolesScreen (two-pane redesign)', () => {
 
   it('a global admin session unlocks the Policies tab AND Edit on a SYSTEM role; Delete stays hidden', async () => {
     stubFetch((url, method) => {
-      if (url === '/api/auth/session') return Response.json(GLOBAL_ADMIN_SESSION);
+      if (url === '/api/auth/session') return Response.json(SUPER_ADMIN_SESSION);
       return defaultHandler(url, method);
     });
     renderWithProviders(<RolesScreen />, { searchParams: '?role=r-1&tab=policies' });
@@ -220,7 +220,7 @@ describe('RolesScreen (two-pane redesign)', () => {
   it('a global admin can rename a SYSTEM role through the Edit dialog', async () => {
     const RENAMED_SYSTEM_ROLE = { ...SYSTEM_ROLE, name: 'GlobalAdmin', description: 'Renamed by a global admin' };
     const calls = stubFetch((url, method) => {
-      if (url === '/api/auth/session') return Response.json(GLOBAL_ADMIN_SESSION);
+      if (url === '/api/auth/session') return Response.json(SUPER_ADMIN_SESSION);
       if (method === 'PATCH' && url === '/api/hope/admin/rbac/roles/r-1') return Response.json(RENAMED_SYSTEM_ROLE);
       return defaultHandler(url, method);
     });

@@ -22,30 +22,33 @@ import { ResourceStatusType, type UserDepartmentRepository, type UserRepository,
 /**
  * Platform-wide operator role, scoped above any single tenant — the ONLY
  * role with cross-tenant administrative rights. Mirrors
- * `services/tenant/constants.GLOBAL_ADMIN_ROLE` (kept local here so
- * `common/` does not import from `services/`). The former `SUPER_ADMIN`
- * role was consolidated into `GLOBAL_ADMIN` and retired.
+ * `services/tenant/constants.SUPER_ADMIN_ROLE` (kept local here so
+ * `common/` does not import from `services/`). History: an earlier,
+ * unrelated legacy `SUPER_ADMIN` role was consolidated into `GLOBAL_ADMIN`
+ * and retired (TASK-417); `GLOBAL_ADMIN` was then itself renamed to
+ * `SUPER_ADMIN` (TASK-707) — the two `SUPER_ADMIN` names do not refer to
+ * the same role.
  */
-const GLOBAL_ADMIN_ROLE = 'GLOBAL_ADMIN';
+const SUPER_ADMIN_ROLE = 'SUPER_ADMIN';
 
 /**
  * Single source of truth for the set of roles that are cross-tenant
  * privileged ("elevated"). Both the pure `isSuperAdmin` predicate below and
  * the DB-layer `ClsTenantContextProvider.isSuperAdmin()` consume this set, so
  * a new elevated role is added in exactly one place. The set is exactly
- * `[GLOBAL_ADMIN]`.
+ * `[SUPER_ADMIN]`.
  */
-export const ELEVATED_ROLES: readonly string[] = [GLOBAL_ADMIN_ROLE];
+export const ELEVATED_ROLES: readonly string[] = [SUPER_ADMIN_ROLE];
 
 /**
  * Pure predicate that names the
  * "is the caller cross-tenant privileged?" check used by inline
  * controller guards. Mirrors the existing service-side pattern
- * `Array.isArray(roles) && roles.includes(GLOBAL_ADMIN_ROLE)` so we don't
+ * `Array.isArray(roles) && roles.includes(SUPER_ADMIN_ROLE)` so we don't
  * scatter the role literal across more controller files.
  *
  * The name `isSuperAdmin` is a legacy label kept as stable API
- * surface — it answers "is the caller a GLOBAL_ADMIN?".
+ * surface — it answers "is the caller a SUPER_ADMIN?".
  *
  * @example
  *   const user = this.cls.get('user');
@@ -138,7 +141,7 @@ async function findFirstTolerant<T>(fn: () => Promise<T>): Promise<T | null> {
  *
  * **Exemption:** service accounts (`User.isServiceAccount === true`) are
  * exempt from the department half — a role assignment alone is sufficient.
- * `GLOBAL_ADMIN`s are global (their assignments live under the SYSTEM tenant),
+ * `SUPER_ADMIN`s are global (their assignments live under the SYSTEM tenant),
  * so the role-half check already excludes them from a specific tenant.
  *
  * Use BEFORE creating any tenant-scoped row that references a `User`

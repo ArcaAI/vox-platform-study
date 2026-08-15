@@ -92,7 +92,7 @@ describe('Guardrail Provider-Model Catalog Seed Data', () => {
     const SETTING_PREFIXES = ['GLOBAL', 'ARCAAI'] as const;
 
     for (const prefix of SETTING_PREFIXES) {
-      const key = `${prefix}_SMR_AZURE_DEPLOYMENT` as keyof typeof SEED_GLOBAL_SETTING_IDS;
+      const key = `${prefix}_TEXT_AZURE_DEPLOYMENT` as keyof typeof SEED_GLOBAL_SETTING_IDS;
       it(`should define ${key}`, () => {
         expect(SEED_GLOBAL_SETTING_IDS[key]).toBeDefined();
         expect(SEED_GLOBAL_SETTING_IDS[key]).toMatch(/^85000000-/);

@@ -2,7 +2,7 @@
  * @arcaai/vox - useTenantStorageConfig Hook
  *
  * Per-tenant / per-bucket storage provider configuration (backend + topology)
- * for TENANT_ADMIN / GLOBAL_ADMIN. The server gates
+ * for TENANT_ADMIN / SUPER_ADMIN. The server gates
  * `/admin/tenants/storage/config` with `@CanManage('Tenant')`, so a plain
  * DOCTOR is denied (403) — surfaced as a clean `AgenticError`.
  */

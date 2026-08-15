@@ -14,7 +14,7 @@ function session(overrides: Partial<SafeSession>): SafeSession {
     userId: 'u-1',
     username: 'admin',
     email: null,
-    roles: ['GLOBAL_ADMIN'],
+    roles: ['SUPER_ADMIN'],
     tenantId: null,
     isElevated: true,
     workingTenantId: null,

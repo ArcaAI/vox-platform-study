@@ -717,7 +717,7 @@ describe('AiModelService', () => {
       mockClsService.get.mockImplementation((key: string) => {
         switch (key) {
           case 'user':
-            return { id: 'current-user-id', roles: ['GLOBAL_ADMIN'] };
+            return { id: 'current-user-id', roles: ['SUPER_ADMIN'] };
           case 'tenantId':
             return undefined; // not elevated into a working tenant
           default:

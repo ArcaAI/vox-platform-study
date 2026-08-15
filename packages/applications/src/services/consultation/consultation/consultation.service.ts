@@ -65,7 +65,7 @@ export class ConsultationService extends BaseService implements IConsultationSer
    *                              tenant (defense vs. audit C-4 / B-3).
    *
    * All helpers route failures through `NotFoundException` to avoid leaking
-   * the existence of a cross-tenant resource. GLOBAL_ADMIN is intentionally
+   * the existence of a cross-tenant resource. SUPER_ADMIN is intentionally
    * NOT bypassed — assigning consultations to users / departments / parents
    * outside the tenant would produce a structurally invalid aggregate
    * regardless of caller role (mirrors the D.6 DepartmentService rule).
@@ -509,7 +509,7 @@ export class ConsultationService extends BaseService implements IConsultationSer
     status?: ConsultationStatus;
   }): Promise<PaginatedConsultationResponse> {
     const tenantId = this.tenantId;
-    // (TD3 / DEF-1) — a GLOBAL_ADMIN with NO tenant scope reads
+    // (TD3 / DEF-1) — a SUPER_ADMIN with NO tenant scope reads
     // cross-tenant: the Prisma `tenantScope` extension passes through when CLS
     // has no tenant AND the caller is super-admin, so we OMIT the `tenantId`
     // filter and the platform dashboard sees every tenant's consultations
@@ -566,7 +566,7 @@ export class ConsultationService extends BaseService implements IConsultationSer
    *   - bucket key/label match the FE format (`yyyy-MM-dd`/`MMM d` for days,
    *     `yyyy-MM`/`MMM` for months) so the chart renders unchanged; boundaries
    *     are UTC (server-TZ-stable) rather than the FE's local-time `startOfDay`.
-   *   - scope: GLOBAL_ADMIN with no working tenant aggregates cross-tenant
+   *   - scope: SUPER_ADMIN with no working tenant aggregates cross-tenant
    *     (TD3); everyone else is pinned to their CLS tenant.
    */
   async aggregateConsultationsForTenant(params: {

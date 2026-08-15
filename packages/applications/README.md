@@ -111,7 +111,7 @@ Cross-aggregate isolation checks that the database tenant-scope extension cannot
 - `assertEqualTenants(parent, child)` — parent/child rows must share a tenant; throws `NotFoundException` on mismatch (no existence leak).
 - `assertUserBelongsToTenant(roleRepo, deptRepo, userRepo, userId, tenantId)` — verifies enabled `UserRoleAssignment` + `UserDepartment` membership before referencing a user in tenant-scoped rows.
 - `assertParentInScope(repo, parentId, callerTenantId)` — load-and-assert sugar for the common parent lookup.
-- `isSuperAdmin(user)` / `ELEVATED_ROLES` — the single source of truth for the cross-tenant privileged role (`GLOBAL_ADMIN`; the legacy `SUPER_ADMIN` was consolidated into it by TASK-417).
+- `isSuperAdmin(user)` / `ELEVATED_ROLES` — the single source of truth for the cross-tenant privileged role (`SUPER_ADMIN`, renamed from `GLOBAL_ADMIN` by TASK-707; `GLOBAL_ADMIN` was itself the successor to an earlier, unrelated legacy `SUPER_ADMIN` role retired by TASK-417 — the two `SUPER_ADMIN` names do not refer to the same role).
 
 ### Authorization
 

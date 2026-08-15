@@ -73,7 +73,7 @@ warm-up-base-images:
     - if: $CI_COMMIT_TAG =~ /^(SMR|STT|GUARD|TTS|HARNESS|NLP|COMPAT|ALL)-/
 
 # ── Shared Python base image ─────────────────────────────────────────────────
-# Single base image consumed by ALL Python service builds (guardrail, nlp, smr,
+# Single base image consumed by ALL Python service builds (guardrail, nlp, text,
 # harness, tts, stt CPU stages) via `--build-arg BASE_IMAGE`. Must build BEFORE
 # the Python service jobs (they `needs:` this job).
 
@@ -207,18 +207,18 @@ build-guardrail:
 
 # ── SMR ──────────────────────────────────────────────────────────────────────
 
-build-smr:
+build-text:
   extends: .build-template
   needs:
     - job: warm-up-base-images
       optional: true
     - job: build-python-base
-    - job: test-smr
+    - job: test-text
       optional: true
   variables:
-    SERVICE_NAME: smr
+    SERVICE_NAME: text
     DOCKER_CONTEXT: "."
-    DOCKERFILE: apps/smr/Dockerfile
+    DOCKERFILE: apps/text/Dockerfile
     BUILD_ARGS: "--build-arg BASE_IMAGE=$REGISTRY/$CI_PROJECT_PATH/hope-python-base:$CI_COMMIT_SHA"
   rules:
     - !reference [.build-common-rules, rules]

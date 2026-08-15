@@ -3,7 +3,7 @@ import { IsInt, IsOptional, IsString, MaxLength, Min } from 'class-validator';
 
 /**
  * body for `POST admin/prompt-templates/:id/approve`
- * (GLOBAL_ADMIN only). Approval flips the template to `status = APPROVED` (the
+ * (SUPER_ADMIN only). Approval flips the template to `status = APPROVED` (the
  * gate `prompt-resolution` requires for clinical flows), pins a `PromptVersion`
  * snapshot, and emits the audit sys-event. `expectedVersion` is the OCC token
  * (folded from the `If-Match` header by the `@RequiresIfMatch()` route; body

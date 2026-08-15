@@ -10,7 +10,7 @@ import { SellRateCardService } from './sell-rate-card.service';
  * `CoreDatabaseModule` supplies `AiPriceBookRepository` + `CoreUnitOfWorkService`
  * (the atomic close+insert supersede). Deliberately separate from
  * `PriceBookServiceModule`: resolution (WS-B's frozen read surface, consumed by
- * the outbox drainer AND the invoice engine) and administration (GLOBAL_ADMIN
+ * the outbox drainer AND the invoice engine) and administration (SUPER_ADMIN
  * mutation with sys-events) change for different reasons.
  */
 @Module({

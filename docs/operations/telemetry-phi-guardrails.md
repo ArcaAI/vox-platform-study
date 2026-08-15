@@ -21,10 +21,10 @@ failure mode the others might miss.
 
 | # | Layer | What it does | Where |
 |---|---|---|---|
-| 1 | **`NO_CONTENT` pinned everywhere** | `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT=NO_CONTENT` in every env file, enforced at process boot in production | `.env.sample` / `.env.dev` / `.env.test`; `apps/api/src/bootstrap/genai-content-capture-audit.ts`; `apps/smr/src/smr/core/config.py` (`TelemetryPhiGuardConfig`) |
-| 2 | **Attribute allow-list** (not a deny-list) | Every `gen_ai.*` attribute a service is allowed to stamp is enumerated explicitly; anything not on the list fails CI | `apps/smr/src/smr/tests/unit/test_phi_safe_telemetry.py` |
+| 1 | **`NO_CONTENT` pinned everywhere** | `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT=NO_CONTENT` in every env file, enforced at process boot in production | `.env.sample` / `.env.dev` / `.env.test`; `apps/api/src/bootstrap/genai-content-capture-audit.ts`; `apps/text/src/text/core/config.py` (`TelemetryPhiGuardConfig`) |
+| 2 | **Attribute allow-list** (not a deny-list) | Every `gen_ai.*` attribute a service is allowed to stamp is enumerated explicitly; anything not on the list fails CI | `apps/text/src/text/tests/unit/test_phi_safe_telemetry.py` |
 | 3 | **OTel Collector deny-list** | An independent transform/filter stage drops content-bearing attributes even if a misbehaving library ignores layer 1 | Collector config (§2 below) — defense-in-depth for libraries that ignore the capture switch |
-| 4 | **CI assertions** | The allow-list test above runs in `pnpm py:smr:test` (and the equivalent job in CI); a new content-bearing attribute anywhere in the scanned tree fails the build before it ships | CI job that runs `py:smr:test` |
+| 4 | **CI assertions** | The allow-list test above runs in `pnpm py:text:test` (and the equivalent job in CI); a new content-bearing attribute anywhere in the scanned tree fails the build before it ships | CI job that runs `py:text:test` |
 
 ### Layer 1 — why `NO_CONTENT` needs an explicit pin, not just a good default
 
@@ -43,11 +43,11 @@ Enforcement is **production-scoped only**:
   `NODE_ENV=production` and the variable is unset or not exactly `NO_CONTENT`. Mirrors
   the existing `assertJwtSecretNotPlaceholder` "refuse to boot on a bad security knob"
   posture.
-- `apps/smr/src/smr/core/config.py` — `TelemetryPhiGuardConfig`, a `pydantic-settings`
+- `apps/text/src/text/core/config.py` — `TelemetryPhiGuardConfig`, a `pydantic-settings`
   model validator wired into `Settings`. Raises (propagating out of `get_settings()` →
   `create_app()`) under the same condition. SMR is the only Python service that stamps
   `gen_ai.*` span attributes today (verified by grepping the whole monorepo for
-  `gen_ai\.` — every hit lives under `apps/smr/src/smr/{core/observability.py,providers/}`),
+  `gen_ai\.` — every hit lives under `apps/text/src/text/{core/observability.py,providers/}`),
   so it is the only Python service that carries this guard; a future service that starts
   emitting `gen_ai.*` attributes must add the same guard.
 
@@ -79,9 +79,9 @@ gen_ai.retrieval.*
 
 ### Layer 4 — CI
 
-`apps/smr/src/smr/tests/unit/test_phi_safe_telemetry.py` runs as part of
-`pnpm py:smr:test`, which is a monorepo CI gate. It scans every non-test `.py` file
-under `apps/smr/src/smr` for `gen_ai.*` string literals and asserts the found set is a
+`apps/text/src/text/tests/unit/test_phi_safe_telemetry.py` runs as part of
+`pnpm py:text:test`, which is a monorepo CI gate. It scans every non-test `.py` file
+under `apps/text/src/text` for `gen_ai.*` string literals and asserts the found set is a
 subset of the allow-list and disjoint from the banned list above. No OTel runtime is
 started — it is a pure static/regex scan, so it is cheap and cannot flake.
 
@@ -131,7 +131,7 @@ collector, as a backstop for whatever layers 1/2/4 might miss on a given release
 
 | Namespace | Signal | Used by |
 |---|---|---|
-| `gen_ai.*` | LLM generation spans (chat/completion operations) — the OpenTelemetry GenAI semantic convention | `apps/smr` (the only text-generation service) |
+| `gen_ai.*` | LLM generation spans (chat/completion operations) — the OpenTelemetry GenAI semantic convention | `apps/text` (the only text-generation service) |
 | `hope.*` | Everything the GenAI convention does not model: speech-to-text, text-to-speech, medical NER/classification | `apps/stt`, `apps/tts`, `apps/nlp` |
 
 Why the split: per research-findings.md §2, the OTel GenAI convention has **no**
@@ -154,7 +154,7 @@ restriction is layer 1–4 above, not a naming convention.
 
 **No Prometheus metric (counter, histogram, gauge) may carry a `tenant_id` label, or
 any other per-tenant identifier, in any service.** Verified as the current practice
-across `apps/smr/src/smr/core/metrics.py` and `apps/stt/src/stt/core/metrics.py` —
+across `apps/text/src/text/core/metrics.py` and `apps/stt/src/stt/core/metrics.py` —
 label sets are `provider`, `model`, `status`, `direction`, `error_type`, and similar
 low-cardinality operational dimensions, never a tenant or user identifier.
 
@@ -204,7 +204,7 @@ Before adding a new span, metric, or log field anywhere in the platform:
       text, entity text, or any other clinical content.
 - [ ] No Prometheus label is a tenant, user, patient, or consultation identifier.
 - [ ] If the emitter is `gen_ai.*` in a NEW service (SMR is the only one today), add
-      the same `NO_CONTENT` production boot guard as `apps/smr` and extend
+      the same `NO_CONTENT` production boot guard as `apps/text` and extend
       `test_phi_safe_telemetry.py`'s scan (or an equivalent test in that service) to
       cover it.
 - [ ] New `gen_ai.*` attributes are added to `ALLOWED_GEN_AI_ATTRIBUTES` only after

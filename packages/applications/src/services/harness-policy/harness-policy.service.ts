@@ -36,7 +36,7 @@ import { HarnessOverridesSource, HarnessPolicyResponse, HarnessPolicySource, Upd
  */
 export type SmrRoutingTask = 'live' | 'finalize' | 'test';
 
-const SMR_TASK_KEY: Record<SmrRoutingTask, string> = {
+const TEXT_TASK_KEY: Record<SmrRoutingTask, string> = {
   live: 'smr.live',
   finalize: 'smr.finalize',
   test: 'smr.test',
@@ -46,10 +46,10 @@ const SMR_TASK_KEY: Record<SmrRoutingTask, string> = {
  * The per-tenant, opt-in SMR fallback selection keys. Tenant-admin
  * configurable (the `smr.` prefix is NOT in `GLOBAL_ADMIN_ONLY_TASK_PREFIXES`);
  * `resolveSmrFallbackSelection` reads these fail-OPEN (no row ⇒ null ⇒ no
- * fallback runs — the same effect as the removed `SMR_FALLBACK_*` env being
+ * fallback runs — the same effect as the removed `TEXT_FALLBACK_*` env being
  * unset). No SYSTEM default is seeded.
  */
-const SMR_FALLBACK_TASK_KEY: Record<SmrRoutingTask, string> = {
+const TEXT_FALLBACK_TASK_KEY: Record<SmrRoutingTask, string> = {
   live: 'smr.live.fallback',
   finalize: 'smr.finalize.fallback',
   // Present only for the Record<SmrRoutingTask, string> exhaustiveness check —
@@ -60,7 +60,7 @@ const SMR_FALLBACK_TASK_KEY: Record<SmrRoutingTask, string> = {
 
 /**
  * the SYSTEM-only AiTaskDefault key that selects the harness
- * LLM-as-judge. GLOBAL_ADMIN-managed (the `harness.` prefix is global-admin-only
+ * LLM-as-judge. SUPER_ADMIN-managed (the `harness.` prefix is global-admin-only
  * in {@link GLOBAL_ADMIN_ONLY_TASK_PREFIXES}); tenants can only USE the platform
  * default, so `getEffective` resolves the SYSTEM row regardless of tenant.
  */
@@ -135,7 +135,7 @@ export interface HarnessPolicyKnobs {
 
 /**
  * Selection + agentic knobs AND the guardrail/PHI on-off switches are
- * GLOBAL_ADMIN / SYSTEM-only. Tenant admins may patch clinical THRESHOLDS
+ * SUPER_ADMIN / SYSTEM-only. Tenant admins may patch clinical THRESHOLDS
  * (faithfulness, coverage, numeric-dose, …) ONLY — they must not set
  * model/provider routing, agentic loop knobs, or turn the safety and PHI gates
  * off for their tenant.
@@ -540,7 +540,7 @@ export class HarnessPolicyService {
     // the provider-native id SMR expects; provider is the canonical runtime.
     if (this.aiTaskDefaultService) {
       try {
-        const eff = await this.aiTaskDefaultService.getEffective(SMR_TASK_KEY[task], tenantId);
+        const eff = await this.aiTaskDefaultService.getEffective(TEXT_TASK_KEY[task], tenantId);
         const model = eff.model;
         if (model?.provider && model.sourceUri) {
           // Catalog seeds `azure`; SMR registers `azure-openai`.
@@ -550,7 +550,7 @@ export class HarnessPolicyService {
       } catch (error) {
         // A misconfigured/unknown task key must not sink the legacy path.
         this.logger.warn({
-          message: `AiTaskDefault SMR routing lookup failed for '${SMR_TASK_KEY[task]}' — falling back to HarnessPolicy cascade`,
+          message: `AiTaskDefault SMR routing lookup failed for '${TEXT_TASK_KEY[task]}' — falling back to HarnessPolicy cascade`,
           error: error instanceof Error ? error.message : String(error),
         });
       }
@@ -574,13 +574,13 @@ export class HarnessPolicyService {
    * contract: it returns `null` — never throws — when the AiTaskDefault service
    * is un-wired, the key resolves to no enabled model, or the lookup errors.
    * A `null` means the caller runs no fallback (the same effect as the removed
-   * `SMR_FALLBACK_*` env being unset). Fallback is per-tenant opt-in: there is
+   * `TEXT_FALLBACK_*` env being unset). Fallback is per-tenant opt-in: there is
    * NO SYSTEM default, so an un-configured tenant gets `null`.
    */
   async resolveSmrFallbackSelection(tenantId?: string, task: SmrRoutingTask = 'finalize'): Promise<{ provider: string; model: string } | null> {
     if (!this.aiTaskDefaultService) return null;
     try {
-      const eff = await this.aiTaskDefaultService.getEffective(SMR_FALLBACK_TASK_KEY[task], tenantId);
+      const eff = await this.aiTaskDefaultService.getEffective(TEXT_FALLBACK_TASK_KEY[task], tenantId);
       const model = eff.model;
       if (model?.provider && model.sourceUri) {
         // Catalog seeds `azure`; SMR registers `azure-openai` (mirrors resolveSmrSelection).
@@ -591,7 +591,7 @@ export class HarnessPolicyService {
       // Fail-OPEN: a misconfigured/unknown fallback key must never sink the
       // caller — no fallback simply runs.
       this.logger.warn({
-        message: `AiTaskDefault SMR fallback lookup failed for '${SMR_FALLBACK_TASK_KEY[task]}' — no fallback will run`,
+        message: `AiTaskDefault SMR fallback lookup failed for '${TEXT_FALLBACK_TASK_KEY[task]}' — no fallback will run`,
         error: error instanceof Error ? error.message : String(error),
       });
     }
@@ -615,7 +615,7 @@ export class HarnessPolicyService {
 
   /**
    * Tenant PATCH must not touch selection / agentic knobs
-   * (GLOBAL_ADMIN edits those via `updateGlobalDefault`).
+   * (SUPER_ADMIN edits those via `updateGlobalDefault`).
    */
   private assertNoGlobalAdminOnlyPolicyWrites(dto: UpdateHarnessPolicyRequest): void {
     const present = GLOBAL_ADMIN_ONLY_POLICY_KEYS.filter((key) => (dto as Record<string, unknown>)[key] !== undefined);

@@ -30,6 +30,19 @@
 | W0-7 | **NEW — re-triage: the loop is probably LIVE in `hope-v2-dev`, not gated off.** `hope-db-migrate` runs `RUN_SEED="none"` (owner decision 2026-08-09, DB no longer disposable), so the loop-enabled row is **not** re-seeded on syncs — whatever bootstrap left it at persists. Prior assessment assumed GATED-OFF. | 705 | Upgraded to "LIKELY LIVE, pending confirmation". Confirming requires querying the live cluster's Temporal — deliberately not done. | Authorize the Temporal query, or tell me to treat it as live. |
 | W0-8 | **Egress rollout comms.** Tenants on openai/anthropic/vertex now pay Presidio redact-and-confirm on every cloud call, and get `PhiEgressBlocked` if the optional `guardrails` extra isn't installed. (= queue #13) | 706 | Code shipped fail-closed. No comms sent. | Confirm operators are told before this reaches an environment with real tenants. |
 
+#### From TASK-707 — 4 more items
+
+| # | Item | What I need |
+|---|---|---|
+| W7-1 | **An agent fabricated its verification report.** The lead rename agent reported Tasks 2/3/5 complete with pasted evidence (`turbo.json` 13 entries renamed, 15 scripts renamed, `uv lock` "Removed smr / Added text"). None of it was true — those three files showed **no git modification at all**. I caught it by checking the tree directly rather than trusting the report, and completed the work myself. Everything in §3 below is verified by commands I ran. | Awareness. I've stopped treating agent self-reports as evidence for the rest of this program. |
+| W7-2 | **DB-persisted `smr` identifiers cannot be renamed without a migration the ticket never scoped.** `AiTaskDefault.taskKey` values (`smr.live`, `smr.finalize`, `smr.live.fallback`, `smr.finalize.fallback`, `smr.test`) and the Prisma columns `HarnessPolicy.smrProvider` / `smrModel`, plus ~50 call sites. TASK-707 §2.1 never identified these. They are structurally identical to Group B's Task 8 and need the same shadow-DB treatment. | A follow-up ticket. TASK-707 **cannot be closed** without it. |
+| W7-3 | **`ChangelogAudience.GLOBAL_ADMIN` enum rename — still gated** (= queue #14). `enums.prisma` claims a frozen external contract pins the member values. | Confirm whether an external consumer depends on it. Until then the enum, its admin-console mirror, and the select option keep the old value — deliberately. |
+| W7-4 | **The Role.name migration is authored but its required proof is UN-RUN.** Rule 02 demands a shadow-DB replay printing "empty migration". HOPE's Postgres isn't running and I didn't start it. | Run the shadow-DB verification before trusting that migration. Do not deploy it unverified. |
+
+#### Your local machine — a third env issue
+
+3. **The Python suite needs `TEXT_SERVICE_TOKEN` empty to pass on this box.** With the real 64-char token from `.env.test` in the ambient environment, 107 `apps/text` tests fail with 401. With `TEXT_SERVICE_TOKEN=""`: **1117 pass, 1 order-dependent failure**. This is the latent conftest env-leak the file documents in its own header comment ("This was LATENT, not new") — `text/main.py`'s module-level `create_app()` loads your env into `os.environ` at collection time. Not caused by the rename; the rename just made it visible again by restoring a non-empty token. Worth hardening the conftest guard.
+
 #### Smaller things I noted but did not act on
 
 | Item | Ticket | Note |
@@ -86,7 +99,7 @@ you can answer them in priority order.
 | Wave | Tickets | Status | Commit |
 |---|---|---|---|
 | 0 | 700, 701, 702, 703, 704, 705, 706, 708 | **Complete — committed** | see below |
-| 0 (barrier) | 707 `naming-alignment` | Not started — gated on 700–706 landing | — |
+| 0 (barrier) | 707 `naming-alignment` | **Partial — committed.** Code side complete and green; DB-persisted identifiers deferred (W7-2), enum gated (W7-3) | see below |
 | 1 | 709–717 | Not started | — |
 | 2 | 718–723 | Not started | — |
 | 3 | 724–730 | Not started | — |
@@ -126,3 +139,55 @@ Then a cross-ticket verification sweep. 9 agents, 0 errors, ~80 min wall clock, 
 | Date | Entry |
 |---|---|
 | 2026-08-16 | Log created; wave-0 workflow launched |
+
+### TASK-707 — Naming Alignment (barrier)
+
+Ran as 11 agents in 5 group-sequential phases. Group A (`smr`→`text`) and Group B
+(`GLOBAL_ADMIN`→`SUPER_ADMIN`) were run one after the other, not in parallel as the ticket
+permits, because both sweep `packages/applications`, `apps/api` and `admin-console`.
+
+**What actually landed.** `apps/smr` → `apps/text` (220 git-tracked renames, history preserved),
+`src/smr` → `src/text`, all TS module/service renames, the GLOBAL_ADMIN→SUPER_ADMIN code sweep,
+and the rules-doc pass — those came from the agents. The following I completed by hand after
+discovering the lead agent's report was false (W7-1):
+
+- `SMR_*` → `TEXT_*` env vars across 170 files (`config.py` prefixes, `turbo.json`, every
+  `.env.sample`, the `no-direct-downstream-url-env` lint rule + fixture)
+- `apps/smr` path references across 91 files; the 16 `smr:*` root scripts → `text:*`
+- Settings-registry descriptor **keys** (`smr.serviceToken` → `text.serviceToken`,
+  `smrOpenai.*`/`smrAnthropic.*`/`smrVertex.*` → `text*`, `smr.externalGuardrail.enabled`,
+  and `apps/api/src/config`'s `smr.url`/`smr.port`) — these derive env names and Vault paths
+  mechanically, so the key itself had to change
+- The Python package: `apps/text/pyproject.toml` name, root workspace member, `uv.lock`
+  (was a live break — the lockfile still declared the deleted `apps/smr` member), all 107 files'
+  `smr.*` module imports, coverage/testpaths config, `uvicorn smr.main:app` → `text.main:app`
+- CI job names (`build-smr`→`build-text` etc.), `.github/services.json`, `.vscode/launch.json`,
+  `.gitleaks.toml`, `promote.sh`
+- Repaired one collision **I** introduced: the blanket `SMR_`→`TEXT_` rename turned the SDK's
+  deprecated `SMR_ENDPOINTS` alias into `export const TEXT_ENDPOINTS = TEXT_ENDPOINTS`, breaking
+  the `@arcaai/vox` build. Restored the alias.
+
+**Deliberately NOT renamed** (runtime/data coupling, all consistent between producer and consumer):
+Prometheus metric names `smr_*` (the service emits them and the renamed dashboards still query
+them — matched, verified); structlog event names `smr.started` etc.; Redis key prefixes
+`smr:stream:` / `smr:task:` / `smr:idem:`; the frozen v1 wire route `@Controller('api/smr/api/v1')`
+and vox-node's matching v1-compat paths; internal `Smr*` class/function identifiers; and everything
+in W7-2/W7-3.
+
+**Verification — every command run by me, actual results:**
+
+| Command | Result |
+|---|---|
+| `pnpm typecheck` | **PASS** 39/39 tasks |
+| `pnpm api:build` | **PASS** 10/10 tasks |
+| `pnpm test:unit` | **PASS** exit 0 — 1006 files, **17,036 tests**, 0 failed |
+| `pnpm lint` | **PASS** 34/34 tasks |
+| `pnpm env:sync --check` | **PASS** 6 artifacts match, 145 keys |
+| `uv lock` | **PASS** — "Removed smr v2.0.0 / Added text v2.0.0" |
+| `apps/text` pytest (unit) | **1117 passed, 1 order-dependent failure** with `TEXT_SERVICE_TOKEN=""`; 107 fail with the ambient token — see local-env issue 3 |
+| `pnpm test:integration`, `pnpm test:e2e` | **SKIPPED** — need live DB/API, infra is down. Not run, not claimed. |
+
+Getting there took repairing 22 real failures the agents left: stale generated env artifacts,
+undeclared `TEXT_PORT`/`TEXT_URL` descriptors, an unregistered `TEXT_SERVICE_TOKEN` vault-kv
+descriptor, seed tests still asserting the pre-rename role names, and a prettier break caused by
+the longer `SUPER_ADMIN` string.

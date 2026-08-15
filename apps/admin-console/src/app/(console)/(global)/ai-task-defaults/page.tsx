@@ -3,7 +3,7 @@ import { AiTaskDefaultsPlatformScreen } from '@/features/ai-task-defaults/compon
 
 export const metadata: Metadata = { title: 'AI Task Defaults (Platform)' };
 
-/** SYSTEM-tenant task-default rows (tier 10-19, GLOBAL_ADMIN only). */
+/** SYSTEM-tenant task-default rows (tier 10-19, SUPER_ADMIN only). */
 export default function AiTaskDefaultsPage() {
   return <AiTaskDefaultsPlatformScreen />;
 }

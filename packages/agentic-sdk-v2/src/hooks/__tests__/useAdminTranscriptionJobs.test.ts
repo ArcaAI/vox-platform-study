@@ -1,7 +1,7 @@
 /**
  * useAdminTranscriptionJobs Hook Tests
  *
- * Tenant-wide transcription-job supervision for TENANT_ADMIN / GLOBAL_ADMIN.
+ * Tenant-wide transcription-job supervision for TENANT_ADMIN / SUPER_ADMIN.
  *
  * @vitest-environment jsdom
  */

@@ -37,7 +37,7 @@ describe('ChangelogController — reader surface', () => {
   });
 });
 
-describe('ChangelogAdminController — GLOBAL_ADMIN-only (imperative gate in the service)', () => {
+describe('ChangelogAdminController — SUPER_ADMIN-only (imperative gate in the service)', () => {
   let service: ReturnType<typeof makeService>;
   let controller: ChangelogAdminController;
 

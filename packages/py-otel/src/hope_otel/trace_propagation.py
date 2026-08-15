@@ -23,7 +23,7 @@ W3C trace context across those Redis-Stream hops.
 WHY IT IS A SHARED PACKAGE, NOT A PER-SERVICE COPY
 STT and SMR originally carried byte-for-byte duplicate copies of this module
 (``apps/stt/src/stt/core/trace_propagation.py`` and
-``apps/smr/src/smr/core/trace_propagation.py``) — a deliberate, time-boxed
+``apps/text/src/text/core/trace_propagation.py``) — a deliberate, time-boxed
 tradeoff made while four agents were instrumenting different services
 concurrently, to avoid a shared-package edit contending on the single root
 ``uv.lock``. That constraint is gone, so the module lives here once. Both

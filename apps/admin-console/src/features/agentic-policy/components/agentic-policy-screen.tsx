@@ -68,7 +68,7 @@ function GlobalPolicyTab() {
 }
 
 /**
- * Agentic Policy (/agentic-policy, tier 10-19, GLOBAL_ADMIN only). Edits the
+ * Agentic Policy (/agentic-policy, tier 10-19, SUPER_ADMIN only). Edits the
  * platform GLOBAL-DEFAULT agentic-loop knobs + kill-switches (OCC If-Match),
  * flips the engine kill-switch, and documents the `agentic.*` settings
  * registry. Every route here is platform-asserted server-side, so the screen

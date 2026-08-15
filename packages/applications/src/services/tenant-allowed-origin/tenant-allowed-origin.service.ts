@@ -52,7 +52,7 @@ export class TenantAllowedOriginService extends BaseService implements ITenantAl
   }
 
   /**
-   * AUTH-NOTE: WILDCARD GATE — GLOBAL_ADMIN-only, enforced imperatively here
+   * AUTH-NOTE: WILDCARD GATE — SUPER_ADMIN-only, enforced imperatively here
    * because no permission decorator can express it (;
    * `05-nestjs-api.md` §Imperative Privilege Checks, "global-admin-only action
    * on a tenant-manageable resource"). A TENANT_ADMIN legitimately holds
@@ -117,7 +117,7 @@ export class TenantAllowedOriginService extends BaseService implements ITenantAl
   }
 
   /**
-   * AUTH-NOTE: SYSTEM-TENANT GATE — GLOBAL_ADMIN-only, enforced imperatively
+   * AUTH-NOTE: SYSTEM-TENANT GATE — SUPER_ADMIN-only, enforced imperatively
    * (same rule-05 pattern as the wildcard gate above). A row
    * owned by the reserved SYSTEM tenant is treated as valid for EVERY tenant
    * by `OriginRegistryService.allows()`, so a SYSTEM write is a PLATFORM-WIDE

@@ -46,7 +46,7 @@ export class DepartmentController {
     // `DepartmentService.getAll` already requires
     // `this.tenantId`, but mirror the AuditLogController guard so a
     // non-global-admin with no tenant context is rejected at the request
-    // entry point and never reaches the service. GLOBAL_ADMIN bypasses here
+    // entry point and never reaches the service. SUPER_ADMIN bypasses here
     // (the service still enforces its own tenant rule for operators).
     const user = this.cls.get('user');
     const callerTenantId = this.cls.get('tenantId');
@@ -103,7 +103,7 @@ export class DepartmentController {
 
   // Reverse dept->users listing (previously derived
   // client-side). Tenant-scoped inside the service (no-existence-leak 404 on a
-  // cross-tenant department; GLOBAL_ADMIN cross-tenant bypass) and paginated with
+  // cross-tenant department; SUPER_ADMIN cross-tenant bypass) and paginated with
   // the house `PaginatedQuery`. Class-level `@CanManage('Department')` gates it.
   @Get(':id/users')
   @ApiOperation({ summary: "List a department's members (users)" })

@@ -76,7 +76,7 @@ For the full setup guide, daily workflows, testing, and troubleshooting, see **[
 | `pnpm infra:dev:down` / `infra:status` / `infra:logs` | Stop / inspect / follow docker infra                                                          |
 | `pnpm api:dev`                                        | Start API Gateway (development)                                                               |
 | `pnpm stt:dev`                                        | Start STT service (no reload; `:watch` for scoped reload)                                     |
-| `pnpm smr:dev`                                        | Start SMR service with the LM Studio provider registered                                      |
+| `pnpm text:dev`                                        | Start SMR service with the LM Studio provider registered                                      |
 | `pnpm nlp:dev` / `dev:guardrail` / `dev:harness`      | Start NLP / Guardrail / harness API service                                                   |
 | `pnpm worker:dev`                                     | Start the harness Temporal worker                                                             |
 | `pnpm tts:dev`                                        | Start TTS service (`:watch` for scoped reload)                                                |

@@ -67,7 +67,7 @@ export class UserDepartmentService extends BaseService implements IUserDepartmen
   }
 
   async getByUser(userId: string): Promise<UserDepartmentResponse[]> {
-    // An unscoped GLOBAL_ADMIN (no working tenant selected) reads
+    // An unscoped SUPER_ADMIN (no working tenant selected) reads
     // the user's memberships CROSS-TENANT: the tenant-scope $extends bypasses
     // injection for elevated callers, so omitting the tenant predicate spans
     // all tenants. Every other caller keeps the strict tenant requirement.

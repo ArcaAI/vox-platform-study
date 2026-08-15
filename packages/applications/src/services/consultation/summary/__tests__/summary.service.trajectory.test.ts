@@ -42,7 +42,7 @@ function buildService(trajectoryOverride?: { recordSteps: ReturnType<typeof vi.f
     axiosRef: { post: vi.fn().mockResolvedValue({ data: { summary: 'S', modelName: 'm', processingTimeMs: 77, stats: STATS } }) },
   };
   const configService = {
-    get: vi.fn().mockImplementation((k: string) => (k === 'SMR_URL' ? 'http://smr' : k === 'NLP_URL' ? 'http://nlp' : undefined)),
+    get: vi.fn().mockImplementation((k: string) => (k === 'TEXT_URL' ? 'http://smr' : k === 'NLP_URL' ? 'http://nlp' : undefined)),
   };
   const promptAssemblyService = {
     assemble: vi.fn().mockResolvedValue({ userPrompt: 'p', systemPrompt: '', hyperparameters: {}, responseFormat: null, resolvedFrom: 'default' }),

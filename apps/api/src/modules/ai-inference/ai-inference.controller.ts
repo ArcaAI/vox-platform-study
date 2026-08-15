@@ -26,7 +26,7 @@ const CLINICIAN_ROLES = ['DOCTOR', 'SPECIALIST', 'CONSULTANT'];
  * AiInferenceController — the USER-PLANE `/ai/*` inference proxy over
  * the Guardrail and NLP Python services, backing the Agent Playground's
  * Guardrails and NER tabs (matrix row 38). `@Authorize()` (no permission pair):
- * any authenticated caller — GLOBAL_ADMIN or TENANT_ADMIN acting under their
+ * any authenticated caller — SUPER_ADMIN or TENANT_ADMIN acting under their
  * OWN account — may call it, mirroring `SmrProxyController` (`/text/*`). These
  * are stateless inference calls over caller-supplied text — no tenant-owned
  * resource is read, so there is no by-id/tenancy surface here.
@@ -38,7 +38,7 @@ const CLINICIAN_ROLES = ['DOCTOR', 'SPECIALIST', 'CONSULTANT'];
  * 503 (no env bootstrap fallback for production selection).
  *
  * Contrast: `/admin/ai-services/*` (AiServiceAdminController) is the
- * GLOBAL_ADMIN-only READ-ONLY status/config plane over the same services.
+ * SUPER_ADMIN-only READ-ONLY status/config plane over the same services.
  */
 @ApiTags('ai-inference')
 @ApiBearerAuth()

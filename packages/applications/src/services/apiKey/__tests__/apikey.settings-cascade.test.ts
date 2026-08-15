@@ -35,7 +35,7 @@ function makeService(settings?: TenantSettingsService) {
     count: vi.fn(async () => 0),
     findAll: vi.fn(async () => []),
   };
-  const cls = { get: vi.fn((k: string) => (k === 'user' ? { id: 'u1', roles: ['GLOBAL_ADMIN'] } : k === 'tenantId' ? TENANT_A : undefined)) };
+  const cls = { get: vi.fn((k: string) => (k === 'user' ? { id: 'u1', roles: ['SUPER_ADMIN'] } : k === 'tenantId' ? TENANT_A : undefined)) };
   return new ApiKeyService(
     apiKeyRepository as any,
     {} as any,

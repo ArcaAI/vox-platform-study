@@ -9,7 +9,7 @@
  * Coverage:
  *   P1-6 · POST /admin/users/bulk-actions `assign-role` assigns a role to every id
  *          (per-item envelope, verified via GET :id/roles). Missing roleId → 400.
- *          A plain doctor → 403. TENANT_ADMIN assigning GLOBAL_ADMIN → per-item
+ *          A plain doctor → 403. TENANT_ADMIN assigning SUPER_ADMIN → per-item
  *          failure carrying the tier-guard message (mirrors POST :id/roles).
  *   P1-7 · /admin/users/export now renders human-readable email + department NAMES
  *          in every format: csv text, xlsx (parsed with exceljs), pdf (FlateDecode
@@ -100,7 +100,7 @@ test.describe.serial('P1-6 — bulk assign-role', () => {
   test.beforeAll(async ({ request }) => {
     [u1, u2] = await Promise.all([createUser(request, `t398role_a_${UNIQUE}`), createUser(request, `t398role_b_${UNIQUE}`)]);
     nurseRoleId = await findRoleId(request, 'NURSE');
-    superAdminRoleId = await findRoleId(request, 'GLOBAL_ADMIN');
+    superAdminRoleId = await findRoleId(request, 'SUPER_ADMIN');
   });
   test.afterAll(async ({ request }) => {
     await Promise.all([deleteUser(request, u1?.id), deleteUser(request, u2?.id)]);
@@ -135,7 +135,7 @@ test.describe.serial('P1-6 — bulk assign-role', () => {
     expect(res.status(), 'assign-role without roleId → 400').toBe(400);
   });
 
-  test('P1-6 AC-02 tier guard: TENANT_ADMIN assigning GLOBAL_ADMIN fails per item (not silently)', async ({ request }) => {
+  test('P1-6 AC-02 tier guard: TENANT_ADMIN assigning SUPER_ADMIN fails per item (not silently)', async ({ request }) => {
     const res = await request.post(BULK_URL, {
       headers: bearer(tenantAdminToken),
       data: { action: 'assign-role', ids: [u1.id], roleId: superAdminRoleId },
@@ -146,13 +146,13 @@ test.describe.serial('P1-6 — bulk assign-role', () => {
     expect(res.status(), 'envelope still 200 (per-item failure semantics)').toBe(200);
     const body = (await res.json()) as BulkResult;
     expect(body).toMatchObject({ total: 1, succeeded: 0, failed: 1 });
-    expect(body.results[0]?.error ?? '', 'tier-guard message surfaces on the item').toContain('GLOBAL_ADMIN');
+    expect(body.results[0]?.error ?? '', 'tier-guard message surfaces on the item').toContain('SUPER_ADMIN');
 
     const rolesRes = await request.get(`/api/v1/admin/users/${u1.id}/roles`, { headers: bearer(saGlobalToken) });
     const assignments = asArray<{ roleId: string }>(await rolesRes.json());
     expect(
       assignments.map((a) => a.roleId),
-      'no GLOBAL_ADMIN assignment was created',
+      'no SUPER_ADMIN assignment was created',
     ).not.toContain(superAdminRoleId);
   });
 

@@ -13,7 +13,7 @@
  *   - OWNER (clinician, `api-key-own-manage`)  → may act ONLY on their OWN keys.
  *   - a same-tenant NON-admin targeting a PEER's key → 404 (existence hidden).
  *   - TENANT-ADMIN (`manage:ApiKey`)            → retains tenant-scope.
- *   - GLOBAL_ADMIN (`manage:all`)                → retains broad scope.
+ *   - SUPER_ADMIN (`manage:all`)                → retains broad scope.
  *   - an id not resolvable in scope             → 404 (tenant boundary).
  *
  * Personas mirror the seed (packages/database/.../seed): `doctor` + `doctor2`

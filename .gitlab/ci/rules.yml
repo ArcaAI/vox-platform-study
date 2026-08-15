@@ -160,19 +160,19 @@
 
 # ── SMR (Summarization) ─────────────────────────────────────────────────────
 
-.rules-smr:
+.rules-text:
   rules:
     - !reference [.rules-always, rules]
     - !reference [.rules-cicd-always, rules]
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes:
         paths:
-          - apps/smr/**/*
+          - apps/text/**/*
         compare_to: refs/heads/main
     - if: $PIPELINE_TYPE == "dev"
     - if: $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main" || $PIPELINE_TYPE == "feature"
       changes:
-        - apps/smr/**/*
+        - apps/text/**/*
 
 # ── TTS (Text-to-Speech) ────────────────────────────────────────────────────
 
@@ -351,16 +351,16 @@
       changes:
         paths:
           - "apps/stt/**/*.py"
-          - "apps/smr/**/*.py"
+          - "apps/text/**/*.py"
           - "apps/nlp/**/*.py"
           - "apps/guardrail/**/*.py"
           - "apps/harness/**/*.py"
           - "apps/tts/**/*.py"
           - "apps/stt/**/requirements*.txt"
-          - "apps/smr/**/requirements*.txt"
+          - "apps/text/**/requirements*.txt"
           - "apps/nlp/**/requirements*.txt"
           - "apps/stt/**/pyproject.toml"
-          - "apps/smr/**/pyproject.toml"
+          - "apps/text/**/pyproject.toml"
           - "apps/nlp/**/pyproject.toml"
           - "apps/guardrail/**/pyproject.toml"
           - "apps/harness/**/pyproject.toml"
@@ -370,7 +370,7 @@
     - if: $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main" || $PIPELINE_TYPE == "feature"
       changes:
         - "apps/stt/**/*.py"
-        - "apps/smr/**/*.py"
+        - "apps/text/**/*.py"
         - "apps/nlp/**/*.py"
         - "apps/guardrail/**/*.py"
         - "apps/harness/**/*.py"

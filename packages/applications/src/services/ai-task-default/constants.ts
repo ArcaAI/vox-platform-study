@@ -93,7 +93,7 @@ export const GLOBAL_ADMIN_ONLY_TASK_PREFIXES = ['guardrail.', 'nlp.', 'harness.'
 /** @deprecated Use {@link GLOBAL_ADMIN_ONLY_TASK_PREFIXES}. Retained for back-compat. */
 export const GLOBAL_ADMIN_ONLY_TASK_PREFIX = 'guardrail.';
 
-/** True when `taskKey` is under a GLOBAL_ADMIN-only prefix. */
+/** True when `taskKey` is under a SUPER_ADMIN-only prefix. */
 export function isGlobalAdminOnlyTaskKey(taskKey: string): boolean {
   return GLOBAL_ADMIN_ONLY_TASK_PREFIXES.some((p) => taskKey.startsWith(p));
 }

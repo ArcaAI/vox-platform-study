@@ -15,7 +15,7 @@ HOPE handles PHI under HIPAA. The secrets surface today spans three locations, n
 
 | Location | Examples | Issues |
 |---|---|---|
-| Process env (typed in `IAppConfig`) | `JWT_SECRET_KEY`, `REDIS_PASS`, `MQTT_PASS`, `SESSION_SECRET_KEY`, `API_KEY_PEPPER`, `SMR_SERVICE_TOKEN`, `OIDC_CLIENT_SECRET`, `DATABASE_URL` (with password) | Committed in `.env.dev` plaintext. Real `AZURE_OPENAI_API_KEY` and `SMR_AZURE_API_KEY` visible in `.env.dev` today (immediate rotation required). |
+| Process env (typed in `IAppConfig`) | `JWT_SECRET_KEY`, `REDIS_PASS`, `MQTT_PASS`, `SESSION_SECRET_KEY`, `API_KEY_PEPPER`, `TEXT_SERVICE_TOKEN`, `OIDC_CLIENT_SECRET`, `DATABASE_URL` (with password) | Committed in `.env.dev` plaintext. Real `AZURE_OPENAI_API_KEY` and `TEXT_AZURE_API_KEY` visible in `.env.dev` today (immediate rotation required). |
 | Process env (raw `process.env.*`) | `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`, `AZURE_SPEECH_KEY`, `HUGGINGFACE_TOKEN`, `API_GATEWAY_KEY`, `LANGFUSE_SECRET_KEY` | No central inventory; no rotation; leaks into shell history. |
 | `GlobalSetting` table (`value: String`, `locked: true`) | `JWT_SECRET_KEY` (duplicates env), `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `OIDC_CLIENT_SECRET` (duplicates env) | Plaintext at rest. Cached in process memory. **`AuditLog.data` captures full entity `toObject()` on every update — secret values land in audit log.** |
 
@@ -139,7 +139,7 @@ Self-hosted trade-offs: zero license cost, but you own patching, HA, backups, an
 | Operational burden | low | low | medium-high |
 | Recommendation for HOPE | if AWS migration likely | if Azure migration likely | only if multi-cloud / on-prem-permanent |
 
-**HOPE today** is on Proxmox VMs (`research/infrastructure/`). When the cloud move happens it is most likely **Azure** (Azure OpenAI integration already wired in `SMR_AZURE_*` env vars). Recommendation:
+**HOPE today** is on Proxmox VMs (`research/infrastructure/`). When the cloud move happens it is most likely **Azure** (Azure OpenAI integration already wired in `TEXT_AZURE_*` env vars). Recommendation:
 
 > **Pick Azure Key Vault for the v1 cloud migration.** Until then, the adapter (§4) lets `EnvSecretsProvider` carry all loads without committing to either cloud.
 
@@ -231,7 +231,7 @@ const secrets = await secretsProvider.getSecrets([
   'OIDC_CLIENT_SECRET',
   'MINIO_ACCESS_KEY',
   'MINIO_SECRET_KEY',
-  'SMR_SERVICE_TOKEN',
+  'TEXT_SERVICE_TOKEN',
   'API_GATEWAY_KEY',
 ]);
 ```
@@ -267,7 +267,7 @@ Each phase is independently shippable and reversible.
 
 These should ship even if the rest of the migration is deferred indefinitely.
 
-1. **Rotate the real Azure keys currently in `apps/api/.env.dev`** (`AZURE_OPENAI_API_KEY`, `SMR_AZURE_API_KEY`). Treat them as compromised.
+1. **Rotate the real Azure keys currently in `apps/api/.env.dev`** (`AZURE_OPENAI_API_KEY`, `TEXT_AZURE_API_KEY`). Treat them as compromised.
 2. **Add a `@Secret` field decorator** + serializer hook on `BaseEntity.toObject()` that returns `'[REDACTED]'` for decorated fields. Apply to `GlobalSettingEntity.value` when `locked: true`. (This fixes TASK-301 P0-6 standalone, no provider change needed.)
 3. **Add a CI lint rule** that fails the build if `.env.dev` or `.env.example` contains any value matching common secret patterns (high entropy, `sk-`, `xoxb-`, `eyJ...`, etc.). Use `truffleHog` or `gitleaks` in pre-commit.
 4. **Document** which secrets exist, where they live, and why (this section is the start).

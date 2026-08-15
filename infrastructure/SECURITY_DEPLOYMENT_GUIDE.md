@@ -40,7 +40,7 @@ plaintext (loopback, no cert); production/staging examples enforce TLS.
 | `apps/stt/.env.prod`         | `DATABASE_URL=...?ssl=require` (asyncpg), `MINIO_SECURE=true`                                                                                                                     |
 | `apps/guardrail/.env.sample` | `GUARDRAIL_DATABASE_URL` `?ssl=require` guidance (asyncpg)                                                                                                                        |
 
-> `apps/smr/**` and `apps/harness/**` env files carry **no** Postgres/MinIO
+> `apps/text/**` and `apps/harness/**` env files carry **no** Postgres/MinIO
 > connection strings (SMR's DB URL is unset in its env; harness talks HTTP +
 > Temporal gRPC and never connects to Postgres directly), so no Phase 2 change
 > applies there.

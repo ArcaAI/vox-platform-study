@@ -1,5 +1,5 @@
 /**
- * useTaskStream — the SMR task SSE consumed through the house ticket flow:
+ * useTaskStream — the text-generation task SSE consumed through the house ticket flow:
  * `useEventStream` mints a single-use scope-bound ticket via the BFF and the
  * browser connects DIRECTLY to the gateway (`smr_task:<taskId>`, matching the
  * route's `@StreamScope`). These tests lock that transport (no `/api/hope/`
@@ -128,7 +128,7 @@ describe('useTaskStream', () => {
     act(() => source.emit('done', JSON.stringify({ type: 'done', data: { finish_reason: 'stop' } })));
     expect(result.current.status).toBe('done');
     expect(result.current.finishReason).toBe('stop');
-    // Terminal frames stop the source (the SMR generator returned anyway).
+    // Terminal frames stop the source (the text-generation service returned anyway).
     expect(source.closed).toBe(true);
   });
 

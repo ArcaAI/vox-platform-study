@@ -83,7 +83,7 @@ function makeUserSettings() {
 
 function session(overrides: Partial<{ isElevated: boolean; workingTenantId: string | null }> = {}) {
   const base = {
-    user: { id: 'u-1', username: 'root', email: 'root@hope.local', roles: ['GLOBAL_ADMIN'], tenantId: null },
+    user: { id: 'u-1', username: 'root', email: 'root@hope.local', roles: ['SUPER_ADMIN'], tenantId: null },
     isElevated: true,
     workingTenantId: 't-1',
     workingTenantName: 'Sunrise Medical Group',

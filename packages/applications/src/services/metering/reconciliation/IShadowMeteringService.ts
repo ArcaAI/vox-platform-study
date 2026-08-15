@@ -19,7 +19,7 @@ export interface IShadowMeteringService {
   /** Reconcile the ledger against each provider's own report for the last settled window. */
   reconcileProviders(now?: Date): Promise<ProviderReconciliationSweepResult>;
 
-  /** The audit report — newest first. GLOBAL_ADMIN-only at the call site: these are PLATFORM vendor totals. */
+  /** The audit report — newest first. SUPER_ADMIN-only at the call site: these are PLATFORM vendor totals. */
   findReconciliationRuns(query?: ProviderReconciliationRunQuery): Promise<ProviderReconciliationRunResponse[]>;
 
   /** Most recent run per provider — the status-board read. */

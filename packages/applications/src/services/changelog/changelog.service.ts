@@ -45,7 +45,7 @@ const UNSEEN_SCAN_WINDOW = 50;
  *   • reader surface (`/changelog`, `/changelog/unseen`, `/changelog/acknowledge`)
  *     — any authenticated user; audience filtering happens HERE, not in a
  *     decorator, because the audience is a property of the row, not of the route.
- *   • authoring surface (`/admin/changelog*`) — GLOBAL_ADMIN only, enforced
+ *   • authoring surface (`/admin/changelog*`) — SUPER_ADMIN only, enforced
  *     imperatively below (`assertGlobalAdmin`). The permission decorators cannot
  *     express "global admin only"; this is the documented house pattern
  *     (`05-nestjs-api.md` §Imperative Privilege Checks), and the routes carry an
@@ -178,7 +178,7 @@ export class ChangelogService extends BaseService implements IChangelogService {
   }
 
   // ---------------------------------------------------------------------------
-  // Authoring surface — GLOBAL_ADMIN only
+  // Authoring surface — SUPER_ADMIN only
   // ---------------------------------------------------------------------------
 
   async create(dto: CreateChangelogEntryRequest): Promise<ChangelogEntryResponse> {
@@ -288,6 +288,10 @@ export class ChangelogService extends BaseService implements IChangelogService {
   }
 
   private visibleAudiences(): ChangelogAudience[] {
+    // NOTE: ChangelogAudience.GLOBAL_ADMIN is intentionally NOT renamed here —
+    // the enum's member values are frozen by an external contract per
+    // enums.prisma's comment; the TASK-707 rename of this enum is HUMAN-GATED
+    // and has not landed (see packages/domains/src/enums/generated/ChangelogAudience.ts).
     return this.isGlobalAdmin() ? [ChangelogAudience.ALL, ChangelogAudience.GLOBAL_ADMIN] : [ChangelogAudience.ALL, ChangelogAudience.TENANT_ADMIN];
   }
 

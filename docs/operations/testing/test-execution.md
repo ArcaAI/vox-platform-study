@@ -78,7 +78,7 @@ pnpm --filter @arcaai/ui test
 | Service | All | Unit | Integration | E2E | Coverage |
 |---|---|---|---|---|---|
 | STT | `pnpm stt:test` | `stt:test:unit` | `stt:test:integration` | `stt:test:e2e` | `stt:test:cov` |
-| SMR | `pnpm smr:test` | `smr:test:unit` | `smr:test:integration` | `smr:test:e2e` | `smr:test:cov` |
+| SMR | `pnpm text:test` | `text:test:unit` | `text:test:integration` | `text:test:e2e` | `text:test:cov` |
 | NLP | `pnpm nlp:test` | — | — | — | `nlp:test:cov` |
 | Guardrail | `pnpm guardrail:test` | — | — | — | `guardrail:test:cov` |
 | Harness | `pnpm harness:test` | `harness:test:unit` | `harness:test:integration` | — | `harness:test:cov` |

@@ -2,7 +2,7 @@ import { getJson, postJson } from '@/shared/api';
 
 import type { ReconciliationRun, ReconciliationRunsParams, ReconciliationSweepResult } from './types';
 
-/** Typed calls over the BFF proxy. All routes are GLOBAL_ADMIN-only, enforced server-side. */
+/** Typed calls over the BFF proxy. All routes are SUPER_ADMIN-only, enforced server-side. */
 const BASE = 'admin/usage/reconciliation';
 
 export function getReconciliationRuns(params?: ReconciliationRunsParams): Promise<ReconciliationRun[]> {

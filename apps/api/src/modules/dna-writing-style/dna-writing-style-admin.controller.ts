@@ -97,7 +97,7 @@ export class DnaWritingStyleAdminController {
 
   // Admin read of a specific doctor's latest DNA writing-style
   // report (cross-user). Delegates to the PHI-gated service method, which
-  // `assertUserBelongsToTenant` before any repository read — even GLOBAL_ADMIN
+  // `assertUserBelongsToTenant` before any repository read — even SUPER_ADMIN
   // cannot cross tenants on this PHI-derived artifact. Declared before the
   // `:reportId`-family routes; `doctor` is a literal segment so it never
   // collides with `jobs/:jobId`.

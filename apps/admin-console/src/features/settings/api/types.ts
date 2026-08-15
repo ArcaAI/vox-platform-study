@@ -10,7 +10,7 @@ export interface GlobalSetting extends BaseResource {
   namespace?: string;
   /** Owning tenant of the row (the GLOBAL tenant holds platform defaults). */
   tenantId?: string | null;
-  /** Locked platform default — only GLOBAL_ADMIN may edit. */
+  /** Locked platform default — only SUPER_ADMIN may edit. */
   locked: boolean;
   version: number;
   isSecret: boolean;

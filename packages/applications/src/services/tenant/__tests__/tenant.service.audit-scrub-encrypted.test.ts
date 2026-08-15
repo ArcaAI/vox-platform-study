@@ -59,7 +59,7 @@ describe('TenantService — audit-scrub for Vault-encrypted rows (Phase 4 Task 4
   beforeEach(() => {
     vi.clearAllMocks();
     cls.get.mockImplementation((k: string) =>
-      k === 'user' ? { id: 'sa-id', roles: ['GLOBAL_ADMIN'] } : k === 'tenantId' ? 'tenant-1' : k === 'tenantCode' ? 'TENANT_1' : null,
+      k === 'user' ? { id: 'sa-id', roles: ['SUPER_ADMIN'] } : k === 'tenantId' ? 'tenant-1' : k === 'tenantCode' ? 'TENANT_1' : null,
     );
     service = new TenantService(
       tenantRepo as never,

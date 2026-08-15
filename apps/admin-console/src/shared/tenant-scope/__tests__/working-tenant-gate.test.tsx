@@ -16,7 +16,7 @@ function stubSession(session: {
     'fetch',
     vi.fn(async () =>
       Response.json({
-        user: { id: 'u-1', username: 'admin', email: 'a@x.io', roles: session.isElevated ? ['GLOBAL_ADMIN'] : ['TENANT_ADMIN'] },
+        user: { id: 'u-1', username: 'admin', email: 'a@x.io', roles: session.isElevated ? ['SUPER_ADMIN'] : ['TENANT_ADMIN'] },
         isElevated: session.isElevated,
         workingTenantId: session.workingTenantId,
         workingTenantName: session.workingTenantId ? 'Sunrise Medical Group' : null,
@@ -26,7 +26,7 @@ function stubSession(session: {
           id: 'u-1',
           username: 'admin',
           email: 'a@x.io',
-          roles: session.isElevated ? ['GLOBAL_ADMIN'] : ['TENANT_ADMIN'],
+          roles: session.isElevated ? ['SUPER_ADMIN'] : ['TENANT_ADMIN'],
           tenantId: null,
           departmentId: null,
         },

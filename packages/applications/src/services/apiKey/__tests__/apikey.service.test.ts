@@ -654,7 +654,7 @@ describe('ApiKeyService', () => {
       // `fetchAllByTenantId` now refuses cross-tenant
       // reads driven by the DTO. Align the existing "happy-path" probe
       // with the CLS default (`tenant-1`) so the new guard does not
-      // short-circuit. Cross-tenant + GLOBAL_ADMIN coverage lives in the
+      // short-circuit. Cross-tenant + SUPER_ADMIN coverage lives in the
       // dedicated tenant-scoped block below.
       const keys = [createMockApiKeyEntity({ tenantId: 'tenant-1' })];
       mockApiKeyRepository.findAll.mockResolvedValue(keys);
@@ -676,7 +676,7 @@ describe('ApiKeyService', () => {
    * previously trusted the caller-supplied DTO `tenantId` without
    * comparing it to CLS. A Tenant-A admin could enumerate Tenant-B API
    * keys by passing a foreign `tenantId`. The new guard short-circuits
-   * with `NotFoundException` on a non-super-admin mismatch; GLOBAL_ADMIN
+   * with `NotFoundException` on a non-super-admin mismatch; SUPER_ADMIN
    * retains the cross-tenant bypass for admin tooling.
    */
   describe('fetchAllByTenantId tenant-scoped', () => {
@@ -725,8 +725,8 @@ describe('ApiKeyService', () => {
       expect(mockApiKeyRepository.findAll).not.toHaveBeenCalled();
     });
 
-    it('returns rows for a cross-tenant GLOBAL_ADMIN read (bypass)', async () => {
-      setRequestUserRoles(['GLOBAL_ADMIN']);
+    it('returns rows for a cross-tenant SUPER_ADMIN read (bypass)', async () => {
+      setRequestUserRoles(['SUPER_ADMIN']);
       const keys = [createMockApiKeyEntity({ tenantId: 'tenant-B' })];
       mockApiKeyRepository.findAll.mockResolvedValue(keys);
       mockApiKeyRepository.count.mockResolvedValue(1);
@@ -1714,13 +1714,13 @@ describe('ApiKeyService', () => {
    *    that they're scoping the key to (D.7-pattern privilege escalation).
    *
    * Mirrors the D.7 (UserRoleAssignment) write-side and D.8 (AuditLog)
-   * read-side patterns. GLOBAL_ADMIN bypasses both DTO-pin and user-membership
+   * read-side patterns. SUPER_ADMIN bypasses both DTO-pin and user-membership
    * guards on writes (legitimate cross-tenant support flow), and bypasses
    * read-side scoping.
    */
   describe('Multi-tenant scoping', () => {
     describe('create', () => {
-      it('rejects when DTO tenantId differs from CLS and caller is not GLOBAL_ADMIN', async () => {
+      it('rejects when DTO tenantId differs from CLS and caller is not SUPER_ADMIN', async () => {
         await expect(
           service.create({
             keyName: 'Cross-tenant attempt',
@@ -1769,9 +1769,9 @@ describe('ApiKeyService', () => {
         expect(mockUserRoleAssignmentRepository.findFirst).not.toHaveBeenCalled();
       });
 
-      it('GLOBAL_ADMIN can override DTO tenantId and bypass the user-membership check', async () => {
+      it('SUPER_ADMIN can override DTO tenantId and bypass the user-membership check', async () => {
         mockClsService.get.mockImplementation((key: string) => {
-          if (key === 'user') return { id: 'super-admin-id', roles: ['GLOBAL_ADMIN'] };
+          if (key === 'user') return { id: 'super-admin-id', roles: ['SUPER_ADMIN'] };
           if (key === 'tenantId') return 'tenant-1';
           return null;
         });
@@ -1825,9 +1825,9 @@ describe('ApiKeyService', () => {
         );
       });
 
-      it('does NOT inject tenantId for GLOBAL_ADMIN caller', async () => {
+      it('does NOT inject tenantId for SUPER_ADMIN caller', async () => {
         mockClsService.get.mockImplementation((key: string) => {
-          if (key === 'user') return { id: 'super-admin', roles: ['GLOBAL_ADMIN'] };
+          if (key === 'user') return { id: 'super-admin', roles: ['SUPER_ADMIN'] };
           if (key === 'tenantId') return 'tenant-1';
           return null;
         });
@@ -1865,9 +1865,9 @@ describe('ApiKeyService', () => {
         expect(mockEventEmitter.emit).not.toHaveBeenCalled();
       });
 
-      it('returns the entity for GLOBAL_ADMIN reading a cross-tenant row', async () => {
+      it('returns the entity for SUPER_ADMIN reading a cross-tenant row', async () => {
         mockClsService.get.mockImplementation((key: string) => {
-          if (key === 'user') return { id: 'super-admin', roles: ['GLOBAL_ADMIN'] };
+          if (key === 'user') return { id: 'super-admin', roles: ['SUPER_ADMIN'] };
           if (key === 'tenantId') return 'tenant-1';
           return null;
         });
@@ -1940,7 +1940,7 @@ describe('ApiKeyService', () => {
    * Cross-owner access (even same-tenant) is refused with `NotFoundException`
    * (never Forbidden), matching the module's existing not-authorized
    * convention so a key's existence is never leaked. Tenant-admins
-   * (`manage:ApiKey`) retain tenant-scope; GLOBAL_ADMIN retains its broad
+   * (`manage:ApiKey`) retain tenant-scope; SUPER_ADMIN retains its broad
    * cross-tenant scope.
    */
   describe('Owner-scope enforcement (follow-up)', () => {
@@ -1984,12 +1984,12 @@ describe('ApiKeyService', () => {
       });
     };
 
-    // GLOBAL_ADMIN caller: manage:all, cross-tenant.
+    // SUPER_ADMIN caller: manage:all, cross-tenant.
     const setSuperAdminCaller = (userId: string) => {
       mockClsService.get.mockImplementation((key: string) => {
         switch (key) {
           case 'user':
-            return { id: userId, roles: ['GLOBAL_ADMIN'] };
+            return { id: userId, roles: ['SUPER_ADMIN'] };
           case 'tenantId':
             return 'tenant-1';
           case 'userAbility':
@@ -2130,7 +2130,7 @@ describe('ApiKeyService', () => {
       });
     });
 
-    describe('GLOBAL_ADMIN retains broad (cross-owner, cross-tenant) scope', () => {
+    describe('SUPER_ADMIN retains broad (cross-owner, cross-tenant) scope', () => {
       beforeEach(() => setSuperAdminCaller('sa-1'));
 
       it("fetchById returns another user's key in another tenant", async () => {
@@ -2183,7 +2183,7 @@ describe('ApiKeyService', () => {
         expect(mockApiKeyRepository.findAll).toHaveBeenCalledWith(expect.objectContaining({ where: { tenantId: 'tenant-1', userId: 'owner-1' } }));
       });
 
-      it('fetchAllByTenantId does NOT add userId for a GLOBAL_ADMIN cross-tenant caller', async () => {
+      it('fetchAllByTenantId does NOT add userId for a SUPER_ADMIN cross-tenant caller', async () => {
         setSuperAdminCaller('sa-1');
         mockApiKeyRepository.findAll.mockResolvedValue([]);
         mockApiKeyRepository.count.mockResolvedValue(0);

@@ -16,8 +16,8 @@ import {
   ConsultationEntity,
 } from '@arcaai/domains';
 import { ComprehensiveSummaryRequest, ComprehensiveSummaryResponse, ChainSectionDto } from './dto';
-import { buildSmrGeneratePayload, mapSmrGenerateResponse } from './smr-generate';
-import { buildLlmUsageInput, parseSmrUsageDetail, type SmrUsageDetail } from './smr-usage';
+import { buildSmrGeneratePayload, mapSmrGenerateResponse } from './text-generate';
+import { buildLlmUsageInput, parseSmrUsageDetail, type SmrUsageDetail } from './text-usage';
 import { IUsageLedgerService } from '../../usageLedger/IUsageLedgerService';
 import { BaseService, assertParentInScope, encryptPhiFields } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
@@ -88,7 +88,7 @@ export class ChainSummaryService extends BaseService {
     @Optional() @Inject(INoteGenerationService) private readonly noteGenerationService?: INoteGenerationService,
   ) {
     super(eventEmitter, clsService, ResourceType.ContextItem);
-    this.smrServiceUrl = this.configService.get<string>('SMR_URL') ?? 'http://localhost:8862';
+    this.smrServiceUrl = this.configService.get<string>('TEXT_URL') ?? 'http://localhost:8862';
   }
 
   /**
@@ -638,7 +638,7 @@ export class ChainSummaryService extends BaseService {
         options = { smrProvider: provider, smrModel: model, ...payload.options };
       }
       const smrPayload = buildSmrGeneratePayload(payload.assembledPrompt, options, payload.context);
-      const smrServiceToken = (await this.secretsService?.getSecretOptional('SMR_SERVICE_TOKEN')) ?? '';
+      const smrServiceToken = (await this.secretsService?.getSecretOptional('TEXT_SERVICE_TOKEN')) ?? '';
       const response = await this.httpService.axiosRef.post(`${this.smrServiceUrl}/api/v1/generate`, smrPayload, {
         timeout: 180000,
         headers: {

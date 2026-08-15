@@ -616,25 +616,25 @@ sign-guardrail:
     - !reference [.rules-guardrail, rules]
 
 # --- SMR ---
-sbom-smr:
+sbom-text:
   extends: .cyclonedx-sbom
   needs:
-    - job: build-smr
+    - job: build-text
       artifacts: true
   rules:
     - !reference [.image-signing-guard, rules]
-    - !reference [.rules-smr, rules]
+    - !reference [.rules-text, rules]
 
-sign-smr:
+sign-text:
   extends: .cosign-sign-attest
   needs:
-    - job: build-smr
+    - job: build-text
       artifacts: true
-    - job: sbom-smr
+    - job: sbom-text
       artifacts: true
   rules:
     - !reference [.image-signing-guard, rules]
-    - !reference [.rules-smr, rules]
+    - !reference [.rules-text, rules]
 
 # --- Harness (FastAPI) ---
 sbom-harness:

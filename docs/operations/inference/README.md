@@ -63,17 +63,17 @@ in-region GPU instances — "cloud" without a policy change.
 ## 3. Wiring SMR to the engines
 
 SMR loads every provider config at startup; point its `base_url` at the running
-server to make the engine available (see `apps/smr/.env.prod`, TASK-584 —
+server to make the engine available (see `apps/text/.env.prod`, TASK-584 —
 SMR gates a provider by the PRESENCE of its connection config, not an
-`enabled` flag, so there is no `SMR_VLLM_ENABLED`/`SMR_LLAMA_CPP_ENABLED`).
+`enabled` flag, so there is no `TEXT_VLLM_ENABLED`/`TEXT_LLAMA_CPP_ENABLED`).
 
 ```bash
 # vLLM (OpenAI wire; base_url INCLUDES /v1; /health + /metrics at the root)
-SMR_VLLM_BASE_URL=http://localhost:8000/v1     # cluster: http://hope-vllm:8000/v1
-SMR_VLLM_USE_GUIDED_JSON=false                 # vLLM < 0.8 only
+TEXT_VLLM_BASE_URL=http://localhost:8000/v1     # cluster: http://hope-vllm:8000/v1
+TEXT_VLLM_USE_GUIDED_JSON=false                 # vLLM < 0.8 only
 
 # llama.cpp (native /completion; GGUF tier)
-SMR_LLAMA_CPP_BASE_URL=http://localhost:8080   # cluster: http://hope-llama-cpp:8080
+TEXT_LLAMA_CPP_BASE_URL=http://localhost:8080   # cluster: http://hope-llama-cpp:8080
 ```
 
 Model routing stays caller-authoritative (D-7): the `provider` + `model` on each
@@ -141,14 +141,14 @@ curl -fsS http://localhost:8862/api/v1/generate \
 
 ### Owner-run live E2E (GPU hardware only)
 ```bash
-SMR_E2E_VLLM_BASE_URL=http://localhost:8000/v1 SMR_E2E_VLLM_MODEL=Qwen/Qwen3-8B \
+TEXT_E2E_VLLM_BASE_URL=http://localhost:8000/v1 TEXT_E2E_VLLM_MODEL=Qwen/Qwen3-8B \
   conda run -n arcaenv --no-capture-output \
-    pytest apps/smr/src/smr/tests/e2e/test_vllm_live.py -q -m e2e
+    pytest apps/text/src/text/tests/e2e/test_vllm_live.py -q -m e2e
 ```
 
 ---
 
 ## 7. Structured output & prefix caching
 
-- **vLLM**: JSON-schema structured output via native `response_format={"type":"json_schema",...}` (vLLM ≥ 0.8); flip `SMR_VLLM_USE_GUIDED_JSON=true` to route through `extra_body.guided_json` on older builds. Automatic prefix caching is on by default — SMR scrapes the hit rate into `smr_engine_cache_hit_rate{engine="vllm"}`.
+- **vLLM**: JSON-schema structured output via native `response_format={"type":"json_schema",...}` (vLLM ≥ 0.8); flip `TEXT_VLLM_USE_GUIDED_JSON=true` to route through `extra_body.guided_json` on older builds. Automatic prefix caching is on by default — SMR scrapes the hit rate into `smr_engine_cache_hit_rate{engine="vllm"}`.
 - **llama.cpp**: JSON-schema (`json_schema` field) or raw **GBNF** grammar (via `context.grammar`). `cache_prompt: true` reuses the KV cache of a stable prefix across flushes/regens (the 4C prompt-reorder program depends on this).

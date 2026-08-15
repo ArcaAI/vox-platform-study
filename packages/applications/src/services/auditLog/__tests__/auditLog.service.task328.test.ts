@@ -3,7 +3,7 @@
  *
  * Focus areas (RED → GREEN):
  * - filters are pushed to the repository `where` clause (NOT in-memory)
- * - tenant scoping mirrors the existing fetch methods (CLS tenant / GLOBAL_ADMIN bypass)
+ * - tenant scoping mirrors the existing fetch methods (CLS tenant / SUPER_ADMIN bypass)
  * - acting users are resolved once per page (deduped) and returned as a map
  * - export materialises the full filtered set (capped, newest-first)
  */
@@ -138,11 +138,11 @@ describe('AuditLogService — filtered list + export', () => {
       expect(findAllArg.where).toEqual({ tenantId: 'tenant-1' });
     });
 
-    it('does NOT inject tenantId for a GLOBAL_ADMIN caller', async () => {
+    it('does NOT inject tenantId for a SUPER_ADMIN caller', async () => {
       mockClsService.get.mockImplementation((key: string) => {
         switch (key) {
           case 'user':
-            return { id: 'super-admin-id', roles: ['GLOBAL_ADMIN'] };
+            return { id: 'super-admin-id', roles: ['SUPER_ADMIN'] };
           case 'tenantId':
             return 'tenant-1';
           default:

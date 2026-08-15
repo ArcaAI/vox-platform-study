@@ -65,8 +65,10 @@ import {
 import { ImpersonationEvents, ImpersonationDeniedReason, ImpersonationEventPayload } from './impersonation-events';
 import { StreamTicketService } from './stream-ticket.service';
 
-// GLOBAL_ADMIN is the single elevated role (SUPER_ADMIN retired).
-const GLOBAL_ADMIN_ROLE = 'GLOBAL_ADMIN';
+// SUPER_ADMIN (formerly GLOBAL_ADMIN, renamed TASK-707) is the single
+// elevated role; the earlier, unrelated retired SUPER_ADMIN role (TASK-417)
+// stays retired under its own reserved id.
+const SUPER_ADMIN_ROLE = 'SUPER_ADMIN';
 
 // A previous class-wide `@Throttle({ default: { limit: 10,
 // ttl: 60000 } })` lumped `/login`, `/refresh`, `/me`, `/logout`,
@@ -215,7 +217,7 @@ export class AuthController {
 
       const userRoles = await this.getUserRoles(user.id);
       const roles = userRoles.map((role) => role.name);
-      const isSuperAdmin = roles.includes(GLOBAL_ADMIN_ROLE);
+      const isSuperAdmin = roles.includes(SUPER_ADMIN_ROLE);
 
       // Tenant validation: required for non-global-admin users
       let resolvedTenantId = '';
@@ -561,16 +563,16 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @Authorize()
   @ApiBearerAuth()
-  // A GLOBAL_ADMIN MAY impersonate a TENANT_ADMIN (and any
-  // non-global-admin) cross-tenant; only GLOBAL_ADMIN TARGETS can never be
+  // A SUPER_ADMIN MAY impersonate a TENANT_ADMIN (and any
+  // non-global-admin) cross-tenant; only SUPER_ADMIN TARGETS can never be
   // impersonated. A TENANT_ADMIN may impersonate only non-admin users within
   // its OWN tenant.
   @ApiOperation({
     summary: 'Impersonate another user (admin only)',
     description:
-      'Mints a short-lived impersonation token. A GLOBAL_ADMIN may impersonate any ' +
+      'Mints a short-lived impersonation token. A SUPER_ADMIN may impersonate any ' +
       'non-global-admin user cross-tenant — including a TENANT_ADMIN. A TENANT_ADMIN may impersonate ' +
-      'only non-admin users within its own tenant. GLOBAL_ADMIN targets ' +
+      'only non-admin users within its own tenant. SUPER_ADMIN targets ' +
       'can never be impersonated.',
   })
   @ApiResponse({
@@ -604,9 +606,9 @@ export class AuthController {
 
     const adminRoles = await this.getUserRoles(adminUser.id);
     const adminRoleNames = adminRoles.map((r) => r.name);
-    // GLOBAL_ADMIN is the elevated cross-tenant
+    // SUPER_ADMIN is the elevated cross-tenant
     // role (unrestricted); it carries the cross-tenant bypass below.
-    const isSuperAdmin = adminRoleNames.includes(GLOBAL_ADMIN_ROLE);
+    const isSuperAdmin = adminRoleNames.includes(SUPER_ADMIN_ROLE);
     const isTenantAdmin = adminRoleNames.some((r) => ['TENANT_ADMIN', 'admin', 'system-admin'].includes(r));
     if (!isSuperAdmin && !isTenantAdmin) {
       this.recordImpersonationDenied(req, adminUser.id, request.targetUserId, ImpersonationDeniedReason.CallerNotAdmin);
@@ -635,9 +637,9 @@ export class AuthController {
 
     const targetRoles = await this.getUserRoles(targetUser.id);
     const targetRoleNames = targetRoles.map((r) => r.name);
-    // A GLOBAL_ADMIN target can never be
+    // A SUPER_ADMIN target can never be
     // impersonated.
-    const targetIsSuperAdmin = targetRoleNames.includes(GLOBAL_ADMIN_ROLE);
+    const targetIsSuperAdmin = targetRoleNames.includes(SUPER_ADMIN_ROLE);
     const targetIsTenantAdmin = targetRoleNames.some((r) => ['TENANT_ADMIN', 'admin', 'system-admin'].includes(r));
 
     if (targetIsSuperAdmin) {
@@ -674,7 +676,7 @@ export class AuthController {
     }
 
     // Tenant admins must not impersonate users outside their
-    // own tenant. GLOBAL_ADMIN remains unrestricted (cross-tenant impersonation
+    // own tenant. SUPER_ADMIN remains unrestricted (cross-tenant impersonation
     // is part of the business requirement for global admins).
     if (!isSuperAdmin) {
       const adminTenantId = adminUser.tenantId;

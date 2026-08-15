@@ -104,10 +104,10 @@ const FLAGS: FlagSpec[] = [
     killSwitch: true,
   },
   {
-    key: 'smr.externalGuardrail.enabled',
+    key: 'text.externalGuardrail.enabled',
     label: 'SMR input moderation',
     description:
-      'Gates input moderation on SMR `/generate` (`SMR_EXTERNAL_GUARDRAIL_` prefix). OFF is the dev/CI bypass so local runs need no guardrail service. When ON the posture is fail-CLOSED by construction: a transient error is absorbed by a bounded retry, a sustained outage rejects, and an errored guardrail NEVER allows — there is deliberately no `fail_open` option.',
+      'Gates input moderation on SMR `/generate` (`TEXT_EXTERNAL_GUARDRAIL_` prefix). OFF is the dev/CI bypass so local runs need no guardrail service. When ON the posture is fail-CLOSED by construction: a transient error is absorbed by a bounded retry, a sustained outage rejects, and an errored guardrail NEVER allows — there is deliberately no `fail_open` option.',
     default: false,
     killSwitch: true,
   },

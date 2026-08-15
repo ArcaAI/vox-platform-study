@@ -18,7 +18,7 @@ import { CostPerEncounterQuery, TopTenantsQuery, UsageSummaryQuery, UsageTimeser
  * Admin/global usage-analytics surface, mounted at
  * `/admin/usage/*` (global prefix → `/api/v1/admin/usage/*`).
  *
- * Gated GLOBAL_ADMIN via `@CanManage('UsageAnalytics')` — the same posture as
+ * Gated SUPER_ADMIN via `@CanManage('UsageAnalytics')` — the same posture as
  * `PlatformMetricsController` (an arbitrary subject satisfied only by the
  * global `manage:all` grant; no tenant-scoped rule is seeded for it). This
  * controller SUPERSEDES `PlatformMetricsController#getConsumption`'s ad-hoc

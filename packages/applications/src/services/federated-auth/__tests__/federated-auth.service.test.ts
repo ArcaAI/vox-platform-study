@@ -344,7 +344,7 @@ describe('FederatedAuthService.verifyOidcCallback — JIT provisioning', () => {
     expect(roleCallArg.roleId).toBe('role-doctor');
   });
 
-  it('never assigns GLOBAL_ADMIN via IdP mapping (hard guard)', async () => {
+  it('never assigns SUPER_ADMIN via IdP mapping (hard guard)', async () => {
     const ctx = makeService();
     const provider = makeProvider({
       config: {
@@ -356,7 +356,7 @@ describe('FederatedAuthService.verifyOidcCallback — JIT provisioning', () => {
       },
     });
     setupUnlinkedCallback(ctx, provider, { sub: 'okta-sub-new' });
-    ctx.roleFindUnique.mockResolvedValue({ name: 'GLOBAL_ADMIN' });
+    ctx.roleFindUnique.mockResolvedValue({ name: 'SUPER_ADMIN' });
 
     await expect(ctx.svc.verifyOidcCallback({ code: 'auth-code', state: signState(provider.id), redirectUri: REDIRECT_URI })).rejects.toBeInstanceOf(
       ForbiddenException,

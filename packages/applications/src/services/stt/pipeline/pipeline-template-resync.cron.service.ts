@@ -23,7 +23,7 @@ const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
  * `GlobalSetting` row seeded in `11-global-setting.ts` (`value: 'true'`,
  * `defaultValue: 'false'`, so a reset reverts to fail-safe). That keeps the
  * governance invariant intact while shipping the sweep enabled, and leaves a
- * GLOBAL_ADMIN able to flip it from the settings surface at any time.
+ * SUPER_ADMIN able to flip it from the settings surface at any time.
  */
 const DEFAULTS = {
   enabled: false,

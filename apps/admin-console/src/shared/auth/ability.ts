@@ -11,10 +11,12 @@ export interface PermissionRule {
 }
 
 /**
- * GLOBAL_ADMIN is the single elevated role — consolidated the legacy
- * SUPER_ADMIN into it (dev DBs are migrated; the backend no longer issues it).
+ * SUPER_ADMIN is the single elevated role (renamed from GLOBAL_ADMIN). Before
+ * that rename, the legacy (and separately retired) SUPER_ADMIN role of the
+ * same name had already been consolidated into GLOBAL_ADMIN — dev DBs are
+ * migrated and the backend no longer issues that retired role.
  */
-export const ELEVATED_ROLES = ['GLOBAL_ADMIN'] as const;
+export const ELEVATED_ROLES = ['SUPER_ADMIN'] as const;
 
 /** The elevated cross-tenant set (see ELEVATED_ROLES). */
 export function isElevated(roles: readonly string[] | null | undefined): boolean {

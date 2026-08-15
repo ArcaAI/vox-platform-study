@@ -1,4 +1,4 @@
-/** Platform overview reads (capabilities-matrix row 1). GLOBAL_ADMIN only. */
+/** Platform overview reads (capabilities-matrix row 1). SUPER_ADMIN only. */
 
 import { getJson } from '@/shared/api';
 import type { ConsumptionRollup, OpenSockets, PlatformMetrics } from './types';

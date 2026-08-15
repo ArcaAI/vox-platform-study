@@ -8,7 +8,7 @@ import { CanManage, ExpectedVersion, RequiresIfMatch } from '../../decorators';
  * contract `/admin/changelog/*`).
  *
  * AUTH-NOTE: the class-level `@CanManage('ChangelogEntry')` UNDERSTATES the
- * real gate. Every route here is GLOBAL_ADMIN-only, enforced imperatively in
+ * real gate. Every route here is SUPER_ADMIN-only, enforced imperatively in
  * `ChangelogService.assertGlobalAdmin()` — the decorators cannot express
  * "global admin only" (`05-nestjs-api.md` §Imperative Privilege Checks), and a
  * release note is a platform-wide broadcast that a tenant admin must never
@@ -26,7 +26,7 @@ export class ChangelogAdminController {
     private readonly changelogService: IChangelogService,
   ) {}
 
-  // AUTH-NOTE: GLOBAL_ADMIN-only — enforced in ChangelogService, see class doc.
+  // AUTH-NOTE: SUPER_ADMIN-only — enforced in ChangelogService, see class doc.
   @Post()
   @ApiOperation({
     summary: 'Create a release note (always DRAFT)',
@@ -38,7 +38,7 @@ export class ChangelogAdminController {
     return this.changelogService.create(request);
   }
 
-  // AUTH-NOTE: GLOBAL_ADMIN-only — enforced in ChangelogService, see class doc.
+  // AUTH-NOTE: SUPER_ADMIN-only — enforced in ChangelogService, see class doc.
   @Patch(':id')
   @RequiresIfMatch()
   @ApiOperation({
@@ -60,7 +60,7 @@ export class ChangelogAdminController {
     return this.changelogService.update(id, dto);
   }
 
-  // AUTH-NOTE: GLOBAL_ADMIN-only — enforced in ChangelogService, see class doc.
+  // AUTH-NOTE: SUPER_ADMIN-only — enforced in ChangelogService, see class doc.
   @Post(':id/publish')
   @RequiresIfMatch()
   @ApiOperation({

@@ -67,7 +67,7 @@ export class AuditLogController {
     // service `buildTenantWhere` already scopes every query, but mirror the
     // `fetchByUser` guard here so the rule is observable at the request entry
     // point and a non-global-admin with no tenant context never reaches the
-    // service. GLOBAL_ADMIN keeps the cross-tenant read.
+    // service. SUPER_ADMIN keeps the cross-tenant read.
     const user = this.cls.get('user');
     const callerTenantId = this.cls.get('tenantId');
     if (!isSuperAdmin(user) && !callerTenantId) {
@@ -172,7 +172,7 @@ export class AuditLogController {
   async fetchByCursor(@Query() queryParams: AuditLogCursorQuery): Promise<CursorPaginatedAuditLogResponse> {
     // Mirror the fetchAll/fetchByUser guard so the cross-tenant enumeration
     // rule is observable at the request entry point (service buildTenantWhere
-    // already enforces it). GLOBAL_ADMIN keeps the cross-tenant read.
+    // already enforces it). SUPER_ADMIN keeps the cross-tenant read.
     const user = this.cls.get('user');
     const callerTenantId = this.cls.get('tenantId');
     if (!isSuperAdmin(user) && !callerTenantId) {
@@ -266,7 +266,7 @@ export class AuditLogController {
     // Defence-in-depth tenant scope. The service-side `buildTenantWhere`
     // already throws when a non-global-admin has no CLS tenantId, but this
     // adds an explicit controller-layer assertion so the rule is observable
-    // at the request entry point. GLOBAL_ADMIN keeps the cross-tenant read.
+    // at the request entry point. SUPER_ADMIN keeps the cross-tenant read.
     const user = this.cls.get('user');
     const callerTenantId = this.cls.get('tenantId');
     if (!isSuperAdmin(user) && !callerTenantId) {

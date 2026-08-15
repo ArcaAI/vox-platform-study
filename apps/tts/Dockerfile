@@ -64,7 +64,7 @@ ENV UV_NO_CUDA_SKIPS="--no-install-package torch \
 # lock or any member manifest changes).
 COPY pyproject.toml uv.lock ./
 COPY apps/tts/pyproject.toml ./apps/tts/
-COPY apps/smr/pyproject.toml ./apps/smr/
+COPY apps/text/pyproject.toml ./apps/text/
 COPY apps/guardrail/pyproject.toml ./apps/guardrail/
 COPY apps/nlp/pyproject.toml ./apps/nlp/
 COPY apps/harness/pyproject.toml ./apps/harness/

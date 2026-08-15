@@ -71,7 +71,7 @@ describe('STT config naming', () => {
 
     // apps/fedl was removed; the config service no longer resolves the legacy
     // FEDL_* env keys. (TTS_URL/TTS_PORT are back for apps/tts —
-    // a legitimate downstream service, resolved like SMR_URL/NLP_URL/GUARDRAIL_URL.)
+    // a legitimate downstream service, resolved like TEXT_URL/NLP_URL/GUARDRAIL_URL.)
     it('should no longer reference FEDL_URL, FEDL_PORT', () => {
       const content = readFile(configServicePath);
       expect(content).not.toMatch(/FEDL_URL/);

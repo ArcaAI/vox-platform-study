@@ -18,7 +18,7 @@ import { Authorize, CanManage, ExpectedVersion, RequiresIfMatch } from '../../de
  * prefix → `/api/v1/admin/webhooks`). Mirrors `ApiKeyController` (mapper at
  * the edge) and `DepartmentController` (If-Match OCC fold on PATCH).
  *
- * Tenancy is service-enforced: lists pin non-GLOBAL_ADMIN callers to the CLS
+ * Tenancy is service-enforced: lists pin non-SUPER_ADMIN callers to the CLS
  * tenant, id reads/writes are load-then-assert (cross-tenant → 404, no
  * existence leak). CASL: class-level `manage:Webhook` (tenant-full-access
  * grants it tenant-scoped); the delivery log is `read:WebhookRunHistory`.
@@ -43,8 +43,8 @@ export class WebhookController {
   }
 
   @Get()
-  @ApiOperation({ summary: 'List webhooks (tenant-scoped; GLOBAL_ADMIN sees all, or targets one via ?tenantId=)' })
-  @ApiQuery({ name: 'tenantId', required: false, description: 'Cross-tenant target (GLOBAL_ADMIN only — others 404).' })
+  @ApiOperation({ summary: 'List webhooks (tenant-scoped; SUPER_ADMIN sees all, or targets one via ?tenantId=)' })
+  @ApiQuery({ name: 'tenantId', required: false, description: 'Cross-tenant target (SUPER_ADMIN only — others 404).' })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
   @ApiResponse({ status: 200, type: PaginatedWebhookResponse })

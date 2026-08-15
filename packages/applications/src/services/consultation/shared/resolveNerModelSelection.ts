@@ -4,7 +4,7 @@ import { SYSTEM_TENANT_ID } from '@arcaai/domains';
 import { IActiveUserContext } from '../../../interfaces';
 import { IAiTaskDefaultService } from '../../ai-task-default/IAiTaskDefaultService';
 
-/** The AiTaskDefault key clinical NER routes through (GLOBAL_ADMIN-only, SYSTEM-row resolution only). */
+/** The AiTaskDefault key clinical NER routes through (SUPER_ADMIN-only, SYSTEM-row resolution only). */
 export const NLP_NER_TASK_KEY = 'nlp.ner';
 
 /**

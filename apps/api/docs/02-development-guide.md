@@ -112,7 +112,7 @@ REDIS_PASS=
 
 # Python Services (local)
 STT_URL=http://localhost:8861
-SMR_URL=http://localhost:8862
+TEXT_URL=http://localhost:8862
 GUARDRAIL_URL=http://localhost:8863
 NLP_URL=http://localhost:8864
 HARNESS_URL=http://localhost:8866

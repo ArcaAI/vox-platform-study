@@ -23,7 +23,7 @@ import { QueueNamePipe } from './pipes/queue-name.pipe';
  * `/api/v1/admin/queues`.
  *
  * Access: class-level `@Authorize(['manage','all'])` gates the whole surface to
- * GLOBAL_ADMIN. Queues/jobs are PLATFORM-wide infrastructure (not tenant-scoped),
+ * SUPER_ADMIN. Queues/jobs are PLATFORM-wide infrastructure (not tenant-scoped),
  * so — exactly like the rate-limit admin surface — tenant admins (`manage` on a
  * tenant subject) must NOT be able to pause/clean platform queues or inspect
  * cross-tenant job payloads. The `manage all` permission is granted only by the

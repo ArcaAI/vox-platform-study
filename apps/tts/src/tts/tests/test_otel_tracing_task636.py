@@ -326,7 +326,7 @@ class TestShutdownOpentelemetry:
 class TestDeploymentEnvironmentIsNotHardcoded:
     """Fleet-wide regression guard.
 
-    `apps/smr/core/config.py` is the reference every service's OTel setup was
+    `apps/text/core/config.py` is the reference every service's OTel setup was
     copied from, and it defaulted to "production". TTS, harness and STT all
     inherited that literal. A hardcoded "production" tags a developer laptop's
     spans as production data: a mislabelled dev span is noise, a mislabelled

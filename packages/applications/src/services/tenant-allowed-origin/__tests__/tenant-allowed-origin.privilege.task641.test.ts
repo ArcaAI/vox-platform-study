@@ -8,11 +8,11 @@
  * visible:
  *
  *  - **Wildcard gate** — a wildcard (anything containing `*`, including the bare
- *    allow-all token) stays GLOBAL_ADMIN-only, on create **and** on update.
+ *    allow-all token) stays SUPER_ADMIN-only, on create **and** on update.
  *    `update` is the escalation path: a tenant admin holding an exact row
  *    could otherwise PATCH its `origin` into `https://*.evil.com:*`.
  *  - **SYSTEM gate** — a write whose resolved tenant is SYSTEM stays
- *    GLOBAL_ADMIN-only regardless of role, because a SYSTEM row is valid for
+ *    SUPER_ADMIN-only regardless of role, because a SYSTEM row is valid for
  *    EVERY tenant (`OriginRegistry.allows()` treats SYSTEM as universal).
  *
  * Both are **403s (privilege)**, never the 404-over-403 cross-tenant posture —
@@ -48,7 +48,7 @@ const TENANT_B = '50000000-0000-0000-0000-0000000000bb';
 const ORIGIN_REGISTRY_INVALIDATE_EVENT = 'origin-registry.invalidate';
 
 const tenantAdmin = { id: 'user-tenant-admin', email: 'ta@example.org', roles: ['TENANT_ADMIN'] };
-const globalAdmin = { id: 'user-global-admin', email: 'ga@example.org', roles: ['GLOBAL_ADMIN'] };
+const globalAdmin = { id: 'user-global-admin', email: 'ga@example.org', roles: ['SUPER_ADMIN'] };
 
 function makeEntity(overrides: Partial<{ id: string; tenantId: string; origin: string; label: string; version: number }> = {}): TenantAllowedOriginEntity {
   return new TenantAllowedOriginEntity({
@@ -148,7 +148,7 @@ describe('TenantAllowedOriginService — privilege boundaries', () => {
       expect(invalidateEmitted()).toBe(false);
     });
 
-    it('allows a GLOBAL_ADMIN the identical write (no regression)', async () => {
+    it('allows a SUPER_ADMIN the identical write (no regression)', async () => {
       const result = await actingAs(globalAdmin, TENANT_A, () =>
         service.create({ origin: 'https://*.bcmch.org:*', label: 'BCMCH subdomains' } as never),
       );
@@ -169,7 +169,7 @@ describe('TenantAllowedOriginService — privilege boundaries', () => {
       expect(repository.create).not.toHaveBeenCalled();
     });
 
-    it('allows a GLOBAL_ADMIN', async () => {
+    it('allows a SUPER_ADMIN', async () => {
       const result = await actingAs(globalAdmin, TENANT_A, () => service.create({ origin: '*', label: 'everything' } as never));
 
       expect(result.origin).toBe('*');
@@ -233,7 +233,7 @@ describe('TenantAllowedOriginService — privilege boundaries', () => {
       expect(repository.updateWithVersion).not.toHaveBeenCalled();
     });
 
-    it('refuses a GLOBAL_ADMIN too — an encoded wildcard is malformed input, not a privileged write', async () => {
+    it('refuses a SUPER_ADMIN too — an encoded wildcard is malformed input, not a privileged write', async () => {
       // The pre-lane-J behaviour would have ADMITTED this for a global admin
       // (it classified as an "exact" origin and stored `https://*.evil.com`).
       // There is no legitimate reason to spell a wildcard this way: the
@@ -259,7 +259,7 @@ describe('TenantAllowedOriginService — privilege boundaries', () => {
       expect(invalidateEmitted()).toBe(false);
     });
 
-    it('allows a GLOBAL_ADMIN the identical PATCH', async () => {
+    it('allows a SUPER_ADMIN the identical PATCH', async () => {
       repository.findById.mockResolvedValue(makeEntity({ id: 'row-1', tenantId: TENANT_A, origin: 'https://app.tenant-a.example' }));
 
       await actingAs(globalAdmin, TENANT_A, () => service.update('row-1', { origin: 'https://*.bcmch.org:*', expectedVersion: 1 } as never));
@@ -318,7 +318,7 @@ describe('TenantAllowedOriginService — privilege boundaries', () => {
       expect(repository.softDelete).not.toHaveBeenCalled();
     });
 
-    it('allows a GLOBAL_ADMIN every SYSTEM-tenant write', async () => {
+    it('allows a SUPER_ADMIN every SYSTEM-tenant write', async () => {
       await actingAs(globalAdmin, SYSTEM_TENANT_ID, () => service.create({ origin: 'https://console.example', label: 'console' } as never));
       expect((repository.create.mock.calls[0][0] as TenantAllowedOriginEntity).tenantId).toBe(SYSTEM_TENANT_ID);
 

@@ -90,7 +90,7 @@ describe('ComprehensiveSummaryProcessor.callSmrService — explicit tenant id (B
     };
     const namedEntityRepo = { findByContextItem: vi.fn().mockResolvedValue([]) };
     const httpService = { axiosRef: { post: vi.fn().mockResolvedValue({ data: { summary: 'S', modelName: 'm' } }) } };
-    const configService = { get: vi.fn().mockImplementation((key: string) => (key === 'SMR_URL' ? 'http://smr:8862' : undefined)) };
+    const configService = { get: vi.fn().mockImplementation((key: string) => (key === 'TEXT_URL' ? 'http://smr:8862' : undefined)) };
     const promptResolutionService = {
       resolve: vi.fn().mockResolvedValue({ template: 'comprehensive', promptId: 'p', contextVariables: {}, resolvedFrom: 'default' }),
     };

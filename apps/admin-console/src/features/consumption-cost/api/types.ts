@@ -54,7 +54,7 @@ export interface TopTenantUsage {
   costMicros: string;
 }
 
-/** Cross-tenant leaderboard (GLOBAL_ADMIN only) — NOT scoped to the working tenant. */
+/** Cross-tenant leaderboard (SUPER_ADMIN only) — NOT scoped to the working tenant. */
 export interface TopTenantsResponse {
   period: string;
   periodStart: string;

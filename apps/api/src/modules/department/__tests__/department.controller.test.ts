@@ -135,7 +135,7 @@ describe('DepartmentController', () => {
   // `DepartmentService.getAll` already requires `this.tenantId` server-side,
   // but we mirror the AuditLogController guard so a non-global-admin with no
   // tenant context is rejected at the request entry point and never reaches
-  // the service. GLOBAL_ADMIN bypasses the controller guard.
+  // the service. SUPER_ADMIN bypasses the controller guard.
   // -------------------------------------------------------------------------
   describe('GET /admin/departments tenant scoping', () => {
     const buildController = (cls: ReturnType<typeof createMockCls>) => new DepartmentController(mockService as any, cls as any);
@@ -156,29 +156,29 @@ describe('DepartmentController', () => {
       expect(mockService.getAll).toHaveBeenCalledWith({ includeDisabled: true });
     });
 
-    it('passes a GLOBAL_ADMIN WITH an elevated tenant context through to the service', async () => {
+    it('passes a SUPER_ADMIN WITH an elevated tenant context through to the service', async () => {
       // After ContextInterceptor elevates the
       // console-selected tenant into CLS, a global-admin reads INSIDE that
       // tenant. The controller guard bypasses global-admins; the service
       // then scopes to the elevated CLS tenant.
       mockService.getAll.mockResolvedValue([]);
-      const cls = createMockCls({ id: 'admin', tenantId: '', roles: ['GLOBAL_ADMIN'] }, 't-elevated');
+      const cls = createMockCls({ id: 'admin', tenantId: '', roles: ['SUPER_ADMIN'] }, 't-elevated');
 
       await buildController(cls).fetchAll('false');
 
       expect(mockService.getAll).toHaveBeenCalledWith({ includeDisabled: false });
     });
 
-    it('does NOT mask the service tenant rule for a GLOBAL_ADMIN with NO tenant context', async () => {
+    it('does NOT mask the service tenant rule for a SUPER_ADMIN with NO tenant context', async () => {
       // The controller guard intentionally bypasses
       // global-admins, so the call reaches the service. But the REAL
       // `DepartmentService.getAll` requires `this.tenantId` and throws
       // `BadRequestException('Tenant ID is required')` for a global-admin's
       // empty tenant. The previous test mocked getAll → `[]` and asserted
-      // "allows GLOBAL_ADMIN through", masking Finding #1. Model the real
+      // "allows SUPER_ADMIN through", masking Finding #1. Model the real
       // rejection here (no DB wired).
       mockService.getAll.mockRejectedValue(new BadRequestException('Tenant ID is required'));
-      const cls = createMockCls({ id: 'admin', tenantId: '', roles: ['GLOBAL_ADMIN'] }, null);
+      const cls = createMockCls({ id: 'admin', tenantId: '', roles: ['SUPER_ADMIN'] }, null);
 
       await expect(buildController(cls).fetchAll('false')).rejects.toBeInstanceOf(BadRequestException);
     });

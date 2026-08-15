@@ -88,7 +88,7 @@ export abstract class IConsultationService {
 
   /**
    * Zero-filled, server-side date-range aggregation of
-   * new vs. revisit consultation counts (day/month buckets). GLOBAL_ADMIN with
+   * new vs. revisit consultation counts (day/month buckets). SUPER_ADMIN with
    * no working tenant aggregates cross-tenant; everyone else is pinned to their
    * CLS tenant.
    */

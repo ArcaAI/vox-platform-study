@@ -65,7 +65,7 @@ const { summary } = await hope.summarization.summary({
 console.log(summary);
 ```
 
-`summarization.summary()` is a stateless call over HOPE's v1-compat SMR shim
+`summarization.summary()` is a stateless call over HOPE's v1-compat summarization shim
 — no `HopeClient.consultations.open(...)` call, no persisted state, nothing
 to clean up. See [`examples/01-summary.ts`](./examples/01-summary.ts) for a
 runnable version.

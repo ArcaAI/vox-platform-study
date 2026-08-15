@@ -31,9 +31,9 @@ const appSettings = { getFromCache: vi.fn(), refreshCache: vi.fn().mockResolvedV
 const globalSettings = { update: vi.fn(), create: vi.fn() };
 const globalSettingRepository = { findFirst: vi.fn() };
 
-const GLOBAL_ADMIN = { id: 'user-1', roles: ['GLOBAL_ADMIN'] };
+const SUPER_ADMIN = { id: 'user-1', roles: ['SUPER_ADMIN'] };
 const cls = {
-  get: vi.fn((k: string) => (k === 'user' ? GLOBAL_ADMIN : k === 'tenantId' ? 'tenant-1' : undefined)),
+  get: vi.fn((k: string) => (k === 'user' ? SUPER_ADMIN : k === 'tenantId' ? 'tenant-1' : undefined)),
   set: vi.fn(),
 };
 

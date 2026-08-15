@@ -518,7 +518,7 @@ install_dependencies() {
     # --- smr ---
     if service_selected smr; then
     print_header "  4b: smr (Summary Agent)"
-    local smr_dir="$PROJECT_ROOT/apps/smr"
+    local smr_dir="$PROJECT_ROOT/apps/text"
     if [[ -f "$smr_dir/pyproject.toml" ]]; then
         print_step "Installing smr dependencies..."
         "${CR[@]}" pip install -e "${smr_dir}[dev,test]"
@@ -738,7 +738,7 @@ print_summary() {
     echo ""
     echo "  ${BOLD}Run a service (dev):${NC}"
     echo "    ${CYAN}pnpm stt:dev${NC}         — STT on port 8861"
-    echo "    ${CYAN}pnpm smr:dev${NC}         — SMR on port 8862"
+    echo "    ${CYAN}pnpm text:dev${NC}         — SMR on port 8862"
     echo "    ${CYAN}pnpm guardrail:dev${NC}   — Guardrail on port 8863"
     echo "    ${CYAN}pnpm nlp:dev${NC}         — NLP on port 8864"
     echo "    ${CYAN}pnpm tts:dev${NC}         — TTS on port 8865"
@@ -747,7 +747,7 @@ print_summary() {
     echo "    ${CYAN}pnpm stack:dev${NC}       — the whole app stack + infra"
     echo ""
     echo "  ${BOLD}Run tests:${NC}"
-    echo "    ${CYAN}pnpm stt:test${NC}   ${CYAN}pnpm smr:test${NC}   ${CYAN}pnpm nlp:test${NC}"
+    echo "    ${CYAN}pnpm stt:test${NC}   ${CYAN}pnpm text:test${NC}   ${CYAN}pnpm nlp:test${NC}"
     echo "    ${CYAN}pnpm guardrail:test${NC}   ${CYAN}pnpm harness:test${NC}   ${CYAN}pnpm tts:test${NC}"
     echo "    ${CYAN}pnpm test:py${NC}         — every Python suite"
     echo ""

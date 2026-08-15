@@ -71,7 +71,7 @@ describe('AiTaskDefaultService — getEffective', () => {
     ctx = makeService();
   });
 
-  it('ignores tenant override rows for GLOBAL_ADMIN-only keys (SYSTEM wins)', async () => {
+  it('ignores tenant override rows for SUPER_ADMIN-only keys (SYSTEM wins)', async () => {
     ctx.repo.findByTenantAndTaskKey.mockImplementation(async (tenantId: string) =>
       tenantId === SYSTEM_TENANT_ID
         ? makeRow({ tenantId: SYSTEM_TENANT_ID, modelSlug: 'medical-ner' })
@@ -158,21 +158,21 @@ describe('AiTaskDefaultService — getRow', () => {
 
 describe('AiTaskDefaultService — upsertRow validation', () => {
   it('rejects an unknown task key', async () => {
-    const ctx = makeService({ roles: ['GLOBAL_ADMIN'] });
+    const ctx = makeService({ roles: ['SUPER_ADMIN'] });
     await expect(ctx.svc.upsertRow('nope.key', { modelSlug: 'x', expectedVersion: 0 })).rejects.toBeInstanceOf(ArgumentInvalidException);
   });
 
   it('rejects a slug that resolves to no ENABLED model in [tenant, SYSTEM]', async () => {
     // The repository's findBySlug filters ENABLED-only, so a DISABLED or
     // soft-deleted model resolves to null exactly like an unknown slug.
-    const ctx = makeService({ roles: ['GLOBAL_ADMIN'] });
+    const ctx = makeService({ roles: ['SUPER_ADMIN'] });
     ctx.modelRepo.findBySlug.mockResolvedValue(null);
 
     await expect(ctx.svc.upsertRow('nlp.ner', { modelSlug: 'ghost-model', expectedVersion: 0 })).rejects.toBeInstanceOf(ArgumentInvalidException);
   });
 
   it('rejects a slug whose taskType does not match the task key', async () => {
-    const ctx = makeService({ roles: ['GLOBAL_ADMIN'] });
+    const ctx = makeService({ roles: ['SUPER_ADMIN'] });
     // nlp.ner requires TOKEN_CLASSIFICATION; hand it a TEXT_GENERATION model.
     ctx.modelRepo.findBySlug.mockResolvedValue(makeModel({ slug: 'lms-gemma-4-e2b-it-qat', taskType: ModelTaskType.TEXT_GENERATION }));
 
@@ -182,7 +182,7 @@ describe('AiTaskDefaultService — upsertRow validation', () => {
   });
 });
 
-describe('AiTaskDefaultService — GLOBAL_ADMIN-only governance', () => {
+describe('AiTaskDefaultService — SUPER_ADMIN-only governance', () => {
   it('rejects a guardrail.* write from a tenant admin with ForbiddenException (privilege rule, not a tenancy probe)', async () => {
     const ctx = makeService({ roles: ['TENANT_ADMIN'] });
     ctx.modelRepo.findBySlug.mockResolvedValue(makeModel({ taskType: ModelTaskType.GUARDRAIL }));
@@ -193,8 +193,8 @@ describe('AiTaskDefaultService — GLOBAL_ADMIN-only governance', () => {
     expect(ctx.repo.create).not.toHaveBeenCalled();
   });
 
-  it('accepts a guardrail.* write from a GLOBAL_ADMIN', async () => {
-    const ctx = makeService({ roles: ['GLOBAL_ADMIN'] });
+  it('accepts a guardrail.* write from a SUPER_ADMIN', async () => {
+    const ctx = makeService({ roles: ['SUPER_ADMIN'] });
     ctx.modelRepo.findBySlug.mockResolvedValue(makeModel({ taskType: ModelTaskType.GUARDRAIL }));
     ctx.repo.findByTenantAndTaskKey.mockResolvedValue(null);
     ctx.repo.create.mockImplementation(async (e: unknown) => e);
@@ -213,8 +213,8 @@ describe('AiTaskDefaultService — GLOBAL_ADMIN-only governance', () => {
     expect(ctx.repo.create).not.toHaveBeenCalled();
   });
 
-  it('accepts an nlp.* write from a GLOBAL_ADMIN', async () => {
-    const ctx = makeService({ roles: ['GLOBAL_ADMIN'] });
+  it('accepts an nlp.* write from a SUPER_ADMIN', async () => {
+    const ctx = makeService({ roles: ['SUPER_ADMIN'] });
     ctx.modelRepo.findBySlug.mockResolvedValue(makeModel({ slug: 'medical-ner', taskType: ModelTaskType.TOKEN_CLASSIFICATION }));
     ctx.repo.create.mockImplementation(async (e: unknown) => e);
 
@@ -264,7 +264,7 @@ describe('AiTaskDefaultService — GLOBAL_ADMIN-only governance', () => {
 
 describe('AiTaskDefaultService — upsertRow OCC + sys-events', () => {
   it('creates the row + broadcasts ResourceCreated when none exists (expectedVersion 0)', async () => {
-    const ctx = makeService({ roles: ['GLOBAL_ADMIN'] });
+    const ctx = makeService({ roles: ['SUPER_ADMIN'] });
     ctx.modelRepo.findBySlug.mockResolvedValue(makeModel({ slug: 'medical-ner', taskType: ModelTaskType.TOKEN_CLASSIFICATION }));
     ctx.repo.findByTenantAndTaskKey.mockResolvedValue(null);
     ctx.repo.create.mockImplementation(async (e: unknown) => e);
@@ -280,7 +280,7 @@ describe('AiTaskDefaultService — upsertRow OCC + sys-events', () => {
   });
 
   it('create with a non-zero expectedVersion is a concurrency conflict', async () => {
-    const ctx = makeService({ roles: ['GLOBAL_ADMIN'] });
+    const ctx = makeService({ roles: ['SUPER_ADMIN'] });
     ctx.modelRepo.findBySlug.mockResolvedValue(makeModel({ slug: 'medical-ner', taskType: ModelTaskType.TOKEN_CLASSIFICATION }));
     ctx.repo.findByTenantAndTaskKey.mockResolvedValue(null);
 
@@ -290,7 +290,7 @@ describe('AiTaskDefaultService — upsertRow OCC + sys-events', () => {
   });
 
   it('updates via compare-and-set + broadcasts ResourceUpdated when a row exists', async () => {
-    const ctx = makeService({ roles: ['GLOBAL_ADMIN'] });
+    const ctx = makeService({ roles: ['SUPER_ADMIN'] });
     ctx.modelRepo.findBySlug.mockResolvedValue(makeModel({ slug: 'symps-disease-bert-v3-c41', taskType: ModelTaskType.TEXT_CLASSIFICATION }));
     const row = makeRow({ taskKey: 'nlp.classification', modelSlug: 'old-slug' });
     ctx.repo.findByTenantAndTaskKey.mockResolvedValue(row);
@@ -304,7 +304,7 @@ describe('AiTaskDefaultService — upsertRow OCC + sys-events', () => {
   });
 
   it('propagates OCC drift from the repository', async () => {
-    const ctx = makeService({ roles: ['GLOBAL_ADMIN'] });
+    const ctx = makeService({ roles: ['SUPER_ADMIN'] });
     ctx.modelRepo.findBySlug.mockResolvedValue(makeModel({ slug: 'medical-ner', taskType: ModelTaskType.TOKEN_CLASSIFICATION }));
     const row = makeRow({ modelSlug: 'old-slug' });
     ctx.repo.findByTenantAndTaskKey.mockResolvedValue(row);
@@ -318,7 +318,7 @@ describe('AiTaskDefaultService — upsertRow OCC + sys-events', () => {
   });
 
   it('throws when there are no changes to write', async () => {
-    const ctx = makeService({ roles: ['GLOBAL_ADMIN'] });
+    const ctx = makeService({ roles: ['SUPER_ADMIN'] });
     ctx.modelRepo.findBySlug.mockResolvedValue(makeModel({ slug: 'medical-ner', taskType: ModelTaskType.TOKEN_CLASSIFICATION }));
     // Same editor + same slug → nothing changes, the guard fires.
     const row = AiTaskDefaultFactory.CreateAiTaskDefault({ tenantId: TENANT, taskKey: 'nlp.ner', modelSlug: 'medical-ner', updatedBy: 'u1' });
@@ -328,7 +328,7 @@ describe('AiTaskDefaultService — upsertRow OCC + sys-events', () => {
   });
 
   it('honors an explicit tenantId override (global admin acting on another tenant)', async () => {
-    const ctx = makeService({ roles: ['GLOBAL_ADMIN'] });
+    const ctx = makeService({ roles: ['SUPER_ADMIN'] });
     ctx.modelRepo.findBySlug.mockImplementation(async (tenantId: string, slug: string) =>
       makeModel({ tenantId, slug, taskType: ModelTaskType.TOKEN_CLASSIFICATION }),
     );
@@ -356,7 +356,7 @@ describe('AiTaskDefaultService — upsertRow OCC + sys-events', () => {
  */
 describe('AiTaskDefaultService — cross-tenant base-client lane', () => {
   it('getRow targeting SYSTEM under an elevated working tenant W routes the read through the base client', async () => {
-    const ctx = makeService({ roles: ['GLOBAL_ADMIN'], clsTenantId: TENANT });
+    const ctx = makeService({ roles: ['SUPER_ADMIN'], clsTenantId: TENANT });
     ctx.repo.findByTenantAndTaskKey.mockResolvedValue(null);
 
     await ctx.svc.getRow('nlp.ner', SYSTEM_TENANT_ID);
@@ -365,7 +365,7 @@ describe('AiTaskDefaultService — cross-tenant base-client lane', () => {
   });
 
   it('getEffective targeting a foreign tenant routes SYSTEM-only nlp.* reads AND model resolution through the base client', async () => {
-    const ctx = makeService({ roles: ['GLOBAL_ADMIN'], clsTenantId: TENANT });
+    const ctx = makeService({ roles: ['SUPER_ADMIN'], clsTenantId: TENANT });
     ctx.repo.findByTenantAndTaskKey.mockImplementation(async (tenantId: string) =>
       tenantId === SYSTEM_TENANT_ID ? makeRow({ tenantId: SYSTEM_TENANT_ID, modelSlug: 'medical-ner' }) : null,
     );
@@ -382,7 +382,7 @@ describe('AiTaskDefaultService — cross-tenant base-client lane', () => {
   });
 
   it('upsert CREATE targeting SYSTEM under working tenant W persists via the base client (no TenantScope mismatch)', async () => {
-    const ctx = makeService({ roles: ['GLOBAL_ADMIN'], clsTenantId: TENANT });
+    const ctx = makeService({ roles: ['SUPER_ADMIN'], clsTenantId: TENANT });
     ctx.modelRepo.findBySlug.mockResolvedValue(makeModel({ taskType: ModelTaskType.GUARDRAIL }));
     ctx.repo.findByTenantAndTaskKey.mockResolvedValue(null);
     ctx.repo.create.mockImplementation(async (e: unknown) => e);
@@ -394,7 +394,7 @@ describe('AiTaskDefaultService — cross-tenant base-client lane', () => {
   });
 
   it('upsert CAS targeting SYSTEM under working tenant W runs updateWithVersion through the base client (no eternal 412)', async () => {
-    const ctx = makeService({ roles: ['GLOBAL_ADMIN'], clsTenantId: TENANT });
+    const ctx = makeService({ roles: ['SUPER_ADMIN'], clsTenantId: TENANT });
     ctx.modelRepo.findBySlug.mockResolvedValue(makeModel({ taskType: ModelTaskType.GUARDRAIL }));
     const row = makeRow({ tenantId: SYSTEM_TENANT_ID, taskKey: 'guardrail.validate', modelSlug: 'old-slug' });
     ctx.repo.findByTenantAndTaskKey.mockResolvedValue(row);
@@ -406,7 +406,7 @@ describe('AiTaskDefaultService — cross-tenant base-client lane', () => {
   });
 
   it('global admin with an EMPTY CLS tenant (not elevated) also uses the base-client lane', async () => {
-    const ctx = makeService({ roles: ['GLOBAL_ADMIN'], clsTenantId: null });
+    const ctx = makeService({ roles: ['SUPER_ADMIN'], clsTenantId: null });
     ctx.repo.findByTenantAndTaskKey.mockResolvedValue(null);
 
     await ctx.svc.getRow('nlp.ner', TENANT);

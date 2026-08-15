@@ -21,11 +21,11 @@ interface PersonaUser {
 
 /**
  * Playground persona control (artboard 4a). The playground runs
- * end-user planes under the caller's account; a GLOBAL_ADMIN impersonates a
+ * end-user planes under the caller's account; a SUPER_ADMIN impersonates a
  * doctor to test features as them. The bearer swap invalidates every query, so
  * a switch/stop must refetch the whole cache and refresh the server layout.
  *
- * Impersonation is GLOBAL_ADMIN-only at the BFF *and* gateway, so for a
+ * Impersonation is SUPER_ADMIN-only at the BFF *and* gateway, so for a
  * TENANT_ADMIN the picker degrades to "yourself" with the reason (no tenant-
  * scoped impersonation endpoint exists yet). "under {admin}" is always shown.
  */

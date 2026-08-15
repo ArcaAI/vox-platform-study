@@ -177,7 +177,7 @@ const SERVICE_COVERAGE: readonly CoverageEntry[] = [
     file: 'services/tenant/__tests__/tenant.service.test.ts',
     // 6 it() blocks were added (3 per method: fetchById +
     // fetchByCodeName, same-tenant / cross-tenant non-admin /
-    // cross-tenant GLOBAL_ADMIN).
+    // cross-tenant SUPER_ADMIN).
     // 6 more were added for the same matrix on
     // fetchTenantConfigs by tenantId + by codeName. 6 → 12.
     minTests: 12,
@@ -188,13 +188,13 @@ const SERVICE_COVERAGE: readonly CoverageEntry[] = [
     file: 'services/webhook/__tests__/webhook.service.test.ts',
     // 3 it() blocks were added under the
     // `resolveEffectiveTenantId` describe (non-admin cross-tenant pin,
-    // non-admin no-DTO pin, GLOBAL_ADMIN cross-tenant honor).
+    // non-admin no-DTO pin, SUPER_ADMIN cross-tenant honor).
     // 14 more were added:
-    //   - fetchAll (5.3.2): 2 (CLS-injected filter, GLOBAL_ADMIN bypass)
-    //   - fetchById (5.3.3): 3 (same / cross 404 / GLOBAL_ADMIN)
-    //   - update (5.3.4): 3 (same / cross 404 / GLOBAL_ADMIN)
-    //   - deleteById (5.3.5): 3 (same / cross 404 / GLOBAL_ADMIN)
-    //   - fetchAllByTenantId (5.3.6): 3 (same / cross 404 / GLOBAL_ADMIN)
+    //   - fetchAll (5.3.2): 2 (CLS-injected filter, SUPER_ADMIN bypass)
+    //   - fetchById (5.3.3): 3 (same / cross 404 / SUPER_ADMIN)
+    //   - update (5.3.4): 3 (same / cross 404 / SUPER_ADMIN)
+    //   - deleteById (5.3.5): 3 (same / cross 404 / SUPER_ADMIN)
+    //   - fetchAllByTenantId (5.3.6): 3 (same / cross 404 / SUPER_ADMIN)
     // 3 → 17.
     minTests: 17,
     marker: /create resolves effective tenantId|resolveEffectiveTenantId observability|Webhook tenant-guard sweep/,

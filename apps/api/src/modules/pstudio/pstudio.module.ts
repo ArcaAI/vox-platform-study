@@ -7,7 +7,7 @@ import { PrismaStudioController } from './pstudio.controller';
  * is production-capable but FAIL-CLOSED — the module registers only when the
  * operator explicitly sets `ENABLE_PRISMA_STUDIO=true`, and every route is
  * additionally pinned to the dedicated `manage:PrismaStudio` CASL subject
- * (seeded to the GLOBAL_ADMIN policy set). An unset/false flag keeps the
+ * (seeded to the SUPER_ADMIN policy set). An unset/false flag keeps the
  * studio entirely off, so it can never accidentally surface on a
  * misconfigured host.
  */

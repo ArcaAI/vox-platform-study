@@ -17,7 +17,7 @@ vi.mock('next/navigation', () => ({ useRouter: () => ({ push: pushMock }) }));
 
 let mockSession: { impersonatingUserId: string | null; effectiveUser: { roles: string[] } } | undefined = {
   impersonatingUserId: null,
-  effectiveUser: { roles: ['GLOBAL_ADMIN'] },
+  effectiveUser: { roles: ['SUPER_ADMIN'] },
 };
 vi.mock('@/shared/auth', () => ({
   useSession: () => ({ data: mockSession }),
@@ -68,7 +68,7 @@ function stubFetch(unseen: ReturnType<typeof makeEntry>[]): RecordedCall[] {
 
 beforeEach(() => {
   window.sessionStorage.clear();
-  mockSession = { impersonatingUserId: null, effectiveUser: { roles: ['GLOBAL_ADMIN'] } };
+  mockSession = { impersonatingUserId: null, effectiveUser: { roles: ['SUPER_ADMIN'] } };
 });
 
 afterEach(() => {
@@ -131,7 +131,7 @@ describe('WhatsNewDialog', () => {
   });
 
   it('never renders while impersonating', async () => {
-    mockSession = { impersonatingUserId: 'user-123', effectiveUser: { roles: ['GLOBAL_ADMIN'] } };
+    mockSession = { impersonatingUserId: 'user-123', effectiveUser: { roles: ['SUPER_ADMIN'] } };
     stubFetch([makeEntry('a', '2026-01-01T00:00:00Z')]);
     const { container } = renderWithProviders(<WhatsNewDialog />);
 

@@ -107,7 +107,7 @@ function makeHarness(overrides: { usageLedgerService?: unknown; unitOfWorkServic
       }),
     },
   };
-  const configService = { get: vi.fn((key: string) => (key === 'SMR_URL' ? 'http://smr:8862' : undefined)) };
+  const configService = { get: vi.fn((key: string) => (key === 'TEXT_URL' ? 'http://smr:8862' : undefined)) };
   const promptResolutionService = {
     resolve: vi.fn().mockResolvedValue({ template: 'comprehensive', promptId: 'prompt_default', contextVariables: {}, resolvedFrom: 'default', resolutionTrace: { usedDefaults: [] } }),
   };

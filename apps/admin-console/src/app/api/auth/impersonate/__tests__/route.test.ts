@@ -28,7 +28,7 @@ const operatorSession: SessionPayload = {
     id: 'admin-1',
     username: 'super_admin',
     email: 'super_admin@example.com',
-    roles: ['GLOBAL_ADMIN'],
+    roles: ['SUPER_ADMIN'],
   },
 };
 

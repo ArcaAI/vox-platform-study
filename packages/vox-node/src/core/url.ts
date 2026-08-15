@@ -4,9 +4,9 @@
  * This is the single most important piece of the transport: get it wrong and
  * every request 404s. The gateway (`apps/api/src/main.ts`) sets a global
  * route prefix of `api/v1` on every controller EXCEPT a short, exact,
- * literal-path exclusion list — the v1-compat SMR summarization shims, which
- * keep their pre-existing v1 URLs so legacy clients don't have to change
- * anything:
+ * literal-path exclusion list — the v1-compat summarization shims (the
+ * renamed `text` service's frozen `smr`-legacy routes), which keep their
+ * pre-existing v1 URLs so legacy clients don't have to change anything:
  *
  *   - `POST /api/smr/api/v1/presummary`
  *   - `POST /api/smr/api/v1/summary/sync`

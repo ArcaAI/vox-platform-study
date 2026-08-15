@@ -117,11 +117,11 @@ Legend: **RAW** = plaintext, no redaction · **ENC** = encrypted at rest · **RE
 | 5 | `ContextItem` → **NLP** `/classify/tokens` | decrypted transcript | **RAW** — no sanitizer on this hop | `summary.service.ts:1571`; `ner.processor.ts:219`; `live-tool-registry.ts:190` |
 | 6a | **Default path** `ContextItem` → SMR `/api/v1/generate` | full transcript + assembled prompt | **RAW** — no redaction exists on this path | `summary.service.ts:1358`; `harnessEnabled` codeDefault **false** at `config-resolver.service.ts:80` |
 | 6b | **Harness path** → `ensure_egress_safe` → SMR | prompt | **RED for `azure`/`bedrock` only**; RAW for every other provider | `redactor.py:185` — `if provider not in phi.cloud_egress_providers: return text` |
-| 7 | SMR → provider adapter → model | prompt | RAW inside SMR (zero redaction code in `apps/smr/src/smr/providers/*`) | `providers/azure_openai.py:167`; `providers/bedrock.py:185` |
+| 7 | SMR → provider adapter → model | prompt | RAW inside SMR (zero redaction code in `apps/text/src/text/providers/*`) | `providers/azure_openai.py:167`; `providers/bedrock.py:185` |
 | 7a | → **local** LM Studio / Ollama / vLLM | prompt | RAW, stays on-host | default provider `lm-studio` (`seed/13-harness-policy.ts:31-34`; `requests.py:114`) |
 | 7b | → **cloud** azure / bedrock **†** | prompt | RED *only if* harness path enabled; otherwise RAW | F-02 |
-| 7c | → **cloud** openai / anthropic / vertex **†** | prompt | **RAW always** — not in `cloud_egress_providers` | F-01: `config.py:129` vs `apps/smr/src/smr/main.py:83-93` (registered unconditionally) |
-| 8 | SMR → guardrail `/api/medical/validate` | prompt + system prompt | RAW; **off by default** (`SMR_EXTERNAL_GUARDRAIL_ENABLED=False`, `smr/core/config.py:329`) | `generate.py:281-287` |
+| 7c | → **cloud** openai / anthropic / vertex **†** | prompt | **RAW always** — not in `cloud_egress_providers` | F-01: `config.py:129` vs `apps/text/src/text/main.py:83-93` (registered unconditionally) |
+| 8 | SMR → guardrail `/api/medical/validate` | prompt + system prompt | RAW; **off by default** (`TEXT_EXTERNAL_GUARDRAIL_ENABLED=False`, `smr/core/config.py:329`) | `generate.py:281-287` |
 | 9 | SMR idempotency cache → Redis | **full generated summary** | RAW, in-memory, TTL 3600 s | `generate.py:255-267` |
 | 10 | Draft → `ContextItemVersion` (`ai_draft_v1`) | AI draft | **ENC** | `harness-internal.service.ts:1507` |
 | 11 | Signed note → `ContextItemVersion` (`SIGNED_NOTE`) | attested note | **ENC** + `attestationHash` | `summary.service.ts:891-918` |
@@ -150,7 +150,7 @@ if provider not in phi.cloud_egress_providers:
     return text
 ```
 
-`cloud_egress_providers` defaults to `["azure", "bedrock"]` (`apps/harness/src/harness/core/config.py:129`). SMR registers `openai`, `anthropic`, `vertex`, and `azure` **unconditionally** as BYO cloud providers (`apps/smr/src/smr/main.py:83-93`, with an explicit comment that they must be available without platform credentials).
+`cloud_egress_providers` defaults to `["azure", "bedrock"]` (`apps/harness/src/harness/core/config.py:129`). SMR registers `openai`, `anthropic`, `vertex`, and `azure` **unconditionally** as BYO cloud providers (`apps/text/src/text/main.py:83-93`, with an explicit comment that they must be available without platform credentials).
 
 The failure is **silent and fail-open**: `phi_enabled=True` and `fail_closed=True` are both honored and both irrelevant, because the guard returns before the try/except that would raise `PhiEgressBlocked`.
 

@@ -13,7 +13,7 @@ useDefault = true
 [[rules]]
 id = "hope-azure-openai-api-key"
 description = "Azure OpenAI API key committed to a .env or source file"
-regex = '''(?i)(AZURE_OPENAI_API_KEY|SMR_AZURE_API_KEY)\s*[:=]\s*["']?[A-Za-z0-9]{80,}["']?'''
+regex = '''(?i)(AZURE_OPENAI_API_KEY|TEXT_AZURE_API_KEY)\s*[:=]\s*["']?[A-Za-z0-9]{80,}["']?'''
 tags = ["azure", "openai", "key"]
 
 [[rules]]
@@ -190,7 +190,7 @@ paths = [
   '''docs/developer-guide/.*\.md$''',
   '''docs/archive/.*''',
   '''apps/api/docs/.*\.md$''',
-  '''apps/smr/docs/.*\.md$''',
+  '''apps/text/docs/.*\.md$''',
   '''apps/tts/docs/.*\.md$''',
   '''apps/stt/README\.md$''',
   '''research/security/.*\.md$''',
@@ -235,7 +235,7 @@ paths = [
   '''apps/[^/]+/docker-compose\.yml$''',
   # Per-app .env.production files use local-loopback URLs by default
   # (services run in single-deployment mode against localhost Redis)
-  '''apps/(smr|stt|guardrail|nlp|tts)/\.env\.production$''',
+  '''apps/(text|stt|guardrail|nlp|tts)/\.env\.production$''',
   # Per-app READMEs include local-loopback connection examples
   '''apps/[^/]+/README\.md$''',
   # Local MCP-server config — holds per-developer tokens (GitLab OAuth), is

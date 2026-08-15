@@ -6,7 +6,7 @@
  * TEST DATA MANAGEMENT:
  * - Uses seeded users (super_admin, tenant_admin, doctor, nurse) for tests
  * - The super-admin-target rejection case creates ONE throwaway user (granted
- *   the seeded GLOBAL_ADMIN role) because the seed has a single elevated admin and
+ *   the seeded SUPER_ADMIN role) because the seed has a single elevated admin and
  *   the self-impersonation guard fires before the target check; the
  *   assignment is removed and the user soft-deleted via the API in cleanup
  * - No other test data is created
@@ -207,7 +207,7 @@ test.describe('Auth Advanced Controller', () => {
       // check, so targeting the seeded super admin (= the caller) only ever
       // exercised the self guard ("You cannot impersonate yourself"). To keep
       // the ORIGINAL intent (a super-admin-tier TARGET is rejected) covered,
-      // create a throwaway user, grant it the seeded GLOBAL_ADMIN role, assert
+      // create a throwaway user, grant it the seeded SUPER_ADMIN role, assert
       // the rejection, then remove the grant + soft-delete the user via the
       // API. Fixture ops use a tenant-scoped super-admin session so the role
       // assignment lands with a concrete tenantId (mirrors harness).
@@ -236,14 +236,14 @@ test.describe('Auth Advanced Controller', () => {
           id: string;
           name: string;
         }>;
-        const superAdminRole = roles.find((r) => r.name === 'GLOBAL_ADMIN');
-        expect(superAdminRole, 'seeded GLOBAL_ADMIN role exists').toBeTruthy();
+        const superAdminRole = roles.find((r) => r.name === 'SUPER_ADMIN');
+        expect(superAdminRole, 'seeded SUPER_ADMIN role exists').toBeTruthy();
 
         const assign = await request.post(`/api/v1/admin/users/${targetId}/roles`, {
           headers: fixtureHeaders,
           data: { roleId: superAdminRole!.id },
         });
-        expect([200, 201], 'grant GLOBAL_ADMIN to the throwaway target').toContain(assign.status());
+        expect([200, 201], 'grant SUPER_ADMIN to the throwaway target').toContain(assign.status());
         assignmentId = ((await assign.json()) as { id?: string }).id;
 
         const response = await request.post('/api/v1/auth/impersonate', {
@@ -255,7 +255,7 @@ test.describe('Auth Advanced Controller', () => {
         const body = await response.json();
         expect(body.message).toContain('global administrator');
       } finally {
-        // API-only cleanup (both are soft-deletes): drop the GLOBAL_ADMIN
+        // API-only cleanup (both are soft-deletes): drop the SUPER_ADMIN
         // grant first, then the throwaway user, restoring the single-super-
         // admin seed posture.
         if (assignmentId) {

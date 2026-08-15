@@ -84,7 +84,7 @@ the model/runtime for each call.
 
 | Field | Value |
 |---|---|
-| App / service | `apps/api` + `apps/smr` (overrides injected into generation) |
+| App / service | `apps/api` + `apps/text` (overrides injected into generation) |
 | Key modules | `apps/api/src/modules/ai-provider-connection` (`ai-provider-connection.controller.ts`); `packages/applications/src/services/ai-provider-connection` (`resolveConnection`, `resolveTenantCloudOverrides`); `apps/api/src/modules/streaming` `SmrProxyController.applyTenantProviderOverrides` |
 | Prisma models | `AiProviderConnection` (`db_main/ai-provider-connection.prisma`) |
 | Key API endpoints | `@Controller('admin/ai-providers')`: `GET /admin/ai-providers`, `GET /admin/ai-providers/:provider`, `PUT /admin/ai-providers/:provider` (`@RequiresIfMatch()` OCC; `apiKey` write-only, no reveal route), `DELETE /admin/ai-providers/:provider`. Injected onto SMR `POST /api/v1/generate` as `provider_overrides` |

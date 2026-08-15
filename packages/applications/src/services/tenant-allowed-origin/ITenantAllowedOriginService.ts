@@ -16,8 +16,8 @@ import { CreateTenantAllowedOriginRequest, TenantAllowedOriginResponse, UpdateTe
  * |---|---|
  * | Ability decorator (controller) | `manage:TenantAllowedOrigin` — who may reach these methods at all |
  * | CLS + Prisma tenant-scope extension | WHICH tenant a row belongs to. `tenantId` is read from CLS, NEVER from a DTO; neither request DTO declares the field and the global pipe runs `forbidNonWhitelisted`. A tenant admin cannot forge, read, or steal another tenant's grant |
- * | **This service — `403`** | **Wildcard gate.** Any `origin` containing `*` (a pattern OR the bare allow-all token) requires `GLOBAL_ADMIN`, on `create` **and** on `update`. The decorator expresses `action + subject` and cannot see the SHAPE of the value |
- * | **This service — `403`** | **SYSTEM gate.** A write whose resolved (CLS) tenant is SYSTEM requires `GLOBAL_ADMIN` regardless of role — a SYSTEM row is treated as valid for EVERY tenant by `OriginRegistryService.allows()` |
+ * | **This service — `403`** | **Wildcard gate.** Any `origin` containing `*` (a pattern OR the bare allow-all token) requires `SUPER_ADMIN`, on `create` **and** on `update`. The decorator expresses `action + subject` and cannot see the SHAPE of the value |
+ * | **This service — `403`** | **SYSTEM gate.** A write whose resolved (CLS) tenant is SYSTEM requires `SUPER_ADMIN` regardless of role — a SYSTEM row is treated as valid for EVERY tenant by `OriginRegistryService.allows()` |
  * | This service — `404` | Cross-tenant id, via `findOwnedOrThrow`. Unchanged |
  *
  * Both service-side gates are the "global-admin-only action on a
@@ -55,7 +55,7 @@ export interface ITenantAllowedOriginService {
    * `normalizeOrigin()` first and the NORMALIZED form is what gets persisted
    * and checked for uniqueness — never the raw string.
    *
-   * @throws ForbiddenException — the caller is not a `GLOBAL_ADMIN` and either
+   * @throws ForbiddenException — the caller is not a `SUPER_ADMIN` and either
    *   the origin contains `*` or the resolved tenant is SYSTEM
    * @throws ArgumentInvalidException — malformed/disallowed origin (from `normalizeOrigin`)
    * @throws ConflictException — the normalized origin is already registered (pre-check + DB race both covered)
@@ -67,7 +67,7 @@ export interface ITenantAllowedOriginService {
    *
    * @throws NotFoundException — missing or cross-tenant id (checked BEFORE the
    *   wildcard gate, so a cross-tenant id carrying a wildcard payload still 404s)
-   * @throws ForbiddenException — a non-`GLOBAL_ADMIN` PATCHing `origin` to a
+   * @throws ForbiddenException — a non-`SUPER_ADMIN` PATCHing `origin` to a
    *   value containing `*` (the escalation path), or any write whose
    *   resolved tenant is SYSTEM. Editing only `label`/`description` on an
    *   existing pattern row is ALLOWED: no origin change, no trust change.
@@ -80,7 +80,7 @@ export interface ITenantAllowedOriginService {
    * Soft-delete.
    *
    * @throws NotFoundException — missing or cross-tenant id
-   * @throws ForbiddenException — non-`GLOBAL_ADMIN` deleting a SYSTEM row
+   * @throws ForbiddenException — non-`SUPER_ADMIN` deleting a SYSTEM row
    */
   deleteById(id: string): Promise<TenantAllowedOriginResponse>;
 }

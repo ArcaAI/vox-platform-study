@@ -1,4 +1,4 @@
-/** AI model registry admin (capabilities-matrix row 8). GLOBAL_ADMIN only. */
+/** AI model registry admin (capabilities-matrix row 8). SUPER_ADMIN only. */
 
 import { deleteJson, getJson, getWithEtag, patchWithEtag, postJson, versionFromEtag } from '@/shared/api';
 import type { ListParams, WithEtag } from '@/shared/api';
@@ -39,7 +39,7 @@ export function deleteModel(id: string): Promise<void> {
 
 /**
  * Merge the registry with the live engine listings. Probes run
- * upstream (SMR aggregates them under a per-provider timeout), so this call can
+ * upstream (the text-generation service aggregates them under a per-provider timeout), so this call can
  * take a couple of seconds: it is fired lazily when the drawer opens, never on
  * page load.
  */

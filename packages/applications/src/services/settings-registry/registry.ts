@@ -23,7 +23,7 @@ import { PLATFORM_KNOB_SETTINGS, RATE_LIMIT_TIER_SETTINGS } from './descriptors/
 import { PLATFORM_OPS_SETTINGS } from './descriptors/platform-ops.descriptors';
 import { PLATFORM_SECRET_SETTINGS } from './descriptors/platform-secrets.descriptors';
 import { SERVICE_RUNTIME_SETTINGS } from './descriptors/service-runtime.descriptors';
-import { SMR_PROVIDER_CONNECTION_SETTINGS } from './descriptors/smr-provider-connections.descriptors';
+import { TEXT_PROVIDER_CONNECTION_SETTINGS } from './descriptors/text-provider-connections.descriptors';
 import { STORAGE_SETTINGS } from './descriptors/storage.descriptors';
 import { STT_FALLBACK_SETTINGS } from './descriptors/stt-fallback.descriptors';
 import { TTS_SETTINGS } from './descriptors/tts.descriptors';
@@ -62,9 +62,9 @@ export const HOPE_SETTINGS_REGISTRY: SettingsRegistry = new SettingsRegistry().r
   // cataloging them changes no behaviour.
   ...SERVICE_RUNTIME_SETTINGS,
   // SMR cloud-provider (openai/anthropic/vertex) platform CONNECTION config —
-  // tier `env`, read by apps/smr. Registered at their config.py defaults, so
+  // tier `env`, read by apps/text. Registered at their config.py defaults, so
   // cataloging them changes no behaviour.
-  ...SMR_PROVIDER_CONNECTION_SETTINGS,
+  ...TEXT_PROVIDER_CONNECTION_SETTINGS,
 
   // ── Taxonomy coverage ────────────────────────────────────────────────────
   // Platform secrets (Vault kv-v2). Every one is `failMode: 'closed'`, enforced

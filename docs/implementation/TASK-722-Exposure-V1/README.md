@@ -269,7 +269,7 @@ The existing SSE passthrough is `SmrProxyController.streamTaskEvents`
   `:322-349`.
 
 The producer-side convention this mirrors is SMR's
-(`apps/smr/src/smr/api/endpoints/stream.py`): `GET /api/v1/tasks/{task_id}/stream` (`:19-25`),
+(`apps/text/src/text/api/endpoints/stream.py`): `GET /api/v1/tasks/{task_id}/stream` (`:19-25`),
 `EventSourceResponse` (`:92`), cursor seeded from `last_event_id or request.headers.get(
 "last-event-id") or "0-0"` (`:35`), each event's SSE `id` being the **raw Redis Stream message id**
 (`:61`):
@@ -279,8 +279,8 @@ yield {"event": chunk.type, "data": chunk.model_dump_json(), "id": msg_id}
 ```
 
 Event names come from `StreamChunk.type` — `Literal["chunk","reasoning","meta","done","error","usage"]`
-(`apps/smr/src/smr/models/stream.py:10-13`); `done`/`error` terminate the generator (`:65-66`). The
-read is a blocking `XREAD` (`apps/smr/src/smr/services/task_manager.py:142-156`, `block_ms=5000`).
+(`apps/text/src/text/models/stream.py:10-13`); `done`/`error` terminate the generator (`:65-66`). The
+read is a blocking `XREAD` (`apps/text/src/text/services/task_manager.py:142-156`, `block_ms=5000`).
 
 **TASK-717 (`async-contract`) formalises this envelope and its resume-token convention.** This ticket
 **consumes** it — it must not define a second one. If 717's envelope has not landed when this starts,

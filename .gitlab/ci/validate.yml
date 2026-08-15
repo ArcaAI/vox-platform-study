@@ -172,7 +172,7 @@ lint-python:
     - pip install --quiet ruff
     - echo "Linting Python services..."
     - ruff check apps/stt/src/ apps/stt/tests/ --output-format=gitlab || LINT_FAILED=1
-    - ruff check apps/smr/src/ --output-format=gitlab || LINT_FAILED=1
+    - ruff check apps/text/src/ --output-format=gitlab || LINT_FAILED=1
     - ruff check apps/nlp/src/ apps/nlp/tests/ --output-format=gitlab || LINT_FAILED=1
     - ruff check apps/guardrail/src/ --output-format=gitlab || LINT_FAILED=1
     # Harness joins the gate (tests live in-package under src/).

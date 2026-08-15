@@ -51,7 +51,7 @@ function makeService(opts: { roles?: string[] } = {}) {
   };
   const emitter = { emit: vi.fn() };
   const cls = {
-    get: vi.fn((k: string) => (k === 'user' ? { id: 'u1', roles: opts.roles ?? ['GLOBAL_ADMIN'] } : k === 'tenantId' ? TENANT : undefined)),
+    get: vi.fn((k: string) => (k === 'user' ? { id: 'u1', roles: opts.roles ?? ['SUPER_ADMIN'] } : k === 'tenantId' ? TENANT : undefined)),
   };
   const db = { baseClient: { $lane: 'unscoped-base-client' } };
   const svc = new AiRuntimeProfileService(repo as any, db as any, emitter as any, cls as any);
@@ -163,18 +163,18 @@ describe('AiRuntimeProfileService — governance (test 8)', () => {
   });
 
   it('rejects an explicitly non-SYSTEM tenant target with 403', async () => {
-    const { svc } = makeService({ roles: ['GLOBAL_ADMIN'] });
+    const { svc } = makeService({ roles: ['SUPER_ADMIN'] });
     await expect(svc.upsertProfile('lm-studio', '', { temperature: 0.5 }, TENANT)).rejects.toBeInstanceOf(ForbiddenException);
   });
 
   it('pins created rows to the SYSTEM tenant', async () => {
-    const { svc, repo } = makeService({ roles: ['GLOBAL_ADMIN'] });
+    const { svc, repo } = makeService({ roles: ['SUPER_ADMIN'] });
     await svc.upsertProfile('lm-studio', '', { temperature: 0.5 });
     expect(repo.create.mock.calls[0][0].tenantId).toBe(SYSTEM_TENANT_ID);
   });
 
   it('broadcasts a sys-event on every mutation path', async () => {
-    const { svc, repo, emitter } = makeService({ roles: ['GLOBAL_ADMIN'] });
+    const { svc, repo, emitter } = makeService({ roles: ['SUPER_ADMIN'] });
 
     await svc.upsertProfile('lm-studio', '', { temperature: 0.5 });
     expect(emitter.emit).toHaveBeenCalledWith(SysEventType.ResourceCreated, expect.anything());

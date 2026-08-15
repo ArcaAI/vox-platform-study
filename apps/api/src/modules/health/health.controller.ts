@@ -80,7 +80,7 @@ export class ApiHealthController {
       {
         key: 'smr',
         name: 'Summarization',
-        url: this.configService.getConfigValue('SMR_URL'),
+        url: this.configService.getConfigValue('TEXT_URL'),
         healthEndpoint: '/api/v1/health',
       },
       {
@@ -186,7 +186,7 @@ export class ApiHealthController {
 
   @Get('services')
   // Requires authentication — the probe payload is sanitised below
-  // (version + checks stripped). GLOBAL_ADMIN (`manage all`) has access,
+  // (version + checks stripped). SUPER_ADMIN (`manage all`) has access,
   // matching the other ops/admin surfaces; this downstream ops health is not
   // for plain doctors. A TENANT_ADMIN can also read downstream service
   // health for their tenant dashboard (`read:TenantTelemetry`). The payload is
@@ -230,7 +230,7 @@ export class ApiHealthController {
   }
 
   @Get('services/:serviceKey')
-  // Requires authentication. GLOBAL_ADMIN (`manage all`), as for /services
+  // Requires authentication. SUPER_ADMIN (`manage all`), as for /services
   // above; also `read:TenantTelemetry` (see /services above).
   @CanAny(['manage', 'all'], ['read', 'TenantTelemetry'])
   @ApiOperation({ summary: 'Health check for a single downstream microservice (admin only)' })

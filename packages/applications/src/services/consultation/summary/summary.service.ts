@@ -46,8 +46,8 @@ import {
   CitedSegmentResponse,
 } from './dto';
 import { SummaryDtoMapper } from './summary.dto.mapper';
-import { buildSmrGeneratePayload, mapSmrGenerateResponse, type LegacySmrSummaryResponse } from './smr-generate';
-import { buildGuardrailUsageInput, buildLlmUsageInput, parseSmrUsageDetail, type SmrUsageDetail } from './smr-usage';
+import { buildSmrGeneratePayload, mapSmrGenerateResponse, type LegacySmrSummaryResponse } from './text-generate';
+import { buildGuardrailUsageInput, buildLlmUsageInput, parseSmrUsageDetail, type SmrUsageDetail } from './text-usage';
 import { IUsageLedgerService } from '../../usageLedger/IUsageLedgerService';
 import type { UsageOperation } from '../../usageLedger/vocabulary';
 import { BaseService, assertParentInScope, encryptPhiFields } from '../../../common';
@@ -167,7 +167,7 @@ export class SummaryService extends BaseService implements ISummaryService {
     // Optional so existing test fixtures (and any future test that
     // constructs SummaryService directly) compile without supplying a
     // mock. When unset we behave exactly like the pre-migration code
-    // when env var SMR_SERVICE_TOKEN was unset: no X-Service-Token header.
+    // when env var TEXT_SERVICE_TOKEN was unset: no X-Service-Token header.
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
     // (Tier-0 prompt resolution): load the consulting doctor's
     // `UserProfile.preferredPromptTemplateId`. Optional + trailing so existing
@@ -257,7 +257,7 @@ export class SummaryService extends BaseService implements ISummaryService {
     @Optional() @Inject(INoteGenerationService) private readonly noteGenerationService?: INoteGenerationService,
   ) {
     super(eventEmitter, clsService, ResourceType.ContextItem);
-    this.smrServiceUrl = this.configService.get<string>('SMR_URL') ?? 'http://localhost:8862';
+    this.smrServiceUrl = this.configService.get<string>('TEXT_URL') ?? 'http://localhost:8862';
     this.nlpServiceUrl = this.configService.get<string>('NLP_URL') ?? 'http://localhost:8864';
   }
 
@@ -1413,7 +1413,7 @@ export class SummaryService extends BaseService implements ISummaryService {
    */
   private async executeSmrGenerate(payload: SmrCallPayload, options: Record<string, unknown> | undefined): Promise<SmrCallResult> {
     const smrPayload = buildSmrGeneratePayload(payload.assembledPrompt, options, payload.context);
-    const smrServiceToken = (await this.secretsService?.getSecretOptional('SMR_SERVICE_TOKEN')) ?? '';
+    const smrServiceToken = (await this.secretsService?.getSecretOptional('TEXT_SERVICE_TOKEN')) ?? '';
 
     // The finalize path now carries the SAME bounded corrective
     // retry as the live-doc flush. Before this, a structured request

@@ -20,7 +20,7 @@ import { CanAny, CanDelete, CanRead, CanUpdate, ExpectedVersion, RequiresIfMatch
  * Mirrors `TenantBucketController`: class-level
  * `@CanAny(['manage','Tenant'],['update','Tenant'])` gates the surface
  * (tenant admins reach it via tenant-scoped
- * `update:Tenant`; GLOBAL_ADMIN via `manage:all`), method-level
+ * `update:Tenant`; SUPER_ADMIN via `manage:all`), method-level
  * `@Can*('Storage')` adds the specific operation (already granted to tenant
  * admins by `tenant-full-access`'s `manage:Storage`), and
  * `@TenantOwnedResource` guards the per-record delete route.
@@ -46,7 +46,7 @@ export class TenantStorageConfigAdminController {
 
   // AUTH-NOTE: the two `platform` routes below manage the SYSTEM-tenant
   // storage row — the platform default every tenant falls back to. They are
-  // GLOBAL_ADMIN-ONLY, enforced IMPERATIVELY in
+  // SUPER_ADMIN-ONLY, enforced IMPERATIVELY in
   // `TenantStorageConfigService.assertGlobalAdmin` (→ 403), because the
   // permission decorators express `action + subject` and cannot express
   // "global admins only": a tenant admin legitimately holds `manage:Storage`
@@ -58,7 +58,7 @@ export class TenantStorageConfigAdminController {
   // The matching `storage.platformDefault.*` descriptors carry `globalOnly: true`.
   @Get('platform')
   @ApiOperation({
-    summary: 'Read the platform-default storage config (SYSTEM row) — GLOBAL_ADMIN only',
+    summary: 'Read the platform-default storage config (SYSTEM row) — SUPER_ADMIN only',
     description:
       'The third tier of the resolution order (bucket → tenant default → SYSTEM default → env). Returns a `version: 0` ' +
       'placeholder when the row has not been created yet, so the client can `If-Match: "0"` to create it. ' +
@@ -74,7 +74,7 @@ export class TenantStorageConfigAdminController {
   @Put('platform')
   @RequiresIfMatch()
   @ApiOperation({
-    summary: 'Create or update the platform-default storage config under optimistic concurrency — GLOBAL_ADMIN only',
+    summary: 'Create or update the platform-default storage config under optimistic concurrency — SUPER_ADMIN only',
     description:
       'Takes effect for every tenant on the NEXT file operation — no redeploy — because the write busts the process-wide ' +
       'platform provider cache. `If-Match` (RFC 7232) carries the version read from the prior GET: `"0"` creates the row, ' +

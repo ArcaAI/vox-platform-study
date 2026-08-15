@@ -108,7 +108,7 @@ test.describe('Phase 0 — Item 3: privilege escalation via admin/users', () => 
     expect(doctorLogin.status()).toBe(200);
     doctorToken = (await doctorLogin.json()).token;
 
-    // Discover the GLOBAL_ADMIN role id and a victim user id via a super-admin
+    // Discover the SUPER_ADMIN role id and a victim user id via a super-admin
     // session. These are seeded by tests/setup/playwright.global-setup.ts.
     const adminLogin = await request.post('/api/v1/auth/login', {
       data: { username: 'super_admin', password: 'password123' },
@@ -118,8 +118,8 @@ test.describe('Phase 0 — Item 3: privilege escalation via admin/users', () => 
       headers: { Authorization: `Bearer ${adminToken}` },
     });
     const roles = (await rolesResp.json()).data;
-    superAdminRoleId = roles.find((r: { name: string }) => r.name === 'GLOBAL_ADMIN')?.id;
-    expect(superAdminRoleId, 'GLOBAL_ADMIN role id not discoverable').toBeDefined();
+    superAdminRoleId = roles.find((r: { name: string }) => r.name === 'SUPER_ADMIN')?.id;
+    expect(superAdminRoleId, 'SUPER_ADMIN role id not discoverable').toBeDefined();
 
     // This super-admin session has NO tenant scope, so `/admin/users` returns the
     // full cross-tenant set (now 33+ seeded users incl. per-tenant admins). Use a

@@ -1,7 +1,7 @@
 /**
  * P0 — stateless, v1-compat summarization. No consultation required: POST a
  * transcript, get a summary/pre-summary back. Backed by the frozen v1-compat
- * shims (`apps/api/src/modules/smr-compat/smr-compat.controller.ts`), whose
+ * shims (`apps/api/src/modules/text-compat/text-compat.controller.ts`), whose
  * paths are exempt from the gateway's `api/v1` prefix — `core/url.ts#buildUrl`
  * already special-cases them, so this module passes the literal compat paths
  * straight through without touching the prefix logic itself.

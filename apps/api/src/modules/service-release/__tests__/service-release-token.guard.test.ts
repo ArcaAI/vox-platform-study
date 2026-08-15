@@ -26,7 +26,7 @@ describe('ServiceReleaseTokenGuard', () => {
 
   beforeEach(() => {
     secretsService = createMockSecretsService({
-      SMR_SERVICE_TOKEN: 'smr-secret',
+      TEXT_SERVICE_TOKEN: 'smr-secret',
       NLP_SERVICE_TOKEN: 'nlp-secret',
       GUARDRAIL_SERVICE_TOKEN: undefined,
       HARNESS_SERVICE_TOKEN: undefined,

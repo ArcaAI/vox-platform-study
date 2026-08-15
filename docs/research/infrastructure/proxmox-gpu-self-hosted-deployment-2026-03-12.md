@@ -91,7 +91,7 @@ MPS provides the best balance of sharing capability and resource control without
 
 ### Evidence 7: HOPE Platform GPU Requirements
 
-- **Source**: Codebase exploration (apps/stt, apps/nlp, apps/smr)
+- **Source**: Codebase exploration (apps/stt, apps/nlp, apps/text)
 - **Finding**:
 
 | Service | GPU Required | CUDA Version | VRAM Estimate |

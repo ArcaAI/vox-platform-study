@@ -49,7 +49,7 @@ describe('playgroundLlmKeys', () => {
 });
 
 describe('playground-llm client', () => {
-  it('lists SMR providers from the tenant catalog, with the explicit __GLOBAL__ override', async () => {
+  it('lists text-generation providers from the tenant catalog, with the explicit __GLOBAL__ override', async () => {
     const calls = installFetchMock();
     await listProviders();
     await listProviders('__GLOBAL__');
@@ -69,7 +69,7 @@ describe('playground-llm client', () => {
     ]);
   });
 
-  it('POSTs the snake_case generate body verbatim (SMR Pydantic contract)', async () => {
+  it('POSTs the snake_case generate body verbatim (text-generation Pydantic contract)', async () => {
     const calls = installFetchMock();
     await generateText({
       prompt: 'Summarize',

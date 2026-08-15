@@ -78,7 +78,7 @@ function createService(clsTenantId: string | null) {
   const summaryMetaRepo = { create: vi.fn().mockResolvedValue({ id: 'meta-1' }), encryptFieldsIntoEntity: vi.fn().mockResolvedValue(undefined) };
   const namedEntityRepo = { findByContextItem: vi.fn().mockResolvedValue([]) };
   const httpService = { axiosRef: { post: vi.fn().mockResolvedValue({ data: { summary: 'Result.' } }) } };
-  const configService = { get: vi.fn().mockImplementation((key: string) => (key === 'SMR_URL' ? 'http://smr:8862' : null)) };
+  const configService = { get: vi.fn().mockImplementation((key: string) => (key === 'TEXT_URL' ? 'http://smr:8862' : null)) };
   const eventEmitter = { emit: vi.fn() };
   const clsService = {
     get: vi.fn().mockImplementation((key: string) => {

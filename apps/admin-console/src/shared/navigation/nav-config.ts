@@ -156,7 +156,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     implemented: true,
   },
   { route: '/rate-limits', label: 'Rate limits', tier: '10-19', icon: IconGauge, required: [['manage', 'all']], implemented: true },
-  // Phase 3B agentic global-admin console (all GLOBAL_ADMIN-only).
+  // Phase 3B agentic global-admin console (all SUPER_ADMIN-only).
   { route: '/agentic-policy', label: 'Agentic policy', tier: '10-19', icon: IconShieldBolt, required: [['manage', 'all']], implemented: true },
   // `/prompt-studio` retired — prompt governance folded
   // into the elevated-only Governance tab of `/agents` (one authoritative
@@ -271,7 +271,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     implemented: true,
   },
   // Retiered from 10-19: tenant admins now manage their own
-  // exact-origin rows; wildcard/SYSTEM rows stay GLOBAL_ADMIN-only, enforced
+  // exact-origin rows; wildcard/SYSTEM rows stay SUPER_ADMIN-only, enforced
   // in the service, not the nav gate.
   {
     route: '/allowed-origins',
@@ -395,7 +395,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
   // DIFFERENT backend resource, so `required` is the OR (canAny) of the four
   // reads — the entry shows if the caller can read ANY one, and each tab is
   // `<RequirePermission>`-gated in the screen. SMR selection stays tenant-owned;
-  // guardrail/nlp/harness model selection stays GLOBAL_ADMIN-only (read-only here).
+  // guardrail/nlp/harness model selection stays SUPER_ADMIN-only (read-only here).
   {
     route: '/ai-configuration',
     label: 'AI Configuration',
@@ -421,7 +421,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
   // Tier 50-59 — Playground (approved 2026-07-06; moved into the
   // console shell under (console)/(tenant)). End-user demo
   // planes run under the admin's OWN account, so the backend guards are
-  // plain @Authorize() — visibility is role-gated (GLOBAL_ADMIN or
+  // plain @Authorize() — visibility is role-gated (SUPER_ADMIN or
   // TENANT_ADMIN) via visibleNavEntries, mirroring the (tenant) tier guard.
   // Labels reconciled to the page titles: nav = breadcrumb = title.
   { route: '/playground/consultation', label: 'Consultation Demo', tier: '50-59', icon: IconHeartbeat, required: [], implemented: true },

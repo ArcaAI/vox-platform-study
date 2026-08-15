@@ -221,7 +221,7 @@ export const DNA_STYLE_ENDPOINTS = {
   BY_DOCTOR: (doctorId: string) => `/dna-writing-styles/doctor/${encodeURIComponent(doctorId)}`,
   // Admin cross-user (PHI-gated) reads. These hit the `/admin`
   // controller, which requires `manage:DnaWritingStyleReport` and tenant-scopes
-  // the caller (even GLOBAL_ADMIN cannot cross tenants). Distinct from the
+  // the caller (even SUPER_ADMIN cannot cross tenants). Distinct from the
   // self-only `BY_DOCTOR`/`VERSIONS` end-user routes above.
   ADMIN_BY_DOCTOR: (doctorId: string) => `/admin/dna-writing-styles/doctor/${encodeURIComponent(doctorId)}`,
   ADMIN_VERSIONS: (reportId: string) => `/admin/dna-writing-styles/${encodeURIComponent(reportId)}/versions`,
@@ -260,7 +260,7 @@ export const PROMPT_TEMPLATE_ENDPOINTS = {
   USAGE: (id: string) => `/admin/prompt-templates/${encodeURIComponent(id)}/usage`,
   /** Activate (rollback to) a specific version */
   ACTIVATE_VERSION: (id: string, versionNumber: number) => `/admin/prompt-templates/${encodeURIComponent(id)}/versions/${versionNumber}/activate`,
-  /** Run a quality/score test against the SMR/text-generation service */
+  /** Run a quality/score test against the text-generation service */
   TEST: (id: string) => `/admin/prompt-templates/${encodeURIComponent(id)}/test`,
   /** Usage analytics grouped by department / doctor / day */
   USAGE_ANALYTICS: '/admin/prompt-templates/analytics/usage',
@@ -314,7 +314,7 @@ export const MONITORING_ENDPOINTS = {
  * Platform runtime metrics endpoints.
  *
  * Matches `PlatformMetricsController` at `@Controller('admin/platform')`.
- * GLOBAL_ADMIN-only (class-level `@CanManage('PlatformMetrics')`, satisfied by
+ * SUPER_ADMIN-only (class-level `@CanManage('PlatformMetrics')`, satisfied by
  * the global `manage:all` grant). Responses are Redis-cached (~12s TTL) and
  * emit no audit event.
  */
@@ -847,7 +847,7 @@ export const AUDIT_LOG_ENDPOINTS = {
 } as const;
 
 // =============================================================================
-// Admin / storage / SMR endpoint bindings
+// Admin / storage / text endpoint bindings
 //
 // Paths omit the `/api/v1` prefix (the AgenticClient baseUrl carries it).
 // Every path below is source-verified against its API controller (cited per
@@ -858,7 +858,7 @@ export const AUDIT_LOG_ENDPOINTS = {
  * Admin consultation endpoints.
  *
  * Tenant-wide consultation supervision — class-level `@CanManage('Consultation')`
- * (TENANT_ADMIN / GLOBAL_ADMIN). A plain DOCTOR is denied (403).
+ * (TENANT_ADMIN / SUPER_ADMIN). A plain DOCTOR is denied (403).
  * Controller: `apps/api/src/modules/consultation/admin-consultation.controller.ts`
  * (`@Controller('admin/consultations')`).
  */
@@ -866,7 +866,7 @@ export const ADMIN_CONSULTATION_ENDPOINTS = {
   /**
    * List ALL consultations in scope (paginated; page/limit + patientId/doctorId/departmentId filters).
    *
-   * A GLOBAL_ADMIN with NO working tenant now gets a
+   * A SUPER_ADMIN with NO working tenant now gets a
    * cross-tenant list (previously HTTP 400). A tenant-admin is pinned to their tenant.
    */
   LIST: '/admin/consultations',
@@ -1005,26 +1005,35 @@ export const TENANT_FRONTEND_CONFIG_ENDPOINTS = {
 } as const;
 
 /**
- * SMR text-generation proxy endpoints.
+ * Text-generation proxy endpoints.
  *
- * Controller: `apps/api/src/modules/streaming/smr-proxy.controller.ts`
+ * Controller: `apps/api/src/modules/streaming/text-proxy.controller.ts`
  * (`@Controller('text')`). `GENERATE_ASSEMBLED` runs server-side prompt
  * assembly (DNA-styled + attachment-aware); `GENERATE` is the raw passthrough.
  */
-export const SMR_ENDPOINTS = {
+export const TEXT_ENDPOINTS = {
   /** Generate text (raw passthrough; sync or streaming) */
   GENERATE: '/text/generate',
   /** Generate text with server-side prompt assembly */
   GENERATE_ASSEMBLED: '/text/generate/assembled',
   /** List configured LLM providers */
   PROVIDERS: '/text/providers',
-  /** Get an SMR task's status */
+  /** Get a text-generation task's status */
   TASK: (id: string) => `/text/tasks/${encodeURIComponent(id)}`,
-  /** Cancel a running SMR task */
+  /** Cancel a running text-generation task */
   TASK_CANCEL: (id: string) => `/text/tasks/${encodeURIComponent(id)}/cancel`,
-  /** Stream an SMR task's chunks via SSE */
+  /** Stream a text-generation task's chunks via SSE */
   TASK_STREAM: (id: string) => `/text/tasks/${encodeURIComponent(id)}/stream`,
 } as const;
+
+/**
+ * @deprecated Renamed to {@link TEXT_ENDPOINTS} (naming-alignment: `smr` →
+ * `text`; see `docs/architecture/agentic-workflow-platform/design.md` D8).
+ * Kept as a one-release alias, mirroring `.claude/rules/13-nextjs-apps.md`'s
+ * "retired routes keep a `redirect()` page for one release" precedent. This
+ * export will be REMOVED next release — use `TEXT_ENDPOINTS` instead.
+ */
+export const SMR_ENDPOINTS = TEXT_ENDPOINTS;
 
 // =============================================================================
 // Plugin Defaults

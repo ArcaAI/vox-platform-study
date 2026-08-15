@@ -450,7 +450,7 @@ configuration, and the current (honest, caveated) live-gate results.
 
 ## Conventions / deviations
 
-- Mirrors **`apps/smr`** for dependency management (PEP 621 `pyproject.toml` + the shared root
+- Mirrors **`apps/text`** for dependency management (PEP 621 `pyproject.toml` + the shared root
   `uv.lock`), multi-stage Dockerfile on `hope-python-base`, `structlog` logging, pydantic-settings
   config, and the standardized health contract.
 - Like the other Python services, the package is **editable-installed** into `arcaenv`; `pytest`

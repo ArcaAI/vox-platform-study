@@ -99,7 +99,7 @@ import { RbacModule } from './modules/rbac/rbac.module';
 import { ResourceSubscriptionModule } from './modules/resource-subscription/resource-subscription.module';
 import { StorageAccessKeyModule } from './modules/storage-access-key/storage-access-key.module';
 import { StorageModule } from './modules/storage/storage.module';
-import { SmrCompatModule } from './modules/smr-compat/smr-compat.module';
+import { SmrCompatModule } from './modules/text-compat/text-compat.module';
 import { SttCompatModule } from './modules/stt-compat/stt-compat.module';
 import { StreamingModule } from './modules/streaming/streaming.module';
 import { SpeechModule } from './modules/speech/speech.module';

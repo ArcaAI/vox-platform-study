@@ -93,7 +93,7 @@ describe('env:sync — the bootstrap floor (.env.sample first section) carries o
   });
 
   it('carries no key from beyond the floor', () => {
-    for (const beyond of ['JWT_SECRET_KEY', 'SMR_URL', 'LOG_LEVEL', 'MINIO_ENDPOINT', 'RATE_LIMIT_ENABLED']) {
+    for (const beyond of ['JWT_SECRET_KEY', 'TEXT_URL', 'LOG_LEVEL', 'MINIO_ENDPOINT', 'RATE_LIMIT_ENABLED']) {
       expect(rootKeys, beyond).not.toContain(beyond);
     }
   });
@@ -192,13 +192,13 @@ describe('env:sync — turbo.json#globalEnv', () => {
 describe('env:sync — dead keys stay dead', () => {
   // Verified 2026-07-25: no reader in any TS/Python/shell/compose source.
   //   TENANT_IDP_ENABLED        — no reader at all (see feature-flags.descriptors.ts)
-  //   AZURE_OPENAI_API_KEY      — only an SMR e2e conftest fixture; the real key is SMR_AZURE_API_KEY
-  //   SMR_OPENAI_COMPAT_ENABLED — SMR gates providers by config presence, it has no `enabled` field
-  //   SMR_V2_* / STT_V2_URL     — the retired rename shims
+  //   AZURE_OPENAI_API_KEY      — only an SMR e2e conftest fixture; the real key is TEXT_AZURE_API_KEY
+  //   TEXT_OPENAI_COMPAT_ENABLED — SMR gates providers by config presence, it has no `enabled` field
+  //   TEXT_V2_* / STT_V2_URL     — the retired rename shims
   const DEAD = [
     'TENANT_IDP_ENABLED',
     'AZURE_OPENAI_API_KEY',
-    'SMR_OPENAI_COMPAT_ENABLED',
+    'TEXT_OPENAI_COMPAT_ENABLED',
     'DATABASE_URL_DIRECT',
     'JWT_REFRESH_SECRET',
     'DEBUG_PRISMA',
@@ -224,10 +224,10 @@ describe('env:sync — the declared surface stays small', () => {
     // STORAGE_ACCESS_KEY_PEPPER.
     // Bumped 134 -> 144 for 10 legitimate additions (expand LLM
     // providers — verified via `pnpm env:sync --check`, no drift):
-    // SMR_ANTHROPIC_API_KEY, SMR_ANTHROPIC_BASE_URL, SMR_ANTHROPIC_DEFAULT_MODEL,
-    // SMR_OPENAI_API_KEY, SMR_OPENAI_BASE_URL, SMR_OPENAI_DEFAULT_MODEL,
-    // SMR_OPENAI_ORGANIZATION, SMR_VERTEX_DEFAULT_MODEL, SMR_VERTEX_LOCATION,
-    // SMR_VERTEX_PROJECT. Bump again only after checking `env:sync --check`
+    // TEXT_ANTHROPIC_API_KEY, TEXT_ANTHROPIC_BASE_URL, TEXT_ANTHROPIC_DEFAULT_MODEL,
+    // TEXT_OPENAI_API_KEY, TEXT_OPENAI_BASE_URL, TEXT_OPENAI_DEFAULT_MODEL,
+    // TEXT_OPENAI_ORGANIZATION, TEXT_VERTEX_DEFAULT_MODEL, TEXT_VERTEX_LOCATION,
+    // TEXT_VERTEX_PROJECT. Bump again only after checking `env:sync --check`
     // is clean — this constant exists to catch UNREVIEWED growth, not real growth.
     // Bumped 144 -> 145 for 1 legitimate addition (secrets rewarm interval —
     // verified via `pnpm env:sync --check`, no drift): SECRETS_REWARM_INTERVAL_SEC.

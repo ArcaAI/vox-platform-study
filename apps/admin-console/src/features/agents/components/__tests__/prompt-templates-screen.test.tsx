@@ -153,7 +153,7 @@ function stubFetch(handler: FetchHandler): RecordedCall[] {
 
 function session(overrides: Partial<{ workingTenantId: string | null }> = {}) {
   const base = {
-    user: { id: 'u-1', username: 'root', email: 'root@hope.local', roles: ['GLOBAL_ADMIN'] },
+    user: { id: 'u-1', username: 'root', email: 'root@hope.local', roles: ['SUPER_ADMIN'] },
     isElevated: true,
     workingTenantId: 'tnt-1',
     workingTenantName: 'Sunrise Medical Group',
@@ -481,7 +481,7 @@ describe('PromptTemplatesScreen', () => {
 
   /**
    * The Governance tab is elevated-only in the CONSOLE; approve authority
-   * stays server-side (SYSTEM/library rows are GLOBAL_ADMIN-only, tenant-owned
+   * stays server-side (SYSTEM/library rows are SUPER_ADMIN-only, tenant-owned
    * rows need `manage:PromptTemplate`) regardless of what is rendered.
    */
   describe('Governance tab', () => {

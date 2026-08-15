@@ -109,7 +109,7 @@ async function main() {
   const usageAggregateRepo = new BillingUsageAggregateRepository(realUow);
 
   const eventEmitter = new EventEmitter2();
-  const globalAdminCls = makeFakeCls({ user: { id: 'task615-evidence-script', roles: ['GLOBAL_ADMIN'] }, tenantId: ARCAAI_TENANT_ID });
+  const globalAdminCls = makeFakeCls({ user: { id: 'task615-evidence-script', roles: ['SUPER_ADMIN'] }, tenantId: ARCAAI_TENANT_ID });
   const billingService = new BillingService(
     eventEmitter,
     globalAdminCls as never,

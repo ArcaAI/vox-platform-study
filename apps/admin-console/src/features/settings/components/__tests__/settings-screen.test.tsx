@@ -44,7 +44,7 @@ const SECRET = setting({ id: 's-2', name: 'SMTP password', key: 'smtp.password',
 const SETTINGS = [setting(), SECRET];
 
 const SESSION = {
-  user: { id: 'u-1', username: 'super_admin', email: 'admin@arca.ai', roles: ['GLOBAL_ADMIN'] },
+  user: { id: 'u-1', username: 'super_admin', email: 'admin@arca.ai', roles: ['SUPER_ADMIN'] },
   isElevated: true,
   workingTenantId: null as string | null,
   workingTenantName: null as string | null,

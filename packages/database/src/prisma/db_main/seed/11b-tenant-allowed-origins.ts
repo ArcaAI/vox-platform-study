@@ -108,7 +108,7 @@ export const TENANT_ALLOWED_ORIGIN_SEEDS: OriginSeed[] = [
   // data. It is not: Global holds 21 users, 9 consultations, 18 departments —
   // more than the ArcaAI customer tenant. A wildcard grant that broad belongs
   // to a specific tenant admin's deliberate choice (FR-2 still gates it
-  // GLOBAL_ADMIN-only), never to platform bootstrap data.
+  // SUPER_ADMIN-only), never to platform bootstrap data.
   {
     origin: 'http://localhost:*',
     tenantId: SYSTEM_TENANT_ID,

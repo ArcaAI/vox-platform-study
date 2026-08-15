@@ -59,7 +59,7 @@ port_for() {
         api) echo "${API_PORT:-8868}" ;;
         stt) echo "${STT_PORT:-8861}" ;;
         stt-worker) echo "" ;;
-        smr) echo "${SMR_PORT:-8862}" ;;
+        smr) echo "${TEXT_PORT:-8862}" ;;
         nlp) echo "${NLP_PORT:-8864}" ;;
         harness) echo "${HARNESS_PORT:-8866}" ;;
         admin) echo "${ADMIN_PORT:-5176}" ;;

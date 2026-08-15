@@ -142,10 +142,10 @@ describe('UsageAnalyticsService.getTopTenants', () => {
     expect(repos.aggregateRepository.topTenantsByCost).not.toHaveBeenCalled();
   });
 
-  it('allows a GLOBAL_ADMIN caller and runs the cross-tenant aggregate', async () => {
+  it('allows a SUPER_ADMIN caller and runs the cross-tenant aggregate', async () => {
     const repos = makeRepos();
     repos.aggregateRepository.topTenantsByCost.mockResolvedValue([{ tenantId: 't-9', costMicros: 12345n }]);
-    const service = makeService(repos, { roles: ['GLOBAL_ADMIN'] });
+    const service = makeService(repos, { roles: ['SUPER_ADMIN'] });
     const response = await service.getTopTenants('2026-08', { limit: 5 });
     expect(response.tenants).toEqual([{ tenantId: 't-9', costMicros: '12345' }]);
     expect(repos.aggregateRepository.topTenantsByCost).toHaveBeenCalledWith(expect.any(Date), expect.any(Date), 5, undefined);

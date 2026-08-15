@@ -5,7 +5,7 @@ import { TenantFrontendConfigResponse, UpsertTenantFrontendConfigRequest } from 
  * tenant (`tenantId @unique`), applied to all of that tenant's users.
  *
  * Tenant scoping mirrors the other admin services: a global admin
- * (GLOBAL_ADMIN) targets a tenant via the `tenantId` argument;
+ * (SUPER_ADMIN) targets a tenant via the `tenantId` argument;
  * a tenant admin is pinned to their CLS tenant and any `tenantId` is ignored.
  */
 export abstract class ITenantFrontendConfigService {

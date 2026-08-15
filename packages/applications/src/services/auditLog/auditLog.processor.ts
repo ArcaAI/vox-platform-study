@@ -38,7 +38,7 @@ export class AuditLogProcessor extends WorkerHost {
     // the tenantScope Prisma extension sees the correct context
     // (otherwise its "no CLS = super-admin pass-through" branch silently
     // bypasses scoping). Empty roles array — queue workers never have
-    // GLOBAL_ADMIN bypass.
+    // SUPER_ADMIN bypass.
     //
     // No `assertEqualTenants` here: this processor only WRITES (never loads
     // an entity by id), so there is nothing to assert against. The factory's

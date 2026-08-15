@@ -1,7 +1,7 @@
 /**
  * F-036: the `New provider` default-role picker must never offer roles the
  * backend rejects at JIT provisioning. `federated-auth.service.ts` hard-blocks
- * `GLOBAL_ADMIN` (`role.name === 'GLOBAL_ADMIN'` -> 403) and `SERVICE_ACCOUNT`
+ * `SUPER_ADMIN` (`role.name === 'SUPER_ADMIN'` -> 403) and `SERVICE_ACCOUNT`
  * users cannot sign in interactively at all — both are dead/dangerous choices
  * that previously saved fine and only failed at end-user login time.
  */
@@ -19,7 +19,7 @@ vi.mock('sonner', () => ({
 const ROLES: RoleOption[] = [
   { id: 'role-doctor', name: 'DOCTOR' },
   { id: 'role-nurse', name: 'NURSE' },
-  { id: 'role-global-admin', name: 'GLOBAL_ADMIN' },
+  { id: 'role-global-admin', name: 'SUPER_ADMIN' },
   { id: 'role-service-account', name: 'SERVICE_ACCOUNT' },
 ];
 
@@ -48,7 +48,7 @@ afterEach(() => {
 });
 
 describe('CreateProviderForm — default-role picker', () => {
-  it('excludes GLOBAL_ADMIN and SERVICE_ACCOUNT from the default-role options', async () => {
+  it('excludes SUPER_ADMIN and SERVICE_ACCOUNT from the default-role options', async () => {
     stubFetch();
     renderWithProviders(<CreateProviderForm onCreated={() => {}} onCancel={() => {}} />);
 
@@ -58,7 +58,7 @@ describe('CreateProviderForm — default-role picker', () => {
     await waitFor(() => expect(screen.getByRole('option', { name: 'DOCTOR' })).toBeDefined());
     const listbox = screen.getByRole('listbox');
     expect(within(listbox).getByRole('option', { name: 'NURSE' })).toBeDefined();
-    expect(within(listbox).queryByRole('option', { name: 'GLOBAL_ADMIN' })).toBeNull();
+    expect(within(listbox).queryByRole('option', { name: 'SUPER_ADMIN' })).toBeNull();
     expect(within(listbox).queryByRole('option', { name: 'SERVICE_ACCOUNT' })).toBeNull();
   });
 });

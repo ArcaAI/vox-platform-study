@@ -73,7 +73,7 @@ function build(ctx: Ctx) {
 }
 
 const TENANT_USER: Ctx = { user: { id: 'user-1', roles: ['TENANT_ADMIN'], tenantId: 'tenant-1' }, tenantId: 'tenant-1' };
-const GLOBAL_ADMIN: Ctx = { user: { id: 'admin-1', roles: ['GLOBAL_ADMIN'] }, tenantId: null };
+const SUPER_ADMIN: Ctx = { user: { id: 'admin-1', roles: ['SUPER_ADMIN'] }, tenantId: null };
 
 describe('ChangelogService — listUnseen', () => {
   let harness: ReturnType<typeof build>;
@@ -142,9 +142,11 @@ describe('ChangelogService — listUnseen', () => {
   });
 
   it('a global admin sees the GLOBAL_ADMIN audience, not TENANT_ADMIN', async () => {
-    const admin = build(GLOBAL_ADMIN);
+    const admin = build(SUPER_ADMIN);
     await admin.service.listUnseen();
 
+    // NOTE: ChangelogAudience.GLOBAL_ADMIN is intentionally NOT renamed here —
+    // the enum rename is HUMAN-GATED and has not landed (see changelog.service.ts).
     expect(admin.entryRepo.findAll.mock.calls[0][0].where.audience).toEqual({
       in: [ChangelogAudience.ALL, ChangelogAudience.GLOBAL_ADMIN],
     });
@@ -179,7 +181,7 @@ describe('ChangelogService — list', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('shows a global admin DRAFT entries too', async () => {
-    const h = build(GLOBAL_ADMIN);
+    const h = build(SUPER_ADMIN);
     await h.service.list({});
 
     expect(h.entryRepo.findAll.mock.calls[0][0].where.publishStatus).toBeUndefined();
@@ -200,7 +202,7 @@ describe('ChangelogService — list', () => {
   });
 });
 
-describe('ChangelogService — authoring (GLOBAL_ADMIN only)', () => {
+describe('ChangelogService — authoring (SUPER_ADMIN only)', () => {
   beforeEach(() => vi.clearAllMocks());
 
   const createDto = { platformVersion: '2.2.0', title: 't', summary: 's', body: 'b' };
@@ -215,7 +217,7 @@ describe('ChangelogService — authoring (GLOBAL_ADMIN only)', () => {
   });
 
   it('creates as DRAFT under the SYSTEM tenant', async () => {
-    const h = build(GLOBAL_ADMIN);
+    const h = build(SUPER_ADMIN);
 
     const result = await h.service.create(createDto);
 
@@ -226,7 +228,7 @@ describe('ChangelogService — authoring (GLOBAL_ADMIN only)', () => {
   });
 
   it('publishes a DRAFT: sets PUBLISHED + publishedAt through updateWithVersion', async () => {
-    const h = build(GLOBAL_ADMIN);
+    const h = build(SUPER_ADMIN);
     h.entryRepo.findById.mockResolvedValue(makeEntry({ publishStatus: ChangelogPublishStatus.DRAFT, publishedAt: null }));
 
     await h.service.publish('entry-1', 3);
@@ -238,7 +240,7 @@ describe('ChangelogService — authoring (GLOBAL_ADMIN only)', () => {
   });
 
   it('rejects publishing an already-published entry with 409', async () => {
-    const h = build(GLOBAL_ADMIN);
+    const h = build(SUPER_ADMIN);
     h.entryRepo.findById.mockResolvedValue(makeEntry({ publishStatus: ChangelogPublishStatus.PUBLISHED }));
 
     await expect(h.service.publish('entry-1', 3)).rejects.toBeInstanceOf(ConflictException);
@@ -246,7 +248,7 @@ describe('ChangelogService — authoring (GLOBAL_ADMIN only)', () => {
   });
 
   it('propagates OCC drift on publish', async () => {
-    const h = build(GLOBAL_ADMIN);
+    const h = build(SUPER_ADMIN);
     h.entryRepo.findById.mockResolvedValue(makeEntry({ publishStatus: ChangelogPublishStatus.DRAFT, publishedAt: null }));
     h.entryRepo.updateWithVersion.mockRejectedValue(
       new OptimisticConcurrencyException('ChangelogEntry', 'entry-1', { expectedVersion: 1, currentVersion: 3 }),

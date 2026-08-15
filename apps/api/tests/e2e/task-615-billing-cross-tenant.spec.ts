@@ -106,7 +106,7 @@ test.describe('Billing cross-tenant posture', () => {
     expect([403, 404, 428]).toContain(resp.status());
   });
 
-  test('POST invoice :id/finalize — tenant admin on their OWN (non-existent) invoice id → GLOBAL_ADMIN-only 403, never 200', async ({ request }) => {
+  test('POST invoice :id/finalize — tenant admin on their OWN (non-existent) invoice id → SUPER_ADMIN-only 403, never 200', async ({ request }) => {
     const resp = await request.post(`${INVOICES_BASE}/00000000-0000-4000-8000-000000000000/finalize`, {
       headers: { ...bearer(tenantAdminToken), 'If-Match': '"1"' },
     });

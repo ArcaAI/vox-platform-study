@@ -272,7 +272,7 @@ function TopTenantsCard({ top }: { top: TopTenantsView }) {
     <Card className="gap-4">
       <CardHeader>
         <h2 className="text-sm font-semibold">Platform · top spenders</h2>
-        <p className="text-muted-foreground text-xs">Cross-tenant leaderboard (GLOBAL_ADMIN) — independent of the working tenant.</p>
+        <p className="text-muted-foreground text-xs">Cross-tenant leaderboard (SUPER_ADMIN) — independent of the working tenant.</p>
       </CardHeader>
       <CardContent>
         <MetricTable

@@ -9,7 +9,7 @@ const operator: SessionPayload = {
     id: 'admin-1',
     username: 'super_admin',
     email: 'super_admin@example.com',
-    roles: ['GLOBAL_ADMIN'],
+    roles: ['SUPER_ADMIN'],
   },
 };
 
@@ -33,7 +33,7 @@ describe('toSafeSession — effective identity', () => {
       id: 'admin-1',
       username: 'super_admin',
       email: 'super_admin@example.com',
-      roles: ['GLOBAL_ADMIN'],
+      roles: ['SUPER_ADMIN'],
       tenantId: null,
       departmentId: null,
     });

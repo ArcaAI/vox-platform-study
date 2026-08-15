@@ -2732,7 +2732,7 @@ describe('PromptManagementService', () => {
     });
 
     it('global admin approves a SYSTEM/library template → 200', async () => {
-      useContext({ roles: ['GLOBAL_ADMIN'], tenantId: 'tenant-1', canManage: false });
+      useContext({ roles: ['SUPER_ADMIN'], tenantId: 'tenant-1', canManage: false });
       const tpl = createMockTemplateEntity({ id: 'tpl-sys', tenantId: SYSTEM_TENANT_ID, scope: 'TENANT_DEFAULT', status: 'DRAFT', version: 2 });
       wireApproveSuccess(tpl);
 
@@ -2743,7 +2743,7 @@ describe('PromptManagementService', () => {
     });
 
     it('global admin approves a tenant-owned template → 200', async () => {
-      useContext({ roles: ['GLOBAL_ADMIN'], tenantId: 'tenant-1', canManage: false });
+      useContext({ roles: ['SUPER_ADMIN'], tenantId: 'tenant-1', canManage: false });
       const tpl = createMockTemplateEntity({ id: 'tpl-t', tenantId: 'tenant-1', scope: 'DEPARTMENT_DEFAULT', status: 'DRAFT', version: 4 });
       wireApproveSuccess(tpl);
 
@@ -2772,7 +2772,7 @@ describe('PromptManagementService', () => {
     });
 
     it('missing template id → 404', async () => {
-      useContext({ roles: ['GLOBAL_ADMIN'], tenantId: 'tenant-1' });
+      useContext({ roles: ['SUPER_ADMIN'], tenantId: 'tenant-1' });
       mockTemplateRepo.findById.mockResolvedValue(null);
 
       await expect(service.approveTemplate('nope', { expectedVersion: 1 } as never)).rejects.toThrow(NotFoundException);
@@ -2805,7 +2805,7 @@ describe('PromptManagementService', () => {
       mockGate.evaluatePromotion.mockReset();
       // Global admin approving a tenant-owned DRAFT template.
       mockClsService.get.mockImplementation((key: string) =>
-        key === 'user' ? { ...defaultClsContext.user, roles: ['GLOBAL_ADMIN'] } : key === 'tenantId' ? 'tenant-1' : null,
+        key === 'user' ? { ...defaultClsContext.user, roles: ['SUPER_ADMIN'] } : key === 'tenantId' ? 'tenant-1' : null,
       );
     });
 

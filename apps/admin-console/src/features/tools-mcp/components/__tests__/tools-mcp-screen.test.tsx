@@ -1,7 +1,7 @@
 /**
  * TDD screen tests screen 5 (Tools & MCP): MCP external-tools
  * registry — list table, create/edit (If-Match OCC),
- * delete, GLOBAL_ADMIN gate, empty/error/loading, axe 0-violations. Data is a
+ * delete, SUPER_ADMIN gate, empty/error/loading, axe 0-violations. Data is a
  * URL-branching fetch stub over GET/POST/PATCH/DELETE /admin/mcp-servers.
  */
 
@@ -17,13 +17,13 @@ vi.mock('sonner', () => ({
 }));
 
 const SESSION = {
-  user: { id: 'u-1', username: 'super_admin', email: 'admin@arca.ai', roles: ['GLOBAL_ADMIN'] },
+  user: { id: 'u-1', username: 'super_admin', email: 'admin@arca.ai', roles: ['SUPER_ADMIN'] },
   isElevated: true,
   workingTenantId: null as string | null,
   workingTenantName: null as string | null,
   impersonatingUserId: null,
   impersonatingUsername: null,
-  effectiveUser: { id: 'u-1', username: 'super_admin', email: 'admin@arca.ai', roles: ['GLOBAL_ADMIN'], tenantId: null, departmentId: null },
+  effectiveUser: { id: 'u-1', username: 'super_admin', email: 'admin@arca.ai', roles: ['SUPER_ADMIN'], tenantId: null, departmentId: null },
   effectiveIsElevated: true,
   effectiveTenantId: null as string | null,
 };

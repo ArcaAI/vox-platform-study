@@ -50,7 +50,7 @@ function toTimelineItem(entry: ChangelogEntry): TimelineItemModel {
  */
 export function ChangelogScreen() {
   const { data: session } = useSession();
-  const isGlobalAdmin = session?.effectiveUser.roles.includes('GLOBAL_ADMIN') ?? false;
+  const isGlobalAdmin = session?.effectiveUser.roles.includes('SUPER_ADMIN') ?? false;
 
   const [severity, setSeverity] = useQueryState('severity');
   const [version, setVersion] = useQueryState('version', { defaultValue: '' });

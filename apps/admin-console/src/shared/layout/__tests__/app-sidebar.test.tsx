@@ -18,7 +18,7 @@ function stubPermissionsFetch() {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
       if (url.includes('/api/auth/session')) {
         return Response.json({
-          user: { id: 'u-1', username: 'root', email: 'root@example.com', roles: ['GLOBAL_ADMIN'] },
+          user: { id: 'u-1', username: 'root', email: 'root@example.com', roles: ['SUPER_ADMIN'] },
           isElevated: true,
           workingTenantId: null,
           workingTenantName: null,

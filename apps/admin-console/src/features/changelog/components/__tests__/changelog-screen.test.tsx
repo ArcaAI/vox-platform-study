@@ -13,7 +13,7 @@ import { ChangelogScreen } from '../changelog-screen';
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }));
 vi.mock('@/shared/auth', () => ({
-  useSession: () => ({ data: { effectiveUser: { roles: ['GLOBAL_ADMIN'] }, impersonatingUserId: null } }),
+  useSession: () => ({ data: { effectiveUser: { roles: ['SUPER_ADMIN'] }, impersonatingUserId: null } }),
 }));
 
 function stubFetch(entries: unknown[]) {

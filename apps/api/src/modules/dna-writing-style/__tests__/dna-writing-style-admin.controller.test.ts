@@ -248,7 +248,7 @@ describe('DnaWritingStyleAdminController', () => {
 
   // Admin "latest DNA report for a doctor" read. Delegates to
   // the PHI-gated `getDnaReport(doctorId)` (asserts the doctor is in the
-  // caller's tenant; even GLOBAL_ADMIN cannot cross tenants).
+  // caller's tenant; even SUPER_ADMIN cannot cross tenants).
   describe('GET /admin/dna-writing-styles/doctor/:doctorId (getReportForDoctor)', () => {
     it('delegates to service.getDnaReport and returns the report', async () => {
       mockDnaService.getDnaReport.mockResolvedValue(fakeReportEntity);

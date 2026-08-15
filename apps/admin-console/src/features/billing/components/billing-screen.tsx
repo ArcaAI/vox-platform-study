@@ -97,7 +97,7 @@ function BillingBody() {
             <TabsTrigger value="rate-card">Rate card</TabsTrigger>
           </TabsList>
         }
-        footer={<StatusFooter start={<span>SELL rates are supersede-only; a finalized period is immutable (corrections are credit memos)</span>} end={<span className="font-mono">GLOBAL_ADMIN</span>} />}
+        footer={<StatusFooter start={<span>SELL rates are supersede-only; a finalized period is immutable (corrections are credit memos)</span>} end={<span className="font-mono">SUPER_ADMIN</span>} />}
       >
         <TabsContent value="invoices">
           <div className="flex flex-col gap-4">

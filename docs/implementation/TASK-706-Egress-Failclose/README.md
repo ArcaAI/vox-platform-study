@@ -12,17 +12,17 @@
 ## 1. Requirement Analysis
 
 The assessment that seeded this ticket describes a fail-open PHI-egress allowlist "at
-`apps/smr/src/smr/.../redactor.py` (~:185)", gated by a `config.py` allowlist (~:129) of `azure`
+`apps/text/src/text/.../redactor.py` (~:185)", gated by a `config.py` allowlist (~:129) of `azure`
 and `bedrock`, against providers "SMR registers... unconditionally" (`smr/main.py` ~:83-93). **This
 premise is directionally right but locates the bug in the wrong service.** Re-derived directly
 against `feat/loop`: `redactor.py` and its `cloud_egress_providers` allowlist live in
-**`apps/harness`**, not `apps/smr` — `apps/smr` has no PHI-redaction code of any kind (confirmed by
-repo-wide grep of `apps/smr/src/smr/**` for redaction/PII logic: none exists; `apps/smr/pyproject.toml`
+**`apps/harness`**, not `apps/text` — `apps/text` has no PHI-redaction code of any kind (confirmed by
+repo-wide grep of `apps/text/src/text/**` for redaction/PII logic: none exists; `apps/text/pyproject.toml`
 carries no presidio/spacy/gliner dependency). SMR's `main.py` provider registration is real and
 unconditional as described, but it is not itself the fail-open mechanism — SMR performs no PHI
 handling at all. The actual gate lives one layer up, in `apps/harness`'s Temporal activities,
 which call the redactor immediately before any cloud-bound SMR call. §2 restates the corrected,
-re-verified chain in full; the fix in this ticket targets `apps/harness`, not `apps/smr`, and this
+re-verified chain in full; the fix in this ticket targets `apps/harness`, not `apps/text`, and this
 is the single most important correction this ticket makes to its own originating brief.
 
 The actual defect, once correctly located: `PhiRedactor.ensure_safe_for_cloud`
@@ -33,7 +33,7 @@ so a provider absent from the list (through omission, drift, or a future additio
 degrades to "assumed safe to send raw." The allowlist today is `["azure", "bedrock"]`
 (`apps/harness/src/harness/core/config.py:129`), while SMR's own provider-registration code
 comments the surrounding block **"Cloud BYO providers (azure / openai / anthropic / vertex)"**
-(`apps/smr/src/smr/main.py:83-88`) — SMR's own source already classifies `openai`, `anthropic`,
+(`apps/text/src/text/main.py:83-88`) — SMR's own source already classifies `openai`, `anthropic`,
 and `vertex` as cloud, and they are missing from harness's allowlist. A tenant whose
 `HarnessPolicy.provider` (or the per-call `provider` field threaded through
 `apps/harness/src/harness/temporal/models.py:587,999`, typed as an unconstrained `str | None`) is
@@ -68,9 +68,9 @@ endpoint contract, which is `phi-redactor`'s job, not this ticket's); adding SMR
 
 | Alleged (design brief) | Actual, re-verified |
 |---|---|
-| `apps/smr/src/smr/.../redactor.py:185` | `apps/harness/src/harness/guards/phi/redactor.py:174-186` (`PhiRedactor.ensure_safe_for_cloud`) — line number for the allowlist check matches, service does not |
-| `config.py:129` (implied SMR) | `apps/harness/src/harness/core/config.py:110-129` (`PhiConfig`, `env_prefix="HARNESS_PHI_"` — **not** `SMR_`) |
-| `smr/main.py:83-93` "registers unconditionally" | Confirmed real, at `apps/smr/src/smr/main.py:94-102` (not 83-93; the comment block explaining it starts at `:80`) — but this is SMR's own documented BYOK design (tenant credentials arrive per-request via `AiProviderConnection`-sourced `provider_overrides`), not itself a redaction gate |
+| `apps/text/src/text/.../redactor.py:185` | `apps/harness/src/harness/guards/phi/redactor.py:174-186` (`PhiRedactor.ensure_safe_for_cloud`) — line number for the allowlist check matches, service does not |
+| `config.py:129` (implied SMR) | `apps/harness/src/harness/core/config.py:110-129` (`PhiConfig`, `env_prefix="HARNESS_PHI_"` — **not** `TEXT_`) |
+| `smr/main.py:83-93` "registers unconditionally" | Confirmed real, at `apps/text/src/text/main.py:94-102` (not 83-93; the comment block explaining it starts at `:80`) — but this is SMR's own documented BYOK design (tenant credentials arrive per-request via `AiProviderConnection`-sourced `provider_overrides`), not itself a redaction gate |
 
 ### 2.2 The exact inverted-allowlist logic
 
@@ -105,7 +105,7 @@ class PhiConfig(BaseSettings):
 The class docstring (`:111-119`) states the intent plainly: *"Local providers (LM Studio / Ollama /
 the local SMR) are not egress and are not listed here"* — i.e. the list was designed as a
 "known-cloud" enumeration, meaning safety depends on every present and future cloud provider being
-manually added. SMR's own provider registry (`apps/smr/src/smr/main.py:60-112`) enumerates the
+manually added. SMR's own provider registry (`apps/text/src/text/main.py:60-112`) enumerates the
 full provider space by conditional-vs-unconditional registration, and it already sorts them for
 us: unconditional (always available, all are cloud/BYOK) = `azure-openai`/`azure`, `openai`,
 `anthropic`, `vertex`; conditional-on-local-config (i.e. genuinely local) = `lm-studio`/`openai_compat`
@@ -152,10 +152,10 @@ extend, not rebuild.
 
 - `.claude/rules/06-python-services.md` — `BaseSettings` per concern with an explicit `env_prefix`
   (`HARNESS_PHI_` stays; this is confirmed as the correct, already-existing prefix — **not**
-  `SMR_`, correcting the design brief's implicit assumption). "Fail fast: settings validate at
+  `TEXT_`, correcting the design brief's implicit assumption). "Fail fast: settings validate at
   startup; never read `os.environ` ad hoc in request handlers" — Task 4 adds exactly this via a
   pydantic `@model_validator`, mirroring the existing exemplar
-  `apps/smr/src/smr/core/config.py:346-393`'s `TelemetryPhiGuardConfig._assert_content_capture_disabled_in_production`
+  `apps/text/src/text/core/config.py:346-393`'s `TelemetryPhiGuardConfig._assert_content_capture_disabled_in_production`
   (a `@model_validator(mode="after")` that raises on an unsafe combination — same pattern, applied
   to `PhiConfig` in `apps/harness` instead).
 - `.claude/rules/09-infrastructure-devops.md` §Configuration Tiers — provider/model **selection**
@@ -205,7 +205,7 @@ extend, not rebuild.
 - **Approach:** Replace `cloud_egress_providers: list[str] = ["azure", "bedrock"]` with
   `local_providers: list[str] = Field(default_factory=lambda: ["lm-studio", "openai_compat",
   "ollama", "vllm", "llama-cpp"])` — the exact conditional-registration identifiers confirmed in
-  `apps/smr/src/smr/main.py:63-112` (§2.2). Flip `ensure_safe_for_cloud`'s guard from `if provider
+  `apps/text/src/text/main.py:63-112` (§2.2). Flip `ensure_safe_for_cloud`'s guard from `if provider
   not in phi.cloud_egress_providers: return text` to `if provider in phi.local_providers: return
   text` — everything else (including `None`/empty-string providers already handled one layer up in
   `ensure_egress_safe`, and any provider string not in the local list, known or not) now falls
@@ -234,7 +234,7 @@ extend, not rebuild.
 - **Agent:** T2 · sonnet-5 · medium
 - **Files:** `apps/harness/src/harness/core/config.py`
 - **Approach:** Add a `@model_validator(mode="after")` on `PhiConfig`, mirroring
-  `apps/smr/src/smr/core/config.py:385-393`'s exemplar shape (raise `ValueError` with a clear
+  `apps/text/src/text/core/config.py:385-393`'s exemplar shape (raise `ValueError` with a clear
   operator-facing message, not a warning): refuse to boot if `enabled=True` and `local_providers`
   is empty (an empty allow-list under the new default-deny semantics would silently redact
   *everything*, including local calls — a correctness/latency regression the operator should see
@@ -288,7 +288,7 @@ extend, not rebuild.
       PHI egress — see §7 Task 7 — so the raw command exit code is non-zero even though this
       ticket's surface is fully green)
 - [x] Test proves: `openai`, `anthropic`, `vertex` (SMR's own documented cloud BYOK providers,
-      `apps/smr/src/smr/main.py:83-88`) now route through redact-and-confirm, not pass-through
+      `apps/text/src/text/main.py:83-88`) now route through redact-and-confirm, not pass-through
 - [x] Test proves: an arbitrary/unlisted provider string defaults to redact-and-confirm (the
       structural, forward-looking fix — not just the three named gaps)
 - [x] Test proves: known-local providers (`lm-studio`, `ollama`, `vllm`, `llama-cpp`,
@@ -311,8 +311,8 @@ extend, not rebuild.
 ## 6. Risks & Open Questions
 
 - **Corrected service attribution (restated for visibility)**: the originating design brief cited
-  `apps/smr`; the actual code is in `apps/harness`. Anyone tracking this ticket against the
-  original brief's file paths should be redirected here rather than searching `apps/smr` again.
+  `apps/text`; the actual code is in `apps/harness`. Anyone tracking this ticket against the
+  original brief's file paths should be redirected here rather than searching `apps/text` again.
 - **Behavior change for `openai`/`anthropic`/`vertex` tenants**: any tenant currently configured
   with one of these three providers as their harness policy provider will, after this ticket,
   start paying the Presidio redact-and-confirm cost on every cloud call, and — if the `guardrails`
@@ -364,7 +364,7 @@ assertions still passed (proving the new tests, not test-harness breakage, cause
 `PhiConfig.cloud_egress_providers: list[str] = ["azure", "bedrock"]` (known-unsafe allowlist)
 replaced with `PhiConfig.local_providers: list[str] = ["lm-studio", "openai_compat", "ollama",
 "vllm", "llama-cpp"]` (known-safe allowlist — the exact conditional-registration identifiers
-from `apps/smr/src/smr/main.py:63-112`). `PhiRedactor.ensure_safe_for_cloud`'s guard flipped
+from `apps/text/src/text/main.py:63-112`). `PhiRedactor.ensure_safe_for_cloud`'s guard flipped
 from `if provider not in phi.cloud_egress_providers: return text` to `if provider in
 phi.local_providers: return text` — everything else, known-cloud or unknown, now falls through
 to the existing (unchanged) redact-and-confirm branch. `ensure_inferential_egress_safe`'s
@@ -389,7 +389,7 @@ it), so nothing there needed touching.
 
 Added `PhiConfig._assert_local_providers_safe` (`@model_validator(mode="after")`, mirroring
 `TelemetryPhiGuardConfig._assert_content_capture_disabled_in_production` in
-`apps/smr/src/smr/core/config.py`): raises `ValueError` (surfaces as a `pydantic.ValidationError`
+`apps/text/src/text/core/config.py`): raises `ValueError` (surfaces as a `pydantic.ValidationError`
 at construction) when `enabled=True` and `local_providers` is empty, and separately rejects
 duplicate or blank-string entries regardless of `enabled`. Four new tests in
 `test_guardrail_config.py::TestPhiConfig` cover: empty-list-raises-when-enabled,

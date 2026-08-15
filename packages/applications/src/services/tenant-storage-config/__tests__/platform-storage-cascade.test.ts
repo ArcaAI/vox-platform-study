@@ -104,7 +104,7 @@ describe('platform storage cascade — SYSTEM row over env, no redeploy', () => 
     );
   });
 
-  function service(roles: string[] = ['GLOBAL_ADMIN'], tenantId = ''): TenantStorageConfigService {
+  function service(roles: string[] = ['SUPER_ADMIN'], tenantId = ''): TenantStorageConfigService {
     const cls = { get: vi.fn((key: string) => (key === 'tenantId' ? tenantId : { id: ADMIN, roles })) };
     return new TenantStorageConfigService(repo as never, { findById: vi.fn() } as never, factory, { emit: vi.fn() } as never, cls as never);
   }

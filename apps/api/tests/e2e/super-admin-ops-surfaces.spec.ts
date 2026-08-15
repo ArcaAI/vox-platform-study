@@ -7,7 +7,7 @@
  *
  * Coverage:
  *   CASL  · every ops endpoint → 401 unauthenticated, 403 for tenant_admin and
- *           doctor (all three surfaces are `manage all` = GLOBAL_ADMIN only).
+ *           doctor (all three surfaces are `manage all` = SUPER_ADMIN only).
  *   14    · GET /admin/rate-limit policy shape; kill-switch round-trip
  *           (ON → verify → OFF → verify — ALWAYS ends OFF); strict-tier limit
  *           round-trip (bump → verify db source → restore original).
@@ -82,7 +82,7 @@ test.beforeAll(async ({ request }) => {
 });
 
 // =============================================================================
-// CASL denial matrix — all three surfaces are GLOBAL_ADMIN (`manage all`) only
+// CASL denial matrix — all three surfaces are SUPER_ADMIN (`manage all`) only
 // =============================================================================
 test.describe('CASL — ops surfaces deny non-super-admins', () => {
   const READ_ENDPOINTS = [

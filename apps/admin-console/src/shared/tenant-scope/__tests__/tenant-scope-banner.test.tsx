@@ -8,7 +8,7 @@ function stubSession(workingTenantId: string | null) {
     'fetch',
     vi.fn(async () =>
       Response.json({
-        user: { id: 'u-1', username: 'admin', email: 'a@x.io', roles: ['GLOBAL_ADMIN'] },
+        user: { id: 'u-1', username: 'admin', email: 'a@x.io', roles: ['SUPER_ADMIN'] },
         isElevated: true,
         workingTenantId,
         workingTenantName: workingTenantId ? 'Sunrise Medical Group' : null,

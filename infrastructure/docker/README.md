@@ -180,7 +180,7 @@ Per-service master switches — all default **OFF**:
 | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
 | API gateway                     | Set `OTEL_EXPORTER_OTLP_ENDPOINT` (only read by `pnpm start` / `start:prod` / Docker — never `pnpm dev`). Kill-switch: `OTEL_SDK_DISABLED=true`. |
 | NLP                             | `NLP_OTEL_ENABLED=true` **and** `OTEL_EXPORTER_OTLP_ENDPOINT`.                                                                                   |
-| STT / SMR / Guardrail / Harness | Their existing `*_OTEL_ENABLED` flags (`OTEL_ENABLED`, `SMR_OTEL_ENABLED`, `GUARDRAIL_V2_OTEL_ENABLED`, `HARNESS_OTEL_ENABLED`).                 |
+| STT / SMR / Guardrail / Harness | Their existing `*_OTEL_ENABLED` flags (`OTEL_ENABLED`, `TEXT_OTEL_ENABLED`, `GUARDRAIL_V2_OTEL_ENABLED`, `HARNESS_OTEL_ENABLED`).                 |
 
 See TASK-411 (this invariant + the opt-in gates) and TASK-397 (dev `prometheus` profile).
 

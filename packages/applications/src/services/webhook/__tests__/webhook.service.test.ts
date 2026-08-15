@@ -313,8 +313,8 @@ describe('WebhookService', () => {
    * Tenant-A user could create webhooks attributed to Tenant-B by simply
    * setting the DTO field. The `resolveEffectiveTenantId` helper mirrors
    * the NotificationService pattern at the structural level:
-   *   - Non-GLOBAL_ADMIN: silently pin to CLS `tenantId` (ignore the DTO field)
-   *   - GLOBAL_ADMIN: honor `request.tenantId` for cross-tenant impersonation
+   *   - Non-SUPER_ADMIN: silently pin to CLS `tenantId` (ignore the DTO field)
+   *   - SUPER_ADMIN: honor `request.tenantId` for cross-tenant impersonation
    *     (admin UI flows / migration tooling)
    *   - Both branches throw `BadRequestException` if no tenant context resolves
    *
@@ -352,7 +352,7 @@ describe('WebhookService', () => {
       });
     };
 
-    it('pins tenantId to CLS when a non-GLOBAL_ADMIN caller passes a cross-tenant request.tenantId', async () => {
+    it('pins tenantId to CLS when a non-SUPER_ADMIN caller passes a cross-tenant request.tenantId', async () => {
       const persistedWebhook = createMockWebhookEntity({ id: 'webhook-new', tenantId: 'tenant-1' });
       mockWebhookRepository.create.mockResolvedValue(persistedWebhook);
 
@@ -367,7 +367,7 @@ describe('WebhookService', () => {
       expect(factoryInput.tenantId).toBe('tenant-1');
     });
 
-    it('pins tenantId to CLS when a non-GLOBAL_ADMIN caller omits request.tenantId', async () => {
+    it('pins tenantId to CLS when a non-SUPER_ADMIN caller omits request.tenantId', async () => {
       const persistedWebhook = createMockWebhookEntity({ id: 'webhook-new', tenantId: 'tenant-1' });
       mockWebhookRepository.create.mockResolvedValue(persistedWebhook);
 
@@ -381,8 +381,8 @@ describe('WebhookService', () => {
       expect(factoryInput.tenantId).toBe('tenant-1');
     });
 
-    it('honors request.tenantId for GLOBAL_ADMIN callers (cross-tenant impersonation)', async () => {
-      setRequestUserRoles(['GLOBAL_ADMIN']);
+    it('honors request.tenantId for SUPER_ADMIN callers (cross-tenant impersonation)', async () => {
+      setRequestUserRoles(['SUPER_ADMIN']);
       const persistedWebhook = createMockWebhookEntity({ id: 'webhook-new', tenantId: 'tenant-B' });
       mockWebhookRepository.create.mockResolvedValue(persistedWebhook);
 
@@ -400,7 +400,7 @@ describe('WebhookService', () => {
 
   /**
    * `WebhookService.resolveEffectiveTenantId`
-   * silently coerces a non-GLOBAL_ADMIN cross-tenant create attempt to
+   * silently coerces a non-SUPER_ADMIN cross-tenant create attempt to
    * the CLS tenant. Persistence is correct, but
    * SOC has no observability for the coercion event — a foreign-tenant
    * DTO `tenantId` produces an identical persisted state to a properly-
@@ -408,7 +408,7 @@ describe('WebhookService', () => {
    *
    * The fix adds a one-shot `logger.warn` ONLY on the cross-tenant
    * coercion branch. Same-tenant and tenantId-omitted writes stay
-   * silent (those are benign / expected); GLOBAL_ADMIN cross-tenant
+   * silent (those are benign / expected); SUPER_ADMIN cross-tenant
    * writes also stay silent (those are explicitly allowed).
    */
   describe('resolveEffectiveTenantId observability', () => {
@@ -437,7 +437,7 @@ describe('WebhookService', () => {
       });
     };
 
-    it('logs a warn when a non-GLOBAL_ADMIN passes a foreign tenantId (silent coercion observability)', async () => {
+    it('logs a warn when a non-SUPER_ADMIN passes a foreign tenantId (silent coercion observability)', async () => {
       const warnSpy = vi.spyOn(service['logger'], 'warn');
       const persistedWebhook = createMockWebhookEntity({ id: 'webhook-new', tenantId: 'tenant-1' });
       mockWebhookRepository.create.mockResolvedValue(persistedWebhook);
@@ -459,7 +459,7 @@ describe('WebhookService', () => {
       );
     });
 
-    it('does NOT log a warn when a non-GLOBAL_ADMIN omits request.tenantId (benign happy path)', async () => {
+    it('does NOT log a warn when a non-SUPER_ADMIN omits request.tenantId (benign happy path)', async () => {
       const warnSpy = vi.spyOn(service['logger'], 'warn');
       const persistedWebhook = createMockWebhookEntity({ id: 'webhook-new', tenantId: 'tenant-1' });
       mockWebhookRepository.create.mockResolvedValue(persistedWebhook);
@@ -473,8 +473,8 @@ describe('WebhookService', () => {
       expect(warnSpy).not.toHaveBeenCalled();
     });
 
-    it('does NOT log a warn when a GLOBAL_ADMIN cross-tenant creates (explicit allow)', async () => {
-      setRequestUserRoles(['GLOBAL_ADMIN']);
+    it('does NOT log a warn when a SUPER_ADMIN cross-tenant creates (explicit allow)', async () => {
+      setRequestUserRoles(['SUPER_ADMIN']);
       const warnSpy = vi.spyOn(service['logger'], 'warn');
       const persistedWebhook = createMockWebhookEntity({ id: 'webhook-new', tenantId: 'tenant-B' });
       mockWebhookRepository.create.mockResolvedValue(persistedWebhook);
@@ -495,12 +495,12 @@ describe('WebhookService', () => {
    * tenant-blind on every read/write surface except `create`.
    * This block exercises the full sweep across the remaining 5 methods:
    *   - fetchAll: inject `{ tenantId: this.tenantId }` filter
-   *     (GLOBAL_ADMIN bypass)
+   *     (SUPER_ADMIN bypass)
    *   - fetchById: load-then-assert via assertEqualTenants
    *   - update: assert tenant after the pre-write findById
    *   - deleteById: load + assert + softDelete
    *   - fetchAllByTenantId: CLS gate (refuse cross-tenant DTO
-   *     tenantId for non-GLOBAL_ADMIN — mirrors the
+   *     tenantId for non-SUPER_ADMIN — mirrors the
    *     Notification/ApiKey pattern)
    *
    * The CLS default in `beforeEach` is `tenant-1`. Tests use `tenant-2`
@@ -534,7 +534,7 @@ describe('WebhookService', () => {
     };
 
     describe('fetchAll (5.3.2)', () => {
-      it('injects the CLS tenantId into the findAll + count where clauses for non-GLOBAL_ADMIN callers', async () => {
+      it('injects the CLS tenantId into the findAll + count where clauses for non-SUPER_ADMIN callers', async () => {
         mockWebhookRepository.findAll.mockResolvedValue([]);
         mockWebhookRepository.count.mockResolvedValue(0);
 
@@ -548,8 +548,8 @@ describe('WebhookService', () => {
         );
       });
 
-      it('omits the tenant filter when the caller is a GLOBAL_ADMIN (cross-tenant list)', async () => {
-        setRequestUserRoles(['GLOBAL_ADMIN']);
+      it('omits the tenant filter when the caller is a SUPER_ADMIN (cross-tenant list)', async () => {
+        setRequestUserRoles(['SUPER_ADMIN']);
         mockWebhookRepository.findAll.mockResolvedValue([]);
         mockWebhookRepository.count.mockResolvedValue(0);
 
@@ -588,8 +588,8 @@ describe('WebhookService', () => {
         expect(mockEventEmitter.emit).not.toHaveBeenCalledWith(SysEventType.ResourceViewed, expect.anything());
       });
 
-      it('returns the cross-tenant webhook when the caller is a GLOBAL_ADMIN (admin bypass)', async () => {
-        setRequestUserRoles(['GLOBAL_ADMIN']);
+      it('returns the cross-tenant webhook when the caller is a SUPER_ADMIN (admin bypass)', async () => {
+        setRequestUserRoles(['SUPER_ADMIN']);
         const otherWebhook = createMockWebhookEntity({ id: 'webhook-foreign', tenantId: 'tenant-2' });
         mockWebhookRepository.findById.mockResolvedValue(otherWebhook);
 
@@ -634,8 +634,8 @@ describe('WebhookService', () => {
         expect(mockWebhookRepository.updateWithVersion).not.toHaveBeenCalled();
       });
 
-      it('updates a cross-tenant webhook when the caller is a GLOBAL_ADMIN (admin bypass)', async () => {
-        setRequestUserRoles(['GLOBAL_ADMIN']);
+      it('updates a cross-tenant webhook when the caller is a SUPER_ADMIN (admin bypass)', async () => {
+        setRequestUserRoles(['SUPER_ADMIN']);
         const otherWebhook = createMockWebhookEntity({
           id: 'webhook-foreign',
           tenantId: 'tenant-2',
@@ -675,8 +675,8 @@ describe('WebhookService', () => {
         expect(mockWebhookRepository.softDelete).not.toHaveBeenCalled();
       });
 
-      it('deletes a cross-tenant webhook when the caller is a GLOBAL_ADMIN (admin bypass)', async () => {
-        setRequestUserRoles(['GLOBAL_ADMIN']);
+      it('deletes a cross-tenant webhook when the caller is a SUPER_ADMIN (admin bypass)', async () => {
+        setRequestUserRoles(['SUPER_ADMIN']);
         const otherWebhook = createMockWebhookEntity({ id: 'webhook-foreign', tenantId: 'tenant-2' });
         mockWebhookRepository.softDelete.mockResolvedValue({ ...otherWebhook, deletedAt: new Date() });
 
@@ -707,8 +707,8 @@ describe('WebhookService', () => {
         expect(mockWebhookRepository.findAll).not.toHaveBeenCalled();
       });
 
-      it('returns rows for a cross-tenant GLOBAL_ADMIN read (bypass)', async () => {
-        setRequestUserRoles(['GLOBAL_ADMIN']);
+      it('returns rows for a cross-tenant SUPER_ADMIN read (bypass)', async () => {
+        setRequestUserRoles(['SUPER_ADMIN']);
         const webhooks = [createMockWebhookEntity({ id: 'webhook-x', tenantId: 'tenant-2' })];
         mockWebhookRepository.findAll.mockResolvedValue(webhooks);
         mockWebhookRepository.count.mockResolvedValue(1);
@@ -1083,7 +1083,7 @@ describe('WebhookService', () => {
   describe('edge cases', () => {
     it('should handle service creation without user context', async () => {
       // `create` now requires a CLS `tenantId` (or DTO
-      // tenantId via GLOBAL_ADMIN). Preserve the original test intent
+      // tenantId via SUPER_ADMIN). Preserve the original test intent
       // ("no user") by still surfacing a valid tenantId from CLS — the
       // missing-tenant edge case is independently covered by the
       // helper test below.
@@ -1217,9 +1217,9 @@ describe('WebhookService', () => {
       expect(mockWebhookRunHistoryRepository.findAll).not.toHaveBeenCalled();
     });
 
-    it('lets GLOBAL_ADMIN read another tenant delivery log (admin tooling bypass)', async () => {
+    it('lets SUPER_ADMIN read another tenant delivery log (admin tooling bypass)', async () => {
       mockClsService.get.mockImplementation((key: string) => {
-        if (key === 'user') return { id: 'admin-1', roles: ['GLOBAL_ADMIN'] };
+        if (key === 'user') return { id: 'admin-1', roles: ['SUPER_ADMIN'] };
         if (key === 'tenantId') return 'tenant-9';
         return null;
       });

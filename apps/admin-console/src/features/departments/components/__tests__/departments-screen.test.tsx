@@ -96,7 +96,7 @@ const MEMBERS: DepartmentMember[] = [member({ isLead: true }), member({ id: 'u-2
 
 function session(overrides: Partial<{ isElevated: boolean; workingTenantId: string | null }> = {}) {
   const base = {
-    user: { id: 'u-admin', username: 'root', email: 'root@hope.local', roles: ['GLOBAL_ADMIN'] },
+    user: { id: 'u-admin', username: 'root', email: 'root@hope.local', roles: ['SUPER_ADMIN'] },
     isElevated: true,
     workingTenantId: 'tnt-1',
     workingTenantName: 'Sunrise Medical Group',

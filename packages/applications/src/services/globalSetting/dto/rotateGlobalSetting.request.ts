@@ -13,7 +13,7 @@ import { BaseRequest } from '../../../common';
  * Rotation additionally re-wraps `encryptedValue` under a fresh `keyVersion`
  * via `encryptValueIntoEntity` for encryption-at-rest.
  *
- * Gating mirrors `reveal`: GLOBAL_ADMIN only (CASL `manage:all`) + step-up
+ * Gating mirrors `reveal`: SUPER_ADMIN only (CASL `manage:all`) + step-up
  * re-auth with the caller's current password. The password and the new secret
  * are never logged and never appear in the audit event.
  */

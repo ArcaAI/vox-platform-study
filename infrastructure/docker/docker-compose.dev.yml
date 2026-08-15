@@ -414,7 +414,7 @@ services:
       # resilience / security / cache-friendliness, consumption,
       # agentic-trajectory, model-retention, optimistic-locking, pgbouncer) sat
       # unmounted in ../grafana/dashboards — reachable only from the standalone
-      # apps/smr/docker-compose.yml stack. The two directories are now one.
+      # apps/text/docker-compose.yml stack. The two directories are now one.
       - ../grafana/dashboards:/var/lib/grafana/dashboards:ro
       - grafana-data:/var/lib/grafana
     healthcheck:
@@ -433,10 +433,10 @@ services:
   # LM Studio + Ollama remain the default local engines. hope-vllm needs NVIDIA;
   # `dev-infra.sh -e` warns when the NVIDIA runtime is missing.
   #
-  # Wire SMR to them via .env.dev (see apps/smr/.env.prod for the production
+  # Wire SMR to them via .env.dev (see apps/text/.env.prod for the production
   # reference values):
-  #   SMR_VLLM_BASE_URL=http://localhost:8000/v1
-  #   SMR_LLAMA_CPP_BASE_URL=http://localhost:8080
+  #   TEXT_VLLM_BASE_URL=http://localhost:8000/v1
+  #   TEXT_LLAMA_CPP_BASE_URL=http://localhost:8080
   #
   # Images are PINNED (no `latest`). vLLM + llama.cpp roll fast; bump to a build
   # you have validated on your hardware (see docs/operations/inference/README.md).
@@ -455,7 +455,7 @@ services:
     # vLLM needs a large /dev/shm for its NCCL/worker IPC.
     ipc: host
     ports:
-      - '${SMR_VLLM_PORT:-8000}:8000'
+      - '${TEXT_VLLM_PORT:-8000}:8000'
     environment:
       # A gated model download needs a token; ungated models ignore it.
       HF_TOKEN: ${HF_TOKEN:-}
@@ -502,7 +502,7 @@ services:
       - hope-network
     restart: unless-stopped
     ports:
-      - '${SMR_LLAMA_CPP_PORT:-8080}:8080'
+      - '${TEXT_LLAMA_CPP_PORT:-8080}:8080'
     environment:
       LLAMA_ARG_HOST: "0.0.0.0"
       LLAMA_ARG_PORT: "8080"

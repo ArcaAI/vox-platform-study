@@ -84,7 +84,7 @@ export class ShadowMeteringService implements IShadowMeteringService, OnModuleIn
    * not a tenant — so they can neither be written nor read under a customer
    * tenant's CLS: the tenant-scope extension rightly rejects a SYSTEM `tenantId`
    * from a non-SYSTEM context, and a scoped read would filter every row away.
-   * Access control for this surface is the GLOBAL_ADMIN gate on the controller,
+   * Access control for this surface is the SUPER_ADMIN gate on the controller,
    * not the tenant scope. Same escape hatch this service already uses for its
    * cross-tenant report reads.
    */
@@ -357,7 +357,7 @@ export class ShadowMeteringService implements IShadowMeteringService, OnModuleIn
   /**
    * The audit report (rule 6) — newest first.
    *
-   * GLOBAL_ADMIN-only at the call site: these are PLATFORM vendor totals, and a
+   * SUPER_ADMIN-only at the call site: these are PLATFORM vendor totals, and a
    * tenant must never see aggregate platform spend.
    */
   async findReconciliationRuns(query: ProviderReconciliationRunQuery = {}): Promise<ProviderReconciliationRunResponse[]> {

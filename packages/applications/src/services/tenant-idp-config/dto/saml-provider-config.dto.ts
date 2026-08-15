@@ -60,7 +60,7 @@ export class SamlProviderConfigDto {
   attributeMappings?: ClaimMappingsDto;
 
   @ApiPropertyOptional({
-    description: 'IdP group attribute value → HOPE Role.externalName. GLOBAL_ADMIN is never assignable via this map.',
+    description: 'IdP group attribute value → HOPE Role.externalName. SUPER_ADMIN is never assignable via this map.',
     type: Object,
     example: { 'acme-clinicians': 'DOCTOR' },
   })

@@ -73,7 +73,7 @@ export class DnaWritingStyleProcessor extends WorkerHost {
     @Optional() @Inject(PromptTemplateRepository) private readonly promptTemplateRepository?: PromptTemplateRepository,
   ) {
     super();
-    this.smrServiceUrl = this.configService.get<string>('SMR_URL') ?? 'http://localhost:8862';
+    this.smrServiceUrl = this.configService.get<string>('TEXT_URL') ?? 'http://localhost:8862';
   }
 
   async process(job: Job<GenerateDnaReportJobPayload>): Promise<DnaReportJobResult> {
@@ -412,7 +412,7 @@ export class DnaWritingStyleProcessor extends WorkerHost {
         timeout: 120000,
         headers: {
           'Content-Type': 'application/json',
-          'X-Service-Token': (await this.secretsService?.getSecretOptional('SMR_SERVICE_TOKEN')) ?? '',
+          'X-Service-Token': (await this.secretsService?.getSecretOptional('TEXT_SERVICE_TOKEN')) ?? '',
         },
       },
     );

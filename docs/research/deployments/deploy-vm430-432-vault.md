@@ -328,7 +328,7 @@ App-side unwrapping happens once in `SecretsService.boot()` (see Plan Phase 2B T
 TASK-302 Phase 6 Task 6.2 (Stream B).
 
 Static secrets (`JWT_SECRET_KEY`, `OIDC_CLIENT_SECRET`, `API_KEY_PEPPER`,
-`SESSION_SECRET_KEY`, `SMR_SERVICE_TOKEN`, `S3_ACCESS_KEY`,
+`SESSION_SECRET_KEY`, `TEXT_SERVICE_TOKEN`, `S3_ACCESS_KEY`,
 `S3_SECRET_KEY`, `MQTT_PASS`, `REDIS_PASS`) rotate via kv-v2 versioning.
 Old version stays decryptable; new version is what new logins use.
 Overlap window: 5 minutes (configurable per secret).
@@ -371,7 +371,7 @@ vault kv metadata patch -max-versions=3 secret/hope/JWT_SECRET_KEY
 | `OIDC_CLIENT_SECRET`  | 90 days   | n/a     | Coordinate with IdP — schedule a maintenance window. |
 | `API_KEY_PEPPER`      | 180 days  | n/a     | API keys are stored hashed-with-pepper, so a pepper rotation forces every API key holder to re-pair. **Bigger change** — coordinate. |
 | `SESSION_SECRET_KEY`  | 90 days   | n/a     | Forces re-login. |
-| `SMR_SERVICE_TOKEN`   | 90 days   | n/a     | Shared between API and SMR Python service. Rotate both simultaneously. |
+| `TEXT_SERVICE_TOKEN`   | 90 days   | n/a     | Shared between API and SMR Python service. Rotate both simultaneously. |
 | `S3_ACCESS_KEY/SECRET`| 365 days  | n/a     | Bound to provider IAM lifecycle. |
 
 ### Transit-key rotation (envelope-encrypted secrets)

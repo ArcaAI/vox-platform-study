@@ -76,7 +76,7 @@ export const PRIMARY_DEPARTMENT_CODE_BY_USERNAME: Record<string, string> = {
 // =========================================================================
 // This seed creates users for the current healthcare-focused RBAC system.
 // Available roles (7 total):
-// - GLOBAL_ADMIN: Full system access (GLOBAL scope)
+// - SUPER_ADMIN: Full system access (GLOBAL scope)
 // - TENANT_ADMIN: Full tenant management
 // - DOCTOR: Clinical role, owns consultations
 // - NURSE: Read-only clinical support
@@ -116,13 +116,14 @@ export const SEED_USERS = [
   // =================================================================
   {
     // The `super_admin` USERNAME is a stable login identifier
-    // (dev logins + e2e helpers depend on it); its ROLE is GLOBAL_ADMIN
-    // since the SUPER_ADMIN role was consolidated away.
+    // (dev logins + e2e helpers depend on it); its ROLE is SUPER_ADMIN
+    // (renamed from GLOBAL_ADMIN by TASK-707, D8 — before that rename, the
+    // legacy SUPER_ADMIN role had been consolidated away by TASK-417).
     id: SEED_USER_IDS.SUPER_ADMIN,
     username: 'super_admin',
     password: null,
     isServiceAccount: false,
-    roleNames: ['GLOBAL_ADMIN'],
+    roleNames: ['SUPER_ADMIN'],
     tenantId: SYSTEM_TENANT_ID, // Platform-wide access (system tenant)
     profile: {
       firstName: 'Super',
@@ -135,15 +136,18 @@ export const SEED_USERS = [
     lastActiveAt: new Date(),
   },
   {
-    // Elevated platform-wide "global admin"; the
-    // canonical elevated role (tenant-guards.ELEVATED_ROLES). Lives
+    // Elevated platform-wide "global admin"; carries the
+    // canonical elevated role (tenant-guards.ELEVATED_ROLES, renamed
+    // SUPER_ADMIN by TASK-707, D8). Lives
     // on the SYSTEM tenant so it is membership-exempt (no department
-    // required) exactly like super_admin, and works cross-tenant.
+    // required) exactly like super_admin, and works cross-tenant. This
+    // user's own key/username stay `GLOBAL_ADMIN`/`global_admin` — see the
+    // note on `SEED_USER_IDS.GLOBAL_ADMIN` in 00-constants.ts for why.
     id: SEED_USER_IDS.GLOBAL_ADMIN,
     username: 'global_admin',
     password: null,
     isServiceAccount: false,
-    roleNames: ['GLOBAL_ADMIN'],
+    roleNames: ['SUPER_ADMIN'],
     tenantId: SYSTEM_TENANT_ID,
     profile: {
       firstName: 'Global',

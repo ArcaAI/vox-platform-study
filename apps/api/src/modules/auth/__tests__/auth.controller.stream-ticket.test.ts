@@ -211,7 +211,7 @@ describe('AuthController.issueStreamTicket', () => {
       const { controller } = buildController({
         cls: {
           get: (key: string) => {
-            if (key === 'user') return { id: 'admin-1', tenantId: '', roles: ['GLOBAL_ADMIN'] };
+            if (key === 'user') return { id: 'admin-1', tenantId: '', roles: ['SUPER_ADMIN'] };
             if (key === 'tenantId') return 'selected-tenant';
             return null;
           },
@@ -387,7 +387,7 @@ describe('AuthController.issueStreamTicket', () => {
       const { controller } = buildController({
         cls: {
           get: (key: string) => {
-            if (key === 'user') return { id: 'admin-1', tenantId: '', roles: ['GLOBAL_ADMIN'] };
+            if (key === 'user') return { id: 'admin-1', tenantId: '', roles: ['SUPER_ADMIN'] };
             if (key === 'tenantId') return 'selected-tenant';
             return null;
           },

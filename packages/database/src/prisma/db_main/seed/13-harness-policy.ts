@@ -27,7 +27,7 @@ import { SYSTEM_TENANT_ID, SYSTEM_USER_ID } from './00-constants';
  */
 
 /** The agreed SMR system default (overrides the NULL "service chooses"). */
-export const SYSTEM_HARNESS_POLICY_SMR_DEFAULTS = {
+export const SYSTEM_HARNESS_POLICY_TEXT_DEFAULTS = {
   smrProvider: 'lm-studio',
   // Owner decision (2026-07-17) — the platform summarization
   // default is gemma-4-e2b-it-qat (was gemma-4-e2b-it-sft-rlvr-medical).
@@ -91,7 +91,7 @@ export const seedHarnessPolicy = async (
 ): Promise<{ success: true; action: 'created' | 'updated' | 'noop'; changeWritten: boolean }> => {
   console.log('Seeding SYSTEM HarnessPolicy SMR default (TASK-356 Phase 2)...');
 
-  const { smrProvider, smrModel } = SYSTEM_HARNESS_POLICY_SMR_DEFAULTS;
+  const { smrProvider, smrModel } = SYSTEM_HARNESS_POLICY_TEXT_DEFAULTS;
   const existing = await client.harnessPolicy.findFirst({
     where: { tenantId: SYSTEM_TENANT_ID },
   });

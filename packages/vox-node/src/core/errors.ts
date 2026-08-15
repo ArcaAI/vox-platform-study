@@ -149,7 +149,7 @@ export class HopeAPIError extends Error {
  * wrong" (`HopeStreamError`).
  *
  * The `detail` carried by a gateway `error` frame is already PHI-redacted
- * upstream and never echoes model output — see `smr-compat.controller.ts`.
+ * upstream and never echoes model output — see `text-compat.controller.ts`.
  */
 export class HopeStreamError extends Error {
   constructor(message: string, options?: { cause?: unknown }) {

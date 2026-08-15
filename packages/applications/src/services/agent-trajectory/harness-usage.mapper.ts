@@ -16,7 +16,7 @@ import { NormalizedLlmUsage, toUsageUnitQuantities, UsageEventBatchInput, UsageI
  *   - LLM_CALL steps only. TOOL_CALL/SENSOR/RETRIEVAL/GUARDRAIL/THINKING/
  *     SIGNAL/GATE/PHASE steps never call an LLM through this path.
  *   - INPUT_TOKEN / OUTPUT_TOKEN only. AD-1 `GenerationStats`
- *     (apps/smr/src/smr/models/stats.py) does not surface a cache/reasoning
+ *     (apps/text/src/text/models/stats.py) does not surface a cache/reasoning
  *     breakdown on the LLM_CALL step itself — a non-empty reasoning count is
  *     recorded on a SEPARATE `THINKING` step
  *     (`_reasoning_tokens` in apps/harness activities.py), which this lane
@@ -28,9 +28,9 @@ import { NormalizedLlmUsage, toUsageUnitQuantities, UsageEventBatchInput, UsageI
  * Non-canonical spellings SMR's own `GenerationStats.provider` reports for a
  * provider already in the ledger's `KNOWN_PROVIDERS` vocabulary
  * (`usageLedger/vocabulary.ts`). Copied VERBATIM from SMR's own
- * `_PROVIDER_TABLES` alias set (apps/smr/src/smr/models/stats.py) — not
+ * `_PROVIDER_TABLES` alias set (apps/text/src/text/models/stats.py) — not
  * invented. Confirmed trap: Azure's provider constructor is literally
- * `provider="azure_openai"` (apps/smr/src/smr/providers/azure_openai.py),
+ * `provider="azure_openai"` (apps/text/src/text/providers/azure_openai.py),
  * while the ledger's canonical connection id is `azure` — exactly the
  * "spelling trap" the WS-B contract calls out. A provider not listed here is
  * passed through UNCHANGED: `KNOWN_PROVIDERS` is open, not closed (contract

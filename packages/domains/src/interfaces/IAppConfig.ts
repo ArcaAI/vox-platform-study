@@ -27,8 +27,8 @@ export interface IAppConfig {
   PORT: string;
   URL: string;
   STT_URL: string;
-  SMR_PORT: string;
-  SMR_URL: string;
+  TEXT_PORT: string;
+  TEXT_URL: string;
   NLP_PORT: string;
   NLP_URL: string;
   GUARDRAIL_URL: string;

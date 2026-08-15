@@ -18,11 +18,11 @@ const CORE_SUFFIXES = [
   'STT_MODEL',
   'STT_VAD',
   // SMR Azure deployment-name (032), seeded for every tenant.
-  // SMR_PROVIDER/SMR_MODEL (030/031), the guardrail namespace
-  // (033/034/035) and UX_SMR_PROVIDER_MODELS (043) were RETIRED (superseded
+  // TEXT_PROVIDER/TEXT_MODEL (030/031), the guardrail namespace
+  // (033/034/035) and UX_TEXT_PROVIDER_MODELS (043) were RETIRED (superseded
   // by HarnessPolicy + AiTaskDefault + the AiModel registry); their ids stay
   // reserved but are no longer declared or emitted.
-  'SMR_AZURE_DEPLOYMENT',
+  'TEXT_AZURE_DEPLOYMENT',
   'UX_LOCAL_ASR_MODELS',
   'UX_LOCAL_VAD_MODELS',
   'UX_LOCAL_NOISE_SUPPRESSION_MODELS',

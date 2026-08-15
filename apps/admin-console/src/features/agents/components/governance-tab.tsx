@@ -15,7 +15,7 @@
  * data). Moving to `/agents` (tier 30-49) is therefore behaviour-neutral —
  * both require a working tenant, and both gate the tab itself on an
  * elevated session. Approve authority is NOT a console concern: the service
- * raises a GLOBAL_ADMIN 403 no matter which surface calls it, so hiding the
+ * raises a SUPER_ADMIN 403 no matter which surface calls it, so hiding the
  * tab is convenience, never the boundary.
  */
 
@@ -302,7 +302,7 @@ function ApprovePanel({ template, etag }: { template: PromptTemplate; etag: stri
         </p>
         <p className="text-muted-foreground text-xs">
           A tenant-owned template needs <span className="font-mono">manage:PromptTemplate</span> for its tenant; SYSTEM/library templates stay
-          GLOBAL_ADMIN-only. Either way the gate is server-side.
+          SUPER_ADMIN-only. Either way the gate is server-side.
         </p>
       </div>
       <form onSubmit={handleSubmit} className="flex flex-col gap-3">

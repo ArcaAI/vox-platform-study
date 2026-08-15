@@ -7,7 +7,7 @@ import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsObject, IsOptional, IsString,
  * `TenantIdentityProvider.config` (Json). `defaultRoleId`/`defaultDepartmentId`
  * are loose refs (validated for shape only — the service resolves them against
  * the configuring tenant). `groupToRoleMap` maps an IdP group claim value to a
- * HOPE `Role.externalName` (D5/); `GLOBAL_ADMIN` is never assignable via
+ * HOPE `Role.externalName` (D5/); `SUPER_ADMIN` is never assignable via
  * this map (enforced by `FederatedAuthService`, not the DTO).
  */
 export class ClaimMappingsDto {
@@ -57,7 +57,7 @@ export class OidcProviderConfigDto {
   claimMappings?: ClaimMappingsDto;
 
   @ApiPropertyOptional({
-    description: 'IdP group claim value → HOPE Role.externalName. GLOBAL_ADMIN is never assignable via this map.',
+    description: 'IdP group claim value → HOPE Role.externalName. SUPER_ADMIN is never assignable via this map.',
     type: Object,
     example: { 'acme-clinicians': 'DOCTOR' },
   })
