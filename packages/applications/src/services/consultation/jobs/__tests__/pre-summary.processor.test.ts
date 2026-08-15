@@ -704,4 +704,59 @@ describe('PreSummaryProcessor', () => {
       expect(mockContextItemRepository.encryptContentIntoEntity).not.toHaveBeenCalled();
     });
   });
+
+  // ── TASK-704 — pre-summary has no harness equivalent; the seam call is
+  // logging-only and never blocks/short-circuits generation ──
+  describe('TASK-704 NoteGenerationService seam', () => {
+    const createMockNoteGenerationService = () => ({ generate: vi.fn(), resolveConfig: vi.fn() });
+
+    const primeLegacyGeneration = () => {
+      mockConsultationRepository.findById.mockResolvedValue(createMockConsultation());
+      mockContextItemRepository.findByConsultation.mockResolvedValue([createMockContextItem({ content: 'case note content' })]);
+      mockHttpService.axiosRef.post.mockResolvedValue({ data: { summary: 'S', modelName: 'm' } });
+      mockContextItemRepository.create.mockResolvedValue({ id: 'pre-sum-seam-id', content: 'S' });
+    };
+
+    it('calls the seam with PRE_SUMMARY and generates unaffected by the decision', async () => {
+      const mockNoteGenerationService = createMockNoteGenerationService();
+      mockNoteGenerationService.generate.mockResolvedValue({ generator: 'legacy', reason: 'harness-not-supported-for-trigger' });
+      const processorWithSeam = new PreSummaryProcessor(
+        mockJobService as any,
+        mockContextItemRepository as any,
+        mockConsultationRepository as any,
+        mockHttpService as any,
+        mockConfigService as any,
+        mockPromptResolutionService as any,
+        mockPromptAssemblyService as any,
+        mockJobMetrics as any,
+        mockClsService as any,
+        undefined, // secretsService
+        undefined, // harnessPolicyService
+        undefined, // configResolver
+        mockNoteGenerationService as any,
+      );
+      primeLegacyGeneration();
+
+      const result = await processorWithSeam.process(
+        createMockJob({ jobId: 'job-seam', consultationId: 'consultation-123', tenantId: 'tenant-1', userId: 'user-1', request: {} }),
+      );
+
+      expect(mockNoteGenerationService.generate).toHaveBeenCalledWith(
+        'PRE_SUMMARY',
+        expect.objectContaining({ consultationId: 'consultation-123', tenantId: 'tenant-1', userId: 'user-1' }),
+      );
+      expect(result.contextItemId).toBe('pre-sum-seam-id');
+    });
+
+    it('falls back to legacy generation when noteGenerationService is not wired (pre-TASK-704 fixtures)', async () => {
+      primeLegacyGeneration();
+
+      // `processor` (top-level beforeEach) has no noteGenerationService.
+      const result = await processor.process(
+        createMockJob({ jobId: 'job-no-seam', consultationId: 'consultation-123', tenantId: 'tenant-1', userId: 'user-1', request: {} }),
+      );
+
+      expect(result.contextItemId).toBe('pre-sum-seam-id');
+    });
+  });
 });

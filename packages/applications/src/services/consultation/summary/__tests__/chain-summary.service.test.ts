@@ -1191,4 +1191,83 @@ describe('ChainSummaryService', () => {
       expect(mocks.contextItemRepo.encryptContentIntoEntity).not.toHaveBeenCalled();
     });
   });
+
+  // ===========================================================================
+  // TASK-704 — Generator Entry-Point Seam. Comprehensive-summary has no
+  // harness equivalent; the seam call exists purely to log the decision and
+  // never blocks/short-circuits generation.
+  // ===========================================================================
+  describe('TASK-704 NoteGenerationService seam', () => {
+    const buildServiceWithSeam = (noteGenerationService: { generate: ReturnType<typeof vi.fn> } | undefined) => {
+      const contextItemRepo = createMockContextItemRepository();
+      const consultationRepo = createMockConsultationRepository();
+      const summaryMetaRepo = createMockSummaryMetaRepository();
+      const namedEntityRepo = createMockNamedEntityRepository();
+      const httpService = createMockHttpService();
+      const configService = createMockConfigService();
+      const eventEmitter = createMockEventEmitter();
+      const clsService = createMockClsService();
+      const promptAssemblyService = createMockPromptAssemblyService();
+
+      const service = new ChainSummaryService(
+        contextItemRepo as any,
+        consultationRepo as any,
+        summaryMetaRepo as any,
+        namedEntityRepo as any,
+        httpService as any,
+        configService as any,
+        eventEmitter as any,
+        clsService as any,
+        promptAssemblyService as any,
+        undefined, // secretsService
+        undefined, // harnessPolicyService
+        undefined, // configResolver
+        undefined, // usageLedger
+        undefined, // unitOfWork
+        noteGenerationService as any,
+      );
+
+      return { service, contextItemRepo, consultationRepo, httpService };
+    };
+
+    const primeComprehensive = (mocks: ReturnType<typeof buildServiceWithSeam>) => {
+      const consultation = createConsultation();
+      mocks.consultationRepo.findById.mockResolvedValue(consultation);
+      mocks.consultationRepo.findConsultationChain.mockResolvedValue([consultation]);
+      mocks.consultationRepo.findByPatientAndDate.mockResolvedValue([consultation]);
+      mocks.contextItemRepo.findSummaries.mockResolvedValue([createContextItem({ content: 'Findings.' })]);
+      mocks.contextItemRepo.findCaseNotes.mockResolvedValue([]);
+      mocks.contextItemRepo.findPreSummaries.mockResolvedValue([]);
+      mocks.httpService.axiosRef.post.mockResolvedValue({ data: { summary: 'Result.' } });
+    };
+
+    it('calls the seam with COMPREHENSIVE_SUMMARY and generates unaffected by the decision', async () => {
+      const noteGenerationService = { generate: vi.fn().mockResolvedValue({ generator: 'legacy', reason: 'harness-not-supported-for-trigger' }) };
+      const mocks = buildServiceWithSeam(noteGenerationService);
+      primeComprehensive(mocks);
+
+      const result = await mocks.service.generateComprehensiveSummary('consultation-A', { includeNER: false });
+
+      expect(noteGenerationService.generate).toHaveBeenCalledWith(
+        'COMPREHENSIVE_SUMMARY',
+        expect.objectContaining({ consultationId: 'consultation-A', tenantId: 'tenant-1' }),
+      );
+      expect(result).toBeDefined();
+    });
+
+    it('still generates when the seam call fails (best-effort, non-blocking)', async () => {
+      const noteGenerationService = { generate: vi.fn().mockRejectedValue(new Error('seam unavailable')) };
+      const mocks = buildServiceWithSeam(noteGenerationService);
+      primeComprehensive(mocks);
+
+      await expect(mocks.service.generateComprehensiveSummary('consultation-A', { includeNER: false })).resolves.toBeDefined();
+    });
+
+    it('generates unaffected when noteGenerationService is not wired (pre-TASK-704 fixtures)', async () => {
+      const mocks = buildServiceWithSeam(undefined);
+      primeComprehensive(mocks);
+
+      await expect(mocks.service.generateComprehensiveSummary('consultation-A', { includeNER: false })).resolves.toBeDefined();
+    });
+  });
 });

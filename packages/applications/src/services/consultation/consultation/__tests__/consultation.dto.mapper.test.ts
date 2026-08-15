@@ -323,6 +323,31 @@ describe('ConsultationDtoMapper', () => {
 
       expect(result.status).toBe('CLOSED');
     });
+
+    // TASK-701 — Displayed-SIGNED Status Forgery Containment.
+    // A forged `metadata.status: 'SIGNED'` must never surface through the
+    // mapper's precedence logic when the typed column is the default OPEN,
+    // regardless of how it got into metadata (service-layer guard bypassed,
+    // a dirty row, a future write path). Only recognised legacy values
+    // (OPEN/CLOSED) are trusted from metadata.
+    it('should NOT surface a forged metadata.status value outside CONSULTATION_STATUS_VALUES', () => {
+      const entity = createMockConsultationEntity({ status: 'OPEN', metadata: { status: 'SIGNED' } });
+
+      const result = ConsultationDtoMapper.toResponse(entity as any);
+
+      expect(result.status).not.toBe('SIGNED');
+      expect(result.status).toBe('OPEN');
+    });
+
+    // Non-regression: the legitimate value transitionStatus() writes must
+    // still surface through the same precedence logic.
+    it('should still surface the legitimate metadata.status CLOSED value (non-regression)', () => {
+      const entity = createMockConsultationEntity({ status: 'OPEN', metadata: { status: 'CLOSED' } });
+
+      const result = ConsultationDtoMapper.toResponse(entity as any);
+
+      expect(result.status).toBe('CLOSED');
+    });
   });
 
   describe('toResponseWithContext', () => {

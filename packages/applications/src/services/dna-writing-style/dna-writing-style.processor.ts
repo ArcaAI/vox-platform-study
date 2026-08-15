@@ -15,6 +15,7 @@ import {
   PromptUsageRecordFactory,
   ContextItemRepository,
   ContextItemVersionRepository,
+  PromptTemplateRepository,
   JobQueue,
 } from '@arcaai/domains';
 import { PromptManagementService } from '../prompt-management/prompt-management.service';
@@ -62,6 +63,14 @@ export class DnaWritingStyleProcessor extends WorkerHost {
     // positional fixtures keep their arity; production DI supplies it via
     // ConfigResolverModule. When unset, gating is a no-op (pre-Phase-6 behaviour).
     @Optional() @Inject(ConfigResolver) private readonly configResolver?: ConfigResolver,
+    // TASK-700: reads the resolved DNA_ANALYSIS template's
+    // `metaData.promptConfig.outputSchema` (entity-level access — the
+    // `PromptTemplateResponse` DTO from `promptManagementService` does not
+    // surface `metaData`; mirrors the `live-agent-resolution.service.ts`
+    // precedent). Optional + trailing so existing positional fixtures keep
+    // their arity; when unset, DNA generation falls back to the pre-Phase-7
+    // unconstrained-JSON parsing (legacy fixtures / templates with no schema).
+    @Optional() @Inject(PromptTemplateRepository) private readonly promptTemplateRepository?: PromptTemplateRepository,
   ) {
     super();
     this.smrServiceUrl = this.configService.get<string>('SMR_URL') ?? 'http://localhost:8862';
@@ -102,6 +111,23 @@ export class DnaWritingStyleProcessor extends WorkerHost {
       // Explainability: track which context items contributed.
       let sourceContextItemIds: string[] = [];
 
+      // Gate BOTH paths on the effective DNA flag (tenant AND doctor). A
+      // doctor who has opted out (or whose tenant disabled DNA) must never be
+      // learned-from — this now applies to the automatic corpus AND an
+      // explicit `textSamples` request (admin/migration): the opt-out is a
+      // patient-privacy control, not merely a "don't auto-learn" toggle, so an
+      // admin/migration caller cannot use `textSamples` to override it. Only
+      // the approved-notes-only corpus filter below stays scoped to the
+      // automatic path (see its own comment). No-op when ConfigResolver is
+      // unwired (legacy fixtures).
+      if (this.configResolver) {
+        const { effective } = await this.configResolver.resolveEffectiveDnaStyleEnabled({ tenantId, doctorId });
+        if (!effective) {
+          this.jobService.notifyFailed(job.data.jobId, 'DNA writing style is disabled for this doctor');
+          throw new Error('DNA writing style is disabled for this doctor (opt-out or tenant flag off)');
+        }
+      }
+
       if (textSamples && textSamples.length > 0) {
         samples = textSamples.join('\n\n---\n\n');
         // Generate-from-history passes samples directly plus the
@@ -110,19 +136,6 @@ export class DnaWritingStyleProcessor extends WorkerHost {
           sourceContextItemIds = sourceIds;
         }
       } else {
-        // Gate the AUTOMATIC corpus on the effective
-        // DNA flag (tenant AND doctor). A doctor who has opted out (or whose tenant
-        // disabled DNA) is never learned-from. Only the automatic path is gated;
-        // an explicit textSamples request (admin/migration) bypasses this. No-op
-        // when ConfigResolver is unwired (legacy fixtures).
-        if (this.configResolver) {
-          const { effective } = await this.configResolver.resolveEffectiveDnaStyleEnabled({ tenantId, doctorId });
-          if (!effective) {
-            this.jobService.notifyFailed(job.data.jobId, 'DNA writing style is disabled for this doctor');
-            throw new Error('DNA writing style is disabled for this doctor (opt-out or tenant flag off)');
-          }
-        }
-
         const contextItems = await this.contextItemRepository.findAll({
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           filters: { doctorId } as any,
@@ -184,9 +197,26 @@ export class DnaWritingStyleProcessor extends WorkerHost {
       const resolvedTemplate = templates[0] ?? null;
       const systemPrompt = resolvedTemplate?.content ?? 'Analyze the following text samples and extract the writing style patterns.';
 
+      // The `PromptTemplateResponse` DTO does not surface `metaData` (it is
+      // internal prompt config, not part of the admin-console-facing
+      // contract), so read the entity directly — same pattern as
+      // `live-agent-resolution.service.ts`'s `systemPromptFor`. A schema-read
+      // failure degrades to `null` (unconstrained legacy parsing) rather than
+      // failing the job — the schema is a containment IMPROVEMENT, not itself
+      // a new single point of failure.
+      let outputSchema: Record<string, unknown> | null = null;
+      if (resolvedTemplate && this.promptTemplateRepository) {
+        try {
+          const templateEntity = await this.promptTemplateRepository.findById(resolvedTemplate.id);
+          outputSchema = DnaWritingStyleProcessor.extractOutputSchema(templateEntity?.metaData);
+        } catch (error) {
+          this.logger.warn(`Failed to resolve DNA output schema for template ${resolvedTemplate.id}: ${error}`);
+        }
+      }
+
       await job.updateProgress(40);
       this.jobService.notifyProgress(job.data.jobId, 40, 'Generating DNA analysis');
-      const smrResponse = await this.callSmr(samples, systemPrompt);
+      const smrResponse = await this.callSmr(samples, systemPrompt, outputSchema);
 
       await job.updateProgress(80);
       this.jobService.notifyProgress(job.data.jobId, 80, 'Storing results');
@@ -194,12 +224,44 @@ export class DnaWritingStyleProcessor extends WorkerHost {
       let reportData: Record<string, unknown> = {};
       let styleText = '';
 
+      let parsed: unknown;
       try {
-        const parsed = JSON.parse(smrResponse.content);
-        reportData = parsed.reportData ?? parsed;
-        styleText = parsed.styleText ?? smrResponse.content;
+        parsed = JSON.parse(smrResponse.content);
       } catch {
-        styleText = smrResponse.content;
+        this.jobService.notifyFailed(job.data.jobId, 'DNA analysis returned an unparseable or non-conforming response');
+        throw new Error('DNA analysis returned an unparseable or non-conforming response');
+      }
+
+      if (outputSchema) {
+        // Never trust `strict: true` alone — validate the parsed shape against
+        // the schema's `required` list, closed `additionalProperties`, and
+        // per-property `enum`/`maxLength` constraints before accepting it. A
+        // schema-mismatched response (missing key, extra key, or a value
+        // outside its closed vocabulary — e.g. a free sentence smuggled into
+        // `sectionOrderPreference`) hard-fails the job; no partial recovery.
+        if (!DnaWritingStyleProcessor.conformsToSchema(parsed, outputSchema)) {
+          this.jobService.notifyFailed(job.data.jobId, 'DNA analysis returned an unparseable or non-conforming response');
+          throw new Error('DNA analysis returned an unparseable or non-conforming response');
+        }
+        reportData = parsed;
+        // The persisted `styleText` is rendered DETERMINISTICALLY from the
+        // validated closed-vocabulary fields — never the model's raw prose —
+        // so nothing outside the schema's enum/length-capped values can ever
+        // reach the text injected into a future summary's system prompt.
+        styleText = DnaWritingStyleProcessor.buildStyleTextFromSchema(reportData);
+      } else if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        // Legacy path: no schema attached to the resolved template (an
+        // un-migrated tenant/template, or the fallback prompt with no
+        // resolved template at all). Preserves pre-TASK-700 permissive
+        // mapping for backward compatibility.
+        const obj = parsed as Record<string, unknown>;
+        reportData = (obj.reportData as Record<string, unknown> | undefined) ?? obj;
+        styleText = typeof obj.styleText === 'string' ? obj.styleText : smrResponse.content;
+      } else {
+        // Valid JSON but not an object (e.g. a bare string/number/array) and
+        // no schema to validate against — nothing safe to persist.
+        this.jobService.notifyFailed(job.data.jobId, 'DNA analysis returned an unparseable or non-conforming response');
+        throw new Error('DNA analysis returned an unparseable or non-conforming response');
       }
 
       // Explainability: persist the corpus source IDs alongside
@@ -225,9 +287,8 @@ export class DnaWritingStyleProcessor extends WorkerHost {
         createdBy: userId,
       });
 
-      // Encrypt reportData/styleText into the ciphertext
-      // columns before the first persist (dual-write; plaintext retained for the
-      // soak). Best-effort: a Vault outage must not fail DNA generation.
+      // Encrypt reportData/styleText into the ciphertext columns before the
+      // first persist. Best-effort: a Vault outage must not fail DNA generation.
       await this.encryptBestEffort('DnaWritingStyleReport', () =>
         this.dnaReportRepository.encryptFieldsIntoEntity(reportEntity, this.secretsService!),
       );
@@ -315,6 +376,7 @@ export class DnaWritingStyleProcessor extends WorkerHost {
   private async callSmr(
     textSamples: string,
     systemPrompt: string,
+    outputSchema?: Record<string, unknown> | null,
   ): Promise<{
     content: string;
     usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
@@ -337,6 +399,14 @@ export class DnaWritingStyleProcessor extends WorkerHost {
         stream: false,
         provider,
         model,
+        // TASK-700: constrain DNA output to the closed-vocabulary schema
+        // (mirrors the SOAP `response_format` binding —
+        // `smr-compat.controller.ts`'s `response_format: { type: 'json_schema',
+        // json_schema: responseSchema, strict: true }`). Omitted entirely
+        // (not even as `undefined`) when the resolved template carries no
+        // schema, so the outgoing payload shape is unchanged for legacy
+        // templates/fixtures.
+        ...(outputSchema ? { response_format: { type: 'json_schema' as const, json_schema: outputSchema, strict: true } } : {}),
       },
       {
         timeout: 120000,
@@ -348,5 +418,93 @@ export class DnaWritingStyleProcessor extends WorkerHost {
     );
     this.jobMetrics.recordSmrCallDuration(JobQueue.GenerateDnaReport, 'smr', (Date.now() - smrStart) / 1000);
     return response.data;
+  }
+
+  /**
+   * Defensive extraction of `metaData.promptConfig.outputSchema`. `metaData`
+   * is JSON with no DB-enforced shape, so every level is validated: not an
+   * object, an array, missing, or the wrong type at any step ⇒ `null` (the
+   * caller's cue to fall back to the legacy unconstrained parse). Mirrors
+   * `live-agent-resolution.service.ts`'s `extractCustomSystemPrompt`.
+   */
+  private static extractOutputSchema(metaData: unknown): Record<string, unknown> | null {
+    if (!metaData || typeof metaData !== 'object' || Array.isArray(metaData)) return null;
+    const promptConfig = (metaData as Record<string, unknown>).promptConfig;
+    if (!promptConfig || typeof promptConfig !== 'object' || Array.isArray(promptConfig)) return null;
+    const outputSchema = (promptConfig as Record<string, unknown>).outputSchema;
+    if (!outputSchema || typeof outputSchema !== 'object' || Array.isArray(outputSchema)) return null;
+    return outputSchema as Record<string, unknown>;
+  }
+
+  /**
+   * Validate a parsed SMR response against a (JSON-Schema-shaped) DNA output
+   * schema — client-side, never trusting that SMR/the model honored
+   * `strict: true`. Checks, in order:
+   *   1. `parsed` is a plain object.
+   *   2. every `required` top-level key is present (not `undefined`/`null`).
+   *   3. when `additionalProperties === false`, no key outside `properties`.
+   *   4. every property with a declared `enum` has a value inside it.
+   *   5. every property with a declared `maxLength` has a value within it —
+   *      the specific defense against a free-text/quoted-sentence value
+   *      smuggled into an otherwise-permitted string field (e.g.
+   *      `sectionOrderPreference`).
+   */
+  private static conformsToSchema(parsed: unknown, schema: Record<string, unknown>): parsed is Record<string, unknown> {
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return false;
+    const obj = parsed as Record<string, unknown>;
+
+    const required = Array.isArray(schema.required) ? (schema.required as unknown[]).filter((k): k is string => typeof k === 'string') : [];
+    for (const key of required) {
+      if (obj[key] === undefined || obj[key] === null) return false;
+    }
+
+    const properties = (
+      schema.properties && typeof schema.properties === 'object' && !Array.isArray(schema.properties) ? schema.properties : {}
+    ) as Record<string, { enum?: unknown[]; maxLength?: number }>;
+
+    if (schema.additionalProperties === false) {
+      const allowed = new Set(Object.keys(properties));
+      for (const key of Object.keys(obj)) {
+        if (!allowed.has(key)) return false;
+      }
+    }
+
+    for (const [key, propSchema] of Object.entries(properties)) {
+      const value = obj[key];
+      if (value === undefined) continue;
+      if (Array.isArray(propSchema.enum) && typeof value === 'string' && !propSchema.enum.includes(value)) return false;
+      if (typeof propSchema.maxLength === 'number' && typeof value === 'string' && value.length > propSchema.maxLength) return false;
+    }
+
+    return true;
+  }
+
+  /**
+   * Deterministically render the persisted `styleText` from a
+   * schema-validated DNA profile. Every value used here has already passed
+   * `conformsToSchema` (a closed enum or a length-capped string), so this can
+   * never emit anything the model wrote freely — the structural PHI
+   * containment guarantee lives here, not in a post-hoc scan of the text.
+   */
+  private static buildStyleTextFromSchema(profile: Record<string, unknown>): string {
+    const str = (value: unknown, fallback: string): string => (typeof value === 'string' && value.trim().length > 0 ? value : fallback);
+
+    const sentenceStructure = str(profile.sentenceStructure, 'mixed');
+    const verbosity = str(profile.verbosity, 'moderate');
+    const listVsNarrative = str(profile.listVsNarrative, 'mixed');
+    const sectionOrderPreference = str(profile.sectionOrderPreference, '');
+    const abbreviationFrequency = str(profile.abbreviationFrequency, 'medium');
+    const toneFormality = str(profile.toneFormality, 'neutral');
+
+    return [
+      `Sentence structure: ${sentenceStructure}.`,
+      `Verbosity: ${verbosity}.`,
+      `Lists vs narrative: ${listVsNarrative}.`,
+      sectionOrderPreference ? `Preferred section order: ${sectionOrderPreference}.` : null,
+      `Abbreviation frequency: ${abbreviationFrequency}.`,
+      `Tone: ${toneFormality}.`,
+    ]
+      .filter((part): part is string => part !== null)
+      .join(' ');
   }
 }

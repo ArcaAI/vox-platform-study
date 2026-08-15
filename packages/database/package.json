@@ -35,6 +35,7 @@
     "db:push:force": "prisma db push --force-reset --accept-data-loss",
     "db:studio": "prisma studio",
     "decrypt:row": "tsx scripts/decrypt-row.ts",
+    "dna:phi-scan": "tsx scripts/dna-phi-scan.ts",
     "seed": "tsx src/index.ts"
   },
   "devDependencies": {

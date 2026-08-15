@@ -739,6 +739,17 @@ export class ConsultationService extends BaseService implements IConsultationSer
     }
     assertEqualTenants(consultation, { tenantId });
 
+    // TASK-701 — `metadata.status` is a reserved key: the DTO mapper's
+    // lifecycle-status precedence trusts it, so a caller-supplied `metadata`
+    // object must never be allowed to set it (e.g. forging `SIGNED`).
+    // Callers who genuinely want to change lifecycle state must use the
+    // dedicated, validated `status` field above.
+    if (request.metadata !== undefined && 'status' in request.metadata) {
+      throw new BadRequestException(
+        "metadata.status is reserved for internal lifecycle tracking; use the top-level 'status' field to change lifecycle state.",
+      );
+    }
+
     // Audit C-2 — a re-assigned department must live in the caller's tenant.
     // `assertParentInScope` throws NotFoundException on miss / cross-tenant.
     if (request.departmentId) {

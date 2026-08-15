@@ -68,6 +68,7 @@ import { buildNerUsageEvent } from '../shared/nerUsageEvent';
 import { collectCitedSegmentIds } from '../lib/transcript-segments';
 import { generateJsonWithRepair, looksLikeJsonObject, parsesAsJsonObject, type JsonRepairCall } from '../shared/bounded-json-repair';
 import { IAiTaskDefaultService } from '../../ai-task-default/IAiTaskDefaultService';
+import { INoteGenerationService, GenerationTrigger } from '../note-generation';
 
 /**
  * the AD-1 GenerationStats headline fields the summary
@@ -238,6 +239,22 @@ export class SummaryService extends BaseService implements ISummaryService {
     // `smr.finalize` AiTaskDefault decides exactly as before.
     @Optional() @Inject(DepartmentAgentRepository) private readonly departmentAgentRepository?: DepartmentAgentRepository,
     @Optional() @Inject(AiModelRepository) private readonly aiModelRepository?: AiModelRepository,
+    // TASK-704 seam. `generatePreSummary` calls `noteGenerationService.generate`
+    // (PRE_SUMMARY has no harness equivalent — always a side-effect-free
+    // 'legacy' decision, logged for observability). `generateSummary` is
+    // DIFFERENT and deliberately does NOT call `generate()` here: for
+    // SUMMARY_REGENERATE, `generate()` STARTS the harness workflow as a live
+    // side effect when harnessEnabled=true, and this sync route always still
+    // runs its own legacy body regardless — calling it unconditionally would
+    // silently produce a duplicate draft (one via harness async, one via this
+    // legacy sync call) on every harness-enabled tenant, which is exactly the
+    // "silent sync-behavior change" the ticket's Risk section flags as
+    // HUMAN-GATED. Until a product owner approves short-circuiting this route
+    // to the harness start (mirroring entry #4's async behavior),
+    // `generateSummary` calls the seam's side-effect-free `resolveConfig`
+    // instead, purely to log the resolved harnessEnabled for observability.
+    // Optional + trailing so existing positional fixtures keep compiling.
+    @Optional() @Inject(INoteGenerationService) private readonly noteGenerationService?: INoteGenerationService,
   ) {
     super(eventEmitter, clsService, ResourceType.ContextItem);
     this.smrServiceUrl = this.configService.get<string>('SMR_URL') ?? 'http://localhost:8862';
@@ -254,6 +271,28 @@ export class SummaryService extends BaseService implements ISummaryService {
   }
 
   /**
+   * TASK-704 — route a trigger with NO harness equivalent through the seam
+   * purely to make the harnessEnabled read happen in one place and get the
+   * decision logged. Safe to call unconditionally: `generate()` never has a
+   * side effect for a trigger outside `HARNESS_SUPPORTED_TRIGGERS`, and this
+   * is best-effort — a seam failure never blocks generation.
+   */
+  private async logGenerationDecision(trigger: GenerationTrigger, consultationId: string, tenantId: string, userId?: string): Promise<void> {
+    if (!this.noteGenerationService) return;
+    try {
+      const decision = await this.noteGenerationService.generate(trigger, { consultationId, tenantId, userId });
+      this.logger.log({ message: 'NoteGenerationService decision', trigger, consultationId, decision });
+    } catch (error) {
+      this.logger.warn({
+        message: 'NoteGenerationService seam call failed (best-effort, non-blocking)',
+        trigger,
+        consultationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  /**
    * Generate pre-summary from historical case notes
    */
   async generatePreSummary(consultationId: string, request: GeneratePreSummaryRequest): Promise<SummaryResponse> {
@@ -263,6 +302,10 @@ export class SummaryService extends BaseService implements ISummaryService {
     if (!tenantId) {
       throw new BadRequestException('Tenant ID is required');
     }
+
+    // TASK-704 — no harness equivalent for pre-summary; logs the decision
+    // through the single seam without affecting generation below.
+    await this.logGenerationDecision(GenerationTrigger.PRE_SUMMARY, consultationId, tenantId, userId ?? undefined);
 
     // A generated summary consumes a monthly meter unit.
     // Kill-switch-gated (Q9); → 429 once the tenant is over the monthly cap.
@@ -405,6 +448,35 @@ export class SummaryService extends BaseService implements ISummaryService {
 
     if (!tenantId) {
       throw new BadRequestException('Tenant ID is required');
+    }
+
+    // TASK-704 — HUMAN-GATED (see ticket README §6 Risks & Open Questions).
+    // This route deliberately does NOT call `noteGenerationService.generate`:
+    // for SUMMARY_REGENERATE, `generate()` STARTS the harness workflow as a
+    // live side effect when harnessEnabled=true, and this sync route always
+    // still runs its own legacy body below — calling `generate()`
+    // unconditionally would silently produce a DUPLICATE draft on every
+    // harness-enabled tenant (one via the harness async workflow, one via
+    // this legacy call), which is exactly the undisclosed behavior change the
+    // ticket flags for product-owner approval. Until that's approved, only
+    // the side-effect-free `resolveConfig` read is logged here for
+    // observability; nothing below is gated on it.
+    if (this.noteGenerationService) {
+      try {
+        const config = await this.noteGenerationService.resolveConfig(consultationId);
+        this.logger.log({
+          message:
+            'sync generateSummary: harnessEnabled resolved (logging-only — HUMAN-GATED short-circuit to harness NOT applied; see TASK-704 README §6)',
+          consultationId,
+          harnessEnabled: config.harnessEnabled ?? false,
+        });
+      } catch (error) {
+        this.logger.warn({
+          message: 'NoteGenerationService.resolveConfig failed (best-effort, non-blocking)',
+          consultationId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
     }
 
     // A generated summary consumes a monthly meter unit.

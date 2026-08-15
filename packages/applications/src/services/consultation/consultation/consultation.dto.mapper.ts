@@ -1,5 +1,5 @@
 import { ConsultationEntity, ContextItemEntity, UserEntity, DepartmentEntity } from '@arcaai/domains';
-import { ConsultationResponse, DoctorInfo, DepartmentInfo, CONSULTATION_STATUS } from './dto';
+import { ConsultationResponse, DoctorInfo, DepartmentInfo, CONSULTATION_STATUS, CONSULTATION_STATUS_VALUES } from './dto';
 import { ContextDtoMapper } from '../context/context.dto.mapper';
 
 /**
@@ -22,8 +22,14 @@ export class ConsultationDtoMapper {
     //     column is OPEN/absent we defer to metadata.status, then OPEN.
     const columnStatus = entity.status as string | undefined;
     const metaStatus = metadata?.status as string | undefined;
+    // TASK-701 — defense-in-depth: only a recognised legacy value
+    // (OPEN/CLOSED, the values `transitionStatus` writes) is trusted from
+    // `metadata.status`. This closes the forgery vector even if a future
+    // write path reaches `metadata.status` without going through
+    // `updateConsultation`'s reserved-key guard.
+    const validMetaStatus = metaStatus && (CONSULTATION_STATUS_VALUES as string[]).includes(metaStatus) ? metaStatus : undefined;
     const status =
-      columnStatus && columnStatus !== CONSULTATION_STATUS.OPEN ? columnStatus : (metaStatus ?? columnStatus ?? CONSULTATION_STATUS.OPEN);
+      columnStatus && columnStatus !== CONSULTATION_STATUS.OPEN ? columnStatus : (validMetaStatus ?? columnStatus ?? CONSULTATION_STATUS.OPEN);
 
     return {
       id: entity.id,

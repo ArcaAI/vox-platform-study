@@ -153,6 +153,29 @@ describe('CaseNoteColumn', () => {
     expect(screen.getByText('98%')).toBeTruthy();
   });
 
+  it('shows a degraded indicator and freezes the prior content when smrFailed is true (TASK-703)', () => {
+    render(
+      <CaseNoteColumn
+        {...baseProps({
+          draft: null,
+          isRecording: true,
+          live: {
+            consultationId: 'c-1',
+            runningSummary: 'Pt on amlodipine for HTN.',
+            sections: [{ title: 'Subjective', content: 'Pt on amlodipine for HTN.' }],
+            entities: [],
+            updatedAt: 'now',
+            smrFailed: true,
+          },
+        })}
+      />,
+    );
+    expect(screen.getByText(/note assistant unavailable/i)).toBeTruthy();
+    expect(screen.queryByText(/note assistant drafting/i)).toBeNull();
+    // Frozen prior content stays visible — not blanked/hidden by the degraded state.
+    expect(screen.getByText(/pt on amlodipine for htn/i)).toBeTruthy();
+  });
+
   // click-to-source evidence panel at sign-off.
   describe('citation evidence panel', () => {
     const SEGMENTS = [{ id: 'seg-1', idx: 0, t0Ms: 0, t1Ms: 3000, speaker: 'patient', charStart: 0, charEnd: 27 }];

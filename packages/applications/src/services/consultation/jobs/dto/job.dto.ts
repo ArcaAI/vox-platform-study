@@ -193,6 +193,13 @@ export interface SummaryJobResult {
     inputTokens?: number;
     outputTokens?: number;
   };
+  /**
+   * TASK-704 — set when this job was routed to the harness document workflow
+   * instead of running legacy generation. `contextItemId`/`content` are empty
+   * in that case: the harness produces the note asynchronously via its own
+   * callback path into HarnessInternalController, not this BullMQ job.
+   */
+  harnessJobId?: string;
   namedEntities?: Array<{
     id: string;
     entityType: string;

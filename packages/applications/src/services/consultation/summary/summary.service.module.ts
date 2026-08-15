@@ -15,6 +15,7 @@ import { AgentTrajectoryServiceModule } from '../../agent-trajectory/agent-traje
 import { AiTaskDefaultServiceModule } from '../../ai-task-default/ai-task-default.service.module';
 import { UsageLedgerServiceModule } from '../../usageLedger/usage-ledger.service.module';
 import { BillingServiceModule } from '../../billing/billing.service.module';
+import { NoteGenerationServiceModule } from '../note-generation/note-generation.service.module';
 
 @Module({
   // HarnessAuditServiceModule supplies the WORM audit trail
@@ -46,6 +47,10 @@ import { BillingServiceModule } from '../../billing/billing.service.module';
     // BillingServiceModule supplies IBillingService for the optional
     // spend-limit precheck on LLM generation (402).
     BillingServiceModule,
+    // TASK-704 seam — logging-only for generateSummary/generatePreSummary
+    // (see summary.service.ts for the HUMAN-GATED note on why sync
+    // generateSummary does not short-circuit to harness).
+    NoteGenerationServiceModule,
   ],
   providers: [
     PromptAssemblyService,

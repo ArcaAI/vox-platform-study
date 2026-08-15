@@ -7,7 +7,7 @@ not a deployment topology (see [`../README.md`](../README.md) for why).
 | --------------------------- | ---------------------------------------------------------------------------------------------------------------- |
 | `reference-deployment.yaml` | One complete, annotated Deployment showing every required annotation. Copy the shape, swap the secret list.      |
 | `kustomization.yaml`        | Makes the reference manifest buildable so it cannot rot: `kubectl kustomize deployment/vault-agent`.             |
-| `check-contract.sh`         | Asserts the contract on any rendered manifest set — including a `helm template` of the `hope-deployments` chart. |
+| `check-contract.sh`         | Asserts the contract on any rendered manifest set — including a `helm template` of the `arca/hope-v2-deployment` chart. |
 
 ## Why Vault Agent and not External Secrets Operator
 
@@ -94,7 +94,7 @@ in layout.
 
 ## Helm equivalent
 
-The `hope-deployments` chart takes the same annotations under `podAnnotations`:
+The `arca/hope-v2-deployment` chart takes the same annotations under `podAnnotations`:
 
 ```yaml
 podAnnotations:

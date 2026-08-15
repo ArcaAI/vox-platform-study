@@ -42,7 +42,7 @@ def _settings(
     *,
     enabled: bool = True,
     fail_closed: bool = True,
-    providers: tuple[str, ...] = ("azure", "bedrock"),
+    local: tuple[str, ...] = ("lm-studio", "openai_compat", "ollama", "vllm", "llama-cpp"),
 ) -> Settings:
     """A real ``Settings`` carrying an explicit :class:`PhiConfig`.
 
@@ -51,9 +51,7 @@ def _settings(
     regardless of any ``HARNESS_PHI_*`` in the environment.
     """
     return Settings(
-        phi=PhiConfig(
-            enabled=enabled, fail_closed=fail_closed, cloud_egress_providers=list(providers)
-        )
+        phi=PhiConfig(enabled=enabled, fail_closed=fail_closed, local_providers=list(local))
     )
 
 
@@ -107,7 +105,7 @@ class _ContractRedactor:
 
     def ensure_safe_for_cloud(self, text: str, *, provider: str, settings: Settings) -> str:
         self.calls.append((text, provider))
-        if provider not in settings.phi.cloud_egress_providers:
+        if provider in settings.phi.local_providers:
             return text
         if self._block:
             raise PhiEgressBlocked(provider=provider, reason="contract block")
@@ -216,6 +214,22 @@ class TestEnsureEgressSafe:
                 phi_fail_closed=True,
                 redactor=_detected_person_redactor(),
             )
+
+    def test_unknown_provider_is_redacted_not_passed_through(self) -> None:
+        # TASK-706: an unlisted provider string must default to redact-and-confirm
+        # (the chokepoint's own delegation to PhiRedactor.ensure_safe_for_cloud),
+        # never to the local pass-through branch.
+        redactor = _ContractRedactor(transform=lambda t: t.replace("John Smith", "<PERSON>"))
+        out = ensure_egress_safe(
+            _PHI_TEXT,
+            provider="some-new-cloud-provider",
+            settings=_settings(),
+            phi_enabled=True,
+            phi_fail_closed=True,
+            redactor=redactor,
+        )
+        assert "John Smith" not in out
+        assert redactor.calls == [(_PHI_TEXT, "some-new-cloud-provider")]
 
 
 def _citations() -> dict[str, Any]:

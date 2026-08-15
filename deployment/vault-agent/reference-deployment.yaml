@@ -9,7 +9,7 @@
 # Everything below the `template.metadata.annotations` block is ordinary
 # deployment concern (replicas, probes, resources) and is deliberately minimal:
 # this file is the SECRET-DELIVERY contract, not a topology definition. The
-# authoritative manifests live in the `hope-deployments` repo (see ../README.md).
+# authoritative manifests live in the `arca/hope-v2-deployment` repo (see ../README.md).
 # =============================================================================
 apiVersion: apps/v1
 kind: Deployment

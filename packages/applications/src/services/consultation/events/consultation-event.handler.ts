@@ -19,7 +19,6 @@ import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
-import { randomUUID } from 'node:crypto';
 import {
   ConsultationRepository,
   ContextItemRepository,
@@ -29,16 +28,14 @@ import {
 } from '@arcaai/domains';
 import { IConsultationJobService } from '../jobs/consultation-job.service';
 import { PromptResolutionService } from '../prompt/prompt-resolution.service';
-import { HarnessGatewayService } from '../harness/harness-gateway.service';
 import { ConfigResolver } from '../../config-resolver';
 import { SecretsService } from '../../baseServices/_meta/secrets';
 import { validateRedactionRuleSet } from '../../dna-writing-style/redaction-rules';
 import { createWorkerSession } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
+import { INoteGenerationService, GenerationTrigger } from '../note-generation';
 import {
   ConsultationPipelineEvent,
-  ConsultationPipelineConfig,
-  DEFAULT_PIPELINE_CONFIG,
   TranscriptionCreatedPayload,
   SummaryGeneratedPayload,
   NerExtractedPayload,
@@ -57,10 +54,14 @@ export class ConsultationEventHandler {
     private readonly promptResolutionService: PromptResolutionService,
     private readonly eventEmitter: EventEmitter2,
     private readonly cls: ClsService<IActiveUserContext>,
-    // (Lane G) — optional so existing unit fixtures (and any
-    // deployment without the harness wired) keep the legacy path. Only invoked
-    // when pipelineConfig.harnessEnabled is true.
-    @Optional() @Inject(HarnessGatewayService) private readonly harnessGatewayService?: HarnessGatewayService,
+    // TASK-704 — the single seam every note-generation entry point routes
+    // through. Owns pipeline-config resolution (moved verbatim from this
+    // handler's former `resolvePipelineConfig`) and the harnessEnabled read +
+    // harness-vs-legacy decision (formerly inline here against
+    // HarnessGatewayService directly). REQUIRED — the handler has no local
+    // fallback for config resolution now that it lives on the seam; a
+    // missing wiring is a boot-time DI error, not a silent legacy-only mode.
+    @Inject(INoteGenerationService) private readonly noteGenerationService: INoteGenerationService,
     // Used only on the harness path to forward the triggering
     // transcript's text to the durable workflow. Optional + trailing so the
     // legacy fixtures/DI keep compiling.
@@ -68,7 +69,9 @@ export class ConsultationEventHandler {
     // (Pillar B) — resolves the realtime toggles through the
     // tenant→department→doctor→SYSTEM cascade and the doctor-preferred prompt id.
     // Optional + trailing so existing positional fixtures keep compiling; when
-    // absent the resolver falls back to DEFAULT_PIPELINE_CONFIG (legacy behaviour).
+    // absent, `resolveRedactionRulesForHarness` below preserves the legacy
+    // no-redaction behaviour (the cascade toggles themselves are resolved by
+    // NoteGenerationService.resolveConfig, which has its own ConfigResolver).
     @Optional() @Inject(ConfigResolver) private readonly configResolver?: ConfigResolver,
     // The last-mile DNA-redaction resolution deps (harness path only).
     // The rules live encrypted-at-rest on the doctor's latest DNA report; the
@@ -128,7 +131,7 @@ export class ConsultationEventHandler {
       });
 
       try {
-        const config = await this.resolvePipelineConfig(consultationId);
+        const config = await this.noteGenerationService.resolveConfig(consultationId);
 
         if (!config.autoSummaryEnabled) {
           this.logger.log({
@@ -139,51 +142,57 @@ export class ConsultationEventHandler {
           return;
         }
 
-        // (Lane G) — when the harness flag is set, route
-        // auto-generation to the durable harness workflow instead of the legacy
-        // BullMQ summary job. A jobId is minted so the harness can publish SSE
-        // progress on the existing `consultation_job_updates:{jobId}` channel.
-        if (config.harnessEnabled) {
-          const harnessJobId = `harness-doc-${randomUUID()}`;
-          // Best-effort: forward the triggering transcript's text so the workflow
-          // can run NER + sensors on it. A read miss must not block the start —
-          // the assemble callback re-loads the transcript on the apps/api side
-          // (the prompt's source of truth), so we degrade gracefully.
-          let transcriptText: string | undefined;
-          try {
-            const transcript = await this.contextItemRepository?.findById(contextItemId);
-            transcriptText = transcript?.content ?? undefined;
-          } catch (loadError) {
-            this.logger.warn({
-              message: 'Failed to load transcript text for harness start (best-effort)',
-              consultationId,
-              contextItemId,
-              error: loadError instanceof Error ? loadError.message : String(loadError),
-            });
-          }
-
-          // Resolve + decrypt the doctor's DNA redaction rules when
-          // the tenant + doctor double-gate (and the department default-agent DNA
-          // policy) permit it. Fail-SAFE: any failure yields NO rules, which
-          // makes the workflow's apply_redaction insertion a byte-identical no-op
-          // — the harness start is NEVER blocked by redaction resolution.
-          const redactionRules = await this.resolveRedactionRulesForHarness(consultationId, tenantId);
-
-          await this.harnessGatewayService?.start(consultationId, {
-            tenantId,
-            userId: payload.userId,
-            jobId: harnessJobId,
-            correlationId: correlationId ?? payload.jobId,
+        // TASK-704 — trigger-specific request assembly (transcript-loading +
+        // DNA-redaction resolution) stays here; it is passed to the seam as
+        // params rather than decided here. Prepared unconditionally so it is
+        // ready regardless of which generator the seam picks — the seam owns
+        // the harnessEnabled decision, this handler no longer reads it.
+        //
+        // Best-effort: forward the triggering transcript's text so a harness
+        // start can run NER + sensors on it. A read miss must not block
+        // anything — the assemble callback re-loads the transcript on the
+        // apps/api side (the prompt's source of truth) when routed to
+        // harness, and the legacy path never reads this value at all.
+        let transcriptText: string | undefined;
+        try {
+          const transcript = await this.contextItemRepository?.findById(contextItemId);
+          transcriptText = transcript?.content ?? undefined;
+        } catch (loadError) {
+          this.logger.warn({
+            message: 'Failed to load transcript text for harness start (best-effort)',
+            consultationId,
             contextItemId,
-            transcriptText,
-            // Empty ⇒ the gateway omits the field entirely (byte-identical body).
-            redactionRules,
+            error: loadError instanceof Error ? loadError.message : String(loadError),
           });
+        }
 
+        // Resolve + decrypt the doctor's DNA redaction rules when
+        // the tenant + doctor double-gate (and the department default-agent DNA
+        // policy) permit it. Fail-SAFE: any failure yields NO rules, which
+        // makes the workflow's apply_redaction insertion a byte-identical no-op
+        // — a harness start is NEVER blocked by redaction resolution.
+        const redactionRules = await this.resolveRedactionRulesForHarness(consultationId, tenantId);
+
+        // The single seam every note-generation entry point routes through
+        // (TASK-704). It reads harnessEnabled, and — when routing to
+        // harness — starts the workflow itself; a missing HarnessGatewayService
+        // on a harness-enabled trigger THROWS (surfaces below as
+        // PipelineStepFailed) rather than silently no-op'ing.
+        const decision = await this.noteGenerationService.generate(GenerationTrigger.TRANSCRIPTION_CREATED, {
+          consultationId,
+          tenantId,
+          userId: payload.userId,
+          correlationId: correlationId ?? payload.jobId,
+          contextItemId,
+          transcriptText,
+          redactionRules,
+        });
+
+        if (decision.generator === 'harness') {
           this.logger.log({
             message: 'Harness document workflow start requested',
             consultationId,
-            harnessJobId,
+            harnessJobId: decision.harnessJobId,
             contextItemId,
             correlationId,
           });
@@ -302,7 +311,7 @@ export class ConsultationEventHandler {
       }
 
       try {
-        const config = await this.resolvePipelineConfig(consultationId);
+        const config = await this.noteGenerationService.resolveConfig(consultationId);
 
         if (!config.autoNerEnabled) {
           this.logger.log({
@@ -319,6 +328,16 @@ export class ConsultationEventHandler {
         // consultation, it persists its own NamedEntity rows for the same
         // content (server-side NER inside the durable workflow), so the
         // legacy BullMQ NER job would be duplicate work. Skip it.
+        //
+        // TASK-704 grep-gate NOTE: this is a SECOND, deliberate runtime read
+        // of `harnessEnabled` outside `NoteGenerationService`. It answers a
+        // different question than the seam ("should the legacy NER job be
+        // skipped as duplicate work?", not "which generator produces the
+        // note?") and predates + is explicitly out of scope for TASK-704's
+        // Current State Evaluation §2.1 (which enumerates NOTE-generation
+        // entry points only — NER extraction is a separate pipeline step).
+        // The grep-gate test allow-lists exactly this site by name; do not
+        // add a second one without updating that allow-list + this comment.
         if (config.harnessEnabled) {
           this.logger.log({
             message: 'Skipping legacy auto-NER job — harness workflow persists its own NamedEntity rows',
@@ -350,7 +369,7 @@ export class ConsultationEventHandler {
           correlationId,
         });
 
-        const config = await this.resolvePipelineConfig(consultationId).catch(() => DEFAULT_PIPELINE_CONFIG);
+        const config = await this.noteGenerationService.resolveConfig(consultationId);
 
         this.emitPipelineStepFailed({
           consultationId,
@@ -435,83 +454,6 @@ export class ConsultationEventHandler {
         correlationId,
       });
     });
-  }
-
-  // =========================================================================
-  // Pipeline Configuration Resolution
-  // =========================================================================
-
-  /**
-   * Resolve pipeline configuration for a consultation.
-   *
-   * Resolution order (first non-null wins):
-   *   1. Consultation `metadata.pipelineConfig` (per-consultation override, kept
-   *      as the top overlay for back-compat).
-   *   2. The `PipelinePolicy` cascade via `ConfigResolver` — doctor → department
-   *      → tenant → SYSTEM-tenant default. Resolves
-   *      `autoSummaryEnabled` / `autoNerEnabled` / `harnessEnabled`.
-   *   3. System code defaults (`DEFAULT_PIPELINE_CONFIG`) — also the fallback when
-   *      the resolver is not wired (legacy DI/fixtures).
-   *
-   * Note: dnaStyleId/summaryTemplate stay per-consultation (metadata) and are
-   * passed as explicit overrides to PromptResolutionService, which handles the
-   * full Doctor → Department → Default fallback chain. Fail-closed: any
-   * error degrades to the safe code defaults (never throws on the realtime path).
-   */
-  async resolvePipelineConfig(consultationId: string): Promise<ConsultationPipelineConfig> {
-    try {
-      const consultation = await this.consultationRepository.findById(consultationId);
-      if (!consultation) {
-        this.logger.warn({
-          message: 'Consultation not found — using default pipeline config',
-          consultationId,
-        });
-        return { ...DEFAULT_PIPELINE_CONFIG };
-      }
-
-      const metadata = consultation.metadata as Record<string, unknown> | null;
-      const override = (metadata?.pipelineConfig ?? {}) as Partial<ConsultationPipelineConfig>;
-
-      // Cascade-resolved toggles (doctor → department → tenant → SYSTEM default).
-      // When the resolver isn't wired, fall back to the code defaults so the
-      // legacy behaviour is preserved exactly.
-      const cascade = this.configResolver
-        ? await this.configResolver.resolvePipelineToggles({
-            tenantId: consultation.tenantId,
-            departmentId: consultation.departmentId ?? null,
-            doctorId: consultation.doctorId ?? null,
-          })
-        : null;
-
-      const resolved: ConsultationPipelineConfig = {
-        // The cascade owns the realtime toggles; the per-consultation metadata
-        // override wins on top (back-compat).
-        autoSummaryEnabled: override.autoSummaryEnabled ?? cascade?.autoSummaryEnabled ?? DEFAULT_PIPELINE_CONFIG.autoSummaryEnabled,
-        autoNerEnabled: override.autoNerEnabled ?? cascade?.autoNerEnabled ?? DEFAULT_PIPELINE_CONFIG.autoNerEnabled,
-        // dnaStyleId / summaryTemplate / includeSharedContext stay per-consultation.
-        dnaStyleId: override.dnaStyleId ?? DEFAULT_PIPELINE_CONFIG.dnaStyleId,
-        summaryTemplate: override.summaryTemplate ?? DEFAULT_PIPELINE_CONFIG.summaryTemplate,
-        includeSharedContext: override.includeSharedContext ?? DEFAULT_PIPELINE_CONFIG.includeSharedContext,
-        haltOnFailure: override.haltOnFailure ?? DEFAULT_PIPELINE_CONFIG.haltOnFailure,
-      };
-
-      // harnessEnabled: per-consultation override wins over the cascade. Only
-      // surfaced when defined so callers reading a fully-specified legacy config
-      // (no resolver) don't see a synthesized default (preserves back-compat).
-      const harnessEnabled = override.harnessEnabled ?? cascade?.harnessEnabled;
-      if (harnessEnabled !== undefined) {
-        resolved.harnessEnabled = harnessEnabled;
-      }
-
-      return resolved;
-    } catch (error) {
-      this.logger.error({
-        message: 'Error resolving pipeline config — using defaults',
-        consultationId,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      return { ...DEFAULT_PIPELINE_CONFIG };
-    }
   }
 
   // =========================================================================

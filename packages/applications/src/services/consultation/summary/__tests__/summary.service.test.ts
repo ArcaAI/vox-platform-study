@@ -2411,4 +2411,134 @@ describe('SummaryService', () => {
       await expect(svc.extractEntities('ctx-item-123')).resolves.toBeUndefined();
     });
   });
+
+  // ===========================================================================
+  // TASK-704 — Generator Entry-Point Seam
+  // ===========================================================================
+  describe('TASK-704 NoteGenerationService seam', () => {
+    const createMockNoteGenerationService = () => ({
+      generate: vi.fn(),
+      resolveConfig: vi.fn(),
+    });
+
+    const buildServiceWithSeam = (noteGenerationService: ReturnType<typeof createMockNoteGenerationService> | undefined) =>
+      new SummaryService(
+        mockContextItemRepository as any,
+        mockConsultationRepository as any,
+        mockSummaryMetaRepository as any,
+        mockNamedEntityRepository as any,
+        mockHttpService as any,
+        mockConfigService as any,
+        mockEventEmitter as any,
+        mockClsService as any,
+        mockContextItemVersionRepository as any,
+        mockPromptAssemblyService as any,
+        undefined, // secretsService
+        undefined, // userProfileRepository
+        undefined, // harnessAuditService
+        undefined, // harnessGatewayService
+        mockHarnessPolicyService as any,
+        undefined, // configResolver
+        undefined, // entitlements
+        undefined, // trajectoryService
+        undefined, // aiTaskDefaultService
+        undefined, // transcriptSegmentRepository
+        undefined, // usageLedger
+        undefined, // unitOfWork
+        undefined, // billing
+        undefined, // departmentAgentRepository
+        undefined, // aiModelRepository
+        noteGenerationService as any,
+      );
+
+    const primeGeneratePreSummaryMocks = () => {
+      mockConsultationRepository.findById.mockResolvedValue({ id: 'c-1', tenantId: 'tenant-1' });
+      mockContextItemRepository.findCaseNotes.mockResolvedValue([{ id: 'note-1', content: 'case note text' }]);
+      mockHttpService.axiosRef.post.mockResolvedValue({ data: { summary: 'S', modelName: 'm' } });
+      mockContextItemRepository.create.mockResolvedValue({ id: 'presummary-1', content: 'S', createdAt: new Date(), updatedAt: new Date() });
+      mockSummaryMetaRepository.create.mockResolvedValue({ id: 'meta-1' });
+    };
+
+    it('generatePreSummary calls the seam (PRE_SUMMARY has no harness equivalent — logging-only, never blocks generation)', async () => {
+      const mockNoteGenerationService = createMockNoteGenerationService();
+      mockNoteGenerationService.generate.mockResolvedValue({ generator: 'legacy', reason: 'harness-not-supported-for-trigger' });
+      const svc = buildServiceWithSeam(mockNoteGenerationService);
+      primeGeneratePreSummaryMocks();
+
+      const result = await svc.generatePreSummary('c-1', {});
+
+      expect(mockNoteGenerationService.generate).toHaveBeenCalledWith('PRE_SUMMARY', expect.objectContaining({ consultationId: 'c-1', tenantId: 'tenant-1' }));
+      expect(result).toBeDefined();
+    });
+
+    it('generatePreSummary still generates when the seam call fails (best-effort, non-blocking)', async () => {
+      const mockNoteGenerationService = createMockNoteGenerationService();
+      mockNoteGenerationService.generate.mockRejectedValue(new Error('seam unavailable'));
+      const svc = buildServiceWithSeam(mockNoteGenerationService);
+      primeGeneratePreSummaryMocks();
+
+      await expect(svc.generatePreSummary('c-1', {})).resolves.toBeDefined();
+    });
+
+    it('generatePreSummary generates unaffected when noteGenerationService is not wired (pre-TASK-704 fixtures)', async () => {
+      const svc = buildServiceWithSeam(undefined);
+      primeGeneratePreSummaryMocks();
+
+      await expect(svc.generatePreSummary('c-1', {})).resolves.toBeDefined();
+    });
+
+    // HUMAN-GATED (ticket README §6): generateSummary deliberately does NOT
+    // call `generate()` — it would start a real harness workflow as a side
+    // effect on top of the legacy call this route always still runs. Only
+    // the side-effect-free `resolveConfig` read is exercised, for logging.
+    describe('generateSummary (HUMAN-GATED — logging-only, sync semantics unchanged)', () => {
+      const primeGenerateSummaryMocks = () => {
+        mockConsultationRepository.findById.mockResolvedValue({ id: 'c-1', tenantId: 'tenant-1' });
+        mockContextItemRepository.findTranscripts.mockResolvedValue([{ content: 'transcript text' }]);
+        mockHttpService.axiosRef.post.mockResolvedValue({ data: { summary: 'S', modelName: 'm' } });
+        mockContextItemRepository.create.mockResolvedValue({ id: 'ctx-new', content: 'S', createdAt: new Date(), updatedAt: new Date() });
+        mockSummaryMetaRepository.create.mockResolvedValue({ id: 'meta-1' });
+      };
+
+      it('calls resolveConfig (read-only) but NEVER generate() — no live harness-start side effect', async () => {
+        const mockNoteGenerationService = createMockNoteGenerationService();
+        mockNoteGenerationService.resolveConfig.mockResolvedValue({ autoSummaryEnabled: true, autoNerEnabled: true, harnessEnabled: true });
+        const svc = buildServiceWithSeam(mockNoteGenerationService);
+        primeGenerateSummaryMocks();
+
+        await svc.generateSummary('c-1', {});
+
+        expect(mockNoteGenerationService.resolveConfig).toHaveBeenCalledWith('c-1');
+        expect(mockNoteGenerationService.generate).not.toHaveBeenCalled();
+      });
+
+      it('always still runs legacy generation regardless of the resolved harnessEnabled value (sync semantics unchanged)', async () => {
+        const mockNoteGenerationService = createMockNoteGenerationService();
+        mockNoteGenerationService.resolveConfig.mockResolvedValue({ autoSummaryEnabled: true, autoNerEnabled: true, harnessEnabled: true });
+        const svc = buildServiceWithSeam(mockNoteGenerationService);
+        primeGenerateSummaryMocks();
+
+        const result = await svc.generateSummary('c-1', {});
+
+        expect(result).toBeDefined();
+        expect(mockHttpService.axiosRef.post).toHaveBeenCalledTimes(1);
+      });
+
+      it('generates unaffected when the resolveConfig call itself fails (best-effort, non-blocking)', async () => {
+        const mockNoteGenerationService = createMockNoteGenerationService();
+        mockNoteGenerationService.resolveConfig.mockRejectedValue(new Error('seam unavailable'));
+        const svc = buildServiceWithSeam(mockNoteGenerationService);
+        primeGenerateSummaryMocks();
+
+        await expect(svc.generateSummary('c-1', {})).resolves.toBeDefined();
+      });
+
+      it('generates unaffected when noteGenerationService is not wired (pre-TASK-704 fixtures)', async () => {
+        const svc = buildServiceWithSeam(undefined);
+        primeGenerateSummaryMocks();
+
+        await expect(svc.generateSummary('c-1', {})).resolves.toBeDefined();
+      });
+    });
+  });
 });

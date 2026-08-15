@@ -288,6 +288,12 @@ export class LiveSummaryEventDto {
   })
   vitals?: LiveSummaryVitalsDto;
 
+  @ApiPropertyOptional({
+    description:
+      'True when the most recent SMR generation call failed. `runningSummary`/`sections` reflect the last successfully generated content (or are empty on a first-flush failure) — never fabricated. Clients should render a visible degraded/stale indicator rather than treating the payload as fresh.',
+  })
+  smrFailed?: boolean;
+
   @ApiProperty({ description: 'ISO-8601 timestamp of when this snapshot was produced' })
   updatedAt: string;
 

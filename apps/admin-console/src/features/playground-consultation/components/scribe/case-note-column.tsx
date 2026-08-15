@@ -248,8 +248,13 @@ export function CaseNoteColumn(props: CaseNoteColumnProps) {
                 : 'Drafts appear here after a session'}
           </p>
         </div>
-        {showLive && isRecording ? (
-          <span className="border-ai/40 bg-ai/10 text-ai flex shrink-0 items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold">
+        {showLive && live?.smrFailed ? (
+          <Badge variant="destructive" className="shrink-0 gap-1.5" aria-live="polite">
+            <IconShieldExclamation aria-hidden className="size-3.5" />
+            Note assistant unavailable — showing last update
+          </Badge>
+        ) : showLive && isRecording ? (
+          <span className="border-ai/40 bg-ai/10 text-ai flex shrink-0 items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold" aria-live="polite">
             <Spinner aria-hidden className="size-3.5" />
             Note assistant drafting
           </span>

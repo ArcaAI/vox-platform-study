@@ -180,6 +180,8 @@ export interface LiveSummarySnapshot {
   metadata?: { stats?: LiveSummaryStats | null } | null;
   /** Structured vitals (accumulated across flushes); absent until one is seen. */
   vitals?: LiveSummaryVitals;
+  /** True when the most recent SMR generation call failed; `runningSummary`/`sections` reflect the last successfully generated content (or are empty on a first-flush failure) — never fabricated. */
+  smrFailed?: boolean;
   updatedAt: string;
   /** Terminal event (recording stopped). */
   closed?: boolean;
