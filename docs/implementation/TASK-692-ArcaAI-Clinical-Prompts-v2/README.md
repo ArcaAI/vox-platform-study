@@ -1,6 +1,6 @@
 # TASK-692 — ArcaAI Clinical Prompt Corpus v2 (hardened) and v3
 
-- **Status:** Review
+- **Status:** Completed
 - **Type:** feature (seed data)
 - **Scope:** `packages/database` seed only. No schema change, no migration, no API change.
 
@@ -34,22 +34,26 @@ current one".
 
 ## Implementation Summary
 
+**Current pin (verified 2026-08-16):** 23 ArcaAI templates, three `PromptVersion` rows each (v1 retained, v2 hardened, v3 current). `ARCAAI_CLINICAL_APPROVED_VERSION = 3` drives `content`, `currentVersionNumber`, and `approvedVersionNumber`. The 22 department bodies are byte-identical between v2 and v3; only the pre-summary body differs. No schema, migration, or API change.
+
 | File | Change |
 |---|---|
-| `seed/07b-arcaai-clinical-content-v2.ts` | **New, generated.** The 23 v2 bodies, JSON-encoded. |
-| `scripts/generate-arcaai-clinical-content-v2.mjs` | **New.** The generator, so the file above is reproducible rather than merely asserted to be verbatim. |
-| `seed/07b-arcaai-clinical-templates.ts` | `versionId(templateId, versionNumber)`; `V2_CONTENT_BY_TEMPLATE_ID`; `ARCAAI_CLINICAL_APPROVED_VERSION = 2`; templates now carry the v2 body pinned at v2; `ARCAAI_CLINICAL_VERSIONS` emits **two** rows per template (v1 then v2). |
-| `seed/00-constants.ts` | Documents the version-in-third-UUID-group convention. |
-| `src/__tests__/seed.test.ts` | Version invariants updated + two new v2-specific guards. |
+| `seed/07b-arcaai-clinical-content-v2.ts` | **Generated.** The 23 v2 bodies, JSON-encoded. |
+| `scripts/generate-arcaai-clinical-content-v2.mjs` | Generator for the v2 file (source corpus is local, not in-repo). |
+| `seed/07b-arcaai-clinical-content-v3.ts` | **Generated.** The 23 v3 bodies. |
+| `scripts/generate-arcaai-clinical-content-v3.mjs` | Generator + v3 extraction guards. |
+| `seed/07b-arcaai-clinical-templates.ts` | `versionId`; `V2`/`V3` maps; `contentFor`; `ARCAAI_CLINICAL_SEEDED_VERSIONS = [1,2,3]`; `ARCAAI_CLINICAL_APPROVED_VERSION = 3`; versions via `flatMap`. |
+| `seed/00-constants.ts` | Documents the version-in-third-UUID-group convention (`…-0002-…` / `…-0003-…`). |
+| `src/__tests__/seed.test.ts` | Three-version invariants; per-version Block A / pre-summary contracts; v3 ASR-annotation and provenance-dating guards; FILE METADATA leak guard. |
 
 ### Versioning model
 
-- **v1 is retained**, byte-unchanged, both on disk (`07b-arcaai-clinical-content.ts`)
-  and in the database as `versionNumber = 1` with its **original** id.
-- **v2 is approved and served**: `content`, `currentVersionNumber` and
-  `approvedVersionNumber` all track `ARCAAI_CLINICAL_APPROVED_VERSION`.
-- **Rollback is one field** — set `ARCAAI_CLINICAL_APPROVED_VERSION = 1` (or edit
-  `approvedVersionNumber` in the console). No content needs restoring.
+- **v1 and v2 are retained**, byte-unchanged on disk and as `versionNumber` 1 / 2
+  rows (v1 keeps its original id).
+- **v3 is approved and served**: `content`, `currentVersionNumber` and
+  `approvedVersionNumber` all track `ARCAAI_CLINICAL_APPROVED_VERSION` (3).
+- **Rollback is one field** — set `ARCAAI_CLINICAL_APPROVED_VERSION = 2` (or 1,
+  or edit `approvedVersionNumber` in the console). No content needs restoring.
 
 ### ID allocation
 
@@ -88,14 +92,17 @@ v2        72000000-0000-0002-0001-0000000000XX   (fresh, collision-checked)
 ## Verification
 
 ```
-pnpm --filter @arcaai/database test        → 48 files, 1186 tests passed
-pnpm --filter @arcaai/database typecheck   → clean
-cd apps/api && npx vitest run smr-compat   → 9 files, 234 tests passed
+pnpm --filter @arcaai/database test        → 48 files, 1195 tests passed (2026-08-16)
+pnpm --filter @arcaai/database typecheck   → clean (2026-08-16)
+cd apps/api && npx vitest run smr-compat   → 9 files, 234 tests passed (2026-08-16)
 ```
 
+Targeted seed guards (2026-08-16): `seed.test.ts`, `pre-summary-placeholder-guard.test.ts`,
+`template-selection-matrix.test.ts`, `arcaai-clinical-templates-seed.test.ts` — 4 files, 374 passed.
+
 `pre-summary-placeholder-guard.test.ts` and `template-selection-matrix.test.ts`
-pass unchanged against the v2 body — the placeholder set and every department
-agent / legacy-column binding still resolve.
+still pass against the approved (v3) pin — the nine-placeholder contract and every
+department agent / legacy-column binding still resolve.
 
 ## Open items (carried from `PROMPT_REVIEW_FINDINGS.md`, NOT closed here)
 
@@ -181,11 +188,8 @@ a fresh collision-free block; v1 and v2 ids are byte-unchanged.
 
 ### v3 verification
 
-```
-pnpm --filter @arcaai/database test        → 48 files, 1190 tests passed
-pnpm --filter @arcaai/database typecheck   → clean
-cd apps/api && npx vitest run smr-compat   → 9 files, 234 tests passed
-```
+Re-run 2026-08-16 (same commands as §Verification above): 48 files / 1195 tests;
+typecheck clean; smr-compat 9 files / 234 tests.
 
 `packages/database` has no `lint` script, so no lint gate applies to it.
 
@@ -210,3 +214,4 @@ cd apps/api && npx vitest run smr-compat   → 9 files, 234 tests passed
 | 2026-08-13 | Initial implementation — v2 corpus seeded as `versionNumber 2` across all 23 ArcaAI clinical templates; v1 retained. |
 | 2026-08-13 | v3 corpus seeded as `versionNumber 3` and approved; v1 and v2 retained. Department bodies found byte-identical to v2 — only the pre-summary changed; versioned uniformly anyway because the corpus is a matched set, with a test asserting the asymmetry. |
 | 2026-08-13 | Stripped the author-only `FILE METADATA — DO NOT PASTE INTO HOPE` HTML comment from the seeded v3 pre-summary body. The comment lived at the top of `PRE_SUMMARY_PROMPT_v3.md` and was ingested because the generator copied the whole document. The 22 department prompts were already fence-extracted and never contained it. Both generators now strip the comment (and abort if it leaks) so regeneration cannot put it back. |
+| 2026-08-16 | Verified completion against current implementation: v1–v3 seeded, `ARCAAI_CLINICAL_APPROVED_VERSION = 3`, Hematology Revisit heading rename present, FILE METADATA absent, seed/SMR-compat tests and database typecheck pass. Ticket-scoped work is done; documented open items remain out of scope. Status → Completed. |

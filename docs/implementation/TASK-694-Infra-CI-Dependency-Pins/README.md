@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | `Review` |
+| **Status** | `Completed` |
 | **Type** | `infrastructure` |
 | **Ticket number** | TASK-694 (TASK-693 already exists as GitLab→GitHub migration; TASK-691 / TASK-692 reserved for TS / Python bump agents) |
 | **Classification** | Safe image and CI tool pin bumps. No product-line migrations. No lockfile edits. |
@@ -141,6 +141,24 @@ Temporal `auto-setup` / Temporal UI, MinIO, vLLM / llama.cpp / TEI, Vault 2.x, G
 - Vault 1.18 → 1.21.2 is a minor-line jump in `-dev` mode. Healthcheck still uses `wget` + `/v1/sys/health`. Existing Vault file volumes (dev named volume) may need a one-time unseal/re-init if storage format differs; test compose is ephemeral (no volume). Do **not** wipe the dev volume without operator approval.
 - Trivy 0.58 → 0.74 and gitleaks 8.21 → 8.30 can surface new findings (new rules / DB). That is intended for a scanner bump; first pipeline after merge is the evidence gate.
 
+### Post-implementation verification (2026-08-16)
+
+Repo re-check of this ticket’s allowlist (compose, GitLab CI, GitHub Actions, example Dockerfile). All nine scoped bumps are present at or beyond the 694 targets. Stale tags from the allowlist (`vault:1.18`, `prometheus:v3.1.0`, `grafana:12.4.2`, `trivy:0.58.2`, `gitleaks:v8.21.2`, `node:22-alpine`, `nginx:1.27-alpine`, `alpine:3.20`, GHA Node `20` / actions `@v4`/`@v5`) are gone from live CI/compose/Dockerfiles.
+
+| 694 target | Live pin (2026-08-16) | Notes |
+|---|---|---|
+| Vault `1.21.2` | `hashicorp/vault:1.21.4` | 694 landed `1.21.2`; TASK-698 moved compose + single-deployment to `1.21.4`. Still not 2.x. |
+| Prometheus `v3.13.2` | `prom/prometheus:v3.13.2` | Dev compose + `apps/smr/docker-compose.yml`. TASK-698 recorded that SMR compose was still `v3.1.0` after 694’s first pass; it is now on target. |
+| Grafana `12.4.8` | `grafana/grafana:13.1.2` | 694/698 landed `12.4.8`; TASK-701 (separate major-upgrade ticket) moved to `13.1.2`. |
+| Trivy `0.74.0` | `aquasec/trivy:0.74.0` | `.gitlab/ci/scan.yml` (×2) + `publish.yml`. Tag-pinned, not digest. |
+| gitleaks `v8.30.1` | `zricethezav/gitleaks:v8.30.1` | `.gitlab/ci/scan.yml`. |
+| GHA Node `24` + actions `@v7` | `node-version: "24"`, `checkout`/`setup-python`/`setup-node` `@v7` | `.github/workflows/harness-eval.yml`. |
+| GitLab Node `node:24-alpine` | `node:24-alpine` | `.gitlab/ci/templates.yml` (`.node-base`, `.test-node-base`) + `build.yml` warm-up. |
+| nginx `1.30.4-alpine` | `nginx:1.30.4-alpine` | `.gitlab/ci/build.yml` warm-up + `apps/example/Dockerfile`. |
+| alpine `3.22` | `alpine:3.22` | `.gitlab/ci/notify.yml`, `.gitlab/ci/deploy.yml`. |
+
+`prometheus.yml` still uses only `global` / `scrape_configs` / `static_configs` / `metric_relabel_configs`. Grafana provisioning remains `apiVersion: 1`. This ticket’s verification criterion was registry-tag existence (no pipeline run, no compose volume wipe); that bar is met. No lockfile edits in this ticket’s scope.
+
 ---
 
 ## Change History
@@ -148,3 +166,4 @@ Temporal `auto-setup` / Temporal UI, MinIO, vLLM / llama.cpp / TEI, Vault 2.x, G
 | Date | Author | Change |
 |---|---|---|
 | 2026-08-15 | Infra/CI pin agent | Created TASK-694. Verified tags. Applied allowlisted pin bumps. Vault 1.21.9 skipped (tag missing). Prometheus/Grafana configs unchanged. Status `Review`. |
+| 2026-08-16 | Completeness review | Verified allowlist against current repo. All nine scoped pins present at or beyond 694 targets; SMR Prometheus/Grafana leftovers closed by TASK-698 (Grafana later 13.1.2 via TASK-701). Status `Completed`. |

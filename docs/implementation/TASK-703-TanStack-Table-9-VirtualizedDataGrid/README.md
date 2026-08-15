@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | `Review` |
+| **Status** | `Completed` |
 | **Type** | `refactor` |
 | **Ticket number** | TASK-703 |
 | **Classification** | Full `@tanstack/react-table` v8 → v9 rewrite for `VirtualizedDataGrid` (not a floor bump; not `useLegacyTable`) |
@@ -98,7 +98,11 @@ Test Files  242 passed (242)
 Tests       659 passed (659)
 ```
 
-React override stays `19.2.8`. No TypeScript / pdfjs / Vite / BullMQ / ioredis / openid-client bumps. No `uv.lock` or Temporal compose edits.
+Re-run 2026-08-16 (same command): **242 passed / 659 passed**. Lockfile has only `@tanstack/react-table@9.1.2` and `@tanstack/table-core@9.1.2` (no v8 copies). No `useReactTable` / `useLegacyTable` remain.
+
+Consumers keep the one-arg `ColumnDef<TData>` alias (`packages/ui/src/index.ts`). `AdminDataGrid<TData extends RowData>` and admin-console screens import that alias; pinning UI uses v9 `start`/`end` (`column.pin('start'|'end')`). Persisted v8 `{ left, right }` is still accepted via `normalizeColumnPinning()`.
+
+React override stays `19.2.8` (`pnpm-workspace.yaml`). No TypeScript / pdfjs / Vite / BullMQ / ioredis / openid-client bumps. No `uv.lock` or Temporal compose edits.
 
 ---
 
@@ -110,3 +114,4 @@ React override stays `19.2.8`. No TypeScript / pdfjs / Vite / BullMQ / ioredis /
 | 2026-08-15 | Landed `@tanstack/react-table` 9.1.2 via `useTable` + `dataGridFeatures`. UI tests 242/242, 659/659. Status → Review. |
 | 2026-08-15 | Follow-up: `BooleanControl` / `DateControl` still used v8 `Column<TData, TValue>`, so `TData` was treated as `TFeatures`. Switched both to `Column<DataGridFeatures, TData, TValue>`. `@arcaai/ui typecheck` 0 errors. |
 | 2026-08-15 | Follow-up: v9 `RowData` is `Record<string, any> \| any[]`. Exported `RowData` from `@arcaai/ui` and constrained `AdminDataGrid<TData extends RowData>`. |
+| 2026-08-16 | Completion review against current tree: v9.1.2 + `useTable`/`dataGridFeatures` (not `useLegacyTable`); behavior-lock + bounded-DOM tests present; consumers on one-arg `ColumnDef`; `pnpm --filter @arcaai/ui test` 242/242, 659/659. Status → Completed. |

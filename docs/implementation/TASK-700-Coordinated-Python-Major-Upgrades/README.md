@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | `Review` |
+| **Status** | `Completed` |
 | **Type** | `infrastructure` (dependency hygiene) |
 | **Ticket number** | TASK-700 |
 | **Scope** | Coordinated Python **majors** on the single uv workspace (`uv.lock`). No TS / pnpm / Compose / GitLab image-tag changes. No commit. |
@@ -152,9 +152,12 @@ Full `smr:test:unit` was **not** used as a P1 gate (known `.env.dev` `SMR_SERVIC
 | librosa 1.0 / numpy 2.5 / scipy 1.18 | need Python ≥3.12; workspace is `>=3.11,<3.12` |
 | Co-resolving `stt[ml]` + `stt[nemo]` | forbidden; extras stay conflicting |
 
+These leftovers were explicit skips / isolates for this ticket, not unfinished take-sets. Follow-up re-scan is TASK-706 (Gates A–D). FastAPI 0.141.1 / uvicorn 0.52.3 were already landed by TASK-695/697 (lock confirmation only). Pydantic was not in this ticket's remaining majors (still 2.13.4).
+
 ## Change History
 
 | Date | Change |
 |---|---|
 | 2026-08-15 | Ticket opened as TASK-700. Coordinated Python majors (P1–P5; P6 optional). Status `In Progress`. |
 | 2026-08-15 | P1–P4 taken (openai 3.1 + eval-ragas 2.54 fork, mcp 2.0, temporalio 1.31, qdrant-client 1.19). P5 mostly skipped (presidio / websockets / no newer ragas). P6 skipped; nemo torch pinned `<2.13` after a 2.13 leak. Replay 18 passed. Status `Review`. |
+| 2026-08-16 | Completeness review against current lock/floors/MCP client: P1–P4 still taken as claimed; P5/P6 leftovers remain the documented skips (TASK-706). `uv.lock` still 487 `[[package]]` entries. Status `Completed`. |

@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | `Review` |
+| **Status** | `Completed` |
 | **Type** | `infrastructure` |
 | **Ticket number** | TASK-698 (TASK-694 landed the first pin pass; TASK-696 is residual TS; TASK-697 avoided) |
 | **Classification** | Leftover same-line / security image and CI pins after TASK-694. No product-line migrations. No lockfile edits. |
@@ -180,6 +180,12 @@ Untouched by policy: `pnpm-lock.yaml`, `package.json`, `uv.lock`, Python `pyproj
 
 Verification this pass: registry tag existence + index digests. No compose `down -v`. No pipeline run (no commit / push).
 
+### Verification (2026-08-16)
+
+Re-checked live compose, Dockerfiles, GitLab CI, GitHub Actions, and `infrastructure/single-deployment/vault` against this ticket’s bump / keep / skip lists. Every TASK-698 **Bump** is present (Vault 1.21.4 + claimed digests, vault-k8s 1.7.6, alpine/k8s 1.33.13, Prometheus `v3.13.2` in SMR + dev, uv `0.11.33`, PgBouncer `v1.25.2-p0`, Helm chart still `0.32.0`). Keep pins still match (Trivy `0.74.0`, gitleaks `v8.30.1`, nginx `1.30.4-alpine`, alpine `3.22`, Node 24, Playwright `v1.62.1-noble`, GHA `checkout`/`setup-*` `@v7`, cosign digest-pinned `v2.6.5-dev`, OTEL `0.96.0`, CUDA `12.8.1`, python `3.11-slim*` floating).
+
+Later **TASK-701** (out of this ticket’s denylist) superseded Grafana `12.4.8` → `13.1.2` (dev + SMR, same pin both places), `docker:27` → `docker:28`, Qdrant `v1.16` → `v1.19.0`, and Temporal auto-setup → `server`/`admin-tools` 1.31.2 + UI 2.53.1. Those are not TASK-698 leftovers. Documented skips (MinIO community, uv 0.12, Vault 2.x / chart 0.33+, vLLM / llama.cpp / TEI, `apps/example/.gitlab-ci.example.yml` `docker:24.0`) remain as scoped.
+
 ---
 
 ## Change History
@@ -187,3 +193,4 @@ Verification this pass: registry tag existence + index digests. No compose `down
 | Date | Author | Change |
 |---|---|---|
 | 2026-08-15 | Infra residual-pin agent | Created TASK-698. Re-scanned pins after TASK-694. Landed leftover same-line bumps (Vault 1.21.4, SMR Prometheus/Grafana, vault-k8s 1.7.6, alpine/k8s 1.33.13, uv 0.11.33, PgBouncer 1.25.2). Skipped missing Hub tags and uv 0.12. Status `Review`. |
+| 2026-08-16 | Completeness review | Verified claimed pins against current implementation. All TASK-698 bumps present; Grafana/docker/Qdrant/Temporal later moved by TASK-701 (denylisted here). No scoped leftovers. Status `Completed`. |
