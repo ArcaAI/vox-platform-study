@@ -105,9 +105,22 @@ class TestMainLifespanProviderKeys:
         assert "lm-studio" in registry.list_providers()
         assert "openai_compat" in registry.list_providers()
 
-    def test_unconfigured_azure_not_registered_and_env_enable_ignored(self, monkeypatch):
-        """Azure with no endpoint/api_key is NOT available (fail closed),
-        and a stale SMR_AZURE_ENABLED env can no longer force it on."""
+    def test_unconfigured_azure_registers_but_fails_closed_on_use(self, monkeypatch):
+        """Unconfigured Azure is REGISTERED but unusable — fail-closed moved.
+
+        Azure used to be gated on ``settings.azure.endpoint`` at registration
+        time, and this test asserted it was absent. The BYOK model inverted
+        that: a pure-BYOK tenant has no platform endpoint (its credential
+        arrives per request as a provider override), so gating registration
+        made SMR answer 404 for a VALID override. Azure/openai/anthropic/vertex
+        now register unconditionally and fail closed where the credential is
+        actually needed — ``_client_for`` raises ProviderCredentialsError (503)
+        when there is neither an override nor a platform client.
+
+        So the safety property is unchanged, only its location: an unconfigured
+        Azure must never serve a request. A stale SMR_AZURE_ENABLED still
+        cannot force anything on — no such field exists.
+        """
         monkeypatch.setenv("SMR_AZURE_ENABLED", "true")  # inert: no such field now
         # Hermetic: a real Azure CONNECTION config can leak into os.environ from the
         # dev .env or the e2e conftest's import-time overrides; scrub it so the
@@ -115,15 +128,24 @@ class TestMainLifespanProviderKeys:
         monkeypatch.delenv("SMR_AZURE_ENDPOINT", raising=False)
         monkeypatch.delenv("SMR_AZURE_API_KEY", raising=False)
         from smr.core.config import Settings
+        from smr.core.exceptions import ProviderCredentialsError
         from smr.main import _register_provider_factories
-        from smr.providers.base import ProviderNotFoundError, ProviderRegistry
+        from smr.models.requests import GenerateRequest
+        from smr.providers.base import ProviderRegistry
 
         settings = Settings(_env_file=None, host="0.0.0.0", port=8862)
         registry = ProviderRegistry()
         _register_provider_factories(registry, settings, MagicMock())
-        assert "azure-openai" not in registry.list_providers()
-        with pytest.raises(ProviderNotFoundError):
-            registry.get("azure-openai")
+
+        # Registered, so a per-request BYOK override can reach it.
+        assert "azure-openai" in registry.list_providers()
+        provider = registry.get("azure-openai")
+
+        # ...but with no override and no platform key it fails CLOSED (503),
+        # rather than 401-ing an empty-keyed client downstream.
+        assert provider._client is None
+        with pytest.raises(ProviderCredentialsError):
+            provider._client_for(GenerateRequest(prompt="hello"))
 
 
 class TestGenerateEndpointWithTenantKeys:

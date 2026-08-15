@@ -176,7 +176,15 @@ class TestStreamUsesInjectedTaskManager:
                 model="llama3.2:latest",
             )
         )
-        mock_task_manager.read_chunks_blocking = AsyncMock(return_value=[])
+        # The SSE endpoint reads via read_chunk_ENTRIES_blocking (TASK-636 added
+        # it to carry the message id + trace carrier alongside each chunk).
+        # Stubbing the older read_chunks_blocking left the real name unstubbed,
+        # so the AsyncMock auto-created it and returned a MagicMock — which is
+        # TRUTHY but iterates EMPTY. The generator's `for` body never ran and
+        # `if not entries:` was never true, so the endpoint looped forever,
+        # accumulating mock call records until the OOM killer took the process
+        # (~15 min of silence, then exit 137 in CI).
+        mock_task_manager.read_chunk_entries_blocking = AsyncMock(return_value=[])
         resp = await client.get("/api/v1/tasks/task-123/stream")
         assert resp.status_code == 200
 
