@@ -38,7 +38,7 @@ export const HARNESS_LOOP_SETTINGS: SettingDescriptor[] = [
     category: 'Platform Operations',
     label: 'Consultation loop idle timeout (seconds)',
     description:
-      'How long `ConsultationLoopWorkflow` may sit with NO context item, no `consultation-ending` and no `loop-cancel` before it abandons the run. Every arriving context item restarts the bound, so this measures SILENCE, not consultation length. On expiry the loop terminates in its own `TIMED_OUT` phase and publishes a `loop.timed_out` event; it deliberately does NOT run the ending actions, because `harness.finalize` would fabricate a clinical note from a truncated transcript and queue it for a clinician. Resolved when the loop config is PINNED at workflow start and frozen for the whole consultation (TASK-654 C1), so a change applies to consultations that start after it — unlike the `harness.loop.enabled` kill-switch, which is re-read on every signal.',
+      'How long `ConsultationLoopWorkflow` may sit with NO context item, no `consultation-ending` and no `loop-cancel` before it abandons the run. Every arriving context item restarts the bound, so this measures SILENCE, not consultation length. On expiry the loop terminates in its own `TIMED_OUT` phase and publishes a `loop.timed_out` event; it deliberately does NOT run the ending actions, because `harness.finalize` would fabricate a clinical note from a truncated transcript and queue it for a clinician. Resolved when the loop config is PINNED at workflow start and frozen for the whole consultation, so a change applies to consultations that start after it — unlike the `harness.loop.enabled` kill-switch, which is re-read on every signal.',
     default: HARNESS_LOOP_IDLE_TIMEOUT_SECONDS_DEFAULT,
   },
 ];

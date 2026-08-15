@@ -1,0 +1,282 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<dataset>
+    <record>
+        <Time>0</Time>
+        <Consultation_Session_State>Open</Consultation_Session_State>
+        <_1_Activity>Harness opens the consultation encounter for the authenticated clinician and a patient/encounter pair that must still pass identity matching. The clinician is not yet primed with chart history, and ambient capture has not started.</_1_Activity>
+        <_2_Action>Master/Harness loop creates an empty session, binds the tenant-admin note template and audio pipeline (including documented ASR fallback), and emits session.opened. No Summarization, Transcription, or retrieval agents run until consent and ABAC succeed.</_2_Action>
+        <_3_Consultation_Context_Item Action>None</_3_Consultation_Context_Item Action>
+        <_4_Consultation_Context_Item></_4_Consultation_Context_Item>
+        <Note>Consultation context is empty. Timeout must never be treated as clinical approval at any later step. Patient records are referenced by external patientId; identity matching is required before any history load. After-visit information must not be generated from this empty Open state.</Note>
+    </record>
+    <record>
+        <Time>1</Time>
+        <Consultation_Session_State>Open</Consultation_Session_State>
+        <_1_Activity>Compliance gate runs before prior-context priming so history retrieval, style-profile load, and ambient capture cannot start without an active AI-documentation consent and an ABAC grant that matches the clinician, purpose, and minimum-necessary scope.</_1_Activity>
+        <_2_Action>Compliance agent evaluates patient consent (grant, view, revoke, time-limit) and clinician ABAC. Failure aborts the session and writes an immutable audit event. Success authorizes priming only within the granted scope; later MCP/tool calls that exceed scope are denied and logged.</_2_Action>
+        <_3_Consultation_Context_Item Action>Added</_3_Consultation_Context_Item Action>
+        <_4_Consultation_Context_Item>Consent and ABAC grant</_4_Consultation_Context_Item>
+        <Note>Restricted chart data remains omitted unless authorization permits it. Every subsequent retrieval is audited against this grant. Patient revocation from this point forward blocks new tool calls for that patient; already-committed EHR notes follow EHR retention, with the revocation recorded for downstream systems.</Note>
+    </record>
+    <record>
+        <Time>2</Time>
+        <Consultation_Session_State>Primed</Consultation_Session_State>
+        <_1_Activity>Clinician needs accurate prior-consult context without reading every historical note, and the patient should not have to repeat the full history. Harness therefore loads a minimum-necessary summary of relevant prior consults for this matched identity.</_1_Activity>
+        <_2_Action>Summarization Agent retrieves authorized prior notes via EHR/memory tools using a tenant history-summary template. The UI shows date range and source systems. Each retrieval is audited. Original source records remain openable from the summary.</_2_Action>
+        <_3_Consultation_Context_Item Action>Added</_3_Consultation_Context_Item Action>
+        <_4_Consultation_Context_Item>Summarized Case Notes</_4_Consultation_Context_Item>
+        <Note>The summary identifies each source record and date. Imported facts are distinguishable from current-visit facts. Contradictions and unresolved historical items are visible. No historical diagnosis is silently treated as a current diagnosis. Default scope is minimum-necessary; expanding scope is a new audited retrieval, not a silent PHI widening. If the clinician has opted into writing DNA, the style profile may be loaded here for later drafting, but patient facts never enter that profile.</Note>
+    </record>
+    <record>
+        <Time>3</Time>
+        <Consultation_Session_State>Primed</Consultation_Session_State>
+        <_1_Activity>Clinician validates the primed history so identity, source, and imported-versus-current labeling are confirmed before live documentation begins.</_1_Activity>
+        <_2_Action>Harness presents source links, date range, and source systems. Clinician may accept the default scope or request a narrower/authorized wider retrieval. No automatic overwrite of clinician comments on the summary.</_2_Action>
+        <_3_Consultation_Context_Item Action>Unchanged</_3_Consultation_Context_Item Action>
+        <_4_Consultation_Context_Item>Summarized Case Notes</_4_Consultation_Context_Item>
+        <Note>Primed means history is loaded and reviewed, not mixed into signed current-visit facts. Unresolved items stay visible. A specialist briefing template, if configured by the tenant admin, may reformat the same evidence without regenerating from scratch, still preserving source links.</Note>
+    </record>
+    <record>
+        <Time>4</Time>
+        <Consultation_Session_State>Streaming</Consultation_Session_State>
+        <_1_Activity>Clinician starts ambient live transcription so documentation can begin without typing during the encounter, with an obvious mute control and a visible indicator that audio is being processed.</_1_Activity>
+        <_2_Action>Transcription Agent starts the tenant-configured audio pipeline (language, diarization, vocabulary). If that pipeline fails, it uses the documented default fallback ASR rather than silently dropping capture.</_2_Action>
+        <_3_Consultation_Context_Item Action>Added</_3_Consultation_Context_Item Action>
+        <_4_Consultation_Context_Item>Transcription Part 1 (partial)</_4_Consultation_Context_Item>
+        <Note>Every partial segment carries timestamps and speaker attribution. Uncertain text is visibly marked. Partial text cannot become a signed fact without later reconciliation. Connectivity-aware checkpointing begins so a telehealth drop can resume without re-transcribing captured audio.</Note>
+    </record>
+    <record>
+        <Time>5</Time>
+        <Consultation_Session_State>Streaming</Consultation_Session_State>
+        <_1_Activity>A stable spoken span is available, so the session can extract facts from a durable segment instead of every token, while still keeping the live partial visible to the clinician.</_1_Activity>
+        <_2_Action>Transcription Agent emits a finalized segment. Compliance/Guardrail runs the PHI sanitizer on finalized speech before NLP/Reasoning may consume it. Master/Harness loop does not treat this as a signed clinical fact.</_2_Action>
+        <_3_Consultation_Context_Item Action>Added/Updated</_3_Consultation_Context_Item Action>
+        <_4_Consultation_Context_Item>Transcription Part 1 (finalized segment)</_4_Consultation_Context_Item>
+        <Note>A later reconciled transcript may supersede this segment without deleting partial provenance. User-authored text, when present, is protected from automatic overwrite. Scribe-facing labels remain draft, not verified or clinician-approved.</Note>
+    </record>
+    <record>
+        <Time>6</Time>
+        <Consultation_Session_State>Streaming</Consultation_Session_State>
+        <_1_Activity>Clinician attaches a CT study (or report) so imaging context can join the live consultation without being silently merged into verified findings.</_1_Activity>
+        <_2_Action>Vision Agent checks patient, study, and modality metadata against the matched encounter. It searches for an authenticated radiology report first, then runs image-to-text. Unsupported formats degrade safely (attachment retained, description omitted, HITL flagged) without failing the session.</_2_Action>
+        <_3_Consultation_Context_Item Action>Added</_3_Consultation_Context_Item Action>
+        <_4_Consultation_Context_Item>Image description; authenticated radiology report (when found)</_4_Consultation_Context_Item>
+        <Note>Image-derived suggestions are labeled and isolated from verified report findings. Clinician review is mandatory before any image-derived content is included in the final note. Audit records the attachment, metadata match result, and whether a verified report was used. Citations to the image reference are required if findings later enter the work note.</Note>
+    </record>
+    <record>
+        <Time>6.1</Time>
+        <Consultation_Session_State>Streaming</Consultation_Session_State>
+        <_1_Activity>Speech and imaging disagree (for example the patient said no prior surgery while the CT shows post-operative clips). The clinician must see the conflict rather than an auto-chosen story.</_1_Activity>
+        <_2_Action>NLP/Reasoning Agent emits a contradiction.detected event. Master/Harness loop does not resolve the conflict. Verifier/Quality flags the item for human disambiguation.</_2_Action>
+        <_3_Consultation_Context_Item Action>Flagged</_3_Consultation_Context_Item Action>
+        <_4_Consultation_Context_Item>Contradiction (image versus speech)</_4_Consultation_Context_Item>
+        <Note>ALTERNATE: extends Time 6. The synthesizer creates a contradiction, not a resolution. Silently preferring speech or image is forbidden. If tenant policy treats the conflict as safety-critical, finalization is blocked until the clinician verifies. Independent transcription and work-note tasks continue.</Note>
+    </record>
+    <record>
+        <Time>7</Time>
+        <Consultation_Session_State>Streaming</Consultation_Session_State>
+        <_1_Activity>Ambient capture continues while the clinician focuses on the patient. New speech arrives as further transcription parts.</_1_Activity>
+        <_2_Action>Transcription Agent continues the same tenant pipeline (or fallback), yielding partials and finalized segments. Master/Harness loop appends or updates parts without deleting earlier provenance.</_2_Action>
+        <_3_Consultation_Context_Item Action>Added/Updated</_3_Consultation_Context_Item Action>
+        <_4_Consultation_Context_Item>Transcription Part n</_4_Consultation_Context_Item>
+        <Note>This row is the ongoing transcription loop; it repeats until pause or stop. Each part keeps timestamps, speaker labels, and uncertainty marks. Pause/resume must not force re-transcription of these parts.</Note>
+    </record>
+    <record>
+        <Time>8</Time>
+        <Consultation_Session_State>Streaming</Consultation_Session_State>
+        <_1_Activity>Clinician needs a running work note of findings, gaps, suggestions, and confidence so emerging documentation is visible without interrupting the visit.</_1_Activity>
+        <_2_Action>Master/Harness loop waits for a debounce window (silence or clinical-episode boundary), not every token, then triggers NLP/Reasoning Agent to extract entities and update the work note with confidence scores and source-segment links.</_2_Action>
+        <_3_Consultation_Context_Item Action>Added</_3_Consultation_Context_Item Action>
+        <_4_Consultation_Context_Item>Work note Part 1</_4_Consultation_Context_Item>
+        <Note>Provisional suggestions are separated from documented facts. User-authored text is protected from automatic overwrite. New content is traceable to transcript segments and image items. Follow-up action items may be extracted for care-team use but remain unsigned. Side-panel decision support, if enabled, must not write into the note draft.</Note>
+    </record>
+    <record>
+        <Time>9</Time>
+        <Consultation_Session_State>Streaming</Consultation_Session_State>
+        <_1_Activity>Identified clinical questions need approved terminology and evidence so the clinician can independently assess suggestions rather than accept unsupported claims.</_1_Activity>
+        <_2_Action>NLP/Reasoning Agent retrieves evidence only for identified questions. Sources are attached with date and version. Patient facts and general evidence are labeled separately. Drug-interaction tools run only when a medication is identified and retrieval is permitted.</_2_Action>
+        <_3_Consultation_Context_Item Action>Added/Updated</_3_Consultation_Context_Item Action>
+        <_4_Consultation_Context_Item>Work note evidence items</_4_Consultation_Context_Item>
+        <Note>Unsupported statements are removed or flagged. Low-quality or conflicting retrieval triggers abstention or clarification, not a guessed citation. Guideline snippets (tenant-enabled library, with precedence on conflict) cite version and effective date. Tenant admins control which sources are enabled.</Note>
+    </record>
+    <record>
+        <Time>10</Time>
+        <Consultation_Session_State>Streaming</Consultation_Session_State>
+        <_1_Activity>Governance requires coded findings to be tool-bound so SNOMED/OMOP codes are auditable and not invented by the model.</_1_Activity>
+        <_2_Action>NLP/Reasoning Agent calls the terminology MCP search/get_concept tools and binds only tool-verified concepts into the work note, with confidence. Unmapped terms are flagged for human review. Every bind is audited.</_2_Action>
+        <_3_Consultation_Context_Item Action>Added/Updated</_3_Consultation_Context_Item Action>
+        <_4_Consultation_Context_Item>Work note coded concepts</_4_Consultation_Context_Item>
+        <Note>No code is emitted without a tool-verified match. Hallucinated codes are forbidden. Consent/ABAC still gates the tool call; a scope mismatch is a logged denial, not a best-effort code.</Note>
+    </record>
+    <record>
+        <Time>10.1</Time>
+        <Consultation_Session_State>Degraded</Consultation_Session_State>
+        <_1_Activity>Terminology retrieval exceeds its per-agent deadline. The session must remain usable rather than fail or invent codes.</_1_Activity>
+        <_2_Action>Master/Harness loop records agent.timeout, cancels the attempt, and retries only if the operation is idempotent and within budget. If still unavailable, it displays "terminology verification unavailable" and lets independent tasks continue. Optional compensation: fallback model, then omit unverified codes and flag HITL.</_2_Action>
+        <_3_Consultation_Context_Item Action>Flagged</_3_Consultation_Context_Item Action>
+        <_4_Consultation_Context_Item>Terminology verification unavailable</_4_Consultation_Context_Item>
+        <Note>ALTERNATE: extends Time 10. No guessed terminology is inserted. Session enters Degraded, not Failed, if a safe draft remains possible. The workflow is never silently dropped. Force-stop applies to the timed-out agent only; transcription and other agents keep running unless a global drain is in progress.</Note>
+    </record>
+    <record>
+        <Time>11</Time>
+        <Consultation_Session_State>Streaming</Consultation_Session_State>
+        <_1_Activity>Clinician needs a running Final Summary that already follows the organization's template so later review is an edit of a usable note, not a blank page.</_1_Activity>
+        <_2_Action>Note-taking Agent fills the tenant-admin template (SOAP or encounter type) from current context. If the clinician opted into writing DNA, inspectable style preferences (phrasing, structure, verbosity) are applied. Preferences cannot override clinical or tenant safety rules. Verifier/Quality may score grounding and request a bounded revision.</_2_Action>
+        <_3_Consultation_Context_Item Action>Added</_3_Consultation_Context_Item Action>
+        <_4_Consultation_Context_Item>Final Summary Part 1</_4_Consultation_Context_Item>
+        <Note>Missing required sections are reported, not invented. Patient facts never enter the style profile. Long-term DNA memory is not updated from this live draft. Switching templates reformats existing evidence rather than regenerating from scratch.</Note>
+    </record>
+    <record>
+        <Time>12</Time>
+        <Consultation_Session_State>Streaming</Consultation_Session_State>
+        <_1_Activity>User keeps live transcription. Master loop keeps work note and Final Summary aligned with new context so the clinician sees an evolving, evidence-linked draft.</_1_Activity>
+        <_2_Action>Master/Harness loop periodically retriggers NLP/Reasoning and Note-taking Agents on debounced context changes. Verifier/Quality scores sections; evaluator failure yields a bounded note.revision.requested retry. Every context mutation is audited with source and confidence.</_2_Action>
+        <_3_Consultation_Context_Item Action>Added/Updated</_3_Consultation_Context_Item Action>
+        <_4_Consultation_Context_Item>Work note; Final Summary</_4_Consultation_Context_Item>
+        <Note>This row is the ongoing synthesis loop; it repeats until stop. Mid-session clinician edits are authoritative hitl.edit events and must never be silently restored to prior AI wording. After-visit information is not published from this unsigned live draft.</Note>
+    </record>
+    <record>
+        <Time>12.1</Time>
+        <Consultation_Session_State>Streaming</Consultation_Session_State>
+        <_1_Activity>Partial transcript contains an uncertain medication name. The clinician must see it as provisional, not as a documented current medication.</_1_Activity>
+        <_2_Action>NLP/Reasoning Agent marks the statement provisional in the work note, keeps uncertainty from the transcript span, and does not bind a terminology code or run interaction retrieval on a guessed name.</_2_Action>
+        <_3_Consultation_Context_Item Action>Flagged</_3_Consultation_Context_Item Action>
+        <_4_Consultation_Context_Item>Work note medication (provisional)</_4_Consultation_Context_Item>
+        <Note>ALTERNATE: extends Time 12 (UC-02 start). Partial/uncertain text cannot become a signed fact. No hallucinated RxNorm/SNOMED code is attached to the uncertain token.</Note>
+    </record>
+    <record>
+        <Time>12.2</Time>
+        <Consultation_Session_State>Streaming</Consultation_Session_State>
+        <_1_Activity>Clinician corrects the medication name and dosage so the note reflects clinical judgment rather than the ASR guess.</_1_Activity>
+        <_2_Action>Harness records an authoritative hitl.edit. Dependent medication and interaction artifacts are invalidated. The system must not silently restore the old wording. Edit history remains available for audit and QA.</_2_Action>
+        <_3_Consultation_Context_Item Action>Invalidated</_3_Consultation_Context_Item Action>
+        <_4_Consultation_Context_Item>Derived medication and interaction artifacts; prior AI wording (kept in edit history)</_4_Consultation_Context_Item>
+        <Note>ALTERNATE: continues UC-02 after Time 12.1. The correction is authoritative for all subsequent drafting. User-authored text is protected from automatic overwrite. DNA reflection may log the edit locally for this session but must not write long-term style memory until a note is approved, and must never store the patient-specific drug as a style feature.</Note>
+    </record>
+    <record>
+        <Time>12.3</Time>
+        <Consultation_Session_State>Streaming</Consultation_Session_State>
+        <_1_Activity>Clinician needs the affected note sections regenerated from the corrected medication so downstream interaction text and diffs are consistent.</_1_Activity>
+        <_2_Action>If retrieval is still permitted, NLP/Reasoning Agent re-runs medication and interaction tools on the corrected name and dose. Note-taking Agent regenerates only affected sections. Verifier/Quality re-runs incrementally. Clinician is shown the resulting diff.</_2_Action>
+        <_3_Consultation_Context_Item Action>Updated</_3_Consultation_Context_Item Action>
+        <_4_Consultation_Context_Item>Work note and Final Summary medication sections</_4_Consultation_Context_Item>
+        <Note>ALTERNATE: completes UC-02. Independent sections are left unchanged. The old AI wording remains in edit history and is never silently restored. Interaction retrieval still requires consent/ABAC and must abstain rather than guess if evidence is poor.</Note>
+    </record>
+    <record>
+        <Time>12.4</Time>
+        <Consultation_Session_State>Streaming</Consultation_Session_State>
+        <_1_Activity>Prior summarized notes record one allergy status while the current transcript states a conflicting allergy status. Continuity requires the conflict to be visible, not auto-resolved.</_1_Activity>
+        <_2_Action>NLP/Reasoning Agent creates a contradiction item linking the historical source (record id and date) to the current transcript span. Master/Harness loop prompts the clinician to verify. No agent picks a winner.</_2_Action>
+        <_3_Consultation_Context_Item Action>Flagged</_3_Consultation_Context_Item Action>
+        <_4_Consultation_Context_Item>Contradiction (historical allergy versus current transcript)</_4_Consultation_Context_Item>
+        <Note>ALTERNATE: extends Time 12 (UC-04). Historical diagnosis or allergy is never silently treated as current, and current speech is never silently overwritten by history. If tenant policy considers the conflict safety-critical, finalization is blocked until HITL resolution. Other non-dependent tasks continue.</Note>
+    </record>
+    <record>
+        <Time>13</Time>
+        <Consultation_Session_State>Paused</Consultation_Session_State>
+        <_1_Activity>Clinician pauses the session (step-out, call, or telehealth interruption) and must be able to return without losing transcript, extraction, or draft.</_1_Activity>
+        <_2_Action>Harness durably checkpoints consultation context. Transcription Agent stops accepting new audio. No re-extraction or re-retrieval is launched. If pause exceeds the tenant hard cap, the session auto-drafts what it has and will move to Awaiting Review rather than remaining paused forever.</_2_Action>
+        <_3_Consultation_Context_Item Action>Unchanged</_3_Consultation_Context_Item Action>
+        <_4_Consultation_Context_Item>All current session context (checkpoint)</_4_Consultation_Context_Item>
+        <Note>Pause does not re-transcribe prior speech. Timeout of the pause window is not clinical approval. Short-term artifacts remain until policy expiry after close.</Note>
+    </record>
+    <record>
+        <Time>14</Time>
+        <Consultation_Session_State>Streaming</Consultation_Session_State>
+        <_1_Activity>Clinician resumes within the retention window and continues the same encounter.</_1_Activity>
+        <_2_Action>Harness restores the checkpoint bit-for-bit and Transcription Agent accepts new audio only. Prior segments, work note, image items, and contradictions are not recomputed from scratch.</_2_Action>
+        <_3_Consultation_Context_Item Action>Unchanged</_3_Consultation_Context_Item Action>
+        <_4_Consultation_Context_Item>All current session context (restored)</_4_Consultation_Context_Item>
+        <Note>No re-transcription of prior speech, no re-extraction, no re-retrieval of already-fetched evidence. New speech continues the Part n loop from Time 7.</Note>
+    </record>
+    <record>
+        <Time>15</Time>
+        <Consultation_Session_State>Draining</Consultation_Session_State>
+        <_1_Activity>Clinician stops live transcription (record toggle off / socket closed) so the session can finish remaining agent work and then wait for human sign-off.</_1_Activity>
+        <_2_Action>Transcription Agent fires a finished signal. Perception drains: last partial is finalized if possible; no new segments are accepted. Master/Harness loop enters two-phase shutdown: drain agents, then await approval.</_2_Action>
+        <_3_Consultation_Context_Item Action>Superseded</_3_Consultation_Context_Item Action>
+        <_4_Consultation_Context_Item>Live partial transcription (closed for new input)</_4_Consultation_Context_Item>
+        <Note>Stopping capture is not approval and is not a signed note. Force-stop of still-running agents occurs only on drain timeout, and incomplete sections are marked incomplete rather than guessed.</Note>
+    </record>
+    <record>
+        <Time>16</Time>
+        <Consultation_Session_State>Draining</Consultation_Session_State>
+        <_1_Activity>Master loop waits for in-flight agents to finish, and will still accept clinician feedback, so the draft is as complete as the remaining budget allows.</_1_Activity>
+        <_2_Action>Master/Harness loop awaits NLP/Reasoning, Note-taking, Vision, and Verifier/Quality. On per-agent timeout it force-stops that agent, flags the section incomplete, and continues the drain. Periodically retriggers Note-taking only for remaining debounced context, not for new audio.</_2_Action>
+        <_3_Consultation_Context_Item Action>Added/Updated</_3_Consultation_Context_Item Action>
+        <_4_Consultation_Context_Item>Work note; Final Summary Part n</_4_Consultation_Context_Item>
+        <Note>Drain timeout is not clinical approval. A safe but incomplete draft stays unsigned. Degraded sections remain labeled. User-authored text is still protected during this final pass.</Note>
+    </record>
+    <record>
+        <Time>17</Time>
+        <Consultation_Session_State>Drafting</Consultation_Session_State>
+        <_1_Activity>Session needs a reconciled transcript so the candidate note is grounded on the final speech record rather than stale partials, without erasing how those partials arose.</_1_Activity>
+        <_2_Action>Transcription Agent plus NLP/Reasoning Agent reconcile partials into a final transcript. Final text may supersede partial segments. Provenance of superseded partials is retained. PHI sanitizer is applied to the reconciled transcript before the last Note-taking pass.</_2_Action>
+        <_3_Consultation_Context_Item Action>Superseded</_3_Consultation_Context_Item Action>
+        <_4_Consultation_Context_Item>Final transcript (partials retained as provenance)</_4_Consultation_Context_Item>
+        <Note>Partials cannot become signed facts merely because they existed; only reconciled content plus clinician approval can. Identity matching is re-checked against the encounter before the candidate note is offered for review.</Note>
+    </record>
+    <record>
+        <Time>18</Time>
+        <Consultation_Session_State>Drafting</Consultation_Session_State>
+        <_1_Activity>Before the clinician is asked to approve, the candidate note must be checked for safety-critical documentation errors and missing required template sections.</_1_Activity>
+        <_2_Action>Verifier/Quality and Compliance run medication, allergy, laterality, dosage, negation, and patient-identity checks. Missing required sections are reported. Additions and changes since the last review snapshot are highlighted. Open contradictions remain blocking if tenant policy says so.</_2_Action>
+        <_3_Consultation_Context_Item Action>Flagged</_3_Consultation_Context_Item Action>
+        <_4_Consultation_Context_Item>Quality findings; missing required sections; unresolved contradictions</_4_Consultation_Context_Item>
+        <Note>These checks do not sign the note. Image-derived suggestions that the clinician has not reviewed stay excluded from the candidate final note. Unsupported statements remaining after retrieval abstention stay flagged or are removed.</Note>
+    </record>
+    <record>
+        <Time>19</Time>
+        <Consultation_Session_State>Awaiting Review</Consultation_Session_State>
+        <_1_Activity>Clinician (or scribe under clinician responsibility) receives a review-ready candidate Final Summary so medico-legal sign-off can be explicit and section-level.</_1_Activity>
+        <_2_Action>Note-taking Agent presents the candidate with in-line citations, confidence per clause, and diffs since last review. Harness pauses durably. No EHR write and no style-memory update occur yet.</_2_Action>
+        <_3_Consultation_Context_Item Action>Unchanged</_3_Consultation_Context_Item Action>
+        <_4_Consultation_Context_Item>Candidate Final Summary</_4_Consultation_Context_Item>
+        <Note>The clinician can approve, edit, reject, or return each section for regeneration. Timeout in this state never substitutes for approval. If policy allows an unsigned draft on timeout, it remains visibly unsigned (see Time 24). After-visit patient information must not be emitted from this candidate.</Note>
+    </record>
+    <record>
+        <Time>20</Time>
+        <Consultation_Session_State>Awaiting Review</Consultation_Session_State>
+        <_1_Activity>Clinician reviews section by section, editing where judgment differs from the AI draft, so the stored note reflects human responsibility.</_1_Activity>
+        <_2_Action>Harness records per-section approve, edit, reject, or return-for-regen as separate audit events. Rejected or returned sections retrigger Note-taking and incremental Verifier/Quality only for those sections. Dependent contradictions are re-scanned after edits. Old AI wording is never silently restored.</_2_Action>
+        <_3_Consultation_Context_Item Action>Updated</_3_Consultation_Context_Item Action>
+        <_4_Consultation_Context_Item>Final Summary sections (HITL edits and decisions)</_4_Consultation_Context_Item>
+        <Note>Section-level decisions remain in the audit trail for QA (which sections were AI-accepted versus rewritten). All required sections must be approved before commit. Patient-facing after-visit text, if generated later, may use only clinician-approved content.</Note>
+    </record>
+    <record>
+        <Time>21</Time>
+        <Consultation_Session_State>Closed Approved</Consultation_Session_State>
+        <_1_Activity>Clinician has explicitly approved the required sections. The note may now be stored as the clinician's attested document, not as an AI signature.</_1_Activity>
+        <_2_Action>Compliance and Master/Harness loop perform a transactional, idempotent commit of the Final Summary plus provenance (human author, AI assistance, model version, input sources, approval event). Duplicate retry of the same approval must not create a second signed note. The system never signs on behalf of the clinician.</_2_Action>
+        <_3_Consultation_Context_Item Action>Finalized</_3_Consultation_Context_Item Action>
+        <_4_Consultation_Context_Item>Final Summary; provenance and approval event</_4_Consultation_Context_Item>
+        <Note>Timeout never substitutes for this approval. Unsigned drafts from other paths must not be upgraded to Closed Approved by a clock. QA can later open the provenance graph: transcript spans, retrieved snippets, tool calls, evaluator scores, and HITL edit history. Tenant retention TTLs apply per artifact class after commit.</Note>
+    </record>
+    <record>
+        <Time>22</Time>
+        <Consultation_Session_State>Closed Approved</Consultation_Session_State>
+        <_1_Activity>If the clinician opted in, the assistant may learn documentation style from this approved note so future drafts need fewer formatting edits, without learning patient facts.</_1_Activity>
+        <_2_Action>Note-taking personalization updates the writing-DNA profile only from clinician-approved phrasing deltas. Suggested preference changes are inspectable and reversible. Patient facts, medications, and identifiers are excluded. Preferences cannot override safety or tenant template rules.</_2_Action>
+        <_3_Consultation_Context_Item Action>Updated</_3_Consultation_Context_Item Action>
+        <_4_Consultation_Context_Item>Clinician style profile (writing DNA)</_4_Consultation_Context_Item>
+        <Note>Opt-in and reversible. Unapproved drafts must not update long-term style memory. DNA exemplar banks must not retain this patient's contributions as clinical content. A later consent revocation scrubs that patient's contributions from the exemplar bank per policy.</Note>
+    </record>
+    <record>
+        <Time>23</Time>
+        <Consultation_Session_State>Closed</Consultation_Session_State>
+        <_1_Activity>Session closes after attested commit. Short-term working artifacts expire so live context does not linger beyond policy, while the signed note and audit ledger remain.</_1_Activity>
+        <_2_Action>Harness archives the session, expires short-term context items per tenant TTL, writes an anonymized episodic summary if policy allows, and allows after-visit patient information only from clinician-approved content. Immutable audit snapshot is retained.</_2_Action>
+        <_3_Consultation_Context_Item Action>Finalized</_3_Consultation_Context_Item Action>
+        <_4_Consultation_Context_Item>Session archive; expired short-term context; after-visit information (approved content only)</_4_Consultation_Context_Item>
+        <Note>Closed here means Closed Approved has already occurred (Time 21). This is not a timeout close. Patient continuity for the next visit uses the attested note and labeled imported history, not raw live partials.</Note>
+    </record>
+    <record>
+        <Time>24</Time>
+        <Consultation_Session_State>Timed Out</Consultation_Session_State>
+        <_1_Activity>All drain and drafting tasks finished, but no clinician approval arrived before the session approval timeout. The clinician and care team must be notified without the system inventing a signature.</_1_Activity>
+        <_2_Action>Master/Harness loop retains an unsigned draft per retention policy, issues notification, and does not write a signed EHR note. Status becomes Timed Out (or remains Awaiting Review if tenant policy keeps a review queue). Long-term writing-DNA memory is not updated.</_2_Action>
+        <_3_Consultation_Context_Item Action>Finalized</_3_Consultation_Context_Item Action>
+        <_4_Consultation_Context_Item>Unsigned draft (visibly unsigned)</_4_Consultation_Context_Item>
+        <Note>ALTERNATE: replaces Times 20-23 (UC-05). Timeout never substitutes for clinical approval. The draft stays visibly unsigned. State is Timed Out or Awaiting Review, not Closed Approved. After-visit patient information is not generated from the unapproved draft. A later explicit approval may still commit idempotently from this unsigned snapshot; the clock itself never signs.</Note>
+    </record>
+</dataset>
