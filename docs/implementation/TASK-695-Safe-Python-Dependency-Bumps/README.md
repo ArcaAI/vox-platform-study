@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | `Review` |
+| **Status** | `Completed` |
 | **Type** | `infrastructure` (dependency hygiene) |
 | **Ticket number** | TASK-695 |
 | **Scope** | Single uv workspace (`pyproject.toml` members + root `uv.lock`). No TS / pnpm / Compose / image-tag changes. No commit. |
@@ -152,9 +152,16 @@ Smoke import (`SMOKE_OK`): fastapi 0.141.1, uvicorn 0.52.3, pydantic-settings 2.
 
 onnxruntime 1.28 and numba 0.67 were **kept**: they did not move torch/transformers. The nemo extra still resolves onnxruntime 1.27 / numba 0.66.
 
+### Verification (2026-08-16)
+
+Re-checked the workspace against this ticket's scope (allowlisted floors + lock + denylist-at-the-time). All TASK-695 floors remain in `apps/{stt,smr,guardrail,nlp,harness,tts}/pyproject.toml` and `packages/{py-env,py-otel}/pyproject.toml`. `uv.lock` still has those allowlisted versions (fastapi 0.141.1, uvicorn 0.52.3, pydantic-settings 2.15.0, orjson 3.12.0, redis 8.1.0, sqlalchemy 2.0.52, OTel 1.44.0 / 0.65b0, mypy 2.3.1, ruff 0.16.3, onnxruntime 1.28.0+1.27.0, numba 0.67.0+0.66.0). Root `pyproject.toml` still declares `stt[ml]` vs `stt[nemo]` as conflicting extras. `parler-tts` is still not a lock member.
+
+Later tickets moved packages this pass denylisted: TASK-697 pinned the nemo numba/onnxruntime upper bounds so the fork cannot collapse; TASK-700 took openai 3.1.0 (SMR + `harness[eval]`; `eval-ragas` keeps 2.54.0), mcp 2.0.0, temporalio 1.31.0, qdrant-client 1.19.0. Those are out of this ticket's scope. The denylist table above is the 2026-08-15 end-of-pass snapshot.
+
 ## Change History
 
 | Date | Change |
 |---|---|
 | 2026-08-15 | Ticket opened as TASK-694 (TASK-692 taken). Floors raised; `uv lock` succeeded; denylist intact. Renumbered to **TASK-695** after TASK-694 was claimed by the infra pin ticket. Status `Review`. |
 | 2026-08-15 | Follow-up: `arcaenv` had no `mypy` / service trees. Installed locked `mypy==2.3.1` and `setup-python-env.sh --install` (no ML extras). Cast `librosa.resample` in STT `_resample` so mypy 2.3 `warn_return_any` is clean. `pnpm typecheck:py` green (py-env 5, py-otel 2, stt 134, smr 61, nlp 45, guardrail 32, harness 100, tts 34). |
+| 2026-08-16 | Verified completion against current implementation: TASK-695 allowlisted floors and lock versions still present; ml/nemo extras still split. Subsequent TASK-697/700 moved this ticket's denylist items (not leftovers here). Status `Completed`. |

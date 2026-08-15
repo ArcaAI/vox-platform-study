@@ -2,9 +2,9 @@
 
 | Field | Value |
 |---|---|
-| **Status** | `Review` |
+| **Status** | `Completed` |
 | **Type** | `infrastructure` |
-| **Ticket number** | TASK-702 (parent). Children: TASK-703 / TASK-705 reserved for the TS sibling; Temporal hop is this ticket (TASK-704 folded here). |
+| **Ticket number** | TASK-702 (parent). Children: TASK-703 / TASK-705 (TS sibling), TASK-706 (Python sibling). Temporal hop is this ticket (TASK-704 folded here). |
 | **Classification** | Parent playbook for leftover majors after TASK-691–701. Implements the Temporal 1.29 → 1.30.4 → 1.31.2 volume hop runbook. No lockfile edits. |
 | **Date** | 2026-08-15 |
 
@@ -23,17 +23,17 @@ TASK-691 through TASK-701 landed the safe in-range, residual-security, and coord
 | Order | Blocker | Gate | Owner |
 |---|---|---|---|
 | 1 | Temporal 1.29 volume → 1.31.2 | Hop **1.30.4** then **1.31.2**; never wipe | **This ticket** (TASK-704 folded here) |
-| 2 | `harness[eval-ragas]` on openai 3 | `instructor` allows `openai>=3` | Python sibling |
+| 2 | `harness[eval-ragas]` on openai 3 | `instructor` allows `openai>=3` | Python sibling [TASK-706](../TASK-706-Python-Blocker-Gates/README.md) |
 | 3 | TypeScript 7 | Nest CLI drops the legacy compiler API | later / watch |
 | 4 | pdfjs 6 | react-pdf drops the exact `5.4.296` pin | later / watch |
-| 5 | TanStack Table 9 | Rewrite `VirtualizedDataGrid` | TS sibling [TASK-703](../TASK-703-TanStack-Table-9/README.md) |
-| 6 | cryptography 49 | `presidio-anonymizer` allows `>=49` | Python sibling |
-| 7 | langchain 1.3.9+ | `websockets` 16 vs `langgraph-sdk` `<16` | Python sibling |
-| 8 | chalk 6 | `packages/tools` `moduleResolution` bundler / Node16 | TS sibling [TASK-705](../TASK-705-Chalk-6-ModuleResolution/README.md) |
+| 5 | TanStack Table 9 | Rewrite `VirtualizedDataGrid` | TS sibling [TASK-703](../TASK-703-TanStack-Table-9-VirtualizedDataGrid/README.md) |
+| 6 | cryptography 49 | `presidio-anonymizer` allows `>=49` | Python sibling [TASK-706](../TASK-706-Python-Blocker-Gates/README.md) |
+| 7 | langchain 1.3.9+ | `websockets` 16 vs `langgraph-sdk` `<16` | Python sibling [TASK-706](../TASK-706-Python-Blocker-Gates/README.md) |
+| 8 | chalk 6 | `packages/tools` `moduleResolution` bundler / Node16 | TS sibling [TASK-705](../TASK-705-Tools-ModuleResolution-Chalk-6/README.md) |
 | 9 | torch / NeMo | pyannote allows `torch>=2.9` or a NeMo 3 extra | later |
 | 10 | Vault 2, MinIO AIStor, vLLM | product / ops | later |
 
-TASK-703 and TASK-705 are **reserved** (do not steal those numbers). Their READMEs are created by the TS sibling; the links above are the expected paths. Temporal hop is **not** a separate child README — it lives in the [Temporal volume hop](#temporal-volume-hop-order-1) section below.
+TASK-703, TASK-705, and TASK-706 have their own READMEs (sibling-owned). Temporal hop is **not** a separate child README — it lives in the [Temporal volume hop](#temporal-volume-hop-order-1) section below.
 
 ### Playbook principles
 
@@ -182,7 +182,7 @@ docker exec hope-postgres psql -U postgres -d temporal_visibility -c \
 
 ## Implementation Summary
 
-Parent playbook and Temporal hop runbook are in this README. Status `Review` (runbook complete). Orders 2–10 remain open for their owners; this ticket does not bump those packages.
+Parent playbook and Temporal hop runbook are in this README. Status `Completed` (2026-08-16 verification). Orders 2–10 remain sibling- or later-owned; this ticket did not bump those packages.
 
 ### What this ticket implemented
 
@@ -216,9 +216,10 @@ Parent playbook and Temporal hop runbook are in this README. Status `Review` (ru
 
 | Ticket | Path | Role |
 |---|---|---|
-| TASK-703 | `docs/implementation/TASK-703-TanStack-Table-9/README.md` | Reserved — TS sibling, Table 9 / `VirtualizedDataGrid` |
+| TASK-703 | `docs/implementation/TASK-703-TanStack-Table-9-VirtualizedDataGrid/README.md` | TS sibling — Table 9 / `VirtualizedDataGrid` |
 | TASK-704 | *(folded into this README)* | Temporal volume hop — no separate child file |
-| TASK-705 | `docs/implementation/TASK-705-Chalk-6-ModuleResolution/README.md` | Reserved — TS sibling, chalk 6 / `packages/tools` resolution |
+| TASK-705 | `docs/implementation/TASK-705-Tools-ModuleResolution-Chalk-6/README.md` | TS sibling — chalk 6 / `packages/tools` resolution |
+| TASK-706 | `docs/implementation/TASK-706-Python-Blocker-Gates/README.md` | Python sibling — openai/instructor, cryptography, langchain, torch/NeMo gates |
 
 ---
 
@@ -228,3 +229,4 @@ Parent playbook and Temporal hop runbook are in this README. Status `Review` (ru
 |---|---|
 | 2026-08-15 | Created TASK-702 parent playbook. Documented leftover blockers in order. Implemented Temporal 1.29 → 1.30.4 → 1.31.2 hop runbook, compose comment, and print-only `pnpm infra:dev:temporal-hop`. Folded TASK-704 into this ticket. Status `Review`. |
 | 2026-08-15 | Moved hop comments from generated `.env.sample` into `apps/harness/.env.sample` (env:sync source) so `scripts/__tests__/env-sync.test.ts` stays green. |
+| 2026-08-16 | Verified completion against current implementation: Temporal hop runbook, compose comment, print-only `pnpm infra:dev:temporal-hop`, and cross-links are present. Sibling leftovers tracked in TASK-703 / TASK-705 / TASK-706 (or later/watch). Status `Completed`. |

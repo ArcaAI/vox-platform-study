@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | `Review` |
+| **Status** | `Completed` |
 | **Type** | `infrastructure` |
 | **Ticket number** | TASK-701 (TASK-699 / TASK-700 reserved for sibling TS/Python agents) |
 | **Classification** | Coordinated image-line upgrades so compose servers match Python `qdrant-client` 1.19 and `temporalio` 1.31. Optional Grafana 13 / docker 28. No lockfile edits. |
@@ -169,6 +169,16 @@ Untouched by policy: `pnpm-lock.yaml`, `package.json`, `uv.lock`, Python `pyproj
 
 Verification: Hub API + imagetools + `docker compose config`. No compose `down -v`. No pipeline run (no commit / push).
 
+### Completion verification (2026-08-16)
+
+Re-checked live pins against this ticket’s scope (I1–I4 required/optional; I5–I6 skip). `docker compose … config --quiet` succeeded for:
+
+- `infrastructure/docker/docker-compose.yml` + `docker-compose.dev.yml` (`--profile temporal --profile observability`)
+- `tests/docker-compose.test.yml`
+- `apps/smr/docker-compose.yml` (`--profile monitoring`)
+
+Postgres (`timescale/timescaledb-ha:pg18-all`), Redis (`redis:8-alpine`), k3s, and ArgoCD were **not** in this ticket’s requirement list. Documented leftovers (`QDRANT-SETUP.md` v1.7.4, research runner `docker:27`, example CI `docker:24.0`) remain out of live compose/CI.
+
 ---
 
 ## Change History
@@ -177,3 +187,4 @@ Verification: Hub API + imagetools + `docker compose config`. No compose `down -
 |---|---|
 | 2026-08-15 | Created TASK-701. Landed I1 Qdrant v1.19.0, I2 Temporal server/admin-tools 1.31.2 + UI 2.53.1 (replaced auto-setup), I3 Grafana 13.1.2, I4 docker:28. Skipped I5 Vault 2 / MinIO / vLLM and I6 OTEL / python patch freeze. Status `Review`. |
 | 2026-08-15 | Temporal 1.29 volume hop runbook moved to [TASK-702](../TASK-702-Dependency-Blocker-Resolutions/README.md) (`pnpm infra:dev:temporal-hop`). Image pins unchanged. |
+| 2026-08-16 | Verified completion against current implementation: I1–I4 pins present, I5–I6 still skipped as scoped, compose config clean. Status `Completed`. |

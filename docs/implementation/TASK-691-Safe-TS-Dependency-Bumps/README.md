@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | `Review` |
+| **Status** | `Completed` |
 | **Type** | `infrastructure` |
 | **Ticket number** | TASK-691 |
 | **Classification** | Coordinated in-range TypeScript/Node dependency bump (no major-breaking upgrades) |
@@ -185,8 +185,13 @@ Not run (too heavy / out of scope): full-repo `pnpm test:unit`, integration, API
 - `apps/admin-console/package.json`, `apps/api/package.json`, `apps/compat-playground/package.json`, `apps/example/package.json`
 - `packages/{agentic-sdk-v2,applications,config-eslint,config-tailwind,database,domains,exceptions,json-schema-subset,logger,med-ner,noise-filter,pipeline,room,stt,tools,ui,utils,vad,vox-codegen,vox-node}/package.json`
 - `docs/implementation/TASK-691-Safe-TS-Dependency-Bumps/README.md`
+- `turbo.json` (`MIGRATION_COMPAT_BASE` via `pnpm env:sync` follow-up)
 
 No Python files, `uv.lock`, or docker-compose image pins were edited.
+
+### Completion verification (2026-08-16)
+
+Reviewed against the current tree (not re-run of the original suites). Every TASK-691 scoped floor is still present at or above the claimed version. Later tickets (TASK-696 / TASK-699) raised some packages further, including denylist majors this ticket correctly left alone. Prisma generated client `clientVersion` is **7.9.1**. Playwright CI image is `v1.62.1-noble` in both `.gitlab/ci/test.yml` jobs. Workspace overrides pin `react` / `react-dom` **19.2.8** and `@types/react*`. Nest Vitest Oxc decorator pin is in place. `packages/stt` pins React 19.2.8. `turbo.json` includes `MIGRATION_COMPAT_BASE`. Explicit leftovers remain out of this ticket’s scope.
 
 ---
 
@@ -196,3 +201,4 @@ No Python files, `uv.lock`, or docker-compose image pins were edited.
 |---|---|
 | 2026-08-15 | Ticket created; allowlisted floors applied; lockfile refreshed; Prisma 7.9.1 generated; Oxc decorator pin added for Vitest 4.1.10; unit tests/builds captured. Status → Review. |
 | 2026-08-15 | Follow-up from `pnpm test:unit`: (1) `packages/stt` still resolved `react@19.2.7` against `react-dom@19.2.8` because it had no matching React pin (unlike `vad`/`med-ner`). Added `react`/`react-dom` `^19.2.8` as stt devDependencies and workspace overrides `react`/`react-dom` `19.2.8`. (2) Unrelated env-sync drift: TASK-693's `scripts/check-migration-compat.ts` reads `MIGRATION_COMPAT_BASE`, so the generator emits it, but `turbo.json` was never re-synced. Ran `pnpm env:sync` to restore the key (160 → 161 `globalEnv` entries). |
+| 2026-08-16 | Completion review against current implementation: claimed floors, lockfile resolutions, Prisma 7.9.1 client, Playwright 1.62.1 image, React/types overrides, stt React pin, Oxc decorator pin, and documented unit-test/build evidence all present. Leftovers stay TASK-696/699. Status → Completed. |

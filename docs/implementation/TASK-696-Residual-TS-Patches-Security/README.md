@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | `Review` |
+| **Status** | `Completed` |
 | **Type** | `infrastructure` |
 | **Ticket number** | TASK-696 |
 | **Classification** | Residual in-range TypeScript/Node patches, safe minors, and same-major advisory overrides. No ecosystem majors. No commit. |
@@ -220,10 +220,23 @@ Not run (too heavy / out of scope): full-repo `pnpm test:unit`, integration, API
 
 No Python files, `uv.lock`, or docker-compose image pins were edited by this ticket.
 
+### Verification against current tree (2026-08-16)
+
+696-scoped work is still present. Later tickets (TASK-699+) took some denylist majors (Vite 8, ESLint 10, BullMQ 6, OTEL 0.221, etc.); those are **out of scope** for this ticket. The leftover tables above remain the **2026-08-15 snapshot** at close of this pass.
+
+Re-check:
+
+- `package.json` `packageManager` is `pnpm@10.34.5`; `.gitlab/corepack/pnpm-10.34.5.tgz` exists; `PNPM_VERSION=10.34.5` in `apps/{api,admin-console,compat-playground}/Dockerfile`; CI uses the 10.34.5 corepack tarball; Playwright image still `mcr.microsoft.com/playwright:v1.62.1-noble`.
+- `pnpm-workspace.yaml` still has the TASK-696 same-major advisory overrides (`brace-expansion` 1.1.18 / 2.1.4 / 5.0.9, `socket.io-parser` 4.2.7, `ip-address` 10.5.0, `fast-uri` 3.1.5, `js-yaml` 4.3.1 / 5.3.0, `undici` 6.28.0 / 7.29.0, `mermaid` 11.16.1, `dompurify` 3.4.13, `fast-xml-parser` 5.10.1) plus React **19.2.8**.
+- Direct floors still at or above the 696 targets (e.g. `@opentelemetry/sdk-metrics` `^2.10.0`, `@base-ui/react` `^1.7.0`, `ai` `^7.0.66`). `apps/quick-compat-app` React is `^19.2.8`.
+- `pnpm why react` → **Found 1 version of react** (`react@19.2.8`). No `19.2.7` outside historical ticket docs.
+- `pnpm audit` now: **11 vulnerabilities** (2 low / 3 moderate / 6 high). vs 12 at 696 close — `extract-zip` dropped after later puppeteer work. Remaining highs still match the documented denylist / no-patch set: `linkify-it`, `adm-zip`, `sharp` 0.34.5, nested `semver`. `esbuild` 0.27.7 (low) still nests.
+
 ---
 
 ## Change History
 
 | Date | Change |
 |---|---|
+| 2026-08-16 | Completion verified against current implementation (lockfile overrides, pnpm 10.34.5 pin, React 19.2.8, remaining advisories). Leftover denylist table left as 2026-08-15 snapshot; later TASK-699+ majors not attributed to this ticket. Status → Completed. |
 | 2026-08-15 | Ticket created. Residual TS scan classified; in-range floors + same-major advisory overrides applied; pnpm 10.34.5 pin; lockfile refreshed; stt/ui/api unit tests captured. Status → Review. |

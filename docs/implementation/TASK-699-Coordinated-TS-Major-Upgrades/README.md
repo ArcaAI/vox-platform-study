@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | `Review` |
+| **Status** | `Completed` |
 | **Type** | `infrastructure` |
 | **Ticket number** | TASK-699 |
 | **Classification** | Coordinated TypeScript/Node **major** upgrades by compatibility set. Revert a whole set if any member fails. No commit. |
@@ -42,6 +42,8 @@ Sets **A–F, H, and most of I/J** landed. **G skipped** (Nest CLI vs TypeScript
 `@arcaai/ui typecheck` follow-up (2026-08-15): leftover v9 adapter + `^9.1.2` pin leaked `table-core@9.1.2` into `tsc`. Restored a single **8.21.3** tree and fixed axe `Page` via direct `playwright-core`. `tsc --noEmit` is **0 errors**.
 
 `packages/applications` was rebuilt so API Vitest loads the openid-client v6 CJS emit (`require('openid-client/passport')`).
+
+**2026-08-16 completion check:** Sets A–F, H, and the taken I/J families are still in the workspace and lockfile (jsdom 30.0.1, jest-dom 7.0.1, ESLint 10.8.1, Vite 8.2.1, `@types/node` 26.2.0, OTEL 0.221 / nestjs-core 0.67, BullMQ 6.1.1 + ioredis 6.0.0, openid-client 6.8.5 + msal-node 5.5.0, day-picker 10.0.1, dropzone 20.1.0, motion 13.1.0, maplibre 6.3.0, nanoid 6.0.1, lexical 0.49.0, puppeteer 25.7.0, ncc 0.45.0, real-require 1.0.0, studio-core 0.33.0). Compatibility call-sites remain (ESLint `context.sourceCode`, BullMQ `getBackend().client` + no `'paused'` job type, openid-client v6 helpers + `require('openid-client/passport')`, calendar `month_grid`, `import * as MapLibreGL`, `STUDIO_VERSION = '0.33.0'`). G (TypeScript 7), pdfjs 6, and unused rollup plugins stay skipped as scoped. Table 9 and chalk 6 were deferred from this ticket and later landed by TASK-703 / TASK-705. Hard keeps hold: Prisma 7.9.1, Next 16.3.1, Nest 11.2.1, Vitest 4.1.10, React 19.2.8 (one version), Playwright 1.62.1, pnpm 10.34.5, workspace TypeScript 5.9.3 / admin-console 6.0.3. `pnpm why esbuild` is one version (`0.28.2`; ticket-era note was `0.28.1`).
 
 ---
 
@@ -85,9 +87,9 @@ Sets **A–F, H, and most of I/J** landed. **G skipped** (Nest CLI vs TypeScript
 ## Remaining blockers
 
 1. **TypeScript 7** — Nest CLI 11 still requires the legacy TS compiler API. Do not mix 5/6/7. Admin-console stays on 6.0.3; workspace stays 5.9.3.
-2. **TanStack Table 9** — VirtualizedDataGrid needs a real `useTable` + `tableFeatures`/`stockFeatures` migration, not the legacy adapter.
+2. **TanStack Table 9** — deferred to [TASK-703](../TASK-703-TanStack-Table-9-VirtualizedDataGrid/README.md) (this ticket reverted the adapter bump). Subsequently landed there as `^9.1.2`.
 3. **pdfjs-dist 6** — blocked on a react-pdf release that supports pdfjs 6.
-4. **chalk 6** — blocked on tools `moduleResolution` (classic). Bump together with node16/nodenext/bundler, or keep chalk 5.
+4. **chalk 6** — deferred to [TASK-705](../TASK-705-Tools-ModuleResolution-Chalk-6/README.md) (this ticket left chalk 5 because tools classic resolution). Subsequently landed there as `^6` / `6.0.0`.
 5. **pnpm 11 / React 20** — not in this ticket; React must stay 19.2.8.
 6. **eslint-plugin-react@7.37.5** vs ESLint 10 — pre-existing peer warning; no plugin-react 10.
 7. **jsdom 30 engines** vs CI/local Node 24.12.0 (needs ≥24.15.0 for a clean engines match).
@@ -100,10 +102,10 @@ Sets **A–F, H, and most of I/J** landed. **G skipped** (Nest CLI vs TypeScript
 ## Verification (selected)
 
 - `pnpm why react` → **Found 1 version of react** (`react@19.2.8`).
-- `pnpm why esbuild` → **Found 1 version of esbuild** (`esbuild@0.28.1`).
+- `pnpm why esbuild` → **Found 1 version of esbuild** (`esbuild@0.28.2` as of 2026-08-16; ticket-era note was `0.28.1`).
 - `@arcaai/ui typecheck` (`tsc --noEmit`) → **0 errors** (2026-08-15; after table-core 8.21.3 realign + `playwright-core` `Page` import).
 - `@arcaai/ui test` → 242 files / 656 tests (after I families that landed, and after table 8 revert + typecheck follow-up).
-- `pnpm why @tanstack/react-table` / `table-core` (from `packages/ui`) → **Found 1 version** each (`8.21.3`).
+- `pnpm why @tanstack/react-table` / `table-core` (from `packages/ui`) → **Found 1 version** each (`8.21.3`) at ticket close; current pin is `9.1.2` via TASK-703.
 - `@arcaai/applications test` → exit 0 (post Set H).
 - `@arcaai/api test` → 200 passed / 2 skipped files; **2874 passed / 4 skipped** tests (post Set H rebuild + Set J).
 - `@arcaai/api typecheck` (`tsc --noEmit`) → **0 errors** after the 2026-08-15 test-file follow-up.
@@ -121,3 +123,4 @@ Sets **A–F, H, and most of I/J** landed. **G skipped** (Nest CLI vs TypeScript
 | 2026-08-15 | Follow-up: `pnpm typecheck:all` failed `@arcaai/ui#build` DTS — `streamdown@2.5.0` `PluginConfig` resolved Shiki 4 langs while `@streamdown/code@1.1.1` nested Shiki 3.23.0. Added workspace override `shiki: 4.4.3`. `pnpm why shiki` → one version. `@arcaai/ui build` DTS green. |
 | 2026-08-15 | Follow-up: `@arcaai/ui typecheck` was 149 errors. Root cause: TASK-703 WIP left `packages/ui/package.json` on `@tanstack/react-table@^9.1.2` and a v9 `table-features.ts` adapter, so `tsc` resolved `@tanstack/table-core@9.1.2` against v8 call sites. First revert pass left the adapter + `^9.1.2` pin in place. Finished by restoring HEAD v8 sources (`useReactTable` / `getCoreRowModel`), deleting `table-features.ts`, pinning `^8.21.3` and refreshing the lockfile. Playwright CT `Page`: direct `playwright-core@^1.62.1`. Missing `RowData` import in `data-grid-faceted-filter.tsx`. `@arcaai/ui typecheck` 0 errors. API `tsc` still pre-existing (not this change). |
 | 2026-08-15 | Follow-up: `@arcaai/api typecheck` 16 errors in 4 test files. `import.meta` → `__dirname`; harness tests pass `liveDocumentationService`; `0n` → `BigInt(0)` (Nest `target: ES6`); `StreamSessionResponse` cast via `unknown`; pipeline mock includes `getAll`. |
+| 2026-08-16 | Completion review against current repo: scoped A–F/H and taken I/J pins + call-sites still present; G / pdfjs 6 / rollup plugins still skipped; table 9 and chalk 6 remain deferred (later TASK-703 / TASK-705). Hard keeps and `pnpm why react` (one `19.2.8`) hold. Status → Completed. |

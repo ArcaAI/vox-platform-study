@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | `Review` |
+| **Status** | `Completed` |
 | **Type** | `infrastructure` (dependency hygiene) |
 | **Ticket number** | TASK-697 |
 | **Scope** | Residual in-range Python patches, safe minors, and same-major security fixes on the single uv workspace (`uv.lock`). No TS / pnpm / Compose / image-tag changes. No commit. |
@@ -202,8 +202,13 @@ Environment: conda `arcaenv`, Python 3.11.15. Did **not** `uv sync` the whole wo
 | rich 14 → 15 / websockets 16 → 17 / portalocker 3 → 4 / xxhash 3 → 4 / rfc3986 1 → 2 | Majors |
 | Co-resolving stt[ml] + stt[nemo] | Forbidden; extras stay conflicting |
 
+### Verification (2026-08-16)
+
+Re-checked against the current workspace. TASK-697 scoped floors and same-major security pins are still present. `conda run -n arcaenv uv audit --frozen` still reports **33** known vulnerabilities in 478 packages; leftover names match the table above (cryptography / setuptools / langchain / ragas / diskcache / ecdsa / lightning / torch / transformers). Later **TASK-700** intentionally moved some 697 denylist packages (`openai` 3.1.0 on SMR/`harness[eval]`, `mcp` 2.0.0, `temporalio` 1.31.0, `qdrant-client` 1.19.0). `gitpython` is no longer in `uv.lock` (`wandb` 0.28.2 dropped it). `python-json-logger` 4.2.0 appeared on PyPI 2026-08-15 after this pass; it is a non-security minor, not a 697 leftover.
+
 ## Change History
 
 | Date | Change |
 |---|---|
 | 2026-08-15 | Ticket opened as TASK-697. Residual patches + same-major security locked; nemo numba/onnxruntime split pinned; denylist intact. Status `Review`. |
+| 2026-08-16 | Verified completion against current implementation: scoped `pyproject.toml` floors, lock pins, ml/nemo split, and audit leftovers still match. Status `Completed`. |

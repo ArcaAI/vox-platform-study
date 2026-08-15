@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | `Review` |
+| **Status** | `Completed` |
 | **Type** | `infrastructure` (dependency hygiene) |
 | **Ticket number** | TASK-706 |
 | **Scope** | Re-scan the four leftover Python blockers after TASK-700. Bump only if PyPI unblocks. Own `uv.lock`. No TS / pnpm / Compose / commit. |
@@ -109,7 +109,7 @@ Root `pyproject.toml` still declares uv conflicts: `harness[eval-ragas]` vs `smr
 
 ### Files changed
 
-None (`uv.lock` and all `pyproject.toml` untouched).
+None (`uv.lock` and all `pyproject.toml` untouched). This ticket is a re-scan + watch write-up; the TASK-700 pins and uv conflicts stay as the working gates.
 
 ### Test evidence
 
@@ -117,13 +117,16 @@ Environment: conda `arcaenv`. No extras touched, so no harness eval-ragas / MCP 
 
 | Suite | Result |
 |---|---|
-| `pnpm py-env:test` | **73 passed** in 1.27s |
-| `pnpm py-otel:test` | **17 passed** in 0.01s |
+| `pnpm py-env:test` | **73 passed** (2026-08-15: 1.27s; re-run 2026-08-16: 0.93s) |
+| `pnpm py-otel:test` | **17 passed** (2026-08-15: 0.01s; re-run 2026-08-16: 0.02s) |
 
 Harness eval-ragas / MCP and guardrail auth/health were **not** run — those extras did not move. `arcaenv` was missing `pytest` / `hope-otel` at the start of this pass (collection failed); pytest 9.1.1 + editable `hope-otel` were installed into conda only so the scripts could run. That is env repair, not a lock change.
+
+2026-08-16 completion check: PyPI + lock still match the scoreboard (instructor 1.15.4 `openai<3`; presidio-anonymizer 2.2.364 `cryptography<49`; langgraph-sdk 0.4.2 `websockets<16`; pyannote.audio 4.0.7 `torch>=2.8.0`). No unblocked bump was skipped.
 
 ## Change History
 
 | Date | Change |
 |---|---|
 | 2026-08-15 | Ticket opened as TASK-706. Re-scanned Gates A–D against post-700 lock + PyPI + upstream `main`. All four still blocked. No lock edits. Status `Review`. |
+| 2026-08-16 | Verified completion against current lock, PyPI metadata, uv conflicts, and `pnpm py-env:test` / `py-otel:test` (73 + 17 passed). All four gates still blocked; no leftover scoped work. Status `Completed`. |
