@@ -7,7 +7,7 @@ import { useAudioSources } from '../use-audio-sources';
  *
  * This is the load-bearing part of lane A on the app side: whatever `sources`
  * shows must be exactly what the SDK is asked to capture, in the same order.
-*/
+ */
 
 const decodeGroup = vi.hoisted(() => ({
   dispose: vi.fn(),

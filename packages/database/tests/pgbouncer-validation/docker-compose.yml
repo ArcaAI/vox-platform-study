@@ -14,10 +14,9 @@
 #
 # Notes
 # ─────
-# * PgBouncer image pinned to edoburu/pgbouncer:v1.25.1-p0 (latest 1.25.x at
-#   plan execution; the originally-spec'd 1.25.0 tag is not published —
-#   v1.25.1-p0 is the actual minimum >= 1.21 release that satisfies the
-#   max_prepared_statements constraint).
+# * PgBouncer image pinned to edoburu/pgbouncer:v1.25.2-p0 (latest 1.25.x;
+#   the originally-spec'd 1.25.0 tag is not published — v1.25.1-p0 was the
+#   previous pin and still satisfies max_prepared_statements / PgBouncer ≥ 1.21).
 # * The edoburu image consumes DATABASE_URL (URL form), not individual
 #   DB_HOST/DB_PORT/DB_USER/DB_PASSWORD/DB_NAME vars. The plan's earlier
 #   alternative-form was a guess; this Compose uses the actual schema.
@@ -70,7 +69,7 @@ services:
       start_period: 5s
 
   pgbouncer:
-    image: edoburu/pgbouncer:v1.25.1-p0
+    image: edoburu/pgbouncer:v1.25.2-p0
     container_name: pgbv-pgbouncer
     restart: unless-stopped
     depends_on:

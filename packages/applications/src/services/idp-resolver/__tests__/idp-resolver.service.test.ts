@@ -2,22 +2,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { BadRequestException } from '@nestjs/common';
 import { IdpProtocol, IdpStatus, TenantIdentityProviderFactory } from '@arcaai/domains';
 
-const discoverMock = vi.fn();
+const discoverMock = vi.hoisted(() => vi.fn());
+const allowInsecureRequestsMock = vi.hoisted(() => vi.fn());
 
-vi.mock('openid-client', () => {
-  class FakeClient {
-    options: any;
-    constructor(options: any) {
-      this.options = options;
-    }
-  }
-  return {
-    Issuer: {
-      discover: (...args: unknown[]) => discoverMock(...args),
-    },
-    __FakeClient: FakeClient,
-  };
-});
+vi.mock('openid-client', () => ({
+  discovery: (...args: unknown[]) => discoverMock(...args),
+  allowInsecureRequests: (...args: unknown[]) => allowInsecureRequestsMock(...args),
+}));
 
 const samlConstructorMock = vi.fn();
 
@@ -41,17 +32,15 @@ import { RedisSamlCacheProvider } from '../saml-redis-cache-provider';
 const TENANT = 'tenant-abc';
 const REDIRECT_URI = 'https://api.hope.dev/auth/sso/callback';
 
-function makeIssuer() {
-  return {
-    issuer: 'https://acme.okta.com',
-    Client: class {
-      options: any;
-      constructor(options: any) {
-        this.options = options;
-      }
-    },
-  };
+function makeConfig(clientId = 'client-abc') {
+  return { clientId };
 }
+
+const expectedOidcMetadata = (clientSecret: string, redirectUri = REDIRECT_URI) => ({
+  client_secret: clientSecret,
+  redirect_uris: [redirectUri],
+  response_types: ['code'],
+});
 
 const fakeSecrets = () => ({
   decrypt: vi.fn(async (ct: string) => Buffer.from(ct.split(':')[2] ?? 'plaintext-secret', 'utf8')),
@@ -111,26 +100,21 @@ const enabledSamlProvider = (overrides: Record<string, unknown> = {}) =>
 describe('IdpResolverService.buildClient', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    discoverMock.mockResolvedValue(makeIssuer());
+    discoverMock.mockImplementation(async (_server: URL, clientId: string) => makeConfig(clientId));
   });
 
   it('discovers the issuer and constructs a client with the given credentials', async () => {
     const { svc } = makeService();
     const client = await svc.buildClient('https://acme.okta.com', 'client-abc', 'secret-xyz', REDIRECT_URI);
-    expect(discoverMock).toHaveBeenCalledWith('https://acme.okta.com');
-    expect((client as any).options).toMatchObject({
-      client_id: 'client-abc',
-      client_secret: 'secret-xyz',
-      redirect_uris: [REDIRECT_URI],
-      response_types: ['code'],
-    });
+    expect(discoverMock).toHaveBeenCalledWith(new URL('https://acme.okta.com'), 'client-abc', expectedOidcMetadata('secret-xyz'));
+    expect(client).toMatchObject({ clientId: 'client-abc' });
   });
 });
 
 describe('IdpResolverService.resolveForTenant (repository read, NOT AppSettingsService)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    discoverMock.mockResolvedValue(makeIssuer());
+    discoverMock.mockImplementation(async (_server: URL, clientId: string) => makeConfig(clientId));
   });
 
   it('throws when no enabled provider is configured for the tenant', async () => {
@@ -150,7 +134,7 @@ describe('IdpResolverService.resolveForTenant (repository read, NOT AppSettingsS
     repo.findEnabledByTenantAndProtocol.mockResolvedValue(enabledProvider());
     const { client, provider } = await svc.resolveForTenant(TENANT, IdpProtocol.OIDC, REDIRECT_URI);
     expect(secrets!.decrypt).toHaveBeenCalledWith('vault:v1:c2VjcmV0');
-    expect((client as any).options.client_id).toBe('client-abc');
+    expect((client as any).clientId).toBe('client-abc');
     expect(provider.tenantId).toBe(TENANT);
   });
 
@@ -176,7 +160,7 @@ describe('IdpResolverService.resolveForTenant (repository read, NOT AppSettingsS
 describe('IdpResolverService.resolveByProviderId (callback path, no cache-warmth assumption)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    discoverMock.mockResolvedValue(makeIssuer());
+    discoverMock.mockImplementation(async (_server: URL, clientId: string) => makeConfig(clientId));
   });
 
   it('throws when the provider id does not exist', async () => {
@@ -190,7 +174,7 @@ describe('IdpResolverService.resolveByProviderId (callback path, no cache-warmth
     const provider = enabledProvider();
     repo.findById.mockResolvedValue(provider);
     const { client } = await svc.resolveByProviderId(provider.id, REDIRECT_URI);
-    expect((client as any).options.client_id).toBe('client-abc');
+    expect((client as any).clientId).toBe('client-abc');
     expect(discoverMock).toHaveBeenCalledTimes(1);
   });
 

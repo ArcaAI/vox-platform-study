@@ -13,7 +13,7 @@
  * `DepartmentResponse[]`, but we map DEFENSIVELY — accepting an array or any of
  * the common paginated envelopes (`data`/`items`/`results`) — so a future
  * change to a wrapped response shape does not silently break the picker.
-*/
+ */
 
 /** One selectable department. `value` is what we submit as `departmentId`. */
 export interface DepartmentOption {

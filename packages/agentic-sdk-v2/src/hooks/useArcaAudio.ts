@@ -154,7 +154,7 @@ export function useArcaAudio() {
    *     failure still leaves every already-open track reachable for cleanup.
    *   - Any teardown path must iterate this array, stop every SDK-OWNED
    * track — skipping streams in `callerOwnedStreamsRef` — then reset it to `[]`. Nothing else needs to know how many
-   * 
+   *
    *     sources there were.
    */
   const sourceStreamsRef = useRef<MediaStream[]>([]);

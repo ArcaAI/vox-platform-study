@@ -110,7 +110,8 @@ export class CreateDepartmentAgentRequest {
   role?: DepartmentAgentRole;
 
   @ApiPropertyOptional({
-    description: 'Context kinds this agent listens for: { version: 1, kinds: [{ key, filter? }] }. Kind keys are cross-checked against the resolved context schema.',
+    description:
+      'Context kinds this agent listens for: { version: 1, kinds: [{ key, filter? }] }. Kind keys are cross-checked against the resolved context schema.',
   })
   @IsOptional()
   @IsObject()

@@ -27,7 +27,7 @@ export interface ProviderCredentialVetoedMetadata {
  * Mapped to **409 Conflict**, deliberately distinct from the **403** a missing
  * `featurePlatformDefaultCredential` entitlement produces: this one a tenant
  * admin can fix themselves, that one they cannot.
-*/
+ */
 export class ProviderCredentialVetoedException extends BaseDomainException {
   static readonly code = PROVIDER_CREDENTIAL_VETOED;
   constructor(message: string, metadata?: ProviderCredentialVetoedMetadata, cause?: Error) {

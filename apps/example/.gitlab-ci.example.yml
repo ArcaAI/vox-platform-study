@@ -19,7 +19,7 @@ build_app:
   stage: build
   script:
     - cd "$APP_PATH"
-    - corepack enable && corepack install -g --cache-only .gitlab/corepack/pnpm-10.31.0.tgz
+    - corepack enable && corepack install -g --cache-only .gitlab/corepack/pnpm-10.34.5.tgz
     - pnpm install --frozen-lockfile || pnpm install
     - pnpm build
   artifacts:

@@ -14,7 +14,7 @@
  * posture) is worth the small, well-contained duplication. If a shared types
  * package for the discovery bundle is ever extracted, this is the first
  * candidate to migrate onto it.
-*/
+ */
 
 /** The CLOSED set of platform primitives.*/
 export const CONTEXT_PRIMITIVES = ['STREAM_AUDIO', 'TEXT', 'DOCUMENT', 'IMAGE', 'STRUCTURED'] as const;
@@ -60,7 +60,7 @@ export interface ConsultationContextSchemaDefinition {
  * codegen tool) builds against. Every field is nullable: "this tenant has
  * not configured a context schema" is an ordinary 200 response with
  * `etag: "none"`, never a 404.
-*/
+ */
 export interface ConsultationSchemaBundle {
   schemaId: string | null;
   slug: string | null;

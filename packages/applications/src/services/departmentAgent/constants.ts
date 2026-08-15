@@ -47,7 +47,7 @@ export function disallowedHarnessOverrideKeys(overrides: Record<string, unknown>
  * The tool keys a DepartmentAgent's `toolConfig.tools` object may name.
  *
  * SINGLE ALLOW-LIST, two consumers: `DepartmentAgentService` validates writes
- * against it (400 on an unknown key), and the `LiveToolRegistry` 
+ * against it (400 on an unknown key), and the `LiveToolRegistry`
  * dispatches reads from it (warn + ignore on an unknown key — the
  * defense-in-depth mirror of `applyAgentOverrides` in the harness policy
  * service). C4 owns the executors; it MUST key them to exactly these names
@@ -389,9 +389,7 @@ export function goalProblems(value: Record<string, unknown>): string[] {
       }
       successCriteria.forEach((entry, index) => {
         if (typeof entry !== 'string' || entry.trim().length === 0 || entry.length > GOAL_SUCCESS_CRITERION_MAX_LENGTH) {
-          problems.push(
-            `goal.successCriteria[${index}] must be a non-empty string of at most ${GOAL_SUCCESS_CRITERION_MAX_LENGTH} characters`,
-          );
+          problems.push(`goal.successCriteria[${index}] must be a non-empty string of at most ${GOAL_SUCCESS_CRITERION_MAX_LENGTH} characters`);
         }
       });
     }

@@ -11,7 +11,7 @@ import { TranscriptColumn, type TranscriptLine } from '../TranscriptColumn';
  * badges for `speaker_id`/`detected_language`/`chunk_id`/`startTime`/`endTime`,
  * so the one thing the screenshot is about — which mic said this line — was
  * visible only after expanding the raw-JSON `<details>`.
-*/
+ */
 
 const line = (meta: Record<string, unknown>): TranscriptLine => ({ text: 'വേദന ഉണ്ടോ?', meta, timestamp: '00:03.120' });
 

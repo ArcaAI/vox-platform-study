@@ -73,7 +73,7 @@ export interface PlaygroundSessionSlice {
  * behind it so tail finals still land. That window is a REAL state — the mic is
  * already off, the session is not idle yet — and hiding it behind `isRecording`
  * is what made Stop look either frozen or prematurely finished.
-*/
+ */
 export type PlaygroundCapturePhase = 'idle' | 'starting' | 'recording' | 'stopping';
 
 /**
@@ -83,7 +83,7 @@ export type PlaygroundCapturePhase = 'idle' | 'starting' | 'recording' | 'stoppi
  * capture graph is released before the drain is awaited. `isRecording` and
  * `isStarting` are kept as-is — several consumers read them — and are now
  * simply projections of `phase`.
-*/
+ */
 export interface PlaygroundCaptureSlice {
   /** Mic live. Goes false the moment Stop is clicked, NOT when the drain ends. */
   isRecording: boolean;
@@ -125,7 +125,7 @@ export interface PlaygroundTranscriptSlice {
  *
  * Both are `undefined` by default, which means "use the SDK default"
  * (1500 ms ceiling / 250 ms quiet window) — nothing changes unless opted into.
-*/
+ */
 export interface PlaygroundDrainSlice {
   /** Hard ceiling on the drain wait. `undefined` ⇒ SDK default. */
   timeoutMs: number | undefined;
@@ -172,7 +172,7 @@ export interface PlaygroundLanguageSlice {
  * duplicate of a value the hook itself already enforces (it throws past this
  * size); duplicating it here lets the UI catch the violation BEFORE the throw
  * and render it as an inline field error instead of a toast/exception.
-*/
+ */
 const MAX_METADATA_BYTES = 8192;
 
 /** One `{mic, speaker}` row — the screenshot's per-source tagging shape.*/
@@ -190,7 +190,7 @@ type RowMetadataResult = { metadata: Record<string, unknown> } | { error: string
  * Build the `sendAudioData` payload for a row and validate it against the 8 KB
  * guard BEFORE sending (requirement 4). Pure + exported so the
  * guard is unit-testable without mounting the provider.
-*/
+ */
 export function buildRowMetadata(row: MetadataMicRow): RowMetadataResult {
   let extra: Record<string, unknown> = {};
   if (row.json.trim()) {
@@ -229,7 +229,7 @@ const INITIAL_METADATA_ROWS: MetadataMicRow[] = [
  * `audio.sources` is populated. `syncRowsFromSources` is an opt-in bridge the
  * UI calls with `audio.sources` when that list is non-empty — this group
  * never reads `audio` itself, so it was never blocked on lane A landing.
-*/
+ */
 export interface PlaygroundMetadataSlice {
   speakerId: string;
   setSpeakerId: (v: string) => void;
@@ -333,7 +333,7 @@ export interface PlaygroundAudioFilePlayback {
  *
  * Lane C reads `sources` (ordered, with `micLabel`) to attribute per-mic
  * metadata; nothing else in the console writes this group.
-*/
+ */
 export interface PlaygroundAudioSlice {
   mode: PlaygroundAudioMode;
   setMode: (mode: PlaygroundAudioMode) => void;
@@ -379,7 +379,7 @@ export interface PlaygroundAudioSlice {
    * `[]` = the SDK has no per-source signal (not recording, or a runtime
    * without Web Audio analysis). Consumers must degrade honestly on `[]`
    * rather than inferring attribution.
-*/
+   */
   sourceLevels: number[];
   setGain: (sourceId: string, gain: number) => void;
   /** Exactly what is spread into `useAudioCapture(...)` on the next start. */
@@ -402,7 +402,7 @@ export interface PlaygroundAudioSlice {
  * It lives here, above the tabs, for the same reason the capture session does:
  * an upload takes minutes and its SSE result stream must survive a tab switch.
  * Everything except the local UI state is `useArcaBatchTranscription()` verbatim.
-*/
+ */
 export interface PlaygroundBatchSlice {
   /** One row per queued file, in enqueue order. */
   items: BatchQueueItem[];
@@ -903,7 +903,7 @@ export function PlaygroundSessionProvider({ config, children }: PlaygroundSessio
    * Rows and sources line up 1:1 after "Sync rows from audio sources"; the
    * modulo keeps a hand-edited shorter list usable instead of silently
    * dropping the tag for the extra mics.
-*/
+   */
   const fireAutoTagForSource = useCallback(
     (sourceIndex: number) => {
       const currentRows = rowsRef.current;

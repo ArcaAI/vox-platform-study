@@ -14,7 +14,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  * final land on a slow ASR pipeline — and it is the value a truthiness spread
  * (`...(quietWindowMs ? {quietWindowMs}: {})`) silently discards while still
  * passing every test written with a "nice" number.
-*/
+ */
 
 const captureProps: Array<Record<string, unknown>> = [];
 

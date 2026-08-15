@@ -10,7 +10,7 @@
  * are TWO DIFFERENT VOCABULARIES on the same logical job lifecycle — a
  * gateway inconsistency (tracked separately), not something this SDK
  * silently normalizes. {@link isTerminalJobStatus} accepts both.
-*/
+ */
 
 import { encodePathSegment } from '../core/url';
 import { parseSseStream } from '../core/sse';

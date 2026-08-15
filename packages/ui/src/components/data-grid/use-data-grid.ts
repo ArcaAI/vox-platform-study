@@ -2,17 +2,15 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  getCoreRowModel,
-  getFilteredRowModel,
-  getPaginationRowModel,
-  getSortedRowModel,
-  useReactTable,
+  useTable,
   type ColumnFiltersState,
+  type ColumnPinningState,
   type OnChangeFn,
   type PaginationState,
+  type ReactTable,
+  type RowData,
   type RowSelectionState,
   type SortingState,
-  type Table,
   type Updater,
 } from '@tanstack/react-table';
 import { useVirtualizer, type Virtualizer } from '@tanstack/react-virtual';
@@ -26,6 +24,7 @@ import type { FilterVariant } from '@/types/data-table';
 import { buildQueryAnnouncement } from './announce';
 import { includesSomeFilter } from './filter-controls';
 import { buildDisplayRows, type DisplayRow } from './group-rows';
+import { dataGridFeatures, normalizeColumnPinning, type DataGridFeatures } from './table-features';
 import { useCoarsePointer } from './use-container-breakpoint';
 import { useGridLayout } from './use-grid-layout';
 import { DEFAULT_GRID_FEATURES, DEFAULT_PAGE_SIZE_OPTIONS, type GridLayoutState, type VirtualizedDataGridProps } from './types';
@@ -34,8 +33,8 @@ function resolveUpdater<T>(updater: Updater<T>, prev: T): T {
   return typeof updater === 'function' ? (updater as (p: T) => T)(prev) : updater;
 }
 
-export interface UseDataGridResult<TData> {
-  table: Table<TData>;
+export interface UseDataGridResult<TData extends RowData> {
+  table: ReactTable<DataGridFeatures, TData>;
   rowVirtualizer: Virtualizer<HTMLDivElement, Element>;
   /**
    * The virtualized display entries: the table's data rows, with
@@ -66,7 +65,7 @@ export interface UseDataGridResult<TData> {
 
 const GLOBAL_SEARCH_DEBOUNCE_MS = 300;
 
-export function useDataGrid<TData>(props: VirtualizedDataGridProps<TData>): UseDataGridResult<TData> {
+export function useDataGrid<TData extends RowData>(props: VirtualizedDataGridProps<TData>): UseDataGridResult<TData> {
   const {
     data,
     columns,
@@ -235,8 +234,8 @@ export function useDataGrid<TData>(props: VirtualizedDataGridProps<TData>): UseD
     (updater) => emitLayout({ ...layout, order: resolveUpdater(updater, layout.order) }),
     [layout, emitLayout],
   );
-  const onColumnPinningChange: OnChangeFn<GridLayoutState['pinning']> = useCallback(
-    (updater) => emitLayout({ ...layout, pinning: resolveUpdater(updater, layout.pinning) }),
+  const onColumnPinningChange: OnChangeFn<ColumnPinningState> = useCallback(
+    (updater) => emitLayout({ ...layout, pinning: normalizeColumnPinning(resolveUpdater(updater, normalizeColumnPinning(layout.pinning))) }),
     [layout, emitLayout],
   );
   const onColumnSizingChange: OnChangeFn<GridLayoutState['sizing']> = useCallback(
@@ -254,7 +253,8 @@ export function useDataGrid<TData>(props: VirtualizedDataGridProps<TData>): UseD
     [columns],
   );
 
-  const table = useReactTable<TData>({
+  const table = useTable({
+    features: dataGridFeatures,
     data,
     columns: resolvedColumns,
     state: {
@@ -265,7 +265,7 @@ export function useDataGrid<TData>(props: VirtualizedDataGridProps<TData>): UseD
       rowSelection,
       columnVisibility: { ...layout.visibility, ...filterOnlyVisibility },
       columnOrder: layout.order,
-      columnPinning: layout.pinning,
+      columnPinning: normalizeColumnPinning(layout.pinning),
       columnSizing: layout.sizing,
     },
     getRowId: getRowId ? (row, index) => getRowId(row, index) : undefined,
@@ -274,8 +274,10 @@ export function useDataGrid<TData>(props: VirtualizedDataGridProps<TData>): UseD
     manualPagination: manual?.pagination ?? false,
     rowCount: manual?.pagination ? rowCount : undefined,
     enableRowSelection: features.rowSelection,
+    enableRowRangeSelection: false,
     enableSorting: features.sorting,
     enableHiding: features.columnVisibility,
+    enableColumnPinning: features.columnPinning,
     enableColumnResizing: features.columnResize,
     columnResizeMode: 'onChange',
     onSortingChange,
@@ -287,10 +289,6 @@ export function useDataGrid<TData>(props: VirtualizedDataGridProps<TData>): UseD
     onColumnOrderChange,
     onColumnPinningChange,
     onColumnSizingChange,
-    getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
   });
 
   // ----- Virtualization -----

@@ -140,14 +140,12 @@ The `AuthServiceModule` creates the OIDC client using database configuration:
         const oidc_client_secret = appSettingsService.getValueFromCache('OIDC_CLIENT_SECRET');
         const oidc_callback_url = appSettingsService.getValueFromCache('OIDC_CALLBACK_URL');
 
-        const issuer = await Issuer.discover(oidc_discovery_url);
-        const client = new issuer.Client({
-            client_id: oidc_client_id,
+        const config = await discovery(new URL(oidc_discovery_url), oidc_client_id, {
             client_secret: oidc_client_secret,
             redirect_uris: [oidc_callback_url],
             response_types: ['code'],
         });
-        return client;
+        return config;
     },
     inject: [AppSettingsService],
 }

@@ -145,7 +145,7 @@ module.exports = {
   },
 
   create(context) {
-    const sourceCode = context.getSourceCode();
+    const sourceCode = context.sourceCode;
     const reported = new WeakSet();
 
     function report(node) {

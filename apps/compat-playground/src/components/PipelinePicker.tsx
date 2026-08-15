@@ -18,7 +18,7 @@ const CUSTOM_PIPELINE = '__custom__';
  * below), so this was never a correctness race — it is credential hygiene and
  * gateway log noise. 400 ms is past a normal inter-keystroke gap and well under
  * the time it takes to reach for the Connect button.
-*/
+ */
 export const PIPELINE_FETCH_DEBOUNCE_MS = 400;
 
 export interface PipelinePickerProps {
@@ -47,7 +47,7 @@ export interface PipelinePickerProps {
  * A `Custom…` option is always present in the list state so a developer can
  * switch to free text even when the fetch succeeds (e.g. to test an id that
  * isn't in this tenant's catalog).
-*/
+ */
 export function PipelinePicker({
   id = 'pipeline-picker',
   apiEndpoint,

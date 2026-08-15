@@ -16,7 +16,7 @@
  * group below models playback as (bufferStartedAt, offset) and rebuilds the
  * nodes on every play/seek, which is the standard approach and keeps every
  * virtual mic sample-aligned because they all restart from the same offset.
-*/
+ */
 
 /** One decoded virtual microphone: a mono buffer plus the stream it feeds. */
 export interface FileAudioSourceTrack {

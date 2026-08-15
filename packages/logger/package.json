@@ -24,8 +24,8 @@
   "devDependencies": {
     "@arcaai/config-eslint": "workspace:*",
     "@arcaai/config-ts": "workspace:*",
-    "@types/node": "^25.9.4",
-    "jsdom": "^29.1.1",
+    "@types/node": "^26.2.0",
+    "jsdom": "^30.0.1",
     "typescript": "^5.9.3"
   }
 }

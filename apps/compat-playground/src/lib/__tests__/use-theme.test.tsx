@@ -18,7 +18,7 @@ import { useTheme } from '../use-theme';
  *
  * Note `documentElement.classList` — not a `matchMedia` mock — is the source of
  * truth in test 1: that is precisely the behaviour that changed.
-*/
+ */
 
 const SUPPRESSOR = /transition:\s*none/;
 

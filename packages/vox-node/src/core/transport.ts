@@ -21,7 +21,7 @@ import { buildUrl } from './url';
  * build-config change to the (out-of-scope) `tsup.config.ts`/`tsconfig.json`
  * for a dual ESM/CJS JSON import, or a `require`/`import` divergence between
  * the two output formats. See the report.
-*/
+ */
 const SDK_USER_AGENT_NAME = 'arcaai/vox-node';
 const SDK_VERSION = '2.0.7';
 

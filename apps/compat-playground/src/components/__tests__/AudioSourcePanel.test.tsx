@@ -8,7 +8,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  * The session context is stubbed: this suite is about the PANEL's behaviour
  * (permission affordance, mode switching, locking while a session is live,
  * file-playback following the recording lifecycle), not about the SDK.
-*/
+ */
 
 const session = vi.hoisted(() => ({ value: null as unknown }));
 

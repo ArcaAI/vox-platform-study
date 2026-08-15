@@ -36,6 +36,7 @@ const createMockBlobStorage = () => ({ resolveDescriptor: vi.fn().mockResolvedVa
 const createMockTenantBucketService = () => ({ getBucketBySlug: vi.fn(), getBucketByName: vi.fn(), getBucketByPurpose: vi.fn() });
 const createMockPipelineService = () => ({
   getById: vi.fn().mockImplementation(async (id: string) => ({ id, tenantId: 'tenant-1', name: 'p', slug: id })),
+  getAll: vi.fn().mockResolvedValue([]),
 });
 const createMockStreamTicketService = () => ({
   issueTicket: vi.fn().mockResolvedValue({ ticket: 'ticket-1', expiresAt: Date.now() + 30_000 }),
@@ -362,7 +363,7 @@ describe('TranscriptionJobController.createStreamSession — resolved pipeline e
       activeEngine: 'fallback',
     });
 
-    const result = (await controller.createStreamSession({ pipelineId: 'primary-pipe' } as never)) as Record<string, unknown>;
+    const result = (await controller.createStreamSession({ pipelineId: 'primary-pipe' } as never)) as unknown as Record<string, unknown>;
 
     expect(result.pipelineId).toBe('resolved-pipe');
     expect(result.activeEngine).toBe('fallback');
@@ -372,7 +373,7 @@ describe('TranscriptionJobController.createStreamSession — resolved pipeline e
     const { controller, mocks } = build();
     mocks.sessionService.createSession.mockResolvedValue({ sessionId: 'sess-1', status: 'active', maxConcurrent: 10, currentActive: 1 });
 
-    const result = (await controller.createStreamSession({ pipelineId: 'primary-pipe' } as never)) as Record<string, unknown>;
+    const result = (await controller.createStreamSession({ pipelineId: 'primary-pipe' } as never)) as unknown as Record<string, unknown>;
 
     expect('pipelineId' in result).toBe(false);
     expect('activeEngine' in result).toBe(false);

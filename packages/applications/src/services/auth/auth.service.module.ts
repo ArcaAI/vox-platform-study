@@ -1,7 +1,7 @@
 import { Logger, Module } from '@nestjs/common';
 import { PassportModule } from '@nestjs/passport';
 import { OidcStrategy } from './oidc.strategy';
-import { Issuer } from 'openid-client';
+import { allowInsecureRequests, discovery } from 'openid-client';
 import { JwtStrategy } from './jwt.strategy';
 import { ClsService } from 'nestjs-cls';
 
@@ -64,17 +64,19 @@ const logger = new Logger('AuthServiceModule');
             return null;
           }
 
-          const issuer = await Issuer.discover(oidc_discovery_url);
-          const client = new issuer.Client({
-            client_id: oidc_client_id,
+          const server = new URL(oidc_discovery_url);
+          const config = await discovery(server, oidc_client_id, {
             client_secret: oidc_client_secret,
             redirect_uris: [oidc_callback_url],
             response_types: ['code'],
           });
+          if (server.protocol === 'http:') {
+            allowInsecureRequests(config);
+          }
 
-          logger.log(`OIDC Client initialized successfully for issuer: ${issuer.issuer}`);
+          logger.log(`OIDC Client initialized successfully for issuer: ${config.serverMetadata().issuer}`);
 
-          return client;
+          return config;
         } catch (error) {
           logger.error(`Failed to initialize OIDC client: ${error instanceof Error ? error.message : String(error)}`);
           return null;

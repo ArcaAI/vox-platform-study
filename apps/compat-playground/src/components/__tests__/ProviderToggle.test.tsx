@@ -19,7 +19,7 @@ let mockReturn: {
  * `activeProvider` is null for the whole session whenever capture started
  * without an explicit pipelineId, which made this card announce "no live
  * session yet — queued" in the middle of a recording.
-*/
+ */
 let mockPhase: 'idle' | 'starting' | 'recording' | 'stopping';
 
 vi.mock('@arcaai/vox/compat', () => ({

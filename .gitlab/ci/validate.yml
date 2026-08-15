@@ -148,7 +148,7 @@ env-drift-check:
     DIRECT_URL: "postgresql://placeholder:placeholder@localhost:5432/placeholder?schema=public"
   script:
     # `env-sync.mts` enumerates tracked source via `git ls-files`, but the
-    # node:22-alpine base ships no git — install it first.
+    # node:24-alpine base ships no git — install it first.
     - apk add --no-cache git
     # `scripts/env-sync.mts` imports apps/api's env.schema, which pulls
     # `@arcaai/applications` by package name — that resolves to its built

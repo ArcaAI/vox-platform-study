@@ -9,6 +9,6 @@
     },
     "devDependencies": {
         "@arcaai/config-ts": "workspace:*",
-        "tailwindcss": "^4.3.2"
+        "tailwindcss": "^4.3.3"
     }
 }

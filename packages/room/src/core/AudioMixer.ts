@@ -43,7 +43,7 @@ export interface AudioMixerAddSourceOptions {
    * `ended`, and gets a structurally valid capture whose uplink carries
    * silence. With `false` the mixer still disconnects the nodes and forgets
    * the source — only the tracks are left alone, for their owner to stop.
-*/
+   */
   stopTracksOnRemove?: boolean;
 }
 

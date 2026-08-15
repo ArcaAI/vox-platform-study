@@ -15,9 +15,7 @@ import { UserSession } from '../dto';
 
 // --- Boundary mocks ---
 
-const mockClient = {
-  userinfo: vi.fn(),
-};
+const mockConfig = {};
 
 const mockAppSettingsService = {
   getValueWithDefault: vi.fn(),
@@ -50,9 +48,16 @@ vi.mock('@nestjs/passport', async (importOriginal) => {
   };
 });
 
-vi.mock('openid-client', () => ({
+vi.mock('openid-client/passport', () => ({
   Strategy: class {},
-  Client: class {},
+}));
+
+const fetchUserInfoMock = vi.hoisted(() => vi.fn());
+const skipSubjectCheck = vi.hoisted(() => Symbol('skipSubjectCheck'));
+
+vi.mock('openid-client', () => ({
+  fetchUserInfo: (...args: unknown[]) => fetchUserInfoMock(...args),
+  skipSubjectCheck,
 }));
 
 // Mock createJwt to return a deterministic token so we test the strategy's
@@ -81,7 +86,7 @@ function createStrategy(): OidcStrategy {
   });
   mockSecretsService.getSecretSync.mockImplementation((key: string) => (key === 'JWT_SECRET_KEY' ? 'test-jwt-secret' : undefined));
 
-  return new OidcStrategy(mockClient as any, mockAppSettingsService as any, mockAuthService as any, mockClsService as any, mockSecretsService as any);
+  return new OidcStrategy(mockConfig as any, mockAppSettingsService as any, mockAuthService as any, mockClsService as any, mockSecretsService as any);
 }
 
 /**
@@ -136,17 +141,17 @@ describe('OidcStrategy', () => {
 
     it('should retrieve user info from token set', async () => {
       const userinfo = createMockUserinfo();
-      mockClient.userinfo.mockResolvedValue(userinfo);
+      fetchUserInfoMock.mockResolvedValue(userinfo);
       mockAuthService.getOrCreateOidcUser.mockResolvedValue(createMockOAuthResponse());
 
       await strategy.validate(mockTokenset);
 
-      expect(mockClient.userinfo).toHaveBeenCalledWith(mockTokenset);
+      expect(fetchUserInfoMock).toHaveBeenCalledWith(mockConfig, mockTokenset.access_token, skipSubjectCheck);
     });
 
     it('should split full name into firstName and lastName', async () => {
       const userinfo = createMockUserinfo({ name: 'Alice Smith' });
-      mockClient.userinfo.mockResolvedValue(userinfo);
+      fetchUserInfoMock.mockResolvedValue(userinfo);
       mockAuthService.getOrCreateOidcUser.mockResolvedValue(createMockOAuthResponse());
 
       await strategy.validate(mockTokenset);
@@ -161,7 +166,7 @@ describe('OidcStrategy', () => {
 
     it('should handle missing name by using empty strings for firstName and lastName', async () => {
       const userinfo = createMockUserinfo({ name: undefined as any });
-      mockClient.userinfo.mockResolvedValue(userinfo);
+      fetchUserInfoMock.mockResolvedValue(userinfo);
       mockAuthService.getOrCreateOidcUser.mockResolvedValue(createMockOAuthResponse());
 
       await strategy.validate(mockTokenset);
@@ -180,7 +185,7 @@ describe('OidcStrategy', () => {
         name: 'Jane Roe',
         email: 'jane@hospital.com',
       });
-      mockClient.userinfo.mockResolvedValue(userinfo);
+      fetchUserInfoMock.mockResolvedValue(userinfo);
       mockAuthService.getOrCreateOidcUser.mockResolvedValue(createMockOAuthResponse());
 
       await strategy.validate(mockTokenset);
@@ -194,7 +199,7 @@ describe('OidcStrategy', () => {
     });
 
     it('should throw UnauthorizedException when getOrCreateOidcUser returns null', async () => {
-      mockClient.userinfo.mockResolvedValue(createMockUserinfo());
+      fetchUserInfoMock.mockResolvedValue(createMockUserinfo());
       mockAuthService.getOrCreateOidcUser.mockResolvedValue(null);
 
       await expect(strategy.validate(mockTokenset)).rejects.toThrow('User could not be found/created');
@@ -208,7 +213,7 @@ describe('OidcStrategy', () => {
         email: 'bob@example.com',
         phone: '+1555000111',
       });
-      mockClient.userinfo.mockResolvedValue(createMockUserinfo());
+      fetchUserInfoMock.mockResolvedValue(createMockUserinfo());
       mockAuthService.getOrCreateOidcUser.mockResolvedValue(oauthResponse);
 
       await strategy.validate(mockTokenset);
@@ -232,7 +237,7 @@ describe('OidcStrategy', () => {
         email: 'cls@test.com',
         phone: null,
       });
-      mockClient.userinfo.mockResolvedValue(createMockUserinfo());
+      fetchUserInfoMock.mockResolvedValue(createMockUserinfo());
       mockAuthService.getOrCreateOidcUser.mockResolvedValue(oauthResponse);
 
       await strategy.validate(mockTokenset);
@@ -246,7 +251,7 @@ describe('OidcStrategy', () => {
 
     it('should return OAuthUserResponse with token set', async () => {
       const oauthResponse = createMockOAuthResponse({ id: 'user-ret-1' });
-      mockClient.userinfo.mockResolvedValue(createMockUserinfo());
+      fetchUserInfoMock.mockResolvedValue(createMockUserinfo());
       mockAuthService.getOrCreateOidcUser.mockResolvedValue(oauthResponse);
 
       const result = await strategy.validate(mockTokenset);
@@ -257,7 +262,7 @@ describe('OidcStrategy', () => {
     });
 
     it('uses SecretsService for JWT secret and AppSettings for JWT_EXPIRES_IN', async () => {
-      mockClient.userinfo.mockResolvedValue(createMockUserinfo());
+      fetchUserInfoMock.mockResolvedValue(createMockUserinfo());
       mockAuthService.getOrCreateOidcUser.mockResolvedValue(createMockOAuthResponse({ id: 'cfg-user' }));
 
       // JWT secret is sourced from

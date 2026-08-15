@@ -57,7 +57,8 @@ INSTALL_ONLY=false
 REBUILD=false
 
 # Every Python service this script knows how to install, in dependency-safe
-# order (hope-runtime-models is installed separately, before all of them).
+# order (workspace packages under packages/py-* are installed separately,
+# before all of them — pip cannot resolve `{ workspace = true }`).
 ALL_SERVICES=(stt smr nlp harness guardrail tts)
 # Selected subset (empty => all). Populated by --service.
 SERVICES=()
@@ -469,25 +470,24 @@ install_dependencies() {
     print_step "Upgrading pip..."
     "${CR[@]}" pip install --upgrade pip setuptools wheel
 
-    # --- shared runtime contracts ---
-    # Installed FIRST: every service below declares it as a workspace
-    # dependency, and pip would otherwise try to resolve `hope-runtime-models`
-    # from PyPI (where it does not exist). Dependency-free, so this is instant.
-    local runtime_models_dir="$PROJECT_ROOT/packages/py-runtime-models"
-    if [[ -f "$runtime_models_dir/pyproject.toml" ]]; then
-        print_step "Installing hope-runtime-models (shared model-lifecycle contract)..."
-        "${CR[@]}" pip install -e "${runtime_models_dir}"
+    # --- workspace packages (not on PyPI) ---
+    # Recreate wipes site-packages. pip cannot resolve `{ workspace = true }`,
+    # so every packages/py-* member must be editable-installed BEFORE any
+    # service. Discover them from disk so a new member cannot be forgotten
+    # the way hope-otel was.
+    local shared_dir
+    for shared_dir in "$PROJECT_ROOT"/packages/py-*; do
+        if [[ -f "$shared_dir/pyproject.toml" ]]; then
+            print_step "Installing $(basename "$shared_dir") (workspace package, not on PyPI)..."
+            "${CR[@]}" pip install -e "${shared_dir}"
+        fi
+    done
+    print_step "Verifying workspace packages import..."
+    if ! "${CR[@]}" python -c "import hope_runtime_models, hope_env, hope_otel"; then
+        print_fail "Workspace packages failed to import after editable install"
+        exit 1
     fi
-
-    # The shared env-file loader. Same reason as above: every service
-    # declares `hope-env` as a workspace dependency and pip would otherwise look
-    # for it on PyPI. Its only dependency (python-dotenv) is already required by
-    # every service.
-    local env_loader_dir="$PROJECT_ROOT/packages/py-env"
-    if [[ -f "$env_loader_dir/pyproject.toml" ]]; then
-        print_step "Installing hope-env (shared .env.<env> loader)..."
-        "${CR[@]}" pip install -e "${env_loader_dir}"
-    fi
+    print_ok "Workspace packages ready (hope-runtime-models, hope-env, hope-otel)"
 
     # --- stt ---
     if service_selected stt; then

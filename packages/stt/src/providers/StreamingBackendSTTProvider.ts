@@ -50,7 +50,7 @@ export interface StreamingRemoteProviderConfig extends ProviderConfig {
    * The drain normally ends far sooner: the backend publishes its terminal
    * `closed` status as soon as the last transcript is on the stream, before the
    * recording uploads and durable transcript persistence.
-*/
+   */
   drainTimeoutMs?: number;
   /**
    * Quiet window, in ms, after the backend's `finalizing` status that ends the
@@ -65,13 +65,13 @@ export interface StreamingRemoteProviderConfig extends ProviderConfig {
    * `0` is therefore GUARDED ON `>= 0`, not `> 0` — unlike `drainTimeoutMs`,
    * where `0` would be meaningless. Omitted / negative ⇒ the ws client's own
    * default.
-*/
+   */
   quietWindowMs?: number;
   /**
    * Number of distinct microphone SOURCES mixed into this session.
    * A metadata signal for usage repricing, not a PCM channel count (the mix is
    * always mono). Defaults to 1 when omitted.
-*/
+   */
   channelCount?: number;
 }
 
@@ -105,7 +105,7 @@ export interface StreamingTranscriptPayload {
    * not per-session: a mid-session engine switch means consecutive transcripts
    * legitimately name different pipelines. Absent from an older backend that
    * does not stamp results.
-*/
+   */
   pipelineId?: string;
 }
 
@@ -178,7 +178,7 @@ export interface StreamingSessionLike {
    * Request an in-place switch of the live session to the tenant fallback
    * pipeline. Optional: only the vox `StreamingSessionManager`
    * implements it. The backend swaps the ASR engine while the session survives.
-*/
+   */
   switchToFallback?(): Promise<void>;
 }
 

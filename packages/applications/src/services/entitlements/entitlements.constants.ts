@@ -110,7 +110,7 @@ export interface PlanEntitlementValues {
   monthlyTranscriptionMinutes: number | null;
   monthlySummaries: number | null;
   /**
-   * Per-capability included allowances, derived in 
+   * Per-capability included allowances, derived in
    * from each plan's ratified business ceilings and then DOUBLED:
    *
    *   sttSessionSeconds = transcriptionMinutes × 60 × 1.1

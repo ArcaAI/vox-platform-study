@@ -1,8 +1,8 @@
 # Temporal dynamic config (development, SQL persistence).
-# Mounted into temporalio/auto-setup at
+# Mounted into temporalio/server at
 #   /etc/temporal/config/dynamicconfig/development-sql.yaml
 # and referenced via DYNAMIC_CONFIG_FILE_PATH. Mirrors the upstream
-# temporalio/docker-compose dynamicconfig for a Postgres-backed dev server.
+# temporalio/samples-server compose dynamicconfig for a Postgres-backed dev server.
 #
 # Clinical Documentation Harness — dev/opt-in only.
 limit.maxIDLength:

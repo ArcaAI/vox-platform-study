@@ -38,6 +38,7 @@ describe('HarnessInternalController', () => {
       undefined as any,
       undefined as any,
       undefined as any,
+      undefined as any,
     );
   });
 
@@ -172,6 +173,7 @@ describe('HarnessInternalController', () => {
         undefined as any,
         undefined as any,
         undefined as any,
+        undefined as any,
       );
 
     it('threads consultationId through to getEffectivePolicy(tenantId, { consultationId })', async () => {
@@ -233,6 +235,7 @@ describe('HarnessInternalController', () => {
         undefined as any,
         undefined as any,
         undefined as any,
+        undefined as any,
       );
 
     it('delegates to HarnessProgressService.reportProgress(consultationId, dto)', async () => {
@@ -272,6 +275,7 @@ describe('HarnessInternalController', () => {
         undefined as any, // agentTrajectoryService (unused by this route)
         mockLoopEventService as any,
         undefined as any, // loopConfigService (unused by this route)
+        undefined as any, // loopContextTextService (unused by this route)
         undefined as any, // liveDocumentationService (unused by this route)
       );
 
@@ -309,6 +313,7 @@ describe('HarnessInternalController', () => {
         undefined as any, // cls (unused by these routes)
         undefined as any, // harnessProgressService (unused by these routes)
         mockAssuranceService as any,
+        undefined as any,
         undefined as any,
         undefined as any,
         undefined as any,
@@ -369,6 +374,7 @@ describe('HarnessInternalController', () => {
         undefined as any, // harnessProgressService (unused)
         undefined as any, // harnessAssuranceService (unused)
         mockTrajectoryService as any,
+        undefined as any,
         undefined as any,
         undefined as any,
         undefined as any,
@@ -472,6 +478,7 @@ describe('HarnessInternalController', () => {
         undefined as any, // agentTrajectoryService (unused by this route)
         undefined as any, // consultationLoopEventService (unused by this route)
         mockLoopConfigService as any,
+        undefined as any, // loopContextTextService (unused by this route)
         undefined as any, // liveDocumentationService (unused by this route)
       );
 

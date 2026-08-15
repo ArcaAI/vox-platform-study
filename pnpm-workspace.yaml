@@ -14,5 +14,25 @@ onlyBuiltDependencies:
 
 overrides:
   class-validator: 0.15.1
-  "@types/react": ^19.2.14
-  "@types/react-dom": ^19.2.3
+  "@types/react": ^19.2.18
+  "@types/react-dom": ^19.2.4
+  react: 19.2.8
+  react-dom: 19.2.8
+  # TASK-696: same-major advisory floors (do not jump denylist majors)
+  "brace-expansion@^1.0.0": 1.1.18
+  "brace-expansion@^2.0.0": 2.1.4
+  "brace-expansion@^5.0.0": 5.0.9
+  socket.io-parser: 4.2.7
+  ip-address: 10.5.0
+  "fast-uri@^3.0.0": 3.1.5
+  "js-yaml@^4.0.0": 4.3.1
+  "js-yaml@^5.0.0": 5.3.0
+  "undici@^6.0.0": 6.28.0
+  "undici@^7.0.0": 7.29.0
+  mermaid: 11.16.1
+  dompurify: 3.4.13
+  fast-xml-parser: 5.10.1
+  # TASK-699: @streamdown/code@1.1.1 still depends on shiki ^3.19.0. streamdown@2.5.0
+  # PluginConfig types resolve against the workspace shiki 4, so the dual copies
+  # make `plugins={{ code }}` fail dts/typecheck (BundledLanguage / HighlightOptions).
+  shiki: 4.4.3

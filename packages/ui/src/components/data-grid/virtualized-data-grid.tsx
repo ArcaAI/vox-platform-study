@@ -1,7 +1,8 @@
 'use client';
 
 import * as React from 'react';
-import { flexRender, type ColumnDef, type Header, type Row } from '@tanstack/react-table';
+import { flexRender, type Header, type Row, type RowData } from '@tanstack/react-table';
+import { type ColumnDef, type DataGridFeatures } from './table-features';
 import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
 import { restrictToHorizontalAxis } from '@dnd-kit/modifiers';
 import { SortableContext, horizontalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
@@ -24,7 +25,7 @@ import type { GroupByConfig, VirtualizedDataGridProps } from './types';
 
 const SELECT_COLUMN_ID = 'select';
 
-function makeSelectionColumn<TData>(): ColumnDef<TData> {
+function makeSelectionColumn<TData extends RowData>(): ColumnDef<TData> {
   return {
     id: SELECT_COLUMN_ID,
     size: 40,
@@ -33,13 +34,17 @@ function makeSelectionColumn<TData>(): ColumnDef<TData> {
     enableHiding: false,
     enableResizing: false,
     enableColumnFilter: false,
-    header: ({ table }) => (
-      <Checkbox
-        aria-label="Select all rows"
-        checked={table.getIsAllPageRowsSelected() || (table.getIsSomePageRowsSelected() && 'indeterminate')}
-        onCheckedChange={(v) => table.toggleAllPageRowsSelected(!!v)}
-      />
-    ),
+    header: ({ table }) => {
+      const all = table.getIsAllPageRowsSelected();
+      const some = table.getIsSomePageRowsSelected();
+      return (
+        <Checkbox
+          aria-label="Select all rows"
+          checked={all || (some && !all && 'indeterminate')}
+          onCheckedChange={(v) => table.toggleAllPageRowsSelected(!!v)}
+        />
+      );
+    },
     cell: ({ row }) => (
       <Checkbox
         aria-label="Select row"
@@ -51,7 +56,7 @@ function makeSelectionColumn<TData>(): ColumnDef<TData> {
   };
 }
 
-function HeaderCell<TData>({
+function HeaderCell<TData extends RowData>({
   header,
   grid,
   colIndex,
@@ -60,7 +65,7 @@ function HeaderCell<TData>({
   enablePinning,
   pinBorder,
 }: {
-  header: Header<TData, unknown>;
+  header: Header<DataGridFeatures, TData, unknown>;
   grid: UseDataGridResult<TData>;
   colIndex: number;
   enableReorder: boolean;
@@ -149,7 +154,7 @@ function HeaderCell<TData>({
   );
 }
 
-function BodyRow<TData>({
+function BodyRow<TData extends RowData>({
   row,
   virtualStart,
   size,
@@ -159,7 +164,7 @@ function BodyRow<TData>({
   pinBorder,
   onRowClick,
 }: {
-  row: Row<TData>;
+  row: Row<DataGridFeatures, TData>;
   virtualStart: number;
   size: number;
   rowIndex: number;
@@ -206,7 +211,7 @@ function BodyRow<TData>({
  * injected by `groupBy`: a full-width `rowheader` cell spanning all columns,
  * outside the row tab sequence, with an sr-only group summary for AT.
  */
-function GroupHeaderRow<TData>({
+function GroupHeaderRow<TData extends RowData>({
   entry,
   colCount,
   virtualStart,
@@ -250,7 +255,7 @@ function GroupHeaderRow<TData>({
   );
 }
 
-export function VirtualizedDataGrid<TData>(props: VirtualizedDataGridProps<TData>) {
+export function VirtualizedDataGrid<TData extends RowData>(props: VirtualizedDataGridProps<TData>) {
   const {
     columns,
     isLoading,
@@ -287,7 +292,7 @@ export function VirtualizedDataGrid<TData>(props: VirtualizedDataGridProps<TData
   const totalSize = rowVirtualizer.getTotalSize();
   const headerHeight = DENSITY_ROW_HEIGHT[density];
 
-  const columnOrderIds = table.getState().columnOrder.length ? table.getState().columnOrder : table.getAllLeafColumns().map((c) => c.id);
+  const columnOrderIds = table.state.columnOrder.length ? table.state.columnOrder : table.getAllLeafColumns().map((c) => c.id);
 
   const totalRowCount = props.manual?.pagination ? (rowCount ?? rows.length) : table.getFilteredRowModel().rows.length;
   // Injected group headers are real grid rows on this page; count

@@ -9,11 +9,12 @@
  * re-orders rows to force groups together.
  */
 
-import type { Row } from '@tanstack/react-table';
+import type { Row, RowData } from '@tanstack/react-table';
+import type { DataGridFeatures } from './table-features';
 import type { GroupByConfig } from './types';
 
 /** One virtualized display entry: a group header or a data row. */
-export type DisplayRow<TData> = { kind: 'group'; label: string; count: number } | { kind: 'data'; row: Row<TData> };
+export type DisplayRow<TData extends RowData> = { kind: 'group'; label: string; count: number } | { kind: 'data'; row: Row<DataGridFeatures, TData> };
 
 /** Label used for rows whose group accessor yields null/undefined/blank. */
 export const DEFAULT_GROUP_FALLBACK_LABEL = '—';
@@ -23,7 +24,7 @@ export const DEFAULT_GROUP_FALLBACK_LABEL = '—';
  * rows. Without `groupBy` this is an index-stable pass-through, so the render
  * path can always map over the result.
  */
-export function buildDisplayRows<TData>(rows: Row<TData>[], groupBy?: GroupByConfig<TData>): DisplayRow<TData>[] {
+export function buildDisplayRows<TData extends RowData>(rows: Row<DataGridFeatures, TData>[], groupBy?: GroupByConfig<TData>): DisplayRow<TData>[] {
   if (!groupBy) return rows.map((row) => ({ kind: 'data', row }));
 
   const fallback = groupBy.fallbackLabel ?? DEFAULT_GROUP_FALLBACK_LABEL;

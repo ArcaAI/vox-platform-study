@@ -11,7 +11,7 @@
  * `core/retry.ts`/`core/redact.ts`'s internals, and `core/sse.ts#parseSseStream`
  * — the transport is internal plumbing the resources layer builds on, not
  * part of this package's public contract.
-*/
+ */
 
 export { HopeClient } from './client';
 export type { HopeClientOptions, HopeLogger } from './client';

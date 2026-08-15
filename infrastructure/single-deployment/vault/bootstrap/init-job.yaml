@@ -78,8 +78,8 @@ spec:
         - name: init
           # has sh + kubectl + base64 (distroless kubectl images lack a shell).
           # PROD pins this by digest via `kubectl apply -k bootstrap/` (kustomization.yaml
-          # rewrites -> alpine/k8s@sha256:7f8133…f40). Tag here is for the kind E2E.
-          image: alpine/k8s:1.33.1
+          # rewrites -> alpine/k8s@sha256:e521ce…ac26). Tag here is for the kind E2E.
+          image: alpine/k8s:1.33.13
           env:
             - name: NS
               value: vault-system

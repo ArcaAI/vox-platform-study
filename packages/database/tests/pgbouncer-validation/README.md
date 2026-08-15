@@ -32,7 +32,7 @@ rollout, preferred) or Phase 2B (session-mode fallback) is executed.
 | Component                           | Tag                        | Why                                                                                                                                                                   |
 | ----------------------------------- | -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `timescale/timescaledb-ha:pg18-all` | multi-arch (arm64 + amd64) | Matches the HA blueprint at `research/configs/postgres-ha/`                                                                                                           |
-| `edoburu/pgbouncer:v1.25.1-p0`      | latest 1.25.x              | The originally-spec'd `1.25.0` tag is not published; `v1.25.1-p0` is the lowest 1.25.x tag and satisfies the `max_prepared_statements` (PgBouncer ≥ 1.21) requirement |
+| `edoburu/pgbouncer:v1.25.2-p0`      | latest 1.25.x              | The originally-spec'd `1.25.0` tag is not published; `v1.25.2-p0` is the current 1.25.x patch and satisfies `max_prepared_statements` (PgBouncer ≥ 1.21) |
 
 The plan referred to `edoburu/pgbouncer:1.25.0`; the actual published tag we
 pin to is documented here for traceability.

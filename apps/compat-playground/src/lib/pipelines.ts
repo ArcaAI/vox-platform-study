@@ -14,7 +14,7 @@
  * any of the common paginated envelopes (`data`/`items`/`results`) — so a
  * future change to a wrapped response shape does not silently break the
  * picker. Mirrors `lib/departments.ts` deliberately; keep the two in sync.
-*/
+ */
 
 /** One selectable pipeline. `value` is what we submit as `pipelineId`. */
 export interface PipelineOption {

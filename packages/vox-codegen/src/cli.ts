@@ -7,7 +7,7 @@
  * enough for this flag set, and this package otherwise carries zero runtime
  * dependencies (matches `@arcaai/vox-node`'s posture — see the package
  * README's placement decision).
-*/
+ */
 
 import { parseArgs } from 'node:util';
 import process from 'node:process';

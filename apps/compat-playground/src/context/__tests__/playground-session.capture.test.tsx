@@ -14,7 +14,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  * `isRecording` SYNCHRONOUSLY and returns a promise that stays pending for the
  * drain. Anything that reads as "recording" or "idle" during that window is the
  * bug this file exists to catch.
-*/
+ */
 
 const sdk = vi.hoisted(() => {
   const calls: string[] = [];

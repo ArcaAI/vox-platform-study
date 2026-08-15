@@ -1,6 +1,7 @@
 'use client';
 
-import type { Column } from '@tanstack/react-table';
+import type { Column, RowData } from '@tanstack/react-table';
+import type { DataGridFeatures } from '@/components/data-grid/table-features';
 import { ChevronDown, ChevronsUpDown, ChevronUp, EyeOff, X } from 'lucide-react';
 
 import {
@@ -12,12 +13,17 @@ import {
 } from '@/components/shadcn/dropdown-menu';
 import { cn } from '@/lib/utils';
 
-interface DataTableColumnHeaderProps<TData, TValue> extends React.ComponentProps<typeof DropdownMenuTrigger> {
-  column: Column<TData, TValue>;
+interface DataTableColumnHeaderProps<TData extends RowData, TValue> extends React.ComponentProps<typeof DropdownMenuTrigger> {
+  column: Column<DataGridFeatures, TData, TValue>;
   label: string;
 }
 
-export function DataTableColumnHeader<TData, TValue>({ column, label, className, ...props }: DataTableColumnHeaderProps<TData, TValue>) {
+export function DataTableColumnHeader<TData extends RowData, TValue>({
+  column,
+  label,
+  className,
+  ...props
+}: DataTableColumnHeaderProps<TData, TValue>) {
   if (!column.getCanSort() && !column.getCanHide()) {
     return <div className={cn(className)}>{label}</div>;
   }

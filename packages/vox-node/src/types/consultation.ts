@@ -96,7 +96,7 @@ export interface UpdateSummaryRequest {
  * transcript/summary content-item shape for a "does this id exist" check.
  * This type is a genuine PARTIAL VIEW of that DTO — reach for the fields
  * below only; anything else on the wire is simply not represented.
-*/
+ */
 export interface ConsultationGetResponse {
   id: string;
   patientId: string;

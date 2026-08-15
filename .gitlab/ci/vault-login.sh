@@ -89,7 +89,7 @@ if [ -z "${VAULT_AUTH_ROLE:-}" ]; then
 fi
 
 # --- 1. Transport + JSON field extraction -----------------------------------
-# The job images differ (node:22-alpine, python:3.11-slim, alpine:3.20+curl),
+# The job images differ (node:24-alpine, python:3.11-slim, alpine:3.22+curl),
 # so pick whichever HTTP client and JSON reader the image actually has rather
 # than adding a package install to every job's critical path.
 

@@ -1,7 +1,8 @@
 {
   "compilerOptions": {
     "target": "es2020",
-    "module": "commonjs",
+    "module": "esnext",
+    "moduleResolution": "bundler",
     "declaration": true,
     "outDir": "./dist",
     "esModuleInterop": true,
@@ -16,6 +17,11 @@
     // This package has no `build` script; `typecheck` runs with --noEmit and
     // ts-node compiles in memory, so rootDir only affects TS6059 here.
     "rootDir": ".."
+  },
+  "ts-node": {
+    "compilerOptions": {
+      "module": "commonjs"
+    }
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]

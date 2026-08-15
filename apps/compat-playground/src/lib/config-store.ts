@@ -6,7 +6,7 @@
  * a throwaway tenant/dev SDK key for local experimentation, not a production
  * secret store; treat this the same as any other devtool that remembers
  * your last input.
-*/
+ */
 
 export interface PlaygroundConfig {
   /** REST origin of the v2 gateway, e.g. `http://localhost:8868`. */
@@ -22,7 +22,7 @@ export interface PlaygroundConfig {
    * Forwarded to `useArcaSpeechToText({ options: { languageMode } })`. The live
    * selector lives in `Playground.tsx` (it needs a connected `ArcaCompatProvider`
    * to fetch the real catalog) — this field only seeds its initial value.
-*/
+   */
   languageMode: string;
   // ---------------------------------------------------------------------------
   // Capture-graph switches — CONNECTION-level.
@@ -73,7 +73,7 @@ export interface PlaygroundConfig {
    * the SummaryCard doctor picker. Empty/absent ⇒ NO
    * `doctorId` is sent (department + visit-type only). Optional for the same
    * backward-compat reason as `department`.
-*/
+   */
   doctorId?: string;
   /**
    * Last-used SMR "translate transcript to English (Sarvam)" toggle — seeds the
@@ -81,7 +81,7 @@ export interface PlaygroundConfig {
    * with `translateToEnglish: true` so the backend translates the transcript
    * before summarizing. Optional for the same backward-compat reason as
    * `department`.
-*/
+   */
   translateToEnglish?: boolean;
 }
 

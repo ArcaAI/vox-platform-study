@@ -3,7 +3,6 @@
  * relative-date presets are unit-testable; the interactive controls live in
  * `data-grid-faceted-filter.tsx`.
  */
-import type { Row } from '@tanstack/react-table';
 import type { FilterRule } from '@/lib/shared';
 
 export type BooleanFilterState = 'any' | 'yes' | 'no';
@@ -16,7 +15,7 @@ export type BooleanFilterState = 'any' | 'yes' | 'no';
  * `includesString` fns compare the cell against the whole array coerced to one
  * string, so they never match a multi-value selection — use this instead.
  */
-export function includesSomeFilter<TData>(row: Row<TData>, columnId: string, filterValue: unknown): boolean {
+export function includesSomeFilter(row: { getValue: (id: string) => unknown }, columnId: string, filterValue: unknown): boolean {
   if (!Array.isArray(filterValue) || filterValue.length === 0) return true;
   return filterValue.map(String).includes(String(row.getValue(columnId)));
 }

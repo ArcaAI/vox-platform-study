@@ -745,11 +745,7 @@ export class DepartmentAgentService extends BaseService implements IDepartmentAg
    * the structural shape is checked (mirrors `validateLlmOverrides`'s
    * catalogue-check degradation).
    */
-  private async validateSubscribedKinds(
-    tenantId: string,
-    departmentId: string,
-    subscribedKinds?: Record<string, unknown> | null,
-  ): Promise<void> {
+  private async validateSubscribedKinds(tenantId: string, departmentId: string, subscribedKinds?: Record<string, unknown> | null): Promise<void> {
     if (!subscribedKinds) return;
     const { problems, kindKeys } = subscribedKindsProblems(subscribedKinds);
     if (problems.length > 0) {

@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import type { ColumnDef, RowSelectionState } from '@tanstack/react-table';
+import type { ColumnDef, RowSelectionState } from '../../data-grid/table-features';
 import { useState } from 'react';
 
 import { Badge } from '../../shadcn/badge';

@@ -166,7 +166,7 @@ services:
   # Qdrant Test Vector Database (Minimal Resources)
   # ==========================================================================
   qdrant-test:
-    image: qdrant/qdrant:v1.16
+    image: qdrant/qdrant:v1.19.0
     container_name: hope-qdrant-test
     ports:
       - '6335:6333'
@@ -214,7 +214,7 @@ services:
   # the test API/e2e/integration suites need real Vault Transit), so this
   # container is required infra, not optional.
   vault-test:
-    image: hashicorp/vault:1.18
+    image: hashicorp/vault:1.21.4
     container_name: hope-vault-test
     ports:
       - '8201:8200'
@@ -245,7 +245,7 @@ services:
   # and why (no database engine, no audit device, no KV placeholder seeding).
   vault-init-test:
     container_name: hope-vault-init-test
-    image: hashicorp/vault:1.18
+    image: hashicorp/vault:1.21.4
     depends_on:
       vault-test:
         condition: service_healthy

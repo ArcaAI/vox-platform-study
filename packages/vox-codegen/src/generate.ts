@@ -6,7 +6,7 @@
  * `DOCUMENT`, `IMAGE`) carry no `fields` to type — they get a one-line
  * comment instead of a payload type, since `addContext()` never validates a
  * `payload` for them (`useArcaSession.addContext`,).
-*/
+ */
 
 import { jsonSchemaSubsetToTs } from './schema-to-ts';
 import type { ConsultationSchemaBundle, ContextKindDeclaration, ContextOutputDeclaration } from './types';

@@ -45,7 +45,7 @@
  * `str.strip()` removes.
  *
  * Everything in this module is a pure function — no React, no DOM.
-*/
+ */
 
 // ---------------------------------------------------------------------------
 // Normalization — the ported `_norm`
@@ -110,7 +110,7 @@ export function toWords(text: string): string[] {
  * the Python loop. A pair of 5 000-character transcripts is ~25 M cell updates,
  * which runs in well under a second; nothing here is worth optimizing further
  * for a developer console.
-*/
+ */
 export function characterErrorRate(reference: string, hypothesis: string): number {
   const r = toCharacters(normalizeForScoring(reference));
   const h = toCharacters(normalizeForScoring(hypothesis));

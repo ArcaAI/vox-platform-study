@@ -26,9 +26,9 @@ import {
 } from './dto';
 
 /**
- * `openid-client`'s `Issuer.discover` + `new issuer.Client(...)` never
- * validate `redirect_uris` over the network (only the real `/authorize`
- * round-trip does) — a stable placeholder is enough for a config-time probe.
+ * `openid-client`'s `discovery()` never validates `redirect_uris` over the
+ * network (only the real `/authorize` round-trip does) — a stable placeholder
+ * is enough for a config-time probe.
  */
 const TEST_CONNECTION_REDIRECT_URI = 'https://hope.internal/auth/sso/test-connection-probe';
 
@@ -191,7 +191,7 @@ export class TenantIdpConfigService extends BaseService implements ITenantIdpCon
   }
 
   /**
-   * SAML has no discovery endpoint (unlike OIDC's `Issuer.discover`) — the
+   * SAML has no discovery endpoint (unlike OIDC's `discovery()`) — the
    * IdP is only reachable via a real browser redirect, so there's no live
    * network probe possible here. This is a config-CONSISTENCY smoke test:
    * builds a real `SAML` client from the pinned IdP cert + sealed SP key, and

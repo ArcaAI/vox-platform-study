@@ -1,6 +1,7 @@
 'use client';
 
-import type { Column } from '@tanstack/react-table';
+import type { Column, RowData } from '@tanstack/react-table';
+import type { DataGridFeatures } from './table-features';
 import { Check, PlusCircle } from 'lucide-react';
 import * as React from 'react';
 import type { DateRange } from 'react-day-picker';
@@ -31,8 +32,8 @@ import type { UseDataGridResult } from './use-data-grid';
 
 const TEXT_FILTER_DEBOUNCE_MS = 300;
 
-interface FacetedFilterProps<TData, TValue> {
-  column: Column<TData, TValue>;
+interface FacetedFilterProps<TData extends RowData, TValue> {
+  column: Column<DataGridFeatures, TData, TValue>;
   grid: UseDataGridResult<TData>;
   title: string;
 }
@@ -53,7 +54,7 @@ export function describeFilterValue(value: unknown, variant: FilterVariant): str
  * collapsed Filters Popover/Sheet, and the column-header "Filter…" entry (Δ6).
  * Reads/writes the single filter state via `grid.setFilter`.
  */
-export function FilterControlBody<TData, TValue>({ column, grid, title }: FacetedFilterProps<TData, TValue>) {
+export function FilterControlBody<TData extends RowData, TValue>({ column, grid, title }: FacetedFilterProps<TData, TValue>) {
   const variant = (column.columnDef.meta?.variant ?? 'text') as FilterVariant;
   const options = column.columnDef.meta?.options ?? [];
   const current = grid.queryState.filters.find((f) => f.id === column.id);
@@ -71,7 +72,7 @@ export function FilterControlBody<TData, TValue>({ column, grid, title }: Facete
   return <ScalarControl column={column} grid={grid} title={title} variant={variant} initial={current} />;
 }
 
-function OptionChecklist<TData, TValue>({
+function OptionChecklist<TData extends RowData, TValue>({
   column,
   grid,
   title,
@@ -139,12 +140,12 @@ function OptionChecklist<TData, TValue>({
   );
 }
 
-function BooleanControl<TData, TValue>({
+function BooleanControl<TData extends RowData, TValue>({
   column,
   grid,
   options,
 }: {
-  column: Column<TData, TValue>;
+  column: Column<DataGridFeatures, TData, TValue>;
   grid: UseDataGridResult<TData>;
   options: { label: string; value: string }[];
 }) {
@@ -184,12 +185,12 @@ const DATE_OPERATOR_OPTIONS: { value: FilterOperator; label: string }[] = [
   { value: 'isRelativeToToday', label: 'Relative to today' },
 ];
 
-function DateControl<TData, TValue>({
+function DateControl<TData extends RowData, TValue>({
   column,
   grid,
   variant,
 }: {
-  column: Column<TData, TValue>;
+  column: Column<DataGridFeatures, TData, TValue>;
   grid: UseDataGridResult<TData>;
   variant: FilterVariant;
 }) {
@@ -263,7 +264,7 @@ function DateControl<TData, TValue>({
   );
 }
 
-function ScalarControl<TData, TValue>({
+function ScalarControl<TData extends RowData, TValue>({
   column,
   grid,
   title,
@@ -377,7 +378,7 @@ function ScalarControl<TData, TValue>({
 }
 
 /** Toolbar chip: a dashed `+ Field` trigger + Popover wrapping the shared body. */
-export function DataGridFacetedFilter<TData, TValue>({ column, grid, title }: FacetedFilterProps<TData, TValue>) {
+export function DataGridFacetedFilter<TData extends RowData, TValue>({ column, grid, title }: FacetedFilterProps<TData, TValue>) {
   const variant = (column.columnDef.meta?.variant ?? 'text') as FilterVariant;
   const current = grid.queryState.filters.find((f) => f.id === column.id);
   const count = Array.isArray(current?.value) ? current?.value.length : current?.value != null && String(current?.value) !== '' ? 1 : 0;

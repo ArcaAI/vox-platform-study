@@ -15,7 +15,7 @@ requires-python = ">=3.11,<3.12"
 # every other service declares it too, for its own FastAPI instrumentation),
 # so adding it here forces nothing new onto anyone and cannot perturb the
 # single root `uv.lock`.
-dependencies = ["opentelemetry-api>=1.39.1"]
+dependencies = ["opentelemetry-api>=1.44.0"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -27,7 +27,7 @@ where = ["src"]
 hope_otel = ["py.typed"]
 
 [project.optional-dependencies]
-dev = ["pytest>=9.0.2", "ruff>=0.15.7", "mypy>=1.20.0"]
+dev = ["pytest>=9.0.2", "ruff>=0.16.3", "mypy>=2.3.1"]
 
 [tool.ruff]
 line-length = 100

@@ -70,4 +70,15 @@ conflicts = [
         { package = "guardrail" },
         { package = "stt", extra = "nemo" },
     ],
+    # ragas 0.4.x → instructor 1.15.4 requires openai<3. SMR + harness[eval]
+    # take openai 3.1; keep eval-ragas on its own openai 2.x fork so ragas
+    # cannot silently downgrade (0.4.3 → 0.3.1) to co-resolve.
+    [
+        { package = "harness", extra = "eval-ragas" },
+        { package = "smr" },
+    ],
+    [
+        { package = "harness", extra = "eval-ragas" },
+        { package = "harness", extra = "eval" },
+    ],
 ]

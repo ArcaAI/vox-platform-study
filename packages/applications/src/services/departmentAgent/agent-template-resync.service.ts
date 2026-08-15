@@ -21,7 +21,14 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
 import { BaseService } from '../../common';
 import { IActiveUserContext } from '../../interfaces';
-import { AgentLoopConfig, buildLoopConfigSnapshot, canonicalAgentConfigJson, hasLoopConfig, subscribedKindsProblems, writeScopeProblems } from './constants';
+import {
+  AgentLoopConfig,
+  buildLoopConfigSnapshot,
+  canonicalAgentConfigJson,
+  hasLoopConfig,
+  subscribedKindsProblems,
+  writeScopeProblems,
+} from './constants';
 
 /**
  * Reserved SYSTEM tenant that owns the master agent golden library. Mirrors the
@@ -529,7 +536,10 @@ export class AgentTemplateResyncService extends BaseService {
    * use, read with an explicit `tenantId` since the extension injects nothing
    * on this elevated, tenant-less path.
    */
-  private async resolveServableContextDefinition(tenantId: string, departmentId: string): Promise<{ kinds: Set<string>; outputs: Set<string> } | null> {
+  private async resolveServableContextDefinition(
+    tenantId: string,
+    departmentId: string,
+  ): Promise<{ kinds: Set<string>; outputs: Set<string> } | null> {
     const candidates = [
       await this.contextSchemaRepository.findDefaultForScope(tenantId, ConsultationContextSchemaScope.DEPARTMENT, departmentId),
       await this.contextSchemaRepository.findDefaultForScope(tenantId, ConsultationContextSchemaScope.TENANT, null),

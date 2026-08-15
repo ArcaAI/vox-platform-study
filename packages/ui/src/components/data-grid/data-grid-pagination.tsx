@@ -10,9 +10,10 @@ import { cn } from '@/lib/utils';
 import { getItemRange, getPaginationRange, getPagerRadius, type ContainerBreakpoint } from './pagination-window';
 import { DEFAULT_PAGE_SIZE_OPTIONS } from './types';
 import { useContainerBreakpoint } from './use-container-breakpoint';
+import type { RowData } from '@tanstack/react-table';
 import type { UseDataGridResult } from './use-data-grid';
 
-export interface DataGridPaginationProps<TData> {
+export interface DataGridPaginationProps<TData extends RowData> {
   grid: UseDataGridResult<TData>;
   pageSizeOptions?: number[];
   /** Cursor-mode page info supplied by the consumer (drives Next + "of many"). */
@@ -36,7 +37,7 @@ function cursorStatus(bp: ContainerBreakpoint, shown: number): string {
   return `${shown} of many`;
 }
 
-export function DataGridPagination<TData>({
+export function DataGridPagination<TData extends RowData>({
   grid,
   pageSizeOptions = DEFAULT_PAGE_SIZE_OPTIONS,
   cursor,

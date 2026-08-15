@@ -9,6 +9,8 @@
  * decorator that keeps the deny-by-default boot audit green, and pin the
  * absence of any mutating route on a WORM resource.
  */
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { REQUIRED_PERMISSIONS_KEY } from '@arcaai/applications';
 import { AgentPromotionController } from '../agent-promotion.controller';
@@ -19,13 +21,12 @@ describe('AgentPromotionController — authorization metadata', () => {
     expect(meta).toEqual([{ action: 'manage', subject: 'DepartmentAgent' }]);
   });
 
-  it('carries the AUTH-NOTE marker — the decorator understates the real gate', async () => {
+  it('carries the AUTH-NOTE marker — the decorator understates the real gate', () => {
     // The marker is mandatory on every route whose real boundary is enforced
     // imperatively (05-nestjs-api.md §Imperative Privilege Checks). Asserting
     // it here means deleting the comment breaks a test rather than silently
     // erasing the only in-code signpost to the service-side check.
-    const { readFileSync } = await import('node:fs');
-    const source = readFileSync(new URL('../agent-promotion.controller.ts', import.meta.url), 'utf-8');
+    const source = readFileSync(join(__dirname, '..', 'agent-promotion.controller.ts'), 'utf-8');
     expect(source).toContain('AUTH-NOTE:');
     expect(source).toMatch(/assertManagesBothTenants/);
   });

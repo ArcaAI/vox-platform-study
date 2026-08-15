@@ -12,7 +12,7 @@ import type { EnhancedMedicalSummary, SimplifiedMedicalSummary, SoapMedicalSumma
  * structured `SummaryView` below takes over once the terminal `result` event
  * resolves the request with the same v1-shaped body the non-streaming path
  * returns.
-*/
+ */
 
 // =============================================================================
 // Shape discriminators

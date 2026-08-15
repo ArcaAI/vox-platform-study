@@ -53,12 +53,12 @@
     "@arcaai/config-ts": "workspace:*",
     "@arethetypeswrong/cli": "^0.18.5",
     "@opentelemetry/api": "^1.9.1",
-    "@types/node": "^25.9.4",
+    "@types/node": "^26.2.0",
     "publint": "^0.3.23",
     "rimraf": "^6.1.3",
     "tsup": "^8.5.1",
     "typescript": "^5.9.3",
-    "vitest": "^4.1.9"
+    "vitest": "^4.1.10"
   },
   "keywords": [
     "arcaai",

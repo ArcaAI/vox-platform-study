@@ -1,5 +1,5 @@
 import axe from 'axe-core';
-import type { Page } from '@playwright/experimental-ct-react';
+import type { Page } from 'playwright-core';
 
 /**
  * Run axe-core inside a Playwright component-test page.

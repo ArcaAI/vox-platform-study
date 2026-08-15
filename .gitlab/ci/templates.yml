@@ -5,7 +5,7 @@
 # ── Node.js base ─────────────────────────────────────────────────────────────
 
 .node-base:
-  image: node:22-alpine
+  image: node:24-alpine
   tags: [fast]
   # The ID token is minted for every job on this base, but is
   # only USED by jobs that declare VAULT_SECRETS. Minting is local and free; the
@@ -24,7 +24,7 @@
     # Runs FIRST so a credential problem fails in seconds, not after pnpm install.
     - !reference [.vault-oidc, before_script]
     - corepack enable
-    - corepack install -g --cache-only .gitlab/corepack/pnpm-10.31.0.tgz
+    - corepack install -g --cache-only .gitlab/corepack/pnpm-10.34.5.tgz
     - pnpm config set store-dir /pnpm-store
     - pnpm install --frozen-lockfile --prefer-offline
 
@@ -48,7 +48,7 @@
 # saturating fast-runner-01 which handles lint/typecheck/install.
 
 .test-node-base:
-  image: node:22-alpine
+  image: node:24-alpine
   tags: [test]
   id_tokens: !reference [.vault-oidc-id-token, id_tokens]
   cache:
@@ -63,7 +63,7 @@
   before_script:
     - !reference [.vault-oidc, before_script]
     - corepack enable
-    - corepack install -g --cache-only .gitlab/corepack/pnpm-10.31.0.tgz
+    - corepack install -g --cache-only .gitlab/corepack/pnpm-10.34.5.tgz
     - pnpm config set store-dir /pnpm-store
     - pnpm install --frozen-lockfile --prefer-offline
 
@@ -113,7 +113,7 @@
 .build-template:
   stage: build
   tags: [build]
-  image: docker:27
+  image: docker:28
   timeout: 30m
   interruptible: false
   # Image builds are idempotent — the push is content-addressed, so re-running a

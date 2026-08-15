@@ -399,7 +399,7 @@ export { StatusBadge, type StatusBadgeProps, type StatusColorRole } from './comp
 export * from './components/data-grid';
 // TanStack column/selection types consumers need by name to type `columns`/
 // `selection` without depending on @tanstack/react-table directly.
-export type { ColumnDef, RowSelectionState } from '@tanstack/react-table';
+export type { ColumnDef, RowData, RowSelectionState } from './components/data-grid/table-features';
 
 // HistoryTimelineList — content-type-aware, virtualized history.
 // `TimelineItem` is omitted (collides with the diceui `TimelineItem` export).

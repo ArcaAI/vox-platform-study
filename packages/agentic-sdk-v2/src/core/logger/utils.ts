@@ -343,7 +343,7 @@ const W3C_TRACE_ID = /^[0-9a-f]{32}$/;
  * A W3C propagator REJECTS such a `traceparent`: the server silently starts a
  * fresh trace, and the browser hop disappears from every trace with no error
  * anywhere. That is the same silent-severing failure the rest of addresses, one hop further upstream.
- * 
+ *
  *
  * So: derive from the correlation id when that yields a valid id (keeping the
  * useful property that one browser session's calls share a trace), otherwise

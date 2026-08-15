@@ -8,7 +8,7 @@
  * header) — see `docs/implementation/TASK-632-HOPE-Node-SDK/README.md`.
  * This module only generates the value; the resources layer is
  * responsible for placing it in the request body.
-*/
+ */
 
 const HEX_TABLE: readonly string[] = Array.from({ length: 256 }, (_, i) => i.toString(16).padStart(2, '0'));
 

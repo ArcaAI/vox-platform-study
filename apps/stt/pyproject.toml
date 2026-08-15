@@ -26,24 +26,24 @@ classifiers = [
 
 dependencies = [
     # --- Web framework ---
-    "fastapi>=0.133.0",
-    "uvicorn[standard]>=0.41.0",
+    "fastapi>=0.141.1",
+    "uvicorn[standard]>=0.52.3",
     "python-multipart>=0.0.22",
     # --- Async support ---
     "aiofiles>=25.1.0",
     "asyncpg>=0.31.0",
     # --- Database (read-only) ---
-    "sqlalchemy[asyncio]>=2.0.47",
+    "sqlalchemy[asyncio]>=2.0.52",
     # --- Data validation ---
     "pydantic>=2.12.5",
-    "pydantic-settings>=2.13.1",
+    "pydantic-settings>=2.15.0",
     # --- HTTP client (API Gateway communication) ---
     "httpx>=0.28.1",
     # --- Task queue ---
     # NOTE: dramatiq 2.2.0 supports redis>=4.0,<9.0 — keep the redis cap in
     # lock-step with dramatiq's declared upper bound when bumping either.
     "dramatiq[redis]>=2.0.0",
-    "redis[hiredis]>=5.2.0,<9.0",
+    "redis[hiredis]>=8.1.0,<9.0",
     # --- Object storage ---
     # minio SDK backs both the `minio` and `aws_s3` providers (S3-compatible).
     "minio>=7.2.20",
@@ -57,27 +57,27 @@ dependencies = [
     "python-json-logger>=4.0.0",
     # --- Date / time / JSON / UUID ---
     "python-dateutil>=2.9.0",
-    "orjson>=3.11.7",
+    "orjson>=3.12.0",
     "uuid7>=0.1.0",
     # --- Monitoring ---
     "psutil>=7.2.2",
-    "prometheus-client>=0.24.1",
-    "prometheus-fastapi-instrumentator>=7.1.0",
+    "prometheus-client>=0.26.0",
+    "prometheus-fastapi-instrumentator>=8.1.0",
     # --- OpenTelemetry ---
-    "opentelemetry-api>=1.39.1",
-    "opentelemetry-sdk>=1.39.1",
-    "opentelemetry-exporter-otlp-proto-grpc>=1.39.0",
-    "opentelemetry-instrumentation>=0.60b1",
-    "opentelemetry-instrumentation-fastapi>=0.60b1",
-    "opentelemetry-instrumentation-httpx>=0.60b1",
-    "opentelemetry-instrumentation-logging>=0.60b1",
+    "opentelemetry-api>=1.44.0",
+    "opentelemetry-sdk>=1.44.0",
+    "opentelemetry-exporter-otlp-proto-grpc>=1.44.0",
+    "opentelemetry-instrumentation>=0.65b0",
+    "opentelemetry-instrumentation-fastapi>=0.65b0",
+    "opentelemetry-instrumentation-httpx>=0.65b0",
+    "opentelemetry-instrumentation-logging>=0.65b0",
     # --- Core processing (imported top-level in batch_service & preprocessing) ---
     "numpy>=2.0.0",
     # --- Resampling (streaming preprocessor's core resample path — always
     # active whenever input sample rate != target rate) ---
     "scipy>=1.17.0",
     # --- Azure Speech SDK (cloud ASR engine, imported top-level in batch_service) ---
-    "azure-cognitiveservices-speech>=1.47.0",
+    "azure-cognitiveservices-speech>=1.51.1",
     # --- Cadence punctuation runtime compatibility (Gemma3 bidirectional mask path) ---
     "cadence-punctuation>=1.1.0",
     # --- Shared runtime contracts ---
@@ -123,10 +123,10 @@ ml = [
     # Audio I/O (lazy-imported in preprocessing & embedding_service)
     "soundfile>=0.13.1",
     "librosa>=0.11.0",
-    "numba>=0.63.0",
+    "numba>=0.67.0",
     "scipy>=1.17.0",
     # ONNX Runtime — CPU (used for Whisper ONNX + Silero VAD)
-    "onnxruntime>=1.23.0",
+    "onnxruntime>=1.28.0",
     # RNNoise noise suppression (requires 48kHz, 480-sample frames)
     "pyrnnoise>=0.4.0",
     # Speaker diarization — pyannote embedding extraction
@@ -135,7 +135,7 @@ ml = [
     # SpeechBrain
     "speechbrain>=1.0.0",
     # omegaconf — required by pyannote.audio for model config loading
-    "omegaconf>=2.3.0",
+    "omegaconf>=2.3.1",
     # torchcodec — pulled in by pyannote.audio; must match torch version.
     # torch 2.8.x requires torchcodec 0.6.x or 0.7.x (0.10+ needs torch 2.10).
     # Requires FFmpeg 6.x installed via conda (torchcodec links libavutil.58).
@@ -163,6 +163,14 @@ ml = [
 
 nemo = [
     "nemo_toolkit[asr]>=2.7.2,<3.0.0",
+    # Keep the TASK-695 fork: ml/guardrail stay on numba 0.67 / onnxruntime 1.28.
+    # A fresh uv resolve otherwise unifies the conflicting extras onto 0.67 / 1.28.
+    "numba>=0.66.0,<0.67.0",
+    "onnxruntime>=1.27.0,<1.28.0",
+    # Nemo extra previously locked torch 2.12.x. A fresh resolve picks 2.13,
+    # which is the optional P6 ML bump — pin the prior line so pyannote's
+    # ml extra (torch 2.8) and this extra stay split without taking 2.13.
+    "torch>=2.12.0,<2.13.0",
 ]
 
 # GPU variant — identical to ml but swaps onnxruntime for onnxruntime-gpu.
@@ -171,7 +179,7 @@ ml-gpu = [
     "stt[ml]",
     # Override: GPU-accelerated ONNX Runtime (replaces CPU onnxruntime). CUDA-only
     # — no macOS wheels exist, so this is Linux-gated (dev machines are darwin).
-    "onnxruntime-gpu>=1.23.0; sys_platform == 'linux'",
+    "onnxruntime-gpu>=1.28.0; sys_platform == 'linux'",
     # Flash Attention 2 — faster attention for Whisper on CUDA GPUs (Ampere+).
     # CUDA-only (Linux-gated, same reasoning as onnxruntime-gpu above).
     "flash-attn>=2.8.3; sys_platform == 'linux'",
@@ -183,13 +191,13 @@ ml-gpu = [
 dev = [
     # Linting & formatting
     "black>=26.1.0",
-    "ruff>=0.15.7",
-    "mypy>=1.19.1",
+    "ruff>=0.16.3",
+    "mypy>=2.3.1",
     # Type stubs for mypy strict checking (used by py:stt:typecheck)
-    "types-PyYAML>=6.0.12",
+    "types-PyYAML>=6.0.12.20260815",
     "types-psutil>=7.0.0",
     # Pre-commit hooks
-    "pre-commit>=4.5.1",
+    "pre-commit>=4.6.2",
 ]
 
 test = [
@@ -200,7 +208,7 @@ test = [
     "pytest-mock>=3.15.1",
     "pytest-xdist>=3.8.0",
     # Test utilities
-    "testcontainers>=4.14.0",
+    "testcontainers>=4.15.0",
     "freezegun>=1.5.0",
     "soundfile>=0.13.1",
 ]

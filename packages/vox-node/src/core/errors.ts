@@ -50,7 +50,7 @@ function readCurrentVersion(body: unknown): number | undefined {
  *
  * Exported so `core/retry.ts` reuses the same parser for its own retry
  * scheduling instead of duplicating the delta-seconds-vs-HTTP-date logic.
-*/
+ */
 export function parseRetryAfterMs(headerValue: string | null | undefined): number | undefined {
   if (!headerValue) return undefined;
   const trimmed = headerValue.trim();

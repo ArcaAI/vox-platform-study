@@ -18,7 +18,7 @@ import { buildRunExport, formatRate, parseReferenceText, REFERENCE_FILE_ACCEPT, 
  * State is deliberately LOCAL to this panel. The reference transcript is a
  * scoring input, not session state, and keeping it here means the panel can be
  * dropped into (or out of) the tab without touching the shared session context.
-*/
+ */
 
 /** Per-op presentation: colour AND a text marker — never colour alone.*/
 const OP_STYLES: Record<AlignmentOp['kind'], { marker: string; className: string; label: string }> = {
@@ -80,7 +80,7 @@ function DiffLegend() {
  * describe: a file mode with no file loaded has no source, and a mic mode with
  * no explicit selection is whatever the OS calls default, which the browser
  * will not tell us.
-*/
+ */
 export function describeAudioSource(audio: Pick<PlaygroundAudioSlice, 'mode' | 'sources'>): string | null {
   if (audio.sources.length === 0) {
     const isFileMode = audio.mode === 'file-single' || audio.mode === 'file-multi';

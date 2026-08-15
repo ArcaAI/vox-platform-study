@@ -96,8 +96,8 @@ spec:
       containers:
         - name: vault
           # PROD pins this by digest via `kubectl apply -k seal-vault/` (kustomization.yaml
-          # rewrites -> hashicorp/vault@sha256:eb0ba6…ea0). Tag here is for the kind E2E.
-          image: hashicorp/vault:1.21.2
+          # rewrites -> hashicorp/vault@sha256:4e33b1…2569). Tag here is for the kind E2E.
+          image: hashicorp/vault:1.21.4
           imagePullPolicy: IfNotPresent
           command: ["vault", "server", "-config=/vault/config/seal.hcl"]
           securityContext:
