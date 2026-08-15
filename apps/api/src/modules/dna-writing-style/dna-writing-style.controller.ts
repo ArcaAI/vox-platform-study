@@ -30,8 +30,9 @@ import {
 // `useDoctorContext` gate. A "global"/tenant admin who is NOT also a clinical
 // user and is NOT impersonating one must not generate a DNA style (which would
 // be owned by their own account — a per-doctor isolation break).
-// SUPER_ADMIN retired; GLOBAL_ADMIN is the sole elevated role.
-const DNA_ADMIN_ROLES = ['GLOBAL_ADMIN', 'TENANT_ADMIN'];
+// The pre-TASK-417 SUPER_ADMIN role is retired; SUPER_ADMIN (formerly
+// GLOBAL_ADMIN, renamed TASK-707) is the sole elevated role.
+const DNA_ADMIN_ROLES = ['SUPER_ADMIN', 'TENANT_ADMIN'];
 const DNA_DOCTOR_ROLES = ['DOCTOR', 'SPECIALIST', 'CONSULTANT'];
 import { ApiTags, ApiBearerAuth, ApiHeader, ApiParam, ApiResponse, ApiOperation } from '@nestjs/swagger';
 import { InjectQueue } from '@nestjs/bullmq';

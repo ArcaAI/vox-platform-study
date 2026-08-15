@@ -83,7 +83,7 @@ describe('DnaWritingStyleService.getDashboard', () => {
 
   const asGlobalAdmin = (tenantId: string | null) =>
     mockClsService.get.mockImplementation((key: string) => {
-      if (key === 'user') return { id: 'super-1', roles: ['GLOBAL_ADMIN'] };
+      if (key === 'user') return { id: 'super-1', roles: ['SUPER_ADMIN'] };
       if (key === 'tenantId') return tenantId;
       return null;
     });

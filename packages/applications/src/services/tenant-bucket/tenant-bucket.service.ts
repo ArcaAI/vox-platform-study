@@ -60,7 +60,7 @@ export class TenantBucketService extends BaseService implements ITenantBucketSer
   }
 
   async listBuckets(options?: { includeDisabled?: boolean }): Promise<TenantBucketResponse[]> {
-    // An unscoped GLOBAL_ADMIN (no working tenant selected) lists
+    // An unscoped SUPER_ADMIN (no working tenant selected) lists
     // buckets CROSS-TENANT; every other caller keeps the strict tenant
     // requirement.
     const tenantId = this.tenantId;
@@ -381,7 +381,7 @@ export class TenantBucketService extends BaseService implements ITenantBucketSer
    * management call. Idempotent: re-registering an existing name owned by the
    * caller returns it unchanged; a name owned by another tenant is rejected.
    *
-   * When there is no tenant context (e.g. a platform GLOBAL_ADMIN creating a
+   * When there is no tenant context (e.g. a platform SUPER_ADMIN creating a
    * bucket without a tenant-scoped JWT) there is no owner to attribute the row
    * to, so registration is skipped and `null` is returned — the S3 bucket is
    * still created by the caller, it just isn't a tenant-owned managed resource.

@@ -66,7 +66,7 @@ TEST_QDRANT_PORT=6335
 TEST_VAULT_PORT=8201
 T_API_PORT="$(env_val API_PORT)";  T_API_PORT="${T_API_PORT:-8968}"
 T_STT_PORT="$(env_val STT_PORT)";  T_STT_PORT="${T_STT_PORT:-8961}"
-T_SMR_PORT="$(env_val SMR_PORT)";  T_SMR_PORT="${T_SMR_PORT:-8962}"
+T_TEXT_PORT="$(env_val TEXT_PORT)";  T_TEXT_PORT="${T_TEXT_PORT:-8962}"
 T_NLP_PORT="$(env_val NLP_PORT)";  T_NLP_PORT="${T_NLP_PORT:-8964}"
 T_GUARDRAIL_PORT="$(env_val GUARDRAIL_PORT)"; T_GUARDRAIL_PORT="${T_GUARDRAIL_PORT:-8963}"
 T_HARNESS_PORT="$(env_val HARNESS_PORT)";     T_HARNESS_PORT="${T_HARNESS_PORT:-8966}"
@@ -179,7 +179,7 @@ echo -e "${CYAN}── HOPE services on the test env ─────────
 # These are OPTIONAL: they only run while a suite (or `pnpm stack:test`) is up.
 http_check optional "api ($T_API_PORT)"       "http://localhost:$T_API_PORT/api/v1/health" "pnpm test:up:api"
 http_check optional "stt ($T_STT_PORT)"       "http://localhost:$T_STT_PORT/api/v1/health" "pnpm test:up:stt"
-http_check optional "smr ($T_SMR_PORT)"       "http://localhost:$T_SMR_PORT/api/v1/health" "pnpm test:up:smr"
+http_check optional "smr ($T_TEXT_PORT)"       "http://localhost:$T_TEXT_PORT/api/v1/health" "pnpm test:up:smr"
 http_check optional "nlp ($T_NLP_PORT)"       "http://localhost:$T_NLP_PORT/api/v1/health" "pnpm test:up:nlp"
 http_check optional "guardrail ($T_GUARDRAIL_PORT)" "http://localhost:$T_GUARDRAIL_PORT/api/health"
 http_check optional "harness ($T_HARNESS_PORT)"     "http://localhost:$T_HARNESS_PORT/api/v1/health"
@@ -189,7 +189,7 @@ echo -e "${CYAN}── Dev/test isolation ────────────�
 # once. What still matters is that .env.test has not drifted back onto a dev
 # port — that would silently point a suite at the dev stack.
 collisions=""
-for pair in "API_PORT:8868" "STT_PORT:8861" "SMR_PORT:8862" "GUARDRAIL_PORT:8863" \
+for pair in "API_PORT:8868" "STT_PORT:8861" "TEXT_PORT:8862" "GUARDRAIL_PORT:8863" \
             "NLP_PORT:8864" "TTS_PORT:8865" "HARNESS_PORT:8866" "ADMIN_PORT:5176"; do
     var="${pair%%:*}"; devport="${pair##*:}"
     testport="$(env_val "$var")"

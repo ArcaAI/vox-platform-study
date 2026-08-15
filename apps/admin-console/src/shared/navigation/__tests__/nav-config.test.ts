@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { PermissionRule } from '@/shared/auth/ability';
 import { matchNavEntry, NAV_ENTRIES, NAV_SECTIONS, visibleNavEntries } from '../nav-config';
 
-const GLOBAL_ADMIN_RULES: PermissionRule[] = [{ action: 'manage', subject: 'all' }];
+const SUPER_ADMIN_RULES: PermissionRule[] = [{ action: 'manage', subject: 'all' }];
 
 // Approximation of the seeded TENANT_ADMIN policy set (tenant-full-access,
 // rbac-tenant-manage, prompt-template-manage, audit-log-read). Adds
@@ -187,13 +187,13 @@ describe('matchNavEntry', () => {
 
 describe('visibleNavEntries', () => {
   it('shows a global admin every implemented entry (manage:all grants all tiers)', () => {
-    const visible = visibleNavEntries(GLOBAL_ADMIN_RULES, ['GLOBAL_ADMIN']);
+    const visible = visibleNavEntries(SUPER_ADMIN_RULES, ['SUPER_ADMIN']);
     const implemented = NAV_ENTRIES.filter((entry) => entry.implemented);
     expect(visible.map((entry) => entry.route)).toEqual(implemented.map((entry) => entry.route));
   });
 
   it('shows /ai-models to a global admin now that the hub is implemented', () => {
-    expect(visibleNavEntries(GLOBAL_ADMIN_RULES, ['GLOBAL_ADMIN']).map((entry) => entry.route)).toContain('/ai-models');
+    expect(visibleNavEntries(SUPER_ADMIN_RULES, ['SUPER_ADMIN']).map((entry) => entry.route)).toContain('/ai-models');
   });
 
   it('hides global-admin-only entries from tenant admins but keeps shared screens and the playground', () => {
@@ -223,12 +223,12 @@ describe('visibleNavEntries', () => {
   });
 
   it('shows nothing while permissions are unknown', () => {
-    expect(visibleNavEntries(null, ['GLOBAL_ADMIN'])).toEqual([]);
+    expect(visibleNavEntries(null, ['SUPER_ADMIN'])).toEqual([]);
     expect(visibleNavEntries(undefined)).toEqual([]);
   });
 
   it('filters unimplemented entries even when the ability grants them', () => {
-    const visible = visibleNavEntries(GLOBAL_ADMIN_RULES, ['GLOBAL_ADMIN']);
+    const visible = visibleNavEntries(SUPER_ADMIN_RULES, ['SUPER_ADMIN']);
     expect(visible.every((entry) => entry.implemented)).toBe(true);
   });
 });

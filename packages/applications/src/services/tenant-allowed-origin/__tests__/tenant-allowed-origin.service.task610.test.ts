@@ -122,7 +122,7 @@ describe('TenantAllowedOriginService', () => {
     mockClsService.get.mockImplementation((key: string) => {
       switch (key) {
         case 'user':
-          // The acting user is made EXPLICITLY `GLOBAL_ADMIN`.
+          // The acting user is made EXPLICITLY `SUPER_ADMIN`.
           // Under this whole resource was global-admin-only at the
           // controller, so every scenario in this suite — including its
           // wildcard/allow-all cases — was already, implicitly, a global
@@ -132,7 +132,7 @@ describe('TenantAllowedOriginService', () => {
           // behavior is covered by `tenant-allowed-origin.privilege.task641.test.ts`,
           // which drives a real `ClsService`; this suite stays about CRUD,
           // normalization and the invalidation contract.
-          return { id: 'user-id-1', roles: ['GLOBAL_ADMIN'] };
+          return { id: 'user-id-1', roles: ['SUPER_ADMIN'] };
         case 'tenantId':
           return 'tenant-1';
         case 'correlationId':

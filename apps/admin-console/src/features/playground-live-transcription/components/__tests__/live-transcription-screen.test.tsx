@@ -164,7 +164,7 @@ function stubFetch(handler: FetchHandler): RecordedCall[] {
 
 function session(overrides: Partial<{ workingTenantId: string | null; tenantId: string | null }> = {}) {
   const workingTenantId = 'workingTenantId' in overrides ? overrides.workingTenantId! : 'tnt-1';
-  const user = { id: 'u-1', username: 'root', email: 'root@hope.local', roles: ['GLOBAL_ADMIN'], tenantId: overrides.tenantId ?? null };
+  const user = { id: 'u-1', username: 'root', email: 'root@hope.local', roles: ['SUPER_ADMIN'], tenantId: overrides.tenantId ?? null };
   return {
     user,
     isElevated: true,

@@ -23,7 +23,7 @@ import { Module } from '@nestjs/common';
 import { TenantOwnedResourceModule } from '../../common';
 import { AdminTranscriptionJobController } from './admin-transcription-job.controller';
 import { SessionRemovalRetryService } from './session-removal-retry.service';
-import { SmrProxyController } from './smr-proxy.controller';
+import { SmrProxyController } from './text-proxy.controller';
 import { SttWsGateway } from './stt-ws.gateway';
 import { TranscriptionJobController } from './transcription-job.controller';
 

@@ -9,9 +9,9 @@
 | **Design refs** | Services program (`nlp` row: "Adds sentiment / topic / intent / toxicity task types; may delegate generative NLP to `text`; per-tenant instructions"), `text` row ("Control-plane proxy for text-generation… across engines… Standard APIs + SSE + async contract") |
 | **Findings closed** | — (net-new Wave-3 extension; not adjudicated in the consultation assessment) |
 
-**Naming note (D8 / TASK-707):** the codebase on disk today still has the service at `apps/smr`
-(package `smr`, env prefix `SMR_`) — TASK-707's `smr` → `text` rename has not landed. Every citation
-below uses the REAL, on-disk path (`apps/smr/...`) since that is what exists to verify against; every
+**Naming note (D8 / TASK-707):** the codebase on disk today still has the service at `apps/text`
+(package `smr`, env prefix `TEXT_`) — TASK-707's `smr` → `text` rename has not landed. Every citation
+below uses the REAL, on-disk path (`apps/text/...`) since that is what exists to verify against; every
 place this ticket's own prose refers to the service by name, it uses the post-rename name `text` per
 the assignment's instruction. If TASK-707 lands before this ticket executes, Task 1 below re-verifies
 paths against `apps/text` and updates them — do not silently mix the two.
@@ -37,7 +37,7 @@ justified by what each task actually needs:
   two delegate to `text` (a real LLM call, with the tenant's topic/intent list injected into the
   prompt as **per-tenant instructions**). Building this delegation is real new work — confirmed
   `apps/nlp` makes zero peer-service HTTP calls today (§2.3); this ticket adds `apps/nlp`'s first one,
-  following the exact peer-to-peer client pattern `apps/smr` already uses to call `guardrail`
+  following the exact peer-to-peer client pattern `apps/text` already uses to call `guardrail`
   (`ExternalGuardrailClient`, §2.3) rather than inventing a new integration style.
 
 Per-tenant instructions (topic list / intent list) are governed by a **new**, tenant-writable config
@@ -48,7 +48,7 @@ posture).
 **Out of scope:**
 - The `smr` → `text` rename itself (TASK-707).
 - A shared cross-service peer-client package. `ExternalGuardrailClient` is itself per-service
-  (`apps/smr/src/smr/services/external_guardrail.py`), matching rule 06's explicit note that
+  (`apps/text/src/text/services/external_guardrail.py`), matching rule 06's explicit note that
   per-service `core/effective_config.py` duplication "is a settled decision — do not preempt it";
   this ticket's new `apps/nlp` → `text` client follows the same per-service posture, not a shared
   package.
@@ -102,24 +102,24 @@ field exists anywhere in the schema. Model loading is local `transformers`
 resolver: `local_path` → `hf:`/bare id → `s3://` → `file://`), per-model-slot caching via
 `services/model_cache.py` (wraps shared `hope_runtime_models.ModelCache`).
 
-### 2.3 Peer-service calls — confirmed zero today; the exemplar to imitate lives in `apps/smr`
+### 2.3 Peer-service calls — confirmed zero today; the exemplar to imitate lives in `apps/text`
 
 Grepping `apps/nlp/src/nlp/` for `httpx` returns exactly two call sites, BOTH pointed at the
 **gateway**, never a peer AI service: `lifespan.py:46` (fire-and-forget service self-registration)
 and `core/effective_config.py:157` (control-plane config pull, TTL-cached). Grepping for
-`SMR_URL|GUARDRAIL_URL|STT_URL|HARNESS_URL|TTS_URL` in `apps/nlp/src/nlp/`: **zero matches**. `apps/nlp`
+`TEXT_URL|GUARDRAIL_URL|STT_URL|HARNESS_URL|TTS_URL` in `apps/nlp/src/nlp/`: **zero matches**. `apps/nlp`
 has never called another AI service directly.
 
-The pattern to imitate already exists, one service over: `apps/smr/src/smr/services/external_guardrail.py`
+The pattern to imitate already exists, one service over: `apps/text/src/text/services/external_guardrail.py`
 — `ExternalGuardrailClient` (`:21`), constructed with an `httpx.AsyncClient` (`:36`), calling
 `f"{self.base_url}/api/medical/validate"` (`:81`) with `headers["X-Service-Token"] = service_token`
 (`:60`) attached — a direct peer-to-peer call, not routed through the gateway (matching rule
 `06-python-services.md`'s documented rationale for guardrail's callers: "SMR posts to it directly,
 forwarding only `X-Tenant-Id`… there is no gateway to inject config"). Its config,
-`ExternalGuardrailConfig` (`apps/smr/src/smr/core/config.py:310-322`), uses `env_prefix
-="SMR_EXTERNAL_GUARDRAIL_"` — the naming convention this ticket's new `nlp → text` client mirrors
+`ExternalGuardrailConfig` (`apps/text/src/text/core/config.py:310-322`), uses `env_prefix
+="TEXT_EXTERNAL_GUARDRAIL_"` — the naming convention this ticket's new `nlp → text` client mirrors
 as `NLP_EXTERNAL_TEXT_` (post-707-rename framing; pre-rename it would literally be
-`NLP_EXTERNAL_SMR_` — Task 1 confirms which is current at execution time).
+`NLP_EXTERNAL_TEXT_` — Task 1 confirms which is current at execution time).
 
 ### 2.4 Service-to-service auth — inbound real, outbound needs building
 
@@ -266,7 +266,7 @@ and `design.md` were grepped for `node.type|nodeType|registry` — no hits; this
 ### Task 1 — Verify TASK-707's rename status before writing any new file paths
 - **Agent:** T1 · haiku-4-5 · default
 - **Files:** none (verification only)
-- **Approach:** Check whether `apps/smr` still exists or has become `apps/text` (and `SMR_*` env
+- **Approach:** Check whether `apps/text` still exists or has become `apps/text` (and `TEXT_*` env
   vars → `TEXT_*`). Confirm which prefix Task 4's new client config should target
   (`NLP_EXTERNAL_TEXT_` either way per this ticket's naming choice, §2.3, but the TARGET service's
   own base env var name and default port depend on whether 707 landed).
@@ -319,14 +319,14 @@ and `design.md` were grepped for `node.type|nodeType|registry` — no hits; this
 - **Files:** `apps/nlp/src/nlp/core/config.py` (new `ExternalTextConfig(BaseSettings)`, `env_prefix
   ="NLP_EXTERNAL_TEXT_"`, fields `base_url: str`, `service_token: SecretStr`, timeout — mirror
   `ExternalGuardrailConfig` field-for-field), `apps/nlp/src/nlp/services/external_text_client.py`
-  (new — mirror `apps/smr/src/smr/services/external_guardrail.py`'s class shape: constructor takes
+  (new — mirror `apps/text/src/text/services/external_guardrail.py`'s class shape: constructor takes
   settings + an injected `httpx.AsyncClient`, one `async def generate_label(...)` method attaching
   `X-Service-Token`), `apps/nlp/tests/test_external_text_client.py` (new, RED first, mirroring
-  `apps/smr/src/smr/tests/unit/test_external_guardrail_client.py`'s mocking style — mock the HTTP
+  `apps/text/src/text/tests/unit/test_external_guardrail_client.py`'s mocking style — mock the HTTP
   call, never hit a live service in this suite).
 - **Approach:** The client posts to `text`'s existing generation endpoint (verify the exact route —
   rule `06-python-services.md`/services-program table names `text` as exposing "Standard APIs + SSE
-  + async contract"; find its real non-streaming generate route in `apps/smr/src/smr/api/endpoints/`
+  + async contract"; find its real non-streaming generate route in `apps/text/src/text/api/endpoints/`
   before hardcoding a path) with a prompt assembled from the tenant's `instructionsJson` (Task 3) +
   the input text, and parses the response into a label (topic) or label set (intent). Timeout and
   error handling mirror `ExternalGuardrailClient`'s own (verify its exact `httpx.TimeoutException`/
@@ -415,14 +415,14 @@ and `design.md` were grepped for `node.type|nodeType|registry` — no hits; this
   assumed away. Confirm the actual requirement before Task 2 claims "no new endpoint needed" as a
   blanket fact.
 - **HUMAN-GATED: naming and rename timing (TASK-707 soft dependency).** If TASK-707 lands mid-execution,
-  every `apps/smr`/`SMR_*` citation in this ticket needs re-verifying against the renamed paths —
+  every `apps/text`/`TEXT_*` citation in this ticket needs re-verifying against the renamed paths —
   Task 1 is the re-verification gate but a second pass may be needed if the rename lands between
   Task 1 and later tasks.
 - **Peer-call concurrency budget (Task 5)**: reusing `inference_bound` for a network call to `text`
   conflates two different resource budgets (local GPU/CPU inference slots vs. outbound HTTP
   concurrency to a peer service). This ticket's plan flags but does not resolve it — a wrong choice
   here could either starve local classification under load from topic/intent calls, or vice versa.
-  Needs a decision, ideally informed by how `apps/smr`'s own guardrail-calling code paces its calls
+  Needs a decision, ideally informed by how `apps/text`'s own guardrail-calling code paces its calls
   (verify if `ExternalGuardrailClient`'s callers use a distinct semaphore before deciding).
 - **`GLOBAL_ADMIN_ONLY_TASK_PREFIXES` scope**: this ticket does not add `nlp.sentiment`/`nlp.toxicity`/
   `nlp.topic`/`nlp.intent` as EXCEPTIONS to the global-admin-only write lock — MODEL selection for
@@ -433,7 +433,7 @@ and `design.md` were grepped for `node.type|nodeType|registry` — no hits; this
   routine addition.
 - **`text`'s exact generation route (Task 4)** is asserted to exist per the services-program table
   ("Standard APIs + SSE + async contract") but this ticket's research did not verify its exact path
-  — Task 4 must confirm the real endpoint (likely under `apps/smr/src/smr/api/endpoints/generate.py`,
+  — Task 4 must confirm the real endpoint (likely under `apps/text/src/text/api/endpoints/generate.py`,
   seen in §2.3's file listing, but not read in this research pass) before wiring the client, and
   should not assume the assignment's phrasing is a literal route name.
 

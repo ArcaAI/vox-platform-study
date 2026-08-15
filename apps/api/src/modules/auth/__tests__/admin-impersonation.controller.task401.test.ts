@@ -11,9 +11,13 @@ import { EventTypes, SysEventType } from '@arcaai/domains';
 import { AdminImpersonationController, USER_IMPERSONATION_STARTED } from '../admin-impersonation.controller';
 import { ImpersonationEvents, ImpersonationDeniedReason } from '../impersonation-events';
 
-const GLOBAL_ADMIN = 'GLOBAL_ADMIN';
-// Retired role literal, used only to prove it no longer elevates.
-const RETIRED_SUPER_ADMIN = 'SUPER_ADMIN';
+const SUPER_ADMIN = 'SUPER_ADMIN';
+// Retired role literal, used only to prove it no longer elevates. Distinct
+// from the live 'SUPER_ADMIN' role above (TASK-707 renamed GLOBAL_ADMIN to
+// SUPER_ADMIN, which now collides in name — but not in id — with this
+// pre-existing retired role; see the seed placeholder
+// 'SUPER_ADMIN__RETIRED_TASK_417' used by the TASK-707 data migration).
+const RETIRED_SUPER_ADMIN = 'SUPER_ADMIN__RETIRED_TASK_417';
 const TENANT_ADMIN = 'TENANT_ADMIN';
 const DOCTOR = 'DOCTOR';
 
@@ -40,7 +44,7 @@ interface Fixture {
 
 function buildController(opts: { user: ClsUserStub | null; fixture?: Partial<Fixture> }) {
   const fixture: Fixture = {
-    actorRoles: [GLOBAL_ADMIN],
+    actorRoles: [SUPER_ADMIN],
     targetRoles: [{ name: DOCTOR, permissions: ['read:Consultation'] }],
     targetTenants: ['tenant-B'],
     target: { id: 'target-B', username: 'doctor.bob', resourceStatus: 'ENABLED', UserProfile: { email: 'bob@x' } },
@@ -103,7 +107,7 @@ function deniedEvents(eventEmitter: { emit: ReturnType<typeof vi.fn> }) {
 describe('AdminImpersonationController — guard matrix', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('allows a GLOBAL_ADMIN and mints a target-identity token with the actor preserved', async () => {
+  it('allows a SUPER_ADMIN and mints a target-identity token with the actor preserved', async () => {
     const { controller } = buildController({ user: { id: 'admin-A', tenantId: null } });
 
     const response = await controller.impersonate('target-B', {}, REQ);
@@ -191,7 +195,7 @@ describe('AdminImpersonationController — guard matrix', () => {
   it('rejects a global-admin target with 400 + TARGET_IS_SUPER_ADMIN', async () => {
     const { controller, eventEmitter } = buildController({
       user: { id: 'admin-A' },
-      fixture: { targetRoles: [{ name: 'GLOBAL_ADMIN' }] },
+      fixture: { targetRoles: [{ name: 'SUPER_ADMIN' }] },
     });
 
     await expect(controller.impersonate('target-B', {}, REQ)).rejects.toThrow(BadRequestException);

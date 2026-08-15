@@ -11,7 +11,7 @@
 
 ## 1. Requirement Analysis
 
-Turn `apps/smr` (post-TASK-707: `apps/text`, package `text`) into the **control plane** for
+Turn `apps/text` (post-TASK-707: `apps/text`, package `text`) into the **control plane** for
 text-generation and text-embedding, per the design's worker-pool standard: *"the service is the
 control plane — registry, health, routing, backpressure; workers are separate k8s Deployments per
 engine; KEDA on queue depth for batch, HPA on custom latency/utilization metrics for realtime; GPU
@@ -48,24 +48,24 @@ Concretely, this ticket delivers, for the renamed `text` service:
 
 ## 2. Current State Evaluation
 
-**Verified 2026-08-16 against `apps/smr/src/smr/` (pre-707 tree; TASK-707 renames the package to
+**Verified 2026-08-16 against `apps/text/src/text/` (pre-707 tree; TASK-707 renames the package to
 `text` without changing structure — every relative path below carries over 1:1 under `apps/text/src/text/`).**
 
 ### 2.1 Provider/engine registry — already exists, in-process only
 
-- `ProviderRegistry` (`apps/smr/src/smr/providers/base.py:89-133`) is a lazy, factory-based
+- `ProviderRegistry` (`apps/text/src/text/providers/base.py:89-133`) is a lazy, factory-based
   registry: `register_factory(name, factory)` (`:108`) defers instantiation to first `get(name)`
   (`:112-120`), memoizes the instance, and raises `ProviderNotFoundError` (`:15`) on an unknown or
   unconfigured name — already "fails closed," not silently substituting a provider.
-- Nine `LLMProvider` implementations exist under `apps/smr/src/smr/providers/`: `ollama.py`,
+- Nine `LLMProvider` implementations exist under `apps/text/src/text/providers/`: `ollama.py`,
   `openai_compat.py` (LM Studio target), `vllm.py`, `llama_cpp.py` (local/GPU engines) and
   `azure_openai.py`, `bedrock.py`, `openai.py`, `anthropic.py`, `vertex.py` (BYOK cloud).
-  `apps/smr/src/smr/providers/base.py:19-56` (`require_model`, `reject_vision`) documents the
+  `apps/text/src/text/providers/base.py:19-56` (`require_model`, `reject_vision`) documents the
   fail-closed model-selection contract cloud providers must honor per
   `.claude/rules/09-infrastructure-devops.md` §Configuration Tiers `failMode=closed`.
-- Registration happens once at startup in `apps/smr/src/smr/main.py:59` (loop registering
+- Registration happens once at startup in `apps/text/src/text/main.py:59` (loop registering
   factories) and `:165-170` (lazy `app.state.provider_registry` construction). `Depends` accessors:
-  `get_provider_registry` (`apps/smr/src/smr/core/dependencies.py:42`).
+  `get_provider_registry` (`apps/text/src/text/core/dependencies.py:42`).
 
 **What this ticket REUSES as-is:** `ProviderRegistry`, all nine provider implementations, the
 fail-closed model-selection guards. This ticket does NOT rewrite provider routing — it wraps it
@@ -73,23 +73,23 @@ with health-based degrade-routing and exposes it for autoscaling.
 
 ### 2.2 No out-of-process worker exists today — everything runs in the request pod
 
-This is the single most important current-state fact for this ticket: **`apps/smr` has no worker
+This is the single most important current-state fact for this ticket: **`apps/text` has no worker
 process, no Dramatiq/Celery/BullMQ, and no queue-consumer today.** Verified by:
 
-- `grep -rl "dramatiq\|celery" apps/smr/src` — zero hits.
-- `apps/smr/src/smr/services/provider_queue.py:1-44` — `ProviderQueue` is an **in-process**
+- `grep -rl "dramatiq\|celery" apps/text/src` — zero hits.
+- `apps/text/src/text/services/provider_queue.py:1-44` — `ProviderQueue` is an **in-process**
   `asyncio.PriorityQueue` used only for backpressure inside the same FastAPI worker process that
   received the HTTP request (`:23-27`); it is not a cross-process/cross-pod dispatch mechanism.
-- `apps/smr/src/smr/services/task_manager.py:1-45` — `TaskManager` is **Redis-backed task STATE**
+- `apps/text/src/text/services/task_manager.py:1-45` — `TaskManager` is **Redis-backed task STATE**
   (`smr:task:` / `smr:stream:` key prefixes, `:18-19`) that makes a long-running generation
-  resumable/pollable across HTTP reconnects (`apps/smr/src/smr/api/endpoints/tasks.py:1-34`,
+  resumable/pollable across HTTP reconnects (`apps/text/src/text/api/endpoints/tasks.py:1-34`,
   `stream.py`). The generation itself still executes on the SAME pod/process that accepted the
   original request — this is resumability, not out-of-process work dispatch.
-- Root `package.json`: `smr:dev`/`smr:dev:watch`/`smr:test*`/`smr:lint`/`smr:typecheck`/`smr:format*`
-  exist (lines 129-145); there is **no `smr:worker:dev`** (contrast `apps/stt`, which has one — see
+- Root `package.json`: `text:dev`/`text:dev:watch`/`text:test*`/`text:lint`/`text:typecheck`/`text:format*`
+  exist (lines 129-145); there is **no `text:worker:dev`** (contrast `apps/stt`, which has one — see
   TASK-726). Confirms: no worker entry point exists to invoke today.
 - `infrastructure/docker/docker-compose.dev.yml` — no `smr:` (nor `text:`) service block exists at
-  all. Like all six Python services, `apps/smr` runs natively via conda (`pnpm smr:dev` →
+  all. Like all six Python services, `apps/text` runs natively via conda (`pnpm text:dev` →
   `scripts/dev-service.sh smr`), never as a compose service; only its infra dependencies (Postgres,
   Redis, Vault) and optional inference backends run in compose.
 
@@ -103,7 +103,7 @@ provider registered."
 
 ### 2.3 Health — per-provider check exists; no degrade-routing decision consumes it yet
 
-`GET /health` (`apps/smr/src/smr/api/endpoints/health.py:49-79`) iterates
+`GET /health` (`apps/text/src/text/api/endpoints/health.py:49-79`) iterates
 `registry.list_providers()` (`:64`), calls each provider's `health_check()` (`:67`), and sets the
 `PROVIDER_HEALTH` gauge (`:68` / metrics.py — see §2.5). This is the correct primitive to build
 degrade-routing on, but **nothing today reads `PROVIDER_HEALTH` to change generation routing** — a
@@ -112,13 +112,13 @@ Phase B's job (§4).
 
 ### 2.4 SSE/streaming — reused unchanged
 
-`apps/smr/src/smr/api/endpoints/stream.py` + `TaskManager`'s Redis Stream chunk persistence
+`apps/text/src/text/api/endpoints/stream.py` + `TaskManager`'s Redis Stream chunk persistence
 (`task_manager.py`) already implement resumable SSE with a Redis message id per event, per
 `.claude/rules/06-python-services.md` §Gateway Integration & Auth. Not touched by this ticket.
 
 ### 2.5 Metrics — generation metrics exist; no queue-depth / pool-health metric exists
 
-`apps/smr/src/smr/core/metrics.py:11-59` defines `smr_generation_total`, `smr_generation_latency_seconds`,
+`apps/text/src/text/core/metrics.py:11-59` defines `smr_generation_total`, `smr_generation_latency_seconds`,
 `smr_tokens_total`, `smr_generation_errors_total`, `smr_active_generations` (Gauge, per-provider),
 `smr_provider_health` (Gauge, `:42-46`), `smr_health_check_latency_seconds`,
 `smr_time_to_first_token_seconds`. **No queue-depth gauge and no per-worker-pool saturation metric
@@ -128,11 +128,11 @@ after 707 lands; do not assume it is still `smr` at execution time.
 
 ### 2.6 Config — per-engine env prefixes exist; no per-tenant engine enable/disable
 
-`apps/smr/src/smr/core/config.py`: `OllamaConfig` (`:44-50`, `env_prefix="SMR_OLLAMA_"`),
+`apps/text/src/text/core/config.py`: `OllamaConfig` (`:44-50`, `env_prefix="TEXT_OLLAMA_"`),
 `AzureOpenAIConfig` (`:67-73`), `BedrockConfig` (`:105-111`), `OpenAICompatConfig` (`:127-133`),
 `VllmConfig` (`:153-162`, extends `OpenAICompatConfig`), `LlamaCppConfig` (`:177-188`),
 `OpenAIConfig`/`AnthropicConfig`/`VertexConfig` (`:197-277`), `QueueConfig`
-(`:431-437`, `env_prefix="SMR_QUEUE_"` — this is the existing in-process `ProviderQueue`'s sizing
+(`:431-437`, `env_prefix="TEXT_QUEUE_"` — this is the existing in-process `ProviderQueue`'s sizing
 config, not a new worker-pool concept). All per-engine connection config is env-tier
 (`.claude/rules/09-infrastructure-devops.md` §Configuration Tiers) — consistent with "connection
 identity" belonging in env, not DB. Provider/model SELECTION is `failMode=closed`
@@ -142,7 +142,7 @@ provider/model selection into one).
 
 ### 2.7 Embeddings — genuinely net new; `text` has none, `harness` calls `tei-embed` directly
 
-`grep -rn "embedding" apps/smr/src --include="*.py"` returns **zero hits**. `tei-embed` (compose
+`grep -rn "embedding" apps/text/src --include="*.py"` returns **zero hits**. `tei-embed` (compose
 service, `infrastructure/docker/docker-compose.dev.yml:534-...`, port 8870 per
 `.claude/rules/00-project-context.md`) is consumed today **only** by `apps/harness`
 (`apps/harness/src/harness/core/config.py`, `apps/harness/src/harness/tests/unit/core/test_llm_concurrency.py`,
@@ -190,7 +190,7 @@ out-of-process worker task envelope actually running in this monorepo today.
   spec for this ticket; D7 (contract-over-broker) governs the task envelope choice — reuse existing
   infra (Redis Streams / the pattern in `apps/stt`'s Dramatiq setup), do not introduce a new broker.
 - Known pitfall: `ProviderQueue` (in-process `asyncio.PriorityQueue`,
-  `apps/smr/src/smr/services/provider_queue.py`) and the new out-of-process worker queue this ticket
+  `apps/text/src/text/services/provider_queue.py`) and the new out-of-process worker queue this ticket
   adds are DIFFERENT things with confusingly similar names — do not conflate "buffering inside one
   pod" with "dispatching to a separate worker pool." Naming the new construct distinctly (e.g.
   `WorkerPoolQueue` / `AsyncTaskQueue`, not `ProviderQueue`) is a hygiene requirement, not a nitpick,
@@ -201,8 +201,8 @@ out-of-process worker task envelope actually running in this monorepo today.
   as `smr_*` and let 707's mechanical rename touch them, never hand-invent `text_*` names against a
   tree that still says `smr` everywhere else.
 - TDD ordering: every new endpoint/metric/behavior gets a failing test first (`.claude/rules/01-development-workflow.md`
-  §TDD Requirements) — test locations under `apps/smr/src/smr/tests/unit/` (root `package.json:135-139`
-  confirms `smr:test:unit` targets `apps/smr/src/smr/tests/unit/`).
+  §TDD Requirements) — test locations under `apps/text/src/text/tests/unit/` (root `package.json:135-139`
+  confirms `text:test:unit` targets `apps/text/src/text/tests/unit/`).
 
 ## 4. Implementation Plan
 
@@ -221,8 +221,8 @@ out-of-process worker task envelope actually running in this monorepo today.
   Dramatiq actor signature, explicitly scoped to batch generation + the new embedding task type
   only (NOT the existing sync/SSE paths); (c) the queue-depth metric definition and label set
   needed for KEDA (§Task 5); (d) explicitly note where this will need to reconcile with TASK-717
-  once authored (§6). Cite `apps/smr/src/smr/providers/base.py:89-133` and
-  `apps/smr/src/smr/services/task_manager.py` as the registry/task-state exemplars being extended,
+  once authored (§6). Cite `apps/text/src/text/providers/base.py:89-133` and
+  `apps/text/src/text/services/task_manager.py` as the registry/task-state exemplars being extended,
   not replaced.
 - **Verify:** Design note reviewed against §1 scope boundaries (does not touch sync/SSE paths, does
   not create `deployment/k8s/**` in this repo, does not migrate harness's TEI-embed usage).
@@ -231,22 +231,22 @@ out-of-process worker task envelope actually running in this monorepo today.
 
 #### Task 2 — Degrade-away-from-unhealthy routing
 - **Agent:** T3 · sonnet-5 · medium
-- **Files:** `apps/smr/src/smr/providers/base.py` (or a new `apps/smr/src/smr/services/pool_router.py`
-  per Task 1's design), `apps/smr/src/smr/api/endpoints/generate.py`, `apps/smr/src/smr/api/endpoints/stream.py`
-- **Approach:** Failing test first (`apps/smr/src/smr/tests/unit/`): a request routed to a provider
+- **Files:** `apps/text/src/text/providers/base.py` (or a new `apps/text/src/text/services/pool_router.py`
+  per Task 1's design), `apps/text/src/text/api/endpoints/generate.py`, `apps/text/src/text/api/endpoints/stream.py`
+- **Approach:** Failing test first (`apps/text/src/text/tests/unit/`): a request routed to a provider
   whose last `health_check()` (via the existing `PROVIDER_HEALTH` gauge state,
-  `apps/smr/src/smr/api/endpoints/health.py:64-68`) is unhealthy must either (a) route to a
+  `apps/text/src/text/api/endpoints/health.py:64-68`) is unhealthy must either (a) route to a
   configured fallback provider if the request declares one is acceptable, or (b) fail fast with a
   typed error distinguishing "unhealthy pool" from `ProviderNotFoundError` — never silently queue
   into a dead engine (design.md §Services program). Wire this as a check consulted before dispatch
   in `generate.py`/`stream.py`, reusing `ProviderRegistry.get()` unchanged.
-- **Verify:** `pnpm smr:test:unit` — new tests pass; existing generation tests unaffected.
+- **Verify:** `pnpm text:test:unit` — new tests pass; existing generation tests unaffected.
 
 #### Task 3 — Admin introspection endpoint (per-engine pool status)
 - **Agent:** T2 · sonnet-5 · medium
-- **Files:** `apps/smr/src/smr/api/endpoints/providers.py` (extend — this file already exists and
+- **Files:** `apps/text/src/text/api/endpoints/providers.py` (extend — this file already exists and
   is the natural home; verify its current contents before extending, do not assume it's empty),
-  new response model in `apps/smr/src/smr/models/provider.py`
+  new response model in `apps/text/src/text/models/provider.py`
 - **Approach:** Add a field to the existing providers-listing response (or a new endpoint if
   `providers.py`'s current shape doesn't fit) exposing, per registered provider: health status,
   last-check timestamp, in-flight-request count (from `smr_active_generations`), and (once Task 5
@@ -254,40 +254,40 @@ out-of-process worker task envelope actually running in this monorepo today.
   AND a human operator both read — keep the shape stable since KEDA/HPA manifests in the
   deployment repo may poll it via Prometheus rather than this endpoint directly, but an admin
   console screen (out of scope here) will want this shape later.
-- **Verify:** `pnpm smr:test:unit`; manual `curl localhost:8862/api/v1/providers` (or renamed port
+- **Verify:** `pnpm text:test:unit`; manual `curl localhost:8862/api/v1/providers` (or renamed port
   per TASK-707) returns the new fields.
 
 #### Task 4 — Text-embedding task type
 - **Agent:** T3 · sonnet-5 · medium
-- **Files:** new `apps/smr/src/smr/api/endpoints/embeddings.py`, new
-  `apps/smr/src/smr/providers/tei_embed.py` (or extend `openai_compat.py` if TEI's wire protocol
+- **Files:** new `apps/text/src/text/api/endpoints/embeddings.py`, new
+  `apps/text/src/text/providers/tei_embed.py` (or extend `openai_compat.py` if TEI's wire protocol
   is OpenAI-embeddings-compatible — verify against `tei-embed`'s actual API before choosing), new
-  entries in `apps/smr/src/smr/core/config.py` (new `TeiEmbedConfig`, `env_prefix="SMR_TEI_"` or
+  entries in `apps/text/src/text/core/config.py` (new `TeiEmbedConfig`, `env_prefix="TEXT_TEI_"` or
   `TEXT_TEI_` post-rename — follow whatever TASK-707 lands as the service's env prefix), registered
   in `ProviderRegistry` alongside the nine generation providers (a SEPARATE registry namespace or a
   `task_type` field disambiguating generation vs. embedding providers — decide in Task 1's design,
   since `ProviderRegistry.get(name)` today has no task-type dimension).
 - **Approach:** Failing test first. New endpoint follows the same fail-closed model-selection
-  contract as generation (`require_model`, `apps/smr/src/smr/providers/base.py:19-38`) for any
+  contract as generation (`require_model`, `apps/text/src/text/providers/base.py:19-38`) for any
   cloud embedding provider added later; local `tei-embed` keeps its topology-level default per the
   existing local-engine convention (`base.py:26-28`).
-- **Verify:** `pnpm smr:test:unit`; `pnpm smr:typecheck`.
+- **Verify:** `pnpm text:test:unit`; `pnpm text:typecheck`.
 
 #### Task 5 — Queue-depth and pool-saturation metrics
 - **Agent:** T2 · sonnet-5 · medium
-- **Files:** `apps/smr/src/smr/core/metrics.py` (extend), Task 2/4's new code paths
+- **Files:** `apps/text/src/text/core/metrics.py` (extend), Task 2/4's new code paths
 - **Approach:** Add a `Gauge` for async-task queue depth per provider/pool (naming per Task 1's
   design note; do not extend `smr_active_generations`, which measures sync in-flight requests, not
   queued async tasks) and a saturation ratio if the design calls for one. This is the metric KEDA's
   `ScaledObject` (deployment repo) will read via the Prometheus scaler, and the metric HPA's
   custom-metrics adapter reads for realtime — both consume Prometheus, neither is built in this
   repo, but the metric must exist and be scraped for either to work.
-- **Verify:** `pnpm smr:test:unit`; `curl localhost:8862/metrics | grep <new_metric_name>` shows the
+- **Verify:** `pnpm text:test:unit`; `curl localhost:8862/metrics | grep <new_metric_name>` shows the
   gauge registered.
 
 #### Task 6 — Drain behavior on shutdown
 - **Agent:** T2 · sonnet-5 · medium
-- **Files:** `apps/smr/src/smr/main.py` (lifespan shutdown), `apps/smr/src/smr/services/shutdown_manager.py`
+- **Files:** `apps/text/src/text/main.py` (lifespan shutdown), `apps/text/src/text/services/shutdown_manager.py`
   (already exists — verify its current scope before extending; it may already cover in-flight
   sync requests, in which case this task extends it to the new async task queue rather than
   building shutdown handling from scratch)
@@ -297,14 +297,14 @@ out-of-process worker task envelope actually running in this monorepo today.
   `TemporalConfig.graceful_shutdown_timeout_s` (`apps/harness/src/harness/core/config.py:43-46`) as
   the pattern precedent for a bounded drain window, though that is Temporal-specific machinery, not
   directly reusable code.
-- **Verify:** `pnpm smr:test:unit` — a test asserting a SIGTERM mid-drain rejects new task
+- **Verify:** `pnpm text:test:unit` — a test asserting a SIGTERM mid-drain rejects new task
   submissions while letting an in-flight one complete.
 
 ### Phase C — Local-dev story + deployment-repo handoff (flagged)
 
 #### Task 7 — Local-dev worker-pool story
 - **Agent:** T2 · sonnet-5 · low
-- **Files:** `package.json` (new `smr:worker:dev` script — or `text:worker:dev` if run after 707 —
+- **Files:** `package.json` (new `text:worker:dev` script — or `text:worker:dev` if run after 707 —
   mirroring `stt:worker:dev` at `package.json:116`), `scripts/dev-service.sh` (extend the existing
   dispatch, do not fork a new script)
 - **Approach:** There is no compose profile per Python service today (§2.2) — the correct local-dev
@@ -312,7 +312,7 @@ out-of-process worker task envelope actually running in this monorepo today.
   same way `stt:worker:dev` does, NOT a new Docker Compose service. Confirm this against
   `scripts/dev-service.sh`'s existing `stt-worker` case before adding a parallel `smr-worker`/`text-worker`
   case.
-- **Verify:** `pnpm smr:worker:dev` (or renamed) starts the worker process against local Redis;
+- **Verify:** `pnpm text:worker:dev` (or renamed) starts the worker process against local Redis;
   manual smoke test — submit an async embedding task, confirm the worker processes it.
 
 #### Task 8 — [FLAGGED: lands in `arca/hope-v2-deployment`] KEDA ScaledObject + HPA manifests
@@ -331,10 +331,10 @@ out-of-process worker task envelope actually running in this monorepo today.
 
 ## 5. Acceptance Criteria
 
-- [ ] `pnpm smr:test` (or `pnpm text:test` if executed after TASK-707) — all new and existing tests
+- [ ] `pnpm text:test` (or `pnpm text:test` if executed after TASK-707) — all new and existing tests
       pass; paste output.
-- [ ] `pnpm smr:lint` / `pnpm smr:typecheck` — clean; paste output.
-- [ ] `uv lock` re-run at repo root if any `apps/smr/pyproject.toml` dependency changed (new TEI
+- [ ] `pnpm text:lint` / `pnpm text:typecheck` — clean; paste output.
+- [ ] `uv lock` re-run at repo root if any `apps/text/pyproject.toml` dependency changed (new TEI
       client, etc.) — per `.claude/rules/06-python-services.md`.
 - [ ] Degrade-routing (Task 2): a test proves a request never dispatches to a provider the health
       check has marked unhealthy without an explicit fallback.

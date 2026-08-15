@@ -265,31 +265,24 @@ describe('tenant-guards', () => {
       expect(isSuperAdmin({ roles: [] })).toBe(false);
     });
 
-    it('returns false when user.roles contains other roles but not GLOBAL_ADMIN', () => {
+    it('returns false when user.roles contains other roles but not SUPER_ADMIN', () => {
       expect(isSuperAdmin({ roles: ['DOCTOR', 'NURSE', 'ADMIN'] })).toBe(false);
     });
 
-    // SUPER_ADMIN was consolidated into GLOBAL_ADMIN; the retired
-    // role string grants NOTHING anymore.
-    it('returns false for the retired "SUPER_ADMIN" literal', () => {
-      expect(isSuperAdmin({ roles: ['SUPER_ADMIN'] })).toBe(false);
-      expect(isSuperAdmin({ roles: ['DOCTOR', 'SUPER_ADMIN'] })).toBe(false);
-    });
-
-    // GLOBAL_ADMIN is THE platform-wide
+    // SUPER_ADMIN is THE platform-wide
     // elevated role (cross-tenant privileged).
-    it('returns true when user.roles includes "GLOBAL_ADMIN"', () => {
-      expect(isSuperAdmin({ roles: ['GLOBAL_ADMIN'] })).toBe(true);
-      expect(isSuperAdmin({ roles: ['DOCTOR', 'GLOBAL_ADMIN'] })).toBe(true);
+    it('returns true when user.roles includes "SUPER_ADMIN"', () => {
+      expect(isSuperAdmin({ roles: ['SUPER_ADMIN'] })).toBe(true);
+      expect(isSuperAdmin({ roles: ['DOCTOR', 'SUPER_ADMIN'] })).toBe(true);
     });
 
-    it('collapses the elevated set to exactly [GLOBAL_ADMIN]', () => {
-      expect(ELEVATED_ROLES).toEqual(['GLOBAL_ADMIN']);
+    it('collapses the elevated set to exactly [SUPER_ADMIN]', () => {
+      expect(ELEVATED_ROLES).toEqual(['SUPER_ADMIN']);
     });
 
-    it('is case-sensitive — "global_admin" or "GlobalAdmin" does NOT grant the bypass', () => {
-      expect(isSuperAdmin({ roles: ['global_admin'] })).toBe(false);
-      expect(isSuperAdmin({ roles: ['GlobalAdmin'] })).toBe(false);
+    it('is case-sensitive — "super_admin" or "SuperAdmin" does NOT grant the bypass', () => {
+      expect(isSuperAdmin({ roles: ['super_admin'] })).toBe(false);
+      expect(isSuperAdmin({ roles: ['SuperAdmin'] })).toBe(false);
     });
   });
 });

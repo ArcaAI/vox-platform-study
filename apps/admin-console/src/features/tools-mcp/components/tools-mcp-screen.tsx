@@ -59,7 +59,7 @@ function AllowlistCell({ allowlist }: { allowlist?: string[] | null }) {
 }
 
 /**
- * Tools & MCP (/tools-mcp, tier 10-19, GLOBAL_ADMIN). Writable SYSTEM MCP
+ * Tools & MCP (/tools-mcp, tier 10-19, SUPER_ADMIN). Writable SYSTEM MCP
  * registry backed `admin/mcp-servers` (list/create + If-Match
  * PATCH/DELETE). authRef shows masked presence only in the table.
  */

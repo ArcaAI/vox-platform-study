@@ -33,7 +33,7 @@ dependencies = [
     "python-dotenv>=1.2.0",
     "prometheus-client>=0.26.0",
     "prometheus-fastapi-instrumentator>=8.1.0",
-    # OpenTelemetry tracing. Mirrors apps/smr's dependency
+    # OpenTelemetry tracing. Mirrors apps/text's dependency
     # set: guardrail auto-instruments FastAPI + httpx (the LM Studio/Ollama/
     # vLLM/llama.cpp engine calls) and exports spans via OTLP/gRPC.
     "opentelemetry-api>=1.44.0",

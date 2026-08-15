@@ -29,7 +29,7 @@ import { describe, it, expect, vi } from 'vitest';
 
 import * as stt from '../06-stt';
 import * as globalSetting from '../11-global-setting';
-import { SYSTEM_HARNESS_POLICY_SMR_DEFAULTS } from '../13-harness-policy';
+import { SYSTEM_HARNESS_POLICY_TEXT_DEFAULTS } from '../13-harness-policy';
 import { DEFAULT_POLICIES } from '../01-policy';
 import { SYSTEM_TENANT_ID, SYSTEM_USER_ID } from '../00-constants';
 
@@ -712,12 +712,12 @@ describe('AiTaskDefault SYSTEM seed', () => {
 
 describe('companion seed updates', () => {
   it('moves the SYSTEM HarnessPolicy SMR default to gemma-4-e2b-it-qat (provider lm-studio)', () => {
-    expect(SYSTEM_HARNESS_POLICY_SMR_DEFAULTS.smrProvider).toBe('lm-studio');
-    expect(SYSTEM_HARNESS_POLICY_SMR_DEFAULTS.smrModel).toBe('gemma-4-e2b-it-qat');
+    expect(SYSTEM_HARNESS_POLICY_TEXT_DEFAULTS.smrProvider).toBe('lm-studio');
+    expect(SYSTEM_HARNESS_POLICY_TEXT_DEFAULTS.smrModel).toBe('gemma-4-e2b-it-qat');
   });
 
   it('keeps the new SMR default resolvable against the registry (lm-studio row, matching sourceUri)', () => {
-    const row = catalog.find((m) => m.provider === 'lm-studio' && m.sourceUri === SYSTEM_HARNESS_POLICY_SMR_DEFAULTS.smrModel);
+    const row = catalog.find((m) => m.provider === 'lm-studio' && m.sourceUri === SYSTEM_HARNESS_POLICY_TEXT_DEFAULTS.smrModel);
     expect(row).toBeDefined();
     expect(row?.slug).toBe('lms-gemma-4-e2b-it-qat');
   });

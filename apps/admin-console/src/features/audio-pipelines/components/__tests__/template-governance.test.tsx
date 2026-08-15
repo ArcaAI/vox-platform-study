@@ -91,7 +91,7 @@ function stubFetch(handler: FetchHandler): RecordedCall[] {
 
 function session() {
   const base = {
-    user: { id: 'u-1', username: 'root', email: 'root@hope.local', roles: ['GLOBAL_ADMIN'] },
+    user: { id: 'u-1', username: 'root', email: 'root@hope.local', roles: ['SUPER_ADMIN'] },
     isElevated: true,
     workingTenantId: 'tnt-1',
     workingTenantName: 'Sunrise Medical Group',

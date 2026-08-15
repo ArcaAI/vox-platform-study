@@ -2,7 +2,7 @@
 
 **Date**: 2026-03-09  
 **Topic**: Timeout reliability for AI capabilities over HTTP, SSE, and WebSocket  
-**Scope**: `apps/api`, `apps/smr`, `apps/stt`, `apps/nlp`, deployment guidance, and stream client behavior
+**Scope**: `apps/api`, `apps/text`, `apps/stt`, `apps/nlp`, deployment guidance, and stream client behavior
 
 ---
 
@@ -32,10 +32,10 @@ Main findings:
 
 ### Python services
 
-- `apps/smr/src/smr/api/endpoints/generate.py`
-- `apps/smr/src/smr/api/endpoints/stream.py`
-- `apps/smr/src/smr/services/task_manager.py`
-- `apps/smr/src/smr/core/config.py`
+- `apps/text/src/text/api/endpoints/generate.py`
+- `apps/text/src/text/api/endpoints/stream.py`
+- `apps/text/src/text/services/task_manager.py`
+- `apps/text/src/text/core/config.py`
 - `apps/stt/src/stt/core/config/settings.py`
 - `apps/stt/src/stt/streaming/session_manager.py`
 - `apps/stt/src/stt/streaming/redis_streams.py`

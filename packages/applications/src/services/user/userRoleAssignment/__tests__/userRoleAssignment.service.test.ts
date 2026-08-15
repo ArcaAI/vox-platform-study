@@ -403,7 +403,7 @@ describe('UserRoleAssignmentService', () => {
         await expect(
           service.create({
             userId: 'victim-user-id',
-            roleId: 'GLOBAL_ADMIN',
+            roleId: 'SUPER_ADMIN',
             tenantId: 'tenant-2',
           }),
         ).rejects.toBeInstanceOf(ForbiddenException);
@@ -414,7 +414,7 @@ describe('UserRoleAssignmentService', () => {
         expect(mockUserRoleAssignmentRepository.restore).not.toHaveBeenCalled();
       });
 
-      it('should allow cross-tenant create when request.tenantId differs from CLS tenantId AND caller is GLOBAL_ADMIN', async () => {
+      it('should allow cross-tenant create when request.tenantId differs from CLS tenantId AND caller is SUPER_ADMIN', async () => {
         // Super-admin escape hatch: bootstrap/onboarding flows legitimately
         // need to create assignments scoped to a tenant other than the
         // admin's own CLS context.
@@ -426,7 +426,7 @@ describe('UserRoleAssignmentService', () => {
                 firstName: 'Super',
                 lastName: 'Admin',
                 email: 'super@example.com',
-                roles: ['GLOBAL_ADMIN'],
+                roles: ['SUPER_ADMIN'],
               };
             case 'tenantId':
               return 'tenant-1';
@@ -874,10 +874,10 @@ describe('UserRoleAssignmentService', () => {
 
   // -------------------------------------------------------------------------
   // Service-layer defense in
-  // depth for POST /admin/users/:id/roles. A non-GLOBAL_ADMIN caller must
-  // never be able to (a) grant the platform-wide GLOBAL_ADMIN role, nor
+  // depth for POST /admin/users/:id/roles. A non-SUPER_ADMIN caller must
+  // never be able to (a) grant the platform-wide SUPER_ADMIN role, nor
   // (b) assign a role to a user that lives outside the caller's tenant.
-  // GLOBAL_ADMIN and system/bootstrap (no CLS user) paths stay exempt.
+  // SUPER_ADMIN and system/bootstrap (no CLS user) paths stay exempt.
   // -------------------------------------------------------------------------
   describe('privilege-escalation guard on create', () => {
     const buildAs = (user: { id: string; roles?: string[] } | null, tenantId: string | null) => {
@@ -899,9 +899,9 @@ describe('UserRoleAssignmentService', () => {
       );
     };
 
-    it('rejects a non-super-admin assigning the GLOBAL_ADMIN role (ForbiddenException, no write)', async () => {
+    it('rejects a non-super-admin assigning the SUPER_ADMIN role (ForbiddenException, no write)', async () => {
       const svc = buildAs({ id: 'tadmin', roles: ['TENANT_ADMIN'] }, 'tenant-1');
-      mockDatabaseService.baseClient.role.findUnique.mockResolvedValue({ name: 'GLOBAL_ADMIN' });
+      mockDatabaseService.baseClient.role.findUnique.mockResolvedValue({ name: 'SUPER_ADMIN' });
 
       await expect(svc.create({ userId: 'target', roleId: 'role-super' })).rejects.toBeInstanceOf(ForbiddenException);
 
@@ -911,9 +911,9 @@ describe('UserRoleAssignmentService', () => {
       expect(mockUserRoleAssignmentRepository.restore).not.toHaveBeenCalled();
     });
 
-    it('allows a GLOBAL_ADMIN to assign the GLOBAL_ADMIN role (exempt — tier lookup skipped)', async () => {
-      const svc = buildAs({ id: 'root', roles: ['GLOBAL_ADMIN'] }, 'tenant-1');
-      mockDatabaseService.baseClient.role.findUnique.mockResolvedValue({ name: 'GLOBAL_ADMIN' });
+    it('allows a SUPER_ADMIN to assign the SUPER_ADMIN role (exempt — tier lookup skipped)', async () => {
+      const svc = buildAs({ id: 'root', roles: ['SUPER_ADMIN'] }, 'tenant-1');
+      mockDatabaseService.baseClient.role.findUnique.mockResolvedValue({ name: 'SUPER_ADMIN' });
       mockUserRoleAssignmentRepository.create.mockResolvedValue(createMockUserRoleAssignmentEntity({ id: 'ok' }));
 
       const result = await svc.create({ userId: 'target', roleId: 'role-super' });

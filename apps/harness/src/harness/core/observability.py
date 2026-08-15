@@ -45,7 +45,7 @@ logger = get_logger(__name__)
 _SERVICE_VERSION = "0.1.0"
 
 # Health/docs/metrics endpoints are noise in a trace backend — excluded the
-# same way SMR excludes them (apps/smr/src/smr/core/observability.py).
+# same way SMR excludes them (apps/text/src/text/core/observability.py).
 _EXCLUDED_URLS = (
     "/api/v1/health,"
     "/api/v1/health/live,"
@@ -62,7 +62,7 @@ def _phi_sanitization_hook(span: Any, scope: dict[str, Any]) -> None:
 
     A clinical-documentation service must never let a raw transcript/note
     body reach the trace backend. Mirrors
-    ``apps/smr/src/smr/core/observability.py``'s hook.
+    ``apps/text/src/text/core/observability.py``'s hook.
     """
     if not span.is_recording():
         return

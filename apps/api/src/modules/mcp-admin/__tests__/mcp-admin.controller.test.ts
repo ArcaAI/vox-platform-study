@@ -13,7 +13,7 @@ import { REQUIRED_PERMISSIONS_KEY } from '@arcaai/applications';
 import { McpAdminController } from '../mcp-admin.controller';
 
 type Ctx = { user?: { roles?: string[] | null; tenantId?: string } | null; tenantId?: string };
-const SUPER: Ctx['user'] = { roles: ['GLOBAL_ADMIN'] };
+const SUPER: Ctx['user'] = { roles: ['SUPER_ADMIN'] };
 const TENANT_ADMIN = (tenantId: string): Ctx['user'] => ({ roles: ['TENANT_ADMIN'], tenantId });
 
 function makeController(ctx: Ctx) {

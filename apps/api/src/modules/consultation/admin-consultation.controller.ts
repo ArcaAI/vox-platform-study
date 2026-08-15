@@ -20,7 +20,7 @@ import { ApiEndpoint, CanManage } from '../../decorators';
  * caller's tenant.
  *
  * Access:
- *   - Class-level `@CanManage('Consultation')` → only TENANT_ADMIN / GLOBAL_ADMIN.
+ *   - Class-level `@CanManage('Consultation')` → only TENANT_ADMIN / SUPER_ADMIN.
  *     A plain DOCTOR holds only owner-scoped `list/read Consultation` (conditioned
  *     to `doctorId=self`), never `manage`, so the guard returns 403 for them.
  *
@@ -80,7 +80,7 @@ export class AdminConsultationController {
 
   /**
    * Server-side, zero-filled new/revisit aggregation over a
-   * date range. Scope follows the same model as `list`: a GLOBAL_ADMIN with
+   * date range. Scope follows the same model as `list`: a SUPER_ADMIN with
    * no working tenant aggregates cross-tenant; everyone else is pinned to their
    * CLS tenant. Declared BEFORE the `:id` route so `GET /aggregate` is not
    * captured by the `:id` param matcher.

@@ -17,7 +17,7 @@ afterEach(() => {
 });
 
 const FAKE_SESSION: SafeSession = {
-  user: { id: 'u1', username: 'demo-admin', email: 'demo@example.com', roles: ['GLOBAL_ADMIN'], tenantId: null },
+  user: { id: 'u1', username: 'demo-admin', email: 'demo@example.com', roles: ['SUPER_ADMIN'], tenantId: null },
   isElevated: true,
   workingTenantId: null,
   workingTenantName: null,
@@ -27,7 +27,7 @@ const FAKE_SESSION: SafeSession = {
     id: 'u1',
     username: 'demo-admin',
     email: 'demo@example.com',
-    roles: ['GLOBAL_ADMIN'],
+    roles: ['SUPER_ADMIN'],
     tenantId: null,
     departmentId: null,
   },

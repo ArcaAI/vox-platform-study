@@ -17,20 +17,20 @@ import { TenantProfileScreen } from '../tenant-profile-screen';
 
 /** Elevated (admin) session — the default for every pre-existing test below. */
 const ELEVATED_SESSION: SafeSession = {
-  user: { id: 'admin-1', username: 'super_admin', email: 'root@hope.dev', roles: ['GLOBAL_ADMIN'], tenantId: null },
+  user: { id: 'admin-1', username: 'super_admin', email: 'root@hope.dev', roles: ['SUPER_ADMIN'], tenantId: null },
   isElevated: true,
   workingTenantId: 'ten-1',
   workingTenantName: 'Sunrise Medical Group',
   impersonatingUserId: null,
   impersonatingUsername: null,
-  effectiveUser: { id: 'admin-1', username: 'super_admin', email: 'root@hope.dev', roles: ['GLOBAL_ADMIN'], tenantId: null, departmentId: null },
+  effectiveUser: { id: 'admin-1', username: 'super_admin', email: 'root@hope.dev', roles: ['SUPER_ADMIN'], tenantId: null, departmentId: null },
   effectiveIsElevated: true,
   effectiveTenantId: 'ten-1',
 };
 
 /** A non-elevated session: a real end-user, or an operator impersonating one. */
 const NON_ADMIN_SESSION: SafeSession = {
-  user: { id: 'admin-1', username: 'super_admin', email: 'root@hope.dev', roles: ['GLOBAL_ADMIN'], tenantId: null },
+  user: { id: 'admin-1', username: 'super_admin', email: 'root@hope.dev', roles: ['SUPER_ADMIN'], tenantId: null },
   isElevated: true,
   workingTenantId: null,
   workingTenantName: null,

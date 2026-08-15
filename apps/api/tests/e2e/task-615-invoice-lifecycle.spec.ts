@@ -8,7 +8,7 @@
  * idempotent and safe to run against a historical period with zero usage
  * (an allowance-only, zero-overage-line invoice is still a valid DRAFT).
  *
- * GLOBAL_ADMIN only end to end (rule 05 `// AUTH-NOTE` on
+ * SUPER_ADMIN only end to end (rule 05 `// AUTH-NOTE` on
  * `BillingAdminController`) — this spec authenticates as the seeded
  * super admin throughout; tenant-admin denial is covered by
  * `task-615-billing-cross-tenant.spec.ts`.

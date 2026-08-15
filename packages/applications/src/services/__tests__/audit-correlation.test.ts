@@ -98,7 +98,7 @@ describe('Audit-log version correlation (Stream D Phase) — cross-service contr
 
     const eventEmitter = buildEmitterMock();
     const cls = buildClsMock();
-    cls.get.mockImplementation((key: string) => (key === 'user' ? { id: 'u', roles: ['GLOBAL_ADMIN'] } : null));
+    cls.get.mockImplementation((key: string) => (key === 'user' ? { id: 'u', roles: ['SUPER_ADMIN'] } : null));
 
     const tenant = { id: 'tenant-1', key: 'TENANT_1' } as any;
     const tenantRepo = { findById: vi.fn(), findFirst: vi.fn().mockResolvedValue(tenant) };

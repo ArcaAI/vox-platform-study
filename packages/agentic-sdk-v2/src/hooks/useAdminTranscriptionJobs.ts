@@ -1,7 +1,7 @@
 /**
  * @arcaai/vox - useAdminTranscriptionJobs Hook
  *
- * Tenant-wide transcription-job supervision for TENANT_ADMIN / GLOBAL_ADMIN. The
+ * Tenant-wide transcription-job supervision for TENANT_ADMIN / SUPER_ADMIN. The
  * server gates `/admin/audio/transcription-jobs` with `@CanManage('Tenant')`,
  * so a plain DOCTOR is denied (403) — surfaced here as a clean
  * `AgenticError('FORBIDDEN')`.

@@ -11,7 +11,7 @@ import { CanManage } from '../../decorators';
  * reconciler off `TenantController` (whose routes are tenant CRUD) while still
  * living at the tenant-shaped URL the console calls.
  *
- * Gated `@CanManage('Tenant')` — GLOBAL_ADMIN only — because it writes into an
+ * Gated `@CanManage('Tenant')` — SUPER_ADMIN only — because it writes into an
  * arbitrary target tenant, the same privilege posture as tenant provisioning.
  * A tenant admin has no need for it: their catalog is reconciled for them.
  *

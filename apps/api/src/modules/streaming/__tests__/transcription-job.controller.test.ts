@@ -760,7 +760,7 @@ describe('TranscriptionJobController', () => {
   // `getTenantId()` must use the canonical order the rest of the gateway uses
   // (`ClsTenantContextProvider.getTenantId()`, `agentic-admin.controller.ts`,
   // `harness-admin.controller.ts`): CLS `tenantId` FIRST — that is where
-  // `ContextInterceptor` elevates a GLOBAL_ADMIN's working tenant from the
+  // `ContextInterceptor` elevates a SUPER_ADMIN's working tenant from the
   // `x-tenant-id` header — then the JWT-derived `user.tenantId`. Reading only
   // `user.tenantId` 400s every global-admin caller, whose JWT carries
   // `tenantId: ''`.
@@ -784,10 +784,10 @@ describe('TranscriptionJobController', () => {
     // longer survives the route's duration probe.
     const audioFile = () => wavFixture(300, { originalname: 'test-1.wav' });
 
-    // GLOBAL_ADMIN shape: empty JWT tenant + elevated working tenant in CLS.
-    const globalAdminStore = { user: { id: 'admin-1', tenantId: '', roles: ['GLOBAL_ADMIN'] }, tenantId: 'tenant-1' };
+    // SUPER_ADMIN shape: empty JWT tenant + elevated working tenant in CLS.
+    const globalAdminStore = { user: { id: 'admin-1', tenantId: '', roles: ['SUPER_ADMIN'] }, tenantId: 'tenant-1' };
 
-    it('transcribeFile resolves the elevated CLS working tenant for a GLOBAL_ADMIN with an empty JWT tenant', async () => {
+    it('transcribeFile resolves the elevated CLS working tenant for a SUPER_ADMIN with an empty JWT tenant', async () => {
       mockJobService.createBatchJob.mockResolvedValue({ id: 'job-ga', status: 'QUEUED' });
       const ctrl = buildController(globalAdminStore);
 
@@ -797,7 +797,7 @@ describe('TranscriptionJobController', () => {
       expect(mockRealtimeService.dispatchDramatiqJob).toHaveBeenCalledWith(expect.objectContaining({ jobId: 'job-ga', tenantId: 'tenant-1' }));
     });
 
-    it('createStreamSession resolves the elevated CLS working tenant for a GLOBAL_ADMIN', async () => {
+    it('createStreamSession resolves the elevated CLS working tenant for a SUPER_ADMIN', async () => {
       mockSessionService.createSession.mockResolvedValue({
         sessionId: 'sess-ga',
         status: 'active',
@@ -827,7 +827,7 @@ describe('TranscriptionJobController', () => {
     // Fail-closed posture preserved: an empty string is "no tenant", never a
     // tenant. A global admin with NO working tenant selected still 400s.
     it('transcribeFile still rejects when neither the CLS tenantId nor the JWT tenant is present', async () => {
-      const ctrl = buildController({ user: { id: 'admin-1', tenantId: '', roles: ['GLOBAL_ADMIN'] }, tenantId: '' });
+      const ctrl = buildController({ user: { id: 'admin-1', tenantId: '', roles: ['SUPER_ADMIN'] }, tenantId: '' });
 
       await expect(ctrl.transcribeFile(audioFile(), { pipelineId: 'pipe-1' } as TranscribeFileRequest)).rejects.toThrow(
         /Tenant context is required/,

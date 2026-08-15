@@ -31,8 +31,10 @@ import { Authorize } from '../../decorators';
 import { AdminImpersonateRequest, ImpersonateResponse, ImpersonateUserResponse } from './dto';
 import { ImpersonationEvents, ImpersonationDeniedReason, ImpersonationEventPayload } from './impersonation-events';
 
-// The elevated tier is exactly GLOBAL_ADMIN (the legacy SUPER_ADMIN role has been retired).
-const ELEVATED_TIER_ROLES = ['GLOBAL_ADMIN'];
+// The elevated tier is exactly SUPER_ADMIN (formerly GLOBAL_ADMIN, renamed
+// TASK-707); the earlier, unrelated pre-TASK-417 SUPER_ADMIN role has been
+// retired.
+const ELEVATED_TIER_ROLES = ['SUPER_ADMIN'];
 
 /** Forced-audit action codes for the impersonation lifecycle rows. */
 export const USER_IMPERSONATION_STARTED = 'USER_IMPERSONATION_STARTED';
@@ -54,7 +56,7 @@ const MAX_TTL_SECONDS = 1800;
  *
  * Posture mirrors the secret reveal endpoint: the method-level
  * `@Authorize(['manage','all'])` limits the route to holders of the
- * `system-full-access` policy (GLOBAL_ADMIN); tenant admins keep the legacy
+ * `system-full-access` policy (SUPER_ADMIN); tenant admins keep the legacy
  * `/auth/impersonate` endpoint with its own-tenant restrictions. A DB-role
  * check inside the handler backs the CASL gate (defense-in-depth, and the
  * source of the audited denial reasons).
@@ -81,14 +83,14 @@ export class AdminImpersonationController {
   // Same envelope as the legacy /auth/impersonate route.
   @Throttle({ default: { limit: 10, ttl: 60000 } })
   @HttpCode(HttpStatus.OK)
-  // Only `system-full-access` (GLOBAL_ADMIN) holds manage:all.
+  // Only `system-full-access` (SUPER_ADMIN) holds manage:all.
   @Authorize(['manage', 'all'])
   @ApiBearerAuth()
   @ApiOperation({
     summary: 'Impersonate a user (global-admin only, time-boxed, audited)',
     description:
       'Mints a time-boxed (default 30 minutes), non-refreshable impersonation token that acts as the target ' +
-      'user while preserving the true actor in the `impersonatedBy` claim. GLOBAL_ADMIN only (CASL `manage:all`). ' +
+      'user while preserving the true actor in the `impersonatedBy` claim. SUPER_ADMIN only (CASL `manage:all`). ' +
       'Safeguards: no self-impersonation, no global-admin targets, target must be ENABLED, and an already ' +
       'impersonated session can never start another (no nesting). Start and end are force-audited.',
   })
@@ -117,7 +119,7 @@ export class AdminImpersonationController {
     const actorIsSuperAdmin = actorRoles.some((r) => ELEVATED_TIER_ROLES.includes(r.name));
     if (!actorIsSuperAdmin) {
       this.recordDenied(req, actor.id, targetUserId, ImpersonationDeniedReason.CallerNotSuperAdmin);
-      throw new ForbiddenException('Impersonation requires a GLOBAL_ADMIN user');
+      throw new ForbiddenException('Impersonation requires a SUPER_ADMIN user');
     }
 
     if (targetUserId === actor.id) {

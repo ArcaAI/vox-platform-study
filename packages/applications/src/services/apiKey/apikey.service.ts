@@ -23,7 +23,7 @@ import { IActiveUserContext } from '../../interfaces';
 import { SecretsService } from '../baseServices/_meta/secrets';
 import { IEntitlementsService } from '../entitlements/IEntitlementsService';
 import { TenantSettingsService } from '../settings-registry/tenant-settings.service';
-import { GLOBAL_ADMIN_ROLE } from '../tenant/constants';
+import { SUPER_ADMIN_ROLE } from '../tenant/constants';
 import { CreateApiKeyResult, IApiKeyService } from './IApiKeyService';
 import { CreateApiKeyRequest, UpdateApiKeyRequest } from './dto';
 
@@ -239,7 +239,7 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
     const keyType = request.keyType ?? ApiKeyType.SDK;
 
     // Pin the working tenantId to CLS
-    // unless the caller is GLOBAL_ADMIN and explicitly overrides via the DTO
+    // unless the caller is SUPER_ADMIN and explicitly overrides via the DTO
     // (legitimate cross-tenant support flow). Anyone else passing a different
     // `request.tenantId` is attempting privilege escalation.
     const callerTenantId = this.tenantId ?? null;
@@ -271,7 +271,7 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
 
     // (audit C-8) — verify that the caller's userId actually
     // has an enabled role-assignment in the tenant the key is scoped to. The
-    // GLOBAL_ADMIN bypass exists for cross-tenant support flows (super_admin
+    // SUPER_ADMIN bypass exists for cross-tenant support flows (super_admin
     // is rarely a member of every tenant they administer). SERVICE_ACCOUNT
     // keys skip the check because they may have no associated user at all.
     if (userId && effectiveTenantId && keyType !== ApiKeyType.SERVICE_ACCOUNT && !this.isSuperAdmin()) {
@@ -368,7 +368,7 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
    * Fetch all API keys with pagination.
    *
    * Scoped to the caller's CLS tenantId so a Tenant-A admin cannot enumerate
-   * Tenant-B keys. GLOBAL_ADMIN bypasses.
+   * Tenant-B keys. SUPER_ADMIN bypasses.
    *
    * Also owner-scoped: a caller without the tenant-wide `manage:ApiKey` grant
    * (i.e. holding only `api-key-own-manage`) sees only their own keys,
@@ -409,7 +409,7 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
    *
    * Refuse cross-tenant list reads driven by the DTO `tenantId`. Without this
    * guard, a Tenant-A admin could enumerate Tenant-B API keys by passing a
-   * foreign `tenantId`. GLOBAL_ADMIN bypasses for admin-tooling cross-tenant
+   * foreign `tenantId`. SUPER_ADMIN bypasses for admin-tooling cross-tenant
    * listing.
    *
    * Also owner-scoped, same gate as `fetchAll` above.
@@ -453,7 +453,7 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
    *
    * `userId` filter is merged with the caller's CLS
    * tenantId so a Tenant-A admin cannot enumerate keys belonging to that
-   * user in Tenant-B. GLOBAL_ADMIN bypasses.
+   * user in Tenant-B. SUPER_ADMIN bypasses.
    */
   async fetchAllByUserId(props: PaginatedQuery & { userId: string }): Promise<FetchResponse<ApiKeyEntity>> {
     const { userId, limit, page } = props;
@@ -1069,19 +1069,19 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
   }
 
   /**
-   * True when the active request user carries the GLOBAL_ADMIN role. Mirrors
+   * True when the active request user carries the SUPER_ADMIN role. Mirrors
    * the strict-default behaviour in `TenantService.isSuperAdmin()` and
    * `AuditLogService` — falls back to `false` whenever the role list is
    * missing.
    */
   private isSuperAdmin(): boolean {
     const roles = this.requestUser?.roles;
-    return Array.isArray(roles) && roles.includes(GLOBAL_ADMIN_ROLE);
+    return Array.isArray(roles) && roles.includes(SUPER_ADMIN_ROLE);
   }
 
   /**
    * Build a Prisma `where` clause that always scopes to the
-   * caller's CLS tenantId, unless the caller is GLOBAL_ADMIN. Throws
+   * caller's CLS tenantId, unless the caller is SUPER_ADMIN. Throws
    * `NotFoundException` when a non-super-admin caller has no tenantId in CLS
    * so the query never widens to all tenants by accident (Prisma treats
    * `tenantId: undefined` as "no filter"). Mirrors `AuditLogService.buildTenantWhere`.
@@ -1100,7 +1100,7 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
 
   /**
    * Assert the loaded entity belongs to the
-   * caller's tenant. GLOBAL_ADMIN bypasses. Throws `NotFoundException` (not
+   * caller's tenant. SUPER_ADMIN bypasses. Throws `NotFoundException` (not
    * `ForbiddenException`) so the API never reveals that a record exists for
    * another tenant.
    */
@@ -1114,7 +1114,7 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
   /**
    * (owner-scope) — true when the caller may act on ANY key
    * in scope: a tenant admin holding the tenant-wide `manage:ApiKey` grant, or
-   * GLOBAL_ADMIN (`manage:all`). Owner-only callers hold just the seeded
+   * SUPER_ADMIN (`manage:all`). Owner-only callers hold just the seeded
    * `api-key-own-manage` grants (`read`/`update`/`delete` conditioned on
    * `userId`) and therefore CANNOT `manage` — they are confined to their own
    * keys. Mirrors the CASL-ability check in

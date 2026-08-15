@@ -2,8 +2,8 @@
  * VERBATIM v1 clinical prompt content.
  *
  * GENERATED, DO NOT HAND-EDIT. Source of truth: the RUNNING HOPE v1 deployment
- *   apps/smr/src/smr/models/prompts_<dept>_<visit>.py (CONTENT strings)
- *   apps/smr/src/smr/services/previous_visit_service.py (_build_pre_summary_prompt).
+ *   apps/text/src/text/models/prompts_<dept>_<visit>.py (CONTENT strings)
+ *   apps/text/src/text/services/previous_visit_service.py (_build_pre_summary_prompt).
  *
  * Extract from the deployed pod, NOT from a v1 source checkout — the two have
  * diverged (a checkout carries prompt revisions that were never deployed, and

@@ -9,14 +9,14 @@ import { CanAny, ExpectedVersion } from '../../decorators';
  * A single row per tenant holds the client-side capture defaults applied to
  * every user in that tenant (ASR model + feature switches + a typed advanced
  * `configJson`). Tenant scoping mirrors the DNA admin surface:
- * a global admin (GLOBAL_ADMIN) may target a tenant via
+ * a global admin (SUPER_ADMIN) may target a tenant via
  * `?tenantId=`; a tenant admin is pinned to their CLS tenant and any supplied
  * `tenantId` is ignored by the service.
  *
  * `@CanAny(['manage','Tenant'],['update','Tenant'])` gates the surface:
  * the `tenant-full-access` policy grants tenant admins
  * tenant-scoped `update:Tenant` (not `manage:Tenant`), which now suffices to
- * reach this config surface; GLOBAL_ADMIN passes via `manage:all`. Matches
+ * reach this config surface; SUPER_ADMIN passes via `manage:all`. Matches
  * `TenantStorageConfigAdminController`.
  */
 @ApiBearerAuth()

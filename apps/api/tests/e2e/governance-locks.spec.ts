@@ -1,6 +1,6 @@
 /**
  * Harness policy governance locks — safetyEnabled / phiFailClosed are
- * GLOBAL_ADMIN-only, even on the tenant-scoped policy route (gap).
+ * SUPER_ADMIN-only, even on the tenant-scoped policy route (gap).
  *
  * `agentic-policy.spec.ts` (pattern) already covers the OCC chain on
  * `PATCH admin/harness/policy` (428/412/version-bump) and the `policy/global`
@@ -17,10 +17,10 @@
  * `@Authorize(['manage', 'HarnessPolicy'])`, which a tenant admin legitimately
  * holds for every OTHER knob on this same row (thresholds, `maxRegen`, gate
  * timers). `updatePolicy` calls the lock UNCONDITIONALLY — it does not even
- * check `isSuperAdmin` — so a GLOBAL_ADMIN acting on a TENANT row (not the
+ * check `isSuperAdmin` — so a SUPER_ADMIN acting on a TENANT row (not the
  * `/policy/global` platform row) is equally rejected. The only legitimate path
  * to flip these two fields is `PATCH admin/harness/policy/global`
- * (`assertPlatform`, GLOBAL_ADMIN only). This is the
+ * (`assertPlatform`, SUPER_ADMIN only). This is the
  * "declarative decorator understates the real gate" pattern documented in
  * `05-nestjs-api.mdc` §Imperative Privilege Checks.
  *
@@ -98,7 +98,7 @@ test.describe('harness policy governance locks — safetyEnabled / phiFailClosed
     expect(after.entityFaithfulnessThreshold).toBe(before.entityFaithfulnessThreshold);
   });
 
-  test('the same lock holds for a GLOBAL_ADMIN acting on the TENANT policy route — a field lock, not merely a role check', async ({ request }) => {
+  test('the same lock holds for a SUPER_ADMIN acting on the TENANT policy route — a field lock, not merely a role check', async ({ request }) => {
     const before = await readPolicy(request, globalAdminToken, HARNESS_POLICY);
     const resp = await request.patch(HARNESS_POLICY, {
       headers: { ...bearer(globalAdminToken), 'If-Match': `"${before.version}"` },
@@ -118,7 +118,7 @@ test.describe('harness policy governance locks — safetyEnabled / phiFailClosed
     expect(((await resp.json()) as HarnessPolicy).entityFaithfulnessThreshold).toBe(nextThreshold);
   });
 
-  test('a GLOBAL_ADMIN can flip safetyEnabled — but only through the platform GLOBAL-DEFAULT route', async ({ request }) => {
+  test('a SUPER_ADMIN can flip safetyEnabled — but only through the platform GLOBAL-DEFAULT route', async ({ request }) => {
     const before = await readPolicy(request, globalAdminToken, HARNESS_POLICY_GLOBAL);
     const flipped = !before.safetyEnabled;
 

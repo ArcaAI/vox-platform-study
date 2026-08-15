@@ -120,11 +120,11 @@ describe('AuditLogService — cursor pagination', () => {
     expect(mockAuditLogRepository.findAll).not.toHaveBeenCalled();
   });
 
-  it('does NOT scope to a tenant for GLOBAL_ADMIN callers', async () => {
+  it('does NOT scope to a tenant for SUPER_ADMIN callers', async () => {
     mockClsService.get.mockImplementation((key: string) => {
       switch (key) {
         case 'user':
-          return { id: 'sa', roles: ['GLOBAL_ADMIN'] };
+          return { id: 'sa', roles: ['SUPER_ADMIN'] };
         case 'tenantId':
           return 'tenant-1';
         default:

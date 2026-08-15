@@ -1,7 +1,7 @@
 /**
  * Admin consultation reads (capabilities-matrix row 33) — a READ-ONLY surface:
  * list + aggregate + :id detail, no mutations anywhere. Scope follows the
- * caller: tenant-pinned normally; a GLOBAL_ADMIN with no working tenant reads
+ * caller: tenant-pinned normally; a SUPER_ADMIN with no working tenant reads
  * cross-tenant (the frame 40 aggregate exception).
  */
 

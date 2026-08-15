@@ -16,7 +16,7 @@ import { ErrorState } from '@/shared/state/error-state';
 import { useAllowedOrigin, useCreateAllowedOrigin, useUpdateAllowedOrigin } from '../api';
 import type { CreateAllowedOriginRequest, TenantAllowedOrigin, UpdateAllowedOriginRequest } from '../api';
 
-/** FR-2 — only a GLOBAL_ADMIN may register or escalate into a wildcard/pattern origin; the server 403s a non-elevated attempt on both create and update. */
+/** FR-2 — only a SUPER_ADMIN may register or escalate into a wildcard/pattern origin; the server 403s a non-elevated attempt on both create and update. */
 const WILDCARD_REASON = 'Wildcard patterns are managed by platform administrators.';
 
 interface FormValues {
@@ -70,7 +70,7 @@ function AllowedOriginForm({
 }: {
   initial?: TenantAllowedOrigin;
   etag?: string;
-  /** FR-2 — false for a non-elevated (tenant-admin) session; true keeps today's full GLOBAL_ADMIN capability. */
+  /** FR-2 — false for a non-elevated (tenant-admin) session; true keeps today's full SUPER_ADMIN capability. */
   canRegisterWildcard: boolean;
   onDone: () => void;
   onCancel: () => void;
@@ -235,7 +235,7 @@ export function AllowedOriginFormDialog({
   const detailQuery = useAllowedOrigin(editingId, open && isEdit);
   const origin = detailQuery.data?.data;
   const session = useSession();
-  // FR-2 / FR-5 — GLOBAL_ADMIN keeps today's full capability; a non-elevated
+  // FR-2 / FR-5 — SUPER_ADMIN keeps today's full capability; a non-elevated
   // (tenant-admin) session cannot register or escalate into a wildcard —
   // the server 403s it, so the form suppresses the attempt up front.
   const canRegisterWildcard = session.data?.isElevated ?? false;

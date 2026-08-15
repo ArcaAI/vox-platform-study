@@ -83,7 +83,7 @@ interface StreamEventState extends StreamFields {
   status: Exclude<TaskStreamStatus, 'idle' | 'connecting'> | null;
 }
 
-const SMR_EVENTS = ['chunk', 'reasoning', 'usage', 'done', 'error'] as const;
+const TEXT_EVENTS = ['chunk', 'reasoning', 'usage', 'done', 'error'] as const;
 
 /** Statuses that end the stream — these outrank the live transport status. */
 const TERMINAL_STATUSES = new Set<TaskStreamStatus>(['done', 'failed', 'closed']);
@@ -150,7 +150,7 @@ export function useTaskStream(taskId: string | null): TaskStreamState {
   const stream = useEventStream({
     path,
     scope,
-    eventNames: SMR_EVENTS,
+    eventNames: TEXT_EVENTS,
     onEvent,
     // Replay-from-0-0 makes silent reconnects unsafe; recovery is reopen().
     maxRetries: 0,

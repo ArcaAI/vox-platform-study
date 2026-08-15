@@ -16,7 +16,7 @@ import {
   TENANT_BUCKET_ENDPOINTS,
   STORAGE_KEY_ENDPOINTS,
   TENANT_STORAGE_CONFIG_ENDPOINTS,
-  SMR_ENDPOINTS,
+  TEXT_ENDPOINTS,
 } from '../constants';
 
 describe('Endpoint Constants', () => {
@@ -109,27 +109,27 @@ describe('Endpoint Constants', () => {
     });
   });
 
-  describe('SMR_ENDPOINTS (smr-proxy.controller.ts @Controller("text"))', () => {
+  describe('TEXT_ENDPOINTS (smr-proxy.controller.ts @Controller("text"))', () => {
     it('GENERATE is /text/generate', () => {
-      expect(SMR_ENDPOINTS.GENERATE).toBe('/text/generate');
+      expect(TEXT_ENDPOINTS.GENERATE).toBe('/text/generate');
     });
     it('GENERATE_ASSEMBLED is /text/generate/assembled', () => {
-      expect(SMR_ENDPOINTS.GENERATE_ASSEMBLED).toBe('/text/generate/assembled');
+      expect(TEXT_ENDPOINTS.GENERATE_ASSEMBLED).toBe('/text/generate/assembled');
     });
     it('PROVIDERS is /text/providers', () => {
-      expect(SMR_ENDPOINTS.PROVIDERS).toBe('/text/providers');
+      expect(TEXT_ENDPOINTS.PROVIDERS).toBe('/text/providers');
     });
     it('TASK(id) is /text/tasks/:id', () => {
-      expect(SMR_ENDPOINTS.TASK('t-1')).toBe('/text/tasks/t-1');
+      expect(TEXT_ENDPOINTS.TASK('t-1')).toBe('/text/tasks/t-1');
     });
     it('TASK_CANCEL(id) is /text/tasks/:id/cancel', () => {
-      expect(SMR_ENDPOINTS.TASK_CANCEL('t-1')).toBe('/text/tasks/t-1/cancel');
+      expect(TEXT_ENDPOINTS.TASK_CANCEL('t-1')).toBe('/text/tasks/t-1/cancel');
     });
     it('TASK_STREAM(id) is /text/tasks/:id/stream', () => {
-      expect(SMR_ENDPOINTS.TASK_STREAM('t-1')).toBe('/text/tasks/t-1/stream');
+      expect(TEXT_ENDPOINTS.TASK_STREAM('t-1')).toBe('/text/tasks/t-1/stream');
     });
     it('encodes the task id path param', () => {
-      expect(SMR_ENDPOINTS.TASK('a/b')).toBe(`/text/tasks/${encodeURIComponent('a/b')}`);
+      expect(TEXT_ENDPOINTS.TASK('a/b')).toBe(`/text/tasks/${encodeURIComponent('a/b')}`);
     });
   });
 
@@ -139,8 +139,8 @@ describe('Endpoint Constants', () => {
       expect(typeof ADMIN_CONSULTATION_ENDPOINTS.GET).toBe('function');
       expect(typeof TENANT_BUCKET_ENDPOINTS.DEFAULTS).toBe('string');
       expect(typeof TENANT_BUCKET_ENDPOINTS.PROVISION).toBe('function');
-      expect(typeof SMR_ENDPOINTS.GENERATE_ASSEMBLED).toBe('string');
-      expect(typeof SMR_ENDPOINTS.TASK_STREAM).toBe('function');
+      expect(typeof TEXT_ENDPOINTS.GENERATE_ASSEMBLED).toBe('string');
+      expect(typeof TEXT_ENDPOINTS.TASK_STREAM).toBe('function');
     });
   });
 });

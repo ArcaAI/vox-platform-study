@@ -26,15 +26,15 @@
  *      spec that deliberately writes a real plaintext key and exercises it.
  *
  * ENV-GATED — SKIPPED BY DEFAULT (a visible skip count in the report, never a
- * silent omission). Proving (1)/(2) needs the gateway's own `SMR_URL` to point
- * at a listener this spec can inspect, and the gateway resolves `SMR_URL` ONCE
+ * silent omission). Proving (1)/(2) needs the gateway's own `TEXT_URL` to point
+ * at a listener this spec can inspect, and the gateway resolves `TEXT_URL` ONCE
  * at bootstrap (`smr-proxy.controller.ts#getSmrBaseUrl`) — this Playwright
  * worker cannot redirect an already-running gateway process. That makes this
  * an OPERATOR setup step, not something the spec can arrange on its own:
  *
  *   1. Pick a free local port, e.g. 8899.
- *   2. Start (or restart) the API with `SMR_URL=http://127.0.0.1:8899`.
- *   3. Run this suite with `E2E_SMR_STUB=1 E2E_SMR_URL=http://127.0.0.1:8899`.
+ *   2. Start (or restart) the API with `TEXT_URL=http://127.0.0.1:8899`.
+ *   3. Run this suite with `E2E_TEXT_STUB=1 E2E_TEXT_URL=http://127.0.0.1:8899`.
  *
  * Given that, this spec binds a tiny HTTP listener at that exact address for
  * the run and services `POST /api/v1/generate` itself, echoing back the JSON
@@ -53,8 +53,8 @@ const ADMIN_BASE = '/api/v1/admin/ai-providers';
 const GENERATE_ROUTE = '/api/v1/text/generate';
 const ARCAAI_TENANT_KEY = 'ARCAAI';
 
-const SMR_STUB_ENABLED = process.env.E2E_SMR_STUB === '1';
-const SMR_STUB_URL = process.env.E2E_SMR_URL ?? '';
+const TEXT_STUB_ENABLED = process.env.E2E_TEXT_STUB === '1';
+const TEXT_STUB_URL = process.env.E2E_TEXT_URL ?? '';
 
 interface StubGenerateEcho {
   content: string;
@@ -63,16 +63,16 @@ interface StubGenerateEcho {
 }
 
 // `.serial`: this describe binds a real local HTTP listener on a FIXED port
-// (E2E_SMR_URL) in `beforeAll`. The suite runs `fullyParallel: true`
+// (E2E_TEXT_URL) in `beforeAll`. The suite runs `fullyParallel: true`
 // (root `playwright.config.ts`), so without `.serial` a second worker could be
 // assigned a test from this same describe and run its OWN copy of `beforeAll`
 // concurrently — a second `listen()` on the same port throws EADDRINUSE. No
 // other spec in this folder binds a port, so no other file needs this.
 test.describe.serial('tenant BYO cloud credential reaches SMR (generate round-trip)', () => {
   test.skip(
-    !SMR_STUB_ENABLED || !SMR_STUB_URL,
-    'requires a stub SMR listener this spec binds at E2E_SMR_URL, with the LIVE gateway’s own SMR_URL pointed at ' +
-      'that same address before boot (set E2E_SMR_STUB=1 + E2E_SMR_URL=http://127.0.0.1:<port> for BOTH the gateway ' +
+    !TEXT_STUB_ENABLED || !TEXT_STUB_URL,
+    'requires a stub SMR listener this spec binds at E2E_TEXT_URL, with the LIVE gateway’s own TEXT_URL pointed at ' +
+      'that same address before boot (set E2E_TEXT_STUB=1 + E2E_TEXT_URL=http://127.0.0.1:<port> for BOTH the gateway ' +
       'process and this suite — see the file header for the full sequence)',
   );
 
@@ -86,7 +86,7 @@ test.describe.serial('tenant BYO cloud credential reaches SMR (generate round-tr
   let tenantACredentialWritten = false;
 
   test.beforeAll(async ({ request }) => {
-    const url = new URL(SMR_STUB_URL);
+    const url = new URL(TEXT_STUB_URL);
     stubServer = http.createServer((req, res) => {
       const chunks: Buffer[] = [];
       req.on('data', (chunk: Buffer) => chunks.push(chunk));
@@ -117,7 +117,7 @@ test.describe.serial('tenant BYO cloud credential reaches SMR (generate round-tr
     tenantAToken = ta!.token;
 
     // Tenant B is a second REAL tenant (not merely a second user in the same
-    // tenant): a GLOBAL_ADMIN logged in against the secondary cross-tenant
+    // tenant): a SUPER_ADMIN logged in against the secondary cross-tenant
     // fixture tenant acts under ITS OWN CLS context, same pattern
     // `ai-provider-connections-cross-tenant.spec.ts` uses for `foreignTenantId`.
     const tb = await loginUser(request, SEEDED_USERS.superAdmin.username, SEEDED_USERS.superAdmin.password, ARCAAI_TENANT_KEY);

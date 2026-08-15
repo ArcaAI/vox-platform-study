@@ -51,7 +51,7 @@ moves toward:
   depend on a redactor existing).
 - Consent/erasure cascade (`INV-170`, `INV-335`, `INV-343` — Wave-1 `consent-abac`); there is no
   `Consent` model to key an erasure job on yet.
-- Rewriting the guardrail `/api/medical/validate` call inside `apps/smr` — it is a topicality
+- Rewriting the guardrail `/api/medical/validate` call inside `apps/text` — it is a topicality
   verdict, not a PHI transform, and fixing that classification is a separate, larger change than
   this ticket's blast radius.
 - Any change to `PromptManagementService`'s general template-resolution mechanics.
@@ -394,7 +394,7 @@ confirms every seeded ArcaAI doctor already has a DNA report row.
 - **Schema design risk**: an overly narrow `DNA_OUTPUT_SCHEMA` (Task 2) could make the DNA feature
   useless (no room to express real stylistic nuance) or an overly permissive one could leave a
   free-text escape hatch. The executing agent should sanity-check the schema against a few sample
-  DNA generations (via the SDK playground/Workbench-equivalent, or a local `pnpm smr:dev` call)
+  DNA generations (via the SDK playground/Workbench-equivalent, or a local `pnpm text:dev` call)
   before considering Task 2 done, not just against the JSON-schema validity of the shape.
   Coordinate with any parallel `TASK-733 department-assignment-personalization` work (Wave 4,
   gated on this ticket's scan being clean) if the schema needs later revision.

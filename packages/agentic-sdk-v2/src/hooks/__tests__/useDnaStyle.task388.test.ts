@@ -3,7 +3,7 @@
  *
  * The admin methods target the `/admin/dna-writing-styles` controller, which
  * requires `manage:DnaWritingStyleReport` and tenant-scopes the caller (even
- * GLOBAL_ADMIN cannot cross tenants). These are distinct from the self-only
+ * SUPER_ADMIN cannot cross tenants). These are distinct from the self-only
  * `getByDoctor`/`getVersions` methods that hit the end-user routes.
  *
  * @vitest-environment jsdom

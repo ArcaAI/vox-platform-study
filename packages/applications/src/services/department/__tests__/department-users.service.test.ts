@@ -102,8 +102,8 @@ describe('DepartmentService.getDepartmentUsers', () => {
     expect(mockUserRepository.findAll).not.toHaveBeenCalled();
   });
 
-  it('allows a GLOBAL_ADMIN to read across tenants and scopes by the department tenant', async () => {
-    clsUser = { id: 'sa', roles: ['GLOBAL_ADMIN'] };
+  it('allows a SUPER_ADMIN to read across tenants and scopes by the department tenant', async () => {
+    clsUser = { id: 'sa', roles: ['SUPER_ADMIN'] };
     clsTenantId = null;
     mockDepartmentRepository.findById.mockResolvedValue({ id: 'dept-3', tenantId: 'tenant-x' });
     mockUserRepository.findAll.mockResolvedValue([{ id: 'z' }]);

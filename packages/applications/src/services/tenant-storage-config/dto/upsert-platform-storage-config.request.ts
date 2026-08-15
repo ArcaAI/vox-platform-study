@@ -7,7 +7,7 @@ import { IsBoolean, IsEnum, IsInt, IsOptional, IsString, MaxLength, Min } from '
  * SYSTEM-tenant row (`tenantId = SYSTEM_TENANT_ID`, `bucketId = NULL`) that
  * every tenant falls back to when it has no row of its own.
  *
- * GLOBAL_ADMIN only (enforced imperatively in the service; the permission
+ * SUPER_ADMIN only (enforced imperatively in the service; the permission
  * decorator cannot express "global admin"). Written under optimistic
  * concurrency: `expectedVersion` comes from the `If-Match` header (`"0"`
  * creates the row).

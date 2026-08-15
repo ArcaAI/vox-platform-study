@@ -29,7 +29,7 @@ function makeService(opts: { roles?: string[]; cached?: any } = {}) {
   };
   const emitter = { emit: vi.fn() };
   const cls = {
-    get: vi.fn((k: string) => (k === 'user' ? { id: 'u1', roles: opts.roles ?? ['GLOBAL_ADMIN'] } : k === 'tenantId' ? 'tenant-abc' : undefined)),
+    get: vi.fn((k: string) => (k === 'user' ? { id: 'u1', roles: opts.roles ?? ['SUPER_ADMIN'] } : k === 'tenantId' ? 'tenant-abc' : undefined)),
   };
   // The CAS version now comes from a FRESH repository read, not
   // from the (45s-stale) AppSettings snapshot. `opts.cached` therefore drives
@@ -81,7 +81,7 @@ describe('SettingsRegistryWriteService — globalOnly enforcement', () => {
   });
 
   it('allows a globalOnly key for a global admin', async () => {
-    const { svc } = makeService({ roles: ['GLOBAL_ADMIN'] });
+    const { svc } = makeService({ roles: ['SUPER_ADMIN'] });
     await expect(svc.write('agentic.context.liveDelta.maxChars', 9000)).resolves.toBeDefined();
   });
 });

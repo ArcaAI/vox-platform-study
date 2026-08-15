@@ -269,7 +269,7 @@ describe('BaseService', () => {
       );
     });
 
-    // A GLOBAL_ADMIN authenticates with an empty CLS tenantId and
+    // A SUPER_ADMIN authenticates with an empty CLS tenantId and
     // stays unscoped until they elevate to a working tenant (see
     // `resolve-active-tenant.ts`). Any mutation broadcast during that window
     // (e.g. a self-service UserSettings save while browsing the cross-tenant

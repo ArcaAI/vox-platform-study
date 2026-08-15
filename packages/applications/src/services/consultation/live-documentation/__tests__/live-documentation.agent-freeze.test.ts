@@ -98,7 +98,7 @@ function buildService(opts: {
     // Without one the durable-snapshot write is (correctly) refused.
     //
     // `getSecretOptional` is REQUIRED, not decorative: `callSmr` resolves
-    // `SMR_SERVICE_TOKEN` through it for the authenticated gateway→SMR hop
+    // `TEXT_SERVICE_TOKEN` through it for the authenticated gateway→SMR hop
     // A stand-in missing the method throws inside the flush's try,
     // which the catch turns into "SMR failed" — so every assertion about the
     // SMR payload silently sees zero calls instead of failing loudly.
@@ -117,7 +117,7 @@ const settle = async (): Promise<void> => {
 };
 
 describe('The gateway→SMR hop is authenticated', () => {
-  it('sends X-Service-Token resolved from SMR_SERVICE_TOKEN', async () => {
+  it('sends X-Service-Token resolved from TEXT_SERVICE_TOKEN', async () => {
     const calls: SmrCall[] = [];
     const http = recordingHttpMock(calls);
     const service = buildService({ http });

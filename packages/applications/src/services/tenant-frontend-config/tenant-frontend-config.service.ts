@@ -170,7 +170,7 @@ export class TenantFrontendConfigService extends BaseService implements ITenantF
   }
 
   /**
-   * A global admin (GLOBAL_ADMIN) must target a concrete tenant
+   * A global admin (SUPER_ADMIN) must target a concrete tenant
    * via `tenantId`; a tenant admin is pinned to the CLS tenant.
    */
   private resolveTenantScope(requestedTenantId?: string): string {
@@ -189,6 +189,6 @@ export class TenantFrontendConfigService extends BaseService implements ITenantF
 
   private isGlobalRole(): boolean {
     const roles = this.requestUser?.roles ?? [];
-    return roles.includes('GLOBAL_ADMIN');
+    return roles.includes('SUPER_ADMIN');
   }
 }

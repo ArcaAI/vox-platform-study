@@ -9,7 +9,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { SecretsService } from '../SecretsService';
 import { InMemorySecretsProvider } from '../providers/in-memory-secrets.provider';
 
-const KEY = 'SMR_SERVICE_TOKEN';
+const KEY = 'TEXT_SERVICE_TOKEN';
 
 describe('SecretsService warmup re-warm loop', () => {
   afterEach(() => {

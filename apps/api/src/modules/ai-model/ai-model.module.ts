@@ -11,7 +11,7 @@ import { AiModelDiscoveryService } from './ai-model-discovery.service';
  *
  * Also wires the discovery surface (merge view + explicit register). It needs
  * `HttpModule` to reach SMR's provider aggregator and `CommonServiceModule` for
- * `IConfigService` (`SMR_URL`) / `SecretsService` — direct `process.env` reads
+ * `IConfigService` (`TEXT_URL`) / `SecretsService` — direct `process.env` reads
  * for downstream URLs are lint-banned in `src/modules/**`.
  */
 @Module({

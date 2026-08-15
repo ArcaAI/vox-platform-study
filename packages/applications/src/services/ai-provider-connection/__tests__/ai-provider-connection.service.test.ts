@@ -283,7 +283,7 @@ describe('AiProviderConnectionService — SYSTEM governance (test 4)', () => {
   });
 
   it('allows a SYSTEM-row write from a global admin, for a self-host provider', async () => {
-    const { svc, repo } = makeService({ roles: ['GLOBAL_ADMIN'] });
+    const { svc, repo } = makeService({ roles: ['SUPER_ADMIN'] });
     const res = await svc.upsertRow('llm', 'ollama', { enabled: true, baseUrl: 'http://localhost:11434' }, SYSTEM_TENANT_ID);
     expect(repo.create).toHaveBeenCalledTimes(1);
     expect(res.provider).toBe('ollama');
@@ -318,7 +318,7 @@ describe('AiProviderConnectionService — SYSTEM governance (test 4)', () => {
 
 describe('AiProviderConnectionService — resolveConnection cascade (test 5)', () => {
   it('prefers an ENABLED tenant row over the SYSTEM row', async () => {
-    const { svc, repo } = makeService({ roles: ['GLOBAL_ADMIN'] });
+    const { svc, repo } = makeService({ roles: ['SUPER_ADMIN'] });
     repo.findByTenantServiceProvider.mockImplementation(async (_service: string, _provider: string, tenantId: string) =>
       tenantId === TENANT
         ? makeRow({ tenantId: TENANT, enabled: true, baseUrl: 'https://tenant.example' })
@@ -331,7 +331,7 @@ describe('AiProviderConnectionService — resolveConnection cascade (test 5)', (
   });
 
   it('falls through an ABSENT tenant row to the SYSTEM row', async () => {
-    const { svc, repo } = makeService({ roles: ['GLOBAL_ADMIN'] });
+    const { svc, repo } = makeService({ roles: ['SUPER_ADMIN'] });
     repo.findByTenantServiceProvider.mockImplementation(async (_service: string, _provider: string, tenantId: string) =>
       tenantId === TENANT ? null : makeRow({ tenantId: SYSTEM_TENANT_ID, enabled: true, baseUrl: 'https://system.example' }),
     );
@@ -349,7 +349,7 @@ describe('AiProviderConnectionService — resolveConnection cascade (test 5)', (
     // production callers when this flipped, so nothing observable changed with
     // it — but the rule must match the injection resolver's, or the two paths
     // would disagree about the same row.
-    const { svc, repo } = makeService({ roles: ['GLOBAL_ADMIN'] });
+    const { svc, repo } = makeService({ roles: ['SUPER_ADMIN'] });
     repo.findByTenantServiceProvider.mockImplementation(async (_service: string, _provider: string, tenantId: string) =>
       tenantId === TENANT
         ? makeRow({ tenantId: TENANT, enabled: false, baseUrl: 'https://tenant.example' })
@@ -360,13 +360,13 @@ describe('AiProviderConnectionService — resolveConnection cascade (test 5)', (
   });
 
   it('falls through a DISABLED SYSTEM row to null (the env-fallback signal)', async () => {
-    const { svc, repo } = makeService({ roles: ['GLOBAL_ADMIN'] });
+    const { svc, repo } = makeService({ roles: ['SUPER_ADMIN'] });
     repo.findByTenantServiceProvider.mockResolvedValue(makeRow({ enabled: false }));
     await expect(svc.resolveConnection('llm', 'azure', TENANT)).resolves.toBeNull();
   });
 
   it('returns null when no row exists at all', async () => {
-    const { svc, repo } = makeService({ roles: ['GLOBAL_ADMIN'] });
+    const { svc, repo } = makeService({ roles: ['SUPER_ADMIN'] });
     repo.findByTenantServiceProvider.mockResolvedValue(null);
     await expect(svc.resolveConnection('llm', 'azure', TENANT)).resolves.toBeNull();
   });

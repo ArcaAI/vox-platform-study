@@ -24,7 +24,7 @@
  */
 import { Reflector } from '@nestjs/core';
 import { API_KEY_REQUIRED_SCOPES } from '@arcaai/applications';
-import { SmrCompatController } from '../modules/smr-compat/smr-compat.controller';
+import { SmrCompatController } from '../modules/text-compat/text-compat.controller';
 import { ConsultationController } from '../modules/consultation/consultation.controller';
 import { ConsultationJobController } from '../modules/consultation/consultation-job.controller';
 

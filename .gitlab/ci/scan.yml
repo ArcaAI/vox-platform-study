@@ -83,10 +83,10 @@ scan-stt:
     - !reference [.skip-on-dev-2-1, rules]
     - !reference [.rules-stt, rules]
 
-scan-smr:
+scan-text:
   extends: .trivy-scan
   needs:
-    - job: build-smr
+    - job: build-text
       artifacts: true
   variables:
     SCAN_IMAGE: $IMAGE
@@ -94,7 +94,7 @@ scan-smr:
     - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "main"
       when: never
     - !reference [.skip-on-dev-2-1, rules]
-    - !reference [.rules-smr, rules]
+    - !reference [.rules-text, rules]
 
 scan-nlp:
   extends: .trivy-scan

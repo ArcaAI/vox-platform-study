@@ -1,33 +1,33 @@
 /**
- * Wire types for the `text/*` SMR proxy (matrix row 38). The gateway pipes
+ * Wire types for the `text/*` proxy (matrix row 38). The gateway pipes
  * the Python service's Pydantic bodies through VERBATIM, so every field here
  * is snake_case on purpose — do NOT camelCase them. Sources of truth:
- * `apps/smr/src/smr/models/{responses,stream}.py` and the request DTOs in
- * `apps/api/src/modules/streaming/smr-proxy.controller.ts`.
+ * `apps/text/src/text/models/{responses,stream}.py` and the request DTOs in
+ * `apps/api/src/modules/streaming/text-proxy.controller.ts`.
  */
 
 /** One catalog model of a provider entry. */
-export interface SmrProviderModel {
+export interface TextProviderModel {
   name: string;
   size?: string;
 }
 
 /** GET text/providers | text/guardrail-providers row. */
-export interface SmrProvider {
+export interface TextProvider {
   name: string;
-  models: SmrProviderModel[];
+  models: TextProviderModel[];
   is_available: boolean;
   is_default?: boolean;
   default_model?: string;
 }
 
-export interface SmrResponseFormat {
+export interface TextResponseFormat {
   type: 'text' | 'json' | 'json_schema';
   json_schema?: Record<string, unknown>;
   strict?: boolean;
 }
 
-/** POST text/generate body (SmrGenerateRequest on the gateway). */
+/** POST text/generate body (TextGenerateRequest on the gateway). */
 export interface GenerateTextRequest {
   prompt: string;
   system_prompt?: string;
@@ -37,17 +37,17 @@ export interface GenerateTextRequest {
   max_tokens?: number;
   top_p?: number;
   stream?: boolean;
-  response_format?: SmrResponseFormat;
+  response_format?: TextResponseFormat;
   context?: Record<string, unknown>;
 }
 
-export interface SmrTokenUsage {
+export interface TextTokenUsage {
   prompt_tokens: number;
   completion_tokens: number;
   total_tokens: number;
 }
 
-/** Sync generation result (SMR GenerateResponse). */
+/** Sync generation result (text-generation GenerateResponse). */
 export interface GenerateTextResponse {
   task_id: string;
   status: string;
@@ -55,13 +55,13 @@ export interface GenerateTextResponse {
   reasoning?: string;
   provider: string;
   model: string;
-  usage: SmrTokenUsage;
+  usage: TextTokenUsage;
   latency_ms: number;
   finish_reason: string;
   created_at: string;
 }
 
-/** stream: true acknowledgement (SMR StreamingGenerateResponse). */
+/** stream: true acknowledgement (text-generation StreamingGenerateResponse). */
 export interface StreamingGenerateAck {
   task_id: string;
   status: string;
@@ -91,7 +91,7 @@ export interface PromptTemplateOption {
   status?: string;
 }
 
-/** GET admin/prompt-templates query — camelCase gateway params, unlike the SMR proxy above. */
+/** GET admin/prompt-templates query — camelCase gateway params, unlike the text-generation proxy above. */
 export interface ListPromptTemplatesParams {
   search?: string;
   limit?: number;
@@ -115,7 +115,7 @@ export interface AssembledGenerateRequest {
   temperature?: number;
   max_tokens?: number;
   stream?: boolean;
-  /** GLOBAL_ADMIN / TENANT_ADMIN only — the gateway 403s anyone else. */
+  /** SUPER_ADMIN / TENANT_ADMIN only — the gateway 403s anyone else. */
   debug?: boolean;
 }
 
@@ -134,8 +134,8 @@ export interface AssembledDebugMeta {
 
 export type AssembledGenerateResponse = GenerateOutcome & { _debug?: AssembledDebugMeta };
 
-/** GET text/tasks/:taskId (SMR TaskResponse) — also the cancel response body. */
-export interface SmrTask {
+/** GET text/tasks/:taskId (text-generation TaskResponse) — also the cancel response body. */
+export interface TextTask {
   task_id: string;
   status: string;
   provider: string;
@@ -147,13 +147,13 @@ export interface SmrTask {
   completed_at?: string | null;
   error?: string | null;
   content?: string | null;
-  usage?: SmrTokenUsage | null;
+  usage?: TextTokenUsage | null;
   total_chunks: number;
   total_tokens: number;
 }
 
-/** SSE frame on GET text/tasks/:taskId/stream (SMR StreamChunk; named events). */
-export interface SmrStreamFrame {
+/** SSE frame on GET text/tasks/:taskId/stream (text-generation StreamChunk; named events). */
+export interface TextStreamFrame {
   type: 'chunk' | 'reasoning' | 'meta' | 'done' | 'error' | 'usage';
   content?: string | null;
   data?: Record<string, unknown> | null;

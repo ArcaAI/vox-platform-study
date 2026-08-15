@@ -91,9 +91,9 @@ describe('MyTenantController', () => {
       expect(tenantService.fetchById).not.toHaveBeenCalled();
     });
 
-    it('should throw BadRequestException when CLS has no tenantId, even for GLOBAL_ADMIN', async () => {
+    it('should throw BadRequestException when CLS has no tenantId, even for SUPER_ADMIN', async () => {
       tenantService = createMockTenantService();
-      clsService = createMockClsService(undefined, { roles: ['GLOBAL_ADMIN'] });
+      clsService = createMockClsService(undefined, { roles: ['SUPER_ADMIN'] });
 
       controller = new MyTenantController(tenantService as any, createMockFrontendConfigService() as any, clsService as any);
 
@@ -258,7 +258,7 @@ describe('MyTenantController', () => {
 
     it('should throw BadRequestException for global admin with no tenantId (no silent fallback)', async () => {
       tenantService = createMockTenantService();
-      clsService = createMockClsService(undefined, { roles: ['GLOBAL_ADMIN'] });
+      clsService = createMockClsService(undefined, { roles: ['SUPER_ADMIN'] });
 
       controller = new MyTenantController(tenantService as any, createMockFrontendConfigService() as any, clsService as any);
 
@@ -313,7 +313,7 @@ describe('MyTenantController', () => {
 
     it('should throw BadRequestException for global admin update with no tenantId (no silent fallback)', async () => {
       tenantService = createMockTenantService();
-      clsService = createMockClsService(undefined, { roles: ['GLOBAL_ADMIN'] });
+      clsService = createMockClsService(undefined, { roles: ['SUPER_ADMIN'] });
 
       controller = new MyTenantController(tenantService as any, createMockFrontendConfigService() as any, clsService as any);
       const configs = [{ id: 'cfg-1', value: 'th' }];

@@ -2,7 +2,7 @@
 
 Validates the ``X-Service-Token`` header on incoming requests. When
 ``service_token`` is empty (dev mode / hermetic CI) auth is bypassed entirely,
-so local development and tests stay green. Mirrors ``apps/smr``'s
+so local development and tests stay green. Mirrors ``apps/text``'s
 ``ServiceAuthMiddleware``, tailored to the NLP route surface (health lives under
 ``/api/v1/health``).
 

@@ -97,7 +97,7 @@ export const DEFAULT_POLICIES: DefaultPolicy[] = [
     // client (untenanted, privileged). Access is a DEDICATED subject so it
     // can be granted/delegated without handing out `manage:all`; the module
     // itself additionally requires the ENABLE_PRISMA_STUDIO env flag
-    // (fail-closed default). Granted to the GLOBAL_ADMIN policy set.
+    // (fail-closed default). Granted to the SUPER_ADMIN policy set.
     rules: [{ action: 'manage', subject: 'PrismaStudio' }],
   },
 
@@ -205,14 +205,14 @@ export const DEFAULT_POLICIES: DefaultPolicy[] = [
       // Tenant admins manage their own tenant's external OIDC
       // identity provider config. Tenant-scoped; the controller pins every
       // op to the caller's tenant. `manage` implies `read` (used by the GET
-      // routes). GLOBAL_ADMIN already covers this via the wildcard `manage
+      // routes). SUPER_ADMIN already covers this via the wildcard `manage
       // all` rule above.
       { action: 'manage', subject: 'TenantIdentityProvider', conditions: { tenantId: '${context.tenantId}' } },
       // Tenant admins manage their own tenant's Vox SDK CORS
       // allowed-origin rows. Tenant-scoped; the service pins every
       // op to the caller's tenant and gates wildcard/pattern origins +
-      // SYSTEM-tenant rows to GLOBAL_ADMIN only (not expressible here).
-      // GLOBAL_ADMIN already covers this via the wildcard `manage all` rule.
+      // SYSTEM-tenant rows to SUPER_ADMIN only (not expressible here).
+      // SUPER_ADMIN already covers this via the wildcard `manage all` rule.
       { action: 'manage', subject: 'TenantAllowedOrigin', conditions: { tenantId: '${context.tenantId}' } },
       // Tenant admins declare their OWN consultation context
       // schemas (the kinds of context a consultation carries). Tenant-scoped;

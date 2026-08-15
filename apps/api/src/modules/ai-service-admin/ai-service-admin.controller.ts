@@ -8,7 +8,7 @@ import { AiServiceProxyClient, GuardrailConfigResult } from './ai-service-proxy.
  *
  * READ-ONLY status/config plane over the Guardrail and NLP Python services,
  * proxied through the gateway (the console never reaches them directly).
- * Platform-infrastructure tier — class-level `manage:all` (GLOBAL_ADMIN),
+ * Platform-infrastructure tier — class-level `manage:all` (SUPER_ADMIN),
  * matching the queue/platform-metrics posture: these documents expose engine,
  * model, and infra internals, not tenant data.
  *

@@ -33,7 +33,7 @@ export class AllowedOriginEnforcementPostureResponse {
  * class-level `@CanManage('TenantAllowedOrigin')` now actually gates:
  * `tenant-full-access` (seed `01-policy.ts`) grants `manage:TenantAllowedOrigin`
  * scoped to `conditions.tenantId`, so a `TENANT_ADMIN` reaches this surface for
- * THEIR OWN tenant's rows, and `GLOBAL_ADMIN` reaches it unchanged via
+ * THEIR OWN tenant's rows, and `SUPER_ADMIN` reaches it unchanged via
  * `manage:all`. `tenantId` itself is never a route/body
  * parameter — every handler is scoped by whatever `ITenantAllowedOriginService`
  * reads off CLS, so a caller cannot forge, read, or steal another tenant's
@@ -48,10 +48,10 @@ export class AllowedOriginEnforcementPostureResponse {
  * defect it was meant to fix"):
  *
  *   - A wildcard/pattern origin (anything `isOriginPattern()` accepts, incl.
- *     the bare `*`) is GLOBAL_ADMIN-only on BOTH `create` and `update` — a
+ *     the bare `*`) is SUPER_ADMIN-only on BOTH `create` and `update` — a
  *     tenant admin cannot register one, and cannot escalate an existing
  *     exact row into one via PATCH (the `update` escalation path).
- *   - A SYSTEM-tenant row stays GLOBAL_ADMIN-only regardless of caller role.
+ *   - A SYSTEM-tenant row stays SUPER_ADMIN-only regardless of caller role.
  *
  * Both are 403 privilege boundaries — never the 404-over-403 cross-tenant
  * posture described above.

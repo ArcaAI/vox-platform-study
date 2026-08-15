@@ -251,7 +251,7 @@ describe('TenantService — locked-field runtime plumbing (Agent D)', () => {
   });
 
   describe('updateTenantConfigs — locked guard via real entity', () => {
-    it('throws ForbiddenException when target row has locked=true and caller is non-GLOBAL_ADMIN', async () => {
+    it('throws ForbiddenException when target row has locked=true and caller is non-SUPER_ADMIN', async () => {
       installCls(['DOCTOR']);
       const tenant = createMockTenantEntity({ id: 'tenant-id-1', key: 'CUSTOMER' });
       mockTenantRepository.findFirst.mockResolvedValue(tenant);
@@ -274,8 +274,8 @@ describe('TenantService — locked-field runtime plumbing (Agent D)', () => {
       expect(mockGlobalSettingRepository.updateWithVersion).not.toHaveBeenCalled();
     });
 
-    it('permits updating a locked=true row when caller has GLOBAL_ADMIN role', async () => {
-      installCls(['GLOBAL_ADMIN']);
+    it('permits updating a locked=true row when caller has SUPER_ADMIN role', async () => {
+      installCls(['SUPER_ADMIN']);
       const tenant = createMockTenantEntity({ id: 'tenant-id-1', key: 'CUSTOMER' });
       mockTenantRepository.findFirst.mockResolvedValue(tenant);
 
@@ -302,11 +302,11 @@ describe('TenantService — locked-field runtime plumbing (Agent D)', () => {
   });
 
   describe('fetchTenantConfigs — locked-value masking via real entity', () => {
-    it('masks the value of locked=true rows when caller is non-GLOBAL_ADMIN', async () => {
+    it('masks the value of locked=true rows when caller is non-SUPER_ADMIN', async () => {
       installCls(['DOCTOR']);
       // Pinned to the CLS tenant (`tenant-1`)
-      // so the new fetchTenantConfigs GLOBAL_ADMIN gate doesn't
-      // 404 a non-GLOBAL_ADMIN reading another tenant's configs.
+      // so the new fetchTenantConfigs SUPER_ADMIN gate doesn't
+      // 404 a non-SUPER_ADMIN reading another tenant's configs.
       // The locked-masking behavior under test is orthogonal to
       // the cross-tenant guard.
       const tenant = createMockTenantEntity({ id: 'tenant-1' });

@@ -195,12 +195,12 @@ this — it only reads.
 | `GET text/tasks/:taskId/stream` | `:574` | `@Authorize()` `:575` + `@StreamScope({ namespace: 'smr_task', param: 'taskId' })` `:576` |
 | `POST text/generate/assembled` | `:742` | `@Authorize()` `:743` |
 
-Downstream: `SMR_URL` via `this.configService.getConfigValue('SMR_URL')` (`:284-286` — a direct
+Downstream: `TEXT_URL` via `this.configService.getConfigValue('TEXT_URL')` (`:284-286` — a direct
 `process.env` read is lint-banned, `:278-283`); `X-Service-Token` injected from
-`secretsService.getSecretSync('SMR_SERVICE_TOKEN')` (`:288-300`).
+`secretsService.getSecretSync('TEXT_SERVICE_TOKEN')` (`:288-300`).
 
-SMR's own contract (`apps/smr/src/smr/api/endpoints/generate.py:209-241`,
-`apps/smr/src/smr/models/requests.py:111-133`): `GenerateRequest` carries `prompt` (min 1, max
+SMR's own contract (`apps/text/src/text/api/endpoints/generate.py:209-241`,
+`apps/text/src/text/models/requests.py:111-133`): `GenerateRequest` carries `prompt` (min 1, max
 200 000), `system_prompt` (max 50 000), `provider` (default `"lm-studio"`), `model`, `temperature`
 (0–2), `max_tokens`, `top_p`, `stream`, `response_format` (`text | json | json_schema`),
 `retry_config`, `provider_overrides`, `content_parts`. **There is no default model — SMR fails
@@ -229,7 +229,7 @@ const WRITABLE_TOGGLE_KEYS = ['autoSummaryEnabled', 'autoNerEnabled', 'harnessEn
    (`packages/applications/src/services/harness-policy/harness-policy.service.ts:538`) consults the
    `AiTaskDefault` key first (`:543-549`, aliasing `azure → azure-openai`), then falls back to the
    legacy `HarnessPolicy.smrProvider/smrModel` cascade (`:561-567`), throwing `BadRequestException`
-   when neither resolves. Task keys: `SMR_TASK_KEY = { live: 'smr.live', finalize: 'smr.finalize',
+   when neither resolves. Task keys: `TEXT_TASK_KEY = { live: 'smr.live', finalize: 'smr.finalize',
    test: 'smr.test' }` (`harness-policy.service.ts:39-43`).
 2. **`smr.` is deliberately tenant-admin configurable.**
    `packages/applications/src/services/ai-task-default/constants.ts:91`:
@@ -403,7 +403,7 @@ later reader does not assume the general case.
   - **N-3 `generate.text`** — `{ taskKey: 'smr.finalize'|'smr.live'|'smr.test', systemPrompt?, temperature?, maxTokens?, topP?, responseFormat? }`.
     **No `provider`, no `model`** — those resolve from `AiTaskDefault` through
     `HarnessPolicyService.resolveSmrSelection` (`harness-policy.service.ts:538`). Bounds mirror
-    SMR's own (`apps/smr/src/smr/models/requests.py:111-133`): `temperature` 0–2, `systemPrompt`
+    SMR's own (`apps/text/src/text/models/requests.py:111-133`): `temperature` 0–2, `systemPrompt`
     ≤ 50 000 chars.
   - **N-4 `guardrail.check`** — `{ guardrailType, failOn: 'unsafe'|'unsafe_or_unknown' (default and only permitted value in v1: 'unsafe_or_unknown'), onFail: 'mark'|'abort' }`.
   - **N-5 `output.deliver`** — `{ outputs: [<ContextOutputDeclaration>] }` reusing

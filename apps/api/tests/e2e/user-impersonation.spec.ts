@@ -20,7 +20,7 @@
  *   D. End + expiry — revoke kills the jti (401 afterwards); a short-TTL mint
  *      expires on its own (401 after exp).
  *   E. Safeguard matrix — non-super-admin callers 403 (doctor + tenant-admin),
- *      self 400, super-admin-tier target 400 (seeded GLOBAL_ADMIN), disabled
+ *      self 400, super-admin-tier target 400 (seeded SUPER_ADMIN), disabled
  *      target 400, unknown target 404, nested impersonation rejected on BOTH
  *      endpoints.
  */
@@ -30,8 +30,8 @@ import { SEEDED_USERS, DEFAULT_TENANT_KEY, loginUser } from '../../../../tests/h
 const bearer = (token: string) => ({ Authorization: `Bearer ${token}` });
 const UNIQUE = Date.now();
 
-/** Seeded GLOBAL_ADMIN (00-constants SEED_USER_IDS) — super-admin-tier target. */
-const GLOBAL_ADMIN_USER_ID = '70000000-0000-0000-0000-000000000006';
+/** Seeded SUPER_ADMIN (00-constants SEED_USER_IDS) — super-admin-tier target. */
+const SUPER_ADMIN_USER_ID = '70000000-0000-0000-0000-000000000006';
 
 interface ImpersonateBody {
   user: { id: string; username: string; email?: string; roles: string[]; permissions: string[]; tenantId?: string };
@@ -271,9 +271,9 @@ test.describe.serial('E — safeguards', () => {
     expect(((await res.json()) as { message?: string }).message).toMatch(/yourself/i);
   });
 
-  test('E3 — elevated-tier target (seeded GLOBAL_ADMIN) is rejected', async ({ request }) => {
-    const res = await impersonate(request, GLOBAL_ADMIN_USER_ID);
-    expect(res.status(), 'GLOBAL_ADMIN target → 400').toBe(400);
+  test('E3 — elevated-tier target (seeded SUPER_ADMIN) is rejected', async ({ request }) => {
+    const res = await impersonate(request, SUPER_ADMIN_USER_ID);
+    expect(res.status(), 'SUPER_ADMIN target → 400').toBe(400);
     // The guard message says "global administrator".
     expect(((await res.json()) as { message?: string }).message).toMatch(/global administrator/i);
   });

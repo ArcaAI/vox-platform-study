@@ -7,7 +7,7 @@ import { NativeSelect, NativeSelectOption } from '@arcaai/ui/components/shadcn/n
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import { Switch } from '@arcaai/ui/components/shadcn/switch';
 import { Textarea } from '@arcaai/ui/components/shadcn/textarea';
-import type { AssembledGenerationType, AssembledVisitType, SmrProvider } from '../api/types';
+import type { AssembledGenerationType, AssembledVisitType, TextProvider } from '../api/types';
 import { TemplatePicker } from './template-picker';
 
 /** All request knobs except the provider/model pair (which cascades separately). */
@@ -32,13 +32,13 @@ export interface LlmFormState {
 interface PromptEditorCardProps {
   form: LlmFormState;
   onPatch: (partial: Partial<LlmFormState>) => void;
-  providers: SmrProvider[] | undefined;
+  providers: TextProvider[] | undefined;
   providersLoading: boolean;
   selectedProvider: string;
   selectedModel: string;
   onProviderChange: (name: string) => void;
   onModelChange: (name: string) => void;
-  /** GLOBAL_ADMIN / TENANT_ADMIN — gates the assembled debug switch. */
+  /** SUPER_ADMIN / TENANT_ADMIN — gates the assembled debug switch. */
   canDebug: boolean;
   /** Exactly-one-context-source violation message (assembled mode). */
   sourceHint: string | null;
@@ -266,7 +266,7 @@ export function PromptEditorCard({
               <SwitchRow
                 id="llm-debug"
                 label="Debug assembly"
-                caption="GLOBAL_ADMIN / TENANT_ADMIN only — the response carries the _debug assembly meta."
+                caption="SUPER_ADMIN / TENANT_ADMIN only — the response carries the _debug assembly meta."
                 checked={form.debug}
                 onCheckedChange={(checked) => onPatch({ debug: checked })}
               />

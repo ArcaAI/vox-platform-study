@@ -32,7 +32,7 @@ const createMockHttpService = () => ({
 const createMockConfigService = () => ({
   getConfigValue: vi.fn((key: string) => {
     const map: Record<string, string> = {
-      SMR_URL: 'http://localhost:8862',
+      TEXT_URL: 'http://localhost:8862',
       NLP_URL: 'http://localhost:8864',
       STT_URL: 'http://localhost:8861',
       TTS_URL: 'http://localhost:8867',

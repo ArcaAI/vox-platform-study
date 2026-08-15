@@ -400,7 +400,7 @@ Dev parity: `infrastructure/docker/configs/vault/dev-init.sh` writes the *same*
 per-service policy files and seeds the *same* `secret/hope/<NAME>` paths, so a
 policy typo surfaces on a laptop rather than in staging. It seeds 19 of the 24
 `vault-kv` descriptors — every self-hosted one. The five **external** provider
-credentials (`AZURE_SPEECH_KEY`, `AZURE_FOUNDRY_API_KEY`, `SMR_AZURE_API_KEY`,
+credentials (`AZURE_SPEECH_KEY`, `AZURE_FOUNDRY_API_KEY`, `TEXT_AZURE_API_KEY`,
 `TTS_SARVAM_API_KEY`, `HARNESS_JUDGE_OPENAI_COMPAT_API_KEY`) are deliberately left
 absent: all five are `failMode: 'closed'`, so absence is a clean "not configured",
 while a placeholder would turn that into a remote 401.

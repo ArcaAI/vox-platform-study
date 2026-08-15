@@ -21,7 +21,7 @@ import { encryptPhiFields } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 import { RedisSubscriberService } from '../../stt/realtime/redisSubscriber.service';
 import { StreamingAudioBridgeService } from '../../stt/streaming/streamingAudioBridge.service';
-import { mapSmrGenerateResponse } from '../summary/smr-generate';
+import { mapSmrGenerateResponse } from '../summary/text-generate';
 import { HarnessPolicyService } from '../../harness-policy/harness-policy.service';
 import { IAiTaskDefaultService } from '../../ai-task-default/IAiTaskDefaultService';
 import { ConsultationPipelineEvent, type ContextAddedPayload, type ContextRemovedPayload } from '../events';
@@ -432,7 +432,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     @Optional() @Inject(ILiveAgentResolver) private readonly liveAgentResolver?: ILiveAgentResolverPort,
   ) {
     this.nlpServiceUrl = this.configService.get<string>('NLP_URL') ?? 'http://localhost:8864';
-    this.smrServiceUrl = this.configService.get<string>('SMR_URL') ?? 'http://localhost:8862';
+    this.smrServiceUrl = this.configService.get<string>('TEXT_URL') ?? 'http://localhost:8862';
     // Capture only the ENV OVERRIDES here. The effective values are
     // resolved per call in `resolveAgenticContext` so a control-plane write lands
     // on the next flush with no redeploy. `LIVE_DOC_*` keys stay supported as the
@@ -452,10 +452,10 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // Durable-snapshot throttle: 0 disables periodic durable writes (P1-C).
     this.durableSnapshotMs = Number(this.configService.get('LIVE_DOC_DURABLE_SNAPSHOT_MS') ?? 30000);
     // Bounded live-generation params (P0-B).
-    this.smrMaxTokens = Number(this.configService.get('LIVE_DOC_SMR_MAX_TOKENS') ?? 8192);
-    this.smrTimeoutMs = Number(this.configService.get('LIVE_DOC_SMR_TIMEOUT_MS') ?? 20000);
-    this.smrProvider = this.configService.get<string>('LIVE_DOC_SMR_PROVIDER') || undefined;
-    this.smrModel = this.configService.get<string>('LIVE_DOC_SMR_MODEL') || undefined;
+    this.smrMaxTokens = Number(this.configService.get('LIVE_DOC_TEXT_MAX_TOKENS') ?? 8192);
+    this.smrTimeoutMs = Number(this.configService.get('LIVE_DOC_TEXT_TIMEOUT_MS') ?? 20000);
+    this.smrProvider = this.configService.get<string>('LIVE_DOC_TEXT_PROVIDER') || undefined;
+    this.smrModel = this.configService.get<string>('LIVE_DOC_TEXT_MODEL') || undefined;
     // TTL on the per-session Redis stats snapshot + active set. A
     // crashed/quiet session falls out of the admin "live" list after this window;
     // refreshed on every flush so an actively-flushing session stays visible.
@@ -2015,7 +2015,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
   ): Promise<{ text: string; stats: LiveSummaryStatsDto | null; structured: boolean }> {
     // SMR is a stateless gateway with no model default. Resolve the
     // tenant's effective {provider, model} via the HarnessPolicy cascade (NOT the
-    // legacy LIVE_DOC_SMR_PROVIDER/MODEL env); fall back to env only when the
+    // legacy LIVE_DOC_TEXT_PROVIDER/MODEL env); fall back to env only when the
     // resolver is not wired (kept for non-DI construction paths).
     //
     // This is the LIVE tier: ask for the 'smr.live' routing key so a
@@ -2058,13 +2058,13 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     };
     // The gateway→SMR hop is shared-secret authenticated (`X-Service-Token`).
     // This call omitted it, so wherever SMR actually enforces a token — i.e.
-    // every environment where `SMR_SERVICE_TOKEN` is non-empty — the live loop
+    // every environment where `TEXT_SERVICE_TOKEN` is non-empty — the live loop
     // was rejected with `invalid_or_missing_token` and the flush degraded to an
     // empty note. It "worked" only in dev, where an empty token
     // trips SMR's bypass. Same resolution the sibling SMR callers use
     // (`prompt-management.service.ts`, `dna-writing-style.processor.ts`); `??
     // ''` preserves the dev bypass when no secret is configured.
-    const serviceToken = (await this.secretsService?.getSecretOptional('SMR_SERVICE_TOKEN')) ?? '';
+    const serviceToken = (await this.secretsService?.getSecretOptional('TEXT_SERVICE_TOKEN')) ?? '';
     const response = await this.httpService.axiosRef.post(`${this.smrServiceUrl}/api/v1/generate`, payload, {
       timeout: this.smrTimeoutMs,
       headers: { 'Content-Type': 'application/json', 'X-Service-Token': serviceToken },

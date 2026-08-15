@@ -6,7 +6,7 @@ returned nothing). It is also the most compliance-sensitive service in the
 fleet: every request carries raw clinical text into `/api/guardrail/analyze`
 and `/api/medical/*`. This suite locks down the new
 ``guardrail.core.observability`` module (mirrors
-`apps/smr/src/smr/core/observability.py`, the fleet's reference
+`apps/text/src/text/core/observability.py`, the fleet's reference
 implementation) plus its wiring into `guardrail.main.create_app`.
 
 Four minimum guarantees:

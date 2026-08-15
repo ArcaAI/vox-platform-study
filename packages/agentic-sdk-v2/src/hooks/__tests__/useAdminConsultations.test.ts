@@ -1,7 +1,7 @@
 /**
  * useAdminConsultations Hook Tests
  *
- * Tenant-wide consultation supervision binding for TENANT_ADMIN / GLOBAL_ADMIN.
+ * Tenant-wide consultation supervision binding for TENANT_ADMIN / SUPER_ADMIN.
  *
  * @vitest-environment jsdom
  */

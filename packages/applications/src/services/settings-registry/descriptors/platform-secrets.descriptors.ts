@@ -20,7 +20,7 @@
 //   - maxScope `system`   ⇒ platform-wide. PER-TENANT credentials are a different
 //                           data class (`db-secret`, Vault-Transit ciphertext in
 //                           a DB column — see `tts.descriptors.ts`), never here.
-//   - `globalOnly: true`  ⇒ operator/GLOBAL_ADMIN surface only.
+//   - `globalOnly: true`  ⇒ operator/SUPER_ADMIN surface only.
 //
 // NOTHING IS MIGRATED BY THIS FILE. A descriptor is metadata: it states where the
 // value lives, who may set it, and how it fails. Moving values into Vault is the
@@ -39,10 +39,10 @@
 //                             APPLICATION surface, not one-shot infra provisioning.
 //                             (An earlier revision of this comment claimed "no reader
 //                             anywhere" — that was wrong; corrected at the wave-3 merge.)
-//   - `AZURE_OPENAI_API_KEY`— read ONLY by `apps/smr/src/smr/tests/e2e/conftest.py`
+//   - `AZURE_OPENAI_API_KEY`— read ONLY by `apps/text/src/text/tests/e2e/conftest.py`
 //                             (a test fixture parsing a dotenv file directly). No
 //                             runtime reader. SMR's Azure credential
-//                             (`SMR_AZURE_API_KEY`) is no longer a platform-secret
+//                             (`TEXT_AZURE_API_KEY`) is no longer a platform-secret
 //                             either — it is BYOK-only (`db-secret`, resolved from
 //                             `AiProviderConnection`), so nothing is registered here.
 //   - `STT_SERVICE_TOKEN`   — does not exist. STT authenticates to the gateway
@@ -119,9 +119,9 @@ export const PLATFORM_SECRET_SETTINGS: SettingDescriptor[] = [
   // `X-Service-Token` hop in BOTH directions (gateway → service, and service →
   // gateway `/api/v1/internal/effective-config` via `InternalServiceTokenGuard`).
   platformSecret(
-    'smr.serviceToken',
-    'SMR service token',
-    "Shared secret on the gateway↔SMR hop. SMR reads it as `settings.service_token` under its `SMR_` pydantic prefix; the gateway resolves the same name for outbound proxying and for `InternalServiceTokenGuard`'s inbound check.",
+    'text.serviceToken',
+    'Text service token',
+    "Shared secret on the gateway↔SMR hop. SMR reads it as `settings.service_token` under its `TEXT_` pydantic prefix; the gateway resolves the same name for outbound proxying and for `InternalServiceTokenGuard`'s inbound check.",
     'Service Tokens',
   ),
   platformSecret('nlp.serviceToken', 'NLP service token', 'Shared secret on the gateway↔NLP hop (`X-Service-Token`).', 'Service Tokens'),
@@ -203,8 +203,8 @@ export const PLATFORM_SECRET_SETTINGS: SettingDescriptor[] = [
 
   // ── AI provider credentials (platform-owned; BYO tenant keys are db-secret) ─
   // The STT/TTS/SMR cloud credentials (`AZURE_SPEECH_KEY`,
-  // `TTS_SARVAM_API_KEY`, `SMR_AZURE_API_KEY`, `SMR_OPENAI_API_KEY`,
-  // `SMR_ANTHROPIC_API_KEY`) are NO LONGER platform-secrets. They moved fully to
+  // `TTS_SARVAM_API_KEY`, `TEXT_AZURE_API_KEY`, `TEXT_OPENAI_API_KEY`,
+  // `TEXT_ANTHROPIC_API_KEY`) are NO LONGER platform-secrets. They moved fully to
   // the `db-secret` tier: a platform default is a SYSTEM-tenant row in
   // `AiProviderConnection` (Vault-Transit ciphertext), resolved by the gateway and
   // injected per request. The Python services no longer read any env fallback for

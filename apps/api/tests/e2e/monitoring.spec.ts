@@ -12,7 +12,7 @@ test.describe('Health & Monitoring', () => {
 
   test.beforeAll(async ({ request }) => {
     try {
-      // The monitoring controller is gated to GLOBAL_ADMIN (`manage all`):
+      // The monitoring controller is gated to SUPER_ADMIN (`manage all`):
       // ops/uptime/sessions is platform-wide infra data, so a TENANT_ADMIN
       // (correctly) gets 403. Authenticate as the super-admin operator to exercise
       // the authorized read path.

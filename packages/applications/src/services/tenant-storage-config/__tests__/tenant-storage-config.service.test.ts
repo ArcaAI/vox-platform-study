@@ -22,9 +22,9 @@ function makeCls(store: Record<string, unknown> = { tenantId: TENANT, user: { id
   return { get: vi.fn((key: string) => store[key]) };
 }
 
-/** CLS for a platform (GLOBAL_ADMIN) caller — no tenant binding. */
+/** CLS for a platform (SUPER_ADMIN) caller — no tenant binding. */
 function globalAdminCls() {
-  return { tenantId: '', user: { id: USER, roles: ['GLOBAL_ADMIN'] } };
+  return { tenantId: '', user: { id: USER, roles: ['SUPER_ADMIN'] } };
 }
 
 function systemDefaultEntity() {
@@ -194,7 +194,7 @@ describe('TenantStorageConfigService', () => {
       // check would otherwise pass. The platform row has exactly one
       // authoritative editor — the platform route.
       const { service, configRepo } = build({
-        cls: { tenantId: SYSTEM_TENANT_ID, user: { id: USER, roles: ['GLOBAL_ADMIN'] } },
+        cls: { tenantId: SYSTEM_TENANT_ID, user: { id: USER, roles: ['SUPER_ADMIN'] } },
         configRepo: { findById: vi.fn().mockResolvedValue(platform) },
       });
 
@@ -273,7 +273,7 @@ describe('TenantStorageConfigService', () => {
     });
   });
 
-  describe('platform default (SYSTEM row) — GLOBAL_ADMIN only', () => {
+  describe('platform default (SYSTEM row) — SUPER_ADMIN only', () => {
     it('reads the SYSTEM row for a global admin', async () => {
       const platform = systemDefaultEntity();
       const { service } = build({

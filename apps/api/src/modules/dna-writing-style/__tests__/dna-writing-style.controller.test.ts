@@ -98,7 +98,7 @@ describe('DnaWritingStyleController', () => {
     });
 
     it('rejects a global admin caller without active doctor scope', async () => {
-      const adminCls = createMockClsService('admin-2', { roles: ['GLOBAL_ADMIN'] });
+      const adminCls = createMockClsService('admin-2', { roles: ['SUPER_ADMIN'] });
       const adminController = new DnaWritingStyleController(mockDnaService as any, adminCls as any, mockDnaQueue as any);
 
       await expect(adminController.generate({ textSamples: ['note'] } as any)).rejects.toThrow(/impersonate a doctor/i);

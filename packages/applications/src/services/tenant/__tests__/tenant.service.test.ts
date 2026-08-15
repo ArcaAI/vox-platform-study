@@ -1260,7 +1260,7 @@ describe('TenantService', () => {
     // The CLS `tenantId` is `tenant-1` (see `beforeEach`).
     // Happy-path tests therefore set the fetched row's id to `tenant-1`
     // so the new tenant-scope guard does not short-circuit them; the
-    // cross-tenant + GLOBAL_ADMIN coverage lives in the dedicated
+    // cross-tenant + SUPER_ADMIN coverage lives in the dedicated
     // tenant-scope guard describe block below.
     it('should return tenant by ID with complete data', async () => {
       const tenant = createMockTenantEntity({
@@ -1301,7 +1301,7 @@ describe('TenantService', () => {
   describe('fetchByCodeName', () => {
     // Happy-path tests use the CLS tenant id (`tenant-1`)
     // so the new tenant-scope guard does not short-circuit them; the
-    // cross-tenant + GLOBAL_ADMIN coverage lives in the dedicated
+    // cross-tenant + SUPER_ADMIN coverage lives in the dedicated
     // tenant-scope guard describe block below.
     it('should return tenant by code name', async () => {
       const tenant = createMockTenantEntity({ id: 'tenant-1', key: 'MY_CODE' });
@@ -1337,12 +1337,12 @@ describe('TenantService', () => {
    * or code-name without checking the caller's identity. A Tenant-A user
    * could enumerate Tenant-B's tenant record. The new guard short-circuits
    * with `NotFoundException` whenever the resolved row's id does not match
-   * the CLS-supplied `tenantId`, except for GLOBAL_ADMIN callers, who
+   * the CLS-supplied `tenantId`, except for SUPER_ADMIN callers, who
    * remain authorized for cross-tenant reads (admin UI tenant pickers).
    *
    * The CLS default in `beforeEach` is `tenant-1`. Tests use `tenant-2`
    * as the "other tenant" target. Tests use the existing `setRequestUserRoles`
-   * helper (defined later in the file) to opt into GLOBAL_ADMIN context.
+   * helper (defined later in the file) to opt into SUPER_ADMIN context.
    */
   describe('fetchById/fetchByCodeName tenant-scoped', () => {
     describe('fetchById', () => {
@@ -1355,7 +1355,7 @@ describe('TenantService', () => {
         expect(result.id).toBe('tenant-1');
       });
 
-      it('throws NotFoundException when the caller is not a GLOBAL_ADMIN and the resolved tenant belongs to another tenant', async () => {
+      it('throws NotFoundException when the caller is not a SUPER_ADMIN and the resolved tenant belongs to another tenant', async () => {
         const { NotFoundException } = await import('@nestjs/common');
         const otherTenant = createMockTenantEntity({ id: 'tenant-2', key: 'TENANT_2' });
         mockTenantRepository.findById.mockResolvedValue(otherTenant);
@@ -1363,8 +1363,8 @@ describe('TenantService', () => {
         await expect(service.fetchById('tenant-2')).rejects.toThrow(NotFoundException);
       });
 
-      it('returns the cross-tenant row when the caller is a GLOBAL_ADMIN (admin UI bypass)', async () => {
-        setRequestUserRoles(['GLOBAL_ADMIN']);
+      it('returns the cross-tenant row when the caller is a SUPER_ADMIN (admin UI bypass)', async () => {
+        setRequestUserRoles(['SUPER_ADMIN']);
         const otherTenant = createMockTenantEntity({ id: 'tenant-2', key: 'TENANT_2' });
         mockTenantRepository.findById.mockResolvedValue(otherTenant);
 
@@ -1384,7 +1384,7 @@ describe('TenantService', () => {
         expect(result.id).toBe('tenant-1');
       });
 
-      it('throws NotFoundException when the caller is not a GLOBAL_ADMIN and the resolved tenant belongs to another tenant', async () => {
+      it('throws NotFoundException when the caller is not a SUPER_ADMIN and the resolved tenant belongs to another tenant', async () => {
         const { NotFoundException } = await import('@nestjs/common');
         const otherTenant = createMockTenantEntity({ id: 'tenant-2', key: 'TENANT_2' });
         mockTenantRepository.findFirst.mockResolvedValue(otherTenant);
@@ -1392,8 +1392,8 @@ describe('TenantService', () => {
         await expect(service.fetchByCodeName('TENANT_2')).rejects.toThrow(NotFoundException);
       });
 
-      it('returns the cross-tenant row when the caller is a GLOBAL_ADMIN', async () => {
-        setRequestUserRoles(['GLOBAL_ADMIN']);
+      it('returns the cross-tenant row when the caller is a SUPER_ADMIN', async () => {
+        setRequestUserRoles(['SUPER_ADMIN']);
         const otherTenant = createMockTenantEntity({ id: 'tenant-2', key: 'TENANT_2' });
         mockTenantRepository.findFirst.mockResolvedValue(otherTenant);
 
@@ -1407,17 +1407,17 @@ describe('TenantService', () => {
   /**
    * `fetchTenantConfigs` previously
    * resolved ANY tenant by id or code-name and returned the configs
-   * (with locked-row scrubbing applied for non-GLOBAL_ADMIN). A Tenant-A
+   * (with locked-row scrubbing applied for non-SUPER_ADMIN). A Tenant-A
    * user could enumerate Tenant-B's settings list (key names + namespaces
    * + dataType, with only `value` masked on locked rows). The new guard
    * short-circuits with `NotFoundException` (no existence leak) when the
    * resolved tenant id does not match the caller's CLS `tenantId`, except
-   * for GLOBAL_ADMIN callers who retain the cross-tenant bypass (admin UI
+   * for SUPER_ADMIN callers who retain the cross-tenant bypass (admin UI
    * tenant pickers + platform-metadata flows).
    *
    * CLS default in `beforeEach` is `tenant-1`. Tests use `tenant-2` as
    * the "other tenant" target. The existing `setRequestUserRoles` helper
-   * (declared further down in this file) is used to opt into GLOBAL_ADMIN
+   * (declared further down in this file) is used to opt into SUPER_ADMIN
    * context.
    */
   describe('fetchTenantConfigs tenant-scoped', () => {
@@ -1435,7 +1435,7 @@ describe('TenantService', () => {
         expect(result.count).toBe(1);
       });
 
-      it('throws NotFoundException when a non-GLOBAL_ADMIN caller targets another tenant by id', async () => {
+      it('throws NotFoundException when a non-SUPER_ADMIN caller targets another tenant by id', async () => {
         const { NotFoundException } = await import('@nestjs/common');
         const otherTenant = createMockTenantEntity({ id: 'tenant-2', key: 'TENANT_2' });
         mockTenantRepository.findFirst.mockResolvedValue(otherTenant);
@@ -1446,8 +1446,8 @@ describe('TenantService', () => {
         expect(mockGlobalSettingRepository.count).not.toHaveBeenCalled();
       });
 
-      it('returns scrubbed configs when a GLOBAL_ADMIN caller targets another tenant by id (admin bypass)', async () => {
-        setRequestUserRoles(['GLOBAL_ADMIN']);
+      it('returns scrubbed configs when a SUPER_ADMIN caller targets another tenant by id (admin bypass)', async () => {
+        setRequestUserRoles(['SUPER_ADMIN']);
         const otherTenant = createMockTenantEntity({ id: 'tenant-2', key: 'TENANT_2' });
         mockTenantRepository.findFirst.mockResolvedValue(otherTenant);
         const configs = [createMockGlobalSettingEntity({ id: 'cfg-1', tenantId: 'tenant-2', key: 'locked.secret', value: 'shhh', locked: true })];
@@ -1457,7 +1457,7 @@ describe('TenantService', () => {
         const result = await service.fetchTenantConfigs({ limit: 10, page: 1, tenantId: 'tenant-2' });
 
         expect(result.data).toHaveLength(1);
-        // GLOBAL_ADMIN sees the raw locked value (no scrubbing).
+        // SUPER_ADMIN sees the raw locked value (no scrubbing).
         expect((result.data[0] as any).value).toBe('shhh');
       });
     });
@@ -1474,7 +1474,7 @@ describe('TenantService', () => {
         expect(result.data).toHaveLength(0);
       });
 
-      it('throws NotFoundException when a non-GLOBAL_ADMIN caller targets another tenant by codeName', async () => {
+      it('throws NotFoundException when a non-SUPER_ADMIN caller targets another tenant by codeName', async () => {
         const { NotFoundException } = await import('@nestjs/common');
         const otherTenant = createMockTenantEntity({ id: 'tenant-2', key: 'TENANT_2' });
         mockTenantRepository.findFirst.mockResolvedValue(otherTenant);
@@ -1483,8 +1483,8 @@ describe('TenantService', () => {
         expect(mockGlobalSettingRepository.findAll).not.toHaveBeenCalled();
       });
 
-      it('returns configs when a GLOBAL_ADMIN caller targets another tenant by codeName (admin bypass)', async () => {
-        setRequestUserRoles(['GLOBAL_ADMIN']);
+      it('returns configs when a SUPER_ADMIN caller targets another tenant by codeName (admin bypass)', async () => {
+        setRequestUserRoles(['SUPER_ADMIN']);
         const otherTenant = createMockTenantEntity({ id: 'tenant-2', key: 'TENANT_2' });
         mockTenantRepository.findFirst.mockResolvedValue(otherTenant);
         const configs = [createMockGlobalSettingEntity({ id: 'cfg-1', tenantId: 'tenant-2', key: 'public', value: 'visible', locked: false })];
@@ -1719,7 +1719,7 @@ describe('TenantService', () => {
 
     it('should return all tenant configurations filtered by tenantId', async () => {
       // `fetchTenantConfigs` now refuses cross-tenant
-      // reads for non-GLOBAL_ADMIN callers. Align this happy-path probe
+      // reads for non-SUPER_ADMIN callers. Align this happy-path probe
       // with the CLS default (`tenant-1`) so the new guard does not
       // short-circuit and the assertion still validates the data flow.
       const tenant = createMockTenantEntity({ id: 'tenant-1' });
@@ -2375,7 +2375,7 @@ describe('TenantService', () => {
   });
 
   describe('updateTenantConfigs — locked + __GLOBAL__ guards', () => {
-    it('throws ForbiddenException when caller without GLOBAL_ADMIN role tries to edit a locked setting', async () => {
+    it('throws ForbiddenException when caller without SUPER_ADMIN role tries to edit a locked setting', async () => {
       setRequestUserRoles(['DOCTOR']);
       const tenant = createMockTenantEntity({ id: 'tenant-123', key: 'CUSTOMER' });
       mockTenantRepository.findFirst.mockResolvedValue(tenant);
@@ -2391,8 +2391,8 @@ describe('TenantService', () => {
       await expect(service.updateTenantConfigs('tenant-123', [{ id: 'cfg-1', value: 'whisper-base' }])).rejects.toThrow(/locked/i);
     });
 
-    it('allows GLOBAL_ADMIN callers to edit locked settings', async () => {
-      setRequestUserRoles(['GLOBAL_ADMIN']);
+    it('allows SUPER_ADMIN callers to edit locked settings', async () => {
+      setRequestUserRoles(['SUPER_ADMIN']);
       const tenant = createMockTenantEntity({ id: 'tenant-123', key: 'CUSTOMER' });
       mockTenantRepository.findFirst.mockResolvedValue(tenant);
 
@@ -2414,7 +2414,7 @@ describe('TenantService', () => {
       expect(mockGlobalSettingRepository.updateWithVersion).toHaveBeenCalled();
     });
 
-    it('throws ForbiddenException when non-GLOBAL_ADMIN targets the __GLOBAL__ tenant', async () => {
+    it('throws ForbiddenException when non-SUPER_ADMIN targets the __GLOBAL__ tenant', async () => {
       setRequestUserRoles(['DOCTOR']);
       const globalTenant = createMockTenantEntity({ id: 'global-id', key: '__GLOBAL__' });
       mockTenantRepository.findFirst.mockResolvedValue(globalTenant);
@@ -2424,8 +2424,8 @@ describe('TenantService', () => {
       expect(mockGlobalSettingRepository.findById).not.toHaveBeenCalled();
     });
 
-    it('allows GLOBAL_ADMIN to update settings on the __GLOBAL__ tenant', async () => {
-      setRequestUserRoles(['GLOBAL_ADMIN']);
+    it('allows SUPER_ADMIN to update settings on the __GLOBAL__ tenant', async () => {
+      setRequestUserRoles(['SUPER_ADMIN']);
       const globalTenant = createMockTenantEntity({ id: 'global-id', key: '__GLOBAL__' });
       mockTenantRepository.findFirst.mockResolvedValue(globalTenant);
 
@@ -2448,10 +2448,10 @@ describe('TenantService', () => {
   describe('fetchTenantConfigs / updateTenantConfigs — identifier disambiguation', () => {
     it('looks up tenant by id when identifier is a UUID (fetchTenantConfigs)', async () => {
       // The resolved tenant id deliberately differs from
-      // CLS to exercise the UUID-vs-key branch; gate via GLOBAL_ADMIN so
+      // CLS to exercise the UUID-vs-key branch; gate via SUPER_ADMIN so
       // the new cross-tenant short-circuit does not fire (the test is
       // about identifier disambiguation, not access control).
-      setRequestUserRoles(['GLOBAL_ADMIN']);
+      setRequestUserRoles(['SUPER_ADMIN']);
       const tenant = createMockTenantEntity({ id: VALID_TENANT_UUID, key: 'CUSTOMER' });
       mockTenantRepository.findFirst.mockResolvedValue(tenant);
       mockGlobalSettingRepository.findAll.mockResolvedValue([]);
@@ -2465,8 +2465,8 @@ describe('TenantService', () => {
     });
 
     it('looks up tenant by key when identifier is a non-UUID string (fetchTenantConfigs)', async () => {
-      // See sibling test above; gate via GLOBAL_ADMIN.
-      setRequestUserRoles(['GLOBAL_ADMIN']);
+      // See sibling test above; gate via SUPER_ADMIN.
+      setRequestUserRoles(['SUPER_ADMIN']);
       const tenant = createMockTenantEntity({ id: 'tenant-123', key: 'CODE_NAME' });
       mockTenantRepository.findFirst.mockResolvedValue(tenant);
       mockGlobalSettingRepository.findAll.mockResolvedValue([]);
@@ -2480,7 +2480,7 @@ describe('TenantService', () => {
     });
 
     it('looks up tenant by id when identifier is a UUID (updateTenantConfigs)', async () => {
-      setRequestUserRoles(['GLOBAL_ADMIN']);
+      setRequestUserRoles(['SUPER_ADMIN']);
       const tenant = createMockTenantEntity({ id: VALID_TENANT_UUID, key: 'CUSTOMER' });
       mockTenantRepository.findFirst.mockResolvedValue(tenant);
       mockGlobalSettingRepository.findById.mockResolvedValue(null);
@@ -2494,9 +2494,9 @@ describe('TenantService', () => {
   });
 
   describe('fetchTenantConfigs — locked value masking', () => {
-    it('replaces value with empty string for locked rows when caller is non-GLOBAL_ADMIN', async () => {
-      // This test deliberately exercises the non-GLOBAL_ADMIN
-      // locked-value scrubbing branch, so GLOBAL_ADMIN bypass is off-limits.
+    it('replaces value with empty string for locked rows when caller is non-SUPER_ADMIN', async () => {
+      // This test deliberately exercises the non-SUPER_ADMIN
+      // locked-value scrubbing branch, so SUPER_ADMIN bypass is off-limits.
       // Align the resolved tenant id with CLS default (`tenant-1`) so the
       // new cross-tenant guard does not short-circuit before the scrubber.
       setRequestUserRoles(['DOCTOR']);
@@ -2533,8 +2533,8 @@ describe('TenantService', () => {
       expect(byKey['secret.setting']).toBe('');
     });
 
-    it('returns full value for locked rows when caller is GLOBAL_ADMIN', async () => {
-      setRequestUserRoles(['GLOBAL_ADMIN']);
+    it('returns full value for locked rows when caller is SUPER_ADMIN', async () => {
+      setRequestUserRoles(['SUPER_ADMIN']);
       const tenant = createMockTenantEntity({ id: 'tenant-123' });
       mockTenantRepository.findFirst.mockResolvedValue(tenant);
 
@@ -2565,7 +2565,7 @@ describe('TenantService', () => {
   // ──────────────────────────────────────────────────────────────────────
   describe('updateTenantConfigs — optimistic concurrency (Stream D Phase C)', () => {
     it('calls updateWithVersion (not update) when expectedVersion is supplied', async () => {
-      setRequestUserRoles(['GLOBAL_ADMIN']);
+      setRequestUserRoles(['SUPER_ADMIN']);
       const tenant = createMockTenantEntity({ id: 'tenant-1', key: 'TENANT_1' });
       mockTenantRepository.findFirst.mockResolvedValue(tenant);
 
@@ -2590,7 +2590,7 @@ describe('TenantService', () => {
 
     it('propagates OptimisticConcurrencyException when expectedVersion drifted', async () => {
       const { OptimisticConcurrencyException } = await import('@arcaai/exceptions');
-      setRequestUserRoles(['GLOBAL_ADMIN']);
+      setRequestUserRoles(['SUPER_ADMIN']);
       const tenant = createMockTenantEntity({ id: 'tenant-1', key: 'TENANT_1' });
       mockTenantRepository.findFirst.mockResolvedValue(tenant);
 
@@ -2616,7 +2616,7 @@ describe('TenantService', () => {
     });
 
     it('does NOT call updateWithVersion when the entity has no buffered changes (allowlist no-op)', async () => {
-      setRequestUserRoles(['GLOBAL_ADMIN']);
+      setRequestUserRoles(['SUPER_ADMIN']);
       const tenant = createMockTenantEntity({ id: 'tenant-1', key: 'TENANT_1' });
       mockTenantRepository.findFirst.mockResolvedValue(tenant);
 
@@ -2657,7 +2657,7 @@ describe('TenantService', () => {
     });
 
     it('wraps the bulk update in a single Prisma $transaction', async () => {
-      setRequestUserRoles(['GLOBAL_ADMIN']);
+      setRequestUserRoles(['SUPER_ADMIN']);
       const tenant = createMockTenantEntity({ id: 'tenant-1', key: 'TENANT_1' });
       mockTenantRepository.findFirst.mockResolvedValue(tenant);
 
@@ -2677,7 +2677,7 @@ describe('TenantService', () => {
     });
 
     it('threads the transaction client through to updateWithVersion as the 4th arg', async () => {
-      setRequestUserRoles(['GLOBAL_ADMIN']);
+      setRequestUserRoles(['SUPER_ADMIN']);
       const tenant = createMockTenantEntity({ id: 'tenant-1', key: 'TENANT_1' });
       mockTenantRepository.findFirst.mockResolvedValue(tenant);
 
@@ -2701,7 +2701,7 @@ describe('TenantService', () => {
 
     it("rolls the whole batch back when any row's version drifted mid-batch", async () => {
       const { OptimisticConcurrencyException } = await import('@arcaai/exceptions');
-      setRequestUserRoles(['GLOBAL_ADMIN']);
+      setRequestUserRoles(['SUPER_ADMIN']);
       const tenant = createMockTenantEntity({ id: 'tenant-1', key: 'TENANT_1' });
       mockTenantRepository.findFirst.mockResolvedValue(tenant);
 
@@ -2738,7 +2738,7 @@ describe('TenantService', () => {
     });
 
     it('propagates a non-OCC failure inside the transaction so the batch still rolls back', async () => {
-      setRequestUserRoles(['GLOBAL_ADMIN']);
+      setRequestUserRoles(['SUPER_ADMIN']);
       const tenant = createMockTenantEntity({ id: 'tenant-1', key: 'TENANT_1' });
       mockTenantRepository.findFirst.mockResolvedValue(tenant);
 
@@ -2772,7 +2772,7 @@ describe('TenantService', () => {
     });
 
     it('emits ResourceUpdated with previousVersion and newVersion for each row', async () => {
-      setRequestUserRoles(['GLOBAL_ADMIN']);
+      setRequestUserRoles(['SUPER_ADMIN']);
       const tenant = createMockTenantEntity({ id: 'tenant-1', key: 'TENANT_1' });
       mockTenantRepository.findFirst.mockResolvedValue(tenant);
 
@@ -2811,7 +2811,7 @@ describe('TenantService', () => {
     });
 
     it('snapshots previousVersion BEFORE the CAS bump (mid-batch atomicity proof)', async () => {
-      setRequestUserRoles(['GLOBAL_ADMIN']);
+      setRequestUserRoles(['SUPER_ADMIN']);
       const tenant = createMockTenantEntity({ id: 'tenant-1', key: 'TENANT_1' });
       mockTenantRepository.findFirst.mockResolvedValue(tenant);
 

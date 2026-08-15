@@ -14,7 +14,7 @@ const makeContext = (headers: Record<string, string>, query: Record<string, stri
   }) as any;
 
 const SECRETS: Record<string, string> = {
-  SMR_SERVICE_TOKEN: 'smr-token',
+  TEXT_SERVICE_TOKEN: 'smr-token',
   NLP_SERVICE_TOKEN: 'nlp-token',
   GUARDRAIL_SERVICE_TOKEN: 'guardrail-token',
   HARNESS_SERVICE_TOKEN: 'harness-token',

@@ -142,7 +142,7 @@ describe('service discriminator round-trip', () => {
   });
 
   it('resolveConnection tags the resolved connection with its service', async () => {
-    const { svc, repo } = makeService({ roles: ['GLOBAL_ADMIN'] });
+    const { svc, repo } = makeService({ roles: ['SUPER_ADMIN'] });
     repo.findByTenantServiceProvider.mockImplementation(async (service: string, _p: string, tenantId: string) =>
       tenantId === TENANT ? makeRow(service as ProviderService, 'azure-speech', { enabled: true }) : null,
     );

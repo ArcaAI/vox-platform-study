@@ -32,7 +32,7 @@ describe('Auth Security Enhancement', () => {
     id: 'admin-001',
     username: 'super_admin',
     email: 'admin@arcaai.com',
-    roles: ['GLOBAL_ADMIN'],
+    roles: ['SUPER_ADMIN'],
     permissions: ['manage:all'],
   };
 

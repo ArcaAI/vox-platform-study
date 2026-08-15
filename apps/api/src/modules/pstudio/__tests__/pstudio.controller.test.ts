@@ -5,7 +5,7 @@ import { PrismaStudioController } from '../pstudio.controller';
 
 // -----------------------------------------------------------------------------
 // The studio surface is production-capable and gated by the
-// DEDICATED `manage:PrismaStudio` subject (seeded to the GLOBAL_ADMIN policy
+// DEDICATED `manage:PrismaStudio` subject (seeded to the SUPER_ADMIN policy
 // set) instead of `manage:all`. `manage:all` still passes via the CASL
 // wildcard, but the dedicated subject makes studio access delegable.
 // -----------------------------------------------------------------------------

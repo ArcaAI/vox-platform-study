@@ -69,7 +69,7 @@ const createMockHttpService = () => ({
 
 const createMockConfigService = () => ({
   get: vi.fn().mockImplementation((key: string) => {
-    if (key === 'SMR_URL') return 'http://localhost:8862';
+    if (key === 'TEXT_URL') return 'http://localhost:8862';
     if (key === 'NLP_URL') return 'http://localhost:8864';
     return undefined;
   }),

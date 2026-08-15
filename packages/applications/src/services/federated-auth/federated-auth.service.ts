@@ -33,7 +33,7 @@ import { IUserProfileService } from '../user/userProfile/IUserProfileService';
 import { SecretsService } from '../baseServices/_meta/secrets';
 import { IRedisCacheService } from '../baseServices/redis/redis-cache.service';
 
-const GLOBAL_ADMIN_ROLE = 'GLOBAL_ADMIN';
+const SUPER_ADMIN_ROLE = 'SUPER_ADMIN';
 const STATE_TTL = '5m';
 const DEFAULT_SCOPES = ['openid', 'profile', 'email'];
 const SAML_ASSERTION_REPLAY_TTL_SECONDS = 300;
@@ -369,7 +369,7 @@ export class FederatedAuthService {
   /**
    * Idempotent resolve-or-create for a `(providerId, subject)` pair — public
    * so `DirectorySyncProcessor` reuses the exact same JIT logic
-   * (transaction, group→role mapping, GLOBAL_ADMIN guard) for admin-triggered
+   * (transaction, group→role mapping, SUPER_ADMIN guard) for admin-triggered
    * directory pre-provisioning as `verifyOidcCallback` uses for login-time
    * JIT. `claims` is a synthesized `{sub, email, groups}` shape for a
    * directory-pull caller (no real ID token exists at that call site).
@@ -401,13 +401,13 @@ export class FederatedAuthService {
     const mappedRoleId = await this.resolveGroupRoleId(claims, config);
     const roleId = mappedRoleId ?? config.defaultRoleId;
 
-    // GLOBAL_ADMIN is never assignable via IdP mapping. This runs
+    // SUPER_ADMIN is never assignable via IdP mapping. This runs
     // pre-session (no CLS requestUser), so the CLS-gated
     // `UserRoleAssignmentService.assertAssignableRoleTier` guard would NOT
     // fire here — this explicit check is the enforcement point.
     const role = await this.databaseService.baseClient.role.findUnique({ where: { id: roleId }, select: { name: true } });
-    if (role?.name === GLOBAL_ADMIN_ROLE) {
-      throw new ForbiddenException('GLOBAL_ADMIN cannot be assigned via identity-provider federation');
+    if (role?.name === SUPER_ADMIN_ROLE) {
+      throw new ForbiddenException('SUPER_ADMIN cannot be assigned via identity-provider federation');
     }
 
     // Namespaced, provider-scoped username: `User.username`/`externalId` are

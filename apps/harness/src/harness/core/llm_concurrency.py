@@ -309,7 +309,7 @@ async def governed_request(
     Idempotent callers keep the default ``True`` and retry a hung call as before. NOTE:
     this only covers the per-call *timeout*; a 5xx or the LM-Studio ``terminated`` 400 that
     arrives AFTER the model ran is still retried (pre-existing, lower risk — a downstream
-    idempotency key is the durable fix, tracked as apps/smr coordination).
+    idempotency key is the durable fix, tracked as apps/text coordination).
     """
     cfg = config or get_llm_governor_config()
     last_exc: Exception | None = None

@@ -247,7 +247,7 @@ export function AiModelsScreen() {
             <EmptyState
               icon={IconCpu}
               title="No models registered yet"
-              description="SMR and STT fall back to platform defaults until a model is registered."
+              description="Summarization and STT fall back to platform defaults until a model is registered."
               action={
                 <Button onClick={openCreate}>
                   <IconPlus aria-hidden />

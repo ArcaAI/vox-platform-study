@@ -91,13 +91,13 @@ function declaredPort(name: string): number {
  * Every application port, by variable name. The VALUES come from the
  * declarations; only the membership of this list is stated here.
  */
-const PORT_VARS = ['PORT', 'API_PORT', 'STT_PORT', 'SMR_PORT', 'GUARDRAIL_PORT', 'NLP_PORT', 'TTS_PORT', 'HARNESS_PORT'] as const;
+const PORT_VARS = ['PORT', 'API_PORT', 'STT_PORT', 'TEXT_PORT', 'GUARDRAIL_PORT', 'NLP_PORT', 'TTS_PORT', 'HARNESS_PORT'] as const;
 
 /** `<VAR>_URL` ⇄ `<VAR>_PORT` pairs the gateway resolves. */
 const URL_TO_PORT_VAR: ReadonlyArray<readonly [string, string]> = [
   ['API_URL', 'API_PORT'],
   ['STT_URL', 'STT_PORT'],
-  ['SMR_URL', 'SMR_PORT'],
+  ['TEXT_URL', 'TEXT_PORT'],
   ['GUARDRAIL_URL', 'GUARDRAIL_PORT'],
   ['NLP_URL', 'NLP_PORT'],
   ['TTS_URL', 'TTS_PORT'],
@@ -248,7 +248,7 @@ describe('Port topology: apps/api/.env.prod uses service hostnames, not localhos
   const expectedHost: ReadonlyArray<readonly [string, string]> = [
     ['API_URL', 'api'],
     ['GUARDRAIL_URL', 'guardrail'],
-    ['SMR_URL', 'smr'],
+    ['TEXT_URL', 'smr'],
     ['NLP_URL', 'nlp'],
     ['HARNESS_URL', 'harness'],
   ];
@@ -278,7 +278,7 @@ describe('Port topology: retired services and stale ports', () => {
 
   // apps/fedl and the legacy apps/tts (which owned 8863) were removed; 8863 is
   // Guardrail and 8866 is the Clinical Documentation Harness.
-  const retired = ['FEDL_PORT', 'FEDL_URL', 'SMR_SERVICE_URL_HTTP', 'NLP_SERVICE_URL_HTTP'];
+  const retired = ['FEDL_PORT', 'FEDL_URL', 'TEXT_SERVICE_URL_HTTP', 'NLP_SERVICE_URL_HTTP'];
   const stalePorts = ['5002', '5004', '5005', '5006', '8001', '8002', '8003'];
 
   for (const file of envFiles) {
@@ -311,7 +311,7 @@ describe('Port topology: ConfigService defaults', () => {
 
   const expected: ReadonlyArray<readonly [string, string]> = [
     ['PORT', "'8868'"],
-    ['SMR_PORT', "'8862'"],
+    ['TEXT_PORT', "'8862'"],
     ['NLP_PORT', "'8864'"],
     ['TTS_PORT', "'8865'"],
   ];
@@ -324,7 +324,7 @@ describe('Port topology: ConfigService defaults', () => {
 
   const urlDefaults: ReadonlyArray<readonly [string, number]> = [
     ['STT_URL', 8861],
-    ['SMR_URL', 8862],
+    ['TEXT_URL', 8862],
     ['GUARDRAIL_URL', 8863],
     ['NLP_URL', 8864],
     ['TTS_URL', 8865],
@@ -360,7 +360,7 @@ describe('Port topology: ServiceHealthMonitoring defaults', () => {
 describe('Port topology: IAppConfig declares the full topology', () => {
   const content = readFile(path.resolve(PROJECT_ROOT, 'packages/domains/src/interfaces/IAppConfig.ts'));
 
-  const required = ['PORT', 'STT_URL', 'SMR_PORT', 'SMR_URL', 'NLP_PORT', 'NLP_URL', 'GUARDRAIL_URL', 'HARNESS_URL', 'TTS_PORT', 'TTS_URL'];
+  const required = ['PORT', 'STT_URL', 'TEXT_PORT', 'TEXT_URL', 'NLP_PORT', 'NLP_URL', 'GUARDRAIL_URL', 'HARNESS_URL', 'TTS_PORT', 'TTS_URL'];
 
   for (const prop of required) {
     it(`declares ${prop} as required`, () => {

@@ -3,7 +3,7 @@ import { ClsService } from 'nestjs-cls';
 import { CoreDatabaseService } from '@arcaai/domains';
 import { IRedisCacheService } from '../baseServices/redis';
 import { IActiveUserContext } from '../../interfaces';
-import { GLOBAL_ADMIN_ROLE } from '../tenant/constants';
+import { SUPER_ADMIN_ROLE } from '../tenant/constants';
 
 /**
  * Authorization audit entry structure
@@ -249,7 +249,7 @@ export class AuthorizationAuditService implements IAuthorizationAuditService {
    *
    * (HIPAA §164.312(b)): scoped to the caller's CLS tenantId
    * so a Tenant-A admin can never query Tenant-B authorization history.
-   * GLOBAL_ADMIN bypasses the filter.
+   * SUPER_ADMIN bypasses the filter.
    */
   async getAuthorizationHistory(userId: string, options: AuditHistoryOptions = {}): Promise<AuthorizationAuditEntry[]> {
     const prisma = this.databaseService.client;
@@ -302,7 +302,7 @@ export class AuthorizationAuditService implements IAuthorizationAuditService {
    * Get recent denied access attempts
    *
    * (HIPAA §164.312(b)): scoped to the caller's CLS tenantId
-   * so denial monitoring cannot fan-out across tenants. GLOBAL_ADMIN may
+   * so denial monitoring cannot fan-out across tenants. SUPER_ADMIN may
    * query all tenants.
    */
   async getRecentDenials(options: AuditHistoryOptions = {}): Promise<AuthorizationAuditEntry[]> {
@@ -356,7 +356,7 @@ export class AuthorizationAuditService implements IAuthorizationAuditService {
    * Useful for detecting potential security issues
    *
    * Tenant scoping is enforced via `getAuthorizationHistory`
-   * — denials are counted within the caller's tenant only (GLOBAL_ADMIN
+   * — denials are counted within the caller's tenant only (SUPER_ADMIN
    * sees all tenants).
    */
   async getDenialCount(userId: string, windowMinutes: number = 60): Promise<number> {
@@ -374,7 +374,7 @@ export class AuthorizationAuditService implements IAuthorizationAuditService {
    *
    * Behaviour:
    * - When CLS is not wired in: returns `{}` (back-compat, system contexts).
-   * - When the caller carries GLOBAL_ADMIN: returns `{}` (cross-tenant access).
+   * - When the caller carries SUPER_ADMIN: returns `{}` (cross-tenant access).
    * - When the caller has a tenantId: returns `{ tenantId }`.
    * - When the caller has CLS but no tenantId and is NOT super-admin:
    *   returns `{ tenantId: null }` so the query never accidentally
@@ -390,13 +390,13 @@ export class AuthorizationAuditService implements IAuthorizationAuditService {
   }
 
   /**
-   * True when the active request user carries the GLOBAL_ADMIN role.
+   * True when the active request user carries the SUPER_ADMIN role.
    * Mirrors `TenantService.isSuperAdmin` so the bypass semantics stay
    * consistent across services.
    */
   private isSuperAdmin(): boolean {
     const user = this.cls?.get('user');
     const roles = user?.roles;
-    return Array.isArray(roles) && roles.includes(GLOBAL_ADMIN_ROLE);
+    return Array.isArray(roles) && roles.includes(SUPER_ADMIN_ROLE);
   }
 }

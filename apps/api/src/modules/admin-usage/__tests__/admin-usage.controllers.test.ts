@@ -6,7 +6,7 @@
  * `?tenantId=` vs a pinned tenant caller — the 403-on-foreign-query posture of
  * `resolveScopedTenantId`), self-service pinning to the CLS tenant with no
  * tenant override, default-period behavior, and plain delegation. The
- * cross-tenant BY-ID 404 posture and the GLOBAL_ADMIN gate on `top-tenants`
+ * cross-tenant BY-ID 404 posture and the SUPER_ADMIN gate on `top-tenants`
  * are proven at the service layer (`usage-analytics.service.test.ts`).
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -18,7 +18,7 @@ import { AdminUsageController } from '../admin-usage.controller';
 import { MyUsageController } from '../my-usage.controller';
 
 type Ctx = { user?: { roles?: string[] | null; tenantId?: string } | null; tenantId?: string };
-const SUPER: Ctx['user'] = { roles: ['GLOBAL_ADMIN'] };
+const SUPER: Ctx['user'] = { roles: ['SUPER_ADMIN'] };
 const TENANT_ADMIN = (tenantId: string): Ctx['user'] => ({ roles: ['TENANT_ADMIN'], tenantId });
 
 function makeUsageAnalyticsService() {

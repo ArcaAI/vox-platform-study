@@ -149,7 +149,7 @@ const createMockHttpService = () => ({
 
 const createMockConfigService = () => ({
   get: vi.fn().mockImplementation((key: string) => {
-    if (key === 'SMR_URL') return 'http://localhost:8862';
+    if (key === 'TEXT_URL') return 'http://localhost:8862';
     if (key === 'NLP_URL') return 'http://localhost:8864';
     return undefined;
   }),
@@ -861,8 +861,8 @@ describe('SummaryService', () => {
   describe('Service URL Configuration', () => {
     // ----- ConfigService integration (replaces process.env) -----
 
-    it('should read SMR_URL from ConfigService', () => {
-      expect(mockConfigService.get).toHaveBeenCalledWith('SMR_URL');
+    it('should read TEXT_URL from ConfigService', () => {
+      expect(mockConfigService.get).toHaveBeenCalledWith('TEXT_URL');
     });
 
     it('should read NLP_URL from ConfigService', () => {
@@ -873,7 +873,7 @@ describe('SummaryService', () => {
       const customSmrUrl = 'http://smr-production:8862';
       const configWithCustomUrls = createMockConfigService();
       configWithCustomUrls.get.mockImplementation((key: string) => {
-        if (key === 'SMR_URL') return customSmrUrl;
+        if (key === 'TEXT_URL') return customSmrUrl;
         if (key === 'NLP_URL') return 'http://nlp:8864';
         return undefined;
       });
@@ -923,7 +923,7 @@ describe('SummaryService', () => {
       const customNlpUrl = 'http://nlp-production:8864';
       const configWithCustomUrls = createMockConfigService();
       configWithCustomUrls.get.mockImplementation((key: string) => {
-        if (key === 'SMR_URL') return 'http://smr:8862';
+        if (key === 'TEXT_URL') return 'http://smr:8862';
         if (key === 'NLP_URL') return customNlpUrl;
         return undefined;
       });

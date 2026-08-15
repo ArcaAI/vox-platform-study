@@ -217,8 +217,8 @@ REDIS_PASS=redis-password
 # Python Microservices
 STT_PORT=8861
 STT_URL=http://localhost:8861
-SMR_PORT=8862
-SMR_URL=http://localhost:8862
+TEXT_PORT=8862
+TEXT_URL=http://localhost:8862
 GUARDRAIL_URL=http://localhost:8863
 NLP_PORT=8864
 NLP_URL=http://localhost:8864

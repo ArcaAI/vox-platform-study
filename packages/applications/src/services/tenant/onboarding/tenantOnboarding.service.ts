@@ -17,7 +17,7 @@ import { UserSession } from '../../auth/dto/user.session';
 import { ITenantService } from '../ITenantService';
 import { IUserService } from '../../user/user/IUserService';
 import { IUserRoleAssignmentService } from '../../user/userRoleAssignment/IUserRoleAssignmentService';
-import { GLOBAL_ADMIN_ROLE, TENANT_ADMIN_ROLE_ID } from '../constants';
+import { SUPER_ADMIN_ROLE, TENANT_ADMIN_ROLE_ID } from '../constants';
 import { DEFAULT_GEN_DEPARTMENT } from '../departmentDefaults';
 import { ITenantOnboardingService } from './ITenantOnboardingService';
 import { OnboardingActor, ProvisionTenantWithAdminInput } from './dto';
@@ -30,7 +30,7 @@ import { TenantProvisionResult } from './tenantOnboarding.dto.mapper';
  * so it never depends on (or leaks into) an ambient request context — correct
  * for both the SYSTEM-bootstrap registration caller (no CLS at all) and the
  * real-caller admin-create path. The synthetic session is built with the
- * `GLOBAL_ADMIN` role: this is an internal, already-authorized orchestration
+ * `SUPER_ADMIN` role: this is an internal, already-authorized orchestration
  * (the SYSTEM bootstrap is inherently trusted; admin-create is already gated
  * by `@CanManage('Tenant')` upstream), and `UserRoleAssignmentService`'s
  * cross-tenant guard would otherwise reject re-assigning an EXISTING admin
@@ -161,7 +161,7 @@ export class TenantOnboardingService extends BaseService implements ITenantOnboa
       id: actor.userId,
       email: 'tenant-onboarding@system.local',
       tenantId: actor.tenantId,
-      roles: [GLOBAL_ADMIN_ROLE],
+      roles: [SUPER_ADMIN_ROLE],
       permissions: [],
     });
   }

@@ -540,7 +540,7 @@ interface ProxyControllerConfig {
 
 **Proxy Configuration:**
 
-- **Target**: `SMR_URL || 'http://localhost:8862'`
+- **Target**: `TEXT_URL || 'http://localhost:8862'`
 - **Path Rewrite**: `^/api/v1/text` → (empty)
 - **Timeout**: 120000ms
 

@@ -56,10 +56,10 @@ describe('canAny', () => {
 });
 
 describe('isElevated', () => {
-  it('recognizes GLOBAL_ADMIN as the single elevated role (consolidation)', () => {
-    expect(isElevated(['GLOBAL_ADMIN'])).toBe(true);
-    // Retired SUPER_ADMIN literal no longer elevates.
-    expect(isElevated(['SUPER_ADMIN'])).toBe(false);
+  it('recognizes SUPER_ADMIN as the single elevated role (renamed from GLOBAL_ADMIN)', () => {
+    expect(isElevated(['SUPER_ADMIN'])).toBe(true);
+    // The pre-rename GLOBAL_ADMIN literal no longer elevates.
+    expect(isElevated(['GLOBAL_ADMIN'])).toBe(false);
     expect(isElevated(['TENANT_ADMIN'])).toBe(false);
     expect(isElevated([])).toBe(false);
     expect(isElevated(undefined)).toBe(false);

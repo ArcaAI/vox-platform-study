@@ -19,14 +19,14 @@ export abstract class ITenantStorageConfigService {
 
   /**
    * The PLATFORM default — the SYSTEM-tenant row every tenant falls back to.
-   * GLOBAL_ADMIN only (403 otherwise). Returns a `version: 0` placeholder when
+   * SUPER_ADMIN only (403 otherwise). Returns a `version: 0` placeholder when
    * the row has not been created yet.
    */
   abstract getPlatformDefault(): Promise<TenantStorageConfigResponse>;
 
   /**
    * Create (`expectedVersion: 0`) or CAS-update the platform default under
-   * optimistic concurrency. GLOBAL_ADMIN only (403 otherwise).
+   * optimistic concurrency. SUPER_ADMIN only (403 otherwise).
    */
   abstract upsertPlatformDefault(dto: UpsertPlatformStorageConfigRequest): Promise<TenantStorageConfigResponse>;
 }

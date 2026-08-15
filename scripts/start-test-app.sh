@@ -117,7 +117,7 @@ port_for() {
         api)       echo "${API_PORT:-8968}" ;;
         admin)     echo "${ADMIN_PORT:-5276}" ;;
         stt)       echo "${STT_PORT:-8961}" ;;
-        smr)       echo "${SMR_PORT:-8962}" ;;
+        smr)       echo "${TEXT_PORT:-8962}" ;;
         guardrail) echo "${GUARDRAIL_PORT:-8963}" ;;
         nlp)       echo "${NLP_PORT:-8964}" ;;
         tts)       echo "${TTS_PORT:-8965}" ;;

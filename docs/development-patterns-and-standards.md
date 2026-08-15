@@ -214,7 +214,7 @@ The four enforced architecture rules (all in `packages/config-eslint/flat/core.j
 
 1. `arcaai-internal/no-controller-direct-prisma` (error) — scope `**/modules/**/*.controller.ts` (i.e. `apps/api`). Forbids any `<x>.databaseService.client` chain in controllers. Escape hatch: `/** @allowedDirectPrisma <reason> */` within 3 lines above. Rule source: `packages/eslint-plugin-arcaai-internal/rules/no-controller-direct-prisma.js`. Current allow-list usage: zero occurrences in `apps/api/src` (verified).
 2. Service-layer analogue via built-in `no-restricted-syntax` — scope `**/services/**/*.service.ts`, AST selector matching `<x>.databaseService.client`; message: route through a domain-layer repository (TASK-311 AC-8). `excludedFiles` pins: `**/services/audit/**`, `**/services/tenant/**`, `**/services/user/userRoleAssignment/**`, `**/services/baseServices/**` (the last is permanent — it hosts `CoreDatabaseService`/unit-of-work plumbing).
-3. `arcaai-internal/no-direct-downstream-url-env` (error) — scope `**/modules/**/*.ts`. Forbids `process.env.SMR_URL|SMR_SERVICE_URL|STT_URL|NLP_URL|GUARDRAIL_URL|HARNESS_URL` (dot or bracket access). Callers must inject `IConfigService` and call `getConfigValue('SMR_URL')` (`packages/applications/src/services/baseServices/_meta/config/config.service.ts`). Rule source: `packages/eslint-plugin-arcaai-internal/rules/no-direct-downstream-url-env.js`.
+3. `arcaai-internal/no-direct-downstream-url-env` (error) — scope `**/modules/**/*.ts`. Forbids `process.env.TEXT_URL|TEXT_SERVICE_URL|STT_URL|NLP_URL|GUARDRAIL_URL|HARNESS_URL` (dot or bracket access). Callers must inject `IConfigService` and call `getConfigValue('TEXT_URL')` (`packages/applications/src/services/baseServices/_meta/config/config.service.ts`). Rule source: `packages/eslint-plugin-arcaai-internal/rules/no-direct-downstream-url-env.js`.
 4. `no-restricted-imports` (error, repo-wide) — bans importing `getPlatformAdminPrismaClient_Unscoped` from `@arcaai/database` (and deep paths). Allowed only for seeds (`packages/database/src/prisma/db_main/seed/**`), back-fill scripts (`packages/database/scripts/**`), test fixtures, and the transitional `CoreDatabaseService.baseClient`.
 
 Additional conventions from `flat/core.js`: `@typescript-eslint/no-unused-vars` honors the `_`-prefix convention for intentionally-unused identifiers. Note: `flat/library.js` adds `eslint-plugin-only-warn`, which downgrades all violations to warnings inside packages (see 7.2).
@@ -245,7 +245,7 @@ On top of the DDD services, TASK-504/524/525/534 added a control-plane layer: th
 
 ---
 
-## 2. Python service patterns (`apps/stt`, `apps/smr`, `apps/guardrail`, `apps/nlp`, `apps/harness`, `apps/tts`)
+## 2. Python service patterns (`apps/stt`, `apps/text`, `apps/guardrail`, `apps/nlp`, `apps/harness`, `apps/tts`)
 
 ### 2.1 Layout and packaging
 
@@ -253,12 +253,12 @@ All services are PEP-621 `pyproject.toml` + setuptools, `src/<package_name>/` la
 
 ### 2.2 Config / env handling
 
-pydantic-settings `BaseSettings` classes with per-concern `env_prefix` (verified `apps/harness/src/harness/core/config.py`, `apps/smr/src/smr/core/config.py`): `HARNESS_`, `TEMPORAL_`, `HARNESS_SAFETY_`, `SMR_`, `SMR_OLLAMA_`, `SMR_AZURE_`, `SMR_BEDROCK_`, etc. Singleton accessor `get_settings()`; settings are attached to `app.state.settings`. Secrets are `SecretStr` (e.g. `service_token`). Structured logging via `structlog` with event names like `"harness.temporal_connected"`.
+pydantic-settings `BaseSettings` classes with per-concern `env_prefix` (verified `apps/harness/src/harness/core/config.py`, `apps/text/src/text/core/config.py`): `HARNESS_`, `TEMPORAL_`, `HARNESS_SAFETY_`, `TEXT_`, `TEXT_OLLAMA_`, `TEXT_AZURE_`, `TEXT_BEDROCK_`, etc. Singleton accessor `get_settings()`; settings are attached to `app.state.settings`. Secrets are `SecretStr` (e.g. `service_token`). Structured logging via `structlog` with event names like `"harness.temporal_connected"`.
 
 ### 2.3 Environments: conda `arcaenv` + uv workspace
 
 - Local dev/tests run inside the single shared conda env `arcaenv` (Python 3.11) — created by `scripts/setup-python-env.sh` (`CONDA_ENV_NAME="arcaenv"`); every root `py:*` script wraps commands in `conda run -n arcaenv --no-capture-output ...`; `scripts/dev-service.sh` does the same for dev servers.
-- Dependency resolution is owned by the uv WORKSPACE at the repo root: `pyproject.toml` declares `[tool.uv.workspace] members = [apps/guardrail, apps/nlp, apps/smr, apps/harness, apps/stt]` with ONE `uv.lock`, so all services resolve identical versions. Docker builds use `uv sync --frozen --package <svc>`. Regenerate with `uv lock` after changing any member's dependencies. stt's `ml`/`ml-gpu` vs `nemo` extras are declared as uv conflicts.
+- Dependency resolution is owned by the uv WORKSPACE at the repo root: `pyproject.toml` declares `[tool.uv.workspace] members = [apps/guardrail, apps/nlp, apps/text, apps/harness, apps/stt]` with ONE `uv.lock`, so all services resolve identical versions. Docker builds use `uv sync --frozen --package <svc>`. Regenerate with `uv lock` after changing any member's dependencies. stt's `ml`/`ml-gpu` vs `nemo` extras are declared as uv conflicts.
 
 ### 2.4 pytest layout and markers
 
@@ -266,9 +266,9 @@ Uniform `[tool.pytest.ini_options]` across services: `minversion = "9.0"`, `addo
 
 ### 2.5 Gateway registration / authentication
 
-Python services do not self-register; `apps/api` fronts them (proxy/gateway 1.6) and resolves their URLs via `IConfigService` (`STT_URL` :8861, `SMR_URL` :8862, `GUARDRAIL_URL` :8863, `NLP_URL` :8864, `HARNESS_URL` :8866). Inbound auth on the Python side is a shared-secret header validated with constant-time compare; empty token = dev-mode bypass; health/docs/metrics paths exempt:
+Python services do not self-register; `apps/api` fronts them (proxy/gateway 1.6) and resolves their URLs via `IConfigService` (`STT_URL` :8861, `TEXT_URL` :8862, `GUARDRAIL_URL` :8863, `NLP_URL` :8864, `HARNESS_URL` :8866). Inbound auth on the Python side is a shared-secret header validated with constant-time compare; empty token = dev-mode bypass; health/docs/metrics paths exempt:
 
-```32:47:apps/smr/src/smr/api/middleware/auth.py
+```32:47:apps/text/src/text/api/middleware/auth.py
 class ServiceAuthMiddleware(BaseHTTPMiddleware):
     """Require a valid X-Service-Token for non-exempt endpoints."""
 
@@ -292,7 +292,7 @@ The gateway injects the token from `SecretsService` in `BaseProxyController` sub
 ### 2.6 Streaming patterns
 
 - WS: STT streaming endpoints in `apps/stt/src/stt/streaming/api/routes.py`; the NestJS side bridges via `apps/api/src/modules/streaming/stt-ws.gateway.ts` (path `/ws/stt/stream`).
-- SSE: SMR streams LLM chunks over Server-Sent Events backed by Redis Streams with resume support — `apps/smr/src/smr/api/endpoints/stream.py` uses `sse_starlette.sse.EventSourceResponse` and includes the Redis message id in each event for resumption. On the gateway side, SSE routes are guarded by `TenantOwnedResourceSseGuard` (see 1.6).
+- SSE: SMR streams LLM chunks over Server-Sent Events backed by Redis Streams with resume support — `apps/text/src/text/api/endpoints/stream.py` uses `sse_starlette.sse.EventSourceResponse` and includes the Redis message id in each event for resumption. On the gateway side, SSE routes are guarded by `TenantOwnedResourceSseGuard` (see 1.6).
 
 ### 2.7 Temporal (harness)
 
@@ -308,7 +308,7 @@ The service is STATELESS with respect to tenancy — it holds no per-tenant conf
 
 The in-process Python services share ONE model-lifecycle contract, `packages/py-runtime-models` (`hope_runtime_models`, TASK-529 AD-4) — a uv-workspace member depended on by stt, guardrail, nlp, harness and tts. It is a contract, not a framework: one policy engine plus the two optional hooks it needs. Two concurrency skins, one policy: `ModelCache` (asyncio) and `SyncModelCache` (threads) both derive from a private `_CacheCore`, so the eviction order (`ttl → lru → vram`, every eviction reason-labelled), pin refcounts, the all-pinned soft ceiling (the cache deliberately exceeds `max_size` rather than drop a model serving a request), `CacheStats` and metric labels are shared code and cannot drift. Service-specific concerns (the stt format→loader map, the tts pipeline handles, the harness llama handle) stay in their services and are passed in as `factory`/`unload` callables. Each contract clause (single-flight per key, eviction order, pins-never-evicted-except-`clear()`, soft ceiling, monotonic injectable clock, the hard product clamp `clamp_cache_ttl_seconds` ∈ [60, 3600]) has a conformance test parameterized over BOTH cache classes.
 
-Retention is admin-controlled through the control plane, NOT env. Each service's `<svc>.modelCache.{ttlSeconds,maxModels,vramBudgetMb}` (stt also `maxMemoryMb`) are registry descriptors (`settings-registry/descriptors/service-runtime.descriptors.ts` — all `global-kv` + `globalOnly` + `system`-scoped, never tenant-set) served over `GET /api/v1/internal/effective-config` (§1.8, `EffectiveConfigService`). The Python pull client (`<svc>/core/effective_config.py`, duplicated per service by design — factoring it out is a deferred owner decision) is a read-triggered TTL cache (60 s, ±10 % jitter) with a NEGATIVE cache (a fetch error caches the empty result for a full window) and single-flight refresh, so an unreachable gateway costs at most one attempt per window and the service falls back to its own env/pydantic default — "gateway down" behaves exactly like the pre-control-plane env-driven service. Every descriptor `default` is transcribed verbatim from the consuming service's own fallback, so cataloging a knob changes zero behaviour. SMR is deliberately special: it holds no weights, so `smr.modelCache.ttlSeconds` is a per-request retention HINT forwarded to server-managed engines (Ollama `keep_alive`, LM Studio `ttl`), not a cache bound (`apps/smr/src/smr/core/retention.py`; SMR is absent from `MODEL_CACHE_SERVICES`). Separately, the applications layer runs control-plane retention services for DATA (not models) — `AuditRetentionService` and `AgentTrajectoryRetentionService` (`packages/applications/src/services/{audit,agent-trajectory}-retention/`): self-scheduling cron jobs that read DB-backed config and default OFF because they hard-delete.
+Retention is admin-controlled through the control plane, NOT env. Each service's `<svc>.modelCache.{ttlSeconds,maxModels,vramBudgetMb}` (stt also `maxMemoryMb`) are registry descriptors (`settings-registry/descriptors/service-runtime.descriptors.ts` — all `global-kv` + `globalOnly` + `system`-scoped, never tenant-set) served over `GET /api/v1/internal/effective-config` (§1.8, `EffectiveConfigService`). The Python pull client (`<svc>/core/effective_config.py`, duplicated per service by design — factoring it out is a deferred owner decision) is a read-triggered TTL cache (60 s, ±10 % jitter) with a NEGATIVE cache (a fetch error caches the empty result for a full window) and single-flight refresh, so an unreachable gateway costs at most one attempt per window and the service falls back to its own env/pydantic default — "gateway down" behaves exactly like the pre-control-plane env-driven service. Every descriptor `default` is transcribed verbatim from the consuming service's own fallback, so cataloging a knob changes zero behaviour. SMR is deliberately special: it holds no weights, so `smr.modelCache.ttlSeconds` is a per-request retention HINT forwarded to server-managed engines (Ollama `keep_alive`, LM Studio `ttl`), not a cache bound (`apps/text/src/text/core/retention.py`; SMR is absent from `MODEL_CACHE_SERVICES`). Separately, the applications layer runs control-plane retention services for DATA (not models) — `AuditRetentionService` and `AgentTrajectoryRetentionService` (`packages/applications/src/services/{audit,agent-trajectory}-retention/`): self-scheduling cron jobs that read DB-backed config and default OFF because they hard-delete.
 
 ---
 
@@ -391,7 +391,7 @@ Root `playwright.config.ts`: `testDir: './apps/api/tests/e2e'`, pattern `**/*.sp
 
 ### 4.5 Python tests
 
-See 2.4. Run per service: `pnpm stt:test[:unit|:integration|:cov]`, `pnpm smr:test`, `pnpm nlp:test`, `pnpm guardrail:test`, `pnpm harness:test` — all via conda `arcaenv`.
+See 2.4. Run per service: `pnpm stt:test[:unit|:integration|:cov]`, `pnpm text:test`, `pnpm nlp:test`, `pnpm guardrail:test`, `pnpm harness:test` — all via conda `arcaenv`.
 
 ### 4.6 TDD expectation
 
@@ -580,7 +580,7 @@ Full framework + rationale: `docs/archive/TASK-504-Capability-Settings-Control-A
 2. DO edit schema under `packages/database/src/prisma/db_main/*.prisma` and create migrations with `pnpm db:migrate:create` / `db:migrate`; DON'T edit committed migration SQL.
 3. DO use `getExtendedPrismaClient()` / `CoreDatabaseService.client`; DON'T import `getPlatformAdminPrismaClient_Unscoped` (lint-blocked; bypasses tenant scope AND soft delete).
 4. DON'T touch `this.databaseService.client` in controllers (`arcaai-internal/no-controller-direct-prisma`) or in application services (`no-restricted-syntax`) — go through a domain repository.
-5. DON'T read `process.env.SMR_URL|STT_URL|NLP_URL|GUARDRAIL_URL|HARNESS_URL|SMR_SERVICE_URL` in `apps/api/src/modules/**` — inject `IConfigService.getConfigValue(...)`.
+5. DON'T read `process.env.TEXT_URL|STT_URL|NLP_URL|GUARDRAIL_URL|HARNESS_URL|TEXT_SERVICE_URL` in `apps/api/src/modules/**` — inject `IConfigService.getConfigValue(...)`.
 6. DO create entities with `XxxFactory.CreateXxx(props)` + `generateId()` (UUIDv7); DON'T `new XxxEntity()` in services.
 7. DO mutate entities through setters (change tracking via `setProperty`); update with `this.updateEntity(entity, dto)` then `repository.updateWithVersion(id, entity, expectedVersion)`.
 8. DO `repository.softDelete(id)`; DON'T hard-delete. New soft-delete-less models must be added to `MODELS_WITHOUT_SOFT_DELETE` in `packages/database/src/client.ts` (and the tenant list in `extensions/tenant-scope.ts` if tenant-scoped).

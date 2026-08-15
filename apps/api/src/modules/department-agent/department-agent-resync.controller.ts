@@ -12,10 +12,10 @@ import { CanManage } from '../../decorators';
  * Admin-triggered SYSTEM agent-library resync. A SEPARATE thin
  * controller sharing the `admin/department-agents` prefix — the
  * `TenantPipelineResyncController` precedent — so the reconciler carries the
- * GLOBAL_ADMIN gate rather than the tenant-admin `manage:DepartmentAgent` of the
+ * SUPER_ADMIN gate rather than the tenant-admin `manage:DepartmentAgent` of the
  * main controller.
  *
- * Gated `@CanManage('Tenant')` — GLOBAL_ADMIN only — because it writes into
+ * Gated `@CanManage('Tenant')` — SUPER_ADMIN only — because it writes into
  * ARBITRARY target tenants, the same privilege posture as tenant provisioning.
  * A tenant admin has no need for it: their catalog is reconciled for them.
  *

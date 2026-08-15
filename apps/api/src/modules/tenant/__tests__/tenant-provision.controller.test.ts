@@ -6,7 +6,7 @@ function createMockTenantOnboardingService() {
 }
 
 function createMockCls(
-  user: { id?: string; tenantId?: string | null; roles?: string[] } | null = { id: 'admin-1', tenantId: null, roles: ['GLOBAL_ADMIN'] },
+  user: { id?: string; tenantId?: string | null; roles?: string[] } | null = { id: 'admin-1', tenantId: null, roles: ['SUPER_ADMIN'] },
 ) {
   return {
     get: vi.fn((key: string) => {

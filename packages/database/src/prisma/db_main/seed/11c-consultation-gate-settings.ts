@@ -71,7 +71,7 @@ const GATES: GateSeed[] = [
     value: 'true',
     defaultValue: 'false',
     description:
-      'Enables LoopContextSignalService — the ContextAdded / consultation-ending / loop-cancel signals sent to the ConsultationLoopWorkflow in apps/harness. Enabled on day 1 in every environment. Signalling is best-effort: with the harness or Temporal unreachable the consultation lifecycle is unaffected. Locked — only GLOBAL_ADMIN may change it.',
+      'Enables LoopContextSignalService — the ContextAdded / consultation-ending / loop-cancel signals sent to the ConsultationLoopWorkflow in apps/harness. Enabled on day 1 in every environment. Signalling is best-effort: with the harness or Temporal unreachable the consultation lifecycle is unaffected. Locked — only SUPER_ADMIN may change it.',
   },
   {
     key: 'consultation.ocr.enabled',
@@ -79,7 +79,7 @@ const GATES: GateSeed[] = [
     value: 'true',
     defaultValue: 'false',
     description:
-      'Enables OcrEnrichmentProcessor — the in-cluster PyMuPDF + RapidOCR pass that fills ContextItem.metaData.extractedText for scanned attachments the browser text-layer extractor could not read. Restores the effective behaviour of the retired OCR_ENABLED env flag, which defaulted ON. PHI posture unchanged (bytes stay in-cluster). Locked — only GLOBAL_ADMIN may change it.',
+      'Enables OcrEnrichmentProcessor — the in-cluster PyMuPDF + RapidOCR pass that fills ContextItem.metaData.extractedText for scanned attachments the browser text-layer extractor could not read. Restores the effective behaviour of the retired OCR_ENABLED env flag, which defaulted ON. PHI posture unchanged (bytes stay in-cluster). Locked — only SUPER_ADMIN may change it.',
   },
 ];
 

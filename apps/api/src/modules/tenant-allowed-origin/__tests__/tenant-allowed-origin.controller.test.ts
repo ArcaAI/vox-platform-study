@@ -11,7 +11,7 @@ import { TenantAllowedOriginController } from '../tenant-allowed-origin.controll
 // for this file — it belongs to `tenant-allowed-origin.service.test.ts` —
 // so these tests assert the controller behaves IDENTICALLY no matter who is
 // calling (T-7): there is nothing left here to distinguish a TENANT_ADMIN
-// from a GLOBAL_ADMIN caller.
+// from a SUPER_ADMIN caller.
 
 vi.mock('../../../cors.config', () => ({
   isOriginEnforcementEnabled: vi.fn(),

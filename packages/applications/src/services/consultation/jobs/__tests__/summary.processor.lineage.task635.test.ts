@@ -62,7 +62,7 @@ const buildHarness = (preSummaryResult: { entity: unknown; plaintext: string | n
   };
   const mockConsultationRepository = { findById: vi.fn().mockResolvedValue({ id: 'consultation-123', tenantId: 'tenant-1' }) };
   const mockHttpService = { axiosRef: { post: vi.fn().mockResolvedValue({ data: { summary: 'S', modelName: 'm' } }) } };
-  const mockConfigService = { get: vi.fn().mockImplementation((k: string) => (k === 'SMR_URL' ? 'http://localhost:8862' : undefined)) };
+  const mockConfigService = { get: vi.fn().mockImplementation((k: string) => (k === 'TEXT_URL' ? 'http://localhost:8862' : undefined)) };
   const mockEventEmitter = { emit: vi.fn() };
   const mockPromptResolutionService = {
     resolve: vi.fn().mockResolvedValue({ template: 'SOAP', promptId: 'p', contextVariables: {}, resolvedFrom: 'default' }),

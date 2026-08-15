@@ -281,10 +281,10 @@ describe('UserDepartmentService', () => {
       expect(mockDepartmentRepo.findAll).not.toHaveBeenCalled();
     });
 
-    // An unscoped GLOBAL_ADMIN (no working tenant) reads the user's
+    // An unscoped SUPER_ADMIN (no working tenant) reads the user's
     // memberships CROSS-TENANT instead of failing with "Tenant ID is required".
-    it('lists cross-tenant assignments for a GLOBAL_ADMIN with no tenant context', async () => {
-      mockClsService.get.mockImplementation((key: string) => (key === 'user' ? { id: 'admin-id', roles: ['GLOBAL_ADMIN'] } : null));
+    it('lists cross-tenant assignments for a SUPER_ADMIN with no tenant context', async () => {
+      mockClsService.get.mockImplementation((key: string) => (key === 'user' ? { id: 'admin-id', roles: ['SUPER_ADMIN'] } : null));
       mockRepo.findAll.mockResolvedValueOnce([
         makeEntity({ id: 'ud-1', departmentId: 'dept-1', tenantId: 'tenant-1' }),
         makeEntity({ id: 'ud-2', departmentId: 'dept-2', tenantId: 'tenant-2' }),

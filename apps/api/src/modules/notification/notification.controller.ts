@@ -18,7 +18,7 @@ import { CanManage } from '../../decorators';
  * (sys-event fan-out / dispatch pipeline), not authored by admins. Update is a
  * plain sparse patch (the service uses a non-CAS write — no If-Match).
  * Tenancy is service-enforced (CLS pin for lists, load-then-assert → 404 on
- * cross-tenant ids, GLOBAL_ADMIN bypass). CASL: class-level `manage:Notification`.
+ * cross-tenant ids, SUPER_ADMIN bypass). CASL: class-level `manage:Notification`.
  */
 @ApiBearerAuth()
 @ApiTags('admin-notifications')
@@ -31,8 +31,8 @@ export class NotificationController {
   ) {}
 
   @Get()
-  @ApiOperation({ summary: 'List notifications (tenant-scoped; GLOBAL_ADMIN sees all, or targets one via ?tenantId=)' })
-  @ApiQuery({ name: 'tenantId', required: false, description: 'Cross-tenant target (GLOBAL_ADMIN only — others 404).' })
+  @ApiOperation({ summary: 'List notifications (tenant-scoped; SUPER_ADMIN sees all, or targets one via ?tenantId=)' })
+  @ApiQuery({ name: 'tenantId', required: false, description: 'Cross-tenant target (SUPER_ADMIN only — others 404).' })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
   @ApiResponse({ status: 200, type: PaginatedNotificationResponse })

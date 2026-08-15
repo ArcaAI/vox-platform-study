@@ -25,8 +25,9 @@ export type ImpersonationEventName = (typeof ImpersonationEvents)[keyof typeof I
  *
  * The `*_SUPER_ADMIN` wire codes are PERSISTED audit vocabulary
  * and are intentionally retained after the SUPER_ADMIN→GLOBAL_ADMIN role
- * consolidation — renaming them would orphan existing audit rows and break
- * alerting. Semantically they now mean "the GLOBAL_ADMIN (elevated) tier".
+ * consolidation (TASK-417) and GLOBAL_ADMIN→SUPER_ADMIN rename (TASK-707) —
+ * renaming them would orphan existing audit rows and break alerting.
+ * Semantically they now mean "the SUPER_ADMIN (elevated) tier".
  */
 export const ImpersonationDeniedReason = {
   CallerNotAdmin: 'CALLER_NOT_ADMIN',

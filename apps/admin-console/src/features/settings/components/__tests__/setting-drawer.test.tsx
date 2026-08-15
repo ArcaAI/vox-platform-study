@@ -76,7 +76,7 @@ function stubFetch({
       const handled = custom?.(call);
       if (handled) return handled;
       if (call.url === '/api/auth/session') {
-        return Response.json({ user: { id: 'u-1', roles: ['GLOBAL_ADMIN'] }, isElevated: true, workingTenantId: null });
+        return Response.json({ user: { id: 'u-1', roles: ['SUPER_ADMIN'] }, isElevated: true, workingTenantId: null });
       }
       if (call.url === '/api/hope/rbac/check/my-permissions') return Response.json({ userId: 'u-1', tenantId: null, permissions });
       if (call.method === 'GET' && call.url === '/api/hope/admin/settings/s-1') {

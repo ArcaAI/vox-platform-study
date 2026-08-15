@@ -23,9 +23,9 @@ import { AiTaskDefaultResponse, EffectiveAiTaskDefaultResponse, UpsertAiTaskDefa
 /**
  * "Default model for task X" service.
  *
- * Effective resolution for GLOBAL_ADMIN-only keys (`guardrail.*`, `nlp.*`,
+ * Effective resolution for SUPER_ADMIN-only keys (`guardrail.*`, `nlp.*`,
  * `harness.*`) is SYSTEM-row-only (tenant override rows are ignored at read
- * time). Writes to those prefixes require GLOBAL_ADMIN → `ForbiddenException`
+ * time). Writes to those prefixes require SUPER_ADMIN → `ForbiddenException`
  * (403). This is deliberately NOT the 404-over-403 tenancy posture: the rule
  * is a privilege boundary on a key the caller can already read, not a
  * cross-tenant existence probe.
@@ -52,7 +52,7 @@ export class AiTaskDefaultService extends BaseService implements IAiTaskDefaultS
     const scopedTenantId = this.resolveScopedTenantId(tenantId);
     const tx = this.crossTenantLane(scopedTenantId);
 
-    // GLOBAL_ADMIN-only tasks resolve SYSTEM only (orphan tenant
+    // SUPER_ADMIN-only tasks resolve SYSTEM only (orphan tenant
     // override rows remain harmless but never win at runtime).
     const systemOnly = isGlobalAdminOnlyTaskKey(taskKey);
 

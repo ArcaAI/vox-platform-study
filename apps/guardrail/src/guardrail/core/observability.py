@@ -6,7 +6,7 @@ traceable in Tempo/Grafana. It is also the most compliance-sensitive service
 in the fleet: every request carries raw clinical text on
 ``/api/guardrail/analyze`` and ``/api/medical/*``.
 
-Mirrors ``apps/smr/src/smr/core/observability.py`` (the fleet's reference
+Mirrors ``apps/text/src/text/core/observability.py`` (the fleet's reference
 implementation): resource attributes, ``BatchSpanProcessor`` +
 ``OTLPSpanExporter`` for traces, FastAPI + httpx auto-instrumentation, and a
 mandatory PHI-sanitization ``server_request_hook``. The hook existing but

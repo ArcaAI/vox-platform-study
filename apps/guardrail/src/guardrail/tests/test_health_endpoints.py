@@ -8,7 +8,7 @@ never pulled from Service endpoints even when its one hard dependency is down.
 
 RED: written before the fix. Mirrors the SMR/NLP/TTS health contract, whose
 `/health/ready` already returns 503 on the equivalent failure
-(`apps/smr/src/smr/api/endpoints/health.py`, `test_health_metrics.py`).
+(`apps/text/src/text/api/endpoints/health.py`, `test_health_metrics.py`).
 """
 
 from __future__ import annotations

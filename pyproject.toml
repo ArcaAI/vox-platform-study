@@ -20,7 +20,7 @@
 members = [
     "apps/guardrail",
     "apps/nlp",
-    "apps/smr",
+    "apps/text",
     "apps/harness",
     "apps/stt",
     "apps/tts",
@@ -33,7 +33,7 @@ members = [
     # already declared by every member, so it adds nothing to this resolution.
     "packages/py-env",
     # The ONE W3C trace-propagation helper for
-    # services that cross a Redis-Stream boundary (currently stt, smr).
+    # services that cross a Redis-Stream boundary (currently stt, text).
     # Consolidates what was a deliberate, time-boxed duplicate in each service.
     # Its single dependency (opentelemetry-api) is already declared by every
     # member, so it adds nothing to this resolution.
@@ -75,7 +75,7 @@ conflicts = [
     # cannot silently downgrade (0.4.3 → 0.3.1) to co-resolve.
     [
         { package = "harness", extra = "eval-ragas" },
-        { package = "smr" },
+        { package = "text" },
     ],
     [
         { package = "harness", extra = "eval-ragas" },

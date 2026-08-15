@@ -17,20 +17,20 @@ import { AccountScreen } from '../account-screen';
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 const SESSION: SafeSession = {
-  user: { id: 'u-1', username: 'super_admin', email: 'root@hope.dev', roles: ['GLOBAL_ADMIN'], tenantId: null },
+  user: { id: 'u-1', username: 'super_admin', email: 'root@hope.dev', roles: ['SUPER_ADMIN'], tenantId: null },
   isElevated: true,
   workingTenantId: 'ten-1',
   workingTenantName: 'Sunrise Medical Group',
   impersonatingUserId: null,
   impersonatingUsername: null,
-  effectiveUser: { id: 'u-1', username: 'super_admin', email: 'root@hope.dev', roles: ['GLOBAL_ADMIN'], tenantId: null, departmentId: null },
+  effectiveUser: { id: 'u-1', username: 'super_admin', email: 'root@hope.dev', roles: ['SUPER_ADMIN'], tenantId: null, departmentId: null },
   effectiveIsElevated: true,
   effectiveTenantId: 'ten-1',
 };
 
 /** An operator (super_admin) impersonating doctor2. */
 const IMPERSONATING_SESSION: SafeSession = {
-  user: { id: 'u-1', username: 'super_admin', email: 'root@hope.dev', roles: ['GLOBAL_ADMIN'], tenantId: null },
+  user: { id: 'u-1', username: 'super_admin', email: 'root@hope.dev', roles: ['SUPER_ADMIN'], tenantId: null },
   isElevated: true,
   workingTenantId: null,
   workingTenantName: null,
@@ -141,7 +141,7 @@ describe('AccountScreen', () => {
     const identity = await screen.findByRole('region', { name: 'Identity' });
     expect(within(identity).getByText('super_admin')).toBeDefined();
     expect(within(identity).getByText('root@hope.dev')).toBeDefined();
-    expect(within(identity).getByText('GLOBAL_ADMIN')).toBeDefined();
+    expect(within(identity).getByText('SUPER_ADMIN')).toBeDefined();
     expect(within(identity).getByText('Sunrise Medical Group')).toBeDefined();
     expect(within(identity).getByText('SA')).toBeDefined();
   });
@@ -240,7 +240,7 @@ describe('AccountScreen', () => {
     expect(within(identity).getByText('DOCTOR')).toBeDefined();
     expect(within(identity).queryByText('super_admin')).toBeNull();
     expect(within(identity).queryByText('root@hope.dev')).toBeNull();
-    expect(within(identity).queryByText('GLOBAL_ADMIN')).toBeNull();
+    expect(within(identity).queryByText('SUPER_ADMIN')).toBeNull();
 
     // Page meta (h1 "Account" companion) ALSO reflects the target — two
     // occurrences: the header meta line and the Identity card.

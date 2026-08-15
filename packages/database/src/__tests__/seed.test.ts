@@ -52,7 +52,7 @@ import {
   ASR_TEMPLATE_SLUGS,
 } from '../prisma/db_main/seed/06-stt';
 import { ALL_SETTINGS, PLATFORM_SETTINGS } from '../prisma/db_main/seed/11-global-setting';
-import { seedHarnessPolicy, SYSTEM_HARNESS_POLICY_SMR_DEFAULTS } from '../prisma/db_main/seed/13-harness-policy';
+import { seedHarnessPolicy, SYSTEM_HARNESS_POLICY_TEXT_DEFAULTS } from '../prisma/db_main/seed/13-harness-policy';
 import {
   seedPipelinePolicy,
   SYSTEM_PIPELINE_POLICY_DEFAULTS,
@@ -495,17 +495,18 @@ describe('Role Seed Data', () => {
       });
     });
 
-    // SUPER_ADMIN is consolidated into GLOBAL_ADMIN and must
-    // never be seeded again (the data migration soft-retired the row).
-    it('should NOT seed a SUPER_ADMIN role anywhere', () => {
-      expect(DEFAULT_ROLES.find((r) => r.name === 'SUPER_ADMIN')).toBeUndefined();
+    // The elevated role is named SUPER_ADMIN (TASK-707 renamed GLOBAL_ADMIN →
+    // SUPER_ADMIN). The retired name must never be seeded again — same guard as
+    // before the rename, with the two names swapped.
+    it('should NOT seed a GLOBAL_ADMIN role anywhere', () => {
+      expect(DEFAULT_ROLES.find((r) => r.name === 'GLOBAL_ADMIN')).toBeUndefined();
     });
 
-    it('should include GLOBAL_ADMIN as the canonical elevated system role', () => {
-      const globalAdmin = DEFAULT_ROLES.find((r) => r.name === 'GLOBAL_ADMIN');
-      expect(globalAdmin).toBeDefined();
-      expect(globalAdmin?.isSystemRole).toBe(true);
-      expect(globalAdmin?.parentRoleId).toBeNull();
+    it('should include SUPER_ADMIN as the canonical elevated system role', () => {
+      const superAdmin = DEFAULT_ROLES.find((r) => r.name === 'SUPER_ADMIN');
+      expect(superAdmin).toBeDefined();
+      expect(superAdmin?.isSystemRole).toBe(true);
+      expect(superAdmin?.parentRoleId).toBeNull();
     });
 
     it('should include TENANT_ADMIN role', () => {
@@ -556,9 +557,9 @@ describe('Role Seed Data', () => {
   });
 
   describe('Role-Policy Assignments', () => {
-    // GLOBAL_ADMIN carries every policy SUPER_ADMIN had.
-    it('should assign the full elevated policy set to GLOBAL_ADMIN', () => {
-      const globalAdmin = DEFAULT_ROLES.find((r) => r.name === 'GLOBAL_ADMIN');
+    // SUPER_ADMIN carries the full elevated policy set.
+    it('should assign the full elevated policy set to SUPER_ADMIN', () => {
+      const globalAdmin = DEFAULT_ROLES.find((r) => r.name === 'SUPER_ADMIN');
       expect(globalAdmin?.policies).toContain('system-full-access');
       expect(globalAdmin?.policies).toContain('rbac-system-manage');
       expect(globalAdmin?.policies).toContain('global-settings-manage');
@@ -588,11 +589,11 @@ describe('Role Seed Data', () => {
       expect(nurse?.policies).toContain('consultation-read-assigned');
     });
 
-    // The GLOBAL_ADMIN policy set carries the dedicated
+    // The SUPER_ADMIN policy set carries the dedicated
     // Prisma Studio grant (manage:all would also pass the guard, but the
     // explicit policy makes the studio delegable without full access).
-    it('should assign prisma-studio-manage to GLOBAL_ADMIN', () => {
-      const globalAdmin = DEFAULT_ROLES.find((r) => r.name === 'GLOBAL_ADMIN');
+    it('should assign prisma-studio-manage to SUPER_ADMIN', () => {
+      const globalAdmin = DEFAULT_ROLES.find((r) => r.name === 'SUPER_ADMIN');
       expect(globalAdmin?.policies).toContain('prisma-studio-manage');
     });
 
@@ -1995,7 +1996,7 @@ describe('ASR Pipeline isDefault invariant', () => {
 // So the fail-safe default stays `false` and the deployment enables the sweep
 // with a locked platform row — exactly the `enable-local-raw-capture` pattern:
 // `value` is the live setting, `defaultValue` keeps the OFF fallback so a reset
-// reverts to fail-safe, and `locked` restricts the flip to GLOBAL_ADMIN.
+// reverts to fail-safe, and `locked` restricts the flip to SUPER_ADMIN.
 // =============================================================================
 
 describe('nightly pipeline template resync is enabled by a platform setting', () => {
@@ -2011,7 +2012,7 @@ describe('nightly pipeline template resync is enabled by a platform setting', ()
     expect(row?.dataType).toBe('Boolean');
   });
 
-  it('locks the sweep toggle to GLOBAL_ADMIN and owns it at the platform tenant', () => {
+  it('locks the sweep toggle to SUPER_ADMIN and owns it at the platform tenant', () => {
     expect(enabled()?.locked).toBe(true);
     expect(enabled()?.tenantId).toBe(SYSTEM_TENANT_ID);
   });
@@ -2850,8 +2851,8 @@ describe('Phase 2 — seedHarnessPolicy (SMR default + WORM)', () => {
   };
 
   it('exposes the agreed SMR defaults (lm-studio + gemma-4-e2b-it-qat)', () => {
-    expect(SYSTEM_HARNESS_POLICY_SMR_DEFAULTS.smrProvider).toBe('lm-studio');
-    expect(SYSTEM_HARNESS_POLICY_SMR_DEFAULTS.smrModel).toBe('gemma-4-e2b-it-qat');
+    expect(SYSTEM_HARNESS_POLICY_TEXT_DEFAULTS.smrProvider).toBe('lm-studio');
+    expect(SYSTEM_HARNESS_POLICY_TEXT_DEFAULTS.smrModel).toBe('gemma-4-e2b-it-qat');
   });
 
   it('creates the SYSTEM policy row with the SMR defaults and writes a WORM change (beforeJson=null)', async () => {

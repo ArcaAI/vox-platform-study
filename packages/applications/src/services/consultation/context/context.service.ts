@@ -33,7 +33,7 @@ import { SecretsService } from '../../baseServices/_meta/secrets';
 import { IBlobStorageService, deriveThumbnailKey } from '../../baseServices/storage';
 import { IUsageLedgerService } from '../../usageLedger';
 import { IConsultationContextSchemaService, type ValidatedContextPayload } from '../../consultation-context-schema';
-import { buildLlmUsageInputFromTokenCounts } from '../summary/smr-usage';
+import { buildLlmUsageInputFromTokenCounts } from '../summary/text-usage';
 import { IContextService } from './IContextService';
 import { ContextDtoMapper, ResolvedMediaUrl } from './context.dto.mapper';
 import { ConsultationPipelineEvent, ContextAddedPayload, ContextRemovedPayload } from '../events';
@@ -1534,7 +1534,7 @@ export class ContextService extends BaseService implements IContextService {
    * cross-tenant by a buggy write (or if the extension
    * is bypassed), the chain array could include foreign-tenant ids.
    * Filter the chain to the caller's CLS tenant BEFORE the downstream
-   * repository calls. GLOBAL_ADMIN bypass is intentionally NOT applied
+   * repository calls. SUPER_ADMIN bypass is intentionally NOT applied
    * here — these methods compose tenant-scoped per-item data on a hot
    * PHI read path; any cross-tenant visibility for platform admins must
    * be exposed via an explicit method, not a side effect of this helper.

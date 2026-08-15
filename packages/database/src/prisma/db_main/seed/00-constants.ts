@@ -146,13 +146,20 @@ export const SEED_POLICY_IDS = {
 // =============================================================================
 
 export const SEED_ROLE_IDS = {
-  // 00000000-0000-0000-0000-000000000001 is the RETIRED SUPER_ADMIN role id:
-  // consolidated into GLOBAL_ADMIN and soft-deleted by data
-  // migration. Reserved forever — never reuse it for a new role.
+  // 00000000-0000-0000-0000-000000000001 is the RETIRED legacy role id:
+  // originally named SUPER_ADMIN, consolidated into GLOBAL_ADMIN and
+  // soft-deleted by TASK-417's data migration. TASK-707 renamed the live
+  // elevated role (id ...0003 below) from GLOBAL_ADMIN back to SUPER_ADMIN,
+  // so this retired row's `name` column was further renamed to a dead
+  // placeholder ('SUPER_ADMIN__RETIRED_TASK_417') by the TASK-707 data
+  // migration to avoid colliding with the live role's new name. Reserved
+  // forever — never reuse it for a new role.
   TENANT_ADMIN: '00000000-0000-0000-0000-000000000002',
-  // Elevated platform-wide "global admin"; the single
-  // elevated role recognized by tenant-guards.ELEVATED_ROLES.
-  GLOBAL_ADMIN: '00000000-0000-0000-0000-000000000003',
+  // Elevated platform-wide "global admin" role; the single
+  // elevated role recognized by tenant-guards.ELEVATED_ROLES. Renamed from
+  // GLOBAL_ADMIN to SUPER_ADMIN by TASK-707 (D8) — this constant's VALUE
+  // (the UUID) is unchanged; only the role's `name` and this key changed.
+  SUPER_ADMIN: '00000000-0000-0000-0000-000000000003',
   DOCTOR: '00000000-0000-0000-0000-000000000010',
   NURSE: '00000000-0000-0000-0000-000000000011',
   SERVICE_ACCOUNT: '00000000-0000-0000-0000-000000000012',
@@ -167,11 +174,17 @@ export const SEED_ROLE_IDS = {
 export const SEED_USER_IDS = {
   SYSTEM: SYSTEM_USER_ID,
   // Key kept as SUPER_ADMIN for data identity: it is the seeded `super_admin`
-  // USER (login identifier), which carries the GLOBAL_ADMIN role.
+  // USER (login identifier), which carries the SUPER_ADMIN role (renamed
+  // from GLOBAL_ADMIN by TASK-707, D8).
   SUPER_ADMIN: '70000000-0000-0000-0000-000000000001',
   TENANT_ADMIN: '70000000-0000-0000-0000-000000000002',
   ARCAAI_ADMIN: '70000000-0000-0000-0000-000000000003',
-  // Platform-wide global admin. Lives on the SYSTEM tenant
+  // Platform-wide global admin USER (username `global_admin`), distinct from
+  // the `super_admin` user above. This key is NOT renamed by TASK-707: it
+  // names a user identity ("global admin"), not the elevated ROLE literal
+  // (which this user also carries, now named SUPER_ADMIN per D8) — and the
+  // key `SUPER_ADMIN` is already taken by the unrelated `super_admin` user
+  // above, so renaming this key would collide. Lives on the SYSTEM tenant
   // (like the seeded super_admin user) so it is membership-exempt and
   // elevated cross-tenant.
   GLOBAL_ADMIN: '70000000-0000-0000-0000-000000000006',
@@ -322,11 +335,11 @@ export const SEED_TEMPLATE_IDS = {
   SOAP_SUMMARY: '71000000-0000-0000-0000-000000000002',
   DNA_ANALYSIS: '71000000-0000-0000-0000-000000000003',
   CARD_CUSTOM: '71000000-0000-0000-0000-000000000004',
-  SMR_SYSTEM_BASE: '71000000-0000-0000-0000-000000000005',
-  SMR_SYSTEM_ER: '71000000-0000-0000-0000-000000000006',
-  SMR_SYSTEM_PEDS: '71000000-0000-0000-0000-000000000007',
-  SMR_SYSTEM_CARD: '71000000-0000-0000-0000-000000000008',
-  SMR_SYSTEM_PSYCH: '71000000-0000-0000-0000-000000000009',
+  TEXT_SYSTEM_BASE: '71000000-0000-0000-0000-000000000005',
+  TEXT_SYSTEM_ER: '71000000-0000-0000-0000-000000000006',
+  TEXT_SYSTEM_PEDS: '71000000-0000-0000-0000-000000000007',
+  TEXT_SYSTEM_CARD: '71000000-0000-0000-0000-000000000008',
+  TEXT_SYSTEM_PSYCH: '71000000-0000-0000-0000-000000000009',
   SURGERY_NEW_REFERRAL: '71000000-0000-0000-0000-000000000010',
   SURGERY_REVISIT: '71000000-0000-0000-0000-000000000011',
   MEDICINE_NEW_REFERRAL: '71000000-0000-0000-0000-000000000012',
@@ -630,10 +643,10 @@ export const SEED_GLOBAL_SETTING_IDS = {
   ARCAAI_STT_MODEL: '85000000-0000-0000-0001-000000000020',
   ARCAAI_STT_VAD: '85000000-0000-0000-0001-000000000021',
   // ArcaAI — smr Azure deployment-name (non-secret)
-  // ARCAAI_SMR_PROVIDER (…030) / ARCAAI_SMR_MODEL (…031) /
-  // ARCAAI_GUARDRAIL_* (…033-035) / ARCAAI_UX_SMR_PROVIDER_MODELS (…043)
+  // ARCAAI_TEXT_PROVIDER (…030) / ARCAAI_TEXT_MODEL (…031) /
+  // ARCAAI_GUARDRAIL_* (…033-035) / ARCAAI_UX_TEXT_PROVIDER_MODELS (…043)
   // retired (rows swept to DELETED); ids stay reserved — never reuse them.
-  ARCAAI_SMR_AZURE_DEPLOYMENT: '85000000-0000-0000-0001-000000000032',
+  ARCAAI_TEXT_AZURE_DEPLOYMENT: '85000000-0000-0000-0001-000000000032',
   // ArcaAI — ux-constants
   ARCAAI_UX_LOCAL_ASR_MODELS: '85000000-0000-0000-0001-000000000040',
   ARCAAI_UX_LOCAL_VAD_MODELS: '85000000-0000-0000-0001-000000000041',
@@ -654,10 +667,10 @@ export const SEED_GLOBAL_SETTING_IDS = {
   GLOBAL_STT_MODEL: '85000000-0000-0000-0000-000000000020',
   GLOBAL_STT_VAD: '85000000-0000-0000-0000-000000000021',
   // Global tenant — smr Azure deployment-name (non-secret)
-  // GLOBAL_SMR_PROVIDER (…030) / GLOBAL_SMR_MODEL (…031) /
-  // GLOBAL_GUARDRAIL_* (…033-035) / GLOBAL_UX_SMR_PROVIDER_MODELS (…043)
+  // GLOBAL_TEXT_PROVIDER (…030) / GLOBAL_TEXT_MODEL (…031) /
+  // GLOBAL_GUARDRAIL_* (…033-035) / GLOBAL_UX_TEXT_PROVIDER_MODELS (…043)
   // retired (rows swept to DELETED); ids stay reserved — never reuse them.
-  GLOBAL_SMR_AZURE_DEPLOYMENT: '85000000-0000-0000-0000-000000000032',
+  GLOBAL_TEXT_AZURE_DEPLOYMENT: '85000000-0000-0000-0000-000000000032',
   // Global tenant — ux-constants (static model lists for UI dropdowns)
   GLOBAL_UX_LOCAL_ASR_MODELS: '85000000-0000-0000-0000-000000000040',
   GLOBAL_UX_LOCAL_VAD_MODELS: '85000000-0000-0000-0000-000000000041',

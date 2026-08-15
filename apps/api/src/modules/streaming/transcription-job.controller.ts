@@ -157,7 +157,7 @@ export class TranscriptionJobController {
    * (`src/database/tenant-context.provider.ts`) and the sibling admin
    * controllers: the CLS `tenantId` key FIRST, then the JWT-derived identity.
    *
-   * The `tenantId` key is where `ContextInterceptor` elevates a GLOBAL_ADMIN's
+   * The `tenantId` key is where `ContextInterceptor` elevates a SUPER_ADMIN's
    * selected working tenant from the `x-tenant-id` header; a global admin's own
    * JWT carries `tenantId: ''`, so reading `user.tenantId` alone rejected every
    * global-admin caller with a 400 (BUG-012). `??` (not `||`) matches the

@@ -95,7 +95,7 @@ describe('GlobalSettingService.rotateSecret', () => {
   const asSuperAdmin = (tenantId: string | null = null) =>
     mockClsService.get.mockImplementation((key: string) =>
       key === 'user'
-        ? { id: 'super-1', roles: ['GLOBAL_ADMIN'] }
+        ? { id: 'super-1', roles: ['SUPER_ADMIN'] }
         : key === 'tenantId'
           ? tenantId
           : key === 'correlationId'
@@ -279,7 +279,7 @@ describe('GlobalSettingService.rotateSecret', () => {
     expect(mockEventEmitter.emit).not.toHaveBeenCalled();
   });
 
-  it('allows a GLOBAL_ADMIN to rotate a locked platform row (rotate is already manage:all-gated)', async () => {
+  it('allows a SUPER_ADMIN to rotate a locked platform row (rotate is already manage:all-gated)', async () => {
     asSuperAdmin();
     wireHappyPath({ locked: true });
 

@@ -101,7 +101,7 @@ implementations already disagree on one field).
 
 ### 2.2 Surface 2 — SMR SSE with Redis message-id resume
 
-`apps/smr/src/smr/api/endpoints/stream.py` (92 lines) + `apps/smr/src/smr/services/task_manager.py`.
+`apps/text/src/text/api/endpoints/stream.py` (92 lines) + `apps/text/src/text/services/task_manager.py`.
 
 | Concern | Evidence |
 |---|---|
@@ -111,7 +111,7 @@ implementations already disagree on one field).
 | Resume | `stream.py:35` — `cursor_start = last_event_id or request.headers.get("last-event-id") or "0-0"` |
 | SSE frame | `stream.py:61` — `yield {"event": chunk.type, "data": chunk.model_dump_json(), "id": msg_id}` — the SSE `id:` **is the raw Redis stream message id** |
 | Terminal | `stream.py:65-66` — returns on `chunk.type in ("done","error")` |
-| Payload type | `StreamChunk` — `apps/smr/src/smr/models/stream.py:10-13`: `type: Literal["chunk","reasoning","meta","done","error","usage"]`, `content: str \| None`, `data: dict \| None` |
+| Payload type | `StreamChunk` — `apps/text/src/text/models/stream.py:10-13`: `type: Literal["chunk","reasoning","meta","done","error","usage"]`, `content: str \| None`, `data: dict \| None` |
 
 **This is the closest thing to the target contract that already exists**: one opaque `data`
 field carrying a JSON document, trace context as flat sibling fields, and a message-id resume
@@ -627,11 +627,11 @@ implementation and the conformance suite 722/727 will consume.
 #### Task 5 — Adopt the envelope on the SMR stream path
 - **Agent:** T3 · opus-4-8 · high
 - **Files:**
-  - modify `apps/smr/src/smr/services/task_manager.py` (`append_chunk` `:98-111`,
+  - modify `apps/text/src/text/services/task_manager.py` (`append_chunk` `:98-111`,
     `read_chunk_entries_blocking` `:142-176`)
-  - modify `apps/smr/src/smr/api/endpoints/stream.py` (`:35`, `:61`)
-  - modify `apps/smr/pyproject.toml` (add `hope-async-contract`)
-  - tests under `apps/smr/src/smr/tests/`
+  - modify `apps/text/src/text/api/endpoints/stream.py` (`:35`, `:61`)
+  - modify `apps/text/pyproject.toml` (add `hope-async-contract`)
+  - tests under `apps/text/src/text/tests/`
 - **Approach:** Additive and backward compatible (§3.7).
 
   Producer (`append_chunk`): the `data` field's JSON becomes an `AsyncEnvelope` whose `payload`
@@ -658,7 +658,7 @@ implementation and the conformance suite 722/727 will consume.
   best-effort parsed; a resume from a mid-stream token replays exactly the chunks after it; a
   bare legacy chunk still parses; `traceparent` is still a sibling field and is **not** inside
   the envelope (assert this explicitly).
-- **Verify:** `pnpm smr:test`; `pnpm smr:lint`; `pnpm smr:typecheck`.
+- **Verify:** `pnpm text:test`; `pnpm text:lint`; `pnpm text:typecheck`.
 
 #### Task 6 — Conformance suite (the deliverable 722/727 consume)
 - **Agent:** T3 · sonnet-5 · high
@@ -737,7 +737,7 @@ Paste actual output for every box.
 - [ ] The Python↔TS parity test passes against the shared example corpus
 - [ ] `uv lock` at the repo root re-runs with **no** resolution change outside the new member
       (paste the diff summary)
-- [ ] `pnpm smr:test`, `pnpm smr:lint`, `pnpm smr:typecheck` green
+- [ ] `pnpm text:test`, `pnpm text:lint`, `pnpm text:typecheck` green
 - [ ] The SMR path proves: enveloped round-trip, unknown-`schemaVersion` refusal, mid-stream
       resume, legacy bare-chunk acceptance, and `traceparent` still a **sibling** field
 - [ ] `assertAsyncConformance` is exported from the package root and passes against the SMR

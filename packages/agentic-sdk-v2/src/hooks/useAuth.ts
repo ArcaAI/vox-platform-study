@@ -15,8 +15,8 @@ import { useAgenticStore } from '../store';
 import { AUTH_ENDPOINTS } from '../core/constants';
 import type { AuthUser, LoginResponse, ImpersonateRequest, ImpersonateResponse, RefreshTokenResponse } from '../types/auth';
 
-// GLOBAL_ADMIN is the single elevated role.
-const IMPERSONATION_ROLES = ['GLOBAL_ADMIN', 'TENANT_ADMIN'] as const;
+// SUPER_ADMIN is the single elevated role.
+const IMPERSONATION_ROLES = ['SUPER_ADMIN', 'TENANT_ADMIN'] as const;
 
 export interface UseAuthReturn {
   user: AuthUser | null;

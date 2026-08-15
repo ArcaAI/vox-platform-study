@@ -1,4 +1,4 @@
-/** Entitlements administration (capabilities-matrix row 4). GLOBAL_ADMIN only. */
+/** Entitlements administration (capabilities-matrix row 4). SUPER_ADMIN only. */
 
 import { deleteJson, getJson, patchJson, postJson, putJson } from '@/shared/api';
 import type { TenantPlan } from '@/features/tenants/api/types';

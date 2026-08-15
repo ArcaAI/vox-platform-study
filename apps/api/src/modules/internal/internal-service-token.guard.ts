@@ -25,14 +25,14 @@ export class InternalServiceTokenGuard implements CanActivate {
   /**
    * Service name → the secret holding that service's token.
    *
-   * NOTE `smr` → `SMR_SERVICE_TOKEN`: the SMR service reads its inbound token
-   * from `settings.service_token` under the `SMR_` pydantic prefix, so that is
+   * NOTE `smr` → `TEXT_SERVICE_TOKEN`: the SMR service reads its inbound token
+   * from `settings.service_token` under the `TEXT_` pydantic prefix, so that is
    * the name it actually presents. The gateway's OUTBOUND proxying separately
-   * resolves `SMR_SERVICE_TOKEN`; the two are distinct secret names that hold the
+   * resolves `TEXT_SERVICE_TOKEN`; the two are distinct secret names that hold the
    * same shared value by deployment convention.
    */
   private static readonly SERVICE_SECRETS: Readonly<Record<string, string>> = {
-    smr: 'SMR_SERVICE_TOKEN',
+    smr: 'TEXT_SERVICE_TOKEN',
     nlp: 'NLP_SERVICE_TOKEN',
     guardrail: 'GUARDRAIL_SERVICE_TOKEN',
     harness: 'HARNESS_SERVICE_TOKEN',

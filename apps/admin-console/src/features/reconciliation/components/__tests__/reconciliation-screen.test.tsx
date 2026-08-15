@@ -16,13 +16,13 @@ import { renderWithProviders } from '@/test/render';
 import { ReconciliationScreen } from '../reconciliation-screen';
 
 const SESSION = {
-  user: { id: 'u-1', username: 'super_admin', email: 'admin@arca.ai', roles: ['GLOBAL_ADMIN'] },
+  user: { id: 'u-1', username: 'super_admin', email: 'admin@arca.ai', roles: ['SUPER_ADMIN'] },
   isElevated: true,
   workingTenantId: 'tnt-1' as string | null,
   workingTenantName: 'ArcaAI' as string | null,
   impersonatingUserId: null,
   impersonatingUsername: null,
-  effectiveUser: { id: 'u-1', username: 'super_admin', email: 'admin@arca.ai', roles: ['GLOBAL_ADMIN'], tenantId: null, departmentId: null },
+  effectiveUser: { id: 'u-1', username: 'super_admin', email: 'admin@arca.ai', roles: ['SUPER_ADMIN'], tenantId: null, departmentId: null },
   effectiveIsElevated: true,
   effectiveTenantId: 'tnt-1' as string | null,
 };

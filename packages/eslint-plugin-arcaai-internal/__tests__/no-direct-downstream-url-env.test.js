@@ -9,8 +9,8 @@
  * never re-read raw env at request time).
  *
  * Banned keys (the live downstream Python services + the legacy
- * SMR_SERVICE_URL alias + STT_V2_URL during the STT_URL dual-read window):
- * SMR_URL, SMR_SERVICE_URL, STT_URL, STT_V2_URL, NLP_URL, GUARDRAIL_URL, HARNESS_URL
+ * TEXT_SERVICE_URL alias + STT_V2_URL during the STT_URL dual-read window):
+ * TEXT_URL, TEXT_SERVICE_URL, STT_URL, STT_V2_URL, NLP_URL, GUARDRAIL_URL, HARNESS_URL
  *
  * Everything else under `process.env.*` stays legal (NODE_ENV,
  * npm_package_version, etc.) so the rule is a tight denylist, not a
@@ -35,7 +35,7 @@ ruleTester.run('no-direct-downstream-url-env', rule, {
       code: `
         class Foo {
           constructor(cfg) { this.cfg = cfg; }
-          base() { return this.cfg.getConfigValue('SMR_URL'); }
+          base() { return this.cfg.getConfigValue('TEXT_URL'); }
         }
       `,
     },
@@ -53,20 +53,20 @@ ruleTester.run('no-direct-downstream-url-env', rule, {
     },
     {
       name: 'unrelated property access on a non-process object is allowed',
-      code: `const url = config.env.SMR_URL;`,
+      code: `const url = config.env.TEXT_URL;`,
     },
   ],
 
   invalid: [
     {
-      name: 'process.env.SMR_URL (dot access) is flagged',
-      code: `const url = process.env.SMR_URL || 'http://localhost:8862';`,
-      errors: [{ messageId: 'directDownstreamUrlEnv', data: { name: 'SMR_URL' } }],
+      name: 'process.env.TEXT_URL (dot access) is flagged',
+      code: `const url = process.env.TEXT_URL || 'http://localhost:8862';`,
+      errors: [{ messageId: 'directDownstreamUrlEnv', data: { name: 'TEXT_URL' } }],
     },
     {
-      name: 'process.env.SMR_SERVICE_URL (legacy alias) is flagged',
-      code: `const url = process.env.SMR_SERVICE_URL;`,
-      errors: [{ messageId: 'directDownstreamUrlEnv', data: { name: 'SMR_SERVICE_URL' } }],
+      name: 'process.env.TEXT_SERVICE_URL (legacy alias) is flagged',
+      code: `const url = process.env.TEXT_SERVICE_URL;`,
+      errors: [{ messageId: 'directDownstreamUrlEnv', data: { name: 'TEXT_SERVICE_URL' } }],
     },
     {
       name: 'process.env.STT_URL is flagged',
@@ -94,9 +94,9 @@ ruleTester.run('no-direct-downstream-url-env', rule, {
       errors: [{ messageId: 'directDownstreamUrlEnv', data: { name: 'HARNESS_URL' } }],
     },
     {
-      name: 'bracket-style process.env["SMR_URL"] is flagged',
-      code: `const url = process.env['SMR_URL'];`,
-      errors: [{ messageId: 'directDownstreamUrlEnv', data: { name: 'SMR_URL' } }],
+      name: 'bracket-style process.env["TEXT_URL"] is flagged',
+      code: `const url = process.env['TEXT_URL'];`,
+      errors: [{ messageId: 'directDownstreamUrlEnv', data: { name: 'TEXT_URL' } }],
     },
   ],
 });

@@ -11,7 +11,7 @@ STT and SMR each cross a non-HTTP boundary — a Redis Stream — that
 and SMR's generation chunks relayed over a separate SSE request. Both services
 originally carried a byte-for-byte duplicate copy of this module
 (`apps/stt/src/stt/core/trace_propagation.py`,
-`apps/smr/src/smr/core/trace_propagation.py`) — a deliberate, time-boxed
+`apps/text/src/text/core/trace_propagation.py`) — a deliberate, time-boxed
 tradeoff to avoid a shared-package edit contending on the single root
 `uv.lock` while four agents instrumented different services concurrently.
 That constraint is gone, so the module lives here once.

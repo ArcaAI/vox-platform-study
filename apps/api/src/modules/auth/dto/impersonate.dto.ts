@@ -13,7 +13,7 @@ export class ImpersonateRequest {
   /**
    * Optional tenant the admin wants to impersonate the target
    * "as". Must be one of the target user's enabled `UserRoleAssignment.tenantId`
-   * values. For non-GLOBAL_ADMIN callers it MUST equal the admin's own tenant.
+   * values. For non-SUPER_ADMIN callers it MUST equal the admin's own tenant.
    * If omitted, the controller picks the first enabled assignment for backward
    * compatibility.
    */

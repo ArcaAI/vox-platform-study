@@ -35,7 +35,7 @@ export class TenantProvisionController {
   })
   @ApiResponse({ status: 400, description: 'Bad request - invalid input' })
   // Same posture as TenantController.create — creating tenants (with or
-  // without an admin) is a GLOBAL_ADMIN-only, privilege-escalation-adjacent
+  // without an admin) is a SUPER_ADMIN-only, privilege-escalation-adjacent
   // operation.
   @CanManage('Tenant')
   async provision(@Body() request: ProvisionTenantRequest): Promise<TenantProvisionResponse> {

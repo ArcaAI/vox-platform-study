@@ -58,7 +58,7 @@ export interface AiProviderConnectionSeed {
  */
 export const SYSTEM_AI_PROVIDER_CONNECTIONS: AiProviderConnectionSeed[] = [
   {
-    // Local/self-host Ollama engine (`SMR_OLLAMA_BASE_URL`).
+    // Local/self-host Ollama engine (`TEXT_OLLAMA_BASE_URL`).
     id: '87000000-0000-0000-0000-000000000001',
     tenantId: SYSTEM_TENANT_ID,
     service: 'llm',
@@ -70,11 +70,11 @@ export const SYSTEM_AI_PROVIDER_CONNECTIONS: AiProviderConnectionSeed[] = [
     encryptedApiKey: null,
     keyVersion: null,
     enabled: true,
-    metaData: { note: 'Base URL from SMR_OLLAMA_BASE_URL (env-tier connection identity).' },
+    metaData: { note: 'Base URL from TEXT_OLLAMA_BASE_URL (env-tier connection identity).' },
   },
   {
     // LM Studio — the default local OpenAI-compatible engine
-    // (`SMR_OPENAI_COMPAT_BASE_URL`).
+    // (`TEXT_OPENAI_COMPAT_BASE_URL`).
     id: '87000000-0000-0000-0000-000000000002',
     tenantId: SYSTEM_TENANT_ID,
     service: 'llm',
@@ -86,7 +86,7 @@ export const SYSTEM_AI_PROVIDER_CONNECTIONS: AiProviderConnectionSeed[] = [
     encryptedApiKey: null,
     keyVersion: null,
     enabled: true,
-    metaData: { note: 'Base URL from SMR_OPENAI_COMPAT_BASE_URL (env-tier connection identity).' },
+    metaData: { note: 'Base URL from TEXT_OPENAI_COMPAT_BASE_URL (env-tier connection identity).' },
   },
   {
     // Azure OpenAI — endpoint/apiVersion/deployment are per-deployment and
@@ -169,7 +169,7 @@ export const SYSTEM_AI_PROVIDER_CONNECTIONS: AiProviderConnectionSeed[] = [
     metaData: null,
   },
   {
-    // vLLM production self-host engine (`SMR_VLLM_BASE_URL`).
+    // vLLM production self-host engine (`TEXT_VLLM_BASE_URL`).
     id: '87000000-0000-0000-0000-000000000007',
     tenantId: SYSTEM_TENANT_ID,
     service: 'llm',
@@ -181,10 +181,10 @@ export const SYSTEM_AI_PROVIDER_CONNECTIONS: AiProviderConnectionSeed[] = [
     encryptedApiKey: null,
     keyVersion: null,
     enabled: true,
-    metaData: { note: 'Base URL from SMR_VLLM_BASE_URL (k3s Service; env-tier connection identity).' },
+    metaData: { note: 'Base URL from TEXT_VLLM_BASE_URL (k3s Service; env-tier connection identity).' },
   },
   {
-    // llama.cpp production self-host engine (`SMR_LLAMA_CPP_BASE_URL`).
+    // llama.cpp production self-host engine (`TEXT_LLAMA_CPP_BASE_URL`).
     id: '87000000-0000-0000-0000-000000000008',
     tenantId: SYSTEM_TENANT_ID,
     service: 'llm',
@@ -196,7 +196,7 @@ export const SYSTEM_AI_PROVIDER_CONNECTIONS: AiProviderConnectionSeed[] = [
     encryptedApiKey: null,
     keyVersion: null,
     enabled: true,
-    metaData: { note: 'Base URL from SMR_LLAMA_CPP_BASE_URL (k3s Service; env-tier connection identity).' },
+    metaData: { note: 'Base URL from TEXT_LLAMA_CPP_BASE_URL (k3s Service; env-tier connection identity).' },
   },
 
   // ── New LLM cloud providers (freeze; functional in) ──────

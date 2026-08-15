@@ -32,7 +32,7 @@ export class GlobalSettingResponse extends BaseResponse {
 
   /**
    * Owning tenant of the row. The cross-tenant `/settings` list
-   * (unscoped GLOBAL_ADMIN) renders a Tenant column and a tenant filter, so
+   * (unscoped SUPER_ADMIN) renders a Tenant column and a tenant filter, so
    * the response must carry the row's tenant attribution. `__GLOBAL__`-tenant
    * rows are the platform defaults.
    */
@@ -41,7 +41,7 @@ export class GlobalSettingResponse extends BaseResponse {
 
   /**
    * Platform-owned "locked" default. When true the
-   * row is write-guarded server-side (only GLOBAL_ADMIN may modify it); the admin
+   * row is write-guarded server-side (only SUPER_ADMIN may modify it); the admin
    * console mirrors this by rendering a lock affordance and disabling edit/delete
    * for non-super-admins. Exposed so `GET /admin/settings` returns it (the FE
    * cannot render the guard otherwise).

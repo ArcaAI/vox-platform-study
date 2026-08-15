@@ -84,7 +84,7 @@ describe('BillingService.recordPlanChange is transactional', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockClsService.get.mockImplementation((key: string) => (key === 'user' ? { id: 'admin-1', roles: ['GLOBAL_ADMIN'] } : null));
+    mockClsService.get.mockImplementation((key: string) => (key === 'user' ? { id: 'admin-1', roles: ['SUPER_ADMIN'] } : null));
     mockUnitOfWork.runInTransaction.mockImplementation(async (work: (tx: unknown) => Promise<unknown>) => work(TX));
     mockPlanHistoryRepository.create.mockImplementation(async (e: unknown) => e);
     mockPlanHistoryRepository.update.mockImplementation(async (_id: string, e: unknown) => e);

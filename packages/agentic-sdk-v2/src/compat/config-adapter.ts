@@ -18,7 +18,7 @@ import type { V1SdkConfig, V1AudioSettings } from './types';
  * endpoint constants omit the prefix — see `src/core/constants.ts`, and real
  * consumers such as ui-playground set `http://localhost:8868/api/v1`). So the
  * adapter normalizes the origin up to `/api/v1`, which is what the delegated v2
- * session/audio hooks need. The SMR compat hook derives the origin back off this
+ * session/audio hooks need. The `useText` compat hook derives the origin back off this
  * value for the `/api/smr/...` shim paths, which live OUTSIDE `/api/v1`.
  */
 function ensureApiV1Base(apiEndpoint: string): string {

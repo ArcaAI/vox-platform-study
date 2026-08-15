@@ -35,7 +35,7 @@ export interface SyncTenantDirectoryUsersResult {
  * defense-in-depth against a stale payload.
  *
  * Per-user provisioning reuses `FederatedAuthService.resolveOrProvisionUser`
- * verbatim (same JIT transaction, group→role mapping, GLOBAL_ADMIN guard as
+ * verbatim (same JIT transaction, group→role mapping, SUPER_ADMIN guard as
  * login-time JIT) so directory-pull and OIDC login can never diverge on "how
  * a HOPE user gets created". A per-user failure (seat quota, provisioning
  * error) is caught and recorded — the batch continues rather than aborting.

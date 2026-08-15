@@ -49,7 +49,7 @@ export interface HarnessPolicyFieldControl {
 /**
  * All 16 HarnessPolicy runtime knobs, each labeled with WHO can write it. The
  * 5 in `controlledBy: 'global-admin'` are `TENANT_LOCKED_POLICY_KEYS` on the
- * tenant PATCH route (`harness-policy.service.ts` `GLOBAL_ADMIN_ONLY_POLICY_KEYS`);
+ * tenant PATCH route (`harness-policy.service.ts` `SUPER_ADMIN_ONLY_POLICY_KEYS`);
  * the rest are tenant-writable from `/harness/policy`.
  */
 export const HARNESS_POLICY_FIELD_CONTROLS: HarnessPolicyFieldControl[] = [
@@ -63,8 +63,8 @@ export const HARNESS_POLICY_FIELD_CONTROLS: HarnessPolicyFieldControl[] = [
   { key: 'phiFailClosed', label: 'PHI fail-closed', controlledBy: 'global-admin' },
   { key: 'safetyProvider', label: 'Safety provider', controlledBy: 'global-admin' },
   { key: 'safetyModel', label: 'Safety model', controlledBy: 'global-admin' },
-  { key: 'smrProvider', label: 'SMR provider', controlledBy: 'tenant' },
-  { key: 'smrModel', label: 'SMR model', controlledBy: 'tenant' },
+  { key: 'smrProvider', label: 'Text-generation provider', controlledBy: 'tenant' },
+  { key: 'smrModel', label: 'Text-generation model', controlledBy: 'tenant' },
   { key: 'maxRegen', label: 'Max regen budget', controlledBy: 'tenant' },
   { key: 'gateSlaSeconds', label: 'Gate SLA (seconds)', controlledBy: 'tenant' },
   { key: 'gateEscalationSeconds', label: 'Gate escalation (seconds)', controlledBy: 'tenant' },

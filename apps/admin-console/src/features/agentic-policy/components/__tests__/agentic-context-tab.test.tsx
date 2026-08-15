@@ -29,7 +29,7 @@ const CATALOG: SettingCatalog = {
       dataType: 'number',
       sensitivity: 'internal',
       maxScope: 'system',
-      editableBy: 'GLOBAL_ADMIN',
+      editableBy: 'SUPER_ADMIN',
       category: 'Agentic Context',
       globalOnly: true,
       label: 'Live delta max chars',
@@ -41,7 +41,7 @@ const CATALOG: SettingCatalog = {
       dataType: 'boolean',
       sensitivity: 'internal',
       maxScope: 'tenant',
-      editableBy: 'GLOBAL_ADMIN',
+      editableBy: 'SUPER_ADMIN',
       category: 'Pipeline',
     },
   ],
@@ -71,7 +71,7 @@ function stubFetch(opts: { stored?: { value: unknown; sourceScope: string; versi
       };
       calls.push(call);
       if (call.url === '/api/auth/session') {
-        return Response.json({ user: { id: 'u-1', roles: ['GLOBAL_ADMIN'] }, isElevated: true });
+        return Response.json({ user: { id: 'u-1', roles: ['SUPER_ADMIN'] }, isElevated: true });
       }
       if (call.method === 'GET' && call.url === '/api/hope/admin/settings/catalog') {
         return Response.json(CATALOG);

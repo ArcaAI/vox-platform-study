@@ -43,7 +43,7 @@ function makeService(opts: { roles?: string[]; tenantId?: string | undefined; ex
   const cls = {
     get: vi.fn((k: string) =>
       k === 'user'
-        ? { id: 'u1', roles: opts.roles ?? ['GLOBAL_ADMIN'] }
+        ? { id: 'u1', roles: opts.roles ?? ['SUPER_ADMIN'] }
         : k === 'tenantId'
           ? 'tenantId' in opts
             ? opts.tenantId
@@ -100,19 +100,19 @@ describe('tenant-scope write persists under the caller tenant', () => {
   });
 
   it('refuses a tenant-scope write for a key capped at system scope', async () => {
-    const { svc } = makeService({ roles: ['GLOBAL_ADMIN'], tenantId: CUSTOMER_TENANT });
+    const { svc } = makeService({ roles: ['SUPER_ADMIN'], tenantId: CUSTOMER_TENANT });
     // `logLevel` is maxScope: 'system'.
     await expect(svc.write('logLevel', 'debug', { scope: 'tenant' })).rejects.toBeInstanceOf(ArgumentInvalidException);
   });
 
   it('refuses a tenant-scope write with no working tenant rather than writing the platform row', async () => {
-    const { svc, globalSettings } = makeService({ roles: ['GLOBAL_ADMIN'], tenantId: undefined });
+    const { svc, globalSettings } = makeService({ roles: ['SUPER_ADMIN'], tenantId: undefined });
     await expect(svc.write('rateLimit.maxRequests', 10, { scope: 'tenant' })).rejects.toBeInstanceOf(ArgumentInvalidException);
     expect(globalSettings.create).not.toHaveBeenCalled();
   });
 
   it('refuses a tenant-scope write whose working tenant IS a platform tenant', async () => {
-    const { svc, globalSettings } = makeService({ roles: ['GLOBAL_ADMIN'], tenantId: GLOBAL_TENANT_ID });
+    const { svc, globalSettings } = makeService({ roles: ['SUPER_ADMIN'], tenantId: GLOBAL_TENANT_ID });
     await expect(svc.write('rateLimit.maxRequests', 10, { scope: 'tenant' })).rejects.toBeInstanceOf(ArgumentInvalidException);
     expect(globalSettings.create).not.toHaveBeenCalled();
   });
@@ -128,7 +128,7 @@ describe('system-scope write is a platform change — global admins only', () =>
   });
 
   it('allows a global admin to write the platform row, on the platform tenant', async () => {
-    const { svc, globalSettings } = makeService({ roles: ['GLOBAL_ADMIN'], tenantId: CUSTOMER_TENANT });
+    const { svc, globalSettings } = makeService({ roles: ['SUPER_ADMIN'], tenantId: CUSTOMER_TENANT });
 
     const result = await svc.write('rateLimit.maxRequests', 250);
 
@@ -159,7 +159,7 @@ describe('reading the backing-row version is NOT a write', () => {
   });
 
   it('reports 0 rather than throwing when a tenant-scope read has no working tenant', async () => {
-    const { svc } = makeService({ roles: ['GLOBAL_ADMIN'], tenantId: undefined });
+    const { svc } = makeService({ roles: ['SUPER_ADMIN'], tenantId: undefined });
     await expect(svc.getBackingRowVersion('rateLimit.maxRequests', 'tenant')).resolves.toBe(0);
   });
 });

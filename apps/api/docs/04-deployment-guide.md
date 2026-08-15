@@ -165,8 +165,8 @@ STT_PORT=8861
 STT_URL=http://stt-service:8861
 
 # SMR (Summarization)
-SMR_PORT=8862
-SMR_URL=http://smr-service:8862
+TEXT_PORT=8862
+TEXT_URL=http://smr-service:8862
 
 # Guardrail (Safety Engine)
 GUARDRAIL_URL=http://guardrail-service:8863

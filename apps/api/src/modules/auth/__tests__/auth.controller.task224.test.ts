@@ -13,7 +13,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { UnauthorizedException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { AuthController } from '../auth.controller';
 
-const ADMIN_ROLES = ['GLOBAL_ADMIN', 'TENANT_ADMIN', 'admin', 'system-admin'];
+const ADMIN_ROLES = ['SUPER_ADMIN', 'TENANT_ADMIN', 'admin', 'system-admin'];
 
 const createAdminUser = (id = 'admin-001') => ({
   id,
@@ -192,7 +192,7 @@ describe('AuthController — Security Tests', () => {
     it('should include impersonatedBy in the JWT payload', async () => {
       const adminUser = createAdminUser();
       const targetUser = createTargetUser();
-      const adminRole = createRole('GLOBAL_ADMIN');
+      const adminRole = createRole('SUPER_ADMIN');
       const doctorRole = createRole('doctor');
 
       mockClsService = createMockClsService(adminUser);
@@ -279,10 +279,10 @@ describe('AuthController — Security Tests', () => {
       await expect(controller.impersonate({ targetUserId: 'doctor-001' }, createMockRequest())).rejects.toThrow(UnauthorizedException);
     });
 
-    it('should reject GLOBAL_ADMIN impersonating another GLOBAL_ADMIN', async () => {
+    it('should reject SUPER_ADMIN impersonating another SUPER_ADMIN', async () => {
       const adminUser = createAdminUser();
       const targetAdmin = { ...createTargetUser('admin-002'), username: 'other_super_admin' };
-      const superAdminRole = createRole('GLOBAL_ADMIN');
+      const superAdminRole = createRole('SUPER_ADMIN');
 
       mockClsService = createMockClsService(adminUser);
       const users = new Map<string, any>([
@@ -317,10 +317,10 @@ describe('AuthController — Security Tests', () => {
       await expect(controller.impersonate({ targetUserId: 'admin-002' }, createMockRequest())).rejects.toThrow(BadRequestException);
     });
 
-    it('should allow GLOBAL_ADMIN to impersonate TENANT_ADMIN', async () => {
+    it('should allow SUPER_ADMIN to impersonate TENANT_ADMIN', async () => {
       const adminUser = createAdminUser();
       const targetTenantAdmin = { ...createTargetUser('tadmin-001'), username: 'tenant_admin' };
-      const superAdminRole = createRole('GLOBAL_ADMIN');
+      const superAdminRole = createRole('SUPER_ADMIN');
       const tenantAdminRole = createRole('TENANT_ADMIN');
 
       mockClsService = createMockClsService(adminUser);
@@ -398,11 +398,11 @@ describe('AuthController — Security Tests', () => {
       await expect(controller.impersonate({ targetUserId: 'tadmin-002' }, createMockRequest())).rejects.toThrow(BadRequestException);
     });
 
-    it('should reject TENANT_ADMIN impersonating GLOBAL_ADMIN', async () => {
+    it('should reject TENANT_ADMIN impersonating SUPER_ADMIN', async () => {
       const tenantAdmin = { id: 'tadmin-001', username: 'tenant_admin' };
       const superAdmin = { ...createTargetUser('sadmin-001'), username: 'super_admin_target' };
       const tenantAdminRole = createRole('TENANT_ADMIN');
-      const superAdminRole = createRole('GLOBAL_ADMIN');
+      const superAdminRole = createRole('SUPER_ADMIN');
 
       mockClsService = createMockClsService(tenantAdmin);
       const users = new Map<string, any>([
@@ -446,7 +446,7 @@ describe('AuthController — Security Tests', () => {
     it('should use JWT_IMPERSONATION_EXPIRES_IN for impersonation token expiry', async () => {
       const adminUser = createAdminUser();
       const targetUser = createTargetUser();
-      const adminRole = createRole('GLOBAL_ADMIN');
+      const adminRole = createRole('SUPER_ADMIN');
       const doctorRole = createRole('doctor');
 
       mockClsService = createMockClsService(adminUser);
@@ -972,7 +972,7 @@ describe('AuthController — Security Tests', () => {
 
     it('should throw BadRequestException when target user does not exist', async () => {
       const adminUser = createAdminUser();
-      const adminRole = createRole('GLOBAL_ADMIN');
+      const adminRole = createRole('SUPER_ADMIN');
 
       mockClsService = createMockClsService(adminUser);
       mockUserRepository = createMockUserRepository(new Map([[adminUser.id, adminUser]]));

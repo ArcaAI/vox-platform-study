@@ -115,7 +115,7 @@ export class UpdateHarnessPolicyRequest {
   // ── agentic loop knobs ──
   // Every knob is a nullable override: send `null` to clear it back to the
   // harness env/code default; OMIT to leave unchanged; send a value to override.
-  // These keys sit under the `agentic.*` privilege boundary (GLOBAL_ADMIN only)
+  // These keys sit under the `agentic.*` privilege boundary (SUPER_ADMIN only)
   // enforced at the controller/route layer.
 
   @ApiPropertyOptional({ description: 'Optimistic-delivery loop toggle (null = harness env default).', nullable: true })
@@ -155,7 +155,7 @@ export class UpdateHarnessPolicyRequest {
   regenFeedbackEnabled?: boolean | null;
 
   /**
-   * Master gate for the MCP external-tools path. GLOBAL_ADMIN
+   * Master gate for the MCP external-tools path. SUPER_ADMIN
    * only (see `GLOBAL_ADMIN_ONLY_POLICY_KEYS`): a tenant PATCH carrying it is
    * rejected 403. `null ⇒ OFF`; arming it additionally requires the referenced
    * `McpServer.enabled` to be true, so this alone cannot open an egress path.

@@ -14,7 +14,7 @@ import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-libra
 import { toast } from 'sonner';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderWithProviders } from '@/test/render';
-import type { GenerateTextResponse, SmrProvider, StreamingGenerateAck } from '../../api/types';
+import type { GenerateTextResponse, TextProvider, StreamingGenerateAck } from '../../api/types';
 import { PlaygroundLlmScreen } from '../playground-llm-screen';
 
 vi.mock('sonner', () => ({
@@ -64,7 +64,7 @@ class FakeEventSource {
 }
 
 function session(overrides: Partial<{ isElevated: boolean; workingTenantId: string | null; roles: string[] }> = {}) {
-  const { roles = ['GLOBAL_ADMIN'], ...rest } = overrides;
+  const { roles = ['SUPER_ADMIN'], ...rest } = overrides;
   const base = {
     user: { id: 'u-1', username: 'root', email: 'root@hope.local', roles, tenantId: null },
     isElevated: true,
@@ -84,7 +84,7 @@ function session(overrides: Partial<{ isElevated: boolean; workingTenantId: stri
   };
 }
 
-const PROVIDERS: SmrProvider[] = [
+const PROVIDERS: TextProvider[] = [
   {
     name: 'azure-openai',
     models: [
@@ -99,7 +99,7 @@ const PROVIDERS: SmrProvider[] = [
   { name: 'vertex', models: [{ name: 'gemini-3', size: '4b' }], is_available: true },
 ];
 
-const GUARDRAILS: SmrProvider[] = [
+const GUARDRAILS: TextProvider[] = [
   { name: 'guardrail-v2', models: [{ name: 'pii-shield', size: '' }], is_available: true, is_default: true, default_model: 'pii-shield' },
 ];
 
@@ -369,7 +369,7 @@ describe('PlaygroundLlmScreen', () => {
     const calls = stubLlm((call, parsed) => {
       if (parsed.pathname === '/api/hope/text/generate' && call.method === 'POST') {
         return Response.json(
-          { statusCode: 422, message: 'No SMR model is configured for this tenant', error: 'Unprocessable Entity' },
+          { statusCode: 422, message: 'No text-generation model is configured for this tenant', error: 'Unprocessable Entity' },
           { status: 422 },
         );
       }

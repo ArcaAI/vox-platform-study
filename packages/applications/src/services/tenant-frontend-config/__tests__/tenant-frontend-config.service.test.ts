@@ -54,7 +54,7 @@ function asGlobalAdmin() {
   mockClsService.get.mockImplementation((key: string) => {
     switch (key) {
       case 'user':
-        return { id: 'super-1', roles: ['GLOBAL_ADMIN'] };
+        return { id: 'super-1', roles: ['SUPER_ADMIN'] };
       case 'tenantId':
         return null;
       default:

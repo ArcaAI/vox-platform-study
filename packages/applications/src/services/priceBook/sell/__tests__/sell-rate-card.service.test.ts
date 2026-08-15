@@ -25,10 +25,10 @@ import { CreateSellRateRequest, SupersedeSellRateRequest } from '../dto';
  * — absence of the mutation path is part of the contract and is asserted.
  */
 
-const GLOBAL_ADMIN = { id: 'admin-1', roles: ['GLOBAL_ADMIN'] };
+const SUPER_ADMIN = { id: 'admin-1', roles: ['SUPER_ADMIN'] };
 const TENANT_ADMIN = { id: 'user-1', roles: ['TENANT_ADMIN'], tenantId: 'tenant-1' };
 
-function makeService(user: unknown = GLOBAL_ADMIN) {
+function makeService(user: unknown = SUPER_ADMIN) {
   const rows = new Map<string, AiPriceBookEntity>();
   const txMarker = { tx: true };
 
@@ -130,7 +130,7 @@ describe('SellRateCardService.createSellRate', () => {
   // AUTH-NOTE pattern (rule 05): the decorator cannot express "global admins
   // only", so the SERVICE is the real gate — a deliberate 403 privilege
   // boundary, not the 404-over-403 tenancy posture.
-  it('is GLOBAL_ADMIN-only — a tenant admin gets 403', async () => {
+  it('is SUPER_ADMIN-only — a tenant admin gets 403', async () => {
     const { service } = makeService(TENANT_ADMIN);
     await expect(service.createSellRate(baseCreate)).rejects.toThrow(ForbiddenException);
   });
@@ -221,7 +221,7 @@ describe('SellRateCardService.supersedeSellRate', () => {
     await expect(service.supersedeSellRate(costRow.id, supersedeRequest, 1)).rejects.toThrow(/SELL/);
   });
 
-  it('is GLOBAL_ADMIN-only', async () => {
+  it('is SUPER_ADMIN-only', async () => {
     const { service, rows } = makeService(TENANT_ADMIN);
     const oldRow = seedOpenRow(rows);
     await expect(service.supersedeSellRate(oldRow.id, supersedeRequest, 1)).rejects.toThrow(ForbiddenException);

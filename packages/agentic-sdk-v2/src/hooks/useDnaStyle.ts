@@ -101,7 +101,7 @@ export interface UseDnaStyleReturn {
   // ─── Admin cross-user (PHI-gated) reads/generate ─────
   // These hit the `/admin/dna-writing-styles` controller (requires
   // `manage:DnaWritingStyleReport`); the service tenant-scopes the caller and
-  // even GLOBAL_ADMIN cannot cross tenants. Distinct from the self-only
+  // even SUPER_ADMIN cannot cross tenants. Distinct from the self-only
   // `getByDoctor`/`getVersions` above.
   /** Latest DNA report for another in-tenant doctor (admin). */
   adminGetReportForDoctor: (doctorId: string) => Promise<DnaReport>;

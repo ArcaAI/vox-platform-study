@@ -14,7 +14,7 @@ import { HarnessAdminController } from '../harness-admin.controller';
 
 type Ctx = { user?: { roles?: string[] | null; tenantId?: string } | null; tenantId?: string };
 
-const SUPER: Ctx['user'] = { roles: ['GLOBAL_ADMIN'] };
+const SUPER: Ctx['user'] = { roles: ['SUPER_ADMIN'] };
 const TENANT_ADMIN = (tenantId: string): Ctx['user'] => ({ roles: ['TENANT_ADMIN'], tenantId });
 
 function makeController(ctx: Ctx) {
@@ -350,7 +350,7 @@ describe('HarnessAdminController — live sessions (TENANT_ADMIN, tenant-scoped)
   });
 });
 
-describe('HarnessAdminController — live engine kill-switch (GLOBAL_ADMIN / global-scope)', () => {
+describe('HarnessAdminController — live engine kill-switch (SUPER_ADMIN / global-scope)', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('getLiveConfig is forbidden for a tenant admin', async () => {
@@ -373,7 +373,7 @@ describe('HarnessAdminController — live engine kill-switch (GLOBAL_ADMIN / glo
   });
 
   it('updateLiveConfig toggles the kill-switch for a global-admin, carrying the actor + reason', async () => {
-    const { controller, liveDocumentationService } = makeController({ user: { roles: ['GLOBAL_ADMIN'], id: 'admin-7' } as never });
+    const { controller, liveDocumentationService } = makeController({ user: { roles: ['SUPER_ADMIN'], id: 'admin-7' } as never });
     await controller.updateLiveConfig({ enabled: false, reason: 'incident' } as never);
     expect(liveDocumentationService.setEngineEnabled).toHaveBeenCalledWith(false, { userId: 'admin-7', reason: 'incident' });
   });

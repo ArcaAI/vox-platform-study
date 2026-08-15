@@ -50,7 +50,7 @@ import { PromptManagementDtoMapper } from './prompt-management.dto.mapper';
 import { SecretsService } from '../baseServices/_meta/secrets';
 import { IAiTaskDefaultService } from '../ai-task-default/IAiTaskDefaultService';
 import { EffectiveAiTaskDefaultResponse } from '../ai-task-default/dto';
-import { SmrRequestEnrichmentService } from '../smr-request/smr-request-enrichment.service';
+import { SmrRequestEnrichmentService } from '../text-request/text-request-enrichment.service';
 import { IDepartmentService } from '../department/IDepartmentService';
 import { IEntitlementsService } from '../entitlements/IEntitlementsService';
 // The doctor self-service "set my preferred template"
@@ -85,11 +85,11 @@ const FULL_SCORE_WORD_COUNT = 50;
 // run uses. Resolved DIRECTLY through `IAiTaskDefaultService` (tenant row →
 // SYSTEM row); there is no `smr.finalize` fallback any more — that hop was
 // harness coupling and is what made every test run on the platform's LM Studio.
-const SMR_TEST_TASK_KEY = 'smr.test';
+const TEXT_TEST_TASK_KEY = 'smr.test';
 
 // SMR's terminal success state (`TaskStatus.COMPLETED` in
-// `apps/smr/src/smr/models/task.py`).
-const SMR_TASK_COMPLETED = 'completed';
+// `apps/text/src/text/models/task.py`).
+const TEXT_TASK_COMPLETED = 'completed';
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -212,7 +212,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
     @Optional() @Inject(SmrRequestEnrichmentService) private readonly smrRequestEnrichment?: SmrRequestEnrichmentService,
   ) {
     super(eventEmitter, clsService, ResourceType.PromptTemplate);
-    this.smrServiceUrl = this.configService?.get<string>('SMR_URL') ?? 'http://localhost:8862';
+    this.smrServiceUrl = this.configService?.get<string>('TEXT_URL') ?? 'http://localhost:8862';
   }
 
   /**
@@ -474,7 +474,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
    *
    * Authorization is split by ownership (OD-3):
    * - **SYSTEM/library** template (tenantId = SYSTEM) — the shared library is
-   *   globally visible, so approval is a GLOBAL_ADMIN-only PRIVILEGE (403, not
+   *   globally visible, so approval is a SUPER_ADMIN-only PRIVILEGE (403, not
    *   404: existence is not hidden for the shared library).
    * - **Tenant-owned** template (tenantId ≠ SYSTEM) — a caller holding
    *   `manage:PromptTemplate` for that tenant (or a global admin) may approve.
@@ -1207,17 +1207,17 @@ export class PromptManagementService extends BaseService implements IPromptManag
     }
 
     if (!this.aiTaskDefaultService) {
-      throw new BadRequestException(`No model is configured for the '${SMR_TEST_TASK_KEY}' AI task and the task-default resolver is not wired.`);
+      throw new BadRequestException(`No model is configured for the '${TEXT_TEST_TASK_KEY}' AI task and the task-default resolver is not wired.`);
     }
 
     let effective: EffectiveAiTaskDefaultResponse;
     try {
-      effective = await this.aiTaskDefaultService.getEffective(SMR_TEST_TASK_KEY, this.tenantId);
+      effective = await this.aiTaskDefaultService.getEffective(TEXT_TEST_TASK_KEY, this.tenantId);
     } catch (error) {
       // An ERROR is not a MISS. Surface it: silently falling through would
       // reintroduce exactly the "silently ran on the platform model" defect.
       this.logger.warn({
-        message: `Failed to resolve the '${SMR_TEST_TASK_KEY}' AI task default for a prompt-template test run`,
+        message: `Failed to resolve the '${TEXT_TEST_TASK_KEY}' AI task default for a prompt-template test run`,
         tenantId: this.tenantId,
         error: error instanceof Error ? error.message : String(error),
       });
@@ -1227,7 +1227,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
     const model = effective.model;
     if (!model?.provider || !model.sourceUri) {
       throw new BadRequestException(
-        `No model is configured for the '${SMR_TEST_TASK_KEY}' AI task. Configure it under AI task defaults before running a prompt test.`,
+        `No model is configured for the '${TEXT_TEST_TASK_KEY}' AI task. Configure it under AI task defaults before running a prompt test.`,
       );
     }
 
@@ -1350,14 +1350,14 @@ export class PromptManagementService extends BaseService implements IPromptManag
     }
 
     const state = data.status ?? 'unknown';
-    if (state !== SMR_TASK_COMPLETED) {
+    if (state !== TEXT_TASK_COMPLETED) {
       throw new BadRequestException(`Generation task ${taskId} is not complete (state: ${state}). Wait for the stream to finish before finalizing.`);
     }
     return data.content ?? '';
   }
 
   private async smrHeaders(): Promise<Record<string, string>> {
-    const token = (await this.secretsService?.getSecretOptional('SMR_SERVICE_TOKEN')) ?? '';
+    const token = (await this.secretsService?.getSecretOptional('TEXT_SERVICE_TOKEN')) ?? '';
     const headers: Record<string, string> = { 'Content-Type': 'application/json', 'X-Service-Token': token };
     const tenantId = this.tenantId;
     if (tenantId) headers['X-Tenant-Id'] = tenantId;
@@ -1435,7 +1435,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
 
   /**
    * OD-3 approval gate. SYSTEM/library templates (tenantId = SYSTEM) are
-   * globally visible and stay GLOBAL_ADMIN-only (privilege → 403, existence not
+   * globally visible and stay SUPER_ADMIN-only (privilege → 403, existence not
    * hidden). Tenant-owned templates hide cross-tenant existence (404) and then
    * require `manage:PromptTemplate` for that tenant (or a global admin).
    */

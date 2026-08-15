@@ -14,7 +14,7 @@ import { useQuery } from '@tanstack/react-query';
 import { getJson } from '@/shared/api';
 import type { Paginated } from '@/shared/api';
 
-/** Platform-wide rows (e.g. GLOBAL_ADMIN role assignments) use the SYSTEM tenant. */
+/** Platform-wide rows (e.g. SUPER_ADMIN role assignments) use the SYSTEM tenant. */
 export const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
 
 const CATALOG_STALE_MS = 5 * 60 * 1000;
@@ -53,7 +53,7 @@ export interface CatalogOption {
 
 /**
  * GET text/providers row (SMR provider catalog, matrix row 38). Wire shape
- * mirrors `apps/smr/src/smr/models/provider.py::ProviderInfo` verbatim
+ * mirrors `apps/text/src/text/models/provider.py::ProviderInfo` verbatim
  * (snake_case) — the playground feature (`playground-llm/api/types.ts`) owns
  * its own copy for that surface; this one exists so the agents feature's Test
  * Bench (rule 13: features never import each other) can reuse the same

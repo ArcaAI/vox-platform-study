@@ -17,7 +17,7 @@ import type {
  * `getInvoice` captures the row ETag for the finalize/void OCC path. Finalize
  * and void send If-Match (`etag`) AND the derived `expectedVersion` in the body
  * — the house pattern (missing → 428, drift → 412). All routes are
- * GLOBAL_ADMIN-only, enforced server-side.
+ * SUPER_ADMIN-only, enforced server-side.
  */
 const INVOICES = 'admin/billing/invoices';
 const RATE_CARD = 'admin/billing/rate-card';

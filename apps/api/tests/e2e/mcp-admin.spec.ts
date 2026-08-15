@@ -6,13 +6,13 @@
  * `resolveScopedTenantIdOptional`).
  *
  * Locked contracts:
- *  1. Registry CRUD (GLOBAL_ADMIN) — POST creates a dormant SYSTEM registry row
+ *  1. Registry CRUD (SUPER_ADMIN) — POST creates a dormant SYSTEM registry row
  *     (`enabled: false`), GET/LIST read it back (`{ items, total }` envelope),
  *     PATCH mutates under OCC, DELETE soft-deletes under OCC.
  *  2. SECURITY — no response ever echoes secret material: `authRef` is a Vault
  *     PATH ONLY, and the projection carries no `secret`/`token`/`password`/
  *     `credential`/`apiKey` value key.
- *  3. GLOBAL_ADMIN-only writes — a tenant admin CREATE/PATCH/DELETE → 403 (the
+ *  3. SUPER_ADMIN-only writes — a tenant admin CREATE/PATCH/DELETE → 403 (the
  *     service privilege wall, NOT the 404-over-403 tenancy posture; a valid
  *     `If-Match` is supplied on PATCH/DELETE so the 403 is the privilege verdict
  *     and not the 428 header gate).
@@ -74,7 +74,7 @@ function assertNoSecretMaterial(server: Record<string, unknown>, expectedAuthRef
   }
 }
 
-test.describe('MCP registry admin (CRUD + secret hygiene + GLOBAL_ADMIN + OCC)', () => {
+test.describe('MCP registry admin (CRUD + secret hygiene + SUPER_ADMIN + OCC)', () => {
   let globalAdminToken: string;
   let tenantAdminToken: string;
 
@@ -91,7 +91,7 @@ test.describe('MCP registry admin (CRUD + secret hygiene + GLOBAL_ADMIN + OCC)',
     expect(ta, `tenant_admin login (${DEFAULT_TENANT_KEY}) failed`).toBeTruthy();
     tenantAdminToken = ta!.token;
 
-    // GLOBAL_ADMIN registers a dormant SYSTEM registry row (default tenant = SYSTEM).
+    // SUPER_ADMIN registers a dormant SYSTEM registry row (default tenant = SYSTEM).
     const create = await request.post(BASE, {
       headers: bearer(globalAdminToken),
       data: {
@@ -171,7 +171,7 @@ test.describe('MCP registry admin (CRUD + secret hygiene + GLOBAL_ADMIN + OCC)',
     assertNoSecretMaterial(after, AUTH_REF);
   });
 
-  test('GLOBAL_ADMIN-only: a tenant admin cannot CREATE → 403', async ({ request }) => {
+  test('SUPER_ADMIN-only: a tenant admin cannot CREATE → 403', async ({ request }) => {
     const resp = await request.post(BASE, {
       headers: bearer(tenantAdminToken),
       data: { name: `ta-mcp-${unique}`, baseUrl: 'https://x.internal/mcp' },
@@ -179,7 +179,7 @@ test.describe('MCP registry admin (CRUD + secret hygiene + GLOBAL_ADMIN + OCC)',
     expect(resp.status()).toBe(403);
   });
 
-  test('GLOBAL_ADMIN-only: a tenant admin cannot PATCH → 403 (privilege wall, not the 428 gate)', async ({ request }) => {
+  test('SUPER_ADMIN-only: a tenant admin cannot PATCH → 403 (privilege wall, not the 428 gate)', async ({ request }) => {
     const resp = await request.patch(`${BASE}/${serverId}`, {
       // Valid If-Match so the 403 is the privilege verdict, not the 428 header gate.
       headers: { ...bearer(tenantAdminToken), 'If-Match': '"1"' },
@@ -188,7 +188,7 @@ test.describe('MCP registry admin (CRUD + secret hygiene + GLOBAL_ADMIN + OCC)',
     expect(resp.status()).toBe(403);
   });
 
-  test('GLOBAL_ADMIN-only: a tenant admin cannot DELETE → 403', async ({ request }) => {
+  test('SUPER_ADMIN-only: a tenant admin cannot DELETE → 403', async ({ request }) => {
     const resp = await request.delete(`${BASE}/${serverId}`, {
       headers: { ...bearer(tenantAdminToken), 'If-Match': '"1"' },
     });

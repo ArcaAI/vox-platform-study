@@ -101,7 +101,7 @@ export interface SettingDescriptor {
   maxScope: SettingScope;
   /** CASL subject that gates who may edit it (e.g. `PipelinePolicy`, `TenantTtsConfig`). */
   editableBy: string;
-  /** GLOBAL_ADMIN-only surface (SYSTEM defaults, plan matrix, platform kill-switches). */
+  /** SUPER_ADMIN-only surface (SYSTEM defaults, plan matrix, platform kill-switches). */
   globalOnly?: boolean;
   /** Server-side taxonomy bucket (replaces the client-side keyword heuristic). */
   category: string;

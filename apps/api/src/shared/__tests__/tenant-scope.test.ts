@@ -8,7 +8,7 @@ import { assertTenantInScope, resolveScopedTenantId, resolveScopedTenantIdOption
 // query tenant (or the working tenant elevated into CLS); a tenant-bound caller
 // is pinned to its own tenant and a foreign query is rejected.
 
-const GLOBAL = { roles: ['GLOBAL_ADMIN'] as string[], tenantId: '' };
+const GLOBAL = { roles: ['SUPER_ADMIN'] as string[], tenantId: '' };
 const TENANT_A = { roles: ['TENANT_ADMIN'] as string[], tenantId: 'tenant-a' };
 
 describe('resolveScopedTenantId', () => {

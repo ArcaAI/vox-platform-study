@@ -1,7 +1,7 @@
 // Entitlements descriptors.
 //
 // The global kill-switch (data class 4) and the plan feature flags (data class 5)
-// — both GLOBAL_ADMIN-only. Keys mirror the entitlements constants:
+// — both SUPER_ADMIN-only. Keys mirror the entitlements constants:
 //   - `entitlements.enabled` (GlobalSetting under the reserved entitlements tenant)
 //   - `feature*` bundle columns on PlanEntitlement / TenantEntitlement.
 

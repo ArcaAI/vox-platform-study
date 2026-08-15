@@ -104,7 +104,7 @@ describe('parseApiEnv — typed values', () => {
   });
 
   it('rejects a malformed URL var', () => {
-    expect(() => parseApiEnv({ ...MINIMAL, SMR_URL: 'localhost:8862' })).toThrowError(/SMR_URL/);
+    expect(() => parseApiEnv({ ...MINIMAL, TEXT_URL: 'localhost:8862' })).toThrowError(/TEXT_URL/);
   });
 });
 

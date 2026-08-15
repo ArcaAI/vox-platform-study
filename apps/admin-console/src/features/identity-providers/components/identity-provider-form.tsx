@@ -17,14 +17,14 @@ import type { OidcProviderConfig, TenantIdpConfig } from '../api/types';
 import { TestConnectionSection } from './test-connection-section';
 
 /**
- * F-036: `federated-auth.service.ts` hard-blocks `GLOBAL_ADMIN` at JIT
- * provisioning (`role.name === 'GLOBAL_ADMIN'` -> 403) and `SERVICE_ACCOUNT`
+ * F-036: `federated-auth.service.ts` hard-blocks `SUPER_ADMIN` at JIT
+ * provisioning (`role.name === 'SUPER_ADMIN'` -> 403) and `SERVICE_ACCOUNT`
  * users can never sign in interactively — offering either as a default role
  * lets a config save cleanly and fail every subsequent IdP login instead.
  * Keep the backend as the enforcement point; this only removes dead/unsafe
  * choices from the picker.
  */
-const DEFAULT_ROLE_EXCLUDED_NAMES = new Set(['GLOBAL_ADMIN', 'SERVICE_ACCOUNT']);
+const DEFAULT_ROLE_EXCLUDED_NAMES = new Set(['SUPER_ADMIN', 'SERVICE_ACCOUNT']);
 
 function RequiredMark() {
   return (
@@ -117,7 +117,7 @@ function GroupRoleMappingEditor({ value, onChange }: { value: Record<string, str
     <div className="flex flex-col gap-2">
       <Label>Group &rarr; role mapping</Label>
       <p className="text-muted-foreground text-xs">
-        IdP group claim value &rarr; HOPE <span className="font-mono">Role.externalName</span>. GLOBAL_ADMIN can never be assigned this way.
+        IdP group claim value &rarr; HOPE <span className="font-mono">Role.externalName</span>. SUPER_ADMIN can never be assigned this way.
       </p>
       {rows.length === 0 ? <p className="text-muted-foreground text-xs">No mappings — every JIT user gets the default role above.</p> : null}
       {rows.map(([group, role], index) => (

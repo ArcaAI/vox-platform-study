@@ -11,12 +11,12 @@ import { TaskDefaultCard } from './task-default-card';
 
 /**
  * AI task defaults (platform) (/ai-task-defaults, tier
- * 10-19, GLOBAL_ADMIN only). Edits the SYSTEM-tenant platform-default rows for
+ * 10-19, SUPER_ADMIN only). Edits the SYSTEM-tenant platform-default rows for
  * ALL THREE task keys by pinning `?tenantId=` to the SYSTEM tenant.
  *
  * EVERY task key edited here is global-admin-only on write — the service guards
  * all four prefixes (`guardrail.` / `smr.` / `nlp.` / `harness.`, see
- * `GLOBAL_ADMIN_ONLY_TASK_PREFIXES` in
+ * `SUPER_ADMIN_ONLY_TASK_PREFIXES` in
  * `packages/applications/src/services/ai-task-default/constants.ts`) and the
  * gateway 403s a tenant admin's write to any of them (owner governance
  * directive 2026-07-17). Tenants only CONSUME the platform default.

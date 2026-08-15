@@ -234,9 +234,9 @@ describe('AiInferenceController — NER usage-ledger emission', () => {
     expect(input.common.doctorId).toBe('doctor-9');
   });
 
-  it('omits doctorId when the CLS user has no clinician role (e.g. a GLOBAL_ADMIN using the playground)', async () => {
+  it('omits doctorId when the CLS user has no clinician role (e.g. a SUPER_ADMIN using the playground)', async () => {
     const usageLedgerService = { recordUsage: vi.fn().mockResolvedValue({ outboxIds: ['o-1'], events: 2 }) };
-    const cls = clsFor({ id: 'admin-1', roles: ['GLOBAL_ADMIN'] });
+    const cls = clsFor({ id: 'admin-1', roles: ['SUPER_ADMIN'] });
     const { controller, client } = makeController(aiTaskDefaults(), undefined, undefined, cls, usageLedgerService);
     client.classifyTokens.mockResolvedValue({ entities: [] });
 

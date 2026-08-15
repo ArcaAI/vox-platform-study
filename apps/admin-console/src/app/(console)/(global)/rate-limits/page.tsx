@@ -5,7 +5,7 @@ export const metadata: Metadata = {
   title: 'Rate Limits',
 };
 
-/** Frame 16 — Rate Limits (tier 10-19, GLOBAL_ADMIN only). */
+/** Frame 16 — Rate Limits (tier 10-19, SUPER_ADMIN only). */
 export default function RateLimitsPage() {
   return <RateLimitsScreen />;
 }

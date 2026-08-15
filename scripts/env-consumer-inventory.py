@@ -19,8 +19,8 @@ How the keys are derived
 ------------------------
 Python services: by ASKING pydantic, not by parsing source. The settings classes
 combine `env_prefix`, `env_prefix_target="all"` and `AliasChoices`, so the env
-var a field reads is not textually present in the file — `SMR_GATEWAY_URL` comes
-from a field named `gateway_url` with alias `GATEWAY_URL` under prefix `SMR_`.
+var a field reads is not textually present in the file — `TEXT_GATEWAY_URL` comes
+from a field named `gateway_url` with alias `GATEWAY_URL` under prefix `TEXT_`.
 `EnvSettingsSource._extract_field_info` returns exactly what pydantic will look
 up, including nested settings models.
 

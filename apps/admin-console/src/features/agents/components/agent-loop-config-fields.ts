@@ -76,7 +76,7 @@ export const AGENT_ROLE_OPTIONS: { value: DepartmentAgentRole; label: string }[]
  * `TENANT_TIER_HARNESS_OVERRIDE_KEYS` grants a tenant admin on an agent's
  * `harnessOverrides` (`packages/applications/src/services/departmentAgent/
  * constants.ts`), and the SAME keys are tenant-writable on the `HarnessPolicy`
- * resource itself — they are NOT in `GLOBAL_ADMIN_ONLY_POLICY_KEYS`. An
+ * resource itself — they are NOT in `SUPER_ADMIN_ONLY_POLICY_KEYS`. An
  * earlier revision of this tab rendered them disabled for a non-elevated
  * caller on the `TENANT_LOCKED_POLICY_KEYS` precedent, which locks a
  * DIFFERENT key set; that was a console guarantee the server never enforced.

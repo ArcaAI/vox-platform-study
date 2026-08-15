@@ -4,7 +4,7 @@ import type { EffectiveSettingsService } from '@arcaai/applications';
 import { SettingsCatalogController } from '../settings-catalog.controller';
 
 // The catalog serves registry metadata, RBAC-filtered:
-// tenant admins never see GLOBAL_ADMIN-only entries; nothing leaks a value.
+// tenant admins never see SUPER_ADMIN-only entries; nothing leaks a value.
 
 function controllerFor(user: unknown, effective: Partial<EffectiveSettingsService> = {}, clsTenantId?: string): SettingsCatalogController {
   const cls = {
@@ -14,8 +14,8 @@ function controllerFor(user: unknown, effective: Partial<EffectiveSettingsServic
 }
 
 describe('SettingsCatalogController.getCatalog', () => {
-  it('a global-admin sees GLOBAL_ADMIN-only entries (the entitlements kill-switch)', () => {
-    const res = controllerFor({ roles: ['GLOBAL_ADMIN'] }).getCatalog();
+  it('a global-admin sees SUPER_ADMIN-only entries (the entitlements kill-switch)', () => {
+    const res = controllerFor({ roles: ['SUPER_ADMIN'] }).getCatalog();
     expect(res.items.some((i) => i.key === 'entitlements.enabled')).toBe(true);
     expect(res.items.some((i) => i.key === 'pipeline.autoSummaryEnabled')).toBe(true);
   });
@@ -29,13 +29,13 @@ describe('SettingsCatalogController.getCatalog', () => {
   });
 
   it('categories are distinct and sorted', () => {
-    const res = controllerFor({ roles: ['GLOBAL_ADMIN'] }).getCatalog();
+    const res = controllerFor({ roles: ['SUPER_ADMIN'] }).getCatalog();
     expect(res.categories).toEqual([...new Set(res.categories)].sort());
     expect(res.categories.length).toBeGreaterThan(0);
   });
 
   it('returns metadata only — never a value field', () => {
-    const res = controllerFor({ roles: ['GLOBAL_ADMIN'] }).getCatalog();
+    const res = controllerFor({ roles: ['SUPER_ADMIN'] }).getCatalog();
     for (const item of res.items) {
       expect('value' in item).toBe(false);
       expect(item.key).toBeTruthy();
@@ -46,14 +46,14 @@ describe('SettingsCatalogController.getCatalog', () => {
 
 describe('SettingsCatalogController.getEffective', () => {
   it('requires the `key` query param', async () => {
-    const controller = controllerFor({ roles: ['GLOBAL_ADMIN'] });
+    const controller = controllerFor({ roles: ['SUPER_ADMIN'] });
     await expect(controller.getEffective('' as unknown as string)).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it('resolves the scoped tenant and delegates to EffectiveSettingsService', async () => {
     const resolveEffective = vi.fn(async () => ({ key: 'pipeline.harnessEnabled', tier: 'db-config', value: true, sourceScope: 'department' }));
     // global-admin passes ?tenantId= explicitly
-    const controller = controllerFor({ roles: ['GLOBAL_ADMIN'] }, { resolveEffective });
+    const controller = controllerFor({ roles: ['SUPER_ADMIN'] }, { resolveEffective });
     const res = await controller.getEffective('pipeline.harnessEnabled', 'tnt-9', 'dep-1');
 
     expect(res).toEqual({ key: 'pipeline.harnessEnabled', tier: 'db-config', value: true, sourceScope: 'department' });

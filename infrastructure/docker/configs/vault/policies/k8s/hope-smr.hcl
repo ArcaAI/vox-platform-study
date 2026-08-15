@@ -10,11 +10,11 @@
 # toEnvVarName(); adding one here without a descriptor means
 # scripts/vault-seed-secrets.sh will never write it.
 
-path "secret/data/hope/SMR_SERVICE_TOKEN" {
+path "secret/data/hope/TEXT_SERVICE_TOKEN" {
   capabilities = ["read"]
 }
 
-# SMR_AZURE_API_KEY removed — SMR's Azure OpenAI credential is now
+# TEXT_AZURE_API_KEY removed — SMR's Azure OpenAI credential is now
 # BYOK-only (db-secret / AiProviderConnection), never a Vault-kv platform secret.
 # (OpenAI/Anthropic platform keys were likewise removed from the registry.)
 

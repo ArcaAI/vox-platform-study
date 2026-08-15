@@ -7,7 +7,7 @@ import { CoreDatabaseModule } from '@arcaai/domains';
 import { CommonServiceModule } from '../baseServices';
 import { DepartmentServiceModule } from '../department/department.service.module';
 import { AiTaskDefaultServiceModule } from '../ai-task-default/ai-task-default.service.module';
-import { SmrRequestServiceModule } from '../smr-request/smr-request.service.module';
+import { SmrRequestServiceModule } from '../text-request/text-request.service.module';
 import { UserProfileServiceModule } from '../user/userProfile/userProfile.service.module';
 import { EntitlementsServiceModule } from '../entitlements/entitlements.service.module';
 import { EvalServiceModule } from '../eval/eval.service.module';

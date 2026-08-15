@@ -1,7 +1,7 @@
 /**
  * Tools & MCP client. All paths are
  * gateway-relative; the shared core prepends the `/api/hope` BFF proxy mount.
- * GLOBAL_ADMIN writes target the SYSTEM registry by default (omit ?tenantId=).
+ * SUPER_ADMIN writes target the SYSTEM registry by default (omit ?tenantId=).
  * PATCH/DELETE require If-Match OCC.
  */
 

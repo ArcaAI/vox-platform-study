@@ -136,7 +136,7 @@ export class GlobalSettingController {
     example: '"7"',
   })
   @ApiParam({ name: 'id', description: 'Global setting ID', type: String })
-  @ApiResponse({ status: 403, description: 'Forbidden - locked setting requires GLOBAL_ADMIN' })
+  @ApiResponse({ status: 403, description: 'Forbidden - locked setting requires SUPER_ADMIN' })
   @ApiResponse({ status: 404, description: 'Global setting not found' })
   @ApiResponse({ status: 412, description: 'Optimistic concurrency conflict — re-fetch and try again with the new version.' })
   @ApiResponse({ status: 428, description: 'If-Match header is required for this operation.' })
@@ -192,7 +192,7 @@ export class GlobalSettingController {
   @ApiOperation({
     summary: 'Reveal a secret setting (global-admin, step-up re-auth, audited)',
     description:
-      'Returns the decrypted plaintext of ONE global setting. GLOBAL_ADMIN only ' +
+      'Returns the decrypted plaintext of ONE global setting. SUPER_ADMIN only ' +
       '(CASL `manage:all`). Requires step-up re-authentication: the request body ' +
       "must carry the caller's current account password, verified server-side " +
       'against the stored hash. Every reveal is audit-logged; the plaintext is ' +
@@ -201,7 +201,7 @@ export class GlobalSettingController {
   @ApiParam({ name: 'id', description: 'Global setting ID', type: String })
   @ApiResponse({ status: 200, description: 'Decrypted secret (transient)', type: RevealGlobalSettingResponse })
   @ApiResponse({ status: 401, description: 'Step-up re-authentication required or password incorrect' })
-  @ApiResponse({ status: 403, description: 'Forbidden — reveal is GLOBAL_ADMIN only' })
+  @ApiResponse({ status: 403, description: 'Forbidden — reveal is SUPER_ADMIN only' })
   @ApiResponse({ status: 404, description: 'Global setting not found' })
   async reveal(@Param('id') id: string, @Body() request: RevealGlobalSettingRequest): Promise<RevealGlobalSettingResponse> {
     const { entity, plaintext } = await this.globalSettingService.revealSecret(id, request.password);
@@ -217,7 +217,7 @@ export class GlobalSettingController {
    * Rotate ONE secret setting (atomic replace-with-new-value).
    *
    * Gating mirrors `reveal`: method-level `@Authorize(['manage','all'])`
-   * OVERRIDES the class `@CanManage('GlobalSetting')` so only GLOBAL_ADMIN
+   * OVERRIDES the class `@CanManage('GlobalSetting')` so only SUPER_ADMIN
    * passes (tenant admins 403), plus step-up re-auth (current password in the
    * body, bcrypt-verified in the service — never logged, never persisted).
    *
@@ -239,7 +239,7 @@ export class GlobalSettingController {
     summary: 'Rotate a secret setting (global-admin, step-up re-auth, OCC, audited)',
     description:
       'Atomically replaces the stored secret value of ONE global setting under ' +
-      'optimistic concurrency. GLOBAL_ADMIN only (CASL `manage:all`). Requires ' +
+      'optimistic concurrency. SUPER_ADMIN only (CASL `manage:all`). Requires ' +
       "step-up re-authentication (the caller's current password in the body) AND " +
       'the RFC 7232 `If-Match` header carrying the row version (missing → 428, ' +
       'drift → 412). The old value is invalidated by the same versioned write. ' +
@@ -256,7 +256,7 @@ export class GlobalSettingController {
   @ApiResponse({ status: 200, description: 'Secret rotated — masked setting with the new version', type: GlobalSettingResponse })
   @ApiResponse({ status: 400, description: 'Not a secret setting, or empty replacement value' })
   @ApiResponse({ status: 401, description: 'Step-up re-authentication required or password incorrect' })
-  @ApiResponse({ status: 403, description: 'Forbidden — rotation is GLOBAL_ADMIN only' })
+  @ApiResponse({ status: 403, description: 'Forbidden — rotation is SUPER_ADMIN only' })
   @ApiResponse({ status: 404, description: 'Global setting not found' })
   @ApiResponse({ status: 412, description: 'Optimistic concurrency conflict — re-fetch and try again with the new version.' })
   @ApiResponse({ status: 428, description: 'If-Match header is required for this operation.' })

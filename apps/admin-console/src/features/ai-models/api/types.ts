@@ -99,7 +99,7 @@ export type DiscoveryLoadState = 'loaded' | 'not-loaded' | 'unknown';
 export type DiscoveryProbeStatus = 'ok' | 'timeout' | 'error' | 'skipped';
 
 export interface DiscoveryEntry {
-  /** SMR provider registry key, rendered verbatim (`lm-studio`, not `lmstudio`). */
+  /** Provider registry key, rendered verbatim (`lm-studio`, not `lmstudio`). */
   provider: string;
   modelName: string;
   status: DiscoveryEntryStatus;

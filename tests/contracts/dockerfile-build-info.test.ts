@@ -50,7 +50,7 @@ const RUNNABLE_DOCKERFILES: DockerfileCase[] = [
   { path: 'apps/api/Dockerfile', label: 'api' },
   { path: 'apps/admin-console/Dockerfile', label: 'admin-console' },
   { path: 'apps/compat-playground/Dockerfile', label: 'compat-playground' },
-  { path: 'apps/smr/Dockerfile', label: 'smr' },
+  { path: 'apps/text/Dockerfile', label: 'text' },
   { path: 'apps/nlp/Dockerfile', label: 'nlp' },
   { path: 'apps/guardrail/Dockerfile', label: 'guardrail' },
   { path: 'apps/tts/Dockerfile', label: 'tts' },

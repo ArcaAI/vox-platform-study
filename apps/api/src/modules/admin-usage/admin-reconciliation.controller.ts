@@ -14,7 +14,7 @@ import { ReconciliationRunsQuery } from './dto';
  * rewritten after the fact answers nothing. Runs are produced by the sweep, not
  * by an operator.
  *
- * PLATFORM-WIDE and therefore GLOBAL_ADMIN-only via `@CanManage('UsageAnalytics')`
+ * PLATFORM-WIDE and therefore SUPER_ADMIN-only via `@CanManage('UsageAnalytics')`
  * — the same gate as the rest of this module. These rows are aggregate VENDOR
  * totals for the whole platform; unlike the usage endpoints next door there is
  * no `?tenantId=` scoping, because no vendor exposes per-tenant cost and a

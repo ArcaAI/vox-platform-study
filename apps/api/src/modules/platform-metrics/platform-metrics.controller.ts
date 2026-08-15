@@ -6,7 +6,7 @@ import { CanManage } from '../../decorators';
 /**
  * Platform runtime metrics surface.
  *
- * Platform-wide ops data, so the whole controller is gated to GLOBAL_ADMIN via
+ * Platform-wide ops data, so the whole controller is gated to SUPER_ADMIN via
  * `@CanManage('PlatformMetrics')` (satisfied by the GLOBAL `manage:all` grant;
  * no tenant-scoped rule is seeded for this subject). A tenant-admin / doctor
  * holds neither `manage:PlatformMetrics` nor `manage:all`, so the global

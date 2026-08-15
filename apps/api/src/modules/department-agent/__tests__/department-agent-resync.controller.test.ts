@@ -1,7 +1,7 @@
 /**
  * DepartmentAgentResyncController unit tests.
  *
- * Verifies the GLOBAL_ADMIN gate (`@CanManage('Tenant')` — the same privilege
+ * Verifies the SUPER_ADMIN gate (`@CanManage('Tenant')` — the same privilege
  * posture as tenant provisioning, NOT the tenant-admin `manage:DepartmentAgent`
  * of the main controller) and that the route delegates to the right service:
  * a `tenantId` reconciles one tenant, no body sweeps every tenant.
@@ -11,7 +11,7 @@ import { REQUIRED_PERMISSIONS_KEY } from '@arcaai/applications';
 import { DepartmentAgentResyncController } from '../department-agent-resync.controller';
 
 describe('DepartmentAgentResyncController — authorization metadata', () => {
-  it('gates resync on manage:Tenant (GLOBAL_ADMIN — writes into arbitrary tenants)', () => {
+  it('gates resync on manage:Tenant (SUPER_ADMIN — writes into arbitrary tenants)', () => {
     const meta = Reflect.getMetadata(
       REQUIRED_PERMISSIONS_KEY,
       (DepartmentAgentResyncController.prototype as never as Record<string, unknown>).resync as object,

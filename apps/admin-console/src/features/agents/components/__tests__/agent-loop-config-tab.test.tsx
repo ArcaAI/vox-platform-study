@@ -49,7 +49,7 @@ const SESSION = {
   effectiveTenantId: 'tnt-1',
 };
 
-const GLOBAL_ADMIN_SESSION = { ...SESSION, isElevated: true, effectiveIsElevated: true };
+const SUPER_ADMIN_SESSION = { ...SESSION, isElevated: true, effectiveIsElevated: true };
 
 const RESOLVED_SCHEMA = {
   schemaId: 'ccs-1',
@@ -247,7 +247,7 @@ describe('LoopConfigTab', () => {
       if (call.method === 'PATCH' && pathnameOf(call) === '/api/hope/admin/department-agents/da-1') {
         return Response.json(agent({ version: 3 }), { headers: { etag: '"3"' } });
       }
-      return baseHandler(agent({ harnessOverrides: { toolAllowlist: ['ner'] } }), call, { session: GLOBAL_ADMIN_SESSION });
+      return baseHandler(agent({ harnessOverrides: { toolAllowlist: ['ner'] } }), call, { session: SUPER_ADMIN_SESSION });
     });
     renderWithProviders(
       <DepartmentAgentDetailDrawer

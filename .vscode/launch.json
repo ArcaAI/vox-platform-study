@@ -7,10 +7,10 @@
         {
             "name": "SMR v2",
             "type": "debugpy",
-            "cwd": "${workspaceFolder}/apps/smr/src",
+            "cwd": "${workspaceFolder}/apps/text/src",
             "request": "launch",
             "module": "uvicorn",
-            "args": ["smr.main:app", "--host", "0.0.0.0", "--port", "8862", "--reload"],
+            "args": ["text.main:app", "--host", "0.0.0.0", "--port", "8862", "--reload"],
             "jinja": true
         }
     ]

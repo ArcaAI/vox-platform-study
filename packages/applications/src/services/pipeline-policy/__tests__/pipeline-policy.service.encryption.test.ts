@@ -39,14 +39,14 @@ const databaseService = {
   baseClient: { $transaction: vi.fn(async (cb: (tx: unknown) => unknown) => cb({})) },
 };
 
-// GLOBAL_ADMIN caller: these specs exercise WORM change-row ENCRYPTION, and
+// SUPER_ADMIN caller: these specs exercise WORM change-row ENCRYPTION, and
 // several drive it through `harnessEnabled` — which is locked to global
 // admins. The elevated role keeps the privilege boundary out of the way so each
 // spec still fails only for encryption reasons.
 const cls = {
   get: vi.fn((key: string) => {
     if (key === 'tenantId') return TENANT;
-    if (key === 'user') return { id: USER, roles: ['GLOBAL_ADMIN'] };
+    if (key === 'user') return { id: USER, roles: ['SUPER_ADMIN'] };
     return undefined;
   }),
 };

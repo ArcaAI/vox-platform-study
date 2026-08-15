@@ -23,7 +23,7 @@ export const AI_TASK_KEYS = [
   'smr.live',
   'smr.finalize',
   'harness.judge',
-  // the SMR fallback selections are their own tenant-editable keys
+  // the text-generation fallback selections are their own tenant-editable keys
   // (opt-in; an unset key means no fallback runs).
   'smr.live.fallback',
   'smr.finalize.fallback',
@@ -31,21 +31,21 @@ export const AI_TASK_KEYS = [
 export type AiTaskKey = (typeof AI_TASK_KEYS)[number];
 
 /**
- * SMR primary selection keys — tenant-editable. The provider/model
+ * Text-generation primary selection keys — tenant-editable. The provider/model
  * this tenant uses for the streaming (live) and finalized summaries.
  */
-export const SMR_PRIMARY_TASK_KEYS = ['smr.live', 'smr.finalize'] as const;
+export const TEXT_PRIMARY_TASK_KEYS = ['smr.live', 'smr.finalize'] as const;
 
 /**
- * SMR fallback selection keys — tenant-editable, OPTIONAL. Used only
+ * Text-generation fallback selection keys — tenant-editable, OPTIONAL. Used only
  * when the primary provider fails; an unset key means no fallback runs.
  */
-export const SMR_FALLBACK_TASK_KEYS = ['smr.live.fallback', 'smr.finalize.fallback'] as const;
+export const TEXT_FALLBACK_TASK_KEYS = ['smr.live.fallback', 'smr.finalize.fallback'] as const;
 
 /**
  * Keys shown in the tenant read-only "Effective models" table: everything that
- * stays GLOBAL_ADMIN-only on write (guardrail / nlp / harness). SMR moved to its
- * own tenant-editable "SMR models" section, so it is excluded here.
+ * stays SUPER_ADMIN-only on write (guardrail / nlp / harness). Text generation
+ * moved to its own tenant-editable "Text models" section, so it is excluded here.
  */
 export const READ_ONLY_TASK_KEYS: readonly AiTaskKey[] = AI_TASK_KEYS.filter((key) => !key.startsWith('smr.'));
 

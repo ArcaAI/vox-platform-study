@@ -154,7 +154,7 @@ export function makeSimulatedWorld() {
 
   const unitOfWork = { runInTransaction: vi.fn(async (work: (tx: unknown) => Promise<unknown>) => work({})) };
   const eventEmitter = { emit: vi.fn() };
-  const cls = { get: vi.fn((key: string) => (key === 'user' ? { id: 'admin-1', roles: ['GLOBAL_ADMIN'] } : TENANT)) };
+  const cls = { get: vi.fn((key: string) => (key === 'user' ? { id: 'admin-1', roles: ['SUPER_ADMIN'] } : TENANT)) };
 
   const service = new BillingService(
     eventEmitter as never,

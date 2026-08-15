@@ -2,7 +2,7 @@
 
 /**
  * Frame 54 / artboard 4f — Agent Playground (tier 50–59, matrix row 38). The
- * Text generation tab: prompt + generate via the SMR `text/*` gateway proxy
+ * Text generation tab: prompt + generate via the `text/*` gateway proxy
  * (sync or streaming, assembled mode with the admin-only debug meta,
  * provider/guardrail catalogs with the elevated __GLOBAL__ view; streaming
  * rides a same-origin BFF-proxied EventSource — see use-task-stream.ts). The
@@ -22,7 +22,7 @@ import { CanvasHeader, PlaygroundCanvas } from '@/features/playground-shared/com
 import { WorkingTenantGate } from '@/shared/tenant-scope/working-tenant-gate';
 import { GuardrailsTab } from './guardrails-tab';
 import { NerTab } from './ner-tab';
-import { useCancelTask, useGenerateAssembled, useGenerateText, useSmrGuardrailProviders, useSmrProviders, useSmrTask } from '../api/hooks';
+import { useCancelTask, useGenerateAssembled, useGenerateText, useTextGuardrailProviders, useTextProviders, useTextTask } from '../api/hooks';
 import type { AssembledGenerateRequest, AssembledGenerateResponse, GenerateTextRequest } from '../api/types';
 import { isStreamingAck } from '../api/types';
 import { useTaskStream } from '../api/use-task-stream';
@@ -188,12 +188,12 @@ function PlaygroundLlmBody() {
   const roles = session.data?.user.roles ?? [];
   const isElevated = session.data?.isElevated ?? false;
   const workingTenantName = session.data?.workingTenantName ?? null;
-  const canDebug = roles.includes('GLOBAL_ADMIN') || roles.includes('TENANT_ADMIN');
+  const canDebug = roles.includes('SUPER_ADMIN') || roles.includes('TENANT_ADMIN');
 
   const [globalCatalog, setGlobalCatalog] = useState(false);
   const tenantKey = globalCatalog ? '__GLOBAL__' : undefined;
-  const providersQuery = useSmrProviders(tenantKey);
-  const guardrailsQuery = useSmrGuardrailProviders(tenantKey);
+  const providersQuery = useTextProviders(tenantKey);
+  const guardrailsQuery = useTextGuardrailProviders(tenantKey);
 
   const [form, setForm] = useState<LlmFormState>(INITIAL_FORM);
   const patch = useCallback((partial: Partial<LlmFormState>) => setForm((previous) => ({ ...previous, ...partial })), []);
@@ -213,7 +213,7 @@ function PlaygroundLlmBody() {
 
   const [run, setRun] = useState<RunState>({ kind: 'idle' });
   const stream = useTaskStream(run.kind === 'stream' ? run.taskId : null);
-  const postMortemQuery = useSmrTask(run.kind === 'stream' ? run.taskId : null, stream.status === 'error');
+  const postMortemQuery = useTextTask(run.kind === 'stream' ? run.taskId : null, stream.status === 'error');
   const recovered = run.kind === 'stream' && stream.status === 'error' && postMortemQuery.data?.status === 'completed';
 
   const generateMutation = useGenerateText();

@@ -839,8 +839,8 @@ describe('LiveDocumentationService', () => {
       };
       const { service, httpMock } = buildDeps(buildHttpMock(), {
         config: {
-          LIVE_DOC_SMR_MAX_TOKENS: '1500',
-          LIVE_DOC_SMR_TIMEOUT_MS: '20000',
+          LIVE_DOC_TEXT_MAX_TOKENS: '1500',
+          LIVE_DOC_TEXT_TIMEOUT_MS: '20000',
         },
         harnessPolicyService,
       });
@@ -849,7 +849,7 @@ describe('LiveDocumentationService', () => {
       await service.flush(CID);
 
       // Provider+model come from the policy cascade (keyed by the session tenant),
-      // not LIVE_DOC_SMR_PROVIDER/MODEL env. The live flush must ask
+      // not LIVE_DOC_TEXT_PROVIDER/MODEL env. The live flush must ask
       // for the LIVE tier ('smr.live'), not the default finalize tier.
       expect(harnessPolicyService.resolveSmrSelection).toHaveBeenCalledWith(TENANT, 'live');
       const smrCall = httpMock.axiosRef.post.mock.calls.find((c: unknown[]) => String(c[0]).includes('/generate'))!;

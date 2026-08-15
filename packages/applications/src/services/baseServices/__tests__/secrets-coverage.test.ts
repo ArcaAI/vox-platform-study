@@ -26,7 +26,7 @@ const MIGRATED_SECRETS = [
   'OIDC_CLIENT_SECRET',
   'S3_ACCESS_KEY',
   'S3_SECRET_KEY',
-  'SMR_SERVICE_TOKEN',
+  'TEXT_SERVICE_TOKEN',
   'MINIO_ACCESS_KEY',
   'MINIO_SECRET_KEY',
   // MQTT_PASS / REDIS_PASS deliberately omitted — config.service.ts

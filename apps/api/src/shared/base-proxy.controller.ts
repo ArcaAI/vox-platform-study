@@ -63,7 +63,7 @@ export abstract class BaseProxyController {
             // Read SMR token from SecretsService cache (warmed at bootstrap).
             // Sync lookup because on.proxyReq cannot await. Cold cache -> no
             // header (fail-open, same as an unset env var).
-            const serviceToken = this.secrets?.getSecretSync('SMR_SERVICE_TOKEN');
+            const serviceToken = this.secrets?.getSecretSync('TEXT_SERVICE_TOKEN');
             if (serviceToken) {
               proxyReq.setHeader('X-Service-Token', serviceToken);
             }

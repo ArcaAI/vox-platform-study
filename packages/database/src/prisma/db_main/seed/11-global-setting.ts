@@ -67,7 +67,7 @@ const LOCAL_VAD_MODELS = JSON.stringify([
 const LOCAL_NOISE_SUPPRESSION_MODELS = JSON.stringify([{ id: 'rnnoise', name: 'RNNoise' }]);
 
 // =============================================================================
-// The SMR provider-model catalog (`SMR_PROVIDER_MODELS`,
+// The SMR provider-model catalog (`TEXT_PROVIDER_MODELS`,
 // `smr-provider-models` ux-constants key) was RETIRED: provider/model listings
 // now come from the AiModel registry (ENABLED rows grouped by `provider`), and
 // the platform text/summarization default lives on HarnessPolicy
@@ -429,7 +429,7 @@ export const ALL_SETTINGS: SettingDef[] = [
     ffConsultationSharing: IDS.GLOBAL_FF_CONSULTATION_SHARING,
     sttModel: IDS.GLOBAL_STT_MODEL,
     sttVad: IDS.GLOBAL_STT_VAD,
-    smrAzureDeployment: IDS.GLOBAL_SMR_AZURE_DEPLOYMENT,
+    smrAzureDeployment: IDS.GLOBAL_TEXT_AZURE_DEPLOYMENT,
     uxLocalAsrModels: IDS.GLOBAL_UX_LOCAL_ASR_MODELS,
     uxLocalVadModels: IDS.GLOBAL_UX_LOCAL_VAD_MODELS,
     uxLocalNoiseSuppressionModels: IDS.GLOBAL_UX_LOCAL_NOISE_SUPPRESSION_MODELS,
@@ -449,7 +449,7 @@ export const ALL_SETTINGS: SettingDef[] = [
     ffConsultationSharing: IDS.ARCAAI_FF_CONSULTATION_SHARING,
     sttModel: IDS.ARCAAI_STT_MODEL,
     sttVad: IDS.ARCAAI_STT_VAD,
-    smrAzureDeployment: IDS.ARCAAI_SMR_AZURE_DEPLOYMENT,
+    smrAzureDeployment: IDS.ARCAAI_TEXT_AZURE_DEPLOYMENT,
     uxLocalAsrModels: IDS.ARCAAI_UX_LOCAL_ASR_MODELS,
     uxLocalVadModels: IDS.ARCAAI_UX_LOCAL_VAD_MODELS,
     uxLocalNoiseSuppressionModels: IDS.ARCAAI_UX_LOCAL_NOISE_SUPPRESSION_MODELS,
@@ -466,7 +466,7 @@ export const ALL_SETTINGS: SettingDef[] = [
 // not a per-tenant flag: a single `locked` row owned by SYSTEM_TENANT_ID. The
 // `AppSettingsService` cache is keyed flat by `key`, so one platform-scoped row
 // resolves deterministically (the key is unique, so it never trips the
-// boot-time duplicate-key invariant). Only GLOBAL_ADMIN can flip it
+// boot-time duplicate-key invariant). Only SUPER_ADMIN can flip it
 // (enforced by the `GlobalSettingService` locked write-guard). Default OFF.
 // =============================================================================
 export const PLATFORM_SETTINGS: SettingDef[] = [
@@ -484,7 +484,7 @@ export const PLATFORM_SETTINGS: SettingDef[] = [
     defaultValue: 'false',
     dataType: ValueType.Boolean,
     description:
-      'Platform capability for local raw-stream dual-capture (TASK-332). The SDK-facing enablement is this AND the per-tenant TenantFrontendConfig.captureRawAudio toggle. Locked — only GLOBAL_ADMIN may change it.',
+      'Platform capability for local raw-stream dual-capture (TASK-332). The SDK-facing enablement is this AND the per-tenant TenantFrontendConfig.captureRawAudio toggle. Locked — only SUPER_ADMIN may change it.',
     locked: true,
   },
   // Turn the nightly SYSTEM-template resync sweep ON.
@@ -494,7 +494,7 @@ export const PLATFORM_SETTINGS: SettingDef[] = [
   // (fail-safe governance, `SettingsRegistry.killSwitches()`). So the sweep is
   // enabled the sanctioned way: the descriptor default stays OFF and this
   // platform VALUE turns it on. `defaultValue` stays 'false' so a reset
-  // reverts to the fail-safe, and `locked` keeps the flip GLOBAL_ADMIN-only.
+  // reverts to the fail-safe, and `locked` keeps the flip SUPER_ADMIN-only.
   //
   // Safe to run unattended by construction: the reconciler only ever adds
   // missing templates and fast-forwards copies it can prove are pristine. An
@@ -510,7 +510,7 @@ export const PLATFORM_SETTINGS: SettingDef[] = [
     defaultValue: 'false',
     dataType: ValueType.Boolean,
     description:
-      "Runs the nightly sweep that reconciles every tenant's ASR pipeline catalog against the SYSTEM templates (TASK-531). Customized pipelines are never touched. Locked — only GLOBAL_ADMIN may change it.",
+      "Runs the nightly sweep that reconciles every tenant's ASR pipeline catalog against the SYSTEM templates (TASK-531). Customized pipelines are never touched. Locked — only SUPER_ADMIN may change it.",
     locked: true,
   },
   {
@@ -522,14 +522,14 @@ export const PLATFORM_SETTINGS: SettingDef[] = [
     value: '0 3 * * *',
     defaultValue: '0 3 * * *',
     dataType: ValueType.String,
-    description: 'Cron expression for the nightly SYSTEM-template resync sweep (TASK-531). Locked — only GLOBAL_ADMIN may change it.',
+    description: 'Cron expression for the nightly SYSTEM-template resync sweep (TASK-531). Locked — only SUPER_ADMIN may change it.',
     locked: true,
   },
   // Agent golden-library resync sweep — the DepartmentAgent
   // sibling of the pipeline resync above. Same fail-safe governance: the
   // descriptor default is OFF (kill-switch), this platform VALUE turns it on,
   // `defaultValue` stays 'false' for reset, and `locked` keeps the flip
-  // GLOBAL_ADMIN-only. Runs an hour after the pipeline sweep to avoid DB
+  // SUPER_ADMIN-only. Runs an hour after the pipeline sweep to avoid DB
   // contention. Only ever adds missing golden agents and fast-forwards copies
   // it can prove pristine; unlocked/drifted rows are skipped, never overwritten.
   {
@@ -542,7 +542,7 @@ export const PLATFORM_SETTINGS: SettingDef[] = [
     defaultValue: 'false',
     dataType: ValueType.Boolean,
     description:
-      "Runs the nightly sweep that reconciles every tenant's DepartmentAgent catalog against the SYSTEM agent golden library (TASK-548). Customized agents are never touched. Locked — only GLOBAL_ADMIN may change it.",
+      "Runs the nightly sweep that reconciles every tenant's DepartmentAgent catalog against the SYSTEM agent golden library (TASK-548). Customized agents are never touched. Locked — only SUPER_ADMIN may change it.",
     locked: true,
   },
   {
@@ -554,7 +554,7 @@ export const PLATFORM_SETTINGS: SettingDef[] = [
     value: '0 4 * * *',
     defaultValue: '0 4 * * *',
     dataType: ValueType.String,
-    description: 'Cron expression for the nightly SYSTEM agent-library resync sweep (TASK-548). Locked — only GLOBAL_ADMIN may change it.',
+    description: 'Cron expression for the nightly SYSTEM agent-library resync sweep (TASK-548). Locked — only SUPER_ADMIN may change it.',
     locked: true,
   },
 ];
@@ -651,7 +651,7 @@ export const seedGlobalSetting = async (client: CorePrismaClient) => {
 
   // Platform-owned capability rows (SYSTEM_TENANT_ID). Idempotent:
   // refresh metadata but NEVER clobber an admin-tuned `value` on re-seed, so a
-  // GLOBAL_ADMIN who turned the capability ON keeps it after `db:seed`.
+  // SUPER_ADMIN who turned the capability ON keeps it after `db:seed`.
   console.log(`Seeding platform Global Settings (${PLATFORM_SETTINGS.length} SYSTEM rows)...`);
   for (const s of PLATFORM_SETTINGS) {
     await client.globalSetting.upsert({

@@ -117,15 +117,15 @@
       ]
     },
     {
-      "name": "smr",
+      "name": "text",
       "tagPrefixes": ["SMR"],
-      "dockerfile": "apps/smr/Dockerfile",
+      "dockerfile": "apps/text/Dockerfile",
       "context": ".",
       "target": null,
       "pythonBase": true,
       "promotable": true,
       "platforms": ["linux/amd64"],
-      "paths": ["apps/smr/**", "packages/py-env/**", "packages/py-otel/**", "packages/py-runtime-models/**", "uv.lock"]
+      "paths": ["apps/text/**", "packages/py-env/**", "packages/py-otel/**", "packages/py-runtime-models/**", "uv.lock"]
     },
     {
       "name": "guardrail",

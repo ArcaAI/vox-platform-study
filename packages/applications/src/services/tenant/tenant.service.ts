@@ -36,7 +36,7 @@ import { BaseService, FetchResponse, PaginatedQuery, withFormattedPaginatedProps
 import { IActiveUserContext } from '../../interfaces';
 import { UpdateTenantConfigRequest } from './dto/updateTenantConfigRequest';
 import { ITenantBucketService } from '../tenant-bucket/ITenantBucketService';
-import { GLOBAL_TENANT_KEY, GLOBAL_ADMIN_ROLE, isUuidIdentifier } from './constants';
+import { GLOBAL_TENANT_KEY, SUPER_ADMIN_ROLE, isUuidIdentifier } from './constants';
 import { DEFAULT_GEN_DEPARTMENT } from './departmentDefaults';
 import { scrubLockedForAudit } from './scrubbing';
 import { generateUniqueTenantKey } from './tenantKey';
@@ -896,7 +896,7 @@ export class TenantService extends BaseService implements ITenantService {
    *
    * Short-circuits with
    * `NotFoundException` when the resolved row's id does not match the
-   * CLS-supplied caller `tenantId`, except for GLOBAL_ADMIN callers, who
+   * CLS-supplied caller `tenantId`, except for SUPER_ADMIN callers, who
    * remain authorized for cross-tenant reads (admin UI tenant pickers).
    * Pre-guard, ANY tenant could be read by primary key, allowing
    * tenant-record enumeration across the tenant boundary.
@@ -924,7 +924,7 @@ export class TenantService extends BaseService implements ITenantService {
    *
    * Mirrors the `fetchById`
    * tenant-scope guard so a caller cannot enumerate another tenant by
-   * code-name. GLOBAL_ADMIN callers retain the cross-tenant bypass.
+   * code-name. SUPER_ADMIN callers retain the cross-tenant bypass.
    *
    * @param codeName - The tenant code-name (matches the `key` column)
    * @returns Promise resolving to the tenant entity
@@ -1133,7 +1133,7 @@ export class TenantService extends BaseService implements ITenantService {
    *
    * Locked-value masking: settings whose `locked === true` are sensitive
    * defaults (e.g. provider credentials). When the active caller does not
-   * carry the `GLOBAL_ADMIN` role, the `value` of every locked row is replaced
+   * carry the `SUPER_ADMIN` role, the `value` of every locked row is replaced
    * with an empty string before the response is returned. The original entity
    * instance is mutated via its setter, which is safe because each fetch
    * yields freshly constructed entities; no shared in-memory state escapes.
@@ -1152,11 +1152,11 @@ export class TenantService extends BaseService implements ITenantService {
     const identifier = (tenantId ?? codeName) as string;
     const tenant = await this.resolveTenantByIdentifier(identifier);
 
-    // Caller-identity check. Non-GLOBAL_ADMIN
+    // Caller-identity check. Non-SUPER_ADMIN
     // callers are restricted to their CLS tenant; cross-tenant reads (including
     // codeName lookups that resolve to another tenant) short-circuit with
     // `NotFoundException` so the API does not leak the existence of foreign
-    // tenants' config rows. GLOBAL_ADMIN retains the cross-tenant bypass for
+    // tenants' config rows. SUPER_ADMIN retains the cross-tenant bypass for
     // admin UI tenant pickers + platform-metadata flows (mirrors the
     // `fetchById` / `fetchByCodeName` posture).
     if (tenant.id !== this.tenantId && !this.isSuperAdmin()) {
@@ -1210,7 +1210,7 @@ export class TenantService extends BaseService implements ITenantService {
    *  - Tenant identifier is disambiguated via `resolveTenantByIdentifier`
    *    (UUID -> `id`, otherwise `key`).
    *  - All writes against the master `__GLOBAL__` tenant are rejected with
-   *    `ForbiddenException` unless the caller carries the `GLOBAL_ADMIN`
+   *    `ForbiddenException` unless the caller carries the `SUPER_ADMIN`
    *    role, preventing accidental mutation of the system defaults.
    *  - Each individual setting whose `locked === true` is rejected with
    *    `ForbiddenException` for non-super-admins. Super-admins may update
@@ -1229,7 +1229,7 @@ export class TenantService extends BaseService implements ITenantService {
     const isSuperAdmin = this.isSuperAdmin();
 
     if (tenant.key === GLOBAL_TENANT_KEY && !isSuperAdmin) {
-      throw new ForbiddenException(`Tenant '${GLOBAL_TENANT_KEY}' holds system defaults and can only be modified by ${GLOBAL_ADMIN_ROLE} users.`);
+      throw new ForbiddenException(`Tenant '${GLOBAL_TENANT_KEY}' holds system defaults and can only be modified by ${SUPER_ADMIN_ROLE} users.`);
     }
 
     // All-or-nothing via Prisma's
@@ -1268,7 +1268,7 @@ export class TenantService extends BaseService implements ITenantService {
         }
 
         if (existingConfig.locked === true && !isSuperAdmin) {
-          throw new ForbiddenException(`Setting '${existingConfig.key}' is locked and can only be modified by ${GLOBAL_ADMIN_ROLE} users.`);
+          throw new ForbiddenException(`Setting '${existingConfig.key}' is locked and can only be modified by ${SUPER_ADMIN_ROLE} users.`);
         }
 
         if (config.value !== undefined) {
@@ -1419,13 +1419,13 @@ export class TenantService extends BaseService implements ITenantService {
   }
 
   /**
-   * True when the active request user carries the `GLOBAL_ADMIN` role.
+   * True when the active request user carries the `SUPER_ADMIN` role.
    * Falls back to `false` whenever the CLS context is missing or the role
    * list is undefined — locking the strictest behaviour by default.
    */
   private isSuperAdmin(): boolean {
     const roles = this.requestUser?.roles;
-    return Array.isArray(roles) && roles.includes(GLOBAL_ADMIN_ROLE);
+    return Array.isArray(roles) && roles.includes(SUPER_ADMIN_ROLE);
   }
 
   /**

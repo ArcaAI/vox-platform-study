@@ -463,7 +463,7 @@ function ActionEnvelopeSection({
  * `TENANT_TIER_HARNESS_OVERRIDE_KEYS` (`packages/applications/src/services/
  * departmentAgent/constants.ts`) already grants a tenant admin on an agent's
  * `harnessOverrides`, and the SAME keys are tenant-writable — not
- * `GLOBAL_ADMIN_ONLY_POLICY_KEYS` — on the `HarnessPolicy` resource itself
+ * `SUPER_ADMIN_ONLY_POLICY_KEYS` — on the `HarnessPolicy` resource itself
  * (`harness-policy.service.ts`). This tab used to lock them behind
  * `session.isElevated` on the `TENANT_LOCKED_POLICY_KEYS` precedent, which
  * locks a DIFFERENT key set (`safetyEnabled`/`phiEnabled`/`phiFailClosed`/

@@ -17,7 +17,7 @@ import { AddAdjustmentRequest } from '../dto';
 
 const TENANT = 'aaaaaaaa-0000-0000-0000-000000000001';
 const OTHER_TENANT = 'bbbbbbbb-0000-0000-0000-000000000002';
-const GLOBAL_ADMIN = { id: 'admin-1', roles: ['GLOBAL_ADMIN'] };
+const SUPER_ADMIN = { id: 'admin-1', roles: ['SUPER_ADMIN'] };
 const TENANT_USER = { id: 'user-1', roles: ['TENANT_ADMIN'], tenantId: TENANT };
 
 // The period under test: August 2026 (31 days). "now" is mid-September, so the
@@ -52,7 +52,7 @@ function makeWorld(config: WorldConfig = {}) {
   vi.useFakeTimers();
   vi.setSystemTime(NOW);
 
-  const user = config.user ?? GLOBAL_ADMIN;
+  const user = config.user ?? SUPER_ADMIN;
   const plan = config.plan === undefined ? TenantPlan.PRO : config.plan;
   const sellRates: Partial<Record<AiUsageUnit, bigint>> = config.sellRates ?? { [AiUsageUnit.SESSION_SECOND]: 6n };
   const planFees: Partial<Record<TenantPlan, bigint>> = config.planFees ?? {

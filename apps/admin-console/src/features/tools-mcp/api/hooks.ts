@@ -5,7 +5,7 @@ import { createMcpServer, deleteMcpServer, getMcpServer, listMcpServers, updateM
 import { toolsMcpKeys } from './keys';
 import type { CreateMcpServerRequest, UpdateMcpServerRequest } from './types';
 
-/** SYSTEM MCP registry — mount only when the session is elevated (GLOBAL_ADMIN). */
+/** SYSTEM MCP registry — mount only when the session is elevated (SUPER_ADMIN). */
 export function useMcpServers(enabled: boolean) {
   return useQuery({ queryKey: toolsMcpKeys.list(), queryFn: listMcpServers, enabled });
 }

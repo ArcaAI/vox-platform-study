@@ -39,9 +39,9 @@ afterEach(() => {
 
 describe('task keys', () => {
   // This mirror had drifted to 3 keys while the backend carried 9; then
-  // added the two SMR fallback keys (11 total). It must stay in lockstep with
+  // added the two text-generation fallback keys (11 total). It must stay in lockstep with
   // AI_TASK_KEYS in packages/applications/src/services/ai-task-default/constants.ts.
-  it('mirrors all backend task keys (incl. the SMR fallback keys) and the SYSTEM tenant id', () => {
+  it('mirrors all backend task keys (incl. the text-generation fallback keys) and the SYSTEM tenant id', () => {
     expect(AI_TASK_KEYS).toEqual([
       'guardrail.validate',
       'guardrail.safety',

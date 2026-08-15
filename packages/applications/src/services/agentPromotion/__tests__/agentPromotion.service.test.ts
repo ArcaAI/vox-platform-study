@@ -141,7 +141,7 @@ function elevatedTenantlessContext() {
   mockClsService.get.mockImplementation((key: string) => {
     switch (key) {
       case 'user':
-        return { id: 'admin-1', roles: ['GLOBAL_ADMIN'] };
+        return { id: 'admin-1', roles: ['SUPER_ADMIN'] };
       case 'tenantId':
         return '';
       default:
@@ -237,7 +237,7 @@ describe('AgentPromotionService', () => {
     });
 
     it('requires an elevated tenant-less context (a pinned working tenant is refused with a clear reason)', async () => {
-      mockClsService.get.mockImplementation((key: string) => (key === 'tenantId' ? TO : { id: 'admin-1', roles: ['GLOBAL_ADMIN'] }));
+      mockClsService.get.mockImplementation((key: string) => (key === 'tenantId' ? TO : { id: 'admin-1', roles: ['SUPER_ADMIN'] }));
 
       await expect(service.promote(baseDto)).rejects.toThrow(/elevated tenant-less context/);
       expect(mockPolicyEngine.buildAbility).not.toHaveBeenCalled();
@@ -665,7 +665,7 @@ describe('AgentPromotionService', () => {
 
   describe('reads (ordinary tenant scope) and drift detection', () => {
     beforeEach(() => {
-      mockClsService.get.mockImplementation((key: string) => (key === 'tenantId' ? TO : { id: 'admin-1', roles: ['GLOBAL_ADMIN'] }));
+      mockClsService.get.mockImplementation((key: string) => (key === 'tenantId' ? TO : { id: 'admin-1', roles: ['SUPER_ADMIN'] }));
     });
 
     const promotionRow = (checksum: string) => ({
@@ -693,7 +693,7 @@ describe('AgentPromotionService', () => {
       await service.promote(baseDto);
       const realChecksum = (mockPromotionRepository.create.mock.calls[0][0] as Record<string, unknown>).checksum as string;
 
-      mockClsService.get.mockImplementation((key: string) => (key === 'tenantId' ? TO : { id: 'admin-1', roles: ['GLOBAL_ADMIN'] }));
+      mockClsService.get.mockImplementation((key: string) => (key === 'tenantId' ? TO : { id: 'admin-1', roles: ['SUPER_ADMIN'] }));
       mockPromotionRepository.findById.mockResolvedValue(promotionRow(realChecksum));
       mockAgentRepository.findById.mockResolvedValue({ ...loopSnapshot(), id: 'target-agent', tenantId: TO });
 

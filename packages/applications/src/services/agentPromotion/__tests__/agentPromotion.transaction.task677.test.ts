@@ -150,7 +150,7 @@ function elevatedTenantlessContext() {
   mockClsService.get.mockImplementation((key: string) => {
     switch (key) {
       case 'user':
-        return { id: 'admin-1', roles: ['GLOBAL_ADMIN'] };
+        return { id: 'admin-1', roles: ['SUPER_ADMIN'] };
       case 'tenantId':
         return '';
       default:

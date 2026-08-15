@@ -222,7 +222,7 @@ port_for() {
         api)       v="$(env_val API_PORT)";       echo "${v:-8968}" ;;
         admin)     v="$(env_val ADMIN_PORT)";     echo "${v:-5276}" ;;
         stt)       v="$(env_val STT_PORT)";       echo "${v:-8961}" ;;
-        smr)       v="$(env_val SMR_PORT)";       echo "${v:-8962}" ;;
+        smr)       v="$(env_val TEXT_PORT)";       echo "${v:-8962}" ;;
         guardrail) v="$(env_val GUARDRAIL_PORT)"; echo "${v:-8963}" ;;
         nlp)       v="$(env_val NLP_PORT)";       echo "${v:-8964}" ;;
         tts)       v="$(env_val TTS_PORT)";       echo "${v:-8965}" ;;

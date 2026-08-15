@@ -11,7 +11,7 @@ import { SummaryService } from '../summary.service';
 
 const buildService = (userProfileRepository?: { findAll: ReturnType<typeof vi.fn> }) => {
   const configService = {
-    get: vi.fn().mockImplementation((k: string) => (k === 'SMR_URL' ? 'http://smr' : k === 'NLP_URL' ? 'http://nlp' : undefined)),
+    get: vi.fn().mockImplementation((k: string) => (k === 'TEXT_URL' ? 'http://smr' : k === 'NLP_URL' ? 'http://nlp' : undefined)),
   };
   const clsService = { get: vi.fn().mockReturnValue('tenant-1'), set: vi.fn() };
   const eventEmitter = { emit: vi.fn() };

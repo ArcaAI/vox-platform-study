@@ -2,7 +2,7 @@
  * PromptAssemblyService — effective `warmStartEnabled` precedence.
  *
  * `HarnessPolicy.warmStartEnabled` was fully WRITE-plumbed — DTO, response,
- * GLOBAL_ADMIN gate, admin-console knob, even parsed into the Python dataclass —
+ * SUPER_ADMIN gate, admin-console knob, even parsed into the Python dataclass —
  * and then read by NOTHING. The real switch was the process-wide env var
  * `HARNESS_WARM_START_ENABLED`, cached at CONSTRUCTION, so a global admin toggling
  * the console knob changed nothing and could never vary per tenant.

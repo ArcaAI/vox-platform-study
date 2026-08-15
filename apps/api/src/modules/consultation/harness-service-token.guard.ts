@@ -7,7 +7,7 @@ import { timingSafeEqual } from 'node:crypto';
  *
  * Service-to-service auth for the `/internal/harness/*` endpoints. The harness
  * presents `X-Service-Token`, which must match the `HARNESS_SERVICE_TOKEN`
- * secret (resolved via SecretsService — same pattern as `SMR_SERVICE_TOKEN`).
+ * secret (resolved via SecretsService — same pattern as `TEXT_SERVICE_TOKEN`).
  *
  * Fail-closed: a missing header, an unconfigured secret, or a mismatch all
  * reject. The comparison is constant-time to avoid leaking the token by timing.

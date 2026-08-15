@@ -101,7 +101,7 @@ export async function clearSession(): Promise<void> {
   cookieStore.delete(SESSION_COOKIE_NAME);
 }
 
-/** The elevated cross-tenant check — GLOBAL_ADMIN only (consolidation). */
+/** The elevated cross-tenant check — SUPER_ADMIN only (consolidation). */
 export function isElevated(user: Pick<SessionUser, 'roles'> | null | undefined): boolean {
   return rolesAreElevated(user?.roles);
 }

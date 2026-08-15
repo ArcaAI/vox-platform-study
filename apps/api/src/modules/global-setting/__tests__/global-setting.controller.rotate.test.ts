@@ -79,7 +79,7 @@ describe('GlobalSettingController — POST /admin/settings/:id/rotate', () => {
     expect(JSON.stringify(result)).not.toContain('rotated-plaintext-never-shown');
   });
 
-  it('is gated GLOBAL_ADMIN-only via @Authorize(["manage","all"]) (overrides the class gate)', () => {
+  it('is gated SUPER_ADMIN-only via @Authorize(["manage","all"]) (overrides the class gate)', () => {
     const methodMeta = Reflect.getMetadata(REQUIRED_PERMISSIONS_KEY, GlobalSettingController.prototype.rotate) as
       Array<{ action: string; subject: string }> | undefined;
     expect(methodMeta).toEqual([{ action: 'manage', subject: 'all' }]);

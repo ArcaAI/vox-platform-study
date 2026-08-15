@@ -111,7 +111,7 @@ for kv in \
   "MINIO_SECRET_KEY=minio_admin" \
   "S3_ACCESS_KEY=minio_admin" \
   "S3_SECRET_KEY=minio_admin" \
-  "SMR_SERVICE_TOKEN=dev-smr-service-token-not-for-prod" \
+  "TEXT_SERVICE_TOKEN=dev-smr-service-token-not-for-prod" \
   "MQTT_PASS=dev-mqtt-pass-not-for-prod" \
   "REDIS_PASS=dev-redis-pass-not-for-prod"; do
   k=${kv%%=*}
@@ -134,13 +134,13 @@ vault kv put secret/hope/HARNESS_SERVICE_TOKEN value="dev-harness-service-token-
 # above, not in the warmup loop.
 #
 # NAMING TRAP — smr only: the gateway's OUTBOUND credential to reach SMR is
-# `SMR_SERVICE_TOKEN` (seeded in the warmup loop above); SMR's INBOUND token
+# `TEXT_SERVICE_TOKEN` (seeded in the warmup loop above); SMR's INBOUND token
 # for calling back into the gateway is the *differently named*
-# `SMR_SERVICE_TOKEN` (SMR reads it as `settings.service_token` under the
-# `SMR_` pydantic-settings prefix). The two secret names are distinct but
+# `TEXT_SERVICE_TOKEN` (SMR reads it as `settings.service_token` under the
+# `TEXT_` pydantic-settings prefix). The two secret names are distinct but
 # MUST hold the same value by convention, or the effective-config poll 401s —
-# kept equal to SMR_SERVICE_TOKEN's value here for exactly that reason.
-vault kv put secret/hope/SMR_SERVICE_TOKEN value="dev-smr-service-token-not-for-prod" >/dev/null
+# kept equal to TEXT_SERVICE_TOKEN's value here for exactly that reason.
+vault kv put secret/hope/TEXT_SERVICE_TOKEN value="dev-smr-service-token-not-for-prod" >/dev/null
 vault kv put secret/hope/NLP_SERVICE_TOKEN value="dev-nlp-service-token-not-for-prod" >/dev/null
 vault kv put secret/hope/GUARDRAIL_SERVICE_TOKEN value="dev-guardrail-service-token-not-for-prod" >/dev/null
 vault kv put secret/hope/TTS_SERVICE_TOKEN value="dev-tts-service-token-not-for-prod" >/dev/null
@@ -158,7 +158,7 @@ vault kv put secret/hope/HARNESS_CLAIM_CHECK_SECRET_KEY value="minio_admin" >/de
 vault kv put secret/hope/GUARDRAIL_VLLM_API_KEY value="dev-vllm-placeholder-not-for-prod" >/dev/null
 
 # DELIBERATELY NOT SEEDED — the five EXTERNAL provider credentials:
-#   AZURE_SPEECH_KEY  AZURE_FOUNDRY_API_KEY  SMR_AZURE_API_KEY
+#   AZURE_SPEECH_KEY  AZURE_FOUNDRY_API_KEY  TEXT_AZURE_API_KEY
 #   TTS_SARVAM_API_KEY  HARNESS_JUDGE_OPENAI_COMPAT_API_KEY
 # A placeholder would make an unconfigured provider look configured and turn a
 # clean "not configured" into a remote 401 that costs an afternoon to diagnose.

@@ -14,7 +14,7 @@ import { SttFallbackTab } from '@/features/tenant-stt-config/components/stt-fall
 import { TtsConfigTab } from '@/features/tenant-tts-config/components/tts-config-tab';
 import { EffectiveHarnessPolicyCard } from './effective-harness-policy-card';
 import { EffectiveModelsTable } from './effective-models-table';
-import { SmrModelsSection } from './smr-models-section';
+import { TextModelsSection } from './text-models-section';
 
 const TAB_VALUES = ['models', 'speech', 'voice', 'providers'] as const;
 
@@ -25,7 +25,7 @@ const TAB_VALUES = ['models', 'speech', 'voice', 'providers'] as const;
  * `/stt-config`, `/tts-config` and `/ai-providers` into four tabs so a tenant
  * admin configures everything AI-related in one place.
  *
- *  - "Models" — the tenant's OWN summarization selection (SMR primary +
+ *  - "Models" — the tenant's OWN summarization selection (text-generation primary +
  *    optional fallback, one-action default-provider control) PLUS the
  *    READ-ONLY effective models / HarnessPolicy visibility for the
  *    platform-managed guardrail/nlp/harness keys. Backed by `AiTaskDefault`.
@@ -80,7 +80,7 @@ export function TenantAiConfigurationScreen() {
             <StatusFooter
               end={
                 <span aria-hidden className="font-mono">
-                  smr: tenant-owned · guardrail/nlp/harness: platform-managed · credentials: tenant-owned
+                  text: tenant-owned · guardrail/nlp/harness: platform-managed · credentials: tenant-owned
                 </span>
               }
             />
@@ -88,7 +88,7 @@ export function TenantAiConfigurationScreen() {
         >
           <TabsContent value="models" className="flex flex-col gap-6">
             <RequirePermission action="read" subject="AiTaskDefault">
-              <SmrModelsSection />
+              <TextModelsSection />
               <Separator />
               <EffectiveModelsTable />
               <EffectiveHarnessPolicyCard />

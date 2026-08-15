@@ -6,7 +6,7 @@ import type { CostPerEncounterResponse, TopTenantsResponse, UsagePeriodParams, U
  * Typed reads over the BFF proxy. Paths are gateway-relative
  * (relative to `/api/v1`, no leading slash). `summary` / `cost-per-encounter`
  * are tenant-scoped (the proxy attaches `X-Tenant-Id` from the working tenant);
- * `top-tenants` is cross-tenant (GLOBAL_ADMIN, enforced server-side).
+ * `top-tenants` is cross-tenant (SUPER_ADMIN, enforced server-side).
  */
 const USAGE = 'admin/usage';
 

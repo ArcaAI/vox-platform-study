@@ -2,7 +2,7 @@
 //
 // The service resolves the SERVICE-LEVEL subset only: retention, concurrency and
 // runtime profiles. It never carries per-request model selection — SMR's
-// stateless-gateway contract (`apps/smr/src/smr/core/config.py:1-9`) is
+// stateless-gateway contract (`apps/text/src/text/core/config.py:1-9`) is
 // preserved verbatim, so a regression here would break that house constraint.
 
 import { ArgumentInvalidException } from '@arcaai/exceptions';
