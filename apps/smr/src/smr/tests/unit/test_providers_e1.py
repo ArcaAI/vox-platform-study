@@ -169,7 +169,9 @@ class TestAzurePayloadDefaults:
 
         call_kwargs = provider._client.chat.completions.create.call_args
         assert call_kwargs.kwargs["temperature"] == 0.1
-        assert call_kwargs.kwargs["max_tokens"] == 16_384
+        # Azure takes max_completion_tokens, not max_tokens: newer models
+        # (gpt-5.x / o-series) reject the latter. See providers/azure_openai.py.
+        assert call_kwargs.kwargs["max_completion_tokens"] == 16_384
         assert call_kwargs.kwargs["top_p"] == 0.95
 
     @pytest.mark.asyncio
@@ -185,7 +187,7 @@ class TestAzurePayloadDefaults:
 
         call_kwargs = provider._client.chat.completions.create.call_args
         assert call_kwargs.kwargs["temperature"] == 0.5
-        assert call_kwargs.kwargs["max_tokens"] == 8000
+        assert call_kwargs.kwargs["max_completion_tokens"] == 8000
         assert call_kwargs.kwargs["top_p"] == 0.8
 
 

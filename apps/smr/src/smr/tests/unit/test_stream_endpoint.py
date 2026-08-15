@@ -1,7 +1,13 @@
 """Tests for the SSE stream endpoint (api/endpoints/stream.py).
 
 These tests exercise the event_generator coroutine logic:
-- yielding chunks via XREAD BLOCK (read_chunks_blocking)
+- yielding chunks via XREAD BLOCK (read_chunk_entries_blocking)
+
+Entries are ``(msg_id, chunk, carrier)``; the carrier is ``{}`` when the
+producer was untraced. Stubbing the older two-tuple ``read_chunks_blocking``
+instead leaves the real method unstubbed on the AsyncMock, which then returns a
+MagicMock — truthy, but it iterates empty — so the generator loops forever and
+the process is eventually OOM-killed rather than failing.
 - stopping on done/error
 - stopping on completed/failed/cancelled task with no new chunks
 - resume via last_event_id
@@ -45,11 +51,11 @@ class TestStreamEndpointSSE:
         tm.get_task = AsyncMock(
             return_value=TaskState(task_id="t1", status=TaskStatus.RUNNING, provider="p", model="m")
         )
-        tm.read_chunks_blocking = AsyncMock(
+        tm.read_chunk_entries_blocking = AsyncMock(
             return_value=[
-                ("1-0", StreamChunk(type="chunk", content="Hello")),
-                ("2-0", StreamChunk(type="chunk", content=" world")),
-                ("3-0", StreamChunk(type="done", data={"finish_reason": "stop"})),
+                ("1-0", StreamChunk(type="chunk", content="Hello"), {}),
+                ("2-0", StreamChunk(type="chunk", content=" world"), {}),
+                ("3-0", StreamChunk(type="done", data={"finish_reason": "stop"}), {}),
             ]
         )
 
@@ -70,10 +76,10 @@ class TestStreamEndpointSSE:
         tm.get_task = AsyncMock(
             return_value=TaskState(task_id="t1", status=TaskStatus.RUNNING, provider="p", model="m")
         )
-        tm.read_chunks_blocking = AsyncMock(
+        tm.read_chunk_entries_blocking = AsyncMock(
             return_value=[
-                ("1-0", StreamChunk(type="chunk", content="partial")),
-                ("2-0", StreamChunk(type="error", data={"error": "provider crashed"})),
+                ("1-0", StreamChunk(type="chunk", content="partial"), {}),
+                ("2-0", StreamChunk(type="error", data={"error": "provider crashed"}), {}),
             ]
         )
 
@@ -94,7 +100,7 @@ class TestStreamEndpointSSE:
                 task_id="t1", status=TaskStatus.COMPLETED, provider="p", model="m"
             )
         )
-        tm.read_chunks_blocking = AsyncMock(return_value=[])
+        tm.read_chunk_entries_blocking = AsyncMock(return_value=[])
 
         app = _build_app(settings, tm)
         transport = ASGITransport(app=app)
@@ -109,7 +115,7 @@ class TestStreamEndpointSSE:
         tm.get_task = AsyncMock(
             return_value=TaskState(task_id="t1", status=TaskStatus.FAILED, provider="p", model="m")
         )
-        tm.read_chunks_blocking = AsyncMock(return_value=[])
+        tm.read_chunk_entries_blocking = AsyncMock(return_value=[])
 
         app = _build_app(settings, tm)
         transport = ASGITransport(app=app)
@@ -126,7 +132,7 @@ class TestStreamEndpointSSE:
                 task_id="t1", status=TaskStatus.CANCELLED, provider="p", model="m"
             )
         )
-        tm.read_chunks_blocking = AsyncMock(return_value=[])
+        tm.read_chunk_entries_blocking = AsyncMock(return_value=[])
 
         app = _build_app(settings, tm)
         transport = ASGITransport(app=app)
@@ -141,9 +147,9 @@ class TestStreamEndpointSSE:
         tm.get_task = AsyncMock(
             return_value=TaskState(task_id="t1", status=TaskStatus.RUNNING, provider="p", model="m")
         )
-        tm.read_chunks_blocking = AsyncMock(
+        tm.read_chunk_entries_blocking = AsyncMock(
             return_value=[
-                ("3-0", StreamChunk(type="done", data={"finish_reason": "stop"})),
+                ("3-0", StreamChunk(type="done", data={"finish_reason": "stop"}), {}),
             ]
         )
 
@@ -152,7 +158,7 @@ class TestStreamEndpointSSE:
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             resp = await client.get("/api/v1/tasks/t1/stream", headers={"Last-Event-ID": "2-0"})
         assert resp.status_code == 200
-        tm.read_chunks_blocking.assert_any_call("t1", last_id="2-0", block_ms=5000)
+        tm.read_chunk_entries_blocking.assert_any_call("t1", last_id="2-0", block_ms=5000)
 
     @pytest.mark.asyncio
     async def test_stream_404_for_nonexistent_task(self, settings):
@@ -174,7 +180,7 @@ class TestStreamEndpointSSE:
             nonlocal call_count
             call_count += 1
             if call_count == 1:
-                return [("1-0", StreamChunk(type="chunk", content="data"))]
+                return [("1-0", StreamChunk(type="chunk", content="data"), {})]
             return []
 
         async def _get_task(task_id):
@@ -184,7 +190,7 @@ class TestStreamEndpointSSE:
 
         tm = AsyncMock()
         tm.get_task = _get_task
-        tm.read_chunks_blocking = _read_blocking
+        tm.read_chunk_entries_blocking = _read_blocking
 
         app = _build_app(settings, tm)
         transport = ASGITransport(app=app)

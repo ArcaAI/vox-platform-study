@@ -152,7 +152,7 @@ test-sdk:
   extends: .test-node-base
   # Ignored while a real unit regression is outstanding (live-transcript Lexical
   # editor). Runs but does not block the pipeline.
-  allow_failure: true
+  allow_failure: false
   needs:
     - job: install-node
       optional: true
@@ -220,7 +220,7 @@ test-admin-console:
   extends: .test-node-base
   # Ignored while a real unit regression is outstanding (harness-workflows-screen
   # stays in its skeleton state). Runs but does not block the pipeline.
-  allow_failure: true
+  allow_failure: false
   needs:
     - job: install-node
       optional: true
@@ -393,9 +393,12 @@ test-stt:
 test-smr:
   stage: test
   image: python:3.11-slim
-  # Ignored: references DATABASE_URL/REDIS_URL and no dedicated test infra
-  # (esp. Redis) is provisioned. Runs but does not block the pipeline.
-  allow_failure: true
+  # allow_failure removed — the suite is green under a CI-shaped env
+  # (1134 passed). It was masking two stale SSE tests that stubbed the
+  # pre-TASK-636 read_chunks_blocking: the unstubbed real method returned a
+  # MagicMock (truthy, iterates empty), so the endpoint's generator looped
+  # forever and the job was OOM-killed ~15 min in, which `-x` then reported as
+  # an infra failure. A hang must not be silently tolerated again.
   tags: [test]
   id_tokens: !reference [.vault-oidc-id-token, id_tokens]
   before_script:

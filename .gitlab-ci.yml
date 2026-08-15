@@ -189,8 +189,10 @@ variables:
   NLP_METRICS_ENABLED: "true"
   # Torch/BLAS default to one intra-op thread per core, per process. With six
   # Python test jobs plus the Node suites on one runner that oversubscribes the
-  # box badly — test-smr was OOM-killed and test-harness lost a Temporal query
-  # to a 30s deadline. Cap the pools so peak RSS and CPU contention stay bounded.
+  # box, which is how test-harness lost a Temporal query to its 30s deadline.
+  # Cap the pools so peak RSS and CPU contention stay bounded. (NOT the cause of
+  # the test-smr OOM — that was an infinite loop in a stale test, fixed
+  # separately in test_stream_endpoint.py / test_dependency_injection.py.)
   OMP_NUM_THREADS: "2"
   MKL_NUM_THREADS: "2"
   TOKENIZERS_PARALLELISM: "false"
