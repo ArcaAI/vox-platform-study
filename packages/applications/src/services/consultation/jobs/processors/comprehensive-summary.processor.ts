@@ -30,6 +30,7 @@ import { ConfigResolver } from '../../../config-resolver';
 import { IActiveUserContext } from '../../../../interfaces';
 import { assertEqualTenants, createWorkerSession } from '../../../../common';
 import { IUsageLedgerService } from '../../../usageLedger';
+import { INoteGenerationService, GenerationTrigger } from '../../note-generation';
 
 /**
  * BullMQ processor for async comprehensive summary generation.
@@ -84,6 +85,13 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
     // wrong one — flagged separately, out of this lane's scope). Optional +
     // trailing so existing positional fixtures keep compiling.
     @Optional() private readonly unitOfWorkService?: CoreUnitOfWorkService,
+    // TASK-704 — comprehensive-summary has no harness equivalent today (§2 of
+    // the ticket); this call exists purely to make the harnessEnabled read
+    // happen through the single seam and get the decision logged — the
+    // decision is always 'legacy'/'harness-not-supported-for-trigger' and
+    // this processor's generation body always runs regardless. Optional +
+    // trailing so existing positional fixtures keep compiling.
+    @Optional() @Inject(INoteGenerationService) private readonly noteGenerationService?: INoteGenerationService,
   ) {
     super();
     this.smrServiceUrl = this.configService.get<string>('SMR_URL') ?? 'http://localhost:8862';
@@ -121,6 +129,14 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
       });
 
       try {
+        // TASK-704 — route the harnessEnabled read through the single seam.
+        // Comprehensive-summary has no harness equivalent (§2 of the ticket)
+        // — the decision is always 'legacy', logged, and this generation
+        // body always runs. Never blocks/short-circuits generation.
+        if (this.noteGenerationService) {
+          await this.noteGenerationService.generate(GenerationTrigger.COMPREHENSIVE_SUMMARY, { consultationId, tenantId, userId });
+        }
+
         // Step 1: Resolve linked consultations (10%)
         await this.jobService.notifyProgress(jobId, 10, 'Resolving linked consultations');
 

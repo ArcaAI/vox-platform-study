@@ -8,11 +8,14 @@
   anonymized text plus the entities found. Exceptions propagate (the caller
   decides the failure policy).
 * :meth:`PhiRedactor.ensure_safe_for_cloud` — the **fail-closed** egress gate.
-  For a *cloud* provider (one listed in ``settings.phi.cloud_egress_providers``)
-  it redacts and *confirms* removal before returning the cleaned text; if the
-  analyzer raises **or** removal cannot be confirmed, and ``fail_closed`` is set
-  (the default), it RAISES :class:`PhiEgressBlocked` so **no** text egresses. For
-  a *local* provider it is a pure pass-through (local calls are not egress).
+  For any provider **not** listed in ``settings.phi.local_providers`` (i.e.
+  every cloud provider, known or not) it redacts and *confirms* removal before
+  returning the cleaned text; if the analyzer raises **or** removal cannot be
+  confirmed, and ``fail_closed`` is set (the default), it RAISES
+  :class:`PhiEgressBlocked` so **no** text egresses. For a *known-local*
+  provider it is a pure pass-through (local calls are not egress) — this is a
+  default-deny allowlist: an unrecognized provider string is treated as cloud,
+  never as local.
 
 Why a custom "confirm removal" check (not a re-analyze): after anonymization the
 placeholders themselves (``<MRN>``) and leftover label words (``DOB``) get
@@ -174,15 +177,16 @@ class PhiRedactor:
     def ensure_safe_for_cloud(self, text: str, *, provider: str, settings: Settings) -> str:
         """Clear ``text`` for egress to ``provider`` (fail-closed for cloud).
 
-        * ``provider`` not in ``settings.phi.cloud_egress_providers`` → local call,
-          returned untouched (no redaction).
-        * cloud provider → redact + confirm removal. On analyzer failure or an
-          unconfirmed removal: RAISE :class:`PhiEgressBlocked` when
+        * ``provider`` in ``settings.phi.local_providers`` → local call, returned
+          untouched (no redaction).
+        * everything else (a known cloud provider OR an unrecognized provider
+          string — default-deny) → redact + confirm removal. On analyzer failure
+          or an unconfirmed removal: RAISE :class:`PhiEgressBlocked` when
           ``settings.phi.fail_closed`` (the default); otherwise degrade open
           (return the best-available text).
         """
         phi = settings.phi
-        if provider not in phi.cloud_egress_providers:
+        if provider in phi.local_providers:
             return text
 
         try:

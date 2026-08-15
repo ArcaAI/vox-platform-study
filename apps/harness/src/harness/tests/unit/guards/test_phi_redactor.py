@@ -37,7 +37,7 @@ _RAW_PHI_VALUES = ("John Smith", "884512", "03/14/1972", "415-555-0132")
 def _settings(
     *,
     fail_closed: bool = True,
-    providers: tuple[str, ...] = ("azure", "bedrock"),
+    local: tuple[str, ...] = ("lm-studio", "openai_compat", "ollama", "vllm", "llama-cpp"),
     enabled: bool = True,
 ) -> Settings:
     """A ``settings``-shaped stand-in exposing the real :class:`PhiConfig`.
@@ -51,7 +51,7 @@ def _settings(
             phi=PhiConfig(
                 enabled=enabled,
                 fail_closed=fail_closed,
-                cloud_egress_providers=list(providers),
+                local_providers=list(local),
             )
         ),
     )
@@ -161,7 +161,7 @@ class TestEnsureSafeForCloud:
     def test_local_provider_is_passthrough_without_redacting(self) -> None:
         # A non-cloud provider returns the text untouched and never redacts.
         guard = PhiRedactor(analyzer=_ForbiddenAnalyzer())
-        out = guard.ensure_safe_for_cloud(_PHI_TEXT, provider="lmstudio", settings=_settings())
+        out = guard.ensure_safe_for_cloud(_PHI_TEXT, provider="lm-studio", settings=_settings())
         assert out == _PHI_TEXT
 
     def test_cloud_provider_refuses_when_removal_unconfirmed(self) -> None:
@@ -198,5 +198,52 @@ class TestEnsureSafeForCloud:
         guard = _detected_person_redactor()
         out = guard.ensure_safe_for_cloud(
             _PHI_TEXT, provider="azure", settings=_settings(fail_closed=False)
+        )
+        assert out == _PHI_TEXT
+
+
+def _working_redactor() -> PhiRedactor:
+    """A redactor whose (fake) analyzer flags the ``John Smith`` PERSON span and
+    whose (real, model-free) ``AnonymizerEngine`` actually removes it — proves
+    genuine redaction happened without loading the spaCy model, mirroring the
+    module's existing hermetic-fakes pattern."""
+    from presidio_anonymizer import AnonymizerEngine
+
+    start = _PHI_TEXT.index("John Smith")
+    match = _Match("PERSON", start, start + len("John Smith"), 0.99)
+    return PhiRedactor(analyzer=_DetectingAnalyzer([match]), anonymizer=AnonymizerEngine())
+
+
+class TestUnknownProviderDefaultsToRedact:
+    """TASK-706: an unlisted/unrecognized provider must route through the
+    redact-and-confirm branch, never the local pass-through — the structural,
+    forward-looking fix (not just today's three known gaps: openai/anthropic/
+    vertex). These target the POST-FIX (default-deny) behavior directly, with
+    injected fakes so nothing loads a spaCy model."""
+
+    @pytest.mark.parametrize(
+        "provider", ["some-new-cloud-provider", "openai", "anthropic", "vertex"]
+    )
+    def test_provider_is_redacted_not_passed_through(self, provider: str) -> None:
+        out = _working_redactor().ensure_safe_for_cloud(
+            _PHI_TEXT, provider=provider, settings=_settings()
+        )
+        assert out != _PHI_TEXT
+        assert "John Smith" not in out
+
+    def test_unknown_provider_analyzer_failure_raises_when_fail_closed(self) -> None:
+        # An unlisted provider must get the SAME fail-closed guarantee as a
+        # known-cloud provider: analyzer failure ⇒ PhiEgressBlocked, never a
+        # silent unredacted egress.
+        guard = PhiRedactor(analyzer=_RaisingAnalyzer())
+        with pytest.raises(PhiEgressBlocked):
+            guard.ensure_safe_for_cloud(
+                _PHI_TEXT, provider="some-new-cloud-provider", settings=_settings(fail_closed=True)
+            )
+
+    def test_unknown_provider_analyzer_failure_degrades_open_when_not_fail_closed(self) -> None:
+        guard = PhiRedactor(analyzer=_RaisingAnalyzer())
+        out = guard.ensure_safe_for_cloud(
+            _PHI_TEXT, provider="some-new-cloud-provider", settings=_settings(fail_closed=False)
         )
         assert out == _PHI_TEXT

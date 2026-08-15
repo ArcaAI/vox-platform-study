@@ -13,9 +13,10 @@
 > platform.
 >
 > The **live** cluster path is not in this repository. `.gitlab/ci/deploy.yml`
-> writes image tags into a separate `hope-deployments` repo (Helm values at
-> `apps/<service>/values-staging.yaml`) which Argo CD watches. Anything here is a
-> contract for that repo to consume, not a second source of truth for topology.
+> digest-promotes into the separate `arca/hope-v2-deployment` repo (pure
+> Kustomize, `deployment/k8s/base/` + `overlays/{dev,staging,prod}`) which Argo
+> CD watches. Anything here is a contract for that repo to consume, not a
+> second source of truth for topology.
 >
 > `.claude/rules/09-infrastructure-devops.md` still describes the deleted Kustomize
 > tree as if it existed. That rule is stale as of `1de5b8c1`; correcting it was out

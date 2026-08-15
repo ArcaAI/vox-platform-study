@@ -148,8 +148,14 @@ def ensure_inferential_egress_safe(
     if not phi_enabled:
         return note_text, transcript_text, citations_map, knowledge_chunks
 
-    cloud = set(settings.phi.cloud_egress_providers)
-    if judge_provider not in cloud and safety_provider not in cloud:
+    local = set(settings.phi.local_providers)
+
+    def _is_cloud(provider: str | None) -> bool:
+        # None ⇒ no egress target (pass-through); everything else defaults to
+        # cloud unless it is a recognized local provider (default-deny).
+        return provider is not None and provider not in local
+
+    if not _is_cloud(judge_provider) and not _is_cloud(safety_provider):
         return note_text, transcript_text, citations_map, knowledge_chunks
 
     redactor = redactor if redactor is not None else PhiRedactor()

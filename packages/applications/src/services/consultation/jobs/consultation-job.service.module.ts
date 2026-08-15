@@ -16,11 +16,11 @@ import { ChainSummaryServiceModule } from '../summary/chain-summary.service.modu
 import { PromptResolutionServiceModule } from '../prompt/prompt-resolution.service.module';
 import { PromptAssemblyService } from '../prompt/prompt-assembly.service';
 import { ObservabilityModule } from '../../baseServices/observability/observability.module';
-import { HarnessGatewayServiceModule } from '../harness/harness-gateway.service.module';
 import { HarnessPolicyServiceModule } from '../../harness-policy/harness-policy.service.module';
 import { ConfigResolverModule } from '../../config-resolver';
 import { AiTaskDefaultServiceModule } from '../../ai-task-default/ai-task-default.service.module';
 import { UsageLedgerServiceModule } from '../../usageLedger';
+import { NoteGenerationServiceModule } from '../note-generation/note-generation.service.module';
 
 @Module({
   imports: [
@@ -30,7 +30,7 @@ import { UsageLedgerServiceModule } from '../../usageLedger';
     ObservabilityModule,
     ChainSummaryServiceModule, // Required for ComprehensiveSummaryProcessor
     PromptResolutionServiceModule, // Required for prompt fallback chain
-    HarnessGatewayServiceModule, // harnessEnabled routing in ConsultationEventHandler
+    NoteGenerationServiceModule, // TASK-704 seam — harnessEnabled routing for ConsultationEventHandler + SummaryProcessor
     HarnessPolicyServiceModule, // SMR-selection resolver for the summary/pre-summary/comprehensive processors
     AiTaskDefaultServiceModule, // nlp.ner model-injection resolver for NerProcessor
     ConfigResolverModule, // Realtime cascade + preferred-prompt threading (handler + summary processor)

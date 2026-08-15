@@ -50,7 +50,7 @@ class _ContractRedactor:
 
     def ensure_safe_for_cloud(self, text: str, *, provider: str, settings: Settings) -> str:
         self.calls.append((text, provider))
-        if provider not in settings.phi.cloud_egress_providers:
+        if provider in settings.phi.local_providers:
             return text
         if self._block:
             from harness.guards.phi import PhiEgressBlocked
@@ -60,9 +60,7 @@ class _ContractRedactor:
 
 
 def _settings() -> Settings:
-    return Settings(
-        phi=PhiConfig(enabled=True, fail_closed=True, cloud_egress_providers=["azure", "bedrock"])
-    )
+    return Settings(phi=PhiConfig(enabled=True, fail_closed=True))
 
 
 @pytest.fixture

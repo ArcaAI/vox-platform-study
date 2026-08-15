@@ -51,6 +51,30 @@ const META: Record<PipelineToggleKey, { label: string; description: string; glob
   },
 };
 
+/**
+ * `failMode` for `pipeline.*` keys is DESCRIPTIVE metadata only — it is never
+ * actually applied. `EffectiveSettingsService.resolveEffective` special-cases
+ * every `pipeline.` key to delegate straight to
+ * `ConfigResolver.resolvePipelineToggles`, which has its OWN hard-coded
+ * fail-closed policy (`codeDefaultResult()` on a lookup error) and never
+ * calls `applyDeclaredFailMode`/`applyFailMode`. So changing this field
+ * cannot change runtime behaviour for these keys — it only documents intent.
+ *
+ * `dnaStyleEnabled` is declared `'closed'` (not the blanket `'open-to-default'`
+ * every other toggle gets) to say what is actually true of it: it is a
+ * PHI-relevant opt-out gate (TASK-700), and `ConfigResolver.
+ * resolveEffectiveDnaStyleEnabled` already fails CLOSED (DNA off) on any
+ * lookup error — never a silently-substituted default. `codeDefault: false`
+ * happens to make `'open-to-default' `and `'closed'` observably identical
+ * for this one key (the substituted default and the fail-closed outcome are
+ * both "off"), which is exactly why the mismatch was easy to miss; declaring
+ * it `'closed'` removes the discrepancy between what the descriptor SAYS and
+ * what the resolver DOES, for the next engineer who reads only this file.
+ */
+function failModeFor(key: PipelineToggleKey): 'closed' | 'open-to-default' {
+  return key === 'dnaStyleEnabled' ? 'closed' : 'open-to-default';
+}
+
 export const PIPELINE_SETTINGS: SettingDescriptor[] = (Object.keys(PIPELINE_SETTING_DESCRIPTORS) as PipelineToggleKey[]).map((key) => ({
   key: `pipeline.${key}`,
   tier: 'db-config',
@@ -58,9 +82,7 @@ export const PIPELINE_SETTINGS: SettingDescriptor[] = (Object.keys(PIPELINE_SETT
   sensitivity: 'internal',
   maxScope: mapScope(PIPELINE_SETTING_DESCRIPTORS[key].maxScope),
   editableBy: 'PipelinePolicy',
-  // Feature toggles, not selection: an unset toggle degrades to the code
-  // default the resolver already applies today (fail-open on tuning).
-  failMode: 'open-to-default',
+  failMode: failModeFor(key),
   category: 'Pipeline',
   label: META[key].label,
   description: META[key].description,

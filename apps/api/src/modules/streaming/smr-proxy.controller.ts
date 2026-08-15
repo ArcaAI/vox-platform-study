@@ -7,6 +7,7 @@ import {
   IAiTaskDefaultService,
   IBlobStorageService,
   IConfigService,
+  IDnaWritingStyleService,
   IProviderConnectionService,
   ITenantService,
   IUsageLedgerService,
@@ -218,6 +219,13 @@ export class SmrProxyController {
     @Optional()
     @Inject(IUsageLedgerService)
     private readonly usageLedger?: IUsageLedgerService,
+    // TASK-700: the gated accessor for a doctor's effective DNA writing-style
+    // text (tenant+doctor opt-out gate, latest report, decrypt). @Optional so
+    // existing positional test fixtures keep compiling; absent ⇒ no style is
+    // injected (matches the general fail-open-but-additive DNA posture).
+    @Optional()
+    @Inject(IDnaWritingStyleService)
+    private readonly dnaWritingStyleService?: IDnaWritingStyleService,
   ) {
     // BUG-018 — the two enrichment steps now live in ONE applications-layer
     // service shared with the prompt-template test bench. Constructed here from
@@ -982,8 +990,20 @@ export class SmrProxyController {
         });
         throw new ForbiddenException('You do not have access to this DNA writing style');
       }
-      if (dnaStyle.styleText) {
-        systemPrompt += `\n\nApply the following writing style:\n${dnaStyle.styleText}`;
+
+      // The ownership check above only proves the referenced report belongs
+      // to the caller — it must NOT be the source of the injected text. Route
+      // through the same gated accessor `smr-compat` uses
+      // (`IDnaWritingStyleService.getEffectiveStyleText`): it re-applies the
+      // tenant+doctor opt-out gate, resolves the doctor's LATEST report, and
+      // decrypts the ciphertext column. Reading `dnaStyle.styleText` directly
+      // from the repository row bypassed all of that (the column is
+      // ciphertext-only, so the field is never populated by a raw findById,
+      // and — more importantly — a doctor who opted out after generating this
+      // report would still have had it injected).
+      const effectiveStyleText = await this.dnaWritingStyleService?.getEffectiveStyleText(callerId, tenantId ?? undefined);
+      if (effectiveStyleText) {
+        systemPrompt += `\n\nApply the following writing style:\n${effectiveStyleText}`;
       }
     }
 

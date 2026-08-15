@@ -112,11 +112,15 @@ class PhiConfig(BaseSettings):
 
     ``fail_closed`` is the load-bearing default: if the redactor cannot *confirm*
     PHI was removed (analyzer failure, missing model, etc.), egress to a cloud
-    provider must be **blocked**, never silently allowed. ``cloud_egress_providers``
-    is the allowlist of provider identifiers treated as cloud egress — i.e. the
-    providers for which the guard's ``ensure_safe_for_cloud(...)`` must verify
-    redaction before any data leaves the box. Local providers (LM Studio / Ollama /
-    the local SMR) are not egress and are not listed here.
+    provider must be **blocked**, never silently allowed. ``local_providers`` is
+    the allowlist of provider identifiers treated as **local, non-egress** calls —
+    i.e. the ONLY providers the guard's ``ensure_safe_for_cloud(...)`` skips.
+    Every other provider string, including one not yet in this list (an
+    omission, drift, or a provider SMR adds tomorrow), is treated as cloud
+    egress and must clear redact-and-confirm before it leaves the box. This is
+    a deliberate default-deny inversion: the list enumerates what is *known
+    safe*, not what is *known unsafe*, so an unrecognized provider fails
+    closed (redacts) rather than failing open (passes through unredacted).
     """
 
     # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
@@ -126,7 +130,31 @@ class PhiConfig(BaseSettings):
 
     enabled: bool = True
     fail_closed: bool = True
-    cloud_egress_providers: list[str] = Field(default_factory=lambda: ["azure", "bedrock"])
+    local_providers: list[str] = Field(
+        default_factory=lambda: ["lm-studio", "openai_compat", "ollama", "vllm", "llama-cpp"]
+    )
+
+    @model_validator(mode="after")
+    def _assert_local_providers_safe(self) -> PhiConfig:
+        if self.enabled and not self.local_providers:
+            raise ValueError(
+                "Refusing to boot: HARNESS_PHI_ENABLED is true but "
+                "HARNESS_PHI_LOCAL_PROVIDERS is empty. Under the default-deny egress "
+                "policy an empty local-provider list redacts EVERY call, including "
+                "genuinely local ones — almost certainly a misconfiguration "
+                "(operator wiped the list) rather than an intended lockdown. Set at "
+                "least the local providers actually in use, e.g. "
+                "['lm-studio', 'ollama']."
+            )
+        if len(self.local_providers) != len({p.strip() for p in self.local_providers}):
+            raise ValueError(
+                "Refusing to boot: HARNESS_PHI_LOCAL_PROVIDERS contains duplicate entries."
+            )
+        if any(not p.strip() for p in self.local_providers):
+            raise ValueError(
+                "Refusing to boot: HARNESS_PHI_LOCAL_PROVIDERS contains a blank entry."
+            )
+        return self
 
 
 class RetrievalConfig(BaseSettings):

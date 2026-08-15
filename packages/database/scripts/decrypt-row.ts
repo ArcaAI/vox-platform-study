@@ -329,15 +329,19 @@ export async function decryptAuditLogRow(
 
 // ───────────────────────────── Vault (node-vault) ─────────────────────────────
 
-interface VaultClientLike {
+export interface VaultClientLike {
   token?: string;
   unwrap(payload?: { token: string }): Promise<unknown>;
   approleLogin(opts: { role_id: string; secret_id: string }): Promise<unknown>;
   write(path: string, body: Record<string, unknown>): Promise<unknown>;
 }
 
-/** Mirrors VaultSecretsProvider.boot(): unwrap a wrapped secret_id, then AppRole login. */
-async function authenticateVaultClient(client: VaultClientLike): Promise<void> {
+/**
+ * Mirrors VaultSecretsProvider.boot(): unwrap a wrapped secret_id, then AppRole
+ * login. Exported (TASK-700) so `dna-phi-scan.ts` reuses this wiring instead of
+ * duplicating it — the only other consumer of this AppRole login shape.
+ */
+export async function authenticateVaultClient(client: VaultClientLike): Promise<void> {
   const addr = process.env.VAULT_ADDR;
   const roleId = process.env.VAULT_ROLE_ID;
   const wrapped = process.env.VAULT_WRAPPED_SECRET_ID;
@@ -369,8 +373,11 @@ async function authenticateVaultClient(client: VaultClientLike): Promise<void> {
   client.token = token;
 }
 
-/** transit/decrypt a `vault:vN:..` ciphertext → the original plaintext Buffer. */
-async function transitDecrypt(client: VaultClientLike, args: ParsedArgs, ciphertext: string): Promise<Buffer> {
+/**
+ * transit/decrypt a `vault:vN:..` ciphertext → the original plaintext Buffer.
+ * Exported (TASK-700) for `dna-phi-scan.ts` — see {@link authenticateVaultClient}.
+ */
+export async function transitDecrypt(client: VaultClientLike, args: ParsedArgs, ciphertext: string): Promise<Buffer> {
   const res = (await client.write(`${args.transitMount}/decrypt/${args.transitKey}`, { ciphertext })) as {
     data?: { plaintext?: string };
   };

@@ -1246,6 +1246,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
         ? { metadata: { ...(smrStats ? { stats: smrStats } : {}), ...(agentMetadata ? { agent: agentMetadata } : {}) } }
         : {}),
       ...(vitals ? { vitals } : {}),
+      ...(smrFailed ? { smrFailed: true } : {}),
       updatedAt: new Date().toISOString(),
     };
 

@@ -9,6 +9,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { Job } from 'bullmq';
 import { SummaryProcessor } from '../processors/summary.processor';
 import { GenerateSummaryJobPayload, SummaryJobResult } from '../dto';
+import { GenerationTrigger } from '../../note-generation';
 
 // Mock consultation job service
 const createMockJobService = () => ({
@@ -198,6 +199,105 @@ describe('SummaryProcessor', () => {
       undefined, // namedEntityRepository (@Optional)
       mockHarnessPolicyService as any, // HarnessPolicyService resolver
     );
+  });
+
+  // ── TASK-704 — entry point #4 (`POST :id/summary/async`) routes through
+  // the NoteGenerationService seam before running legacy generation ──
+  describe('TASK-704 harness routing (Generator Entry-Point Seam)', () => {
+    const createMockNoteGenerationService = () => ({
+      generate: vi.fn(),
+      resolveConfig: vi.fn(),
+    });
+
+    let mockNoteGenerationService: ReturnType<typeof createMockNoteGenerationService>;
+    let processorWithSeam: SummaryProcessor;
+
+    beforeEach(() => {
+      mockNoteGenerationService = createMockNoteGenerationService();
+      processorWithSeam = new SummaryProcessor(
+        mockJobService as any,
+        mockContextItemRepository as any,
+        mockConsultationRepository as any,
+        mockHttpService as any,
+        mockConfigService as any,
+        mockEventEmitter as any,
+        mockPromptResolutionService as any,
+        mockPromptAssemblyService as any,
+        mockJobMetrics as any,
+        mockClsService as any,
+        undefined, // secretsService
+        undefined, // namedEntityRepository
+        mockHarnessPolicyService as any,
+        undefined, // configResolver
+        mockNoteGenerationService as any,
+      );
+    });
+
+    it('routes to harness, notifies job completion, and never runs legacy generation when the decision is "harness"', async () => {
+      mockNoteGenerationService.generate.mockResolvedValue({ generator: 'harness', harnessJobId: 'harness-doc-xyz' });
+
+      const result = await processorWithSeam.process(
+        createMockJob({
+          jobId: 'job-harness',
+          consultationId: 'c-1',
+          tenantId: 'tenant-1',
+          userId: 'user-1',
+          request: {},
+        } as GenerateSummaryJobPayload),
+      );
+
+      expect(mockNoteGenerationService.generate).toHaveBeenCalledWith(
+        GenerationTrigger.SUMMARY_REGENERATE,
+        expect.objectContaining({ consultationId: 'c-1', tenantId: 'tenant-1', userId: 'user-1' }),
+      );
+      expect(result).toEqual({ contextItemId: '', content: '', harnessJobId: 'harness-doc-xyz' });
+      expect(mockJobService.notifyComplete).toHaveBeenCalledWith('job-harness', { contextItemId: '', content: '', harnessJobId: 'harness-doc-xyz' });
+      // Legacy generation never ran.
+      expect(mockConsultationRepository.findById).not.toHaveBeenCalled();
+      expect(mockHttpService.axiosRef.post).not.toHaveBeenCalled();
+    });
+
+    it('runs legacy generation unchanged when the decision is "legacy"', async () => {
+      mockNoteGenerationService.generate.mockResolvedValue({ generator: 'legacy', reason: 'harnessEnabled-false' });
+      mockConsultationRepository.findById.mockResolvedValue(createMockConsultation());
+      mockContextItemRepository.findTranscripts.mockResolvedValue([createMockContextItem({ content: 'T' })]);
+      mockHttpService.axiosRef.post.mockResolvedValue({ data: { summary: 'S', modelName: 'm' } });
+      mockContextItemRepository.create.mockResolvedValue({ id: 'sid', content: 'S' });
+
+      const result = await processorWithSeam.process(
+        createMockJob({
+          jobId: 'job-legacy',
+          consultationId: 'c-1',
+          tenantId: 'tenant-1',
+          userId: 'user-1',
+          request: {},
+        } as GenerateSummaryJobPayload),
+      );
+
+      expect(result.contextItemId).toBe('sid');
+      expect(mockHttpService.axiosRef.post).toHaveBeenCalledTimes(1);
+    });
+
+    it('falls back to legacy generation when noteGenerationService is not wired (pre-TASK-704 fixtures)', async () => {
+      mockConsultationRepository.findById.mockResolvedValue(createMockConsultation());
+      mockContextItemRepository.findTranscripts.mockResolvedValue([createMockContextItem({ content: 'T' })]);
+      mockHttpService.axiosRef.post.mockResolvedValue({ data: { summary: 'S', modelName: 'm' } });
+      mockContextItemRepository.create.mockResolvedValue({ id: 'sid-no-seam', content: 'S' });
+
+      // `processor` (top-level beforeEach) was constructed without a
+      // noteGenerationService — same as every pre-TASK-704 positional fixture.
+      const result = await processor.process(
+        createMockJob({
+          jobId: 'job-no-seam',
+          consultationId: 'c-1',
+          tenantId: 'tenant-1',
+          userId: 'user-1',
+          request: {},
+        } as GenerateSummaryJobPayload),
+      );
+
+      expect(result.contextItemId).toBe('sid-no-seam');
+    });
   });
 
   // ── : the BullMQ path threads the preferred prompt id ──

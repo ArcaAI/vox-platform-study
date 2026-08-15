@@ -1582,6 +1582,22 @@ describe('ConsultationService', () => {
         await expect(service.updateConsultation('c-1', { departmentId: 'dept-other' })).rejects.toThrow(NotFoundException);
         expect(mockConsultationRepository.update).not.toHaveBeenCalled();
       });
+
+      // TASK-701 — Displayed-SIGNED Status Forgery Containment.
+      // `metadata.status` is a reserved key: the DTO mapper treats it as a
+      // trusted lifecycle signal, but the `metadata` field's own validation
+      // is only `@IsObject()` (any shape). A caller who supplies
+      // `metadata: { status: 'SIGNED' }` must be rejected rather than have
+      // it silently shallow-merged into the entity's metadata column.
+      it('rejects PATCH with a reserved status key inside metadata (forgery attempt)', async () => {
+        const entity = createMockConsultationEntity({ id: 'c-1', metadata: { existing: 'keep' } });
+        mockConsultationRepository.findWithRelations.mockResolvedValue(entity);
+
+        await expect(service.updateConsultation('c-1', { metadata: { status: 'SIGNED' } })).rejects.toThrow(BadRequestException);
+
+        expect(mockConsultationRepository.update).not.toHaveBeenCalled();
+        expect(mockEventEmitter.emit).not.toHaveBeenCalled();
+      });
     });
   });
 });

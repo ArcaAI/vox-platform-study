@@ -37,7 +37,7 @@ _SAFETY_ENV = (
 _PHI_ENV = (
     "HARNESS_PHI_ENABLED",
     "HARNESS_PHI_FAIL_CLOSED",
-    "HARNESS_PHI_CLOUD_EGRESS_PROVIDERS",
+    "HARNESS_PHI_LOCAL_PROVIDERS",
 )
 
 
@@ -91,16 +91,39 @@ class TestPhiConfig:
         assert c.enabled is True
         # The whole point of the PHI guard: fail CLOSED (block egress on doubt).
         assert c.fail_closed is True
-        # The cloud-egress providers requiring PHI redaction before any send.
-        assert "azure" in c.cloud_egress_providers
-        assert "bedrock" in c.cloud_egress_providers
+        # The known-LOCAL providers — everything else (including a provider not
+        # in this list) defaults to redact-and-confirm (default-deny; TASK-706).
+        assert "lm-studio" in c.local_providers
+        assert "ollama" in c.local_providers
+        assert "azure" not in c.local_providers
+        assert "bedrock" not in c.local_providers
 
     def test_env_override(self, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setenv("HARNESS_PHI_FAIL_CLOSED", "false")
-        monkeypatch.setenv("HARNESS_PHI_CLOUD_EGRESS_PROVIDERS", '["azure"]')
+        monkeypatch.setenv("HARNESS_PHI_LOCAL_PROVIDERS", '["lm-studio"]')
         c = PhiConfig()
         assert c.fail_closed is False
-        assert c.cloud_egress_providers == ["azure"]
+        assert c.local_providers == ["lm-studio"]
+
+    def test_empty_local_providers_raises_when_enabled(self) -> None:
+        # TASK-706 Task 4: an empty local-provider list under enabled=True would
+        # redact EVERY call (including genuinely local ones) — almost certainly a
+        # misconfiguration, so refuse to boot rather than silently degrade.
+        with pytest.raises(ValidationError):
+            PhiConfig(enabled=True, local_providers=[])
+
+    def test_empty_local_providers_allowed_when_disabled(self) -> None:
+        # The guard itself is off, so an empty list is not a footgun.
+        c = PhiConfig(enabled=False, local_providers=[])
+        assert c.local_providers == []
+
+    def test_duplicate_local_providers_raises(self) -> None:
+        with pytest.raises(ValidationError):
+            PhiConfig(local_providers=["lm-studio", "lm-studio"])
+
+    def test_blank_local_provider_entry_raises(self) -> None:
+        with pytest.raises(ValidationError):
+            PhiConfig(local_providers=["lm-studio", "  "])
 
 
 class TestSettingsWiring:

@@ -20,6 +20,7 @@ import { HarnessPolicyService } from '../../../harness-policy/harness-policy.ser
 import { ConfigResolver } from '../../../config-resolver';
 import { IActiveUserContext } from '../../../../interfaces';
 import { assertEqualTenants, createWorkerSession, encryptPhiFields } from '../../../../common';
+import { INoteGenerationService, GenerationTrigger } from '../../note-generation';
 
 @Processor(JobQueue.GenerateSummary)
 export class SummaryProcessor extends WorkerHost {
@@ -45,6 +46,12 @@ export class SummaryProcessor extends WorkerHost {
     // so the legacy BullMQ summary path threads it (was previously dropped here).
     // Optional + trailing so existing positional fixtures keep compiling.
     @Optional() @Inject(ConfigResolver) private readonly configResolver?: ConfigResolver,
+    // TASK-704 — the single seam this entry point (#4, `POST :id/summary/async`)
+    // routes through before running legacy generation. Optional + trailing so
+    // existing positional fixtures keep compiling; when absent the processor
+    // falls back to running legacy generation unconditionally (pre-TASK-704
+    // behavior — this trigger never read harnessEnabled at all).
+    @Optional() @Inject(INoteGenerationService) private readonly noteGenerationService?: INoteGenerationService,
   ) {
     super();
     this.smrServiceUrl = this.configService.get<string>('SMR_URL') ?? 'http://localhost:8862';
@@ -86,6 +93,36 @@ export class SummaryProcessor extends WorkerHost {
       });
 
       try {
+        // TASK-704 — this is the point where legacy generation actually
+        // starts (before this line, only queue/CLS bookkeeping has run). The
+        // seam decides which generator produces the note; on 'harness' it has
+        // ALREADY started the harness document workflow (side effect
+        // included) — this job's own legacy body never runs, and completion
+        // is signalled here so BullMQ/SSE polling on THIS jobId resolves
+        // immediately (the harness produces the actual note asynchronously
+        // via its own callback path into HarnessInternalController, exactly
+        // as entry point #1 does).
+        if (this.noteGenerationService) {
+          const decision = await this.noteGenerationService.generate(GenerationTrigger.SUMMARY_REGENERATE, {
+            consultationId,
+            tenantId,
+            userId,
+            correlationId: job.data.request.options?.correlationId as string | undefined,
+          });
+
+          if (decision.generator === 'harness') {
+            const harnessResult: SummaryJobResult = { contextItemId: '', content: '', harnessJobId: decision.harnessJobId };
+            await this.jobService.notifyComplete(jobId, harnessResult);
+            this.logger.log({
+              message: 'Routed summary job to the harness document workflow',
+              jobId,
+              consultationId,
+              harnessJobId: decision.harnessJobId,
+            });
+            return harnessResult;
+          }
+        }
+
         // Step 1: Gathering context (10%)
         await this.jobService.notifyProgress(jobId, 10, 'Gathering context');
 

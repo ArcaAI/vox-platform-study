@@ -1140,4 +1140,77 @@ describe('ComprehensiveSummaryProcessor', () => {
       expect(mocks.contextItemRepo.encryptContentIntoEntity).not.toHaveBeenCalled();
     });
   });
+
+  // ── TASK-704 — comprehensive-summary has no harness equivalent; the seam
+  // call is logging-only and never blocks/short-circuits generation ──
+  describe('TASK-704 NoteGenerationService seam', () => {
+    const buildProcessorWithSeam = (noteGenerationService: { generate: ReturnType<typeof vi.fn> } | undefined) => {
+      const jobService = createMockJobService();
+      const chainSummaryService = createMockChainSummaryService();
+      const contextItemRepo = createMockContextItemRepository();
+      const consultationRepo = createMockConsultationRepository();
+      const summaryMetaRepo = createMockSummaryMetaRepository();
+      const namedEntityRepo = createMockNamedEntityRepository();
+      const httpService = createMockHttpService();
+      const configService = createMockConfigService();
+      const promptResolutionService = createMockPromptResolutionService();
+      const jobMetrics = createMockJobMetrics();
+      const clsService = createMockClsService();
+      const promptAssemblyService = createMockPromptAssemblyService();
+
+      const processor = new ComprehensiveSummaryProcessor(
+        jobService as any,
+        chainSummaryService as any,
+        contextItemRepo as any,
+        consultationRepo as any,
+        summaryMetaRepo as any,
+        namedEntityRepo as any,
+        httpService as any,
+        configService as any,
+        promptResolutionService as any,
+        promptAssemblyService as any,
+        jobMetrics as any,
+        clsService as any,
+        undefined, // secretsService
+        undefined, // harnessPolicyService
+        undefined, // configResolver
+        undefined, // usageLedgerService
+        undefined, // unitOfWorkService
+        noteGenerationService as any,
+      );
+
+      return { processor, chainSummaryService, contextItemRepo, consultationRepo, httpService };
+    };
+
+    const primeLegacyGeneration = (mocks: ReturnType<typeof buildProcessorWithSeam>) => {
+      mocks.consultationRepo.findById.mockResolvedValue(createConsultation());
+      mocks.chainSummaryService.resolveLinkedConsultations.mockResolvedValue([createConsultation()]);
+      mocks.chainSummaryService.gatherSections.mockResolvedValue([createSection()]);
+      mocks.chainSummaryService.gatherNamedEntities.mockResolvedValue({});
+      mocks.httpService.axiosRef.post.mockResolvedValue({ data: { summary: 'Result.', modelName: 'gpt-4o' } });
+    };
+
+    it('calls the seam with COMPREHENSIVE_SUMMARY and generates unaffected by the decision', async () => {
+      const noteGenerationService = { generate: vi.fn().mockResolvedValue({ generator: 'legacy', reason: 'harness-not-supported-for-trigger' }) };
+      const seamMocks = buildProcessorWithSeam(noteGenerationService);
+      primeLegacyGeneration(seamMocks);
+
+      const result = await seamMocks.processor.process(createMockJob(createDefaultPayload()));
+
+      expect(noteGenerationService.generate).toHaveBeenCalledWith(
+        'COMPREHENSIVE_SUMMARY',
+        expect.objectContaining({ consultationId: 'consultation-A', tenantId: 'tenant-1' }),
+      );
+      expect(result.contextItemId).toBe('ctx-comprehensive-1');
+    });
+
+    it('falls back to legacy generation when noteGenerationService is not wired (pre-TASK-704 fixtures)', async () => {
+      const seamMocks = buildProcessorWithSeam(undefined);
+      primeLegacyGeneration(seamMocks);
+
+      const result = await seamMocks.processor.process(createMockJob(createDefaultPayload()));
+
+      expect(result.contextItemId).toBe('ctx-comprehensive-1');
+    });
+  });
 });

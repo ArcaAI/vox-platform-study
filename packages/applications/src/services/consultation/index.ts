@@ -5,6 +5,8 @@ export * from './highlight';
 export * from './summary';
 export * from './jobs';
 export * from './events';
+// Single seam every note-generation entry point routes through.
+export * from './note-generation';
 export * from './timeline';
 export * from './prompt';
 // apps/api <-> apps/harness gate adapter.

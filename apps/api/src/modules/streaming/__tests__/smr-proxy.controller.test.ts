@@ -37,6 +37,13 @@ const createMockDnaWritingStyleRepository = () => ({
   findById: vi.fn(),
 });
 
+// TASK-700: the gated accessor SmrProxyController now routes the
+// `dna_writing_style_id` path through, instead of trusting `styleText` off the
+// raw (ciphertext-only) repository row.
+const createMockDnaWritingStyleService = () => ({
+  getEffectiveStyleText: vi.fn().mockResolvedValue(null),
+});
+
 const createMockDepartmentRepository = () => ({
   findById: vi.fn(),
 });
@@ -69,6 +76,7 @@ describe('SmrProxyController', () => {
   let mockContextItemRepo: ReturnType<typeof createMockContextItemRepository>;
   let mockPromptTemplateRepo: ReturnType<typeof createMockPromptTemplateRepository>;
   let mockDnaStyleRepo: ReturnType<typeof createMockDnaWritingStyleRepository>;
+  let mockDnaWritingStyleService: ReturnType<typeof createMockDnaWritingStyleService>;
   let mockDepartmentRepo: ReturnType<typeof createMockDepartmentRepository>;
   let mockMediaRepo: ReturnType<typeof createMockMediaRepository>;
   let mockBlobStorage: ReturnType<typeof createMockBlobStorage>;
@@ -82,6 +90,7 @@ describe('SmrProxyController', () => {
     mockContextItemRepo = createMockContextItemRepository();
     mockPromptTemplateRepo = createMockPromptTemplateRepository();
     mockDnaStyleRepo = createMockDnaWritingStyleRepository();
+    mockDnaWritingStyleService = createMockDnaWritingStyleService();
     mockDepartmentRepo = createMockDepartmentRepository();
     mockMediaRepo = createMockMediaRepository();
     mockBlobStorage = createMockBlobStorage();
@@ -106,6 +115,14 @@ describe('SmrProxyController', () => {
       mockMediaRepo as any,
       mockBlobStorage as any,
       mockConfigService as any,
+      undefined, // secretsService
+      undefined, // harnessPolicyService
+      undefined, // aiModelService
+      undefined, // aiTaskDefaultService
+      undefined, // aiRuntimeProfileService
+      undefined, // aiProviderConnectionService
+      undefined, // usageLedger
+      mockDnaWritingStyleService as any,
     );
   });
 
@@ -1381,10 +1398,13 @@ describe('SmrProxyController', () => {
     it('should append DNA writing style to system prompt when dna_writing_style_id is provided', async () => {
       mockDnaStyleRepo.findById.mockResolvedValue({
         id: 'dna-1',
-        styleText: 'Use concise, formal medical language with standard abbreviations.',
+        // No plaintext `styleText` on the raw repository row (ciphertext-only
+        // column) — the ownership check reads doctorId/tenantId off this row,
+        // but the actual injected text comes from the gated accessor below.
         doctorId: 'user-1',
         tenantId: 'tenant-1',
       });
+      mockDnaWritingStyleService.getEffectiveStyleText.mockResolvedValue('Use concise, formal medical language with standard abbreviations.');
 
       mockHttpService.axiosRef.post.mockResolvedValue({
         data: {
@@ -1401,6 +1421,7 @@ describe('SmrProxyController', () => {
       });
 
       expect(mockDnaStyleRepo.findById).toHaveBeenCalledWith('dna-1');
+      expect(mockDnaWritingStyleService.getEffectiveStyleText).toHaveBeenCalledWith('user-1', 'tenant-1');
       expect(mockHttpService.axiosRef.post).toHaveBeenCalledWith(
         expect.stringContaining('/api/v1/generate'),
         expect.objectContaining({
@@ -1409,6 +1430,34 @@ describe('SmrProxyController', () => {
         expect.any(Object),
       );
       expect(result._debug.dna_writing_style_id).toBe('dna-1');
+    });
+
+    it('does NOT append DNA writing style when the gated accessor returns null (doctor opted out)', async () => {
+      mockDnaStyleRepo.findById.mockResolvedValue({
+        id: 'dna-1',
+        doctorId: 'user-1',
+        tenantId: 'tenant-1',
+      });
+      mockDnaWritingStyleService.getEffectiveStyleText.mockResolvedValue(null);
+
+      mockHttpService.axiosRef.post.mockResolvedValue({
+        data: { task_id: 'task-dna-optout', status: 'completed', content: 'Unstyled summary' },
+      });
+
+      await controller.generateAssembled({
+        type: 'summary',
+        message: 'Patient transcript',
+        dna_writing_style_id: 'dna-1',
+      });
+
+      expect(mockDnaWritingStyleService.getEffectiveStyleText).toHaveBeenCalledWith('user-1', 'tenant-1');
+      expect(mockHttpService.axiosRef.post).toHaveBeenCalledWith(
+        expect.stringContaining('/api/v1/generate'),
+        expect.objectContaining({
+          system_prompt: expect.not.stringContaining('Apply the following writing style'),
+        }),
+        expect.any(Object),
+      );
     });
 
     it('should include visit type in system prompt', async () => {
@@ -1514,10 +1563,10 @@ describe('SmrProxyController', () => {
       });
       mockDnaStyleRepo.findById.mockResolvedValue({
         id: 'dna-combo',
-        styleText: 'Use bullet points and short sentences.',
         doctorId: 'user-1',
         tenantId: 'tenant-1',
       });
+      mockDnaWritingStyleService.getEffectiveStyleText.mockResolvedValue('Use bullet points and short sentences.');
 
       mockHttpService.axiosRef.post.mockResolvedValue({
         data: { task_id: 'task-combo', status: 'completed', content: 'combo result' },

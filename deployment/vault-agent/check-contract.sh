@@ -7,8 +7,8 @@
 #   kubectl kustomize <dir> | deployment/vault-agent/check-contract.sh -
 #   helm template <chart> | deployment/vault-agent/check-contract.sh -
 #
-# Point it at the hope-deployments render too — the contract is the same
-# wherever the manifests are authored.
+# Point it at the arca/hope-v2-deployment render too — the contract is the
+# same wherever the manifests are authored.
 #
 # Checks, per pod template that has `vault.hashicorp.com/agent-inject: true`:
 #   1. Every `agent-inject-secret-<X>` has a matching `agent-inject-template-<X>`

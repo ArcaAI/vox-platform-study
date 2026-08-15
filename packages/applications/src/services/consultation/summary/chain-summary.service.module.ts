@@ -9,6 +9,7 @@ import { PromptAssemblyService } from '../prompt/prompt-assembly.service';
 import { HarnessPolicyServiceModule } from '../../harness-policy/harness-policy.service.module';
 import { ConfigResolverModule } from '../../config-resolver';
 import { UsageLedgerServiceModule } from '../../usageLedger/usage-ledger.service.module';
+import { NoteGenerationServiceModule } from '../note-generation/note-generation.service.module';
 
 @Module({
   // HarnessPolicyServiceModule supplies the SMR-selection resolver.
@@ -24,6 +25,9 @@ import { UsageLedgerServiceModule } from '../../usageLedger/usage-ledger.service
     HarnessPolicyServiceModule,
     ConfigResolverModule,
     UsageLedgerServiceModule,
+    // TASK-704 seam — always resolves to 'legacy' for this trigger (no
+    // harness equivalent); logging-only, never short-circuits generation.
+    NoteGenerationServiceModule,
   ],
   providers: [PromptAssemblyService, ChainSummaryService],
   exports: [ChainSummaryService],

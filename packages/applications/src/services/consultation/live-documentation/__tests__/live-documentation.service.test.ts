@@ -294,6 +294,69 @@ describe('LiveDocumentationService', () => {
   });
 
   // ------------------------------------------------------------------
+  // TASK-703: `smrFailed` computed internally on a failed SMR call but never
+  // attached to the published `LiveSummaryEventDto` — a first-flush failure
+  // published an empty note indistinguishable from "nothing said yet", and a
+  // later-flush failure froze stale content under a fresh `updatedAt` with no
+  // marker. The published payload must carry `smrFailed: true` in both cases.
+  // ------------------------------------------------------------------
+  describe('smrFailed degradation marker (TASK-703)', () => {
+    it('marks a first-flush SMR failure with smrFailed: true (no prior content to freeze)', async () => {
+      const httpMock = {
+        axiosRef: {
+          post: vi.fn().mockImplementation((url: string) => {
+            if (url.includes('/classify/tokens')) return Promise.resolve({ data: { entities: [] } });
+            if (url.includes('/generate')) return Promise.reject(new Error('SMR down'));
+            return Promise.resolve({ data: {} });
+          }),
+        },
+      };
+      const { service } = buildDeps(httpMock);
+      service.start({ consultationId: CID, tenantId: TENANT });
+      service.ingestSegment(CID, { text: 'Patient reports chest pain.', isFinal: true, segmentId: 's1' });
+
+      const payload = await service.flush(CID);
+
+      expect(payload).not.toBeNull();
+      expect(payload!.smrFailed).toBe(true);
+      expect(payload!.runningSummary).toBe('');
+      expect(payload!.sections).toEqual([]);
+    });
+
+    it('marks a later-flush SMR failure with smrFailed: true while freezing the prior content', async () => {
+      let generateCalls = 0;
+      const httpMock = {
+        axiosRef: {
+          post: vi.fn().mockImplementation((url: string) => {
+            if (url.includes('/classify/tokens')) return Promise.resolve({ data: { entities: [] } });
+            if (url.includes('/generate')) {
+              generateCalls += 1;
+              if (generateCalls === 1) return Promise.resolve({ data: { summary: 'Pt on amlodipine for HTN.' } });
+              return Promise.reject(new Error('SMR down'));
+            }
+            return Promise.resolve({ data: {} });
+          }),
+        },
+      };
+      const { service } = buildDeps(httpMock);
+      service.start({ consultationId: CID, tenantId: TENANT });
+      service.ingestSegment(CID, { text: 'Patient on amlodipine.', isFinal: true, segmentId: 's1' });
+
+      const firstPayload = await service.flush(CID);
+      expect(firstPayload!.runningSummary).toBe('Pt on amlodipine for HTN.');
+      expect(firstPayload!.smrFailed).toBeUndefined();
+
+      service.ingestSegment(CID, { text: 'Follow-up note.', isFinal: true, segmentId: 's2' });
+      const secondPayload = await service.flush(CID, { force: true });
+
+      expect(secondPayload).not.toBeNull();
+      expect(secondPayload!.smrFailed).toBe(true);
+      // Frozen: retains the last-good content rather than being wiped/blanked.
+      expect(secondPayload!.runningSummary).toBe('Pt on amlodipine for HTN.');
+    });
+  });
+
+  // ------------------------------------------------------------------
   // C5-01: the NLP `/classify/tokens` wire contract. The service
   // must read the canonical NLP fields (text / entity_type / position.{start,end})
   // — NOT the never-emitted value/type/start/end — and re-key them onto the

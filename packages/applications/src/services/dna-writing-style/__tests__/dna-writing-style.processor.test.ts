@@ -339,22 +339,22 @@ describe('DnaWritingStyleProcessor', () => {
       expect(result.styleText).toBe('Formal medical writing style.');
     });
 
-    it('should handle SMR plain text (non-JSON) — fallback to styleText only', async () => {
+    // TASK-700 (Task 1 RED test 1 / PHI containment): a schema-mismatched SMR
+    // response must never be persisted verbatim. Pre-fix, this test asserted
+    // the OPPOSITE (silent fallback to raw content) — flipped here so the
+    // suite pins the fixed behavior; see the ticket README for the RED-run
+    // evidence captured before this assertion was updated.
+    it('fails the job (never persists verbatim) when SMR returns non-JSON content', async () => {
       mockPromptService.listPromptTemplates.mockResolvedValue([{ id: 'tpl-1', content: 'Analyze.', category: 'DNA_ANALYSIS' }]);
       mockHttpService.axiosRef.post.mockResolvedValue(createAxiosSmrResponse('This is plain text analysis, not JSON.'));
       mockDnaReportRepo.findLatestForDoctor.mockResolvedValue(null);
-      mockDnaReportRepo.create.mockResolvedValue({
-        id: 'r',
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
-      mockDnaVersionRepo.create.mockResolvedValue({});
-      mockDnaUsageRepo.create.mockResolvedValue({});
 
-      const result = await processor.process(createMockJob({ textSamples: ['sample'] }) as never);
+      await expect(processor.process(createMockJob({ textSamples: ['sample'] }) as never)).rejects.toThrow(
+        /unparseable or non-conforming/i,
+      );
 
-      expect(result.styleText).toBe('This is plain text analysis, not JSON.');
-      expect(result.reportData).toEqual({});
+      expect(mockJobService.notifyFailed).toHaveBeenCalledWith('job-1', expect.stringContaining('unparseable or non-conforming'));
+      expect(mockDnaReportRepo.create).not.toHaveBeenCalled();
     });
 
     it('should handle SMR JSON without styleText key — uses content as styleText', async () => {
@@ -1112,17 +1112,23 @@ describe('DnaWritingStyleProcessor', () => {
       expect(mockContextItemRepo.findAll).not.toHaveBeenCalled();
     });
 
-    it('does NOT gate the explicit textSamples path even when effective DNA = false (admin/migration)', async () => {
+    // TASK-700 (Task 1 RED test 2 / PHI containment): the opt-out gate now
+    // applies to BOTH paths — an admin/migration `textSamples` call can no
+    // longer override a doctor's (or tenant's) opt-out. Pre-fix, this test
+    // asserted the bypass SUCCEEDED; flipped here to pin the fixed gating.
+    it('GATES the explicit textSamples path too, when effective DNA = false (admin/migration can no longer bypass opt-out)', async () => {
       const configResolver = createMockConfigResolver();
       configResolver.resolveEffectiveDnaStyleEnabled.mockResolvedValue({ effective: false, tenantEnabled: false, doctorToggle: null });
       const gatedProcessor = buildProcessorWithResolver(configResolver);
       primeStorageMocks();
 
-      await gatedProcessor.process(createMockJob({ textSamples: ['Explicit override sample'] }) as never);
+      await expect(gatedProcessor.process(createMockJob({ textSamples: ['Explicit override sample'] }) as never)).rejects.toThrow(/disabled/i);
 
-      expect(configResolver.resolveEffectiveDnaStyleEnabled).not.toHaveBeenCalled();
-      const [, requestBody] = mockHttpService.axiosRef.post.mock.calls[0];
-      expect(requestBody.prompt).toContain('Explicit override sample');
+      expect(configResolver.resolveEffectiveDnaStyleEnabled).toHaveBeenCalledWith(
+        expect.objectContaining({ tenantId: 'tenant-1', doctorId: 'doctor-1' }),
+      );
+      expect(mockJobService.notifyFailed).toHaveBeenCalledWith('job-1', expect.stringContaining('disabled'));
+      expect(mockHttpService.axiosRef.post).not.toHaveBeenCalled();
     });
   });
 });

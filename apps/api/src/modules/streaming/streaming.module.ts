@@ -3,6 +3,7 @@ import {
   AiProviderConnectionServiceModule,
   AiRuntimeProfileServiceModule,
   AiTaskDefaultServiceModule,
+  DnaWritingStyleServiceModule,
   EntitlementsServiceModule,
   HarnessPolicyServiceModule,
   OriginRegistryServiceModule,
@@ -77,6 +78,11 @@ import { TranscriptionJobController } from './transcription-job.controller';
     // providers, not a sibling controller here) — Nest's module
     // encapsulation means each module that injects the token must import it.
     UsageLedgerServiceModule,
+    // TASK-700: supplies `IDnaWritingStyleService` to `SmrProxyController` so
+    // its `dna_writing_style_id` path routes through the gated
+    // `getEffectiveStyleText` accessor instead of reading the (ciphertext-only,
+    // ungated) repository row directly.
+    DnaWritingStyleServiceModule,
   ],
   controllers: [TranscriptionJobController, AdminTranscriptionJobController, SmrProxyController],
   // SessionRemovalRetryService resolves

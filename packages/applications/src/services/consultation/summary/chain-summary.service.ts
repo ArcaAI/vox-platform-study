@@ -26,6 +26,7 @@ import { SecretsService } from '../../baseServices/_meta/secrets';
 import { HarnessPolicyService } from '../../harness-policy/harness-policy.service';
 import { ConfigResolver } from '../../config-resolver';
 import type { PromptResolutionTier } from '../prompt/prompt-resolution.service';
+import { INoteGenerationService, GenerationTrigger } from '../note-generation';
 
 /**
  * ChainSummaryService — generates comprehensive cross-chain summaries.
@@ -80,6 +81,11 @@ export class ChainSummaryService extends BaseService {
     // The token stays EXPLICIT (rather than relying on `emitDecoratorMetadata`,
     // as `SttInternalService` does) so the DI guard test can assert it.
     @Optional() @Inject(CoreUnitOfWorkService) private readonly unitOfWork?: CoreUnitOfWorkService,
+    // TASK-704 — comprehensive-summary has no harness equivalent today;
+    // this call exists purely to make the harnessEnabled read happen through
+    // the single seam and get the decision logged. Optional + trailing so
+    // existing positional fixtures keep compiling.
+    @Optional() @Inject(INoteGenerationService) private readonly noteGenerationService?: INoteGenerationService,
   ) {
     super(eventEmitter, clsService, ResourceType.ContextItem);
     this.smrServiceUrl = this.configService.get<string>('SMR_URL') ?? 'http://localhost:8862';
@@ -106,6 +112,21 @@ export class ChainSummaryService extends BaseService {
 
     if (!tenantId) {
       throw new BadRequestException('Tenant ID is required');
+    }
+
+    // TASK-704 — no harness equivalent for comprehensive-summary; logs the
+    // decision through the single seam without affecting generation below.
+    if (this.noteGenerationService) {
+      try {
+        const decision = await this.noteGenerationService.generate(GenerationTrigger.COMPREHENSIVE_SUMMARY, { consultationId, tenantId, userId });
+        this.logger.log({ message: 'NoteGenerationService decision', trigger: GenerationTrigger.COMPREHENSIVE_SUMMARY, consultationId, decision });
+      } catch (error) {
+        this.logger.warn({
+          message: 'NoteGenerationService seam call failed (best-effort, non-blocking)',
+          consultationId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
     }
 
     // (audit C-1 / C-3 / C-4) — verify the requesting

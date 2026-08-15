@@ -40,7 +40,11 @@ export const SOAP_OUTPUT_SCHEMA = {
   properties: {
     subjective: { type: 'string', description: 'Patient history, chief complaint, HPI, review of systems.' },
     objective: { type: 'string', description: 'Vitals, physical exam findings, labs, imaging.' },
-    assessment: { type: 'string', description: 'Primary diagnosis, differentials, severity grading, ICD-10 codes.' },
+    assessment: {
+      type: 'string',
+      description:
+        'Primary diagnosis, differentials, severity grading — by name; do not write, guess, or transcribe a diagnostic code in this field — codes are attached separately from a verified terminology source.',
+    },
     plan: { type: 'string', description: 'Medications with dosages, referrals, follow-up timeline, patient education.' },
   },
   required: ['subjective', 'objective', 'assessment', 'plan'],
@@ -51,6 +55,58 @@ export const SOAP_PROMPT_CONFIG = {
   hyperparameters: { temperature: 0.0, max_tokens: 65536, top_p: 0.95 },
   outputSchema: SOAP_OUTPUT_SCHEMA,
 };
+
+/**
+ * Structured DNA writing-style output schema (TASK-700 PHI containment).
+ *
+ * Every property is a CLOSED vocabulary (enum) or a short, headings-only
+ * string — deliberately with NO free-text field wide enough to carry a
+ * quoted clinical sentence, patient name, or identifier. This is the
+ * structural fix: even a model that ignores its instructions cannot smuggle
+ * verbatim patient content through a field whose only valid values are
+ * `'active' | 'passive' | 'mixed'` etc. `DnaWritingStyleProcessor` additionally
+ * validates the parsed response against `required` before accepting it (belt
+ * and suspenders — never trust `strict: true` alone).
+ */
+export const DNA_OUTPUT_SCHEMA = {
+  title: 'DnaStyleProfile',
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    sentenceStructure: { type: 'string', enum: ['active', 'passive', 'mixed'], description: 'Predominant sentence voice.' },
+    verbosity: { type: 'string', enum: ['terse', 'moderate', 'verbose'], description: 'Overall level of documentation detail.' },
+    listVsNarrative: { type: 'string', enum: ['list', 'narrative', 'mixed'], description: 'Preference for bulleted lists vs prose paragraphs.' },
+    sectionOrderPreference: {
+      type: 'string',
+      maxLength: 200,
+      description:
+        'Comma-separated section HEADINGS only, in preferred order (e.g. "Subjective, Objective, Assessment, Plan") — never a sentence, and never patient-specific content.',
+    },
+    abbreviationFrequency: { type: 'string', enum: ['low', 'medium', 'high'], description: 'How often standard medical abbreviations are used.' },
+    toneFormality: { type: 'string', enum: ['casual', 'neutral', 'formal'], description: 'Overall tone and formality level.' },
+    confidenceScores: {
+      type: 'object',
+      description: 'Confidence (0-1) per extracted pattern, keyed by the property name it scores.',
+      additionalProperties: { type: 'number', minimum: 0, maximum: 1 },
+    },
+  },
+  required: ['sentenceStructure', 'verbosity', 'listVsNarrative', 'sectionOrderPreference', 'abbreviationFrequency', 'toneFormality', 'confidenceScores'],
+};
+
+/** DNA prompt hyperparameters + output schema, persisted under `metaData.promptConfig`. */
+export const DNA_PROMPT_CONFIG = {
+  hyperparameters: { temperature: 0.0, max_tokens: 8192, top_p: 0.95 },
+  outputSchema: DNA_OUTPUT_SCHEMA,
+};
+
+/**
+ * DNA_ANALYSIS prompt content, v3 (TASK-700). Defense-in-depth over the
+ * schema (`DNA_PROMPT_CONFIG.outputSchema`): an explicit instruction against
+ * reproducing patient content, even though the structural fix is the closed
+ * schema, not this sentence.
+ */
+export const DNA_ANALYSIS_CONTENT_V3 =
+  "Analyze the physician's writing style from the provided consultation transcripts and summaries.\n\nExtract patterns for:\n1. Sentence structure preferences (active/passive, length, complexity)\n2. Medical terminology usage (formal vs colloquial, abbreviation frequency)\n3. Documentation style (narrative vs structured, level of detail)\n4. Common phrases and transition words\n5. Section ordering preferences\n6. Tone and formality level\n\nOutput a structured DNA profile that can be used to generate future summaries matching this physician's style. Include confidence scores for each extracted pattern.\n\nDo not reproduce, quote, or paraphrase any patient name, identifier, date, medication, dose, or other encounter-specific fact from the source material — describe stylistic patterns only, never patient content.";
 
 // Template IDs - exported for cross-referencing in other seeds
 export const TEMPLATE_IDS = {
@@ -366,7 +422,7 @@ export const DEFAULT_PROMPT_TEMPLATES = [
     name: 'SOAP Summary Prompt',
     description: 'SOAP format clinical summary for progress notes',
     content:
-      'Generate a SOAP-format clinical summary with enhanced structure.\n\nInclude:\n- Subjective: patient history, chief complaint, HPI, review of systems\n- Objective: vitals, physical exam findings, labs, imaging\n- Assessment: primary diagnosis, differentials, severity grading, ICD-10 codes\n- Plan: medications with dosages, referrals, follow-up timeline, patient education\n\nUse concise clinical language. Flag critical values. Include confidence levels for differential diagnoses.',
+      'Generate a SOAP-format clinical summary with enhanced structure.\n\nInclude:\n- Subjective: patient history, chief complaint, HPI, review of systems\n- Objective: vitals, physical exam findings, labs, imaging\n- Assessment: primary diagnosis, differentials, severity grading — by name; do not write, guess, or transcribe a diagnostic code in this field — codes are attached separately from a verified terminology source\n- Plan: medications with dosages, referrals, follow-up timeline, patient education\n\nUse concise clinical language. Flag critical values. Include confidence levels for differential diagnoses.',
     category: 'SUMMARY',
     variables: {
       patient_name: { type: 'string', required: true },
@@ -376,7 +432,11 @@ export const DEFAULT_PROMPT_TEMPLATES = [
     },
     // Activate structured SOAP output (json_schema).
     metaData: { promptConfig: SOAP_PROMPT_CONFIG } as Prisma.InputJsonValue,
-    currentVersionNumber: 3,
+    // TASK-702: bumped 3 -> 4 — v4 (EXTRA_PROMPT_VERSIONS id …0105) removes the
+    // free-text ICD-10 instruction. v3's PromptVersion snapshot is preserved
+    // unmutated (see comment there) since it is a historical record of what
+    // was actually served, not a live instruction.
+    currentVersionNumber: 4,
     departmentId: null,
     tags: ['soap', 'clinical'],
   },
@@ -386,14 +446,16 @@ export const DEFAULT_PROMPT_TEMPLATES = [
     tenantId: DEFAULT_TENANT_ID,
     name: 'DNA Writing Style Analysis Prompt',
     description: 'Prompt for analyzing doctor writing style patterns',
-    content:
-      "Analyze the physician's writing style from the provided consultation transcripts and summaries.\n\nExtract patterns for:\n1. Sentence structure preferences (active/passive, length, complexity)\n2. Medical terminology usage (formal vs colloquial, abbreviation frequency)\n3. Documentation style (narrative vs structured, level of detail)\n4. Common phrases and transition words\n5. Section ordering preferences\n6. Tone and formality level\n\nOutput a structured DNA profile that can be used to generate future summaries matching this physician's style. Include confidence scores for each extracted pattern.",
+    content: DNA_ANALYSIS_CONTENT_V3,
     category: 'DNA_ANALYSIS',
     variables: {
       physician_id: { type: 'string', required: true },
       sample_count: { type: 'number', required: false },
     },
-    currentVersionNumber: 2,
+    // Constrain DNA output to the closed-vocabulary schema (TASK-700 PHI
+    // containment) — same mechanism as SOAP_PROMPT_CONFIG above.
+    metaData: { promptConfig: DNA_PROMPT_CONFIG } as Prisma.InputJsonValue,
+    currentVersionNumber: 3,
     departmentId: null,
     tags: ['dna', 'writing-style', 'analysis'],
   },
@@ -558,7 +620,7 @@ When the current encounter's department is "Surgery" (or "General Surgery") and 
 - Imaging with key findings + dates; Biopsy/HPE results; relevant labs (CBC, LFTs, TSH/T3/T4, PTH, etc.)
 
 **12. Diagnosis**
-- Confirmed and provisional diagnosis(es), with ICD-10 code(s) if available
+- Confirmed and provisional diagnosis(es), by name. Do not write, guess, or transcribe a diagnostic code — codes are attached separately from a verified terminology source
 
 **13. Plan of Care**
 - Surgical/procedural plan; medical plan; referrals; follow-up timing and purpose
@@ -695,7 +757,7 @@ When the current encounter's department is "General Medicine" (or "Internal Medi
 - Summarize key investigations: Imaging (CXR, ECG, ECHO, CT/MRI), Labs (CBC, LFTs, RFTs).
 
 **Current Diagnosis**
-- Working or confirmed diagnosis with ICD-10 code(s).
+- Working or confirmed diagnosis, by name. Do not write, guess, or transcribe a diagnostic code — codes are attached separately from a verified terminology source.
 
 **Plan of Care**
 Contains the following sub-sections:
@@ -765,7 +827,7 @@ When the current encounter's department is "General Medicine" (or "Internal Medi
 - Include home BP readings (if discussed) for hypertensive patients and home GRBS (if discussed) for diabetic patients.
 
 **6. Current Diagnosis**
-- State working or confirmed diagnosis with ICD-10 code(s) if available.
+- State working or confirmed diagnosis, by name. Do not write, guess, or transcribe a diagnostic code — codes are attached separately from a verified terminology source.
 
 **7. Treatment Plan**
 - Summarize any medication adjustments, new therapies, or procedures.
@@ -853,7 +915,7 @@ Act as an expert medical scribe with postgraduate training in Medicine and Breas
     - **Laboratory:** CBC, LFTs; **Thyroid** (TSH, FT4/T3, anti-TPO/TgAb); **Parathyroid/Calcium** (Ca, iCa, PTH, Vit D, phosphate, 24-hr Ca); tumor markers if any (CEA, CA 15-3), with **dates**
 
 **Diagnosis**
-    - Confirmed and provisional diagnosis(es) with ICD-10 codes; list **all** differentials in order of likelihood if provisional
+    - Confirmed and provisional diagnosis(es), by name. Do not write, guess, or transcribe a diagnostic code — codes are attached separately from a verified terminology source; list **all** differentials in order of likelihood if provisional
 
 **Plan of Care**
     - **Surgical/Procedural:** planned operation (e.g., breast-conserving surgery/mastectomy; hemithyroidectomy/total thyroidectomy; parathyroidectomy), timing, consent status
@@ -1004,7 +1066,7 @@ When the current encounter's department is "Rheumatology" and the patient is NEW
 
 9. **Impression**
 
-    - State working/confirmed diagnosis and differential, with ICD-10 code(s).
+    - State working/confirmed diagnosis and differential, by name. Do not write, guess, or transcribe a diagnostic code — codes are attached separately from a verified terminology source.
 
 10. **Plan**
 
@@ -1054,7 +1116,7 @@ When the current encounter's department is "Rheumatology" and the patient is a R
 
 1. **Diagnosis**
 
-    - Confirmed or working diagnosis with ICD-10 code(s).
+    - Confirmed or working diagnosis, by name. Do not write, guess, or transcribe a diagnostic code — codes are attached separately from a verified terminology source.
 
 2. **Disease Activity**
 
@@ -1155,7 +1217,7 @@ When the current encounter's department is "Orthopedics" and the patient is NEW 
 
 7. Provisional Diagnosis
 
-    - State provisional diagnosis and corresponding ICD-10 code.
+    - State provisional diagnosis, by name. Do not write, guess, or transcribe a diagnostic code — codes are attached separately from a verified terminology source.
 
 8. Investigations Ordered
 
@@ -1204,7 +1266,7 @@ When the current encounter's department is "Orthopedics" and the patient is a RE
 
 1. Patient Details
 
-    - Name, Hospital Number, Visit Number, Date of Review, Diagnosis, ICD-10 code, Operated Side, Surgery Type & Date (if applicable).
+    - Name, Hospital Number, Visit Number, Date of Review, Diagnosis (by name — do not write, guess, or transcribe a diagnostic code), Operated Side, Surgery Type & Date (if applicable).
 
 2. Current Complaints
 
@@ -1282,7 +1344,7 @@ When the current encounter's department is "Neurology" and the patient is NEW or
    - Summarize relevant labs and imaging ordered or reviewed, with dates and key results (e.g., MRI, EEG, CSF analysis).
 
 5. **Diagnosis**
-   - State the working or confirmed diagnosis, including ICD-10 code if available, and any differentials.
+   - State the working or confirmed diagnosis, by name (do not write, guess, or transcribe a diagnostic code — codes are attached separately from a verified terminology source), and any differentials.
 
 6. **Treatment Advice**
    - Capture all instructions provided by the doctor: medications (dose, frequency), lifestyle advice, referrals.
@@ -1326,7 +1388,7 @@ When the current encounter's department is "Neurology" and the patient is NEW or
 When the current encounter's department is "Neurology" and the patient is a REVIEW (follow-up), produce a structured clinical summary using these headings in order:
 
 1. **Diagnosis & Visit Context**
-   - Confirmed or working diagnosis (ICD-10 code if available) and note follow-up encounter.
+   - Confirmed or working diagnosis, by name (do not write, guess, or transcribe a diagnostic code — codes are attached separately from a verified terminology source), and note follow-up encounter.
 
 2. **Interval Since Last Visit**
    - Time since prior visit (e.g., "Last seen 6 weeks ago on [date]").
@@ -1905,7 +1967,7 @@ When the current encounter's department is "Dietetics" and the patient is a REVI
 
 When the current encounter's department is "Nephrology" (or "Nephro") and the patient is NEW or REFERRAL, produce a structured summary using these headings in order:
 
-**1. Diagnosis** — Working diagnosis/differentials; ICD-10 if stated.
+**1. Diagnosis** — Working diagnosis/differentials, by name. Do not write, guess, or transcribe a diagnostic code — codes are attached separately from a verified terminology source.
 
 **2. History** — Chief complaints/duration; HPI; associated symptoms; systemic illnesses; nephrotoxic exposures; family/lifestyle history.
 
@@ -2292,12 +2354,20 @@ export const CUSTOMER_PROMPT_TEMPLATES = [
     name: 'ArcaAI Writing Style Analysis',
     description: 'ArcaAI prompt for analysing a clinician writing style (DNA)',
     content:
-      "Analyse the clinician's documentation style from the supplied ArcaAI transcripts and notes. Extract sentence-structure preferences, terminology and abbreviation habits, section ordering, and tone. Output a structured style profile with confidence scores that can steer future summaries to match this clinician.",
+      "Analyse the clinician's documentation style from the supplied ArcaAI transcripts and notes. Extract sentence-structure preferences, terminology and abbreviation habits, section ordering, and tone. Output a structured style profile with confidence scores that can steer future summaries to match this clinician.\n\nDo not reproduce, quote, or paraphrase any patient name, identifier, date, medication, dose, or other encounter-specific fact from the source material — describe stylistic patterns only, never patient content.",
     category: 'DNA_ANALYSIS',
     variables: {
       physician_id: { type: 'string', required: true },
       sample_count: { type: 'number', required: false },
     },
+    // TASK-700 PHI containment: this is the tenant whose DNA feature is
+    // LIVE today (`14-pipeline-policy.ts` ARCAAI_PIPELINE_POLICY_OVERRIDE
+    // sets `dnaStyleEnabled: true`), so the schema constraint that closes the
+    // free-text output defect must be seeded onto ArcaAI's OWN copy of the
+    // template — `listPromptTemplates` resolves strictly by `tenantId`, so
+    // the DEFAULT_TENANT_ID fix above does not reach this tenant's
+    // generations on its own.
+    metaData: { promptConfig: DNA_PROMPT_CONFIG } as Prisma.InputJsonValue,
     currentVersionNumber: 1,
     departmentId: null,
     tags: ['arcaai', 'dna', 'writing-style'],
@@ -2335,6 +2405,106 @@ export const CUSTOMER_PROMPT_VERSIONS = CUSTOMER_PROMPT_TEMPLATES.map((t) => ({
   changedBy: SYSTEM_USER_ID,
 }));
 
+/**
+ * Extra historical `PromptVersion` rows layered on top of `DEFAULT_PROMPT_VERSIONS`
+ * (versionNumber 2/3 snapshots for SOAP_SUMMARY and DNA_ANALYSIS). Hoisted to
+ * module scope (was previously a local inside `seedPromptTemplate`) so the
+ * ICD-10 prompt-containment golden test can assert on its content directly.
+ */
+export const EXTRA_PROMPT_VERSIONS = [
+  {
+    id: '72000000-0000-0000-0000-000000000101',
+    tenantId: DEFAULT_TENANT_ID,
+    promptTemplateId: TEMPLATE_IDS.SOAP_SUMMARY,
+    versionNumber: 2,
+    content:
+      'Generate a SOAP-format clinical summary with enhanced structure. Include Subjective (patient history, chief complaint, HPI), Objective (vitals, physical exam, labs), Assessment (primary diagnosis, differentials, severity), and Plan (medications, referrals, follow-up timeline). Use concise clinical language. Flag critical values.',
+    variables: {
+      patient_name: { type: 'string', required: true },
+      chief_complaint: { type: 'string', required: true },
+      department: { type: 'string', required: false },
+      severity: { type: 'string', required: false },
+    },
+    changeReason: 'Added critical value flagging',
+    changedBy: SYSTEM_USER_ID,
+  },
+  {
+    // Historical snapshot of what version 3 WAS — deliberately preserved
+    // verbatim (including the pre-fix "ICD-10 codes" clause) rather than
+    // mutated in place; the ICD-10 fix ships as a NEW versionNumber 4 row
+    // below, per TASK-702 (rolling `approvedVersionNumber`/`currentVersionNumber`
+    // back to 3 must reproduce exactly what was served at the time, ICD-10
+    // clause included — the icd10-prompt-containment golden test's allowlist
+    // documents this same exception).
+    id: '72000000-0000-0000-0000-000000000102',
+    tenantId: DEFAULT_TENANT_ID,
+    promptTemplateId: TEMPLATE_IDS.SOAP_SUMMARY,
+    versionNumber: 3,
+    content:
+      'Generate a SOAP-format clinical summary with enhanced structure.\n\nInclude:\n- Subjective: patient history, chief complaint, HPI, review of systems\n- Objective: vitals, physical exam findings, labs, imaging\n- Assessment: primary diagnosis, differentials, severity grading, ICD-10 codes\n- Plan: medications with dosages, referrals, follow-up timeline, patient education\n\nUse concise clinical language. Flag critical values. Include confidence levels for differential diagnoses.',
+    variables: {
+      patient_name: { type: 'string', required: true },
+      chief_complaint: { type: 'string', required: true },
+      department: { type: 'string', required: false },
+      severity: { type: 'string', required: false },
+    },
+    // TASK-702: reworded from "Restructured with bullet points, added ICD-10
+    // codes and confidence levels" — that phrasing described ICD-10 emission
+    // as a positive change, which is misleading once the model is no longer
+    // instructed to write codes. The `content` above is left untouched (see
+    // comment on `id`); only this history-log description string changes.
+    changeReason: 'Restructured with bullet points and confidence levels',
+    changedBy: SYSTEM_USER_ID,
+  },
+  {
+    // The ICD-10 prompt-containment fix (TASK-702): supersedes versionNumber
+    // 3 above without mutating its historical snapshot. SOAP_SUMMARY's
+    // `currentVersionNumber` is bumped to 4 so this is the version served.
+    id: '72000000-0000-0000-0000-000000000105',
+    tenantId: DEFAULT_TENANT_ID,
+    promptTemplateId: TEMPLATE_IDS.SOAP_SUMMARY,
+    versionNumber: 4,
+    content:
+      'Generate a SOAP-format clinical summary with enhanced structure.\n\nInclude:\n- Subjective: patient history, chief complaint, HPI, review of systems\n- Objective: vitals, physical exam findings, labs, imaging\n- Assessment: primary diagnosis, differentials, severity grading — by name; do not write, guess, or transcribe a diagnostic code in this field — codes are attached separately from a verified terminology source\n- Plan: medications with dosages, referrals, follow-up timeline, patient education\n\nUse concise clinical language. Flag critical values. Include confidence levels for differential diagnoses.',
+    variables: {
+      patient_name: { type: 'string', required: true },
+      chief_complaint: { type: 'string', required: true },
+      department: { type: 'string', required: false },
+      severity: { type: 'string', required: false },
+    },
+    changeReason:
+      'ICD-10 prompt containment: removed the free-text ICD-10 code instruction from the Assessment section — diagnosis codes are attached from a verified terminology source, never free-written by the model',
+    changedBy: SYSTEM_USER_ID,
+  },
+  {
+    id: '72000000-0000-0000-0000-000000000103',
+    tenantId: DEFAULT_TENANT_ID,
+    promptTemplateId: TEMPLATE_IDS.DNA_ANALYSIS,
+    versionNumber: 2,
+    content:
+      "Analyze the physician's writing style from the provided consultation transcripts and summaries.\n\nExtract patterns for:\n1. Sentence structure preferences (active/passive, length, complexity)\n2. Medical terminology usage (formal vs colloquial, abbreviation frequency)\n3. Documentation style (narrative vs structured, level of detail)\n4. Common phrases and transition words\n5. Section ordering preferences\n6. Tone and formality level\n\nOutput a structured DNA profile that can be used to generate future summaries matching this physician's style. Include confidence scores for each extracted pattern.",
+    variables: {
+      physician_id: { type: 'string', required: true },
+      sample_count: { type: 'number', required: false },
+    },
+    changeReason: 'Added confidence scores and expanded pattern categories',
+    changedBy: SYSTEM_USER_ID,
+  },
+  {
+    id: '72000000-0000-0000-0000-000000000104',
+    tenantId: DEFAULT_TENANT_ID,
+    promptTemplateId: TEMPLATE_IDS.DNA_ANALYSIS,
+    versionNumber: 3,
+    content: DNA_ANALYSIS_CONTENT_V3,
+    variables: {
+      physician_id: { type: 'string', required: true },
+      sample_count: { type: 'number', required: false },
+    },
+    changeReason: 'PHI containment: constrained output to a closed-vocabulary JSON schema (metaData.promptConfig) and added an explicit no-patient-content instruction',
+    changedBy: SYSTEM_USER_ID,
+  },
+];
+
 export const seedPromptTemplate = async (client: CorePrismaClient) => {
   console.log('Seeding prompt templates...');
   for (const template of DEFAULT_PROMPT_TEMPLATES) {
@@ -2368,56 +2538,7 @@ export const seedPromptTemplate = async (client: CorePrismaClient) => {
     });
   }
 
-  const extraVersions = [
-    {
-      id: '72000000-0000-0000-0000-000000000101',
-      tenantId: DEFAULT_TENANT_ID,
-      promptTemplateId: TEMPLATE_IDS.SOAP_SUMMARY,
-      versionNumber: 2,
-      content:
-        'Generate a SOAP-format clinical summary with enhanced structure. Include Subjective (patient history, chief complaint, HPI), Objective (vitals, physical exam, labs), Assessment (primary diagnosis, differentials, severity), and Plan (medications, referrals, follow-up timeline). Use concise clinical language. Flag critical values.',
-      variables: {
-        patient_name: { type: 'string', required: true },
-        chief_complaint: { type: 'string', required: true },
-        department: { type: 'string', required: false },
-        severity: { type: 'string', required: false },
-      },
-      changeReason: 'Added critical value flagging',
-      changedBy: SYSTEM_USER_ID,
-    },
-    {
-      id: '72000000-0000-0000-0000-000000000102',
-      tenantId: DEFAULT_TENANT_ID,
-      promptTemplateId: TEMPLATE_IDS.SOAP_SUMMARY,
-      versionNumber: 3,
-      content:
-        'Generate a SOAP-format clinical summary with enhanced structure.\n\nInclude:\n- Subjective: patient history, chief complaint, HPI, review of systems\n- Objective: vitals, physical exam findings, labs, imaging\n- Assessment: primary diagnosis, differentials, severity grading, ICD-10 codes\n- Plan: medications with dosages, referrals, follow-up timeline, patient education\n\nUse concise clinical language. Flag critical values. Include confidence levels for differential diagnoses.',
-      variables: {
-        patient_name: { type: 'string', required: true },
-        chief_complaint: { type: 'string', required: true },
-        department: { type: 'string', required: false },
-        severity: { type: 'string', required: false },
-      },
-      changeReason: 'Restructured with bullet points, added ICD-10 codes and confidence levels',
-      changedBy: SYSTEM_USER_ID,
-    },
-    {
-      id: '72000000-0000-0000-0000-000000000103',
-      tenantId: DEFAULT_TENANT_ID,
-      promptTemplateId: TEMPLATE_IDS.DNA_ANALYSIS,
-      versionNumber: 2,
-      content:
-        "Analyze the physician's writing style from the provided consultation transcripts and summaries.\n\nExtract patterns for:\n1. Sentence structure preferences (active/passive, length, complexity)\n2. Medical terminology usage (formal vs colloquial, abbreviation frequency)\n3. Documentation style (narrative vs structured, level of detail)\n4. Common phrases and transition words\n5. Section ordering preferences\n6. Tone and formality level\n\nOutput a structured DNA profile that can be used to generate future summaries matching this physician's style. Include confidence scores for each extracted pattern.",
-      variables: {
-        physician_id: { type: 'string', required: true },
-        sample_count: { type: 'number', required: false },
-      },
-      changeReason: 'Added confidence scores and expanded pattern categories',
-      changedBy: SYSTEM_USER_ID,
-    },
-  ];
-
-  for (const version of extraVersions) {
+  for (const version of EXTRA_PROMPT_VERSIONS) {
     const { variables, ...rest } = version;
     const data = {
       ...rest,
@@ -2430,7 +2551,7 @@ export const seedPromptTemplate = async (client: CorePrismaClient) => {
     });
   }
 
-  console.log(`Seeded ${DEFAULT_PROMPT_VERSIONS.length + extraVersions.length} prompt versions`);
+  console.log(`Seeded ${DEFAULT_PROMPT_VERSIONS.length + EXTRA_PROMPT_VERSIONS.length} prompt versions`);
 
   // Customer-tenant templates + initial versions.
   console.log('Seeding customer-tenant prompt templates...');

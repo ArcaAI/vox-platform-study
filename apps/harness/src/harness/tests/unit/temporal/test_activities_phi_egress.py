@@ -71,7 +71,7 @@ class _ContractRedactor:
 
     def ensure_safe_for_cloud(self, text: str, *, provider: str, settings: Settings) -> str:
         self.calls.append((text, provider))
-        if provider not in settings.phi.cloud_egress_providers:
+        if provider in settings.phi.local_providers:
             return text
         if self._block:
             raise PhiEgressBlocked(provider=provider, reason="contract block")
@@ -84,17 +84,13 @@ def env() -> ActivityEnvironment:
 
 
 def _gen_settings(*, fail_closed: bool = True) -> Settings:
-    return Settings(
-        phi=PhiConfig(
-            enabled=True, fail_closed=fail_closed, cloud_egress_providers=["azure", "bedrock"]
-        )
-    )
+    return Settings(phi=PhiConfig(enabled=True, fail_closed=fail_closed))
 
 
 def _infer_settings(*, safety_provider: str = "lm-studio") -> Settings:
     return Settings(
         safety=SafetyGuardConfig(provider=safety_provider),
-        phi=PhiConfig(enabled=True, fail_closed=True, cloud_egress_providers=["azure", "bedrock"]),
+        phi=PhiConfig(enabled=True, fail_closed=True),
     )
 
 

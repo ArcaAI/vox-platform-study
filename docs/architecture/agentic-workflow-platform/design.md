@@ -109,7 +109,7 @@ end-to-end before any workflow is publicly exposed.**
 |---|---|
 | `text` (ex-`smr`) | Control-plane proxy for text-generation + text-embedding across engines (vLLM, llama.cpp, LM Studio, Ollama) and BYOK cloud (Azure, Bedrock, …). Standard APIs + SSE + async contract |
 | `stt` | Same control-plane pattern for realtime + batch ASR (whisper, nemo, cloud engines); per-tenant task instructions (config tables largely exist) |
-| `tts` | Same pattern; engines are **Azure Speech + local Kokoro/Indic Parler** (the catalog's whisper/nemo/Transcribe list was a copy-paste from ASR) |
+| `tts` | Five providers verified in-tree: **Azure Speech, Kokoro, Indic Parler, Indic F5, Sarvam** (the catalog's whisper/nemo/Transcribe list was a copy-paste from ASR). No batch/queue use case exists, so no worker pool is built for it (TASK-726) |
 | `nlp` | Adds sentiment / topic / intent / toxicity task types; may delegate generative NLP to `text`; per-tenant instructions |
 | `guardrail` | Gains the redact endpoint; per-tenant instructions; **fail-closed on generation** (fixes the fail-open cloud-egress allowlist) |
 | `harness` | Home of the interpreter: session context, tools/MCP, memories, HITL, grounding, provenance, observability; DB + object store + vector store |
@@ -178,10 +178,16 @@ on non-clinical palettes first (D5).
 
 ## Deprecations
 
-Legacy BullMQ generator + both rogue sibling entry points (`generateSummaryAsync→createSummaryJob`,
-`summary.service` third generator, `ComprehensiveSummaryProcessor`) · `metadata.status` · plain
+The legacy BullMQ generation surface — ticket-authoring verification found **seven** entry points
+and **five** processors (incl. `PreSummaryProcessor` and a second `harnessEnabled` fork on the NER
+path), not the three the assessment named; the authoritative enumeration lives in TASK-704 (seam)
+and TASK-732 (deletion) · `metadata.status` (three writers, per TASK-711 verification) · plain
 `.update()` on note paths · free-text ICD-10 prompt instructions · `ConsultationLoopWorkflow` ·
 scattered admin screens (department-agent, pipeline-policy, harness-admin loop settings) → Studio.
+
+Scope note (TASK-732): three of the seven entry points have no harness equivalent — "legacy
+deleted" means the *signable* generator unless a product decision also retires the
+pre-summary/comprehensive-summary features.
 
 ## Explicitly not doing (YAGNI ledger)
 
