@@ -181,6 +181,19 @@ variables:
   LOG_FILE_ENABLED: "false"
   OTEL_TRACES_ENABLED: "false"
   OTEL_METRICS_ENABLED: "false"
+  # OTEL_METRICS_ENABLED is the GATEWAY-scoped switch, but NLP falls back to it
+  # when its own prefixed switch is unset (apps/nlp/src/nlp/core/config.py),
+  # so the global "false" above unmounts NLP's /metrics and fails the OBS-02
+  # contract test. Each service owns its own switch — declare NLP's explicitly
+  # rather than letting it inherit a gateway variable.
+  NLP_METRICS_ENABLED: "true"
+  # Torch/BLAS default to one intra-op thread per core, per process. With six
+  # Python test jobs plus the Node suites on one runner that oversubscribes the
+  # box badly — test-smr was OOM-killed and test-harness lost a Temporal query
+  # to a 30s deadline. Cap the pools so peak RSS and CPU contention stay bounded.
+  OMP_NUM_THREADS: "2"
+  MKL_NUM_THREADS: "2"
+  TOKENIZERS_PARALLELISM: "false"
   MINIO_USE_SSL: "false"
   API_KEY_ALLOW_QUERY_PARAM: "true"
   API_KEY_MAX_LIFETIME_DAYS: "90"

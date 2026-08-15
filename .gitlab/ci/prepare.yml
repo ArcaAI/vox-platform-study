@@ -24,6 +24,13 @@ prepare-test-db:
     # while VAULT_ADDR is unset. `.test-node-base` carries the fetch step.
     VAULT_SECRETS: !reference [.vault-secret-sets, ci-db]
     DATABASE_URL: $CI_DATABASE_URL
+    # Seeding is opt-in (seed/seed-mode.ts) and defaults to "none". Without
+    # this the force-reset DB stays empty: the media fixture below then fails
+    # on Consultation_doctorId_fkey, and every test-api suite runs against a
+    # schema with no rows. "all" is the demo/PHI-bearing mode and is gated on
+    # NODE_ENV being development|test — the pipeline sets NODE_ENV=test
+    # globally, which is what makes it legal here.
+    RUN_SEED: "all"
   script:
     - echo "══ prepare-test-db ══"
     - |
