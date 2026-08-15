@@ -27,7 +27,7 @@ import {
  * `pnpm --filter @arcaai/compat-playground test` runs. A `.test.ts` here would
  * be silently skipped by the app suite and picked up by the root node project
  * instead.)
-*/
+ */
 
 interface ParityCase {
   name: string;

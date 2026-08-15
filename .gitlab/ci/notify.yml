@@ -4,7 +4,7 @@
 
 github-backup:
   stage: notify
-  image: alpine:3.20
+  image: alpine:3.22
   tags: [deploy]
   interruptible: false
   id_tokens: !reference [.vault-oidc-id-token, id_tokens]

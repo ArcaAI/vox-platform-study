@@ -47,7 +47,7 @@ services:
       - smr-network
 
   prometheus:
-    image: prom/prometheus:v3.1.0
+    image: prom/prometheus:v3.13.2
     container_name: hope-smr-prometheus
     profiles: ["monitoring"]
     ports:
@@ -59,7 +59,7 @@ services:
       - smr-network
 
   grafana:
-    image: grafana/grafana:12.4.2
+    image: grafana/grafana:13.1.2
     container_name: hope-smr-grafana
     profiles: ["monitoring"]
     ports:

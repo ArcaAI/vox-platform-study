@@ -33,7 +33,7 @@ async function findEmptyQueue(): Promise<Queue> {
     let available = false;
     try {
       await queue.waitUntilReady();
-      const counts = await queue.getJobCounts('waiting', 'active', 'completed', 'failed', 'delayed', 'paused', 'prioritized');
+      const counts = await queue.getJobCounts('waiting', 'active', 'completed', 'failed', 'delayed', 'prioritized');
       const workers = await queue.getWorkers();
       if (Object.values(counts).every((count) => count === 0) && workers.length === 0) {
         available = true;

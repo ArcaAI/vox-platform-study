@@ -36,7 +36,7 @@
 warm-up-base-images:
   stage: build
   tags: [build]
-  image: docker:27
+  image: docker:28
   timeout: 15m
   interruptible: true
   script:
@@ -52,12 +52,12 @@ warm-up-base-images:
       images="
         nvidia/cuda:12.8.1-cudnn-runtime-ubuntu22.04
         nvidia/cuda:12.8.1-cudnn-devel-ubuntu22.04
-        ghcr.io/astral-sh/uv:0.11.7
+        ghcr.io/astral-sh/uv:0.11.33
         python:3.11-slim-trixie
         node:24-slim
         node:24-bookworm-slim
         node:24-alpine
-        nginx:1.27-alpine
+        nginx:1.30.4-alpine
       "
       for img in $images; do
         if docker image inspect "$img" >/dev/null 2>&1; then

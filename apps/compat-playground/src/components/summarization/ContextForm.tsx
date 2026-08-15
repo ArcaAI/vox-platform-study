@@ -9,7 +9,7 @@ import { fetchDoctors, type DoctorOption } from '../../lib/doctors';
  * orchestrator (`SummaryCard`) owns `department`/`visitType`/context field
  * state and passes it down controlled — this component owns only UI-local
  * toggle state (list-vs-custom mode) and the department fetch.
-*/
+ */
 
 /**
  * The preset visit types. v1 recognizes exactly TWO canonical categories —

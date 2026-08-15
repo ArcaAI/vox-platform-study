@@ -17,7 +17,7 @@
 */
 'use strict';
 
-// Pin to the workspace ESLint v9 that `@arcaai/config-eslint` resolves (the
+// Pin to the workspace ESLint that `@arcaai/config-eslint` resolves (the
 // same major the flat presets run under). The rule itself is config-format
 // agnostic; the test just needs the flat-config RuleTester.
 const { RuleTester } = require('@arcaai/config-eslint/node_modules/eslint');

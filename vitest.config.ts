@@ -39,6 +39,14 @@ const SHARED_EXCLUDE = [
 const BROWSER_PACKAGE_DIRS = ['packages/ui/**', 'packages/agentic-sdk-v2/**', 'apps/compat-playground/**', 'apps/admin-console/**'];
 
 export default defineConfig({
+  // Vitest 4.1.10 → Vite 8/Oxc: keep NestJS legacy decorators, skip metadata
+  // (see packages/applications/vitest.config.ts).
+  oxc: {
+    decorator: {
+      legacy: true,
+      emitDecoratorMetadata: false,
+    },
+  },
   test: {
     globals: true,
     environment: 'node',

@@ -10,7 +10,7 @@
  * Events" §9.2) to decode HOPE's frames: `event:`/`data:`/`id:` fields,
  * multi-line `data:`, `:`-prefixed comment/keepalive frames, and both
  * `\n`/`\r\n`/`\r` line endings.
-*/
+ */
 
 /** One decoded SSE frame. `event` defaults to `"message"` per spec when the frame carries no `event:` field. */
 export interface SseFrame {

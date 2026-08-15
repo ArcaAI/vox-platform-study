@@ -58,7 +58,7 @@ export function liveConsultationsWarning(count: number): string {
 /**
  * Promote an agent configuration version from one tenant to another.
  *
- * ## Authorization is the entire control 
+ * ## Authorization is the entire control
  *
  * There is no platform environment, tier or tenant-family concept, so "the
  * actor holds `manage` on `DepartmentAgent` in BOTH tenants" is all that

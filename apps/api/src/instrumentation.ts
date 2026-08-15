@@ -52,7 +52,7 @@ if (!plan.sdkEnabled) {
     // A service that severed its neighbours' traces to save its own export
     // volume would be a worse outcome than the volume.
     ...(plan.tracesEnabled ? { traceExporter: new OTLPTraceExporter({ url: endpoint }) } : { spanProcessors: [] }),
-    // sdk-logs 0.220: BatchLogRecordProcessor takes an options object, not a positional exporter.
+    // BatchLogRecordProcessor takes an options object, not a positional exporter.
     logRecordProcessors: [new BatchLogRecordProcessor({ exporter: new OTLPLogExporter({ url: endpoint }) })],
     instrumentations: [
       getNodeAutoInstrumentations({

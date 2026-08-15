@@ -25,7 +25,7 @@ LABEL org.opencontainers.image.vendor="ARCA AI" \
 
 # uv pinned to the version that generates the workspace lock. Must stay >= the
 # uv that produced `uv.lock` (currently revision 3) or `uv sync --frozen` fails.
-COPY --from=ghcr.io/astral-sh/uv:0.11.7 /uv /uvx /bin/
+COPY --from=ghcr.io/astral-sh/uv:0.11.33 /uv /uvx /bin/
 
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \

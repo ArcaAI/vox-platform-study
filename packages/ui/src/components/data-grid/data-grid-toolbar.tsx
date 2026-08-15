@@ -16,9 +16,10 @@ import { cn } from '@/lib/utils';
 
 import { DataGridFacetedFilter, FilterControlBody } from './data-grid-faceted-filter';
 import { useContainerBreakpoint } from './use-container-breakpoint';
+import type { RowData } from '@tanstack/react-table';
 import type { UseDataGridResult } from './use-data-grid';
 
-export interface DataGridToolbarProps<TData> {
+export interface DataGridToolbarProps<TData extends RowData> {
   grid: UseDataGridResult<TData>;
   searchPlaceholder?: string;
   className?: string;
@@ -29,7 +30,7 @@ function columnLabel(column: { id: string; columnDef: { meta?: { label?: string 
   return column.columnDef.meta?.label ?? column.id;
 }
 
-export function DataGridToolbar<TData>({ grid, searchPlaceholder = 'Search…', className, children }: DataGridToolbarProps<TData>) {
+export function DataGridToolbar<TData extends RowData>({ grid, searchPlaceholder = 'Search…', className, children }: DataGridToolbarProps<TData>) {
   const { table, features, density, setDensity, queryState } = grid;
   const rootRef = React.useRef<HTMLDivElement>(null);
   const { bp } = useContainerBreakpoint(rootRef);
@@ -124,7 +125,7 @@ function DensityToggle({ density, setDensity }: { density: Density; setDensity: 
   );
 }
 
-function CollapsedFilters<TData>({
+function CollapsedFilters<TData extends RowData>({
   grid,
   useSheet,
   columns,
@@ -220,7 +221,7 @@ function CollapsedFilters<TData>({
   );
 }
 
-function ColumnVisibilityList<TData>({ grid }: { grid: UseDataGridResult<TData> }) {
+function ColumnVisibilityList<TData extends RowData>({ grid }: { grid: UseDataGridResult<TData> }) {
   // Filter-only virtual columns are forced hidden; never offer them.
   const columns = grid.table.getAllColumns().filter((c) => typeof c.accessorFn !== 'undefined' && c.getCanHide() && !c.columnDef.meta?.filterOnly);
   return (
@@ -248,7 +249,7 @@ function ColumnVisibilityList<TData>({ grid }: { grid: UseDataGridResult<TData> 
   );
 }
 
-function ViewOptions<TData>({ grid, inline }: { grid: UseDataGridResult<TData>; inline: boolean }) {
+function ViewOptions<TData extends RowData>({ grid, inline }: { grid: UseDataGridResult<TData>; inline: boolean }) {
   return (
     <Popover>
       <PopoverTrigger asChild>

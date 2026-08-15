@@ -54,7 +54,7 @@ export interface BuildUrlOptions {
  * and exempt paths. The alternative (trust the caller's baseUrl verbatim)
  * would silently double-prefix non-exempt paths for exactly the consumer
  * this decision protects.
-*/
+ */
 function normalizeBaseUrl(baseUrl: string): string {
   let base = baseUrl.trim().replace(/\/+$/, '');
   const suffix = `/${API_PREFIX}`;

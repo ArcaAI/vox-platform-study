@@ -1,24 +1,33 @@
-import type { Column } from '@tanstack/react-table';
+import type { Column, RowData } from '@tanstack/react-table';
 import { dataTableConfig } from '@/config/data-table';
+import type { DataGridFeatures } from '@/components/data-grid/table-features';
 import type { ExtendedColumnFilter, FilterOperator, FilterVariant } from '@/types/data-table';
 
-export function getColumnPinningStyle<TData>({ column, withBorder = false }: { column: Column<TData>; withBorder?: boolean }): React.CSSProperties {
+export function getColumnPinningStyle<TData extends RowData>({
+  column,
+  withBorder = false,
+}: {
+  column: Column<DataGridFeatures, TData>;
+  withBorder?: boolean;
+}): React.CSSProperties {
   const isPinned = column.getIsPinned();
-  const isLastLeftPinnedColumn = isPinned === 'left' && column.getIsLastColumn('left');
-  const isFirstRightPinnedColumn = isPinned === 'right' && column.getIsFirstColumn('right');
+  const startLeaves = column.table.getStartVisibleLeafColumns();
+  const endLeaves = column.table.getEndVisibleLeafColumns();
+  const isLastStart = isPinned === 'start' && startLeaves[startLeaves.length - 1]?.id === column.id;
+  const isFirstEnd = isPinned === 'end' && endLeaves[0]?.id === column.id;
 
   return {
     // Divider shadow only on the boundary cell, and only when the caller reports
     // horizontal overflow (`withBorder`) — otherwise it is visual noise (Δ5).
     boxShadow: withBorder
-      ? isLastLeftPinnedColumn
+      ? isLastStart
         ? '-4px 0 4px -4px var(--border) inset'
-        : isFirstRightPinnedColumn
+        : isFirstEnd
           ? '4px 0 4px -4px var(--border) inset'
           : undefined
       : undefined,
-    left: isPinned === 'left' ? `${column.getStart('left')}px` : undefined,
-    right: isPinned === 'right' ? `${column.getAfter('right')}px` : undefined,
+    left: isPinned === 'start' ? `${column.getStart('start')}px` : undefined,
+    right: isPinned === 'end' ? `${column.getAfter('end')}px` : undefined,
     position: isPinned ? 'sticky' : 'relative',
     // Pinned cells inherit the row background so a selected row's `bg-accent`
     // (or hover) shows through the pinned column instead of a hardcoded surface

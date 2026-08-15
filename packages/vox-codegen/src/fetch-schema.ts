@@ -14,7 +14,7 @@
  * silently falls back to "no schema configured" (that would emit a types
  * file claiming a tenant has no schema when the truth is just "the gateway
  * was unreachable").
-*/
+ */
 
 import { CodegenError } from './errors';
 import type { ConsultationSchemaBundle } from './types';

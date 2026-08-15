@@ -2,7 +2,7 @@
 # HOPE — bootstrap init Job, PRODUCTION digest-pinned apply
 # =============================================================================
 # Enforces the image digest pin (not just a comment): the `images:` transformer
-# rewrites `alpine/k8s:1.33.1` -> `alpine/k8s@sha256:…` at apply time.
+# rewrites `alpine/k8s:1.33.13` -> `alpine/k8s@sha256:…` at apply time.
 #
 #   PRODUCTION:  kubectl apply -k bootstrap/        (immutable digest)
 #   kind E2E:    kubectl apply -f bootstrap/init-job.yaml  (tag — so the image can
@@ -10,7 +10,7 @@
 #
 # Only init-job.yaml is a k8s resource here; the *.sh bootstrap scripts are not
 # part of the kustomization. Verify/bump with:
-#   docker buildx imagetools inspect alpine/k8s:1.33.1
+#   docker buildx imagetools inspect alpine/k8s:1.33.13
 # -----------------------------------------------------------------------------
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
@@ -18,4 +18,4 @@ resources:
   - init-job.yaml
 images:
   - name: alpine/k8s
-    digest: sha256:7f8133af0dd210cb5b168f889c5bc77dd65ecc935f3e3cb72d1b98ff96bfed40
+    digest: sha256:e521cee1f1cb8699bc6e906b4ce6fe50e84addae97f52d5dcf05d3974002ac26

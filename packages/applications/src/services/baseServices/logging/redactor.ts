@@ -108,11 +108,7 @@ function buildKeySet(extra: readonly string[] = []): Set<string> {
 }
 
 function isBinary(value: unknown): boolean {
-  return (
-    value instanceof ArrayBuffer ||
-    ArrayBuffer.isView(value) ||
-    (typeof Buffer !== 'undefined' && Buffer.isBuffer(value))
-  );
+  return value instanceof ArrayBuffer || ArrayBuffer.isView(value) || (typeof Buffer !== 'undefined' && Buffer.isBuffer(value));
 }
 
 function redactString(value: string): string {
@@ -242,5 +238,3 @@ export function redactEntry(entry: LogEntry, extraKeys: readonly string[] = []):
 
   return redacted;
 }
-
-

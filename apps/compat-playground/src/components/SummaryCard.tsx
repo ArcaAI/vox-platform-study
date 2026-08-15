@@ -34,7 +34,7 @@ const EMPTY_CONTEXT: ClinicalContextValues = {
  * the streaming toggle threads `{stream:true, onDelta}` through to the
  * already-shipped SDK/gateway SSE path — see `useSMR.ts` and
  * `smr-compat.controller.ts`.
-*/
+ */
 export function SummaryCard({ config }: SummaryCardProps) {
   const { preSummarize, summarizeSync, loading } = useSMR();
 

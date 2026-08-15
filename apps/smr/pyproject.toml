@@ -23,28 +23,28 @@ classifiers = [
 ]
 
 dependencies = [
-    "fastapi>=0.133.0",
-    "uvicorn[standard]>=0.41.0",
+    "fastapi>=0.141.1",
+    "uvicorn[standard]>=0.52.3",
     "pydantic>=2.12.5",
-    "pydantic-settings>=2.13.1",
+    "pydantic-settings>=2.15.0",
     "httpx>=0.28.1",
-    "redis>=5.2.0",
+    "redis>=8.1.0,<9.0",
     "structlog>=25.5.0",
     "python-dotenv>=1.2.0",
-    "orjson>=3.11.7",
-    "sse-starlette>=3.2.0",
-    "prometheus-client>=0.24.1",
-    "prometheus-fastapi-instrumentator>=7.1.0",
-    "openai>=2.24.0",
-    "anthropic>=0.40.0",
-    "google-genai>=1.0.0",
-    "boto3>=1.42.0",
-    "opentelemetry-api>=1.39.1",
-    "opentelemetry-sdk>=1.39.1",
-    "opentelemetry-instrumentation-fastapi>=0.60b1",
-    "opentelemetry-instrumentation-httpx>=0.60b1",
-    "opentelemetry-exporter-otlp-proto-grpc>=1.39.0",
-    "opentelemetry-instrumentation-logging>=0.60b1",
+    "orjson>=3.12.0",
+    "sse-starlette>=3.4.8",
+    "prometheus-client>=0.26.0",
+    "prometheus-fastapi-instrumentator>=8.1.0",
+    "openai>=3.1.0,<4",
+    "anthropic>=0.122.0",
+    "google-genai>=2.18.1",
+    "boto3>=1.43.72",
+    "opentelemetry-api>=1.44.0",
+    "opentelemetry-sdk>=1.44.0",
+    "opentelemetry-instrumentation-fastapi>=0.65b0",
+    "opentelemetry-instrumentation-httpx>=0.65b0",
+    "opentelemetry-exporter-otlp-proto-grpc>=1.44.0",
+    "opentelemetry-instrumentation-logging>=0.65b0",
     # --- Shared runtime contracts ---
     "hope-runtime-models",
     # --- Shared env-file loader: NODE_ENV -> .env.<env>, host env wins ---
@@ -65,11 +65,11 @@ dev = [
     "pytest-cov>=7.0.0",
     "pytest-mock>=3.15.1",
     "black>=26.1.0",
-    "ruff>=0.15.7",
-    "mypy>=1.19.1",
-    "pre-commit>=4.5.1",
-    "boto3-stubs[bedrock-runtime,bedrock]>=1.42.0",
-    "botocore-stubs>=1.42.0",
+    "ruff>=0.16.3",
+    "mypy>=2.3.1",
+    "pre-commit>=4.6.2",
+    "boto3-stubs[bedrock-runtime,bedrock]>=1.43.72",
+    "botocore-stubs>=1.43.67",
 ]
 
 test = [
@@ -79,19 +79,19 @@ test = [
     "pytest-mock>=3.15.1",
     "httpx>=0.28.1",
     "pytest-xdist>=3.8.0",
-    "fakeredis[lua]>=2.21.0",
+    "fakeredis[lua]>=2.37.0",
 ]
 
 lint = [
     "black>=26.1.0",
-    "ruff>=0.15.7",
-    "mypy>=1.19.1",
-    "boto3-stubs[bedrock-runtime,bedrock]>=1.42.0",
-    "botocore-stubs>=1.42.0",
+    "ruff>=0.16.3",
+    "mypy>=2.3.1",
+    "boto3-stubs[bedrock-runtime,bedrock]>=1.43.72",
+    "botocore-stubs>=1.43.67",
 ]
 
 load = [
-    "locust>=2.32.0",
+    "locust>=2.46.3",
 ]
 
 [project.urls]

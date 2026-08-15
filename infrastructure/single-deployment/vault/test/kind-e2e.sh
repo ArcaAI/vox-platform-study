@@ -26,10 +26,10 @@ CHART_VERSION="0.32.0"
 KEEP="false"
 [ "${1:-}" = "--keep" ] && KEEP="true"
 
-VAULT_IMG="hashicorp/vault:1.21.2"
-INJECTOR_IMG="hashicorp/vault-k8s:1.7.2"
+VAULT_IMG="hashicorp/vault:1.21.4"
+INJECTOR_IMG="hashicorp/vault-k8s:1.7.6"
 BUSYBOX_IMG="busybox:1.37"
-KUBECTL_IMG="alpine/k8s:1.33.1" # init-job.yaml drives Vault via kubectl exec (needs a shell)
+KUBECTL_IMG="alpine/k8s:1.33.13" # init-job.yaml drives Vault via kubectl exec (needs a shell)
 
 log()  { printf '\n\033[1;36m=== %s\033[0m\n' "$*"; }
 ok()   { printf '\033[1;32m  PASS:\033[0m %s\n' "$*"; }

@@ -126,7 +126,7 @@ services:
   # docs/implementation/TASK-302-System-Config-Implementation-Roadmap/
   # 03-pgbouncer-validation-report.md — PASS verdict).
   pgbouncer:
-    image: edoburu/pgbouncer:v1.25.1-p0  # ≥ 1.21 for MAX_PREPARED_STATEMENTS; v1.25.1-p0 is the validated tag
+    image: edoburu/pgbouncer:v1.25.2-p0  # ≥ 1.21 for MAX_PREPARED_STATEMENTS; v1.25.2-p0 is the current 1.25.x pin
     container_name: pgbouncer
     hostname: pgbouncer-${NODE_NAME}
     restart: unless-stopped

@@ -1,17 +1,18 @@
-import { flexRender, type Table as TanstackTable } from '@tanstack/react-table';
+import { flexRender, type ReactTable, type RowData } from '@tanstack/react-table';
 import type * as React from 'react';
 
 import { DataTablePagination } from './data-table-pagination';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/shadcn/table';
+import type { DataGridFeatures } from '@/components/data-grid/table-features';
 import { getColumnPinningStyle } from '@/lib/data-table';
 import { cn } from '@/lib/utils';
 
-interface DataTableProps<TData> extends React.ComponentProps<'div'> {
-  table: TanstackTable<TData>;
+interface DataTableProps<TData extends RowData> extends React.ComponentProps<'div'> {
+  table: ReactTable<DataGridFeatures, TData>;
   actionBar?: React.ReactNode;
 }
 
-export function DataTable<TData>({ table, actionBar, children, className, ...props }: DataTableProps<TData>) {
+export function DataTable<TData extends RowData>({ table, actionBar, children, className, ...props }: DataTableProps<TData>) {
   return (
     <div className={cn('flex w-full flex-col gap-2.5 overflow-auto', className)} {...props}>
       {children}

@@ -241,7 +241,7 @@ export class OriginRegistryService implements IOriginRegistry, OnModuleInit {
    * all.
    *
    * ═══════════════════════════════════════════════════════════════════════
-   * CONFIRMED DEFECT this wrapper exists to close (found by the 
+   * CONFIRMED DEFECT this wrapper exists to close (found by the
    * adversarial review, W4-R):
    *
    * `TenantAllowedOriginService` emits `origin-registry.invalidate`

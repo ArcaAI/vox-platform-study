@@ -97,7 +97,7 @@ publish-sdk:
     GIT_DEPTH: 0
   before_script:
     - corepack enable
-    - corepack install -g --cache-only .gitlab/corepack/pnpm-10.31.0.tgz
+    - corepack install -g --cache-only .gitlab/corepack/pnpm-10.34.5.tgz
     - pnpm config set store-dir .pnpm-store
     - |
       echo "@arcaai:registry=${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/npm/"
@@ -274,7 +274,7 @@ publish-sdk:
 #   No pipeline was run, no signature was produced, and no attestation was
 #   pushed. Tool behaviour WAS verified locally against the pinned images
 #   (cosign v2.6.5 `triangulate --type digest` returns `repo@sha256:...`;
-#   `attest --type` accepts `cyclonedx`; trivy 0.58.2 `--format cyclonedx`
+#   `attest --type` accepts `cyclonedx`; trivy 0.74.0 `--format cyclonedx`
 #   emits CycloneDX 1.6 carrying the resolved RepoDigest/RepoTag). End-to-end
 #   behaviour is unproven until COSIGN_SIGNING_ENABLED is armed.
 #
@@ -301,7 +301,7 @@ publish-sdk:
 
 # ── CycloneDX SBOM generation ────────────────────────────────────────────────
 # Reuses the Trivy image already pinned by .trivy-scan (.gitlab/ci/scan.yml:14)
-# rather than adding syft: one fewer tool in the supply chain, and 0.58.2's
+# rather than adding syft: one fewer tool in the supply chain, and 0.74.0's
 # `--format cyclonedx` was confirmed to emit CycloneDX 1.6 with the image's
 # RepoDigest and RepoTag recorded in metadata.component.
 
@@ -309,7 +309,7 @@ publish-sdk:
   stage: publish
   tags: [build]
   image:
-    name: aquasec/trivy:0.58.2
+    name: aquasec/trivy:0.74.0
     entrypoint: [""]
   timeout: 30m
   variables:

@@ -18,15 +18,15 @@ requires-python = ">=3.11,<3.12"
 # bit STT's API_GATEWAY_KEY — inline `#` comments.
 #
 # `pydantic-settings` is equally free: all six services already declare
-# `pydantic-settings>=2.13.1`, which is also the floor the source-ordering API
-# used by `settings_sources.py` requires (verified against the installed 2.14.2).
+# `pydantic-settings>=2.15.0`, which is also the floor the source-ordering API
+# used by `settings_sources.py` requires (verified against the installed 2.15.0).
 #
 # `httpx`: every workspace member already declares
 # `httpx>=0.28.1` for its own outbound calls (gateway effective-config client,
 # provider clients, ...), so `service_registration.py`'s self-registration
 # POST reuses that same ubiquitous, already-vetted client rather than adding a
 # second HTTP dependency to the fleet.
-dependencies = ["python-dotenv>=1.2.0", "pydantic-settings>=2.13.1", "httpx>=0.28.1"]
+dependencies = ["python-dotenv>=1.2.0", "pydantic-settings>=2.15.0", "httpx>=0.28.1"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -38,7 +38,7 @@ where = ["src"]
 hope_env = ["py.typed"]
 
 [project.optional-dependencies]
-dev = ["pytest>=9.0.2", "pytest-asyncio>=1.3.0", "ruff>=0.15.7", "mypy>=1.20.0"]
+dev = ["pytest>=9.0.2", "pytest-asyncio>=1.3.0", "ruff>=0.16.3", "mypy>=2.3.1"]
 
 [tool.ruff]
 line-length = 100

@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vite
 import { render, screen, renderHook, act, fireEvent, within } from '@testing-library/react';
 import { axe } from 'vitest-axe';
 import * as axeMatchers from 'vitest-axe/matchers';
-import type { ColumnDef, RowSelectionState } from '@tanstack/react-table';
+import type { ColumnDef, RowSelectionState } from '../table-features';
 
 import { useDataGrid } from '../use-data-grid';
 import { useGridLayout } from '../use-grid-layout';
@@ -172,9 +172,9 @@ describe('useDataGrid (headless controller)', () => {
       }),
     );
     act(() => result.current.table.getRow('p0').toggleSelected(true));
-    expect(result.current.table.getState().rowSelection).toEqual({ p0: true });
+    expect(result.current.table.state.rowSelection).toEqual({ p0: true });
     act(() => result.current.table.setPageIndex(2));
-    expect(result.current.table.getState().rowSelection).toEqual({ p0: true });
+    expect(result.current.table.state.rowSelection).toEqual({ p0: true });
   });
 
   it('updates density and emits onColumnChange', () => {
@@ -191,8 +191,33 @@ describe('useDataGrid (headless controller)', () => {
     const { result } = renderHook(() => useDataGrid<Person>({ data: makeData(3), columns: COLUMNS, getRowId: (r) => r.id, onColumnChange }));
     act(() => result.current.moveColumn('name', 'status'));
     expect(onColumnChange).toHaveBeenLastCalledWith(expect.objectContaining({ order: expect.arrayContaining(['name', 'status']) }));
-    const order = result.current.table.getState().columnOrder;
+    const order = result.current.table.state.columnOrder;
     expect(order.indexOf('status')).toBeLessThan(order.indexOf('name'));
+  });
+
+  it('getHeaderGroups returns one header per visible leaf column (v9 port lock)', () => {
+    const { result } = renderHook(() => useDataGrid<Person>({ data: makeData(3), columns: COLUMNS, getRowId: (r) => r.id }));
+    const groups = result.current.table.getHeaderGroups();
+    expect(groups).toHaveLength(1);
+    const headerIds = groups[0]!.headers.map((h) => h.id);
+    const leafIds = result.current.table.getVisibleLeafColumns().map((c) => c.id);
+    expect(headerIds).toEqual(leafIds);
+    for (const header of groups[0]!.headers) {
+      expect(header.getSize()).toBeGreaterThan(0);
+    }
+  });
+
+  it('virtualizer count matches displayRows (v9 port lock)', () => {
+    const { result } = renderHook(() =>
+      useDataGrid<Person>({
+        data: makeData(80),
+        columns: COLUMNS,
+        getRowId: (r) => r.id,
+        defaultQueryState: { pagination: { mode: 'offset', page: 0, limit: 80 } },
+      }),
+    );
+    expect(result.current.displayRows).toHaveLength(80);
+    expect(result.current.rowVirtualizer.options.count).toBe(80);
   });
 
   it('supports controlled queryState (does not self-update internal state)', () => {
@@ -209,6 +234,14 @@ describe('useDataGrid (headless controller)', () => {
 });
 
 describe('VirtualizedDataGrid (shell)', () => {
+  it('renders columnheaders from header groups without crashing', () => {
+    renderGrid({ data: makeData(3) });
+    const headers = screen.getAllByRole('columnheader');
+    expect(headers).toHaveLength(3);
+    expect(headers[1]).toHaveTextContent('Name');
+    expect(headers[2]).toHaveTextContent('Status');
+  });
+
   it('renders rows from data', () => {
     renderGrid({ data: makeData(3) });
     expect(screen.getByText('Person 0')).toBeInTheDocument();
@@ -376,7 +409,7 @@ describe('useDataGrid — personalization, a11y announcements & page sizes (Δ4/
   it('moveColumnDirection swaps with the left neighbour (Δ4 keyboard reorder)', () => {
     const { result } = renderHook(() => useDataGrid<Person>({ data: makeData(3), columns: COLUMNS, getRowId: (r) => r.id }));
     act(() => result.current.moveColumnDirection('status', 'left'));
-    const order = result.current.table.getState().columnOrder;
+    const order = result.current.table.state.columnOrder;
     expect(order.indexOf('status')).toBeLessThan(order.indexOf('name'));
   });
 

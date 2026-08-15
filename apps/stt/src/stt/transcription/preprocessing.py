@@ -275,7 +275,7 @@ class AudioPreprocessor:
         try:
             import librosa
 
-            return librosa.resample(samples, orig_sr=original_sr, target_sr=target_sr)
+            return cast(np.ndarray, librosa.resample(samples, orig_sr=original_sr, target_sr=target_sr))
         except ImportError:
             # Simple linear interpolation fallback
             ratio = target_sr / original_sr

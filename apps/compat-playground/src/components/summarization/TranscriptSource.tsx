@@ -19,7 +19,7 @@ import { Badge, Button, Label, Select, SelectContent, SelectItem, SelectTrigger,
  * - `live-plus-context` — the live transcript (read-only) plus a separate
  * editable "additional context" field appended
  * after it.
-*/
+ */
 
 export type TranscriptSourceMode = 'live' | 'pasted' | 'live-plus-context';
 

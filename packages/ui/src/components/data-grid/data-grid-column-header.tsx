@@ -1,6 +1,7 @@
 'use client';
 
-import type { Column } from '@tanstack/react-table';
+import type { Column, RowData } from '@tanstack/react-table';
+import type { DataGridFeatures } from './table-features';
 import { ArrowLeft, ArrowRight, ChevronDown, ChevronsUpDown, ChevronUp, EyeOff, Filter, PinOff, X } from 'lucide-react';
 import { IconPinned } from '@tabler/icons-react';
 import * as React from 'react';
@@ -19,8 +20,8 @@ import { cn } from '@/lib/utils';
 import { FilterControlBody } from './data-grid-faceted-filter';
 import type { UseDataGridResult } from './use-data-grid';
 
-interface DataGridColumnHeaderProps<TData, TValue> extends React.ComponentProps<typeof DropdownMenuTrigger> {
-  column: Column<TData, TValue>;
+interface DataGridColumnHeaderProps<TData extends RowData, TValue> extends React.ComponentProps<typeof DropdownMenuTrigger> {
+  column: Column<DataGridFeatures, TData, TValue>;
   label: string;
   enablePinning?: boolean;
   dragHandle?: React.ReactNode;
@@ -28,7 +29,7 @@ interface DataGridColumnHeaderProps<TData, TValue> extends React.ComponentProps<
   grid?: UseDataGridResult<TData>;
 }
 
-export function DataGridColumnHeader<TData, TValue>({
+export function DataGridColumnHeader<TData extends RowData, TValue>({
   column,
   label,
   enablePinning,
@@ -116,14 +117,14 @@ export function DataGridColumnHeader<TData, TValue>({
             {enablePinning && column.getCanPin() && (
               <>
                 <DropdownMenuSeparator />
-                {pinned !== 'left' && (
-                  <DropdownMenuItem onClick={() => column.pin('left')}>
+                {pinned !== 'start' && (
+                  <DropdownMenuItem onClick={() => column.pin('start')}>
                     <IconPinned />
                     Pin left
                   </DropdownMenuItem>
                 )}
-                {pinned !== 'right' && (
-                  <DropdownMenuItem onClick={() => column.pin('right')}>
+                {pinned !== 'end' && (
+                  <DropdownMenuItem onClick={() => column.pin('end')}>
                     <IconPinned />
                     Pin right
                   </DropdownMenuItem>

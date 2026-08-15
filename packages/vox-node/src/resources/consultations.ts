@@ -3,7 +3,7 @@
  * NOT consultation CRUD; out of day-1 scope) plus the
  * `.summaries` sub-resource. Backed by
  * `apps/api/src/modules/consultation/consultation.controller.ts#getById`.
-*/
+ */
 
 import { encodePathSegment } from '../core/url';
 import type { Transport } from '../core/transport';

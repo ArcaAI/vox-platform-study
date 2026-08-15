@@ -3,7 +3,8 @@
  * The separator is a focusable `role="separator"`; these helpers turn key
  * presses into size deltas so the behaviour is unit-testable.
  */
-import type { Column, Table } from '@tanstack/react-table';
+import type { Column, RowData, Table } from '@tanstack/react-table';
+import type { DataGridFeatures } from './table-features';
 
 /**
  * ←/→ = ±16px, Shift+←/→ = ±48px, Home/Enter = reset. Everything else is
@@ -27,10 +28,10 @@ export function computeResizeDelta(key: string, shiftKey: boolean): number | 're
  * Apply a keyboard resize to `column`, clamped to its `minSize`/`maxSize`.
  * Returns `true` when the event was handled (so the caller can `preventDefault`).
  */
-export function applyResizeKeydown<TData>(
+export function applyResizeKeydown<TData extends RowData>(
   event: { key: string; shiftKey: boolean; preventDefault: () => void },
-  column: Column<TData>,
-  table: Table<TData>,
+  column: Column<DataGridFeatures, TData>,
+  table: Table<DataGridFeatures, TData>,
 ): boolean {
   const delta = computeResizeDelta(event.key, event.shiftKey);
   if (delta === null) return false;

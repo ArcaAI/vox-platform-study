@@ -17,7 +17,7 @@ Technically, it is a Turborepo + pnpm monorepo: a NestJS 11 API gateway (`apps/a
 | Tool | Version | Verified in |
 |---|---|---|
 | Node.js | >= 22 | root `package.json` `engines.node` |
-| pnpm | 10.31.x | root `package.json` `packageManager` (`pnpm@10.31.0`) |
+| pnpm | 10.34.x | root `package.json` `packageManager` (`pnpm@10.34.5`) |
 | Docker + Docker Compose | recent | required by all `infra:*` / `docker:*` scripts |
 | conda | any recent (Miniconda/Miniforge) | `scripts/setup-python-env.sh` creates the shared env `arcaenv` (Python 3.11) |
 | uv | latest | Python dependency resolution — single `uv.lock` at the repo root (`pyproject.toml` uv workspace); checked by `pnpm setup:python:check` |

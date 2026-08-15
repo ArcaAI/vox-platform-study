@@ -28,7 +28,7 @@
  * `CodegenError` rather than silently ignoring the keyword and emitting a
  * type that lies about the payload shape. `cli.ts` surfaces that error to
  * the operator instead of writing a file.
-*/
+ */
 
 import { CodegenError } from './errors';
 

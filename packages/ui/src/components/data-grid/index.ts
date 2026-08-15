@@ -5,6 +5,7 @@ export { DataGridColumnHeader } from './data-grid-column-header';
 export { DataGridFacetedFilter, FilterControlBody, describeFilterValue } from './data-grid-faceted-filter';
 export { DataGridSkeleton, type DataGridSkeletonProps } from './data-grid-skeleton';
 export { useDataGrid, type UseDataGridResult } from './use-data-grid';
+export { dataGridFeatures, normalizeColumnPinning, type ColumnDef, type DataGridFeatures, type RowData } from './table-features';
 export { useGridLayout, type UseGridLayoutResult } from './use-grid-layout';
 export { useContainerBreakpoint, useCoarsePointer } from './use-container-breakpoint';
 export {

@@ -11,7 +11,7 @@ import { BATCH_UPLOAD_EXAMPLE_FILES, TabExampleCode } from './TabExampleCode';
  * `usePlaygroundSession().batch`, which is mounted above the tabs — so an
  * upload started here keeps running (and keeps streaming results) while the
  * developer works in another tab.
-*/
+ */
 export function BatchUploadTab() {
   return (
     <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,26rem)_minmax(0,1fr)]">

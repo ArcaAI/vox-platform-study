@@ -11,7 +11,7 @@ import { FileAudioSourceGroup, FileAudioSourceError } from '../file-audio-source
  *
  * The file lives under `__tests__/*.test.tsx` because the app's vitest config
  * only collects `.tsx` suites (the root node config owns `.test.ts`).
-*/
+ */
 
 interface FakeTrack {
   kind: string;

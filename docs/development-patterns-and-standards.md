@@ -431,7 +431,7 @@ Stages: `install → validate → prepare → test → build → scan → publis
 | `lint-python` (validate.yml) | ruff over stt, smr, nlp, guardrail, harness |
 | `test-api`, `test-packages`, `test-sdk`, `test-apps`, `test-ui-ct`, `test-api-e2e`, `test-pgbouncer-validation` (`.gitlab/ci/test.yml`) | Vitest/Playwright suites |
 | `test-stt`, `test-smr`, `test-guardrail`, `test-nlp`, `test-harness` (test.yml) | pytest suites |
-| `scan-gitleaks` (`.gitlab/ci/scan.yml`) | gitleaks v8.21.2 `detect` with `.gitleaks.toml` |
+| `scan-gitleaks` (`.gitlab/ci/scan.yml`) | gitleaks v8.30.1 `detect` with `.gitleaks.toml` |
 | `scan-*` (scan.yml) | Trivy image scans per service |
 
 Docker images are versioned WITHOUT `latest` (semver tags + `sha-<sha8>`); skip switches `SKIP_TESTS`, `SKIP_TESTS_TS`, `SKIP_TESTS_PY` exist for manual runs.

@@ -18,7 +18,7 @@ import {
  * So: load every file of every tab and assert it has real content. A typo, a
  * renamed component, or a forgotten glob entry fails here instead of shipping
  * an empty "example".
-*/
+ */
 
 const TABS: Array<[string, ExampleFile[]]> = [
   ['Connection', CONNECTION_EXAMPLE_FILES],

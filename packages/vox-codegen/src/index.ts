@@ -6,7 +6,7 @@
  * instead of shelling out to the `vox-codegen` bin. See the package README
  * for the CLI, the placement decision, and the `oneOf`-discrimination /
  * fail-loudly rules.
-*/
+ */
 
 export { CodegenError } from './errors';
 export { jsonSchemaSubsetToTs, type SchemaToTsOptions } from './schema-to-ts';

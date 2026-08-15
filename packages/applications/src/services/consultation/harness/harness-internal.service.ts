@@ -779,7 +779,10 @@ export class HarnessInternalService {
           contextItem.currentVersionNumber = 1;
           // Ownership marker — see HARNESS_DRAFT_SUBTYPE. Written on create so the
           // NEXT execution can find this row; rows without it are never adopted.
-          contextItem.metaData = { ...((contextItem.metaData as Record<string, unknown> | undefined) ?? {}), subType: this.HARNESS_DRAFT_SUBTYPE } as never;
+          contextItem.metaData = {
+            ...((contextItem.metaData as Record<string, unknown> | undefined) ?? {}),
+            subType: this.HARNESS_DRAFT_SUBTYPE,
+          } as never;
           // Encrypt the generated note into `encryptedContent` before
           // persistence — the plaintext `content` column was dropped by the PHI
           // field-encryption migration, so an unencrypted create silently loses
@@ -873,14 +876,14 @@ export class HarnessInternalService {
           await this.summaryMetaRepository.updateWithVersion(existingMeta.id, existingMeta, existingMeta.version ?? 1);
         } else {
           await this.encryptBestEffort('SummaryMeta', () => this.summaryMetaRepository.encryptFieldsIntoEntity(summaryMeta, this.secretsService!));
-        // INTENTIONALLY NOT metered here. `dto`
-        // (HarnessDraftRequest) carries no token fields, and this generation
-        // is already billed by the agent-trajectory per-step path (WS-F):
-        // the harness calls SMR via its own SmrClient, never through this
-        // gateway's SMR proxy, so `harness:step:<...>` already covers it.
-        // Emitting a second `llm:<...>` row here would double-bill the same
-        // generation. See the constructor's `usageLedgerService` doc comment
-        // and the double-bill-guard test in harness-internal.service.test.ts.
+          // INTENTIONALLY NOT metered here. `dto`
+          // (HarnessDraftRequest) carries no token fields, and this generation
+          // is already billed by the agent-trajectory per-step path (WS-F):
+          // the harness calls SMR via its own SmrClient, never through this
+          // gateway's SMR proxy, so `harness:step:<...>` already covers it.
+          // Emitting a second `llm:<...>` row here would double-bill the same
+          // generation. See the constructor's `usageLedgerService` doc comment
+          // and the double-bill-guard test in harness-internal.service.test.ts.
           await this.summaryMetaRepository.create(summaryMeta);
         }
 

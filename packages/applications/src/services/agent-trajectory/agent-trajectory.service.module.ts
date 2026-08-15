@@ -13,7 +13,7 @@ import { IAgentTrajectoryService } from './IAgentTrajectoryService';
  * - CoreDatabaseModule  → `AgentTrajectoryStepRepository` AND the DOMAINS
  *   `CoreUnitOfWorkService` that folds `createMany` + the
  *   usage-ledger emission into one transaction in `recordSteps`.
- * - UsageLedgerServiceModule → `IUsageLedgerService` for the 
+ * - UsageLedgerServiceModule → `IUsageLedgerService` for the
  *   usage-ledger emission hook in `recordSteps` (injected @Optional so unit
  *   fixtures can still construct the service without it).
  *

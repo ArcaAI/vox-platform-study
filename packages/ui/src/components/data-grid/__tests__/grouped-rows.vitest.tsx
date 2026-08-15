@@ -12,7 +12,7 @@ import { describe, it, expect, vi, beforeAll } from 'vitest';
 import { render, screen, fireEvent, within } from '@testing-library/react';
 import { axe } from 'vitest-axe';
 import * as axeMatchers from 'vitest-axe/matchers';
-import type { ColumnDef } from '@tanstack/react-table';
+import type { ColumnDef } from '../table-features';
 
 import { buildDisplayRows } from '../group-rows';
 import { VirtualizedDataGrid } from '../virtualized-data-grid';

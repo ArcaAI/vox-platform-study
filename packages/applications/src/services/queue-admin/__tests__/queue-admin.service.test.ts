@@ -148,19 +148,24 @@ describe('QueueAdminService', () => {
   });
 
   // Redis health probe for the Queues & Jobs admin surface (design
-  // frame `15` health strip). Reads via the first registered queue's shared
-  // ioredis connection: PING → latency, INFO → server stats. Never throws.
+  // frame `15` health strip). Reads via the first registered queue's
+  // BullMQ Redis backend: INFO → latency + server stats. Never throws.
   describe('getRedisHealth', () => {
     const REDIS_INFO = ['redis_version:7.2.5', 'uptime_in_seconds:86400', 'connected_clients:12', 'used_memory_human:48.31M'].join('\r\n');
 
-    const createMockClient = (overrides: Partial<{ ping: () => Promise<string>; info: () => Promise<string> }> = {}) => ({
-      ping: vi.fn(overrides.ping ?? (() => Promise.resolve('PONG'))),
+    const createMockClient = (overrides: Partial<{ info: () => Promise<string> }> = {}) => ({
       info: vi.fn(overrides.info ?? (() => Promise.resolve(REDIS_INFO))),
     });
 
+    const attachBackend = (mockQueue: ReturnType<typeof createMockQueue>, client: ReturnType<typeof createMockClient>) => {
+      (mockQueue as Record<string, unknown>).getBackend = () => ({
+        client: Promise.resolve(client),
+      });
+    };
+
     it('reports a healthy Redis with parsed INFO fields and the registered queue count', async () => {
       const mockQueue = createMockQueue();
-      (mockQueue as Record<string, unknown>).client = Promise.resolve(createMockClient());
+      attachBackend(mockQueue, createMockClient());
       mockModuleRef.get.mockReturnValue(mockQueue);
 
       const result = await service.getRedisHealth();
@@ -174,10 +179,11 @@ describe('QueueAdminService', () => {
       expect(result.queuesRegistered).toBe(Object.values(JobQueue).length);
     });
 
-    it('degrades (never throws) when PING is slow', async () => {
+    it('degrades (never throws) when INFO is slow', async () => {
       const mockQueue = createMockQueue();
-      (mockQueue as Record<string, unknown>).client = Promise.resolve(
-        createMockClient({ ping: () => new Promise((resolve) => setTimeout(() => resolve('PONG'), 300)) }),
+      attachBackend(
+        mockQueue,
+        createMockClient({ info: () => new Promise((resolve) => setTimeout(() => resolve(REDIS_INFO), 300)) }),
       );
       mockModuleRef.get.mockReturnValue(mockQueue);
 
@@ -189,7 +195,7 @@ describe('QueueAdminService', () => {
 
     it('reports unhealthy (never throws) when the connection errors', async () => {
       const mockQueue = createMockQueue();
-      (mockQueue as Record<string, unknown>).client = Promise.resolve(createMockClient({ ping: () => Promise.reject(new Error('ECONNREFUSED')) }));
+      attachBackend(mockQueue, createMockClient({ info: () => Promise.reject(new Error('ECONNREFUSED')) }));
       mockModuleRef.get.mockReturnValue(mockQueue);
 
       const result = await service.getRedisHealth();
@@ -211,7 +217,7 @@ describe('QueueAdminService', () => {
 
     it('tolerates a partial INFO payload with safe fallbacks', async () => {
       const mockQueue = createMockQueue();
-      (mockQueue as Record<string, unknown>).client = Promise.resolve(createMockClient({ info: () => Promise.resolve('redis_version:7.0.0') }));
+      attachBackend(mockQueue, createMockClient({ info: () => Promise.resolve('redis_version:7.0.0') }));
       mockModuleRef.get.mockReturnValue(mockQueue);
 
       const result = await service.getRedisHealth();

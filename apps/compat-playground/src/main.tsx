@@ -5,7 +5,7 @@
  * developer's app: a config panel (apiEndpoint/apiKey/tenantId/pipelineId),
  * a live-transcription session, and the end-user ON/OFF STT provider toggle.
  * See ./App.tsx and README.md.
-*/
+ */
 
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';

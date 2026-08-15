@@ -20,7 +20,7 @@
  * designation. There is therefore no clinical-role field to filter on, so we
  * list every human user and only drop service accounts (never a hard fail if
  * that field is absent).
-*/
+ */
 
 /** One selectable doctor. `id` is submitted as `doctorId`. */
 export interface DoctorOption {

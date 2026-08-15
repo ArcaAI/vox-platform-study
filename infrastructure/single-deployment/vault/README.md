@@ -52,8 +52,8 @@ auto-unsealing secrets backend on HOPE's self-hosted Proxmox **k3s** cluster.
 | Component                    | Version    |
 | ---------------------------- | ---------- |
 | `hashicorp/vault` Helm chart | **0.32.0** |
-| Vault                        | **1.21.2** |
-| `vault-k8s` injector         | **1.7.2**  |
+| Vault                        | **1.21.4** |
+| `vault-k8s` injector         | **1.7.6**  |
 
 Bump deliberately: Raft on-disk format + seal migration are version-sensitive.
 

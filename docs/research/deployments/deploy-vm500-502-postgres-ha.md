@@ -112,7 +112,7 @@ Three Ubuntu 24.04 VMs, each running the full stack co-located. A floating VIP p
 | pgBackRest        | 2.54.x     | Bundled in `timescale/timescaledb-ha` image     |
 | etcd              | 3.5.21     | `quay.io/coreos/etcd:v3.5.21`                   |
 | HAProxy           | 3.1        | `haproxy:3.1-alpine`                            |
-| PgBouncer         | 1.25.1-p0  | `edoburu/pgbouncer:v1.25.1-p0`                  |
+| PgBouncer         | 1.25.2-p0  | `edoburu/pgbouncer:v1.25.2-p0`                  |
 | Keepalived        | 2.x        | apt package (host-level)                        |
 | postgres_exporter | 0.16.0     | `prometheuscommunity/postgres-exporter:v0.16.0` |
 

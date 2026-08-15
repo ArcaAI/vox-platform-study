@@ -22,9 +22,11 @@ export interface BuildInfoServiceOptions {
 function defaultRunGit(args: string[]): string | null {
   try {
     // Bounded timeout: this must never hang process boot.
-    return execFileSync('git', args, { encoding: 'utf8', timeout: 2000, stdio: ['ignore', 'pipe', 'ignore'] })
-      .trim()
-      .slice(0, 4096) || null;
+    return (
+      execFileSync('git', args, { encoding: 'utf8', timeout: 2000, stdio: ['ignore', 'pipe', 'ignore'] })
+        .trim()
+        .slice(0, 4096) || null
+    );
   } catch {
     return null;
   }

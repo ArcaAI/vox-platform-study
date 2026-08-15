@@ -58,7 +58,7 @@ services:
   #   docker compose -f infrastructure/docker/docker-compose.dev.yml --profile vault up -d
   vault:
     container_name: hope-vault
-    image: hashicorp/vault:1.18
+    image: hashicorp/vault:1.21.4
     profiles: ["vault"]
     networks:
       - hope-network
@@ -92,7 +92,7 @@ services:
   # Runs once per `up`, exits 0.
   vault-init:
     container_name: hope-vault-init
-    image: hashicorp/vault:1.18
+    image: hashicorp/vault:1.21.4
     profiles: ["vault"]
     networks:
       - hope-network
@@ -120,7 +120,7 @@ services:
   # Qdrant - Vector Database
   qdrant:
     container_name: hope-qdrant
-    image: qdrant/qdrant:v1.16
+    image: qdrant/qdrant:v1.19.0
     networks:
       - hope-network
     restart: unless-stopped
@@ -150,14 +150,14 @@ services:
   # Temporal — durable-workflow substrate for the Clinical Documentation
   # Harness (apps/harness).
   #
-  # OPT-IN by design: both services below are gated behind the `temporal`
+  # OPT-IN by design: the Temporal services below are gated behind the `temporal`
   # profile, so a plain `docker compose up` (and `start-infra.sh --all`, which
   # only activates `--profile vault`) does NOT start them — existing
   # postgres/redis/minio/qdrant/vault are untouched. Mirrors the Vault opt-in
   # precedent above.
   #
   # PERSISTENCE: Temporal shares the core `postgres` (hope-postgres) instance
-  # instead of running its own container. auto-setup provisions two DEDICATED
+  # instead of running its own container. admin-tools provisions two DEDICATED
   # databases (TEMPORAL_DB_NAME=`temporal` + TEMPORAL_VISIBILITY_DB_NAME=
   # `temporal_visibility`) alongside the app `hope` DB — the app database is
   # never touched, and Temporal's data inherits the same encrypted-at-rest
@@ -165,6 +165,20 @@ services:
   # whole Postgres from dev. Because `temporal` now `depends_on: postgres`
   # (defined in the core compose file), ALWAYS pass BOTH -f files — the wrappers
   # (scripts/dev-infra.sh) and the commands below already do.
+  #
+  # IMAGES (TASK-701): `temporalio/auto-setup` is deprecated and has no 1.30/1.31
+  # tags. Layout matches temporalio/samples-server compose/docker-compose-postgres.yml
+  # — `temporalio/admin-tools` (schema) + `temporalio/server` + `temporalio/ui`.
+  # Schema updates are in-place (no `docker compose down -v`).
+  #
+  # VOLUME HOP (TASK-702): if hope-temporal fails on a leftover auto-setup 1.29.x
+  # DB, hop the server — do not wipe volumes, do not DROP Temporal DBs.
+  #   TEMPORAL_VERSION=1.30.4 TEMPORAL_ADMINTOOLS_VERSION=1.30.4 pnpm infra:dev:up
+  #   # wait until hope-temporal is healthy, then
+  #   pnpm infra:dev:up          # defaults 1.31.2
+  # admin-tools:1.29.7 does not exist; last auto-setup tag is 1.29.7.
+  # Print-only helper: pnpm infra:dev:temporal-hop
+  # Runbook: docs/implementation/TASK-702-Dependency-Blocker-Resolutions
   #
   # Start (from the monorepo root):
   #   docker compose -f infrastructure/docker/docker-compose.yml \
@@ -175,11 +189,35 @@ services:
   #   gRPC frontend: localhost:${TEMPORAL_PORT:-7233}
   # ==========================================================================
 
-  # Temporal server (auto-setup: provisions the temporal/temporal_visibility
-  # schemas + the `default` namespace inside the shared hope-postgres instance).
+  # One-shot schema create/upgrade against hope-postgres (SQL visibility, no ES).
+  temporal-admin-tools:
+    container_name: hope-temporal-admin-tools
+    image: temporalio/admin-tools:${TEMPORAL_ADMINTOOLS_VERSION:-1.31.2}
+    profiles: ["temporal"]
+    networks:
+      - hope-network
+    restart: on-failure:6
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - DB=postgres12
+      - DB_PORT=5432
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PWD=${POSTGRES_PASSWORD:-postgres}
+      - POSTGRES_SEEDS=postgres
+      - SQL_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - DBNAME=${TEMPORAL_DB_NAME:-temporal}
+      - VISIBILITY_DBNAME=${TEMPORAL_VISIBILITY_DB_NAME:-temporal_visibility}
+    volumes:
+      - ./configs/temporal/scripts:/scripts:ro
+    entrypoint: ["/bin/sh"]
+    command: ["/scripts/setup-postgres.sh"]
+
+  # Temporal server (schemas must already be at this image's required version).
   temporal:
     container_name: hope-temporal
-    image: temporalio/auto-setup:${TEMPORAL_VERSION:-1.29.1}
+    image: temporalio/server:${TEMPORAL_VERSION:-1.31.2}
     profiles: ["temporal"]
     networks:
       - hope-network
@@ -187,15 +225,15 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      temporal-admin-tools:
+        condition: service_completed_successfully
     environment:
       - DB=postgres12
       - DB_PORT=5432
-      # Reuse the hope-postgres superuser: auto-setup needs CREATEDB to
-      # provision the two dedicated Temporal databases on first `up`, connecting
-      # via the default `postgres` maintenance DB.
       - POSTGRES_USER=${POSTGRES_USER:-postgres}
       - POSTGRES_PWD=${POSTGRES_PASSWORD:-postgres}
       - POSTGRES_SEEDS=postgres
+      - BIND_ON_IP=0.0.0.0
       # Dedicated databases inside hope-postgres (kept separate from `hope`).
       - DBNAME=${TEMPORAL_DB_NAME:-temporal}
       - VISIBILITY_DBNAME=${TEMPORAL_VISIBILITY_DB_NAME:-temporal_visibility}
@@ -210,18 +248,46 @@ services:
     ports:
       - '${TEMPORAL_PORT:-7233}:7233'
     volumes:
-      - ./configs/temporal:/etc/temporal/config/dynamicconfig:ro
+      - ./configs/temporal/development-sql.yaml:/etc/temporal/config/dynamicconfig/development-sql.yaml:ro
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "7233"]
+      interval: 5s
+      timeout: 3s
+      start_period: 30s
+      retries: 60
+
+  # Ensures the `default` namespace exists (idempotent).
+  temporal-create-namespace:
+    container_name: hope-temporal-namespace
+    image: temporalio/admin-tools:${TEMPORAL_ADMINTOOLS_VERSION:-1.31.2}
+    profiles: ["temporal"]
+    networks:
+      - hope-network
+    restart: on-failure:5
+    depends_on:
+      temporal:
+        condition: service_healthy
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+      - DEFAULT_NAMESPACE=${TEMPORAL_NAMESPACE:-default}
+    volumes:
+      - ./configs/temporal/scripts:/scripts:ro
+    entrypoint: ["/bin/sh"]
+    command: ["/scripts/create-namespace.sh"]
 
   # Temporal Web UI.
   temporal-ui:
     container_name: hope-temporal-ui
-    image: temporalio/ui:${TEMPORAL_UI_VERSION:-2.34.0}
+    image: temporalio/ui:${TEMPORAL_UI_VERSION:-2.53.1}
     profiles: ["temporal"]
     networks:
       - hope-network
     restart: unless-stopped
     depends_on:
-      - temporal
+      temporal:
+        condition: service_healthy
+      temporal-create-namespace:
+        condition: service_completed_successfully
     environment:
       - TEMPORAL_ADDRESS=temporal:7233
       - TEMPORAL_CORS_ORIGINS=http://localhost:${TEMPORAL_UI_PORT:-8233}
@@ -279,7 +345,7 @@ services:
   # ==========================================================================
   prometheus:
     container_name: hope-prometheus
-    image: prom/prometheus:v3.1.0
+    image: prom/prometheus:v3.13.2
     profiles: ["observability", "prometheus"]
     networks:
       - hope-network
@@ -320,7 +386,7 @@ services:
   # ==========================================================================
   grafana:
     container_name: hope-grafana
-    image: grafana/grafana:12.4.2
+    image: grafana/grafana:13.1.2
     profiles: ["observability", "prometheus"]
     networks:
       - hope-network

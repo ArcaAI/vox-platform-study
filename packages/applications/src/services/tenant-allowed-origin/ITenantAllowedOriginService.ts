@@ -56,7 +56,7 @@ export interface ITenantAllowedOriginService {
    * and checked for uniqueness — never the raw string.
    *
    * @throws ForbiddenException — the caller is not a `GLOBAL_ADMIN` and either
-   *   the origin contains `*` or the resolved tenant is SYSTEM 
+   *   the origin contains `*` or the resolved tenant is SYSTEM
    * @throws ArgumentInvalidException — malformed/disallowed origin (from `normalizeOrigin`)
    * @throws ConflictException — the normalized origin is already registered (pre-check + DB race both covered)
    */
@@ -80,7 +80,7 @@ export interface ITenantAllowedOriginService {
    * Soft-delete.
    *
    * @throws NotFoundException — missing or cross-tenant id
-   * @throws ForbiddenException — non-`GLOBAL_ADMIN` deleting a SYSTEM row 
+   * @throws ForbiddenException — non-`GLOBAL_ADMIN` deleting a SYSTEM row
    */
   deleteById(id: string): Promise<TenantAllowedOriginResponse>;
 }

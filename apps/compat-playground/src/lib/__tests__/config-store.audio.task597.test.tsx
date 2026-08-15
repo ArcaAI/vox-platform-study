@@ -12,7 +12,7 @@
  * - DRAIN TIMEOUT / QUIET WINDOW are optional numbers where `undefined` means
  * "use the SDK default" and `0` is a MEANINGFUL setting (disable the
  * quiet-window early resolve). Those two must never collapse into each other.
-*/
+ */
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { defaultConfig, saveStoredConfig, clearStoredConfig, type PlaygroundConfig } from '../config-store';

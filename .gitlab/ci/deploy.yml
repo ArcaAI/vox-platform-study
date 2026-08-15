@@ -44,7 +44,7 @@
 .promote-base:
   stage: deploy
   tags: [deploy]
-  image: docker:27
+  image: docker:28
   interruptible: false
   id_tokens: !reference [.vault-oidc-id-token, id_tokens]
   variables:
@@ -141,7 +141,7 @@ promote-prod:
 smoke-pgbouncer-staging:
   stage: deploy
   tags: [deploy]
-  image: alpine:3.20
+  image: alpine:3.22
   interruptible: false
   id_tokens: !reference [.vault-oidc-id-token, id_tokens]
   variables:

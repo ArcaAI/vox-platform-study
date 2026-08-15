@@ -78,7 +78,7 @@ function sizedAtom(type: string, body: Buffer): Buffer {
 
 /** Ogg Opus: an OpusHead first page, then a final page whose granule is 48 kHz-based. */
 function oggOpus(seconds: number): Buffer {
-  const first = oggPage(Buffer.concat([Buffer.from('OpusHead', 'ascii'), Buffer.alloc(11)]), 0n, 0x02);
+  const first = oggPage(Buffer.concat([Buffer.from('OpusHead', 'ascii'), Buffer.alloc(11)]), BigInt(0), 0x02);
   const last = oggPage(Buffer.alloc(8), BigInt(Math.round(seconds * 48000)), 0x04);
   return Buffer.concat([first, last]);
 }

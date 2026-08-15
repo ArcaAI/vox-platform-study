@@ -27,13 +27,13 @@ Two compose files, combined by the wrapper scripts. Both load the root `.env`.
 
 | Service                                      | Container                         | Ports                 | Profile                                  |
 | -------------------------------------------- | --------------------------------- | --------------------- | ---------------------------------------- |
-| Vault 1.18 (dev mode) + `vault-init` sidecar | `hope-vault`, `hope-vault-init`   | 8200                  | `vault`                                  |
-| Qdrant v1.16 + `qdrant-init`                 | `hope-qdrant`, `hope-qdrant-init` | 6333 HTTP / 6334 gRPC | none (starts whenever this file is used) |
-| Temporal (auto-setup, shares hope-postgres)  | `hope-temporal`                   | 7233 gRPC             | `temporal`                               |
-| Temporal UI                                  | `hope-temporal-ui`                | 8233                  | `temporal`                               |
+| Vault 1.21.4 (dev mode) + `vault-init` sidecar | `hope-vault`, `hope-vault-init`   | 8200                  | `vault`                                  |
+| Qdrant v1.19.0 + `qdrant-init`               | `hope-qdrant`, `hope-qdrant-init` | 6333 HTTP / 6334 gRPC | none (starts whenever this file is used) |
+| Temporal server 1.31.2 (admin-tools schema, shares hope-postgres) | `hope-temporal` (+ admin-tools / namespace jobs) | 7233 gRPC             | `temporal` — leftover 1.29 DB hop: [TASK-702](../docs/implementation/TASK-702-Dependency-Blocker-Resolutions/README.md) / `pnpm infra:dev:temporal-hop` |
+| Temporal UI 2.53.1                           | `hope-temporal-ui`                | 8233                  | `temporal`                               |
 | TEI reranker (`BAAI/bge-reranker-v2-m3`)     | `hope-reranker`                   | 8870                  | `rag`                                    |
 | Prometheus v3                                | `hope-prometheus`                 | 9090                  | `prometheus` (alias: `observability`)    |
-| Grafana 12                                   | `hope-grafana`                    | 3001                  | `prometheus` (alias: `observability`)    |
+| Grafana 13.1.2                               | `hope-grafana`                    | 3001                  | `prometheus` (alias: `observability`)    |
 | vLLM (`Qwen/Qwen3-8B` default)               | `hope-vllm`                       | 8000                  | `inference` (GPU host)                   |
 | llama.cpp server (pre-staged GGUF)           | `hope-llama-cpp`                  | 8080                  | `inference`                              |
 | TEI embeddings (`BAAI/bge-m3`)               | `hope-tei-embed`                  | 8871                  | `inference`                              |
@@ -66,7 +66,7 @@ See [scripts/README.md](../scripts/README.md) for the full script reference.
 | Path                                                                                           | Purpose                                                                                                           |
 | ---------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
 | `docker/configs/vault/`                                                                        | Dev Vault bootstrap (`dev-init.sh`, `hope-app.hcl` policy) run by the `vault-init` sidecar.                       |
-| `docker/configs/temporal/`                                                                     | Temporal dynamic config for the dev SQL backend.                                                                  |
+| `docker/configs/temporal/`                                                                     | Temporal dynamic config + admin-tools schema/namespace scripts for the dev SQL backend.                           |
 | `docker/configs/prometheus/`, `docker/configs/grafana/`                                        | Dev observability configs mounted by the `prometheus` profile services.                                           |
 | `docker/python-base/`                                                                          | `hope-python-base` — shared CPU base image (Python 3.11 + uv + non-root user) for all HOPE Python service images. |
 | `docker/scripts/init-qdrant-collections.py`                                                    | Qdrant collection bootstrap, reused by dev and test init containers.                                              |

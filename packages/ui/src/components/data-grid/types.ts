@@ -1,15 +1,23 @@
-import type { ColumnDef, ColumnOrderState, ColumnPinningState, ColumnSizingState, RowSelectionState, VisibilityState } from '@tanstack/react-table';
+import type {
+  ColumnOrderState,
+  ColumnPinningState,
+  ColumnSizingState,
+  ColumnVisibilityState,
+  RowData,
+  RowSelectionState,
+} from '@tanstack/react-table';
 import type * as React from 'react';
 
 import type { AsyncStateProps, BaseSurfaceProps, Density } from '@/lib/shared/surface';
 import type { DataQueryState, PageRequest } from '@/lib/shared';
+import type { ColumnDef } from './table-features';
 
 /** Per-user persisted grid layout (D8). */
 export interface GridLayoutState {
   order: ColumnOrderState;
   sizing: ColumnSizingState;
-  visibility: VisibilityState;
-  pinning: ColumnPinningState;
+  visibility: ColumnVisibilityState;
+  pinning: Partial<ColumnPinningState> & { left?: string[]; right?: string[] };
   density: Density;
 }
 
@@ -42,7 +50,7 @@ export interface GridPersistenceConfig {
  * re-sorts); on server-driven grids, sort by the group field first so groups
  * are contiguous per page.
  */
-export interface GroupByConfig<TData> {
+export interface GroupByConfig<TData extends RowData> {
   /** Row → group key. `null`/`undefined`/blank fall under `fallbackLabel`. */
   accessor: (row: TData) => string | null | undefined;
   /** Custom header content. Default: `label (count)` + sr-only group summary. */
@@ -64,7 +72,7 @@ export interface GridFeatureFlags {
   columnVirtualization?: boolean;
 }
 
-export interface VirtualizedDataGridProps<TData> extends BaseSurfaceProps, AsyncStateProps {
+export interface VirtualizedDataGridProps<TData extends RowData> extends BaseSurfaceProps, AsyncStateProps {
   data: TData[];
   columns: ColumnDef<TData>[];
   getRowId?: (row: TData, index: number) => string;

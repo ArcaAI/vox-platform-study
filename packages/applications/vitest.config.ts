@@ -1,6 +1,21 @@
 import { defineConfig } from 'vitest/config';
 
+/**
+ * Vitest 4.1.10 pulls Vite 8 / Oxc. Oxc honors `emitDecoratorMetadata` from
+ * `tsconfig.json` (esbuild did not), which turns type-only imports such as
+ * `EntityId` into runtime mock misses. Test files are also excluded from
+ * `tsconfig.json`, so Oxc drops legacy decorators and chokes on `@(expr)`.
+ * Force the previous esbuild-equivalent: legacy decorators, no metadata.
+ */
+const nestjsOxcDecorators = {
+  decorator: {
+    legacy: true,
+    emitDecoratorMetadata: false,
+  },
+} as const;
+
 export default defineConfig({
+  oxc: nestjsOxcDecorators,
   test: {
     globals: true,
     environment: 'node',

@@ -1,6 +1,7 @@
 'use client';
 
-import type { Column } from '@tanstack/react-table';
+import type { Column, RowData } from '@tanstack/react-table';
+import type { DataGridFeatures } from '@/components/data-grid/table-features';
 import { Check, PlusCircle, XCircle } from 'lucide-react';
 import * as React from 'react';
 
@@ -12,14 +13,19 @@ import { Separator } from '@/components/shadcn/separator';
 import { cn } from '@/lib/utils';
 import type { Option } from '@/types/data-table';
 
-interface DataTableFacetedFilterProps<TData, TValue> {
-  column?: Column<TData, TValue>;
+interface DataTableFacetedFilterProps<TData extends RowData, TValue> {
+  column?: Column<DataGridFeatures, TData, TValue>;
   title?: string;
   options: Option[];
   multiple?: boolean;
 }
 
-export function DataTableFacetedFilter<TData, TValue>({ column, title, options, multiple }: DataTableFacetedFilterProps<TData, TValue>) {
+export function DataTableFacetedFilter<TData extends RowData, TValue>({
+  column,
+  title,
+  options,
+  multiple,
+}: DataTableFacetedFilterProps<TData, TValue>) {
   const [open, setOpen] = React.useState(false);
 
   const columnFilterValue = column?.getFilterValue();

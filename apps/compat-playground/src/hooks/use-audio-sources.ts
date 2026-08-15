@@ -24,7 +24,7 @@ import type { PlaygroundAudioSlice, PlaygroundAudioMode, PlaygroundAudioSource }
  *
  * Called ONCE, by `<PlaygroundSessionProvider>`, above the tabs — the decoded
  * buffers and the live streams must survive a tab switch exactly like the mic.
-*/
+ */
 export function useAudioSources(): PlaygroundAudioSlice {
   const [mode, setModeState] = useState<PlaygroundAudioMode>('single-mic');
 

@@ -268,7 +268,7 @@ test-compat-playground:
 
 test-ui-ct:
   stage: test
-  image: mcr.microsoft.com/playwright:v1.61.1-noble
+  image: mcr.microsoft.com/playwright:v1.62.1-noble
   tags: [test]
   allow_failure: true
   variables:
@@ -284,7 +284,7 @@ test-ui-ct:
       policy: pull
   before_script:
     - corepack enable
-    - corepack install -g --cache-only .gitlab/corepack/pnpm-10.31.0.tgz
+    - corepack install -g --cache-only .gitlab/corepack/pnpm-10.34.5.tgz
     - pnpm config set store-dir /pnpm-store
     - pnpm install --frozen-lockfile --prefer-offline
   needs:
@@ -662,7 +662,7 @@ harness-eval-gate:
 
 test-api-e2e:
   stage: test
-  image: mcr.microsoft.com/playwright:v1.61.1-noble
+  image: mcr.microsoft.com/playwright:v1.62.1-noble
   tags: [test]
   # Ignored: boots the full API and needs test infra + secrets we don't
   # provision (Redis via CI_REDIS_URL, CI_JWT_SECRET, CI_API_KEY_PEPPER).
@@ -683,7 +683,7 @@ test-api-e2e:
   before_script:
     - !reference [.vault-oidc, before_script]
     - corepack enable
-    - corepack install -g --cache-only .gitlab/corepack/pnpm-10.31.0.tgz
+    - corepack install -g --cache-only .gitlab/corepack/pnpm-10.34.5.tgz
     - pnpm config set store-dir /pnpm-store
     - pnpm install --frozen-lockfile --prefer-offline
   needs:

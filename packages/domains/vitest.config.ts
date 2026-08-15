@@ -13,6 +13,14 @@ import { defineConfig } from 'vitest/config';
  * future driver migration (issues #10207 / #28840).
  */
 export default defineConfig({
+  // Vitest 4.1.10 → Vite 8/Oxc: keep NestJS legacy decorators, skip metadata
+  // (see packages/applications/vitest.config.ts).
+  oxc: {
+    decorator: {
+      legacy: true,
+      emitDecoratorMetadata: false,
+    },
+  },
   test: {
     globals: true,
     environment: 'node',

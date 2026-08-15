@@ -40,22 +40,22 @@
   "devDependencies": {
     "@arcaai/config-eslint": "workspace:*",
     "@arcaai/config-ts": "workspace:*",
-    "@types/node": "^25.9.4",
-    "@types/pg": "^8.20.0",
+    "@types/node": "^26.2.0",
+    "@types/pg": "^8.21.0",
     "tsconfig-paths": "^4.2.0",
     "tsup": "^8.5.1",
     "typescript": "^5.9.3",
-    "vitest": "^4.1.9"
+    "vitest": "^4.1.10"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.1079.0",
-    "@prisma/adapter-pg": "^7.8.0",
-    "@prisma/client": "^7.8.0",
+    "@aws-sdk/client-s3": "^3.1111.0",
+    "@prisma/adapter-pg": "^7.9.1",
+    "@prisma/client": "^7.9.1",
     "bcryptjs": "^3.0.3",
     "dotenv": "^17.4.2",
     "node-vault": "^0.12.0",
-    "pg": "^8.22.0",
-    "prisma": "^7.8.0",
-    "tsx": "^4.23.0"
+    "pg": "^8.23.0",
+    "prisma": "^7.9.1",
+    "tsx": "^4.23.12"
   }
 }

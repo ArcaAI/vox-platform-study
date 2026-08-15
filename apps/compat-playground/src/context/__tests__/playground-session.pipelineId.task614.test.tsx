@@ -22,7 +22,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  *
  * These tests assert the id reaches the STARTING hook. Asserting it on
  * `useArcaSpeechToText` alone would have passed throughout the defect.
-*/
+ */
 
 const captured = vi.hoisted(() => ({
   audioCapture: null as null | Record<string, unknown>,

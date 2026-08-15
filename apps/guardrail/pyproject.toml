@@ -23,32 +23,32 @@ classifiers = [
 ]
 
 dependencies = [
-    "fastapi>=0.133.0",
-    "uvicorn[standard]>=0.41.0",
+    "fastapi>=0.141.1",
+    "uvicorn[standard]>=0.52.3",
     "pydantic>=2.12.5",
-    "pydantic-settings>=2.13.1",
+    "pydantic-settings>=2.15.0",
     "httpx>=0.28.1",
-    "redis>=5.2.0",
+    "redis>=8.1.0,<9.0",
     "structlog>=25.5.0",
     "python-dotenv>=1.2.0",
-    "prometheus-client>=0.24.1",
-    "prometheus-fastapi-instrumentator>=7.1.0",
+    "prometheus-client>=0.26.0",
+    "prometheus-fastapi-instrumentator>=8.1.0",
     # OpenTelemetry tracing. Mirrors apps/smr's dependency
     # set: guardrail auto-instruments FastAPI + httpx (the LM Studio/Ollama/
     # vLLM/llama.cpp engine calls) and exports spans via OTLP/gRPC.
-    "opentelemetry-api>=1.39.1",
-    "opentelemetry-sdk>=1.39.1",
-    "opentelemetry-instrumentation-fastapi>=0.60b1",
-    "opentelemetry-instrumentation-httpx>=0.60b1",
-    "opentelemetry-exporter-otlp-proto-grpc>=1.39.0",
+    "opentelemetry-api>=1.44.0",
+    "opentelemetry-sdk>=1.44.0",
+    "opentelemetry-instrumentation-fastapi>=0.65b0",
+    "opentelemetry-instrumentation-httpx>=0.65b0",
+    "opentelemetry-exporter-otlp-proto-grpc>=1.44.0",
     # Async DB access for per-tenant config resolution (mirrors STT).
     # SQLAlchemy has no `asyncpg` extra — the async driver must be declared explicitly.
-    "sqlalchemy[asyncio]>=2.0.47",
+    "sqlalchemy[asyncio]>=2.0.52",
     "asyncpg>=0.31.0",
     # GLiNER ONNX — content safety, adversarial, PII detection
     "gliner2-onnx",
     "transformers>=5.0",
-    "onnxruntime>=1.18.0",
+    "onnxruntime>=1.28.0",
     # MinIO-compatible client for `s3://` model sources. Imported
     # LAZILY inside `core/model_source.py::_make_s3_client`, so a deployment
     # that never declares an s3:// source_uri never imports it.
@@ -70,9 +70,9 @@ dev = [
     "pytest-cov>=7.0.0",
     "pytest-mock>=3.15.1",
     "black>=26.1.0",
-    "ruff>=0.15.8",
-    "mypy>=1.19.1",
-    "pre-commit>=4.5.1",
+    "ruff>=0.16.3",
+    "mypy>=2.3.1",
+    "pre-commit>=4.6.2",
 ]
 
 test = [
@@ -81,7 +81,7 @@ test = [
     "pytest-cov>=7.0.0",
     "pytest-mock>=3.15.1",
     "httpx>=0.28.1",
-    "fakeredis[lua]>=2.21.0",
+    "fakeredis[lua]>=2.37.0",
 ]
 
 # Self-hosted MiniCheck-Flan-T5 GGUF groundedness scorer (owner directive
@@ -94,8 +94,8 @@ groundedness = [
 
 lint = [
     "black>=26.1.0",
-    "ruff>=0.15.8",
-    "mypy>=1.19.1",
+    "ruff>=0.16.3",
+    "mypy>=2.3.1",
 ]
 
 [project.urls]

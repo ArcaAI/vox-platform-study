@@ -22,7 +22,7 @@ RUN pnpm install --frozen-lockfile || pnpm install
 RUN pnpm build
 
 # Runtime stage: serve static files with nginx
-FROM nginx:1.27-alpine AS runner
+FROM nginx:1.30.4-alpine AS runner
 
 COPY --from=builder /app/apps/example/dist /usr/share/nginx/html
 

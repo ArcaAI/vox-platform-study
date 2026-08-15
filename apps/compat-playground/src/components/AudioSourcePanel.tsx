@@ -34,7 +34,7 @@ import type { PlaygroundAudioMode } from '../context/playground-session';
  * makes WER/CER comparable across pipeline switches). They deliberately reuse
  * the mixer → noise-filter → VAD → STT path rather than a shortcut, so what you
  * measure is the real pipeline.
-*/
+ */
 
 const MODES: { value: PlaygroundAudioMode; label: string; hint: string }[] = [
   { value: 'single-mic', label: 'One microphone', hint: 'The classic single-input consultation.' },

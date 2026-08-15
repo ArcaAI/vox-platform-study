@@ -18,7 +18,15 @@
 import type { ReactNode } from 'react';
 import { useCallback, useMemo } from 'react';
 import { useQueryStates } from 'nuqs';
-import { VirtualizedDataGrid, type ColumnDef, type DataQueryState, type GroupByConfig, type RowSelectionState, type SortRule } from '@arcaai/ui';
+import {
+  VirtualizedDataGrid,
+  type ColumnDef,
+  type DataQueryState,
+  type GroupByConfig,
+  type RowData,
+  type RowSelectionState,
+  type SortRule,
+} from '@arcaai/ui';
 import type { ListParams } from '@/shared/api';
 import { ErrorBanner, ErrorState } from '@/shared/state/error-state';
 import { UI_DATA_GRID_NAMESPACE, sharedGridLayoutPersistence } from './grid-persistence';
@@ -98,7 +106,7 @@ export function useAdminGridParams(options?: UseAdminGridParamsOptions): AdminGr
   return { queryState, setQueryState, listParams };
 }
 
-export interface AdminDataGridProps<TData> {
+export interface AdminDataGridProps<TData extends RowData> {
   /** Persistence key under the `ui.data-grid` namespace, e.g. 'tenants' | 'users'. */
   gridId: string;
   /** Column defs with `meta` (`label`, `variant`, `options`) for typed filters. */
@@ -140,7 +148,7 @@ export interface AdminDataGridProps<TData> {
   persistenceEnabled?: boolean;
 }
 
-export function AdminDataGrid<TData>({
+export function AdminDataGrid<TData extends RowData>({
   gridId,
   columns,
   rows,

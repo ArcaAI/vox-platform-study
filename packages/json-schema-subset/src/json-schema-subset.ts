@@ -50,7 +50,7 @@
  * keywords above, so the subset would be documentation rather than
  * enforcement. Keep this package dependency-free — it is bundled into
  * `@arcaai/vox`, whose bundle size is actively policed.
-*/
+ */
 
 /** Maximum nesting depth of an authored schema. */
 export const MAX_SCHEMA_DEPTH = 12;

@@ -39,7 +39,7 @@ function documentTheme(): Theme {
  * which is also what a theme switch should look like. It is exactly what
  * next-themes' `disableTransitionOnChange` does for `apps/admin-console`
  * (`src/shared/providers.tsx`); this app is plain Vite, so it is spelled out.
-*/
+ */
 function applyThemeWithoutTransitions(theme: Theme): void {
   const suppressor = document.createElement('style');
   suppressor.appendChild(document.createTextNode('*,*::before,*::after{transition:none !important;animation:none !important}'));

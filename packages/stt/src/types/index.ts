@@ -97,7 +97,7 @@ export interface AudioSourceConfig {
    * against the session engine and rejects a mode no configured engine can
    * serve. Takes precedence over `language` on the backend. Ignored by the
    * local (browser) STT path.
-*/
+   */
   languageMode?: string;
 
   /**
@@ -105,7 +105,7 @@ export interface AudioSourceConfig {
    * `'fallback'`. Forwarded to the STT session on the streaming/backend path so
    * it opens on the tenant-admin default provider when `'fallback'`. Ignored by
    * the local (browser) STT path.
-*/
+   */
   startOn?: 'primary' | 'fallback';
 
   /**
@@ -481,7 +481,7 @@ export interface TranscriptionResult {
    * The ASR pipeline that produced this result. Per-utterance, so a
    * mid-session engine switch is visible transcript-by-transcript. Absent for
    * local providers and for backends that do not stamp results.
-*/
+   */
   pipelineId?: string;
 
   /**
@@ -855,14 +855,14 @@ export interface ProviderConfig {
    * End-user language mode id. Forwarded to the STT session on the
    * streaming/backend path; takes precedence over `language` there. Ignored by
    * local providers.
-*/
+   */
   languageMode?: string;
 
   /**
    * Pre-start STT engine selection. Forwarded to the STT session on
    * the streaming/backend path so it opens on the tenant-admin default provider
    * when `'fallback'`. Ignored by local providers.
-*/
+   */
   startOn?: 'primary' | 'fallback';
 
   /**

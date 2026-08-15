@@ -1,6 +1,6 @@
 import { BadRequestException, ForbiddenException, Inject, Injectable, Optional, UnauthorizedException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { generators } from 'openid-client';
+import { authorizationCodeGrant, buildAuthorizationUrl, calculatePKCECodeChallenge, randomNonce, randomPKCECodeVerifier } from 'openid-client';
 import type { Profile as SamlProfile } from '@node-saml/node-saml';
 import jwt from 'jsonwebtoken';
 import { randomBytes } from 'node:crypto';
@@ -150,14 +150,14 @@ export class FederatedAuthService {
       throw new UnauthorizedException('Authentication system not configured');
     }
 
-    const codeVerifier = generators.codeVerifier();
-    const codeChallenge = generators.codeChallenge(codeVerifier);
-    const nonce = generators.nonce();
+    const codeVerifier = randomPKCECodeVerifier();
+    const codeChallenge = await calculatePKCECodeChallenge(codeVerifier);
+    const nonce = randomNonce();
 
     const stateClaims: SsoStateClaims = { tenantId: provider.tenantId, providerId: provider.id, nonce, codeVerifier };
     const state = jwt.sign(stateClaims, jwtSecretKey, { expiresIn: STATE_TTL });
 
-    const authorizeUrl = client.authorizationUrl({
+    const authorizeUrl = buildAuthorizationUrl(client, {
       scope: (config.scopes ?? DEFAULT_SCOPES).join(' '),
       response_type: 'code',
       redirect_uri: params.redirectUri,
@@ -165,7 +165,7 @@ export class FederatedAuthService {
       code_challenge_method: 'S256',
       nonce,
       state,
-    });
+    }).href;
 
     return { authorizeUrl };
   }
@@ -188,12 +188,15 @@ export class FederatedAuthService {
 
     let claims: Record<string, unknown>;
     try {
-      const tokenSet = await client.callback(
-        params.redirectUri,
-        { code: params.code, state: params.state },
-        { code_verifier: stateClaims.codeVerifier, nonce: stateClaims.nonce, state: params.state },
-      );
-      claims = tokenSet.claims() as unknown as Record<string, unknown>;
+      const currentUrl = new URL(params.redirectUri);
+      currentUrl.searchParams.set('code', params.code);
+      currentUrl.searchParams.set('state', params.state);
+      const tokenSet = await authorizationCodeGrant(client, currentUrl, {
+        pkceCodeVerifier: stateClaims.codeVerifier,
+        expectedNonce: stateClaims.nonce,
+        expectedState: params.state,
+      });
+      claims = (tokenSet.claims() ?? {}) as unknown as Record<string, unknown>;
     } catch (error) {
       throw new UnauthorizedException(`OIDC callback verification failed: ${this.errorMessage(error)}`);
     }

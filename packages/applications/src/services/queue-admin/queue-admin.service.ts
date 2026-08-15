@@ -15,7 +15,7 @@ export class QueueAdminService {
     const queue = this.getQueue(queueName);
     const [isPaused, counts, workers] = await Promise.all([
       queue.isPaused(),
-      queue.getJobCounts('waiting', 'active', 'completed', 'failed', 'delayed', 'paused', 'prioritized'),
+      queue.getJobCounts('waiting', 'active', 'completed', 'failed', 'delayed', 'prioritized'),
       queue.getWorkers(),
     ]);
 
@@ -28,7 +28,8 @@ export class QueueAdminService {
         completed: counts.completed ?? 0,
         failed: counts.failed ?? 0,
         delayed: counts.delayed ?? 0,
-        paused: counts.paused ?? 0,
+        // BullMQ 6 dropped the paused job type; paused queues keep jobs in waiting.
+        paused: 0,
         prioritized: counts.prioritized ?? 0,
       },
       workerCount: workers.length,
@@ -57,23 +58,19 @@ export class QueueAdminService {
 
   /**
    * Probe the shared BullMQ Redis connection for the Queues & Jobs surface.
-   * Uses the first registered queue's ioredis client: PING for latency and
-   * INFO for server stats. Never throws — connection errors are reported as
+   * Uses the first registered queue's Redis backend client: INFO for latency
+   * and server stats. Never throws — connection errors are reported as
    * `unhealthy` so the admin surface can always render.
    */
   async getRedisHealth(): Promise<RedisHealthInfo> {
     const queuesRegistered = Object.values(JobQueue).length;
     try {
       const queue = this.getQueue(Object.values(JobQueue)[0]);
-      const client = await queue.client;
+      const client = await queue.getBackend().client;
 
       const pingStart = Date.now();
-      // bullmq 5.79 narrowed `queue.client` to its adapter-agnostic IRedisClient,
-      // which omits PING; the ioredis-backed proxy still forwards it at runtime.
-      await (client as unknown as { ping(): Promise<string> }).ping();
-      const latencyMs = Date.now() - pingStart;
-
       const info = parseRedisInfo(await client.info());
+      const latencyMs = Date.now() - pingStart;
 
       return {
         status: latencyMs >= REDIS_DEGRADED_LATENCY_MS ? 'degraded' : 'healthy',

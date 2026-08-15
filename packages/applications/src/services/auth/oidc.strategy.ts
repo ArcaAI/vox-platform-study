@@ -2,13 +2,26 @@ import { PassportStrategy } from '@nestjs/passport';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { IAppSettingsService } from '../baseServices/_meta/appSettings';
 import { SecretsService } from '../baseServices/_meta/secrets';
-import { Strategy, Client } from 'openid-client';
+import { fetchUserInfo, skipSubjectCheck, type Configuration, type TokenEndpointResponse, type TokenEndpointResponseHelpers } from 'openid-client';
 import { IAuthService } from './IAuthService';
 import { UnauthorizedException } from '@arcaai/exceptions';
 import { createJwt, StringValue } from './createJwt';
 import { ClsService } from 'nestjs-cls';
 import { OAuthUserResponse, UserSession } from './dto';
 import { IActiveUserContext } from '../../interfaces';
+
+// openid-client v6 is ESM-only; the Passport strategy lives on the
+// `./passport` export. Nest/applications compile to CJS. Vitest/Vite's
+// CJS interop of that subpath often puts the constructor on `.default`.
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const oidcPassport = require('openid-client/passport') as {
+  Strategy?: new (options: object, verify?: (...args: unknown[]) => void) => object;
+  default?: { Strategy?: new (options: object, verify?: (...args: unknown[]) => void) => object };
+};
+const Strategy = oidcPassport.Strategy ?? oidcPassport.default?.Strategy;
+if (!Strategy) {
+  throw new Error('openid-client/passport Strategy failed to load');
+}
 /**
  * OidcStrategy is a class that extends the PassportStrategy for OpenID Connect (OIDC) authentication.
  * It is responsible for validating OIDC tokens and managing user sessions.
@@ -19,12 +32,12 @@ export class OidcStrategy extends PassportStrategy(Strategy, 'oidc') {
 
   /**
    * Constructor for OidcStrategy.
-   * @param client - The OpenID client used for making requests to the OIDC provider.
+   * @param config - The openid-client Configuration used for requests to the OIDC provider.
    * @param authService - The authentication service for handling user authentication logic.
    * @param clsService - The context-local storage service for managing user context.
    */
   constructor(
-    @Inject('OPENID_CLIENT') private client: Client,
+    @Inject('OPENID_CLIENT') private config: Configuration,
     @Inject(IAppSettingsService) private appSettingsService: IAppSettingsService,
     @Inject(IAuthService) private authService: IAuthService,
     private readonly clsService: ClsService<IActiveUserContext>,
@@ -34,14 +47,10 @@ export class OidcStrategy extends PassportStrategy(Strategy, 'oidc') {
     const oidcCallbackUrl = appSettingsService.getValueWithDefault('OIDC_CALLBACK_URL', 'http://localhost:8001/auth/callback');
 
     super({
-      client,
-      params: {
-        response_type: 'code',
-        scope: oidcScopes,
-        redirect_uri: oidcCallbackUrl,
-      },
+      config,
+      callbackURL: oidcCallbackUrl,
+      scope: oidcScopes,
       passReqToCallback: false,
-      usePKCE: false,
     });
 
     this.logger.debug({
@@ -57,9 +66,9 @@ export class OidcStrategy extends PassportStrategy(Strategy, 'oidc') {
    * @returns A promise that resolves to an OAuthUserResponse or null if validation fails.
    * @throws UnauthorizedException if the user could not be found or created.
    */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  async validate(tokenset: any): Promise<OAuthUserResponse | null> {
-    const userinfo = await this.client.userinfo(tokenset); // Retrieve user information from the token set.
+  async validate(tokenset: TokenEndpointResponse & TokenEndpointResponseHelpers): Promise<OAuthUserResponse | null> {
+    const subject = tokenset.claims?.()?.sub ?? skipSubjectCheck;
+    const userinfo = await fetchUserInfo(this.config, tokenset.access_token, subject);
 
     // Split the user's full name into first and last names.
     const splitName = userinfo.name?.split(' ');

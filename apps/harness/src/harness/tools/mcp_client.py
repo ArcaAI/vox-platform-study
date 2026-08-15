@@ -59,7 +59,7 @@ def _extract_text(call_result: Any) -> tuple[str, bool]:
     Prefers each content block's ``.text`` (``TextContent``); falls back to a JSON dump
     of a structured block so a non-text tool result is still captured as text.
     """
-    is_error = bool(getattr(call_result, "isError", False))
+    is_error = bool(getattr(call_result, "is_error", getattr(call_result, "isError", False)))
     blocks = getattr(call_result, "content", None) or []
     parts: list[str] = []
     for block in blocks:
@@ -127,21 +127,28 @@ class McpToolClient:
     ) -> McpToolResult:  # pragma: no cover - exercised only with the `mcp` extra installed
         """One streamable-HTTP tool round-trip via the lazily-imported SDK."""
         try:
+            import httpx2
             from mcp import ClientSession
-            from mcp.client.streamable_http import streamablehttp_client
+            from mcp.client.streamable_http import streamable_http_client
         except ImportError as exc:  # the extra is absent — surface as a coarse failure
             raise McpClientError("mcp SDK not installed (optional 'mcp-tools' extra)") from exc
 
         try:
             async with asyncio.timeout(self._timeout_s):
-                async with streamablehttp_client(base_url, headers=headers) as (
-                    read,
-                    write,
-                    _get_session_id,
-                ):
-                    async with ClientSession(read, write) as session:
-                        await session.initialize()
-                        result = await session.call_tool(tool, arguments=args)
+                # mcp 2: headers/timeout live on httpx2.AsyncClient; the transport
+                # yields (read, write) only (no get_session_id callback).
+                http_client = httpx2.AsyncClient(
+                    headers=headers,
+                    timeout=httpx2.Timeout(self._timeout_s),
+                    follow_redirects=True,
+                )
+                async with http_client:
+                    async with streamable_http_client(
+                        base_url, http_client=http_client
+                    ) as (read, write):
+                        async with ClientSession(read, write) as session:
+                            await session.initialize()
+                            result = await session.call_tool(tool, arguments=args)
         except TimeoutError as exc:
             raise McpClientError(
                 f"mcp tool call timed out after {self._timeout_s}s", is_timeout=True

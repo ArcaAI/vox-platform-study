@@ -11,7 +11,7 @@ import { IconLanguage } from '@tabler/icons-react';
  * this presentational picker stays decoupled from the SDK. The consuming app
  * feeds it from `useArcaSttLanguageModes()` and passes the chosen `id` to
  * `audio.start({ languageMode })`.
-*/
+ */
 export interface SttLanguageModeOption {
   /** Stable mode id, e.g. 'en', 'ml', 'ml-en', 'auto'. */
   id: string;

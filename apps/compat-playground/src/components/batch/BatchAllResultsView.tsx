@@ -94,7 +94,7 @@ function ResultBlock({
  *, so dropping ten files doesn't force clicking through them one
  * at a time. Nothing is filtered out: pending/uploading/processing items show
  * what they have so far (or a skeleton), failed/cancelled items say so.
-*/
+ */
 export function BatchAllResultsView() {
   const { batch } = usePlaygroundSession();
   const total = batch.items.length;

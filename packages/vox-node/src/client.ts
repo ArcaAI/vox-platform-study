@@ -10,7 +10,7 @@
  * client class name are deliberately different: the package name carries
  * brand continuity with the browser `@arcaai/vox` SDK, while the class name
  * says what it actually talks to.
-*/
+ */
 
 import { Transport } from './core/transport';
 import { ConsultationsResource, JobsResource, SummarizationResource } from './resources';
@@ -28,7 +28,7 @@ import { ConsultationsResource, JobsResource, SummarizationResource } from './re
  * of its own (verified against the already-frozen transport core). Accepted
  * here for forward compatibility with the `HopeClient` constructor shape;
  * currently inert.
-*/
+ */
 export interface HopeLogger {
   debug?(message: string, meta?: Record<string, unknown>): void;
   info?(message: string, meta?: Record<string, unknown>): void;

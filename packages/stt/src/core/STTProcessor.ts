@@ -63,7 +63,7 @@ export interface STTStreamingTransport {
    * performs. Threaded from the SDK's
    * `AudioStartOptions.drainTimeoutMs` through `PluginManager`'s runtime
    * options. Omitted / non-positive ⇒ the ws client's own default.
-*/
+   */
   drainTimeoutMs?: number;
   /**
    * Optional quiet window (ms) that ends the stop-drain early once the backend
@@ -71,7 +71,7 @@ export interface STTStreamingTransport {
    * `AudioStartOptions.quietWindowMs`. `0` DISABLES the early resolve (the
    * drain then waits for the terminal status or `drainTimeoutMs`) and is
    * preserved verbatim; omitted / negative ⇒ the ws client's own default.
-*/
+   */
   quietWindowMs?: number;
 }
 
@@ -365,7 +365,7 @@ export class STTProcessor extends BaseProcessor {
    * The streaming session manager for the injected transport, or `null` for the
    * local provider / no transport. The vox hook reaches it to drive an on-the-fly
    * provider switch without threading a new callback chain.
-*/
+   */
   getStreamingSessionManager(): StreamingSessionLike | null {
     return this.streamingTransport?.sessionManager ?? null;
   }

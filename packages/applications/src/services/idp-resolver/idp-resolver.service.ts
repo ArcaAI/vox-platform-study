@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, Inject, Optional } from '@nestjs/common';
-import { Client, Issuer } from 'openid-client';
+import { allowInsecureRequests, discovery, type Configuration } from 'openid-client';
 import { SAML, ValidateInResponseTo } from '@node-saml/node-saml';
 import { IdpProtocol, TenantIdentityProviderEntity, TenantIdentityProviderRepository } from '@arcaai/domains';
 import { SecretsService } from '../baseServices/_meta/secrets';
@@ -7,7 +7,7 @@ import { IRedisCacheService } from '../baseServices/redis/redis-cache.service';
 import { RedisSamlCacheProvider } from './saml-redis-cache-provider';
 
 interface CachedClient {
-  client: Client;
+  client: Configuration;
   cachedAt: number;
 }
 
@@ -66,14 +66,17 @@ export class IdpResolverService {
    * `resolveForTenant` and directly by `TenantIdpConfigService.testConnection`
    * (which must probe a candidate secret BEFORE it's sealed/persisted).
    */
-  async buildClient(issuerUrl: string, clientId: string, clientSecret: string, redirectUri: string): Promise<Client> {
-    const issuer = await Issuer.discover(issuerUrl);
-    return new issuer.Client({
-      client_id: clientId,
+  async buildClient(issuerUrl: string, clientId: string, clientSecret: string, redirectUri: string): Promise<Configuration> {
+    const server = new URL(issuerUrl);
+    const config = await discovery(server, clientId, {
       client_secret: clientSecret,
       redirect_uris: [redirectUri],
       response_types: ['code'],
     });
+    if (server.protocol === 'http:') {
+      allowInsecureRequests(config);
+    }
+    return config;
   }
 
   /**
@@ -88,7 +91,7 @@ export class IdpResolverService {
     tenantId: string,
     protocol: IdpProtocol,
     redirectUri: string,
-  ): Promise<{ client: Client; provider: TenantIdentityProviderEntity }> {
+  ): Promise<{ client: Configuration; provider: TenantIdentityProviderEntity }> {
     const provider = await this.providerRepository.findEnabledByTenantAndProtocol(tenantId, protocol);
     if (!provider) {
       throw new BadRequestException('No enabled identity provider configured for this tenant');
@@ -103,7 +106,7 @@ export class IdpResolverService {
    * `callback` can land on different pods in a multi-replica deployment, so
    * this independently re-derives the client from the repository when uncached.
    */
-  async resolveByProviderId(providerId: string, redirectUri: string): Promise<{ client: Client; provider: TenantIdentityProviderEntity }> {
+  async resolveByProviderId(providerId: string, redirectUri: string): Promise<{ client: Configuration; provider: TenantIdentityProviderEntity }> {
     const provider = await this.providerRepository.findById(providerId);
     if (!provider) {
       throw new BadRequestException('Identity provider not found');
@@ -114,7 +117,7 @@ export class IdpResolverService {
   private async resolveEntity(
     provider: TenantIdentityProviderEntity,
     redirectUri?: string,
-  ): Promise<{ client: Client; provider: TenantIdentityProviderEntity }> {
+  ): Promise<{ client: Configuration; provider: TenantIdentityProviderEntity }> {
     const cached = this.cache.get(provider.id);
     if (cached) {
       return { client: cached.client, provider };

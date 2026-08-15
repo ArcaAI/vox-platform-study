@@ -14,7 +14,7 @@
  * this tool intentionally behaves differently from a running consultation
  * client. If a `listChanged` SSE notification ships later, this is the
  * function to point at it instead.
-*/
+ */
 
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';

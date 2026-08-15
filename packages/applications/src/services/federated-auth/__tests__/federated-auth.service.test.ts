@@ -3,13 +3,21 @@ import { BadRequestException, ForbiddenException, UnauthorizedException } from '
 import jwt from 'jsonwebtoken';
 import { IdpProtocol, IdpStatus, ResourceStatusType, TenantIdentityProviderFactory, FederatedIdentityFactory } from '@arcaai/domains';
 
-vi.mock('openid-client', () => ({
-  generators: {
-    codeVerifier: vi.fn(() => 'fixed-code-verifier'),
-    codeChallenge: vi.fn((v: string) => `challenge-of-${v}`),
-    nonce: vi.fn(() => 'fixed-nonce'),
-  },
+const oidcMocks = vi.hoisted(() => ({
+  randomPKCECodeVerifier: vi.fn(() => 'fixed-code-verifier'),
+  calculatePKCECodeChallenge: vi.fn(async (v: string) => `challenge-of-${v}`),
+  randomNonce: vi.fn(() => 'fixed-nonce'),
+  buildAuthorizationUrl: vi.fn((_config: unknown, params: Record<string, string>) => {
+    const url = new URL('https://acme.okta.com/authorize');
+    for (const [key, value] of Object.entries(params)) {
+      url.searchParams.set(key, String(value));
+    }
+    return url;
+  }),
+  authorizationCodeGrant: vi.fn(),
 }));
+
+vi.mock('openid-client', () => oidcMocks);
 
 import { FederatedAuthService } from '../federated-auth.service';
 
@@ -37,12 +45,7 @@ function makeProvider(overrides: Record<string, unknown> = {}) {
 }
 
 function makeFakeClient() {
-  return {
-    authorizationUrl: vi.fn(
-      (params: Record<string, unknown>) => `https://acme.okta.com/authorize?${new URLSearchParams(params as never).toString()}`,
-    ),
-    callback: vi.fn(),
-  };
+  return {};
 }
 
 function makeFakeSamlClient() {
@@ -178,7 +181,7 @@ describe('FederatedAuthService.buildAuthorizeUrl (HRD with explicit tenant fallb
 
     await ctx.svc.buildAuthorizeUrl({ email: 'doctor@acme.com', redirectUri: REDIRECT_URI });
 
-    const callArgs = client.authorizationUrl.mock.calls[0][0];
+    const callArgs = oidcMocks.buildAuthorizationUrl.mock.calls[0][1] as Record<string, string>;
     expect(callArgs.code_challenge).toBe('challenge-of-fixed-code-verifier');
     expect(callArgs.code_challenge_method).toBe('S256');
     expect(callArgs.nonce).toBe('fixed-nonce');
@@ -240,7 +243,7 @@ describe('FederatedAuthService.verifyOidcCallback — existing FederatedIdentity
     const ctx = makeService();
     const provider = makeProvider();
     const client = makeFakeClient();
-    client.callback.mockResolvedValue({ claims: () => ({ sub: 'okta-sub-1', email: 'doctor@acme.com' }) });
+    oidcMocks.authorizationCodeGrant.mockResolvedValue({ claims: () => ({ sub: 'okta-sub-1', email: 'doctor@acme.com' }) });
     ctx.idpResolver.resolveByProviderId.mockResolvedValue({ client, provider });
 
     const link = FederatedIdentityFactory.CreateFederatedIdentity({
@@ -264,7 +267,7 @@ describe('FederatedAuthService.verifyOidcCallback — existing FederatedIdentity
     const ctx = makeService();
     const provider = makeProvider();
     const client = makeFakeClient();
-    client.callback.mockResolvedValue({ claims: () => ({ sub: 'okta-sub-1' }) });
+    oidcMocks.authorizationCodeGrant.mockResolvedValue({ claims: () => ({ sub: 'okta-sub-1' }) });
     ctx.idpResolver.resolveByProviderId.mockResolvedValue({ client, provider });
     ctx.federatedIdentityRepository.findByProviderAndSubject.mockResolvedValue(
       FederatedIdentityFactory.CreateFederatedIdentity({ tenantId: TENANT, userId: 'user-1', providerId: provider.id, subject: 'okta-sub-1' }),
@@ -289,7 +292,7 @@ describe('FederatedAuthService.verifyOidcCallback — JIT provisioning', () => {
 
   function setupUnlinkedCallback(ctx: ReturnType<typeof makeService>, provider: ReturnType<typeof makeProvider>, claims: Record<string, unknown>) {
     const client = makeFakeClient();
-    client.callback.mockResolvedValue({ claims: () => claims });
+    oidcMocks.authorizationCodeGrant.mockResolvedValue({ claims: () => claims });
     ctx.idpResolver.resolveByProviderId.mockResolvedValue({ client, provider });
     ctx.federatedIdentityRepository.findByProviderAndSubject.mockResolvedValue(null);
     ctx.userRepository.create = vi.fn(async (e: { id: string }) => e);

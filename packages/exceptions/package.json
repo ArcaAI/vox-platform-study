@@ -17,8 +17,8 @@
   "devDependencies": {
     "@arcaai/config-eslint": "workspace:*",
     "@arcaai/config-ts": "workspace:*",
-    "@types/node": "^25.9.4",
-    "eslint": "^9.39.4",
+    "@types/node": "^26.2.0",
+    "eslint": "^10.8.1",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3"
   },

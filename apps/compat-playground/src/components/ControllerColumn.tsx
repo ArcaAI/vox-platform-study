@@ -15,7 +15,7 @@ import { usePlaygroundSession } from '../context/playground-session';
  * lives ABOVE the tabs so the session survives tab switches. Lane E takes
  * ownership of the engine/pipeline controls from here; the remaining card
  * contents are unchanged from the pre-tab-split version.
-*/
+ */
 export function ControllerColumn() {
   const { session, capture, transcript, language } = usePlaygroundSession();
 

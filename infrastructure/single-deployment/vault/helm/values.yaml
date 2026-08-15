@@ -7,8 +7,10 @@
 #     --version 0.32.0 -n vault-system --create-namespace \
 #     -f infrastructure/single-deployment/vault/helm/values.yaml
 #
-# Pinned chart: 0.32.0  (Vault app 1.21.2).  Bump deliberately — Raft on-disk
-# format + seal migration are version-sensitive; read the chart CHANGELOG first.
+# Pinned chart: 0.32.0  (chart default app was 1.21.2; HOPE overrides the
+# image tag to 1.21.4). Do not bump the chart to 0.33+/0.34 — those default
+# Vault 2.x. Raft on-disk format + seal migration are version-sensitive;
+# read the chart CHANGELOG first.
 #
 # Topology: 3-node Raft (integrated storage, no Consul). Sealed by a SEPARATE
 # single-node "seal" Vault via the Transit engine (see ../seal-vault/), so the
@@ -45,10 +47,13 @@ injector:
   logFormat: json
   metrics:
     enabled: true
-  # Pin the injector agent image to the same Vault minor as the server.
+  image:
+    repository: hashicorp/vault-k8s
+    tag: "1.7.6"
+  # Pin the injector agent image to the same Vault patch as the server.
   agentImage:
     repository: hashicorp/vault
-    tag: "1.21.2"
+    tag: "1.21.4"
   resources:
     requests:
       cpu: 50m
@@ -60,7 +65,7 @@ injector:
 server:
   image:
     repository: hashicorp/vault
-    tag: "1.21.2"
+    tag: "1.21.4"
 
   logLevel: info
   logFormat: json

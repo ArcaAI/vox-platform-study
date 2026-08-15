@@ -24,7 +24,7 @@ import { usePlaygroundSession, type PlaygroundAutoTagMode, type PlaygroundCaptur
  * tag the turn that is about to land, and gating on `isRecording` (false from
  * the Stop click) disabled the form exactly when the last lines were coming in.
  * `starting` stays disabled: there is no session to attach to yet.
-*/
+ */
 function canAttachMetadata(phase: PlaygroundCapturePhase): boolean {
   return phase === 'recording' || phase === 'stopping';
 }
@@ -47,7 +47,7 @@ function canAttachMetadata(phase: PlaygroundCapturePhase): boolean {
  * never reaches the STT socket (see the callout below) — stated plainly here,
  * not buried in the README, because this app is what a migrating developer
  * reads to decide how metadata attribution actually works.
-*/
+ */
 export function MetadataSimulator() {
   return (
     <>
