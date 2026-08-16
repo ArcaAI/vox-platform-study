@@ -338,10 +338,10 @@ the requirement is a *tool-verified match*, not *model-asserted transcription fi
 - **HUMAN-GATED**: Task 4's `--apply` execution against any staging/production database. Dry-run
   and unit tests are part of this ticket's automated completion; writing to a real deployed
   database is not, and requires the user's explicit go-ahead plus a named target environment and
-  credentials the executing agent does not supply itself.
+  credentials the executing agent does not supply itself. **Answer**: Database is up, you can go and test.
 - **HUMAN-GATED**: any row Task 4's dry-run flags as "DRIFTED — needs manual review" (a
   tenant-customized template) requires a human decision on how to handle that specific tenant's
-  customization — this ticket does not attempt to resolve drifted rows automatically.
+  customization — this ticket does not attempt to resolve drifted rows automatically. **Answer**: Lets review, suggest best practices.
 - **Scope-size risk**: Task 3 touches 66 long-string constants across three ~300-350 KB generated
   files. The fan-out (one agent per file) bounds each individual diff, but the executing agents
   must be careful not to disturb the v2/v3 "Block A must be byte-identical across all 22 templates"
@@ -353,12 +353,12 @@ the requirement is a *tool-verified match*, not *model-asserted transcription fi
   find/replace outweighs the value of doing all three versions in one ticket, prioritizing v3
   ONLY (the currently-served version) and flagging v1/v2 as a fast-follow is an acceptable
   fallback — but must be called out explicitly in the Implementation Summary, since it leaves
-  the invariant unrestored on rollback.
+  the invariant unrestored on rollback. **Answer**: ArcaAI tenant template are just for standalone summarization used, I dont think we can use those instruction template. Lets reivew, suggest best practices for harness agentic loops/workflows.
 - Both `ARCAAI_CLINICAL_APPROVED_VERSION` and the base catalog's `currentVersionNumber` bumps
   should land in the SAME commit/PR as their respective `PromptVersion` history rows — a mismatch
   between "what `content` says" and "what `approvedVersionNumber` points at" is exactly the defect
   class `07b-arcaai-clinical-templates.ts:28-30`'s own comment warns against (the "F-01 / F-02
-  integrity path").
+  integrity path"). **Answer**: ArcaAI tenant template are just for standalone summarization used, I dont think we can use those instruction template. Lets reivew, suggest best practices for harness agentic loops/workflows.
 
 ## 7. Implementation Summary
 

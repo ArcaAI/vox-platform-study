@@ -416,29 +416,29 @@ and `design.md` were grepped for `node.type|nodeType|registry` — no hits; this
   `TextClassificationResponse` (`predicted_label`, single string) cannot represent it — that would
   require either a new response variant or a schema extension, sized as a follow-up task, not
   assumed away. Confirm the actual requirement before Task 2 claims "no new endpoint needed" as a
-  blanket fact.
+  blanket fact. **Answer**: Lets review, suggest best practices.
 - **HUMAN-GATED: naming and rename timing (TASK-707 soft dependency).** If TASK-707 lands mid-execution,
   every `apps/text`/`TEXT_*` citation in this ticket needs re-verifying against the renamed paths —
   Task 1 is the re-verification gate but a second pass may be needed if the rename lands between
-  Task 1 and later tasks.
+  Task 1 and later tasks. **Answer**: Lets review, suggest best practices.
 - **Peer-call concurrency budget (Task 5)**: reusing `inference_bound` for a network call to `text`
   conflates two different resource budgets (local GPU/CPU inference slots vs. outbound HTTP
   concurrency to a peer service). This ticket's plan flags but does not resolve it — a wrong choice
   here could either starve local classification under load from topic/intent calls, or vice versa.
   Needs a decision, ideally informed by how `apps/text`'s own guardrail-calling code paces its calls
-  (verify if `ExternalGuardrailClient`'s callers use a distinct semaphore before deciding).
+  (verify if `ExternalGuardrailClient`'s callers use a distinct semaphore before deciding). **Answer**: Lets review, suggest best practices.
 - **`GLOBAL_ADMIN_ONLY_TASK_PREFIXES` scope**: this ticket does not add `nlp.sentiment`/`nlp.toxicity`/
   `nlp.topic`/`nlp.intent` as EXCEPTIONS to the global-admin-only write lock — MODEL selection for
   all four stays global-admin-only, consistent with the other `nlp.*` keys. If product wants tenant
   admins to pick which sentiment/toxicity MODEL runs (not just tenant-authored instructions for
   topic/intent), that is a governance change to `GLOBAL_ADMIN_ONLY_TASK_PREFIXES` itself and needs
   explicit human sign-off — it is a security-relevant change to an existing, deliberate lock, not a
-  routine addition.
+  routine addition. **Answer**: Lets review, suggest best practices.
 - **`text`'s exact generation route (Task 4)** is asserted to exist per the services-program table
   ("Standard APIs + SSE + async contract") but this ticket's research did not verify its exact path
   — Task 4 must confirm the real endpoint (likely under `apps/text/src/text/api/endpoints/generate.py`,
   seen in §2.3's file listing, but not read in this research pass) before wiring the client, and
-  should not assume the assignment's phrasing is a literal route name.
+  should not assume the assignment's phrasing is a literal route name. **Answer**: Lets review, suggest best practices.
 
 ## 7. Implementation Summary
 

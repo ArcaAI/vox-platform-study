@@ -364,7 +364,7 @@ out-of-process worker task envelope actually running in this monorepo today.
 - **Open question:** should `apps/harness`'s existing direct `tei-embed` calls migrate to route
   through `text`'s new embedding endpoint (consistent with design.md naming `text` as *the*
   control-plane proxy for embeddings), or is a direct-to-TEI RAG path intentionally kept separate
-  for latency reasons? Not decided here — flagged for the design.md maintainers.
+  for latency reasons? Not decided here — flagged for the design.md maintainers. **Answer**: We need a central point for all text generation and embedding tasks, so we should route through `text`'s new embedding endpoint.
 - **Unverifiable from this repo:** whether KEDA is installed on the cluster at all, and what
   Prometheus-adapter configuration (if any) already exists for HPA custom metrics. `arca/hope-v2-deployment`
   is a separate repo this session cannot read. Task 8 is scoped so its acceptance criteria only

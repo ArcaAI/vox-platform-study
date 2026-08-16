@@ -500,27 +500,27 @@ cleanly.
   whether that contract is still binding (ask the product/API owner) before renaming the enum
   value. If binding, this ticket ships the `Role.name` data migration and every code-literal rename
   except the `ChangelogAudience` enum value, and files a follow-up for that one piece once the
-  contract question is resolved — do not silently skip documenting the split.
+  contract question is resolved — do not silently skip documenting the split. **Answer**: Lets review, suggest best practices, we need to rename services
 - **DTO/external-API compatibility (§2.2 point 5, Task 9)**: several DTOs under
   `packages/applications/src/services/*/dto/` may serialize `GLOBAL_ADMIN` as a literal value on
   already-public API responses. Renaming without a compatibility window breaks any external caller
   (including `@arcaai/vox`/`@arcaai/vox-node` SDK consumers) that pattern-matches on the string.
   Task 1 must classify each DTO before Task 9 executes broadly; a compatibility window (accept both
   strings on read, only emit the new one) may be warranted for any DTO Task 1 cannot confirm is
-  internal-only.
+  internal-only. **Answer**: Lets review, suggest best practices, we need to rename services
 - **`apps/smr` → `apps/text` is the highest single-step blast radius in this ticket** — 148 Python
   files move, all cross-service imports must be re-verified, and CI job renames must land in the
   same commit as the Dockerfile path change or `build-text`/`test-text` will reference a
   nonexistent path. Task 5 is deliberately assigned T3, not T2, for this reason despite the group's
-  overall "mostly T2/T1" tier per the backlog's own primary-tier note.
+  overall "mostly T2/T1" tier per the backlog's own primary-tier note. **Answer**: Lets review, suggest best practices, we need to rename services
 - **The compat shim `useSMR.ts` (Task 6)** — whether it becomes `useText.ts` outright or keeps a
   deprecated re-export for one release is a real API-surface decision for whoever owns SDK
   versioning, not purely mechanical; flagged for confirmation during Task 1, decided before Task 6
-  executes.
+  executes. **Answer**: Lets review, suggest best practices, we need to rename services
 - **This ticket is a hard barrier for Wave 1** (`707 → 715 workflow-definition-model`, per the
   backlog dependency graph) — any slippage here delays the entire structural wave, so the phase
   gates in §4 exist specifically to allow partial early completion (Group A and Group B can finish
-  independently) rather than an all-or-nothing single PR.
+  independently) rather than an all-or-nothing single PR. **Answer**: Lets review, suggest best practices, we need to rename services
 
 ## 7. Implementation Summary
 

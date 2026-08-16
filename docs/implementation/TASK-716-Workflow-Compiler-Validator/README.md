@@ -895,37 +895,37 @@ Paste actual output for every box.
    what the platform considers unsafe. The 22 initial rules were derived from the register by
    this ticket's author, not by a clinician. They need clinical review before Phase C, and
    the review's outcome may add, remove or re-scope rules. The mechanism is not affected by
-   the outcome; the fixtures are.
+   the outcome; the fixtures are. **Answer**: lets go ahead with the initial rules, but make sure, we allow admin (super/tenant) to enable/disable the system/platform rules.
 2. **Register coverage is partial and deliberately so.** 22 rules against a 449-row register.
    The register's own metrics (`01-invariant-register.md` §Metrics) show `hitl-authority` (41),
    `labeling-transparency` (57) and `consent-abac` (40) as the largest categories, and most of
    their rows are *runtime* obligations that no authoring-time graph rule can express (e.g.
    INV-092 "must not silently restore the old AI wording"). Stating the split explicitly here
    prevents a later reader mistaking 22-of-449 for 5% coverage of the safety surface — the
-   authoring-time-expressible subset is what this ticket owns.
+   authoring-time-expressible subset is what this ticket owns. **Answer**: Lets review, suggest best practices.
 3. **`allPathsPassThrough` as a dominator check is the one algorithm most likely to be got
    wrong.** Path enumeration is the obvious implementation and is exponential; a 256-node
    graph would hang the publish request. The fuzz task's safety oracle (naive enumeration on
    ≤ 12-node graphs) exists specifically to catch a wrong dominator implementation, and the
-   wall-clock bound exists to catch a regression back to enumeration.
+   wall-clock bound exists to catch a regression back to enumeration. **Answer**: Lets review, suggest best practices.
 4. **Contract-package sibling vs. merge with TASK-717.** Recommended: **siblings**
    (`packages/workflow-contract` + `packages/py-workflow-contract`, separate from TASK-717's
    async-contract pair). They have different consumers (compiler/interpreter vs. every async
    transport) and different lifecycles (a compiled-config format bump is a substrate event; an
    envelope bump is a platform event). Merging couples them for no benefit. Flagged because
-   the two tickets land in the same wave and a reviewer will reasonably ask.
+   the two tickets land in the same wave and a reviewer will reasonably ask. **Answer**: Lets review, suggest best practices.
 5. **`compiledConfig` crossing into Python re-opens the twin-drift risk** (§2.8). The parity
    test in Task 7b is the mitigation and must be treated as load-bearing, not as a nice-to-have
-   — if it is ever skipped, the format has three implementations again.
+   — if it is ever skipped, the format has three implementations again. **Answer**: Lets review, suggest best practices.
 6. **Severity as data means a rule can be introduced as `WARNING` and silently never
    promoted.** That is the intended graduated-rollout affordance, but it is also how a safety
    rule quietly stays off. Recommend the rule-set list surface a "rules never promoted to
    ERROR" view in TASK-719 and that Task 2's document record an intended promotion date per
-   `WARNING` rule. Not built here.
+   `WARNING` rule. Not built here. **Answer**: Lets review, suggest best practices.
 7. **Tenants adding rules is a stated capability with no consumer yet.** The model and the
    strictness one-way check support it; no Wave-1 UI exposes it. Keeping the capability in the
    model is cheap and removing it later is expensive, but it is untested surface until TASK-719
-   or later exposes it — the E2E in Task 12 covers the 403 path only.
+   or later exposes it — the E2E in Task 12 covers the 403 path only. **Answer**: Lets review, suggest best practices.
 8. **Contract-ownership overlap with TASK-718.** As authored, `TASK-718-Workflow-Interpreter`
    also plans a `contracts/compiled-config.schema.json` (its Task 1) and its risk R-7 says
    *"If TASK-716 has already shipped a different shape when this starts, Task 1 becomes a
@@ -938,11 +938,11 @@ Paste actual output for every box.
    Compatible with TASK-718's S-2 (the interpreter dereferences `compiledConfig` **via
    claim-check** inside a load-config activity to stay inside Temporal's history budget): the
    claim check wraps the document, it does not change it, so the schema here is what gets
-   hashed and stored either way.
+   hashed and stored either way. **Answer**: Lets review, suggest best practices.
 9. **The re-validation sweep is O(published definitions) per registry bump.** At Wave-1
    volumes that is trivial. If it ever is not, the fix is to key the sweep off
    `registryChecksum` inequality with an index rather than to sample — recorded so a later
-   reader does not reach for sampling, which would silently skip definitions.
+   reader does not reach for sampling, which would silently skip definitions. **Answer**: Lets review, suggest best practices.
 
 ---
 
