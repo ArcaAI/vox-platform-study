@@ -263,6 +263,7 @@ def create_app() -> FastAPI:
     from guardrail.api.endpoints.health import router as health_router
     from guardrail.api.endpoints.jobs import router as jobs_router
     from guardrail.api.endpoints.medical import router as medical_router
+    from guardrail.api.endpoints.redact import router as redact_router
 
     app.include_router(health_router, prefix="/api", tags=["health"])
     # Every other python service exposes health at /api/v1/health; alias it here
@@ -273,6 +274,8 @@ def create_app() -> FastAPI:
     app.include_router(guardrails_router, prefix="/api", tags=["guardrails"])
     # Live output-side groundedness gate — behind X-Service-Token.
     app.include_router(groundedness_router, prefix="/api", tags=["groundedness"])
+    # Tenant-facing PHI redactor (TASK-710) — behind X-Service-Token.
+    app.include_router(redact_router, prefix="/api", tags=["guardrails"])
     app.include_router(jobs_router, prefix="/api", tags=["jobs"])
 
     # OpenTelemetry tracing. Default-OFF: both the master

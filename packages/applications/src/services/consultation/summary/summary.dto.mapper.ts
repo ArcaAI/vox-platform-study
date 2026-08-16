@@ -26,6 +26,10 @@ export class SummaryDtoMapper {
       structuredData,
       createdAt: entity.createdAt.toISOString(),
       updatedAt: entity.updatedAt.toISOString(),
+      // TASK-709: the OCC counter — this DTO is mapped from a
+      // ContextItemEntity, so `entity.version` is the same `_version` field
+      // ContextDtoMapper surfaces.
+      version: entity.version,
     };
   }
 

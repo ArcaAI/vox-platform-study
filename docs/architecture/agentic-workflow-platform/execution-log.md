@@ -100,7 +100,7 @@ you can answer them in priority order.
 |---|---|---|---|
 | 0 | 700, 701, 702, 703, 704, 705, 706, 708 | **Complete — committed** | see below |
 | 0 (barrier) | 707 `naming-alignment` | **Partial — committed.** Code side complete and green; DB-persisted identifiers deferred (W7-2), enum gated (W7-3) | see below |
-| 1 | 709–717 | Not started | — |
+| 1 | 709–717 | **Complete (blocked portions withheld) — committed** | see below |
 | 2 | 718–723 | Not started | — |
 | 3 | 724–730 | Not started | — |
 | 4 | 731–733 | Not started | — |
@@ -191,3 +191,37 @@ Getting there took repairing 22 real failures the agents left: stale generated e
 undeclared `TEXT_PORT`/`TEXT_URL` descriptors, an unregistered `TEXT_SERVICE_TOKEN` vault-kv
 descriptor, seed tests still asserting the pre-rename role names, and a prettier break caused by
 the longer `SUPER_ADMIN` string.
+
+### Wave 1 — Structure
+
+9 agents, 4 phases. The three Prisma-schema tickets (711, 712, 715) were serialized so they never
+edited the schema concurrently. Reports were honest this time — every agent named what it skipped,
+and TASK-716 explicitly declined to author into files sibling agents were editing rather than risk
+a collision. I still verified everything independently.
+
+| Ticket | Status | Delivered / withheld |
+|---|---|---|
+| 709 note-occ | Review | Full ETag/If-Match OCC on notes (428 missing, 412 drift). Its e2e spec is **authored but never run** — RED was never observed, needs live infra. |
+| 710 phi-redactor | Review | `POST /api/guardrail/redact` fail-closed (503/502, never 200 with unredacted text) + `GuardrailPhiRedactor` DI + both hops wired. Found and fixed a real gap the ticket missed: `ConsultationJobServiceModule` doesn't re-export the redactor, so hop 2 would have silently stayed unwired in production. Pseudonymization mechanism left provisional, isolated to one function (decision #12). |
+| 711 session-state-machine | Partial | State machine + migration authored. Shadow-DB proof un-run; observed-distribution query needs live Postgres; `ABANDONED`-state authority still an open secondary decision. |
+| 712 consent-abac | Partial | Consent model + ABAC evaluation path + tests. **No enforcement enabled, no legacy posture chosen** — left as one explicit switch pending decision #1. Guard/decorator/route decoration deliberately not built. |
+| 713 harness-eval-gate | Partial | Gate structure + tests so a backend is a config change. No backend chosen, no CI wiring, gate not made blocking (decision #5). |
+| 714 legacy-safety-floor | Completed | Safety floor built against the 704 seam. |
+| 715 workflow-definition-model | Partial | New Prisma models per rule 02's template + hand-authored domain quartet. Migration authored, shadow-DB proof un-run. DB-level immutability is an open secondary decision. |
+| 716 workflow-compiler-validator | Partial | Compiler/validator engine + tests. Rule set authored as **clearly-marked DRAFT** — it is AI-authored and not clinician-reviewed (decision #3), and is not wired as an enforcing gate. |
+| 717 async-contract | Partial | Envelope contract + package. The `apps/text` reference implementation and the Python conformance twin were deliberately left for 722/727. |
+
+**Verification (mine, after the agents finished):** `pnpm typecheck` 41/41 · `pnpm lint` 36/36 ·
+`pnpm test:unit` **1026 files / 17,367 tests / 0 failed** · `pnpm api:build` 10/10 ·
+`@arcaai/domains` 1720 · `@arcaai/database` 1237 · guardrail pytest 213 ·
+harness pytest 1197 passed / 4 failed (the known local-env four).
+
+**One bug I introduced in TASK-707 and fixed here:** the blanket rename had rewritten
+`HARNESS_SMR_BASE_URL` → `HARNESS_SMR_BASE_URL`'s TEXT_ form in the env samples and the loop test,
+while the Python fields (`Settings.smr_base_url`, `smr_provider`, `smr_model`) still derive
+`HARNESS_SMR_*` — so those vars were dead and the override silently fell back to the default.
+Reverted the env names rather than renaming the fields, because `smr_provider`/`smr_model` are
+coupled to the deferred DB columns in W7-2. That whole cluster stays with the W7-2 follow-up.
+
+**Migrations authored but UNPROVEN: 711, 712, 715.** None has had rule 02's shadow-DB empty-diff
+proof run. Do not deploy any of them unverified.

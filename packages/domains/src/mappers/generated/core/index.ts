@@ -87,3 +87,4 @@ export * from './ServiceReleaseEntityMapper';
 export * from './ServiceInstanceEntityMapper';
 export * from './ChangelogEntryEntityMapper';
 export * from './UserChangelogAcknowledgementEntityMapper';
+export * from './ConsentGrantEntityMapper';

@@ -53,6 +53,12 @@ const mockContextItemRepository = {
   findWithAllRelations: vi.fn(),
   create: vi.fn(),
   update: vi.fn(),
+  // TASK-709: updateContext now writes through the OCC-aware
+  // Compare-And-Set variant; delegate to `update` so this suite's existing
+  // `.update` configuration keeps driving behavior unchanged. The CAS
+  // predicate itself (the `expectedVersion` argument) is asserted directly
+  // against `updateWithVersion.mock.calls` in the dedicated OCC tests below.
+  updateWithVersion: vi.fn((id: string, entity: unknown, _expectedVersion?: number, _tx?: unknown) => mockContextItemRepository.update(id, entity)),
   softDelete: vi.fn(),
 };
 
@@ -993,6 +999,52 @@ describe('ContextService', () => {
 
       // Content should remain unchanged when undefined
       expect(existingItem.content).toBe('Original content');
+    });
+
+    // TASK-709: OCC — updateContext routes through the Compare-And-Set
+    // repository call, threading the caller-supplied `expectedVersion`
+    // through, and never falls back to the legacy non-versioned write.
+    describe('optimistic concurrency (TASK-709)', () => {
+      it('routes through updateWithVersion using request.expectedVersion, not the legacy update()', async () => {
+        const existingItem = createMockContextItemEntity({
+          id: 'context-item-occ-1',
+          content: 'Original',
+        });
+        mockContextItemRepository.findById.mockResolvedValue(existingItem);
+        mockContextItemVersionRepository.create.mockResolvedValue({});
+        mockContextItemRepository.updateWithVersion.mockResolvedValue(existingItem);
+
+        await service.updateContext('context-item-occ-1', {
+          content: 'Updated',
+          expectedVersion: 3,
+        });
+
+        expect(mockContextItemRepository.updateWithVersion).toHaveBeenCalledWith('context-item-occ-1', existingItem, 3);
+        // CAS-only — the legacy non-versioned write MUST NOT fire.
+        expect(mockContextItemRepository.update).not.toHaveBeenCalled();
+      });
+
+      it('propagates OptimisticConcurrencyException on version drift (412)', async () => {
+        const { OptimisticConcurrencyException } = await import('@arcaai/exceptions');
+        const existingItem = createMockContextItemEntity({
+          id: 'context-item-occ-2',
+          content: 'Original',
+        });
+        mockContextItemRepository.findById.mockResolvedValue(existingItem);
+        mockContextItemVersionRepository.create.mockResolvedValue({});
+        const occErr = new OptimisticConcurrencyException('ContextItem', 'context-item-occ-2', {
+          expectedVersion: 3,
+          currentVersion: 5,
+        });
+        mockContextItemRepository.updateWithVersion.mockRejectedValue(occErr);
+
+        await expect(
+          service.updateContext('context-item-occ-2', {
+            content: 'Updated',
+            expectedVersion: 3,
+          }),
+        ).rejects.toBe(occErr);
+      });
     });
   });
 

@@ -1582,4 +1582,77 @@ Chinese: 發燒 (fever)
       expect(mockJobService.notifyComplete).toHaveBeenCalled();
     });
   });
+
+  // ===========================================================================
+  // TASK-710 hop 1 — PHI redaction before the NLP call
+  // ===========================================================================
+
+  describe('PHI redaction (TASK-710 hop 1)', () => {
+    const buildProcessorWithRedactor = (phiRedactor: unknown) =>
+      new NerProcessor(
+        mockJobService as any,
+        mockContextItemRepository as any,
+        mockNamedEntityRepository as any,
+        mockHttpService as any,
+        mockConfigService as any,
+        mockEventEmitter as any,
+        mockClsService as any,
+        undefined, // secretsService
+        undefined, // aiTaskDefaultService
+        undefined, // usageLedger
+        phiRedactor as any,
+      );
+
+    it('posts the PSEUDONYMIZED text to NLP — no raw identifier reaches the mocked NLP client', async () => {
+      const rawContent = 'Patient John Doe, age 45, diagnosed with Type 2 Diabetes. Prescribed Metformin 500mg.';
+      const pseudonymized = '[PERSON_1], age 45, diagnosed with Type 2 Diabetes. Prescribed Metformin 500mg.';
+      const phiRedactor = { redact: vi.fn().mockResolvedValue(pseudonymized) };
+      const proc = buildProcessorWithRedactor(phiRedactor);
+
+      mockContextItemRepository.findById.mockResolvedValue(createMockContextItem({ content: rawContent }));
+      mockHttpService.axiosRef.post.mockResolvedValue({ data: { entities: [] } });
+
+      await proc.process(
+        createMockJob({ jobId: 'job-phi-1', contextItemId: 'ctx-item-123', consultationId: 'consult-phi-1', tenantId: 'tenant-1', userId: 'user-1' }),
+      );
+
+      expect(phiRedactor.redact).toHaveBeenCalledWith(rawContent, 'pseudonymize');
+      const [, body] = mockHttpService.axiosRef.post.mock.calls[0];
+      expect(body.text).toBe(pseudonymized);
+      expect(body.text).not.toContain('John Doe');
+      // Clinical terms survive pseudonymization.
+      expect(body.text).toContain('Type 2 Diabetes');
+      expect(body.text).toContain('Metformin 500mg');
+    });
+
+    it('FAIL-CLOSED: a throwing redactor aborts the job — the NLP service is never called with raw content', async () => {
+      const phiRedactor = { redact: vi.fn().mockRejectedValue(new Error('guardrail unreachable')) };
+      const proc = buildProcessorWithRedactor(phiRedactor);
+
+      mockContextItemRepository.findById.mockResolvedValue(createMockContextItem({ content: 'Patient John Doe.' }));
+
+      await expect(
+        proc.process(createMockJob({ jobId: 'job-phi-2', contextItemId: 'ctx-item-123', consultationId: 'consult-phi-2', tenantId: 'tenant-1', userId: 'user-1' })),
+      ).rejects.toThrow();
+
+      expect(mockHttpService.axiosRef.post).not.toHaveBeenCalled();
+      expect(mockJobService.notifyFailed).toHaveBeenCalledWith('job-phi-2', expect.stringContaining('Failed to extract named entities'));
+    });
+
+    it('without a wired redactor, behavior is unchanged (today\'s behavior) — raw content is posted', async () => {
+      // `processor` (the default fixture) has no phiRedactor wired, matching every
+      // pre-existing test in this file — production DI wiring (not a processor-level
+      // fallback) is what guarantees a redactor is present at runtime.
+      const content = 'Patient John Doe, age 45.';
+      mockContextItemRepository.findById.mockResolvedValue(createMockContextItem({ content }));
+      mockHttpService.axiosRef.post.mockResolvedValue({ data: { entities: [] } });
+
+      await processor.process(
+        createMockJob({ jobId: 'job-phi-3', contextItemId: 'ctx-item-123', consultationId: 'consult-phi-3', tenantId: 'tenant-1', userId: 'user-1' }),
+      );
+
+      const [, body] = mockHttpService.axiosRef.post.mock.calls[0];
+      expect(body.text).toBe(content);
+    });
+  });
 });

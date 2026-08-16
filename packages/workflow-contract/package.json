@@ -1,0 +1,48 @@
+{
+  "name": "@arcaai/workflow-contract",
+  "version": "0.1.0",
+  "description": "The pure workflow-graph validator + deterministic compiler engine for the agentic-workflow-platform substrate (TASK-716). Zero runtime dependencies.",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "clean": "rm -rf dist *.tsbuildinfo",
+    "nuke": "rimraf dist node_modules .turbo tsconfig.tsbuildinfo",
+    "lint": "eslint src",
+    "lint:fix": "eslint src --fix",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest --watch",
+    "test:cov": "vitest run --coverage"
+  },
+  "keywords": [
+    "arcaai",
+    "workflow",
+    "validation",
+    "compiler"
+  ],
+  "author": "ArcaAI Team",
+  "license": "MIT",
+  "devDependencies": {
+    "@arcaai/config-eslint": "workspace:*",
+    "@arcaai/config-ts": "workspace:*",
+    "ajv": "^8.20.0",
+    "ajv-formats": "^2.1.1",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.10"
+  }
+}

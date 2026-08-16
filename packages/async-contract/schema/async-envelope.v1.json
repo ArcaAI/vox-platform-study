@@ -1,0 +1,146 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://arcaai.dev/schemas/async-envelope.v1.json",
+  "title": "AsyncEnvelope",
+  "description": "TASK-717: the normative async task/event envelope. See docs/architecture/agentic-workflow-platform/async-contract.md for prose and per-transport delivery semantics. Copied byte-for-byte by both the TypeScript (@arcaai/async-contract) and Python (hope_async_contract) packages' parity tests -- this file is the single source of truth for the wire shape.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "id",
+    "tenantId",
+    "type",
+    "occurredAt",
+    "correlationId",
+    "causationId",
+    "idempotencyKey"
+  ],
+  "oneOf": [
+    { "required": ["payload"] },
+    { "required": ["payloadRef"] }
+  ],
+  "not": {
+    "required": ["payload", "payloadRef"]
+  },
+  "properties": {
+    "schemaVersion": {
+      "description": "Integer. A consumer MUST refuse an unknown value rather than best-effort parse (usage-outbox.payload.ts:18-22 precedent). This document defines version 1 only.",
+      "const": 1
+    },
+    "id": {
+      "description": "The envelope's own identity. UUIDv7, matching the platform's `@default(uuid(7))` convention -- sorts by creation time.",
+      "$ref": "#/$defs/uuid"
+    },
+    "tenantId": {
+      "description": "MANDATORY, never null. Platform-wide messages use the SYSTEM tenant 00000000-0000-0000-0000-000000000000, never NULL (rule 02's 'NULL = global is banned', mirrored here).",
+      "$ref": "#/$defs/uuid"
+    },
+    "type": {
+      "description": "Lowercase dotted event/task type, e.g. `stt.segment.finalized`, `smr.stream.chunk`. Deliberately NOT SysEventType's `SysEvent.ResourceCreated` form -- that is an EventEmitter2 channel name, not a wire type. 2 to 5 dot-separated segments.",
+      "type": "string",
+      "pattern": "^[a-z0-9]+(\\.[a-z0-9_]+){1,4}$",
+      "maxLength": 200
+    },
+    "occurredAt": {
+      "description": "When the FACT happened, in UTC -- never the publish/redelivery time. A redelivery of the same logical event MUST carry the original occurredAt.",
+      "type": "string",
+      "format": "date-time"
+    },
+    "correlationId": {
+      "description": "Request/session-scoped identifier, propagated unchanged across every envelope caused by the same request or session.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255
+    },
+    "causationId": {
+      "description": "The `id` of the envelope that caused this one, or null when there is no known cause (e.g. the first envelope of a chain, or a producer that does not yet track causation -- see async-contract.md Adoption guidance). Optional in practice; most producers may emit null until they adopt it deliberately.",
+      "oneOf": [{ "$ref": "#/$defs/uuid" }, { "type": "null" }]
+    },
+    "idempotencyKey": {
+      "description": "Intent-derived, never random (usageLedger/idempotency-keys.ts:3-26). Grammar reused verbatim from that module.",
+      "type": "string",
+      "pattern": "^[\\x21-\\x7e]{1,255}$",
+      "maxLength": 255
+    },
+    "payload": {
+      "description": "Inline JSON document. Mutually exclusive with payloadRef -- exactly one of the two MUST be present."
+    },
+    "payloadRef": {
+      "description": "Claim-check reference to an out-of-band blob. Mutually exclusive with payload. Shape is ClaimCheckRef verbatim (apps/harness/src/harness/temporal/claim_check.py:64-80).",
+      "$ref": "#/$defs/claimCheckRef"
+    }
+  },
+  "$defs": {
+    "uuid": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+    },
+    "claimCheckRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["store", "bucket", "key", "size", "sha256", "contentType"],
+      "properties": {
+        "store": {
+          "description": "Which BlobStore implementation wrote this ref, e.g. `s3`. Matches ClaimCheckRef.store.",
+          "type": "string",
+          "minLength": 1
+        },
+        "bucket": {
+          "type": "string",
+          "minLength": 1
+        },
+        "key": {
+          "description": "Content-addressed object key within the bucket.",
+          "type": "string",
+          "minLength": 1
+        },
+        "size": {
+          "description": "Byte size of the referenced blob.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "sha256": {
+          "description": "Lowercase hex SHA-256 of the referenced blob. Verified by the consumer at resolve time -- a mismatch is a fail-loud integrity error, never a silent partial read.",
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "contentType": {
+          "description": "camelCase on the wire; the Python model's `content_type` maps to it by pydantic alias.",
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "schemaVersion": 1,
+      "id": "01907d3a-0000-7000-8000-000000000001",
+      "tenantId": "00000000-0000-0000-0000-000000000000",
+      "type": "smr.stream.chunk",
+      "occurredAt": "2026-08-16T12:00:00.000Z",
+      "correlationId": "req-abc123",
+      "causationId": null,
+      "idempotencyKey": "smr:task:t-1:chunk:0",
+      "payload": { "type": "chunk", "content": "hello", "data": null }
+    },
+    {
+      "schemaVersion": 1,
+      "id": "01907d3a-0000-7000-8000-000000000002",
+      "tenantId": "00000000-0000-0000-0000-000000000000",
+      "type": "harness.transcript.offloaded",
+      "occurredAt": "2026-08-16T12:00:01.000Z",
+      "correlationId": "req-abc123",
+      "causationId": "01907d3a-0000-7000-8000-000000000001",
+      "idempotencyKey": "wf:run:r-1:node:n-1:1",
+      "payloadRef": {
+        "store": "s3",
+        "bucket": "hope-claims",
+        "key": "ab/cd/abcd...sha256",
+        "size": 12345,
+        "sha256": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+        "contentType": "text/plain; charset=utf-8"
+      }
+    }
+  ]
+}

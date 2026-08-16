@@ -303,4 +303,18 @@ export class ContextItemResponse {
 
   @ApiProperty()
   updatedAt: string;
+
+  /**
+   * TASK-709: Surface `_version` (the OCC compare-and-set counter, DISTINCT
+   * from `currentVersionNumber` — the content-revision pointer above) so SDK
+   * clients can echo it back via `If-Match: "<version>"` (or the body-field
+   * `expectedVersion`) on the next PATCH. Mirrors
+   * `DepartmentResponse.version` (`department.response.ts`) — the house
+   * exemplar for this field.
+   */
+  @ApiProperty({
+    description: 'Row version for optimistic concurrency control. Echo back as `If-Match: "<version>"` or `expectedVersion` on PATCH.',
+    example: 7,
+  })
+  version!: number;
 }

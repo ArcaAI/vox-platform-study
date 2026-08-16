@@ -43,6 +43,9 @@ export class ContextDtoMapper {
       isMediaType: !entity.requiresContent,
       createdAt: entity.createdAt.toISOString(),
       updatedAt: entity.updatedAt.toISOString(),
+      // TASK-709: `_version`, the OCC counter — DISTINCT from
+      // `currentVersionNumber` (the content-revision pointer above).
+      version: entity.version,
     };
 
     // Map nested relations if present

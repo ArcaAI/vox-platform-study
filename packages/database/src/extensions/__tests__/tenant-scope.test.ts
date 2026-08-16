@@ -105,7 +105,15 @@ describe('TENANT_SCOPED_MODELS allow-list', () => {
     // 75 → 76: adds AgentPromotion (immutable cross-tenant promotion
     // record, owned by the TARGET tenant) — NOT SYSTEM-shared, or any tenant
     // could enumerate which agents moved between which tenants.
-    expect(TENANT_SCOPED_MODELS.size).toBe(76);
+    // 76 → 77: adds WorkflowDefinition (TASK-715 — workflow substrate
+    // persistence floor; rows ARE versions, no head/version split). NOT
+    // SYSTEM-shared — a tenant reads only its own definitions, and the
+    // SYSTEM-tenant platform defaults reach a tenant via the seed's clone
+    // path, exactly as ConsultationContextSchema does.
+    // 77 → 78: adds ConsentGrant (TASK-712 — consent-abac). Ordinary
+    // tenant-owned rows keyed (tenantId, externalPatientId, purpose); no
+    // SYSTEM row, NOT SYSTEM-shared.
+    expect(TENANT_SCOPED_MODELS.size).toBe(78);
   });
 
   // The usage ledger, its outbox, the rollups and the whole billing

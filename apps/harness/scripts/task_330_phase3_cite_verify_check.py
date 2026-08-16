@@ -5,14 +5,14 @@ REAL models, against the LIVE seeded tenant-A hypertension chunk:
 
   retrieve (live hybrid: bge-m3 + Qdrant + TEI reranker)
     -> build_strict_citations_block   (REAL prompt block)
-    -> generate SOAP note              (Ollama gemma3:latest == HARNESS_TEXT_MODEL)
+    -> generate SOAP note              (Ollama gemma3:latest == HARNESS_SMR_MODEL)
     -> NER over note + transcript      (REAL NlpClient, :8864)
     -> build_citations_map             (REAL strict [[kb:]] parser, hallucinated ids dropped)
     -> CitationVerifySensor.arun       (REAL sensor + REAL LM Studio judge, threshold 0.8)
 
 The generation model is invoked directly over Ollama's chat API — it is the SAME
-model id the harness SMR activity calls (apps/harness/.env HARNESS_TEXT_PROVIDER=ollama,
-HARNESS_TEXT_MODEL=gemma3:latest); only the SMR HTTP wrapper is bypassed so we don't
+model id the harness SMR activity calls (apps/harness/.env HARNESS_SMR_PROVIDER=ollama,
+HARNESS_SMR_MODEL=gemma3:latest); only the SMR HTTP wrapper is bypassed so we don't
 need the separate :8872 live-verification SMR instance for this proof.
 
 Run:
@@ -38,7 +38,7 @@ from harness.temporal.activities import _build_runtime_judge, _hybrid_retriever
 
 TENANT_A = "50000000-0000-0000-0000-000000000000"
 OLLAMA_CHAT = "http://localhost:11434/api/chat"
-TEXT_MODEL = "gemma3:latest"  # == HARNESS_TEXT_MODEL
+TEXT_MODEL = "gemma3:latest"  # == HARNESS_SMR_MODEL
 
 # A hypertension follow-up consultation that topically overlaps the seeded
 # institutional protocol, so the retriever has something meaningful to cite.
@@ -116,7 +116,7 @@ async def main() -> None:
     print("\n=== 2. STRICT-CITATIONS BLOCK (real) ===")
     print("  " + block.splitlines()[0][:120] + " ...")
 
-    # 3) Generate the SOAP note (Ollama gemma3 == HARNESS_TEXT_MODEL).
+    # 3) Generate the SOAP note (Ollama gemma3 == HARNESS_SMR_MODEL).
     soap = await _generate_soap(block)
     note_text = "\n".join(f"{k.upper()}: {v}" for k, v in soap.items())
     print("\n=== 3. GENERATED SOAP NOTE (gemma3:latest) ===")

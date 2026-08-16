@@ -16,6 +16,7 @@ export class Consultation extends BaseTenantDataModel {
   public metadata: JsonValue | null;
   // Typed lifecycle state machine
   public status: Enums.ConsultationStatus;
+  public degradedReasons: string[];
   public resourceStatus: Enums.ResourceStatusType;
   public resourceStatusUpdatedAt: Date | null;
   public resourceStatusUpdatedBy: string | null;
@@ -41,6 +42,7 @@ export class Consultation extends BaseTenantDataModel {
     this.parentConsultationId = data.parentConsultationId;
     this.metadata = data.metadata;
     this.status = data.status;
+    this.degradedReasons = data.degradedReasons;
     this.resourceStatus = data.resourceStatus;
     this.resourceStatusUpdatedAt = data.resourceStatusUpdatedAt;
     this.resourceStatusUpdatedBy = data.resourceStatusUpdatedBy;

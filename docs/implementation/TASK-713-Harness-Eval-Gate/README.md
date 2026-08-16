@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Pending |
+| **Status** | Blocked (Task 0 judge-backend decision is HUMAN-GATED and unmade; structural/harness work in this pass is done) |
 | **Wave** | 1 · **Size** | M |
 | **Epic slug** | `harness-eval-gate` |
 | **Depends on** | — |
@@ -195,10 +195,129 @@ Its own justification (:119-122) is that image builds are idempotent/content-add
 
 ## 7. Implementation Summary
 
-_(Empty at authoring — filled during execution.)_
+**Scope of this pass, per explicit execution instruction:** Task 0 (judge-backend
+selection) is HUMAN-GATED and was NOT decided in this session. Task 2 (provision a
+specific backend in CI) and Task 3 (flip `allow_failure`/`RUN_INFRA_TESTS` to make the
+job actually blocking) both require Task 0's decision first — a live backend cannot be
+wired without knowing which one — so neither was touched. No cloud spend was wired and
+no backend was picked. This pass built/verified the structural pieces so that once a
+human picks a backend, wiring it in is a **config change** (env vars / CI variables),
+not an application rewrite:
+
+- **Task 1 (TDD, RED→GREEN)** — added
+  `apps/harness/src/harness/tests/unit/eval/test_ci_gate_wiring.py`, four tests proving
+  `harness.eval.ci.main()` produces a genuine PASS/FAIL verdict against the *actual*
+  CI-pinned golden set (`eval/golden/fixtures/curated_v1.json`, 18 cases: 12
+  quality-lane + 6 calibration-lane), with a stub judge injected (hermetic, no
+  network — the live-backend call stays out of this suite per
+  `06-python-services.md` §Pitfalls):
+  - fixture sanity check (18 cases, expected case id present) — confirms this test
+    stays pinned to the same fixture the CI job's `--golden-set` argument points at.
+  - all-cases-pass → `main()` exits 0, `passed: true`, no failures.
+  - one case deliberately degraded (`accurate` scored 1, simulating a hallucinated/
+    ungrounded note) → `main()` exits 1, `pdsqi_accurate` named in `failures`.
+  - `JSONFileGoldenSetSource` round-trips the fixture's documented 12/6 quality/
+    calibration lane split.
+  - RED confirmed first: with a naive uniform-score stub judge, 2 of 4 tests failed —
+    not because the wiring was broken, but because the fixture's 6 calibration-lane
+    cases carry real `clinician_pdsqi` reference labels the judge<->clinician ICC gate
+    compares against, and a uniform stub disagreed with those labels (ICC 0.18 < 0.8).
+    Fixed by building the stub's calibration-lane responses from each case's own
+    `clinician_pdsqi` label (perfect judge<->clinician agreement on that lane), leaving
+    only the quality-lane PDSQI thresholds as the thing genuinely under test — GREEN
+    after that. A second RED iteration surfaced a `MappingJudgeClient` substring
+    collision (a case's 28-char note-prefix key matched another case's *transcript*
+    text, not its own note) — fixed by keying on the full `generated_note` text
+    instead of a short prefix.
+  - Existing coverage (`test_ci_gate.py::TestApplyGate`/`TestRunAndGate`/`TestMainCLI`,
+    `test_judge_transport.py`) already proved `apply_gate`/`run_and_gate`/`main` are
+    pure/correct in the abstract and that the app-level transient-retry split (Task 4's
+    "transport failure vs genuine low score never retries") is threaded through
+    `harness.eval.judge.providers` and unit-tested — re-verified, not re-built.
+- **Task 4 (flake policy)** — added a narrow GitLab-level `retry:` block to the
+  `harness-eval-gate` job in `.gitlab/ci/test.yml`
+  (`max: 2`, `when: [runner_system_failure, stuck_or_timeout_failure]`), deliberately
+  narrower than the only prior exemplar (`.build-template`, `templates.yml:113-128`,
+  which also retries `script_failure`). `script_failure` is excluded here on purpose —
+  a below-threshold judge verdict, or a judge backend that never recovers
+  (`harness.eval.judge.base.JudgeConnectionError`, raised once
+  `JudgeConfig.transient_retries` is exhausted at the app level), both surface as
+  `script_failure` and must never be silently retried into a pass. The app-level
+  transient-retry/backoff split (the actual "is this a flake" decision) already
+  existed and is already tested (`test_judge_transport.py::test_transient_terminated_is_retried_then_succeeds`,
+  `::test_transient_failure_aborts_after_retries_exhausted`,
+  `::test_non_transient_error_is_not_retried`) — this GitLab-level addition only
+  covers the outer "the runner itself died" case, which the app-level retry cannot see.
+- **Task 0 (decision options)** — not re-litigated here; the three options and their
+  costs are already laid out in §4 Task 0 of this README as authored. No option was
+  selected.
+- **Task 2 / Task 3** — deliberately NOT done in this pass (gated on Task 0). The job
+  in `.gitlab/ci/test.yml` is unchanged apart from the Task 4 `retry:` block: it still
+  carries `allow_failure: true` and the `RUN_INFRA_TESTS != "true"` `when: never` rule,
+  and step 1 (`python -m harness.eval.ci` against a live judge) will still fail closed
+  with a connection error in an actual CI runner, exactly as described in §2 Current
+  State Evaluation — this pass did not change that behavior.
+- **Task 5 (layer-gate table)** — proposed, not applied (per the plan's own
+  instruction not to edit `.claude/rules/*.md` as part of this ticket without
+  maintainer confirmation). Proposed row for `01-development-workflow.md`
+  §Layer Dependency Chain, Python row:
+
+  ```markdown
+  | Harness eval gate | `apps/harness` | `python -m harness.eval.ci` (`.gitlab/ci/test.yml:harness-eval-gate`) | Hermetic wiring: `pnpm harness:test -- unit/eval`; live-backend run needs `HARNESS_JUDGE_*` (gated — see TASK-713) |
+  ```
+
+**Verification actually run (local, no live infra):**
+
+```
+$ PYTHONPATH=src ~/miniconda3/envs/arcaenv/bin/python -m pytest \
+    src/harness/tests/unit/eval/test_ci_gate_wiring.py -v --no-cov
+... 4 passed in 0.32s
+
+$ PYTHONPATH=src ~/miniconda3/envs/arcaenv/bin/python -m pytest \
+    src/harness/tests/unit/eval/ -q --no-cov
+198 passed in 11.87s
+
+$ ~/miniconda3/envs/arcaenv/bin/ruff check apps/harness/src/
+All checks passed!
+
+$ ~/miniconda3/envs/arcaenv/bin/mypy --config-file apps/harness/pyproject.toml apps/harness/src/
+Success: no issues found in 100 source files
+
+$ PYTHONPATH=src ~/miniconda3/envs/arcaenv/bin/python -m pytest src/harness/tests/ -q --no-cov
+6 failed, 1199 passed in 79.49s
+```
+
+The full-suite run above has 6 pre-existing failures
+(`test_otel_tracing_task636.py` x3, `test_loop_config.py` x2, `test_qdrant_api_key.py`
+x1) — all env-default assertions that fail locally because this machine's
+`.env.dev`/`.env.test` sets values (`HARNESS_RETRIEVAL_QDRANT_API_KEY=`,
+`HARNESS_SMR_BASE_URL=...`, etc.) the tests assert should be *unset*. Confirmed
+unrelated to this ticket: `git status` shows only `.gitlab/ci/test.yml` and the new
+`test_ci_gate_wiring.py` touched by this session; none of the 6 failing test files
+were touched; reproduced identically under both `NODE_ENV=test` and the default env.
+Reported here rather than silently omitted, per the honesty requirement — these are a
+pre-existing local-environment condition, not a regression from this ticket's changes.
+
+**`.gitlab/ci/test.yml` was NOT validated against a real GitLab pipeline** (no CI
+access from this session) — only local YAML-parse validation (`python3 -c
+"yaml.load(..., Loader=<custom loader stubbing !reference>)"`, confirmed the
+`harness-eval-gate.retry` block parses as `{max: 2, when: [runner_system_failure,
+stuck_or_timeout_failure]}`) and a read-through of the diff. GATED: a pipeline dry-run
+proving the retry block behaves as intended requires the real CI runner.
+
+**Remaining work, blocked on Decision #5 (Task 0):**
+- Pick the judge backend (local CI service container vs. cloud Azure/Bedrock vs.
+  scheduled-only) — human decision, not made here.
+- Task 2: wire the chosen backend into `harness-eval-gate` (services: block or
+  `HARNESS_JUDGE_AZURE_*`/`HARNESS_JUDGE_BEDROCK_*` CI variables) and remove/narrow the
+  `RUN_INFRA_TESTS` gate.
+- Task 3: remove `allow_failure: true`, confirm/recalibrate `EvalConfig` thresholds
+  against the chosen judge model, prove a degraded note actually fails a real pipeline.
+- Task 5: a maintainer applies (or explicitly declines) the proposed layer-gate table row.
 
 ## 8. Change History
 
 | Date | Change | By |
 |---|---|---|
 | 2026-08-16 | Ticket authored | Claude (ticket-authoring session) |
+| 2026-08-16 | Task 1 (TDD): added `test_ci_gate_wiring.py` proving `harness.eval.ci` gate wiring against the real `curated_v1.json` CI-pinned golden set (RED confirmed via a naive stub, then GREEN). Task 4: added a narrow GitLab `retry:` block (`runner_system_failure`/`stuck_or_timeout_failure` only, no `script_failure`) to `harness-eval-gate` in `.gitlab/ci/test.yml`. Task 0/2/3 explicitly left undone — HUMAN-GATED judge-backend decision not made, no backend picked, no cloud spend wired, per this session's execution instruction. Status set to Blocked pending Decision #5. | Claude (execution session) |

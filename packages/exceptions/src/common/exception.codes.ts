@@ -29,6 +29,12 @@ export const SPEND_LIMIT_EXCEEDED = 'DOMAIN.SPEND_LIMIT_EXCEEDED';
 // this to 409 Conflict — a tenant admin can clear it in the console, which is
 // what distinguishes it from the 403 a missing entitlement produces.
 export const PROVIDER_CREDENTIAL_VETOED = 'DOMAIN.PROVIDER_CREDENTIAL_VETOED';
+// Consent & ABAC (TASK-712). `assertConsent` denied the call — no active
+// grant, expired, revoked, or the grant's scope does not cover the request.
+// The API gateway maps this to 403 (a privilege boundary), distinct from the
+// 404-over-403 cross-tenant posture. NOT thrown by any wired route in this
+// phase — see docs/implementation/TASK-712-Consent-Abac/consent-design.md.
+export const CONSENT_DENIED = 'DOMAIN.CONSENT_DENIED';
 
 /** Persistence layer */
 export const DATA_CONFLICT = 'PERSISTENCE.DATA_CONFLICT';

@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": "n_gen",
+      "type": "summarization.generate",
+      "config": {}
+    },
+    {
+      "id": "n_tool",
+      "type": "tool.verify",
+      "config": {}
+    },
+    {
+      "id": "n_code",
+      "type": "code.bind",
+      "config": {}
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "from": "n_gen",
+      "fromPort": "out",
+      "to": "n_tool",
+      "toPort": "in"
+    },
+    {
+      "id": "e2",
+      "from": "n_tool",
+      "fromPort": "out",
+      "to": "n_code",
+      "toPort": "in"
+    }
+  ]
+}

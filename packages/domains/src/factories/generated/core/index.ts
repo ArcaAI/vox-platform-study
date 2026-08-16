@@ -87,3 +87,4 @@ export * from './ChangelogEntryFactory';
 export * from './ServiceInstanceFactory';
 export * from './ServiceReleaseFactory';
 export * from './UserChangelogAcknowledgementFactory';
+export * from './ConsentGrantFactory';

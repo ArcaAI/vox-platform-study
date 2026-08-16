@@ -1,0 +1,68 @@
+// ============================================================================
+// Consent & ABAC (TASK-712)
+//
+// HOPE stores no `Patient` model — `Consultation.patientId` is a bare,
+// caller-supplied external identifier with no FK (see consultation.prisma).
+// `ConsentGrant` therefore keys on `(tenantId, externalPatientId, purpose)`:
+// one row per purpose-of-use, so per-purpose expiry and revocation
+// (INV-342) is a plain column read, not a synthesized sub-structure inside
+// an array.
+//
+// This model is the persistence floor for the `assertConsent` ABAC choke
+// point in `packages/applications/src/services/consent/`. It does NOT by
+// itself enforce anything — no HTTP guard, no route decorator, and no
+// Temporal/harness call site references it in this phase. See
+// docs/implementation/TASK-712-Consent-Abac/consent-design.md for the full
+// design record, including the explicitly deferred decisions (WORM ledger
+// writer, legacy-consent posture, CASL blast radius).
+//
+// `scope` is a nullable minimum-necessary-scope bag (see consent-design.md
+// §3) — e.g. `{ "dateRangeDays": 365, "sourceSystems": [...] }` for
+// HISTORY_RETRIEVAL. Widening scope is a NEW `ConsentGrant` row (a fresh
+// `create`, not a mutation of `scope` on an existing row) so the widening
+// itself is an auditable event (INV-016/197) — `revoke()` is the only
+// in-place mutation this model supports.
+// ============================================================================
+
+model ConsentGrant {
+  // meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
+
+  // multi tenant fields
+  tenantId String
+
+  // core (business) fields
+  externalPatientId String // Consultation.patientId's identifier space — no FK (see consultation.prisma)
+  purpose           ConsentPurpose
+  scope             Json?              @db.JsonB // minimum-necessary scope bag; see consent-design.md §3
+  grantedAt         DateTime
+  grantedBy         String // recording user id (clinician/admin) — the patient-facing surface is out of scope (A-45)
+  grantMethod       ConsentGrantMethod
+  evidenceRef       String? // object-store pointer to the signed/recorded evidence artifact, when one exists
+  expiresAt         DateTime?
+  revokedAt         DateTime?
+  revokedBy         String?
+  revocationReason  String?
+
+  // resource status fields
+  resourceStatus          ResourceStatusType @default(ENABLED)
+  resourceStatusUpdatedAt DateTime?
+  resourceStatusUpdatedBy String?
+
+  // audit fields
+  createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+  updatedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // One row per (tenant, patient, purpose) for the row's lifetime — the
+  // unique index below is total (not partial-on-ENABLED), so this phase does
+  // NOT implement scope-widening-as-a-new-row (see consent-design.md §3);
+  // `ConsentGrantService` in this phase only creates and revokes.
+  @@unique([tenantId, externalPatientId, purpose], map: "ConsentGrant_tenant_patient_purpose_key")
+  @@index([tenantId], name: "ConsentGrant_tenantId_idx")
+  @@index([tenantId, externalPatientId], name: "ConsentGrant_tenant_patient_idx")
+  @@schema("core")
+}

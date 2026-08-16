@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": "n_start",
+      "type": "core.start",
+      "config": {}
+    },
+    {
+      "id": "n_gate",
+      "type": "consent.gate",
+      "config": {}
+    },
+    {
+      "id": "n_end",
+      "type": "core.end",
+      "config": {}
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "from": "n_start",
+      "fromPort": "out",
+      "to": "n_gate",
+      "toPort": "in"
+    },
+    {
+      "id": "e2",
+      "from": "n_gate",
+      "fromPort": "out",
+      "to": "n_end",
+      "toPort": "in"
+    },
+    {
+      "id": "e3",
+      "from": "n_start",
+      "fromPort": "out",
+      "to": "n_end",
+      "toPort": "in"
+    }
+  ]
+}

@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": "n_phi",
+      "type": "phi.read",
+      "config": {}
+    },
+    {
+      "id": "n_redact",
+      "type": "redact.phi",
+      "config": {}
+    },
+    {
+      "id": "n_egress",
+      "type": "egress.external",
+      "config": {}
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "from": "n_phi",
+      "fromPort": "out",
+      "to": "n_redact",
+      "toPort": "in"
+    },
+    {
+      "id": "e2",
+      "from": "n_redact",
+      "fromPort": "out",
+      "to": "n_egress",
+      "toPort": "in"
+    }
+  ]
+}

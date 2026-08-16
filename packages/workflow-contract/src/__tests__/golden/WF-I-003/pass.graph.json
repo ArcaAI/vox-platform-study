@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": "n_draft",
+      "type": "draft.output",
+      "config": {}
+    }
+  ],
+  "edges": []
+}

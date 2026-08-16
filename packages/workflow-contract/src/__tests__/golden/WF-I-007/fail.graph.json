@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": "n_gen",
+      "type": "summarization.generate",
+      "config": {}
+    },
+    {
+      "id": "n_gate",
+      "type": "consent.gate",
+      "config": {}
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "from": "n_gen",
+      "fromPort": "out",
+      "to": "n_gate",
+      "toPort": "in"
+    }
+  ]
+}

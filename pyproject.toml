@@ -38,6 +38,12 @@ members = [
     # Its single dependency (opentelemetry-api) is already declared by every
     # member, so it adds nothing to this resolution.
     "packages/py-otel",
+    # TASK-717: the normative async task/event envelope (identity, tenancy,
+    # type, payload-or-claim-check, correlation, causation, idempotency key,
+    # schema version) shared with the TypeScript twin `@arcaai/async-contract`.
+    # Its single dependency (pydantic) is already declared by every member, so
+    # it adds nothing to this resolution.
+    "packages/py-async-contract",
 ]
 
 # stt's `nemo` extra pulls nemo-toolkit, which hard-requires transformers

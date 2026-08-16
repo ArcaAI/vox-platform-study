@@ -70,6 +70,10 @@ const mockContextItemRepository = {
   findById: vi.fn(),
   create: vi.fn(),
   update: vi.fn(),
+  // TASK-709: updateContext now writes through the OCC-aware
+  // Compare-And-Set variant; delegate to `update` so this suite's existing
+  // `.update` configuration keeps driving behavior unchanged.
+  updateWithVersion: vi.fn((id: string, entity: unknown, _expectedVersion?: number, _tx?: unknown) => mockContextItemRepository.update(id, entity)),
   findWithSummaryMeta: vi.fn(),
   encryptContentIntoEntity: vi.fn(async () => undefined),
 };

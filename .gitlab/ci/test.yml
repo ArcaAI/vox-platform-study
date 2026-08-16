@@ -616,6 +616,19 @@ harness-eval-gate:
   needs:
     - job: lint-python
       optional: true
+  # TASK-713 Task 4 — flake policy, narrower than the .build-template
+  # exemplar (templates.yml:113-128) on purpose: this GitLab-level retry
+  # covers ONLY runner/infra flakes (never `script_failure`). A `script_failure`
+  # here can legitimately mean "a golden-set note scored below threshold" or
+  # "the judge backend never recovered" (harness.eval.judge.base.JudgeConnectionError,
+  # already raised after JudgeConfig.transient_retries is exhausted at the
+  # app level — see apps/harness/src/harness/eval/judge/providers.py and
+  # src/harness/tests/unit/eval/test_judge_transport.py) — retrying either as
+  # if it were a flake would silently launder a real quality/connectivity
+  # failure into a pass. Only the runner itself dying counts as a flake here.
+  retry:
+    max: 2
+    when: [runner_system_failure, stuck_or_timeout_failure]
   variables:
     PIP_CACHE_DIR: "$CI_PROJECT_DIR/.pip-cache"
     PROMPTFOO_DISABLE_TELEMETRY: "1"

@@ -87,3 +87,4 @@ export * from './ChangelogEntryEntity';
 export * from './ServiceInstanceEntity';
 export * from './ServiceReleaseEntity';
 export * from './UserChangelogAcknowledgementEntity';
+export * from './ConsentGrantEntity';

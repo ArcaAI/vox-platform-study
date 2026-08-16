@@ -26,10 +26,24 @@ import { NamedEntity } from '../models/generated/core/NamedEntityModel';
 const TENANT_ID = '00000000-0000-0000-0000-000000000001';
 
 describe('Phase 1 — enums', () => {
-  it('ConsultationStatus has exactly the 7 lifecycle states', () => {
+  it('ConsultationStatus has exactly the 10 lifecycle states (TASK-711)', () => {
     // DRAFT_PENDING_SENSORS supports optimistic two-phase delivery.
+    // PRIMED / DRAINING / TIMED_OUT are TASK-711 additions — see
+    // docs/implementation/TASK-711-Session-State-Machine/state-machine.md §1.
+    // PAUSED is deliberately NOT a member (deferred to checkpoint-resume).
     expect(new Set(Object.values(ConsultationStatus))).toEqual(
-      new Set(['OPEN', 'RECORDING', 'DRAFT_PENDING_SENSORS', 'PENDING_REVIEW', 'SIGNED', 'CLOSED', 'REOPENED']),
+      new Set([
+        'OPEN',
+        'PRIMED',
+        'RECORDING',
+        'DRAINING',
+        'DRAFT_PENDING_SENSORS',
+        'PENDING_REVIEW',
+        'SIGNED',
+        'TIMED_OUT',
+        'CLOSED',
+        'REOPENED',
+      ]),
     );
   });
 

@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": "n_a",
+      "type": "x",
+      "config": {}
+    }
+  ],
+  "edges": []
+}

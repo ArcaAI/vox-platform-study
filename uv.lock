@@ -30,6 +30,7 @@ conflicts = [[
 members = [
     "guardrail",
     "harness",
+    "hope-async-contract",
     "hope-env",
     "hope-otel",
     "hope-runtime-models",
@@ -1963,6 +1964,32 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/3f/2d/5c6653e1a94a3b53b3d3b931c8856b464d82c89af8368a771c6a60090600/hiredis-3.4.1-cp311-cp311-musllinux_1_2_s390x.whl", hash = "sha256:e021c48a2f6ff58f04f3344d3dfb6511cfcb120823d6a632af3af608da907cff", size = 330388, upload-time = "2026-08-07T10:21:16.631Z" },
     { url = "https://files.pythonhosted.org/packages/e0/a1/d089a9f4c1883660fe0bf68058ee840eed1ab7c0e5261955c01fef9cd632/hiredis-3.4.1-cp311-cp311-musllinux_1_2_x86_64.whl", hash = "sha256:be2cb4733754cda4fa07b8a5ee7f792f341fa830fe28f62be8c6342ffade98d0", size = 309799, upload-time = "2026-08-07T10:21:17.881Z" },
 ]
+
+[[package]]
+name = "hope-async-contract"
+version = "0.1.0"
+source = { editable = "packages/py-async-contract" }
+dependencies = [
+    { name = "pydantic", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail') or (extra == 'extra-7-harness-eval' and extra == 'extra-7-harness-eval-ragas') or (extra == 'extra-7-harness-eval-ragas' and extra == 'project-4-text')" },
+]
+
+[package.optional-dependencies]
+dev = [
+    { name = "jsonschema", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail') or (extra == 'extra-7-harness-eval' and extra == 'extra-7-harness-eval-ragas') or (extra == 'extra-7-harness-eval-ragas' and extra == 'project-4-text')" },
+    { name = "mypy", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail') or (extra == 'extra-7-harness-eval' and extra == 'extra-7-harness-eval-ragas') or (extra == 'extra-7-harness-eval-ragas' and extra == 'project-4-text')" },
+    { name = "pytest", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail') or (extra == 'extra-7-harness-eval' and extra == 'extra-7-harness-eval-ragas') or (extra == 'extra-7-harness-eval-ragas' and extra == 'project-4-text')" },
+    { name = "ruff", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail') or (extra == 'extra-7-harness-eval' and extra == 'extra-7-harness-eval-ragas') or (extra == 'extra-7-harness-eval-ragas' and extra == 'project-4-text')" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "jsonschema", marker = "extra == 'dev'", specifier = ">=4.23.0" },
+    { name = "mypy", marker = "extra == 'dev'", specifier = ">=2.3.1" },
+    { name = "pydantic", specifier = ">=2.12.5" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=9.0.2" },
+    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.16.3" },
+]
+provides-extras = ["dev"]
 
 [[package]]
 name = "hope-env"

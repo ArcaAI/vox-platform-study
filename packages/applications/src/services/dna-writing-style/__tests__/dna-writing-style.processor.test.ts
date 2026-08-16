@@ -1131,4 +1131,81 @@ describe('DnaWritingStyleProcessor', () => {
       expect(mockHttpService.axiosRef.post).not.toHaveBeenCalled();
     });
   });
+
+  // ===========================================================================
+  // TASK-710 hop 2 — PHI redaction before the corpus reaches SMR
+  // ===========================================================================
+
+  describe('PHI redaction (TASK-710 hop 2)', () => {
+    const buildProcessorWithPhiRedactor = (phiRedactor: unknown) =>
+      new DnaWritingStyleProcessor(
+        mockJobService as never,
+        mockAppSettings as never,
+        mockContextItemRepo as never,
+        mockContextItemVersionRepo as never,
+        mockDnaReportRepo as never,
+        mockDnaVersionRepo as never,
+        mockDnaUsageRepo as never,
+        mockPromptUsageRepo as never,
+        mockPromptService as never,
+        mockHttpService as never,
+        mockConfigService as never,
+        mockJobMetrics as never,
+        mockClsService as never,
+        undefined, // secretsService
+        mockHarnessPolicyService as never, // harnessPolicyService
+        undefined, // configResolver
+        undefined, // promptTemplateRepository
+        phiRedactor as never, // phiRedactor
+      );
+
+    const primeStorageMocks = () => {
+      mockPromptService.listPromptTemplates.mockResolvedValue([{ id: 'tpl-1', content: 'Analyze.', category: 'DNA_ANALYSIS' }]);
+      mockHttpService.axiosRef.post.mockResolvedValue(createAxiosSmrResponse('{"reportData":{},"styleText":"Style"}'));
+      mockDnaReportRepo.findLatestForDoctor.mockResolvedValue(null);
+      mockDnaReportRepo.create.mockResolvedValue({ id: 'r', createdAt: new Date(), updatedAt: new Date() });
+      mockDnaVersionRepo.create.mockResolvedValue({});
+      mockDnaUsageRepo.create.mockResolvedValue({});
+    };
+
+    it("calls redact(samples, 'full') and posts the REDACTED corpus to SMR — the raw sample never reaches the mocked SMR client", async () => {
+      const rawSample = 'Patient John Smith, DOB 1985-02-03, prescribed lisinopril.';
+      const redactedSample = '[REDACTED] prescribed lisinopril.';
+      const phiRedactor = { redact: vi.fn().mockResolvedValue(redactedSample) };
+      const proc = buildProcessorWithPhiRedactor(phiRedactor);
+      primeStorageMocks();
+
+      await proc.process(createMockJob({ textSamples: [rawSample] }) as never);
+
+      expect(phiRedactor.redact).toHaveBeenCalledWith(rawSample, 'full');
+      const [, requestBody] = mockHttpService.axiosRef.post.mock.calls[0];
+      expect(requestBody.prompt).toBe(redactedSample);
+      expect(requestBody.prompt).not.toContain('John Smith');
+      expect(requestBody.prompt).not.toContain('1985-02-03');
+    });
+
+    it('FAIL-CLOSED: a throwing redactor aborts the job — SMR is never called with the unredacted corpus', async () => {
+      const phiRedactor = { redact: vi.fn().mockRejectedValue(new Error('guardrail unreachable')) };
+      const proc = buildProcessorWithPhiRedactor(phiRedactor);
+      primeStorageMocks();
+
+      await expect(proc.process(createMockJob({ textSamples: ['Patient John Smith.'] }) as never)).rejects.toThrow();
+
+      expect(mockHttpService.axiosRef.post).not.toHaveBeenCalled();
+      expect(mockJobService.notifyFailed).toHaveBeenCalledWith('job-1', expect.stringContaining('guardrail unreachable'));
+    });
+
+    it("without a wired redactor, behavior is unchanged (today's behavior) — the raw corpus is posted", async () => {
+      // The default `processor` fixture (this file's top-level beforeEach) has no
+      // phiRedactor wired, matching every pre-existing test above — production DI
+      // wiring (not a processor-level fallback) is what guarantees a redactor is
+      // present at runtime.
+      primeStorageMocks();
+
+      await processor.process(createMockJob({ textSamples: ['Sample text unchanged'] }) as never);
+
+      const [, requestBody] = mockHttpService.axiosRef.post.mock.calls[0];
+      expect(requestBody.prompt).toBe('Sample text unchanged');
+    });
+  });
 });

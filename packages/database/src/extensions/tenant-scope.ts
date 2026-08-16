@@ -249,6 +249,17 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   // them, exactly as `DepartmentAgent` does.
   'ConsultationContextSchema',
   'ConsultationContextSchemaVersion',
+  // workflow-definition.prisma — the workflow substrate's persistence floor
+  // (TASK-715). Rows ARE versions (no separate head/version split).
+  // Deliberately NOT added to SYSTEM_SHARED_READ_MODELS: a tenant reads
+  // only its own definitions, and the SYSTEM-tenant platform-default rows
+  // reach a tenant via the seed's clone path, not shared read — the same
+  // posture ConsultationContextSchema records above.
+  'WorkflowDefinition',
+  // consent.prisma (TASK-712) — ordinary tenant-owned rows, keyed
+  // (tenantId, externalPatientId, purpose). No SYSTEM row and no widening:
+  // a tenant reads/writes only its own consent grants.
+  'ConsentGrant',
 ]);
 
 /**

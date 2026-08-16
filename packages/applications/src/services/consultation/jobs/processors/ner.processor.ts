@@ -7,6 +7,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
 import { JobQueue, ContextItemRepository, NamedEntityRepository, NamedEntityFactory } from '@arcaai/domains';
 import { SecretsService } from '../../../baseServices/_meta/secrets';
+import { IPhiRedactor } from '../../../gate-edit-mining/IPhiRedactor';
 import { IConsultationJobService } from '../consultation-job.service';
 import { ExtractNerJobPayload, NerJobResult } from '../dto';
 import { ConsultationPipelineEvent, NerExtractedPayload } from '../../events';
@@ -45,6 +46,15 @@ export class NerProcessor extends WorkerHost {
     // compiling; absent ⇒ no emission (fail-open — metering must never
     // block a durable NER job).
     @Optional() @Inject(IUsageLedgerService) private readonly usageLedger?: IUsageLedgerService,
+    // PHI redaction seam (TASK-710, hop 1: STT-finalized transcript → NLP).
+    // Optional + trailing so existing positional test fixtures keep compiling;
+    // production DI (ConsultationJobServiceModule) always supplies it via
+    // PhiRedactionServiceModule. When present, `callNlpService` posts the
+    // PSEUDONYMIZED text (clinical entities intact) instead of raw content —
+    // fail-closed: a throwing redactor propagates and aborts the job (see
+    // `callNlpService`'s existing catch-and-rethrow), it never falls back to
+    // posting the raw content.
+    @Optional() @Inject(IPhiRedactor) private readonly phiRedactor?: IPhiRedactor,
   ) {
     super();
     this.nlpServiceUrl = this.configService.get<string>('NLP_URL') ?? 'http://localhost:8864';
@@ -215,10 +225,16 @@ export class NerProcessor extends WorkerHost {
       // admin's re-point governs this durable clinical NER path too, not just
       // the playground. Fail-open: {} on any resolution hiccup.
       const modelSelection = await resolveNerModelInjection(this.aiTaskDefaultService, this.cls, this.logger);
+      // TASK-710 hop 1: pseudonymize before the NLP call so identifiers are
+      // masked while clinical entities (medication/condition names — never a
+      // GLiNER PII label) survive for NER extraction. Fail-closed by
+      // propagation: a throwing redactor is caught below like any other NLP
+      // call failure and aborts the job — it never falls back to `content`.
+      const textToClassify = this.phiRedactor ? await this.phiRedactor.redact(content, 'pseudonymize') : content;
       const response = await this.httpService.axiosRef.post(
         `${this.nlpServiceUrl}/api/v1/classify/tokens`,
         {
-          text: content,
+          text: textToClassify,
           ...modelSelection,
         },
         {

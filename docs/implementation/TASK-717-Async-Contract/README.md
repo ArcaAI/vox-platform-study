@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Pending |
+| **Status** | Partial — Phase A + Phase B delivered; Phase C (Tasks 5-6 reference implementation on `apps/text` + wired conformance) deferred, see §7 |
 | **Wave** | 1 · **Size** | M |
 | **Epic slug** | `async-contract` |
 | **Depends on** | — |
@@ -793,7 +793,203 @@ Paste actual output for every box.
 
 ## 7. Implementation Summary
 
-_(Empty at authoring — filled during execution.)_
+**Scope executed**: Phase A (design) and Phase B (packages) in full. Phase C
+(Task 5 — SMR reference implementation on `apps/text`; the `tests/contracts/
+async-envelope.contract.test.ts` cross-service test that depends on it) was
+**deliberately not started** this session — the orchestrator's brief for
+this ticket was explicitly "produce the schema/package and the written
+contract; get the envelope right rather than broad." Task 6's conformance
+suite itself (`assertAsyncConformance`) WAS built and self-tested against an
+in-memory fake producer, since it lives inside `@arcaai/async-contract` and
+is part of "the package"; only its wiring against a REAL producer (SMR) is
+deferred along with Task 5. Task 7 (YAGNI ledger line) was folded into the
+Task 1 `design.md` edit.
+
+### Task 1 — Design document
+
+Created `docs/architecture/agentic-workflow-platform/async-contract.md`
+(the envelope, per-transport delivery semantics, the idempotency-key
+convention + SDK carve-out, why trace context stays outside the envelope,
+why `type` cannot reference the domain enums, the resume-token convention,
+adoption guidance, and an explicit adopters/non-adopters list). Every claim
+about an existing surface carries a verified `file:line`, re-checked against
+the live tree while writing (not copied from the ticket's own §2 verbatim).
+Struck open question 3 in `design.md` and added the corresponding YAGNI
+ledger line (Task 7).
+
+**Not done**: the ticket calls for peer review by the TASK-722 and
+TASK-727 authors as a hard coordination gate before Phase B starts (§5
+acceptance criterion, §6 Risk 1) — those tickets do not exist yet, so this
+review could not happen. Recorded as gated, not skipped.
+
+### Task 2 — JSON Schema
+
+Created `packages/async-contract/schema/async-envelope.v1.json` (draft
+2020-12): `additionalProperties: false`, `payload`/`payloadRef` XOR via
+`oneOf` + `not`, `$defs/uuid` and `$defs/claimCheckRef`. Verified with
+Python's `jsonschema.Draft202012Validator`:
+- the schema itself validates against the draft 2020-12 metaschema
+- the two embedded valid `examples` validate
+- three worked examples behave as specified: inline payload → valid,
+  claim-check payload → valid, invalid-both (both `payload` and
+  `payloadRef` present) → rejected; a "neither present" case and an
+  "unknown `schemaVersion`" case were also verified rejected
+
+### Task 3 — `@arcaai/async-contract` (TypeScript)
+
+Created `packages/async-contract/` modeled file-for-file on
+`packages/json-schema-subset` (zero runtime dependencies, dual CJS/ESM,
+`sideEffects: false`). TDD: wrote all five test files first, ran `vitest`
+and confirmed RED (`Cannot find module '../envelope'` etc. — pasted below),
+then implemented `envelope.ts`, `claim-check-ref.ts`, `idempotency.ts`,
+`resume-token.ts`, `src/index.ts` barrel, and (Task 6, additive) `src/
+conformance/index.ts` exporting `assertAsyncConformance`. 49 tests, all
+green. `resume-token.ts` deliberately avoids Node's `Buffer` (uses
+`TextEncoder`/`TextDecoder`/`btoa`/`atob`) so the package stays usable from
+`@arcaai/vox-node`'s non-Node targets. One deliberate interface extension
+beyond the ticket's Task 6 sketch: `AsyncProducerUnderTest` gained an
+optional `resumeTokenOf?(produced)` method — the sketch's `replay(token)`
+alone cannot be exercised by a transport-agnostic suite without a way to
+obtain a token for a specific prior production first; documented inline and
+in the design doc.
+
+RED (confirmed before implementation):
+```
+FAIL  src/__tests__/claim-check-ref.test.ts — Cannot find module '../claim-check-ref'
+FAIL  src/__tests__/envelope.test.ts — Cannot find module '../envelope'
+FAIL  src/__tests__/idempotency.test.ts — Cannot find module '../idempotency'
+FAIL  src/__tests__/resume-token.test.ts — Cannot find module '../resume-token'
+Test Files  4 failed (4)
+```
+
+GREEN, final verification (`pnpm --filter @arcaai/async-contract build test lint typecheck`, run individually inside the package):
+```
+$ pnpm build
+CJS dist/index.js     11.96 KB   ⚡️ Build success
+ESM dist/index.mjs     11.61 KB  ⚡️ Build success
+DTS dist/index.d.ts    10.35 KB  ⚡️ Build success
+
+$ pnpm lint
+> eslint src
+(no output — clean)
+
+$ pnpm typecheck
+> tsc --noEmit
+(no output — clean)
+
+$ pnpm test
+ Test Files  5 passed (5)
+      Tests  49 passed (49)
+```
+
+`package.json` declares **zero runtime dependencies** (no `dependencies` key at all):
+```json
+{
+  "name": "@arcaai/async-contract",
+  "devDependencies": {
+    "@arcaai/config-eslint": "workspace:*",
+    "@arcaai/config-ts": "workspace:*",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.10"
+  }
+}
+```
+
+### Task 4 — `hope_async_contract` (Python)
+
+Created `packages/py-async-contract/` modeled on `packages/py-otel` (uv
+workspace member, `pydantic>=2.12.5` — already declared by every other
+workspace member, so it perturbs no resolution). Pydantic models with
+`ConfigDict(extra="forbid")` and `alias_generator=to_camel` so the wire form
+matches the TS surface field-for-field. `tests/test_parity.py` round-trips
+the SAME example corpus (`packages/async-contract/src/__tests__/examples/
+*.json`) the TS package's own test uses, asserting this package's verdict
+against ground truth independently established by validating the JSON
+Schema file with `jsonschema.Draft202012Validator` — the SAME ground truth
+the TS parity test asserts against (both packages stay dependency-light, so
+neither runs the OTHER'S validator; see the module docstrings for why full
+JSON-Schema-object equality isn't asserted, only the corpus-level verdict
+and the top-level `required` set). Also proves the resume-token wire format
+is cross-language-decodable (same base64url alphabet on both sides).
+
+```
+$ conda run -n arcaenv pytest packages/py-async-contract   (ran directly via
+  ~/miniconda3/envs/arcaenv/bin/python -m pytest, per this session's HARD
+  RULES — conda run's wrapper is broken in this environment)
+============================== 39 passed in 0.06s ==============================
+
+$ ruff check packages/py-async-contract/src/ packages/py-async-contract/tests/
+All checks passed!
+
+$ black --check packages/py-async-contract/src/ packages/py-async-contract/tests/
+All done! 8 files would be left unchanged.
+
+$ mypy --config-file packages/py-async-contract/pyproject.toml packages/py-async-contract/src/
+Success: no issues found in 4 source files
+```
+
+`uv lock` at the repo root, diff summary (27 lines total, ALL additive — zero
+lines removed, zero lines changed on any pre-existing package):
+```
+32a33
+>     "hope-async-contract",
+1967a1969,1994
+[... 26 more added lines, all `[[package]] name = "hope-async-contract"` and
+     its dependency/optional-dependency/metadata block; nothing else in the
+     8000+-line lockfile changed]
+```
+
+### Task 5 — SMR reference implementation
+
+**Not started.** `apps/text/src/text/services/task_manager.py` and `apps/
+text/src/text/api/endpoints/stream.py` are unmodified. Per the orchestrator's
+brief for this session, scope was held to the schema/package/written
+contract.
+
+### Task 6 — Conformance suite
+
+**Partially done.** `assertAsyncConformance` IS built, exported from
+`@arcaai/async-contract`'s package root, and self-tested
+(`src/conformance/__tests__/self.test.ts`, 4 tests, all 12 numbered
+assertions from the ticket's Task 6 exercised against an in-memory fake
+producer). **Not done**: `packages/py-async-contract/src/
+hope_async_contract/conformance.py` (a Python twin of the suite) and `tests/
+contracts/async-envelope.contract.test.ts` (wiring the suite against the
+real SMR producer from Task 5) — both depend on Task 5, which was not
+started.
+
+### Task 7 — YAGNI boundary
+
+Folded into the Task 1 `design.md` edit (see above) rather than a separate
+commit-sized change — `git diff docs/architecture/agentic-workflow-platform/
+design.md` shows exactly: open question 3 struck + linked, and one new YAGNI
+ledger clause naming the four non-adopted surfaces and Temporal's permanent
+non-adoption.
+
+### What was NOT run, and why
+
+- `pnpm lint:all` / `pnpm typecheck:all` / `pnpm verify` — repo-root
+  aggregates; this session's HARD RULES reserve those for the orchestrator.
+  Package-scoped equivalents (above) were run instead.
+- Any command touching a live DB, cluster, or deployed env — local infra is
+  down per this session's brief; nothing in this ticket needed one.
+- `pnpm --filter @arcaai/async-contract test:ct` / Storybook — this package
+  ships no UI components.
+
+### A note on shared-file touches
+
+Adding two new workspace packages necessarily touched three shared files:
+`pnpm-lock.yaml`, root `pyproject.toml` (new `packages/py-async-contract`
+workspace member), and `uv.lock`. The `uv.lock` diff is proven purely
+additive above. The `pnpm-lock.yaml` diff is also purely additive for actual
+package entries, but installing `tsup` pulled a newer transitive `esbuild`
+peer (`0.27.7` → `0.28.2`), which caused pnpm to re-emit peer-dependency-
+suffixed resolution KEYS for several already-resolved packages (Storybook/
+Vite/Playwright entries) without changing any package's actual version or
+`specifier`. Flagging this explicitly in case a sibling ticket's `pnpm`
+command produces an unexpected (but harmless) lockfile diff in the same
+area.
 
 ---
 
@@ -802,3 +998,4 @@ _(Empty at authoring — filled during execution.)_
 | Date | Change | By |
 |---|---|---|
 | 2026-08-16 | Ticket authored | ticket-writer agent (Wave 1 substrate foundations) |
+| 2026-08-16 | Phase A + Phase B delivered (Tasks 1-4, 7): `async-contract.md` design doc, JSON Schema, `@arcaai/async-contract` (TS, incl. Task 6's `assertAsyncConformance`, self-tested), `hope_async_contract` (Python), `design.md` open question 3 struck + YAGNI line added. Phase C (Task 5 SMR adoption, and Task 6's Python conformance twin + real-producer wiring) deliberately deferred — see §7. Status set to Partial. | implementation agent |

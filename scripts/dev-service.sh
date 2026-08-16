@@ -47,7 +47,7 @@
 #
 # MACHINE-SPECIFIC MODEL:
 #   LM_STUDIO_MODEL (default: gemma-4-e4b-it-qat) feeds both the SMR default
-#   model and the harness worker's HARNESS_TEXT_MODEL. Export it in your shell
+#   model and the harness worker's HARNESS_SMR_MODEL. Export it in your shell
 #   profile if your LM Studio has a different model loaded.
 # ============================================================================
 
@@ -196,12 +196,12 @@ apply_smr_env() {
 }
 
 apply_harness_env() {
-    : "${HARNESS_TEXT_PROVIDER:=lm-studio}"
-    : "${HARNESS_TEXT_MODEL:=${LM_STUDIO_MODEL}}"
-    export HARNESS_TEXT_PROVIDER HARNESS_TEXT_MODEL
+    : "${HARNESS_SMR_PROVIDER:=lm-studio}"
+    : "${HARNESS_SMR_MODEL:=${LM_STUDIO_MODEL}}"
+    export HARNESS_SMR_PROVIDER HARNESS_SMR_MODEL
     ENV_REPORT+=(
-        "HARNESS_TEXT_PROVIDER=$HARNESS_TEXT_PROVIDER"
-        "HARNESS_TEXT_MODEL=$HARNESS_TEXT_MODEL"
+        "HARNESS_SMR_PROVIDER=$HARNESS_SMR_PROVIDER"
+        "HARNESS_SMR_MODEL=$HARNESS_SMR_MODEL"
     )
 }
 

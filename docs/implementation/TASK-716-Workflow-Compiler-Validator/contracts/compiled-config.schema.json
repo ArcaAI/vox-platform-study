@@ -1,0 +1,176 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://arcaai.dev/hope/workflow-compiled-config.schema.json",
+  "title": "CompiledWorkflowConfig",
+  "description": "The interpreter's (TASK-718, Python) input contract. Produced ONLY by @arcaai/workflow-contract's compiler (TASK-716 Task 5) from a server-validated WorkflowDefinition.graph. Never authored or accepted from a request DTO. See ../README.md for the normative rules that accompany this schema (no SIGNED node, onTimeout never means approved, formatVersion must be refused when unknown, checksum must be verified before execution).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "formatVersion",
+    "definitionId",
+    "slug",
+    "versionNumber",
+    "tenantId",
+    "paletteKey",
+    "compiledAt",
+    "compilerVersion",
+    "registryChecksum",
+    "ruleSetVersion",
+    "stages",
+    "gates",
+    "policyBindings",
+    "caps",
+    "checksum"
+  ],
+  "properties": {
+    "formatVersion": {
+      "type": "integer",
+      "const": 1,
+      "description": "Consumers MUST refuse an unknown formatVersion rather than best-effort parse (the UsageOutboxPayload.version precedent)."
+    },
+    "definitionId": { "type": "string", "format": "uuid" },
+    "slug": { "type": "string", "minLength": 1 },
+    "versionNumber": { "type": "integer", "minimum": 1 },
+    "tenantId": { "type": "string", "format": "uuid" },
+    "paletteKey": { "type": "string", "minLength": 1 },
+    "compiledAt": { "type": "string", "format": "date-time" },
+    "compilerVersion": { "type": "string", "minLength": 1 },
+    "registryChecksum": { "type": "string", "minLength": 1 },
+    "ruleSetVersion": { "type": "integer", "minimum": 0 },
+    "stages": {
+      "type": "array",
+      "description": "Topological LEVELS, not a linear list. Nodes within one stage have no dependency on each other and MAY run concurrently.",
+      "items": { "$ref": "#/$defs/stage" }
+    },
+    "gates": {
+      "type": "array",
+      "description": "Gate nodes lifted OUT of the stage list so the interpreter can find them without walking the graph, and so 'nothing routes around a gate' is checkable against the compiled artifact as well as the source graph.",
+      "items": { "$ref": "#/$defs/gate" }
+    },
+    "policyBindings": { "$ref": "#/$defs/policyBindings" },
+    "caps": { "$ref": "#/$defs/caps" },
+    "checksum": {
+      "type": "string",
+      "minLength": 1,
+      "description": "sha256 over canonicalJson (key-sorted, array-order-preserved) of every field above except this one. Consumers MUST verify before executing."
+    }
+  },
+  "$defs": {
+    "stage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["stageIndex", "nodes"],
+      "properties": {
+        "stageIndex": { "type": "integer", "minimum": 0 },
+        "nodes": { "type": "array", "items": { "$ref": "#/$defs/node" } }
+      }
+    },
+    "node": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["nodeId", "type", "activity", "config", "timeoutSeconds", "retry", "inputs", "onError", "emitsTrajectory"],
+      "properties": {
+        "nodeId": { "type": "string", "pattern": "^[a-z0-9_]{2,48}$" },
+        "type": { "type": "string", "minLength": 1 },
+        "activity": {
+          "type": "string",
+          "minLength": 1,
+          "description": "A closed set drawn from apps/harness/src/harness/temporal/activities.py's @activity.defn names. No activity here writes SIGNED (TASK-716 §2.7)."
+        },
+        "config": { "type": "object" },
+        "timeoutSeconds": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Already clamped to caps.maxNodeSeconds at compile time."
+        },
+        "retry": { "$ref": "#/$defs/retryPolicy" },
+        "inputs": { "type": "array", "items": { "$ref": "#/$defs/inputBinding" } },
+        "onError": {
+          "type": "string",
+          "enum": ["fail", "degrade"],
+          "description": "'degrade' ⇒ produce a MARKED nothing and continue (INV-019, INV-205) — never a silent empty result."
+        },
+        "emitsTrajectory": {
+          "type": "boolean",
+          "const": true,
+          "description": "Always true for activity nodes (INV-084) — provenance emission is not tenant-disableable."
+        }
+      }
+    },
+    "retryPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["maximumAttempts", "initialIntervalSeconds", "backoffCoefficient"],
+      "properties": {
+        "maximumAttempts": { "type": "integer", "minimum": 1 },
+        "initialIntervalSeconds": { "type": "number", "exclusiveMinimum": 0 },
+        "backoffCoefficient": { "type": "number", "minimum": 1 }
+      }
+    },
+    "inputBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fromNodeId", "fromPort", "toPort"],
+      "properties": {
+        "fromNodeId": { "type": "string" },
+        "fromPort": { "type": "string" },
+        "toPort": { "type": "string" }
+      }
+    },
+    "gate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["nodeId", "gateType", "blocking", "timeoutSeconds", "onTimeout"],
+      "properties": {
+        "nodeId": { "type": "string", "pattern": "^[a-z0-9_]{2,48}$" },
+        "gateType": { "type": "string", "minLength": 1 },
+        "blocking": { "type": "boolean" },
+        "timeoutSeconds": { "type": "integer", "minimum": 1 },
+        "onTimeout": {
+          "type": "string",
+          "not": { "const": "APPROVED" },
+          "description": "MUST NEVER be a value that means 'approved' (INV-001, INV-147, INV-181). This schema's own normative rule (see README) is the authoritative statement; the `not: APPROVED` constraint here is a mechanical tripwire, not the full guarantee — a reviewer must confirm the actual enum has no synonym for approval."
+        }
+      }
+    },
+    "policyBindings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["guardrailProfile", "redactionRuleSetId", "promptTemplateRefs", "contextSchemaVersionId", "entitlementKeys"],
+      "properties": {
+        "guardrailProfile": {
+          "type": "string",
+          "enum": ["STANDARD", "STRICT", "RELAXED"],
+          "description": "GUARDRAIL_PROFILE_KEYS — placement, not permission; the actual clinical-safety enforcement runs at a boundary this field only SELECTS."
+        },
+        "redactionRuleSetId": { "type": ["string", "null"] },
+        "promptTemplateRefs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["nodeId", "templateId", "versionNumber"],
+            "properties": {
+              "nodeId": { "type": "string" },
+              "templateId": { "type": "string" },
+              "versionNumber": { "type": "integer", "minimum": 1 }
+            }
+          }
+        },
+        "contextSchemaVersionId": { "type": ["string", "null"] },
+        "entitlementKeys": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "caps": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["maxTotalSeconds", "maxNodeSeconds", "maxAttempts"],
+      "description": "Platform caps materialized so the interpreter never reads config at runtime. 'Tenants tighten, never exceed' is applied at COMPILE time — these are the ceilings the clamp used.",
+      "properties": {
+        "maxTotalSeconds": { "type": "integer", "minimum": 1 },
+        "maxNodeSeconds": { "type": "integer", "minimum": 1 },
+        "maxAttempts": { "type": "integer", "minimum": 1 }
+      }
+    }
+  }
+}

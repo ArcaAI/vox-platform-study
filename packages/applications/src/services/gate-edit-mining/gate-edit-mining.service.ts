@@ -408,7 +408,9 @@ export class GateEditMiningService extends BaseService {
   private async redactOrNull(text: string): Promise<string | null> {
     if (!this.phiRedactor) return null;
     try {
-      const redacted = await this.phiRedactor.redact(text);
+      // The exemplar bank is a retained, cross-patient artifact — full
+      // redaction, not pseudonymization (see IPhiRedactor's mode doc).
+      const redacted = await this.phiRedactor.redact(text, 'full');
       if (!redacted || redacted.trim().length === 0) return null;
       if (redacted === text && looksLikeDirectIdentifier(text)) return null;
       return redacted;

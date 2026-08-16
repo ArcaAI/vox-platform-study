@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": "n_gen",
+      "type": "summarization.generate",
+      "config": {
+        "retry": {
+          "maximumAttempts": 3
+        }
+      }
+    }
+  ],
+  "edges": []
+}

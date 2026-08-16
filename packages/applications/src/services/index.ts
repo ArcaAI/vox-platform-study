@@ -54,6 +54,9 @@ export * from './agent-trajectory-retention';
 // Gate-edit learning loop: mining job, few-shot
 // exemplar retrieval, and the SME-gated eval regression-corpus export.
 export * from './gate-edit-mining';
+// TASK-710 — IPhiRedactor implementation over the guardrail
+// POST /api/guardrail/redact endpoint.
+export * from './phi-redaction';
 // Phase 3A item 6 — read-only effective agentic instruction inventory.
 export * from './agentic-instructions';
 export * from './prompt-management';
@@ -112,3 +115,7 @@ export * from './changelog';
 // Service version & release registry: boot self-registration + heartbeat,
 // release history, and what is running right now per environment.
 export * from './serviceRelease';
+// Consent & ABAC (TASK-712) — ConsentGrant admin CRUD + the assertConsent
+// choke point. No enforcement wired anywhere this phase — see
+// docs/implementation/TASK-712-Consent-Abac/consent-design.md.
+export * from './consent';

@@ -87,24 +87,40 @@ const createMockEventEmitter = () => ({
   emit: vi.fn(),
 });
 
-const createMockContextItemRepository = () => ({
-  findById: vi.fn(),
-  findCaseNotes: vi.fn(),
-  findTranscripts: vi.fn(),
-  findSummaries: vi.fn(),
-  findLatestModifiedSummary: vi.fn(),
-  findLatestRawSummary: vi.fn(),
-  findLatestPreSummary: vi.fn(),
-  findLatestPreSummaryWithDecryptedContent: vi.fn().mockResolvedValue({ entity: null, plaintext: null }),
-  create: vi.fn(),
-  update: vi.fn(),
-  encryptContentIntoEntity: vi.fn().mockResolvedValue(undefined),
-});
+const createMockContextItemRepository = () => {
+  const update = vi.fn();
+  return {
+    findById: vi.fn(),
+    findCaseNotes: vi.fn(),
+    findTranscripts: vi.fn(),
+    findSummaries: vi.fn(),
+    findLatestModifiedSummary: vi.fn(),
+    findLatestRawSummary: vi.fn(),
+    findLatestPreSummary: vi.fn(),
+    findLatestPreSummaryWithDecryptedContent: vi.fn().mockResolvedValue({ entity: null, plaintext: null }),
+    create: vi.fn(),
+    update,
+    // TASK-709: `updateSummary`/`approveSummary` now call the OCC-aware
+    // Compare-And-Set variant. Delegate to `update` so every pre-existing
+    // `.update.mockResolvedValue(...)` / `.mockImplementation(...)`
+    // configuration in this suite keeps driving behavior unchanged; the CAS
+    // predicate itself (the `expectedVersion` argument) is asserted directly
+    // against `updateWithVersion.mock.calls` in the dedicated OCC tests.
+    updateWithVersion: vi.fn((id: string, entity: unknown, _expectedVersion?: number, _tx?: unknown) => update(id, entity)),
+    encryptContentIntoEntity: vi.fn().mockResolvedValue(undefined),
+  };
+};
 
-const createMockConsultationRepository = () => ({
-  findById: vi.fn(),
-  update: vi.fn(),
-});
+const createMockConsultationRepository = () => {
+  const update = vi.fn();
+  return {
+    findById: vi.fn(),
+    update,
+    // TASK-709: `approveSummary` now CASes the Consultation row too (see
+    // `createMockContextItemRepository` above for why this delegates).
+    updateWithVersion: vi.fn((id: string, entity: unknown, _expectedVersion?: number, _tx?: unknown) => update(id, entity)),
+  };
+};
 
 // Phase-0 WORM audit service (attestation gate).
 const createMockHarnessAuditService = () => ({
@@ -1538,6 +1554,43 @@ describe('SummaryService', () => {
         undefined,
       );
     });
+
+    // TASK-709: OCC — updateSummary routes through the Compare-And-Set
+    // repository call, threading the caller-supplied `expectedVersion`
+    // through, and never falls back to the legacy non-versioned write.
+    describe('optimistic concurrency (TASK-709)', () => {
+      it('routes through updateWithVersion using request.expectedVersion, not the legacy update()', async () => {
+        const mockItem = createMockContextItem({ id: 'ctx-occ-1', content: 'Original' });
+        mockContextItemRepository.findById.mockResolvedValue(mockItem);
+        mockContextItemVersionRepository.create.mockResolvedValue({ id: 'v-occ-1' });
+        mockContextItemRepository.updateWithVersion.mockResolvedValue({
+          ...mockItem,
+          content: 'Updated',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+
+        await service.updateSummary('ctx-occ-1', { content: 'Updated', expectedVersion: 3 });
+
+        expect(mockContextItemRepository.updateWithVersion).toHaveBeenCalledWith('ctx-occ-1', mockItem, 3);
+        // CAS-only — the legacy non-versioned write MUST NOT fire.
+        expect(mockContextItemRepository.update).not.toHaveBeenCalled();
+      });
+
+      it('propagates OptimisticConcurrencyException on version drift (412)', async () => {
+        const { OptimisticConcurrencyException } = await import('@arcaai/exceptions');
+        const mockItem = createMockContextItem({ id: 'ctx-occ-2', content: 'Original' });
+        mockContextItemRepository.findById.mockResolvedValue(mockItem);
+        mockContextItemVersionRepository.create.mockResolvedValue({ id: 'v-occ-2' });
+        const occErr = new OptimisticConcurrencyException('ContextItem', 'ctx-occ-2', {
+          expectedVersion: 3,
+          currentVersion: 5,
+        });
+        mockContextItemRepository.updateWithVersion.mockRejectedValue(occErr);
+
+        await expect(service.updateSummary('ctx-occ-2', { content: 'Updated', expectedVersion: 3 })).rejects.toBe(occErr);
+      });
+    });
   });
 
   // ============================================================
@@ -1901,6 +1954,103 @@ describe('SummaryService', () => {
 
         expect(result.approvalStatus).toBe('APPROVED');
         expect(ContextItemVersionFactory.CreateSignedNoteVersion).toHaveBeenCalledTimes(1);
+      });
+    });
+
+    // ===================================================================
+    // TASK-709 OCC — approveSummary CASes BOTH the Consultation row (its own
+    // freshly-read `.version`) and the ContextItem row (the caller-supplied
+    // `expectedVersion`), never the legacy non-versioned `.update()`.
+    // ===================================================================
+    describe('approveSummary — optimistic concurrency (TASK-709)', () => {
+      let mockHarnessAuditService: ReturnType<typeof createMockHarnessAuditService>;
+      let gatedService: SummaryService;
+
+      const makeFinalSummary = () => ({
+        id: 'ctx-item-123',
+        tenantId: 'tenant-1',
+        consultationId: 'consultation-1',
+        type: 'RAW_SUMMARY',
+        content: 'S: ... O: ... A: ... P: ...',
+        isFinalSummary: true,
+        isSummary: true,
+        currentVersionNumber: 2,
+        updatedBy: null as string | null,
+        toObject: vi.fn().mockReturnValue({}),
+        changes: {},
+      });
+
+      beforeEach(() => {
+        mockHarnessAuditService = createMockHarnessAuditService();
+        gatedService = new SummaryService(
+          mockContextItemRepository as any,
+          mockConsultationRepository as any,
+          mockSummaryMetaRepository as any,
+          mockNamedEntityRepository as any,
+          mockHttpService as any,
+          mockConfigService as any,
+          mockEventEmitter as any,
+          mockClsService as any,
+          mockContextItemVersionRepository as any,
+          mockPromptAssemblyService as any,
+          undefined, // secretsService
+          undefined, // userProfileRepository
+          mockHarnessAuditService as any,
+        );
+        mockContextItemRepository.findById.mockResolvedValue(makeFinalSummary());
+        mockContextItemVersionRepository.getVersionsByChangeReason.mockResolvedValue([]);
+        mockContextItemVersionRepository.create.mockResolvedValue({ id: 'signed-version-id-1' });
+        mockConsultationRepository.findById.mockResolvedValue({
+          id: 'consultation-1',
+          tenantId: 'tenant-1',
+          status: ConsultationStatus.PENDING_REVIEW,
+          updatedBy: null,
+          version: 6,
+        });
+      });
+
+      it('CASes the ContextItem row with the caller-supplied expectedVersion and the Consultation row with its own freshly-read version', async () => {
+        mockContextItemRepository.updateWithVersion.mockResolvedValue({ id: 'ctx-item-123' });
+        mockConsultationRepository.updateWithVersion.mockResolvedValue({ id: 'consultation-1' });
+
+        await gatedService.approveSummary('ctx-item-123', { expectedVersion: 4 });
+
+        expect(mockContextItemRepository.updateWithVersion).toHaveBeenCalledWith(
+          'ctx-item-123',
+          expect.objectContaining({ id: 'ctx-item-123' }),
+          4,
+        );
+        expect(mockConsultationRepository.updateWithVersion).toHaveBeenCalledWith(
+          'consultation-1',
+          expect.objectContaining({ status: ConsultationStatus.SIGNED }),
+          6,
+        );
+        // CAS-only — the legacy non-versioned write MUST NOT fire on either row.
+        expect(mockContextItemRepository.update).not.toHaveBeenCalled();
+        expect(mockConsultationRepository.update).not.toHaveBeenCalled();
+      });
+
+      it('propagates OptimisticConcurrencyException when the ContextItem row has drifted (412)', async () => {
+        const { OptimisticConcurrencyException } = await import('@arcaai/exceptions');
+        const occErr = new OptimisticConcurrencyException('ContextItem', 'ctx-item-123', {
+          expectedVersion: 4,
+          currentVersion: 5,
+        });
+        mockConsultationRepository.updateWithVersion.mockResolvedValue({ id: 'consultation-1' });
+        mockContextItemRepository.updateWithVersion.mockRejectedValue(occErr);
+
+        await expect(gatedService.approveSummary('ctx-item-123', { expectedVersion: 4 })).rejects.toBe(occErr);
+      });
+
+      it('propagates OptimisticConcurrencyException when the Consultation row has drifted (412)', async () => {
+        const { OptimisticConcurrencyException } = await import('@arcaai/exceptions');
+        const occErr = new OptimisticConcurrencyException('Consultation', 'consultation-1', {
+          expectedVersion: 6,
+          currentVersion: 7,
+        });
+        mockConsultationRepository.updateWithVersion.mockRejectedValue(occErr);
+
+        await expect(gatedService.approveSummary('ctx-item-123', { expectedVersion: 4 })).rejects.toBe(occErr);
       });
     });
 

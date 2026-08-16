@@ -3,6 +3,7 @@ import { PrismaClientKnownRequestError, PrismaClientValidationError } from '@arc
 import {
   ArgumentInvalidException,
   BaseException,
+  ConsentDeniedException,
   DataNotFoundException,
   OptimisticConcurrencyException,
   ProviderCredentialVetoedException,
@@ -231,6 +232,27 @@ export class ExceptionInterceptor implements NestInterceptor {
             metadata: err.metadata,
           });
           return throwError(() => new HttpException(err.toJSON(), HttpStatus.CONFLICT));
+        }
+
+        // Consent & ABAC (TASK-712). `assertConsent` denied the call — no
+        // active grant, expired, revoked, or scope-insufficient. 403: a
+        // privilege boundary, deliberately distinct from the 404-over-403
+        // cross-tenant posture (a cross-tenant externalPatientId is a 404
+        // from the caller's own lookup path, never reaching this branch).
+        // NOT thrown by any wired route in this phase — no guard or
+        // decorator references `assertConsent` yet; this mapping exists so
+        // the exception shape is complete and testable end-to-end. Body is
+        // `err.toJSON()` (`code: 'DOMAIN.CONSENT_DENIED'` +
+        // `metadata: { tenantId, externalPatientId, purpose, reason, grantId? }`).
+        // MUST run before the generic BaseException branch, like the others.
+        if (err instanceof ConsentDeniedException) {
+          this.logger.debug({
+            message: 'Consent denied',
+            ...baseContext,
+            correlationId: err.correlationId,
+            metadata: err.metadata,
+          });
+          return throwError(() => new HttpException(err.toJSON(), HttpStatus.FORBIDDEN));
         }
 
         // The tenant hit its optional monthly SPEND limit (D12).

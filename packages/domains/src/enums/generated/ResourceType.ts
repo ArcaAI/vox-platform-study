@@ -99,4 +99,6 @@ export enum ResourceType {
   // `AgentPromotionService` broadcasts `ResourceCreated` against it. Parity
   // with audit.prisma.
   AgentPromotion = 'AgentPromotion',
+  WorkflowDefinition = 'WorkflowDefinition',
+  ConsentGrant = 'ConsentGrant',
 }
