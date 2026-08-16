@@ -1,0 +1,116 @@
+# ============================================================================
+# Harness / Temporal alert rules — TASK-730 Task 5
+# ============================================================================
+# Local-dev counterpart to arca/hope-v2-deployment's base/alert-rules.yaml
+# `temporal`/`workers` groups. Deliberately not a copy: this repo's local
+# Prometheus previously had NO rule_files/alerting block of any kind
+# (README.md §2.4/§2.10.6), so this file's first job is to exist at all, not
+# to duplicate the cluster-side rules verbatim.
+#
+# No Alertmanager runs in local dev (docker-compose.dev.yml has no such
+# service) — these rules evaluate and appear under Prometheus's own /alerts
+# UI (http://localhost:9090/alerts) for an operator to see during a debugging
+# session; they are not routed/paged anywhere. That is the correct bar for
+# local dev. The cluster-side paging story lives in
+# arca/hope-v2-deployment's alertmanager.yaml.
+#
+# `for:` durations follow the same "survive a scrape gap or rolling restart"
+# principle as the cluster-side file's own stated rationale.
+# ============================================================================
+groups:
+  - name: harness_http
+    interval: 30s
+    rules:
+      # 5xx rate over the existing http_* series (prometheus_fastapi_instrumentator
+      # defaults) — the exact PromQL scripts/harness-availability-report.py
+      # prints for the TASK-730 Task 4 availability measurement, made into a
+      # standing rule so it doesn't have to be re-typed by hand.
+      - alert: HarnessHttp5xxRateHigh
+        expr: |
+          sum(rate(http_requests_total{service="harness",status=~"5.."}[5m]))
+            / clamp_min(sum(rate(http_requests_total{service="harness"}[5m])), 0.001) > 0.05
+        for: 10m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "Harness 5xx rate above 5% ({{ $value | printf \"%.2f\" }})"
+          description: >-
+            Sustained over 10 minutes. This is the metric the assessment named as one of
+            the three decisive signals for whether HarnessDocWorkflow can safely become
+            the sole clinical-documentation generator (design.md D1).
+
+      - alert: HarnessHttpLatencyP95High
+        expr: |
+          histogram_quantile(0.95, sum(rate(
+            http_request_duration_seconds_bucket{service="harness"}[5m])) by (le)) > 5
+        for: 10m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "Harness p95 request latency above 5s"
+          description: >-
+            Generation latency is the second of the three decisive availability signals
+            (docs/architecture/consultation-session-workflow/assessment/README.md §5).
+
+  - name: harness_temporal
+    interval: 30s
+    rules:
+      # Mirrors arca/hope-v2-deployment's base/alert-rules.yaml `TemporalDown`
+      # rule (up{job="temporal"}==0). Locally this genuinely monitors the ONLY
+      # Temporal instance harness talks to (docker-compose.dev.yml's `temporal`
+      # service) — unlike the cluster-side rule of the same name, which
+      # currently scrapes the dead in-cluster copy, not the production
+      # unmanaged-VM instance (README.md §2.10 finding 1/5). Do not assume this
+      # rule's cluster-side twin is meaningful until that scrape-target gap is
+      # closed — that is Task 1's decision + a follow-on deployment-repo fix,
+      # not something this local rule file can affect.
+      - alert: HarnessTemporalDown
+        expr: up{job="temporal"} == 0
+        for: 5m
+        labels:
+          severity: page
+        annotations:
+          summary: "Local dev Temporal server is unreachable"
+          description: "Every durable clinical-documentation workflow is blocked."
+
+      # Requires the Temporal Python SDK's Prometheus runtime metrics to be
+      # configured on the worker (temporalio.runtime.Runtime with a
+      # PrometheusConfig telemetry exporter) — NOT currently wired in
+      # apps/harness/src/harness/temporal/{client.py,worker.py} (verified:
+      # neither imports temporalio.runtime or configures a metrics
+      # endpoint). This rule is authored for when that instrumentation lands;
+      # until then it has no matching series and simply never fires — Prometheus
+      # does not error on a rule with zero current samples, it reports "no
+      # data," which is the honest state here. Wiring worker-side Prometheus
+      # metrics is out of THIS ticket's scope (it touches
+      # apps/harness/src/harness/temporal/worker.py, excluded per README.md
+      # §1 — this ticket does not touch workflow/activity code, and worker
+      # startup wiring is adjacent to that boundary); flagged here so it is
+      # not silently forgotten.
+      - alert: HarnessWorkerTaskFailures
+        expr: rate(temporal_workflow_task_execution_failed_total[15m]) > 0
+        for: 15m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "Temporal workflow tasks are failing"
+          description: >-
+            Workflow task execution failures usually mean non-deterministic workflow
+            code or a replay incompatibility. NOTE: this metric is not currently
+            emitted anywhere in this repo's Temporal worker — see the rule's
+            authoring comment in harness-temporal.rules.yml before relying on it.
+
+      # Worker-health proxy that works TODAY without new instrumentation: the
+      # worker's own heartbeat-file liveness mechanism
+      # (arca/hope-v2-deployment's base/harness-worker.yaml livenessProbe —
+      # `worker.py` touches /tmp/harness-worker-heartbeat every 15s) has no
+      # local-dev Prometheus equivalent, because the local worker process
+      # (`pnpm worker:dev`) is not scraped at all (it is a bare Python process,
+      # not a container with an exposed port). ABSENCE of the `harness` job's
+      # own liveness is a weak proxy at best (the FastAPI app and the worker
+      # are separate processes per .claude/rules/06-python-services.md
+      # §Temporal — one being up says nothing about the other). No rule is
+      # authored for worker-process health here; it would either be
+      # meaningless (this comment explains why) or require new instrumentation
+      # this ticket does not add. Flagged as an open item rather than papered
+      # over with a rule that always reads "ok" for the wrong reason.

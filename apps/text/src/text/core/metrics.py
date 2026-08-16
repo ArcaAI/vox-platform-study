@@ -115,6 +115,28 @@ CONCURRENT_REQUESTS = Gauge(
 )
 
 # ---------------------------------------------------------------------------
+# Worker pool (TASK-725) — async out-of-process task dispatch, separate from
+# the sync-path metrics above. `task_type` ("embedding" | "batch_generation")
+# is the label KEDA's Prometheus scaler (arca/hope-v2-deployment, not this
+# repo) would key a per-pool `ScaledObject` trigger on. Still `smr_`-prefixed
+# — see design-notes.md §(c) for why (every OTHER metric in this file is,
+# post-TASK-707, and a lone `text_*` metric next to them would be its own
+# drift).
+# ---------------------------------------------------------------------------
+
+WORKER_POOL_QUEUE_DEPTH = Gauge(
+    "smr_worker_pool_queue_depth",
+    "Pending async worker-pool tasks per pool (queue depth for KEDA's Prometheus scaler)",
+    ["task_type"],
+)
+
+WORKER_POOL_TASKS_TOTAL = Counter(
+    "smr_worker_pool_tasks_total",
+    "Async worker-pool tasks, by pool and outcome",
+    ["task_type", "status"],
+)
+
+# ---------------------------------------------------------------------------
 # Cross-service per-model contract metrics
 # ---------------------------------------------------------------------------
 # Standardized {service, model} pair emitted IDENTICALLY by every HOPE model

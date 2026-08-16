@@ -77,6 +77,7 @@ import { TenantEntitlementRepository } from '../../../repositories/generated/cor
 import { TenantFrontendConfigRepository } from '../../../repositories/generated/core/TenantFrontendConfigRepository';
 import { TenantIdentityProviderRepository } from '../../../repositories/generated/core/TenantIdentityProviderRepository';
 import { TenantIdentityProviderDomainRepository } from '../../../repositories/generated/core/TenantIdentityProviderDomainRepository';
+import { TenantNlpTaskInstructionsRepository } from '../../../repositories/generated/core/TenantNlpTaskInstructionsRepository';
 import { TenantRepository } from '../../../repositories/generated/core/TenantRepository';
 import { TenantStorageConfigRepository } from '../../../repositories/generated/core/TenantStorageConfigRepository';
 import { TenantSttConfigRepository } from '../../../repositories/generated/core/TenantSttConfigRepository';
@@ -164,6 +165,9 @@ const repositories = [
   AiModelRepository,
   // Per-tenant AI task-model defaults
   AiTaskDefaultRepository,
+  // Tenant-writable nlp.topic/nlp.intent instruction content (TASK-729) —
+  // deliberately separate from AiTaskDefault's model-selection governance.
+  TenantNlpTaskInstructionsRepository,
   GateEditExemplarRepository,
   // Config-plane core — provider endpoints/credentials + runtime
   // hyperparameter profiles. Both are SYSTEM-shared read models.

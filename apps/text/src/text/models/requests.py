@@ -131,6 +131,12 @@ class GenerateRequest(BaseModel):
     # source of the textual instruction every adapter sends; a ``TextContentPart``
     # here is advisory (room for future fine-grained multimodal ordering).
     content_parts: list[ContentPart] | None = None
+    # ADDITIVE degrade-routing opt-in (TASK-725 Task 2). ``None``/absent ⇒ a
+    # known-unhealthy ``provider`` fails fast with a typed 503
+    # (``PoolUnhealthyError``), same as before this field existed. When set and
+    # actually registered, a known-unhealthy ``provider`` reroutes to this name
+    # instead — see ``services/pool_router.py``.
+    fallback_provider: str | None = None
 
     @field_validator("prompt")
     @classmethod

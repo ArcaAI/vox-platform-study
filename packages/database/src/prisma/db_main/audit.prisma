@@ -281,5 +281,12 @@ enum ResourceType {
   // WorkflowTestFixtureService broadcasts on every mutation).
   WorkflowTestFixture
 
+  // Tenant NLP task instructions (TASK-729). Tenant-writable topic/intent
+  // instruction content for `nlp.topic`/`nlp.intent` — deliberately separate
+  // from AiTaskDefault's model-selection governance (see
+  // tenant-nlp-task-instructions.prisma). Emitted as audit `resourceType` by
+  // TenantNlpTaskInstructionsService.broadcastSysEvent.
+  TenantNlpTaskInstructions
+
   @@schema("core")
 }

@@ -92,6 +92,56 @@ class TokenClassificationResponse(BaseModel):
     )
 
 
+# Topic / Intent Classification (TASK-729) — OPEN-taxonomy tasks delegated to
+# `text` via ExternalTextClient. Unlike `/classify/text`, these carry the
+# gateway-injected tenant instructions (topic list / intent list, resolved
+# server-side from `TenantNlpTaskInstructions`) AND `tenant_id` (forwarded as
+# `X-Tenant-Id` to `text`) — the gateway injects a request-body field here the
+# same way it injects `model_name`/`model_path` on `/classify/text`, keeping
+# apps/nlp stateless (it never resolves tenant config itself).
+
+
+class TopicClassificationRequest(BaseModel):
+    text: str = Field(..., description="Input text")
+    language: SupportedLanguage | None = Field(
+        default=SupportedLanguage.ENGLISH, description="Language of the text"
+    )
+    # Gateway-injected from TenantNlpTaskInstructions (nlp.topic). A missing
+    # or empty list fails closed (503) — there is no meaningful "classify
+    # into no topics" default, mirroring /classify/text's fail-closed
+    # missing-model_name posture.
+    instructions: list[str] | None = Field(
+        default=None, description="Tenant's topic list (gateway-injected from TenantNlpTaskInstructions)"
+    )
+    tenant_id: str | None = Field(
+        default=None, description="Gateway-injected tenant id, forwarded to text as X-Tenant-Id"
+    )
+
+
+class TopicClassificationResponse(BaseModel):
+    predicted_topic: str = Field(..., description="The topic label text selected, from the tenant's instructed list")
+    available_topics: list[str] = Field(default_factory=list, description="The tenant's topic list this call was constrained to")
+
+
+class IntentClassificationRequest(BaseModel):
+    text: str = Field(..., description="Input text")
+    language: SupportedLanguage | None = Field(
+        default=SupportedLanguage.ENGLISH, description="Language of the text"
+    )
+    # Gateway-injected from TenantNlpTaskInstructions (nlp.intent).
+    instructions: list[str] | None = Field(
+        default=None, description="Tenant's intent list (gateway-injected from TenantNlpTaskInstructions)"
+    )
+    tenant_id: str | None = Field(
+        default=None, description="Gateway-injected tenant id, forwarded to text as X-Tenant-Id"
+    )
+
+
+class IntentClassificationResponse(BaseModel):
+    predicted_intent: str = Field(..., description="The intent label text selected, from the tenant's instructed list")
+    available_intents: list[str] = Field(default_factory=list, description="The tenant's intent list this call was constrained to")
+
+
 # WebSocket
 
 

@@ -130,6 +130,11 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   'TenantSttConfig', // also a SYSTEM-shared read model (platform-default row, below)
   // ai-task-default.prisma (1) — per-tenant default model per AI task.
   'AiTaskDefault', // also a SYSTEM-shared read model (platform-default row, below)
+  // tenant-nlp-task-instructions.prisma (1) — tenant-writable topic/intent
+  // instruction content for nlp.topic/nlp.intent (TASK-729). Deliberately NOT
+  // a SYSTEM-shared read model — unlike AiTaskDefault there is no platform
+  // default; a plain per-tenant resource (the TenantFrontendConfig pattern).
+  'TenantNlpTaskInstructions',
   // ai-provider-connection.prisma (1) — config-plane core. WHERE a
   // serving provider lives + HOW to authenticate. SYSTEM row = platform
   // default; tenant rows are BYO cloud credentials (azure/bedrock only,

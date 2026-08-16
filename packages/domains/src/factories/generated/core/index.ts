@@ -90,3 +90,4 @@ export * from './UserChangelogAcknowledgementFactory';
 export * from './ConsentGrantFactory';
 export * from './WorkflowTestFixtureFactory';
 export * from './WorkflowRunFactory';
+export * from './TenantNlpTaskInstructionsFactory';

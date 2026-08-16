@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Pending |
+| **Status** | Review |
 | **Wave** | 3 · **Size** | M |
 | **Epic slug** | `worker-pool-stt-tts` |
 | **Depends on** | TASK-725 (`worker-pool-text` — this ticket follows its control-plane/registry/
@@ -274,20 +274,33 @@ queue-depth path, since no queue exists or is needed.
 
 ## 5. Acceptance Criteria
 
-- [ ] `pnpm stt:test` and `pnpm tts:test` — all new and existing tests pass; paste output.
-- [ ] `pnpm stt:lint` / `pnpm stt:typecheck` and `pnpm tts:lint` / `pnpm tts:typecheck` — clean;
+- [x] `pnpm stt:test` and `pnpm tts:test` — all new and existing tests pass; paste output. (Run
+      directly via `~/miniconda3/envs/arcaenv/bin/python -m pytest` — the `conda run` wrapper is
+      broken in this environment per the HARD RULES. `apps/stt/tests/integration/` and `e2e/` were
+      NOT run — no live Postgres/Redis/API this session; gated.)
+- [x] `pnpm stt:lint` / `pnpm stt:typecheck` and `pnpm tts:lint` / `pnpm tts:typecheck` — clean;
       paste output.
-- [ ] `uv lock` re-run at repo root if either service's `pyproject.toml` changed.
-- [ ] Queue-depth metric (Task 2) visible in STT `/metrics` output — pasted.
-- [ ] Draining behavior (Task 3) covered by a test proving new sessions are rejected/rerouted while
-      in-flight sessions complete — distinct from the existing crash-recovery path, which remains
-      untouched and still passes its existing tests.
-- [ ] TTS admin introspection endpoint (Task 4) returns per-provider health for all 5 providers —
-      manual `curl` output pasted.
-- [ ] GPU/device classification (Task 5) documented for all 5 TTS providers.
-- [ ] `pnpm test:unit` (apps/api) passes if `stt-ws.gateway.ts` was touched by Task 3.
-- [ ] Task 7's design note written into §7, scoped as deployment-repo work, no `deployment/k8s/**`
-      files created in this repo.
+- [x] `uv lock` re-run at repo root if either service's `pyproject.toml` changed. — N/A, neither
+      `pyproject.toml` changed (confirmed via `git status`).
+- [x] Queue-depth metric (Task 2) visible in STT `/metrics` output — pasted (no live server this
+      session; pasted from the real `prometheus_client.generate_latest()` output the metric is
+      served from, with the broker's `do_qsize` monkeypatched to a known value — same mechanism
+      `/metrics` at :8861 reads).
+- [x] Draining behavior (Task 3) covered by a test proving new sessions are rejected while in-flight
+      sessions complete — distinct from the existing crash-recovery path, which remains untouched
+      and still passes its existing tests (2791/2791 STT unit tests green, including the
+      pre-existing recovery-path suites).
+- [x] TTS admin introspection endpoint (Task 4) returns per-provider health for all 5 providers —
+      pasted (ASGI test-client output, not `curl` against a running process — none is running this
+      session; ASGI-client-against-the-real-app is the same evidence class TASK-725 used for the
+      identical reason).
+- [x] GPU/device classification (Task 5) documented for all 5 TTS providers.
+- [x] `pnpm test:unit` (apps/api) passes if `stt-ws.gateway.ts` was touched by Task 3. — N/A,
+      `stt-ws.gateway.ts` was NOT touched (design-notes.md §(a): the k8s-readiness mechanism needs
+      no gateway change; confirmed via `git status`, no `apps/api/**` file appears in this ticket's
+      diff).
+- [x] Task 7's design note written into §7, scoped as deployment-repo work, no `deployment/k8s/**`
+      files created in this repo (confirmed by `git status` — none listed).
 
 ## 6. Risks & Open Questions
 
@@ -310,10 +323,206 @@ queue-depth path, since no queue exists or is needed.
 
 ## 7. Implementation Summary
 
-(Empty at authoring — filled during execution.)
+Executed on branch `feat/loop` against the committed post-TASK-707 tree. Local infra
+(Postgres/Redis/API/Temporal) was DOWN for the whole session — no cluster access either — so
+everything below was verified with hermetic unit tests (mocked Redis/broker/httpx, ASGI/FastAPI
+`TestClient`) rather than live services; every item that genuinely needs live infra is called out
+as gated, not claimed as done. `conda run -n arcaenv` is broken in this environment (per HARD
+RULES) — every command below was run directly via `~/miniconda3/envs/arcaenv/bin/{python,ruff,mypy}`,
+which is the exact interpreter `pnpm <svc>:test/lint/typecheck` resolve to.
+
+### Task 1 — Design note
+
+`docs/implementation/TASK-726-Worker-Pool-Stt-Tts/design-notes.md` — resolves §6's open question
+(the gateway does not hold a per-STT-pod routing table; the correct draining signal is k8s
+readiness, not a gateway code change or a Redis-based routing key), the TTS device-model decision
+(no shared `Capability`/`HardwareBinding` package — a static classification constant is
+proportionate), and a current-state correction found while implementing Task 4: TTS already has
+per-provider `CircuitBreaker` degrade-routing (`routing/router.py`), so Task 4 is scoped down to
+admin introspection only, not a TASK-725-style rebuild.
+
+### STT — Task 2 (queue-depth metric)
+
+`core/metrics.py` gained `stt_worker_queue_depth{queue}` (Gauge). Wired inside the EXISTING
+`_add_prometheus_middleware` (`core/messaging/broker.py`, new `_wire_queue_depth_gauge` helper) via
+`Gauge.set_function` reading the broker's own `do_qsize("stt_batch")` (Dramatiq's pending-message
+primitive, not a hand-rolled Redis `LLEN`) — no periodic poller, computed lazily at scrape time,
+reports `0.0` (not a crash) if Redis is unreachable. Runs in BOTH the FastAPI app process
+(`main.py` lifespan → `initialize_redis()`) and the worker process, since both call
+`configure_broker()`. Gated on the same `metrics_enabled` switch as every other exporter in that
+function.
+
+### STT — Task 3 (realtime draining)
+
+`core/exceptions.SessionManagerDrainingError` (new) + `SessionManager.begin_drain()` /
+`.is_draining` / `.wait_for_drain(timeout_s, poll_interval_s)` (`streaming/session_manager.py`).
+`create_session()` checks `self._draining` FIRST (before the capacity guard) and raises the new
+exception — a signal distinct from the ordinary at-capacity `None` return. `streaming/api/routes.py`
+gained `POST /internal/streaming/drain` (calls `begin_drain()`, the `preStop`-hook target) and a
+dedicated `except SessionManagerDrainingError` branch on `POST /sessions` returning 503
+`detail="Draining"` (vs. `"At capacity"`). `health/api/routes.py`'s `readiness_check()` now also
+fails once `session_manager.is_draining` — this is the ACTUAL "stop routing new sessions here"
+mechanism (k8s removes the pod from Service Endpoints), so **no `apps/api` change was needed or
+made** (design-notes.md §(a) explains why the gateway has no per-pod routing table to update).
+`SessionManager.to_dict()` gained a `"draining"` key for `/internal/streaming/status` visibility.
+The existing startup crash-recovery replay path is completely untouched — different code path
+(`start()` vs. `create_session()`), proven by the full existing streaming test suite staying green.
+
+One backward-compat fix required: the new `if self._draining:` check used `getattr(self,
+"_draining", False)` rather than a bare attribute read, because 18 pre-existing unit tests build
+`MagicMock(spec=SessionManager)` fixtures that predate this flag and never set it — a bare read
+raised `AttributeError` through those fixtures. Real instances always have the attribute via
+`__init__`; this is a defensive read for old test doubles, not a production behavior change.
+
+### TTS — Task 4 (admin introspection) + Task 5 (GPU/device classification)
+
+Current-state correction (design-notes.md §(c)): TTS's degrade-routing ALREADY EXISTED
+(`routing/circuit_breaker.CircuitBreaker`, wired into `TTSRouter.candidates()`) — Task 4 does not
+rebuild it, it adds the missing READ-ONLY view: new `GET /api/v1/providers`
+(`api/endpoints/providers.py`, registered in `main.py`) returns, per registered provider: `healthy`
+(the same `TTSEngine.health()` `/health/ready` already calls), `is_configured`, `breaker_open`
+(the pre-existing `CircuitBreaker.is_open()`), `gpu_bound`, and `resolved_device`.
+
+Task 5's classification is `GPU_BOUND_PROVIDERS = {"kokoro", "indic_parler", "indic_f5"}` /
+`API_BOUND_PROVIDERS = {"azure", "sarvam"}` — a static module constant, not a new shared package
+(design-notes.md §(b) explains why importing STT's `Capability`/`HardwareBinding` for a single
+other reuse would be the karpathy §2 violation the ticket's own file list flags). Also corrects
+§2.2's claim that "no device config exists" — `KokoroConfig`/`IndicParlerConfig`/`IndicF5Config`
+already carry `device: str = "cpu"`, already wired into the loaders; the endpoint surfaces the
+actual resolved value as `resolved_device` (best-effort `getattr`, `None` for cloud engines,
+never raises).
+
+### STT — Task 6 (local-dev story)
+
+No new code needed. `pnpm stt:worker:dev` (`scripts/dev-service.sh stt-worker`) already covers the
+STT worker; verified it still resolves correctly and that `stt.worker` imports cleanly with the new
+queue-depth wiring active (output below). No `tts:worker:dev` exists and none was added — TTS has
+no worker (§1/§2.2, unchanged by this ticket).
+
+### Task 7 — [FLAGGED] KEDA/HPA manifests
+
+Design note only, in design-notes.md §(d) (STT) and referencing §(b) (TTS's GPU-node-pool
+recommendation). No `deployment/k8s/**` files created in this repo. What's provable from here: the
+`stt_worker_queue_depth` metric exists, is registered on the default `prometheus_client` registry,
+and reads the broker's live `do_qsize()`; the TTS `gpu_bound` classification is machine-readable
+via `/api/v1/providers`. Whether KEDA/HPA is installed on the cluster is UNVERIFIABLE from this
+session (same as TASK-725 §6).
+
+### Files changed
+
+New: `apps/tts/src/tts/api/endpoints/providers.py`,
+`apps/stt/tests/unit/test_worker_queue_depth_task726.py`,
+`apps/stt/tests/unit/streaming/test_session_manager_drain_task726.py`,
+`apps/stt/tests/unit/test_streaming_api_drain_task726.py`,
+`apps/stt/tests/unit/test_health_api_drain_task726.py`,
+`apps/tts/src/tts/tests/unit/test_providers_endpoint_task726.py`,
+`docs/implementation/TASK-726-Worker-Pool-Stt-Tts/design-notes.md`.
+
+Modified: `apps/stt/src/stt/core/{exceptions.py,metrics.py,messaging/broker.py}`,
+`apps/stt/src/stt/health/api/routes.py`, `apps/stt/src/stt/streaming/{session_manager.py,api/routes.py}`,
+`apps/tts/src/tts/main.py`.
+
+No `packages/database` schema changes. No `apps/{stt,tts}/pyproject.toml` dependency changes —
+`uv lock` re-run not needed (confirmed via `git status`). No `apps/api/**` files touched.
+
+## Acceptance Criteria — evidence
+
+- **`pnpm stt:test` (unit only; `integration`/`e2e` gated — no live infra):**
+  ```
+  $ CI=true ~/miniconda3/envs/arcaenv/bin/python -m pytest apps/stt/tests/ \
+      --ignore=apps/stt/tests/integration --ignore=apps/stt/tests/e2e -q
+  2815 passed, 14 warnings in 19.06s
+  ```
+  (2791 of those are `apps/stt/tests/unit/` — the exact `stt:test:unit` target — all green,
+  including every pre-existing streaming/session-manager suite; no regression.)
+- **`pnpm tts:test`:**
+  ```
+  $ CI=true ~/miniconda3/envs/arcaenv/bin/python -m pytest apps/tts/src/tts/tests/ -q --no-cov
+  267 passed, 2 deselected, 5 warnings in 7.21s
+  ```
+- **`pnpm stt:lint`:** `ruff check apps/stt/src/ apps/stt/tests/` → `All checks passed!`
+- **`pnpm stt:typecheck`:** `mypy --config-file apps/stt/pyproject.toml apps/stt/src/` →
+  `apps/stt/src/stt/transcription/preprocessing.py:278: error: Redundant cast ...` — **pre-existing,
+  not introduced by this ticket** (that file is untouched — confirmed via `git status`; this
+  ticket's own files are clean).
+- **`pnpm tts:lint`:** `ruff check apps/tts/src/` → `All checks passed!`
+- **`pnpm tts:typecheck`:** `mypy --config-file apps/tts/pyproject.toml apps/tts/src/` →
+  `Success: no issues found in 35 source files`.
+- **Queue-depth metric (Task 2), real `generate_latest()` output** (broker's `do_qsize`
+  monkeypatched to a known value — the same call path `/metrics` at :8861 exercises at scrape
+  time; no live server this session):
+  ```
+  # HELP stt_worker_queue_depth Pending (undelivered) Dramatiq messages waiting to be claimed by a worker, by queue
+  # TYPE stt_worker_queue_depth gauge
+  stt_worker_queue_depth{queue="stt_batch"} 12.0
+  ```
+- **Draining (Task 3):** `test_session_manager_drain_task726.py` (10 tests — `begin_drain`
+  idempotency, `create_session` rejection distinct from capacity, `wait_for_drain` timeout/success,
+  `to_dict` visibility), `test_streaming_api_drain_task726.py` (3 tests — HTTP 503 `"Draining"` vs.
+  `"At capacity"`, the new `/internal/streaming/drain` endpoint), `test_health_api_drain_task726.py`
+  (3 tests — `/health/ready` 503 while draining, healthy when not, healthy when streaming
+  uninitialized). All pass; all 18 pre-existing tests that build `MagicMock(spec=SessionManager)`
+  fixtures without the new attribute still pass unmodified (verified with the full
+  `apps/stt/tests/unit/` run above).
+- **TTS admin introspection (Task 4), real ASGI-test-client output** (5 providers registered with
+  `FakeEngine`, no live server this session):
+  ```
+  == GET /api/v1/providers == 200
+  {
+    "providers": [
+      {"name": "azure", "healthy": true, "is_configured": true, "breaker_open": false, "gpu_bound": false, "resolved_device": null},
+      {"name": "sarvam", "healthy": true, "is_configured": true, "breaker_open": false, "gpu_bound": false, "resolved_device": null},
+      {"name": "kokoro", "healthy": true, "is_configured": true, "breaker_open": false, "gpu_bound": true, "resolved_device": null},
+      {"name": "indic_parler", "healthy": true, "is_configured": true, "breaker_open": false, "gpu_bound": true, "resolved_device": null},
+      {"name": "indic_f5", "healthy": true, "is_configured": true, "breaker_open": false, "gpu_bound": true, "resolved_device": null}
+    ]
+  }
+  ```
+  (`resolved_device` is `null` here because `FakeEngine` carries no `_config` — a dedicated test,
+  `test_local_provider_resolved_device_surfaced_when_present`, proves the real wiring against a
+  fake `_config.device = "cuda"`.)
+- **GPU/device classification (Task 5):** documented above and machine-readable via `gpu_bound` in
+  the same endpoint — `kokoro`/`indic_parler`/`indic_f5` = `true`, `azure`/`sarvam` = `false`,
+  covering all 5.
+- **Local-dev story (Task 6), real command output:**
+  ```
+  $ ./scripts/dev-service.sh stt-worker --print
+  service: stt-worker
+    PYTHONPATH=apps/stt/src
+  command:
+    conda run -n arcaenv --no-capture-output env PYTHONPATH=apps/stt/src python -m dramatiq stt.worker --processes 1 --threads 4
+  ```
+  `python -c "import stt.worker"` (with `PYTHONPATH=apps/stt/src`) succeeds and logs the broker —
+  including the new queue-depth gauge wiring — configuring cleanly with no live Redis reachable.
+  Actually PROCESSING a submitted job end-to-end needs a running Redis, not up this session — that
+  half is unverified beyond the hermetic `WorkerPoolQueue`-equivalent unit tests above (this
+  ticket did not add a new queue/consumer for STT — `stt_batch`'s existing actor is unchanged).
+- **Task 7 design note:** design-notes.md §(d)/(b); no `deployment/k8s/**` files created in this
+  repo (confirmed by `git status` — none listed).
+
+## Known gaps / residuals (honest accounting)
+
+1. **Nothing was verified against a LIVE Redis, LIVE `stt` worker process, or LIVE `tts` service**
+   — local infra was down for the entire session. All verification is hermetic (mocked
+   Redis/broker/httpx) or via ASGI/FastAPI `TestClient` against the real app object (no live
+   socket).
+2. **`apps/stt/tests/integration/` and `apps/stt/tests/e2e/` were not run** — both require live
+   Postgres/Redis/MinIO, per the HARD RULES.
+3. **KEDA/HPA manifests themselves are NOT in this repo** and were not written — by design (rule
+   09); the design note is the deliverable for this repo, the YAML is `arca/hope-v2-deployment`'s
+   to author.
+4. **The realtime-draining race window (design-notes.md §(a) step 3) is real but narrow**: between
+   a failed readiness probe and the pod's actual removal from Service Endpoints, a request could in
+   principle still land on a draining pod. `SessionManagerDrainingError` is the defense-in-depth
+   layer for exactly that window — it is tested at the unit level, not against a real k8s Service,
+   which this repo has no way to exercise.
+5. **`apps/api`/`stt-ws.gateway.ts` was deliberately NOT modified** — design-notes.md §(a) argues
+   this from reading the gateway file (it has no per-STT-pod routing table today), not from running
+   it against a live multi-pod `stt` deployment, which this session cannot do.
 
 ## 8. Change History
 
 | Date | Change | By |
 |---|---|---|
 | 2026-08-16 | Ticket authored | Claude (ticket-authoring session) |
+| 2026-08-16 | Design note + Tasks 2–6 implemented: STT queue-depth metric, STT realtime draining (SessionManager + `/internal/streaming/drain` + `/health/ready`), TTS admin introspection endpoint + GPU/device classification (Task 4/5 scoped down after finding TTS's circuit-breaker degrade-routing already existed), STT local-dev story re-verified (no code change needed). Task 7 flagged as deployment-repo design note only. `apps/stt` unit suite 2815/2815 green (2791 in `tests/unit/`), `apps/tts` 267/267 green, both lint clean; STT typecheck has one pre-existing unrelated error, TTS typecheck clean. No `apps/api` files touched. Status → Review. | Claude (execution session) |

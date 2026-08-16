@@ -1,0 +1,195 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "datasource": { "type": "prometheus", "uid": "hope-prometheus" },
+      "gridPos": { "h": 4, "w": 24, "x": 0, "y": 0 },
+      "id": 1,
+      "options": {
+        "code": { "language": "markdown", "showLineNumbers": false, "showMiniMap": false },
+        "content": "## Harness / Temporal — TASK-730\n\nCovers the three availability signals the consultation-session-workflow assessment names as decisive for whether `HarnessDocWorkflow` can safely become the sole clinical-documentation generator (design.md D1): harness 5xx rate, generation latency percentiles, and Temporal server reachability. The fourth signal — duplicate `harness-doc-{consultationId}` executions — is not a continuous metric and is not on this dashboard; run `scripts/harness-availability-report.py` for that report (see `docs/implementation/TASK-730-Harness-Infra-Productionization/README.md` §4 Task 4).\n\n**Two Temporal instances exist in production and this dashboard cannot tell you which one you're looking at without checking `TEMPORAL_ADDRESS` yourself:** the harness/harness-worker deployments point at an unmanaged VM (`10.10.1.10:7233`); a separate, currently-unused in-cluster `hope-temporal` Deployment also exists and is what production Prometheus currently scrapes under `job=\"temporal\"`. Locally (this dashboard's default datasource) the `temporal` job is the dev-stack's own single Temporal container — there is no VM-vs-in-cluster ambiguity in local dev. See `README.md` §2.10 before trusting a `temporal` job label in any other environment.",
+        "mode": "markdown"
+      },
+      "type": "text"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "hope-prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 0.02 },
+              { "color": "red", "value": 0.05 }
+            ]
+          },
+          "unit": "percentunit"
+        }
+      },
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 4 },
+      "id": 2,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "hope-prometheus" },
+          "expr": "sum(rate(http_requests_total{service=\"harness\",status=~\"5..\"}[5m])) / clamp_min(sum(rate(http_requests_total{service=\"harness\"}[5m])), 0.001)",
+          "legendFormat": "5xx rate",
+          "refId": "A"
+        }
+      ],
+      "title": "Harness 5xx rate",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "hope-prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [
+            { "options": { "0": { "color": "red", "text": "DOWN" }, "1": { "color": "green", "text": "UP" } }, "type": "value" }
+          ],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] }
+        }
+      },
+      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 4 },
+      "id": 3,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "hope-prometheus" },
+          "expr": "up{job=\"temporal\"}",
+          "legendFormat": "temporal",
+          "refId": "A"
+        }
+      ],
+      "title": "Temporal reachability (this Prometheus's own \"temporal\" job — verify which instance, see panel above)",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "hope-prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 1 }, { "color": "red", "value": 3 }] },
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 6, "w": 6, "x": 12, "y": 4 },
+      "id": 4,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "hope-prometheus" },
+          "expr": "sum(increase(temporal_workflow_task_execution_failed_total[15m]))",
+          "legendFormat": "task failures (15m)",
+          "refId": "A"
+        }
+      ],
+      "title": "Workflow task failures — NO DATA until worker-side Prometheus metrics are wired (see harness-temporal.rules.yml)",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "hope-prometheus" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }, "unit": "none" }
+      },
+      "gridPos": { "h": 6, "w": 6, "x": 18, "y": 4 },
+      "id": 5,
+      "options": {
+        "code": { "language": "markdown", "showLineNumbers": false, "showMiniMap": false },
+        "content": "**Duplicate executions**\n\nNot a continuous metric — Temporal visibility list, not Prometheus. Run:\n\n```\nscripts/harness-availability-report.py\n```",
+        "mode": "markdown"
+      },
+      "type": "text"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "hope-prometheus" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 1, "showPoints": "never" }, "unit": "s" }
+      },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 10 },
+      "id": 6,
+      "options": {
+        "legend": { "calcs": ["lastNotNull"], "displayMode": "table", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "hope-prometheus" },
+          "expr": "histogram_quantile(0.50, sum(rate(http_request_duration_seconds_bucket{service=\"harness\"}[5m])) by (le))",
+          "legendFormat": "p50",
+          "refId": "A"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "hope-prometheus" },
+          "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{service=\"harness\"}[5m])) by (le))",
+          "legendFormat": "p95",
+          "refId": "B"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "hope-prometheus" },
+          "expr": "histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket{service=\"harness\"}[5m])) by (le))",
+          "legendFormat": "p99",
+          "refId": "C"
+        }
+      ],
+      "title": "Harness request latency percentiles",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "hope-prometheus" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 1, "showPoints": "never" }, "unit": "reqps" }
+      },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 18 },
+      "id": 7,
+      "options": {
+        "legend": { "calcs": ["lastNotNull"], "displayMode": "table", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "hope-prometheus" },
+          "expr": "sum by (status) (rate(http_requests_total{service=\"harness\"}[5m]))",
+          "legendFormat": "{{status}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Harness request rate by status",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": ["hope", "harness", "temporal", "task-730"],
+  "templating": { "list": [] },
+  "time": { "from": "now-6h", "to": "now" },
+  "timezone": "",
+  "title": "Harness / Temporal",
+  "uid": "hope-harness-temporal",
+  "version": 1
+}

@@ -42,6 +42,16 @@ const META: Record<AiTaskKey, { label: string; description: string }> = {
     label: 'Diagnosis suggestion model',
     description: 'Default text-classification model used for symptom→disease diagnosis suggestions (global admins only).',
   },
+  // TASK-729: sentiment / toxicity classifiers — same generic /classify/text
+  // path as nlp.classification/nlp.diagnosis (global admins only).
+  'nlp.sentiment': {
+    label: 'Sentiment classification model',
+    description: 'Default text-classification model used for sentiment classification (global admins only).',
+  },
+  'nlp.toxicity': {
+    label: 'Toxicity classification model',
+    description: 'Default text-classification model used for toxicity classification (global admins only).',
+  },
   // SMR generation routing (tenant-admin configurable).
   'smr.live': {
     label: 'SMR live-summary model',

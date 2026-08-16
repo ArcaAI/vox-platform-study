@@ -146,6 +146,32 @@ describe('AiInferenceClient — URL resolution', () => {
       expect.anything(),
     );
   });
+
+  it('classifyTopic POSTs the NLP /api/v1/classify/topic endpoint', async () => {
+    const client = new AiInferenceClient(httpService as never, undefined);
+    axiosPost.mockResolvedValue({ data: { predicted_topic: 'billing' } });
+
+    await client.classifyTopic({ text: 'a billing question', instructions: ['billing', 'appointments'] });
+
+    expect(axiosPost).toHaveBeenCalledWith(
+      'http://localhost:8864/api/v1/classify/topic',
+      { text: 'a billing question', instructions: ['billing', 'appointments'] },
+      expect.anything(),
+    );
+  });
+
+  it('classifyIntent POSTs the NLP /api/v1/classify/intent endpoint', async () => {
+    const client = new AiInferenceClient(httpService as never, undefined);
+    axiosPost.mockResolvedValue({ data: { predicted_intent: 'schedule_appointment' } });
+
+    await client.classifyIntent({ text: 'book me an appointment', instructions: ['schedule_appointment'] });
+
+    expect(axiosPost).toHaveBeenCalledWith(
+      'http://localhost:8864/api/v1/classify/intent',
+      { text: 'book me an appointment', instructions: ['schedule_appointment'] },
+      expect.anything(),
+    );
+  });
 });
 
 describe('AiInferenceClient — proxying + errors', () => {

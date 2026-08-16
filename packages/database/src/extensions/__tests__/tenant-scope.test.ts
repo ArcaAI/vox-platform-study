@@ -118,7 +118,11 @@ describe('TENANT_SCOPED_MODELS allow-list', () => {
     // cross-tenant.
     // 79 → 80: adds WorkflowTestFixture (TASK-721 — Workbench saved fixtures).
     // Ordinary tenant-owned rows, NOT SYSTEM-shared.
-    expect(TENANT_SCOPED_MODELS.size).toBe(80);
+    // 80 → 81: adds TenantNlpTaskInstructions (TASK-729 — tenant-writable
+    // nlp.topic/nlp.intent instruction content). Ordinary tenant-owned rows,
+    // deliberately NOT SYSTEM-shared (unlike AiTaskDefault, there is no
+    // SYSTEM-tenant platform-default row for this model).
+    expect(TENANT_SCOPED_MODELS.size).toBe(81);
   });
 
   // The usage ledger, its outbox, the rollups and the whole billing

@@ -18,7 +18,7 @@
 # model pairing below); anything you export in your shell still wins.
 #
 # USAGE:
-#   ./scripts/dev-service.sh <stt|stt-worker|text|nlp|guardrail|harness|tts|worker> [--watch] [--print]
+#   ./scripts/dev-service.sh <stt|stt-worker|text|text-worker|nlp|guardrail|harness|tts|worker> [--watch] [--print]
 #   ./scripts/dev-service.sh --check-stt-key      # preflight only (used by dev:doctor)
 #
 # FLAGS:
@@ -38,12 +38,19 @@
 #   deliberately (e.g. testing from a phone), export HOST=0.0.0.0.
 #
 # WORKERS (no port, no --watch — a reload would cancel the model warm-up):
-#   stt-worker  STT batch transcription: the Dramatiq consumer of the
-#               `dramatiq:stt_batch` queue. Without it, batch jobs are accepted
-#               and persisted as QUEUED but never executed (BUG-011). Mirrors
-#               the container command (apps/stt/docker/Dockerfile stage
-#               `worker`), scaled down to one process for a laptop.
-#   worker      harness Temporal worker on task queue `harness-task-queue`.
+#   stt-worker   STT batch transcription: the Dramatiq consumer of the
+#                `dramatiq:stt_batch` queue. Without it, batch jobs are accepted
+#                and persisted as QUEUED but never executed (BUG-011). Mirrors
+#                the container command (apps/stt/docker/Dockerfile stage
+#                `worker`), scaled down to one process for a laptop.
+#   text-worker  TASK-725 async worker-pool consumer (`text.worker`): claims
+#                embedding/batch-generation tasks off the Redis-Streams queue
+#                a running `text` control plane enqueues onto
+#                (`services/worker_pool_queue.py`). Without it, `POST
+#                /embeddings/batch` submissions are accepted and queued but
+#                never processed — same failure shape as BUG-011 above, for
+#                the new async path.
+#   worker       harness Temporal worker on task queue `harness-task-queue`.
 #
 # MACHINE-SPECIFIC MODEL:
 #   LM_STUDIO_MODEL (default: gemma-4-e4b-it-qat) feeds both the SMR default
@@ -151,7 +158,7 @@ for arg in "$@"; do
         --watch) WATCH=1 ;;
         --print) PRINT=1 ;;
         --help|-h) usage; exit 0 ;;
-        stt|stt-worker|text|nlp|guardrail|harness|tts|worker) SERVICE="$arg" ;;
+        stt|stt-worker|text|text-worker|nlp|guardrail|harness|tts|worker) SERVICE="$arg" ;;
         *) echo -e "${RED}Unknown argument: $arg${NC}" >&2; usage >&2; exit 2 ;;
     esac
 done
@@ -234,6 +241,21 @@ case "$SERVICE" in
         ENV_REPORT+=("HOST=$HOST" "TEXT_PORT=$TEXT_PORT")
         CMD=(uvicorn text.main:app --host "$HOST" --port "$TEXT_PORT" --app-dir apps/text/src)
         RELOAD_DIR="apps/text/src"
+        ;;
+    text-worker)
+        # TASK-725 async worker-pool consumer. No port, no reload (matches
+        # stt-worker's rationale — this process holds no HTTP server to
+        # reload). PYTHONPATH-based like stt-worker (`python -m` has no
+        # uvicorn-style --app-dir).
+        ENV_REPORT+=("PYTHONPATH=apps/text/src${PYTHONPATH:+:$PYTHONPATH}")
+        CMD=(
+            env "PYTHONPATH=apps/text/src${PYTHONPATH:+:$PYTHONPATH}"
+            python -m text.worker
+        )
+        if [ "$WATCH" = "1" ]; then
+            echo -e "${YELLOW}--watch is not supported for the text worker pool; ignoring.${NC}" >&2
+            WATCH=0
+        fi
         ;;
     nlp)
         : "${NLP_PORT:=8864}"

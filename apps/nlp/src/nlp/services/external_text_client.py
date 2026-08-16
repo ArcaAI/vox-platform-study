@@ -1,0 +1,122 @@
+"""apps/nlp's peer-service client to `text` (TASK-729).
+
+This is apps/nlp's FIRST outbound call to a peer AI service — every prior
+`httpx` call site targets the gateway (`lifespan.py`'s fire-and-forget
+self-registration, `core/effective_config.py`'s control-plane pull), never a
+peer AI service directly. Mirrors `apps/text`'s `ExternalGuardrailClient`
+class shape (constructor takes settings + an injected `httpx.AsyncClient`,
+`X-Service-Token` attached, bounded retry with linear backoff) — used by
+`nlp.topic`/`nlp.intent` to delegate open-taxonomy labeling to a real LLM
+call via `text`'s `/generate` endpoint.
+
+Fail posture DIFFERS from `ExternalGuardrailClient` deliberately: guardrail's
+fail-closed return value (`allowed: False`) is a genuine SAFE DEFAULT for a
+moderation verdict. There is no equivalent safe default for a generated
+LABEL — silently returning an empty string or a guessed label would corrupt
+the caller's response the exact way a `predicted_label` should never be
+fabricated. So a sustained outage RAISES `ExternalTextUnavailableError`
+(mapped to HTTP 503 by the calling endpoint), never returns a placeholder.
+"""
+
+from __future__ import annotations
+
+import asyncio
+from typing import Any
+
+import httpx
+
+from nlp.core.config import ExternalTextConfig
+from nlp.core.logging import get_logger
+
+logger = get_logger(__name__)
+
+
+class ExternalTextUnavailableError(Exception):
+    """Raised when `text` is unreachable after the bounded retry budget, or
+    returns a response with no usable generated content."""
+
+
+class ExternalTextClient:
+    """Calls the `text` service's `/generate` endpoint for open-taxonomy
+    topic/intent labeling (`nlp.topic` / `nlp.intent`)."""
+
+    def __init__(
+        self,
+        *,
+        settings: ExternalTextConfig,
+        http_client: httpx.AsyncClient,
+    ) -> None:
+        self.settings = settings
+        self.http_client = http_client
+        self.base_url = settings.base_url.rstrip("/")
+
+    async def generate_label(
+        self,
+        prompt: str,
+        system_prompt: str | None = None,
+        tenant_id: str | None = None,
+    ) -> str:
+        """Post `prompt` to `text`'s `/generate` and return the generated
+        label (the response's `content`, stripped). Raises
+        `ExternalTextUnavailableError` when the retry budget is exhausted or
+        the response carries no usable content — never guesses a label."""
+        headers: dict[str, str] = {"Content-Type": "application/json"}
+        service_token = self.settings.service_token.get_secret_value()
+        if service_token:
+            headers["X-Service-Token"] = service_token
+        if tenant_id:
+            headers["X-Tenant-Id"] = tenant_id
+
+        body: dict[str, Any] = {"prompt": prompt, "stream": False}
+        if system_prompt:
+            body["system_prompt"] = system_prompt
+
+        # Bounded retry, mirroring ExternalGuardrailClient: total tries =
+        # max_retries + 1. A transient blip is absorbed; a sustained outage
+        # exhausts the budget and raises below.
+        attempts = self.settings.max_retries + 1
+        last_error = ""
+        for attempt in range(attempts):
+            try:
+                response = await self.http_client.post(
+                    f"{self.base_url}/generate",
+                    json=body,
+                    headers=headers,
+                    timeout=self.settings.timeout_s,
+                )
+                response.raise_for_status()
+                payload = response.json()
+                content = str(payload.get("content", "")).strip()
+                if not content:
+                    raise ExternalTextUnavailableError(
+                        "text returned an empty generation — refusing to fabricate a label"
+                    )
+                return content
+            except ExternalTextUnavailableError:
+                raise
+            except Exception as exc:
+                last_error = str(exc)
+                is_last = attempt + 1 >= attempts
+                logger.warning(
+                    "external_text.attempt_failed attempt=%d/%d error=%s base_url=%s will_retry=%s",
+                    attempt + 1,
+                    attempts,
+                    last_error,
+                    self.base_url,
+                    not is_last,
+                )
+                if is_last:
+                    break
+                backoff_s = (self.settings.retry_backoff_ms / 1000.0) * (attempt + 1)
+                if backoff_s > 0:
+                    await asyncio.sleep(backoff_s)
+
+        logger.error(
+            "external_text.exhausted attempts=%d error=%s base_url=%s",
+            attempts,
+            last_error,
+            self.base_url,
+        )
+        raise ExternalTextUnavailableError(
+            f"text unreachable after {attempts} attempt(s): {last_error}"
+        )

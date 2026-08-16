@@ -22,9 +22,11 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Request
 
-from text.core.dependencies import get_provider_registry
+from text.core.dependencies import get_pool_health_tracker, get_provider_registry
+from text.core.metrics import ACTIVE_GENERATIONS
 from text.models.provider import ProviderInfo
 from text.providers.base import ProviderRegistry
+from text.services.pool_health import PoolHealthTracker
 
 router = APIRouter(tags=["providers"])
 
@@ -39,7 +41,13 @@ def _unavailable(name: str) -> dict[str, Any]:
     ).model_dump()
 
 
-async def _probe(registry: ProviderRegistry, name: str, timeout_s: float) -> dict[str, Any]:
+async def _probe(
+    registry: ProviderRegistry,
+    name: str,
+    timeout_s: float,
+    *,
+    pool_health_tracker: PoolHealthTracker,
+) -> dict[str, Any]:
     start = time.monotonic()
     probe_status = "ok"
     probe_error: str | None = None
@@ -60,6 +68,14 @@ async def _probe(registry: ProviderRegistry, name: str, timeout_s: float) -> dic
     payload["probe_status"] = probe_status
     payload["probe_latency_ms"] = int((time.monotonic() - start) * 1000)
     payload["probe_error"] = probe_error
+
+    # TASK-725 Task 3 — admin introspection: the SAME degrade-routing cache
+    # `/generate` consults (Task 2), plus current in-flight sync requests.
+    checked_at = pool_health_tracker.checked_at(name)
+    payload["pool_health"] = pool_health_tracker.is_healthy(name)
+    payload["pool_health_checked_at"] = checked_at.isoformat() if checked_at else None
+    payload["in_flight_requests"] = int(ACTIVE_GENERATIONS.labels(provider=name)._value.get())
+
     return payload
 
 
@@ -67,7 +83,15 @@ async def _probe(registry: ProviderRegistry, name: str, timeout_s: float) -> dic
 async def list_providers(
     request: Request,
     registry: ProviderRegistry = Depends(get_provider_registry),
+    pool_health_tracker: PoolHealthTracker = Depends(get_pool_health_tracker),
 ) -> list[dict[str, Any]]:
     timeout_s = float(request.app.state.settings.provider_probe_timeout_s)
     names = registry.list_providers()
-    return list(await asyncio.gather(*(_probe(registry, name, timeout_s) for name in names)))
+    return list(
+        await asyncio.gather(
+            *(
+                _probe(registry, name, timeout_s, pool_health_tracker=pool_health_tracker)
+                for name in names
+            )
+        )
+    )

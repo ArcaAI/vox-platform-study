@@ -193,6 +193,12 @@ export const DEFAULT_POLICIES: DefaultPolicy[] = [
       // provider credentials. Tenant-scoped; the controller pins
       // every op to the caller's tenant. `manage` implies `read` (GET routes).
       { action: 'manage', subject: 'TenantSttConfig', conditions: { tenantId: '${context.tenantId}' } },
+      // Tenant admins manage their own tenant's nlp.topic/nlp.intent
+      // instruction content (TASK-729) — a SEPARATE subject from
+      // AiTaskDefault, deliberately NOT under GLOBAL_ADMIN_ONLY_TASK_PREFIXES:
+      // this is tenant-authored CONTENT, not model selection. Tenant-scoped;
+      // the service pins every op to the caller's tenant.
+      { action: 'manage', subject: 'TenantNlpTaskInstructions', conditions: { tenantId: '${context.tenantId}' } },
       // Tenant admins read + manage their own tenant's AI
       // task-model defaults (AiTaskDefault). Tenant-scoped; global admins
       // are covered by `manage:all`. NOTE (governance): tenant admins DO

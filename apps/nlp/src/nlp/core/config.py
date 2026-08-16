@@ -381,6 +381,33 @@ class TextCorrectorConfig(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="SPELLING_CORRECTOR_")
 
 
+class ExternalTextConfig(BaseSettings):
+    """apps/nlp's peer-to-peer client config for calling `text` (TASK-729).
+
+    Mirrors `apps/text`'s `ExternalGuardrailConfig` field-for-field: this is
+    the first outbound peer-service call `apps/nlp` makes (§2.3/§2.4 of the
+    ticket — every prior `httpx` call site targets the gateway, never a peer
+    AI service). Used by `nlp.topic`/`nlp.intent` to delegate open-taxonomy
+    labeling to a real LLM call, with the tenant's topic/intent list injected
+    into the prompt as per-tenant instructions (resolved server-side from
+    `TenantNlpTaskInstructions` and gateway-injected into the request body —
+    `apps/nlp` itself never touches Postgres).
+    """
+
+    # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    settings_customise_sources = hope_settings_sources
+
+    model_config = SettingsConfigDict(env_prefix="NLP_EXTERNAL_TEXT_")
+
+    base_url: str = "http://localhost:8862"
+    timeout_s: int = 30
+    # Bounded retry for a transient blip, mirroring
+    # `ExternalGuardrailConfig`: total tries = max_retries + 1, linear backoff.
+    max_retries: int = 2
+    retry_backoff_ms: int = 100
+    service_token: SecretStr = SecretStr("")
+
+
 class Settings:
     """Main settings container for dual-model architecture"""
 
@@ -392,6 +419,7 @@ class Settings:
         self.medical_suggester = MedicalSuggesterConfig()
         self.security = SecurityConfig()
         self.text_corrector = TextCorrectorConfig()
+        self.external_text = ExternalTextConfig()
 
 
 settings = Settings()

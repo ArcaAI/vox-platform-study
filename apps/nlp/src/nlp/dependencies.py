@@ -15,6 +15,7 @@ from nlp.core.config import (
 )
 from nlp.core.websocket_manager import WebSocketManager
 from nlp.services.document_extractor import DocumentExtractor
+from nlp.services.external_text_client import ExternalTextClient
 from nlp.services.medical_suggester import MedicalSuggester
 from nlp.services.model_cache import ModelCache, ModelUnavailableError
 from nlp.services.text_classifier import TextClassifier, TransformerTextClassifier
@@ -33,6 +34,17 @@ async def get_inference_bound(request: Request) -> ResizableSemaphore:
     return await refresh_inference_limit(
         getattr(request.app.state, "effective_config_client", None)
     )
+
+
+def get_external_text_client(request: Request) -> ExternalTextClient | None:
+    """Retrieve apps/nlp's peer client to `text` from app.state (TASK-729).
+
+    None only if lifespan never ran (e.g. an app built directly in a test
+    without the lifespan context) — the `/classify/topic`/`/classify/intent`
+    handlers fail closed (503) in that case, the same posture as a missing
+    gateway-injected `model_name` on `/classify/text`.
+    """
+    return getattr(request.app.state, "external_text_client", None)
 
 
 def get_text_classifier() -> TextClassifier:

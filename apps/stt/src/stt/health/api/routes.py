@@ -108,7 +108,14 @@ async def liveness_check() -> dict[str, str]:
 
 @router.get("/health/ready", response_model=None)
 async def readiness_check() -> JSONResponse | dict[str, str]:
-    """Kubernetes readiness probe — verifies critical dependencies are available."""
+    """Kubernetes readiness probe — verifies critical dependencies are available.
+
+    Also fails once this instance has been marked draining (TASK-726): this
+    is the ACTUAL mechanism by which a draining pod stops receiving new
+    streaming sessions — k8s removes it from the Service Endpoints on the
+    next probe failure, no gateway-side routing change needed. See
+    docs/implementation/TASK-726-Worker-Pool-Stt-Tts/design-notes.md §(a).
+    """
     for check_fn in [_check_database, _check_minio, _check_redis]:
         result = await check_fn()
         if result.status == HealthStatus.UNHEALTHY:
@@ -116,6 +123,16 @@ async def readiness_check() -> JSONResponse | dict[str, str]:
                 status_code=503,
                 content={"status": "unhealthy", "message": f"{result.name} is unhealthy"},
             )
+
+    from stt.streaming._runtime import get_session_manager
+
+    mgr = get_session_manager()
+    if mgr is not None and mgr.is_draining:
+        return JSONResponse(
+            status_code=503,
+            content={"status": "draining", "message": "Instance draining; not accepting new work"},
+        )
+
     return {"status": "healthy"}
 
 

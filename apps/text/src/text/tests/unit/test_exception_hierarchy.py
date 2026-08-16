@@ -21,6 +21,7 @@ from text.core.exceptions import (
     ContentBlockedError,
     InputValidationError,
     ModelNotSelectedError,
+    PoolUnhealthyError,
     ProviderError,
     ProviderNotFoundError,
     ProviderTimeoutError,
@@ -51,6 +52,7 @@ _ALL_EXCEPTIONS: list[tuple[type[SmrError], str]] = [
     (ContentBlockedError, "CONTENT_BLOCKED"),
     (ProviderNotFoundError, "PROVIDER_NOT_FOUND"),
     (ModelNotSelectedError, "MODEL_NOT_SELECTED"),
+    (PoolUnhealthyError, "POOL_UNHEALTHY"),
 ]
 
 
@@ -129,6 +131,7 @@ class TestExceptionErrorCodes:
             QueueFullError,
             QueueTimeoutError,
             ConcurrencyLimitError,
+            PoolUnhealthyError,
         ):
             exc = exc_cls("test", provider="p")
         elif exc_cls is RateLimitError:

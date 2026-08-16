@@ -70,6 +70,7 @@ Day-2 operator runbooks.
 | [operations/inference/README.md](./operations/inference/README.md) | Production inference engines runbook; companion [model-retention.md](./operations/inference/model-retention.md) covers when models load, idle-TTL eviction, and runtime retention changes without a redeploy |
 | [operations/retrieval-corpus-ingestion/README.md](./operations/retrieval-corpus-ingestion/README.md) | Ingesting a licensed guideline corpus into the harness institutional-RAG store and enabling retrieval tiers (owner-run — not CI) |
 | [operations/tts-model-mirror/README.md](./operations/tts-model-mirror/README.md) | Mirroring the gated `ai4bharat/indic-parler-tts` weights into an internal ungated store for offline TTS GPU pods |
+| [operations/temporal/README.md](./operations/temporal/README.md) | Temporal DR/backup operator runbook (TASK-730): architecture, backup/restore procedure, daily health checks — forked on the not-yet-made self-hosted-vs-Temporal-Cloud hosting decision ([decision doc](./implementation/TASK-730-Harness-Infra-Productionization/temporal-hosting-decision.md)) |
 | [operations/vault/README.md](./operations/vault/README.md) | HOPE HA Vault operator runbook: architecture (3-node Raft + Transit auto-unseal), bootstrap, rotation, failover, recovery, monitoring |
 
 ## Research — `research/`

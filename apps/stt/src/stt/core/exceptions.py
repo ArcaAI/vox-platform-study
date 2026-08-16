@@ -263,6 +263,21 @@ class ValidationError(STTServiceError):
 
 
 # =============================================================================
+# Streaming / Session-Lifecycle Errors
+# =============================================================================
+
+
+class SessionManagerDrainingError(STTServiceError):
+    """Raised by SessionManager.create_session() when this worker process has
+    been marked draining (a PLANNED scale-down, distinct from the ordinary
+    "at capacity" ``None`` return CapacityGuard produces) — see
+    docs/implementation/TASK-726-Worker-Pool-Stt-Tts/design-notes.md §(a).
+    """
+
+    error_code = "SESSION_MANAGER_DRAINING"
+
+
+# =============================================================================
 # Exception Groups for Retry Logic
 # =============================================================================
 

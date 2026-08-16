@@ -41,7 +41,7 @@
 
 #### Your local machine — a third env issue
 
-3. **The Python suite needs `TEXT_SERVICE_TOKEN` empty to pass on this box.** With the real 64-char token from `.env.test` in the ambient environment, 107 `apps/text` tests fail with 401. With `TEXT_SERVICE_TOKEN=""`: **1117 pass, 1 order-dependent failure**. This is the latent conftest env-leak the file documents in its own header comment ("This was LATENT, not new") — `text/main.py`'s module-level `create_app()` loads your env into `os.environ` at collection time. Not caused by the rename; the rename just made it visible again by restoring a non-empty token. Worth hardening the conftest guard.
+3. ~~**The Python suite needs `TEXT_SERVICE_TOKEN` empty.**~~ **CORRECTED — same root cause as item 1: run with `CI=true`.** Original note kept for the record: With the real 64-char token from `.env.test` in the ambient environment, 107 `apps/text` tests fail with 401. With `TEXT_SERVICE_TOKEN=""`: **1117 pass, 1 order-dependent failure**. This is the latent conftest env-leak the file documents in its own header comment ("This was LATENT, not new") — `text/main.py`'s module-level `create_app()` loads your env into `os.environ` at collection time. Not caused by the rename; the rename just made it visible again by restoring a non-empty token. Worth hardening the conftest guard.
 
 #### Smaller things I noted but did not act on
 
@@ -55,7 +55,7 @@
 
 #### Your local machine — 2 env issues (not code, not committed)
 
-1. **4 harness tests fail on this box.** `.env.dev` and `.env.test` set `HARNESS_OTEL_DEPLOYMENT_ENVIRONMENT=` and `HARNESS_RETRIEVAL_QDRANT_API_KEY=` to *empty string*. Under pydantic-settings an empty string is a **set** value, so it overrides the code default the tests assert. I proved this is unrelated to Wave 0: neither test file was touched, and 706's `config.py` diff is entirely inside `PhiConfig`. Fix: delete those two lines (don't set them empty).
+1. ~~**4 harness tests fail on this box.**~~ **CORRECTED 2026-08-16 (Wave 3).** My earlier advice here was wrong and you should NOT edit your env files. The real cause is simply running pytest **without `CI=true`**, which makes `hope_env` load `.env.dev`. Rule 00 is explicit: with `CI=true` no env file is read at all. Run the Python suites the way CI does and everything is clean — verified: `apps/harness` **1248 passed / 0 failed**, `apps/text` 1175, `apps/nlp` 222. The same applies to the `TEXT_SERVICE_TOKEN` item below.
 2. **Stale var after 706's rename.** Both files still carry `HARNESS_PHI_CLOUD_EGRESS_PROVIDERS`, which is now dead. The new `HARNESS_PHI_LOCAL_PROVIDERS` correctly falls back to its safe code default, so behavior is fine — but the line will mislead. I did not edit your local env files.
 
 ### 1.2 Known from the program's own decision queue (backlog.md §Decision queue)
@@ -102,7 +102,7 @@ you can answer them in priority order.
 | 0 (barrier) | 707 `naming-alignment` | **Partial — committed.** Code side complete and green; DB-persisted identifiers deferred (W7-2), enum gated (W7-3) | see below |
 | 1 | 709–717 | **Complete (blocked portions withheld) — committed** | see below |
 | 2 | 718–723 | **Partial — committed.** 718 solid; 719-723 blocked by the 715/716 cascade | see below |
-| 3 | 724–730 | Not started | — |
+| 3 | 724–730 | **Viable subset done — committed** (724, 727, 728 blocked by cascade) | see below |
 | 4 | 731–733 | Not started | — |
 
 ---
@@ -258,3 +258,25 @@ is green; the incompleteness is missing work, not broken work.
 **Also gated here:** 722 must not be switched on — exposure over the API-key surface that 708
 deliberately did NOT narrow (~50 `/admin/*` routes reachable by any active key) is precisely the
 risk 708 documented. Public exposure is OFF and stays off until decisions #6 and #10 land.
+
+### Wave 3 — Extend (viable subset only)
+
+Ran only the four tickets the Wave-2 cascade does not block. **724 (needs 720), 727 (needs 722)
+and 728 (needs 719) were deliberately NOT attempted** — stacking them on partial foundations would
+have produced more of what Wave 2 produced.
+
+| Ticket | Status | Notes |
+|---|---|---|
+| 725 worker-pool-text | Review | Degrade-away-from-unhealthy pool routing, worker-pool queue on Redis Streams, admin introspection, a net-new text-embedding capability (TEI), drain semantics, metrics, local worker entry point. +41 tests, 1175 passing, mypy clean on 72 files. `batch_generation` worker dispatch raises a flagged `NotImplementedError` — named as a real follow-up, not silently stubbed. |
+| 726 worker-pool-stt-tts | **Completed** | Mirrors 725's pattern rather than inventing a second one. |
+| 729 nlp-task-expansion | Review | `nlp.sentiment` / `nlp.toxicity` task keys + descriptors, proven through the EXISTING `/classify/text` rather than adding an endpoint. Toxicity label shape chosen and flagged as an open decision. |
+| 730 harness-infra | Partial | Decision #4 deliberately not made; produced the work identical under both options plus two costed paths. **See the live finding below.** |
+
+**LIVE CLUSTER FINDING (730).** The harness/harness-worker manifests *do* already exist in
+`arca/hope-v2-deployment`, and the **worker pod is crash-looping with `CreateContainerConfigError`**.
+Two consequences: the rules' description of Temporal as "an unmanaged VM with a dead in-cluster
+copy" is stale, which changes what decision #4 is actually choosing between; and there is a broken
+deployment in `hope-v2-dev` right now that nobody was tracking.
+
+**Verification (mine):** typecheck 41/41 · lint 36/36 · `test:unit` **1033 files / 17,474 tests /
+0 failed** · with `CI=true`: harness **1248/0**, text 1175/0, nlp 222/0.

@@ -77,6 +77,7 @@ export * from './TenantFrontendConfigModel';
 export * from './TenantIdentityProviderDomainModel';
 export * from './TenantIdentityProviderModel';
 export * from './TenantModel';
+export * from './TenantNlpTaskInstructionsModel';
 export * from './TenantPlanHistoryModel';
 export * from './TenantStorageConfigModel';
 export * from './TenantSttConfigModel';

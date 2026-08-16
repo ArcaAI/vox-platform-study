@@ -12,6 +12,7 @@ from text.core.exceptions import (
     ConcurrencyLimitError,
     ContentBlockedError,
     InputValidationError,
+    PoolUnhealthyError,
     ProviderCredentialsError,
     ProviderError,
     ProviderNotFoundError,
@@ -32,6 +33,7 @@ _STATUS_MAP: dict[type, int] = {
     ProviderNotFoundError: 404,
     ProviderCredentialsError: 503,
     CircuitOpenError: 503,
+    PoolUnhealthyError: 503,
     ShutdownError: 503,
     ConcurrencyLimitError: 503,
     ProviderTimeoutError: 502,
@@ -51,6 +53,8 @@ def _get_headers(exc: SmrError) -> dict[str, str] | None:
     if isinstance(exc, RateLimitError) and exc.retry_after is not None:
         return {"Retry-After": str(int(exc.retry_after) + 1)}
     if isinstance(exc, CircuitOpenError):
+        return {"Retry-After": "30"}
+    if isinstance(exc, PoolUnhealthyError):
         return {"Retry-After": "30"}
     if isinstance(exc, ConcurrencyLimitError):
         return {"Retry-After": "5"}

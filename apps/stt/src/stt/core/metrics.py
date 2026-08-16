@@ -175,6 +175,18 @@ WORKER_JOBS_TOTAL = Counter(
     ["queue", "status"],
 )
 
+# Pending (undelivered) messages waiting to be claimed by a worker, per
+# queue. Computed lazily at scrape time (Gauge.set_function, wired in
+# core/messaging/broker.py::_wire_queue_depth_gauge) from the broker's own
+# do_qsize() — not a hand-rolled Redis LLEN against internal key structure.
+# This is the metric a KEDA ScaledObject (deployment repo) reads for the
+# stt_batch worker pool.
+WORKER_QUEUE_DEPTH = Gauge(
+    "stt_worker_queue_depth",
+    "Pending (undelivered) Dramatiq messages waiting to be claimed by a worker, by queue",
+    ["queue"],
+)
+
 # ---------------------------------------------------------------------------
 # Cross-service per-model contract metrics
 # ---------------------------------------------------------------------------
