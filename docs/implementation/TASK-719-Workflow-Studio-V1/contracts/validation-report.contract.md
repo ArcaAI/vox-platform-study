@@ -2,6 +2,18 @@
 
 Re-derived against the live tree on `feat/loop` at commit `718533453` (2026-08-16).
 
+**2026-08-16 addendum (TASK-734 pass, HEAD `3c6505a68`):** gap 1 below ("No application-layer
+caller") is now CLOSED — `WorkflowDefinitionService.validateGraph` (`workflow-definition.service.ts:361-367`)
+calls `validate()` from `@arcaai/workflow-contract` on every create/update/validate/publish, and
+`POST admin/workflow-definitions/:id/validate` is a real, delivered route (see
+`definition-api.contract.md`). The shape itself did not change — everything below still holds.
+One drift worth flagging (not this ticket's to fix): `@arcaai/workflow-contract`'s own doc
+comments (`validate.ts:1-8`, `index.ts:9-13`) still read "NOT wired to anything in the
+application layer" — that sentence is now stale prose in TASK-716-owned code; it is not this
+ticket's file to edit, but a Studio reader should not take it as current. Gap 2 (rule set is
+DRAFT / not clinician-reviewed) is UNCHANGED — `index.ts:9-13`'s warning is still in force and
+nothing in this pass touched the rule catalogue.
+
 ## Verdict: the SHAPE is delivered; the WIRING and the RULE SET are not
 
 Unlike the registry and the definition API, this contract has real, cited source: the pure

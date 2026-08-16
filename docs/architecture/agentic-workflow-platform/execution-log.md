@@ -280,3 +280,33 @@ deployment in `hope-v2-dev` right now that nobody was tracking.
 
 **Verification (mine):** typecheck 41/41 · lint 36/36 · `test:unit` **1033 files / 17,474 tests /
 0 failed** · with `CI=true`: harness **1248/0**, text 1175/0, nlp 222/0.
+
+---
+
+## 5. Owner decisions — 2026-08-16 (late session)
+
+| # | Decision | Answer | Effect |
+|---|---|---|---|
+| **713 CI path** | Where the eval gate's judge runs | **Run the gate LOCALLY** (not a self-hosted CI runner) | The gate is a local/scheduled quality check, not a shared-CI blocking job. LM Studio + `google/gemma-4-e4b` at `localhost:1234`. No CI service container is needed, which also removes the llama.cpp workaround's original justification. |
+| **#4 Temporal hosting** | Self-hosted k3s vs Temporal Cloud | **Self-hosted Temporal in k3s** | Unblocks TASK-730 sequencing, and therefore the Wave-4 migration gate. Note the in-cluster `hope-temporal` Deployment/Service already exists in `arca/hope-v2-deployment` — this decision ratifies that direction rather than changing it. |
+| **Migrations** | Who runs the shadow-DB proofs | **Claude may run them locally** | The rule-02 recipe (create throwaway `hope_shadow`, replay, author, apply, prove empty diff, drop) needs no destructive operation against any real database, so it proceeds without further consent. |
+
+**Still gated:** `pnpm test:e2e`. Playwright's `globalSetup` runs `prisma db push --force-reset`
+against the ISOLATED test database (`hope_test` on :5433 — throwaway by design, not the dev DB), and
+Prisma's CLI requires explicit, in-the-moment user consent for that specific action, stating that no
+prior message counts. Asked separately.
+
+### Owner decisions — TASK-732 GO + migration squash (2026-08-16)
+
+| Item | Decision |
+|---|---|
+| **TASK-732 verdict** | **GO.** Rendered by the owner, not by the data — every measured rate is 0/0 because there is no real consultation traffic yet. This is a pre-production "delete the legacy path" call, which is legitimate here, but it is NOT the data-driven verdict R-1 envisaged. Recorded as such so the distinction is not lost later. |
+| **R-2 deletion boundary** | **Keep the v1-compat `pre-summary` and `summary` surfaces — they are to be transformed into STANDALONE features.** "Legacy deleted" is therefore scoped to the signable generator path. The frozen `@Controller('api/smr/api/v1')` wire route and its vox-node consumers survive. |
+| **Migration squash** | Remove all 98 migrations, re-init a single baseline. Safe locally: neither the dev DB (`hope`) nor the test DB (`hope_test`) has a `_prisma_migrations` ledger — both are `db push`-managed per rule 02, verified. |
+| **Cluster ledger** | **Owner override: `hope-v2-dev` is disposable** — wipe and re-create from the new baseline; no `migrate resolve --applied` step. I flagged that this contradicts the 2026-08-09 decision recording the DB as no longer disposable (33 users, 14 consultations, 1255 audit rows); the owner chose it with that stated. |
+
+**Sequencing (why the squash is not done yet):** the `remaining-open-tickets` workflow is still
+running and its agents are actively AUTHORING migrations — `20260816100536_task_712_consent_grant_worm_writer`
+and `20260816100654_task_711_closed_terminal_states` appeared minutes ago. Squashing now would
+delete work in flight. Order: let the workflow land → verify + commit → squash → re-init baseline →
+run e2e → then execute 732's deletion within the boundary above.

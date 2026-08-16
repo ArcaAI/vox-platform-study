@@ -69,14 +69,27 @@ assigned:
 1. **Task 9's "trace pruned" state** (`docs/implementation/TASK-723-Runs-Observability/README.md`
    pitfall 3 / acceptance criteria): a run whose `startedAt` predates the effective
    `agentic.trajectory.retentionDays` window, but whose row still exists, renders an explicit
-   "trace pruned by retention on `<date>`" state — never an empty timeline. **Status: NOT YET
-   IMPLEMENTED in this session** — Task 9 (admin-console UI) was not reached; see the ticket README
-   §7 for the full list of what shipped in this pass. This note records the DECISION the future
-   Task 9 implementation must honor.
-2. **Runs-list footer note** (Task 7's `StatusFooter`): names the effective trace-retention window
-   (read from `agentic.trajectory.retentionDays` via the settings registry) so an operator can tell
-   at a glance why old runs have no trace. **Status: NOT YET IMPLEMENTED** — Task 7 (admin-console
-   UI) was not reached in this session either; see README §7.
+   "trace pruned by retention on `<date>`" state — never an empty timeline.
+   **Status: IMPLEMENTED (Phase C pass).** `TracePrunedState`
+   (`apps/admin-console/src/features/workflow-runs/components/trace-pruned-state.tsx`) renders
+   whenever `RunTraceResponse.tracePruned` is `true`. That field was found HARDCODED to `false`
+   in `WorkflowRunService.getRunTrace` (Phase B's own output — `packages/applications/src/
+   services/workflow-run/workflow-run.service.ts`), which would have made this state
+   unreachable; fixed in the same Phase C pass by injecting `IAppSettingsService` (optional,
+   mirroring the existing `IAgentTrajectoryService` DI pattern) and computing it from the SAME
+   `agentic.trajectory.{enabled,retentionDays}` keys `AgentTrajectoryRetentionService` reads —
+   never a second, possibly-drifted copy of the window. `tracePruned` is `true` only when the run
+   has zero steps AND predates the window AND retention is actually enabled (R5: when disabled,
+   nothing is pruned yet, so a zero-step run is honestly "no steps" rather than "pruned").
+2. **Runs-list footer note** (Task 7's `StatusFooter`): names the retention mechanism so an
+   operator can tell at a glance why old runs have no trace. **Status: IMPLEMENTED**, but as
+   **static copy naming the setting key and its documented default**, not a live read of the
+   effective value — `GET admin/settings/registry/:key` requires `read:GlobalSetting`, which a
+   plain tenant admin (this screen's primary audience) does not necessarily hold, and the retry
+   window is read once per page rather than per row anyway. If a future pass wants the LIVE
+   effective value, add it in one place: `WorkflowRunsScreen`'s footer, via that registry read
+   endpoint, gated on the caller actually holding `read:GlobalSetting` (fall back to the static
+   copy otherwise).
 
 ## Summary of the decision actually recorded by this task
 
@@ -85,4 +98,4 @@ assigned:
 | Same schedule as trajectory steps, or a longer one? | **Longer.** Run rows outlive their trace. |
 | Build new retention machinery now? | **No** — explicitly out of scope; follow-up task when needed. |
 | Exact window (days)? | **Not set here** — an operator/compliance decision (R4), left open. |
-| Where is "old run, no trace" made visible? | Task 9's pruned-state + Task 7's footer note — both **designed but not built** in this session. |
+| Where is "old run, no trace" made visible? | Task 9's `TracePrunedState` + Task 7's footer note — both **implemented** in the Phase C pass, with the backend `tracePruned` computation fixed along the way. |
