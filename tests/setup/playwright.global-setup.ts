@@ -141,7 +141,25 @@ async function globalSetup(config: FullConfig): Promise<void> {
           stdio: 'pipe',
           env: {
             ...process.env,
-            PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION: 'yes',
+            // `test:db:reset` = schema push + seed, and the seed is OPT-IN:
+            // `src/index.ts` no-ops unless RUN_SEED is set ("Skipping database
+            // seeding: RUN_SEED is unset or 'none'"). Without this the reset
+            // pushed an EMPTY schema and every spec ran against a database with
+            // zero users/tenants/consultations, while the line below still
+            // printed "reset and seeded". `scripts/test-run.sh:205` already
+            // passes RUN_SEED=all for exactly this reason.
+            RUN_SEED: process.env.RUN_SEED ?? 'all',
+            NODE_ENV: 'test',
+            // Prisma refuses `db push --force-reset` for an AI-agent invoker
+            // unless this carries the operator's own consent text. It is passed
+            // THROUGH from the environment, never hardcoded: a baked-in literal
+            // would silently satisfy the guard for every future run, including
+            // unattended ones, which is precisely what the guard exists to stop.
+            // A human running `pnpm test:e2e` never trips it; an agent must
+            // obtain consent and export the variable itself.
+            ...(process.env.PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION
+              ? { PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION: process.env.PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION }
+              : {}),
           },
           cwd: process.cwd(),
         });
