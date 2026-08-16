@@ -39,6 +39,7 @@ import type { TranscriptSegment, AudioStartOptions, SttConnectionState, ActivePi
 import { CONSULTATION_ENDPOINTS, CONTEXT_ENDPOINTS, SUMMARY_ENDPOINTS, ENTITY_ENDPOINTS } from '../core/constants';
 import { computeSummaryDiff } from '../utils/diffUtils';
 import { withRetry as withRetryUtil, type RetryOptions } from '../utils/errorUtils';
+import { ifMatchFor, requireExpectedVersion, toOccError, findSummaryVersion } from '../utils/occ';
 import type { ISDKLogger } from '../core/logger';
 import { openSessionOperation, loadConsultationOperation, getPatientHistoryOperation } from '../core/sessionUtils';
 import { useArcaAudio } from './useArcaAudio';
@@ -193,7 +194,7 @@ export interface UseArcaContext {
   addTranscription: (text: string, metadata?: Record<string, unknown>) => Promise<ContextItem>;
   /** Add an attachment. `mediaId` threads through from `useStorage().uploadFile()`.*/
   addAttachment: (content?: string, metadata?: Record<string, unknown>, mediaId?: string) => Promise<ContextItem>;
-  updateItem: (id: string, content: string) => Promise<void>;
+  updateItem: (id: string, content: string, options?: { expectedVersion?: number }) => Promise<void>;
   /** Fetch all context items from backend with optional filters */
   getItems: (filters?: ContextFilters) => Promise<ContextItem[]>;
   loadSharedContext: () => Promise<ContextItem[]>;
@@ -650,7 +651,7 @@ export function useArca(): UseArcaReturn {
   );
 
   const updateContextItem = useCallback(
-    async (id: string, content: string): Promise<void> => {
+    async (id: string, content: string, options?: { expectedVersion?: number }): Promise<void> => {
       const { apiClient, consultation } = store;
       const logger = getLogger();
       if (!apiClient) throw new Error('SDK not initialized');
@@ -665,16 +666,23 @@ export function useArca(): UseArcaReturn {
       store.setContextLoading(true);
       store.setContextError(null);
 
+      // TASK-709: the route is `@RequiresIfMatch()` — send the strong
+      // validator AND the body-field fallback, and surface 412 distinctly.
+      const expectedVersion = requireExpectedVersion(id, options?.expectedVersion, store.contextItems.find((i) => i.id === id)?.version);
+
       try {
-        await apiClient.patch(CONTEXT_ENDPOINTS.UPDATE(consultation.id, id), {
-          content,
-        });
-        store.updateContextItem(id, { content });
+        const updated = await apiClient.patchWithIfMatch<ContextItem>(
+          CONTEXT_ENDPOINTS.UPDATE(consultation.id, id),
+          { content, expectedVersion },
+          ifMatchFor(expectedVersion),
+        );
+        store.updateContextItem(id, { content, ...(typeof updated?.version === 'number' ? { version: updated.version } : {}) });
         timer?.end(true, { attributes: { contentLength: content.length } });
       } catch (error) {
-        timer?.error(error as Error);
-        store.setContextError(error as Error);
-        throw error;
+        const mapped = toOccError(error, id, expectedVersion);
+        timer?.error(mapped as Error);
+        store.setContextError(mapped as Error);
+        throw mapped;
       } finally {
         store.setContextLoading(false);
       }
@@ -1024,16 +1032,24 @@ export function useArca(): UseArcaReturn {
       store.setSummaryGenerating(true);
       store.setSummaryError(null);
 
+      // TASK-709: the route is `@RequiresIfMatch()` — send the strong
+      // validator AND the body-field fallback, and surface 412 distinctly.
+      const { expectedVersion: explicitVersion, ...changeOptions } = options ?? {};
+      const expectedVersion = requireExpectedVersion(id, explicitVersion, findSummaryVersion(store.summaries, id));
+
       try {
-        await apiClient.patch(SUMMARY_ENDPOINTS.UPDATE(consultation.id, id), {
-          content,
-          ...options,
-        });
+        const updated = await apiClient.patchWithIfMatch<SummaryResponse>(
+          SUMMARY_ENDPOINTS.UPDATE(consultation.id, id),
+          { content, expectedVersion, ...changeOptions },
+          ifMatchFor(expectedVersion),
+        );
+        if (updated) store.addSummary(updated);
         timer?.end(true, { attributes: { contentLength: content.length } });
       } catch (error) {
-        timer?.error(error as Error);
-        store.setSummaryError(error as Error);
-        throw error;
+        const mapped = toOccError(error, id, expectedVersion);
+        timer?.error(mapped as Error);
+        store.setSummaryError(mapped as Error);
+        throw mapped;
       } finally {
         store.setSummaryGenerating(false);
       }

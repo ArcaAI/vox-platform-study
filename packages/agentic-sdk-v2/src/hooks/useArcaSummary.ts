@@ -25,6 +25,7 @@ import type { SummaryGenerationOptions, ComprehensiveSummaryGenerationOptions } 
 import { SUMMARY_ENDPOINTS, CONTEXT_ENDPOINTS } from '../core/constants';
 import { computeSummaryDiff } from '../utils/diffUtils';
 import { withIdempotencyKey } from '../utils/idempotency';
+import { ifMatchFor, requireExpectedVersion, toOccError, findSummaryVersion } from '../utils/occ';
 import type { ISDKLogger } from '../core/logger';
 
 /**
@@ -143,13 +144,24 @@ export function useArcaSummary() {
       store.setSummaryGenerating(true);
       store.setSummaryError(null);
 
+      // TASK-709: the route is `@RequiresIfMatch()` — send the strong
+      // validator AND the body-field fallback, and surface 412 distinctly.
+      const { expectedVersion: explicitVersion, ...changeOptions } = options ?? {};
+      const expectedVersion = requireExpectedVersion(id, explicitVersion, findSummaryVersion(store.summaries, id));
+
       try {
-        await apiClient.patch(SUMMARY_ENDPOINTS.UPDATE(consultation.id, id), { content, ...options });
+        const updated = await apiClient.patchWithIfMatch<SummaryResponse>(
+          SUMMARY_ENDPOINTS.UPDATE(consultation.id, id),
+          { content, expectedVersion, ...changeOptions },
+          ifMatchFor(expectedVersion),
+        );
+        if (updated) store.addSummary(updated);
         timer?.end(true, { attributes: { contentLength: content.length } });
       } catch (error) {
-        timer?.error(error as Error);
-        store.setSummaryError(error as Error);
-        throw error;
+        const mapped = toOccError(error, id, expectedVersion);
+        timer?.error(mapped as Error);
+        store.setSummaryError(mapped as Error);
+        throw mapped;
       } finally {
         store.setSummaryGenerating(false);
       }
@@ -314,7 +326,7 @@ export function useArcaSummary() {
    * Once approved, the summary status transitions to APPROVED → LOCKED.
    */
   const approveSummary = useCallback(
-    async (contextItemId: string): Promise<SummaryApprovalResponse> => {
+    async (contextItemId: string, options?: { expectedVersion?: number }): Promise<SummaryApprovalResponse> => {
       const { apiClient, consultation } = store;
       const logger = getLogger();
       if (!apiClient) throw new Error('SDK not initialized');
@@ -326,13 +338,23 @@ export function useArcaSummary() {
         attributes: { contextItemId },
       });
 
+      // TASK-709: approve is a POST, so the If-Match header rides on
+      // `postWithHeaders` (no POST-specific helper exists); the body carries
+      // the same version as the documented fallback.
+      const expectedVersion = requireExpectedVersion(contextItemId, options?.expectedVersion, findSummaryVersion(store.summaries, contextItemId));
+
       try {
-        const result = await apiClient.post<SummaryApprovalResponse>(SUMMARY_ENDPOINTS.APPROVE(consultation.id, contextItemId), {});
+        const result = await apiClient.postWithHeaders<SummaryApprovalResponse>(
+          SUMMARY_ENDPOINTS.APPROVE(consultation.id, contextItemId),
+          { expectedVersion },
+          { 'If-Match': ifMatchFor(expectedVersion) },
+        );
         timer?.end(true);
         return result;
       } catch (error) {
-        timer?.error(error as Error);
-        throw error;
+        const mapped = toOccError(error, contextItemId, expectedVersion);
+        timer?.error(mapped as Error);
+        throw mapped;
       }
     },
     [store, getLogger],

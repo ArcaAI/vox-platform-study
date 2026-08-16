@@ -60,6 +60,12 @@ export interface ContextItem {
   createdAt: string;
   /** Last update timestamp */
   updatedAt: string;
+  /**
+   * Row version for optimistic concurrency control (TASK-709). Echoed back
+   * as `If-Match: "<version>"` (plus the body-field `expectedVersion`) by
+   * `useArcaContext.updateItem`. Optional because older server builds omit it.
+   */
+  version?: number;
 }
 
 /**
@@ -284,7 +290,7 @@ export interface ContextActions {
   /** Add a generic context item */
   addContext: (input: AddContextInput) => Promise<ContextItem>;
   /** Update an existing context item */
-  updateItem: (id: string, content: string) => Promise<void>;
+  updateItem: (id: string, content: string, options?: { expectedVersion?: number }) => Promise<void>;
   /** Get context items with optional filters */
   getItems: (filters?: ContextFilters) => Promise<ContextItem[]>;
   /** Load shared context from consultation chain */

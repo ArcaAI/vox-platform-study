@@ -79,6 +79,13 @@ export interface SummaryResponse {
   updatedAt?: string;
   /** Creation timestamp */
   createdAt: string;
+  /**
+   * Row version for optimistic concurrency control (TASK-709) — DISTINCT from
+   * `versionNumber` (the version-browser snapshot counter). Echoed back as
+   * `If-Match: "<version>"` (plus the body-field `expectedVersion`) by
+   * `updateSummary` / `approveSummary`.
+   */
+  version?: number;
 }
 
 // =============================================================================
@@ -258,7 +265,7 @@ export interface SummaryActions {
   /** Generate a final summary */
   generateSummary: (options?: SummaryOptions) => Promise<SummaryResponse>;
   /** Update an existing summary */
-  updateSummary: (id: string, content: string) => Promise<void>;
+  updateSummary: (id: string, content: string, options?: UpdateSummaryOptions) => Promise<void>;
   /**
    * Analyze texts to create/update DNA style.
    * @deprecated No backend endpoint exists for DNA analysis (SUM-06).
@@ -282,6 +289,12 @@ export interface SummaryActions {
  * Passed to SummaryService.updateSummary() to create a version snapshot.
  */
 export interface UpdateSummaryOptions {
+  /**
+   * Row version to compare-and-set against (TASK-709). Sent both as
+   * `If-Match: "<version>"` and as the body-field `expectedVersion`.
+   * Defaults to the version the SDK holds for the summary in its store.
+   */
+  expectedVersion?: number;
   changeReason?: string;
   changeSummary?: string;
   changeSource?: 'doctor_edit' | 'ai_regeneration' | 'system';

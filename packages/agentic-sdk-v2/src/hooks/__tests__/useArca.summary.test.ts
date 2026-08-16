@@ -233,6 +233,8 @@ describe('summary action behaviors', () => {
   const mockPost = vi.fn();
   const mockGet = vi.fn();
   const mockPatch = vi.fn();
+  // TASK-709: the summary PATCH route is `@RequiresIfMatch()`.
+  const mockPatchWithIfMatch = vi.fn();
   const consultationObj = { id: 'c-001', patientId: 'p-123', doctorId: 'd-456', appointmentDate: '2026-02-17', createdAt: '', updatedAt: '' };
 
   beforeEach(() => {
@@ -240,9 +242,10 @@ describe('summary action behaviors', () => {
     mockPost.mockReset();
     mockGet.mockReset();
     mockPatch.mockReset();
+    mockPatchWithIfMatch.mockReset();
     currentMockStore = {
       ...mockStoreDefaults,
-      apiClient: { get: mockGet, post: mockPost, patch: mockPatch, delete: vi.fn() },
+      apiClient: { get: mockGet, post: mockPost, patch: mockPatch, patchWithIfMatch: mockPatchWithIfMatch, delete: vi.fn() },
       consultation: consultationObj,
       setSummaryGenerating: vi.fn(),
       setSummaryError: vi.fn(),
@@ -308,15 +311,15 @@ describe('summary action behaviors', () => {
   });
 
   it('updateSummary should PATCH the correct endpoint', async () => {
-    mockPatch.mockResolvedValue(undefined);
+    mockPatchWithIfMatch.mockResolvedValue(undefined);
 
     const { result } = renderHook(() => useArca());
 
     await act(async () => {
-      await result.current.summary.updateSummary('s-1', 'Updated content');
+      await result.current.summary.updateSummary('s-1', 'Updated content', { expectedVersion: 2 });
     });
 
-    expect(mockPatch).toHaveBeenCalledWith(SUMMARY_ENDPOINTS.UPDATE('c-001', 's-1'), { content: 'Updated content' });
+    expect(mockPatchWithIfMatch).toHaveBeenCalledWith(SUMMARY_ENDPOINTS.UPDATE('c-001', 's-1'), { content: 'Updated content', expectedVersion: 2 }, '"2"');
   });
 
   it('generateSummaryAsync should POST to SUMMARY_ENDPOINTS.GENERATE_ASYNC', async () => {
@@ -380,6 +383,8 @@ describe('WS-5: summary versioning enhancements', () => {
   const mockPost = vi.fn();
   const mockGet = vi.fn();
   const mockPatch = vi.fn();
+  // TASK-709: the summary PATCH route is `@RequiresIfMatch()`.
+  const mockPatchWithIfMatch = vi.fn();
   const consultationObj = { id: 'c-001', patientId: 'p-123', doctorId: 'd-456', appointmentDate: '2026-02-17', createdAt: '', updatedAt: '' };
 
   beforeEach(() => {
@@ -387,9 +392,10 @@ describe('WS-5: summary versioning enhancements', () => {
     mockPost.mockReset();
     mockGet.mockReset();
     mockPatch.mockReset();
+    mockPatchWithIfMatch.mockReset();
     currentMockStore = {
       ...mockStoreDefaults,
-      apiClient: { get: mockGet, post: mockPost, patch: mockPatch, delete: vi.fn() },
+      apiClient: { get: mockGet, post: mockPost, patch: mockPatch, patchWithIfMatch: mockPatchWithIfMatch, delete: vi.fn() },
       consultation: consultationObj,
       setSummaryGenerating: vi.fn(),
       setSummaryError: vi.fn(),
@@ -400,32 +406,38 @@ describe('WS-5: summary versioning enhancements', () => {
 
   describe('updateSummary with options', () => {
     it('should send UpdateSummaryOptions in the PATCH body', async () => {
-      mockPatch.mockResolvedValue(undefined);
+      mockPatchWithIfMatch.mockResolvedValue(undefined);
       const { result } = renderHook(() => useArca());
 
       await act(async () => {
         await result.current.summary.updateSummary('s-1', 'New content', {
+          expectedVersion: 5,
           changeReason: 'Doctor correction',
           changeSource: 'doctor_edit',
         });
       });
 
-      expect(mockPatch).toHaveBeenCalledWith(SUMMARY_ENDPOINTS.UPDATE('c-001', 's-1'), {
-        content: 'New content',
-        changeReason: 'Doctor correction',
-        changeSource: 'doctor_edit',
-      });
+      expect(mockPatchWithIfMatch).toHaveBeenCalledWith(
+        SUMMARY_ENDPOINTS.UPDATE('c-001', 's-1'),
+        {
+          content: 'New content',
+          expectedVersion: 5,
+          changeReason: 'Doctor correction',
+          changeSource: 'doctor_edit',
+        },
+        '"5"',
+      );
     });
 
-    it('should work without options (backwards compatible)', async () => {
-      mockPatch.mockResolvedValue(undefined);
+    it('should work without change options (version still required)', async () => {
+      mockPatchWithIfMatch.mockResolvedValue(undefined);
       const { result } = renderHook(() => useArca());
 
       await act(async () => {
-        await result.current.summary.updateSummary('s-1', 'Updated');
+        await result.current.summary.updateSummary('s-1', 'Updated', { expectedVersion: 1 });
       });
 
-      expect(mockPatch).toHaveBeenCalledWith(SUMMARY_ENDPOINTS.UPDATE('c-001', 's-1'), { content: 'Updated' });
+      expect(mockPatchWithIfMatch).toHaveBeenCalledWith(SUMMARY_ENDPOINTS.UPDATE('c-001', 's-1'), { content: 'Updated', expectedVersion: 1 }, '"1"');
     });
   });
 
@@ -490,12 +502,12 @@ describe('WS-5: summary versioning enhancements', () => {
   describe('updateSummary edge cases', () => {
     it('should set summaryError via store.setSummaryError on API failure and reset setSummaryGenerating to false', async () => {
       const apiError = new Error('Network error');
-      mockPatch.mockRejectedValue(apiError);
+      mockPatchWithIfMatch.mockRejectedValue(apiError);
       const { result } = renderHook(() => useArca());
 
       await expect(
         act(async () => {
-          await result.current.summary.updateSummary('s-1', 'Content');
+          await result.current.summary.updateSummary('s-1', 'Content', { expectedVersion: 1 });
         }),
       ).rejects.toThrow('Network error');
 
