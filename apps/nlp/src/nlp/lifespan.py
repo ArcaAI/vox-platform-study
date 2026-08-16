@@ -11,6 +11,7 @@ from nlp.core.effective_config import EffectiveConfigClient
 from nlp.core.logging import get_logger
 from nlp.core.observability import setup_opentelemetry, shutdown_opentelemetry
 from nlp.dependencies import get_websocket_manager
+from nlp.services.external_text_client import ExternalTextClient
 
 logger = get_logger(__name__)
 
@@ -32,6 +33,16 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         base_url=settings.service.gateway_url,
         token=settings.service.service_token.get_secret_value(),
         service="nlp",
+    )
+
+    # apps/nlp's first peer-service client (TASK-729): a dedicated,
+    # long-lived httpx.AsyncClient for calling `text`'s /generate — mirrors
+    # apps/text's own `guardrail_client`/`http_client` app.state wiring.
+    # Construction performs no I/O; closed in shutdown below.
+    app.state.external_text_http_client = httpx.AsyncClient()
+    app.state.external_text_client = ExternalTextClient(
+        settings=settings.external_text,
+        http_client=app.state.external_text_http_client,
     )
 
     setup_opentelemetry(app)
@@ -64,6 +75,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await stop_registration(app.state.service_release_task)
     if app.state.service_release_http_client is not None:
         await app.state.service_release_http_client.aclose()
+
+    await app.state.external_text_http_client.aclose()
 
     shutdown_opentelemetry(app)
 

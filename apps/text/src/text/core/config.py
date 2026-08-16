@@ -307,6 +307,38 @@ class SarvamConfig(BaseSettings):
     model: str | None = None
 
 
+class TeiEmbedConfig(BaseSettings):
+    """`tei-embed` (HuggingFace text-embeddings-inference) provider configuration.
+
+    Local, self-hosted embedding engine — same "always available, no ENABLE
+    flag" convention as the other local engines (Ollama/LM Studio/vLLM/
+    llama.cpp): a topology-level default `base_url` is always present, so
+    `_register_provider_factories` (`main.py`) registers it unconditionally
+    (TASK-725 §2.7: `text` has no embedding capability today; this is net
+    new). Targets TEI's native `/embed` REST contract (`POST /embed` with
+    `{"inputs": [...]}` → `[[float, ...], ...]`) — the stable API present on
+    every TEI release, rather than the OpenAI-compatible `/v1/embeddings`
+    route TEI only added in 1.2+ (unverifiable which build the compose image
+    tag resolves to without live infra; `/embed` is the safer choice). See
+    `infrastructure/docker/docker-compose.dev.yml` (`tei-embed`,
+    `HOPE_TEI_EMBED_PORT:-8871`, `MODEL_ID:-BAAI/bge-m3`).
+    """
+
+    # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    settings_customise_sources = hope_settings_sources
+
+    model_config = SettingsConfigDict(env_prefix="TEXT_TEI_")
+
+    base_url: str = "http://localhost:8871"
+    # Informational only — TEI serves exactly one model per container
+    # (`MODEL_ID`), so this is never sent on the wire; it is stamped onto
+    # `ProviderInfo`/`ModelInfo` for the admin listing.
+    default_model: str = "BAAI/bge-m3"
+    embedding_dim: int = 1024
+    timeout_s: int = 30
+    max_concurrent: int = 8
+
+
 class ExternalGuardrailConfig(BaseSettings):
     """Input moderation posture for /generate.
 
@@ -545,6 +577,7 @@ class Settings(BaseSettings):
     vllm: VllmConfig = Field(default_factory=VllmConfig)
     llama_cpp: LlamaCppConfig = Field(default_factory=LlamaCppConfig)
     sarvam: SarvamConfig = Field(default_factory=SarvamConfig)
+    tei_embed: TeiEmbedConfig = Field(default_factory=TeiEmbedConfig)
     external_guardrail: ExternalGuardrailConfig = Field(default_factory=ExternalGuardrailConfig)
     # Raises at construction time (propagates out of
     # `Settings()` -> `get_settings()` -> `create_app()`) when NODE_ENV=production

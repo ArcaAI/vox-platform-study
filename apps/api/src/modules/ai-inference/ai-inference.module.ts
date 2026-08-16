@@ -1,4 +1,10 @@
-import { AiModelServiceModule, AiRuntimeProfileServiceModule, AiTaskDefaultServiceModule, UsageLedgerServiceModule } from '@arcaai/applications';
+import {
+  AiModelServiceModule,
+  AiRuntimeProfileServiceModule,
+  AiTaskDefaultServiceModule,
+  TenantNlpTaskInstructionsServiceModule,
+  UsageLedgerServiceModule,
+} from '@arcaai/applications';
 import { HttpModule } from '@nestjs/axios';
 import { Module } from '@nestjs/common';
 import { AiInferenceClient } from './ai-inference.client';
@@ -15,11 +21,21 @@ import { AiInferenceController } from './ai-inference.controller';
  * from AiServiceAdminModule so the read-only admin plane stays untouched.
  * `UsageLedgerServiceModule` supplies `IUsageLedgerService` for the
  * Playground `ner.extract` usage-ledger emission.
+ * `TenantNlpTaskInstructionsServiceModule` (TASK-729) supplies
+ * `ITenantNlpTaskInstructionsService` so `/ai/nlp/topic`/`/ai/nlp/intent` can
+ * resolve the tenant's topic/intent instruction content before proxying.
  */
 @Module({
   // AiRuntimeProfileServiceModule supplies the hyperparameter
   // profile resolver injected alongside `model_name`.
-  imports: [HttpModule, AiTaskDefaultServiceModule, AiModelServiceModule, AiRuntimeProfileServiceModule, UsageLedgerServiceModule],
+  imports: [
+    HttpModule,
+    AiTaskDefaultServiceModule,
+    AiModelServiceModule,
+    AiRuntimeProfileServiceModule,
+    UsageLedgerServiceModule,
+    TenantNlpTaskInstructionsServiceModule,
+  ],
   controllers: [AiInferenceController],
   providers: [AiInferenceClient],
 })

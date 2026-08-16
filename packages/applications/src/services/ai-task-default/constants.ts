@@ -23,6 +23,11 @@ import { ModelTaskType } from '@arcaai/domains';
 // `guardrail.groundedness` (MiniCheck NLI fact-checker), `harness.judge`
 // (LLM-as-judge), and `nlp.diagnosis` (the diagnosis suggester, split out of
 // the mis-keyed `nlp.classification` doc-type classifier).
+// TASK-729: `nlp.sentiment` / `nlp.toxicity` — two more FIXED-taxonomy
+// classification tasks served by the SAME generic `/classify/text` endpoint
+// (model-agnostic already; see apps/nlp/src/nlp/api/v1/rest/classify.py).
+// No new Python endpoint — only these two AiTaskDefault keys. Global-admin-only,
+// consistent with every other `nlp.*` key.
 // `vlm.extract`  routes SMR's vision capability (image → text
 // extraction via a vision-language model). It lives in SMR's own
 // provider/adapter framework — same governance class as `smr.*` — so it is
@@ -34,6 +39,8 @@ export const AI_TASK_KEYS = [
   'nlp.ner',
   'nlp.classification',
   'nlp.diagnosis',
+  'nlp.sentiment',
+  'nlp.toxicity',
   'smr.live',
   'smr.finalize',
   'smr.live.fallback',
@@ -60,6 +67,10 @@ export const AI_TASK_MODEL_TASK_TYPES: Record<AiTaskKey, ModelTaskType> = {
   'nlp.classification': ModelTaskType.TEXT_CLASSIFICATION,
   // diagnosis suggester (symptom→disease text classification).
   'nlp.diagnosis': ModelTaskType.TEXT_CLASSIFICATION,
+  // TASK-729: sentiment / toxicity classifiers reuse the SAME generic
+  // /classify/text path as nlp.classification/nlp.diagnosis — same task type.
+  'nlp.sentiment': ModelTaskType.TEXT_CLASSIFICATION,
+  'nlp.toxicity': ModelTaskType.TEXT_CLASSIFICATION,
   // SMR generation models are text-generation models in the registry.
   'smr.live': ModelTaskType.TEXT_GENERATION,
   'smr.finalize': ModelTaskType.TEXT_GENERATION,

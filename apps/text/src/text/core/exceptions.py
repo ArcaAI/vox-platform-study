@@ -155,3 +155,26 @@ class ProviderNotFoundError(SmrError):
     def __init__(self, message: str, *, provider: str = "unknown"):
         self.provider = provider
         super().__init__(message, error_code="PROVIDER_NOT_FOUND")
+
+
+class PoolUnhealthyError(SmrError):
+    """Requested provider pool is known-unhealthy and no usable fallback was supplied.
+
+    Raised by ``services/pool_router.resolve_pool_route`` (TASK-725 Task 2) when the
+    last recorded ``health_check()`` result (``services/pool_health.PoolHealthTracker``)
+    for the requested provider is ``False`` and the caller declared no fallback (or the
+    declared fallback is not actually registered). Distinct from
+    ``ProviderNotFoundError`` (the name isn't registered at all) and from
+    ``ProviderCredentialsError`` (a config gap) — here the provider IS registered but a
+    prior health check marked it down, and design.md's worker-pool standard requires
+    degrading routing away from it rather than queueing into a dead engine.
+    """
+
+    def __init__(
+        self,
+        message: str = "Provider pool is unhealthy",
+        *,
+        provider: str = "unknown",
+    ):
+        self.provider = provider
+        super().__init__(message, error_code="POOL_UNHEALTHY")

@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Any
 import structlog
 from fastapi import APIRouter, HTTPException, Response
 
+from stt.core.exceptions import SessionManagerDrainingError
 from stt.pipeline.language_modes import (
     LanguageModeUnsupportedError,
     language_mode_catalog_payload,
@@ -141,6 +142,24 @@ async def create_streaming_session(
             consecutive_failure_threshold=request.consecutive_failure_threshold,
             channel_count=request.channel_count,
         )
+    except SessionManagerDrainingError as exc:
+        # PLANNED scale-down (TASK-726 design-notes.md §(a)) — distinct from
+        # the ordinary at-capacity 503 below so an operator reading logs
+        # (or a smarter future caller) can tell them apart, even though a
+        # dumb caller just sees "503, retry" either way, which is the safe
+        # default. The primary "stop routing here" mechanism is k8s readiness
+        # (/health/ready) removing this pod from the Service; this is the
+        # defense-in-depth layer for the race window before that takes effect.
+        logger.info(
+            "Streaming session rejected — worker draining",
+            session_id=request.session_id,
+            worker_id=mgr.worker_id,
+        )
+        raise HTTPException(
+            status_code=503,
+            detail="Draining",
+            headers={"Retry-After": "30"},
+        ) from exc
     except LanguageModeUnsupportedError as exc:
         # The selected mode fits none of the session's engines
         # (primary + configured fallback). Surface a 422 that names the modes
@@ -415,3 +434,41 @@ async def get_streaming_availability() -> StreamingAvailabilityResponse:
         current_active=guard.active_count,
         available_slots=max(0, available_slots),
     )
+
+
+# -------------------------------------------------------------------------
+# POST /internal/streaming/drain — Begin PLANNED scale-down draining
+# -------------------------------------------------------------------------
+
+
+@router.post(
+    "/drain",
+    responses={
+        200: {"description": "Worker marked draining"},
+        503: {"description": "Streaming not initialized"},
+    },
+)
+async def begin_streaming_drain() -> dict[str, Any]:
+    """Mark this worker draining — a `preStop` hook (deployment repo) target.
+
+    Idempotent. Rejects NEW sessions (see `SessionManagerDrainingError`
+    above) while every session already in `self._sessions` keeps being
+    served exactly as before; `/health/ready` starts returning 503 on the
+    same flag, which is the ACTUAL "stop routing here" mechanism (k8s
+    removes this pod from the Service Endpoints). See
+    docs/implementation/TASK-726-Worker-Pool-Stt-Tts/design-notes.md §(a).
+    """
+    mgr = _require_session_manager()
+    mgr.begin_drain()
+
+    logger.info(
+        "Streaming drain requested via API",
+        worker_id=mgr.worker_id,
+        active_sessions=mgr.active_session_count,
+    )
+
+    return {
+        "status": "draining",
+        "worker_id": mgr.worker_id,
+        "active_sessions": mgr.active_session_count,
+    }

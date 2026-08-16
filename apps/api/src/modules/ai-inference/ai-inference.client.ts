@@ -28,6 +28,8 @@ const UPSTREAM_ERROR_MESSAGE = 'The AI inference service returned an error.';
  * Upstream endpoints (source of truth: apps/guardrail, apps/nlp):
  *  - Guardrail `POST /api/guardrail/analyze`     — content-safety / PII / prompt-injection
  *  - NLP       `POST /api/v1/classify/tokens`    — medical token classification (NER)
+ *  - NLP       `POST /api/v1/classify/topic`     — open-taxonomy topic classification (TASK-729, delegated by NLP to `text`)
+ *  - NLP       `POST /api/v1/classify/intent`    — open-taxonomy intent classification (TASK-729, delegated by NLP to `text`)
  *
  * Base URLs resolve from `IConfigService` (`GUARDRAIL_URL` / `NLP_URL`), falling
  * back to the local-dev ports.
@@ -72,6 +74,16 @@ export class AiInferenceClient {
   /** Diagnosis suggestions (text classification). Body is the upstream snake_case shape. */
   async suggestDiagnosis(body: Record<string, unknown>): Promise<Record<string, unknown>> {
     return this.post(this.nlpUrl(), '/api/v1/diagnosis/suggestions', body, NLP_TIMEOUT_MS, 'NLP_SERVICE_TOKEN');
+  }
+
+  /** Topic classification (TASK-729, open-taxonomy, delegated by NLP to `text`). Body is the upstream snake_case shape. */
+  async classifyTopic(body: Record<string, unknown>): Promise<Record<string, unknown>> {
+    return this.post(this.nlpUrl(), '/api/v1/classify/topic', body, NLP_TIMEOUT_MS, 'NLP_SERVICE_TOKEN');
+  }
+
+  /** Intent classification (TASK-729, open-taxonomy, delegated by NLP to `text`). Body is the upstream snake_case shape. */
+  async classifyIntent(body: Record<string, unknown>): Promise<Record<string, unknown>> {
+    return this.post(this.nlpUrl(), '/api/v1/classify/intent', body, NLP_TIMEOUT_MS, 'NLP_SERVICE_TOKEN');
   }
 
   private guardrailUrl(): string {

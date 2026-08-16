@@ -14,8 +14,9 @@ function makeController(
   aiRuntimeProfileService?: unknown,
   cls?: { get: ReturnType<typeof vi.fn> },
   usageLedgerService?: { recordUsage: ReturnType<typeof vi.fn> },
+  tenantNlpTaskInstructionsService?: { getRow: ReturnType<typeof vi.fn> },
 ) {
-  const client = { analyzeGuardrail: vi.fn(), classifyTokens: vi.fn(), suggestDiagnosis: vi.fn() };
+  const client = { analyzeGuardrail: vi.fn(), classifyTokens: vi.fn(), suggestDiagnosis: vi.fn(), classifyTopic: vi.fn(), classifyIntent: vi.fn() };
   const controller = new AiInferenceController(
     client as never,
     aiTaskDefaults as never,
@@ -23,6 +24,7 @@ function makeController(
     aiRuntimeProfileService as never,
     cls as never,
     usageLedgerService as never,
+    tenantNlpTaskInstructionsService as never,
   );
   return { controller, client };
 }
@@ -318,5 +320,78 @@ describe('AiInferenceController — diagnosis suggestions', () => {
       min_confidence: 0,
       model_name: 'shanover/symps_disease_bert_v3_c41',
     });
+  });
+});
+
+// TASK-729 — /ai/nlp/topic + /ai/nlp/intent proxy routes.
+describe('AiInferenceController — nlp/topic, nlp/intent (TASK-729)', () => {
+  const clsFor = (tenantId?: string) => ({ get: vi.fn((k: string) => (k === 'tenantId' ? tenantId : undefined)) });
+
+  it('classifyTopic FAILS CLOSED with 503 when there is no CLS tenant', async () => {
+    const { ServiceUnavailableException } = await import('@nestjs/common');
+    const { controller, client } = makeController(undefined, undefined, undefined, clsFor(undefined));
+
+    await expect(controller.classifyTopic({ text: 'a billing question' })).rejects.toBeInstanceOf(ServiceUnavailableException);
+    expect(client.classifyTopic).not.toHaveBeenCalled();
+  });
+
+  it('classifyTopic resolves TenantNlpTaskInstructions and injects instructions + tenant_id', async () => {
+    const instructions = { getRow: vi.fn().mockResolvedValue({ tenantId: 't1', taskKey: 'nlp.topic', instructionsJson: ['billing', 'appointments'], version: 1 }) };
+    const { controller, client } = makeController(undefined, undefined, undefined, clsFor('t1'), undefined, instructions);
+    client.classifyTopic.mockResolvedValue({ predicted_topic: 'billing', available_topics: ['billing', 'appointments'] });
+
+    const result = await controller.classifyTopic({ text: 'a billing question', language: 'en' });
+
+    expect(instructions.getRow).toHaveBeenCalledWith('nlp.topic', 't1');
+    expect(client.classifyTopic).toHaveBeenCalledWith({
+      text: 'a billing question',
+      language: 'en',
+      instructions: ['billing', 'appointments'],
+      tenant_id: 't1',
+    });
+    expect(result).toEqual({ predicted_topic: 'billing', available_topics: ['billing', 'appointments'] });
+  });
+
+  it('classifyTopic proceeds without instructions when the service is unwired (NLP fails closed itself)', async () => {
+    const { controller, client } = makeController(undefined, undefined, undefined, clsFor('t1'), undefined, undefined);
+    client.classifyTopic.mockResolvedValue({});
+
+    await controller.classifyTopic({ text: 'x' });
+
+    expect(client.classifyTopic).toHaveBeenCalledWith({ text: 'x', tenant_id: 't1' });
+  });
+
+  it('classifyTopic degrades to no instructions on a resolution error (never blocks the proxy)', async () => {
+    const instructions = { getRow: vi.fn().mockRejectedValue(new Error('db down')) };
+    const { controller, client } = makeController(undefined, undefined, undefined, clsFor('t1'), undefined, instructions);
+    client.classifyTopic.mockResolvedValue({});
+
+    await controller.classifyTopic({ text: 'x' });
+
+    expect(client.classifyTopic).toHaveBeenCalledWith({ text: 'x', tenant_id: 't1' });
+  });
+
+  it('classifyIntent resolves TenantNlpTaskInstructions (nlp.intent) and injects instructions + tenant_id', async () => {
+    const instructions = { getRow: vi.fn().mockResolvedValue({ tenantId: 't1', taskKey: 'nlp.intent', instructionsJson: ['schedule_appointment'], version: 1 }) };
+    const { controller, client } = makeController(undefined, undefined, undefined, clsFor('t1'), undefined, instructions);
+    client.classifyIntent.mockResolvedValue({ predicted_intent: 'schedule_appointment', available_intents: ['schedule_appointment'] });
+
+    const result = await controller.classifyIntent({ text: 'book me an appointment' });
+
+    expect(instructions.getRow).toHaveBeenCalledWith('nlp.intent', 't1');
+    expect(client.classifyIntent).toHaveBeenCalledWith({
+      text: 'book me an appointment',
+      instructions: ['schedule_appointment'],
+      tenant_id: 't1',
+    });
+    expect(result).toEqual({ predicted_intent: 'schedule_appointment', available_intents: ['schedule_appointment'] });
+  });
+
+  it('classifyIntent FAILS CLOSED with 503 when there is no CLS tenant', async () => {
+    const { ServiceUnavailableException } = await import('@nestjs/common');
+    const { controller, client } = makeController(undefined, undefined, undefined, clsFor(undefined));
+
+    await expect(controller.classifyIntent({ text: 'book me an appointment' })).rejects.toBeInstanceOf(ServiceUnavailableException);
+    expect(client.classifyIntent).not.toHaveBeenCalled();
   });
 });

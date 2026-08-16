@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Pending |
+| **Status** | Review |
 | **Wave** | 3 · **Size** | L |
 | **Epic slug** | `worker-pool-text` |
 | **Depends on** | TASK-707 (`naming-alignment` — `smr` → `text` rename; this ticket is written and MUST be executed against the renamed tree) |
@@ -378,10 +378,227 @@ out-of-process worker task envelope actually running in this monorepo today.
 
 ## 7. Implementation Summary
 
-(Empty at authoring — filled during execution.)
+Executed against the committed post-TASK-707 tree (`apps/text`, `TEXT_*` env vars,
+package `text`). Local infra (Postgres/Redis/API/Temporal) was DOWN for the whole
+session — no cluster access either — so everything below was verified with hermetic
+unit tests (mocked Redis/httpx, ASGI test client) rather than live services; every item
+that genuinely needs live infra is called out as gated, not claimed as done.
+
+### Phase A — design (Task 1)
+
+`docs/implementation/TASK-725-Worker-Pool-Text/design-notes.md` — pool topology
+(all 10 providers incl. `tei-embed` are degrade-routing pools; vLLM/llama.cpp are the
+GPU-node-pool-affinity candidates for the deployment repo), the `WorkerTaskEnvelope`
+schema, the queue-depth metric label set, and the TASK-717 reconciliation note.
+Reviewed against §1's scope boundaries before Phase B started.
+
+### Phase B — control plane (Tasks 2–6)
+
+- **Task 2 (degrade-routing):** `services/pool_health.py` (`PoolHealthTracker` — a
+  small in-process cache populated by `GET /health`'s existing per-provider
+  `health_check()` loop, the SAME call site that already sets `PROVIDER_HEALTH`;
+  deliberately NOT reading the Prometheus gauge back from app code — see
+  design-notes.md §(b) for why) + `services/pool_router.py`
+  (`resolve_pool_route`) + `core/exceptions.PoolUnhealthyError` (503,
+  `Retry-After: 30`, mapped in `core/exception_handlers.py`) + an additive
+  `GenerateRequest.fallback_provider` field. Wired into `generate.py` as a single
+  check before dispatch that rewrites `request_body.provider` in place, so every
+  downstream provider-keyed lookup (rate limiter, circuit breaker, queue,
+  semaphore, metrics, audit, task state) naturally reflects the ACTUAL serving
+  provider. `stream.py` needed no change — verified it only replays already-produced
+  chunks and never dispatches (the ticket's file list named it conservatively).
+- **Task 3 (admin introspection):** `GET /providers` (`api/endpoints/providers.py`)
+  gained `pool_health` / `pool_health_checked_at` / `in_flight_requests` per entry
+  (additive fields on `models/provider.ProviderInfo`), sourced from the SAME
+  `PoolHealthTracker` and the existing `ACTIVE_GENERATIONS` gauge. A new
+  `GET /worker-pools` endpoint (`api/endpoints/worker_pools.py`,
+  `models/worker_pool_status.WorkerPoolStatus`) reports per-`task_type` queue depth
+  + `draining` — kept as its OWN endpoint rather than folded into `/providers`
+  because the shapes differ (per-pool vs. per-provider) and `/providers`' `list[ProviderInfo]`
+  shape is a real external contract (the gateway discovery merge keys on it per
+  the file's own docstring).
+- **Task 4 (text-embedding):** net new. `core/config.TeiEmbedConfig`
+  (`TEXT_TEI_*`, default `base_url=http://localhost:8871` matching
+  `docker-compose.dev.yml`'s `HOPE_TEI_EMBED_PORT`), `providers/embedding.py`
+  (`EmbeddingProvider` protocol + `EmbeddingProviderRegistry` — a SEPARATE
+  registry namespace, mirroring `TranslateProviderRegistry`'s established
+  precedent for a structurally-different capability), `providers/tei_embed.py`
+  (`TeiEmbedProvider`, targeting TEI's native `POST /embed` — chosen over the
+  OpenAI-compatible `/v1/embeddings` route TEI only added in 1.2+, unverifiable
+  which build the compose image tag resolves to without live infra),
+  `models/embedding.py` (`EmbeddingRequest`/`EmbeddingResponse`/
+  `EmbeddingBatchRequest`/`EmbeddingBatchAcceptedResponse`),
+  `api/endpoints/embeddings.py` (`POST /embeddings` synchronous round trip;
+  `POST /embeddings/batch` async submission returning 202 + a `task_id` pollable
+  via the EXISTING `GET /tasks/{task_id}` — no duplicate status route). Registered
+  unconditionally in `main.py`'s lifespan (always-available local-engine convention,
+  same as Ollama/LM Studio).
+- **Task 5 (queue-depth metrics):** `core/metrics.py` gained
+  `smr_worker_pool_queue_depth{task_type}` (Gauge) and
+  `smr_worker_pool_tasks_total{task_type,status}` (Counter) — still `smr_`-prefixed
+  like every OTHER metric in the file; TASK-707 renamed the package/env vars but did
+  NOT touch Prometheus metric-name strings (`SERVICE_NAME = "smr"` and all 15
+  pre-existing metric names remain `smr_*` on the committed tree), so a lone
+  `text_*` metric would be its own drift — decision recorded in design-notes.md §(c).
+  `GET /worker-pools` sets the gauge on every poll.
+- **Task 6 (drain):** `services/worker_pool_queue.WorkerPoolQueue.submit()` takes an
+  optional `ShutdownManager` and raises the EXISTING `ShutdownError` (503, reused —
+  not a new exception) once `is_shutting_down` is set, mirroring `/generate`'s
+  existing check. `GET /worker-pools` reports `draining: true` off the same flag.
+  `ShutdownManager` itself was NOT modified (its existing `active_count`/
+  `is_shutting_down`/`wait_for_shutdown` already covered the "let in-flight sync
+  work finish" half) — Task 6 is `WorkerPoolQueue`/`worker.py` reusing it, not new
+  drain machinery. The worker-SIDE half (stop claiming new messages, finish the
+  claimed one) is `WorkerPoolConsumer.request_drain()` in `worker.py`, wired to
+  SIGTERM/SIGINT.
+
+### Phase C — local-dev story + deployment handoff (Task 7, Task 8)
+
+- **Task 7:** `text/worker.py` — `WorkerPoolConsumer` (claim → process → ack loop
+  per `task_type`, idempotent-skip on redelivery of an already-terminal task,
+  ACKs even on task-level failure so one bad task never wedges the stream) +
+  `main()` entry point wiring both pools (`embedding`, `batch_generation`) with
+  graceful SIGTERM/SIGINT drain. Root script `text:worker:dev` (`package.json`) →
+  `scripts/dev-service.sh`'s new `text-worker` case (native conda process,
+  `python -m text.worker`, no port/reload — mirrors `stt-worker`'s rationale
+  exactly, since no Python service in this monorepo runs as a compose service).
+  **Scope-limited by design, not silently faked:** the `embedding` handler is
+  fully implemented (this ticket's net-new capability); the `batch_generation`
+  handler raises a clearly-flagged `NotImplementedError` — wiring full
+  batch-generation dispatch would mean re-threading `/generate`'s retry/
+  circuit-breaker/audit machinery for an out-of-process caller, which Phase A's
+  design scoped as the envelope/queue/drain CONTRACT, not a second execution
+  engine. Flagged here and in §6.
+- **Task 8 (KEDA/HPA — flagged, lands in `arca/hope-v2-deployment`):** design note
+  is design-notes.md §(a)/(c) — a `ScaledObject` per pool keyed on
+  `smr_worker_pool_queue_depth{task_type="embedding"|"batch_generation"}` via the
+  Prometheus scaler (batch path), and an `HorizontalPodAutoscaler` reading the
+  existing `smr_active_generations`/`model_inference_latency_seconds` custom
+  metrics (realtime/sync path — untouched by this ticket). GPU node-pool pinning
+  recommended for vLLM/llama.cpp only. No `deployment/k8s/**` files created in
+  THIS repo. What's provable from here: the metric exists, is registered on the
+  default Prometheus registry, and is populated by `GET /worker-pools` (verified —
+  see Verification below); whether KEDA is even installed on the cluster is
+  UNVERIFIABLE from this session (§6, unchanged).
+
+### Files changed
+
+New: `apps/text/src/text/services/{pool_health,pool_router,worker_pool_queue}.py`,
+`apps/text/src/text/providers/{embedding,tei_embed}.py`,
+`apps/text/src/text/models/{worker_task,embedding,worker_pool_status}.py`,
+`apps/text/src/text/api/endpoints/{embeddings,worker_pools}.py`,
+`apps/text/src/text/worker.py`, 11 new test files under
+`apps/text/src/text/tests/unit/`,
+`docs/implementation/TASK-725-Worker-Pool-Text/design-notes.md`.
+
+Modified: `apps/text/src/text/{main.py,core/config.py,core/dependencies.py,
+core/exceptions.py,core/exception_handlers.py,core/metrics.py,
+models/provider.py,models/requests.py,api/endpoints/generate.py,
+api/endpoints/health.py,api/endpoints/providers.py,
+tests/unit/test_exception_hierarchy.py}`, root `package.json`,
+`scripts/dev-service.sh`.
+
+No `packages/database` schema changes, no new `apps/text/pyproject.toml`
+dependencies (`httpx`/`redis` already present) — `uv lock` re-run not needed.
+
+## Acceptance Criteria — evidence
+
+- [x] `pnpm text:test:unit` (via `CI=true conda run -n arcaenv pytest
+      apps/text/src/text/tests/unit/`) — **1175 passed, 0 failed** (was 1134 before
+      this ticket's changes). Lint (`ruff check apps/text/src/`): **all checks
+      passed**. Typecheck (`mypy --config-file apps/text/pyproject.toml
+      apps/text/src/`): **Success: no issues found in 72 source files**.
+  - `pnpm text:test` (the FULL suite incl. `tests/integration/` and `tests/e2e/`)
+    was NOT run — those require live Postgres/Redis/gateway, which are down this
+    session (HARD RULES). Gated.
+- [ ] `uv lock` — not applicable, no dependency changes.
+- [x] Degrade-routing (Task 2): `test_pool_router.py`,
+      `test_generate_degrade_routing.py` — a request naming a provider the last
+      `/health` check marked unhealthy either reroutes to a registered
+      `fallback_provider` or fails fast with `PoolUnhealthyError` (503); a healthy
+      or never-checked provider is unaffected (regression-guarded).
+- [x] Admin introspection (Task 3): `test_providers_admin_introspection.py`,
+      `test_worker_pools_endpoint.py`. Manual verification (ASGI test client, no
+      live infra — real command output, not curl against a running process since
+      none is running):
+      ```
+      == GET /providers ==  ollama pool_health= False in_flight= 0
+      == GET /worker-pools ==  {'task_type': 'embedding', 'queue_depth': 5, 'draining': False}
+                                {'task_type': 'batch_generation', 'queue_depth': 5, 'draining': False}
+      ```
+- [ ] Text-embedding endpoint round-trips against `tei-embed` in local dev —
+      **GATED**: `tei-embed` is not running (local infra down). `TeiEmbedProvider`
+      is unit-tested hermetically against TEI's documented `/embed` contract via
+      `httpx.MockTransport` (`test_tei_embed_provider.py`) and the endpoint is
+      verified end-to-end with a mocked provider (`test_embeddings_endpoint.py` +
+      the ASGI-client smoke run above: `POST /embeddings` → 200, real 3-vector
+      round trip through the actual FastAPI route). A genuine live round trip
+      against a running `tei-embed` container has not been performed.
+- [x] Queue-depth metric (Task 5) visible in `/metrics`:
+      ```
+      smr_worker_pool_queue_depth{task_type="embedding"} 5.0
+      smr_worker_pool_queue_depth{task_type="batch_generation"} 5.0
+      ```
+      (same ASGI-client run, `GET /metrics`).
+- [x] Drain behavior (Task 6): `test_drain_behavior_task725.py` — SIGTERM
+      (`shutdown_manager.initiate_shutdown()`) mid-drain rejects a new
+      `WorkerPoolQueue.submit()` (`ShutdownError`) while an already-registered
+      in-flight sync task (`register_task`/`complete_task`) completes normally
+      and `wait_for_shutdown()` resolves without timing out. Worker-side claim-loop
+      drain: `test_worker_pool_consumer.py::TestDrain`.
+- [ ] Local worker entry point (Task 7) starts via `pnpm text:worker:dev` and
+      processes a submitted async task in local dev — **PARTIALLY GATED**. The
+      script wiring is real and verified (`./scripts/dev-service.sh text-worker
+      --print` resolves to `conda run -n arcaenv ... python -m text.worker` — real
+      output, pasted below) and the module imports cleanly
+      (`python -c "import text.worker"` succeeds). Actually PROCESSING a submitted
+      task end-to-end needs a running Redis + `tei-embed`, neither of which is up
+      this session — that half is unverified, and `WorkerPoolConsumer`'s
+      claim/process/ack/drain logic is instead covered by
+      `test_worker_pool_consumer.py` (hermetic, mocked queue/task-manager).
+      ```
+      $ ./scripts/dev-service.sh text-worker --print
+      service: text-worker
+        PYTHONPATH=apps/text/src
+      command:
+        conda run -n arcaenv --no-capture-output env PYTHONPATH=apps/text/src python -m text.worker
+      ```
+- [x] Task 8's design note — design-notes.md §(a)/(c), summarized in §7 above;
+      no `deployment/k8s/**` files created in this repo (confirmed by `git status`
+      — none listed).
+- [x] No new `databaseService.client`/direct-Prisma access — N/A (Python service,
+      no Prisma in this tree) and confirmed no Postgres connection was added
+      anywhere in this ticket's diff (`text` stays a stateless control plane; the
+      only new I/O clients are `httpx` to `tei-embed` and the SAME `redis.asyncio`
+      client the service already held).
+
+## Known gaps / residuals (honest accounting)
+
+1. **`batch_generation` worker dispatch is not implemented** — `worker.py`'s
+   handler raises `NotImplementedError` with an explanatory message. The
+   envelope/queue/consumer/drain plumbing is generic and reusable for it; the
+   actual execution (re-threading `/generate`'s retry/circuit-breaker/audit path
+   for an out-of-process caller) is real follow-up work, named in the docstring
+   and here rather than silently stubbed to appear complete.
+2. **Nothing in this ticket was verified against LIVE `tei-embed` or a LIVE
+   worker process** — local infra was down for the entire session. All
+   verification is hermetic (mocked Redis/httpx) or via the ASGI test client
+   against the real FastAPI app object (no live socket). The TEI `/embed` wire
+   contract (vs. the alternative OpenAI-compatible `/v1/embeddings` route some
+   TEI builds also expose) was chosen from TEI's documentation, not confirmed
+   against the actual `ghcr.io/huggingface/text-embeddings-inference:cpu-1.9`
+   image this repo pins.
+3. **KEDA/HPA manifests themselves are NOT in this repo** and were not written —
+   by design (rule 09); the design note is the deliverable for this repo, the
+   YAML is `arca/hope-v2-deployment`'s to author.
+4. **TASK-717 (`async-contract`) still does not exist** — `WorkerTaskEnvelope` is
+   this ticket's own, narrowly-scoped envelope, flagged for reconciliation once
+   TASK-717 is authored (design-notes.md §(e), unchanged from the ticket's own
+   §6 risk).
 
 ## 8. Change History
 
 | Date | Change | By |
 |---|---|---|
 | 2026-08-16 | Ticket authored | Claude (ticket-authoring session) |
+| 2026-08-16 | Phases A–C implemented (design-notes.md; degrade-routing; admin introspection; text-embedding; queue-depth metrics; drain; local worker entry point). Full unit suite 1175/1175 green, lint clean, typecheck clean. `batch_generation` worker dispatch and live-infra round trips explicitly flagged as gated/residual — see §7. Status → Review. | Claude (execution session) |

@@ -30,6 +30,7 @@ import structlog
 
 from stt.core.api_client.gateway import APIGatewayClient
 from stt.core.config.settings import get_settings
+from stt.core.exceptions import SessionManagerDrainingError
 from stt.core.metrics import (
     streaming_inference_queue_dropped,
     streaming_session_ended,
@@ -236,6 +237,11 @@ class SessionManager:
         # publishing the closing utterance twice. See ``_begin_tail_flush``.
         self._tail_flush_started: set[str] = set()
         self._running = False
+        # PLANNED scale-down flag (TASK-726) — distinct from the startup
+        # crash-recovery replay path above. Set by begin_drain(); rejects new
+        # sessions in create_session() while leaving self._sessions
+        # completely untouched. See design-notes.md §(a).
+        self._draining = False
 
         # Cache settings values at init time to avoid calling get_settings()
         # in methods that may run during unit tests with incomplete env.
@@ -321,6 +327,52 @@ class SessionManager:
     @property
     def worker_id(self) -> str:
         return self._worker_id
+
+    @property
+    def is_draining(self) -> bool:
+        """True once begin_drain() has been called on this process.
+
+        Checked by /health/ready (the actual "stop routing new sessions
+        here" mechanism, via k8s Service Endpoints removal) and by
+        create_session() itself as a defense-in-depth guard for the race
+        window between a failed readiness probe and the pod's removal.
+        """
+        return self._draining
+
+    def begin_drain(self) -> None:
+        """Mark this worker draining: reject NEW sessions, let in-flight ones
+        finish naturally. Idempotent. Distinct from the startup crash-recovery
+        replay path — see design-notes.md §(a) for why the two never conflate.
+        """
+        if not self._draining:
+            logger.info(
+                "SessionManager draining started",
+                worker_id=self._worker_id,
+                active_sessions=len(self._sessions),
+            )
+        self._draining = True
+
+    async def wait_for_drain(self, timeout_s: float, poll_interval_s: float = 1.0) -> bool:
+        """Block until every in-flight session ends or timeout_s elapses.
+
+        Called by a preStop hook (deployment repo) AFTER begin_drain(), so a
+        planned pod removal waits for sessions to finish naturally instead of
+        severing them — bounded so a stuck session can never block a rollout
+        forever. Returns True once drained, False if timeout_s elapsed with
+        sessions still active (never evicts them either way).
+        """
+        deadline = time.monotonic() + timeout_s
+        while self._sessions:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                logger.warning(
+                    "Drain timeout with sessions still active",
+                    worker_id=self._worker_id,
+                    remaining_sessions=len(self._sessions),
+                )
+                return False
+            await asyncio.sleep(min(poll_interval_s, remaining))
+        return True
 
     @property
     def capacity_guard(self) -> CapacityGuard:
@@ -866,6 +918,18 @@ class SessionManager:
                 consecutive threshold-class utterance failures arm the auto
                 switch. ``None`` = the controller's default (2).
         """
+        # PLANNED scale-down: reject before touching capacity at all. Distinct
+        # signal (SessionManagerDrainingError) from the ordinary at-capacity
+        # `None` return below, so callers — and streaming/api/routes.py's HTTP
+        # layer — can tell a draining worker apart from a transient ceiling.
+        # getattr(..., False): pre-existing unit tests build
+        # MagicMock(spec=SessionManager) fixtures that predate this flag and
+        # never set it — real instances always have it via __init__.
+        if getattr(self, "_draining", False):
+            raise SessionManagerDrainingError(
+                f"worker {self._worker_id} is draining; rejecting new session {session_id}"
+            )
+
         # Check capacity
         if not await self._capacity_guard.try_acquire(session_id):
             return None
@@ -4255,6 +4319,7 @@ class SessionManager:
         """Snapshot for health/status endpoints."""
         return {
             "worker_id": self._worker_id,
+            "draining": self._draining,
             "active_sessions": self.active_session_count,
             "capacity": self._capacity_guard.to_dict(),
             "profile": {

@@ -1,0 +1,63 @@
+// ============================================================================
+// Tenant NLP Task Instructions (TASK-729)
+//
+// Tenant-writable INSTRUCTION CONTENT for the two open-taxonomy `nlp.*` task
+// types — `nlp.topic` (topic labeling) and `nlp.intent` (intent detection).
+// One row per (tenantId, taskKey); `instructionsJson` holds the tenant's
+// topic list / intent list / free-text guidance that apps/nlp's peer call to
+// `text` injects into the generation prompt.
+//
+// Deliberately a SEPARATE model from `AiTaskDefault` (ai-task-default.prisma)
+// rather than an extension of its `configJson` — `AiTaskDefault`'s
+// `guardrail.`/`nlp.`/`harness.` task-key prefixes are GLOBAL-ADMIN-ONLY
+// (MODEL/PROVIDER SELECTION governance, `GLOBAL_ADMIN_ONLY_TASK_PREFIXES` in
+// packages/applications/src/services/ai-task-default/constants.ts). A
+// tenant's topic/intent list is tenant-authored CONTENT, not a model
+// selection, and must stay writable by an ordinary tenant admin — conflating
+// the two would either lock tenants out of authoring their own lists or
+// require weakening the existing model-selection lock. Model/provider
+// selection for `nlp.topic`/`nlp.intent` still resolves through
+// `AiTaskDefault` under the unmodified `nlp.*` lock; this table carries
+// INSTRUCTIONS ONLY and never a `modelSlug`.
+//
+// Unlike `AiTaskDefault`/`TenantSttConfig`/`TenantTtsConfig` there is no
+// SYSTEM-tenant platform-default row here — a topic/intent list has no
+// meaningful platform-wide default, so this model is NOT in
+// SYSTEM_SHARED_READ_MODELS (plain tenant-scoped resource, the
+// `TenantFrontendConfig` precedent).
+//
+// This model is OCC-written (carries `_version`); its mapper strips `version`.
+// ============================================================================
+
+model TenantNlpTaskInstructions {
+  // meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
+
+  // multi tenant fields
+  tenantId String
+
+  // core fields — restricted at the application layer to `nlp.topic` |
+  // `nlp.intent` (see TenantNlpTaskInstructionsService). `instructionsJson`
+  // carries only tenant-authored instruction content (topic list / intent
+  // list / free-text guidance) — NEVER a modelSlug or other selection field.
+  taskKey           String
+  instructionsJson  Json? @db.JsonB
+
+  // resource status fields
+  resourceStatus          ResourceStatusType @default(ENABLED)
+  resourceStatusUpdatedAt DateTime?
+  resourceStatusUpdatedBy String?
+
+  // audit fields
+  createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+  updatedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // indexing — one instructions row per (tenant, task)
+  @@unique([tenantId, taskKey], name: "TenantNlpTaskInstructions_tenant_task_unique")
+  @@index([tenantId], name: "TenantNlpTaskInstructions_tenantId_idx")
+  @@schema("core")
+}

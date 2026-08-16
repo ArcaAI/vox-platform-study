@@ -45,6 +45,7 @@ import { AiProviderConnectionModule } from './modules/ai-provider-connection/ai-
 import { AiRuntimeProfileModule } from './modules/ai-runtime-profile/ai-runtime-profile.module';
 import { AiTaskDefaultModule } from './modules/ai-task-default/ai-task-default.module';
 import { AiServiceAdminModule } from './modules/ai-service-admin/ai-service-admin.module';
+import { NlpTaskInstructionsModule } from './modules/nlp-task-instructions/nlp-task-instructions.module';
 import { ApiKeyModule } from './modules/api-key/api-key.module';
 import { AuditLogModule } from './modules/audit-log/audit-log.module';
 import { AuthModule } from './modules/auth/auth.module';
@@ -313,6 +314,9 @@ const featureModules: any[] = [
   AiInferenceModule,
   // /admin/ai-task-defaults (per-tenant default model per AI task key).
   AiTaskDefaultModule,
+  // /admin/nlp-task-instructions (TASK-729: tenant-writable nlp.topic/nlp.intent
+  // instruction content — separate subject from AiTaskDefault).
+  NlpTaskInstructionsModule,
   // The config-plane core surfaces: /admin/ai-providers
   // (provider endpoints + BYO credentials) and /admin/ai-runtime-profiles
   // (hyperparameter/context/concurrency profiles, global-admin only).

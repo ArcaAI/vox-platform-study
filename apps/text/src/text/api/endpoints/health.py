@@ -16,10 +16,16 @@ import redis.asyncio as aioredis
 from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
 
-from text.core.dependencies import get_effective_config_client, get_provider_registry, get_redis
+from text.core.dependencies import (
+    get_effective_config_client,
+    get_pool_health_tracker,
+    get_provider_registry,
+    get_redis,
+)
 from text.core.effective_config import EffectiveConfigClient
 from text.core.metrics import HEALTH_CHECK_LATENCY, PROVIDER_HEALTH
 from text.providers.base import ProviderRegistry
+from text.services.pool_health import PoolHealthTracker
 
 router = APIRouter(tags=["health"])
 
@@ -52,6 +58,7 @@ async def health_check(
     registry: ProviderRegistry = Depends(get_provider_registry),
     redis_client: aioredis.Redis = Depends(get_redis),
     effective_config: EffectiveConfigClient | None = Depends(get_effective_config_client),
+    pool_health_tracker: PoolHealthTracker = Depends(get_pool_health_tracker),
 ) -> dict[str, Any]:
     """Detailed health check with per-provider component status."""
     checks: dict[str, dict[str, Any]] = {}
@@ -66,9 +73,13 @@ async def health_check(
             healthy = await provider.health_check()
             status = "healthy" if healthy else "unhealthy"
             PROVIDER_HEALTH.labels(provider=name).set(1 if healthy else 0)
+            # TASK-725 Task 2: the SAME result feeds the degrade-routing cache
+            # `/generate` consults before dispatch — see services/pool_health.py.
+            pool_health_tracker.record(name, healthy)
         except Exception:
             status = "unhealthy"
             PROVIDER_HEALTH.labels(provider=name).set(0)
+            pool_health_tracker.record(name, False)
         finally:
             duration_ms = round((time.monotonic() - start) * 1000, 2)
             HEALTH_CHECK_LATENCY.labels(provider=name).observe(duration_ms / 1000)

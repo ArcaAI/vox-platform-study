@@ -13,14 +13,17 @@ if TYPE_CHECKING:
     from text.core.config import Settings
     from text.core.effective_config import EffectiveConfigClient
     from text.providers.base import ProviderRegistry
+    from text.providers.embedding import EmbeddingProviderRegistry
     from text.services.circuit_breaker import CircuitBreaker
     from text.services.external_guardrail import ExternalGuardrailClient
     from text.services.generation_audit import GenerationAuditLogger
+    from text.services.pool_health import PoolHealthTracker
     from text.services.provider_queue import ProviderQueue
     from text.services.rate_limiter import RateLimitTracker
     from text.services.resizable_semaphore import ResizableSemaphore
     from text.services.shutdown_manager import ShutdownManager
     from text.services.task_manager import TaskManager
+    from text.services.worker_pool_queue import WorkerPoolQueue
     from text.translation.base import TranslateProviderRegistry
 
 
@@ -113,3 +116,24 @@ async def get_runtime_limits(request: Request) -> dict[str, int]:
 def get_guardrail_client(request: Request) -> ExternalGuardrailClient | None:
     """Retrieve the external guardrail client from app.state (None if unwired)."""
     return getattr(request.app.state, "guardrail_client", None)
+
+
+def get_pool_health_tracker(request: Request) -> PoolHealthTracker:
+    """Retrieve the degrade-routing health cache from app.state (TASK-725 Task 2).
+
+    Always present (constructed eagerly in ``create_app()``, not lazily in
+    ``lifespan``) so tests that build the app without running lifespan still
+    get a valid, empty tracker rather than ``None`` — see
+    ``services/pool_health.py``.
+    """
+    return cast("PoolHealthTracker", request.app.state.pool_health_tracker)
+
+
+def get_embedding_registry(request: Request) -> EmbeddingProviderRegistry:
+    """Retrieve the embedding-provider registry from app.state (TASK-725 Task 4)."""
+    return cast("EmbeddingProviderRegistry", request.app.state.embedding_registry)
+
+
+def get_worker_pool_queue(request: Request) -> WorkerPoolQueue:
+    """Retrieve the async worker-pool dispatch queue from app.state (TASK-725)."""
+    return cast("WorkerPoolQueue", request.app.state.worker_pool_queue)

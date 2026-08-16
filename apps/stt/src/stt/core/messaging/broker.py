@@ -89,6 +89,35 @@ def _add_prometheus_middleware(broker: RedisBroker) -> None:
         # Never let telemetry stop the worker from consuming jobs.
         logger.warning("dramatiq.prometheus_setup_failed", error=str(exc))
 
+    _wire_queue_depth_gauge(broker)
+
+
+def _wire_queue_depth_gauge(broker: RedisBroker) -> None:
+    """Expose the ``stt_batch`` pending-message count as a Gauge.
+
+    Registered on the SAME default ``prometheus_client`` registry
+    ``prometheus_fastapi_instrumentator`` scrapes at :8861/metrics in the
+    FastAPI app process — this function runs there too, since
+    ``configure_broker()`` (which calls ``_add_prometheus_middleware``) is
+    called from both ``main.py``'s lifespan AND the worker process.
+
+    Uses ``Gauge.set_function`` so the value is computed lazily at scrape
+    time via the broker's own ``do_qsize`` (Dramatiq's pending-message
+    primitive, also used by ``broker.join()``) — no periodic poller, no
+    extra background task. A Redis hiccup at scrape time reports 0.0 rather
+    than failing the whole /metrics response.
+    """
+    from stt.core.metrics import WORKER_QUEUE_DEPTH
+
+    def _depth() -> float:
+        try:
+            return float(broker.do_qsize("stt_batch"))
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning("stt_batch.queue_depth_read_failed", error=str(exc))
+            return 0.0
+
+    WORKER_QUEUE_DEPTH.labels(queue="stt_batch").set_function(_depth)
+
 
 def configure_broker(redis_url: str) -> RedisBroker:
     """Configure and return the Dramatiq broker."""

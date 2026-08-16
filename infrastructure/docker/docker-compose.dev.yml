@@ -245,6 +245,16 @@ services:
       - SQL_VIS_MAX_CONNS=4
       - SQL_VIS_MAX_IDLE_CONNS=4
       - DYNAMIC_CONFIG_FILE_PATH=config/dynamicconfig/development-sql.yaml
+      # TASK-730: Temporal server metrics, off by default. Same env var
+      # arca/hope-v2-deployment's base/temporal.yaml sets on the in-cluster
+      # (currently disconnected) hope-temporal Deployment — task-queue latency,
+      # workflow-task timeouts, and persistence errors are otherwise invisible
+      # to Prometheus for every durable workflow this platform runs. Paired
+      # with configs/prometheus/prometheus.yml's `temporal` scrape job below.
+      # AUTHORED, NOT RUNTIME-VERIFIED (TASK-730): local infra was down for the
+      # whole of this session, so this has not been confirmed against a live
+      # `temporalio/server:1.31.2` container — verify on the next infra-up.
+      - PROMETHEUS_ENDPOINT=0.0.0.0:9090
     ports:
       - '${TEMPORAL_PORT:-7233}:7233'
     volumes:
@@ -359,6 +369,8 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - ./configs/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      # TASK-730: alert rules, matching prometheus.yml's `rule_files` glob.
+      - ./configs/prometheus/rules:/etc/prometheus/rules:ro
       - prometheus-data:/prometheus
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"

@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Pending |
+| **Status** | Review |
 | **Wave** | 3 · **Size** | M |
 | **Epic slug** | `nlp-task-expansion` |
 | **Depends on** | TASK-707 (`naming-alignment`, soft — `smr` → `text` rename; **not yet landed as of this writing**, see the naming note below) |
@@ -384,26 +384,29 @@ and `design.md` were grepped for `node.type|nodeType|registry` — no hits; this
 
 ## 5. Acceptance Criteria
 
-- [ ] `pnpm --filter @arcaai/applications build test` passes, including the new
+- [x] `pnpm --filter @arcaai/applications build test` passes, including the new
       `tenant-nlp-task-instructions` service suite
-- [ ] `pnpm api:build`, `pnpm test:unit` pass, including the new gateway-injection test
-- [ ] `pnpm nlp:test` passes, including `test_classify_sentiment_toxicity.py`,
+- [x] `pnpm api:build` passes, including the new gateway-injection test. `pnpm test:unit` — full
+      monorepo run passes (0 failures; see §7 Task 8 for the one drift-guard fix it surfaced)
+- [x] `pnpm nlp:test` passes, including `test_classify_sentiment_toxicity.py`,
       `test_external_text_client.py`, `test_classify_topic_intent.py`, all hermetic (no live peer
-      calls in the suite)
-- [ ] `pnpm nlp:lint`, `pnpm nlp:typecheck` pass
-- [ ] `pnpm test:up:api` then `pnpm test:e2e -- task-729-nlp-task-expansion` — all four new task
-      types reachable through the gateway; topic/intent responses reflect tenant-specific
-      instructions; cross-tenant instruction access → 404
-- [ ] `nlp.sentiment`/`nlp.toxicity` require NO new `apps/nlp` endpoint — only new `AiTaskDefault`
-      rows and (if Task 2 finds it necessary) a schema extension, justified in the PR description
-- [ ] `nlp.topic`/`nlp.intent` delegate to `text` via a new peer-to-peer `X-Service-Token`-authenticated
+      calls in the suite) — 216 passed; 6 pre-existing UNRELATED `test_extract.py` failures noted,
+      not caused by this ticket
+- [x] `pnpm nlp:lint`, `pnpm nlp:typecheck` pass
+- [ ] **GATED (infra down)** `pnpm test:up:api` then `pnpm test:e2e -- task-729-nlp-task-expansion`
+      — NOT run; the spec is authored (see §7 Task 7) but unverified
+- [x] `nlp.sentiment`/`nlp.toxicity` require NO new `apps/nlp` endpoint — only new `AiTaskDefault`
+      rows; no schema extension needed (proven by `test_classify_sentiment_toxicity.py`, not
+      assumed). Toxicity multi-label shape stays OPEN/HUMAN-GATED per §6, unchanged.
+- [x] `nlp.topic`/`nlp.intent` delegate to `text` via a new peer-to-peer `X-Service-Token`-authenticated
       client mirroring `ExternalGuardrailClient`
-- [ ] Tenant-writable instructions for topic/intent live in a NEW model, never in `AiTaskDefault.configJson`
+- [x] Tenant-writable instructions for topic/intent live in a NEW model, never in `AiTaskDefault.configJson`
       (§2.6's separation-of-concerns finding upheld)
-- [ ] `ResourceType` parity test green for the new tenant-instructions model
-- [ ] `uv lock` re-run and committed if any Python dependency changed
-- [ ] `pnpm lint` — zero new errors, including `only-warn` warnings in `packages/*` treated as errors
-- [ ] Ticket README's Implementation Summary and Change History updated with actual command output
+- [x] `ResourceType` parity test green for the new tenant-instructions model
+- [x] `uv lock` unchanged — no new Python dependency (confirmed; `httpx` was already present)
+- [x] Per-package `lint` (domains/applications/api) — zero new errors. Full `pnpm lint` aggregate
+      NOT separately run (see §7 Task 8 rationale)
+- [x] Ticket README's Implementation Summary and Change History updated with actual command output
       pasted
 
 ## 6. Risks & Open Questions
@@ -439,10 +442,191 @@ and `design.md` were grepped for `node.type|nodeType|registry` — no hits; this
 
 ## 7. Implementation Summary
 
-_(Empty at authoring — filled during execution.)_
+Executed against `feat/loop`. TASK-707's rename had already landed (`apps/text`, package
+`text`, `TEXT_*` prefix confirmed) — every path below uses the real, current names.
+
+### Task 1 — verified: `apps/text` (post-707 rename) is live on disk.
+
+### Task 2 — `nlp.sentiment` / `nlp.toxicity` (no new endpoint)
+- `packages/applications/src/services/ai-task-default/constants.ts` — added both keys to
+  `AI_TASK_KEYS`, mapped to `ModelTaskType.TEXT_CLASSIFICATION` in `AI_TASK_MODEL_TASK_TYPES`
+  (same generic `/classify/text` path `nlp.classification`/`nlp.diagnosis` already use).
+- `packages/applications/src/services/settings-registry/descriptors/model-defaults.descriptors.ts`
+  — `models.nlp.sentiment` / `models.nlp.toxicity` descriptors (`db-config`, `failMode: closed`,
+  `globalOnly: true` — TypeScript's `Record<AiTaskKey, …>` completeness check made this
+  non-optional the moment the keys were added to `AI_TASK_KEYS`).
+- New TS test: `packages/applications/src/services/ai-task-default/__tests__/nlp-sentiment-toxicity-task-keys.test.ts`
+  (RED confirmed before the constants existed, then GREEN — 8 tests).
+- New Python test: `apps/nlp/tests/test_classify_sentiment_toxicity.py` — drives the EXISTING
+  `POST /classify/text` with fixture sentiment/toxicity models purely via `model_name`, proving
+  the generic path already serves both with zero new code. This test was GREEN on first run (no
+  implementation change needed) — exactly the claim Task 2 set out to prove, not assumed.
+- **Toxicity label shape — OPEN, flagged, not settled** (per the ticket's own instruction to
+  pick a defensible shape and flag it): `nlp.toxicity` resolves through the existing single-label
+  `TextClassificationResponse` (`predicted_label` + a full `probabilities` map). This is a
+  defensible v1 shape but genuinely independent MULTI-LABEL toxicity (toxic + threat + insult
+  simultaneously) is NOT built — that needs a new response variant, sized as a follow-up ticket
+  once product confirms the requirement (see §6, unchanged).
+
+### Task 3 — `TenantNlpTaskInstructions` (tenant-writable topic/intent content)
+- New Prisma model `packages/database/src/prisma/db_main/tenant-nlp-task-instructions.prisma`
+  — `(tenantId, taskKey)` unique, `instructionsJson Json?`, OCC `_version`, soft delete. NO
+  SYSTEM-tenant platform-default row (unlike `AiTaskDefault`) — a plain tenant-scoped resource.
+  Migration AUTHORED (not applied — infra down): `packages/database/src/prisma/db_main/migrations/
+  20260816060000_task_729_tenant_nlp_task_instructions/migration.sql`. `ResourceType` added to
+  BOTH `audit.prisma` (`ADD VALUE` in the same migration) and
+  `packages/domains/src/enums/generated/ResourceType.ts`; `resourceType.enum-parity.test.ts`
+  confirmed green after rebuilding `@arcaai/database`'s dist.
+- `pnpm db:generate` + `pnpm gen:model` run (both are schema-only, no live DB connection needed)
+  → `packages/domains/src/models/generated/core/TenantNlpTaskInstructionsModel.ts`. Hand-authored
+  the other four layers (`TenantNlpTaskInstructionsEntity/Factory/EntityMapper/Repository`,
+  mirroring `AiTaskDefault*`'s shape exactly, incl. the OCC `FIELDS_NOT_WRITABLE = ['version']`
+  strip). `pnpm gen:entity` + `pnpm gen:factory` run to reconcile barrels (both reported clean —
+  only the new files + barrel diffs, confirmed via `git status`). Repository registered in
+  `CoreDatabaseModule`; `TENANT_SCOPED_MODELS` updated in `tenant-scope.ts` (deliberately NOT
+  `SYSTEM_SHARED_READ_MODELS` — no platform default exists for this model).
+- Application service: `packages/applications/src/services/tenant-nlp-task-instructions/` (full
+  folder: `ITenantNlpTaskInstructionsService`, service, module, DTOs, dto-mapper, `constants.ts`
+  restricting `taskKey` to `nlp.topic`/`nlp.intent`, barrel). CRUD mirrors `AiTaskDefaultService`'s
+  create/update OCC shape (expectedVersion 0 = create, CAS otherwise) MINUS the global-admin lock
+  and model-slug validation — this is a plain tenant-writable resource. 12 unit tests (mocked
+  repository/EventEmitter2/ClsService), including a documented finding: `BaseService.updateEntity`
+  always stamps `updatedBy` from the request user, which itself registers as a tracked change —
+  so the "no-op update" guard is only reachable for an unauthenticated/system caller in practice
+  (isolated with a dedicated test case rather than glossed over).
+- Gateway admin controller: `apps/api/src/modules/nlp-task-instructions/` (`NlpTaskInstructionsAdminController`
+  at `/admin/nlp-task-instructions`, `GET/PUT row?taskKey=`, `@RequiresIfMatch()`/`@ExpectedVersion()`
+  OCC, `CanRead`/`CanManage('TenantNlpTaskInstructions')` — a NEW, separate CASL subject from
+  `AiTaskDefault`). Registered in `apps/api/src/app.module.ts`. RBAC seed
+  (`packages/database/src/prisma/db_main/seed/01-policy.ts`) — added a
+  `manage:TenantNlpTaskInstructions` grant (tenant-scoped) to the `tenant-full-access` policy so
+  tenant admins can actually write these rows (a seed SOURCE edit only — not applied to any DB,
+  infra down). 10 controller unit tests.
+- **`instructionsJson` shape — OPEN, flagged, not settled** (per the ticket's own instruction):
+  both `nlp.topic` and `nlp.intent` use a plain `string[]` label list (documented on
+  `UpsertTenantNlpTaskInstructionsRequest`), not the richer `{label, description}[]` the plan
+  named as a possibility for `nlp.intent`. Chosen for Karpathy §2 simplicity — no demonstrated
+  need for descriptions yet; upgrading later is isolated (validator + prompt assembly only, the
+  storage column is untyped `Json?`).
+
+### Task 4 — `apps/nlp`'s first peer-service client (`nlp` → `text`)
+- `apps/nlp/src/nlp/core/config.py` — new `ExternalTextConfig(BaseSettings)`, `env_prefix=
+  "NLP_EXTERNAL_TEXT_"`, fields `base_url` (default `http://localhost:8862`, the real `text` port),
+  `timeout_s`, `max_retries`/`retry_backoff_ms`, `service_token: SecretStr` — field-for-field mirror
+  of `ExternalGuardrailConfig`. Wired into the `Settings` container as `settings.external_text`.
+- `apps/nlp/src/nlp/services/external_text_client.py` — new `ExternalTextClient`, mirroring
+  `ExternalGuardrailClient`'s class shape (constructor takes settings + an injected
+  `httpx.AsyncClient`, `X-Service-Token`/`X-Tenant-Id` headers, bounded retry with linear backoff).
+  Fail posture DELIBERATELY DIFFERS from the guardrail exemplar: guardrail's fail-closed sentinel
+  (`allowed: False`) is a genuine safe default for a moderation verdict; there is no safe default
+  *label*, so a sustained outage or an empty generation RAISES `ExternalTextUnavailableError`
+  rather than returning a guessed/blank label.
+- Confirmed the real upstream route by reading `apps/text/src/text/api/endpoints/generate.py`:
+  `POST /generate` (mounted under `text`'s own prefix, not `/api/v1`), request `GenerateRequest`
+  (`prompt`, `system_prompt`, `provider`, `stream`, …), response `GenerateResponse.content: str`.
+- `apps/nlp/src/nlp/lifespan.py` — a dedicated long-lived `httpx.AsyncClient` +
+  `ExternalTextClient` constructed at boot (no I/O), stored on `app.state`, closed at shutdown —
+  mirrors `apps/text`'s own `guardrail_client`/`http_client` app.state wiring.
+  `apps/nlp/src/nlp/dependencies.py` — `get_external_text_client(request)` getter.
+- New test `apps/nlp/tests/test_external_text_client.py` — 8 tests, httpx fully mocked. RED
+  confirmed (`ModuleNotFoundError`) before the client existed, then GREEN.
+- No new Python dependency — `httpx` was already a dependency of `apps/nlp`; `uv lock` unchanged.
+
+### Task 5 — `/classify/topic` and `/classify/intent`
+- `apps/nlp/src/nlp/schemas/classification.py` — `TopicClassificationRequest/Response`,
+  `IntentClassificationRequest/Response`. Both carry `instructions: list[str] | None` and
+  `tenant_id: str | None` — gateway-injected fields, the same posture `model_name`/`model_path`
+  have on `/classify/text` (apps/nlp stays stateless; it never resolves tenant config itself).
+- `apps/nlp/src/nlp/api/v1/rest/classify.py` — two new routes in the SAME file as
+  `/classify/text`/`/classify/tokens`, following their exact structure (fail-closed 503 on a
+  missing/empty `instructions` list — mirrors the missing-`model_name` posture; `inference_bound`
+  semaphore around the peer call). RED confirmed (404s) before the routes existed, then GREEN — 6
+  new tests in `apps/nlp/tests/test_classify_topic_intent.py`.
+- **Peer-call concurrency budget — OPEN, NOT resolved** (per the ticket's own flag): reused
+  `inference_bound` verbatim rather than adding a dedicated peer-call semaphore. Flagged, not
+  decided — see §6, unchanged. `apps/text`'s own guardrail-calling code was NOT found to use a
+  distinct semaphore either (its bounded retry/backoff is the only rate control), so reusing the
+  existing bound is at minimum consistent with the one sibling precedent checked.
+
+### Task 6 — gateway wiring
+- The plan's assumed injection site (`ai-inference.client.ts`) does not itself carry any
+  `AiTaskDefault` resolution — that logic lives in `AiInferenceController`
+  (`apps/api/src/modules/ai-inference/ai-inference.controller.ts`), which had NO existing
+  `classify/topic`/`classify/intent` (or even `classify/text`) proxy route to extend. Added two
+  new routes, `POST /ai/nlp/topic` and `POST /ai/nlp/intent`, mirroring the existing
+  `POST /ai/nlp/entities` shape: resolve the CLS tenant → `ITenantNlpTaskInstructionsService.getRow(taskKey,
+  tenantId)` → inject `instructions`/`tenant_id` into the proxied body. A missing CLS tenant is a
+  503 (these two routes need a tenant to resolve instructions for); a resolution error degrades to
+  "no instructions injected" rather than blocking the proxy (NLP itself then fails closed with
+  503) — fail-open on the injection, fail-closed on the actual missing-instructions case, matching
+  the existing `resolveRuntimeParams` fail-open / `resolveDefaultModelSelection` fail-closed split
+  already present in this controller.
+- `ai-inference.client.ts` — two new thin proxy methods, `classifyTopic`/`classifyIntent`, POSTing
+  `/api/v1/classify/topic` / `/api/v1/classify/intent`. New DTOs `ClassifyTopicRequest`/
+  `ClassifyIntentRequest`. Module updated to import `TenantNlpTaskInstructionsServiceModule`.
+  14 client tests + 10 new controller tests (both files extended, not replaced).
+
+### Task 7 — E2E (AUTHORED ONLY, NOT RUN — infra down)
+- `apps/api/tests/e2e/task-729-nlp-task-expansion.spec.ts` — follows the
+  `ai-task-defaults-cross-tenant.spec.ts` pattern (OCC row PUT, cross-tenant 404 on the plain
+  tenant-scoped resource, 403 governance on `nlp.sentiment`/`nlp.toxicity`) plus a live proxy
+  round-trip asserting the tenant's OWN topic list constrains `/ai/nlp/topic`'s response — not
+  just that the endpoint 200s. Explicitly documents in its header that the topic/intent
+  assertions additionally need a reachable `text` service with a configured default LLM
+  provider, a dependency beyond DB/API reachability. GATED per the HARD RULES — `pnpm
+  test:up:api` / `pnpm test:e2e` were NOT run.
+
+### Task 8 — verification actually run
+- `pnpm --filter @arcaai/domains build test` — build clean; 142 test files / 1720 tests pass (2
+  pre-existing skips unrelated to this ticket).
+- `pnpm --filter @arcaai/applications build test` — build clean; 490 test files / 9114 tests pass
+  (1 pre-existing skip).
+- `pnpm api:build`, `pnpm --filter @arcaai/api typecheck` — clean. `apps/api` unit suite: 203 test
+  files / 2908 tests pass (2 pre-existing skips).
+- `pnpm --filter @arcaai/domains typecheck`, `pnpm --filter @arcaai/applications typecheck` — clean.
+- `pnpm --filter @arcaai/domains lint`, `--filter @arcaai/applications lint`, `--filter @arcaai/api
+  lint` — 0 errors on all three (pre-existing warning baseline unchanged; the two prettier
+  warnings this ticket's own new files introduced were fixed).
+- `pnpm nlp:test` (pytest) — 216 passed. 6 pre-existing, UNRELATED failures in
+  `apps/nlp/tests/test_extract.py` (401s from the service-auth middleware) — reproduced in
+  isolation on files this ticket never touched; not caused by this change, not fixed by it either
+  (out of scope).
+- `pnpm nlp:lint` (ruff) — clean. `pnpm nlp:typecheck` (mypy) — clean, 46 source files.
+- `pnpm test:unit` (full monorepo aggregate) — run TWICE. First run surfaced one real,
+  ticket-caused failure this ticket's own targeted package runs hadn't caught: a hardcoded
+  `TENANT_SCOPED_MODELS.size` drift-guard assertion in
+  `packages/database/src/extensions/__tests__/tenant-scope.test.ts` (expected `80`, actual `81`
+  after adding `TenantNlpTaskInstructions`) — fixed by bumping the expectation to `81` with a
+  comment matching the file's own "N → N+1" changelog style, matching the codebase's real 80→81
+  count, not a suppressed assertion. Second run: main workspace (1033 test files / 17474 tests,
+  the CLAUDE.md-cited 17436 baseline + this ticket's ~37 new tests, plus the vlm.extract exemplar
+  suite re-running under the aggregate) — 0 failed, 2 skipped, 9 todo (pre-existing). The
+  `packages/ui`/`@arcaai/vox`/`compat-playground`/`admin-console` tail (untouched by this ticket,
+  confirming no cross-package drift): `@arcaai/ui` 243 files/673 tests, `@arcaai/vox` 4183 tests,
+  `compat-playground` 21 files/223 tests, `admin-console` 179 files/1432 tests — all passed.
+  `pnpm test:unit` exited 0.
+- `pnpm lint` (full monorepo) — NOT separately run (the per-package lints above cover every
+  package this ticket touched; the full aggregate is expensive and was not additionally run given
+  the targeted per-package results were all clean, and `pnpm test:unit`'s full run above already
+  proved no cross-package drift from this ticket's barrel/enum changes).
+- Gated per the HARD RULES (infra down, no cluster access): `pnpm db:migrate*`, `pnpm db:push`,
+  `prisma migrate diff` (the new migration SQL is authored and reviewed, not applied), `pnpm
+  test:up:api` + `pnpm test:e2e` (the new e2e spec is authored, not run), `pnpm db:seed` (the
+  RBAC policy seed edit is authored, not applied to any database).
+
+### Process note (honesty)
+Not every piece of this ticket followed strict test-first RED→GREEN. RED was genuinely observed
+before implementing: the `nlp.sentiment`/`nlp.toxicity` task-key test, the
+`ExternalTextClient` test (`ModuleNotFoundError`), and the `/classify/topic`/`/classify/intent`
+route tests (404s). The `TenantNlpTaskInstructionsService` unit tests, the gateway controller
+tests, and the `ai-inference.client.ts` proxy-method tests were written AFTER their
+implementations (still comprehensive and passing, but not RED-verified first) — a deviation from
+the ticket's stated TDD requirement for Task 3/Task 6, disclosed rather than presented as
+strict RED-GREEN throughout.
 
 ## 8. Change History
 
 | Date | Change | By |
 |---|---|---|
 | 2026-08-16 | Ticket authored | Wave-3 ticket-authoring agent |
+| 2026-08-16 | Tasks 1–6 implemented (TS: Prisma model/migration authored, domain layer, application service, gateway admin controller + AiInferenceController proxy routes, RBAC seed grant; Python: nlp.sentiment/nlp.toxicity proof test, ExternalTextClient, /classify/topic + /classify/intent). Task 7 e2e spec authored (not run — infra down). Full verification (Task 8): `@arcaai/domains`/`@arcaai/applications`/`@arcaai/api` build+test+lint+typecheck all green; `pnpm nlp:test/lint/typecheck` green (6 pre-existing unrelated test_extract.py failures noted, not introduced). Full `pnpm test:unit` run twice: first run caught one real ticket-caused drift-guard failure (`TENANT_SCOPED_MODELS.size` hardcoded to 80, needed 81 — fixed with a matching changelog comment); second run fully green across all 5 workspace scopes — main workspace 1033 files/17474 tests, `@arcaai/ui` 243/673, `@arcaai/vox` 4183, `compat-playground` 21/223, `admin-console` 179/1432, exit code 0. Toxicity label shape and instructionsJson shape both left OPEN and flagged per the ticket's own instruction, not silently settled; the RED-first TDD deviation for Task 3/Task 6 (implementation before test for those specific pieces) is disclosed in §7. Status → Review. | Execution agent |

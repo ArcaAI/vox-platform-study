@@ -18,6 +18,7 @@ from text.core.dependencies import (
     get_circuit_breakers,
     get_generation_audit_logger,
     get_guardrail_client,
+    get_pool_health_tracker,
     get_provider_queues,
     get_provider_registry,
     get_provider_semaphores,
@@ -93,6 +94,8 @@ from text.services.external_guardrail import (
     ExternalGuardrailClient,
 )
 from text.services.generation_audit import GenerationAuditEvent, GenerationAuditLogger
+from text.services.pool_health import PoolHealthTracker
+from text.services.pool_router import resolve_pool_route
 from text.services.provider_queue import ProviderQueue, QueueFullError
 from text.services.rate_limiter import RateLimitTracker, estimate_tokens
 from text.services.resizable_semaphore import ResizableSemaphore
@@ -236,11 +239,31 @@ async def generate(
     settings: Settings = Depends(get_dep_settings),
     guardrail_client: ExternalGuardrailClient | None = Depends(get_guardrail_client),
     redis_client: aioredis.Redis | None = Depends(get_redis),
+    pool_health_tracker: PoolHealthTracker = Depends(get_pool_health_tracker),
     x_tenant_id: str | None = Header(default=None, alias="X-Tenant-Id"),
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
 ) -> Any:
     if shutdown_manager and shutdown_manager.is_shutting_down:
         raise ShutdownError("Service is shutting down — not accepting new requests.")
+
+    # Degrade-away-from-unhealthy routing (TASK-725 Task 2, design.md Services
+    # program): a provider the LAST `/health` check marked unhealthy is never
+    # blindly dispatched into. Reroutes to `fallback_provider` when the
+    # caller declared one AND it's actually registered; otherwise fails fast
+    # with a typed 503 (`PoolUnhealthyError`) rather than queueing into a dead
+    # engine. The routed name is written back onto `request_body.provider` so
+    # every downstream lookup keyed by provider name (rate limiter, circuit
+    # breaker, queue, semaphore, metrics, audit, task state) reflects the
+    # ACTUAL provider serving the request — one rewrite point, not a parallel
+    # "effective provider" variable threaded through the rest of the function.
+    fallback_name = request_body.fallback_provider
+    request_body.provider = resolve_pool_route(
+        request_body.provider,
+        tracker=pool_health_tracker,
+        fallback=fallback_name,
+        fallback_registered=bool(fallback_name)
+        and fallback_name in registry.list_providers(),
+    )
 
     # Idempotent replay. A deterministic Idempotency-Key (set by the harness
     # from workflow_run:activity_id — globally unique per logical generate; the apps/api SMR

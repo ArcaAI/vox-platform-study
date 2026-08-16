@@ -193,6 +193,23 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             "sarvam", lambda: SarvamTranslateProvider(settings.sarvam)
         )
 
+    # Embedding capability (TASK-725 Task 4) — a SEPARATE registry namespace
+    # from the LLM `provider_registry` above (design-notes.md §(a)). `tei-embed`
+    # always carries a topology-level default `base_url`, same convention as
+    # the other local engines, so it registers unconditionally.
+    if not hasattr(app.state, "embedding_registry") or app.state.embedding_registry is None:
+        from text.providers.embedding import EmbeddingProviderRegistry
+
+        app.state.embedding_registry = EmbeddingProviderRegistry()
+
+    embedding_registry = app.state.embedding_registry
+    if "tei-embed" not in embedding_registry.list_providers():
+        from text.providers.tei_embed import TeiEmbedProvider
+
+        embedding_registry.register_factory(
+            "tei-embed", lambda: TeiEmbedProvider(settings.tei_embed, http_client)
+        )
+
     from text.services.rate_limiter import RateLimitTracker
 
     rate_limiters: dict[str, RateLimitTracker] = {}
@@ -282,6 +299,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
         app.state.shutdown_manager = ShutdownManager()
 
+    # Async worker-pool dispatch queue (TASK-725) — cross-pod, Redis-Streams
+    # backed; distinct from the in-process `provider_queues` above (see
+    # services/worker_pool_queue.py module docstring). Constructed AFTER
+    # `shutdown_manager` so submission can fail closed during drain (Task 6).
+    if not hasattr(app.state, "worker_pool_queue") or app.state.worker_pool_queue is None:
+        from text.services.worker_pool_queue import WorkerPoolQueue
+
+        app.state.worker_pool_queue = WorkerPoolQueue(
+            redis=redis_client, shutdown_manager=app.state.shutdown_manager
+        )
+
     # Self-registration: fire-and-forget, bounded-timeout, NEVER
     # blocks or fails boot. Reuses the shared `http_client` above (already
     # closed on shutdown below) rather than opening a second one.
@@ -345,11 +373,20 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
     app.state.guardrail_client = None
     app.state.provider_registry = None
     app.state.translate_registry = None
+    app.state.embedding_registry = None
+    app.state.worker_pool_queue = None
     app.state.rate_limiters = {}
     app.state.circuit_breakers = {}
     app.state.provider_queues = {}
     app.state.shutdown_manager = None
     app.state.provider_semaphores = {}
+    # Eager, not lifespan-gated: it's a plain in-process cache (no I/O, no
+    # event-loop dependency), and generate()'s degrade-routing check must see
+    # a real tracker even in tests that build the app without running
+    # lifespan (see core/dependencies.py::get_pool_health_tracker).
+    from text.services.pool_health import PoolHealthTracker
+
+    app.state.pool_health_tracker = PoolHealthTracker()
     # Control-plane overrides; empty ⇒ every provider keeps its env timeout.
     app.state.provider_timeouts = {}
     app.state.effective_config_client = None
@@ -383,12 +420,14 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
 
     app.add_middleware(RequestIDMiddleware)
 
+    from text.api.endpoints.embeddings import router as embeddings_router
     from text.api.endpoints.generate import router as generate_router
     from text.api.endpoints.health import router as health_router
     from text.api.endpoints.providers import router as providers_router
     from text.api.endpoints.stream import router as stream_router
     from text.api.endpoints.tasks import router as tasks_router
     from text.api.endpoints.translate import router as translate_router
+    from text.api.endpoints.worker_pools import router as worker_pools_router
 
     app.include_router(health_router, prefix="/api/v1")
     app.include_router(generate_router, prefix="/api/v1")
@@ -396,6 +435,8 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
     app.include_router(providers_router, prefix="/api/v1")
     app.include_router(stream_router, prefix="/api/v1")
     app.include_router(translate_router, prefix="/api/v1")
+    app.include_router(embeddings_router, prefix="/api/v1")
+    app.include_router(worker_pools_router, prefix="/api/v1")
 
     if settings.otel_enabled:
         from text.core.observability import setup_opentelemetry

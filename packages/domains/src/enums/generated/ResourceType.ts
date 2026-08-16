@@ -104,4 +104,8 @@ export enum ResourceType {
   // Workflow test fixture (TASK-721). Ordinary CRUD, unlike sibling
   // WorkflowRun (telemetry, no ResourceType) — parity with audit.prisma.
   WorkflowTestFixture = 'WorkflowTestFixture',
+  // Tenant NLP task instructions (TASK-729) — tenant-writable topic/intent
+  // instruction content, deliberately separate from AiTaskDefault's
+  // model-selection governance. Parity with audit.prisma.
+  TenantNlpTaskInstructions = 'TenantNlpTaskInstructions',
 }
