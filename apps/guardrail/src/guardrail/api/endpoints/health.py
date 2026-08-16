@@ -11,16 +11,15 @@ from fastapi.responses import JSONResponse
 
 from guardrail.core.config import Settings
 from guardrail.core.dependencies import (
-    get_ollama_provider,
+    get_content_provider,
     get_redis,
     get_settings,
 )
-from guardrail.providers.ollama import OllamaProvider
 from guardrail.providers.openai_compat import OpenAICompatProvider
 
 router = APIRouter()
 
-ContentProvider = OllamaProvider | OpenAICompatProvider
+ContentProvider = OpenAICompatProvider
 
 
 def _gliner_status(request: Request) -> dict[str, Any]:
@@ -39,7 +38,7 @@ def _gliner_status(request: Request) -> dict[str, Any]:
 async def health_check(
     request: Request,
     settings: Settings = Depends(get_settings),
-    ollama_provider: ContentProvider = Depends(get_ollama_provider),
+    content_provider: ContentProvider = Depends(get_content_provider),
     redis: aioredis.Redis = Depends(get_redis),
 ) -> dict[str, Any]:
     """Comprehensive health check for all services."""
@@ -64,7 +63,7 @@ async def health_check(
 
     # Check the selected LLM engine (content analysis / medical validation)
     if settings.engine.enabled:
-        engine_health = await ollama_provider.health_check()
+        engine_health = await content_provider.health_check()
         engine_health["provider"] = settings.provider
         health_status["checks"]["llm_engine"] = engine_health
         if not engine_health.get("healthy", False):

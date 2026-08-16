@@ -9,8 +9,10 @@
  *      ids/slugs unique, every `provider` canonical, all 5 TTS rows carry a
  *      non-empty `metaData.voices`, and `indic-f5` seeds DISABLED (prod
  *      NO-GO).
- *   2. `RETIRED_AI_MODEL_SLUGS` is exactly the 50 retired slugs, disjoint from
- *      the catalog, and retired ∪ keepers === the previous 60-row catalog.
+ *   2. `RETIRED_AI_MODEL_SLUGS` is exactly the 50 original retired slugs plus
+ *      the 3 Ollama slugs TASK-736 retires (53 total), disjoint from the
+ *      catalog, and retired ∪ keepers === the previous 60-row catalog plus
+ *      those 3.
  *   3. Regression lock — every slug referenced by seeded pipeline YAML
  *      (`models:` blocks) resolves to a catalog slug, and the 8
  *      pipeline-referenced slugs all survive the consolidation.
@@ -67,10 +69,9 @@ const KEEPER_SLUGS = [
   'granite-guardian-4.1-8b',
 ] as const;
 
+// Ollama slugs removed entirely (TASK-736, owner directive 2026-08-16); see
+// EXPECTED_RETIRED_SLUGS below for their ledger entries.
 const NEW_LLM_SLUGS = [
-  'ollama-gemma4-12b-mlx',
-  'ollama-gemma4-e2b-it-qat',
-  'ollama-qwen3.5-2b',
   'lms-gemma-4-e2b-it-qat',
   'lms-gemma-4-e4b-it-qat',
   'lms-gemma-4-medical-icd10',
@@ -181,6 +182,10 @@ const EXPECTED_RETIRED_SLUGS = [
   'ollama-gemma3n-latest',
   'ollama-granite4-tiny-h',
   'ollama-granite4-latest',
+  // Ollama LLMs (TASK-736 — Ollama removed entirely, owner directive 2026-08-16)
+  'ollama-gemma4-12b-mlx',
+  'ollama-gemma4-e2b-it-qat',
+  'ollama-qwen3.5-2b',
   // Azure OpenAI
   'gpt-4',
   'gpt-4o',
@@ -214,7 +219,7 @@ const EXPECTED_RETIRED_SLUGS = [
   'whisper-small-en',
 ] as const;
 
-const ALLOWED_PROVIDERS = ['ollama', 'lm-studio', 'azure', 'bedrock', 'built-in', 'sarvam', 'openai', 'vllm', 'llama-cpp'];
+const ALLOWED_PROVIDERS = ['lm-studio', 'azure', 'bedrock', 'built-in', 'sarvam', 'openai', 'vllm', 'llama-cpp'];
 
 // The 8 slugs referenced by seeded pipeline `models:` blocks (regression lock).
 const PIPELINE_REFERENCED_SLUGS = [
@@ -246,10 +251,16 @@ const bySlug = (slug: string) => catalog.find((m) => m.slug === slug);
 // =============================================================================
 
 describe('consolidated AI model catalog (26 rows) + extensions', () => {
-  it('is exactly the 46 expected slugs (26 + 2 + 9 extensions + 3 ArcaAI ML-EN + 3 admin-console backfill + 1 vision)', () => {
+  it('is exactly the 43 expected slugs (46 minus the 3 Ollama rows retired by TASK-736)', () => {
     const slugs = catalog.map((m) => m.slug).sort();
     expect(slugs).toEqual([...EXPECTED_CATALOG_SLUGS].sort());
-    expect(catalog.length).toBe(46);
+    expect(catalog.length).toBe(43);
+  });
+
+  it('seeds no row with provider "ollama" (TASK-736 — Ollama removed entirely)', () => {
+    catalog.forEach((m) => {
+      expect(m.provider, `model ${m.slug} still carries provider 'ollama'`).not.toBe('ollama');
+    });
   });
 
   it('has unique ids and unique slugs', () => {
@@ -363,15 +374,18 @@ describe('consolidated AI model catalog (26 rows) + extensions', () => {
   // `sourceUri` on an `lm-studio` row IS the LM Studio model id sent as
   // `model` on the OpenAI-compatible wire — a wrong identifier is not a
   // cosmetic drift, it is a guaranteed 404 at request time. That is exactly
-  // how `harness.judge` broke: the seed carried `google/gemma-4-e4b` while the
-  // instance serves `google/gemma-4-e4b-qat`.
+  // how `harness.judge` broke: the seed carried `google/gemma-4-e4b-qat`
+  // (never served) while the live instance serves `google/gemma-4-e4b`
+  // (without the `-qat` suffix) — the reverse of what an earlier revision of
+  // this file and `llm.ts` both asserted.
   //
-  // Verified against the dev instance on 2026-08-10
-  // (`curl http://127.0.0.1:1234/v1/models` on the `gpu` host).
+  // Re-verified against the dev instance on 2026-08-16 (superseding the
+  // 2026-08-10 pin, which asserted the wrong id for the e4b judge model).
   const LIVE_LM_STUDIO_MODEL_IDS = [
     'gemma-4-e2b-it-qat',
+    'gemma-4-e4b-it-qat',
     'granite-guardian-4.1-8b',
-    'google/gemma-4-e4b-qat',
+    'google/gemma-4-e4b',
     'text-embedding-nomic-embed-text-v1.5',
   ] as const;
 
@@ -382,8 +396,8 @@ describe('consolidated AI model catalog (26 rows) + extensions', () => {
   const LM_STUDIO_SOURCE_URIS: ReadonlyArray<readonly [slug: string, sourceUri: string, loaded: boolean]> = [
     ['granite-guardian-4.1-8b', 'granite-guardian-4.1-8b', true],
     ['lms-gemma-4-e2b-it-qat', 'gemma-4-e2b-it-qat', true],
-    ['lms-gemma-4-e4b', 'google/gemma-4-e4b-qat', true],
-    ['lms-gemma-4-e4b-it-qat', 'gemma-4-e4b-it-qat', false],
+    ['lms-gemma-4-e4b', 'google/gemma-4-e4b', true],
+    ['lms-gemma-4-e4b-it-qat', 'gemma-4-e4b-it-qat', true],
     ['lms-gemma-4-medical-icd10', 'gemma-4-medical-icd10', false],
     ['lms-gemma-4-12b-qat', 'google/gemma-4-12b-qat', false],
     ['lms-medgemma-1.5-4b-it', 'medgemma-1.5-4b-it', false],
@@ -429,6 +443,45 @@ describe('consolidated AI model catalog (26 rows) + extensions', () => {
     });
   });
 
+  // ===========================================================================
+  // Catalog ⊆ instance (TASK-736) — the check that would have caught the
+  // `harness.judge` id-drift defect. Hard-coded fixture, no network call.
+  // Deliberately a SUBSET assertion, not equality: the live instance also
+  // serves qwen/bonsai/veena/etc. models HOPE deliberately does not catalog
+  // (curated subset, not a mirror of "whatever happens to be installed").
+  // ===========================================================================
+  const LM_STUDIO_INSTANCE_SERVED_IDS_20260816 = [
+    'gemma-4-e2b-it-qat',
+    'gemma-4-e4b-it-qat',
+    'google/gemma-4-e2b',
+    'google/gemma-4-e4b',
+    'google/gemma-4-12b-qat',
+    'google/gemma-4-31b-qat',
+    'google/gemma-4-26b-a4b-qat',
+    'granite-guardian-4.1-8b',
+    'granite-guardian-3.3-8b',
+    'gemma-4-medical-icd10',
+    'gemma-4-e2b-it-sft-rlvr-medical',
+    'medgemma-27b-text-it',
+    'medgemma-1.5-4b-it',
+    'mediphi',
+    'text-embedding-nomic-embed-text-v1.5',
+    'text-embedding-bge-m3',
+    'text-embedding-embeddinggemma-300m',
+    'text-embedding-embeddinggemma-300m-qat',
+  ] as const;
+
+  it('keeps every ENABLED lm-studio catalog sourceUri inside the live instance catalog (verified 2026-08-16)', () => {
+    const served = new Set<string>(LM_STUDIO_INSTANCE_SERVED_IDS_20260816);
+    catalog
+      .filter((m) => m.provider === 'lm-studio' && m.resourceStatus !== 'DISABLED')
+      .forEach((m) => {
+        expect(served.has(m.sourceUri), `${m.slug} sourceUri "${m.sourceUri}" is not served by the live LM Studio instance (2026-08-16)`).toBe(
+          true,
+        );
+      });
+  });
+
   it('seeds the two NLP task models from HuggingFace with the right taskTypes', () => {
     const ner = bySlug('medical-ner');
     expect(ner?.taskType).toBe('TOKEN_CLASSIFICATION');
@@ -447,10 +500,10 @@ describe('consolidated AI model catalog (26 rows) + extensions', () => {
 // =============================================================================
 
 describe('RETIRED_AI_MODEL_SLUGS ledger', () => {
-  it('is exactly the 50 expected retired slugs', () => {
+  it('is exactly the 53 expected retired slugs (50 original + 3 Ollama from TASK-736)', () => {
     expect(RETIRED_AI_MODEL_SLUGS).toBeDefined();
     expect([...(RETIRED_AI_MODEL_SLUGS ?? [])].sort()).toEqual([...EXPECTED_RETIRED_SLUGS].sort());
-    expect(RETIRED_AI_MODEL_SLUGS?.length).toBe(50);
+    expect(RETIRED_AI_MODEL_SLUGS?.length).toBe(53);
   });
 
   it('is disjoint from the live catalog slugs', () => {
@@ -460,9 +513,16 @@ describe('RETIRED_AI_MODEL_SLUGS ledger', () => {
     });
   });
 
-  it('together with the 10 keepers reconstructs the previous 60-row catalog', () => {
+  it('together with the 10 keepers accounts for the previous 60-row catalog plus the 3 TASK-736 Ollama retirements (63)', () => {
     const union = new Set([...(RETIRED_AI_MODEL_SLUGS ?? []), ...KEEPER_SLUGS]);
-    expect(union.size).toBe(60);
+    expect(union.size).toBe(63);
+  });
+
+  it('contains every slug TASK-736 removed from the live Ollama catalog', () => {
+    const removedByTask736 = ['ollama-gemma4-12b-mlx', 'ollama-gemma4-e2b-it-qat', 'ollama-qwen3.5-2b'];
+    removedByTask736.forEach((slug) => {
+      expect(RETIRED_AI_MODEL_SLUGS, `${slug} must be in the retired ledger`).toContain(slug);
+    });
   });
 });
 
@@ -558,8 +618,8 @@ describe('retireLegacyAiModels sweep', () => {
     const { client, updates } = makeClient([]);
     const result = await retireLegacyAiModels!(client as never);
 
-    expect(client.aiModel.updateMany).toHaveBeenCalledTimes(50);
-    expect(result.retired).toBe(50);
+    expect(client.aiModel.updateMany).toHaveBeenCalledTimes(53);
+    expect(result.retired).toBe(53);
     expect(result.skipped).toEqual([]);
 
     updates.forEach(({ where, data }) => {
@@ -580,7 +640,7 @@ describe('retireLegacyAiModels sweep', () => {
     const result = await retireLegacyAiModels!(client as never);
 
     expect(result.skipped).toEqual(['whisper-large-v3']);
-    expect(result.retired).toBe(49);
+    expect(result.retired).toBe(52);
     expect(updates.some((u) => u.where.slug === 'whisper-large-v3')).toBe(false);
   });
 
@@ -650,8 +710,9 @@ describe('AiTaskDefault SYSTEM seed', () => {
     expect(byKey.get('guardrail.groundedness')?.modelSlug).toBe('minicheck-flan-t5-large');
     // The judge points at the model the dev LM Studio instance actually serves
     // and that a global admin already selected in the live DB
-    // (`harness.judge` v1→v2). Was `lms-gemma-4-e4b`, whose sourceUri carried
-    // the `google/gemma-4-e4b` typo and could never resolve.
+    // (`harness.judge` v1→v2). Was `lms-gemma-4-e4b`, whose sourceUri at the
+    // time carried `google/gemma-4-e4b-qat` — an id the live instance has
+    // never served (re-verified 2026-08-16; see `llm.ts` for the correction).
     expect(byKey.get('harness.judge')?.modelSlug).toBe('lms-gemma-4-e2b-it-qat');
     SYSTEM_AI_TASK_DEFAULTS.forEach((row) => {
       expect(row.tenantId).toBe(SYSTEM_TENANT_ID);

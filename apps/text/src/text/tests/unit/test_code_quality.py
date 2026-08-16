@@ -16,7 +16,6 @@ from pathlib import Path
 from typing import get_type_hints
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import httpx
 import pytest
 
 SRC_ROOT = Path(__file__).resolve().parents[3]
@@ -84,11 +83,6 @@ class TestProvidersUseSpecificExceptions:
                         violations.append(node.name)
                         break
         return violations
-
-    def test_ollama_no_bare_except(self):
-        filepath = SRC_ROOT / "text" / "providers" / "ollama.py"
-        violations = self._bare_except_exception_in_funcs(filepath, {"health_check", "get_info"})
-        assert not violations, f"ollama.py: bare except Exception in {violations}"
 
     def test_azure_no_bare_except(self):
         filepath = SRC_ROOT / "text" / "providers" / "azure_openai.py"
@@ -183,24 +177,6 @@ class TestGenerateReturnsPydanticModel:
 
 class TestHealthCheckLogsOnFailure:
     @pytest.mark.asyncio
-    async def test_ollama_health_check_logs_warning(self):
-        from text.providers.ollama import OllamaProvider
-
-        config = MagicMock()
-        config.base_url = "http://localhost:11434"
-        config.default_model = "llama3"
-        http_client = AsyncMock(spec=httpx.AsyncClient)
-        http_client.get = AsyncMock(side_effect=httpx.ConnectError("connection refused"))
-
-        provider = OllamaProvider(config, http_client)
-        with patch("text.providers.ollama.logger") as mock_logger:
-            result = await provider.health_check()
-            assert result is False
-            mock_logger.warning.assert_called_once()
-            call_args = mock_logger.warning.call_args
-            assert "health_check.failed" in call_args[0][0]
-
-    @pytest.mark.asyncio
     async def test_azure_health_check_logs_warning(self):
         from openai import APIConnectionError
 
@@ -260,50 +236,6 @@ class TestHealthCheckLogsOnFailure:
 # ---------------------------------------------------------------------------
 # 6-8. Provider health_check catches specific exception types
 # ---------------------------------------------------------------------------
-
-
-class TestOllamaSpecificExceptions:
-    @pytest.mark.asyncio
-    async def test_catches_httpx_connect_error(self):
-        from text.providers.ollama import OllamaProvider
-
-        config = MagicMock()
-        config.base_url = "http://localhost:11434"
-        config.default_model = "llama3"
-        http_client = AsyncMock(spec=httpx.AsyncClient)
-        http_client.get = AsyncMock(side_effect=httpx.ConnectError("refused"))
-
-        provider = OllamaProvider(config, http_client)
-        result = await provider.health_check()
-        assert result is False
-
-    @pytest.mark.asyncio
-    async def test_catches_httpx_timeout(self):
-        from text.providers.ollama import OllamaProvider
-
-        config = MagicMock()
-        config.base_url = "http://localhost:11434"
-        config.default_model = "llama3"
-        http_client = AsyncMock(spec=httpx.AsyncClient)
-        http_client.get = AsyncMock(side_effect=httpx.TimeoutException("timed out"))
-
-        provider = OllamaProvider(config, http_client)
-        result = await provider.health_check()
-        assert result is False
-
-    @pytest.mark.asyncio
-    async def test_catches_connection_error(self):
-        from text.providers.ollama import OllamaProvider
-
-        config = MagicMock()
-        config.base_url = "http://localhost:11434"
-        config.default_model = "llama3"
-        http_client = AsyncMock(spec=httpx.AsyncClient)
-        http_client.get = AsyncMock(side_effect=ConnectionError("conn reset"))
-
-        provider = OllamaProvider(config, http_client)
-        result = await provider.health_check()
-        assert result is False
 
 
 class TestAzureSpecificExceptions:

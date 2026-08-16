@@ -21,7 +21,7 @@ Point the provider at any OpenAI-compatible endpoint (LM Studio / vLLM / Azure):
 ```bash
 export HARNESS_PROMPTFOO_BASE_URL="http://localhost:1234/v1"
 export HARNESS_PROMPTFOO_API_KEY="lm-studio"
-export HARNESS_PROMPTFOO_MODEL="qwen2.5-14b-instruct"
+export HARNESS_PROMPTFOO_MODEL="google/gemma-4-e4b"
 npx --yes promptfoo@0.121.15 eval -c promptfooconfig.yaml --no-cache
 ```
 

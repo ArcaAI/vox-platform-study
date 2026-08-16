@@ -65,6 +65,15 @@ export const SERVICE_RUNTIME_DEFAULTS = {
   'tts.modelCache.maxModels': 2,
   'tts.modelCache.vramBudgetMb': 0,
   'smr.modelCache.ttlSeconds': 600,
+
+  // ── guardrail PHI redaction ──────────────────────────────────────────────
+  // NOT a model-cache knob, so it sits outside the `<svc>.modelCache.*` family
+  // and outside `MODEL_CACHE_SERVICES`. It bounds ONE GLiNER extraction call at
+  // `POST /api/guardrail/redact`. Registered here rather than as a guardrail env
+  // var precisely because it must be retunable without a redeploy: the safe
+  // value depends on the redaction worker's real memory limit, which differs
+  // per environment.
+  'guardrail.redact.chunkChars': 4000,
 } as const;
 
 export type ServiceRuntimeKey = keyof typeof SERVICE_RUNTIME_DEFAULTS;
@@ -148,6 +157,18 @@ const HAND_WRITTEN_META: Partial<Record<ServiceRuntimeKey, KeyMeta>> = {
     description:
       'Ceiling on concurrent NER/classification/diagnosis inferences. Previously the nlp service had ' +
       'no bound of any kind, so concurrent requests piled onto the model unbounded.',
+  },
+  'guardrail.redact.chunkChars': {
+    label: 'PHI redaction chunk size (characters)',
+    description:
+      'Maximum characters handed to GLiNER in ONE PII-extraction call at `POST /api/guardrail/redact`. ' +
+      'Longer inputs are split on whitespace boundaries and processed sequentially, so an identifier is ' +
+      'never cut in half and peak memory is bounded by this value rather than by the document. GLiNER cost ' +
+      'is super-linear in input length, so SMALLER chunks are faster, not slower: measured over a ' +
+      '100,000-character corpus (CPU-only), 8,000 took 17.5s and 4,000 took 9.7s, with peak memory flat at ' +
+      '~2.8GB either way and an identical entity count. 4,000 is the knee — below ~2,000 the per-call ' +
+      'overhead wins the gain back and the model gets less context to work with. Raising it above 8,000 ' +
+      'buys nothing and costs both latency and memory.',
   },
   'smr.modelCache.ttlSeconds': {
     label: 'SMR engine retention TTL (s)',

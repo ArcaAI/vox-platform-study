@@ -12,7 +12,7 @@ and reads ``data["choices"][0]["message"]["content"]``.
 - Medical-context validation uses a generic JSON prompt path (Granite Guardian is not
   suited to free-form JSON).
 
-Fail-open semantics on timeout/error mirror the Ollama-based providers.
+Timeout/error handling is fail-open at the provider level.
 """
 
 from __future__ import annotations

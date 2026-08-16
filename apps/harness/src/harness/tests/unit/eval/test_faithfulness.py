@@ -97,6 +97,31 @@ class TestLLMComponents:
         verifier = LLMClaimVerifier(client)
         assert await verifier.verify("has diabetes", "context") is False
 
+    @pytest.mark.asyncio
+    async def test_llm_verifier_treats_malformed_json_as_unsupported(self):
+        # TASK-713: reproduces a real failure hit measuring against a live
+        # small local judge (Qwen2.5-1.5B-Instruct) — an occasional malformed
+        # verify response (missing delimiter) previously propagated a raw
+        # json.JSONDecodeError out of `evaluate` and crashed the ENTIRE
+        # eval-gate run, unlike the PDSQI path (JudgeParseError is caught and
+        # the case is dropped). A claim that can't be parsed has no evidence
+        # of support, so it must fail closed to `False` — never raise, and
+        # never silently count as supported.
+        client = ScriptedJudgeClient(
+            ['{"supported": true, "reason": "stated in note"']
+        )  # truncated
+        verifier = LLMClaimVerifier(client)
+        assert await verifier.verify("has hypertension", "context") is False
+
+    @pytest.mark.asyncio
+    async def test_llm_extractor_treats_malformed_json_as_no_claims(self):
+        # Same tolerance on the decomposition step — vacuous-truth precedent
+        # already exists in FaithfulnessEvaluator.evaluate for an empty claim
+        # list (nothing to verify → nothing can be unfaithful).
+        client = ScriptedJudgeClient(['{"claims": ["a", "b"'])  # truncated
+        extractor = LLMClaimExtractor(client)
+        assert await extractor.extract("answer", "context") == []
+
 
 class TestEndToEnd:
     @pytest.mark.asyncio

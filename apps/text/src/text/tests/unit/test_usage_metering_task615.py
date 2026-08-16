@@ -288,7 +288,6 @@ async def test_stream_carries_raw_usage_for_the_normalizer(mock_task_manager):
         ("anthropic", "anthropic.messages"),
         ("bedrock", "bedrock.converse"),
         ("vertex", "vertex.generate"),
-        ("ollama", "ollama.native"),
         ("llama-cpp", "llamacpp.native"),
         # Unknown providers speak the portability wire — same default as
         # `normalize_stop_reason`.

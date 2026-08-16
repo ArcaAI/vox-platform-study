@@ -46,7 +46,7 @@ class TemporalConfig(BaseSettings):
     graceful_shutdown_timeout_s: float = 30.0
 
 
-_SAFETY_PROVIDERS = ("lm-studio", "ollama", "azure", "bedrock")
+_SAFETY_PROVIDERS = ("lm-studio", "azure", "bedrock")
 
 
 class SafetyGuardConfig(BaseSettings):
@@ -56,9 +56,8 @@ class SafetyGuardConfig(BaseSettings):
     The **default** engine is **LM Studio** — an OpenAI-compatible endpoint: the
     safety client posts to ``{base_url}/chat/completions`` (``base_url`` already
     includes the ``/v1`` path) and reads ``choices[0].message.content``. ``provider``
-    switches the engine: ``lm-studio`` (default) | ``ollama`` (native ``/api/chat``)
-    | ``azure`` | ``bedrock`` — the last two require a guardian-capable model hosted
-    on that engine.
+    switches the engine: ``lm-studio`` (default) | ``azure`` | ``bedrock`` — the
+    last two require a guardian-capable model hosted on that engine.
 
     ``harm_criteria`` is the Bring-Your-Own-Criteria (BYOC) list of risk dimensions
     the guardian evaluates one-per-call via the canonical IBM 4.1 ``<guardian>``
@@ -77,10 +76,9 @@ class SafetyGuardConfig(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="HARNESS_SAFETY_")
 
     enabled: bool = True
-    # Engine selector: lm-studio (default, OpenAI-compatible) | ollama | azure | bedrock.
+    # Engine selector: lm-studio (default, OpenAI-compatible) | azure | bedrock.
     provider: str = "lm-studio"
-    # LM Studio OpenAI-compatible root (already includes ``/v1``). For the ``ollama``
-    # provider, override to the Ollama native root, e.g. ``http://localhost:11434``.
+    # LM Studio OpenAI-compatible root (already includes ``/v1``).
     base_url: str = "http://localhost:1234/v1"
     model: str = "granite-guardian-4.1-8b"
     # Guard classifier in no-think mode (fast, deterministic yes/no per criterion).
@@ -131,7 +129,7 @@ class PhiConfig(BaseSettings):
     enabled: bool = True
     fail_closed: bool = True
     local_providers: list[str] = Field(
-        default_factory=lambda: ["lm-studio", "openai_compat", "ollama", "vllm", "llama-cpp"]
+        default_factory=lambda: ["lm-studio", "openai_compat", "vllm", "llama-cpp"]
     )
 
     @model_validator(mode="after")
@@ -144,7 +142,7 @@ class PhiConfig(BaseSettings):
                 "genuinely local ones — almost certainly a misconfiguration "
                 "(operator wiped the list) rather than an intended lockdown. Set at "
                 "least the local providers actually in use, e.g. "
-                "['lm-studio', 'ollama']."
+                "['lm-studio', 'vllm']."
             )
         if len(self.local_providers) != len({p.strip() for p in self.local_providers}):
             raise ValueError(

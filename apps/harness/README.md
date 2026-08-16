@@ -170,7 +170,7 @@ escalates to `FLAG`.
 | `groundedness`        | inferential   | regen-fixable | Per-claim LLM-judge entailment of the note against the transcript + cited evidence; feeds `ragTriadScore`                                                                                                                               |
 | `citation_verify`     | inferential   | regen-fixable | Per-claim LLM-judge entailment of each `[[kb:<id>]]` citation against its cited chunk                                                                                                                                                   |
 | `atomic_fact`         | inferential   | regen-fixable | Deterministic, judge-free NLI entailment gate (self-hosted; default hermetic `DeterministicOverlapEntailer`, optionally a staged MiniCheck-Flan-T5 GGUF via `HARNESS_ATOMIC_FACT_MODEL_PATH`); opt-in via `HARNESS_ATOMIC_FACT_ENABLED` |
-| `safety`              | inferential   | highest-harm  | IBM Granite Guardian content-safety screen (harm/bias/jailbreak/violence/profanity/sexual-content/unethical-behavior) over a selectable engine (LM Studio default; Ollama/Azure/Bedrock)                                                |
+| `safety`              | inferential   | highest-harm  | IBM Granite Guardian content-safety screen (harm/bias/jailbreak/violence/profanity/sexual-content/unethical-behavior) over a selectable engine (LM Studio default; Azure/Bedrock)                                                        |
 
 The inferential pass (`run_inferential_sensors`) runs the applicable sensors **concurrently**
 (`asyncio.gather`) against one calibrated judge client + one Granite Guardian client built once per
@@ -317,7 +317,7 @@ immediately before the call. Fail-closed by contract: if `PhiRedactor` (Presidio
 anonymizer + a clinical-NER recognizer, the optional `guardrails` extra) cannot **confirm** PHI was
 removed, the guard raises `PhiEgressBlocked` — the activity blocks the call and degrades rather
 than ever risking a silent unredacted leak. A **local** provider (the default deployment — LM
-Studio/Ollama) is a pure pass-through, so the guard costs nothing when nothing egresses; only
+Studio) is a pure pass-through, so the guard costs nothing when nothing egresses; only
 providers listed in `HARNESS_PHI_CLOUD_EGRESS_PROVIDERS` (default `["azure", "bedrock"]`) trigger
 redaction. The effective policy (`phi_enabled` / `phi_fail_closed`) is snapshotted once at workflow
 start (from `HarnessPolicy` or the code default) so enforcement is deterministic across replay.

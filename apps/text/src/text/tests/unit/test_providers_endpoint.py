@@ -16,7 +16,7 @@ import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
-from text.core.config import OllamaConfig, OpenAICompatConfig, Settings
+from text.core.config import OpenAICompatConfig, Settings
 from text.models.provider import ModelInfo, ProviderInfo
 
 
@@ -112,42 +112,6 @@ class TestProbeContract:
         resp = await client.get("/api/v1/providers")
 
         assert resp.json()[0]["name"] == "lm-studio"
-
-
-class TestOllamaLoadState:
-    def _provider(self, handler):
-        from text.providers.ollama import OllamaProvider
-
-        transport = httpx.MockTransport(handler)
-        http = httpx.AsyncClient(transport=transport)
-        return OllamaProvider(OllamaConfig(base_url="http://ollama.test"), http)
-
-    @pytest.mark.asyncio
-    async def test_ollama_load_state_from_api_ps(self):
-        def handler(request: httpx.Request) -> httpx.Response:
-            if request.url.path == "/api/tags":
-                return httpx.Response(
-                    200, json={"models": [{"name": "a:latest"}, {"name": "b:latest"}]}
-                )
-            if request.url.path == "/api/ps":
-                return httpx.Response(200, json={"models": [{"name": "a:latest"}]})
-            return httpx.Response(404)
-
-        info = await self._provider(handler).get_info()
-        states = {m.name: m.state for m in info.models}
-        assert states == {"a:latest": "loaded", "b:latest": "not-loaded"}
-
-    @pytest.mark.asyncio
-    async def test_ollama_ps_failure_leaves_listing_intact(self):
-        def handler(request: httpx.Request) -> httpx.Response:
-            if request.url.path == "/api/tags":
-                return httpx.Response(200, json={"models": [{"name": "a:latest"}]})
-            raise httpx.ConnectError("ps down", request=request)
-
-        info = await self._provider(handler).get_info()
-        assert [m.name for m in info.models] == ["a:latest"]
-        assert info.models[0].state is None
-        assert info.status == "available"
 
 
 class TestLmStudioNativeEnrichment:

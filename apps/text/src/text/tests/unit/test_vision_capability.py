@@ -148,17 +148,6 @@ class TestTextOnlyRegression:
         params = provider._build_converse_params(_text_request())
         assert params["messages"] == [{"role": "user", "content": [{"text": "hello"}]}]
 
-    def test_ollama_payload_has_no_images_key(self):
-        from text.core.config import OllamaConfig
-        from text.providers.ollama import OllamaProvider
-
-        provider = OllamaProvider(
-            OllamaConfig(base_url="http://localhost:11434", default_model="m"), AsyncMock()
-        )
-        payload = provider._build_payload(_text_request(), stream=False)
-        assert "images" not in payload
-        assert payload["prompt"] == "hello"
-
     def test_llama_cpp_does_not_raise_for_a_text_only_request(self):
         from text.core.config import LlamaCppConfig
         from text.providers.llama_cpp import LlamaCppProvider
@@ -250,16 +239,6 @@ class TestImageReachesEachAdapter:
         )
         with pytest.raises(Exception, match="image/tiff"):
             provider._build_converse_params(req)
-
-    def test_ollama_populates_images_key_with_bare_base64(self):
-        from text.core.config import OllamaConfig
-        from text.providers.ollama import OllamaProvider
-
-        provider = OllamaProvider(
-            OllamaConfig(base_url="http://localhost:11434", default_model="m"), AsyncMock()
-        )
-        payload = provider._build_payload(_image_request(), stream=False)
-        assert payload["images"] == [_PNG_B64]
 
     def test_vertex_builds_a_parts_list_with_from_bytes_image(self):
         from text.core.config import VertexConfig
@@ -424,17 +403,6 @@ class TestSupportsVisionPerProvider:
         from text.providers.vertex import VertexProvider
 
         provider = VertexProvider(VertexConfig(project="proj"))
-        info = await provider.get_info()
-        assert info.supports_vision is True
-
-    @pytest.mark.asyncio
-    async def test_ollama_supports_vision(self):
-        from text.core.config import OllamaConfig
-        from text.providers.ollama import OllamaProvider
-
-        http = AsyncMock()
-        http.get = AsyncMock(return_value=MagicMock(status_code=200, json=lambda: {"models": []}))
-        provider = OllamaProvider(OllamaConfig(base_url="http://localhost:11434", default_model="m"), http)
         info = await provider.get_info()
         assert info.supports_vision is True
 

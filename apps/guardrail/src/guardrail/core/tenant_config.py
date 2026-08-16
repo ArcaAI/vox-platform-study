@@ -5,11 +5,35 @@ request time by reading ``core."AiTaskDefault"`` joined to ``core."AiModel"``
 directly (SQLAlchemy + asyncpg, mirroring STT's read-only DB access), with a
 short TTL cache (~60s).
 
-Resolution order (tenant-level fallback):
+**The runtime cascade is exactly TWO tiers: request tenant → SYSTEM.**
+
     1. rows for the request tenant (``X-Tenant-Id`` header) — each lookup
        widens to the SYSTEM tenant's rows, preferring the tenant's own
-    2. rows for the system/default tenant (the seeded GLOBAL tenant)
-    3. env default (handled by the caller via ``settings.engine``)
+       ``AiTaskDefault`` row over the SYSTEM row for the same task key
+    2. the SYSTEM tenant's rows (``00000000-…``) — the platform default tier
+    3. env default (handled by the caller via ``settings.engine``), for TUNING
+       only; provider/model selection stays fail-closed
+
+A request with **no** ``X-Tenant-Id`` has no tenant context and therefore
+resolves SYSTEM only. It must never act as some customer tenant.
+
+There is deliberately NO "default tenant" knob. SYSTEM is the DECLARED widening
+target, not a configurable value, and ``50000000-…`` ("Global") is a CUSTOMER
+tenant — the playground platform admins use to trial configuration before
+promoting it into SYSTEM (``seed/00-constants.ts``). Promotion is an explicit
+administrative action, never a resolution step: a runtime that falls back to
+``50000000-…`` serves one customer's configuration to every other tenant. This
+resolver did exactly that until TASK-735/736 (``GUARDRAIL_DEFAULT_TENANT_ID``,
+defaulting to the Global tenant) — see ``.claude/rules/00-project-context.md``
+§Configuration Principles, owner clarification 2026-08-16.
+
+Tenant/SYSTEM precedence follows ``AiProviderConnection``'s three-state
+semantics (``packages/applications/.../ai-provider-connection/constants.ts``):
+absent (no tenant row) = no opinion, so the SYSTEM row applies; ENABLED = the
+tenant's row wins outright; DISABLED = a VETO — the tenant has explicitly
+refused a selection and the resolver fails closed (503, raised as
+:class:`TenantSelectionVetoedError` and mapped in ``core/dependencies.py``)
+rather than silently falling through to the SYSTEM row.
 
 Cross-worker contract (the seed provides the SYSTEM rows):
     ``AiTaskDefault`` — taskKey ``guardrail.validate`` → ``modelSlug``
@@ -75,7 +99,7 @@ from sqlalchemy.ext.asyncio import (
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
-from guardrail.core.config import OllamaConfig, OpenAICompatConfig, Settings
+from guardrail.core.config import OpenAICompatConfig, Settings
 from guardrail.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -111,14 +135,32 @@ KEY_SOURCE_REVISION = "source-revision"
 
 # Provider switch value -> Settings sub-config attr. adds the
 # production self-host engines vllm / llama-cpp (OpenAI-compatible wire).
+# Every remaining engine speaks the OpenAI-compatible wire.
 _PROVIDER_TO_ATTR = {
     "lm-studio": "openai_compat",
-    "ollama": "ollama",
     "vllm": "vllm",
     "llama-cpp": "llama_cpp",
     "azure": "azure",
     "bedrock": "bedrock",
 }
+
+
+class TenantSelectionVetoedError(Exception):
+    """A tenant explicitly DISABLED its own ``AiTaskDefault`` row for a task key.
+
+    Three-state parity with ``AiProviderConnection``: absent = no opinion (the
+    SYSTEM row applies), ENABLED = the tenant's row wins, DISABLED = a VETO.
+    The resolver must fail closed here and must never fold through to the
+    SYSTEM row — callers map this to HTTP 503 (see ``core/dependencies.py``).
+    """
+
+    def __init__(self, *, tenant_id: str, task_key: str) -> None:
+        self.tenant_id = tenant_id
+        self.task_key = task_key
+        super().__init__(
+            f"tenant {tenant_id!r} has DISABLED its own AiTaskDefault selection "
+            f"for task_key {task_key!r} — veto, not falling through to SYSTEM."
+        )
 
 
 class _Base(DeclarativeBase):
@@ -225,6 +267,10 @@ class GuardrailTenantConfig:
 class _CacheEntry:
     keys: dict[str, str]
     expires_at: float
+    # A cached VETO (see `TenantSelectionVetoedError`) must keep raising on
+    # every cache hit within the TTL — it must never be read back as `keys`
+    # (which would look like silent fall-through to "no opinion").
+    vetoed: bool = False
 
 
 def _as_float(value: str | None) -> float | None:
@@ -276,12 +322,10 @@ class TenantConfigResolver:
         self,
         *,
         session_factory: Callable[[], AsyncSession],
-        default_tenant_id: str,
         cache_ttl_s: int = 60,
         time_func: Callable[[], float] = time.monotonic,
     ) -> None:
         self._session_factory = session_factory
-        self._default_tenant_id = default_tenant_id
         self._cache_ttl_s = cache_ttl_s
         self._time = time_func
         self._cache: dict[str, _CacheEntry] = {}
@@ -291,26 +335,27 @@ class TenantConfigResolver:
         tenant_id: str | None,
         task_key: str = TASK_KEY_GUARDRAIL_VALIDATE,
     ) -> GuardrailTenantConfig:
-        """Resolve config for ``tenant_id`` (header value) with default fallback.
+        """Resolve config for ``tenant_id`` (header value), widening to SYSTEM.
 
-        ``task_key`` selects which SYSTEM ``AiTaskDefault`` row to read —
+        ``task_key`` selects which ``AiTaskDefault`` row to read —
         ``guardrail.validate`` (default), ``guardrail.safety`` (GLiNER) or
-        ``guardrail.groundedness`` (MiniCheck),.
+        ``guardrail.groundedness`` (MiniCheck).
 
-        Resolution order: request-tenant rows → system/default-tenant rows → env
-        (the caller applies env defaults for any field still ``None``). Fallback
-        is tenant-level: a request tenant with no guardrail rows defers entirely
-        to the default tenant, so an azure-deployment from the default tenant
-        never bleeds into a tenant that picked a different provider.
+        Resolution order: request-tenant rows → SYSTEM rows → env (the caller
+        applies env defaults for any field still ``None``). Widening is
+        tenant-level: a request tenant with no guardrail rows defers entirely to
+        SYSTEM, so an azure-deployment never bleeds across a provider boundary.
+        A blank/absent ``tenant_id`` resolves SYSTEM directly — never a customer
+        tenant (see the module docstring).
         """
         requested = (tenant_id or "").strip() or None
-        primary_tenant = requested or self._default_tenant_id
+        primary_tenant = requested or SYSTEM_TENANT_ID
 
         keys = await self._get_for_tenant(primary_tenant, task_key)
         source = primary_tenant
-        if not keys and primary_tenant != self._default_tenant_id:
-            keys = await self._get_for_tenant(self._default_tenant_id, task_key)
-            source = self._default_tenant_id
+        if not keys and primary_tenant != SYSTEM_TENANT_ID:
+            keys = await self._get_for_tenant(SYSTEM_TENANT_ID, task_key)
+            source = SYSTEM_TENANT_ID
 
         return GuardrailTenantConfig(
             provider=_clean(keys.get(KEY_PROVIDER)),
@@ -392,10 +437,21 @@ class TenantConfigResolver:
         cache_key = f"{task_key}::{tenant_id}"
         entry = self._cache.get(cache_key)
         if entry is not None and entry.expires_at > now:
+            if entry.vetoed:
+                raise TenantSelectionVetoedError(tenant_id=tenant_id, task_key=task_key)
             return entry.keys
 
         try:
             keys = await self._load_from_db(tenant_id, task_key)
+        except TenantSelectionVetoedError:
+            # Cache the veto itself (same TTL) so a disabled selection doesn't
+            # cost a DB round-trip on every request — but never collapse it
+            # into the fail-open empty-dict path below; a veto must keep
+            # raising, never look like "no opinion".
+            self._cache[cache_key] = _CacheEntry(
+                keys={}, expires_at=now + self._cache_ttl_s, vetoed=True
+            )
+            raise
         except Exception as exc:  # fail-safe: fall back to env defaults
             logger.warning(
                 "guardrail.tenant_config.db_error",
@@ -415,10 +471,16 @@ class TenantConfigResolver:
     ) -> dict[str, str]:
         """Resolve this tenant's guardrail model via ``AiTaskDefault ⋈ AiModel``.
 
-        SYSTEM-only selection (tenant override rows are ignored).
-        Reads the ENABLED ``task_key`` task default for the SYSTEM tenant joined
-        to an ENABLED ``AiModel`` row for its ``modelSlug`` in
-        ``[SYSTEM, request-tenant]`` (model weights may still be shared-read).
+        Tenant-first selection (AiProviderConnection three-state parity): reads
+        the ``task_key`` row for BOTH ``tenant_id`` and SYSTEM — ENABLED *or*
+        DISABLED, so a disabled tenant row is visible rather than
+        indistinguishable from an absent one — and prefers a tenant-owned
+        ENABLED row over the SYSTEM row (``_row_rank``). Absence (no tenant
+        row) defers entirely to SYSTEM. A tenant-owned DISABLED row is a VETO:
+        raises :class:`TenantSelectionVetoedError` rather than folding through
+        to SYSTEM (mapped to HTTP 503 in ``core/dependencies.py``).
+        The ``AiModel`` join stays ENABLED-only and shared-read across
+        ``[SYSTEM, request-tenant]``.
         Returns: provider ← ``AiModel.provider``, model ← ``AiModel.sourceUri``,
         azure deployment ← ``AiModel._metadata->>'azureDeployment'``.
         """
@@ -431,10 +493,15 @@ class TenantConfigResolver:
                 task_key[len(_SLUG_TASK_KEY_PREFIX) :], model_scope
             )
 
+        task_default_scope = (
+            [SYSTEM_TENANT_ID, tenant_id] if tenant_id != SYSTEM_TENANT_ID else [SYSTEM_TENANT_ID]
+        )
+
         async with self._session_factory() as session:
             result = await session.execute(
                 select(
                     AiTaskDefaultRead.tenant_id.label("default_tenant_id"),
+                    AiTaskDefaultRead.resource_status.label("default_resource_status"),
                     AiModelRead.tenant_id.label("model_tenant_id"),
                     AiModelRead.provider,
                     AiModelRead.source_uri,
@@ -445,21 +512,32 @@ class TenantConfigResolver:
                     AiModelRead.source,
                     AiModelRead.source_revision,
                 )
-                .join(AiModelRead, AiModelRead.slug == AiTaskDefaultRead.model_slug)
+                .select_from(AiTaskDefaultRead)
+                .join(
+                    AiModelRead,
+                    (AiModelRead.slug == AiTaskDefaultRead.model_slug)
+                    & AiModelRead.tenant_id.in_(model_scope)
+                    & (AiModelRead.resource_status == "ENABLED"),
+                    isouter=True,
+                )
                 .where(
                     AiTaskDefaultRead.task_key == task_key,
-                    AiTaskDefaultRead.tenant_id == SYSTEM_TENANT_ID,
-                    AiTaskDefaultRead.resource_status == "ENABLED",
-                    AiModelRead.tenant_id.in_(model_scope),
-                    AiModelRead.resource_status == "ENABLED",
+                    AiTaskDefaultRead.tenant_id.in_(task_default_scope),
+                    AiTaskDefaultRead.resource_status.in_(("ENABLED", "DISABLED")),
                 )
             )
             rows = result.all()
 
-        # Prefer SYSTEM catalog model row over a tenant-owned copy of the same slug.
-        row = min(
-            rows, key=lambda r: (0 if r.model_tenant_id == SYSTEM_TENANT_ID else 1), default=None
-        )
+        # VETO: the tenant's OWN row is DISABLED — fail closed, never fall
+        # through to the SYSTEM row.
+        if tenant_id != SYSTEM_TENANT_ID and any(
+            r.default_tenant_id == tenant_id and r.default_resource_status == "DISABLED"
+            for r in rows
+        ):
+            raise TenantSelectionVetoedError(tenant_id=tenant_id, task_key=task_key)
+
+        enabled_rows = [r for r in rows if r.default_resource_status == "ENABLED"]
+        row = min(enabled_rows, key=lambda r: self._row_rank(r, tenant_id), default=None)
         if row is None:
             return {}
 
@@ -576,10 +654,17 @@ class TenantConfigResolver:
 
     @staticmethod
     def _row_rank(row: Any, tenant_id: str) -> tuple[int, int]:
-        """Preference rank: tenant task-default first, then tenant model copy."""
+        """Preference rank for a joined row.
+
+        First: the tenant's OWN ``AiTaskDefault`` row over the SYSTEM row
+        (tenant-first resolution, TASK-735 Phase 1). Second, as a tie-break
+        within the winning owner: the SYSTEM catalog ``AiModel`` row over a
+        tenant-owned copy of the same slug (shared-read — matches
+        ``test_db_prefers_system_model_row_over_tenant_copy``).
+        """
         return (
             0 if row.default_tenant_id == tenant_id else 1,
-            0 if row.model_tenant_id == tenant_id else 1,
+            0 if row.model_tenant_id == SYSTEM_TENANT_ID else 1,
         )
 
     def clear_cache(self) -> None:
@@ -589,7 +674,7 @@ class TenantConfigResolver:
 
 def resolve_guardian_engine(
     settings: Settings, tenant_cfg: GuardrailTenantConfig
-) -> tuple[str, OpenAICompatConfig | OllamaConfig]:
+) -> tuple[str, OpenAICompatConfig]:
     """Map a resolved per-tenant config onto a concrete engine sub-config.
 
     base_url / api_key still come from env (the DB only carries provider, model
@@ -639,15 +724,15 @@ def resolve_guardian_engine(
 
 def build_guardian_provider(
     provider: str,
-    engine: OpenAICompatConfig | OllamaConfig,
+    engine: OpenAICompatConfig,
     http_client: object,
 ) -> object:
-    """Instantiate the guardian provider for ``provider`` (mirrors lifespan)."""
-    if provider == "ollama":
-        from guardrail.providers.guardian import GuardianProvider
+    """Instantiate the guardian provider for ``provider`` (mirrors lifespan).
 
-        return GuardianProvider(settings=engine, http_client=http_client)  # type: ignore[arg-type]
-
+    Every supported engine speaks the OpenAI-compatible wire, so ``provider`` is
+    accepted for symmetry with the lifespan wiring and logging rather than to
+    branch on.
+    """
     from guardrail.providers.openai_compat import OpenAICompatGuardianProvider
 
     return OpenAICompatGuardianProvider(settings=engine, http_client=http_client)  # type: ignore[arg-type]

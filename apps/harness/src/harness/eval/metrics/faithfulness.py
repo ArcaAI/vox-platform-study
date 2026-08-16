@@ -16,9 +16,13 @@ from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
 
+import structlog
+
 from harness.eval.jsonio import loads_json
 from harness.eval.judge.base import JudgeClient
 from harness.eval.models import FaithfulnessResult, GoldenCase
+
+logger = structlog.get_logger(__name__)
 
 _CLAIM_SYSTEM = (
     "You decompose a clinical summary into atomic, self-contained factual claims. "
@@ -62,7 +66,16 @@ class LLMClaimExtractor:
             {"role": "user", "content": _CLAIM_USER.format(context=context, answer=answer)},
         ]
         raw = await self._client.complete(messages, json_mode=True)
-        parsed = loads_json(raw)
+        try:
+            parsed = loads_json(raw)
+        except ValueError:
+            # A genuinely unparseable decomposition (e.g. a small local judge
+            # emitting truncated/malformed JSON — reproduced live, TASK-713)
+            # degrades to "no claims" rather than crashing the whole eval run:
+            # the same vacuous-truth convention `evaluate()` already applies
+            # when the model legitimately extracts zero claims.
+            logger.warning("claim_extraction_unparseable", raw_response=raw[:200])
+            return []
         if isinstance(parsed, dict):
             claims = parsed.get("claims", [])
         elif isinstance(parsed, list):
@@ -84,7 +97,17 @@ class LLMClaimVerifier:
             {"role": "user", "content": _VERIFY_USER.format(context=context, claim=claim)},
         ]
         raw = await self._client.complete(messages, json_mode=True)
-        parsed = loads_json(raw)
+        try:
+            parsed = loads_json(raw)
+        except ValueError:
+            # A claim we can't parse a verdict for has no evidence of support —
+            # fail CLOSED to unsupported (never raise, never count as
+            # supported). Reproduced live against a real small local judge
+            # (TASK-713): an occasional malformed verify response previously
+            # propagated a raw JSONDecodeError and crashed the entire eval-gate
+            # run instead of degrading this one claim.
+            logger.warning("claim_verification_unparseable", raw_response=raw[:200])
+            return False
         if isinstance(parsed, dict):
             return bool(parsed.get("supported", False))
         return False

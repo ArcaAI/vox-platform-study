@@ -135,11 +135,13 @@ async def run_and_gate(
     """Score the golden set, compute calibration (if possible), apply the gate."""
     config = config or get_eval_config()
     golden_set = source.load()
-    runner = GoldenSetRunner(judge=judge, faithfulness=faithfulness)
+    runner = GoldenSetRunner(
+        judge=judge, faithfulness=faithfulness, case_concurrency=config.case_concurrency
+    )
     run = await runner.run(golden_set)
 
     calibration = None
-    if judge is not None:
+    if judge is not None and config.icc_gate_enabled:
         calibration = judge_clinician_icc(golden_set, run, icc_threshold=config.icc_threshold)
 
     return apply_gate(run, config, calibration=calibration)

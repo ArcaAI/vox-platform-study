@@ -13,7 +13,7 @@ import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
-from text.core.config import AzureOpenAIConfig, BedrockConfig, OllamaConfig, Settings
+from text.core.config import AzureOpenAIConfig, BedrockConfig, Settings
 from text.models.task import TaskState, TaskStatus
 from text.providers.base import ProviderRegistry
 
@@ -86,11 +86,6 @@ class TestMaxConcurrentConfigFields:
         cfg = BedrockConfig()
         assert hasattr(cfg, "max_concurrent")
         assert cfg.max_concurrent == 10
-
-    def test_ollama_has_max_concurrent(self):
-        cfg = OllamaConfig()
-        assert hasattr(cfg, "max_concurrent")
-        assert cfg.max_concurrent == 4
 
 
 # ── Concurrency metric tests ────────────────────────────────────────────────

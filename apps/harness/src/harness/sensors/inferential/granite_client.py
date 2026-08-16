@@ -2,9 +2,8 @@
 
 The safety sensor screens the generated note through Granite Guardian. By default
 the engine is **LM Studio** — an OpenAI-compatible endpoint: this client posts to
-``{base_url}/chat/completions`` and reads ``choices[0].message.content``. With the
-``ollama`` provider it falls back to Ollama's native ``/api/chat`` (reading
-``message.content``). Granite Guardian evaluates **one risk per inference**, so the
+``{base_url}/chat/completions`` and reads ``choices[0].message.content``. Granite
+Guardian evaluates **one risk per inference**, so the
 client makes one no-think ``<guardian>`` call per configured harm dimension and
 parses the model's ``<score>yes/no</score>`` verdict — ``yes`` means the criterion
 is met, i.e. the risk IS present (unsafe).
@@ -36,16 +35,10 @@ from harness.eval.judge.base import JudgeConnectionError, Messages
 from harness.eval.judge.providers import build_llm_call_stats
 
 
-def _native_stats_fields(
-    provider: str, data: dict[str, Any]
-) -> tuple[int, int, int | None, str | None]:
-    """Extract ``(prompt_tokens, predicted_tokens, total_tokens, raw_stop_reason)`` from a
-    guardian/groundedness response envelope, engine-aware and null-safe.
+def _native_stats_fields(data: dict[str, Any]) -> tuple[int, int, int | None, str | None]:
+    """Extract ``(prompt_tokens, predicted_tokens, total_tokens, raw_stop_reason)`` from an
+    OpenAI-compatible guardian/groundedness response envelope, null-safe.
     """
-    if provider == "ollama":
-        prompt = int(data.get("prompt_eval_count", 0) or 0)
-        predicted = int(data.get("eval_count", 0) or 0)
-        return prompt, predicted, prompt + predicted, data.get("done_reason")
     usage = data.get("usage") or {}
     prompt = int(usage.get("prompt_tokens", 0) or 0)
     predicted = int(usage.get("completion_tokens", 0) or 0)
@@ -191,22 +184,13 @@ class GraniteGuardianClient:
             {"role": "assistant", "content": text},
             {"role": "user", "content": _guardian_block(criterion, no_think=self._no_think)},
         ]
-        if self._provider == "ollama":
-            url = f"{self._base_url}/api/chat"
-            body = {
-                "model": self.model,
-                "messages": messages,
-                "stream": False,
-                "options": {"temperature": 0.0},
-            }
-        else:
-            url = _chat_completions_url(self._base_url)
-            body = {
-                "model": self.model,
-                "messages": messages,
-                "temperature": 0.0,
-                "stream": False,
-            }
+        url = _chat_completions_url(self._base_url)
+        body = {
+            "model": self.model,
+            "messages": messages,
+            "temperature": 0.0,
+            "stream": False,
+        }
 
         async def _send() -> httpx.Response:
             resp = await client.post(url, json=body)
@@ -230,14 +214,11 @@ class GraniteGuardianClient:
         if match is None:
             raise GraniteParseError(f"no <score> verdict for risk {criterion!r}: {content[:120]!r}")
         # return the per-call native stats fields for screen to aggregate.
-        return match.group(1).lower() == "yes", _native_stats_fields(self._provider, data)
+        return match.group(1).lower() == "yes", _native_stats_fields(data)
 
     def _extract_content(self, data: dict[str, Any]) -> str:
-        """Read the verdict text from the engine-specific response envelope."""
-        if self._provider == "ollama":
-            # Ollama ``/api/chat`` -> ``message.content``; ``/api/generate`` -> ``response``.
-            return (data.get("message") or {}).get("content") or data.get("response") or ""
-        # OpenAI-compatible ``/v1/chat/completions`` -> ``choices[0].message.content``.
+        """Read the verdict text from the OpenAI-compatible response envelope."""
+        # ``/v1/chat/completions`` -> ``choices[0].message.content``.
         choices = data.get("choices") or []
         if not choices:
             return ""
@@ -331,17 +312,13 @@ class GraniteGroundednessJudge:
             {"role": "assistant", "content": hypothesis},
             {"role": "user", "content": _groundedness_block(premise, no_think=self._no_think)},
         ]
-        if self._provider == "ollama":
-            url = f"{self._base_url}/api/chat"
-            body: dict[str, Any] = {
-                "model": self.model,
-                "messages": messages,
-                "stream": False,
-                "options": {"temperature": 0.0},
-            }
-        else:
-            url = _chat_completions_url(self._base_url)
-            body = {"model": self.model, "messages": messages, "temperature": 0.0, "stream": False}
+        url = _chat_completions_url(self._base_url)
+        body: dict[str, Any] = {
+            "model": self.model,
+            "messages": messages,
+            "temperature": 0.0,
+            "stream": False,
+        }
 
         async def _send() -> httpx.Response:
             async with httpx.AsyncClient(
@@ -358,7 +335,7 @@ class GraniteGroundednessJudge:
             raise JudgeConnectionError(f"granite groundedness request failed: {exc}") from exc
         data = resp.json()
         # capture the native usage/finish-reason stats for this call.
-        prompt, predicted, total, raw = _native_stats_fields(self._provider, data)
+        prompt, predicted, total, raw = _native_stats_fields(data)
         self.last_stats = build_llm_call_stats(
             provider=self._provider,
             model=self.model,
@@ -375,8 +352,6 @@ class GraniteGroundednessJudge:
         return match.group(1).lower() == "no"
 
     def _content(self, data: dict[str, Any]) -> str:
-        if self._provider == "ollama":
-            return (data.get("message") or {}).get("content") or data.get("response") or ""
         choices = data.get("choices") or []
         if not choices:
             return ""

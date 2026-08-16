@@ -7,8 +7,6 @@ hardcoded. The judge is **model-agnostic** — pick the provider via
 
 * ``openai_compat`` (default, priority) — a small ≤20B judge on an LM Studio /
   vLLM / any OpenAI-compatible local endpoint (``HARNESS_JUDGE_OPENAI_COMPAT_*``).
-* ``ollama`` — Ollama via its OpenAI-compatible ``/v1`` (parity option; reuses the
-  ``HARNESS_JUDGE_OPENAI_COMPAT_*`` config — point ``base_url`` at ``:11434/v1``).
 * ``azure`` — a large judge via Azure OpenAI (``HARNESS_JUDGE_AZURE_*``).
 * ``bedrock`` — a large judge via AWS Bedrock (``HARNESS_JUDGE_BEDROCK_*``).
 """
@@ -28,7 +26,6 @@ class JudgeProvider(StrEnum):
     """Selects which backend serves the LLM-as-judge."""
 
     OPENAI_COMPAT = "openai_compat"  # LM Studio / any OpenAI-compatible server
-    OLLAMA = "ollama"  # Ollama via its OpenAI-compatible ``/v1`` (parity option)
     # production self-host engines (AD-4). Both speak the OpenAI wire,
     # so they reuse the OpenAI-compatible judge client; configured via the shared
     # ``HARNESS_JUDGE_OPENAI_COMPAT_*`` block pointed at the engine's base_url.
@@ -50,7 +47,7 @@ class OpenAICompatJudgeConfig(BaseSettings):
     api_key: SecretStr = SecretStr("lm-studio")
     organization: str | None = None
     # ``response_format.type`` sent on json_mode calls (claim extraction / verify).
-    # "json_object" works on Ollama/vLLM; LM Studio rejects it ("must be json_schema
+    # "json_object" works on vLLM; LM Studio rejects it ("must be json_schema
     # or text") and small models emit empty output under a strict json_schema grammar,
     # so set this to "text" for LM Studio to omit the constraint and rely on the
     # "Return ONLY JSON" prompt + tolerant parsing (harness.eval.jsonio.loads_json).
@@ -91,8 +88,10 @@ class JudgeConfig(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="HARNESS_JUDGE_")
 
     # Priority/default = a small ≤20B model on a local OpenAI-compatible endpoint.
+    # gemma-4-e2b-it-qat is the owner-standardized default (2026-08-16): the one
+    # model resident in LM Studio, verified served by the live dev instance.
     provider: JudgeProvider = JudgeProvider.OPENAI_COMPAT
-    model: str = "google/gemma-4-e4b"
+    model: str = "gemma-4-e2b-it-qat"
     temperature: float = 0.0
     # Large budget (NOT ~2k): reasoning model families (qwen3.5, gemma-4, medgemma)
     # can spend thousands of tokens "thinking" before emitting the JSON answer; a
@@ -215,6 +214,32 @@ class EvalConfig(BaseSettings):
     # on the future Temporal lane; the endpoint rejects an over-cap request (413)
     # rather than blocking a promotion for minutes.
     max_cases_per_run: int = 50
+
+    # TASK-713: how many golden-set cases GoldenSetRunner scores concurrently.
+    # ``1`` (default) is the original strictly-sequential behaviour — safe for
+    # any backend, including a single-slot local server. CI raises this (see
+    # ``HARNESS_EVAL_CASE_CONCURRENCY`` in ``harness-eval-gate``) to match the
+    # judge service container's parallel slot count; actual in-flight network
+    # concurrency to the judge endpoint is still bounded by the separate
+    # ``HARNESS_LLM_MAX_CONCURRENCY`` governor (``harness.core.llm_concurrency``),
+    # so raising this alone can never burst past what the endpoint allows.
+    case_concurrency: int = 1
+
+    # TASK-713: whether the judge↔clinician ICC calibration check gates the
+    # run at all. Default True (unchanged behaviour for every existing
+    # caller/test). A small non-reasoning CI judge can be prone to a ceiling
+    # effect — scoring every quality dimension near-identically across cases —
+    # which drives ICC(2,1) to ~0 regardless of whether its underlying
+    # agreement (Gwet AC2, computed and reported alongside it) is actually
+    # strong; `icc_threshold` is validated to [0, 1] (see `_unit_interval`
+    # below), so a near-zero-but-technically-negative ICC reading from that
+    # ceiling effect can never be recalibrated into passing by lowering the
+    # threshold alone. CI sets `HARNESS_EVAL_ICC_GATE_ENABLED=false` for its
+    # specific small judge rather than silently widening `icc_threshold`
+    # outside its valid range or forcing a pass on a statistic that is
+    # structurally uninformative for that model — see harness-eval-gate's
+    # env-var comment in `.gitlab/ci/test.yml` for the measured numbers.
+    icc_gate_enabled: bool = True
 
     # Release-gate thresholds.
     icc_threshold: float = 0.8

@@ -5,14 +5,14 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "guardrail"
 version = "1.0.0"
-description = "AI-powered content safety service with Ollama integration"
+description = "AI-powered content safety service"
 authors = [
     {name = "ARCA AI Team", email = "team@arcaai.com"}
 ]
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11,<3.12"
-keywords = ["content-safety", "guardrail", "ollama", "fastapi"]
+keywords = ["content-safety", "guardrail", "fastapi"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Programming Language :: Python :: 3",
@@ -34,8 +34,8 @@ dependencies = [
     "prometheus-client>=0.26.0",
     "prometheus-fastapi-instrumentator>=8.1.0",
     # OpenTelemetry tracing. Mirrors apps/text's dependency
-    # set: guardrail auto-instruments FastAPI + httpx (the LM Studio/Ollama/
-    # vLLM/llama.cpp engine calls) and exports spans via OTLP/gRPC.
+    # set: guardrail auto-instruments FastAPI + httpx (the LM Studio/vLLM/
+    # llama.cpp engine calls) and exports spans via OTLP/gRPC.
     "opentelemetry-api>=1.44.0",
     "opentelemetry-sdk>=1.44.0",
     "opentelemetry-instrumentation-fastapi>=0.65b0",

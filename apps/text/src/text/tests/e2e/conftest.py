@@ -1,6 +1,6 @@
 """E2E test fixtures — real LLM providers, fakeredis for task storage.
 
-Creates a fully wired FastAPI app that talks to real Ollama and/or
+Creates a fully wired FastAPI app that talks to real LM Studio and/or
 Azure OpenAI endpoints while using fakeredis for Redis-backed task
 management (we're testing LLM integration, not Redis).
 """
@@ -52,12 +52,6 @@ def _apply_env_overrides() -> None:
     os.environ["TEXT_METRICS_ENABLED"] = "false"
     os.environ["TEXT_OTEL_ENABLED"] = "false"
 
-    ollama_url = dotenv.get("OLLAMA_BASE_URL", "http://localhost:11434")
-    ollama_model = dotenv.get("OLLAMA_MODEL", "gemma3:latest")
-    os.environ["TEXT_OLLAMA_BASE_URL"] = ollama_url
-    os.environ["TEXT_OLLAMA_DEFAULT_MODEL"] = ollama_model
-    os.environ["TEXT_OLLAMA_TIMEOUT_S"] = "120"
-
     azure_key = dotenv.get("AZURE_OPENAI_API_KEY", "")
     azure_endpoint = dotenv.get("AZURE_OPENAI_ENDPOINT", "")
     azure_model = dotenv.get("AZURE_OPENAI_MODEL", "gpt-4o-mini")
@@ -83,36 +77,14 @@ _apply_env_overrides()
 
 
 @pytest.fixture(scope="session")
-def ollama_base_url() -> str:
-    return os.environ.get("TEXT_OLLAMA_BASE_URL", "http://localhost:11434")
-
-
-@pytest.fixture(scope="session")
 def azure_api_key() -> str:
     return os.environ.get("TEXT_AZURE_API_KEY", "")
-
-
-@pytest.fixture(scope="session")
-def ollama_reachable(ollama_base_url: str) -> bool:
-    """Check if Ollama is reachable; skip the test if not."""
-    try:
-        resp = httpx.get(f"{ollama_base_url}/api/tags", timeout=5.0)
-        return resp.status_code == 200
-    except (httpx.ConnectError, httpx.TimeoutException, OSError):
-        return False
 
 
 @pytest.fixture(scope="session")
 def azure_credentials_valid(azure_api_key: str) -> bool:
     """Check if Azure OpenAI credentials are present."""
     return bool(azure_api_key)
-
-
-@pytest.fixture(autouse=False)
-def require_ollama(ollama_reachable: bool) -> None:
-    """Skip the test when Ollama is not reachable."""
-    if not ollama_reachable:
-        pytest.skip("Ollama is not reachable — skipping E2E test")
 
 
 @pytest.fixture(autouse=False)
@@ -182,11 +154,6 @@ def _create_e2e_app(redis) -> tuple:
     registry = ProviderRegistry()
 
     # providers are gated by CONNECTION config, not an ENABLE flag.
-    if settings.ollama.base_url:
-        from text.providers.ollama import OllamaProvider
-
-        registry.register("ollama", OllamaProvider(settings.ollama, http_client))
-
     if settings.azure.endpoint and settings.azure.api_key.get_secret_value():
         from text.providers.azure_openai import AzureOpenAIProvider
 
@@ -204,7 +171,6 @@ def _create_e2e_app(redis) -> tuple:
     app.state.provider_registry = registry
 
     provider_configs = {
-        "ollama": settings.ollama,
         "azure-openai": settings.azure,
         "azure": settings.azure,
         "bedrock": settings.bedrock,

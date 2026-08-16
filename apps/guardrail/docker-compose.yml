@@ -1,10 +1,11 @@
 # ── Guardrail docker-compose (local dev / single-node) ───────────────────────
 #
 # Architecture:
-#   guardrail  — FastAPI service (GLiNER ONNX + Ollama medical validation)
+#   guardrail  — FastAPI service (GLiNER ONNX + OpenAI-compatible LLM judge)
 #   redis      — job queue + result cache
 #
-# Ollama is external (hope-ollama pod). Set OLLAMA_BASE_URL below.
+# The LLM engine is external (LM Studio / vLLM / llama.cpp). Point
+# GUARDRAIL_OPENAI_COMPAT_BASE_URL at it.
 # GLiNER model downloads from HuggingFace on first boot (~150 MB) and is
 # cached in the `hf-cache` volume.
 # ─────────────────────────────────────────────────────────────────────────────
@@ -28,17 +29,6 @@ services:
       GUARDRAIL_GLINER_CLASSIFICATION_THRESHOLD: "0.4"
       GUARDRAIL_GLINER_PII_THRESHOLD: "0.5"
       GUARDRAIL_GLINER_MAX_WORKERS: "2"
-
-      # ── Ollama (medical context validation only — external pod) ───────────
-      GUARDRAIL_OLLAMA_ENABLED: "true"
-      GUARDRAIL_OLLAMA_BASE_URL: http://hope-ollama:11434
-      GUARDRAIL_OLLAMA_GUARDIAN_MODEL: hf.co/unsloth/medgemma-27b-text-it-GGUF:Q4_K_M
-      GUARDRAIL_OLLAMA_GUARDIAN_ENABLED: "true"
-      GUARDRAIL_OLLAMA_GUARDIAN_TEMPERATURE: "0.05"
-      GUARDRAIL_OLLAMA_GUARDIAN_MAX_TOKENS: "300"
-      GUARDRAIL_OLLAMA_GUARDIAN_MIN_CONFIDENCE: "0.75"
-      GUARDRAIL_OLLAMA_TIMEOUT_S: "60"
-      GUARDRAIL_OLLAMA_MAX_CONCURRENT: "4"
 
       # ── Redis ─────────────────────────────────────────────────────────────
       GUARDRAIL_REDIS_URL: redis://redis:6379/0

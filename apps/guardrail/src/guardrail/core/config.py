@@ -9,47 +9,6 @@ from pydantic import AliasChoices, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-class OllamaConfig(BaseSettings):
-    """Ollama engine configuration (optional, lower-priority local engine).
-
-    Ollama serves generic chat models (e.g. ``gemma3``) over its native API, so the
-    providers backed by this config use generic SAFE/UNSAFE prompts rather than the
-    Granite Guardian protocol. Select it via ``GUARDRAIL_V2_PROVIDER=ollama``.
-    """
-
-    # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
-    settings_customise_sources = hope_settings_sources
-
-    model_config = SettingsConfigDict(env_prefix="GUARDRAIL_OLLAMA_")
-
-    enabled: bool = True
-    base_url: str = "http://localhost:11434"
-
-    # Default fallback model for generic guardrail analysis.
-    guardrail_model: str = "gemma3:latest"
-    content_safety_model: str = "gemma3:latest"
-    pii_detection_model: str = "gemma3:latest"
-    prompt_injection_model: str = "gemma3:latest"
-    comprehensive_model: str = "gemma3:latest"
-
-    # Dedicated guardian model for medical context validation
-    guardian_model: str = "gemma3:latest"
-    guardian_enabled: bool = True
-
-    timeout_s: int = 60
-    max_concurrent: int = 4
-    queue_backoff_s: float = 2.0
-
-    # Guardrail-specific settings
-    temperature: float = 0.1  # Low temperature for consistent guardrail results
-    max_tokens: int = 500  # Reasonable limit for guardrail responses
-
-    # Guardian-specific settings
-    guardian_temperature: float = 0.05  # Even lower for medical validation
-    guardian_max_tokens: int = 300
-    guardian_min_confidence: float = 0.75  # Minimum confidence for medical context
-
-
 class OpenAICompatConfig(BaseSettings):
     """OpenAI-compatible engine configuration (LM Studio default).
 
@@ -286,10 +245,13 @@ class DatabaseConfig(BaseSettings):
     # Read-only connection string to the shared HOPE core DB.
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/hope"
 
-    # Fallback tenant used when the request omits X-Tenant-Id or the request
-    # tenant has no guardrail rows. Defaults to the seeded GLOBAL tenant
-    # (SEED_TENANT_ID) where the cross-worker seed places default guardrail config.
-    default_tenant_id: str = "50000000-0000-0000-0000-000000000000"
+    # There is deliberately NO `default_tenant_id`. The runtime cascade is
+    # exactly request tenant → SYSTEM (`00000000-…`), and SYSTEM is the DECLARED
+    # widening target inside the resolver, not a configurable knob. The retired
+    # `GUARDRAIL_DEFAULT_TENANT_ID` defaulted to `50000000-…`, which is the
+    # "Global" CUSTOMER tenant (a platform-admin playground) — so every tenant
+    # without its own rows was served one customer's safety configuration. See
+    # `core/tenant_config.py`'s module docstring.
 
     # TTL (seconds) for the resolved per-tenant config cache (OQ2 ~60s).
     config_cache_ttl_s: int = 60
@@ -331,7 +293,7 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="GUARDRAIL_V2_")
 
-    # LLM engine selector: lm-studio (default) | ollama | vllm | llama-cpp | azure | bedrock
+    # LLM engine selector: lm-studio (default) | vllm | llama-cpp | azure | bedrock
     # Dev-only escape hatch: consumed only when DatabaseConfig.db_config_enabled
     # is False, i.e. DB-backed provider resolution is deliberately bypassed.
     provider: str = "lm-studio"
@@ -389,7 +351,6 @@ class Settings(BaseSettings):
 
     # Sub-configs
     openai_compat: OpenAICompatConfig = Field(default_factory=OpenAICompatConfig)
-    ollama: OllamaConfig = Field(default_factory=OllamaConfig)
     # production self-host engines (AD-4), OpenAI-compatible wire.
     vllm: VLLMConfig = Field(default_factory=VLLMConfig)
     llama_cpp: LlamaCppConfig = Field(default_factory=LlamaCppConfig)
@@ -409,22 +370,21 @@ class Settings(BaseSettings):
     @field_validator("provider")
     @classmethod
     def _validate_provider(cls, v: str) -> str:
-        allowed = {"lm-studio", "ollama", "vllm", "llama-cpp", "azure", "bedrock"}
+        allowed = {"lm-studio", "vllm", "llama-cpp", "azure", "bedrock"}
         normalized = v.strip().lower()
         if normalized not in allowed:
             raise ValueError(f"provider must be one of {sorted(allowed)}, got {v!r}")
         return normalized
 
-    def engine_for(self, provider: str) -> OpenAICompatConfig | OllamaConfig:
+    def engine_for(self, provider: str) -> OpenAICompatConfig:
         """Return the env sub-config for an arbitrary provider switch value.
 
         Falls back to the env-default provider's engine when ``provider`` is
         unknown. ``self.provider`` is always a validated key, so this never
         recurses indefinitely.
         """
-        engines: dict[str, OpenAICompatConfig | OllamaConfig] = {
+        engines: dict[str, OpenAICompatConfig] = {
             "lm-studio": self.openai_compat,
-            "ollama": self.ollama,
             "vllm": self.vllm,
             "llama-cpp": self.llama_cpp,
             "azure": self.azure,
@@ -433,7 +393,7 @@ class Settings(BaseSettings):
         return engines.get((provider or "").strip().lower(), engines[self.provider])
 
     @property
-    def engine(self) -> OpenAICompatConfig | OllamaConfig:
+    def engine(self) -> OpenAICompatConfig:
         """Return the sub-config for the selected LLM engine."""
         return self.engine_for(self.provider)
 

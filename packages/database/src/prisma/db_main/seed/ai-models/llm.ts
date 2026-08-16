@@ -6,34 +6,39 @@ import { AiModelFormat, AiModelSource, ModelCategory, ModelTaskType, ModelType, 
  * (the owner-approved 10-model matrix).
  *
  * Replaces the previous 31 LLM/guardrail rows. `sourceUri` carries the
- * provider-native identifier actually sent to the runtime (Ollama tag,
- * LM Studio model name, Azure model id); `slug` stays the stable registry
+ * provider-native identifier actually sent to the runtime (LM Studio model
+ * name, Azure model id, Bedrock model id); `slug` stays the stable registry
  * key. New rows use the fresh `80000000-…-0007-…` id block (0001–0006 are
- * occupied by the legacy audio/LLM/browser blocks).
+ * occupied by the legacy audio/LLM/browser blocks). Ollama was removed
+ * entirely (owner directive 2026-08-16) — every `ollama-*` row was deleted
+ * and its slug moved to `retired.ts`.
  *
  * ## LM Studio identifiers — the invariant, and the two states a row may be in
  *
  * For an `lm-studio` row, `sourceUri` IS the LM Studio model id the services
  * put on the wire as `model`. A wrong identifier is not cosmetic drift; it is
  * a guaranteed 404 at request time, and it stays invisible until the model is
- * actually called. This is exactly how `harness.judge` broke: this file
- * carried `google/gemma-4-e4b` while the instance serves
- * `google/gemma-4-e4b-qat`, and the same typo had travelled in from
- * `apps/harness/.env.sample`.
+ * actually called.
  *
  * Two states are legitimate, and a reader must be able to tell them apart:
  *
  *   1. **Loaded** — the identifier resolves on the dev LM Studio instance
- *      today. Verified 2026-08-10 (`curl http://127.0.0.1:1234/v1/models` on
- *      the `gpu` host) — the instance serves exactly:
- *        gemma-4-e2b-it-qat · granite-guardian-4.1-8b ·
- *        google/gemma-4-e4b-qat · text-embedding-nomic-embed-text-v1.5
+ *      today.
  *   2. **Catalogued, not loaded** — the identifier is provider-correct but the
  *      weights are not installed on this host. A catalogue legitimately lists
  *      installable models, so these rows are KEPT (not retired): retirement is
  *      a permanent cross-tenant soft-delete, which is the wrong verb for "an
  *      operator has not pulled this one yet". Each such row says "Not loaded"
  *      in its description, and NO `AiTaskDefault` may select one.
+ *
+ * A prior revision of this file claimed the dev instance serves
+ * `google/gemma-4-e4b-qat` and that `google/gemma-4-e4b` was a typo for it —
+ * this is how `harness.judge` broke (404 on every call). Re-verified against
+ * the LIVE instance on 2026-08-16: BOTH halves were wrong. `google/gemma-4-e4b`
+ * IS served; `google/gemma-4-e4b-qat` is NOT. A prose claim about a runtime
+ * catalog is only as trustworthy as its last verification, so this file no
+ * longer asserts one inline — `ai-model-consolidation-seed.test.ts` pins the
+ * served set as a hard-coded, dated fixture instead (catalog ⊆ instance).
  *
  * `ai-model-consolidation-seed.test.ts` pins every LM Studio `sourceUri`,
  * enforces the "not loaded" wording, and fails if an `AiTaskDefault` ever
@@ -66,70 +71,6 @@ export const LLM_AI_MODELS: AiModelSeed[] = [
   },
 
   // =========================================================================
-  // Ollama provider
-  // =========================================================================
-  {
-    id: '80000000-0000-0000-0007-000000000001',
-    tenantId: SYSTEM_TENANT_ID,
-    name: 'Gemma 4 12B MLX (Ollama)',
-    slug: 'ollama-gemma4-12b-mlx',
-    description: 'Google Gemma 4 12B (MLX build) via Ollama — large local text-generation model for Apple-silicon hosts.',
-    category: ModelCategory.NLP,
-    taskType: ModelTaskType.TEXT_GENERATION,
-    modelType: ModelType.QUANTIZED_MODEL,
-    source: AiModelSource.LOCAL,
-    sourceUri: 'gemma4:12b-mlx',
-    sourceRevision: 'main',
-    format: AiModelFormat.MLX,
-    provider: 'ollama',
-    architecture: 'gemma4',
-    memorySizeMb: 8192,
-    // Precision refresh (owner-specified exact quant scheme).
-    computeType: 'nvfp4',
-    tags: ['llm', 'ollama'],
-  },
-  {
-    id: '80000000-0000-0000-0007-000000000002',
-    tenantId: SYSTEM_TENANT_ID,
-    name: 'Gemma 4 E2B IT QAT (Ollama)',
-    slug: 'ollama-gemma4-e2b-it-qat',
-    description: 'Google Gemma 4 E2B instruction-tuned QAT via Ollama — compact edge-class text-generation model.',
-    category: ModelCategory.NLP,
-    taskType: ModelTaskType.TEXT_GENERATION,
-    modelType: ModelType.QUANTIZED_MODEL,
-    source: AiModelSource.LOCAL,
-    sourceUri: 'gemma4:e2b-it-qat',
-    sourceRevision: 'main',
-    format: AiModelFormat.GGUF,
-    provider: 'ollama',
-    architecture: 'gemma4',
-    memorySizeMb: 2048,
-    // Precision refresh (owner-specified exact quant scheme).
-    computeType: 'Q4_0',
-    tags: ['llm', 'ollama'],
-  },
-  {
-    id: '80000000-0000-0000-0007-000000000003',
-    tenantId: SYSTEM_TENANT_ID,
-    name: 'Qwen 3.5 2B (Ollama)',
-    slug: 'ollama-qwen3.5-2b',
-    description: 'Qwen 3.5 2B via Ollama — smallest local text-generation model, ideal for testing.',
-    category: ModelCategory.NLP,
-    taskType: ModelTaskType.TEXT_GENERATION,
-    modelType: ModelType.QUANTIZED_MODEL,
-    source: AiModelSource.LOCAL,
-    sourceUri: 'qwen3.5:2b',
-    sourceRevision: 'main',
-    format: AiModelFormat.GGUF,
-    provider: 'ollama',
-    architecture: 'qwen3.5',
-    memorySizeMb: 1536,
-    // Precision refresh (owner-specified exact quant scheme).
-    computeType: 'Q8_0',
-    tags: ['llm', 'ollama'],
-  },
-
-  // =========================================================================
   // LM Studio provider
   // =========================================================================
   {
@@ -159,7 +100,7 @@ export const LLM_AI_MODELS: AiModelSeed[] = [
     name: 'Gemma 4 E4B IT QAT (LM Studio)',
     slug: 'lms-gemma-4-e4b-it-qat',
     description:
-      'Google Gemma 4 E4B instruction-tuned QAT via LM Studio — balanced local text-generation model. Not loaded on the dev LM Studio instance (verified 2026-08-10); the identifier is provider-correct, the weights are simply not installed there.',
+      'Google Gemma 4 E4B instruction-tuned QAT via LM Studio — balanced local text-generation model. Served by the dev LM Studio instance (verified 2026-08-16).',
     category: ModelCategory.NLP,
     taskType: ModelTaskType.TEXT_GENERATION,
     modelType: ModelType.QUANTIZED_MODEL,
@@ -342,22 +283,22 @@ export const LLM_AI_MODELS: AiModelSeed[] = [
   },
 
   // =========================================================================
-  // Harness LLM-as-judge model (the judge is served on an
-  // OpenAI-compatible LM Studio endpoint; sourceUri is the model id sent to
-  // the judge client. Default target for the `harness.judge` AiTaskDefault.)
+  // Harness LLM-as-judge model (catalogued alternate; the `harness.judge`
+  // AiTaskDefault currently targets `lms-gemma-4-e2b-it-qat` — see
+  // 16-ai-task-default.ts — not this row).
   // =========================================================================
   {
     id: '80000000-0000-0000-0007-000000000023',
     tenantId: SYSTEM_TENANT_ID,
-    name: 'Gemma 4 E4B QAT (LM Studio judge)',
+    name: 'Gemma 4 E4B (LM Studio judge)',
     slug: 'lms-gemma-4-e4b',
     description:
-      'Google Gemma 4 E4B QAT served via LM Studio (OpenAI-compatible) — the harness LLM-as-judge model (matches the HARNESS_JUDGE_MODEL env default google/gemma-4-e4b-qat). The sourceUri previously read `google/gemma-4-e4b`, an identifier LM Studio has never served, so every judge call 404d.',
+      'Google Gemma 4 E4B served via LM Studio (OpenAI-compatible) — an alternate harness LLM-as-judge model. The sourceUri previously read `google/gemma-4-e4b-qat`, an identifier the live instance has never served (every prior judge call against it 404d); corrected to `google/gemma-4-e4b`, which the instance does serve (verified 2026-08-16).',
     category: ModelCategory.NLP,
     taskType: ModelTaskType.TEXT_GENERATION,
     modelType: ModelType.QUANTIZED_MODEL,
     source: AiModelSource.HUGGINGFACE,
-    sourceUri: 'google/gemma-4-e4b-qat',
+    sourceUri: 'google/gemma-4-e4b',
     sourceRevision: 'main',
     format: AiModelFormat.GGUF,
     provider: 'lm-studio',

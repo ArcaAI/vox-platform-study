@@ -21,6 +21,7 @@ from typing import Any
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
+from guardrail.core.effective_config import EffectiveConfigSnapshot
 from guardrail.main import create_app
 from guardrail.services.model_cache import ModelCache
 
@@ -61,20 +62,75 @@ class FakeGlinerRedactor:
         return self._entities
 
 
+class ScanningGlinerRedactor:
+    """Fake that scans whatever text it is handed for `needle`, reporting LOCAL offsets.
+
+    Unlike :class:`FakeGlinerRedactor` (fixed entities, offsets pre-computed
+    against the whole document) this one behaves the way the real GLiNER does
+    under chunking: it only ever sees one chunk and its offsets index THAT
+    chunk. It is therefore the fixture that proves the endpoint re-bases
+    per-chunk offsets back onto the submitted document. Records every chunk it
+    was handed so tests can assert the split itself.
+    """
+
+    def __init__(self, needle: str, label: str = "person") -> None:
+        self._needle = needle
+        self._label = label
+        self.seen_chunks: list[str] = []
+
+    async def extract_pii_entities(self, text: str) -> list[FakeEntity]:
+        self.seen_chunks.append(text)
+        found: list[FakeEntity] = []
+        idx = text.find(self._needle)
+        while idx != -1:
+            found.append(
+                FakeEntity(
+                    text=self._needle,
+                    label=self._label,
+                    start=idx,
+                    end=idx + len(self._needle),
+                    score=0.95,
+                )
+            )
+            idx = text.find(self._needle, idx + len(self._needle))
+        return found
+
+
+class FakeEffectiveConfigClient:
+    """Control-plane stub serving ONLY the `redaction` group.
+
+    The chunk size is a DB-tier (`global-kv`) knob a platform admin manages —
+    it reaches guardrail through `GET /internal/effective-config`, never an env
+    var — so the test seam is the pull client, matching how retention is
+    already served.
+    """
+
+    def __init__(self, chunk_chars: int | None) -> None:
+        self._chunk_chars = chunk_chars
+
+    async def get(self) -> EffectiveConfigSnapshot:
+        raw = {"redaction": {"chunkChars": self._chunk_chars}} if self._chunk_chars else {}
+        return EffectiveConfigSnapshot(raw=raw, ok=True)
+
+
 def _app(
     *,
     entities: list[FakeEntity] | Exception = DEFAULT_ENTITIES,
     token: str = "",
     db_config_enabled: bool = False,
+    provider: Any = None,
+    chunk_chars: int | None = None,
 ) -> FastAPI:
     app = create_app()
     from pydantic import SecretStr
 
     app.state.settings.service_token = SecretStr(token)
     app.state.settings.db.db_config_enabled = db_config_enabled
+    if chunk_chars is not None:
+        app.state.effective_config_client = FakeEffectiveConfigClient(chunk_chars)
 
-    async def factory(model_id: str) -> FakeGlinerRedactor:
-        return FakeGlinerRedactor(entities)
+    async def factory(model_id: str) -> Any:
+        return provider if provider is not None else FakeGlinerRedactor(entities)
 
     app.state.gliner_cache = ModelCache(factory=factory, ttl_seconds=60, max_size=2)
     return app
@@ -189,3 +245,105 @@ async def test_redact_rejects_unknown_mode() -> None:
     resp = await _post(_app(), {"text": TEXT, "mode": "anonymize"})
 
     assert resp.status_code == 422
+
+
+# ── Bounded-input chunking (GLiNER cost is super-linear in input length) ──
+#
+# Measured in TASK-710 §7 Task 6: 20,000 chars → 3.6s / 5.2GB peak RSS but
+# 50,000 chars → 17.5s / 17.8GB. A single `extract_entities` call over a
+# 100,000-char DNA corpus would exceed both the caller's HTTP timeout and a
+# worker container's memory limit. The endpoint therefore splits the input into
+# bounded chunks and re-bases each chunk's offsets onto the submitted document.
+
+PARAGRAPH = "Patient John Doe reports a headache and was prescribed lisinopril.\n\n"
+LONG_TEXT = PARAGRAPH * 20  # ~1,340 chars — well over the 200-char test chunk
+
+
+async def test_long_input_is_split_into_bounded_chunks() -> None:
+    provider = ScanningGlinerRedactor("John Doe")
+
+    resp = await _post(
+        _app(provider=provider, chunk_chars=200), {"text": LONG_TEXT, "mode": "full"}
+    )
+
+    assert resp.status_code == 200
+    # More than one extraction call, and no single call exceeded the budget —
+    # this is the whole point: peak memory is bounded by the chunk, not by the
+    # document.
+    assert len(provider.seen_chunks) > 1
+    assert all(len(chunk) <= 200 for chunk in provider.seen_chunks)
+    # Chunking is a pure partition: nothing dropped, nothing duplicated.
+    assert "".join(provider.seen_chunks) == LONG_TEXT
+
+
+async def test_chunked_entity_offsets_index_the_submitted_document() -> None:
+    provider = ScanningGlinerRedactor("John Doe")
+
+    resp = await _post(
+        _app(provider=provider, chunk_chars=200), {"text": LONG_TEXT, "mode": "full"}
+    )
+
+    body = resp.json()
+    assert len(provider.seen_chunks) > 1, "fixture must actually be chunked"
+    expected_occurrences = LONG_TEXT.count("John Doe")
+    assert len(body["entities"]) == expected_occurrences
+    # Every returned offset must address the ORIGINAL text, not its chunk.
+    for entity in body["entities"]:
+        assert LONG_TEXT[entity["start"] : entity["end"]] == "John Doe"
+    # Offsets are returned in document order.
+    starts = [e["start"] for e in body["entities"]]
+    assert starts == sorted(starts)
+    assert "John Doe" not in body["sanitized_text"]
+    assert body["sanitized_text"].count("[REDACTED]") == expected_occurrences
+    assert "lisinopril" in body["sanitized_text"]
+
+
+async def test_chunk_boundaries_never_split_a_word() -> None:
+    """A cut mid-identifier would hide PII from BOTH chunks — the one way
+    chunking could silently weaken redaction. Splits land on whitespace."""
+    provider = ScanningGlinerRedactor("John Doe")
+
+    await _post(_app(provider=provider, chunk_chars=200), {"text": LONG_TEXT, "mode": "full"})
+
+    # Every seam (end of chunk N / start of chunk N+1) falls on whitespace.
+    assert len(provider.seen_chunks) > 1, "fixture must actually be chunked"
+    for chunk in provider.seen_chunks[:-1]:
+        assert chunk[-1].isspace(), f"chunk ended mid-token: {chunk[-30:]!r}"
+
+
+async def test_pseudonymize_tokens_stay_stable_across_chunk_boundaries() -> None:
+    """Token assignment happens AFTER the per-chunk spans are merged, so the
+    same identifier in two different chunks still collapses onto one token."""
+    provider = ScanningGlinerRedactor("John Doe")
+
+    resp = await _post(
+        _app(provider=provider, chunk_chars=200), {"text": LONG_TEXT, "mode": "pseudonymize"}
+    )
+
+    sanitized = resp.json()["sanitized_text"]
+    assert len(provider.seen_chunks) > 1
+    assert sanitized.count("[PERSON_1]") == LONG_TEXT.count("John Doe")
+    assert "[PERSON_2]" not in sanitized
+
+
+async def test_short_input_is_a_single_unchunked_call() -> None:
+    """Below the budget the behaviour is byte-identical to the pre-chunking
+    endpoint — one call, whole document, offsets already global."""
+    provider = ScanningGlinerRedactor("John Doe")
+
+    resp = await _post(_app(provider=provider, chunk_chars=200), {"text": TEXT, "mode": "full"})
+
+    assert resp.status_code == 200
+    assert provider.seen_chunks == [TEXT]
+
+
+async def test_chunk_size_falls_back_to_the_code_default_when_control_plane_is_silent() -> None:
+    """No client / no opinion ⇒ the built-in budget applies. A control-plane
+    miss must never mean "unbounded"."""
+    provider = ScanningGlinerRedactor("John Doe")
+
+    resp = await _post(_app(provider=provider), {"text": LONG_TEXT, "mode": "full"})
+
+    assert resp.status_code == 200
+    # LONG_TEXT is far below the default budget, so it stays a single call.
+    assert provider.seen_chunks == [LONG_TEXT]

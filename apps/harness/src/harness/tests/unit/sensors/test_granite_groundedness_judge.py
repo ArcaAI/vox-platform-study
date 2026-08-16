@@ -134,21 +134,6 @@ class TestRequestShape:
         assert "<no-think>" not in captured["block"]
         assert "<guardian>" in captured["block"]
 
-    @pytest.mark.asyncio
-    async def test_ollama_provider_uses_native_api_chat(self):
-        seen: list[httpx.Request] = []
-
-        def handler(request: httpx.Request) -> httpx.Response:
-            seen.append(request)
-            return httpx.Response(200, json={"message": {"content": "<score>no</score>"}})
-
-        raw = await _judge(handler, provider="ollama", base_url="http://granite:11434").complete(
-            _entailment_messages("p", "h")
-        )
-        assert _is_supported(raw) is True
-        assert str(seen[0].url) == "http://granite:11434/api/chat"
-
-
 class TestProtocol:
     def test_satisfies_judge_client_protocol(self):
         judge = _judge(lambda r: _score("no"))

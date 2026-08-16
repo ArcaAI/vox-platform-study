@@ -37,7 +37,7 @@ _RAW_PHI_VALUES = ("John Smith", "884512", "03/14/1972", "415-555-0132")
 def _settings(
     *,
     fail_closed: bool = True,
-    local: tuple[str, ...] = ("lm-studio", "openai_compat", "ollama", "vllm", "llama-cpp"),
+    local: tuple[str, ...] = ("lm-studio", "openai_compat", "vllm", "llama-cpp"),
     enabled: bool = True,
 ) -> Settings:
     """A ``settings``-shaped stand-in exposing the real :class:`PhiConfig`.
@@ -222,7 +222,11 @@ class TestUnknownProviderDefaultsToRedact:
     injected fakes so nothing loads a spaCy model."""
 
     @pytest.mark.parametrize(
-        "provider", ["some-new-cloud-provider", "openai", "anthropic", "vertex"]
+        # "ollama" (TASK-736 R1): Ollama is removed entirely, so it is no longer
+        # a known-local provider — it must fail closed into redaction like any
+        # other unrecognized provider string.
+        "provider",
+        ["some-new-cloud-provider", "openai", "anthropic", "vertex", "ollama"],
     )
     def test_provider_is_redacted_not_passed_through(self, provider: str) -> None:
         out = _working_redactor().ensure_safe_for_cloud(

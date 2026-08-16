@@ -14,12 +14,20 @@ import { TaskDefaultCard } from './task-default-card';
  * 10-19, SUPER_ADMIN only). Edits the SYSTEM-tenant platform-default rows for
  * ALL THREE task keys by pinning `?tenantId=` to the SYSTEM tenant.
  *
- * EVERY task key edited here is global-admin-only on write — the service guards
- * all four prefixes (`guardrail.` / `smr.` / `nlp.` / `harness.`, see
- * `SUPER_ADMIN_ONLY_TASK_PREFIXES` in
+ * `nlp.*`/`harness.*` are global-admin-only on write — the service guards
+ * those two prefixes (`GLOBAL_ADMIN_ONLY_TASK_PREFIXES` in
  * `packages/applications/src/services/ai-task-default/constants.ts`) and the
- * gateway 403s a tenant admin's write to any of them (owner governance
- * directive 2026-07-17). Tenants only CONSUME the platform default.
+ * gateway 403s a tenant admin's write to either. Tenants only CONSUME the
+ * platform default for those keys.
+ *
+ * `guardrail.*` left that set in TASK-735 Phase 0 (owner decision
+ * 2026-08-16, reversing the 2026-07-17 directive): a tenant admin MAY now
+ * select their own guardrail model via the API, subject to the D2
+ * platform-approved-list floor (the slug must be a SYSTEM-tenant AiModel
+ * row — this screen IS that catalog). This screen still edits the SYSTEM
+ * (platform-default) row that tenants inherit absent their own selection; a
+ * dedicated tenant-facing guardrail picker is not yet built (see
+ * `effective-models-table.tsx`, still read-only for guardrail.*).
  */
 export function AiTaskDefaultsPlatformScreen() {
   return (
@@ -54,8 +62,8 @@ export function AiTaskDefaultsPlatformScreen() {
       <div className="grid items-start gap-4 lg:grid-cols-2 xl:grid-cols-3">
         <TaskDefaultCard
           taskKey="guardrail.validate"
-          title="Guardrail model — platform-controlled (global admins only)"
-          description="Safety validation model for every tenant. Tenant admins cannot change any guardrail configuration."
+          title="Guardrail model — platform default"
+          description="Safety validation model used when a tenant has not selected its own. Tenant admins may select their own guardrail model from this platform-approved catalog via the API."
           tenantId={SYSTEM_TENANT_ID}
         />
         <TaskDefaultCard

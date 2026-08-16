@@ -2,12 +2,16 @@
  * Retired AI-model slug ledger + pipeline-reference guard.
  *
  * The 50 slugs of the previous 60-row `DEFAULT_AI_MODELS` catalog that the
- * consolidation retires (soft-`DELETED`, never hard-deleted — recoverable).
- * `retireLegacyAiModels` (06-stt.ts) sweeps EVERY tenant's copy of each slug,
- * guarded by `shouldRetireAiModelSlug`: a slug still referenced by any
- * non-deleted `AsrPipeline.configYaml` (a tenant may have built a custom
- * pipeline on it) is SKIPPED with a loud warning instead of breaking
+ * consolidation retires, PLUS 3 more added by the TASK-736 Ollama removal
+ * (soft-`DELETED`, never hard-deleted — recoverable). `retireLegacyAiModels`
+ * (06-stt.ts) sweeps EVERY tenant's copy of each slug, guarded by
+ * `shouldRetireAiModelSlug`: a slug still referenced by any non-deleted
+ * `AsrPipeline.configYaml` (a tenant may have built a custom pipeline on it)
+ * is SKIPPED with a loud warning instead of breaking
  * `config_reader._to_model_config` resolution in stt.
+ *
+ * NEVER remove a slug from this ledger once added — that un-retires it and
+ * leaves any tenant's already-materialised copy pointing at a removed engine.
  */
 
 export const RETIRED_AI_MODEL_SLUGS: readonly string[] = [
@@ -40,6 +44,10 @@ export const RETIRED_AI_MODEL_SLUGS: readonly string[] = [
   'ollama-gemma3n-latest',
   'ollama-granite4-tiny-h',
   'ollama-granite4-latest',
+  // Ollama LLMs (TASK-736 — Ollama removed entirely, owner directive 2026-08-16)
+  'ollama-gemma4-12b-mlx',
+  'ollama-gemma4-e2b-it-qat',
+  'ollama-qwen3.5-2b',
   // Azure OpenAI LLMs
   'gpt-4',
   'gpt-4o',

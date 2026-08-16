@@ -90,9 +90,9 @@ class EffectiveConfigSnapshot:
     def retention(self) -> dict[str, int]:
         """The idle-retention TTL forwarded to engines.
 
-        SMR owns no cache; this value becomes Ollama's `keep_alive` and LM
-        Studio's `ttl`. An omitted/null/non-positive value means "keep the
-        env/bootstrap value" — never coerced into a real number.
+        SMR owns no cache; this value becomes LM Studio's `ttl`. An
+        omitted/null/non-positive value means "keep the env/bootstrap value"
+        — never coerced into a real number.
         """
         group = self.raw.get("retention")
         if not isinstance(group, dict):

@@ -12,7 +12,7 @@ import { SYSTEM_TENANT_ID, SYSTEM_USER_ID } from './00-constants';
  * SEED-AUTHORITATIVE Day-1 posture (OD-1). The SYSTEM rows — not env
  * are the authoritative default source. Two classes of row:
  *
- *   - BUILT-IN-LOCAL llm engines (`ollama`, `lm-studio`, `built-in`, `vllm`,
+ *   - BUILT-IN-LOCAL llm engines (`lm-studio`, `built-in`, `vllm`,
  *     `llama-cpp`) seed `enabled: true`, so `resolveConnection('llm', …)` returns
  *     the SYSTEM row Day-1 and env is a pure fallback. Their `baseUrl` is the
  *     platform-run engine's connection identity (env-tier per
@@ -57,21 +57,6 @@ export interface AiProviderConnectionSeed {
  * Order mirrors `AI_MODEL_PROVIDERS` so the seed-shape test can compare sets.
  */
 export const SYSTEM_AI_PROVIDER_CONNECTIONS: AiProviderConnectionSeed[] = [
-  {
-    // Local/self-host Ollama engine (`TEXT_OLLAMA_BASE_URL`).
-    id: '87000000-0000-0000-0000-000000000001',
-    tenantId: SYSTEM_TENANT_ID,
-    service: 'llm',
-    provider: 'ollama',
-    baseUrl: 'http://localhost:11434',
-    region: null,
-    apiVersion: null,
-    deploymentName: null,
-    encryptedApiKey: null,
-    keyVersion: null,
-    enabled: true,
-    metaData: { note: 'Base URL from TEXT_OLLAMA_BASE_URL (env-tier connection identity).' },
-  },
   {
     // LM Studio — the default local OpenAI-compatible engine
     // (`TEXT_OPENAI_COMPAT_BASE_URL`).

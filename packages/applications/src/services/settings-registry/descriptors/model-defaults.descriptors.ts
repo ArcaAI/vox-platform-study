@@ -5,29 +5,37 @@
 // `AiTaskDefault` table (tier `db-config`, tenant → SYSTEM cascade resolved by
 // `AiTaskDefaultService.getEffective`).
 //
-// Governance: `guardrail.*`, `nlp.*`, and `harness.*` keys are
-// GLOBAL-ADMIN-ONLY — `editableBy` points at the global-admin resource
-// (`'all'`, the CASL manage-everything subject) and the descriptor is flagged
-// `globalOnly`. `smr.*` is tenant-admin configurable: its
-// descriptors resolve to the tenant-editable `AiTaskDefault` resource and are
-// NOT flagged `globalOnly` (driven by `GLOBAL_ADMIN_ONLY_TASK_PREFIXES`).
+// Governance: `nlp.*` and `harness.*` keys are GLOBAL-ADMIN-ONLY —
+// `editableBy` points at the global-admin resource (`'all'`, the CASL
+// manage-everything subject) and the descriptor is flagged `globalOnly`.
+// `smr.*` and, since TASK-735 Phase 0 (owner decision 2026-08-16,
+// reversing the 2026-07-17 global-admin-only directive), `guardrail.*` are
+// tenant-admin configurable: their descriptors resolve to the tenant-editable
+// `AiTaskDefault` resource and are NOT flagged `globalOnly` (driven by
+// `GLOBAL_ADMIN_ONLY_TASK_PREFIXES`). `guardrail.*` writes still pass through
+// the D2 platform-approved-list floor enforced in `AiTaskDefaultService` —
+// this descriptor only governs WHO may attempt the write, not WHICH slugs.
 
 import { AI_TASK_KEYS, AiTaskKey, GLOBAL_ADMIN_ONLY_TASK_PREFIXES } from '../../ai-task-default/constants';
 import { SettingDescriptor } from '../registry.types';
 
 const META: Record<AiTaskKey, { label: string; description: string }> = {
+  // Tenant-admin configurable since TASK-735 Phase 0, subject to the
+  // platform-approved-list floor (a SYSTEM-tenant AiModel row is required).
   'guardrail.validate': {
     label: 'Guardrail validation model',
-    description: 'Default guardian LLM used by the safety engine for medical validation (global admins only).',
+    description:
+      'Default guardian LLM used by the safety engine for medical validation. Selection is limited to the platform-approved model catalog.',
   },
-  // guardrail content-safety + groundedness selection (global admins only).
   'guardrail.safety': {
     label: 'Guardrail safety detector',
-    description: 'Default GLiNER token-classification detector used by the safety engine for content-safety / PII labelling (global admins only).',
+    description:
+      'Default GLiNER token-classification detector used by the safety engine for content-safety / PII labelling. Selection is limited to the platform-approved model catalog.',
   },
   'guardrail.groundedness': {
     label: 'Guardrail groundedness model',
-    description: 'Default MiniCheck NLI/entailment fact-checker used by the safety engine for groundedness verification (global admins only).',
+    description:
+      'Default MiniCheck NLI/entailment fact-checker used by the safety engine for groundedness verification. Selection is limited to the platform-approved model catalog.',
   },
   'nlp.ner': {
     label: 'Medical NER model',

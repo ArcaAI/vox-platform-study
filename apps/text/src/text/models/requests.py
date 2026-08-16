@@ -90,7 +90,7 @@ class ImageContentPart(BaseModel):
     prefix is one provider's (OpenAI) wire convention, not a property of the
     image itself. Each adapter builds its own native wire shape from
     ``data``/``media_type`` (OpenAI-wire prepends ``data:``, Anthropic/Bedrock/
-    Vertex decode/use the raw bytes, Ollama sends the base64 string as-is).
+    Vertex decode/use the raw bytes).
     """
 
     type: Literal["image"] = "image"

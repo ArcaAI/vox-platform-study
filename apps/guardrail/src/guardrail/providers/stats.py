@@ -18,9 +18,8 @@ from dataclasses import asdict, dataclass
 from typing import Any
 
 # Raw OpenAI-wire ``finish_reason`` → AD-1 ``stop_reason`` vocabulary. LM Studio,
-# vLLM, Azure OpenAI and the generic OpenAI-compat gateway all speak this wire.
-# Ollama's ``done_reason`` uses the same two tokens that matter here
-# (``stop``/``length``), so the one table serves both.
+# vLLM, Azure OpenAI and the generic OpenAI-compat gateway all speak this wire,
+# which is every engine guardrail supports.
 _OPENAI_WIRE: dict[str, str] = {
     "stop": "stop",
     "eos": "stop",
@@ -81,45 +80,6 @@ def _client_tokens_per_second(
     if decode_ms <= 0:
         return None
     return round(predicted_tokens / (decode_ms / 1000.0), 3)
-
-
-def stats_from_ollama_response(
-    *,
-    provider: str,
-    model: str,
-    data: dict[str, Any] | None,
-    total_ms: int,
-) -> GuardrailCallStats:
-    """Build stats from an Ollama native ``/api/generate`` body.
-
-    Ollama does not speak the OpenAI wire: counts are ``prompt_eval_count`` /
-    ``eval_count`` and durations are NANOSECONDS. The raw block is preserved
-    under ``engine_native.usage`` in its native spelling, because that is the
-    shape the gateway's ``ollama.native`` normalizer expects.
-    """
-    data = data or {}
-    prompt_tokens = int(data.get("prompt_eval_count", 0) or 0)
-    predicted_tokens = int(data.get("eval_count", 0) or 0)
-    total_ms_int = int(total_ms or 0)
-
-    native = {
-        key: data[key]
-        for key in ("prompt_eval_count", "eval_count", "eval_duration", "prompt_eval_duration")
-        if key in data
-    }
-
-    return GuardrailCallStats(
-        stop_reason=normalize_stop_reason(data.get("done_reason")),
-        stop_reason_raw=str(data.get("done_reason") or ""),
-        total_ms=total_ms_int,
-        tokens_per_second=_client_tokens_per_second(predicted_tokens, total_ms_int, None),
-        prompt_tokens=prompt_tokens,
-        predicted_tokens=predicted_tokens,
-        total_tokens=prompt_tokens + predicted_tokens,
-        provider=provider,
-        model=model,
-        engine_native={"usage": native} if native else None,
-    )
 
 
 def stats_from_openai_response(

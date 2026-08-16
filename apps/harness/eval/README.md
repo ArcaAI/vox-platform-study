@@ -40,9 +40,9 @@ conda run -n arcaenv pip install -e 'apps/harness[test,eval]'
 conda run -n arcaenv python -m harness.eval.ci --output eval-report.json
 
 # Release-gate over the larger CURATED set with the calibration levers enabled
-# (anchored rubric prompt + deterministic seed), judge = local LM Studio google/gemma-4-e4b:
+# (anchored rubric prompt + deterministic seed), judge = local LM Studio gemma-4-e2b-it-qat:
 HARNESS_JUDGE_PROVIDER=openai_compat \
-HARNESS_JUDGE_MODEL=google/gemma-4-e4b \
+HARNESS_JUDGE_MODEL=gemma-4-e2b-it-qat \
 HARNESS_JUDGE_OPENAI_COMPAT_BASE_URL=http://localhost:1234/v1 \
 HARNESS_JUDGE_OPENAI_COMPAT_API_KEY=lm-studio \
 HARNESS_JUDGE_TEMPERATURE=0.0 HARNESS_JUDGE_SEED=7 HARNESS_JUDGE_ANCHORED=true \
@@ -90,9 +90,10 @@ Selected entirely via env (`HARNESS_JUDGE_*`); nothing is hardcoded.
 | Azure OpenAI (large)                                 | `azure`                  | `HARNESS_JUDGE_AZURE_ENDPOINT`, `HARNESS_JUDGE_AZURE_API_KEY`, `HARNESS_JUDGE_AZURE_DEPLOYMENT` |
 | AWS Bedrock (large)                                  | `bedrock`                | `HARNESS_JUDGE_MODEL` (model id), `HARNESS_JUDGE_BEDROCK_REGION`                                |
 
-The **default judge model** is `google/gemma-4-e4b` — a small (≤20B) Gemma-4
-hybrid-reasoning model — served by a local **LM Studio** endpoint on
-`http://localhost:1234/v1`. Override per env: `HARNESS_JUDGE_MODEL` (model id) and
+The **default judge model** is `gemma-4-e2b-it-qat` — the owner-standardized single
+model resident in LM Studio (a small ≤20B Gemma-4 hybrid-reasoning model, verified
+served by the live dev instance 2026-08-16) — served by a local **LM Studio** endpoint
+on `http://localhost:1234/v1`. Override per env: `HARNESS_JUDGE_MODEL` (model id) and
 `HARNESS_JUDGE_OPENAI_COMPAT_BASE_URL` (endpoint).
 
 ### Reasoning-control levers (cross-family robustness)
@@ -217,9 +218,11 @@ Drop it in by implementing a `GoldenSetSource` (or pointing `--golden-set` at it
 > (`:11434`). Those runs are retained **verbatim as the historical record**. The **current**
 > default safety path is **LM Studio** serving **`granite-guardian-4.1-8b`** over the
 > OpenAI-compatible endpoint `http://localhost:1234/v1` (env prefix `HARNESS_SAFETY_*`,
-> `Settings.safety`; canonical in `harness/core/config.py`). Ollama remains a selectable
-> engine via `HARNESS_SAFETY_PROVIDER=ollama`. Re-running these cases on the 4.1 guardian
-> would refresh the verdicts/distributions — the numbers below are _not_ re-run here.
+> `Settings.safety`; canonical in `harness/core/config.py`). **Ollama has since been removed
+> entirely** (TASK-736 R1) — `HARNESS_SAFETY_PROVIDER=ollama` now fails startup validation
+> rather than selecting an engine; the historical Ollama references below describe runs
+> performed before this removal. Re-running these cases on the 4.1 guardian would refresh
+> the verdicts/distributions — the numbers below are _not_ re-run here.
 
 Everything above is the **Phase-0 offline judge gate** (PDSQI-9 / faithfulness / ICC). That gate — the
 pre-Phase-2 baseline — recorded **no groundedness and no `ragTriadScore`** for a generated note. Phase 2 adds

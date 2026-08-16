@@ -2,7 +2,7 @@
 
 The Phase-1 :class:`~harness.sensors.base.Sensor` protocol is pure and **sync**
 (``run(ctx)``, no model calls). Inferential sensors (groundedness via the LM Studio
-judge, safety via Granite Guardian over Ollama) are **async + model-calling**, so
+judge, safety via Granite Guardian over LM Studio) are **async + model-calling**, so
 they need a distinct protocol — :class:`InferentialSensor` — while reusing the
 exact same :class:`~harness.sensors.base.SensorContext` / :class:`SensorResult`
 value objects so the aggregator and the durable loop consume both kinds unchanged.

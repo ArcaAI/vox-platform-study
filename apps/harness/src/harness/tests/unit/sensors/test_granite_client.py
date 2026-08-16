@@ -5,8 +5,7 @@ default the engine is **LM Studio** (OpenAI-compatible): the client posts the
 canonical 4.1 ``<guardian>`` BYOC block — one no-think call per harm dimension —
 to ``{base_url}/chat/completions`` (the note-to-judge is the ``assistant`` message,
 the ``<guardian>`` block the final ``user`` message) and reads the verdict from
-``choices[0].message.content``. With ``provider="ollama"`` it falls back to the
-native ``/api/chat`` (reading ``message.content``). ``<score>yes</score>`` means
+``choices[0].message.content``. ``<score>yes</score>`` means
 the criterion is met => the risk IS present => unsafe. A transport error raises
 :class:`GraniteServiceError`; an unparseable verdict raises
 :class:`GraniteParseError` (so the sensor degrades rather than guessing). Mirrors
@@ -111,30 +110,6 @@ class TestScreen:
         await _client(handler, harm_criteria=["harm"], no_think=False).screen("x")
         assert "<no-think>" not in captured["block"]
         assert "<guardian>" in captured["block"]
-
-    @pytest.mark.asyncio
-    async def test_ollama_provider_uses_native_api_chat(self):
-        seen: list[httpx.Request] = []
-
-        def handler(request: httpx.Request) -> httpx.Response:
-            seen.append(request)
-            return httpx.Response(200, json={"message": {"content": "<score>yes</score>"}})
-
-        dims = await _client(
-            handler,
-            provider="ollama",
-            base_url="http://granite:11434",
-            harm_criteria=["harm"],
-        ).screen("patient note text")
-
-        assert dims == {"harm": True}
-        # Legacy Ollama transport: POST {base_url}/api/chat, temperature under options.
-        assert str(seen[0].url) == "http://granite:11434/api/chat"
-        body0 = json.loads(seen[0].content)
-        assert body0["options"]["temperature"] == 0.0
-        assert "temperature" not in body0
-        assert body0["messages"][0]["content"] == "patient note text"
-        assert "<guardian>" in body0["messages"][-1]["content"]
 
     @pytest.mark.asyncio
     async def test_parallel_screen_keeps_criteria_order_and_mapping(self):

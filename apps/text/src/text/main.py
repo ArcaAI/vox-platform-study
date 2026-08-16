@@ -37,7 +37,7 @@ def _register_provider_factories(
     never at startup. A provider with no connection config is never registered,
     so a request naming it fails closed with a 404 — there is no ENABLE flag.
 
-    Local engines (LM Studio / Ollama / vLLM / llama.cpp) always carry a default
+    Local engines (LM Studio / vLLM / llama.cpp) always carry a default
     ``base_url`` so they are always available; Azure additionally requires an
     endpoint + api_key; Bedrock requires a region.
     """
@@ -66,11 +66,6 @@ def _register_provider_factories(
             ("lm-studio", "openai_compat"),
             _shared(lambda: OpenAICompatProvider(settings.openai_compat)),
         )
-
-    if settings.ollama.base_url:
-        from text.providers.ollama import OllamaProvider
-
-        _register(("ollama",), lambda: OllamaProvider(settings.ollama, http_client))
 
     if settings.bedrock.region:
         from text.providers.bedrock import BedrockProvider
@@ -214,7 +209,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     rate_limiters: dict[str, RateLimitTracker] = {}
     provider_configs = {
-        "ollama": settings.ollama,
         "azure-openai": settings.azure,
         "azure": settings.azure,
         "bedrock": settings.bedrock,
@@ -258,7 +252,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     if not app.state.provider_semaphores:
         provider_configs = {
-            "ollama": settings.ollama,
             "azure-openai": settings.azure,
             "azure": settings.azure,
             "bedrock": settings.bedrock,
@@ -380,6 +373,15 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
     app.state.provider_queues = {}
     app.state.shutdown_manager = None
     app.state.provider_semaphores = {}
+    # Isolated resource budget for the INTERNAL judge lane
+    # (`endpoints/judge.py`). Separate dicts, same classes — a saturated
+    # user-facing pool must not starve a safety-plane judgement and a wedged
+    # judgement must not consume the user-facing budget. Entries are created on
+    # first use by the judge endpoint (there is no eager per-provider
+    # preallocation: most providers are never judged with), so these start empty
+    # here AND stay valid in tests that build the app without running lifespan.
+    app.state.judge_semaphores = {}
+    app.state.judge_circuit_breakers = {}
     # Eager, not lifespan-gated: it's a plain in-process cache (no I/O, no
     # event-loop dependency), and generate()'s degrade-routing check must see
     # a real tracker even in tests that build the app without running
@@ -423,6 +425,7 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
     from text.api.endpoints.embeddings import router as embeddings_router
     from text.api.endpoints.generate import router as generate_router
     from text.api.endpoints.health import router as health_router
+    from text.api.endpoints.judge import router as judge_router
     from text.api.endpoints.providers import router as providers_router
     from text.api.endpoints.stream import router as stream_router
     from text.api.endpoints.tasks import router as tasks_router
@@ -431,6 +434,10 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
 
     app.include_router(health_router, prefix="/api/v1")
     app.include_router(generate_router, prefix="/api/v1")
+    # The internal judge lane. A SEPARATE route rather than a flag on
+    # `/generate`, so the moderation bypass cannot be reached by shaping a public
+    # request — see `endpoints/judge.py` and `services/judge_guard.py`.
+    app.include_router(judge_router, prefix="/api/v1")
     app.include_router(tasks_router, prefix="/api/v1")
     app.include_router(providers_router, prefix="/api/v1")
     app.include_router(stream_router, prefix="/api/v1")

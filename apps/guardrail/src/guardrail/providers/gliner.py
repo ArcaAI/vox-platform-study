@@ -72,7 +72,7 @@ HARMFUL_LABELS = [
 
 
 class GlinerProvider:
-    """GLiNER ONNX provider — replaces Ollama for all content safety checks.
+    """GLiNER ONNX provider — handles all content safety checks.
 
     construction is lightweight and holds NO weights; the ONNX
     runtime is loaded lazily by :meth:`load` on first use (driven by the aux
@@ -200,7 +200,7 @@ class GlinerProvider:
         entities = self.runtime.extract_entities(text, PII_LABELS)
         return [e for e in (entities or []) if e.score >= self.config.pii_threshold]
 
-    # ── Async public API (same shape as OllamaProvider) ───────────────────
+    # ── Async public API (same shape as the LLM content provider) ─────────
 
     async def extract_pii_entities(self, text: str) -> list[Any]:
         """Offload PII entity extraction to the thread pool — used by ``/guardrail/redact``.

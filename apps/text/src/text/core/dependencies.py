@@ -95,6 +95,39 @@ def get_provider_semaphores(request: Request) -> dict[str, ResizableSemaphore]:
     return getattr(request.app.state, "provider_semaphores", {})
 
 
+def get_judge_semaphores(request: Request) -> dict[str, ResizableSemaphore]:
+    """Per-provider concurrency semaphores for the INTERNAL judge lane.
+
+    A SEPARATE keyspace from ``provider_semaphores`` above, deliberately: the
+    safety plane's judgement calls must not queue behind (or drain) the
+    user-facing budget, and vice versa. Same objects, same rules — only the dict
+    differs. Entries are created on first use by the judge endpoint, so a
+    provider that no request has judged with yet is not preallocated.
+
+    Materialised onto ``app.state`` when absent rather than returning a throwaway
+    dict: a per-request dict would hand every judge call its OWN semaphore, which
+    looks like it works and silently means no concurrency bound at all.
+    """
+    state = request.app.state
+    if getattr(state, "judge_semaphores", None) is None:
+        state.judge_semaphores = {}
+    return cast("dict[str, ResizableSemaphore]", state.judge_semaphores)
+
+
+def get_judge_circuit_breakers(request: Request) -> dict[str, CircuitBreaker]:
+    """Per-provider circuit breakers for the INTERNAL judge lane.
+
+    Separate instances from ``circuit_breakers``: a judge engine failing must not
+    open the user-facing circuit for the same provider name, nor the reverse.
+
+    Materialised onto ``app.state`` when absent — see ``get_judge_semaphores``.
+    """
+    state = request.app.state
+    if getattr(state, "judge_circuit_breakers", None) is None:
+        state.judge_circuit_breakers = {}
+    return cast("dict[str, CircuitBreaker]", state.judge_circuit_breakers)
+
+
 def get_effective_config_client(request: Request) -> EffectiveConfigClient | None:
     """Retrieve the control-plane pull client from app.state (None if unwired)."""
     return getattr(request.app.state, "effective_config_client", None)

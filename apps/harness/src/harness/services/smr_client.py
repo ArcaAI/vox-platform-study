@@ -152,7 +152,7 @@ class SmrClient:
                 resp.raise_for_status()
                 return resp
 
-            # Per-endpoint governor (the SMR/Ollama box): bounded rate-limit-aware retry
+            # Per-endpoint governor (the SMR/LM Studio box): bounded rate-limit-aware retry
             # on a transient generation failure before the loop's own retry. generate is
             # NON-idempotent, so ``retry_on_timeout=False`` makes a per-call governor
             # timeout terminal, and a post-send read loss is surfaced as
