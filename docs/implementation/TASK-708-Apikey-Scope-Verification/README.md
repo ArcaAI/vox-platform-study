@@ -304,19 +304,20 @@ workflow X."
   work because no route-level check existed). This must be confirmed with whoever owns existing
   production API keys before Task 4 executes broadly — a phased rollout (scope required but not yet
   enforced / warn-only period) may be the right mitigation and should be decided at Task 3, not
-  assumed.
+  assumed. **Answer**: Lets review, suggest best practices. We cannot mix the `/admin/*` and `/internal/*` routes as they was design for different purposes.
 - **Bucket (c) (routes that should never be API-key-reachable) has no existing mechanism** — this
   ticket proposes reusing `@RequiredScopes` with a reserved, never-granted scope string rather than
   building a new decorator, to avoid a second authorization primitive; confirm this is acceptable
   or whether a dedicated `@ForbidApiKey()` decorator is preferred (a five-minute addition either
-  way, but a real API surface decision).
+  way, but a real API surface decision). **Answer**: Lets review, suggest best practices.
 - **This ticket's scope stops at today's routes.** `exposure-v1` (Wave 2) will introduce entirely
   new route shapes (`/api/v1/workflows/:slug/...`) that do not exist yet — this ticket cannot test
   those in advance, but its contract tests and the Task 3 classification methodology are exactly
-  what `exposure-v1` should reuse when those routes are designed.
+  what `exposure-v1` should reuse when those routes are designed. **Answer**: Lets review, suggest best practices.
 - **`API_KEY_SCOPE_REGISTRY` already has unused `admin:*` scopes declared** (§2.3) — worth
   confirming in Task 3 whether their original authors had a specific route mapping in mind that was
   never wired, versus whether the taxonomy needs revisiting now that real usage is being designed.
+  **Answer**: Lets review, suggest best practices.
 
 ## 7. Implementation Summary
 

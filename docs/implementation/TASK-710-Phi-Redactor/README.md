@@ -159,11 +159,11 @@ const response = await this.httpService.axiosRef.post(
 
 ## 6. Risks & Open Questions
 
-- **HUMAN-GATED (Task 0):** the exact pseudonymization mechanism (stable per-session token substitution vs. category masking) affects downstream NER accuracy and needs a decision informed by `apps/nlp`'s actual entity-linking behavior, not just this ticket's own reasoning — flag for a quick check against `ontology_linker.py`'s dictionary during Task 0.
-- Extending `IPhiRedactor`'s signature to add a `mode` parameter is a breaking interface change with exactly one existing consumer (`GateEditMiningService`) — low blast radius, but must be updated atomically in Task 3, not left half-migrated.
-- TASK-700 (`dna-phi-containment`) and this ticket both edit `dna-writing-style.processor.ts`. Sequencing risk: if TASK-700 lands first, this ticket's Task 5 diff should rebase cleanly (it only touches the corpus→SMR seam, not the `textSamples`/opt-out branch TASK-700 touches) — but this should be confirmed at execution time, not assumed.
-- The route correction from `/api/v1/guardrail/redact` (as loosely stated in the architecture doc) to the actually-idiomatic `/api/guardrail/redact` should be flagged back to the design doc if this pattern recurs elsewhere in the program — several other Plane 1/2 tickets may inherit the same imprecision.
-- This ticket does not decrypt or scan any existing `DnaWritingStyleReport.styleText` rows for already-leaked PHI — that is TASK-700's decrypt-and-scan, explicitly out of scope here (§1).
+- **HUMAN-GATED (Task 0):** the exact pseudonymization mechanism (stable per-session token substitution vs. category masking) affects downstream NER accuracy and needs a decision informed by `apps/nlp`'s actual entity-linking behavior, not just this ticket's own reasoning — flag for a quick check against `ontology_linker.py`'s dictionary during Task 0. **Answer**: Lets review, suggest best practices to gain high-accuracy and performance.
+- Extending `IPhiRedactor`'s signature to add a `mode` parameter is a breaking interface change with exactly one existing consumer (`GateEditMiningService`) — low blast radius, but must be updated atomically in Task 3, not left half-migrated. **Answer**: Lets review, suggest best practices.
+- TASK-700 (`dna-phi-containment`) and this ticket both edit `dna-writing-style.processor.ts`. Sequencing risk: if TASK-700 lands first, this ticket's Task 5 diff should rebase cleanly (it only touches the corpus→SMR seam, not the `textSamples`/opt-out branch TASK-700 touches) — but this should be confirmed at execution time, not assumed. **Answer**: Lets review, suggest best practices.
+- The route correction from `/api/v1/guardrail/redact` (as loosely stated in the architecture doc) to the actually-idiomatic `/api/guardrail/redact` should be flagged back to the design doc if this pattern recurs elsewhere in the program — several other Plane 1/2 tickets may inherit the same imprecision. **Answer**: Lets review, suggest best practices.
+- This ticket does not decrypt or scan any existing `DnaWritingStyleReport.styleText` rows for already-leaked PHI — that is TASK-700's decrypt-and-scan, explicitly out of scope here (§1). **Answer**: Lets review, suggest best practices.
 
 ## 7. Implementation Summary
 

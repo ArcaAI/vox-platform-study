@@ -937,7 +937,7 @@ Paste **actual command output** as evidence for every box; a claim without outpu
    `WorkflowVersionPublication` table (compiled config + both checksums + publisher + at) with
    `REVOKE UPDATE, DELETE` in the `HarnessAuditEvent` idiom
    (`migrations/20260606143138_task_330_.../migration.sql:206-215`) — a second table, not a
-   trigger. Not built here to avoid gold-plating; the decision needs a human.
+   trigger. Not built here to avoid gold-plating; the decision needs a human. **Answer**: Lets review, suggest best practices.
 3. **Palette-level entitlement granularity closes design.md open question 5** — but only
    because entitlements are column-per-key today. If a future ticket generalizes entitlements
    to a key/value table, per-node-type gating becomes cheap and this decision should be

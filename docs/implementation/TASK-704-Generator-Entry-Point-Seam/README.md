@@ -385,21 +385,21 @@ in one place instead of six.
   historically returned. Confirm with the product owner before Task 5 ships this specific change;
   if rejected, Task 5 narrows to logging-only for that one call site (decision computed and logged,
   but the sync legacy call always still runs — closer to today's behavior, at the cost of leaving
-  one of the seven entry points only partially "governed" by the flag).
+  one of the seven entry points only partially "governed" by the flag). Answer: Lets review, suggest best practices.
 - **Harness has no pre-summary/comprehensive-summary equivalent.** This ticket treats that as a
   standing gap, not something to fix — confirmed no code path in `apps/harness` implements either.
   If a future ticket adds harness support for these, the seam's `GenerationDecision` shape already
   has room for a third outcome; no rework of the seam's public contract should be needed, but this
-  is not verified by any test in this ticket and should not be assumed.
+  is not verified by any test in this ticket and should not be assumed. **Answer**: Lets review, suggest best practices.
 - **`HarnessGatewayService` becoming a required (non-`@Optional()`) dependency of
   `NoteGenerationService`** changes a DI failure mode from "silent no-op at runtime" to "boot
   failure if the module graph is wrong." This is the intended fix (§2.3), but it means any
   deployment or test fixture that previously relied on the optional/absent gateway to exercise the
   legacy path via a harness-enabled config must now also supply a (possibly mocked) gateway — audit
-  existing fixtures in Task 3's test update for this.
+  existing fixtures in Task 3's test update for this. **Answer**: Lets review, suggest best practices.
 - **Fan-out risk**: Tasks 4 and 5 touch overlapping module-registration files
   (`consultation-job.service.module.ts`). Execute Task 4 before Task 5 (already sequenced above,
-  not parallel) to avoid a merge conflict on the same import line.
+  not parallel) to avoid a merge conflict on the same import line. **Answer**: Lets review, suggest best practices.
 
 ## 7. Implementation Summary
 
