@@ -33,13 +33,22 @@ import {
 import { ApiExcludeController, ApiOperation, ApiParam, ApiSecurity, ApiTags } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
 import { timingSafeEqual } from 'node:crypto';
-import { Authorize } from '../../decorators';
+import { Authorize, RequiredScopes } from '../../decorators';
 import type { RequestWithAuth } from '../../types/request-with-auth';
 
 @ApiTags('internal-stt')
 @ApiExcludeController()
 @ApiSecurity('api-key')
 @Authorize()
+// Gap closed: previously this class had no `@RequiredScopes`, so
+// `UnifiedAuthGuard.enforceApiKeyScopes` saw no metadata and skipped the
+// check entirely — see the AUTH-NOTE below on `assertPlatformInternalCredential`
+// for what that meant in practice. `internal:stt:worker` is a reserved scope
+// (`apikey-scopes.registry.ts`) never issued to a tenant SDK/WEBHOOK/INTEGRATION
+// key; the STT worker's platform SERVICE_ACCOUNT credential (scopes: `['*']`)
+// satisfies it via the existing wildcard grant, so this is unaffected for the
+// worker and closes the gap for every other API-key holder.
+@RequiredScopes('internal:stt:worker')
 @Controller('internal/stt')
 export class SttInternalController {
   constructor(
@@ -105,12 +114,19 @@ export class SttInternalController {
   }
 
   /**
-   * AUTH-NOTE: the permission decorator on this controller UNDERSTATES the gate
-   * for tenant-pinned calls, and `ensureInternalApiKey` accepts ANY active API
-   * key — including a tenant's own SDK key. Tenant-scope injection was therefore
-   * the only thing stopping a key holder from driving another tenant's job by
-   * id, and honouring a caller-supplied `X-Internal-Tenant-Id` would hand that back as a
-   * tenant selector. So the pin is admitted ONLY for a caller presenting the
+   * AUTH-NOTE: the class-level `@RequiredScopes('internal:stt:worker')` now
+   * gates entry to this whole controller — an ordinary tenant SDK/WEBHOOK/
+   * INTEGRATION key no longer reaches ANY route here, because that scope is
+   * reserved and never issued to a tenant key (`apikey-scopes.registry.ts`).
+   * Only a caller holding it (in practice, the platform SERVICE_ACCOUNT
+   * credential, scopes `['*']`) gets this far at all.
+   *
+   * `ensureInternalApiKey` still just checks `request.apiKey` is set (i.e.
+   * the caller authenticated via API key, not JWT) — it does not itself
+   * distinguish which key. This method is the SECOND, narrower gate: even
+   * among callers that clear `@RequiredScopes`, honouring a caller-supplied
+   * `X-Internal-Tenant-Id` would hand a tenant selector to whoever holds it,
+   * so the cross-tenant pin is admitted ONLY for a caller presenting the
    * platform internal credential (`X-Internal-Service-Key` === `API_GATEWAY_KEY`,
    * the same secret/header pairing `InternalServiceTokenGuard` maps for `stt`),
    * compared in constant time. Fails CLOSED when the secret is unresolvable.

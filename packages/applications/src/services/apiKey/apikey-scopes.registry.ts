@@ -40,6 +40,14 @@ export const API_KEY_SCOPE_REGISTRY: Record<string, ScopeDefinition> = {
   'webhook:event:read': { description: 'Read webhook events', category: 'Webhook' },
   'webhook:event:write': { description: 'Manage webhook subscriptions', category: 'Webhook' },
 
+  // Internal (platform-only). Reserved for service-to-service credentials —
+  // never issued to a tenant SDK/WEBHOOK/INTEGRATION key. Gates
+  // `SttInternalController` (`/internal/stt/*`), which the STT worker calls
+  // with the platform SERVICE_ACCOUNT credential (scopes: `['*']`, which
+  // satisfies this via `hasScope`'s wildcard grant — no seed/provisioning
+  // change needed). See `apps/api/src/modules/internal/stt-internal.controller.ts`.
+  'internal:stt:worker': { description: 'STT worker service-to-service callbacks (never issued to a tenant key)', category: 'Internal' },
+
   // Workflow exposure plane (TASK-722). Prefix-matching (apikey.service.ts's
   // hasScope) means a key holding the bare `"workflow"` scope would grant all
   // three below — that is the existing prefix semantics, not new behavior.
