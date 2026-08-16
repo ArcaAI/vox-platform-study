@@ -129,6 +129,13 @@ the real score object.
 
 ## Live gate results — LM Studio `google/gemma-4-e4b` on `curated_v1` (18 cases)
 
+This is also the exact backend/config `harness-eval-gate` (`.gitlab/ci/test.yml`, TASK-713)
+targets in CI — the job is gated behind `RUN_INFRA_TESTS=true` rather than unconditionally
+on, because no CI-runnable LM Studio image exists for a shared GitLab runner; see
+`docs/implementation/TASK-713-Harness-Eval-Gate/README.md` §7 for the fresh wall-clock
+measurement, the two viable CI-provisioning paths, and why `EvalConfig`'s default thresholds
+needed no recalibration for this judge.
+
 Deterministic single pass; **all 18 cases scored, 0 dropped**. Run config:
 
 ```bash

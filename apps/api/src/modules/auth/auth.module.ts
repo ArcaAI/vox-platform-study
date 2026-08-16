@@ -5,6 +5,7 @@ import {
   UserDepartmentServiceModule,
   UserRoleAssignmentServiceModule,
   UserServiceModule,
+  WorkflowRunServiceModule,
 } from '@arcaai/applications';
 import { CoreDatabaseModule } from '@arcaai/domains';
 import { Module } from '@nestjs/common';
@@ -51,6 +52,10 @@ import { StreamTicketModule } from './stream-ticket.module';
     FederatedAuthServiceModule,
     // RegistrationService (verified self-signup) for RegisterController.
     RegistrationServiceModule,
+    // Mint-time tenant-ownership check for `workflow_run:<runId>` tickets (TASK-722 Task 7) —
+    // `IWorkflowRunService.getRun` already 404s a foreign-tenant runId; reused here rather than
+    // adding a second lookup path.
+    WorkflowRunServiceModule,
   ],
   // AdminImpersonationController adds the global-admin-only
   // `POST /admin/users/:id/impersonate` mint alongside the legacy

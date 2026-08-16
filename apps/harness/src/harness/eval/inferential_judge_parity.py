@@ -23,7 +23,7 @@ identical to that harness; cases run sequentially to be kind to one local GPU.
 Run it (both models must be resident in LM Studio — gemma judge + granite-guardian)::
 
     HARNESS_JUDGE_OPENAI_COMPAT_JSON_RESPONSE_FORMAT=text \\
-    HARNESS_JUDGE_MAX_TOKENS=3072 \\
+    HARNESS_JUDGE_MAX_TOKENS=16384 \\
     conda run -n arcaenv python -m harness.eval.inferential_judge_parity \\
       --golden-set apps/harness/src/harness/eval/golden/fixtures/curated_v1.json \\
       --output inferential-judge-parity.json

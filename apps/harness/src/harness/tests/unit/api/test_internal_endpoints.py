@@ -83,6 +83,40 @@ class TestStartDocument:
         assert wf_input.gate.max_regen == settings.max_regen
 
     @pytest.mark.asyncio
+    async def test_start_threads_external_patient_id_into_workflow_input(self, harness):
+        """TASK-712 (consent-abac Phase 4) — externalPatientId reaches
+        HarnessDocWorkflowInput so call_mcp_tool/retrieve_context can key a
+        consent-gate lookup."""
+        http, client, _handle, _settings = harness
+        resp = await http.post(
+            "/api/v1/internal/consultations/c-1/document:start",
+            headers=_HEADERS,
+            json={
+                "tenantId": "t-1",
+                "transcriptText": "x",
+                "externalPatientId": "PAT-20250101-001",
+            },
+        )
+        assert resp.status_code == 200
+        args, _ = client.start_workflow.call_args
+        wf_input = args[1]
+        assert wf_input.external_patient_id == "PAT-20250101-001"
+
+    @pytest.mark.asyncio
+    async def test_start_defaults_external_patient_id_to_none(self, harness):
+        """An un-upgraded caller omits it — the workflow degrades (consent
+        UNAVAILABLE, not a crash), never a validation error."""
+        http, client, _handle, _settings = harness
+        resp = await http.post(
+            "/api/v1/internal/consultations/c-1/document:start",
+            headers=_HEADERS,
+            json={"tenantId": "t-1", "transcriptText": "x"},
+        )
+        assert resp.status_code == 200
+        args, _ = client.start_workflow.call_args
+        assert args[1].external_patient_id is None
+
+    @pytest.mark.asyncio
     async def test_start_threads_redaction_rules_into_workflow_input(self, harness):
         """CamelCase redactionRules parse into RedactionRule payloads on
         HarnessDocWorkflowInput; an omitted field defaults to an empty (no-op) list."""

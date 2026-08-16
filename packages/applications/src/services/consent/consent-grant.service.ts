@@ -1,7 +1,7 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable, InternalServerErrorException, Logger, Optional } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { ConsentGrantEntity, ConsentGrantFactory, ConsentGrantRepository, ResourceType, SysEventType } from '@arcaai/domains';
+import { ConsentGrantEntity, ConsentGrantFactory, ConsentGrantRepository, HarnessAuditAction, ResourceType, SysEventType } from '@arcaai/domains';
 import { ArgumentInvalidException } from '@arcaai/exceptions';
 import { IConsentGrantService } from './IConsentGrantService';
 import { CreateConsentGrantRequest, RevokeConsentGrantRequest, ConsentGrantResponse } from './dto';
@@ -9,6 +9,7 @@ import { ConsentGrantDtoMapper } from './consent-grant.dto.mapper';
 import { assertEqualTenants, BaseService } from '../../common';
 import { IActiveUserContext } from '../../interfaces';
 import { CONSENT_INVALIDATE_EVENT, normalizeExternalPatientId } from './consent.constants';
+import { HarnessAuditService } from '../harness-audit/harness-audit.service';
 
 /**
  * Admin CRUD for `ConsentGrant` (TASK-712, consent-abac).
@@ -17,17 +18,32 @@ import { CONSENT_INVALIDATE_EVENT, normalizeExternalPatientId } from './consent.
  * `ConsultationConsentService.assertConsent`/`checkConsent`, the ABAC choke
  * point. This service only creates and revokes grant rows.
  *
- * WORM ledger: create/revoke broadcast the standard `AuditLog` sys-event
- * (`ResourceCreated`/`ResourceUpdated`) like every other application
- * service — they do NOT write to `HarnessAuditEvent`. See
- * docs/implementation/TASK-712-Consent-Abac/consent-design.md §6 for why.
+ * WORM ledger (Phase 4 follow-up): create/revoke broadcast the standard
+ * `AuditLog` sys-event (`ResourceCreated`/`ResourceUpdated`) like every other
+ * application service, AND append a `CONSENT_GIVEN`/`CONSENT_WITHDRAWN` row
+ * to the hash-chained `HarnessAuditEvent` ledger — giving those two
+ * previously-dead enum members real writers (README acceptance criterion).
+ * `consultationId` is `null` on these rows: a grant/revoke is keyed on
+ * `(tenantId, externalPatientId, purpose)`, not a consultation — see
+ * `harness.prisma`'s field comment and `consent-design.md` §6 for the
+ * hash-compatibility reasoning that makes the column nullable in the first
+ * place. `modelName`/`modelVersion`/`sensorScores`/`citations` carry the same
+ * sentinel shape `SummaryService.approveSummary` already uses for the
+ * clinician-attestation `ATTEST` event (a human action, not a model run).
  */
 @Injectable()
 export class ConsentGrantService extends BaseService implements IConsentGrantService {
+  private readonly logger = new Logger(ConsentGrantService.name);
+
   constructor(
     private readonly consentGrantRepository: ConsentGrantRepository,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
+    // Optional + trailing (mirrors SummaryService's ATTEST wiring): existing
+    // positional test fixtures keep compiling; production DI
+    // (ConsentGrantServiceModule) always supplies it, which is what makes the
+    // WORM append fail-closed in production (see create()/revoke() below).
+    @Optional() @Inject(HarnessAuditService) private readonly harnessAuditService?: HarnessAuditService,
   ) {
     super(eventEmitter, clsService, ResourceType.ConsentGrant);
   }
@@ -63,6 +79,12 @@ export class ConsentGrantService extends BaseService implements IConsentGrantSer
 
     const saved = await this.consentGrantRepository.create(entity);
 
+    // WORM ledger write — fail-closed, same posture as `SummaryService`'s
+    // ATTEST append: an audit-append failure propagates and the caller sees
+    // create() reject (never a success-shaped response for an ungranted
+    // audit trail). See the class docblock for why consultationId is null.
+    await this.appendWormEvent(HarnessAuditAction.CONSENT_GIVEN, saved, tenantId);
+
     this.broadcastSysEvent(SysEventType.ResourceCreated, {
       resourceId: saved.id,
       createdAt: saved.createdAt,
@@ -92,6 +114,10 @@ export class ConsentGrantService extends BaseService implements IConsentGrantSer
     const previousVersion = entity.version;
     const updated = await this.consentGrantRepository.updateWithVersion(id, entity, request.expectedVersion);
 
+    // WORM ledger write — see create()'s comment for the fail-closed posture
+    // and the null-consultationId reasoning.
+    await this.appendWormEvent(HarnessAuditAction.CONSENT_WITHDRAWN, updated, updated.tenantId);
+
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
       resourceId: updated.id,
       data: { ...entity.changes, previousVersion, newVersion: updated.version },
@@ -119,5 +145,47 @@ export class ConsentGrantService extends BaseService implements IConsentGrantSer
     });
 
     return grants.map((g) => ConsentGrantDtoMapper.toResponse(g));
+  }
+
+  /**
+   * Append one CONSENT_GIVEN/CONSENT_WITHDRAWN row to the WORM ledger.
+   * `consultationId: null` — a grant/revoke has no consultation (see class
+   * docblock). `modelName`/`modelVersion`/`sensorScores`/`citations` are the
+   * same sentinel shape `SummaryService.approveSummary` uses for ATTEST (a
+   * human action, not a model run) — this is the established precedent for a
+   * clinical WORM row with no model/generation to describe, not a new
+   * convention invented here.
+   *
+   * `@Optional()` in the constructor means this is a genuine no-op (not a
+   * throw) when `harnessAuditService` is unset — production DI
+   * (`ConsentServiceModule`) always supplies it, so the no-op path is
+   * exercised only by unit fixtures that construct this service directly.
+   */
+  private async appendWormEvent(action: HarnessAuditAction, grant: ConsentGrantEntity, tenantId: string): Promise<void> {
+    if (!this.harnessAuditService) {
+      return;
+    }
+    try {
+      await this.harnessAuditService.append({
+        tenantId,
+        consultationId: null,
+        action,
+        modelName: 'consent-administration',
+        modelVersion: 'v1',
+        sensorScores: {},
+        citations: [],
+        clinicianId: action === HarnessAuditAction.CONSENT_GIVEN ? grant.grantedBy : (grant.revokedBy ?? grant.grantedBy),
+        createdBy: action === HarnessAuditAction.CONSENT_GIVEN ? grant.grantedBy : (grant.revokedBy ?? grant.grantedBy),
+      });
+    } catch (error) {
+      this.logger.error({
+        message: 'ConsentGrantService: WORM audit append failed — the mutation already committed but is NOT reflected on the ledger',
+        action,
+        grantId: grant.id,
+        tenantId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error instanceof Error ? error : new InternalServerErrorException('Failed to append ConsentGrant WORM audit event');
+    }
   }
 }

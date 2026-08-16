@@ -110,6 +110,7 @@ function buildController(overrides: any = {}) {
     emitter as any,
     {} as any,
     { lookup: vi.fn().mockResolvedValue(null) } as any,
+    {} as never, // workflowRunService (TASK-722)
   );
   return { controller, emitter };
 }

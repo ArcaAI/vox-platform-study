@@ -30,6 +30,14 @@ export interface HarnessStartContext {
    * ({ id, type, match, pattern, replacement?, note? }).
    */
   redactionRules?: Record<string, unknown>[];
+  /**
+   * `Consultation.patientId` (TASK-712, consent-abac Phase 4) — threaded onto
+   * `HarnessDocWorkflowInput` so the `call_mcp_tool`/`retrieve_context`
+   * activities can key a consent-gate lookup. Omitted ⇒ those activities
+   * degrade to `consent_unavailable` (fail-closed, but distinguishable from
+   * a genuine denial — R4) rather than crash.
+   */
+  externalPatientId?: string;
 }
 
 /**
@@ -187,6 +195,71 @@ export interface HarnessEvalRunResult {
 }
 
 /**
+ * Explicit connect+response timeout for the workflow-run dispatcher calls
+ * (TASK-722). Axios has NO default timeout — an unreachable/filtered harness
+ * host (rather than one that actively refuses the connection) would otherwise
+ * hang the calling request indefinitely, discovered via this ticket's own e2e
+ * run against an environment with no harness process. `start()` and the
+ * `signal*` methods above predate this and are unchanged (out of scope here).
+ */
+const WORKFLOW_RUN_HTTP_TIMEOUT_MS = 15_000;
+
+/**
+ * Out-of-band reference to a claim-checked blob (TASK-718's `ClaimCheckRef`,
+ * `apps/harness/src/harness/temporal/claim_check.py:64-80`). The wire body sent to
+ * `/workflow-runs:start` MUST spell the content-type field `content_type`
+ * (snake_case) — the Python `ClaimCheckRef` model carries no alias of its own
+ * (only the OUTER `StartWorkflowRunRequest` fields are camelCase-aliased), and
+ * `ConfigDict(extra="forbid")` 422s on an unrecognized `contentType` key.
+ */
+export interface HarnessClaimCheckRef {
+  store: string;
+  bucket: string;
+  key: string;
+  size: number;
+  sha256: string;
+  content_type: string;
+}
+
+/** Body for `POST /workflow-runs:start` (TASK-718 Task 10 / TASK-722 Task 5). */
+export interface StartWorkflowRunInput {
+  runId: string;
+  sessionId: string;
+  workflowVersionId: string;
+  tenantId: string;
+  configRef: HarnessClaimCheckRef;
+  sandbox?: boolean;
+}
+
+/** Response of `POST /workflow-runs:start`. */
+export interface StartWorkflowRunResult {
+  runId: string;
+  workflowId: string;
+  temporalRunId: string;
+  status: 'started' | 'already_running';
+}
+
+/** One `WorkflowInterpreter.state` stage, as reported by `GET /workflow-runs/{runId}`. */
+export interface HarnessWorkflowRunStage {
+  [key: string]: unknown;
+}
+
+/** Response of `GET /workflow-runs/{runId}`. */
+export interface GetWorkflowRunResult {
+  runId: string;
+  status: string;
+  stages: HarnessWorkflowRunStage[];
+  startedAt: string | null;
+  endedAt: string | null;
+}
+
+/** Response of `POST /workflow-runs/{runId}:cancel`. */
+export interface CancelWorkflowRunResult {
+  runId: string;
+  status: string;
+}
+
+/**
  * HarnessGatewayService.
  *
  * The OUTBOUND half of the apps/api <-> apps/harness gate adapter. Uses Nest
@@ -228,6 +301,7 @@ export class HarnessGatewayService {
       // Omit entirely when empty so the request stays byte-identical
       // to the pre-redaction body (the harness defaults redactionRules to []).
       ...(ctx.redactionRules && ctx.redactionRules.length > 0 ? { redactionRules: ctx.redactionRules } : {}),
+      ...(ctx.externalPatientId ? { externalPatientId: ctx.externalPatientId } : {}),
     };
 
     const response = await this.httpService.axiosRef.post(url, body, {
@@ -355,6 +429,48 @@ export class HarnessGatewayService {
       passed: (response.data as HarnessEvalRunResult)?.passed,
     });
     return response.data as HarnessEvalRunResult;
+  }
+
+  /**
+   * Start (or idempotently re-attach to, on a workflow-id collision) an
+   * interpreter run (TASK-722's exposure plane / TASK-721's Workbench — the
+   * two callers TASK-718's own docstring names). `configRef` MUST already be
+   * minted (this endpoint never accepts a raw `compiledConfig` — see
+   * `interpreter.py:StartWorkflowRunRequest`'s docstring); minting it is the
+   * caller's job (`WorkflowExposureService`).
+   */
+  async startWorkflowRun(input: StartWorkflowRunInput): Promise<StartWorkflowRunResult> {
+    const url = `${this.harnessUrl}/api/v1/workflow-runs:start`;
+    const body = {
+      runId: input.runId,
+      sessionId: input.sessionId,
+      workflowVersionId: input.workflowVersionId,
+      tenantId: input.tenantId,
+      configRef: input.configRef,
+      sandbox: input.sandbox ?? false,
+    };
+    const response = await this.httpService.axiosRef.post(url, body, { headers: await this.buildHeaders(), timeout: WORKFLOW_RUN_HTTP_TIMEOUT_MS });
+    this.logger.log({ message: 'Harness workflow run started', runId: input.runId, status: (response.data as StartWorkflowRunResult)?.status });
+    return response.data as StartWorkflowRunResult;
+  }
+
+  /** Status/result read surface: `Temporal.describe()` + the workflow's `state` query. */
+  async getWorkflowRun(runId: string): Promise<GetWorkflowRunResult> {
+    const url = `${this.harnessUrl}/api/v1/workflow-runs/${runId}`;
+    const response = await this.httpService.axiosRef.get(url, { headers: await this.buildHeaders(), timeout: WORKFLOW_RUN_HTTP_TIMEOUT_MS });
+    return response.data as GetWorkflowRunResult;
+  }
+
+  /**
+   * Send the interpreter's `cancel` signal — a CODE allow-list (this method's
+   * whole surface), never a caller-supplied signal name (the F-09 anti-pattern
+   * TASK-722's README names, `harness-admin.controller.ts:485`).
+   */
+  async cancelWorkflowRun(runId: string): Promise<CancelWorkflowRunResult> {
+    const url = `${this.harnessUrl}/api/v1/workflow-runs/${runId}:cancel`;
+    const response = await this.httpService.axiosRef.post(url, {}, { headers: await this.buildHeaders(), timeout: WORKFLOW_RUN_HTTP_TIMEOUT_MS });
+    this.logger.log({ message: 'Harness workflow run cancel requested', runId });
+    return response.data as CancelWorkflowRunResult;
   }
 
   private async buildHeaders(): Promise<Record<string, string>> {

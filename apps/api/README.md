@@ -390,6 +390,26 @@ ALL  /api/v1/text/**                      # SmrProxyController (modules/streamin
 
 > **NLP** is a downstream Python service (`:8864`) that the gateway health-monitors via `/api/v1/health/services`; it has **no** gateway proxy route or WebSocket.
 
+#### Workflow Exposure Plane (TASK-722)
+
+A tenant's **published** workflow versions become products, invokable over REST with a scoped API key or a JWT session. ONE generic route family — never a route generated per workflow. **Gated OFF by default** behind `WORKFLOW_EXPOSURE_ENABLED` (a 404, not a 403, while off — the surface's existence is not disclosed).
+
+```
+GET  /api/v1/workflows                              # The tenant's published + active workflows (slug + identity)
+POST /api/v1/workflows/:slug/invoke                  # Start a run of the tenant's active published version
+GET  /api/v1/workflows/:slug/runs/:runId             # Live run status + result
+GET  /api/v1/workflows/:slug/runs/:runId/stream      # SSE progress + result (see note below)
+POST /api/v1/workflows/:slug/runs/:runId/cancel      # Cancel a run (allow-listed action, never a signal-name pass-through)
+```
+
+- **Auth + scopes.** Every route carries both an authorization decorator (JWT/CASL path) and `@RequiredScopes(...)` from the `workflow:*` family (API-key path): `workflow:definition:read`, `workflow:run:read`, `workflow:run:write` (or the wildcard `workflow:*`). A tenant admin holding `manage:WorkflowRun`/`manage:WorkflowDefinition` can also reach it via a JWT session.
+- **Tenant resolution.** `tenantId` is read exclusively from the authenticated principal — it is never a body/query/header field a caller controls. A foreign-tenant, unpublished, or unknown `slug`/`runId` is **404**, never 403 (404-over-403).
+- **Idempotency.** `Idempotency-Key` header — a repeated invoke with the same key returns the prior response and starts no second run (24h Redis-backed replay cache).
+- **`invoke` returns `202 Accepted`**: `{ runId, status, statusUrl, streamUrl }`.
+- **Streaming (`.../stream`).** Open with `Authorization: Bearer <jwt>` or a single-use `?ticket=<ticket>` minted from `POST /api/v1/auth/stream-ticket` with scope `workflow_run:<runId>` (mint-time tenant-ownership check; never a JWT in the URL). The stream is a documented **polling bridge**, not a byte-for-byte proxy — no live event-stream producer exists on the interpreter yet, so the gateway re-polls the run's JSON status and translates each snapshot into a `@arcaai/async-contract` envelope (`workflow.run.progress` / `workflow.run.completed`). There is no `Last-Event-ID` resume: a reconnect re-syncs from the current live status rather than filling a gap (no synthetic resume token is minted for the underlying non-resumable Temporal-polling transport).
+- **Cloud-provider egress.** A publicly-invoked workflow may not select a cloud LLM provider (azure/bedrock/openai/anthropic/vertex) unless `WORKFLOW_EXPOSURE_ALLOW_CLOUD_PROVIDERS` is on — public exposure inherits the strictest egress posture by default.
+- **Rate limiting.** `invoke` is the first `heavy`-tier (`@Throttle`) consumer in the gateway (20 req/60s platform-wide backstop); the per-key `ApiKey.rateLimit` is the control that actually reaches API-key traffic (plan-tier rate limits do not).
+
 #### Admin Endpoints (Tenant Administrators)
 
 ```

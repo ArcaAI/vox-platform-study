@@ -36,7 +36,11 @@ import { SecretsService } from '../baseServices/_meta/secrets';
  */
 export interface AppendHarnessAuditInput {
   tenantId: string;
-  consultationId: string;
+  // NULLABLE (TASK-712, consent-abac Phase 4): CONSENT_GIVEN/CONSENT_WITHDRAWN
+  // have no consultation to bind to — pass `null` explicitly for those two
+  // actions. Every other action still requires one (enforced by
+  // HarnessAuditEventEntity.validate(), not by this type).
+  consultationId: string | null;
   contextItemVersionId?: string | null;
   action: HarnessAuditAction;
   modelName: string;

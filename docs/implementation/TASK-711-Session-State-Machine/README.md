@@ -703,10 +703,16 @@ pasted output is not accepted (`.claude/rules/01-development-workflow.md` §Anti
 
 ## 7. Implementation Summary
 
-**Scope of this execution pass: Phase 0 (Task 1) + Phase 1 (Tasks 2-3) + Phase 2 (Tasks 4-5)
+**Scope of the first execution pass: Phase 0 (Task 1) + Phase 1 (Tasks 2-3) + Phase 2 (Tasks 4-5)
 only** — `packages/database` and `packages/domains`. Phases 3-7 (Tasks 6-13: application
-services, API surface, `metadata.status` removal, static gates, backfill migration, E2E) are
-**NOT done** — out of ownership for this pass and left for the next phase.
+services, API surface, `metadata.status` removal, static gates, backfill migration, E2E) were
+**NOT done** — out of ownership for that pass and left for later.
+
+**A second pass (same day, infra now up) closed the two gates the first pass left open and
+incorporated the owner's Q1/timeout decisions — `packages/database`-only, see "This pass
+(2026-08-16, continued)" below.** Phases 3-7 are still not done, and a new, explicitly-flagged
+`packages/domains` follow-up (wiring `CLOSED_COMPLETE`/`CLOSED_INCOMPLETE` into
+`ConsultationEntity.CONSULTATION_TRANSITIONS`) is now also outstanding.
 
 ### Task 1 — State chart, legality matrix, backfill mapping (Phase 0)
 
@@ -840,30 +846,153 @@ after this change — still clean (see Verification below).
   new warnings.
 - `pnpm --filter @arcaai/domains typecheck` — clean.
 
+### This pass (2026-08-16, continued) — infra up: gates closed, owner decisions on Q1/timeout incorporated
+
+**Scope: `packages/database` (owner for this pass) + one mechanical `packages/domains` fix caused
+directly by this pass's own enum change.** Applications/API/admin-console remain untouched.
+
+**1. Closed the two gates the previous pass left open (infra was down then; it is up now):**
+
+- Created throwaway `hope_shadow`, replayed the full 97/98-migration ledger via
+  `db:migrate:deploy`, and ran `npx prisma migrate diff --from-config-datasource --to-schema
+  src/prisma/db_main --script` — **prints `-- This is an empty migration.`** for the previously-gated
+  `20260816010000_task_711_session_state_machine` migration (PRIMED/DRAINING/TIMED_OUT +
+  `degradedReasons`). Confirmed the live dev DB already carries this schema (`pnpm db:push` had
+  already synced it — verified via `pg_enum`/`\d core."Consultation"` before touching anything).
+- Ran the Task 1 §4 observed-distribution query against the real local `hope` dev DB (11 rows,
+  2026-08-16) — see backfill-mapping.md §2 for the full result set. It surfaced **four
+  `metadata.status` values the starting mapping did not anticipate** (`REVIEW`, `TRANSCRIBING`,
+  `RECORDING`, `SUMMARIZING` — stale free-form values predating the current two-value
+  `{OPEN,CLOSED}` legacy vocabulary). Extended the mapping table with explicit rows for each
+  (all map to "unchanged, strip" — none signal closure) rather than adding a wildcard, per the
+  ticket's own "extend, do not replace / an unenumerated combination halts the migration" design
+  philosophy. R4 (bucket-size risk) is answered: the `OPEN+CLOSED+unsigned` bucket is 2/11 rows in
+  dev, and is now moot regardless of size — see next point.
+
+**2. Owner decision incorporated — `CLOSED_COMPLETE`/`CLOSED_INCOMPLETE` replace the speculative
+`ABANDONED` (§6 Q1), with a settings-registry-backed session timeout (design only, this pass):**
+
+- `state-machine.md` §1a (new) records the decision and its rationale; §2's legality matrix,
+  §5's invariant-traceability table, and the "two answers this matrix forces" note are all revised
+  in place (not appended as a separate section) so the document reads as one coherent current
+  design, with the pre-revision version left in git history for audit.
+- `enums.prisma`: `ConsultationStatus` gains `CLOSED_COMPLETE` (reachable only from `SIGNED` — a
+  human gave feedback) and `CLOSED_INCOMPLETE` (reachable from `TIMED_OUT`, or from the
+  session-timeout sweep's eligible set `{PRIMED, DRAINING, DRAFT_PENDING_SENSORS, TIMED_OUT,
+  REOPENED}` — no feedback ever recorded). The pre-existing `CLOSED` member (already dead before
+  this ticket touched anything — A-46 — and never live in any real environment, since the
+  20260816010000 migration that would have resurrected it was never applied before this revision)
+  is annotated **superseded** in the schema comment and is deliberately never targeted again — it
+  cannot be dropped from a Postgres enum, so "documented and permanent, not silently dead" is the
+  best available outcome, matching the treatment already given to `PAUSED`.
+- `harness.prisma`: `HarnessAuditAction` gains `SESSION_CLOSED_COMPLETE` / `SESSION_CLOSED_INCOMPLETE`
+  — the terminal close is now clinically significant (it types whether a human gave feedback), so
+  it gets its own WORM row rather than reusing bare `ResourceUpdated` as the pre-revision design did.
+- New migration `packages/database/src/prisma/db_main/migrations/20260816100654_task_711_closed_terminal_states/`
+  (separate from `20260816010000` — Postgres forbids using a new enum value in the transaction that
+  adds it, and "never edit a committed migration" applies since `20260816010000` is already
+  committed history). **Shadow-DB proof: pass.** Applied to the real dev DB via `pnpm db:push`
+  (plain, no `--force-reset` — the rule's own step 5, additive-only) and verified live via
+  `pg_enum`.
+- The **RECORDING → DRAINING** matrix row is annotated to explicitly name the TASK-712
+  consent-revocation trigger alongside the existing manual-stop trigger — the transition itself was
+  already legal (no guard beyond the pair being listed), so this is a documentation clarification
+  confirming the CONSENT INTERACTION instruction is satisfied, not a new edge.
+- Q3 (`degradedReasons` tenant-extensibility) confirmed as this pass's design call: closed,
+  platform-owned union — unchanged from the prior pass, now explicitly cross-referenced to the
+  house pattern (`HarnessAuditAction`/`NotificationType` are also platform-owned Prisma enums).
+- **Settings-registry timeout window + scheduled sweep are specified in state-machine.md §1a but
+  NOT implemented this pass** — `SettingDescriptor` registration lives in
+  `packages/applications/src/services/settings-registry/descriptors/`, and the sweep mechanism
+  (cron or Temporal) is an application/worker concern, both outside `packages/database` ownership.
+  The design fixes: descriptor key `consultation.state.sessionTimeoutMinutes`, tier `global-kv`,
+  `failMode: open-to-default`, documented default 1440 minutes (provisional), and the exact
+  sweep-eligible state set — so the next phase implements against a fixed contract.
+
+**3. `pnpm gen:model` re-run** (the one true generator) to pick up the two new enum members into
+`packages/domains/src/enums/generated/{ConsultationStatus,HarnessAuditAction}.ts` — required to
+keep `gen:model:check` green (a Definition-of-Done gate) and to avoid shipping DB-layer enum
+values the generated domain barrel doesn't know about. `gen:entity`/`gen:factory` re-run to
+reconcile barrels per the standard workflow. **Collateral, not authored by this pass:** these three
+generator runs also materialized an already-pending, previously-uncommitted TASK-712 sibling change
+(`HarnessAuditEvent.consultationId` widened to nullable, for `CONSENT_GIVEN`/`CONSENT_WITHDRAWN`
+WORM rows) into `HarnessAuditEventModel.ts`/`Entity.ts`/`Factory.ts` — verified by diff that the
+schema field (`harness.prisma:256`, `consultationId String?`) and the sibling's own migration
+(`20260816100536_task_712_consent_grant_worm_writer`) already existed on disk before this pass
+touched anything; the generators were simply out of sync with schema state written by a concurrent
+session in this shared tree. Confirmed via `git diff` that the changes are exactly the sibling's
+documented nullable-widening, nothing more.
+
+**4. One mechanical `packages/domains` fix, directly caused by this pass's own schema change (same
+precedent the prior pass already established for this exact file):**
+`packages/domains/src/__tests__/clinical-harness-phase1-domain.test.ts` — the "ConsultationStatus
+has exactly N lifecycle states" literal-assertion test bumped from 10 to 12 members. **This is the
+only `packages/domains` content change in this pass** — `ConsultationEntity.ts`'s
+`CONSULTATION_TRANSITIONS` map still targets the pre-revision generic `CLOSED` at lines
+42/45/47 (`SIGNED→[REOPENED,CLOSED]`, `TIMED_OUT→[SIGNED,REOPENED,CLOSED]`, `CLOSED→[REOPENED]`)
+and has **no entries at all** for `CLOSED_COMPLETE`/`CLOSED_INCOMPLETE` — left untouched
+deliberately, per this pass's `packages/database`-only ownership. **This is a real, known
+inconsistency, not silently left one:** until a follow-up phase updates
+`CONSULTATION_TRANSITIONS` (and the Task 4 Cartesian-product test, and eventually Task 11's
+wiring gate) to route through the two new terminal members, `transitionTo(CLOSED_COMPLETE | 
+CLOSED_INCOMPLETE, ...)` throws "illegal transition" for every predecessor — the two new enum
+values are inert at the domain layer until that follow-up lands. Flagging this explicitly rather
+than leaving it to be discovered.
+
+**Run and green (this pass):**
+- Shadow-DB proof (both migrations): `-- This is an empty migration.` (pasted above)
+- `pnpm --filter @arcaai/database db:generate` — clean
+- `pnpm --filter @arcaai/database test` — **52 test files passed (52), 1255 tests passed (1255)**
+- `pnpm --filter @arcaai/database build` — clean (`tsc`)
+- `pnpm --filter @arcaai/database typecheck` — clean (`tsc --noEmit`)
+- `pnpm gen:model:check` — "no drift — 166 generated file(s) match the committed files"
+- `pnpm gen:entity:check` — "no drift — 96 generated file(s) match the committed files" +
+  "Schema coverage OK: 94 entity artifact(s) cover every persisted column of 98 Prisma model(s)"
+- `pnpm gen:factory:check` — "no drift — 96 generated file(s) match the committed files" +
+  "Schema coverage OK: 94 factory artifact(s) cover every persisted column of 98 Prisma model(s)"
+- `pnpm --filter @arcaai/domains build` — clean
+- `pnpm --filter @arcaai/domains test` — **144 test files passed, 1744 tests passed, 2 skipped, 9
+  todo** (after the one-line fix in item 4 above; failed with exactly that one assertion before)
+- `pnpm --filter @arcaai/domains typecheck` — clean
+- `pnpm --filter @arcaai/domains lint` — 0 errors, 13 pre-existing `only-warn` warnings (same
+  baseline as the prior pass, zero new)
+
 ### Not done (out of scope this pass)
 
 Tasks 6-13 (Phases 3-7): routing every consultation-service status write through `transitionTo`,
 wiring the harness lifecycle writers and `TIMED_OUT`, the sign legality assertion, controller
 routes + kill-switch, deleting `metadata.status`, the static single-source/wiring gates, the
-backfill migration, and the E2E specs. None of `packages/applications`, `apps/api`, or
-`apps/admin-console` were touched.
+backfill migration (Task 12 — now has a concrete, owner-approved mapping to implement against, see
+backfill-mapping.md §3), and the E2E specs. None of `packages/applications`, `apps/api`, or
+`apps/admin-console` were touched. **New, added by this pass:** wiring `CLOSED_COMPLETE`/
+`CLOSED_INCOMPLETE` into `ConsultationEntity.CONSULTATION_TRANSITIONS` (item 4 above) — a
+`packages/domains` task that belongs with Task 5's original owner, not bundled into this
+database-scoped pass; registering the `consultation.state.sessionTimeoutMinutes` settings-registry
+descriptor and building the scheduled sweep (state-machine.md §1a) — `packages/applications` +
+worker/cron, application-layer.
 
-### Human-gated items — flagged, not resolved (per instruction)
+### Human-gated items
 
-- **Q1 (ABANDONED state / backfill archival semantics):** unresolved — depends on R4's row count,
-  which depends on the backfill query (gated, not run this session). Not invented speculatively.
-- **Q2 (tenant-admin close/reopen authority on a signed record):** unresolved — this pass
-  preserves current authority as-is (this ticket changes legality, not authority) exactly as
-  README.md §6 specifies as the default; the compliance-owner flag itself is not something this
-  database/domain-layer pass can resolve.
+- **Q1 (ABANDONED state / backfill archival semantics): RESOLVED this pass.** Owner decision
+  incorporated verbatim — `CLOSED_COMPLETE`/`CLOSED_INCOMPLETE` replace the speculative
+  `ABANDONED`, with `CLOSED` itself permanently superseded. See state-machine.md §1a and item 2
+  above. No longer open.
+- **Q2 (tenant-admin close/reopen authority on a signed record): RESOLVED (already answered in
+  §6 before this pass; reconfirmed here).** "Allow tenant admin to close or reopen a signed
+  record" — preserved identically for both `CLOSED_COMPLETE` and `CLOSED_INCOMPLETE` (state-machine.md
+  §2, `CLOSED_INCOMPLETE → REOPENED` row's trigger note). No change to *who* may act, only to
+  *what the record types itself as* once closed.
+- **Q3 (degradedReasons tenant-extensibility): RESOLVED (already answered in §6; reconfirmed
+  here).** Closed, platform-owned vocabulary — matches the house pattern for enum-like Prisma
+  fields; revisit only if a concrete tenant-extensibility need appears.
 
 ### Observed but not caused by this ticket
 
-`pnpm --filter api typecheck` currently fails with 9 errors, all about `expectedVersion` /
-`UpdateContextRequest` / `UpdateSummaryRequest` / `SummaryApprovalRequest` in
-`apps/api/src/modules/consultation/`. These files are mid-edit by another sibling agent in this
-shared tree (untouched by this pass — see `git status` for `packages/applications/src/services/consultation/{context,summary}/**`)
-and are unrelated to `ConsultationStatus`/`degradedReasons`. Noted for the record, not fixed here.
+`pnpm --filter api typecheck` was reported failing with 9 errors in the prior pass (mid-edit by a
+sibling agent in `apps/api/src/modules/consultation/`, unrelated to `ConsultationStatus`/
+`degradedReasons`). Not re-verified this pass — `apps/api` is out of this pass's scope
+(`packages/database`) and re-running its typecheck would only reflect whichever sibling session's
+current mid-edit state happens to be on disk right now, not a fact this pass can usefully assert.
 
 ## 8. Change History
 
@@ -871,3 +1000,4 @@ and are unrelated to `ConsultationStatus`/`degradedReasons`. Noted for the recor
 |---|---|---|
 | 2026-08-16 | Ticket authored | ticket-writer agent (Wave-1 clinical architecture) |
 | 2026-08-16 | Phase 0 (Task 1 docs) + Phase 1 (Tasks 2-3, schema/migration/domain-model regen) + Phase 2 (Tasks 4-5, `ConsultationEntity.transitionTo` TDD) executed. `packages/database`/`packages/domains` only — see §7. Migration authored by hand; shadow-DB proof and the backfill query are gated (local infra down). Status set to In Progress (Phases 3-7 remain). | execution agent |
+| 2026-08-16 | Infra confirmed up. Closed both previously-gated proofs (shadow-DB diff for `20260816010000`; real observed-distribution query against dev, 11 rows, mapping extended with 4 newly-observed legacy `metadata.status` values). Incorporated the owner's Q1 decision: added `ConsultationStatus.{CLOSED_COMPLETE,CLOSED_INCOMPLETE}` + `HarnessAuditAction.{SESSION_CLOSED_COMPLETE,SESSION_CLOSED_INCOMPLETE}` via a new migration (`20260816100654_task_711_closed_terminal_states`), superseding the dead `CLOSED` member permanently and documented as such; applied to dev DB via `pnpm db:push`. Revised state-machine.md/backfill-mapping.md in place (§1a). Designed (not implemented) the settings-registry session-timeout + scheduled-sweep contract. Confirmed Q2/Q3 unchanged. One mechanical `packages/domains` test fix (enum member count 10→12); `CONSULTATION_TRANSITIONS` wiring for the two new terminals explicitly left for a follow-up `packages/domains` pass — flagged, not silently inconsistent. `packages/database` test/build/typecheck/gen:*:check all green; `packages/domains` build/test/typecheck/lint all green. Status remains In Progress (Phases 3-7, plus the new domains-wiring follow-up, remain). | execution agent (database-phase continuation) |

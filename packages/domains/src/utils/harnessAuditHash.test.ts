@@ -160,6 +160,42 @@ describe('computeHarnessAuditHash — encrypt-before-hash', () => {
   });
 });
 
+// =============================================================================
+// NULLABLE consultationId (TASK-712, consent-abac Phase 4) — hash compatibility
+// =============================================================================
+
+describe('computeHarnessAuditHash — nullable consultationId (TASK-712)', () => {
+  it('is a fixed golden hash for a row that HAS a consultationId — locks the pre-nullable digest', () => {
+    // Computed once against `baseInput()` (a real, non-null consultationId) and
+    // hardcoded here so a future change to the hash algorithm that alters this
+    // digest fails LOUDLY. This is the "pre-existing chain verifies unchanged"
+    // proof the ticket requires, without a live database: the fixture below is
+    // byte-identical to a row written before `consultationId` became nullable.
+    expect(computeHarnessAuditHash(baseInput())).toBe('8b4f0efbe8e2aa287203d8f0f7dcde2516e51d4038937445594421e93d14628d');
+  });
+
+  it('a null consultationId (a CONSENT_GIVEN/CONSENT_WITHDRAWN row) hashes differently from any real consultationId', () => {
+    const withNull = computeHarnessAuditHash({ ...baseInput(), consultationId: null, action: 'CONSENT_GIVEN' });
+    const withReal = computeHarnessAuditHash({ ...baseInput(), action: 'CONSENT_GIVEN' });
+    expect(withNull).not.toBe(withReal);
+  });
+
+  it('omitting consultationId behaves identically to passing it explicitly as null (both fold to JSON null)', () => {
+    const explicit = computeHarnessAuditHash({ ...baseInput(), consultationId: null });
+    const omitted = computeHarnessAuditHash({ ...baseInput(), consultationId: undefined as unknown as string });
+    expect(omitted).toBe(explicit);
+  });
+
+  it('toHarnessAuditChainRecord defaults a missing consultationId to null (round-trips a consent-ledger row)', () => {
+    const input = { ...baseInput(), consultationId: null };
+    const stored: HarnessAuditEventLike = { ...input, hash: computeHarnessAuditHash(input) };
+    delete (stored as { consultationId?: string | null }).consultationId;
+    const rec = toHarnessAuditChainRecord(stored);
+    expect(rec.consultationId).toBeNull();
+    expect(verifyHarnessAuditChain([rec]).valid).toBe(true);
+  });
+});
+
 describe('verifyHarnessAuditChain — encrypted chains', () => {
   it('(a) verifies a chain of encrypted-payload events end-to-end', () => {
     const e1 = record(encInput());

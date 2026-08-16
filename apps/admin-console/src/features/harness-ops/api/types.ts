@@ -25,7 +25,8 @@ export type HarnessAuditAction =
 export interface HarnessAuditEvent {
   id: string;
   tenantId: string;
-  consultationId: string;
+  /** Null for CONSENT_GIVEN/CONSENT_WITHDRAWN (TASK-712) — a consent grant/revoke has no consultation. */
+  consultationId: string | null;
   contextItemVersionId: string | null;
   action: HarnessAuditAction;
   modelName: string;

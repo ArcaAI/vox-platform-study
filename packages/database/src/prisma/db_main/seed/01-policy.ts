@@ -236,6 +236,19 @@ export const DEFAULT_POLICIES: DefaultPolicy[] = [
       // the whole boundary. Without this grant the feature would be
       // unreachable by the audience names.
       { action: 'manage', subject: 'ConsultationContextSchema', conditions: { tenantId: '${context.tenantId}' } },
+      // Agentic workflow substrate (TASK-734 authoring controllers,
+      // TASK-722 exposure plane) — tenant admins manage their own tenant's
+      // workflow definitions (author/validate/publish, `admin/workflow-
+      // definitions/*`) and workflow runs (invoke/status/stream/cancel,
+      // `/workflows/:slug/*` — `@CanCreate`/`@CanRead`/`@CanUpdate`
+      // `'WorkflowRun'`, all subsumed by `manage`). Tenant-scoped; every
+      // route pins reads/writes to the caller's CLS tenant and answers 404
+      // for a cross-tenant id (404-over-403). Without this grant BOTH
+      // controllers 403 for every principal except a global admin — this is
+      // the gap TASK-722's own plan named ("coordinate with TASK-719, which
+      // needs the same subjects... seed them once, in one place").
+      { action: 'manage', subject: 'WorkflowDefinition', conditions: { tenantId: '${context.tenantId}' } },
+      { action: 'manage', subject: 'WorkflowRun', conditions: { tenantId: '${context.tenantId}' } },
     ],
   },
   {

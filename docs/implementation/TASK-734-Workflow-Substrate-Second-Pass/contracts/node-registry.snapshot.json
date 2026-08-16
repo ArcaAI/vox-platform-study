@@ -1,0 +1,25 @@
+{
+  "_comment": "The cross-language node-registry parity fixture (TASK-734 Task 3). Asserted from BOTH packages/workflow-contract/src/__tests__/node-registry-parity.test.ts (TS) and apps/harness/src/harness/tests/unit/temporal/interpreter/test_node_registry_parity.py (Python) — see packages/workflow-contract/src/node-registry.ts's module docstring for why the two sides check against this file instead of against each other. `entries` sorted by `key`. Only fields BOTH registries carry today are listed here; `classes`/`paletteKey` (TS-only) and `kind` (Python-only) are intentionally excluded.",
+  "entries": [
+    {
+      "key": "noop",
+      "implemented": true,
+      "activityName": "interpreter.noop",
+      "critical": false,
+      "externalWrite": false,
+      "defaultTimeoutSeconds": 60,
+      "defaultMaxAttempts": 1,
+      "entitlementKey": null
+    },
+    {
+      "key": "passthrough",
+      "implemented": true,
+      "activityName": "interpreter.passthrough",
+      "critical": false,
+      "externalWrite": false,
+      "defaultTimeoutSeconds": 60,
+      "defaultMaxAttempts": 1,
+      "entitlementKey": null
+    }
+  ]
+}

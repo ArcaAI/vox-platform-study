@@ -28,6 +28,7 @@ from temporalio import activity
 from temporalio.exceptions import ApplicationError
 
 from harness.core.config import Settings, get_runtime_judge_config, get_settings
+from harness.core.consent_client import ConsentClient, ConsentDecision, build_consent_client
 from harness.core.logging import get_logger
 from harness.core.metrics import inc_gate_decision, inc_regen, observe_step_duration
 from harness.eval.judge.base import JudgeClient
@@ -523,6 +524,65 @@ def _mcp_client(settings: Settings) -> McpToolClient:
     return McpToolClient(timeout_s=settings.mcp.timeout_s, max_attempts=settings.mcp.max_attempts)
 
 
+# TASK-712 (consent-abac Phase 4) — process-lifetime singleton, UNLIKE the
+# other client factories above. ConsentClient carries an in-process TTL cache
+# whose whole purpose is to survive ACROSS activity invocations (a Temporal
+# worker handles many activity calls over its life on the same event loop);
+# rebuilding it every call (the ``_mcp_client``/``_api_client`` pattern) would
+# silently disable the cache. Tests monkeypatch ``_consent_client`` itself
+# (same convention as every other client factory here), so the singleton is
+# never exercised in the hermetic suite.
+_consent_client_singleton: ConsentClient | None = None
+
+
+def _consent_client(_settings: Settings) -> ConsentClient:
+    """The worker's consent-assert client (lazy singleton — see note above)."""
+    global _consent_client_singleton
+    if _consent_client_singleton is None:
+        _consent_client_singleton = build_consent_client()
+    return _consent_client_singleton
+
+
+async def _check_consent(
+    settings: Settings,
+    *,
+    tenant_id: str | None,
+    external_patient_id: str | None,
+    purpose: str,
+    scope: dict[str, Any] | None = None,
+    consultation_id: str | None = None,
+    tool_name: str | None = None,
+) -> ConsentDecision:
+    """Evaluate consent for a gated stage, UNAVAILABLE (not a crash) when the
+    caller has not threaded identity through yet.
+
+    A missing ``tenant_id``/``external_patient_id`` is a WIRING gap (an
+    upstream caller — e.g. the ConsultationLoopWorkflow finalize-child path —
+    has not been upgraded to send ``external_patient_id`` on
+    :class:`~harness.temporal.models.HarnessDocWorkflowInput`), not a genuine
+    consent denial. Both fail closed (R4), but reporting it as ``unavailable``
+    keeps a real compliance denial distinguishable from a configuration gap in
+    the trajectory and in alerting.
+    """
+    if not tenant_id or not external_patient_id:
+        logger.warning(
+            "harness.consent.identity_missing",
+            purpose=purpose,
+            tenant_id=tenant_id,
+            has_external_patient_id=bool(external_patient_id),
+        )
+        return ConsentDecision(allowed=False, unavailable=True)
+
+    return await _consent_client(settings).check(
+        tenant_id=tenant_id,
+        external_patient_id=external_patient_id,
+        purpose=purpose,
+        scope=scope,
+        consultation_id=consultation_id,
+        tool_name=tool_name,
+    )
+
+
 async def _resolve_mcp_token(settings: Settings, auth_ref: str | None) -> str | None:
     """Resolve an MCP server credential by its ``authRef`` PATH.
 
@@ -809,6 +869,13 @@ async def call_mcp_tool(payload: CallMcpToolInput) -> McpToolCallResult:
     Enforcement order (security-critical — everything before the network call is
     fail-closed and BLOCKS without any egress):
 
+    0.5. **Consent** (TASK-712, consent-abac Phase 4) — the caller's
+       ``(tenant_id, external_patient_id)`` must hold an active
+       ``EXTERNAL_TOOL_LOOKUP`` grant. Checked BEFORE the allowlist (a consent
+       failure is not a configuration problem). Raises a non-retryable
+       ``ApplicationError`` — ``type="ConsentDenied"`` for a genuine denial,
+       ``type="ConsentUnavailable"`` for a lookup failure or missing identity
+       (R4 — both fail closed, never conflated).
     1. **Allowlist** — the tool MUST be in ``policy_tool_allowlist ∩ server.tool_allowlist``
        (deny-all when the server has no allowlist). A denial raises BEFORE any network
        call (non-retryable); the workflow catches it and degrades (never crashes).
@@ -843,6 +910,37 @@ async def call_mcp_tool(payload: CallMcpToolInput) -> McpToolCallResult:
         await batch.flush()
         return McpToolCallResult(
             ok=False, server=server.name, tool=tool, degraded=True, error_code="server_disabled"
+        )
+
+    # (0.5) Consent (TASK-712, consent-abac Phase 4) — BEFORE the allowlist, so a
+    # consent denial is distinguishable from a configuration/policy denial in the
+    # trajectory (README §2.3: "consent becomes step (0.5), before the allowlist,
+    # because a consent failure is not a configuration problem"). Both a genuine
+    # denial and an UNAVAILABLE lookup (R4) block the call — the trajectory
+    # error_code and the raised ApplicationError.type are what stay distinguishable.
+    consent = await _check_consent(
+        settings,
+        tenant_id=payload.tenant_id,
+        external_patient_id=payload.external_patient_id,
+        purpose="EXTERNAL_TOOL_LOOKUP",
+        consultation_id=payload.consultation_id,
+        tool_name=tool,
+    )
+    if not consent.allowed:
+        error_code = "consent_unavailable" if consent.unavailable else "consent_denied"
+        batch.record(
+            step_type=STEP_TOOL_CALL,
+            name=step_name,
+            status=STATUS_ERROR,
+            started=started,
+            stats={"server": server.name, "tool": tool},
+            error_code=error_code,
+        )
+        await batch.flush()
+        raise ApplicationError(
+            f"Consent check failed for MCP tool call: {tool} ({error_code})",
+            type="ConsentUnavailable" if consent.unavailable else "ConsentDenied",
+            non_retryable=True,
         )
 
     # (1) Allowlist — BEFORE any network call. Denial raises (non-retryable).
@@ -1239,6 +1337,14 @@ async def retrieve_context(payload: RetrieveContextInput) -> RetrievedContext:
     the dense+sparse -> RRF -> rerank pipeline (tenant + APPROVED scoped). Any backend
     outage degrades to an empty context (``degraded=True``); it never raises into the
     durable loop. Returns the reranked chunks + the ready-to-append StrictCitations block.
+
+    CONSENT (TASK-712, consent-abac Phase 4): a ``HISTORY_RETRIEVAL`` grant is
+    required before the retriever runs. Unlike ``call_mcp_tool``, a denial here
+    does NOT raise — it follows this activity's existing degrade-to-empty
+    contract (a missing/denied grant behaves like a retrieval backend outage:
+    ``degraded=True``, no chunks, generation proceeds without institutional
+    context). The trajectory ``error_code`` (``consent_denied`` /
+    ``consent_unavailable``) is what stays distinguishable (R4).
     """
     settings = get_settings()
     started = _now()
@@ -1258,6 +1364,26 @@ async def retrieve_context(payload: RetrieveContextInput) -> RetrievedContext:
         )
         await batch.flush()
         return RetrievedContext()
+
+    consent = await _check_consent(
+        settings,
+        tenant_id=payload.tenant_id,
+        external_patient_id=payload.external_patient_id,
+        purpose="HISTORY_RETRIEVAL",
+        consultation_id=payload.consultation_id,
+    )
+    if not consent.allowed:
+        error_code = "consent_unavailable" if consent.unavailable else "consent_denied"
+        batch.record(
+            step_type=STEP_RETRIEVAL,
+            name="retrieve_context",
+            status=STATUS_ERROR,
+            started=started,
+            stats={"enabled": True, "chunk_count": 0},
+            error_code=error_code,
+        )
+        await batch.flush()
+        return RetrievedContext(degraded=True)
 
     query = build_query(payload.entities)
     result = await _hybrid_retriever(settings).retrieve(query=query, tenant_id=payload.tenant_id)
@@ -2245,9 +2371,7 @@ async def fetch_loop_config(payload: FetchLoopConfigInput) -> ConsultationLoopCo
                 subscribed_kinds=[
                     k for k in (entry.get("subscribedKinds") or []) if isinstance(k, str)
                 ],
-                write_scope=[
-                    k for k in (entry.get("writeScope") or []) if isinstance(k, str)
-                ],
+                write_scope=[k for k in (entry.get("writeScope") or []) if isinstance(k, str)],
                 agent_config_version_id=entry.get("agentConfigVersionId"),
             )
         )

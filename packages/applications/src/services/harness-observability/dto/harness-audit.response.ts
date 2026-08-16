@@ -13,8 +13,11 @@ export class HarnessAuditEventResponse {
   @ApiProperty({ description: 'Owning tenant id.' })
   tenantId: string;
 
-  @ApiProperty({ description: 'Consultation the event belongs to.' })
-  consultationId: string;
+  @ApiPropertyOptional({
+    description: 'Consultation the event belongs to (null for CONSENT_GIVEN/CONSENT_WITHDRAWN, which have no consultation).',
+    nullable: true,
+  })
+  consultationId: string | null;
 
   @ApiPropertyOptional({ description: 'Context-item version the event references (null when not applicable).', nullable: true })
   contextItemVersionId: string | null;

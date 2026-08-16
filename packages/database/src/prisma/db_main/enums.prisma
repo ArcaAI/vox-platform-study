@@ -294,13 +294,22 @@ enum ConsultationStatus {
   DRAFT_PENDING_SENSORS // Draft delivered early (visible/readable); assurance (inferential) pass running concurrently. Cannot be signed until it lands.
   PENDING_REVIEW // Summary generated + assurance complete + gate verdict recorded; awaiting clinician review/attestation
   SIGNED // Clinician-attested (immutable signed note committed)
-  CLOSED // Consultation closed
+  CLOSED // SUPERSEDED — never a legal `transitionTo` target. Split into CLOSED_COMPLETE /
+  // CLOSED_INCOMPLETE below (owner decision, TASK-711 state-machine.md §1a) before this
+  // migration ever reached a live environment. Retained only because Postgres cannot drop an
+  // enum value; deliberately and permanently dead, unlike the pre-ticket A-46 finding this
+  // ticket otherwise closes.
   REOPENED // Reopened after being closed
   // TASK-711: session state machine additions. Appended (never renumbered/
   // renamed) per `ALTER TYPE … ADD VALUE` migration discipline.
   PRIMED // Consent asserted; the checkpoint RECORDING now requires
   DRAINING // Capture stopped, not yet drafted — replaces the old revert-to-OPEN
   TIMED_OUT // Gate SLA exhausted; terminal absent an explicit reopening, visibly unsigned
+  // TASK-711 follow-up: owner decision replacing the speculative "ABANDONED" state
+  // (README §6 Q1) — a closed consultation now types whether a human ever gave clinical
+  // feedback (signed) before it closed. See state-machine.md §1a/§2.
+  CLOSED_COMPLETE // Closed after SIGNED — a human attested the note before closure
+  CLOSED_INCOMPLETE // Closed from TIMED_OUT (or the session-timeout sweep) with no signature ever recorded
 
   @@schema("core")
 }

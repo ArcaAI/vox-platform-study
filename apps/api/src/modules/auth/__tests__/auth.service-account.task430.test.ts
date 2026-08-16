@@ -80,6 +80,7 @@ function buildAuthController(fixture: AuthFixture) {
     eventEmitter as never,
     {} as never,
     { lookup: vi.fn().mockResolvedValue(null) } as never,
+    {} as never, // workflowRunService (TASK-722)
   );
 
   return { controller, eventEmitter, userRepository };

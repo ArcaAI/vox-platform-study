@@ -23,6 +23,7 @@
   },
   "dependencies": {
     "@arcaai/applications": "workspace:*",
+    "@arcaai/async-contract": "workspace:*",
     "@arcaai/database": "workspace:*",
     "@arcaai/domains": "workspace:*",
     "@arcaai/exceptions": "workspace:*",

@@ -55,6 +55,12 @@ describe('boot-time API-key scope audit', () => {
         'ConsultationJobController.cancelJob',
         'ConsultationJobController.getJob',
         'ConsultationJobController.streamJob',
+        // Exposure plane (TASK-722) — /api/v1/workflows/:slug/…
+        'WorkflowsController.list',
+        'WorkflowsController.invoke',
+        'WorkflowsController.getRunStatus',
+        'WorkflowsController.cancelRun',
+        'WorkflowsController.streamRunStatus',
       ].sort(),
     );
   });

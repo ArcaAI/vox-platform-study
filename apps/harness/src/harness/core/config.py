@@ -378,6 +378,19 @@ class Settings(BaseSettings):
     # ``HARNESS_API_INTERNAL_PREFIX`` if the gateway prefix ever changes.
     api_internal_prefix: str = "/api/v1/internal/harness"
 
+    # TASK-712 (consent-abac Phase 4) — gateway-internal consent-assert mount.
+    # A SIBLING of api_internal_prefix (``ConsentInternalController`` is
+    # `@Controller('internal/consent')`, not nested under `internal/harness`),
+    # so it gets its own prefix rather than reusing the harness one.
+    consent_internal_prefix: str = "/api/v1/internal/consent"
+    # TTL for `ConsentClient`'s per-(tenant, patient, purpose) cache — a
+    # bounded-staleness BACKSTOP, not the propagation mechanism (mirrors
+    # `.claude/rules/09-infrastructure-devops.md` §Config caches rule 2; this
+    # phase has no cross-process invalidation channel for the harness worker,
+    # a disclosed, TTL-bounded scope choice — see consent-design.md). Mirrors
+    # the TS-side ConsultationConsentService cache TTL (30s).
+    consent_cache_ttl_seconds: int = 30
+
     # Bounded-regen budget + clinician-gate timing (durable, deterministic).
     max_regen: int = 2
     gate_sla_seconds: float = 86_400.0  # 24h until the first SLA escalation

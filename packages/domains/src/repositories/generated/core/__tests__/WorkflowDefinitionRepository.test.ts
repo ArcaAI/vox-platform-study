@@ -114,3 +114,34 @@ describe('WorkflowDefinitionRepository — findAllVersionsBySlug', () => {
     expect(rows).toHaveLength(1);
   });
 });
+
+describe('WorkflowDefinitionRepository — findActivePublishedByTenant (TASK-722)', () => {
+  let findMany: ReturnType<typeof vi.fn>;
+  let repo: WorkflowDefinitionRepository;
+
+  beforeEach(() => {
+    findMany = vi.fn();
+    const delegate = { findMany };
+    const unitOfWork = { getDatabaseService: () => ({ workflowDefinition: delegate }) };
+    repo = new WorkflowDefinitionRepository(unitOfWork as never);
+  });
+
+  it('filters by tenantId + PUBLISHED + isActive + ENABLED, sorted by slug', async () => {
+    findMany.mockResolvedValue([row]);
+
+    const rows = await repo.findActivePublishedByTenant('tenant-1');
+
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          tenantId: 'tenant-1',
+          status: WorkflowDefinitionStatus.PUBLISHED,
+          isActive: true,
+          resourceStatus: ResourceStatusType.ENABLED,
+        }),
+        orderBy: [{ slug: 'asc' }],
+      }),
+    );
+    expect(rows).toHaveLength(1);
+  });
+});

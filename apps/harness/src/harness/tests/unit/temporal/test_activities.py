@@ -784,6 +784,29 @@ class _FakeRetriever:
         return self._result
 
 
+class _AllowConsentClient:
+    """TASK-712 (consent-abac Phase 4) — stub `ConsentClient`, always allowed."""
+
+    async def check(self, **_kwargs):  # noqa: ANN201
+        from harness.core.consent_client import ConsentDecision
+
+        return ConsentDecision(allowed=True)
+
+
+class _DenyConsentClient:
+    def __init__(self, *, unavailable: bool = False) -> None:
+        self._unavailable = unavailable
+
+    async def check(self, **_kwargs):  # noqa: ANN201
+        from harness.core.consent_client import ConsentDecision
+
+        return ConsentDecision(
+            allowed=False,
+            reason=None if self._unavailable else "no_grant",
+            unavailable=self._unavailable,
+        )
+
+
 class TestRetrieveContext:
     @pytest.mark.asyncio
     async def test_disabled_flag_returns_empty_without_calling_backends(self, env, monkeypatch):
@@ -813,12 +836,15 @@ class TestRetrieveContext:
         monkeypatch.setattr(activities, "get_settings", lambda: settings)
         fake = _FakeRetriever(["kc-1", "kc-2"])
         monkeypatch.setattr(activities, "_hybrid_retriever", lambda s: fake)
+        monkeypatch.setattr(activities, "_consent_client", lambda s: _AllowConsentClient())
 
         result = await env.run(
             activities.retrieve_context,
             RetrieveContextInput(
                 tenant_id="t-1",
                 entities=[NEREntity(text="hypertension"), NEREntity(text="metformin")],
+                external_patient_id="PAT-1",
+                consultation_id="c-1",
             ),
         )
         assert [c.chunk_id for c in result.chunks] == ["kc-1", "kc-2"]
@@ -837,14 +863,100 @@ class TestRetrieveContext:
         monkeypatch.setattr(
             activities, "_hybrid_retriever", lambda s: _FakeRetriever([], degraded=True)
         )
+        monkeypatch.setattr(activities, "_consent_client", lambda s: _AllowConsentClient())
 
         result = await env.run(
             activities.retrieve_context,
-            RetrieveContextInput(tenant_id="t-1", entities=[NEREntity(text="x")]),
+            RetrieveContextInput(
+                tenant_id="t-1",
+                entities=[NEREntity(text="x")],
+                external_patient_id="PAT-1",
+                consultation_id="c-1",
+            ),
         )
         assert result.chunks == []
         assert result.degraded is True
         assert result.prompt_block == ""
+
+    # -- TASK-712 (consent-abac Phase 4) -----------------------------------
+
+    @pytest.mark.asyncio
+    async def test_consent_denied_degrades_to_empty_WITHOUT_calling_the_retriever(
+        self, env, monkeypatch
+    ):
+        """Unlike call_mcp_tool, retrieve_context does NOT raise on denial — it
+        follows this activity's existing degrade-to-empty contract."""
+        settings = Settings(retrieval={"enabled": True})
+        monkeypatch.setattr(activities, "get_settings", lambda: settings)
+
+        def _boom(_settings):  # pragma: no cover - must not run
+            raise AssertionError("retriever must not be built when consent is denied")
+
+        monkeypatch.setattr(activities, "_hybrid_retriever", _boom)
+        monkeypatch.setattr(activities, "_consent_client", lambda s: _DenyConsentClient())
+
+        result = await env.run(
+            activities.retrieve_context,
+            RetrieveContextInput(
+                tenant_id="t-1",
+                entities=[NEREntity(text="x")],
+                external_patient_id="PAT-1",
+                consultation_id="c-1",
+            ),
+        )
+        assert result.chunks == []
+        assert result.degraded is True
+
+    @pytest.mark.asyncio
+    async def test_consent_unavailable_also_degrades_never_calls_the_retriever(
+        self, env, monkeypatch
+    ):
+        """R4 — both denied and unavailable fail closed (block retrieval)."""
+        settings = Settings(retrieval={"enabled": True})
+        monkeypatch.setattr(activities, "get_settings", lambda: settings)
+
+        def _boom(_settings):  # pragma: no cover - must not run
+            raise AssertionError("retriever must not be built when consent is unavailable")
+
+        monkeypatch.setattr(activities, "_hybrid_retriever", _boom)
+        monkeypatch.setattr(
+            activities, "_consent_client", lambda s: _DenyConsentClient(unavailable=True)
+        )
+
+        result = await env.run(
+            activities.retrieve_context,
+            RetrieveContextInput(
+                tenant_id="t-1",
+                entities=[NEREntity(text="x")],
+                external_patient_id="PAT-1",
+                consultation_id="c-1",
+            ),
+        )
+        assert result.chunks == []
+        assert result.degraded is True
+
+    @pytest.mark.asyncio
+    async def test_missing_external_patient_id_degrades_as_unavailable_not_a_crash(
+        self, env, monkeypatch
+    ):
+        settings = Settings(retrieval={"enabled": True})
+        monkeypatch.setattr(activities, "get_settings", lambda: settings)
+
+        def _boom(_settings):  # pragma: no cover - must not run
+            raise AssertionError("retriever must not be built when identity is missing")
+
+        monkeypatch.setattr(activities, "_hybrid_retriever", _boom)
+        # No consent client wired — if the activity actually reached it, this
+        # would AttributeError; it must short-circuit on missing identity first.
+
+        result = await env.run(
+            activities.retrieve_context,
+            RetrieveContextInput(
+                tenant_id="t-1", entities=[NEREntity(text="x")], external_patient_id=None
+            ),
+        )
+        assert result.chunks == []
+        assert result.degraded is True
 
 
 class TestEscalateGate:

@@ -88,6 +88,14 @@ class HarnessDocWorkflowInput(BaseModel):
     # harness a transcript REF instead of the inline blob; until then the harness threads
     # ``transcript_text`` inline (ref None) and every consuming activity resolves inline-or-ref.
     transcript_ref: ClaimCheckRef | None = None
+    # TASK-712 (consent-abac Phase 4) — the consultation's external patient id
+    # (``Consultation.patientId``), threaded through to the ``call_mcp_tool``/
+    # ``retrieve_context`` activities so they can key a `ConsentClient` lookup.
+    # ADDITIVE-OPTIONAL: None (every legacy start payload, and any caller that
+    # has not been upgraded to send it) makes those activities treat consent
+    # as UNAVAILABLE rather than crash — see the activities' own docstrings.
+    # No new workflow command, replay-safe.
+    external_patient_id: str | None = None
     conversation_language: str = "en"
     dna_style_id: str | None = None
     # DNA redaction/rewrite rules resolved gateway-side (tenant + doctor
@@ -483,6 +491,13 @@ class CallMcpToolInput(BaseModel):
     # PHI egress policy snapshot (mirrors the generate/inferential egress guard).
     phi_enabled: bool = True
     phi_fail_closed: bool = True
+    # TASK-712 (consent-abac Phase 4) — consent-gate identity. ADDITIVE-OPTIONAL:
+    # None on an old/legacy input makes the activity treat consent as
+    # UNAVAILABLE (fail-closed, but distinguishable from a genuine denial —
+    # R4) rather than raise a TypeError. No new workflow command, replay-safe.
+    tenant_id: str | None = None
+    external_patient_id: str | None = None
+    consultation_id: str | None = None
     trajectory: TrajectoryContext | None = None
 
 
@@ -637,6 +652,11 @@ class RetrieveContextInput(BaseModel):
     # policy. None ⇒ the activity falls through to ``HARNESS_RETRIEVAL_ENABLED``
     # (env default). Additive-optional ⇒ replay-safe; no new workflow command.
     retrieval_enabled: bool | None = None
+    # TASK-712 (consent-abac Phase 4) — consent-gate identity. See
+    # CallMcpToolInput's field comment: ADDITIVE-OPTIONAL, None ⇒ UNAVAILABLE
+    # (fail-closed) rather than a crash.
+    external_patient_id: str | None = None
+    consultation_id: str | None = None
     # ADDITIVE-OPTIONAL trajectory context (see TrajectoryContext).
     trajectory: TrajectoryContext | None = None
 

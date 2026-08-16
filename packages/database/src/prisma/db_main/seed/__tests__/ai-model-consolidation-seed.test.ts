@@ -709,11 +709,13 @@ describe('AiTaskDefault SYSTEM seed', () => {
     expect(byKey.get('guardrail.safety')?.modelSlug).toBe('gliner-guard-uniencoder-onnx');
     expect(byKey.get('guardrail.groundedness')?.modelSlug).toBe('minicheck-flan-t5-large');
     // The judge points at the model the dev LM Studio instance actually serves
-    // and that a global admin already selected in the live DB
-    // (`harness.judge` v1→v2). Was `lms-gemma-4-e4b`, whose sourceUri at the
-    // time carried `google/gemma-4-e4b-qat` — an id the live instance has
-    // never served (re-verified 2026-08-16; see `llm.ts` for the correction).
-    expect(byKey.get('harness.judge')?.modelSlug).toBe('lms-gemma-4-e2b-it-qat');
+    // OWNER DIRECTIVE 2026-08-16: judgement uses LM Studio + `google/gemma-4-e4b`,
+    // i.e. the `lms-gemma-4-e4b` registry slug. An earlier pass had repointed
+    // this to e2b because `lms-gemma-4-e4b`'s sourceUri then read
+    // `google/gemma-4-e4b-qat`, an id the live instance never served; that
+    // sourceUri is now corrected to `google/gemma-4-e4b` (see `llm.ts`), so the
+    // reason for the repoint is gone and the directive stands.
+    expect(byKey.get('harness.judge')?.modelSlug).toBe('lms-gemma-4-e4b');
     SYSTEM_AI_TASK_DEFAULTS.forEach((row) => {
       expect(row.tenantId).toBe(SYSTEM_TENANT_ID);
       expect(row.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);

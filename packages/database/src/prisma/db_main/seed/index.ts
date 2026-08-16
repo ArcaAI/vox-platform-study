@@ -35,6 +35,7 @@ import { seedAiRuntimeProfile } from './18-ai-runtime-profile';
 import { seedTenantTtsConfig } from './19-tenant-tts-config';
 import { seedAiPriceBook } from './20-ai-price-book';
 import { seedWorkflowDefinition } from './21-workflow-definition';
+import { seedConsentGrant } from './22-consent-grant';
 import { seedUser } from './91-user';
 import { resolveSeedMode, isPhaseEnabled } from './seed-mode';
 
@@ -265,6 +266,13 @@ export const seed = async () => {
     }
     if (isPhaseEnabled('09-consultation', mode)) {
       await seedConsultation(client);
+      console.log('');
+      // TASK-712 (consent-abac Phase 6): EXTERNAL_TOOL_LOOKUP/STYLE_LEARNING/
+      // QUALITY_REVIEW grants for the demo patients above. Gated on the SAME
+      // phase (not its own) — these rows exist only to make the just-seeded
+      // synthetic patients usable, so they carry the same "never outside
+      // development/test" posture as seedConsultation itself.
+      await seedConsentGrant(client);
       console.log('');
     }
 

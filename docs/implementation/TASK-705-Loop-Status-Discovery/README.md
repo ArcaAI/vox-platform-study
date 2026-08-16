@@ -622,6 +622,41 @@ explicitly reserves for the human owner, not this agent.
 owner's decision, in every environment reached, is how acceptance criterion 6 gets closed —
 that re-run has not happened yet.
 
+### Close-out pass (2026-08-16) — re-verified, nothing material changed, decision still owner-side
+
+Re-checked this ticket as part of a three-ticket close-out pass (TASK-708,
+TASK-704, TASK-705). Local dev infra (Postgres/Redis/Temporal/Vault/MinIO/Qdrant)
+is up; re-ran Task 1's report script against the live local dev DB:
+
+```
+$ bash scripts/report-loop-status.sh
+           key            | value | defaultValue |        updatedAt        | updatedBy
+--------------------------+-------+--------------+-------------------------+-----------
+ consultation.ocr.enabled | true  | false        | 2026-08-16 04:04:07.803 |
+ harness.loop.enabled     | true  | false        | 2026-08-16 04:04:07.801 |
+```
+
+Identical `updatedAt` timestamp to the prior pass's result — the dev DB has
+not been re-seeded since, so this is confirmation of stability, not new
+information. Checked for a running app/worker process (`lsof` on
+8868/8866/worker ports, `docker ps`/`ps aux`) to see whether Task 2's local
+Temporal query could now produce an informative (non-zero) result: none is
+running — same state as both prior passes, so re-running the Temporal
+`list_workflows` query would reproduce the same uninformative 0-execution
+result already recorded above and was not repeated. Per this close-out's own
+instructions, cluster access remains **not** attempted (local only).
+
+**Nothing in this ticket needed a code or documentation correction.** The two
+prior passes' findings and honesty about what is/isn't confirmed hold up
+under re-verification. The single remaining blocker is unchanged and is
+squarely human-side: **Task 5's decision (stay on / turn off / split the
+switch) has still not been made by a product/engineering owner, and no `PUT`
+call has been issued in any environment.** This is not something a close-out
+verification pass can resolve — per this program's own instructions ("if
+something cannot be closed, say precisely why and leave the status at Review
+with the reason"), Status remains **Review**, blocked exclusively on that
+owner decision (§4 Task 5 / §6).
+
 ### Acceptance criteria — status
 
 - [x] `scripts/report-loop-status.sh` exists, is executable, passes `shellcheck` clean, and was
@@ -656,3 +691,4 @@ that re-run has not happened yet.
 | 2026-08-16 | Ticket authored | Wave-0 ticket-authoring agent |
 | 2026-08-16 | Tasks 1-4 executed: delivered `scripts/report-loop-status.sh` (verified via shellcheck + an isolated throwaway Postgres, since local dev infra was not running in this execution context); documented the Temporal query procedure (not executed against any live Temporal frontend — none reachable locally, cluster execution deliberately declined); answered the `hope-v2-dev` `RUN_SEED` cross-check via read-only `arca/hope-v2-deployment` access (`RUN_SEED="none"`, explicit 2026-08-09 owner decision); re-triaged A-26/A-27/A-28 to "likely live/active in `hope-v2-dev`, pending confirmation". Task 5 (the value decision + `PUT`) presented as options for the human owner, not executed. Status set to Review pending that decision. | T2/T3 sonnet-5 execution agent |
 | 2026-08-16 | Local infra came up (Postgres/Redis/Temporal/Vault/MinIO/Qdrant) with a freshly-reset, freshly-seeded DB. Re-ran Task 1 for real against the live local dev DB: confirms `harness.loop.enabled` and `consultation.ocr.enabled` both `value='true'`/`defaultValue='false'` — the central finding now proven locally, not just logic-tested. Ran Task 2 for real against local `hope-temporal` (namespace `default`, via the `temporalio` Python client — no `temporal` CLI installed): 0 `ConsultationLoopWorkflow` executions lifetime/30-day and 0 workflow executions of any type, explained (no `apps/api`/`apps/harness`/worker process was running locally this session, so nothing could have dispatched regardless of the loop's real behavior) — an honest, dispatch-inconclusive local result. `hope-v2-dev` cluster deliberately NOT queried or written to, per explicit instruction this session (local only) — that remains the sole open confirmation carried forward. Task 3's re-triage and the AC checklist updated to reflect the strengthened-but-still-cluster-unconfirmed evidence. Task 5 (the value decision) still not made; no `PUT` calls issued anywhere. Status remains Review. | T2 sonnet-5 execution agent |
+| 2026-08-16 | **CLOSE-OUT PASS.** Re-verified Task 1 against the live local dev DB (identical result, same `updatedAt` as the prior pass — confirms stability, not new information) and confirmed no app/worker process is running locally (so a Task 2 Temporal re-query would reproduce the same uninformative 0-execution result already recorded — not repeated). Cluster access again not attempted (local only, per instruction). No code or documentation correction was needed — both prior passes' findings and honesty hold up. Status remains Review: the sole blocker is Task 5's HUMAN-GATED decision (§4/§6), which this pass cannot make. | Close-out pass agent |

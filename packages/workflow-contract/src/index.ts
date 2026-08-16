@@ -35,6 +35,16 @@ export type {
 
 export { canonicalJson } from './canonical-json';
 
+export {
+  WORKFLOW_NODE_REGISTRY,
+  classesOf,
+  paletteOf,
+  nodeInfo,
+  workflowNodeClassLookup,
+  registryChecksum,
+} from './node-registry';
+export type { WorkflowNodeDescriptor } from './node-registry';
+
 export { compile } from './compiler';
 export type {
   CompiledWorkflowConfig,

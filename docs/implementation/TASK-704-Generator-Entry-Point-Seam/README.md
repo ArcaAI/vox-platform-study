@@ -716,6 +716,41 @@ $ pnpm --filter @arcaai/applications build
 EXIT_CODE:0
 ```
 
+### Close-out pass (2026-08-16) — clean live re-run, FULL loop still outstanding
+
+Re-ran Task 7's creation-only half live, this time against an already-running,
+healthy `apps/api` test instance (reused, not restarted, to avoid racing the
+shared working tree's port bind) and an already-migrated/seeded isolated test
+DB (`RESET_DB=false` — no destructive reset invoked):
+
+```
+$ RESET_DB=false SKIP_DB_PRECHECK=true dotenv -e .env.test -- \
+    npx playwright test apps/api/tests/e2e/task-704-generator-seam.spec.ts --reporter=line
+  3 skipped   (the FULL-loop describe block — HARNESS_E2E_FULL not set, apps/harness
+               + Temporal worker + apps/text + apps/nlp not running in this pass)
+  1 passed    (476ms)  — entry point #4's job-creation path, live, clean
+```
+
+The follow-up `GET jobs/:jobId` assertion that hit a transient 500 in the
+prior pass (caused by a concurrent sibling session's in-flight,
+unrelated consent-enforcement edit) now passes cleanly — that edit window
+has closed. Re-ran the full `applications` package suite fresh for this pass
+too: **493 files / 9183 tests passed, 0 failures** (vs. the prior pass's
+1 failure in the unrelated consent domain) — confirms the concurrent-edit
+theory was correct and this ticket's own code has no defect.
+
+**The FULL-loop assertions (`HARNESS_E2E_FULL=1` — the literal §5 acceptance
+criterion: a draft with `SummaryMeta.assuranceCompletedAt` set) remain
+unexecuted in this pass too.** They require `apps/harness` + a Temporal
+worker + `apps/text` + `apps/nlp` all running end-to-end against a real (or
+stubbed) LLM/judge provider — starting that full stack is a substantially
+larger undertaking than this close-out pass's scope (verify + re-run what
+infra now permits, fix genuine gaps found), and no prior pass has attempted
+it either. This is reported as a real, named boundary, not glossed over:
+**Status remains Review** — the creation-only path is now proven clean and
+live twice, but the ticket's own literal acceptance criterion needs the full
+harness stack running, which this pass did not start.
+
 ### Files changed
 
 **New** (`packages/applications/src/services/consultation/note-generation/`):
@@ -748,20 +783,20 @@ EXIT_CODE:0
       `pnpm test:unit`'s apps/api slice — the root aggregate itself was not
       run; see Verification above)
 - [~] `pnpm test:up:api` then `pnpm test:e2e -- task-704-generator-seam` —
-      **executed against a real live stack on 2026-08-16** (test infra up,
-      migrated, seeded, apps/api running against `.env.test`). The
-      creation-only case's `beforeAll` (real `POST :id/summary/async` through
-      the seam) **passed** — proves entry point #4 is live end to end. Its
-      follow-up `GET jobs/:jobId` assertion **failed with a 500** caused by a
-      concurrent sibling session's in-flight, unrelated consent-enforcement
-      edit breaking apps/api's TS build mid-run (evidence + full narrative in
-      §7 "Resolution of the deferred risks + Task 7 live run") — not a
-      TASK-704 defect, and not re-attempted a 4th time given the shared tree
-      was not stable. **Still human-gated**: re-run
-      `pnpm test:e2e -- task-704-generator-seam` once the shared tree is
-      quiet to get a clean pass, and separately with `HARNESS_E2E_FULL=1`
-      against a full apps/harness + Temporal + SMR + NLP stack (not started
-      in any pass so far), before closing this ticket.
+      **executed against a real live stack twice: 2026-08-16 and again in the
+      2026-08-16 close-out pass.** First run: the creation-only case's
+      `beforeAll` (real `POST :id/summary/async` through the seam) passed; the
+      follow-up `GET jobs/:jobId` assertion failed with a transient 500 caused
+      by a concurrent sibling session's in-flight, unrelated consent-enforcement
+      edit (full narrative in §7). **Close-out pass re-run: clean, 1/1 creation
+      test passing, 0 failures** — the concurrent-edit window had closed;
+      confirms the prior failure was never a TASK-704 defect (see §7 "Close-out
+      pass"). **Still open**: the FULL-loop assertions (`HARNESS_E2E_FULL=1`
+      against a full apps/harness + Temporal + SMR + NLP stack) have not been
+      attempted in any pass, including this close-out — starting that stack is
+      out of scope for a verification/close-out pass and is the one remaining
+      gap before this ticket's literal §5 acceptance criterion (a draft with
+      `SummaryMeta.assuranceCompletedAt` set) is directly proven end to end.
 - [x] Unit test proves: a missing `HarnessGatewayService` dependency on a
       harness-enabled trigger throws — `note-generation.service.test.ts`
       tests (c) under `TRANSCRIPTION_CREATED` and `SUMMARY_REGENERATE`
@@ -783,3 +818,4 @@ EXIT_CODE:0
 | 2026-08-16 | Ticket authored | Wave-0 ticket-authoring agent |
 | 2026-08-16 | Implemented Tasks 1–6 and 8 (seam, all seven entry points wired, grep-gate, verification); Task 5's sync `generateSummary` short-circuit deliberately withheld (HUMAN-GATED — see §6 and §7 "Deviations"); Task 7 e2e spec authored but not executed (no live/full stack in this session). Status → Review pending (a) product-owner sign-off on the Task 5 behavior change and (b) a live + `HARNESS_E2E_FULL` e2e run. | T2/T3 implementation agents (this session) |
 | 2026-08-16 | Resolved all four owner-deferred "Lets review, suggest best practices" items in §6 with reasoning + evidence (full write-up in §7): (1) sync `generateSummary` decided to stay legacy-only PERMANENTLY, not pending — response-contract mismatch + duplicate-generation risk, code comment updated from HUMAN-GATED-pending to DECIDED with forward guidance for a future Wave-2 revisit; (2) harness's missing pre-summary/comprehensive-summary equivalent accepted as-is, re-verified the decision type needs no rework; (3) `HarnessGatewayService` required-dependency audited across every test fixture that constructs a seam caller — no regression; (4) Task 4/5 module fan-out risk confirmed moot (already landed clean). Brought up isolated test infra (`infra:test:up`), applied the migration ledger (`db:migrate:deploy`, not `--force-reset`), seeded, and ran `apps/api` + `pnpm test:e2e -- task-704-generator-seam` against a real live stack: entry point #4's job-creation path passed live; the follow-up job-status assertion hit a 500 caused by a concurrent sibling session's unrelated, in-flight consent-enforcement edit in this shared working tree (evidenced by file timestamps + `git status`, not a TASK-704 defect). Full applications suite re-run live (491/493 files, 9152/9157 tests; the one failure is in the unrelated consent domain, same concurrent-edit window). Status remains Review — the sync-`generateSummary` risk is now closed for good, but a clean Task 7 e2e run (plus the never-yet-attempted `HARNESS_E2E_FULL` full loop) is still outstanding, blocked on the shared tree quieting down rather than on this ticket's own code. | Sonnet 5 (this session) |
+| 2026-08-16 | **CLOSE-OUT PASS.** Re-ran `pnpm test:e2e -- task-704-generator-seam` live against an already-running, already-seeded test stack (`RESET_DB=false`, no destructive reset): the creation-only case (entry point #4's `POST :id/summary/async` job creation) now passes cleanly, including the `GET jobs/:jobId` follow-up that previously hit a transient 500 from a concurrent sibling session's in-flight consent-enforcement edit — that edit window has since closed, confirming the prior failure was never a TASK-704 defect. Re-ran the full `applications` suite fresh: 493 files / 9183 tests, 0 failures (vs. the prior pass's 1 unrelated failure). The FULL-loop (`HARNESS_E2E_FULL=1`) assertions — requiring apps/harness + a Temporal worker + apps/text + apps/nlp running end to end — were NOT attempted; starting that stack is out of scope for this close-out pass and remains the one concrete gap before the ticket's literal §5 acceptance criterion is directly proven. Status remains Review, with the reason now narrowed to exactly one item. No application code changed. | Close-out pass agent |

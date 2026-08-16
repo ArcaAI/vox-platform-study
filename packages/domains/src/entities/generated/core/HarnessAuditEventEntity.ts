@@ -16,7 +16,11 @@ import * as Entities from '../../../entities';
  * `HarnessAuditEventEntityMapper.toPersistence` so they are never written.
  */
 export interface IHarnessAuditEventEntity extends IBaseTenantEntity {
-  consultationId: string;
+  // NULLABLE (TASK-712, consent-abac Phase 4): a CONSENT_GIVEN/CONSENT_WITHDRAWN
+  // event has no consultation — see harness.prisma's field comment for the
+  // hash-compatibility reasoning. Every other action still requires one
+  // (enforced in validate() below, not by the type).
+  consultationId?: string | null;
   contextItemVersionId?: string | null;
   action: Enums.HarnessAuditAction;
   modelName: string;
@@ -160,9 +164,20 @@ export class HarnessAuditEventEntity extends BaseTenantEntity {
     return this._hash;
   }
 
+  /**
+   * Actions with no consultation to bind to (TASK-712, consent-abac Phase 4):
+   * a consent grant/revoke happens against a `(tenantId, externalPatientId,
+   * purpose)` triple, not a consultation. Every other action still requires
+   * one — this is a narrow, named exception, not a general relaxation.
+   */
+  private static readonly ACTIONS_WITHOUT_CONSULTATION: ReadonlySet<Enums.HarnessAuditAction> = new Set([
+    Enums.HarnessAuditAction.CONSENT_GIVEN,
+    Enums.HarnessAuditAction.CONSENT_WITHDRAWN,
+  ]);
+
   public override validate(): void {
     super.validate();
-    if (!this._consultationId) {
+    if (!this._consultationId && !HarnessAuditEventEntity.ACTIONS_WITHOUT_CONSULTATION.has(this._action)) {
       throw new BusinessException('HarnessAuditEvent consultationId is required.');
     }
     if (this._action === undefined || this._action === null) {

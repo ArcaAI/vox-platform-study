@@ -24,6 +24,7 @@ function buildController(
     };
     consultationRepository?: { findById: ReturnType<typeof vi.fn> };
     streamSessionTenantBinding?: { lookup: ReturnType<typeof vi.fn> };
+    workflowRunService?: { getRun: ReturnType<typeof vi.fn> };
   } = {},
 ) {
   const cls = opts.cls ?? { get: () => null };
@@ -38,6 +39,8 @@ function buildController(
   const consultationRepository = opts.consultationRepository ?? { findById: vi.fn() };
   // Default fail-closed: no binding bound for any session.
   const streamSessionTenantBinding = opts.streamSessionTenantBinding ?? { lookup: vi.fn().mockResolvedValue(null) };
+  // Default fail-closed: no run resolvable for any (tenantId, runId).
+  const workflowRunService = opts.workflowRunService ?? { getRun: vi.fn().mockRejectedValue(new Error('not found')) };
 
   return {
     controller: new AuthController(
@@ -58,11 +61,13 @@ function buildController(
       {} as never, // eventEmitter
       consultationRepository as never, // consultationRepository
       streamSessionTenantBinding as never, // streamSessionTenantBinding
+      workflowRunService as never, // workflowRunService (TASK-722)
     ),
     streamTicketService,
     jwtRevocationService,
     consultationRepository,
     streamSessionTenantBinding,
+    workflowRunService,
   };
 }
 
@@ -415,6 +420,69 @@ describe('AuthController.issueStreamTicket', () => {
       await controller.issueStreamTicket({ scope: 'consultation_job:job-1' });
 
       expect(lookup).not.toHaveBeenCalled();
+      expect(issueTicket).toHaveBeenCalled();
+    });
+  });
+
+  // `workflow_run:<runId>` (TASK-722 Task 7): mint-time ownership check for the
+  // exposure-plane SSE route. Reuses `IWorkflowRunService.getRun`, which already
+  // 404s a foreign-tenant/unknown runId — no second lookup path.
+  describe('workflow_run scope ownership', () => {
+    it('mints a workflow_run ticket when the run belongs to the caller tenant', async () => {
+      const issueTicket = vi.fn(async () => ({ ticket: 'tkt', expiresAt: 1, scope: 'workflow_run:run-1' }));
+      const getRun = vi.fn().mockResolvedValue({ runId: 'run-1', tenantId: 'tenant-1' });
+      const { controller } = buildController({
+        cls: { get: (key: string) => (key === 'user' ? { id: 'user-1', tenantId: 'tenant-1' } : null) },
+        streamTicketService: { issueTicket, consumeTicket: vi.fn() },
+        workflowRunService: { getRun },
+      });
+
+      await controller.issueStreamTicket({ scope: 'workflow_run:run-1' });
+
+      expect(getRun).toHaveBeenCalledWith('tenant-1', 'run-1');
+      expect(issueTicket).toHaveBeenCalledWith(expect.objectContaining({ userId: 'user-1', tenantId: 'tenant-1', scope: 'workflow_run:run-1' }));
+    });
+
+    it("throws NotFoundException (no existence leak) and never mints for another tenant's run", async () => {
+      const issueTicket = vi.fn();
+      // IWorkflowRunService.getRun itself 404s a foreign-tenant id — simulated here as a throw.
+      const getRun = vi.fn().mockRejectedValue(new Error('not found'));
+      const { controller } = buildController({
+        cls: { get: (key: string) => (key === 'user' ? { id: 'user-1', tenantId: 'tenant-1' } : null) },
+        streamTicketService: { issueTicket, consumeTicket: vi.fn() },
+        workflowRunService: { getRun },
+      });
+
+      await expect(controller.issueStreamTicket({ scope: 'workflow_run:run-of-tenant-a' })).rejects.toThrow(NotFoundException);
+      expect(issueTicket).not.toHaveBeenCalled();
+    });
+
+    it('fail-closed: throws NotFoundException and never mints when the caller has no active tenant', async () => {
+      const issueTicket = vi.fn();
+      const getRun = vi.fn();
+      const { controller } = buildController({
+        cls: { get: (key: string) => (key === 'user' ? { id: 'user-1', tenantId: '' } : null) },
+        streamTicketService: { issueTicket, consumeTicket: vi.fn() },
+        workflowRunService: { getRun },
+      });
+
+      await expect(controller.issueStreamTicket({ scope: 'workflow_run:run-1' })).rejects.toThrow(NotFoundException);
+      expect(getRun).not.toHaveBeenCalled();
+      expect(issueTicket).not.toHaveBeenCalled();
+    });
+
+    it('does NOT perform a run lookup for non-workflow_run scopes (paths stay independent)', async () => {
+      const issueTicket = vi.fn(async () => ({ ticket: 't', expiresAt: 1, scope: 'consultation_job:job-1' }));
+      const getRun = vi.fn();
+      const { controller } = buildController({
+        cls: { get: (key: string) => (key === 'user' ? { id: 'user-1', tenantId: 'tenant-1' } : null) },
+        streamTicketService: { issueTicket, consumeTicket: vi.fn() },
+        workflowRunService: { getRun },
+      });
+
+      await controller.issueStreamTicket({ scope: 'consultation_job:job-1' });
+
+      expect(getRun).not.toHaveBeenCalled();
       expect(issueTicket).toHaveBeenCalled();
     });
   });

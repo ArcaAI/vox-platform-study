@@ -2,9 +2,10 @@
 
 | | |
 |---|---|
-| **Status** | Pass 2 — HTTP consent enforcement is now ON BY DEFAULT (see the Pass 2 Addendum below). Still not owner-approved in the formal Phase-0 T4 sense (no compliance/product sign-off obtained beyond the answers the owner already recorded in the ticket README §6); this remains a subagent-authored engineering design. |
+| **Status** | Pass 3 — non-HTTP enforcement (Phase 4), the WORM ledger writer, and Phase 6's dedicated seed file are now built (see §8 below). Phase 5 (CASL) remains untouched, per explicit instruction. Still not owner-approved in the formal Phase-0 T4 sense (no compliance/product sign-off obtained beyond the answers the owner already recorded in the ticket README §6); this remains a subagent-authored engineering design. |
 | **Scope of Pass 1** | Consent domain (model + domain trio) and the `assertConsent` ABAC evaluation path, plus their tests. No enforcement was wired anywhere in Pass 1. |
-| **Scope of Pass 2 (this update)** | The partial-unique-active-grant index fix, the legacy-grant backfill (Q2 option (a)), `@RequiresConsent`/`@ConsentExempt` + `PatientConsentGuard` registered as an unconditional `APP_GUARD`, route decoration on the four named gated stages' HTTP surface, a narrowed boot-time coverage audit, the admin CRUD controller, `ConsentUnavailableException` (R4), and e2e coverage. Non-HTTP enforcement (Phase 4 — harness/Temporal), the WORM ledger writer, and CASL condition evaluation (Phase 5) remain deliberately deferred — see the Addendum's "What Pass 2 still does not build" table. |
+| **Scope of Pass 2** | The partial-unique-active-grant index fix, the legacy-grant backfill (Q2 option (a)), `@RequiresConsent`/`@ConsentExempt` + `PatientConsentGuard` registered as an unconditional `APP_GUARD`, route decoration on the four named gated stages' HTTP surface, a narrowed boot-time coverage audit, the admin CRUD controller, `ConsentUnavailableException` (R4), and e2e coverage. **Documentation note (disclosed, not fixed here):** Pass 2's own summary (ticket README §7) refers to a "Pass 2 Addendum below" in this file; no such section was ever written — this is a pre-existing gap in Pass 2's documentation, left as-is (out of Pass 3's scope) rather than reconstructed after the fact from memory. |
+| **Scope of Pass 3 (this update)** | §8 below: the WORM `CONSENT_GIVEN`/`CONSENT_WITHDRAWN` writers (Pitfall 1 resolved as option (a) — nullable `consultationId`, hash-compatibility proven), the gateway-internal `/internal/consent/assert` endpoint, the harness `ConsentClient` + activity gating (`call_mcp_tool`/`retrieve_context`), and the dedicated `22-consent-grant.ts` seed. CASL (Phase 5) untouched. |
 
 This document exists to satisfy Task 1 of the ticket plan to the extent the reduced scope requires:
 it records the decisions actually needed to build the model and the evaluation path honestly,
@@ -135,7 +136,12 @@ enforcement is out of scope), so the question does not yet have a code path to a
 assumption for whoever builds that phase: new gated calls denied from `t_revoke`, in-flight capture
 allowed to reach `DRAINING`, per the ticket's stated default.
 
-## 6. WORM ledger decision (Pitfall 1 / R2) — DEFERRED, not implemented
+## 6. WORM ledger decision (Pitfall 1 / R2) — RESOLVED in Pass 3, see §8.1
+
+The analysis below is Pass 1/2's original reasoning, kept for the record. Pass 3
+(§8.1) picked option (a) from the closing paragraph — nullable `consultationId`,
+with the hash-compatibility proof this section says is required — now that a
+live database is available in this session.
 
 Re-examined against the actual code, not just the ticket's description:
 
@@ -243,3 +249,156 @@ Restated from the ticket's §6, unchanged by this pass, because nothing in this 
 explicitly deferred (§7 above). `docs/implementation/TASK-712-Consent-Abac/casl-blast-radius.md` is
 NOT created here — creating a partial version without the live query output would be worse than
 not creating it, per the ticket's own evidence rule ("done" without pasted output is not accepted).
+Still true in Pass 3 — CASL (Phase 5) was not touched, per explicit instruction to keep it staged
+and separate (owner R1 answer: shadow → measure → enforce, never in the same change as enforcement).
+
+---
+
+## 8. Pass 3 (2026-08-16) — Phase 4, WORM ledger writer, Phase 6 seed
+
+Scope: the three items §7's "remaining" list named — non-HTTP enforcement, the WORM ledger writer,
+and the dedicated seed file. Live infra (Postgres, Redis, Temporal, Vault, MinIO, Qdrant) was up
+this pass, which is what makes §8.1 possible (Pass 1/2 explicitly could not do this without a
+database).
+
+### 8.1 WORM ledger writer — option (a), nullable `consultationId`
+
+Chose option (a) from §6's closing paragraph over option (b) (a second ledger), for one reason: the
+hash function's own construction makes it a genuinely SAFE, additive change, not a risky one.
+`computeHarnessAuditHash` folds `consultationId` into the canonical digest via
+`input.consultationId ?? null`. For every row that already exists, `consultationId` is a non-null
+string, and `x ?? null` for a non-null `x` is `x` — so the digest is **byte-identical** for every
+historical row, unconditionally, not just "expected to be." This is proven, not asserted: a fixed
+golden-hash literal (`packages/domains/src/utils/harnessAuditHash.test.ts`,
+`describe('computeHarnessAuditHash — nullable consultationId (TASK-712)')`) computed against a fixed
+input, asserting the exact same SHA-256 hex string the pre-change algorithm would have produced.
+Option (b) was rejected: it would create a SECOND ledger implementation in a second place, exactly
+the fragmentation the assessment (§3.2 "one choke point") warns against, for a problem the additive
+nullability already solves cleanly.
+
+**What changed:**
+- `harness.prisma`: `HarnessAuditEvent.consultationId String` → `String?`. Migration
+  `20260816100536_task_712_consent_grant_worm_writer` — a single `ALTER COLUMN … DROP NOT NULL`,
+  proven empty-diff against a throwaway `hope_shadow` database (`npx prisma migrate diff
+  --from-config-datasource --to-schema src/prisma/db_main --script` → `-- This is an empty
+  migration.`, run twice: once before and once after a concurrent sibling session (TASK-711) landed
+  its own unrelated migration in the same file — both proofs came back empty).
+- `HarnessAuditEventEntity.validate()`: the `consultationId` required-check is now conditional —
+  waived ONLY for `CONSENT_GIVEN`/`CONSENT_WITHDRAWN` (`ACTIONS_WITHOUT_CONSULTATION`), a named,
+  narrow exception, not a general relaxation. Every other action (`GENERATE`, `ATTEST`, ...) still
+  requires one.
+- `ConsentGrantService.create()`/`revoke()` now append a `CONSENT_GIVEN`/`CONSENT_WITHDRAWN` row via
+  `HarnessAuditService` (optional + trailing DI, mirroring `SummaryService`'s existing `ATTEST`
+  wiring) — `consultationId: null`, and `modelName`/`modelVersion`/`sensorScores`/`citations` carry
+  the SAME sentinel shape `SummaryService.approveSummary` already uses for `ATTEST`
+  (`modelName: 'clinician-attestation'`-style — here `'consent-administration'`/`'v1'`/`{}`/`[]`) —
+  reusing an established precedent for "a human action recorded on a ledger built for model runs,"
+  not inventing a new one.
+- **Fail-closed posture, explicitly a trade-off, matching the ATTEST precedent it mirrors:** the WORM
+  append happens AFTER the `ConsentGrant` row is already persisted; if the append throws, `create()`/
+  `revoke()` rejects — the caller sees a failure — but the grant row itself is NOT rolled back (no DB
+  transaction wraps both writes, same as `SummaryService`'s existing SIGNED_NOTE → ATTEST sequence).
+  This is disclosed, not hidden: a WORM outage means a grant is recorded but its ledger entry visibly
+  failed (the caller's error surfaces it), rather than the grant silently succeeding with no audit
+  trail at all.
+- Downstream typing fallout fixed: `AppendHarnessAuditInput.consultationId`, `HarnessAuditHashInput`,
+  `HarnessAuditEventLike`, `HarnessAuditEventResponse` (admin DTO) all widened to `string | null`;
+  `HarnessObservabilityService`'s per-consultation `Map<string, …>` build now skips rows with a null
+  `consultationId` (only `CONSENT_GIVEN`/`CONSENT_WITHDRAWN` can have one, and those are filtered out
+  by the `action !== GENERATE` check one line above already).
+
+**What this does NOT do:** write a WORM row for a consent DENIAL (only grant/revoke). §6's original
+design intentionally scoped that out — `ConsultationConsentService.deny()`'s structured-log-only
+posture for denials is unchanged; INV-007/338's "audited denial" is satisfied for the two gated
+Temporal activities via the `STEP_TOOL_CALL`/`STEP_RETRIEVAL` trajectory rows (§8.2), a different,
+pre-existing audit surface, not the WORM ledger.
+
+### 8.2 Phase 4 — non-HTTP enforcement
+
+**Transport (Task 12):** the A+B hybrid design.md called for. `POST /internal/consent/assert`
+(`apps/api/src/modules/consultation/consent-internal.controller.ts`), guarded by the EXISTING
+`HarnessServiceTokenGuard` (no new auth mechanism), wraps `checkConsent` (never `assertConsent` — the
+endpoint must never throw; it returns a decision). `harness/core/consent_client.py`'s `ConsentClient`
+mirrors `effective_config.py`'s TTL + negative-cache shape, keyed per `(tenantId, externalPatientId,
+purpose)` — never a single global snapshot. A process-lifetime singleton in `activities.py`
+(`_consent_client`), UNLIKE the other per-call client factories in that file, because the whole point
+of the cache is to survive across activity invocations.
+
+**Gating (Task 13):**
+- `call_mcp_tool`: consent is step (0.5) — after the server-enabled check, before the allowlist,
+  exactly where the ticket's §2.3 analysis said it belongs. A denial OR an unavailable lookup raises
+  a non-retryable `ApplicationError` (`type="ConsentDenied"` / `type="ConsentUnavailable"`) BEFORE any
+  network call — mirroring the existing `McpToolNotAllowed`/`PhiEgressBlocked` raise pattern this
+  function already uses for its other pre-network denials.
+- `retrieve_context`: consent is checked after the retrieval-enabled flag check, before the retriever
+  runs. Deliberately does NOT raise — it follows this activity's OWN pre-existing contract ("any
+  backend outage degrades to an empty context, never raises into the durable loop"): a denial/
+  unavailable is treated like a retrieval-backend outage, returning `RetrievedContext(degraded=True)`.
+  This is an intentional divergence from `call_mcp_tool`'s raising posture — RAG retrieval is
+  minimum-necessary augmentation, not a network egress that must be blocked outright, and crashing
+  the whole document workflow over a missing history-retrieval grant would be a worse failure mode
+  than generating without institutional context.
+- Both distinguish `consent_denied` from `consent_unavailable` in the trajectory `error_code` and the
+  raised/returned type (R4) — a missing `tenant_id`/`external_patient_id` (a wiring gap, not a
+  patient-level decision) is ALSO reported as `unavailable`, never fabricated as a denial.
+
+**Identity threading (the part the ticket's Task 12/13 split didn't fully spell out):**
+`external_patient_id` did not exist ANYWHERE on the harness's workflow/activity models before this
+pass. Threaded end to end: TS `HarnessGatewayService.start()` (new `externalPatientId` field on
+`HarnessStartContext`) ← `NoteGenerationService.generate()` (a best-effort, non-fatal
+`consultationRepository.findById` lookup — a failure here degrades the DOWNSTREAM consent check to
+`unavailable`, it never blocks note generation itself) → Python `StartDocumentRequest`/
+`internal.py`'s `document:start` → `HarnessDocWorkflowInput.external_patient_id` (additive-optional,
+replay-safe) → threaded into `CallMcpToolInput`/`RetrieveContextInput` inside `HarnessDocWorkflow.run`
+in `workflows.py`.
+
+**Disclosed, bounded gap:** `ConsultationLoopWorkflow`'s finalize-child path (`workflows.py:~2435`,
+the `child_input = HarnessDocWorkflowInput(...)` construction inside the loop's own finalize logic)
+starts a `HarnessDocWorkflow` child WITHOUT `external_patient_id` — `ConsultationLoopWorkflowInput`
+has no such field, and threading it through that workflow's own start payload (a third entry point,
+in a different subsystem, not named by the ticket's Task 12/13) is out of this pass's scope. Its
+`call_mcp_tool`/`retrieve_context` calls will report `consent_unavailable` (fail-closed, but
+distinguishable from a denial) until that workflow is upgraded too — a follow-up, not a silent gap:
+`test_missing_identity_denies_as_unavailable_not_a_crash` (`test_mcp_tool_activity.py`) locks the
+degrade behaviour so it stays a controlled failure mode, not a crash, until then.
+
+**Cache-invalidation scope (also disclosed, also bounded):** the TS side already has an in-process
+`arca:consent:invalidate` EventEmitter2 channel (§4, this document) — NOT the cross-process Redis
+channel the design's Task 7 approach section describes, per that section's own text ("There is no
+second process to invalidate yet in this phase"). This pass adds exactly that second process (the
+harness worker) but does NOT wire it into a cross-process invalidation channel — `ConsentClient`'s
+TTL (30s, matching the TS-side cache) is the sole bounded-staleness mechanism, same posture the
+ticket's own design section names as the accepted backstop ("Short TTL as a backstop... a Redis
+invalidation channel... is the propagation mechanism" — the channel itself remains unbuilt, on both
+sides, a scoped decision rather than an oversight).
+
+### 8.3 Phase 6 — dedicated seed file
+
+`packages/database/src/prisma/db_main/seed/22-consent-grant.ts` (21 was already claimed by a sibling
+ticket's `21-workflow-definition.ts`). Seeds `EXTERNAL_TOOL_LOOKUP`/`STYLE_LEARNING`/`QUALITY_REVIEW`
+grants for the demo patients in `09-consultation.ts` — the three purposes the Pass-2 legacy-grant
+backfill did NOT cover (it only backfilled `AI_DOCUMENTATION`/`HISTORY_RETRIEVAL`, the two purposes
+gated at HTTP enforcement time; nothing gated on the other three until this pass's Phase 4). Without
+this seed, every demo `call_mcp_tool` invocation in a freshly-seeded environment would now deny
+(correctly, but uselessly for demo purposes) — this file is what makes the newly-built Phase-4 gate
+actually exercisable out of the box.
+
+Gated on the SAME `isPhaseEnabled('09-consultation', mode)` phase (not a new phase name) — these rows
+exist only to make the synthetic demo patients usable, carrying the same "never outside development/
+test" posture `seedConsultation` already has. CREATE-ONLY / idempotent (checked via `findFirst` on the
+active-grant shape, since the DB's partial unique index isn't expressible as a Prisma `@@unique` for
+a typed `upsert` to target — same posture as `seedTenantTtsConfig`). Verified against a live
+`hope_test` database this pass: first run created 24 rows (7 Global-tenant patients × 3 purposes + 1
+ArcaAI patient × 3 purposes); a second run created 0 (all 24 already-present, skipped) — idempotency
+proven, not assumed.
+
+### 8.4 What Pass 3 still does not build
+
+| Item | Status |
+|---|---|
+| CASL condition evaluation (Phase 5) | **Untouched**, per explicit instruction — shadow/measure/enforce stays its own change |
+| A WORM row for a consent DENIAL (only grant/revoke write) | **Not built** — see §8.1's closing note; denials stay on the trajectory-step surface |
+| `ConsultationLoopWorkflow` finalize-child `external_patient_id` threading | **Not built** — disclosed gap, §8.2 |
+| Cross-process consent-cache invalidation for the harness worker | **Not built** — TTL-only, disclosed scope, §8.2 |
+| `casl-blast-radius.md` (Task 2) | **Not built** — Phase 5 is untouched this pass too |
+| The full ticket's original Task 11 boot-audit predicate ("every consultation-module route") | **Unchanged from Pass 2** — still narrowed to `:patientId`-only routes |

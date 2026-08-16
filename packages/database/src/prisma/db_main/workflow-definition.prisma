@@ -29,15 +29,25 @@
 // PUBLISHED/DEPRECATED rows are hard-immutable: design.md's "Immutable
 // config + pinned version = deterministic Temporal replay" means a published
 // `compiledConfig` changing under a running Temporal workflow breaks replay
-// determinism. Enforcement is a service guard (`assertMutable`) + a DTO
-// whitelist that never declares the server-stamped columns + checksum
-// drift-detection — deliberately NOT a DB trigger or `REVOKE` (TASK-715 §3.4;
-// no precedent for either in this repo's migrations, and a row-blind
-// trigger/REVOKE cannot distinguish DRAFT from PUBLISHED rows in the same
-// table). HUMAN-GATED open question (§6 #2): a reviewer requiring DB-level
-// enforcement of the published bytes would need a second, append-only
-// `WorkflowVersionPublication` table with `REVOKE UPDATE, DELETE` (the
-// HarnessAuditEvent idiom) — not built here to avoid gold-plating.
+// determinism. Enforcement is THREE layers, not one: a service guard
+// (`assertMutable`) + a DTO whitelist that never declares the server-stamped
+// columns + checksum drift-detection (TASK-715 §3.4) — AND, since TASK-734
+// closed the HUMAN-GATED §6 #2 open question ("Lets review, suggest best
+// practices"), a fourth, DB-level layer: a `BEFORE UPDATE OR DELETE` trigger
+// (`workflow_definition_immutability_guard`,
+// migrations/20260816090000_task_734_.../migration.sql) that blocks changes
+// to the published bytes (`graph`/`compiledConfig` + their checksums) and
+// lineage identity once `OLD.status` is PUBLISHED/DEPRECATED, and blocks a
+// hard DELETE of such a row outright. THIS IS THE FIRST TRIGGER IN THE
+// REPO's migration history — TASK-715 §3.4 found zero precedent and
+// deliberately avoided one; TASK-734 revisits that call because a
+// row-scoped trigger (unlike table-scoped `REVOKE`) CAN distinguish DRAFT
+// from PUBLISHED rows in the same table by reading `OLD.status`, so the
+// "second append-only table" alternative §6 #2 sketched turns out not to be
+// necessary. The known, accepted cost: Prisma does not model triggers (or
+// the partial unique index below), so `prisma migrate diff` will show
+// permanent drift against this file — the trigger/function/partial-index
+// live ONLY in the hand-written migration SQL, never here.
 // ============================================================================
 
 model WorkflowDefinition {
@@ -96,10 +106,13 @@ model WorkflowDefinition {
   deprecatedAt DateTime?
 
   // The movable pointer: the version the dispatcher resolves for new runs.
-  // At most one true per (tenantId, slug) among ENABLED rows — enforced in
-  // the application service (a partial unique index cannot express "among
-  // ENABLED rows only" portably here), mirroring
-  // ConsultationContextSchema.isDefault and DepartmentAgent.isDefault.
+  // At most one true per (tenantId, slug) among non-DELETED rows — enforced
+  // in the application service (WorkflowDefinitionService.demoteExistingActive,
+  // mirroring ConsultationContextSchema.isDefault / DepartmentAgent.isDefault)
+  // AND, since TASK-734 (§6 risk #2 answer), by a partial UNIQUE index —
+  // Prisma's schema DSL cannot express a filtered/partial index (unlike
+  // Postgres itself, which can), so it is hand-written in
+  // migrations/20260816090000_task_734_.../migration.sql rather than here.
   isActive Boolean @default(false)
 
   // resource status fields

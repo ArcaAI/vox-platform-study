@@ -126,3 +126,9 @@ export * from './consent';
 export * from './workflow-run';
 // Per-tenant saved synthetic Workbench test input (TASK-721).
 export * from './workflow-test-fixture';
+// WorkflowDefinition CRUD + compile/validate/publish lifecycle (TASK-734) — wires
+// @arcaai/workflow-contract's compiler/validator into the application layer.
+export * from './workflow-definition';
+// Exposure plane (TASK-722) — invoke / status / cancel / list over a tenant's
+// published workflows, through the harness dispatcher.
+export * from './workflow-exposure';
