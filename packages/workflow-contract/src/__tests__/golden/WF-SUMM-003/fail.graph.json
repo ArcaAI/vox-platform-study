@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "nodes": [
+    { "id": "n_input", "type": "input.context_binding", "config": {} },
+    { "id": "n_guard", "type": "guardrail.check", "config": {} },
+    { "id": "n_out", "type": "output.deliver", "config": {} }
+  ],
+  "edges": [
+    { "id": "e1", "from": "n_input", "fromPort": "out", "to": "n_guard", "toPort": "in" },
+    { "id": "e2", "from": "n_guard", "fromPort": "out", "to": "n_out", "toPort": "in" }
+  ]
+}

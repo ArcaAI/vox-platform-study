@@ -34,6 +34,7 @@ import { seedAiProviderConnection } from './17-ai-provider-connection';
 import { seedAiRuntimeProfile } from './18-ai-runtime-profile';
 import { seedTenantTtsConfig } from './19-tenant-tts-config';
 import { seedAiPriceBook } from './20-ai-price-book';
+import { seedWorkflowDefinition } from './21-workflow-definition';
 import { seedUser } from './91-user';
 import { resolveSeedMode, isPhaseEnabled } from './seed-mode';
 
@@ -250,6 +251,10 @@ export const seed = async () => {
     // PLAN_FEE rows are keyed by the same `TenantPlan` values that matrix
     // defines, and CREATE-ONLY like it.
     await seedAiPriceBook(client);
+    console.log('');
+    // Platform-default Summarization WorkflowDefinition — the row the dispatcher falls
+    // back to when a tenant has authored none (TASK-720). SYSTEM-tenant, CREATE-ONLY.
+    await seedWorkflowDefinition(client);
     console.log('');
 
     // Phase 5: Depends on Phase 4 — synthetic clinician writing samples and

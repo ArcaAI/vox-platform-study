@@ -14,6 +14,7 @@ import {
   IconDna2,
   IconFileText,
   IconFingerprint,
+  IconFlask,
   IconFolders,
   IconGauge,
   IconHeartbeat,
@@ -436,6 +437,28 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
   },
   { route: '/playground/dna-writing-style', label: 'My DNA Writing Style', tier: '50-59', icon: IconDna2, required: [], implemented: true },
   { route: '/playground/llm', label: 'Agent Playground', tier: '50-59', icon: IconSparkles, required: [], implemented: true },
+  // TASK-721: deliberate divergence from the `required: []` convention above.
+  // The five entries before this one are own-account end-user demo planes
+  // whose backend guards are plain @Authorize() (comment above). The
+  // Workbench instead READS and EXECUTES tenant WorkflowDefinition rows — a
+  // resource ability the gateway enforces — so declaring `required: []`
+  // would hide a real gate from the nav. The gateway route that owns this
+  // guard has not shipped yet (TASK-722, Pending — see
+  // docs/implementation/TASK-721-Workbench/contracts/sandbox-mode.contract.md
+  // §1); this pair is the provisional value matching the resource this
+  // screen reads/executes (WorkflowDefinition) and must be reconciled
+  // against the real decorator once TASK-722 lands.
+  {
+    route: '/playground/workbench',
+    label: 'Workbench',
+    tier: '50-59',
+    icon: IconFlask,
+    required: [
+      ['read', 'WorkflowDefinition'],
+      ['manage', 'WorkflowDefinition'],
+    ],
+    implemented: true,
+  },
 ];
 
 /** The playground audience — mirrors the (console)/(tenant) tier guard. */

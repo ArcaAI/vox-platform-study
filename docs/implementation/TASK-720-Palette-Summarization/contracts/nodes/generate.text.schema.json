@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://arcaai.dev/hope/workflow-nodes/generate.text.schema.json",
+  "title": "generate.text node config (N-3, safety class: mandatory, critical)",
+  "description": "Calls the `text` service (ex-`smr`) via the gateway (`POST /api/v1/text/generate`), never SMR directly. Deliberately carries NO `provider`/`model` field — `additionalProperties: false` rejects both; selection resolves server-side via `AiTaskDefault` -> `HarnessPolicyService.resolveSmrSelection` (failMode: closed, no env fallback). Bounds mirror SMR's own request contract (apps/text/src/text/models/requests.py).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["taskKey"],
+  "properties": {
+    "taskKey": {
+      "type": "string",
+      "enum": ["smr.finalize", "smr.live", "smr.test"]
+    },
+    "systemPrompt": {
+      "type": "string",
+      "maxLength": 50000
+    },
+    "temperature": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 2
+    },
+    "maxTokens": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "topP": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "responseFormat": {
+      "type": "string",
+      "enum": ["text", "json", "json_schema"]
+    },
+    "onError": {
+      "type": "string",
+      "enum": ["fail", "degrade"]
+    }
+  }
+}

@@ -24,12 +24,13 @@ describe('NAV_ENTRIES (capabilities-matrix section 3, reviewed 2026-07-04; playg
   // it for their own tenant's rows); total stays 47.
   // /releases (tier 10-19), taking 47 -> 48.
   // /context-schemas (tier 30-49), taking 48 -> 49.
-  it('covers the full 49-route map across the four tiers (including /context-schemas)', () => {
-    expect(NAV_ENTRIES).toHaveLength(49);
+  // /playground/workbench (tier 50-59, TASK-721), taking 49 -> 50.
+  it('covers the full 50-route map across the four tiers (including /context-schemas, /playground/workbench)', () => {
+    expect(NAV_ENTRIES).toHaveLength(50);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '10-19')).toHaveLength(21);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '20-29')).toHaveLength(7);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '30-49')).toHaveLength(16);
-    expect(NAV_ENTRIES.filter((entry) => entry.tier === '50-59')).toHaveLength(5);
+    expect(NAV_ENTRIES.filter((entry) => entry.tier === '50-59')).toHaveLength(6);
   });
 
   it('merges the standalone /stt-config, /tts-config and /ai-providers screens into the /ai-configuration hub', () => {
@@ -95,7 +96,7 @@ describe('NAV_ENTRIES (capabilities-matrix section 3, reviewed 2026-07-04; playg
     expect(byTier('50-59').every((entry) => entry.implemented)).toBe(true);
   });
 
-  it('routes every playground entry under /playground with an empty ability gate (role-gated instead)', () => {
+  it('routes every playground entry under /playground; the five demo planes keep an empty ability gate (role-gated instead)', () => {
     const playground = NAV_ENTRIES.filter((entry) => entry.tier === '50-59');
     expect(playground.map((entry) => entry.route)).toEqual([
       '/playground/consultation',
@@ -103,8 +104,34 @@ describe('NAV_ENTRIES (capabilities-matrix section 3, reviewed 2026-07-04; playg
       '/playground/voice-profiles',
       '/playground/dna-writing-style',
       '/playground/llm',
+      '/playground/workbench',
     ]);
-    expect(playground.every((entry) => entry.required.length === 0)).toBe(true);
+    const demoPlanes = playground.filter((entry) => entry.route !== '/playground/workbench');
+    expect(demoPlanes.every((entry) => entry.required.length === 0)).toBe(true);
+  });
+
+  // TASK-721: the Workbench deliberately breaks the tier's `required: []`
+  // convention because it reads/executes tenant WorkflowDefinition rows
+  // (a resource ability), not an own-account demo action.
+  it('gates the Workbench on a WorkflowDefinition ability, unlike its playground siblings', () => {
+    const workbench = NAV_ENTRIES.find((entry) => entry.route === '/playground/workbench');
+    expect(workbench?.tier).toBe('50-59');
+    expect(workbench?.required).toEqual([
+      ['read', 'WorkflowDefinition'],
+      ['manage', 'WorkflowDefinition'],
+    ]);
+    expect(workbench?.implemented).toBe(true);
+    // Still requires the admin-tier role check (isAdminTier) like every
+    // other tier-50-59 entry — an ability grant alone is not enough.
+    const workflowDefinitionRules: PermissionRule[] = [{ action: 'read', subject: 'WorkflowDefinition' }];
+    expect(visibleNavEntries(workflowDefinitionRules, ['DOCTOR']).map((entry) => entry.route)).not.toContain(
+      '/playground/workbench',
+    );
+    // An admin role WITHOUT the ability also does not see it (ability gate
+    // still applies on top of the role check).
+    expect(visibleNavEntries(TENANT_ADMIN_RULES, ['TENANT_ADMIN']).map((entry) => entry.route)).not.toContain(
+      '/playground/workbench',
+    );
   });
 
   /**

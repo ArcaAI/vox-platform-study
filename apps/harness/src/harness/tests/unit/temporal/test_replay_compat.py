@@ -465,3 +465,34 @@ class TestConsultationLoopReplayCompatibility:
         await replayer.replay_workflow(
             _history("consultation_loop_task685_idle_timeout_history")
         )
+
+
+class TestWorkflowInterpreterReplayCompatibility:
+    """Replay guard for WorkflowInterpreter (TASK-718) — the interpreter's OWN new workflow
+    type, following the exact same "new type needs no era until its first fixture is frozen"
+    precedent `ConsultationLoopWorkflow` set (`workflows.py:1611-1614`).
+
+    ``interpreter_v1_history.json`` is the fixture captured with the very first release
+    (`_capture_interpreter_replay_fixture.py`), per the ticket's "replay-compat discipline from
+    run #1" requirement — this interpreter must never repeat `HarnessDocWorkflow`'s position of
+    reaching eleven live `workflow.patched()` eras before anyone wrote a fixture. It covers, in
+    one run, the three command shapes a future change is most likely to break: a multi-stage
+    linear walk, a 3-node fan-out stage, and one DEGRADED node settling alongside SUCCEEDED
+    siblings in the same stage (the all-settled join).
+
+    Any future ungated change to the interpreter's dispatch loop (a new/removed/reordered
+    ``execute_activity`` call in the shared per-stage/per-node path) fails this replay with a
+    non-determinism error. Recapture alongside every new patch gate
+    (``_capture_interpreter_replay_fixture.py``), per
+    ``docs/implementation/TASK-718-Workflow-Interpreter/contracts/versioning.md``.
+    """
+
+    @pytest.mark.asyncio
+    async def test_v1_history_replays_on_current_definition(self):
+        from harness.temporal.interpreter.workflow import WorkflowInterpreter
+
+        replayer = Replayer(
+            workflows=[WorkflowInterpreter],
+            data_converter=pydantic_data_converter,
+        )
+        await replayer.replay_workflow(_history("interpreter_v1_history"))

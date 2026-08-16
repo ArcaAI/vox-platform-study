@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Pending |
+| **Status** | Review — core interpreter (Tasks 1–11) built and green; Task 12 partial (README updated, CI needs no change); see §7 for exact scope/gaps |
 | **Wave** | 2 · **Size** | XL |
 | **Epic slug** | `workflow-interpreter` |
 | **Depends on** | TASK-715 (`workflow-definition-model`), TASK-716 (`workflow-compiler-validator`) |
@@ -751,10 +751,190 @@ assessment 04 §Options (b), is the anti-pattern to avoid by name).
 
 ## 7. Implementation Summary
 
-_(Empty at authoring — filled during execution.)_
+**Session scope, decided at execution time:** a single agent, single pass, no live infra
+(Temporal/Postgres/Redis all down), no second reviewer available for the Phase A gate. Given the
+ticket's XL size (12 tasks), the honest outcome is: **Tasks 1–11 built and green; Task 12 mostly
+done** (README updated; no CI edit needed — no new pip extra). Below is exactly what exists,
+what was verified, and what is explicitly NOT done.
+
+### Reconciliation with TASK-716 (read this before anything else)
+
+TASK-716 had already shipped its `compiledConfig` schema (`packages/workflow-contract`,
+`contracts/compiled-config.schema.json`) by the time this session started — a real shape, not the
+guessed one in this ticket's own §4 Task 1 prose. Per this ticket's own R-7, Task 1 became a
+**reconciliation**, not an invention. Two load-bearing corrections this makes to the plan as
+written (documented in full in `contracts/execution-semantics.md` §0):
+
+1. `compiledConfig` has `stages[].nodes[]` (with a resolved `activity` string, full `retry`
+   policy, `onError`, `emitsTrajectory`) and a separate lifted-out `gates[]` — not the
+   `{ id, nodes: [...] }` shape sketched in the ticket text.
+2. **Platform caps are materialized at COMPILE time by the TypeScript compiler, not read by the
+   interpreter from `GlobalSetting` at run start.** This ticket's own R-5/Task 4 assumed a
+   `GlobalSetting`-backed `caps.py`; the real, shipped contract's own normative rule says
+   otherwise. `caps.py` here is a defense-in-depth re-clamp (module constants only) — strictly
+   safer than the original plan, but a deliberate deviation from the literal task text.
+
+### What was built (Tasks 1–11)
+
+| Task | What | Files |
+|---|---|---|
+| 1 | `contracts/execution-semantics.md` — full lifecycle/stage-join/caps/dispatch contract, reconciled against TASK-716's actual schema (no second schema file created — duplicating it was the exact anti-pattern TASK-716's own docs warn against) | `docs/implementation/TASK-718-Workflow-Interpreter/contracts/execution-semantics.md` |
+| 2 | `contracts/versioning.md` — the two-axis patch-gate policy + the 5-row change-class matrix | `.../contracts/versioning.md` |
+| 3 | RED tests — done PER MODULE as each was built (see "TDD discipline" below), not as one upfront skeleton file | throughout `tests/unit/temporal/interpreter/` |
+| 4 | Node registry (`NodeSpec`, `NODE_REGISTRY` — `noop`/`passthrough` seed entries only) + `caps.py` (module-constant tighten-only clamps, no `GlobalSetting` read) | `temporal/interpreter/registry.py`, `caps.py` |
+| 5 | `interpreter.load_config` activity — six-step admission (dereference → parse → formatVersion → checksum → gates-empty → structural bounds); `compiled_config.py` is a LOCAL Pydantic mirror of TASK-716's schema (not the full cross-language parity package — see gap below) | `temporal/interpreter/activities.py`, `compiled_config.py` |
+| 6 | `WorkflowInterpreter` — linear stage walk, `asyncio.gather` fan-out, all-settled join, critical-node promotion to `FAILED`, `cancel` signal (only), `state` query | `temporal/interpreter/workflow.py` |
+| 7 | Trajectory emission — REUSES `_TrajectoryBatch` (no second emitter); `TrajectoryContext` extended additively (`workflow_version_id`/`stage_id`/`node_id`/`node_type`); new `STEP_NODE` vocabulary member | `temporal/activities.py` (+3 lines), `temporal/models.py` (+4 optional fields) |
+| 8 | Registered `WorkflowInterpreter` + `INTERPRETER_ACTIVITIES` on the existing worker. **No `InterpreterConfig(BaseSettings)` was added** — per the reconciliation above there is nothing left to configure (no `GlobalSetting`, no new env var); adding an empty settings class would be speculative, so it was deliberately skipped (Karpathy "simplicity first") | `temporal/worker.py` |
+| 9 | First replay fixture (`interpreter_v1_history.json`, multi-stage + fan-out + one degraded node) captured via a new `_capture_interpreter_replay_fixture.py`; replay test added; **RED proven by deliberately adding an ungated second `execute_activity` call, confirmed `NondeterminismError`, then reverted and confirmed GREEN again** (both outputs captured below) | `tests/unit/temporal/test_replay_compat.py`, `tests/unit/temporal/_capture_interpreter_replay_fixture.py`, `tests/unit/temporal/fixtures/interpreter_v1_history.json` |
+| 10 | Dispatcher API — `POST .../workflow-runs:start` (idempotent, 503 on Temporal-unreachable), `GET .../workflow-runs/{id}` (describe + `state` query), `POST .../workflow-runs/{id}:cancel` (allow-listed signal only) | `api/endpoints/interpreter.py`, mounted in `main.py` |
+| 11 | Sandbox mode — built as part of Task 6 (`external_write` registry check dispatches `SKIPPED(sandbox)` before `execute_activity` is ever called); dedicated test added | `temporal/interpreter/workflow.py`, `tests/unit/temporal/interpreter/test_sandbox.py` |
+| 12 | README updated with the interpreter package + dispatcher routes; CI needs no edit (no new pip extra; `test-harness` picks up the new tree automatically) | `apps/harness/README.md` |
+
+### TDD discipline — honest accounting (do not overstate)
+
+True RED-then-implement, confirmed by an actual failing run before the code existed:
+`caps.py` (`ImportError`), `registry.py`+`activities.py` seed entries (`ImportError`),
+`workflow.py`'s package skeleton (`ImportError` on `WorkflowInterpreter`), and Task 9's replay
+test (deliberate `NondeterminismError`, reverted). **`compiled_config.py` and the
+`interpreter.load_config` activity were written before their test files** — a real deviation from
+strict RED-first, driven by needing a concrete parse/admission module to unblock the registry's
+import chain. Every test file was still RUN and passed on first execution with no hidden fixes
+needed; this is disclosed rather than characterized as textbook TDD.
+
+### Known gap — named, not hidden
+
+`compiled_config.py`'s canonical-JSON checksum algorithm is a best-effort Python port of
+`packages/workflow-contract/src/canonical-json.ts`, reviewed structurally against the TS source
+and unit-tested for internal determinism, but **not verified byte-for-byte against a live Node.js
+execution of the original** (no Node runtime was exercised in this session). If the two
+canonicalizers ever diverge on a real compiled artifact, every real config would fail checksum
+verification here. Closing this for real is TASK-716's own deferred Task 7b
+(`packages/py-workflow-contract` / `hope_workflow_contract`, a cross-language parity package) —
+this session built a narrower, harness-local mirror scoped to exactly what the config-loader
+activity needs, not that package.
+
+### What is explicitly NOT done / gated
+
+- **Live infra verification.** `pnpm worker:dev` was NOT run (Temporal down, per this run's
+  standing constraint) — the "starts clean, logs `harness.worker.started`" acceptance box is
+  UNCHECKED. What WAS verified hermetically: the exact combined `workflows=[...]`/`activities=[...]`
+  lists `run_worker` uses construct on a real (ephemeral, time-skipping) Temporal test server
+  with no name collisions (`test_worker_registration.py`).
+- **Second-reviewer sign-off** on `contracts/execution-semantics.md`/`versioning.md` (Task 1/2's
+  "reviewed by a second T4 agent") — single-agent session, self-reviewed only.
+- **`pnpm harness:test` (the full suite, including `tests/integration/`)** was not run — that
+  directory needs live Qdrant/RAG infra this session doesn't have and is untouched by this
+  ticket. `pnpm harness:test:unit`-equivalent (direct `pytest .../tests/unit/`, since the conda
+  wrapper is broken here per this run's ground rules) WAS run in full — see Verification below.
+- **`docs/implementation/TASK-716-Workflow-Compiler-Validator/contracts/README.md`'s own
+  "reviewed by the TASK-718 author" checkbox** — this session IS that review (§0 of
+  `execution-semantics.md` records the reconciliation), but no cross-ticket coordination
+  (updating TASK-716's own checkbox) was performed; flagging it here for whoever picks up
+  TASK-716 next.
+- Everything the ticket itself scoped out of v1 (conditional edges, loops, sub-workflow nodes,
+  HITL gates, scheduled/webhook triggers, Studio UI, runs read model, consultation nodes) —
+  unchanged, still out of scope.
+
+### Verification (all commands actually run, from `apps/harness/`, using
+`~/miniconda3/envs/arcaenv/bin/python -m <tool>` directly — the `conda run` wrapper is broken in
+this environment per this run's ground rules)
+
+```
+$ ~/miniconda3/envs/arcaenv/bin/python -m pytest src/harness/tests/unit/ -q --no-cov
+...
+4 failed, 1244 passed, 1 warning in 61.37s
+```
+
+The 4 failures (`test_otel_tracing_task636.py` ×3, `test_qdrant_api_key.py` ×1) are **pre-existing
+and unrelated** — confirmed by running them in isolation with zero interpreter files loaded; they
+fail identically (host-env pollution of `QDRANT_API_KEY`/`DEPLOYMENT_ENVIRONMENT`, not caused by
+this ticket).
+
+Ticket-specific suite in isolation:
+```
+$ ~/miniconda3/envs/arcaenv/bin/python -m pytest src/harness/tests/unit/temporal/interpreter/ \
+    src/harness/tests/unit/api/test_interpreter_endpoints.py \
+    "src/harness/tests/unit/temporal/test_replay_compat.py::TestWorkflowInterpreterReplayCompatibility" \
+    -q --no-cov
+...............................................                          [100%]
+47 passed in 4.76s
+```
+
+Replay-compat RED/GREEN proof (Task 9's explicit requirement — "a replay test that has never
+failed proves nothing"):
+```
+# RED — a deliberate, temporary, ungated second execute_activity(load_config, ...) call added:
+$ pytest "src/harness/tests/unit/temporal/test_replay_compat.py::TestWorkflowInterpreterReplayCompatibility" -q --no-cov
+...
+temporalio.workflow._exceptions.NondeterminismError: ... "[TMPRL1100] Nondeterminism error:
+Activity type of scheduled event 'interpreter.noop' does not match activity type of activity
+command 'interpreter.load_config'" ...
+1 failed, 3 warnings in 0.80s
+
+# Reverted, then GREEN:
+$ pytest src/harness/tests/unit/temporal/test_replay_compat.py -q --no-cov
+19 passed, 3 warnings in 0.85s
+```
+
+Lint / typecheck (whole `apps/harness/src/`, not just the new files — proves no regression in
+files this ticket touched):
+```
+$ ~/miniconda3/envs/arcaenv/bin/python -m ruff check src/
+All checks passed!
+$ ~/miniconda3/envs/arcaenv/bin/python -m mypy --config-file pyproject.toml src/harness/
+Success: no issues found in 108 source files
+```
+
+`pnpm lint:all`/`pnpm typecheck:all` (whole-repo aggregates) were **not run** — reserved for the
+orchestrator per this run's ground rules ("package-scoped commands only"); `pnpm api:build` and
+whole-repo `pnpm test:unit` were likewise not run (this ticket touches only `apps/harness`).
+`uv lock` was **not** re-run — no dependency changed (stdlib `hashlib`/`json` only; no new
+package). No new env var was introduced, so `turbo.json#globalEnv`/`.env.dev`/`.env.sample` needed
+no edit (a direct consequence of the caps reconciliation in §0 — nothing left to configure).
+Migration SQL: none authored — this ticket touches no Prisma model.
+
+### Files changed
+
+New:
+- `docs/implementation/TASK-718-Workflow-Interpreter/contracts/execution-semantics.md`
+- `docs/implementation/TASK-718-Workflow-Interpreter/contracts/versioning.md`
+- `apps/harness/src/harness/temporal/interpreter/` (`__init__.py`, `models.py`, `caps.py`,
+  `registry.py`, `compiled_config.py`, `activities.py`, `workflow.py`)
+- `apps/harness/src/harness/api/endpoints/interpreter.py`
+- `apps/harness/src/harness/tests/unit/temporal/interpreter/` (`test_caps.py`, `test_registry.py`,
+  `test_compiled_config.py`, `test_config_loader.py`, `test_interpreter_semantics.py`,
+  `test_trajectory.py`, `test_sandbox.py`, `test_worker_registration.py`)
+- `apps/harness/src/harness/tests/unit/api/test_interpreter_endpoints.py`
+- `apps/harness/src/harness/tests/unit/temporal/_capture_interpreter_replay_fixture.py`
+- `apps/harness/src/harness/tests/unit/temporal/fixtures/interpreter_v1_history.json`
+
+Modified (all additive):
+- `apps/harness/src/harness/temporal/worker.py` — registered `WorkflowInterpreter` +
+  `INTERPRETER_ACTIVITIES`
+- `apps/harness/src/harness/main.py` — mounted the interpreter dispatcher router
+- `apps/harness/src/harness/temporal/activities.py` — `STEP_NODE` step-type constant (+3 lines)
+- `apps/harness/src/harness/temporal/models.py` — `TrajectoryContext` gained 4 additive-optional
+  fields
+- `apps/harness/src/harness/tests/unit/temporal/test_replay_compat.py` —
+  `TestWorkflowInterpreterReplayCompatibility`
+- `apps/harness/README.md` — new "WorkflowInterpreter" section + dispatcher API table
+
+### What the next agent picking this up needs to know
+
+1. TASK-720 (`palette-summarization`) populates `NODE_REGISTRY` with the real node types — read
+   `registry.py`'s `NodeSpec` docstring first; the `critical`/`external_write`/`entitlement_key`
+   fields exist for exactly that ticket.
+2. Close the checksum-parity gap (see "Known gap" above) before any real published
+   `compiledConfig` is fed through `interpreter.load_config` outside a test — right now it is
+   validated-in-principle, not proven-in-practice against the actual TypeScript compiler output.
+3. `pnpm worker:dev` has never been run against this code — the FIRST live-infra pass on this
+   ticket should watch for `harness.worker.started` and confirm the interpreter is in the logged
+   registration, then update the unchecked acceptance box above.
 
 ## 8. Change History
 
 | Date | Change | By |
 |---|---|---|
 | 2026-08-16 | Ticket authored | Wave-2 ticket-authoring agent |
+| 2026-08-16 | Tasks 1–11 built and green (contracts, registry/caps, config admission, `WorkflowInterpreter` workflow, trajectory reuse, worker registration, replay fixture with proven RED/GREEN, dispatcher API, sandbox mode); Task 12 mostly done (README; no CI edit needed). Reconciled Task 1/§4's guessed `compiledConfig` shape against TASK-716's actual shipped schema (caps now compile-time-materialized, not `GlobalSetting`-read). Named gaps: checksum-algorithm cross-language parity unverified against live Node, `pnpm worker:dev` unverified (infra down), no second-reviewer pass. Status → Review. | Execution agent (this session) |

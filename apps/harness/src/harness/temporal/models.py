@@ -187,6 +187,14 @@ class TrajectoryContext(BaseModel):
     correlation the trajectory step needs; ``session_id``/``run_id`` are read
     from ``activity.info()`` (the Temporal workflow/run ids) inside the activity.
     ``is_regen`` marks a bounded-regen generation (drives ``harness_regen_total``).
+
+    ``workflow_version_id``/``stage_id``/``node_id``/``node_type`` are ADDITIVE-OPTIONAL
+    (TASK-718 Task 7) — a WorkflowInterpreter run carries a ``sessionId``, not a
+    ``consultationId``, so ``consultation_id`` stays ``None`` for those rows; the four new
+    fields identify which interpreter node a step belongs to. `test_gating_consolidation_replay
+    .py`'s additive-optional-field assertion style covers this same discipline for
+    ``RunInferentialSensorsInput`` — see ``test_trajectory.py`` (interpreter) for the equivalent
+    check on this model.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -196,6 +204,10 @@ class TrajectoryContext(BaseModel):
     correlation_id: str | None = None
     seq: int = 0
     is_regen: bool = False
+    workflow_version_id: str | None = None
+    stage_id: str | None = None
+    node_id: str | None = None
+    node_type: str | None = None
 
 
 class FetchPolicyInput(BaseModel):

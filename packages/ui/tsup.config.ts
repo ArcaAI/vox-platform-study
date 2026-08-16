@@ -5,7 +5,7 @@ export default defineConfig({
   // as a dedicated subpath entry so `@arcaai/ui/components/shared` (StatusBadge /
   // StatusColorRole — intentionally kept off the root barrel) ships a matching
   // `dist/components/shared/index.d.ts` for type-only consumers like apps/admin.
-  entry: ['src/index.ts', 'src/components/shared/index.ts', 'src/components/metrics/index.ts'],
+  entry: ['src/index.ts', 'src/components/shared/index.ts', 'src/components/metrics/index.ts', 'src/components/workflow-canvas/index.ts'],
   format: ['cjs', 'esm'],
   dts: true,
   sourcemap: true,

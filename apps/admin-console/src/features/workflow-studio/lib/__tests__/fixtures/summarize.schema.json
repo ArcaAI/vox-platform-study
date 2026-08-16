@@ -1,0 +1,12 @@
+{
+  "type": "object",
+  "properties": {
+    "promptTemplateId": { "type": "string", "minLength": 1, "title": "Prompt template" },
+    "temperature": { "type": "number", "minimum": 0, "maximum": 2, "title": "Temperature" },
+    "maxOutputTokens": { "type": "integer", "minimum": 1, "maximum": 4096, "title": "Max output tokens" },
+    "streaming": { "type": "boolean", "title": "Stream output" },
+    "tags": { "type": "array", "items": { "type": "string" }, "minItems": 0, "maxItems": 8, "title": "Tags" },
+    "guardrailProfile": { "type": "string", "enum": ["STANDARD", "STRICT", "RELAXED"], "title": "Guardrail profile" }
+  },
+  "required": ["promptTemplateId", "guardrailProfile"]
+}

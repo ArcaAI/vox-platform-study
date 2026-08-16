@@ -101,4 +101,7 @@ export enum ResourceType {
   AgentPromotion = 'AgentPromotion',
   WorkflowDefinition = 'WorkflowDefinition',
   ConsentGrant = 'ConsentGrant',
+  // Workflow test fixture (TASK-721). Ordinary CRUD, unlike sibling
+  // WorkflowRun (telemetry, no ResourceType) — parity with audit.prisma.
+  WorkflowTestFixture = 'WorkflowTestFixture',
 }

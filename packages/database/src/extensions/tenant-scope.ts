@@ -260,6 +260,16 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   // (tenantId, externalPatientId, purpose). No SYSTEM row and no widening:
   // a tenant reads/writes only its own consent grants.
   'ConsentGrant',
+  // workflow-run.prisma — the runs/observability read model (TASK-723).
+  // Tenant-scoped ops telemetry (one row per run), NOT SYSTEM-shared — a
+  // tenant's runs are never visible cross-tenant. Soft-delete EXEMPT (hard
+  // retention, no resourceStatus column) — see MODELS_WITHOUT_SOFT_DELETE.
+  'WorkflowRun',
+  // workflow-test-fixture.prisma — per-tenant saved synthetic Workbench
+  // inputs (TASK-721). Ordinary tenant-owned rows, NOT SYSTEM-shared — a
+  // tenant's fixtures are never visible cross-tenant. Keeps soft delete
+  // (NOT in MODELS_WITHOUT_SOFT_DELETE).
+  'WorkflowTestFixture',
 ]);
 
 /**

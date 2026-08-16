@@ -62,3 +62,4 @@ export * from './UsageMeterMetric';
 export * from './ValueType';
 export * from './WebhookRunStatus';
 export * from './WorkflowDefinitionStatus';
+export * from './WorkflowRunStatus';

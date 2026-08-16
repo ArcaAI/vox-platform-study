@@ -33,6 +33,8 @@ from harness.temporal.activities import (
     ping_activity,
 )
 from harness.temporal.client import get_temporal_client
+from harness.temporal.interpreter.activities import INTERPRETER_ACTIVITIES
+from harness.temporal.interpreter.workflow import WorkflowInterpreter
 from harness.temporal.workflows import (
     ConsultationLoopWorkflow,
     HarnessDocWorkflow,
@@ -265,12 +267,14 @@ async def run_worker() -> None:
             HarnessDocWorkflow,
             ConsultationLoopWorkflow,
             SpecialistWorkflow,
+            WorkflowInterpreter,
         ],
         activities=[
             ping_activity,
             *DOCUMENT_ACTIVITIES,
             *LOOP_ACTIVITIES,
             *REASONING_ACTIVITIES,
+            *INTERPRETER_ACTIVITIES,
         ],
         graceful_shutdown_timeout=timedelta(seconds=settings.temporal.graceful_shutdown_timeout_s),
         # F-29 — admission cap coordinated with the LLM concurrency governor

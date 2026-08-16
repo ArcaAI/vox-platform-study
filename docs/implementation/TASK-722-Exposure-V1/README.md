@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Pending |
+| **Status** | Blocked (Task 1 of 11 shipped; Tasks 3/5/6/7/8/9/10 blocked on TASK-715 Phase B–F, evidence in §6/§7) |
 | **Wave** | 2 · **Size** | L |
 | **Epic slug** | `exposure-v1` |
 | **Depends on** | TASK-708 (`apikey-scope-verification`), TASK-718 (`workflow-interpreter`), TASK-720 (`palette-summarization`) · **consumes** TASK-717 (`async-contract`) |
@@ -669,6 +669,7 @@ a run-status DTO probably should not, since a run is not OCC-written.
 | R-7 | **Slug immutability may frustrate tenants.** | Deliberate: a slug is a public URL. Offer "create a new definition and deprecate the old" in the Studio; do not add a rename. |
 | R-8 | **Cloud-provider selection through a public workflow.** `smr.` task keys are tenant-admin configurable by design (`ai-task-default/constants.ts:85-90`), so a publicly-invoked workflow could route to a cloud LLM. | **HUMAN-GATED** — mirrors TASK-720 R-4. Decide whether the exposure plane pins to local providers or inherits the tenant's selection. Record the decision before enabling R-1's flag. |
 | R-9 | **`workflows` as a top-level path segment could collide** with a future admin surface (`harness-admin` already uses `workflows/:id` under its own prefix). | Distinct prefixes today; the reserved-word deny-list (Task 3) prevents a slug shadowing a path segment. Verify no route conflict at boot. |
+| R-10 | **NEW (2026-08-16 execution) — TASK-715 is NOT wave-1-complete the way this ticket's plan assumed.** TASK-715's own README states its status verbatim: *"In Progress (Phase A — Database — done; Phases B–F not started)"*. Verified against the tree: `packages/database/src/prisma/db_main/workflow-definition.prisma` exists (with `slug`, the `@@unique([tenantId, slug, versionNumber])`, and `isActive`) and `packages/domains/src/models/generated/core/WorkflowDefinitionModel.ts` exists (the ONE generated layer), but there is **no** `WorkflowDefinitionEntity`, `WorkflowDefinitionFactory`, `WorkflowDefinitionEntityMapper`, or `WorkflowDefinitionRepository` anywhere in `packages/domains/src` (`grep -rl "WorkflowDefinitionRepository\|WorkflowDefinitionEntity\|WorkflowDefinitionFactory\|WorkflowDefinitionEntityMapper" packages` — zero hits), and no application service for authoring/looking up definitions exists in `packages/applications/src/services` either. Sibling tickets TASK-723 (`workflow-run`) and TASK-721 (`workflow-test-fixture`) both worked around the gap by storing DENORMALIZED `workflowSlug`/`definitionName`/etc. directly on their own tables rather than joining to a `WorkflowDefinition` repository — `packages/applications/src/services/workflow-run/dto/record-run.input.ts` even says so in its own docstring: *"The write contract TASK-718's dispatcher (or **a future gateway controller**) calls... nothing calls this yet."* This ticket IS that future gateway controller, and it needs `findPublishedBySlug(tenantId, slug) → { id, slug, versionNumber, name, compiledConfig, … }` to resolve an invoke — which requires the missing repository. | **Did not build TASK-715's entity/factory/mapper/repository trio under this ticket.** Rule 03's hand-authored trio (`XxxEntity.ts`/`XxxFactory.ts`/`XxxEntityMapper.ts`/`XxxRepository.ts`) plus the barrel/`CoreDatabaseModule` registrations it requires are TASK-715's committed deliverable, not this ticket's — and per the run rules, "sibling agents share this tree" with **no commit-based conflict detection** (this execution never commits), so creating those exact files while TASK-715 shows `Status: In Progress` risks silently clobbering concurrent work rather than safely extending it. **Recommendation: land TASK-715 Phases B–D (entity/factory/mapper/repository + `findPublishedBySlug`) first, then resume TASK-722 Tasks 3/5/6/7/8/9/10.** Task 3's *DB-layer* half (slug column + its unique constraint) is already satisfied by TASK-715 Phase A — nothing further needed there. |
 
 ### Cross-ticket contract
 
@@ -685,10 +686,114 @@ a run-status DTO probably should not, since a run is not OCC-written.
 
 ## 7. Implementation Summary
 
-_(Empty at authoring — filled during execution.)_
+**Executed 2026-08-16. Local infra was down (no Postgres/Redis/API/Temporal) for this entire
+execution — every item below that needed a live server, DB, or Temporal is marked accordingly. No
+exposure kill-switch was created or flipped; both human gates (decision #6 — cloud LLM selection
+through a public workflow, R-8; decision #10 — TASK-708's un-narrowed API-key scope surface, S-2)
+remain open and unresolved, as instructed.**
+
+### Done
+
+- **Task 1 — workflow scopes in the API-key registry.** Added `workflow:definition:read`,
+  `workflow:run:write`, `workflow:run:read`, and the wildcard `workflow:*` to
+  `packages/applications/src/services/apiKey/apikey-scopes.registry.ts`, in a new `Workflow`
+  category alongside the existing STT/Consultation/User/Media/Admin/Webhook/Wildcard families.
+  TDD followed: extended `apikey-scopes.registry.test.ts` first (RED — pasted below), then the
+  registry (GREEN — pasted below). These scopes are inert until Task 6 declares
+  `@RequiredScopes(...)` referencing them; adding them now only makes the strings
+  decoration-time-valid (`decorators.ts:125-132`'s `isValidScope` check) for whenever the
+  controller lands. No route, kill-switch, or enforcement path was created — this is registry data
+  only, and it changes no runtime behavior for any existing key.
+
+### Blocked — not attempted, with reason
+
+**Tasks 3, 5, 6, 7, 8, 9, 10 (the actual invoke/status/stream/cancel mechanism) are BLOCKED on a
+missing upstream dependency, not merely deferred for time.** See §6 R-10 for the full evidence:
+TASK-715 (`workflow-definition-model`) is `Status: In Progress (Phase A — Database — done; Phases
+B–F not started)` by its own README — there is no `WorkflowDefinitionEntity` /
+`WorkflowDefinitionFactory` / `WorkflowDefinitionEntityMapper` / `WorkflowDefinitionRepository`
+anywhere in `packages/domains/src`, and no application-layer lookup/authoring service for it in
+`packages/applications/src/services`. Every one of this ticket's remaining tasks needs
+`findPublishedBySlug(tenantId, slug)` (Task 3) or the run-creation write path it feeds (Tasks 5/6/8),
+so they cascade-block. Building that trio myself was considered and rejected: rule 03's hand-authored
+entity/factory/mapper/repository files, plus the barrel and `CoreDatabaseModule` edits they require,
+are TASK-715's committed deliverable; this run never commits, so there is no conflict detection if a
+sibling agent is concurrently completing TASK-715 Phases B–D in the same working tree — silently
+recreating those exact files risks clobbering that work rather than safely extending it. This is a
+genuine blocker, not a scope judgment call on my part alone: I'm flagging it for the orchestrator to
+either sequence TASK-715 first or explicitly instruct otherwise.
+
+- **Task 2 (RED e2e spec)** — not authored. An e2e spec exercising `/api/v1/workflows/:slug/...`
+  would be speculative fiction against routes that do not exist yet (Task 6 blocked) and could not be
+  run in any case (`pnpm test:up:api` needs live Postgres/Redis, both down). Writing it now would risk
+  encoding wrong assumptions about DTOs/scopes that should instead be derived from the real Task 5/6
+  implementation once TASK-715 unblocks it.
+- **Task 3** — DB half already satisfied by TASK-715 Phase A (`slug` column +
+  `@@unique([tenantId, slug, versionNumber])` on `workflow-definition.prisma`, verified). The
+  service-layer half (`findPublishedBySlug`, reserved-slug deny-list, 409-on-collision,
+  immutable-after-publish) needs the missing repository — blocked.
+- **Task 4 (entitlement columns)** — not attempted. Scoped down deliberately, separate from the
+  TASK-715 blocker: `entitlements.service.ts` is ~800 lines and every quantity-limit/meter addition
+  touches `entitlement.prisma` (2 models + the `UsageMeterMetric` enum), `entitlements.constants.ts`
+  (per-plan defaults ×4 plans), `resolve-entitlements.ts` (3 interfaces + merge logic touched
+  earlier in this session — read but not edited), `enforcement.ts`'s key unions, the service's
+  `METER_USAGE_FIELD_BY_CAPABILITY`/`buildCapabilityRow`/apply/create/update/read call sites, and
+  `seed/15-entitlements.ts` — a widely-depended-on, heavily-tested module gating billing platform-wide.
+  Its only real consumer (Task 5's invoke path) is itself blocked, so there is no wiring target for a
+  `workflowInvocations` meter check yet, and the `maxWorkflowDefinitions` quantity check has no
+  create-path caller either. Rushing a partial, unwired schema change into a shared billing-critical
+  service for zero immediate behavioral value was judged higher-risk than deferring it to land
+  together with Task 5.
+- **Tasks 6, 7, 8, 9, 10, 11** — not attempted; all cascade from the Task 3/5 blocker (11 — docs —
+  was left until the surface it documents exists, to avoid documenting a surface that doesn't).
+
+### Verification actually run (all local, no infra)
+
+```
+$ pnpm --filter @arcaai/applications exec vitest run src/services/apiKey/__tests__/apikey-scopes.registry.test.ts
+# RED (before the registry edit):
+#  FAIL  ... > should contain workflow exposure scopes
+#    AssertionError: expected undefined to be defined
+#  FAIL  ... > should group scopes by category
+#    AssertionError: expected { …(7) } to have property "Workflow"
+#  Test Files  1 failed (1) | Tests  2 failed | 14 passed (16)
+#
+# GREEN (after the registry edit):
+#  Test Files  1 passed (1)
+#  Tests  16 passed (16)
+
+$ pnpm --filter @arcaai/applications exec vitest run src/services/apiKey src/authorization
+#  Test Files  16 passed (16)
+#  Tests  354 passed (354)
+
+$ pnpm --filter @arcaai/applications build
+#  (tsc — clean, no output, exit 0)
+
+$ pnpm --filter @arcaai/applications typecheck
+#  (tsc --noEmit — clean, no output, exit 0)
+
+$ pnpm --filter @arcaai/applications lint
+#  ✖ 182 problems (0 errors, 182 warnings) — all 182 warnings pre-existing in files this
+#  ticket did not touch (grep for "apikey-scopes" in the lint output: no matches).
+```
+
+**Gates NOT run** (infra down / no work to verify): `pnpm --filter @arcaai/database test`,
+`pnpm --filter @arcaai/domains build test` (no domain-layer changes made), `pnpm api:build`,
+`pnpm test:unit` (full suite), `pnpm test:up:api` + `pnpm test:e2e`, `pnpm lint:all`,
+`pnpm typecheck:all`. Migration authoring/shadow-DB drift proof: not applicable — no schema change
+was made in this execution.
+
+### Files changed (see `git status` for the authoritative list)
+
+- `packages/applications/src/services/apiKey/apikey-scopes.registry.ts` — added the `Workflow`
+  scope family + `workflow:*` wildcard.
+- `packages/applications/src/services/apiKey/__tests__/apikey-scopes.registry.test.ts` — RED-first
+  tests for the above.
+- `docs/implementation/TASK-722-Exposure-V1/README.md` — this summary + R-10.
 
 ## 8. Change History
 
 | Date | Change | By |
 |---|---|---|
 | 2026-08-16 | Ticket authored | Wave-2 ticket-authoring agent |
+| 2026-08-16 | Executed Task 1 only (API-key scope registry, TDD RED→GREEN, evidence in §7). Discovered and documented (§6 R-10) that TASK-715 is Phase-A-only — no `WorkflowDefinition` domain entity/factory/mapper/repository exists — which blocks Tasks 3/5/6/7/8/9/10 (the invoke/status/stream/cancel mechanism itself). Declined to build TASK-715's domain trio under this ticket to avoid clobbering concurrent sibling work with no commit-based conflict detection. Declined Task 4 (entitlement columns) as high-blast-radius with no wiring target while Task 5 is blocked. Status set to Blocked pending either TASK-715 Phases B–D landing or explicit orchestrator direction. Neither human gate (R-1/R-8) was touched; no kill-switch exists to flip. | TASK-722 execution agent |

@@ -1,0 +1,13 @@
+{
+  "type": "object",
+  "properties": {
+    "note": { "type": "string", "title": "Note" },
+    "legacyRouting": {
+      "if": { "properties": { "region": { "const": "eu" } } },
+      "then": { "properties": { "endpoint": { "type": "string" } } },
+      "else": {},
+      "title": "Legacy routing (unsupported)"
+    }
+  },
+  "required": ["note"]
+}

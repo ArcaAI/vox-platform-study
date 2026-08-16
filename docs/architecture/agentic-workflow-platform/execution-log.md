@@ -101,7 +101,7 @@ you can answer them in priority order.
 | 0 | 700, 701, 702, 703, 704, 705, 706, 708 | **Complete — committed** | see below |
 | 0 (barrier) | 707 `naming-alignment` | **Partial — committed.** Code side complete and green; DB-persisted identifiers deferred (W7-2), enum gated (W7-3) | see below |
 | 1 | 709–717 | **Complete (blocked portions withheld) — committed** | see below |
-| 2 | 718–723 | Not started | — |
+| 2 | 718–723 | **Partial — committed.** 718 solid; 719-723 blocked by the 715/716 cascade | see below |
 | 3 | 724–730 | Not started | — |
 | 4 | 731–733 | Not started | — |
 
@@ -225,3 +225,36 @@ coupled to the deferred DB columns in W7-2. That whole cluster stays with the W7
 
 **Migrations authored but UNPROVEN: 711, 712, 715.** None has had rule 02's shadow-DB empty-diff
 proof run. Do not deploy any of them unverified.
+
+### Wave 2 — Prove  ⚠️ HIT A REAL DEPENDENCY WALL
+
+6 agents, 0 errors, all reports honest. But Wave 2 is **substantially incomplete, and not because
+the agents underperformed** — they ran into a genuine structural limit and said so clearly.
+
+**The cascade.** Wave 1's two XL foundation tickets delivered less than Wave 2 assumed:
+TASK-715 landed "Phase A only" (the definition model, no node registry, no
+`admin/workflow-definitions` or `admin/workflow-nodes` controllers), and TASK-716's validator is
+"not wired to anything in the application layer". Everything downstream stacks on exactly those
+two things:
+
+| Ticket | Outcome | Why |
+|---|---|---|
+| 718 interpreter | **Review — the wave's real success** | Self-contained in apps/harness. Full interpreter over 715/716, dispatcher API, sandbox mode, trajectory emission. Captured a replay fixture and proved RED/GREEN on it by deliberately introducing a nondeterminism (`NondeterminismError`) then reverting. 47 ticket tests green, mypy clean on 108 files, ruff clean. |
+| 719 studio | Partial | Built what it could, then stopped: there are no gateway endpoints to build a feature module against. Continuing would have meant **inventing an API contract** — it correctly refused. |
+| 720 palette-summarization | Partial | Same root cause; harness node activities not implementable against a registry that doesn't exist. |
+| 721 workbench | Partial | Phase C (the actual screen with live sandbox runs) blocked on 722 + 723. |
+| 722 exposure-v1 | **Blocked** (3 files) | Its routes depend on work that isn't there, *and* both of its own gates are unresolved (decisions #6 and #10). |
+| 723 runs-observability | Partial | Service/domain layer authored; migration unproven; e2e needs live API. |
+
+**What this means for you.** The program's XL foundation tickets (715, 716) need a second pass
+before Waves 2–4 can complete. That is a planning reality, not something more agent time fixes:
+715's own ticket scoped Phase A, and 718/719/720/721/722 were all written assuming the whole thing.
+I did not paper over this by having agents invent the missing contracts.
+
+**Verification (mine):** typecheck 41/41 · lint 36/36 · `test:unit` **1030 files / 17,436 tests /
+0 failed** · harness pytest 1244 passed / 4 failed (the known local-env four). Everything committed
+is green; the incompleteness is missing work, not broken work.
+
+**Also gated here:** 722 must not be switched on — exposure over the API-key surface that 708
+deliberately did NOT narrow (~50 `/admin/*` routes reachable by any active key) is precisely the
+risk 708 documented. Public exposure is OFF and stays off until decisions #6 and #10 land.

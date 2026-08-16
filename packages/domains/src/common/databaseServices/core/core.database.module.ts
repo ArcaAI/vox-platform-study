@@ -93,6 +93,8 @@ import { UserSettingsRepository } from '../../../repositories/generated/core/Use
 import { UserVoiceProfileRepository } from '../../../repositories/generated/core/UserVoiceProfileRepository';
 import { WebhookRepository } from '../../../repositories/generated/core/WebhookRepository';
 import { WebhookRunHistoryRepository } from '../../../repositories/generated/core/WebhookRunHistoryRepository';
+import { WorkflowRunRepository } from '../../../repositories/generated/core/WorkflowRunRepository';
+import { WorkflowTestFixtureRepository } from '../../../repositories/generated/core/WorkflowTestFixtureRepository';
 
 // Async provider so the (possibly Vault-backed) Prisma client
 // is fully resolved BEFORE the service is injected into the UnitOfWork /
@@ -257,6 +259,10 @@ const repositories = [
   // Consent & ABAC (TASK-712). No enforcement wired anywhere this phase —
   // see docs/implementation/TASK-712-Consent-Abac/consent-design.md.
   ConsentGrantRepository,
+  // Runs/observability read model (TASK-723) — one row per workflow-substrate run.
+  WorkflowRunRepository,
+  // Per-tenant saved synthetic Workbench test input (TASK-721).
+  WorkflowTestFixtureRepository,
 ];
 
 @Module({

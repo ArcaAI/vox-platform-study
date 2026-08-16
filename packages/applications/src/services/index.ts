@@ -119,3 +119,8 @@ export * from './serviceRelease';
 // choke point. No enforcement wired anywhere this phase — see
 // docs/implementation/TASK-712-Consent-Abac/consent-design.md.
 export * from './consent';
+// Runs/observability read model (TASK-723) — one row per workflow-substrate
+// run, keyset-paginated list + single-bounded-read trace rollup.
+export * from './workflow-run';
+// Per-tenant saved synthetic Workbench test input (TASK-721).
+export * from './workflow-test-fixture';
