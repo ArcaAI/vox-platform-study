@@ -153,6 +153,33 @@ describe('EffectiveConfigService', () => {
     });
   });
 
+  // The PHI-redaction chunk budget. It rides the same pull the retention knobs
+  // use, so an operator retunes guardrail's per-call memory/latency bound
+  // without a redeploy — the reason it is a registry key and not an env var.
+  describe('redaction subset (guardrail only)', () => {
+    it('serves guardrail its chunk budget from the registry default', async () => {
+      const svc = serviceWith(settingsStub());
+      const res = await svc.resolveForService('guardrail');
+
+      expect(res.redaction).toEqual({ chunkChars: 4000, source: 'env-fallback' });
+    });
+
+    it('serves a platform-admin override and stamps it `db`', async () => {
+      const svc = serviceWith(settingsStub({ 'guardrail.redact.chunkChars': 4000 }));
+      const res = await svc.resolveForService('guardrail');
+
+      expect(res.redaction).toEqual({ chunkChars: 4000, source: 'db' });
+    });
+
+    it('is served to guardrail ONLY — no other service gains the group', async () => {
+      const svc = serviceWith(settingsStub());
+
+      for (const name of ['smr', 'nlp', 'stt', 'harness', 'tts']) {
+        expect((await svc.resolveForService(name)).redaction).toBeUndefined();
+      }
+    });
+  });
+
   describe('source stamping (operators must see which lane is live)', () => {
     it('stamps env-fallback when no DB override exists', async () => {
       const svc = serviceWith(settingsStub());

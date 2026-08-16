@@ -91,3 +91,4 @@ export * from './UserChangelogAcknowledgementEntityMapper';
 export * from './ConsentGrantEntityMapper';
 export * from './WorkflowTestFixtureEntityMapper';
 export * from './WorkflowRunEntityMapper';
+export * from './WorkflowDefinitionEntityMapper';

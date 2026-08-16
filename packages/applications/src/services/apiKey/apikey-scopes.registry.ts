@@ -46,7 +46,76 @@ export const API_KEY_SCOPE_REGISTRY: Record<string, ScopeDefinition> = {
   // with the platform SERVICE_ACCOUNT credential (scopes: `['*']`, which
   // satisfies this via `hasScope`'s wildcard grant — no seed/provisioning
   // change needed). See `apps/api/src/modules/internal/stt-internal.controller.ts`.
+  //
+  // Why a reserved scope rather than pulling `/internal/*` fully off the
+  // API-key surface: the STT worker authenticates with `X-Internal-Service-Key`
+  // carrying `api_gateway_key`, which BUG-013 requires to be the RAW value of a
+  // registered ACTIVE SERVICE_ACCOUNT ApiKey row (`apps/stt/src/stt/worker.py`,
+  // `core/effective_config.py`). It presents an API KEY, not a service token, so
+  // a `@Public()` + service-token-guard rework would break the worker unless
+  // `apps/stt` changed in lockstep. The owner's "`/admin/*` and `/internal/*`
+  // are different purposes" rule is honoured by the SEPARATE `internal:` root —
+  // prefix matching cannot cross it — not by a different auth mechanism.
   'internal:stt:worker': { description: 'STT worker service-to-service callbacks (never issued to a tenant key)', category: 'Internal' },
+
+  // Admin (platform/tenant-admin surface, `/admin/*`). One scope per admin
+  // controller area — TASK-708 Task 4 gap closure. Coarse-grained by design
+  // (one scope per controller, not per read/write method) so the sweep is
+  // mechanically verifiable across every `/admin/*` controller in one pass
+  // without risking a missed-method gap; `admin:tenant:*`, `admin:user:*`,
+  // `admin:apikey:*`, `admin:audit:read`, `admin:role:*` above predate this
+  // pass and are reused where a controller's whole surface maps cleanly onto
+  // one of them. See the ticket README's Task 3/4 tables for the full
+  // controller → scope mapping and the sensitivity notes per area.
+  'admin:rate-limit:manage': { description: 'Manage platform rate-limit configuration', category: 'Admin' },
+  'admin:usage:manage': { description: 'Read/reconcile usage analytics', category: 'Admin' },
+  'admin:agent-promotion:manage': { description: 'Manage department-agent promotions', category: 'Admin' },
+  'admin:agent-trajectory:read': { description: 'Read agent trajectory steps', category: 'Admin' },
+  'admin:agentic:manage': { description: 'Manage agentic policy administration', category: 'Admin' },
+  'admin:ai-model:manage': { description: 'Manage AI model registrations and discovery', category: 'Admin' },
+  'admin:ai-provider:manage': { description: 'Manage AI/model provider connections (HIGH sensitivity — provider credentials)', category: 'Admin' },
+  'admin:ai-runtime-profile:manage': { description: 'Manage AI runtime profiles', category: 'Admin' },
+  'admin:ai-service:manage': { description: 'Manage AI service configuration', category: 'Admin' },
+  'admin:ai-task-default:manage': {
+    description: 'Manage AI task defaults (some sub-routes are additionally GLOBAL_ADMIN-only via GLOBAL_ADMIN_ONLY_TASK_PREFIXES)',
+    category: 'Admin',
+  },
+  'admin:billing:manage': { description: 'Manage billing invoices and rate cards', category: 'Admin' },
+  'admin:changelog:manage': { description: 'Manage changelog entries', category: 'Admin' },
+  'admin:consultation-context-schema:manage': { description: 'Manage consultation context schemas', category: 'Admin' },
+  'admin:consultation-admin:manage': { description: 'Manage consultations from the admin surface', category: 'Admin' },
+  'admin:department-agent:manage': { description: 'Manage department agents and their resync', category: 'Admin' },
+  'admin:department:manage': { description: 'Manage departments', category: 'Admin' },
+  'admin:dna-writing-style:manage': { description: 'Manage DNA writing style reports', category: 'Admin' },
+  'admin:entitlement:manage': { description: 'Manage tenant entitlements', category: 'Admin' },
+  'admin:settings:manage': { description: 'Read/manage platform global settings (HIGH sensitivity — platform-wide knobs)', category: 'Admin' },
+  'admin:harness:manage': { description: 'Manage the Clinical Documentation Harness admin surface', category: 'Admin' },
+  'admin:mcp-server:manage': { description: 'Manage MCP server registrations', category: 'Admin' },
+  'admin:nlp-task-instructions:manage': { description: 'Manage tenant NLP task instructions', category: 'Admin' },
+  'admin:notification:manage': { description: 'Manage platform notifications', category: 'Admin' },
+  'admin:pipeline-policy:manage': {
+    description: 'Manage harness pipeline policy (carries the globalOnly descriptor lock on some fields)',
+    category: 'Admin',
+  },
+  'admin:audio-pipeline:manage': { description: 'Manage audio pipeline configuration', category: 'Admin' },
+  'admin:platform-metrics:read': { description: 'Read platform-wide metrics', category: 'Admin' },
+  'admin:prompt-template:manage': { description: 'Manage prompt templates from the admin surface', category: 'Admin' },
+  'admin:pstudio:manage': { description: 'Manage Prisma Studio access', category: 'Admin' },
+  'admin:queue:manage': { description: 'Manage background job queues', category: 'Admin' },
+  'admin:scheduler:manage': { description: 'Manage scheduled jobs', category: 'Admin' },
+  'admin:rbac-policy:write': { description: 'Manage RBAC policies (HIGH sensitivity — defines the RBAC model itself)', category: 'Admin' },
+  'admin:resource-subscription:manage': { description: 'Manage resource subscriptions', category: 'Admin' },
+  'admin:service-release:manage': { description: 'Manage service release registrations', category: 'Admin' },
+  'admin:storage-key:manage': { description: 'Manage tenant storage access keys (HIGH sensitivity — storage credentials)', category: 'Admin' },
+  'admin:transcription-job:read': { description: 'Read admin transcription job status', category: 'Admin' },
+  'admin:allowed-origin:manage': { description: 'Manage tenant CORS allow-list', category: 'Admin' },
+  'admin:tenant-storage:manage': { description: 'Manage tenant storage buckets and config', category: 'Admin' },
+  'admin:tenant-frontend-config:manage': { description: 'Manage tenant frontend configuration', category: 'Admin' },
+  'admin:tenant-idp-config:manage': { description: 'Manage tenant identity-provider config (HIGH sensitivity — SSO)', category: 'Admin' },
+  'admin:tenant-stt-config:manage': { description: 'Manage tenant STT configuration', category: 'Admin' },
+  'admin:tenant-tts-config:manage': { description: 'Manage tenant TTS configuration', category: 'Admin' },
+  'admin:workflow-run:read': { description: 'Read admin workflow runs', category: 'Admin' },
+  'admin:workflow-test-fixture:manage': { description: 'Manage workflow test fixtures', category: 'Admin' },
 
   // Workflow exposure plane (TASK-722). Prefix-matching (apikey.service.ts's
   // hasScope) means a key holding the bare `"workflow"` scope would grant all

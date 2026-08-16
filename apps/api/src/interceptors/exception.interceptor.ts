@@ -4,6 +4,7 @@ import {
   ArgumentInvalidException,
   BaseException,
   ConsentDeniedException,
+  ConsentUnavailableException,
   DataNotFoundException,
   OptimisticConcurrencyException,
   ProviderCredentialVetoedException,
@@ -239,9 +240,8 @@ export class ExceptionInterceptor implements NestInterceptor {
         // privilege boundary, deliberately distinct from the 404-over-403
         // cross-tenant posture (a cross-tenant externalPatientId is a 404
         // from the caller's own lookup path, never reaching this branch).
-        // NOT thrown by any wired route in this phase — no guard or
-        // decorator references `assertConsent` yet; this mapping exists so
-        // the exception shape is complete and testable end-to-end. Body is
+        // Wired live: `PatientConsentGuard` (apps/api/src/guards/) throws
+        // this on every route carrying `@RequiresConsent(...)`. Body is
         // `err.toJSON()` (`code: 'DOMAIN.CONSENT_DENIED'` +
         // `metadata: { tenantId, externalPatientId, purpose, reason, grantId? }`).
         // MUST run before the generic BaseException branch, like the others.
@@ -253,6 +253,24 @@ export class ExceptionInterceptor implements NestInterceptor {
             metadata: err.metadata,
           });
           return throwError(() => new HttpException(err.toJSON(), HttpStatus.FORBIDDEN));
+        }
+
+        // Consent & ABAC (TASK-712), R4. `assertConsent` could NOT determine
+        // a verdict — the grant-store lookup itself failed — as opposed to
+        // resolving to a genuine denial. Mapped to 503, deliberately
+        // DIFFERENT from `ConsentDeniedException`'s 403: a real denial is an
+        // expected compliance event; this is an infrastructure incident that
+        // happens to look like one, and conflating the two would make a
+        // gateway hiccup read as a compliance event (or vice versa) in
+        // alerting. MUST run before the generic BaseException branch.
+        if (err instanceof ConsentUnavailableException) {
+          this.logger.error({
+            message: 'Consent could not be determined — grant lookup failed',
+            ...baseContext,
+            correlationId: err.correlationId,
+            metadata: err.metadata,
+          });
+          return throwError(() => new HttpException(err.toJSON(), HttpStatus.SERVICE_UNAVAILABLE));
         }
 
         // The tenant hit its optional monthly SPEND limit (D12).

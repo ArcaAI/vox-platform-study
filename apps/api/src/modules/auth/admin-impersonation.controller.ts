@@ -27,7 +27,7 @@ import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@ne
 import { Throttle } from '@nestjs/throttler';
 import { randomBytes } from 'crypto';
 import { ClsService } from 'nestjs-cls';
-import { Authorize } from '../../decorators';
+import { Authorize, ForbidApiKey } from '../../decorators';
 import { AdminImpersonateRequest, ImpersonateResponse, ImpersonateUserResponse } from './dto';
 import { ImpersonationEvents, ImpersonationDeniedReason, ImpersonationEventPayload } from './impersonation-events';
 
@@ -66,6 +66,7 @@ const MAX_TTL_SECONDS = 1800;
  * JwtStrategy / interceptor / revocation plumbing applies unchanged.
  */
 @ApiTags('admin-users')
+@ForbidApiKey()
 @Controller('admin/users')
 export class AdminImpersonationController {
   constructor(

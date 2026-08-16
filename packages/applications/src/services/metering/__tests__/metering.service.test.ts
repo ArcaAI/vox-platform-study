@@ -14,7 +14,7 @@
  *   - LLM_TOKENS EXCLUDES the guardrail/harness operations from its sum via the
  *     rollup `operation` dimension — they are metered for COGS but
  *     never billed (D16).
- *   - `reconcileTenant` upserts NINE meter rows for that window (the three
+ *   - `reconcileTenant` upserts TEN meter rows for that window (the four
  *     business meters + the six unit meters) with the aggregated
  *     values + `reconciledAt`, and returns the usage.
  *   - `reconcileAllActiveTenants` iterates every tenant and is resilient to a
@@ -39,6 +39,8 @@ function makeBaseClient(overrides: Record<string, unknown> = {}) {
     // 5 min 30 s of audio (330 000 ms) → rounds to 6 minutes.
     audioRecording: { aggregate: vi.fn().mockResolvedValue({ _sum: { duration: 330_000 } }) },
     summaryMeta: { count: vi.fn().mockResolvedValue(7) },
+    // WORKFLOW_INVOCATIONS (TASK-722) — COUNT(WorkflowRun WHERE startedAt ∈ window).
+    workflowRun: { count: vi.fn().mockResolvedValue(4) },
     // Rollup-backed unit meters. Every metric maps to one
     // `aiUsageRollupDaily.aggregate` call except `guardrailCalls`.
     aiUsageRollupDaily: { aggregate: vi.fn().mockResolvedValue({ _sum: { quantitySum: decimalLike(0) } }) },
@@ -72,7 +74,7 @@ describe('MeteringService.getCurrentUsage', () => {
   it('aggregates the current month window and rounds transcription minutes', async () => {
     const usage = await service.getCurrentUsage('tenant-1', FIXED_NOW);
 
-    expect(usage).toEqual({ consultations: 12, transcriptionMinutes: 6, summaries: 7, ...ZERO_UNIT_METERS });
+    expect(usage).toEqual({ consultations: 12, transcriptionMinutes: 6, summaries: 7, workflowInvocations: 4, ...ZERO_UNIT_METERS });
   });
 
   it('LLM_TOKENS excludes guardrail/harness operations; single-operation meters stay unfiltered', async () => {
@@ -241,14 +243,14 @@ describe('MeteringService.getCurrentUsage', () => {
 });
 
 describe('MeteringService.reconcileTenant', () => {
-  it('upserts NINE meter rows for the window (3 business + 6 unit meters) and returns the usage', async () => {
+  it('upserts TEN meter rows for the window (4 business + 6 unit meters) and returns the usage', async () => {
     const baseClient = makeBaseClient();
     const service = makeService(baseClient);
 
     const usage = await service.reconcileTenant('tenant-1', FIXED_NOW);
 
-    expect(usage).toEqual({ consultations: 12, transcriptionMinutes: 6, summaries: 7, ...ZERO_UNIT_METERS });
-    expect(baseClient.tenantUsageMeter.upsert).toHaveBeenCalledTimes(9);
+    expect(usage).toEqual({ consultations: 12, transcriptionMinutes: 6, summaries: 7, workflowInvocations: 4, ...ZERO_UNIT_METERS });
+    expect(baseClient.tenantUsageMeter.upsert).toHaveBeenCalledTimes(10);
 
     const metrics = baseClient.tenantUsageMeter.upsert.mock.calls.map(
       (call: [{ where: { TenantUsageMeter_tenant_metric_period_unique: { metric: UsageMeterMetric } } }]) =>
@@ -309,7 +311,7 @@ describe('MeteringService.reconcileAllActiveTenants', () => {
 
     expect(result).toEqual({ tenants: 2 });
     // 2 tenants × 9 meters.
-    expect(baseClient.tenantUsageMeter.upsert).toHaveBeenCalledTimes(18);
+    expect(baseClient.tenantUsageMeter.upsert).toHaveBeenCalledTimes(20);
   });
 
   it('keeps going when one tenant fails and counts only the successes', async () => {

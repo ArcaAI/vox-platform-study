@@ -7,6 +7,12 @@ import {
   BlobStorageModule,
   CommonServiceModule,
   ConfigModule,
+  // Consent & ABAC (TASK-712). Exports IConsultationConsentService — the
+  // `assertConsent` choke point `PatientConsentGuard` (APP_GUARD below)
+  // resolves from THIS module's injector, same reason
+  // OriginRegistryServiceModule is imported at root instead of only inside
+  // a feature module.
+  ConsentServiceModule,
   EntitlementsServiceModule,
   JWT_AUTH_GUARD,
   KnowledgeServiceModule,
@@ -19,7 +25,7 @@ import {
   UnifiedAuthGuard,
   UsageLedgerServiceModule,
 } from '@arcaai/applications';
-import { JobQueue } from '@arcaai/domains';
+import { CoreDatabaseModule, JobQueue } from '@arcaai/domains';
 import { Global, Module } from '@nestjs/common';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { RequiresIfMatchGuard } from './decorators/requiresIfMatch.guard';
@@ -27,8 +33,8 @@ import { EventEmitterModule } from '@nestjs/event-emitter';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ClsGuard, ClsModule } from 'nestjs-cls';
 import { uuidv7 } from 'uuidv7';
-import { DataNotFoundExceptionFilter } from './filters';
-import { JwtAuthGuard, OriginTenantBindingGuard } from './guards';
+import { ConsentExceptionFilter, DataNotFoundExceptionFilter } from './filters';
+import { JwtAuthGuard, OriginTenantBindingGuard, PatientConsentGuard } from './guards';
 import { ContextInterceptor, ExceptionInterceptor, ImpersonationAuditInterceptor, MaintenanceInterceptor, MetricsInterceptor } from './interceptors';
 import { TenantOwnedResourceModule, TenantOwnedResourceSseGuard } from './common';
 import { GracefulShutdownModule } from './services';
@@ -56,6 +62,7 @@ import { GlobalSettingModule } from './modules/global-setting/global-setting.mod
 import { PlatformKnobsModule } from './modules/platform-knobs/platform-knobs.module';
 import { SettingsCatalogModule } from './modules/settings-catalog/settings-catalog.module';
 import { ConsultationModule } from './modules/consultation/consultation.module';
+import { ConsentModule } from './modules/consent/consent.module';
 import { ChangelogModule } from './modules/changelog/changelog.module';
 import { DepartmentModule } from './modules/department/department.module';
 import { TenantAllowedOriginModule } from './modules/tenant-allowed-origin/tenant-allowed-origin.module';
@@ -170,6 +177,19 @@ const guards = [
     provide: APP_GUARD,
     useClass: UnifiedAuthGuard,
   },
+  // Consent & ABAC (TASK-712). MUST run AFTER UnifiedAuthGuard (needs the
+  // resolved CLS tenant/user) and BEFORE RequiresIfMatchGuard (a consent
+  // denial must never let a request reach the OCC check). Enforcement is ON
+  // BY DEFAULT and unconditional — see PatientConsentGuard's own doc
+  // comment for why there is deliberately no kill-switch here. A no-op on
+  // every route without `@RequiresConsent(...)`; the boot-time
+  // `consent-route-coverage-audit` (main.ts), not this guard, is what
+  // refuses to start over a route that should carry the decorator but
+  // doesn't.
+  {
+    provide: APP_GUARD,
+    useClass: PatientConsentGuard,
+  },
   // Runs AFTER UnifiedAuthGuard so the CLS tenantId is populated.
   // Closes the @Sse() cross-tenant leak: the global
   // TenantOwnedResourceInterceptor throws 404 too late for SSE (the stream has
@@ -211,6 +231,16 @@ const filters = [
   {
     provide: APP_FILTER,
     useClass: DataNotFoundExceptionFilter,
+  },
+  // Consent & ABAC (TASK-712). `assertConsent` is called from
+  // `PatientConsentGuard` — a guard, not a handler — so `ExceptionInterceptor`
+  // never sees the throw (guards run before interceptors). This filter is
+  // what actually turns `ConsentDeniedException`/`ConsentUnavailableException`
+  // into 403/503 for that call site; see `ConsentExceptionFilter`'s own doc
+  // comment.
+  {
+    provide: APP_FILTER,
+    useClass: ConsentExceptionFilter,
   },
 ];
 
@@ -255,6 +285,15 @@ const common = [
   // `OriginTenantBindingGuard` is an APP_GUARD and resolves from this module's
   // injector; `PlatformKnobsModule` imports it separately for the CORS resolver.
   OriginRegistryServiceModule,
+  // Consent & ABAC (TASK-712). Root-level for the same reason as
+  // OriginRegistryServiceModule above: `PatientConsentGuard` (APP_GUARD)
+  // resolves `ConsultationRepository` from this module's injector to load a
+  // consultation's `patientId` when a route only carries `:id`.
+  CoreDatabaseModule,
+  // Exports IConsultationConsentService — the `assertConsent` choke point
+  // `PatientConsentGuard` (APP_GUARD above) resolves from this module's
+  // injector.
+  ConsentServiceModule,
   // DB-backed rate-limit settings. Exports IRateLimitSettingsService
   // so the TieredThrottlerGuard (APP_GUARD above) resolves live limits from the
   // GlobalSetting cache, and IRateLimitAdminService for the admin endpoint.
@@ -326,6 +365,8 @@ const featureModules: any[] = [
   AuthModule,
   AuditLogModule,
   ConsultationModule,
+  // /admin/consent-grants — admin CRUD over ConsentGrant (TASK-712).
+  ConsentModule,
   // Curated release notes: reader surface + global-admin authoring.
   ChangelogModule,
   DepartmentModule,

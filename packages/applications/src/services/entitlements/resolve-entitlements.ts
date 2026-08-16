@@ -24,12 +24,14 @@ export interface ResolvedLimits {
   maxPromptTemplates: number | null;
   maxAsrPipelines: number | null;
   maxApiKeys: number | null;
+  maxWorkflowDefinitions: number | null;
   storageQuotaBytes: number | null;
   /** Concurrency cap — simultaneous active STT sessions (null = unlimited). */
   maxConcurrentSessions: number | null;
   monthlyConsultations: number | null;
   monthlyTranscriptionMinutes: number | null;
   monthlySummaries: number | null;
+  monthlyWorkflowInvocations: number | null;
   /**
    * Per-capability INCLUDED ALLOWANCES, over the same
    * UTC-calendar-month windows as the meters above. `null` = unlimited — the
@@ -85,11 +87,13 @@ export interface PlanEntitlementInput {
   maxPromptTemplates?: number | null;
   maxAsrPipelines?: number | null;
   maxApiKeys?: number | null;
+  maxWorkflowDefinitions?: number | null;
   storageQuotaBytes?: number | bigint | null;
   maxConcurrentSessions?: number | null;
   monthlyConsultations?: number | null;
   monthlyTranscriptionMinutes?: number | null;
   monthlySummaries?: number | null;
+  monthlyWorkflowInvocations?: number | null;
   // DB column type is `BigInt?`, same normalization as storageQuotaBytes.
   monthlySttSessionSeconds?: number | bigint | null;
   monthlyLlmTokens?: number | bigint | null;
@@ -114,11 +118,13 @@ export interface TenantEntitlementOverrideInput {
   maxPromptTemplates?: number | null;
   maxAsrPipelines?: number | null;
   maxApiKeys?: number | null;
+  maxWorkflowDefinitions?: number | null;
   storageQuotaBytes?: number | bigint | null;
   maxConcurrentSessions?: number | null;
   monthlyConsultations?: number | null;
   monthlyTranscriptionMinutes?: number | null;
   monthlySummaries?: number | null;
+  monthlyWorkflowInvocations?: number | null;
   // Negotiated-allowance override hook (null = inherit the plan default).
   monthlySttSessionSeconds?: number | bigint | null;
   monthlyLlmTokens?: number | bigint | null;
@@ -144,11 +150,13 @@ export const UNGATED_ENTITLEMENTS: ResolvedEntitlements = {
     maxPromptTemplates: null,
     maxAsrPipelines: null,
     maxApiKeys: null,
+    maxWorkflowDefinitions: null,
     storageQuotaBytes: null,
     maxConcurrentSessions: null,
     monthlyConsultations: null,
     monthlyTranscriptionMinutes: null,
     monthlySummaries: null,
+    monthlyWorkflowInvocations: null,
     monthlySttSessionSeconds: null,
     monthlyLlmTokens: null,
     monthlyTtsCharacters: null,
@@ -210,11 +218,13 @@ export function resolveEntitlements(
     maxPromptTemplates: pick(planRow?.maxPromptTemplates, seeded.maxPromptTemplates),
     maxAsrPipelines: pick(planRow?.maxAsrPipelines, seeded.maxAsrPipelines),
     maxApiKeys: pick(planRow?.maxApiKeys, seeded.maxApiKeys),
+    maxWorkflowDefinitions: pick(planRow?.maxWorkflowDefinitions, seeded.maxWorkflowDefinitions),
     storageQuotaBytes: pick(toNum(planRow?.storageQuotaBytes), seeded.storageQuotaBytes),
     maxConcurrentSessions: pick(planRow?.maxConcurrentSessions, seeded.maxConcurrentSessions),
     monthlyConsultations: pick(planRow?.monthlyConsultations, seeded.monthlyConsultations),
     monthlyTranscriptionMinutes: pick(planRow?.monthlyTranscriptionMinutes, seeded.monthlyTranscriptionMinutes),
     monthlySummaries: pick(planRow?.monthlySummaries, seeded.monthlySummaries),
+    monthlyWorkflowInvocations: pick(planRow?.monthlyWorkflowInvocations, seeded.monthlyWorkflowInvocations),
     monthlySttSessionSeconds: pick(toNum(planRow?.monthlySttSessionSeconds), seeded.monthlySttSessionSeconds),
     monthlyLlmTokens: pick(toNum(planRow?.monthlyLlmTokens), seeded.monthlyLlmTokens),
     monthlyTtsCharacters: pick(toNum(planRow?.monthlyTtsCharacters), seeded.monthlyTtsCharacters),
@@ -238,11 +248,13 @@ export function resolveEntitlements(
       maxPromptTemplates: pick(override?.maxPromptTemplates, base.maxPromptTemplates),
       maxAsrPipelines: pick(override?.maxAsrPipelines, base.maxAsrPipelines),
       maxApiKeys: pick(override?.maxApiKeys, base.maxApiKeys),
+      maxWorkflowDefinitions: pick(override?.maxWorkflowDefinitions, base.maxWorkflowDefinitions),
       storageQuotaBytes: pick(toNum(override?.storageQuotaBytes), base.storageQuotaBytes),
       maxConcurrentSessions: pick(override?.maxConcurrentSessions, base.maxConcurrentSessions),
       monthlyConsultations: pick(override?.monthlyConsultations, base.monthlyConsultations),
       monthlyTranscriptionMinutes: pick(override?.monthlyTranscriptionMinutes, base.monthlyTranscriptionMinutes),
       monthlySummaries: pick(override?.monthlySummaries, base.monthlySummaries),
+      monthlyWorkflowInvocations: pick(override?.monthlyWorkflowInvocations, base.monthlyWorkflowInvocations),
       monthlySttSessionSeconds: pick(toNum(override?.monthlySttSessionSeconds), base.monthlySttSessionSeconds),
       monthlyLlmTokens: pick(toNum(override?.monthlyLlmTokens), base.monthlyLlmTokens),
       monthlyTtsCharacters: pick(toNum(override?.monthlyTtsCharacters), base.monthlyTtsCharacters),

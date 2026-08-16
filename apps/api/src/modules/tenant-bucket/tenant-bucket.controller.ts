@@ -27,10 +27,11 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { TenantOwnedResource } from '../../common';
-import { CanCreate, CanDelete, CanManage, CanRead, CanUpdate } from '../../decorators';
+import { CanCreate, CanDelete, CanManage, CanRead, CanUpdate, RequiredScopes } from '../../decorators';
 
 @ApiBearerAuth()
 @ApiTags('tenant-storage')
+@RequiredScopes('admin:tenant-storage:manage')
 @Controller('admin/tenants/storage/buckets')
 @CanManage('Tenant')
 export class TenantBucketController {

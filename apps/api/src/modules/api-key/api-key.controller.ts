@@ -13,11 +13,12 @@ import {
 import { Body, Controller, Get, Inject, Param, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
-import { ApiEndpoint, CanCreate, CanManage, CanRead, CanUpdate, CanDelete } from '../../decorators';
+import { ApiEndpoint, CanCreate, CanManage, CanRead, CanUpdate, CanDelete, RequiredScopes } from '../../decorators';
 import { CreateApiKeyResponse, ApiKeyUsageResponse } from './dto';
 
 @ApiBearerAuth()
 @ApiTags('admin-api-keys')
+@RequiredScopes('admin:apikey:write')
 @Controller('admin/api-keys')
 @CanManage('ApiKey')
 export class ApiKeyController {

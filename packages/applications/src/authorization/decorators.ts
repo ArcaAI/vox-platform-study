@@ -1,7 +1,8 @@
 import { SetMetadata, applyDecorators, createParamDecorator, ExecutionContext } from '@nestjs/common';
 import { ApiBearerAuth } from '@nestjs/swagger';
+import { ConsentPurpose } from '@arcaai/domains';
 import { REQUIRED_PERMISSIONS_KEY, SKIP_AUTH_KEY, PERMISSION_MODE_KEY, RequiredPermission, PermissionMode } from './authorization.guard';
-import { API_KEY_REQUIRED_SCOPES } from './unified-auth.guard';
+import { API_KEY_REQUIRED_SCOPES, API_KEY_FORBIDDEN } from './unified-auth.guard';
 import { isValidScope } from '../services/apiKey/apikey-scopes.registry';
 
 /**
@@ -134,6 +135,27 @@ export function RequiredScopes(...scopes: string[]) {
 }
 
 /**
+ * Deny ANY API-key-authenticated caller (TASK-708 Task 3 bucket (c)):
+ * interactive-human-only flows on the `/admin/*` surface (e.g.
+ * impersonation) that should never be reachable by a credential, however
+ * broadly scoped. Independent of, and checked before, `@RequiredScopes` —
+ * see `API_KEY_FORBIDDEN`'s doc comment (`unified-auth.guard.ts`) for why
+ * this is a dedicated guard check rather than a reserved scope string. A
+ * JWT-authenticated (interactive human) caller is completely unaffected;
+ * pair this with the route's normal `@Authorize()`/`@CanXxx()` for the JWT
+ * path.
+ *
+ * @example
+ * ```typescript
+ * @Post(':id/impersonate')
+ * @Authorize(['manage', 'all'])
+ * @ForbidApiKey()
+ * impersonate() { ... }
+ * ```
+ */
+export const ForbidApiKey = () => SetMetadata(API_KEY_FORBIDDEN, true);
+
+/**
  * Parameter decorator to inject the user's CASL ability into controller method
  *
  * @example
@@ -260,3 +282,76 @@ export const CanAny = (...permissions: [string, string][]) => AuthorizeAny(...pe
  * ```
  */
 export const CanAll = (...permissions: [string, string][]) => Authorize(...permissions);
+
+// ─── Consent (TASK-712, consent-abac) ─────────────────────────────────────
+//
+// Metadata-only, same shape as `SetPermissions` above: the decorator sets
+// metadata, `PatientConsentGuard` (`apps/api/src/guards/patient-consent.guard.ts`,
+// a global `APP_GUARD`) reads it and calls `assertConsent`. The guard is
+// registered UNCONDITIONALLY — there is no kill-switch that turns consent
+// enforcement off (`.claude/rules/09-infrastructure-devops.md` §Configuration
+// Tiers: a kill-switch must default OFF, which for an enforcement toggle
+// would default the gate OPEN, exactly the outcome consent must never have
+// by accident). The rollout lever is COVERAGE — which routes carry
+// `@RequiresConsent`/`@ConsentExempt` — checked at boot by
+// `apps/api/src/bootstrap/consent-route-coverage-audit.ts`, not a runtime flag.
+
+export const REQUIRES_CONSENT_KEY = 'requiresConsent';
+export const CONSENT_EXEMPT_KEY = 'consentExempt';
+
+export interface RequiresConsentOptions {
+  /**
+   * Explicit route-param name carrying the external patient id — highest
+   * resolution precedence in `PatientConsentGuard`. Prefer this over the
+   * guard's fallbacks (`:patientId` route param, then the loaded
+   * consultation's `patientId`) whenever the route's param is named
+   * anything other than `patientId`; the guard never guesses silently.
+   */
+  patientIdParam?: string;
+  /** Structural minimum-necessary scope required for this route — see `ConsentGrantEntity.coversScope`. */
+  scope?: Record<string, unknown>;
+}
+
+export interface RequiresConsentMetadata extends RequiresConsentOptions {
+  purpose: ConsentPurpose;
+}
+
+/**
+ * Require an active, sufficiently-scoped `ConsentGrant` for the patient this
+ * route touches, for the given purpose-of-use. Enforced by
+ * `PatientConsentGuard`, a global `APP_GUARD` registered AFTER
+ * `UnifiedAuthGuard` (needs the resolved tenant) and BEFORE
+ * `RequiresIfMatchGuard`. No-op on `@Public()` routes (auth never ran) and
+ * on routes carrying `@ConsentExempt(...)` instead.
+ *
+ * Patient-id resolution order (see the guard for the exact implementation):
+ * `options.patientIdParam` → the `:patientId` route param → the `:id` route
+ * param, resolved by loading the consultation and reading its `patientId`.
+ *
+ * @example
+ * ```typescript
+ * @Get('patient/:patientId/history')
+ * @RequiresConsent(ConsentPurpose.HISTORY_RETRIEVAL)
+ * getPatientHistory(@Param('patientId') patientId: string) { ... }
+ * ```
+ */
+export const RequiresConsent = (purpose: ConsentPurpose, options?: RequiresConsentOptions) =>
+  SetMetadata(REQUIRES_CONSENT_KEY, { purpose, patientIdParam: options?.patientIdParam, scope: options?.scope } satisfies RequiresConsentMetadata);
+
+/**
+ * Explicitly exempt a route from consent enforcement, with a mandatory
+ * reason string (surfaced by the boot-time coverage audit's exemption
+ * list — `consent-route-coverage-audit.ts`). Use this — never silence by
+ * omission — for routes the coverage audit's predicate would otherwise flag
+ * (every consultation-module route, every route with a `patientId`
+ * parameter) but that genuinely need no patient-level consent check (e.g. a
+ * tenant-scoped list endpoint with no single patient in play).
+ *
+ * @example
+ * ```typescript
+ * @Get()
+ * @ConsentExempt('Lists the caller doctor\'s own consultations; no single patientId to gate on.')
+ * list() { ... }
+ * ```
+ */
+export const ConsentExempt = (reason: string) => SetMetadata(CONSENT_EXEMPT_KEY, reason);

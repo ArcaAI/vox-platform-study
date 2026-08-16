@@ -85,6 +85,7 @@ const METER_USAGE_FIELD_BY_CAPABILITY: Record<MeterCapabilityKey, (usage: MeterU
   monthlyConsultations: (u) => u.consultations,
   monthlyTranscriptionMinutes: (u) => u.transcriptionMinutes,
   monthlySummaries: (u) => u.summaries,
+  monthlyWorkflowInvocations: (u) => u.workflowInvocations,
   monthlySttSessionSeconds: (u) => u.sttSessionSeconds,
   monthlyLlmTokens: (u) => u.llmTokens,
   monthlyTtsCharacters: (u) => u.ttsCharacters,
@@ -539,6 +540,7 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
     this.applyLimitField(request, 'maxPromptTemplates', (v) => (row.maxPromptTemplates = v));
     this.applyLimitField(request, 'maxAsrPipelines', (v) => (row.maxAsrPipelines = v));
     this.applyLimitField(request, 'maxApiKeys', (v) => (row.maxApiKeys = v));
+    this.applyLimitField(request, 'maxWorkflowDefinitions', (v) => (row.maxWorkflowDefinitions = v));
     if (request.storageQuotaBytes !== undefined) {
       row.storageQuotaBytes = request.storageQuotaBytes === null ? null : BigInt(request.storageQuotaBytes);
     }
@@ -546,6 +548,7 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
     this.applyLimitField(request, 'monthlyConsultations', (v) => (row.monthlyConsultations = v));
     this.applyLimitField(request, 'monthlyTranscriptionMinutes', (v) => (row.monthlyTranscriptionMinutes = v));
     this.applyLimitField(request, 'monthlySummaries', (v) => (row.monthlySummaries = v));
+    this.applyLimitField(request, 'monthlyWorkflowInvocations', (v) => (row.monthlyWorkflowInvocations = v));
     // Per-capability allowance ceilings (same bigint conversion as storageQuotaBytes above).
     this.applyBigIntField(request.monthlySttSessionSeconds, (v) => (row.monthlySttSessionSeconds = v));
     this.applyBigIntField(request.monthlyLlmTokens, (v) => (row.monthlyLlmTokens = v));
@@ -607,11 +610,13 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
       maxPromptTemplates: request.maxPromptTemplates ?? null,
       maxAsrPipelines: request.maxAsrPipelines ?? null,
       maxApiKeys: request.maxApiKeys ?? null,
+      maxWorkflowDefinitions: request.maxWorkflowDefinitions ?? null,
       storageQuotaBytes: request.storageQuotaBytes === null || request.storageQuotaBytes === undefined ? null : BigInt(request.storageQuotaBytes),
       maxConcurrentSessions: request.maxConcurrentSessions ?? null,
       monthlyConsultations: request.monthlyConsultations ?? null,
       monthlyTranscriptionMinutes: request.monthlyTranscriptionMinutes ?? null,
       monthlySummaries: request.monthlySummaries ?? null,
+      monthlyWorkflowInvocations: request.monthlyWorkflowInvocations ?? null,
       // Negotiated per-capability allowance overrides.
       monthlySttSessionSeconds:
         request.monthlySttSessionSeconds === null || request.monthlySttSessionSeconds === undefined ? null : BigInt(request.monthlySttSessionSeconds),
@@ -652,11 +657,13 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
     existing.maxPromptTemplates = null;
     existing.maxAsrPipelines = null;
     existing.maxApiKeys = null;
+    existing.maxWorkflowDefinitions = null;
     existing.storageQuotaBytes = null;
     existing.maxConcurrentSessions = null;
     existing.monthlyConsultations = null;
     existing.monthlyTranscriptionMinutes = null;
     existing.monthlySummaries = null;
+    existing.monthlyWorkflowInvocations = null;
     // Clear the new allowance overrides too (reversible, never deleted).
     existing.monthlySttSessionSeconds = null;
     existing.monthlyLlmTokens = null;
@@ -722,6 +729,7 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
     if (request.maxPromptTemplates !== undefined) entity.maxPromptTemplates = request.maxPromptTemplates;
     if (request.maxAsrPipelines !== undefined) entity.maxAsrPipelines = request.maxAsrPipelines;
     if (request.maxApiKeys !== undefined) entity.maxApiKeys = request.maxApiKeys;
+    if (request.maxWorkflowDefinitions !== undefined) entity.maxWorkflowDefinitions = request.maxWorkflowDefinitions;
     if (request.storageQuotaBytes !== undefined) {
       entity.storageQuotaBytes = request.storageQuotaBytes === null ? null : BigInt(request.storageQuotaBytes);
     }
@@ -729,6 +737,7 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
     if (request.monthlyConsultations !== undefined) entity.monthlyConsultations = request.monthlyConsultations;
     if (request.monthlyTranscriptionMinutes !== undefined) entity.monthlyTranscriptionMinutes = request.monthlyTranscriptionMinutes;
     if (request.monthlySummaries !== undefined) entity.monthlySummaries = request.monthlySummaries;
+    if (request.monthlyWorkflowInvocations !== undefined) entity.monthlyWorkflowInvocations = request.monthlyWorkflowInvocations;
     this.applyBigIntField(request.monthlySttSessionSeconds, (v) => (entity.monthlySttSessionSeconds = v));
     this.applyBigIntField(request.monthlyLlmTokens, (v) => (entity.monthlyLlmTokens = v));
     this.applyBigIntField(request.monthlyTtsCharacters, (v) => (entity.monthlyTtsCharacters = v));

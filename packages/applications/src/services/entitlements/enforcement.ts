@@ -26,6 +26,7 @@ export type MeterCapabilityKey =
   | 'monthlyConsultations'
   | 'monthlyTranscriptionMinutes'
   | 'monthlySummaries'
+  | 'monthlyWorkflowInvocations'
   | 'monthlySttSessionSeconds'
   | 'monthlyLlmTokens'
   | 'monthlyTtsCharacters'

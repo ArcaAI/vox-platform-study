@@ -130,11 +130,19 @@ interface PlanEntitlementSeed {
   maxPromptTemplates: number | null;
   maxAsrPipelines: number | null;
   maxApiKeys: number | null;
+  // Quantity ceiling on PUBLISHED WorkflowDefinition slugs (TASK-722 exposure
+  // plane), modelled verbatim on `maxAsrPipelines`. Kept in sync with
+  // `entitlements.constants.ts`'s `PLAN_ENTITLEMENT_DEFAULTS` by
+  // `plan-matrix-parity.test.ts`.
+  maxWorkflowDefinitions: number | null;
   storageQuotaBytes: bigint | null;
   maxConcurrentSessions: number | null;
   monthlyConsultations: number | null;
   monthlyTranscriptionMinutes: number | null;
   monthlySummaries: number | null;
+  // Fourth business-object meter (TASK-722): PUBLISHED-workflow invocations via
+  // `/api/v1/workflows/:slug/invoke`. Same shape/units as its three siblings.
+  monthlyWorkflowInvocations: number | null;
   // Per-capability included allowances, derived in
   // from the RATIFIED business ceilings above:
   //
@@ -178,12 +186,14 @@ const PRO_VALUES = {
   maxPromptTemplates: 50,
   maxAsrPipelines: 5,
   maxApiKeys: 10,
+  maxWorkflowDefinitions: 5,
   storageQuotaBytes: BigInt(100 * GIB),
   maxConcurrentSessions: 25,
   // RATIFIED 2026-08-08: PRO = $100/mo bundling 250 consultations.
   monthlyConsultations: 250,
   monthlyTranscriptionMinutes: 5_000, // 250 × 20-min average
   monthlySummaries: 250,
+  monthlyWorkflowInvocations: 250,
   // Derived + ×2 headroom — see the interface comment.
   monthlySttSessionSeconds: 660_000n, // 5,000 × 60 × 1.1 × 2
   monthlyLlmTokens: 3_000_000n, //        250 × 6,000     × 2
@@ -214,12 +224,14 @@ export const PLAN_ENTITLEMENTS: PlanEntitlementSeed[] = [
     maxPromptTemplates: 10,
     maxAsrPipelines: 1,
     maxApiKeys: 2,
+    maxWorkflowDefinitions: 1,
     storageQuotaBytes: BigInt(5 * GIB),
     maxConcurrentSessions: 5,
     // RATIFIED 2026-08-08: STARTER = $50/mo bundling 50 consultations.
     monthlyConsultations: 50,
     monthlyTranscriptionMinutes: 1_000, // 50 × 20-min average
     monthlySummaries: 50,
+    monthlyWorkflowInvocations: 50,
     // Derived + ×2 headroom — see the interface comment.
     monthlySttSessionSeconds: 132_000n, // 1,000 × 60 × 1.1 × 2
     monthlyLlmTokens: 600_000n, //            50 × 6,000     × 2
@@ -243,6 +255,7 @@ export const PLAN_ENTITLEMENTS: PlanEntitlementSeed[] = [
     maxPromptTemplates: 300,
     maxAsrPipelines: 20,
     maxApiKeys: 50,
+    maxWorkflowDefinitions: 20,
     storageQuotaBytes: BigInt(1_000 * GIB),
     maxConcurrentSessions: 100,
     // RATIFIED 2026-08-08: ENTERPRISE is NEGOTIATED — usage is
@@ -251,6 +264,7 @@ export const PLAN_ENTITLEMENTS: PlanEntitlementSeed[] = [
     monthlyConsultations: null,
     monthlyTranscriptionMinutes: null,
     monthlySummaries: null,
+    monthlyWorkflowInvocations: null,
     // Per-capability allowances: NULL = unlimited (negotiated per contract).
     monthlySttSessionSeconds: null,
     monthlyLlmTokens: null,

@@ -2,7 +2,7 @@ import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Inject, Param, Pos
 import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import { IJobAdminService, IQueueAdminService, type BulkActionResult, type PaginatedJobResult } from '@arcaai/applications';
 import type { JobDetail, QueueStats, RedisHealthInfo } from '@arcaai/domains';
-import { Authorize } from '../../decorators';
+import { Authorize, RequiredScopes } from '../../decorators';
 import {
   BulkActionResultResponse,
   BulkJobActionRequest,
@@ -36,6 +36,7 @@ import { QueueNamePipe } from './pipes/queue-name.pipe';
 @ApiTags('admin-queues')
 @ApiBearerAuth()
 @Authorize(['manage', 'all'])
+@RequiredScopes('admin:queue:manage')
 @Controller('admin/queues')
 export class QueueAdminController {
   constructor(

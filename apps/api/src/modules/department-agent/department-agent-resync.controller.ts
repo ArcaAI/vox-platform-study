@@ -6,7 +6,7 @@ import {
   AgentTemplateResyncSummary,
   ResyncDepartmentAgentsRequest,
 } from '@arcaai/applications';
-import { CanManage } from '../../decorators';
+import { CanManage, RequiredScopes } from '../../decorators';
 
 /**
  * Admin-triggered SYSTEM agent-library resync. A SEPARATE thin
@@ -27,6 +27,7 @@ import { CanManage } from '../../decorators';
  */
 @ApiBearerAuth()
 @ApiTags('admin-department-agents')
+@RequiredScopes('admin:department-agent:manage')
 @Controller('admin/department-agents')
 export class DepartmentAgentResyncController {
   constructor(

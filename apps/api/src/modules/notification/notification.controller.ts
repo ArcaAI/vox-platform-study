@@ -8,7 +8,7 @@ import {
 } from '@arcaai/applications';
 import { Body, Controller, Delete, Get, Inject, Param, Patch, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { CanManage } from '../../decorators';
+import { CanManage, RequiredScopes } from '../../decorators';
 
 /**
  * NotificationController — admin read/update/delete surface
@@ -22,6 +22,7 @@ import { CanManage } from '../../decorators';
  */
 @ApiBearerAuth()
 @ApiTags('admin-notifications')
+@RequiredScopes('admin:notification:manage')
 @Controller('admin/notifications')
 @CanManage('Notification')
 export class NotificationController {

@@ -28,6 +28,9 @@ export class TenantEntitlementResponse {
   @ApiPropertyOptional({ description: 'Override max API keys; null = inherit', nullable: true })
   maxApiKeys?: number | null;
 
+  @ApiPropertyOptional({ description: 'Override max PUBLISHED workflow definitions (TASK-722); null = inherit', nullable: true })
+  maxWorkflowDefinitions?: number | null;
+
   @ApiPropertyOptional({ description: 'Override storage quota bytes; null = inherit', nullable: true })
   storageQuotaBytes?: number | null;
 
@@ -42,6 +45,9 @@ export class TenantEntitlementResponse {
 
   @ApiPropertyOptional({ description: 'Override monthly summaries; null = inherit', nullable: true })
   monthlySummaries?: number | null;
+
+  @ApiPropertyOptional({ description: 'Override monthly PUBLISHED-workflow invocations (TASK-722); null = inherit', nullable: true })
+  monthlyWorkflowInvocations?: number | null;
 
   @ApiPropertyOptional({ description: 'Override monthly STT session-seconds allowance (TASK-615 D11); null = inherit', nullable: true })
   monthlySttSessionSeconds?: number | null;
@@ -124,6 +130,12 @@ export class UpsertTenantEntitlementRequest {
   @Min(0)
   maxApiKeys?: number | null;
 
+  @ApiPropertyOptional({ description: 'Override max PUBLISHED workflow definitions (TASK-722); null = inherit', nullable: true })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  maxWorkflowDefinitions?: number | null;
+
   @ApiPropertyOptional({ description: 'Override storage quota bytes; null = inherit', nullable: true })
   @IsOptional()
   @IsInt()
@@ -153,6 +165,12 @@ export class UpsertTenantEntitlementRequest {
   @IsInt()
   @Min(0)
   monthlySummaries?: number | null;
+
+  @ApiPropertyOptional({ description: 'Override monthly PUBLISHED-workflow invocations (TASK-722); null = inherit', nullable: true })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  monthlyWorkflowInvocations?: number | null;
 
   @ApiPropertyOptional({ description: 'Override monthly STT session-seconds allowance (TASK-615 D11); null = inherit', nullable: true })
   @IsOptional()

@@ -90,4 +90,5 @@ export * from './UserChangelogAcknowledgementEntity';
 export * from './ConsentGrantEntity';
 export * from './WorkflowTestFixtureEntity';
 export * from './WorkflowRunEntity';
+export * from './WorkflowDefinitionEntity';
 export * from './TenantNlpTaskInstructionsEntity';

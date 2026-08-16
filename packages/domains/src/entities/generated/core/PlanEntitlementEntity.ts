@@ -12,11 +12,15 @@ export interface IPlanEntitlementEntity extends Omit<IBaseEntity, 'tenantId'> {
   maxPromptTemplates?: number | null;
   maxAsrPipelines?: number | null;
   maxApiKeys?: number | null;
+  // Quantity ceiling on PUBLISHED WorkflowDefinition slugs (TASK-722).
+  maxWorkflowDefinitions?: number | null;
   storageQuotaBytes?: bigint | null;
   maxConcurrentSessions?: number | null;
   monthlyConsultations?: number | null;
   monthlyTranscriptionMinutes?: number | null;
   monthlySummaries?: number | null;
+  // Fourth business-object meter — PUBLISHED-workflow invocations (TASK-722).
+  monthlyWorkflowInvocations?: number | null;
   // Per-capability included allowances over the UTC-calendar-month window
   // BigInt: enterprise token/character counts exceed Int32.
   // null = unlimited (same convention as every meter column above).
@@ -40,11 +44,13 @@ export class PlanEntitlementEntity extends BaseEntity {
   private _maxPromptTemplates?: IPlanEntitlementEntity['maxPromptTemplates'];
   private _maxAsrPipelines?: IPlanEntitlementEntity['maxAsrPipelines'];
   private _maxApiKeys?: IPlanEntitlementEntity['maxApiKeys'];
+  private _maxWorkflowDefinitions?: IPlanEntitlementEntity['maxWorkflowDefinitions'];
   private _storageQuotaBytes?: IPlanEntitlementEntity['storageQuotaBytes'];
   private _maxConcurrentSessions?: IPlanEntitlementEntity['maxConcurrentSessions'];
   private _monthlyConsultations?: IPlanEntitlementEntity['monthlyConsultations'];
   private _monthlyTranscriptionMinutes?: IPlanEntitlementEntity['monthlyTranscriptionMinutes'];
   private _monthlySummaries?: IPlanEntitlementEntity['monthlySummaries'];
+  private _monthlyWorkflowInvocations?: IPlanEntitlementEntity['monthlyWorkflowInvocations'];
   private _monthlySttSessionSeconds?: IPlanEntitlementEntity['monthlySttSessionSeconds'];
   private _monthlyLlmTokens?: IPlanEntitlementEntity['monthlyLlmTokens'];
   private _monthlyTtsCharacters?: IPlanEntitlementEntity['monthlyTtsCharacters'];
@@ -65,11 +71,13 @@ export class PlanEntitlementEntity extends BaseEntity {
     this._maxPromptTemplates = init.maxPromptTemplates;
     this._maxAsrPipelines = init.maxAsrPipelines;
     this._maxApiKeys = init.maxApiKeys;
+    this._maxWorkflowDefinitions = init.maxWorkflowDefinitions;
     this._storageQuotaBytes = init.storageQuotaBytes;
     this._maxConcurrentSessions = init.maxConcurrentSessions;
     this._monthlyConsultations = init.monthlyConsultations;
     this._monthlyTranscriptionMinutes = init.monthlyTranscriptionMinutes;
     this._monthlySummaries = init.monthlySummaries;
+    this._monthlyWorkflowInvocations = init.monthlyWorkflowInvocations;
     this._monthlySttSessionSeconds = init.monthlySttSessionSeconds;
     this._monthlyLlmTokens = init.monthlyLlmTokens;
     this._monthlyTtsCharacters = init.monthlyTtsCharacters;
@@ -131,6 +139,14 @@ export class PlanEntitlementEntity extends BaseEntity {
     this.setProperty('maxApiKeys', value);
   }
 
+  get maxWorkflowDefinitions(): IPlanEntitlementEntity['maxWorkflowDefinitions'] {
+    return this._maxWorkflowDefinitions;
+  }
+
+  set maxWorkflowDefinitions(value: IPlanEntitlementEntity['maxWorkflowDefinitions']) {
+    this.setProperty('maxWorkflowDefinitions', value);
+  }
+
   get storageQuotaBytes(): IPlanEntitlementEntity['storageQuotaBytes'] {
     return this._storageQuotaBytes;
   }
@@ -169,6 +185,14 @@ export class PlanEntitlementEntity extends BaseEntity {
 
   set monthlySummaries(value: IPlanEntitlementEntity['monthlySummaries']) {
     this.setProperty('monthlySummaries', value);
+  }
+
+  get monthlyWorkflowInvocations(): IPlanEntitlementEntity['monthlyWorkflowInvocations'] {
+    return this._monthlyWorkflowInvocations;
+  }
+
+  set monthlyWorkflowInvocations(value: IPlanEntitlementEntity['monthlyWorkflowInvocations']) {
+    this.setProperty('monthlyWorkflowInvocations', value);
   }
 
   get monthlySttSessionSeconds(): IPlanEntitlementEntity['monthlySttSessionSeconds'] {

@@ -2,8 +2,9 @@
 
 | | |
 |---|---|
-| **Status** | Draft — working design for a REDUCED-SCOPE execution pass. Not owner-approved (no compliance/product sign-off obtained; this is a subagent-authored engineering design produced under explicit orchestrator scoping, not a substitute for the Phase 0 T4 design-gate the full ticket calls for). |
-| **Scope of this pass** | Consent domain (model + domain trio) and the `assertConsent` ABAC evaluation path, plus their tests. **No enforcement is wired anywhere** — no guard registration, no route decorators, no harness/Temporal wiring, no CASL changes, no seeds. See §7 for the exact boundary and rationale. |
+| **Status** | Pass 2 — HTTP consent enforcement is now ON BY DEFAULT (see the Pass 2 Addendum below). Still not owner-approved in the formal Phase-0 T4 sense (no compliance/product sign-off obtained beyond the answers the owner already recorded in the ticket README §6); this remains a subagent-authored engineering design. |
+| **Scope of Pass 1** | Consent domain (model + domain trio) and the `assertConsent` ABAC evaluation path, plus their tests. No enforcement was wired anywhere in Pass 1. |
+| **Scope of Pass 2 (this update)** | The partial-unique-active-grant index fix, the legacy-grant backfill (Q2 option (a)), `@RequiresConsent`/`@ConsentExempt` + `PatientConsentGuard` registered as an unconditional `APP_GUARD`, route decoration on the four named gated stages' HTTP surface, a narrowed boot-time coverage audit, the admin CRUD controller, `ConsentUnavailableException` (R4), and e2e coverage. Non-HTTP enforcement (Phase 4 — harness/Temporal), the WORM ledger writer, and CASL condition evaluation (Phase 5) remain deliberately deferred — see the Addendum's "What Pass 2 still does not build" table. |
 
 This document exists to satisfy Task 1 of the ticket plan to the extent the reduced scope requires:
 it records the decisions actually needed to build the model and the evaluation path honestly,

@@ -450,23 +450,60 @@ export class SummaryService extends BaseService implements ISummaryService {
       throw new BadRequestException('Tenant ID is required');
     }
 
-    // TASK-704 — HUMAN-GATED (see ticket README §6 Risks & Open Questions).
-    // This route deliberately does NOT call `noteGenerationService.generate`:
-    // for SUMMARY_REGENERATE, `generate()` STARTS the harness workflow as a
-    // live side effect when harnessEnabled=true, and this sync route always
-    // still runs its own legacy body below — calling `generate()`
-    // unconditionally would silently produce a DUPLICATE draft on every
-    // harness-enabled tenant (one via the harness async workflow, one via
-    // this legacy call), which is exactly the undisclosed behavior change the
-    // ticket flags for product-owner approval. Until that's approved, only
-    // the side-effect-free `resolveConfig` read is logged here for
-    // observability; nothing below is gated on it.
+    // TASK-704 — DECIDED (see ticket README §6/§7): this sync route does NOT
+    // call `noteGenerationService.generate` and does not start a harness
+    // workflow, permanently, not just pending sign-off.
+    //
+    // Two independent reasons, either one sufficient on its own:
+    //   1. Duplicate generation. For SUMMARY_REGENERATE, `generate()` STARTS
+    //      the harness workflow as a live side effect when harnessEnabled is
+    //      true, and this route always still runs its own legacy body below
+    //      — calling `generate()` unconditionally would silently produce a
+    //      DUPLICATE draft on every harness-enabled tenant (one via the
+    //      harness async workflow, one via this legacy call).
+    //   2. Response-contract mismatch. Even if the legacy body below were
+    //      skipped on a 'harness' decision (replacing rather than
+    //      supplementing it — the only shape that would avoid (1)),
+    //      `SummaryResponse` requires a real, already-persisted ContextItem
+    //      (`id`, `content`, `version`); the harness workflow produces its
+    //      note asynchronously via `HarnessInternalController`, so there is
+    //      nothing to synchronously return. Two ways to close that gap were
+    //      considered and rejected: (a) turn this endpoint into an
+    //      async-style "started" response — a caller-visible HTTP contract
+    //      change that is exactly the kind of undisclosed migration the
+    //      ticket's risk item flagged for sign-off, not something a Wave-0
+    //      consolidation ticket should ship unilaterally; (b) block the
+    //      request until the Temporal workflow completes — a synchronous
+    //      wait on a durable workflow that deliberately includes sensors /
+    //      groundedness / MCP terminology checks (i.e. designed to NOT be
+    //      instant), risking HTTP timeouts and introducing a blocking-wait
+    //      pattern that exists nowhere else in this codebase.
+    //   Entry point #4 (`POST :id/summary/async`, `SummaryProcessor.process`)
+    //   is already the fully-wired, harness-routing entry point for this
+    //   exact trigger (`SUMMARY_REGENERATE`) — its async/job-polling contract
+    //   is what harness-enabled tenants should use for a regenerate that may
+    //   run through harness. That entry point already replaces (never
+    //   supplements) its legacy body on a 'harness' decision (Task 4).
+    //
+    // Only the side-effect-free `resolveConfig` read is logged here, for
+    // observability; nothing below is gated on it. If a future ticket
+    // revisits this decision (e.g. as part of the Wave-2 harness-sole-generator
+    // migration, where the sync endpoint's contract itself may change), the
+    // change must still follow the two invariants named in the guidance that
+    // produced this decision: REPLACE the legacy call rather than supplement
+    // it, and gate the routing behind an explicit, revertible switch — this
+    // repo's established shape for that is a `global-kv` kill-switch
+    // descriptor (`killSwitch: true`, `default: false`, resolved per-call via
+    // `TenantSettingsService.resolvePlatform`), exactly as
+    // `consultation-gates.constants.ts` / `consultation-gates.descriptors.ts`
+    // already do for `harness.loop.enabled` / `consultation.ocr.enabled` —
+    // not a new flag mechanism.
     if (this.noteGenerationService) {
       try {
         const config = await this.noteGenerationService.resolveConfig(consultationId);
         this.logger.log({
           message:
-            'sync generateSummary: harnessEnabled resolved (logging-only — HUMAN-GATED short-circuit to harness NOT applied; see TASK-704 README §6)',
+            'sync generateSummary: harnessEnabled resolved (logging-only, decided — this route never routes to harness; see TASK-704 README §6/§7)',
           consultationId,
           harnessEnabled: config.harnessEnabled ?? false,
         });

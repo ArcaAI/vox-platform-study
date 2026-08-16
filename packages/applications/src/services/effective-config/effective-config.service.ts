@@ -21,6 +21,7 @@ import {
   EffectiveConfigResponse,
   EffectiveConfigServiceName,
   EffectiveConfigSource,
+  EffectiveRedaction,
   EffectiveRetention,
   EffectiveRuntimeProfile,
   IEffectiveConfigService,
@@ -107,7 +108,11 @@ export class EffectiveConfigService implements IEffectiveConfigService {
       // shape, so clients already polling them see fields appear rather than
       // change meaning.
       case 'guardrail':
-        return { ...base, retention: await this.resolveRetention('guardrail') };
+        return {
+          ...base,
+          retention: await this.resolveRetention('guardrail'),
+          redaction: await this.resolveRedaction(),
+        };
 
       case 'harness':
         return { ...base, retention: await this.resolveRetention('harness') };
@@ -168,6 +173,16 @@ export class EffectiveConfigService implements IEffectiveConfigService {
       vramBudgetMb: vramBudgetMb.value,
       source: groupSource([ttl, maxModels, vramBudgetMb, maxMemoryMb]),
     };
+  }
+
+  /**
+   * guardrail's PHI-redaction subset. Same degradation contract as retention: a
+   * failed read yields a null value and guardrail keeps its own built-in chunk
+   * bound, which is a real bound — never "unbounded".
+   */
+  private async resolveRedaction(): Promise<EffectiveRedaction> {
+    const chunkChars = await this.resolveKey('guardrail.redact.chunkChars');
+    return { chunkChars: chunkChars.value, source: chunkChars.source };
   }
 
   /**

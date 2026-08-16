@@ -10,7 +10,7 @@ import {
 } from '@arcaai/applications';
 import { Body, Controller, Delete, Get, Inject, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { Authorize, CanManage, ExpectedVersion, RequiresIfMatch } from '../../decorators';
+import { Authorize, CanManage, ExpectedVersion, RequiresIfMatch, RequiredScopes } from '../../decorators';
 
 /**
  * WebhookController — admin CRUD + delivery-log surface over
@@ -25,6 +25,7 @@ import { Authorize, CanManage, ExpectedVersion, RequiresIfMatch } from '../../de
  */
 @ApiBearerAuth()
 @ApiTags('admin-webhooks')
+@RequiredScopes('webhook:event:write')
 @Controller('admin/webhooks')
 @CanManage('Webhook')
 export class WebhookController {

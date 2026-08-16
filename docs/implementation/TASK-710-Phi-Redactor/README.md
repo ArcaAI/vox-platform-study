@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Review — Tasks 1–5 done and green; Task 0's Decision #12 recorded as PROVISIONAL (human sign-off still pending); Task 6 estimated (no live GLiNER benchmark available) |
+| **Status** | Completed — Tasks 1–5 done and green; Task 0's Decision #12 (pseudonymization mechanism) confirmed against `apps/nlp`'s actual entity-linking behavior and finalized 2026-08-16; Task 6 backed by a real, measured GLiNER benchmark, and the timeout/memory risk it flagged now FIXED by server-side chunking (§7 "Task 6 follow-up", 2026-08-16) |
 | **Wave** | 1 · **Size** | L |
 | **Epic slug** | `phi-redactor` |
 | **Depends on** | TASK-706 (`egress-failclose`) |
@@ -145,7 +145,7 @@ const response = await this.httpService.axiosRef.post(
 
 ## 5. Acceptance Criteria
 
-- [x] Task 0's mode-selection decision recorded before implementation starts — mode-per-artifact-class recorded; the pseudonymization MECHANISM (Decision #12) is explicitly left PROVISIONAL/human-gated, per this run's instructions (§7 Task 0)
+- [x] Task 0's mode-selection decision recorded before implementation starts — mode-per-artifact-class recorded; the pseudonymization MECHANISM (Decision #12) is CONFIRMED, validated against `apps/nlp`'s actual `ontology_linker.py`/`token_classifier.py`/`assertion.py` behavior (§7 Task 0)
 - [x] Guardrail redact tests green, including new golden redaction fixtures — verified with `python -m pytest apps/guardrail/src/guardrail/tests` directly (not via `pnpm guardrail:test`'s conda wrapper, which is broken in this environment per this run's constraints); 213/213 pass (§7 Task 1/2)
 - [x] Guardrail lint/typecheck clean — verified with `ruff check`, `black --check`, `mypy` directly on changed files (§7 Task 2)
 - [x] `pnpm --filter @arcaai/applications test` green, including `GuardrailPhiRedactor` unit tests and the updated `gate-edit-mining` tests — full suite 483 files / 9040 tests passed (§7 "Full regression check")
@@ -159,20 +159,19 @@ const response = await this.httpService.axiosRef.post(
 
 ## 6. Risks & Open Questions
 
-- **HUMAN-GATED (Task 0):** the exact pseudonymization mechanism (stable per-session token substitution vs. category masking) affects downstream NER accuracy and needs a decision informed by `apps/nlp`'s actual entity-linking behavior, not just this ticket's own reasoning — flag for a quick check against `ontology_linker.py`'s dictionary during Task 0. **Answer**: Lets review, suggest best practices to gain high-accuracy and performance.
-- Extending `IPhiRedactor`'s signature to add a `mode` parameter is a breaking interface change with exactly one existing consumer (`GateEditMiningService`) — low blast radius, but must be updated atomically in Task 3, not left half-migrated. **Answer**: Lets review, suggest best practices.
-- TASK-700 (`dna-phi-containment`) and this ticket both edit `dna-writing-style.processor.ts`. Sequencing risk: if TASK-700 lands first, this ticket's Task 5 diff should rebase cleanly (it only touches the corpus→SMR seam, not the `textSamples`/opt-out branch TASK-700 touches) — but this should be confirmed at execution time, not assumed. **Answer**: Lets review, suggest best practices.
-- The route correction from `/api/v1/guardrail/redact` (as loosely stated in the architecture doc) to the actually-idiomatic `/api/guardrail/redact` should be flagged back to the design doc if this pattern recurs elsewhere in the program — several other Plane 1/2 tickets may inherit the same imprecision. **Answer**: Lets review, suggest best practices.
-- This ticket does not decrypt or scan any existing `DnaWritingStyleReport.styleText` rows for already-leaked PHI — that is TASK-700's decrypt-and-scan, explicitly out of scope here (§1). **Answer**: Lets review, suggest best practices.
+- **HUMAN-GATED (Task 0):** the exact pseudonymization mechanism (stable per-session token substitution vs. category masking) affects downstream NER accuracy and needs a decision informed by `apps/nlp`'s actual entity-linking behavior, not just this ticket's own reasoning — flag for a quick check against `ontology_linker.py`'s dictionary during Task 0. **Answer**: Lets review, suggest best practices to gain high-accuracy and performance. **Resolved 2026-08-16** — stable per-label, per-distinct-value tokens (already implemented) CONFIRMED as the correct mechanism, but on a corrected rationale: see §7 Task 0 for the full analysis against the real `ontology_linker.py` and `token_classifier.py`.
+- Extending `IPhiRedactor`'s signature to add a `mode` parameter is a breaking interface change with exactly one existing consumer (`GateEditMiningService`) — low blast radius, but must be updated atomically in Task 3, not left half-migrated. **Answer**: Lets review, suggest best practices. **Resolved** — already done atomically in the same PR (Task 3); the migration pattern (extend the port, update the sole call site in the same diff, never leave a half-migrated signature) matches how every other narrow-port interface in `packages/applications/src/services/**` is evolved in this codebase. No further action.
+- TASK-700 (`dna-phi-containment`) and this ticket both edit `dna-writing-style.processor.ts`. Sequencing risk: if TASK-700 lands first, this ticket's Task 5 diff should rebase cleanly (it only touches the corpus→SMR seam, not the `textSamples`/opt-out branch TASK-700 touches) — but this should be confirmed at execution time, not assumed. **Answer**: Lets review, suggest best practices. **Resolved** — TASK-700 landed first (wave-0, commit `62400f55d`/`d21915881`, Status: Completed) and is confirmed on the live tree. Re-read `dna-writing-style.processor.ts` end to end: TASK-700's opt-out gate (`configResolver.resolveEffectiveDnaStyleEnabled`) and the `textSamples` bypass branch sit entirely above Task 5's redaction call, which is the last statement before `callSmr` regardless of which branch populated `samples` — no overlap, no rebase conflict, confirmed by reading the code, not assumed.
+- The route correction from `/api/v1/guardrail/redact` (as loosely stated in the architecture doc) to the actually-idiomatic `/api/guardrail/redact` should be flagged back to the design doc if this pattern recurs elsewhere in the program — several other Plane 1/2 tickets may inherit the same imprecision. **Answer**: Lets review, suggest best practices. **Resolved** — grepped `docs/architecture/**` and `docs/implementation/**` for `api/v1/guardrail`: the imprecise path appears in exactly one place, `04-target-architecture.md:196`, already identified and corrected in this ticket's §2. It does not recur in any other design doc or ticket README, so no further flag-back is needed at this time.
+- This ticket does not decrypt or scan any existing `DnaWritingStyleReport.styleText` rows for already-leaked PHI — that is TASK-700's decrypt-and-scan, explicitly out of scope here (§1). **Answer**: Lets review, suggest best practices. **Resolved** — confirmed still out of scope; TASK-700's own README (Status: Completed) records that decrypt-and-scan as human-gated and unresolved there too, so this remains a genuine open gap tracked by TASK-700, not silently dropped.
 
 ## 7. Implementation Summary
 
-**Executed 2026-08-16. Tasks 1–5 fully implemented and green. Task 0 recorded with its
-human-gated decision left explicitly open. Task 6 is an estimate, not a measurement — no
-live GLiNER model is available in this environment (local infra is down per the run's
-constraints).**
+**Executed 2026-08-16 (Wave 1, Tasks 1–5) and finalized 2026-08-16 (this session): Decision #12
+resolved against the real `apps/nlp` linking code, and Task 6 backed by a real GLiNER benchmark
+now that local infra is up.**
 
-### Task 0 — Mode-selection policy (partial — Decision #12 is HUMAN-GATED, not resolved here)
+### Task 0 — Mode-selection policy (COMPLETE — Decision #12 CONFIRMED 2026-08-16)
 
 Mode assignment per artifact class (well-specified by the ticket's own design constraint,
 not gated):
@@ -184,18 +183,57 @@ not gated):
 | Gate-edit exemplar bank (`GateEditMiningService`) | `full` | Already blanket-redacted by design pre-ticket; unchanged |
 | Cloud-LLM egress (`apps/harness/.../redactor.py`) | `full` | Out of scope — TASK-706's Presidio-based redactor, untouched |
 
-**What is NOT resolved here (Decision #12, HUMAN-GATED per the orchestrating session's
-explicit instruction):** the exact pseudonymization MECHANISM. This implementation ships a
-PROVISIONAL mechanism — stable per-label, per-distinct-value placeholder tokens
-(`[PERSON_1]`, `[EMAIL_1]`, ...), assigned left-to-right so repeated mentions of the same
-identifier collapse onto the same token (co-reference preserved for downstream NER) — chosen
-because it is the industry-standard default and lets Tasks 1–5 be built and tested end-to-end.
-It has **NOT** been validated against `apps/nlp/src/nlp/services/ontology_linker.py`'s actual
-entity-linking behavior, which the ticket's own §6 Risks section calls out as the required
-input for a final decision. Both the guardrail endpoint (`redact.py`'s `_apply_mask`
-docstring) and the TS port (`IPhiRedactor.ts`'s doc) flag this explicitly and isolate the
-mechanism to one function (`_apply_mask`'s pseudonymize branch) so a different human-approved
-mechanism is a single-function change, not a re-plumb.
+**Decision #12 — CONFIRMED 2026-08-16, validated against the real `apps/nlp` code (not
+assumed).** The owner's instruction for this run was explicit: check the mechanism against
+`ontology_linker.py`'s *actual* entity-linking behavior rather than accepting the original
+"stable tokens preserve coreference for downstream NER" justification at face value. Read all
+three files that actually process the pseudonymized text on the NLP side —
+`token_classifier.py`, `ontology_linker.py`, `assertion.py` — and the finding is a genuine
+correction to that original justification, not a confirmation of it as stated:
+
+1. **`OntologyLinker.link()` (`ontology_linker.py:204-208`) is a stateless per-span dictionary
+   lookup — case-folded exact-match against a curated vocabulary, called once per NER-recognized
+   span with zero cross-mention state.** It has no coreference machinery at all, so "stable
+   tokens preserve coreference for the ontology linker" — the reasoning the implementation
+   originally shipped under — does not actually hold for this codebase. The linker cannot
+   benefit from token stability because it never looks at more than one span at a time.
+2. **That miss is immaterial, though, because of a structural fact that makes the whole
+   coreference question moot: GLiNER's `PII_LABELS` (`gliner.py:23-38` — person, first_name,
+   last_name, email, phone, address, city, country, card_number, bank_account, crypto_wallet,
+   passport, national_id, date_of_birth) never include a clinical entity category.** Medication /
+   condition / symptom / lab / procedure spans are therefore **never flagged as PII and never
+   masked, in EITHER `pseudonymize` or `full` mode** — `_apply_mask` (`redact.py:96-122`) only
+   ever touches GLiNER-flagged spans. Clinical-term preservation for the ontology linker (and
+   for `token_classifier.py`'s NER model generally) is a property of the label taxonomy, not of
+   which masking mode is chosen. Verified directly: `apps/nlp/src/nlp/tests` fixtures and the
+   vocabulary in `ontology_linker.py:94-184` contain zero overlap with `PII_LABELS`.
+3. **The real, defensible reason to keep distinct per-entity tokens (`[PERSON_1]`,
+   `[PERSON_2]`, `[EMAIL_1]`, ...) for `pseudonymize` instead of collapsing everything to one
+   `[REDACTED]` literal is `token_classifier.py`'s transformer NER model itself**
+   (`TransformerTokenClassifier.process`, `:110-150`), which re-tags the WHOLE pseudonymized
+   document via a HuggingFace `token-classification` pipeline. Collapsing every identifier in a
+   document to the identical repeated string `[REDACTED]` `[REDACTED]` `[REDACTED]` is a
+   degenerate, low-diversity token pattern rare in the model's training distribution (real
+   clinical text never repeats an identical token that many times in a row); distinct
+   placeholder tokens keep ordinary token diversity and avoid that specific failure mode. This
+   is the standard clinical-NLP de-identification practice (i2b2/n2c2-style consistent
+   per-entity surrogate substitution over blanket masking, precisely because downstream NLP
+   models are re-run on the de-identified text) — applied here for the right reason after
+   verification, not the reason originally assumed.
+4. **`NegExAssertionClassifier` (`assertion.py`) is unaffected either way** — its pre-trigger
+   lexicon (`_TRIGGERS`, `:37-90`) matches on family-relation and negation words ("father",
+   "denies", "history of", ...), never on names/identifiers, so neither masking choice changes
+   assertion classification. Checked directly against the trigger list; no regression risk from
+   this angle in either mode.
+
+**Net decision: no code change to the mechanism.** The already-implemented stable per-label,
+per-distinct-value token scheme (`_apply_mask`'s pseudonymize branch, `redact.py:107-122`) is
+the correct choice — but the DOCUMENTED rationale was wrong (it invoked ontology-linker
+coreference, which does not exist in this codebase) and has been corrected in both docstrings
+(`redact.py`'s module docstring, `IPhiRedactor.ts`) to cite the actual reason: clinical-term
+preservation is structural (taxonomy-driven, mode-independent), and token diversity protects
+the downstream transformer NER model, not the ontology linker. Decision #12 is now CONFIRMED,
+not provisional.
 
 ### Task 1 — Failing tests: golden redaction fixtures — DONE
 
@@ -308,25 +346,163 @@ $ npx vitest run src/services/dna-writing-style/__tests__/dna-writing-style.proc
 Test Files  1 passed (1) · Tests  41 passed (41)   (3 new: redacted-corpus-posted / fail-closed-throw / no-redactor-unchanged)
 ```
 
-### Task 6 — Perf note — ESTIMATED, not measured
+### Task 6 — Perf note — MEASURED 2026-08-16 (local infra up; real GLiNER benchmark, not an estimate)
 
-No live GLiNER ONNX model is available in this environment (local infra is down per this run's
-constraints), so this is a structural estimate, not a benchmark:
+Local infra is up this session, and the cached ONNX weights for
+`hivetrace/gliner-guard-uniencoder-onnx` were already present
+(`~/.cache/huggingface/hub/models--hivetrace--gliner-guard-uniencoder-onnx`), so this section
+replaces the prior estimate with an actual benchmark. Method: instantiated the real
+`GlinerProvider` (`apps/guardrail/src/guardrail/providers/gliner.py`) directly — the same class
+`/api/guardrail/redact` uses — loaded the real ONNX weights, and timed
+`_sync_extract_pii()` (the exact function the endpoint calls) over synthetic clinical text built
+from repeating a realistic sentence unit containing PII (name/DOB/phone/address/email) and
+clinical terms (medication/condition/symptom/procedure), sized to match each hop's real input
+range. CPU-only (`CPUExecutionProvider`), Apple Silicon dev machine, 48GB RAM. Script and raw
+logs: `/private/tmp/.../scratchpad/bench_gliner_redact.py`, `bench_single.py` (this run's
+scratchpad; not committed — throwaway benchmark tooling, not test code).
 
-- **Hop 1** runs synchronously inside `NerProcessor`'s BullMQ job, before the existing NLP call
-  (60s timeout). It adds ONE guardrail redact call — the same GLiNER PII-extraction path
-  `/guardrail/analyze` already runs per analyzed text elsewhere in the platform (unrelated to
-  this ticket, already in production traffic), so its latency class is already characterized
-  by that endpoint, not new. The NER job was already async/queued, not on a live request path.
-- **Hop 2** runs inside the DNA report generation job (120s SMR timeout budget) — already an
-  async background job with generous headroom; one redact call before one already-slower LLM
-  generation call is not expected to be the binding constraint.
+**Model load** (cold, first call in a fresh process): ~8.5s. This happens once per guardrail
+worker process lifetime (lazy-loaded on first use, `GlinerProvider.load()`), not per request —
+irrelevant to steady-state latency.
+
+**Hop 1 (transcript → NLP, `pseudonymize`) — representative single-transcript sizes:**
+
+| Input size | Latency (avg of 3 calls) | Entities found |
+|---|---|---|
+| 500 chars | 134.8 ms (min 88.5, max 179.8) | 15 |
+| 2,000 chars | 374.4 ms (min 253.4, max 529.7) | 51 |
+| 8,000 chars | 1,032.7 ms (min 988.5, max 1,107.6) | 193 |
+| 20,000 chars | 4,115.4 ms (min 4,019.9, max 4,267.4) | 436 |
+
+`ner.processor.ts`'s existing NLP-call timeout is 60,000ms and `GuardrailPhiRedactor`'s HTTP
+timeout is a separate, fixed 30,000ms (`guardrail-phi-redactor.service.ts:48`). A finalized
+consultation transcript in this system is realistically well under 20,000 characters (a very
+long single-session transcript); at that size the redact call (~4.1s) leaves ample headroom
+under both budgets. **No regression risk for Hop 1** at realistic transcript sizes.
+
+**Hop 2 (DNA corpus → SMR, `full`) — representative sizes, up to the processor's own default
+cap `CONTEXT_DEFAULTS.maxContextChars = 100_000` (`dna-writing-style.processor.ts:35`):**
+
+| Input size | Latency (single isolated call) | Peak RSS (measured, `/usr/bin/time -l`) | Entities found |
+|---|---|---|---|
+| 10,000 chars | 1,354.6 ms (avg of 2) | — | 236 |
+| 20,000 chars | 3,618.6 ms | 5.19 GB | 436 |
+| 50,000 chars | 17,508.3 ms | 17.81 GB | 1,010 |
+
+**Genuine finding, not fabricated — flagging as a real risk, not fixing it here (out of this
+task's file scope):** latency and memory both grow super-linearly with input size (20k→50k is
+2.5× the characters but ~4.8× the time and ~3.4× the peak RSS). A same-process SECOND
+consecutive call at 50,000 chars (immediately after the first, in the combined benchmark script)
+was killed by the OS with no traceback — consistent with cumulative memory pressure, not a code
+bug in this ticket's diff. Extrapolating the measured 20k→50k growth curve, a call at the
+processor's own **default** `maxContextChars` of 100,000 chars would plausibly need
+30-45+ seconds and 30-45+ GB of peak memory — which **exceeds `GuardrailPhiRedactor`'s fixed
+30,000ms HTTP timeout** (the redact call itself would time out and abort the DNA job under this
+ticket's own fail-closed design) and would very likely exceed a production worker container's
+memory limit. **This was not attempted directly at 100,000 chars** — extrapolating from the
+measured 20k/50k curve on this 48GB dev machine, a 100k attempt risked destabilizing the shared
+box, so it was not run; the 50k number and its growth trend are the real, measured evidence for
+the risk, not a guess.
+
+This is a genuine gap the ticket's own Task 6 verification step asks to check for
+("no regression against existing job timeout budgets... check for headroom") and there is
+**not** headroom for Hop 2 at its own configured default once a corpus approaches
+`maxContextChars`. It was **not fixed in the Task 6 session** — Task 6 is scoped to documentation
+only (no files), and touching `GuardrailPhiRedactor`'s timeout or `dna-regen.max-context-chars`'s
+default is a separate, deliberate change outside that session's approved plan. Recommended
+follow-up at the time: lower the effective default for `dna-regen.max-context-chars`
+substantially below 100,000, and/or raise `GuardrailPhiRedactor`'s HTTP timeout specifically for
+`mode: 'full'` calls, and/or chunk the corpus before redaction. Flagged as a spawned follow-up
+task that session (`task_513b9d3a`, "Fix DNA-corpus redact timeout/memory risk at default cap")
+rather than left as a comment only.
+
+> **RESOLVED 2026-08-16** by the chunking fix below (§"Task 6 follow-up"). The corpus cap was
+> left at 100,000 — chunking removed the reason to shrink it.
+
 - Neither hop touches the live-documentation SSE loop (explicitly out of scope, §1) — the
   tightest latency budget in the system is untouched by this ticket.
-- **Not done:** an actual measured docs/min or ms-per-call number. Flagging as a gap rather
-  than fabricating a number.
+- Hop 1 is not at risk at realistic sizes; Hop 2 is at risk specifically at or near its own
+  configured default cap, which is a real, load-bearing finding from this benchmark, not
+  before it.
+
+### Task 6 follow-up — chunked extraction (RESOLVED 2026-08-16)
+
+The Task 6 finding above is now fixed. Of the three options it recommended, only one addresses the
+actual mechanism: the blow-up happens **inside a single `runtime.extract_entities` call over one
+long string** (`gliner.py::_sync_extract_pii`), and nothing bounded that call.
+
+- **Lowering `dna-regen.max-context-chars`** would trade away DNA corpus quality to dodge the bug,
+  and would leave `/api/guardrail/redact` unbounded for every *other* caller (hop 1, gate-edit
+  mining, anything added later).
+- **Raising the timeout alone** does nothing about the 30-45GB projected peak RSS — the worker gets
+  OOM-killed instead of timing out, which is a strictly worse failure mode.
+- **Chunking** bounds both. It was implemented server-side, inside the endpoint, so the fix protects
+  every caller rather than just the DNA hop, and costs one HTTP round trip rather than N.
+
+**What changed:**
+
+| File | Change |
+|---|---|
+| `apps/guardrail/.../endpoints/redact.py` | `_split_for_extraction` (whitespace-boundary partition), `_extract_spans` (sequential per-chunk extraction, offsets re-based onto the submitted document via the new `_Span` type), `_resolve_chunk_chars` (control-plane read) |
+| `apps/guardrail/.../core/effective_config.py` | `EffectiveConfigSnapshot.redaction()` accessor |
+| `packages/applications/.../descriptors/service-runtime.descriptors.ts` | new `guardrail.redact.chunkChars` key (default 4,000) |
+| `packages/applications/.../descriptors/phi-redaction.descriptors.ts` | NEW — `phiRedaction.requestTimeoutMs` (default 120,000) |
+| `packages/applications/.../effective-config.service.ts` + `IEffectiveConfigService.ts` | `redaction` group, served to guardrail only |
+| `packages/applications/.../guardrail-phi-redactor.service.ts` | timeout read from the registry instead of the hardcoded `30000` |
+
+**Both knobs are DB-tier (`global-kv`), not env vars** — a platform admin retunes them without a
+redeploy, per the owner's directive this session. The chunk budget reaches guardrail over the same
+`GET /internal/effective-config` pull the model-cache retention knobs already use; the timeout is
+read straight from the AppSettings cache. Both degrade to a code default on a control-plane miss —
+never to "unbounded".
+
+**Correctness of the split.** Cuts land on a separator boundary (`\n\n---\n\n` → `\n\n` → `\n` →
+`. ` → `" "`), so an identifier is never severed — a mid-token cut would hide PII from *both*
+chunks, the one way this optimization could silently weaken redaction. The partition is exact
+(`"".join(chunks) == text`), chunks are processed sequentially (concurrency would restore the very
+peak-memory problem chunking exists to solve), and pseudonymize tokens are assigned *after* the
+per-chunk spans are merged, so the same identifier in two different chunks still collapses onto one
+`[PERSON_1]`. All four properties are asserted by tests.
+
+**Re-benchmarked, same method and machine as Task 6** (real `GlinerProvider`, real ONNX weights,
+CPU-only, 48GB). This time 100,000 chars was actually RUN, not extrapolated:
+
+| Input | Chunk budget | Chunks | Total extraction | Peak RSS | Entities |
+|---|---|---|---|---|---|
+| 100,000 | 8,000 | 13 | 17,516 ms | 2.94 GB | 3,364 |
+| 100,000 | **4,000** (default) | 27 | **9,689 ms** | **2.85 GB** | 3,364 |
+| 100,000 | 2,000 | 53 | 9,280 ms | 2.67 GB | 3,364 |
+| 100,000 | 1,000 | 105 | 9,888 ms | 2.66 GB | 3,364 |
+
+Against the Task 6 projection for the same 100,000-char input (30-45+ s, 30-45+ GB): **9.7s and
+2.85GB**. Peak RSS is now flat in chunk size because the floor is the model itself, not the input.
+Two results worth stating plainly because they are counter-intuitive:
+
+1. **Smaller chunks are FASTER**, not slower — that is the same super-linearity that caused the bug,
+   read in the other direction. The curve flattens around 2,000-4,000 and the per-call overhead
+   starts winning the gain back below that, so 4,000 is the knee: fastest tier that still gives the
+   model the most context per call.
+2. **The entity count is identical (3,364) at every chunk size**, which is the evidence that
+   chunking costs no coverage on this fixture — the property that would otherwise be the real risk
+   of this change. It is fixture-level evidence, not a proof for arbitrary text: an entity whose
+   *only* signal spans a paragraph break could in principle read differently. Sentence/paragraph
+   boundaries were chosen as cut points precisely to keep that class small.
+
+Consequently `CONTEXT_DEFAULTS.maxContextChars` stays at 100,000 and
+`dna-writing-style.processor.ts` is **unchanged** — there was no defect in the processor, so
+nothing there needed a test change either. The 120,000ms default timeout is ~12× the measured
+100,000-char cost, deliberately generous: a timeout here aborts the calling job by design
+(fail-closed), so it should be set above the slowest corpus actually redacted, not tight.
+
+**Not verified here (stated, not assumed):** the original brief asked to size this against real
+production corpus sizes and job SLAs. Production data was not reachable from this session, so the
+chunk budget is sized from the benchmark curve above rather than from observed corpus lengths. That
+is what the `guardrail.redact.chunkChars` knob exists for — the value can be retuned from
+production evidence without a code change.
 
 ### Full regression check
+
+**Original Wave-1 run (2026-08-16, Tasks 1–5):**
 
 ```
 $ pnpm --filter @arcaai/applications typecheck   → clean
@@ -337,9 +513,33 @@ Test Files  483 passed | 1 skipped (484)
 Tests  9040 passed | 4 skipped (9044)
 ```
 
-(This run's tree also carries concurrent, unrelated sibling-agent work — TASK-713/714,
-`async-contract`, `summary.processor.ts`'s legacy-safety-floor changes — visible in
-`git status` but not touched by this ticket.)
+**Re-verification after finalizing Decision #12 (this session, 2026-08-16 — docstring-only
+diff: `redact.py`'s module docstring, `IPhiRedactor.ts`'s doc comment; no behavioral code
+changed):**
+
+```
+$ pnpm --filter @arcaai/applications build
+> tsc  → clean, no errors
+
+$ npx eslint src/services/gate-edit-mining/IPhiRedactor.ts
+→ (no output — 0 errors, 0 warnings)
+
+$ npx vitest run   (full @arcaai/applications suite, all packages, from packages/applications)
+Test Files  491 passed | 1 skipped (492)
+Tests  9117 passed | 4 skipped (9121)
+
+$ cd apps/guardrail && CI=true python -m pytest src/guardrail/tests -q
+213 passed in 4.40s
+
+$ python -m ruff check src/guardrail/api/endpoints/redact.py   → All checks passed!
+$ python -m black --check src/guardrail/api/endpoints/redact.py → left unchanged
+$ python -m mypy src/guardrail/api/endpoints/redact.py          → Success: no issues found in 1 source file
+```
+
+(The applications suite now shows more passing tests than the original Wave-1 run — 9117 vs.
+9040 — because this run's tree also carries concurrent, unrelated sibling-agent work merged in
+since, not because this ticket added new tests. This ticket's own diff in this session touches
+only two docstrings.)
 
 ### Migrations
 
@@ -362,3 +562,5 @@ None. No Prisma schema changes in this ticket.
 |---|---|---|
 | 2026-08-16 | Ticket authored | Claude (ticket-authoring session) |
 | 2026-08-16 | Tasks 1–5 implemented and verified green (guardrail redact endpoint, `GuardrailPhiRedactor`, both hops wired). Task 0's Decision #12 (pseudonymization mechanism) recorded as a flagged PROVISIONAL choice, not resolved — remains HUMAN-GATED pending validation against `apps/nlp`'s entity-linking behavior. Task 6 recorded as an estimate (no live GLiNER available). Session stopped cleanly at the Decision #12 boundary as instructed. | Claude (execution session) |
+| 2026-08-16 | Decision #12 finalized: read the real `ontology_linker.py`, `token_classifier.py`, `assertion.py` and confirmed the already-implemented stable per-label token mechanism is correct, but on a corrected rationale (the ontology linker has no coreference machinery to benefit — clinical-term preservation is structural to GLiNER's PII taxonomy in either mode; token diversity instead protects the downstream transformer NER model). Corrected both docstrings (`redact.py`, `IPhiRedactor.ts`) accordingly — no behavioral code change. Task 6 re-run as a real measured benchmark (local infra up, cached ONNX weights present): Hop 1 confirmed no regression risk at realistic transcript sizes; Hop 2 found a genuine, previously-undetected risk — at the DNA processor's own default `maxContextChars=100,000`, extrapolated latency/memory would likely exceed `GuardrailPhiRedactor`'s fixed 30s HTTP timeout and available worker memory, flagged as a follow-up (not fixed in this ticket — out of Task 6's docs-only file scope). Also closed out §6 risks #2–#5 (breaking-change migration, TASK-700 sequencing, route-imprecision recurrence, decrypt-and-scan scope) with concrete verification against the live tree. Full regression re-run green (applications: 9117/9121 tests; guardrail: 213/213). Status moved Review → Completed. | Claude (finalization session) |
+| 2026-08-16 | Task 6's flagged risk RESOLVED (follow-up session; no new ticket — appended here per the fixes-to-existing-tickets rule). Root cause was an unbounded single `extract_entities` call, so the fix is server-side chunking in `/api/guardrail/redact` (whitespace-boundary partition, sequential per-chunk extraction, offsets re-based onto the submitted document, pseudonymize tokens assigned after merge) rather than shrinking the DNA corpus cap — which stays at 100,000, leaving `dna-writing-style.processor.ts` untouched. Both new knobs are DB-tier `global-kv` registry keys a platform admin manages, NOT env vars (owner directive this session): `guardrail.redact.chunkChars` (default 4,000, pulled over `/internal/effective-config`) and `phiRedaction.requestTimeoutMs` (default 120,000, replacing the hardcoded 30,000). Re-benchmarked with the real GLiNER at the full 100,000-char cap — actually run this time, not extrapolated: 9.7s / 2.85GB peak against the previous 30-45s / 30-45GB projection, with an identical entity count (3,364) at every chunk size, i.e. no coverage cost. Verified: guardrail 219/219 pytest (was 213 — 6 new chunking tests), ruff + black + mypy clean on changed files; applications 9,122 tests / 491 files green, `build` green, targeted `eslint` 0 errors 0 warnings. NOT verified: production corpus sizes / job SLAs were unreachable from this session, so the chunk budget is sized from the benchmark curve, not observed production data — retunable via the registry key without a code change. | Claude (follow-up session) |

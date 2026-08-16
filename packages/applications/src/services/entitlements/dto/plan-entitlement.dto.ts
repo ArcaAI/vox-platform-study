@@ -29,6 +29,9 @@ export class PlanEntitlementResponse {
   @ApiPropertyOptional({ description: 'Max API keys; null = unlimited', nullable: true })
   maxApiKeys?: number | null;
 
+  @ApiPropertyOptional({ description: 'Max PUBLISHED workflow definitions (TASK-722); null = unlimited', nullable: true })
+  maxWorkflowDefinitions?: number | null;
+
   @ApiPropertyOptional({ description: 'Storage quota in bytes; null = unlimited', nullable: true })
   storageQuotaBytes?: number | null;
 
@@ -43,6 +46,9 @@ export class PlanEntitlementResponse {
 
   @ApiPropertyOptional({ description: 'Monthly summaries; null = unlimited', nullable: true })
   monthlySummaries?: number | null;
+
+  @ApiPropertyOptional({ description: 'Monthly PUBLISHED-workflow invocations via /api/v1/workflows/:slug/invoke (TASK-722); null = unlimited', nullable: true })
+  monthlyWorkflowInvocations?: number | null;
 
   @ApiPropertyOptional({ description: 'Monthly STT session-seconds allowance (TASK-615 D11); null = unlimited', nullable: true })
   monthlySttSessionSeconds?: number | null;
@@ -120,6 +126,12 @@ export class UpdatePlanEntitlementRequest {
   @Min(0)
   maxApiKeys?: number | null;
 
+  @ApiPropertyOptional({ description: 'Max PUBLISHED workflow definitions (TASK-722); null = unlimited', nullable: true })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  maxWorkflowDefinitions?: number | null;
+
   @ApiPropertyOptional({ description: 'Storage quota in bytes; null = unlimited', nullable: true })
   @IsOptional()
   @IsInt()
@@ -149,6 +161,12 @@ export class UpdatePlanEntitlementRequest {
   @IsInt()
   @Min(0)
   monthlySummaries?: number | null;
+
+  @ApiPropertyOptional({ description: 'Monthly PUBLISHED-workflow invocations via /api/v1/workflows/:slug/invoke (TASK-722); null = unlimited', nullable: true })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  monthlyWorkflowInvocations?: number | null;
 
   @ApiPropertyOptional({ description: 'Monthly STT session-seconds allowance (TASK-615 D11); null = unlimited', nullable: true })
   @IsOptional()

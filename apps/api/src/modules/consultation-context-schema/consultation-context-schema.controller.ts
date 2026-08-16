@@ -11,7 +11,7 @@ import {
 import { Body, Controller, Delete, Get, Inject, Param, Patch, Post, Query, Res } from '@nestjs/common';
 import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
-import { Authorize, CanManage, ExpectedVersion, RequiresIfMatch } from '../../decorators';
+import { Authorize, CanManage, ExpectedVersion, RequiresIfMatch, RequiredScopes } from '../../decorators';
 
 /**
  * Admin CRUD + governance for tenant-declared consultation context
@@ -33,6 +33,7 @@ import { Authorize, CanManage, ExpectedVersion, RequiresIfMatch } from '../../de
  */
 @ApiBearerAuth()
 @ApiTags('admin-consultation-context-schemas')
+@RequiredScopes('admin:consultation-context-schema:manage')
 @Controller('admin/consultation-context-schemas')
 @CanManage('ConsultationContextSchema')
 export class ConsultationContextSchemaAdminController {

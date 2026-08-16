@@ -19,11 +19,20 @@ export interface IPhiRedactor {
    * `POST /api/guardrail/redact` request contract):
    *  - `'pseudonymize'` — clinical entities (medication/condition names, never
    *    a GLiNER PII label) survive verbatim; identifiers are masked with
-   *    stable per-label tokens. Use where the consuming pipeline needs
-   *    clinical entities intact (e.g. NLP/NER).
-   *  - `'full'` — every flagged span is blanket-masked, no label leaks. Use
-   *    for retained / derived / cross-patient artifacts (the gate-edit
-   *    exemplar bank, the DNA writing-style corpus).
+   *    stable per-label, per-distinct-value tokens (`[PERSON_1]`, `[EMAIL_1]`,
+   *    ...). Use where the consuming pipeline needs clinical entities intact
+   *    (e.g. NLP/NER).
+   *  - `'full'` — every flagged span is blanket-masked (`[REDACTED]`), no
+   *    label leaks. Use for retained / derived / cross-patient artifacts (the
+   *    gate-edit exemplar bank, the DNA writing-style corpus).
+   *
+   * Mechanism CONFIRMED (TASK-710 §6 Decision #12) against `apps/nlp`'s actual
+   * entity-linking behavior — see `redact.py`'s module docstring for the full
+   * rationale: clinical-term preservation is structural (GLiNER's PII taxonomy
+   * never covers clinical entities, in either mode); stable per-entity tokens
+   * are kept for `pseudonymize` because they avoid feeding the downstream NER
+   * transformer a degenerate repeated-mask pattern, not because the ontology
+   * linker needs coreference (it is a stateless per-span lookup and does not).
    */
   redact(text: string, mode: 'pseudonymize' | 'full'): Promise<string>;
 }

@@ -33,10 +33,13 @@ export class ConsentGrantService extends BaseService implements IConsentGrantSer
   }
 
   /**
-   * One row per (tenant, externalPatientId, purpose) — the unique index is
-   * total, not partial-on-ENABLED, so a second `create` for the same triple
-   * fails at the database. This phase does not implement widening-as-a-new-
-   * row (see consent-design.md §3); callers `revoke` then `create` again.
+   * One row per (tenant, externalPatientId, purpose) among ACTIVE
+   * (non-revoked) grants — enforced by the partial unique index
+   * `ConsentGrant_tenant_patient_purpose_active_key` (WHERE "revokedAt" IS
+   * NULL). A second `create` for the same triple fails at the database ONLY
+   * while an active grant already exists; `revoke` then `create` again (or
+   * widening — consent-design.md §3) both work, because the revoked row no
+   * longer occupies the active slot.
    */
   async create(request: CreateConsentGrantRequest): Promise<ConsentGrantResponse> {
     const tenantId = this.tenantId;

@@ -1,7 +1,7 @@
 import { IUserDepartmentService, UserDepartmentResponse, AssignUserDepartmentRequest, UpdateUserDepartmentRequest } from '@arcaai/applications';
 import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Inject, Param, Patch, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { CanManage, ExpectedVersion, RequiresIfMatch } from '../../../decorators';
+import { CanManage, ExpectedVersion, RequiresIfMatch, RequiredScopes } from '../../../decorators';
 
 /**
  * Admin CRUD for user ↔ department assignments.
@@ -16,6 +16,7 @@ import { CanManage, ExpectedVersion, RequiresIfMatch } from '../../../decorators
  */
 @ApiBearerAuth()
 @ApiTags('admin-user-departments')
+@RequiredScopes('admin:user:write')
 @Controller('admin/users')
 @CanManage('User')
 export class UserDepartmentsController {

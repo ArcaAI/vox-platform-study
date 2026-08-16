@@ -1,6 +1,6 @@
 import { Controller, Get } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { Authorize } from '../../decorators';
+import { Authorize, RequiredScopes } from '../../decorators';
 import { AiServiceProxyClient, GuardrailConfigResult } from './ai-service-proxy.client';
 
 /**
@@ -19,6 +19,7 @@ import { AiServiceProxyClient, GuardrailConfigResult } from './ai-service-proxy.
 @ApiTags('admin-ai-services')
 @ApiBearerAuth()
 @Authorize(['manage', 'all'])
+@RequiredScopes('admin:ai-service:manage')
 @Controller('admin/ai-services')
 export class AiServiceAdminController {
   constructor(private readonly proxyClient: AiServiceProxyClient) {}

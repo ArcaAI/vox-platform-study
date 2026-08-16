@@ -6,10 +6,11 @@ import {
 } from '@arcaai/applications';
 import { Controller, Body, Param, Inject, Delete, Get, Post } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiParam, ApiOperation, ApiResponse } from '@nestjs/swagger';
-import { CanCreate, CanDelete, CanManage, CanRead } from '../../decorators';
+import { CanCreate, CanDelete, CanManage, CanRead, RequiredScopes } from '../../decorators';
 
 @ApiBearerAuth()
 @ApiTags('tenant-storage-keys')
+@RequiredScopes('admin:storage-key:manage')
 @Controller('admin/tenants/storage/keys')
 @CanManage('Tenant')
 export class StorageAccessKeyController {

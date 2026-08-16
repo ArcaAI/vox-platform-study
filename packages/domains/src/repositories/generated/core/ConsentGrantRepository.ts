@@ -31,6 +31,23 @@ export class ConsentGrantRepository extends Repository<ConsentGrantEntity, Conse
    * evaluate against. Returns `null` on a genuine miss; a cross-tenant read
    * (tenant-scope extension mismatch) SURFACES rather than silently
    * returning null — mirrors `AiProviderConnectionRepository.findByTenantServiceProvider`.
+   *
+   * Does NOT filter `revokedAt: null` in the WHERE clause — it orders by
+   * `revokedAt DESC` instead, and relies on Postgres's own default NULL
+   * ordering (`NULLS FIRST` for `DESC`) so the query returns, in order of
+   * preference:
+   *   1. the ACTIVE grant (`revokedAt IS NULL`), if one exists — the same
+   *      row the DB's partial unique index
+   *      (`ConsentGrant_tenant_patient_purpose_active_key`) treats as "the"
+   *      grant for this triple;
+   *   2. otherwise the MOST RECENTLY REVOKED grant.
+   * This is deliberate: filtering `revokedAt: null` in the WHERE clause
+   * would make a revoked-with-no-re-grant lookup indistinguishable from a
+   * NEVER-granted one — `checkConsent` needs the revoked row specifically
+   * so it can report `reason: 'revoked'` rather than the less useful
+   * `'no_grant'` (a real regression caught by
+   * `apps/api/tests/e2e/consent-abac.spec.ts`'s revocation case). Ordering
+   * by `revokedAt DESC` gives the right row in ONE query either way.
    */
   async findByTenantPatientPurpose(
     tenantId: string,
@@ -41,12 +58,12 @@ export class ConsentGrantRepository extends Repository<ConsentGrantEntity, Conse
     const where = { tenantId, externalPatientId, purpose, resourceStatus: ResourceStatusType.ENABLED };
 
     if (tx) {
-      const model = await (tx as Record<string, any>).consentGrant.findFirst({ where });
+      const model = await (tx as Record<string, any>).consentGrant.findFirst({ where, orderBy: { revokedAt: 'desc' } });
       return model ? ConsentGrantEntityMapper.getInstance().toDomainEntity(model) : null;
     }
 
     try {
-      return await this.findFirst({ filters: where });
+      return await this.findFirst({ filters: where, sort: [{ revokedAt: 'desc' }] });
     } catch (err) {
       if (err instanceof DataNotFoundException) return null;
       throw err;

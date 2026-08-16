@@ -1,12 +1,29 @@
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
-import { Injectable, Logger, Optional } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { IPhiRedactor } from '../gate-edit-mining/IPhiRedactor';
 import { SecretsService } from '../baseServices/_meta/secrets';
+import { IAppSettingsService } from '../baseServices/_meta/appSettings/IAppSettingsService';
 
 interface GuardrailRedactResponseBody {
   sanitized_text?: unknown;
 }
+
+/**
+ * Fallback request timeout, used before the settings cache is warm or when the
+ * row is absent. The authoritative value is the admin-managed
+ * `phiRedaction.requestTimeoutMs` registry key.
+ *
+ * 120s rather than the original 30s: guardrail now chunks large inputs and
+ * processes the chunks SEQUENTIALLY (`redact.py::_extract_spans`), which trades
+ * a super-linear blow-up for a linear, bounded walk — correct, but proportional
+ * to corpus size. Measured at the DNA processor's 100,000-char cap: ~9.7s of
+ * real extraction on a CPU-only worker, which the old 30s budget would have
+ * covered only until a busier or slower host. Every caller of this class is inside an
+ * async job (NER, DNA report, exemplar mining), never a user-blocking request,
+ * so the generous budget costs nothing on the latency path.
+ */
+const DEFAULT_REDACT_TIMEOUT_MS = 120_000;
 
 /**
  * `IPhiRedactor` implementation backed by the guardrail service's
@@ -33,19 +50,24 @@ export class GuardrailPhiRedactor implements IPhiRedactor {
     // production. Absent ⇒ an empty token is sent (guardrail's documented
     // empty-token dev/CI bypass — mirrors the groundedness executor).
     @Optional() private readonly secretsService?: SecretsService,
+    // Optional + trailing so existing positional fixtures keep their arity.
+    // Absent ⇒ the code default below applies.
+    @Optional() @Inject(IAppSettingsService) private readonly appSettingsService?: IAppSettingsService,
   ) {
     this.guardrailServiceUrl = this.configService.get<string>('GUARDRAIL_URL') ?? 'http://localhost:8863';
   }
 
   async redact(text: string, mode: 'pseudonymize' | 'full'): Promise<string> {
     const token = (await this.secretsService?.getSecretOptional('GUARDRAIL_SERVICE_TOKEN')) ?? '';
+    const timeout =
+      this.appSettingsService?.getValueWithDefault<number>('phiRedaction.requestTimeoutMs', DEFAULT_REDACT_TIMEOUT_MS) ?? DEFAULT_REDACT_TIMEOUT_MS;
     let response: { data?: unknown };
     try {
       response = await this.httpService.axiosRef.post(
         `${this.guardrailServiceUrl}/api/guardrail/redact`,
         { text, mode },
         {
-          timeout: 30000,
+          timeout,
           headers: { 'Content-Type': 'application/json', 'X-Service-Token': token },
         },
       );

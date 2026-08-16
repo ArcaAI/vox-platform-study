@@ -95,6 +95,7 @@ import { UserVoiceProfileRepository } from '../../../repositories/generated/core
 import { WebhookRepository } from '../../../repositories/generated/core/WebhookRepository';
 import { WebhookRunHistoryRepository } from '../../../repositories/generated/core/WebhookRunHistoryRepository';
 import { WorkflowRunRepository } from '../../../repositories/generated/core/WorkflowRunRepository';
+import { WorkflowDefinitionRepository } from '../../../repositories/generated/core/WorkflowDefinitionRepository';
 import { WorkflowTestFixtureRepository } from '../../../repositories/generated/core/WorkflowTestFixtureRepository';
 
 // Async provider so the (possibly Vault-backed) Prisma client
@@ -267,6 +268,9 @@ const repositories = [
   WorkflowRunRepository,
   // Per-tenant saved synthetic Workbench test input (TASK-721).
   WorkflowTestFixtureRepository,
+  // The workflow-definition/version rows themselves (TASK-715 domain trio,
+  // completed under TASK-722 — see that ticket's README §7 for why).
+  WorkflowDefinitionRepository,
 ];
 
 @Module({

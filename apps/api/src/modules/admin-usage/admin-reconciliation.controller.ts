@@ -2,7 +2,7 @@ import { Controller, Get, HttpCode, Inject, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { IShadowMeteringService, ProviderReconciliationRunResponse, ProviderReconciliationSweepResult } from '@arcaai/applications';
 
-import { CanManage } from '../../decorators';
+import { CanManage, RequiredScopes } from '../../decorators';
 import { ReconciliationRunsQuery } from './dto';
 
 /**
@@ -22,6 +22,7 @@ import { ReconciliationRunsQuery } from './dto';
  */
 @ApiBearerAuth()
 @ApiTags('admin-usage')
+@RequiredScopes('admin:usage:manage')
 @Controller('admin/usage/reconciliation')
 @CanManage('UsageAnalytics')
 export class AdminReconciliationController {

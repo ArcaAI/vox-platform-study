@@ -16,7 +16,18 @@ import {
 import { Body, Controller, Get, HttpCode, Inject, Param, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
-import { ApiEndpoint, Authorize, CanCreate, CanManage, CanRead, CanUpdate, CanDelete, ExpectedVersion, RequiresIfMatch } from '../../decorators';
+import {
+  ApiEndpoint,
+  Authorize,
+  CanCreate,
+  CanManage,
+  CanRead,
+  CanUpdate,
+  CanDelete,
+  ExpectedVersion,
+  RequiresIfMatch,
+  RequiredScopes,
+} from '../../decorators';
 
 /**
  * Global-settings admin CRUD.
@@ -40,6 +51,7 @@ import { ApiEndpoint, Authorize, CanCreate, CanManage, CanRead, CanUpdate, CanDe
  */
 @ApiBearerAuth()
 @ApiTags('admin-global-settings')
+@RequiredScopes('admin:settings:manage')
 @Controller('admin/settings')
 @CanManage('GlobalSetting')
 export class GlobalSettingController {

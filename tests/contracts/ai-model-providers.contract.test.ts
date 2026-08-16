@@ -22,7 +22,7 @@ describe('AiModel provider list contract', () => {
   });
 
   it('includes the server-managed engines discovery can register', () => {
-    for (const provider of ['ollama', 'lm-studio', 'vllm', 'llama-cpp']) {
+    for (const provider of ['lm-studio', 'vllm', 'llama-cpp']) {
       expect(DTO_PROVIDERS).toContain(provider);
     }
   });

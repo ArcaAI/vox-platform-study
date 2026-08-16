@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Blocked — on Task 1's human sign-off (decision document ready) + external cluster/deployment-repo access for Tasks 2/3 + local infra for Task 4/5 verification. See §7. |
+| **Status** | Blocked — on Task 1's human sign-off (decision document ready). Tasks 4/5 are now genuinely verified against live local infra (§2.11/§7). Tasks 2/3 still need external cluster/deployment-repo write access; §2.11 also corrects Task 2's diagnosis — the specific `CreateContainerConfigError` cause was already fixed and stated as applied live in `arca/hope-v2-deployment` on 2026-08-09, a finding the original session missed. |
 | **Wave** | 3 · **Size** | L |
 | **Epic slug** | `harness-infra-productionization` |
 | **Depends on** | — |
@@ -346,6 +346,94 @@ changes that path's cost estimate. Tasks 2/3/5 stay flagged/gated exactly as ori
 write access, no cluster access), but their Wave-4 gate checklist items (§5) are now more precise
 about what specifically remains.
 
+### 2.11 Local infra now up (2026-08-16, follow-on execution session) — Task 4/5 genuinely
+### re-verified live; corrects §2.10 finding 2's `CreateContainerConfigError` diagnosis
+
+Local Postgres/Redis/Temporal/Vault/MinIO/Qdrant/Prometheus/Grafana are all up and healthy this
+session (`docker ps`: `hope-temporal` healthy, port 7233; `hope-prometheus` healthy, port 9090;
+`hope-grafana` healthy, port 3001). This closes the two verification gaps §7 previously left open
+for want of infra, and separately overturns part of §2.10 finding 2 using the SAME read-only
+GitLab access re-run more carefully.
+
+**Task 4, actually run against live local Temporal** (previously only attempted against a down
+instance): `~/miniconda3/envs/arcaenv/bin/python scripts/harness-availability-report.py
+--since-days 90` against `localhost:7233` returns cleanly — `total_executions_seen: 0` (expected:
+this is a freshly-reset local dev Postgres/Temporal with no consultation traffic ever run through
+it). Full JSON report captured. The script itself is now proven to work end-to-end against a real
+server, not just syntax-checked.
+
+**Task 5, actually verified against live local Prometheus + Grafana** (previously only
+static-validated): `promtool check rules`/`check config` still pass; additionally, queried the
+LIVE Prometheus API — `GET /api/v1/rules` shows both alert groups loaded (`harness_http`:
+`HarnessHttp5xxRateHigh`, `HarnessHttpLatencyP95High`; `harness_temporal`: `HarnessTemporalDown`,
+`HarnessWorkerTaskFailures` — 4/4, all `health: "ok"`), and `GET /api/v1/targets` shows the new
+`temporal` scrape job **`up`** (`instance: "temporal:9090"`) — the local-dev half of §6's open
+question is now runtime-confirmed, not just config-valid. `harness`/`api-gateway`/etc. jobs show
+`down` as expected (only infra containers are running this session, not the app processes). The
+Grafana dashboard (`uid: hope-harness-temporal`, auto-provisioned from the file-based provider)
+was opened in a real browser session at `http://localhost:3001/d/hope-harness-temporal/` — it
+renders all 7 panels; the "Temporal reachability" stat panel shows a live green **"UP"**
+(`up{job="temporal"}`); the harness-specific panels correctly show "No data" (the harness FastAPI
+app itself is not running this session, only infra). This is the runtime screenshot the previous
+session flagged as gated on infra — captured this session (not saved as a file artifact, but
+directly observed via the browser tool).
+
+**Correction to §2.10 finding 2 — the specific `CreateContainerConfigError` cause was already
+FIXED and stated as applied live 7 days before this ticket's original execution, which the prior
+session missed by trusting a stale prose doc over the manifest and its own commit history.**
+Re-reading `arca/hope-v2-deployment` more carefully (same read-only access, same commit
+`bb2f96f4c7d89e1099bdb300066e56b05ea43df5`):
+
+- `deployment/k8s/base/harness-worker.yaml`'s `HARNESS_INTERNAL_SERVICE_TOKEN` ref currently reads
+  `optional: true` — **matching** `harness.yaml`, not the "required" the prior session's §2.10
+  finding 2 and this ticket's own outer briefing both asserted. The file's `securityContext` also
+  carries explicit `runAsUser: 1001` / `runAsGroup: 1001`, with an inline comment explaining a
+  SECOND latent defect this surfaced ("container has runAsNonRoot and image has non-numeric user
+  (hope), cannot verify user is non-root").
+- `git log --follow deployment/k8s/base/harness-worker.yaml` (via `mcp__gitlab__list_commits`)
+  finds the fix: commit `fcfe19a640f3875dd231b1e75423f3ac0aea1090`, **"fix: unwedge the dev
+  cluster — harness-worker start, alloy log shipping"**, authored 2026-08-09T08:24:44+07:00. Its
+  message states both defects explicitly and closes with: *"Both are applied live on
+  hope-v2-dev; this is the durable copy."* — i.e. this was not a speculative manifest edit, it
+  records a live fix already performed on the cluster that same morning.
+- The only LATER commit touching the file, `51fe106c813193087c3c911d6785984e82727d24` (2026-08-09
+  19:32, 11 hours after the fix, same day), is a repo-wide sweep stripping internal `TASK-NNN`
+  ticket references from comments (confirmed by reading its full diff — every hunk removes a
+  `TASK-\d+` token from a comment; zero functional/YAML changes). It did not revert the fix.
+- **What this means:** the specific, nameable root cause the outer task asked this session to
+  diagnose — `HARNESS_INTERNAL_SERVICE_TOKEN` missing from `hope-secrets` combined with a
+  non-optional `secretKeyRef` on `hope-harness-worker` (unlike `hope-harness`'s optional ref) — was
+  real, was correctly diagnosed by whoever wrote `fcfe19a6`, and was fixed by making the ref
+  optional (matching the sibling workload's dev-mode-bypass semantics) plus pinning
+  `runAsUser`/`runAsGroup` to unblock the non-root check behind it. Per that commit's own words,
+  the fix was applied live to `hope-v2-dev`, seven days before this ticket's original 2026-08-16
+  execution session cited `docs/deployment-runbook.md` §12 as evidence the pod "is stuck" today.
+- **What is genuinely unverifiable from here, stated plainly rather than assumed:** whether the
+  `hope-harness-worker` pod is healthy on the cluster RIGHT NOW (2026-08-16). This session has no
+  cluster access. What IS established: the documented root cause has a fix, that fix is present in
+  the manifest at the latest readable commit with no evidence of reversion, and the fix's own
+  commit message asserts it was already live 7 days ago. Absent a new regression, there is no
+  remaining basis to call the crash-loop "real remaining work" the way §2.10 finding 2 and this
+  ticket's outer briefing both did.
+- **A genuine, separate finding, named but not fixed here (external repo, read-only):**
+  `docs/deployment-runbook.md` §12 ("the worker declares it required... One of the two is wrong —
+  decide which") and §15's open-items table (item 3: "blocks hope-harness-worker
+  (CreateContainerConfigError)"), plus `deployment/secrets.dev.yaml.example`'s inline comment on
+  the same key, all still describe the PRE-fix state. Both docs were last touched at or before
+  2026-08-09 01:31 and 01:28 respectively — before the 08:24 fix — and were never revisited to
+  match it (the runbook's own 19:32 edit that same day touched unrelated content only). This is a
+  real doc-vs-manifest drift inside `arca/hope-v2-deployment` a future session there should close,
+  not a finding this read-only session can act on.
+
+**What this changes about §4/§5:** Task 2's remaining, real work narrows further than §2.10 left
+it — not "fix the secret-optionality mismatch" (already fixed and applied), but: (a) confirm
+on-cluster today that the fix is still in effect and the pod is actually Running (needs cluster
+access this session lacks), and (b) resolve which `TEMPORAL_ADDRESS` the worker should target once
+Task 1's decision lands (unchanged — that part of §2.10 finding 2 still holds). Task 5's local-dev
+half moves from "authored, statically validated" to "authored, runtime-verified against live
+infra" — the one item §7 previously listed as not done. The cluster-side scrape-target gap (§2.10
+finding 5/6) is unaffected by this correction and remains open.
+
 ## 3. Knowledge & Best Practices
 
 - `.claude/rules/09-infrastructure-devops.md` §Cluster Deploys — the manifests are NOT in this repo
@@ -491,11 +579,16 @@ Each item independently verifiable; this is the literal checklist TASK-731/732 u
 - [x] Task 2: `harness` + `harness-worker` Deployment manifests exist in `arca/hope-v2-deployment`
       — **verified directly** (read-only GitLab access, not previously known to be available):
       `deployment/k8s/base/harness.yaml` + `harness-worker.yaml` @ commit `bb2f96f4c7d89e1099bdb300066e56b05ea43df5`,
-      wired into `base/kustomization.yaml`, synced to `hope-v2-dev`. **Caveat, not covered by this
-      checklist item's literal wording:** the worker pod itself is not healthy yet
-      (`CreateContainerConfigError` — missing secret key, `docs/deployment-runbook.md` §12); that is
-      real remaining work, tracked in §2.10 finding 2, not something this checklist item claims is
-      also done.
+      wired into `base/kustomization.yaml`, synced to `hope-v2-dev`. **Revised caveat (§2.11
+      corrects §2.10 finding 2):** the specific `CreateContainerConfigError` cause named in the
+      original diagnosis (`HARNESS_INTERNAL_SERVICE_TOKEN` required-vs-optional mismatch, plus a
+      `runAsNonRoot`/non-numeric-UID issue behind it) already has a fix present in the manifest,
+      whose own commit (`fcfe19a640f3875dd231b1e75423f3ac0aea1090`, 2026-08-09) states it was
+      "applied live on hope-v2-dev." Whether the pod is healthy TODAY is unverifiable without
+      cluster access (still not available), but there is no evidence of a regression — the only
+      later commit touching the file is a non-functional TASK-id-stripping pass. Remaining real
+      work is narrower than previously stated: confirm on-cluster today, and resolve
+      `TEMPORAL_ADDRESS` once Task 1 lands.
 - [ ] Task 3: a `promote-staging` pipeline run succeeds end-to-end against a real staging namespace
       (CI job log pasted); same for `promote-prod` once a release tag exercises it. **Not attempted
       this session** — no cluster access, and triggering a real deploy pipeline is outside this
@@ -503,18 +596,24 @@ Each item independently verifiable; this is the literal checklist TASK-731/732 u
       manifests already exist in Git but have not been applied to the cluster (Argo `Application`
       objects are not self-managed), so the namespaces genuinely do not exist yet — confirms the
       original assessment claim precisely.
-- [ ] Task 4: the availability-measurement report (5xx rate, latency percentiles, duplicate-execution
-      count for `harness-doc-{consultationId}`) is produced and reviewed. **Script authored
-      (`scripts/harness-availability-report.py`), compiles clean, and was actually invoked against
-      `localhost:7233` — it failed with a real connection-refused error because local Temporal is
-      down, which is the honest, expected result, not a fabricated report.** No report was produced
-      because Temporal was not reachable from this session; re-run once infra is up.
-- [ ] Task 5: `harness-temporal.json` dashboard exists and renders against local-dev infra
+- [x] Task 4: the availability-measurement report (5xx rate, latency percentiles, duplicate-execution
+      count for `harness-doc-{consultationId}`) is produced and reviewed. **Re-run 2026-08-16 (§2.11)
+      against LIVE local Temporal (`hope-temporal`, healthy): `harness-availability-report.py
+      --since-days 90` completed successfully — `total_executions_seen: 0` (a freshly-reset local
+      dev DB with no consultation traffic; the expected, honest result, not a fabricated nonzero
+      report). The script is now proven end-to-end against a real server, not just syntax-checked.**
+      5xx-rate/latency-percentile PromQL is printed by the script for the operator to run once the
+      harness app itself is also running with real traffic — that part is unchanged (by design, per
+      the script's own docstring: it does not embed a Prometheus client).
+- [x] Task 5: `harness-temporal.json` dashboard exists and renders against local-dev infra
       (screenshot pasted); workflow-backlog and worker-health alert rules exist and are reviewed.
-      **Dashboard JSON authored and JSON-validated; alert rules authored and `promtool check rules`
-      PASSED (4 rules found, 0 errors) — both genuinely verified, not just written.** The
-      render-against-live-infra screenshot is NOT done (local infra down) — left unchecked
-      specifically because of that, not the authoring work.
+      **Re-verified 2026-08-16 (§2.11) against LIVE local Prometheus + Grafana, not just static
+      validation:** `GET /api/v1/rules` shows all 4 rules loaded across 2 groups, `health: "ok"`;
+      `GET /api/v1/targets` shows the new `temporal` scrape job `up`; the dashboard
+      (`uid: hope-harness-temporal`) was opened in a real browser and renders all 7 panels, with the
+      "Temporal reachability" panel showing a live green "UP". The harness-specific panels
+      correctly show "No data" (harness app itself not running this session). This is the
+      previously-gated runtime verification, now done.
 - [x] Task 6: `docs/operations/temporal/README.md` exists, reviewed (self-reviewed against
       `docs/operations/vault/README.md`'s section shape), and linked from `docs/README.md` §Operations
       (the actual index — no separate `docs/operations/README.md` exists). Explicitly forked on
@@ -546,8 +645,9 @@ Each item independently verifiable; this is the literal checklist TASK-731/732 u
   ticket) or, more importantly, in the deployment repo's cluster-side Prometheus — where a
   `temporal` scrape job DOES exist but targets the WRONG Temporal instance (the dead in-cluster
   copy, not the VM harness actually uses — §2.10 finding 5). Task 5 closed the local-dev half
-  (new `temporal` scrape job + `PROMETHEUS_ENDPOINT` env var on the local Temporal container,
-  authored and config-validated, not yet runtime-verified since infra is down). The cluster-side
+  (new `temporal` scrape job + `PROMETHEUS_ENDPOINT` env var on the local Temporal container),
+  **now runtime-verified (§2.11, 2026-08-16): the live Prometheus `/api/v1/targets` API confirms
+  the `temporal` job is `up`.** The cluster-side
   half is NOT fixed by this ticket — it requires either Task 1's decision to land (if harness moves
   to the in-cluster copy, the existing scrape target becomes correct "for free") or a deployment-repo
   change adding a VM-IP scrape target, which is deployment-repo work this session cannot perform.
@@ -647,20 +747,88 @@ those constraints, this execution:
    ticket found it. Fixing it is explicitly out of scope (§1) and no CI file was edited by this
    session.
 
-**What remains, and why it is correctly incomplete rather than abandoned:**
+**What remains, and why it is correctly incomplete rather than abandoned (updated 2026-08-16, §2.11
+— superseded items struck through, not deleted, so the original session's snapshot stays legible):**
 
-- Task 1's actual sign-off — needs a human, by design.
+- Task 1's actual sign-off — needs a human, by design. Still open.
 - Tasks 2/3 — need write access to `arca/hope-v2-deployment` and/or a real cluster, neither
-  available to this session; Task 2's remaining work (secret-key fix) and Task 3's remaining work
-  (apply the Argo bootstrap files once) are both now precisely scoped in §2.10/§5 rather than
-  vague.
-- Task 4's actual report — needs a reachable Temporal instance; the script is ready to run the
-  moment one exists.
-- Task 5's dashboard screenshot + alert-rule runtime verification — needs local infra up; both
-  artifacts are authored and statically validated (JSON/YAML/promtool), not runtime-confirmed.
+  available to this session. ~~Task 2's remaining work (secret-key fix)~~ — **corrected in §2.11:
+  that fix already exists in the manifest and its own commit states it was applied live on
+  2026-08-09; Task 2's real remaining work is confirming that on today's cluster (needs access) and
+  resolving `TEMPORAL_ADDRESS` once Task 1 lands.** Task 3's remaining work (apply the Argo
+  bootstrap files once) is unchanged and still open.
+- ~~Task 4's actual report — needs a reachable Temporal instance~~ — **done, §2.11: the script ran
+  against live local Temporal and produced a real report (0 executions, expected on a fresh DB).**
+- ~~Task 5's dashboard screenshot + alert-rule runtime verification — needs local infra up~~ —
+  **done, §2.11: both verified against live local Prometheus (4/4 rules `up`/`ok`) and Grafana
+  (dashboard renders, live "UP" status observed).**
 - Task 6's open items (§6 of the runbook itself) — Postgres backup coverage for Temporal's tables,
   workflow-history retention configuration, an untested restore procedure, Temporal Cloud SLA
-  terms if Option B is chosen. All explicitly named, none silently assumed resolved.
+  terms if Option B is chosen. All explicitly named, none silently assumed resolved. Still open —
+  out of this follow-on session's scope (local-infra verification only).
+
+**Follow-on session, 2026-08-16 (local infra now up — see §2.11 for full detail):**
+
+9. **Task 4 re-run for real against live local Temporal.** `hope-temporal` is up and healthy this
+   session. `~/miniconda3/envs/arcaenv/bin/python scripts/harness-availability-report.py
+   --since-days 90` completed successfully against `localhost:7233`:
+
+   ```
+   Generated: 2026-08-16T08:02:57.151599+00:00
+   Temporal:  localhost:7233 / namespace default
+   Window:    last 90 days
+
+   Total executions seen:               0
+   Distinct consultation workflow ids:  0
+   Workflow ids with >1 execution:      0
+   Duplicate rate:                      None
+   ```
+
+   Zero executions is the honest, expected result (this is a freshly-reset local dev DB — no
+   consultation traffic has ever run through this Temporal instance). The script is now proven to
+   work end-to-end, not merely syntax-checked. Full JSON captured to the scratchpad (not committed
+   — a point-in-time local-dev artifact with no lasting value once a real environment has traffic).
+
+10. **Task 5 re-verified against live local Prometheus + Grafana**, not just static validation.
+    `curl localhost:9090/api/v1/rules` shows both alert groups loaded, 4/4 rules `health: "ok"`
+    (`HarnessHttp5xxRateHigh`, `HarnessHttpLatencyP95High`, `HarnessTemporalDown`,
+    `HarnessWorkerTaskFailures`). `curl localhost:9090/api/v1/targets` shows the new `temporal`
+    scrape job **`up`** (instance `temporal:9090`) — confirming the local-dev scrape gap named in
+    §6 is now genuinely closed, not just config-valid. Opened
+    `http://localhost:3001/d/hope-harness-temporal/harness-temporal` in a real browser session
+    (Grafana auto-provisioned it from the file-based dashboard provider, `updateIntervalSeconds:
+    30`, confirmed via `GET /api/search?query=harness` returning `uid: hope-harness-temporal`): all
+    7 panels render; "Temporal reachability" shows a live green "UP"; the harness-specific panels
+    correctly show "No data" since the harness FastAPI app itself was not started this session.
+    This is the screenshot/runtime evidence the original session flagged as gated purely on infra
+    being down — captured this session.
+
+11. **§2.10 finding 2 corrected** (full detail in the new §2.11): re-reading
+    `arca/hope-v2-deployment` more carefully — same read-only access, same commit
+    `bb2f96f4c7d89e1099bdb300066e56b05ea43df5` the original session cited — shows
+    `harness-worker.yaml`'s `HARNESS_INTERNAL_SERVICE_TOKEN` ref is `optional: true` today
+    (matching `harness.yaml`, not the "required" the original session and this session's own outer
+    task briefing both asserted), and the file's `securityContext` already pins
+    `runAsUser`/`runAsGroup: 1001` for a second latent defect the fix exposed. Tracing the file's
+    commit history (`mcp__gitlab__list_commits` + `get_commit_diff`) finds the fix commit,
+    `fcfe19a640f3875dd231b1e75423f3ac0aea1090` (2026-08-09T08:24:44+07:00), whose message states
+    outright: "Both are applied live on hope-v2-dev; this is the durable copy." The only later
+    commit touching the file is a same-day, repo-wide, purely-cosmetic sweep removing `TASK-NNN`
+    references from comments (verified by reading its full diff) — no functional revert. The
+    original session's finding traced instead from `docs/deployment-runbook.md` §12/§15 and
+    `deployment/secrets.dev.yaml.example`, both of which still describe the PRE-fix state and were
+    never updated after the 08:24 fix landed that same morning — a real doc-vs-manifest drift
+    inside the deployment repo, named here but not fixed (external repo, read-only). This session
+    cannot confirm the pod is healthy on the cluster TODAY (no cluster access), but the specific,
+    nameable root cause this ticket was asked to diagnose has a fix already present in the manifest
+    with no evidence of reversion — the "crash-looping" framing in both this ticket's §2.10 and the
+    outer task's own briefing was stale by 7 days.
+
+**Status is left as Blocked** — Task 1's human sign-off is still the binding gate, and Tasks 2/3
+still need write/cluster access this session does not have. Nothing was written to
+`arca/hope-v2-deployment` or any cluster this session either (only `get_project`,
+`get_repository_tree`, `get_file_contents`, `list_commits`, `get_commit`, `get_commit_diff` — all
+read-only GitLab calls).
 
 ## 8. Change History
 
@@ -668,3 +836,4 @@ those constraints, this execution:
 |---|---|---|
 | 2026-08-16 | Ticket authored | Claude (ticket-authoring session) |
 | 2026-08-16 | Execution session: §2 corrected against `arca/hope-v2-deployment` (read-only access, new §2.10); Task 1 decision document authored (`temporal-hosting-decision.md`, sign-off outstanding); Task 4 measurement script authored (`scripts/harness-availability-report.py`, not run — Temporal unreachable); Task 5 local-dev dashboard + alert rules authored and validated (`promtool`/JSON-valid), cluster-side scrape-target gap documented not fixed; Task 6 DR/backup runbook authored (`docs/operations/temporal/README.md`, forked on the unmade Task 1 decision, linked from `docs/README.md`). Status set to Blocked pending Task 1 sign-off + external access. | Claude (TASK-730 execution session) |
+| 2026-08-16 | Follow-on session (local infra now up): new §2.11 — Task 4 script actually run against live local Temporal (0 executions, expected on a fresh DB); Task 5 dashboard/alerts actually verified against live local Prometheus (4/4 rules loaded, `temporal` scrape target `up`) and Grafana (dashboard renders, live "UP" status observed in a real browser session); §2.10 finding 2 corrected — the specific `CreateContainerConfigError` root cause (`HARNESS_INTERNAL_SERVICE_TOKEN` optionality mismatch + a `runAsNonRoot` UID issue behind it) was already fixed and stated as "applied live on hope-v2-dev" by deployment-repo commit `fcfe19a640f3875dd231b1e75423f3ac0aea1090` on 2026-08-09, seven days before this ticket's original execution — the earlier session's claim it remains open traced from a stale prose doc (`docs/deployment-runbook.md` §12/§15) rather than the manifest's own current content and commit history. §5 checklist updated for Tasks 2/4/5. No write access used against `arca/hope-v2-deployment` or any cluster (read-only GitLab calls only); Status remains Blocked on Task 1's human sign-off. | Claude (TASK-730 follow-on session) |

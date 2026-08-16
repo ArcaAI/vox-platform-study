@@ -103,12 +103,16 @@ export interface PlanEntitlementValues {
   maxPromptTemplates: number | null;
   maxAsrPipelines: number | null;
   maxApiKeys: number | null;
+  /** Quantity ceiling on PUBLISHED WorkflowDefinition slugs (TASK-722 exposure plane). */
+  maxWorkflowDefinitions: number | null;
   storageQuotaBytes: number | null;
   /** Concurrency cap — simultaneous active STT sessions (null = unlimited). */
   maxConcurrentSessions: number | null;
   monthlyConsultations: number | null;
   monthlyTranscriptionMinutes: number | null;
   monthlySummaries: number | null;
+  /** Fourth business-object meter — PUBLISHED-workflow invocations via `/api/v1/workflows/:slug/invoke` (TASK-722). */
+  monthlyWorkflowInvocations: number | null;
   /**
    * Per-capability included allowances, derived in
    * from each plan's ratified business ceilings and then DOUBLED:
@@ -157,6 +161,7 @@ const PRO_VALUES: PlanEntitlementValues = {
   maxPromptTemplates: 50,
   maxAsrPipelines: 5,
   maxApiKeys: 10,
+  maxWorkflowDefinitions: 5,
   storageQuotaBytes: 100 * GIB,
   // PRO/TRIAL ≈ 25 concurrent doctors (anchored to the seat cap).
   maxConcurrentSessions: 25,
@@ -164,6 +169,10 @@ const PRO_VALUES: PlanEntitlementValues = {
   monthlyConsultations: 250,
   monthlyTranscriptionMinutes: 5_000, // 250 × 20-min average
   monthlySummaries: 250,
+  // Same ceiling as monthlyConsultations — one workflow invocation per
+  // consultation is the starting assumption (D-tunable; enforcement OFF by
+  // default, so exactness is not blocking — see the file header).
+  monthlyWorkflowInvocations: 250,
   monthlySttSessionSeconds: 660_000,
   monthlyLlmTokens: 3_000_000,
   monthlyTtsCharacters: 1_000_000,
@@ -184,6 +193,7 @@ export const PLAN_ENTITLEMENT_DEFAULTS: Record<TenantPlan, PlanEntitlementValues
     maxPromptTemplates: 10,
     maxAsrPipelines: 1,
     maxApiKeys: 2,
+    maxWorkflowDefinitions: 1,
     storageQuotaBytes: 5 * GIB,
     // STARTER ≈ 5 concurrent doctors.
     maxConcurrentSessions: 5,
@@ -191,6 +201,7 @@ export const PLAN_ENTITLEMENT_DEFAULTS: Record<TenantPlan, PlanEntitlementValues
     monthlyConsultations: 50,
     monthlyTranscriptionMinutes: 1_000, // 50 × 20-min average
     monthlySummaries: 50,
+    monthlyWorkflowInvocations: 50,
     monthlySttSessionSeconds: 132_000,
     monthlyLlmTokens: 600_000,
     monthlyTtsCharacters: 200_000,
@@ -211,6 +222,7 @@ export const PLAN_ENTITLEMENT_DEFAULTS: Record<TenantPlan, PlanEntitlementValues
     maxPromptTemplates: 300,
     maxAsrPipelines: 20,
     maxApiKeys: 50,
+    maxWorkflowDefinitions: 20,
     storageQuotaBytes: 1_000 * GIB,
     // ENTERPRISE ≈ 100 concurrent doctors.
     maxConcurrentSessions: 100,
@@ -219,6 +231,7 @@ export const PLAN_ENTITLEMENT_DEFAULTS: Record<TenantPlan, PlanEntitlementValues
     monthlyConsultations: null,
     monthlyTranscriptionMinutes: null,
     monthlySummaries: null,
+    monthlyWorkflowInvocations: null,
     monthlySttSessionSeconds: null,
     monthlyLlmTokens: null,
     monthlyTtsCharacters: null,

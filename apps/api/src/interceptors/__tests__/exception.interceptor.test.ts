@@ -16,6 +16,8 @@ import { Counter } from 'prom-client';
 import { ExceptionInterceptor } from '../exception.interceptor';
 import {
   ArgumentInvalidException,
+  ConsentDeniedException,
+  ConsentUnavailableException,
   DataNotFoundException,
   OptimisticConcurrencyException,
   BaseException,
@@ -343,6 +345,58 @@ describe('ExceptionInterceptor — ProviderCredentialVetoedException → 409', (
   it('never leaks a different provider name into the response', async () => {
     const caught = await catchHttp(new ProviderCredentialVetoedException('vetoed', { service: 'tts', provider: 'azure' }));
     expect(JSON.stringify(caught.getResponse())).not.toContain('sarvam');
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// Consent & ABAC (TASK-712). `ConsentDeniedException` → 403,
+// `ConsentUnavailableException` → 503 — DELIBERATELY DIFFERENT statuses (R4):
+// a real denial is an expected compliance event; an unavailability verdict
+// is an infrastructure incident wearing a compliance-shaped mask. Conflating
+// them would make a gateway hiccup read as a compliance event, or vice versa,
+// in alerting.
+// ───────────────────────────────────────────────────────────────────────────
+describe('ExceptionInterceptor — Consent & ABAC (TASK-712)', () => {
+  let interceptor: ExceptionInterceptor;
+
+  beforeEach(() => {
+    const cls: any = { getId: () => 'corr-consent', get: () => undefined };
+    interceptor = new ExceptionInterceptor(cls);
+  });
+
+  function createMockContext(): ExecutionContext {
+    return {
+      switchToHttp: () => ({ getRequest: () => ({ method: 'POST', url: '/api/v1/consultations/c-1/recording/start' }), getResponse: () => ({}) }),
+    } as unknown as ExecutionContext;
+  }
+
+  async function catchHttp(err: unknown): Promise<HttpException> {
+    try {
+      await firstValueFrom(interceptor.intercept(createMockContext(), { handle: () => throwError(() => err) } as CallHandler));
+    } catch (e) {
+      return e as HttpException;
+    }
+    throw new Error('expected interceptor to throw');
+  }
+
+  it('maps ConsentDeniedException to 403 with the denial reason in metadata', async () => {
+    const caught = await catchHttp(
+      new ConsentDeniedException('denied', { tenantId: 't-1', externalPatientId: 'EHR-A:1', purpose: 'AI_DOCUMENTATION', reason: 'no_grant' }),
+    );
+    expect(caught.getStatus()).toBe(HttpStatus.FORBIDDEN);
+    const body = caught.getResponse() as { code: string; metadata?: { reason: string } };
+    expect(body.code).toBe('DOMAIN.CONSENT_DENIED');
+    expect(body.metadata).toMatchObject({ reason: 'no_grant' });
+  });
+
+  it('maps ConsentUnavailableException to 503 — a DIFFERENT status from a genuine denial', async () => {
+    const caught = await catchHttp(
+      new ConsentUnavailableException('unavailable', { tenantId: 't-1', externalPatientId: 'EHR-A:1', purpose: 'AI_DOCUMENTATION', cause: 'grant_lookup_failed' }),
+    );
+    expect(caught.getStatus()).toBe(HttpStatus.SERVICE_UNAVAILABLE);
+    expect(caught.getStatus()).not.toBe(HttpStatus.FORBIDDEN);
+    const body = caught.getResponse() as { code: string };
+    expect(body.code).toBe('DOMAIN.CONSENT_UNAVAILABLE');
   });
 });
 
