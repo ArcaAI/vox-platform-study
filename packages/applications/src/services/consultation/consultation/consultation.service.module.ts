@@ -4,9 +4,14 @@ import { IConsultationService } from './IConsultationService';
 import { CoreDatabaseModule } from '@arcaai/domains';
 import { CommonServiceModule } from '../../baseServices';
 import { EntitlementsServiceModule } from '../../entitlements/entitlements.service.module';
+import { HarnessAuditServiceModule } from '../../harness-audit';
+import { EffectiveSettingsModule } from '../../settings-registry/effective-settings.module';
 
 @Module({
-  imports: [CommonServiceModule, CoreDatabaseModule, EntitlementsServiceModule],
+  // TASK-711 — HarnessAuditServiceModule resolves the @Optional
+  // HarnessAuditService WORM append; EffectiveSettingsModule resolves the
+  // @Optional TenantSettingsService kill-switch read.
+  imports: [CommonServiceModule, CoreDatabaseModule, EntitlementsServiceModule, HarnessAuditServiceModule, EffectiveSettingsModule],
   providers: [
     ConsultationService,
     {

@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ConsultationStatus } from '@arcaai/domains';
 import { ContextItemResponse } from '../../context/dto';
 
 /**
@@ -63,14 +64,23 @@ export class ConsultationResponse {
   parentConsultationId?: string;
 
   @ApiPropertyOptional({
-    description: 'Lifecycle status (derived from metadata.status; defaults to OPEN).',
-    enum: ['OPEN', 'CLOSED'],
-    example: 'OPEN',
+    description:
+      'Clinical lifecycle status — the single-sourced ConsultationStatus column (TASK-711 session state machine; docs/implementation/TASK-711-Session-State-Machine/state-machine.md).',
+    enum: ConsultationStatus,
+    example: ConsultationStatus.OPEN,
   })
-  status?: string;
+  status?: ConsultationStatus;
 
   @ApiPropertyOptional({ description: 'Additional metadata' })
   metadata?: Record<string, unknown>;
+
+  @ApiPropertyOptional({
+    description:
+      'Optimistic-concurrency row version (`_version`). Read this to build the `If-Match` header ' +
+      '(`"<version>"`) required by the state-machine transition routes (POST :id/prime|close|reopen — ' +
+      'TASK-711). `ETagInterceptor` also mirrors this value onto the response `ETag` header.',
+  })
+  version?: number;
 
   @ApiPropertyOptional({
     description: 'Context items (included when fetching single consultation)',

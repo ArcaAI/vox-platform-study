@@ -108,4 +108,9 @@ export enum ResourceType {
   // instruction content, deliberately separate from AiTaskDefault's
   // model-selection governance. Parity with audit.prisma.
   TenantNlpTaskInstructions = 'TenantNlpTaskInstructions',
+  // Institutional-RAG knowledge document (TASK-728) — the mutable head row
+  // is the audited resource; KnowledgeChunk is deliberately NOT its own
+  // ResourceType (see audit.prisma). Parity with audit.prisma; see
+  // resourceType.enum-parity.test.ts.
+  KnowledgeDocument = 'KnowledgeDocument',
 }

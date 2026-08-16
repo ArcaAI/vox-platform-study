@@ -18,7 +18,7 @@
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
-import { ArgumentInvalidException } from '@arcaai/exceptions';
+import { ArgumentInvalidException, QuotaExceededException } from '@arcaai/exceptions';
 import { SysEventType, WorkflowDefinitionStatus } from '@arcaai/domains';
 import { WorkflowDefinitionService } from '../workflow-definition.service';
 
@@ -49,6 +49,22 @@ const mockDatabaseService = {
 const mockEntitlements = {
   isEnforcementEnabled: vi.fn(() => false),
   assertQuantityQuota: vi.fn(),
+  // Default: allowed — matches the real service's `!isEnforcementEnabled() -> true` posture
+  // (TASK-724 Task 7) so every pre-existing test above, which never mocks this, keeps passing.
+  isFeatureEnabled: vi.fn(() => Promise.resolve(true)),
+};
+
+const STT_GRAPH = {
+  version: 1,
+  nodes: [
+    { id: 'n_audio', type: 'stt.audioInput', config: { mode: 'realtime' } },
+    { id: 'n_asr', type: 'stt.asrEngine', config: { modelSlug: 'whisper-large-v3' } },
+    { id: 'n_out', type: 'stt.transcriptOutput', config: {} },
+  ],
+  edges: [
+    { id: 'e1', from: 'n_audio', fromPort: 'out', to: 'n_asr', toPort: 'in' },
+    { id: 'e2', from: 'n_asr', fromPort: 'out', to: 'n_out', toPort: 'in' },
+  ],
 };
 
 const VALID_GRAPH = { version: 1, nodes: [{ id: 'n1', type: 'noop', config: {} }], edges: [] };
@@ -338,6 +354,39 @@ describe('WorkflowDefinitionService', () => {
       expect(entity.isActive).toBe(false);
       expect(mockWorkflowDefinitionRepository.findPublishedBySlug).not.toHaveBeenCalled();
     });
+
+    describe('featurePaletteStt entitlement gate (TASK-724 Task 7)', () => {
+      it('never consults isFeatureEnabled for a non-stt palette', async () => {
+        const entity = createMockEntity({ paletteKey: 'summarization' });
+        mockWorkflowDefinitionRepository.findById.mockResolvedValue(entity);
+        mockWorkflowDefinitionRepository.update.mockImplementation((_id, e) => Promise.resolve(e));
+
+        await service.publish('def-id-1', {});
+
+        expect(mockEntitlements.isFeatureEnabled).not.toHaveBeenCalled();
+      });
+
+      it('publishes an stt-palette workflow when the tenant IS entitled', async () => {
+        const entity = createMockEntity({ paletteKey: 'stt', graph: STT_GRAPH });
+        mockWorkflowDefinitionRepository.findById.mockResolvedValue(entity);
+        mockWorkflowDefinitionRepository.update.mockImplementation((_id, e) => Promise.resolve(e));
+        mockEntitlements.isFeatureEnabled.mockResolvedValue(true);
+
+        const result = await service.publish('def-id-1', {});
+
+        expect(mockEntitlements.isFeatureEnabled).toHaveBeenCalledWith('tenant-1', 'paletteStt');
+        expect(result.status).toBe(WorkflowDefinitionStatus.PUBLISHED);
+      });
+
+      it('blocks (does not write) an stt-palette publish when the tenant is NOT entitled', async () => {
+        const entity = createMockEntity({ paletteKey: 'stt', graph: STT_GRAPH });
+        mockWorkflowDefinitionRepository.findById.mockResolvedValue(entity);
+        mockEntitlements.isFeatureEnabled.mockResolvedValue(false);
+
+        await expect(service.publish('def-id-1', {})).rejects.toBeInstanceOf(QuotaExceededException);
+        expect(mockWorkflowDefinitionRepository.update).not.toHaveBeenCalled();
+      });
+    });
   });
 
   describe('getById', () => {
@@ -346,6 +395,39 @@ describe('WorkflowDefinitionService', () => {
       mockWorkflowDefinitionRepository.findById.mockResolvedValue(foreign);
 
       await expect(service.getById('def-id-1')).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
+
+  describe('getCompiledConfigForSandboxRun (TASK-721 Workbench)', () => {
+    it('compiles a DRAFT row (no persisted compiledConfig) fresh, and never writes it back', async () => {
+      const entity = createMockEntity({ status: WorkflowDefinitionStatus.DRAFT, compiledConfig: null });
+      mockWorkflowDefinitionRepository.findById.mockResolvedValue(entity);
+
+      const result = await service.getCompiledConfigForSandboxRun('def-id-1');
+
+      expect(result.compiledConfig).toBeTruthy();
+      expect(result.workflowVersionId).toBe('def-id-1');
+      expect(result.workflowSlug).toBe('discharge_summary');
+      expect(result.workflowVersionNumber).toBe(1);
+      expect(result.definitionName).toBe('Discharge Summary');
+      // A read, never a lifecycle transition or a persisted write.
+      expect(mockWorkflowDefinitionRepository.update).not.toHaveBeenCalled();
+      expect(mockWorkflowDefinitionRepository.updateWithVersion).not.toHaveBeenCalled();
+      expect(entity.status).toBe(WorkflowDefinitionStatus.DRAFT);
+    });
+
+    it('rejects (400) a graph the engine cannot compile, same predicate as publish()', async () => {
+      const entity = createMockEntity({ graph: UNREGISTERED_NODE_GRAPH });
+      mockWorkflowDefinitionRepository.findById.mockResolvedValue(entity);
+
+      await expect(service.getCompiledConfigForSandboxRun('def-id-1')).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('throws NotFoundException on a cross-tenant id (404-over-403)', async () => {
+      const foreign = createMockEntity({ tenantId: 'tenant-OTHER' });
+      mockWorkflowDefinitionRepository.findById.mockResolvedValue(foreign);
+
+      await expect(service.getCompiledConfigForSandboxRun('def-id-1')).rejects.toBeInstanceOf(NotFoundException);
     });
   });
 
@@ -392,7 +474,25 @@ describe('WorkflowDefinitionService', () => {
     it('projects WORKFLOW_NODE_REGISTRY, sorted, with a registryChecksum', async () => {
       const result = await service.listNodes();
 
-      expect(result.nodes.map((n) => n.type)).toEqual(['noop', 'passthrough']);
+      // TASK-724 populated the eight STT-palette node types alongside the TASK-734 seed
+      // entries — this projection is a live read of WORKFLOW_NODE_REGISTRY, so it must track
+      // that registry's real contents, not a stale snapshot. NOTE (2026-08-16): TASK-720's own
+      // five summarization-palette entries are currently absent from the registry — a
+      // concurrent sibling session's uncommitted work was reverted mid-session by an external
+      // tree operation (see this ticket's README §7); this assertion reflects the registry's
+      // actual current content, not what either ticket intends long-term.
+      expect(result.nodes.map((n) => n.type)).toEqual([
+        'noop',
+        'passthrough',
+        'stt.asrEngine',
+        'stt.audioInput',
+        'stt.diarization',
+        'stt.languageDetection',
+        'stt.noiseFilter',
+        'stt.phiHop',
+        'stt.transcriptOutput',
+        'stt.vad',
+      ]);
       expect(result.registryChecksum).toMatch(/^[0-9a-f]{64}$/);
     });
   });

@@ -11,7 +11,37 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
 import { SummaryService } from '../summary.service';
-import { SysEventType, ContextItemVersionFactory, HarnessAuditAction, ConsultationStatus, NamedEntityFactory } from '@arcaai/domains';
+import { SysEventType, ContextItemVersionFactory, HarnessAuditAction, ConsultationStatus, NamedEntityFactory, ConsultationEntity } from '@arcaai/domains';
+
+/**
+ * TASK-711 — `approveSummary` now calls the REAL
+ * `ConsultationEntity.transitionTo` (state-machine.md §2), so every
+ * `mockConsultationRepository.findById` fixture must be a real entity
+ * instance, not a duck-typed object. Defaults `status` to `PENDING_REVIEW`
+ * (a legal predecessor of `SIGNED`) since most of this file's fixtures
+ * predate the state machine and never specified one; call sites that need a
+ * different predecessor (or a non-signing codepath) pass `status` explicitly.
+ */
+function consultationFixture(overrides: Record<string, unknown> = {}): ConsultationEntity {
+  return new ConsultationEntity({
+    id: 'c-1',
+    tenantId: 'tenant-1',
+    patientId: 'patient-1',
+    doctorId: 'doctor-1',
+    appointmentDate: new Date('2026-01-01'),
+    metadata: null,
+    status: ConsultationStatus.PENDING_REVIEW,
+    degradedReasons: [],
+    createdAt: new Date('2026-01-01'),
+    updatedAt: new Date('2026-01-01'),
+    createdBy: 'user-1',
+    resourceStatusUpdatedAt: null,
+    resourceStatusUpdatedBy: null,
+    version: 1,
+    ...overrides,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } as any);
+}
 
 // Mock domain factories — same approach as ner.processor.test.ts
 vi.mock('@arcaai/domains', async () => {
@@ -266,7 +296,7 @@ describe('SummaryService', () => {
   // ── callSmrService passes the cascade-resolved model ──
   describe('callSmrService SMR selection', () => {
     const primeGenerateMocks = () => {
-      mockConsultationRepository.findById.mockResolvedValue({ id: 'c-1', tenantId: 'tenant-1' });
+      mockConsultationRepository.findById.mockResolvedValue(consultationFixture({ id: 'c-1', tenantId: 'tenant-1' }));
       mockContextItemRepository.findTranscripts.mockResolvedValue([{ content: 'transcript text' }]);
       mockHttpService.axiosRef.post.mockResolvedValue({ data: { summary: 'S', modelName: 'm' } });
       mockContextItemRepository.create.mockResolvedValue({ id: 'ctx-new', content: 'S', createdAt: new Date(), updatedAt: new Date() });
@@ -321,7 +351,7 @@ describe('SummaryService', () => {
   // path. `stats` may be null (legacy idempotency-cache hit) → degrade cleanly.
   describe('generation stats persistence', () => {
     const primeGenerateMocks = (data: Record<string, unknown>) => {
-      mockConsultationRepository.findById.mockResolvedValue({ id: 'c-1', tenantId: 'tenant-1' });
+      mockConsultationRepository.findById.mockResolvedValue(consultationFixture({ id: 'c-1', tenantId: 'tenant-1' }));
       mockContextItemRepository.findTranscripts.mockResolvedValue([{ content: 'transcript text' }]);
       mockContextItemRepository.findLatestPreSummary.mockResolvedValue(null);
       mockHttpService.axiosRef.post.mockResolvedValue({ data });
@@ -363,7 +393,7 @@ describe('SummaryService', () => {
     });
 
     it('persists stopReason/ttftMs/tokensPerSecond from a populated SMR stats block (generatePreSummary)', async () => {
-      mockConsultationRepository.findById.mockResolvedValue({ id: 'c-1', tenantId: 'tenant-1' });
+      mockConsultationRepository.findById.mockResolvedValue(consultationFixture({ id: 'c-1', tenantId: 'tenant-1' }));
       mockContextItemRepository.findCaseNotes.mockResolvedValue([{ id: 'cn-1', content: 'case note content' }]);
       mockHttpService.axiosRef.post.mockResolvedValue({ data: { summary: 'S', modelName: 'm', stats: POPULATED_STATS } });
       mockContextItemRepository.create.mockResolvedValue({ id: 'ctx-pre', content: 'S', createdAt: new Date(), updatedAt: new Date() });
@@ -907,7 +937,7 @@ describe('SummaryService', () => {
         mockPromptAssemblyService as any,
       );
 
-      mockConsultationRepository.findById.mockResolvedValue({ id: 'c-1', tenantId: 'tenant-1' });
+      mockConsultationRepository.findById.mockResolvedValue(consultationFixture({ id: 'c-1', tenantId: 'tenant-1' }));
       mockContextItemRepository.findTranscripts.mockResolvedValue([{ content: 'transcript text' }]);
       mockHttpService.axiosRef.post.mockResolvedValue({
         data: { summary: 'Generated summary', modelName: 'gpt-4o' },
@@ -1011,7 +1041,7 @@ describe('SummaryService', () => {
         mockPromptAssemblyService as any,
       );
 
-      mockConsultationRepository.findById.mockResolvedValue({ id: 'c-1', tenantId: 'tenant-1' });
+      mockConsultationRepository.findById.mockResolvedValue(consultationFixture({ id: 'c-1', tenantId: 'tenant-1' }));
       mockContextItemRepository.findTranscripts.mockResolvedValue([{ content: 'transcript' }]);
       mockHttpService.axiosRef.post.mockResolvedValue({
         data: { summary: 'result', modelName: 'test' },
@@ -1062,7 +1092,7 @@ describe('SummaryService', () => {
     });
 
     it('should call SMR service at /api/v1/generate', async () => {
-      mockConsultationRepository.findById.mockResolvedValue({ id: 'c-1', tenantId: 'tenant-1' });
+      mockConsultationRepository.findById.mockResolvedValue(consultationFixture({ id: 'c-1', tenantId: 'tenant-1' }));
       mockContextItemRepository.findCaseNotes.mockResolvedValue([{ content: 'Historical case note content' }]);
       mockHttpService.axiosRef.post.mockResolvedValue({
         data: { summary: 'Pre-summary result', modelName: 'gpt-4o' },
@@ -1131,7 +1161,7 @@ describe('SummaryService', () => {
         mockPromptAssemblyService as any,
       );
 
-      mockConsultationRepository.findById.mockResolvedValue({ id: 'c-1', tenantId: 'tenant-1' });
+      mockConsultationRepository.findById.mockResolvedValue(consultationFixture({ id: 'c-1', tenantId: 'tenant-1' }));
       mockContextItemRepository.findTranscripts.mockResolvedValue([{ content: 'transcript' }]);
       mockHttpService.axiosRef.post.mockResolvedValue({
         data: { summary: 'result', modelName: 'test' },
@@ -1607,10 +1637,10 @@ describe('SummaryService', () => {
   describe('cross-aggregate tenant checks', () => {
     describe('generatePreSummary', () => {
       it('throws NotFoundException when parent consultation belongs to another tenant', async () => {
-        mockConsultationRepository.findById.mockResolvedValue({
+        mockConsultationRepository.findById.mockResolvedValue(consultationFixture({
           id: 'c-other',
           tenantId: 'tenant-OTHER',
-        });
+        }));
 
         await expect(service.generatePreSummary('c-other', {} as any)).rejects.toThrow(NotFoundException);
         expect(mockHttpService.axiosRef.post).not.toHaveBeenCalled();
@@ -1620,10 +1650,10 @@ describe('SummaryService', () => {
 
     describe('generateSummary', () => {
       it('throws NotFoundException when parent consultation belongs to another tenant', async () => {
-        mockConsultationRepository.findById.mockResolvedValue({
+        mockConsultationRepository.findById.mockResolvedValue(consultationFixture({
           id: 'c-other',
           tenantId: 'tenant-OTHER',
-        });
+        }));
 
         await expect(service.generateSummary('c-other', { transcription: 'x' } as any)).rejects.toThrow(NotFoundException);
         expect(mockHttpService.axiosRef.post).not.toHaveBeenCalled();
@@ -1710,12 +1740,12 @@ describe('SummaryService', () => {
         mockContextItemRepository.findById.mockResolvedValue(makeFinalSummary());
         mockContextItemVersionRepository.getVersionsByChangeReason.mockResolvedValue([]);
         mockContextItemVersionRepository.create.mockResolvedValue({ id: 'signed-version-id-1' });
-        mockConsultationRepository.findById.mockResolvedValue({
+        mockConsultationRepository.findById.mockResolvedValue(consultationFixture({
           id: 'consultation-1',
           tenantId: 'tenant-1',
-          status: ConsultationStatus.OPEN,
+          status: ConsultationStatus.PENDING_REVIEW, // TASK-711: OPEN cannot legally reach SIGNED; PENDING_REVIEW can
           updatedBy: null,
-        });
+        }));
         mockConsultationRepository.update.mockResolvedValue({ id: 'consultation-1' });
 
         const result = await gatedService.approveSummary('ctx-item-123');
@@ -1834,12 +1864,12 @@ describe('SummaryService', () => {
         mockContextItemRepository.findById.mockResolvedValue(makeFinalSummary());
         mockContextItemVersionRepository.getVersionsByChangeReason.mockResolvedValue([]);
         mockContextItemVersionRepository.create.mockResolvedValue({ id: 'signed-version-id-1' });
-        mockConsultationRepository.findById.mockResolvedValue({
+        mockConsultationRepository.findById.mockResolvedValue(consultationFixture({
           id: 'consultation-1',
           tenantId: 'tenant-1',
           status: ConsultationStatus.PENDING_REVIEW,
           updatedBy: null,
-        });
+        }));
         mockConsultationRepository.update.mockResolvedValue({ id: 'consultation-1' });
       });
 
@@ -2000,13 +2030,13 @@ describe('SummaryService', () => {
         mockContextItemRepository.findById.mockResolvedValue(makeFinalSummary());
         mockContextItemVersionRepository.getVersionsByChangeReason.mockResolvedValue([]);
         mockContextItemVersionRepository.create.mockResolvedValue({ id: 'signed-version-id-1' });
-        mockConsultationRepository.findById.mockResolvedValue({
+        mockConsultationRepository.findById.mockResolvedValue(consultationFixture({
           id: 'consultation-1',
           tenantId: 'tenant-1',
           status: ConsultationStatus.PENDING_REVIEW,
           updatedBy: null,
           version: 6,
-        });
+        }));
       });
 
       it('CASes the ContextItem row with the caller-supplied expectedVersion and the Consultation row with its own freshly-read version', async () => {
@@ -2104,12 +2134,12 @@ describe('SummaryService', () => {
         mockContextItemRepository.findById.mockResolvedValue(makeFinalSummary());
         mockContextItemVersionRepository.getVersionsByChangeReason.mockResolvedValue([]);
         mockContextItemVersionRepository.create.mockResolvedValue({ id: 'signed-version-id-1' });
-        mockConsultationRepository.findById.mockResolvedValue({
+        mockConsultationRepository.findById.mockResolvedValue(consultationFixture({
           id: 'consultation-1',
           tenantId: 'tenant-1',
-          status: ConsultationStatus.OPEN,
+          status: ConsultationStatus.PENDING_REVIEW, // TASK-711: OPEN cannot legally reach SIGNED; PENDING_REVIEW can
           updatedBy: null,
-        });
+        }));
         mockConsultationRepository.update.mockResolvedValue({ id: 'consultation-1' });
       });
 
@@ -2216,11 +2246,11 @@ describe('SummaryService', () => {
       });
 
       it('forwards the edit (content + new versionId + editor) when the draft is still DRAFT_PENDING_SENSORS', async () => {
-        mockConsultationRepository.findById.mockResolvedValue({
+        mockConsultationRepository.findById.mockResolvedValue(consultationFixture({
           id: 'consultation-1',
           tenantId: 'tenant-1',
           status: ConsultationStatus.DRAFT_PENDING_SENSORS,
-        });
+        }));
 
         await editService.updateSummary('ctx-edit-1', { content: 'S: edited subjective ... P: edited plan' });
 
@@ -2236,11 +2266,11 @@ describe('SummaryService', () => {
       });
 
       it('does NOT signal when the consultation is not in DRAFT_PENDING_SENSORS', async () => {
-        mockConsultationRepository.findById.mockResolvedValue({
+        mockConsultationRepository.findById.mockResolvedValue(consultationFixture({
           id: 'consultation-1',
           tenantId: 'tenant-1',
           status: ConsultationStatus.PENDING_REVIEW,
-        });
+        }));
 
         await editService.updateSummary('ctx-edit-1', { content: 'edited' });
 
@@ -2256,11 +2286,11 @@ describe('SummaryService', () => {
       });
 
       it('still completes the edit when the harness edit signal throws (best-effort, not rolled back)', async () => {
-        mockConsultationRepository.findById.mockResolvedValue({
+        mockConsultationRepository.findById.mockResolvedValue(consultationFixture({
           id: 'consultation-1',
           tenantId: 'tenant-1',
           status: ConsultationStatus.DRAFT_PENDING_SENSORS,
-        });
+        }));
         mockHarnessGateway.signalEdit.mockRejectedValue(new Error('harness unreachable'));
 
         const result = await editService.updateSummary('ctx-edit-1', { content: 'edited' });
@@ -2315,7 +2345,7 @@ describe('SummaryService', () => {
 
     it('encrypts the generated pre-summary content before persisting (generatePreSummary)', async () => {
       const serviceWithSecrets = buildServiceWithSecrets();
-      mockConsultationRepository.findById.mockResolvedValue({ id: 'c-1', tenantId: 'tenant-1' });
+      mockConsultationRepository.findById.mockResolvedValue(consultationFixture({ id: 'c-1', tenantId: 'tenant-1' }));
       mockContextItemRepository.findCaseNotes.mockResolvedValue([{ id: 'cn-1', content: 'case note content' }]);
       mockHttpService.axiosRef.post.mockResolvedValue({ data: { summary: 'Pre-summary text', modelName: 'm' } });
       mockContextItemRepository.create.mockResolvedValue({
@@ -2339,7 +2369,7 @@ describe('SummaryService', () => {
 
     it('encrypts the generated summary content before persisting (generateSummary)', async () => {
       const serviceWithSecrets = buildServiceWithSecrets();
-      mockConsultationRepository.findById.mockResolvedValue({ id: 'c-1', tenantId: 'tenant-1' });
+      mockConsultationRepository.findById.mockResolvedValue(consultationFixture({ id: 'c-1', tenantId: 'tenant-1' }));
       mockContextItemRepository.findTranscripts.mockResolvedValue([{ content: 'transcript text' }]);
       mockContextItemRepository.findLatestPreSummary.mockResolvedValue(null);
       mockHttpService.axiosRef.post.mockResolvedValue({ data: { summary: 'Raw summary text', modelName: 'm' } });
@@ -2426,12 +2456,12 @@ describe('SummaryService', () => {
       mockContextItemRepository.findById.mockResolvedValue(finalSummary);
       mockContextItemVersionRepository.getVersionsByChangeReason.mockResolvedValue([]);
       mockContextItemVersionRepository.create.mockResolvedValue({ id: 'signed-version-enc' });
-      mockConsultationRepository.findById.mockResolvedValue({
+      mockConsultationRepository.findById.mockResolvedValue(consultationFixture({
         id: 'consultation-1',
         tenantId: 'tenant-1',
-        status: ConsultationStatus.OPEN,
+        status: ConsultationStatus.PENDING_REVIEW, // TASK-711: OPEN cannot legally reach SIGNED; PENDING_REVIEW can
         updatedBy: null,
-      });
+      }));
       mockConsultationRepository.update.mockResolvedValue({ id: 'consultation-1' });
       mockContextItemRepository.update.mockResolvedValue({ ...finalSummary });
 
@@ -2602,7 +2632,7 @@ describe('SummaryService', () => {
       );
 
     const primeGeneratePreSummaryMocks = () => {
-      mockConsultationRepository.findById.mockResolvedValue({ id: 'c-1', tenantId: 'tenant-1' });
+      mockConsultationRepository.findById.mockResolvedValue(consultationFixture({ id: 'c-1', tenantId: 'tenant-1' }));
       mockContextItemRepository.findCaseNotes.mockResolvedValue([{ id: 'note-1', content: 'case note text' }]);
       mockHttpService.axiosRef.post.mockResolvedValue({ data: { summary: 'S', modelName: 'm' } });
       mockContextItemRepository.create.mockResolvedValue({ id: 'presummary-1', content: 'S', createdAt: new Date(), updatedAt: new Date() });
@@ -2643,7 +2673,7 @@ describe('SummaryService', () => {
     // the side-effect-free `resolveConfig` read is exercised, for logging.
     describe('generateSummary (HUMAN-GATED — logging-only, sync semantics unchanged)', () => {
       const primeGenerateSummaryMocks = () => {
-        mockConsultationRepository.findById.mockResolvedValue({ id: 'c-1', tenantId: 'tenant-1' });
+        mockConsultationRepository.findById.mockResolvedValue(consultationFixture({ id: 'c-1', tenantId: 'tenant-1' }));
         mockContextItemRepository.findTranscripts.mockResolvedValue([{ content: 'transcript text' }]);
         mockHttpService.axiosRef.post.mockResolvedValue({ data: { summary: 'S', modelName: 'm' } });
         mockContextItemRepository.create.mockResolvedValue({ id: 'ctx-new', content: 'S', createdAt: new Date(), updatedAt: new Date() });

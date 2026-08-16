@@ -23,6 +23,7 @@ import {
   McpServerRepository,
   SYSTEM_TENANT_ID,
   ResourceStatusType,
+  NotificationType,
 } from '@arcaai/domains';
 import { OptimisticConcurrencyException } from '@arcaai/exceptions';
 import { attachSegmentEvidence, extractAndStripSegmentCitationMarkers, type SegmentOffsetRef } from '../lib/transcript-segments';
@@ -42,6 +43,8 @@ import { PromptAssemblyService, type NerEntityForPrompt } from '../prompt/prompt
 import { formatSessionAgentPromptVersion, readLiveAgentLineage } from '../prompt/live-agent-lineage';
 import { IConsultationJobService } from '../jobs/consultation-job.service';
 import { IUsageLedgerService } from '../../usageLedger';
+import { INotificationService } from '../../notification';
+import type { CreateNotificationRequest } from '../../notification/dto';
 import { assertEqualTenants, createWorkerSession, encryptPhiFields } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 import { HARNESS_DRAFT_PHASE } from './dto';
@@ -221,6 +224,13 @@ export class HarnessInternalService {
     // `harness-internal.service.test.ts`'s double-bill-guard test can assert
     // `recordUsage` is never called — see that test for the regression net.
     @Optional() @Inject(IUsageLedgerService) private readonly usageLedgerService?: IUsageLedgerService,
+    // TASK-711 — clinician notification on TIMED_OUT (the terminal gate-SLA
+    // abandonment). Optional + trailing so existing positional unit fixtures
+    // keep their arity; production DI supplies it via NotificationServiceModule.
+    // Best-effort: a notification-send failure must NEVER roll back the
+    // TIMED_OUT transition or its WORM append — the record is the WORM row,
+    // the notification is the courtesy (README §4 Task 7).
+    @Optional() @Inject(INotificationService) private readonly notificationService?: INotificationService,
   ) {
     const raw = String(this.configService?.get('HARNESS_WARM_START_ENABLED') ?? '')
       .trim()
@@ -915,12 +925,20 @@ export class HarnessInternalService {
           await this.summaryMetaRepository.create(summaryMeta);
         }
 
-        // 3. Lifecycle. EARLY -> DRAFT_PENDING_SENSORS (readable, assurance pending,
-        // NOT signable). LEGACY -> PENDING_REVIEW (clinician confirm-before-commit).
+        // 3. Lifecycle (TASK-711). EARLY -> DRAFT_PENDING_SENSORS (readable,
+        // assurance pending, NOT signable). LEGACY -> PENDING_REVIEW
+        // (clinician confirm-before-commit). Legal predecessor is now
+        // DRAINING (state-machine.md §2) — a draft arriving while the
+        // consultation is still RECORDING is a real ordering bug and
+        // `transitionTo` throws rather than papering over it.
         if (consultation) {
-          consultation.status = isEarly ? ConsultationStatus.DRAFT_PENDING_SENSORS : ConsultationStatus.PENDING_REVIEW;
-          consultation.updatedBy = userId;
-          await this.consultationRepository.update(consultation.id, consultation);
+          const draftTarget = isEarly ? ConsultationStatus.DRAFT_PENDING_SENSORS : ConsultationStatus.PENDING_REVIEW;
+          const expectedConsultationVersion = consultation.version;
+          const applied = consultation.transitionTo(draftTarget, userId, 'persistDraft');
+          if (applied) {
+            consultation.updatedBy = userId;
+            await this.consultationRepository.updateWithVersion(consultation.id, consultation, expectedConsultationVersion);
+          }
         }
 
         // 4. SSE progress (best-effort — a Redis hiccup must not lose the draft).
@@ -1057,12 +1075,23 @@ export class HarnessInternalService {
         // right place to back off.
         await this.applyAssuranceBackfillWithCas(consultationId, tenantId, dto);
 
-        // 2. Lifecycle DRAFT_PENDING_SENSORS -> PENDING_REVIEW (idempotent — a retry
-        // after the flip is a no-op, never regressing a signed/closed consultation).
+        // 2. Lifecycle DRAFT_PENDING_SENSORS -> PENDING_REVIEW (TASK-711;
+        // idempotent — a retry after the flip is a no-op, never regressing a
+        // signed/closed consultation). The guard is kept as an EXPLICIT
+        // status check (not the broader `entity.canTransitionTo(PENDING_REVIEW)`
+        // README §4 Task 7 sketches) — the matrix also legally reaches
+        // PENDING_REVIEW from DRAINING and REOPENED, and `finalizeAssurance`
+        // is specifically the second phase of an EARLY draft; silently
+        // promoting a DRAINING/REOPENED consultation here would be exactly
+        // the "paper over an ordering bug" failure mode `persistDraft`
+        // above is written to AVOID. The write itself still routes through
+        // `transitionTo` (guaranteed legal — DRAFT_PENDING_SENSORS →
+        // PENDING_REVIEW is a matrix row) so it stays the single writer.
         if (consultation && consultation.status === ConsultationStatus.DRAFT_PENDING_SENSORS) {
-          consultation.status = ConsultationStatus.PENDING_REVIEW;
+          const expectedConsultationVersion = consultation.version;
+          consultation.transitionTo(ConsultationStatus.PENDING_REVIEW, userId, 'finalizeAssurance');
           consultation.updatedBy = userId;
-          await this.consultationRepository.update(consultation.id, consultation);
+          await this.consultationRepository.updateWithVersion(consultation.id, consultation, expectedConsultationVersion);
         }
 
         // 3. SSE progress (best-effort — a Redis hiccup must not lose the verdict).
@@ -1306,7 +1335,8 @@ export class HarnessInternalService {
         assertEqualTenants(consultation, { tenantId });
         this.assertConsultationWritable(consultation);
 
-        const action = dto.reason === 'gate_sla_abandoned' ? HarnessAuditAction.GATE_ABANDONED : HarnessAuditAction.GATE_ESCALATED;
+        const isTerminalAbandon = dto.reason === 'gate_sla_abandoned';
+        const action = isTerminalAbandon ? HarnessAuditAction.GATE_ABANDONED : HarnessAuditAction.GATE_ESCALATED;
 
         await this.harnessAuditService.append({
           tenantId,
@@ -1320,6 +1350,51 @@ export class HarnessInternalService {
           citations: [],
           createdBy: null,
         });
+
+        // TASK-711 — the TERMINAL abandon additionally drives the session
+        // state machine: PENDING_REVIEW -> TIMED_OUT (state-machine.md §2).
+        // A distinct, persisted, visibly-unsigned TIMED_OUT + notification
+        // (INV-177/181/182/183/413/255/147) — "the clock never signs".
+        // Non-terminal GATE_ESCALATED writes no status, as before.
+        if (isTerminalAbandon && consultation) {
+          const expectedConsultationVersion = consultation.version;
+          const applied = consultation.transitionTo(ConsultationStatus.TIMED_OUT, 'system', 'recordEscalation');
+          if (applied) {
+            await this.consultationRepository.updateWithVersion(consultation.id, consultation, expectedConsultationVersion);
+
+            await this.harnessAuditService.append({
+              tenantId,
+              consultationId,
+              action: HarnessAuditAction.SESSION_TIMED_OUT,
+              modelName: 'session-lifecycle',
+              modelVersion: 'v1',
+              sensorScores: { reason: dto.reason, jobId: dto.jobId ?? null },
+              citations: [],
+              createdBy: null,
+            });
+
+            // Best-effort: a notification-send failure must never roll back
+            // the (already persisted + WORM-recorded) TIMED_OUT transition —
+            // the WORM row is the record, the notification is the courtesy.
+            try {
+              await this.notificationService?.create({
+                title: 'Consultation gate timed out',
+                message: `Consultation ${consultationId} reached its review SLA with no clinician sign-off and is now TIMED_OUT. A later approval still commits.`,
+                type: NotificationType.ACTION,
+                read: false,
+                targetUserId: consultation.doctorId,
+                tenantId,
+                data: { consultationId, action: 'SESSION_TIMED_OUT' },
+              } as CreateNotificationRequest);
+            } catch (error) {
+              this.logger.warn({
+                message: 'TASK-711: TIMED_OUT clinician notification failed (best-effort, transition not rolled back)',
+                consultationId,
+                error: error instanceof Error ? error.message : String(error),
+              });
+            }
+          }
+        }
 
         this.logger.log({ message: 'Harness gate escalation recorded', consultationId, reason: dto.reason, action });
         return { recorded: true };

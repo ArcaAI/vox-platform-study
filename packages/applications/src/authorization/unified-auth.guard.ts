@@ -7,6 +7,7 @@ import {
   Injectable,
   Logger,
   Optional,
+  SetMetadata,
   UnauthorizedException,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
@@ -35,6 +36,54 @@ export const API_KEY_REQUIRED_SCOPES = 'apiKeyRequiredScopes';
  * completely unaffected by this decorator.
  */
 export const API_KEY_FORBIDDEN = 'apiKeyForbidden';
+
+/**
+ * Metadata key for `@ResolveSubjectInstance(...)` (TASK-712 Phase 5 Task 14
+ * — CASL shadow mode).
+ */
+export const SUBJECT_INSTANCE_RESOLVER_KEY = 'subjectInstanceResolver';
+
+/**
+ * A route-supplied function that resolves the SUBJECT INSTANCE a
+ * `@Authorize`/`@CanXxx` permission's `conditions` would need to evaluate
+ * against — e.g. `{ tenantId, doctorId }` for a `Consultation` row already
+ * on `request.params`/`request.body`, or `undefined` when there is nothing
+ * cheap to compare (no instance ⇒ no shadow check for that request, not a
+ * divergence).
+ *
+ * Receives the raw Express/Fastify request; returns a plain object (or a
+ * Promise of one) carrying whatever fields the tenant's seeded `conditions`
+ * reference. Deliberately request-scoped and synchronous-or-cheap: this
+ * runs on every gated request for an opted-in route, so it must never do
+ * unbounded work (a full entity fetch belongs in a route that specifically
+ * wants shadow coverage badly enough to pay for it — most routes should not
+ * opt in without a measured reason).
+ */
+export type SubjectInstanceResolver = (
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Express/Fastify request shape varies by adapter; matches this file's existing request-param convention (e.g. handleApiKeyAuth below).
+  request: any,
+) => Record<string, unknown> | undefined | Promise<Record<string, unknown> | undefined>;
+
+/**
+ * Opt IN a route to CASL shadow-mode instance comparison (TASK-712 Phase 5
+ * Task 14). Explicit and per-route by design — `UnifiedAuthGuard` never
+ * resolves a subject instance (never loads a row) for a route that did not
+ * ask for one. Divergences are logged (`CASL_SHADOW_DIVERGENCE_EVENT`) and
+ * counted (`CASL_SHADOW_DIVERGENCE_METRIC`), both in `policy.engine.ts`; the
+ * type-only verdict — the one actually enforced — is completely unaffected.
+ *
+ * @example
+ * ```typescript
+ * @Get(':id')
+ * @Authorize(['read', 'Consultation'])
+ * @ResolveSubjectInstance(async (request) => {
+ *   const c = await consultationService.getById(request.params.id);
+ *   return c ? { tenantId: c.tenantId, doctorId: c.doctorId } : undefined;
+ * })
+ * getOne() { ... }
+ * ```
+ */
+export const ResolveSubjectInstance = (resolver: SubjectInstanceResolver) => SetMetadata(SUBJECT_INSTANCE_RESOLVER_KEY, resolver);
 
 /**
  * Injectable token for the JWT auth guard.
@@ -314,6 +363,13 @@ export class UnifiedAuthGuard implements CanActivate {
     request.ability = ability;
     this.cls.set('userAbility', ability);
 
+    // TASK-712 Phase 5 Task 14 — CASL shadow mode. Diagnostic-only: computes
+    // what an instance-aware verdict WOULD be for any permission whose route
+    // opted in via `@ResolveSubjectInstance(...)`, and records divergence
+    // from the type-only verdict computed below. Never throws, never touches
+    // `allowed` — see `runCaslShadowChecks`'s own guarantees.
+    await this.runCaslShadowChecks(context, request, ability, required, method, path);
+
     const results = required.map((permission) => ({
       permission,
       allowed: ability.can(permission.action, permission.subject),
@@ -339,6 +395,64 @@ export class UnifiedAuthGuard implements CanActivate {
     }
 
     return true;
+  }
+
+  /**
+   * TASK-712 Phase 5 Task 14 — CASL shadow mode.
+   *
+   * For each required permission whose route carries a
+   * `@ResolveSubjectInstance(...)` resolver, resolves an instance and asks
+   * `PolicyEngine.evaluateShadowVerdict` whether the instance-aware verdict
+   * `conditions` would produce agrees with the type-only verdict actually
+   * enforced by the caller. Every step is opt-in and fail-open toward "do
+   * nothing":
+   *
+   * - No resolver on the route → skipped (no row loaded, no divergence).
+   * - Resolver returns `undefined` → skipped (nothing to compare).
+   * - Resolver throws → swallowed and logged at DEBUG; shadow mode must
+   *   never be the reason a real request fails.
+   *
+   * This method NEVER throws and NEVER influences `allowed` — it exists
+   * purely to populate `casl_shadow_divergence_total` /
+   * `casl.shadow.divergence` for `casl-blast-radius.md`'s measure phase.
+   */
+  private async runCaslShadowChecks(
+    context: ExecutionContext,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- same request shape as handleJwtPostAuth's own `request: any` param this method is called from.
+    request: any,
+    ability: AppAbility,
+    required: RequiredPermission[],
+    method: string,
+    path: string,
+  ): Promise<void> {
+    for (const permission of required) {
+      try {
+        const resolver = this.reflector.getAllAndOverride<SubjectInstanceResolver | undefined>(SUBJECT_INSTANCE_RESOLVER_KEY, [
+          context.getHandler(),
+          context.getClass(),
+        ]);
+        if (!resolver) continue; // opt-in only — no resolver, no shadow check, no row loaded
+
+        const instance = await resolver(request);
+        if (!instance) continue; // resolver explicitly had nothing to compare against
+
+        const verdict = this.policyEngine.evaluateShadowVerdict(ability, permission.action, permission.subject, instance);
+        if (verdict.diverged) {
+          this.policyEngine.recordShadowDivergence(permission.action, permission.subject, verdict, { method, path });
+        }
+      } catch (error) {
+        // Shadow-mode failures are diagnostics-only and must never affect
+        // the actual (type-only) authorization outcome computed after this.
+        this.logger.debug({
+          message: 'casl.shadow.resolver_error',
+          action: permission.action,
+          subject: permission.subject,
+          method,
+          path,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
   }
 
   // ─── Helpers ────────────────────────────────────────────────────────

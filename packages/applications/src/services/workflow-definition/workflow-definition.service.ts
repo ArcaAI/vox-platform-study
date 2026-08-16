@@ -11,7 +11,7 @@ import {
   WorkflowDefinitionStatus,
 } from '@arcaai/domains';
 import type { JsonValue } from '@arcaai/domains';
-import { ArgumentInvalidException } from '@arcaai/exceptions';
+import { ArgumentInvalidException, QuotaExceededException } from '@arcaai/exceptions';
 import {
   canonicalJson,
   compile,
@@ -30,6 +30,7 @@ import {
   CreateWorkflowDefinitionRequest,
   PaginatedWorkflowDefinitionResponse,
   PublishWorkflowDefinitionRequest,
+  SandboxCompileResult,
   UpdateWorkflowDefinitionRequest,
   WorkflowDefinitionResponse,
   WorkflowNodeRegistryResponse,
@@ -56,6 +57,19 @@ const DEFAULT_POLICY_BINDINGS = {
   contextSchemaVersionId: null,
   entitlementKeys: [],
 };
+
+/** TASK-724: the STT palette's own key, as authored on `WorkflowDefinition.paletteKey`. Not an
+ *  enum in this package (`paletteKey` is a free string on the entity) — a single named constant
+ *  so the publish-time entitlement check below and any future STT-specific branch share one
+ *  literal, never a re-typed `'stt'` string. */
+const STT_PALETTE_KEY = 'stt';
+
+/** The entitlement capability key `mapQuotaCapabilityToHttp` keys its `startsWith('feature') ->
+ *  403` branch off — matches `ResolvedFeatures.paletteStt`'s column name `featurePaletteStt`
+ *  exactly, mirroring `PLATFORM_DEFAULT_CAPABILITY` in
+ *  `ai-provider-connection/assert-provider-available.ts` (the "first ENFORCED boolean
+ *  entitlement" precedent this ticket's README §4 Task 7 names). */
+const PALETTE_STT_CAPABILITY = 'featurePaletteStt';
 
 /** Whether ANY finding in a report is the hard shape-level short-circuit. When true, `validate()`
  *  evaluated NO rule-catalogue rules at all (`validate.ts`'s early return) — the report carries
@@ -288,6 +302,7 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     const entity = await this.workflowDefinitionRepository.findById(id);
     assertEqualTenants(entity, { tenantId: this.tenantId });
     this.assertMutable(entity);
+    await this.assertPaletteEntitled(entity);
 
     const graph = entity.graph as unknown as WorkflowGraph;
     const report = this.validateGraph(graph, entity.paletteKey);
@@ -338,6 +353,28 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
   }
 
   // ============================================================
+  // Sandbox compile (TASK-721 Workbench — read, never a lifecycle transition)
+  // ============================================================
+
+  async getCompiledConfigForSandboxRun(id: string): Promise<SandboxCompileResult> {
+    const entity = await this.workflowDefinitionRepository.findById(id);
+    assertEqualTenants(entity, { tenantId: this.tenantId });
+
+    const graph = entity.graph as unknown as WorkflowGraph;
+    const compiledConfig = this.compileGraphOrThrow(entity, graph);
+
+    this.broadcastSysEvent(SysEventType.ResourceViewed, { resourceId: entity.id, data: { action: 'sandboxCompile' } });
+
+    return {
+      compiledConfig,
+      workflowVersionId: entity.id,
+      workflowSlug: entity.slug,
+      workflowVersionNumber: entity.versionNumber,
+      definitionName: entity.name,
+    };
+  }
+
+  // ============================================================
   // Internals
   // ============================================================
 
@@ -347,6 +384,29 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
   private assertMutable(entity: WorkflowDefinitionEntity): void {
     if (entity.status === WorkflowDefinitionStatus.PUBLISHED || entity.status === WorkflowDefinitionStatus.DEPRECATED) {
       throw new BadRequestException(`WorkflowDefinition ${entity.id} is ${entity.status} and can no longer be edited. Branch a new draft instead.`);
+    }
+  }
+
+  /**
+   * TASK-724 Task 7 — publish-time-only entitlement gate, imitating
+   * `assertProviderAvailable`'s `QuotaExceededException` call site (the "first ENFORCED boolean
+   * entitlement" precedent). Checked ONLY here, never at runtime: an already-published
+   * `stt`-palette workflow keeps running its compiled `AsrPipeline` even if the tenant's grant
+   * flips off later ("in-flight runs pin their version; publishes affect new runs only" —
+   * design.md's Data Flow section). A no-op for every other palette and, per
+   * `isFeatureEnabled`'s own contract, a no-op while the entitlements kill-switch is OFF.
+   */
+  private async assertPaletteEntitled(entity: Pick<WorkflowDefinitionEntity, 'paletteKey' | 'tenantId'>): Promise<void> {
+    if (entity.paletteKey !== STT_PALETTE_KEY || !this.entitlements) return;
+
+    const allowed = await this.entitlements.isFeatureEnabled(entity.tenantId, 'paletteStt');
+    if (!allowed) {
+      throw new QuotaExceededException(`This tenant is not entitled to publish '${STT_PALETTE_KEY}'-palette workflows.`, {
+        capability: PALETTE_STT_CAPABILITY,
+        limit: 0,
+        used: 0,
+        requested: 1,
+      });
     }
   }
 

@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://arcaai.dev/hope/workflow-nodes/stt.phiHop.schema.json",
+  "title": "stt.phiHop node config (optional guardrail redaction — PLACEHOLDER, TASK-710 not landed)",
+  "description": "Forward-declared optional PHI redaction hop. `POST /guardrail/redact` does not exist (verified TASK-720 §2, re-verified here — apps/guardrail exposes analyze/analyze-batch/analyze-async/ground/medical-validate, never redact). Registered here with `implemented: false` on BOTH sides of the cross-language registry, so `compile()` REFUSES to compile any graph that includes this node type (a loud, publish-time failure — never a silent pass-through) until TASK-710 ships a real activity binding and this entry flips to implemented:true. `mode` mirrors design.md's 'pseudonymize identifier / full redaction for retained artifacts' language; re-verify against TASK-710's landed shape when it exists.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["mode"],
+  "properties": {
+    "mode": { "type": "string", "enum": ["pseudonymize", "full-redact"] }
+  }
+}

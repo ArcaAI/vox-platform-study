@@ -6,6 +6,7 @@ import { BaseService } from '../../common';
 import { buildCursorFindAllProps, clampCursorLimit, CursorPage, decodeCursor, MAX_CURSOR_LIMIT, toCursorPage } from '../../common/cursorPagination';
 import { IActiveUserContext } from '../../interfaces';
 import { AgentTrajectoryStepResponse, IAgentTrajectoryService } from '../agent-trajectory';
+import { IAppSettingsService } from '../baseServices/_meta/appSettings/IAppSettingsService';
 import {
   GetRunTraceOptions,
   ListWorkflowRunsFilters,
@@ -27,6 +28,17 @@ export const INTERPRETER_WORKFLOW_ID_PREFIX = 'workflow-interpreter-';
 export function interpreterSessionId(runId: string): string {
   return `${INTERPRETER_WORKFLOW_ID_PREFIX}${runId}`;
 }
+
+/**
+ * Mirrors `AgentTrajectoryRetentionService`'s own AppSettings keys/defaults
+ * exactly (`agentic.trajectory.{enabled,retentionDays}`) — this is the SAME
+ * cascade the retention cron reads, not a second copy of the decision
+ * (Task 10 retention note; README pitfall 3 / Task 9's "trace pruned" state).
+ */
+const TRAJECTORY_RETENTION_ENABLED_KEY = 'agentic.trajectory.enabled';
+const TRAJECTORY_RETENTION_DAYS_KEY = 'agentic.trajectory.retentionDays';
+const TRAJECTORY_RETENTION_DAYS_DEFAULT = 30;
+const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
 function buildDateRange(from?: string, to?: string): { gte?: Date; lte?: Date } | undefined {
   if (!from && !to) return undefined;
@@ -103,6 +115,11 @@ export class WorkflowRunService extends BaseService implements IWorkflowRunServi
     // Optional so unit fixtures can construct without it; production DI
     // (AgentTrajectoryServiceModule) always supplies it.
     @Optional() @Inject(IAgentTrajectoryService) private readonly agentTrajectoryService?: IAgentTrajectoryService,
+    // Optional for the same reason — `CommonServiceModule` always supplies it
+    // in production. Used ONLY to compute `tracePruned` from the SAME
+    // `agentic.trajectory.*` keys the retention cron reads (never a second
+    // source of truth for the window).
+    @Optional() @Inject(IAppSettingsService) private readonly appSettingsService?: IAppSettingsService,
   ) {
     // Telemetry exemption — never broadcasts, so the ResourceType is inert
     // (same placeholder-constructor posture as AgentTrajectoryService).
@@ -161,7 +178,7 @@ export class WorkflowRunService extends BaseService implements IWorkflowRunServi
         nodes: [],
         stepCount: 0,
         truncated: false,
-        tracePruned: false,
+        tracePruned: this.computeTracePruned(entity.startedAt, 0),
       };
     }
 
@@ -176,8 +193,31 @@ export class WorkflowRunService extends BaseService implements IWorkflowRunServi
       nodes,
       stepCount: steps.length,
       truncated: page.hasMore,
-      tracePruned: false,
+      tracePruned: this.computeTracePruned(entity.startedAt, steps.length),
     };
+  }
+
+  /**
+   * Task 9's "trace pruned" state: true only when the run genuinely has zero
+   * steps AND its start predates the EFFECTIVE trajectory-retention window —
+   * reading the identical `agentic.trajectory.{enabled,retentionDays}`
+   * AppSettings keys `AgentTrajectoryRetentionService` reads (never a second,
+   * possibly-drifted copy of the window). When retention is disabled
+   * (`agentic.trajectory.enabled` default false, README R5) nothing is
+   * actually pruned yet, so a zero-step run there is honestly "no steps
+   * recorded" rather than "pruned" — this deliberately returns `false`, not a
+   * guess. No settings service wired (unit fixture) ⇒ cannot tell either way
+   * ⇒ `false`, never a false positive.
+   */
+  private computeTracePruned(startedAt: Date, stepCount: number): boolean {
+    if (stepCount > 0) return false;
+    if (!this.appSettingsService) return false;
+    const enabled = this.appSettingsService.getValueWithDefault<boolean>(TRAJECTORY_RETENTION_ENABLED_KEY, false);
+    if (!enabled) return false;
+    const retentionDays = this.appSettingsService.getValueWithDefault<number>(TRAJECTORY_RETENTION_DAYS_KEY, TRAJECTORY_RETENTION_DAYS_DEFAULT);
+    if (retentionDays < 1) return false;
+    const cutoff = Date.now() - retentionDays * ONE_DAY_MS;
+    return startedAt.getTime() < cutoff;
   }
 
   async recordRunStarted(input: RecordRunStartedInput): Promise<WorkflowRunResponse> {

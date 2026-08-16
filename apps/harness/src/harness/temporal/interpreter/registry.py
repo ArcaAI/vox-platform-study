@@ -26,6 +26,16 @@ with workflow.unsafe.imports_passed_through():
         interpreter_noop,
         interpreter_passthrough,
     )
+    from harness.temporal.interpreter.nodes.stt_placeholder import (
+        interpreter_stt_asr_engine,
+        interpreter_stt_audio_input,
+        interpreter_stt_diarization,
+        interpreter_stt_language_detection,
+        interpreter_stt_noise_filter,
+        interpreter_stt_phi_hop,
+        interpreter_stt_transcript_output,
+        interpreter_stt_vad,
+    )
 
 
 def _registered_activity_name(fn: Callable[..., Any]) -> str:
@@ -80,4 +90,80 @@ class NodeSpec:
 NODE_REGISTRY: dict[str, NodeSpec] = {
     "noop": NodeSpec(key="noop", implemented=True, activity=interpreter_noop),
     "passthrough": NodeSpec(key="passthrough", implemented=True, activity=interpreter_passthrough),
+    # STT palette (TASK-724). Mirrors
+    # docs/implementation/TASK-724-Palette-Stt/contracts/palette.md's node table and
+    # node-registry.ts's matching eight entries exactly. Every activity here is a documented
+    # PLACEHOLDER (nodes/stt_placeholder.py's module docstring) — the STT palette's real
+    # execution path is compile-to-AsrPipeline + pipelineId binding, never per-node interpreter
+    # dispatch; these entries satisfy the cross-language registry-parity contract compile()
+    # depends on. NOTE (2026-08-16): TASK-720's summarization entries are currently absent from
+    # this dict — a concurrent sibling session's uncommitted work was reverted mid-session (see
+    # this ticket's README §7); these eight entries do not depend on that and are correct either
+    # way.
+    "stt.audioInput": NodeSpec(
+        key="stt.audioInput",
+        implemented=True,
+        activity=interpreter_stt_audio_input,
+        critical=True,
+        default_timeout_seconds=60,
+        default_max_attempts=3,
+    ),
+    "stt.vad": NodeSpec(
+        key="stt.vad",
+        implemented=True,
+        activity=interpreter_stt_vad,
+        critical=False,
+        default_timeout_seconds=60,
+        default_max_attempts=3,
+    ),
+    "stt.noiseFilter": NodeSpec(
+        key="stt.noiseFilter",
+        implemented=True,
+        activity=interpreter_stt_noise_filter,
+        critical=False,
+        default_timeout_seconds=60,
+        default_max_attempts=3,
+    ),
+    "stt.diarization": NodeSpec(
+        key="stt.diarization",
+        implemented=True,
+        activity=interpreter_stt_diarization,
+        critical=False,
+        default_timeout_seconds=120,
+        default_max_attempts=3,
+    ),
+    "stt.languageDetection": NodeSpec(
+        key="stt.languageDetection",
+        implemented=True,
+        activity=interpreter_stt_language_detection,
+        critical=False,
+        default_timeout_seconds=30,
+        default_max_attempts=3,
+    ),
+    "stt.asrEngine": NodeSpec(
+        key="stt.asrEngine",
+        implemented=True,
+        activity=interpreter_stt_asr_engine,
+        critical=True,
+        default_timeout_seconds=600,
+        default_max_attempts=2,
+    ),
+    "stt.transcriptOutput": NodeSpec(
+        key="stt.transcriptOutput",
+        implemented=True,
+        activity=interpreter_stt_transcript_output,
+        critical=True,
+        external_write=True,
+        default_timeout_seconds=60,
+        default_max_attempts=3,
+    ),
+    # PLACEHOLDER — implemented=False, see palette.md. TASK-710/phi-redactor is not landed.
+    "stt.phiHop": NodeSpec(
+        key="stt.phiHop",
+        implemented=False,
+        activity=interpreter_stt_phi_hop,
+        critical=False,
+        default_timeout_seconds=60,
+        default_max_attempts=1,
+    ),
 }

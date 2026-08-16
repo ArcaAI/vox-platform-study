@@ -14,6 +14,7 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { SummaryService } from '../summary.service';
+import { ConsultationEntity } from '@arcaai/domains';
 
 // Mock only the version factory (echo args) so we can assert the row written;
 // keep the real ContextItemFactory + enums via `...actual`.
@@ -77,15 +78,26 @@ const makeMocks = () => ({
     updateWithVersion: vi.fn(async (_id: string, e: unknown, _expectedVersion?: number, _tx?: unknown) => e),
   },
   consultationRepository: {
-    findById: vi.fn().mockResolvedValue({
-      id: 'c-1',
-      tenantId: 'tenant-1',
-      departmentId: null,
-      doctorId: 'doctor-1',
-      parentConsultationId: null,
-      status: 'PENDING_REVIEW',
-      version: 1,
-    }),
+    // TASK-711: approveSummary calls the real ConsultationEntity.transitionTo.
+    findById: vi.fn().mockResolvedValue(
+      new ConsultationEntity({
+        id: 'c-1',
+        tenantId: 'tenant-1',
+        patientId: 'patient-1',
+        departmentId: null,
+        doctorId: 'doctor-1',
+        parentConsultationId: null,
+        appointmentDate: new Date('2026-01-01'),
+        metadata: null,
+        degradedReasons: [],
+        createdAt: new Date('2026-01-01'),
+        updatedAt: new Date('2026-01-01'),
+        createdBy: 'user-1',
+        status: 'PENDING_REVIEW',
+        version: 1,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any),
+    ),
     update: vi.fn(async (_id: string, e: unknown) => e),
     // TASK-709: `approveSummary` now CASes the Consultation row too.
     updateWithVersion: vi.fn(async (_id: string, e: unknown, _expectedVersion?: number, _tx?: unknown) => e),

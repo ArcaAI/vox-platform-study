@@ -18,20 +18,32 @@
  * floor, not parity with the harness's full sensor suite.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ConsultationStatus, HarnessAuditAction } from '@arcaai/domains';
+import { ConsultationEntity, ConsultationStatus, HarnessAuditAction } from '@arcaai/domains';
 import { SummaryProcessor } from '../summary.processor';
 
 const CONSULTATION = {
   id: 'consult-1',
   tenantId: 'tenant-1',
+  patientId: 'patient-1',
   departmentId: null as string | null,
   doctorId: 'doctor-1',
   parentConsultationId: null as string | null,
-  status: ConsultationStatus.RECORDING,
+  appointmentDate: new Date('2026-01-01'),
+  metadata: null,
+  degradedReasons: [],
+  createdAt: new Date('2026-01-01'),
+  updatedAt: new Date('2026-01-01'),
+  createdBy: 'user-1',
+  version: 1,
+  // TASK-711 — DRAINING is the legal predecessor of the PENDING_REVIEW flip
+  // `applyLegacySafetyFloor` performs (mirrors `persistDraft`'s non-early
+  // branch; state-machine.md §2).
+  status: ConsultationStatus.DRAINING,
 };
 
 function createProcessor(overrides: { consultation?: Record<string, unknown>; groundednessVerdict?: string; smrSummary?: string } = {}) {
-  const consultation = { ...CONSULTATION, ...(overrides.consultation ?? {}) };
+  // TASK-711: the processor now calls the real ConsultationEntity.transitionTo.
+  const consultation = new ConsultationEntity({ ...CONSULTATION, ...(overrides.consultation ?? {}) } as any);
 
   const jobService = {
     notifyProgress: vi.fn().mockResolvedValue(undefined),
@@ -48,6 +60,7 @@ function createProcessor(overrides: { consultation?: Record<string, unknown>; gr
   const consultationRepository = {
     findById: vi.fn().mockResolvedValue(consultation),
     update: vi.fn().mockResolvedValue(undefined),
+    updateWithVersion: vi.fn().mockResolvedValue(undefined),
   };
   const httpService = {
     axiosRef: {
@@ -148,7 +161,11 @@ describe('SummaryProcessor — TASK-714 legacy safety floor', () => {
 
     await processor.process(job());
 
-    expect(consultationRepository.update).toHaveBeenCalledWith('consult-1', expect.objectContaining({ status: ConsultationStatus.PENDING_REVIEW }));
+    expect(consultationRepository.updateWithVersion).toHaveBeenCalledWith(
+      'consult-1',
+      expect.objectContaining({ status: ConsultationStatus.PENDING_REVIEW }),
+      expect.any(Number),
+    );
   });
 
   it('flags a note whose dose is absent from the transcript, feeding guardrailDecisions.safety (the existing hard-block field)', async () => {

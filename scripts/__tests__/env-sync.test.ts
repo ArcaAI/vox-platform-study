@@ -234,8 +234,11 @@ describe('env:sync — the declared surface stays small', () => {
     // Bumped 145 -> 147 for 2 legitimate additions (TASK-722's exposure-plane
     // kill-switches — verified via `pnpm env:sync --check`, no drift):
     // WORKFLOW_EXPOSURE_ENABLED, WORKFLOW_EXPOSURE_ALLOW_CLOUD_PROVIDERS.
+    // Bumped 147 -> 148 for 1 legitimate addition (TASK-727's dedicated
+    // webhook-signing encryption key, deliberately NOT reusing API_KEY_PEPPER
+    // — verified via `pnpm env:sync`, no drift): WEBHOOK_SECRET_PEPPER.
     const declared = declaredTsSurfaceKeys();
-    expect(declared.size).toBeLessThanOrEqual(147);
+    expect(declared.size).toBeLessThanOrEqual(148);
   });
 });
 

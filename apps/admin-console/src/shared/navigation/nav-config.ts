@@ -2,6 +2,8 @@ import {
   IconActivity,
   IconAdjustmentsAlt,
   IconAdjustmentsCog,
+  IconBinaryTree2,
+  IconBook2,
   IconBrain,
   IconBroadcast,
   IconBuilding,
@@ -22,6 +24,7 @@ import {
   IconKey,
   IconLayoutDashboard,
   IconLicense,
+  IconListTree,
   IconMicrophone,
   IconPlugConnected,
   IconRobot,
@@ -317,6 +320,19 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     required: [['manage', 'ConsultationContextSchema']],
     implemented: true,
   },
+  // TASK-728: institutional-RAG knowledge documents — the only real
+  // clinical "memory" concept the platform has today (admin-uploaded
+  // guidelines/protocols, chunked+embedded, retrieved to ground summary
+  // generation with citations). `manage` mirrors `KnowledgeController`'s
+  // class-level `@CanManage('KnowledgeDocument')` gate.
+  {
+    route: '/knowledge',
+    label: 'Knowledge Base',
+    tier: '30-49',
+    icon: IconBook2,
+    required: [['manage', 'KnowledgeDocument']],
+    implemented: true,
+  },
   {
     route: '/dna-writing-styles',
     label: 'DNA writing styles',
@@ -389,6 +405,32 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     ],
     implemented: true,
   },
+  // TASK-723: the DEFINITION-scoped runs/observability view — distinct from
+  // `/ai-operations/runs` (tier 10-19, cross-tenant platform ops over every
+  // agentic session, §2.4). This one reads `WorkflowRun`, the workflow-
+  // substrate read model, and links to its cross-tenant sibling rather than
+  // duplicating it (rule 13 "one authoritative editor" + cross-link posture).
+  {
+    route: '/workflow-runs',
+    label: 'Workflow Runs',
+    tier: '30-49',
+    icon: IconListTree,
+    required: [['read', 'WorkflowRun']],
+    implemented: true,
+  },
+  // TASK-719: Workflow Studio v1 — the graph-authoring surface over `WorkflowDefinition`
+  // (TASK-734's `admin/workflow-definitions` + read-only `admin/workflow-nodes` registry
+  // controllers). `manage` mirrors `WorkflowDefinitionController`'s class-level
+  // `@CanManage('WorkflowDefinition')` gate — the console never widens past what the gateway
+  // itself requires.
+  {
+    route: '/workflow-studio',
+    label: 'Workflow Studio',
+    tier: '30-49',
+    icon: IconBinaryTree2,
+    required: [['manage', 'WorkflowDefinition']],
+    implemented: true,
+  },
   // the single tenant AI hub. The former standalone screens
   // `/stt-config`, `/tts-config` and `/ai-providers` were merged into four tabs
   // here (Models · Speech · Voice · Providers), closing the credential-editor
@@ -442,20 +484,24 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
   // whose backend guards are plain @Authorize() (comment above). The
   // Workbench instead READS and EXECUTES tenant WorkflowDefinition rows — a
   // resource ability the gateway enforces — so declaring `required: []`
-  // would hide a real gate from the nav. The gateway route that owns this
-  // guard has not shipped yet (TASK-722, Pending — see
-  // docs/implementation/TASK-721-Workbench/contracts/sandbox-mode.contract.md
-  // §1); this pair is the provisional value matching the resource this
-  // screen reads/executes (WorkflowDefinition) and must be reconciled
-  // against the real decorator once TASK-722 lands.
+  // would hide a real gate from the nav. RECONCILED against the real,
+  // now-landed decorators (Phase C): the definition picker needs
+  // `manage:WorkflowDefinition` (`WorkflowDefinitionController`'s class-level
+  // `@CanManage('WorkflowDefinition')` — TASK-734), and starting/reading/
+  // canceling a sandbox run needs `manage:WorkflowRun`
+  // (`WorkflowSandboxRunController`'s `@CanCreate`/`@CanRead`/`@CanUpdate('WorkflowRun')`,
+  // all subsumed by the seeded `manage:WorkflowRun` tenant-admin grant —
+  // `packages/database/src/prisma/db_main/seed/01-policy.ts`). `canAny`
+  // (OR) means either alone shows the entry; both are seeded together for
+  // every tenant admin, so this is not a practical gap.
   {
     route: '/playground/workbench',
     label: 'Workbench',
     tier: '50-59',
     icon: IconFlask,
     required: [
-      ['read', 'WorkflowDefinition'],
       ['manage', 'WorkflowDefinition'],
+      ['manage', 'WorkflowRun'],
     ],
     implemented: true,
   },

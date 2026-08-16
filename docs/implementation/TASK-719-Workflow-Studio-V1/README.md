@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | In Progress (Phases A–C done; D–F not started) |
+| **Status** | In Progress (Phases A–D done; E partially done — assessment only, no folds executed; F partially done) |
 | **Wave** | 2 · **Size** | XL |
 | **Epic slug** | `workflow-studio-v1` |
 | **Depends on** | TASK-715 (`workflow-definition-model`), TASK-716 (`workflow-compiler-validator`) |
@@ -826,9 +826,166 @@ pnpm --filter @arcaai/admin-console build       → exit 0 (full route manifest 
   and 200%-zoom-equivalent no-horizontal-scroll); a real manual pass with a screen reader was
   not performed.
 
+### Session 2 (2026-08-16, continued) — real endpoints landed; Phase C finished, Phase D built, Phase E assessed, Phase F partial
+
+**Trigger:** TASK-734 ("workflow substrate second pass") landed BETWEEN Session 1 and this
+session — `admin/workflow-definitions` (incl. `GET :id/versions`) and `admin/workflow-nodes` are
+now real, delivered controllers/services/DTOs. This session re-derived the three Task 3
+contracts against that delivered code (not assumptions), then built against the real route
+table.
+
+#### Task 3 — Contracts RE-DERIVED against TASK-734 (superseding Session 1's "NOT YET DELIVERED" verdict)
+
+`contracts/{registry,definition-api}.contract.md` rewritten with a "Superseded original text"
+section at the bottom for history; `validation-report.contract.md` got an addendum (the wiring
+gap it flagged is now closed). Headline findings, all load-bearing for what got built:
+
+- **Registry is real but ships only `noop`/`passthrough`** — `classes: string[]` (open set,
+  confirms Session 1's `safetyClasses` bet), `entitlementKey` now real, but **still no
+  `configSchema` field anywhere** and **no `label` field**. This is a structural gap, not a
+  session-scoped one: Task 9's inspector had to be built to treat "no schema for this node type"
+  as an always-possible state (whole-panel raw-JSON fallback), not an edge case.
+- **Definition API route table confirmed, with real surprises**: `paletteKey` is REQUIRED on
+  create (the plan's Task 3 text didn't name it); `validate` and `publish` are confirmed NOT
+  `If-Match`-gated (verified from the service: `validate` self-CASes against the version it just
+  read, `publish` is a plain `.update()`); `WorkflowDefinitionResponse` carries a `needsReview`
+  field the plan never anticipated (surfaced in the definitions-list grid).
+- **`WorkflowGraphNode` still has no `position` field** — re-confirmed against the real,
+  delivered type. The `config.__position` Studio-reserved-key fallback from Session 1 is now the
+  ACTIVE serialization boundary (`lib/graph-serialization.ts`), not a contingency.
+
+#### Task 9 — Inspector form rendering: DONE
+
+`components/inspector/{inspector-panel,field-renderers,raw-json-field,field-path}.tsx` — RED→GREEN
+(8 tests). Renders `FieldDescriptor[]` (Session 1's `schema-form.ts`) through the `Field` family;
+falls back whole-panel to `CodeEditor` when `configSchema === undefined` (the real registry state
+today, per Task 3 above). Server `WorkflowFinding`s render via `FieldError` matched by `path`.
+
+#### Phase D — feature module: DONE
+
+- **Task 10 (API layer):** `api/{types,client,keys,hooks,index}.ts` — RED→GREEN (9 tests). Every
+  path/OCC-posture claim is now verified against the real controllers, not mirrored.
+- **Task 11 (graph store):** `store/{create-graph-store,graph-store-provider,selectors,types,index}.ts`
+  — RED→GREEN (16 tests + 4 provider tests). Per-mount `createStore`, never a singleton;
+  `deleteNode` refuses `mandatory`, `connect` refuses self-edge/duplicate, `reorderNode` added
+  (list-editor-only, display-order bookkeeping) beyond the original plan's action list.
+- **Task 12 (palette rail):** `components/palette/*` — RED→GREEN (9 tests). Every item a real
+  `<button>` (no drag required); disabled+reason for `implemented:false` and un-entitled types.
+- **Task 13 (list/tree editor):** `components/list-editor/{graph-list-editor,node-row,edge-editor}.tsx`
+  — 7 tests, all mutations (select/configure/connect/reorder/delete) proven via `<button>`
+  `.click()` only, no drag events dispatched anywhere in the suite. "Connect to…" deliberately
+  uses the plain `Select` primitive instead of the `cmdk`-backed `Command` component the plan's
+  prose suggested — both are fully keyboard-operable (2.5.7 is satisfied either way); recorded as
+  a documented substitution, not a silent downgrade (see the component's own doc comment).
+- **Task 14 (validation rail):** `components/validation/{validation-rail,problem-row,use-focus-node}.tsx`
+  — 12 tests (7 rail + 5 hook — including a jsdom `document.activeElement` proof for canvas AND
+  list-view focus targets). `publishBlockedReason` reads `report.ok` only, never re-derives it.
+- **Task 15 (autosave/OCC/publish):** `hooks/use-autosave.ts`, `components/{studio-toolbar,publish-dialog}.tsx`
+  — 5 hook tests (fake timers: debounce-coalesce, 412 pauses + never auto-retries, `resume()`
+  required, 428 -> `onMissingPrecondition`, `cancel()`) + 6 component tests. **Honesty gap**: only
+  the `graph` field autosaves in this pass — `name`/`description` edits have no form wired to
+  autosave yet (no acceptance criterion required it, but the plan's prose implied full-metadata
+  autosave; recorded so it isn't assumed done). "Create new version from this" (design.md §Plane
+  1, for a PUBLISHED row) is NOT built — the read-only banner explains the state but offers no
+  branch action yet.
+- **Task 16 (routes/pages/nav):** `app/(console)/(tenant)/workflow-studio/{page,loading,error}.tsx`
+  + `[definitionId]/{page,loading,error}.tsx`; `nav-config.ts` (+1 entry, tier 30-49,
+  `[['manage','WorkflowDefinition']]`, icon `IconBinaryTree2` — verified unique against the
+  existing 51-icon set); `components/{definitions-list-screen,workflow-studio-screen,
+  workflow-studio-editor,create-definition-form}.tsx`. **`pnpm --filter @arcaai/admin-console
+  build` succeeds and both new routes (`/workflow-studio`, `/workflow-studio/[definitionId]`)
+  appear in the compiled route manifest** — real, end-to-end wiring, not just unit-tested pieces.
+  The editor composes: palette rail (left) · canvas-or-list per `viewMode` (center,
+  `contentMode` follows `viewMode` — `fill` for canvas, `scroll` for list, never nested scroll
+  areas) · inspector + validation rail (right); `StudioToolbar` in the `toolbar` slot;
+  `OccConflictAlert` in `statusBanner` on a 412. **Not done**: `?view=list` URL sync via nuqs (view
+  mode lives in the Zustand store only this pass); a dedicated metadata/settings form for
+  name/description; the `overlay` prop TASK-723 will use.
+
+#### Phase E — consolidation: ASSESSED, nothing folded (by design)
+
+`consolidation-map.md` (new) — Task 17 executed as an assessment: every candidate row's fold
+verdict re-derived against the ACTUAL (still noop/passthrough-only) registry, not the plan's
+optimistic assumption. Verdict: **nothing folds in this pass** —
+`/harness/pipeline-policy` blocks on the registry not yet modeling policy toggles as node config,
+`/departments` prompt-config is explicitly out of scope (TASK-733), `/agentic-policy` stays
+HUMAN-GATED per the orchestrator's explicit instruction this session ("DECISION #11 REMAINS
+GATED… Do NOT perform that fold-in" — honored, not performed, same as Session 1), and
+`/prompt-templates` never folds by design. **Tasks 18 and 19 were NOT executed** — Task 18's own
+precondition resolves to "does not fold" so there is nothing to do; Task 19 (prompt-template
+picker + reciprocal department link) is legitimate follow-on work that simply was not reached
+this session. No route was deleted or redirected; no cross-feature import was added.
+
+#### Phase F — verification: PARTIAL
+
+- **Task 20 (unit + a11y suite):** effectively done AS PART OF Tasks 9/11–15 above — every
+  screen-level component built this session carries its own `vitest-axe` 0-violation assertion
+  (inspector panel, palette rail, list editor, validation rail, toolbar, publish dialog), not a
+  separate pass. **89/89 tests pass** under `src/features/workflow-studio/**` (full package run,
+  see Commands below).
+- **Task 21 (Playwright e2e):** `tests/e2e/workflow-studio.spec.ts` AUTHORED, following
+  `workflow-runs.spec.ts` verbatim (same helpers, same `beforeEach` gate). Covers: create-draft →
+  keyboard-only palette add → Validate → publish-gated-then-succeeds; publish disabled with a
+  visible reason while dirty; click-error → focus-node in both view modes; cross-tenant 404; axe
+  in both themes on the list and the canvas editor. **NOT EXECUTED** — the program's known
+  blocker (`prisma db push --force-reset` refused when invoked by an agent) still applies, and
+  local infra was not brought up this session either. One test (`mandatory node exposes no
+  Delete in either view mode`) is written as an honest `test.skip` — the live two-entry registry
+  has no `mandatory`-classed node type to exercise it against.
+- **Manual a11y pass** (keyboard-only two-node graph build, 200% zoom, reduced-motion, screen
+  reader) — **NOT performed this session**, same gap as Session 1.
+
+#### What is still genuinely NOT done (read this before marking the ticket complete)
+
+1. Task 1 (Figma design gate) — still waived per orchestrator instruction, still not cleared for
+   real; if a future session's scope changes, reconfirm the waiver explicitly.
+2. Task 18/19 (pipeline-policy fold, prompt-template picker + department cross-link).
+3. `name`/`description` autosave; "Create new version from this" branch action on a PUBLISHED
+   row; `?view=` URL sync.
+4. TASK-720's palette content landing will re-open the registry-contract gap (no `configSchema`,
+   no `label`) — Task 9/12's fallbacks are the safety net, not a permanent design.
+5. Playwright e2e execution and the manual a11y pass — both blocked on infra/tooling this
+   session, not skipped by choice.
+
+### Commands run, verbatim results (Session 2)
+
+```
+pnpm --filter @arcaai/admin-console test  (whole package, not just workflow-studio)
+  → Test Files  195 passed (195) · Tests  1541 passed (1541)
+    (includes the pre-existing `nav-config.test.ts` route-count assertion, which this session
+    did NOT modify — it now passes; earlier in this same session, run in isolation while a
+    sibling ticket's concurrent edits were mid-flight in this shared tree, it briefly failed at
+    51 vs an expected 50 routes. Not this ticket's file to fix beyond adding its own one entry.)
+
+pnpm --filter @arcaai/admin-console lint        → clean (0 errors, 0 warnings)
+pnpm --filter @arcaai/admin-console typecheck   → clean
+pnpm --filter @arcaai/admin-console build       → succeeded; `/workflow-studio` and
+    `/workflow-studio/[definitionId]` present in the compiled route manifest (Turbopack, 77/77
+    static pages generated). 5 pre-existing Edge-Runtime warnings from `instrumentation.ts`,
+    unrelated to this ticket, untouched by this session.
+
+pnpm --filter @arcaai/ui typecheck   → clean
+pnpm --filter @arcaai/ui lint        → clean
+    (packages/ui was not modified this session — workflow-canvas is unchanged from Session 1;
+    re-verified only to rule out cross-package drift from concurrent sibling work in this tree.)
+```
+
+### Gated / not run (Session 2)
+
+- `pnpm --filter @arcaai/admin-console test:e2e` for `tests/e2e/workflow-studio.spec.ts` — not
+  run. Program-wide known blocker (`prisma db push --force-reset` refused for an AI agent); local
+  infra also not brought up this session.
+- Manual a11y pass (keyboard-only build, 200% zoom, reduced-motion, screen reader) — not
+  performed.
+- A live round-trip against `admin/workflow-definitions`/`admin/workflow-nodes` from a running
+  browser — the endpoints are real (unlike Session 1), but no live session exercised them; only
+  `pnpm build`'s static route generation and the unit/component test suite (mocked `fetch`)
+  verify the wiring in this session.
+
 ## 8. Change History
 
 | Date | Change | By |
 |---|---|---|
 | 2026-08-16 | Ticket authored | ticket-writer agent (Wave 2 Studio batch) |
 | 2026-08-16 | Phases A–C executed (Tasks 1–8): design gate waived per orchestrator instruction; React Flow pinned + `DEPENDENCY.md`; three cross-ticket contracts written against delivered TASK-715/716/717 code with real gaps recorded; `WorkflowCanvas` composite built TDD (RED→GREEN, 14/14 unit + 3/4 CT, 1 CT `fixme`) in `packages/ui`; `toFieldDescriptors` schema→form compiler built TDD (RED→GREEN, 12/12) in `apps/admin-console`. Phases D–F (Tasks 9–21) not started — see §7 for the exact boundary. `pnpm --filter @arcaai/ui {test,lint,typecheck,build}` and `pnpm --filter @arcaai/admin-console {test,lint,typecheck,build}` all green. | execution agent |
+| 2026-08-16 | **Session 2** (same day, continued — TASK-734 landed the real `admin/workflow-definitions`/`admin/workflow-nodes` endpoints between sessions): the three Task 3 contracts re-derived against delivered code (superseding Session 1's "NOT YET DELIVERED" verdicts, real gaps re-confirmed — notably still NO per-node `configSchema`); Task 9 (inspector form rendering) finished, closing out Phase C; Phase D built in full — API layer (Task 10), Zustand graph store (Task 11, +`reorderNode`), palette rail (Task 12), structured list/tree peer editor (Task 13, every mutation proven click-only/no-drag), validation rail + click-to-focus (Task 14), debounced autosave/OCC/publish (Task 15, RED→GREEN fake-timer coverage of 412-pause/never-retry/428/cancel), routes + nav entry (Task 16) — `pnpm --filter @arcaai/admin-console build` succeeds with both new routes in the compiled manifest; Phase E (Task 17) executed as an assessment — consolidation-map.md records that NOTHING folds this pass (registry still has no palette content to fold against; `/agentic-policy` stays HUMAN-GATED per explicit instruction) — Tasks 18/19 correctly left not-done rather than forced; Phase F partial — 89 unit/a11y tests across the new components (all green), `tests/e2e/workflow-studio.spec.ts` authored following `workflow-runs.spec.ts` but NOT executed (program-wide Playwright/Prisma blocker), manual a11y pass not performed. Full command evidence and the "still genuinely NOT done" list are in §7. | execution agent |

@@ -3,8 +3,30 @@ import type { Paginated } from '@/shared/api';
 /**
  * ConsultationStatus gateway enum (packages/domains) — GET /admin/consultations
  * validates `?status` against exactly these and 400s on anything else.
+ *
+ * TASK-711 — session state machine. `CLOSED` is SUPERSEDED (never written by
+ * any live path — see docs/implementation/TASK-711-Session-State-Machine/
+ * state-machine.md §1) and split into `CLOSED_COMPLETE` (a human gave
+ * clinical feedback) / `CLOSED_INCOMPLETE` (timeout or manual close with no
+ * sign-off). Kept in this list only because the gateway's `Object.values(
+ * ConsultationStatus)` validation (admin-consultation.controller.ts
+ * `parseStatus`) still accepts it — a Postgres enum value can never be
+ * dropped — so filtering by it is harmless (always zero rows), never a 400.
  */
-export const CONSULTATION_STATUSES = ['OPEN', 'RECORDING', 'DRAFT_PENDING_SENSORS', 'PENDING_REVIEW', 'SIGNED', 'CLOSED', 'REOPENED'] as const;
+export const CONSULTATION_STATUSES = [
+  'OPEN',
+  'PRIMED',
+  'RECORDING',
+  'DRAINING',
+  'DRAFT_PENDING_SENSORS',
+  'PENDING_REVIEW',
+  'SIGNED',
+  'TIMED_OUT',
+  'CLOSED',
+  'REOPENED',
+  'CLOSED_COMPLETE',
+  'CLOSED_INCOMPLETE',
+] as const;
 
 export type ConsultationStatus = (typeof CONSULTATION_STATUSES)[number];
 

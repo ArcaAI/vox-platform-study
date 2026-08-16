@@ -174,6 +174,9 @@ describe('env/vault-kv descriptor keys resolve to the real variable names', () =
     // but that had no descriptor, so `vault-seed-secrets.sh` never seeded them.
     'harness.internalServiceToken': 'HARNESS_INTERNAL_SERVICE_TOKEN',
     'storageAccessKey.pepper': 'STORAGE_ACCESS_KEY_PEPPER',
+    // TASK-727: dedicated webhook-signing pepper — deliberately separate
+    // from `api.keyPepper` (see platform-secrets.descriptors.ts).
+    'webhook.secretPepper': 'WEBHOOK_SECRET_PEPPER',
     'azureStorage.connectionString': 'AZURE_STORAGE_CONNECTION_STRING',
     'azureStorage.accountKey': 'AZURE_STORAGE_ACCOUNT_KEY',
     'redis.pass': 'REDIS_PASS',

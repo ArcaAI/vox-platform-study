@@ -38,7 +38,7 @@ function buildRun(overrides: Partial<Parameters<typeof WorkflowRunFactory.Create
   });
 }
 
-function buildDeps() {
+function buildDeps(settings?: Record<string, unknown>) {
   const repository = {
     findAll: vi.fn().mockResolvedValue([]),
     findByRunKey: vi.fn().mockResolvedValue(null),
@@ -50,9 +50,18 @@ function buildDeps() {
   const agentTrajectoryService = {
     listSteps: vi.fn().mockResolvedValue({ items: [], nextCursor: null, hasMore: false, limit: 100 }),
   };
+  const appSettingsService = settings
+    ? { getValueWithDefault: vi.fn((key: string, fallback: unknown) => (key in settings ? settings[key] : fallback)) }
+    : undefined;
 
-  const service = new WorkflowRunService(repository as never, eventEmitter as never, clsService as never, agentTrajectoryService as never);
-  return { service, repository, eventEmitter, clsService, agentTrajectoryService };
+  const service = new WorkflowRunService(
+    repository as never,
+    eventEmitter as never,
+    clsService as never,
+    agentTrajectoryService as never,
+    appSettingsService as never,
+  );
+  return { service, repository, eventEmitter, clsService, agentTrajectoryService, appSettingsService };
 }
 
 function makeStep(overrides: Partial<AgentTrajectoryStepResponse> = {}): AgentTrajectoryStepResponse {
@@ -221,6 +230,53 @@ describe('WorkflowRunService', () => {
       const { service, repository } = buildDeps();
       repository.findByRunKey.mockResolvedValueOnce(null);
       await expect(service.getRunTrace(OTHER_TENANT, RUN_ID)).rejects.toThrow(NotFoundException);
+    });
+
+    describe('tracePruned (Task 9)', () => {
+      it('is false when no AppSettings service is wired (unit fixture) — never a false positive', async () => {
+        const { service, repository } = buildDeps(); // no settings arg => appSettingsService undefined
+        repository.findByRunKey.mockResolvedValue(buildRun({ startedAt: new Date('2000-01-01T00:00:00.000Z') }));
+        const trace = await service.getRunTrace(TENANT, RUN_ID);
+        expect(trace.tracePruned).toBe(false);
+      });
+
+      it('is false whenever the run has any steps, however old', async () => {
+        const { service, repository, agentTrajectoryService } = buildDeps({
+          'agentic.trajectory.enabled': true,
+          'agentic.trajectory.retentionDays': 30,
+        });
+        repository.findByRunKey.mockResolvedValue(buildRun({ startedAt: new Date('2000-01-01T00:00:00.000Z') }));
+        agentTrajectoryService.listSteps.mockResolvedValueOnce({ items: [makeStep()], nextCursor: null, hasMore: false, limit: 100 });
+        const trace = await service.getRunTrace(TENANT, RUN_ID);
+        expect(trace.tracePruned).toBe(false);
+      });
+
+      it('is false when retention is disabled — nothing is actually pruned yet (README R5)', async () => {
+        const { service, repository } = buildDeps({ 'agentic.trajectory.enabled': false, 'agentic.trajectory.retentionDays': 30 });
+        repository.findByRunKey.mockResolvedValue(buildRun({ startedAt: new Date('2000-01-01T00:00:00.000Z') }));
+        const trace = await service.getRunTrace(TENANT, RUN_ID);
+        expect(trace.tracePruned).toBe(false);
+      });
+
+      it('is false for a zero-step run that starts within the retention window', async () => {
+        const { service, repository } = buildDeps({ 'agentic.trajectory.enabled': true, 'agentic.trajectory.retentionDays': 30 });
+        repository.findByRunKey.mockResolvedValue(buildRun({ startedAt: new Date() }));
+        const trace = await service.getRunTrace(TENANT, RUN_ID);
+        expect(trace.tracePruned).toBe(false);
+      });
+
+      it('is true for a zero-step run that predates the effective retention window while retention is enabled', async () => {
+        const { service, repository, appSettingsService } = buildDeps({
+          'agentic.trajectory.enabled': true,
+          'agentic.trajectory.retentionDays': 30,
+        });
+        const old = new Date(Date.now() - 31 * 24 * 60 * 60 * 1000);
+        repository.findByRunKey.mockResolvedValue(buildRun({ startedAt: old }));
+        const trace = await service.getRunTrace(TENANT, RUN_ID);
+        expect(trace.tracePruned).toBe(true);
+        expect(appSettingsService?.getValueWithDefault).toHaveBeenCalledWith('agentic.trajectory.enabled', false);
+        expect(appSettingsService?.getValueWithDefault).toHaveBeenCalledWith('agentic.trajectory.retentionDays', 30);
+      });
     });
   });
 

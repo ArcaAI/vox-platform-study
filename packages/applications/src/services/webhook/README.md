@@ -3,7 +3,16 @@
 Application-layer service for the `Webhook` model — outbound HTTP callbacks
 that fire on `SysEvent` types subscribed per row. The service owns CRUD of
 the webhook registration; the actual HTTP delivery lives in
-`@arcaai/applications/src/services/notification/`.
+`webhook-delivery.processor.ts` in this same folder (a `@Processor(JobQueue.SysEvent)`
+BullMQ consumer — see its header for the match/sign/POST/record contract).
+
+**As of TASK-727**: the pointer above used to name
+`@arcaai/applications/src/services/notification/` as the delivery path. That
+was wrong — `NotificationService` is a plain CRUD service over the unrelated
+`Notification` model, with no queue processor and no reference to `Webhook`
+anywhere in its file. Verified by grep across `packages/applications/src`
+before this ticket's diff landed; corrected here so the next reader doesn't
+repeat the investigation.
 
 ## Concurrency Model
 

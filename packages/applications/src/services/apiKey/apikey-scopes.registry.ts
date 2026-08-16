@@ -90,6 +90,10 @@ export const API_KEY_SCOPE_REGISTRY: Record<string, ScopeDefinition> = {
   'admin:entitlement:manage': { description: 'Manage tenant entitlements', category: 'Admin' },
   'admin:settings:manage': { description: 'Read/manage platform global settings (HIGH sensitivity — platform-wide knobs)', category: 'Admin' },
   'admin:harness:manage': { description: 'Manage the Clinical Documentation Harness admin surface', category: 'Admin' },
+  'admin:knowledge:manage': {
+    description: 'Manage the institutional-RAG knowledge corpus (inspect, archive, delete — governance, not ingestion)',
+    category: 'Admin',
+  },
   'admin:mcp-server:manage': { description: 'Manage MCP server registrations', category: 'Admin' },
   'admin:nlp-task-instructions:manage': { description: 'Manage tenant NLP task instructions', category: 'Admin' },
   'admin:notification:manage': { description: 'Manage platform notifications', category: 'Admin' },

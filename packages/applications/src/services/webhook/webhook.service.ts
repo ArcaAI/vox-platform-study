@@ -1,6 +1,7 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'crypto';
 import {
   ResourceType,
   SysEventType,
@@ -12,11 +13,22 @@ import {
   WebhookRunHistoryRepository,
 } from '@arcaai/domains';
 import { InternalServerErrorException, ArgumentInvalidException } from '@arcaai/exceptions';
-import { IWebhookService } from './IWebhookService';
+import { IWebhookService, CreateWebhookResult } from './IWebhookService';
 import { CreateWebhookRequest, UpdateWebhookRequest } from './dto';
 import { assertEqualTenants, BaseService, FetchResponse, PaginatedQuery, withFormattedCountProps, withFormattedPaginatedProps } from '../../common';
 import { IActiveUserContext } from '../../interfaces';
+import { SecretsService } from '../baseServices/_meta/secrets';
 import { SUPER_ADMIN_ROLE } from '../tenant/constants';
+
+/** Vault kv-v2 secret name for the DEDICATED webhook-secret encryption pepper (§ platform-secrets.descriptors.ts `webhook.secretPepper`). */
+const WEBHOOK_SECRET_PEPPER_NAME = 'WEBHOOK_SECRET_PEPPER';
+
+/**
+ * Storage-format marker for `Webhook.hashedSecret`. See the class doc below
+ * for why this column holds REVERSIBLE encryption, not a one-way hash,
+ * despite the name.
+ */
+const SECRET_STORAGE_MARKER = 'whsec1';
 
 /**
  * Model-aware filter coercion:
@@ -25,6 +37,43 @@ import { SUPER_ADMIN_ROLE } from '../tenant/constants';
  */
 const WEBHOOK_FILTER_MODEL = 'Webhook';
 
+/**
+ * `WebhookService` — CRUD + secret lifecycle for `Webhook` subscriptions.
+ *
+ * ## Why `hashedSecret` holds REVERSIBLE encryption, not a one-way hash
+ *
+ * The obvious pattern to copy here is `ApiKeyService.hashKeyForStorage`
+ * (SHA-256, optionally HMAC-peppered) — that is exactly right for an API key,
+ * because verifying an API key is "the caller re-presents the raw key on
+ * every request; hash it and compare to the stored hash." A one-way digest is
+ * the correct primitive for that.
+ *
+ * Webhook signing is a DIFFERENT operation: the PLATFORM computes an
+ * HMAC-SHA256 over each outbound payload using the shared secret as the MAC
+ * key, and the RECEIVER (who only ever saw the raw secret once, at creation)
+ * verifies by computing the same HMAC independently. For the platform's
+ * signature to be verifiable, the delivery processor must be able to recover
+ * the ORIGINAL raw secret at send time — a one-way hash cannot do that by
+ * definition. Storing a peppered hash here (as an early reading of this
+ * ticket's research assumed) would produce a signature the receiver could
+ * never reproduce, since the receiver has no way to learn the platform's
+ * pepper.
+ *
+ * The resolution: `hashedSecret` stores AES-256-GCM CIPHERTEXT of the raw
+ * secret (reversible), keyed by material derived from the dedicated
+ * `WEBHOOK_SECRET_PEPPER` (§ `platform-secrets.descriptors.ts`). This is the
+ * same "peppered, Vault-backed, per-tenant secret never stored in plaintext"
+ * shape rule `09-infrastructure-devops.md`'s `db-secret` tier describes for
+ * `TenantBucket.credentialsRef` — encrypted-at-rest, decryptable only with
+ * platform-held key material — just implemented as a self-contained
+ * AES-256-GCM primitive here rather than a full Vault-Transit round-trip
+ * (`SecretsService.encrypt`/`decrypt`), which is a reasonable stronger
+ * follow-up if per-row Transit key versioning is wanted later. The column
+ * name is NOT renamed (a live-column rename is a migration outside this
+ * ticket's scope, same posture as the deliberately-preserved
+ * `responeStatusCode` typo) — it stores what its name always half-promised:
+ * a protected form of the secret, just a reversible one.
+ */
 @Injectable()
 export class WebhookService extends BaseService implements IWebhookService {
   private readonly logger = new Logger(WebhookService.name);
@@ -35,8 +84,82 @@ export class WebhookService extends BaseService implements IWebhookService {
     private readonly webhookRunHistoryRepository: WebhookRunHistoryRepository,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
+    // WEBHOOK_SECRET_PEPPER arrives via SecretsService. Optional so legacy
+    // test fixtures that construct WebhookService directly still work (they
+    // get the local, un-peppered fallback key derivation — see
+    // `deriveEncryptionKey` — same fallback shape as ApiKeyService's
+    // `secretsService` dependency).
+    @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
   ) {
     super(eventEmitter, clsService, ResourceType.Webhook);
+  }
+
+  /**
+   * Generate a cryptographically secure raw webhook signing secret.
+   * 32 random bytes, hex-encoded (64 hex chars) — same primitive
+   * `ApiKeyService.generateRawKey` uses.
+   */
+  static generateRawSecret(): string {
+    return randomBytes(32).toString('hex');
+  }
+
+  /**
+   * Derive the AES-256-GCM key from the resolved pepper. When no pepper is
+   * configured (no SecretsService wired, or the Vault key is unset), falls
+   * back to a fixed string — matching `ApiKeyService`'s own
+   * un-peppered-hash fallback posture: fine for legacy test fixtures and
+   * env-provider dev boxes, NOT a production posture.
+   */
+  private static deriveEncryptionKey(pepper?: string): Buffer {
+    return createHash('sha256')
+      .update(pepper ?? 'hope-webhook-local-fallback-key')
+      .digest();
+  }
+
+  /**
+   * Encrypt a raw webhook secret for storage. REVERSIBLE (AES-256-GCM) — see
+   * the class doc for why this must not be a one-way hash. Pure function:
+   * takes the pepper as an explicit parameter, mirroring
+   * `ApiKeyService.hashKey`'s shape.
+   */
+  static encryptSecret(rawSecret: string, pepper?: string): string {
+    const key = WebhookService.deriveEncryptionKey(pepper);
+    const iv = randomBytes(12); // 96-bit IV, the AES-GCM recommendation.
+    const cipher = createCipheriv('aes-256-gcm', key, iv);
+    const ciphertext = Buffer.concat([cipher.update(rawSecret, 'utf8'), cipher.final()]);
+    const authTag = cipher.getAuthTag();
+    return [SECRET_STORAGE_MARKER, iv.toString('hex'), authTag.toString('hex'), ciphertext.toString('hex')].join(':');
+  }
+
+  /**
+   * Recover the raw webhook secret from its stored form — the ONLY consumer
+   * is the delivery processor's signing step (`webhook-delivery.processor.ts`).
+   * The pepper passed here MUST be the same one resolved at encryption time
+   * (same Vault key, `WEBHOOK_SECRET_PEPPER`) or decryption fails loudly
+   * (GCM auth-tag mismatch) rather than silently producing garbage.
+   */
+  static decryptSecret(stored: string, pepper?: string): string {
+    const parts = stored.split(':');
+    const [marker, ivHex, authTagHex, ciphertextHex] = parts;
+    if (marker !== SECRET_STORAGE_MARKER || parts.length !== 4) {
+      throw new Error('Unrecognized webhook secret storage format');
+    }
+    const key = WebhookService.deriveEncryptionKey(pepper);
+    const decipher = createDecipheriv('aes-256-gcm', key, Buffer.from(ivHex, 'hex'));
+    decipher.setAuthTag(Buffer.from(authTagHex, 'hex'));
+    const plaintext = Buffer.concat([decipher.update(Buffer.from(ciphertextHex, 'hex')), decipher.final()]);
+    return plaintext.toString('utf8');
+  }
+
+  /**
+   * Instance-method wrapper around `encryptSecret`. Resolves
+   * `WEBHOOK_SECRET_PEPPER` from SecretsService — a DEDICATED pepper, never
+   * `API_KEY_PEPPER` (see `platform-secrets.descriptors.ts` `webhook.secretPepper`
+   * for the coupling-of-rotation-lifecycles rationale).
+   */
+  private async encryptSecretForStorage(rawSecret: string): Promise<string> {
+    const pepper = (await this.secretsService?.getSecretOptional(WEBHOOK_SECRET_PEPPER_NAME)) ?? undefined;
+    return WebhookService.encryptSecret(rawSecret, pepper);
   }
 
   /**
@@ -46,11 +169,21 @@ export class WebhookService extends BaseService implements IWebhookService {
    * which silently pins to CLS for regular users and honors
    * `request.tenantId` only for SUPER_ADMIN (cross-tenant impersonation
    * flows, e.g. admin UI / migration tooling).
+   *
+   * The signing secret is ALWAYS server-generated here — `CreateWebhookRequest`
+   * carries no `hashedSecret` field, so a caller can never pin a weak/known
+   * value or bypass peppered hashing. The raw secret is returned exactly
+   * once, in `CreateWebhookResult.rawSecret`; only its peppered hash is
+   * persisted (`WebhookEntity.hashedSecret`), and no read surface re-exposes
+   * either value (see `WebhookResponse.hasSecret`).
    */
-  async create(request: CreateWebhookRequest): Promise<WebhookEntity> {
+  async create(request: CreateWebhookRequest): Promise<CreateWebhookResult> {
     const effectiveTenantId = this.resolveEffectiveTenantId(request.tenantId);
+    const rawSecret = WebhookService.generateRawSecret();
+    const hashedSecret = await this.encryptSecretForStorage(rawSecret);
     const newWebhook = WebhookFactory.CreateWebhook({
       ...request,
+      hashedSecret,
       tenantId: effectiveTenantId,
       createdBy: this.requestUser?.id,
     });
@@ -66,7 +199,7 @@ export class WebhookService extends BaseService implements IWebhookService {
       createdAt: webhook.createdAt,
       data: webhook.toObject() as object,
     });
-    return webhook;
+    return { webhook, rawSecret };
   }
 
   /**
@@ -205,6 +338,15 @@ export class WebhookService extends BaseService implements IWebhookService {
    * maps to `412 Precondition Failed`.
    */
   async update(id: EntityId, request: UpdateWebhookRequest): Promise<WebhookEntity> {
+    // Defense-in-depth: `hashedSecret` is not a field of `UpdateWebhookRequest`
+    // (the HTTP edge's `forbidNonWhitelisted` ValidationPipe already rejects
+    // it), but service-to-service / Bull job callers bypass that pipe — so
+    // guard here too against a request object that smuggles the key in past
+    // the type system. Secrets rotate ONLY through `rotateSecret`.
+    if (Object.prototype.hasOwnProperty.call(request, 'hashedSecret')) {
+      throw new ArgumentInvalidException('hashedSecret cannot be set via update; use rotateSecret.');
+    }
+
     const webhook = await this.webhookRepository.findById(id);
     // Load-then-assert defense-in-depth.
     // Throws NotFoundException on cross-tenant id BEFORE the CAS write
@@ -234,6 +376,38 @@ export class WebhookService extends BaseService implements IWebhookService {
       previousData,
     });
     return updatedWebhook;
+  }
+
+  /**
+   * Rotate a webhook's signing secret — the ONLY write path that may set
+   * `hashedSecret`. Generates a fresh server-side raw secret, peppered-hashes
+   * it (same `encryptSecretForStorage` as `create`), and CAS-writes it via
+   * `updateWithVersion` exactly like `update`. The new raw secret is
+   * returned exactly once; every prior secret is immediately invalidated
+   * (there is no overlap window — a webhook has at most one active secret).
+   */
+  async rotateSecret(id: EntityId, expectedVersion: number): Promise<CreateWebhookResult> {
+    const webhook = await this.webhookRepository.findById(id);
+    // Load-then-assert defense-in-depth, same posture as update()/deleteById().
+    if (!this.isSuperAdmin()) {
+      assertEqualTenants(webhook, { tenantId: this.tenantId });
+    }
+
+    const previousData = webhook.toObject();
+    const previousVersion = webhook.version;
+    const rawSecret = WebhookService.generateRawSecret();
+    webhook.hashedSecret = await this.encryptSecretForStorage(rawSecret);
+
+    const updatedWebhook = await this.webhookRepository.updateWithVersion(id, webhook, expectedVersion);
+
+    this.broadcastSysEvent(SysEventType.ResourceUpdated, {
+      resourceId: updatedWebhook.id,
+      // Never log the secret material itself, hashed or raw — only the fact
+      // of rotation and the version bump (same audit shape as `update`).
+      data: { rotatedSecret: true, previousVersion, newVersion: updatedWebhook.version },
+      previousData,
+    });
+    return { webhook: updatedWebhook, rawSecret };
   }
 
   /**

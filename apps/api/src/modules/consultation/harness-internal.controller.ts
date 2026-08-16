@@ -26,6 +26,7 @@ import {
   IAgentTrajectoryService,
   ILoopConfigService,
   ILoopContextTextService,
+  IPromptManagementService,
   LiveDocumentationService,
   LoopConfigResponse,
 } from '@arcaai/applications';
@@ -161,6 +162,30 @@ class HarnessExtractedTextResponse {
 }
 
 /**
+ * The summarization palette's `prompt.template_ref` node (TASK-720 N-2) read — the pinned
+ * APPROVED `PromptVersion` snapshot, never the mutable `PromptTemplate.content` column
+ * (`prompt-template.prisma:65-70` — resolution serves the version an approval pinned, not the
+ * latest edit). `found: false` covers a missing/cross-tenant id (404-over-403: the tenant-scope
+ * extension already makes a foreign-tenant row read as "not found", so this never needs a 403);
+ * `found: true, approved: false` covers a template that exists but has never been approved
+ * (`approvedVersionNumber === null`) — both are legitimate "no prompt to resolve" outcomes the
+ * node activity must fail closed on, not exceptions.
+ */
+class ResolvedPromptTemplateResponse {
+  @ApiProperty({ description: 'Whether a PromptTemplate with this id exists for the requesting tenant.' })
+  found: boolean;
+
+  @ApiProperty({ description: 'Whether the template has ever been approved (approvedVersionNumber is set).' })
+  approved: boolean;
+
+  @ApiPropertyOptional({ description: 'The approved PromptVersion content. Present only when approved is true.' })
+  content?: string;
+
+  @ApiPropertyOptional({ description: 'The approved version number this content was pinned at.' })
+  versionNumber?: number;
+}
+
+/**
  * HarnessInternalController.
  *
  * The inbound half of the apps/api <-> apps/harness gate adapter. Service-to-service
@@ -208,6 +233,11 @@ export class HarnessInternalController {
     // through these two routes rather than importing service internals
     // directly (the harness is a separate deployable).
     private readonly liveDocumentationService: LiveDocumentationService,
+    // The summarization palette's `prompt.template_ref` node (TASK-720 N-2) resolves a
+    // template's pinned APPROVED version through this worker callback — the harness has no DB
+    // client of its own (rule 06 — gateway-resolved injection is the default for a stateless
+    // Python service).
+    @Inject(IPromptManagementService) private readonly promptManagementService: IPromptManagementService,
   ) {}
 
   @Get('policy')
@@ -238,6 +268,39 @@ export class HarnessInternalController {
     return this.cls.run(async () => {
       this.cls.set('tenantId', tenantId);
       return this.harnessPolicyService.getEffectivePolicy(tenantId, { consultationId });
+    });
+  }
+
+  @Get('prompt-templates/:id/resolved')
+  @ApiOperation({ summary: "Resolve a PromptTemplate's pinned APPROVED version (worker prompt.template_ref node)" })
+  @ApiParam({ name: 'id', description: 'PromptTemplate id' })
+  @ApiQuery({ name: 'tenantId', required: true, description: 'Tenant whose template to resolve.' })
+  async getResolvedPromptTemplate(@Param('id') id: string, @Query('tenantId') tenantId: string): Promise<ResolvedPromptTemplateResponse> {
+    if (!tenantId) {
+      throw new BadRequestException('tenantId query parameter is required');
+    }
+
+    // Same set-before-read CLS posture as `getEffectivePolicy` above (S-3 recurrence class) —
+    // this route runs outside the API-edge ClsModule middleware, so the tenant-scope extension
+    // needs a CLS context pinned to the requested tenant BEFORE the read, or a cross-tenant id
+    // would read as unscoped rather than 404-over-403.
+    return this.cls.run(async () => {
+      this.cls.set('tenantId', tenantId);
+      const template = await this.promptManagementService.getPromptTemplate(id);
+      if (!template) {
+        return { found: false, approved: false };
+      }
+      if (template.approvedVersionNumber == null) {
+        return { found: true, approved: false };
+      }
+      const versions = await this.promptManagementService.getVersions(id);
+      const approved = versions.find((v) => v.versionNumber === template.approvedVersionNumber);
+      if (!approved) {
+        // Data-integrity edge case (the pinned version row is missing) — same "no prompt to
+        // resolve" outcome as "never approved", never an exception the worker has to special-case.
+        return { found: true, approved: false };
+      }
+      return { found: true, approved: true, content: approved.content, versionNumber: approved.versionNumber };
     });
   }
 

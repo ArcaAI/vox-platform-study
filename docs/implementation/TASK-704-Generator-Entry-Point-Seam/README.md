@@ -751,6 +751,138 @@ it either. This is reported as a real, named boundary, not glossed over:
 live twice, but the ticket's own literal acceptance criterion needs the full
 harness stack running, which this pass did not start.
 
+### Closeout pass (2026-08-16) — full stack actually started; found the real, code-level blocker
+
+This pass had the explicit mandate to try to start `apps/harness` +
+`worker:dev` + `apps/text` + `apps/nlp` locally (infra — Postgres, Redis,
+Temporal, Vault, MinIO, Qdrant — was already up) and drive the FULL loop
+without using `pnpm test:e2e` (Prisma's AI-agent guard) and without any
+`db push --force-reset`. Per those constraints, the loop was driven with
+direct `curl` calls against an already-running, healthy sibling-session
+`apps/api` test instance (`NODE_ENV=test`, port 8968 — confirmed healthy,
+untouched, never restarted or modified by this pass) instead of Playwright.
+
+**What was started** (all against `NODE_ENV=test` / `.env.test`, all cleanly
+stopped at the end of this pass — verified zero orphaned processes and the
+sibling `apps/api` on :8968 unaffected):
+- `apps/text` on :8962 (`TEXT_PORT=8962`, matching `.env.test`'s `TEXT_URL`)
+- `apps/nlp` on :8964 (`NLP_PORT=8964`, matching `.env.test`'s `NLP_URL`)
+- `apps/harness` on :8966 (`HARNESS_PORT=8966`, matching `.env.test`'s
+  `HARNESS_URL`) — **with `HARNESS_SMR_BASE_URL`/`HARNESS_NLP_BASE_URL`/
+  `HARNESS_API_BASE_URL` overridden via host env** to `:8962`/`:8964`/`:8968`
+  respectively. This was necessary: `.env.test` itself carries stale values
+  for these three (`http://localhost:8862`/`:8864`/`:8868` — the DEV ports,
+  not `.env.test`'s own `TEXT_PORT`/`NLP_PORT`/the actual running test-API
+  port). Noted here as a real, secondary environment-config inconsistency;
+  not fixed (`.env.test` is a shared file well outside this ticket's scope,
+  and the override made it a non-blocker for this pass).
+- `worker:dev` (the harness Temporal worker on `harness-task-queue`), same
+  overrides.
+- LM Studio was confirmed already reachable at `localhost:1234` with
+  `google/gemma-4-e4b` loaded (the model `harness.judge` names), so this was
+  a genuine attempt at real inference, not a stub.
+
+**Loop driven manually (curl, not Playwright), step by step:**
+1. `POST /api/v1/auth/login` (doctor, `__GLOBAL__`) → 200, token obtained.
+2. `POST /api/v1/consultations/90000000-0000-0000-0000-000000000001/summary/async`
+   → **201**, `jobId` returned.
+3. `GET /api/v1/consultations/jobs/:jobId` → **`status: COMPLETED`,
+   `result.harnessJobId` set, `result.contextItemId`/`content` empty** —
+   this is the exact seam behavior Task 4 implemented: the BullMQ job
+   completes immediately without running the legacy body, having routed to
+   harness. **This independently reconfirms entry point #4's seam routing is
+   correct and live**, now via a path that bypassed Playwright entirely.
+4. Harness log confirmed the Temporal workflow actually started:
+   `harness.document.start` for `workflow_id:
+   harness-doc-90000000-0000-0000-0000-000000000001`.
+5. **The workflow's first real activity failed and kept retrying**: the
+   `generate` activity's call to `POST http://localhost:8962/api/v1/generate`
+   (apps/text) returned **401 `{"detail":"Invalid or missing service
+   token"}`**, logged by apps/text as `smr.auth.rejected` /
+   `invalid_or_missing_token`.
+
+**Root cause — confirmed by direct code reading, not inference:**
+`apps/harness/src/harness/services/smr_client.py`'s `SmrClient` and
+`apps/harness/src/harness/services/nlp_client.py`'s `NlpClient` **never send
+an `X-Service-Token` header at all** — grepped across both files: zero
+occurrences of `X-Service-Token` or `service_token` in either. Their
+constructors don't even accept a token parameter (`SmrClient.__init__(self,
+base_url, *, timeout=120.0, transport=None)`, same shape for `NlpClient`).
+Contrast with `apps/harness/src/harness/services/api_client.py`, which
+correctly does (`ApiClient.__init__(..., service_token: str = "", ...)`,
+sent as `headers["X-Service-Token"]` at `:269`) — and with
+`activities.py`'s three tool-client factories: `_api_client` passes
+`settings.service_token.get_secret_value()`; `_smr_client` and `_nlp_client`
+(`:207-208`) pass only a `base_url` and timeout, nothing else.
+
+`apps/text`'s `ServiceAuthMiddleware`
+(`apps/text/src/text/api/middleware/auth.py`) requires a matching
+`X-Service-Token` on every non-exempt route whenever `settings.service_token`
+is non-empty — and it is non-empty in **both** `.env.dev` and `.env.test`
+(`TEXT_SERVICE_TOKEN`, `NLP_SERVICE_TOKEN`; confirmed distinct 64-char
+secrets, not shared with `HARNESS_SERVICE_TOKEN`). Per
+`.claude/rules/06-python-services.md`, "empty token = dev-mode bypass" is
+documented as the ONLY case that skips this check — and neither `.env.dev`
+nor `.env.test` is in that state for `text`/`nlp`.
+
+**This is the exact step that blocks `HARNESS_E2E_FULL`, and it is a
+standing, code-level gap in `apps/harness`'s tool clients — not an
+environment, infra, or timing problem, and not something this pass could
+close within TASK-704's scope** (the affected files,
+`apps/harness/src/harness/services/{smr_client,nlp_client}.py` and their
+call sites in `activities.py`, are entirely outside this ticket's file list
+in §4, and fixing them is a harness-side auth-wiring fix, not a
+generator-entry-point-seam change). Concretely: in **any** environment where
+`apps/text`/`apps/nlp` are configured the documented, non-dev-bypass way (a
+real `TEXT_SERVICE_TOKEN`/`NLP_SERVICE_TOKEN`), the harness Temporal
+worker's `generate` and `classify_tokens` activities will 401 on their first
+real call, every time, regardless of whether LM Studio, Temporal, Postgres,
+Redis, or apps/api are healthy — which they all were confirmed to be in this
+pass. The workflow does not fail outright; it retries the activity per its
+`RetryPolicy` indefinitely, which is why the consultation was observed
+stuck at `OPEN` (never reaching `PENDING_REVIEW`) for the duration of this
+pass.
+
+**Cleanup**: the worker (left retrying against a real 401) and all four
+locally-started Python services were stopped at the end of this pass
+(verified: zero `uvicorn text|nlp|harness` / `harness.temporal.worker`
+processes remain). The sibling `apps/api` instance on :8968 was only ever
+queried, never modified or restarted, and remained healthy throughout and
+after. The Temporal workflow execution
+(`harness-doc-90000000-0000-0000-0000-000000000001`) is left in its
+in-progress (retrying-activity) state in the shared Temporal server — no
+worker is currently consuming `harness-task-queue`, so it is idle, not
+consuming resources, and durable (a future worker reconnecting would resume
+it, and would hit the identical 401 until the client-auth gap above is
+fixed).
+
+**Flagged for a separate, out-of-scope fix**: a background-task suggestion
+was filed (see repository task-tracking; title: "Harness SmrClient/NlpClient
+never send X-Service-Token") rather than fixed here, per this session's
+"touch only your ticket's files" constraint and because the fix belongs to
+`apps/harness`'s tool-client layer, not to `NoteGenerationService`'s
+entry-point consolidation. **Follow-up filed and implemented, status
+Completed**: [TASK-738](../TASK-738-Harness-Peer-Service-Auth/README.md) —
+`SmrClient`/`NlpClient` now send `X-Service-Token`; unit-tested; full harness
+suite green (1326 passed, 4 pre-existing unrelated failures); live-verified by
+starting `apps/text`+`apps/nlp` and curling both directly — confirmed this
+ticket's exact 401 repro without a token, confirmed it clears with the fix.
+TASK-738 does not itself re-run this ticket's `HARNESS_E2E_FULL` loop (the
+full `HarnessDocWorkflow` + real generation + `SummaryMeta.assuranceCompletedAt`
+assertion); that live re-confirmation is still outstanding before this
+ticket's own status can move past Review.
+
+**Bottom line**: `HARNESS_E2E_FULL` remains genuinely blocked, but the
+reason is now precise and code-level (not "nobody has tried starting the
+stack yet," which was the honest-but-vaguer state of every prior pass). The
+seam itself (this ticket's actual deliverable) is reconfirmed correct — a
+harness-enabled tenant's `POST :id/summary/async` really does create a job,
+really does route to harness with zero legacy-body execution, and really
+does start the durable `HarnessDocWorkflow` — exactly as designed. What
+remains unverified end-to-end is harness's OWN ability to call `apps/text`/
+`apps/nlp`, which is a pre-existing defect in code this ticket never
+touches, not a gap in the seam.
+
 ### Files changed
 
 **New** (`packages/applications/src/services/consultation/note-generation/`):
@@ -791,12 +923,24 @@ harness stack running, which this pass did not start.
       edit (full narrative in §7). **Close-out pass re-run: clean, 1/1 creation
       test passing, 0 failures** — the concurrent-edit window had closed;
       confirms the prior failure was never a TASK-704 defect (see §7 "Close-out
-      pass"). **Still open**: the FULL-loop assertions (`HARNESS_E2E_FULL=1`
-      against a full apps/harness + Temporal + SMR + NLP stack) have not been
-      attempted in any pass, including this close-out — starting that stack is
-      out of scope for a verification/close-out pass and is the one remaining
-      gap before this ticket's literal §5 acceptance criterion (a draft with
-      `SummaryMeta.assuranceCompletedAt` set) is directly proven end to end.
+      pass"). **2026-08-16 closeout pass**: the full stack (apps/harness +
+      worker + apps/text + apps/nlp) WAS started this time and the loop WAS
+      driven manually (curl, not `pnpm test:e2e`) against a live sibling
+      `apps/api` test instance. Entry point #4's job-creation + harness-routing
+      behavior reconfirmed live (job `COMPLETED` instantly with `harnessJobId`
+      set, zero legacy execution) and the durable `HarnessDocWorkflow` was
+      confirmed to actually start. **The FULL loop still cannot complete**, but
+      the blocking reason is now precise and code-level, not an unattempted
+      stack: `apps/harness`'s `SmrClient`/`NlpClient` never send
+      `X-Service-Token`, so every `generate`/`classify_tokens` activity 401s
+      against a properly-configured (non-dev-bypass) `apps/text`/`apps/nlp` —
+      confirmed by direct code reading (zero occurrences of `X-Service-Token`
+      in either client, contrast with `ApiClient` which sends it correctly).
+      This is a standing defect in files entirely outside this ticket's scope
+      (`apps/harness/src/harness/services/{smr_client,nlp_client}.py`); flagged
+      as a separate follow-up rather than fixed here. Full narrative: §7
+      "Closeout pass (2026-08-16) — full stack actually started; found the
+      real, code-level blocker".
 - [x] Unit test proves: a missing `HarnessGatewayService` dependency on a
       harness-enabled trigger throws — `note-generation.service.test.ts`
       tests (c) under `TRANSCRIPTION_CREATED` and `SUMMARY_REGENERATE`
@@ -819,3 +963,4 @@ harness stack running, which this pass did not start.
 | 2026-08-16 | Implemented Tasks 1–6 and 8 (seam, all seven entry points wired, grep-gate, verification); Task 5's sync `generateSummary` short-circuit deliberately withheld (HUMAN-GATED — see §6 and §7 "Deviations"); Task 7 e2e spec authored but not executed (no live/full stack in this session). Status → Review pending (a) product-owner sign-off on the Task 5 behavior change and (b) a live + `HARNESS_E2E_FULL` e2e run. | T2/T3 implementation agents (this session) |
 | 2026-08-16 | Resolved all four owner-deferred "Lets review, suggest best practices" items in §6 with reasoning + evidence (full write-up in §7): (1) sync `generateSummary` decided to stay legacy-only PERMANENTLY, not pending — response-contract mismatch + duplicate-generation risk, code comment updated from HUMAN-GATED-pending to DECIDED with forward guidance for a future Wave-2 revisit; (2) harness's missing pre-summary/comprehensive-summary equivalent accepted as-is, re-verified the decision type needs no rework; (3) `HarnessGatewayService` required-dependency audited across every test fixture that constructs a seam caller — no regression; (4) Task 4/5 module fan-out risk confirmed moot (already landed clean). Brought up isolated test infra (`infra:test:up`), applied the migration ledger (`db:migrate:deploy`, not `--force-reset`), seeded, and ran `apps/api` + `pnpm test:e2e -- task-704-generator-seam` against a real live stack: entry point #4's job-creation path passed live; the follow-up job-status assertion hit a 500 caused by a concurrent sibling session's unrelated, in-flight consent-enforcement edit in this shared working tree (evidenced by file timestamps + `git status`, not a TASK-704 defect). Full applications suite re-run live (491/493 files, 9152/9157 tests; the one failure is in the unrelated consent domain, same concurrent-edit window). Status remains Review — the sync-`generateSummary` risk is now closed for good, but a clean Task 7 e2e run (plus the never-yet-attempted `HARNESS_E2E_FULL` full loop) is still outstanding, blocked on the shared tree quieting down rather than on this ticket's own code. | Sonnet 5 (this session) |
 | 2026-08-16 | **CLOSE-OUT PASS.** Re-ran `pnpm test:e2e -- task-704-generator-seam` live against an already-running, already-seeded test stack (`RESET_DB=false`, no destructive reset): the creation-only case (entry point #4's `POST :id/summary/async` job creation) now passes cleanly, including the `GET jobs/:jobId` follow-up that previously hit a transient 500 from a concurrent sibling session's in-flight consent-enforcement edit — that edit window has since closed, confirming the prior failure was never a TASK-704 defect. Re-ran the full `applications` suite fresh: 493 files / 9183 tests, 0 failures (vs. the prior pass's 1 unrelated failure). The FULL-loop (`HARNESS_E2E_FULL=1`) assertions — requiring apps/harness + a Temporal worker + apps/text + apps/nlp running end to end — were NOT attempted; starting that stack is out of scope for this close-out pass and remains the one concrete gap before the ticket's literal §5 acceptance criterion is directly proven. Status remains Review, with the reason now narrowed to exactly one item. No application code changed. | Close-out pass agent |
+| 2026-08-16 | **CLOSEOUT PASS — actually started the full stack.** Started `apps/text` (:8962), `apps/nlp` (:8964), `apps/harness` (:8966), and its Temporal worker locally against `.env.test`/isolated test infra (all already up), overriding harness's stale `.env.test` `HARNESS_SMR_BASE_URL`/`HARNESS_NLP_BASE_URL`/`HARNESS_API_BASE_URL` via host env to match the actually-running instances. Drove the loop manually with `curl` (not `pnpm test:e2e`, per this session's constraint) against an already-running sibling `apps/api` test instance on :8968: login, `POST summary/async` → 201, job polled to `COMPLETED` with `harnessJobId` set and zero legacy execution (reconfirms entry point #4's seam routing live, independent of Playwright), and confirmed the durable `HarnessDocWorkflow` genuinely started. **Found the real, code-level blocker**: `apps/harness`'s `SmrClient`/`NlpClient` (`smr_client.py`, `nlp_client.py`) never send `X-Service-Token`, so the `generate` activity 401s against `apps/text`'s `ServiceAuthMiddleware` (confirmed non-empty `TEXT_SERVICE_TOKEN`/`NLP_SERVICE_TOKEN` in both `.env.dev` and `.env.test`, i.e. not the dev-bypass case) — verified by direct code reading (zero `X-Service-Token` references in either client; contrast with `ApiClient`, which sends it correctly). This is a standing defect entirely outside this ticket's file scope, not an environment/timing issue and not fixable within TASK-704. Flagged as a separate out-of-scope follow-up rather than fixed here. Cleanly stopped all four locally-started processes at the end of the pass (verified zero orphans); the sibling `apps/api` instance was only queried, never modified, and remained healthy throughout. Status remains Review — the seam itself is reconfirmed correct; what remains unverified is harness's own ability to authenticate to apps/text/apps/nlp, a pre-existing gap in code this ticket never touches. Full narrative in §7. | Closeout pass agent (this session) |

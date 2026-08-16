@@ -62,6 +62,20 @@ export interface ResolvedFeatures {
    * tenant — see {@link UNGATED_ENTITLEMENTS}.
    */
   platformDefaultCredential: boolean;
+  /**
+   * May this tenant publish an `stt`-palette `WorkflowDefinition` (TASK-724)? Display-only like
+   * `dnaReports`/`voiceEnrollment`/`monitoringAccess` — checked once, at
+   * `WorkflowDefinitionService.publish()`, never at runtime (an already-published workflow keeps
+   * running its compiled `AsrPipeline` even if this flips off later — "in-flight runs pin their
+   * version" per design.md's Data Flow section). Deliberately `true` on every seeded plan
+   * (TASK-724 decision, `contracts/palette.md` §Entitlement gate): STT pipeline authoring is a
+   * core platform capability, not a premium add-on — every plan already gets
+   * `maxAsrPipelines > 0`. No DB column backs this yet (`PlanEntitlementInput`/
+   * `TenantEntitlementOverrideInput` below simply lack the field) — a follow-up ticket adds one
+   * if per-tenant override becomes a real product requirement; until then this always resolves
+   * from the seeded default matrix.
+   */
+  paletteStt: boolean;
 }
 
 export interface ResolvedEntitlements {
@@ -104,6 +118,9 @@ export interface PlanEntitlementInput {
   featureVoiceEnrollment?: boolean;
   featureMonitoringAccess?: boolean;
   featurePlatformDefaultCredential?: boolean;
+  /** No DB column yet — see `ResolvedFeatures.paletteStt`'s doc comment (TASK-724). Always
+   *  `undefined` on a real Prisma row today; kept optional so a future column is a pure addition. */
+  featurePaletteStt?: boolean;
   modelTier?: string;
   rateLimitTier?: string;
 }
@@ -135,6 +152,8 @@ export interface TenantEntitlementOverrideInput {
   featureVoiceEnrollment?: boolean | null;
   featureMonitoringAccess?: boolean | null;
   featurePlatformDefaultCredential?: boolean | null;
+  /** No DB column yet — see `PlanEntitlementInput.featurePaletteStt`. */
+  featurePaletteStt?: boolean | null;
   modelTier?: string | null;
   rateLimitTier?: string | null;
   rateLimitPerMinute?: number | null;
@@ -177,7 +196,7 @@ export const UNGATED_ENTITLEMENTS: ResolvedEntitlements = {
    * fail-closed gate this exists to be. Pinned by
    * `__tests__/resolve-entitlements.test.ts`.
    */
-  features: { dnaReports: true, voiceEnrollment: true, monitoringAccess: true, platformDefaultCredential: false },
+  features: { dnaReports: true, voiceEnrollment: true, monitoringAccess: true, platformDefaultCredential: false, paletteStt: true },
   modelTier: 'full_custom',
   rateLimitTier: 'relaxed',
   rateLimitPerMinute: null,
@@ -234,6 +253,7 @@ export function resolveEntitlements(
     featureVoiceEnrollment: pick(planRow?.featureVoiceEnrollment, seeded.featureVoiceEnrollment),
     featureMonitoringAccess: pick(planRow?.featureMonitoringAccess, seeded.featureMonitoringAccess),
     featurePlatformDefaultCredential: pick(planRow?.featurePlatformDefaultCredential, seeded.featurePlatformDefaultCredential),
+    featurePaletteStt: pick(planRow?.featurePaletteStt, seeded.featurePaletteStt),
     modelTier: pick(planRow?.modelTier, seeded.modelTier) as ModelTier,
     rateLimitTier: pick(planRow?.rateLimitTier, seeded.rateLimitTier),
   };
@@ -266,6 +286,7 @@ export function resolveEntitlements(
       voiceEnrollment: pick(override?.featureVoiceEnrollment, base.featureVoiceEnrollment),
       monitoringAccess: pick(override?.featureMonitoringAccess, base.featureMonitoringAccess),
       platformDefaultCredential: pick(override?.featurePlatformDefaultCredential, base.featurePlatformDefaultCredential),
+      paletteStt: pick(override?.featurePaletteStt, base.featurePaletteStt),
     },
     modelTier: pick(override?.modelTier, base.modelTier) as ModelTier,
     rateLimitTier: pick(override?.rateLimitTier, base.rateLimitTier),

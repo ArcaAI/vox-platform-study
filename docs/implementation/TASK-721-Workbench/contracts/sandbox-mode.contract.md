@@ -190,3 +190,96 @@ delivered, verified above. Per rule 01 Phase 2 and this ticket's own R2/R3 handl
 response to a missing foundational capability is to record it as a blocker and build only what
 does not depend on it, not to simulate the missing layer client-side. See README §6/§7 for how
 this changes the execution plan.
+
+---
+
+## Addendum — re-verified after TASK-722/723 landed (Phase C execution session, 2026-08-16/17)
+
+Re-read the tree at a later point on `feat/loop`, after TASK-722 (exposure plane) and TASK-723
+(runs/observability) both landed (Status: Completed / Review, `git log` confirms commits
+`c08ddfab7`…`3c6505a68` merged this work). Every item above is re-verified below; nothing here
+contradicts the analysis above — it records what changed.
+
+1. **Run in sandbox mode — still no DIRECT route for a Workbench-style run, but the reason
+   changed.** `POST /api/v1/workflows/:slug/invoke` (TASK-722) now exists and DOES reach the
+   dispatcher, but it is scoped to `findPublishedBySlug` (PUBLISHED + ACTIVE only) and
+   `WorkflowExposureService.invoke` hardcodes `sandbox: false`
+   (`packages/applications/src/services/workflow-exposure/workflow-exposure.service.ts:129,138`).
+   It cannot serve the Workbench's "DRAFT or published" + "always sandbox" requirement. **This
+   session built a dedicated surface for it** — see §"What this session built" below — because
+   TASK-722's own README explicitly scopes out "The Studio, the Workbench, the runs read model.
+   TASK-719/721/723" (`docs/implementation/TASK-722-Exposure-V1/README.md` §Out of scope).
+2. **`configRef` minting is no longer a blocker.** `mintCompiledConfigClaimCheckRef`
+   (`packages/applications/src/services/workflow-exposure/claim-check.ts`) exists and is reused
+   verbatim (not duplicated). The remaining gap was narrower than originally scoped: it only
+   ever mints from a PERSISTED `entity.compiledConfig`, which `publish()` is the only path that
+   stamps — so a DRAFT/VALIDATED row (no persisted `compiledConfig`) still could not produce a
+   ref. Closed this session by adding `IWorkflowDefinitionService.getCompiledConfigForSandboxRun`
+   — compiles the CURRENT graph fresh, on every call, never persisted.
+3. **The "turn fixture input into a sessionId" gap dissolved — it was never really there.**
+   `interpreterSessionId(runId)` (`packages/applications/src/services/workflow-run/workflow-run.service.ts:28`)
+   is a DETERMINISTIC DERIVATION from `runId`, not a reference to a pre-existing session record.
+   `sessionId` was always just the trajectory join key. Separately, TASK-720 Task 5 added
+   `InterpreterInput.payload: dict[str, Any]` (additive-optional, default `{}`,
+   `models.py:128-137`) — "the raw invocation payload, threaded generically into every node's
+   `NodeActivityInput.run_payload`" — but its own docstring flagged that NEITHER
+   `WorkflowExposureService.invoke()` NOR `HarnessGatewayService.startWorkflowRun()` NOR
+   `interpreter.py`'s `StartWorkflowRunRequest` actually forwarded it end-to-end. **This session
+   closed that wiring gap** across all three layers (see below) so a fixture's `input` genuinely
+   reaches the interpreter.
+4. **Live progress via SSE exists now, as a disclosed poll-bridge, not a true push stream.**
+   `GET /api/v1/workflows/:slug/runs/:runId/stream` (`WorkflowStreamService`) polls the
+   dispatcher's plain-JSON status read every 2s and repackages each snapshot into an
+   async-contract envelope — because the interpreter dispatcher (`interpreter.py`) still exposes
+   no live event-stream producer. No resume via `Last-Event-ID` (never needed: unlike
+   `use-task-stream.ts`'s replay hazard, a reconnect here just resyncs from the CURRENT status).
+   **This session ported the SAME pattern** (`WorkflowSandboxStreamService`) for the Workbench's
+   own definitionId-keyed runs, rather than reusing the slug-keyed one directly.
+5. **Sandbox identifiability is now real and DEFAULT-EXCLUDED, exactly as R3 hoped.**
+   `WorkflowRun.isSandbox` (TASK-723) is wired end-to-end: `WorkflowRunService.recordRunStarted`
+   persists it, and `IWorkflowRunService.listRuns`'s `includeSandbox` filter defaults to `false`
+   (`IWorkflowRunService.ts`'s own doc comment: "the single query-level filter point for
+   TASK-721's sandbox runs"). `features/workflow-runs/components/workflow-runs-screen.tsx`
+   already wires this default-off + an explicit toggle. **This session's new sandbox-run service
+   calls the SAME `recordRunStarted` with `isSandbox: true`** — no second marker.
+6. **Single-node execution — still unsupported, R2 stands unchanged.** `NODE_REGISTRY`
+   (`registry.py`) now has 7 real entries (TASK-720's summarization palette) plus `noop`/
+   `passthrough`, and `NodeSpec` still carries no "independently runnable" field. Task 8's
+   isolated-node panel remains a documented gap, not built, per R2's own instruction.
+7. **The no-signed-artifact assertion already exists and is reused, not duplicated.**
+   `apps/harness/src/harness/tests/unit/temporal/interpreter/test_registry.py` asserts no
+   registry activity's module/qualname contains `approveSummary` (S-6) — this ticket's own
+   acceptance-criteria item is satisfied by citing this test, not writing a second one.
+
+### What this session built (packages/applications, apps/api, apps/harness)
+
+A NEW, dedicated Workbench run surface — `WorkflowSandboxRunService` +
+`WorkflowSandboxRunController`, mounted at
+`admin/workflow-definitions/:definitionId/sandbox-runs` (session-JWT admin console only,
+`admin:workflow-definition:manage` scope reused, no new API-key scope registered) — because
+TASK-722's exposure plane is deliberately publish-gated and always `sandbox: false`, and closing
+that gap is exactly what TASK-722's own README delegates to this ticket. Concretely:
+
+1. `apps/harness/src/harness/api/endpoints/interpreter.py` — `StartWorkflowRunRequest` gained a
+   `payload` field, forwarded into `InterpreterInput(..., payload=body.payload)`.
+2. `HarnessGatewayService.startWorkflowRun` — `StartWorkflowRunInput` gained `payload?`, forwarded
+   in the POST body.
+3. `WorkflowDefinitionService.getCompiledConfigForSandboxRun(id)` — compiles ANY (DRAFT/VALIDATED/
+   PUBLISHED) row's CURRENT graph fresh, never persisting the result (a read, not a lifecycle
+   transition) — reuses the SAME `compile()`/`compileGraphOrThrow` the publish path uses, no
+   duplicated compiler constants.
+4. `WorkflowSandboxRunService` (`packages/applications/src/services/workflow-sandbox-run/`) —
+   `startRun`/`getRunStatus`/`cancelRun`, ALWAYS `sandbox: true` + `isSandbox: true` (never
+   caller-controlled), `dto.input` wins over `dto.fixtureId` when both given, cross-tenant
+   `definitionId`/`runId`/`fixtureId` → 404 (never 403).
+5. `WorkflowSandboxRunController` + `WorkflowSandboxStreamService` (`apps/api/src/modules/
+   workflow-sandbox-run/`) — the SSE route reuses the EXACT SAME `workflow_run:<runId>` stream-
+   ticket namespace TASK-722 registered in `AuthController.assertWorkflowRunScopeOwnership`
+   (a sandbox run is a `WorkflowRun` row like any other) — zero changes to `auth.controller.ts`
+   were needed.
+6. Per-node inspection (Task 8) needed NO new backend at all: `GET admin/workflow-runs/:runId/
+   trace` (TASK-723) already serves any `WorkflowRun` row's per-node rollup, sandbox or not.
+   `AgentTrajectoryStepResponse` already strips `payloadRef` entirely under the PHI posture
+   (confirmed by reading `features/workflow-runs/components/run-node-detail-drawer.tsx`'s own
+   "Payload not available" message) — the Workbench's own node inspector mirrors that exact
+   posture rather than inventing a different one.

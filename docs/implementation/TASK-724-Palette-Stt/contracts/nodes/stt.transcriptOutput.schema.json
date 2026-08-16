@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://arcaai.dev/hope/workflow-nodes/stt.transcriptOutput.schema.json",
+  "title": "stt.transcriptOutput node config (mandatory)",
+  "description": "The pipeline's transcript sink — an empty config (no fields to author). Mirrors stt-ws.gateway.ts's single-consumer-per-session model: the compiler (TASK-724 Task 4) asserts exactly one stt.transcriptOutput node per graph, so there is no fan-out at the transcript sink in v1. The only externalWrite:true node in this palette.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {}
+}

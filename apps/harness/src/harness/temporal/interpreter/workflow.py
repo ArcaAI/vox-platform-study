@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import timedelta
-from typing import Literal
+from typing import Any, Literal
 
 from temporalio import workflow
 from temporalio.common import RetryPolicy
@@ -70,6 +70,14 @@ class WorkflowInterpreter:
         self._cancelled = False
         self._cancel_reason: str | None = None
         self._seq = 0
+        # Workflow-owned cache of completed nodes' own `NodeActivityResult.output`, keyed by
+        # `node_id` (TASK-720 Task 5 — see `NodeActivityInput.bound_inputs`'s docstring for the
+        # full rationale). Pure Python dict state built from already-deterministic activity
+        # results — no wall-clock/random/I/O — so it is replay-safe exactly like `self._stages`.
+        # A node in stage N can only bind from a node in stage < N (the compiler's topological
+        # stage partitioning already guarantees this), so same-stage fan-out nodes never race
+        # each other reading/writing this cache.
+        self._node_outputs: dict[str, dict[str, Any]] = {}
 
     def _next_seq(self) -> int:
         """Allocate the next monotonic trajectory-seq BASE (strided; deterministic)."""
@@ -129,6 +137,32 @@ class WorkflowInterpreter:
             )
         )
 
+    def _resolve_bound_inputs(self, node: CompiledNode) -> dict[str, Any]:
+        """Thread completed predecessors' outputs into this node's input, via `node.inputs`
+        (the compiler-derived edge bindings) — see `NodeActivityInput.bound_inputs`'s docstring
+        for the full design rationale. Keyed by `toPort`; a later binding with the same `toPort`
+        overwrites an earlier one (last-write-wins — v1 does not detect/reject the collision, the
+        same "no dynamic sub-graph, wire it and see" posture as everything else here). A
+        predecessor that produced no output (DEGRADED, or a SUCCEEDED activity that legitimately
+        returned `output=None`) contributes nothing for that binding — never a `KeyError`, and
+        never a fabricated value.
+        """
+        bound: dict[str, Any] = {}
+        for binding in node.inputs:
+            upstream_output = self._node_outputs.get(binding.from_node_id)
+            if upstream_output is None:
+                continue
+            if binding.from_port in upstream_output:
+                bound[binding.to_port] = upstream_output[binding.from_port]
+            else:
+                # This palette's authored graphs use the trivial single-port convention
+                # (`fromPort: 'out'` / `toPort: 'in'` on every edge — see
+                # `packages/database/.../seed/21-workflow-definition.ts`), under which no
+                # predecessor output dict has a literal `'out'` key. Falling back to the WHOLE
+                # predecessor output dict is what makes that convention actually work.
+                bound[binding.to_port] = upstream_output
+        return bound
+
     async def _dispatch_node(
         self, node: CompiledNode, inp: InterpreterInput, stage_index: int
     ) -> NodeResult:
@@ -173,6 +207,8 @@ class WorkflowInterpreter:
             tenant_id=inp.tenant_id,
             sandbox=inp.sandbox,
             trajectory=trajectory,
+            bound_inputs=self._resolve_bound_inputs(node),
+            run_payload=inp.payload,
         )
 
         try:
@@ -194,6 +230,8 @@ class WorkflowInterpreter:
             )
 
         if result.status == "SUCCEEDED":
+            if result.output is not None:
+                self._node_outputs[node.node_id] = result.output
             return NodeResult(node_id=node.node_id, node_type=node.type, status="SUCCEEDED")
         if result.status == "DEGRADED":
             promoted_status: NodeStatus = "FAILED" if spec.critical else "DEGRADED"
@@ -218,4 +256,6 @@ class WorkflowInterpreter:
 
     @workflow.query(name="state")
     def state(self) -> InterpreterStateQueryResult:
-        return InterpreterStateQueryResult(run_id=self._run_id, status=self._status, stages=self._stages)
+        return InterpreterStateQueryResult(
+            run_id=self._run_id, status=self._status, stages=self._stages
+        )

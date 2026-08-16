@@ -34,4 +34,13 @@ export enum JobQueue {
   // constant in packages/applications/src/services/usageLedger/usage-ledger.constants.ts
   // per the outbox-drain handoff).
   AiUsageOutboxDrain = 'AiUsageOutboxDrain',
+
+  // TASK-727: per-webhook delivery attempts. Deliberately a SEPARATE queue
+  // from `SysEvent` — `WebhookDeliveryProcessor` (`@Processor(SysEvent)`)
+  // matches a fired SysEvent against subscribed `Webhook` rows and fans out
+  // ONE job per matching webhook onto THIS queue, so one tenant's slow/
+  // failing endpoint retries independently (its own `attempts`/backoff)
+  // without ever re-delivering to webhooks that already succeeded — see
+  // webhook-delivery.processor.ts for the split rationale.
+  WebhookDelivery = 'WebhookDelivery',
 }

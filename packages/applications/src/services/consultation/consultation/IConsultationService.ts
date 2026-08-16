@@ -106,34 +106,52 @@ export abstract class IConsultationService {
   abstract doctorHasPatientRelationship(doctorId: string, patientId: string, tenantId: string): Promise<boolean>;
 
   /**
-   * Close a consultation (transition lifecycle status to CLOSED).
-   * Idempotent: a no-op (no write, no event) when already CLOSED.
+   * TASK-711 — `OPEN → PRIMED`, the session state machine's first
+   * checkpoint (the state TASK-712 consent enforcement hangs on).
+   * Idempotent: a no-op when already `PRIMED`. `expectedVersion` is the
+   * `@RequiresIfMatch()`/`@ExpectedVersion()` OCC CAS predicate; absent ⇒
+   * falls back to the freshly-read row version.
    */
-  abstract closeConsultation(id: string): Promise<ConsultationResponse>;
+  abstract primeConsultation(id: string, expectedVersion?: number): Promise<ConsultationResponse>;
 
   /**
-   * Reopen a consultation (transition lifecycle status back to OPEN).
-   * Idempotent: a no-op (no write, no event) when already OPEN.
+   * Close a consultation. The terminal is derived from the current status
+   * (`SIGNED → CLOSED_COMPLETE`, `TIMED_OUT → CLOSED_INCOMPLETE` —
+   * state-machine.md §2); any other predecessor is illegal (409).
+   * Idempotent: a no-op when already terminal. `expectedVersion` — see
+   * `primeConsultation`.
    */
-  abstract reopenConsultation(id: string): Promise<ConsultationResponse>;
+  abstract closeConsultation(id: string, expectedVersion?: number): Promise<ConsultationResponse>;
+
+  /**
+   * Reopen a consultation → `REOPENED`. Legal from `TIMED_OUT`, `SIGNED`,
+   * `CLOSED_COMPLETE`, or `CLOSED_INCOMPLETE`. Idempotent: a no-op when
+   * already `REOPENED`. `expectedVersion` — see `primeConsultation`.
+   */
+  abstract reopenConsultation(id: string, expectedVersion?: number): Promise<ConsultationResponse>;
 
   /**
    * Update safely-mutable fields of an existing consultation
-   * (appointmentDate / departmentId / metadata-merge / status).
+   * (appointmentDate / departmentId / metadata-merge). The typed `status`
+   * COLUMN is NOT settable here — see `primeConsultation`/
+   * `closeConsultation`/`reopenConsultation`/`startRecording`/`stopRecording`.
    */
   abstract updateConsultation(id: string, request: UpdateConsultationRequest): Promise<ConsultationResponse>;
 
   /**
-   * Clinical Workflow Playground (WS2) — flip the typed `status` COLUMN to
-   * RECORDING. No auto-transition exists today; the harness later promotes a
-   * recorded consult to PENDING_REVIEW once a draft note is generated. The
-   * LiveDocumentationService session is started by the controller around this.
+   * Clinical Workflow Playground (WS2) — `PRIMED → RECORDING` (TASK-711;
+   * the one flagged precondition in the whole matrix — see
+   * `consultation.state.requirePrimedBeforeRecording`). The harness later
+   * promotes a drained consult to PENDING_REVIEW once a draft note is
+   * generated. The LiveDocumentationService session is started by the
+   * controller around this.
    */
   abstract startRecording(id: string): Promise<ConsultationResponse>;
 
   /**
-   * Clinical Workflow Playground (WS2) — revert the `status` COLUMN to OPEN
-   * when recording stops (the harness later promotes it to PENDING_REVIEW).
+   * Clinical Workflow Playground (WS2) — `RECORDING → DRAINING` (TASK-711)
+   * when recording stops (the harness later promotes it to
+   * DRAFT_PENDING_SENSORS/PENDING_REVIEW via `persistDraft`).
    */
   abstract stopRecording(id: string): Promise<ConsultationResponse>;
 }

@@ -441,17 +441,66 @@ export class ConsultationController {
     return this.consultationService.updateConsultation(id, request);
   }
 
+  // TASK-711 — session state machine. `prime`/`close`/`reopen` are the API
+  // surface of the legality matrix (state-machine.md §2); each carries
+  // `@RequiresIfMatch()` + `@ExpectedVersion()` (TASK-709/05-nestjs-api.md
+  // §Optimistic Concurrency) so a stale client CAS-fails (412) rather than
+  // silently clobbering a concurrent transition, and an illegal transition
+  // surfaces as 409 (`ConsultationService.applyTransition` maps the domain
+  // `BusinessException` — verified by the parity unit test alongside this
+  // controller: `@ApiEndpoint()` composes cleanly with both decorators, the
+  // same way `startRecording` already composes it with `@RequiresConsent`).
+
+  @ApiEndpoint({
+    returnedModel: ConsultationResponse,
+    method: HttpMethod.POST,
+    path: ':id/prime',
+    by: ['id'],
+  })
+  @RequiresIfMatch()
+  @ApiParam({ name: 'id', description: 'Consultation ID' })
+  @ApiHeader({
+    name: 'If-Match',
+    description: 'RFC 7232 strong validator carrying the version the client read (e.g. `"1"`).',
+    required: true,
+    example: '"1"',
+  })
+  @ApiResponse({ status: 404, description: 'Consultation not found' })
+  @ApiResponse({ status: 409, description: "Illegal state transition for the consultation's current status." })
+  @ApiResponse({ status: 412, description: 'Optimistic concurrency conflict — re-fetch and retry with the new version.' })
+  @ApiResponse({ status: 428, description: 'If-Match header is required for this operation.' })
+  // Consent & ABAC (TASK-712). `prime` is the session state machine's first
+  // checkpoint — the same AI_DOCUMENTATION purpose `recording/start` already
+  // gates (that decorator is left in place; a follow-up ticket removes it
+  // once `prime` is the sole consent checkpoint, per the kill-switch's own
+  // rollout note below).
+  @RequiresConsent(ConsentPurpose.AI_DOCUMENTATION)
+  async prime(@Param('id') id: string, @ExpectedVersion() expectedVersion: number | undefined): Promise<ConsultationResponse> {
+    await this.verifyConsultationOwnership(id);
+    return this.consultationService.primeConsultation(id, expectedVersion);
+  }
+
   @ApiEndpoint({
     returnedModel: ConsultationResponse,
     method: HttpMethod.POST,
     path: ':id/close',
     by: ['id'],
   })
+  @RequiresIfMatch()
   @ApiParam({ name: 'id', description: 'Consultation ID' })
+  @ApiHeader({
+    name: 'If-Match',
+    description: 'RFC 7232 strong validator carrying the version the client read (e.g. `"1"`).',
+    required: true,
+    example: '"1"',
+  })
   @ApiResponse({ status: 404, description: 'Consultation not found' })
-  async close(@Param('id') id: string): Promise<ConsultationResponse> {
+  @ApiResponse({ status: 409, description: 'Illegal state transition — the consultation is not SIGNED or TIMED_OUT.' })
+  @ApiResponse({ status: 412, description: 'Optimistic concurrency conflict — re-fetch and retry with the new version.' })
+  @ApiResponse({ status: 428, description: 'If-Match header is required for this operation.' })
+  async close(@Param('id') id: string, @ExpectedVersion() expectedVersion: number | undefined): Promise<ConsultationResponse> {
     await this.verifyConsultationOwnership(id);
-    return this.consultationService.closeConsultation(id);
+    return this.consultationService.closeConsultation(id, expectedVersion);
   }
 
   @ApiEndpoint({
@@ -460,11 +509,21 @@ export class ConsultationController {
     path: ':id/reopen',
     by: ['id'],
   })
+  @RequiresIfMatch()
   @ApiParam({ name: 'id', description: 'Consultation ID' })
+  @ApiHeader({
+    name: 'If-Match',
+    description: 'RFC 7232 strong validator carrying the version the client read (e.g. `"1"`).',
+    required: true,
+    example: '"1"',
+  })
   @ApiResponse({ status: 404, description: 'Consultation not found' })
-  async reopen(@Param('id') id: string): Promise<ConsultationResponse> {
+  @ApiResponse({ status: 409, description: "Illegal state transition for the consultation's current status." })
+  @ApiResponse({ status: 412, description: 'Optimistic concurrency conflict — re-fetch and retry with the new version.' })
+  @ApiResponse({ status: 428, description: 'If-Match header is required for this operation.' })
+  async reopen(@Param('id') id: string, @ExpectedVersion() expectedVersion: number | undefined): Promise<ConsultationResponse> {
     await this.verifyConsultationOwnership(id);
-    return this.consultationService.reopenConsultation(id);
+    return this.consultationService.reopenConsultation(id, expectedVersion);
   }
 
   // ─── Recording lifecycle + live summary (Clinical Workflow Playground) ───

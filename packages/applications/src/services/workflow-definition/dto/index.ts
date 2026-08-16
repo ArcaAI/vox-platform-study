@@ -4,3 +4,4 @@ export * from './publish-workflow-definition.request';
 export * from './workflow-definition.response';
 export * from './paginated-workflow-definition.response';
 export * from './workflow-node.response';
+export * from './sandbox-compile-result';

@@ -30,6 +30,7 @@ export class PlanEntitlement extends BaseDataModel {
   public featureVoiceEnrollment: boolean;
   public featureMonitoringAccess: boolean;
   public featurePlatformDefaultCredential: boolean;
+  public featurePaletteStt: boolean;
   public modelTier: string;
   public rateLimitTier: string;
   public resourceStatus: Enums.ResourceStatusType;
@@ -60,6 +61,7 @@ export class PlanEntitlement extends BaseDataModel {
     this.featureVoiceEnrollment = data.featureVoiceEnrollment;
     this.featureMonitoringAccess = data.featureMonitoringAccess;
     this.featurePlatformDefaultCredential = data.featurePlatformDefaultCredential;
+    this.featurePaletteStt = data.featurePaletteStt;
     this.modelTier = data.modelTier;
     this.rateLimitTier = data.rateLimitTier;
     this.resourceStatus = data.resourceStatus;

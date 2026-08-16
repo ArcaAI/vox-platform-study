@@ -3,6 +3,7 @@ import {
   CreateWorkflowDefinitionRequest,
   PaginatedWorkflowDefinitionResponse,
   PublishWorkflowDefinitionRequest,
+  SandboxCompileResult,
   UpdateWorkflowDefinitionRequest,
   WorkflowDefinitionResponse,
   WorkflowNodeRegistryResponse,
@@ -71,6 +72,15 @@ export interface IWorkflowDefinitionService {
 
   /** Read-only projection of `WORKFLOW_NODE_REGISTRY` — no tenant scoping, no table. */
   listNodes(): Promise<WorkflowNodeRegistryResponse>;
+
+  /**
+   * Compile `id`'s CURRENT graph fresh, for a Workbench sandbox test run (TASK-721). Unlike
+   * `publish()`, this works on a DRAFT/VALIDATED row too and never persists the result — it is
+   * a read, not a lifecycle transition. Throws `BadRequestException` (400) if the engine gate
+   * is not clean (same predicate `publish()` uses); cross-tenant/unknown `id` throws
+   * `NotFoundException` (404-over-403).
+   */
+  getCompiledConfigForSandboxRun(id: string): Promise<SandboxCompileResult>;
 }
 
 export const IWorkflowDefinitionService = Symbol('IWorkflowDefinitionService');

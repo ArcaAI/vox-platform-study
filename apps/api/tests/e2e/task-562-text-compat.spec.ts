@@ -26,7 +26,7 @@ import { expect, test } from '@playwright/test';
 import { DEFAULT_TENANT_KEY, SEEDED_USERS, loginUser } from '../../../../tests/helpers';
 // Validate LIVE 200 responses against the frozen v1 schema lock
 // (/). Hermetic when SMR is down (status ≠ 200 → shape check skipped).
-import { PreSummaryResponseSchema, SummaryResponseSchema } from '../../../../tests/contracts/smr-compat.schemas';
+import { PreSummaryResponseSchema, SummaryResponseSchema } from '../../../../tests/contracts/text-compat.schemas';
 
 const SUMMARY_SYNC_PATH = '/api/smr/api/v1/summary/sync';
 const PRESUMMARY_PATH = '/api/smr/api/v1/presummary';

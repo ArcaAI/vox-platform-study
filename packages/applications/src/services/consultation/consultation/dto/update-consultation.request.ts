@@ -1,28 +1,19 @@
-import { IsString, IsOptional, IsDateString, IsObject, IsIn } from 'class-validator';
+import { IsString, IsOptional, IsDateString, IsObject } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
-
-/**
- * Consultation lifecycle status.
- *
- * The Consultation model has no dedicated open/closed column; lifecycle
- * state is stored in `metadata.status` and surfaced as `ConsultationResponse.status`.
- * An absent value is treated as OPEN.
- */
-export const CONSULTATION_STATUS = {
-  OPEN: 'OPEN',
-  CLOSED: 'CLOSED',
-} as const;
-
-export type ConsultationLifecycleStatus = (typeof CONSULTATION_STATUS)[keyof typeof CONSULTATION_STATUS];
-
-export const CONSULTATION_STATUS_VALUES: ConsultationLifecycleStatus[] = Object.values(CONSULTATION_STATUS);
 
 /**
  * Update Consultation Request
  *
  * Partial update of an EXISTING consultation. Only safely-mutable fields are
- * accepted. Identity / ownership fields (`patientId`, `doctorId`, `tenantId`)
- * and the structural `parentConsultationId` link are intentionally NOT mutable.
+ * accepted. Identity / ownership fields (`patientId`, `doctorId`, `tenantId`),
+ * the structural `parentConsultationId` link, and the typed `status` COLUMN
+ * are intentionally NOT mutable here.
+ *
+ * TASK-711 — the `status` field (previously written into the legacy
+ * `metadata.status` JSON key) is REMOVED. Lifecycle status now goes
+ * exclusively through the dedicated, matrix-guarded routes:
+ * `POST :id/prime`, `POST :id/close`, `POST :id/reopen`,
+ * `POST :id/recording/start`, `POST :id/recording/stop`.
  */
 export class UpdateConsultationRequest {
   @ApiPropertyOptional({
@@ -37,14 +28,6 @@ export class UpdateConsultationRequest {
   @IsOptional()
   @IsString()
   departmentId?: string;
-
-  @ApiPropertyOptional({
-    description: 'Lifecycle status. Stored in metadata.status.',
-    enum: CONSULTATION_STATUS_VALUES,
-  })
-  @IsOptional()
-  @IsIn(CONSULTATION_STATUS_VALUES)
-  status?: ConsultationLifecycleStatus;
 
   @ApiPropertyOptional({ description: 'Additional metadata (shallow-merged with existing metadata)' })
   @IsOptional()

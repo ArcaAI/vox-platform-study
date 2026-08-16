@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://arcaai.dev/hope/workflow-nodes/stt.audioInput.schema.json",
+  "title": "stt.audioInput node config (mandatory)",
+  "description": "Declares how audio reaches this pipeline. `mode: 'realtime'` carries no further config — a realtime session supplies audio at session-open time via the existing WS gateway (stt-ws.gateway.ts), never through this node's config. `mode: 'batch'` carries a `mediaId`/`audioUri` reference mirroring apps/stt's transcribe_file worker params. `if`/`then`/`else` is excluded from the authorable subset (packages/json-schema-subset), so mode-conditional field requirements (e.g. 'batch requires mediaId or audioUri') are enforced by the impure, repository-backed validator layer, not by this schema.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["mode"],
+  "properties": {
+    "mode": { "type": "string", "enum": ["realtime", "batch"] },
+    "mediaId": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "audioUri": { "type": "string", "minLength": 1, "maxLength": 2048 }
+  }
+}

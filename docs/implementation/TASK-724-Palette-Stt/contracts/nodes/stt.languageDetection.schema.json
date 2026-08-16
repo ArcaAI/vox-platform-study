@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://arcaai.dev/hope/workflow-nodes/stt.languageDetection.schema.json",
+  "title": "stt.languageDetection node config (optional)",
+  "description": "Selects a language mode from the platform's closed, backend-authoritative catalog (apps/stt/src/stt/pipeline/language_modes.py LANGUAGE_MODE_CATALOG / LanguageModeKind) — never a free-text language string. `mode` mirrors LanguageModeKind ('single' | 'code_switch' | 'auto'); `languageModeId`, when present, must be one of the catalog's own ids. Consistency between `mode` and `languageModeId` (e.g. 'auto' mode ignores languageModeId) is enforced by the impure validator layer via language_modes.py's own `engine_supports_mode`, not re-implemented here — `if`/`then`/`else` is excluded from the authorable subset.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["mode"],
+  "properties": {
+    "mode": { "type": "string", "enum": ["single", "code_switch", "auto"] },
+    "languageModeId": { "type": "string", "enum": ["en", "ml", "ml-en", "vi", "vi-en", "auto"] }
+  }
+}

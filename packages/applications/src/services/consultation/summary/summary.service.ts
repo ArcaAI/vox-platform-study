@@ -1,4 +1,5 @@
 import { Inject, Injectable, Logger, Optional, BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import { BusinessException } from '@arcaai/exceptions';
 import { HttpService } from '@nestjs/axios';
 import type { AxiosError } from 'axios';
 import { ConfigService } from '@nestjs/config';
@@ -922,7 +923,9 @@ export class SummaryService extends BaseService implements ISummaryService {
    *   2. Appends an `ATTEST` event to the Phase-0 WORM audit trail
    *      (`HarnessAuditService`) — fail-closed: if the audit append throws, the
    *      whole approval is rejected and the consultation is NOT signed.
-   *   3. Flips `Consultation.status` → `SIGNED`.
+   *   3. Flips `Consultation.status` → `SIGNED` via `ConsultationEntity.transitionTo`
+   *      (TASK-711) — a legality ASSERTION around the pre-existing write, never a
+   *      widening of it; an illegal predecessor throws (mapped to 409).
    *
    * RELAXED sign-off governance (clinician autonomy + full
    * audit, doc 08 §7.1):
@@ -1114,7 +1117,26 @@ export class SummaryService extends BaseService implements ISummaryService {
     const expectedVersion = options?.expectedVersion as number;
     if (consultation) {
       const consultationExpectedVersion = consultation.version;
-      consultation.status = ConsultationStatus.SIGNED;
+      // TASK-711 — the sign legality ASSERTION, added around this write
+      // WITHOUT touching the write site's business gates above (the
+      // authenticated-user check, tenant assertion, idempotency read, safety
+      // FLAG hard block, fail-closed-ordered ATTEST WORM append are all
+      // unchanged). The matrix's legal predecessors of SIGNED are exactly
+      // the three states `approveSummary` can be reached from:
+      // DRAFT_PENDING_SENSORS (Q2a optimistic delivery), PENDING_REVIEW
+      // (the legacy path), and TIMED_OUT ("the clock never signs, a human
+      // still can" — state-machine.md §2). Any other predecessor is a
+      // genuine ordering bug and `transitionTo` throws — mapped to 409 here
+      // rather than the domain `BusinessException`'s default 500, mirroring
+      // `ConsultationService.applyTransition`.
+      try {
+        consultation.transitionTo(ConsultationStatus.SIGNED, approvedBy, 'approveSummary');
+      } catch (err) {
+        if (err instanceof BusinessException) {
+          throw new ConflictException(err.message);
+        }
+        throw err;
+      }
       consultation.updatedBy = approvedBy;
       if (this.unitOfWork) {
         await this.unitOfWork.runInTransaction(async (tx) => {

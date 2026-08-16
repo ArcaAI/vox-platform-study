@@ -2,7 +2,7 @@
  * v1-compatible SMR summary shim CONTRACT tests (hermetic).
  *
  * Locks the frozen v1 response shapes by validating the
- * golden fixtures against the zod schemas in `smr-compat.schemas.ts`, and proves
+ * golden fixtures against the zod schemas in `text-compat.schemas.ts`, and proves
  * the lock BITES by asserting that dropping a v1-required key fails. A future v2
  * change that reshapes a contract fails here before it can reach a migrated app.
  *

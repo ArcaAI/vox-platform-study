@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { IconTimeline } from '@tabler/icons-react';
 import { parseAsString, useQueryState } from 'nuqs';
+import Link from 'next/link';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@arcaai/ui/components/shadcn/tabs';
 import { PageHeader } from '@/shared/page/page-header';
 import { ScreenTemplate } from '@/shared/page/screen-template';
@@ -64,7 +65,22 @@ export function AiOperationsRunsScreen() {
     >
       <Tabs className="flex min-h-0 flex-1 flex-col" value={tab} onValueChange={(next) => void setTabParam(next === 'trajectory' ? null : next)}>
         <ScreenTemplate
-          header={<PageHeader title="AI Operations — Runs" meta={<span>trajectory timeline &middot; per-step stats &middot; gate queue</span>} />}
+          header={
+            <PageHeader
+              title="AI Operations — Runs"
+              meta={
+                <>
+                  <span>trajectory timeline &middot; per-step stats &middot; gate queue</span>
+                  {/* TASK-723: reciprocal cross-link to the definition-scoped
+                      tenant view — this screen is the cross-tenant platform-ops
+                      sibling (§2.4); neither forks the other's components. */}
+                  <Link href="/workflow-runs" className="text-primary underline underline-offset-2">
+                    See workflow-definition runs (tenant view) →
+                  </Link>
+                </>
+              }
+            />
+          }
           tabs={
             <TabsList variant="line">
               <TabsTrigger value="trajectory">Trajectory</TabsTrigger>

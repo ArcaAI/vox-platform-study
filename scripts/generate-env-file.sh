@@ -202,6 +202,14 @@ _apply_test_overrides() {
   _set_env "$file" OTEL_EXPORTER_OTLP_ENDPOINT ""
   _set_env "$file" OTEL_TRACES_ENABLED false
   _set_env "$file" OTEL_METRICS_ENABLED false
+  # TASK-722 R-1: the public workflow-exposure surface is OFF everywhere by
+  # default (`.env.sample`/`.env.dev` keep the platform default `false`) — but
+  # the e2e suite (`task-722-workflow-exposure.spec.ts`) needs it ON to
+  # exercise the real routes rather than only their kill-switch 404. This is a
+  # TEST-ONLY override, same shape as RATE_LIMIT_ENABLED above; it does not
+  # change the dev/prod default. WORKFLOW_EXPOSURE_ALLOW_CLOUD_PROVIDERS
+  # stays at the sample's `false` — no e2e case selects a cloud provider.
+  _set_env "$file" WORKFLOW_EXPOSURE_ENABLED true
 }
 
 # Secret/credential keys preserved across an overwrite. Rebuilding from the

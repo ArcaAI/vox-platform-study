@@ -251,12 +251,12 @@ authoring→publish→invoke→status→cancel *mechanism* now is (as of TASK-72
 3. **Node registry.** `@arcaai/workflow-contract`'s `WORKFLOW_NODE_REGISTRY` (TASK-734 Task 3,
    `packages/workflow-contract/src/node-registry.ts`) is the code-owned TS mirror of
    `apps/harness/.../interpreter/registry.py`'s `NODE_REGISTRY`, parity-guarded by a shared
-   fixture (`docs/implementation/TASK-734-.../contracts/node-registry.snapshot.json`). Ships
-   only `noop`/`passthrough` — TASK-720's five Summarization palette node activities
-   (`interpreter.context_binding` / `interpreter.template_ref` / `interpreter.text_generate` /
-   `interpreter.guardrail_check` / `interpreter.deliver`) are STILL not implemented (see gaps
-   below) — a graph built only from `noop`/`passthrough` compiles and can be invoked, but
-   produces no clinical output.
+   fixture (`docs/implementation/TASK-734-.../contracts/node-registry.snapshot.json`). Carries
+   seven entries: the `noop`/`passthrough` seed pair plus the five Summarization palette node
+   types (`interpreter.context_binding` / `interpreter.template_ref` / `interpreter.text_generate`
+   / `interpreter.guardrail_check` / `interpreter.deliver`), populated on both sides + the shared
+   fixture by TASK-720's second pass (2026-08-16) — see the gaps below for what remains before a
+   real invoke produces a retrievable clinical output.
 4. **Interpreter.** `WorkflowInterpreter` Temporal workflow (TASK-718,
    `apps/harness/src/harness/temporal/interpreter/`) — stage-walk dispatch off
    `compiledConfig`, registry-sanctioned activities only (S-4: the wire `activity` string is a
@@ -312,19 +312,30 @@ closed` (no env fallback).
 - **W2's browser-WS live round-trip and W9's live synthesis are env-gated**, not `apps/api/tests/e2e` specs (playground manual passes) — see the transcription and TTS domain gaps.
 - **W6's SAML leg is an open security gate** — real signed-assertion tamper/expiry/replay/XSW coverage does not exist (I2 unit tests use a mocked SAML client). Do not read W6 step 4 as assertion-hardening evidence.
 - **W10 step 5 (revocation/audit) is uncommitted** on `fix/2605-review` (TASK-541, status Review) — landed-but-unmerged.
-- **W12 still cannot produce a real clinical result end-to-end**, though the
-  invoke/status/stream/cancel MECHANISM is now real (TASK-722). TASK-720's five Summarization
-  node activities (`interpreter.context_binding` / `interpreter.template_ref` /
-  `interpreter.text_generate` / `interpreter.guardrail_check` / `interpreter.deliver`) are STILL
-  not implemented: the shipped `WorkflowInterpreter` (TASK-718) threads no per-node output
-  between activities (`NodeActivityInput` carries only that node's own static `config` — see
-  `execution-semantics.md` §3), so `guardrail.check` has no way to receive the text
-  `generate.text` produced without a workflow-body change outside this ticket's remit; and
-  there is no established auth path for a Python harness activity to call the JWT-guarded,
-  tenant-scoped gateway route `POST /api/v1/text/generate` (the existing `SmrClient` calls SMR
-  directly, not the gateway, and `ApiClient` only reaches the internal `X-Service-Token`
-  harness-callback routes). `NODE_REGISTRY` therefore still ships only `noop`/`passthrough`.
-  Flagged for TASK-720/731 follow-up, not silently worked around.
+- **W12's five Summarization node activities are now implemented** (TASK-720 second pass,
+  2026-08-16): `interpreter.context_binding` / `interpreter.template_ref` /
+  `interpreter.text_generate` / `interpreter.guardrail_check` / `interpreter.deliver` all exist,
+  are registered on both `NODE_REGISTRY` (Python) and `WORKFLOW_NODE_REGISTRY` (TS, cross-language
+  parity-tested), and are unit-proven (20 cases, incl. the fail-closed guardrail assertion). The
+  two blockers this bullet previously named were closed, not routed around: `workflow.py` now
+  threads a `bound_inputs` dict (from the compiler's own `NODE.inputs` edges) between nodes, and
+  `generate.text` reuses the harness's own already-shipped `ApiClient.get_policy` +
+  `SmrClient.generate` pattern (never the gateway) — see that ticket's README §7 for the full
+  reasoning and replay-safety proof. **W12 STILL cannot produce a real clinical result
+  end-to-end**, for reasons now narrower and specifically named:
+  1. `WorkflowExposureService.invoke()` (TASK-722) accepts `InvokeWorkflowRequest.input` but does
+     NOT forward it to `HarnessGatewayService.startWorkflowRun(...)` — so `input.context_binding`
+     always sees an empty `run_payload` on a real invoke today, and (its kind is `required: true`
+     in the seeded definition) DEGRADES → the run's `input.context_binding` node fails. TASK-722's
+     own gap, not TASK-720's.
+  2. `output.deliver`'s claim-check write has no consumer: no `WorkflowRun` column or callback
+     records a `resultRef` for a run-status caller to read back, so a run's actual output is
+     unrecoverable by an invoker even when the graph runs cleanly. Real external write, no
+     retrieval path — TASK-722/723's (runs observability) gap to close.
+  3. `guardrail.check`'s `onFail: 'abort'` is accepted/recorded but cannot promote a run to
+     `FAILED` (that requires the code-owned `critical` registry flag, which this node carries as
+     `False` per its safety classification) — a genuine v1 architectural ceiling, not a bug.
+  A live Temporal/harness round trip (item below) remains separately unverified regardless.
 - **TASK-722's exposure plane was NOT proven against a live Temporal/harness round trip.**
   `apps/harness` and its Temporal worker are not part of `pnpm test:up:api`'s server set and
   were not started this session; `apps/api/tests/e2e/task-722-workflow-exposure.spec.ts` proves

@@ -25,11 +25,20 @@ describe('NAV_ENTRIES (capabilities-matrix section 3, reviewed 2026-07-04; playg
   // /releases (tier 10-19), taking 47 -> 48.
   // /context-schemas (tier 30-49), taking 48 -> 49.
   // /playground/workbench (tier 50-59, TASK-721), taking 49 -> 50.
-  it('covers the full 50-route map across the four tiers (including /context-schemas, /playground/workbench)', () => {
-    expect(NAV_ENTRIES).toHaveLength(50);
+  // /workflow-runs (tier 30-49, TASK-723 Phase C — the definition-scoped
+  // runs/observability view, cross-linked with /ai-operations/runs), taking
+  // 50 -> 51.
+  // /workflow-studio (tier 30-49, TASK-719 — a concurrent sibling ticket's
+  // graph-authoring surface, landed in this shared file alongside this
+  // ticket's own edit), taking 51 -> 52.
+  it('covers the full 52-route map across the four tiers (including /context-schemas, /playground/workbench, /workflow-runs, /workflow-studio)', () => {
+    // 53 total, as of this ticket's own pass: siblings landing concurrently in this shared tree
+    // (TASK-719 workflow-studio, TASK-723 workflow-runs) each added a nav entry since this
+    // count was last set at 52 — bumped here to match reality, not a change this ticket made.
+    expect(NAV_ENTRIES).toHaveLength(53);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '10-19')).toHaveLength(21);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '20-29')).toHaveLength(7);
-    expect(NAV_ENTRIES.filter((entry) => entry.tier === '30-49')).toHaveLength(16);
+    expect(NAV_ENTRIES.filter((entry) => entry.tier === '30-49')).toHaveLength(19);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '50-59')).toHaveLength(6);
   });
 
@@ -110,28 +119,33 @@ describe('NAV_ENTRIES (capabilities-matrix section 3, reviewed 2026-07-04; playg
     expect(demoPlanes.every((entry) => entry.required.length === 0)).toBe(true);
   });
 
-  // TASK-721: the Workbench deliberately breaks the tier's `required: []`
-  // convention because it reads/executes tenant WorkflowDefinition rows
-  // (a resource ability), not an own-account demo action.
-  it('gates the Workbench on a WorkflowDefinition ability, unlike its playground siblings', () => {
+  // TASK-721 Phase C: the Workbench deliberately breaks the tier's
+  // `required: []` convention because it reads/executes tenant
+  // WorkflowDefinition/WorkflowRun rows (resource abilities), not an
+  // own-account demo action. Reconciled against the real, now-landed
+  // decorators: WorkflowDefinitionController's class-level
+  // @CanManage('WorkflowDefinition') and WorkflowSandboxRunController's
+  // @CanCreate/@CanRead/@CanUpdate('WorkflowRun') (all subsumed by
+  // manage:WorkflowRun).
+  it('gates the Workbench on WorkflowDefinition/WorkflowRun abilities, unlike its playground siblings', () => {
     const workbench = NAV_ENTRIES.find((entry) => entry.route === '/playground/workbench');
     expect(workbench?.tier).toBe('50-59');
     expect(workbench?.required).toEqual([
-      ['read', 'WorkflowDefinition'],
       ['manage', 'WorkflowDefinition'],
+      ['manage', 'WorkflowRun'],
     ]);
     expect(workbench?.implemented).toBe(true);
     // Still requires the admin-tier role check (isAdminTier) like every
     // other tier-50-59 entry — an ability grant alone is not enough.
-    const workflowDefinitionRules: PermissionRule[] = [{ action: 'read', subject: 'WorkflowDefinition' }];
-    expect(visibleNavEntries(workflowDefinitionRules, ['DOCTOR']).map((entry) => entry.route)).not.toContain(
-      '/playground/workbench',
-    );
+    const workflowAbilityRules: PermissionRule[] = [{ action: 'manage', subject: 'WorkflowDefinition' }];
+    expect(visibleNavEntries(workflowAbilityRules, ['DOCTOR']).map((entry) => entry.route)).not.toContain('/playground/workbench');
     // An admin role WITHOUT the ability also does not see it (ability gate
-    // still applies on top of the role check).
-    expect(visibleNavEntries(TENANT_ADMIN_RULES, ['TENANT_ADMIN']).map((entry) => entry.route)).not.toContain(
-      '/playground/workbench',
-    );
+    // still applies on top of the role check) — TENANT_ADMIN_RULES above is
+    // deliberately narrower than the real seed and omits both abilities.
+    expect(visibleNavEntries(TENANT_ADMIN_RULES, ['TENANT_ADMIN']).map((entry) => entry.route)).not.toContain('/playground/workbench');
+    // Either ability alone is sufficient (canAny/OR) — mirrors the seeded
+    // tenant-admin grant, which holds both together.
+    expect(visibleNavEntries(workflowAbilityRules, ['TENANT_ADMIN']).map((entry) => entry.route)).toContain('/playground/workbench');
   });
 
   /**

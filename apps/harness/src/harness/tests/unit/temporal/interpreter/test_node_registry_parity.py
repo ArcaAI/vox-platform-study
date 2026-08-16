@@ -56,5 +56,16 @@ class TestNodeRegistryParity:
     def test_matches_the_committed_cross_language_fixture_exactly(self):
         assert _project_registry() == _load_fixture_entries()
 
-    def test_carries_exactly_the_seed_keys(self):
-        assert sorted(NODE_REGISTRY.keys()) == ["noop", "passthrough"]
+    def test_carries_exactly_the_seed_and_stt_palette_keys(self):
+        assert sorted(NODE_REGISTRY.keys()) == [
+            "noop",
+            "passthrough",
+            "stt.asrEngine",
+            "stt.audioInput",
+            "stt.diarization",
+            "stt.languageDetection",
+            "stt.noiseFilter",
+            "stt.phiHop",
+            "stt.transcriptOutput",
+            "stt.vad",
+        ]

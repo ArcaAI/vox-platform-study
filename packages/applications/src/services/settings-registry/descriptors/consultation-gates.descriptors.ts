@@ -17,7 +17,13 @@
 // enrichment is now OPT-IN. `harness.loop.enabled` is unaffected: it already
 // defaulted OFF, so its effective state is unchanged.
 
-import { CONSULTATION_GATE_DEFAULTS, CONSULTATION_OCR_ENABLED_KEY, HARNESS_LOOP_ENABLED_KEY } from '../../consultation/consultation-gates.constants';
+import {
+  CONSULTATION_GATE_DEFAULTS,
+  CONSULTATION_OCR_ENABLED_KEY,
+  CONSULTATION_REQUIRE_PRIMED_BEFORE_RECORDING_KEY,
+  CONSULTATION_SESSION_TIMEOUT_MINUTES_KEY,
+  HARNESS_LOOP_ENABLED_KEY,
+} from '../../consultation/consultation-gates.constants';
 import { SettingDescriptor } from '../registry.types';
 
 export const CONSULTATION_GATE_SETTINGS: SettingDescriptor[] = [
@@ -55,5 +61,40 @@ export const CONSULTATION_GATE_SETTINGS: SettingDescriptor[] = [
     description:
       'Enables `OcrEnrichmentProcessor` — the in-cluster PyMuPDF + RapidOCR pass that fills `ContextItem.metaData.extractedText` for scanned attachments the browser text-layer extractor could not read. Resolved on EVERY ContextAdded event, so it can be cut without a redeploy when the NLP service is under pressure. NOW DEFAULTS OFF: the `OCR_ENABLED` env flag it replaces defaulted ON, which violated the kill-switch defaults-OFF invariant — enabling OCR is now an explicit operator action. With it off, a scanned attachment degrades to its filename label exactly as a failed OCR pass already did. PHI posture is unchanged (bytes stay in-cluster, no third-party egress).',
     default: CONSULTATION_GATE_DEFAULTS[CONSULTATION_OCR_ENABLED_KEY],
+  },
+  // TASK-711 (Task 9) — the session state-machine's one flagged precondition.
+  {
+    key: CONSULTATION_REQUIRE_PRIMED_BEFORE_RECORDING_KEY,
+    tier: 'global-kv',
+    dataType: 'boolean',
+    sensitivity: 'internal',
+    maxScope: 'system',
+    editableBy: 'GlobalSetting',
+    globalOnly: true,
+    failMode: 'open-to-default',
+    killSwitch: true,
+    category: 'Feature Flags',
+    label: 'Require PRIMED before RECORDING',
+    description:
+      "Enforces `docs/implementation/TASK-711-Session-State-Machine/state-machine.md` §2's `PRIMED → RECORDING` guard on `POST :id/recording/start`. Defaults OFF: no existing SDK/admin-console caller invokes `POST :id/prime` yet, so flipping this ON without a prior client rollout would 409 every recording start. OFF logs the would-be violation and proceeds; ON enforces (409 without a prior `prime`). Deleted once TASK-712 makes `prime` the end-to-end consent checkpoint.",
+    default: CONSULTATION_GATE_DEFAULTS[CONSULTATION_REQUIRE_PRIMED_BEFORE_RECORDING_KEY],
+  },
+  // TASK-711 (state-machine.md §1a) — general session-idleness timeout. A
+  // tuning knob, not a kill-switch: no on/off semantics, so `killSwitch` is
+  // intentionally omitted.
+  {
+    key: CONSULTATION_SESSION_TIMEOUT_MINUTES_KEY,
+    tier: 'global-kv',
+    dataType: 'number',
+    sensitivity: 'internal',
+    maxScope: 'system',
+    editableBy: 'GlobalSetting',
+    globalOnly: true,
+    failMode: 'open-to-default',
+    category: 'Feature Flags',
+    label: 'Consultation session idle timeout (minutes)',
+    description:
+      'Minutes a consultation may sit in a sweep-eligible state (PRIMED, DRAINING, DRAFT_PENDING_SENSORS, TIMED_OUT, REOPENED) with no clinician activity before the scheduled sweep transitions it to CLOSED_INCOMPLETE (state-machine.md §1a). Documented default 1440 (24h), provisional — tune down once real abandonment-rate data exists. The sweep job itself is not yet built (application/worker-layer follow-up); this descriptor fixes the contract it will read.',
+    default: CONSULTATION_GATE_DEFAULTS[CONSULTATION_SESSION_TIMEOUT_MINUTES_KEY],
   },
 ];

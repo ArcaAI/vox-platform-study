@@ -101,6 +101,119 @@ export const WORKFLOW_NODE_REGISTRY: Readonly<Record<string, WorkflowNodeDescrip
     defaultMaxAttempts: 1,
     entitlementKey: null,
   }),
+  // -------------------------------------------------------------------------------------------
+  // STT palette (TASK-724) — eight node types, `paletteKey: 'stt'`. See
+  // docs/implementation/TASK-724-Palette-Stt/contracts/palette.md for the node table, `critical`
+  // rationale, and the `implemented: false` decision on `stt.phiHop` (a documented placeholder
+  // pending TASK-710 — `implemented: false` makes compile() refuse ANY graph that includes it,
+  // never a silent pass-through). `entitlementKey: null` on every entry — `featurePaletteStt`
+  // gating is wired at WorkflowDefinitionService.publish() via IEntitlementsService, not a
+  // registry-declared key (see palette.md's Entitlement gate section).
+  //
+  // NOTE (2026-08-16, this ticket's execution): as of this pass, TASK-720's own summarization
+  // node-registry entries are ABSENT from this file — a concurrent sibling session's uncommitted
+  // work was reverted by an external tree operation mid-session (see this ticket's README §7 for
+  // the full account). These eight STT entries do not depend on the summarization entries being
+  // present and are correct either way; do not silently "restore" TASK-720's entries here — that
+  // is TASK-720's own reconciliation to make.
+  // -------------------------------------------------------------------------------------------
+  'stt.audioInput': Object.freeze({
+    key: 'stt.audioInput',
+    implemented: true,
+    activityName: 'interpreter.stt_audio_input',
+    classes: Object.freeze(['activity']),
+    paletteKey: 'stt',
+    critical: true,
+    externalWrite: false,
+    defaultTimeoutSeconds: 60,
+    defaultMaxAttempts: 3,
+    entitlementKey: null,
+  }),
+  'stt.vad': Object.freeze({
+    key: 'stt.vad',
+    implemented: true,
+    activityName: 'interpreter.stt_vad',
+    classes: Object.freeze(['activity']),
+    paletteKey: 'stt',
+    critical: false,
+    externalWrite: false,
+    defaultTimeoutSeconds: 60,
+    defaultMaxAttempts: 3,
+    entitlementKey: null,
+  }),
+  'stt.noiseFilter': Object.freeze({
+    key: 'stt.noiseFilter',
+    implemented: true,
+    activityName: 'interpreter.stt_noise_filter',
+    classes: Object.freeze(['activity']),
+    paletteKey: 'stt',
+    critical: false,
+    externalWrite: false,
+    defaultTimeoutSeconds: 60,
+    defaultMaxAttempts: 3,
+    entitlementKey: null,
+  }),
+  'stt.diarization': Object.freeze({
+    key: 'stt.diarization',
+    implemented: true,
+    activityName: 'interpreter.stt_diarization',
+    classes: Object.freeze(['activity']),
+    paletteKey: 'stt',
+    critical: false,
+    externalWrite: false,
+    defaultTimeoutSeconds: 120,
+    defaultMaxAttempts: 3,
+    entitlementKey: null,
+  }),
+  'stt.languageDetection': Object.freeze({
+    key: 'stt.languageDetection',
+    implemented: true,
+    activityName: 'interpreter.stt_language_detection',
+    classes: Object.freeze(['activity']),
+    paletteKey: 'stt',
+    critical: false,
+    externalWrite: false,
+    defaultTimeoutSeconds: 30,
+    defaultMaxAttempts: 3,
+    entitlementKey: null,
+  }),
+  'stt.asrEngine': Object.freeze({
+    key: 'stt.asrEngine',
+    implemented: true,
+    activityName: 'interpreter.stt_asr_engine',
+    classes: Object.freeze(['activity']),
+    paletteKey: 'stt',
+    critical: true,
+    externalWrite: false,
+    defaultTimeoutSeconds: 600,
+    defaultMaxAttempts: 2,
+    entitlementKey: null,
+  }),
+  'stt.transcriptOutput': Object.freeze({
+    key: 'stt.transcriptOutput',
+    implemented: true,
+    activityName: 'interpreter.stt_transcript_output',
+    classes: Object.freeze(['activity']),
+    paletteKey: 'stt',
+    critical: true,
+    externalWrite: true,
+    defaultTimeoutSeconds: 60,
+    defaultMaxAttempts: 3,
+    entitlementKey: null,
+  }),
+  // PLACEHOLDER — implemented:false, see palette.md. TASK-710/phi-redactor is not landed.
+  'stt.phiHop': Object.freeze({
+    key: 'stt.phiHop',
+    implemented: false,
+    activityName: 'interpreter.stt_phi_hop',
+    classes: Object.freeze(['activity']),
+    paletteKey: 'stt',
+    critical: false,
+    externalWrite: false,
+    defaultTimeoutSeconds: 60,
+    defaultMaxAttempts: 1,
+    entitlementKey: null,
+  }),
 });
 
 /** The registry-declared classes for a node type — `[]` for an unknown type (never throws;

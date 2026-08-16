@@ -5,4 +5,5 @@
 export enum WebhookRunStatus {
   SUCCESS = 'SUCCESS',
   FAILED = 'FAILED',
+  DEAD_LETTERED = 'DEAD_LETTERED',
 }

@@ -27,7 +27,10 @@ export type WorkerSessionKind =
   // Gate-edit mining worker (derived learning-loop corpus).
   | 'gate-edit-mining'
   // Admin-triggered tenant external-IdP directory pull (MS Graph / Google Directory).
-  | 'directory-sync';
+  | 'directory-sync'
+  // Webhook delivery: SysEvent → matching Webhook fan-out, and the signed
+  // per-webhook HTTP POST (TASK-727).
+  | 'webhook-delivery';
 
 /**
  * Init shape for `createWorkerSession`.

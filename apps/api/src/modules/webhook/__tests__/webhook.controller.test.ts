@@ -33,13 +33,14 @@ const entity = (overrides: Record<string, unknown> = {}) => ({
 
 function makeController() {
   const webhookService = {
-    create: vi.fn().mockResolvedValue(entity()),
+    create: vi.fn().mockResolvedValue({ webhook: entity(), rawSecret: 'a'.repeat(64) }),
     fetchAll: vi.fn().mockResolvedValue({ data: [entity()], count: 1, page: 1, limit: 20 }),
     fetchAllByTenantId: vi.fn().mockResolvedValue({ data: [entity()], count: 1, page: 1, limit: 20 }),
     fetchById: vi.fn().mockResolvedValue(entity()),
     update: vi.fn().mockResolvedValue(entity({ version: 2 })),
     deleteById: vi.fn().mockResolvedValue(entity({ resourceStatus: 'DELETED' })),
     fetchRunHistory: vi.fn().mockResolvedValue({ data: [], count: 0, page: 1, limit: 20 }),
+    rotateSecret: vi.fn().mockResolvedValue({ webhook: entity({ version: 2 }), rawSecret: 'b'.repeat(64) }),
   };
   const controller = new WebhookController(webhookService as never);
   return { controller, webhookService };
@@ -61,6 +62,11 @@ describe('WebhookController — authorization metadata', () => {
     expect(Reflect.getMetadata(PATH_METADATA, WebhookController.prototype.update)).toBe(':id');
     expect(Reflect.getMetadata(METHOD_METADATA, WebhookController.prototype.update)).toBe(RequestMethod.PATCH);
   });
+
+  it('declares the rotate-secret route as an OCC POST (If-Match required)', () => {
+    expect(Reflect.getMetadata(PATH_METADATA, WebhookController.prototype.rotateSecret)).toBe(':id/rotate-secret');
+    expect(Reflect.getMetadata(METHOD_METADATA, WebhookController.prototype.rotateSecret)).toBe(RequestMethod.POST);
+  });
 });
 
 describe('WebhookController — delegation + projection', () => {
@@ -81,12 +87,13 @@ describe('WebhookController — delegation + projection', () => {
     expect(webhookService.fetchAll).not.toHaveBeenCalled();
   });
 
-  it('create delegates and returns the mapped response', async () => {
+  it('create delegates and returns the mapped response with the raw secret shown once', async () => {
     const { controller, webhookService } = makeController();
     const request = { name: 'hook', url: 'https://example.com/hook', resourceTypeName: 'Consultation' };
     const result = await controller.create(request as never);
     expect(webhookService.create).toHaveBeenCalledWith(request);
-    expect(result).toMatchObject({ id: 'wh-1', name: 'hook' });
+    expect(result.webhook).toMatchObject({ id: 'wh-1', name: 'hook' });
+    expect(result.rawSecret).toBe('a'.repeat(64));
   });
 
   it('update folds the If-Match header version over the body expectedVersion', async () => {
@@ -112,5 +119,19 @@ describe('WebhookController — delegation + projection', () => {
     const result = await controller.fetchDeliveries('wh-1', { page: 2, limit: 10 } as never);
     expect(webhookService.fetchRunHistory).toHaveBeenCalledWith('wh-1', expect.objectContaining({ page: 2, limit: 10 }));
     expect(result.count).toBe(0);
+  });
+
+  it('rotateSecret folds the If-Match header version over the body expectedVersion and returns the new raw secret once', async () => {
+    const { controller, webhookService } = makeController();
+    const result = await controller.rotateSecret('wh-1', { expectedVersion: 1 } as never, 5);
+    expect(webhookService.rotateSecret).toHaveBeenCalledWith('wh-1', 5);
+    expect(result.webhook).toMatchObject({ id: 'wh-1', version: 2 });
+    expect(result.rawSecret).toBe('b'.repeat(64));
+  });
+
+  it('rotateSecret falls back to the body expectedVersion without the header', async () => {
+    const { controller, webhookService } = makeController();
+    await controller.rotateSecret('wh-1', { expectedVersion: 3 } as never, undefined);
+    expect(webhookService.rotateSecret).toHaveBeenCalledWith('wh-1', 3);
   });
 });

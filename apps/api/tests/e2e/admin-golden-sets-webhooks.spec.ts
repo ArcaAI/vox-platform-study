@@ -9,8 +9,11 @@
  *
  * Item 2 · Webhooks / notifications / resource subscriptions
  *   - CASL matrix on the three list routes.
- *   - Webhook lifecycle: create → read → OCC PATCH (428 without If-Match,
- *     200 with) → delivery log (empty until a dispatcher lands) → soft delete.
+ *   - Webhook lifecycle: create (server-generated secret, TASK-727) → read →
+ *     OCC PATCH (428 without If-Match, 200 with) → delivery log (still empty
+ *     here — nothing in this test mutates a `Consultation`, the subscribed
+ *     resourceType; TASK-727's real end-to-end delivery is covered by
+ *     `task-727-webhook-delivery.spec.ts`) → soft delete.
  *
  * Item 3 · Guardrail/NLP proxy plane (`/admin/ai-services/*`)
  *   - Platform tier (`manage:all`): 401 unauth, 403 doctor AND tenant_admin.
@@ -194,9 +197,15 @@ test.describe('webhook lifecycle (OCC + delivery log + soft delete)', () => {
       data: { name, url: 'https://example.invalid/hook', resourceTypeName: 'Consultation' },
     });
     expect(created.status(), 'webhook create').toBe(201);
-    const webhook = await created.json();
+    // TASK-727: the signing secret is server-generated and returned exactly
+    // once, alongside the created webhook (mirrors POST admin/api-keys).
+    const createBody = await created.json();
+    const webhook = createBody.webhook;
     expect(webhook.name).toBe(name);
     expect(webhook.version).toBe(1);
+    expect(webhook.hasSecret).toBe(true);
+    expect(webhook).not.toHaveProperty('hashedSecret');
+    expect(createBody.rawSecret).toMatch(/^[0-9a-f]{64}$/);
 
     // Detail read
     const detail = await request.get(`/api/v1/admin/webhooks/${webhook.id}`, { headers: bearer(tenantAdminToken) });

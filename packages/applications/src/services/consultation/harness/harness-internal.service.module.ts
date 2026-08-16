@@ -12,6 +12,7 @@ import { RedisCacheModule } from '../../baseServices/redis';
 import { HarnessPolicyServiceModule } from '../../harness-policy/harness-policy.service.module';
 import { EffectiveSettingsModule } from '../../settings-registry/effective-settings.module';
 import { UsageLedgerServiceModule } from '../../usageLedger';
+import { NotificationServiceModule } from '../../notification';
 
 /**
  * HarnessInternalService DI module. Wires the
@@ -50,6 +51,9 @@ import { UsageLedgerServiceModule } from '../../usageLedger';
     // NEVER calls (double-bill guard; see the
     // service's constructor doc comment).
     UsageLedgerServiceModule,
+    // TASK-711 — supplies the @Optional INotificationService the TIMED_OUT
+    // path uses for the clinician notification (best-effort).
+    NotificationServiceModule,
   ],
   providers: [HarnessInternalService, PromptAssemblyService],
   exports: [HarnessInternalService],

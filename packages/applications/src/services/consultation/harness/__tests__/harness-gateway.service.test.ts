@@ -388,6 +388,7 @@ describe('HarnessGatewayService', () => {
         tenantId: 'tenant-1',
         configRef,
         sandbox: false,
+        payload: {},
       });
       // The nested ClaimCheckRef keeps `content_type` (snake_case) — the Python
       // model carries no alias of its own.
@@ -395,6 +396,26 @@ describe('HarnessGatewayService', () => {
       expect(options.headers['X-Service-Token']).toBe('tok');
       expect(options.timeout).toBe(15_000);
       expect(result.status).toBe('started');
+    });
+
+    it('forwards a sandbox flag and payload verbatim (TASK-721 Workbench)', async () => {
+      mockHttpService.axiosRef.post.mockResolvedValue({ data: { runId: 'run-2', workflowId: 'workflow-interpreter-run-2', temporalRunId: 't-2', status: 'started' } });
+      const service = build('http://harness:8866', 'tok');
+      const configRef = { store: 's3', bucket: 'harness-claim-check', key: 'abc123', size: 42, sha256: 'a'.repeat(64), content_type: 'text/plain; charset=utf-8' };
+
+      await service.startWorkflowRun({
+        runId: 'run-2',
+        sessionId: 'workflow-interpreter-run-2',
+        workflowVersionId: 'def-1',
+        tenantId: 'tenant-1',
+        configRef,
+        sandbox: true,
+        payload: { transcript: 'synthetic sample only' },
+      });
+
+      const [, body] = mockHttpService.axiosRef.post.mock.calls[0];
+      expect(body.sandbox).toBe(true);
+      expect(body.payload).toEqual({ transcript: 'synthetic sample only' });
     });
   });
 

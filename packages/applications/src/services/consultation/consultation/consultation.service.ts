@@ -1,11 +1,14 @@
-import { Injectable, BadRequestException, NotFoundException, Inject, Optional } from '@nestjs/common';
+import { Injectable, BadRequestException, ConflictException, NotFoundException, Inject, Logger, Optional } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { BusinessException } from '@arcaai/exceptions';
 import {
+  ConsultationEntity,
   ConsultationRepository,
   ConsultationFactory,
   ConsultationStatus,
   DepartmentRepository,
+  HarnessAuditAction,
   ResourceType,
   SysEventType,
   UserDepartmentRepository,
@@ -19,13 +22,14 @@ import {
   ConsultationResponse,
   ConsultationAggregateResponse,
   PaginatedConsultationResponse,
-  CONSULTATION_STATUS,
-  ConsultationLifecycleStatus,
 } from './dto';
 import { ConsultationDtoMapper } from './consultation.dto.mapper';
 import { BaseService, assertEqualTenants, assertParentInScope, assertUserBelongsToTenant, isSuperAdmin } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 import { IEntitlementsService } from '../../entitlements/IEntitlementsService';
+import { HarnessAuditService } from '../../harness-audit';
+import { TenantSettingsService } from '../../settings-registry/tenant-settings.service';
+import { CONSULTATION_REQUIRE_PRIMED_BEFORE_RECORDING_KEY } from '../consultation-gates.constants';
 
 /**
  * Consultation Service
@@ -34,6 +38,8 @@ import { IEntitlementsService } from '../../entitlements/IEntitlementsService';
  */
 @Injectable()
 export class ConsultationService extends BaseService implements IConsultationService {
+  private readonly logger = new Logger(ConsultationService.name);
+
   constructor(
     private readonly consultationRepository: ConsultationRepository,
     private readonly departmentRepository: DepartmentRepository,
@@ -48,6 +54,15 @@ export class ConsultationService extends BaseService implements IConsultationSer
     // `monthlyConsultations` meter when STARTING a new consultation
     // (kill-switch-gated, → 429 when over the rolling-monthly cap).
     @Optional() @Inject(IEntitlementsService) private readonly entitlements?: IEntitlementsService,
+    // TASK-711 — optional (append-only DI, mirrors `entitlements` above): the
+    // WORM audit trail for clinically-significant transitions (prime/close/
+    // reopen). Absent ⇒ `appendTransitionAudit` no-ops (best-effort by design
+    // for routine transitions — see the method doc).
+    @Optional() @Inject(HarnessAuditService) private readonly harnessAuditService?: HarnessAuditService,
+    // TASK-711 — optional: resolves the `requirePrimedBeforeRecording`
+    // kill-switch. Absent ⇒ treated as OFF (the fail-safe default), mirroring
+    // `OcrEnrichmentProcessor.ocrEnabled`.
+    @Optional() @Inject(TenantSettingsService) private readonly tenantSettings?: TenantSettingsService,
   ) {
     super(eventEmitter, clsService, ResourceType.Consultation);
   }
@@ -637,36 +652,85 @@ export class ConsultationService extends BaseService implements IConsultationSer
   }
 
   // ============================================
-  // Lifecycle (close / reopen / update)
+  // TASK-711 — session state machine
   //
-  // The Consultation model has no dedicated open/closed column, so the
-  // lifecycle status lives in `metadata.status` (OPEN | CLOSED; absent ⇒
-  // OPEN) and is surfaced via `ConsultationResponse.status`. close/reopen
-  // are idempotent — when the consultation is already in the target state
-  // they short-circuit with NO write and NO SysEvent (avoids version churn
-  // and audit noise on UI double-clicks / retries).
+  // `Consultation.status` is now the ONLY lifecycle tracker (the legacy
+  // `metadata.status` JSON key is deleted — see the removed `readStatus`/
+  // `transitionStatus` this replaces). Every write goes through
+  // `ConsultationEntity.transitionTo`, the single guarded path that
+  // consults the legality matrix
+  // (docs/implementation/TASK-711-Session-State-Machine/state-machine.md
+  // §2). `transitionTo` itself handles the idempotent self-transition
+  // no-op; the two terminal-close methods add one further no-op check
+  // (already-terminal → already-terminal is not a self-pair in the
+  // matrix's sense, since CLOSED_COMPLETE and CLOSED_INCOMPLETE are two
+  // distinct targets — see `closeConsultation`).
   // ============================================
 
   /**
-   * Read the current lifecycle status from an entity's metadata.
-   * Absent / unrecognised ⇒ treated as OPEN.
+   * Illegal `transitionTo` calls throw a bare domain `BusinessException`
+   * (packages/domains has no HTTP awareness). Surfaced to callers as
+   * `409 Conflict` — the RFC-correct code for "this write conflicts with
+   * the resource's current state" — via the generic
+   * `ExceptionInterceptor` `BaseException` branch, which today maps to
+   * `500` for the whole `BusinessException` family (most of which is
+   * ordinary entity-validation, not a conflict). Catching it HERE, at the
+   * one call site this ticket controls, avoids reclassifying every other
+   * `BusinessException` use in the codebase.
    */
-  private readStatus(metadata: Record<string, unknown> | null | undefined): ConsultationLifecycleStatus {
-    return (metadata?.status as ConsultationLifecycleStatus | undefined) ?? CONSULTATION_STATUS.OPEN;
+  private applyTransition(entity: ConsultationEntity, next: ConsultationStatus, actor: string, reason: string): boolean {
+    try {
+      return entity.transitionTo(next, actor, reason);
+    } catch (err) {
+      if (err instanceof BusinessException) {
+        throw new ConflictException(err.message);
+      }
+      throw err;
+    }
   }
 
   /**
-   * Shared close/reopen path. Loads the consultation (tenant-asserted as
-   * defense-in-depth on top of the Prisma tenantScope extension), and if a
-   * transition is needed, writes the new `metadata.status` (+ audit
-   * timestamp) and broadcasts `ResourceUpdated`.
+   * Best-effort WORM append for a ROUTINE transition (README §3.3 pitfall
+   * 6): a failure here is logged but never rolls back the (already
+   * persisted) status write — only the `SIGNED` write itself
+   * (`summary.service.ts#approveSummary`) stays fail-closed.
    */
-  private async transitionStatus(
-    id: string,
-    target: ConsultationLifecycleStatus,
-    action: 'closeConsultation' | 'reopenConsultation',
-  ): Promise<ConsultationResponse> {
-    if (!this.tenantId) {
+  private async appendTransitionAudit(input: { tenantId: string; consultationId: string; action: HarnessAuditAction; actor: string }): Promise<void> {
+    if (!this.harnessAuditService) return;
+    try {
+      await this.harnessAuditService.append({
+        tenantId: input.tenantId,
+        consultationId: input.consultationId,
+        action: input.action,
+        modelName: 'session-lifecycle',
+        modelVersion: 'v1',
+        sensorScores: {},
+        citations: [],
+        clinicianId: input.actor === 'system' ? null : input.actor,
+        createdBy: input.actor === 'system' ? null : input.actor,
+      });
+    } catch (error) {
+      this.logger.warn({
+        message: 'TASK-711: WORM append failed for a routine session transition (non-fatal, status write not rolled back)',
+        consultationId: input.consultationId,
+        action: input.action,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  /**
+   * `OPEN → PRIMED` — the first checkpoint of the session state machine.
+   * Idempotent (no-op if already `PRIMED`, per `transitionTo`).
+   *
+   * Consent is NOT asserted here: `POST :id/prime`
+   * (apps/api) carries `@RequiresConsent`, the single TASK-712 choke point
+   * that already runs before this method is reached — duplicating the
+   * check here would be a second source of truth for the same decision.
+   */
+  async primeConsultation(id: string, expectedVersion?: number): Promise<ConsultationResponse> {
+    const tenantId = this.tenantId;
+    if (!tenantId) {
       throw new BadRequestException('Tenant ID is required');
     }
 
@@ -674,58 +738,138 @@ export class ConsultationService extends BaseService implements IConsultationSer
     if (!consultation) {
       throw new NotFoundException('Consultation not found');
     }
-    assertEqualTenants(consultation, { tenantId: this.tenantId });
+    assertEqualTenants(consultation, { tenantId });
 
-    const currentMeta = (consultation.metadata as Record<string, unknown> | null) ?? {};
-    const currentStatus = this.readStatus(currentMeta);
-
-    // Idempotent: already in the target state → return current state untouched.
-    if (currentStatus === target) {
+    const actor = this.requestUserId ?? 'system';
+    const applied = this.applyTransition(consultation, ConsultationStatus.PRIMED, actor, 'primeConsultation');
+    if (!applied) {
       return ConsultationDtoMapper.toResponseWithContext(consultation);
     }
 
-    const timestampKey = target === CONSULTATION_STATUS.CLOSED ? 'closedAt' : 'reopenedAt';
-    consultation.metadata = {
-      ...currentMeta,
-      status: target,
-      [timestampKey]: new Date().toISOString(),
-    } as Parameters<typeof ConsultationFactory.CreateNewVisit>[0]['metadata'];
     if (this.requestUserId) {
       consultation.updatedBy = this.requestUserId;
     }
-
-    await this.consultationRepository.update(id, consultation);
+    // The client-supplied `If-Match`/`@ExpectedVersion()` CAS predicate, when
+    // present (the `@RequiresIfMatch()`-gated route always supplies one) —
+    // otherwise the freshly-read row version (defense-in-depth against a
+    // concurrent write landing between our read and write).
+    await this.consultationRepository.updateWithVersion(id, consultation, expectedVersion ?? consultation.version);
 
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
       resourceId: id,
-      data: { action, status: target },
+      data: { action: 'primeConsultation', status: ConsultationStatus.PRIMED },
     });
+    await this.appendTransitionAudit({ tenantId, consultationId: id, action: HarnessAuditAction.SESSION_PRIMED, actor });
 
     return ConsultationDtoMapper.toResponseWithContext(consultation);
   }
 
   /**
-   * Close a consultation (transition lifecycle status to CLOSED). Idempotent.
+   * Close a consultation. The target terminal is DERIVED from the current
+   * status, per state-machine.md §2:
+   *   - `SIGNED       → CLOSED_COMPLETE`   (a human gave clinical feedback)
+   *   - `TIMED_OUT     → CLOSED_INCOMPLETE` (manual close before the sweep fires)
+   * Any other predecessor is illegal (→ 409) — "how do I close an unsigned,
+   * still-active consultation?" is answered by the matrix itself: you
+   * cannot, until it either signs or times out. Idempotent: already
+   * `CLOSED_COMPLETE`/`CLOSED_INCOMPLETE` (or the superseded, dead
+   * `CLOSED`) short-circuits with no write.
    */
-  async closeConsultation(id: string): Promise<ConsultationResponse> {
-    return this.transitionStatus(id, CONSULTATION_STATUS.CLOSED, 'closeConsultation');
+  async closeConsultation(id: string, expectedVersion?: number): Promise<ConsultationResponse> {
+    const tenantId = this.tenantId;
+    if (!tenantId) {
+      throw new BadRequestException('Tenant ID is required');
+    }
+
+    const consultation = await this.consultationRepository.findWithRelations(id);
+    if (!consultation) {
+      throw new NotFoundException('Consultation not found');
+    }
+    assertEqualTenants(consultation, { tenantId });
+
+    if (
+      consultation.status === ConsultationStatus.CLOSED_COMPLETE ||
+      consultation.status === ConsultationStatus.CLOSED_INCOMPLETE ||
+      consultation.status === ConsultationStatus.CLOSED
+    ) {
+      return ConsultationDtoMapper.toResponseWithContext(consultation);
+    }
+
+    const actor = this.requestUserId ?? 'system';
+    const target = consultation.status === ConsultationStatus.SIGNED ? ConsultationStatus.CLOSED_COMPLETE : ConsultationStatus.CLOSED_INCOMPLETE;
+    const worm =
+      target === ConsultationStatus.CLOSED_COMPLETE ? HarnessAuditAction.SESSION_CLOSED_COMPLETE : HarnessAuditAction.SESSION_CLOSED_INCOMPLETE;
+
+    // Always applies (from !== target — the terminal-idempotency check above
+    // already ruled out every self-pair), so no `applied` guard is needed.
+    this.applyTransition(consultation, target, actor, 'closeConsultation');
+
+    if (this.requestUserId) {
+      consultation.updatedBy = this.requestUserId;
+    }
+    await this.consultationRepository.updateWithVersion(id, consultation, expectedVersion ?? consultation.version);
+
+    this.broadcastSysEvent(SysEventType.ResourceUpdated, {
+      resourceId: id,
+      data: { action: 'closeConsultation', status: target },
+    });
+    await this.appendTransitionAudit({ tenantId, consultationId: id, action: worm, actor });
+
+    return ConsultationDtoMapper.toResponseWithContext(consultation);
   }
 
   /**
-   * Reopen a consultation (transition lifecycle status back to OPEN). Idempotent.
+   * Reopen a consultation → `REOPENED`. Legal from `TIMED_OUT`, `SIGNED`,
+   * `CLOSED_COMPLETE`, or `CLOSED_INCOMPLETE` (state-machine.md §2); any
+   * other predecessor is illegal (→ 409). Idempotent: already `REOPENED`
+   * is a self-transition, handled by `transitionTo` itself.
+   *
+   * Authority unchanged (README §6 Q2, preserved identically for both
+   * terminal-closed variants): `verifyConsultationOwnership` at the
+   * controller admits the assigned doctor OR any caller holding
+   * `manage:Consultation` — this ticket changes *legality*, not *who may act*.
    */
-  async reopenConsultation(id: string): Promise<ConsultationResponse> {
-    return this.transitionStatus(id, CONSULTATION_STATUS.OPEN, 'reopenConsultation');
+  async reopenConsultation(id: string, expectedVersion?: number): Promise<ConsultationResponse> {
+    const tenantId = this.tenantId;
+    if (!tenantId) {
+      throw new BadRequestException('Tenant ID is required');
+    }
+
+    const consultation = await this.consultationRepository.findWithRelations(id);
+    if (!consultation) {
+      throw new NotFoundException('Consultation not found');
+    }
+    assertEqualTenants(consultation, { tenantId });
+
+    const actor = this.requestUserId ?? 'system';
+    const applied = this.applyTransition(consultation, ConsultationStatus.REOPENED, actor, 'reopenConsultation');
+    if (!applied) {
+      return ConsultationDtoMapper.toResponseWithContext(consultation);
+    }
+
+    if (this.requestUserId) {
+      consultation.updatedBy = this.requestUserId;
+    }
+    await this.consultationRepository.updateWithVersion(id, consultation, expectedVersion ?? consultation.version);
+
+    this.broadcastSysEvent(SysEventType.ResourceUpdated, {
+      resourceId: id,
+      data: { action: 'reopenConsultation', status: ConsultationStatus.REOPENED },
+    });
+    await this.appendTransitionAudit({ tenantId, consultationId: id, action: HarnessAuditAction.SESSION_REOPENED, actor });
+
+    return ConsultationDtoMapper.toResponseWithContext(consultation);
   }
 
   /**
    * Update safely-mutable fields of an existing consultation.
    *
    * Allowed: `appointmentDate`, `departmentId` (tenant-checked, audit C-2),
-   * `metadata` (shallow-merged so other keys / lifecycle status are preserved),
-   * and `status` (written into metadata.status). Identity / ownership fields
-   * (`patientId`, `doctorId`, `tenantId`) and `parentConsultationId` are NOT
-   * mutable here.
+   * `metadata` (shallow-merged). Identity / ownership fields (`patientId`,
+   * `doctorId`, `tenantId`), the structural `parentConsultationId` link, and
+   * the typed `status` COLUMN (TASK-711 — routed exclusively through
+   * `transitionTo` via the dedicated prime/close/reopen/recording routes)
+   * are NOT mutable here.
    */
   async updateConsultation(id: string, request: UpdateConsultationRequest): Promise<ConsultationResponse> {
     const tenantId = this.tenantId;
@@ -738,17 +882,6 @@ export class ConsultationService extends BaseService implements IConsultationSer
       throw new NotFoundException('Consultation not found');
     }
     assertEqualTenants(consultation, { tenantId });
-
-    // TASK-701 — `metadata.status` is a reserved key: the DTO mapper's
-    // lifecycle-status precedence trusts it, so a caller-supplied `metadata`
-    // object must never be allowed to set it (e.g. forging `SIGNED`).
-    // Callers who genuinely want to change lifecycle state must use the
-    // dedicated, validated `status` field above.
-    if (request.metadata !== undefined && 'status' in request.metadata) {
-      throw new BadRequestException(
-        "metadata.status is reserved for internal lifecycle tracking; use the top-level 'status' field to change lifecycle state.",
-      );
-    }
 
     // Audit C-2 — a re-assigned department must live in the caller's tenant.
     // `assertParentInScope` throws NotFoundException on miss / cross-tenant.
@@ -763,15 +896,10 @@ export class ConsultationService extends BaseService implements IConsultationSer
       consultation.departmentId = request.departmentId;
     }
 
-    const currentMeta = (consultation.metadata as Record<string, unknown> | null) ?? {};
-    let nextMeta: Record<string, unknown> = { ...currentMeta };
     if (request.metadata !== undefined) {
-      nextMeta = { ...nextMeta, ...request.metadata };
+      const currentMeta = (consultation.metadata as Record<string, unknown> | null) ?? {};
+      consultation.metadata = { ...currentMeta, ...request.metadata } as Parameters<typeof ConsultationFactory.CreateNewVisit>[0]['metadata'];
     }
-    if (request.status !== undefined) {
-      nextMeta.status = request.status;
-    }
-    consultation.metadata = nextMeta as Parameters<typeof ConsultationFactory.CreateNewVisit>[0]['metadata'];
 
     if (this.requestUserId) {
       consultation.updatedBy = this.requestUserId;
@@ -790,40 +918,25 @@ export class ConsultationService extends BaseService implements IConsultationSer
   // ============================================
   // Recording lifecycle
   //
-  // Unlike close/reopen (which use the legacy `metadata.status` JSON), the
-  // recording lifecycle writes the typed `status` COLUMN — the same column
-  // the harness attestation gate writes (RECORDING → PENDING_REVIEW →
-  // SIGNED). The DTO mapper treats a non-OPEN column value as canonical, so
-  // `ConsultationResponse.status` reflects RECORDING immediately.
-  // The LiveDocumentationService session is started/stopped by the controller
-  // around these status transitions.
+  // `startRecording`/`stopRecording` route through the same
+  // `transitionTo` legality matrix as every other lifecycle write.
+  // `PRIMED → RECORDING` carries the ONE flagged precondition in the whole
+  // matrix (`consultation.state.requirePrimedBeforeRecording`, default
+  // OFF — README §4 Task 9 / R1): OFF logs the would-be violation and lets
+  // a legacy caller through unchanged; ON enforces via the matrix itself
+  // (illegal → 409). `stopRecording` now transitions to `DRAINING`, not
+  // `OPEN` — the previous behaviour erased the fact that capture ever
+  // happened (README §2.1's A-13-adjacent finding). The
+  // LiveDocumentationService session is started/stopped by the controller
+  // around these calls.
   // ============================================
 
   /**
-   * Flip the consultation's `status` column to RECORDING.
+   * Flip the consultation's `status` column `PRIMED → RECORDING`.
    */
   async startRecording(id: string): Promise<ConsultationResponse> {
-    return this.setRecordingStatus(id, ConsultationStatus.RECORDING, 'startRecording');
-  }
-
-  /**
-   * Revert the consultation's `status` column to OPEN when recording stops.
-   * The harness later promotes a recorded consult to PENDING_REVIEW.
-   */
-  async stopRecording(id: string): Promise<ConsultationResponse> {
-    return this.setRecordingStatus(id, ConsultationStatus.OPEN, 'stopRecording');
-  }
-
-  /**
-   * Shared recording-status writer: tenant-asserted load, write the typed
-   * `status` column, persist, and broadcast `ResourceUpdated`.
-   */
-  private async setRecordingStatus(
-    id: string,
-    target: ConsultationStatus,
-    action: 'startRecording' | 'stopRecording',
-  ): Promise<ConsultationResponse> {
-    if (!this.tenantId) {
+    const tenantId = this.tenantId;
+    if (!tenantId) {
       throw new BadRequestException('Tenant ID is required');
     }
 
@@ -831,18 +944,75 @@ export class ConsultationService extends BaseService implements IConsultationSer
     if (!consultation) {
       throw new NotFoundException('Consultation not found');
     }
-    assertEqualTenants(consultation, { tenantId: this.tenantId });
+    assertEqualTenants(consultation, { tenantId });
 
-    consultation.status = target;
+    const actor = this.requestUserId ?? 'system';
+    const requirePrimed = this.tenantSettings?.resolvePlatform<boolean>(CONSULTATION_REQUIRE_PRIMED_BEFORE_RECORDING_KEY).value === true;
+
+    if (!requirePrimed && !consultation.canTransitionTo(ConsultationStatus.RECORDING)) {
+      // TASK-711 grep-gate NOTE — Kill-switch OFF: this is the ONE matrix
+      // edge this ticket lets bypass (every other transition is enforced
+      // unconditionally from day one — README §4 Task 9 step 4). Log the
+      // would-be violation and write RECORDING directly (via the deprecated
+      // setter, NOT
+      // `transitionTo` — the matrix genuinely does not permit this pair,
+      // so going through `transitionTo` would throw regardless of the
+      // flag) so a legacy caller with no prior `prime` call keeps working
+      // unchanged.
+      this.logger.warn({
+        message: 'TASK-711: recording/start reached without PRIMED — kill-switch OFF, proceeding (would 409 if ON)',
+        consultationId: id,
+        currentStatus: consultation.status,
+      });
+      consultation.status = ConsultationStatus.RECORDING;
+    } else {
+      this.applyTransition(consultation, ConsultationStatus.RECORDING, actor, 'startRecording');
+    }
+
     if (this.requestUserId) {
       consultation.updatedBy = this.requestUserId;
     }
-
-    await this.consultationRepository.update(id, consultation);
+    const expectedVersion = consultation.version;
+    await this.consultationRepository.updateWithVersion(id, consultation, expectedVersion);
 
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
       resourceId: id,
-      data: { action, status: target },
+      data: { action: 'startRecording', status: ConsultationStatus.RECORDING },
+    });
+
+    return ConsultationDtoMapper.toResponseWithContext(consultation);
+  }
+
+  /**
+   * Flip the consultation's `status` column `RECORDING → DRAINING` when
+   * capture stops (manual stop, or TASK-712 forcing this same edge on
+   * mid-capture consent revocation). The harness later promotes a drained
+   * consult to `DRAFT_PENDING_SENSORS`/`PENDING_REVIEW` (`persistDraft`).
+   */
+  async stopRecording(id: string): Promise<ConsultationResponse> {
+    const tenantId = this.tenantId;
+    if (!tenantId) {
+      throw new BadRequestException('Tenant ID is required');
+    }
+
+    const consultation = await this.consultationRepository.findWithRelations(id);
+    if (!consultation) {
+      throw new NotFoundException('Consultation not found');
+    }
+    assertEqualTenants(consultation, { tenantId });
+
+    const actor = this.requestUserId ?? 'system';
+    this.applyTransition(consultation, ConsultationStatus.DRAINING, actor, 'stopRecording');
+
+    if (this.requestUserId) {
+      consultation.updatedBy = this.requestUserId;
+    }
+    const expectedVersion = consultation.version;
+    await this.consultationRepository.updateWithVersion(id, consultation, expectedVersion);
+
+    this.broadcastSysEvent(SysEventType.ResourceUpdated, {
+      resourceId: id,
+      data: { action: 'stopRecording', status: ConsultationStatus.DRAINING },
     });
 
     return ConsultationDtoMapper.toResponseWithContext(consultation);

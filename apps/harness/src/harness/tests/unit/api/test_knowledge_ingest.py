@@ -52,12 +52,26 @@ class _FakeStore:
     def __init__(self, *, error: Exception | None = None) -> None:
         self._error = error
         self.items: list[Any] = []
+        self.deleted_calls: list[tuple[str, str]] = []
 
     def upsert_chunks(self, items: list[Any]) -> int:
         if self._error is not None:
             raise self._error
         self.items.extend(items)
         return len(items)
+
+    def delete_by_document(self, *, tenant_id: str, knowledge_document_id: str) -> None:
+        if self._error is not None:
+            raise self._error
+        self.deleted_calls.append((tenant_id, knowledge_document_id))
+        self.items = [
+            item
+            for item in self.items
+            if not (
+                item.payload.get("tenant_id") == tenant_id
+                and item.payload.get("knowledge_document_id") == knowledge_document_id
+            )
+        ]
 
 
 def _settings(internal_token: str = "ingest-secret", shared_token: str = "") -> Settings:
@@ -234,3 +248,81 @@ class TestIngestDegrade:
             resp = await http.post(_URL, headers=_HEADERS, json=_body())
         assert resp.status_code == 503
         assert resp.json()["detail"]["error"] == "qdrant_unavailable"
+
+
+class TestDeleteEndpoint:
+    """``DELETE /api/v1/internal/knowledge/{document_id}`` — Lane B's
+    fail-closed vector-cleanup call ahead of the Postgres soft-delete.
+    """
+
+    @pytest.mark.asyncio
+    async def test_deletes_the_documents_points_tenant_scoped(self, harness_app):
+        http, _emb, _sparse, store, _settings = harness_app
+        # Seed the store as if ingest already ran (bypasses the ingest
+        # endpoint's own embed/upsert path — this suite only exercises delete).
+        store.items = [
+            SimpleNamespaceItem(payload={"tenant_id": "t-1", "knowledge_document_id": "kd-1"}),
+            SimpleNamespaceItem(payload={"tenant_id": "t-2", "knowledge_document_id": "kd-1"}),
+        ]
+
+        resp = await http.delete(
+            "/api/v1/internal/knowledge/kd-1", headers=_HEADERS, params={"tenantId": "t-1"}
+        )
+
+        assert resp.status_code == 200
+        assert resp.json() == {"status": "deleted", "knowledgeDocumentId": "kd-1"}
+        assert store.deleted_calls == [("t-1", "kd-1")]
+        # tenant-2's point for the SAME document id survives — cross-tenant safe.
+        remaining = [item.payload["tenant_id"] for item in store.items]
+        assert remaining == ["t-2"]
+
+    @pytest.mark.asyncio
+    async def test_missing_document_is_a_normal_200_not_an_error(self, harness_app):
+        http, _emb, _sparse, store, _settings = harness_app
+        resp = await http.delete(
+            "/api/v1/internal/knowledge/does-not-exist",
+            headers=_HEADERS,
+            params={"tenantId": "t-1"},
+        )
+        assert resp.status_code == 200
+        assert store.deleted_calls == [("t-1", "does-not-exist")]
+
+    @pytest.mark.asyncio
+    async def test_rejects_missing_or_bad_token(self, harness_app):
+        http, _emb, _sparse, store, _settings = harness_app
+        missing = await http.delete("/api/v1/internal/knowledge/kd-1", params={"tenantId": "t-1"})
+        bad = await http.delete(
+            "/api/v1/internal/knowledge/kd-1",
+            headers={"X-Service-Token": "nope"},
+            params={"tenantId": "t-1"},
+        )
+        assert missing.status_code == 401
+        assert bad.status_code == 401
+        assert store.deleted_calls == []
+
+    @pytest.mark.asyncio
+    async def test_requires_tenant_id_query_param(self, harness_app):
+        http, _emb, _sparse, _store, _settings = harness_app
+        resp = await http.delete("/api/v1/internal/knowledge/kd-1", headers=_HEADERS)
+        assert resp.status_code == 422  # FastAPI validation — tenantId is required
+
+    @pytest.mark.asyncio
+    async def test_qdrant_failure_returns_503_so_lane_b_aborts_the_delete(self, monkeypatch):
+        settings = _settings()
+        app = create_app(settings_override=settings)
+        store = _FakeStore(error=RuntimeError("qdrant down"))
+        monkeypatch.setattr(knowledge, "_qdrant_store", lambda s: store)
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as http:
+            resp = await http.delete(
+                "/api/v1/internal/knowledge/kd-1", headers=_HEADERS, params={"tenantId": "t-1"}
+            )
+        assert resp.status_code == 503
+        assert resp.json()["detail"]["error"] == "qdrant_unavailable"
+
+
+class SimpleNamespaceItem:
+    """Minimal stand-in for the `UpsertItem` dataclass — only `.payload` is read by `_FakeStore.delete_by_document`."""
+
+    def __init__(self, payload: dict[str, Any]) -> None:
+        self.payload = payload

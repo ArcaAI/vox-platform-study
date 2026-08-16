@@ -37,6 +37,7 @@ function createMockConsultationService() {
     getByPatientAndDate: vi.fn(),
     getConsultationChain: vi.fn(),
     doctorHasPatientRelationship: vi.fn(),
+    primeConsultation: vi.fn(),
     closeConsultation: vi.fn(),
     reopenConsultation: vi.fn(),
     updateConsultation: vi.fn(),
@@ -756,11 +757,11 @@ describe('ConsultationController', () => {
     });
 
     it('close should enforce ownership', async () => {
-      await expect(controller.close(CONSULTATION_OWN)).rejects.toThrow(ForbiddenException);
+      await expect(controller.close(CONSULTATION_OWN, undefined)).rejects.toThrow(ForbiddenException);
     });
 
     it('reopen should enforce ownership', async () => {
-      await expect(controller.reopen(CONSULTATION_OWN)).rejects.toThrow(ForbiddenException);
+      await expect(controller.reopen(CONSULTATION_OWN, undefined)).rejects.toThrow(ForbiddenException);
     });
 
     it('update should enforce ownership', async () => {
@@ -801,28 +802,53 @@ describe('ConsultationController', () => {
   // ═══════════════════════════════════════════════════════════════════════
 
   describe('lifecycle endpoints', () => {
-    it('close delegates to service and returns the updated consultation (owner)', async () => {
+    it('close delegates to service (with the If-Match expectedVersion) and returns the updated consultation (owner)', async () => {
       const { controller, consultationService } = buildController();
       consultationService.getById.mockResolvedValue(makeConsultation({ doctorId: DOCTOR_A }));
-      const closed = makeConsultation({ status: 'CLOSED' });
+      const closed = makeConsultation({ status: 'CLOSED_COMPLETE' });
       consultationService.closeConsultation.mockResolvedValue(closed);
 
-      const result = await controller.close(CONSULTATION_OWN);
+      const result = await controller.close(CONSULTATION_OWN, 3);
 
-      expect(consultationService.closeConsultation).toHaveBeenCalledWith(CONSULTATION_OWN);
+      expect(consultationService.closeConsultation).toHaveBeenCalledWith(CONSULTATION_OWN, 3);
       expect(result).toEqual(closed);
     });
 
-    it('reopen delegates to service and returns the updated consultation (owner)', async () => {
+    it('reopen delegates to service (with the If-Match expectedVersion) and returns the updated consultation (owner)', async () => {
       const { controller, consultationService } = buildController();
       consultationService.getById.mockResolvedValue(makeConsultation({ doctorId: DOCTOR_A }));
-      const reopened = makeConsultation({ status: 'OPEN' });
+      const reopened = makeConsultation({ status: 'REOPENED' });
       consultationService.reopenConsultation.mockResolvedValue(reopened);
 
-      const result = await controller.reopen(CONSULTATION_OWN);
+      const result = await controller.reopen(CONSULTATION_OWN, 3);
 
-      expect(consultationService.reopenConsultation).toHaveBeenCalledWith(CONSULTATION_OWN);
+      expect(consultationService.reopenConsultation).toHaveBeenCalledWith(CONSULTATION_OWN, 3);
       expect(result).toEqual(reopened);
+    });
+
+    it('prime delegates to service (with the If-Match expectedVersion) and returns the updated consultation (owner)', async () => {
+      const { controller, consultationService } = buildController();
+      consultationService.getById.mockResolvedValue(makeConsultation({ doctorId: DOCTOR_A }));
+      const primed = makeConsultation({ status: 'PRIMED' });
+      consultationService.primeConsultation.mockResolvedValue(primed);
+
+      const result = await controller.prime(CONSULTATION_OWN, 1);
+
+      expect(consultationService.primeConsultation).toHaveBeenCalledWith(CONSULTATION_OWN, 1);
+      expect(result).toEqual(primed);
+    });
+
+    // TASK-711 (README §4 Task 9 step 3) — `@RequiresIfMatch()`/`@ExpectedVersion()`
+    // must actually fire on `@ApiEndpoint()`-declared routes, not silently no-op.
+    // Verified by reading the SAME Reflector metadata `RequiresIfMatchGuard` reads
+    // (REQUIRES_IF_MATCH_KEY = 'requiresIfMatch') directly off the decorated method
+    // — proof the two decorator families compose, mirroring the already-shipped
+    // `@RequiresConsent` + `@ApiEndpoint()` combination on `startRecording`.
+    it('prime/close/reopen all carry the REQUIRES_IF_MATCH_KEY metadata (guard actually fires)', () => {
+      const REQUIRES_IF_MATCH_KEY = 'requiresIfMatch';
+      for (const method of ['prime', 'close', 'reopen'] as const) {
+        expect(Reflect.getMetadata(REQUIRES_IF_MATCH_KEY, ConsultationController.prototype[method])).toBe(true);
+      }
     });
 
     it('update delegates to service with the request body and returns the result (owner)', async () => {
@@ -847,7 +873,7 @@ describe('ConsultationController', () => {
       const closed = makeConsultation({ status: 'CLOSED' });
       consultationService.closeConsultation.mockResolvedValue(closed);
 
-      const result = await controller.close(CONSULTATION_OWN);
+      const result = await controller.close(CONSULTATION_OWN, undefined);
 
       expect(result).toEqual(closed);
     });

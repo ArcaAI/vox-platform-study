@@ -1,11 +1,16 @@
 /**
  * ConsultationEntity — session state machine (TASK-711)
  *
- * Table-driven over the FULL Cartesian product of the 10 adopted
- * `ConsultationStatus` members (100 pairs), reproducing the legality matrix
+ * Table-driven over the FULL Cartesian product of the 12 adopted
+ * `ConsultationStatus` members (144 pairs), reproducing the legality matrix
  * from `docs/implementation/TASK-711-Session-State-Machine/state-machine.md`
  * §2 verbatim as test data (NOT imported from the implementation — this test
  * is the independent source of truth the implementation must satisfy).
+ *
+ * Revised 2026-08-16 for the owner's Q1 decision: `CLOSED` is SUPERSEDED
+ * (never a legal `to` — it stays in the Cartesian product only so its
+ * illegal/self-only behavior is asserted) and split into `CLOSED_COMPLETE`
+ * / `CLOSED_INCOMPLETE`.
  *
  * `PAUSED` is deliberately absent from `ConsultationStatus` (see
  * state-machine.md §1) so it is out of the Cartesian product entirely.
@@ -25,6 +30,8 @@ const ALL_STATUSES: ConsultationStatus[] = [
   ConsultationStatus.TIMED_OUT,
   ConsultationStatus.CLOSED,
   ConsultationStatus.REOPENED,
+  ConsultationStatus.CLOSED_COMPLETE,
+  ConsultationStatus.CLOSED_INCOMPLETE,
 ];
 
 // state-machine.md §2 — one row per legal, non-reflexive transition.
@@ -42,10 +49,15 @@ const LEGAL_TRANSITIONS: Array<[ConsultationStatus, ConsultationStatus]> = [
   [ConsultationStatus.TIMED_OUT, ConsultationStatus.SIGNED],
   [ConsultationStatus.TIMED_OUT, ConsultationStatus.REOPENED],
   [ConsultationStatus.SIGNED, ConsultationStatus.REOPENED],
-  [ConsultationStatus.CLOSED, ConsultationStatus.REOPENED],
+  [ConsultationStatus.CLOSED_COMPLETE, ConsultationStatus.REOPENED],
+  [ConsultationStatus.CLOSED_INCOMPLETE, ConsultationStatus.REOPENED],
   [ConsultationStatus.REOPENED, ConsultationStatus.PENDING_REVIEW],
-  [ConsultationStatus.SIGNED, ConsultationStatus.CLOSED],
-  [ConsultationStatus.TIMED_OUT, ConsultationStatus.CLOSED],
+  [ConsultationStatus.SIGNED, ConsultationStatus.CLOSED_COMPLETE],
+  [ConsultationStatus.TIMED_OUT, ConsultationStatus.CLOSED_INCOMPLETE],
+  [ConsultationStatus.PRIMED, ConsultationStatus.CLOSED_INCOMPLETE],
+  [ConsultationStatus.DRAINING, ConsultationStatus.CLOSED_INCOMPLETE],
+  [ConsultationStatus.DRAFT_PENDING_SENSORS, ConsultationStatus.CLOSED_INCOMPLETE],
+  [ConsultationStatus.REOPENED, ConsultationStatus.CLOSED_INCOMPLETE],
 ];
 
 // Reserved but disabled — must throw naming the epic that will enable them,
@@ -139,8 +151,8 @@ describe('ConsultationEntity.transitionTo — full Cartesian legality matrix', (
     }
   }
 
-  it('the count of legal transitions equals the matrix row count (17)', () => {
-    expect(LEGAL_TRANSITIONS.length).toBe(17);
+  it('the count of legal transitions equals the matrix row count (22)', () => {
+    expect(LEGAL_TRANSITIONS.length).toBe(22);
 
     let legalCount = 0;
     for (const from of ALL_STATUSES) {

@@ -15,7 +15,6 @@ import {
   ConsentServiceModule,
   EntitlementsServiceModule,
   JWT_AUTH_GUARD,
-  KnowledgeServiceModule,
   LoggingServiceModule,
   ObservabilityModule,
   OriginRegistryServiceModule,
@@ -67,6 +66,7 @@ import { ChangelogModule } from './modules/changelog/changelog.module';
 import { DepartmentModule } from './modules/department/department.module';
 import { TenantAllowedOriginModule } from './modules/tenant-allowed-origin/tenant-allowed-origin.module';
 import { ConsultationContextSchemaModule } from './modules/consultation-context-schema/consultation-context-schema.module';
+import { KnowledgeModule } from './modules/knowledge/knowledge.module';
 import { DepartmentAgentModule } from './modules/department-agent/department-agent.module';
 import { AgentPromotionModule } from './modules/agent-promotion/agent-promotion.module';
 import { DnaWritingStyleModule } from './modules/dna-writing-style/dna-writing-style.module';
@@ -122,6 +122,7 @@ import { WebhookModule } from './modules/webhook/webhook.module';
 import { WorkflowDefinitionModule } from './modules/workflow-definition/workflow-definition.module';
 import { WorkflowNodeModule } from './modules/workflow-node/workflow-node.module';
 import { WorkflowRunModule } from './modules/workflow-run/workflow-run.module';
+import { WorkflowSandboxRunModule } from './modules/workflow-sandbox-run/workflow-sandbox-run.module';
 import { WorkflowTestFixtureModule } from './modules/workflow-test-fixture/workflow-test-fixture.module';
 import { WorkflowsModule } from './modules/workflows/workflows.module';
 
@@ -404,10 +405,9 @@ const featureModules: any[] = [
   SettingsCatalogModule,
   // /admin/settings (global-settings CRUD; wires the existing service).
   GlobalSettingModule,
-  // Institutional-RAG knowledge ingestion (BullMQ worker;
-  // registers the IngestKnowledgeDocument queue + processor). Worker-only — no
-  // REST controllers in this phase.
-  KnowledgeServiceModule,
+  // Institutional-RAG knowledge (BullMQ ingestion worker +
+  // admin/knowledge/documents REST surface — TASK-728).
+  KnowledgeModule,
   HealthModule,
   InternalModule,
   ServiceReleaseModule,
@@ -462,6 +462,9 @@ const featureModules: any[] = [
   WorkflowNodeModule,
   // /admin/workflow-runs (TASK-723) — tenant-scoped runs/observability read plane.
   WorkflowRunModule,
+  // /admin/workflow-definitions/:definitionId/sandbox-runs (TASK-721 Phase C) — the Workbench's
+  // run surface: start/status/stream/cancel a sandbox run of ANY (DRAFT or published) version.
+  WorkflowSandboxRunModule,
   // /admin/workflow-test-fixtures (TASK-721) — per-tenant saved synthetic
   // Workbench test inputs.
   WorkflowTestFixtureModule,

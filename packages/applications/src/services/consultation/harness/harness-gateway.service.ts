@@ -229,6 +229,8 @@ export interface StartWorkflowRunInput {
   tenantId: string;
   configRef: HarnessClaimCheckRef;
   sandbox?: boolean;
+  /** Forwarded verbatim into `InterpreterInput.payload` (TASK-721 Workbench sandbox test input). */
+  payload?: Record<string, unknown>;
 }
 
 /** Response of `POST /workflow-runs:start`. */
@@ -448,6 +450,7 @@ export class HarnessGatewayService {
       tenantId: input.tenantId,
       configRef: input.configRef,
       sandbox: input.sandbox ?? false,
+      payload: input.payload ?? {},
     };
     const response = await this.httpService.axiosRef.post(url, body, { headers: await this.buildHeaders(), timeout: WORKFLOW_RUN_HTTP_TIMEOUT_MS });
     this.logger.log({ message: 'Harness workflow run started', runId: input.runId, status: (response.data as StartWorkflowRunResult)?.status });

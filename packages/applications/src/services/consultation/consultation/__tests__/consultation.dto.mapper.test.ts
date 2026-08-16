@@ -259,94 +259,43 @@ describe('ConsultationDtoMapper', () => {
       expect(result.appointmentDate).toBe('2026-12-25');
     });
 
-    // Derived lifecycle status
-    it('should default status to OPEN when metadata is null', () => {
+    // TASK-711 — `Consultation.status` is now the SOLE lifecycle tracker
+    // (`metadata.status` deleted; the mapper's former column-vs-metadata
+    // precedence dance is gone with it). The mapper does a bare pass-through
+    // of `entity.status` — every legality/idempotency/forgery-containment
+    // concern now lives in `ConsultationEntity.transitionTo`
+    // (packages/domains) and the service layer's `applyTransition`, not here.
+    it('passes the typed status column straight through, whatever its value', () => {
+      for (const status of ['OPEN', 'PRIMED', 'RECORDING', 'DRAINING', 'PENDING_REVIEW', 'SIGNED', 'TIMED_OUT', 'CLOSED_COMPLETE', 'CLOSED_INCOMPLETE', 'REOPENED']) {
+        const entity = createMockConsultationEntity({ status, metadata: null });
+
+        const result = ConsultationDtoMapper.toResponse(entity as any);
+
+        expect(result.status).toBe(status);
+      }
+    });
+
+    it('ignores metadata.status entirely — it is no longer consulted', () => {
+      // A stray `metadata.status` key (dead code elsewhere, a dirty row, or a
+      // forged value) must never leak into the response now that the mapper
+      // reads only the typed column.
+      const entity = createMockConsultationEntity({ status: 'PENDING_REVIEW', metadata: { status: 'SIGNED' } });
+
+      const result = ConsultationDtoMapper.toResponse(entity as any);
+
+      expect(result.status).toBe('PENDING_REVIEW');
+    });
+
+    it('surfaces whatever the column literally holds, including undefined on a bare mock', () => {
+      // The mock helper (unlike the real ConsultationEntity constructor,
+      // which always defaults `status` to OPEN) leaves `status` undefined
+      // when not overridden — this documents that the mapper does no
+      // defaulting of its own; defaulting is the entity's job.
       const entity = createMockConsultationEntity({ metadata: null });
 
       const result = ConsultationDtoMapper.toResponse(entity as any);
 
-      expect(result.status).toBe('OPEN');
-    });
-
-    it('should default status to OPEN when metadata has no status key', () => {
-      const entity = createMockConsultationEntity({ metadata: { visitType: 'follow-up' } });
-
-      const result = ConsultationDtoMapper.toResponse(entity as any);
-
-      expect(result.status).toBe('OPEN');
-    });
-
-    it('should derive status from metadata.status when present', () => {
-      const entity = createMockConsultationEntity({ metadata: { status: 'CLOSED' } });
-
-      const result = ConsultationDtoMapper.toResponse(entity as any);
-
-      expect(result.status).toBe('CLOSED');
-    });
-
-    // Lifecycle was promoted to a typed `status` COLUMN. The
-    // attestation gate (harness draft → PENDING_REVIEW, approve → SIGNED)
-    // writes the column, NOT metadata.status, so the read must surface it.
-    it('should surface PENDING_REVIEW from the typed status column (harness draft)', () => {
-      const entity = createMockConsultationEntity({ status: 'PENDING_REVIEW', metadata: null });
-
-      const result = ConsultationDtoMapper.toResponse(entity as any);
-
-      expect(result.status).toBe('PENDING_REVIEW');
-    });
-
-    it('should surface SIGNED from the typed status column (approve)', () => {
-      const entity = createMockConsultationEntity({ status: 'SIGNED', metadata: null });
-
-      const result = ConsultationDtoMapper.toResponse(entity as any);
-
-      expect(result.status).toBe('SIGNED');
-    });
-
-    it('should prefer a non-OPEN typed column even when metadata has other keys', () => {
-      const entity = createMockConsultationEntity({
-        status: 'PENDING_REVIEW',
-        metadata: { visitType: 'follow-up' },
-      });
-
-      const result = ConsultationDtoMapper.toResponse(entity as any);
-
-      expect(result.status).toBe('PENDING_REVIEW');
-    });
-
-    // Column default OPEN means "not yet transitioned" → defer to the legacy
-    // close/reopen JSON so closing a consultation still surfaces.
-    it('should defer to legacy metadata.status (CLOSED) when the column is default OPEN', () => {
-      const entity = createMockConsultationEntity({ status: 'OPEN', metadata: { status: 'CLOSED' } });
-
-      const result = ConsultationDtoMapper.toResponse(entity as any);
-
-      expect(result.status).toBe('CLOSED');
-    });
-
-    // TASK-701 — Displayed-SIGNED Status Forgery Containment.
-    // A forged `metadata.status: 'SIGNED'` must never surface through the
-    // mapper's precedence logic when the typed column is the default OPEN,
-    // regardless of how it got into metadata (service-layer guard bypassed,
-    // a dirty row, a future write path). Only recognised legacy values
-    // (OPEN/CLOSED) are trusted from metadata.
-    it('should NOT surface a forged metadata.status value outside CONSULTATION_STATUS_VALUES', () => {
-      const entity = createMockConsultationEntity({ status: 'OPEN', metadata: { status: 'SIGNED' } });
-
-      const result = ConsultationDtoMapper.toResponse(entity as any);
-
-      expect(result.status).not.toBe('SIGNED');
-      expect(result.status).toBe('OPEN');
-    });
-
-    // Non-regression: the legitimate value transitionStatus() writes must
-    // still surface through the same precedence logic.
-    it('should still surface the legitimate metadata.status CLOSED value (non-regression)', () => {
-      const entity = createMockConsultationEntity({ status: 'OPEN', metadata: { status: 'CLOSED' } });
-
-      const result = ConsultationDtoMapper.toResponse(entity as any);
-
-      expect(result.status).toBe('CLOSED');
+      expect(result.status).toBeUndefined();
     });
   });
 
