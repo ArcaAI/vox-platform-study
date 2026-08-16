@@ -105,6 +105,7 @@ export class MeteringService implements IMeteringService, OnModuleInit, OnModule
       this.upsertMeter(tenantId, UsageMeterMetric.CONSULTATIONS, periodStart, periodEnd, usage.consultations, now),
       this.upsertMeter(tenantId, UsageMeterMetric.TRANSCRIPTION_MINUTES, periodStart, periodEnd, usage.transcriptionMinutes, now),
       this.upsertMeter(tenantId, UsageMeterMetric.SUMMARIES, periodStart, periodEnd, usage.summaries, now),
+      this.upsertMeter(tenantId, UsageMeterMetric.WORKFLOW_INVOCATIONS, periodStart, periodEnd, usage.workflowInvocations, now),
       // The six ledger-derived unit meters, same window, same
       // upsert primitive. GUARDRAIL_CALLS is persisted too (informational —
       // no allowance column reads it, but the reconcile snapshot is a
@@ -191,6 +192,7 @@ export class MeteringService implements IMeteringService, OnModuleInit, OnModule
    *   - CONSULTATIONS         = COUNT(Consultation WHERE createdAt ∈ window)
    *   - TRANSCRIPTION_MINUTES = round(SUM(AudioRecording.duration ms ∈ window)/60000)
    *   - SUMMARIES             = COUNT(SummaryMeta WHERE generatedAt ∈ window)
+   *   - WORKFLOW_INVOCATIONS  = COUNT(WorkflowRun WHERE startedAt ∈ window) (TASK-722)
    *
    * Six more, all read from `AiUsageRollupDaily` (D5) EXCEPT
    * `guardrailCalls` (raw ledger — see `MeterUsage`'s doc comment for why).
@@ -204,11 +206,24 @@ export class MeteringService implements IMeteringService, OnModuleInit, OnModule
     const client = this.databaseService.baseClient;
     const window = { gte: periodStart, lt: periodEnd };
 
-    const [consultations, durationAgg, summaries, sttSessionSeconds, llmTokens, ttsCharacters, nlpTextUnits, embeddingTokens, guardrailCalls] =
-      await Promise.all([
+    const [
+      consultations,
+      durationAgg,
+      summaries,
+      workflowInvocations,
+      sttSessionSeconds,
+      llmTokens,
+      ttsCharacters,
+      nlpTextUnits,
+      embeddingTokens,
+      guardrailCalls,
+    ] = await Promise.all([
         client.consultation.count({ where: { tenantId, createdAt: window } }),
         client.audioRecording.aggregate({ _sum: { duration: true }, where: { tenantId, createdAt: window } }),
         client.summaryMeta.count({ where: { tenantId, generatedAt: window } }),
+        // WORKFLOW_INVOCATIONS — COUNT(WorkflowRun WHERE startedAt ∈ window),
+        // the same business-object shape as consultations/summaries (TASK-722).
+        client.workflowRun.count({ where: { tenantId, startedAt: window } }),
         this.sumRollupQuantity(tenantId, window, AiCapability.STT, [AiUsageUnit.SESSION_SECOND]),
         // LLM_TOKENS bills ONLY generation/pre-summary operations — guardrail and
         // harness LLM rows share the LLM capability but must never count (D16).
@@ -225,6 +240,7 @@ export class MeteringService implements IMeteringService, OnModuleInit, OnModule
       consultations,
       transcriptionMinutes: Math.round(durationMs / MS_PER_MINUTE),
       summaries,
+      workflowInvocations,
       sttSessionSeconds,
       llmTokens,
       ttsCharacters,

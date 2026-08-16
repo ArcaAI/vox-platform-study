@@ -3,7 +3,7 @@ import { AuditAction, ResourceType } from '@arcaai/domains';
 import { Controller, Get, Post, Body, Res, HttpCode, Inject, Logger } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiExcludeEndpoint, ApiBearerAuth } from '@nestjs/swagger';
 import { Response } from 'express';
-import { Authorize, CanManage } from '../../decorators';
+import { Authorize, CanManage, RequiredScopes } from '../../decorators';
 import { getStudioHtml } from './pstudio.html';
 
 // Audit categorisation for raw Prisma Studio access. The
@@ -27,6 +27,7 @@ function summarizeStudioRequest(payload: unknown): string {
 }
 
 @ApiTags('admin-pstudio')
+@RequiredScopes('admin:pstudio:manage')
 @Controller('admin/pstudio')
 // Pinned to the DEDICATED `manage:PrismaStudio` subject
 // (production-capable enablement; `manage:all` still passes via the CASL

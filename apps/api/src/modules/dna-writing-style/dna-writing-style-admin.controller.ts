@@ -19,12 +19,13 @@ import { Queue } from 'bullmq';
 import { Observable } from 'rxjs';
 // `@RequiresIfMatch()` + `@ExpectedVersion()` gate the
 // OCC-enforced PATCH route below (mirrors PromptManagementController).
-import { ApiEndpoint, Authorize, RequiresIfMatch, ExpectedVersion } from '../../decorators';
+import { ApiEndpoint, Authorize, RequiresIfMatch, ExpectedVersion, RequiredScopes } from '../../decorators';
 import { StreamScope } from '../auth/decorators/stream-scope.decorator';
 import { getDnaJobStatus, streamDnaJobStatus } from './dna-writing-style-job-stream';
 
 @ApiBearerAuth()
 @ApiTags('admin-dna-writing-styles')
+@RequiredScopes('admin:dna-writing-style:manage')
 @Controller('admin/dna-writing-styles')
 // Narrowed from `manage:all` (global-admin-only) to
 // `manage:DnaWritingStyleReport` so a TENANT_ADMIN can administer their own

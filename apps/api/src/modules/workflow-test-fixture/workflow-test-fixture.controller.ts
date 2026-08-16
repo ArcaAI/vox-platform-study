@@ -8,7 +8,7 @@ import {
 } from '@arcaai/applications';
 import { Body, Controller, Delete, Get, Inject, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { CanManage, ExpectedVersion, RequiresIfMatch } from '../../decorators';
+import { CanManage, ExpectedVersion, RequiresIfMatch, RequiredScopes } from '../../decorators';
 
 /**
  * WorkflowTestFixtureController — admin CRUD for per-tenant saved synthetic
@@ -23,6 +23,7 @@ import { CanManage, ExpectedVersion, RequiresIfMatch } from '../../decorators';
  */
 @ApiBearerAuth()
 @ApiTags('admin-workflow-test-fixtures')
+@RequiredScopes('admin:workflow-test-fixture:manage')
 @Controller('admin/workflow-test-fixtures')
 @CanManage('WorkflowTestFixture')
 export class WorkflowTestFixtureController {

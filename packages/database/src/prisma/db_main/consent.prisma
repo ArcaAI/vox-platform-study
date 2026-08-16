@@ -57,11 +57,19 @@ model ConsentGrant {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // One row per (tenant, patient, purpose) for the row's lifetime — the
-  // unique index below is total (not partial-on-ENABLED), so this phase does
-  // NOT implement scope-widening-as-a-new-row (see consent-design.md §3);
-  // `ConsentGrantService` in this phase only creates and revokes.
-  @@unique([tenantId, externalPatientId, purpose], map: "ConsentGrant_tenant_patient_purpose_key")
+  // Uniqueness on ACTIVE grants only (partial unique index, WHERE
+  // "revokedAt" IS NULL) is enforced at the database via a hand-written
+  // index in migration SQL — Prisma 7 cannot express a partial unique index
+  // in the schema DSL (.claude/rules/02-database-prisma.md §Migration
+  // Workflow; the `UserVoiceProfile_userId_active_unique` precedent in
+  // user.prisma is the same pattern). A plain @@unique on (tenantId,
+  // externalPatientId, purpose) would be WRONG here: Postgres unique indexes
+  // treat every row as live regardless of `revokedAt`, so a revoke() —
+  // which never deletes — would permanently block a fresh grant for the
+  // same purpose. See
+  // migrations/20260816030000_task_712_consent_grant/migration.sql for the
+  // real constraint (`ConsentGrant_tenant_patient_purpose_active_key`). Do
+  // not add a plain @@unique here as a "fix" — it reintroduces the bug.
   @@index([tenantId], name: "ConsentGrant_tenantId_idx")
   @@index([tenantId, externalPatientId], name: "ConsentGrant_tenant_patient_idx")
   @@schema("core")

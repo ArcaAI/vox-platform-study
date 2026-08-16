@@ -14,6 +14,7 @@ export {
   AuthorizeAny,
   Public,
   RequiredScopes,
+  ForbidApiKey,
   CanRead,
   CanList,
   CanCreate,
@@ -25,4 +26,10 @@ export {
   UserAbility,
   SetPermissions,
   SetPermissionMode,
+  // Consent (TASK-712, consent-abac)
+  RequiresConsent,
+  ConsentExempt,
+  REQUIRES_CONSENT_KEY,
+  CONSENT_EXEMPT_KEY,
 } from '@arcaai/applications';
+export type { RequiresConsentOptions, RequiresConsentMetadata } from '@arcaai/applications';

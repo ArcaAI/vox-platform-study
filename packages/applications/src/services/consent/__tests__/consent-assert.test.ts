@@ -10,7 +10,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { ConsultationConsentService } from '../consultation-consent.service';
 import { CONSENT_INVALIDATE_EVENT } from '../consent.constants';
-import { ConsentDeniedException } from '@arcaai/exceptions';
+import { ConsentDeniedException, ConsentUnavailableException } from '@arcaai/exceptions';
 import { ConsentPurpose, ConsentGrantMethod, ResourceStatusType } from '@arcaai/domains';
 
 const mockConsentGrantRepository = {
@@ -128,12 +128,16 @@ describe('ConsultationConsentService — assertConsent / checkConsent (ABAC chok
     await expect(service.assertConsent({ ...baseInput, scope: { dateRangeDays: 90 } })).resolves.toBeUndefined();
   });
 
-  it('is fail-closed on a repository error — denies rather than throwing an unrelated error', async () => {
+  it('is fail-closed on a repository error — denies, but as UNAVAILABLE, never conflated with a genuine no_grant denial (R4)', async () => {
     mockConsentGrantRepository.findByTenantPatientPurpose.mockRejectedValue(new Error('tenant-scope mismatch'));
 
     const decision = await service.checkConsent(baseInput);
     expect(decision.allowed).toBe(false);
-    expect(decision.reason).toBe('no_grant');
+    expect(decision.unavailable).toBe(true);
+    expect(decision.reason).toBeUndefined();
+
+    await expect(service.assertConsent(baseInput)).rejects.toBeInstanceOf(ConsentUnavailableException);
+    await expect(service.assertConsent(baseInput)).rejects.not.toBeInstanceOf(ConsentDeniedException);
   });
 
   describe('caching', () => {

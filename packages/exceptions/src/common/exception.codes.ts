@@ -32,9 +32,17 @@ export const PROVIDER_CREDENTIAL_VETOED = 'DOMAIN.PROVIDER_CREDENTIAL_VETOED';
 // Consent & ABAC (TASK-712). `assertConsent` denied the call — no active
 // grant, expired, revoked, or the grant's scope does not cover the request.
 // The API gateway maps this to 403 (a privilege boundary), distinct from the
-// 404-over-403 cross-tenant posture. NOT thrown by any wired route in this
-// phase — see docs/implementation/TASK-712-Consent-Abac/consent-design.md.
+// 404-over-403 cross-tenant posture.
 export const CONSENT_DENIED = 'DOMAIN.CONSENT_DENIED';
+// Consent & ABAC (TASK-712). `assertConsent` could NOT determine a verdict
+// (grant-store lookup failed — DB/connectivity error) and therefore denied
+// fail-closed, same as CONSENT_DENIED — but for a DIFFERENT reason that
+// needs a DIFFERENT reason code and DIFFERENT alerting: a genuine consent
+// denial is an expected, un-alarming compliance event; an unavailability
+// denial is an infrastructure incident wearing a compliance-shaped mask (R4,
+// docs/implementation/TASK-712-Consent-Abac/README.md §6). The API gateway
+// maps this to 503, distinct from CONSENT_DENIED's 403.
+export const CONSENT_UNAVAILABLE = 'DOMAIN.CONSENT_UNAVAILABLE';
 
 /** Persistence layer */
 export const DATA_CONFLICT = 'PERSISTENCE.DATA_CONFLICT';

@@ -180,15 +180,25 @@ test.describe('API Key Authentication', () => {
       const { rawKey, apiKey } = await createResponse.json();
       createdApiKeyIds.push(apiKey.id);
 
-      // Use the raw key to access a protected route
-      const response = await request.get('/api/v1/admin/tenants', {
+      // Use the raw key to access a protected route. `/admin/tenants` used to
+      // be the probe here, but TASK-708 Task 4 added
+      // `@RequiredScopes('admin:tenant:write')` to `TenantController` — this
+      // key's `consultation:session:*` scopes don't cover that, so it would
+      // now 403 regardless of whether `X-API-Key` auth itself worked,
+      // defeating the point of this specific test (which asserts on
+      // AUTHENTICATION, not authorization). `ConsultationJobController.getJob`
+      // is scoped to exactly `consultation:session:read`, which this key DOES
+      // hold, so a precise 404 (job not found) proves the header
+      // authenticated AND passed its scope gate — see
+      // `task-708-apikey-scope-contract.spec.ts` for the full scope contract.
+      const response = await request.get('/api/v1/consultations/jobs/00000000-0000-0000-0000-000000000000', {
         headers: {
           'X-API-Key': rawKey,
           Accept: 'application/json',
         },
       });
 
-      expect([200, 400, 401, 403]).toContain(response.status());
+      expect(response.status()).toBe(404);
     });
 
     test('should reject a revoked API key', async ({ request }) => {

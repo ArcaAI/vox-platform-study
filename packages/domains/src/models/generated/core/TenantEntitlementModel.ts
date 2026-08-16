@@ -14,10 +14,12 @@ export class TenantEntitlement extends BaseTenantDataModel {
   public maxAsrPipelines: number | null;
   public maxApiKeys: number | null;
   public storageQuotaBytes: bigint | null;
+  public maxWorkflowDefinitions: number | null;
   public maxConcurrentSessions: number | null;
   public monthlyConsultations: number | null;
   public monthlyTranscriptionMinutes: number | null;
   public monthlySummaries: number | null;
+  public monthlyWorkflowInvocations: number | null;
   public monthlySttSessionSeconds: bigint | null;
   public monthlyLlmTokens: bigint | null;
   public monthlyTtsCharacters: bigint | null;
@@ -43,10 +45,12 @@ export class TenantEntitlement extends BaseTenantDataModel {
     this.maxAsrPipelines = data.maxAsrPipelines;
     this.maxApiKeys = data.maxApiKeys;
     this.storageQuotaBytes = data.storageQuotaBytes;
+    this.maxWorkflowDefinitions = data.maxWorkflowDefinitions;
     this.maxConcurrentSessions = data.maxConcurrentSessions;
     this.monthlyConsultations = data.monthlyConsultations;
     this.monthlyTranscriptionMinutes = data.monthlyTranscriptionMinutes;
     this.monthlySummaries = data.monthlySummaries;
+    this.monthlyWorkflowInvocations = data.monthlyWorkflowInvocations;
     this.monthlySttSessionSeconds = data.monthlySttSessionSeconds;
     this.monthlyLlmTokens = data.monthlyLlmTokens;
     this.monthlyTtsCharacters = data.monthlyTtsCharacters;

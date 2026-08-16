@@ -1,7 +1,7 @@
 import { ModelResponse, RegisterDiscoveredModelRequest } from '@arcaai/applications';
 import { Body, Controller, Get, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { Authorize } from '../../decorators';
+import { Authorize, RequiredScopes } from '../../decorators';
 import { AiModelDiscoveryService, DiscoveryResponse } from './ai-model-discovery.service';
 
 /**
@@ -18,6 +18,7 @@ import { AiModelDiscoveryService, DiscoveryResponse } from './ai-model-discovery
  */
 @ApiBearerAuth()
 @ApiTags('admin-ai-models')
+@RequiredScopes('admin:ai-model:manage')
 @Controller('admin/ai-models')
 @Authorize(['manage', 'all'])
 export class AiModelDiscoveryController {

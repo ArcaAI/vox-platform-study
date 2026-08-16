@@ -5,7 +5,9 @@ import { WsAdapter } from '@nestjs/platform-ws';
 import { SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { auditAdminRoutePermissions } from './bootstrap/admin-route-permission-audit';
-import { auditApiKeyRequiredScopes } from './bootstrap/api-key-scope-audit';
+import { auditApiKeyRequiredScopes, auditInternalRoutesOffApiKeySurface } from './bootstrap/api-key-scope-audit';
+import { auditAdminScopedControllers } from './bootstrap/admin-scope-audit';
+import { auditConsentRouteCoverage } from './bootstrap/consent-route-coverage-audit';
 import { assertGenaiContentCaptureDisabled } from './bootstrap/genai-content-capture-audit';
 import { assertJwtSecretNotPlaceholder } from './bootstrap/jwt-secret-placeholder-audit';
 // CORS helpers live in `cors.config.ts` so the dev / staging / production
@@ -292,6 +294,25 @@ async function bootstrap() {
   // G1 (a leaked API key reaching every RBAC-permitted route unscoped) and
   // guards against a future refactor silently dropping the decorator.
   auditApiKeyRequiredScopes();
+
+  // Refuses to start if any `/internal/*` route is reachable through
+  // UnifiedAuthGuard's ordinary JWT/API-key auth path instead of a dedicated
+  // platform service-token guard — closes G2 (TASK-708: any active API key
+  // could reach SttInternalController) and guards against a future
+  // `/internal/*` controller forgetting the guard.
+  auditInternalRoutesOffApiKeySurface(app);
+
+  // Refuses to start if any `/admin/*` controller TASK-708 Task 4 gave a
+  // `@RequiredScopes(...)`/`@ForbidApiKey()` gate loses it — the regression
+  // guard for the owner-approved admin-surface scope narrowing.
+  auditAdminScopedControllers();
+
+  // Refuses to start if any route taking a `:patientId` route param lacks
+  // both `@RequiresConsent(...)` and `@ConsentExempt(...)` (TASK-712,
+  // consent-abac). `PatientConsentGuard` (APP_GUARD) makes the same
+  // predicate authoritative at request time; this surfaces a forgotten
+  // decorator at boot instead of a silent enforcement gap in production.
+  auditConsentRouteCoverage(app);
 
   // KEEP-ALIVE MUST OUTLIVE THE UPSTREAM PROXY'S IDLE TIMEOUT.
   //

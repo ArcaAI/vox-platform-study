@@ -7,7 +7,7 @@ import {
 } from '@arcaai/applications';
 import { Body, Controller, Get, HttpCode, Inject, Param, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { CanManage } from '../../decorators';
+import { CanManage, RequiredScopes } from '../../decorators';
 
 /**
  * Agent promotion between tenants.
@@ -21,6 +21,7 @@ import { CanManage } from '../../decorators';
  */
 @ApiBearerAuth()
 @ApiTags('admin-agent-promotions')
+@RequiredScopes('admin:agent-promotion:manage')
 @Controller('admin/agent-promotions')
 @CanManage('DepartmentAgent')
 export class AgentPromotionController {

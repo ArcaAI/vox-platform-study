@@ -57,7 +57,7 @@ model TenantNlpTaskInstructions {
   updatedAt DateTime @updatedAt
 
   // indexing — one instructions row per (tenant, task)
-  @@unique([tenantId, taskKey], name: "TenantNlpTaskInstructions_tenant_task_unique")
+  @@unique([tenantId, taskKey], name: "TenantNlpTaskInstructions_tenant_task_unique", map: "TenantNlpTaskInstructions_tenant_task_unique")
   @@index([tenantId], name: "TenantNlpTaskInstructions_tenantId_idx")
   @@schema("core")
 }

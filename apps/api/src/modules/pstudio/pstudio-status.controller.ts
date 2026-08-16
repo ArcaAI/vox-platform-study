@@ -1,6 +1,6 @@
 import { Controller, Get } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiProperty, ApiTags } from '@nestjs/swagger';
-import { Authorize } from '../../decorators';
+import { Authorize, RequiredScopes } from '../../decorators';
 import { shouldEnablePrismaStudio } from './pstudio.module';
 
 /** Response for `GET /admin/pstudio/status`. */
@@ -25,6 +25,7 @@ export class PrismaStudioStatusResponse {
 @ApiTags('admin-pstudio')
 @ApiBearerAuth()
 @Authorize(['manage', 'PrismaStudio'])
+@RequiredScopes('admin:pstudio:manage')
 @Controller('admin/pstudio/status')
 export class PrismaStudioStatusController {
   @Get()

@@ -12,11 +12,13 @@ export interface CreateTenantEntitlementProps extends BaseEntityFactoryCreatePro
   maxPromptTemplates?: ITenantEntitlementEntity['maxPromptTemplates'];
   maxAsrPipelines?: ITenantEntitlementEntity['maxAsrPipelines'];
   maxApiKeys?: ITenantEntitlementEntity['maxApiKeys'];
+  maxWorkflowDefinitions?: ITenantEntitlementEntity['maxWorkflowDefinitions'];
   storageQuotaBytes?: ITenantEntitlementEntity['storageQuotaBytes'];
   maxConcurrentSessions?: ITenantEntitlementEntity['maxConcurrentSessions'];
   monthlyConsultations?: ITenantEntitlementEntity['monthlyConsultations'];
   monthlyTranscriptionMinutes?: ITenantEntitlementEntity['monthlyTranscriptionMinutes'];
   monthlySummaries?: ITenantEntitlementEntity['monthlySummaries'];
+  monthlyWorkflowInvocations?: ITenantEntitlementEntity['monthlyWorkflowInvocations'];
   monthlySttSessionSeconds?: ITenantEntitlementEntity['monthlySttSessionSeconds'];
   monthlyLlmTokens?: ITenantEntitlementEntity['monthlyLlmTokens'];
   monthlyTtsCharacters?: ITenantEntitlementEntity['monthlyTtsCharacters'];
@@ -55,11 +57,13 @@ export class TenantEntitlementFactory {
       maxPromptTemplates: props.maxPromptTemplates ?? null,
       maxAsrPipelines: props.maxAsrPipelines ?? null,
       maxApiKeys: props.maxApiKeys ?? null,
+      maxWorkflowDefinitions: props.maxWorkflowDefinitions ?? null,
       storageQuotaBytes: props.storageQuotaBytes ?? null,
       maxConcurrentSessions: props.maxConcurrentSessions ?? null,
       monthlyConsultations: props.monthlyConsultations ?? null,
       monthlyTranscriptionMinutes: props.monthlyTranscriptionMinutes ?? null,
       monthlySummaries: props.monthlySummaries ?? null,
+      monthlyWorkflowInvocations: props.monthlyWorkflowInvocations ?? null,
       monthlySttSessionSeconds: props.monthlySttSessionSeconds ?? null,
       monthlyLlmTokens: props.monthlyLlmTokens ?? null,
       monthlyTtsCharacters: props.monthlyTtsCharacters ?? null,

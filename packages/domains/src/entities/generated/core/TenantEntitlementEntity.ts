@@ -11,11 +11,15 @@ export interface ITenantEntitlementEntity extends IBaseTenantEntity {
   maxPromptTemplates?: number | null;
   maxAsrPipelines?: number | null;
   maxApiKeys?: number | null;
+  // Per-tenant override of PlanEntitlement.maxWorkflowDefinitions (TASK-722).
+  maxWorkflowDefinitions?: number | null;
   storageQuotaBytes?: bigint | null;
   maxConcurrentSessions?: number | null;
   monthlyConsultations?: number | null;
   monthlyTranscriptionMinutes?: number | null;
   monthlySummaries?: number | null;
+  // Per-tenant override of PlanEntitlement.monthlyWorkflowInvocations (TASK-722).
+  monthlyWorkflowInvocations?: number | null;
   // Per-capability included allowances over the UTC-calendar-month window
   // BigInt: enterprise token/character counts exceed Int32.
   // null = unlimited (same convention as every meter column above).
@@ -40,11 +44,13 @@ export class TenantEntitlementEntity extends BaseTenantEntity {
   private _maxPromptTemplates?: ITenantEntitlementEntity['maxPromptTemplates'];
   private _maxAsrPipelines?: ITenantEntitlementEntity['maxAsrPipelines'];
   private _maxApiKeys?: ITenantEntitlementEntity['maxApiKeys'];
+  private _maxWorkflowDefinitions?: ITenantEntitlementEntity['maxWorkflowDefinitions'];
   private _storageQuotaBytes?: ITenantEntitlementEntity['storageQuotaBytes'];
   private _maxConcurrentSessions?: ITenantEntitlementEntity['maxConcurrentSessions'];
   private _monthlyConsultations?: ITenantEntitlementEntity['monthlyConsultations'];
   private _monthlyTranscriptionMinutes?: ITenantEntitlementEntity['monthlyTranscriptionMinutes'];
   private _monthlySummaries?: ITenantEntitlementEntity['monthlySummaries'];
+  private _monthlyWorkflowInvocations?: ITenantEntitlementEntity['monthlyWorkflowInvocations'];
   private _monthlySttSessionSeconds?: ITenantEntitlementEntity['monthlySttSessionSeconds'];
   private _monthlyLlmTokens?: ITenantEntitlementEntity['monthlyLlmTokens'];
   private _monthlyTtsCharacters?: ITenantEntitlementEntity['monthlyTtsCharacters'];
@@ -66,11 +72,13 @@ export class TenantEntitlementEntity extends BaseTenantEntity {
     this._maxPromptTemplates = init.maxPromptTemplates;
     this._maxAsrPipelines = init.maxAsrPipelines;
     this._maxApiKeys = init.maxApiKeys;
+    this._maxWorkflowDefinitions = init.maxWorkflowDefinitions;
     this._storageQuotaBytes = init.storageQuotaBytes;
     this._maxConcurrentSessions = init.maxConcurrentSessions;
     this._monthlyConsultations = init.monthlyConsultations;
     this._monthlyTranscriptionMinutes = init.monthlyTranscriptionMinutes;
     this._monthlySummaries = init.monthlySummaries;
+    this._monthlyWorkflowInvocations = init.monthlyWorkflowInvocations;
     this._monthlySttSessionSeconds = init.monthlySttSessionSeconds;
     this._monthlyLlmTokens = init.monthlyLlmTokens;
     this._monthlyTtsCharacters = init.monthlyTtsCharacters;
@@ -126,6 +134,14 @@ export class TenantEntitlementEntity extends BaseTenantEntity {
     this.setProperty('maxApiKeys', value);
   }
 
+  get maxWorkflowDefinitions(): ITenantEntitlementEntity['maxWorkflowDefinitions'] {
+    return this._maxWorkflowDefinitions;
+  }
+
+  set maxWorkflowDefinitions(value: ITenantEntitlementEntity['maxWorkflowDefinitions']) {
+    this.setProperty('maxWorkflowDefinitions', value);
+  }
+
   get storageQuotaBytes(): ITenantEntitlementEntity['storageQuotaBytes'] {
     return this._storageQuotaBytes;
   }
@@ -164,6 +180,14 @@ export class TenantEntitlementEntity extends BaseTenantEntity {
 
   set monthlySummaries(value: ITenantEntitlementEntity['monthlySummaries']) {
     this.setProperty('monthlySummaries', value);
+  }
+
+  get monthlyWorkflowInvocations(): ITenantEntitlementEntity['monthlyWorkflowInvocations'] {
+    return this._monthlyWorkflowInvocations;
+  }
+
+  set monthlyWorkflowInvocations(value: ITenantEntitlementEntity['monthlyWorkflowInvocations']) {
+    this.setProperty('monthlyWorkflowInvocations', value);
   }
 
   get monthlySttSessionSeconds(): ITenantEntitlementEntity['monthlySttSessionSeconds'] {

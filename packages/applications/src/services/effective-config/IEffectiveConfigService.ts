@@ -60,6 +60,18 @@ export interface EffectiveConcurrency {
   source: EffectiveConfigSource;
 }
 
+/**
+ * PHI-redaction knobs (guardrail only). `chunkChars` bounds ONE GLiNER
+ * extraction call: the model's cost is super-linear in input length, so an
+ * unbounded call over a large corpus exhausts both the caller's HTTP timeout and
+ * the worker's memory (measured in TASK-710 §7 Task 6). Null ⇒ guardrail keeps
+ * its own built-in bound — never "unbounded".
+ */
+export interface EffectiveRedaction {
+  chunkChars: number | null;
+  source: EffectiveConfigSource;
+}
+
 export interface EffectiveConfigResponse {
   service: string;
   /** ISO-8601. Lets a client log how stale its cached snapshot is. */
@@ -67,6 +79,8 @@ export interface EffectiveConfigResponse {
   runtimeProfiles?: EffectiveRuntimeProfile[];
   retention?: EffectiveRetention;
   concurrency?: EffectiveConcurrency;
+  /** Served for guardrail only. */
+  redaction?: EffectiveRedaction;
   /** Served for harness/live-doc agentic-context consumers only. */
   agenticContext?: Record<string, unknown>;
 }

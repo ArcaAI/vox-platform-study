@@ -205,7 +205,7 @@ There is **no state-machine gate, timeout, or Promise between `sendStop()` and t
 | **Pipecat smart-turn v3.2** | audio-native | **12 ms CPU**, 8 MB quantized | Fully open (weights+data+training) — cleanest license story ([daily.co](https://www.daily.co/blog/smart-turn-v3-2-handling-noisy-environments-and-short-responses/)) |
 | **LiveKit Turn Detector v1-mini** | dual-branch audio+semantic (Qwen2.5-0.5B backbone) | CPU-capable | 14 langs; LiveKit Model License; at a 300 ms budget: 9.9% false-cutoff vs Flux 12.9% |
 | **Kyutai semantic VAD** | built into Kyutai STT | free with the ASR | Multi-head "pause of length L ∈ {0.5,1,2,3 s}" = a tunable patience dial — folds §3.1 and §3.4 into one model |
-| **TEN Turn Detection** | transcript-based (Qwen2.5-7B) | heavier | 3-state `finished`/`unfinished`/`wait` — the `unfinished` "hold" label is worth copying; can reuse the LA-2 transcript you already have |
+| **TEN Turn Detection** | transcript-based (google/gemma-4-e4b) | heavier | 3-state `finished`/`unfinished`/`wait` — the `unfinished` "hold" label is worth copying; can reuse the LA-2 transcript you already have |
 
 **Clinical tuning is the key refinement:** doctors pause long and deliberately (reading, enumerating doses) and the cost of a false-early cut is high — bias the window *longer* than voice-agent defaults (min ~0.3–0.5 s, **max ~2.5–3.5 s**), and add a "hold/unfinished" state on trailing numbers/conjunctions so the downstream SOAP summarizer doesn't fire mid-sentence (§3.8 makes this a wire-contract field).
 

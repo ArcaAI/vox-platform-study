@@ -14,7 +14,7 @@ import { Body, Controller, Delete, Get, HttpCode, Inject, Param, Put, Query } fr
 import { resolveScopedTenantId } from '../../shared/tenant-scope';
 import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
-import { Authorize, ExpectedVersion, RequiresIfMatch } from '../../decorators';
+import { Authorize, ExpectedVersion, RequiresIfMatch, RequiredScopes } from '../../decorators';
 
 /**
  * `endpoint` on the facade's write-only request maps per provider — azure:
@@ -62,6 +62,7 @@ function toTtsCredentialResponse(row: AiProviderConnectionResponse): TtsCredenti
  */
 @ApiBearerAuth()
 @ApiTags('admin-tts')
+@RequiredScopes('admin:tenant-tts-config:manage')
 @Controller('admin/tts-config')
 @Authorize()
 export class TenantTtsConfigAdminController {

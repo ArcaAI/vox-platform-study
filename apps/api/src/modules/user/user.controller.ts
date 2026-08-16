@@ -53,7 +53,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiParam, ApiQuery, ApiResponse, ApiOperation } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
-import { ApiEndpoint, CanManage, UserAbility } from '../../decorators';
+import { ApiEndpoint, CanManage, UserAbility, RequiredScopes } from '../../decorators';
 import {
   UpdateUserStatusRequest,
   BulkDeleteUsersRequest,
@@ -80,6 +80,7 @@ const DEFAULT_USERS_SORT = 'createdAt:desc';
 
 @ApiBearerAuth()
 @ApiTags('admin-users')
+@RequiredScopes('admin:user:write')
 @Controller('admin/users')
 @CanManage('User')
 export class UserController {

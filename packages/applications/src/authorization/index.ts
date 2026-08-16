@@ -7,7 +7,7 @@ export { AuthorizationGuard, REQUIRED_PERMISSIONS_KEY, SKIP_AUTH_KEY, PERMISSION
 export type { RequiredPermission, PermissionMode } from './authorization.guard';
 
 // Unified Auth Guard
-export { UnifiedAuthGuard, JWT_AUTH_GUARD, API_KEY_REQUIRED_SCOPES } from './unified-auth.guard';
+export { UnifiedAuthGuard, JWT_AUTH_GUARD, API_KEY_REQUIRED_SCOPES, API_KEY_FORBIDDEN } from './unified-auth.guard';
 
 // Decorators
 export {
@@ -17,6 +17,7 @@ export {
   Authorize,
   AuthorizeAny,
   RequiredScopes,
+  ForbidApiKey,
   UserAbility,
   CanRead,
   CanList,
@@ -26,7 +27,13 @@ export {
   CanManage,
   CanAny,
   CanAll,
+  // Consent (TASK-712, consent-abac)
+  RequiresConsent,
+  ConsentExempt,
+  REQUIRES_CONSENT_KEY,
+  CONSENT_EXEMPT_KEY,
 } from './decorators';
+export type { RequiresConsentOptions, RequiresConsentMetadata } from './decorators';
 
 // Module
 export { AuthorizationModule } from './authorization.module';

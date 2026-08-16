@@ -14,6 +14,7 @@ function makeService(opts?: {
   post?: ReturnType<typeof vi.fn>;
   useDefaultUrl?: boolean;
   secretsService?: { getSecretOptional: ReturnType<typeof vi.fn> };
+  timeoutSetting?: number;
 }) {
   const post = opts?.post ?? vi.fn().mockResolvedValue({ data: { sanitized_text: '[PERSON_1] has a cough.' } });
   const httpService = { axiosRef: { post } } as never;
@@ -21,8 +22,12 @@ function makeService(opts?: {
     get: vi.fn((key: string) => (key === 'GUARDRAIL_URL' && !opts?.useDefaultUrl ? 'http://guardrail.test:8863' : undefined)),
   } as never;
   const secretsService = opts?.secretsService ?? { getSecretOptional: vi.fn().mockResolvedValue('svc-token-abc') };
-  const service = new GuardrailPhiRedactor(httpService, configService, secretsService as never);
-  return { service, post, secretsService };
+  const appSettingsService =
+    opts?.timeoutSetting === undefined
+      ? undefined
+      : ({ getValueWithDefault: vi.fn().mockReturnValue(opts.timeoutSetting) } as never);
+  const service = new GuardrailPhiRedactor(httpService, configService, secretsService as never, appSettingsService);
+  return { service, post, secretsService, appSettingsService };
 }
 
 describe('GuardrailPhiRedactor', () => {
@@ -52,6 +57,30 @@ describe('GuardrailPhiRedactor', () => {
       expect.objectContaining({ mode: 'full' }),
       expect.anything(),
     );
+  });
+
+  // ── Request timeout: admin-managed, generous by default ──
+  //
+  // Guardrail chunks long inputs and walks the chunks sequentially, so a full
+  // DNA corpus is roughly linear rather than super-linear work — but it is still
+  // real work, and the original fixed 30s budget could not cover it. The value
+  // is a `global-kv` registry key so an operator can retune it per environment.
+
+  it('uses the admin-managed timeout from the settings registry when one is set', async () => {
+    const { service, post, appSettingsService } = makeService({ timeoutSetting: 45_000 });
+
+    await service.redact('corpus', 'full');
+
+    expect(appSettingsService!.getValueWithDefault).toHaveBeenCalledWith('phiRedaction.requestTimeoutMs', 120_000);
+    expect(post).toHaveBeenCalledWith(expect.any(String), expect.anything(), expect.objectContaining({ timeout: 45_000 }));
+  });
+
+  it('falls back to the 120s code default when no settings service is wired', async () => {
+    const { service, post } = makeService();
+
+    await service.redact('corpus', 'full');
+
+    expect(post).toHaveBeenCalledWith(expect.any(String), expect.anything(), expect.objectContaining({ timeout: 120_000 }));
   });
 
   it('falls back to the default guardrail URL when GUARDRAIL_URL is unset', async () => {

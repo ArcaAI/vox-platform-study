@@ -36,6 +36,12 @@ enum UsageMeterMetric {
   GUARDRAIL_CALLS
   EMBEDDING_TOKENS
 
+  // A fourth BUSINESS-OBJECT meter (TASK-722 exposure plane): a COUNT of
+  // `WorkflowRun` rows in the window, the same shape as CONSULTATIONS/
+  // SUMMARIES — one row per invocation of a published workflow through
+  // `/api/v1/workflows/:slug/invoke`.
+  WORKFLOW_INVOCATIONS
+
   @@schema("core")
 }
 
@@ -63,6 +69,10 @@ model PlanEntitlement {
   maxAsrPipelines    Int?
   maxApiKeys         Int?
   storageQuotaBytes  BigInt?
+  // Quantity ceiling on PUBLISHED WorkflowDefinition slugs a tenant may hold
+  // (TASK-722 exposure plane), modelled verbatim on `maxAsrPipelines`. Checked
+  // by TASK-719's authoring create path, not this migration's own caller.
+  maxWorkflowDefinitions Int?
 
   // concurrency limit — simultaneous active STT sessions (null = unlimited).
   // A distinct axis from the total-seat cap (`maxUsers`): "how many doctors can
@@ -73,6 +83,11 @@ model PlanEntitlement {
   monthlyConsultations        Int?
   monthlyTranscriptionMinutes Int?
   monthlySummaries            Int?
+  // A fourth business-object meter (TASK-722): PUBLISHED-workflow invocations
+  // via `/api/v1/workflows/:slug/invoke`, gated on `assertMeterQuota` at
+  // invoke time. Same Int shape as its three siblings (a monthly invocation
+  // count never approaches Int32).
+  monthlyWorkflowInvocations Int?
 
   // Per-capability INCLUDED ALLOWANCES over the same UTC-calendar-month windows
   // . Usage above an allowance is billed as overage at the SELL
@@ -153,6 +168,9 @@ model TenantEntitlement {
   maxAsrPipelines    Int?
   maxApiKeys         Int?
   storageQuotaBytes  BigInt?
+  // Per-tenant override of `PlanEntitlement.maxWorkflowDefinitions` (null =
+  // inherit the plan default).
+  maxWorkflowDefinitions Int?
 
   // per-tenant concurrency override (null = inherit plan default) — "increase
   // on demand" for simultaneous active STT sessions.
@@ -161,6 +179,9 @@ model TenantEntitlement {
   monthlyConsultations        Int?
   monthlyTranscriptionMinutes Int?
   monthlySummaries            Int?
+  // Per-tenant override of `PlanEntitlement.monthlyWorkflowInvocations` (null
+  // = inherit the plan default).
+  monthlyWorkflowInvocations Int?
 
   // Per-capability allowance overrides (null = inherit the plan default) —
   // the negotiated-allowance hook for an enterprise contract. Same units and

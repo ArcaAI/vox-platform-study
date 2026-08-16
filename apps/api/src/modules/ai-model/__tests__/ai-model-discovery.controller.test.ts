@@ -42,7 +42,7 @@ const dbRow = (over: Record<string, unknown> = {}) => ({
   id: 'row-1',
   slug: 'llama3-1-8b',
   sourceUri: 'llama3.1:8b',
-  provider: 'ollama',
+  provider: 'vllm',
   resourceStatus: 'ENABLED',
   ...over,
 });
@@ -53,20 +53,20 @@ const dbRow = (over: Record<string, unknown> = {}) => ({
 describe('AiModelDiscoveryService.discover — merge rule', () => {
   it('tags a live-only model as discovered', async () => {
     const { service } = makeService({
-      smr: [{ name: 'ollama', probe_status: 'ok', models: [{ name: 'mistral:7b' }] }],
+      smr: [{ name: 'vllm', probe_status: 'ok', models: [{ name: 'mistral-7b' }] }],
       dbRows: [],
     });
 
     const result = await service.discover();
 
     expect(result.entries).toHaveLength(1);
-    expect(result.entries[0]).toMatchObject({ provider: 'ollama', modelName: 'mistral:7b', status: 'discovered' });
+    expect(result.entries[0]).toMatchObject({ provider: 'vllm', modelName: 'mistral-7b', status: 'discovered' });
     expect(result.probedAt).toEqual(expect.any(String));
   });
 
   it('tags a registry row absent from the live listing as registered-missing-on-server', async () => {
     const { service } = makeService({
-      smr: [{ name: 'ollama', probe_status: 'ok', models: [{ name: 'mistral:7b' }] }],
+      smr: [{ name: 'vllm', probe_status: 'ok', models: [{ name: 'mistral-7b' }] }],
       dbRows: [dbRow()],
     });
 
@@ -81,7 +81,7 @@ describe('AiModelDiscoveryService.discover — merge rule', () => {
     const { service } = makeService({
       smr: [
         {
-          name: 'ollama',
+          name: 'vllm',
           probe_status: 'ok',
           models: [
             { name: 'llama3.1:8b', state: 'loaded' },
@@ -102,7 +102,7 @@ describe('AiModelDiscoveryService.discover — merge rule', () => {
 
   it('degrades DB rows to registered/unknown when the provider probe is not ok', async () => {
     const { service } = makeService({
-      smr: [{ name: 'ollama', probe_status: 'timeout', probe_error: 'probe exceeded 5.0s', models: [] }],
+      smr: [{ name: 'vllm', probe_status: 'timeout', probe_error: 'probe exceeded 5.0s', models: [] }],
       dbRows: [dbRow()],
     });
 
@@ -110,7 +110,7 @@ describe('AiModelDiscoveryService.discover — merge rule', () => {
 
     // No FALSE "missing on server" from a transient probe failure.
     expect(result.entries[0]).toMatchObject({ status: 'registered', loadState: 'unknown' });
-    expect(result.probes).toEqual(expect.arrayContaining([expect.objectContaining({ provider: 'ollama', probeStatus: 'timeout' })]));
+    expect(result.probes).toEqual(expect.arrayContaining([expect.objectContaining({ provider: 'vllm', probeStatus: 'timeout' })]));
   });
 
   it('reports probeStatus error for the whole probe when SMR itself is unreachable', async () => {
@@ -125,7 +125,7 @@ describe('AiModelDiscoveryService.discover — merge rule', () => {
   it('filters to a single provider when asked', async () => {
     const { service, aiModelService } = makeService({
       smr: [
-        { name: 'ollama', probe_status: 'ok', models: [{ name: 'a' }] },
+        { name: 'vllm', probe_status: 'ok', models: [{ name: 'a' }] },
         { name: 'lm-studio', probe_status: 'ok', models: [{ name: 'b' }] },
       ],
       dbRows: [],
@@ -139,7 +139,7 @@ describe('AiModelDiscoveryService.discover — merge rule', () => {
 
   it('ignores registry rows on non-server-managed providers (azure has nothing to discover)', async () => {
     const { service } = makeService({
-      smr: [{ name: 'ollama', probe_status: 'ok', models: [] }],
+      smr: [{ name: 'vllm', probe_status: 'ok', models: [] }],
       dbRows: [dbRow({ id: 'cloud', provider: 'azure', slug: 'gpt-5-mini', sourceUri: 'gpt-5-mini' })],
     });
 
@@ -157,14 +157,14 @@ describe('AiModelDiscoveryService.register', () => {
     const create = vi.fn().mockResolvedValue({ id: 'new-id' });
     const { service } = makeService({ smr: [], dbRows: [], create });
 
-    await service.register({ provider: 'ollama', modelName: 'llama3.1:8b-instruct-q4_K_M' });
+    await service.register({ provider: 'vllm', modelName: 'llama3.1-8b-instruct-q4_K_M' });
 
     expect(create).toHaveBeenCalledTimes(1);
     expect(create.mock.calls[0][0]).toMatchObject({
-      provider: 'ollama',
+      provider: 'vllm',
       slug: 'llama3-1-8b-instruct-q4-k-m',
-      sourceUri: 'llama3.1:8b-instruct-q4_K_M',
-      name: 'llama3.1:8b-instruct-q4_K_M',
+      sourceUri: 'llama3.1-8b-instruct-q4_K_M',
+      name: 'llama3.1-8b-instruct-q4_K_M',
       taskType: 'TEXT_GENERATION',
       category: 'NLP',
       source: 'LOCAL',
@@ -191,7 +191,7 @@ describe('AiModelDiscoveryService.register', () => {
 
 describe('normalizeModelSlug', () => {
   it.each([
-    ['llama3.1:8b-instruct-q4_K_M', 'llama3-1-8b-instruct-q4-k-m'],
+    ['llama3.1-8b-instruct-q4_K_M', 'llama3-1-8b-instruct-q4-k-m'],
     ['org/repo-GGUF', 'org-repo-gguf'],
     ['  spaced  name  ', 'spaced-name'],
     ['a...b', 'a-b'],
@@ -241,12 +241,12 @@ describe('AiModelDiscoveryController delegation', () => {
   });
 
   it('passes the provider filter through', async () => {
-    await controller.discover('ollama');
-    expect(service.discover).toHaveBeenCalledWith('ollama');
+    await controller.discover('vllm');
+    expect(service.discover).toHaveBeenCalledWith('vllm');
   });
 
   it('passes the register body through', async () => {
-    const body = { provider: 'ollama', modelName: 'x' };
+    const body = { provider: 'vllm', modelName: 'x' };
     await controller.register(body as never);
     expect(service.register).toHaveBeenCalledWith(body);
   });

@@ -7,7 +7,7 @@ import {
 import { Body, Controller, Delete, Get, Inject, Param, Patch, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiProperty, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { isOriginEnforcementEnabled } from '../../cors.config';
-import { CanManage, ExpectedVersion, RequiresIfMatch } from '../../decorators';
+import { CanManage, ExpectedVersion, RequiresIfMatch, RequiredScopes } from '../../decorators';
 
 /** option A — the one fact a tenant admin needs, nothing else. */
 export class AllowedOriginEnforcementPostureResponse {
@@ -63,6 +63,7 @@ export class AllowedOriginEnforcementPostureResponse {
  */
 @ApiBearerAuth()
 @ApiTags('admin-allowed-origins')
+@RequiredScopes('admin:allowed-origin:manage')
 @Controller('admin/allowed-origins')
 @CanManage('TenantAllowedOrigin')
 export class TenantAllowedOriginController {

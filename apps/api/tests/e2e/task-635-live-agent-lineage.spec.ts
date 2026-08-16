@@ -347,12 +347,24 @@ test.describe.serial('Live agent lineage survives into finalize (R-N1 → R-N2)'
       }
     }
 
+    const patientId = `task-635-c6-${Date.now()}`;
     const opened = await request.post('/api/v1/consultations/open', {
       headers: bearer(token),
-      data: { patientId: `task-635-c6-${Date.now()}`, departmentId },
+      data: { patientId, departmentId },
     });
     expect([200, 201], 'POST /consultations/open').toContain(opened.status());
     consultationId = ((await opened.json()) as { id: string }).id;
+
+    // TASK-712 (consent-abac): `POST :id/recording/start` below is now gated
+    // by `@RequiresConsent(AI_DOCUMENTATION)` — a fresh consultation carries
+    // no legacy-backfilled grant (the backfill only covers consultations
+    // that existed before the migration), so this test must record one
+    // itself or recording/start 403s.
+    const granted = await request.post('/api/v1/admin/consent-grants', {
+      headers: bearer(token),
+      data: { externalPatientId: patientId, purpose: 'AI_DOCUMENTATION', grantMethod: 'VERBAL_ATTESTED' },
+    });
+    expect([200, 201], 'POST /admin/consent-grants (AI_DOCUMENTATION)').toContain(granted.status());
   });
 
   test.afterAll(async ({ request }) => {

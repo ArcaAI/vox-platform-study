@@ -20,6 +20,23 @@ import { AppAbility, PolicyEngine } from './policy.engine';
 export const API_KEY_REQUIRED_SCOPES = 'apiKeyRequiredScopes';
 
 /**
+ * Metadata key set by `@ForbidApiKey()` (TASK-708 Task 3 bucket (c)).
+ *
+ * Unlike `API_KEY_REQUIRED_SCOPES` (deny unless a listed scope is held),
+ * this is an unconditional deny for ANY API-key-authenticated caller,
+ * regardless of scopes — including a key holding the bare `'*'` wildcard.
+ * Reserving a "never-granted" scope string instead was considered and
+ * rejected: `ApiKeyService.hasScope`'s wildcard/prefix matching means a key
+ * holding `'admin:*'` (a legitimate, intentionally broad admin grant)
+ * satisfies EVERY `admin:*`-prefixed scope, including a "reserved" one — so
+ * a reserved-scope trick nested under an existing wildcard family is not
+ * actually safe against that family's own wildcard. An unconditional guard
+ * check has no such collision surface. A JWT-authenticated caller is
+ * completely unaffected by this decorator.
+ */
+export const API_KEY_FORBIDDEN = 'apiKeyForbidden';
+
+/**
  * Injectable token for the JWT auth guard.
  * The API layer provides an implementation (e.g., JwtAuthGuard extending Passport's AuthGuard('jwt')).
  */
@@ -172,6 +189,8 @@ export class UnifiedAuthGuard implements CanActivate {
   ): Promise<boolean> {
     const apiKeyEntity = await this.apiKeyService.authenticateByRawKey(rawApiKey, ipAddress);
 
+    this.enforceApiKeyNotForbidden(context);
+
     if (apiKeyEntity.rateLimit && apiKeyEntity.rateLimit > 0 && this.rateLimiter) {
       const result = await this.rateLimiter.checkRateLimit(apiKeyEntity.id, apiKeyEntity.tenantId, apiKeyEntity.rateLimit);
       if (!result.allowed) {
@@ -211,6 +230,19 @@ export class UnifiedAuthGuard implements CanActivate {
     });
 
     return true;
+  }
+
+  /**
+   * `@ForbidApiKey()` — an unconditional deny for API-key callers, checked
+   * BEFORE scopes (a forbidden route has no scope that could rescue it).
+   * See `API_KEY_FORBIDDEN`'s doc comment for why this is a dedicated check
+   * rather than a reserved scope string.
+   */
+  private enforceApiKeyNotForbidden(context: ExecutionContext): void {
+    const forbidden = this.reflector.getAllAndOverride<boolean>(API_KEY_FORBIDDEN, [context.getHandler(), context.getClass()]);
+    if (forbidden === true) {
+      throw new ForbiddenException('This route does not accept API-key authentication');
+    }
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

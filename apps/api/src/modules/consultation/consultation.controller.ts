@@ -65,14 +65,14 @@ import { ApiTags, ApiBearerAuth, ApiHeader, ApiParam, ApiProperty, ApiPropertyOp
 import { Observable, interval, map, merge, type Subscription } from 'rxjs';
 // `@RequiresIfMatch()` + `@ExpectedVersion()` gate the OCC-enforced note-content
 // PATCH/POST routes on this controller (TASK-709).
-import { ApiEndpoint, Authorize, RequiredScopes, RequiresIfMatch, ExpectedVersion } from '../../decorators';
+import { ApiEndpoint, Authorize, RequiredScopes, RequiresIfMatch, ExpectedVersion, RequiresConsent } from '../../decorators';
 import { TenantOwnedResource } from '../../common';
 import { StreamScope } from '../auth';
 import { ClsService } from 'nestjs-cls';
 import type { IActiveUserContext } from '@arcaai/applications';
 import { ChainSummaryService } from '@arcaai/applications';
 import { IConsultationJobService } from '@arcaai/applications';
-import { GlobalSettingRepository, ResourceType } from '@arcaai/domains';
+import { ConsentPurpose, GlobalSettingRepository, ResourceType } from '@arcaai/domains';
 
 class AsyncJobResponseDto {
   @ApiProperty({ description: 'Async job ID' })
@@ -385,6 +385,9 @@ export class ConsultationController {
   @ApiParam({ name: 'patientId', description: 'Patient ID' })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
+  // Consent & ABAC (TASK-712). Prior-history retrieval is one of the four
+  // gated stages named in design.md §Data flow.
+  @RequiresConsent(ConsentPurpose.HISTORY_RETRIEVAL)
   async getPatientHistory(@Param('patientId') patientId: string, @Query() query: PaginatedQuery): Promise<PaginatedConsultationResponse> {
     await this.verifyPatientAccess(patientId);
     return this.consultationService.getPatientHistoryPaginated(patientId, Number(query.page) || 1, Number(query.limit) || 10);
@@ -398,6 +401,9 @@ export class ConsultationController {
   })
   @ApiParam({ name: 'patientId', description: 'Patient ID' })
   @ApiParam({ name: 'date', description: 'Appointment date (YYYY-MM-DD)' })
+  // Consent & ABAC (TASK-712). Same purpose as getPatientHistory — a
+  // date-scoped view of the same prior-history retrieval stage.
+  @RequiresConsent(ConsentPurpose.HISTORY_RETRIEVAL)
   async getByPatientAndDate(@Param('patientId') patientId: string, @Param('date') date: string): Promise<ConsultationResponse[]> {
     await this.verifyPatientAccess(patientId);
     return this.consultationService.getByPatientAndDate(patientId, date);
@@ -410,6 +416,11 @@ export class ConsultationController {
     by: ['id'],
   })
   @ApiParam({ name: 'id', description: 'Consultation ID' })
+  // Consent & ABAC (TASK-712). The chain is a cross-visit history view — the
+  // same prior-history retrieval stage as getPatientHistory, gated on the
+  // SAME purpose even though this route resolves patientId via the loaded
+  // consultation (:id) rather than a :patientId param.
+  @RequiresConsent(ConsentPurpose.HISTORY_RETRIEVAL)
   async getChain(@Param('id') id: string): Promise<ConsultationResponse[]> {
     await this.verifyConsultationAccess(id);
     return this.consultationService.getConsultationChain(id);
@@ -475,6 +486,9 @@ export class ConsultationController {
   })
   @ApiParam({ name: 'id', description: 'Consultation ID' })
   @ApiResponse({ status: 404, description: 'Consultation not found' })
+  // Consent & ABAC (TASK-712). Capture start is one of the four gated
+  // stages named in design.md §Data flow.
+  @RequiresConsent(ConsentPurpose.AI_DOCUMENTATION)
   async startRecording(@Param('id') id: string, @Body() request: StartRecordingRequest): Promise<RecordingStateResponse> {
     await this.verifyConsultationOwnership(id);
     const consultation = await this.consultationService.startRecording(id);

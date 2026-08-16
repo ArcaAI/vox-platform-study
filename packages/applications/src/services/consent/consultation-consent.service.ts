@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import { ConsentGrantEntity, ConsentGrantRepository } from '@arcaai/domains';
-import { ConsentDeniedException } from '@arcaai/exceptions';
+import { ConsentDeniedException, ConsentUnavailableException } from '@arcaai/exceptions';
 import { ConsentAssertInput, ConsentDecision, ConsentDenialReason, IConsultationConsentService } from './IConsultationConsentService';
 import { CONSENT_INVALIDATE_EVENT, normalizeExternalPatientId } from './consent.constants';
 
@@ -61,20 +61,21 @@ export class ConsultationConsentService implements IConsultationConsentService {
       grant = await this.resolveGrant(input.tenantId, externalPatientId, input.purpose);
     } catch (error) {
       // Fail-closed: a lookup failure (unreachable dependency, tenant-scope
-      // mismatch, ...) is a denial, never a silent allow. Distinguishable
-      // from a genuine 'no_grant' denial in the log line — R4 in the ticket
-      // README names conflating "denied" with "unavailable" as a real risk
-      // for whoever wires the gateway-internal endpoint (Task 12); this
-      // in-process path logs the distinction even though nothing downstream
-      // consumes it yet.
-      this.logger.warn({
-        message: 'assertConsent: grant lookup failed — denying (fail-closed)',
+      // mismatch, ...) still denies, never silently allows — but it is NOT
+      // the same event as a genuine 'no_grant' denial (R4, README §6): a
+      // real denial is an expected compliance event; an infra hiccup wearing
+      // a denial's shape is an availability incident and must alert
+      // differently. `unavailable: true` (no `reason`) carries that
+      // distinction to `assertConsent`, which throws a DIFFERENT exception
+      // type for it.
+      this.logger.error({
+        message: 'assertConsent: grant lookup failed — denying (fail-closed), NOT a consent decision',
         tenantId: input.tenantId,
         externalPatientId,
         purpose: input.purpose,
         error: error instanceof Error ? error.message : String(error),
       });
-      return this.deny('no_grant', input, externalPatientId);
+      return { allowed: false, unavailable: true };
     }
 
     if (grant == null) {
@@ -95,6 +96,15 @@ export class ConsultationConsentService implements IConsultationConsentService {
     const externalPatientId = normalizeExternalPatientId(input.externalPatientId);
     const decision = await this.checkConsent(input);
     if (decision.allowed) return;
+
+    if (decision.unavailable) {
+      throw new ConsentUnavailableException(`Consent could not be determined for purpose "${input.purpose}" — grant lookup failed`, {
+        tenantId: input.tenantId,
+        externalPatientId,
+        purpose: input.purpose,
+        cause: 'grant_lookup_failed',
+      });
+    }
 
     throw new ConsentDeniedException(`Consent denied for purpose "${input.purpose}" (${decision.reason ?? 'no_grant'})`, {
       tenantId: input.tenantId,

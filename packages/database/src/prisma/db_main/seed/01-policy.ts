@@ -118,6 +118,14 @@ export const DEFAULT_POLICIES: DefaultPolicy[] = [
       { action: 'manage', subject: 'Consultation', conditions: { tenantId: '${context.tenantId}' } },
       { action: 'manage', subject: 'ContextItem', conditions: { tenantId: '${context.tenantId}' } },
       { action: 'manage', subject: 'Media', conditions: { tenantId: '${context.tenantId}' } },
+      // Consent & ABAC (TASK-712) — a clinician/tenant-admin records the
+      // grant (Q1: clinician-recorded grant is sufficient; no patient-facing
+      // surface exists). Tenant-scoped like its clinical-data neighbors
+      // above; real isolation is enforced at the service/repository layer
+      // regardless of whether this `conditions` clause is evaluated
+      // (Phase 5/CASL condition evaluation is a separate, not-yet-enabled
+      // sub-phase — see consent-design.md).
+      { action: 'manage', subject: 'ConsentGrant', conditions: { tenantId: '${context.tenantId}' } },
       // API & Integration
       { action: 'manage', subject: 'ApiKey', conditions: { tenantId: '${context.tenantId}' } },
       { action: 'manage', subject: 'Webhook', conditions: { tenantId: '${context.tenantId}' } },

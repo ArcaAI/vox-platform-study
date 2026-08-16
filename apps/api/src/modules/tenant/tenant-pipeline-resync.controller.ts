@@ -1,7 +1,7 @@
 import { Controller, HttpCode, Param, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { PipelineTemplateResyncService, PipelineTemplateResyncSummary } from '@arcaai/applications';
-import { CanManage } from '../../decorators';
+import { CanManage, RequiredScopes } from '../../decorators';
 
 /**
  * Admin-triggered SYSTEM-template resync for one tenant.
@@ -21,6 +21,7 @@ import { CanManage } from '../../decorators';
  */
 @ApiBearerAuth()
 @ApiTags('admin-tenants')
+@RequiredScopes('admin:tenant:write')
 @Controller('admin/tenants')
 export class TenantPipelineResyncController {
   constructor(private readonly resyncService: PipelineTemplateResyncService) {}

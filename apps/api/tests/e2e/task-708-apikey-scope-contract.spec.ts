@@ -1,33 +1,29 @@
 /**
- * TASK-708 — API-Key Scope Verification: contract tests locking in CURRENT
- * behavior.
+ * TASK-708 — API-Key Scope Verification: contract tests.
  *
  * This spec has two halves, deliberately separated so the split in
- * `docs/implementation/TASK-708-Apikey-Scope-Verification/README.md` §2 is
- * visible in the test file itself rather than only in prose:
+ * `docs/implementation/TASK-708-Apikey-Scope-Verification/README.md` §2/§7
+ * is visible in the test file itself rather than only in prose:
  *
  *  1. "Real enforcement" — a sample of the 14 `SDK_DAY1_SCOPED_ROUTES`
  *     (`apps/api/src/bootstrap/api-key-scope-audit.ts`) that carry
  *     `@RequiredScopes(...)`. An API key WITHOUT the required scope must be
  *     rejected with the exact `enforceApiKeyScopes` 403 message shape
- *     (`packages/applications/src/authorization/unified-auth.guard.ts:233`);
+ *     (`packages/applications/src/authorization/unified-auth.guard.ts`);
  *     a key WITH the scope must pass the guard (proven by reaching a
  *     downstream 404 for a nonexistent resource, never the scope-denial 403).
  *
- *  2. "Decorative today" — routes with NO `@RequiredScopes(...)` at all
- *     (the entire `/admin/*` surface — §2.3 of the README). An API key
- *     reaches these regardless of its scopes, because
- *     `UnifiedAuthGuard.enforceApiKeyScopes` no-ops when no
- *     `API_KEY_REQUIRED_SCOPES` metadata is present, and CASL/RBAC is never
- *     evaluated on the API-key auth path at all (§2.4). This half asserts
- *     the CURRENT real status code, replacing the loose
- *     `[200, 400, 401, 403]` tolerance in `api-key-auth.spec.ts`.
- *
- *     A `403` on the "decorative today" test in the future is the INTENDED
- *     fix (TASK-708 Task 4 — gated on the Task 3 human decision), not a
- *     regression. Whoever closes that gap for a given route MUST update this
- *     spec alongside the fix — do not leave this permanently green as a
- *     stale "gap exists" assertion once the route is scoped.
+ *  2. "Gap closed" — `/admin/tenants` (`TenantController`), this ticket's own
+ *     worked example. It used to have NO `@RequiredScopes(...)` at all (the
+ *     original "decorative today" half of this spec, before Task 4 ran):
+ *     an API key with no admin scope reached it regardless, returning 200
+ *     scoped to the key's own tenant, because `enforceApiKeyScopes` no-ops
+ *     when no `API_KEY_REQUIRED_SCOPES` metadata is present and CASL/RBAC is
+ *     never evaluated on the API-key auth path at all (§2.4). Task 4 added
+ *     `@RequiredScopes('admin:tenant:write')` to the class, so this now
+ *     asserts the CLOSED behavior: an out-of-scope key is 403'd, an
+ *     `admin:tenant:write`-scoped key still succeeds. This replaces the
+ *     loose `[200, 400, 401, 403]` tolerance in `api-key-auth.spec.ts`.
  *
  * Prerequisites: API server running against the test DB
  * (`pnpm test:up:api`), seeded (`pnpm test:db:seed`).
@@ -177,46 +173,102 @@ test.describe('TASK-708 — API-key scope contract (locks in current behavior)',
   });
 
   // ==========================================================================
-  // Half 2 — "Decorative today": routes with no @RequiredScopes at all
+  // Half 2 — "Gap closed": /admin/tenants, this ticket's own worked example
   // ==========================================================================
 
-  test.describe('documents the current gap: routes with no @RequiredScopes are reachable by any valid API key', () => {
-    test('documents the current gap: an API key with no admin scope reaches /admin/tenants', async ({ request }) => {
-      // `TenantController` has NO `@RequiredScopes(...)` anywhere (§2.3 of the
-      // README — the /admin/* surface is entirely outside the 14-route
-      // SDK_DAY1_SCOPED_ROUTES list). `enforceApiKeyScopes` therefore no-ops
-      // for this route, and CASL/RBAC (`@CanAny(['manage','Tenant'],['update','Tenant'])`)
-      // is never evaluated on the API-key auth path (§2.4) — so a key holding
-      // ONLY `consultation:report:write` (nothing admin-shaped) still reaches
-      // the handler. The handler's own inline `isSuperAdmin(user)` check (not
-      // a route-level authorization gate) then falls back to a same-tenant-only
-      // view because the API-key CLS `user` object carries no `roles`
-      // (`unified-auth.guard.ts` sets only `{ id, tenantId }`) — so the
-      // response is 200 with exactly the key's own tenant, not a 403.
-      //
-      // A 403 here in the future is the intended fix (TASK-708 Task 4, gated
-      // on the Task 3 human classification decision) — update this test
-      // alongside that fix rather than leaving it green forever.
-      const key = await createScopedApiKey(request, adminToken, ['consultation:report:write'], 'task-708-gap-admin-tenants');
+  test.describe('/admin/tenants (TenantController, admin:tenant:write): the Task 3/4 gap-closure worked example', () => {
+    test("an API key with no admin scope is now 403'd (was 200 before Task 4)", async ({ request }) => {
+      // `TenantController` now carries class-level `@RequiredScopes('admin:tenant:write')`
+      // (TASK-708 Task 4). A key holding ONLY `consultation:report:write`
+      // (nothing admin-shaped) is rejected by `enforceApiKeyScopes` before the
+      // handler — and therefore before CASL/RBAC would even run on this path
+      // (§2.4) — with the same message shape every other `@RequiredScopes`
+      // route uses.
+      const key = await createScopedApiKey(request, adminToken, ['consultation:report:write'], 'task-708-gap-admin-tenants-denied');
       createdApiKeyIds.push(key.id);
 
       const response = await request.get('/api/v1/admin/tenants', {
         headers: { 'X-API-Key': key.rawKey, Accept: 'application/json' },
       });
 
-      // Current, real behavior — not a guess. If this ever starts failing
-      // because the route now 403s, that is TASK-708 Task 4 landing: update
-      // this assertion (and the comment above) rather than treating it as a
-      // regression.
-      expect(response.status(), 'a route with no @RequiredScopes(...) is not authorization-gated for API keys today').toBe(200);
-
+      expect(response.status()).toBe(403);
       const body = await response.json();
-      // Defense-in-depth data scoping (not an authorization gate): the
-      // handler restricts a non-super-admin caller to their own tenant, so
-      // the out-of-scope key still only sees one row, never the full
-      // cross-tenant list.
+      expect(body.message).toContain('API key does not have required scope(s): admin:tenant:write');
+    });
+
+    test('an admin:tenant:write-scoped API key still succeeds', async ({ request }) => {
+      const key = await createScopedApiKey(request, adminToken, ['admin:tenant:write'], 'task-708-gap-admin-tenants-allowed');
+      createdApiKeyIds.push(key.id);
+
+      const response = await request.get('/api/v1/admin/tenants', {
+        headers: { 'X-API-Key': key.rawKey, Accept: 'application/json' },
+      });
+
+      expect(response.status()).toBe(200);
+      const body = await response.json();
+      // Defense-in-depth data scoping (unaffected by this ticket, unchanged
+      // behavior): the handler still restricts a non-super-admin caller to
+      // their own tenant via the inline `isSuperAdmin(user)` check, so an
+      // in-scope key still only sees one row, never the full cross-tenant
+      // list — the scope gate and the tenant-scoping are independent controls.
       expect(Array.isArray(body.data)).toBe(true);
       expect(body.data.length).toBe(1);
+    });
+
+    test('the platform "*" wildcard scope still satisfies the new gate (no regression for platform-operator keys)', async ({ request }) => {
+      const key = await createScopedApiKey(request, adminToken, ['*'], 'task-708-gap-admin-tenants-wildcard');
+      createdApiKeyIds.push(key.id);
+
+      const response = await request.get('/api/v1/admin/tenants', {
+        headers: { 'X-API-Key': key.rawKey, Accept: 'application/json' },
+      });
+
+      expect(response.status()).toBe(200);
+    });
+  });
+
+  // ==========================================================================
+  // Half 3 — "/internal/* off the API-key surface entirely" (SttInternalController)
+  // ==========================================================================
+
+  test.describe('/internal/stt/* (SttInternalController): fully off the API-key surface, not scoped', () => {
+    test('the platform "*" wildcard API key cannot reach it at all (401, not a scope 403)', async ({ request }) => {
+      // Before TASK-708, `x-internal-service-key` doubled as an ordinary
+      // API-key header (`ApiKeyService.extractApiKeyFromRequest`), so even the
+      // platform's own bare `["*"]`-scoped key would have reached this route
+      // via `X-API-Key`. `@Public()` now short-circuits `UnifiedAuthGuard`
+      // before it ever inspects an API key on this controller — so a `*` key
+      // gets exactly the same 401 an unauthenticated caller would, never a
+      // scope-shaped 403.
+      const key = await createScopedApiKey(request, adminToken, ['*'], 'task-708-internal-stt-wildcard');
+      createdApiKeyIds.push(key.id);
+
+      const response = await request.get('/api/v1/internal/stt/jobs/00000000-0000-0000-0000-000000000000/status', {
+        headers: { 'X-API-Key': key.rawKey, Accept: 'application/json' },
+      });
+
+      expect(response.status()).toBe(401);
+    });
+
+    test('the platform gateway secret (X-Internal-Service-Key) reaches the handler (404 for a nonexistent job)', async ({ request }) => {
+      const gatewayKey = process.env.API_GATEWAY_KEY;
+      test.skip(!gatewayKey, 'API_GATEWAY_KEY not set in this environment — cannot exercise the positive path');
+
+      const response = await request.get('/api/v1/internal/stt/jobs/00000000-0000-0000-0000-000000000000/status', {
+        headers: { 'X-Internal-Service-Key': gatewayKey as string, Accept: 'application/json' },
+      });
+
+      // Reaches the handler (a real, if 404, response) — proves the guard
+      // admits the correct credential, not just that it rejects everything.
+      expect(response.status()).toBe(404);
+    });
+
+    test('a wrong X-Internal-Service-Key value is rejected (401, fail-closed)', async ({ request }) => {
+      const response = await request.get('/api/v1/internal/stt/jobs/00000000-0000-0000-0000-000000000000/status', {
+        headers: { 'X-Internal-Service-Key': 'definitely-not-the-gateway-secret', Accept: 'application/json' },
+      });
+
+      expect(response.status()).toBe(401);
     });
   });
 });
