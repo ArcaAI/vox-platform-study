@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": "n_a",
+      "type": "x",
+      "config": {}
+    },
+    {
+      "id": "n_b",
+      "type": "x",
+      "config": {}
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "from": "n_a",
+      "fromPort": "out",
+      "to": "n_b",
+      "toPort": "in"
+    },
+    {
+      "id": "e2",
+      "from": "n_b",
+      "fromPort": "out",
+      "to": "n_a",
+      "toPort": "in"
+    }
+  ]
+}

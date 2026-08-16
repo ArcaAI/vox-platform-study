@@ -33,4 +33,18 @@ export class SummaryResponse {
 
   @ApiProperty()
   updatedAt: string;
+
+  /**
+   * TASK-709: `SummaryDtoMapper.toResponse` maps this DTO from the
+   * underlying `ContextItemEntity` (the summary IS a ContextItem row), so
+   * `_version` is the same OCC compare-and-set counter `ContextItemResponse`
+   * exposes. Echo back via `If-Match: "<version>"` (or the body-field
+   * `expectedVersion`) on `PATCH :id/summary/:summaryId` and
+   * `POST :id/summary/:contextItemId/approve`.
+   */
+  @ApiProperty({
+    description: 'Row version for optimistic concurrency control. Echo back as `If-Match: "<version>"` or `expectedVersion` on PATCH.',
+    example: 7,
+  })
+  version!: number;
 }

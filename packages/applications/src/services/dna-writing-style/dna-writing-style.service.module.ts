@@ -13,6 +13,7 @@ import { ConsultationJobServiceModule } from '../consultation/jobs/consultation-
 import { HarnessPolicyServiceModule } from '../harness-policy/harness-policy.service.module';
 import { PipelinePolicyServiceModule } from '../pipeline-policy';
 import { ConfigResolverModule } from '../config-resolver';
+import { PhiRedactionServiceModule } from '../phi-redaction/phi-redaction.service.module';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { ConfigResolverModule } from '../config-resolver';
     // toggle (service); ConfigResolver gates the processor's learning corpus.
     PipelinePolicyServiceModule,
     ConfigResolverModule,
+    PhiRedactionServiceModule, // TASK-710 hop 2 — IPhiRedactor for DnaWritingStyleProcessor's full-redact-before-SMR call
     BullModule.registerQueue({ name: JobQueue.GenerateDnaReport }),
   ],
   providers: [

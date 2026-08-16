@@ -271,6 +271,19 @@ enum ConsultationContextSchemaStatus {
   @@schema("core")
 }
 
+// Governance lifecycle of a `WorkflowDefinition`. Rows ARE versions (no
+// separate head/version split — see workflow-definition.prisma header);
+// PUBLISHED rows are hard-immutable (service guard + DTO whitelist +
+// checksum, TASK-715 §3.4 — no DB trigger).
+enum WorkflowDefinitionStatus {
+  DRAFT
+  VALIDATED
+  PUBLISHED
+  DEPRECATED
+
+  @@schema("core")
+}
+
 // First-class consultation lifecycle state machine.
 // Previously the lifecycle lived in the free-form `Consultation.metadata.status`
 // JSON; this enum promotes it to a typed column so the clinical-documentation
@@ -283,6 +296,11 @@ enum ConsultationStatus {
   SIGNED // Clinician-attested (immutable signed note committed)
   CLOSED // Consultation closed
   REOPENED // Reopened after being closed
+  // TASK-711: session state machine additions. Appended (never renumbered/
+  // renamed) per `ALTER TYPE … ADD VALUE` migration discipline.
+  PRIMED // Consent asserted; the checkpoint RECORDING now requires
+  DRAINING // Capture stopped, not yet drafted — replaces the old revert-to-OPEN
+  TIMED_OUT // Gate SLA exhausted; terminal absent an explicit reopening, visibly unsigned
 
   @@schema("core")
 }
@@ -625,6 +643,33 @@ enum ChangelogAudience {
 enum ChangelogPublishStatus {
   DRAFT
   PUBLISHED
+
+  @@schema("core")
+}
+
+// TASK-712 — consent-abac. The purpose-of-use a ConsentGrant authorizes.
+// One purpose per grant row (see consent.prisma) — per-purpose expiry and
+// revocation is the design.md D3/INV-342 requirement. Recommendation only,
+// not a ratified vocabulary — see consent-design.md §2 (HUMAN-GATED).
+enum ConsentPurpose {
+  AI_DOCUMENTATION // Consultation capture + AI-assisted note generation (INV-201, INV-004).
+  HISTORY_RETRIEVAL // Prior-consultation / prior-history lookup (INV-015, INV-198).
+  EXTERNAL_TOOL_LOOKUP // MCP / external tool calls, incl. drug-interaction lookups (INV-007, INV-058, INV-371).
+  STYLE_LEARNING // DNA writing-style learning opt-in, promoted from a boolean to a purpose (INV-017).
+  QUALITY_REVIEW // Downstream quality/metrics review of the encounter (INV-309).
+
+  @@schema("core")
+}
+
+// TASK-712 — consent-abac. How the grant was captured; provenance only, no
+// bearing on evaluation. IMPORTED exists for a future legacy-backfill
+// decision (Q2) this ticket does not make — see consent-design.md §"The
+// legacy-consent posture".
+enum ConsentGrantMethod {
+  VERBAL_ATTESTED
+  WRITTEN
+  PORTAL
+  IMPORTED
 
   @@schema("core")
 }

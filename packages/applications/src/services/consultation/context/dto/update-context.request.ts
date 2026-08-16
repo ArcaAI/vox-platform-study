@@ -1,5 +1,5 @@
-import { IsString, IsOptional, IsObject } from 'class-validator';
-import { ApiPropertyOptional } from '@nestjs/swagger';
+import { IsString, IsOptional, IsObject, IsInt, Min } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class UpdateContextRequest {
   @ApiPropertyOptional({ description: 'Updated content text' })
@@ -43,6 +43,23 @@ export class UpdateContextRequest {
   @IsOptional()
   @IsObject()
   payload?: Record<string, unknown>;
+
+  /**
+   * TASK-709 optimistic-concurrency token. Mirrors
+   * `UpdateDepartmentRequest.expectedVersion` verbatim: required. The client
+   * echoes the `version` it read from a prior GET; the service runs a
+   * Compare-And-Set (`contextItemRepository.updateWithVersion`) and fails
+   * with `OptimisticConcurrencyException` -> HTTP 412 on drift. On a
+   * `@RequiresIfMatch()` route the controller folds the `If-Match` header
+   * value over this field when both are present.
+   */
+  @ApiProperty({
+    description: 'Current version of the row (from the prior GET). The PATCH fails with 412 if the version drifted.',
+    example: 7,
+  })
+  @IsInt()
+  @Min(1)
+  expectedVersion!: number;
 }
 
 /**

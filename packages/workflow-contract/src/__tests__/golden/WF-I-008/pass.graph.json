@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": "n_commit",
+      "type": "commit.external",
+      "config": {
+        "idempotencyKeySource": "consultationId"
+      }
+    }
+  ],
+  "edges": []
+}

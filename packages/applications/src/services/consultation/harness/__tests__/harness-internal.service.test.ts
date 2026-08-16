@@ -99,6 +99,12 @@ const createMockContextItemRepository = () => {
     // persistDraft test is unaffected.
     findByType: vi.fn().mockResolvedValue([]),
     update: vi.fn().mockImplementation(async (id: string, entity: Record<string, unknown>) => ({ ...entity, id })),
+    // TASK-709: `persistDraft`'s adoption branch now CASes against `_version`
+    // instead of the legacy non-versioned `.update()`. Delegate to `update` so
+    // every pre-existing `.update`-based assertion in this suite keeps
+    // driving/observing behavior unchanged; the OCC-specific drift behavior is
+    // covered by dedicated tests that configure `updateWithVersion` directly.
+    updateWithVersion: vi.fn(async (id: string, entity: Record<string, unknown>, _expectedVersion?: number, _tx?: unknown) => repo.update(id, entity)),
     // Encrypt-on-write helper (declaration-merged sibling): plaintext `content`
     // has no column, so a create that skips this drops the note at rest.
     encryptContentIntoEntity: vi.fn().mockResolvedValue(undefined),
@@ -1955,6 +1961,30 @@ describe('HarnessInternalService', () => {
       expect((updatedEntity as { content?: string }).content).toBe('REVISED AFTER LATE TRANSCRIPT');
       // The clinician must see the revision, and the caller must be told which row it is.
       expect(summaryMetaRepository.updateWithVersion).toHaveBeenCalled();
+    });
+
+    // TASK-709 — the adoption branch used to overwrite `content`
+    // unconditionally on a routine second `HarnessDocWorkflow` execution,
+    // silently reverting a clinician edit made between the first and second
+    // execution. It now CASes against `_version`: a drift (the clinician
+    // touched the row since the harness last read it) is caught and the
+    // overwrite is skipped, not applied — and the workflow does not fail.
+    it('preserves a clinician edit made between two harness executions instead of silently overwriting it (OCC drift)', async () => {
+      const { OptimisticConcurrencyException } = await import('@arcaai/exceptions');
+      await service.persistDraft('consultation-1', draftBody('FIRST DRAFT') as any, 'run-A:persist_draft');
+      contextItemRepository.findByType.mockResolvedValue(priorHarnessDraft());
+      contextItemRepository.updateWithVersion.mockRejectedValueOnce(
+        new OptimisticConcurrencyException('ContextItem', 'ctx-draft-1', { expectedVersion: 1, currentVersion: 2 }),
+      );
+
+      const result = await service.persistDraft('consultation-1', draftBody('SECOND HARNESS EXECUTION') as any, 'run-B:persist_draft');
+
+      // The workflow must not fail loudly over a skipped adoption.
+      expect(result).toEqual({ contextItemId: 'ctx-draft-1' });
+      // The CAS was attempted (and rejected) — the legacy non-versioned
+      // write must never have been used as a silent fallback.
+      expect(contextItemRepository.updateWithVersion).toHaveBeenCalled();
+      expect(contextItemRepository.update).not.toHaveBeenCalled();
     });
 
     it('returns the SAME contextItemId on the update path (the caller must not learn a new id)', async () => {

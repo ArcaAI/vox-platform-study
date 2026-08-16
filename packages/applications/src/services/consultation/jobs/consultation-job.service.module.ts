@@ -21,6 +21,8 @@ import { ConfigResolverModule } from '../../config-resolver';
 import { AiTaskDefaultServiceModule } from '../../ai-task-default/ai-task-default.service.module';
 import { UsageLedgerServiceModule } from '../../usageLedger';
 import { NoteGenerationServiceModule } from '../note-generation/note-generation.service.module';
+import { HarnessAuditServiceModule } from '../../harness-audit/harness-audit.service.module';
+import { PhiRedactionServiceModule } from '../../phi-redaction/phi-redaction.service.module';
 
 @Module({
   imports: [
@@ -35,6 +37,8 @@ import { NoteGenerationServiceModule } from '../note-generation/note-generation.
     AiTaskDefaultServiceModule, // nlp.ner model-injection resolver for NerProcessor
     ConfigResolverModule, // Realtime cascade + preferred-prompt threading (handler + summary processor)
     UsageLedgerServiceModule, // ner.extract usage emission for NerProcessor
+    PhiRedactionServiceModule, // TASK-710 hop 1 — IPhiRedactor for NerProcessor's pseudonymize-before-NLP call
+    HarnessAuditServiceModule, // TASK-714 — WORM GENERATE event for the legacy safety floor (SummaryProcessor)
     EventEmitterModule, // Required for @OnEvent handlers and EventEmitter2 injection
     RedisCacheModule.register(), // For job status storage and pub/sub
     BullModule.registerQueue(

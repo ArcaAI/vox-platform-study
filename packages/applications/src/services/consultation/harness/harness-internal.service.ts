@@ -759,19 +759,47 @@ export class HarnessInternalService {
         const existingDraft = await this.findOwnHarnessDraft(consultationId);
         let contextItemId: string;
         if (existingDraft) {
+          // TASK-709: capture the CAS predicate BEFORE mutating the entity —
+          // `entity.version` is the OCC compare-and-set counter (DB-owned),
+          // distinct from `currentVersionNumber` (the content-revision
+          // pointer `updateSummary` bumps on every clinician edit).
+          const expectedVersion = existingDraft.version;
           existingDraft.content = strippedContent;
           existingDraft.dnaWritingStyleId = dto.dnaStyleId ?? existingDraft.dnaWritingStyleId;
           existingDraft.updatedBy = userId;
           await this.encryptBestEffort('ContextItem content', () =>
             this.contextItemRepository.encryptContentIntoEntity(existingDraft, this.secretsService!),
           );
-          await this.contextItemRepository.update(existingDraft.id, existingDraft);
           contextItemId = existingDraft.id;
-          this.logger.log({
-            message: 'Harness draft re-delivered — existing note updated in place (no second row)',
-            consultationId,
-            contextItemId,
-          });
+          try {
+            // Compare-And-Set against `_version`, NOT the legacy
+            // non-versioned `.update()`. `HarnessDocWorkflow`'s second
+            // execution is routine (see the comment above), and this row's
+            // adoption branch used to overwrite `content` unconditionally —
+            // silently reverting a clinician edit made between the first and
+            // second execution with no diff shown and no signal raised. A CAS
+            // drift here means exactly that: a human touched this row since
+            // the harness last read it.
+            await this.contextItemRepository.updateWithVersion(existingDraft.id, existingDraft, expectedVersion);
+            this.logger.log({
+              message: 'Harness draft re-delivered — existing note updated in place (no second row)',
+              consultationId,
+              contextItemId,
+            });
+          } catch (error) {
+            if (!(error instanceof OptimisticConcurrencyException)) throw error;
+            // Adoption skipped, not failed: the clinician's edit is
+            // authoritative and stays on the row untouched. The workflow
+            // itself must not fail loudly over this — degrade and continue so
+            // the SummaryMeta/sensor-score work below still lands.
+            this.logger.warn({
+              message:
+                'Harness draft adoption skipped — a clinician edited this note since the harness last wrote it (OCC version drift). ' +
+                'The AI-generated content was NOT applied; the clinician edit is preserved.',
+              consultationId,
+              contextItemId,
+            });
+          }
         } else {
           const contextItem = ContextItemFactory.CreateRawSummary(tenantId, consultationId, strippedContent, dto.dnaStyleId, userId);
           // Pin the AI draft to v1 so the `ai_draft_v1`

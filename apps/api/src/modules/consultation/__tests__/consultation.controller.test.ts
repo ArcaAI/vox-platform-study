@@ -456,7 +456,7 @@ describe('ConsultationController', () => {
         const consultation = makeConsultation({ doctorId: DOCTOR_A });
         consultationService.getById.mockResolvedValue(consultation);
 
-        await expect(controller.updateContext(CONSULTATION_OWN, 'ctx-1', {} as any)).rejects.toThrow(ForbiddenException);
+        await expect(controller.updateContext(CONSULTATION_OWN, 'ctx-1', {} as any, undefined)).rejects.toThrow(ForbiddenException);
       });
     });
 
@@ -712,7 +712,7 @@ describe('ConsultationController', () => {
     });
 
     it('updateContext should enforce ownership', async () => {
-      await expect(controller.updateContext(CONSULTATION_OWN, 'ctx-1', {} as any)).rejects.toThrow(ForbiddenException);
+      await expect(controller.updateContext(CONSULTATION_OWN, 'ctx-1', {} as any, undefined)).rejects.toThrow(ForbiddenException);
     });
 
     it('deleteContext should enforce ownership', async () => {
@@ -728,7 +728,7 @@ describe('ConsultationController', () => {
     });
 
     it('updateSummary should enforce ownership', async () => {
-      await expect(controller.updateSummary(CONSULTATION_OWN, 'sum-1', {} as any)).rejects.toThrow(ForbiddenException);
+      await expect(controller.updateSummary(CONSULTATION_OWN, 'sum-1', {} as any, undefined)).rejects.toThrow(ForbiddenException);
     });
 
     it('extractEntities should enforce ownership', async () => {
@@ -752,7 +752,7 @@ describe('ConsultationController', () => {
     });
 
     it('approveSummary should enforce ownership', async () => {
-      await expect(controller.approveSummary(CONSULTATION_OWN, 'ctx-1')).rejects.toThrow(ForbiddenException);
+      await expect(controller.approveSummary(CONSULTATION_OWN, 'ctx-1', {} as any, undefined)).rejects.toThrow(ForbiddenException);
     });
 
     it('close should enforce ownership', async () => {
@@ -780,7 +780,7 @@ describe('ConsultationController', () => {
       consultationService.getById.mockResolvedValue(makeConsultation({ doctorId: DOCTOR_A }));
       summaryService.approveSummary.mockResolvedValue(approval);
 
-      await controller.approveSummary(CONSULTATION_OWN, 'ctx-1', { overrideSafetyFlag: true });
+      await controller.approveSummary(CONSULTATION_OWN, 'ctx-1', { overrideSafetyFlag: true } as any, undefined);
 
       expect(summaryService.approveSummary).toHaveBeenCalledWith('ctx-1', { overrideSafetyFlag: true });
     });
@@ -790,7 +790,7 @@ describe('ConsultationController', () => {
       consultationService.getById.mockResolvedValue(makeConsultation({ doctorId: DOCTOR_A }));
       summaryService.approveSummary.mockResolvedValue(approval);
 
-      await controller.approveSummary(CONSULTATION_OWN, 'ctx-1');
+      await controller.approveSummary(CONSULTATION_OWN, 'ctx-1', {} as any, undefined);
 
       expect(summaryService.approveSummary).toHaveBeenCalledWith('ctx-1', { overrideSafetyFlag: undefined });
     });

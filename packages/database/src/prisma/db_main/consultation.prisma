@@ -35,6 +35,11 @@ model Consultation {
   // gate transitions PENDING_REVIEW → SIGNED.
   status ConsultationStatus @default(OPEN)
 
+  // TASK-711: health-flag projection on the active phase, not a state of its
+  // own — the reference model's `Degraded` state is REJECTED (see
+  // state-machine.md). Append-only within a session; cleared on SIGNED.
+  degradedReasons String[] @default([])
+
   // Resource status + Audit (standard fields)
   resourceStatus          ResourceStatusType @default(ENABLED)
   resourceStatusUpdatedAt DateTime?

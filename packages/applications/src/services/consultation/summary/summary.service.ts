@@ -836,7 +836,10 @@ export class SummaryService extends BaseService implements ISummaryService {
     // context.service.ts `encryptContent`).
     await this.encryptBestEffort('ContextItem content', () => this.contextItemRepository.encryptContentIntoEntity(contextItem, this.secretsService!));
 
-    const updated = await this.contextItemRepository.update(contextItemId, contextItem);
+    // TASK-709: Compare-And-Set against `_version` — the CAS predicate is
+    // the `@RequiresIfMatch()`-gated `expectedVersion` folded onto the DTO by
+    // the controller. Drift throws `OptimisticConcurrencyException` -> 412.
+    const updated = await this.contextItemRepository.updateWithVersion(contextItemId, contextItem, request.expectedVersion);
 
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
       resourceId: updated.id,
@@ -895,7 +898,7 @@ export class SummaryService extends BaseService implements ISummaryService {
    */
   async approveSummary(
     contextItemId: string,
-    options?: { overrideSafetyFlag?: boolean },
+    options?: { overrideSafetyFlag?: boolean; expectedVersion?: number },
   ): Promise<{ contextItemId: string; approvalStatus: string; approvedBy: string; approvedAt: string }> {
     const tenantId = this.tenantId;
     if (!tenantId) {
@@ -1044,14 +1047,6 @@ export class SummaryService extends BaseService implements ISummaryService {
       });
     }
 
-    // 3. Flip the consultation lifecycle → SIGNED.
-    const consultation = await this.consultationRepository.findById(contextItem.consultationId);
-    if (consultation) {
-      consultation.status = ConsultationStatus.SIGNED;
-      consultation.updatedBy = approvedBy;
-      await this.consultationRepository.update(consultation.id, consultation);
-    }
-
     contextItem.currentVersionNumber = versionNumber;
     contextItem.updatedBy = approvedBy;
 
@@ -1063,7 +1058,39 @@ export class SummaryService extends BaseService implements ISummaryService {
     // ContextItem write lanes in this service).
     await this.encryptBestEffort('ContextItem content', () => this.contextItemRepository.encryptContentIntoEntity(contextItem, this.secretsService!));
 
-    await this.contextItemRepository.update(contextItemId, contextItem);
+    // TASK-709: 3. Flip the consultation lifecycle → SIGNED, and persist BOTH
+    // the Consultation and the ContextItem rows as Compare-And-Sets. The
+    // `contextItem` CAS predicate is the caller-supplied `expectedVersion`
+    // (the `@RequiresIfMatch()`-gated header the client echoed back); the
+    // `consultation` CAS predicate is its own freshly-read `.version` — there
+    // is no client-observed value for that row, so this simply guards
+    // against a concurrent status change landing between our read and write.
+    // Two separate CAS calls on two different entities, so they run inside
+    // ONE `$transaction` (when a unit-of-work is wired) so a drift on either
+    // row aborts the whole approval rather than leaving one row updated and
+    // the other stale.
+    const consultation = await this.consultationRepository.findById(contextItem.consultationId);
+    // `expectedVersion` is REQUIRED end-to-end (the controller's
+    // `@RequiresIfMatch()` guarantees it); optional here only so the many
+    // pre-existing unit tests that call this method without an `options`
+    // object keep compiling.
+    const expectedVersion = options?.expectedVersion as number;
+    if (consultation) {
+      const consultationExpectedVersion = consultation.version;
+      consultation.status = ConsultationStatus.SIGNED;
+      consultation.updatedBy = approvedBy;
+      if (this.unitOfWork) {
+        await this.unitOfWork.runInTransaction(async (tx) => {
+          await this.consultationRepository.updateWithVersion(consultation.id, consultation, consultationExpectedVersion, tx);
+          await this.contextItemRepository.updateWithVersion(contextItemId, contextItem, expectedVersion, tx);
+        });
+      } else {
+        await this.consultationRepository.updateWithVersion(consultation.id, consultation, consultationExpectedVersion);
+        await this.contextItemRepository.updateWithVersion(contextItemId, contextItem, expectedVersion);
+      }
+    } else {
+      await this.contextItemRepository.updateWithVersion(contextItemId, contextItem, expectedVersion);
+    }
 
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
       resourceId: contextItemId,

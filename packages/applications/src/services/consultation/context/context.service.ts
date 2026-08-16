@@ -516,7 +516,10 @@ export class ContextService extends BaseService implements IContextService {
       await this.encryptContent(contextItem);
     }
 
-    const updated = await this.contextItemRepository.update(contextItemId, contextItem);
+    // TASK-709: Compare-And-Set against `_version` — the CAS predicate is
+    // the `@RequiresIfMatch()`-gated `expectedVersion` folded onto the DTO by
+    // the controller. Drift throws `OptimisticConcurrencyException` -> 412.
+    const updated = await this.contextItemRepository.updateWithVersion(contextItemId, contextItem, request.expectedVersion);
 
     // Never surface the ciphertext columns in the audit
     // payload (defense-in-depth; also avoids serialising a raw Buffer into the

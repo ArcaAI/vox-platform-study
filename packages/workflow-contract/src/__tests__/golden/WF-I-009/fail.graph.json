@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": "n_cloud",
+      "type": "cloud.route",
+      "config": {
+        "providerSelection": "env-fallback"
+      }
+    }
+  ],
+  "edges": []
+}

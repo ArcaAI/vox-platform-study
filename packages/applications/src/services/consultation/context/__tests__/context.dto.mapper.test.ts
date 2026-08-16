@@ -38,6 +38,7 @@ const createMockContextItemEntity = (
     content: string | null;
     dnaWritingStyleId: string | null;
     currentVersionNumber: number;
+    version: number;
     qdrantSynced: boolean;
     qdrantSyncedAt: Date | null;
     isSummary: boolean;
@@ -65,6 +66,9 @@ const createMockContextItemEntity = (
   content: 'content' in overrides ? overrides.content : 'Test content',
   dnaWritingStyleId: 'dnaWritingStyleId' in overrides ? overrides.dnaWritingStyleId : null,
   currentVersionNumber: overrides.currentVersionNumber ?? 1,
+  // TASK-709: the OCC counter (`_version`) — DISTINCT from
+  // `currentVersionNumber` above (the content-revision pointer).
+  version: overrides.version ?? 1,
   qdrantSynced: overrides.qdrantSynced ?? false,
   qdrantSyncedAt: 'qdrantSyncedAt' in overrides ? overrides.qdrantSyncedAt : null,
   isSummary: overrides.isSummary ?? false,
@@ -241,6 +245,18 @@ describe('ContextDtoMapper', () => {
       expect(result.qdrantSynced).toBe(false);
       expect(result.createdAt).toBe('2026-01-29T10:00:00.000Z');
       expect(result.updatedAt).toBe('2026-01-29T10:30:00.000Z');
+    });
+
+    // TASK-709: `version` (the OCC compare-and-set counter) must be surfaced
+    // so SDK clients can echo it back via `If-Match`/`expectedVersion`. It
+    // is DISTINCT from `currentVersionNumber` (the content-revision pointer).
+    it('should map version (OCC counter) distinctly from currentVersionNumber', () => {
+      const entity = createMockContextItemEntity({ version: 7, currentVersionNumber: 3 });
+
+      const result = ContextDtoMapper.toResponse(entity as any);
+
+      expect(result.version).toBe(7);
+      expect(result.currentVersionNumber).toBe(3);
     });
 
     it('should map dnaWritingStyleId when present', () => {

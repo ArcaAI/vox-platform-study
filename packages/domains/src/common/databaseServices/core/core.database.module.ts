@@ -18,6 +18,7 @@ import { ServiceReleaseRepository } from '../../../repositories/generated/core/S
 import { ServiceInstanceRepository } from '../../../repositories/generated/core/ServiceInstanceRepository';
 import { ChangelogEntryRepository } from '../../../repositories/generated/core/ChangelogEntryRepository';
 import { UserChangelogAcknowledgementRepository } from '../../../repositories/generated/core/UserChangelogAcknowledgementRepository';
+import { ConsentGrantRepository } from '../../../repositories/generated/core/ConsentGrantRepository';
 import { AiUsageRollupHourlyRepository } from '../../../repositories/generated/core/AiUsageRollupHourlyRepository';
 import { BillingAdjustmentRepository } from '../../../repositories/generated/core/BillingAdjustmentRepository';
 import { BillingInvoiceLineRepository } from '../../../repositories/generated/core/BillingInvoiceLineRepository';
@@ -253,6 +254,9 @@ const repositories = [
   ServiceInstanceRepository,
   ChangelogEntryRepository,
   UserChangelogAcknowledgementRepository,
+  // Consent & ABAC (TASK-712). No enforcement wired anywhere this phase —
+  // see docs/implementation/TASK-712-Consent-Abac/consent-design.md.
+  ConsentGrantRepository,
 ];
 
 @Module({

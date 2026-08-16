@@ -1,0 +1,54 @@
+[build-system]
+requires = ["setuptools>=75.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hope-async-contract"
+version = "0.1.0"
+description = "TASK-717: the normative async task/event envelope (identity, tenancy, type, payload-or-claim-check, correlation, causation, idempotency key, schema version) plus the idempotency-key and resume-token conventions, for the HOPE Python services"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11,<3.12"
+
+# ONE dependency, and a free one: every workspace member (guardrail, nlp,
+# text, harness, stt, tts) already declares `pydantic>=2.12.5` for its own
+# request/response models and settings, so adding it here forces nothing new
+# onto anyone and cannot perturb the single root `uv.lock` (same rationale
+# py-otel states for opentelemetry-api and py-env states for python-dotenv).
+dependencies = ["pydantic>=2.12.5"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+# PEP 561 — ship inline types, or every `from hope_async_contract import ...`
+# in an adopting service degrades to `Any` under mypy (same rationale as
+# hope-env / hope-runtime-models / hope-otel).
+[tool.setuptools.package-data]
+hope_async_contract = ["py.typed"]
+
+[project.optional-dependencies]
+# jsonschema is test-only (tests/test_parity.py validates schema/async-envelope.v1.json
+# against the draft 2020-12 metaschema). Already resolved in the root uv.lock as
+# apps/harness's dependency (jsonschema>=4.23.0) — pinning the same floor here adds no
+# new package to the workspace resolution.
+dev = ["pytest>=9.0.2", "ruff>=0.16.3", "mypy>=2.3.1", "jsonschema>=4.23.0"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "S"]
+
+[tool.ruff.lint.per-file-ignores]
+# S101 assert — pytest's whole idiom.
+"tests/*" = ["S101"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+
+[tool.pytest.ini_options]
+minversion = "9.0"
+addopts = ["-ra", "--strict-config", "--strict-markers"]
+testpaths = ["tests"]

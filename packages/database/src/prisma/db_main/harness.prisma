@@ -32,6 +32,11 @@ enum HarnessAuditAction {
   // Harness gate SLA-breach escalation records (from apps/harness escalate_gate).
   GATE_ESCALATED // reason=gate_sla_breached — an un-signed gate passed its SLA and was escalated (non-terminal).
   GATE_ABANDONED // reason=gate_sla_abandoned — the terminal escalation before the gate abandons.
+  // TASK-711: session state machine transition audit rows. SIGNED is already
+  // covered by ATTEST — no fourth member for it.
+  SESSION_PRIMED // OPEN → PRIMED
+  SESSION_TIMED_OUT // PENDING_REVIEW → TIMED_OUT (gate SLA exhausted; the clock never signs)
+  SESSION_REOPENED // TIMED_OUT|SIGNED|CLOSED → REOPENED
 
   @@schema("core")
 }

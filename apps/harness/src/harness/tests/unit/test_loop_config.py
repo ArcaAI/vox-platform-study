@@ -17,7 +17,7 @@ from harness.core.config import Settings
 # ``_load_dotenv_into_environ()``), so a dev box that points e.g. SMR at a
 # non-standard port would otherwise leak into these default assertions.
 _DEFAULTED_ENV_KEYS = (
-    "HARNESS_TEXT_BASE_URL",
+    "HARNESS_SMR_BASE_URL",
     "HARNESS_NLP_BASE_URL",
     "HARNESS_API_BASE_URL",
     "HARNESS_API_INTERNAL_PREFIX",
@@ -67,7 +67,7 @@ class TestHarnessServiceToken:
 class TestLoopConfigEnvOverride:
     def test_env_overrides_apply(self, monkeypatch):
         monkeypatch.setenv("HARNESS_MAX_REGEN", "5")
-        monkeypatch.setenv("HARNESS_TEXT_BASE_URL", "http://smr:9999")
+        monkeypatch.setenv("HARNESS_SMR_BASE_URL", "http://smr:9999")
         monkeypatch.setenv("HARNESS_API_INTERNAL_PREFIX", "/api/v1/internal/harness")
         s = Settings()
         assert s.max_regen == 5

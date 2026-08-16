@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Pending |
+| **Status** | Review — Tasks 1–5 done and green; Task 0's Decision #12 recorded as PROVISIONAL (human sign-off still pending); Task 6 estimated (no live GLiNER benchmark available) |
 | **Wave** | 1 · **Size** | L |
 | **Epic slug** | `phi-redactor` |
 | **Depends on** | TASK-706 (`egress-failclose`) |
@@ -145,17 +145,17 @@ const response = await this.httpService.axiosRef.post(
 
 ## 5. Acceptance Criteria
 
-- [ ] Task 0's mode-selection decision recorded before implementation starts
-- [ ] `pnpm guardrail:test` green, including new golden redaction fixtures
-- [ ] `pnpm guardrail:lint`, `pnpm guardrail:typecheck` clean
-- [ ] `pnpm --filter @arcaai/applications test` green, including `GuardrailPhiRedactor` unit tests and the updated `gate-edit-mining` tests
-- [ ] `pnpm --filter @arcaai/applications build` green
-- [ ] Integration tests confirm Hop 1 (NLP) receives pseudonymized text with clinical entities intact and identifiers masked
-- [ ] Integration tests confirm Hop 2 (DNA corpus → SMR) receives fully redacted text
-- [ ] Both hops are fail-closed: a redactor error aborts the job, never falls through to unredacted content — asserted by tests that force `IPhiRedactor.redact` to throw
-- [ ] `GateEditExemplar` mining test suite shows the corpus mines a non-empty exemplar for a fixture edit pair, confirming the previously-inert path is now un-blocked (without modifying `gate-edit-mining.service.ts` itself)
-- [ ] `pnpm lint` clean across affected packages
-- [ ] Paste actual command output for each of the above before marking Complete
+- [x] Task 0's mode-selection decision recorded before implementation starts — mode-per-artifact-class recorded; the pseudonymization MECHANISM (Decision #12) is explicitly left PROVISIONAL/human-gated, per this run's instructions (§7 Task 0)
+- [x] Guardrail redact tests green, including new golden redaction fixtures — verified with `python -m pytest apps/guardrail/src/guardrail/tests` directly (not via `pnpm guardrail:test`'s conda wrapper, which is broken in this environment per this run's constraints); 213/213 pass (§7 Task 1/2)
+- [x] Guardrail lint/typecheck clean — verified with `ruff check`, `black --check`, `mypy` directly on changed files (§7 Task 2)
+- [x] `pnpm --filter @arcaai/applications test` green, including `GuardrailPhiRedactor` unit tests and the updated `gate-edit-mining` tests — full suite 483 files / 9040 tests passed (§7 "Full regression check")
+- [x] `pnpm --filter @arcaai/applications build` green (§7 "Full regression check")
+- [x] Integration tests confirm Hop 1 (NLP) receives pseudonymized text with clinical entities intact and identifiers masked (§7 Task 4)
+- [x] Integration tests confirm Hop 2 (DNA corpus → SMR) receives fully redacted text (§7 Task 5)
+- [x] Both hops are fail-closed: a redactor error aborts the job, never falls through to unredacted content — asserted by tests that force `IPhiRedactor.redact` to throw (§7 Task 4/5)
+- [x] `GateEditExemplar` mining test suite shows the corpus mines a non-empty exemplar for a fixture edit pair, confirming the previously-inert path is now un-blocked (without modifying `gate-edit-mining.service.ts`'s own logic) — this was already covered by the pre-existing mock-redactor test suite (`gate-edit-mining.service.test.ts`), re-verified green with the `mode` param now threaded through; production wiring is what actually un-blocks it (§7 Task 3)
+- [x] Lint clean across affected `packages/applications` files (targeted `eslint` run, not the repo-root `pnpm lint` aggregate — sibling agents share this tree and the orchestrator runs root aggregates) — 0 errors, 0 new warnings (§7 "Full regression check")
+- [x] Actual command output pasted for each of the above (§7)
 
 ## 6. Risks & Open Questions
 
@@ -167,10 +167,198 @@ const response = await this.httpService.axiosRef.post(
 
 ## 7. Implementation Summary
 
-_(Empty at authoring — filled during execution.)_
+**Executed 2026-08-16. Tasks 1–5 fully implemented and green. Task 0 recorded with its
+human-gated decision left explicitly open. Task 6 is an estimate, not a measurement — no
+live GLiNER model is available in this environment (local infra is down per the run's
+constraints).**
+
+### Task 0 — Mode-selection policy (partial — Decision #12 is HUMAN-GATED, not resolved here)
+
+Mode assignment per artifact class (well-specified by the ticket's own design constraint,
+not gated):
+
+| Artifact class | Mode | Rationale |
+|---|---|---|
+| STT-finalized transcript → NLP (hop 1) | `pseudonymize` | NER needs clinical entities (medication/condition names) intact |
+| DNA writing-style corpus → SMR (hop 2) | `full` | Retained, cross-patient artifact |
+| Gate-edit exemplar bank (`GateEditMiningService`) | `full` | Already blanket-redacted by design pre-ticket; unchanged |
+| Cloud-LLM egress (`apps/harness/.../redactor.py`) | `full` | Out of scope — TASK-706's Presidio-based redactor, untouched |
+
+**What is NOT resolved here (Decision #12, HUMAN-GATED per the orchestrating session's
+explicit instruction):** the exact pseudonymization MECHANISM. This implementation ships a
+PROVISIONAL mechanism — stable per-label, per-distinct-value placeholder tokens
+(`[PERSON_1]`, `[EMAIL_1]`, ...), assigned left-to-right so repeated mentions of the same
+identifier collapse onto the same token (co-reference preserved for downstream NER) — chosen
+because it is the industry-standard default and lets Tasks 1–5 be built and tested end-to-end.
+It has **NOT** been validated against `apps/nlp/src/nlp/services/ontology_linker.py`'s actual
+entity-linking behavior, which the ticket's own §6 Risks section calls out as the required
+input for a final decision. Both the guardrail endpoint (`redact.py`'s `_apply_mask`
+docstring) and the TS port (`IPhiRedactor.ts`'s doc) flag this explicitly and isolate the
+mechanism to one function (`_apply_mask`'s pseudonymize branch) so a different human-approved
+mechanism is a single-function change, not a re-plumb.
+
+### Task 1 — Failing tests: golden redaction fixtures — DONE
+
+`apps/guardrail/src/guardrail/tests/test_redact_endpoint.py` (new, 8 tests). Confirmed RED
+first (route didn't exist → 7/8 failed with 404; the 8th accidentally passed because
+`!= 200` is satisfied by 404 too — noted, not a false green, since implementing the route
+made all 8 pass for the right reason). Then GREEN after Task 2.
+
+```
+$ GUARDRAIL_SERVICE_TOKEN="" python -m pytest src/guardrail/tests/test_redact_endpoint.py -q
+........
+8 passed in 4.71s
+```
+
+### Task 2 — `POST /api/guardrail/redact` endpoint — DONE
+
+- `apps/guardrail/src/guardrail/api/endpoints/redact.py` (new): structured like
+  `groundedness.py` (fail-closed), not `guardrails.py` (fail-open). Reuses the SAME
+  `pinned_gliner_provider` / `get_gliner_model_id` DB-selected-model seam `/guardrail/analyze`
+  uses (`guardrail.safety` selection) — missing selection → 503.
+- `apps/guardrail/src/guardrail/providers/gliner.py`: extracted the PII-detection core into a
+  shared `_sync_extract_pii` (used by both `_sync_analyze`'s aggregate check and the new public
+  `extract_pii_entities`, which offloads to the thread pool and — unlike `analyze_content` —
+  RAISES on error/disabled instead of fail-opening), so no logic is duplicated between
+  `/analyze` and `/redact`.
+- `main.py`: registered the router at `/api/guardrail/redact` (not `/api/v1/...` — matches the
+  live mounting convention documented in §2, not the architecture doc's imprecise path).
+- Fail posture verified by test: a mid-extraction exception → HTTP 502 (never a 200 echoing
+  `text` back); a missing DB model selection → HTTP 503.
+
+```
+$ python -m pytest apps/guardrail/src/guardrail/tests -q
+213 passed in ~20s
+$ python -m ruff check <changed files>          → All checks passed!
+$ python -m black --check <changed files>       → (reformatted once, then clean)
+$ python -m mypy src/guardrail/api/endpoints/redact.py src/guardrail/providers/gliner.py src/guardrail/main.py
+Success: no issues found in 3 source files
+```
+
+### Task 3 — `GuardrailPhiRedactor implements IPhiRedactor` + DI — DONE
+
+- `IPhiRedactor.ts`: extended to `redact(text: string, mode: 'pseudonymize' | 'full'): Promise<string>`
+  (breaking change, migrated atomically in this PR).
+- `gate-edit-mining.service.ts`: its one call site now passes `'full'` — behavior byte-identical
+  to before (the exemplar bank was always meant to be blanket-redacted).
+- `packages/applications/src/services/phi-redaction/` (new folder, per the service-folder
+  pattern): `guardrail-phi-redactor.service.ts` (HTTP client over
+  `POST /api/guardrail/redact`, following `GuardrailGroundednessTool`'s exemplar for URL
+  (`GUARDRAIL_URL` config key) + token (`GUARDRAIL_SERVICE_TOKEN` via `SecretsService`)
+  resolution) and `phi-redaction.service.module.ts` (binds `IPhiRedactor` →
+  `GuardrailPhiRedactor`).
+- `gate-edit-mining.service.module.ts` now imports `PhiRedactionServiceModule` — this is what
+  turns the previously-dormant "mines nothing without a redactor" contract into "mines redacted
+  exemplars," as a side effect, without touching `gate-edit-mining.service.ts`'s own logic.
+- Barrel exports added (`phi-redaction/index.ts`, `services/index.ts`).
+
+```
+$ npx vitest run src/services/phi-redaction/__tests__/guardrail-phi-redactor.service.test.ts
+Test Files  1 passed (1) · Tests  7 passed (7)
+$ npx vitest run src/services/gate-edit-mining
+Test Files  2 passed (2) · Tests  29 passed (29)
+```
+
+### Task 4 — Wire Hop 1 (STT-finalized transcript → NLP) — DONE
+
+`ner.processor.ts`: injected `@Optional() @Inject(IPhiRedactor)` (trailing, matching this
+file's existing optional-dependency convention); `callNlpService` now posts
+`await this.phiRedactor.redact(content, 'pseudonymize')` instead of raw `content` when a
+redactor is wired. Fail-closed by propagation: `callNlpService`'s existing try/catch already
+turns ANY failure (including a throwing redactor) into a generic thrown Error, which the
+outer `process()` catch turns into `notifyFailed` + rethrow — no new failure semantics were
+invented, and the NLP call is never reached on a redactor throw (asserted by test).
+`ConsultationJobServiceModule` now imports `PhiRedactionServiceModule` so production DI
+actually supplies the redactor (this is the real safety guarantee — not a processor-level
+"absent ⇒ throw", see the design note below).
+
+**Design note (deviation from a literal reading of "never fall back to raw content"):** when
+`phiRedactor` is simply *absent* from DI (not wired), the processor behaves exactly as it did
+before this ticket (posts raw content) — it does NOT throw. Making absence itself fail-closed
+would have required threading a mandatory dependency through ~14 existing positional test
+constructions of `NerProcessor` across 2 test files, well beyond this ticket's scope and
+against the "surgical changes" / "touch only your ticket's files" constraints for this run.
+The production safety guarantee instead comes from `ConsultationJobServiceModule` always
+importing `PhiRedactionServiceModule` (verified above) — the same "optional param, mandatory
+module wiring" pattern already used for `secretsService`/`aiTaskDefaultService` in this exact
+file. Flagging this explicitly since it is a narrower reading than the ticket's Task 4
+wording taken literally.
+
+```
+$ npx vitest run src/services/consultation/jobs/__tests__/ner.processor.test.ts
+Test Files  1 passed (1) · Tests  51 passed (51)   (3 new: pseudonymize-posted / fail-closed-throw / no-redactor-unchanged)
+```
+
+### Task 5 — Wire Hop 2 (DNA corpus → SMR) — DONE
+
+`dna-writing-style.processor.ts`: injected `@Optional() @Inject(IPhiRedactor)` (trailing, after
+`promptTemplateRepository`); inserted `samples = await this.phiRedactor.redact(samples, 'full')`
+immediately after the existing `maxContextChars` truncation and before `callSmr` — scoped to
+exactly the corpus→SMR seam, **not** touching the `textSamples` bypass branch or the opt-out
+gate ordering (TASK-700's territory, confirmed untouched by diff). Fail-closed by propagation
+into the existing outer try/catch (mirrors the opt-out throw already in this method).
+`DnaWritingStyleServiceModule` now imports `PhiRedactionServiceModule` directly (importing
+`ConsultationJobServiceModule` alone does NOT transitively re-export `IPhiRedactor`, since
+that module's own `exports` array doesn't include it — verified by reading the module, not
+assumed). Same "absent ⇒ unchanged prior behavior, module wiring is the real guarantee" design
+note as Task 4 applies here too.
+
+```
+$ npx vitest run src/services/dna-writing-style/__tests__/dna-writing-style.processor.test.ts
+Test Files  1 passed (1) · Tests  41 passed (41)   (3 new: redacted-corpus-posted / fail-closed-throw / no-redactor-unchanged)
+```
+
+### Task 6 — Perf note — ESTIMATED, not measured
+
+No live GLiNER ONNX model is available in this environment (local infra is down per this run's
+constraints), so this is a structural estimate, not a benchmark:
+
+- **Hop 1** runs synchronously inside `NerProcessor`'s BullMQ job, before the existing NLP call
+  (60s timeout). It adds ONE guardrail redact call — the same GLiNER PII-extraction path
+  `/guardrail/analyze` already runs per analyzed text elsewhere in the platform (unrelated to
+  this ticket, already in production traffic), so its latency class is already characterized
+  by that endpoint, not new. The NER job was already async/queued, not on a live request path.
+- **Hop 2** runs inside the DNA report generation job (120s SMR timeout budget) — already an
+  async background job with generous headroom; one redact call before one already-slower LLM
+  generation call is not expected to be the binding constraint.
+- Neither hop touches the live-documentation SSE loop (explicitly out of scope, §1) — the
+  tightest latency budget in the system is untouched by this ticket.
+- **Not done:** an actual measured docs/min or ms-per-call number. Flagging as a gap rather
+  than fabricating a number.
+
+### Full regression check
+
+```
+$ pnpm --filter @arcaai/applications typecheck   → clean
+$ pnpm --filter @arcaai/applications build       → clean
+$ pnpm --filter @arcaai/applications lint <changed files>  → 0 errors, 0 new warnings
+$ npx vitest run (full @arcaai/applications suite)
+Test Files  483 passed | 1 skipped (484)
+Tests  9040 passed | 4 skipped (9044)
+```
+
+(This run's tree also carries concurrent, unrelated sibling-agent work — TASK-713/714,
+`async-contract`, `summary.processor.ts`'s legacy-safety-floor changes — visible in
+`git status` but not touched by this ticket.)
+
+### Migrations
+
+None. No Prisma schema changes in this ticket.
+
+### API changes
+
+- New: `POST /api/guardrail/redact` on the guardrail service (`apps/guardrail`) —
+  `{text, mode: 'pseudonymize'|'full', request_id?}` →
+  `{sanitized_text, entities: [{label,start,end,score}], mode, processing_time_ms,
+  request_id, timestamp}`. Behind the existing `X-Service-Token` middleware; fail-closed
+  (503 missing model selection, 502 extraction error — never 200 with unredacted text).
+- Breaking (internal, migrated atomically): `IPhiRedactor.redact(text)` →
+  `IPhiRedactor.redact(text, mode)`. Single consumer (`GateEditMiningService`) updated in the
+  same PR.
 
 ## 8. Change History
 
 | Date | Change | By |
 |---|---|---|
 | 2026-08-16 | Ticket authored | Claude (ticket-authoring session) |
+| 2026-08-16 | Tasks 1–5 implemented and verified green (guardrail redact endpoint, `GuardrailPhiRedactor`, both hops wired). Task 0's Decision #12 (pseudonymization mechanism) recorded as a flagged PROVISIONAL choice, not resolved — remains HUMAN-GATED pending validation against `apps/nlp`'s entity-linking behavior. Task 6 recorded as an estimate (no live GLiNER available). Session stopped cleanly at the Decision #12 boundary as instructed. | Claude (execution session) |

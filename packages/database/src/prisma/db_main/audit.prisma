@@ -258,5 +258,21 @@ enum ResourceType {
   // able to enumerate.
   AgentPromotion
 
+  // Workflow definition (TASK-715). The row IS the audited resource — its
+  // rows ARE versions (no separate head/version split; see
+  // workflow-definition.prisma), so create / update / validate / publish /
+  // activate / deprecate / delete all broadcast against this single
+  // ResourceType, mirroring the ConsultationContextSchema precedent where
+  // only the mutable aggregate — never a would-be immutable snapshot row —
+  // is a ResourceType.
+  WorkflowDefinition
+
+  // Consent & ABAC (TASK-712). Emitted as audit `resourceType` by
+  // ConsentGrantService.broadcastSysEvent on create/revoke. Deliberately
+  // routed through the standard AuditLog sys-event pipeline rather than the
+  // HarnessAuditEvent WORM ledger — see
+  // docs/implementation/TASK-712-Consent-Abac/consent-design.md §6.
+  ConsentGrant
+
   @@schema("core")
 }

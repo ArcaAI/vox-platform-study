@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Pending |
+| **Status** | In Progress (Phase A — Database — done; Phases B–F not started) |
 | **Wave** | 1 · **Size** | L |
 | **Epic slug** | `workflow-definition-model` |
 | **Depends on** | TASK-707 (`naming-alignment` — all new code is born with the post-rename names) |
@@ -965,7 +965,109 @@ Paste **actual command output** as evidence for every box; a claim without outpu
 
 ## 7. Implementation Summary
 
-_(Empty at authoring — filled during execution.)_
+**Scope actually executed in this pass: Phase A (Database) only** — this agent owned
+`packages/database` exclusively for this phase; Phases B–F (domain layer, registry,
+application service, API, seeds) are NOT started and are left for follow-on agents/passes.
+
+### What landed (Task 1, the database portion of Task 2, Task 3-authoring)
+
+- **Task 1 — Prisma model + enums**: created
+  `packages/database/src/prisma/db_main/workflow-definition.prisma` with the `WorkflowDefinition`
+  model exactly as specified in §4 Task 1 (standard field template order: meta → tenant →
+  business → resource status → audit → tags → indexes; `uuid(7)` id; `_version` OCC;
+  `tenantId` NOT NULL, no FK). Added `WorkflowDefinitionStatus` (`DRAFT | VALIDATED | PUBLISHED |
+  DEPRECATED`) to `packages/database/src/prisma/db_main/enums.prisma`, next to
+  `ConsultationContextSchemaStatus`. Added `WorkflowDefinition` to the `ResourceType` enum in
+  `packages/database/src/prisma/db_main/audit.prisma` with a justification comment mirroring the
+  `ConsultationContextSchema` precedent.
+- **Task 2 (database portion only)**: added `'WorkflowDefinition'` to `TENANT_SCOPED_MODELS` in
+  `packages/database/src/extensions/tenant-scope.ts` (NOT added to `SYSTEM_SHARED_READ_MODELS`,
+  per the ticket's rationale — a tenant reads only its own definitions; platform defaults reach a
+  tenant via the seed's clone path). Updated the `tenant-scope.test.ts` size tripwire 76 → 77 with
+  a dated comment. Did **not** touch `MODELS_WITHOUT_SOFT_DELETE` (correct — the model keeps
+  `resourceStatus`).
+  **NOT done (out of this agent's scope, `packages/domains`)**: adding `WorkflowDefinition` to
+  `packages/domains/src/enums/generated/ResourceType.ts` and the named pin in
+  `resourceType.enum-parity.test.ts`. Verified this leaves `resourceType.enum-parity.test.ts`
+  RED (see Verification below) — this is the **expected, single known gap** a domains-layer pass
+  must close before Task 4 (or before this parity test is asserted "done" in the acceptance
+  criteria). No other packages/domains file was touched.
+- **Task 3 — migration authoring (no execution)**: hand-authored
+  `packages/database/src/prisma/db_main/migrations/20260816020000_task_715_workflow_definition/migration.sql`
+  by copying the `20260811000000_task_658_consultation_context_schema` template's structure
+  (`CREATE TYPE` → `ALTER TYPE ... ADD VALUE IF NOT EXISTS` → `CREATE TABLE` → `CREATE INDEX` ×4
+  → `CREATE UNIQUE INDEX`). Column names/types/order were cross-checked against the Prisma-7
+  generated client output (`packages/database/src/generated/core-prisma-client/models/WorkflowDefinition.ts`,
+  produced by `pnpm db:generate`, which the schema-parse step of `db:generate` DOES run without a
+  live DB) rather than against a live migration diff.
+
+### What was NOT done / explicitly gated
+
+- **The shadow-DB proof (rule 02 §Migration Workflow) could NOT be run.** Local infra is down (no
+  Postgres) and the hard rules for this pass forbid `db:migrate*` / `db push` /
+  `prisma migrate diff` regardless. The migration SQL above is **unverified against a live
+  `prisma migrate diff`** — a follow-up pass with infra up MUST run the shadow-DB sequence from
+  rule 02 (`hope_shadow` → `db:migrate:deploy` → `db:migrate:create -n task_715_workflow_definition`
+  should report **no new migration needed** since one was hand-authored; the correct check is
+  applying this hand-authored migration to the shadow DB, then `prisma migrate diff
+  --from-config-datasource --to-schema src/prisma/db_main --script` must print
+  `-- This is an empty migration.`) before this is trusted in CI.
+- Phases B (domain quartet), C (registry), D (application service + validator port), E
+  (controllers + e2e), F (seeds) — none started. Task 6 (entitlement column pair) and Task 11
+  (seed) both touch `packages/database` too but were left for the phase(s) that own the
+  registry/entitlements design they depend on, per this agent's explicit "packages/database this
+  phase" scope.
+- **`pnpm gen:mapper` was NOT run** (forbidden; also not yet relevant — no domain layer exists
+  yet for this model).
+- **HUMAN-GATED open question (ticket §6 #2, restated here as required)**: this ticket's
+  DB-level-immutability question is still open. §3.4 recommends service guard + DTO whitelist +
+  checksum with **no DB trigger and no `REVOKE`**, and that recommendation is what the schema
+  above implements (no trigger/rule/check was added — verified zero `CREATE TRIGGER`/`CREATE
+  RULE` in this migration). If a reviewer wants DB-level enforcement of published bytes, the
+  ticket's own answer is a second, append-only `WorkflowVersionPublication` table with `REVOKE
+  UPDATE, DELETE` (the `HarnessAuditEvent` idiom) — not built, needs a human decision before any
+  agent builds it.
+
+### Verification (actual output)
+
+```
+$ pnpm --filter @arcaai/database db:generate
+✔ Generated Prisma Client (7.9.1) to ./src/generated/core-prisma-client in 356ms
+✅ Index file generated successfully!
+
+$ pnpm --filter @arcaai/database typecheck
+> tsc --noEmit
+(clean, no output)
+
+$ pnpm --filter @arcaai/database build
+> tsc
+(clean, no output)
+
+$ pnpm --filter @arcaai/database test
+ Test Files  51 passed (51)
+      Tests  1237 passed (1237)
+```
+
+Cross-check that the parity gap is exactly the expected one (this test lives in
+`packages/domains`, out of this agent's scope — run read-only to confirm the boundary, not fixed):
+
+```
+$ pnpm --filter @arcaai/domains test -- resourceType.enum-parity
+ FAIL  src/enums/__tests__/resourceType.enum-parity.test.ts
+   × every database ResourceType value exists in the domain enum
+   AssertionError: Database ResourceType values are missing from the domain enum.
+   Add each to packages/domains/src/enums/generated/ResourceType.ts: WorkflowDefinition
+ Test Files  1 failed | 141 passed | 2 skipped (144)
+      Tests  1 failed | 1719 passed | 2 skipped | 9 todo (1731)
+```
+
+This is the sole, expected, pre-identified failure — the fix is a one-line addition to
+`packages/domains/src/enums/generated/ResourceType.ts` plus a named pin in the parity test,
+both explicitly out of this pass's `packages/database`-only scope.
+
+**Not run** (forbidden this pass / infra down): `pnpm db:migrate*`, `pnpm db push`,
+`npx prisma migrate diff`, `pnpm db:seed`, `pnpm lint` (repo-root aggregate — orchestrator's job),
+`pnpm --filter @arcaai/database test:cov`.
 
 ---
 
@@ -974,3 +1076,4 @@ _(Empty at authoring — filled during execution.)_
 | Date | Change | By |
 |---|---|---|
 | 2026-08-16 | Ticket authored | ticket-writer agent (Wave 1 substrate foundations) |
+| 2026-08-16 | Phase A (Database) executed: `WorkflowDefinition` model + `WorkflowDefinitionStatus` enum + `ResourceType` DB-enum addition ([Task 1](#task-1--author-the-prisma-model--enum)); `TENANT_SCOPED_MODELS` allow-list + drift-guard test updated (database portion of [Task 2](#task-2--allow-lists--domain-enum--parity-test-red-first)); migration hand-authored, shadow-DB proof NOT run (infra down + forbidden this pass) ([Task 3](#task-3--author-the-migration-against-a-shadow-db)). Domains-layer half of Task 2 (`ResourceType.ts` + parity-test pin) explicitly NOT done — confirmed as the sole resulting `resourceType.enum-parity.test.ts` failure. Phases B–F not started. See §7 for full detail and verification output. | packages/database execution agent |

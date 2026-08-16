@@ -5,7 +5,17 @@ import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
-import { JobQueue, ContextItemRepository, ConsultationRepository, ContextItemFactory, NamedEntityRepository } from '@arcaai/domains';
+import {
+  JobQueue,
+  ContextItemRepository,
+  ConsultationRepository,
+  ContextItemFactory,
+  NamedEntityRepository,
+  ConsultationStatus,
+  SummaryMetaFactory,
+  SummaryMetaRepository,
+  HarnessAuditAction,
+} from '@arcaai/domains';
 import { IConsultationJobService } from '../consultation-job.service';
 import { GenerateSummaryJobPayload, SummaryJobResult } from '../dto';
 import { ConsultationPipelineEvent, SummaryGeneratedPayload } from '../../events';
@@ -21,11 +31,15 @@ import { ConfigResolver } from '../../../config-resolver';
 import { IActiveUserContext } from '../../../../interfaces';
 import { assertEqualTenants, createWorkerSession, encryptPhiFields } from '../../../../common';
 import { INoteGenerationService, GenerationTrigger } from '../../note-generation';
+import { HarnessAuditService } from '../../../harness-audit';
+import { GuardrailGroundednessTool, type GroundednessToolExecutor } from '../../live-documentation/live-tool-registry';
+import { checkDosageParity } from './legacy-dosage-check.util';
 
 @Processor(JobQueue.GenerateSummary)
 export class SummaryProcessor extends WorkerHost {
   private readonly logger = new Logger(SummaryProcessor.name);
   private readonly smrServiceUrl: string;
+  private readonly guardrailServiceUrl: string;
 
   constructor(
     @Inject(IConsultationJobService) private readonly jobService: IConsultationJobService,
@@ -52,9 +66,44 @@ export class SummaryProcessor extends WorkerHost {
     // falls back to running legacy generation unconditionally (pre-TASK-704
     // behavior — this trigger never read harnessEnabled at all).
     @Optional() @Inject(INoteGenerationService) private readonly noteGenerationService?: INoteGenerationService,
+    // TASK-714 — Legacy Generator Safety Floor. Optional + trailing so
+    // existing positional fixtures keep compiling; when SummaryMetaRepository
+    // is absent this whole floor no-ops (mirrors the rest of this file's
+    // degrade pattern), which would recreate the pre-TASK-714 vacuous-guard
+    // gap — the module MUST wire it (see consultation-job.service.module.ts).
+    @Optional() @Inject(SummaryMetaRepository) private readonly summaryMetaRepository?: SummaryMetaRepository,
+    @Optional() @Inject(HarnessAuditService) private readonly harnessAuditService?: HarnessAuditService,
+    // No module provides `GuardrailGroundednessTool` (it is a plain class,
+    // constructed inline everywhere it's used — see `live-documentation
+    // .service.ts`), so this resolves to `undefined` in production and the
+    // processor lazily builds its own instance from the deps it already has
+    // (`getGroundednessTool()` below). The @Optional()+@Inject() pair only
+    // exists so unit tests can substitute a mock instance directly.
+    @Optional() @Inject(GuardrailGroundednessTool) private groundednessTool?: GroundednessToolExecutor,
   ) {
     super();
     this.smrServiceUrl = this.configService.get<string>('TEXT_URL') ?? 'http://localhost:8862';
+    this.guardrailServiceUrl = this.configService.get<string>('GUARDRAIL_URL') ?? 'http://localhost:8863';
+  }
+
+  /**
+   * Lazily construct the groundedness tool from deps this processor already
+   * has injected (`httpService`/`secretsService`) — mirrors
+   * `LiveDocumentationService`'s constructor wiring of the same class. Never
+   * throws: `GuardrailGroundednessTool.execute` itself fails closed to
+   * `{ verdict: 'unverified' }` on any error/timeout/malformed response.
+   */
+  private getGroundednessTool(): GroundednessToolExecutor {
+    this.groundednessTool ??= new GuardrailGroundednessTool({
+      httpService: this.httpService,
+      guardrailServiceUrl: this.guardrailServiceUrl,
+      logger: this.logger,
+      secretsService: this.secretsService,
+      timeoutMs: 5000,
+      maxRetries: 1,
+      retryBackoffMs: 200,
+    });
+    return this.groundednessTool;
   }
 
   /**
@@ -64,6 +113,104 @@ export class SummaryProcessor extends WorkerHost {
    */
   private async encryptBestEffort(label: string, run: () => Promise<void>): Promise<void> {
     await encryptPhiFields(this.secretsService, label, run, this.logger);
+  }
+
+  /**
+   * TASK-714 — Legacy Generator Safety Floor. See the call site's doc
+   * comment for the full rationale; this method is the whole floor,
+   * deliberately contained in one place inside the legacy processor (not a
+   * shared abstraction the harness path also grows to depend on) so
+   * TASK-732 can delete it in one obviously-safe diff.
+   */
+  private async applyLegacySafetyFloor(input: {
+    tenantId: string;
+    consultationId: string;
+    contextItemId: string;
+    userId?: string;
+    noteText: string;
+    transcriptText: string;
+    aiModelId?: string;
+    promptVersion?: string;
+  }): Promise<void> {
+    const { tenantId, consultationId, contextItemId, userId, noteText, transcriptText, aiModelId, promptVersion } = input;
+
+    // Dosage-parity (Task 4): a simplified, native-TS port of the harness's
+    // `numeric_dose.py` sensor — NOT parity with it (see the util's doc
+    // comment). A flag feeds `guardrailDecisions.safety`, the SAME field
+    // `SummaryService.hasSafetyFlag` already reads for the hard sign-off
+    // block — no new blocking mechanism is built here.
+    const dosageResult = checkDosageParity(noteText, transcriptText);
+
+    // Groundedness (Task 5): advisory only. Per the ticket's explicit scope,
+    // an `unverified`/`ungrounded` verdict annotates `SummaryMeta` but never
+    // blocks generation or signing — it does not touch `guardrailDecisions
+    // .safety`. `GuardrailGroundednessTool.execute` itself never throws
+    // (fails closed to `unverified` internally).
+    const groundedness = await this.getGroundednessTool().execute({ summary: noteText, sourceText: transcriptText });
+
+    const guardrailDecisions: Record<string, unknown> = {
+      groundedness: { verdict: groundedness.verdict, checkedAt: groundedness.checkedAt },
+    };
+    if (dosageResult.flagged) {
+      guardrailDecisions.safety = 'FLAG';
+      guardrailDecisions.dosageParity = { unmatchedTokens: dosageResult.unmatchedTokens };
+    }
+
+    const summaryMeta = SummaryMetaFactory.CreateSummaryMeta({
+      tenantId,
+      contextItemId,
+      aiModelId: aiModelId ?? null,
+      promptVersion: promptVersion ?? null,
+      generatedAt: new Date(),
+      // This is the fix: previously the legacy path wrote no SummaryMeta row
+      // at all, so `approveSummary`'s `signedBeforeAssurance` read `draftMeta`
+      // as `null` and the guard never fired (vacuously `false`). Stamping
+      // `assuranceCompletedAt` here makes the SAME guard evaluate a REAL,
+      // non-vacuous `false` for a legacy-generated note.
+      assuranceCompletedAt: new Date(),
+      gateDecision: dosageResult.flagged ? 'FLAG' : 'PASS',
+      guardrailDecisions: guardrailDecisions as never,
+    });
+
+    await this.encryptBestEffort('SummaryMeta', () => this.summaryMetaRepository!.encryptFieldsIntoEntity(summaryMeta, this.secretsService!));
+    await this.summaryMetaRepository!.create(summaryMeta);
+
+    // Status flip (second gap noted in §2): the legacy path previously left
+    // `Consultation.status` untouched. Mirrors the harness path's non-early
+    // branch (`harness-internal.service.ts` persistDraft) — legacy has no
+    // optimistic-delivery phase, so it lands straight on `PENDING_REVIEW`,
+    // never `DRAFT_PENDING_SENSORS`.
+    const consultation = await this.consultationRepository.findById(consultationId);
+    if (consultation) {
+      consultation.status = ConsultationStatus.PENDING_REVIEW;
+      consultation.updatedBy = userId ?? consultation.updatedBy;
+      await this.consultationRepository.update(consultation.id, consultation);
+    }
+
+    // WORM generation event (Task 6). Best-effort — an audit-append failure
+    // must never fail a generation job that has already succeeded.
+    if (this.harnessAuditService) {
+      try {
+        await this.harnessAuditService.append({
+          tenantId,
+          consultationId,
+          action: HarnessAuditAction.GENERATE,
+          modelName: aiModelId ?? 'unknown',
+          modelVersion: 'unknown',
+          promptTemplateId: null,
+          promptVersion: promptVersion ?? null,
+          sensorScores: {},
+          citations: [],
+          createdBy: userId ?? null,
+        });
+      } catch (error) {
+        this.logger.warn({
+          message: 'Legacy safety-floor WORM append failed (best-effort, generation not rolled back)',
+          consultationId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
   }
 
   async process(job: Job<GenerateSummaryJobPayload>): Promise<SummaryJobResult> {
@@ -244,6 +391,32 @@ export class SummaryProcessor extends WorkerHost {
         );
 
         const savedContext = await this.contextItemRepository.create(contextItem);
+
+        // TASK-714 — Legacy Generator Safety Floor. Writes a `SummaryMeta`
+        // row (with `assuranceCompletedAt` set) so `SummaryService
+        // .approveSummary`'s `signedBeforeAssurance` guard is no longer
+        // vacuous on this path, flips `Consultation.status` to
+        // `PENDING_REVIEW` (previously left unset), runs a cheap native-TS
+        // dosage-parity check that feeds the EXISTING `guardrailDecisions
+        // .safety` hard-block (no new blocking mechanism), and an advisory
+        // (non-blocking) groundedness check. This is a deliberately capped
+        // floor — NOT the harness's sensor suite or multi-stage gate — and
+        // is deleted by TASK-732 (`legacy-migration-deletion`) in the same
+        // epic that retires the legacy generator. Best-effort: absent deps
+        // (e.g. legacy test fixtures) degrade to a no-op, same as the rest
+        // of this file's optional-dependency pattern.
+        if (this.summaryMetaRepository) {
+          await this.applyLegacySafetyFloor({
+            tenantId,
+            consultationId,
+            contextItemId: savedContext.id,
+            userId,
+            noteText: smrResponse.summary,
+            transcriptText: content,
+            aiModelId: smrResponse.modelName,
+            promptVersion: request.template,
+          });
+        }
 
         // Step 4: Complete (100%)
         const result: SummaryJobResult = {

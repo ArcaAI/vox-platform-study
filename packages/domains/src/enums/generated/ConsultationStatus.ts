@@ -11,4 +11,7 @@ export enum ConsultationStatus {
   SIGNED = 'SIGNED',
   CLOSED = 'CLOSED',
   REOPENED = 'REOPENED',
+  PRIMED = 'PRIMED',
+  DRAINING = 'DRAINING',
+  TIMED_OUT = 'TIMED_OUT',
 }

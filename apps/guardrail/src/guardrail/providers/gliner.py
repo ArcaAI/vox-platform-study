@@ -173,8 +173,7 @@ class GlinerProvider:
                 confidence_scores.extend(adv_scores[f] for f in active)
 
         if run_pii:
-            entities = self.runtime.extract_entities(text, PII_LABELS)
-            pii = [e for e in (entities or []) if e.score >= self.config.pii_threshold]
+            pii = self._sync_extract_pii(text)
             if pii:
                 safe = False
                 issues.append("pii_detected")
@@ -190,7 +189,32 @@ class GlinerProvider:
             "confidence": confidence,
         }
 
+    def _sync_extract_pii(self, text: str) -> list[Any]:
+        """Extract PII entities above ``pii_threshold`` — the shared sync core
+
+        reused by both ``/guardrail/analyze`` (via :meth:`_sync_analyze`, which
+        only inspects the aggregate) and ``/guardrail/redact`` (via
+        :meth:`extract_pii_entities`, which needs the actual offsets). Runs in
+        the thread pool — never call directly from the event loop.
+        """
+        entities = self.runtime.extract_entities(text, PII_LABELS)
+        return [e for e in (entities or []) if e.score >= self.config.pii_threshold]
+
     # ── Async public API (same shape as OllamaProvider) ───────────────────
+
+    async def extract_pii_entities(self, text: str) -> list[Any]:
+        """Offload PII entity extraction to the thread pool — used by ``/guardrail/redact``.
+
+        Deliberately FAIL-CLOSED, the inverse of :meth:`analyze_content`: a
+        disabled config or a runtime error RAISES rather than returning an
+        empty/safe result, so the redact endpoint never answers with
+        unredacted text disguised as "no PII found".
+        """
+        if not self.config.enabled:
+            raise RuntimeError("GLiNER disabled — cannot extract PII entities for redaction")
+
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(self._executor, self._sync_extract_pii, text)
 
     async def analyze_content(
         self,

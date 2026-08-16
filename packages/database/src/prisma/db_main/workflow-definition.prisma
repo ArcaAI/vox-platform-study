@@ -1,0 +1,125 @@
+// ============================================================================
+// Workflow Definition — the persistence and vocabulary floor of the
+// agentic-workflow-platform substrate (TASK-715).
+//
+// D3 puts full build power in tenant-admin hands on day one, so the model
+// must be able to EXPRESS an unsafe graph while the server is the only thing
+// that decides it is unsafe: `graph` is the canvas model, stored verbatim as
+// authored and NEVER executed directly; `compiledConfig` is the interpreter's
+// input contract, produced server-side at publish (TASK-716) and never
+// accepted from a request DTO.
+//
+// Deliberately a SINGLE table whose rows ARE versions — NOT the house
+// governance triple (head + immutable version + movable pin) used by
+// PromptTemplate/PromptVersion, ConsultationContextSchema/…Version, and
+// DepartmentAgent/…Version. A published version IS the addressable product
+// here (TASK-722 binds `/api/v1/workflows/:slug` to it, run rows pin a
+// `workflowVersionId`, TASK-723's trajectory rows join to it), so a
+// head/version split would give two identities to one thing. Recorded in
+// TASK-715 §6 (Risks & Open Questions #1) so a later reviewer sees the
+// divergence was deliberate.
+//
+// Lineage uses BOTH a monotone `(tenantId, slug, versionNumber)` addressing
+// key (minted as `max + 1` inside the transaction, the
+// prompt-management.service.ts discipline) AND a `parentVersionId`
+// provenance edge — a workflow author may branch a new draft from ANY
+// published version, not only the latest, which a monotone integer alone
+// cannot express (TASK-715 §3.3).
+//
+// PUBLISHED/DEPRECATED rows are hard-immutable: design.md's "Immutable
+// config + pinned version = deterministic Temporal replay" means a published
+// `compiledConfig` changing under a running Temporal workflow breaks replay
+// determinism. Enforcement is a service guard (`assertMutable`) + a DTO
+// whitelist that never declares the server-stamped columns + checksum
+// drift-detection — deliberately NOT a DB trigger or `REVOKE` (TASK-715 §3.4;
+// no precedent for either in this repo's migrations, and a row-blind
+// trigger/REVOKE cannot distinguish DRAFT from PUBLISHED rows in the same
+// table). HUMAN-GATED open question (§6 #2): a reviewer requiring DB-level
+// enforcement of the published bytes would need a second, append-only
+// `WorkflowVersionPublication` table with `REVOKE UPDATE, DELETE` (the
+// HarnessAuditEvent idiom) — not built here to avoid gold-plating.
+// ============================================================================
+
+model WorkflowDefinition {
+  // meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
+
+  // multi tenant fields
+  tenantId String
+
+  // core (business) fields
+  // Stable lineage key; unique per (tenant, slug, versionNumber). Never a
+  // free string at the API boundary — the service validates it against the
+  // code-owned node registry's palette catalogue on every write.
+  slug        String
+  name        String
+  description String?
+  // Which registered palette this definition targets. A `String` column,
+  // not an enum: palettes are registry (code) data, and a Prisma enum would
+  // need an `ALTER TYPE` migration per palette — the exact deploy coupling
+  // the code-owned registry exists to avoid (TASK-715 §6 #5). An unknown
+  // palette is a 400 from the service, not a bad row.
+  paletteKey String
+
+  versionNumber Int
+  // Provenance edge; see the file header + TASK-715 §3.3. Deliberately NO
+  // `@relation` — a self-relation would put a back-reference array on every
+  // row for zero query benefit; lineage reads walk this column directly.
+  parentVersionId String?
+
+  status WorkflowDefinitionStatus @default(DRAFT)
+
+  // The canvas model, verbatim as authored. NEVER executed directly.
+  graph Json @db.JsonB
+  // sha256 over canonicalJson(graph) — drives idempotent republish (the
+  // ConsultationContextSchemaVersion.checksum precedent).
+  graphChecksum String
+
+  // The interpreter's input contract, produced SERVER-SIDE at publish
+  // (TASK-716). Null until PUBLISHED. Never accepted from a request DTO —
+  // enforced by DTO whitelist, not by this column.
+  compiledConfig         Json?   @db.JsonB
+  compiledConfigChecksum String?
+  // sha256 of the assembled node registry at publish time; a mismatch
+  // against the running registry is what triggers TASK-716's NEEDS_REVIEW
+  // re-validation.
+  registryChecksum String?
+
+  // The last server-side ValidationReport (TASK-716 owns its shape).
+  validationReport Json? @db.JsonB
+  needsReview      Boolean @default(false)
+
+  validatedAt  DateTime?
+  publishedAt  DateTime?
+  deprecatedAt DateTime?
+
+  // The movable pointer: the version the dispatcher resolves for new runs.
+  // At most one true per (tenantId, slug) among ENABLED rows — enforced in
+  // the application service (a partial unique index cannot express "among
+  // ENABLED rows only" portably here), mirroring
+  // ConsultationContextSchema.isDefault and DepartmentAgent.isDefault.
+  isActive Boolean @default(false)
+
+  // resource status fields
+  resourceStatus          ResourceStatusType @default(ENABLED)
+  resourceStatusUpdatedAt DateTime?
+  resourceStatusUpdatedBy String?
+
+  // audit fields
+  createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+  updatedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tags String[] @default([])
+
+  // constraints + indexes
+  @@unique([tenantId, slug, versionNumber], map: "WorkflowDefinition_tenant_slug_version_unique")
+  @@index([tenantId], name: "WorkflowDefinition_tenantId_idx")
+  @@index([tenantId, slug, status], name: "WorkflowDefinition_tenant_slug_status_idx")
+  @@index([tenantId, slug, isActive], name: "WorkflowDefinition_tenant_slug_isActive_idx")
+  @@index([parentVersionId], name: "WorkflowDefinition_parentVersionId_idx")
+  @@schema("core")
+}

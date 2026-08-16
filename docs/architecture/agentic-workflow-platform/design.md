@@ -194,14 +194,19 @@ pre-summary/comprehensive-summary features.
 Platform-wide CQRS (D6) · new message broker (D7) · tenant-authored code nodes or arbitrary
 executable graphs (D2) · per-workflow generated routes · DR/backup as console CRUD (ops tooling +
 at most a read-only status page) · vague "performance/security management" screens (existing
-settings/origins/API-key surfaces cover them) · multi-domain palettes at substrate launch.
+settings/origins/API-key surfaces cover them) · multi-domain palettes at substrate launch ·
+wholesale migration of the four async surfaces the TASK-717 async contract did not adopt as its
+reference path (STT Redis Streams, BullMQ, Temporal signals, sys-events) — each adopts the
+envelope only when that surface is already being changed for another reason, and Temporal is a
+**permanent** non-adopter (its own history already is the durable log; see
+[async-contract.md](./async-contract.md) §2).
 
 ## Open questions
 
 1. React Flow wrapping depth in `packages/ui` — thin themed wrapper vs. full composite API.
 2. Hard sunset date for the capped legacy floor (Wave 4 entry criterion or calendar-based).
-3. Async contract envelope details (schema, delivery semantics, resume tokens) — needs its own
-   short design.
+3. ~~Async contract envelope details (schema, delivery semantics, resume tokens) — needs its own
+   short design.~~ **Resolved by TASK-717** — see [async-contract.md](./async-contract.md).
 4. The DNA decrypt-and-scan (assessment §3.2) remains **not yet run** — decides latent-gap vs.
    live incident, and gates when personalization re-enables in Wave 4.
 5. Entitlement model granularity for palette gating (per-palette vs. per-node-type).

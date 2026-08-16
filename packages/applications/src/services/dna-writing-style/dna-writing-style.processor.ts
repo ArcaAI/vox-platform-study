@@ -25,6 +25,7 @@ import { ConfigResolver } from '../config-resolver';
 import { IConsultationJobService } from '../consultation/jobs/consultation-job.service';
 import { IAppSettingsService } from '../baseServices/_meta/appSettings/IAppSettingsService';
 import { SecretsService } from '../baseServices/_meta/secrets';
+import { IPhiRedactor } from '../gate-edit-mining/IPhiRedactor';
 import { GenerateDnaReportJobPayload, DnaReportJobResult } from './dna-writing-style.service';
 import { JobMetricsService } from '../baseServices/observability/job-metrics.service';
 import { IActiveUserContext } from '../../interfaces';
@@ -71,6 +72,15 @@ export class DnaWritingStyleProcessor extends WorkerHost {
     // their arity; when unset, DNA generation falls back to the pre-Phase-7
     // unconstrained-JSON parsing (legacy fixtures / templates with no schema).
     @Optional() @Inject(PromptTemplateRepository) private readonly promptTemplateRepository?: PromptTemplateRepository,
+    // PHI redaction seam (TASK-710, hop 2: approved-notes corpus → SMR).
+    // Optional + trailing so existing positional fixtures keep their arity;
+    // production DI (DnaWritingStyleServiceModule) always supplies it via
+    // PhiRedactionServiceModule. FULL redaction — the DNA profile is a
+    // retained, cross-patient artifact (see IPhiRedactor's mode doc), not
+    // pseudonymization. Fail-closed: a throwing redactor propagates into the
+    // existing outer catch and aborts the job (mirrors the opt-out throw
+    // above); it never falls back to the unredacted corpus.
+    @Optional() @Inject(IPhiRedactor) private readonly phiRedactor?: IPhiRedactor,
   ) {
     super();
     this.smrServiceUrl = this.configService.get<string>('TEXT_URL') ?? 'http://localhost:8862';
@@ -189,6 +199,17 @@ export class DnaWritingStyleProcessor extends WorkerHost {
 
       if (samples.length > maxContextChars) {
         samples = samples.substring(0, maxContextChars);
+      }
+
+      // TASK-710 hop 2: FULL redaction before the corpus reaches SMR — the DNA
+      // profile is a retained, cross-patient artifact (see IPhiRedactor's mode
+      // doc), unlike hop 1's pseudonymize-for-NER posture. Scoped to inserting
+      // the call regardless of which branch (textSamples bypass vs. the
+      // automatic corpus) populated `samples` — the branch itself is TASK-700's
+      // territory, not touched here. Fail-closed by propagation: a throwing
+      // redactor falls into the existing outer catch below and aborts the job.
+      if (this.phiRedactor) {
+        samples = await this.phiRedactor.redact(samples, 'full');
       }
 
       await job.updateProgress(20);

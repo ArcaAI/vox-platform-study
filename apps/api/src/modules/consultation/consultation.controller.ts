@@ -63,7 +63,9 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiHeader, ApiParam, ApiProperty, ApiPropertyOptional, ApiQuery, ApiResponse, ApiOperation } from '@nestjs/swagger';
 import { Observable, interval, map, merge, type Subscription } from 'rxjs';
-import { ApiEndpoint, Authorize, RequiredScopes } from '../../decorators';
+// `@RequiresIfMatch()` + `@ExpectedVersion()` gate the OCC-enforced note-content
+// PATCH/POST routes on this controller (TASK-709).
+import { ApiEndpoint, Authorize, RequiredScopes, RequiresIfMatch, ExpectedVersion } from '../../decorators';
 import { TenantOwnedResource } from '../../common';
 import { StreamScope } from '../auth';
 import { ClsService } from 'nestjs-cls';
@@ -794,15 +796,36 @@ export class ConsultationController {
     path: ':id/context/:contextId',
     by: ['id', 'contextId'],
   })
+  @RequiresIfMatch()
+  @ApiOperation({
+    summary: 'Update context item content under optimistic concurrency',
+    description:
+      'Optimistic concurrency is enforced: the `If-Match` header (RFC 7232) is REQUIRED, and the server runs a ' +
+      "Compare-And-Set against the row's `_version`. When the header is present, its value overrides the " +
+      'body-field `expectedVersion`. On version drift the response is `412 Precondition Failed`; missing header is ' +
+      '`428 Precondition Required`.',
+  })
+  @ApiHeader({
+    name: 'If-Match',
+    description: 'RFC 7232 strong validator carrying the version the client read (e.g. `"7"`).',
+    required: true,
+    example: '"7"',
+  })
   @ApiParam({ name: 'id', description: 'Consultation ID' })
   @ApiParam({ name: 'contextId', description: 'Context Item ID' })
+  @ApiResponse({ status: 412, description: 'Optimistic concurrency conflict — re-fetch and try again with the new version.' })
+  @ApiResponse({ status: 428, description: 'If-Match header is required for this operation.' })
   async updateContext(
     @Param('id') id: string,
     @Param('contextId') contextId: string,
     @Body() request: UpdateContextRequest,
+    @ExpectedVersion() expectedFromHeader: number | undefined,
   ): Promise<ContextItemResponse> {
     await this.verifyConsultationOwnership(id);
-    return this.contextService.updateContext(contextId, request);
+    // Header takes precedence over body when both are present (house
+    // precedence, `department.controller.ts#update`).
+    const effectiveRequest: UpdateContextRequest = expectedFromHeader !== undefined ? { ...request, expectedVersion: expectedFromHeader } : request;
+    return this.contextService.updateContext(contextId, effectiveRequest);
   }
 
   // Soft-delete a context item (note / case-note / work-note / attachment).
@@ -984,16 +1007,37 @@ export class ConsultationController {
     path: ':id/summary/:summaryId',
     by: ['id', 'summaryId'],
   })
+  @RequiresIfMatch()
+  @ApiOperation({
+    summary: 'Update summary content under optimistic concurrency',
+    description:
+      'Optimistic concurrency is enforced: the `If-Match` header (RFC 7232) is REQUIRED, and the server runs a ' +
+      "Compare-And-Set against the row's `_version`. When the header is present, its value overrides the " +
+      'body-field `expectedVersion`. On version drift the response is `412 Precondition Failed`; missing header is ' +
+      '`428 Precondition Required`.',
+  })
+  @ApiHeader({
+    name: 'If-Match',
+    description: 'RFC 7232 strong validator carrying the version the client read (e.g. `"7"`).',
+    required: true,
+    example: '"7"',
+  })
   @ApiParam({ name: 'id', description: 'Consultation ID' })
   @ApiParam({ name: 'summaryId', description: 'Summary Context Item ID' })
+  @ApiResponse({ status: 412, description: 'Optimistic concurrency conflict — re-fetch and try again with the new version.' })
+  @ApiResponse({ status: 428, description: 'If-Match header is required for this operation.' })
   @RequiredScopes('consultation:report:write')
   async updateSummary(
     @Param('id') id: string,
     @Param('summaryId') summaryId: string,
     @Body() request: UpdateSummaryRequest,
+    @ExpectedVersion() expectedFromHeader: number | undefined,
   ): Promise<SummaryResponse> {
     await this.verifyConsultationOwnership(id);
-    return this.summaryService.updateSummary(summaryId, request);
+    // Header takes precedence over body when both are present (house
+    // precedence, `department.controller.ts#update`).
+    const effectiveRequest: UpdateSummaryRequest = expectedFromHeader !== undefined ? { ...request, expectedVersion: expectedFromHeader } : request;
+    return this.summaryService.updateSummary(summaryId, effectiveRequest);
   }
 
   @ApiEndpoint({
@@ -1283,16 +1327,41 @@ export class ConsultationController {
     path: ':id/summary/:contextItemId/approve',
     by: ['id', 'contextItemId'],
   })
+  @RequiresIfMatch()
+  @ApiOperation({
+    summary: 'Approve and lock a summary under optimistic concurrency',
+    description:
+      'Optimistic concurrency is enforced: the `If-Match` header (RFC 7232) is REQUIRED, and the server runs a ' +
+      "Compare-And-Set against the summary row's `_version`. When the header is present, its value overrides the " +
+      'body-field `expectedVersion`. On version drift the response is `412 Precondition Failed`; missing header is ' +
+      '`428 Precondition Required`.',
+  })
+  @ApiHeader({
+    name: 'If-Match',
+    description: 'RFC 7232 strong validator carrying the version the client read (e.g. `"7"`).',
+    required: true,
+    example: '"7"',
+  })
   @ApiParam({ name: 'id', description: 'Consultation ID' })
   @ApiParam({ name: 'contextItemId', description: 'Summary Context Item ID' })
+  @ApiResponse({ status: 412, description: 'Optimistic concurrency conflict — re-fetch and try again with the new version.' })
+  @ApiResponse({ status: 428, description: 'If-Match header is required for this operation.' })
   async approveSummary(
     @Param('id') id: string,
     @Param('contextItemId') contextItemId: string,
-    // Optional one-click safety-flag override.
-    @Body() body?: SummaryApprovalRequest,
+    // Optional one-click safety-flag override; `expectedVersion` is
+    // REQUIRED (folded from the `If-Match` header below when present).
+    @Body() body: SummaryApprovalRequest,
+    @ExpectedVersion() expectedFromHeader: number | undefined,
   ): Promise<SummaryApprovalResponseDto> {
     await this.verifyConsultationOwnership(id);
-    const result = await this.summaryService.approveSummary(contextItemId, { overrideSafetyFlag: body?.overrideSafetyFlag });
+    // Header takes precedence over body when both are present (house
+    // precedence, `department.controller.ts#update`).
+    const expectedVersion = expectedFromHeader !== undefined ? expectedFromHeader : body?.expectedVersion;
+    const result = await this.summaryService.approveSummary(contextItemId, {
+      overrideSafetyFlag: body?.overrideSafetyFlag,
+      expectedVersion,
+    });
     return new SummaryApprovalResponseDto(result);
   }
 

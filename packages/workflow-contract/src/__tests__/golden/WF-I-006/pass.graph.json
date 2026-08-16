@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": "n_phi",
+      "type": "phi.read",
+      "config": {}
+    },
+    {
+      "id": "n_dna",
+      "type": "style.dna",
+      "config": {}
+    }
+  ],
+  "edges": []
+}

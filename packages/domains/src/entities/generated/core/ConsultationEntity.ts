@@ -8,6 +8,64 @@ import { JsonValue } from '../../../interfaces';
 import * as Enums from '../../../enums';
 import * as Entities from '../../../entities';
 
+// TASK-711 — session state machine legality matrix. Source of truth:
+// docs/implementation/TASK-711-Session-State-Machine/state-machine.md §2.
+// Every unlisted (from, to) pair is illegal and `transitionTo` throws.
+// Self-pairs are handled separately (idempotent no-op) and are NOT listed
+// here. Do not widen this map without updating the state-machine.md doc AND
+// the `ConsultationEntity.transitions.test.ts` Cartesian-product suite —
+// `consultationStatus.wired.test.ts` (Task 11) asserts every enum member is
+// a `to` here at least once.
+const CONSULTATION_TRANSITIONS: ReadonlyMap<Enums.ConsultationStatus, ReadonlySet<Enums.ConsultationStatus>> = new Map<
+  Enums.ConsultationStatus,
+  ReadonlySet<Enums.ConsultationStatus>
+>([
+  [Enums.ConsultationStatus.OPEN, new Set([Enums.ConsultationStatus.PRIMED])],
+  [Enums.ConsultationStatus.PRIMED, new Set([Enums.ConsultationStatus.RECORDING])],
+  [Enums.ConsultationStatus.RECORDING, new Set([Enums.ConsultationStatus.DRAINING])],
+  [
+    Enums.ConsultationStatus.DRAINING,
+    new Set([
+      Enums.ConsultationStatus.RECORDING,
+      Enums.ConsultationStatus.DRAFT_PENDING_SENSORS,
+      Enums.ConsultationStatus.PENDING_REVIEW,
+    ]),
+  ],
+  [
+    Enums.ConsultationStatus.DRAFT_PENDING_SENSORS,
+    new Set([Enums.ConsultationStatus.PENDING_REVIEW, Enums.ConsultationStatus.SIGNED]),
+  ],
+  [
+    Enums.ConsultationStatus.PENDING_REVIEW,
+    new Set([Enums.ConsultationStatus.SIGNED, Enums.ConsultationStatus.TIMED_OUT]),
+  ],
+  [Enums.ConsultationStatus.SIGNED, new Set([Enums.ConsultationStatus.REOPENED, Enums.ConsultationStatus.CLOSED])],
+  [
+    Enums.ConsultationStatus.TIMED_OUT,
+    new Set([Enums.ConsultationStatus.SIGNED, Enums.ConsultationStatus.REOPENED, Enums.ConsultationStatus.CLOSED]),
+  ],
+  [Enums.ConsultationStatus.CLOSED, new Set([Enums.ConsultationStatus.REOPENED])],
+  [Enums.ConsultationStatus.REOPENED, new Set([Enums.ConsultationStatus.PENDING_REVIEW])],
+]);
+
+// Reserved but DISABLED — the pair is a legitimate future edge (owned by
+// another epic), so it must throw a distinct, named error rather than being
+// silently treated as just another illegal pair.
+const RESERVED_DISABLED_TRANSITIONS: ReadonlyMap<Enums.ConsultationStatus, ReadonlyMap<Enums.ConsultationStatus, string>> =
+  new Map<Enums.ConsultationStatus, ReadonlyMap<Enums.ConsultationStatus, string>>([
+    [
+      Enums.ConsultationStatus.PENDING_REVIEW,
+      new Map([[Enums.ConsultationStatus.DRAFT_PENDING_SENSORS, 'note-sections']]),
+    ],
+  ]);
+
+export interface ConsultationTransitionRecord {
+  from: Enums.ConsultationStatus;
+  to: Enums.ConsultationStatus;
+  actor: string;
+  reason: string;
+}
+
 export interface IConsultationEntity extends IBaseTenantEntity {
   patientId: string;
   appointmentDate: Date;
@@ -17,6 +75,8 @@ export interface IConsultationEntity extends IBaseTenantEntity {
   metadata?: JsonValue | null;
   // Typed lifecycle state (defaults to OPEN)
   status?: Enums.ConsultationStatus;
+  // Health-flag projection on the active phase (TASK-711); not a state of its own
+  degradedReasons?: string[];
   Doctor?: Entities.UserEntity | null;
   Department?: Entities.DepartmentEntity | null;
   ParentConsultation?: Entities.ConsultationEntity | null;
@@ -32,6 +92,12 @@ export class ConsultationEntity extends BaseTenantEntity {
   private _parentConsultationId?: IConsultationEntity['parentConsultationId'];
   private _metadata?: IConsultationEntity['metadata'];
   private _status: Enums.ConsultationStatus;
+  private _degradedReasons: string[];
+  // TASK-711: not persisted — the last transition applied by `transitionTo`,
+  // held only so the calling service can read `actor`/`reason` to build the
+  // sys-event / WORM append without threading them through a second
+  // parameter list.
+  private _lastTransition?: ConsultationTransitionRecord;
   private _Doctor?: IConsultationEntity['Doctor'];
   private _Department?: IConsultationEntity['Department'];
   private _ParentConsultation?: IConsultationEntity['ParentConsultation'];
@@ -47,6 +113,7 @@ export class ConsultationEntity extends BaseTenantEntity {
     this._parentConsultationId = init.parentConsultationId;
     this._metadata = init.metadata;
     this._status = init.status ?? Enums.ConsultationStatus.OPEN;
+    this._degradedReasons = init.degradedReasons ?? [];
     this._Doctor = init.Doctor;
     this._Department = init.Department;
     this._ParentConsultation = init.ParentConsultation;
@@ -106,8 +173,28 @@ export class ConsultationEntity extends BaseTenantEntity {
     return this._status;
   }
 
+  /**
+   * @deprecated TASK-711: bypasses the legality matrix. Use `transitionTo`
+   * instead — it is the only guarded write path. Kept public (not `private`)
+   * because `packages/applications` call sites (`consultation.service.ts`,
+   * `harness-internal.service.ts`, `summary.service.ts`, `summary.processor.ts`)
+   * still assign this setter directly; TASK-711's own Task 6-8 migrate them,
+   * and Task 11 adds the source-scanning gate that makes a direct assignment
+   * outside `transitionTo` a hard failure. Making the setter `private` now
+   * would break `pnpm --filter @arcaai/applications build`, which is out of
+   * this ticket's database/domain-layer scope for this execution pass — see
+   * the ticket's own documented fallback (README.md §4 Task 5).
+   */
   set status(value: Enums.ConsultationStatus) {
     this.setProperty('status', value);
+  }
+
+  get degradedReasons(): string[] {
+    return this._degradedReasons;
+  }
+
+  set degradedReasons(value: string[]) {
+    this.setProperty('degradedReasons', value);
   }
 
   get Doctor(): IConsultationEntity['Doctor'] {
@@ -174,6 +261,99 @@ export class ConsultationEntity extends BaseTenantEntity {
    */
   get isSigned(): boolean {
     return this._status === Enums.ConsultationStatus.SIGNED;
+  }
+
+  /**
+   * The last transition applied by `transitionTo` in this in-memory
+   * lifetime (not persisted). Callers read `actor`/`reason` off this to
+   * build the `ResourceUpdated` sys-event and, for clinically-significant
+   * transitions, the `HarnessAuditEvent` WORM row. Undefined until the first
+   * successful (non-self) transition; unchanged by a self-transition no-op.
+   */
+  get lastTransition(): ConsultationTransitionRecord | undefined {
+    return this._lastTransition;
+  }
+
+  /**
+   * TASK-711 — the single guarded write path for `status`. Every other
+   * writer (the bare `status` setter above) is `@deprecated` and migrating
+   * off; this is the only place the legality matrix is consulted.
+   *
+   * - Self-transition (`next === current`): idempotent no-op — no write, no
+   *   `lastTransition` update, `hasChanges` unaffected. Mirrors the
+   *   pre-existing `transitionStatus` short-circuit behaviour this ticket
+   *   replaces (`consultation.service.ts:682-685`).
+   * - Reserved-but-disabled pair: throws `BusinessException` naming the epic
+   *   that will enable it.
+   * - Any other unlisted pair: throws `BusinessException` naming both states.
+   * - Legal pair: writes through `setProperty` (change-tracked), records
+   *   `lastTransition`, and — per state-machine.md §3 — clears
+   *   `degradedReasons` when the destination is `SIGNED`.
+   *
+   * @returns `true` if a transition was applied, `false` for a self-transition no-op.
+   */
+  public transitionTo(next: Enums.ConsultationStatus, actor: string, reason: string): boolean {
+    const from = this._status;
+
+    if (next === from) {
+      return false;
+    }
+
+    const disabledEpic = RESERVED_DISABLED_TRANSITIONS.get(from)?.get(next);
+    if (disabledEpic) {
+      throw new BusinessException(
+        `Consultation state transition ${from} → ${next} is reserved but disabled — enabled by the '${disabledEpic}' epic.`,
+      );
+    }
+
+    if (!CONSULTATION_TRANSITIONS.get(from)?.has(next)) {
+      throw new BusinessException(`Illegal consultation state transition: ${from} → ${next}`);
+    }
+
+    this.setProperty('status', next);
+    this._lastTransition = { from, to: next, actor, reason };
+
+    if (next === Enums.ConsultationStatus.SIGNED) {
+      this.clearDegradedReasons();
+    }
+
+    return true;
+  }
+
+  /**
+   * Non-throwing legality check — for callers that need to branch (e.g.
+   * `finalizeAssurance`'s idempotent-no-op guard) rather than catch. Returns
+   * `true` for a self-transition (matches `transitionTo`'s no-op treatment)
+   * and `false` for both illegal and reserved-but-disabled pairs.
+   */
+  public canTransitionTo(next: Enums.ConsultationStatus): boolean {
+    if (next === this._status) {
+      return true;
+    }
+    return CONSULTATION_TRANSITIONS.get(this._status)?.has(next) ?? false;
+  }
+
+  /**
+   * Appends a health-flag reason to the active phase (state-machine.md §3).
+   * Append-only within a session; deduplicated — adding an already-present
+   * reason is a no-op against `changes` tracking beyond the first add.
+   */
+  public addDegradedReason(reason: string): void {
+    if (this._degradedReasons.includes(reason)) {
+      return;
+    }
+    this.setProperty('degradedReasons', [...this._degradedReasons, reason]);
+  }
+
+  /**
+   * Clears every degraded-reason flag. Called automatically by `transitionTo`
+   * when the destination is `SIGNED`; also callable directly.
+   */
+  public clearDegradedReasons(): void {
+    if (this._degradedReasons.length === 0) {
+      return;
+    }
+    this.setProperty('degradedReasons', []);
   }
 
   public override validate(): void {

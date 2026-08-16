@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": "n_start",
+      "type": "core.start",
+      "config": {}
+    },
+    {
+      "id": "n_a",
+      "type": "x",
+      "config": {}
+    },
+    {
+      "id": "n_end",
+      "type": "core.end",
+      "config": {}
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "from": "n_start",
+      "fromPort": "out",
+      "to": "n_a",
+      "toPort": "in"
+    },
+    {
+      "id": "e2",
+      "from": "n_a",
+      "fromPort": "out",
+      "to": "n_end",
+      "toPort": "in"
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": "n_gen",
+      "type": "summarization.generate",
+      "config": {
+        "emitsTrajectory": true
+      }
+    }
+  ],
+  "edges": []
+}
