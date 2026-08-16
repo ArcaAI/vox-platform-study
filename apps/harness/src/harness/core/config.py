@@ -372,6 +372,19 @@ class Settings(BaseSettings):
     smr_base_url: str = "http://localhost:8862"
     nlp_base_url: str = "http://localhost:8864"
     api_base_url: str = "http://localhost:8868"
+    # Peer-service auth: harness's own copy of apps/text's TEXT_SERVICE_TOKEN and
+    # apps/nlp's NLP_SERVICE_TOKEN, presented as X-Service-Token on outbound calls
+    # (mirrors the api_client pattern above, and apps/nlp's own ExternalTextConfig
+    # when it calls apps/text). Each target validates against exactly one configured
+    # secret with no OR-fallback, so this must match that target's own value, not
+    # HARNESS_SERVICE_TOKEN. Empty = auth disabled (local dev-bypass), same as above.
+    smr_service_token: SecretStr = SecretStr("")
+    nlp_service_token: SecretStr = SecretStr("")
+    # Peer service — the summarization palette's `guardrail.check` node (TASK-720) calls
+    # apps/guardrail directly, mirroring the established `smr_base_url`/`nlp_base_url` bootstrap-
+    # floor pattern (rule 09 §Configuration Tiers: a `*_URL` transport address is the ONE
+    # sanctioned kind of hardcoded default). `X-Tenant-Id` is mandatory on every call (TASK-737).
+    guardrail_base_url: str = "http://localhost:8863"
     # apps/api internal-harness mount. ``HarnessInternalController`` sits
     # under the global ``/api/v1`` prefix (``@Controller('internal/harness')``), so
     # the live, out-of-the-box mount is ``/api/v1/internal/harness``. Override via
@@ -476,6 +489,7 @@ class Settings(BaseSettings):
     smr_timeout_s: float = 120.0
     nlp_timeout_s: float = 30.0
     api_timeout_s: float = 30.0
+    guardrail_timeout_s: float = 30.0
     activity_start_to_close_s: float = 150.0
     activity_max_attempts: int = 3
     generate_max_attempts: int = 2

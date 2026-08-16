@@ -158,6 +158,31 @@ def env() -> ActivityEnvironment:
     return ActivityEnvironment()
 
 
+class TestToolClientFactoriesSendServiceToken:
+    """Regression guard: ``_smr_client``/``_nlp_client`` must build their clients
+    with the configured peer-service token, or every real ``generate``/
+    ``classify_tokens`` call 401s against a non-dev-bypass apps/text or apps/nlp
+    (the bug this ticket fixes — the hermetic activity tests above stub these
+    factories entirely, so they never would have caught it)."""
+
+    def test_smr_client_carries_the_configured_token(self) -> None:
+        settings = Settings(smr_service_token="tok-smr")
+        client = activities._smr_client(settings)
+        assert client._service_token == "tok-smr"
+
+    def test_nlp_client_carries_the_configured_token(self) -> None:
+        settings = Settings(nlp_service_token="tok-nlp")
+        client = activities._nlp_client(settings)
+        assert client._service_token == "tok-nlp"
+
+    def test_clients_carry_no_token_when_unset(self) -> None:
+        # Explicit empty, not a bare Settings() — the ambient .env.dev/.env.test
+        # legitimately set these to real secrets, so this stays hermetic.
+        settings = Settings(smr_service_token="", nlp_service_token="")
+        assert activities._smr_client(settings)._service_token == ""
+        assert activities._nlp_client(settings)._service_token == ""
+
+
 class TestExtractEntities:
     @pytest.mark.asyncio
     async def test_delegates_to_nlp_client_and_maps_entities(self, env, monkeypatch):
