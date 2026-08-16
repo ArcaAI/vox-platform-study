@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Pending |
+| **Status** | Partial — Tasks 1, 2, 3, 6 (author-only), 9 done and verified; Tasks 4/5 (harness node activities), 7 (registry API/Studio wiring), 8 (e2e) NOT done — gated, see §7 |
 | **Wave** | 2 · **Size** | L |
 | **Epic slug** | `palette-summarization` |
 | **Depends on** | TASK-718 (`workflow-interpreter`), TASK-719 (`workflow-studio-v1`) |
@@ -612,10 +612,119 @@ later reader does not assume the general case.
 
 ## 7. Implementation Summary
 
-_(Empty at authoring — filled during execution.)_
+**Read what 715–719 actually built first, per the task brief.** Verified state at execution time:
+TASK-715 Phase A (DB) only — the code-owned node registry (Phases B-F) does not exist. TASK-716
+Phase C only — the pure `packages/workflow-contract` engine (`validate`/`compile`, 125 tests,
+DRAFT rule catalogue), no persistence/wiring. TASK-718 shipped `WorkflowInterpreter` with
+`NODE_REGISTRY` **deliberately empty of palette nodes**, its own docstring naming TASK-720 as the
+one to populate it. TASK-719 (admin-console Studio) was mid-flight/uncommitted in this shared
+tree during this session.
+
+### Done (Tasks 1, 2, 3, 6-author, 9)
+
+- **Task 1** — five node config JSON schemas
+  (`docs/implementation/TASK-720-Palette-Summarization/contracts/nodes/*.schema.json`) +
+  `contracts/palette.md` (safety class / `critical` / `external_write` / activity-name table +
+  rationale). Verified: every schema returns `[]` from `authorableJsonSchemaProblems` (scratch
+  test run and removed — `pnpm --filter @arcaai/json-schema-subset test`, 23/23 passed).
+- **Tasks 2+3** — six new palette-scoped structural rules `WF-SUMM-001..006` added to
+  `packages/workflow-contract/src/rule-catalogue.ts`'s `DRAFT_SUMMARIZATION_RULE_SET` (additive;
+  TASK-716's existing `WF-S-*`/`WF-I-*` rows untouched), expressing this palette's real mandatory
+  subgraph (`input.context_binding → generate.text → guardrail.check → output.deliver`, guardrail
+  non-removable) over the palette's ACTUAL node types — see palette.md for why the pre-existing
+  generic `WF-S-002/003/004/007` (which assume literal `core.start`/`core.end` node types) do not
+  apply to this palette's own vocabulary. One golden fixture pair per rule under
+  `packages/workflow-contract/src/__tests__/golden/WF-SUMM-*/`. RED captured first (7 failing:
+  the 6 new "defined in catalogue" checks + the fixture-parity check), then GREEN after adding the
+  rules (143/143). `pnpm --filter @arcaai/workflow-contract test build lint typecheck` all green.
+- **Task 6 (author-only, per the hard rules — DB is down)** —
+  `packages/database/src/prisma/db_main/seed/21-workflow-definition.ts` (+ additive
+  `SEED_WORKFLOW_DEFINITION_IDS` in `00-constants.ts`, additive wiring in `seed/index.ts`). The
+  seeded `graph`/`compiledConfig` are NOT hand-typed — they are the literal, verbatim output of
+  the real `validate()`/`compile()` engine run against this exact node set via a throwaway script
+  (deleted; not part of the diff), so the seed is provably consistent with the one compiler
+  implementation. `packages/database` deliberately took NO new runtime dependency on
+  `@arcaai/workflow-contract` for this (would have required a `pnpm install`, touching the shared
+  `pnpm-lock.yaml` while sibling TASK-721/723 agents were actively writing to this tree — avoided
+  per the hard rules). `validationReport` is scoped honestly to only the `WF-SUMM-*` rules (see
+  the seed file's own docstring for why running the FULL rule catalogue against this palette
+  produces false ERROR findings today). `registryChecksum` is a named placeholder
+  (`'task-720-seed-placeholder-pending-task-715-registry'`) since there is no real registry to
+  hash. Verified: `pnpm --filter @arcaai/database typecheck build` green; full existing
+  `@arcaai/database` unit suite (1243 tests, all static/mocked — no live DB required) still green.
+  **`pnpm db:seed` itself was NOT run** — local infra is down, per the hard rules; the row's
+  presence in an actual database is unverified.
+- **Task 9** — added a new "W12" flow to `docs/traceability/workflows.md` (the file
+  `docs/traceability-matrix.md` explicitly instructs edits to go to the per-domain
+  `docs/traceability/` files now — reconciled here rather than editing the deprecated file) plus a
+  gap bullet, and a small additive status note in `apps/harness/README.md`'s existing
+  `registry.py` bullet (that file was concurrently modified/uncommitted by the TASK-718 sibling —
+  edit kept to one sentence to minimize collision surface).
+
+### NOT done — gated, with reasons (Tasks 4, 5, 7, 8)
+
+- **Tasks 4+5 (harness node activities) — a real architectural blocker was found, not just a time
+  constraint.** `apps/harness/src/harness/temporal/interpreter/workflow.py`'s `_dispatch_node`
+  builds each `NodeActivityInput` from ONLY that node's own static `config` — there is no
+  workflow-level state threading a prior node's output into the next node's activity input
+  (confirmed against the shipped code and `execution-semantics.md` §3, which documents this as
+  deliberate for v1). Concretely: `guardrail.check` has no wire-level way to receive the text
+  `generate.text` produced. Separately, `generate.text` is specified to call the gateway's
+  JWT-guarded, tenant-scoped `POST /api/v1/text/generate` (per README §2's own correction), but no
+  such call path exists from a Python harness activity today — the existing `SmrClient` calls SMR
+  directly (`{base_url}/api/v1/generate`, bypassing the gateway's bounding entirely — exactly what
+  README §2 says NOT to do), and `ApiClient` only reaches the internal `X-Service-Token`
+  harness-callback routes (`/api/v1/internal/harness/*`), not a tenant-authenticated route. Both
+  gaps are in TASK-718's shipped contract/workflow body, not something an "additive, minimal-edit"
+  ticket should redesign by itself while that file is a safety-critical, determinism-audited,
+  actively-shared sibling artifact. Implementing the five activities against this contract as-is
+  would either (a) silently invent a data-flow mechanism the interpreter doesn't have, or (b)
+  produce activities that type-check and register but cannot function — both worse than reporting
+  the gap. Logged in `docs/traceability/workflows.md` W12 gaps and `apps/harness/README.md` for
+  the next agent. `NODE_REGISTRY` still ships empty.
+- **Task 7 (registry API + Studio wiring)** — blocked on TASK-715's code-owned node registry
+  (Phases B-F), which does not exist, and races TASK-719's Studio, which was mid-flight/uncommitted
+  in this session. Not attempted.
+- **Task 8 (e2e proving path)** — local infra is down (no Postgres/Redis/API), so
+  `pnpm test:up:api` + `pnpm test:e2e` cannot run, and the invoke leg depends on Task 4/5 (not
+  done) and TASK-722 (a different ticket). Not authored — an unrunnable, untested spec asserting
+  a non-existent flow would be worse than none.
+
+### Acceptance criteria — honest status
+
+- [x] Five node types, JSON config schemas passing `authorableJsonSchemaProblems`; safety
+      class/`critical`/activity mapping documented in `contracts/palette.md`. Registry entries
+      themselves are NOT wired into `apps/harness`'s `NODE_REGISTRY` (Task 5 not done).
+- [x] `guardrail.check` mandatory + validator rejects a graph omitting/routing around it — golden
+      fixtures `WF-SUMM-004`/`WF-SUMM-006`.
+- [x] `input → generation → guardrail → output` order enforced structurally — `WF-SUMM-005`
+      (+`003`/`004` for presence).
+- [ ] N-2 resolution through `PromptResolutionService` — NOT implemented (Task 4/5 gated).
+- [ ] N-3 gateway call, N-4 fail-closed behavior, N-5 output shaping — NOT implemented (Task 4/5
+      gated); the config schemas and `critical`/`activity` mapping are authored and documented.
+- [x] The seeded platform default definition exists (authored; DB write unrun), `PUBLISHED`,
+      SYSTEM-tenant, its own file states why a seed (not a migration) is correct here.
+- [ ] Contract test (registry-served schema ≡ `contracts/nodes/*.json` ≡ compiler-accepted) — NOT
+      done; there is no registry-serving endpoint yet (Task 7 gated).
+- [ ] E2E proving path — NOT run (infra down; Task 8 gated).
+- [x] No `databaseService.client` in new code (the seed uses the CorePrismaClient directly, which
+      IS the seed convention, not a service — rule 04's ban is service-layer scoped).
+- [ ] `ResourceType` enum parity — N/A, no new sys-event-emitting model added by this ticket.
+- **Layer gates actually run, with real output:**
+  - `pnpm --filter @arcaai/workflow-contract test build lint typecheck` — all green (143 tests).
+  - `pnpm --filter @arcaai/json-schema-subset test` — 23/23 (scratch test, removed after).
+  - `pnpm --filter @arcaai/database typecheck build` — green; `npx vitest run` in that package —
+    1243/1243 green (static/mocked, no live DB).
+  - `pnpm harness:test`, `harness:lint`, `harness:typecheck` — **not run** (Task 4/5 not
+    implemented, nothing new to test there).
+  - `pnpm api:build`, `pnpm test:unit` (repo-wide), `pnpm test:e2e`, `pnpm lint:all`,
+    `pnpm typecheck:all` — **not run** in this session (out of scope for the files actually
+    touched, and several of those aggregate commands cross into the concurrently-changing
+    sibling work in this shared tree — not safe to attribute their result to this ticket).
 
 ## 8. Change History
 
 | Date | Change | By |
 |---|---|---|
 | 2026-08-16 | Ticket authored | Wave-2 ticket-authoring agent |
+| 2026-08-16 | Tasks 1/2/3/6(author)/9 implemented and verified; Tasks 4/5/7/8 gated with documented reasons (TASK-718's interpreter has no cross-node data-flow mechanism and no gateway-auth path from Python; TASK-715's node registry doesn't exist; TASK-719 mid-flight; infra down). Status set to Partial. | execution agent |

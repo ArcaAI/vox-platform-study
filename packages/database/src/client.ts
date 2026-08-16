@@ -191,6 +191,11 @@ export const MODELS_WITHOUT_SOFT_DELETE: ReadonlySet<string> = new Set([
   // row), so the table is an audit history: retraction would defeat its whole
   // purpose, and it carries no `resourceStatus` column.
   'AgentPromotion',
+  // WorkflowRun (TASK-723) is the runs/observability read model — one row
+  // per workflow-substrate run, the same operational-telemetry posture as
+  // AgentTrajectoryStep above (hard-retention history, no `resourceStatus`
+  // column, no soft delete).
+  'WorkflowRun',
 ]);
 
 /**

@@ -113,7 +113,12 @@ describe('TENANT_SCOPED_MODELS allow-list', () => {
     // 77 → 78: adds ConsentGrant (TASK-712 — consent-abac). Ordinary
     // tenant-owned rows keyed (tenantId, externalPatientId, purpose); no
     // SYSTEM row, NOT SYSTEM-shared.
-    expect(TENANT_SCOPED_MODELS.size).toBe(78);
+    // 78 → 79: adds WorkflowRun (TASK-723 — runs/observability read model).
+    // One row per run, NOT SYSTEM-shared — a tenant's runs are never visible
+    // cross-tenant.
+    // 79 → 80: adds WorkflowTestFixture (TASK-721 — Workbench saved fixtures).
+    // Ordinary tenant-owned rows, NOT SYSTEM-shared.
+    expect(TENANT_SCOPED_MODELS.size).toBe(80);
   });
 
   // The usage ledger, its outbox, the rollups and the whole billing

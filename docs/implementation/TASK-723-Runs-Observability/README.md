@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Pending |
+| **Status** | Partial — Phase A/B (Tasks 1, 3–6, 10) built and green; Phase C (Tasks 7–9, 11, admin-console UI + Playwright e2e) NOT started; see §7 |
 | **Wave** | 2 · **Size** | M |
 | **Epic slug** | `runs-observability` |
 | **Depends on** | TASK-718 (`workflow-interpreter`), TASK-719 (`workflow-studio-v1`) |
@@ -524,12 +524,249 @@ Identical to TASK-719 §2.2 — `ScreenTemplate` (`contentMode="fill"` for the g
 
 ## 7. Implementation Summary
 
-*(Empty at authoring — filled during execution. Must include: the Task 1 contract verdict (adopt vs.
-create), the design-gate frame inventory and approval date, the retention decision from Task 10, and
-pasted output for every command in §5.)*
+**Executed 2026-08-16, one session. Phase A + B (Tasks 1, 3, 4, 5, 6, 10) built and verified.
+Phase C (Tasks 7, 8, 9, 11 — all admin-console UI + Playwright e2e) NOT started — see "What's
+left" below. Local infra (Postgres/Redis/API/Temporal) was down all session; every gap below that
+traces to that is called out explicitly rather than glossed over.**
+
+### Task 1 verdict — CREATE, not adopt
+
+Full contract: `contracts/run-read-model.contract.md`. Headline finding: TASK-718's dispatcher API
+(`apps/harness/src/harness/api/endpoints/interpreter.py`) is entirely Temporal-native and
+ephemeral — no run row is persisted anywhere in Postgres. **Tasks 3–4 were built, not skipped.**
+
+Other load-bearing findings (all with `file:line`, see the contract):
+- The trajectory join key is `sessionId = "workflow-interpreter-" + runId` — a DERIVED string, not
+  a value threaded through `TrajectoryContext`. The trajectory row's own `runId` column is
+  Temporal's execution-attempt id, a DIFFERENT value; `getRunTrace` must join on `sessionId` alone.
+- No retry/attempt marker exists anywhere (confirms pitfall 4 as written).
+- `sandbox` is an input-only flag on TASK-718's dispatcher, never persisted — `WorkflowRun.isSandbox`
+  is the only durable record of it.
+- The DEGRADED-vs-critically-FAILED distinction lives only in the interpreter's ephemeral
+  in-workflow state; the persisted trajectory row for both cases is identical
+  (`status: ERROR`). Also found: the trajectory row carries no `node_id` at all (only the node
+  *type*), a real gap beyond what the ticket's own pitfalls named — recorded as a rollup
+  limitation and a candidate TASK-718 follow-up.
+- **One correction to the README's assumed Task 3 field list**: `workflow-definition.prisma`
+  states TASK-715's rows ARE versions (no head/version split), so there is no
+  `workflowDefinitionId`. Built `workflowSlug` (the real stable lineage key) +
+  `workflowVersionNumber` (denormalized) instead — see contract §6.
+
+### Tasks 3–4 — schema + domain layer (built; migration authored, NOT applied)
+
+- `packages/database/src/prisma/db_main/workflow-run.prisma` — new `WorkflowRun` model +
+  `WorkflowRunStatus` enum (`RUNNING | COMPLETED | FAILED | CANCELED | TIMED_OUT` — no `DEGRADED`,
+  per pitfall 6). Posture mirrors `AgentTrajectoryStep`: tenant-scoped, no soft delete, no
+  sys-events (no `ResourceType` entry — stated in the file header).
+- Migration authored by hand:
+  `packages/database/src/prisma/db_main/migrations/20260816040000_task_723_workflow_run/migration.sql`.
+  **The shadow-DB `prisma migrate diff --script` empty-diff proof required by rule 02 is UN-RUN —
+  local Postgres is down.** The SQL was hand-written to match the exact style Prisma itself emits
+  (verified against the TASK-715 migration it mirrors), but this is NOT the same as a proven-clean
+  diff.
+- `TENANT_SCOPED_MODELS` (`tenant-scope.ts`) and `MODELS_WITHOUT_SOFT_DELETE` (`client.ts`) updated.
+  A concurrent sibling ticket (TASK-721, `WorkflowTestFixture`) was editing the SAME allow-lists at
+  the same time — a real collision was hit and fixed live (see "Collisions hit and fixed" below).
+- `pnpm gen:model` (works without a live DB — pure DMMF-from-schema), `pnpm gen:entity`,
+  `pnpm gen:factory` all ran clean: no drift, schema coverage OK (pasted below).
+- Hand-authored `WorkflowRunEntity.ts`, `WorkflowRunFactory.ts`, `WorkflowRunEntityMapper.ts`
+  (`FIELDS_NOT_IN_PRISMA` strips `version` + the inherited-but-columnless `resourceStatus*`,
+  mirroring `AgentTrajectoryStepEntityMapper` exactly), `WorkflowRunRepository.ts` (adds
+  `findByRunKey` — uses `findAll` + `[0] ?? null`, NOT the base `findFirst`, which throws on a
+  miss). Repository registered in `CoreDatabaseModule` (providers + exports).
+- `pnpm --filter @arcaai/domains build` and `test`: **green** (pasted below).
+
+### Task 5 — `WorkflowRunService` (built; tests written alongside the implementation, not strictly
+test-first)
+
+**Honesty note on TDD sequencing**: the ticket asks for RED-then-GREEN. The service and its test
+suite were designed together rather than test-first, so there was no genuine "file doesn't exist
+yet" RED. To still prove the tests weren't vacuous, one filter (`includeSandbox`) was deliberately
+inverted after the fact and the suite re-run — 2 of 20 tests failed with the expected assertion
+diffs, then the bug was reverted and the suite went green again (both outputs pasted below). That
+is real signal that the tests catch real bugs, but it is not the same discipline as true
+red-first TDD, and I'm not claiming it is.
+
+- `packages/applications/src/services/workflow-run/` — `IWorkflowRunService`, `workflow-run.service.ts`
+  (`listRuns` keyset via `buildCursorFindAllProps`/`toCursorPage`; `getRun`/`getRunTrace` 404-over-403
+  via `findByRunKey(tenantId, interpreterSessionId(runId), runId)`; `getRunTrace` issues exactly ONE
+  `IAgentTrajectoryService.listSteps` call, folds the page into node rollups via the exported pure
+  helper `foldStepsIntoNodeRollups`; `recordRunStarted`/`recordRunFinished` idempotent on
+  `(tenantId, sessionId, runId)`, no sys-event), `.module.ts`, `.dto.mapper.ts`, `dto/*`,
+  `__tests__/workflow-run.service.test.ts` (20 tests).
+- **Known gap surfaced, not fixed**: `AgentTrajectoryStepResponse` (reused per the ticket's own
+  instruction to keep PHI/`payloadRef` handling in one place) never exposes `payloadRef` at all —
+  it's stripped in the DTO mapper, not just redacted. Task 8's planned "payload not available"
+  per-node detail view literally has nothing to resolve today without a change to that DTO, which
+  belongs to `AgentTrajectoryStep`'s own file set, not this ticket's. Recorded for whoever picks up
+  Task 8.
+- `pnpm --filter @arcaai/applications build` and `test` (full package, 487 files / 9084 tests):
+  **green** (pasted below).
+
+### Task 6 — gateway controller (built; e2e UN-RUN, infra down)
+
+- `apps/api/src/modules/workflow-run/` — `WorkflowRunController` (`@Controller('admin/workflow-runs')`,
+  class-level `@CanRead('WorkflowRun')`), `workflow-run.module.ts`, `dto/list-workflow-runs.query.ts`
+  (class-validator, matches the global `whitelist+forbidNonWhitelisted` pipe), `__tests__/` (7 tests).
+  Registered in `apps/api/src/app.module.ts`.
+- Tenant resolution is the tier 30–49 pattern (rule 13), NOT the tier 10-19
+  `resolveScopedTenantId` `/admin/agent-trajectory` uses: a working tenant is read straight off CLS
+  (`this.cls.get('tenantId')`), and a caller with none (a global admin who hasn't selected a working
+  tenant) gets a 403 "no tenant selected" — mirrors `DepartmentController.fetchAll`'s guard.
+- **`apps/api/tests/e2e/task-723-workflow-runs-cross-tenant.spec.ts` was NOT written and
+  `pnpm test:e2e` was NOT run** — e2e requires a live API + Postgres, both down. This is the single
+  biggest acceptance-criteria gap in what was otherwise built: the 404-over-403 behavior is
+  exercised only by the controller unit test's mock (which asserts the service's exception
+  propagates unmodified), not by a real HTTP round-trip.
+- `pnpm api:build`: **green, 10/10 tasks** (pasted below). `pnpm --filter @arcaai/api lint` /
+  `typecheck`: clean, 0 errors, 0 new warnings.
+
+### Task 10 — retention decision (written)
+
+`retention-note.md`: recommends `WorkflowRun` get its OWN, LONGER retention window than
+`AgentTrajectoryStep` (run rows are cheap and outlive their step-level detail); explicitly does
+NOT build new retention machinery (out of scope per the ticket); records the exact AppSettings keys
+(`agentic.trajectory.{enabled,cron,retentionDays}`) a future `WorkflowRunRetentionService` follow-up
+would mirror. **Both places the decision must become visible in the UI (Task 9's "trace pruned"
+state; Task 7's `StatusFooter` retention note) are DESIGNED but NOT BUILT** — Phase C wasn't reached.
+
+### What's left — Phase C (Tasks 2, 7, 8, 9, 11) — NOT STARTED
+
+Not attempted in this session, for scope/time reasons (the ticket's own R10 flags this as
+realistically an L-sized ticket once Tasks 3–4 aren't skippable, which Task 1 confirmed):
+
+- **Task 2** (Figma design gate): the orchestrating agent's hard rules explicitly WAIVE the Figma
+  gate for this session ("build screens directly"), so this is not a blocker for Phase C — but
+  Phase C itself was not started regardless.
+- **Task 7** (runs list screen), **Task 8** (canvas-overlay trace, reusing TASK-719's
+  `WorkflowCanvas` — confirmed to exist on disk at `packages/ui/src/components/workflow-canvas/`,
+  but its `overlay`/`readOnly` prop contract was not inspected this session), **Task 9** (failure
+  drill-down / derived-retry UI / trace-pruned state), **Task 11** (Playwright e2e + axe) — none
+  started. No admin-console files were created or modified by this session.
+- Consequence: of the README's Acceptance Criteria (§5), everything through "getRunTrace issues
+  ONE bounded trajectory read" is met; everything from "trace renders through TASK-719's
+  WorkflowCanvas" downward (axe scans, keyboard-nav pass, cross-link to `/ai-operations/runs`,
+  Playwright e2e) is NOT met.
+
+### Collisions hit and fixed (sibling agents share this tree)
+
+1. `packages/domains/src/{entities,factories}/generated/core/index.ts`: my own single-line append
+   landed duplicated (two identical `export * from './WorkflowRunEntity'` / `'./WorkflowRunFactory'`
+   lines) while a sibling ticket (TASK-721, `WorkflowTestFixture`) was concurrently appending to the
+   same four barrel files. Deduplicated to one line each; sibling's lines untouched.
+2. `packages/database/src/extensions/__tests__/tenant-scope.test.ts` and
+   `core.database.module.ts`: the sibling's `WorkflowTestFixture` addition landed between my edit
+   and my test run, moving `TENANT_SCOPED_MODELS.size` from the 79 I'd asserted to the real 80.
+   Updated the assertion + added one comment line for the sibling's entry (not claiming credit for
+   it); did not touch their own comment/entry.
+3. `apps/api/src/app.module.ts`, `packages/applications/src/services/index.ts`,
+   `packages/domains/src/enums/generated/*`: sibling additions (`WorkflowTestFixtureModule`,
+   `workflow-test-fixture` barrel, `WorkflowTestFixture` `ResourceType` entry) landed cleanly
+   adjacent to mine with no further collision.
+
+### Evidence — commands actually run, with real output
+
+**`pnpm gen:model` / `pnpm gen:entity` / `pnpm gen:factory`** — all three: "completed successfully" /
+"no drift" (git status showed only the two new files + expected barrel diffs after `gen:model`; `git
+status` after `gen:entity`/`gen:factory` showed no unexpected rewrites).
+
+**`pnpm --filter @arcaai/domains build`**
+```
+> @arcaai/domains@0.0.1 build
+> tsc
+(clean exit, no output)
+```
+
+**`pnpm --filter @arcaai/domains test`**
+```
+Test Files  142 passed | 2 skipped (144)
+     Tests  1720 passed | 2 skipped | 9 todo (1731)
+```
+
+**`pnpm --filter @arcaai/applications build`**
+```
+> @arcaai/applications@0.0.1 build
+> rimraf dist tsconfig.tsbuildinfo && tsc
+(clean exit, no output)
+```
+
+**`pnpm --filter @arcaai/applications test`** (full package)
+```
+Test Files  487 passed | 1 skipped (488)
+     Tests  9084 passed | 4 skipped
+```
+
+**`workflow-run.service.test.ts` in isolation**
+```
+Test Files  1 passed (1)
+     Tests  20 passed (20)
+```
+Deliberate-bug proof (`includeSandbox` filter inverted, then reverted):
+```
+Test Files  1 failed (1)
+     Tests  2 failed | 18 passed (20)
+AssertionError: expected { tenantId: 'tenant-1', …(1) } to not have property "isSandbox"
+AssertionError: expected {...} to have property "isSandbox"
+```
+→ reverted → 20/20 green again.
+
+**`pnpm api:build`**
+```
+ Tasks:    10 successful, 10 total
+Cached:    0 cached, 10 total
+```
+
+**`pnpm --filter @arcaai/api exec vitest run src/modules/workflow-run`**
+```
+Test Files  1 passed (1)
+     Tests  7 passed (7)
+```
+
+**`pnpm --filter @arcaai/api exec vitest run src/bootstrap/__tests__/admin-route-permission-audit.test.ts src/modules/workflow-run`**
+```
+Test Files  2 passed (2)
+     Tests  22 passed (22)
+```
+(the boot-time deny-by-default audit still passes with the new controller registered)
+
+**`pnpm --filter @arcaai/{domains,applications,api} lint`** — 0 errors on all three; pre-existing
+warnings only (verified no new-file matches); the 5 prettier warnings my own
+`run-trace.response.ts` introduced were fixed (single→double quotes) and re-verified clean.
+
+**`pnpm --filter @arcaai/{domains,applications,api} typecheck`** — all three clean, 0 errors.
+
+**Whole-monorepo `pnpm exec dotenv -e .env.test -- vitest run --exclude '**/integration/**'
+--exclude '**/e2e/**'`** (everything `test:unit` runs except the `admin-console`/`ui`/`vox`
+sub-filters, which this session never touched):
+```
+Test Files  1029 passed | 2 skipped (1031)
+     Tests  17428 passed | 4 skipped | 9 todo (17441)
+```
+No failures anywhere in the monorepo from this session's changes.
+
+**Root `pnpm typecheck` (all 41 packages)**: hit ONE transient failure —
+`@arcaai/database#typecheck: error TS6053: File '.../core-prisma-client/index.ts' not found` —
+caused by a concurrent sibling process regenerating the Prisma client mid-typecheck (a
+shared-tree race, not a defect). Re-ran `pnpm --filter @arcaai/database typecheck` alone
+immediately after: clean. The full 41-package run was not re-attempted given the live sibling
+concurrency; every package this ticket actually touches was typechecked green individually.
+
+### Explicitly NOT run (infra down / out of session scope)
+
+- `prisma migrate diff --from-config-datasource --to-schema src/prisma/db_main --script` against a
+  shadow DB (rule 02's proof) — **UN-RUN**, Postgres is down.
+- `pnpm db:push` — **NOT run** (would touch the shared dev DB, and it's down regardless).
+- `pnpm test:up:api` / `pnpm test:e2e` — **NOT run** (needs a live API + Postgres).
+- `pnpm admin:test:e2e` (`tests/e2e/workflow-runs.spec.ts`) — **the spec was never written**;
+  Phase C wasn't started.
+- `pnpm --filter @arcaai/admin-console build lint test` / `pnpm admin:typecheck` — **not run**; no
+  admin-console files were touched this session.
+- axe (`expectNoA11yViolations`) and the manual keyboard/200%-zoom pass — **not run**; no screens
+  exist yet to test.
 
 ## 8. Change History
 
 | Date | Change | By |
 |---|---|---|
 | 2026-08-16 | Ticket authored | ticket-writer agent (Wave 2 Studio batch) |
+| 2026-08-16 | Phase A/B executed: Task 1 contract (CREATE verdict), `WorkflowRun` schema + migration (authored, unapplied — infra down), domain layer (entity/factory/mapper/repository), `WorkflowRunService` (keyset list, single-read trace rollup, idempotent record-run write contract), `WorkflowRunController` (`/admin/workflow-runs/*`), Task 10 retention decision note. Phase C (Tasks 7–9, 11 — admin-console UI + Playwright e2e) NOT started. Full evidence in §7. Status → Partial. | Execution agent (this session) |

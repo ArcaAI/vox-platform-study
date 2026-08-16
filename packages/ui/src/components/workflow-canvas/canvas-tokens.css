@@ -1,0 +1,56 @@
+/**
+ * Theming bridge for React Flow (`@xyflow/react`), imitating `custom/code-editor.tsx`'s
+ * `--code-editor-*` bridge (TASK-719 Task 5 / DEPENDENCY.md §(d)).
+ *
+ * React Flow reads every colour through `var(--xy-<token>, var(--xy-<token>-default))`
+ * (verified in the unpacked `dist/style.css`). Overriding the NON-`-default` variable once,
+ * from HOPE's own light/dark-aware tokens, is sufficient in both themes: those HOPE tokens
+ * already flip value under the ambient `.dark` class via `next-themes`, so no second
+ * `.dark`-scoped block is needed here and `.react-flow.dark`'s own defaults are never reached.
+ *
+ * `--workflow-canvas-*` names are the composite's own semantic layer (consumed directly by
+ * `workflow-node.tsx` / `workflow-edge.tsx`), mapped from HOPE tokens once here so both the
+ * xyflow bridge and this composite's own chrome stay in sync.
+ */
+.workflow-canvas {
+  --workflow-canvas-node-bg: var(--card);
+  --workflow-canvas-node-fg: var(--card-foreground);
+  --workflow-canvas-node-border: var(--border);
+  --workflow-canvas-handle: var(--muted-foreground);
+  --workflow-canvas-edge: var(--muted-foreground);
+  --workflow-canvas-edge-label-bg: var(--background);
+  --workflow-canvas-edge-label-fg: var(--foreground);
+}
+
+.workflow-canvas .react-flow {
+  --xy-background-color: var(--background);
+  --xy-background-pattern-dots-color: var(--border);
+  --xy-node-color: var(--workflow-canvas-node-fg);
+  --xy-node-border: 1px solid var(--workflow-canvas-node-border);
+  --xy-node-background-color: var(--workflow-canvas-node-bg);
+  --xy-node-boxshadow-selected: 0 0 0 2px var(--primary);
+  --xy-handle-background-color: var(--workflow-canvas-handle);
+  --xy-handle-border-color: var(--background);
+  --xy-edge-stroke: var(--workflow-canvas-edge);
+  --xy-edge-stroke-selected: var(--primary);
+  --xy-connectionline-stroke: var(--primary);
+  --xy-selection-background-color: color-mix(in oklab, var(--primary) 8%, transparent);
+  --xy-selection-border: 1px dotted var(--primary);
+  --xy-controls-button-background-color: var(--card);
+  --xy-controls-button-background-color-hover: var(--accent);
+  --xy-controls-button-color: var(--foreground);
+  --xy-controls-button-color-hover: var(--accent-foreground);
+  --xy-controls-button-border-color: var(--border);
+  --xy-minimap-background-color: var(--card);
+  --xy-minimap-node-background-color: var(--muted);
+  --xy-attribution-background-color: transparent;
+}
+
+/* React Flow ships no default focus-visible treatment for a keyboard-focused node — without
+   this, Tab-reachability (verified by the RED test) would be keyboard-OPERABLE but not
+   keyboard-VISIBLE, failing WCAG 2.4.7. */
+.workflow-canvas .react-flow__node:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+

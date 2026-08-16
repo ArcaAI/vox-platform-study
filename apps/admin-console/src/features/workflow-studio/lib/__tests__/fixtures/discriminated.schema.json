@@ -1,0 +1,25 @@
+{
+  "type": "object",
+  "properties": {
+    "retryPolicy": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": { "strategy": { "type": "string", "enum": ["NONE"] } },
+          "required": ["strategy"]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "strategy": { "type": "string", "enum": ["FIXED"] },
+            "attempts": { "type": "integer", "minimum": 1, "maximum": 5, "title": "Attempts" }
+          },
+          "required": ["strategy", "attempts"]
+        }
+      ],
+      "discriminator": { "propertyName": "strategy" },
+      "title": "Retry policy"
+    }
+  },
+  "required": ["retryPolicy"]
+}

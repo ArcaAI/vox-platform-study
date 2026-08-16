@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Pending |
+| **Status** | Partial — Phase A (Tasks 2–3) and Phase B (Tasks 4–6, fixture CRUD) built and green; Phase C (Tasks 7–11, the Workbench screen) NOT started, blocked — see §7 |
 | **Wave** | 2 · **Size** | M |
 | **Epic slug** | `workbench` |
 | **Depends on** | TASK-718 (`workflow-interpreter`), TASK-719 (`workflow-studio-v1`) |
@@ -496,12 +496,168 @@ structure and misuse its `EvalRun` relations. A small dedicated model is the cor
 
 ## 7. Implementation Summary
 
-*(Empty at authoring — filled during execution. Must include: the design-gate frame inventory and
-approval date, the TASK-718 sandbox contract summary, the final placement ruling as built, and pasted
-output for every command in §5.)*
+**Session scope, decided at execution time:** single agent, single pass, no live infra (Postgres
+down — every migration/DB-generation claim below is codegen-only, never a live-DB run), sibling
+agents (TASK-718/719/720/723) editing this same tree concurrently throughout. Given the ticket's
+own Task 2 requirement to verify TASK-718's contract before building anything, and given what that
+verification found, the honest outcome is: **Phase A (Tasks 2–3) and Phase B (Tasks 4–6) are built
+and green; Phase C (Tasks 7–11, the actual Workbench screen) was NOT attempted this session** —
+not because of time alone, but because Task 2's own verification proved the run/live-progress
+mechanism Phase C would be built against does not exist yet anywhere in the stack (see below).
+Task 1 (the Figma design gate) is explicitly HUMAN-GATED and was not and could not be done here.
+
+### Task 1 — Design gate: NOT cleared (human-gated, out of reach this session)
+
+No frame inventory, no approval. Recorded here only to keep §5's checklist honest — the first
+acceptance-criteria line is unmet by construction, not by oversight.
+
+### Task 2 — TASK-718's sandbox-mode contract: DONE
+
+`docs/implementation/TASK-721-Workbench/contracts/sandbox-mode.contract.md` — every claim carries
+a `file:line` into TASK-718's delivered code (read from its live, uncommitted working tree; TASK-718
+self-reports Status "Review"). Headline findings, all of which reshaped the rest of this session:
+
+1. **No gateway route exists to start or poll an interpreter run.** The dispatcher API
+   (`POST/GET/POST /api/v1/internal/workflow-runs*`) lives only in `apps/harness`, behind
+   `X-Service-Token`. `apps/api` has no controller for it. That gateway proxy is explicitly
+   **TASK-722**'s (`exposure-v1`) deliverable — confirmed **Pending**, nothing built.
+2. **No SSE/live-progress stream exists anywhere in the stack** — only a point-in-time
+   `GET /workflow-runs/{run_id}` poll. TASK-722's own title is "Exposure Plane v1 (REST invoke +
+   status + **SSE**)" — also Pending.
+3. **Sandbox runs are not identifiable after the fact.** No persisted run row existed when Task 2
+   was written; a `WorkflowRun.isSandbox` field appeared in the shared tree mid-session (TASK-723
+   landing concurrently) but its write path is explicitly documented as unwired, and its
+   service/controller layer did not exist by session end — not yet a stable contract to build Task
+   9's exclusion filter against.
+4. **The interpreter does not support single-node execution** (R2's blocking condition, confirmed):
+   no registry field, no dispatch entry point for it. Task 8's isolated-node panel is a documented
+   gap per R2's own instruction, not a client-side simulation.
+5. **The synthetic-input shape is narrower than assumed**: `InterpreterInput` takes a `sessionId`
+   reference, not an inline JSON payload — some unbuilt step must turn a fixture's `input` into a
+   session before the interpreter can consume it. Not specified by any shipped ticket.
+
+### Task 3 — Placement ruling: DONE
+
+- `apps/admin-console/src/shared/navigation/nav-config.ts`: added `/playground/workbench`,
+  `tier: '50-59'`, with a **non-empty** `required: [['read','WorkflowDefinition'],
+  ['manage','WorkflowDefinition']]` — the deliberate divergence from its five siblings' `required:
+  []`, commented at the entry per the ticket's own instruction. The pair is **provisional**: no
+  gateway route/decorator exists yet for a Workbench-run action to check it against (TASK-715 is
+  only Phase A — Database — done; no WorkflowDefinition application service or controller exists),
+  so this must be reconciled once TASK-715/722 ship a real guard.
+- No route/page was created under `(console)/(tenant)/playground/workbench/` — that's Phase C,
+  not attempted (see below). The nav entry currently points at a route that doesn't exist; this is
+  flagged, not hidden, in `apps/admin-console/src/shared/navigation/__tests__/nav-config.test.ts`
+  which extends the existing suite (admin-tier + ability-gated visibility, both directions).
+- "Deep link from the Studio" sub-item: not attempted — TASK-719's editor screen doesn't exist yet
+  either (only Phase A–C `lib/` helpers are on disk), so there is nothing to link from.
+
+### Phase B (Tasks 4–6) — Fixture CRUD: DONE, and NOT blocked by the Task 2 findings
+
+Scope item §1.5 ("Fixture management — per-tenant saved synthetic test inputs") is genuinely
+self-contained and does not depend on TASK-718/722/723. Built as full CRUD end to end:
+
+- **Task 4** — `packages/database/src/prisma/db_main/workflow-test-fixture.prisma` (new model,
+  standard field template); `ResourceType.WorkflowTestFixture` added to **both**
+  `packages/database/src/prisma/db_main/audit.prisma` and
+  `packages/domains/src/enums/generated/ResourceType.ts`; `WorkflowTestFixture` added to
+  `TENANT_SCOPED_MODELS` (`packages/database/src/extensions/tenant-scope.ts`); migration authored
+  by hand at
+  `packages/database/src/prisma/db_main/migrations/20260816050000_task_721_workflow_test_fixture/migration.sql`.
+  **The rule 02 shadow-DB proof (`prisma migrate diff --from-config-datasource ... --script` →
+  "This is an empty migration.") is UN-RUN — Postgres is down, and the hard rules forbid running
+  `db:migrate*`/`db push`/`migrate diff` regardless.** The migration SQL was hand-written to mirror
+  the TASK-715 `WorkflowDefinition` migration's shape exactly (same `ALTER TYPE ... ADD VALUE`
+  pattern, same column-type mapping) as the closest available precedent, but it has not been
+  proven against a real database.
+- **Task 5** — hand-authored `WorkflowTestFixtureEntity`/`Factory`/`EntityMapper`/`Repository`
+  (mapper carries `FIELDS_NOT_WRITABLE = ['version']`, OCC-written); repository registered in
+  `CoreDatabaseModule` (providers + exports). `pnpm gen:model` ran clean (only scaffolder). `pnpm
+  gen:entity:check`/`gen:factory:check` report **no drift for this ticket's files** (94/94 matched
+  both times); their sole remaining failure is a **pre-existing TASK-715 gap** (`WorkflowDefinition`
+  has no entity/factory yet — not this ticket's file, not touched). `pnpm gen:mapper` was **not**
+  run.
+- **Task 6** — `packages/applications/src/services/workflow-test-fixture/` (symbol-token DI,
+  `BaseService`, repository-only access, `broadcastSysEvent` on every mutation, cross-tenant →
+  `NotFoundException`); `apps/api/src/modules/workflow-test-fixture/` controller at
+  `admin/workflow-test-fixtures` (class-level `@CanManage('WorkflowTestFixture')`, PATCH route
+  carries `@RequiresIfMatch()` + `@ExpectedVersion()`). Registered in `app.module.ts`. **No RBAC
+  seed row for `manage:WorkflowTestFixture` was added** (seeding needs a live DB) — the route is
+  code-correct but unreachable by role until a policy grants the ability; noted as a gap, not
+  silently left implicit.
+  **Cross-tenant e2e (rule 05's "new admin/by-id surfaces need equivalent coverage") was NOT
+  written** — Playwright e2e needs a running API + DB (`pnpm test:up:api`), both down. Cross-tenant
+  404-vs-403 behavior IS covered at the unit level (5 assertions across
+  `findById`/`update`/`deleteById` in `workflow-test-fixture.service.test.ts`).
+
+Evidence (package-scoped, actually run — commands and results, not narrated):
+
+```
+$ pnpm --filter @arcaai/database db:generate            → Prisma Client + index generated, no DB connection
+$ pnpm gen:model                                         → WorkflowTestFixtureModel.ts generated, all barrels regenerated
+$ pnpm gen:entity && pnpm gen:entity:check                → no drift — 94 generated file(s) match the committed files
+                                                             (remaining coverage error: pre-existing "WorkflowDefinition has no entity", not this ticket)
+$ pnpm gen:factory && pnpm gen:factory:check               → same as above, factory layer
+$ pnpm --filter @arcaai/database build                    → tsc clean
+$ pnpm --filter @arcaai/domains build                      → tsc clean
+$ pnpm --filter @arcaai/domains test                        → Test Files 142 passed | 2 skipped (144); Tests 1720 passed | 2 skipped | 9 todo (1731)
+$ pnpm --filter @arcaai/applications build                  → tsc clean
+$ pnpm --filter @arcaai/applications test                    → Test Files 488 passed | 1 skipped (489); Tests 9093 passed | 4 skipped (9097)
+$ pnpm api:build                                            → Tasks: 10 successful, 10 total (matches the stated 10/10 baseline)
+$ (apps/api) vitest run --exclude integration --exclude e2e → Test Files 199 passed (199); Tests 2875 passed (2875)
+$ pnpm --filter @arcaai/database test                        → Test Files 51 passed (51); Tests 1243 passed (1243)
+$ pnpm admin:typecheck                                       → 9/9 tasks successful
+$ pnpm admin:lint                                            → 9/9 tasks successful (eslint --max-warnings 0)
+$ pnpm --filter @arcaai/admin-console test                    → Test Files 179 passed (179); Tests 1432 passed (1432)
+  (first run of this command failed 70 files on "Failed to resolve import '@arcaai/ui'" — a stale
+  packages/ui/dist with only .d.ts/.css and no .js output, caused by concurrent sibling edits to
+  packages/ui/package.json + tsup.config.ts, not by this ticket. Fixed by running
+  `pnpm --filter @arcaai/ui build`, a read-only rebuild of a shared package, not an edit to it.)
+```
+
+`pnpm lint` was run scoped per touched package (`@arcaai/domains`, `@arcaai/applications`,
+`@arcaai/api`, `@arcaai/admin-console`) per the "package-scoped commands only" hard rule — every
+one reports 0 errors, and `grep`-checked 0 warnings inside any file this ticket added. The
+aggregate `pnpm lint:all`/`pnpm typecheck:all`/`pnpm test:unit` were deliberately NOT run
+(cross-cutting, would touch/observe every sibling's in-flight work, and the hard rules ask for
+package-scoped verification on a shared tree).
+
+### Phase C (Tasks 7–11) — the Workbench screen itself: NOT ATTEMPTED
+
+Not a time-budget call alone — a scope call, made explicit rather than papered over: Task 2 proved
+that requirements 1–4 and 6 of §1 (run in sandbox mode, live SSE progress, per-node inspection,
+isolated node test, sandbox containment) all sit on top of TASK-722 (Pending, gateway exposure +
+SSE), TASK-723 (mid-flight, run read model not yet wired to a write path or a service layer), and
+an interpreter capability (single-node execution) that does not exist. Building a Workbench screen
+against those today would mean either (a) a client that calls gateway routes that don't exist, or
+(b) simulating the missing runtime client-side — the latter explicitly rejected by this ticket's
+own R2 ("the Workbench does NOT simulate node execution client-side, which would produce results
+the interpreter would not"). Only requirement 5 (fixture management) is genuinely unblocked, and
+it was delivered as a real, tested backend (Phase B) — the Workbench UI panel that will consume it
+(Task 7's `fixture-picker.tsx`, the create/edit/delete UI) was not built this session, since a
+picker with nothing to pick a *run* for is a fragment of a screen, not the screen the ticket
+describes.
+
+**What a follow-up session needs, in order:** TASK-722 lands its gateway proxy + SSE stream (per
+its own README) → TASK-723 lands its service/controller layer over `WorkflowRun` (Prisma model
+already exists in this shared tree) → this ticket's Task 2 contract gets a short addendum
+confirming the concrete route/scope/event-name values → Phase C (Tasks 7–11) can be built for
+real, including the fixture-picker UI over the already-shipped Phase B backend.
+
+### PHI posture — explicitly flagged, not resolved (per the orchestrator's instruction)
+
+`WorkflowTestFixture.input` is a plain, unencrypted `JsonB` column. "Synthetic" is a contract
+enforced by comments + DTO copy ("SYNTHETIC ONLY — do not paste real or realistic patient data"),
+not by server-side redaction or encryption. No real or realistic PHI was placed in any fixture,
+test, or seed data written this session — every example value used is an obviously synthetic
+placeholder string (e.g. `"synthetic sample only"`, `"Two-speaker follow-up visit"`). Whether this
+column needs the Vault-Transit treatment `GoldenCase` uses, or a `phi-redactor` (TASK-710) pass on
+write, is recorded as R4 in §6 and is an open, HUMAN-GATED security decision — not taken in this
+session, and not silently defaulted either way.
 
 ## 8. Change History
 
 | Date | Change | By |
 |---|---|---|
 | 2026-08-16 | Ticket authored | ticket-writer agent (Wave 2 Studio batch) |
+| 2026-08-16 | Phase A (Task 2 contract doc, Task 3 nav placement) and Phase B (Tasks 4–6: `WorkflowTestFixture` Prisma model + migration authored, hand-authored domain layer, application service, gateway CRUD controller) built and verified package-scoped green. Phase C (Tasks 7–11, the Workbench screen) explicitly not attempted — Task 2's own contract verification found the run/live-progress/single-node-execution mechanisms Phase C depends on do not exist yet (TASK-722/723 Pending/mid-flight, interpreter has no single-node dispatch). Design gate (Task 1) untouched — human-gated. No PHI, real or synthetic-realistic, used anywhere. | Execution agent (this session) |

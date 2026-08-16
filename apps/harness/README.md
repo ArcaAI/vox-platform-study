@@ -235,6 +235,79 @@ idempotently. Toggle the whole feature with `HARNESS_CLAIM_CHECK_ENABLED` (defau
 
 ---
 
+## WorkflowInterpreter (`temporal/interpreter/`, TASK-718)
+
+The generic, platform-owned counterpart to `HarnessDocWorkflow`: **one** deterministic Temporal
+workflow (`WorkflowInterpreter`, registered on the SAME `harness-task-queue` worker) that executes
+a published `WorkflowDefinition` version's `compiledConfig` — produced by
+`@arcaai/workflow-contract`'s TypeScript compiler (TASK-716), never authored or accepted from a
+request DTO. Tenants author configuration; this interpreter is the only thing that ever executes
+it. There is no tenant-authored code path.
+
+**v1 execution semantics — linear stages + single-level fan-out with an all-settled join, nothing
+else.** Stages run in order; a stage with N>1 nodes fans the N nodes out concurrently and
+completes when every one has settled (`SUCCEEDED`/`DEGRADED`/`SKIPPED`; a `critical`-registry node
+that degrades promotes to `FAILED` and stops the walk after its stage settles). No conditional
+edges, no loops, no sub-graphs, no HITL gates in v1 (a non-empty `gates[]` in the compiled config
+is refused at load — that palette needs TASK-731). Full contract:
+`docs/implementation/TASK-718-Workflow-Interpreter/contracts/execution-semantics.md` (and
+`versioning.md` for the patch-gate policy).
+
+- **`compiled_config.py`** — the harness-local Pydantic mirror of TASK-716's
+  `compiled-config.schema.json` + a Python port of the compiler's canonical-JSON checksum
+  algorithm. Six-step admission (dereference → parse → `formatVersion` → `checksum` →
+  `gates == []` → structural bounds) fails LOUD on any violation — never a partial-graph run.
+- **`registry.py`** — `NODE_REGISTRY: dict[str, NodeSpec]`, the node-type → activity routing table
+  (mirrors `LOOP_ACTION_REGISTRY`'s `implemented` discipline: an unregistered/unimplemented type
+  is an OBSERVABLE skip, never a silent no-op). Ships **empty of palette nodes** — only the
+  `noop`/`passthrough` smoke-test entries this package's own tests need; TASK-720 populates the
+  summarization palette (status: node config schemas + validator rules shipped, the five node
+  activities NOT yet implemented — no per-node output threading exists between activities yet,
+  see `docs/traceability/workflows.md` W12 gaps). `NodeSpec.activity` is a CALLABLE reference; the compiled config's own
+  `activity` string is only a cross-check, never trusted for routing (S-4/S-6 — this is what makes
+  a reachable `SIGNED` write structurally impossible, proved by `test_registry.py`).
+- **`caps.py`** — a defense-in-depth, tighten-only re-clamp. Platform ceilings are already
+  materialized into the compiled config AT COMPILE TIME by the TypeScript compiler (no
+  `GlobalSetting` read anywhere in this package); these module constants are a second,
+  independent check the interpreter applies itself.
+- **`workflow.py`** — `WorkflowInterpreter`. Signal allow-list: `cancel` only (never a
+  caller-supplied `signalName`). Query: `state`.
+- **`activities.py`** — `interpreter.load_config` (the claim-check dereference + admission — S-2;
+  the workflow body never calls claim-check directly) and the seed node activities. Every node
+  activity emits one `NODE`-typed trajectory row via the EXISTING `_TrajectoryBatch`
+  (`temporal/activities.py`) — no second emitter.
+- **Sandbox mode (S-8)** — `InterpreterInput.sandbox`, pinned at start. Any node whose registry
+  entry is `external_write=True` dispatches as `SKIPPED(reason="sandbox")` **before**
+  `execute_activity` is ever called — never a real call with a suppressed side effect. Used by the
+  Workbench (TASK-721).
+- **Replay fixture** — `tests/unit/temporal/fixtures/interpreter_v1_history.json`, captured with
+  the very first release (`tests/unit/temporal/_capture_interpreter_replay_fixture.py`), covering
+  a multi-stage walk, a fan-out stage, and one degraded node in the same run. Replayed by
+  `TestWorkflowInterpreterReplayCompatibility` in `test_replay_compat.py`.
+
+### Dispatcher API (`/api/v1/internal/workflow-runs*`, `X-Service-Token`)
+
+A NEW route family keyed by `runId` (not `consultationId`) — deliberately not an extension of the
+consultation-document family above, so the substrate stays separable from the (later)
+consultation palette.
+
+| Method | Path                            | Description                                                                        |
+| ------ | -------------------------------- | ----------------------------------------------------------------------------------- |
+| POST   | `/internal/workflow-runs:start`  | Start (idempotent on `workflow-interpreter-{runId}`); Temporal-unreachable ⇒ 503     |
+| GET    | `/internal/workflow-runs/{id}`   | `describe()` + the `state` query — status, per-stage/per-node results               |
+| POST   | `/internal/workflow-runs/{id}:cancel` | Sends the allow-listed `cancel` signal only                                    |
+
+This is the API TASK-722's gateway controller calls (never talking to Temporal directly) and
+TASK-704's `NoteGenerationService` will later call for the consultation palette.
+
+**Known gap (named, not hidden):** `compiled_config.py`'s canonical-JSON checksum algorithm is a
+best-effort Python port of `packages/workflow-contract/src/canonical-json.ts`, not yet verified
+byte-for-byte against a live Node execution of the TypeScript original (no Node runtime exercised
+in the session this was built). Closing that gap for real is TASK-716 Task 7b's cross-language
+parity package (`hope_workflow_contract`), still not built as of this writing.
+
+---
+
 ## PHI egress guard (`guards/phi/`)
 
 Every cloud-bound LLM call (the `generate` activity's prompt/system-prompt to a cloud SMR

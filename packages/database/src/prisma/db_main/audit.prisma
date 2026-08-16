@@ -274,5 +274,12 @@ enum ResourceType {
   // docs/implementation/TASK-712-Consent-Abac/consent-design.md §6.
   ConsentGrant
 
+  // Workflow test fixture (TASK-721). Per-tenant saved synthetic
+  // Workbench inputs — ordinary CRUD (create/update/delete broadcast), NOT
+  // telemetry, so unlike its sibling WorkflowRun it DOES need a ResourceType
+  // (rule 03 step 4: the entry is conditioned on sys-event emission, and
+  // WorkflowTestFixtureService broadcasts on every mutation).
+  WorkflowTestFixture
+
   @@schema("core")
 }

@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Pending |
+| **Status** | In Progress (Phases A–C done; D–F not started) |
 | **Wave** | 2 · **Size** | XL |
 | **Epic slug** | `workflow-studio-v1` |
 | **Depends on** | TASK-715 (`workflow-definition-model`), TASK-716 (`workflow-compiler-validator`) |
@@ -657,12 +657,178 @@ designer at the design gate (Task 1), not guessed here.
 
 ## 7. Implementation Summary
 
-*(Empty at authoring — filled during execution. Must include: the design-gate frame inventory and
-approval date, the pinned React Flow package/version/licence, and pasted output for every command in
-§5.)*
+**Executed 2026-08-16, single session. Phases A–C done; Phases D–F NOT started.** This is an
+XL, 21-task ticket; the session budget did not cover the full scope. Honest accounting below —
+do not read "In Progress" as "nearly done".
+
+### Design gate (Task 1) — WAIVED, not cleared through Figma
+
+The orchestrator running this session explicitly waived the Figma design gate for this ticket
+("the user has WAIVED the Figma design gate — build screens directly"). This is **not** the
+same thing as rule 12 gate 2 being satisfied — no frames exist, no product-owner approval was
+recorded, nothing is marked Ready for Dev. Per the orchestrator's own scope for this session,
+only Phases A–C (which touch no screen/route) were executed; **no Phase D/E screen work was
+started**, so the waiver was never actually exercised. If a future session picks up Phase D
+(routes/pages), it should either get an explicit waiver reconfirmed or run Task 1 for real.
+
+### DECISION #11 (privilege-boundary fold) — honored, not performed
+
+Per the orchestrator's explicit instruction, `/agentic-policy` (tier 10-19, `manage:all`) was
+**not** folded into the Studio and no privilege boundary was moved. Phase E (Tasks 17-19,
+consolidation) was not started at all in this session, so this is moot for now but recorded
+per the instruction.
+
+### Task 2 — React Flow dependency: DONE
+
+`@xyflow/react@^12.11.3` added to `packages/ui/package.json` `dependencies` (lockfile resolves
+`12.11.3`), plus a `./components/workflow-canvas` subpath export
+(`packages/ui/package.json#exports`) and a matching `tsup.config.ts` entry. Full record —
+package/version, MIT licence read from the published tarball's own `LICENSE` file, React
+19/Next 16 compatibility, CSS shipping/scoping, transitive deps (bundles its own `zustand@4`,
+no collision with the app's `zustand@5`), rejected alternatives —
+in `packages/ui/src/components/workflow-canvas/DEPENDENCY.md`.
+
+### Task 3 — Cross-ticket contracts: DONE, with real gaps recorded (not invented)
+
+`docs/implementation/TASK-719-Workflow-Studio-V1/contracts/{registry,definition-api,validation-report}.contract.md`.
+Re-derived directly against delivered TASK-715/716/717 code, `file:line`-cited. Headline
+findings (all load-bearing for what Studio v1 could and could not be built against this
+session):
+
+- **No registry endpoint or service exists** (`packages/applications/src/services/workflow-registry/`
+  is not present; TASK-715 itself is "Phase A — Database — done; Phases B–F not started"). The
+  one real registry-shaped fact available is `WorkflowNodeClassLookup.classesOf(nodeType):
+  readonly string[]` (`packages/workflow-contract/src/predicates/context.ts:18-19`) — an open
+  class SET, not the plan's assumed three-value `safetyClass` enum. Recorded as a divergence;
+  the canvas composite (Task 5) was built against the set-shaped field (`safetyClasses:
+  readonly string[]`, `'mandatory'` membership) so it composes with a real registry later
+  without a second reconciliation pass.
+- **No definition CRUD API exists** either (no controller, no service, confirmed absent). The
+  path table in `definition-api.contract.md` is a documented ASSUMPTION mirrored from the
+  delivered `consultation-context-schema` controller, not a verified contract.
+- **`WorkflowGraphNode` has no `position` field**
+  (`packages/workflow-contract/src/graph-model.ts:12-16`) though the plan's Task 3 text assumed
+  one. Recorded as an open question (§6) rather than silently inventing a field the delivered
+  type doesn't have; a Studio-reserved `config.__position` nesting is the documented fallback
+  for when Phase D actually needs to serialize a graph.
+- **`WorkflowValidationReport`/`WorkflowFinding` ARE real, delivered, cited types**
+  (`packages/workflow-contract/src/report.ts`) — the one contract of the three with a solid
+  floor. Its rule SET is explicitly DRAFT/not-clinician-reviewed (confirmed in
+  `packages/workflow-contract/src/index.ts:9-13`) and not wired to any application-layer caller
+  in this session — matches the orchestrator's framing for TASK-716 exactly.
+
+### Phase B — WorkflowCanvas composite (Tasks 4–6): DONE
+
+- **Task 4 (RED):** `packages/ui/src/components/workflow-canvas/__tests__/workflow-canvas.vitest.tsx`.
+  **Filename deviation, deliberate:** the ticket's plan named `workflow-canvas.test.tsx`, but the
+  live `packages/ui/vitest.config.ts` only picks up `src/**/*.vitest.{ts,tsx}` — verified by
+  running `pnpm --filter @arcaai/ui test` before and after adding a probe file and counting
+  matched files (242 `.vitest.tsx` files in the repo == 242 test files run; the 83 existing
+  `.test.tsx` files under `src/components/__tests__/` are a SEPARATE convention, Playwright CT,
+  picked up by `playwright-ct.config.ts`'s own `testMatch: '**/*.test.tsx'` under a different,
+  centralized `testDir`). Named the file `.vitest.tsx` so it actually runs under `pnpm ui:test`;
+  the CT interaction tests correctly use `.test.tsx` under the centralized
+  `src/components/__tests__/custom/` directory, per that convention. First run confirmed RED
+  (`Cannot find module '../workflow-canvas'`).
+- **Task 5 (GREEN):** `packages/ui/src/components/workflow-canvas/{types.ts, workflow-node.tsx,
+  workflow-edge.tsx, canvas-controls.tsx, canvas-tokens.css, workflow-canvas.tsx, index.ts}`.
+  Props-in/callbacks-out (owns no graph state); single xyflow-registered node/edge type with
+  registry-driven inner content via `nodeTypes`; `role="application"` + `aria-label` + hidden
+  keyboard hint; every node `ariaLabel`/`focusable`/`aria-describedby` (validation-summary span,
+  built by the composite, never the caller); real `<button>` remove/zoom/fit controls;
+  `onDeleteRequest` never removes a node itself; `prefers-reduced-motion` suppresses fit-view
+  duration; theming bridge in `canvas-tokens.css` maps HOPE's light/dark tokens onto React
+  Flow's own `--xy-*` variables (no `.dark`-scoped duplicate needed — HOPE's tokens already
+  flip). 14/14 tests GREEN. Discovered and fixed along the way: happy-dom needs a ResizeObserver
+  polyfill (React Flow measures node dimensions via `entry.target.offsetWidth/Height`, not
+  `getBoundingClientRect`, and needs the callback deferred via `queueMicrotask` — firing
+  synchronously races ahead of React Flow's own `domNode` ref effect and silently no-ops);
+  React Flow ships no default focus-visible outline for a keyboard-focused node, so
+  `canvas-tokens.css` adds one (`:focus-visible { outline: 2px solid var(--primary) }`) —
+  without it Tab-reachability would be keyboard-operable but not keyboard-**visible**.
+- **Task 6:** Storybook story (`packages/ui/src/components/__stories__/custom/workflow-canvas.stories.tsx`,
+  Default/ReadOnly/Empty) and a real-browser Playwright CT suite
+  (`packages/ui/src/components/__tests__/custom/workflow-canvas.test.tsx`, chromium downloaded
+  this session via `npx playwright install chromium` — v1234 was missing). **3 of 4 CT tests
+  pass**: keyboard Tab reaches a node with a visible focus outline; no horizontal page scroll at
+  320px width; no horizontal page scroll at an emulated 200% zoom (halved viewport — Playwright
+  has no native browser-zoom control). **1 left `test.fixme`** (pointer drag-to-connect): a
+  synthesized `page.mouse` drag into the CT iframe never lands on React Flow's 6×6px handle hit
+  target in this session — verified the connection line never starts even immediately after
+  `mouse.down`, across several coordinate/settle-timing strategies (including waiting for the
+  `fitView` transform to stabilize before measuring). This is a harness limitation, not a
+  product gap: pointer-drag-connect is an enhancement over the mandatory keyboard/single-pointer
+  path (Task 13's list-editor "Connect to…" picker), and no acceptance criterion depends on this
+  specific interaction being provable here. `pnpm --filter @arcaai/ui test:ct` overall: 1712
+  passed, 1 skipped (the fixme), **5 pre-existing failures in `master-detail-layout.test.tsx`**
+  — confirmed via `git status` that this file and its component were untouched by this session;
+  not investigated further (out of ticket scope, another surface).
+
+### Phase C — schema→form compiler (Tasks 7–8): DONE (Task 9 inspector rendering NOT started)
+
+- **Task 7 (RED):** `apps/admin-console/src/features/workflow-studio/lib/__tests__/schema-form.test.ts`
+  + 3 fixture schemas (`summarize`, `discriminated` oneOf, `unsupported` if/then/else). Confirmed
+  RED (`Cannot find module '../schema-form'`).
+  Same "one schema, three consumers" round-trip discipline design.md names: every compiled
+  descriptor is checked for agreement with `jsonSchemaValueProblems` from
+  `@arcaai/json-schema-subset`, never a second, re-derived validator.
+- **Task 8 (GREEN):** `apps/admin-console/src/features/workflow-studio/lib/schema-form.ts` — pure,
+  framework-free `toFieldDescriptors(schema): FieldDescriptor[]` covering
+  string/number/integer/boolean/array-of-string/enum/nested-object/discriminated-oneOf, with a
+  `raw-json` degradation both for the two authoring bounds (`MAX_SCHEMA_DEPTH`/`MAX_SCHEMA_NODES`
+  — whole-schema fallback) and for any per-property unsupported construct (per-field fallback,
+  siblings still compile — verified by a dedicated test). **Deliberate refinement vs. design.md's
+  "zod + Field family" shorthand** (recorded per R5): zod is not used at all here — the compiler
+  and the value-validity check both go through `@arcaai/json-schema-subset` exclusively, so the
+  generated part of the form has exactly one validator, matching that package's own reason for
+  existing. 12/12 tests GREEN.
+- **Task 9 (inspector form rendering) was NOT started** — the descriptors exist and are tested
+  in isolation, but no React component renders them yet.
+
+### Phases D, E, F — NOT STARTED
+
+Tasks 10–21 (feature-module scaffold, Zustand graph store, palette rail, list/tree editor,
+validation rail, autosave/publish, routes/nav, consolidation, unit+a11y+e2e verification) were
+not attempted this session. Phase D is explicitly gated on real substance from TASK-715/716
+Phases B–D that does not exist yet (§Task 3 above) — building Task 10's API client beyond the
+documented, clearly-labeled assumption in `definition-api.contract.md` would mean inventing a
+contract, which R3/§3.1 forbid. Phase D's UI-only pieces (Task 11 store, Task 12 palette rail,
+Task 13 list editor, Task 14 validation rail, Task 16 routes/nav/skeletons) do NOT strictly
+require a live API and are legitimate next-session work; they were simply not reached in this
+session's time budget.
+
+### Commands run, verbatim results
+
+```
+pnpm --filter @arcaai/ui test        → Test Files  243 passed (243) · Tests  673 passed (673)
+pnpm --filter @arcaai/ui lint        → clean (0 errors, 0 warnings)
+pnpm --filter @arcaai/ui typecheck   → clean
+pnpm --filter @arcaai/ui build       → succeeded; dist/components/workflow-canvas/{index.js,index.mjs,index.d.ts,index.css} emitted as a separate chunk
+grep -n "workflow-canvas" packages/ui/src/index.ts → no output (root barrel does not export it)
+pnpm --filter @arcaai/ui test:ct     → 1712 passed, 1 skipped (fixme), 5 failed (pre-existing, unrelated file — see above)
+
+pnpm --filter @arcaai/admin-console test        → Test Files  179 passed (179) · Tests  1431 passed (1431)
+pnpm --filter @arcaai/admin-console lint        → clean (0 errors, 0 warnings)
+pnpm --filter @arcaai/admin-console typecheck   → clean
+pnpm --filter @arcaai/admin-console build       → exit 0 (full route manifest emitted)
+```
+
+### Gated / not run
+
+- `pnpm --filter @arcaai/admin-console test:e2e` — not run. Requires the app on :5176 and the
+  gateway on :8868; local infra is down this session, and no Studio route exists yet to test.
+- Any live round-trip against `admin/workflow-definitions` or `admin/workflow-nodes` — gated,
+  those endpoints do not exist (§Task 3).
+- The rule 02 shadow-DB migration proof — **not applicable this session**: no Prisma model was
+  touched (Studio v1 is UI-only against TASK-715's already-delivered schema).
+- Manual a11y pass (rule 11 §11 — keyboard-only two-node graph build, 200% zoom, reduced-motion)
+  — partially covered by the automated Playwright CT suite above (Tab-focus visibility, 320px
+  and 200%-zoom-equivalent no-horizontal-scroll); a real manual pass with a screen reader was
+  not performed.
 
 ## 8. Change History
 
 | Date | Change | By |
 |---|---|---|
 | 2026-08-16 | Ticket authored | ticket-writer agent (Wave 2 Studio batch) |
+| 2026-08-16 | Phases A–C executed (Tasks 1–8): design gate waived per orchestrator instruction; React Flow pinned + `DEPENDENCY.md`; three cross-ticket contracts written against delivered TASK-715/716/717 code with real gaps recorded; `WorkflowCanvas` composite built TDD (RED→GREEN, 14/14 unit + 3/4 CT, 1 CT `fixme`) in `packages/ui`; `toFieldDescriptors` schema→form compiler built TDD (RED→GREEN, 12/12) in `apps/admin-console`. Phases D–F (Tasks 9–21) not started — see §7 for the exact boundary. `pnpm --filter @arcaai/ui {test,lint,typecheck,build}` and `pnpm --filter @arcaai/admin-console {test,lint,typecheck,build}` all green. | execution agent |

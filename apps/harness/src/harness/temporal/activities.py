@@ -156,6 +156,10 @@ STEP_SENSOR = "SENSOR"
 STEP_GUARDRAIL = "GUARDRAIL"
 STEP_THINKING = "THINKING"
 STEP_GATE = "GATE"
+# One interpreter (TASK-718) node dispatch — describes a WorkflowInterpreter node, not a
+# HarnessDocWorkflow phase; kept in this shared vocabulary (rather than a second enum) so both
+# workflow types feed the same trajectory read model.
+STEP_NODE = "NODE"
 # Terminal step statuses (STARTED is reserved for a future streaming variant; the
 # harness emits terminal spans carrying startedAt+endedAt to bound the call count).
 STATUS_OK = "OK"

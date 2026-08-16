@@ -221,6 +221,77 @@ export const DRAFT_SUMMARIZATION_RULE_SET: readonly DraftWorkflowRule[] = [
     registerRefs: ['INV-067'],
     title: 'A node routing to a cloud provider resolves provider selection fail-closed; no env fallback is expressible.',
   }),
+  // ---- structural (Summarization palette's OWN mandatory subgraph — TASK-720 Task 3) --------
+  //
+  // These express the palette-specific rule design.md D5 requires: exactly one input, exactly
+  // one output, generation and the guardrail gate both present, generation ordered before the
+  // gate, and nothing routing generated text to the output around the gate. They are `structural`
+  // (graph shape, not the register's clinical invariants) and palette-scoped (`summarization`),
+  // so they sit alongside the generic WF-S-* rules above without touching them. See
+  // `docs/implementation/TASK-720-Palette-Summarization/contracts/palette.md` for the full
+  // rationale, including why the generic WF-S-002/003/004/007 (which assume literal
+  // `core.start`/`core.end` node types) do not apply to this palette's own node set today.
+  rule({
+    ruleId: 'WF-SUMM-001',
+    ruleClass: 'structural',
+    predicateType: 'SINGLE_ENTRY',
+    predicateConfig: { entryType: 'input.context_binding' },
+    severity: 'ERROR',
+    paletteKey: 'summarization',
+    registerRefs: [],
+    title: 'Exactly one input.context_binding node (N-1).',
+  }),
+  rule({
+    ruleId: 'WF-SUMM-002',
+    ruleClass: 'structural',
+    predicateType: 'SINGLE_ENTRY',
+    predicateConfig: { entryType: 'output.deliver' },
+    severity: 'ERROR',
+    paletteKey: 'summarization',
+    registerRefs: [],
+    title: 'Exactly one output.deliver node (N-5).',
+  }),
+  rule({
+    ruleId: 'WF-SUMM-003',
+    ruleClass: 'structural',
+    predicateType: 'REQUIRED_NODE_TYPE',
+    predicateConfig: { nodeType: 'generate.text', minCount: 1 },
+    severity: 'ERROR',
+    paletteKey: 'summarization',
+    registerRefs: [],
+    title: 'A generate.text node is present (N-3, mandatory).',
+  }),
+  rule({
+    ruleId: 'WF-SUMM-004',
+    ruleClass: 'structural',
+    predicateType: 'REQUIRED_NODE_TYPE',
+    predicateConfig: { nodeType: 'guardrail.check', minCount: 1 },
+    severity: 'ERROR',
+    paletteKey: 'summarization',
+    registerRefs: [],
+    title: 'A guardrail.check node is present (N-4, mandatory and non-removable — absence is structurally identical to "removed").',
+  }),
+  rule({
+    ruleId: 'WF-SUMM-005',
+    ruleClass: 'structural',
+    predicateType: 'ORDERED_BEFORE',
+    predicateConfig: { beforeType: 'generate.text', afterType: 'guardrail.check' },
+    severity: 'ERROR',
+    paletteKey: 'summarization',
+    registerRefs: [],
+    title: 'generate.text is never downstream of guardrail.check — order input -> generation -> guardrail -> output is not inverted.',
+  }),
+  rule({
+    ruleId: 'WF-SUMM-006',
+    ruleClass: 'structural',
+    predicateType: 'REQUIRED_PATH_THROUGH',
+    predicateConfig: { fromType: 'generate.text', toType: 'output.deliver', throughType: 'guardrail.check' },
+    severity: 'ERROR',
+    paletteKey: 'summarization',
+    registerRefs: [],
+    title: 'Nothing routes generated text to output.deliver without passing through guardrail.check.',
+  }),
+
   rule({
     ruleId: 'WF-I-010',
     ruleClass: 'invariant',

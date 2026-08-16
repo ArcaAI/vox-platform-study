@@ -88,3 +88,5 @@ export * from './ServiceInstanceFactory';
 export * from './ServiceReleaseFactory';
 export * from './UserChangelogAcknowledgementFactory';
 export * from './ConsentGrantFactory';
+export * from './WorkflowTestFixtureFactory';
+export * from './WorkflowRunFactory';

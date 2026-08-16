@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://arcaai.dev/hope/workflow-nodes/prompt.template_ref.schema.json",
+  "title": "prompt.template_ref node config (N-2, safety class: optional)",
+  "description": "Picker semantics only — no inline editing. Deliberately carries NO `content` field: `additionalProperties: false` rejects one. The interpreter resolves `promptTemplateId` through PromptResolutionService at run time and serves the pinned APPROVED version, never the mutable `content` column — snapshotting content here would freeze an unapproved body into every future run.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["promptTemplateId"],
+  "properties": {
+    "promptTemplateId": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+    },
+    "variableBindings": {
+      "type": "object",
+      "additionalProperties": { "type": "string", "maxLength": 4000 }
+    }
+  }
+}

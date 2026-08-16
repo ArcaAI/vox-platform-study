@@ -1,0 +1,122 @@
+// ============================================================================
+// Workflow Run — the read model for runs/observability (TASK-723), scoped per
+// D6's "CQRS-lite: commands+events on definition mutations, read models for
+// runs/observability" (design.md). One row per workflow-substrate run.
+//
+// Why a new table rather than widening AgentTrajectoryStep (agent-trajectory.prisma):
+// that table is high-volume, hard-retention, per-STEP operational telemetry
+// (design.md, TASK-510) with no definition/version column at all — see
+// docs/implementation/TASK-723-Runs-Observability/README.md §2.1/§3.2. Adding
+// per-run columns to a per-step table is the wrong grain, forces a migration on
+// the hot telemetry table, and still leaves the runs list doing a DISTINCT ON
+// over steps. This table is the run-grain identity: one row per run, joined to
+// its trajectory steps by `sessionId` (see Task 1's contract,
+// docs/implementation/TASK-723-Runs-Observability/contracts/run-read-model.contract.md
+// §2, for exactly how `sessionId = "workflow-interpreter-" + runId` correlates
+// to AgentTrajectoryStep rows — NOT AgentTrajectoryStep.runId, which is
+// Temporal's execution-attempt id, a different value).
+//
+// `workflowVersionId` pins the EXACT immutable WorkflowDefinition row (rows ARE
+// versions there, see workflow-definition.prisma's header) that produced the
+// run — design.md: "In-flight runs pin their version; publishes affect new
+// runs only". `workflowSlug` / `workflowVersionNumber` / `definitionName` are
+// denormalized so the runs list and trace header render without a join even
+// after the definition is renamed or superseded by a later version (a renamed
+// definition shows its old name on historical runs — deliberate, see README R7).
+//
+// Posture, mirroring AgentTrajectoryStep (the sibling telemetry table):
+//   - TENANT-SCOPED (added to TENANT_SCOPED_MODELS in
+//     packages/database/src/extensions/tenant-scope.ts).
+//   - NO soft-delete lifecycle: a run row is an operational-history fact, not
+//     a manageable resource. No `resourceStatus` column; listed in
+//     MODELS_WITHOUT_SOFT_DELETE (packages/database/src/client.ts).
+//   - NO sys-events on write: same telemetry exemption as AgentTrajectoryStep
+//     (recordRunStarted/recordRunFinished are the write contract TASK-718's
+//     dispatcher — or a future gateway controller — calls; see the ticket's
+//     R2 and the Task 1 contract §7 for the current wiring gap). Because it
+//     emits no sys-events, it deliberately carries NO `ResourceType` entry —
+//     rule 03 step 4 conditions that entry on sys-event emission. Do not "fix"
+//     this by adding one.
+//   - `_version` (OCC) + `_metadata` + standard audit fields kept per the house
+//     convention so the row round-trips through the shared
+//     BaseTenantEntity / Repository machinery, exactly like AgentTrajectoryStep.
+//
+// `status` deliberately has NO `DEGRADED` member (README pitfall 6 /
+// design.md §Error handling / the session-state-machine epic's decision):
+// "degraded" is a per-run FLAG (`degradedNodeCount`), never a run STATE. The
+// interpreter's own ephemeral `RunStatus` Python literal DOES include
+// "DEGRADED" (interpreter/models.py:26) — that is TASK-718's in-Temporal-only
+// value; a run finishing DEGRADED there is recorded here as COMPLETED with
+// degradedNodeCount > 0, never as a distinct persisted status.
+// ============================================================================
+
+enum WorkflowRunStatus {
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELED
+  TIMED_OUT
+
+  @@schema("core")
+}
+
+model WorkflowRun {
+  // meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
+
+  // multi tenant fields
+  tenantId String
+
+  // core (business) fields — denormalized read model; see file header
+  workflowVersionId     String // WorkflowDefinition.id of the exact PUBLISHED, immutable row pinned for this run
+  workflowSlug          String // WorkflowDefinition.slug — the stable lineage key; groups runs across every version of "the same" definition
+  workflowVersionNumber Int // WorkflowDefinition.versionNumber, denormalized for list-column display without a join
+  definitionName        String // WorkflowDefinition.name, denormalized — renders even after a later rename (R7)
+
+  // The AgentTrajectoryStep join key for this run's trace — the DERIVED
+  // "workflow-interpreter-{runId}" string (Task 1 contract §2), NOT the raw
+  // request-body sessionId the dispatcher's caller happened to pass.
+  sessionId String
+  // The domain run id (== the interpreter's InterpreterInput.run_id). Mirrors
+  // AgentTrajectoryStep's non-null "" sentinel convention for the same
+  // idempotent-unique reason (see agent-trajectory.prisma).
+  runId String @default("")
+
+  // consultation open | api invoke | webhook | schedule — code-owned
+  // vocabulary (the `paletteKey` convention, workflow-definition.prisma:59-63):
+  // a String, not an enum, so a new trigger kind never needs an ALTER TYPE.
+  trigger String
+
+  status WorkflowRunStatus @default(RUNNING)
+
+  // TASK-721's single filter point for excluding sandbox runs from tenant-
+  // facing reads (Task 1 contract §4) — never persisted anywhere else.
+  isSandbox Boolean @default(false)
+
+  startedAt  DateTime
+  endedAt    DateTime?
+  durationMs Int?
+
+  nodeCount         Int?
+  failedNodeCount   Int    @default(0)
+  degradedNodeCount Int    @default(0)
+  firstErrorCode    String?
+
+  // audit fields
+  createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+  updatedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // One row per (tenant, session, run) — idempotent on recordRunStarted retry.
+  // Per rule 02's trap: the DB index name comes from `map:`, not `name:`.
+  @@unique([tenantId, sessionId, runId], map: "WorkflowRun_session_run_key")
+  // Keyset sort key for the runs list (rule 04 keyset pagination).
+  @@index([tenantId, startedAt], name: "WorkflowRun_tenant_startedAt_idx")
+  @@index([tenantId, workflowVersionId], name: "WorkflowRun_tenant_version_idx")
+  @@index([tenantId, workflowSlug], name: "WorkflowRun_tenant_slug_idx")
+  @@index([tenantId, status], name: "WorkflowRun_tenant_status_idx")
+  @@schema("core")
+}

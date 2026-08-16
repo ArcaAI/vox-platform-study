@@ -40,6 +40,17 @@ describe('API Key Scope Registry', () => {
       expect(API_KEY_SCOPE_REGISTRY['*']).toBeDefined();
     });
 
+    // TASK-722 Task 1 — the exposure plane's own scope family. Registered
+    // here so `@RequiredScopes(...)` (which validates at decoration time
+    // against this registry) can reference them once the gateway controller
+    // lands. See docs/implementation/TASK-722-Exposure-V1/README.md §4 Task 1.
+    it('should contain workflow exposure scopes', () => {
+      expect(API_KEY_SCOPE_REGISTRY['workflow:definition:read']).toBeDefined();
+      expect(API_KEY_SCOPE_REGISTRY['workflow:run:write']).toBeDefined();
+      expect(API_KEY_SCOPE_REGISTRY['workflow:run:read']).toBeDefined();
+      expect(API_KEY_SCOPE_REGISTRY['workflow:*']).toBeDefined();
+    });
+
     it('should have description and category for every scope', () => {
       for (const [scope, def] of Object.entries(API_KEY_SCOPE_REGISTRY)) {
         expect(def.description, `${scope} missing description`).toBeTruthy();
@@ -101,6 +112,7 @@ describe('API Key Scope Registry', () => {
       expect(grouped).toHaveProperty('Consultation');
       expect(grouped).toHaveProperty('Admin');
       expect(grouped).toHaveProperty('Wildcard');
+      expect(grouped).toHaveProperty('Workflow');
     });
 
     it('should have scope and description in each group entry', () => {

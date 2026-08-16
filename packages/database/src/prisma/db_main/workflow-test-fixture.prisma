@@ -1,0 +1,65 @@
+// ============================================================================
+// Workflow Test Fixture — per-tenant saved SYNTHETIC test inputs for the
+// Workbench (TASK-721 §1 item 5).
+//
+// Not reused from the harness eval golden-set family (GoldenSet/GoldenCase,
+// harness.prisma): those model a consultation transcript + reference note
+// under the PHI Vault-Transit encryption regime (`GoldenCase.encryptedTranscript`
+// / `encryptedReferenceNote`). A generic synthetic workflow input is neither a
+// consultation transcript nor a reference note, and pushing one into that
+// table would put non-clinical test data into a PHI-encrypted clinical
+// structure and misuse its EvalRun relations (TASK-721 README §2.7). A small
+// dedicated model is the correct call.
+//
+// PHI POSTURE (README §6/R4 — HUMAN-GATED, not resolved here): `input` below
+// is a PLAIN, UNENCRYPTED JsonB column. "Synthetic" is a CONTRACT enforced by
+// UI copy and this comment, NOT by server-side redaction or encryption at
+// write time. An admin can still paste a real transcript into it. Whether
+// this needs the Vault-Transit treatment GoldenCase uses, or a phi-redactor
+// (TASK-710) pass on write, is an explicit open security decision — see the
+// ticket README §6/R4. DO NOT put real or realistic patient data in any
+// fixture, including seed/test fixtures for this model itself.
+//
+// `workflowDefinitionId` is a loose reference (no FK), mirroring the
+// `tenantId`-only posture GoldenSet.departmentId already uses in this repo
+// (harness.prisma) — NULL means the fixture is tenant-wide (usable to test
+// any definition), non-NULL scopes it to one definition's shape.
+// ============================================================================
+
+model WorkflowTestFixture {
+  // meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
+
+  // multi tenant fields
+  tenantId String
+
+  // core (business) fields
+  name        String
+  description String? @db.Text
+  // Optional palette scoping — mirrors WorkflowDefinition.paletteKey's loose,
+  // code-owned vocabulary (workflow-definition.prisma); no FK, no enum.
+  paletteId String?
+  // Optional single-definition scoping. NULL ⇒ tenant-wide fixture, usable
+  // against any WorkflowDefinition of the tenant. No FK — see file header.
+  workflowDefinitionId String?
+  // The synthetic input payload. See the PHI posture note in the file
+  // header — plain JsonB, not encrypted, "synthetic" is a contract only.
+  input Json @db.JsonB
+
+  // resource status fields
+  resourceStatus          ResourceStatusType @default(ENABLED)
+  resourceStatusUpdatedAt DateTime?
+  resourceStatusUpdatedBy String?
+
+  // audit fields
+  createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+  updatedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId], name: "WorkflowTestFixture_tenantId_idx")
+  @@index([tenantId, workflowDefinitionId], name: "WorkflowTestFixture_tenant_definition_idx")
+  @@schema("core")
+}

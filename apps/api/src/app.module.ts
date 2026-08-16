@@ -111,6 +111,8 @@ import { UserModule } from './modules/user/user.module';
 import { VoiceProfileModule } from './modules/voice-profile/voice-profile.module';
 // /admin/webhooks (CRUD + delivery-log reads).
 import { WebhookModule } from './modules/webhook/webhook.module';
+import { WorkflowRunModule } from './modules/workflow-run/workflow-run.module';
+import { WorkflowTestFixtureModule } from './modules/workflow-test-fixture/workflow-test-fixture.module';
 
 const interceptors = [
   {
@@ -406,6 +408,11 @@ const featureModules: any[] = [
   VoiceProfileModule,
   // /admin/webhooks (CRUD + delivery-log reads).
   WebhookModule,
+  // /admin/workflow-runs (TASK-723) — tenant-scoped runs/observability read plane.
+  WorkflowRunModule,
+  // /admin/workflow-test-fixtures (TASK-721) — per-tenant saved synthetic
+  // Workbench test inputs.
+  WorkflowTestFixtureModule,
 ];
 
 // Embedded Prisma Studio is

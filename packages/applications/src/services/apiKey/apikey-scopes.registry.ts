@@ -40,6 +40,16 @@ export const API_KEY_SCOPE_REGISTRY: Record<string, ScopeDefinition> = {
   'webhook:event:read': { description: 'Read webhook events', category: 'Webhook' },
   'webhook:event:write': { description: 'Manage webhook subscriptions', category: 'Webhook' },
 
+  // Workflow exposure plane (TASK-722). Prefix-matching (apikey.service.ts's
+  // hasScope) means a key holding the bare `"workflow"` scope would grant all
+  // three below — that is the existing prefix semantics, not new behavior.
+  // NOTE: these scopes exist so `@RequiredScopes(...)` can be declared once
+  // the gateway controller lands; the surface itself ships OFF (kill-switch)
+  // per TASK-722 R-1 until TASK-708's scope-narrowing exit criterion is met.
+  'workflow:definition:read': { description: 'List published workflows and their input schemas', category: 'Workflow' },
+  'workflow:run:write': { description: 'Invoke and cancel workflow runs', category: 'Workflow' },
+  'workflow:run:read': { description: 'Read workflow run status and stream progress', category: 'Workflow' },
+
   // Wildcards
   'stt:*': { description: 'Full STT service access', category: 'Wildcard' },
   'consultation:*': { description: 'Full consultation access', category: 'Wildcard' },
@@ -47,6 +57,7 @@ export const API_KEY_SCOPE_REGISTRY: Record<string, ScopeDefinition> = {
   'media:*': { description: 'Full media access', category: 'Wildcard' },
   'admin:*': { description: 'Full admin access', category: 'Wildcard' },
   'webhook:*': { description: 'Full webhook access', category: 'Wildcard' },
+  'workflow:*': { description: 'Full workflow exposure access', category: 'Wildcard' },
   '*': { description: 'Unrestricted access (superadmin only)', category: 'Wildcard' },
 };
 

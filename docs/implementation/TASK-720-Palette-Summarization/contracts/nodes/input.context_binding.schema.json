@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://arcaai.dev/hope/workflow-nodes/input.context_binding.schema.json",
+  "title": "input.context_binding node config (N-1, safety class: mandatory)",
+  "description": "Declares the run's input shape and binds the invocation payload to it. `contextSchema` is shape-checked here and semantically re-validated at write time by the shared `ContextSchemaDefinition` validator (packages/applications/src/services/consultation-context-schema/context-schema-definition.ts) — this JSON Schema is the authorable-subset gate (TASK-716's schema-class rule), not a re-implementation of that validator. Restricted to the TEXT and STRUCTURED primitives: the Summarization palette does not reach STREAM_AUDIO/DOCUMENT/IMAGE substrates.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contextSchema", "bindings"],
+  "properties": {
+    "contextSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "kinds"],
+      "properties": {
+        "schemaVersion": {
+          "type": "string",
+          "const": "1.0"
+        },
+        "kinds": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["key", "label", "primitive", "phiClass", "cardinality", "lifecycle", "producedBy"],
+            "properties": {
+              "key": { "type": "string", "pattern": "^[a-z0-9_]{2,48}$" },
+              "label": { "type": "string", "minLength": 1, "maxLength": 200 },
+              "primitive": { "type": "string", "enum": ["TEXT", "STRUCTURED"] },
+              "phiClass": { "type": "string", "enum": ["PHI", "NON_PHI"] },
+              "cardinality": { "type": "string", "enum": ["ONE", "MANY"] },
+              "lifecycle": { "type": "string", "enum": ["PRE", "DURING", "POST", "ANY"] },
+              "producedBy": {
+                "type": "array",
+                "minItems": 1,
+                "items": { "type": "string", "enum": ["CLIENT", "AGENT", "SYSTEM"] }
+              },
+              "required": { "type": "boolean" },
+              "description": { "type": "string", "maxLength": 2000 }
+            }
+          }
+        },
+        "outputs": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["key", "primitive"],
+            "properties": {
+              "key": { "type": "string", "pattern": "^[a-z0-9_]{2,48}$" },
+              "label": { "type": "string", "maxLength": 200 },
+              "description": { "type": "string", "maxLength": 2000 },
+              "primitive": { "type": "string", "enum": ["TEXT", "STRUCTURED"] }
+            }
+          }
+        }
+      }
+    },
+    "bindings": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 64,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kindKey", "from"],
+        "properties": {
+          "kindKey": { "type": "string", "pattern": "^[a-z0-9_]{2,48}$" },
+          "from": { "type": "string", "minLength": 1, "maxLength": 128 }
+        }
+      }
+    }
+  }
+}

@@ -88,3 +88,5 @@ export * from './ServiceInstanceEntity';
 export * from './ServiceReleaseEntity';
 export * from './UserChangelogAcknowledgementEntity';
 export * from './ConsentGrantEntity';
+export * from './WorkflowTestFixtureEntity';
+export * from './WorkflowRunEntity';

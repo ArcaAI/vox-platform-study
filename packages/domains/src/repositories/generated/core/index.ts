@@ -136,3 +136,5 @@ export * from './ServiceInstanceRepository';
 export * from './ChangelogEntryRepository';
 export * from './UserChangelogAcknowledgementRepository';
 export * from './ConsentGrantRepository';
+export * from './WorkflowTestFixtureRepository';
+export * from './WorkflowRunRepository';

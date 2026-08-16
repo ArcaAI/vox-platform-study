@@ -212,6 +212,10 @@ describe('modelHasSoftDelete', () => {
       // table is an audit history whose whole value is that entries cannot be
       // retracted. No `resourceStatus` column.
       'AgentPromotion',
+      // WorkflowRun (TASK-723) — the runs/observability read model. Same
+      // operational-telemetry posture as AgentTrajectoryStep: hard-retention
+      // history, no `resourceStatus` column.
+      'WorkflowRun',
     ];
 
     expected.forEach((model) => {

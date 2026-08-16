@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://arcaai.dev/hope/workflow-nodes/guardrail.check.schema.json",
+  "title": "guardrail.check node config (N-4, safety class: mandatory, non-removable)",
+  "description": "Fail-CLOSED safety check on the generated text. Calls POST /guardrail/analyze. `failOn` is restricted to `unsafe_or_unknown` in v1 — a `GuardrailResponse` carrying a non-null `error`, a transport failure, or a timeout is treated as NO VERDICT (never as `safe=true`), so the node's own gate must not tolerate 'unsafe' alone (which would silently treat an error/unknown outcome as a pass). This node's presence and the graph's inability to route around it are enforced structurally by the validator (WF-SUMM-* rules), not by the Studio canvas.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["guardrailType", "failOn", "onFail"],
+  "properties": {
+    "guardrailType": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "failOn": {
+      "type": "string",
+      "enum": ["unsafe_or_unknown"],
+      "default": "unsafe_or_unknown"
+    },
+    "onFail": {
+      "type": "string",
+      "enum": ["mark", "abort"]
+    }
+  }
+}

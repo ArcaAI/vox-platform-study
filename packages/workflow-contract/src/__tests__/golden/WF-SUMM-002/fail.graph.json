@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "nodes": [
+    { "id": "n_input", "type": "input.context_binding", "config": {} },
+    { "id": "n_gen", "type": "generate.text", "config": {} },
+    { "id": "n_guard", "type": "guardrail.check", "config": {} },
+    { "id": "n_out", "type": "output.deliver", "config": {} },
+    { "id": "n_out2", "type": "output.deliver", "config": {} }
+  ],
+  "edges": [
+    { "id": "e1", "from": "n_input", "fromPort": "out", "to": "n_gen", "toPort": "in" },
+    { "id": "e2", "from": "n_gen", "fromPort": "out", "to": "n_guard", "toPort": "in" },
+    { "id": "e3", "from": "n_guard", "fromPort": "out", "to": "n_out", "toPort": "in" },
+    { "id": "e3b", "from": "n_guard", "fromPort": "out", "to": "n_out2", "toPort": "in" }
+  ]
+}

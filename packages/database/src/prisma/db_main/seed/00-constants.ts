@@ -74,6 +74,8 @@
  *   96000000-xxxx  →  Media (dual-capture demo blobs; defined in 09-consultation)
  *   97000000-xxxx  →  User Voice Profiles (diarization enrollment)
  *   98000000-xxxx  →  Transcription Jobs (ASR job queue rows)
+ *   99000000-xxxx  →  Workflow Definitions (TASK-715 model; TASK-720 seeds the
+ *                     SYSTEM-tenant platform-default Summarization row)
  *   A0000000-xxxx  →  Audit Log Entries
  *   B0000000-xxxx  →  Plan Entitlements
  *   C0000000-xxxx  →  Tenant Allowed Origins — bootstrap loopback rows ONLY.
@@ -769,4 +771,12 @@ export const SEED_AUDIT_LOG_IDS = {
   ARCAAI_CREATE_CONSULTATION: 'A0000000-0000-0000-0001-000000000003',
   ARCAAI_UPDATE_SETTINGS: 'A0000000-0000-0000-0001-000000000004',
   ARCAAI_ASSIGN_ROLE: 'A0000000-0000-0000-0001-000000000005',
+} as const;
+
+// =============================================================================
+// WORKFLOW DEFINITIONS (TASK-715 model; TASK-720 seeds the platform default)
+// =============================================================================
+
+export const SEED_WORKFLOW_DEFINITION_IDS = {
+  PLATFORM_DEFAULT_SUMMARIZATION: '99000000-0000-0000-0000-000000000001',
 } as const;
