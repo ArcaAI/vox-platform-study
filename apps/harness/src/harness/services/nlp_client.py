@@ -26,10 +26,12 @@ class NlpClient:
         base_url: str,
         *,
         timeout: float = 30.0,
+        service_token: str = "",
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         self._base_url = base_url.rstrip("/")
         self._timeout = timeout
+        self._service_token = service_token
         self._transport = transport
 
     async def classify_tokens(
@@ -46,9 +48,12 @@ class NlpClient:
             "aggregation_strategy": aggregation_strategy,
             "language": language,
         }
+        # NLP's ServiceAuthMiddleware requires X-Service-Token whenever NLP_SERVICE_TOKEN
+        # is configured — omitted when unset so local dev-bypass keeps working.
+        headers = {"X-Service-Token": self._service_token} if self._service_token else None
         async with httpx.AsyncClient(transport=self._transport, timeout=self._timeout) as client:
             try:
-                resp = await client.post(url, json=body)
+                resp = await client.post(url, json=body, headers=headers)
                 resp.raise_for_status()
             except httpx.HTTPError as exc:
                 raise NlpServiceError(f"nlp classify/tokens failed: {exc}") from exc

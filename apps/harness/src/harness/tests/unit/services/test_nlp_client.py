@@ -82,6 +82,29 @@ class TestNlpClient:
         assert entities[1] == NEREntity(text="chest pain", type="SYMPTOM", start=43, end=53)
 
     @pytest.mark.asyncio
+    async def test_classify_tokens_attaches_service_token_header(self):
+        # NLP's ServiceAuthMiddleware requires X-Service-Token whenever
+        # NLP_SERVICE_TOKEN is configured — the client must present it.
+        seen, handler = _capture()
+        client = NlpClient(
+            "http://nlp:8864", service_token="tok-1", transport=httpx.MockTransport(handler)
+        )
+
+        await client.classify_tokens("Patient has diabetes")
+
+        assert seen["request"].headers["X-Service-Token"] == "tok-1"
+
+    @pytest.mark.asyncio
+    async def test_classify_tokens_omits_service_token_header_when_unset(self):
+        # No token configured (local dev-bypass case) → no header sent.
+        seen, handler = _capture()
+        client = NlpClient("http://nlp:8864", transport=httpx.MockTransport(handler))
+
+        await client.classify_tokens("Patient has diabetes")
+
+        assert "x-service-token" not in seen["request"].headers
+
+    @pytest.mark.asyncio
     async def test_classify_tokens_maps_ontology_codes(self):
         """The NLP entity carries ontology codes; the client
         maps them onto ``NEREntity`` so harness NER round-trips coded entities."""

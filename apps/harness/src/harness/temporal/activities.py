@@ -201,11 +201,19 @@ async def ping_activity(payload: PingInput) -> PingResult:
 
 
 def _nlp_client(settings: Settings) -> NlpClient:
-    return NlpClient(settings.nlp_base_url, timeout=settings.nlp_timeout_s)
+    return NlpClient(
+        settings.nlp_base_url,
+        timeout=settings.nlp_timeout_s,
+        service_token=settings.nlp_service_token.get_secret_value(),
+    )
 
 
 def _smr_client(settings: Settings) -> SmrClient:
-    return SmrClient(settings.smr_base_url, timeout=settings.smr_timeout_s)
+    return SmrClient(
+        settings.smr_base_url,
+        timeout=settings.smr_timeout_s,
+        service_token=settings.smr_service_token.get_secret_value(),
+    )
 
 
 def _api_client(settings: Settings) -> ApiClient:

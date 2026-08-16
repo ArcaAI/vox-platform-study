@@ -123,6 +123,29 @@ class TestSmrClient:
 
         assert "idempotency-key" not in seen["request"].headers
 
+    @pytest.mark.asyncio
+    async def test_generate_attaches_service_token_header(self):
+        # SMR's ServiceAuthMiddleware requires X-Service-Token whenever
+        # TEXT_SERVICE_TOKEN is configured — the client must present it.
+        seen, handler = _capture()
+        client = SmrClient(
+            "http://smr:8862", service_token="tok-1", transport=httpx.MockTransport(handler)
+        )
+
+        await client.generate(prompt="hi")
+
+        assert seen["request"].headers["X-Service-Token"] == "tok-1"
+
+    @pytest.mark.asyncio
+    async def test_generate_omits_service_token_header_when_unset(self):
+        # No token configured (local dev-bypass case) → no header sent.
+        seen, handler = _capture()
+        client = SmrClient("http://smr:8862", transport=httpx.MockTransport(handler))
+
+        await client.generate(prompt="hi")
+
+        assert "x-service-token" not in seen["request"].headers
+
 
 class TestSmrClientStats:
     """the client captures the SMR ``stats`` block onto the

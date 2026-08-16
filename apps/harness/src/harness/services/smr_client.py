@@ -95,10 +95,12 @@ class SmrClient:
         base_url: str,
         *,
         timeout: float = 120.0,
+        service_token: str = "",
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         self._base_url = base_url.rstrip("/")
         self._timeout = timeout
+        self._service_token = service_token
         self._transport = transport
 
     async def generate(
@@ -138,7 +140,13 @@ class SmrClient:
         # A deterministic key lets SMR dedup a replayed generate (a
         # worker-crash re-delivery) without re-invoking — and re-billing — the model. Sent
         # as a header (the api_client Idempotency-Key contract), never in the LLM body.
-        headers = {"Idempotency-Key": idempotency_key} if idempotency_key else None
+        headers: dict[str, str] = {}
+        if idempotency_key:
+            headers["Idempotency-Key"] = idempotency_key
+        # SMR's ServiceAuthMiddleware requires X-Service-Token whenever TEXT_SERVICE_TOKEN
+        # is configured — omitted when unset so local dev-bypass keeps working.
+        if self._service_token:
+            headers["X-Service-Token"] = self._service_token
 
         async with httpx.AsyncClient(transport=self._transport, timeout=self._timeout) as client:
 
