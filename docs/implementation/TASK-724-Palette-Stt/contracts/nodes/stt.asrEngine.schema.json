@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://arcaai.dev/hope/workflow-nodes/stt.asrEngine.schema.json",
+  "title": "stt.asrEngine node config (mandatory)",
+  "description": "Selects the ASR engine model. `modelSlug` references an AiModel row with taskType AUTOMATIC_SPEECH_RECOGNITION (apps/stt/src/stt/pipeline/dto.py ModelTaskType) by slug, no FK — mirrors AsrPipeline.configYaml's `models.asr` convention exactly, since this node's config is exactly what the compiler (TASK-724 Task 4) copies into that YAML key. Bounded elsewhere, not by this schema: TenantSttConfig (tenant's allowed engines/fallback), IEntitlementsService quota/feature gates, and language_modes.py's `engine_supports_mode` compatibility check against an upstream stt.languageDetection node — none of that is schema-expressible (repository/entitlement I/O), so it lives in the impure validator layer, consistent with N-2's promptTemplateId precedent (TASK-720 palette.md).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["modelSlug"],
+  "properties": {
+    "modelSlug": { "type": "string", "minLength": 1, "maxLength": 100 },
+    "onError": { "type": "string", "enum": ["fail", "degrade"] }
+  }
+}

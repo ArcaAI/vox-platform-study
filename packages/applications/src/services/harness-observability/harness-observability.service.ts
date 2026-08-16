@@ -160,6 +160,12 @@ export class HarnessObservabilityService {
    * The clinician gate queue: consultations awaiting review with SLA/escalation
    * deadlines computed from the effective policy timers, each clocked from its
    * latest GENERATE audit event (fallback: consultation `updatedAt`).
+   *
+   * TASK-711 — also surfaces `TIMED_OUT` rows (gate SLA already exhausted,
+   * `recordEscalation`'s terminal path). They must not silently drop out of
+   * this queue just because the clock moved them past PENDING_REVIEW — a
+   * TIMED_OUT item is, definitionally, already `slaBreached`/`escalated`,
+   * and `TIMED_OUT → SIGNED` stays legal (a human can still rescue it).
    */
   async gateQueue(tenantId: string): Promise<GateQueueResponse> {
     const policy = await this.policyRepository.findActiveForTenant(tenantId);
@@ -167,7 +173,11 @@ export class HarnessObservabilityService {
     const gateEscalationSeconds = policy?.gateEscalationSeconds ?? HARNESS_POLICY_DEFAULTS.gateEscalationSeconds;
     const policySource: HarnessPolicySource = !policy ? 'code-default' : policy.tenantId === tenantId ? 'tenant' : 'system-default';
 
-    const pending = await this.consultationRepository.findPendingReviewForTenant(tenantId);
+    const [pendingReview, timedOut] = await Promise.all([
+      this.consultationRepository.findPendingReviewForTenant(tenantId),
+      this.consultationRepository.findTimedOutForTenant(tenantId),
+    ]);
+    const pending = [...pendingReview, ...timedOut];
     const chain = await this.auditRepository.getChainForTenant(tenantId);
 
     // Latest GENERATE event timestamp + count per consultation (the wait clock).

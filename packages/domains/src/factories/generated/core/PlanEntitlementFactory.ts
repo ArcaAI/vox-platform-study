@@ -30,6 +30,7 @@ export interface CreatePlanEntitlementProps extends BaseEntityFactoryCreateProps
   featureVoiceEnrollment?: IPlanEntitlementEntity['featureVoiceEnrollment'];
   featureMonitoringAccess?: IPlanEntitlementEntity['featureMonitoringAccess'];
   featurePlatformDefaultCredential?: IPlanEntitlementEntity['featurePlatformDefaultCredential'];
+  featurePaletteStt?: IPlanEntitlementEntity['featurePaletteStt'];
   modelTier?: IPlanEntitlementEntity['modelTier'];
   rateLimitTier?: IPlanEntitlementEntity['rateLimitTier'];
 
@@ -74,6 +75,9 @@ export class PlanEntitlementFactory {
       // Fail-CLOSED default — a plan never grants the platform-default
       // credential unless someone says so explicitly.
       featurePlatformDefaultCredential: props.featurePlatformDefaultCredential ?? false,
+      // TASK-724: `true` by default — STT palette authoring is a core platform
+      // capability, mirrors the Prisma column's own @default(true).
+      featurePaletteStt: props.featurePaletteStt ?? true,
       modelTier: props.modelTier ?? 'full',
       rateLimitTier: props.rateLimitTier ?? 'default',
     });

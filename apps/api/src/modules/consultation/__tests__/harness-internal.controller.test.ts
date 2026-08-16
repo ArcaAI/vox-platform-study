@@ -39,6 +39,7 @@ describe('HarnessInternalController', () => {
       undefined as any,
       undefined as any,
       undefined as any,
+      undefined as any, // promptManagementService (unused by this route)
     );
   });
 
@@ -174,6 +175,7 @@ describe('HarnessInternalController', () => {
         undefined as any,
         undefined as any,
         undefined as any,
+        undefined as any, // promptManagementService (unused by this route)
       );
 
     it('threads consultationId through to getEffectivePolicy(tenantId, { consultationId })', async () => {
@@ -221,6 +223,72 @@ describe('HarnessInternalController', () => {
     });
   });
 
+  describe('GET internal/harness/prompt-templates/:id/resolved (TASK-720 N-2)', () => {
+    const mockPromptManagementService = { getPromptTemplate: vi.fn(), getVersions: vi.fn() };
+
+    function fakeCls() {
+      const store = new Map<string, unknown>();
+      return {
+        store,
+        run: vi.fn((fn: () => unknown) => fn()),
+        set: vi.fn((key: string, value: unknown) => void store.set(key, value)),
+        get: vi.fn((key: string) => store.get(key)),
+      };
+    }
+
+    const buildController = (cls: ReturnType<typeof fakeCls>) =>
+      new HarnessInternalController(
+        mockService as any,
+        undefined as any,
+        cls as any,
+        undefined as any,
+        undefined as any,
+        undefined as any,
+        undefined as any,
+        undefined as any,
+        undefined as any,
+        undefined as any,
+        mockPromptManagementService as any,
+      );
+
+    it('resolves the pinned approved version, never the mutable content column', async () => {
+      mockPromptManagementService.getPromptTemplate.mockResolvedValue({ id: 't-1', approvedVersionNumber: 2 });
+      mockPromptManagementService.getVersions.mockResolvedValue([
+        { versionNumber: 1, content: 'old' },
+        { versionNumber: 2, content: 'approved content' },
+      ]);
+      const cls = fakeCls();
+
+      const result = await buildController(cls).getResolvedPromptTemplate('t-1', 'tenant-1');
+
+      expect(result).toEqual({ found: true, approved: true, content: 'approved content', versionNumber: 2 });
+    });
+
+    it('returns found:false for a missing or cross-tenant id (never an exception)', async () => {
+      mockPromptManagementService.getPromptTemplate.mockResolvedValue(null);
+      const cls = fakeCls();
+
+      const result = await buildController(cls).getResolvedPromptTemplate('t-1', 'tenant-1');
+
+      expect(result).toEqual({ found: false, approved: false });
+    });
+
+    it('returns approved:false for a template that has never been approved', async () => {
+      mockPromptManagementService.getPromptTemplate.mockResolvedValue({ id: 't-1', approvedVersionNumber: null });
+      const cls = fakeCls();
+
+      const result = await buildController(cls).getResolvedPromptTemplate('t-1', 'tenant-1');
+
+      expect(result).toEqual({ found: true, approved: false });
+    });
+
+    it('rejects a missing tenantId without touching the service', async () => {
+      const cls = fakeCls();
+      await expect(buildController(cls).getResolvedPromptTemplate('t-1', undefined as any)).rejects.toThrow();
+      expect(mockPromptManagementService.getPromptTemplate).not.toHaveBeenCalled();
+    });
+  });
+
   describe('POST consultations/:id/progress', () => {
     const mockProgressService = { reportProgress: vi.fn() };
 
@@ -236,6 +304,7 @@ describe('HarnessInternalController', () => {
         undefined as any,
         undefined as any,
         undefined as any,
+        undefined as any, // promptManagementService (unused by this route)
       );
 
     it('delegates to HarnessProgressService.reportProgress(consultationId, dto)', async () => {
@@ -277,6 +346,7 @@ describe('HarnessInternalController', () => {
         undefined as any, // loopConfigService (unused by this route)
         undefined as any, // loopContextTextService (unused by this route)
         undefined as any, // liveDocumentationService (unused by this route)
+        undefined as any, // promptManagementService (unused by this route)
       );
 
     it('delegates to ConsultationLoopEventService.publishEvent(consultationId, dto)', async () => {
@@ -318,6 +388,7 @@ describe('HarnessInternalController', () => {
         undefined as any,
         undefined as any,
         undefined as any,
+        undefined as any, // promptManagementService (unused by this route)
       );
 
     it('POST assurance -> harnessInternalService.finalizeAssurance(consultationId, dto, idempotencyKey)', async () => {
@@ -378,6 +449,7 @@ describe('HarnessInternalController', () => {
         undefined as any,
         undefined as any,
         undefined as any,
+        undefined as any, // promptManagementService (unused by this route)
       );
 
     it('maps the harness batch (ISO → Date) and delegates to recordSteps, acking 202-style', async () => {
@@ -480,6 +552,7 @@ describe('HarnessInternalController', () => {
         mockLoopConfigService as any,
         undefined as any, // loopContextTextService (unused by this route)
         undefined as any, // liveDocumentationService (unused by this route)
+        undefined as any, // promptManagementService (unused by this route)
       );
 
     it('delegates to LoopConfigService.resolveForConsultation(tenantId, consultationId)', async () => {
@@ -539,6 +612,7 @@ describe('HarnessInternalController', () => {
         undefined as any, // loopConfigService (unused by these routes)
         undefined as any, // loopContextTextService (unused by these routes) — inserted this param
         mockLiveDocumentationService as any,
+        undefined as any, // promptManagementService (unused by this route)
       );
 
     it('start delegates to LiveDocumentationService.start({ consultationId, tenantId, userId, sessionId })', async () => {

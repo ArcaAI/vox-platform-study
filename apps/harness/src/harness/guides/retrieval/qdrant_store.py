@@ -88,9 +88,7 @@ class KnowledgeQdrantStore:
 
             # api_key=None is the unauthenticated path qdrant-client already
             # expects, so this is safe to pass unconditionally.
-            self._client = QdrantClient(
-                url=url, timeout=cast(int, timeout), api_key=api_key
-            )
+            self._client = QdrantClient(url=url, timeout=cast(int, timeout), api_key=api_key)
 
     def upsert_chunks(self, items: list[UpsertItem]) -> int:
         """Upsert one named dense+sparse point per chunk; returns the count."""
@@ -133,6 +131,38 @@ class KnowledgeQdrantStore:
             with_payload=with_payload,
         )
         return [self._to_retrieved(pt) for pt in getattr(response, "points", [])]
+
+    def delete_by_document(self, *, tenant_id: str, knowledge_document_id: str) -> None:
+        """Delete every point belonging to one document, tenant-scoped.
+
+        The filter is ``tenant_id`` **AND** ``knowledge_document_id`` together
+        (mirrors :meth:`_tenant_approved_filter`'s two-condition ``must``
+        shape) so a cross-tenant document id can never delete another
+        tenant's points even in a defensive-programming sense — the same
+        belt-and-braces posture the retrieval path already applies. Called by
+        the ``DELETE /knowledge/{document_id}`` endpoint, which Lane B's
+        `KnowledgeDocumentService.deleteDocument` invokes BEFORE the Postgres
+        soft-delete commits (fail-closed: an outage here aborts the delete
+        rather than leaving orphaned-but-still-retrievable vectors).
+
+        Qdrant's delete-by-filter defaults to ``wait=True`` (synchronous,
+        immediately consistent — verified against a live local Qdrant
+        instance: `points_count` reflects the removal before this call
+        returns), so a caller that gets a normal return can trust the vectors
+        are actually gone, not merely queued for removal.
+        """
+        from qdrant_client import models
+
+        flt = models.Filter(
+            must=[
+                models.FieldCondition(key="tenant_id", match=models.MatchValue(value=tenant_id)),
+                models.FieldCondition(
+                    key="knowledge_document_id",
+                    match=models.MatchValue(value=knowledge_document_id),
+                ),
+            ]
+        )
+        self._client.delete(collection_name=self._collection, points_selector=flt)
 
     @staticmethod
     def _tenant_approved_filter(tenant_id: str) -> models.Filter:

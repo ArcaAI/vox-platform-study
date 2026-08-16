@@ -12,9 +12,35 @@
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
-import { ConsultationStatus, HarnessAuditAction, ResourceStatusType, SummaryMetaFactory } from '@arcaai/domains';
+import { ConsultationEntity, ConsultationStatus, HarnessAuditAction, ResourceStatusType, SummaryMetaFactory } from '@arcaai/domains';
 import { HarnessInternalService } from '../harness-internal.service';
 import { HARNESS_DRAFT_PHASE } from '../dto';
+
+/**
+ * TASK-711 — `consultationRepository.findById` fixtures used to be plain
+ * data bags; `persistDraft`/`finalizeAssurance`/`recordEscalation` now call
+ * the REAL `ConsultationEntity.transitionTo`/`.version`, so every fixture
+ * must be a real entity instance, not a duck-typed object. This wraps a
+ * partial fixture (as these tests have always written them) into one,
+ * defaulting the fields the state machine itself needs
+ * (`version`, `degradedReasons`) without disturbing any other field.
+ */
+function consultationFixture(overrides: Record<string, unknown>): ConsultationEntity {
+  return new ConsultationEntity({
+    patientId: 'patient-1',
+    appointmentDate: new Date('2026-01-01'),
+    metadata: null,
+    degradedReasons: [],
+    createdAt: new Date('2026-01-01'),
+    updatedAt: new Date('2026-01-01'),
+    createdBy: 'user-1',
+    resourceStatusUpdatedAt: null,
+    resourceStatusUpdatedBy: null,
+    version: 1,
+    ...overrides,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } as any);
+}
 
 // Mock the domain factories so we can assert on plain-object creation args
 // (entity classes store data behind getters, which objectContaining can't see).
@@ -147,20 +173,28 @@ const createMockSecretsService = () => ({
 });
 
 const createMockConsultationRepository = () => ({
-  findById: vi.fn().mockResolvedValue({
-    id: 'consultation-1',
-    tenantId: 'tenant-1',
-    departmentId: 'dept-1',
-    doctorId: 'doctor-1',
-    parentConsultationId: null,
-    status: ConsultationStatus.RECORDING,
-    updatedBy: null,
-    // F-10: write-back paths reject a non-ENABLED consultation. Default
-    // fixture is ENABLED (live) so every pre-existing test is unaffected;
-    // the F-10 tests override this per-call via mockResolvedValueOnce.
-    resourceStatus: ResourceStatusType.ENABLED,
-  }),
+  findById: vi.fn().mockResolvedValue(
+    consultationFixture({
+      id: 'consultation-1',
+      tenantId: 'tenant-1',
+      departmentId: 'dept-1',
+      doctorId: 'doctor-1',
+      parentConsultationId: null,
+      // TASK-711 — DRAINING is the realistic (and only legal) predecessor
+      // for persistDraft's DRAFT_PENDING_SENSORS/PENDING_REVIEW targets
+      // (state-machine.md §2); most tests in this file exercise persistDraft
+      // and rely on this default. `recordEscalation`'s own describe block
+      // overrides to PENDING_REVIEW (its real-world predecessor).
+      status: ConsultationStatus.DRAINING,
+      updatedBy: null,
+      // F-10: write-back paths reject a non-ENABLED consultation. Default
+      // fixture is ENABLED (live) so every pre-existing test is unaffected;
+      // the F-10 tests override this per-call via mockResolvedValueOnce.
+      resourceStatus: ResourceStatusType.ENABLED,
+    }),
+  ),
   update: vi.fn().mockResolvedValue({ id: 'consultation-1' }),
+  updateWithVersion: vi.fn().mockResolvedValue({ id: 'consultation-1' }),
 });
 
 const createMockNamedEntityRepository = () => ({
@@ -1095,9 +1129,10 @@ describe('HarnessInternalService', () => {
       );
 
       // status -> PENDING_REVIEW
-      expect(consultationRepository.update).toHaveBeenCalledWith(
+      expect(consultationRepository.updateWithVersion).toHaveBeenCalledWith(
         'consultation-1',
         expect.objectContaining({ status: ConsultationStatus.PENDING_REVIEW }),
+        expect.any(Number),
       );
 
       expect(result).toEqual({ contextItemId: 'ctx-draft-1' });
@@ -1305,7 +1340,7 @@ describe('HarnessInternalService', () => {
       jobService.notifyProgress.mockRejectedValue(new Error('redis down'));
       const result = await service.persistDraft('consultation-1', draftBody());
       expect(result).toEqual({ contextItemId: 'ctx-draft-1' });
-      expect(consultationRepository.update).toHaveBeenCalled();
+      expect(consultationRepository.updateWithVersion).toHaveBeenCalled();
     });
 
     it('throws BadRequestException when tenantId is missing', async () => {
@@ -1433,9 +1468,10 @@ describe('HarnessInternalService', () => {
 
     it('sets status DRAFT_PENDING_SENSORS (readable, not yet signable)', async () => {
       await service.persistDraft('consultation-1', earlyBody());
-      expect(consultationRepository.update).toHaveBeenCalledWith(
+      expect(consultationRepository.updateWithVersion).toHaveBeenCalledWith(
         'consultation-1',
         expect.objectContaining({ status: ConsultationStatus.DRAFT_PENDING_SENSORS }),
+        expect.any(Number),
       );
     });
 
@@ -1525,13 +1561,13 @@ describe('HarnessInternalService', () => {
 
     beforeEach(() => {
       // At finalize time the consultation sits in DRAFT_PENDING_SENSORS.
-      consultationRepository.findById.mockResolvedValue({
+      consultationRepository.findById.mockResolvedValue(consultationFixture({
         id: 'consultation-1',
         tenantId: 'tenant-1',
         status: ConsultationStatus.DRAFT_PENDING_SENSORS,
         updatedBy: null,
         resourceStatus: ResourceStatusType.ENABLED,
-      });
+      }));
     });
 
     // ── EARLY-path [[seg:]] segmentCitedIds must survive into the finalized citationsMap ──
@@ -1582,9 +1618,10 @@ describe('HarnessInternalService', () => {
 
     it('flips DRAFT_PENDING_SENSORS -> PENDING_REVIEW', async () => {
       await service.finalizeAssurance('consultation-1', finalizeBody());
-      expect(consultationRepository.update).toHaveBeenCalledWith(
+      expect(consultationRepository.updateWithVersion).toHaveBeenCalledWith(
         'consultation-1',
         expect.objectContaining({ status: ConsultationStatus.PENDING_REVIEW }),
+        expect.any(Number),
       );
     });
 
@@ -1601,15 +1638,15 @@ describe('HarnessInternalService', () => {
     });
 
     it('is idempotent on the lifecycle flip (no status write when already PENDING_REVIEW)', async () => {
-      consultationRepository.findById.mockResolvedValue({
+      consultationRepository.findById.mockResolvedValue(consultationFixture({
         id: 'consultation-1',
         tenantId: 'tenant-1',
         status: ConsultationStatus.PENDING_REVIEW,
         updatedBy: null,
         resourceStatus: ResourceStatusType.ENABLED,
-      });
+      }));
       await service.finalizeAssurance('consultation-1', finalizeBody());
-      expect(consultationRepository.update).not.toHaveBeenCalled();
+      expect(consultationRepository.updateWithVersion).not.toHaveBeenCalled();
       // …but it still re-stamps the verdict (safe to repeat).
       expect(summaryMetaRepository.updateWithVersion).toHaveBeenCalledTimes(1);
     });
@@ -1623,7 +1660,7 @@ describe('HarnessInternalService', () => {
     it('fail-closed: throws BadRequestException when no early SummaryMeta exists', async () => {
       summaryMetaRepository.findByContextItem.mockResolvedValue(null);
       await expect(service.finalizeAssurance('consultation-1', finalizeBody())).rejects.toThrow(BadRequestException);
-      expect(consultationRepository.update).not.toHaveBeenCalled();
+      expect(consultationRepository.updateWithVersion).not.toHaveBeenCalled();
     });
 
     it('throws BadRequestException when tenantId is missing', async () => {
@@ -1641,13 +1678,13 @@ describe('HarnessInternalService', () => {
     // -----------------------------------------------------------------
 
     it('records POST_SIGN_FLAG and does NOT regress status when a safety FLAG lands after an early sign', async () => {
-      consultationRepository.findById.mockResolvedValue({
+      consultationRepository.findById.mockResolvedValue(consultationFixture({
         id: 'consultation-1',
         tenantId: 'tenant-1',
         status: ConsultationStatus.SIGNED,
         updatedBy: null,
         resourceStatus: ResourceStatusType.ENABLED,
-      });
+      }));
 
       await service.finalizeAssurance('consultation-1', {
         ...finalizeBody(),
@@ -1658,19 +1695,19 @@ describe('HarnessInternalService', () => {
       const actions = harnessAuditService.append.mock.calls.map((c: any[]) => c[0].action);
       expect(actions).toContain(HarnessAuditAction.POST_SIGN_FLAG);
       // Note stands — the signed consultation is NEVER regressed.
-      expect(consultationRepository.update).not.toHaveBeenCalled();
+      expect(consultationRepository.updateWithVersion).not.toHaveBeenCalled();
       // The verdict is still backfilled onto the meta (audit completeness).
       expect(summaryMetaRepository.updateWithVersion).toHaveBeenCalledTimes(1);
     });
 
     it('records POST_SIGN_FLAG for a REGEN verdict after an early sign', async () => {
-      consultationRepository.findById.mockResolvedValue({
+      consultationRepository.findById.mockResolvedValue(consultationFixture({
         id: 'consultation-1',
         tenantId: 'tenant-1',
         status: ConsultationStatus.SIGNED,
         updatedBy: null,
         resourceStatus: ResourceStatusType.ENABLED,
-      });
+      }));
 
       await service.finalizeAssurance('consultation-1', { ...finalizeBody(), gateDecision: 'REGEN' });
 
@@ -1679,13 +1716,13 @@ describe('HarnessInternalService', () => {
     });
 
     it('does NOT record POST_SIGN_FLAG when the post-sign verdict is PASS', async () => {
-      consultationRepository.findById.mockResolvedValue({
+      consultationRepository.findById.mockResolvedValue(consultationFixture({
         id: 'consultation-1',
         tenantId: 'tenant-1',
         status: ConsultationStatus.SIGNED,
         updatedBy: null,
         resourceStatus: ResourceStatusType.ENABLED,
-      });
+      }));
 
       await service.finalizeAssurance('consultation-1', { ...finalizeBody(), gateDecision: 'PASS' });
 
@@ -1706,9 +1743,10 @@ describe('HarnessInternalService', () => {
 
       const actions = harnessAuditService.append.mock.calls.map((c: any[]) => c[0].action);
       expect(actions).not.toContain(HarnessAuditAction.POST_SIGN_FLAG);
-      expect(consultationRepository.update).toHaveBeenCalledWith(
+      expect(consultationRepository.updateWithVersion).toHaveBeenCalledWith(
         'consultation-1',
         expect.objectContaining({ status: ConsultationStatus.PENDING_REVIEW }),
+        expect.any(Number),
       );
     });
 
@@ -1753,13 +1791,13 @@ describe('HarnessInternalService', () => {
     });
 
     it('publishes postSignAlert: true when an adverse verdict lands AFTER an early sign', async () => {
-      consultationRepository.findById.mockResolvedValue({
+      consultationRepository.findById.mockResolvedValue(consultationFixture({
         id: 'consultation-1',
         tenantId: 'tenant-1',
         status: ConsultationStatus.SIGNED,
         updatedBy: null,
         resourceStatus: ResourceStatusType.ENABLED,
-      });
+      }));
 
       await service.finalizeAssurance('consultation-1', {
         ...finalizeBody(),
@@ -1779,9 +1817,10 @@ describe('HarnessInternalService', () => {
         expect.objectContaining({ recorded: true, contextItemId: 'ctx-draft-1' }),
       );
       expect(summaryMetaRepository.updateWithVersion).toHaveBeenCalledTimes(1);
-      expect(consultationRepository.update).toHaveBeenCalledWith(
+      expect(consultationRepository.updateWithVersion).toHaveBeenCalledWith(
         'consultation-1',
         expect.objectContaining({ status: ConsultationStatus.PENDING_REVIEW }),
+        expect.any(Number),
       );
     });
   });
@@ -1855,6 +1894,23 @@ describe('HarnessInternalService', () => {
       jobId: 'harness-doc-1',
     });
 
+    beforeEach(() => {
+      // TASK-711 — the gate SLA escalation's real-world predecessor is
+      // PENDING_REVIEW (the state a gate-queue item sits in while awaiting
+      // clinician sign-off); the file-level default is DRAINING (persistDraft's
+      // predecessor). `PENDING_REVIEW → TIMED_OUT` is the only legal target
+      // for the terminal `gate_sla_abandoned` reason (state-machine.md §2).
+      consultationRepository.findById.mockResolvedValue(
+        consultationFixture({
+          id: 'consultation-1',
+          tenantId: 'tenant-1',
+          doctorId: 'doctor-1',
+          status: ConsultationStatus.PENDING_REVIEW,
+          resourceStatus: ResourceStatusType.ENABLED,
+        }),
+      );
+    });
+
     it('gate_sla_breached → GATE_ESCALATED WORM append, re-establishes CLS, returns { recorded: true }', async () => {
       const result = await service.recordEscalation('consultation-1', escBody('gate_sla_breached'));
 
@@ -1877,9 +1933,31 @@ describe('HarnessInternalService', () => {
     it('gate_sla_abandoned → GATE_ABANDONED (terminal) WORM append, returns { recorded: true }', async () => {
       const result = await service.recordEscalation('consultation-1', escBody('gate_sla_abandoned'));
 
-      expect(harnessAuditService.append).toHaveBeenCalledTimes(1);
-      expect(harnessAuditService.append.mock.calls[0][0].action).toBe(HarnessAuditAction.GATE_ABANDONED);
+      // TASK-711 — the terminal abandon ALSO drives PENDING_REVIEW -> TIMED_OUT,
+      // which appends a second WORM row (SESSION_TIMED_OUT) alongside the
+      // pre-existing GATE_ABANDONED event.
+      expect(harnessAuditService.append).toHaveBeenCalledTimes(2);
+      const actions = harnessAuditService.append.mock.calls.map((c: any[]) => c[0].action);
+      expect(actions).toContain(HarnessAuditAction.GATE_ABANDONED);
+      expect(actions).toContain(HarnessAuditAction.SESSION_TIMED_OUT);
       expect(result).toEqual({ recorded: true });
+    });
+
+    it('gate_sla_abandoned transitions PENDING_REVIEW -> TIMED_OUT, persisted via updateWithVersion', async () => {
+      await service.recordEscalation('consultation-1', escBody('gate_sla_abandoned'));
+
+      expect(consultationRepository.updateWithVersion).toHaveBeenCalledWith(
+        'consultation-1',
+        expect.objectContaining({ status: ConsultationStatus.TIMED_OUT }),
+        expect.any(Number),
+      );
+    });
+
+    it('gate_sla_breached (non-terminal) writes no status and no SESSION_TIMED_OUT WORM row', async () => {
+      await service.recordEscalation('consultation-1', escBody('gate_sla_breached'));
+
+      expect(consultationRepository.updateWithVersion).not.toHaveBeenCalled();
+      expect(harnessAuditService.append).toHaveBeenCalledTimes(1);
     });
 
     it('throws BadRequestException and records nothing when tenantId is missing', async () => {
@@ -2118,11 +2196,20 @@ describe('HarnessInternalService', () => {
     const escBody = (reason = 'gate_sla_breached') => ({ tenantId: 'tenant-1', reason, jobId: 'harness-doc-1' });
 
     it('recordEscalation: SAME key twice → ONE WORM append + identical replay', async () => {
+      // TASK-711 — gate_sla_abandoned's real predecessor is PENDING_REVIEW
+      // (the file-level default, DRAINING, is persistDraft's predecessor).
+      consultationRepository.findById.mockResolvedValue(
+        consultationFixture({ id: 'consultation-1', tenantId: 'tenant-1', doctorId: 'doctor-1', status: ConsultationStatus.PENDING_REVIEW }),
+      );
       const first = await service.recordEscalation('consultation-1', escBody('gate_sla_abandoned') as any, 'run-1:escalate_gate');
       const second = await service.recordEscalation('consultation-1', escBody('gate_sla_abandoned') as any, 'run-1:escalate_gate');
 
-      expect(harnessAuditService.append).toHaveBeenCalledTimes(1);
-      expect(harnessAuditService.append.mock.calls[0][0].action).toBe(HarnessAuditAction.GATE_ABANDONED);
+      // The idempotency cache replays the whole prior response, so the
+      // underlying work — including both WORM appends (GATE_ABANDONED +
+      // SESSION_TIMED_OUT) — runs exactly once despite two calls.
+      expect(harnessAuditService.append).toHaveBeenCalledTimes(2);
+      const actions = harnessAuditService.append.mock.calls.map((c: any[]) => c[0].action);
+      expect(actions).toEqual([HarnessAuditAction.GATE_ABANDONED, HarnessAuditAction.SESSION_TIMED_OUT]);
       expect(second).toEqual(first);
       expect(second).toEqual({ recorded: true });
     });
@@ -2274,13 +2361,13 @@ describe('HarnessInternalService', () => {
     // ── SummaryMeta (finalizeAssurance update — where the verdict JSONB blobs
     //    actually get their values in the two-phase EARLY flow) ──
     it('finalizeAssurance re-encrypts the backfilled SummaryMeta BEFORE update', async () => {
-      consultationRepository.findById.mockResolvedValue({
+      consultationRepository.findById.mockResolvedValue(consultationFixture({
         id: 'consultation-1',
         tenantId: 'tenant-1',
         status: ConsultationStatus.DRAFT_PENDING_SENSORS,
         updatedBy: null,
         resourceStatus: ResourceStatusType.ENABLED,
-      });
+      }));
 
       await service.finalizeAssurance('consultation-1', finalizeBody() as any);
 
@@ -2296,13 +2383,13 @@ describe('HarnessInternalService', () => {
     });
 
     it('finalizeAssurance is best-effort: a Vault failure does NOT abort the finalize', async () => {
-      consultationRepository.findById.mockResolvedValue({
+      consultationRepository.findById.mockResolvedValue(consultationFixture({
         id: 'consultation-1',
         tenantId: 'tenant-1',
         status: ConsultationStatus.DRAFT_PENDING_SENSORS,
         updatedBy: null,
         resourceStatus: ResourceStatusType.ENABLED,
-      });
+      }));
       summaryMetaRepository.encryptFieldsIntoEntity.mockRejectedValueOnce(new Error('vault down'));
 
       const result = await service.finalizeAssurance('consultation-1', finalizeBody() as any);

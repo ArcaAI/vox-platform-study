@@ -288,5 +288,15 @@ enum ResourceType {
   // TenantNlpTaskInstructionsService.broadcastSysEvent.
   TenantNlpTaskInstructions
 
+  // Institutional-RAG knowledge document (TASK-728). The
+  // `KnowledgeDocument` head row is the audited resource — register / approve
+  // / archive / delete all broadcast against it, mirroring the
+  // ConsultationContextSchema precedent. `KnowledgeChunk` is DELIBERATELY
+  // ABSENT as its own ResourceType: chunk rows are written as a side effect of
+  // their parent document's ingest (no lifecycle of their own), and a chunk
+  // LIST READ is audited under the parent KnowledgeDocument's resourceType +
+  // resourceId (see knowledge-document.service.ts#listChunks).
+  KnowledgeDocument
+
   @@schema("core")
 }

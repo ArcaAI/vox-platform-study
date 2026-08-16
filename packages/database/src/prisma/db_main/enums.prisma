@@ -170,6 +170,11 @@ enum ModelJobStatus {
 enum WebhookRunStatus {
   SUCCESS
   FAILED
+  // TASK-727: terminal state after the delivery job's BullMQ `attempts` are
+  // exhausted — distinct from a single FAILED attempt still eligible for
+  // retry/backoff. Written once, by the delivery processor, on the final
+  // attempt only.
+  DEAD_LETTERED
 
   @@schema("core")
 }

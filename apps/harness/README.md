@@ -259,13 +259,16 @@ is refused at load — that palette needs TASK-731). Full contract:
   `gates == []` → structural bounds) fails LOUD on any violation — never a partial-graph run.
 - **`registry.py`** — `NODE_REGISTRY: dict[str, NodeSpec]`, the node-type → activity routing table
   (mirrors `LOOP_ACTION_REGISTRY`'s `implemented` discipline: an unregistered/unimplemented type
-  is an OBSERVABLE skip, never a silent no-op). Ships **empty of palette nodes** — only the
-  `noop`/`passthrough` smoke-test entries this package's own tests need; TASK-720 populates the
-  summarization palette (status: node config schemas + validator rules shipped, the five node
-  activities NOT yet implemented — no per-node output threading exists between activities yet,
-  see `docs/traceability/workflows.md` W12 gaps). `NodeSpec.activity` is a CALLABLE reference; the compiled config's own
-  `activity` string is only a cross-check, never trusted for routing (S-4/S-6 — this is what makes
-  a reachable `SIGNED` write structurally impossible, proved by `test_registry.py`).
+  is an OBSERVABLE skip, never a silent no-op). Carries the `noop`/`passthrough` smoke-test pair
+  plus the five summarization-palette node activities (`interpreter.context_binding` /
+  `interpreter.template_ref` / `interpreter.text_generate` / `interpreter.guardrail_check` /
+  `interpreter.deliver`, implemented under `interpreter/nodes/` — TASK-720 second pass), parity-
+  guarded against `packages/workflow-contract/src/node-registry.ts`. `NodeSpec.activity` is a
+  CALLABLE reference; the compiled config's own `activity` string is only a cross-check, never
+  trusted for routing (S-4/S-6 — this is what makes a reachable `SIGNED` write structurally
+  impossible, proved by `test_registry.py`). Remaining gaps (invoke payload not yet forwarded by
+  the exposure plane; delivered results have no retrieval path): `docs/traceability/workflows.md`
+  W12.
 - **`caps.py`** — a defense-in-depth, tighten-only re-clamp. Platform ceilings are already
   materialized into the compiled config AT COMPILE TIME by the TypeScript compiler (no
   `GlobalSetting` read anywhere in this package); these module constants are a second,

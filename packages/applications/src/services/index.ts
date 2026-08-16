@@ -132,3 +132,6 @@ export * from './workflow-definition';
 // Exposure plane (TASK-722) — invoke / status / cancel / list over a tenant's
 // published workflows, through the harness dispatcher.
 export * from './workflow-exposure';
+// Workbench sandbox runs (TASK-721 Phase C) — start/status/cancel a sandbox run of ANY
+// (DRAFT or published) WorkflowDefinition version, session-JWT only, always sandbox:true.
+export * from './workflow-sandbox-run';

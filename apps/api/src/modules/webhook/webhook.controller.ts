@@ -4,6 +4,7 @@ import {
   PaginatedQuery,
   PaginatedWebhookResponse,
   PaginatedWebhookRunHistoryResponse,
+  RotateWebhookSecretRequest,
   UpdateWebhookRequest,
   WebhookDtoMapper,
   WebhookResponse,
@@ -11,6 +12,7 @@ import {
 import { Body, Controller, Delete, Get, Inject, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Authorize, CanManage, ExpectedVersion, RequiresIfMatch, RequiredScopes } from '../../decorators';
+import { CreateWebhookResponse } from './dto';
 
 /**
  * WebhookController — admin CRUD + delivery-log surface over
@@ -35,12 +37,12 @@ export class WebhookController {
   ) {}
 
   @Post()
-  @ApiOperation({ summary: 'Create a webhook for the caller tenant' })
-  @ApiResponse({ status: 201, type: WebhookResponse })
+  @ApiOperation({ summary: 'Create a webhook for the caller tenant. The signing secret is server-generated and returned only once.' })
+  @ApiResponse({ status: 201, description: 'Webhook created. Raw signing secret returned only once.', type: CreateWebhookResponse })
   @ApiResponse({ status: 400, description: 'Bad request — invalid input.' })
-  async create(@Body() request: CreateWebhookRequest): Promise<WebhookResponse> {
+  async create(@Body() request: CreateWebhookRequest): Promise<CreateWebhookResponse> {
     const result = await this.webhookService.create(request);
-    return WebhookDtoMapper.ToResponse(result);
+    return { webhook: WebhookDtoMapper.ToResponse(result.webhook), rawSecret: result.rawSecret };
   }
 
   @Get()
@@ -110,6 +112,36 @@ export class WebhookController {
     const effectiveRequest: UpdateWebhookRequest = expectedFromHeader !== undefined ? { ...request, expectedVersion: expectedFromHeader } : request;
     const result = await this.webhookService.update(id, effectiveRequest);
     return WebhookDtoMapper.ToResponse(result);
+  }
+
+  @Post(':id/rotate-secret')
+  @RequiresIfMatch()
+  @ApiOperation({
+    summary: 'Rotate a webhook signing secret (If-Match OCC)',
+    description:
+      'Mints a fresh, server-generated signing secret and invalidates the prior one immediately (no overlap window). ' +
+      'The raw secret is returned exactly once, same contract as `POST admin/webhooks`. Optimistic concurrency is enforced ' +
+      'identically to `PATCH :id`: `If-Match` (RFC 7232) is REQUIRED; drift → 412, missing header → 428.',
+  })
+  @ApiHeader({
+    name: 'If-Match',
+    description: 'RFC 7232 strong validator carrying the version the client read (e.g. `"1"`).',
+    required: true,
+    example: '"1"',
+  })
+  @ApiParam({ name: 'id', description: 'Webhook id' })
+  @ApiResponse({ status: 201, description: 'Secret rotated. Raw signing secret returned only once.', type: CreateWebhookResponse })
+  @ApiResponse({ status: 404, description: 'Webhook not found (or cross-tenant).' })
+  @ApiResponse({ status: 412, description: 'Optimistic concurrency conflict — re-fetch and retry with the new version.' })
+  @ApiResponse({ status: 428, description: 'If-Match header is required for this operation.' })
+  async rotateSecret(
+    @Param('id') id: string,
+    @Body() request: RotateWebhookSecretRequest,
+    @ExpectedVersion() expectedFromHeader: number | undefined,
+  ): Promise<CreateWebhookResponse> {
+    const expectedVersion = expectedFromHeader ?? request.expectedVersion;
+    const result = await this.webhookService.rotateSecret(id, expectedVersion);
+    return { webhook: WebhookDtoMapper.ToResponse(result.webhook), rawSecret: result.rawSecret };
   }
 
   @Delete(':id')

@@ -62,6 +62,7 @@ const MATRIX_FIELDS = [
   'featureVoiceEnrollment',
   'featureMonitoringAccess',
   'featurePlatformDefaultCredential',
+  'featurePaletteStt',
   'modelTier',
   'rateLimitTier',
 ] as const satisfies readonly (keyof PlanEntitlementValues)[];

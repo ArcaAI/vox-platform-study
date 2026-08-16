@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://arcaai.dev/hope/workflow-nodes/stt.vad.schema.json",
+  "title": "stt.vad node config (optional)",
+  "description": "Voice-activity-detection stage. `modelSlug` references an AiModel row with taskType VOICE_ACTIVITY_DETECTION (apps/stt/src/stt/pipeline/dto.py ModelTaskType) by SLUG, no FK — mirrors AsrPipeline.configYaml's own model-reference convention. Absent modelSlug means the tenant's pipeline-level VAD default applies at compile time.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "modelSlug": { "type": "string", "minLength": 1, "maxLength": 100 }
+  }
+}

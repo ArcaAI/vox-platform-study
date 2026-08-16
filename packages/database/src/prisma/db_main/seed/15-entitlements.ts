@@ -175,6 +175,11 @@ interface PlanEntitlementSeed {
   // the margin hole closed. Kept in sync by
   // `packages/applications/src/services/entitlements/__tests__/plan-matrix-parity.test.ts`.
   featurePlatformDefaultCredential: boolean;
+  // May this plan's tenants publish an `stt`-palette `WorkflowDefinition`
+  // (TASK-724)? `true` on every plan — STT pipeline authoring is a core
+  // platform capability, not a premium add-on. Kept in sync by
+  // `packages/applications/src/services/entitlements/__tests__/plan-matrix-parity.test.ts`.
+  featurePaletteStt: boolean;
   modelTier: string;
   rateLimitTier: string;
 }
@@ -204,6 +209,7 @@ const PRO_VALUES = {
   featureVoiceEnrollment: true,
   featureMonitoringAccess: false,
   featurePlatformDefaultCredential: false,
+  featurePaletteStt: true,
   modelTier: 'full',
   rateLimitTier: 'default',
 };
@@ -242,6 +248,7 @@ export const PLAN_ENTITLEMENTS: PlanEntitlementSeed[] = [
     featureVoiceEnrollment: false,
     featureMonitoringAccess: false,
     featurePlatformDefaultCredential: false,
+    featurePaletteStt: true,
     modelTier: 'base',
     rateLimitTier: 'strict',
   },
@@ -275,6 +282,7 @@ export const PLAN_ENTITLEMENTS: PlanEntitlementSeed[] = [
     featureVoiceEnrollment: true,
     featureMonitoringAccess: true,
     featurePlatformDefaultCredential: false,
+    featurePaletteStt: true,
     modelTier: 'full_custom',
     rateLimitTier: 'relaxed',
   },

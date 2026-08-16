@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "nodes": [
+    { "id": "n_audio", "type": "stt.audioInput", "config": { "mode": "realtime" } },
+    { "id": "n_out", "type": "stt.transcriptOutput", "config": {} }
+  ],
+  "edges": [
+    { "id": "e1", "from": "n_audio", "fromPort": "out", "to": "n_out", "toPort": "in" }
+  ]
+}

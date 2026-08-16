@@ -128,6 +128,12 @@ model PlanEntitlement {
   // `TenantEntitlement.featurePlatformDefaultCredential`.
   featurePlatformDefaultCredential Boolean @default(false)
 
+  // May this plan's tenants publish an `stt`-palette `WorkflowDefinition`
+  // (TASK-724)? Display-only, checked once at publish time — `true` on every
+  // seeded plan: STT pipeline authoring is a core platform capability, not a
+  // premium add-on, unlike featureDnaReports/featureVoiceEnrollment.
+  featurePaletteStt Boolean @default(true)
+
   // model access tier (clone-subset, Q8) + rate-limit tier (Q7)
   modelTier     String @default("full")
   rateLimitTier String @default("default")
@@ -212,6 +218,10 @@ model TenantEntitlement {
   // A tenant's own DISABLED provider row remains a stronger, per-provider VETO
   // that this grant can never override.
   featurePlatformDefaultCredential Boolean?
+
+  // Per-tenant override of PlanEntitlement.featurePaletteStt (null = inherit
+  // the plan default, which is `true` on every seeded plan).
+  featurePaletteStt Boolean?
 
   // model + rate-limit overrides (null = inherit) — Q7 "increase on demand"
   modelTier          String?

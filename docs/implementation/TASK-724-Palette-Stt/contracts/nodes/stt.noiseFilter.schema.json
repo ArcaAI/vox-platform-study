@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://arcaai.dev/hope/workflow-nodes/stt.noiseFilter.schema.json",
+  "title": "stt.noiseFilter node config (optional)",
+  "description": "Noise-suppression / denoising stage. `modelSlug` references an AiModel row with taskType AUDIO_DENOISING or AUDIO_TO_AUDIO (apps/stt/src/stt/pipeline/dto.py ModelTaskType — the latter's own comment: 'For noise suppression (RNNoise, etc.)') by slug, no FK. Absent modelSlug means the tenant's pipeline-level denoise default applies at compile time.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "modelSlug": { "type": "string", "minLength": 1, "maxLength": 100 }
+  }
+}

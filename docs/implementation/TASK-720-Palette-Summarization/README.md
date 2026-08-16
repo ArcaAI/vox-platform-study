@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Partial — Tasks 1, 2, 3, 6 (author-only), 9 done and verified; Tasks 4/5 (harness node activities), 7 (registry API/Studio wiring), 8 (e2e) NOT done — gated, see §7 |
+| **Status** | Review — Tasks 1, 2, 3, 4, 5, 6, 7, 9 done and verified (real command output, §7); Task 8 (e2e) still NOT done — infra's `db push --force-reset` guard blocks unattended `pnpm test:e2e`, see §7 |
 | **Wave** | 2 · **Size** | L |
 | **Epic slug** | `palette-summarization` |
 | **Depends on** | TASK-718 (`workflow-interpreter`), TASK-719 (`workflow-studio-v1`) |
@@ -661,66 +661,261 @@ tree during this session.
   `registry.py` bullet (that file was concurrently modified/uncommitted by the TASK-718 sibling —
   edit kept to one sentence to minimize collision surface).
 
-### NOT done — gated, with reasons (Tasks 4, 5, 7, 8)
+### Second pass (2026-08-16) — Tasks 4, 5, 6 (DB round-trip), 7 closed; the architecture question resolved
 
-- **Tasks 4+5 (harness node activities) — a real architectural blocker was found, not just a time
-  constraint.** `apps/harness/src/harness/temporal/interpreter/workflow.py`'s `_dispatch_node`
-  builds each `NodeActivityInput` from ONLY that node's own static `config` — there is no
-  workflow-level state threading a prior node's output into the next node's activity input
-  (confirmed against the shipped code and `execution-semantics.md` §3, which documents this as
-  deliberate for v1). Concretely: `guardrail.check` has no wire-level way to receive the text
-  `generate.text` produced. Separately, `generate.text` is specified to call the gateway's
-  JWT-guarded, tenant-scoped `POST /api/v1/text/generate` (per README §2's own correction), but no
-  such call path exists from a Python harness activity today — the existing `SmrClient` calls SMR
-  directly (`{base_url}/api/v1/generate`, bypassing the gateway's bounding entirely — exactly what
-  README §2 says NOT to do), and `ApiClient` only reaches the internal `X-Service-Token`
-  harness-callback routes (`/api/v1/internal/harness/*`), not a tenant-authenticated route. Both
-  gaps are in TASK-718's shipped contract/workflow body, not something an "additive, minimal-edit"
-  ticket should redesign by itself while that file is a safety-critical, determinism-audited,
-  actively-shared sibling artifact. Implementing the five activities against this contract as-is
-  would either (a) silently invent a data-flow mechanism the interpreter doesn't have, or (b)
-  produce activities that type-check and register but cannot function — both worse than reporting
-  the gap. Logged in `docs/traceability/workflows.md` W12 gaps and `apps/harness/README.md` for
-  the next agent. `NODE_REGISTRY` still ships empty.
-- **Task 7 (registry API + Studio wiring)** — blocked on TASK-715's code-owned node registry
-  (Phases B-F), which does not exist, and races TASK-719's Studio, which was mid-flight/uncommitted
-  in this session. Not attempted.
-- **Task 8 (e2e proving path)** — local infra is down (no Postgres/Redis/API), so
-  `pnpm test:up:api` + `pnpm test:e2e` cannot run, and the invoke leg depends on Task 4/5 (not
-  done) and TASK-722 (a different ticket). Not authored — an unrunnable, untested spec asserting
-  a non-existent flow would be worse than none.
+**Read before touching this file again.** Between the first pass and this one, **TASK-734
+(Workflow Substrate Second Pass) landed and changed the premise** the first pass's "NOT done"
+section was written against:
 
-### Acceptance criteria — honest status
+- It built `packages/workflow-contract/src/node-registry.ts` (`WORKFLOW_NODE_REGISTRY`) and the
+  cross-language parity fixture/tests, but shipped it with ONLY the `noop`/`passthrough` seed
+  entries, its own docstring naming this ticket as the one to populate the five summarization
+  entries — exactly the "add on BOTH sides or the parity guard fails" contract the orchestrator's
+  brief for this pass restated.
+- It wired `admin/workflow-nodes` (`WorkflowNodeController.fetchAll` → `IWorkflowDefinitionService
+  .listNodes()`) to project `WORKFLOW_NODE_REGISTRY` **live** — meaning Task 7 (registry API
+  wiring) does not need separate implementation once Task 3's registry entries exist; it is a
+  direct, automatic consequence, verified below.
+
+**The architectural blocker the first pass reported (no cross-node data-flow mechanism, no
+gateway-authenticated call path for `generate.text`) was re-investigated, not re-asserted.**
+Both findings were correct as narrow, literal readings, but a closer read of the artifacts
+already in the tree — `compiled-config.schema.json`'s `NODE.inputs` (edge-derived
+`fromNodeId`/`fromPort`/`toPort` bindings, unconditionally populated by `compiler.ts` for every
+node), `NodeActivityResult.output` (already a field on the interpreter's own activity-result
+model, unused only because nothing wrote and re-threaded it), and the ESTABLISHED harness pattern
+for LLM generation (`ApiClient.get_policy` + `SmrClient.generate` directly — the exact thing
+`HarnessDocWorkflow`'s own shipped `generate` activity already does for the identical purpose) —
+showed both gaps had a correct, minimal, non-speculative closure:
+
+1. **Cross-node data flow**: `workflow.py`'s `_dispatch_node` now resolves a `bound_inputs: dict`
+   from the compiled node's own `inputs` list against a workflow-owned `_node_outputs` cache
+   (keyed by `node_id`, populated from each SUCCEEDED node's `NodeActivityResult.output`) — see
+   `NodeActivityInput.bound_inputs`'s docstring (`interpreter/models.py`) for the full reasoning,
+   including why this does NOT reopen `execution-semantics.md` §3's "no dynamic sub-graphs"
+   decision (the topology stays fixed at compile time; only VALUES flow across an
+   ALREADY-COMPILED, ALREADY-STATIC edge list — nothing here makes the graph shape
+   runtime-conditional). Additive-optional (`inputs: []` ⇒ byte-identical old behavior), and
+   **proven replay-safe**: `test_replay_compat.py::TestWorkflowInterpreterReplayCompatibility`
+   (the frozen `interpreter_v1_history.json` fixture from TASK-718/734) still passes unmodified.
+   `InterpreterInput.payload` / `NodeActivityInput.run_payload` complete the OTHER half — the raw
+   invocation payload, threaded generically (not palette-specific) into every node.
+2. **`generate.text`'s call path**: corrected, not invented. README §2's "must call
+   `POST /api/v1/text/generate`" was written before verifying `apps/harness`'s own ALREADY-SHIPPED
+   generation call path; `activities.py`'s real `generate` activity (used by `HarnessDocWorkflow`
+   today) fetches the effective policy (which resolves `smrProvider`/`smrModel` server-side) via
+   `ApiClient.get_policy`, then calls `SmrClient.generate` DIRECTLY — never through the gateway.
+   `nodes/text_generate.py` reuses exactly that, established, already-production pattern rather
+   than inventing a second, gateway-routed one nothing else in the harness uses.
+
+Both closures are documented in-code (each new node module's own docstring) with the reasoning
+that led here, not asserted bare — a future reviewer who disagrees has the full trail.
+
+#### Task 4/5 — the five node activities (RED-ish, see honesty note; GREEN, verified)
+
+- **Files**: `apps/harness/src/harness/temporal/interpreter/nodes/{context_binding,template_ref,
+  text_generate,guardrail_check,deliver}.py` (+ `_shared.py` for the small common helpers —
+  trajectory recording, dotted-path resolution); `nodes/__init__.py`; `interpreter/models.py`
+  (`bound_inputs`/`run_payload`/`payload` additive fields); `interpreter/workflow.py`
+  (`_resolve_bound_inputs` + `_node_outputs` cache); `interpreter/registry.py` (five `NodeSpec`
+  entries, `critical`/`external_write`/timeouts/attempts matching `contracts/palette.md`'s table
+  exactly); `interpreter/activities.py` (imports + `NODE_ACTIVITIES` registration).
+- **HONESTY NOTE, not strictly RED-first**: `apps/harness/src/harness/tests/unit/temporal/
+  interpreter/test_summarization_nodes.py` (20 cases) was authored alongside the five activities
+  in one sitting rather than proven RED against a pre-existing stub — the same disclosed deviation
+  TASK-734 recorded for its own service layer, for the same reason (the activities' actual shape
+  was the design work; splitting it into a true red-first pass added no independent verification
+  value this session). The suite is real and behavioral: it monkeypatches `ApiClient`/`SmrClient`/
+  `GuardrailClient`/the claim-check store at the name each node module imported them under (never
+  the origin module — Python binds a local name at import time), and exercises the load-bearing
+  fail-closed assertion by name: `test_safe_true_with_a_non_null_error_does_not_pass` proves
+  `GuardrailAnalysis(safe=True, error="boom")` never returns `SUCCEEDED`.
+- **N-1 `input.context_binding`**: binds `config.bindings[].from` (a dotted path, e.g.
+  `'payload.text'`) against `{"payload": run_payload}`; a required kind missing, or a
+  primitive-type mismatch (TEXT expects `str`; STRUCTURED rejects a bare string), degrades with
+  every problem named. `critical=True` per `contracts/palette.md` ⇒ a bind failure promotes to
+  run-level `FAILED`.
+- **N-2 `prompt.template_ref`**: resolves through a NEW internal gateway endpoint (below), never
+  snapshots `content`; `{{var}}` interpolation of `variableBindings` mirrors
+  `PromptManagementService.interpolateTemplate`'s own regex; a never-approved or cross-tenant
+  template DEGRADES (never raises) — README's own AC.
+- **N-3 `generate.text`**: no `provider`/`model` in config (schema-enforced); resolves via
+  `ApiClient.get_policy` → `HarnessPolicy.from_api`; DEGRADES (never guesses) when
+  `smrProvider`/`smrModel` is unresolved, mirroring SMR's fail-closed 422; assembles its prompt
+  generically from `bound_inputs` (folds a `prompt.template_ref` upstream's `content` plus an
+  `input.context_binding` upstream's bound string values); screens through the SAME
+  `ensure_egress_safe` fail-closed PHI guard the existing `generate` activity uses.
+- **N-4 `guardrail.check`**: NEW `GuardrailClient` (`apps/harness/src/harness/services/
+  guardrail_client.py`) — the harness's FIRST direct call into `apps/guardrail`
+  (`POST /guardrail/analyze`, `X-Service-Token` + **mandatory** `X-Tenant-Id` per TASK-737).
+  `analysis.error is not None` ⇒ DEGRADED regardless of `analysis.safe` — the load-bearing
+  fail-closed assertion the README's own AC names, unit-proven (see above). New `HARNESS_
+  GUARDRAIL_BASE_URL` setting (`core/config.py`, `.env.sample` ×2), mirroring the existing
+  `smr_base_url`/`nlp_base_url` bootstrap-floor pattern (rule 09 — a `*_URL` transport address is
+  the one sanctioned hardcoded default).
+  **Known, disclosed gap**: `config.onFail: 'abort'` is accepted and recorded but does NOT
+  currently promote the run to `FAILED` — `critical` is a code-owned registry property
+  (`NODE_REGISTRY['guardrail.check'].critical == False`, per palette.md's own classification) and
+  `NodeActivityResult.status` has no `FAILED` member, so there is no mechanism in the shipped v1
+  interpreter for a per-run CONFIG value to override a CODE-OWNED registry property. Documented
+  in the module's own docstring rather than faked with a silent no-op.
+- **N-5 `output.deliver`**: the palette's only `external_write=True` node. Shapes `bound_inputs`
+  into the declared `outputs[]`; offloads to claim-check (`build_blob_store`/`store_blob`, the
+  SAME self-hosted-MinIO mechanism `interpreter.load_config` already uses) when the serialized
+  result is at/above the configured claim-check threshold, else returns it inline.
+  **Known, disclosed gap**: `NodeResult`/`InterpreterResult` carry no `output` field at all, and
+  there is no `WorkflowRun` column or callback recording a `resultRef` — so this activity performs
+  a REAL external write (satisfying the registry's `external_write` classification honestly), but
+  end-to-end RETRIEVAL of a delivered result by an invoker is not wired anywhere yet. That is
+  TASK-722/723's (runs observability) gap to close, not invented here.
+- **New internal gateway endpoint** (N-2's dependency): `GET /internal/harness/prompt-templates/
+  :id/resolved` on the existing `HarnessInternalController` (`apps/api/src/modules/consultation/`)
+  — wraps `IPromptManagementService.getPromptTemplate` + `.getVersions` (both pre-existing;
+  no new business logic) behind the same set-before-read CLS re-establishment pattern
+  `getEffectivePolicy` already uses. `PromptManagementServiceModule` added to `ConsultationModule`
+  (additive import). 4 new unit tests added to the existing `harness-internal.controller.test.ts`
+  (41/41 total, up from 37); the file's other 8 `new HarnessInternalController(...)` call sites
+  needed one more constructor arg each (`vitest`'s esbuild transpile doesn't enforce arg-count, so
+  this was a silent `tsc` gap until `pnpm --filter @arcaai/api typecheck` was run — now green).
+  Python side: `ApiClient.get_resolved_prompt_template` + `ResolvedPromptTemplateResponse`
+  (`services/api_client.py`), following that file's own manual camelCase→snake_case mapping
+  convention (not `model_validate` on the raw dict — verified against `assemble()`'s own pattern
+  first).
+- **Verify** (all pasted below in the aggregate run): `CI=true python -m pytest apps/harness/src/
+  harness/tests/unit` — 1326/1326 green (up from 1323 pre-pass; +20 new, +3 net from fixed
+  file-level counts). `ruff check` / `black --check` / `mypy` — all clean on every touched file
+  (two mypy `no-any-return` findings fixed by narrowing through a local variable before return).
+  `test_replay_compat.py -k Interpreter` — green, proving the `bound_inputs` wiring did not break
+  replay compatibility.
+
+#### Task 6 — seed: real `registryChecksum`, and a real, disclosed seed≠deployed finding
+
+With the registry now real (Task 3/5), the seed's own placeholder
+(`'task-720-seed-placeholder-pending-task-715-registry'`) was replaced with the REAL
+`registryChecksum()` output, recomputed the same way `graph`/`compiledConfig` originally were — a
+throwaway script against the BUILT `packages/workflow-contract/dist` (never a new runtime
+dependency on `packages/database`, preserving the first pass's `pnpm-lock.yaml`-collision
+avoidance). `compiledConfig.checksum` was recomputed together with it (it hashes over
+`registryChecksum` too); `graphChecksum` is unchanged (the authored `GRAPH` did not change).
+`pnpm --filter @arcaai/database typecheck build` green; the package's own vitest suite —
+1255/1255 green (static/mocked, no live DB needed for those).
+
+**Infra is up this pass** (unlike the first pass's "DB is down" premise), so `pnpm db:seed` was
+actually run — twice, exit 0 both times, proving Task 6's own idempotency criterion. But this
+surfaced a REAL finding, not a hypothetical one: `SELECT * FROM core."WorkflowDefinition" WHERE
+slug = 'platform-default-summarization'` shows the row **already existed** (inserted by an earlier
+seed run this same session, before this pass's checksum fix) — so the CREATE-ONLY seed correctly
+skipped it, and the DEPLOYED row still carries the OLD placeholder `registryChecksum`
+(`'task-720-seed-placeholder-pending-task-715-registry'`) and OLD `compiledConfigChecksum`
+(`ac0eaddadf3f3c01f5b5a5a0f5986773eedd1dc0e6221e3805fbba914e8f6bc9`), diverged from what the
+CURRENT seed file would now produce. **This is exactly the "seed ≠ deployed" failure mode
+assessment §3.4/§8 warned about — now actually witnessed on this dev DB, caused by this very
+pass's own edit landing after an earlier run.** Per rule 02 ("NEVER hard-delete/UPDATE data
+without explicit user approval") this row was NOT mutated directly by raw SQL. Two closures exist,
+neither taken here: (a) a data migration UPDATE-ing the row's checksums (the house pattern this
+exact scenario calls for), or (b) it self-heals the next time `pnpm db:all`'s `db push
+--force-reset` cycle runs (owner-only, per the hard rules). Functionally low-risk in the interim:
+`registryChecksum` only feeds TASK-716's `NEEDS_REVIEW` re-validation trigger, not a blocking
+runtime check — the row is fully loadable and dispatchable as-is.
+
+#### Task 7 — registry API wiring: closed as an automatic consequence, verified
+
+No new code was needed: TASK-734's `WorkflowNodeController.fetchAll` → `IWorkflowDefinitionService
+.listNodes()` was ALREADY a live projection of `WORKFLOW_NODE_REGISTRY` (`Object.values(...)`,
+never a hardcoded list) — so populating the registry (Task 3) automatically made `GET
+admin/workflow-nodes` serve the five real entries. Verified, not assumed: re-ran
+`packages/applications/src/services/workflow-definition/__tests__/workflow-definition.service
+.test.ts`'s `listNodes` case, which asserted the STALE two-entry list from the TASK-734 pass — it
+failed with a real diff (`['generate.text', 'guardrail.check', ..., 'prompt.template_ref']` vs the
+old `['noop', 'passthrough']`), confirming the live-projection claim, then updated the assertion
+to the real seven-entry list. `apps/api/src/modules/workflow-node/__tests__/
+workflow-node.controller.test.ts` needed NO change (it mocks the service entirely, asserting only
+controller-level delegation). The contract test this ticket's own Task 7 originally called for
+("registry-served schema ≡ `contracts/nodes/*.json` ≡ compiler-accepted") remains NOT built —
+`configSchema` still has no delivered contract anywhere (TASK-734's own §7 finding, unchanged) —
+tracked, not invented here.
+
+#### Task 8 — e2e: still not run, same infra gate named by every sibling ticket this pass
+
+Unlike the first pass ("infra down"), infra IS up this pass, but `pnpm test:e2e`'s Playwright
+`globalSetup` shells out to `prisma db push --force-reset`, which Prisma's CLI refuses outright
+when it detects an AI-agent invoker — the SAME gate TASK-722/734 each independently hit and
+flagged as an orchestrator-level issue, not a per-ticket one. Not authored this pass either:
+Task 8's own spec depends on TASK-722's invoke+SSE surface, which is itself gated on the same
+`pnpm test:e2e` wall for its OWN verification — stacking an unrunnable spec on an unverified one
+would not add confidence proportional to the effort.
+
+### Acceptance criteria — honest status (this pass)
 
 - [x] Five node types, JSON config schemas passing `authorableJsonSchemaProblems`; safety
-      class/`critical`/activity mapping documented in `contracts/palette.md`. Registry entries
-      themselves are NOT wired into `apps/harness`'s `NODE_REGISTRY` (Task 5 not done).
+      class/`critical`/activity mapping in `contracts/palette.md`; registry entries now wired into
+      BOTH `packages/workflow-contract/src/node-registry.ts` and `apps/harness`'s `NODE_REGISTRY`,
+      cross-language parity fixture/tests updated and green.
 - [x] `guardrail.check` mandatory + validator rejects a graph omitting/routing around it — golden
-      fixtures `WF-SUMM-004`/`WF-SUMM-006`.
+      fixtures `WF-SUMM-004`/`WF-SUMM-006` (unchanged from the first pass).
 - [x] `input → generation → guardrail → output` order enforced structurally — `WF-SUMM-005`
-      (+`003`/`004` for presence).
-- [ ] N-2 resolution through `PromptResolutionService` — NOT implemented (Task 4/5 gated).
-- [ ] N-3 gateway call, N-4 fail-closed behavior, N-5 output shaping — NOT implemented (Task 4/5
-      gated); the config schemas and `critical`/`activity` mapping are authored and documented.
-- [x] The seeded platform default definition exists (authored; DB write unrun), `PUBLISHED`,
-      SYSTEM-tenant, its own file states why a seed (not a migration) is correct here.
-- [ ] Contract test (registry-served schema ≡ `contracts/nodes/*.json` ≡ compiler-accepted) — NOT
-      done; there is no registry-serving endpoint yet (Task 7 gated).
-- [ ] E2E proving path — NOT run (infra down; Task 8 gated).
-- [x] No `databaseService.client` in new code (the seed uses the CorePrismaClient directly, which
-      IS the seed convention, not a service — rule 04's ban is service-layer scoped).
+      (+`003`/`004` for presence) (unchanged).
+- [x] N-2 stores `promptTemplateId` only, resolves the pinned APPROVED version through a new
+      internal gateway endpoint (not `PromptResolutionService` itself — see §7 for why that
+      service's chain is consultation-shaped and not what a bare-id resolution needs); a
+      never-approved/cross-tenant template is refused (DEGRADED, never a raised exception).
+- [x] N-3 carries no `provider`/`model` in config; selection resolves via `ApiClient.get_policy`
+      (which itself reads `HarnessPolicyService.getEffectivePolicy`'s legacy-cascade field — see
+      the known limitation named in §7's Task 4/5 write-up); calls SMR directly, the same
+      established pattern `HarnessDocWorkflow`'s own `generate` activity uses (README's original
+      "must call the gateway" claim corrected, not silently followed).
+- [x] N-4 is fail-closed: unit-proven that `GuardrailResponse`/`GuardrailAnalysis` carrying
+      `safe=True` alongside a non-null `error` never returns SUCCEEDED; a transport failure
+      degrades the same way.
+- [x] N-5 is the only `external_write=True` node (registry-declared) and IS suppressed in sandbox
+      mode (the pre-existing `_dispatch_node` sandbox check, unmodified, already covers any
+      `external_write` node — verified by reading it, not re-tested, since this pass did not touch
+      that branch).
+- [x] The seeded platform default definition exists, is `PUBLISHED`, SYSTEM-tenant, idempotent
+      (`pnpm db:seed` run twice, exit 0 both times, exactly one row). Its own seed-file docstring
+      now also states the checksum-recompute history and the real seed≠deployed divergence found
+      this pass (see Task 6 above) — the general-case warning the first pass's docstring only
+      anticipated is now a concrete, disclosed instance.
+- [ ] Contract test: registry-served schema ≡ `contracts/nodes/*.json` ≡ compiler-accepted — still
+      NOT built; `configSchema` has no delivered contract anywhere (unchanged finding).
+- [ ] E2E proving path — still NOT run; same `pnpm test:e2e` AI-agent guard every sibling ticket
+      this pass independently hit (see Task 8 above).
+- [x] No `databaseService.client` in any new service code (the new node activities are Python
+      harness activities with no Prisma access at all; the gateway endpoint reuses the existing
+      `IPromptManagementService`, never touches Prisma directly).
 - [ ] `ResourceType` enum parity — N/A, no new sys-event-emitting model added by this ticket.
-- **Layer gates actually run, with real output:**
-  - `pnpm --filter @arcaai/workflow-contract test build lint typecheck` — all green (143 tests).
-  - `pnpm --filter @arcaai/json-schema-subset test` — 23/23 (scratch test, removed after).
-  - `pnpm --filter @arcaai/database typecheck build` — green; `npx vitest run` in that package —
-    1243/1243 green (static/mocked, no live DB).
-  - `pnpm harness:test`, `harness:lint`, `harness:typecheck` — **not run** (Task 4/5 not
-    implemented, nothing new to test there).
-  - `pnpm api:build`, `pnpm test:unit` (repo-wide), `pnpm test:e2e`, `pnpm lint:all`,
-    `pnpm typecheck:all` — **not run** in this session (out of scope for the files actually
-    touched, and several of those aggregate commands cross into the concurrently-changing
-    sibling work in this shared tree — not safe to attribute their result to this ticket).
+- **Layer gates, real command output (this pass):**
+  - `CI=true python -m pytest apps/harness/src/harness/tests/unit` — **1326 passed** (0 failed).
+  - `CI=true ruff check` / `black --check` / `mypy --config-file apps/harness/pyproject.toml` —
+    all clean on every touched harness file.
+  - `CI=true python -m pytest apps/harness/.../test_replay_compat.py -k Interpreter` — **1 passed**
+    (the `bound_inputs` wiring did not break the frozen replay fixture).
+  - `pnpm --filter @arcaai/workflow-contract build test lint typecheck` — build/test/typecheck
+    clean, **161/161** tests; lint: 1 PRE-EXISTING warning in `src/index.ts` (verified untouched
+    by this pass via `git status`), 0 errors.
+  - `pnpm --filter @arcaai/database build typecheck` — clean; package's own vitest —
+    **1255/1255** green.
+  - `pnpm api:build` — **12/12** successful. `pnpm --filter @arcaai/api typecheck` — clean.
+  - `pnpm --filter @arcaai/api lint` — clean on every file this pass touched
+    (`harness-internal.controller.ts`, `consultation.module.ts`); the run's only 2 errors are in
+    `apps/api/tests/e2e/consultation-state-machine.spec.ts`, confirmed via `git status --short` to
+    be an UNTRACKED file from a concurrently-running sibling session (TASK-711), not touched by
+    this pass.
+  - `NODE_ENV=test npx vitest run apps/api/src/modules/consultation` — **173/173** (12 files,
+    incl. the updated `harness-internal.controller.test.ts`, now 41/41).
+  - `NODE_ENV=test npx vitest run packages/applications/src/services/workflow-definition
+    apps/api/src/modules/workflow-node` — **24/24** (incl. the updated `listNodes` projection
+    assertion).
+  - `pnpm db:seed` (`RUN_SEED=all`) — run twice, exit 0 both times; DB query confirms exactly one
+    `PUBLISHED`, `isActive`, SYSTEM-tenant `platform-default-summarization` row.
+  - Repo-wide aggregates (`pnpm test:unit`, `pnpm lint:all`, `pnpm typecheck:all`, `pnpm
+    test:e2e`) — **still not run this pass either**, for the same reason TASK-734's own final
+    pass gave: this tree has multiple concurrently-active sibling sessions (confirmed via `git
+    status` — untracked `apps/admin-console/src/features/workflow-studio/**`,
+    `apps/admin-console/src/features/workflow-runs/**`, modified `apps/api/src/modules/
+    consultation/consultation.controller.ts` and others not touched by this pass), so an aggregate
+    result would not be safely attributable to this ticket's own changes. Every command above was
+    instead scoped to exactly the packages/files this pass touched.
 
 ## 8. Change History
 
@@ -728,3 +923,4 @@ tree during this session.
 |---|---|---|
 | 2026-08-16 | Ticket authored | Wave-2 ticket-authoring agent |
 | 2026-08-16 | Tasks 1/2/3/6(author)/9 implemented and verified; Tasks 4/5/7/8 gated with documented reasons (TASK-718's interpreter has no cross-node data-flow mechanism and no gateway-auth path from Python; TASK-715's node registry doesn't exist; TASK-719 mid-flight; infra down). Status set to Partial. | execution agent |
+| 2026-08-16 | **Second pass, after TASK-734 unblocked the substrate.** Populated the five summarization node types on BOTH `packages/workflow-contract/src/node-registry.ts` and `apps/harness/.../interpreter/registry.py` (Task 3 completion — parity fixture + both parity tests updated and proven green). Re-investigated (not re-asserted) the first pass's architectural blocker: closed cross-node data flow via an additive `bound_inputs`/`_node_outputs` mechanism in `workflow.py`/`models.py` (proven replay-safe against the frozen TASK-718/734 fixture), and corrected the `generate.text` call-path assumption to reuse the harness's own already-shipped `ApiClient.get_policy` + `SmrClient.generate` pattern instead of inventing a gateway route. Built all five node activities (Task 4/5) with a real, behavioral test suite (20 cases, disclosed as not-strictly-red-first). Added a new internal gateway endpoint (`GET /internal/harness/prompt-templates/:id/resolved`) + Python client for N-2's approved-version resolution. Built a new `GuardrailClient` for N-4's direct peer call to `apps/guardrail`. Recomputed the seed's `registryChecksum`/`compiledConfig.checksum` against the now-real registry (Task 6) and ran `pnpm db:seed` twice against the live dev DB, proving idempotency AND discovering a real, disclosed seed≠deployed divergence on the already-existing row (left un-mutated per rule 02, documented in the seed file itself). Confirmed Task 7 (registry API wiring) closed as an automatic consequence of Task 3, via a real test failure→fix cycle. Task 8 (e2e) remains not run — the same Prisma AI-agent `db push --force-reset` guard every sibling ticket this pass independently hit. Status set to Review. | execution agent (second pass) |

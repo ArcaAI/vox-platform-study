@@ -29,6 +29,7 @@ export interface CreateTenantEntitlementProps extends BaseEntityFactoryCreatePro
   featureVoiceEnrollment?: ITenantEntitlementEntity['featureVoiceEnrollment'];
   featureMonitoringAccess?: ITenantEntitlementEntity['featureMonitoringAccess'];
   featurePlatformDefaultCredential?: ITenantEntitlementEntity['featurePlatformDefaultCredential'];
+  featurePaletteStt?: ITenantEntitlementEntity['featurePaletteStt'];
   modelTier?: ITenantEntitlementEntity['modelTier'];
   rateLimitTier?: ITenantEntitlementEntity['rateLimitTier'];
   rateLimitPerMinute?: ITenantEntitlementEntity['rateLimitPerMinute'];
@@ -76,6 +77,8 @@ export class TenantEntitlementFactory {
       // `null` = inherit the plan (which is itself `false`), NOT deny —
       // the tri-state's three states are all load-bearing here.
       featurePlatformDefaultCredential: props.featurePlatformDefaultCredential ?? null,
+      // `null` = inherit the plan default (TASK-724).
+      featurePaletteStt: props.featurePaletteStt ?? null,
       modelTier: props.modelTier ?? null,
       rateLimitTier: props.rateLimitTier ?? null,
       rateLimitPerMinute: props.rateLimitPerMinute ?? null,

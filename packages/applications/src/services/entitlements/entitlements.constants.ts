@@ -150,6 +150,14 @@ export interface PlanEntitlementValues {
    * `TenantEntitlement`, which is also how ENTERPRISE is actually sold.
    */
   featurePlatformDefaultCredential: boolean;
+  /**
+   * May this plan's tenants publish an `stt`-palette `WorkflowDefinition` (TASK-724)?
+   * Display-only (checked once at publish time, never at runtime) — `true` on every plan below:
+   * STT pipeline authoring is a core platform capability, not a premium add-on, unlike
+   * `featureDnaReports`/`featureVoiceEnrollment`. See
+   * `docs/implementation/TASK-724-Palette-Stt/contracts/palette.md` §Entitlement gate.
+   */
+  featurePaletteStt: boolean;
   modelTier: ModelTier;
   rateLimitTier: string;
 }
@@ -182,6 +190,7 @@ const PRO_VALUES: PlanEntitlementValues = {
   featureVoiceEnrollment: true,
   featureMonitoringAccess: false,
   featurePlatformDefaultCredential: false,
+  featurePaletteStt: true,
   modelTier: 'full',
   rateLimitTier: 'default',
 };
@@ -211,6 +220,7 @@ export const PLAN_ENTITLEMENT_DEFAULTS: Record<TenantPlan, PlanEntitlementValues
     featureVoiceEnrollment: false,
     featureMonitoringAccess: false,
     featurePlatformDefaultCredential: false,
+    featurePaletteStt: true,
     modelTier: 'base',
     rateLimitTier: 'strict',
   },
@@ -241,6 +251,7 @@ export const PLAN_ENTITLEMENT_DEFAULTS: Record<TenantPlan, PlanEntitlementValues
     featureVoiceEnrollment: true,
     featureMonitoringAccess: true,
     featurePlatformDefaultCredential: false,
+    featurePaletteStt: true,
     modelTier: 'full_custom',
     rateLimitTier: 'relaxed',
   },

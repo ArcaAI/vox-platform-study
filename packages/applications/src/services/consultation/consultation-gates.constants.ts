@@ -40,11 +40,33 @@ export const HARNESS_LOOP_ENABLED_KEY = 'harness.loop.enabled';
 export const CONSULTATION_OCR_ENABLED_KEY = 'consultation.ocr.enabled';
 
 /**
+ * TASK-711 (Task 9) — the ONE breaking precondition in the session
+ * state-machine rollout: `PRIMED → RECORDING` is enforced only when this
+ * gate is ON. Default OFF so no existing SDK/admin-console caller (none of
+ * which call `POST :id/prime` yet) is broken on deploy; OFF logs the
+ * would-be violation and proceeds, ON enforces (409 on `recording/start`
+ * without a prior `prime`). Deleted once TASK-712 makes `prime` the
+ * consent checkpoint end-to-end (state-machine.md §2 row 2).
+ */
+export const CONSULTATION_REQUIRE_PRIMED_BEFORE_RECORDING_KEY = 'consultation.state.requirePrimedBeforeRecording';
+
+/**
+ * TASK-711 (state-machine.md §1a) — general session-idleness timeout, in
+ * minutes, consulted by the (not-yet-built) scheduled sweep that transitions
+ * stale sessions to `CLOSED_INCOMPLETE`. NOT a kill-switch (no on/off
+ * semantics) — a tuning knob, `failMode: open-to-default` so an absent value
+ * never stalls the sweep. Documented default 1440 (24h), provisional.
+ */
+export const CONSULTATION_SESSION_TIMEOUT_MINUTES_KEY = 'consultation.state.sessionTimeoutMinutes';
+
+/**
  * Code defaults — the last fallback in the cascade, and the single source of
- * truth shared by the descriptors and their consumers. Both OFF: a kill-switch
- * MUST default OFF (fail-safe default; a kill-switch must not require a redeploy).
+ * truth shared by the descriptors and their consumers. Kill-switches default
+ * OFF (fail-safe default; a kill-switch must not require a redeploy).
  */
 export const CONSULTATION_GATE_DEFAULTS = {
   [HARNESS_LOOP_ENABLED_KEY]: false,
   [CONSULTATION_OCR_ENABLED_KEY]: false,
+  [CONSULTATION_REQUIRE_PRIMED_BEFORE_RECORDING_KEY]: false,
+  [CONSULTATION_SESSION_TIMEOUT_MINUTES_KEY]: 1440,
 } as const;

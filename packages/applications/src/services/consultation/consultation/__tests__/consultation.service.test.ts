@@ -5,10 +5,10 @@
  */
 
 import { describe, it, expect, beforeEach, vi, type Mock } from 'vitest';
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { ConsultationService } from '../consultation.service';
 import { ConsultationDtoMapper } from '../consultation.dto.mapper';
-import { SysEventType, ResourceStatusType, ConsultationStatus } from '@arcaai/domains';
+import { SysEventType, ResourceStatusType, ConsultationStatus, ConsultationEntity } from '@arcaai/domains';
 
 // Mock ClsService
 const mockClsService = {
@@ -38,6 +38,7 @@ const mockConsultationRepository = {
   count: vi.fn(),
   create: vi.fn(),
   update: vi.fn(),
+  updateWithVersion: vi.fn(),
 };
 
 // DepartmentRepository for cross-aggregate tenant check
@@ -1411,113 +1412,214 @@ describe('ConsultationService', () => {
   });
 
   // ============================================================
-  // Consultation lifecycle (close / reopen / update)
-  //
-  // The Consultation model has no dedicated open/closed column, so
-  // lifecycle status lives in `metadata.status` (OPEN | CLOSED;
-  // absent ⇒ OPEN). close/reopen are idempotent (no write/event when
-  // already in the target state). PATCH updates safely-mutable fields
-  // only (appointmentDate / departmentId / metadata-merge / status).
+  // TASK-711 — Consultation lifecycle (prime / close / reopen / update /
+  // recording) now routes exclusively through `ConsultationEntity.
+  // transitionTo`, the single guarded write path (the legacy
+  // `metadata.status` tracker is deleted). These tests construct REAL
+  // `ConsultationEntity` instances (not the plain-object
+  // `createMockConsultationEntity` used above) because `transitionTo`/
+  // `canTransitionTo` are real domain methods, not data.
   // ============================================================
-  describe('lifecycle (close / reopen / update)', () => {
-    describe('closeConsultation', () => {
-      it('transitions OPEN → CLOSED, persists, emits ResourceUpdated, returns status CLOSED', async () => {
-        const entity = createMockConsultationEntity({ id: 'c-1', metadata: null });
+  describe('lifecycle (prime / close / reopen / update)', () => {
+    function makeRealEntity(overrides: Partial<{ id: string; tenantId: string; status: ConsultationStatus; version: number }> = {}): ConsultationEntity {
+      return new ConsultationEntity({
+        id: overrides.id ?? 'c-1',
+        tenantId: overrides.tenantId ?? 'tenant-1',
+        patientId: 'patient-1',
+        doctorId: 'doctor-1',
+        appointmentDate: new Date('2026-06-08'),
+        departmentId: null,
+        parentConsultationId: null,
+        metadata: null,
+        status: overrides.status ?? ConsultationStatus.OPEN,
+        degradedReasons: [],
+        createdAt: new Date('2026-06-08T00:00:00Z'),
+        updatedAt: new Date('2026-06-08T00:00:00Z'),
+        createdBy: 'user-1',
+        updatedBy: null,
+        resourceStatus: ResourceStatusType.ENABLED,
+        resourceStatusUpdatedAt: null,
+        resourceStatusUpdatedBy: null,
+        metaData: undefined,
+        version: overrides.version ?? 1,
+      } as any);
+    }
+
+    describe('primeConsultation', () => {
+      it('transitions OPEN → PRIMED, persists via updateWithVersion, emits ResourceUpdated', async () => {
+        const entity = makeRealEntity({ status: ConsultationStatus.OPEN, version: 3 });
         mockConsultationRepository.findWithRelations.mockResolvedValue(entity);
-        mockConsultationRepository.update.mockResolvedValue(entity);
+        mockConsultationRepository.updateWithVersion.mockResolvedValue(entity);
 
-        const result = await service.closeConsultation('c-1');
+        const result = await service.primeConsultation('c-1');
 
-        expect(result.status).toBe('CLOSED');
-        expect(mockConsultationRepository.update).toHaveBeenCalledTimes(1);
-        const [updateId, updatedEntity] = mockConsultationRepository.update.mock.calls[0];
-        expect(updateId).toBe('c-1');
-        expect((updatedEntity.metadata as Record<string, unknown>).status).toBe('CLOSED');
+        expect(result.status).toBe(ConsultationStatus.PRIMED);
+        expect(mockConsultationRepository.updateWithVersion).toHaveBeenCalledWith('c-1', entity, 3);
         expect(mockEventEmitter.emit).toHaveBeenCalledWith(
           SysEventType.ResourceUpdated,
-          expect.objectContaining({
-            resourceId: 'c-1',
-            data: expect.objectContaining({ action: 'closeConsultation', status: 'CLOSED' }),
-          }),
+          expect.objectContaining({ resourceId: 'c-1', data: expect.objectContaining({ action: 'primeConsultation', status: ConsultationStatus.PRIMED }) }),
         );
       });
 
-      it('is idempotent when already CLOSED (no update, no event)', async () => {
-        const entity = createMockConsultationEntity({ id: 'c-1', metadata: { status: 'CLOSED' } });
+      it('is idempotent when already PRIMED (no write, no event)', async () => {
+        const entity = makeRealEntity({ status: ConsultationStatus.PRIMED });
         mockConsultationRepository.findWithRelations.mockResolvedValue(entity);
 
-        const result = await service.closeConsultation('c-1');
+        const result = await service.primeConsultation('c-1');
 
-        expect(result.status).toBe('CLOSED');
-        expect(mockConsultationRepository.update).not.toHaveBeenCalled();
+        expect(result.status).toBe(ConsultationStatus.PRIMED);
+        expect(mockConsultationRepository.updateWithVersion).not.toHaveBeenCalled();
         expect(mockEventEmitter.emit).not.toHaveBeenCalled();
       });
 
       it('throws NotFoundException when consultation not found', async () => {
         mockConsultationRepository.findWithRelations.mockResolvedValue(null);
+        await expect(service.primeConsultation('missing')).rejects.toThrow(NotFoundException);
+      });
+    });
 
+    describe('closeConsultation', () => {
+      it('transitions SIGNED → CLOSED_COMPLETE, persists, emits ResourceUpdated', async () => {
+        const entity = makeRealEntity({ status: ConsultationStatus.SIGNED, version: 5 });
+        mockConsultationRepository.findWithRelations.mockResolvedValue(entity);
+        mockConsultationRepository.updateWithVersion.mockResolvedValue(entity);
+
+        const result = await service.closeConsultation('c-1');
+
+        expect(result.status).toBe(ConsultationStatus.CLOSED_COMPLETE);
+        expect(mockConsultationRepository.updateWithVersion).toHaveBeenCalledWith('c-1', entity, 5);
+        expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+          SysEventType.ResourceUpdated,
+          expect.objectContaining({
+            resourceId: 'c-1',
+            data: expect.objectContaining({ action: 'closeConsultation', status: ConsultationStatus.CLOSED_COMPLETE }),
+          }),
+        );
+      });
+
+      it('transitions TIMED_OUT → CLOSED_INCOMPLETE', async () => {
+        const entity = makeRealEntity({ status: ConsultationStatus.TIMED_OUT });
+        mockConsultationRepository.findWithRelations.mockResolvedValue(entity);
+        mockConsultationRepository.updateWithVersion.mockResolvedValue(entity);
+
+        const result = await service.closeConsultation('c-1');
+
+        expect(result.status).toBe(ConsultationStatus.CLOSED_INCOMPLETE);
+      });
+
+      it('is idempotent when already CLOSED_COMPLETE (no write, no event)', async () => {
+        const entity = makeRealEntity({ status: ConsultationStatus.CLOSED_COMPLETE });
+        mockConsultationRepository.findWithRelations.mockResolvedValue(entity);
+
+        const result = await service.closeConsultation('c-1');
+
+        expect(result.status).toBe(ConsultationStatus.CLOSED_COMPLETE);
+        expect(mockConsultationRepository.updateWithVersion).not.toHaveBeenCalled();
+        expect(mockEventEmitter.emit).not.toHaveBeenCalled();
+      });
+
+      it('is idempotent when already CLOSED_INCOMPLETE (no write, no event)', async () => {
+        const entity = makeRealEntity({ status: ConsultationStatus.CLOSED_INCOMPLETE });
+        mockConsultationRepository.findWithRelations.mockResolvedValue(entity);
+
+        const result = await service.closeConsultation('c-1');
+
+        expect(result.status).toBe(ConsultationStatus.CLOSED_INCOMPLETE);
+        expect(mockConsultationRepository.updateWithVersion).not.toHaveBeenCalled();
+      });
+
+      // A never-signed, still-active consultation cannot be manually closed
+      // — the A-13 repro this ticket exists to fix. `applyTransition` maps
+      // the domain BusinessException to 409 (ConflictException).
+      it('throws ConflictException (409) closing a still-OPEN, never-recorded consultation', async () => {
+        const entity = makeRealEntity({ status: ConsultationStatus.OPEN });
+        mockConsultationRepository.findWithRelations.mockResolvedValue(entity);
+
+        await expect(service.closeConsultation('c-1')).rejects.toThrow(ConflictException);
+        expect(mockConsultationRepository.updateWithVersion).not.toHaveBeenCalled();
+      });
+
+      it('throws NotFoundException when consultation not found', async () => {
+        mockConsultationRepository.findWithRelations.mockResolvedValue(null);
         await expect(service.closeConsultation('missing')).rejects.toThrow(NotFoundException);
-        expect(mockConsultationRepository.update).not.toHaveBeenCalled();
+        expect(mockConsultationRepository.updateWithVersion).not.toHaveBeenCalled();
       });
 
       it('throws BadRequestException when tenantId is missing', async () => {
         mockClsService.get.mockImplementation((key: string) => (key === 'user' ? { id: 'u' } : null));
-
         await expect(service.closeConsultation('c-1')).rejects.toThrow(BadRequestException);
       });
 
       it('throws NotFoundException (generic) for a cross-tenant consultation', async () => {
-        const foreign = createMockConsultationEntity({ id: 'c-x', tenantId: 'tenant-OTHER' });
+        const foreign = makeRealEntity({ id: 'c-x', tenantId: 'tenant-OTHER', status: ConsultationStatus.SIGNED });
         mockConsultationRepository.findWithRelations.mockResolvedValue(foreign);
 
         await expect(service.closeConsultation('c-x')).rejects.toThrow(NotFoundException);
-        expect(mockConsultationRepository.update).not.toHaveBeenCalled();
+        expect(mockConsultationRepository.updateWithVersion).not.toHaveBeenCalled();
         expect(mockEventEmitter.emit).not.toHaveBeenCalled();
       });
     });
 
     describe('reopenConsultation', () => {
-      it('transitions CLOSED → OPEN, persists, emits ResourceUpdated, returns status OPEN', async () => {
-        const entity = createMockConsultationEntity({ id: 'c-1', metadata: { status: 'CLOSED' } });
+      it('transitions SIGNED → REOPENED, persists, emits ResourceUpdated', async () => {
+        const entity = makeRealEntity({ status: ConsultationStatus.SIGNED, version: 2 });
         mockConsultationRepository.findWithRelations.mockResolvedValue(entity);
-        mockConsultationRepository.update.mockResolvedValue(entity);
+        mockConsultationRepository.updateWithVersion.mockResolvedValue(entity);
 
         const result = await service.reopenConsultation('c-1');
 
-        expect(result.status).toBe('OPEN');
-        expect(mockConsultationRepository.update).toHaveBeenCalledTimes(1);
-        const [, updatedEntity] = mockConsultationRepository.update.mock.calls[0];
-        expect((updatedEntity.metadata as Record<string, unknown>).status).toBe('OPEN');
+        expect(result.status).toBe(ConsultationStatus.REOPENED);
+        expect(mockConsultationRepository.updateWithVersion).toHaveBeenCalledWith('c-1', entity, 2);
         expect(mockEventEmitter.emit).toHaveBeenCalledWith(
           SysEventType.ResourceUpdated,
           expect.objectContaining({
             resourceId: 'c-1',
-            data: expect.objectContaining({ action: 'reopenConsultation', status: 'OPEN' }),
+            data: expect.objectContaining({ action: 'reopenConsultation', status: ConsultationStatus.REOPENED }),
           }),
         );
       });
 
-      it('is idempotent when status is absent (treated as already OPEN)', async () => {
-        const entity = createMockConsultationEntity({ id: 'c-1', metadata: null });
+      it.each([ConsultationStatus.TIMED_OUT, ConsultationStatus.CLOSED_COMPLETE, ConsultationStatus.CLOSED_INCOMPLETE])(
+        'transitions %s → REOPENED',
+        async (status) => {
+          const entity = makeRealEntity({ status });
+          mockConsultationRepository.findWithRelations.mockResolvedValue(entity);
+          mockConsultationRepository.updateWithVersion.mockResolvedValue(entity);
+
+          const result = await service.reopenConsultation('c-1');
+
+          expect(result.status).toBe(ConsultationStatus.REOPENED);
+        },
+      );
+
+      it('is idempotent when already REOPENED (no write, no event)', async () => {
+        const entity = makeRealEntity({ status: ConsultationStatus.REOPENED });
         mockConsultationRepository.findWithRelations.mockResolvedValue(entity);
 
         const result = await service.reopenConsultation('c-1');
 
-        expect(result.status).toBe('OPEN');
-        expect(mockConsultationRepository.update).not.toHaveBeenCalled();
+        expect(result.status).toBe(ConsultationStatus.REOPENED);
+        expect(mockConsultationRepository.updateWithVersion).not.toHaveBeenCalled();
         expect(mockEventEmitter.emit).not.toHaveBeenCalled();
+      });
+
+      it('throws ConflictException (409) reopening a still-OPEN consultation', async () => {
+        const entity = makeRealEntity({ status: ConsultationStatus.OPEN });
+        mockConsultationRepository.findWithRelations.mockResolvedValue(entity);
+
+        await expect(service.reopenConsultation('c-1')).rejects.toThrow(ConflictException);
       });
 
       it('throws NotFoundException when consultation not found', async () => {
         mockConsultationRepository.findWithRelations.mockResolvedValue(null);
-
         await expect(service.reopenConsultation('missing')).rejects.toThrow(NotFoundException);
       });
     });
 
     describe('updateConsultation', () => {
       it('updates departmentId (tenant-checked) and shallow-merges metadata; emits ResourceUpdated', async () => {
-        const entity = createMockConsultationEntity({ id: 'c-1', metadata: { existing: 'keep' } });
+        const entity = makeRealEntity();
+        entity.metadata = { existing: 'keep' };
         mockConsultationRepository.findWithRelations.mockResolvedValue(entity);
         mockConsultationRepository.update.mockResolvedValue(entity);
 
@@ -1538,20 +1640,20 @@ describe('ConsultationService', () => {
         );
       });
 
-      it('writes status into metadata.status and surfaces it on the response', async () => {
-        const entity = createMockConsultationEntity({ id: 'c-1', metadata: null });
+      it('does not accept a status field — the typed column is untouched', async () => {
+        const entity = makeRealEntity({ status: ConsultationStatus.PENDING_REVIEW });
         mockConsultationRepository.findWithRelations.mockResolvedValue(entity);
         mockConsultationRepository.update.mockResolvedValue(entity);
 
-        const result = await service.updateConsultation('c-1', { status: 'CLOSED' });
+        // UpdateConsultationRequest no longer declares `status` at all
+        // (TASK-711); passing one through is simply ignored by the DTO/service.
+        const result = await service.updateConsultation('c-1', { appointmentDate: '2026-04-02' } as any);
 
-        expect(result.status).toBe('CLOSED');
-        const [, updated] = mockConsultationRepository.update.mock.calls[0];
-        expect((updated.metadata as Record<string, unknown>).status).toBe('CLOSED');
+        expect(result.status).toBe(ConsultationStatus.PENDING_REVIEW);
       });
 
       it('updates appointmentDate', async () => {
-        const entity = createMockConsultationEntity({ id: 'c-1' });
+        const entity = makeRealEntity();
         mockConsultationRepository.findWithRelations.mockResolvedValue(entity);
         mockConsultationRepository.update.mockResolvedValue(entity);
 
@@ -1564,39 +1666,21 @@ describe('ConsultationService', () => {
 
       it('throws NotFoundException when consultation not found', async () => {
         mockConsultationRepository.findWithRelations.mockResolvedValue(null);
-
-        await expect(service.updateConsultation('missing', { status: 'CLOSED' })).rejects.toThrow(NotFoundException);
+        await expect(service.updateConsultation('missing', { appointmentDate: '2026-04-01' })).rejects.toThrow(NotFoundException);
       });
 
       it('throws BadRequestException when tenantId is missing', async () => {
         mockClsService.get.mockImplementation((key: string) => (key === 'user' ? { id: 'u' } : null));
-
         await expect(service.updateConsultation('c-1', {})).rejects.toThrow(BadRequestException);
       });
 
       it('throws NotFoundException when departmentId belongs to another tenant', async () => {
-        const entity = createMockConsultationEntity({ id: 'c-1' });
+        const entity = makeRealEntity();
         mockConsultationRepository.findWithRelations.mockResolvedValue(entity);
         mockDepartmentRepository.findById.mockResolvedValue({ id: 'dept-other', tenantId: 'tenant-OTHER' });
 
         await expect(service.updateConsultation('c-1', { departmentId: 'dept-other' })).rejects.toThrow(NotFoundException);
         expect(mockConsultationRepository.update).not.toHaveBeenCalled();
-      });
-
-      // TASK-701 — Displayed-SIGNED Status Forgery Containment.
-      // `metadata.status` is a reserved key: the DTO mapper treats it as a
-      // trusted lifecycle signal, but the `metadata` field's own validation
-      // is only `@IsObject()` (any shape). A caller who supplies
-      // `metadata: { status: 'SIGNED' }` must be rejected rather than have
-      // it silently shallow-merged into the entity's metadata column.
-      it('rejects PATCH with a reserved status key inside metadata (forgery attempt)', async () => {
-        const entity = createMockConsultationEntity({ id: 'c-1', metadata: { existing: 'keep' } });
-        mockConsultationRepository.findWithRelations.mockResolvedValue(entity);
-
-        await expect(service.updateConsultation('c-1', { metadata: { status: 'SIGNED' } })).rejects.toThrow(BadRequestException);
-
-        expect(mockConsultationRepository.update).not.toHaveBeenCalled();
-        expect(mockEventEmitter.emit).not.toHaveBeenCalled();
       });
     });
   });

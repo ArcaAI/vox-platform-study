@@ -16,12 +16,21 @@ import * as Entities from '../../../entities';
 // the `ConsultationEntity.transitions.test.ts` Cartesian-product suite —
 // `consultationStatus.wired.test.ts` (Task 11) asserts every enum member is
 // a `to` here at least once.
+// TASK-711 (continued, 2026-08-16) — revised per the owner's Q1 decision:
+// `CLOSED` is SUPERSEDED (never a `to` — see state-machine.md §1a/§1 row 9)
+// and split into `CLOSED_COMPLETE` (human signed before closing) and
+// `CLOSED_INCOMPLETE` (timeout/manual close with no clinician sign-off,
+// including the settings-registry sweep's five eligible source states).
+// 22 legal, non-reflexive transitions — state-machine.md §2 is the source.
 const CONSULTATION_TRANSITIONS: ReadonlyMap<Enums.ConsultationStatus, ReadonlySet<Enums.ConsultationStatus>> = new Map<
   Enums.ConsultationStatus,
   ReadonlySet<Enums.ConsultationStatus>
 >([
   [Enums.ConsultationStatus.OPEN, new Set([Enums.ConsultationStatus.PRIMED])],
-  [Enums.ConsultationStatus.PRIMED, new Set([Enums.ConsultationStatus.RECORDING])],
+  [
+    Enums.ConsultationStatus.PRIMED,
+    new Set([Enums.ConsultationStatus.RECORDING, Enums.ConsultationStatus.CLOSED_INCOMPLETE]),
+  ],
   [Enums.ConsultationStatus.RECORDING, new Set([Enums.ConsultationStatus.DRAINING])],
   [
     Enums.ConsultationStatus.DRAINING,
@@ -29,23 +38,46 @@ const CONSULTATION_TRANSITIONS: ReadonlyMap<Enums.ConsultationStatus, ReadonlySe
       Enums.ConsultationStatus.RECORDING,
       Enums.ConsultationStatus.DRAFT_PENDING_SENSORS,
       Enums.ConsultationStatus.PENDING_REVIEW,
+      Enums.ConsultationStatus.CLOSED_INCOMPLETE,
     ]),
   ],
   [
     Enums.ConsultationStatus.DRAFT_PENDING_SENSORS,
-    new Set([Enums.ConsultationStatus.PENDING_REVIEW, Enums.ConsultationStatus.SIGNED]),
+    new Set([
+      Enums.ConsultationStatus.PENDING_REVIEW,
+      Enums.ConsultationStatus.SIGNED,
+      Enums.ConsultationStatus.CLOSED_INCOMPLETE,
+    ]),
   ],
   [
     Enums.ConsultationStatus.PENDING_REVIEW,
     new Set([Enums.ConsultationStatus.SIGNED, Enums.ConsultationStatus.TIMED_OUT]),
   ],
-  [Enums.ConsultationStatus.SIGNED, new Set([Enums.ConsultationStatus.REOPENED, Enums.ConsultationStatus.CLOSED])],
+  [
+    Enums.ConsultationStatus.SIGNED,
+    new Set([Enums.ConsultationStatus.REOPENED, Enums.ConsultationStatus.CLOSED_COMPLETE]),
+  ],
   [
     Enums.ConsultationStatus.TIMED_OUT,
-    new Set([Enums.ConsultationStatus.SIGNED, Enums.ConsultationStatus.REOPENED, Enums.ConsultationStatus.CLOSED]),
+    new Set([
+      Enums.ConsultationStatus.SIGNED,
+      Enums.ConsultationStatus.REOPENED,
+      Enums.ConsultationStatus.CLOSED_INCOMPLETE,
+    ]),
   ],
-  [Enums.ConsultationStatus.CLOSED, new Set([Enums.ConsultationStatus.REOPENED])],
-  [Enums.ConsultationStatus.REOPENED, new Set([Enums.ConsultationStatus.PENDING_REVIEW])],
+  // CLOSED: deliberately no outgoing edges — superseded, never live, never a
+  // `to` either. See state-machine.md §1 row 9 and the wiring-gate note in
+  // §2 ("must allow-list CLOSED explicitly as the one intentional exception").
+  [Enums.ConsultationStatus.CLOSED, new Set()],
+  [Enums.ConsultationStatus.CLOSED_COMPLETE, new Set([Enums.ConsultationStatus.REOPENED])],
+  [
+    Enums.ConsultationStatus.CLOSED_INCOMPLETE,
+    new Set([Enums.ConsultationStatus.REOPENED]),
+  ],
+  [
+    Enums.ConsultationStatus.REOPENED,
+    new Set([Enums.ConsultationStatus.PENDING_REVIEW, Enums.ConsultationStatus.CLOSED_INCOMPLETE]),
+  ],
 ]);
 
 // Reserved but DISABLED — the pair is a legitimate future edge (owned by

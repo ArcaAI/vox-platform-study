@@ -60,7 +60,18 @@ describe('WORKFLOW_NODE_REGISTRY <-> registry.py parity fixture', () => {
     expect(entries).toEqual(sorted);
   });
 
-  it('carries exactly the seed keys — noop and passthrough, no more, no less', () => {
-    expect(Object.keys(WORKFLOW_NODE_REGISTRY).sort()).toEqual(['noop', 'passthrough']);
+  it('carries exactly the seed + stt-palette keys, no more, no less', () => {
+    expect(Object.keys(WORKFLOW_NODE_REGISTRY).sort()).toEqual([
+      'noop',
+      'passthrough',
+      'stt.asrEngine',
+      'stt.audioInput',
+      'stt.diarization',
+      'stt.languageDetection',
+      'stt.noiseFilter',
+      'stt.phiHop',
+      'stt.transcriptOutput',
+      'stt.vad',
+    ]);
   });
 });

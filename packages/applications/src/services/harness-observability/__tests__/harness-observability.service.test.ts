@@ -17,7 +17,7 @@ const TENANT = 'tenant-1';
 const auditRepository = { getChainForTenant: vi.fn(), getByConsultation: vi.fn() };
 const evalRunRepository = { count: vi.fn(), findAll: vi.fn() };
 const evalScoreRepository = { getByEvalRun: vi.fn() };
-const consultationRepository = { findPendingReviewForTenant: vi.fn(), findAll: vi.fn() };
+const consultationRepository = { findPendingReviewForTenant: vi.fn(), findTimedOutForTenant: vi.fn(), findAll: vi.fn() };
 const policyRepository = { findActiveForTenant: vi.fn() };
 const contextItemRepository = {
   findLatestRawSummary: vi.fn(),
@@ -300,6 +300,7 @@ describe('HarnessObservabilityService', () => {
       consultationRepository.findPendingReviewForTenant.mockResolvedValue([
         { id: 'c1', status: 'PENDING_REVIEW', updatedAt: new Date(now - 999_000) },
       ]);
+      consultationRepository.findTimedOutForTenant.mockResolvedValue([]);
       auditRepository.getChainForTenant.mockResolvedValue([{ action: HarnessAuditAction.GENERATE, consultationId: 'c1', createdAt: pendingSince }]);
 
       const result = await service.gateQueue(TENANT);
@@ -325,6 +326,7 @@ describe('HarnessObservabilityService', () => {
     it('falls back to code-default timers when no policy row exists', async () => {
       policyRepository.findActiveForTenant.mockResolvedValue(null);
       consultationRepository.findPendingReviewForTenant.mockResolvedValue([]);
+      consultationRepository.findTimedOutForTenant.mockResolvedValue([]);
       auditRepository.getChainForTenant.mockResolvedValue([]);
 
       const result = await service.gateQueue(TENANT);
@@ -333,6 +335,24 @@ describe('HarnessObservabilityService', () => {
       expect(result.policySource).toBe('code-default');
       expect(result.gateSlaSeconds).toBe(86400);
       expect(result.gateEscalationSeconds).toBe(43200);
+    });
+
+    it('TASK-711: also surfaces TIMED_OUT consultations (already-breached, still rescuable)', async () => {
+      const now = Date.now();
+      policyRepository.findActiveForTenant.mockResolvedValue(
+        HarnessPolicyFactory.CreateHarnessPolicy({ tenantId: TENANT, gateSlaSeconds: 100, gateEscalationSeconds: 50 }),
+      );
+      consultationRepository.findPendingReviewForTenant.mockResolvedValue([]);
+      consultationRepository.findTimedOutForTenant.mockResolvedValue([{ id: 'c-timed-out', status: 'TIMED_OUT', updatedAt: new Date(now - 999_000) }]);
+      auditRepository.getChainForTenant.mockResolvedValue([]);
+
+      const result = await service.gateQueue(TENANT);
+
+      expect(result.total).toBe(1);
+      expect(result.items[0].consultationId).toBe('c-timed-out');
+      expect(result.items[0].status).toBe('TIMED_OUT');
+      expect(result.items[0].slaBreached).toBe(true);
+      expect(result.items[0].escalated).toBe(true);
     });
   });
 

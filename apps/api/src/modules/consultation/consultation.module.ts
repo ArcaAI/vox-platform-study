@@ -24,6 +24,9 @@ import {
   // ConsultationConsentService for the internal consent-assert endpoint
   // (TASK-712 Phase 4 — non-HTTP enforcement front door).
   ConsentServiceModule,
+  // IPromptManagementService for the internal prompt-template resolution endpoint
+  // (TASK-720 N-2 — the summarization palette's `prompt.template_ref` node).
+  PromptManagementServiceModule,
 } from '@arcaai/applications';
 import { CoreDatabaseModule } from '@arcaai/domains';
 import { ConsultationController } from './consultation.controller';
@@ -62,6 +65,7 @@ import { ConsentInternalController } from './consent-internal.controller';
     LoopConfigServiceModule,
     LoopContextTextServiceModule,
     ConsentServiceModule,
+    PromptManagementServiceModule,
   ],
   controllers: [ConsultationController, AdminConsultationController, ConsultationJobController, HarnessInternalController, ConsentInternalController],
   // dedicated Redis subscriber connection for the

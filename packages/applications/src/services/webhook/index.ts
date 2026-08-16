@@ -4,3 +4,4 @@ export * from './IWebhookService';
 export * from './webhook.dto.mapper';
 export * from './webhook.service.module';
 export * from './webhook.service';
+export * from './webhook-delivery.processor';

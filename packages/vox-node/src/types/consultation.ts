@@ -104,8 +104,25 @@ export interface ConsultationGetResponse {
   departmentId?: string;
   /** `YYYY-MM-DD`. */
   appointmentDate: string;
-  /** Lifecycle status derived from `metadata.status`; defaults to `'OPEN'` server-side when absent. */
-  status?: 'OPEN' | 'CLOSED';
+  /**
+   * Clinical lifecycle status — the single-sourced `ConsultationStatus`
+   * column (TASK-711 session state machine; the legacy `metadata.status`
+   * tracker this field used to derive from is deleted). Defaults to
+   * `'OPEN'` server-side for a freshly-created consultation.
+   */
+  status?:
+    | 'OPEN'
+    | 'PRIMED'
+    | 'RECORDING'
+    | 'DRAINING'
+    | 'DRAFT_PENDING_SENSORS'
+    | 'PENDING_REVIEW'
+    | 'SIGNED'
+    | 'TIMED_OUT'
+    | 'CLOSED'
+    | 'REOPENED'
+    | 'CLOSED_COMPLETE'
+    | 'CLOSED_INCOMPLETE';
   createdAt: string;
   updatedAt: string;
 }

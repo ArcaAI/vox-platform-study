@@ -179,12 +179,18 @@ export class SummaryProcessor extends WorkerHost {
     // `Consultation.status` untouched. Mirrors the harness path's non-early
     // branch (`harness-internal.service.ts` persistDraft) — legacy has no
     // optimistic-delivery phase, so it lands straight on `PENDING_REVIEW`,
-    // never `DRAFT_PENDING_SENSORS`.
+    // never `DRAFT_PENDING_SENSORS`. TASK-711 — routed through
+    // `transitionTo` (single writer); legal predecessor is DRAINING, same as
+    // `persistDraft`'s non-early branch. An illegal predecessor is a real
+    // ordering bug and throws rather than being papered over.
     const consultation = await this.consultationRepository.findById(consultationId);
     if (consultation) {
-      consultation.status = ConsultationStatus.PENDING_REVIEW;
-      consultation.updatedBy = userId ?? consultation.updatedBy;
-      await this.consultationRepository.update(consultation.id, consultation);
+      const expectedConsultationVersion = consultation.version;
+      const applied = consultation.transitionTo(ConsultationStatus.PENDING_REVIEW, userId ?? 'system', 'summary.processor legacy generation');
+      if (applied) {
+        consultation.updatedBy = userId ?? consultation.updatedBy;
+        await this.consultationRepository.updateWithVersion(consultation.id, consultation, expectedConsultationVersion);
+      }
     }
 
     // WORM generation event (Task 6). Best-effort — an audit-append failure

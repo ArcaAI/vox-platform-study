@@ -25,7 +25,7 @@ import secrets
 import uuid
 from typing import Any, cast
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
 
 from harness.core.config import Settings
@@ -205,3 +205,45 @@ async def ingest_knowledge(body: IngestRequest, request: Request) -> dict[str, A
         chunk_count=len(descriptors),
     )
     return {"chunkCount": len(descriptors), "chunks": descriptors}
+
+
+@router.delete(
+    "/knowledge/{document_id}",
+    dependencies=[Depends(require_internal_service_token)],
+)
+async def delete_knowledge_document(
+    document_id: str,
+    request: Request,
+    tenant_id: str = Query(..., alias="tenantId"),
+) -> dict[str, Any]:
+    """Remove every Qdrant point for one document, tenant-scoped.
+
+    Lane B (`KnowledgeDocumentService.deleteDocument`) calls this BEFORE
+    committing the Postgres soft-delete (fail-closed: a 503 here means the
+    delete is aborted rather than leaving vectors retrievable behind a
+    "deleted" Postgres row — see TASK-728). Idempotent: deleting an id with no
+    matching points is a normal 200, not an error.
+    """
+    settings = _settings(request)
+    try:
+        _qdrant_store(settings).delete_by_document(
+            tenant_id=tenant_id, knowledge_document_id=document_id
+        )
+    except Exception as exc:  # noqa: BLE001 — Qdrant outage aborts the caller's delete (retryable)
+        logger.warning(
+            "harness.knowledge.delete.qdrant_unavailable",
+            knowledge_document_id=document_id,
+            tenant_id=tenant_id,
+            error=str(exc),
+        )
+        raise HTTPException(
+            status_code=503,
+            detail={"error": "qdrant_unavailable", "detail": str(exc)},
+        ) from exc
+
+    logger.info(
+        "harness.knowledge.delete.completed",
+        knowledge_document_id=document_id,
+        tenant_id=tenant_id,
+    )
+    return {"status": "deleted", "knowledgeDocumentId": document_id}

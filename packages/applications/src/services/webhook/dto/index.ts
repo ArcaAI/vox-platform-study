@@ -4,3 +4,4 @@ export * from './paginatedWebhook.response';
 export * from './webhook.response';
 export * from './webhookRunHistory.response';
 export * from './updateWebhook.request';
+export * from './rotateWebhookSecret.request';

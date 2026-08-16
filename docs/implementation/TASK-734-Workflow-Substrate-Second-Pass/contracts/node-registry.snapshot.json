@@ -1,5 +1,5 @@
 {
-  "_comment": "The cross-language node-registry parity fixture (TASK-734 Task 3). Asserted from BOTH packages/workflow-contract/src/__tests__/node-registry-parity.test.ts (TS) and apps/harness/src/harness/tests/unit/temporal/interpreter/test_node_registry_parity.py (Python) — see packages/workflow-contract/src/node-registry.ts's module docstring for why the two sides check against this file instead of against each other. `entries` sorted by `key`. Only fields BOTH registries carry today are listed here; `classes`/`paletteKey` (TS-only) and `kind` (Python-only) are intentionally excluded.",
+  "_comment": "The cross-language node-registry parity fixture (TASK-734 Task 3, extended by TASK-724 Task 3 with the eight STT-palette node types — stt.phiHop is implemented:false, a documented placeholder pending TASK-710). Asserted from BOTH packages/workflow-contract/src/__tests__/node-registry-parity.test.ts (TS) and apps/harness/src/harness/tests/unit/temporal/interpreter/test_node_registry_parity.py (Python) — see packages/workflow-contract/src/node-registry.ts's module docstring for why the two sides check against this file instead of against each other. `entries` sorted by `key`. Only fields BOTH registries carry today are listed here; `classes`/`paletteKey` (TS-only) and `kind` (Python-only) are intentionally excluded. NOTE (2026-08-16, TASK-724 execution): TASK-720's summarization-palette entries are currently absent from both registries — a concurrent sibling session's uncommitted work was reverted mid-session by an external tree operation (see docs/implementation/TASK-724-Palette-Stt/README.md §7). This fixture reflects the registries' actual current content (noop/passthrough + stt.*); TASK-720's own reconciliation will re-add its five entries on top of this.",
   "entries": [
     {
       "key": "noop",
@@ -19,6 +19,86 @@
       "externalWrite": false,
       "defaultTimeoutSeconds": 60,
       "defaultMaxAttempts": 1,
+      "entitlementKey": null
+    },
+    {
+      "key": "stt.asrEngine",
+      "implemented": true,
+      "activityName": "interpreter.stt_asr_engine",
+      "critical": true,
+      "externalWrite": false,
+      "defaultTimeoutSeconds": 600,
+      "defaultMaxAttempts": 2,
+      "entitlementKey": null
+    },
+    {
+      "key": "stt.audioInput",
+      "implemented": true,
+      "activityName": "interpreter.stt_audio_input",
+      "critical": true,
+      "externalWrite": false,
+      "defaultTimeoutSeconds": 60,
+      "defaultMaxAttempts": 3,
+      "entitlementKey": null
+    },
+    {
+      "key": "stt.diarization",
+      "implemented": true,
+      "activityName": "interpreter.stt_diarization",
+      "critical": false,
+      "externalWrite": false,
+      "defaultTimeoutSeconds": 120,
+      "defaultMaxAttempts": 3,
+      "entitlementKey": null
+    },
+    {
+      "key": "stt.languageDetection",
+      "implemented": true,
+      "activityName": "interpreter.stt_language_detection",
+      "critical": false,
+      "externalWrite": false,
+      "defaultTimeoutSeconds": 30,
+      "defaultMaxAttempts": 3,
+      "entitlementKey": null
+    },
+    {
+      "key": "stt.noiseFilter",
+      "implemented": true,
+      "activityName": "interpreter.stt_noise_filter",
+      "critical": false,
+      "externalWrite": false,
+      "defaultTimeoutSeconds": 60,
+      "defaultMaxAttempts": 3,
+      "entitlementKey": null
+    },
+    {
+      "key": "stt.phiHop",
+      "implemented": false,
+      "activityName": "interpreter.stt_phi_hop",
+      "critical": false,
+      "externalWrite": false,
+      "defaultTimeoutSeconds": 60,
+      "defaultMaxAttempts": 1,
+      "entitlementKey": null
+    },
+    {
+      "key": "stt.transcriptOutput",
+      "implemented": true,
+      "activityName": "interpreter.stt_transcript_output",
+      "critical": true,
+      "externalWrite": true,
+      "defaultTimeoutSeconds": 60,
+      "defaultMaxAttempts": 3,
+      "entitlementKey": null
+    },
+    {
+      "key": "stt.vad",
+      "implemented": true,
+      "activityName": "interpreter.stt_vad",
+      "critical": false,
+      "externalWrite": false,
+      "defaultTimeoutSeconds": 60,
+      "defaultMaxAttempts": 3,
       "entitlementKey": null
     }
   ]

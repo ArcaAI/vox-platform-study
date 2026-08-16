@@ -192,11 +192,11 @@ describe('WebhookService', () => {
       });
 
       // Verify the returned entity has correct data
-      expect(result.id).toBe('new-webhook-id');
-      expect(result.tenantId).toBe('tenant-1');
-      expect(result.name).toBe('New Webhook');
-      expect(result.url).toBe('https://example.com/webhook');
-      expect(result.resourceTypeName).toBe('User');
+      expect(result.webhook.id).toBe('new-webhook-id');
+      expect(result.webhook.tenantId).toBe('tenant-1');
+      expect(result.webhook.name).toBe('New Webhook');
+      expect(result.webhook.url).toBe('https://example.com/webhook');
+      expect(result.webhook.resourceTypeName).toBe('User');
     });
 
     it('should emit ResourceCreated event with complete event data', async () => {
@@ -236,24 +236,6 @@ describe('WebhookService', () => {
       ).rejects.toThrow('Failed to create WebhookEntity');
     });
 
-    it('should create webhook with optional secret', async () => {
-      const newWebhook = createMockWebhookEntity({
-        id: 'new-webhook-id',
-        hashedSecret: 'hashed-secret-value',
-      });
-      mockWebhookRepository.create.mockResolvedValue(newWebhook);
-
-      const result = await service.create({
-        tenantId: 'tenant-1',
-        name: 'Secure Webhook',
-        url: 'https://example.com/webhook',
-        resourceTypeName: 'User',
-        hashedSecret: 'hashed-secret-value',
-      });
-
-      expect(result.hashedSecret).toBe('hashed-secret-value');
-    });
-
     it('should create webhook with subscription metadata', async () => {
       const metadata = { events: ['user.created', 'user.updated'], priority: 'high' };
       const newWebhook = createMockWebhookEntity({
@@ -270,7 +252,7 @@ describe('WebhookService', () => {
         subscriptionMetadata: metadata,
       });
 
-      expect(result.subscriptionMetadata).toEqual(metadata);
+      expect(result.webhook.subscriptionMetadata).toEqual(metadata);
     });
 
     it('should create webhook for specific resource', async () => {
@@ -289,8 +271,8 @@ describe('WebhookService', () => {
         resourceId: 'consultation-123',
       });
 
-      expect(result.resourceTypeName).toBe('Consultation');
-      expect(result.resourceId).toBe('consultation-123');
+      expect(result.webhook.resourceTypeName).toBe('Consultation');
+      expect(result.webhook.resourceId).toBe('consultation-123');
     });
 
     it('should handle repository errors gracefully', async () => {
@@ -304,6 +286,128 @@ describe('WebhookService', () => {
           resourceTypeName: 'User',
         }),
       ).rejects.toThrow('Database connection failed');
+    });
+  });
+
+  // =========================================================================
+  // TASK-727: server-generated, peppered-HMAC webhook secrets.
+  // `CreateWebhookRequest` no longer accepts a caller-supplied `hashedSecret`
+  // — the raw secret is always minted server-side and returned exactly once.
+  // =========================================================================
+  describe('create — server-generated signing secret (TASK-727)', () => {
+    it('returns a raw secret matching the expected shape, distinct from the stored hash', async () => {
+      // No SecretsService wired ⇒ un-peppered SHA-256 fallback (legacy-fixture
+      // shape, same as ApiKeyService's own fallback when secretsService is
+      // undefined). WebhookFactory.CreateWebhook is mocked to echo back
+      // whatever hashedSecret the service computed.
+      const newWebhook = createMockWebhookEntity({ id: 'new-webhook-id' });
+      mockWebhookRepository.create.mockImplementation(async () => newWebhook);
+
+      const result = await service.create({
+        tenantId: 'tenant-1',
+        name: 'Secure Webhook',
+        url: 'https://example.com/webhook',
+        resourceTypeName: 'User',
+      });
+
+      expect(result.rawSecret).toMatch(/^[0-9a-f]{64}$/);
+
+      const factoryInput = mockWebhookRepository.create.mock.calls[0][0];
+      // Stored form is REVERSIBLE (AES-256-GCM), never the raw secret and
+      // never a bare hash — but it must decrypt back to the exact raw
+      // secret, since the delivery processor needs it to sign outbound
+      // payloads (see WebhookService's class doc for why this can't be a
+      // one-way hash).
+      expect(factoryInput.hashedSecret).not.toBe(result.rawSecret);
+      expect(WebhookService.decryptSecret(factoryInput.hashedSecret)).toBe(result.rawSecret);
+    });
+
+    it('produces a different raw secret on a second create call', async () => {
+      mockWebhookRepository.create.mockResolvedValue(createMockWebhookEntity({ id: 'wh-a' }));
+      const first = await service.create({
+        tenantId: 'tenant-1',
+        name: 'Webhook A',
+        url: 'https://example.com/webhook',
+        resourceTypeName: 'User',
+      });
+
+      mockWebhookRepository.create.mockResolvedValue(createMockWebhookEntity({ id: 'wh-b' }));
+      const second = await service.create({
+        tenantId: 'tenant-1',
+        name: 'Webhook B',
+        url: 'https://example.com/webhook',
+        resourceTypeName: 'User',
+      });
+
+      expect(first.rawSecret).not.toBe(second.rawSecret);
+    });
+
+    it('never accepts a caller-supplied hashedSecret — the DTO carries no such field', async () => {
+      const newWebhook = createMockWebhookEntity({ id: 'new-webhook-id' });
+      mockWebhookRepository.create.mockImplementation(async () => newWebhook);
+
+      await service.create({
+        tenantId: 'tenant-1',
+        name: 'Sneaky Webhook',
+        url: 'https://example.com/webhook',
+        resourceTypeName: 'User',
+        // A caller attempting to smuggle a value in past the TS type (as a
+        // real HTTP request would be rejected by forbidNonWhitelisted).
+        ...({ hashedSecret: 'caller-supplied-plaintext' } as object),
+      } as never);
+
+      const factoryInput = mockWebhookRepository.create.mock.calls[0][0];
+      // The server-generated value wins — never the caller-supplied string.
+      expect(factoryInput.hashedSecret).not.toBe('caller-supplied-plaintext');
+      expect(WebhookService.decryptSecret(factoryInput.hashedSecret)).not.toBe('caller-supplied-plaintext');
+    });
+
+    it('encrypts with WEBHOOK_SECRET_PEPPER-derived key material when SecretsService resolves one (never API_KEY_PEPPER)', async () => {
+      const mockSecretsService = { getSecretOptional: vi.fn().mockResolvedValue('dedicated-webhook-pepper') };
+      const pepperedService = new WebhookService(
+        mockWebhookRepository as any,
+        mockWebhookRunHistoryRepository as any,
+        mockEventEmitter as any,
+        mockClsService as any,
+        mockSecretsService as any,
+      );
+      mockWebhookRepository.create.mockImplementation(async () => createMockWebhookEntity({ id: 'peppered' }));
+
+      const result = await pepperedService.create({
+        tenantId: 'tenant-1',
+        name: 'Peppered Webhook',
+        url: 'https://example.com/webhook',
+        resourceTypeName: 'User',
+      });
+
+      // Never the API-key pepper name — this MUST be the dedicated secret.
+      expect(mockSecretsService.getSecretOptional).toHaveBeenCalledWith('WEBHOOK_SECRET_PEPPER');
+      expect(mockSecretsService.getSecretOptional).not.toHaveBeenCalledWith('API_KEY_PEPPER');
+
+      const factoryInput = mockWebhookRepository.create.mock.calls[0][0];
+      // Decrypts correctly under the resolved pepper...
+      expect(WebhookService.decryptSecret(factoryInput.hashedSecret, 'dedicated-webhook-pepper')).toBe(result.rawSecret);
+      // ...but fails loudly (GCM auth-tag mismatch) under the WRONG pepper —
+      // proves the ciphertext is actually keyed by the pepper, not ignoring it.
+      expect(() => WebhookService.decryptSecret(factoryInput.hashedSecret, 'some-other-pepper')).toThrow();
+      // ...and under no pepper at all (the un-peppered local fallback key).
+      expect(() => WebhookService.decryptSecret(factoryInput.hashedSecret)).toThrow();
+    });
+  });
+
+  describe('fetchById / fetchAll never re-expose hashedSecret (TASK-727)', () => {
+    it('fetchById result carries the peppered hash internally but WebhookDtoMapper never surfaces it', async () => {
+      // WebhookDtoMapper is exercised in its own dto-mapper suite; here we
+      // pin the entity-level contract the mapper relies on: hashedSecret is
+      // still present on the domain entity (needed for the delivery
+      // processor's signing step) but is never a field on WebhookResponse —
+      // see webhook.dto.mapper.test.ts / webhook.response.ts.
+      const webhook = createMockWebhookEntity({ id: 'webhook-123', hashedSecret: 'stored-hash' });
+      mockWebhookRepository.findById.mockResolvedValue(webhook);
+
+      const result = await service.fetchById('webhook-123');
+
+      expect(result.hashedSecret).toBe('stored-hash');
     });
   });
 
@@ -1005,18 +1109,20 @@ describe('WebhookService', () => {
       expect(mockWebhookRepository.updateWithVersion).toHaveBeenCalled();
     });
 
-    it('should update webhook secret', async () => {
-      const existingWebhook = createMockWebhookEntity({
-        id: 'webhook-123',
-        hasChanges: true,
-        changes: { hashedSecret: 'new-hashed-secret' },
-      });
-      mockWebhookRepository.findById.mockResolvedValue(existingWebhook);
-      mockWebhookRepository.updateWithVersion.mockResolvedValue(existingWebhook);
+    // TASK-727: `hashedSecret` is no longer settable via the general PATCH —
+    // secrets rotate ONLY through `rotateSecret`. `UpdateWebhookRequest` no
+    // longer declares the field (enforced at the HTTP edge by
+    // forbidNonWhitelisted); this pins the service-level defense-in-depth
+    // guard for callers that bypass the DTO type (Bull jobs, internal
+    // service-to-service writes).
+    it('rejects an update request that smuggles hashedSecret, before touching the repository', async () => {
+      mockWebhookRepository.findById.mockResolvedValue(createMockWebhookEntity({ id: 'webhook-123' }));
 
-      await service.update('webhook-123', { hashedSecret: 'new-hashed-secret', expectedVersion: 1 } as never);
-
-      expect(mockWebhookRepository.updateWithVersion).toHaveBeenCalled();
+      await expect(
+        service.update('webhook-123', { hashedSecret: 'sneaky-value', expectedVersion: 1 } as never),
+      ).rejects.toThrow('hashedSecret cannot be set via update');
+      expect(mockWebhookRepository.findById).not.toHaveBeenCalled();
+      expect(mockWebhookRepository.updateWithVersion).not.toHaveBeenCalled();
     });
 
     it('propagates OptimisticConcurrencyException from the repository CAS write (Stream D Phase)', async () => {
@@ -1041,6 +1147,85 @@ describe('WebhookService', () => {
 
       // Audit MUST NOT broadcast on a failed CAS write.
       expect(mockEventEmitter.emit).not.toHaveBeenCalledWith(SysEventType.ResourceUpdated, expect.anything());
+    });
+  });
+
+  // =========================================================================
+  // rotateSecret (TASK-727): the ONLY write path that may set `hashedSecret`.
+  // Same OCC/tenant-guard shape as `update`, but always mints a fresh raw
+  // secret and returns it exactly once.
+  // =========================================================================
+  describe('rotateSecret', () => {
+    it('mints a new raw secret, CAS-writes the reversibly-encrypted form, and returns the raw secret once', async () => {
+      const existingWebhook = createMockWebhookEntity({ id: 'webhook-123', tenantId: 'tenant-1', version: 3 });
+      mockWebhookRepository.findById.mockResolvedValue(existingWebhook);
+      mockWebhookRepository.updateWithVersion.mockResolvedValue({ ...existingWebhook, version: 4 });
+
+      const result = await service.rotateSecret('webhook-123', 3);
+
+      expect(result.rawSecret).toMatch(/^[0-9a-f]{64}$/);
+      expect(mockWebhookRepository.updateWithVersion).toHaveBeenCalledWith('webhook-123', existingWebhook, 3);
+      // The entity handed to updateWithVersion carries the freshly computed,
+      // reversibly-encrypted form — never the raw secret, but it decrypts
+      // back to exactly it.
+      expect(existingWebhook.hashedSecret).not.toBe(result.rawSecret);
+      expect(WebhookService.decryptSecret(existingWebhook.hashedSecret)).toBe(result.rawSecret);
+    });
+
+    it('emits ResourceUpdated without leaking the secret material', async () => {
+      const existingWebhook = createMockWebhookEntity({ id: 'webhook-123', version: 3 });
+      mockWebhookRepository.findById.mockResolvedValue(existingWebhook);
+      mockWebhookRepository.updateWithVersion.mockResolvedValue({ ...existingWebhook, version: 4 });
+
+      await service.rotateSecret('webhook-123', 3);
+
+      expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+        SysEventType.ResourceUpdated,
+        expect.objectContaining({
+          resourceId: 'webhook-123',
+          data: expect.objectContaining({ rotatedSecret: true, previousVersion: 3, newVersion: 4 }),
+        }),
+      );
+      const [, payload] = (mockEventEmitter.emit as ReturnType<typeof vi.fn>).mock.calls.find(([type]) => type === SysEventType.ResourceUpdated) as [
+        string,
+        { data: Record<string, unknown> },
+      ];
+      expect(JSON.stringify(payload.data)).not.toMatch(/[0-9a-f]{64}/);
+    });
+
+    it('throws NotFoundException + does not rotate for a cross-tenant non-admin caller', async () => {
+      const otherWebhook = createMockWebhookEntity({ id: 'webhook-foreign', tenantId: 'tenant-2', version: 1 });
+      mockWebhookRepository.findById.mockResolvedValue(otherWebhook);
+
+      await expect(service.rotateSecret('webhook-foreign', 1)).rejects.toThrow('Resource not found');
+      expect(mockWebhookRepository.updateWithVersion).not.toHaveBeenCalled();
+    });
+
+    it('allows a SUPER_ADMIN to rotate a cross-tenant webhook secret', async () => {
+      mockClsService.get.mockImplementation((key: string) => {
+        if (key === 'user') return { id: 'admin-1', roles: ['SUPER_ADMIN'] };
+        if (key === 'tenantId') return 'tenant-9';
+        return null;
+      });
+      const otherWebhook = createMockWebhookEntity({ id: 'webhook-foreign', tenantId: 'tenant-2', version: 1 });
+      mockWebhookRepository.findById.mockResolvedValue(otherWebhook);
+      mockWebhookRepository.updateWithVersion.mockResolvedValue({ ...otherWebhook, version: 2 });
+
+      const result = await service.rotateSecret('webhook-foreign', 1);
+
+      expect(result.rawSecret).toMatch(/^[0-9a-f]{64}$/);
+      expect(mockWebhookRepository.updateWithVersion).toHaveBeenCalled();
+    });
+
+    it('propagates OptimisticConcurrencyException on version drift', async () => {
+      const { OptimisticConcurrencyException } = await import('@arcaai/exceptions');
+      const existingWebhook = createMockWebhookEntity({ id: 'webhook-123', version: 3 });
+      mockWebhookRepository.findById.mockResolvedValue(existingWebhook);
+      mockWebhookRepository.updateWithVersion.mockRejectedValue(
+        new OptimisticConcurrencyException('Webhook', 'webhook-123', { expectedVersion: 3, currentVersion: 4 }),
+      );
+
+      await expect(service.rotateSecret('webhook-123', 3)).rejects.toThrow(OptimisticConcurrencyException);
     });
   });
 
@@ -1108,7 +1293,7 @@ describe('WebhookService', () => {
         resourceTypeName: 'User',
       });
 
-      expect(result.id).toBe('new-webhook-id');
+      expect(result.webhook.id).toBe('new-webhook-id');
     });
 
     it('should handle empty search results gracefully', async () => {
@@ -1158,7 +1343,7 @@ describe('WebhookService', () => {
         subscriptionMetadata: complexMetadata,
       });
 
-      expect(result.subscriptionMetadata).toEqual(complexMetadata);
+      expect(result.webhook.subscriptionMetadata).toEqual(complexMetadata);
     });
 
     it('should handle URLs with special characters', async () => {
@@ -1175,7 +1360,7 @@ describe('WebhookService', () => {
         resourceTypeName: 'User',
       });
 
-      expect(result.url).toBe('https://example.com/webhook?param=value&other=test');
+      expect(result.webhook.url).toBe('https://example.com/webhook?param=value&other=test');
     });
   });
 

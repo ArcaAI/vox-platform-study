@@ -3,6 +3,13 @@ import { IsInt, IsObject, IsOptional, IsString, Min } from 'class-validator';
 import { BaseRequest } from '../../../common';
 import { JsonValue } from '@arcaai/domains';
 
+// TASK-727: `hashedSecret` is deliberately NOT a field here — a signing
+// secret is rotated through the dedicated `POST :id/rotate-secret` route
+// (`WebhookService.rotateSecret`), never folded into a general PATCH. The
+// global `ValidationPipe`'s `forbidNonWhitelisted` rejects an attempt to
+// smuggle it in via this DTO at the HTTP edge; `WebhookService.update` also
+// throws defensively if a caller bypasses the DTO type (service-to-service /
+// Bull job callers are not validated by the HTTP pipe).
 export class UpdateWebhookRequest extends BaseRequest {
   @ApiProperty({ description: 'Name of the webhook', required: false })
   @IsString()
@@ -16,14 +23,6 @@ export class UpdateWebhookRequest extends BaseRequest {
   @IsString()
   @IsOptional()
   url?: string;
-
-  @ApiProperty({
-    description: 'Hashed secret for webhook authentication',
-    required: false,
-  })
-  @IsString()
-  @IsOptional()
-  hashedSecret?: string;
 
   @ApiProperty({ description: 'Resource type name', required: false })
   @IsString()

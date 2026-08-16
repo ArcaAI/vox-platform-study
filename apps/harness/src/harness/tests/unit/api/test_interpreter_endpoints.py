@@ -103,6 +103,26 @@ class TestStartWorkflowRun:
         assert wf_input.session_id == "s-1"
         assert wf_input.tenant_id == "t-1"
         assert wf_input.sandbox is False
+        assert wf_input.payload == {}
+
+    @pytest.mark.asyncio
+    async def test_forwards_sandbox_flag_and_payload(self, harness):
+        """TASK-721 Workbench: a sandbox run's synthetic test payload reaches
+        `InterpreterInput.payload` verbatim — the field every node's
+        `NodeActivityInput.run_payload` is threaded from."""
+        http, client, _handle, _settings = harness
+        resp = await http.post(
+            f"{_BASE}/workflow-runs:start",
+            headers=_HEADERS,
+            json=_start_body(sandbox=True, payload={"transcript": "synthetic sample only"}),
+        )
+        assert resp.status_code == 200
+
+        client.start_workflow.assert_awaited_once()
+        args, _kwargs = client.start_workflow.call_args
+        wf_input = args[1]
+        assert wf_input.sandbox is True
+        assert wf_input.payload == {"transcript": "synthetic sample only"}
 
     @pytest.mark.asyncio
     async def test_duplicate_start_returns_existing_run_not_a_second_execution(self, harness):

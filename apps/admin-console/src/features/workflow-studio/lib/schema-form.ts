@@ -88,8 +88,10 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-/** `promptTemplateId` -> `Prompt Template Id`. Only used when the schema carries no `title`. */
-function humanizeKey(key: string): string {
+/** `promptTemplateId` -> `Prompt Template Id`. Used when the schema carries no `title`, and
+ *  re-exported for the palette rail (Task 12) to derive a display label from a bare registry
+ *  `type` string — the delivered registry has no `label` field (registry.contract.md). */
+export function humanizeKey(key: string): string {
   const words = key
     .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
     .replace(/[_-]+/g, ' ')

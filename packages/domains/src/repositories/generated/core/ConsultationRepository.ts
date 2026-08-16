@@ -377,6 +377,25 @@ export class ConsultationRepository extends Repository<ConsultationEntity, Consu
   }
 
   /**
+   * TASK-711 — consultations whose gate SLA was exhausted (PENDING_REVIEW →
+   * TIMED_OUT, `recordEscalation`'s terminal `GATE_ABANDONED` path), oldest
+   * first. A sibling to `findPendingReviewForTenant`: rows that time out must
+   * NOT silently drop out of the gate-queue surface — this is the explicit
+   * dedicated read state-machine.md/README §3.3 pitfall 5 calls for, rather
+   * than widening the PENDING_REVIEW filter to include TIMED_OUT.
+   */
+  async findTimedOutForTenant(tenantId: string): Promise<ConsultationEntity[]> {
+    return this.findAll({
+      filters: {
+        tenantId,
+        status: ConsultationStatus.TIMED_OUT,
+        resourceStatus: ResourceStatusType.ENABLED,
+      },
+      sort: [{ updatedAt: 'asc' }],
+    });
+  }
+
+  /**
    * Minimal projection of consultations created inside
    * [rangeStart, rangeEnd] (inclusive), for the new-vs-
    * revisit range aggregation. Rows are returned raw (`createdAt` +

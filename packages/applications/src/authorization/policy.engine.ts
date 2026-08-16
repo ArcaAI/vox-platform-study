@@ -1,6 +1,7 @@
 import { Injectable, Logger, Inject, Optional } from '@nestjs/common';
 import { createPrismaAbility, accessibleBy, type PrismaQueryOf, type PrismaTypeMap } from '@casl/prisma';
 import { Ability } from '@casl/ability';
+import { Counter, register } from 'prom-client';
 import { CoreDatabaseService, ResourceStatusType } from '@arcaai/domains';
 import { IRedisCacheService } from '../services/baseServices/redis';
 
@@ -10,6 +11,57 @@ import { IRedisCacheService } from '../services/baseServices/redis';
  * this tenant; NULL is no longer a valid `UserRoleAssignment.tenantId`.
  */
 const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
+
+/**
+ * TASK-712 Phase 5 Task 14 — CASL condition-evaluation SHADOW mode.
+ *
+ * `unified-auth.guard.ts:319` evaluates `ability.can(action, subject)` — a
+ * bare type-name check. CASL's `conditions` machinery is fully built
+ * (`resolveConditions`/`resolveRuleConditions` below) but can only be
+ * evaluated against a **subject instance**, so today it never runs — see
+ * `casl-blast-radius.md` for the full inventory of seeded rules this
+ * affects (82 rule entries carrying `conditions` across 21 live policies as
+ * of that survey).
+ *
+ * This is the SHADOW half only: compute what an instance-aware verdict
+ * WOULD be, compare it to the type-only verdict that is actually enforced,
+ * and record every disagreement. The type-only verdict never stops being
+ * authoritative here — flipping that is Task 15 (Enforce), explicitly not
+ * started this pass (owner directive R1: shadow → measure → enforce, per
+ * `(action, subject)` pair, independently revertible).
+ */
+export const CASL_SHADOW_DIVERGENCE_METRIC = 'casl_shadow_divergence_total';
+
+/** Structured log event name for the same divergence (dotted, matching the `metering.shadow_report.*` convention already used for another shadow-mode reconciler in this codebase — `shadow-metering.service.ts`). */
+export const CASL_SHADOW_DIVERGENCE_EVENT = 'casl.shadow.divergence';
+
+/**
+ * Result of comparing the type-only verdict (what `UnifiedAuthGuard` actually
+ * enforces today) against the instance-aware verdict CASL's `conditions`
+ * would produce once evaluated against a resolved subject instance.
+ */
+export interface ShadowVerdict {
+  /** What is actually enforced today — a bare `ability.can(action, subject)`. */
+  typeVerdict: boolean;
+  /** What `conditions` would decide against the resolved instance. */
+  instanceVerdict: boolean;
+  /** `typeVerdict !== instanceVerdict`. */
+  diverged: boolean;
+}
+
+const caslShadowDivergenceTotal: Counter<'action' | 'subject' | 'direction'> =
+  (register.getSingleMetric(CASL_SHADOW_DIVERGENCE_METRIC) as Counter<'action' | 'subject' | 'direction'> | undefined) ??
+  new Counter({
+    name: CASL_SHADOW_DIVERGENCE_METRIC,
+    help:
+      'Number of requests where the CASL type-only authorization verdict ' +
+      '(currently enforced) disagreed with the instance-aware verdict its ' +
+      'seeded `conditions` would produce (TASK-712 Phase 5, shadow mode). ' +
+      "Labeled by action, subject, and direction ('would_deny' | 'would_allow'). " +
+      'See casl-blast-radius.md for the rollout this counter measures against.',
+    labelNames: ['action', 'subject', 'direction'] as const,
+    registers: [register],
+  });
 
 /**
  * CASL Ability type for the application.
@@ -235,6 +287,53 @@ export class PolicyEngine {
    */
   cannot(ability: AppAbility, action: string, subject: string, resource?: Record<string, unknown>): boolean {
     return !this.can(ability, action, subject, resource);
+  }
+
+  /**
+   * TASK-712 Phase 5 Task 14 (shadow mode) — pure comparison, no I/O, no
+   * side effects. Computes BOTH the type-only verdict (what
+   * `UnifiedAuthGuard` actually enforces) and the instance-aware verdict
+   * `conditions` would produce against `instance`, and reports whether they
+   * agree. Never decides a request outcome by itself.
+   *
+   * `instance` is caller-resolved (see `ResolveSubjectInstance` in
+   * `unified-auth.guard.ts`) and MAY be missing fields a rule's
+   * `conditions` reference — e.g. a partial projection without `tenantId`.
+   * That is exactly the hazard `casl-blast-radius.md` names, and it
+   * surfaces here as `diverged: true`, never as a thrown exception.
+   */
+  evaluateShadowVerdict(ability: AppAbility, action: string, subject: string, instance: Record<string, unknown>): ShadowVerdict {
+    const typeVerdict = ability.can(action, subject);
+    const instanceVerdict = this.can(ability, action, subject, instance);
+    return { typeVerdict, instanceVerdict, diverged: typeVerdict !== instanceVerdict };
+  }
+
+  /**
+   * Records a divergence found by {@link evaluateShadowVerdict}: increments
+   * `casl_shadow_divergence_total` and logs `casl.shadow.divergence`. A
+   * no-op when `verdict.diverged` is false — shadow mode should be silent
+   * on the (expected) common case.
+   *
+   * `direction` distinguishes the two risk shapes an eventual enforce would
+   * introduce: `would_deny` (type allows, instance would deny — the R1 risk,
+   * a legitimate call turning into a 403) vs `would_allow` (type denies,
+   * instance would allow — a widening, lower operational risk but still
+   * worth measuring before `getAccessibleBy` is wired to any list query).
+   */
+  recordShadowDivergence(action: string, subject: string, verdict: ShadowVerdict, meta?: Record<string, unknown>): void {
+    if (!verdict.diverged) return;
+
+    const direction = verdict.typeVerdict && !verdict.instanceVerdict ? 'would_deny' : 'would_allow';
+    caslShadowDivergenceTotal.inc({ action, subject, direction });
+    this.logger.warn({
+      message: CASL_SHADOW_DIVERGENCE_EVENT,
+      action,
+      subject,
+      direction,
+      typeVerdict: verdict.typeVerdict,
+      instanceVerdict: verdict.instanceVerdict,
+      ...meta,
+    });
   }
 
   /**

@@ -34,13 +34,16 @@ import { SEED_WORKFLOW_DEFINITION_IDS, SYSTEM_TENANT_ID, SYSTEM_USER_ID } from '
  * node table — a mismatch there is exactly what makes the interpreter's S-4 dispatch check
  * `SKIPPED(reason="activity_mismatch")` every node (see that doc + `execution-semantics.md` §10).
  *
- * `registryChecksum` is a NAMED PLACEHOLDER
- * (`'task-720-seed-placeholder-pending-task-715-registry'`), not a real hash of an assembled
- * node registry — TASK-715's code-owned `WORKFLOW_NODE_REGISTRY` (Phases B-F) does not exist in
- * this session, so there is nothing real to hash yet. Once it exists, this row's
- * `registryChecksum`/`compiledConfig.registryChecksum` should be recomputed against it (a
- * mismatch is what TASK-716 designed `NEEDS_REVIEW` re-validation to catch — this seed
- * deliberately does not fake that check passing against a registry that isn't real).
+ * `registryChecksum` — UPDATED (TASK-720 Task 5 pass): TASK-734 built the code-owned
+ * `WORKFLOW_NODE_REGISTRY` (`packages/workflow-contract/src/node-registry.ts`) and this ticket's
+ * own Task 5 populated its five summarization-palette entries, so the placeholder named above the
+ * original pass ("`'task-720-seed-placeholder-pending-task-715-registry'`") is gone — this row now
+ * carries the REAL `registryChecksum()` output (recomputed the same way as `graph`/
+ * `compiledConfig`: a throwaway script against the built `packages/workflow-contract/dist`,
+ * pasted here verbatim, never hand-typed). `graphChecksum` is unchanged (the authored `GRAPH` did
+ * not change), but `compiledConfig.checksum` DID change, because it hashes over
+ * `compiledConfig.registryChecksum` too — both were recomputed together from the same `compile()`
+ * run so they stay internally consistent.
  *
  * `validationReport` is real — it is `validate()`'s actual output — but it is SCOPED to only
  * the `WF-SUMM-*` structural rules TASK-720 added (`packages/workflow-contract/src/rule-catalogue.ts`),
@@ -59,7 +62,10 @@ import { SEED_WORKFLOW_DEFINITION_IDS, SYSTEM_TENANT_ID, SYSTEM_USER_ID } from '
 const PLATFORM_DEFAULT_ID = SEED_WORKFLOW_DEFINITION_IDS.PLATFORM_DEFAULT_SUMMARIZATION;
 const SLUG = 'platform-default-summarization';
 const COMPILED_AT = '2026-08-16T00:00:00.000Z';
-const REGISTRY_CHECKSUM_PLACEHOLDER = 'task-720-seed-placeholder-pending-task-715-registry';
+// Real `registryChecksum()` output from `packages/workflow-contract/src/node-registry.ts`'s
+// `WORKFLOW_NODE_REGISTRY` (7 entries: noop/passthrough + the 5 summarization-palette node
+// types) — recomputed via a throwaway script against the built dist, see the module docstring.
+const REGISTRY_CHECKSUM = '2ae7222a1e7dc97191309a71a6e438a5088d07174f649d541e1d98878478f97b';
 
 const GRAPH = {
   version: 1,
@@ -119,7 +125,7 @@ const COMPILED_CONFIG = {
   paletteKey: 'summarization',
   compiledAt: COMPILED_AT,
   compilerVersion: 'task-720-seed-1',
-  registryChecksum: REGISTRY_CHECKSUM_PLACEHOLDER,
+  registryChecksum: REGISTRY_CHECKSUM,
   ruleSetVersion: 1,
   stages: [
     {
@@ -197,7 +203,7 @@ const COMPILED_CONFIG = {
   },
   caps: { maxTotalSeconds: 3600, maxNodeSeconds: 900, maxAttempts: 5 },
   // sha256 over canonicalJson of every field above (computed by `compile()` — see docstring).
-  checksum: 'ac0eaddadf3f3c01f5b5a5a0f5986773eedd1dc0e6221e3805fbba914e8f6bc9',
+  checksum: 'a0a699f5200aeb43dc8438dc6243c75519569995e029fba16c0882e1ef7cb511',
 };
 
 // sha256 over canonicalJson(GRAPH), computed by the same `canonicalJson` the compiler uses.
@@ -211,7 +217,7 @@ const VALIDATION_REPORT = {
   ok: true,
   findings: [],
   ruleSetVersion: 1,
-  registryChecksum: REGISTRY_CHECKSUM_PLACEHOLDER,
+  registryChecksum: REGISTRY_CHECKSUM,
   evaluatedAt: COMPILED_AT,
 };
 
@@ -241,7 +247,7 @@ export const seedWorkflowDefinition = async (client: CorePrismaClient): Promise<
       graphChecksum: GRAPH_CHECKSUM,
       compiledConfig: COMPILED_CONFIG,
       compiledConfigChecksum: COMPILED_CONFIG_CHECKSUM,
-      registryChecksum: REGISTRY_CHECKSUM_PLACEHOLDER,
+      registryChecksum: REGISTRY_CHECKSUM,
       validationReport: VALIDATION_REPORT,
       needsReview: false,
       validatedAt: COMPILED_AT,

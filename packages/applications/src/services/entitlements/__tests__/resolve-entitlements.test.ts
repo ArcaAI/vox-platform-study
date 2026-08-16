@@ -13,7 +13,13 @@ describe('resolveEntitlements', () => {
       expect(Object.values(r.limits).every((v) => v === null)).toBe(true);
       // `platformDefaultCredential` is the ONE feature that is
       // NOT `true` for a null-plan tenant — see the dedicated test below.
-      expect(r.features).toEqual({ dnaReports: true, voiceEnrollment: true, monitoringAccess: true, platformDefaultCredential: false });
+      expect(r.features).toEqual({
+        dnaReports: true,
+        voiceEnrollment: true,
+        monitoringAccess: true,
+        platformDefaultCredential: false,
+        paletteStt: true,
+      });
       expect(r.modelTier).toBe('full_custom');
     });
 
@@ -36,7 +42,13 @@ describe('resolveEntitlements', () => {
       expect(r.limits.maxConcurrentSessions).toBe(5);
       // STARTER = $50/mo bundling 50 consultations.
       expect(r.limits.monthlyConsultations).toBe(50);
-      expect(r.features).toEqual({ dnaReports: false, voiceEnrollment: false, monitoringAccess: false, platformDefaultCredential: false });
+      expect(r.features).toEqual({
+        dnaReports: false,
+        voiceEnrollment: false,
+        monitoringAccess: false,
+        platformDefaultCredential: false,
+        paletteStt: true,
+      });
       expect(r.modelTier).toBe('base');
       expect(r.rateLimitTier).toBe('strict');
       expect(r.rateLimitPerMinute).toBeNull();

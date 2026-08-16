@@ -1,0 +1,90 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": "n_audio",
+      "type": "stt.audioInput",
+      "config": {
+        "mode": "realtime"
+      }
+    },
+    {
+      "id": "n_vad",
+      "type": "stt.vad",
+      "config": {}
+    },
+    {
+      "id": "n_noise",
+      "type": "stt.noiseFilter",
+      "config": {}
+    },
+    {
+      "id": "n_diar",
+      "type": "stt.diarization",
+      "config": {}
+    },
+    {
+      "id": "n_lang",
+      "type": "stt.languageDetection",
+      "config": {
+        "mode": "auto"
+      }
+    },
+    {
+      "id": "n_asr",
+      "type": "stt.asrEngine",
+      "config": {
+        "modelSlug": "whisper-large-v3"
+      }
+    },
+    {
+      "id": "n_out",
+      "type": "stt.transcriptOutput",
+      "config": {}
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "from": "n_audio",
+      "fromPort": "out",
+      "to": "n_vad",
+      "toPort": "in"
+    },
+    {
+      "id": "e2",
+      "from": "n_vad",
+      "fromPort": "out",
+      "to": "n_noise",
+      "toPort": "in"
+    },
+    {
+      "id": "e3",
+      "from": "n_noise",
+      "fromPort": "out",
+      "to": "n_diar",
+      "toPort": "in"
+    },
+    {
+      "id": "e4",
+      "from": "n_diar",
+      "fromPort": "out",
+      "to": "n_lang",
+      "toPort": "in"
+    },
+    {
+      "id": "e5",
+      "from": "n_lang",
+      "fromPort": "out",
+      "to": "n_asr",
+      "toPort": "in"
+    },
+    {
+      "id": "e6",
+      "from": "n_asr",
+      "fromPort": "out",
+      "to": "n_out",
+      "toPort": "in"
+    }
+  ]
+}

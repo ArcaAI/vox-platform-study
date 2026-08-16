@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Review (Tasks 1, 3(service half), 4, 5, 6, 7, 8, 9, 10, 11 shipped, unit-tested and build-verified with real command output. Task 2's e2e spec is authored, Playwright-listable (15 cases), and confirmed live against a running server for auth/scope wiring — but full `pnpm test:e2e` execution is BLOCKED by a Prisma AI-agent safety guard on `db push --force-reset`, not by anything in this ticket's code; see §7. R-1/R-8 human gates remain OFF/closed by default as instructed) |
+| **Status** | Completed (Tasks 1, 3(service half), 4, 5, 6, 7, 8, 9, 10, 11 shipped, unit-tested and build-verified with real command output — re-verified in the closeout pass, §7 Session 3. Task 2's e2e spec is authored, Playwright-listable (15 cases), and confirmed live against a running server for auth/scope wiring — but full `pnpm test:e2e` execution remains BLOCKED by a Prisma AI-agent safety guard on `db push --force-reset`, not by anything in this ticket's code; see §7. R-1/R-8 human gates remain OFF/closed by default as instructed, confirmed again in the closeout pass) |
 | **Wave** | 2 · **Size** | L |
 | **Epic slug** | `exposure-v1` |
 | **Depends on** | TASK-708 (`apikey-scope-verification`), TASK-718 (`workflow-interpreter`), TASK-720 (`palette-summarization`) · **consumes** TASK-717 (`async-contract`) |
@@ -918,6 +918,188 @@ process is not running in this environment, so the POST never resolved. Added an
 the three pre-existing methods on the same class are unchanged). Unit-asserted (`options.timeout
 === 15_000` on all three).
 
+### Session 3 (2026-08-16, closeout pass) — re-verify against real TASK-734 controllers, re-run every gate, confirm the three closeout invariants, close the ticket
+
+**Scope of this pass.** The tree had moved since Session 2 (`3c6505a68` → `e7a8d0d4b`, one
+docs-only commit; TASK-708's own `apikey-scope-verification` ticket also landed and moved to
+**Completed** in the interim, commits `62400f55d`/`d21915881`/`9d75d4929`/`93f583bfc`). This pass
+re-verifies the whole exposure surface against the real, current tree rather than re-trusting
+Session 2's evidence, re-runs every gate, and confirms three specific invariants the closeout
+instruction named explicitly.
+
+**1. Cross-checked against the real TASK-734 controllers — no drift found.** Verified, not
+assumed: `apps/api/src/modules/workflow-definition/workflow-definition.controller.ts` is
+`@Controller('admin/workflow-definitions')`, `workflow-node.controller.ts` is
+`@Controller('admin/workflow-nodes')`, both exactly as Session 2's write-up claimed.
+`WorkflowDefinitionRepository.findPublishedBySlug` (`:32`) and this ticket's own
+`findActivePublishedByTenant` (`:47`) are both present and match their documented signatures. The
+`@arcaai/workflow-contract` node registry and its parity test are present
+(`packages/workflow-contract/src/node-registry.ts` +
+`src/__tests__/node-registry-parity.test.ts`). No re-work needed — the substrate this ticket
+consumes is exactly as documented.
+
+**2. Every verification command from Session 2 re-run, fresh output, on the current tree:**
+
+```
+$ pnpm --filter @arcaai/domains build        → tsc (clean)
+$ pnpm --filter @arcaai/domains exec vitest run
+   Test Files  145 passed | 2 skipped (147)
+        Tests  1792 passed | 2 skipped | 9 todo (1803)
+
+$ pnpm --filter @arcaai/applications build   → tsc (clean)
+$ pnpm --filter @arcaai/applications exec vitest run
+   Test Files  495 passed | 1 skipped (496)
+        Tests  9225 passed | 4 skipped (9229)
+
+$ pnpm --filter @arcaai/applications lint
+   ✖ 204 problems (0 errors, 204 warnings) — 0 in files this ticket touched (grep "workflow-exposure": no matches)
+
+$ pnpm api:build                              → Tasks: 12 successful, 12 total
+$ pnpm --filter @arcaai/api exec tsc --noEmit -p tsconfig.json   → (clean, no output)
+$ pnpm --filter @arcaai/api exec vitest run
+   Test Files  214 passed | 2 skipped (216)
+        Tests  3015 passed | 4 skipped (3019)
+
+$ pnpm --filter @arcaai/api lint
+   ✖ 67 problems (2 errors, 65 warnings)
+```
+
+The apps/api lint run now shows **2 errors** where Session 2 pasted 0 — traced to
+`apps/api/tests/e2e/consultation-state-machine.spec.ts`, an **untracked file belonging to a
+concurrent sibling's work** (TASK-711 `session-state-machine`, whose ticket README is also
+mid-edit in this same working tree per `git status`), two unused-variable errors
+(`doctor2Token`/`tenantAdminToken`). Confirmed via `grep "workflow"` on the full lint output: zero
+hits — nothing this ticket touched is implicated. Per the operating rule ("Siblings share this
+tree — touch only your ticket's files"), left untouched and flagged here rather than fixed or
+silently ignored.
+
+`pnpm env:sync --check` → `env:sync --check OK — 6 artifacts match the declared surface (147 keys,
+bootstrap floor 60 lines).` — unchanged, still clean.
+
+**Boot-audit fire-proof (Task 9) re-run, both directions, on the current controller file:**
+temporarily deleted `@RequiredScopes('workflow:run:write')` from `WorkflowsController.invoke`,
+ran `vitest run src/bootstrap/__tests__/api-key-scope-audit.test.ts` → **FAILS** with the exact
+`TASK-632 B1: refused to start … WorkflowsController.invoke is on the HOPE Node SDK's day-1
+surface but carries no @RequiredScopes(...) metadata` message; reverted (`git diff --stat` on the
+file shows empty — confirmed no residue); re-ran → **15/15 passed**. Same mechanism, same result,
+proven again rather than re-cited.
+
+**3. The three closeout invariants — confirmed, with fresh evidence, not just re-asserted:**
+
+- **Public exposure stays OFF by default.** `WORKFLOW_EXPOSURE_ENABLED` is a `killSwitch: true`
+  `SettingDescriptor` (`feature-flags.descriptors.ts:76-80`), default `false`; grepped
+  `.env.dev`/`apps/api/.env.sample`/`.env.sample` — all three read `WORKFLOW_EXPOSURE_ENABLED=false`.
+  `WorkflowExposureService.assertExposureEnabled()` (`:199-204`) throws `NotFoundException` (404,
+  existence undisclosed) on every method — `list`, `invoke`, `getRunStatus`, `cancelRun` — when the
+  flag reads anything other than `true`. Confirmed unflipped anywhere real.
+
+- **A publicly-invoked workflow cannot select a cloud provider without an explicit per-tenant
+  opt-in AND TASK-706's proven, fail-closed redact-and-confirm path.** This is enforced by **three
+  independent, stacked layers** — worth stating explicitly, since Session 2's write-up documented
+  only the first and this closeout instruction asks for all three to be confirmed together:
+  1. **This ticket's own platform-wide kill-switch**, `WORKFLOW_EXPOSURE_ALLOW_CLOUD_PROVIDERS`
+     (`cloud-provider-guard.ts`, invoked at `workflow-exposure.service.ts:95-101`) — default `false`
+     everywhere real; `findDisallowedCloudProvider` scans `compiledConfig.stages[].nodes[].config.provider`
+     against `isCloudByoProvider('llm', …)` and throws `ForbiddenException` (403) on a hit. Currently
+     inert (no shipped node sets `config.provider` — `WORKFLOW_NODE_REGISTRY` ships only
+     `noop`/`passthrough`, re-confirmed this pass), but wired and will fire the instant a
+     provider-selecting node lands.
+  2. **The PRE-EXISTING per-tenant opt-in this ticket did not need to build**:
+     `AiProviderConnection` (`packages/applications/src/services/ai-provider-connection/`) is the
+     platform's one BYO-credential plane for every AI capability, workflow nodes included once one
+     exists — verified its three-state contract is live: no row = platform default only (itself
+     gated by the `featurePlatformDefaultCredential` entitlement, `assert-provider-available.ts:11`,
+     an explicit per-tenant/per-plan grant, not a default); enabled+keyed = the tenant's own
+     credential wins; disabled = a veto. **This is the "explicit per-tenant opt-in" the closeout
+     instruction names** — it is tenant-scoped by construction (`AiProviderConnection.tenantId`),
+     pre-dates this ticket, and this ticket correctly declined to duplicate it (§7 Session 2's own
+     stated reasoning for not building a second, workflow-specific per-tenant column).
+  3. **TASK-706's fail-closed PHI egress guard** (`apps/harness/src/harness/guards/phi/egress.py`,
+     `ensure_egress_safe`/`ensure_inferential_egress_safe`) — re-verified `apps/harness`'s own
+     ticket is **Completed** (`docs/implementation/TASK-706-Egress-Failclose/README.md:5`), and
+     traced its call sites: wired into the `generate` Temporal activity
+     (`apps/harness/src/harness/temporal/activities.py:1192,1201,1959`) and
+     `run_inferential_sensors` (`:1758`) — the SAME activities any future LLM-calling workflow node
+     would dispatch through, per the interpreter's own code-owned dispatch table
+     (`apps/harness/src/harness/temporal/interpreter/workflow.py`). A default-deny allowlist
+     (`local_providers`, TASK-706's own inversion) means an unrecognized or cloud provider string
+     defaults into the redact-and-confirm (Presidio) branch, never a silent pass-through — proven by
+     TASK-706's own test suite, not re-tested here. **This layer is unconditional and origin-blind**:
+     it protects a workflow node's cloud call whether the run was started by the public exposure
+     plane, the Studio, or an internal trigger — it is not something this ticket's own gate needs to
+     re-implement, only correctly sit in front of (layer 1) and behind (layer 2's tenant scoping).
+
+  Net: a cloud-provider call from a publicly-invoked workflow requires the platform switch ON
+  (deliberately narrow, off by default) AND the specific tenant to hold a live `AiProviderConnection`
+  or the `featurePlatformDefaultCredential` grant (per-tenant, pre-existing) — and even then, every
+  byte that would leave the box is redacted-and-confirmed or blocked by TASK-706's guard first. No
+  gap found; nothing needed building.
+
+- **Exposure is only safe where the API-key scope surface is narrowed — confirmed TASK-708 has now
+  done this for `/admin/*`, including the workflow admin surfaces TASK-734 shipped.** TASK-708
+  (`apikey-scope-verification`) moved to **Completed** after Session 2 of this ticket (its own
+  README's final status line: "Status moves to **Completed**", commits
+  `62400f55d`/`d21915881`/`9d75d4929`/`93f583bfc`). Verified live in this tree, not from the other
+  ticket's word alone: `apps/api/src/bootstrap/admin-scope-audit.ts` (TASK-708's own boot audit,
+  `ADMIN_SCOPED_CONTROLLERS`) explicitly imports and lists **all four** workflow admin controllers —
+  `WorkflowDefinitionController → 'admin:workflow-definition:manage'`,
+  `WorkflowNodeController → 'admin:workflow-node:read'`,
+  `WorkflowRunController → 'admin:workflow-run:read'`,
+  `WorkflowTestFixtureController → 'admin:workflow-test-fixture:manage'` (`:159-162`) — cross-checked
+  against each controller's own class-level `@RequiredScopes(...)` and found to match exactly.
+  Re-ran `vitest run src/bootstrap/__tests__/admin-scope-audit.test.ts` → **8/8 passed**. This closes
+  the loop this ticket's own S-2 depended on: a `workflow:*`-scoped key minted for the public exposure
+  plane cannot pivot to any `/admin/*` workflow-authoring or observability route (or any other
+  `/admin/*` route), and an `admin:*`-scoped key does not implicitly carry `workflow:run:write` — the
+  two scope families are disjoint by construction (`API_KEY_SCOPE_REGISTRY`'s `Workflow` category vs
+  its `Admin` category), so the exposure plane's own narrow keys and the admin surface's broad keys
+  cannot substitute for each other.
+
+**A real defect found and fixed by this pass's own re-verification, not speculation.** Diffing
+`.env.test` against Session 2's own documented claim ("Set to `true` in `.env.test` ONLY … so the
+e2e suite can exercise the surface") turned up a live contradiction: `.env.test` on disk read
+`WORKFLOW_EXPOSURE_ENABLED=false`. Root-caused, not just patched: `scripts/generate-env-file.sh`'s
+`ensure_env_file` **always rebuilds `.env.test` from `.env.sample`** on every run of
+`scripts/test-setup.sh` (its own header: *"ALWAYS (re)builds \<target\> from the consolidated
+`.env.sample`… so a stale \<target\> can never silently miss a key again"*), and only the fixed list
+of keys in its `_apply_test_overrides()` function survives that rebuild as a test-specific value —
+`WORKFLOW_EXPOSURE_ENABLED` was never added to that list, so Session 2's manual, undocumented-in-code
+edit to `.env.test` was silently reverted to the sample's `false` the next time anyone ran
+`test-setup.sh` (most likely the `e7a8d0d4b` sibling commit's own Playwright-globalSetup fixes,
+which touch this exact reset path). Had this gone unnoticed, the moment `pnpm test:e2e` becomes
+runnable, all 15 of this ticket's cases would 404 on the kill-switch instead of exercising the real
+routes — silently invalidating the whole spec's purpose. **Fixed at the root**: added
+`WORKFLOW_EXPOSURE_ENABLED true` to `_apply_test_overrides()` in `scripts/generate-env-file.sh`
+(alongside `RATE_LIMIT_ENABLED`'s same test-only-override shape), so it survives every future
+regeneration; also corrected the current `.env.test` on disk directly (`sed`, one line, verified
+by grep). `WORKFLOW_EXPOSURE_ALLOW_CLOUD_PROVIDERS` was left at the sample's `false` in both places —
+correct, since no e2e case exercises cloud-provider selection (decision #6, layer 1 above).
+`pnpm env:sync --check` re-run after the change → still clean (this override lives in the test-setup
+script, not the generated-artifact surface `env:sync` owns, so it is out of that check's scope by
+design). No other key in `_apply_test_overrides()` was touched.
+
+**e2e (Task 2) — still not executed; re-confirmed the same way, live, without touching the Prisma
+guard.** `npx playwright test --list apps/api/tests/e2e/task-722-workflow-exposure.spec.ts` → still
+**15 tests in 1 file**, syntactically valid. A test-API server was found already running on port
+8968 (PID 17016, started this session, picked up the current build) — `curl -s
+http://localhost:8968/api/v1/workflows` → `401 {"message":"Authentication required. Provide a valid
+JWT (Authorization: Bearer) or API key (X-API-Key).", ...}`, confirming the route is live and
+auth-gated (not 404) on the current tree, same as Session 2's evidence. **`pnpm test:e2e` itself was
+not attempted** — its `globalSetup` still shells out to `prisma db push --force-reset` against
+`hope_test`, which is exactly the Prisma AI-agent safety guard this closeout's own instructions name
+as a known, do-not-fight blocker. Stating plainly, per the honesty requirement: **the 15-case e2e
+spec was not executed this pass, same as Session 2.** Everything else in this section — the route
+liveness check, the boot-audit fire-proof, and every unit/build/lint gate — was actually run, with
+output pasted above.
+
+**Status.** All ten buildable/testable tasks (1, 3, 4, 5, 6, 7, 8, 9, 10, 11) are shipped, re-verified
+against the real current tree, and green. The three closeout invariants are confirmed with live
+evidence, not re-assertion. One genuine defect (the `.env.test` drift) was found by this pass's own
+verification and fixed at its root cause. The sole remaining gap — live `pnpm test:e2e` execution —
+is an environmental blocker outside this ticket's code, identical in kind to the one already
+disclosed and accepted in Session 2 and consistent with how TASK-706/TASK-708 (both now Completed)
+carry their own analogous disclosed gaps. Status moves to **Completed**.
+
 ### e2e (Task 2) — authored, partially verified live, full run BLOCKED by a Prisma safety guard (not this ticket's code)
 
 `apps/api/tests/e2e/task-722-workflow-exposure.spec.ts` — 15 cases covering scope enforcement
@@ -1055,6 +1237,17 @@ own concurrent, uncommitted changes in the same tree were left untouched)
   dependency); `docs/traceability/workflows.md` (W12 rewrite); `apps/api/README.md` (new
   subsection).
 
+**Files changed — Session 3 (closeout pass):**
+
+- **Modified:** `scripts/generate-env-file.sh` (+`WORKFLOW_EXPOSURE_ENABLED true` in
+  `_apply_test_overrides()` — fixes the `.env.test` drift found this pass, see above).
+- **Modified (gitignored, not in git status):** `.env.test`
+  (`WORKFLOW_EXPOSURE_ENABLED=false` → `true`, correcting the drift directly).
+- **Modified (this file):** Status header, this Session 3 subsection, this Change History row.
+- No other file touched — `apps/api/src/modules/workflows/workflows.controller.ts` was edited
+  transiently (delete/revert `@RequiredScopes` to re-prove the Task 9 boot-audit fires) and
+  confirmed back to a clean `git diff` before this pass ended.
+
 ## 7a. Session 1 (2026-08-16, earlier pass) — Task 1 only, historical record
 
 **Executed 2026-08-16. Local infra was down (no Postgres/Redis/API/Temporal) for this entire
@@ -1169,3 +1362,4 @@ was made in this execution.
 | 2026-08-16 | Ticket authored | Wave-2 ticket-authoring agent |
 | 2026-08-16 | Executed Task 1 only (API-key scope registry, TDD RED→GREEN, evidence in §7a). Discovered and documented (§6 R-10) that TASK-715 is Phase-A-only — no `WorkflowDefinition` domain entity/factory/mapper/repository exists — which blocks Tasks 3/5/6/7/8/9/10 (the invoke/status/stream/cancel mechanism itself). Declined to build TASK-715's domain trio under this ticket to avoid clobbering concurrent sibling work with no commit-based conflict detection. Declined Task 4 (entitlement columns) as high-blast-radius with no wiring target while Task 5 is blocked. Status set to Blocked pending either TASK-715 Phases B–D landing or explicit orchestrator direction. Neither human gate (R-1/R-8) was touched; no kill-switch exists to flip. | TASK-722 execution agent |
 | 2026-08-16 | **Second pass, after TASK-734 unblocked the substrate.** Verified TASK-734's domain quartet/service/controllers/node-registry were real and consumed them rather than re-building. Shipped Tasks 3 (service half — `findActivePublishedByTenant`), 5 (`WorkflowExposureService`: invoke/status/stream/cancel/list, claim-check minting, idempotency, decision #6's cloud-provider guard), 6 (`WorkflowsController`, 5 routes, tenant-admin policy grants seeded), 7 (stream-ticket `workflow_run:<runId>` mint-time ownership check), 8 (`WorkflowStreamService` — a documented polling bridge, not a byte-proxy, since no interpreter event producer exists), 9 (boot-audit registration, fire-proven), 10 (audit via the existing `broadcastSysEvent` path on `WorkflowDefinition`, deliberately no new `ResourceType` — TASK-723's own settled design), 11 (docs). Confirmed Task 4 (entitlement columns + metering) was already present in the tree, pre-dating this pass. R-1 (`WORKFLOW_EXPOSURE_ENABLED`) and decision #6 (`WORKFLOW_EXPOSURE_ALLOW_CLOUD_PROVIDERS`) implemented as `SettingDescriptor`-catalogued env kill-switches, both default OFF/closed — neither flipped. Authored the Task 2 e2e spec (15 cases) and confirmed it live against a running test-API server (route/auth wiring verified via `curl`), but full `pnpm test:e2e` execution is blocked by Prisma's own AI-agent safety guard refusing `db push --force-reset` without explicit human consent — diagnosed in full, not bypassed, not worked around; flagged as an orchestrator-level gap, not a ticket defect. Found and fixed a real bug via this diagnosis: the new `HarnessGatewayService` methods had no request timeout and would hang indefinitely against an unreachable harness. Status set to Review. | TASK-722 execution agent (second pass) |
+| 2026-08-16 | **Closeout pass (§7 Session 3).** Cross-verified the whole surface against the real, current TASK-734 controllers (route prefixes, `findPublishedBySlug`/`findActivePublishedByTenant`, node registry) — no drift. Re-ran every build/test/lint/env:sync gate fresh on the current tree (all green; apps/api lint shows 2 pre-existing errors in an untracked TASK-711 sibling file this ticket does not touch). Re-proved the Task 9 boot-audit both directions. Confirmed, with fresh live evidence, the three closeout invariants: (1) public exposure OFF by default (`WORKFLOW_EXPOSURE_ENABLED=false` everywhere real); (2) a publicly-invoked workflow cannot select a cloud provider without both an explicit per-tenant opt-in (the pre-existing `AiProviderConnection` BYOK plane, layered under this ticket's own platform kill-switch) and TASK-706's proven fail-closed redact-and-confirm PHI-egress guard (now Completed, traced into the exact Temporal activities any future LLM-selecting node would dispatch through); (3) TASK-708 (`apikey-scope-verification`, now Completed) has narrowed the API-key scope surface for `/admin/*`, verified to cover all four workflow admin controllers TASK-734 shipped via `admin-scope-audit.ts`'s explicit list, re-run 8/8 green. Found and fixed a real, root-caused defect: `.env.test`'s `WORKFLOW_EXPOSURE_ENABLED` had silently drifted back to `false` because `scripts/generate-env-file.sh`'s `_apply_test_overrides()` never carried Session 2's manual override — fixed by adding it to that function (durable, survives future regeneration) and correcting the current `.env.test` on disk. e2e still not executed — the Prisma `db push --force-reset` AI-agent guard remains a live, environmental blocker, stated plainly rather than worked around. Status moved to **Completed**. | TASK-722 closeout agent |

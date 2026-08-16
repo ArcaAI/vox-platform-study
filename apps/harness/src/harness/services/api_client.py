@@ -58,6 +58,24 @@ class AssembleResponse(BaseModel):
     segment_citations: list[SegmentCitationRef] = Field(default_factory=list)
 
 
+class ResolvedPromptTemplateResponse(BaseModel):
+    """apps/api response for ``GET /prompt-templates/:id/resolved`` (TASK-720 N-2).
+
+    ``found: False`` covers a missing OR cross-tenant id (404-over-403 — the gateway's tenant-
+    scope extension already makes a foreign-tenant row read as "not found"). ``found: True,
+    approved: False`` covers a template that exists but has never been approved. Both are
+    legitimate "no prompt to resolve" outcomes for the ``prompt.template_ref`` node activity to
+    fail closed on — never an ``ApiServiceError``.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    found: bool = False
+    approved: bool = False
+    content: str = ""
+    version_number: int | None = None
+
+
 class DraftResponse(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
@@ -301,22 +319,39 @@ class ApiClient:
     ) -> dict[str, Any]:
         """Read the effective harness policy for ``tenant_id`` (worker fetch).
 
-        Returns the raw camelCase ``HarnessPolicyResponse`` JSON; the ``fetch_policy``
-        activity maps it onto :class:`~harness.temporal.models.HarnessPolicy`. Raises
-:class:`ApiServiceError` on any transport/HTTP error so the workflow can fall
-        back to the code defaults.
+                Returns the raw camelCase ``HarnessPolicyResponse`` JSON; the ``fetch_policy``
+                activity maps it onto :class:`~harness.temporal.models.HarnessPolicy`. Raises
+        :class:`ApiServiceError` on any transport/HTTP error so the workflow can fall
+                back to the code defaults.
 
-        when ``consultation_id`` is supplied it is threaded onto the query
-        so the gateway overlays the consultation's department default
-        ``DepartmentAgent`` tenant-tier ``harnessOverrides`` (most specific wins). The
-        response SHAPE is unchanged (same keys, different values, plus an additive
-        ``overridesSource`` provenance field). Omitted ⇒ byte-identical prior
-        request, so other gateway callers are unaffected.
+                when ``consultation_id`` is supplied it is threaded onto the query
+                so the gateway overlays the consultation's department default
+                ``DepartmentAgent`` tenant-tier ``harnessOverrides`` (most specific wins). The
+                response SHAPE is unchanged (same keys, different values, plus an additive
+                ``overridesSource`` provenance field). Omitted ⇒ byte-identical prior
+                request, so other gateway callers are unaffected.
         """
         params: dict[str, Any] = {"tenantId": tenant_id}
         if consultation_id:
             params["consultationId"] = consultation_id
         return await self._get("/policy", params)
+
+    async def get_resolved_prompt_template(
+        self, template_id: str, *, tenant_id: str
+    ) -> ResolvedPromptTemplateResponse:
+        """Resolve a ``PromptTemplate``'s pinned APPROVED version (TASK-720 N-2 worker fetch).
+
+        Raises :class:`ApiServiceError` only on a transport/HTTP failure — a missing template,
+        a cross-tenant id, or a never-approved template are all ordinary ``found``/``approved``
+        `False` results, never an exception (see :class:`ResolvedPromptTemplateResponse`).
+        """
+        data = await self._get(f"/prompt-templates/{template_id}/resolved", {"tenantId": tenant_id})
+        return ResolvedPromptTemplateResponse(
+            found=bool(data.get("found", False)),
+            approved=bool(data.get("approved", False)),
+            content=data.get("content") or "",
+            version_number=data.get("versionNumber"),
+        )
 
     async def resolve_mcp_token(self, auth_ref: str) -> str | None:
         """Resolve an MCP server credential by its registered ``authRef``.
@@ -711,12 +746,12 @@ class ApiClient:
     async def get_loop_config(self, consultation_id: str, *, tenant_id: str) -> dict[str, Any]:
         """Read the PINNABLE loop configuration for one consultation.
 
-        Returns the raw camelCase ``LoopConfigResponse`` JSON; the
-        ``fetch_loop_config`` activity maps it onto
-:class:`~harness.temporal.models.ConsultationLoopConfig`. The gateway
-        answers a DISABLED config (rather than 404) for a consultation with no
-        agent/schema configured and for a cross-tenant id — so this method
-        raises only on a genuine transport/HTTP failure.
+                Returns the raw camelCase ``LoopConfigResponse`` JSON; the
+                ``fetch_loop_config`` activity maps it onto
+        :class:`~harness.temporal.models.ConsultationLoopConfig`. The gateway
+                answers a DISABLED config (rather than 404) for a consultation with no
+                agent/schema configured and for a cross-tenant id — so this method
+                raises only on a genuine transport/HTTP failure.
         """
         return await self._get(
             "/loop-config", {"tenantId": tenant_id, "consultationId": consultation_id}
@@ -791,18 +826,18 @@ class ApiClient:
     ) -> bool:
         """Publish one loop event on ``consultation:loop:{id}`` (the plane).
 
-        Ids/keys/labels only — NEVER note or transcript text. Raises
-:class:`ApiServiceError` like every other method; the ``emit_loop_event``
-        *activity* is the layer that swallows errors, because a live UI feed must
-        never fail the loop.
+                Ids/keys/labels only — NEVER note or transcript text. Raises
+        :class:`ApiServiceError` like every other method; the ``emit_loop_event``
+                *activity* is the layer that swallows errors, because a live UI feed must
+                never fail the loop.
 
-        The wire body is EXACTLY ``HarnessLoopEventRequest``
-        (``tenantId``/``runId``/``kind``/``label``/``data``) from The
-        gateway's global ``ValidationPipe`` runs ``forbidNonWhitelisted``, so
-        every loop-specific field (the context item, the kind key, the action,
-        the skip reason) is folded into the declared ``data`` envelope rather
-        than added as a top-level key — an undeclared field would 400 the whole
-        publish.
+                The wire body is EXACTLY ``HarnessLoopEventRequest``
+                (``tenantId``/``runId``/``kind``/``label``/``data``) from The
+                gateway's global ``ValidationPipe`` runs ``forbidNonWhitelisted``, so
+                every loop-specific field (the context item, the kind key, the action,
+                the skip reason) is folded into the declared ``data`` envelope rather
+                than added as a top-level key — an undeclared field would 400 the whole
+                publish.
         """
         payload: dict[str, Any] = {
             "contextItemId": context_item_id,

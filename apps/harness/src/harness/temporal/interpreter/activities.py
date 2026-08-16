@@ -26,6 +26,16 @@ from harness.temporal.activities import (
 from harness.temporal.claim_check import ClaimCheckRef, build_blob_store, load_blob
 from harness.temporal.interpreter.compiled_config import CompiledWorkflowConfig, parse_and_verify
 from harness.temporal.interpreter.models import NodeActivityInput, NodeActivityResult
+from harness.temporal.interpreter.nodes.stt_placeholder import (
+    interpreter_stt_asr_engine,
+    interpreter_stt_audio_input,
+    interpreter_stt_diarization,
+    interpreter_stt_language_detection,
+    interpreter_stt_noise_filter,
+    interpreter_stt_phi_hop,
+    interpreter_stt_transcript_output,
+    interpreter_stt_vad,
+)
 
 # ---------------------------------------------------------------------------
 # Seed node activities (Task 4/6's tests dispatch against these; TASK-720 adds
@@ -90,6 +100,15 @@ async def interpreter_passthrough(payload: NodeActivityInput) -> NodeActivityRes
 NODE_ACTIVITIES: list[Callable[..., Any]] = [
     interpreter_noop,
     interpreter_passthrough,
+    # STT palette (TASK-724 Task 3) — placeholders, see nodes/stt_placeholder.py.
+    interpreter_stt_audio_input,
+    interpreter_stt_vad,
+    interpreter_stt_noise_filter,
+    interpreter_stt_diarization,
+    interpreter_stt_language_detection,
+    interpreter_stt_asr_engine,
+    interpreter_stt_transcript_output,
+    interpreter_stt_phi_hop,
 ]
 
 # ---------------------------------------------------------------------------

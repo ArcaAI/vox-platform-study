@@ -249,6 +249,12 @@ export const DEFAULT_POLICIES: DefaultPolicy[] = [
       // needs the same subjects... seed them once, in one place").
       { action: 'manage', subject: 'WorkflowDefinition', conditions: { tenantId: '${context.tenantId}' } },
       { action: 'manage', subject: 'WorkflowRun', conditions: { tenantId: '${context.tenantId}' } },
+      // Per-tenant saved synthetic Workbench test inputs (TASK-721 Phase B) —
+      // `WorkflowTestFixtureController` gates on `@CanManage('WorkflowTestFixture')`. Same gap
+      // shape as the two grants above: without this row the fixture CRUD surface 403s for every
+      // tenant admin (code-correct, unreachable-by-role — flagged as a gap in the ticket's Phase
+      // B evidence, closed here now that Phase C's Workbench screen actually consumes it).
+      { action: 'manage', subject: 'WorkflowTestFixture', conditions: { tenantId: '${context.tenantId}' } },
     ],
   },
   {

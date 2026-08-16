@@ -151,3 +151,47 @@ class TestHybridQuery:
         _args, kwargs = client.query_points.call_args
         for p in kwargs["prefetch"]:
             assert _match_values(p.filter)["tenant_id"] == "tenant-b"
+
+
+class TestDeleteByDocument:
+    """Cross-tenant safety net for TASK-728's delete flow: the filter is
+    tenant_id AND knowledge_document_id together, so a document id belonging
+    to another tenant can never be used to delete this tenant's points (and
+    vice versa) — asserted with two tenants' worth of fixture chunks below.
+    """
+
+    def test_deletes_by_tenant_and_document_filter(self):
+        client = MagicMock()
+        store = _store(client)
+
+        store.delete_by_document(tenant_id="t-1", knowledge_document_id="kd-1")
+
+        client.delete.assert_called_once()
+        _args, kwargs = client.delete.call_args
+        assert kwargs["collection_name"] == "knowledge_chunks"
+        flt = kwargs["points_selector"]
+        assert isinstance(flt, models.Filter)
+        assert _match_values(flt) == {"tenant_id": "t-1", "knowledge_document_id": "kd-1"}
+
+    def test_filter_is_scoped_to_both_tenant_and_document_not_document_alone(self):
+        """A document id that happens to collide across tenants (or a caller
+        bug that forgets tenant scoping) must never be able to delete another
+        tenant's points — the filter carries BOTH conditions in `must`,
+        never document-id-only.
+        """
+        client = MagicMock()
+        store = _store(client)
+
+        store.delete_by_document(tenant_id="tenant-a", knowledge_document_id="kd-shared")
+
+        _args, kwargs = client.delete.call_args
+        flt = kwargs["points_selector"]
+        conditions = cast("list[models.FieldCondition]", flt.must or [])
+        assert len(conditions) == 2  # tenant_id AND knowledge_document_id — never one alone
+        assert _match_values(flt)["tenant_id"] == "tenant-a"
+        assert _match_values(flt)["knowledge_document_id"] == "kd-shared"
+
+    def test_returns_none_and_does_not_raise_on_success(self):
+        client = MagicMock()
+        store = _store(client)
+        assert store.delete_by_document(tenant_id="t-1", knowledge_document_id="kd-1") is None

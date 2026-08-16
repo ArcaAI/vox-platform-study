@@ -200,6 +200,25 @@ export const PLATFORM_SECRET_SETTINGS: SettingDescriptor[] = [
       'invalidates every stored storage access key. Stage a rotation the same way (see `api.keyPepper`).',
     'Authentication',
   ),
+  {
+    ...platformSecret('webhook.secretPepper', 'Webhook signing-secret encryption key', '', 'Authentication'),
+    // TASK-727 decision (owner directive, 2026-08-16): DEDICATED pepper, deliberately
+    // NOT falling back to `API_KEY_PEPPER` the way `storageAccessKey.pepper` does.
+    description:
+      'Key-derivation material for the REVERSIBLE AES-256-GCM encryption `WebhookService` applies to every server-generated ' +
+      'webhook signing secret before storage (`WebhookService.encryptSecretForStorage`). NOT an HMAC pepper like `api.keyPepper` — ' +
+      'webhook signing requires the platform to recover the RAW secret at delivery time (to compute an HMAC the receiver, who only ' +
+      'ever saw the raw secret once, can independently verify), so the stored form must be decryptable, not a one-way hash. See ' +
+      "`WebhookService`'s class doc for the full rationale. " +
+      'DELIBERATELY A SEPARATE VAULT SECRET FROM `API_KEY_PEPPER` — reusing the API-key pepper would couple two independent ' +
+      'rotation lifecycles: rotating one to respond to an API-key compromise would silently invalidate every webhook signature ' +
+      '(and vice versa), and a caller with no legitimate reason to hold both credentials would need only one to attack both surfaces. ' +
+      'Unset ⇒ falls back to a fixed local key-derivation string (no cross-credential fallback chain), matching `ApiKeyService`’s own ' +
+      'legacy/no-SecretsService fallback — NOT a security posture to rely on in a Vault-backed deployment. ' +
+      "Rotation is a bigger event than `api.keyPepper`'s stage-and-overlap pattern: changing this key makes every EXISTING stored " +
+      'ciphertext undecryptable (there is no keyVersion column here either), so a rotation must re-encrypt every `Webhook.hashedSecret` ' +
+      'row under the new key in the same operation — a re-encryption migration, not a Vault kv-v2 version bump alone.',
+  },
 
   // ── AI provider credentials (platform-owned; BYO tenant keys are db-secret) ─
   // The STT/TTS/SMR cloud credentials (`AZURE_SPEECH_KEY`,

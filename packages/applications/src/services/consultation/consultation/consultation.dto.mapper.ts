@@ -1,5 +1,5 @@
 import { ConsultationEntity, ContextItemEntity, UserEntity, DepartmentEntity } from '@arcaai/domains';
-import { ConsultationResponse, DoctorInfo, DepartmentInfo, CONSULTATION_STATUS, CONSULTATION_STATUS_VALUES } from './dto';
+import { ConsultationResponse, DoctorInfo, DepartmentInfo } from './dto';
 import { ContextDtoMapper } from '../context/context.dto.mapper';
 
 /**
@@ -12,25 +12,10 @@ export class ConsultationDtoMapper {
    * Convert entity to response
    */
   static toResponse(entity: ConsultationEntity, isNew = false): ConsultationResponse {
-    const metadata = entity.metadata as Record<string, unknown> | null | undefined;
-    // Lifecycle status precedence:
-    //   • Status is a typed `status` COLUMN; the attestation gate writes it
-    //     (harness draft → PENDING_REVIEW, approve → SIGNED). An explicit
-    //     non-OPEN column value is canonical and wins.
-    //   • close/reopen still write the legacy `metadata.status` JSON.
-    //     The column default is OPEN ("not yet transitioned"), so when the
-    //     column is OPEN/absent we defer to metadata.status, then OPEN.
-    const columnStatus = entity.status as string | undefined;
-    const metaStatus = metadata?.status as string | undefined;
-    // TASK-701 — defense-in-depth: only a recognised legacy value
-    // (OPEN/CLOSED, the values `transitionStatus` writes) is trusted from
-    // `metadata.status`. This closes the forgery vector even if a future
-    // write path reaches `metadata.status` without going through
-    // `updateConsultation`'s reserved-key guard.
-    const validMetaStatus = metaStatus && (CONSULTATION_STATUS_VALUES as string[]).includes(metaStatus) ? metaStatus : undefined;
-    const status =
-      columnStatus && columnStatus !== CONSULTATION_STATUS.OPEN ? columnStatus : (validMetaStatus ?? columnStatus ?? CONSULTATION_STATUS.OPEN);
-
+    // TASK-711 — `Consultation.status` is now the SOLE lifecycle tracker.
+    // The legacy `metadata.status` JSON key is deleted (Task 10); the
+    // precedence dance this mapper used to do between the typed column and
+    // that key is gone with it — the column is simply canonical.
     return {
       id: entity.id,
       patientId: entity.patientId,
@@ -40,8 +25,13 @@ export class ConsultationDtoMapper {
       department: entity.Department ? this.mapDepartment(entity.Department) : undefined,
       appointmentDate: entity.appointmentDate.toISOString().split('T')[0],
       parentConsultationId: entity.parentConsultationId ?? undefined,
-      status,
+      status: entity.status,
       metadata: entity.metadata as Record<string, unknown> | undefined,
+      // TASK-711 — the OCC row version, so a client can build the `If-Match`
+      // header the state-machine transition routes require. Also feeds
+      // `ETagInterceptor` (reads `body.version`), which mirrors it onto the
+      // `ETag` response header.
+      version: entity.version,
       createdAt: entity.createdAt.toISOString(),
       updatedAt: entity.updatedAt.toISOString(),
       isNew,

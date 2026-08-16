@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Pending |
+| **Status** | Completed |
 | **Wave** | 3 · **Size** | M |
 | **Epic slug** | `memory-management-screens` |
 | **Depends on** | TASK-719 (`workflow-studio-v1` — not yet landed as of this writing; §1 scopes this ticket to a standalone admin-console feature module so it does not block on Studio's canvas/inspector infrastructure, per §6) |
@@ -412,10 +412,160 @@ documented as necessary because a super-admin caller carries a null CLS tenant a
 
 ## 7. Implementation Summary
 
-_(Empty at authoring — filled during execution.)_
+Executed all 8 tasks except Task 1 (Figma design gate), which the owner has **waived** for this
+program — per the run's tree-state note, console screens are built directly, still owing rule 11's
+implementation gates (ScreenTemplate, `@arcaai/ui` only, semantic tokens, Skeletons, both themes,
+axe 0-violations). Task 1's file/frame-inventory Change History entry below reflects the waiver,
+not an approval record.
+
+### Backend — `KnowledgeDocumentService` upgraded to the standard pattern (Tasks 2–3)
+
+- `packages/applications/src/services/knowledge/knowledge-document.service.ts` rewritten to
+  `extends BaseService`, resolved via a new `IKnowledgeDocumentService` symbol token
+  (`packages/applications/src/services/knowledge/IKnowledgeDocumentService.ts`), `useExisting`-wired
+  in `knowledge.service.module.ts` (mirrors `ConsultationContextSchemaServiceModule`).
+- Every mutation (`registerDocument`, `approveDocument`, the new `archiveDocument`,
+  `deleteDocument`) broadcasts `SysEventType.ResourceCreated`/`ResourceUpdated`/`ResourceDeleted`.
+  Content-bearing reads (`getDocument`, the new `listChunks`) broadcast
+  `SysEventType.ResourceViewed` with `forceAuditLog: true` (§2.7's `globalSetting.service.ts`
+  secret-reveal exemplar) — every document/chunk read is now audited, per the assignment's
+  explicit requirement. The metadata-only `listDocuments` broadcasts a normal (non-forced)
+  `ResourceViewed`, matching every other list method in the codebase (`ConsultationContextSchemaService.list`,
+  `DepartmentService.getAll`) — a judgment call, recorded here: forcing every LIST call would audit
+  "an admin opened the catalog" at high volume for no compliance value, whereas a single
+  document's content view or its chunk text is the actual sensitive read.
+- New `archiveDocument(id)`: soft-touch, `KnowledgeDocumentEntity.archiveContent()` moves the
+  BUSINESS `status` to `ARCHIVED` — a NEW hand-authored entity method, deliberately named
+  `archiveContent` (not `archive`) because `BaseEntity.archive()` already exists on a DIFFERENT axis
+  (the generic `resourceStatus` soft-delete lifecycle); reusing the name would have silently
+  shadowed the base method with an incompatible signature (`tsc` caught this immediately —
+  TS2416 — during Task 3, recorded here as a real pitfall for the next hand-authored entity method).
+- New `deleteDocument(id)`: calls `KnowledgeVectorCleanupClient.deleteByDocument` (new,
+  `packages/applications/src/services/knowledge/knowledge-vector-cleanup.client.ts`, mirrors
+  `KnowledgeIngestClient`) BEFORE the Postgres `softDelete`, **fail-closed** — a thrown error
+  aborts the whole operation (nothing is soft-deleted) rather than leaving the document
+  "deleted" while its content stays retrievable. See §6 Risk resolution below for the evidence
+  this rests on.
+- New `listChunks(documentId, query)`: paginated (`withFormattedPaginatedProps`/`withFormattedCountProps`),
+  ordered by `chunkIndex`. Decryption needed NO new code: `KnowledgeChunkRepository` already
+  routes every read through the base `Repository`'s generic PHI decrypt-on-read wrapper
+  (`packages/domains/src/common/phi-read-decrypt.ts`, Phase 6), which already registers
+  `encryptedText → text` for `KnowledgeChunk`. `entity.text` is simply read off the returned
+  entities; it is `null` in this local-dev environment (no Vault-mode `SecretsService` wired) —
+  documented on the DTO field and surfaced in the UI as an explicit "no decrypted text available"
+  message rather than a blank field.
+- Response DTOs (`packages/applications/src/services/knowledge/dto/`) + a DTO mapper
+  (`knowledge-document.dto.mapper.ts`) — chunk responses never carry `encryptedText`.
+- `ResourceType.KnowledgeDocument` registered in BOTH `audit.prisma` (migration
+  `20260816160911_task_728_knowledge_document_resource_type`, `ALTER TYPE ... ADD VALUE IF NOT
+  EXISTS`) and `packages/domains/src/enums/generated/ResourceType.ts`; `resourceType.enum-parity.test.ts`
+  green. Migration authored via the rule-02 shadow-DB recipe (`hope_shadow`), proved an EMPTY
+  diff, then synced the real dev DB with a plain (non-force) `pnpm db:push` — never `db:migrate`
+  or `--force-reset` against dev, per this run's guardrails. Verified the enum value is live in
+  the real dev Postgres (`SELECT unnest(enum_range(NULL::core."ResourceType"))`).
+- `requireTenantId()` throws `BadRequestException` (400) on an absent CLS tenant, matching
+  `ConsultationContextSchemaService` — the closest structural exemplar — rather than inventing a
+  third convention alongside it and `WorkflowRunController`'s own 403.
+
+### Harness — Qdrant delete-by-document capability (Task 4)
+
+- `apps/harness/src/harness/guides/retrieval/qdrant_store.py`:
+  `KnowledgeQdrantStore.delete_by_document(tenant_id, knowledge_document_id)` — filters on
+  **both** `tenant_id` AND `knowledge_document_id` in the same `must` shape as
+  `_tenant_approved_filter`, so a cross-tenant document id can never delete another tenant's
+  points. New internal endpoint `DELETE /api/v1/internal/knowledge/{document_id}?tenantId=...`
+  (`apps/harness/src/harness/api/endpoints/knowledge.py`), same `X-Service-Token` guard as the
+  existing ingest endpoint, 503 on a Qdrant failure (Lane B aborts the delete on that).
+- **Qdrant delete-ordering finding (§6 risk, resolved)**: ran a live probe against the local
+  Qdrant instance (upsert 3 points across two tenants and two documents, delete-by-filter for
+  one `(tenant, document)` pair, re-scroll) — `client.delete()`'s default `wait=True` makes the
+  call **synchronous and immediately consistent**: `points_count` reflected the removal before
+  the call returned, and the compound filter left the OTHER tenant's same-document-id point and
+  the SAME tenant's other-document point both untouched. This directly supports the ticket's
+  proposed fail-closed ordering (Qdrant delete before Postgres soft-delete, abort on failure) —
+  there is no propagation-lag window that would make fail-closed feel slower than it looks, and
+  the alternative (delete Postgres regardless + best-effort async retry) would not have been
+  meaningfully safer given this synchronous behavior. **Decision: keep fail-closed**, as the
+  ticket's own plan proposed, now with verified evidence rather than an assumption. Documented
+  in the service's class docstring and `qdrant_store.py`'s method docstring.
+- 21 new/extended harness unit tests (7 `test_qdrant_store.py`, 14 `test_knowledge_ingest.py`),
+  hermetic (mocked Qdrant client/store), RED-then-GREEN.
+
+### API — admin controller (Task 5)
+
+- `apps/api/src/modules/knowledge/knowledge.controller.ts`: `@Controller('admin/knowledge/documents')`,
+  class-level `@CanManage('KnowledgeDocument')`; `GET` list (paginated), `GET :id`, `GET
+  :id/chunks` (method-level `@Authorize(['read', 'KnowledgeDocument'])` — verified via
+  `UnifiedAuthGuard`'s `getAllAndOverride` that the method-level decorator correctly overrides
+  the class-level `manage` requirement down to `read` for this one route, per the ticket's
+  intent that a read-only caller can view chunk content), `POST :id/archive`, `DELETE :id`. New
+  `knowledge.module.ts` wraps `KnowledgeServiceModule` (unchanged worker wiring) with the
+  controller; `app.module.ts`'s top-level `KnowledgeServiceModule` import replaced with
+  `KnowledgeModule`. New API-key scope `admin:knowledge:manage` registered in
+  `apikey-scopes.registry.ts` (required by `@RequiredScopes`, boot-time validated). All
+  boot-time audits (deny-by-default route-permission, admin scope-closure, API-key scope) pass
+  with the new controller included.
+
+### Admin console — Knowledge Base screen (Task 6)
+
+- `apps/admin-console/src/features/knowledge/` mirrors `context-schemas`' layout exactly
+  (`api/{client,hooks,keys,types,index}.ts`,
+  `components/{knowledge-documents-screen,knowledge-documents-list,knowledge-document-detail-drawer,
+  knowledge-chunks-panel,knowledge-chunk-text,knowledge-document-status-badge}.tsx`) and, for the
+  list+grid shape specifically, `workflow-studio/definitions-list-screen.tsx` (offset-paginated
+  `VirtualizedDataGrid`, `contentMode="fill"`, `ScreenTemplate`) — the most recently-landed
+  sibling in this same program, per the instruction to reuse advancing patterns.
+- `DetailDrawer` (Overview + Chunks tabs); Chunks tab paginated, ~200-char truncation with
+  "show more" (rule 11 §8), force-audited server-side on every load.
+- Archive AND delete both go through `ConfirmDialog` (rule 11 §5); delete additionally
+  types-to-confirm the document title (destructive + irreversible content-removal action);
+  `toast.success()`/`toast.error()` on every outcome, including the fail-closed delete failure
+  message ("its vectors could not be confirmed removed, so nothing was changed").
+- Nav entry added at tier `30-49`, `required: [['manage', 'KnowledgeDocument']]`, route `/knowledge`.
+- **Verified, not merely claimed**: `apps/admin-console/src/features/knowledge/components/__tests__/knowledge-documents-screen.test.tsx`
+  runs a REAL `vitest-axe` scan against both the catalog grid and the open detail drawer, in
+  BOTH light and dark themes (4 axe assertions total) — all pass with 0 violations. This
+  satisfies the "axe scan 0 violations, both themes verified" gate with actual automated
+  evidence, not a manual claim.
+- `pnpm --filter @arcaai/admin-console build` (`next build`) compiles `/knowledge` into the route
+  manifest; observed the SAME pre-existing, intermittent Edge-Runtime warning-as-error from
+  `instrumentation.ts` that TASK-719's README also documented as "unrelated to this ticket" —
+  confirmed genuinely intermittent by re-running the identical command twice in this session (one
+  run failed on it, the very next succeeded with a full route table including `/knowledge`); not
+  this ticket's file, untouched by this session.
+
+### E2E (Task 7) — authored, NOT executed
+
+`apps/api/tests/e2e/task-728-knowledge-cross-tenant.spec.ts`, modeled on
+`task-723-workflow-runs-cross-tenant.spec.ts`'s own disclosed pattern: since the admin controller
+deliberately exposes no create/approve route (registration/approval stays on the existing
+worker-triggering ingest flow — Task 5's own scope decision), no HTTP-only e2e spec can create a
+REAL `KnowledgeDocument` fixture row, so a genuine same-row cross-tenant check is not
+constructible here. What it proves instead: the offset envelope shape, 404-over-403 on every
+by-id path (`GET :id`, `GET :id/chunks`, `POST :id/archive`, `DELETE :id`) against a nonexistent
+id, 401 with no bearer token, a global admin's `X-Tenant-Id` elevation, and an unscoped
+SUPER_ADMIN's 400. **NOT EXECUTED** in this session — `pnpm test:e2e`'s globalSetup runs `prisma
+db push --force-reset`, which the Prisma CLI refuses for an AI agent (documented run-level
+blocker). ESLint-clean; not independently type-checked in isolation (no per-directory e2e
+tsconfig exists to drive `tsc` against a single spec file).
+
+### Concurrent-tree disruption encountered and recovered
+
+Partway through this run, several already-edited TRACKED files (`audit.prisma`, `ResourceType.ts`,
+`KnowledgeDocumentEntity.ts`, the harness `qdrant_store.py`/`knowledge.py` + their tests,
+`knowledge-document.service.ts`, its test file, and the `services/knowledge/index.ts` barrel)
+were observed reverted to their `HEAD` content, then observed restored again a few tool calls
+later — consistent with a sibling session's `git stash`/`git stash pop` cycle running against
+this SHARED (non-worktree) checkout while `deb2e16cb` (TASK-738) landed. All reverted work was
+re-applied; a duplicate `TestDeleteByDocument` class this transient overlap left in
+`test_qdrant_store.py` was found (via `ruff`'s `F811`) and removed. Every layer was re-verified
+GREEN after the recovery (see below) — flagging this here as a real property of this run's shared
+tree, not a claim that nothing was lost.
 
 ## 8. Change History
 
 | Date | Change | By |
 |---|---|---|
 | 2026-08-16 | Ticket authored | Wave-3 ticket-authoring agent |
+| 2026-08-16 | **Task 1 (Figma design gate) WAIVED by the owner** for this program (tree-state directive: "The Figma design gate is WAIVED by the owner: build console screens directly"). No frame inventory/approval to record — this supersedes §4 Task 1's plan. All of rule 11's implementation-time gates (ScreenTemplate, `@arcaai/ui` primitives, semantic tokens, Skeletons, both themes, axe 0-violations) were still honored and verified (see §7). | Implementation agent |
+| 2026-08-16 | Tasks 2–8 implemented and verified: `KnowledgeDocumentService` upgraded to `BaseService`/symbol-DI/sys-events incl. new `archiveDocument`/`deleteDocument`/`listChunks`; `ResourceType.KnowledgeDocument` registered (migration `20260816160911_task_728_knowledge_document_resource_type`, empty-diff proved, dev DB synced); harness `KnowledgeQdrantStore.delete_by_document` + `DELETE /internal/knowledge/{id}` endpoint, with the Qdrant delete-ordering risk (§6) resolved via a live probe against local Qdrant (synchronous, immediately-consistent, correctly tenant+document scoped) — **fail-closed kept**; `KnowledgeController` (`admin/knowledge/documents`) + `admin:knowledge:manage` API-key scope; admin-console `features/knowledge/*` (list grid, detail drawer with Chunks tab, archive/delete confirm flows) with a real passing `vitest-axe` scan (both themes) as evidence; e2e spec authored, not executed (documented blocker). Full verification: harness 1335 tests / applications 9293+33 tests / domains 1793 tests (incl. `resourceType.enum-parity.test.ts`) / api 3037+60 tests / admin-console 1553 tests, all green; `pnpm --filter @arcaai/{applications,domains,api} build` and `pnpm --filter @arcaai/admin-console build lint typecheck` all pass; `pnpm gen:entity:check`/`gen:factory:check` report no drift and full schema coverage. | Implementation agent |

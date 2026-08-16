@@ -4,7 +4,12 @@ import { FetchResponse } from '../../common';
 
 export class WebhookDtoMapper {
   static ToResponse(entity: WebhookEntity): WebhookResponse {
-    return AutoClassMapper(entity, WebhookResponse);
+    // `hashedSecret` is deliberately never mapped onto `WebhookResponse` (the
+    // class carries no such field) — only its presence/absence, as
+    // `hasSecret`. See TASK-727 / webhook.response.ts.
+    return AutoClassMapper(entity, WebhookResponse, {
+      hasSecret: (source) => Boolean(source.hashedSecret),
+    });
   }
 
   static ToPaginatedResponse({ page, limit, count, data }: FetchResponse<WebhookEntity>): PaginatedWebhookResponse {

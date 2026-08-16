@@ -66,7 +66,7 @@ class StartWorkflowRunRequest(BaseModel):
 
     ``config_ref`` is a pre-minted :class:`ClaimCheckRef` to the version's ``compiledConfig`` —
     this endpoint never accepts a raw compiled config or a graph; producing/storing the ref is
-    the caller's (eventually TASK-722's gateway controller's) job.
+    the caller's (TASK-722's gateway controller, or TASK-721's Workbench sandbox controller) job.
     """
 
     model_config = ConfigDict(populate_by_name=True, extra="forbid")
@@ -77,6 +77,11 @@ class StartWorkflowRunRequest(BaseModel):
     tenant_id: str = Field(alias="tenantId")
     config_ref: ClaimCheckRef = Field(alias="configRef")
     sandbox: bool = Field(default=False)
+    # Additive-optional (TASK-721 Workbench, closing the gap `InterpreterInput.payload`'s own
+    # docstring named): the raw invocation/test payload, forwarded verbatim into
+    # `InterpreterInput.payload` -> every node's `NodeActivityInput.run_payload`. Never required —
+    # a real (non-sandbox) exposure-plane invoke may still omit it and get `{}`.
+    payload: dict[str, Any] = Field(default_factory=dict)
 
 
 @router.post(
@@ -99,6 +104,7 @@ async def start_workflow_run(body: StartWorkflowRunRequest, request: Request) ->
         tenant_id=body.tenant_id,
         run_id=body.run_id,
         sandbox=body.sandbox,
+        payload=body.payload,
     )
 
     try:
