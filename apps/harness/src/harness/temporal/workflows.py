@@ -655,6 +655,14 @@ class HarnessDocWorkflow:
                             # fail-closed inside the activity when the server is external.
                             phi_enabled=phi_enabled,
                             phi_fail_closed=phi_fail_closed,
+                            # TASK-712 (consent-abac Phase 4) — consent-gate identity.
+                            # `inp.external_patient_id` is None on a caller that has not
+                            # been upgraded to send it (e.g. the ConsultationLoopWorkflow
+                            # finalize-child path today); the activity treats that as
+                            # UNAVAILABLE (fail-closed, distinguishable from a denial).
+                            tenant_id=inp.tenant_id,
+                            external_patient_id=inp.external_patient_id,
+                            consultation_id=inp.consultation_id,
                             trajectory=self._traj(inp),
                         ),
                         start_to_close_timeout=_MCP_TIMEOUT,
@@ -686,6 +694,10 @@ class HarnessDocWorkflow:
                     entities=transcript_entities,
                     # policy retrieval override (None ⇒ env default).
                     retrieval_enabled=retrieval_enabled,
+                    # TASK-712 (consent-abac Phase 4) — see the call_mcp_tool
+                    # construction above for the None-caller degrade note.
+                    external_patient_id=inp.external_patient_id,
+                    consultation_id=inp.consultation_id,
                     trajectory=self._traj(inp),
                 ),
                 start_to_close_timeout=_ACTIVITY_TIMEOUT,
@@ -2228,9 +2240,7 @@ class ConsultationLoopWorkflow:
                 continue
             await self._run_action(spec, signal=None)
 
-    async def _run_action(
-        self, spec: LoopActionSpec, *, signal: ContextAddedSignal | None
-    ) -> None:
+    async def _run_action(self, spec: LoopActionSpec, *, signal: ContextAddedSignal | None) -> None:
         """Execute one registry entry. Every branch is an activity or a child."""
         if spec.key == LOOP_ACTION_LIVEDOC_START:
             await workflow.execute_activity(
@@ -2251,9 +2261,7 @@ class ConsultationLoopWorkflow:
         elif spec.key == LOOP_ACTION_CLIENT_EMIT:
             # `client.emit` IS the loop event — it does not additionally
             # announce itself, or every emission would be recorded twice.
-            await self._emit_event(
-                LOOP_EVENT_ACTION_DISPATCHED, signal=signal, action=spec.key
-            )
+            await self._emit_event(LOOP_EVENT_ACTION_DISPATCHED, signal=signal, action=spec.key)
         elif spec.key == LOOP_ACTION_HARNESS_FINALIZE:
             await self._start_finalize_child(spec)
         elif spec.derives_context:
@@ -2339,9 +2347,7 @@ class ConsultationLoopWorkflow:
             self._pending.append(derived)
             self._derived_context += 1
 
-        await self._emit_event(
-            LOOP_EVENT_CONTEXT_DERIVED, signal=derived, action=spec.key
-        )
+        await self._emit_event(LOOP_EVENT_CONTEXT_DERIVED, signal=derived, action=spec.key)
 
     def _livedoc_input(self) -> LiveDocControlInput:
         ending = self._ending_signal
@@ -2528,8 +2534,7 @@ class ConsultationLoopWorkflow:
         candidates = [
             agent
             for agent in config.agents
-            if not agent.is_primary
-            and any(agent.reads(kind) for kind in trigger_kinds)
+            if not agent.is_primary and any(agent.reads(kind) for kind in trigger_kinds)
         ]
         if not candidates:
             return
@@ -2641,9 +2646,7 @@ class ConsultationLoopWorkflow:
                 # other reviewers still contribute.
                 self._specialist_failures += 1
                 self._degraded = True
-                await self._emit_event(
-                    LOOP_EVENT_SPECIALIST_FAILED, action=agent.agent_id
-                )
+                await self._emit_event(LOOP_EVENT_SPECIALIST_FAILED, action=agent.agent_id)
                 continue
 
             results.append(result)

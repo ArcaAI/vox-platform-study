@@ -235,6 +235,8 @@ describe('env/vault-kv descriptor keys resolve to the real variable names', () =
     'rateLimit.maxRequests': 'RATE_LIMIT_MAX_REQUESTS',
     'rateLimit.windowMs': 'RATE_LIMIT_WINDOW_MS',
     'registration.selfSignupEnabled': 'REGISTRATION_SELF_SIGNUP_ENABLED',
+    'workflowExposure.enabled': 'WORKFLOW_EXPOSURE_ENABLED',
+    'workflowExposure.allowCloudProviders': 'WORKFLOW_EXPOSURE_ALLOW_CLOUD_PROVIDERS',
     'entitlements.enabledDefault': 'ENTITLEMENTS_ENABLED_DEFAULT',
     // Seed-time-only default for the metering reconcile
     // sweep, mirroring entitlements.enabledDefault exactly (see

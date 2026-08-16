@@ -109,6 +109,12 @@ def _input(**kw: Any) -> CallMcpToolInput:
         "policy_tool_allowlist": None,
         "phi_enabled": True,
         "phi_fail_closed": True,
+        # TASK-712 (consent-abac Phase 4) — present by default so the
+        # (pre-existing) allowlist/PHI/network-error security tests below
+        # exercise THOSE gates, not the new consent gate ahead of them.
+        "tenant_id": "t-1",
+        "external_patient_id": "PAT-1",
+        "consultation_id": "c-1",
         "trajectory": _traj(),
     }
     base.update(kw)
@@ -120,10 +126,35 @@ def env() -> ActivityEnvironment:
     return ActivityEnvironment()
 
 
-def _wire(monkeypatch, *, client, cap, settings=None, token=None, redactor=None):
+class _AllowAllConsentClient:
+    """Stub `ConsentClient` — every check() call is allowed. Records calls."""
+
+    def __init__(
+        self, *, allowed: bool = True, unavailable: bool = False, reason: str | None = None
+    ) -> None:
+        self._allowed = allowed
+        self._unavailable = unavailable
+        self._reason = reason
+        self.calls: list[dict[str, Any]] = []
+
+    async def check(self, **kwargs: Any):  # noqa: ANN201
+        from harness.core.consent_client import ConsentDecision
+
+        self.calls.append(kwargs)
+        return ConsentDecision(
+            allowed=self._allowed, unavailable=self._unavailable, reason=self._reason
+        )
+
+
+def _wire(monkeypatch, *, client, cap, settings=None, token=None, redactor=None, consent=None):
     monkeypatch.setattr(activities, "get_settings", lambda: settings or Settings())
     monkeypatch.setattr(activities, "_mcp_client", lambda s: client)
     monkeypatch.setattr(activities, "_trajectory_api_client", lambda s: cap)
+    # Default: consent always allowed — the allowlist/PHI/network tests below
+    # are about THOSE gates, not consent (TASK-712, consent-abac Phase 4).
+    monkeypatch.setattr(
+        activities, "_consent_client", lambda s: consent or _AllowAllConsentClient()
+    )
 
     # The resolver is async (it round-trips to the gateway
     # instead of returning a hardcoded None), so the stub must be awaitable.
@@ -338,3 +369,83 @@ class TestSizeCapClaimCheck:
         assert result.content_ref is None
         assert cap.steps[-1].status == "OK"
         assert cap.steps[-1].stats["offloaded"] is False
+
+
+# ---------------------------------------------------------------------------
+# 6) Consent (TASK-712, consent-abac Phase 4) — step (0.5), BEFORE the allowlist
+# ---------------------------------------------------------------------------
+
+
+class TestConsentGate:
+    @pytest.mark.asyncio
+    async def test_denied_raises_ConsentDenied_before_the_allowlist_and_network(
+        self, env, monkeypatch
+    ):
+        client = _RecordingClient(result=McpToolResult(content="ok"))
+        cap = _CapTraj()
+        consent = _AllowAllConsentClient(allowed=False, reason="no_grant")
+        _wire(monkeypatch, client=client, cap=cap, consent=consent)
+        with pytest.raises(ApplicationError) as ei:
+            await env.run(activities.call_mcp_tool, _input())
+        assert ei.value.type == "ConsentDenied"
+        assert ei.value.non_retryable is True
+        assert client.calls == []  # network NEVER reached
+        assert cap.steps[-1].status == "ERROR"
+        assert cap.steps[-1].error_code == "consent_denied"
+
+    @pytest.mark.asyncio
+    async def test_unavailable_raises_a_DIFFERENT_type_than_a_genuine_denial(
+        self, env, monkeypatch
+    ):
+        """R4 — a degraded consent lookup must never read as a compliance denial."""
+        client = _RecordingClient(result=McpToolResult(content="ok"))
+        cap = _CapTraj()
+        consent = _AllowAllConsentClient(allowed=False, unavailable=True)
+        _wire(monkeypatch, client=client, cap=cap, consent=consent)
+        with pytest.raises(ApplicationError) as ei:
+            await env.run(activities.call_mcp_tool, _input())
+        assert ei.value.type == "ConsentUnavailable"
+        assert client.calls == []
+        assert cap.steps[-1].error_code == "consent_unavailable"
+
+    @pytest.mark.asyncio
+    async def test_missing_identity_denies_as_unavailable_not_a_crash(self, env, monkeypatch):
+        """A caller that hasn't threaded tenant_id/external_patient_id yet (e.g. the
+        ConsultationLoopWorkflow finalize-child path) degrades safely — fail-closed,
+        but reported as a wiring gap, not a fabricated patient-level denial."""
+        client = _RecordingClient(result=McpToolResult(content="ok"))
+        cap = _CapTraj()
+        # No consent stub wired at all — if the activity actually called it, this
+        # would AttributeError; it must short-circuit before ever touching the client.
+        _wire(monkeypatch, client=client, cap=cap, consent=_AllowAllConsentClient())
+        with pytest.raises(ApplicationError) as ei:
+            await env.run(
+                activities.call_mcp_tool, _input(tenant_id=None, external_patient_id=None)
+            )
+        assert ei.value.type == "ConsentUnavailable"
+        assert client.calls == []
+
+    @pytest.mark.asyncio
+    async def test_allowed_proceeds_to_the_allowlist_and_network_as_before(self, env, monkeypatch):
+        client = _RecordingClient(result=McpToolResult(content="ok"))
+        cap = _CapTraj()
+        consent = _AllowAllConsentClient(allowed=True)
+        _wire(monkeypatch, client=client, cap=cap, consent=consent)
+        result = await env.run(activities.call_mcp_tool, _input())
+        assert result.ok is True
+        assert consent.calls[0]["purpose"] == "EXTERNAL_TOOL_LOOKUP"
+        assert consent.calls[0]["tool_name"] == "validate_codes"
+
+    @pytest.mark.asyncio
+    async def test_disabled_server_short_circuits_before_consent_is_even_checked(
+        self, env, monkeypatch
+    ):
+        """Step (0) still wins over step (0.5) — a disabled server never calls out,
+        consent or not."""
+        client = _RecordingClient(result=McpToolResult(content="ok"))
+        cap = _CapTraj()
+        consent = _AllowAllConsentClient(allowed=False)  # would deny if reached
+        _wire(monkeypatch, client=client, cap=cap, consent=consent)
+        result = await env.run(activities.call_mcp_tool, _input(server=_server(enabled=False)))
+        assert result.error_code == "server_disabled"
+        assert consent.calls == []

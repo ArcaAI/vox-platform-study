@@ -223,33 +223,73 @@ imperative privilege gate above the declarative decorator.
 
 ## W12 — Agentic workflow substrate: author → validate → publish → invoke → result (Summarization palette)
 
-The first palette proving the agentic-workflow-platform substrate (TASK-715–720, wave 1/2 of
-[`design.md`](../architecture/agentic-workflow-platform/design.md)). **Partial** — see the
-gaps below; this flow is not runnable end-to-end in this session.
+The first palette proving the agentic-workflow-platform substrate (TASK-715–720, 734, 722; wave
+1/2 of [`design.md`](../architecture/agentic-workflow-platform/design.md)). **Partial** — see
+the gaps below; a REAL clinical-summarization result is not producible end-to-end yet, but the
+authoring→publish→invoke→status→cancel *mechanism* now is (as of TASK-722).
 
-1. **Definition model.** `WorkflowDefinition` (TASK-715 Phase A, DB-only — Phases B-F node
-   registry not built) — rows ARE versions (no head/version split); `graph` (authored canvas,
-   `packages/database/src/prisma/db_main/workflow-definition.prisma`).
+1. **Definition model + domain quartet.** `WorkflowDefinition` (TASK-715 Phase A: DB; TASK-734
+   Phase B-D: the hand-authored `Entity`/`Factory`/`EntityMapper`/`Repository`, incl.
+   `findPublishedBySlug`/`findActivePublishedByTenant`) — rows ARE versions (no head/version
+   split); `graph` (authored canvas, `packages/database/src/prisma/db_main/workflow-definition.prisma`).
+   A `BEFORE UPDATE OR DELETE` trigger + a partial unique index enforce PUBLISHED-row
+   immutability and the "at most one ACTIVE version per slug" invariant at the DB layer
+   (TASK-734, `migrations/20260816090000_task_734_workflow_definition_immutability_guard/`).
 2. **Validate + compile (pure engine).** `packages/workflow-contract` (TASK-716 Phase C) —
    `validate()` (structural/invariant/schema rule classes over `DRAFT_SUMMARIZATION_RULE_SET`,
    itself DRAFT/not clinician-reviewed) and `compile()` (deterministic graph →
-   `compiledConfig`, the interpreter's input contract). **The Summarization palette's own
-   mandatory-subgraph rules** (`input.context_binding → generate.text → guardrail.check →
-   output.deliver`, guardrail non-removable) are `WF-SUMM-001..006` (TASK-720 Task 3), golden
-   fixtures at `packages/workflow-contract/src/__tests__/golden/WF-SUMM-*/`. Node config
-   schemas: `docs/implementation/TASK-720-Palette-Summarization/contracts/nodes/*.schema.json`
-   + `contracts/palette.md` (safety class / `critical` / activity-name table).
-3. **Interpreter.** `WorkflowInterpreter` Temporal workflow (TASK-718,
+   `compiledConfig`, the interpreter's input contract), wired into `WorkflowDefinitionService`
+   (TASK-734 Task 5): `compile()` is the always-blocking ENGINE gate on create/update/publish;
+   `validate()`'s DRAFT rule findings are recorded but never block a write (decision #3). **The
+   Summarization palette's own mandatory-subgraph rules** (`input.context_binding →
+   generate.text → guardrail.check → output.deliver`, guardrail non-removable) are
+   `WF-SUMM-001..006` (TASK-720 Task 3), golden fixtures at
+   `packages/workflow-contract/src/__tests__/golden/WF-SUMM-*/`. Node config schemas:
+   `docs/implementation/TASK-720-Palette-Summarization/contracts/nodes/*.schema.json` +
+   `contracts/palette.md` (safety class / `critical` / activity-name table) — no delivered
+   `configSchema` contract exists on the node-registry response yet (TASK-734 §7).
+3. **Node registry.** `@arcaai/workflow-contract`'s `WORKFLOW_NODE_REGISTRY` (TASK-734 Task 3,
+   `packages/workflow-contract/src/node-registry.ts`) is the code-owned TS mirror of
+   `apps/harness/.../interpreter/registry.py`'s `NODE_REGISTRY`, parity-guarded by a shared
+   fixture (`docs/implementation/TASK-734-.../contracts/node-registry.snapshot.json`). Ships
+   only `noop`/`passthrough` — TASK-720's five Summarization palette node activities
+   (`interpreter.context_binding` / `interpreter.template_ref` / `interpreter.text_generate` /
+   `interpreter.guardrail_check` / `interpreter.deliver`) are STILL not implemented (see gaps
+   below) — a graph built only from `noop`/`passthrough` compiles and can be invoked, but
+   produces no clinical output.
+4. **Interpreter.** `WorkflowInterpreter` Temporal workflow (TASK-718,
    `apps/harness/src/harness/temporal/interpreter/`) — stage-walk dispatch off
    `compiledConfig`, registry-sanctioned activities only (S-4: the wire `activity` string is a
-   consistency check, never a routing decision). `NODE_REGISTRY` (`registry.py`) ships EMPTY of
-   palette nodes by design — TASK-720 was to populate the five Summarization node activities;
-   **not done this session** (see gaps below).
-4. **Seeded platform default.** One SYSTEM-tenant, `PUBLISHED`, `isActive` `WorkflowDefinition`
+   consistency check, never a routing decision). A new HTTP dispatcher (TASK-718 Task 10,
+   `apps/harness/src/harness/api/endpoints/interpreter.py`) exposes `POST
+   /api/v1/workflow-runs:start` (idempotent by workflow-id collision), `GET
+   /api/v1/workflow-runs/{runId}` (Temporal `describe()` + the workflow's `state` query), `POST
+   /api/v1/workflow-runs/{runId}:cancel` (a code allow-list — never a caller-supplied signal
+   name) — `X-Service-Token`-guarded, called only from the gateway (never a browser).
+5. **Exposure plane — invoke/status/stream/cancel/list (TASK-722).** `GET /api/v1/workflows`,
+   `POST /api/v1/workflows/:slug/invoke`, `GET /api/v1/workflows/:slug/runs/:runId[/stream]`,
+   `POST /api/v1/workflows/:slug/runs/:runId/cancel` (`apps/api/src/modules/workflows/`), gated
+   OFF by default (`WORKFLOW_EXPOSURE_ENABLED`, R-1) and scoped by both a CASL authorization
+   decorator and `@RequiredScopes('workflow:{definition:read,run:read,run:write}')` on every
+   route (boot-audited, `api-key-scope-audit.ts`). `invoke()` resolves the tenant's
+   ACTIVE PUBLISHED version (`findPublishedBySlug`, 404-over-403), mints a content-addressed
+   `ClaimCheckRef` for `compiledConfig` into the self-hosted MinIO claim-check bucket (the
+   interpreter never accepts a raw compiled config — TASK-718's own dispatcher contract), and
+   POSTs to the harness dispatcher's `:start` route. The SSE stream is a documented, disclosed
+   BRIDGE, not a byte-proxy: no live event-stream producer exists on the interpreter yet
+   (TASK-717 Phase C deferred), so `WorkflowStreamService` polls the JSON status read and
+   translates each snapshot into a TASK-717 async-contract envelope; no synthetic resume token
+   is minted (Temporal polling has no transport-native cursor — async-contract §3.6 forbids
+   inventing one). Decision #6 (cloud-provider selection through a public workflow, R-8): OFF by
+   default (`WORKFLOW_EXPOSURE_ALLOW_CLOUD_PROVIDERS`), checked against `compiledConfig`'s
+   per-node `config.provider` field via the SAME `isCloudByoProvider('llm', …)` classification
+   the BYO-credential plane uses — currently inert (no node type sets `config.provider` yet)
+   but wired for the moment one does.
+6. **Seeded platform default.** One SYSTEM-tenant, `PUBLISHED`, `isActive` `WorkflowDefinition`
    row (TASK-720 Task 6, `packages/database/src/prisma/db_main/seed/21-workflow-definition.ts`)
    — the dispatcher's fallback when a tenant has authored no workflow of its own. `graph` /
    `compiledConfig` are the literal, provable output of the real `compile()`/`validate()` engine.
-5. **Async envelope + Studio.** TASK-717 (async contract, Phase A+B delivered) and TASK-719
+7. **Async envelope + Studio.** TASK-717 (async contract, Phase A+B delivered) and TASK-719
    (Workflow Studio v1, admin-console) — see their own ticket READMEs for status.
 
 **Composes:** [`harness.md`](./harness.md) (Temporal workflow patterns); no domain file yet
@@ -258,8 +298,11 @@ once wave 2+ lands).
 
 **Invariants (intended, not all enforced yet):** the guardrail node is structurally
 non-removable and nothing routes around it (`WF-SUMM-004`/`006`); `compiledConfig` is
-server-produced only, never accepted from a request DTO; a published row is hard-immutable;
-provider/model selection for `generate.text` is `failMode: closed` (no env fallback).
+server-produced only, never accepted from a request DTO; a published row is hard-immutable
+(service guard + DTO whitelist + checksum drift-detection + a DB trigger, TASK-734); a
+publicly-invoked workflow never routes to a cloud LLM provider without an explicit tenant
+opt-in (TASK-722 decision #6); provider/model selection for `generate.text` is `failMode:
+closed` (no env fallback).
 
 ---
 
@@ -269,18 +312,29 @@ provider/model selection for `generate.text` is `failMode: closed` (no env fallb
 - **W2's browser-WS live round-trip and W9's live synthesis are env-gated**, not `apps/api/tests/e2e` specs (playground manual passes) — see the transcription and TTS domain gaps.
 - **W6's SAML leg is an open security gate** — real signed-assertion tamper/expiry/replay/XSW coverage does not exist (I2 unit tests use a mocked SAML client). Do not read W6 step 4 as assertion-hardening evidence.
 - **W10 step 5 (revocation/audit) is uncommitted** on `fix/2605-review` (TASK-541, status Review) — landed-but-unmerged.
-- **W12 is not runnable end-to-end.** TASK-720's five Summarization node activities
-  (`interpreter.context_binding` / `interpreter.template_ref` / `interpreter.text_generate` /
-  `interpreter.guardrail_check` / `interpreter.deliver`) were NOT implemented this session:
-  the shipped `WorkflowInterpreter` (TASK-718) threads no per-node output between activities
-  (`NodeActivityInput` carries only that node's own static `config` — see
+- **W12 still cannot produce a real clinical result end-to-end**, though the
+  invoke/status/stream/cancel MECHANISM is now real (TASK-722). TASK-720's five Summarization
+  node activities (`interpreter.context_binding` / `interpreter.template_ref` /
+  `interpreter.text_generate` / `interpreter.guardrail_check` / `interpreter.deliver`) are STILL
+  not implemented: the shipped `WorkflowInterpreter` (TASK-718) threads no per-node output
+  between activities (`NodeActivityInput` carries only that node's own static `config` — see
   `execution-semantics.md` §3), so `guardrail.check` has no way to receive the text
   `generate.text` produced without a workflow-body change outside this ticket's remit; and
   there is no established auth path for a Python harness activity to call the JWT-guarded,
   tenant-scoped gateway route `POST /api/v1/text/generate` (the existing `SmrClient` calls SMR
   directly, not the gateway, and `ApiClient` only reaches the internal `X-Service-Token`
-  harness-callback routes). `NODE_REGISTRY` therefore still ships empty of palette nodes.
-  Flagged for TASK-718/722 follow-up, not silently worked around.
+  harness-callback routes). `NODE_REGISTRY` therefore still ships only `noop`/`passthrough`.
+  Flagged for TASK-720/731 follow-up, not silently worked around.
+- **TASK-722's exposure plane was NOT proven against a live Temporal/harness round trip.**
+  `apps/harness` and its Temporal worker are not part of `pnpm test:up:api`'s server set and
+  were not started this session; `apps/api/tests/e2e/task-722-workflow-exposure.spec.ts` proves
+  every gateway-side gate (scoping, tenant isolation, 404-over-403, DTO validation, the
+  stream-ticket mint-time ownership check) live against the test DB, and proves a published,
+  in-scope, own-tenant invoke passes every one of those gates before failing on the one boundary
+  this environment cannot host (the unreachable harness dispatcher) — see that spec's own header
+  comment. A genuine `202 → RUNNING → COMPLETED` round trip is unverified pending a running
+  harness + Temporal worker (R-2 already names Temporal as not production-ready for the same
+  reason).
 - **The "0"-create contract (TASK-534) is proven mostly at the unit/decorator layer plus the `ai-provider-connections.spec.ts` / `ai-runtime-profiles.spec.ts` / `settings-registry-write.spec.ts` 428/412 legs.** The create-from-absent (`If-Match: "0"` → new row) path is asserted in the service unit suites (`settings-registry-write.occ`, `ai-provider-connection.service`, `harness-policy.service`), not yet in a dedicated e2e create leg.
 - Legacy-domain steps (W6 tenancy/entitlements, W10 audit) cite the not-yet-migrated [`docs/traceability-matrix.md`](../traceability-matrix.md) rows; re-verify when those domains migrate.
 - **[`ai-models-providers.md`](./ai-models-providers.md) M7's `e2e: —` is stale.** `apps/api/tests/e2e/trajectory-admin.spec.ts` exists and probes the M7 `/admin/agent-trajectory/*` read plane (RBAC + keyset step pagination + `payloadRef`-never-surfaced); code wins over the domain file's cell. W7 step 5 cites it; M7's e2e cell should be corrected on that file's next re-stamp.

@@ -15,6 +15,7 @@ import { HarnessGatewayService } from '../harness-gateway.service';
 const createMockHttpService = () => ({
   axiosRef: {
     post: vi.fn().mockResolvedValue({ data: { ok: true } }),
+    get: vi.fn().mockResolvedValue({ data: { ok: true } }),
   },
 });
 
@@ -108,6 +109,24 @@ describe('HarnessGatewayService', () => {
 
       const [, body] = mockHttpService.axiosRef.post.mock.calls[0];
       expect(body).not.toHaveProperty('redactionRules');
+    });
+
+    it('forwards externalPatientId when present (TASK-712, consent-abac Phase 4)', async () => {
+      const service = build('http://harness:8866', 'tok');
+
+      await service.start('c-9', { tenantId: 'tenant-9', externalPatientId: 'PAT-20250101-001' });
+
+      const [, body] = mockHttpService.axiosRef.post.mock.calls[0];
+      expect(body.externalPatientId).toBe('PAT-20250101-001');
+    });
+
+    it('omits externalPatientId from the body when absent (byte-identical to previous)', async () => {
+      const service = build('http://harness:8866', 'tok');
+
+      await service.start('c-10', { tenantId: 'tenant-10' });
+
+      const [, body] = mockHttpService.axiosRef.post.mock.calls[0];
+      expect(body).not.toHaveProperty('externalPatientId');
     });
   });
 
@@ -342,6 +361,73 @@ describe('HarnessGatewayService', () => {
       const loggedPayload = JSON.stringify(logSpy.mock.calls[0]);
       expect(loggedPayload).not.toContain(clinicalText);
       expect(loggedPayload).not.toContain('lisinopril');
+    });
+  });
+
+  describe('startWorkflowRun (TASK-722)', () => {
+    it('POSTs to /workflow-runs:start with the runId/sessionId/tenantId/configRef body and the service-token header', async () => {
+      mockHttpService.axiosRef.post.mockResolvedValue({ data: { runId: 'run-1', workflowId: 'workflow-interpreter-run-1', temporalRunId: 't-1', status: 'started' } });
+      const service = build('http://harness:8866', 'tok');
+      const configRef = { store: 's3', bucket: 'harness-claim-check', key: 'abc123', size: 42, sha256: 'a'.repeat(64), content_type: 'text/plain; charset=utf-8' };
+
+      const result = await service.startWorkflowRun({
+        runId: 'run-1',
+        sessionId: 'workflow-interpreter-run-1',
+        workflowVersionId: 'def-1',
+        tenantId: 'tenant-1',
+        configRef,
+      });
+
+      expect(mockHttpService.axiosRef.post).toHaveBeenCalledTimes(1);
+      const [url, body, options] = mockHttpService.axiosRef.post.mock.calls[0];
+      expect(url).toBe('http://harness:8866/api/v1/workflow-runs:start');
+      expect(body).toEqual({
+        runId: 'run-1',
+        sessionId: 'workflow-interpreter-run-1',
+        workflowVersionId: 'def-1',
+        tenantId: 'tenant-1',
+        configRef,
+        sandbox: false,
+      });
+      // The nested ClaimCheckRef keeps `content_type` (snake_case) — the Python
+      // model carries no alias of its own.
+      expect(body.configRef.content_type).toBe('text/plain; charset=utf-8');
+      expect(options.headers['X-Service-Token']).toBe('tok');
+      expect(options.timeout).toBe(15_000);
+      expect(result.status).toBe('started');
+    });
+  });
+
+  describe('getWorkflowRun (TASK-722)', () => {
+    it('GETs /workflow-runs/{runId} with the service-token header', async () => {
+      mockHttpService.axiosRef.get.mockResolvedValue({ data: { runId: 'run-1', status: 'RUNNING', stages: [], startedAt: '2026-08-16T00:00:00Z', endedAt: null } });
+      const service = build('http://harness:8866', 'tok');
+
+      const result = await service.getWorkflowRun('run-1');
+
+      expect(mockHttpService.axiosRef.get).toHaveBeenCalledTimes(1);
+      const [url, options] = mockHttpService.axiosRef.get.mock.calls[0];
+      expect(url).toBe('http://harness:8866/api/v1/workflow-runs/run-1');
+      expect(options.headers['X-Service-Token']).toBe('tok');
+      expect(options.timeout).toBe(15_000);
+      expect(result.status).toBe('RUNNING');
+    });
+  });
+
+  describe('cancelWorkflowRun (TASK-722)', () => {
+    it('POSTs to /workflow-runs/{runId}:cancel with an empty body — never a caller-supplied signal name', async () => {
+      mockHttpService.axiosRef.post.mockResolvedValue({ data: { runId: 'run-1', status: 'cancel_requested' } });
+      const service = build('http://harness:8866', 'tok');
+
+      const result = await service.cancelWorkflowRun('run-1');
+
+      expect(mockHttpService.axiosRef.post).toHaveBeenCalledTimes(1);
+      const [url, body, options] = mockHttpService.axiosRef.post.mock.calls[0];
+      expect(url).toBe('http://harness:8866/api/v1/workflow-runs/run-1:cancel');
+      expect(body).toEqual({});
+      expect(options.headers['X-Service-Token']).toBe('tok');
+      expect(options.timeout).toBe(15_000);
+      expect(result.status).toBe('cancel_requested');
     });
   });
 });

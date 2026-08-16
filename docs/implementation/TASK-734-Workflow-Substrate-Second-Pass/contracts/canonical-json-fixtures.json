@@ -1,0 +1,119 @@
+{
+  "_comment": "Cross-language canonicalJson/canonical_json parity fixture (TASK-734 Task 4, closing the gap TASK-718 README named: the checksum algorithm was never verified byte-for-byte against a live Node run). Asserted from BOTH packages/workflow-contract/src/__tests__/canonical-json-parity-fixture.test.ts (TS, the oracle that generated canonical/checksum below via the real canonicalJson()) and apps/harness/src/harness/tests/unit/temporal/interpreter/test_compiled_config.py (Python, via compiled_config.canonical_json()). A case fails on either side if that language's implementation stops producing byte-identical output.",
+  "cases": [
+    {
+      "name": "flat_object_key_order",
+      "value": {
+        "b": 1,
+        "a": 2
+      },
+      "canonical": "{\"a\":2,\"b\":1}",
+      "checksum": "d3626ac30a87e6f7a6428233b3c68299976865fa5508e4267c5415c76af7a772"
+    },
+    {
+      "name": "array_order_preserved",
+      "value": {
+        "items": [
+          3,
+          1,
+          2
+        ]
+      },
+      "canonical": "{\"items\":[3,1,2]}",
+      "checksum": "de21aef9c6d6b65cfe6dc3c9159d9969659d1f5b854c6249d871036c57a26966"
+    },
+    {
+      "name": "null_scalar",
+      "value": null,
+      "canonical": "null",
+      "checksum": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+    },
+    {
+      "name": "whole_number_float",
+      "value": 2,
+      "canonical": "2",
+      "checksum": "d4735e3a265e16eee03f59718b9b5d03019c07d8b6c51f90da3a666eec13ab35"
+    },
+    {
+      "name": "non_ascii_string",
+      "value": "café éè",
+      "canonical": "\"café éè\"",
+      "checksum": "d6258f1fc58c82337e2c085f1930f43a5b90ad6bb160ae00e2b27bb85adacbd0"
+    },
+    {
+      "name": "nested_structure",
+      "value": {
+        "z": {
+          "y": 1,
+          "x": [
+            1,
+            2
+          ]
+        },
+        "a": [
+          {
+            "c": 3,
+            "b": 2
+          },
+          null,
+          true,
+          false
+        ]
+      },
+      "canonical": "{\"a\":[{\"b\":2,\"c\":3},null,true,false],\"z\":{\"x\":[1,2],\"y\":1}}",
+      "checksum": "a21f53a8d173f7272aafa36764bec6aaf0405b6eac5950a176fa5228d2740a48"
+    },
+    {
+      "name": "realistic_compiled_config_like",
+      "value": {
+        "formatVersion": 1,
+        "definitionId": "11111111-1111-1111-1111-111111111111",
+        "slug": "smoke-test",
+        "versionNumber": 1,
+        "tenantId": "22222222-2222-2222-2222-222222222222",
+        "paletteKey": "summarization",
+        "compiledAt": "2026-08-16T00:00:00.000Z",
+        "compilerVersion": "0.1.0",
+        "registryChecksum": "abc123",
+        "ruleSetVersion": 1,
+        "stages": [
+          {
+            "stageIndex": 0,
+            "nodes": [
+              {
+                "nodeId": "n1",
+                "type": "noop",
+                "activity": "interpreter.noop",
+                "config": {},
+                "timeoutSeconds": 30,
+                "retry": {
+                  "maximumAttempts": 2,
+                  "initialIntervalSeconds": 1,
+                  "backoffCoefficient": 2
+                },
+                "inputs": [],
+                "onError": "degrade",
+                "emitsTrajectory": true
+              }
+            ]
+          }
+        ],
+        "gates": [],
+        "policyBindings": {
+          "guardrailProfile": "STANDARD",
+          "redactionRuleSetId": null,
+          "promptTemplateRefs": [],
+          "contextSchemaVersionId": null,
+          "entitlementKeys": []
+        },
+        "caps": {
+          "maxTotalSeconds": 3600,
+          "maxNodeSeconds": 900,
+          "maxAttempts": 5
+        }
+      },
+      "canonical": "{\"caps\":{\"maxAttempts\":5,\"maxNodeSeconds\":900,\"maxTotalSeconds\":3600},\"compiledAt\":\"2026-08-16T00:00:00.000Z\",\"compilerVersion\":\"0.1.0\",\"definitionId\":\"11111111-1111-1111-1111-111111111111\",\"formatVersion\":1,\"gates\":[],\"paletteKey\":\"summarization\",\"policyBindings\":{\"contextSchemaVersionId\":null,\"entitlementKeys\":[],\"guardrailProfile\":\"STANDARD\",\"promptTemplateRefs\":[],\"redactionRuleSetId\":null},\"registryChecksum\":\"abc123\",\"ruleSetVersion\":1,\"slug\":\"smoke-test\",\"stages\":[{\"nodes\":[{\"activity\":\"interpreter.noop\",\"config\":{},\"emitsTrajectory\":true,\"inputs\":[],\"nodeId\":\"n1\",\"onError\":\"degrade\",\"retry\":{\"backoffCoefficient\":2,\"initialIntervalSeconds\":1,\"maximumAttempts\":2},\"timeoutSeconds\":30,\"type\":\"noop\"}],\"stageIndex\":0}],\"tenantId\":\"22222222-2222-2222-2222-222222222222\",\"versionNumber\":1}",
+      "checksum": "05ccbaaa59ef6f24cfec4f9cd43a68c97cd144ba7fceeb2f232b697c42d73b7a"
+    }
+  ]
+}

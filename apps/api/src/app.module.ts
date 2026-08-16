@@ -119,8 +119,11 @@ import { UserModule } from './modules/user/user.module';
 import { VoiceProfileModule } from './modules/voice-profile/voice-profile.module';
 // /admin/webhooks (CRUD + delivery-log reads).
 import { WebhookModule } from './modules/webhook/webhook.module';
+import { WorkflowDefinitionModule } from './modules/workflow-definition/workflow-definition.module';
+import { WorkflowNodeModule } from './modules/workflow-node/workflow-node.module';
 import { WorkflowRunModule } from './modules/workflow-run/workflow-run.module';
 import { WorkflowTestFixtureModule } from './modules/workflow-test-fixture/workflow-test-fixture.module';
+import { WorkflowsModule } from './modules/workflows/workflows.module';
 
 const interceptors = [
   {
@@ -453,11 +456,20 @@ const featureModules: any[] = [
   VoiceProfileModule,
   // /admin/webhooks (CRUD + delivery-log reads).
   WebhookModule,
+  // /admin/workflow-definitions (TASK-734) — WorkflowDefinition CRUD + compile/validate/publish.
+  WorkflowDefinitionModule,
+  // /admin/workflow-nodes (TASK-734) — read-only WORKFLOW_NODE_REGISTRY projection.
+  WorkflowNodeModule,
   // /admin/workflow-runs (TASK-723) — tenant-scoped runs/observability read plane.
   WorkflowRunModule,
   // /admin/workflow-test-fixtures (TASK-721) — per-tenant saved synthetic
   // Workbench test inputs.
   WorkflowTestFixtureModule,
+  // /workflows/:slug/… (TASK-722) — the public exposure plane: invoke / status / stream /
+  // cancel / list over a tenant's PUBLISHED workflow versions. Gated OFF by default
+  // (WORKFLOW_EXPOSURE_ENABLED, R-1) until TASK-708's API-key-scope precondition is recorded
+  // satisfied and the kill-switch is explicitly flipped.
+  WorkflowsModule,
 ];
 
 // Embedded Prisma Studio is

@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Partial — Pass 2 (2026-08-16): HTTP consent enforcement is now **ON BY DEFAULT** (guard + decorator + route decoration + boot audit, unconditional). Phases 0–3 done (Phase 3's coverage-audit predicate deliberately narrowed — see §7). Phase 4 (non-HTTP/harness), the WORM ledger writer, Phase 6's dedicated seed file, and Phase 5 (CASL) remain explicitly deferred. See §7. |
+| **Status** | Partial — Pass 3 (2026-08-16): Phase 4 (non-HTTP/harness enforcement), the WORM `CONSENT_GIVEN`/`CONSENT_WITHDRAWN` ledger writer, and Phase 6's dedicated seed file are now built, on top of Pass 2's HTTP enforcement (ON BY DEFAULT). Phases 0–4 and 6 done (Phase 3's coverage-audit predicate and Phase 4's `ConsultationLoopWorkflow` finalize-child threading remain deliberately narrowed/disclosed — see §7). Only Phase 5 (CASL) remains explicitly deferred, per explicit instruction to keep it staged and separate. See §7. |
 | **Wave** | 1 · **Size** | XL |
 | **Epic slug** | `consent-abac` |
 | **Depends on** | — (independent; TASK-711 supplies the `PRIMED` state this gate naturally attaches to, but neither blocks the other) |
@@ -661,39 +661,86 @@ Evidence rule: **paste actual command output** for every box. "Done" without out
 
 - [ ] `consent-design.md` and `casl-blast-radius.md` exist, carry pasted live query output with
       environment + date, and are owner-approved. Every HUMAN-GATED item in §6 is answered in
-      writing before the phase that depends on it starts
+      writing before the phase that depends on it starts — **`casl-blast-radius.md` still does not
+      exist (Phase 5 untouched, per instruction); `consent-design.md` exists and is updated but is
+      still not formally owner-approved**
 - [ ] All 40 `consent-abac` register invariants appear in the design doc's mechanism table, with
-      the ones not closed here explicitly marked
-- [ ] Migration: `npx prisma migrate diff --from-config-datasource --to-schema src/prisma/db_main --script`
-      prints `-- This is an empty migration.`; `pnpm db:generate`
-- [ ] `pnpm gen:model:check`, `pnpm gen:entity:check`, `pnpm gen:factory:check` — no drift **and**
-      schema coverage OK
+      the ones not closed here explicitly marked — unchanged from Pass 1, still not done
+- [x] Migration: `npx prisma migrate diff --from-config-datasource --to-schema src/prisma/db_main --script`
+      prints `-- This is an empty migration.`; `pnpm db:generate` — **Pass 3: verified for the new
+      `20260816100536_task_712_consent_grant_worm_writer` migration** (see §7 Verification)
+- [x] `pnpm gen:model:check`, `pnpm gen:entity:check`, `pnpm gen:factory:check` — no drift **and**
+      schema coverage OK — **Pass 3: all three re-run, pasted below**
 - [ ] `git diff --stat packages/domains/src/mappers/generated/core/` touches only
       `ConsentGrantEntityMapper.ts`, and that file contains `FIELDS_NOT_WRITABLE = ['version']`
-      (proof `gen:mapper` was not run)
-- [ ] `packages/domains/src/enums/__tests__/resourceType.enum-parity.test.ts` green with
-      `ConsentGrant` present in **both** `audit.prisma` and the domain enum
+      (proof `gen:mapper` was not run) — not re-verified this pass (Pass 3 touched no mapper file)
+- [x] `packages/domains/src/enums/__tests__/resourceType.enum-parity.test.ts` green with
+      `ConsentGrant` present in **both** `audit.prisma` and the domain enum — **Pass 3: re-run, 10/10 passed**
 - [ ] `ConsentGrantRepository` registered in `CoreDatabaseModule` — providers **and** exports;
-      mapper + repository barrel lines added by hand
-- [ ] `pnpm --filter @arcaai/database test`
-- [ ] `pnpm --filter @arcaai/domains build` · `pnpm --filter @arcaai/domains test`
-- [ ] `pnpm --filter @arcaai/applications build` · `pnpm --filter @arcaai/applications test`
-- [ ] `pnpm api:build` · `pnpm test:unit`
-- [ ] `pnpm harness:test` (incl. `test_replay_compat`) · `pnpm harness:lint` · `pnpm harness:typecheck`
-- [ ] `pnpm db:seed` clean; `pnpm test:db:seed` clean
-- [ ] `pnpm test:up:api` then `pnpm test:e2e` — all eight `consent-abac.spec.ts` cases
+      mapper + repository barrel lines added by hand — unchanged from Pass 1, not re-verified this pass
+- [x] `pnpm --filter @arcaai/database test` — **Pass 3: 52 files / 1255 tests passed**
+- [x] `pnpm --filter @arcaai/domains build` · `pnpm --filter @arcaai/domains test` — **Pass 3: build
+      clean; 144 files / 1744 tests passed, 2 skipped, 9 todo**
+- [x] `pnpm --filter @arcaai/applications build` · `pnpm --filter @arcaai/applications test` —
+      **Pass 3: build clean; 493 files / 9183 tests passed, 1 skipped**
+- [x] `pnpm api:build` · `pnpm test:unit` — **Pass 3: `api:build` all 11 tasks succeeded;
+      `NODE_ENV=test vitest run --exclude '**/integration/**' --exclude '**/e2e/**'` (the same
+      command `test:unit` runs for the TS suite) → 209 files / 2962 tests passed. The literal root
+      `pnpm test:unit` (which also runs `@arcaai/ui`/`@arcaai/vox`/`@arcaai/compat-playground`/
+      `@arcaai/admin-console` — packages this pass also touched, for the
+      `chain-integrity-card.tsx` null-safety fix) was NOT run as one aggregate command; each of
+      those four was run individually instead (`@arcaai/admin-console`: typecheck clean, 7 files /
+      59 tests passed) — same package-scoped-over-aggregate evidence posture Pass 2 used**
+- [x] `pnpm harness:test` (incl. `test_replay_compat`) · `pnpm harness:lint` · `pnpm harness:typecheck` —
+      **Pass 3: 1301 passed (incl. `test_replay_compat.py`); ruff clean; mypy clean, 109 files**
+- [x] `pnpm db:seed` clean; `pnpm test:db:seed` clean — **Pass 3: `RUN_SEED=all` against a live
+      `hope_test` database — 24 `ConsentGrant` rows created on the first run, 0 on a second
+      (idempotency proven); `pnpm db:push` applied the nullable-column migration to `hope` (dev)
+      non-destructively**
+- [ ] `pnpm test:up:api` then `pnpm test:e2e` — all eight `consent-abac.spec.ts` cases — **NOT run
+      this pass**: port 8968 (the TEST-env API port) was already bound by another process (PID
+      28894, `apps/api/dist/main`, ~6h uptime — not started by this session) when `pnpm test:up:api`
+      was attempted. Left untouched rather than killing a process this session did not start (the
+      program's own shared-tree-instability guidance). The existing `consent-abac.spec.ts` (7 cases
+      from Pass 2, none of which exercise Phase 4/the WORM writer/the seed) was therefore not
+      re-run live this pass; unit-test + live-DB evidence (above, and the raw-SQL WORM-row proof in
+      §7) stands in its place
 - [ ] Existing `apps/api/tests/e2e/authorization.spec.ts` and `auth-guard-behavior.spec.ts` pass
-      **unchanged** after Task 14 (proof shadow mode altered no verdict)
-- [ ] `pnpm lint` — zero new errors in `apps/api`; zero new `only-warn` warnings in `packages/*`
-- [ ] `pnpm typecheck:all` · `pnpm lint:all`
+      **unchanged** after Task 14 (proof shadow mode altered no verdict) — N/A this pass (Task 14 /
+      Phase 5 untouched); not re-run
+- [x] `pnpm lint` — zero new errors in `apps/api`; zero new `only-warn` warnings in `packages/*` —
+      **Pass 3: `apps/api` 0 errors / 65 warnings (the pre-existing Pass-2 baseline, unchanged);
+      `@arcaai/domains` 0 errors / 13 warnings (pre-existing baseline, unchanged); `@arcaai/applications`
+      0 errors / 202 warnings — 20 MORE than Pass 2's 182, but every one of the extra warnings is in
+      `packages/applications/src/services/workflow-definition/**`, an UNCOMMITTED sibling ticket's
+      files this session did not touch (confirmed by filename, not by assumption)**
+- [ ] `pnpm typecheck:all` · `pnpm lint:all` — **run, both FAIL, but not on anything this ticket
+      touched**: `typecheck:all` fails on `apps/stt/src/stt/transcription/preprocessing.py:278`
+      (a pre-existing mypy `redundant-cast`); `lint:all` fails on
+      `packages/py-env/src/hope_env/build_info.py:10` (a pre-existing ruff `E501` line-length). Every
+      TS typecheck (42/42 turbo tasks) and TS lint (37/37 turbo tasks) task in both aggregates
+      succeeded; `pnpm harness:lint`/`harness:typecheck` (this ticket's Python surface) are
+      independently green above. Left unchecked because the literal aggregate command does not exit 0
 - [ ] The boot audit demonstrably refuses to start on an undecorated consultation route (pasted
-      refusal, then restored)
-- [ ] `HarnessAuditAction.CONSENT_GIVEN` / `CONSENT_WITHDRAWN` have real writers; the admin-console
-      filter at `apps/admin-console/src/features/harness-ops/api/types.ts:16-17` now returns rows
-- [ ] The WORM hash-compatibility test proves a pre-existing seeded chain verifies **unchanged**
+      refusal, then restored) — unchanged from Pass 2 (that evidence still stands there), not
+      re-demonstrated this pass
+- [x] `HarnessAuditAction.CONSENT_GIVEN` / `CONSENT_WITHDRAWN` have real writers; the admin-console
+      filter at `apps/admin-console/src/features/harness-ops/api/types.ts` now returns rows —
+      **Pass 3: `ConsentGrantService.create()`/`revoke()` append real WORM rows (unit-tested +
+      wired to `HarnessAuditService` via DI); a raw-SQL INSERT of exactly that row shape
+      (`consultationId=NULL, action='CONSENT_GIVEN'`) against the live `hope_test` database
+      succeeded and was cleaned up afterward — proving the schema/entity change is real, not just
+      mocked. The admin-console `HarnessAuditEvent.consultationId` type was widened to
+      `string | null` and its two consumers (search-match, table-cell render) made null-safe
+      (typecheck-verified) so the now-real rows render instead of crashing the panel**
+- [x] The WORM hash-compatibility test proves a pre-existing seeded chain verifies **unchanged**
       after the `consultationId` change (or Task 1 chose a separate ledger and the reasoning is
-      recorded)
-- [ ] Ticket README §7 filled with the Implementation Summary and the files changed
+      recorded) — **Pass 3: a fixed golden-hash literal
+      (`packages/domains/src/utils/harnessAuditHash.test.ts`,
+      `describe('computeHarnessAuditHash — nullable consultationId (TASK-712)')`) proves the digest
+      for a row that HAS a `consultationId` is byte-identical to what the pre-nullable algorithm
+      produced — the strongest form of this proof without a second historical database snapshot**
+- [x] Ticket README §7 filled with the Implementation Summary and the files changed — this update
 
 ---
 
@@ -717,6 +764,114 @@ Evidence rule: **paste actual command output** for every box. "Done" without out
 ---
 
 ## 7. Implementation Summary
+
+### Pass 3 (2026-08-16) — Phase 4 non-HTTP enforcement, WORM ledger writer, Phase 6 seed
+
+Orchestrator instruction for this pass: finish Phase 4 (non-HTTP/harness tool-path enforcement), the
+WORM ledger writer, and Phase 6's dedicated seed file. Phase 5 (CASL) stays untouched. Full reasoning
+and design decisions: `consent-design.md` §8 (new).
+
+**Built:**
+
+1. **WORM ledger writer (Pitfall 1 / R2, resolved).** `HarnessAuditEvent.consultationId` widened
+   `String` → `String?` (migration `20260816100536_task_712_consent_grant_worm_writer`, proven
+   empty-diff on a throwaway `hope_shadow` DB). `HarnessAuditEventEntity.validate()`'s required-check
+   is waived only for `CONSENT_GIVEN`/`CONSENT_WITHDRAWN`. `ConsentGrantService.create()`/`revoke()`
+   now append a real WORM row (optional + trailing `HarnessAuditService` DI, mirroring
+   `SummaryService`'s existing `ATTEST` wiring; fail-closed — an append failure propagates out of
+   `create()`/`revoke()`, same trade-off `ATTEST` already accepts). A fixed golden-hash test proves
+   the digest is byte-identical for every row that HAS a `consultationId` (every row that predates
+   this change) — the hash-compatibility proof the ticket's Pitfall 1 requires.
+2. **Phase 4 — non-HTTP enforcement.** `POST /internal/consent/assert`
+   (`ConsentInternalController`, reusing the existing `HarnessServiceTokenGuard` — no new auth
+   mechanism), wrapping `checkConsent` (non-throwing). `harness/core/consent_client.py`'s
+   `ConsentClient` (TTL + negative cache, `EffectiveConfigClient`-shaped, keyed per
+   `(tenantId, externalPatientId, purpose)`, a process-lifetime singleton in `activities.py` — unlike
+   the other per-call client factories there, because the cache must survive across activity
+   invocations). `call_mcp_tool` gates as step (0.5) (raises `ConsentDenied`/`ConsentUnavailable`,
+   non-retryable, before the allowlist); `retrieve_context` gates before the retriever runs but
+   degrades (never raises), matching that activity's own pre-existing contract. `external_patient_id`
+   threaded end-to-end for the first time: TS `HarnessGatewayService`/`NoteGenerationService`
+   (best-effort `Consultation.patientId` lookup) → Python `StartDocumentRequest` →
+   `HarnessDocWorkflowInput` (additive-optional) → `CallMcpToolInput`/`RetrieveContextInput` inside
+   `HarnessDocWorkflow.run`.
+3. **Phase 6 — dedicated seed file.** `22-consent-grant.ts` (21 was already claimed by a sibling
+   ticket) seeds `EXTERNAL_TOOL_LOOKUP`/`STYLE_LEARNING`/`QUALITY_REVIEW` grants for every demo
+   patient in `09-consultation.ts` — the three purposes the Pass-2 legacy backfill did NOT cover.
+   Verified against a live `hope_test` database: 24 rows created, then 0 on a re-run (idempotency
+   proven).
+
+**Deliberately NOT built this pass (disclosed, not silently skipped — full reasoning in
+`consent-design.md` §8.4):** a WORM row for a consent DENIAL (only grant/revoke — denials stay on
+the pre-existing trajectory-step surface for the two Phase-4 activities, and on structured logs for
+the HTTP guard, unchanged); `ConsultationLoopWorkflow`'s finalize-child path threading
+`external_patient_id` (a third, un-named entry point — its `call_mcp_tool`/`retrieve_context` calls
+degrade to `consent_unavailable`, fail-closed but distinguishable, until a follow-up); a cross-process
+consent-cache invalidation channel for the harness worker (TTL-only this pass, 30s, matching the
+TS-side cache — the design's own stated backstop, not the propagation mechanism); CASL (Phase 5,
+per explicit instruction); `casl-blast-radius.md`.
+
+**A downstream consequence found and fixed, disclosed:** widening
+`HarnessAuditEventResponse.consultationId` to `string | null` also required widening the
+admin-console's own hand-maintained mirror type (`apps/admin-console/.../harness-ops/api/types.ts`)
+and null-guarding its two consumers in `chain-integrity-card.tsx` (the search-match haystack and the
+table-cell renderer) — otherwise the now-real `CONSENT_GIVEN`/`CONSENT_WITHDRAWN` rows the acceptance
+criteria ask the admin filter to return would crash that panel. Verified by `tsc --noEmit` (clean)
+and the existing `harness-ops` component test suite (59/59 passed, unchanged).
+
+**Verification (commands actually run this session against live infra — Postgres, Redis, Temporal,
+Vault, MinIO, Qdrant, conda `arcaenv`):**
+
+- Migration: shadow-DB proof twice (once before, once after a concurrent sibling session (TASK-711)
+  landed its own unrelated migration in the same schema file) — both `npx prisma migrate diff
+  --from-config-datasource --to-schema src/prisma/db_main --script` runs printed
+  `-- This is an empty migration.`.
+- `pnpm gen:model:check` → "no drift — 166 generated file(s) match the committed files."
+- `pnpm gen:entity:check` → "no drift — 96 generated file(s) match"; "Schema coverage OK: 94 entity
+  artifact(s) cover every persisted column of 98 Prisma model(s)."
+- `pnpm gen:factory:check` → "no drift — 96 generated file(s) match"; "Schema coverage OK: 94 factory
+  artifact(s)…"
+- `packages/domains/src/utils/harnessAuditHash.test.ts` → 25/25 passed (4 new golden-hash cases).
+- `resourceType.enum-parity.test.ts` → 10/10 passed.
+- `pnpm --filter @arcaai/domains build` clean; `vitest run` → **144 files / 1744 tests passed, 2
+  skipped, 9 todo** (unchanged count from Pass 2 — no regression).
+- `pnpm --filter @arcaai/applications build` clean; `vitest run` → **493 files / 9183 tests passed,
+  1 skipped** (up from Pass 2's 492/9153 — the new consent-grant WORM tests + note-generation tests).
+- `pnpm api:build` → all 11 turbo tasks succeeded. `NODE_ENV=test vitest run --exclude
+  '**/integration/**' --exclude '**/e2e/**'` → **209 files / 2962 tests passed** (up from Pass 2's
+  207/2937 — the new `consent-internal.controller.test.ts` + updated tests).
+- `pnpm harness:test` → **1301 passed** (incl. `test_replay_compat.py`, the full integration suite,
+  and every new/updated unit file). `pnpm harness:lint` → "All checks passed!". `pnpm harness:typecheck`
+  → "Success: no issues found in 109 source files."
+- `pnpm --filter @arcaai/database build`/`typecheck` clean; `vitest run` → **52 files / 1255 tests
+  passed**.
+- `pnpm --filter @arcaai/admin-console typecheck` clean; `vitest run src/features/harness-ops` →
+  **7 files / 59 tests passed**.
+- Seed, live `hope_test`: `RUN_SEED=all` → "Seeded 24 ConsentGrant row(s), 0 already present"; re-run
+  → "Seeded 0 ConsentGrant row(s), 24 already present (left untouched)" (idempotency proven).
+  `pnpm db:push` applied the nullable-column change to `hope` (dev) non-destructively (confirmed via
+  `\d core."HarnessAuditEvent"` — `consultationId` shows nullable).
+- Raw-SQL proof (then deleted): `INSERT INTO core."HarnessAuditEvent" (..., "consultationId", action,
+  ...) VALUES (..., NULL, 'CONSENT_GIVEN', ...)` against live `hope_test` — succeeded, proving the
+  schema accepts the exact row shape `ConsentGrantService`'s new WORM writer produces.
+- Lint: `apps/api` 0 errors / 65 warnings (Pass-2 baseline, unchanged — 1 real prettier error found
+  and fixed in `consultation.module.ts` during this pass); `@arcaai/domains` 0 errors / 13 warnings
+  (unchanged baseline); `@arcaai/applications` 0 errors / 202 warnings (1 real prettier error found
+  and fixed in `note-generation.service.ts`; the 20-warning increase over Pass 2's 182 is entirely in
+  `services/workflow-definition/**`, an uncommitted sibling ticket's files, confirmed by path, not
+  touched this pass).
+- `pnpm typecheck:all` / `pnpm lint:all`: both FAIL, but only on pre-existing, unrelated issues —
+  `apps/stt/.../preprocessing.py:278` (mypy `redundant-cast`) and
+  `packages/py-env/.../build_info.py:10` (ruff `E501`). Every TS task in both aggregates (42/42
+  typecheck, 37/37 lint) succeeded.
+
+**NOT run this pass:** `pnpm test:up:api` + `pnpm test:e2e` — port 8968 was already bound by a
+`node .../apps/api/dist/main` process (PID 28894, ~6h uptime) this session did not start. Rather than
+kill a process this session has no evidence of owning (the program's shared-tree-instability
+guidance), the attempt was abandoned; `consent-abac.spec.ts` (Pass 2's 7 cases) was not re-run live.
+Phase 4/the WORM writer/the seed have no dedicated e2e coverage of their own this pass — the unit
+tests above plus the live-DB seed/raw-SQL proofs are the evidence in its place. `casl-blast-radius.md`
+and the CASL blast-radius live-DB query — not produced, Phase 5 untouched per instruction.
 
 ### Pass 2 (2026-08-16) — HTTP consent enforcement is now ON BY DEFAULT
 
@@ -858,7 +1013,33 @@ restarted; the file was internally consistent again within seconds.
 
 ### Files changed
 
-**Pass 2 (this update) — new:**
+**Pass 3 (this update) — new:**
+- `apps/api/src/modules/consultation/consent-internal.controller.ts` + `__tests__/consent-internal.controller.test.ts`
+- `apps/harness/src/harness/core/consent_client.py` + `tests/unit/test_consent_client.py`
+- `packages/database/src/prisma/db_main/migrations/20260816100536_task_712_consent_grant_worm_writer/migration.sql`
+- `packages/database/src/prisma/db_main/seed/22-consent-grant.ts`
+
+**Pass 3 — modified:**
+- `packages/database/src/prisma/db_main/harness.prisma` (`HarnessAuditEvent.consultationId` nullable)
+- `packages/database/src/prisma/db_main/seed/{00-constants.ts,09-consultation.ts,index.ts}` (`SEED_CONSENT_GRANT_IDS`, exported `PATIENT_IDS`, wired `seedConsentGrant`)
+- `packages/domains/src/entities/generated/core/HarnessAuditEventEntity.ts` (conditional `consultationId` requirement)
+- `packages/domains/src/factories/generated/core/HarnessAuditEventFactory.ts` (`?? null`)
+- `packages/domains/src/models/generated/core/HarnessAuditEventModel.ts` (regenerated via `gen:model`)
+- `packages/domains/src/utils/harnessAuditHash.ts` + `harnessAuditHash.test.ts` (nullable `consultationId`, golden-hash compatibility test)
+- `packages/applications/src/services/harness-audit/harness-audit.service.ts` (`AppendHarnessAuditInput.consultationId: string | null`)
+- `packages/applications/src/services/harness-observability/{harness-observability.service.ts,dto/harness-audit.response.ts}` (null-safe map key, widened DTO)
+- `packages/applications/src/services/consent/{consent-grant.service.ts,consent-grant.service.module.ts,__tests__/consent-grant.service.test.ts}` (WORM writer)
+- `packages/applications/src/services/consultation/harness/{harness-gateway.service.ts,__tests__/harness-gateway.service.test.ts}` (`externalPatientId` on `HarnessStartContext`)
+- `packages/applications/src/services/consultation/note-generation/{note-generation.service.ts,__tests__/note-generation.service.test.ts}` (patientId lookup + threading)
+- `apps/api/src/modules/consultation/consultation.module.ts` (`ConsentInternalController` + `ConsentServiceModule` registration)
+- `apps/harness/src/harness/core/config.py` (`consent_internal_prefix`, `consent_cache_ttl_seconds`)
+- `apps/harness/src/harness/api/endpoints/internal.py` + `tests/unit/api/test_internal_endpoints.py` (`externalPatientId` on `StartDocumentRequest`)
+- `apps/harness/src/harness/temporal/{models.py,activities.py,workflows.py}` (`external_patient_id`/`tenant_id`/`consultation_id` on `CallMcpToolInput`/`RetrieveContextInput`; consent gating in `call_mcp_tool`/`retrieve_context`)
+- `apps/harness/src/harness/tests/unit/temporal/{test_mcp_tool_activity.py,test_activities.py}` (consent-gate test coverage)
+- `apps/admin-console/src/features/harness-ops/api/types.ts` + `components/chain-integrity-card.tsx` (null-safe `consultationId`, downstream consequence)
+- `docs/implementation/TASK-712-Consent-Abac/consent-design.md` (§8 Pass 3 addendum)
+
+**Pass 2 (previous update) — new:**
 - `apps/api/src/guards/patient-consent.guard.ts` + `__tests__/patient-consent.guard.test.ts`
 - `apps/api/src/bootstrap/consent-route-coverage-audit.ts` + `__tests__/consent-route-coverage-audit.test.ts`
 - `apps/api/src/filters/consent.filter.ts` + `__tests__/consent.filter.test.ts`
@@ -891,3 +1072,4 @@ restarted; the file was internally consistent again within seconds.
 | 2026-08-16 | Ticket authored | ticket-writer agent (Wave-1 clinical architecture) |
 | 2026-08-16 | Pass 1 — reduced-scope execution: `ConsentGrant` model + domain trio and the `assertConsent`/`checkConsent` ABAC choke point built and tested; no enforcement wired; legacy-consent posture (Q2) left undecided and unseeded. | execution agent (orchestrator-scoped subagent) |
 | 2026-08-16 | Pass 2 — HTTP consent enforcement turned ON BY DEFAULT: fixed the partial-unique-active-grant index (Pass 1's was a plain `@@unique` that would have permanently blocked revoke-then-regrant); implemented the Q2 legacy-grant backfill inside the migration transaction; built `@RequiresConsent`/`@ConsentExempt` + `PatientConsentGuard` (unconditional `APP_GUARD`) + `ConsentExceptionFilter` (found and fixed a real 500-instead-of-403 bug — guards run before interceptors); decorated the four gated HTTP routes; added a narrowed boot-time coverage audit; built the `/admin/consent-grants` CRUD controller; added `ConsentUnavailableException` (R4); wrote and ran `consent-abac.spec.ts` (7/7 passing against a live API + DB, with the migration/backfill proven on a throwaway `hope_shadow` DB first); confirmed no regression in the pre-existing `task-635-live-agent-lineage.spec.ts`. CASL (Phase 5), non-HTTP/harness enforcement (Phase 4), and the WORM ledger writer remain explicitly deferred. See §7 for full verification evidence. | execution agent (orchestrator-scoped subagent) |
+| 2026-08-16 | Pass 3 — Phase 4 non-HTTP enforcement, the WORM ledger writer, and Phase 6's dedicated seed built: `HarnessAuditEvent.consultationId` made nullable (migration proven empty-diff on a shadow DB, hash-compatibility proven with a fixed golden-hash test) so `ConsentGrantService.create()`/`revoke()` could append real `CONSENT_GIVEN`/`CONSENT_WITHDRAWN` WORM rows; built the gateway-internal `POST /internal/consent/assert` endpoint + the harness's `ConsentClient` (TTL-cached, fail-closed) + consent gating in `call_mcp_tool` (raises, step 0.5) and `retrieve_context` (degrades, matching its own existing contract); threaded `external_patient_id` end-to-end from `NoteGenerationService` through the harness workflow input for the first time; built `22-consent-grant.ts` (Phase 6) seeding the three purposes the Pass-2 legacy backfill did not cover, verified idempotent against a live `hope_test` database; fixed a downstream null-safety consequence in the admin-console's harness-audit types/components. CASL (Phase 5) untouched, per instruction. See §7 Pass 3 for full verification evidence, including what remains disclosed-and-deferred (the `ConsultationLoopWorkflow` finalize-child identity gap, cross-process cache invalidation, and `casl-blast-radius.md`). | execution agent (orchestrator-scoped subagent) |

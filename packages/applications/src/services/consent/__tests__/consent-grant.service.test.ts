@@ -11,10 +11,11 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { NotFoundException } from '@nestjs/common';
 import { ConsentGrantService } from '../consent-grant.service';
 import { CONSENT_INVALIDATE_EVENT } from '../consent.constants';
-import { SysEventType, ResourceStatusType, ConsentPurpose, ConsentGrantMethod } from '@arcaai/domains';
+import { SysEventType, ResourceStatusType, ConsentPurpose, ConsentGrantMethod, HarnessAuditAction } from '@arcaai/domains';
 
 const mockClsService = { get: vi.fn(), set: vi.fn() };
 const mockEventEmitter = { emit: vi.fn() };
+const mockHarnessAuditService = { append: vi.fn() };
 
 const mockConsentGrantRepository = {
   findById: vi.fn(),
@@ -136,6 +137,91 @@ describe('ConsentGrantService', () => {
 
       await expect(service.revoke('grant-id-1', { expectedVersion: 1 })).rejects.toBeInstanceOf(NotFoundException);
       expect(mockConsentGrantRepository.updateWithVersion).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('WORM ledger writer (Phase 4 follow-up — CONSENT_GIVEN/CONSENT_WITHDRAWN)', () => {
+    let serviceWithAudit: ConsentGrantService;
+
+    beforeEach(() => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      serviceWithAudit = new ConsentGrantService(
+        mockConsentGrantRepository as any,
+        mockEventEmitter as any,
+        mockClsService as any,
+        mockHarnessAuditService as any,
+      );
+    });
+
+    it('create() appends a CONSENT_GIVEN row with consultationId null before broadcasting', async () => {
+      const saved = createMockEntity();
+      mockConsentGrantRepository.create.mockResolvedValue(saved);
+      mockHarnessAuditService.append.mockResolvedValue({});
+
+      await serviceWithAudit.create({
+        externalPatientId: 'EHR-A:12345',
+        purpose: ConsentPurpose.AI_DOCUMENTATION,
+        grantMethod: ConsentGrantMethod.VERBAL_ATTESTED,
+      });
+
+      expect(mockHarnessAuditService.append).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: 'tenant-1',
+          consultationId: null,
+          action: HarnessAuditAction.CONSENT_GIVEN,
+          clinicianId: saved.grantedBy,
+        }),
+      );
+    });
+
+    it('revoke() appends a CONSENT_WITHDRAWN row with consultationId null', async () => {
+      const entity = createMockEntity({ tenantId: 'tenant-1' });
+      entity.revoke.mockImplementation(() => {
+        entity.hasChanges = true;
+        entity.changes = { revokedAt: new Date(), revokedBy: 'clinician-1' };
+      });
+      mockConsentGrantRepository.findById.mockResolvedValue(entity);
+      const updated = createMockEntity({ tenantId: 'tenant-1', version: 2, revokedAt: new Date() });
+      mockConsentGrantRepository.updateWithVersion.mockResolvedValue(updated);
+      mockHarnessAuditService.append.mockResolvedValue({});
+
+      await serviceWithAudit.revoke('grant-id-1', { reason: 'patient request', expectedVersion: 1 });
+
+      expect(mockHarnessAuditService.append).toHaveBeenCalledWith(
+        expect.objectContaining({ tenantId: 'tenant-1', consultationId: null, action: HarnessAuditAction.CONSENT_WITHDRAWN }),
+      );
+    });
+
+    it('is a no-op (never throws) when HarnessAuditService is not wired — the @Optional() unit-fixture path', async () => {
+      const saved = createMockEntity();
+      mockConsentGrantRepository.create.mockResolvedValue(saved);
+
+      // `service` (top-level beforeEach) was built with only 3 args — no harnessAuditService.
+      await expect(
+        service.create({
+          externalPatientId: 'EHR-A:12345',
+          purpose: ConsentPurpose.AI_DOCUMENTATION,
+          grantMethod: ConsentGrantMethod.VERBAL_ATTESTED,
+        }),
+      ).resolves.toBeDefined();
+      expect(mockHarnessAuditService.append).not.toHaveBeenCalled();
+    });
+
+    it('fail-closed: a WORM append failure propagates out of create() even though the grant row already persisted', async () => {
+      const saved = createMockEntity();
+      mockConsentGrantRepository.create.mockResolvedValue(saved);
+      mockHarnessAuditService.append.mockRejectedValue(new Error('vault unreachable'));
+
+      await expect(
+        serviceWithAudit.create({
+          externalPatientId: 'EHR-A:12345',
+          purpose: ConsentPurpose.AI_DOCUMENTATION,
+          grantMethod: ConsentGrantMethod.VERBAL_ATTESTED,
+        }),
+      ).rejects.toThrow();
+      // The mutation itself was NOT rolled back (documented, ATTEST-mirroring
+      // trade-off) — the repository write already happened.
+      expect(mockConsentGrantRepository.create).toHaveBeenCalledTimes(1);
     });
   });
 

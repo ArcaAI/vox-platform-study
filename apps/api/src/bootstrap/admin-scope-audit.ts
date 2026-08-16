@@ -80,6 +80,8 @@ import { TenantController } from '../modules/tenant/tenant.controller';
 import { UserDepartmentsController } from '../modules/user/controllers/user-departments.controller';
 import { UserController } from '../modules/user/user.controller';
 import { WebhookController } from '../modules/webhook/webhook.controller';
+import { WorkflowDefinitionController } from '../modules/workflow-definition/workflow-definition.controller';
+import { WorkflowNodeController } from '../modules/workflow-node/workflow-node.controller';
 import { WorkflowRunController } from '../modules/workflow-run/workflow-run.controller';
 import { WorkflowTestFixtureController } from '../modules/workflow-test-fixture/workflow-test-fixture.controller';
 
@@ -154,6 +156,8 @@ export const ADMIN_SCOPED_CONTROLLERS: ScopedController[] = [
   { controller: UserDepartmentsController, expect: 'admin:user:write' },
   { controller: UserController, expect: 'admin:user:write' },
   { controller: WebhookController, expect: 'webhook:event:write' },
+  { controller: WorkflowDefinitionController, expect: 'admin:workflow-definition:manage' },
+  { controller: WorkflowNodeController, expect: 'admin:workflow-node:read' },
   { controller: WorkflowRunController, expect: 'admin:workflow-run:read' },
   { controller: WorkflowTestFixtureController, expect: 'admin:workflow-test-fixture:manage' },
 ];

@@ -218,6 +218,7 @@ function buildController(opts: {
     { emit: vi.fn() } as any,
     {} as any,
     { lookup: vi.fn().mockResolvedValue(null) } as any,
+    {} as never, // workflowRunService (TASK-722)
   );
 }
 
@@ -308,6 +309,7 @@ describe('auth.controller uses SecretsService only', () => {
         { emit: vi.fn() } as any,
         {} as any,
         { lookup: vi.fn().mockResolvedValue(null) } as any,
+        {} as never, // workflowRunService (TASK-722)
       );
 
       await controller.impersonate({ targetUserId: 'doctor-001' } as any, createMockRequest() as any);
@@ -412,6 +414,7 @@ describe('auth.controller — sign-path survives SecretsService TTL expiry (getS
       { emit: vi.fn() } as any,
       {} as any,
       { lookup: vi.fn().mockResolvedValue(null) } as any,
+      {} as never, // workflowRunService (TASK-722)
     );
 
     const res = await controller.impersonate({ targetUserId: 'doctor-001' } as any, createMockRequest() as any);

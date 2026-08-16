@@ -36,7 +36,13 @@ enum HarnessAuditAction {
   // covered by ATTEST — no fourth member for it.
   SESSION_PRIMED // OPEN → PRIMED
   SESSION_TIMED_OUT // PENDING_REVIEW → TIMED_OUT (gate SLA exhausted; the clock never signs)
-  SESSION_REOPENED // TIMED_OUT|SIGNED|CLOSED → REOPENED
+  SESSION_REOPENED // TIMED_OUT|SIGNED|CLOSED_COMPLETE|CLOSED_INCOMPLETE → REOPENED
+  // TASK-711 follow-up: owner decision on CLOSED_COMPLETE/CLOSED_INCOMPLETE
+  // (state-machine.md §1a) — the terminal close itself is clinically significant now that it
+  // types whether a human gave feedback, so it gets its own WORM row (unlike the original
+  // design's plain CLOSED, which reused ResourceUpdated only).
+  SESSION_CLOSED_COMPLETE // SIGNED → CLOSED_COMPLETE (human closed with a signed note)
+  SESSION_CLOSED_INCOMPLETE // TIMED_OUT|PRIMED|DRAINING|DRAFT_PENDING_SENSORS|REOPENED → CLOSED_INCOMPLETE (sweep or manual close, no signature)
 
   @@schema("core")
 }
@@ -239,7 +245,15 @@ model HarnessAuditEvent {
   tenantId String
 
   // Subject of the event
-  consultationId       String
+  //
+  // NULLABLE (TASK-712, consent-abac Phase 4): a consent grant/revoke has no
+  // consultation — `ConsentGrant` is keyed on (tenantId, externalPatientId,
+  // purpose), not a consultation. Widening this from NOT NULL is additive
+  // and hash-compatible: `computeHarnessAuditHash` folds
+  // `consultationId ?? null` into the canonical digest, which is a no-op for
+  // every EXISTING row (they always carried a non-null string) — proven by
+  // `harnessAuditHash.test.ts`'s backward-compatibility golden-hash case.
+  consultationId       String?
   contextItemVersionId String?
 
   // What happened + the model that did it (version, not just name)

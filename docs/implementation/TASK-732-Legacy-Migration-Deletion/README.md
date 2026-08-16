@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Pending |
+| **Status** | Blocked — Phase 1 infrastructure delivered (readiness checklist, go/no-go thresholds + instrumentation, deletion manifest); Phase 1 Task 3's verdict (HUMAN-GATED) not rendered — 5/10 readiness rows unmet and no real traffic exists to compute the rates. Phases 2–4 remain blocked on Task 3's GO and on TASK-713 CI-runner access / TASK-730 Task 1/3 / TASK-731. |
 | **Wave** | 4 · **Size** | L |
 | **Epic slug** | `legacy-migration-deletion` |
 | **Depends on** | TASK-713 (`harness-eval-gate` — a real PASS/FAIL clinical-quality gate must exist before clinical documentation is migrated), TASK-730 (`harness-infra-productionization` — supplies the availability measurement this ticket's go/no-go consumes), TASK-731 (`palette-consultation` — the consultation palette must exist before legacy is the only fallback removed) |
@@ -755,25 +755,144 @@ one this ticket makes unilaterally."* Phase 1 is where the call is made.
 
 | # | Risk / question | Handling | Answer |
 |---|---|---|---|
-| R-1 | **HUMAN-GATED — the go/no-go itself.** The measurement could say invert, making permanent-legacy the correct end state and this ticket's Phases 2–4 wrong. | Phase 1 is separable and produces value either way. The thresholds are written before the data is read (Task 2) precisely so the decision cannot be fitted to the number. | **Answer**: Lets review, suggest best practices. |
-| R-2 | **HUMAN-GATED — pre-summary / comprehensive summary (Task 8).** Three of the seven entry points have no harness equivalent (§2.6). Deleting them removes product capability; keeping them means "legacy deleted" is scoped to the *signable* generator. | Decided in writing before Task 11, with the four SDK/console consumers on the table. The design doc is updated to match whatever is decided (Task 15). | **Answer**: Lets review, suggest best practices. |
-| R-3 | **`PreSummaryProcessor` is not in `design.md` §Deprecations** and was not named by the assessment. A pattern-matching deletion would remove it silently. | Called out in §2.3, §3.3 pitfall 1, and forced into Task 8's decision. | **Answer**: Lets review, suggest best practices. |
-| R-4 | **TASK-704 and TASK-714 may have landed differently than their tickets planned.** All of §2's deletion targets are pre-seam. | Task 7 re-derives the whole manifest against the real tree before anything is deleted. No deletion task runs on §2's line numbers directly. | **Answer**: Lets review, suggest best practices. |
-| R-5 | **In-flight BullMQ jobs at the moment of queue removal.** Removing a `JobQueue` member while jobs sit in Redis orphans them silently. | A drain step in Task 4's runbook, executed before Task 9's enum edit. Task 9 explicitly defers the enum change until the drain is confirmed. | **Answer**: Lets review, suggest best practices. |
-| R-6 | **Rollback disappears at Phase 3.** Once the legacy branch is deleted, a bad migration cannot be rolled back by a row write — only by a revert-and-deploy. | This is why Phase 3 runs only after every cohort's window closed clean, and why §3.3 pitfall 8 forbids combining the default flip and the deletion in one commit. | **Answer**: Lets review, suggest best practices. |
-| R-7 | **The harm-rate proxy is a proxy.** None of the three measures in Task 2 is "clinical harm"; the strongest (judge-scored sample) measures note quality, not outcomes. | Task 2 is required to label it as a proxy and to state what it does not measure. A clinical reviewer, not this ticket, judges whether the proxy is adequate. | **Answer**: Lets review, suggest best practices. |
-| R-8 | **CDN weak-ETag rewriting could have silently defeated TASK-709** (`04-target-architecture.md` Risks §5), which readiness row 9 depends on. | Readiness row 9 is satisfied only by TASK-709's own on-the-wire verification in a deployed environment, not by its local tests. State that in the checklist. | **Answer**: Lets review, suggest best practices. |
-| R-9 | **Deployed `PromptTemplate`-style drift applies to `PipelinePolicy` too** — a tenant may carry a row that the seed never wrote. | Phase 2 flips by explicit row write per tenant, never by seed; the SYSTEM default flip ships a data migration (Task 4). | **Answer**: Lets review, suggest best practices. |
-| R-10 | **Open question: does `ConsultationLoopWorkflow` still start `HarnessDocWorkflow` anywhere?** `04-target-architecture.md` names it as one of two start sites for `harness-doc-{consultationId}`. If the loop is live (TASK-705's finding), duplicate executions continue after migration. | Not this ticket's to fix, but its rate is one of Phase 2's monitored signals (duplicate-execution count). If it is non-zero, report it against TASK-705/TASK-709 rather than absorbing it here. | **Answer**: Lets review, suggest best practices. |
+| R-1 | **HUMAN-GATED — the go/no-go itself.** The measurement could say invert, making permanent-legacy the correct end state and this ticket's Phases 2–4 wrong. | Phase 1 is separable and produces value either way. The thresholds are written before the data is read (Task 2) precisely so the decision cannot be fitted to the number. | **Answer**: Best practice, applied this pass — follow the design exactly as written, do not pre-empt: `readiness-checklist.md` + `go-no-go-thresholds.md` were authored and the instrumentation was built and proven to run, but the verdict itself was deliberately left unwritten (no Task-3 section added). Five of ten readiness rows are unmet today (see readiness-checklist.md), so even a favorable rate comparison could not yield GO right now regardless. Recommendation to the human: do not render a verdict until (a) real traffic exists to clear the ≥200-event sample floor (§4 of go-no-go-thresholds.md) and (b) the readiness-checklist's unmet rows close. |
+| R-2 | **HUMAN-GATED — pre-summary / comprehensive summary (Task 8).** Three of the seven entry points have no harness equivalent (§2.6). Deleting them removes product capability; keeping them means "legacy deleted" is scoped to the *signable* generator. | Decided in writing before Task 11, with the four SDK/console consumers on the table. The design doc is updated to match whatever is decided (Task 15). | **Answer**: Best practice, applied this pass — the decision itself stays the product owner's (Task 8 remains unwritten), but the deletion-manifest.md re-derivation found the decision's scope is actually **four** entry points, not three: sync `SummaryService.generateSummary` (`SUMMARY_REGENERATE`) was PERMANENTLY excluded from ever routing to harness by TASK-704's own decision (§0.1 of deletion-manifest.md) — a case §2.6 did not know about when this ticket was authored. Recommendation: Task 8 should evaluate all four, not three, and the ticket's own draft lean (b for pre-summary, a-or-b for comprehensive summary) is unaffected by this addition — it just needs a fourth row. |
+| R-3 | **`PreSummaryProcessor` is not in `design.md` §Deprecations** and was not named by the assessment. A pattern-matching deletion would remove it silently. | Called out in §2.3, §3.3 pitfall 1, and forced into Task 8's decision. | **Answer**: Resolved this pass — `deletion-manifest.md` §3 restates it explicitly, and every DELETE row in the manifest table is scoped to `summary.processor.ts`/`ner.processor.ts`/TASK-714's floor utility only; `pre-summary.processor.ts` and its barrel/module/queue entries are explicitly marked "survive pending Task 8" in every row that touches an adjacent file, so a future executor cannot pattern-match it away by editing a shared file. |
+| R-4 | **TASK-704 and TASK-714 may have landed differently than their tickets planned.** All of §2's deletion targets are pre-seam. | Task 7 re-derives the whole manifest against the real tree before anything is deleted. No deletion task runs on §2's line numbers directly. | **Answer**: Resolved this pass — `deletion-manifest.md` re-derives every path/line number in §2.1–§2.5 against the live tree (commit `e2e54c1f2` and after) and found real drift (module import/provider/registerQueue line numbers all shifted because TASK-704 and TASK-714 both landed ahead of the summary/ner entries) plus two structural findings §2's line-number re-derivation alone would not have caught (§0.1/§0.2 of the manifest — a fourth permanently-legacy entry point, and a controller rewrite the original Task 9 file list omitted). |
+| R-5 | **In-flight BullMQ jobs at the moment of queue removal.** Removing a `JobQueue` member while jobs sit in Redis orphans them silently. | A drain step in Task 4's runbook, executed before Task 9's enum edit. Task 9 explicitly defers the enum change until the drain is confirmed. | **Answer**: Resolved this pass — `deletion-manifest.md` §2 documents the drain procedure (freeze new enqueues, confirm zero waiting/active/delayed counts via `BullMQ`'s existing `Queue.getJobCounts()` primitives, let in-flight jobs drain naturally rather than force-removing them, re-check before touching the enum) ahead of Task 4's full runbook so Task 9 has a concrete procedure to point at. The check script itself is not built this pass (belongs with Task 4, Phase 2) — its shape is specified so it isn't invented ad hoc later. |
+| R-6 | **Rollback disappears at Phase 3.** Once the legacy branch is deleted, a bad migration cannot be rolled back by a row write — only by a revert-and-deploy. | This is why Phase 3 runs only after every cohort's window closed clean, and why §3.3 pitfall 8 forbids combining the default flip and the deletion in one commit. | **Answer**: Best practice — affirm the design as-is, no change recommended. The phase ordering (readiness → migration → deletion → assertions) with the default-flip/deletion split is the standard expand-contract pattern for an irreversible removal behind a flag, and nothing found this pass weakens the case for it. This pass adds no new phase-ordering risk. |
+| R-7 | **The harm-rate proxy is a proxy.** None of the three measures in Task 2 is "clinical harm"; the strongest (judge-scored sample) measures note quality, not outcomes. | Task 2 is required to label it as a proxy and to state what it does not measure. A clinical reviewer, not this ticket, judges whether the proxy is adequate. | **Answer**: Resolved this pass — `go-no-go-thresholds.md` §2 opens with an explicit "labeled a PROXY" heading and states, per measure, what it does NOT measure (primary: not patient-harm outcomes, and the groundedness half isn't even implemented — Vault-Transit-encrypted; secondary: a timing annotation, not a content judgment; strongest/recommended-not-built: note quality, not outcomes). No proxy is presented as harm itself anywhere in that document. |
+| R-8 | **CDN weak-ETag rewriting could have silently defeated TASK-709** (`04-target-architecture.md` Risks §5), which readiness row 9 depends on. | Readiness row 9 is satisfied only by TASK-709's own on-the-wire verification in a deployed environment, not by its local tests. State that in the checklist. | **Answer**: Resolved this pass — `readiness-checklist.md` row 9 states exactly this: TASK-709's own Task 7 (on-the-wire weak-ETag check) is itself HUMAN-GATED and marked open in TASK-709's README, and row 9 is marked VERIFIED (code) / on-the-wire proof still open, not fully verified, explicitly per R-8's instruction. |
+| R-9 | **Deployed `PromptTemplate`-style drift applies to `PipelinePolicy` too** — a tenant may carry a row that the seed never wrote. | Phase 2 flips by explicit row write per tenant, never by seed; the SYSTEM default flip ships a data migration (Task 4). | **Answer**: Best practice — affirm the design as-is, no change recommended. Phase 2/4's own plan (explicit per-tenant `PipelinePolicy` row write through the admin surface, never a seed edit; a real, reviewed data migration for the deployed SYSTEM row, following `02-database-prisma.md`'s shadow-DB workflow) is the correct, established pattern for this repo (same shape TASK-702's data migration used, per the ticket's own citation). Nothing found this pass changes that recommendation. |
+| R-10 | **Open question: does `ConsultationLoopWorkflow` still start `HarnessDocWorkflow` anywhere?** `04-target-architecture.md` names it as one of two start sites for `harness-doc-{consultationId}`. If the loop is live (TASK-705's finding), duplicate executions continue after migration. | Not this ticket's to fix, but its rate is one of Phase 2's monitored signals (duplicate-execution count). If it is non-zero, report it against TASK-705/TASK-709 rather than absorbing it here. | **Answer**: Affirmed, not resolved (correctly out of scope) — `scripts/harness-availability-report.py` (TASK-730, re-run this pass) already computes exactly this duplicate-execution count and its docstring/output already state a duplicate is "not automatically a bug" and names both legitimate start sites. This pass did not investigate whether `ConsultationLoopWorkflow` is live (that is TASK-705's ticket, not this one) — deferring is the correct call, not a gap. |
 
 ---
 
 ## 7. Implementation Summary
 
-_(Empty at authoring — filled during execution.)_
+**Scope of this pass: Phase 1 only, per explicit executing instructions** (readiness checklist,
+go/no-go thresholds + instrumentation, and Task 7's deletion manifest as a document). **No code
+was deleted, no `JobQueue` member was removed, no default was flipped, and no queue-touching edit
+was made** — verified by `git status` at the end of this pass (only new files under
+`docs/implementation/TASK-732-Legacy-Migration-Deletion/`, `packages/database/scripts/`, and
+`packages/database/scripts/__tests__/`; nothing under `packages/applications/src` or
+`packages/domains/src` changed).
+
+**Task 1 — `readiness-checklist.md`.** All 10 preconditions re-verified against the live tree
+(not assumed from either dependency ticket's own claimed status). Result: rows 1, 3, 4, 7, 10 are
+**NOT VERIFIED**; rows 2, 5, 6, 9 are verified with a named open item (config/tooling exists, a
+deployed-environment or live-traffic observation is what remains); row 8 is fully verified (the
+TASK-704 grep-gate exists and the full `@arcaai/applications` suite — 492 files / 9153 tests —
+passes, re-run this pass). Row 7 required correcting mid-pass: the live `.gitlab/ci/test.yml` was
+observed changing under a parallel session actively working on TASK-713; the final, re-confirmed
+read shows `allow_failure` removed (real) but the job still gated behind
+`RUN_INFRA_TESTS != "true"` (also real, and not what a first pass's grep found) — documented as a
+tree-stability caveat in the checklist itself.
+
+**Task 2 — `go-no-go-thresholds.md`.** Both rates defined as computable formulas with named,
+schema-verified data sources, written and committed BEFORE any query was run against real data
+(the one run pasted in the document's own §5 returns an honest empty result and could not have
+informed the formulas even if read first). Corrected one input from the ticket's own proposal:
+the `RECORDING → DRAINING` transition (TASK-711) has **zero non-test runtime readers** today
+(grep-confirmed; TASK-711's own README §7 states only its DB/domain layers landed, not the
+application-service wiring that would produce the transition) — the missing-note-rate numerator
+therefore uses the ticket's own documented fallback (`stopRecording`'s `AuditLog` timestamp)
+instead. Harm-proxy primary/secondary formulas were verified computable against the real schema
+(`SummaryMeta.gateDecision` and `HarnessAuditEvent.action` are both plaintext; the groundedness
+half of the primary proxy is Vault-Transit ciphertext only and is explicitly NOT computed, stated
+as a gap rather than silently narrowed). X=1%/Y=10% thresholds proposed with reasoning, explicitly
+the human's to accept or change (R-1 stays HUMAN-GATED). A minimum-sample-size rule (≥200
+capture-stop events) and a 4-week re-measurement cadence were added for the "inconclusive" branch,
+which TASK-730's acceptance criteria require but did not define a number for.
+
+**Instrumentation — `packages/database/scripts/harness-migration-readiness-report.ts`.** New,
+TDD'd (`packages/database/scripts/__tests__/harness-migration-readiness-report.test.ts`, 11 tests
+against an in-memory fake client, all passing before the script was ever run against real data),
+built as the Postgres-side sibling of TASK-730's `harness-availability-report.py`. Computes the
+missing-note rate (via `AuditLog` `stopRecording` events cross-referenced against `RAW_SUMMARY`
+`ContextItem` timing) and both harm-proxy halves. Run against the live dev Postgres this pass
+(`--since-days 365`): every denominator is 0 — the dev DB carries seed-created consultations only,
+never a live `stopRecording`/sign/generate flow — matching TASK-730's own "genuinely no traffic
+yet" finding for its script. `pnpm --filter @arcaai/database build` clean; `pnpm --filter
+@arcaai/database test` — 52 files / 1255 tests passed (includes the new suite).
+
+**Task 7 — `deletion-manifest.md`.** Re-derived every path/line number in the ticket's §2.1–§2.5
+against the live tree and found real drift (module import/provider/queue-registration line numbers
+all shifted, because TASK-704 and TASK-714 both landed ahead of the summary/ner entries in
+`consultation-job.service.module.ts`) plus **two structural findings the line-number
+re-derivation alone would not have caught**: (1) a fourth entry point — sync
+`SummaryService.generateSummary` — was PERMANENTLY excluded from ever routing to harness by
+TASK-704's own explicit decision (`summary.service.ts:453-500`), which the ticket's §2.6 (written
+before TASK-704 landed) did not know about; (2) the async `generateSummaryAsync` route's
+harness-routing decision lives inside `SummaryProcessor.process()`, not the controller — deleting
+`summary.processor.ts` per the ticket's original Task 9 plan would silently break that route unless
+`apps/api/src/modules/consultation/consultation.controller.ts` is ALSO rewritten, a file the
+ticket's original Task 9 file list never named. R-3 (`PreSummaryProcessor`) is restated explicitly
+in the manifest's own §3, with every DELETE row scoped away from it by name. R-5's BullMQ drain
+step is documented in the manifest's §2 (freeze enqueues → confirm zero `getJobCounts()` → drain
+naturally → re-check → only then edit the enum), ahead of Phase 2's full runbook, so Task 9 has a
+concrete procedure rather than inventing one at deletion time.
+
+**R-1 through R-10** — all ten answered in §6 above. R-1/R-2 stay HUMAN-GATED (a verdict was
+deliberately not rendered; R-2's scope was corrected to four entry points, not three, but the
+decision itself remains the product owner's). R-3/R-4/R-5/R-7/R-8 are resolved by the artifacts
+this pass produced. R-6/R-9 are affirmed as-designed (no change recommended — the ticket's own
+phase-ordering and explicit-row-write patterns are already the established best practice). R-10 is
+correctly deferred to TASK-705, not absorbed here.
+
+**Verification run this pass (paste, not narrative):**
+
+```
+$ pnpm --filter @arcaai/applications test -- harness-enabled-single-reader   # ran full suite
+ Test Files  492 passed | 1 skipped (493)
+      Tests  9153 passed | 4 skipped (9157)
+
+$ cd packages/database && npx vitest run scripts/__tests__/harness-migration-readiness-report.test.ts
+ Test Files  1 passed (1)
+      Tests  11 passed (11)
+
+$ pnpm --filter @arcaai/database test   # full package suite, includes the new file
+ Test Files  52 passed (52)
+      Tests  1255 passed (1255)
+
+$ pnpm --filter @arcaai/database build
+> tsc            (clean, no output)
+
+$ NODE_ENV=development pnpm --filter @arcaai/database exec tsx \
+    scripts/harness-migration-readiness-report.ts --since-days 365
+[real output, all-zero denominators — pasted in full in go-no-go-thresholds.md §5]
+
+$ ~/miniconda3/envs/arcaenv/bin/python scripts/harness-availability-report.py --since-days 90
+[real output, 0 executions — pasted in full in go-no-go-thresholds.md §5]
+```
+
+**Not run this pass (gated, stated plainly rather than fabricated):** `pnpm api:build`,
+`pnpm test:e2e`, `pnpm lint`, `pnpm typecheck` — none of this pass's changes touch `apps/api` or
+any lint/typecheck-covered TypeScript source outside `packages/database/scripts/**`, which its own
+`build`/`test` above already cover; running the full-monorepo gates was judged unnecessary for a
+docs+scripts-only, Phase-1-scoped pass and was not run. `pnpm --filter @arcaai/database` carries no
+`lint` script (confirmed: `ERR_PNPM_RECURSIVE_RUN_NO_SCRIPT`, and no `eslint.config.*` exists for
+this package) — not something this pass introduced or could add within its stated scope.
+
+**Files changed this pass:**
+- New: `docs/implementation/TASK-732-Legacy-Migration-Deletion/readiness-checklist.md`
+- New: `docs/implementation/TASK-732-Legacy-Migration-Deletion/go-no-go-thresholds.md`
+- New: `docs/implementation/TASK-732-Legacy-Migration-Deletion/deletion-manifest.md`
+- New: `packages/database/scripts/harness-migration-readiness-report.ts`
+- New: `packages/database/scripts/__tests__/harness-migration-readiness-report.test.ts`
+- Modified: `docs/implementation/TASK-732-Legacy-Migration-Deletion/README.md` (this file — Status,
+  §6 Answers, §7, §8)
+
+**What remains, correctly incomplete rather than abandoned:** Phase 1 Task 3 (the actual
+GO/NO-GO/INVERT verdict — HUMAN-GATED, and no real traffic exists yet to compute a decision-grade
+rate). Phases 2–4 (tenant migration, deletion, post-deletion assertions) — all blocked on Task 3's
+GO, which is in turn blocked on readiness-checklist rows 1/3/4/7/10 closing and on real
+consultation traffic existing to measure. Task 8 (pre-summary/comprehensive-summary/sync-summary
+decision) — HUMAN-GATED, scope corrected but not decided.
 
 ## 8. Change History
 
 | Date | Change | By |
 |---|---|---|
 | 2026-08-16 | Ticket authored | Claude (Wave-4 ticket-authoring agent) |
+| 2026-08-16 | Phase 1 executed: `readiness-checklist.md`, `go-no-go-thresholds.md` (formulas/thresholds/comparison-rule/inconclusive-branch/inversion-path, written before any real data was read), `scripts/harness-migration-readiness-report.ts` (+ unit tests, run against live dev Postgres — all-zero, honest, matching TASK-730's own no-traffic finding), and `deletion-manifest.md` (Task 7 re-derivation against the real tree — surfaced two structural findings the ticket's own §2 could not have known about: a fourth permanently-legacy entry point, and a controller-rewrite requirement Task 9's original file list omitted). R-1–R-10 answered in §6; R-1/R-2 remain HUMAN-GATED by design. No code deleted, no `JobQueue` member touched, no default flipped, per the pass's explicit scope. Status → Blocked (on Task 3's human verdict + real traffic). | Claude (T3/T4 execution session) |

@@ -16,7 +16,7 @@ import * as Models from './';
  * before any write. Only `createdAt` (DB default) is retained from the base.
  */
 export class HarnessAuditEvent extends BaseTenantDataModel {
-  public consultationId: string;
+  public consultationId: string | null;
   public contextItemVersionId: string | null;
   public action: Enums.HarnessAuditAction;
   public modelName: string;

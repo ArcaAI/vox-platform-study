@@ -29,7 +29,14 @@ export function ChainVerdictBadge({ state }: { state: VerdictState }) {
 }
 
 function auditMatches(event: HarnessAuditEvent, needle: string): boolean {
-  const haystack = [event.consultationId, event.action, event.modelName, event.gateDecision ?? '', event.clinicianId ?? '', event.hash];
+  const haystack = [
+    event.consultationId ?? '', // null for CONSENT_GIVEN/CONSENT_WITHDRAWN (TASK-712)
+    event.action,
+    event.modelName,
+    event.gateDecision ?? '',
+    event.clinicianId ?? '',
+    event.hash,
+  ];
   return haystack.some((value) => value.toLowerCase().includes(needle));
 }
 
@@ -81,11 +88,14 @@ export function ChainIntegrityCard({
       accessorKey: 'consultationId',
       header: 'Consultation',
       meta: { label: 'Consultation' },
-      cell: ({ row }) => (
-        <span className="block max-w-28 truncate font-mono text-xs" title={row.original.consultationId}>
-          {row.original.consultationId}
-        </span>
-      ),
+      cell: ({ row }) =>
+        row.original.consultationId ? (
+          <span className="block max-w-28 truncate font-mono text-xs" title={row.original.consultationId}>
+            {row.original.consultationId}
+          </span>
+        ) : (
+          <span className="text-muted-foreground">{'—'}</span>
+        ),
     },
     {
       accessorKey: 'gateDecision',

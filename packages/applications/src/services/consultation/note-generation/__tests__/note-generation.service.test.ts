@@ -122,6 +122,49 @@ describe('NoteGenerationService', () => {
 
       await expect(service.generate(GenerationTrigger.TRANSCRIPTION_CREATED, baseParams)).rejects.toThrow();
     });
+
+    it('(f) threads the consultation patientId as externalPatientId (TASK-712, consent-abac Phase 4)', async () => {
+      mockConsultationRepository.findById.mockResolvedValue({
+        id: 'consultation-001',
+        tenantId: 'tenant-abc',
+        departmentId: 'dept-card-001',
+        doctorId: 'dr-smith-001',
+        patientId: 'PAT-20250101-001',
+        metadata: null,
+      });
+      const { service } = buildService(true, mockHarnessGateway);
+
+      await service.generate(GenerationTrigger.TRANSCRIPTION_CREATED, baseParams);
+
+      expect(mockHarnessGateway.start).toHaveBeenCalledWith(
+        'consultation-001',
+        expect.objectContaining({ externalPatientId: 'PAT-20250101-001' }),
+      );
+    });
+
+    it('(g) a patientId lookup failure is best-effort — generation still proceeds with externalPatientId undefined', async () => {
+      // First call is resolveConfig's own internal lookup (must succeed so
+      // harnessEnabled resolves); the second is generate()'s dedicated
+      // patientId lookup, which is the one that fails here.
+      mockConsultationRepository.findById
+        .mockResolvedValueOnce({
+          id: 'consultation-001',
+          tenantId: 'tenant-abc',
+          departmentId: 'dept-card-001',
+          doctorId: 'dr-smith-001',
+          metadata: null,
+        })
+        .mockRejectedValueOnce(new Error('DB hiccup'));
+      const { service } = buildService(true, mockHarnessGateway);
+
+      const decision = await service.generate(GenerationTrigger.TRANSCRIPTION_CREATED, baseParams);
+
+      expect(decision).toEqual({ generator: 'harness', harnessJobId: expect.any(String) });
+      expect(mockHarnessGateway.start).toHaveBeenCalledWith(
+        'consultation-001',
+        expect.objectContaining({ externalPatientId: undefined }),
+      );
+    });
   });
 
   // ===========================================================================

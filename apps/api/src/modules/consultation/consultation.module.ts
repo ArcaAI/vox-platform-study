@@ -21,12 +21,16 @@ import {
   LoopConfigServiceModule,
   LoopContextTextServiceModule,
   RedisSubscriberService,
+  // ConsultationConsentService for the internal consent-assert endpoint
+  // (TASK-712 Phase 4 — non-HTTP enforcement front door).
+  ConsentServiceModule,
 } from '@arcaai/applications';
 import { CoreDatabaseModule } from '@arcaai/domains';
 import { ConsultationController } from './consultation.controller';
 import { AdminConsultationController } from './admin-consultation.controller';
 import { ConsultationJobController } from './consultation-job.controller';
 import { HarnessInternalController } from './harness-internal.controller';
+import { ConsentInternalController } from './consent-internal.controller';
 
 @Module({
   imports: [
@@ -57,8 +61,9 @@ import { HarnessInternalController } from './harness-internal.controller';
     // Loop-configuration resolution (internal route).
     LoopConfigServiceModule,
     LoopContextTextServiceModule,
+    ConsentServiceModule,
   ],
-  controllers: [ConsultationController, AdminConsultationController, ConsultationJobController, HarnessInternalController],
+  controllers: [ConsultationController, AdminConsultationController, ConsultationJobController, HarnessInternalController, ConsentInternalController],
   // dedicated Redis subscriber connection for the
   // `:id/trajectory/stream` SSE relay (mirrors the harness-progress module's
   // own RedisSubscriberService provider; IConfigService is @Global).

@@ -231,8 +231,11 @@ describe('env:sync — the declared surface stays small', () => {
     // is clean — this constant exists to catch UNREVIEWED growth, not real growth.
     // Bumped 144 -> 145 for 1 legitimate addition (secrets rewarm interval —
     // verified via `pnpm env:sync --check`, no drift): SECRETS_REWARM_INTERVAL_SEC.
+    // Bumped 145 -> 147 for 2 legitimate additions (TASK-722's exposure-plane
+    // kill-switches — verified via `pnpm env:sync --check`, no drift):
+    // WORKFLOW_EXPOSURE_ENABLED, WORKFLOW_EXPOSURE_ALLOW_CLOUD_PROVIDERS.
     const declared = declaredTsSurfaceKeys();
-    expect(declared.size).toBeLessThanOrEqual(145);
+    expect(declared.size).toBeLessThanOrEqual(147);
   });
 });
 

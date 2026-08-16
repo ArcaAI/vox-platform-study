@@ -77,6 +77,25 @@ export class NoteGenerationService extends BaseService implements INoteGeneratio
 
     const harnessJobId = `harness-doc-${randomUUID()}`;
 
+    // TASK-712 (consent-abac Phase 4): thread the consultation's external
+    // patient id so the harness's call_mcp_tool/retrieve_context activities
+    // can key a consent-gate lookup. Best-effort, non-fatal — a lookup
+    // failure here must never block note generation itself; it only means
+    // those two activities degrade to `consent_unavailable` (fail-closed,
+    // distinguishable from a genuine denial — R4) instead of being gated.
+    let externalPatientId: string | undefined;
+    try {
+      const consultation = await this.consultationRepository.findById(params.consultationId);
+      externalPatientId = consultation.patientId;
+    } catch (error) {
+      this.logger.warn({
+        message:
+          'NoteGenerationService: could not resolve patientId for the consent-gate — harness tool/RAG calls will report consent as unavailable',
+        consultationId: params.consultationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
     // NOT optional-chained (`.start(` not `?.start(`) — a missing gateway
     // throws here rather than silently no-op'ing. See the constructor note.
     await this.harnessGatewayService.start(params.consultationId, {
@@ -87,6 +106,7 @@ export class NoteGenerationService extends BaseService implements INoteGeneratio
       contextItemId: params.contextItemId,
       transcriptText: params.transcriptText,
       redactionRules: params.redactionRules,
+      externalPatientId,
     });
 
     this.logger.log({

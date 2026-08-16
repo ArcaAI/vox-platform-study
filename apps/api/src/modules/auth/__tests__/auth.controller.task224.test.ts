@@ -237,6 +237,7 @@ describe('AuthController — Security Tests', () => {
         { emit: vi.fn() } as any,
         {} as any,
         { lookup: vi.fn().mockResolvedValue(null) } as any,
+        {} as never, // workflowRunService (TASK-722)
       );
 
       const response = await controller.impersonate({ targetUserId: 'doctor-001' }, createMockRequest());
@@ -274,6 +275,7 @@ describe('AuthController — Security Tests', () => {
         { emit: vi.fn() } as any,
         {} as any,
         { lookup: vi.fn().mockResolvedValue(null) } as any,
+        {} as never, // workflowRunService (TASK-722)
       );
 
       await expect(controller.impersonate({ targetUserId: 'doctor-001' }, createMockRequest())).rejects.toThrow(UnauthorizedException);
@@ -312,6 +314,7 @@ describe('AuthController — Security Tests', () => {
         { emit: vi.fn() } as any,
         {} as any,
         { lookup: vi.fn().mockResolvedValue(null) } as any,
+        {} as never, // workflowRunService (TASK-722)
       );
 
       await expect(controller.impersonate({ targetUserId: 'admin-002' }, createMockRequest())).rejects.toThrow(BadRequestException);
@@ -351,6 +354,7 @@ describe('AuthController — Security Tests', () => {
         { emit: vi.fn() } as any,
         {} as any,
         { lookup: vi.fn().mockResolvedValue(null) } as any,
+        {} as never, // workflowRunService (TASK-722)
       );
 
       const result = await controller.impersonate({ targetUserId: 'tadmin-001' }, createMockRequest());
@@ -393,6 +397,7 @@ describe('AuthController — Security Tests', () => {
         { emit: vi.fn() } as any,
         {} as any,
         { lookup: vi.fn().mockResolvedValue(null) } as any,
+        {} as never, // workflowRunService (TASK-722)
       );
 
       await expect(controller.impersonate({ targetUserId: 'tadmin-002' }, createMockRequest())).rejects.toThrow(BadRequestException);
@@ -432,6 +437,7 @@ describe('AuthController — Security Tests', () => {
         { emit: vi.fn() } as any,
         {} as any,
         { lookup: vi.fn().mockResolvedValue(null) } as any,
+        {} as never, // workflowRunService (TASK-722)
       );
 
       await expect(controller.impersonate({ targetUserId: 'sadmin-001' }, createMockRequest())).rejects.toThrow(BadRequestException);
@@ -477,6 +483,7 @@ describe('AuthController — Security Tests', () => {
         { emit: vi.fn() } as any,
         {} as any,
         { lookup: vi.fn().mockResolvedValue(null) } as any,
+        {} as never, // workflowRunService (TASK-722)
       );
 
       await controller.impersonate({ targetUserId: 'doctor-001' }, createMockRequest());
@@ -509,6 +516,7 @@ describe('AuthController — Security Tests', () => {
         { emit: vi.fn() } as any,
         {} as any,
         { lookup: vi.fn().mockResolvedValue(null) } as any,
+        {} as never, // workflowRunService (TASK-722)
       );
 
       expect(typeof (controller as any).revokeImpersonation).toBe('function');
@@ -544,6 +552,7 @@ describe('AuthController — Security Tests', () => {
         { emit: vi.fn() } as any,
         {} as any,
         { lookup: vi.fn().mockResolvedValue(null) } as any,
+        {} as never, // workflowRunService (TASK-722)
       );
 
       const result = await controller.revokeImpersonation(createMockRequest());
@@ -578,6 +587,7 @@ describe('AuthController — Security Tests', () => {
         { emit: vi.fn() } as any,
         {} as any,
         { lookup: vi.fn().mockResolvedValue(null) } as any,
+        {} as never, // workflowRunService (TASK-722)
       );
 
       await controller.revokeImpersonation(createMockRequest());
@@ -613,6 +623,7 @@ describe('AuthController — Security Tests', () => {
         { emit: vi.fn() } as any,
         {} as any,
         { lookup: vi.fn().mockResolvedValue(null) } as any,
+        {} as never, // workflowRunService (TASK-722)
       );
 
       await expect(controller.revokeImpersonation(createMockRequest())).rejects.toThrow(UnauthorizedException);
@@ -644,6 +655,7 @@ describe('AuthController — Security Tests', () => {
         { emit: vi.fn() } as any,
         {} as any,
         { lookup: vi.fn().mockResolvedValue(null) } as any,
+        {} as never, // workflowRunService (TASK-722)
       );
 
       await expect(controller.refresh({ refreshToken: '' })).rejects.toThrow(BadRequestException);
@@ -675,6 +687,7 @@ describe('AuthController — Security Tests', () => {
         { emit: vi.fn() } as any,
         {} as any,
         { lookup: vi.fn().mockResolvedValue(null) } as any,
+        {} as never, // workflowRunService (TASK-722)
       );
 
       await expect(controller.refresh({ refreshToken: 'invalid-token-format' })).rejects.toThrow(UnauthorizedException);
@@ -714,6 +727,7 @@ describe('AuthController — Security Tests', () => {
         { emit: vi.fn() } as any,
         {} as any,
         { lookup: vi.fn().mockResolvedValue(null) } as any,
+        {} as never, // workflowRunService (TASK-722)
       );
 
       await expect(controller.refresh({ refreshToken: 'opaque-old-token' })).rejects.toThrow(UnauthorizedException);
@@ -757,6 +771,7 @@ describe('AuthController — Security Tests', () => {
         { emit: vi.fn() } as any,
         {} as any,
         { lookup: vi.fn().mockResolvedValue(null) } as any,
+        {} as never, // workflowRunService (TASK-722)
       );
 
       const result = await controller.refresh({ refreshToken: 'opaque-old-token' });
@@ -794,6 +809,7 @@ describe('AuthController — Security Tests', () => {
         { emit: vi.fn() } as any,
         {} as any,
         { lookup: vi.fn().mockResolvedValue(null) } as any,
+        {} as never, // workflowRunService (TASK-722)
       );
 
       await expect(controller.login({ username: '', password: 'pass' } as any, createMockRequest())).rejects.toThrow(BadRequestException);
@@ -818,6 +834,7 @@ describe('AuthController — Security Tests', () => {
         { emit: vi.fn() } as any,
         {} as any,
         { lookup: vi.fn().mockResolvedValue(null) } as any,
+        {} as never, // workflowRunService (TASK-722)
       );
 
       await expect(controller.login({ username: 'user', password: '' } as any, createMockRequest())).rejects.toThrow(BadRequestException);
@@ -844,6 +861,7 @@ describe('AuthController — Security Tests', () => {
         { emit: vi.fn() } as any,
         {} as any,
         { lookup: vi.fn().mockResolvedValue(null) } as any,
+        {} as never, // workflowRunService (TASK-722)
       );
 
       await expect(controller.login({ username: 'ghost', password: 'pass' }, createMockRequest())).rejects.toThrow(UnauthorizedException);
@@ -880,6 +898,7 @@ describe('AuthController — Security Tests', () => {
         { emit: vi.fn() } as any,
         {} as any,
         { lookup: vi.fn().mockResolvedValue(null) } as any,
+        {} as never, // workflowRunService (TASK-722)
       );
 
       const result = await controller.login({ username: 'real_user', password: 'correct-pass', tenantKey: 'acme-hospital' }, createMockRequest());
@@ -925,6 +944,7 @@ describe('AuthController — Security Tests', () => {
         { emit: vi.fn() } as any,
         {} as any,
         { lookup: vi.fn().mockResolvedValue(null) } as any,
+        {} as never, // workflowRunService (TASK-722)
       );
 
       await controller.login({ username: 'tracked_user', password: 'correct-pass', tenantKey: 'acme-hospital' }, createMockRequest());
@@ -965,6 +985,7 @@ describe('AuthController — Security Tests', () => {
         { emit: vi.fn() } as any,
         {} as any,
         { lookup: vi.fn().mockResolvedValue(null) } as any,
+        {} as never, // workflowRunService (TASK-722)
       );
 
       await expect(controller.impersonate({ targetUserId: 'doctor-001' }, createMockRequest())).rejects.toThrow(UnauthorizedException);
@@ -998,6 +1019,7 @@ describe('AuthController — Security Tests', () => {
         { emit: vi.fn() } as any,
         {} as any,
         { lookup: vi.fn().mockResolvedValue(null) } as any,
+        {} as never, // workflowRunService (TASK-722)
       );
 
       await expect(controller.impersonate({ targetUserId: 'nonexistent' }, createMockRequest())).rejects.toThrow(BadRequestException);

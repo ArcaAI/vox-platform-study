@@ -30,6 +30,7 @@ import { API_KEY_REQUIRED_SCOPES, SKIP_AUTH_KEY } from '@arcaai/applications';
 import { SmrCompatController } from '../modules/text-compat/text-compat.controller';
 import { ConsultationController } from '../modules/consultation/consultation.controller';
 import { ConsultationJobController } from '../modules/consultation/consultation-job.controller';
+import { WorkflowsController } from '../modules/workflows/workflows.controller';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- constructor signature is intentionally unconstrained; only prototype methods are ever read off it
 type ControllerClass = new (...args: any[]) => unknown;
@@ -59,6 +60,14 @@ export const SDK_DAY1_SCOPED_ROUTES: ScopedRoute[] = [
   { controller: ConsultationJobController, method: 'getJob' },
   { controller: ConsultationJobController, method: 'cancelJob' },
   { controller: ConsultationJobController, method: 'streamJob' },
+  // TASK-722's exposure plane — the surface S-2/R-1 exist to gate. Every route reaches this
+  // audit (not `admin-scope-audit.ts`'s ADMIN_SCOPED_CONTROLLERS list — `/workflows/*` is not
+  // an `/admin/*` route). Coordinate with TASK-708, which hardens this same list.
+  { controller: WorkflowsController, method: 'list' },
+  { controller: WorkflowsController, method: 'invoke' },
+  { controller: WorkflowsController, method: 'getRunStatus' },
+  { controller: WorkflowsController, method: 'cancelRun' },
+  { controller: WorkflowsController, method: 'streamRunStatus' },
 ];
 
 export function auditApiKeyRequiredScopes(routes: ScopedRoute[] = SDK_DAY1_SCOPED_ROUTES): void {

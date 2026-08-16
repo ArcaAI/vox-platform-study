@@ -174,6 +174,10 @@ export class HarnessObservabilityService {
     const generates = new Map<string, { latest: Date; count: number }>();
     for (const e of chain) {
       if (e.action !== HarnessAuditAction.GENERATE) continue;
+      // Every GENERATE event carries a consultationId — only
+      // CONSENT_GIVEN/CONSENT_WITHDRAWN (excluded above) can lack one
+      // (TASK-712, consent-abac Phase 4). Narrows the type for the Map<string, …> below.
+      if (!e.consultationId) continue;
       const prev = generates.get(e.consultationId);
       const createdAt = toDate(e.createdAt);
       if (!prev) {
@@ -362,7 +366,7 @@ function auditToResponse(e: HarnessAuditEventEntity): HarnessAuditEventResponse 
   return {
     id: e.id,
     tenantId: e.tenantId,
-    consultationId: e.consultationId,
+    consultationId: e.consultationId ?? null,
     contextItemVersionId: e.contextItemVersionId ?? null,
     action: e.action,
     modelName: e.modelName,

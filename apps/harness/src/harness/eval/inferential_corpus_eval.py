@@ -33,7 +33,7 @@ response-format to ``text`` so LM Studio accepts the ``json_mode`` entailment
 calls, and keep ``max_tokens`` ≤ the loaded context window)::
 
     HARNESS_JUDGE_OPENAI_COMPAT_JSON_RESPONSE_FORMAT=text \\
-    HARNESS_JUDGE_MAX_TOKENS=3072 \\
+    HARNESS_JUDGE_MAX_TOKENS=16384 \\
     conda run -n arcaenv python -m harness.eval.inferential_corpus_eval \\
       --golden-set apps/harness/src/harness/eval/golden/fixtures/curated_v1.json \\
       --output inferential-corpus-eval.json

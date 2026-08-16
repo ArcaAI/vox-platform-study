@@ -9,6 +9,10 @@ import * as Enums from '../../../enums';
 import * as Entities from '../../../entities';
 
 export interface CreateHarnessAuditEventProps extends BaseEntityFactoryCreateProps {
+  // Optional — see IHarnessAuditEventEntity.consultationId. Callers that
+  // legitimately have none (CONSENT_GIVEN/CONSENT_WITHDRAWN) pass `null`
+  // explicitly rather than omitting the field, so the choice is visible at
+  // the call site.
   consultationId: IHarnessAuditEventEntity['consultationId'];
   contextItemVersionId?: IHarnessAuditEventEntity['contextItemVersionId'];
   action: IHarnessAuditEventEntity['action'];
@@ -56,7 +60,7 @@ export class HarnessAuditEventFactory {
     // chain validates identically on the verifier; otherwise over the plaintext.
     const hash = computeHarnessAuditHash({
       tenantId: props.tenantId,
-      consultationId: props.consultationId,
+      consultationId: props.consultationId ?? null,
       contextItemVersionId: props.contextItemVersionId ?? null,
       action: props.action,
       modelName: props.modelName,
@@ -88,7 +92,7 @@ export class HarnessAuditEventFactory {
       createdBy: props.createdBy ?? null,
       updatedBy: null,
 
-      consultationId: props.consultationId,
+      consultationId: props.consultationId ?? null,
       contextItemVersionId: props.contextItemVersionId ?? null,
       action: props.action,
       modelName: props.modelName,

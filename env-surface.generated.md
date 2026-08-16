@@ -11,13 +11,13 @@ disagree with those declarations.
 
 | Metric | Value |
 |---|---:|
-| Declared keys (distinct) | 145 |
+| Declared keys (distinct) | 147 |
 | … of which required (`failMode: closed`) | 31 |
 | … of which secret | 30 |
-| … tier `env` | 110 |
+| … tier `env` | 112 |
 | … tier `global-kv` | 9 |
 | … tier `vault-kv` | 26 |
-| `turbo.json#globalEnv` entries | 161 |
+| `turbo.json#globalEnv` entries | 163 |
 
 ## Variables
 
@@ -168,3 +168,5 @@ disagree with those declarations.
 | `VAULT_TRANSIT_KEY_PHI` | `env` | no | `hope-phi` | `apps/api` | Transit key that wraps PHI columns. |
 | `VAULT_TRANSIT_MOUNT` | `env` | no | `transit` | `apps/api` | Mount path of the Transit engine used for envelope encryption. |
 | `VAULT_WRAPPED_SECRET_ID` | `env` | yes | `CHANGE_ME` | `apps/api` | PRODUCTION path: a single-use response-wrapping token unwrapped once per process start. Blank in dev so the raw path is taken. Same bootstrap exemption as `VAULT_SECRET_ID`. |
+| `WORKFLOW_EXPOSURE_ALLOW_CLOUD_PROVIDERS` | `env` | no | `false` | `apps/api` | Decision #6 (R-8): may a workflow invoked through the PUBLIC exposure plane route to a cloud LLM provider (azure/bedrock/openai/anthropic/vertex — `isCloudByoProvider('llm', …)`)? OFF by default — public exposure inherits the strictest egress posture; a tenant opts in explicitly, never by default. Platform-wide today, not yet per-tenant: no node type in the code-owned registry selects a provider yet (`WORKFLOW_NODE_REGISTRY` ships only `noop`/`passthrough`), so there is nothing to differentiate BY tenant until TASK-720/731 add one — see the TASK-722 ticket README §7 for the reasoning. |
+| `WORKFLOW_EXPOSURE_ENABLED` | `env` | no | `false` | `apps/api` | R-1 kill-switch for the whole `/api/v1/workflows/:slug/…` public-invoke surface (TASK-722). Design.md's precondition: TASK-708's API-key scope enforcement must be verified end-to-end before this ships enabled; Temporal is also not yet production-ready (R-2). Read via `ConfigService.getConfigValue('WORKFLOW_EXPOSURE_ENABLED')`, `=== "true"` — a 404 (existence not disclosed) while off, same posture as `registration.selfSignupEnabled`. |

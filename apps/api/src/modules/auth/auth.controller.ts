@@ -7,6 +7,7 @@ import {
   IUserDepartmentService,
   IUserRoleAssignmentService,
   IUserService,
+  IWorkflowRunService,
   SecretsService,
   createJwt,
   // Password rotation surfaced at login (warning-only).
@@ -113,6 +114,8 @@ export class AuthController {
     // written at session create (same instance the WS gateway and the
     // DELETE-route interceptor consult).
     private readonly streamSessionTenantBinding: StreamSessionTenantBindingService,
+    // Mint-time tenant-ownership check for `workflow_run:<runId>` tickets (TASK-722 Task 7).
+    @Inject(IWorkflowRunService) private readonly workflowRunService: IWorkflowRunService,
   ) {}
 
   /**
@@ -925,6 +928,11 @@ export class AuthController {
     // tenant. Fail-closed: a missing binding 404s too.
     await this.assertSttSessionScopeOwnership(body.scope, tenantId);
 
+    // Same posture for `workflow_run:<runId>` (TASK-722's exposure-plane SSE
+    // route): the run must belong to the caller's (active) tenant.
+    // Fail-closed: a missing/foreign run 404s too.
+    await this.assertWorkflowRunScopeOwnership(body.scope, tenantId);
+
     const issued = await this.streamTicketService.issueTicket({
       userId: user.id,
       tenantId,
@@ -1011,6 +1019,32 @@ export class AuthController {
     }
     if (boundTenantId === null || boundTenantId !== activeTenantId) {
       throw new NotFoundException('Session not found');
+    }
+  }
+
+  /** Scope prefix for `workflow_run:<runId>` tickets consumed by the exposure-plane SSE route
+   *  (`WorkflowsController.streamRunStatus`, TASK-722). */
+  private static readonly WORKFLOW_RUN_SCOPE_PREFIX = 'workflow_run:';
+
+  /**
+   * `workflow_run:<runId>` tickets must be bound to the caller's active tenant. Reuses
+   * `IWorkflowRunService.getRun`, which already 404s a foreign-tenant or unknown runId
+   * (404-over-403) — rather than adding a second lookup path here. `activeTenantId === null`
+   * fails closed the same way `assertSttSessionScopeOwnership` does (no active tenant can own
+   * any run). Non-`workflow_run` scopes pass through untouched.
+   */
+  private async assertWorkflowRunScopeOwnership(scope: string, activeTenantId: string | null): Promise<void> {
+    if (!scope?.startsWith(AuthController.WORKFLOW_RUN_SCOPE_PREFIX)) {
+      return;
+    }
+    if (!activeTenantId) {
+      throw new NotFoundException('Run not found');
+    }
+    const runId = scope.slice(AuthController.WORKFLOW_RUN_SCOPE_PREFIX.length);
+    try {
+      await this.workflowRunService.getRun(activeTenantId, runId);
+    } catch {
+      throw new NotFoundException('Run not found');
     }
   }
 

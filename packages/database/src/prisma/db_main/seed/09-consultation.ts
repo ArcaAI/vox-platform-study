@@ -43,7 +43,10 @@ import { encryptSeedRow } from './phi-encryption';
  *   CARD_NEW → CARD_CROSS_DEPT (cross-department referral to Neurology)
  */
 
-const PATIENT_IDS = {
+// Exported (TASK-712, consent-abac Phase 6) so 22-consent-grant.ts seeds
+// grants against the SAME literal patient ids these demo consultations use —
+// one source of truth rather than a second hardcoded copy.
+export const PATIENT_IDS = {
   PAT_001: 'PAT-20250101-001',
   PAT_002: 'PAT-20250115-002',
   PAT_003: 'PAT-20260110-003',

@@ -182,6 +182,7 @@ function buildController(
     (overrides.eventEmitter ?? { emit: vi.fn() }) as any,
     (overrides.consultationRepository ?? { findById: vi.fn() }) as any,
     (overrides.streamSessionTenantBinding ?? { lookup: vi.fn().mockResolvedValue(null) }) as any,
+    {} as never, // workflowRunService (TASK-722)
   );
 }
 

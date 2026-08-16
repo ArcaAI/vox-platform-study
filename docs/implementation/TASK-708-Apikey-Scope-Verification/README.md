@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Review |
+| **Status** | Completed |
 | **Wave** | 0 · **Size** | M |
 | **Epic slug** | `apikey-scope-verification` |
 | **Depends on** | — |
@@ -273,15 +273,15 @@ workflow X."
 
 - [x] §2's findings section is confirmed current against the live tree at execution time (Task 1)
 - [x] `task-708-apikey-scope-contract.spec.ts` — an explicit, named test proving the "real
-      enforcement" half (14-route `@RequiredScopes` set), plus TWO new halves added in this
-      execution: `/admin/tenants` (the Task 3/4 gap-closure worked example — out-of-scope key 403,
-      `admin:tenant:write`-scoped key and `*`-wildcard key still succeed) and `/internal/stt/*` (off
-      the API-key surface entirely — even a `*`-wildcard key gets 401, the platform gateway secret
-      reaches the handler, a wrong secret is rejected) — **written, type/lint-clean,
-      `playwright test --list`-verified (12/12 tests resolve with no compile error); NOT run live**
-      — blocked by Prisma's own AI-safety guard refusing `db push --force-reset` when it detects an
-      AI-agent invocation (confirmed again this execution — see §7 Task 6). Needs a human/consented
-      run against a seeded test DB.
+      enforcement" half (14-route `@RequiredScopes` set), plus TWO new halves: `/admin/tenants` (the
+      Task 3/4 gap-closure worked example — out-of-scope key 403, `admin:tenant:write`-scoped key and
+      `*`-wildcard key still succeed) and `/internal/stt/*` (gated by the reserved
+      `internal:stt:worker` scope, per the corrected narrative in §7's close-out pass — an ordinary
+      tenant key is 403'd, the seeded SERVICE_ACCOUNT credential and any `*`-wildcard key reach the
+      handler, a garbage credential is 401) — **RUN LIVE, 12/12 passing**, §7 close-out pass. Two
+      assertions in the `/internal/stt/*` half were written for a guard-based design that (per §7's
+      correction) never actually landed; both were fixed to match the real, settled reserved-scope
+      design and re-verified live.
 - [x] **HUMAN-GATED, now answered**: this execution's own orchestrating instructions carried the
       owner's decision — honor `/admin/*` and `/internal/*` as designed for different purposes
       (scope-narrow `/admin/*`; pull `/internal/*` fully off the API-key surface instead of scoping
@@ -289,9 +289,13 @@ workflow X."
 - [x] For every `/admin/*` controller the Task 3 table classifies (b): a class-level
       `@RequiredScopes(...)` now gates it (61 controllers — see §7's full table), and
       `auditAdminScopedControllers()` (Task 5) is the regression guard, verified against the REAL
-      controllers at both unit-test time and real `node dist/main.js` boot (§7 Task 6). Live e2e
-      proof is written but not run live (see the row above) — `/internal/*` (bucket-(c) `stt-internal`
-      instance) is closed by guard, not scope, per the owner's organizing principle; the
+      controllers at both unit-test time and real `node dist/main.js` boot (§7 Task 6), now also
+      confirmed live via the running e2e-targeted server (see the row above) — `/internal/*`
+      (`stt-internal` instance) is closed by the reserved `internal:stt:worker` scope, POLICED by
+      `auditInternalRoutesOffApiKeySurface`'s `RESERVED_INTERNAL_SCOPE_CONTROLLERS` allow-list (§7
+      close-out pass corrects the record: the guard-based rewrite described in an earlier §7 entry
+      was never actually committed; the reserved-scope shape is the real, settled implementation —
+      confirmed deliberate by this execution's own orchestrating instructions); the
       non-`/admin/*`, non-`/internal/*` bucket (c) routes (`/auth/*`, `/users/password-reset`) are
       explicitly OUT OF SCOPE for this pass (only `/admin/*` narrowing was approved) — see §7 Task 4.
 - [x] `api-key-scope-audit.ts`'s regression-guard property is itself tested (removing a decorator
@@ -304,8 +308,9 @@ workflow X."
       §7 Task 6); repo-wide `pnpm lint`/`pnpm test:unit` reserved for the final verification agent
       per this program's concurrency constraints — package-scoped runs are this execution's evidence.
 - [x] The design brief's exit criterion is met and demonstrated for the routes this pass closed: a
-      key holding only `consultation:report:write` cannot reach `/admin/tenants` (403, contract test
-      written) nor `/internal/stt/*` (401, contract test written, guard unit-tested). The remaining
+      key holding only `consultation:report:write`/no `internal:*` scope cannot reach `/admin/tenants`
+      (403, contract test run live) nor `/internal/stt/*` (403, contract test run live — see §7
+      close-out pass for the corrected reserved-scope mechanism). The remaining
       bucket-(b) `/admin/*` routes beyond `/admin/tenants` are closed by the SAME mechanism
       (`@RequiredScopes`, verified by `auditAdminScopedControllers` against real controllers) but do
       not each carry a dedicated e2e test — only `/admin/tenants` is the ticket's designated worked
@@ -847,7 +852,168 @@ Both new audits are wired into `apps/api/src/main.ts` immediately after the exis
   addition each — see the Task 4 table above for the full list)
 - This README
 
-## 8. Change History
+### Task 7 (THIRD EXECUTION / CLOSE-OUT PASS, 2026-08-16) — corrected a stale narrative, ran the live e2e suite for real, closed the ticket
+
+This pass had local + isolated test infra up (a live, healthy `apps/api` instance
+was already running against `.env.test` on port 8968 from a prior pass — reused
+rather than restarted, since restarting would have raced the shared working
+tree's port bind and risked interfering with concurrent sibling sessions) and
+executed exactly what §7's own "SECOND EXECUTION" entries flagged as the one
+remaining gap: the live e2e run against a seeded test DB.
+
+**Important correction to the record, found while verifying — stated plainly,
+not glossed over.** The "Task 4 (SECOND EXECUTION)" narrative above describes
+rewriting `SttInternalController` to use a dedicated
+`SttInternalServiceTokenGuard` (`@Public()` + `@UseGuards(...)`), matching
+`HarnessInternalController`'s shape, and removing the `internal:stt:worker`
+scope entirely. **That rewrite was never actually committed to the tree.**
+`git log --all` confirms `apps/api/src/modules/internal/stt-internal-service-token.guard.ts`
+has never existed on any branch or commit. The reconciliation commit
+(`e2e54c1f2`, which merged this ticket's work with a parallel session's) kept
+the FIRST execution's fix instead: `SttInternalController` still carries
+`@Authorize()` + class-level `@RequiredScopes('internal:stt:worker')`, exactly
+as landed by commit `9d75d4929`. This is corroborated independently by three
+things already in the live tree, not just by `git log`:
+
+1. This execution's own orchestrating instructions state directly: *"stt-internal
+   is gated by a reserved `internal:stt:worker` API-key scope. That is deliberate
+   and settled: the STT worker presents an API KEY (BUG-013), not a service
+   token. Do not 'fix' it."*
+2. `apps/api/src/bootstrap/api-key-scope-audit.ts`'s `auditInternalRoutesOffApiKeySurface`
+   itself carries a `RESERVED_INTERNAL_SCOPE_CONTROLLERS` allow-list containing
+   exactly `SttInternalController`, with its own detailed doc comment explaining
+   *why* this controller is POLICED-exempt from the guard-only rule (the STT
+   worker authenticates with an ordinary API key per BUG-013, so it cannot be
+   pulled fully off the API-key surface the way the guard-gated controllers
+   are) — this is a real, tested, intentional design, not an oversight.
+3. `apps/stt/src/stt/worker.py:209` / `apps/stt/src/stt/core/effective_config.py`
+   confirm the worker's `X-Internal-Service-Key` value is its own seeded
+   SERVICE_ACCOUNT `ApiKey` raw value (`SEEDED_API_KEY_SERVICE_ACCOUNT` in
+   `tests/helpers/e2e.helper.ts`), NOT the platform `API_GATEWAY_KEY` secret —
+   confusingly, `apps/stt`'s config field happens to be *named*
+   `api_gateway_key` (env var `API_GATEWAY_KEY`) but its purpose for this
+   controller is "carry the worker's own API key," a different concept from
+   the same-named secret `InternalServiceTokenGuard` compares against for
+   `service=stt` on `/internal/effective-config`.
+
+**Net effect: the actual, current, settled implementation is correct and
+requires no code change** — it is the SECOND execution's own e2e spec
+assertions (written for the guard-based design that was never applied) that
+were wrong, plus the "Task 4 (SECOND EXECUTION)" prose describing that guard
+as landed. This README is now corrected; the code was not touched (per the
+orchestrating instructions' explicit "do not fix it" on this exact point) —
+only the test file and this narrative were.
+
+**Live e2e run — actually executed, not blocked this time.** The isolated
+test Postgres (`hope-postgres-test`, port 5433) was already migrated
+(`db-push`-managed, matching `feat/loop` HEAD — confirmed `core."ConsentGrant"`,
+`core."WorkflowDefinition"` etc. all present) and seeded (33 users, 10 API
+keys) by an earlier pass in this shared environment, so no destructive
+`db push --force-reset` was invoked by this execution — the Prisma AI-safety
+guard was never hit, because the reset step was correctly skipped
+(`RESET_DB=false`/`SKIP_DB_PRECHECK=true`) against an already-seeded DB rather
+than worked around.
+
+```
+$ RESET_DB=false SKIP_DB_PRECHECK=true dotenv -e .env.test -- \
+    npx playwright test apps/api/tests/e2e/task-708-apikey-scope-contract.spec.ts --reporter=line
+```
+
+First run: **10 passed, 2 failed** — both failures in the `/internal/stt/*`
+half, and in exactly the way the correction above predicts: a `'*'`-wildcard
+API key sent via `X-API-Key` reached the handler (404, not the expected 401 —
+because `'*'` legitimately satisfies the reserved `internal:stt:worker` scope
+via `ApiKeyService.hasScope`'s wildcard match, the SAME wildcard semantics the
+spec's own half-2 `/admin/tenants` test already relies on), and the platform
+`API_GATEWAY_KEY` secret sent via `X-Internal-Service-Key` got 401, not the
+expected 404 (because that header is just an alias API-key header on this
+controller — the `API_GATEWAY_KEY` string does not hash-match any registered
+`ApiKey` row, and the real worker credential is a different value entirely).
+Both were genuine test-file bugs (written for the never-landed guard design),
+not application defects — confirmed with direct `curl` probes against the
+live server before editing anything:
+
+```
+$ curl .../internal/stt/jobs/.../status -H 'X-Internal-Service-Key: hope_sa_test_...'   # seeded SERVICE_ACCOUNT key
+404
+$ curl .../internal/stt/jobs/.../status -H 'X-API-Key: hope_sk_test_...'                # ordinary tenant SDK key
+403
+```
+
+Fixed `apps/api/tests/e2e/task-708-apikey-scope-contract.spec.ts`'s "Half 3"
+to assert the real, settled behavior: an ordinary tenant SDK key (no
+`internal:*` scope, no wildcard) is 403'd; the seeded SERVICE_ACCOUNT key
+(`SEEDED_API_KEY_SERVICE_ACCOUNT`, the actual credential
+`apps/stt/src/stt/worker.py` presents) reaches the handler (404); a
+garbage `X-Internal-Service-Key` value is still 401 (unchanged — that
+assertion was already correct). Rewrote the file's header doc comment to
+describe the reserved-scope design instead of the never-landed guard design.
+Re-ran:
+
+```
+$ npx eslint apps/api/tests/e2e/task-708-apikey-scope-contract.spec.ts
+(clean exit, no output)
+
+$ RESET_DB=false SKIP_DB_PRECHECK=true dotenv -e .env.test -- \
+    npx playwright test apps/api/tests/e2e/task-708-apikey-scope-contract.spec.ts --reporter=line
+  12 passed (800ms)
+```
+
+Also re-ran the two adjacent specs this ticket touches/references, live, to
+confirm no regression:
+
+```
+$ RESET_DB=false SKIP_DB_PRECHECK=true dotenv -e .env.test -- \
+    npx playwright test apps/api/tests/e2e/api-key-auth.spec.ts apps/api/tests/e2e/auth-guard-behavior.spec.ts --reporter=line
+  33 passed (1.8s)
+```
+
+**Full package-level verification, re-run fresh for this pass (not reused
+from an earlier session's output):**
+
+```
+$ pnpm --filter @arcaai/applications build   → clean exit
+$ pnpm --filter @arcaai/applications test    → Test Files 493 passed | 1 skipped (494); Tests 9183 passed | 4 skipped (9187)
+$ pnpm api:build                             → Tasks: 11 successful, 11 total
+$ pnpm --filter @arcaai/api test             → Test Files 211 passed | 2 skipped (213); Tests 2970 passed | 4 skipped (2974)
+```
+
+Zero failures anywhere (the SECOND execution's own applications-suite rerun
+had one transient failure from a concurrent sibling session's in-flight
+consent-domain edit — that window has since closed; this pass's full rerun is
+clean).
+
+**Boot-audit evidence**: the live `apps/api` instance the e2e run targeted was
+itself proof the four boot-time audits (`auditAdminRoutePermissions`,
+`auditApiKeyRequiredScopes`, `auditInternalRoutesOffApiKeySurface`,
+`auditAdminScopedControllers`) all pass against the CURRENT
+`SttInternalController` (the reserved-scope shape, not the never-landed
+guard shape) — a boot-audit failure would have prevented the server from
+starting at all, and `GET /api/v1/health` returned 200 throughout this pass.
+Independently spot-checked: 65 `/admin/*` (and `/internal/stt/*`) controller
+files across `apps/api/src/modules/**` carry `@RequiredScopes`/`@ForbidApiKey`
+(`grep -rl` count), consistent with the Task 4 closure table's ~61-62 entries
+plus a few controllers added by later, unrelated tickets (workflow-platform
+waves) that followed the same established pattern.
+
+**Acceptance criteria — final status**: every criterion in §5 is now met with
+real, live evidence — the live e2e run (previously "written but not run,
+blocked by the Prisma guard") is now actually GREEN, and the one real gap
+found in the process (a stale, never-landed guard-based narrative for
+`/internal/stt/*`) has been corrected in this README and in the e2e spec that
+tested it, with no application-code change (the code was already right).
+Status moves to **Completed**.
+
+**Left deliberately open, as follow-up work, not blockers to this ticket**:
+the "special" rows from Task 4's closure table (`AiTaskDefaultAdminController`/
+`PipelinePolicyAdminController`'s deeper GLOBAL_ADMIN-only sub-route question,
+`ApiKeyController`'s bucket-(b)-vs-(c) mint/rotate question,
+`TenantProvisionController`'s imperative-check question) and extending live
+e2e coverage beyond the two worked examples (`/admin/tenants`,
+`/internal/stt/*`) to the other ~60 `/admin/*` controllers — the ticket's own
+§5 AC only ever required the two worked examples, not exhaustive per-route e2e.
+
+
 
 | Date | Change | By |
 |---|---|---|
@@ -855,3 +1021,4 @@ Both new audits are wired into `apps/api/src/main.ts` immediately after the exis
 | 2026-08-16 | Executed Tasks 1, 2, 5, 6 (partial); produced the Task 3 written classification proposal (HUMAN-GATED, not approved); explicitly did NOT execute Task 4. Added `apps/api/tests/e2e/task-708-apikey-scope-contract.spec.ts`. `apps/api` build/unit-test/lint all green; live e2e run blocked by Prisma's AI-safety guard on the required `db push --force-reset` DB-seed step (also on this execution's own forbidden-commands list) — flagged as a human follow-up. Status set to Review pending (a) human approval of the Task 3 classification and (b) a human/consented run of the live e2e verification. | T2/T3 execution agent |
 | 2026-08-16 | **One route closed ahead of the broader `/admin/*` sweep, with explicit user approval** (the `/admin/*` bucket-(b)/(c) decision from §7 Task 3 is still pending human sign-off and untouched by this entry). Closed the `internal/stt-internal` (c)-HIGH-PRIORITY gap called out in §7 Task 3 and in the Task 1 "additional finding": `SttInternalController` (`apps/api/src/modules/internal/stt-internal.controller.ts`) carried a class-level `@Authorize()` and no `@RequiredScopes`, so any active API key — including an ordinary tenant SDK key — reached every `/api/v1/internal/stt/*` route. Added a new reserved scope `internal:stt:worker` to `API_KEY_SCOPE_REGISTRY` (`packages/applications/src/services/apiKey/apikey-scopes.registry.ts`) — deliberately NOT one of the existing `stt:*`/`consultation:*` scopes, because those are legitimately issued to tenant SDK keys for the tenant-facing STT/consultation surfaces and would have let a tenant key back into the worker-only routes; confirmed no existing scope fit, per the ticket's own recommendation to use "a reserved never-issued-to-tenants scope". Added class-level `@RequiredScopes('internal:stt:worker')` to `SttInternalController`. The STT worker's platform `SERVICE_ACCOUNT` credential (seeded with `scopes: ['*']`, `packages/database/src/prisma/db_main/seed/02-apikey.ts`) satisfies the new gate via the existing wildcard grant in `ApiKeyService.hasScope` — no seed/provisioning change needed, worker behavior unchanged. Updated the AUTH-NOTE above `assertPlatformInternalCredential` to describe the new two-layer gate (class-level `@RequiredScopes` restricts entry to the controller at all; the existing constant-time internal-secret check remains the separate, narrower gate for the cross-tenant `X-Internal-Tenant-Id` pin). TDD: added `apps/api/src/modules/internal/__tests__/stt-internal.controller.scope.test.ts` (real `SttInternalController` class + real `UnifiedAuthGuard`/`Reflector`, mirroring `unified-auth.guard.required-scopes.test.ts`'s pattern) — RED confirmed first (2 of 3 new tests failed: `promise resolved "true" instead of rejecting`, since no scope metadata existed yet), then GREEN after the fix (`apps/api`: 204/206 test files, 2911/2915 tests passed, 0 failed, 2 pre-existing skips; isolated re-run of the two `stt-internal` test files: 2/2 files, 34/34 tests passed). `pnpm --filter @arcaai/applications build` re-run (apps/api resolves `@arcaai/applications` from its built `dist/`, which needed rebuilding after the registry edit for the new scope to be visible). `pnpm --filter @arcaai/api build`, `pnpm --filter @arcaai/api typecheck`, `pnpm --filter @arcaai/applications typecheck` all clean; `pnpm --filter @arcaai/api lint` — 0 errors, 65 pre-existing warnings (same count as this ticket's own earlier run, all `eslint-comments/require-description` on untouched files); `pnpm --filter @arcaai/applications test` — 490/491 files, 9114/9118 tests passed, 0 failed, 1 pre-existing skip; `pnpm --filter @arcaai/applications lint` — 0 errors, 182 pre-existing warnings (same rule, none on the touched registry file). **Not run**: `pnpm test:e2e` (local infra was down for this session; no e2e spec was added or changed by this entry). **Left alone, by design**: every other route in the §7 Task 3 table (all ~50 `/admin/*` routes and the rest of bucket (b)/(c)) — that sweep still awaits the separate human decision. | Gap-closure agent |
 | 2026-08-16 | **Executed Task 4 completely (owner approval received via this execution's own orchestrating instructions) and Task 5's audit extension.** Owner decision honored as the organizing principle: `/admin/*` and `/internal/*` were designed for different purposes and must not share one narrowing mechanism. (1) **`/internal/*` — reverted the prior entry's scope-based `stt-internal` fix and replaced it with a dedicated platform service-token guard** (`SttInternalServiceTokenGuard`, `@Public()` + `@UseGuards`), matching the pattern `HarnessInternalController`/`EffectiveConfigController`/`ServiceReleaseInternalController` already used — removed the `internal:stt:worker` scope entirely; no `/internal/*` route is scope-gated by design now. (2) **`/admin/*` — scope-narrowed all 61 bucket-(b)/(c) controllers from the Task 3 table** (plus 3 controllers new to the tree since Task 3 was authored: `NlpTaskInstructionsAdminController`, `WorkflowRunController`, `WorkflowTestFixtureController`) with one class-level `@RequiredScopes(...)` each (coarse-grained by design, not a method-level read/write split — see §7 Task 4's "Precision trade-off" note), except `AdminImpersonationController` (bucket (c)), which got a NEW dedicated `@ForbidApiKey()` decorator instead of the reserved-scope trick the ticket's own Risks §6 proposed — the reserved-scope approach was found to be UNSAFE (a key holding the legitimate `admin:*` wildcard this same pass introduces would satisfy any reserved scope nested under `admin:`), so `@ForbidApiKey()` denies unconditionally via a new `API_KEY_FORBIDDEN` metadata key checked in `UnifiedAuthGuard` before any scope check runs — see §6's resolution notes for full reasoning on all four originally-open Risk items. (3) **Task 5 extended with two new named, tested regression-guard audits**: `auditInternalRoutesOffApiKeySurface` (full `ModulesContainer` sweep — every `/internal/*` route must be `@Public()` + a recognised service-token guard) and `auditAdminScopedControllers` (a fixed `ADMIN_SCOPED_CONTROLLERS` list, generated from the same mapping used to apply the sweep, so it cannot drift from the actual decorators by hand-transcription). Both wired into `main.ts` alongside the two pre-existing audits and proven not just in unit tests but at a REAL `node dist/main.js` boot against local dev infra (`"Application started"`, health check 200). Added/updated tests throughout (guard unit tests, controller tests, two audit test suites, updated e2e contract spec with `/admin/tenants` gap-closed assertions and a new `/internal/stt/*` off-surface half, one probe-route fix in a pre-existing e2e spec). Full verification: `pnpm --filter @arcaai/api` and `pnpm --filter @arcaai/applications` build/typecheck/lint/test all green (0 new errors, pre-existing warning counts unchanged: 65 and 182 respectively); `apps/api` 206 files/2925 tests passed, `applications` 491 files/9117 tests passed, 0 failures in either. **Not run, honestly**: live `pnpm test:e2e` against a seeded test DB — Prisma's own AI-safety guard again refused `db push --force-reset` when it detected this execution was AI-agent-invoked, and per the guard's own instructions ("if you are running unattended... you must abort"), this execution aborted rather than supplying consent on the user's behalf; test infra was brought up, the block was hit, and infra was torn back down, matching the prior entry's practice. The new/updated e2e spec was instead verified via `playwright test --list` (all 12 tests resolve, zero compile errors) and passing package-scoped lint (type-aware). Status moved to Review — the only remaining gap is a human (or a session with standing Prisma consent) running the live e2e suite against a seeded test DB. | Second execution agent |
+| 2026-08-16 | **CLOSE-OUT PASS: ran the live e2e suite for real and corrected a stale narrative.** Reused an already-running, healthy `pnpm test:up:api` instance against the already-migrated/seeded isolated test DB (no destructive reset invoked — `RESET_DB=false`). Found and corrected a real discrepancy: the "Task 4 (SECOND EXECUTION)" entries above describe rewriting `SttInternalController` onto a dedicated `SttInternalServiceTokenGuard` — `git log --all` confirms that file/rewrite was never actually committed to any branch; the reconciliation commit (`e2e54c1f2`) kept the FIRST execution's reserved-`internal:stt:worker`-scope fix instead, which this session's own orchestrating instructions independently confirm is the deliberate, settled design ("do not fix it"), and which `api-key-scope-audit.ts`'s own `RESERVED_INTERNAL_SCOPE_CONTROLLERS` allow-list already documents and polices. Two assertions in `task-708-apikey-scope-contract.spec.ts`'s `/internal/stt/*` half were written for the never-landed guard design and failed on the first live run (10/12 passing) exactly as this discrepancy predicts; fixed both to assert the real behavior (ordinary tenant key → 403; the seeded SERVICE_ACCOUNT credential `apps/stt` actually presents → reaches the handler; garbage credential → 401) and re-ran live: **12/12 passing**. Also ran `api-key-auth.spec.ts` + `auth-guard-behavior.spec.ts` live (33/33 passing) and a fresh full package-level verification (`applications`: 493 files/9183 tests, 0 failures; `apps/api`: 211 files/2970 tests, 0 failures — both clean builds). No application code was changed — only the e2e spec and this README. §5's acceptance criteria are now all met with real evidence; Status → **Completed**. | Close-out pass agent |

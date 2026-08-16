@@ -23,6 +23,28 @@ export interface IAppConfig {
    */
   REGISTRATION_SELF_SIGNUP_ENABLED: boolean;
 
+  //=========== WORKFLOW EXPOSURE (TASK-722) ============//
+  /**
+   * R-1 kill-switch: the whole `/api/v1/workflows/:slug/…` public-invoke
+   * surface. OFF by default — design.md's precondition is that API-key
+   * scope enforcement (TASK-708) is verified end-to-end before this surface
+   * is enabled, and Temporal is not yet production-ready (R-2). Optional
+   * (unlike `REGISTRATION_SELF_SIGNUP_ENABLED`) so existing `IAppConfig`
+   * fixtures that predate this field stay valid — `undefined` is treated as
+   * `false` by every reader, same posture as an explicit `false`.
+   */
+  WORKFLOW_EXPOSURE_ENABLED?: boolean;
+  /**
+   * Decision #6 (R-8): may a workflow invoked through the PUBLIC exposure
+   * plane route to a cloud LLM provider (`isCloudByoProvider('llm', …)` —
+   * azure/bedrock/openai/anthropic/vertex)? OFF by default — public exposure
+   * inherits the strictest egress posture; a tenant must opt in explicitly.
+   * Platform-wide today (not yet per-tenant — see the ticket README §7 for
+   * why a per-tenant entitlement column was deliberately not built ahead of
+   * any node type that could actually select a cloud provider).
+   */
+  WORKFLOW_EXPOSURE_ALLOW_CLOUD_PROVIDERS?: boolean;
+
   //=========== INTERNAL SERVICES ============//
   PORT: string;
   URL: string;

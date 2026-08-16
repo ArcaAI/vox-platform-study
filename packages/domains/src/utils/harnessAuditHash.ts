@@ -16,7 +16,11 @@ import { createHash } from 'node:crypto';
 /** Canonical fields hashed for a single audit event (everything except `hash`). */
 export interface HarnessAuditHashInput {
   tenantId: string;
-  consultationId: string;
+  // NULLABLE (TASK-712, consent-abac Phase 4): CONSENT_GIVEN/CONSENT_WITHDRAWN
+  // events have no consultation. Folded into the digest as `?? null` below,
+  // which is a no-op for every event that DOES carry one (i.e. every event
+  // that predates this change) — see the backward-compatibility test.
+  consultationId: string | null;
   contextItemVersionId?: string | null;
   action: string;
   modelName: string;
@@ -104,7 +108,7 @@ export function computeHarnessAuditHash(input: HarnessAuditHashInput): string {
   const canonical = canonicalJson({
     prevHash: input.prevHash,
     tenantId: input.tenantId,
-    consultationId: input.consultationId,
+    consultationId: input.consultationId ?? null,
     contextItemVersionId: input.contextItemVersionId ?? null,
     action: input.action,
     modelName: input.modelName,
@@ -128,7 +132,7 @@ export function computeHarnessAuditHash(input: HarnessAuditHashInput): string {
  */
 export interface HarnessAuditEventLike {
   tenantId: string;
-  consultationId: string;
+  consultationId?: string | null;
   contextItemVersionId?: string | null;
   action: string;
   modelName: string;
@@ -157,7 +161,7 @@ export interface HarnessAuditEventLike {
 export function toHarnessAuditChainRecord(event: HarnessAuditEventLike): HarnessAuditChainRecord {
   return {
     tenantId: event.tenantId,
-    consultationId: event.consultationId,
+    consultationId: event.consultationId ?? null,
     contextItemVersionId: event.contextItemVersionId ?? null,
     action: event.action,
     modelName: event.modelName,

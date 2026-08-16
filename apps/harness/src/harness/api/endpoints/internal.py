@@ -97,6 +97,11 @@ class StartDocumentRequest(BaseModel):
     job_id: str | None = Field(default=None, alias="jobId")
     correlation_id: str | None = Field(default=None, alias="correlationId")
     context_item_id: str | None = Field(default=None, alias="contextItemId")
+    # TASK-712 (consent-abac Phase 4) — Consultation.patientId, so
+    # call_mcp_tool/retrieve_context can key a consent-gate lookup. Optional
+    # (extra="ignore" + default None): an un-upgraded gateway caller omits it
+    # and those activities degrade to UNAVAILABLE rather than crash.
+    external_patient_id: str | None = Field(default=None, alias="externalPatientId")
     transcript_text: str = Field(default="", alias="transcriptText")
     conversation_language: str = Field(default="en", alias="conversationLanguage")
     dna_style_id: str | None = Field(default=None, alias="dnaStyleId")
@@ -241,6 +246,7 @@ async def start_document(
         correlation_id=body.correlation_id,
         context_item_id=body.context_item_id,
         transcript_text=body.transcript_text,
+        external_patient_id=body.external_patient_id,
         conversation_language=body.conversation_language,
         dna_style_id=body.dna_style_id,
         template=body.template,

@@ -1,0 +1,25 @@
+-- Consent & ABAC (TASK-712) — Phase 4 follow-up: give
+-- HarnessAuditAction.CONSENT_GIVEN / CONSENT_WITHDRAWN real writers.
+--
+-- HarnessAuditEvent.consultationId was NOT NULL because every writer to date
+-- was an AI-generation event tied to a consultation (GENERATE / ATTEST /
+-- SAFETY_OVERRIDE / ...). A consent grant/revoke has no consultation —
+-- `ConsentGrant` is keyed on (tenantId, externalPatientId, purpose) — so it
+-- cannot supply one. This migration only WIDENS the column (DROP NOT NULL);
+-- every existing row keeps its non-null value untouched.
+--
+-- HASH-COMPATIBILITY (ticket README Pitfall 1 / R2): `consultationId` is a
+-- canonical hash-chain input (`packages/domains/src/utils/harnessAuditHash.ts`).
+-- The hash function now folds `consultationId ?? null` into the digest instead
+-- of `consultationId` directly — for every row that HAS a consultationId (i.e.
+-- every row that exists before this migration) `x ?? null` evaluates to the
+-- exact same string, so the digest is byte-identical. New consent rows write
+-- `consultationId: null`, hashing as JSON `null`, which no pre-existing row's
+-- digest ever collided with (a real consultationId is always a non-empty
+-- string). Proven by the backward-compatibility case in
+-- `packages/domains/src/utils/harnessAuditHash.test.ts` (a fixed golden hash
+-- literal, unchanged by this widening).
+--
+-- BACKWARD COMPATIBLE: additive-only constraint relaxation. No column, index,
+-- or enum is added/dropped/renamed.
+ALTER TABLE "core"."HarnessAuditEvent" ALTER COLUMN "consultationId" DROP NOT NULL;

@@ -116,6 +116,8 @@ export const API_KEY_SCOPE_REGISTRY: Record<string, ScopeDefinition> = {
   'admin:tenant-tts-config:manage': { description: 'Manage tenant TTS configuration', category: 'Admin' },
   'admin:workflow-run:read': { description: 'Read admin workflow runs', category: 'Admin' },
   'admin:workflow-test-fixture:manage': { description: 'Manage workflow test fixtures', category: 'Admin' },
+  'admin:workflow-definition:manage': { description: 'Author, validate and publish workflow definitions', category: 'Admin' },
+  'admin:workflow-node:read': { description: 'Read the code-owned workflow node-type registry', category: 'Admin' },
 
   // Workflow exposure plane (TASK-722). Prefix-matching (apikey.service.ts's
   // hasScope) means a key holding the bare `"workflow"` scope would grant all

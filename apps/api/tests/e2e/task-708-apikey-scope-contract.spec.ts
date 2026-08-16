@@ -25,12 +25,34 @@
  *     `admin:tenant:write`-scoped key still succeeds. This replaces the
  *     loose `[200, 400, 401, 403]` tolerance in `api-key-auth.spec.ts`.
  *
+ *  3. "/internal/stt/*" (`SttInternalController`) — the SETTLED design
+ *     (confirmed against the live tree at close-out; do not re-derive from
+ *     an aspirational README draft): this controller is gated by the
+ *     RESERVED `internal:stt:worker` `@RequiredScopes` scope, NOT a
+ *     dedicated service-token guard — `/admin/*` and `/internal/*` were
+ *     deliberately closed by two DIFFERENT mechanisms (owner decision,
+ *     `docs/implementation/TASK-708-Apikey-Scope-Verification/README.md`
+ *     §6), but `/internal/stt/*` is the one documented, POLICED exception
+ *     to "/internal/* is guard-only": the STT worker authenticates with an
+ *     ordinary API key (BUG-013 — `apps/stt/src/stt/worker.py:209` sends its
+ *     seeded SERVICE_ACCOUNT key's raw value as `X-Internal-Service-Key`,
+ *     which `ApiKeyService.extractApiKeyFromRequest` accepts as an ordinary
+ *     API-key header), so it cannot be pulled fully off the API-key surface
+ *     the way `HarnessInternalController`/`EffectiveConfigController` are.
+ *     `RESERVED_INTERNAL_SCOPE_CONTROLLERS` in
+ *     `apps/api/src/bootstrap/api-key-scope-audit.ts` names this exemption
+ *     and polices it (boot fails if the reserved scope is ever removed
+ *     without also moving the controller to a guard). An ordinary tenant
+ *     key without the reserved scope is 403'd; the seeded SERVICE_ACCOUNT
+ *     key (and any platform `'*'`-wildcard key, by the same wildcard
+ *     semantics proven in half 2) reaches the handler.
+ *
  * Prerequisites: API server running against the test DB
  * (`pnpm test:up:api`), seeded (`pnpm test:db:seed`).
  */
 
 import { test, expect, type APIRequestContext } from '@playwright/test';
-import { SEEDED_USERS, DEFAULT_TENANT_KEY, loginUser } from '../../../../tests/helpers';
+import { SEEDED_USERS, DEFAULT_TENANT_KEY, SEEDED_API_KEY, SEEDED_API_KEY_SERVICE_ACCOUNT, loginUser } from '../../../../tests/helpers';
 
 interface CreatedApiKey {
   id: string;
@@ -228,44 +250,51 @@ test.describe('TASK-708 — API-key scope contract (locks in current behavior)',
   });
 
   // ==========================================================================
-  // Half 3 — "/internal/* off the API-key surface entirely" (SttInternalController)
+  // Half 3 — "/internal/stt/* gated by the reserved `internal:stt:worker`
+  // scope" (SttInternalController) — see the file-header doc comment for why
+  // this is the settled design, not a dedicated service-token guard.
   // ==========================================================================
 
-  test.describe('/internal/stt/* (SttInternalController): fully off the API-key surface, not scoped', () => {
-    test('the platform "*" wildcard API key cannot reach it at all (401, not a scope 403)', async ({ request }) => {
-      // Before TASK-708, `x-internal-service-key` doubled as an ordinary
-      // API-key header (`ApiKeyService.extractApiKeyFromRequest`), so even the
-      // platform's own bare `["*"]`-scoped key would have reached this route
-      // via `X-API-Key`. `@Public()` now short-circuits `UnifiedAuthGuard`
-      // before it ever inspects an API key on this controller — so a `*` key
-      // gets exactly the same 401 an unauthenticated caller would, never a
-      // scope-shaped 403.
-      const key = await createScopedApiKey(request, adminToken, ['*'], 'task-708-internal-stt-wildcard');
-      createdApiKeyIds.push(key.id);
-
+  test.describe('/internal/stt/* (SttInternalController): gated by the reserved internal:stt:worker scope', () => {
+    test('an ordinary tenant SDK key (no internal:stt:worker, no wildcard) is 403 — cannot reach it at all', async ({ request }) => {
+      // SEEDED_API_KEY is an ordinary DOCTOR-owned SDK key with no
+      // `internal:*` scope — proves the gap-closure this ticket delivered:
+      // before TASK-708, `x-internal-service-key` doubled as an ordinary
+      // API-key header (`ApiKeyService.extractApiKeyFromRequest`), so ANY
+      // active tenant key reached this controller. `@RequiredScopes('internal:stt:worker')`
+      // now 403s it, exactly like every other scope-gated route in half 1.
       const response = await request.get('/api/v1/internal/stt/jobs/00000000-0000-0000-0000-000000000000/status', {
-        headers: { 'X-API-Key': key.rawKey, Accept: 'application/json' },
+        headers: { 'X-API-Key': SEEDED_API_KEY, Accept: 'application/json' },
       });
 
-      expect(response.status()).toBe(401);
+      expect(response.status()).toBe(403);
+      const body = await response.json();
+      expect(body.message).toContain('API key does not have required scope(s): internal:stt:worker');
     });
 
-    test('the platform gateway secret (X-Internal-Service-Key) reaches the handler (404 for a nonexistent job)', async ({ request }) => {
-      const gatewayKey = process.env.API_GATEWAY_KEY;
-      test.skip(!gatewayKey, 'API_GATEWAY_KEY not set in this environment — cannot exercise the positive path');
-
+    test("the seeded SERVICE_ACCOUNT key (the STT worker's own credential) reaches the handler (404 for a nonexistent job)", async ({ request }) => {
+      // This is the actual credential `apps/stt/src/stt/worker.py:209` presents
+      // (BUG-013 — the worker's own registered ACTIVE SERVICE_ACCOUNT ApiKey raw
+      // value, sent as `X-Internal-Service-Key`, NOT the platform `API_GATEWAY_KEY`
+      // secret — those are two different values; `API_GATEWAY_KEY` gates a
+      // different guard, `InternalServiceTokenGuard`, on a different controller).
+      // Its seeded scopes are `['*']`, which satisfies the reserved
+      // `internal:stt:worker` scope via `ApiKeyService.hasScope`'s wildcard match —
+      // the same wildcard semantics half 2 proves for `/admin/tenants`.
       const response = await request.get('/api/v1/internal/stt/jobs/00000000-0000-0000-0000-000000000000/status', {
-        headers: { 'X-Internal-Service-Key': gatewayKey as string, Accept: 'application/json' },
+        headers: { 'X-Internal-Service-Key': SEEDED_API_KEY_SERVICE_ACCOUNT, Accept: 'application/json' },
       });
 
-      // Reaches the handler (a real, if 404, response) — proves the guard
-      // admits the correct credential, not just that it rejects everything.
+      // Reaches the handler (a real, if 404, response) — proves the scope
+      // gate admits the correct credential, not just that it rejects everything.
       expect(response.status()).toBe(404);
     });
 
-    test('a wrong X-Internal-Service-Key value is rejected (401, fail-closed)', async ({ request }) => {
+    test('a wrong X-Internal-Service-Key value is rejected (401 — it is an ordinary API-key header, and the value is not a registered key)', async ({
+      request,
+    }) => {
       const response = await request.get('/api/v1/internal/stt/jobs/00000000-0000-0000-0000-000000000000/status', {
-        headers: { 'X-Internal-Service-Key': 'definitely-not-the-gateway-secret', Accept: 'application/json' },
+        headers: { 'X-Internal-Service-Key': 'definitely-not-a-registered-api-key', Accept: 'application/json' },
       });
 
       expect(response.status()).toBe(401);

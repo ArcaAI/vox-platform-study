@@ -47,6 +47,7 @@
     "@arcaai/json-schema-subset": "workspace:*",
     "@arcaai/types": "workspace:*",
     "@arcaai/utils": "workspace:*",
+    "@arcaai/workflow-contract": "workspace:*",
     "@aws-sdk/client-s3": "^3.1111.0",
     "@aws-sdk/s3-request-presigner": "^3.1111.0",
     "@azure/msal-node": "^5.5.0",

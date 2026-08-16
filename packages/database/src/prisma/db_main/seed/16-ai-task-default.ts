@@ -14,7 +14,7 @@ import { SYSTEM_TENANT_ID, SYSTEM_USER_ID } from './00-constants';
  * - nlp.diagnosis → symps-disease-bert-v3-c41 (TEXT_CLASSIFICATION row — )
  * - guardrail.safety → gliner-guard-uniencoder-onnx (TOKEN_CLASSIFICATION row — )
  * - guardrail.groundedness → minicheck-flan-t5-large (TEXT_CLASSIFICATION row — )
- * - harness.judge → lms-gemma-4-e2b-it-qat (TEXT_GENERATION row)
+ * - harness.judge → lms-gemma-4-e4b (TEXT_GENERATION row; owner directive 2026-08-16)
  *
  * Resolution at runtime (AiTaskDefaultService.getEffective): tenant row →
  * SYSTEM row → consuming service's env fallback.
@@ -130,13 +130,23 @@ export const SYSTEM_AI_TASK_DEFAULTS: AiTaskDefaultSeed[] = [
     id: '86000000-0000-0000-0000-000000000008',
     tenantId: SYSTEM_TENANT_ID,
     taskKey: 'harness.judge',
-    // Repointed off `lms-gemma-4-e4b`, whose sourceUri carried the
-    // `google/gemma-4-e4b` typo (LM Studio serves `google/gemma-4-e4b-qat`),
-    // so every judge call 404d. A global admin already made this same change
-    // in the live DB (v1→v2); this line only decides what a COLD seed writes —
-    // `seedAiTaskDefault` below is CREATE-ONLY, so a re-seed against an
-    // existing row changes nothing either way.
-    modelSlug: 'lms-gemma-4-e2b-it-qat',
+    // OWNER DIRECTIVE 2026-08-16: "do not use llama.cpp for judgement, we use
+    // LM Studio and google/gemma-4-e4b". This row IS the runtime judgement path
+    // (the inferential sensor resolves the `harness.judge` AiTaskDefault, not
+    // `JudgeConfig.model`'s code default), so it carries the directive.
+    //
+    // An earlier pass repointed this to `lms-gemma-4-e2b-it-qat` because
+    // `lms-gemma-4-e4b`'s sourceUri then read `google/gemma-4-e4b-qat` — an id
+    // LM Studio has never served, so every judge call 404d. That sourceUri has
+    // since been corrected to `google/gemma-4-e4b`, which the live instance DOES
+    // serve (verified 2026-08-16, ai-models/llm.ts), so the reason for the
+    // repoint no longer holds and it is reverted here.
+    //
+    // Latency note: e4b is the larger model (~90s/call observed vs e2b's
+    // faster turn). That is the owner's accepted trade for judgement quality;
+    // it is why the eval gate's CI-provisioning path is still an open choice.
+    // `seedAiTaskDefault` is CREATE-ONLY, so this only decides a COLD seed.
+    modelSlug: 'lms-gemma-4-e4b',
   },
 ];
 
