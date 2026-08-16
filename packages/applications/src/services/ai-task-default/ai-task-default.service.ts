@@ -17,21 +17,36 @@ import { isSuperAdmin } from '../../common/tenant-guards';
 import { IActiveUserContext } from '../../interfaces';
 import { IAiTaskDefaultService } from './IAiTaskDefaultService';
 import { AiTaskDefaultDtoMapper } from './ai-task-default.dto.mapper';
-import { AI_TASK_KEYS, AI_TASK_MODEL_TASK_TYPES, AiTaskKey, GLOBAL_ADMIN_ONLY_TASK_PREFIXES, isGlobalAdminOnlyTaskKey } from './constants';
+import {
+  AI_TASK_KEYS,
+  AI_TASK_MODEL_TASK_TYPES,
+  AiTaskKey,
+  GLOBAL_ADMIN_ONLY_TASK_PREFIXES,
+  isGlobalAdminOnlyTaskKey,
+  isGuardrailTaskKey,
+} from './constants';
 import { AiTaskDefaultResponse, EffectiveAiTaskDefaultResponse, UpsertAiTaskDefaultRequest } from './dto';
 
 /**
  * "Default model for task X" service.
  *
- * Effective resolution for SUPER_ADMIN-only keys (`guardrail.*`, `nlp.*`,
- * `harness.*`) is SYSTEM-row-only (tenant override rows are ignored at read
- * time). Writes to those prefixes require SUPER_ADMIN → `ForbiddenException`
- * (403). This is deliberately NOT the 404-over-403 tenancy posture: the rule
- * is a privilege boundary on a key the caller can already read, not a
- * cross-tenant existence probe.
+ * Effective resolution for SUPER_ADMIN-only keys (`nlp.*`, `harness.*`) is
+ * SYSTEM-row-only (tenant override rows are ignored at read time). Writes to
+ * those prefixes require SUPER_ADMIN → `ForbiddenException` (403). This is
+ * deliberately NOT the 404-over-403 tenancy posture: the rule is a privilege
+ * boundary on a key the caller can already read, not a cross-tenant existence
+ * probe.
  *
- * `smr.*` is tenant-admin configurable: those keys honour per-tenant
- * override rows at read time and accept tenant writes.
+ * `smr.*` and, as of TASK-735 Phase 0 (owner decision 2026-08-16),
+ * `guardrail.*` are tenant-admin configurable: those keys honour per-tenant
+ * override rows at read time and accept tenant writes. `guardrail.*` carries
+ * an ADDITIONAL platform floor on top of that (D2, tighten-only): a write
+ * targeting a non-SYSTEM tenant must resolve `modelSlug` to a SYSTEM-tenant
+ * `AiModel` row (the platform-approved list) — see `assertGuardrailModelApproved`.
+ * A `featureGuardrailModelSelection` entitlement ceiling is catalogued
+ * (`settings-registry/descriptors/entitlements.descriptors.ts`) but NOT yet
+ * enforced here — it needs a `PlanEntitlement`/`TenantEntitlement` DB column
+ * outside this ticket's file scope (see the TASK-735 ticket README §7).
  */
 @Injectable()
 export class AiTaskDefaultService extends BaseService implements IAiTaskDefaultService {
@@ -89,16 +104,27 @@ export class AiTaskDefaultService extends BaseService implements IAiTaskDefaultS
   async upsertRow(taskKey: string, dto: UpsertAiTaskDefaultRequest, tenantId?: string): Promise<AiTaskDefaultResponse> {
     this.assertKnownTaskKey(taskKey);
 
-    // GOVERNANCE: guardrail / nlp / harness model routing is exclusively
-    // global-admin-managed (SMR is tenant-configurable — ). A privilege
-    // rule — 403, not 404 (the caller can already READ these keys; only writes
-    // are gated).
+    // GOVERNANCE: nlp / harness model routing is exclusively global-admin-managed
+    // (smr.* and, since TASK-735, guardrail.* are tenant-configurable — see the
+    // class doc comment). A privilege rule — 403, not 404 (the caller can
+    // already READ these keys; only writes are gated).
     if (GLOBAL_ADMIN_ONLY_TASK_PREFIXES.some((p) => taskKey.startsWith(p)) && !isSuperAdmin(this.requestUser)) {
       throw new ForbiddenException(`AI task '${taskKey}' is managed by global administrators only.`);
     }
 
     const scopedTenantId = this.resolveScopedTenantId(tenantId);
     const tx = this.crossTenantLane(scopedTenantId);
+
+    // TASK-735 Phase 0 (D2, tighten-only) — guardrail platform floor: a
+    // binding for a non-SYSTEM tenant must name a slug on the platform-
+    // approved list (a SYSTEM-tenant AiModel row), regardless of whether the
+    // caller also holds a tenant-owned model of the same slug. Writing the
+    // SYSTEM row itself (global-admin defining the approved list) is exempt.
+    // This is a 403 privilege boundary — not the 404-over-403 tenancy posture
+    // and not a silent clamp to some other slug.
+    if (isGuardrailTaskKey(taskKey) && scopedTenantId !== SYSTEM_TENANT_ID) {
+      await this.assertGuardrailModelApproved(taskKey, dto.modelSlug, tx);
+    }
 
     // The slug must resolve to an ENABLED AiModel in [tenant, SYSTEM] whose
     // taskType matches the task key's compatibility mapping.
@@ -203,6 +229,23 @@ export class AiTaskDefaultService extends BaseService implements IAiTaskDefaultS
       throw new BadRequestException('Tenant ID is required');
     }
     return scoped;
+  }
+
+  /**
+   * TASK-735 Phase 0 (D2) — the guardrail platform floor. Throws
+   * `ForbiddenException` unless `slug` resolves to an ENABLED, SYSTEM-tenant
+   * `AiModel` row. Deliberately independent of `resolveEnabledModelBySlug`:
+   * that method also accepts a TENANT-owned row for the same slug, which
+   * would let a tenant register their own unvetted model under a guardrail
+   * task key — exactly what the platform-approved-list floor exists to stop.
+   */
+  private async assertGuardrailModelApproved(taskKey: string, slug: string, tx?: CoreDatabaseService['baseClient']): Promise<void> {
+    const approved = await this.aiModelRepository.findBySlug(SYSTEM_TENANT_ID, slug, tx);
+    if (!approved) {
+      throw new ForbiddenException(
+        `Model slug '${slug}' is not on the platform-approved list for '${taskKey}'. Guardrail model selection is limited to models registered in the platform (SYSTEM) catalog.`,
+      );
+    }
   }
 
   /**

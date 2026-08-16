@@ -25,8 +25,8 @@ from harness.eval.judge.providers import (
 class TestDefaults:
     def test_default_provider_is_local_openai_compatible(self, monkeypatch):
         # Isolate from any ambient .env (dev/CI may redirect the judge to a
-        # different endpoint/model, e.g. a local Ollama); this asserts the
-        # in-code default, not the operator's environment override.
+        # different endpoint/model, e.g. a different local vLLM); this asserts
+        # the in-code default, not the operator's environment override.
         for var in (
             "HARNESS_JUDGE_PROVIDER",
             "HARNESS_JUDGE_MODEL",
@@ -44,6 +44,13 @@ class TestDefaults:
     def test_default_model_is_small(self):
         # The default judge is a small (≤20B) self-hosted model (honours D3).
         assert "70b" not in JudgeConfig().model.lower()
+
+    def test_default_model_is_the_canonical_lm_studio_id(self, monkeypatch):
+        # TASK-736 R2: gemma-4-e2b-it-qat is the owner-standardized single model
+        # resident in LM Studio (verified served by the live dev instance,
+        # 2026-08-16) — applied everywhere including harness.judge.
+        monkeypatch.delenv("HARNESS_JUDGE_MODEL", raising=False)
+        assert JudgeConfig().model == "gemma-4-e2b-it-qat"
 
 
 class TestProviderSelection:
@@ -70,6 +77,15 @@ class TestProviderSelection:
     def test_unknown_provider_raises(self):
         with pytest.raises((ValueError, TypeError)):
             build_judge_client(JudgeConfig(provider="totally-not-a-provider"))  # type: ignore[arg-type]
+
+    def test_ollama_provider_no_longer_exists(self):
+        # TASK-736 R1: Ollama is removed entirely — "ollama" is no longer a
+        # member of JudgeProvider, so it must fail the same way as any other
+        # unrecognized provider string (fail-fast, not silently accepted).
+        with pytest.raises(ValueError):
+            JudgeProvider("ollama")
+        with pytest.raises((ValueError, TypeError)):
+            build_judge_client(JudgeConfig(provider="ollama"))  # type: ignore[arg-type]
 
     # production engines: vllm / llama-cpp are first-class judge
     # providers, both served over the OpenAI-compatible client (they speak the
@@ -155,7 +171,7 @@ class TestJsonResponseFormat:
 
     @pytest.mark.asyncio
     async def test_json_object_format_is_passed_through(self):
-        cfg = JudgeConfig(model="google/gemma-4-e4b")  # e.g. Ollama/vLLM backend
+        cfg = JudgeConfig(model="google/gemma-4-e4b")  # e.g. a vLLM backend
         cfg.openai_compat.json_response_format = "json_object"
         client = OpenAICompatJudgeClient(cfg)
         captured = self._patch_capture(client)

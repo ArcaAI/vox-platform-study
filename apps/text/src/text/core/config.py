@@ -20,8 +20,8 @@ as informational metadata for the ``/providers`` listing. Provider/model
 SELECTION is ``failMode=closed``: a cloud generate request that resolves no
 model raises ``ModelNotSelectedError`` (``providers/base.py`` ``require_model``)
 instead of silently substituting a vendor model. Local/built-in engines
-(``OllamaConfig``, ``OpenAICompatConfig``, ``VllmConfig``, ``LlamaCppConfig``)
-are unaffected — their model default is acceptable built-in topology.
+(``OpenAICompatConfig``, ``VllmConfig``, ``LlamaCppConfig``) are unaffected —
+their model default is acceptable built-in topology.
 """
 
 from __future__ import annotations
@@ -39,29 +39,6 @@ _SETTINGS_ALIASES = SettingsConfigDict(
     env_prefix_target="all",
     populate_by_name=True,
 )
-
-
-class OllamaConfig(BaseSettings):
-    """Ollama provider configuration."""
-
-    # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
-    settings_customise_sources = hope_settings_sources
-
-    model_config = SettingsConfigDict(env_prefix="TEXT_OLLAMA_")
-
-    base_url: str = "http://localhost:11434"
-    # An OLLAMA-format tag, not a Hugging Face path. This read
-    # `google/gemma-4-e4b` — an id no Ollama has ever served, copied from the
-    # LM Studio config below, which was itself wrong (see OpenAICompatConfig).
-    # Note in-cluster Ollama was retired in favour of LM Studio, so this default
-    # is currently unreachable in the deployed topology; it is corrected rather
-    # than removed because the provider is still a supported local engine.
-    default_model: str = "gemma4:e2b-it-qat"
-    # Bootstrap fallback; runtime value comes from the control plane
-    # (effective-config). Applies to `timeout_s` and `max_concurrent` below.
-    timeout_s: int = 300
-    max_concurrent: int = 4
-    queue_backoff_s: float = 2.0
 
 
 class AzureOpenAIConfig(BaseSettings):
@@ -311,8 +288,8 @@ class TeiEmbedConfig(BaseSettings):
     """`tei-embed` (HuggingFace text-embeddings-inference) provider configuration.
 
     Local, self-hosted embedding engine — same "always available, no ENABLE
-    flag" convention as the other local engines (Ollama/LM Studio/vLLM/
-    llama.cpp): a topology-level default `base_url` is always present, so
+    flag" convention as the other local engines (LM Studio/vLLM/llama.cpp):
+    a topology-level default `base_url` is always present, so
     `_register_provider_factories` (`main.py`) registers it unconditionally
     (TASK-725 §2.7: `text` has no embedding capability today; this is net
     new). Targets TEI's native `/embed` REST contract (`POST /embed` with
@@ -373,6 +350,38 @@ class ExternalGuardrailConfig(BaseSettings):
     require_medical: bool = True
     include_reasoning: bool = False
     service_token: SecretStr = SecretStr("")
+
+
+class JudgeConfig(BaseSettings):
+    """Resource budget for the INTERNAL judge lane (``/generate/internal/judge``).
+
+    A separate budget, not a separate mechanism: the judge lane uses the same
+    ``ResizableSemaphore`` and ``CircuitBreaker`` classes as the user-facing
+    path, keyed by the same provider names, in its OWN dicts on ``app.state``.
+    That is the whole isolation guarantee — a saturated user-facing pool cannot
+    starve a safety-plane judgement, and a wedged judge call cannot eat the
+    user-facing budget.
+
+    Deliberately small by default: judgement calls are short, and an unbounded
+    safety lane would just relocate the saturation problem. A judge call that
+    cannot get a permit within ``acquire_timeout_s`` fails fast with a 503 rather
+    than queueing — guardrail owns the retry budget for the safety plane, and
+    queueing here would add latency to a call that is already on the critical
+    path of a user-facing generation.
+
+    Same tier as ``QueueConfig``/``CircuitBreakerConfig``: bootstrap fallbacks.
+    """
+
+    # Init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    settings_customise_sources = hope_settings_sources
+
+    model_config = SettingsConfigDict(env_prefix="TEXT_JUDGE_")
+
+    max_concurrent: int = 2
+    acquire_timeout_s: float = 5.0
+    timeout_s: int = 60
+    failure_threshold: int = 5
+    recovery_timeout_s: float = 30.0
 
 
 class TelemetryPhiGuardConfig(BaseSettings):
@@ -567,7 +576,6 @@ class Settings(BaseSettings):
     )
 
     # Sub-configs (loaded from their own env prefixes)
-    ollama: OllamaConfig = Field(default_factory=OllamaConfig)
     azure: AzureOpenAIConfig = Field(default_factory=AzureOpenAIConfig)
     bedrock: BedrockConfig = Field(default_factory=BedrockConfig)
     openai: OpenAIConfig = Field(default_factory=OpenAIConfig)
@@ -586,6 +594,9 @@ class Settings(BaseSettings):
     redis: RedisConfig = Field(default_factory=RedisConfig)
     circuit_breaker: CircuitBreakerConfig = Field(default_factory=CircuitBreakerConfig)
     queue: QueueConfig = Field(default_factory=QueueConfig)
+    # Resource budget for the internal judge lane — separate from the
+    # user-facing pool knobs above by design (see `JudgeConfig`).
+    judge: JudgeConfig = Field(default_factory=JudgeConfig)
 
     # Per-provider cap for the `/providers` LISTING probe only
     # (never generation). One hung engine must not stall the endpoint: the
@@ -598,7 +609,7 @@ class Settings(BaseSettings):
     )
 
     # Model retention hint forwarded to SERVER-MANAGED engines
-    # (Ollama `keep_alive`, LM Studio `ttl`). SMR holds no weights of its own, so
+    # (LM Studio `ttl`). SMR holds no weights of its own, so
     # this is propagation, not a cache.
     #
     # BOOTSTRAP FALLBACK ONLY — the runtime value comes from the control plane

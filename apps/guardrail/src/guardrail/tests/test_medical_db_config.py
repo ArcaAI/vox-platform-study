@@ -14,7 +14,7 @@ from fastapi import HTTPException
 
 from guardrail.core.config import Settings
 from guardrail.core.dependencies import get_resolved_guardian_provider
-from guardrail.core.tenant_config import GuardrailTenantConfig
+from guardrail.core.tenant_config import GuardrailTenantConfig, TenantSelectionVetoedError
 from guardrail.providers.openai_compat import OpenAICompatGuardianProvider
 
 
@@ -32,6 +32,17 @@ class _StubResolver:
     async def resolve(self, tenant_id):  # noqa: ANN001
         self.seen_tenant = tenant_id
         return self.cfg
+
+
+class _VetoStubResolver:
+    """Stands in for a resolver whose tenant row is DISABLED (a veto)."""
+
+    def __init__(self) -> None:
+        self.seen_tenant: str | None = "<unset>"
+
+    async def resolve(self, tenant_id):  # noqa: ANN001
+        self.seen_tenant = tenant_id
+        raise TenantSelectionVetoedError(tenant_id=tenant_id, task_key="guardrail.validate")
 
 
 def _env_provider(settings: Settings) -> OpenAICompatGuardianProvider:
@@ -58,7 +69,7 @@ async def test_db_config_disabled_returns_env_provider() -> None:
         guardian_provider=env_provider,
         http_client=object(),
         tenant_config_resolver=_StubResolver(
-            GuardrailTenantConfig(provider="ollama", model="should-not-be-used")
+            GuardrailTenantConfig(provider="azure", model="should-not-be-used")
         ),
     )
     resolved = await get_resolved_guardian_provider(_FakeRequest(state))  # type: ignore[arg-type]
@@ -107,6 +118,29 @@ async def test_db_config_enabled_empty_config_fails_closed_503() -> None:
         await get_resolved_guardian_provider(_FakeRequest(state))  # type: ignore[arg-type]
 
     assert exc_info.value.status_code == 503
+
+
+@pytest.mark.asyncio
+async def test_db_config_enabled_vetoed_tenant_fails_closed_503() -> None:
+    # Tenant-first resolution (TASK-735 Phase 1): a DISABLED tenant row is a
+    # VETO — 503, never a silent fold-through to the SYSTEM/env engine.
+    settings = Settings()
+    settings.db.db_config_enabled = True
+    env_provider = _env_provider(settings)
+    resolver = _VetoStubResolver()
+
+    state = SimpleNamespace(
+        settings=settings,
+        guardian_provider=env_provider,
+        http_client=object(),
+        tenant_config_resolver=resolver,
+    )
+    request = _FakeRequest(state, headers={"X-Tenant-Id": "tenant-123"})
+    with pytest.raises(HTTPException) as exc_info:
+        await get_resolved_guardian_provider(request)  # type: ignore[arg-type]
+
+    assert exc_info.value.status_code == 503
+    assert resolver.seen_tenant == "tenant-123"
 
 
 @pytest.mark.asyncio

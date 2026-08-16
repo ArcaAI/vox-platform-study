@@ -15,12 +15,11 @@ from guardrail.core.dependencies import (
     get_resolved_guardian_provider,
     get_settings,
 )
-from guardrail.providers.guardian import GuardianProvider
 from guardrail.providers.openai_compat import OpenAICompatGuardianProvider
 
 router = APIRouter()
 
-GuardianLike = GuardianProvider | OpenAICompatGuardianProvider
+GuardianLike = OpenAICompatGuardianProvider
 
 
 class MedicalValidationRequest(BaseModel):

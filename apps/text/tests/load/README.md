@@ -6,7 +6,7 @@ Load tests for the SMR text generation service to verify resilience features und
 
 - **Locust** installed (`pip install locust` or `uv pip install locust`)
 - **SMR** running on port 8862
-- **Ollama** running with a model (e.g. `gemma3` or `llama3.2`) for generate requests
+- **LM Studio** running with a model (e.g. `gemma-4-e2b-it-qat`) for generate requests
 - **Redis** running (required by SMR for task management)
 
 ## Installation

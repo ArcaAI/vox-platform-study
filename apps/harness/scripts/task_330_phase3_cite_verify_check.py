@@ -5,15 +5,16 @@ REAL models, against the LIVE seeded tenant-A hypertension chunk:
 
   retrieve (live hybrid: bge-m3 + Qdrant + TEI reranker)
     -> build_strict_citations_block   (REAL prompt block)
-    -> generate SOAP note              (Ollama gemma3:latest == HARNESS_SMR_MODEL)
+    -> generate SOAP note              (LM Studio gemma-4-e2b-it-qat == HARNESS_SMR_MODEL)
     -> NER over note + transcript      (REAL NlpClient, :8864)
     -> build_citations_map             (REAL strict [[kb:]] parser, hallucinated ids dropped)
     -> CitationVerifySensor.arun       (REAL sensor + REAL LM Studio judge, threshold 0.8)
 
-The generation model is invoked directly over Ollama's chat API — it is the SAME
-model id the harness SMR activity calls (apps/harness/.env HARNESS_SMR_PROVIDER=ollama,
-HARNESS_SMR_MODEL=gemma3:latest); only the SMR HTTP wrapper is bypassed so we don't
-need the separate :8872 live-verification SMR instance for this proof.
+The generation model is invoked directly over LM Studio's OpenAI-compatible chat API
+— it is the SAME model id the harness SMR activity calls (apps/harness/.env
+HARNESS_SMR_PROVIDER=lm-studio, HARNESS_SMR_MODEL=gemma-4-e2b-it-qat); only the SMR
+HTTP wrapper is bypassed so we don't need the separate :8872 live-verification SMR
+instance for this proof.
 
 Run:
   PYTHONPATH=apps/harness/src conda run -n arcaenv \
@@ -37,8 +38,8 @@ from harness.services.provenance import build_citations_map
 from harness.temporal.activities import _build_runtime_judge, _hybrid_retriever
 
 TENANT_A = "50000000-0000-0000-0000-000000000000"
-OLLAMA_CHAT = "http://localhost:11434/api/chat"
-TEXT_MODEL = "gemma3:latest"  # == HARNESS_SMR_MODEL
+LM_STUDIO_CHAT = "http://localhost:1234/v1/chat/completions"
+TEXT_MODEL = "gemma-4-e2b-it-qat"  # == HARNESS_SMR_MODEL
 
 # A hypertension follow-up consultation that topically overlaps the seeded
 # institutional protocol, so the retriever has something meaningful to cite.
@@ -76,7 +77,7 @@ _GEN_SYSTEM = (
 
 
 async def _generate_soap(block: str) -> dict:
-    """Generate a SOAP note (JSON) via Ollama gemma3 — the harness SMR model."""
+    """Generate a SOAP note (JSON) via LM Studio gemma-4-e2b-it-qat — the harness SMR model."""
     user = f"KNOWLEDGE CONTEXT:\n{block}\n\nCONSULTATION TRANSCRIPT:\n{TRANSCRIPT}"
     payload = {
         "model": TEXT_MODEL,
@@ -84,14 +85,13 @@ async def _generate_soap(block: str) -> dict:
             {"role": "system", "content": _GEN_SYSTEM},
             {"role": "user", "content": user},
         ],
-        "format": "json",
+        "temperature": 0.2,
         "stream": False,
-        "options": {"temperature": 0.2},
     }
     async with httpx.AsyncClient(timeout=180.0) as client:
-        resp = await client.post(OLLAMA_CHAT, json=payload)
+        resp = await client.post(LM_STUDIO_CHAT, json=payload)
         resp.raise_for_status()
-        content = resp.json()["message"]["content"]
+        content = resp.json()["choices"][0]["message"]["content"]
     data = json.loads(content)
     return {k: str(data.get(k, "")) for k in ("subjective", "objective", "assessment", "plan")}
 
@@ -116,10 +116,10 @@ async def main() -> None:
     print("\n=== 2. STRICT-CITATIONS BLOCK (real) ===")
     print("  " + block.splitlines()[0][:120] + " ...")
 
-    # 3) Generate the SOAP note (Ollama gemma3 == HARNESS_SMR_MODEL).
+    # 3) Generate the SOAP note (LM Studio gemma-4-e2b-it-qat == HARNESS_SMR_MODEL).
     soap = await _generate_soap(block)
     note_text = "\n".join(f"{k.upper()}: {v}" for k, v in soap.items())
-    print("\n=== 3. GENERATED SOAP NOTE (gemma3:latest) ===")
+    print("\n=== 3. GENERATED SOAP NOTE (gemma-4-e2b-it-qat) ===")
     for k, v in soap.items():
         print(f"  [{k}] {v[:240]}")
     cited_inline = any(f"[[kb:{cid}]]" in note_text for cid in chunk_ids)

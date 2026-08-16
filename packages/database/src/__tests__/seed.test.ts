@@ -2572,9 +2572,9 @@ describe('LLM Models Seed Data (consolidated matrix)', () => {
   const llmModels = DEFAULT_AI_MODELS.filter((m) => m.taskType === ModelTaskType.SUMMARIZATION || m.taskType === ModelTaskType.TEXT_GENERATION);
 
   describe('Provider Coverage', () => {
-    it('should include exactly 3 Ollama models', () => {
-      const ollamaModels = llmModels.filter((m) => m.tags.includes('ollama'));
-      expect(ollamaModels.length).toBe(3);
+    it('should include no Ollama models (TASK-736 — Ollama removed entirely)', () => {
+      const ollamaModels = llmModels.filter((m) => m.tags.includes('ollama') || (m as { provider?: string }).provider === 'ollama');
+      expect(ollamaModels.length).toBe(0);
     });
 
     it('should include exactly 6 LM Studio models', () => {
@@ -2602,8 +2602,8 @@ describe('LLM Models Seed Data (consolidated matrix)', () => {
       expect(llamaCppModels.length).toBe(1);
     });
 
-    it('should be exactly 13 LLM rows (9 owner-approved matrix + 2 self-host + 2 bedrock/judge)', () => {
-      expect(llmModels.length).toBe(13);
+    it('should be exactly 10 LLM rows (6 owner-approved matrix, Ollama retired by TASK-736 + 2 self-host + 2 bedrock/judge)', () => {
+      expect(llmModels.length).toBe(10);
     });
   });
 
@@ -2628,7 +2628,7 @@ describe('LLM Models Seed Data (consolidated matrix)', () => {
     it('should have the llm tag + a canonical provider on all LLM models', () => {
       llmModels.forEach((model) => {
         expect(model.tags).toContain('llm');
-        expect(['ollama', 'lm-studio', 'azure', 'vllm', 'llama-cpp', 'bedrock']).toContain((model as { provider?: string }).provider);
+        expect(['lm-studio', 'azure', 'vllm', 'llama-cpp', 'bedrock']).toContain((model as { provider?: string }).provider);
       });
     });
 
@@ -2636,21 +2636,6 @@ describe('LLM Models Seed Data (consolidated matrix)', () => {
       llmModels.forEach((model) => {
         expect(model.id).toMatch(/^80000000-0000-0000-0007-/);
       });
-    });
-  });
-
-  describe('Ollama Models', () => {
-    const EXPECTED_OLLAMA = [
-      ['ollama-gemma4-12b-mlx', 'gemma4:12b-mlx'],
-      ['ollama-gemma4-e2b-it-qat', 'gemma4:e2b-it-qat'],
-      ['ollama-qwen3.5-2b', 'qwen3.5:2b'],
-    ] as const;
-
-    it.each(EXPECTED_OLLAMA)('should include Ollama model %s (sourceUri %s)', (slug, sourceUri) => {
-      const model = llmModels.find((m) => m.slug === slug);
-      expect(model).toBeDefined();
-      expect(model?.tags).toContain('ollama');
-      expect(model?.sourceUri).toBe(sourceUri);
     });
   });
 
@@ -2689,7 +2674,7 @@ describe('LLM Models Seed Data (consolidated matrix)', () => {
 
   describe('Model Size Metadata', () => {
     it('should have memorySizeMb > 0 for local models', () => {
-      const localModels = llmModels.filter((m) => m.tags.includes('ollama') || m.tags.includes('lm-studio'));
+      const localModels = llmModels.filter((m) => m.tags.includes('lm-studio'));
       localModels.forEach((model) => {
         expect(model.memorySizeMb).toBeGreaterThan(0);
       });
@@ -2717,6 +2702,10 @@ describe('LLM Models Seed Data (consolidated matrix)', () => {
         'ollama-granite4-latest',
         'lms-qwen3.5-0.8b',
         'lms-gemma-4-e2b-it-sft-rlvr-medical',
+        // TASK-736 — Ollama removed entirely (owner directive 2026-08-16).
+        'ollama-gemma4-12b-mlx',
+        'ollama-gemma4-e2b-it-qat',
+        'ollama-qwen3.5-2b',
       ].forEach((slug) => {
         expect(DEFAULT_AI_MODELS.find((m) => m.slug === slug)).toBeUndefined();
       });

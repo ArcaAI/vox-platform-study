@@ -13,7 +13,7 @@ import {
 import { BadRequestException, Body, Controller, Get, Inject, Put, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiExtraModels, ApiHeader, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
-import { CanManage, CanRead, ExpectedVersion, RequiresIfMatch } from '../../decorators';
+import { CanManage, CanRead, ExpectedVersion, RequiresIfMatch, RequiredScopes } from '../../decorators';
 import { resolveScopedTenantId } from '../../shared/tenant-scope';
 
 /**
@@ -32,18 +32,29 @@ import { resolveScopedTenantId } from '../../shared/tenant-scope';
  *    `If-Match` (drift → 412, missing → 428).
  *
  * Tenant admins are pinned to their CLS tenant; global admins act cross-tenant
- * — incl. the SYSTEM-tenant platform default — via `?tenantId=`. GOVERNANCE
- * (owner directive 2026-07-17): writes under EVERY task-key prefix —
- * `guardrail.`, `smr.`, `nlp.`, `harness.` (GLOBAL_ADMIN_ONLY_TASK_PREFIXES in
- * `@arcaai/applications`) — are GLOBAL-ADMIN-ONLY. The SERVICE enforces it
- * with a `ForbiddenException` (a deliberate 403, not the 404-over-403 tenancy
- * posture: it is a privilege rule on a key the caller can already read, not a
- * cross-tenant existence probe). Tenant admins may READ the effective default
- * but cannot write any task key; runtime resolution uses the SYSTEM row only.
+ * — incl. the SYSTEM-tenant platform default — via `?tenantId=`. GOVERNANCE:
+ * writes under the `nlp.`, `harness.` task-key prefixes
+ * (GLOBAL_ADMIN_ONLY_TASK_PREFIXES in `@arcaai/applications`) are
+ * GLOBAL-ADMIN-ONLY. The SERVICE enforces it with a `ForbiddenException` (a
+ * deliberate 403, not the 404-over-403 tenancy posture: it is a privilege
+ * rule on a key the caller can already read, not a cross-tenant existence
+ * probe). Tenant admins may READ the effective default but cannot write those
+ * task keys; runtime resolution uses the SYSTEM row only.
+ *
+ * `smr.*` and, since TASK-735 Phase 0 (owner decision 2026-08-16, reversing
+ * the 2026-07-17 global-admin-only directive), `guardrail.*` are
+ * tenant-admin configurable — `getEffective` honours the tenant row and
+ * `upsertRow` accepts tenant writes for those keys. `guardrail.*` carries an
+ * ADDITIONAL platform floor on top of that (D2, tighten-only): a tenant
+ * write must name a `modelSlug` that resolves to a SYSTEM-tenant `AiModel`
+ * row (the platform-approved list) — also a `ForbiddenException`. A
+ * `featureGuardrailModelSelection` entitlement ceiling is catalogued but not
+ * yet enforced (needs a DB migration outside TASK-735 Phase 0's scope).
  */
 @ApiBearerAuth()
 @ApiTags('admin-ai-task-defaults')
 @ApiExtraModels(EffectiveAiTaskDefaultResponse)
+@RequiredScopes('admin:ai-task-default:manage')
 @Controller('admin/ai-task-defaults')
 export class AiTaskDefaultAdminController {
   constructor(
@@ -123,7 +134,9 @@ export class AiTaskDefaultAdminController {
     description:
       '`modelSlug` must resolve to an ENABLED AiModel in [tenant, SYSTEM] with a taskType compatible with the key. ' +
       '`If-Match` (RFC 7232) carries the version read from the prior GET — `"0"` creates the row, an existing version ' +
-      'CASes against `_version` (drift → 412, missing → 428). `guardrail.*` keys are GLOBAL-ADMIN-ONLY (403 for tenant admins).',
+      'CASes against `_version` (drift → 412, missing → 428). `nlp.*`/`harness.*` keys are GLOBAL-ADMIN-ONLY (403 for ' +
+      'tenant admins). `guardrail.*` is tenant-admin configurable (TASK-735), but the slug must resolve to a ' +
+      'SYSTEM-tenant AiModel row (the platform-approved list) — also 403 otherwise.',
   })
   @ApiQuery({ name: 'taskKey', required: true, enum: [...AI_TASK_KEYS] })
   @ApiQuery({ name: 'tenantId', required: false, description: 'Platform-admin only: target tenant.' })
@@ -135,7 +148,12 @@ export class AiTaskDefaultAdminController {
   })
   @ApiResponse({ status: 200, type: AiTaskDefaultResponse })
   @ApiResponse({ status: 400, description: 'Unknown task key, or a model slug that is unknown or incompatible with the task.' })
-  @ApiResponse({ status: 403, description: 'guardrail.* keys are global-admin-only (owner directive 2026-07-17).' })
+  @ApiResponse({
+    status: 403,
+    description:
+      'nlp.*/harness.* keys are global-admin-only. guardrail.* is tenant-admin configurable (TASK-735) but rejects a ' +
+      'modelSlug outside the platform-approved (SYSTEM-tenant) list.',
+  })
   @ApiResponse({ status: 412, description: 'Optimistic concurrency conflict — re-fetch and retry with the new version.' })
   @ApiResponse({ status: 428, description: 'If-Match header is required for this operation.' })
   async upsertRow(

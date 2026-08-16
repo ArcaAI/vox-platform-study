@@ -1,7 +1,7 @@
 """shared provider-contract suite (dev/prod parity).
 
 Parametrized over EVERY registered SMR provider (LM Studio / generic
-``openai_compat``, Ollama, Azure OpenAI, Bedrock) with stub fakes, this suite
+``openai_compat``, Azure OpenAI, Bedrock) with stub fakes, this suite
 locks the invariants every provider MUST hold so a future production-inference
 provider (e.g. ``vllm`` + ``llama_cpp``) can be added to ``ADAPTERS`` and must
 pass UNCHANGED:
@@ -18,7 +18,7 @@ pass UNCHANGED:
 5. ``_resolve_model`` honors the caller-supplied model verbatim.
 6. registry key ↔ ``get_info().name`` are consistent.
 
-The fakes are deliberately provider-shaped (OpenAI-wire objects, Ollama NDJSON,
+The fakes are deliberately provider-shaped (OpenAI-wire objects,
 Bedrock converse events) so the contract exercises each provider's REAL native
 field-mapping, not a mock of it.
 """
@@ -157,74 +157,6 @@ def _openai_set_timeout(provider: Any) -> None:
 def _openai_captured_schema(provider: Any) -> Any:
     kwargs = provider._client.chat.completions.create.call_args.kwargs
     return kwargs["response_format"]["json_schema"]["schema"]
-
-
-# ---------------------------------------------------------------------------
-# Ollama fakes (NDJSON /api/generate)
-# ---------------------------------------------------------------------------
-
-_OLLAMA_DONE = {
-    "response": "",
-    "done": True,
-    "done_reason": "length",
-    "prompt_eval_count": _PROMPT_TOKENS,
-    "eval_count": _PREDICTED_TOKENS,
-    "eval_duration": 1_000_000_000,
-    "total_duration": 2_000_000_000,
-}
-
-
-def _make_ollama() -> Any:
-    from text.core.config import OllamaConfig
-    from text.providers.ollama import OllamaProvider
-
-    return OllamaProvider(
-        OllamaConfig(base_url="http://localhost:11434", default_model="m"),
-        AsyncMock(),
-    )
-
-
-def _ollama_set_nonstream(provider: Any) -> None:
-    import json
-
-    resp = MagicMock()
-    resp.raise_for_status = MagicMock()
-    # spread first so the non-stream content/thinking override the ``done`` object's
-    # empty ``response`` sentinel.
-    resp.json.return_value = {
-        **_OLLAMA_DONE,
-        "response": "Hello",
-        "thinking": "",
-    }
-    provider._http.post = AsyncMock(return_value=resp)
-    # keep json import referenced for stream helper parity
-    _ = json
-
-
-def _ollama_set_stream(provider: Any) -> None:
-    import json
-
-    lines = [
-        json.dumps({"response": "Hello", "done": False}),
-        json.dumps(_OLLAMA_DONE),
-    ]
-    resp = MagicMock()
-    resp.raise_for_status = MagicMock()
-    resp.aiter_lines = lambda: _aiter(lines)
-
-    @asynccontextmanager
-    async def _stream(*_a: Any, **_kw: Any) -> AsyncIterator[Any]:
-        yield resp
-
-    provider._http.stream = _stream
-
-
-def _ollama_set_timeout(provider: Any) -> None:
-    provider._http.post = AsyncMock(side_effect=TimeoutError())
-
-
-def _ollama_captured_schema(provider: Any) -> Any:
-    return provider._http.post.call_args.kwargs["json"]["format"]
 
 
 # ---------------------------------------------------------------------------
@@ -394,15 +326,6 @@ ADAPTERS: list[ProviderAdapter] = [
         set_stream=_openai_set_stream,
         set_timeout=_openai_set_timeout,
         captured_schema=_openai_captured_schema,
-    ),
-    ProviderAdapter(
-        id="ollama",
-        info_name="ollama",
-        make=_make_ollama,
-        set_nonstream=_ollama_set_nonstream,
-        set_stream=_ollama_set_stream,
-        set_timeout=_ollama_set_timeout,
-        captured_schema=_ollama_captured_schema,
     ),
     ProviderAdapter(
         id="bedrock",

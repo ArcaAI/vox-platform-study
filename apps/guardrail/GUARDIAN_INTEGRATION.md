@@ -7,7 +7,7 @@ The Guardian service provides medical context validation to ensure only medical-
 The default LLM engine is **LM Studio** (OpenAI-compatible, `http://localhost:1234/v1`)
 running `granite-guardian-4.1-8b`. Medical-context validation uses a generic JSON prompt
 path over `POST {base_url}/v1/chat/completions`. The engine is selectable via
-`GUARDRAIL_V2_PROVIDER` (`lm-studio` default | `ollama` | `azure` | `bedrock`).
+`GUARDRAIL_V2_PROVIDER` (`lm-studio` default | `vllm` | `llama-cpp` | `azure` | `bedrock`).
 
 ## Architecture
 
@@ -44,8 +44,8 @@ GUARDRAIL_OPENAI_COMPAT_GUARDIAN_MAX_TOKENS=300
 GUARDRAIL_OPENAI_COMPAT_GUARDIAN_MIN_CONFIDENCE=0.75
 ```
 
-To use the optional Ollama engine instead, set `GUARDRAIL_V2_PROVIDER=ollama` and configure
-the `GUARDRAIL_OLLAMA_*` block.
+To use a self-hosted engine instead, set `GUARDRAIL_V2_PROVIDER=vllm` (or `llama-cpp`) and
+configure the matching `GUARDRAIL_VLLM_*` / `GUARDRAIL_LLAMA_CPP_*` block.
 
 ### 1b. Per-Tenant DB Configuration (TASK-338, optional)
 
@@ -57,8 +57,8 @@ tenant** through the admin console, opt in to DB-driven resolution:
 GUARDRAIL_DB_CONFIG_ENABLED=true
 # Read-only connection to the shared HOPE core DB (postgres:// auto-normalized to asyncpg).
 GUARDRAIL_DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/hope
-# Fallback tenant when X-Tenant-Id is absent or the request tenant has no rows.
-GUARDRAIL_DEFAULT_TENANT_ID=50000000-0000-0000-0000-000000000000
+# NOTE: no "default tenant" knob exists. Resolution is request tenant -> SYSTEM
+# (00000000-...); a request without X-Tenant-Id resolves SYSTEM only.
 # Resolved-config cache TTL (seconds).
 GUARDRAIL_CONFIG_CACHE_TTL_S=60
 ```
@@ -68,7 +68,7 @@ When enabled, the service resolves the guardian provider/model at request time b
 
 | namespace   | key                          | meaning                                         |
 | ----------- | ---------------------------- | ----------------------------------------------- |
-| `guardrail` | `default-guardrail-provider` | `lm-studio` \| `ollama` \| `azure` \| `bedrock` |
+| `guardrail` | `default-guardrail-provider` | `lm-studio` \| `vllm` \| `llama-cpp` \| `azure` \| `bedrock` |
 | `guardrail` | `default-guardrail-model`    | guardian model id / slug                        |
 | `guardrail` | `guardrail-azure-deployment` | non-secret Azure deployment name (may be empty) |
 
@@ -87,17 +87,14 @@ When enabled, the service resolves the guardian provider/model at request time b
 - Model: `granite-guardian-4.1-8b`
 - Load `lmstudio-community/granite-guardian-4.1-8b-GGUF` and ensure LM Studio's model id resolves to `granite-guardian-4.1-8b` (or override via `GUARDRAIL_OPENAI_COMPAT_GUARDIAN_MODEL`)
 
-**Optional (Ollama engine):**
+**Optional (self-hosted engines):**
 
-- A medical or general chat model served by Ollama (e.g. `gemma3`); uses the generic JSON prompt path
+- A guardian-capable model served by vLLM or llama.cpp over the OpenAI-compatible `/v1` wire
 
 ### 3. Load / Pull the Model
 
 ```bash
 # LM Studio (default): load the GGUF via the LM Studio UI / CLI, then start the server on :1234
-
-# Or, with the optional Ollama engine:
-ollama pull gemma3:latest
 ```
 
 ## API Endpoints

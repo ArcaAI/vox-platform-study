@@ -62,6 +62,21 @@ class EffectiveConfigSnapshot:
             key: value for key, raw in mapping.items() if (value := _positive_int(raw)) is not None
         }
 
+    def redaction(self) -> dict[str, int]:
+        """PHI-redaction knobs — currently the per-call GLiNER chunk budget.
+
+        Same "an omitted key means keep your own value" contract as
+        :meth:`retention`: a missing group, a null, or a non-positive value all
+        yield `{}` so the caller keeps its built-in bound rather than
+        interpreting the silence as "no limit".
+        """
+        group = self.raw.get("redaction")
+        if not isinstance(group, dict):
+            return {}
+
+        chunk_chars = _positive_int(group.get("chunkChars"))
+        return {"chunk_chars": chunk_chars} if chunk_chars is not None else {}
+
 
 def _positive_int(value: Any) -> int | None:
     # `bool` is an `int` subclass — exclude it, or `True` would become 1.

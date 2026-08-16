@@ -12,7 +12,6 @@ from text.core.config import (
     AzureOpenAIConfig,
     BedrockConfig,
     CircuitBreakerConfig,
-    OllamaConfig,
     OpenAIConfig,
     QueueConfig,
     RedisConfig,
@@ -34,30 +33,6 @@ def _clear_smr_env(monkeypatch):
 @pytest.fixture(autouse=True)
 def _isolate_smr_env(monkeypatch):
     _clear_smr_env(monkeypatch)
-
-
-class TestOllamaConfig:
-    def test_defaults(self, monkeypatch):
-        _clear_smr_env(monkeypatch)
-        cfg = OllamaConfig()
-        assert cfg.base_url == "http://localhost:11434"
-        # An OLLAMA tag, not a Hugging Face path. Pinned because the old value
-        # (`google/gemma-4-e4b`) was an id no backend ever served.
-        assert cfg.default_model == "gemma4:e2b-it-qat"
-        assert cfg.timeout_s == 300
-        assert cfg.max_concurrent == 4
-
-    def test_override(self):
-        cfg = OllamaConfig(base_url="http://gpu:11434", default_model="gemma2:7b")
-        assert cfg.base_url == "http://gpu:11434"
-        assert cfg.default_model == "gemma2:7b"
-
-    def test_env_prefix(self, monkeypatch):
-        # a stale TEXT_*_ENABLED env is ignored (no such field now).
-        monkeypatch.setenv("TEXT_OLLAMA_ENABLED", "true")
-        monkeypatch.setenv("TEXT_OLLAMA_BASE_URL", "http://remote:11434")
-        cfg = OllamaConfig()
-        assert cfg.base_url == "http://remote:11434"
 
 
 class TestAzureOpenAIConfig:
@@ -260,7 +235,6 @@ class TestSettings:
 
     def test_sub_configs_instantiated(self):
         s = Settings()
-        assert isinstance(s.ollama, OllamaConfig)
         assert isinstance(s.azure, AzureOpenAIConfig)
         assert isinstance(s.bedrock, BedrockConfig)
         assert isinstance(s.redis, RedisConfig)

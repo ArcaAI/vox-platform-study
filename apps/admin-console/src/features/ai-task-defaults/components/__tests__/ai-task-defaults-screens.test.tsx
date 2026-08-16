@@ -164,8 +164,15 @@ describe('AiTaskDefaultsPlatformScreen', () => {
     renderWithProviders(<AiTaskDefaultsPlatformScreen />);
 
     expect(screen.getByRole('heading', { level: 1, name: 'AI task defaults (platform)' })).toBeDefined();
-    expect(await screen.findByText(/platform-controlled \(global admins only\)/i)).toBeDefined();
-    expect(screen.getByRole('heading', { name: /guardrail model/i })).toBeDefined();
+    // TASK-735 Phase 0 (2026-08-16): the guardrail card no longer claims
+    // "platform-controlled (global admins only)" — guardrail is now
+    // tenant-configurable via the API. This card still edits the SYSTEM
+    // (platform-default) row, so its title reflects that instead. Wait on
+    // the card's own heading (renders only once its data has loaded) rather
+    // than the always-present page-header text, so the assertion still
+    // synchronizes with the async card render.
+    expect(await screen.findByRole('heading', { name: /guardrail model/i })).toBeDefined();
+    expect(screen.getByText(/platform-approved catalog/i)).toBeDefined();
     expect(screen.getByRole('heading', { name: /medical ner/i })).toBeDefined();
     expect(screen.getByRole('heading', { name: /classification/i })).toBeDefined();
 

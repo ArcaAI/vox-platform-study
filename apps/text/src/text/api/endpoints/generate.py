@@ -94,6 +94,7 @@ from text.services.external_guardrail import (
     ExternalGuardrailClient,
 )
 from text.services.generation_audit import GenerationAuditEvent, GenerationAuditLogger
+from text.services.judge_guard import assert_not_in_judge_scope
 from text.services.pool_health import PoolHealthTracker
 from text.services.pool_router import resolve_pool_route
 from text.services.provider_queue import ProviderQueue, QueueFullError
@@ -190,10 +191,65 @@ def _extract_stream_usage(data: dict[str, Any]) -> tuple[int, int, int | None]:
     return prompt, completion, int(total) if total is not None else None
 
 
+async def _apply_guardrail_gate(
+    guardrail_client: ExternalGuardrailClient | None,
+    *,
+    request_body: GenerateRequest,
+    tenant_id: str | None,
+    settings: Settings,
+) -> UsageDetail | None:
+    """Run the medical-content moderation gate; return guardrail's own usage.
+
+    Extracted verbatim from the ``/generate`` body so there is exactly ONE
+    moderation gate in this service and one place to assert it is not being
+    reached from the internal judge lane. Behaviour is unchanged: a genuine
+    content rejection is a 422, a sustained outage is a retryable 503, a
+    malformed verdict fails closed, and the enforce-posture-with-unwired-client
+    case fails closed too. The dev/CI bypass (client absent or disabled) is
+    preserved.
+
+    The ``assert_not_in_judge_scope`` call is the cycle tripwire (TASK-735
+    §2.5): ``apps/guardrail`` delegates its LLM judgement to this service, so
+    gating a JUDGE call on guardrail would close an unbounded
+    ``text -> guardrail -> text`` cycle and deadlock the safety plane behind the
+    pool it protects. If a future edit routes this helper onto the judge path it
+    raises here rather than shipping the cycle.
+    """
+    if guardrail_client is not None:
+        assert_not_in_judge_scope("generate._apply_guardrail_gate")
+        verdict = await guardrail_client.validate(
+            prompt=request_body.prompt,
+            system_prompt=request_body.system_prompt,
+            tenant_id=tenant_id,
+        )
+        # Lifted BEFORE the allow/deny branch: a REJECTED prompt still burned
+        # guardrail tokens, and metering the safety plane is exactly how its cost
+        # lands in per-encounter margin (it is never invoiced to the tenant).
+        guardrail_usage = guardrail_usage_from_verdict(verdict)
+        if not verdict.get("allowed", False):  # fail-closed default (missing key → reject)
+            reason = verdict.get("reason", "not_allowed")
+            # A sustained guardrail outage is retryable (503); a genuine content
+            # rejection is a 422. Both fail CLOSED — generation never runs.
+            status_code = 503 if reason == GUARDRAIL_UNAVAILABLE_REASON else 422
+            raise HTTPException(
+                status_code=status_code,
+                detail=f"Content rejected by guardrail: {reason}",
+            )
+        return guardrail_usage
+    if settings.external_guardrail.enabled:
+        # Enforce posture on but the guardrail client is unwired — fail CLOSED rather
+        # than silently skip moderation (a misconfiguration must not ship unmoderated
+        # PHI). Retryable (503) once the client is provisioned.
+        raise HTTPException(
+            status_code=503,
+            detail="Content rejected by guardrail: external_guardrail_unavailable",
+        )
+    return None
+
+
 def _get_provider_timeout(settings: Settings, provider_name: str) -> float:
     """Get timeout in seconds for the given provider."""
     config_map = {
-        "ollama": settings.ollama.timeout_s,
         "azure-openai": settings.azure.timeout_s,
         "bedrock": settings.bedrock.timeout_s,
         "lm-studio": settings.openai_compat.timeout_s,
@@ -293,42 +349,13 @@ async def generate(
     # tokens have to the billing plane.
     guardrail_usage: UsageDetail | None = None
 
-    # Guardrail medical-content validation.
-    # The consultation tenant is forwarded so guardrail resolves per-tenant
-    # provider/model from DB. Degrade-safe → fail-CLOSED posture: a
-    # guardrail failure never ships an unmoderated PHI prompt — the verdict defaults
-    # to NOT-allowed on a missing/malformed key, a sustained outage rejects with a
-    # retryable 503 (vs a 422 content rejection), and if the enforce posture is on
-    # (external_guardrail.enabled) but the client is unwired the gate fails closed
-    # rather than silently skipping. The intentional dev/CI bypass (enabled=False —
-    # the client short-circuits, or is simply absent) is preserved.
-    if guardrail_client is not None:
-        verdict = await guardrail_client.validate(
-            prompt=request_body.prompt,
-            system_prompt=request_body.system_prompt,
-            tenant_id=x_tenant_id,
-        )
-        # Lifted BEFORE the allow/deny branch: a REJECTED prompt still burned
-        # guardrail tokens, and metering the safety plane is exactly how its cost
-        # lands in per-encounter margin (it is never invoiced to the tenant).
-        guardrail_usage = guardrail_usage_from_verdict(verdict)
-        if not verdict.get("allowed", False):  # fail-closed default (missing key → reject)
-            reason = verdict.get("reason", "not_allowed")
-            # A sustained guardrail outage is retryable (503); a genuine content
-            # rejection is a 422. Both fail CLOSED — generation never runs.
-            status_code = 503 if reason == GUARDRAIL_UNAVAILABLE_REASON else 422
-            raise HTTPException(
-                status_code=status_code,
-                detail=f"Content rejected by guardrail: {reason}",
-            )
-    elif settings.external_guardrail.enabled:
-        # Enforce posture on but the guardrail client is unwired — fail CLOSED rather
-        # than silently skip moderation (a misconfiguration must not ship unmoderated
-        # PHI). Retryable (503) once the client is provisioned.
-        raise HTTPException(
-            status_code=503,
-            detail="Content rejected by guardrail: external_guardrail_unavailable",
-        )
+    # Guardrail medical-content validation (see ``_apply_guardrail_gate``).
+    guardrail_usage = await _apply_guardrail_gate(
+        guardrail_client,
+        request_body=request_body,
+        tenant_id=x_tenant_id,
+        settings=settings,
+    )
 
     ctx = structlog.contextvars.get_contextvars()
 

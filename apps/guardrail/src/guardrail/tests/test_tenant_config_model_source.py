@@ -14,7 +14,6 @@ from guardrail.core.tenant_config import (
     TenantConfigResolver,
 )
 
-DEFAULT_TENANT = "50000000-0000-0000-0000-000000000000"
 TENANT_A = "11111111-1111-1111-1111-111111111111"
 
 
@@ -51,9 +50,11 @@ def _row(
     checksum: str | None = None,
     source: str | None = "HUGGINGFACE",
     source_revision: str | None = None,
+    resource_status: str = "ENABLED",
 ) -> SimpleNamespace:
     return SimpleNamespace(
         default_tenant_id=SYSTEM_TENANT_ID,
+        default_resource_status=resource_status,
         model_tenant_id=SYSTEM_TENANT_ID,
         provider=provider,
         source_uri=source_uri,
@@ -79,7 +80,6 @@ def _resolver(rows_ref: dict, clock=None, ttl: int = 60) -> TenantConfigResolver
         kwargs["time_func"] = clock
     return TenantConfigResolver(
         session_factory=lambda: _FakeSession(rows_ref),
-        default_tenant_id=DEFAULT_TENANT,
         cache_ttl_s=ttl,
         **kwargs,
     )

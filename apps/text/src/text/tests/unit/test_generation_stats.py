@@ -152,37 +152,6 @@ class TestOpenAiCompatMapping:
 
 
 # ---------------------------------------------------------------------------
-# Ollama mapping (durations → tok/s)
-# ---------------------------------------------------------------------------
-
-
-class TestOllamaMapping:
-    def test_ollama_maps_eval_counts_and_done_reason(self):
-        from text.models.stats import stats_from_ollama_response
-
-        data = {
-            "done_reason": "length",
-            "prompt_eval_count": 12,
-            "eval_count": 20,
-            "eval_duration": 1_000_000_000,  # 1s in nanoseconds
-            "total_duration": 2_000_000_000,
-            "prompt_eval_duration": 500_000_000,
-        }
-        stats = stats_from_ollama_response(
-            provider="ollama", model="llama3.2", data=data, total_ms=2000
-        )
-        assert stats.stop_reason == "length"
-        assert stats.stop_reason_raw == "length"
-        assert stats.prompt_tokens == 12
-        assert stats.predicted_tokens == 20
-        assert stats.total_tokens == 32
-        # tok/s computed from engine durations: 20 / (1e9 ns / 1e9) = 20.0
-        assert stats.tokens_per_second == pytest.approx(20.0)
-        assert stats.engine_native is not None
-        assert stats.engine_native["eval_duration"] == 1_000_000_000
-
-
-# ---------------------------------------------------------------------------
 # Bedrock mapping
 # ---------------------------------------------------------------------------
 
@@ -295,8 +264,6 @@ class TestNormalizeStopReason:
             ("openai_compat", "tool_calls", "tool_call"),
             ("openai_compat", "function_call", "tool_call"),
             ("vllm", "length", "length"),
-            ("ollama", "stop", "stop"),
-            ("ollama", "length", "length"),
             ("azure-openai", "content_filter", "content_filter"),
             ("bedrock", "end_turn", "stop"),
             ("bedrock", "stop_sequence", "stop"),

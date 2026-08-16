@@ -4,16 +4,13 @@ RED: Written before implementation.
 Tests cover:
   - telemetry.py setup_telemetry / get_tracer
   - otel_enabled flag integration in create_app
-  - GenAI semantic-convention spans on all 3 providers
+  - GenAI semantic-convention spans on all providers
 """
 
 from __future__ import annotations
 
-import json
-from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import httpx
 import pytest
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
@@ -23,7 +20,6 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanE
 from text.core.config import (
     AzureOpenAIConfig,
     BedrockConfig,
-    OllamaConfig,
     Settings,
 )
 from text.models.requests import GenerateRequest
@@ -63,11 +59,6 @@ def in_memory_exporter():
 
 
 @pytest.fixture
-def ollama_config():
-    return OllamaConfig(base_url="http://localhost:11434", default_model="llama3.2:latest")
-
-
-@pytest.fixture
 def azure_config():
     return keyed(
         AzureOpenAIConfig(
@@ -85,11 +76,6 @@ def bedrock_config():
         region="us-east-1",
         default_model="anthropic.claude-3-haiku-20240307-v1:0",
     )
-
-
-@pytest.fixture
-def mock_http_client():
-    return AsyncMock(spec=httpx.AsyncClient)
 
 
 # ---------------------------------------------------------------------------
@@ -202,131 +188,6 @@ class TestOtelEnabledFlag:
 # ---------------------------------------------------------------------------
 # Task 2.2 — GenAI spans on providers
 # ---------------------------------------------------------------------------
-
-
-class TestOllamaGenAISpans:
-    """Ollama provider must create GenAI-attributed spans."""
-
-    @pytest.mark.asyncio
-    async def test_ollama_generate_creates_span(
-        self, in_memory_exporter, ollama_config, mock_http_client
-    ):
-        from text.providers.ollama import OllamaProvider
-
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {
-            "response": "Hello!",
-            "done": True,
-            "prompt_eval_count": 10,
-            "eval_count": 5,
-        }
-        mock_response.raise_for_status = MagicMock()
-        mock_http_client.post.return_value = mock_response
-
-        provider = OllamaProvider(config=ollama_config, http_client=mock_http_client)
-        content, _reasoning, usage = await provider.generate(GenerateRequest(prompt="hi"))
-
-        spans = in_memory_exporter.get_finished_spans()
-        assert len(spans) >= 1
-        gen_spans = [s for s in spans if s.attributes.get("gen_ai.system") == "ollama"]
-        assert len(gen_spans) == 1
-
-    @pytest.mark.asyncio
-    async def test_ollama_span_has_genai_attributes(
-        self, in_memory_exporter, ollama_config, mock_http_client
-    ):
-        from text.providers.ollama import OllamaProvider
-
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {
-            "response": "Hello!",
-            "done": True,
-            "prompt_eval_count": 10,
-            "eval_count": 5,
-        }
-        mock_response.raise_for_status = MagicMock()
-        mock_http_client.post.return_value = mock_response
-
-        provider = OllamaProvider(config=ollama_config, http_client=mock_http_client)
-        await provider.generate(
-            GenerateRequest(prompt="hi", model="llama3.2:latest", temperature=0.5, max_tokens=100)
-        )
-
-        spans = in_memory_exporter.get_finished_spans()
-        gen_span = next(s for s in spans if s.attributes.get("gen_ai.system"))
-        attrs = dict(gen_span.attributes)
-        assert attrs["gen_ai.operation.name"] == "generate"
-        assert attrs["gen_ai.request.model"] == "llama3.2:latest"
-        assert attrs["gen_ai.request.temperature"] == 0.5
-        assert attrs["gen_ai.request.max_tokens"] == 100
-
-    @pytest.mark.asyncio
-    async def test_ollama_span_has_usage_attributes(
-        self, in_memory_exporter, ollama_config, mock_http_client
-    ):
-        from text.providers.ollama import OllamaProvider
-
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {
-            "response": "Hello!",
-            "done": True,
-            "prompt_eval_count": 10,
-            "eval_count": 5,
-        }
-        mock_response.raise_for_status = MagicMock()
-        mock_http_client.post.return_value = mock_response
-
-        provider = OllamaProvider(config=ollama_config, http_client=mock_http_client)
-        await provider.generate(GenerateRequest(prompt="hi"))
-
-        spans = in_memory_exporter.get_finished_spans()
-        gen_span = next(s for s in spans if s.attributes.get("gen_ai.system"))
-        attrs = dict(gen_span.attributes)
-        assert attrs["gen_ai.usage.input_tokens"] == 10
-        assert attrs["gen_ai.usage.output_tokens"] == 5
-
-    @pytest.mark.asyncio
-    async def test_ollama_streaming_creates_span(
-        self, in_memory_exporter, ollama_config, mock_http_client
-    ):
-        from text.providers.ollama import OllamaProvider
-
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.raise_for_status = MagicMock()
-
-        async def _aiter_lines():
-            yield json.dumps({"response": "Hello", "done": False})
-            yield json.dumps(
-                {
-                    "response": "",
-                    "done": True,
-                    "prompt_eval_count": 8,
-                    "eval_count": 3,
-                }
-            )
-
-        mock_response.aiter_lines = _aiter_lines
-
-        @asynccontextmanager
-        async def _stream(*a, **kw):
-            yield mock_response
-
-        mock_http_client.stream = _stream
-
-        provider = OllamaProvider(config=ollama_config, http_client=mock_http_client)
-        chunks = []
-        async for chunk in provider.generate_stream(GenerateRequest(prompt="hi", stream=True)):
-            chunks.append(chunk)
-
-        spans = in_memory_exporter.get_finished_spans()
-        gen_spans = [s for s in spans if s.attributes.get("gen_ai.system") == "ollama"]
-        assert len(gen_spans) == 1
-        attrs = dict(gen_spans[0].attributes)
-        assert attrs["gen_ai.operation.name"] == "generate_stream"
 
 
 class TestAzureGenAISpans:

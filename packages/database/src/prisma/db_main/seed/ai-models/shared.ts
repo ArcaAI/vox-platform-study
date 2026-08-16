@@ -77,9 +77,11 @@ export const ModelType = {
  * Canonical serving-provider identifiers. String column (not a
  * Prisma enum) to match `HarnessPolicy.smrProvider` / the guardrail provider
  * switch; the DTO layer validates with `@IsIn(AI_MODEL_PROVIDERS)`.
+ *
+ * Ollama was removed entirely (TASK-736, owner directive 2026-08-16) — it is
+ * deliberately absent from this list, not merely disabled.
  */
 export const AI_MODEL_PROVIDERS = [
-  'ollama',
   'lm-studio',
   'azure',
   'bedrock',

@@ -17,9 +17,19 @@ thinking tokens. A provider-name heuristic gets one of the two wrong every time.
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
+
+CostBasis = Literal["INTERNAL", "BYOK_NOTIONAL"]
+"""Whether the money on this row is REAL platform cost or an informational figure.
+
+Mirrors the ledger's ``AiCostBasis`` enum (``packages/database`` —
+``usage-ledger.prisma``). It is DERIVED from ``byok`` in ``build_usage_detail``
+and is deliberately not a parameter anywhere: a call site that could stamp its
+own cost basis is a call site that can convert tenant-funded spend into platform
+COGS (or hide platform COGS as never-invoiced notional) with one wrong literal.
+"""
 
 # SMR provider key → the API shape that provider speaks.
 #
@@ -41,7 +51,6 @@ _ENDPOINT_KIND_BY_PROVIDER: dict[str, str] = {
     "bedrock": "bedrock.converse",
     "aws_bedrock": "bedrock.converse",
     "vertex": "vertex.generate",
-    "ollama": "ollama.native",
     "llama-cpp": "llamacpp.native",
     "llama_cpp": "llamacpp.native",
     "llamacpp": "llamacpp.native",
@@ -88,6 +97,14 @@ class UsageDetail(BaseModel):
     # override was actually USED (a malformed override degrades to the platform
     # credential).
     byok: bool = False
+    # DERIVED from ``byok`` (never passed in): a tenant-funded call is
+    # ``BYOK_NOTIONAL`` — metered and rated for visibility, never invoiced,
+    # excluded from platform-spend aggregates — and everything else is real
+    # platform spend (``INTERNAL``). Stated explicitly on the wire so the
+    # gateway meters the safety plane's own judgement calls (which ride back on
+    # a guardrail verdict rather than on the tenant's own generation) without
+    # re-deriving the rule a second time in TypeScript.
+    cost_basis: CostBasis = "INTERNAL"
     service_tier: str | None = None
 
     # When the work happened. The rater resolves the price row as of this
@@ -281,7 +298,11 @@ def build_usage_detail(
     service_tier: str | None = None,
     occurred_at: datetime | None = None,
 ) -> UsageDetail:
-    """Assemble a ``UsageDetail``. Null-safe on every count."""
+    """Assemble a ``UsageDetail``. Null-safe on every count.
+
+    ``cost_basis`` is derived here and ONLY here — there is no parameter for it,
+    so no call site can stamp one.
+    """
     prompt = int(prompt_tokens or 0)
     completion = int(completion_tokens or 0)
     return UsageDetail(
@@ -292,6 +313,7 @@ def build_usage_detail(
         endpoint_kind=endpoint_kind_for(provider),
         interrupted=interrupted,
         byok=byok,
+        cost_basis="BYOK_NOTIONAL" if byok else "INTERNAL",
         service_tier=service_tier,
         occurred_at=(occurred_at or datetime.now(UTC)).isoformat(),
         prompt_tokens=prompt,
@@ -301,19 +323,76 @@ def build_usage_detail(
     )
 
 
+def _usage_detail_from_blob(blob: dict[str, Any]) -> UsageDetail | None:
+    """Rebuild a ``UsageDetail`` that has been round-tripped through a peer.
+
+    Rebuilt through ``build_usage_detail`` rather than ``model_validate``d so
+    ``cost_basis`` is RE-DERIVED from ``byok`` on arrival. A peer forwarding this
+    blob is trusted for the counts it observed, never for the billing tier it
+    claims — that is derived from the funding tier of the credential, at the one
+    place that derives it.
+    """
+    provider = str(blob.get("provider") or "")
+    if not provider:
+        return None
+
+    occurred_at: datetime | None = None
+    stamped = blob.get("occurred_at")
+    if isinstance(stamped, str) and stamped:
+        try:
+            occurred_at = datetime.fromisoformat(stamped)
+        except ValueError:
+            occurred_at = None
+
+    total = blob.get("total_tokens")
+    return build_usage_detail(
+        task_id=str(blob.get("task_id") or ""),
+        request_id=str(blob["request_id"]) if blob.get("request_id") else None,
+        provider=provider,
+        model=str(blob.get("model") or ""),
+        prompt_tokens=int(blob.get("prompt_tokens") or 0),
+        completion_tokens=int(blob.get("completion_tokens") or 0),
+        total_tokens=int(total) if total is not None else None,
+        raw=blob.get("raw") if isinstance(blob.get("raw"), dict) else None,
+        interrupted=bool(blob.get("interrupted", False)),
+        byok=bool(blob.get("byok", False)),
+        service_tier=blob.get("service_tier") if isinstance(blob.get("service_tier"), str) else None,
+        occurred_at=occurred_at,
+    )
+
+
 def guardrail_usage_from_verdict(verdict: dict[str, Any] | None) -> UsageDetail | None:
-    """Lift guardrail's own per-call stats out of a validate() verdict.
+    """Lift the safety plane's own per-call usage out of a validate() verdict.
 
     Guardrail is a peer service with no gateway in front of it, so the ONLY way
     its LLM spend reaches the billing plane is by riding back on the SMR response
-    that triggered it. A verdict without stats (validation disabled, a fail-closed
+    that triggered it. A verdict without usage (validation disabled, a fail-closed
     outage verdict, an older guardrail build) yields ``None`` — silence, not zeros,
     because a zero row is indistinguishable from a free call.
+
+    Two shapes are accepted, in priority order:
+
+    * ``raw.usage_detail`` — the CURRENT shape. Guardrail no longer runs an LLM
+      of its own: it delegates to ``POST /generate/internal/judge``, which
+      already produced a full ``UsageDetail`` (with the funding tier of the
+      credential that served the judgement), and guardrail forwards it verbatim.
+      This is the same ride-back channel, repointed at the new producer — not a
+      second one.
+    * ``raw.stats`` — the LEGACY shape, from a guardrail build that still ran its
+      own provider and could only report ``GenerationStats``. Such a call was
+      always platform-funded, so it derives ``INTERNAL``.
     """
     if not isinstance(verdict, dict):
         return None
     raw = verdict.get("raw")
-    stats = raw.get("stats") if isinstance(raw, dict) else None
+    if not isinstance(raw, dict):
+        return None
+
+    delegated = raw.get("usage_detail")
+    if isinstance(delegated, dict):
+        return _usage_detail_from_blob(delegated)
+
+    stats = raw.get("stats")
     if not isinstance(stats, dict):
         return None
 

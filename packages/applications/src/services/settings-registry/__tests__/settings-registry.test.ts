@@ -179,31 +179,35 @@ describe('HOPE_SETTINGS_REGISTRY (assembled catalog)', () => {
     expect(AI_TASK_MODEL_TASK_TYPES['smr.finalize.fallback']).toBe(ModelTaskType.TEXT_GENERATION);
   });
 
-  it('flags guardrail.*/nlp.*/harness.* task-model defaults as global-admin-only (editableBy all, globalOnly)', () => {
-    // These task-model defaults are platform-owned: guardrail (owner directive),
-    // nlp (revoked tenant writes), and harness.judge. All resolve to the
-    // global-admin resource and carry globalOnly. SMR is NOT in this set —
-    // its selection is tenant-configurable.
-    for (const key of [
-      'models.guardrail.validate',
-      'models.guardrail.safety',
-      'models.guardrail.groundedness',
-      'models.nlp.ner',
-      'models.nlp.classification',
-      'models.nlp.diagnosis',
-      'models.harness.judge',
-    ]) {
+  it('flags nlp.*/harness.* task-model defaults as global-admin-only (editableBy all, globalOnly)', () => {
+    // These task-model defaults are platform-owned: nlp (revoked tenant
+    // writes) and harness.judge. Both resolve to the global-admin resource
+    // and carry globalOnly. SMR and, since TASK-735 (owner decision
+    // 2026-08-16, reversing the 2026-07-17 global-admin-only directive),
+    // guardrail are NOT in this set — see the test below.
+    for (const key of ['models.nlp.ner', 'models.nlp.classification', 'models.nlp.diagnosis', 'models.harness.judge']) {
       const d = HOPE_SETTINGS_REGISTRY.getOrThrow(key);
       expect(d.editableBy, key).toBe('all');
       expect(d.globalOnly, key).toBe(true);
     }
   });
 
-  // SMR summarization model selection (primary + per-tenant fallback)
-  // is tenant-admin configurable: the descriptors resolve to the tenant-editable
-  // AiTaskDefault resource and are NOT flagged globalOnly.
-  it('flags smr.* task-model defaults (primary + fallback) as tenant-editable (editableBy AiTaskDefault, not globalOnly)', () => {
-    for (const key of ['models.smr.live', 'models.smr.finalize', 'models.smr.live.fallback', 'models.smr.finalize.fallback']) {
+  // SMR summarization model selection (primary + per-tenant fallback), and
+  // guardrail.* since TASK-735 Phase 0, are tenant-admin configurable: the
+  // descriptors resolve to the tenant-editable AiTaskDefault resource and are
+  // NOT flagged globalOnly. (guardrail.* writes still pass through the D2
+  // platform-approved-list floor enforced in AiTaskDefaultService — this
+  // descriptor only governs WHO may attempt the write.)
+  it('flags smr.* and guardrail.* task-model defaults as tenant-editable (editableBy AiTaskDefault, not globalOnly)', () => {
+    for (const key of [
+      'models.smr.live',
+      'models.smr.finalize',
+      'models.smr.live.fallback',
+      'models.smr.finalize.fallback',
+      'models.guardrail.validate',
+      'models.guardrail.safety',
+      'models.guardrail.groundedness',
+    ]) {
       const d = HOPE_SETTINGS_REGISTRY.getOrThrow(key);
       expect(d.editableBy, key).toBe('AiTaskDefault');
       expect(d.globalOnly, key).toBeUndefined();

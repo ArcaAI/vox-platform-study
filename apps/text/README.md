@@ -4,7 +4,7 @@
 **Service Name:** `hope-smr`
 **Port:** 5006
 
-A FastAPI-based medical conversation summarization service with LLM integration supporting both Azure OpenAI and Ollama providers, featuring dual processing modes, structured outputs, and enterprise observability.
+A FastAPI-based medical conversation summarization service with LLM integration supporting multiple providers (Azure OpenAI, LM Studio, and more), featuring dual processing modes, structured outputs, and enterprise observability.
 
 ---
 
@@ -34,7 +34,7 @@ The **HOPE Summarization Service (SMR)** is a microservice within the HOPE (Heal
 ### What It Does
 
 - **Medical Conversation Summarization**: Converts conversation transcripts into structured medical summaries
-- **Multi-Provider LLM Support**: Works with Azure OpenAI (GPT-4) and Ollama (open-source models)
+- **Multi-Provider LLM Support**: Works with Azure OpenAI (GPT-4) and LM Studio (open-source models)
 - **Dual Processing Modes**: Synchronous (immediate) and asynchronous (background) processing
 - **Structured Outputs**: JSON-formatted summaries with schema validation
 - **Specialty-Specific Prompts**: Customized for different medical specialties (Cardiology, Neurology, Surgery, etc.)
@@ -65,7 +65,7 @@ The **HOPE Summarization Service (SMR)** is a microservice within the HOPE (Heal
 | Provider         | Success Rate | Features                                                |
 | ---------------- | ------------ | ------------------------------------------------------- |
 | **Azure OpenAI** | 99.9%        | Strict schema, guaranteed JSON, GPT-4 support           |
-| **Ollama**       | 80-95%       | Open-source models, multi-strategy parsing, JSON repair |
+| **LM Studio**    | 80-95%       | Open-source models, multi-strategy parsing, JSON repair |
 
 ### 🔄 Dual Processing Modes
 
@@ -122,7 +122,7 @@ Pre-configured templates for:
 | Provider     | SDK              | Models                 | Features                            |
 | ------------ | ---------------- | ---------------------- | ----------------------------------- |
 | Azure OpenAI | `openai>=1.10.0` | GPT-4, GPT-4 Turbo     | Structured outputs, guaranteed JSON |
-| Ollama       | `ollama>=0.2.0`  | Llama 2, Gemma, Custom | Local models, privacy-focused       |
+| LM Studio    | `openai>=1.10.0` (compat) | Local open-weight models | Local models, privacy-focused |
 
 ### Observability Stack
 
@@ -170,7 +170,7 @@ Pre-configured templates for:
 │  LLM Services  │            │                  │
 │                │            │ • Job Queue      │
 │ • Azure OpenAI │            │ • Pub/Sub        │
-│ • Ollama       │            │ • Job Storage    │
+│ • LM Studio    │            │ • Job Storage    │
 └───────┬────────┘            └──────────────────┘
         │
         │
@@ -209,7 +209,6 @@ apps/text/
 │   ├── services/                     # Business logic
 │   │   ├── llm_service.py            # Abstract LLM interface
 │   │   ├── azure_openai_service.py   # Azure OpenAI implementation
-│   │   ├── ollama_service.py         # Ollama implementation
 │   │   ├── summary_service.py        # Main summarization logic
 │   │   ├── job_service.py            # Async job management
 │   │   └── previous_visit_service.py # Pre-summary generation
@@ -268,7 +267,7 @@ apps/text/
 - PostgreSQL 17
 - Redis 8
 - Conda environment (recommended)
-- Azure OpenAI account OR Ollama installation
+- Azure OpenAI account OR LM Studio installation
 
 ### Installation
 
@@ -309,7 +308,7 @@ nano .env
 Required environment variables:
 
 ```bash
-# LLM Provider (azure_openai or ollama)
+# LLM Provider (azure_openai or lm_studio)
 SUMMARY_AGENT_LLM_PROVIDER=azure_openai
 
 # Azure OpenAI (if using Azure)
@@ -318,9 +317,9 @@ TEXT_AZURE_ENDPOINT=https://your-resource.openai.azure.com/
 TEXT_AZURE_DEPLOYMENT_NAME=gpt-4
 TEXT_AZURE_DEFAULT_MODEL=gpt-5-mini
 
-# Ollama (if using Ollama)
-OLLAMA_BASE_URL=http://localhost:11434
-OLLAMA_MODEL=gemma3:1b
+# LM Studio (if using LM Studio)
+TEXT_OPENAI_COMPAT_BASE_URL=http://localhost:1234/v1
+TEXT_OPENAI_COMPAT_DEFAULT_MODEL=gemma-4-e2b-it-qat
 
 # Database
 SUMMARY_AGENT_DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/hope
@@ -427,18 +426,14 @@ TEXT_AZURE_ADAPTIVE_LIMITS=true
 TEXT_AZURE_CONTENT_FILTER_SEVERITY=medium
 ```
 
-##### Ollama
+##### LM Studio
 
 ```bash
-SUMMARY_AGENT_LLM_PROVIDER=ollama
-OLLAMA_BASE_URL=http://localhost:11434
-OLLAMA_MODEL=gemma3:1b
-OLLAMA_TEMPERATURE=0.1
-OLLAMA_TOP_K=40
-OLLAMA_TOP_P=0.9
-OLLAMA_REPEAT_PENALTY=1.1
-OLLAMA_NUM_CTX=8192
-OLLAMA_NUM_PREDICT=2048
+SUMMARY_AGENT_LLM_PROVIDER=lm_studio
+TEXT_OPENAI_COMPAT_BASE_URL=http://localhost:1234/v1
+TEXT_OPENAI_COMPAT_DEFAULT_MODEL=gemma-4-e2b-it-qat
+TEXT_OPENAI_COMPAT_TIMEOUT_S=300
+TEXT_OPENAI_COMPAT_MAX_CONCURRENT=4
 ```
 
 #### Database Configuration
@@ -720,8 +715,6 @@ docker-compose up -d postgres
 # Redis
 docker-compose up -d redis
 
-# Ollama (if using)
-docker-compose up -d ollama
 ```
 
 4. **Run Development Server**
@@ -1031,12 +1024,9 @@ curl -X POST "${TEXT_AZURE_ENDPOINT}/openai/deployments/${TEXT_AZURE_DEPLOYMENT_
   -H "api-key: ${TEXT_AZURE_API_KEY}" \
   -H "Content-Type: application/json"
 
-# For Ollama
-# 1. Verify Ollama is running
-curl http://localhost:11434/api/tags
-
-# 2. Pull required model
-ollama pull gemma3:1b
+# For LM Studio
+# 1. Verify LM Studio is running and serving the OpenAI-compatible API
+curl http://localhost:1234/v1/models
 ```
 
 #### 2. Database Connection Errors
@@ -1091,13 +1081,13 @@ alembic downgrade -1
 alembic upgrade head
 ```
 
-#### 5. JSON Parsing Errors (Ollama)
+#### 5. JSON Parsing Errors (LM Studio)
 
 **Symptom**: "Unable to parse JSON response"
 
 **Solution:**
 
-1. Lower temperature: `OLLAMA_TEMPERATURE=0.1`
+1. Lower temperature via the request's `temperature` field (default 0.1)
 2. Enable JSON repair in logs
 3. Use multi-strategy parsing
 4. Check model compatibility
@@ -1248,7 +1238,7 @@ For issues, questions, or contributions:
 
 - **HOPE Platform Team** - Core development
 - **Azure OpenAI** - LLM infrastructure
-- **Ollama** - Open-source model support
+- **LM Studio** - Open-source model support
 - **FastAPI Community** - Framework development
 - **OpenTelemetry** - Observability standards
 

@@ -42,7 +42,7 @@ def _settings(
     *,
     enabled: bool = True,
     fail_closed: bool = True,
-    local: tuple[str, ...] = ("lm-studio", "openai_compat", "ollama", "vllm", "llama-cpp"),
+    local: tuple[str, ...] = ("lm-studio", "openai_compat", "vllm", "llama-cpp"),
 ) -> Settings:
     """A real ``Settings`` carrying an explicit :class:`PhiConfig`.
 
@@ -230,6 +230,22 @@ class TestEnsureEgressSafe:
         )
         assert "John Smith" not in out
         assert redactor.calls == [(_PHI_TEXT, "some-new-cloud-provider")]
+
+    def test_ollama_provider_is_redacted_not_passed_through(self) -> None:
+        # TASK-736 R1: Ollama is removed entirely, so it is no longer a known-local
+        # provider — an ollama-routed call must default-deny into redact-and-confirm,
+        # never the local pass-through branch (asserts the fail-closed direction).
+        redactor = _ContractRedactor(transform=lambda t: t.replace("John Smith", "<PERSON>"))
+        out = ensure_egress_safe(
+            _PHI_TEXT,
+            provider="ollama",
+            settings=_settings(),
+            phi_enabled=True,
+            phi_fail_closed=True,
+            redactor=redactor,
+        )
+        assert "John Smith" not in out
+        assert redactor.calls == [(_PHI_TEXT, "ollama")]
 
 
 def _citations() -> dict[str, Any]:

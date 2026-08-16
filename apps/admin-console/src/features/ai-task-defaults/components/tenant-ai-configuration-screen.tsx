@@ -28,7 +28,9 @@ const TAB_VALUES = ['models', 'speech', 'voice', 'providers'] as const;
  *  - "Models" — the tenant's OWN summarization selection (text-generation primary +
  *    optional fallback, one-action default-provider control) PLUS the
  *    READ-ONLY effective models / HarnessPolicy visibility for the
- *    platform-managed guardrail/nlp/harness keys. Backed by `AiTaskDefault`.
+ *    platform-managed nlp/harness keys (guardrail is tenant-configurable via
+ *    the API since TASK-735, but this hub has no edit control for it yet —
+ *    see `effective-models-table.tsx`). Backed by `AiTaskDefault`.
  *  - "Speech" — the tenant STT fallback spec (pipeline, auto-switch, failure
  *    threshold), OCC-edited. Backed by `TenantSttConfig`.
  *  - "Voice" — the tenant TTS config (voices, routing, bindings), OCC-edited.
@@ -80,7 +82,7 @@ export function TenantAiConfigurationScreen() {
             <StatusFooter
               end={
                 <span aria-hidden className="font-mono">
-                  text: tenant-owned · guardrail/nlp/harness: platform-managed · credentials: tenant-owned
+                  text: tenant-owned · guardrail: tenant-configurable (API) · nlp/harness: platform-managed · credentials: tenant-owned
                 </span>
               }
             />

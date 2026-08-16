@@ -15,9 +15,11 @@ import { BOOTSTRAP_ENV_SETTINGS } from './descriptors/bootstrap-env.descriptors'
 import { CONSULTATION_GATE_SETTINGS } from './descriptors/consultation-gates.descriptors';
 import { ENTITLEMENT_SETTINGS } from './descriptors/entitlements.descriptors';
 import { FEATURE_FLAG_SETTINGS } from './descriptors/feature-flags.descriptors';
+import { GUARDRAIL_POLICY_SETTINGS } from './descriptors/guardrail-policy.descriptors';
 import { HARNESS_LOOP_SETTINGS } from './descriptors/harness-loop.descriptors';
 import { METERING_SETTINGS } from './descriptors/metering.descriptors';
 import { MODEL_DEFAULT_SETTINGS } from './descriptors/model-defaults.descriptors';
+import { PHI_REDACTION_SETTINGS } from './descriptors/phi-redaction.descriptors';
 import { PIPELINE_SETTINGS } from './descriptors/pipeline.descriptors';
 import { PLATFORM_KNOB_SETTINGS, RATE_LIMIT_TIER_SETTINGS } from './descriptors/platform-knobs.descriptors';
 import { PLATFORM_OPS_SETTINGS } from './descriptors/platform-ops.descriptors';
@@ -45,6 +47,11 @@ export const HOPE_SETTINGS_REGISTRY: SettingsRegistry = new SettingsRegistry().r
   ...METERING_SETTINGS,
   // AI task-model defaults (guardrail/NLP/SMR).
   ...MODEL_DEFAULT_SETTINGS,
+  // Guardrail POLICY (thresholds, judge/groundedness tuning, label
+  // taxonomies) — tenant → SYSTEM cascade, tighten-only floor on the
+  // verdict-deciding keys. Companion to MODEL_DEFAULT_SETTINGS' `models.guardrail.*`
+  // (which selects WHICH model runs; this selects HOW STRICT it is).
+  ...GUARDRAIL_POLICY_SETTINGS,
   // agentic context-management strategy knobs.
   ...AGENTIC_CONTEXT_SETTINGS,
   // agentic eval promotion-gate mode (block | warn | off).
@@ -61,6 +68,10 @@ export const HOPE_SETTINGS_REGISTRY: SettingsRegistry = new SettingsRegistry().r
   // effective-config route. Registered at their current Python defaults, so
   // cataloging them changes no behaviour.
   ...SERVICE_RUNTIME_SETTINGS,
+  // Gateway-side PHI-redaction call budget (companion to the guardrail-side
+  // chunk budget in SERVICE_RUNTIME_SETTINGS). Registered at the redactor's own
+  // code default, so cataloging it changes no behaviour.
+  ...PHI_REDACTION_SETTINGS,
   // SMR cloud-provider (openai/anthropic/vertex) platform CONNECTION config —
   // tier `env`, read by apps/text. Registered at their config.py defaults, so
   // cataloging them changes no behaviour.

@@ -8,9 +8,10 @@
  * authoritative source of the built-in-local connection defaults —
  * NOT env. Concretely —
  *
- *   1. The five built-in-local `llm` rows (`ollama`, `lm-studio`, `built-in`,
+ *   1. The four built-in-local `llm` rows (`lm-studio`, `built-in`,
  *      `vllm`, `llama-cpp`) seed `enabled: true`, so `resolveConnection('llm', …)`
- *      returns the SYSTEM row Day-1 and env becomes a pure fallback.
+ *      returns the SYSTEM row Day-1 and env becomes a pure fallback. Ollama was
+ *      removed entirely (TASK-736) — there is no `llm:ollama` row to seed.
  *   2. Every CLOUD-BYO row (all services — e.g. llm `azure`/`bedrock`/`openai`/
  *      `anthropic`/`vertex`/`sarvam`, and all stt/tts cloud rows) stays
  *      `enabled: false`: a cloud provider needs a tenant key, so an
@@ -42,7 +43,7 @@ import { SYSTEM_AI_RUNTIME_PROFILES } from '../18-ai-runtime-profile';
  * rows enabled Day-1. `sarvam`/`azure`/`bedrock`/`openai`/`anthropic`/
  * `vertex` are cloud providers and stay disabled (they need a tenant key).
  */
-const BUILT_IN_LOCAL_LLM_PROVIDERS = ['ollama', 'lm-studio', 'built-in', 'vllm', 'llama-cpp'] as const;
+const BUILT_IN_LOCAL_LLM_PROVIDERS = ['lm-studio', 'built-in', 'vllm', 'llama-cpp'] as const;
 
 /** True iff the row is one of the enabled-Day-1 built-in-local llm engines. */
 const isBuiltInLocalLlm = (c: { service: string; provider: string }): boolean =>
@@ -82,11 +83,17 @@ describe('AiProviderConnection SYSTEM seed rows', () => {
     SYSTEM_AI_PROVIDER_CONNECTIONS.forEach((c) => expect(c.tenantId).toBe(SYSTEM_TENANT_ID));
   });
 
-  it('enables exactly the five built-in-local llm rows Day-1 (seed-authoritative)', () => {
+  it('enables exactly the four built-in-local llm rows Day-1 (seed-authoritative)', () => {
     const enabled = SYSTEM_AI_PROVIDER_CONNECTIONS.filter((c) => c.enabled)
       .map((c) => `${c.service}:${c.provider}`)
       .sort();
-    expect(enabled).toEqual(['llm:built-in', 'llm:llama-cpp', 'llm:lm-studio', 'llm:ollama', 'llm:vllm']);
+    expect(enabled).toEqual(['llm:built-in', 'llm:llama-cpp', 'llm:lm-studio', 'llm:vllm']);
+  });
+
+  it('never seeds an ollama connection row (TASK-736 — Ollama removed entirely)', () => {
+    SYSTEM_AI_PROVIDER_CONNECTIONS.forEach((c) => {
+      expect(c.provider).not.toBe('ollama');
+    });
   });
 
   it('enables every built-in-local llm engine', () => {

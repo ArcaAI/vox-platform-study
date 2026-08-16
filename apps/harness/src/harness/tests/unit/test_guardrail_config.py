@@ -4,7 +4,7 @@ Phase 2 needs
 
 * a **safety** sub-config (``HARNESS_SAFETY_*``) for the Granite Guardian
   content-safety classifier — defaulting to the LM Studio (OpenAI-compatible)
-  engine with an optional ``provider`` switch (ollama/azure/bedrock),
+  engine with an optional ``provider`` switch (azure/bedrock),
 * a fail-closed **PHI** sub-config (``HARNESS_PHI_*``) for the pre-cloud-egress
   redaction guard, and
 * the existing eval :class:`~harness.eval.config.JudgeConfig` (``HARNESS_JUDGE_*``)
@@ -58,23 +58,31 @@ class TestSafetyGuardConfig:
         assert c.timeout_s > 0
         assert isinstance(c.harm_criteria, list) and c.harm_criteria
 
-    def test_env_override_selects_ollama_engine(self, monkeypatch: pytest.MonkeyPatch):
-        monkeypatch.setenv("HARNESS_SAFETY_PROVIDER", "ollama")
-        monkeypatch.setenv("HARNESS_SAFETY_MODEL", "ibm/granite3.3-guardian:8b")
-        monkeypatch.setenv("HARNESS_SAFETY_BASE_URL", "http://ollama:11434")
+    def test_env_override_selects_azure_engine(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setenv("HARNESS_SAFETY_PROVIDER", "azure")
+        monkeypatch.setenv("HARNESS_SAFETY_MODEL", "granite-guardian-deployment")
+        monkeypatch.setenv("HARNESS_SAFETY_BASE_URL", "https://example.openai.azure.com")
         monkeypatch.setenv("HARNESS_SAFETY_ENABLED", "false")
         monkeypatch.setenv("HARNESS_SAFETY_NO_THINK", "false")
         monkeypatch.setenv("HARNESS_SAFETY_TIMEOUT_S", "90")
         c = SafetyGuardConfig()
-        assert c.provider == "ollama"
-        assert c.model == "ibm/granite3.3-guardian:8b"
-        assert c.base_url == "http://ollama:11434"
+        assert c.provider == "azure"
+        assert c.model == "granite-guardian-deployment"
+        assert c.base_url == "https://example.openai.azure.com"
         assert c.enabled is False
         assert c.no_think is False
         assert c.timeout_s == 90.0
 
     def test_invalid_provider_rejected(self, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setenv("HARNESS_SAFETY_PROVIDER", "not-an-engine")
+        with pytest.raises(ValidationError):
+            SafetyGuardConfig()
+
+    def test_ollama_provider_rejected(self, monkeypatch: pytest.MonkeyPatch):
+        # R1 (TASK-736): Ollama is removed entirely — a deployment whose env still
+        # sets HARNESS_SAFETY_PROVIDER=ollama must now fail startup validation
+        # (fail-fast) rather than silently running against a removed engine.
+        monkeypatch.setenv("HARNESS_SAFETY_PROVIDER", "ollama")
         with pytest.raises(ValidationError):
             SafetyGuardConfig()
 
@@ -94,7 +102,10 @@ class TestPhiConfig:
         # The known-LOCAL providers — everything else (including a provider not
         # in this list) defaults to redact-and-confirm (default-deny; TASK-706).
         assert "lm-studio" in c.local_providers
-        assert "ollama" in c.local_providers
+        # R1 (TASK-736): Ollama is removed entirely, so it is no longer treated
+        # as local — an ollama-routed call now falls into the default-deny
+        # (redact-and-confirm) branch like any unrecognized provider.
+        assert "ollama" not in c.local_providers
         assert "azure" not in c.local_providers
         assert "bedrock" not in c.local_providers
 

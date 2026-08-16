@@ -181,6 +181,74 @@ class TestRunAndGate:
         assert run.aggregates["pdsqi_mean"] >= 4.0
         assert run.judge_model == "local-14b"
 
+    @pytest.mark.asyncio
+    async def test_icc_gate_disabled_skips_calibration_entirely(self):
+        # TASK-713: a small CI judge that scores every case identically (a
+        # ceiling effect) drives ICC to ~0 regardless of the underlying
+        # agreement quality — `icc_threshold` is validated to [0, 1], so
+        # lowering it can never accommodate that. `icc_gate_enabled=False`
+        # is the escape hatch: calibration must not even be COMPUTED (no
+        # `icc`/`gwet_ac2` in aggregates, no icc entry in thresholds, no
+        # icc failure) even though clinician ratings ARE present and a judge
+        # WAS supplied — the two preconditions that normally trigger it.
+        # judge_clinician_icc needs >= 2 paired observations to compute
+        # anything at all (see its own `len(judge_scores) < 2: return None`
+        # guard) — two calibration cases with varied clinician labels so the
+        # ICC gate genuinely engages (and would fail) absent the disable flag.
+        cases = [
+            GoldenCase(
+                case_id="calib-1",
+                source_documents=["s"],
+                generated_note="n",
+                role="calibration",
+                clinician_pdsqi=_score(accurate=5, thorough=5),
+            ),
+            GoldenCase(
+                case_id="calib-2",
+                source_documents=["s"],
+                generated_note="n",
+                role="calibration",
+                clinician_pdsqi=_score(accurate=1, thorough=1),
+            ),
+        ]
+        # Judge scores both cases IDENTICALLY (the real ceiling-effect
+        # failure mode this fix targets) — zero judge-side variance drives
+        # ICC to ~0 regardless of the clinician labels' real spread.
+        judge = PDSQI9Judge(
+            StubJudgeClient(pdsqi_score_json(accurate=4, thorough=4)), output_mode=OutputMode.SCORE
+        )
+        source = InMemoryGoldenSetSource(GoldenSet(version="v", cases=cases))
+
+        run = await run_and_gate(source, judge=judge, config=EvalConfig(icc_gate_enabled=False))
+
+        assert "icc" not in run.aggregates
+        assert "gwet_ac2" not in run.aggregates
+        assert "icc" not in run.thresholds
+        assert not any("icc" in f for f in run.failures)
+
+    @pytest.mark.asyncio
+    async def test_run_and_gate_threads_case_concurrency_into_the_runner(self, monkeypatch):
+        # TASK-713: EvalConfig.case_concurrency (HARNESS_EVAL_CASE_CONCURRENCY in
+        # CI) must actually reach GoldenSetRunner, not just exist as an unused
+        # config field — the CI wall-clock budget depends on this wiring.
+        seen: dict[str, object] = {}
+        real_runner_cls = __import__(
+            "harness.eval.golden.runner", fromlist=["GoldenSetRunner"]
+        ).GoldenSetRunner
+
+        class _RecordingRunner(real_runner_cls):  # type: ignore[misc, valid-type]
+            def __init__(self, *args, **kwargs):
+                seen["case_concurrency"] = kwargs.get("case_concurrency")
+                super().__init__(*args, **kwargs)
+
+        monkeypatch.setattr("harness.eval.ci.GoldenSetRunner", _RecordingRunner)
+
+        judge = PDSQI9Judge(StubJudgeClient(pdsqi_score_json()), output_mode=OutputMode.SCORE)
+        source = InMemoryGoldenSetSource(_pdsqi_only_golden_set())
+        await run_and_gate(source, judge=judge, config=EvalConfig(case_concurrency=7))
+
+        assert seen["case_concurrency"] == 7
+
 
 class TestMainCLI:
     def test_main_exits_zero_when_gate_passes(self, tmp_path):

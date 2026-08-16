@@ -1,6 +1,6 @@
 """Granite client generation-stats capture.
 
-Granite Guardian runs on its own LM Studio / Ollama endpoint (NOT SMR), so the
+Granite Guardian runs on its own LM Studio endpoint (NOT SMR), so the
 safety-screen client and the groundedness judge capture the equivalent native
 fields (usage / finish reason / latency) into an AD-1-shaped ``last_stats`` dict
 for Phase 2 trajectory ``GUARDRAIL`` / ``LLM_CALL`` steps. Capture is null-safe:

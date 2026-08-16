@@ -78,4 +78,35 @@ export const ENTITLEMENT_SETTINGS: SettingDescriptor[] = [
       'Whether the tenant may consume the PLATFORM-DEFAULT (SYSTEM-tenant) provider credential when it holds no key of its own. Platform-funded spend — granted per tenant, never by plan tier.',
     default: false,
   },
+  /*
+   * TASK-735 Phase 0 (D2, tighten-only) — the guardrail model-selection
+   * entitlement ceiling. `failMode: 'closed'` for the same reason as
+   * `featurePlatformDefaultCredential` above: this decides whether a tenant
+   * may pick its OWN safety-plane model rather than inheriting the SYSTEM
+   * default, so an unresolved value must raise, never silently grant.
+   *
+   * CATALOGUED, NOT YET ENFORCED. `AiTaskDefaultService.upsertRow` enforces
+   * only the platform-approved-list half of D2's floor today (a `guardrail.*`
+   * binding must name a SYSTEM-tenant `AiModel` row); it does not yet gate on
+   * this entitlement. Wiring it requires a `PlanEntitlement`/
+   * `TenantEntitlement` column addition (`packages/database` migration +
+   * `resolve-entitlements.ts`/`entitlements.constants.ts` + the
+   * `plan-matrix-parity.test.ts` seed/constant pair), which is outside this
+   * ticket's file scope — see the TASK-735 ticket README §7.
+   */
+  {
+    key: 'entitlements.featureGuardrailModelSelection',
+    tier: 'entitlement',
+    dataType: 'boolean',
+    sensitivity: 'internal',
+    maxScope: 'tenant',
+    editableBy: 'PlanEntitlement',
+    globalOnly: true,
+    failMode: 'closed',
+    category: 'Plan',
+    label: 'Guardrail model selection',
+    description:
+      'Whether the tenant may select its own guardrail (safety-plane) model from the platform-approved catalog, instead of inheriting the SYSTEM default. Granted per tenant, never by plan tier. NOT YET ENFORCED — see the TASK-735 ticket README §7 for the pending DB wiring.',
+    default: false,
+  },
 ];

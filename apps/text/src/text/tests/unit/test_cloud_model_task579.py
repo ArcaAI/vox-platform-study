@@ -16,8 +16,8 @@ RED-first (TDD): written before the GREEN provider-adapter edits landed. Locks:
     (422 via the shared exception map — see ``core/exception_handlers.py``)
     when no model resolves, for EVERY cloud provider.
   * A caller-supplied model still succeeds unchanged (regression).
-  * Local/built-in engines (Ollama, LM Studio/OpenAICompat) are UNCHANGED —
-    they do not raise and keep their topology-level model default.
+  * Local/built-in engines (LM Studio/OpenAICompat) are UNCHANGED — they do
+    not raise and keep their topology-level model default.
 """
 
 from __future__ import annotations
@@ -230,22 +230,6 @@ class TestGenerateSucceedsWithModel:
 class TestLocalEnginesUnaffected:
     """Local/built-in engines do NOT call the cloud guard — they keep their
     topology-level model default and never raise ``ModelNotSelectedError``."""
-
-    @pytest.mark.asyncio
-    async def test_ollama_generate_without_model_does_not_raise(self):
-        from text.core.config import OllamaConfig
-        from text.providers.ollama import OllamaProvider
-
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.json.return_value = {"response": "ok", "done": True}
-        mock_resp.raise_for_status = MagicMock()
-        mock_http = AsyncMock()
-        mock_http.post = AsyncMock(return_value=mock_resp)
-
-        provider = OllamaProvider(OllamaConfig(default_model="ollama-default"), mock_http)
-        content, _reasoning, _stats = await provider.generate(GenerateRequest(prompt="hi"))
-        assert content == "ok"
 
     @pytest.mark.asyncio
     async def test_openai_compat_generate_without_model_does_not_raise(self):

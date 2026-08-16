@@ -183,27 +183,12 @@ describe('AiTaskDefaultService — upsertRow validation', () => {
 });
 
 describe('AiTaskDefaultService — SUPER_ADMIN-only governance', () => {
-  it('rejects a guardrail.* write from a tenant admin with ForbiddenException (privilege rule, not a tenancy probe)', async () => {
-    const ctx = makeService({ roles: ['TENANT_ADMIN'] });
-    ctx.modelRepo.findBySlug.mockResolvedValue(makeModel({ taskType: ModelTaskType.GUARDRAIL }));
-
-    await expect(ctx.svc.upsertRow('guardrail.validate', { modelSlug: 'granite-guardian-4.1-8b', expectedVersion: 0 })).rejects.toBeInstanceOf(
-      ForbiddenException,
-    );
-    expect(ctx.repo.create).not.toHaveBeenCalled();
-  });
-
-  it('accepts a guardrail.* write from a SUPER_ADMIN', async () => {
-    const ctx = makeService({ roles: ['SUPER_ADMIN'] });
-    ctx.modelRepo.findBySlug.mockResolvedValue(makeModel({ taskType: ModelTaskType.GUARDRAIL }));
-    ctx.repo.findByTenantAndTaskKey.mockResolvedValue(null);
-    ctx.repo.create.mockImplementation(async (e: unknown) => e);
-
-    const res = await ctx.svc.upsertRow('guardrail.validate', { modelSlug: 'granite-guardian-4.1-8b', expectedVersion: 0 });
-
-    expect(res.modelSlug).toBe('granite-guardian-4.1-8b');
-    expect(ctx.repo.create).toHaveBeenCalledTimes(1);
-  });
+  // TASK-735 Phase 0 (owner decision 2026-08-16) reversed the 2026-07-17
+  // global-admin-only directive for guardrail.*: it is now tenant-admin
+  // configurable, subject to the D2 platform-approved-list floor (see the
+  // "guardrail.* platform floor" describe block below), NOT a blanket
+  // ForbiddenException for every tenant admin. This test previously asserted
+  // the old blanket-403 behaviour; it is folded into that describe block.
 
   it('rejects an nlp.* write from a tenant admin with ForbiddenException', async () => {
     const ctx = makeService({ roles: ['TENANT_ADMIN'] });
@@ -259,6 +244,137 @@ describe('AiTaskDefaultService — SUPER_ADMIN-only governance', () => {
 
     expect(res.modelSlug).toBe('lms-gemma-4-e2b-it-qat');
     expect(ctx.repo.create).toHaveBeenCalledTimes(1);
+  });
+
+  // Regression lock — TASK-735 Phase 0 touched ONLY guardrail.*'s governance.
+  // nlp.*/harness.* must keep the exact pre-TASK-735 behaviour: blanket
+  // ForbiddenException for a tenant admin, success for SUPER_ADMIN, no
+  // approved-list floor involved (that floor is guardrail-specific).
+  it('nlp.*/harness.* governance is unchanged by TASK-735 (still blanket global-admin-only, no approved-list floor)', async () => {
+    const tenantAdminCtx = makeService({ roles: ['TENANT_ADMIN'] });
+    tenantAdminCtx.modelRepo.findBySlug.mockResolvedValue(makeModel({ taskType: ModelTaskType.TEXT_GENERATION }));
+    await expect(
+      tenantAdminCtx.svc.upsertRow('harness.judge', { modelSlug: 'lms-gemma-4-e2b-it-qat', expectedVersion: 0 }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    // Never even reaches slug/approved-list resolution — the blanket
+    // governance check fires first, so findBySlug is never called for it.
+    expect(tenantAdminCtx.modelRepo.findBySlug).not.toHaveBeenCalled();
+
+    const superAdminCtx = makeService({ roles: ['SUPER_ADMIN'] });
+    superAdminCtx.modelRepo.findBySlug.mockResolvedValue(makeModel({ taskType: ModelTaskType.TEXT_GENERATION }));
+    superAdminCtx.repo.findByTenantAndTaskKey.mockResolvedValue(null);
+    superAdminCtx.repo.create.mockImplementation(async (e: unknown) => e);
+    const res = await superAdminCtx.svc.upsertRow('harness.judge', { modelSlug: 'lms-gemma-4-e2b-it-qat', expectedVersion: 0 });
+    expect(res.modelSlug).toBe('lms-gemma-4-e2b-it-qat');
+  });
+});
+
+/**
+ * TASK-735 Phase 0 (owner decision 2026-08-16, D2 "tighten-only"). Guardrail
+ * left `GLOBAL_ADMIN_ONLY_TASK_PREFIXES`, so `upsertRow`'s blanket
+ * global-admin-only check no longer fires for `guardrail.*` — but a
+ * SEPARATE, guardrail-specific platform floor still applies: a binding for a
+ * non-SYSTEM tenant must name a slug that resolves to an ENABLED
+ * SYSTEM-tenant `AiModel` row (the platform-approved list), independent of
+ * whether the caller also holds a tenant-owned model under the same slug.
+ *
+ * NOTE: the ticket's full D2 floor also calls for a
+ * `featureGuardrailModelSelection` entitlement gate (see
+ * `settings-registry/descriptors/entitlements.descriptors.ts`); that half is
+ * NOT enforced yet — it needs a DB column outside this ticket's file scope
+ * (ticket README §7). These tests cover the half that IS enforced today.
+ */
+describe('AiTaskDefaultService — guardrail.* platform floor (TASK-735 Phase 0, D2)', () => {
+  it('accepts a guardrail.* write from a TENANT ADMIN when the slug is on the platform-approved (SYSTEM) list', async () => {
+    const ctx = makeService({ roles: ['TENANT_ADMIN'] });
+    ctx.modelRepo.findBySlug.mockImplementation(async (tenantId: string, slug: string) =>
+      tenantId === SYSTEM_TENANT_ID ? makeModel({ tenantId: SYSTEM_TENANT_ID, slug, taskType: ModelTaskType.GUARDRAIL }) : null,
+    );
+    ctx.repo.findByTenantAndTaskKey.mockResolvedValue(null);
+    ctx.repo.create.mockImplementation(async (e: unknown) => e);
+
+    const res = await ctx.svc.upsertRow('guardrail.validate', { modelSlug: 'granite-guardian-4.1-8b', expectedVersion: 0 });
+
+    expect(res.modelSlug).toBe('granite-guardian-4.1-8b');
+    expect(res.tenantId).toBe(TENANT);
+    expect(ctx.repo.create).toHaveBeenCalledTimes(1);
+  });
+
+  it(
+    'rejects a guardrail.* write from a TENANT ADMIN with ForbiddenException when the slug is only a ' +
+      'tenant-owned model (not on the platform-approved list)',
+    async () => {
+      const ctx = makeService({ roles: ['TENANT_ADMIN'] });
+      // Resolves for the TENANT's own custom registration but does NOT exist
+      // as a SYSTEM row — the floor must reject it even though
+      // resolveEnabledModelBySlug alone would have accepted a tenant-owned row.
+      ctx.modelRepo.findBySlug.mockImplementation(async (tenantId: string, slug: string) =>
+        tenantId === TENANT ? makeModel({ tenantId: TENANT, slug, taskType: ModelTaskType.GUARDRAIL }) : null,
+      );
+
+      await expect(ctx.svc.upsertRow('guardrail.validate', { modelSlug: 'tenant-custom-guardian', expectedVersion: 0 })).rejects.toBeInstanceOf(
+        ForbiddenException,
+      );
+      expect(ctx.repo.create).not.toHaveBeenCalled();
+    },
+  );
+
+  it('a SUPER_ADMIN writing the SYSTEM row itself is exempt (they are defining the approved list)', async () => {
+    const ctx = makeService({ roles: ['SUPER_ADMIN'] });
+    ctx.modelRepo.findBySlug.mockResolvedValue(makeModel({ tenantId: SYSTEM_TENANT_ID, taskType: ModelTaskType.GUARDRAIL }));
+    ctx.repo.findByTenantAndTaskKey.mockResolvedValue(null);
+    ctx.repo.create.mockImplementation(async (e: unknown) => e);
+
+    const res = await ctx.svc.upsertRow('guardrail.validate', { modelSlug: 'granite-guardian-4.1-8b', expectedVersion: 0 }, SYSTEM_TENANT_ID);
+
+    expect(res.tenantId).toBe(SYSTEM_TENANT_ID);
+    expect(ctx.repo.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('an unapproved slug 403s a SUPER_ADMIN acting on behalf of a tenant too (the floor is not role-gated)', async () => {
+    const ctx = makeService({ roles: ['SUPER_ADMIN'] });
+    ctx.modelRepo.findBySlug.mockImplementation(async (tenantId: string, slug: string) =>
+      tenantId === 'tenant-other' ? makeModel({ tenantId: 'tenant-other', slug, taskType: ModelTaskType.GUARDRAIL }) : null,
+    );
+
+    await expect(
+      ctx.svc.upsertRow('guardrail.validate', { modelSlug: 'unvetted-model', expectedVersion: 0 }, 'tenant-other'),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+});
+
+describe('AiTaskDefaultService — getEffective cascade for guardrail.* (TASK-735 Phase 0)', () => {
+  it('the tenant row wins over the SYSTEM row for guardrail.validate (no longer SYSTEM-only)', async () => {
+    const ctx = makeService();
+    ctx.repo.findByTenantAndTaskKey.mockImplementation(async (tenantId: string) =>
+      tenantId === TENANT
+        ? makeRow({ tenantId: TENANT, taskKey: 'guardrail.validate', modelSlug: 'tenant-guardian' })
+        : makeRow({ tenantId: SYSTEM_TENANT_ID, taskKey: 'guardrail.validate', modelSlug: 'granite-guardian-4.1-8b' }),
+    );
+    ctx.modelRepo.findBySlug.mockImplementation(async (tenantId: string, slug: string) =>
+      makeModel({ tenantId, slug, taskType: ModelTaskType.GUARDRAIL }),
+    );
+
+    const eff = await ctx.svc.getEffective('guardrail.validate');
+
+    expect(eff.source).toBe('tenant');
+    expect(eff.modelSlug).toBe('tenant-guardian');
+    expect(ctx.repo.findByTenantAndTaskKey).toHaveBeenCalledWith(TENANT, 'guardrail.validate', undefined);
+  });
+
+  it('falls back to the SYSTEM row for guardrail.validate when no tenant row exists', async () => {
+    const ctx = makeService();
+    ctx.repo.findByTenantAndTaskKey.mockImplementation(async (tenantId: string) =>
+      tenantId === SYSTEM_TENANT_ID ? makeRow({ tenantId: SYSTEM_TENANT_ID, taskKey: 'guardrail.validate', modelSlug: 'granite-guardian-4.1-8b' }) : null,
+    );
+    ctx.modelRepo.findBySlug.mockImplementation(async (tenantId: string, slug: string) =>
+      makeModel({ tenantId, slug, taskType: ModelTaskType.GUARDRAIL }),
+    );
+
+    const eff = await ctx.svc.getEffective('guardrail.validate');
+
+    expect(eff.source).toBe('system');
+    expect(eff.modelSlug).toBe('granite-guardian-4.1-8b');
   });
 });
 

@@ -13,13 +13,13 @@ from httpx import ASGITransport, AsyncClient
 from guardrail.api.endpoints.guardrails import router as guardrails_router
 from guardrail.api.endpoints.jobs import router as jobs_router
 from guardrail.core.config import Settings
-from guardrail.providers.ollama import OllamaProvider
+from guardrail.providers.openai_compat import OpenAICompatProvider
 from guardrail.services.job_processor import JobProcessor
 
 
-class RecordingProvider(OllamaProvider):
+class RecordingProvider(OpenAICompatProvider):
     def __init__(self) -> None:
-        super().__init__(settings=Settings().ollama, http_client=httpx.AsyncClient())
+        super().__init__(settings=Settings().openai_compat, http_client=httpx.AsyncClient())
         self.calls: list[tuple[str, str]] = []
         self.delay_s = 0.0
 
@@ -52,7 +52,7 @@ async def integration_client() -> (
     app = FastAPI()
     app.state.settings = settings
     app.state.redis = redis_client
-    app.state.ollama_provider = provider
+    app.state.content_provider = provider
     app.state.job_processor = processor
     app.include_router(guardrails_router, prefix="/api", tags=["guardrails"])
     app.include_router(jobs_router, prefix="/api", tags=["jobs"])

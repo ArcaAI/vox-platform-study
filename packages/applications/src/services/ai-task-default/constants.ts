@@ -90,7 +90,6 @@ export const AI_TASK_MODEL_TASK_TYPES: Record<AiTaskKey, ModelTaskType> = {
  * (a privilege boundary → 403 on write, NOT the 404-over-403 cross-tenant posture).
  * Runtime reads ignore per-tenant override rows and use the SYSTEM row only
  * (tenants may only *use* platform defaults for these surfaces).
- *  - `guardrail.` (owner directive 2026-07-17)
  * - `nlp.`
  * - `harness.`
  *
@@ -98,13 +97,49 @@ export const AI_TASK_MODEL_TASK_TYPES: Record<AiTaskKey, ModelTaskType> = {
  * selection — primary (`smr.live` / `smr.finalize`) AND per-tenant fallback
  * (`smr.<task>.fallback`) — is tenant-admin configurable: `getEffective`
  * honours per-tenant override rows and `upsertRow` permits tenant writes.
+ *
+ * `guardrail.` was REMOVED here by owner decision 2026-08-16 (TASK-735 Phase
+ * 0), reversing the 2026-07-17 global-admin-only directive: guardrail
+ * selection is now tenant-admin configurable via the SAME cascade as `smr.*`
+ * (`getEffective` honours the tenant row; `upsertRow` accepts tenant writes).
+ * It is NOT unconditional, though — `AiTaskDefaultService.upsertRow` layers a
+ * separate, guardrail-specific platform floor (D2, tighten-only) on top of
+ * this list: a tenant write to a `guardrail.*` key must resolve its
+ * `modelSlug` to a SYSTEM-tenant `AiModel` row (the platform-approved list),
+ * checked via {@link isGuardrailTaskKey}, regardless of the caller's role.
+ * The full floor also calls for a `featureGuardrailModelSelection`
+ * entitlement ceiling (catalogued in
+ * `settings-registry/descriptors/entitlements.descriptors.ts`) that is NOT
+ * yet wired to enforcement here — it requires a `PlanEntitlement`/
+ * `TenantEntitlement` column (a `packages/database` migration) outside this
+ * ticket's file scope. See the TASK-735 ticket README §7 for the gap.
  */
-export const GLOBAL_ADMIN_ONLY_TASK_PREFIXES = ['guardrail.', 'nlp.', 'harness.'] as const;
+export const GLOBAL_ADMIN_ONLY_TASK_PREFIXES = ['nlp.', 'harness.'] as const;
 
-/** @deprecated Use {@link GLOBAL_ADMIN_ONLY_TASK_PREFIXES}. Retained for back-compat. */
-export const GLOBAL_ADMIN_ONLY_TASK_PREFIX = 'guardrail.';
+/**
+ * @deprecated Use {@link GLOBAL_ADMIN_ONLY_TASK_PREFIXES}. Retained for
+ * back-compat with zero production callers (verified 2026-08-16, TASK-735).
+ * Historically pinned to `'guardrail.'`; guardrail left the global-admin-only
+ * set in TASK-735 Phase 0, so that value would now be actively wrong. Aliased
+ * to the first remaining locked prefix instead of a stale literal.
+ */
+export const GLOBAL_ADMIN_ONLY_TASK_PREFIX = GLOBAL_ADMIN_ONLY_TASK_PREFIXES[0];
 
 /** True when `taskKey` is under a SUPER_ADMIN-only prefix. */
 export function isGlobalAdminOnlyTaskKey(taskKey: string): boolean {
   return GLOBAL_ADMIN_ONLY_TASK_PREFIXES.some((p) => taskKey.startsWith(p));
+}
+
+/**
+ * Task-key prefix for the guardrail safety-engine keys
+ * (`guardrail.validate` / `guardrail.safety` / `guardrail.groundedness`).
+ * `guardrail.` is tenant-configurable (see {@link GLOBAL_ADMIN_ONLY_TASK_PREFIXES}
+ * doc), but `AiTaskDefaultService.upsertRow` still layers the D2 tighten-only
+ * platform floor on it via {@link isGuardrailTaskKey}.
+ */
+export const GUARDRAIL_TASK_PREFIX = 'guardrail.';
+
+/** True when `taskKey` is a `guardrail.*` key (the D2 platform-floor gate applies). */
+export function isGuardrailTaskKey(taskKey: string): boolean {
+  return taskKey.startsWith(GUARDRAIL_TASK_PREFIX);
 }

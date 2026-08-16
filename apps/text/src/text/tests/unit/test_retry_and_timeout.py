@@ -39,7 +39,7 @@ def mock_task_manager():
         return_value=TaskState(
             task_id="task-retry-1",
             status=TaskStatus.PENDING,
-            provider="ollama",
+            provider="lm-studio",
             model="llama3.2:latest",
         )
     )
@@ -47,7 +47,7 @@ def mock_task_manager():
         return_value=TaskState(
             task_id="task-retry-1",
             status=TaskStatus.RUNNING,
-            provider="ollama",
+            provider="lm-studio",
             model="llama3.2:latest",
         )
     )
@@ -59,7 +59,7 @@ def _make_registry(mock_provider):
     from text.providers.base import ProviderRegistry
 
     registry = ProviderRegistry()
-    registry.register("ollama", mock_provider)
+    registry.register("lm-studio", mock_provider)
     return registry
 
 
@@ -115,7 +115,7 @@ class TestRetryHandler:
             app,
             {
                 "prompt": "Hello",
-                "provider": "ollama",
+                "provider": "lm-studio",
             },
         )
         assert resp.status_code == 200
@@ -137,7 +137,7 @@ class TestRetryHandler:
             app,
             {
                 "prompt": "Hello",
-                "provider": "ollama",
+                "provider": "lm-studio",
                 "retry_config": {"max_retries": 3, "retry_on": ["provider_error"]},
             },
             patch_sleep=True,
@@ -156,7 +156,7 @@ class TestRetryHandler:
             app,
             {
                 "prompt": "Hello",
-                "provider": "ollama",
+                "provider": "lm-studio",
                 "retry_config": {"max_retries": 2, "retry_on": ["provider_error"]},
             },
             patch_sleep=True,
@@ -175,7 +175,7 @@ class TestRetryHandler:
             app,
             {
                 "prompt": "Hello",
-                "provider": "ollama",
+                "provider": "lm-studio",
                 "retry_config": {"max_retries": 0, "retry_on": ["provider_error"]},
             },
         )
@@ -201,7 +201,7 @@ class TestRetryHandler:
             app,
             {
                 "prompt": "Hello",
-                "provider": "ollama",
+                "provider": "lm-studio",
                 "retry_config": {"max_retries": 3, "retry_on": ["provider_error"]},
             },
             patch_sleep=True,
@@ -220,7 +220,7 @@ class TestRetryHandler:
             app,
             {
                 "prompt": "Hello",
-                "provider": "ollama",
+                "provider": "lm-studio",
                 "retry_config": {"max_retries": 3, "retry_on": ["timeout"]},
             },
         )
@@ -238,7 +238,7 @@ class TestPerRequestTimeout:
     @pytest.mark.asyncio
     async def test_generate_times_out(self, _app_factory, settings):
         """Provider that takes too long gets TimeoutError → 502."""
-        settings.ollama.timeout_s = 1
+        settings.openai_compat.timeout_s = 1
 
         async def slow_generate(*args, **kwargs):
             await asyncio.sleep(10)
@@ -252,7 +252,7 @@ class TestPerRequestTimeout:
             app,
             {
                 "prompt": "Hello",
-                "provider": "ollama",
+                "provider": "lm-studio",
                 "retry_config": {"max_retries": 0, "retry_on": []},
             },
         )
@@ -261,8 +261,8 @@ class TestPerRequestTimeout:
 
     @pytest.mark.asyncio
     async def test_timeout_uses_provider_config(self, _app_factory, settings):
-        """Timeout value comes from provider config (ollama.timeout_s)."""
-        settings.ollama.timeout_s = 1
+        """Timeout value comes from provider config (openai_compat.timeout_s)."""
+        settings.openai_compat.timeout_s = 1
 
         call_count = 0
 
@@ -280,7 +280,7 @@ class TestPerRequestTimeout:
             app,
             {
                 "prompt": "Hello",
-                "provider": "ollama",
+                "provider": "lm-studio",
                 "retry_config": {"max_retries": 0, "retry_on": []},
             },
         )
@@ -290,7 +290,7 @@ class TestPerRequestTimeout:
     @pytest.mark.asyncio
     async def test_timeout_triggers_retry(self, _app_factory, settings):
         """Timeout triggers retry when 'timeout' is in retry_on."""
-        settings.ollama.timeout_s = 1
+        settings.openai_compat.timeout_s = 1
 
         mock_provider = AsyncMock()
         mock_provider.generate = AsyncMock(
@@ -306,7 +306,7 @@ class TestPerRequestTimeout:
             app,
             {
                 "prompt": "Hello",
-                "provider": "ollama",
+                "provider": "lm-studio",
                 "retry_config": {"max_retries": 2, "retry_on": ["timeout"]},
             },
             patch_sleep=True,
@@ -318,7 +318,7 @@ class TestPerRequestTimeout:
     @pytest.mark.asyncio
     async def test_timeout_returns_502_with_timeout_detail(self, _app_factory, settings):
         """Timed-out request returns 502 with 'timed out' in detail."""
-        settings.ollama.timeout_s = 1
+        settings.openai_compat.timeout_s = 1
 
         async def always_slow(*args, **kwargs):
             await asyncio.sleep(10)
@@ -332,7 +332,7 @@ class TestPerRequestTimeout:
             app,
             {
                 "prompt": "Hello",
-                "provider": "ollama",
+                "provider": "lm-studio",
                 "retry_config": {"max_retries": 0, "retry_on": []},
             },
         )
@@ -350,7 +350,7 @@ class TestRetryWithTimeout:
     @pytest.mark.asyncio
     async def test_retry_with_timeout_eventually_succeeds(self, _app_factory, settings):
         """Times out twice, succeeds on third attempt."""
-        settings.ollama.timeout_s = 1
+        settings.openai_compat.timeout_s = 1
 
         mock_provider = AsyncMock()
         mock_provider.generate = AsyncMock(
@@ -366,7 +366,7 @@ class TestRetryWithTimeout:
             app,
             {
                 "prompt": "Hello",
-                "provider": "ollama",
+                "provider": "lm-studio",
                 "retry_config": {"max_retries": 3, "retry_on": ["timeout"]},
             },
             patch_sleep=True,
@@ -378,7 +378,7 @@ class TestRetryWithTimeout:
     @pytest.mark.asyncio
     async def test_all_retries_timeout(self, _app_factory, settings):
         """All attempts timeout — returns error after exhausting retries."""
-        settings.ollama.timeout_s = 1
+        settings.openai_compat.timeout_s = 1
 
         mock_provider = AsyncMock()
         mock_provider.generate = AsyncMock(side_effect=TimeoutError("always times out"))
@@ -388,7 +388,7 @@ class TestRetryWithTimeout:
             app,
             {
                 "prompt": "Hello",
-                "provider": "ollama",
+                "provider": "lm-studio",
                 "retry_config": {"max_retries": 2, "retry_on": ["timeout"]},
             },
             patch_sleep=True,

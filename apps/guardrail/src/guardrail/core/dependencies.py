@@ -21,8 +21,6 @@ if TYPE_CHECKING:
 
     from guardrail.core.config import Settings
     from guardrail.providers.gliner import GlinerProvider
-    from guardrail.providers.guardian import GuardianProvider
-    from guardrail.providers.ollama import OllamaProvider
     from guardrail.providers.openai_compat import (
         OpenAICompatGuardianProvider,
         OpenAICompatProvider,
@@ -30,9 +28,9 @@ if TYPE_CHECKING:
     from guardrail.services.groundedness_nli import GroundednessNliVerifier, NliScorer
     from guardrail.services.job_processor import JobProcessor
 
-    # The active content/guardian providers depend on the selected LLM engine.
-    ContentProvider = OllamaProvider | OpenAICompatProvider
-    GuardianLike = GuardianProvider | OpenAICompatGuardianProvider
+    # Every supported LLM engine speaks the OpenAI-compatible wire.
+    ContentProvider = OpenAICompatProvider
+    GuardianLike = OpenAICompatGuardianProvider
 
 
 def get_settings(request: Request) -> Settings:
@@ -50,9 +48,9 @@ def get_redis(request: Request) -> aioredis.Redis:
     return cast("aioredis.Redis", request.app.state.redis)
 
 
-def get_ollama_provider(request: Request) -> ContentProvider:
+def get_content_provider(request: Request) -> ContentProvider:
     """Retrieve the active content-analysis provider for the selected engine."""
-    return cast("ContentProvider", request.app.state.ollama_provider)
+    return cast("ContentProvider", request.app.state.content_provider)
 
 
 def get_guardian_provider(request: Request) -> GuardianLike:
@@ -84,18 +82,30 @@ async def get_resolved_guardian_provider(request: Request) -> GuardianLike:
         )
 
     from guardrail.core.tenant_config import (
+        TenantSelectionVetoedError,
         build_guardian_provider,
         resolve_guardian_engine,
     )
 
     tenant_id = request.headers.get("X-Tenant-Id")
-    tenant_cfg = await resolver.resolve(tenant_id)
+    try:
+        tenant_cfg = await resolver.resolve(tenant_id)
+    except TenantSelectionVetoedError as exc:
+        # Tenant-first resolution (TASK-735 Phase 1): a DISABLED tenant row is
+        # a VETO, never a silent fold-through to the SYSTEM row.
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                f"guardrail.validate selection is DISABLED for tenant {exc.tenant_id!r} "
+                "(veto) — not falling through to the SYSTEM default."
+            ),
+        ) from exc
 
     # Fail closed when DB selection is missing (no env fallback).
     if tenant_cfg.provider is None and tenant_cfg.model is None:
         raise HTTPException(
             status_code=503,
-            detail="SYSTEM AiTaskDefault for 'guardrail.validate' is missing. Run db:seed.",
+            detail="AiTaskDefault for 'guardrail.validate' is missing. Run db:seed.",
         )
 
     provider_name, engine_cfg = resolve_guardian_engine(settings, tenant_cfg)
@@ -300,13 +310,23 @@ async def _resolve_aux_model_id(app_state: Any, tenant_id: str | None, task_key:
     resolver = getattr(app_state, "tenant_config_resolver", None)
     if resolver is None:
         raise ModelUnavailableError(
-            f"SYSTEM AiTaskDefault for {task_key!r} is unavailable (resolver not wired)."
+            f"AiTaskDefault for {task_key!r} is unavailable (resolver not wired)."
         )
-    model_id: str | None = await resolver.resolve_model_id(tenant_id, task_key)
-    if not model_id:
+
+    from guardrail.core.tenant_config import TenantSelectionVetoedError
+
+    try:
+        model_id: str | None = await resolver.resolve_model_id(tenant_id, task_key)
+    except TenantSelectionVetoedError as exc:
+        # Tenant-first resolution (TASK-735 Phase 1): a DISABLED tenant row is
+        # a VETO — fail closed the same way a missing selection does, never a
+        # silent fold-through to the SYSTEM row.
         raise ModelUnavailableError(
-            f"SYSTEM AiTaskDefault for {task_key!r} is missing. Run db:seed."
-        )
+            f"{task_key!r} selection is DISABLED for tenant {exc.tenant_id!r} (veto) — "
+            "not falling through to the SYSTEM default."
+        ) from exc
+    if not model_id:
+        raise ModelUnavailableError(f"AiTaskDefault for {task_key!r} is missing. Run db:seed.")
     return model_id
 
 

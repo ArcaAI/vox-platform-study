@@ -1,6 +1,6 @@
 """Guardrail - AI-powered content safety service.
 
-FastAPI application with Ollama integration and job queue processing.
+FastAPI application with OpenAI-compatible LLM engines and job queue processing.
 """
 
 from __future__ import annotations
@@ -9,7 +9,6 @@ import asyncio
 import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import cast
 
 import httpx
 import redis.asyncio as aioredis
@@ -18,12 +17,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from hope_env import BuildInfoReader
 from hope_env.service_registration import start_registration, stop_registration
 
-from guardrail.core.config import (
-    OllamaConfig,
-    OpenAICompatConfig,
-    Settings,
-    get_settings,
-)
+from guardrail.core.config import Settings, get_settings
 from guardrail.core.logging import get_logger, setup_logging
 
 logger = get_logger(__name__)
@@ -31,7 +25,7 @@ logger = get_logger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Manage shared resources: httpx client, Redis, Ollama provider."""
+    """Manage shared resources: httpx client, Redis, LLM providers."""
     settings: Settings = app.state.settings
 
     setup_logging(settings.log_level)
@@ -83,40 +77,28 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         session_factory = async_sessionmaker(bind=db_engine, expire_on_commit=False)
         app.state.tenant_config_resolver = TenantConfigResolver(
             session_factory=session_factory,
-            default_tenant_id=settings.db.default_tenant_id,
             cache_ttl_s=settings.db.config_cache_ttl_s,
         )
         logger.info(
             "guardrail.tenant_config_enabled",
-            default_tenant_id=settings.db.default_tenant_id,
             cache_ttl_s=settings.db.config_cache_ttl_s,
         )
 
     # Initialize the LLM engine providers based on the selected provider.
-    # lm-studio (default) | vllm | llama-cpp | azure | bedrock run over the
-    # OpenAI-compatible chat API; ollama uses its native API. The content
-    # provider keeps the historical `ollama_provider` app.state slot so
-    # endpoints/job_processor stay engine-agnostic. the self-host
-    # production engines (vllm/llama-cpp) serve Granite Guardian, so the Granite
-    # BYOC protocol applies to them as it does for lm-studio.
+    # Every engine — lm-studio (default) | vllm | llama-cpp | azure | bedrock —
+    # runs over the OpenAI-compatible chat API. The self-host production engines
+    # (vllm/llama-cpp) serve Granite Guardian, so the Granite BYOC protocol
+    # applies to them as it does for lm-studio.
     _GRANITE_ENGINES = {"lm-studio", "vllm", "llama-cpp"}
     engine_cfg = settings.engine
-    if not hasattr(app.state, "ollama_provider") or app.state.ollama_provider is None:
-        if settings.provider == "ollama":
-            from guardrail.providers.ollama import OllamaProvider
+    if not hasattr(app.state, "content_provider") or app.state.content_provider is None:
+        from guardrail.providers.openai_compat import OpenAICompatProvider
 
-            app.state.ollama_provider = OllamaProvider(
-                settings=cast(OllamaConfig, engine_cfg),
-                http_client=http_client,
-            )
-        else:
-            from guardrail.providers.openai_compat import OpenAICompatProvider
-
-            app.state.ollama_provider = OpenAICompatProvider(
-                settings=cast(OpenAICompatConfig, engine_cfg),
-                http_client=http_client,
-                use_granite=(settings.provider in _GRANITE_ENGINES),
-            )
+        app.state.content_provider = OpenAICompatProvider(
+            settings=engine_cfg,
+            http_client=http_client,
+            use_granite=(settings.provider in _GRANITE_ENGINES),
+        )
         logger.info(
             "guardrail.content_provider_initialized",
             provider=settings.provider,
@@ -126,20 +108,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     # Initialize Guardian provider for medical validation
     if not hasattr(app.state, "guardian_provider") or app.state.guardian_provider is None:
-        if settings.provider == "ollama":
-            from guardrail.providers.guardian import GuardianProvider
+        from guardrail.providers.openai_compat import OpenAICompatGuardianProvider
 
-            app.state.guardian_provider = GuardianProvider(
-                settings=cast(OllamaConfig, engine_cfg),
-                http_client=http_client,
-            )
-        else:
-            from guardrail.providers.openai_compat import OpenAICompatGuardianProvider
-
-            app.state.guardian_provider = OpenAICompatGuardianProvider(
-                settings=cast(OpenAICompatConfig, engine_cfg),
-                http_client=http_client,
-            )
+        app.state.guardian_provider = OpenAICompatGuardianProvider(
+            settings=engine_cfg,
+            http_client=http_client,
+        )
         logger.info(
             "guardrail.guardian_provider_initialized",
             provider=settings.provider,
@@ -233,7 +207,7 @@ def create_app() -> FastAPI:
 
     app = FastAPI(
         title="Guardrail",
-        description="AI-powered content safety service with Ollama integration",
+        description="AI-powered content safety service",
         version="1.0.0",
         lifespan=lifespan,
     )

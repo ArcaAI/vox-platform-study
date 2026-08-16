@@ -36,7 +36,7 @@ class TestCrossProviderE2E:
         resp = await e2e_client.post(
             "/api/v1/generate",
             json={
-                "provider": "ollama",
+                "provider": "lm-studio",
                 "prompt": "",
                 "stream": False,
             },
@@ -48,7 +48,7 @@ class TestCrossProviderE2E:
         resp = await e2e_client.post(
             "/api/v1/generate",
             json={
-                "provider": "ollama",
+                "provider": "lm-studio",
                 "prompt": "   ",
                 "stream": False,
             },

@@ -7,14 +7,16 @@ import fakeredis.aioredis
 import httpx
 import pytest
 
-from guardrail.core.config import OllamaConfig
-from guardrail.providers.ollama import OllamaProvider
+from guardrail.core.config import OpenAICompatConfig
+from guardrail.providers.openai_compat import OpenAICompatProvider
 from guardrail.services.job_processor import JobProcessor
 
 
-class RecordingProvider(OllamaProvider):
+class RecordingProvider(OpenAICompatProvider):
     def __init__(self) -> None:
-        super().__init__(settings=OllamaConfig(enabled=False), http_client=httpx.AsyncClient())
+        super().__init__(
+            settings=OpenAICompatConfig(enabled=False), http_client=httpx.AsyncClient()
+        )
         self.calls: list[str] = []
         self.delay_s = 0.0
 

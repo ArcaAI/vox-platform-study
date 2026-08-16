@@ -28,6 +28,7 @@ from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
 from guardrail.core.config import GroundednessConfig
+from guardrail.core.tenant_config import TenantSelectionVetoedError
 from guardrail.main import create_app
 from guardrail.services.model_cache import (
     DEFAULT_TTL_SECONDS,
@@ -95,6 +96,17 @@ class StubResolver:
     async def resolve_model_id(self, tenant_id: str | None, task_key: str) -> str | None:
         self.seen.append((tenant_id, task_key))
         return self._model_id
+
+
+class VetoStubResolver:
+    """Resolves ``resolve_model_id`` to a DISABLED-tenant-row veto."""
+
+    def __init__(self) -> None:
+        self.seen: list[tuple[str | None, str]] = []
+
+    async def resolve_model_id(self, tenant_id: str | None, task_key: str) -> str | None:
+        self.seen.append((tenant_id, task_key))
+        raise TenantSelectionVetoedError(tenant_id=tenant_id or "", task_key=task_key)
 
 
 async def _post(app: FastAPI, path: str, body: dict[str, Any]) -> Any:
@@ -277,6 +289,19 @@ async def test_analyze_fails_closed_503_when_db_selection_missing() -> None:
 
     resp = await _post(app, "/api/guardrail/analyze", {"text": "hello"})
     assert resp.status_code == 503
+
+
+async def test_analyze_fails_closed_503_when_tenant_row_disabled() -> None:
+    # Tenant-first resolution (TASK-735 Phase 1): a DISABLED guardrail.safety
+    # tenant row is a VETO — 503, never a silent fold-through to SYSTEM.
+    app = create_app()
+    app.state.settings.db.db_config_enabled = True
+    resolver = VetoStubResolver()
+    app.state.tenant_config_resolver = resolver
+
+    resp = await _post(app, "/api/guardrail/analyze", {"text": "hello"})
+    assert resp.status_code == 503
+    assert resolver.seen  # the resolver was actually consulted
 
 
 async def test_analyze_fails_closed_503_when_resolver_not_wired() -> None:

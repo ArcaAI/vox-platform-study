@@ -2,20 +2,14 @@
 
 from __future__ import annotations
 
-import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
 
-from text.core.config import AzureOpenAIConfig, BedrockConfig, OllamaConfig
+from text.core.config import AzureOpenAIConfig, BedrockConfig
 from text.models.requests import GenerateRequest
 from text.tests.conftest import keyed
-
-
-@pytest.fixture
-def ollama_config():
-    return OllamaConfig(base_url="http://localhost:11434", default_model="llama3.2:latest")
 
 
 @pytest.fixture
@@ -40,131 +34,6 @@ def bedrock_config():
 @pytest.fixture
 def mock_http():
     return AsyncMock(spec=httpx.AsyncClient)
-
-
-# ── Ollama edge cases ──
-
-
-class TestOllamaEdgeCases:
-    @pytest.mark.asyncio
-    async def test_generate_empty_response_field(self, ollama_config, mock_http):
-        from text.providers.ollama import OllamaProvider
-
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.json.return_value = {"response": "", "done": True}
-        mock_resp.raise_for_status = MagicMock()
-        mock_http.post.return_value = mock_resp
-        provider = OllamaProvider(config=ollama_config, http_client=mock_http)
-        content, _reasoning, usage = await provider.generate(GenerateRequest(prompt="hi"))
-        assert content == ""
-
-    @pytest.mark.asyncio
-    async def test_generate_missing_response_key(self, ollama_config, mock_http):
-        from text.providers.ollama import OllamaProvider
-
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.json.return_value = {"done": True}
-        mock_resp.raise_for_status = MagicMock()
-        mock_http.post.return_value = mock_resp
-        provider = OllamaProvider(config=ollama_config, http_client=mock_http)
-        content, _reasoning, usage = await provider.generate(GenerateRequest(prompt="hi"))
-        assert content == ""
-
-    @pytest.mark.asyncio
-    async def test_generate_with_system_prompt(self, ollama_config, mock_http):
-        from text.providers.ollama import OllamaProvider
-
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.json.return_value = {"response": "ok", "done": True}
-        mock_resp.raise_for_status = MagicMock()
-        mock_http.post.return_value = mock_resp
-        provider = OllamaProvider(config=ollama_config, http_client=mock_http)
-        await provider.generate(GenerateRequest(prompt="hi", system_prompt="Be concise"))
-        body = mock_http.post.call_args.kwargs["json"]
-        assert body["system"] == "Be concise"
-
-    @pytest.mark.asyncio
-    async def test_generate_sends_options(self, ollama_config, mock_http):
-        from text.providers.ollama import OllamaProvider
-
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.json.return_value = {"response": "ok", "done": True}
-        mock_resp.raise_for_status = MagicMock()
-        mock_http.post.return_value = mock_resp
-        provider = OllamaProvider(config=ollama_config, http_client=mock_http)
-        await provider.generate(
-            GenerateRequest(prompt="hi", temperature=0.3, max_tokens=500, top_p=0.9)
-        )
-        body = mock_http.post.call_args.kwargs["json"]
-        assert body["options"]["temperature"] == 0.3
-        assert body["options"]["num_predict"] == 500
-        assert body["options"]["top_p"] == 0.9
-
-    @pytest.mark.asyncio
-    async def test_generate_uses_caller_supplied_model(self, ollama_config, mock_http):
-        # SMR has no in-gateway default — the caller-supplied
-        # model is used verbatim (the provider's informational ``default_model``
-        # is NOT substituted into the generation payload).
-        from text.providers.ollama import OllamaProvider
-
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.json.return_value = {"response": "ok", "done": True}
-        mock_resp.raise_for_status = MagicMock()
-        mock_http.post.return_value = mock_resp
-        provider = OllamaProvider(config=ollama_config, http_client=mock_http)
-        await provider.generate(GenerateRequest(prompt="hi", model="caller-model"))
-        body = mock_http.post.call_args.kwargs["json"]
-        assert body["model"] == "caller-model"
-
-    @pytest.mark.asyncio
-    async def test_get_info_when_api_fails(self, ollama_config, mock_http):
-        from text.providers.ollama import OllamaProvider
-
-        mock_http.get.side_effect = httpx.ConnectError("refused")
-        provider = OllamaProvider(config=ollama_config, http_client=mock_http)
-        info = await provider.get_info()
-        assert info.status == "unavailable"
-        assert info.models == []
-
-    @pytest.mark.asyncio
-    async def test_stream_empty_lines_skipped(self, ollama_config, mock_http):
-        from contextlib import asynccontextmanager
-
-        from text.providers.ollama import OllamaProvider
-
-        async def _async_iter(items):
-            for item in items:
-                yield item
-
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.raise_for_status = MagicMock()
-        mock_resp.aiter_lines = lambda: _async_iter(
-            [
-                "",
-                json.dumps({"response": "hi", "done": False}),
-                "",
-                json.dumps({"response": "", "done": True}),
-            ]
-        )
-
-        @asynccontextmanager
-        async def _stream(*a, **kw):
-            yield mock_resp
-
-        mock_http.stream = _stream
-        provider = OllamaProvider(config=ollama_config, http_client=mock_http)
-        chunks = [
-            c async for c in provider.generate_stream(GenerateRequest(prompt="hi", stream=True))
-        ]
-        text_chunks = [c for c in chunks if c.type == "chunk"]
-        assert len(text_chunks) == 1
-        assert text_chunks[0].content == "hi"
 
 
 # ── Azure edge cases ──

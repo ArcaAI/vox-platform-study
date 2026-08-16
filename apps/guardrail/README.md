@@ -3,7 +3,7 @@
 AI-powered content safety and medical context validation service. The default LLM engine
 is **LM Studio** (OpenAI-compatible, `http://localhost:1234/v1`) running **IBM Granite
 Guardian** (`granite-guardian-4.1-8b`). The engine is selectable via `GUARDRAIL_V2_PROVIDER`
-(`lm-studio` default | `ollama` | `azure` | `bedrock`).
+(`lm-studio` default | `vllm` | `llama-cpp` | `azure` | `bedrock`).
 
 ## Features
 
@@ -40,7 +40,7 @@ Guardian** (`granite-guardian-4.1-8b`). The engine is selectable via `GUARDRAIL_
 - Redis server
 - An LLM engine serving the configured model:
   - **LM Studio** (default) with `granite-guardian-4.1-8b` loaded, exposed at `http://localhost:1234/v1`
-  - or Ollama / Azure OpenAI / AWS Bedrock (see the LLM Engine section)
+  - or vLLM / llama.cpp / Azure OpenAI / AWS Bedrock (see the LLM Engine section)
 
 ### Installation
 
@@ -63,7 +63,7 @@ cp .env.sample .env
 Edit `.env` to configure your settings:
 
 ```bash
-# LLM engine selector: lm-studio (default) | ollama | azure | bedrock
+# LLM engine selector: lm-studio (default) | vllm | llama-cpp | azure | bedrock
 GUARDRAIL_V2_PROVIDER=lm-studio
 
 # OpenAI-compatible engine (LM Studio default)
@@ -227,7 +227,7 @@ The service selects its LLM engine via `GUARDRAIL_V2_PROVIDER`:
 | Provider              | Transport                             | Protocol                                | Notes                                  |
 | --------------------- | ------------------------------------- | --------------------------------------- | -------------------------------------- |
 | `lm-studio` (default) | `POST {base_url}/v1/chat/completions` | Granite Guardian `<guardian>`/`<score>` | `granite-guardian-4.1-8b`              |
-| `ollama`              | `POST {base_url}/api/generate`        | Generic SAFE/UNSAFE prompts             | optional, serves e.g. `gemma3`         |
+| `vllm` / `llama-cpp`  | OpenAI-compatible chat                | Granite Guardian `<guardian>`/`<score>` | production self-host                   |
 | `azure`               | OpenAI-compatible chat                | Generic SAFE/UNSAFE fallback            | requires a guardian-capable deployment |
 | `bedrock`             | OpenAI-compatible gateway             | Generic SAFE/UNSAFE fallback            | requires a guardian-capable model      |
 
@@ -256,9 +256,8 @@ GUARDRAIL_DB_CONFIG_ENABLED=true
 # Read-only connection to the shared HOPE core DB (postgres:// is normalized to asyncpg)
 GUARDRAIL_DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/hope
 
-# Fallback tenant used when X-Tenant-Id is absent or the request tenant has no rows
-# (defaults to the seeded GLOBAL tenant where default guardrail config lives)
-GUARDRAIL_DEFAULT_TENANT_ID=50000000-0000-0000-0000-000000000000
+# NOTE: there is no "default tenant" knob. Resolution is request tenant -> SYSTEM
+# (00000000-...); a request without X-Tenant-Id resolves SYSTEM only.
 
 # Resolved-config cache TTL in seconds (default 60)
 GUARDRAIL_CONFIG_CACHE_TTL_S=60
@@ -279,7 +278,7 @@ service never touches the DB and behaves exactly as the env-only configuration a
 
    | resolved field   | source column                             | meaning                                                                        |
    | ---------------- | ----------------------------------------- | ------------------------------------------------------------------------------ |
-   | provider         | `AiModel."provider"`                      | `lm-studio` \| `ollama` \| `azure` \| `bedrock` (NULL → env provider retained) |
+   | provider         | `AiModel."provider"`                      | `lm-studio` \| `vllm` \| `llama-cpp` \| `azure` \| `bedrock` (NULL → env provider retained) |
    | model            | `AiModel."sourceUri"`                     | the provider-native model id sent to the runtime (never the slug)              |
    | azure deployment | `AiModel."_metadata"->>'azureDeployment'` | non-secret Azure deployment name (may be absent)                               |
 
@@ -306,8 +305,8 @@ blocked on TASK-302 Phase 4D).
 ┌─────────────┐    ┌─────────────────┐    ┌──────────────────────┐
 │   Client    │───▶│  Guardrail      │───▶│  LLM engine          │
 │   Service   │    │    Service      │    │  (LM Studio default; │
-└─────────────┘    │                 │    │   Ollama/Azure/      │
-                   │  ┌─────────────┐│    │   Bedrock optional)  │
+└─────────────┘    │                 │    │   vLLM/llama.cpp/    │
+                   │  ┌─────────────┐│    │   Azure/Bedrock)     │
                    │  │ Job Queue   ││    └──────────────────────┘
                    │  │ (Redis)     ││
                    │  └─────────────┘│
@@ -327,10 +326,10 @@ See `.env.sample` for all available configuration options.
 ## Model Configuration
 
 - **Default engine / model**: LM Studio serving `granite-guardian-4.1-8b`
-- **Switch engine**: `GUARDRAIL_V2_PROVIDER` (`lm-studio` | `ollama` | `azure` | `bedrock`)
+- **Switch engine**: `GUARDRAIL_V2_PROVIDER` (`lm-studio` | `vllm` | `llama-cpp` | `azure` | `bedrock`)
 - **Override general guardrail model**: `GUARDRAIL_OPENAI_COMPAT_GUARDRAIL_MODEL`
 - **Override guardian model**: `GUARDRAIL_OPENAI_COMPAT_GUARDIAN_MODEL`
-- Per-engine overrides use that engine's prefix (`GUARDRAIL_OLLAMA_*`, `GUARDRAIL_AZURE_*`, `GUARDRAIL_BEDROCK_*`)
+- Per-engine overrides use that engine's prefix (`GUARDRAIL_VLLM_*`, `GUARDRAIL_LLAMA_CPP_*`, `GUARDRAIL_AZURE_*`, `GUARDRAIL_BEDROCK_*`)
 
 ## License
 

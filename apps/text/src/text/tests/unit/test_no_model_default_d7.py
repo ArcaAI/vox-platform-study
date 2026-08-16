@@ -116,16 +116,6 @@ class TestGenerateRequiresModel:
 # ── Providers: no in-gateway default fallback in the generation path ──
 
 
-def _ollama():
-    from text.core.config import OllamaConfig
-    from text.providers.ollama import OllamaProvider
-
-    return OllamaProvider(
-        OllamaConfig(base_url="http://localhost:11434", default_model="ollama-default"),
-        MagicMock(),
-    )
-
-
 def _openai_compat():
     from text.core.config import OpenAICompatConfig
     from text.providers.openai_compat import OpenAICompatProvider
@@ -166,7 +156,6 @@ def _bedrock():
 
 
 _PROVIDER_FACTORIES = [
-    ("ollama", _ollama, "ollama-default"),
     ("openai_compat", _openai_compat, "compat-default"),
     ("azure", _azure, "azure-default"),
     ("bedrock", _bedrock, "bedrock-default"),

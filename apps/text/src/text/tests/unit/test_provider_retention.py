@@ -1,10 +1,8 @@
 """Retention propagation to server-managed engines.
 
-SMR does not hold model weights: Ollama and LM Studio do. Retention therefore
-propagates as a per-request hint rather than an in-process cache:
+SMR does not hold model weights: the engines it talks to do. Retention
+therefore propagates as a per-request hint rather than an in-process cache:
 
-  * Ollama   — `keep_alive` in the generate payload overrides the server's
-               `OLLAMA_KEEP_ALIVE` (default 5 min idle unload).
   * LM Studio — `ttl` (seconds) ferried through the OpenAI SDK's sanctioned
                `extra_body` escape hatch. ONLY for LM Studio: the openai-compat
                class is shared with vLLM and generic endpoints, which reject
@@ -17,85 +15,10 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock
 
-import httpx
 import pytest
 
-from text.core.config import OllamaConfig, OpenAICompatConfig
+from text.core.config import OpenAICompatConfig
 from text.models.requests import GenerateRequest
-
-
-@pytest.fixture
-def ollama_config():
-    return OllamaConfig(base_url="http://localhost:11434", default_model="llama3.2:latest")
-
-
-@pytest.fixture
-def mock_http_client():
-    return AsyncMock(spec=httpx.AsyncClient)
-
-
-# ── Ollama: keep_alive ──────────────────────────────────────────────────────
-
-
-class TestOllamaKeepAlive:
-    def test_payload_carries_keep_alive_for_generate(self, ollama_config, mock_http_client):
-        from text.providers.ollama import OllamaProvider
-
-        provider = OllamaProvider(config=ollama_config, http_client=mock_http_client)
-        payload = provider._build_payload(GenerateRequest(prompt="hi", model="m"), stream=False)
-
-        assert "keep_alive" in payload
-
-    def test_payload_carries_keep_alive_for_stream(self, ollama_config, mock_http_client):
-        """Both paths share `_build_payload`, so streaming must carry it too."""
-        from text.providers.ollama import OllamaProvider
-
-        provider = OllamaProvider(config=ollama_config, http_client=mock_http_client)
-        payload = provider._build_payload(GenerateRequest(prompt="hi", model="m"), stream=True)
-
-        assert "keep_alive" in payload
-
-    def test_keep_alive_uses_resolved_retention_ttl_in_seconds(
-        self, ollama_config, mock_http_client
-    ):
-        """Ollama accepts a duration; we send integer seconds from the TTL."""
-        from text.providers.ollama import OllamaProvider
-
-        provider = OllamaProvider(config=ollama_config, http_client=mock_http_client)
-        provider.apply_retention({"ttl_seconds": 900})
-        payload = provider._build_payload(GenerateRequest(prompt="hi", model="m"), stream=False)
-
-        assert payload["keep_alive"] == "900s"
-
-    def test_keep_alive_is_clamped_to_the_product_window(self, ollama_config, mock_http_client):
-        from text.providers.ollama import OllamaProvider
-
-        provider = OllamaProvider(config=ollama_config, http_client=mock_http_client)
-
-        provider.apply_retention({"ttl_seconds": 7200})
-        assert (
-            provider._build_payload(GenerateRequest(prompt="x", model="m"), stream=False)[
-                "keep_alive"
-            ]
-            == "3600s"
-        )
-
-        provider.apply_retention({"ttl_seconds": 5})
-        assert (
-            provider._build_payload(GenerateRequest(prompt="x", model="m"), stream=False)[
-                "keep_alive"
-            ]
-            == "60s"
-        )
-
-    def test_default_keep_alive_is_the_od5_default(self, ollama_config, mock_http_client):
-        from text.providers.ollama import OllamaProvider
-
-        provider = OllamaProvider(config=ollama_config, http_client=mock_http_client)
-        payload = provider._build_payload(GenerateRequest(prompt="hi", model="m"), stream=False)
-
-        assert payload["keep_alive"] == "600s"
-
 
 # ── LM Studio: extra_body.ttl ───────────────────────────────────────────────
 

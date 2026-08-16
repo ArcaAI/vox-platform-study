@@ -18,8 +18,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from guardrail.core.config import OllamaConfig, OpenAICompatConfig
-from guardrail.providers.guardian import GuardianProvider
+from guardrail.core.config import OpenAICompatConfig
 from guardrail.providers.openai_compat import OpenAICompatGuardianProvider
 
 
@@ -57,54 +56,12 @@ def _openai_body(usage: dict[str, Any] | None = None) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# 1. The Ollama guardian never built stats at all
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_ollama_guardian_reports_its_token_spend() -> None:
-    """Ollama reports ``prompt_eval_count``/``eval_count``; nothing read them."""
-    provider = GuardianProvider(
-        OllamaConfig(base_url="http://localhost:11434", guardian_enabled=True),
-        _FakeClient(
-            {
-                "response": _VALID_JSON,
-                "prompt_eval_count": 412,
-                "eval_count": 23,
-                "done_reason": "stop",
-            }
-        ),
-    )
-
-    result = await provider.validate_medical_context("chest pain on exertion")
-
-    stats = result["stats"]
-    assert stats["prompt_tokens"] == 412
-    assert stats["predicted_tokens"] == 23
-    assert stats["total_tokens"] == 435
-    assert stats["provider"] == "ollama"
-    # The native blob the gateway normalizer parses (`ollama.native` shape).
-    assert stats["engine_native"]["usage"]["prompt_eval_count"] == 412
-    assert stats["engine_native"]["usage"]["eval_count"] == 23
-
-
-@pytest.mark.asyncio
-async def test_ollama_guardian_stats_are_null_safe() -> None:
-    """A response with no counts yields zeros, never an exception — a stats
-    problem must not fail a safety check."""
-    provider = GuardianProvider(
-        OllamaConfig(base_url="http://localhost:11434", guardian_enabled=True),
-        _FakeClient({"response": _VALID_JSON}),
-    )
-
-    result = await provider.validate_medical_context("text")
-
-    assert result["stats"]["prompt_tokens"] == 0
-    assert result["stats"]["predicted_tokens"] == 0
-
-
-# ---------------------------------------------------------------------------
-# 2. The endpoint threw the stats away
+# 1. The endpoint threw the stats away
+#
+# (The Ollama-guardian arm of this suite went with the engine in TASK-736. The
+# guarantee it carried — a stats problem must never fail a safety check — is
+# engine-independent and still covered for the surviving OpenAI-compatible wire
+# by `test_openai_compat_stats.py`.)
 # ---------------------------------------------------------------------------
 
 
@@ -217,7 +174,7 @@ async def test_judge_path_stats_reach_the_endpoint_shape() -> None:
 
 
 # ---------------------------------------------------------------------------
-# 3. Prometheus — bounded labels, NEVER a tenant label
+# 2. Prometheus — bounded labels, NEVER a tenant label
 # ---------------------------------------------------------------------------
 
 
