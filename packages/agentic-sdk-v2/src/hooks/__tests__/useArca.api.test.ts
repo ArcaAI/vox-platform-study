@@ -64,6 +64,10 @@ function calledMethod(callIndex = 0): string {
   return mockFetch.mock.calls[callIndex]?.[1]?.method ?? 'GET';
 }
 
+function calledHeaders(callIndex = 0): Record<string, string> {
+  return (mockFetch.mock.calls[callIndex]?.[1]?.headers ?? {}) as Record<string, string>;
+}
+
 function calledBody(callIndex = 0): unknown {
   const raw = mockFetch.mock.calls[callIndex]?.[1]?.body;
   return raw ? JSON.parse(raw as string) : undefined;
@@ -430,18 +434,21 @@ describe('useArca API — context', () => {
 
   // ---- context.updateItem -------------------------------------------------
   describe('context.updateItem()', () => {
+    // TASK-709: the route is `@RequiresIfMatch()`, so the write carries the
+    // strong validator plus the body-field `expectedVersion` fallback.
     it('should PATCH the context item and update store', async () => {
       mockFetch.mockResolvedValueOnce(createMockResponse(undefined, { status: 204, ok: true } as any));
 
       const { result } = renderHook(() => useArca());
 
       await act(async () => {
-        await result.current.context.updateItem('ctx-42', 'updated content');
+        await result.current.context.updateItem('ctx-42', 'updated content', { expectedVersion: 3 });
       });
 
       expect(calledUrl()).toBe('http://test/consultations/cons-1/context/ctx-42');
       expect(calledMethod()).toBe('PATCH');
-      expect(calledBody()).toMatchObject({ content: 'updated content' });
+      expect(calledHeaders()['If-Match']).toBe('"3"');
+      expect(calledBody()).toMatchObject({ content: 'updated content', expectedVersion: 3 });
       expect(mockStoreData.updateContextItem).toHaveBeenCalledWith('ctx-42', { content: 'updated content' });
     });
   });
@@ -658,12 +665,13 @@ describe('useArca API — summary', () => {
       const { result } = renderHook(() => useArca());
 
       await act(async () => {
-        await result.current.summary.updateSummary('sum-1', 'New content', { reason: 'edit' } as any);
+        await result.current.summary.updateSummary('sum-1', 'New content', { reason: 'edit', expectedVersion: 3 } as any);
       });
 
       expect(calledUrl()).toBe('http://test/consultations/cons-1/summary/sum-1');
       expect(calledMethod()).toBe('PATCH');
-      expect(calledBody()).toMatchObject({ content: 'New content', reason: 'edit' });
+      expect(calledHeaders()['If-Match']).toBe('"3"');
+      expect(calledBody()).toMatchObject({ content: 'New content', reason: 'edit', expectedVersion: 3 });
     });
 
     it('should toggle summaryGenerating flag during update', async () => {
@@ -671,7 +679,7 @@ describe('useArca API — summary', () => {
       const { result } = renderHook(() => useArca());
 
       await act(async () => {
-        await result.current.summary.updateSummary('sum-1', 'edited');
+        await result.current.summary.updateSummary('sum-1', 'edited', { expectedVersion: 1 });
       });
 
       expect(mockStoreData.setSummaryGenerating).toHaveBeenCalledWith(true);

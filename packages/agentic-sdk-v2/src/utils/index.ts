@@ -63,3 +63,6 @@ export {
   buildTranscriptHighlights,
   confidencePercent,
 } from './citations';
+
+// Optimistic-concurrency helpers for the note-content write routes (TASK-709).
+export { ifMatchFor, requireExpectedVersion, findSummaryVersion, toOccError } from './occ';

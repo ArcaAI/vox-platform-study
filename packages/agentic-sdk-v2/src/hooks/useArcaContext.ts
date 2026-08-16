@@ -29,6 +29,7 @@ import {
 import type { ContextItem, ContextFilters, MedicalEntity, ContextVersionEntry } from '../types';
 import { CONTEXT_ENDPOINTS, SUMMARY_ENDPOINTS, ENTITY_ENDPOINTS } from '../core/constants';
 import type { ISDKLogger } from '../core/logger';
+import { ifMatchFor, requireExpectedVersion, toOccError } from '../utils/occ';
 
 export type { UseArcaContext } from './useArca';
 
@@ -200,7 +201,7 @@ export function useArcaContext() {
   );
 
   const updateItem = useCallback(
-    async (id: string, content: string): Promise<void> => {
+    async (id: string, content: string, options?: { expectedVersion?: number }): Promise<void> => {
       const logger = getLogger();
       if (!apiClient) throw new Error('SDK not initialized');
       if (!consultation) throw new Error('No active consultation');
@@ -214,19 +215,28 @@ export function useArcaContext() {
       setContextLoading(true);
       setContextError(null);
 
+      // TASK-709: the route is `@RequiresIfMatch()` — send the strong
+      // validator AND the body-field fallback, and surface 412 distinctly.
+      const expectedVersion = requireExpectedVersion(id, options?.expectedVersion, contextItems.find((i) => i.id === id)?.version);
+
       try {
-        await apiClient.patch(CONTEXT_ENDPOINTS.UPDATE(consultation.id, id), { content });
-        updateContextItemAction(id, { content });
+        const updated = await apiClient.patchWithIfMatch<ContextItem>(
+          CONTEXT_ENDPOINTS.UPDATE(consultation.id, id),
+          { content, expectedVersion },
+          ifMatchFor(expectedVersion),
+        );
+        updateContextItemAction(id, { content, ...(typeof updated?.version === 'number' ? { version: updated.version } : {}) });
         timer?.end(true, { attributes: { contentLength: content.length } });
       } catch (error) {
-        timer?.error(error as Error);
-        setContextError(error as Error);
-        throw error;
+        const mapped = toOccError(error, id, expectedVersion);
+        timer?.error(mapped as Error);
+        setContextError(mapped as Error);
+        throw mapped;
       } finally {
         setContextLoading(false);
       }
     },
-    [apiClient, consultation, updateContextItemAction, setContextLoading, setContextError, getLogger],
+    [apiClient, consultation, contextItems, updateContextItemAction, setContextLoading, setContextError, getLogger],
   );
 
   const getItems = useCallback(

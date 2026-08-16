@@ -339,9 +339,60 @@ the package-scoped commands shown above (`pnpm --filter @arcaai/applications ...
 - `packages/applications/src/services/consultation/harness/harness-internal.service.ts` — `persistDraft` adoption branch → `updateWithVersion` + OCC catch
 - `packages/applications/src/services/consultation/harness/__tests__/harness-internal.service.test.ts` — mock + new OCC test
 
+### Task 6 (follow-up) — SDK hooks wired to the OCC contract — DONE
+
+The gap filed above was closed in a follow-up session. All five call sites that hit the three gated
+routes now send `If-Match: "<version>"` plus the body-field `expectedVersion` — the three named in
+Task 6 and, additionally, the two duplicate implementations inside the `useArca` god hook
+(`updateSummary`, `updateContextItem`), which target the same routes and would have 428'd identically.
+
+- **New** `packages/agentic-sdk-v2/src/utils/occ.ts` — `ifMatchFor(v)` (RFC 7232 strong validator),
+  `requireExpectedVersion()`, `findSummaryVersion()`, and `toOccError()` (412 → `ConfigConflictError`).
+  Mirrors the house pattern in `useGlobalSettings.update`; exported from the `utils` barrel.
+- `useArcaSummary.updateSummary` / `useArca.updateSummary` → `patchWithIfMatch`, storing the returned
+  row so a follow-up edit works without a refetch.
+- `useArcaSummary.approveSummary` → `postWithHeaders(..., { 'If-Match': ... })`. **Deviation, deliberate:**
+  approve is a POST and `AgenticClient` has no POST-with-If-Match helper. `postWithHeaders` is the
+  existing one-off-header path (already used by `useArcaSession.addContext` for
+  `X-Context-Schema-Version`), so it was reused rather than adding a near-duplicate client method.
+- `useArcaContext.updateItem` / `useArca.updateContextItem` → `patchWithIfMatch`; the store item's
+  `version` is refreshed from the response.
+
+**Where the version comes from.** There is no single-resource GET for a context item or a summary, so
+`getWithEtag` has nothing to call. Task 2 put `version` on the list/create response DTOs, so the hooks
+read it from the Zustand store, with an explicit `options.expectedVersion` override. When neither is
+available the hook **throws a directive error rather than issuing a validator-less write** that would
+428 — the same refuse-don't-guess stance as `useGlobalSettings.update`.
+
+Public API additions (all additive): optional `{ expectedVersion }` argument on `updateItem` /
+`approveSummary`; `expectedVersion` on `UpdateSummaryOptions`; optional `version` on `ContextItem` and
+`SummaryResponse` (DISTINCT from `SummaryResponse.versionNumber`, the version-browser counter).
+
+Tests: new `packages/agentic-sdk-v2/src/hooks/__tests__/noteWrites.occ.task709.test.ts` (9 cases —
+header+body threading, explicit override wins over store, 412 → `ConfigConflictError` carrying correct
+expected/current, refusal when no version is known). Seven pre-existing cases in `useArca.api.test.ts`
+and `useArca.summary.test.ts` asserted the old validator-less PATCH and were updated to the new
+contract — including one renamed from "should work without options (backwards compatible)", since that
+backwards compatibility is precisely what this ticket removes.
+
+Verification (actually run, package-scoped):
+
+```
+pnpm --filter @arcaai/vox build      → exit 0
+pnpm --filter @arcaai/vox typecheck  → exit 0
+pnpm --filter @arcaai/vox lint       → exit 0 (3 pre-existing warnings in AgenticProvider.tsx)
+pnpm --filter @arcaai/vox test       → 267 files, 4183 tests passed
+```
+
+SDK files changed: `src/utils/occ.ts` (new), `src/utils/index.ts`, `src/hooks/useArcaSummary.ts`,
+`src/hooks/useArcaContext.ts`, `src/hooks/useArca.ts`, `src/types/summary.ts`, `src/types/context.ts`,
+`src/hooks/__tests__/noteWrites.occ.task709.test.ts` (new), `src/hooks/__tests__/useArca.api.test.ts`,
+`src/hooks/__tests__/useArca.summary.test.ts`.
+
 ## 8. Change History
 
 | Date | Change | By |
 |---|---|---|
 | 2026-08-16 | Ticket authored | Claude (ticket-authoring session) |
 | 2026-08-16 | Tasks 2–6 implemented and verified (build/typecheck/lint/unit green across `packages/applications` and `apps/api`); Task 1 (e2e spec) authored but not run — infra down; Task 7 documented as human-gated. `expectedVersion` made REQUIRED (not optional) on all three DTOs, deviating from the plan's literal "@IsOptional()" text in favor of its "verbatim" instruction — see §7 Task 3. SDK wiring gap found and filed as a follow-up task rather than fixed inline, per plan. Status → Review. | Claude (execution session) |
+| 2026-08-16 | Task 6 follow-up closed: `@arcaai/vox` hooks now send `If-Match` + `expectedVersion` on all three gated routes (plus the two `useArca` god-hook duplicates), 412 surfaced as `ConfigConflictError`; new `utils/occ.ts` helpers and hook tests; 7 pre-existing tests updated off the old validator-less contract. `pnpm --filter @arcaai/vox build test lint typecheck` green. | Claude (SDK wiring session) |
