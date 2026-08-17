@@ -249,6 +249,23 @@ export const DEFAULT_POLICIES: DefaultPolicy[] = [
       // needs the same subjects... seed them once, in one place").
       { action: 'manage', subject: 'WorkflowDefinition', conditions: { tenantId: '${context.tenantId}' } },
       { action: 'manage', subject: 'WorkflowRun', conditions: { tenantId: '${context.tenantId}' } },
+      // Billing: a tenant admin reads its OWN invoices. billing-admin.controller.ts's
+      // own contract says "a tenant-bound caller is pinned. Cross-tenant BY-ID access
+      // returns 404 (never 403) from the service" — but no policy ever granted
+      // `BillingInvoice`, so `@CanManage('BillingInvoice')` rejected every tenant admin
+      // at the guard with 403 and that documented pinned-read path was unreachable.
+      // `manage` (not `read`) because the class-level decorator checks manage; the
+      // MUTATIONS stay global-admin-only regardless, enforced imperatively in
+      // BillingService via isSuperAdmin (see that controller's AUTH-NOTE), so this
+      // grant widens reads only.
+      { action: 'manage', subject: 'BillingInvoice', conditions: { tenantId: '${context.tenantId}' } },
+      // Institutional-RAG knowledge corpus governance (TASK-728). Same gap as
+      // BillingInvoice above: knowledge.controller.ts says "the class-level
+      // `@CanManage('KnowledgeDocument')` is the whole gate", and its by-id paths
+      // answer 404-over-403 via findOwnedOrThrow — but no policy granted the
+      // subject, so every tenant admin was rejected at the guard with 403 and the
+      // documented tenant-scoped path was unreachable.
+      { action: 'manage', subject: 'KnowledgeDocument', conditions: { tenantId: '${context.tenantId}' } },
       // Per-tenant saved synthetic Workbench test inputs (TASK-721 Phase B) —
       // `WorkflowTestFixtureController` gates on `@CanManage('WorkflowTestFixture')`. Same gap
       // shape as the two grants above: without this row the fixture CRUD surface 403s for every
