@@ -74,7 +74,7 @@ const FLAGS: FlagSpec[] = [
     key: 'workflowExposure.enabled',
     label: 'Workflow exposure plane (public invoke)',
     description:
-      'R-1 kill-switch for the whole `/api/v1/workflows/:slug/…` public-invoke surface (TASK-722). Design.md\'s precondition: TASK-708\'s API-key scope enforcement must be verified end-to-end before this ships enabled; Temporal is also not yet production-ready (R-2). Read via `ConfigService.getConfigValue(\'WORKFLOW_EXPOSURE_ENABLED\')`, `=== "true"` — a 404 (existence not disclosed) while off, same posture as `registration.selfSignupEnabled`.',
+      "R-1 kill-switch for the whole `/api/v1/workflows/:slug/…` public-invoke surface (TASK-722). Design.md's precondition: TASK-708's API-key scope enforcement must be verified end-to-end before this ships enabled; Temporal is also not yet production-ready (R-2). Read via `ConfigService.getConfigValue('WORKFLOW_EXPOSURE_ENABLED')`, `=== \"true\"` — a 404 (existence not disclosed) while off, same posture as `registration.selfSignupEnabled`.",
     default: false,
     killSwitch: true,
   },
@@ -82,7 +82,7 @@ const FLAGS: FlagSpec[] = [
     key: 'workflowExposure.allowCloudProviders',
     label: 'Workflow exposure — cloud LLM providers',
     description:
-      'Decision #6 (R-8): may a workflow invoked through the PUBLIC exposure plane route to a cloud LLM provider (azure/bedrock/openai/anthropic/vertex — `isCloudByoProvider(\'llm\', …)`)? OFF by default — public exposure inherits the strictest egress posture; a tenant opts in explicitly, never by default. Platform-wide today, not yet per-tenant: no node type in the code-owned registry selects a provider yet (`WORKFLOW_NODE_REGISTRY` ships only `noop`/`passthrough`), so there is nothing to differentiate BY tenant until TASK-720/731 add one — see the TASK-722 ticket README §7 for the reasoning.',
+      "Decision #6 (R-8): may a workflow invoked through the PUBLIC exposure plane route to a cloud LLM provider (azure/bedrock/openai/anthropic/vertex — `isCloudByoProvider('llm', …)`)? OFF by default — public exposure inherits the strictest egress posture; a tenant opts in explicitly, never by default. Platform-wide today, not yet per-tenant: no node type in the code-owned registry selects a provider yet (`WORKFLOW_NODE_REGISTRY` ships only `noop`/`passthrough`), so there is nothing to differentiate BY tenant until TASK-720/731 add one — see the TASK-722 ticket README §7 for the reasoning.",
     default: false,
     killSwitch: true,
   },

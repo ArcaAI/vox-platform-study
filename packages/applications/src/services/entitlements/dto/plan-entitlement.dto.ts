@@ -47,7 +47,10 @@ export class PlanEntitlementResponse {
   @ApiPropertyOptional({ description: 'Monthly summaries; null = unlimited', nullable: true })
   monthlySummaries?: number | null;
 
-  @ApiPropertyOptional({ description: 'Monthly PUBLISHED-workflow invocations via /api/v1/workflows/:slug/invoke (TASK-722); null = unlimited', nullable: true })
+  @ApiPropertyOptional({
+    description: 'Monthly PUBLISHED-workflow invocations via /api/v1/workflows/:slug/invoke (TASK-722); null = unlimited',
+    nullable: true,
+  })
   monthlyWorkflowInvocations?: number | null;
 
   @ApiPropertyOptional({ description: 'Monthly STT session-seconds allowance (TASK-615 D11); null = unlimited', nullable: true })
@@ -162,7 +165,10 @@ export class UpdatePlanEntitlementRequest {
   @Min(0)
   monthlySummaries?: number | null;
 
-  @ApiPropertyOptional({ description: 'Monthly PUBLISHED-workflow invocations via /api/v1/workflows/:slug/invoke (TASK-722); null = unlimited', nullable: true })
+  @ApiPropertyOptional({
+    description: 'Monthly PUBLISHED-workflow invocations via /api/v1/workflows/:slug/invoke (TASK-722); null = unlimited',
+    nullable: true,
+  })
   @IsOptional()
   @IsInt()
   @Min(0)

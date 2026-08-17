@@ -32,7 +32,10 @@ export class CreateWorkflowDefinitionRequest {
   @MaxLength(2000)
   description?: string;
 
-  @ApiProperty({ description: 'Which registered palette this definition targets (validated against the code-owned node registry).', example: 'summarization' })
+  @ApiProperty({
+    description: 'Which registered palette this definition targets (validated against the code-owned node registry).',
+    example: 'summarization',
+  })
   @IsString()
   @MaxLength(80)
   paletteKey: string;

@@ -37,6 +37,14 @@ interface InvoiceBody {
   lines: unknown[];
 }
 
+// SERIAL: this file's `beforeAll` performs stateful billing writes (compute-draft,
+// and in the lifecycle spec finalize/void) for a FIXED (tenant, period). Under
+// `fullyParallel: true` Playwright spreads a file's tests across workers, so
+// `beforeAll` runs concurrently in several of them and the second identical
+// compute-draft collides with the first — 409, before any assertion runs.
+// Serial mode pins the file to one worker so the setup happens exactly once.
+test.describe.configure({ mode: 'serial' });
+
 test.describe('Invoice lifecycle', () => {
   let globalAdminToken: string;
   let tenantId: string;

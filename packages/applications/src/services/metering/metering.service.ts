@@ -218,21 +218,21 @@ export class MeteringService implements IMeteringService, OnModuleInit, OnModule
       embeddingTokens,
       guardrailCalls,
     ] = await Promise.all([
-        client.consultation.count({ where: { tenantId, createdAt: window } }),
-        client.audioRecording.aggregate({ _sum: { duration: true }, where: { tenantId, createdAt: window } }),
-        client.summaryMeta.count({ where: { tenantId, generatedAt: window } }),
-        // WORKFLOW_INVOCATIONS — COUNT(WorkflowRun WHERE startedAt ∈ window),
-        // the same business-object shape as consultations/summaries (TASK-722).
-        client.workflowRun.count({ where: { tenantId, startedAt: window } }),
-        this.sumRollupQuantity(tenantId, window, AiCapability.STT, [AiUsageUnit.SESSION_SECOND]),
-        // LLM_TOKENS bills ONLY generation/pre-summary operations — guardrail and
-        // harness LLM rows share the LLM capability but must never count (D16).
-        this.sumRollupQuantity(tenantId, window, AiCapability.LLM, TOKEN_UNITS, NON_BILLABLE_LLM_OPERATIONS),
-        this.sumRollupQuantity(tenantId, window, AiCapability.TTS, [AiUsageUnit.CHARACTER]),
-        this.sumRollupQuantity(tenantId, window, AiCapability.NLP, [AiUsageUnit.TEXT_UNIT]),
-        this.sumRollupQuantity(tenantId, window, AiCapability.EMBEDDING, TOKEN_UNITS),
-        this.countGuardrailCalls(tenantId, window),
-      ]);
+      client.consultation.count({ where: { tenantId, createdAt: window } }),
+      client.audioRecording.aggregate({ _sum: { duration: true }, where: { tenantId, createdAt: window } }),
+      client.summaryMeta.count({ where: { tenantId, generatedAt: window } }),
+      // WORKFLOW_INVOCATIONS — COUNT(WorkflowRun WHERE startedAt ∈ window),
+      // the same business-object shape as consultations/summaries (TASK-722).
+      client.workflowRun.count({ where: { tenantId, startedAt: window } }),
+      this.sumRollupQuantity(tenantId, window, AiCapability.STT, [AiUsageUnit.SESSION_SECOND]),
+      // LLM_TOKENS bills ONLY generation/pre-summary operations — guardrail and
+      // harness LLM rows share the LLM capability but must never count (D16).
+      this.sumRollupQuantity(tenantId, window, AiCapability.LLM, TOKEN_UNITS, NON_BILLABLE_LLM_OPERATIONS),
+      this.sumRollupQuantity(tenantId, window, AiCapability.TTS, [AiUsageUnit.CHARACTER]),
+      this.sumRollupQuantity(tenantId, window, AiCapability.NLP, [AiUsageUnit.TEXT_UNIT]),
+      this.sumRollupQuantity(tenantId, window, AiCapability.EMBEDDING, TOKEN_UNITS),
+      this.countGuardrailCalls(tenantId, window),
+    ]);
 
     const durationMs = durationAgg._sum.duration ?? 0;
 
