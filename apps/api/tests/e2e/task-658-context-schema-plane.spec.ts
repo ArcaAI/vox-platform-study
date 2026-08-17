@@ -75,6 +75,13 @@ function auth(token: string) {
 // ===========================================================================
 // K7 — the regression contract, on a tenant that has NO schema at all.
 // ===========================================================================
+// SERIAL: this file's `beforeAll` performs stateful writes (opening consultations,
+// generating summaries, registering rows) that later tests read back by id.
+// Under `fullyParallel: true` Playwright spreads one file's tests across workers,
+// so `beforeAll` re-runs concurrently and those setups race each other — the
+// symptom is failures that vanish under `--workers=1`. Pin the file to one worker.
+test.describe.configure({ mode: 'serial' });
+
 test.describe('A tenant with no context schema is untouched by the programme', () => {
   let doctorToken: string;
 
