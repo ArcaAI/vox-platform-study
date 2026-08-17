@@ -184,8 +184,16 @@ async function globalSetup(config: FullConfig): Promise<void> {
   }
 
   // Step 3: Wait for API to be ready
-  console.log(`🔍 Step 3: Waiting for API at ${baseURL}...`);
-  const apiReady = await waitForService('API', baseURL, '/api/v1/health');
+  // `baseURL` ALREADY carries the global prefix — playwright.config.ts defaults it to
+  // `http://localhost:8968/api/v1`, and `.env.test`'s API_URL does too. Appending
+  // `/api/v1/health` to that produced `.../api/v1/api/v1/health`, which 404s no matter how
+  // healthy the API is: 60 failed probes, then globalSetup threw. That is not a cosmetic bug —
+  // Playwright runs globalTeardown even after a FAILED setup, and this repo's teardown does an
+  // unconditional `docker compose down -v`, so a doubled URL destroyed the isolated test stack
+  // AND its volumes. Strip the prefix so the probe hits the real health route.
+  const apiOrigin = baseURL.replace(/\/api\/v\d+\/?$/, '');
+  console.log(`🔍 Step 3: Waiting for API at ${apiOrigin}...`);
+  const apiReady = await waitForService('API', apiOrigin, '/api/v1/health');
   if (!apiReady) {
     console.error('❌ API is not accessible!');
     if (!isCI) {
