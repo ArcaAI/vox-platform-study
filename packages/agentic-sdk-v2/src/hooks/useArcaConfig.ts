@@ -266,7 +266,7 @@ export function useArcaConfig(): UseArcaConfigReturn {
       ner: modelRegistry.getModelsByType('ner') ?? [],
       selected: modelRegistry.getSelected() ?? {},
     };
-    // eslint-disable-next-line -- modelRegistryVersion is the explicit memo bust signal.
+    // Deps intentionally narrowed: modelRegistryVersion is the explicit memo bust signal.
   }, [modelRegistry, modelRegistryVersion]);
 
   return useMemo(

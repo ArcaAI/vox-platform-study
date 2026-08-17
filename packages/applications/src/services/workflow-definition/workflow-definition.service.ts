@@ -264,7 +264,10 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
 
     const deleted = await this.workflowDefinitionRepository.softDelete(id, this.requestUserId ?? undefined);
 
-    this.broadcastSysEvent(SysEventType.ResourceDeleted, { resourceId: deleted.id, data: { slug: deleted.slug, versionNumber: deleted.versionNumber } });
+    this.broadcastSysEvent(SysEventType.ResourceDeleted, {
+      resourceId: deleted.id,
+      data: { slug: deleted.slug, versionNumber: deleted.versionNumber },
+    });
 
     return WorkflowDefinitionDtoMapper.toResponse(deleted);
   }

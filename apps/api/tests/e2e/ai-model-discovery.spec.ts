@@ -57,7 +57,9 @@ interface DiscoveryResponse {
   probedAt: string;
 }
 
-const SERVER_MANAGED = ['ollama', 'lm-studio', 'vllm', 'llama-cpp'];
+// Ollama was removed entirely as a provider (TASK-736, owner directive 2026-08-16),
+// so it is no longer a discoverable engine and the DTO allow-list rejects it.
+const SERVER_MANAGED = ['lm-studio', 'vllm', 'llama-cpp'];
 
 function auth(token: string) {
   return { Authorization: `Bearer ${token}` };
@@ -99,7 +101,7 @@ test.describe('AI model discovery', () => {
   test('register is global-admin only — a tenant admin is refused', async ({ request }) => {
     const resp = await request.post(`${DISCOVERY}/register`, {
       headers: auth(tenantAdminToken),
-      data: { provider: 'ollama', modelName: 'e2e-guard-probe' },
+      data: { provider: 'vllm', modelName: 'e2e-guard-probe' },
     });
     expect([403, 404]).toContain(resp.status());
   });
@@ -142,9 +144,9 @@ test.describe('AI model discovery', () => {
   });
 
   test('the provider filter narrows the result to that provider', async ({ request }) => {
-    const body = (await (await discover(request, globalAdminToken, 'ollama')).json()) as DiscoveryResponse;
-    for (const entry of body.entries) expect(entry.provider).toBe('ollama');
-    for (const probe of body.probes) expect(probe.provider).toBe('ollama');
+    const body = (await (await discover(request, globalAdminToken, 'vllm')).json()) as DiscoveryResponse;
+    for (const entry of body.entries) expect(entry.provider).toBe('vllm');
+    for (const probe of body.probes) expect(probe.provider).toBe('vllm');
   });
 
   test('discovery is read-only — repeating it does not change the registry', async ({ request }) => {
@@ -162,14 +164,14 @@ test.describe('AI model discovery', () => {
     const modelName = `e2e-528:8b-instruct_Q4_K_M-${Date.now()}`;
     const resp = await request.post(`${DISCOVERY}/register`, {
       headers: auth(globalAdminToken),
-      data: { provider: 'ollama', modelName },
+      data: { provider: 'vllm', modelName },
     });
     expect(resp.status()).toBe(201);
 
     const body = (await resp.json()) as { id: string; slug: string; sourceUri: string; provider: string };
     createdIds.push(body.id);
 
-    expect(body.provider).toBe('ollama');
+    expect(body.provider).toBe('vllm');
     expect(body.sourceUri).toBe(modelName);
     expect(body.slug).toMatch(/^[a-z0-9][a-z0-9-]*$/);
     expect(body.slug).not.toContain(':');
@@ -177,7 +179,7 @@ test.describe('AI model discovery', () => {
   });
 
   test('a registered model shows up in the merge view as registered', async ({ request }) => {
-    const body = (await (await discover(request, globalAdminToken, 'ollama')).json()) as DiscoveryResponse;
+    const body = (await (await discover(request, globalAdminToken, 'vllm')).json()) as DiscoveryResponse;
     const created = body.entries.find((e) => e.registeredModel?.id === createdIds[0]);
     expect(created, 'the freshly-registered row must appear in the merge view').toBeTruthy();
     expect(created!.status).not.toBe('discovered');
@@ -187,14 +189,14 @@ test.describe('AI model discovery', () => {
     const modelName = `e2e-528-dup-${Date.now()}`;
     const first = await request.post(`${DISCOVERY}/register`, {
       headers: auth(globalAdminToken),
-      data: { provider: 'ollama', modelName },
+      data: { provider: 'vllm', modelName },
     });
     expect(first.status()).toBe(201);
     createdIds.push(((await first.json()) as { id: string }).id);
 
     const second = await request.post(`${DISCOVERY}/register`, {
       headers: auth(globalAdminToken),
-      data: { provider: 'ollama', modelName },
+      data: { provider: 'vllm', modelName },
     });
     expect(second.status()).toBe(400);
     const message = JSON.stringify(await second.json());
@@ -206,13 +208,13 @@ test.describe('AI model discovery', () => {
     const modelName = `e2e-528-explicit-${Date.now()}`;
     const first = await request.post(`${DISCOVERY}/register`, {
       headers: auth(globalAdminToken),
-      data: { provider: 'ollama', modelName },
+      data: { provider: 'vllm', modelName },
     });
     createdIds.push(((await first.json()) as { id: string }).id);
 
     const second = await request.post(`${DISCOVERY}/register`, {
       headers: auth(globalAdminToken),
-      data: { provider: 'ollama', modelName, slug: `${modelName.toLowerCase()}-v2` },
+      data: { provider: 'vllm', modelName, slug: `${modelName.toLowerCase()}-v2` },
     });
     expect(second.status()).toBe(201);
     createdIds.push(((await second.json()) as { id: string }).id);
@@ -231,7 +233,7 @@ test.describe('AI model discovery', () => {
   test('rejects undeclared body fields (global whitelist pipe)', async ({ request }) => {
     const resp = await request.post(`${DISCOVERY}/register`, {
       headers: auth(globalAdminToken),
-      data: { provider: 'ollama', modelName: 'e2e-528-whitelist', tenantId: '00000000-0000-0000-0000-000000000000' },
+      data: { provider: 'vllm', modelName: 'e2e-528-whitelist', tenantId: '00000000-0000-0000-0000-000000000000' },
     });
     expect(resp.status()).toBe(400);
   });

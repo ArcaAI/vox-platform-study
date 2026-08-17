@@ -7,9 +7,10 @@ Uniform contract shared with the TypeScript reader
 This is immutable artifact data written once by the Dockerfile at build time —
 read once here, never re-read per request.
 
-NEVER throws. This runs on the boot path of PHI-serving services: a missing, unreadable, or malformed file logs a warning and degrades to
-a best-effort identity instead of raising, so version reporting can never
-become a new startup dependency.
+NEVER throws. This runs on the boot path of PHI-serving services: a missing,
+unreadable, or malformed file logs a warning and degrades to a best-effort
+identity instead of raising, so version reporting can never become a new
+startup dependency.
 
 The path is overridable via the ``path`` constructor argument for tests — NOT
 via an environment variable. Build identity is not configuration

@@ -761,7 +761,7 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
         logger.shutdown();
       });
     };
-    // eslint-disable-next-line -- Run once on mount; cleanup recreates managers in Strict Mode.
+    // Deps intentionally narrowed: Run once on mount; cleanup recreates managers in Strict Mode.
   }, []);
 
   // ---------------------------------------------------------------------------
@@ -986,7 +986,7 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
         });
       }
     })();
-    // eslint-disable-next-line -- store actions are stable (per-provider instance); rerun only on user identity change.
+    // Deps intentionally narrowed: store actions are stable (per-provider instance); rerun only on user identity change.
   }, [effectiveUserId, effectiveTenantId, effectiveDepartmentId]);
 
   // ---------------------------------------------------------------------------

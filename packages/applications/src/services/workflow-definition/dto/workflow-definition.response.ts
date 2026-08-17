@@ -38,7 +38,12 @@ export class WorkflowDefinitionResponse {
   @ApiProperty()
   graphChecksum: string;
 
-  @ApiPropertyOptional({ nullable: true, type: 'object', additionalProperties: true, description: 'Server-produced interpreter input contract. Null until PUBLISHED.' })
+  @ApiPropertyOptional({
+    nullable: true,
+    type: 'object',
+    additionalProperties: true,
+    description: 'Server-produced interpreter input contract. Null until PUBLISHED.',
+  })
   compiledConfig: Record<string, unknown> | null;
 
   @ApiPropertyOptional({ nullable: true })
