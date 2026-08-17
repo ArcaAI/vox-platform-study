@@ -37,6 +37,11 @@
 import { APIRequestContext, expect, test } from '@playwright/test';
 import { DEFAULT_TENANT_KEY, SEEDED_USERS, loginUser } from '../../../../tests/helpers';
 
+// A platform admin has no implicit tenant, so every ai-task-default call it makes
+// must name one: the controller answers 400 "Platform admins must pass ?tenantId=
+// to scope this request." SYSTEM is the config tier these defaults live in.
+const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
+
 const TASK_DEFAULTS_BASE = '/api/v1/admin/ai-task-defaults';
 const NLP_INSTRUCTIONS_BASE = '/api/v1/admin/nlp-task-instructions';
 const AI_BASE = '/api/v1/ai';
@@ -68,6 +73,13 @@ async function readInstructionsRow(request: APIRequestContext, token: string, ta
   expect(resp.status(), `GET nlp-task-instructions row ${taskKey}`).toBe(200);
   return (await resp.json()) as NlpInstructionsRow;
 }
+
+// SERIAL: this file's `beforeAll` performs stateful writes (opening consultations,
+// generating summaries, registering rows) that later tests read back by id.
+// Under `fullyParallel: true` Playwright spreads one file's tests across workers,
+// so `beforeAll` re-runs concurrently and those setups race each other — the
+// symptom is failures that vanish under `--workers=1`. Pin the file to one worker.
+test.describe.configure({ mode: 'serial' });
 
 test.describe('TASK-729 — nlp.sentiment / nlp.toxicity (fixed-taxonomy, no new endpoint)', () => {
   let globalAdminToken: string;
@@ -103,8 +115,8 @@ test.describe('TASK-729 — nlp.sentiment / nlp.toxicity (fixed-taxonomy, no new
 
   test('global admin can set nlp.sentiment/nlp.toxicity SYSTEM defaults', async ({ request }) => {
     for (const taskKey of ['nlp.sentiment', 'nlp.toxicity']) {
-      const row = await readTaskDefaultRow(request, globalAdminToken, taskKey);
-      const resp = await request.put(`${TASK_DEFAULTS_BASE}/row?taskKey=${taskKey}`, {
+      const row = await readTaskDefaultRow(request, globalAdminToken, taskKey, SYSTEM_TENANT_ID);
+      const resp = await request.put(`${TASK_DEFAULTS_BASE}/row?taskKey=${taskKey}&tenantId=${SYSTEM_TENANT_ID}`, {
         headers: { Authorization: `Bearer ${globalAdminToken}`, 'If-Match': `"${row.version}"` },
         // nlp.sentiment/nlp.toxicity require a TEXT_CLASSIFICATION model
         // (AI_TASK_MODEL_TASK_TYPES in ai-task-default/constants.ts) — 'medical-ner'
@@ -154,17 +166,24 @@ test.describe('TASK-729 — nlp.topic / nlp.intent (open-taxonomy, tenant-writab
     expect(read.instructionsJson).toEqual(['billing', 'appointments', 'medical_records']);
   });
 
-  test("tenant admin CANNOT read/write another tenant's instructions via ?tenantId= (404, never 200)", async ({ request }) => {
+  // An EXPLICIT foreign `?tenantId=` is a PRIVILEGE boundary, so it answers 403 —
+  // not the 404-over-403 posture, which covers a foreign resource ID reached
+  // WITHOUT naming the tenant (there, the id's existence must stay hidden).
+  // task-615-billing-cross-tenant.spec.ts encodes exactly this split and is the
+  // established precedent: no query param -> 404, explicit foreign ?tenantId= ->
+  // 403 "You do not have access to this tenant", raised before the service runs.
+  // This spec asserted 404 for the explicit-tenant shape, which no route implements.
+  test("tenant admin CANNOT read/write another tenant's instructions via ?tenantId= (403, never 200)", async ({ request }) => {
     const read = await request.get(`${NLP_INSTRUCTIONS_BASE}/row?taskKey=nlp.topic&tenantId=${arcaaiTenantId}`, {
       headers: { Authorization: `Bearer ${tenantAdminToken}` },
     });
-    expect(read.status()).toBe(404);
+    expect(read.status()).toBe(403);
 
     const write = await request.put(`${NLP_INSTRUCTIONS_BASE}/row?taskKey=nlp.topic&tenantId=${arcaaiTenantId}`, {
       headers: { Authorization: `Bearer ${tenantAdminToken}`, 'If-Match': '"0"' },
       data: { instructionsJson: ['x'] },
     });
-    expect(write.status()).toBe(404);
+    expect(write.status()).toBe(403);
   });
 
   test('unknown taskKey → 400 on both GET and PUT', async ({ request }) => {

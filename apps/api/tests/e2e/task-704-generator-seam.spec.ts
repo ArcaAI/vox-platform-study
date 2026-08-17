@@ -52,6 +52,13 @@ async function loginDoctor(request: any): Promise<string> {
   return login!.token;
 }
 
+// SERIAL: this file's `beforeAll` performs stateful writes (opening consultations,
+// generating summaries, registering rows) that later tests read back by id.
+// Under `fullyParallel: true` Playwright spreads one file's tests across workers,
+// so `beforeAll` re-runs concurrently and those setups race each other — the
+// symptom is failures that vanish under `--workers=1`. Pin the file to one worker.
+test.describe.configure({ mode: 'serial' });
+
 test.describe('entry point #4 (`POST :id/summary/async`) creates a real job on a harness-enabled tenant', () => {
   // This block needs only a live apps/api + Postgres + Redis (same baseline
   // as `consultation-job-cross-tenant.spec.ts`) — NOT the harness/Temporal/
