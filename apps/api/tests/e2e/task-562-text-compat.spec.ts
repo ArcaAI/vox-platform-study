@@ -77,9 +77,11 @@ test.describe('V1-compatible SMR summary shims', () => {
 
     if (token) {
       // Mint an SDK api key to exercise the x-api-key parity path (D2).
+      // Both compat routes carry `@RequiredScopes('consultation:report:write')`
+      // (text-compat.controller.ts) — not a session scope.
       const created = await request.post('/api/v1/admin/api-keys', {
         headers: { Authorization: `Bearer ${token}` },
-        data: { keyName: `e2e-562-${Date.now()}`, keyType: 'SDK', scopes: ['consultation:session:read', 'consultation:session:write'] },
+        data: { keyName: `e2e-562-${Date.now()}`, keyType: 'SDK', scopes: ['consultation:report:write'] },
       });
       if (created.status() === 201) {
         const body = await created.json();

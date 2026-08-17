@@ -69,7 +69,12 @@ async function createPublishedWorkflow(request: APIRequestContext, token: string
     headers: { Authorization: `Bearer ${token}`, 'If-Match': `"${definition.version}"` },
     data: {},
   });
-  expect(published.status(), `publish workflow definition '${slug}'`).toBe(200);
+  // `POST :id/publish` has no `@HttpCode` override in `WorkflowDefinitionController`, so it
+  // returns Nest's default POST status (201) at runtime — matching the sibling
+  // `ConsultationContextSchemaController#publish` route, which documents 201 for the same
+  // shape of action. The controller's own `@ApiResponse({ status: 200 })` Swagger annotation
+  // on this route is stale docs, not the actual contract.
+  expect(published.status(), `publish workflow definition '${slug}'`).toBe(201);
   const publishedBody = await published.json();
 
   return { id: publishedBody.id, slug: publishedBody.slug, version: publishedBody.version };
@@ -165,7 +170,8 @@ test.describe('TASK-722 — /api/v1/workflows exposure plane', () => {
     });
 
     test('a DRAFT (unpublished) slug is 404, never exposing draft content', async ({ request }) => {
-      const slug = `e2e-draft-${Date.now()}`;
+      // slug must match WORKFLOW_NODE_ID_PATTERN [a-z0-9_]{2,48} — no hyphens.
+      const slug = `e2e_draft_${Date.now()}`;
       const created = await request.post('/api/v1/admin/workflow-definitions', {
         headers: { Authorization: `Bearer ${tenantAdminToken}` },
         data: { slug, name: 'E2E Draft', paletteKey: 'summarization', graph: VALID_GRAPH },
@@ -184,7 +190,8 @@ test.describe('TASK-722 — /api/v1/workflows exposure plane', () => {
     });
 
     test("a foreign tenant's published slug is 404 (cross-tenant, never 403)", async ({ request }) => {
-      const slug = `e2e-crosstenant-${Date.now()}`;
+      // slug must match WORKFLOW_NODE_ID_PATTERN [a-z0-9_]{2,48} — no hyphens.
+      const slug = `e2e_crosstenant_${Date.now()}`;
       const definition = await createPublishedWorkflow(request, tenantAdminToken, slug);
       expect(definition.slug).toBe(slug);
 
@@ -210,7 +217,8 @@ test.describe('TASK-722 — /api/v1/workflows exposure plane', () => {
     test('a published, in-scope, own-tenant invoke passes every gateway gate (fails only on the unreachable harness dispatcher)', async ({
       request,
     }) => {
-      const slug = `e2e-publish-${Date.now()}`;
+      // slug must match WORKFLOW_NODE_ID_PATTERN [a-z0-9_]{2,48} — no hyphens.
+      const slug = `e2e_publish_${Date.now()}`;
       await createPublishedWorkflow(request, tenantAdminToken, slug);
 
       const key = await createScopedApiKey(request, tenantAdminToken, ['workflow:run:write'], 'task-722-invoke-published');

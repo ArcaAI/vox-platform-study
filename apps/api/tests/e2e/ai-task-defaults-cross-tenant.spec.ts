@@ -81,9 +81,11 @@ test.describe('AiTaskDefault admin surface (cross-tenant + guardrail governance)
     expect(resp.status()).toBe(200);
     const body = (await resp.json()) as Array<{ taskKey: string }>;
     expect(Array.isArray(body)).toBe(true);
-    // The full registry: guardrail.validate/safety/groundedness,
-    // nlp.ner/classification/diagnosis, smr.live/finalize + the tenant-configurable
-    // smr.*.fallback keys, and harness.judge.
+    // The full registry (AI_TASK_KEYS, ai-task-default/constants.ts):
+    // guardrail.validate/safety/groundedness, nlp.ner/classification/diagnosis
+    // + TASK-729's nlp.sentiment/toxicity, smr.live/finalize + the
+    // tenant-configurable smr.*.fallback keys + smr.test, harness.judge, and
+    // vlm.extract.
     expect(body.map((e) => e.taskKey)).toEqual([
       'guardrail.validate',
       'guardrail.safety',
@@ -91,11 +93,15 @@ test.describe('AiTaskDefault admin surface (cross-tenant + guardrail governance)
       'nlp.ner',
       'nlp.classification',
       'nlp.diagnosis',
+      'nlp.sentiment',
+      'nlp.toxicity',
       'smr.live',
       'smr.finalize',
       'smr.live.fallback',
       'smr.finalize.fallback',
+      'smr.test',
       'harness.judge',
+      'vlm.extract',
     ]);
   });
 

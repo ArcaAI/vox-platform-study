@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEnum, IsISO8601, IsOptional, IsString, IsUUID, Length, Matches, MaxLength } from 'class-validator';
+import { IsEnum, IsISO8601, IsOptional, IsString, Length, Matches, MaxLength } from 'class-validator';
 import { AiCapability, AiPriceRowKind, AiUsageUnit, TenantPlan } from '@arcaai/domains';
 
 /**
@@ -12,7 +12,11 @@ import { AiCapability, AiPriceRowKind, AiUsageUnit, TenantPlan } from '@arcaai/d
 export class CreateSellRateRequest {
   @ApiPropertyOptional({ description: 'Owning tenant. Omit for the SYSTEM platform card; set for a negotiated enterprise card.' })
   @IsOptional()
-  @IsUUID()
+  // @IsString(), NOT @IsUUID() — same trap as compute-draft.request.ts: the platform's reserved
+  // tenant ids (SYSTEM 00000000-…, the seeded customer tenants under 50000000-…) are hand-authored
+  // sentinels, not RFC-4122-versioned UUIDs, and isUUID() rejects them. A sell rate scoped to one
+  // of those tenants would 400 on validation before reaching the service.
+  @IsString()
   tenantId?: string;
 
   @ApiProperty({ enum: AiPriceRowKind, description: 'USAGE_UNIT = an overage rate · PLAN_FEE = a recurring per-period plan fee.' })

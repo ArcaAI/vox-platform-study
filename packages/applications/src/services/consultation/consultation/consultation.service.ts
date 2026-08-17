@@ -753,7 +753,7 @@ export class ConsultationService extends BaseService implements IConsultationSer
     // present (the `@RequiresIfMatch()`-gated route always supplies one) —
     // otherwise the freshly-read row version (defense-in-depth against a
     // concurrent write landing between our read and write).
-    await this.consultationRepository.updateWithVersion(id, consultation, expectedVersion ?? consultation.version);
+    const updated = await this.consultationRepository.updateWithVersion(id, consultation, expectedVersion ?? consultation.version);
 
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
       resourceId: id,
@@ -761,7 +761,11 @@ export class ConsultationService extends BaseService implements IConsultationSer
     });
     await this.appendTransitionAudit({ tenantId, consultationId: id, action: HarnessAuditAction.SESSION_PRIMED, actor });
 
-    return ConsultationDtoMapper.toResponseWithContext(consultation);
+    // Map the FRESHLY-PERSISTED entity, not the stale pre-write one: updateWithVersion
+    // bumps _version, so returning `consultation` handed the caller version N while the
+    // row was already at N+1 — any client chaining If-Match from this response got an
+    // immediate 412. Mirrors the house pattern in department.service.ts:318.
+    return ConsultationDtoMapper.toResponseWithContext(updated);
   }
 
   /**
@@ -807,7 +811,7 @@ export class ConsultationService extends BaseService implements IConsultationSer
     if (this.requestUserId) {
       consultation.updatedBy = this.requestUserId;
     }
-    await this.consultationRepository.updateWithVersion(id, consultation, expectedVersion ?? consultation.version);
+    const updated = await this.consultationRepository.updateWithVersion(id, consultation, expectedVersion ?? consultation.version);
 
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
       resourceId: id,
@@ -815,7 +819,11 @@ export class ConsultationService extends BaseService implements IConsultationSer
     });
     await this.appendTransitionAudit({ tenantId, consultationId: id, action: worm, actor });
 
-    return ConsultationDtoMapper.toResponseWithContext(consultation);
+    // Map the FRESHLY-PERSISTED entity, not the stale pre-write one: updateWithVersion
+    // bumps _version, so returning `consultation` handed the caller version N while the
+    // row was already at N+1 — any client chaining If-Match from this response got an
+    // immediate 412. Mirrors the house pattern in department.service.ts:318.
+    return ConsultationDtoMapper.toResponseWithContext(updated);
   }
 
   /**
@@ -850,7 +858,7 @@ export class ConsultationService extends BaseService implements IConsultationSer
     if (this.requestUserId) {
       consultation.updatedBy = this.requestUserId;
     }
-    await this.consultationRepository.updateWithVersion(id, consultation, expectedVersion ?? consultation.version);
+    const updated = await this.consultationRepository.updateWithVersion(id, consultation, expectedVersion ?? consultation.version);
 
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
       resourceId: id,
@@ -858,7 +866,11 @@ export class ConsultationService extends BaseService implements IConsultationSer
     });
     await this.appendTransitionAudit({ tenantId, consultationId: id, action: HarnessAuditAction.SESSION_REOPENED, actor });
 
-    return ConsultationDtoMapper.toResponseWithContext(consultation);
+    // Map the FRESHLY-PERSISTED entity, not the stale pre-write one: updateWithVersion
+    // bumps _version, so returning `consultation` handed the caller version N while the
+    // row was already at N+1 — any client chaining If-Match from this response got an
+    // immediate 412. Mirrors the house pattern in department.service.ts:318.
+    return ConsultationDtoMapper.toResponseWithContext(updated);
   }
 
   /**
@@ -973,14 +985,18 @@ export class ConsultationService extends BaseService implements IConsultationSer
       consultation.updatedBy = this.requestUserId;
     }
     const expectedVersion = consultation.version;
-    await this.consultationRepository.updateWithVersion(id, consultation, expectedVersion);
+    const updated = await this.consultationRepository.updateWithVersion(id, consultation, expectedVersion);
 
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
       resourceId: id,
       data: { action: 'startRecording', status: ConsultationStatus.RECORDING },
     });
 
-    return ConsultationDtoMapper.toResponseWithContext(consultation);
+    // Map the FRESHLY-PERSISTED entity, not the stale pre-write one: updateWithVersion
+    // bumps _version, so returning `consultation` handed the caller version N while the
+    // row was already at N+1 — any client chaining If-Match from this response got an
+    // immediate 412. Mirrors the house pattern in department.service.ts:318.
+    return ConsultationDtoMapper.toResponseWithContext(updated);
   }
 
   /**
@@ -1008,14 +1024,18 @@ export class ConsultationService extends BaseService implements IConsultationSer
       consultation.updatedBy = this.requestUserId;
     }
     const expectedVersion = consultation.version;
-    await this.consultationRepository.updateWithVersion(id, consultation, expectedVersion);
+    const updated = await this.consultationRepository.updateWithVersion(id, consultation, expectedVersion);
 
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
       resourceId: id,
       data: { action: 'stopRecording', status: ConsultationStatus.DRAINING },
     });
 
-    return ConsultationDtoMapper.toResponseWithContext(consultation);
+    // Map the FRESHLY-PERSISTED entity, not the stale pre-write one: updateWithVersion
+    // bumps _version, so returning `consultation` handed the caller version N while the
+    // row was already at N+1 — any client chaining If-Match from this response got an
+    // immediate 412. Mirrors the house pattern in department.service.ts:318.
+    return ConsultationDtoMapper.toResponseWithContext(updated);
   }
 }
 
