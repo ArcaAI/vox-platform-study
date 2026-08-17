@@ -44,9 +44,9 @@ const createMockSessionService = () => ({
 /**
  * Key-aware CLS mock (BUG-012). The real CLS is a keyed store: `user` holds the
  * JWT-derived identity and `tenantId` holds the ACTIVE tenant — the JWT tenant
- * for a tenant-bound caller, or the global-admin's elevated working tenant
+ * for a tenant-bound caller, or the super-admin's elevated working tenant
  * (`ContextInterceptor`). A mock that returns one object for EVERY key cannot
- * express the global-admin shape (`user.tenantId === ''` + `tenantId` set), so
+ * express the super-admin shape (`user.tenantId === ''` + `tenantId` set), so
  * the store is keyed here.
  */
 const clsFor = (store: Record<string, unknown>) => ({
@@ -762,10 +762,10 @@ describe('TranscriptionJobController', () => {
   // `harness-admin.controller.ts`): CLS `tenantId` FIRST — that is where
   // `ContextInterceptor` elevates a SUPER_ADMIN's working tenant from the
   // `x-tenant-id` header — then the JWT-derived `user.tenantId`. Reading only
-  // `user.tenantId` 400s every global-admin caller, whose JWT carries
+  // `user.tenantId` 400s every super-admin caller, whose JWT carries
   // `tenantId: ''`.
   // ------------------------------------------------------------------------
-  describe('BUG-012 — active tenant resolution (global-admin working tenant)', () => {
+  describe('BUG-012 — active tenant resolution (super-admin working tenant)', () => {
     const buildController = (clsStore: Record<string, unknown>) =>
       new TranscriptionJobController(
         mockJobService as any,
@@ -785,11 +785,11 @@ describe('TranscriptionJobController', () => {
     const audioFile = () => wavFixture(300, { originalname: 'test-1.wav' });
 
     // SUPER_ADMIN shape: empty JWT tenant + elevated working tenant in CLS.
-    const globalAdminStore = { user: { id: 'admin-1', tenantId: '', roles: ['SUPER_ADMIN'] }, tenantId: 'tenant-1' };
+    const superAdminStore = { user: { id: 'admin-1', tenantId: '', roles: ['SUPER_ADMIN'] }, tenantId: 'tenant-1' };
 
     it('transcribeFile resolves the elevated CLS working tenant for a SUPER_ADMIN with an empty JWT tenant', async () => {
       mockJobService.createBatchJob.mockResolvedValue({ id: 'job-ga', status: 'QUEUED' });
-      const ctrl = buildController(globalAdminStore);
+      const ctrl = buildController(superAdminStore);
 
       const result = await ctrl.transcribeFile(audioFile(), { pipelineId: 'pipe-1' } as TranscribeFileRequest);
 
@@ -804,7 +804,7 @@ describe('TranscriptionJobController', () => {
         maxConcurrent: 5,
         currentActive: 1,
       });
-      const ctrl = buildController(globalAdminStore);
+      const ctrl = buildController(superAdminStore);
 
       await ctrl.createStreamSession({ pipelineId: 'pipe-1' } as CreateStreamSessionRequest);
 
@@ -825,7 +825,7 @@ describe('TranscriptionJobController', () => {
     });
 
     // Fail-closed posture preserved: an empty string is "no tenant", never a
-    // tenant. A global admin with NO working tenant selected still 400s.
+    // tenant. A super admin with NO working tenant selected still 400s.
     it('transcribeFile still rejects when neither the CLS tenantId nor the JWT tenant is present', async () => {
       const ctrl = buildController({ user: { id: 'admin-1', tenantId: '', roles: ['SUPER_ADMIN'] }, tenantId: '' });
 

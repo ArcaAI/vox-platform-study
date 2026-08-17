@@ -13,7 +13,7 @@ The HOPE API Gateway serves as the central entry point for all client requests i
 
 - **Multi-Authentication System**: JWT, OIDC, and API Key authentication strategies
 - **Multi-Tenant Architecture**: Organization-level data isolation with tenant-specific configurations
-- **Microservice Orchestration**: Proxies the SMR text service and audio transcription to STT (via the `streaming` module) and health-monitors the downstream Python services (STT, SMR, NLP, Guardrail, Harness)
+- **Microservice Orchestration**: Proxies the Text service (formerly SMR) and audio transcription to STT (via the `streaming` module) and health-monitors the downstream Python services (STT, Text, NLP, Guardrail, Harness)
 - **Real-Time Communication**: WebSocket support for streaming audio transcription
 - **Enterprise Security**: HIPAA-compliant audit trails, rate limiting, and CORS management
 - **Progressive Enhancement**: Cloud-first API with support for enhanced client-side capabilities
@@ -51,7 +51,7 @@ The HOPE API Gateway serves as the central entry point for all client requests i
 
 - **AI Service Integration**
   - **STT (Speech-to-Text)**: Real-time audio transcription via the `streaming` module (`/api/v1/audio/...`)
-  - **SMR (Summarization)**: Medical conversation summarization proxied by `SmrProxyController` in the `streaming` module (`/api/v1/text/...`)
+  - **Text (formerly SMR)**: Medical conversation summarization proxied by `TextProxyController` in the `streaming` module (`/api/v1/text/...`)
   - **NLP**: Entity extraction / medical terminology — downstream Python service (port 8864), health-monitored; no gateway proxy route
   - **Guardrail**: Safety/guardrail engine (port 8863) — health-monitored downstream
   - **Harness**: Clinical Documentation Harness (port 8866) — health-monitored downstream; admin/observability via `harness-admin` (`/api/v1/admin/harness/...`)
@@ -86,7 +86,7 @@ The HOPE API Gateway serves as the central entry point for all client requests i
         ┌─────────────┼─────────────┬─────────────┐
         ▼             ▼             ▼             ▼
 ┌──────────────┐ ┌────────────────┐ ┌──────────┐ ┌──────────┐ ┌──────────────┐
-│ STT :8861 │ │Guardrail :8863 │ │SMR :8862 │ │NLP :8864 │ │Harness :8866 │
+│ STT :8861 │ │Guardrail :8863 │ │Text :8862 │ │NLP :8864 │ │Harness :8866 │
 │ (Python)     │ │ (Python)       │ │ (Python) │ │ (Python) │ │ (Python)     │
 └──────────────┘ └────────────────┘ └──────────┘ └──────────┘ └──────────────┘
         │             │             │             │             │
@@ -382,10 +382,10 @@ GET    /api/v1/audio/ai-models                    # List AI models
 WS     /stt                                    # WebSocket for real-time STT
 ```
 
-#### SMR Service (Text)
+#### Text Service (formerly SMR)
 
 ```
-ALL  /api/v1/text/**                      # SmrProxyController (modules/streaming) → SMR service (:8862)
+ALL  /api/v1/text/**                      # TextProxyController (modules/streaming) → Text service (:8862)
 ```
 
 > **NLP** is a downstream Python service (`:8864`) that the gateway health-monitors via `/api/v1/health/services`; it has **no** gateway proxy route or WebSocket.

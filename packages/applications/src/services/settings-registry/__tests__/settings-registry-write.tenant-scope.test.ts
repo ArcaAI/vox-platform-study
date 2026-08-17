@@ -9,12 +9,12 @@
  * place.
  *
  * The contract pinned here:
- *   1. a `system`-scope write is a PLATFORM change → global admins only (403),
+ *   1. a `system`-scope write is a PLATFORM change → super admins only (403),
  *      independent of `globalOnly`, which gates the KEY not the SCOPE;
  *   2. a `tenant`-scope write persists under the CALLER'S tenant, in the
  *      reserved `registry` namespace, so it lands in the tenant lane of the
  *      settings cache and nowhere else;
- *   3. a tenant-scope write with no working tenant (a global admin who has not
+ *   3. a tenant-scope write with no working tenant (a super admin who has not
  *      selected one) is refused rather than silently becoming a platform write;
  *   4. the OCC + sys-event + cache-refresh path is unchanged.
  */
@@ -118,16 +118,16 @@ describe('tenant-scope write persists under the caller tenant', () => {
   });
 });
 
-describe('system-scope write is a platform change — global admins only', () => {
+describe('system-scope write is a platform change — super admins only', () => {
   it('rejects a SYSTEM-scope write from a tenant admin even for a tenant-editable key', async () => {
     const { svc, globalSettings } = makeService({ roles: [], tenantId: CUSTOMER_TENANT });
     // `rateLimit.maxRequests` is NOT globalOnly (a tenant may set its own row),
-    // but the platform row is still a global-admin surface.
+    // but the platform row is still a super-admin surface.
     await expect(svc.write('rateLimit.maxRequests', 10)).rejects.toBeInstanceOf(ForbiddenException);
     expect(globalSettings.create).not.toHaveBeenCalled();
   });
 
-  it('allows a global admin to write the platform row, on the platform tenant', async () => {
+  it('allows a super admin to write the platform row, on the platform tenant', async () => {
     const { svc, globalSettings } = makeService({ roles: ['SUPER_ADMIN'], tenantId: CUSTOMER_TENANT });
 
     const result = await svc.write('rateLimit.maxRequests', 250);

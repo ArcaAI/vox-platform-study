@@ -3,7 +3,7 @@
  *
  * CASL `@CanRead/@CanManage` + `If-Match`/`@RequiresIfMatch` are exercised by the
  * guard/interceptor (+ e2e). These specs cover the controller's OWN logic:
- * tenant vs. global-admin scoping, If-Match-over-body version precedence, and
+ * tenant vs. super-admin scoping, If-Match-over-body version precedence, and
  * that it delegates registry reads/writes to the service (which owns the
  * GLOBAL-ADMIN 403 + OCC + cross-tenant 404 governance, unit-tested there).
  */
@@ -73,7 +73,7 @@ describe('McpAdminController — scoping', () => {
     await expect(controller.list('t2')).rejects.toBeInstanceOf(ForbiddenException);
   });
 
-  it('list: a global admin may omit tenantId (undefined = SYSTEM registry, resolved by service)', async () => {
+  it('list: a super admin may omit tenantId (undefined = SYSTEM registry, resolved by service)', async () => {
     const { controller, service } = makeController({ user: SUPER, tenantId: undefined });
     await controller.list(undefined);
     expect(service.list).toHaveBeenCalledWith(undefined);

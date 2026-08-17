@@ -58,7 +58,7 @@ test.describe('RBAC roles screen (two-pane)', () => {
     await expect(page).toHaveURL(/role=/);
   });
 
-  test('system roles allow global-admin editing but never deletion', async ({ page }) => {
+  test('system roles allow super-admin editing but never deletion', async ({ page }) => {
     await page.goto('/rbac/roles');
     await waitForList(page);
     await roleListItems(page).first().click();

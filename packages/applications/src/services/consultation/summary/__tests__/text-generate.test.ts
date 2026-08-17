@@ -1,5 +1,5 @@
 /**
- * buildSmrGeneratePayload — structured SOAP output forwarding
+ * buildTextGeneratePayload — structured SOAP output forwarding
  *
  * Proves the assembled `responseFormat` (json_schema) actually reaches the SMR
  * provider payload for non-Ollama providers, and is suppressed for Ollama
@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { buildSmrGeneratePayload } from '../text-generate';
+import { buildTextGeneratePayload } from '../text-generate';
 import type { AssembledPrompt } from '../../prompt/prompt-assembly.service';
 
 const SOAP_RESPONSE_FORMAT: AssembledPrompt['responseFormat'] = {
@@ -37,9 +37,9 @@ function makeAssembledPrompt(overrides: Partial<AssembledPrompt> = {}): Assemble
   };
 }
 
-describe('buildSmrGeneratePayload — SOAP json_schema forwarding', () => {
+describe('buildTextGeneratePayload — SOAP json_schema forwarding', () => {
   it('forwards response_format (json_schema) for non-Ollama providers', () => {
-    const payload = buildSmrGeneratePayload(makeAssembledPrompt(), { provider: 'openai' });
+    const payload = buildTextGeneratePayload(makeAssembledPrompt(), { provider: 'openai' });
 
     expect(payload.response_format).toBeDefined();
     expect(payload.response_format).not.toBeUndefined();
@@ -49,19 +49,19 @@ describe('buildSmrGeneratePayload — SOAP json_schema forwarding', () => {
   });
 
   it('omits response_format for the Ollama provider', () => {
-    const payload = buildSmrGeneratePayload(makeAssembledPrompt(), { provider: 'ollama' });
+    const payload = buildTextGeneratePayload(makeAssembledPrompt(), { provider: 'ollama' });
 
     expect(payload.response_format).toBeUndefined();
   });
 
   it('treats provider case-insensitively (OLLAMA suppressed)', () => {
-    const payload = buildSmrGeneratePayload(makeAssembledPrompt(), { provider: 'OLLAMA' });
+    const payload = buildTextGeneratePayload(makeAssembledPrompt(), { provider: 'OLLAMA' });
 
     expect(payload.response_format).toBeUndefined();
   });
 
   it('omits response_format when the assembled prompt has none (no schema)', () => {
-    const payload = buildSmrGeneratePayload(makeAssembledPrompt({ responseFormat: null }), { provider: 'openai' });
+    const payload = buildTextGeneratePayload(makeAssembledPrompt({ responseFormat: null }), { provider: 'openai' });
 
     expect(payload.response_format).toBeUndefined();
   });

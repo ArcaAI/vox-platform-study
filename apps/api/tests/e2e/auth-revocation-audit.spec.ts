@@ -50,7 +50,7 @@ function decodeJwtPayload(token: string): DecodedJwt {
 const auth = (token: string) => ({ Authorization: `Bearer ${token}` });
 
 /**
- * A global admin has no implicit working tenant, so tenant-scoped writes
+ * A super admin has no implicit working tenant, so tenant-scoped writes
  * (role/department assignment) need an explicit `X-Tenant-Id` selection —
  * the same header the admin console sends.
  */

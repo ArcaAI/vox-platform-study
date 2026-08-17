@@ -104,7 +104,7 @@ export class EffectiveSettingsService {
     // The reported `sourceScope` is the tier that actually answered, so a
     // caller can see WHY a value is what it is. `ctx.tenantId` is the
     // tenant the caller is asking about — for a tenant admin that is its own
-    // tenant, for a global admin the working tenant resolved by the controller.
+    // tenant, for a super admin the working tenant resolved by the controller.
     if (descriptor.tier === 'global-kv') {
       if (!this.tenantSettings) return applyFailMode(descriptor);
       const resolved = this.tenantSettings.resolve(key, ctx.tenantId ?? null);

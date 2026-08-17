@@ -19,7 +19,7 @@ import type { Tenant } from '../api/types';
  * pipelines are never touched, and re-running is a no-op.
  *
  * Confirm-gated because it mutates another tenant's data, and gated on the
- * elevated session because the endpoint is `manage:Tenant` (global admin) —
+ * elevated session because the endpoint is `manage:Tenant` (super admin) —
  * showing a button that can only 403 is worse than not showing it.
  */
 export function ResyncPipelineTemplatesAction({ tenant }: { tenant: Tenant }) {

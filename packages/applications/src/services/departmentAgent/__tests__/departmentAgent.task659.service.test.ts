@@ -2,7 +2,7 @@
  * DepartmentAgentService loop-configuration + promotion surface.
  *
  * Covers: unknown subscribedKinds kind rejected; writeScope naming an
- * undeclared output rejected; harnessOverrides global-admin-only key still
+ * undeclared output rejected; harnessOverrides super-admin-only key still
  * rejected (regression); the config version is immutable once written;
  * exactly one PRIMARY per department; and the byte-identical regression when
  * none of the seven new fields are set.
@@ -152,10 +152,10 @@ describe('DepartmentAgentService', () => {
       expect(mockAgentVersionRepository.create).not.toHaveBeenCalled();
     });
 
-    it('a regression harnessOverrides global-admin-only key is still rejected (400)', async () => {
+    it('a regression harnessOverrides super-admin-only key is still rejected (400)', async () => {
       await expect(
         service.create({ ...baseCreateDto, harnessOverrides: { maxRegen: 2, smrProvider: 'azure' } }),
-      ).rejects.toThrow(/global-admin-only/);
+      ).rejects.toThrow(/super-admin-only/);
     });
   });
 

@@ -132,7 +132,7 @@ export class RolesController {
    * CUSTOM role — the ability the seeded tenant grant (`rbac-tenant-manage`:
    * `create Role { isSystemRole: false }`) already holds. This is what makes
    * "any admin may clone" true for tenant admins;
-   * requiring `manage:Role` (global admins only) locked them out. Owner may
+   * requiring `manage:Role` (super admins only) locked them out. Owner may
    * reverse to global-only by restoring `@CanManage('Role')`.
    */
   @Post(':id/clone')

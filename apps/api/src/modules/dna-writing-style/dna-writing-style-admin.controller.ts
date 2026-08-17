@@ -27,7 +27,7 @@ import { getDnaJobStatus, streamDnaJobStatus } from './dna-writing-style-job-str
 @ApiTags('admin-dna-writing-styles')
 @RequiredScopes('admin:dna-writing-style:manage')
 @Controller('admin/dna-writing-styles')
-// Narrowed from `manage:all` (global-admin-only) to
+// Narrowed from `manage:all` (super-admin-only) to
 // `manage:DnaWritingStyleReport` so a TENANT_ADMIN can administer their own
 // tenant's writing-style reports (mirrors the AudioPipelineController
 // narrowing). Tenant isolation is still enforced in the service layer
@@ -46,7 +46,7 @@ export class DnaWritingStyleAdminController {
   // DNA aggregate dashboard. Declared before the param-less list
   // route's siblings; `dashboard` is a literal segment so it never collides
   // with `:reportId`-style routes. Tenant scoping is enforced in the service:
-  // a global admin may target a tenant via `?tenantId=` (or omit it for an
+  // a super admin may target a tenant via `?tenantId=` (or omit it for an
   // all-tenants roll-up); a tenant admin is pinned to their CLS tenant and any
   // supplied `tenantId` is ignored.
   @Get('dashboard')
@@ -55,7 +55,7 @@ export class DnaWritingStyleAdminController {
     name: 'tenantId',
     required: false,
     type: String,
-    description: 'Global-admin only: scope the aggregate to a tenant. Ignored for tenant admins.',
+    description: 'Super-admin only: scope the aggregate to a tenant. Ignored for tenant admins.',
   })
   @ApiResponse({ status: 200, description: 'DNA aggregate dashboard', type: DnaDashboardResponse })
   async getDashboard(@Query('tenantId') tenantId?: string): Promise<DnaDashboardResponse> {
@@ -70,7 +70,7 @@ export class DnaWritingStyleAdminController {
     name: 'tenantId',
     required: false,
     type: String,
-    description: 'Global-admin only: scope the list to a tenant. Ignored for tenant admins.',
+    description: 'Super-admin only: scope the list to a tenant. Ignored for tenant admins.',
   })
   @ApiQuery({ name: 'includeDisabled', required: false, type: Boolean, description: 'Include disabled reports in results' })
   // Cross-user read: narrow the list to a single doctor's
@@ -83,7 +83,7 @@ export class DnaWritingStyleAdminController {
   ): Promise<PaginatedDnaReportResponse> {
     // Pagination is pushed down to the repository
     // (`findPaginated` → `db.findMany` + `db.count`) instead of materializing
-    // the full tenant result set and slicing it in memory. A global admin may
+    // the full tenant result set and slicing it in memory. A super admin may
     // scope to a tenant via `?tenantId=`; a tenant admin is pinned to their CLS
     // tenant and the supplied value is ignored in the service.
     return this.dnaService.listReportsPaginated({

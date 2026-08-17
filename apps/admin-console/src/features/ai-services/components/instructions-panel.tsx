@@ -127,7 +127,7 @@ function InstructionsDocument({ instructions }: { instructions: AgenticInstructi
  * Instructions tab — the effective agentic instruction set for the WORKING
  * TENANT, read from a (global)-tier screen.
  *
- * This is a documented instance of the "global-admin-only screen, per-tenant
+ * This is a documented instance of the "super-admin-only screen, per-tenant
  * data" sub-pattern: `/ai-services` lives in the `(global)` route
  * group, but this one tab reads tenant-scoped data, so it needs a working
  * tenant. The gate is applied at TAB level rather than via the screen-level

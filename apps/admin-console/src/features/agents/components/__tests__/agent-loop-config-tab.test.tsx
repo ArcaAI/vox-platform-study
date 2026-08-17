@@ -1,7 +1,7 @@
 /**
  * Loop config tab (budgets unlocked): subscribed
  * kinds/write scope sourced from the resolved context schema, tenant-writable
- * budgets (both a tenant admin and a global admin can edit them — see the
+ * budgets (both a tenant admin and a super admin can edit them — see the
  * README Decisions section), the C25 typed-acknowledgement gate on
  * weakening a clinical check, the PRIMARY conflict warning, and an axe scan.
  * Rendered through the drawer (the Loop config tab is one of its four tabs)
@@ -192,7 +192,7 @@ describe('LoopConfigTab', () => {
   // role-gated for these three keys). The earlier "locked for a non-elevated
   // caller" behavior was a console guarantee the server never enforced; see
   // the Decisions section.
-  it('does not lock the Budgets fields for a non-elevated (tenant admin) caller — no "Global admins only" hint', async () => {
+  it('does not lock the Budgets fields for a non-elevated (tenant admin) caller — no "Super Admins only" hint', async () => {
     stubFetch((call) => baseHandler(agent(), call, { session: SESSION }));
     renderWithProviders(
       <DepartmentAgentDetailDrawer
@@ -209,7 +209,7 @@ describe('LoopConfigTab', () => {
 
     const maxRegen = (await screen.findByLabelText('Max regen budget')) as HTMLInputElement;
     expect(maxRegen.disabled).toBe(false);
-    expect(screen.queryByText('Global admins only')).toBeNull();
+    expect(screen.queryByText('Super Admins only')).toBeNull();
   });
 
   it('a tenant admin CAN change Budgets — the PATCH carries harnessOverrides', async () => {
@@ -242,7 +242,7 @@ describe('LoopConfigTab', () => {
     expect((patch?.body as Record<string, unknown>).harnessOverrides).toEqual({ toolAllowlist: ['ner'], maxRegen: 5 });
   });
 
-  it('lets a global admin edit Budgets too, and the PATCH carries them merged into existing harnessOverrides', async () => {
+  it('lets a super admin edit Budgets too, and the PATCH carries them merged into existing harnessOverrides', async () => {
     const calls = stubFetch((call) => {
       if (call.method === 'PATCH' && pathnameOf(call) === '/api/hope/admin/department-agents/da-1') {
         return Response.json(agent({ version: 3 }), { headers: { etag: '"3"' } });

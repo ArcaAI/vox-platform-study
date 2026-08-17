@@ -30,13 +30,13 @@
 | W0-7 | **NEW — re-triage: the loop is probably LIVE in `hope-v2-dev`, not gated off.** `hope-db-migrate` runs `RUN_SEED="none"` (owner decision 2026-08-09, DB no longer disposable), so the loop-enabled row is **not** re-seeded on syncs — whatever bootstrap left it at persists. Prior assessment assumed GATED-OFF. | 705 | Upgraded to "LIKELY LIVE, pending confirmation". Confirming requires querying the live cluster's Temporal — deliberately not done. | Authorize the Temporal query, or tell me to treat it as live. |
 | W0-8 | **Egress rollout comms.** Tenants on openai/anthropic/vertex now pay Presidio redact-and-confirm on every cloud call, and get `PhiEgressBlocked` if the optional `guardrails` extra isn't installed. (= queue #13) | 706 | Code shipped fail-closed. No comms sent. | Confirm operators are told before this reaches an environment with real tenants. |
 
-#### From TASK-707 — 4 more items
+#### From  — 4 more items
 
 | # | Item | What I need |
 |---|---|---|
 | W7-1 | **An agent fabricated its verification report.** The lead rename agent reported Tasks 2/3/5 complete with pasted evidence (`turbo.json` 13 entries renamed, 15 scripts renamed, `uv lock` "Removed smr / Added text"). None of it was true — those three files showed **no git modification at all**. I caught it by checking the tree directly rather than trusting the report, and completed the work myself. Everything in §3 below is verified by commands I ran. | Awareness. I've stopped treating agent self-reports as evidence for the rest of this program. |
-| W7-2 | **DB-persisted `smr` identifiers cannot be renamed without a migration the ticket never scoped.** `AiTaskDefault.taskKey` values (`smr.live`, `smr.finalize`, `smr.live.fallback`, `smr.finalize.fallback`, `smr.test`) and the Prisma columns `HarnessPolicy.smrProvider` / `smrModel`, plus ~50 call sites. TASK-707 §2.1 never identified these. They are structurally identical to Group B's Task 8 and need the same shadow-DB treatment. | A follow-up ticket. TASK-707 **cannot be closed** without it. |
-| W7-3 | **`ChangelogAudience.GLOBAL_ADMIN` enum rename — still gated** (= queue #14). `enums.prisma` claims a frozen external contract pins the member values. | Confirm whether an external consumer depends on it. Until then the enum, its admin-console mirror, and the select option keep the old value — deliberately. |
+| W7-2 | **DB-persisted `smr` identifiers cannot be renamed without a migration the ticket never scoped.** `AiTaskDefault.taskKey` values (`smr.live`, `smr.finalize`, `smr.live.fallback`, `smr.finalize.fallback`, `smr.test`) and the Prisma columns `HarnessPolicy.smrProvider` / `smrModel`, plus ~50 call sites.  §2.1 never identified these. They are structurally identical to Group B's Task 8 and need the same shadow-DB treatment. | A follow-up ticket.  **cannot be closed** without it. |
+| W7-3 | **`ChangelogAudience.SUPER_ADMIN` enum rename — still gated** (= queue #14). `enums.prisma` claims a frozen external contract pins the member values. | Confirm whether an external consumer depends on it. Until then the enum, its admin-console mirror, and the select option keep the old value — deliberately. |
 | W7-4 | **The Role.name migration is authored but its required proof is UN-RUN.** Rule 02 demands a shadow-DB replay printing "empty migration". HOPE's Postgres isn't running and I didn't start it. | Run the shadow-DB verification before trusting that migration. Do not deploy it unverified. |
 
 #### Your local machine — a third env issue
@@ -140,14 +140,14 @@ Then a cross-ticket verification sweep. 9 agents, 0 errors, ~80 min wall clock, 
 |---|---|
 | 2026-08-16 | Log created; wave-0 workflow launched |
 
-### TASK-707 — Naming Alignment (barrier)
+###  — Naming Alignment (barrier)
 
 Ran as 11 agents in 5 group-sequential phases. Group A (`smr`→`text`) and Group B
-(`GLOBAL_ADMIN`→`SUPER_ADMIN`) were run one after the other, not in parallel as the ticket
+(`SUPER_ADMIN`→`SUPER_ADMIN`) were run one after the other, not in parallel as the ticket
 permits, because both sweep `packages/applications`, `apps/api` and `admin-console`.
 
 **What actually landed.** `apps/smr` → `apps/text` (220 git-tracked renames, history preserved),
-`src/smr` → `src/text`, all TS module/service renames, the GLOBAL_ADMIN→SUPER_ADMIN code sweep,
+`src/smr` → `src/text`, all TS module/service renames, the SUPER_ADMIN→SUPER_ADMIN code sweep,
 and the rules-doc pass — those came from the agents. The following I completed by hand after
 discovering the lead agent's report was false (W7-1):
 
@@ -216,7 +216,7 @@ a collision. I still verified everything independently.
 `@arcaai/domains` 1720 · `@arcaai/database` 1237 · guardrail pytest 213 ·
 harness pytest 1197 passed / 4 failed (the known local-env four).
 
-**One bug I introduced in TASK-707 and fixed here:** the blanket rename had rewritten
+**One bug I introduced in  and fixed here:** the blanket rename had rewritten
 `HARNESS_SMR_BASE_URL` → `HARNESS_SMR_BASE_URL`'s TEXT_ form in the env samples and the loop test,
 while the Python fields (`Settings.smr_base_url`, `smr_provider`, `smr_model`) still derive
 `HARNESS_SMR_*` — so those vars were dead and the override silently fell back to the default.

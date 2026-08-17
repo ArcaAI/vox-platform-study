@@ -22,12 +22,12 @@ import { resolveScopedTenantId } from '../../shared/tenant-scope';
  * immutable after) · void (DRAFT only) · adjustments (FINALIZED only — the
  * credit-memo correction path).
  *
- * Tenant scoping: `resolveScopedTenantId` — global admins act cross-tenant via
+ * Tenant scoping: `resolveScopedTenantId` — super admins act cross-tenant via
  * `?tenantId=`; a tenant-bound caller is pinned. Cross-tenant BY-ID access
  * returns 404 (never 403) from the service.
  *
  * // AUTH-NOTE: computeDraft / finalize / void / addAdjustment are
- * // GLOBAL-ADMIN-ONLY, enforced imperatively in `BillingService`
+ * // SUPER_ADMIN-ONLY, enforced imperatively in `BillingService`
  * // (`isSuperAdmin` → 403) — rule 05. Class-level `@CanManage` keeps the
  * // deny-by-default boot audit green.
  *

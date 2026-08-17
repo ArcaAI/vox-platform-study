@@ -41,7 +41,7 @@ export * from './ai-provider-connection';
 export * from './ai-runtime-profile';
 // The read side: per-service effective-config for the Python pull clients.
 export * from './effective-config';
-// MCP external-tools registry admin (global-admin CRUD + registry reads).
+// MCP external-tools registry admin (super-admin CRUD + registry reads).
 export * from './mcp-server';
 // Editable realtime-pipeline policy (cascade admin surface).
 export * from './pipeline-policy';
@@ -110,9 +110,9 @@ export * from './directory-sync';
 // Browser-origin allow-list: origin grammar + the origin→owner-tenant reverse
 // index the CORS layer and the origin/tenant binding guard both read.
 export * from './origin-registry';
-// Global-admin CRUD over the allow-list rows the registry above indexes.
+// Super-admin CRUD over the allow-list rows the registry above indexes.
 export * from './tenant-allowed-origin';
-// Curated release notes ("What's New") — reader surface + global-admin authoring.
+// Curated release notes ("What's New") — reader surface + super-admin authoring.
 export * from './changelog';
 // Service version & release registry: boot self-registration + heartbeat,
 // release history, and what is running right now per environment.

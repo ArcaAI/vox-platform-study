@@ -11,7 +11,7 @@ import { ListWorkflowRunsQuery } from './dto';
  * `/api/v1/admin/workflow-runs/*`).
  *
  * Tier 30–49 (rule 13): requires a working tenant. Tenant admins are pinned
- * to their own CLS tenant; a global admin acts on behalf of a working
+ * to their own CLS tenant; a super admin acts on behalf of a working
  * tenant via the BFF's `X-Tenant-Id` header (resolved into CLS by the
  * auth guard upstream), mirroring `DepartmentController.fetchAll`'s guard —
  * SUPER_ADMIN with no working tenant selected yet is rejected here (403,
@@ -21,7 +21,7 @@ import { ListWorkflowRunsQuery } from './dto';
  *
  * Gated at the class level by `@CanRead('WorkflowRun')` — read-only.
  *
- * Distinct from `/admin/agent-trajectory` (tier 10-19, global-admin
+ * Distinct from `/admin/agent-trajectory` (tier 10-19, super-admin
  * cross-tenant platform ops — see `AgentTrajectoryController`) and from the
  * existing `/ai-operations/runs` admin-console screen it backs: this
  * controller is the DEFINITION-scoped tenant view TASK-723 adds (README

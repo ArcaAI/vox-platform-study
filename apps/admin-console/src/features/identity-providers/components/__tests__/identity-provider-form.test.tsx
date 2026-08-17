@@ -19,7 +19,7 @@ vi.mock('sonner', () => ({
 const ROLES: RoleOption[] = [
   { id: 'role-doctor', name: 'DOCTOR' },
   { id: 'role-nurse', name: 'NURSE' },
-  { id: 'role-global-admin', name: 'SUPER_ADMIN' },
+  { id: 'role-super-admin', name: 'SUPER_ADMIN' },
   { id: 'role-service-account', name: 'SERVICE_ACCOUNT' },
 ];
 

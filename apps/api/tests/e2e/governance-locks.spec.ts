@@ -11,8 +11,8 @@
  * this spec adds only the net-new half: the `safetyEnabled`/`phiFailClosed`
  * field lock.
  *
- * The lock (`HarnessPolicyService#assertNoGlobalAdminOnlyPolicyWrites`,
- * `GLOBAL_ADMIN_ONLY_POLICY_KEYS`) is a SERVICE-level field lock, not a route
+ * The lock (`HarnessPolicyService#assertNoSuperAdminOnlyPolicyWrites`,
+ * `SUPER_ADMIN_ONLY_POLICY_KEYS`) is a SERVICE-level field lock, not a route
  * decorator: `PATCH admin/harness/policy` is declared
  * `@Authorize(['manage', 'HarnessPolicy'])`, which a tenant admin legitimately
  * holds for every OTHER knob on this same row (thresholds, `maxRegen`, gate
@@ -54,13 +54,13 @@ async function readPolicy(request: APIRequestContext, token: string, path: strin
 }
 
 test.describe('harness policy governance locks — safetyEnabled / phiFailClosed', () => {
-  let globalAdminToken: string;
+  let superAdminToken: string;
   let tenantAdminToken: string;
 
   test.beforeAll(async ({ request }) => {
     const ga = await loginUser(request, SEEDED_USERS.superAdmin.username, SEEDED_USERS.superAdmin.password, DEFAULT_TENANT_KEY);
-    expect(ga, `global admin login (${DEFAULT_TENANT_KEY}) failed — is the stack seeded?`).toBeTruthy();
-    globalAdminToken = ga!.token;
+    expect(ga, `super admin login (${DEFAULT_TENANT_KEY}) failed — is the stack seeded?`).toBeTruthy();
+    superAdminToken = ga!.token;
 
     const ta = await loginUser(request, SEEDED_USERS.admin.username, SEEDED_USERS.admin.password, DEFAULT_TENANT_KEY);
     expect(ta, `tenant_admin login (${DEFAULT_TENANT_KEY}) failed`).toBeTruthy();
@@ -99,9 +99,9 @@ test.describe('harness policy governance locks — safetyEnabled / phiFailClosed
   });
 
   test('the same lock holds for a SUPER_ADMIN acting on the TENANT policy route — a field lock, not merely a role check', async ({ request }) => {
-    const before = await readPolicy(request, globalAdminToken, HARNESS_POLICY);
+    const before = await readPolicy(request, superAdminToken, HARNESS_POLICY);
     const resp = await request.patch(HARNESS_POLICY, {
-      headers: { ...bearer(globalAdminToken), 'If-Match': `"${before.version}"` },
+      headers: { ...bearer(superAdminToken), 'If-Match': `"${before.version}"` },
       data: { safetyEnabled: !before.safetyEnabled },
     });
     expect(resp.status()).toBe(403);
@@ -119,20 +119,20 @@ test.describe('harness policy governance locks — safetyEnabled / phiFailClosed
   });
 
   test('a SUPER_ADMIN can flip safetyEnabled — but only through the platform GLOBAL-DEFAULT route', async ({ request }) => {
-    const before = await readPolicy(request, globalAdminToken, HARNESS_POLICY_GLOBAL);
+    const before = await readPolicy(request, superAdminToken, HARNESS_POLICY_GLOBAL);
     const flipped = !before.safetyEnabled;
 
     const flip = await request.patch(HARNESS_POLICY_GLOBAL, {
-      headers: { ...bearer(globalAdminToken), 'If-Match': `"${before.version}"` },
+      headers: { ...bearer(superAdminToken), 'If-Match': `"${before.version}"` },
       data: { safetyEnabled: flipped, reason: `e2e governance-locks ${Date.now()}` },
     });
     expect(flip.status()).toBe(200);
     expect(((await flip.json()) as HarnessPolicy).safetyEnabled).toBe(flipped);
 
     // Restore — this is shared platform state, not a throwaway row.
-    const after = await readPolicy(request, globalAdminToken, HARNESS_POLICY_GLOBAL);
+    const after = await readPolicy(request, superAdminToken, HARNESS_POLICY_GLOBAL);
     const restore = await request.patch(HARNESS_POLICY_GLOBAL, {
-      headers: { ...bearer(globalAdminToken), 'If-Match': `"${after.version}"` },
+      headers: { ...bearer(superAdminToken), 'If-Match': `"${after.version}"` },
       data: { safetyEnabled: before.safetyEnabled, reason: `e2e governance-locks restore ${Date.now()}` },
     });
     expect(restore.status()).toBe(200);

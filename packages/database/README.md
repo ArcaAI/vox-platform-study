@@ -86,11 +86,11 @@ The pool pins `connectionTimeoutMillis = 5000` and `idleTimeoutMillis = 300000`.
 
 `src/extensions/tenant-scope.ts` enforces tenant isolation at the client layer (multi-tenancy hardening, archived ticket [TASK-305](../../docs/archive/TASK-305-Multi-Tenancy-Hardening/README.md)):
 
-- `TENANT_SCOPED_MODELS` — allow-list of tenant-scoped models (currently 44). `User`/`UserProfile`/`UserSettings` are deliberately absent: user identity is global, and tenant membership is modeled via the scoped join tables `UserRoleAssignment` and `UserDepartment`. `TenantEntitlement` is a reviewed exception (pre-auth throttler + global-admin cross-tenant override CRUD read it outside a matching CLS tenant; see the drift-guard test's `INTENTIONALLY_UNSCOPED`).
+- `TENANT_SCOPED_MODELS` — allow-list of tenant-scoped models (currently 44). `User`/`UserProfile`/`UserSettings` are deliberately absent: user identity is global, and tenant membership is modeled via the scoped join tables `UserRoleAssignment` and `UserDepartment`. `TenantEntitlement` is a reviewed exception (pre-auth throttler + super-admin cross-tenant override CRUD read it outside a matching CLS tenant; see the drift-guard test's `INTENTIONALLY_UNSCOPED`).
 - Reads merge `where: { tenantId: <CLS tenant> }` into caller args; writes assert `data.tenantId` equals the CLS tenant (auto-injected when missing, error on mismatch).
 - `SYSTEM_SHARED_READ_MODELS` — catalog models (e.g. seeded ASR pipelines) whose reads widen to `tenantId IN [caller, SYSTEM]`; writes are never widened.
 - `SYSTEM_TENANT_ID` (`00000000-0000-0000-0000-000000000000`) — reserved system tenant owning platform-wide rows.
-- Global-admin bypass applies only when no CLS context exists (seeds, CLI); with an active CLS tenant the scope still applies.
+- Super-admin bypass applies only when no CLS context exists (seeds, CLI); with an active CLS tenant the scope still applies.
 
 The context provider is registered at API bootstrap via `setTenantContextProvider` (`apps/api/src/database/tenant-context.provider.ts` reads `tenantId`/roles from `nestjs-cls`). Cross-aggregate guards (parent/child tenant equality, user-tenant membership) live one layer up in `packages/applications/src/common/tenant-guards.ts`.
 

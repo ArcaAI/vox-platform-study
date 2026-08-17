@@ -55,7 +55,7 @@ That second bypass is a **consent** defect the original finding did not identify
 
 No instruction to exclude patient facts, medications, or identifiers. Item 4 ("Common phrases") actively invites verbatim quotation from source notes.
 
-Critically — and this defeats the "it's a constrained structured profile" counter-argument — this template carries **no** `metaData.promptConfig`, unlike its sibling SOAP template two entries above which sets `metaData: { promptConfig: SOAP_PROMPT_CONFIG }` to "Activate structured SOAP output (json_schema)" (`:377-378`). The DNA call therefore requests **free text**. Confirm at the call site: `dna-writing-style.processor.ts:332-341` posts `{prompt, system_prompt, stream:false, provider, model}` to `SMR /api/v1/generate` with **no `response_format`** — compare the summary path, which does bind one (`smr-compat.controller.ts:400-406`, `response_format: {type:'json_schema', json_schema: responseSchema, strict:true}`).
+Critically — and this defeats the "it's a constrained structured profile" counter-argument — this template carries **no** `metaData.promptConfig`, unlike its sibling SOAP template two entries above which sets `metaData: { promptConfig: SOAP_PROMPT_CONFIG }` to "Activate structured SOAP output (json_schema)" (`:377-378`). The DNA call therefore requests **free text**. Confirm at the call site: `dna-writing-style.processor.ts:332-341` posts `{prompt, system_prompt, stream:false, provider, model}` to `SMR /api/v1/generate` with **no `response_format`** — compare the summary path, which does bind one (`text-compat.controller.ts:400-406`, `response_format: {type:'json_schema', json_schema: responseSchema, strict:true}`).
 
 **Link 4 — persisted with no redaction. HOLDS.** The parser, `dna-writing-style.processor.ts:197-203`:
 
@@ -72,7 +72,7 @@ try {
 No schema validation on either branch; both fall back to storing the raw LLM output verbatim. `encryptFieldsIntoEntity` (`:231-233`) is **encryption, not redaction** — it changes who can read the field, not what the field contains.
 
 **Link 5 — doctor-scoped profile injected into an unrelated patient's prompt. HOLDS. This is the load-bearing link and it is solid.**
-`dna-writing-style.service.ts:202-230` — the signature is `getEffectiveStyleText(doctorId, explicitTenantId?)`. There is **no patient or consultation parameter anywhere in it**; it resolves the latest report for the doctor and decrypts `styleText`. Consumed at `apps/api/src/modules/smr-compat/smr-compat.controller.ts:284-302` (`resolveDnaStyleText`), threaded through `:463-464`, `:527-528`, `:621-622`, `:671-672`, and embedded verbatim into the **system prompt** at `apps/api/src/modules/smr-compat/v1-summary-prompt.builder.ts:379-384`:
+`dna-writing-style.service.ts:202-230` — the signature is `getEffectiveStyleText(doctorId, explicitTenantId?)`. There is **no patient or consultation parameter anywhere in it**; it resolves the latest report for the doctor and decrypts `styleText`. Consumed at `apps/api/src/modules/text-compat/text-compat.controller.ts:284-302` (`resolveDnaStyleText`), threaded through `:463-464`, `:527-528`, `:621-622`, `:671-672`, and embedded verbatim into the **system prompt** at `apps/api/src/modules/text-compat/v1-summary-prompt.builder.ts:379-384`:
 
 ```ts
 const dnaStyle = options.dnaStyleText?.trim();

@@ -38,7 +38,7 @@ const CONTEXT_DEFAULTS = {
 @Processor(JobQueue.GenerateDnaReport)
 export class DnaWritingStyleProcessor extends WorkerHost {
   private readonly logger = new Logger(DnaWritingStyleProcessor.name);
-  private readonly smrServiceUrl: string;
+  private readonly textServiceUrl: string;
 
   constructor(
     @Inject(IConsultationJobService) private readonly jobService: IConsultationJobService,
@@ -83,7 +83,7 @@ export class DnaWritingStyleProcessor extends WorkerHost {
     @Optional() @Inject(IPhiRedactor) private readonly phiRedactor?: IPhiRedactor,
   ) {
     super();
-    this.smrServiceUrl = this.configService.get<string>('TEXT_URL') ?? 'http://localhost:8862';
+    this.textServiceUrl = this.configService.get<string>('TEXT_URL') ?? 'http://localhost:8862';
   }
 
   async process(job: Job<GenerateDnaReportJobPayload>): Promise<DnaReportJobResult> {
@@ -237,7 +237,7 @@ export class DnaWritingStyleProcessor extends WorkerHost {
 
       await job.updateProgress(40);
       this.jobService.notifyProgress(job.data.jobId, 40, 'Generating DNA analysis');
-      const smrResponse = await this.callSmr(samples, systemPrompt, outputSchema);
+      const smrResponse = await this.callText(samples, systemPrompt, outputSchema);
 
       await job.updateProgress(80);
       this.jobService.notifyProgress(job.data.jobId, 80, 'Storing results');
@@ -394,7 +394,7 @@ export class DnaWritingStyleProcessor extends WorkerHost {
       .join('\n\n---\n\n');
   }
 
-  private async callSmr(
+  private async callText(
     textSamples: string,
     systemPrompt: string,
     outputSchema?: Record<string, unknown> | null,
@@ -413,7 +413,7 @@ export class DnaWritingStyleProcessor extends WorkerHost {
       ({ provider, model } = await this.harnessPolicyService.resolveSmrSelection());
     }
     const response = await this.httpService.axiosRef.post(
-      `${this.smrServiceUrl}/api/v1/generate`,
+      `${this.textServiceUrl}/api/v1/generate`,
       {
         prompt: textSamples,
         system_prompt: systemPrompt,

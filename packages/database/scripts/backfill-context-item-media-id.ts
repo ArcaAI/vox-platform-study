@@ -11,7 +11,7 @@
  * `use-dual-capture.ts` persisted a raw S3 OBJECT KEY into `mediaId`, not a
  * `Media.id`. `OcrEnrichmentProcessor` happened to also (wrongly) treat
  * `mediaId` as a literal key, so OCR worked by coincidence; every OTHER
- * consumer (`ContextService.resolveMediaUrls`, `SmrProxyController.extractAttachmentText`)
+ * consumer (`ContextService.resolveMediaUrls`, `TextProxyController.extractAttachmentText`)
  * does the CORRECT `mediaRepository.findById(mediaId)` lookup and therefore
  * silently found nothing for these rows. A later fix covers the producers (they
  * now send `mediaId`) and the one broken consumer (`OcrEnrichmentProcessor`);

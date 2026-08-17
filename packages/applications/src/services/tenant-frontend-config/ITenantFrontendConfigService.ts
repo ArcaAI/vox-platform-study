@@ -4,7 +4,7 @@ import { TenantFrontendConfigResponse, UpsertTenantFrontendConfigRequest } from 
  * Per-tenant frontend audio-pipeline defaults. One config row per
  * tenant (`tenantId @unique`), applied to all of that tenant's users.
  *
- * Tenant scoping mirrors the other admin services: a global admin
+ * Tenant scoping mirrors the other admin services: a super admin
  * (SUPER_ADMIN) targets a tenant via the `tenantId` argument;
  * a tenant admin is pinned to their CLS tenant and any `tenantId` is ignored.
  */

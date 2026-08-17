@@ -28,7 +28,7 @@
  * Scope limit: this re-check revalidates the RESOURCE side only.
  * The CLS caller context (tenantId, user) is frozen for the stream's async
  * lifetime, so identity-side revocation — JWT/session invalidation, user
- * disable, role downgrade, a global admin switching working tenant — is NOT
+ * disable, role downgrade, a super admin switching working tenant — is NOT
  * detected here (a session-revocation signal is an explicit ticket non-goal).
  * Transient re-check failures (DB timeout, pool exhaustion) never terminate:
  * only the interceptor's own `NotFoundException` does. A terminated client's

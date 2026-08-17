@@ -122,7 +122,7 @@ describe('AllowedOriginsScreen', () => {
 
     expect(await screen.findByRole('grid', { name: 'Allowed origins' })).toBeDefined();
     expect(await screen.findByText('https://app.example.org')).toBeDefined();
-    expect(screen.queryByText('Global admins only')).toBeNull();
+    expect(screen.queryByText('Super Admins only')).toBeNull();
   });
 
   it('asks an elevated session without a working tenant to select one without fetching the allow-list', async () => {

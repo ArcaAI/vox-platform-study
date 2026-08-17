@@ -17,7 +17,7 @@
  * What THIS spec proves instead, against a genuinely empty table:
  *  - the tenant-scope gate (`WorkflowRunController.resolveWorkingTenantId`):
  *    a tenant admin resolves its own tenant, an unscoped SUPER_ADMIN gets
- *    403 "no tenant selected", and `X-Tenant-Id` lets a global admin act on
+ *    403 "no tenant selected", and `X-Tenant-Id` lets a super admin act on
  *    behalf of a specific tenant;
  *  - the keyset list envelope shape (`{ data, nextCursor, hasMore, limit }`)
  *    on an empty result set;
@@ -111,7 +111,7 @@ test.describe('TASK-723 — /api/v1/admin/workflow-runs', () => {
     expect(response.status()).toBe(403);
   });
 
-  test('a global admin acting via X-Tenant-Id can list that tenant’s (empty) runs', async ({ request }) => {
+  test('a super admin acting via X-Tenant-Id can list that tenant’s (empty) runs', async ({ request }) => {
     const response = await request.get('/api/v1/admin/workflow-runs', { headers: bearer(superAdminToken, defaultTenantId) });
     expect(response.status()).toBe(200);
     const body = await response.json();

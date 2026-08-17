@@ -29,7 +29,7 @@ export function getDnaDashboard(): Promise<DnaDashboard> {
 
 /**
  * Latest report for a doctor, keeping the ETag for the later PATCH. PHI-gated:
- * doctor reads stay tenant-pinned even for global admins (404 across tenants).
+ * doctor reads stay tenant-pinned even for super admins (404 across tenants).
  */
 export function getDoctorReport(doctorId: string): Promise<WithEtag<DnaReport>> {
   return getWithEtag(`${BASE}/doctor/${encodeURIComponent(doctorId)}`);

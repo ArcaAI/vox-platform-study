@@ -287,7 +287,7 @@ export class HarnessInternalService {
    * Effective warm-start decision for `tenantId`.
    *
    * Policy wins; a null policy value means "not configured" and falls through to the
-   * env fallback. Resolved on every call so a global admin's console flip takes
+   * env fallback. Resolved on every call so a super admin's console flip takes
    * effect with no redeploy. A policy-backend failure degrades to the env value —
    * this sits on the harness generation path and must not fail closed on a
    * governance lookup.

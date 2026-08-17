@@ -26,7 +26,7 @@ test.describe('retired route redirects', () => {
   test('/prompt-studio lands on the prompt-template Governance tab', async ({ page }) => {
     // The target is tenant-scoped, so an elevated session needs a working
     // tenant before the tabs mount at all. This is NOT a regression from the
-    // fold: `/prompt-studio` was `WorkingTenantGate`d too (a global-admin-only
+    // fold: `/prompt-studio` was `WorkingTenantGate`d too (a super-admin-only
     // screen over per-tenant data), so both surfaces required a tenant before
     // and after. Re-pointed the target from `/agents` when the
     // governance tab moved with the rest of the PromptTemplate surface.

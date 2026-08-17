@@ -56,7 +56,7 @@ afterEach(() => {
 });
 
 describe('EffectiveHarnessPolicyCard', () => {
-  it('renders every resolved value with a tenant/global-admin "controlled by" badge', async () => {
+  it('renders every resolved value with a tenant/super-admin "controlled by" badge', async () => {
     stubFetch(policy());
     renderWithProviders(<EffectiveHarnessPolicyCard />);
 
@@ -65,7 +65,7 @@ describe('EffectiveHarnessPolicyCard', () => {
     expect(screen.getByText('Safety provider')).toBeDefined();
     expect(screen.getByText('azure')).toBeDefined();
     expect(screen.getAllByText('tenant').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('global admin').length).toBe(5); // TENANT_LOCKED_POLICY_KEYS count
+    expect(screen.getAllByText('super admin').length).toBe(5); // TENANT_LOCKED_POLICY_KEYS count
   });
 
   it('is read-only — no inputs, switches or save controls anywhere on the card', async () => {

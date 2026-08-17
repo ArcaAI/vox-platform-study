@@ -285,7 +285,7 @@ export class AiModelService extends BaseService implements IAiModelService {
    * WITHOUT a tenant pin (the extension widens the read to
    * `tenantId IN [caller, SYSTEM]`), then de-duplicates by slug preferring
    * the caller-tenant row over its SYSTEM template. With NO CLS tenant at
-   * all (a non-elevated global admin — the extension would pass the read
+   * all (a non-elevated super admin — the extension would pass the read
    * through unfiltered across ALL tenants), it pins explicitly to the
    * SYSTEM platform catalog instead. Legacy callers of `getByTaskType`
    * (exact-tenant semantics) are untouched.

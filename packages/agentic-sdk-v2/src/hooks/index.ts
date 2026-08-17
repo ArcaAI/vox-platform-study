@@ -82,7 +82,7 @@ export type { Bucket, StorageFile, StorageFileWithUrl } from './useStorage';
 // Monitoring hook
 export { useMonitoring, type UseMonitoringReturn } from './useMonitoring';
 
-// Platform runtime metrics hook (E1/E2/E3 global-admin tiles)
+// Platform runtime metrics hook (E1/E2/E3 super-admin tiles)
 export { usePlatformMetrics, type UsePlatformMetricsReturn } from './usePlatformMetrics';
 
 // Auth hook
@@ -211,7 +211,7 @@ export type { TenantStorageConfig, ListTenantStorageConfigParams, UpsertTenantSt
 // Tenant FRONTEND pipeline config hook
 export { useTenantFrontendConfig, type UseTenantFrontendConfigReturn } from './useTenantFrontendConfig';
 
-// Global-admin ops-surface hooks (Rate Limits / Queues & Jobs / Prisma Studio)
+// Super-admin ops-surface hooks (Rate Limits / Queues & Jobs / Prisma Studio)
 export { useRateLimits, type UseRateLimitsReturn } from './useRateLimits';
 export { useQueueAdmin, type UseQueueAdminReturn } from './useQueueAdmin';
 export { usePrismaStudio, type UsePrismaStudioReturn } from './usePrismaStudio';

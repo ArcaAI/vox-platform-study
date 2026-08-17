@@ -52,7 +52,7 @@ import { AiProviderConnectionResponse, UpsertAiProviderConnectionRequest } from 
  * probes on someone else's):
  *   - a TENANT row is permitted only for a cloud BYO provider LISTED UNDER ITS
  *     SERVICE (C5); a self-host engine endpoint is platform infrastructure;
- *   - a SYSTEM row may be written only by a global admin.
+ *   - a SYSTEM row may be written only by a super admin.
  *
  * Secrets travel through `encryptSecretField` exclusively; there is no
  * plaintext-at-rest fallback (a key write is REJECTED when Vault is absent), and
@@ -65,7 +65,7 @@ export class AiProviderConnectionService extends BaseService implements IProvide
   constructor(
     private readonly connectionRepository: AiProviderConnectionRepository,
     // The UNSCOPED base client backing the cross-tenant lane (mirrors
-    // `AiTaskDefaultService`) — a global admin acting under working tenant W
+    // `AiTaskDefaultService`) — a super admin acting under working tenant W
     // must be able to read/write SYSTEM and foreign-tenant rows.
     @Inject('CORE_DATABASE_SERVICE') private readonly databaseService: CoreDatabaseService,
     protected override readonly eventEmitter: EventEmitter2,
@@ -521,12 +521,12 @@ export class AiProviderConnectionService extends BaseService implements IProvide
    * The two privilege boundaries. Both throw 403 rather than 404: the caller is
    * acting on its OWN tenant, so there is nothing to hide — the rule is "you may
    * not do this", not "this may not exist". Mirrors
-   * `AiTaskDefaultService.upsertRow`'s GLOBAL_ADMIN_ONLY guard.
+   * `AiTaskDefaultService.upsertRow`'s SUPER_ADMIN_ONLY guard.
    */
   private assertWriteAllowed(service: ProviderService, provider: string, targetTenantId: string): void {
     if (targetTenantId === SYSTEM_TENANT_ID) {
       if (!isSuperAdmin(this.requestUser)) {
-        throw new ForbiddenException('Platform provider connections are managed by global administrators only.');
+        throw new ForbiddenException('Platform provider connections are managed by super administrators only.');
       }
       return;
     }

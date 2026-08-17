@@ -76,7 +76,7 @@ export interface WriteRegistrySettingResult {
  * The PUT flow, in order:
  *   1. unknown key                → 400
  *   2. `sensitivity === 'secret'` → 400 (secrets never flow through this lane)
- *   3. `globalOnly` + not global admin → 403
+ *   3. `globalOnly` + not super admin → 403
  *   4. `assertWithinMaxScope`     → 400 on a too-deep scope
  *   5. tier dispatch              → 400 for anything but `global-kv`
  *   6. value validated against `dataType`
@@ -113,7 +113,7 @@ export class SettingsRegistryWriteService extends BaseService {
     // 3. Privilege boundary, DESCRIPTOR-DRIVEN. 403 not 404: the caller can
     //    already READ this key through the catalog; only the write is gated.
     if (descriptor.globalOnly && !isSuperAdmin(this.requestUser)) {
-      throw new ForbiddenException(`Setting '${key}' is managed by global administrators only.`);
+      throw new ForbiddenException(`Setting '${key}' is managed by super administrators only.`);
     }
 
     // 4. The max-scope clamp — THE enforcement point (first production caller).
@@ -192,7 +192,7 @@ export class SettingsRegistryWriteService extends BaseService {
    * The privilege boundary on the SCOPE of a write.
    *
    * A `system`-scope write changes the value platform-wide, so it is
-   * GLOBAL-ADMIN-ONLY regardless of `globalOnly` — which gates the KEY, not the
+   * SUPER_ADMIN-ONLY regardless of `globalOnly` — which gates the KEY, not the
    * scope. This is a 403 (privilege), never the 404-over-403 cross-tenant
    * posture: the caller may legitimately hold `manage` on the key for its OWN
    * tenant, and is being refused only the platform-wide row.
@@ -202,7 +202,7 @@ export class SettingsRegistryWriteService extends BaseService {
    */
   private assertMayWriteAtScope(scope: SettingScope, key: string): void {
     if (scope === 'system' && !isSuperAdmin(this.requestUser)) {
-      throw new ForbiddenException(`Writing setting '${key}' at 'system' scope changes it platform-wide and is restricted to global administrators.`);
+      throw new ForbiddenException(`Writing setting '${key}' at 'system' scope changes it platform-wide and is restricted to super administrators.`);
     }
   }
 
@@ -215,7 +215,7 @@ export class SettingsRegistryWriteService extends BaseService {
    *    not a caller-supplied id: the Prisma tenant-scope extension pins every
    *    `GlobalSetting` write to the CLS tenant anyway, so accepting a target id
    *    here would advertise a cross-tenant write path that cannot execute. A
-   *    global admin acting for a tenant already carries that tenant in CLS (the
+   *    super admin acting for a tenant already carries that tenant in CLS (the
    *    console's `X-Tenant-Id` working-tenant header).
    *
    * `department` / `doctor` are refused: no key declares a deeper `maxScope`

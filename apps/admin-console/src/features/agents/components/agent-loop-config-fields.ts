@@ -72,7 +72,7 @@ export const AGENT_ROLE_OPTIONS: { value: DepartmentAgentRole; label: string }[]
  * "Budgets" — the `maxRegen`/`gateSlaSeconds`/`gateEscalationSeconds` subset
  * of `harnessOverrides` (mirrors the "Generation"/"Clinician gate" groups of
  * `harness-policy/components/policy-fields.ts`). Tenant-writable, not
- * global-admin-tier: these are 3 of the "4 pipeline-shape knobs"
+ * super-admin-tier: these are 3 of the "4 pipeline-shape knobs"
  * `TENANT_TIER_HARNESS_OVERRIDE_KEYS` grants a tenant admin on an agent's
  * `harnessOverrides` (`packages/applications/src/services/departmentAgent/
  * constants.ts`), and the SAME keys are tenant-writable on the `HarnessPolicy`

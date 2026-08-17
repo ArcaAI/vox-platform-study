@@ -151,14 +151,14 @@ export class TenantStorageConfigService extends BaseService implements ITenantSt
   // ---------------------------------------------------------------------------
 
   async getPlatformDefault(): Promise<TenantStorageConfigResponse> {
-    this.assertGlobalAdmin('read the platform storage default');
+    this.assertSuperAdmin('read the platform storage default');
 
     const row = await this.configRepository.findSystemDefault();
     return row ? TenantStorageConfigDtoMapper.toResponse(row) : TenantStorageConfigDtoMapper.platformPlaceholder();
   }
 
   async upsertPlatformDefault(dto: UpsertPlatformStorageConfigRequest): Promise<TenantStorageConfigResponse> {
-    this.assertGlobalAdmin('change the platform storage default');
+    this.assertSuperAdmin('change the platform storage default');
 
     const existing = await this.configRepository.findSystemDefault();
 
@@ -284,7 +284,7 @@ export class TenantStorageConfigService extends BaseService implements ITenantSt
   /**
    * The SYSTEM row has exactly one authoritative editor — the platform routes.
    * Reject an attempt to reach it through the tenant routes (only possible for
-   * a global admin whose elevated working tenant IS the SYSTEM tenant).
+   * a super admin whose elevated working tenant IS the SYSTEM tenant).
    */
   private assertNotPlatformScope(tenantId: string): void {
     if (tenantId === SYSTEM_TENANT_ID) {
@@ -294,13 +294,13 @@ export class TenantStorageConfigService extends BaseService implements ITenantSt
 
   /**
    * AUTH-NOTE: SUPER_ADMIN-only boundary. The permission decorators express
-   * `action + subject` and cannot express "global admins only" — a tenant admin
+   * `action + subject` and cannot express "super admins only" — a tenant admin
    * legitimately holds `manage:Storage` for its OWN rows. This is a 403
    * (privilege), NOT the 404-over-403 cross-tenant posture.
    */
-  private assertGlobalAdmin(action: string): void {
+  private assertSuperAdmin(action: string): void {
     if (!isSuperAdmin(this.requestUser)) {
-      throw new ForbiddenException(`Only a global administrator may ${action}.`);
+      throw new ForbiddenException(`Only a super administrator may ${action}.`);
     }
   }
 

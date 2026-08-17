@@ -244,7 +244,7 @@ function SecretValuePane({
               {MASK}
             </span>
             <span className="sr-only">Secret value hidden</span>
-            {/* Reveal and rotate are global-admin only per the frame 24 matrix. */}
+            {/* Reveal and rotate are super-admin only per the frame 24 matrix. */}
             <RequirePermission action="manage" subject="all">
               <Button variant="ghost" size="icon-sm" aria-label={`Reveal ${setting.key}`} onClick={() => setRevealTarget(setting)}>
                 <IconEye aria-hidden />
@@ -384,7 +384,7 @@ function SettingDetailBody({
               </>
             )}
             {setting.locked ? (
-              <p className="text-muted-foreground text-xs">This platform default is locked. Only a global admin may change it.</p>
+              <p className="text-muted-foreground text-xs">This platform default is locked. Only a super admin may change it.</p>
             ) : null}
           </div>
           <OccConflictAlert

@@ -5,7 +5,7 @@
  * and the Python side parsed both keys — but the TS policy response never emitted
  * either. `models.py` therefore always received `None`/`[]`, `workflows.py:417`
  * was permanently False, and the whole MCP tool path was unreachable regardless of
- * what a global admin configured.
+ * what a super admin configured.
  *
  * Three distinct breaks, all pinned here:
  *   1. `entityToKnobs` never read `e.mcpToolsEnabled` — so it was dropped from
@@ -13,8 +13,8 @@
  *      only because that one spreads HARNESS_POLICY_DEFAULTS wholesale).
  *   2. `getEffectivePolicy` never consulted the `McpServer` registry, so
  *      `mcpServers` did not exist on the wire at all.
- *   3. the knob was absent from `GLOBAL_ADMIN_ONLY_POLICY_KEYS`, so once added it
- *      would have been tenant-writable — MCP is global-admin governance.
+ *   3. the knob was absent from `SUPER_ADMIN_ONLY_POLICY_KEYS`, so once added it
+ *      would have been tenant-writable — MCP is super-admin governance.
  *
  * The flag stays default-OFF: `null ⇒ OFF` is asserted, not assumed.
  */
@@ -101,7 +101,7 @@ describe('HarnessPolicyService — MCP policy plumbing', () => {
     });
 
     it('comes from SYSTEM even when the tenant has its own policy row', async () => {
-      // MCP is global-admin governance: a tenant row must not shadow it.
+      // MCP is super-admin governance: a tenant row must not shadow it.
       policyRepository.findForExactTenant.mockResolvedValue(
         HarnessPolicyFactory.CreateHarnessPolicy({ tenantId: TENANT, mcpToolsEnabled: false } as never),
       );
@@ -112,7 +112,7 @@ describe('HarnessPolicyService — MCP policy plumbing', () => {
       expect(effective.mcpToolsEnabled).toBe(true);
     });
 
-    it('is rejected on a tenant patch (403 — global-admin only)', async () => {
+    it('is rejected on a tenant patch (403 — super-admin only)', async () => {
       policyRepository.findSystemDefault.mockResolvedValue(systemPolicy());
 
       await expect(makeService().updatePolicy({ mcpToolsEnabled: true } as never, 1)).rejects.toBeInstanceOf(ForbiddenException);

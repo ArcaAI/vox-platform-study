@@ -37,7 +37,7 @@ export interface HarnessPolicySummary {
   version: number;
 }
 
-export type HarnessPolicyControlledBy = 'tenant' | 'global-admin';
+export type HarnessPolicyControlledBy = 'tenant' | 'super-admin';
 
 export interface HarnessPolicyFieldControl {
   key: keyof HarnessPolicySummary;
@@ -48,7 +48,7 @@ export interface HarnessPolicyFieldControl {
 
 /**
  * All 16 HarnessPolicy runtime knobs, each labeled with WHO can write it. The
- * 5 in `controlledBy: 'global-admin'` are `TENANT_LOCKED_POLICY_KEYS` on the
+ * 5 in `controlledBy: 'super-admin'` are `TENANT_LOCKED_POLICY_KEYS` on the
  * tenant PATCH route (`harness-policy.service.ts` `SUPER_ADMIN_ONLY_POLICY_KEYS`);
  * the rest are tenant-writable from `/harness/policy`.
  */
@@ -58,11 +58,11 @@ export const HARNESS_POLICY_FIELD_CONTROLS: HarnessPolicyFieldControl[] = [
   { key: 'citationPresenceThreshold', label: 'Citation presence threshold', controlledBy: 'tenant' },
   { key: 'numericDoseThreshold', label: 'Numeric / dose threshold', controlledBy: 'tenant' },
   { key: 'groundednessThreshold', label: 'Groundedness threshold', controlledBy: 'tenant' },
-  { key: 'safetyEnabled', label: 'Safety guardrail', controlledBy: 'global-admin' },
-  { key: 'phiEnabled', label: 'PHI detection', controlledBy: 'global-admin' },
-  { key: 'phiFailClosed', label: 'PHI fail-closed', controlledBy: 'global-admin' },
-  { key: 'safetyProvider', label: 'Safety provider', controlledBy: 'global-admin' },
-  { key: 'safetyModel', label: 'Safety model', controlledBy: 'global-admin' },
+  { key: 'safetyEnabled', label: 'Safety guardrail', controlledBy: 'super-admin' },
+  { key: 'phiEnabled', label: 'PHI detection', controlledBy: 'super-admin' },
+  { key: 'phiFailClosed', label: 'PHI fail-closed', controlledBy: 'super-admin' },
+  { key: 'safetyProvider', label: 'Safety provider', controlledBy: 'super-admin' },
+  { key: 'safetyModel', label: 'Safety model', controlledBy: 'super-admin' },
   { key: 'smrProvider', label: 'Text-generation provider', controlledBy: 'tenant' },
   { key: 'smrModel', label: 'Text-generation model', controlledBy: 'tenant' },
   { key: 'maxRegen', label: 'Max regen budget', controlledBy: 'tenant' },

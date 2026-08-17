@@ -16,8 +16,8 @@ import {
   ConsultationEntity,
 } from '@arcaai/domains';
 import { ComprehensiveSummaryRequest, ComprehensiveSummaryResponse, ChainSectionDto } from './dto';
-import { buildSmrGeneratePayload, mapSmrGenerateResponse } from './text-generate';
-import { buildLlmUsageInput, parseSmrUsageDetail, type SmrUsageDetail } from './text-usage';
+import { buildTextGeneratePayload, mapTextGenerateResponse } from './text-generate';
+import { buildLlmUsageInput, parseTextUsageDetail, type TextUsageDetail } from './text-usage';
 import { IUsageLedgerService } from '../../usageLedger/IUsageLedgerService';
 import { BaseService, assertParentInScope, encryptPhiFields } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
@@ -46,7 +46,7 @@ import { INoteGenerationService, GenerationTrigger } from '../note-generation';
 @Injectable()
 export class ChainSummaryService extends BaseService {
   private readonly logger = new Logger(ChainSummaryService.name);
-  private readonly smrServiceUrl: string;
+  private readonly textServiceUrl: string;
 
   constructor(
     private readonly contextItemRepository: ContextItemRepository,
@@ -88,7 +88,7 @@ export class ChainSummaryService extends BaseService {
     @Optional() @Inject(INoteGenerationService) private readonly noteGenerationService?: INoteGenerationService,
   ) {
     super(eventEmitter, clsService, ResourceType.ContextItem);
-    this.smrServiceUrl = this.configService.get<string>('TEXT_URL') ?? 'http://localhost:8862';
+    this.textServiceUrl = this.configService.get<string>('TEXT_URL') ?? 'http://localhost:8862';
   }
 
   /**
@@ -193,7 +193,7 @@ export class ChainSummaryService extends BaseService {
     const smrInput = await this.composeSmrInput(consultation, sections, aggregatedEntities, request, preferredPromptTemplateId);
 
     // Step 5: Call SMR service
-    const smrResponse = await this.callSmrService(smrInput);
+    const smrResponse = await this.callTextService(smrInput);
 
     // Step 6: Store as ContextItem(RAW_SUMMARY) on the requesting consultation
     const contextItem = ContextItemFactory.CreateRawSummary(tenantId, consultationId, smrResponse.summary, request.dnaStyleId, userId ?? 'system');
@@ -465,7 +465,7 @@ export class ChainSummaryService extends BaseService {
    */
   private async persistSummaryMetaWithUsage(
     summaryMeta: Parameters<SummaryMetaRepository['create']>[0],
-    usage: SmrUsageDetail | null,
+    usage: TextUsageDetail | null,
     attribution: { tenantId: string; consultationId: string; doctorId?: string | null; departmentId?: string | null },
   ): Promise<void> {
     const input = usage
@@ -597,7 +597,7 @@ export class ChainSummaryService extends BaseService {
   /**
    * Call the SMR service for comprehensive summary generation.
    */
-  private async callSmrService(payload: {
+  private async callTextService(payload: {
     assembledPrompt: {
       userPrompt: string;
       systemPrompt: string;
@@ -618,7 +618,7 @@ export class ChainSummaryService extends BaseService {
     processingTimeMs?: number;
     inputTokens?: number;
     outputTokens?: number;
-    usage: SmrUsageDetail | null;
+    usage: TextUsageDetail | null;
   }> {
     // The tenant id is resolved EXPLICITLY (B-04), OUTSIDE the try/catch
     // below — never a bare no-arg call trusting `resolveSmrSelection`'s own
@@ -637,9 +637,9 @@ export class ChainSummaryService extends BaseService {
         const { provider, model } = await this.harnessPolicyService.resolveSmrSelection(this.tenantId!, 'finalize');
         options = { smrProvider: provider, smrModel: model, ...payload.options };
       }
-      const smrPayload = buildSmrGeneratePayload(payload.assembledPrompt, options, payload.context);
+      const textPayload = buildTextGeneratePayload(payload.assembledPrompt, options, payload.context);
       const smrServiceToken = (await this.secretsService?.getSecretOptional('TEXT_SERVICE_TOKEN')) ?? '';
-      const response = await this.httpService.axiosRef.post(`${this.smrServiceUrl}/api/v1/generate`, smrPayload, {
+      const response = await this.httpService.axiosRef.post(`${this.textServiceUrl}/api/v1/generate`, textPayload, {
         timeout: 180000,
         headers: {
           'Content-Type': 'application/json',
@@ -647,7 +647,7 @@ export class ChainSummaryService extends BaseService {
         },
       });
       const data = response.data as { usage_detail?: unknown } | null;
-      return { ...mapSmrGenerateResponse(response.data), usage: parseSmrUsageDetail(data?.usage_detail) };
+      return { ...mapTextGenerateResponse(response.data), usage: parseTextUsageDetail(data?.usage_detail) };
     } catch (error) {
       this.logger.error({
         message: 'SMR service call failed for comprehensive summary',

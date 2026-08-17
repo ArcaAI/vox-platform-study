@@ -102,6 +102,31 @@ describe('WebhookDeliveryProcessor (matcher — @Processor(JobQueue.SysEvent))',
     expect(opts).toMatchObject({ ...WEBHOOK_DELIVERY_JOB_OPTIONS, jobId: 'hook:webhook-1:event-1' });
   });
 
+  // Every other case in this describe hands the processor a real `Date`, which
+  // is what `SysEvent.createdAt`'s TYPE promises but NOT what production
+  // delivers: the event arrives through BullMQ, so JSON has already turned it
+  // into an ISO string. Calling `.toISOString()` on that threw
+  // "event.createdAt.toISOString is not a function", failing EVERY sys-event job
+  // and silently disabling webhook delivery platform-wide.
+  it('accepts the ISO-STRING createdAt that BullMQ actually delivers (not just a Date)', async () => {
+    mockWebhookRepository.findAll.mockResolvedValue([mockWebhookEntity()]);
+
+    await processor.process({
+      data: { id: 'job-1', data: baseSysEvent({ createdAt: '2026-08-16T10:00:00.000Z' }) },
+    } as never);
+
+    expect(mockDeliveryQueue.add).toHaveBeenCalledTimes(1);
+    expect(mockDeliveryQueue.add.mock.calls[0][1]).toMatchObject({ occurredAt: '2026-08-16T10:00:00.000Z' });
+  });
+
+  it('normalises a Date createdAt to the same ISO string (in-process callers keep working)', async () => {
+    mockWebhookRepository.findAll.mockResolvedValue([mockWebhookEntity()]);
+
+    await processor.process({ data: { id: 'job-1', data: baseSysEvent() } } as never);
+
+    expect(mockDeliveryQueue.add.mock.calls[0][1]).toMatchObject({ occurredAt: '2026-08-16T10:00:00.000Z' });
+  });
+
   it('is a no-op when no Webhook row matches the event (no HTTP call, no enqueue)', async () => {
     mockWebhookRepository.findAll.mockResolvedValue([]);
 

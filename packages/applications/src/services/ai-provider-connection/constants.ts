@@ -24,7 +24,7 @@ export const PROVIDER_SERVICES = ['llm', 'stt', 'tts'] as const;
  *
  * Attempting a tenant row for a non-listed (service, provider) is a PRIVILEGE
  * boundary on the caller's own tenant — 403, NOT the 404-over-403 cross-tenant
- * posture. Same reasoning as `GLOBAL_ADMIN_ONLY_TASK_PREFIXES` in
+ * posture. Same reasoning as `SUPER_ADMIN_ONLY_TASK_PREFIXES` in
  * `ai-task-default`.
  *
  * NOTE: the three new LLM entries (`openai`, `anthropic`, `vertex`) are frozen

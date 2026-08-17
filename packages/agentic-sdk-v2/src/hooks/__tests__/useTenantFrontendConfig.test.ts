@@ -60,7 +60,7 @@ describe('useTenantFrontendConfig', () => {
       expect(result.current.config).toEqual(cfg);
     });
 
-    it('appends ?tenantId= for a global admin', async () => {
+    it('appends ?tenantId= for a super admin', async () => {
       mockGet.mockResolvedValue(null);
       const { result } = renderHook(() => useTenantFrontendConfig());
 
@@ -103,7 +103,7 @@ describe('useTenantFrontendConfig', () => {
       expect(result.current.config).toEqual(saved);
     });
 
-    it('appends ?tenantId= on save for a global admin', async () => {
+    it('appends ?tenantId= on save for a super admin', async () => {
       mockPut.mockResolvedValue({ id: 'c1', version: 1 });
       const { result } = renderHook(() => useTenantFrontendConfig());
 

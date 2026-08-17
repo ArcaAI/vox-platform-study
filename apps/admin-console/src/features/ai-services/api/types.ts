@@ -83,7 +83,7 @@ export interface AgenticInstructions {
 
 /** Query params for the instruction-set read (all optional). */
 export interface AgenticInstructionsParams {
-  /** Global admins target a tenant; tenant admins are pinned server-side. */
+  /** Super Admins target a tenant; tenant admins are pinned server-side. */
   tenantId?: string;
   /** Resolve the prompt tier against a department (omit = tenant baseline). */
   departmentId?: string;

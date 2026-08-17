@@ -8,7 +8,7 @@ import { buildWorkflowRunEventEnvelope, formatSseFrame, isTerminalRunStatus } fr
  *  live. There is no push channel to wait on (see the class doc) — this is a plain interval. */
 export const WORKFLOW_STREAM_POLL_INTERVAL_MS = 2_000;
 
-/** SSE heartbeat cadence — mirrors `SmrProxyController`/`TextProxyController`'s own
+/** SSE heartbeat cadence — mirrors `TextProxyController`/`TextProxyController`'s own
  *  `SSE_HEARTBEAT_INTERVAL_MS`, so an idle connection is never mistaken for a dead one by an
  *  intermediate proxy/load balancer. */
 export const WORKFLOW_STREAM_HEARTBEAT_INTERVAL_MS = 15_000;
@@ -17,7 +17,7 @@ export const WORKFLOW_STREAM_HEARTBEAT_INTERVAL_MS = 15_000;
  * `WorkflowStreamService` — the gateway-side half of `GET /workflows/:slug/runs/:runId/stream`
  * (TASK-722 Task 8).
  *
- * **Not a byte-for-byte SSE proxy.** The ticket's plan named `SmrProxyController
+ * **Not a byte-for-byte SSE proxy.** The ticket's plan named `TextProxyController
  * .streamTaskEvents` as the exemplar to port verbatim, but that pattern proxies an UPSTREAM
  * `text/event-stream` response — and the interpreter dispatcher
  * (`apps/harness/src/harness/api/endpoints/interpreter.py`) exposes no such endpoint: only

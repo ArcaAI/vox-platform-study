@@ -42,8 +42,8 @@ export interface GovernedInstructionAudit {
  * fail the summarization request.
  */
 @Injectable()
-export class SmrCompatTemplateService {
-  private readonly logger = new Logger(SmrCompatTemplateService.name);
+export class TextCompatTemplateService {
+  private readonly logger = new Logger(TextCompatTemplateService.name);
 
   constructor(
     private readonly departmentRepository: DepartmentRepository,

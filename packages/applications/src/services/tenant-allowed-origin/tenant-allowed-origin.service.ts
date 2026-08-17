@@ -32,7 +32,7 @@ const ORIGIN_REGISTRY_INVALIDATE_EVENT = 'origin-registry.invalidate';
  * smuggled a `*` through an encoding must not be able to tell that apart from
  * a caller who typed one, and an operator reading logs should see one string.
  */
-const WILDCARD_REFUSAL_MESSAGE = 'Only a global administrator may register a wildcard origin. Register an exact origin instead.';
+const WILDCARD_REFUSAL_MESSAGE = 'Only a super administrator may register a wildcard origin. Register an exact origin instead.';
 
 /** Structurally identifies a Prisma unique-constraint violation (P2002) without importing `@prisma/client` runtime code. */
 function isUniqueConstraintViolation(err: unknown): boolean {
@@ -54,13 +54,13 @@ export class TenantAllowedOriginService extends BaseService implements ITenantAl
   /**
    * AUTH-NOTE: WILDCARD GATE — SUPER_ADMIN-only, enforced imperatively here
    * because no permission decorator can express it (;
-   * `05-nestjs-api.md` §Imperative Privilege Checks, "global-admin-only action
+   * `05-nestjs-api.md` §Imperative Privilege Checks, "super-admin-only action
    * on a tenant-manageable resource"). A TENANT_ADMIN legitimately holds
    * `manage:TenantAllowedOrigin` for its own rows — what it may NOT do is
    * register a value containing `*`. The decorator sees `action + subject`; it
    * cannot see the SHAPE of the value, and the shape is the whole boundary.
    * 's mitigation for the incomplete public-suffix heuristic is
-   * "a global admin approving a wildcard row must check the suffix by hand" —
+   * "a super admin approving a wildcard row must check the suffix by hand" —
    * a tenant admin cannot be that check. This is a 403 (privilege), NOT the
    * 404-over-403 cross-tenant posture; a cross-tenant id still 404s via
    * `findOwnedOrThrow`, which runs FIRST on the update path.
@@ -132,7 +132,7 @@ export class TenantAllowedOriginService extends BaseService implements ITenantAl
    */
   private assertMayWriteInResolvedTenant(tenantId: string): void {
     if (tenantId === SYSTEM_TENANT_ID && !isSuperAdmin(this.requestUser)) {
-      throw new ForbiddenException('Only a global administrator may manage platform (SYSTEM) allowed origins.');
+      throw new ForbiddenException('Only a super administrator may manage platform (SYSTEM) allowed origins.');
     }
   }
 

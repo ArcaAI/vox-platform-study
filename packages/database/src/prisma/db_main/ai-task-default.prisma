@@ -10,8 +10,8 @@
 // no FK, per the AiModel slug-reference convention (see stt.prisma).
 //
 // Governance: the `guardrail.`, `nlp.`, and `harness.` task-key prefixes are
-// GLOBAL-ADMIN-ONLY (service-level isSuperAdmin guard on writes) per
-// GLOBAL_ADMIN_ONLY_TASK_PREFIXES in
+// SUPER_ADMIN-ONLY (service-level isSuperAdmin guard on writes) per
+// SUPER_ADMIN_ONLY_TASK_PREFIXES in
 // packages/applications/src/services/ai-task-default/constants.ts. For those,
 // tenants only CONSUME the SYSTEM-row platform default and runtime resolution
 // ignores per-tenant override rows. EXCEPTION: the `smr.` prefix

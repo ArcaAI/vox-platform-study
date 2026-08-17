@@ -6,7 +6,7 @@ import { auditAdminRoutePermissions } from '../../../bootstrap/admin-route-permi
 import { TenantAllowedOriginController } from '../tenant-allowed-origin.controller';
 
 /**
- * The blanket `assertGlobalAdmin` call is gone from every
+ * The blanket `assertSuperAdmin` call is gone from every
  * handler, including the new `GET admin/allowed-origins/posture` route. The
  * boot-time deny-by-default audit (`admin-route-permission-audit.ts`) is what
  * would refuse to start the app if any `/admin/*` route were left without a

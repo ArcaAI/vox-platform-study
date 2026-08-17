@@ -83,7 +83,7 @@ export class DnaWritingStyleReportRepository extends Repository<DnaWritingStyleR
    * writing-style report. Uses Prisma `groupBy(['doctorId'])` and returns the
    * number of groups (mirrors the `groupBy` precedent in
    * `TranscriptionJobRepository.countByStatus`). When `tenantId` is omitted the
-   * count spans every tenant (global-admin aggregate view).
+   * count spans every tenant (super-admin aggregate view).
    */
   async countDoctorsWithLatestReport(tenantId?: string): Promise<number> {
     const where: Record<string, unknown> = {

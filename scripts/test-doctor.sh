@@ -15,7 +15,7 @@
 #   optional = the app services (they are only up while a suite is running)
 #
 # PORTS: the TEST env is fully independent of DEV — application
-#   ports are DEV + 100 (api 8968, stt 8961, smr 8962, guardrail 8963,
+#   ports are DEV + 100 (api 8968, stt 8961, text 8962, guardrail 8963,
 #   nlp 8964, tts 8965, harness 8966, admin 5276), and the infra ports already
 #   differed (Postgres 5433, Redis 6380, MinIO 9002, Qdrant 6335, Vault 8201 —
 #   isolated Vault too). Both stacks can run side by side. Ports are
@@ -179,7 +179,7 @@ echo -e "${CYAN}── HOPE services on the test env ─────────
 # These are OPTIONAL: they only run while a suite (or `pnpm stack:test`) is up.
 http_check optional "api ($T_API_PORT)"       "http://localhost:$T_API_PORT/api/v1/health" "pnpm test:up:api"
 http_check optional "stt ($T_STT_PORT)"       "http://localhost:$T_STT_PORT/api/v1/health" "pnpm test:up:stt"
-http_check optional "smr ($T_TEXT_PORT)"       "http://localhost:$T_TEXT_PORT/api/v1/health" "pnpm test:up:smr"
+http_check optional "text ($T_TEXT_PORT)"      "http://localhost:$T_TEXT_PORT/api/v1/health" "pnpm test:up:text"
 http_check optional "nlp ($T_NLP_PORT)"       "http://localhost:$T_NLP_PORT/api/v1/health" "pnpm test:up:nlp"
 http_check optional "guardrail ($T_GUARDRAIL_PORT)" "http://localhost:$T_GUARDRAIL_PORT/api/health"
 http_check optional "harness ($T_HARNESS_PORT)"     "http://localhost:$T_HARNESS_PORT/api/v1/health"

@@ -21,7 +21,7 @@
  *   Governance — version history, field-level diff and clinical approval.
  *                 Elevated-only in the console; the server is the authority.
  *
- * Tenant-scoped: a global admin must pick a working tenant before any query
+ * Tenant-scoped: a super admin must pick a working tenant before any query
  * mounts (`WorkingTenantGate`); tenant admins pass straight through.
  */
 

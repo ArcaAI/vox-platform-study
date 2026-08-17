@@ -762,7 +762,7 @@ export class ContextService extends BaseService implements IContextService {
    * Persist a `SummaryMeta` and, in the SAME transaction, record the bare
    * `inputTokens`/`outputTokens` it carries. `addRawSummary`
    * makes NO SMR call of its own — the caller already ran the generation and
-   * supplied the token counts directly — so there is no real `SmrUsageDetail`
+   * supplied the token counts directly — so there is no real `TextUsageDetail`
    * (no provider, no endpointKind); `buildLlmUsageInputFromTokenCounts`
    * (smr-usage.ts) is the honest builder for that shape (never fabricates an
    * `endpointKind`). A freshly generated id keys the row: this write path

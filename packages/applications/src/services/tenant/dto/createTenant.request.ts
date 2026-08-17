@@ -10,7 +10,7 @@ export class CreateTenantRequest extends BaseRequest {
   name!: string;
 
   // Optional: auto-generated (slugified from `name`, deduped)
-  // by `TenantService.create` when omitted. When supplied (global-admin
+  // by `TenantService.create` when omitted. When supplied (super-admin
   // override), it is used as-is after validation.
   @ApiPropertyOptional({ description: 'Unique key for the tenant (auto-generated from name when omitted)' })
   @IsOptional()

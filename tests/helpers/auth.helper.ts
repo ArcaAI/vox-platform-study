@@ -107,7 +107,7 @@ export function createAdminUser(overrides: Partial<TestUser> = {}): TestUser {
  */
 export function createSuperAdminUser(overrides: Partial<TestUser> = {}): TestUser {
   return createTestUser({
-    roles: ['super_admin'],
+    roles: ['SUPER_ADMIN'],
     permissions: ['*'],
     ...overrides,
   });

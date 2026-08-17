@@ -47,7 +47,7 @@ export interface TransportConfig {
    * provider). A falsy return omits the header for that request.
    */
   getToken?: () => string | undefined | Promise<string | undefined>;
-  /** Sent as `X-Tenant-Id` on every request, when set (global-admin API keys only — see `.claude/rules/13-nextjs-apps.md`). */
+  /** Sent as `X-Tenant-Id` on every request, when set (super-admin API keys only — see `.claude/rules/13-nextjs-apps.md`). */
   tenantId?: string;
   /** Default per-request timeout in ms. Default `60_000`. */
   timeoutMs?: number;

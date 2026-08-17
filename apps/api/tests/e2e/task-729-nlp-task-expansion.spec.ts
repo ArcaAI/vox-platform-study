@@ -12,7 +12,7 @@
  *  1. `nlp.sentiment`/`nlp.toxicity` — no new endpoint; reachable the SAME
  *     generic way `nlp.classification`/`nlp.diagnosis` already are, once an
  *     `AiTaskDefault` row exists (governance: still `nlp.*`
- *     global-admin-only on write — a tenant admin PUT → 403).
+ *     super-admin-only on write — a tenant admin PUT → 403).
  *  2. `nlp.topic`/`nlp.intent` — tenant-writable instructions
  *     (`TenantNlpTaskInstructionsAdminController`, `/admin/nlp-task-instructions`)
  *     flow through the gateway proxy (`/ai/nlp/topic`, `/ai/nlp/intent`) into
@@ -82,13 +82,13 @@ async function readInstructionsRow(request: APIRequestContext, token: string, ta
 test.describe.configure({ mode: 'serial' });
 
 test.describe('TASK-729 — nlp.sentiment / nlp.toxicity (fixed-taxonomy, no new endpoint)', () => {
-  let globalAdminToken: string;
+  let superAdminToken: string;
   let tenantAdminToken: string;
 
   test.beforeAll(async ({ request }) => {
     const ga = await loginUser(request, SEEDED_USERS.superAdmin.username, SEEDED_USERS.superAdmin.password, 'ARCAAI');
-    expect(ga, 'global admin login failed').toBeTruthy();
-    globalAdminToken = ga!.token;
+    expect(ga, 'super admin login failed').toBeTruthy();
+    superAdminToken = ga!.token;
 
     const ta = await loginUser(request, SEEDED_USERS.admin.username, SEEDED_USERS.admin.password, DEFAULT_TENANT_KEY);
     expect(ta, 'tenant admin login failed').toBeTruthy();
@@ -102,7 +102,7 @@ test.describe('TASK-729 — nlp.sentiment / nlp.toxicity (fixed-taxonomy, no new
     }
   });
 
-  test('GOVERNANCE: tenant admin PUT on nlp.sentiment/nlp.toxicity → 403 (still nlp.* global-admin-only)', async ({ request }) => {
+  test('GOVERNANCE: tenant admin PUT on nlp.sentiment/nlp.toxicity → 403 (still nlp.* super-admin-only)', async ({ request }) => {
     for (const taskKey of ['nlp.sentiment', 'nlp.toxicity']) {
       const row = await readTaskDefaultRow(request, tenantAdminToken, taskKey);
       const resp = await request.put(`${TASK_DEFAULTS_BASE}/row?taskKey=${taskKey}`, {
@@ -113,11 +113,11 @@ test.describe('TASK-729 — nlp.sentiment / nlp.toxicity (fixed-taxonomy, no new
     }
   });
 
-  test('global admin can set nlp.sentiment/nlp.toxicity SYSTEM defaults', async ({ request }) => {
+  test('super admin can set nlp.sentiment/nlp.toxicity SYSTEM defaults', async ({ request }) => {
     for (const taskKey of ['nlp.sentiment', 'nlp.toxicity']) {
-      const row = await readTaskDefaultRow(request, globalAdminToken, taskKey, SYSTEM_TENANT_ID);
+      const row = await readTaskDefaultRow(request, superAdminToken, taskKey, SYSTEM_TENANT_ID);
       const resp = await request.put(`${TASK_DEFAULTS_BASE}/row?taskKey=${taskKey}&tenantId=${SYSTEM_TENANT_ID}`, {
-        headers: { Authorization: `Bearer ${globalAdminToken}`, 'If-Match': `"${row.version}"` },
+        headers: { Authorization: `Bearer ${superAdminToken}`, 'If-Match': `"${row.version}"` },
         // nlp.sentiment/nlp.toxicity require a TEXT_CLASSIFICATION model
         // (AI_TASK_MODEL_TASK_TYPES in ai-task-default/constants.ts) — 'medical-ner'
         // is TOKEN_CLASSIFICATION (seeded for nlp.ner) and is rejected by
@@ -125,26 +125,26 @@ test.describe('TASK-729 — nlp.sentiment / nlp.toxicity (fixed-taxonomy, no new
         // TEXT_CLASSIFICATION fixture slug instead (same one nlp.diagnosis uses).
         data: { modelSlug: 'symps-disease-bert-v3-c41' },
       });
-      expect(resp.status(), `${taskKey} global-admin PUT`).toBe(200);
+      expect(resp.status(), `${taskKey} super-admin PUT`).toBe(200);
     }
   });
 });
 
 test.describe('TASK-729 — nlp.topic / nlp.intent (open-taxonomy, tenant-writable instructions)', () => {
-  let globalAdminToken: string;
+  let superAdminToken: string;
   let tenantAdminToken: string;
   let arcaaiTenantId: string;
 
   test.beforeAll(async ({ request }) => {
     const ga = await loginUser(request, SEEDED_USERS.superAdmin.username, SEEDED_USERS.superAdmin.password, 'ARCAAI');
-    expect(ga, 'global admin login failed').toBeTruthy();
-    globalAdminToken = ga!.token;
+    expect(ga, 'super admin login failed').toBeTruthy();
+    superAdminToken = ga!.token;
 
     const ta = await loginUser(request, SEEDED_USERS.admin.username, SEEDED_USERS.admin.password, DEFAULT_TENANT_KEY);
     expect(ta, 'tenant admin login failed').toBeTruthy();
     tenantAdminToken = ta!.token;
 
-    const row = await readTaskDefaultRow(request, globalAdminToken, 'nlp.ner');
+    const row = await readTaskDefaultRow(request, superAdminToken, 'nlp.ner');
     arcaaiTenantId = row.tenantId;
     expect(arcaaiTenantId).toBeTruthy();
   });

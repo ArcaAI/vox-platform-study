@@ -140,10 +140,10 @@ export class UserController {
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'pageSize', required: false, type: Number })
   async fetchAll(@Query() queryParams: PaginatedQuery): Promise<PaginatedUserResponse> {
-    // Tenant-scope guard: mirrors the AuditLogController guard — non-global-admins
+    // Tenant-scope guard: mirrors the AuditLogController guard — non-super-admins
     // are routed to the by-tenant service path scoped to their effective CLS
     // tenant; SUPER_ADMIN keeps the cross-tenant read (prevents platform-wide
-    // user enumeration by non-global-admins).
+    // user enumeration by non-super-admins).
     const user = this.cls.get('user');
     const callerTenantId = this.cls.get('tenantId');
     // Apply the deterministic default sort once, before any scoping branch, so
@@ -160,7 +160,7 @@ export class UserController {
       return UserDtoMapper.ToPaginatedResponse(scoped);
     }
 
-    // When a global-admin selects a tenant in the console, the ContextInterceptor
+    // When a super-admin selects a tenant in the console, the ContextInterceptor
     // elevates `x-tenant-id` into CLS `tenantId`. Honour it and scope the listing
     // to that tenant; with no selection the platform-wide cross-tenant listing
     // is preserved.
@@ -217,8 +217,8 @@ export class UserController {
 
   /**
    * Materialise the tenant-scoped (capped) user set for an export, applying the
-   * exact scoping branches as {@link fetchAll}: a non-global-admin is pinned to
-   * their CLS tenant (403 with no context); a global-admin honours an elevated
+   * exact scoping branches as {@link fetchAll}: a non-super-admin is pinned to
+   * their CLS tenant (403 with no context); a super-admin honours an elevated
    * `X-Tenant-Id` selection, else reads cross-tenant.
    *
    * Rows are enriched with email + department NAMES via ONE
@@ -297,7 +297,7 @@ export class UserController {
   async fetchByTenant(@Param('tenantId') tenantId: string, @Query() queryParams: PaginatedQuery): Promise<PaginatedUserResponse> {
     // Tenant-scope guard: the class-level `@CanManage('User')` action check does
     // NOT constrain WHICH tenant, so this route asserts it explicitly. Mirrors
-    // `fetchAll`: a non-global-admin may only read their own CLS tenant;
+    // `fetchAll`: a non-super-admin may only read their own CLS tenant;
     // SUPER_ADMIN keeps the cross-tenant read.
     this.assertCanReadTenant(tenantId);
 

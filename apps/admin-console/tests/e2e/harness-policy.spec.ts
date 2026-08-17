@@ -144,7 +144,7 @@ test.describe('harness policy & live config \u2014 tenant policy editor (frame 3
   });
 
   /**
-   * "Safety model" is another global-admin-only key the tenant tab renders
+   * "Safety model" is another super-admin-only key the tenant tab renders
    * read-only (see the round-trip spec above). Dirty-state is a property of
    * the FORM, so any tenant-writable field proves it — this uses the
    * gate-escalation knob.

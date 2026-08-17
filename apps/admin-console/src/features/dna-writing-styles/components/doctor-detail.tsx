@@ -172,7 +172,7 @@ function DoctorMeta({ report }: { report: DnaReport }) {
  * (GET doctor/:doctorId, kept WithEtag for the OCC PATCH) plus the DnaVersion
  * timeline, rendered in the console-wide `DetailDrawer` (right slide-over on
  * desktop, full-screen sheet on mobile). The style-text editor (If-Match OCC)
- * stays inside. PHI: doctor reads stay tenant-pinned even for global admins, so
+ * stays inside. PHI: doctor reads stay tenant-pinned even for super admins, so
  * a cross-tenant doctor id surfaces as the 404 empty state with a Generate CTA.
  */
 export function DoctorDetailDrawer({
@@ -254,7 +254,7 @@ export function DoctorDetailDrawer({
           <VersionTimeline reportId={payload.id} />
         </div>
 
-        <p className="text-muted-foreground border-t pt-3 text-xs">PHI guard: doctor reads stay tenant-pinned even for global admins.</p>
+        <p className="text-muted-foreground border-t pt-3 text-xs">PHI guard: doctor reads stay tenant-pinned even for super admins.</p>
       </div>
     );
   }

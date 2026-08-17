@@ -17,7 +17,7 @@ import { BaseTenantEntity, IBaseTenantEntity } from '../../../common';
 // NULLs as DISTINCT in unique indexes, so a nullable `modelSlug` would permit
 // duplicate provider-default rows.
 //
-// SYSTEM-tenant-only + global-admin-only enforcement lives in the application
+// SYSTEM-tenant-only + super-admin-only enforcement lives in the application
 // service (`AiRuntimeProfileService`), as do the numeric range clamps; this
 // entity carries only structural invariants.
 export interface IAiRuntimeProfileEntity extends IBaseTenantEntity {

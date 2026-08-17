@@ -4,7 +4,7 @@
  * The class-level `@CanManage('HarnessPolicy')` tuple + the tenant-owned 404
  * posture are exercised by the guard/interceptor (and e2e). These specs cover
  * the controller's OWN logic: the HarnessPolicy-family permission gate, the
- * global-admin vs. tenant read scoping forwarded to the service, keyset option
+ * super-admin vs. tenant read scoping forwarded to the service, keyset option
  * pass-through, the cross-tenant 404 propagation, and the guarantee that the
  * read projection NEVER carries `payloadRef`.
  */
@@ -67,7 +67,7 @@ describe('AgentTrajectoryController', () => {
       );
     });
 
-    it('lets a global-admin target another tenant via ?tenantId=', async () => {
+    it('lets a super-admin target another tenant via ?tenantId=', async () => {
       const { controller, service } = makeController({ user: SUPER, tenantId: 'sys' });
 
       await controller.listSessions({ tenantId: 't2' } as never);
@@ -135,7 +135,7 @@ describe('AgentTrajectoryController', () => {
       expect(res.ttftMedianMs).toBe(160);
     });
 
-    it('lets a global-admin target another tenant via ?tenantId=', async () => {
+    it('lets a super-admin target another tenant via ?tenantId=', async () => {
       const { controller, service } = makeController({ user: SUPER, tenantId: 'sys' });
 
       await controller.aggregateGenerationStats({ tenantId: 't2' } as never);

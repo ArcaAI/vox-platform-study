@@ -80,7 +80,7 @@ export function EffectiveHarnessPolicyCard() {
                 <td className="py-2 pr-4 align-top font-mono text-xs">{harnessPolicyFieldDisplayValue(policy, field)}</td>
                 <td className="py-2 align-top">
                   <Badge variant={field.controlledBy === 'tenant' ? 'default' : 'secondary'}>
-                    {field.controlledBy === 'tenant' ? 'tenant' : 'global admin'}
+                    {field.controlledBy === 'tenant' ? 'tenant' : 'super admin'}
                   </Badge>
                 </td>
               </tr>

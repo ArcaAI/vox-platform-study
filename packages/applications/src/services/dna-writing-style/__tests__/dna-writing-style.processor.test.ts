@@ -1079,7 +1079,7 @@ describe('DnaWritingStyleProcessor', () => {
       expect(requestBody.prompt).not.toContain('AI DRAFT:');
     });
 
-    it('keeps the callSmr transport boundary stable (payload still {prompt, system_prompt, stream:false, provider, model})', async () => {
+    it('keeps the callText transport boundary stable (payload still {prompt, system_prompt, stream:false, provider, model})', async () => {
       mockContextItemVersionRepo.getVersionsByChangeReason.mockImplementation(async (id: string, reason: string) => {
         if (reason === 'approved') return [{ id: 'v', contextItemId: id, changeReason: 'approved', versionNumber: 2 }];
         if (reason === 'ai_draft_v1')

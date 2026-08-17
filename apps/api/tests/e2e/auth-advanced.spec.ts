@@ -253,7 +253,7 @@ test.describe('Auth Advanced Controller', () => {
 
         expect(response.status()).toBe(400);
         const body = await response.json();
-        expect(body.message).toContain('global administrator');
+        expect(body.message).toContain('super administrator');
       } finally {
         // API-only cleanup (both are soft-deletes): drop the SUPER_ADMIN
         // grant first, then the throwaway user, restoring the single-super-

@@ -97,9 +97,9 @@ function migratedGlobalKv(
     sensitivity: 'internal',
     maxScope: scope,
     editableBy: 'GlobalSetting',
-    // A platform-only knob is a global-admin surface. A tenant-overridable one
+    // A platform-only knob is a super-admin surface. A tenant-overridable one
     // is NOT `globalOnly` — a tenant admin must be able to write its own row —
-    // but the write lane still requires a global admin for a SYSTEM-scope
+    // but the write lane still requires a super admin for a SYSTEM-scope
     // write, so "tenant-editable" never means "platform-editable".
     ...(scope === 'system' ? { globalOnly: true } : {}),
     // Operational knobs: an unresolved value degrades to the descriptor

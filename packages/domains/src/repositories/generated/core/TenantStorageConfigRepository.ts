@@ -45,7 +45,7 @@ export class TenantStorageConfigRepository extends Repository<TenantStorageConfi
    * (`tenantId = SYSTEM_TENANT_ID`, `bucketId IS NULL`). This is the third step
    * of the resolution order documented on the Prisma model
    * (`bucket row → tenant default → SYSTEM default → env`); the row is
-   * GLOBAL_ADMIN-managed and readable by every tenant because
+   * SUPER_ADMIN-managed and readable by every tenant because
    * `TenantStorageConfig` is a SYSTEM-shared READ model (writes are NOT widened).
    */
   async findSystemDefault(): Promise<TenantStorageConfigEntity | null> {

@@ -16,7 +16,7 @@ import { AssignTenantRequest, AssignTenantResponse, ValidateYamlRequest, Validat
 
 /**
  * Narrowed authorization scope: `@Authorize(['manage', 'all'])` would only
- * be satisfiable by tenant global-admins. Tenant admins legitimately need to
+ * be satisfiable by tenant super-admins. Tenant admins legitimately need to
  * self-serve their ASR pipelines, so the subject is narrowed to `AsrPipeline`.
  */
 @ApiBearerAuth()

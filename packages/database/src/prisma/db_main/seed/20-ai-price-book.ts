@@ -56,7 +56,7 @@ import { SYSTEM_TENANT_ID, SEED_USER_IDS } from './00-constants';
  * negotiated enterprise rate and is never seeded.
  *
  * IDEMPOTENT: CREATE-ONLY (`update: {}`), so a re-seed NEVER clobbers a price a
- * global admin has since corrected. Superseding is done through the admin API
+ * super admin has since corrected. Superseding is done through the admin API
  * (or the console rate card), not by editing this file and re-running it —
  * editing here only changes what a FRESH database comes up with.
  */
@@ -562,7 +562,7 @@ export const seedAiPriceBook = async (client: CorePrismaClient) => {
 
     await client.aiPriceBook.upsert({
       where: { id: row.id },
-      // CREATE-ONLY: never clobber a price a global admin has corrected.
+      // CREATE-ONLY: never clobber a price a super admin has corrected.
       update: {},
       create: {
         id: row.id,

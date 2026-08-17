@@ -23,7 +23,7 @@ Quality gating lives in **validate** (static: lint, typecheck, generator drift, 
 | `generate-data-entity-check` | `... generate-data-entity:check` | entity drift / missing schema column |
 | `generate-factory-check` | `... generate-factory:check` | factory drift |
 | `env-drift-check` | build applications → `pnpm env:sync --check` | env descriptor drift |
-| `lint-python` | `ruff check` over `apps/{stt,smr,nlp,guardrail,harness,tts}/src` | any ruff violation |
+| `lint-python` | `ruff check` over `apps/{stt,text,nlp,guardrail,harness,tts}/src` | any ruff violation |
 
 > The `generate-*-check` gates re-run the domain generators and fail on any diff. Regenerate
 > locally (`pnpm gen:model`, then reconcile with `gen:entity`/`gen:factory`) — never hand-patch
@@ -44,7 +44,7 @@ report but don't fail the pipeline) or are disabled behind an opt-in flag.
 | `test-admin-console` | Vitest | advisory | `@arcaai/admin-console test` (unit only) |
 | `test-ui-ct` | Playwright CT | advisory + **opt-in** `RUN_UI_CT=true` | `@arcaai/ui test:ct` (Chromium/Firefox/WebKit) |
 | `test-stt` | pytest | advisory | unit, then `tests/` excluding e2e/integration |
-| `test-smr` | pytest | advisory | `src/smr/tests/ -x` |
+| `test-text` | pytest | advisory | `src/text/tests/ -x` |
 | `test-guardrail` | pytest | advisory | `src/guardrail/tests/ -x` (GLiNER/Ollama disabled) |
 | `test-nlp` | pytest | advisory | CPU torch + `tests/ -x` |
 | `test-api-e2e` | Playwright | advisory + **opt-in** `RUN_INFRA_TESTS=true` | boot API → `tenant-access-control.spec.ts` |
@@ -58,7 +58,7 @@ DB-dependent jobs.
 
 - A **green pipeline** guarantees: all lint/typecheck/generator/env gates pass, plus `test-api`,
   `test-packages`, `test-tts`, `test-harness`. It does **not** guarantee SDK, admin-console, stt,
-  smr, guardrail, nlp, UI-CT, API-E2E, or the harness eval gate passed — those are advisory.
+  text, guardrail, nlp, UI-CT, API-E2E, or the harness eval gate passed — those are advisory.
 - For a **release-grade** run, enable the opt-in jobs (`RUN_INFRA_TESTS=true`, `RUN_UI_CT=true`) and
   treat the advisory Python/SDK jobs as required — see the release-readiness checklist in
   [`test-strategy.md`](test-strategy.md).

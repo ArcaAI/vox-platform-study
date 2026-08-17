@@ -31,7 +31,7 @@ best practices, a TDD-ordered implementation plan, and an agent-allocation table
 | TASK-704 | `generator-entry-point-seam` | M | — | T3 |
 | TASK-705 | `loop-status-discovery` | S | — | T2 |
 | TASK-706 | `egress-failclose` | S | — | T2 + T4 review |
-| TASK-707 | `naming-alignment` | L | after 700–706 land (avoids rename collisions) | T2 (mechanical, wide) |
+|  | `naming-alignment` | L | after 700–706 land (avoids rename collisions) | T2 (mechanical, wide) |
 | TASK-708 | `apikey-scope-verification` | M | — | T3 |
 
 ## Wave 1 — Structure

@@ -94,8 +94,8 @@ export function AgenticPolicyScreen() {
       <ScreenTemplate header={<PageHeader title="Agentic Policy" />}>
         <EmptyState
           icon={IconShieldLock}
-          title="Global admins only"
-          description="Agentic policy governs the platform-default agentic loop for every tenant. Only global administrators can view or edit it."
+          title="Super Admins only"
+          description="Agentic policy governs the platform-default agentic loop for every tenant. Only super administrators can view or edit it."
         />
       </ScreenTemplate>
     );

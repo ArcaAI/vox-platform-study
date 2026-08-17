@@ -50,7 +50,7 @@ function asTenantAdmin() {
   });
 }
 
-function asGlobalAdmin() {
+function asSuperAdmin() {
   mockClsService.get.mockImplementation((key: string) => {
     switch (key) {
       case 'user':
@@ -174,15 +174,15 @@ describe('TenantFrontendConfigService', () => {
   });
 
   describe('tenant scoping', () => {
-    it('a global admin must pass tenantId', async () => {
-      asGlobalAdmin();
+    it('a super admin must pass tenantId', async () => {
+      asSuperAdmin();
       service = makeService();
 
       await expect(service.getByTenant()).rejects.toThrow(BadRequestException);
     });
 
-    it('a global admin reads the tenant they target', async () => {
-      asGlobalAdmin();
+    it('a super admin reads the tenant they target', async () => {
+      asSuperAdmin();
       service = makeService();
       mockConfigRepository.findByTenant.mockResolvedValue(null);
 

@@ -23,11 +23,7 @@ import { ResourceStatusType, type UserDepartmentRepository, type UserRepository,
  * Platform-wide operator role, scoped above any single tenant — the ONLY
  * role with cross-tenant administrative rights. Mirrors
  * `services/tenant/constants.SUPER_ADMIN_ROLE` (kept local here so
- * `common/` does not import from `services/`). History: an earlier,
- * unrelated legacy `SUPER_ADMIN` role was consolidated into `GLOBAL_ADMIN`
- * and retired (TASK-417); `GLOBAL_ADMIN` was then itself renamed to
- * `SUPER_ADMIN` (TASK-707) — the two `SUPER_ADMIN` names do not refer to
- * the same role.
+ * `common/` does not import from `services/`).
  */
 const SUPER_ADMIN_ROLE = 'SUPER_ADMIN';
 
@@ -47,8 +43,8 @@ export const ELEVATED_ROLES: readonly string[] = [SUPER_ADMIN_ROLE];
  * `Array.isArray(roles) && roles.includes(SUPER_ADMIN_ROLE)` so we don't
  * scatter the role literal across more controller files.
  *
- * The name `isSuperAdmin` is a legacy label kept as stable API
- * surface — it answers "is the caller a SUPER_ADMIN?".
+ * Answers "is the caller a SUPER_ADMIN?". JWT aliases such as
+ * `GLOBAL_ADMIN` are not accepted.
  *
  * @example
  *   const user = this.cls.get('user');

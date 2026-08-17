@@ -51,7 +51,7 @@ export interface SeededUsers {
 
 /**
  * Default tenant key from seed 05-tenant.ts.
- * Non-global-admin users must include this in login requests.
+ * Non-super-admin users must include this in login requests.
  */
 export const DEFAULT_TENANT_KEY = '__GLOBAL__';
 
@@ -197,7 +197,7 @@ function wrapTransportError(method: string, url: string, error: unknown): Error 
 
 /**
  * Login and get auth token for a user.
- * Non-global-admin users require tenantKey (defaults to DEFAULT_TENANT_KEY).
+ * Non-super-admin users require tenantKey (defaults to DEFAULT_TENANT_KEY).
  *
  * Error semantics:
  * - HTTP 2xx with a parseable body → return parsed `{ token, refreshToken, user }`.

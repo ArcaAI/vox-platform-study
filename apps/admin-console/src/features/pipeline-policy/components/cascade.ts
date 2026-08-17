@@ -34,7 +34,7 @@ export const TOGGLE_COLUMNS: ToggleColumn[] = [
  *
  * `harnessEnabled` gates guardrail's primary caller (the harness) and
  * `autoNerEnabled` gates NLP auto-extraction; per the owner directive both AI
- * services are controlled by global admins only. The authoritative source is the
+ * services are controlled by super admins only. The authoritative source is the
  * `globalOnly` flag on the `pipeline.*` registry descriptors, enforced in
  * `PipelinePolicyService.upsertRow` — this mirror exists only so the console can
  * disable the control instead of letting the save 403.
@@ -42,7 +42,7 @@ export const TOGGLE_COLUMNS: ToggleColumn[] = [
 export const GLOBAL_ONLY_TOGGLE_KEYS: PipelineToggleKey[] = ['harnessEnabled', 'autoNerEnabled'];
 
 /** Copy shown under a governed toggle (rule 11 §5: visible reason). */
-export const GLOBAL_ONLY_TOGGLE_HINT = 'Global admins only';
+export const GLOBAL_ONLY_TOGGLE_HINT = 'Super Admins only';
 
 export function toggleColumnByParam(param: string): ToggleColumn {
   return TOGGLE_COLUMNS.find((column) => column.param === param) ?? TOGGLE_COLUMNS[0];

@@ -69,7 +69,7 @@ export function PipelineVersionsTab({ pipelineId }: { pipelineId: string }) {
   );
 }
 
-/** Elevated-only cross-tenant assign (frame 34: "cross-tenant assign = global admin"). */
+/** Elevated-only cross-tenant assign (frame 34: "cross-tenant assign = super admin"). */
 function AssignTenantDialog({ pipeline, open, onOpenChange }: { pipeline: Pipeline; open: boolean; onOpenChange: (open: boolean) => void }) {
   const assign = useAssignPipelineTenant();
   const [tenantId, setTenantId] = useState('');
@@ -151,7 +151,7 @@ export function PipelineLifecycleTab({
   onClone,
 }: {
   detail: WithEtag<Pipeline>;
-  /** Gates the cross-tenant assign action (frame 34: global-admin-only). */
+  /** Gates the cross-tenant assign action (frame 34: super-admin-only). */
   isElevated: boolean;
   /** Refetches the detail after a toggle 412 (fresh ETag). */
   onReload: () => void;

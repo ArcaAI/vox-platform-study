@@ -61,7 +61,7 @@ def _get_headers(exc: SmrError) -> dict[str, str] | None:
     return None
 
 
-async def smr_exception_handler(request: Request, exc: SmrError) -> JSONResponse:
+async def text_exception_handler(request: Request, exc: SmrError) -> JSONResponse:
     status = _get_status_code(exc)
     headers = _get_headers(exc)
 
@@ -80,4 +80,4 @@ async def smr_exception_handler(request: Request, exc: SmrError) -> JSONResponse
 def register_exception_handlers(app: FastAPI) -> None:
     # Starlette types handlers as (Request, Exception) -> Response; ours narrows
     # exc to SmrError (it is only registered for SmrError), which mypy flags.
-    app.add_exception_handler(SmrError, smr_exception_handler)  # type: ignore[arg-type]
+    app.add_exception_handler(SmrError, text_exception_handler)  # type: ignore[arg-type]

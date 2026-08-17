@@ -3,7 +3,7 @@
  *
  * CASL `@CanManage`/`@Authorize` + `If-Match`/`@RequiresIfMatch` are exercised
  * by the guard/interceptor pipeline (+ e2e). These specs cover the
- * controllers' OWN logic: tenant scoping (global-admin `?tenantId=` vs pinned
+ * controllers' OWN logic: tenant scoping (super-admin `?tenantId=` vs pinned
  * tenant caller — the 403-on-foreign-query posture of `resolveScopedTenantId`),
  * self-service pinning to the CLS tenant, default-period behavior, and plain
  * delegation. The cross-tenant BY-ID 404 posture is proven at the service
@@ -42,7 +42,7 @@ const INVOICE_ID = '01912345-0000-7000-8000-000000000001';
 describe('BillingAdminController — tenant scoping', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('global admin acts cross-tenant via ?tenantId=', async () => {
+  it('super admin acts cross-tenant via ?tenantId=', async () => {
     const service = makeBillingService();
     const controller = new BillingAdminController(service as never, makeCls({ user: SUPER, tenantId: undefined }) as never);
 
@@ -53,7 +53,7 @@ describe('BillingAdminController — tenant scoping', () => {
     expect(service.finalize).toHaveBeenCalledWith('tenant-9', INVOICE_ID, 3);
   });
 
-  it('global admin without a target tenant gets a 400 telling them to pass ?tenantId=', async () => {
+  it('super admin without a target tenant gets a 400 telling them to pass ?tenantId=', async () => {
     const service = makeBillingService();
     const controller = new BillingAdminController(service as never, makeCls({ user: SUPER, tenantId: undefined }) as never);
     expect(() => controller.list(undefined)).toThrow(BadRequestException);
@@ -114,7 +114,7 @@ describe('MyBillingController — self-service pinning', () => {
     expect(service.getSpendStatus).toHaveBeenCalledWith('t1', '2026-07');
   });
 
-  it('400s without a tenant context (an unscoped global admin belongs on /admin/billing)', async () => {
+  it('400s without a tenant context (an unscoped super admin belongs on /admin/billing)', async () => {
     const service = makeBillingService();
     const controller = new MyBillingController(service as never, makeCls({ user: SUPER, tenantId: undefined }) as never);
     expect(() => controller.listMine()).toThrow(BadRequestException);

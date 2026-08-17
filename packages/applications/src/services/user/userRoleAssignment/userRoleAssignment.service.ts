@@ -156,7 +156,7 @@ export class UserRoleAssignmentService extends BaseService implements IUserRoleA
     }
 
     // Defense-in-depth role-tier
-    // + cross-tenant-target guard against privilege escalation. Only an authenticated NON-global-admin caller
+    // + cross-tenant-target guard against privilege escalation. Only an authenticated NON-super-admin caller
     // is constrained; SUPER_ADMIN and system/bootstrap (no CLS user) paths keep
     // the existing cross-tenant behaviour. Runs BEFORE any factory/repository
     // call so a rejected attempt never touches the write path.

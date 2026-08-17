@@ -79,7 +79,7 @@ describe('useDnaDashboard', () => {
       expect(result.current.isLoading).toBe(false);
     });
 
-    it('passes tenantId through to the endpoint for a global admin', async () => {
+    it('passes tenantId through to the endpoint for a super admin', async () => {
       mockGet.mockResolvedValue(fakeDashboard);
       const { result } = renderHook(() => useDnaDashboard());
 

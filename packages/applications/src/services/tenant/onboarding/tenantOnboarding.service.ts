@@ -34,7 +34,7 @@ import { TenantProvisionResult } from './tenantOnboarding.dto.mapper';
  * (the SYSTEM bootstrap is inherently trusted; admin-create is already gated
  * by `@CanManage('Tenant')` upstream), and `UserRoleAssignmentService`'s
  * cross-tenant guard would otherwise reject re-assigning an EXISTING admin
- * who already holds a role in some other tenant — exactly the global-admin
+ * who already holds a role in some other tenant — exactly the super-admin
  * "pick an existing user" case this method supports.
  *
  * Atomicity (guardrail: never adminless): `TenantService.create` is not

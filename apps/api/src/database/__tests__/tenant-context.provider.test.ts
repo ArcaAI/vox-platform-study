@@ -11,7 +11,7 @@
  *      we want — the call site forgot to plumb tenant context).
  *   3. Inside CLS, tenantId set on the store directly → returns it.
  *   4. Inside CLS, tenantId set on the user → falls back to user.tenantId.
- *   5. Inside CLS, user has GLOBAL_ADMIN_ROLE → isSuperAdmin true.
+ *   5. Inside CLS, user has SUPER_ADMIN_ROLE → isSuperAdmin true.
  *
  * Bootstrap / shutdown side-effects (`setTenantContextProvider`) are
  * covered by spying on the module rather than running NestJS lifecycle.
@@ -81,10 +81,10 @@ describe('ClsTenantContextProvider', () => {
     expect(provider.getTenantId()).toBe('tenant-from-user');
   });
 
-  // The pre-TASK-417 SUPER_ADMIN role is retired: its literal must NOT
+  // The pre- SUPER_ADMIN role is retired: its literal must NOT
   // elevate at the DB-extension layer. Uses the seed placeholder name
-  // ('SUPER_ADMIN__RETIRED_TASK_417') since TASK-707 renamed the live
-  // GLOBAL_ADMIN role to SUPER_ADMIN, which would otherwise collide in name
+  // ('SUPER_ADMIN__RETIRED_TASK_417') since  renamed the live
+  // SUPER_ADMIN role to SUPER_ADMIN, which would otherwise collide in name
   // (not id) with this unrelated retired role.
   it('isSuperAdmin is FALSE for the retired SUPER_ADMIN role literal', () => {
     const provider = new ClsTenantContextProvider(

@@ -16,7 +16,7 @@ export function etagFromVersion(version: number): string {
   return `"${version}"`;
 }
 
-/** SYSTEM registry list (global-admin; omit tenantId → service defaults to SYSTEM). */
+/** SYSTEM registry list (super-admin; omit tenantId → service defaults to SYSTEM). */
 export function listMcpServers(): Promise<McpServerListResponse> {
   return getJson(BASE);
 }

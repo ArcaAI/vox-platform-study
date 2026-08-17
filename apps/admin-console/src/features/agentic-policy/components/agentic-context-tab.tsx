@@ -59,7 +59,7 @@ export function AgenticContextTab() {
     <div className="flex flex-col gap-3">
       <p className="text-muted-foreground text-sm">
         {items.length} setting{items.length === 1 ? '' : 's'} in the <span className="font-mono text-xs">agentic.*</span> namespace. Edits are
-        global-admin only and apply to the running documentation loop on its next flush — no redeploy. A concurrent edit is refused rather than
+        super-admin only and apply to the running documentation loop on its next flush — no redeploy. A concurrent edit is refused rather than
         overwritten.
       </p>
       <div className="rounded-md border">

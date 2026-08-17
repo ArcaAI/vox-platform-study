@@ -1,11 +1,10 @@
 /**
- * Types for the changelog surfaces, matching the frozen contract
- * `docs/implementation/TASK-648-Service-Version-And-Release-Registry/contracts/service-release.api.yaml`
- * `/changelog/*` paths. Do not add fields the contract does not define.
+ * Types for the changelog surfaces (`/changelog/*`). Do not add fields the
+ * live API contract does not define.
  */
 
 export type ChangelogSeverity = 'INFO' | 'IMPORTANT' | 'BREAKING';
-export type ChangelogAudience = 'ALL' | 'GLOBAL_ADMIN' | 'TENANT_ADMIN';
+export type ChangelogAudience = 'ALL' | 'SUPER_ADMIN' | 'TENANT_ADMIN';
 export type ChangelogPublishStatus = 'DRAFT' | 'PUBLISHED';
 
 /** ChangelogEntryResponse. `body` is markdown — MUST be rendered sanitised. */
@@ -22,7 +21,7 @@ export interface ChangelogEntry {
   acknowledged: boolean;
 }
 
-/** POST /admin/changelog body (global-admin authoring; created as DRAFT). */
+/** POST /admin/changelog body (super-admin authoring; created as DRAFT). */
 export interface CreateChangelogEntryRequest {
   platformVersion: string;
   title: string;

@@ -210,7 +210,7 @@ describe('ChainSummaryService', () => {
     mocks = createService();
   });
 
-  // ── callSmrService passes the cascade-resolved model ──
+  // ── callTextService passes the cascade-resolved model ──
   describe('SMR selection', () => {
     const primeComprehensive = () => {
       const consultation = createConsultation();

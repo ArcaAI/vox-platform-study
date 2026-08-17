@@ -9,7 +9,7 @@ import { BaseTenantEntity, IBaseTenantEntity } from '../../../common';
 // `instructionsJson` carries only tenant-authored instruction content (topic
 // list / intent list / free-text guidance) — deliberately NEVER a modelSlug.
 // Model/provider SELECTION for these task types still resolves through
-// AiTaskDefault under its existing global-admin-only `nlp.*` lock; this
+// AiTaskDefault under its existing super-admin-only `nlp.*` lock; this
 // entity carries only structural invariants, the `nlp.topic`/`nlp.intent`
 // taskKey restriction lives in the application service.
 export interface ITenantNlpTaskInstructionsEntity extends IBaseTenantEntity {

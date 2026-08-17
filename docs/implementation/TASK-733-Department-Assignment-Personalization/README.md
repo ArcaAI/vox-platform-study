@@ -254,12 +254,12 @@ Scheduler: `dna-regeneration.scheduler.ts` — `JOB_NAME = 'dna-regeneration'` `
 ### 2.7 **New finding: a second injection path bypasses the opt-in gate**
 
 `getEffectiveStyleText` is gated (`:222-225`). Its callers via `resolveDnaStyleText`
-(`apps/api/src/modules/smr-compat/smr-compat.controller.ts:285-301`, call at `:293`, optional DI at
+(`apps/api/src/modules/text-compat/text-compat.controller.ts:285-301`, call at `:293`, optional DI at
 `:179`, threaded at `:329, :366, :378, :463-464, :527-528, :593, :598, :621-622, :671-672`) are
 therefore gated too, and the injected text is wrapped in *"without changing any clinical facts"*
 (`v1-summary-prompt.builder.ts:379-382`; `summary-prompt.builder.ts:231-234` and `:383-385`).
 
-**But `apps/api/src/modules/streaming/smr-proxy.controller.ts:960-986` does not go through it.** It
+**But `apps/api/src/modules/streaming/text-proxy.controller.ts:960-986` does not go through it.** It
 resolves the profile directly — `dnaWritingStyleRepository.findById(body.dna_writing_style_id)` —
 applies an ownership/tenant check (`:971-983`), and appends the raw ciphertext-decrypted style to the
 system prompt at `:985-986` with the string `"Apply the following writing style:\n${dnaStyle.styleText}"`.
@@ -353,7 +353,7 @@ the **department tier is already in its cascade walk**. A DEPARTMENT-scope `Pipe
    genuinely immutable cleanup."* But INV-240 says *"deletable by the clinician."* Task 10 decides in
    writing. Note §2.5: `isLatest` has **no DB uniqueness**, so a reset that only flips flags can
    leave a resolvable row behind.
-4. **`smr-proxy.controller.ts:960-986` is a second injection path** (§2.7). Closing it changes an
+4. **`text-proxy.controller.ts:960-986` is a second injection path** (§2.7). Closing it changes an
    API-facing behaviour — a caller passing `dna_writing_style_id` for an opted-out doctor will start
    getting no style. That is the point, but it is a behaviour change worth naming in the release note.
 5. **`DepartmentAgent.dnaStylePolicy` already exists** (`department-agent.prisma:42`, INHERIT |
@@ -543,7 +543,7 @@ the **department tier is already in its cascade walk**. A DEPARTMENT-scope `Pipe
 
 #### Task 8 — Close the ungated injection path
 - **Agent:** T2 · sonnet-5 · medium
-- **Files:** modify `apps/api/src/modules/streaming/smr-proxy.controller.ts:960-986`; tests alongside
+- **Files:** modify `apps/api/src/modules/streaming/text-proxy.controller.ts:960-986`; tests alongside
 - **Approach:** Route the proxy's style resolution through the **gated**
   `IDnaWritingStyleService.getEffectiveStyleText` (`dna-writing-style.service.ts:202`) instead of
   `dnaWritingStyleRepository.findById`. Keep the existing ownership/tenant checks (`:971-983`) — they
@@ -688,7 +688,7 @@ the **department tier is already in its cascade walk**. A DEPARTMENT-scope `Pipe
 **Half (b) — personalization (only for tenants with a signed GO):**
 - [ ] `reenable-gate.md` exists with all seven rows evidenced and a **per-tenant** dated verdict
 - [ ] **HUMAN-GATED:** TASK-700 Task 6's scan was executed and its per-category counts recorded
-- [ ] `smr-proxy.controller.ts`'s ungated injection path is closed — RED-then-GREEN pasted
+- [ ] `text-proxy.controller.ts`'s ungated injection path is closed — RED-then-GREEN pasted
 - [ ] `dnaStyleEnabled`'s declared `failMode` matches its implemented behaviour, with a test
 - [ ] A reset path exists and is reachable by the clinician (INV-240); `getEffectiveStyleText`
       returns `null` after a reset **even with duplicate `isLatest` rows**

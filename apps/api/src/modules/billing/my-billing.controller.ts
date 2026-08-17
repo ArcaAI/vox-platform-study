@@ -17,7 +17,7 @@ import { Authorize } from '../../decorators';
  *
  * Gated with `read Tenant` — the same posture as `/entitlements/me`: a tenant
  * user sees ONLY their own tenant's invoices and spend. A foreign invoice id
- * reads as 404 (never 403). Global admins use `/admin/billing/*`, not here.
+ * reads as 404 (never 403). Super Admins use `/admin/billing/*`, not here.
  *
  * READ-ONLY by construction: no mutation route exists on this controller.
  */
@@ -58,7 +58,7 @@ export class MyBillingController {
   private ownTenantId(): string {
     const tenantId = this.cls.get('tenantId');
     if (!tenantId) {
-      throw new BadRequestException('Tenant context is required. Global-admins must use the /admin/billing endpoints.');
+      throw new BadRequestException('Tenant context is required. Super-admins must use the /admin/billing endpoints.');
     }
     return tenantId;
   }

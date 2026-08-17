@@ -107,7 +107,7 @@ export class SettingsRegistryWriteController {
   @ApiOperation({
     summary: 'Write one registry setting through the single descriptor-driven enforcement point.',
     description:
-      'Enforcement order: unknown key → 400; secret sensitivity → 400; `globalOnly` without global admin → 403; ' +
+      'Enforcement order: unknown key → 400; secret sensitivity → 400; `globalOnly` without super admin → 403; ' +
       'scope deeper than the descriptor `maxScope` → 400; non-`global-kv` tier → 400 (those keys keep their ' +
       'dedicated services); value type mismatch against `dataType` → 400. On success the backing KV row is ' +
       'upserted under the reserved `registry` namespace, a sys-event is broadcast, and the AppSettings cache ' +
@@ -116,7 +116,7 @@ export class SettingsRegistryWriteController {
   @ApiParam({ name: 'key', description: 'Registry key, e.g. `agentic.context.liveDelta.maxChars`.' })
   @ApiResponse({ status: 200, type: WriteRegistrySettingResponse })
   @ApiResponse({ status: 400, description: 'Unknown key, secret key, unwritable tier, bad scope, or value type mismatch.' })
-  @ApiResponse({ status: 403, description: 'The setting is global-admin-only.' })
+  @ApiResponse({ status: 403, description: 'The setting is super-admin-only.' })
   @ApiResponse({ status: 412, description: 'The stored value changed since the caller read it (version drift).' })
   @ApiResponse({ status: 428, description: 'A stored value exists and no `If-Match` was supplied.' })
   async putSetting(

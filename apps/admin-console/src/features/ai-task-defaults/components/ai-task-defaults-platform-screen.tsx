@@ -14,8 +14,8 @@ import { TaskDefaultCard } from './task-default-card';
  * 10-19, SUPER_ADMIN only). Edits the SYSTEM-tenant platform-default rows for
  * ALL THREE task keys by pinning `?tenantId=` to the SYSTEM tenant.
  *
- * `nlp.*`/`harness.*` are global-admin-only on write — the service guards
- * those two prefixes (`GLOBAL_ADMIN_ONLY_TASK_PREFIXES` in
+ * `nlp.*`/`harness.*` are super-admin-only on write — the service guards
+ * those two prefixes (`SUPER_ADMIN_ONLY_TASK_PREFIXES` in
  * `packages/applications/src/services/ai-task-default/constants.ts`) and the
  * gateway 403s a tenant admin's write to either. Tenants only CONSUME the
  * platform default for those keys.
@@ -35,7 +35,7 @@ export function AiTaskDefaultsPlatformScreen() {
       header={
         <PageHeader
           title="AI task defaults (platform)"
-          meta={<span>SYSTEM-tenant platform defaults &mdash; global-admin-only; tenants receive the platform default</span>}
+          meta={<span>SYSTEM-tenant platform defaults &mdash; super-admin-only; tenants receive the platform default</span>}
           // The pickers below only offer models that exist in the
           // registry; this is the way out to add one (incl. discovering what the
           // serving engines already host).
@@ -69,13 +69,13 @@ export function AiTaskDefaultsPlatformScreen() {
         <TaskDefaultCard
           taskKey="nlp.ner"
           title="Medical NER model"
-          description="Platform default for token classification (medical entity extraction). Global-admin-only; tenants receive the platform default."
+          description="Platform default for token classification (medical entity extraction). Super-admin-only; tenants receive the platform default."
           tenantId={SYSTEM_TENANT_ID}
         />
         <TaskDefaultCard
           taskKey="nlp.classification"
           title="Classification model"
-          description="Platform default for text classification / diagnosis suggestion. Global-admin-only; tenants receive the platform default."
+          description="Platform default for text classification / diagnosis suggestion. Super-admin-only; tenants receive the platform default."
           tenantId={SYSTEM_TENANT_ID}
         />
       </div>

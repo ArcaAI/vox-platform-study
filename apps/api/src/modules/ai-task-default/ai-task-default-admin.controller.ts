@@ -31,18 +31,18 @@ import { resolveScopedTenantId } from '../../shared/tenant-scope';
  *  - `PUT 'row'?taskKey=`  → create (`expectedVersion` 0) or CAS-update under
  *    `If-Match` (drift → 412, missing → 428).
  *
- * Tenant admins are pinned to their CLS tenant; global admins act cross-tenant
+ * Tenant admins are pinned to their CLS tenant; super admins act cross-tenant
  * — incl. the SYSTEM-tenant platform default — via `?tenantId=`. GOVERNANCE:
  * writes under the `nlp.`, `harness.` task-key prefixes
- * (GLOBAL_ADMIN_ONLY_TASK_PREFIXES in `@arcaai/applications`) are
- * GLOBAL-ADMIN-ONLY. The SERVICE enforces it with a `ForbiddenException` (a
+ * (SUPER_ADMIN_ONLY_TASK_PREFIXES in `@arcaai/applications`) are
+ * SUPER_ADMIN-ONLY. The SERVICE enforces it with a `ForbiddenException` (a
  * deliberate 403, not the 404-over-403 tenancy posture: it is a privilege
  * rule on a key the caller can already read, not a cross-tenant existence
  * probe). Tenant admins may READ the effective default but cannot write those
  * task keys; runtime resolution uses the SYSTEM row only.
  *
  * `smr.*` and, since TASK-735 Phase 0 (owner decision 2026-08-16, reversing
- * the 2026-07-17 global-admin-only directive), `guardrail.*` are
+ * the 2026-07-17 super-admin-only directive), `guardrail.*` are
  * tenant-admin configurable — `getEffective` honours the tenant row and
  * `upsertRow` accepts tenant writes for those keys. `guardrail.*` carries an
  * ADDITIONAL platform floor on top of that (D2, tighten-only): a tenant
@@ -71,7 +71,7 @@ export class AiTaskDefaultAdminController {
       'ENABLED AiModel rows whose taskType is compatible with the key (guardrail.validate → GUARDRAIL, nlp.ner → ' +
       'TOKEN_CLASSIFICATION, nlp.classification → TEXT_CLASSIFICATION). Read via the SHARED-READ registry query (r2605 ' +
       'Finding E): visibility is [caller tenant, SYSTEM] de-duplicated by slug (tenant clone wins), so tenant admins get ' +
-      'their picker options here — including the SYSTEM catalog — without needing the global-admin-only /admin/ai-models surface.',
+      'their picker options here — including the SYSTEM catalog — without needing the super-admin-only /admin/ai-models surface.',
   })
   @ApiQuery({ name: 'taskKey', required: true, enum: [...AI_TASK_KEYS] })
   @ApiResponse({ status: 200, type: ModelResponse, isArray: true })
@@ -134,7 +134,7 @@ export class AiTaskDefaultAdminController {
     description:
       '`modelSlug` must resolve to an ENABLED AiModel in [tenant, SYSTEM] with a taskType compatible with the key. ' +
       '`If-Match` (RFC 7232) carries the version read from the prior GET — `"0"` creates the row, an existing version ' +
-      'CASes against `_version` (drift → 412, missing → 428). `nlp.*`/`harness.*` keys are GLOBAL-ADMIN-ONLY (403 for ' +
+      'CASes against `_version` (drift → 412, missing → 428). `nlp.*`/`harness.*` keys are SUPER_ADMIN-ONLY (403 for ' +
       'tenant admins). `guardrail.*` is tenant-admin configurable (TASK-735), but the slug must resolve to a ' +
       'SYSTEM-tenant AiModel row (the platform-approved list) — also 403 otherwise.',
   })
@@ -151,7 +151,7 @@ export class AiTaskDefaultAdminController {
   @ApiResponse({
     status: 403,
     description:
-      'nlp.*/harness.* keys are global-admin-only. guardrail.* is tenant-admin configurable (TASK-735) but rejects a ' +
+      'nlp.*/harness.* keys are super-admin-only. guardrail.* is tenant-admin configurable (TASK-735) but rejects a ' +
       'modelSlug outside the platform-approved (SYSTEM-tenant) list.',
   })
   @ApiResponse({ status: 412, description: 'Optimistic concurrency conflict — re-fetch and retry with the new version.' })
@@ -174,7 +174,7 @@ export class AiTaskDefaultAdminController {
     }
   }
 
-  /** Tenant admins → own tenant; global admins → `?tenantId=` (or CLS working tenant). */
+  /** Tenant admins → own tenant; super admins → `?tenantId=` (or CLS working tenant). */
   private resolveTenantId(queryTenantId?: string): string {
     return resolveScopedTenantId(this.cls.get('user'), this.cls.get('tenantId'), queryTenantId);
   }

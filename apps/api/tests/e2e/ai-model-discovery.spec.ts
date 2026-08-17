@@ -71,14 +71,14 @@ async function discover(request: APIRequestContext, token: string, provider?: st
 }
 
 test.describe('AI model discovery', () => {
-  let globalAdminToken: string;
+  let superAdminToken: string;
   let tenantAdminToken: string;
   const createdIds: string[] = [];
 
   test.beforeAll(async ({ request }) => {
     const ga = await loginUser(request, SEEDED_USERS.superAdmin.username, SEEDED_USERS.superAdmin.password, 'ARCAAI');
-    expect(ga, 'global admin login (ARCAAI) failed').toBeTruthy();
-    globalAdminToken = ga!.token;
+    expect(ga, 'super admin login (ARCAAI) failed').toBeTruthy();
+    superAdminToken = ga!.token;
 
     const ta = await loginUser(request, SEEDED_USERS.admin.username, SEEDED_USERS.admin.password, DEFAULT_TENANT_KEY);
     expect(ta, `tenant_admin login (${DEFAULT_TENANT_KEY}) failed`).toBeTruthy();
@@ -87,18 +87,18 @@ test.describe('AI model discovery', () => {
 
   test.afterAll(async ({ request }) => {
     for (const id of createdIds) {
-      await request.delete(`${BASE}/${id}`, { headers: auth(globalAdminToken) });
+      await request.delete(`${BASE}/${id}`, { headers: auth(superAdminToken) });
     }
   });
 
   // ── 1. Guard ───────────────────────────────────────────────────────────────
 
-  test('discovery is global-admin only — a tenant admin is refused', async ({ request }) => {
+  test('discovery is super-admin only — a tenant admin is refused', async ({ request }) => {
     const resp = await discover(request, tenantAdminToken);
     expect([403, 404]).toContain(resp.status());
   });
 
-  test('register is global-admin only — a tenant admin is refused', async ({ request }) => {
+  test('register is super-admin only — a tenant admin is refused', async ({ request }) => {
     const resp = await request.post(`${DISCOVERY}/register`, {
       headers: auth(tenantAdminToken),
       data: { provider: 'vllm', modelName: 'e2e-guard-probe' },
@@ -114,7 +114,7 @@ test.describe('AI model discovery', () => {
   // ── 2. Merge view degrades, never 5xx ──────────────────────────────────────
 
   test('returns 200 with a well-formed envelope even when engines are down', async ({ request }) => {
-    const resp = await discover(request, globalAdminToken);
+    const resp = await discover(request, superAdminToken);
     expect(resp.status()).toBe(200);
 
     const body = (await resp.json()) as DiscoveryResponse;
@@ -130,7 +130,7 @@ test.describe('AI model discovery', () => {
   });
 
   test('a provider whose probe failed never yields a false registered-missing-on-server', async ({ request }) => {
-    const body = (await (await discover(request, globalAdminToken)).json()) as DiscoveryResponse;
+    const body = (await (await discover(request, superAdminToken)).json()) as DiscoveryResponse;
     const failed = new Set(body.probes.filter((p) => p.probeStatus !== 'ok').map((p) => p.provider));
 
     for (const entry of body.entries) {
@@ -144,16 +144,16 @@ test.describe('AI model discovery', () => {
   });
 
   test('the provider filter narrows the result to that provider', async ({ request }) => {
-    const body = (await (await discover(request, globalAdminToken, 'vllm')).json()) as DiscoveryResponse;
+    const body = (await (await discover(request, superAdminToken, 'vllm')).json()) as DiscoveryResponse;
     for (const entry of body.entries) expect(entry.provider).toBe('vllm');
     for (const probe of body.probes) expect(probe.provider).toBe('vllm');
   });
 
   test('discovery is read-only — repeating it does not change the registry', async ({ request }) => {
-    const before = await (await request.get(BASE, { headers: auth(globalAdminToken) })).json();
-    await discover(request, globalAdminToken);
-    await discover(request, globalAdminToken);
-    const after = await (await request.get(BASE, { headers: auth(globalAdminToken) })).json();
+    const before = await (await request.get(BASE, { headers: auth(superAdminToken) })).json();
+    await discover(request, superAdminToken);
+    await discover(request, superAdminToken);
+    const after = await (await request.get(BASE, { headers: auth(superAdminToken) })).json();
 
     expect((after as unknown[]).length).toBe((before as unknown[]).length);
   });
@@ -163,7 +163,7 @@ test.describe('AI model discovery', () => {
   test('registers a model, deriving a slug from the engine-reported name', async ({ request }) => {
     const modelName = `e2e-528:8b-instruct_Q4_K_M-${Date.now()}`;
     const resp = await request.post(`${DISCOVERY}/register`, {
-      headers: auth(globalAdminToken),
+      headers: auth(superAdminToken),
       data: { provider: 'vllm', modelName },
     });
     expect(resp.status()).toBe(201);
@@ -179,7 +179,7 @@ test.describe('AI model discovery', () => {
   });
 
   test('a registered model shows up in the merge view as registered', async ({ request }) => {
-    const body = (await (await discover(request, globalAdminToken, 'vllm')).json()) as DiscoveryResponse;
+    const body = (await (await discover(request, superAdminToken, 'vllm')).json()) as DiscoveryResponse;
     const created = body.entries.find((e) => e.registeredModel?.id === createdIds[0]);
     expect(created, 'the freshly-registered row must appear in the merge view').toBeTruthy();
     expect(created!.status).not.toBe('discovered');
@@ -188,14 +188,14 @@ test.describe('AI model discovery', () => {
   test('a duplicate slug is a 400 naming the taken slug — never a silent suffix', async ({ request }) => {
     const modelName = `e2e-528-dup-${Date.now()}`;
     const first = await request.post(`${DISCOVERY}/register`, {
-      headers: auth(globalAdminToken),
+      headers: auth(superAdminToken),
       data: { provider: 'vllm', modelName },
     });
     expect(first.status()).toBe(201);
     createdIds.push(((await first.json()) as { id: string }).id);
 
     const second = await request.post(`${DISCOVERY}/register`, {
-      headers: auth(globalAdminToken),
+      headers: auth(superAdminToken),
       data: { provider: 'vllm', modelName },
     });
     expect(second.status()).toBe(400);
@@ -207,13 +207,13 @@ test.describe('AI model discovery', () => {
   test('an explicit slug is the escape hatch for a collision', async ({ request }) => {
     const modelName = `e2e-528-explicit-${Date.now()}`;
     const first = await request.post(`${DISCOVERY}/register`, {
-      headers: auth(globalAdminToken),
+      headers: auth(superAdminToken),
       data: { provider: 'vllm', modelName },
     });
     createdIds.push(((await first.json()) as { id: string }).id);
 
     const second = await request.post(`${DISCOVERY}/register`, {
-      headers: auth(globalAdminToken),
+      headers: auth(superAdminToken),
       data: { provider: 'vllm', modelName, slug: `${modelName.toLowerCase()}-v2` },
     });
     expect(second.status()).toBe(201);
@@ -223,7 +223,7 @@ test.describe('AI model discovery', () => {
   test('rejects cloud and unknown providers (nothing to discover there)', async ({ request }) => {
     for (const provider of ['azure', 'bedrock', 'not-a-provider']) {
       const resp = await request.post(`${DISCOVERY}/register`, {
-        headers: auth(globalAdminToken),
+        headers: auth(superAdminToken),
         data: { provider, modelName: 'x' },
       });
       expect(resp.status(), `provider '${provider}' must be rejected`).toBe(400);
@@ -232,7 +232,7 @@ test.describe('AI model discovery', () => {
 
   test('rejects undeclared body fields (global whitelist pipe)', async ({ request }) => {
     const resp = await request.post(`${DISCOVERY}/register`, {
-      headers: auth(globalAdminToken),
+      headers: auth(superAdminToken),
       data: { provider: 'vllm', modelName: 'e2e-528-whitelist', tenantId: '00000000-0000-0000-0000-000000000000' },
     });
     expect(resp.status()).toBe(400);
@@ -244,7 +244,7 @@ test.describe('AI model discovery', () => {
     const id = createdIds[0];
     expect(id, 'a row must have been registered by the earlier test').toBeTruthy();
 
-    // The global admin created the row under the ARCAAI working tenant; the
+    // The super admin created the row under the ARCAAI working tenant; the
     // DEFAULT-tenant admin must get the 404-over-403 posture, never the row.
     const resp = await request.get(`${BASE}/${id}`, { headers: auth(tenantAdminToken) });
     expect([403, 404]).toContain(resp.status());

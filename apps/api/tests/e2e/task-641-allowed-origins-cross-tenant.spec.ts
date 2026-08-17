@@ -7,7 +7,7 @@
  * `task-610`). It matters now because relaxed the surface from
  * SUPER_ADMIN-only to TENANT_ADMIN-reachable (README steps 4/6):
  *
- *  - The blanket `assertGlobalAdmin()` imperative gate is GONE from every
+ *  - The blanket `assertSuperAdmin()` imperative gate is GONE from every
  *    handler; the class-level `@CanManage('TenantAllowedOrigin')` now
  *    actually admits a TENANT_ADMIN via the `tenant-full-access` policy row
  *    scoped to `conditions.tenantId` (seed `01-policy.ts`).
@@ -33,7 +33,7 @@
  * A SUPER_ADMIN (`super_admin`) logs in once per tenant via `tenantKey` to
  * exercise the SAME tenant scope a TENANT_ADMIN of that tenant would see —
  * this surface has no `?tenantId=` override, so "acting cross-tenant" for a
- * global admin means logging into the target tenant's working context, same
+ * super admin means logging into the target tenant's working context, same
  * as the `ai-task-defaults` spec's `superAdmin` login pattern.
  */
 import { test, expect, APIRequestContext } from '@playwright/test';
@@ -74,8 +74,8 @@ async function createOrigin(
 test.describe('TenantAllowedOrigin admin surface (cross-tenant + governance)', () => {
   let tenantAAdminToken: string; // TENANT_ADMIN of tenant A (__GLOBAL__)
   let tenantBAdminToken: string; // TENANT_ADMIN of tenant B (ARCAAI)
-  let globalAdminOnATenantToken: string; // SUPER_ADMIN, working tenant = A
-  let globalAdminOnBTenantToken: string; // SUPER_ADMIN, working tenant = B
+  let superAdminOnATenantToken: string; // SUPER_ADMIN, working tenant = A
+  let superAdminOnBTenantToken: string; // SUPER_ADMIN, working tenant = B
 
   test.beforeAll(async ({ request }) => {
     const ta = await loginUser(request, SEEDED_USERS.admin.username, SEEDED_USERS.admin.password, TENANT_A_KEY);
@@ -88,11 +88,11 @@ test.describe('TenantAllowedOrigin admin surface (cross-tenant + governance)', (
 
     const gaA = await loginUser(request, SEEDED_USERS.superAdmin.username, SEEDED_USERS.superAdmin.password, TENANT_A_KEY);
     expect(gaA, `super_admin login (${TENANT_A_KEY}) failed`).toBeTruthy();
-    globalAdminOnATenantToken = gaA!.token;
+    superAdminOnATenantToken = gaA!.token;
 
     const gaB = await loginUser(request, SEEDED_USERS.superAdmin.username, SEEDED_USERS.superAdmin.password, TENANT_B_KEY);
     expect(gaB, `super_admin login (${TENANT_B_KEY}) failed`).toBeTruthy();
-    globalAdminOnBTenantToken = gaB!.token;
+    superAdminOnBTenantToken = gaB!.token;
   });
 
   test.describe('TENANT_ADMIN full CRUD on an exact origin, own tenant only', () => {
@@ -210,18 +210,18 @@ test.describe('TenantAllowedOrigin admin surface (cross-tenant + governance)', (
 
   test.describe('SUPER_ADMIN retains full capability (no regression)', () => {
     test('SUPER_ADMIN can register a wildcard and the bare allow-all token', async ({ request }) => {
-      const pattern = await createOrigin(request, globalAdminOnATenantToken, `https://*.ga-${Date.now()}.example.org:*`, 'Lane I e2e — GA wildcard');
+      const pattern = await createOrigin(request, superAdminOnATenantToken, `https://*.ga-${Date.now()}.example.org:*`, 'Lane I e2e — GA wildcard');
       expect(pattern.status, JSON.stringify(pattern.body)).toBe(201);
       expect((pattern.body as AllowedOriginRow).origin).toContain('*');
     });
 
     test("SUPER_ADMIN can escalate an exact row's origin into a wildcard via PATCH", async ({ request }) => {
-      const created = await createOrigin(request, globalAdminOnATenantToken, uniqueExactOrigin('ga-escalation'), 'Lane I e2e — GA escalation source');
+      const created = await createOrigin(request, superAdminOnATenantToken, uniqueExactOrigin('ga-escalation'), 'Lane I e2e — GA escalation source');
       expect(created.status, JSON.stringify(created.body)).toBe(201);
       const row = created.body as AllowedOriginRow;
 
       const escalateResp = await request.patch(`${BASE}/${row.id}`, {
-        headers: { Authorization: `Bearer ${globalAdminOnATenantToken}`, 'If-Match': `"${row.version}"` },
+        headers: { Authorization: `Bearer ${superAdminOnATenantToken}`, 'If-Match': `"${row.version}"` },
         data: { origin: `https://*.ga-escalated-${Date.now()}.example:*`, expectedVersion: row.version },
       });
       expect(escalateResp.status(), JSON.stringify(await escalateResp.json().catch(() => ({})))).toBe(200);
@@ -231,17 +231,17 @@ test.describe('TenantAllowedOrigin admin surface (cross-tenant + governance)', (
 
     test('SUPER_ADMIN full CRUD succeeds for tenant B exactly as it does for tenant A', async ({ request }) => {
       const origin = uniqueExactOrigin('ga-tenant-b-crud');
-      const created = await createOrigin(request, globalAdminOnBTenantToken, origin, 'Lane I e2e — GA tenant B CRUD');
+      const created = await createOrigin(request, superAdminOnBTenantToken, origin, 'Lane I e2e — GA tenant B CRUD');
       expect(created.status, JSON.stringify(created.body)).toBe(201);
       const row = created.body as AllowedOriginRow;
 
       const patchResp = await request.patch(`${BASE}/${row.id}`, {
-        headers: { Authorization: `Bearer ${globalAdminOnBTenantToken}`, 'If-Match': `"${row.version}"` },
+        headers: { Authorization: `Bearer ${superAdminOnBTenantToken}`, 'If-Match': `"${row.version}"` },
         data: { label: 'Lane I e2e — GA tenant B CRUD (renamed)', expectedVersion: row.version },
       });
       expect(patchResp.status()).toBe(200);
 
-      const deleteResp = await request.delete(`${BASE}/${row.id}`, { headers: { Authorization: `Bearer ${globalAdminOnBTenantToken}` } });
+      const deleteResp = await request.delete(`${BASE}/${row.id}`, { headers: { Authorization: `Bearer ${superAdminOnBTenantToken}` } });
       expect(deleteResp.status()).toBe(200);
     });
   });
@@ -257,7 +257,7 @@ test.describe('TenantAllowedOrigin admin surface (cross-tenant + governance)', (
     test('posture is readable by a TENANT_ADMIN too (not SUPER_ADMIN-gated)', async ({ request }) => {
       const [taResp, gaResp] = await Promise.all([
         request.get(`${BASE}/posture`, { headers: { Authorization: `Bearer ${tenantAAdminToken}` } }),
-        request.get(`${BASE}/posture`, { headers: { Authorization: `Bearer ${globalAdminOnATenantToken}` } }),
+        request.get(`${BASE}/posture`, { headers: { Authorization: `Bearer ${superAdminOnATenantToken}` } }),
       ]);
       expect(taResp.status()).toBe(200);
       expect(gaResp.status()).toBe(200);

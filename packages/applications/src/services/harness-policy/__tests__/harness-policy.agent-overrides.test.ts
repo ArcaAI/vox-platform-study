@@ -3,7 +3,7 @@
  *
  * When `getEffectivePolicy` is called with a `consultationId`, the consultation's
  * department default `DepartmentAgent.harnessOverrides` is layered on top of the
- * resolved tenant/SYSTEM policy — tenant-tier keys only. Global-admin-only keys
+ * resolved tenant/SYSTEM policy — tenant-tier keys only. Super-admin-only keys
  * that somehow got stored are DROPPED at read time (defense-in-depth), never
  * served. No consultation / no department / no default agent / a disabled agent /
  * a cross-tenant consultation all leave the policy byte-identical to today.
@@ -120,14 +120,14 @@ describe('HarnessPolicyService — per-agent harnessOverrides overlay', () => {
     expect(departmentAgentRepository.findDefaultForDepartment).toHaveBeenCalledWith(TENANT, DEPARTMENT);
   });
 
-  it('DROPS a stored global-admin-only key at read time (never served), warning', async () => {
+  it('DROPS a stored super-admin-only key at read time (never served), warning', async () => {
     const warn = vi.spyOn((service as unknown as { logger: { warn: (...a: unknown[]) => void } }).logger, 'warn').mockImplementation(() => undefined);
     departmentAgentRepository.findDefaultForDepartment.mockResolvedValue({
       id: 'agent-2',
       slug: 'sneaky',
       harnessOverrides: {
         coverageThreshold: 0.9,
-        // global-admin-only — must NOT flow through the per-agent overlay
+        // super-admin-only — must NOT flow through the per-agent overlay
         safetyEnabled: false,
         smrModel: 'evil-model',
       },

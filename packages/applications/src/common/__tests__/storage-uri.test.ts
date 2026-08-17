@@ -1,7 +1,7 @@
 /**
  * parseStorageUri — shared util collapsing the two
  * formerly-duplicated private copies in `context.service.ts` and
- * `smr-proxy.controller.ts` (`extractAttachmentText`). Behavior must be
+ * `text-proxy.controller.ts` (`extractAttachmentText`). Behavior must be
  * IDENTICAL to both former call sites: parse the canonical `s3://<bucket>/<key>`
  * form written by `StorageController.uploadFile`, `null` for anything else.
  */

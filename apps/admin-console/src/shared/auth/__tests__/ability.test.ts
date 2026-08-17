@@ -25,10 +25,10 @@ describe('can', () => {
     expect(can(rules, 'delete', 'Department')).toBe(true);
   });
 
-  it('treats manage:all as granting everything (global-admin set)', () => {
-    const globalAdmin: PermissionRule[] = [{ action: 'manage', subject: 'all' }];
-    expect(can(globalAdmin, 'read', 'PlatformMetrics')).toBe(true);
-    expect(can(globalAdmin, 'manage', 'Tenant')).toBe(true);
+  it('treats manage:all as granting everything (super-admin set)', () => {
+    const superAdmin: PermissionRule[] = [{ action: 'manage', subject: 'all' }];
+    expect(can(superAdmin, 'read', 'PlatformMetrics')).toBe(true);
+    expect(can(superAdmin, 'manage', 'Tenant')).toBe(true);
   });
 
   it('denies on empty or missing rules', () => {
@@ -56,9 +56,9 @@ describe('canAny', () => {
 });
 
 describe('isElevated', () => {
-  it('recognizes SUPER_ADMIN as the single elevated role (renamed from GLOBAL_ADMIN)', () => {
+  it('recognizes SUPER_ADMIN as the single elevated role', () => {
     expect(isElevated(['SUPER_ADMIN'])).toBe(true);
-    // The pre-rename GLOBAL_ADMIN literal no longer elevates.
+    // GLOBAL_ADMIN is not a JWT alias and must not elevate.
     expect(isElevated(['GLOBAL_ADMIN'])).toBe(false);
     expect(isElevated(['TENANT_ADMIN'])).toBe(false);
     expect(isElevated([])).toBe(false);

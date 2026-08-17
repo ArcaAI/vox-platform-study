@@ -350,7 +350,7 @@ describe('FederatedAuthService.verifyOidcCallback — JIT provisioning', () => {
       config: {
         issuer: 'https://acme.okta.com',
         clientId: 'client-abc',
-        defaultRoleId: 'role-global-admin',
+        defaultRoleId: 'role-super-admin',
         defaultDepartmentId: 'dept-default',
         jitEnabled: true,
       },

@@ -5,7 +5,7 @@ export const metadata: Metadata = {
   title: 'Settings & secrets',
 };
 
-/** Frame 24 — Settings & secrets (tier 20-29 shared; reveal is global-admin only). */
+/** Frame 24 — Settings & secrets (tier 20-29 shared; reveal is super-admin only). */
 export default function SettingsPage() {
   return <SettingsScreen />;
 }

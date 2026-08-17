@@ -96,7 +96,7 @@ export interface UpsertAiTaskDefaultRequest {
 
 /**
  * GET admin/ai-task-defaults/options rows (gateway ModelResponse subset the
- * pickers need). Tenant-accessible — unlike the global-admin-only
+ * pickers need). Tenant-accessible — unlike the super-admin-only
  * /admin/ai-models surface.
  */
 export interface TaskModelOption {

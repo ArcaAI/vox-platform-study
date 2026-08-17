@@ -21,7 +21,7 @@ import type { RequestWithAuth } from '../../types/request-with-auth';
 import { PreSummaryRequest } from './dto/pre-summary.request';
 import type { PreSummaryResponse, SummaryResponse, TokenUsage } from './dto/summary.response';
 import { SyncSummaryRequest } from './dto/sync-summary.request';
-import { SmrCompatTemplateService } from './text-compat-template.service';
+import { TextCompatTemplateService } from './text-compat-template.service';
 import { buildSummaryPrompt } from './summary-prompt.builder';
 import { mapGenerateToV1PreSummary, mapGenerateToV1Summary } from './summary-response.mapper';
 import { ENHANCED_SUMMARY_SCHEMA } from './summary-schemas';
@@ -30,7 +30,7 @@ import { buildV1PreSummaryPrompt, buildV1SummaryPrompt } from './v1-summary-prom
 // Codes that can occur ONLY while establishing the connection, i.e. before any
 // request bytes reached SMR. `/generate` is non-idempotent (billable
 // generation), so a retry is safe only when the request provably never left
-// the gateway — mirrors `SmrProxyController.CONNECT_PHASE_CODES`.
+// the gateway — mirrors `TextProxyController.CONNECT_PHASE_CODES`.
 const CONNECT_PHASE_CODES = new Set(['ECONNREFUSED', 'ENOTFOUND']);
 // v1 `/presummary` defaults (`routes.py`: `request.temperature or 0.2`,
 // `request.max_tokens or 800`). The 800-token ceiling is what enforces the
@@ -40,7 +40,7 @@ const PRE_SUMMARY_DEFAULT_TEMPERATURE = 0.2;
 const PRE_SUMMARY_DEFAULT_MAX_TOKENS = 800;
 
 // SSE keepalive cadence for the held-open compat streams — mirrors
-// `SmrProxyController.SSE_HEARTBEAT_INTERVAL_MS`.
+// `TextProxyController.SSE_HEARTBEAT_INTERVAL_MS`.
 const SSE_HEARTBEAT_INTERVAL_MS = 15_000;
 // Upper bound for the held-open task-stream GET (matches the proxy).
 const STREAM_READ_TIMEOUT_MS = 300_000;
@@ -98,20 +98,20 @@ export function resolveDepartmentVisit(
   return { department, visitType };
 }
 
-interface SmrResponseFormat {
+interface TextResponseFormat {
   type: 'text' | 'json' | 'json_schema';
   json_schema?: Record<string, unknown>;
   strict?: boolean;
 }
 
-interface SmrGenerateRequest {
+interface TextGenerateRequest {
   prompt: string;
   system_prompt?: string;
   provider?: string;
   model?: string;
   temperature?: number;
   max_tokens?: number;
-  response_format?: SmrResponseFormat;
+  response_format?: TextResponseFormat;
   stream?: boolean;
   // Follow-up: per-request BYOK credential for a cloud provider, keyed
   // by the request's provider name. SMR no longer reads cloud creds from env, so
@@ -121,7 +121,7 @@ interface SmrGenerateRequest {
 }
 
 /** One decoded SMR SSE frame (`event: <type>` + JSON `data`). */
-interface SmrStreamFrame {
+interface TextStreamFrame {
   type?: string;
   content?: string;
   data?: unknown;
@@ -138,7 +138,7 @@ type PumpOutcome = 'completed' | 'error_pre_content' | 'error_final';
 
 // The subset of SMR `GenerateResponse` (apps/text models/responses.py) this shim
 // reads. Provider internals are intentionally NOT surfaced to the client.
-interface SmrGenerateResponse {
+interface TextGenerateResponse {
   task_id?: string;
   content: string;
   latency_ms?: number;
@@ -159,11 +159,11 @@ interface SmrGenerateResponse {
  * via `UnifiedAuthGuard`). Downstream URL resolves only through
  * `IConfigService`; the `X-Service-Token` is attached from `SecretsService`.
  */
-@ApiTags('smr-compat')
+@ApiTags('text-compat')
 @ApiBearerAuth()
 @Controller('api/smr/api/v1')
-export class SmrCompatController {
-  private readonly logger = new Logger(SmrCompatController.name);
+export class TextCompatController {
+  private readonly logger = new Logger(TextCompatController.name);
 
   constructor(
     private readonly httpService: HttpService,
@@ -171,7 +171,7 @@ export class SmrCompatController {
     private readonly clsService: ClsService<IActiveUserContext>,
     private readonly harnessPolicyService: HarnessPolicyService,
     // Resolves the tenant's real Department → governed instruction template.
-    private readonly templateService: SmrCompatTemplateService,
+    private readonly templateService: TextCompatTemplateService,
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
     // Resolves the requesting doctor's decrypted DNA writing-style
     // (gate-checked). @Optional so the shim degrades to department+visit-type
@@ -203,14 +203,14 @@ export class SmrCompatController {
     try {
       // Sarvam is BYOK-ONLY — never an env credential. The key comes from the
       // unified provider plane: the tenant admin's own Sarvam credential, else the
-      // global admin's platform (SYSTEM-tenant) credential. One Sarvam
+      // super admin's platform (SYSTEM-tenant) credential. One Sarvam
       // subscription key covers STT/TTS/translate, so the existing 'stt' Sarvam
       // BYO row is reused. Only the 'sarvam' entry is forwarded (minimal exposure);
       // if neither tier has one, no credential is sent and SMR fails → fail-open.
       const sarvamOverride = await this.resolveSarvamByok(tenantId);
       const providerOverrides = sarvamOverride ? { sarvam: sarvamOverride } : undefined;
 
-      const base = this.getSmrBaseUrl();
+      const base = this.getTextBaseUrl();
       const url = `${base.replace(/\/+$/, '')}/api/v1/translate`;
       const response = await this.httpService.axiosRef.post(
         url,
@@ -318,7 +318,7 @@ export class SmrCompatController {
   }
 
   /**
-   * Assemble the summary `SmrGenerateRequest` and a `buildResponse` that maps an
+   * Assemble the summary `TextGenerateRequest` and a `buildResponse` that maps an
    * LLM `content` string into the v1 `SummaryResponse` for whichever
    * provider/model actually produced it. Shared by the sync and streaming paths
    * so the terminal body is byte-identical.
@@ -328,8 +328,8 @@ export class SmrCompatController {
     governedInstruction?: string,
     dnaStyleText?: string,
   ): {
-    baseRequest: SmrGenerateRequest;
-    buildResponse: (content: string, generated: Partial<SmrGenerateResponse>, req: SmrGenerateRequest) => SummaryResponse;
+    baseRequest: TextGenerateRequest;
+    buildResponse: (content: string, generated: Partial<TextGenerateResponse>, req: TextGenerateRequest) => SummaryResponse;
   } {
     const sessionData = body.session_data;
     // A consultation/session is NOT required to summarize. `session_id` is an
@@ -394,7 +394,7 @@ export class SmrCompatController {
       correlationId: this.clsService.getId(),
     });
 
-    const baseRequest: SmrGenerateRequest = {
+    const baseRequest: TextGenerateRequest = {
       system_prompt: system,
       prompt: user,
       temperature: body.temperature,
@@ -410,7 +410,7 @@ export class SmrCompatController {
     // provider/model that actually produced it (labels reflect the fallback too).
     // `generated` carries the non-stream metadata (task_id/latency/usage); in the
     // streaming path it is empty and only the accumulated `content` is available.
-    const buildResponse = (content: string, generated: Partial<SmrGenerateResponse>, req: SmrGenerateRequest): SummaryResponse =>
+    const buildResponse = (content: string, generated: Partial<TextGenerateResponse>, req: TextGenerateRequest): SummaryResponse =>
       mapGenerateToV1Summary(content, {
         sessionId,
         summaryId: generated.task_id,
@@ -462,7 +462,7 @@ export class SmrCompatController {
     const governed = await this.resolveSummaryGoverned(workingBody, tenantId);
     const dnaStyleText = await this.resolveDnaStyleText(workingBody.doctor_id, tenantId);
     const { baseRequest, buildResponse } = this.prepareSummary(workingBody, governed, dnaStyleText);
-    await this.applySmrModelSelection(baseRequest, tenantId);
+    await this.applyTextModelSelection(baseRequest, tenantId);
 
     // Primary attempt: post + parse. A parse failure is captured here too so the
     // per-tenant fallback covers unparseable content, not just transport errors.
@@ -485,7 +485,7 @@ export class SmrCompatController {
       const fallback = await this.harnessPolicyService.resolveSmrFallbackSelection(tenantId, 'finalize');
       // Skip a same-provider fallback (retrying the identical provider cannot help).
       if (fallback && fallback.provider !== baseRequest.provider) {
-        const fallbackRequest: SmrGenerateRequest = { ...baseRequest, provider: fallback.provider, model: fallback.model };
+        const fallbackRequest: TextGenerateRequest = { ...baseRequest, provider: fallback.provider, model: fallback.model };
         // The fallback provider differs from the primary — re-resolve its BYOK
         // credential (the spread copied the primary's, if any). follow-up.
         await this.attachLlmByok(fallbackRequest, tenantId);
@@ -526,7 +526,7 @@ export class SmrCompatController {
     const governed = await this.resolveSummaryGoverned(workingBody, tenantId);
     const dnaStyleText = await this.resolveDnaStyleText(workingBody.doctor_id, tenantId);
     const { baseRequest, buildResponse } = this.prepareSummary(workingBody, governed, dnaStyleText);
-    await this.applySmrModelSelection(baseRequest, tenantId);
+    await this.applyTextModelSelection(baseRequest, tenantId);
 
     await this.streamGenerate(
       res,
@@ -542,7 +542,7 @@ export class SmrCompatController {
             fallbackProvider: fallback.provider,
             correlationId: this.clsService.getId(),
           });
-          const fallbackRequest: SmrGenerateRequest = { ...primaryRequest, provider: fallback.provider, model: fallback.model };
+          const fallbackRequest: TextGenerateRequest = { ...primaryRequest, provider: fallback.provider, model: fallback.model };
           await this.attachLlmByok(fallbackRequest, tenantId); // Follow-up: fallback provider's BYOK
           return fallbackRequest;
         }
@@ -589,8 +589,8 @@ export class SmrCompatController {
     res.status(HttpStatus.OK).json(result);
   }
 
-  /** Build the pre-summary `SmrGenerateRequest` (shared by sync + streaming). */
-  private buildPreSummaryRequest(body: PreSummaryRequest, governedInstruction?: string, dnaStyleText?: string): SmrGenerateRequest {
+  /** Build the pre-summary `TextGenerateRequest` (shared by sync + streaming). */
+  private buildPreSummaryRequest(body: PreSummaryRequest, governedInstruction?: string, dnaStyleText?: string): TextGenerateRequest {
     // v1 body + substitution unchanged (checksum-locked, and its FORMAT block
     // must stay in lockstep with `PRE_SUMMARY_DISPLAY_TITLES`); the v1 wrapper
     // adds only the system-message adherence directive that makes the FORMAT
@@ -620,7 +620,7 @@ export class SmrCompatController {
     });
     const dnaStyleText = await this.resolveDnaStyleText(body.doctor_id, tenantId);
     const smrRequest = this.buildPreSummaryRequest(body, governed, dnaStyleText);
-    await this.applySmrModelSelection(smrRequest, tenantId);
+    await this.applyTextModelSelection(smrRequest, tenantId);
 
     let primaryError: unknown;
     try {
@@ -633,7 +633,7 @@ export class SmrCompatController {
     if (this.isFallbackEligible(primaryError)) {
       const fallback = await this.harnessPolicyService.resolveSmrFallbackSelection(tenantId, 'finalize');
       if (fallback && fallback.provider !== smrRequest.provider) {
-        const fallbackRequest: SmrGenerateRequest = { ...smrRequest, provider: fallback.provider, model: fallback.model };
+        const fallbackRequest: TextGenerateRequest = { ...smrRequest, provider: fallback.provider, model: fallback.model };
         await this.attachLlmByok(fallbackRequest, tenantId); // Follow-up: fallback provider's BYOK
         try {
           const generated = await this.postGenerate(fallbackRequest, 'Pre-summary generation (tenant fallback)');
@@ -670,7 +670,7 @@ export class SmrCompatController {
     });
     const dnaStyleText = await this.resolveDnaStyleText(body.doctor_id, tenantId);
     const smrRequest = this.buildPreSummaryRequest(body, governed, dnaStyleText);
-    await this.applySmrModelSelection(smrRequest, tenantId);
+    await this.applyTextModelSelection(smrRequest, tenantId);
     await this.streamGenerate(
       res,
       smrRequest,
@@ -685,7 +685,7 @@ export class SmrCompatController {
             fallbackProvider: fallback.provider,
             correlationId: this.clsService.getId(),
           });
-          const fallbackRequest: SmrGenerateRequest = { ...primaryRequest, provider: fallback.provider, model: fallback.model };
+          const fallbackRequest: TextGenerateRequest = { ...primaryRequest, provider: fallback.provider, model: fallback.model };
           await this.attachLlmByok(fallbackRequest, tenantId); // Follow-up: fallback provider's BYOK
           return fallbackRequest;
         }
@@ -705,7 +705,7 @@ export class SmrCompatController {
    * PHI rule: booleans and character COUNTS only — never field content, never
    * a preview, never a substring. `department`/`visitType`/`language` are
    * non-PHI categorical identifiers, logged the same way the neighboring
-   * `SmrCompatTemplateService` resolution log ("SMR compat instruction
+   * `TextCompatTemplateService` resolution log ("SMR compat instruction
    * template resolved") already does.
    */
   private logPreSummaryContext(body: PreSummaryRequest): void {
@@ -795,7 +795,7 @@ export class SmrCompatController {
     return source.toLowerCase().split('-')[0] !== 'en';
   }
 
-  private async applySmrModelSelection(request: SmrGenerateRequest, tenantId: string): Promise<void> {
+  private async applyTextModelSelection(request: TextGenerateRequest, tenantId: string): Promise<void> {
     const selection = await this.harnessPolicyService.resolveSmrSelection(tenantId);
     request.provider = selection.provider;
     request.model = selection.model;
@@ -804,7 +804,7 @@ export class SmrCompatController {
 
   /**
    * Follow-up: inject the tenant's LLM cloud BYOK credential for
-   * `request.provider`. Mirrors `SmrProxyController` — SMR no longer holds env
+   * `request.provider`. Mirrors `TextProxyController` — SMR no longer holds env
    * credentials, so a cloud provider (azure/openai/anthropic) selected as
    * PRIMARY or FALLBACK must receive its key/endpoint as a per-request
    * `provider_overrides` entry, or SMR fails closed with ProviderCredentialsError
@@ -816,7 +816,7 @@ export class SmrCompatController {
    * finds it. Fail-open: a resolver error leaves the request unchanged (SMR then
    * decides — a cloud provider will 503, a local one proceeds).
    */
-  private async attachLlmByok(request: SmrGenerateRequest, tenantId: string): Promise<void> {
+  private async attachLlmByok(request: TextGenerateRequest, tenantId: string): Promise<void> {
     if (!this.providerConnectionService || !request.provider) return;
     const connKey = request.provider === 'azure-openai' ? 'azure' : request.provider;
     const resolved = await this.providerConnectionService.resolveTenantCloudOverrides('llm', tenantId).catch(() => undefined);
@@ -843,7 +843,7 @@ export class SmrCompatController {
    * however, are set DIRECTLY on the Express request by the auth pipeline on every
    * route, so we read the tenant off the request — exactly as the `apiKey` branch
    * already does. Rejects with `401 Tenant context is required` when none is
-   * present — no SYSTEM-default leak (M4); a global-admin's EMPTY tenant
+   * present — no SYSTEM-default leak (M4); a super-admin's EMPTY tenant
    * still trips it (they must act through a tenant-scoped credential).
    * Defense-in-depth: a correctly tenant-scoped key or JWT never trips it.
    */
@@ -855,7 +855,7 @@ export class SmrCompatController {
     return tenantId;
   }
 
-  private getSmrBaseUrl(): string {
+  private getTextBaseUrl(): string {
     // Downstream URL only via the typed accessor — a direct
     // `process.env.TEXT_URL` read is banned by `no-direct-downstream-url-env`.
     return this.configService.getConfigValue('TEXT_URL');
@@ -863,7 +863,7 @@ export class SmrCompatController {
 
   private getForwardHeaders(): Record<string, string> {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    // Fail-open on a cache miss (no header), matching SmrProxyController.
+    // Fail-open on a cache miss (no header), matching TextProxyController.
     const serviceToken = this.secretsService?.getSecretSync('TEXT_SERVICE_TOKEN');
     if (serviceToken) {
       headers['X-Service-Token'] = serviceToken;
@@ -884,9 +884,9 @@ export class SmrCompatController {
    * billable call). Throws the RAW transport error on exhaustion so callers can
    * classify it (fallback eligibility / error-shape mapping).
    */
-  private async postGenerate(request: SmrGenerateRequest, label: string): Promise<SmrGenerateResponse> {
+  private async postGenerate(request: TextGenerateRequest, label: string): Promise<TextGenerateResponse> {
     const data = await this.postGenerateRaw(request, label);
-    return data as SmrGenerateResponse;
+    return data as TextGenerateResponse;
   }
 
   /**
@@ -895,7 +895,7 @@ export class SmrCompatController {
    * the RAW transport error on exhaustion (so the streaming START can classify it
    * for the per-tenant fallback).
    */
-  private async postGenerateStream(request: SmrGenerateRequest, label: string): Promise<string> {
+  private async postGenerateStream(request: TextGenerateRequest, label: string): Promise<string> {
     const data = (await this.postGenerateRaw({ ...request, stream: true }, label)) as { task_id?: string };
     const taskId = data?.task_id;
     if (!taskId) {
@@ -909,8 +909,8 @@ export class SmrCompatController {
    * provably never reached SMR — safe for the non-idempotent billable call).
    * Returns the raw response body; throws the RAW transport error on exhaustion.
    */
-  private async postGenerateRaw(request: SmrGenerateRequest, label: string): Promise<unknown> {
-    const base = this.getSmrBaseUrl();
+  private async postGenerateRaw(request: TextGenerateRequest, label: string): Promise<unknown> {
+    const base = this.getTextBaseUrl();
     const maxRetries = 2;
 
     let lastErr: unknown;
@@ -948,16 +948,16 @@ export class SmrCompatController {
    * headers, opens the generation (with an optional pre-stream START fallback),
    * then re-emits SMR `chunk` frames as `event: delta` and, on `done`, the
    * fully-mapped v1 body as `event: result`. Any failure surfaces as a single
-   * PHI-redacted `event: error`. Mirrors `SmrProxyController.streamTaskEvents`
+   * PHI-redacted `event: error`. Mirrors `TextProxyController.streamTaskEvents`
    * (heartbeat + disconnect cleanup) minus the native ticket — the compat POST
    * already authenticated via `x-api-key`.
    */
   private async streamGenerate(
     res: Response,
-    smrRequest: SmrGenerateRequest,
+    smrRequest: TextGenerateRequest,
     label: string,
-    buildResult: (content: string, req: SmrGenerateRequest) => object,
-    resolveStartFallback?: (primaryError: unknown, primaryRequest: SmrGenerateRequest) => Promise<SmrGenerateRequest | null>,
+    buildResult: (content: string, req: TextGenerateRequest) => object,
+    resolveStartFallback?: (primaryError: unknown, primaryRequest: TextGenerateRequest) => Promise<TextGenerateRequest | null>,
   ): Promise<void> {
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache, no-transform');
@@ -1044,7 +1044,7 @@ export class SmrCompatController {
     heartbeatTimer: ReturnType<typeof setInterval>,
     allowPreContentRetry: boolean,
   ): Promise<PumpOutcome> {
-    const base = this.getSmrBaseUrl();
+    const base = this.getTextBaseUrl();
 
     let upstream;
     try {
@@ -1102,7 +1102,7 @@ export class SmrCompatController {
         while ((idx = buffer.indexOf('\n\n')) !== -1) {
           const rawFrame = buffer.slice(0, idx);
           buffer = buffer.slice(idx + 2);
-          const frame = this.parseSmrFrame(rawFrame);
+          const frame = this.parseTextFrame(rawFrame);
           if (!frame) continue;
 
           if (frame.type === 'chunk') {
@@ -1177,7 +1177,7 @@ export class SmrCompatController {
   }
 
   /** Decode one SMR SSE frame (`event:`/`data:` lines) into a `StreamChunk`. */
-  private parseSmrFrame(rawFrame: string): SmrStreamFrame | null {
+  private parseTextFrame(rawFrame: string): TextStreamFrame | null {
     let eventName: string | undefined;
     const dataParts: string[] = [];
     for (const line of rawFrame.split('\n')) {
@@ -1187,7 +1187,7 @@ export class SmrCompatController {
     }
     if (dataParts.length === 0) return eventName ? { type: eventName } : null;
     try {
-      const parsed = JSON.parse(dataParts.join('\n')) as SmrStreamFrame;
+      const parsed = JSON.parse(dataParts.join('\n')) as TextStreamFrame;
       return { type: parsed.type ?? eventName, content: parsed.content, data: parsed.data };
     } catch {
       return { type: eventName };

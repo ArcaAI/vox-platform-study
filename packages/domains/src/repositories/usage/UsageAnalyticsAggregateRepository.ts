@@ -19,7 +19,7 @@ import { AiCapability } from '../../enums';
  *     `$extends` on every generated repository cannot do. This is the same
  *     sanctioned cross-tenant bypass `MeteringService.reconcileAllActiveTenants`
  *     uses (`baseClient`/unscoped raw SQL) — gated at the HTTP layer by
- *     GLOBAL_ADMIN (`@CanManage`) and imperatively in the service
+ *     SUPER_ADMIN (`@CanManage`) and imperatively in the service
  *     (`isSuperAdmin`), never exposed to a tenant-scoped caller.
  *
  * RAW SQL NOTES: every dimension is a BOUND PARAMETER (`Prisma.sql`), never

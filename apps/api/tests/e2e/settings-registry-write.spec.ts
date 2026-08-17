@@ -15,14 +15,14 @@ import { test, expect } from '@playwright/test';
 import { DEFAULT_TENANT_KEY, SEEDED_USERS, loginUser } from '../../../../tests/helpers';
 
 test.describe('settings registry write lane', () => {
-  let globalAdminToken: string;
+  let superAdminToken: string;
 
   test.beforeAll(async ({ request }) => {
     const login = await loginUser(request, SEEDED_USERS.superAdmin.username, SEEDED_USERS.superAdmin.password, DEFAULT_TENANT_KEY);
-    globalAdminToken = login!.token;
+    superAdminToken = login!.token;
   });
 
-  const auth = () => ({ Authorization: `Bearer ${globalAdminToken}` });
+  const auth = () => ({ Authorization: `Bearer ${superAdminToken}` });
 
   test('the formerly orphaned keys now appear in the catalog', async ({ request }) => {
     const res = await request.get('/api/v1/admin/settings/catalog', { headers: auth() });

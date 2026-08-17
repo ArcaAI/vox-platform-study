@@ -1,7 +1,7 @@
 # `hope-env` — shared Python environment loader
 
 One implementation of the monorepo's env-file contract for the six Python
-services (`stt`, `smr`, `guardrail`, `nlp`, `harness`, `tts`).
+services (`stt`, `text`, `guardrail`, `nlp`, `harness`, `tts`).
 
 ## Why it exists
 

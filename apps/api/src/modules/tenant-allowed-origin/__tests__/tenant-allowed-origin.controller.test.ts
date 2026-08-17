@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { NotFoundException } from '@nestjs/common';
 import { TenantAllowedOriginController } from '../tenant-allowed-origin.controller';
 
-// The blanket `assertGlobalAdmin` imperative gate is GONE from
+// The blanket `assertSuperAdmin` imperative gate is GONE from
 // this controller — see the rewritten class AUTH-NOTE. The controller no
 // longer reads `user`/`roles` off CLS at all; it unconditionally delegates
 // to `ITenantAllowedOriginService`, which is CLS-tenant-scoped on its own

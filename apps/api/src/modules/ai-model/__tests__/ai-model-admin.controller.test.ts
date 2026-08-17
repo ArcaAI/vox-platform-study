@@ -11,14 +11,14 @@ import { RequestMethod } from '@nestjs/common';
 import { AiModelAdminController } from '../ai-model-admin.controller';
 
 // =============================================================================
-// Authorization — global-admin only (manage:all)
+// Authorization — super-admin only (manage:all)
 // =============================================================================
 describe('AiModelAdminController authorization metadata', () => {
-  it('is decorated @Authorize(["manage","all"]) at class level (global-admin only)', () => {
+  it('is decorated @Authorize(["manage","all"]) at class level (super-admin only)', () => {
     const meta = Reflect.getMetadata('required_permissions', AiModelAdminController);
     expect(meta).toBeDefined();
     expect(meta).toEqual(expect.arrayContaining([{ action: 'manage', subject: 'all' }]));
-    // The registry is a global-admin plane: the tenant-scoped `manage:AiModel`
+    // The registry is a super-admin plane: the tenant-scoped `manage:AiModel`
     // grant must no longer open this controller (console gates to manage:all).
     expect(JSON.stringify(meta)).not.toContain('"AiModel"');
   });

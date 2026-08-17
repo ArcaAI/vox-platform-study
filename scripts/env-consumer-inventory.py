@@ -54,7 +54,7 @@ import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
-PY_SERVICES = ["stt", "smr", "guardrail", "nlp", "harness", "tts"]
+PY_SERVICES = ["stt", "text", "guardrail", "nlp", "harness", "tts"]
 CONDA_PY = Path.home() / "miniconda3/envs/arcaenv/bin/python"
 
 # Extraction runs INSIDE each service's own interpreter/import path, so it is a

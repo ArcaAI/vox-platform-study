@@ -4,7 +4,7 @@ import { assertTenantInScope, resolveScopedTenantId, resolveScopedTenantIdOption
 
 // One shared home for the tenant-resolution logic that was
 // copy-pasted across tenant / harness-admin / pipeline-policy-admin /
-// tenant-tts-config-admin controllers. Global-admin acts cross-tenant via a
+// tenant-tts-config-admin controllers. Super-admin acts cross-tenant via a
 // query tenant (or the working tenant elevated into CLS); a tenant-bound caller
 // is pinned to its own tenant and a foreign query is rejected.
 
@@ -12,15 +12,15 @@ const GLOBAL = { roles: ['SUPER_ADMIN'] as string[], tenantId: '' };
 const TENANT_A = { roles: ['TENANT_ADMIN'] as string[], tenantId: 'tenant-a' };
 
 describe('resolveScopedTenantId', () => {
-  it('global-admin: returns the query tenant', () => {
+  it('super-admin: returns the query tenant', () => {
     expect(resolveScopedTenantId(GLOBAL, '', 'tenant-x')).toBe('tenant-x');
   });
 
-  it('global-admin: falls back to the CLS working tenant when no query', () => {
+  it('super-admin: falls back to the CLS working tenant when no query', () => {
     expect(resolveScopedTenantId(GLOBAL, 'working-tenant', undefined)).toBe('working-tenant');
   });
 
-  it('global-admin: 400 when neither query nor working tenant is present', () => {
+  it('super-admin: 400 when neither query nor working tenant is present', () => {
     expect(() => resolveScopedTenantId(GLOBAL, undefined, undefined)).toThrow(BadRequestException);
   });
 
@@ -42,11 +42,11 @@ describe('resolveScopedTenantId', () => {
 });
 
 describe('resolveScopedTenantIdOptional (list filter)', () => {
-  it('global-admin: undefined query = all tenants (undefined)', () => {
+  it('super-admin: undefined query = all tenants (undefined)', () => {
     expect(resolveScopedTenantIdOptional(GLOBAL, '', undefined)).toBeUndefined();
   });
 
-  it('global-admin: a query narrows to that tenant', () => {
+  it('super-admin: a query narrows to that tenant', () => {
     expect(resolveScopedTenantIdOptional(GLOBAL, '', 'tenant-x')).toBe('tenant-x');
   });
 
@@ -60,7 +60,7 @@ describe('resolveScopedTenantIdOptional (list filter)', () => {
 });
 
 describe('assertTenantInScope', () => {
-  it('global-admin: always in scope (no throw)', () => {
+  it('super-admin: always in scope (no throw)', () => {
     expect(() => assertTenantInScope(GLOBAL, 'any-tenant')).not.toThrow();
   });
 

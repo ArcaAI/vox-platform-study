@@ -7,17 +7,17 @@
  *     decisively: immediately after create, a single-tenant RESYNC of the new
  *     tenant reports every golden agent already present (added:0, skipped:N) —
  *     which can only be true if provisioning ran.
- *   - Part 3: the `POST admin/department-agents/resync` reconciler — global-admin
+ *   - Part 3: the `POST admin/department-agents/resync` reconciler — super-admin
  *     only (`@CanManage('Tenant')`, the same posture as tenant provisioning),
  *     idempotent, and refusing to resync the SYSTEM tenant against itself.
  *
  * The reconciler is the DepartmentAgent sibling of the pipeline resync
  * ; its cross-tenant privilege posture is asserted the same way.
  *
- * A SINGLE global-admin token is acquired in `beforeAll` and reused across
+ * A SINGLE super-admin token is acquired in `beforeAll` and reused across
  * tests — the login endpoint is tiered-rate-limited (strict tier), so a
  * login-per-test pattern trips the throttler on a warm instance and turns
- * endpoint proofs into misleading login-null failures. The global-admin-only
+ * endpoint proofs into misleading login-null failures. The super-admin-only
  * gate (a tenant admin gets 403) is asserted in the controller unit test
  * (`department-agent-resync.controller.test.ts`), so it is not re-logged-in here.
  *
@@ -38,14 +38,14 @@ interface ResyncSummary {
   skipped: number;
 }
 
-let globalAdminToken: string;
+let superAdminToken: string;
 
 test.beforeAll(async ({ playwright, baseURL }) => {
   const ctx: APIRequestContext = await playwright.request.newContext({ baseURL: baseURL! });
   try {
-    const globalAdmin = await loginUser(ctx, SEEDED_USERS.superAdmin.username, SEEDED_USERS.superAdmin.password);
-    expect(globalAdmin, 'global admin login').not.toBeNull();
-    globalAdminToken = globalAdmin!.token;
+    const superAdmin = await loginUser(ctx, SEEDED_USERS.superAdmin.username, SEEDED_USERS.superAdmin.password);
+    expect(superAdmin, 'super admin login').not.toBeNull();
+    superAdminToken = superAdmin!.token;
   } finally {
     await ctx.dispose();
   }
@@ -61,7 +61,7 @@ test.describe.configure({ mode: 'serial' });
 test.describe('agent resync — authorization', () => {
   test('resyncing the SYSTEM tenant against itself is rejected (400)', async ({ request }) => {
     const rejected = await request.post('/api/v1/admin/department-agents/resync', {
-      headers: auth(globalAdminToken),
+      headers: auth(superAdminToken),
       data: { tenantId: SYSTEM_TENANT_ID },
     });
     expect(rejected.status()).toBe(400);
@@ -69,10 +69,10 @@ test.describe('agent resync — authorization', () => {
 });
 
 test.describe('agent resync — sweep + idempotency', () => {
-  test('a global admin sweeps every tenant and the sweep is idempotent', async ({ request }) => {
+  test('a super admin sweeps every tenant and the sweep is idempotent', async ({ request }) => {
     // First sweep converges every existing tenant onto the golden library.
     const first = await request.post('/api/v1/admin/department-agents/resync', {
-      headers: auth(globalAdminToken),
+      headers: auth(superAdminToken),
       data: {},
     });
     expect(first.status()).toBe(200);
@@ -85,7 +85,7 @@ test.describe('agent resync — sweep + idempotency', () => {
 
     // Second sweep must be a no-op — nothing added or fast-forwarded.
     const second = await request.post('/api/v1/admin/department-agents/resync', {
-      headers: auth(globalAdminToken),
+      headers: auth(superAdminToken),
       data: {},
     });
     expect(second.status()).toBe(200);
@@ -102,7 +102,7 @@ test.describe('agent provisioning — a new tenant gets the golden library', () 
     // accepts it. Cleaned up at the end.
     const key = `TASK548_E2E_${Date.now()}`;
     const created = await request.post('/api/v1/admin/tenants', {
-      headers: auth(globalAdminToken),
+      headers: auth(superAdminToken),
       data: { name: 'TASK-548 e2e provisioning probe', key },
     });
     expect(created.status()).toBe(201);
@@ -112,7 +112,7 @@ test.describe('agent provisioning — a new tenant gets the golden library', () 
       // If provisioning ran at create time, the golden agents are ALL present,
       // so the reconciler adds nothing and skips them as pristine/current.
       const resynced = await request.post('/api/v1/admin/department-agents/resync', {
-        headers: auth(globalAdminToken),
+        headers: auth(superAdminToken),
         data: { tenantId: tenant.id },
       });
       expect(resynced.status()).toBe(200);
@@ -123,7 +123,7 @@ test.describe('agent provisioning — a new tenant gets the golden library', () 
       expect(summary.skipped).toBeGreaterThanOrEqual(18);
     } finally {
       // Cleanup — soft-delete the throwaway tenant.
-      await request.delete(`/api/v1/admin/tenants/${tenant.id}`, { headers: auth(globalAdminToken) });
+      await request.delete(`/api/v1/admin/tenants/${tenant.id}`, { headers: auth(superAdminToken) });
     }
   });
 });

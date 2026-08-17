@@ -184,7 +184,7 @@ this — it only reads.
 
 ### N-3 — the `text` service: verified surface, verified bounding
 
-**The gateway controller is already named `text`.** `apps/api/src/modules/streaming/smr-proxy.controller.ts:174`
+**The gateway controller is already named `text`.** `apps/api/src/modules/streaming/text-proxy.controller.ts:174`
 → `@Controller('text')`, i.e. `/api/v1/text/*`. Relevant routes:
 
 | Route | Line | Guard |
@@ -243,7 +243,7 @@ const WRITABLE_TOGGLE_KEYS = ['autoSummaryEnabled', 'autoNerEnabled', 'harnessEn
 4. **BYO credentials + availability.** `SmrRequestEnrichmentService`
    (`packages/applications/src/services/smr-request/smr-request-enrichment.service.ts:55-95`) injects
    tenant provider overrides and ends in `assertProviderAvailable(resolved, 'llm', provider)`
-   (`:94`). The gateway calls it via `applySmrModelSelection` (`smr-proxy.controller.ts:238-251`).
+   (`:94`). The gateway calls it via `applySmrModelSelection` (`text-proxy.controller.ts:238-251`).
 
 **SMR itself does no tenant bounding** — it selects purely from the request body
 (`registry.get(request_body.provider)`, `generate.py:371`) and receives only `X-Tenant-Id`
@@ -363,7 +363,7 @@ later reader does not assume the general case.
 2. **Do not treat `GuardrailResponse.safe === true` as a pass without checking `error`.**
    `guardrails.py:96-105`.
 3. **Do not build `POST /guardrail/redact`.** It does not exist and is TASK-710's.
-4. **Do not call SMR directly.** All bounding lives in the gateway (`smr-proxy.controller.ts:238-251`);
+4. **Do not call SMR directly.** All bounding lives in the gateway (`text-proxy.controller.ts:238-251`);
    SMR bounds nothing (`generate.py:371`).
 5. **Do not add a `model` default.** SMR fails closed with 422 by design (`generate.py:315-320`) and
    selection is `failMode: closed` per rule 09. Propagate the 422 as a node config error at

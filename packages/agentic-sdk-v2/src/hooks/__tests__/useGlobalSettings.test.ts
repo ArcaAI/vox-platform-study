@@ -377,7 +377,7 @@ describe('useGlobalSettings', () => {
   });
 
   /* ------------------------------------------------------------------ */
-  /*  revealSecret (global-admin, step-up re-auth)              */
+  /*  revealSecret (super-admin, step-up re-auth)              */
   /* ------------------------------------------------------------------ */
 
   describe('revealSecret', () => {

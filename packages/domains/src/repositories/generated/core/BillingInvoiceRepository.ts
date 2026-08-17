@@ -47,7 +47,7 @@ export class BillingInvoiceRepository extends Repository<BillingInvoiceEntity, B
     } catch (err) {
       // Only a genuine miss maps to null. Anything else — most importantly the
       // tenant-scope extension's cross-tenant throw — must SURFACE, or a
-      // global-admin read targeting a foreign tenant would silently look empty.
+      // super-admin read targeting a foreign tenant would silently look empty.
       if (err instanceof DataNotFoundException) {
         return null;
       }

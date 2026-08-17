@@ -102,7 +102,7 @@ describe('DnaWritingStyleAdminController', () => {
       expect(mockDnaService.listReportsPaginated).toHaveBeenCalledWith(expect.objectContaining({ includeDisabled: false }));
     });
 
-    it('forwards the tenantId query param (global admin tenant scoping)', async () => {
+    it('forwards the tenantId query param (super admin tenant scoping)', async () => {
       mockDnaService.listReportsPaginated.mockResolvedValue({ data: [], count: 0, page: 1, limit: 10 });
 
       await controller.list({ tenantId: 'tenant-7', page: 1, limit: 10 } as any);

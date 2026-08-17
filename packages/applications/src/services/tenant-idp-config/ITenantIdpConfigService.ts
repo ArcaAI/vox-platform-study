@@ -9,7 +9,7 @@ import {
 /**
  * Tenant-scoped external OIDC identity provider config.
  * `tenantId` is resolved by the controller (a tenant admin is pinned to their
- * CLS tenant; a global admin may target another tenant).
+ * CLS tenant; a super admin may target another tenant).
  */
 export abstract class ITenantIdpConfigService {
   /** All (non-deleted) provider rows configured for a tenant. */

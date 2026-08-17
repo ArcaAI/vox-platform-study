@@ -8,7 +8,7 @@ import { IsBoolean, IsEnum, IsInt, IsOptional, IsString, MaxLength, Min } from '
  * every tenant falls back to when it has no row of its own.
  *
  * SUPER_ADMIN only (enforced imperatively in the service; the permission
- * decorator cannot express "global admin"). Written under optimistic
+ * decorator cannot express "super admin"). Written under optimistic
  * concurrency: `expectedVersion` comes from the `If-Match` header (`"0"`
  * creates the row).
  *

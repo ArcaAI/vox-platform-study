@@ -153,7 +153,7 @@ export class TenantIdpConfigAdminController {
     return this.directorySyncService.enqueueSync(this.resolveTenantId(tenantId), id);
   }
 
-  /** Tenant admins → own tenant; global-admins → `?tenantId=` (or CLS tenant). */
+  /** Tenant admins → own tenant; super-admins → `?tenantId=` (or CLS tenant). */
   private resolveTenantId(queryTenantId?: string): string {
     return resolveScopedTenantId(this.cls.get('user'), this.cls.get('tenantId'), queryTenantId);
   }

@@ -3,7 +3,7 @@
 # DEV app-stack supervisor
 # ============================================================================
 # Starts the full local clinical-workspace stack in one command:
-#   api (8868), stt (8861), stt-worker (Dramatiq batch queue), smr (8862),
+#   api (8868), stt (8861), stt-worker (Dramatiq batch queue), text (8862),
 #   guardrail (8863), nlp (8864), harness (8866),
 #   worker (Temporal task queue), admin (5176)
 # Guardrail is part of the default stack (the admin console monitors it);
@@ -13,8 +13,8 @@
 #   pnpm stack:dev                     # ensure base Docker infra, then full app stack
 #   pnpm stack:dev:observability       # base + Prometheus/Grafana, then apps
 #   pnpm stack:dev:inference           # base + inference engines, then apps
-#   pnpm stack:dev -- smr worker       # subset
-#   pnpm stack:dev -- -o smr           # observability tier + subset
+#   pnpm stack:dev -- text worker      # subset
+#   pnpm stack:dev -- -o text          # observability tier + subset
 #   pnpm stack:dev:down                # stop services spawned by this script
 #   DRY_RUN=1 pnpm stack:dev           # print the plan, start nothing
 #
@@ -51,15 +51,25 @@ YELLOW='\033[1;33m'
 CYAN='\033[0;36m'
 NC='\033[0m'
 
-DEFAULT_SERVICES=(api stt stt-worker smr guardrail nlp harness worker admin)
-ALL_SERVICES=(api stt stt-worker smr nlp harness worker admin guardrail tts)
+DEFAULT_SERVICES=(api stt stt-worker text guardrail nlp harness worker admin)
+ALL_SERVICES=(api stt stt-worker text nlp harness worker admin guardrail tts)
+
+# Canonical CLI token is `text`. `smr` still works as a deprecated remap.
+remap_smr_alias() {
+    if [ "$1" = "smr" ]; then
+        echo -e "${YELLOW}warning: 'smr' is deprecated; use 'text'.${NC}" >&2
+        echo "text"
+    else
+        echo "$1"
+    fi
+}
 
 port_for() {
     case "$1" in
         api) echo "${API_PORT:-8868}" ;;
         stt) echo "${STT_PORT:-8861}" ;;
         stt-worker) echo "" ;;
-        smr) echo "${TEXT_PORT:-8862}" ;;
+        text) echo "${TEXT_PORT:-8862}" ;;
         nlp) echo "${NLP_PORT:-8864}" ;;
         harness) echo "${HARNESS_PORT:-8866}" ;;
         admin) echo "${ADMIN_PORT:-5176}" ;;
@@ -89,7 +99,7 @@ source "$SCRIPT_DIR/lib/stack-supervisor.sh"
 ARGS=()
 INFRA_FLAGS=()
 for arg in "$@"; do
-    # pnpm forwards the literal `--` separator (pnpm stack:dev -- smr)
+    # pnpm forwards the literal `--` separator (pnpm stack:dev -- text)
     [ "$arg" = "--" ] && continue
     case "$arg" in
         -o|--observability) INFRA_FLAGS+=(--observability); continue ;;
@@ -112,6 +122,7 @@ if [ "${#ARGS[@]}" -eq 0 ]; then
     SERVICES=("${DEFAULT_SERVICES[@]}")
 else
     for arg in "${ARGS[@]}"; do
+        arg="$(remap_smr_alias "$arg")"
         ok=0
         for s in "${ALL_SERVICES[@]}"; do
             [ "$arg" = "$s" ] && ok=1

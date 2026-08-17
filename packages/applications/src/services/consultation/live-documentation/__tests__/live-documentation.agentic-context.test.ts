@@ -9,7 +9,7 @@
  *
  * Until this slice, live-doc resolved the six knobs from
  * `env ?? AGENTIC_CONTEXT_DEFAULTS` **in its constructor**. Two consequences:
- *   1. a global admin's registry write changed what `GET /admin/settings/registry`
+ *   1. a super admin's registry write changed what `GET /admin/settings/registry`
  *      reported and changed NOTHING about the running loop, and
  *   2. even the env value was frozen at construction, so nothing could move
  *      without a redeploy.
@@ -147,7 +147,7 @@ describe('LiveDocumentationService — agentic.context.* live lane', () => {
 
     expect((await service.resolveAgenticContext(TENANT)).liveDeltaMaxChars).toBe(100);
 
-    // Global admin writes a new value. Same instance, no redeploy.
+    // Super admin writes a new value. Same instance, no redeploy.
     stored['liveDelta.maxChars'] = 200;
 
     expect((await service.resolveAgenticContext(TENANT)).liveDeltaMaxChars).toBe(200);

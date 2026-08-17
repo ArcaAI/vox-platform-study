@@ -13,7 +13,7 @@ import {
 import { agenticPolicyKeys } from './keys';
 import type { UpdateAgenticPolicyRequest, UpdateLiveDocEngineConfigRequest } from './types';
 
-/** Global-default row — gateway asserts global admin; only mount when elevated. */
+/** Global-default row — gateway asserts super admin; only mount when elevated. */
 export function useGlobalAgenticPolicy(enabled: boolean) {
   return useQuery({ queryKey: agenticPolicyKeys.globalPolicy(), queryFn: getGlobalAgenticPolicy, enabled });
 }

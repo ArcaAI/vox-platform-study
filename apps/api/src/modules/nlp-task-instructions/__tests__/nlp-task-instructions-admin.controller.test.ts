@@ -3,7 +3,7 @@
  *
  * CASL `@CanRead/@CanManage` + `If-Match`/`@RequiresIfMatch` are exercised by
  * the guard/interceptor (+ e2e). These specs cover the controller's OWN
- * logic: taskKey validation (400), tenant vs. global-admin scoping, and
+ * logic: taskKey validation (400), tenant vs. super-admin scoping, and
  * If-Match-over-body version precedence.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -61,13 +61,13 @@ describe('NlpTaskInstructionsAdminController — tenant scoping', () => {
     expect(service.getRow).toHaveBeenCalledWith('nlp.topic', 't1');
   });
 
-  it('global admin must pass ?tenantId= (or a working tenant elevated into CLS)', async () => {
+  it('super admin must pass ?tenantId= (or a working tenant elevated into CLS)', async () => {
     const { controller, service } = makeController({ user: SUPER, tenantId: undefined });
     await expect(controller.getRow('nlp.topic')).rejects.toBeInstanceOf(BadRequestException);
     expect(service.getRow).not.toHaveBeenCalled();
   });
 
-  it('global admin can target an explicit tenant via ?tenantId=', async () => {
+  it('super admin can target an explicit tenant via ?tenantId=', async () => {
     const { controller, service } = makeController({ user: SUPER, tenantId: undefined });
     service.getRow.mockResolvedValue({ tenantId: 'other', taskKey: 'nlp.topic', instructionsJson: null, version: 0 });
     await controller.getRow('nlp.topic', 'other');

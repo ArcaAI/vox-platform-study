@@ -187,7 +187,7 @@ export const DEFAULT_POLICIES: DefaultPolicy[] = [
       // The MCP registry and the agent-trajectory read
       // plane no longer borrow `manage:HarnessPolicy`; these explicit
       // grants preserve exactly the access this role had before the
-      // subject swap. MCP WRITES remain global-admin-only regardless —
+      // subject swap. MCP WRITES remain super-admin-only regardless —
       // `McpServerAdminService` throws 403 for a tenant admin (defense in
       // depth), so `manage` here buys the registry READ this role already
       // had. `AgentTrajectory` is read-only by design.
@@ -203,17 +203,17 @@ export const DEFAULT_POLICIES: DefaultPolicy[] = [
       { action: 'manage', subject: 'TenantSttConfig', conditions: { tenantId: '${context.tenantId}' } },
       // Tenant admins manage their own tenant's nlp.topic/nlp.intent
       // instruction content (TASK-729) — a SEPARATE subject from
-      // AiTaskDefault, deliberately NOT under GLOBAL_ADMIN_ONLY_TASK_PREFIXES:
+      // AiTaskDefault, deliberately NOT under SUPER_ADMIN_ONLY_TASK_PREFIXES:
       // this is tenant-authored CONTENT, not model selection. Tenant-scoped;
       // the service pins every op to the caller's tenant.
       { action: 'manage', subject: 'TenantNlpTaskInstructions', conditions: { tenantId: '${context.tenantId}' } },
       // Tenant admins read + manage their own tenant's AI
-      // task-model defaults (AiTaskDefault). Tenant-scoped; global admins
+      // task-model defaults (AiTaskDefault). Tenant-scoped; super admins
       // are covered by `manage:all`. NOTE (governance): tenant admins DO
       // hold manage:AiTaskDefault here — but ALL FOUR task-key prefixes
       // (`guardrail.`, `smr.`, `nlp.`, `harness.` —
-      // GLOBAL_ADMIN_ONLY_TASK_PREFIXES in @arcaai/applications) are
-      // GLOBAL-ADMIN-ONLY on write, enforced at the application-service
+      // SUPER_ADMIN_ONLY_TASK_PREFIXES in @arcaai/applications) are
+      // SUPER_ADMIN-ONLY on write, enforced at the application-service
       // layer, not by RBAC. In practice this grant yields reads only.
       { action: ['read', 'manage'], subject: 'AiTaskDefault', conditions: { tenantId: '${context.tenantId}' } },
       // Tenant admins manage their own tenant's external OIDC
@@ -244,7 +244,7 @@ export const DEFAULT_POLICIES: DefaultPolicy[] = [
       // `'WorkflowRun'`, all subsumed by `manage`). Tenant-scoped; every
       // route pins reads/writes to the caller's CLS tenant and answers 404
       // for a cross-tenant id (404-over-403). Without this grant BOTH
-      // controllers 403 for every principal except a global admin — this is
+      // controllers 403 for every principal except a super admin — this is
       // the gap TASK-722's own plan named ("coordinate with TASK-719, which
       // needs the same subjects... seed them once, in one place").
       { action: 'manage', subject: 'WorkflowDefinition', conditions: { tenantId: '${context.tenantId}' } },
@@ -255,7 +255,7 @@ export const DEFAULT_POLICIES: DefaultPolicy[] = [
       // `BillingInvoice`, so `@CanManage('BillingInvoice')` rejected every tenant admin
       // at the guard with 403 and that documented pinned-read path was unreachable.
       // `manage` (not `read`) because the class-level decorator checks manage; the
-      // MUTATIONS stay global-admin-only regardless, enforced imperatively in
+      // MUTATIONS stay super-admin-only regardless, enforced imperatively in
       // BillingService via isSuperAdmin (see that controller's AUTH-NOTE), so this
       // grant widens reads only.
       { action: 'manage', subject: 'BillingInvoice', conditions: { tenantId: '${context.tenantId}' } },
@@ -550,7 +550,7 @@ export const DEFAULT_POLICIES: DefaultPolicy[] = [
       // Dedicated subjects for the MCP registry and the
       // agent-trajectory read plane (previously reached via
       // `manage:HarnessPolicy`). Tenant-scoped; MCP writes stay
-      // global-admin-only in the service.
+      // super-admin-only in the service.
       { action: 'manage', subject: 'McpServer', conditions: { tenantId: '${context.tenantId}' } },
       { action: 'read', subject: 'AgentTrajectory', conditions: { tenantId: '${context.tenantId}' } },
     ],

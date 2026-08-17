@@ -179,9 +179,9 @@ describe('TenantOwnedResourceInterceptor', () => {
       expect(harness.next.handle).not.toHaveBeenCalled();
     });
 
-    it('allows an unscoped global admin on explicitly global-admin scoped routes', async () => {
+    it('allows an unscoped super admin on explicitly super-admin scoped routes', async () => {
       const harness = buildHarness({
-        reflectorReturns: { modelName: 'TenantBucket', paramName: 'id', scope: 'global-admin' },
+        reflectorReturns: { modelName: 'TenantBucket', paramName: 'id', scope: 'super-admin' },
         clsState: { user: { roles: ['SUPER_ADMIN'] } },
         params: { id: 'bucket-1' },
       });
@@ -193,9 +193,9 @@ describe('TenantOwnedResourceInterceptor', () => {
       expect(harness.next.handle).toHaveBeenCalledTimes(1);
     });
 
-    it('keeps global-admin scoped routes tenant-scoped when global admin selected a tenant', async () => {
+    it('keeps super-admin scoped routes tenant-scoped when super admin selected a tenant', async () => {
       const harness = buildHarness({
-        reflectorReturns: { modelName: 'TenantBucket', paramName: 'id', scope: 'global-admin' },
+        reflectorReturns: { modelName: 'TenantBucket', paramName: 'id', scope: 'super-admin' },
         clsState: { tenantId: SENTINEL_TENANT_A, user: { roles: ['SUPER_ADMIN'] } },
         params: { id: 'bucket-1' },
       });
@@ -205,9 +205,9 @@ describe('TenantOwnedResourceInterceptor', () => {
       expect(harness.next.handle).not.toHaveBeenCalled();
     });
 
-    it('rejects an unscoped non-global admin on explicitly global-admin scoped routes', async () => {
+    it('rejects an unscoped non-super admin on explicitly super-admin scoped routes', async () => {
       const harness = buildHarness({
-        reflectorReturns: { modelName: 'TenantBucket', paramName: 'id', scope: 'global-admin' },
+        reflectorReturns: { modelName: 'TenantBucket', paramName: 'id', scope: 'super-admin' },
         clsState: { user: { roles: ['TENANT_ADMIN'] } },
         params: { id: 'bucket-1' },
       });

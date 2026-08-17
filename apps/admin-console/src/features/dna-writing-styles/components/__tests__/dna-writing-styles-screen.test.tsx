@@ -300,7 +300,7 @@ describe('DnaWritingStylesScreen', () => {
     expect(items[1].textContent).toContain('auto-generate');
 
     // PHI posture caption (frame 33).
-    expect(within(dialog).getByText(/doctor reads stay tenant-pinned even for global admins/i)).toBeDefined();
+    expect(within(dialog).getByText(/doctor reads stay tenant-pinned even for super admins/i)).toBeDefined();
   });
 
   it('edits the report through the If-Match OCC PATCH', async () => {

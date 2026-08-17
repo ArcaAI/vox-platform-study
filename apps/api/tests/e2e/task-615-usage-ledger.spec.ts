@@ -175,10 +175,10 @@ test.describe('Usage ledger — synthetic drain-and-rollup flow', () => {
   });
 
   test('the capability snapshot (admin/entitlements/tenants/:tenantId) reflects the new usage', async ({ request }) => {
-    const globalAdmin = await loginUser(request, SEEDED_USERS.superAdmin.username, SEEDED_USERS.superAdmin.password);
-    expect(globalAdmin, 'global admin login failed').toBeTruthy();
+    const superAdmin = await loginUser(request, SEEDED_USERS.superAdmin.username, SEEDED_USERS.superAdmin.password);
+    expect(superAdmin, 'super admin login failed').toBeTruthy();
 
-    const resp = await request.get(`/api/v1/admin/entitlements/tenants/${tenantId}`, { headers: bearer(globalAdmin!.token) });
+    const resp = await request.get(`/api/v1/admin/entitlements/tenants/${tenantId}`, { headers: bearer(superAdmin!.token) });
     expect(resp.status()).toBe(200);
     const body = (await resp.json()) as { usage?: Record<string, unknown> };
     // The snapshot must at minimum be well-formed and reachable for this tenant post-drain; the

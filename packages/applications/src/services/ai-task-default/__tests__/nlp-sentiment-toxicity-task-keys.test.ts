@@ -5,7 +5,7 @@
  * Both are FIXED-taxonomy classification tasks served by the existing generic
  * `POST /classify/text` endpoint in apps/nlp — no new Python endpoint, only a
  * new `AiTaskDefault` task key each (§1/§2.2 of the ticket). They stay under
- * the `nlp.*` global-admin-only MODEL-SELECTION governance, same as every
+ * the `nlp.*` super-admin-only MODEL-SELECTION governance, same as every
  * other `nlp.*` key.
  *
  * Toxicity label shape (OPEN, flagged per §6 of the ticket): this task key
@@ -21,7 +21,7 @@
 import { ModelTaskType } from '@arcaai/domains';
 import { describe, expect, it } from 'vitest';
 
-import { AI_TASK_KEYS, AI_TASK_MODEL_TASK_TYPES, isGlobalAdminOnlyTaskKey } from '../constants';
+import { AI_TASK_KEYS, AI_TASK_MODEL_TASK_TYPES, isSuperAdminOnlyTaskKey } from '../constants';
 import { HOPE_SETTINGS_REGISTRY } from '../../settings-registry/registry';
 
 describe.each(['nlp.sentiment', 'nlp.toxicity'] as const)('%s task key', (taskKey) => {
@@ -33,11 +33,11 @@ describe.each(['nlp.sentiment', 'nlp.toxicity'] as const)('%s task key', (taskKe
     expect(AI_TASK_MODEL_TASK_TYPES[taskKey]).toBe(ModelTaskType.TEXT_CLASSIFICATION);
   });
 
-  it('is global-admin-only, consistent with every other nlp.* key', () => {
-    expect(isGlobalAdminOnlyTaskKey(taskKey)).toBe(true);
+  it('is super-admin-only, consistent with every other nlp.* key', () => {
+    expect(isSuperAdminOnlyTaskKey(taskKey)).toBe(true);
   });
 
-  it('registers a models.<taskKey> settings descriptor, db-config, fail-closed, global-admin-only', () => {
+  it('registers a models.<taskKey> settings descriptor, db-config, fail-closed, super-admin-only', () => {
     const d = HOPE_SETTINGS_REGISTRY.getOrThrow(`models.${taskKey}`);
     expect(d.tier).toBe('db-config');
     expect(d.dataType).toBe('string');

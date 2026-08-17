@@ -100,7 +100,7 @@ So `PATCH /api/v1/consultations/:id` with body `{"metadata":{"status":"SIGNED"}}
 | Exemplar bank PHI-redacted, fail-closed | Yes (INV-169) | **Yes by design, inert in practice** | Mining service | No — fails closed to *nothing mined* | `gate-edit-mining.service.ts:174-182,408-418`; `IPhiRedactor` has **no provider anywhere in the repo** |
 | PHI encrypted at rest (DB) | Yes | **Yes** | Vault Transit `hope-phi` | Only when `SECRETS_PROVIDER=vault` | `packages/applications/src/common/phi-field-encryption.ts:32-33` |
 | AI-vs-human attribution | Yes (INV-051/087/218) | **Version-level yes; per-clause no** | `ContextItemVersion` | — | `ContextItemSource` enum (`enums.prisma:290-297`); `ai_draft_v1` snapshot + `encryptedContentDiff` |
-| Cross-doctor / cross-tenant style isolation | Yes | **Yes** | SMR proxy | No | `apps/api/src/modules/streaming/smr-proxy.controller.ts:969-984` |
+| Cross-doctor / cross-tenant style isolation | Yes | **Yes** | SMR proxy | No | `apps/api/src/modules/streaming/text-proxy.controller.ts:969-984` |
 
 ---
 
@@ -127,7 +127,7 @@ Legend: **RAW** = plaintext, no redaction · **ENC** = encrypted at rest · **RE
 | 11 | Signed note → `ContextItemVersion` (`SIGNED_NOTE`) | attested note | **ENC** + `attestationHash` | `summary.service.ts:891-918` |
 | 12 | **Style-DNA corpus** → SMR **†** | **verbatim approved clinical notes** | **RAW — no redaction** | `dna-writing-style.processor.ts:174` → `:189` → `:332-340`. See F-07 |
 | 13 | DNA `styleText` → stored profile | model-derived text + `sourceContextItemIds` back-pointers | ENC at rest, content unverified | `dna-writing-style.prisma:22-31`; `processor.ts:205-210` |
-| 14 | DNA `styleText` → **every later generation for that doctor** | appended to system prompt | RAW into the prompt | `smr-proxy.controller.ts:985-986` |
+| 14 | DNA `styleText` → **every later generation for that doctor** | appended to system prompt | RAW into the prompt | `text-proxy.controller.ts:985-986` |
 | 15 | Exemplar bank `GateEditExemplar` | redacted snippets + `consultationId` | RED, fail-closed — **but inert**: `IPhiRedactor` is never provided | `gate-edit-mining.service.ts:409` |
 | 16 | Qdrant vector store | institutional knowledge chunks | tenant-filtered; **no delete API implemented** | `apps/harness/src/harness/guides/retrieval/qdrant_store.py` — only `upsert_chunks`, `hybrid_query` |
 | 17 | Logs (`@arcaai/applications` logger) | structured fields | RED by key-name allowlist | `baseServices/logging/redactor.ts:52-87`, applied at `logging.service.ts:303` |
@@ -226,7 +226,7 @@ Every clinical read omits it: consultation get/list/chain (`consultation.service
 2. **No tamper-evidence.** `audit.prisma` has no `hash`/`prevHash`/signature column. It has envelope encryption (confidentiality) only. Contrast `HarnessAuditEvent`, which has a real SHA-256 chain (`packages/domains/src/utils/harnessAuditHash.ts:6-7`).
 3. **A sanctioned hard-delete path.** `audit-retention.service.ts:192` calls `auditLog.deleteMany(...)` on a cron, through the unscoped base client. It is governed by the `audit-retention.*` GlobalSettings — DB-backed, refreshed roughly every 45 s. `AuditLog` is also absent from `MODELS_WITHOUT_SOFT_DELETE` (verified against `packages/database/src/client.ts`), so the generic soft-delete and hard-`delete()` repository methods remain structurally available against it.
 
-**Exposure scenario.** A global admin sets `audit-retention.enabled=true` and `retention-days=1`; the next cron tick permanently deletes everything older than 24 h. The only guard is `retentionDays < 1` (`audit-retention.service.ts:167-173`). No redeploy, no code change, and the deletion is not itself chained or tamper-evident.
+**Exposure scenario.** A super admin sets `audit-retention.enabled=true` and `retention-days=1`; the next cron tick permanently deletes everything older than 24 h. The only guard is `retentionDays < 1` (`audit-retention.service.ts:167-173`). No redeploy, no code change, and the deletion is not itself chained or tamper-evident.
 
 **Default configuration?** Retention is **off** by default, so no deletion occurs out of the box. The mutability and absence of tamper-evidence are default-state.
 
@@ -252,11 +252,11 @@ Full mechanism in *Non-negotiable 3* above. Summary: `PATCH /consultations/:id` 
 
 1. The corpus is **verbatim approved clinical notes**. `buildCorpus` emits `approved` — the full signed note text — optionally paired with the AI draft (`dna-writing-style.processor.ts:305-313`, called at `:174`).
 2. That string is POSTed to SMR as the prompt (`:189` → `callSmr` → `:332-340`), with the tenant's resolved provider. There is no redaction between `:174` and `:189` — only a `substring` truncation at `:177-179`. Per F-01/F-02, that provider may be cloud.
-3. The resulting `styleText` is stored (`:222`) and then **appended to the system prompt of every subsequent generation for that doctor**: `systemPrompt += "\n\nApply the following writing style:\n" + dnaStyle.styleText` (`apps/api/src/modules/streaming/smr-proxy.controller.ts:985-986`).
+3. The resulting `styleText` is stored (`:222`) and then **appended to the system prompt of every subsequent generation for that doctor**: `systemPrompt += "\n\nApply the following writing style:\n" + dnaStyle.styleText` (`apps/api/src/modules/streaming/text-proxy.controller.ts:985-986`).
 
 Nothing constrains the model's style report to exclude content. `sourceContextItemIds` is additionally persisted inside `reportData` (`processor.ts:205-210`), a durable pointer from the doctor's style profile back to specific patients' notes.
 
-**Exposure scenario.** Patient A's medications or presentation are echoed into the style profile, then injected into the prompt that drafts Patient B's note. This directly contradicts INV-017 / INV-080 / INV-096 / INV-165 ("patient facts must never enter the style profile"). Note the isolation that *does* hold: cross-doctor and cross-tenant style reuse is correctly blocked (`smr-proxy.controller.ts:969-984`), so the contamination is intra-doctor, cross-patient — which is precisely the axis the doctor-scoped design cannot defend.
+**Exposure scenario.** Patient A's medications or presentation are echoed into the style profile, then injected into the prompt that drafts Patient B's note. This directly contradicts INV-017 / INV-080 / INV-096 / INV-165 ("patient facts must never enter the style profile"). Note the isolation that *does* hold: cross-doctor and cross-tenant style reuse is correctly blocked (`text-proxy.controller.ts:969-984`), so the contamination is intra-doctor, cross-patient — which is precisely the axis the doctor-scoped design cannot defend.
 
 **Secondary defect, same file.** The opt-in gate and the approved-only filter are both skipped when `textSamples` is supplied by an admin/migration caller (`processor.ts:105-111`, with the bypass stated in the comment at `:116`). That path can learn from unapproved drafts belonging to a doctor who opted out — INV-167 / INV-168.
 
@@ -337,7 +337,7 @@ These are controls I tried to break and could not, or that are notably better-bu
 
 5. **AI-vs-human provenance is reconstructible**, contrary to a flat reading of "no attribution". The immutable `ai_draft_v1` snapshot (`harness-internal.service.ts:1507`), per-version `changeReason`/`changeSource`/`changedBy`, and the encrypted `contentDiff`/`fieldChanges` stamped onto the signed note (`summary.service.ts:908-913`) let you reconstruct exactly what the model wrote versus what the clinician changed. What is missing is *inline, per-clause* labeling — not provenance as such.
 
-6. **Cross-doctor and cross-tenant style isolation is correctly enforced**, with a clear rationale in-code about imitation risk (`smr-proxy.controller.ts:969-984`).
+6. **Cross-doctor and cross-tenant style isolation is correctly enforced**, with a clear rationale in-code about imitation risk (`text-proxy.controller.ts:969-984`).
 
 7. **STT WebSocket transport hardening is genuinely careful**: CSWSH origin allowlist that fails closed when the registry is unavailable, single-use stream tickets (never JWTs in URLs), ticket-tenant to session-tenant binding verification, and per-tenant concurrency accounting (`stt-ws.gateway.ts:292-520`).
 

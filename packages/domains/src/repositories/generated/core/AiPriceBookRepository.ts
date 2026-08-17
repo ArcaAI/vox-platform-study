@@ -27,7 +27,7 @@ export interface ResolveUsagePriceQuery {
  * `AiPriceBook` is a SYSTEM-shared read model: the tenant-scope extension widens
  * READS to `tenantId IN [caller, SYSTEM]` so a tenant's rater resolves the
  * platform card under its own CLS, while WRITES stay pinned to the caller
- * (rate-card mutation is GLOBAL_ADMIN-only at the service layer — the
+ * (rate-card mutation is SUPER_ADMIN-only at the service layer — the
  * `AiTaskDefault` / `HarnessPolicy` precedent).
  *
  * Unlike its siblings in the metering plane this model is ADMIN-MANAGED:

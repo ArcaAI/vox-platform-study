@@ -10,7 +10,7 @@ const RESERVED_KEY_PATTERN = /^__.+__$/;
  * True when `key` (after trimming) matches the reserved `__*__` shape used by
  * platform-internal tenants (`__SYSTEM__`, `__GLOBAL__`). Shared
  * by `generateUniqueTenantKey` (auto-generation) and the explicit-key DTO
- * validator (global-admin override).
+ * validator (super-admin override).
  */
 export function isReservedTenantKeyShape(key: string): boolean {
   return RESERVED_KEY_PATTERN.test(key.trim());

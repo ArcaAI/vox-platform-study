@@ -165,17 +165,17 @@ export class UsageAnalyticsService implements IUsageAnalyticsService {
   }
 
   // ═════════════════════════════════════════════════════════════════════════
-  // getTopTenants (GLOBAL-ADMIN-only cross-tenant)
+  // getTopTenants (SUPER_ADMIN-only cross-tenant)
   // ═════════════════════════════════════════════════════════════════════════
 
-  // AUTH-NOTE: getTopTenants is GLOBAL-ADMIN-ONLY, enforced imperatively
+  // AUTH-NOTE: getTopTenants is SUPER_ADMIN-ONLY, enforced imperatively
   // (`isSuperAdmin`) because it deliberately bypasses tenant scope — the
   // permission decorator on the controller route cannot express "and also
   // read every other tenant's rows" (rule 05). Deliberate 403 privilege
   // boundary; every other method on this service stays 404-over-403.
   async getTopTenants(period: string, query: TopTenantsQuery): Promise<TopTenantsResponse> {
     if (!isSuperAdmin(this.cls.get('user'))) {
-      throw new ForbiddenException('Cross-tenant usage rankings are restricted to global administrators.');
+      throw new ForbiddenException('Cross-tenant usage rankings are restricted to super administrators.');
     }
     const billingPeriod = parseBillingPeriod(period);
     const rows = await this.aggregateRepository.topTenantsByCost(billingPeriod.start, billingPeriod.end, query.limit, query.capability);

@@ -46,22 +46,22 @@ interface InvoiceBody {
 test.describe.configure({ mode: 'serial' });
 
 test.describe('Invoice lifecycle', () => {
-  let globalAdminToken: string;
+  let superAdminToken: string;
   let tenantId: string;
   const period = pastPeriod();
 
   test.beforeAll(async ({ request }) => {
     const ga = await loginUser(request, SEEDED_USERS.superAdmin.username, SEEDED_USERS.superAdmin.password, 'ARCAAI');
-    expect(ga, 'global admin login failed').toBeTruthy();
-    globalAdminToken = ga!.token;
+    expect(ga, 'super admin login failed').toBeTruthy();
+    superAdminToken = ga!.token;
 
-    const row = await request.get('/api/v1/admin/ai-task-defaults/row?taskKey=nlp.ner', { headers: bearer(globalAdminToken) });
+    const row = await request.get('/api/v1/admin/ai-task-defaults/row?taskKey=nlp.ner', { headers: bearer(superAdminToken) });
     expect(row.status()).toBe(200);
     tenantId = ((await row.json()) as { tenantId: string }).tenantId;
   });
 
   async function computeDraft(request: APIRequestContext): Promise<InvoiceBody> {
-    const resp = await request.post(`${INVOICES_BASE}/compute-draft`, { headers: bearer(globalAdminToken), data: { tenantId, period } });
+    const resp = await request.post(`${INVOICES_BASE}/compute-draft`, { headers: bearer(superAdminToken), data: { tenantId, period } });
     expect(resp.status(), 'compute-draft').toBe(201);
     return (await resp.json()) as InvoiceBody;
   }
@@ -76,7 +76,7 @@ test.describe('Invoice lifecycle', () => {
   test('the draft read model exposes lines (possibly empty for a zero-usage synthetic period) and the current version', async ({ request }) => {
     const draft = await computeDraft(request);
 
-    const getResp = await request.get(`${INVOICES_BASE}/${draft.id}?tenantId=${tenantId}`, { headers: bearer(globalAdminToken) });
+    const getResp = await request.get(`${INVOICES_BASE}/${draft.id}?tenantId=${tenantId}`, { headers: bearer(superAdminToken) });
     expect(getResp.status()).toBe(200);
     const body = (await getResp.json()) as InvoiceBody;
     expect(body.id).toBe(draft.id);
@@ -86,7 +86,7 @@ test.describe('Invoice lifecycle', () => {
 
   test('finalize WITHOUT If-Match → 428', async ({ request }) => {
     const draft = await computeDraft(request);
-    const resp = await request.post(`${INVOICES_BASE}/${draft.id}/finalize?tenantId=${tenantId}`, { headers: bearer(globalAdminToken) });
+    const resp = await request.post(`${INVOICES_BASE}/${draft.id}/finalize?tenantId=${tenantId}`, { headers: bearer(superAdminToken) });
     expect(resp.status()).toBe(428);
   });
 
@@ -94,7 +94,7 @@ test.describe('Invoice lifecycle', () => {
     const draft = await computeDraft(request);
     const staleVersion = draft.version + 999;
     const resp = await request.post(`${INVOICES_BASE}/${draft.id}/finalize?tenantId=${tenantId}`, {
-      headers: { ...bearer(globalAdminToken), 'If-Match': `"${staleVersion}"` },
+      headers: { ...bearer(superAdminToken), 'If-Match': `"${staleVersion}"` },
     });
     expect(resp.status()).toBe(412);
   });
@@ -105,7 +105,7 @@ test.describe('Invoice lifecycle', () => {
     const draft = await computeDraft(request);
 
     const finalizeResp = await request.post(`${INVOICES_BASE}/${draft.id}/finalize?tenantId=${tenantId}`, {
-      headers: { ...bearer(globalAdminToken), 'If-Match': `"${draft.version}"` },
+      headers: { ...bearer(superAdminToken), 'If-Match': `"${draft.version}"` },
     });
     expect(finalizeResp.status(), 'finalize with current version').toBe(201);
     const finalized = (await finalizeResp.json()) as InvoiceBody;
@@ -113,19 +113,19 @@ test.describe('Invoice lifecycle', () => {
 
     // Immutability: a second finalize attempt (even with the now-current version) → 409, never 200/412.
     const secondFinalize = await request.post(`${INVOICES_BASE}/${draft.id}/finalize?tenantId=${tenantId}`, {
-      headers: { ...bearer(globalAdminToken), 'If-Match': `"${finalized.version}"` },
+      headers: { ...bearer(superAdminToken), 'If-Match': `"${finalized.version}"` },
     });
     expect(secondFinalize.status()).toBe(409);
 
     // Credit memo — targets the now-FINALIZED invoice; nets as an ADJUSTMENT line on the ISSUE-MONTH draft (research: D-series lifecycle), never mutating the finalized invoice's own lines/total.
     const memoResp = await request.post(`${INVOICES_BASE}/${finalized.id}/adjustments?tenantId=${tenantId}`, {
-      headers: bearer(globalAdminToken),
+      headers: bearer(superAdminToken),
       data: { reason: 'task615_e2e_credit', amountMicros: '-1000000' },
     });
     expect(memoResp.status(), 'credit memo against a FINALIZED invoice').toBe(201);
 
     // The finalized invoice's own read model is unchanged by the memo (immutability holds — the memo landed on a different period's draft, not here).
-    const reread = await request.get(`${INVOICES_BASE}/${finalized.id}?tenantId=${tenantId}`, { headers: bearer(globalAdminToken) });
+    const reread = await request.get(`${INVOICES_BASE}/${finalized.id}?tenantId=${tenantId}`, { headers: bearer(superAdminToken) });
     expect(reread.status()).toBe(200);
     const rereadBody = (await reread.json()) as InvoiceBody;
     expect(rereadBody.status).toBe('FINALIZED');
@@ -138,7 +138,7 @@ test.describe('Invoice lifecycle', () => {
     const freshPeriod = `${twoMonthsAgo.getUTCFullYear()}-${String(twoMonthsAgo.getUTCMonth() + 1).padStart(2, '0')}`;
 
     const draftResp = await request.post(`${INVOICES_BASE}/compute-draft`, {
-      headers: bearer(globalAdminToken),
+      headers: bearer(superAdminToken),
       data: { tenantId, period: freshPeriod },
     });
     expect(draftResp.status()).toBe(201);
@@ -146,7 +146,7 @@ test.describe('Invoice lifecycle', () => {
     expect(draft.status).toBe('DRAFT');
 
     const memoResp = await request.post(`${INVOICES_BASE}/${draft.id}/adjustments?tenantId=${tenantId}`, {
-      headers: bearer(globalAdminToken),
+      headers: bearer(superAdminToken),
       data: { reason: 'task615_e2e_should_fail', amountMicros: '-1' },
     });
     expect(memoResp.status()).toBe(409);
@@ -158,21 +158,21 @@ test.describe('Invoice lifecycle', () => {
     const voidPeriod = `${threeMonthsAgo.getUTCFullYear()}-${String(threeMonthsAgo.getUTCMonth() + 1).padStart(2, '0')}`;
 
     const draftResp = await request.post(`${INVOICES_BASE}/compute-draft`, {
-      headers: bearer(globalAdminToken),
+      headers: bearer(superAdminToken),
       data: { tenantId, period: voidPeriod },
     });
     expect(draftResp.status()).toBe(201);
     const draft = (await draftResp.json()) as InvoiceBody;
 
     const voidResp = await request.post(`${INVOICES_BASE}/${draft.id}/void?tenantId=${tenantId}`, {
-      headers: { ...bearer(globalAdminToken), 'If-Match': `"${draft.version}"` },
+      headers: { ...bearer(superAdminToken), 'If-Match': `"${draft.version}"` },
     });
     expect(voidResp.status()).toBe(201);
     const voided = (await voidResp.json()) as InvoiceBody;
     expect(voided.status).toBe('VOID');
 
     const finalizeAfterVoid = await request.post(`${INVOICES_BASE}/${draft.id}/finalize?tenantId=${tenantId}`, {
-      headers: { ...bearer(globalAdminToken), 'If-Match': `"${voided.version}"` },
+      headers: { ...bearer(superAdminToken), 'If-Match': `"${voided.version}"` },
     });
     expect(finalizeAfterVoid.status()).toBe(409);
   });

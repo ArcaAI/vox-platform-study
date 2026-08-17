@@ -119,7 +119,7 @@ export class PromptManagementController {
   // Tenant-scoped raw run rows for the tenant-detail "Agent Jobs" surface
   // (complements the aggregated analytics above). Static path, so it is also
   // declared BEFORE the `:id` param routes. Inherits the class-level
-  // `manage PromptTemplate` posture (tenant-admin own tenant; global-admin
+  // `manage PromptTemplate` posture (tenant-admin own tenant; super-admin
   // cross-tenant via X-Tenant-Id).
   @Get('usage-records')
   @ApiOperation({ summary: 'Paginated prompt run history (PromptUsageRecord rows), newest first' })
@@ -340,7 +340,7 @@ export class PromptManagementController {
   // decorator ON PURPOSE. It inherits the class-level
   // `@Authorize(['manage','PromptTemplate'])` (so the deny-by-default boot audit
   // is satisfied), and the real approval gate is IMPERATIVE in the service — the
-  // permission system has no "global admins only" subject to express the SYSTEM
+  // permission system has no "super admins only" subject to express the SYSTEM
   // branch. Reading only the decorator therefore understates the gate. See
   // `.claude/rules/05-nestjs-api.md` §"Imperative privilege checks".
   //
@@ -348,7 +348,7 @@ export class PromptManagementController {
   // - SYSTEM/library template (tenantId = SYSTEM) → SUPER_ADMIN-only privilege
   //   (403; the shared library is globally visible, so existence is not hidden).
   // - Tenant-owned template → a caller holding `manage:PromptTemplate` for that
-  //   tenant (or a global admin) may approve; cross-tenant ids stay 404 via
+  //   tenant (or a super admin) may approve; cross-tenant ids stay 404 via
   //   `assertOwnedByTenant` (404-over-403).
   //
   // Flips the template to `status = APPROVED` — the gate `prompt-resolution`

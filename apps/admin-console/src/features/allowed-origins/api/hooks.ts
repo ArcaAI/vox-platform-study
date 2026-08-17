@@ -9,7 +9,7 @@ export function useAllowedOrigins(enabled: boolean) {
   return useQuery({ queryKey: allowedOriginKeys.list(), queryFn: listAllowedOrigins, enabled });
 }
 
-/** FR-4 — enforcement posture, reachable by both tenant and global admins. */
+/** FR-4 — enforcement posture, reachable by both tenant and super admins. */
 export function useAllowedOriginPosture() {
   return useQuery({ queryKey: allowedOriginKeys.posture(), queryFn: getAllowedOriginPosture });
 }

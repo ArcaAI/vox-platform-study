@@ -2,7 +2,7 @@ import { AiUsageUnit } from '@arcaai/domains';
 import { EventEmitter } from 'node:events';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { SmrProxyController } from '../text-proxy.controller';
+import { TextProxyController } from '../text-proxy.controller';
 
 /**
  * The SSE proxy meters what flows through it.
@@ -68,7 +68,7 @@ function build(usageLedger?: unknown) {
   const cls = { get: vi.fn((key: string) => (key === 'tenantId' ? 'tenant-1' : null)), getId: vi.fn(() => 'corr') };
   const config = { getConfigValue: vi.fn(() => 'http://smr') };
 
-  const ctrl = new SmrProxyController(
+  const ctrl = new TextProxyController(
     http as never,
     { fetchByCodeName: vi.fn() } as never,
     cls as never,

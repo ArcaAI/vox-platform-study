@@ -20,8 +20,8 @@ export const PLATFORM_DEFAULT_CAPABILITY = 'featurePlatformDefaultCredential';
  * | Situation | Exception | HTTP | Who fixes it |
  * |---|---|---|---|
  * | The tenant vetoed this provider (its own row is disabled) | `ProviderCredentialVetoedException` | 409 | the tenant admin, in the console |
- * | No `featurePlatformDefaultCredential` grant | `QuotaExceededException` | 403 | the account owner / a global admin |
- * | Neither — genuinely nothing configured | *(returns void)* | 503 downstream | a global admin, by keying a SYSTEM row |
+ * | No `featurePlatformDefaultCredential` grant | `QuotaExceededException` | 403 | the account owner / a super admin |
+ * | Neither — genuinely nothing configured | *(returns void)* | 503 downstream | a super admin, by keying a SYSTEM row |
  *
  * VETO BEATS GRANT: a tenant's refusal to send PHI to a shared vendor
  * account outranks a commercial grant, so the veto is checked first. The third

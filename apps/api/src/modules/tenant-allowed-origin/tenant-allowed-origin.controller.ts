@@ -28,8 +28,8 @@ export class AllowedOriginEnforcementPostureResponse {
  * tenant-scoped off CLS (no `?tenantId=` query — mirrors
  * `TenantStorageConfigAdminController#listConfigs`).
  *
- * AUTH-NOTE: governance is NO LONGER global-admin-only on every
- * route — that blanket `assertGlobalAdmin()` imperative gate is gone. The
+ * AUTH-NOTE: governance is NO LONGER super-admin-only on every
+ * route — that blanket `assertSuperAdmin()` imperative gate is gone. The
  * class-level `@CanManage('TenantAllowedOrigin')` now actually gates:
  * `tenant-full-access` (seed `01-policy.ts`) grants `manage:TenantAllowedOrigin`
  * scoped to `conditions.tenantId`, so a `TENANT_ADMIN` reaches this surface for
@@ -105,7 +105,7 @@ export class TenantAllowedOriginController {
     description:
       'The raw `origin` is normalized server-side (`normalizeOrigin()`) before persistence and uniqueness ' +
       'checking — the normalized form, not the raw input, is what gets stored. A wildcard/pattern origin, or a ' +
-      'write to a SYSTEM-tenant row, is refused with 403 unless the caller is a global administrator (enforced ' +
+      'write to a SYSTEM-tenant row, is refused with 403 unless the caller is a super administrator (enforced ' +
       'in `TenantAllowedOriginService`, not here — see the class AUTH-NOTE).',
   })
   @ApiResponse({ status: 201, type: TenantAllowedOriginResponse })

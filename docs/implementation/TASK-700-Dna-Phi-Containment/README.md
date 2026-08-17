@@ -146,9 +146,9 @@ shape at any point.
 
 `dna-writing-style.service.ts:202-230` (`getEffectiveStyleText(doctorId, explicitTenantId?)`) takes
 **no patient or consultation parameter**. It resolves the doctor's latest report and decrypts
-`styleText`. Consumed at `apps/api/src/modules/smr-compat/smr-compat.controller.ts:284-302`
+`styleText`. Consumed at `apps/api/src/modules/text-compat/text-compat.controller.ts:284-302`
 (`resolveDnaStyleText`) and embedded into the system prompt at
-`apps/api/src/modules/smr-compat/v1-summary-prompt.builder.ts:379-384`:
+`apps/api/src/modules/text-compat/v1-summary-prompt.builder.ts:379-384`:
 
 ```ts
 const dnaStyle = options.dnaStyleText?.trim();
@@ -190,7 +190,7 @@ confirms every seeded ArcaAI doctor already has a DNA report row.
   `SECRETS_PROVIDER=vault`. This ticket does not touch encryption.
 - **The structured-output pattern to imitate**: `SOAP_PROMPT_CONFIG` / `SOAP_OUTPUT_SCHEMA`
   (`seed/07-prompt-template.ts:30-53`) and the SMR call site that binds it —
-  `apps/api/src/modules/smr-compat/smr-compat.controller.ts:400-406` —
+  `apps/api/src/modules/text-compat/text-compat.controller.ts:400-406` —
   `response_format: {type:'json_schema', json_schema: responseSchema, strict:true}`.
 - **The decrypt tool for the human-gated task already exists**: `packages/database/scripts/decrypt-row.ts`
   is a READ-ONLY CLI that already has `DnaWritingStyleReport` and `DnaWritingStyleVersion` in its
@@ -231,7 +231,7 @@ confirms every seeded ArcaAI doctor already has a DNA report row.
 - **Approach:** Write three failing tests against current behavior (they must fail RED before Task 2-4 land):
   1. When SMR returns non-JSON content for a DNA generation job, the processor currently persists it verbatim as `styleText` — assert (post-fix) it instead throws/fails the job (mirrors `notifyFailed` pattern already used elsewhere in `processWithContext`, e.g. lines 121, 134-135, 169-170).
   2. Calling `processWithContext` with `textSamples` set for a doctor whose `resolveEffectiveDnaStyleEnabled` mock returns `{ effective: false }` currently succeeds — assert (post-fix) it throws the same `'DNA writing style is disabled for this doctor...'` error the `else` branch already throws.
-  3. Mock the SMR HTTP call (`httpService.axiosRef.post`) to return a `response_format`-shaped call is asserted — i.e. assert the outgoing SMR payload includes a non-null `response_format` derived from the resolved `DNA_ANALYSIS` template's `metaData.promptConfig` (mirrors the existing SOAP `response_format` binding this ticket is imitating — check `smr-compat.controller.ts:400-406` for the exact shape to assert against).
+  3. Mock the SMR HTTP call (`httpService.axiosRef.post`) to return a `response_format`-shaped call is asserted — i.e. assert the outgoing SMR payload includes a non-null `response_format` derived from the resolved `DNA_ANALYSIS` template's `metaData.promptConfig` (mirrors the existing SOAP `response_format` binding this ticket is imitating — check `text-compat.controller.ts:400-406` for the exact shape to assert against).
   Follow the existing `dna-writing-style.processor.test.ts` mock-repository pattern (`DnaWritingStyleReportRepository`, `ContextItemRepository`, etc. all mocked; `ConfigResolver` optional-injected).
 - **Verify:** `pnpm --filter @arcaai/applications test -- dna-writing-style.processor` — new tests present and RED (fail against current code); existing tests still pass.
 
@@ -264,7 +264,7 @@ confirms every seeded ArcaAI doctor already has a DNA report row.
   1. In `callSmr` (lines 315-351), resolve `resolvedTemplate.metaData?.promptConfig?.outputSchema`
      (the object built in Task 2) and pass it as `response_format: { type: 'json_schema', json_schema:
      outputSchema, strict: true }` in the POST body when present — mirror
-     `smr-compat.controller.ts:400-406`'s shape exactly. `resolvedTemplate` is already in scope in
+     `text-compat.controller.ts:400-406`'s shape exactly. `resolvedTemplate` is already in scope in
      `processWithContext` (line 184); thread it (or just the schema) into `callSmr`'s signature.
   2. Replace the `catch { styleText = smrResponse.content; }` fallback at lines 197-203 with a hard
      failure: on `JSON.parse` failure OR a parsed object missing the schema's required top-level
@@ -411,7 +411,7 @@ confirms every seeded ArcaAI doctor already has a DNA report row.
   (out of this ticket's scope) cleans the affected rows.
 - **SCOPE ADDITION (cross-ticket, from TASK-733 authoring verification)**: a SECOND injection
   path exists that this ticket's containment must cover — `apps/api/src/modules/streaming/`
-  `smr-proxy.controller.ts:960-986` reads raw `styleText` via `dnaWritingStyleRepository.findById`,
+  `text-proxy.controller.ts:960-986` reads raw `styleText` via `dnaWritingStyleRepository.findById`,
   **bypassing the gated `getEffectiveStyleText` accessor** (and therefore any flag/gating logic in
   it). Containment that fixes only ingestion (Tasks 1–5) while this bypass keeps injecting stored
   profiles is incomplete: add a task to route `smr-proxy` through the gated accessor (or apply the
@@ -440,9 +440,9 @@ plan and was **not** run.
 | `packages/database/scripts/dna-phi-scan.ts` | **New, AUTHOR-ONLY (Task 6).** Read-only CLI: enumerates a tenant's `DnaWritingStyleReport` rows via the unscoped platform-admin client, decrypts `styleText` in-memory per row (reusing `decrypt-row.ts`'s `decryptField` + Vault wiring), and runs four heuristic categories (MRN-shaped tokens, DOB-shaped dates, known-drug-name + dose co-occurrence, a two-capitalized-word name proxy after `Patient`/`Mr.`/`Mrs.`/`Ms.`/`Dr.`). Prints ONLY row id / tenant id / doctor id / per-category match COUNTS — never the decrypted text or a matched substring. Registered as `pnpm --filter @arcaai/database dna:phi-scan`. |
 | `packages/database/scripts/__tests__/dna-phi-scan.test.ts` | **New.** Unit tests for every pure heuristic + arg-parsing/validation helper (no DB/Vault). |
 | `packages/database/package.json` | Added the `dna:phi-scan` script alias, mirroring the `decrypt:row` precedent. |
-| `apps/api/src/modules/streaming/smr-proxy.controller.ts` | Scope addition: the `dna_writing_style_id` block still validates existence/ownership off the raw repository row (unchanged 404/403 behavior), but the text actually injected into the system prompt now comes from `IDnaWritingStyleService.getEffectiveStyleText(callerId, tenantId)` — the same gated accessor `smr-compat.controller.ts` already uses — instead of reading `dnaStyle.styleText` directly (a field that is never populated by a raw `findById`, since the column is ciphertext-only, and which carried no opt-out gate). New optional trailing `IDnaWritingStyleService` ctor param. |
+| `apps/api/src/modules/streaming/text-proxy.controller.ts` | Scope addition: the `dna_writing_style_id` block still validates existence/ownership off the raw repository row (unchanged 404/403 behavior), but the text actually injected into the system prompt now comes from `IDnaWritingStyleService.getEffectiveStyleText(callerId, tenantId)` — the same gated accessor `text-compat.controller.ts` already uses — instead of reading `dnaStyle.styleText` directly (a field that is never populated by a raw `findById`, since the column is ciphertext-only, and which carried no opt-out gate). New optional trailing `IDnaWritingStyleService` ctor param. |
 | `apps/api/src/modules/streaming/streaming.module.ts` | Imports `DnaWritingStyleServiceModule` to supply the new dependency. |
-| `apps/api/src/modules/streaming/__tests__/smr-proxy.controller.test.ts` | Updated the two DNA-style content-assertion tests to mock `IDnaWritingStyleService.getEffectiveStyleText` instead of reading `styleText` off the repository mock; added a regression test asserting no style is injected when the gated accessor returns `null` (opted-out doctor). |
+| `apps/api/src/modules/streaming/__tests__/text-proxy.controller.test.ts` | Updated the two DNA-style content-assertion tests to mock `IDnaWritingStyleService.getEffectiveStyleText` instead of reading `styleText` off the repository mock; added a regression test asserting no style is injected when the gated accessor returns `null` (opted-out doctor). |
 
 ### 7.2 TDD evidence — RED before GREEN
 
@@ -507,13 +507,13 @@ $ pnpm --filter @arcaai/database build           # tsc — clean
 $ cd packages/database && npx eslint src/prisma/db_main/seed/07-prompt-template.ts   # 0 problems
 
 $ pnpm --filter @arcaai/api typecheck            # tsc --noEmit — clean, 0 errors
-$ cd apps/api && npx vitest run src/modules/streaming/__tests__/smr-proxy.controller.test.ts
+$ cd apps/api && npx vitest run src/modules/streaming/__tests__/text-proxy.controller.test.ts
  Test Files  1 passed (1)
       Tests  81 passed (81)
-$ cd apps/api && npx eslint src/modules/streaming/smr-proxy.controller.ts \
-    src/modules/streaming/streaming.module.ts src/modules/streaming/__tests__/smr-proxy.controller.test.ts
+$ cd apps/api && npx eslint src/modules/streaming/text-proxy.controller.ts \
+    src/modules/streaming/streaming.module.ts src/modules/streaming/__tests__/text-proxy.controller.test.ts
  8 problems (0 errors, 8 warnings)   # all 7 warnings pre-existing eslint-comments/require-description
-                                     # lines in smr-proxy.controller.ts unrelated to this diff; the 8th
+                                     # lines in text-proxy.controller.ts unrelated to this diff; the 8th
                                      # is the test file's own ignore-pattern notice
 ```
 
@@ -551,9 +551,9 @@ the §6 scope addition (`@arcaai/api`).
   construction can carry nothing outside the closed schema.
   Coordination with the parallel `TASK-733 department-assignment-personalization` schema-revision note:
   not needed — the schema was designed once, from the SOAP exemplar, and did not require iteration.
-- **§6 bypass fix — gated accessor over inline re-implementation**: `smr-proxy.controller.ts` now calls
+- **§6 bypass fix — gated accessor over inline re-implementation**: `text-proxy.controller.ts` now calls
   `IDnaWritingStyleService.getEffectiveStyleText(callerId, tenantId)` rather than re-implementing the
-  gate/decrypt logic inline, matching the DRY precedent already established by `smr-compat.controller.ts`.
+  gate/decrypt logic inline, matching the DRY precedent already established by `text-compat.controller.ts`.
   This makes the effective text always the doctor's CURRENT (latest, gate-checked) profile regardless of
   which specific `dna_writing_style_id` was referenced — the existence/ownership check on that id is
   unchanged (still 404/403), but the id no longer determines which report's text gets used.

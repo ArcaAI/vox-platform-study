@@ -43,7 +43,7 @@ export class AiProviderConnectionRepository extends Repository<AiProviderConnect
   /**
    * The (tenant, service, provider) lookup that drives the resolution cascade.
    *
-   * Accepts an optional transaction/base client so a global admin acting on a
+   * Accepts an optional transaction/base client so a super admin acting on a
    * foreign tenant (or the SYSTEM tenant) can read through the unscoped lane —
    * without it the tenant-scope extension injects the admin's working tenant
    * and the read silently misses.
@@ -66,7 +66,7 @@ export class AiProviderConnectionRepository extends Repository<AiProviderConnect
     } catch (err) {
       // Only a genuine miss maps to null. Anything else — most importantly the
       // tenant-scope extension's `TenantScope: tenantId mismatch` throw on a
-      // cross-tenant read — must SURFACE, or a global-admin read targeting a
+      // cross-tenant read — must SURFACE, or a super-admin read targeting a
       // foreign tenant would silently "succeed" as empty (r2605 Finding A).
       if (err instanceof DataNotFoundException) return null;
       throw err;

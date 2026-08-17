@@ -54,7 +54,7 @@ import { NlpTaskInstructionsModule } from './modules/nlp-task-instructions/nlp-t
 import { ApiKeyModule } from './modules/api-key/api-key.module';
 import { AuditLogModule } from './modules/audit-log/audit-log.module';
 import { AuthModule } from './modules/auth/auth.module';
-// /admin/settings global-settings CRUD (global-admin tier).
+// /admin/settings global-settings CRUD (super-admin tier).
 import { GlobalSettingModule } from './modules/global-setting/global-setting.module';
 // /admin/settings/catalog capability inventory (registered
 // BEFORE GlobalSettingModule so the static route wins over admin/settings/:id).
@@ -107,7 +107,7 @@ import { RbacModule } from './modules/rbac/rbac.module';
 import { ResourceSubscriptionModule } from './modules/resource-subscription/resource-subscription.module';
 import { StorageAccessKeyModule } from './modules/storage-access-key/storage-access-key.module';
 import { StorageModule } from './modules/storage/storage.module';
-import { SmrCompatModule } from './modules/text-compat/text-compat.module';
+import { TextCompatModule } from './modules/text-compat/text-compat.module';
 import { SttCompatModule } from './modules/stt-compat/stt-compat.module';
 import { StreamingModule } from './modules/streaming/streaming.module';
 import { SpeechModule } from './modules/speech/speech.module';
@@ -340,7 +340,7 @@ const common = [
   VaultRotationWorkerModule,
   // Wires ClsService → tenantScopeFilter Prisma
   // extension at app bootstrap. Until this module is loaded, the
-  // extension treats every query as global-admin pass-through (the
+  // extension treats every query as super-admin pass-through (the
   // safe default for CLI / seed scripts that run without CLS).
   TenantContextProviderModule,
   // Registers the global TenantOwnedResourceInterceptor as
@@ -362,7 +362,7 @@ const featureModules: any[] = [
   NlpTaskInstructionsModule,
   // The config-plane core surfaces: /admin/ai-providers
   // (provider endpoints + BYO credentials) and /admin/ai-runtime-profiles
-  // (hyperparameter/context/concurrency profiles, global-admin only).
+  // (hyperparameter/context/concurrency profiles, super-admin only).
   AiProviderConnectionModule,
   AiRuntimeProfileModule,
   ApiKeyModule,
@@ -371,10 +371,10 @@ const featureModules: any[] = [
   ConsultationModule,
   // /admin/consent-grants — admin CRUD over ConsentGrant (TASK-712).
   ConsentModule,
-  // Curated release notes: reader surface + global-admin authoring.
+  // Curated release notes: reader surface + super-admin authoring.
   ChangelogModule,
   DepartmentModule,
-  // Global-admin CRUD over the browser-origin allow-list.
+  // Super-admin CRUD over the browser-origin allow-list.
   TenantAllowedOriginModule,
   // Tenant-declared consultation context schemas: admin CRUD +
   // publish/pin at /admin/consultation-context-schemas, and the client
@@ -387,7 +387,7 @@ const featureModules: any[] = [
   // agent (the DepartmentAgentResyncController precedent).
   AgentPromotionModule,
   DnaWritingStyleModule,
-  // /admin/entitlements/* (global-admin matrix/override/kill-switch/downgrade)
+  // /admin/entitlements/* (super-admin matrix/override/kill-switch/downgrade)
   // + /entitlements/me (tenant self-snapshot). All entitlements endpoints live here.
   EntitlementsApiModule,
   // /admin/billing/rate-card + /admin/billing/invoices + /billing/me/* —
@@ -414,7 +414,7 @@ const featureModules: any[] = [
   MonitoringModule,
   // /admin/notifications (read/update/delete; no admin POST).
   NotificationModule,
-  // /admin/platform/{metrics,sockets,consumption} (global-admin).
+  // /admin/platform/{metrics,sockets,consumption} (super-admin).
   PlatformMetricsModule,
   PromptManagementModule,
   // /admin/harness/* (policy, observe, workflow ops).
@@ -423,7 +423,7 @@ const featureModules: any[] = [
   AgentTrajectoryModule,
   // Phase 3A item 6 — /admin/agentic/* (read-only effective instruction inventory).
   AgenticAdminModule,
-  // /admin/mcp-servers/* (MCP external-tools registry; global-admin CRUD + registry read).
+  // /admin/mcp-servers/* (MCP external-tools registry; super-admin CRUD + registry read).
   McpAdminModule,
   // /admin/harness/pipeline-policy (realtime-toggle cascade admin).
   PipelinePolicyAdminModule,
@@ -442,7 +442,7 @@ const featureModules: any[] = [
   StorageModule,
   StorageAccessKeyModule,
   // v1-compat SMR summary shims (/api/smr/api/v1/summary/sync + /presummary).
-  SmrCompatModule,
+  TextCompatModule,
   SttCompatModule,
   StreamingModule,
   SpeechModule,

@@ -1712,14 +1712,14 @@ describe('PromptManagementService', () => {
       getEffective: vi.fn().mockResolvedValue({ taskKey: 'smr.test', model: { provider: 'lm-studio', sourceUri: 'resolved-medgemma' } }),
     });
 
-    const buildSmrService = (
+    const buildTextService = (
       taskOutput: string,
       opts: {
         aiTaskDefaultService?: { getEffective: ReturnType<typeof vi.fn> };
         secretsService?: Record<string, unknown>;
         aiModelRepository?: { findByTaskTypeSharedRead: ReturnType<typeof vi.fn> };
         goldenCaseRepository?: { findById: ReturnType<typeof vi.fn>; decryptFieldsFromEntity: ReturnType<typeof vi.fn> };
-        smrRequestEnrichment?: Record<string, unknown>;
+        textRequestEnrichment?: Record<string, unknown>;
         taskOverrides?: Record<string, unknown>;
       } = {},
     ) => {
@@ -1743,7 +1743,7 @@ describe('PromptManagementService', () => {
         undefined, // promotionGate
         opts.aiModelRepository as never, // aiModelRepository
         opts.goldenCaseRepository as never, // goldenCaseRepository
-        opts.smrRequestEnrichment as never, // SmrRequestEnrichmentService
+        opts.textRequestEnrichment as never, // TextRequestEnrichmentService
       );
       return { svc, httpMock, aiTaskDefaultService };
     };
@@ -1777,7 +1777,7 @@ describe('PromptManagementService', () => {
         content: 'Pinned {{topic}} and {{depth}}',
         variables: [{ name: 'topic' }, { name: 'depth' }],
       });
-      const { svc } = buildSmrService(wordsOfLength(60));
+      const { svc } = buildTextService(wordsOfLength(60));
 
       const ack = await svc.startPromptTemplateTest('tpl-1', {
         versionNumber: 2,
@@ -1797,7 +1797,7 @@ describe('PromptManagementService', () => {
     it('resolves provider+model via the smr.test AiTaskDefault and posts both to SMR', async () => {
       const existing = createMockTemplateEntity({ id: 'tpl-1', version: 1, content: 'Summarize {{topic}}' });
       mockTemplateRepo.findById.mockResolvedValue(existing);
-      const { svc, httpMock, aiTaskDefaultService } = buildSmrService(wordsOfLength(60));
+      const { svc, httpMock, aiTaskDefaultService } = buildTextService(wordsOfLength(60));
 
       const ack = await svc.startPromptTemplateTest('tpl-1', { variables: { topic: 'asthma' } } as never);
 
@@ -1812,7 +1812,7 @@ describe('PromptManagementService', () => {
     it('acks with { taskId, streamUrl } and never fetches the finished generation', async () => {
       const existing = createMockTemplateEntity({ id: 'tpl-1', version: 1 });
       mockTemplateRepo.findById.mockResolvedValue(existing);
-      const { svc, httpMock } = buildSmrService(wordsOfLength(60));
+      const { svc, httpMock } = buildTextService(wordsOfLength(60));
 
       const ack = await svc.startPromptTemplateTest('tpl-1', {} as never);
 
@@ -1831,8 +1831,8 @@ describe('PromptManagementService', () => {
     it('sends X-Tenant-Id and runs the body through the shared SMR enrichment service', async () => {
       const existing = createMockTemplateEntity({ id: 'tpl-1', version: 1 });
       mockTemplateRepo.findById.mockResolvedValue(existing);
-      const smrRequestEnrichment = {
-        applySmrRuntimeProfile: vi.fn(async (b: Record<string, unknown>) => {
+      const textRequestEnrichment = {
+        applyTextRuntimeProfile: vi.fn(async (b: Record<string, unknown>) => {
           b.temperature = 0.3;
           return b;
         }),
@@ -1841,12 +1841,12 @@ describe('PromptManagementService', () => {
           return b;
         }),
       };
-      const { svc, httpMock } = buildSmrService(wordsOfLength(60), { smrRequestEnrichment });
+      const { svc, httpMock } = buildTextService(wordsOfLength(60), { textRequestEnrichment });
 
       await svc.startPromptTemplateTest('tpl-1', {} as never);
 
-      expect(smrRequestEnrichment.applySmrRuntimeProfile).toHaveBeenCalledTimes(1);
-      expect(smrRequestEnrichment.applyTenantProviderOverrides).toHaveBeenCalledTimes(1);
+      expect(textRequestEnrichment.applyTextRuntimeProfile).toHaveBeenCalledTimes(1);
+      expect(textRequestEnrichment.applyTenantProviderOverrides).toHaveBeenCalledTimes(1);
       const [, payload, config] = httpMock.axiosRef.post.mock.calls[0];
       expect((payload as { temperature?: number }).temperature).toBe(0.3);
       expect((payload as { provider_overrides?: unknown }).provider_overrides).toBeDefined();
@@ -1858,7 +1858,7 @@ describe('PromptManagementService', () => {
       const existing = createMockTemplateEntity({ id: 'tpl-1', version: 5, content: 'Summarize {{topic}}' });
       mockTemplateRepo.findById.mockResolvedValue(existing);
       mockTemplateRepo.updateWithVersion.mockResolvedValue(createMockTemplateEntity({ id: 'tpl-1', version: 6 }));
-      const { svc, httpMock } = buildSmrService(output);
+      const { svc, httpMock } = buildTextService(output);
 
       const { ack, result } = await runFullTest(svc, { variables: { topic: 'asthma' }, expectedVersion: 5 });
 
@@ -1888,7 +1888,7 @@ describe('PromptManagementService', () => {
     it('finalize on a task that is still running throws BadRequestException naming the state (no write)', async () => {
       const existing = createMockTemplateEntity({ id: 'tpl-1', version: 1 });
       mockTemplateRepo.findById.mockResolvedValue(existing);
-      const { svc } = buildSmrService('', { taskOverrides: { status: 'running', content: null } });
+      const { svc } = buildTextService('', { taskOverrides: { status: 'running', content: null } });
 
       await expect(svc.finalizePromptTemplateTest('tpl-1', { taskId: 'task-1', expectedVersion: 1 } as never)).rejects.toThrow(/running/);
       expect(mockTemplateRepo.updateWithVersion).not.toHaveBeenCalled();
@@ -1897,16 +1897,16 @@ describe('PromptManagementService', () => {
     it('finalize on an unknown task id (SMR 404) throws NotFoundException', async () => {
       const existing = createMockTemplateEntity({ id: 'tpl-1', version: 1 });
       mockTemplateRepo.findById.mockResolvedValue(existing);
-      const { svc, httpMock } = buildSmrService('');
+      const { svc, httpMock } = buildTextService('');
       httpMock.axiosRef.get.mockRejectedValueOnce(Object.assign(new Error('not found'), { response: { status: 404 } }));
 
       await expect(svc.finalizePromptTemplateTest('tpl-1', { taskId: 'ghost', expectedVersion: 1 } as never)).rejects.toThrow(NotFoundException);
     });
 
     // ── encrypt `lastTestOutput` on the finalize write ──
-    const buildSmrServiceWithSecrets = (taskOutput: string) => {
+    const buildTextServiceWithSecrets = (taskOutput: string) => {
       const secretsService = { encrypt: vi.fn(), decrypt: vi.fn(), getSecretOptional: vi.fn().mockResolvedValue('') };
-      const { svc, httpMock } = buildSmrService(taskOutput, { secretsService });
+      const { svc, httpMock } = buildTextService(taskOutput, { secretsService });
       return { svc, httpMock, secretsService };
     };
 
@@ -1915,7 +1915,7 @@ describe('PromptManagementService', () => {
       const existing = createMockTemplateEntity({ id: 'tpl-1', version: 1, content: 'Summarize {{topic}}' });
       mockTemplateRepo.findById.mockResolvedValue(existing);
       mockTemplateRepo.updateWithVersion.mockResolvedValue(createMockTemplateEntity({ id: 'tpl-1', version: 2 }));
-      const { svc, secretsService } = buildSmrServiceWithSecrets(output);
+      const { svc, secretsService } = buildTextServiceWithSecrets(output);
 
       const { result } = await runFullTest(svc, { variables: { topic: 'asthma' }, expectedVersion: 1 });
 
@@ -1933,7 +1933,7 @@ describe('PromptManagementService', () => {
       const existing = createMockTemplateEntity({ id: 'tpl-1', version: 1 });
       mockTemplateRepo.findById.mockResolvedValue(existing);
       mockTemplateRepo.updateWithVersion.mockResolvedValue(createMockTemplateEntity({ id: 'tpl-1', version: 2 }));
-      const { svc } = buildSmrServiceWithSecrets(wordsOfLength(60));
+      const { svc } = buildTextServiceWithSecrets(wordsOfLength(60));
       mockTemplateRepo.encryptFieldsIntoEntity.mockRejectedValueOnce(new Error('vault down'));
 
       const { result } = await runFullTest(svc);
@@ -1946,7 +1946,7 @@ describe('PromptManagementService', () => {
       const existing = createMockTemplateEntity({ id: 'tpl-1', version: 1 });
       mockTemplateRepo.findById.mockResolvedValue(existing);
       mockTemplateRepo.updateWithVersion.mockResolvedValue(createMockTemplateEntity({ id: 'tpl-1', version: 2 }));
-      const { svc } = buildSmrService(wordsOfLength(60)); // no secretsService
+      const { svc } = buildTextService(wordsOfLength(60)); // no secretsService
 
       await runFullTest(svc);
 
@@ -1958,7 +1958,7 @@ describe('PromptManagementService', () => {
       const existing = createMockTemplateEntity({ id: 'tpl-1', version: 1 });
       mockTemplateRepo.findById.mockResolvedValue(existing);
       mockTemplateRepo.updateWithVersion.mockResolvedValue(createMockTemplateEntity({ id: 'tpl-1', version: 2 }));
-      const { svc } = buildSmrService(wordsOfLength(5)); // 5/50 → 0.1
+      const { svc } = buildTextService(wordsOfLength(5)); // 5/50 → 0.1
 
       const { result } = await runFullTest(svc);
 
@@ -1969,7 +1969,7 @@ describe('PromptManagementService', () => {
       const existing = createMockTemplateEntity({ id: 'tpl-1', version: 1 });
       mockTemplateRepo.findById.mockResolvedValue(existing);
       mockTemplateRepo.updateWithVersion.mockResolvedValue(createMockTemplateEntity({ id: 'tpl-1', version: 2 }));
-      const { svc } = buildSmrService(wordsOfLength(80));
+      const { svc } = buildTextService(wordsOfLength(80));
 
       await runFullTest(svc);
 
@@ -1979,7 +1979,7 @@ describe('PromptManagementService', () => {
     it('throws NotFoundException on a cross-tenant template — on BOTH calls (no SMR call, no write)', async () => {
       const foreign = createMockTemplateEntity({ id: 'tpl-X', tenantId: 'tenant-OTHER', version: 1 });
       mockTemplateRepo.findById.mockResolvedValue(foreign);
-      const { svc, httpMock } = buildSmrService(wordsOfLength(80));
+      const { svc, httpMock } = buildTextService(wordsOfLength(80));
 
       await expect(svc.startPromptTemplateTest('tpl-X', {} as never)).rejects.toThrow(NotFoundException);
       await expect(svc.finalizePromptTemplateTest('tpl-X', { taskId: 'task-1' } as never)).rejects.toThrow(NotFoundException);
@@ -1990,7 +1990,7 @@ describe('PromptManagementService', () => {
 
     it('throws NotFoundException for an unknown template id', async () => {
       mockTemplateRepo.findById.mockResolvedValue(undefined);
-      const { svc } = buildSmrService(wordsOfLength(80));
+      const { svc } = buildTextService(wordsOfLength(80));
 
       await expect(svc.startPromptTemplateTest('tpl-missing', {} as never)).rejects.toThrow(NotFoundException);
       await expect(svc.finalizePromptTemplateTest('tpl-missing', { taskId: 'task-1' } as never)).rejects.toThrow(NotFoundException);
@@ -2002,7 +2002,7 @@ describe('PromptManagementService', () => {
       mockTemplateRepo.updateWithVersion.mockRejectedValue(
         new OptimisticConcurrencyException('PromptTemplate', 'tpl-1', { expectedVersion: 5, currentVersion: 6 }),
       );
-      const { svc } = buildSmrService(wordsOfLength(80));
+      const { svc } = buildTextService(wordsOfLength(80));
 
       await expect(svc.finalizePromptTemplateTest('tpl-1', { taskId: 'task-1', expectedVersion: 5 } as never)).rejects.toThrow(
         OptimisticConcurrencyException,
@@ -2015,7 +2015,7 @@ describe('PromptManagementService', () => {
         const existing = createMockTemplateEntity({ id: 'tpl-1', version: 1, ...entityOverrides });
         mockTemplateRepo.findById.mockResolvedValue(existing);
         mockTemplateRepo.updateWithVersion.mockResolvedValue(createMockTemplateEntity({ id: 'tpl-1', version: 2, ...entityOverrides }));
-        const { svc } = buildSmrService(output);
+        const { svc } = buildTextService(output);
         const { result } = await runFullTest(svc);
         return result;
       };
@@ -2082,7 +2082,7 @@ describe('PromptManagementService', () => {
         const aiModelRepository = {
           findByTaskTypeSharedRead: vi.fn().mockResolvedValue([{ provider: 'azure-openai', sourceUri: 'gpt-4o' }]),
         };
-        const { svc, httpMock } = buildSmrService(wordsOfLength(60), { aiTaskDefaultService, aiModelRepository });
+        const { svc, httpMock } = buildTextService(wordsOfLength(60), { aiTaskDefaultService, aiModelRepository });
 
         await svc.startPromptTemplateTest('tpl-1', { provider: 'azure-openai', model: 'gpt-4o' } as never);
 
@@ -2097,7 +2097,7 @@ describe('PromptManagementService', () => {
         const existing = createMockTemplateEntity({ id: 'tpl-1', version: 1 });
         mockTemplateRepo.findById.mockResolvedValue(existing);
         const aiModelRepository = { findByTaskTypeSharedRead: vi.fn().mockResolvedValue([]) };
-        const { svc, httpMock } = buildSmrService(wordsOfLength(60), { aiModelRepository });
+        const { svc, httpMock } = buildTextService(wordsOfLength(60), { aiModelRepository });
 
         await expect(svc.startPromptTemplateTest('tpl-1', { provider: 'ghost-provider', model: 'ghost-model' } as never)).rejects.toThrow(
           ArgumentInvalidException,
@@ -2109,7 +2109,7 @@ describe('PromptManagementService', () => {
       it('rejects a partial pair (provider without model)', async () => {
         const existing = createMockTemplateEntity({ id: 'tpl-1', version: 1 });
         mockTemplateRepo.findById.mockResolvedValue(existing);
-        const { svc } = buildSmrService(wordsOfLength(60));
+        const { svc } = buildTextService(wordsOfLength(60));
 
         await expect(svc.startPromptTemplateTest('tpl-1', { provider: 'azure-openai' } as never)).rejects.toThrow(ArgumentInvalidException);
       });
@@ -2119,7 +2119,7 @@ describe('PromptManagementService', () => {
         const existing = createMockTemplateEntity({ id: 'tpl-1', version: 1 });
         mockTemplateRepo.findById.mockResolvedValue(existing);
         const aiTaskDefaultService = { getEffective: vi.fn().mockResolvedValue({ modelSlug: null, source: null, model: null }) };
-        const { svc, httpMock } = buildSmrService(wordsOfLength(60), { aiTaskDefaultService });
+        const { svc, httpMock } = buildTextService(wordsOfLength(60), { aiTaskDefaultService });
 
         await expect(svc.startPromptTemplateTest('tpl-1', {} as never)).rejects.toThrow(BadRequestException);
         await expect(svc.startPromptTemplateTest('tpl-1', {} as never)).rejects.toThrow(/smr\.test/);
@@ -2131,7 +2131,7 @@ describe('PromptManagementService', () => {
         mockTemplateRepo.findById.mockResolvedValue(existing);
         const boom = new Error('registry unavailable');
         const aiTaskDefaultService = { getEffective: vi.fn().mockRejectedValue(boom) };
-        const { svc, httpMock } = buildSmrService(wordsOfLength(60), { aiTaskDefaultService });
+        const { svc, httpMock } = buildTextService(wordsOfLength(60), { aiTaskDefaultService });
 
         await expect(svc.startPromptTemplateTest('tpl-1', {} as never)).rejects.toThrow(boom);
         expect(httpMock.axiosRef.post).not.toHaveBeenCalled();
@@ -2143,7 +2143,7 @@ describe('PromptManagementService', () => {
       it('dry-run returns the assembled prompt and never calls SMR at all', async () => {
         const existing = createMockTemplateEntity({ id: 'tpl-1', version: 1, content: 'Summarize {{topic}}' });
         mockTemplateRepo.findById.mockResolvedValue(existing);
-        const { svc, httpMock } = buildSmrService(wordsOfLength(60));
+        const { svc, httpMock } = buildTextService(wordsOfLength(60));
 
         const ack = await svc.startPromptTemplateTest('tpl-1', { variables: { topic: 'asthma' }, dryRun: true } as never);
 
@@ -2168,7 +2168,7 @@ describe('PromptManagementService', () => {
           variables: [{ name: 'topic' }],
         });
         mockVersionRepo.findByVersionNumber.mockResolvedValue(version);
-        const { svc, httpMock } = buildSmrService(wordsOfLength(60));
+        const { svc, httpMock } = buildTextService(wordsOfLength(60));
 
         await svc.startPromptTemplateTest('tpl-1', { versionNumber: 2, variables: { topic: 'asthma' } } as never);
 
@@ -2183,7 +2183,7 @@ describe('PromptManagementService', () => {
         const existing = createMockTemplateEntity({ id: 'tpl-1', version: 1 });
         mockTemplateRepo.findById.mockResolvedValue(existing);
         mockVersionRepo.findByVersionNumber.mockResolvedValue(undefined);
-        const { svc, httpMock } = buildSmrService(wordsOfLength(60));
+        const { svc, httpMock } = buildTextService(wordsOfLength(60));
 
         await expect(svc.startPromptTemplateTest('tpl-1', { versionNumber: 99 } as never)).rejects.toThrow(NotFoundException);
         expect(httpMock.axiosRef.post).not.toHaveBeenCalled();
@@ -2198,7 +2198,7 @@ describe('PromptManagementService', () => {
           variables: [{ name: 'current_department' }, { name: 'visit_type' }],
         });
         mockTemplateRepo.findById.mockResolvedValue(existing);
-        const { svc, httpMock } = buildSmrService(wordsOfLength(60));
+        const { svc, httpMock } = buildTextService(wordsOfLength(60));
 
         await svc.startPromptTemplateTest('tpl-1', { variables: { current_department: 'Cardiology' } } as never);
 
@@ -2221,7 +2221,7 @@ describe('PromptManagementService', () => {
           decryptFieldsFromEntity: vi.fn().mockResolvedValue({ transcript: 'Patient reports chest pain.', referenceNote: 'SOAP note...' }),
         };
         const secretsService = { encrypt: vi.fn(), decrypt: vi.fn(), getSecretOptional: vi.fn().mockResolvedValue('') };
-        const { svc, httpMock } = buildSmrService(wordsOfLength(60), { goldenCaseRepository, secretsService });
+        const { svc, httpMock } = buildTextService(wordsOfLength(60), { goldenCaseRepository, secretsService });
 
         await svc.startPromptTemplateTest('tpl-1', { goldenCaseId: 'case-1' } as never);
 
@@ -2238,7 +2238,7 @@ describe('PromptManagementService', () => {
           findById: vi.fn().mockResolvedValue({ id: 'case-X', tenantId: 'tenant-OTHER' }),
           decryptFieldsFromEntity: vi.fn(),
         };
-        const { svc, httpMock } = buildSmrService(wordsOfLength(60), { goldenCaseRepository });
+        const { svc, httpMock } = buildTextService(wordsOfLength(60), { goldenCaseRepository });
 
         await expect(svc.startPromptTemplateTest('tpl-1', { goldenCaseId: 'case-X' } as never)).rejects.toThrow(NotFoundException);
         expect(goldenCaseRepository.decryptFieldsFromEntity).not.toHaveBeenCalled();
@@ -2249,7 +2249,7 @@ describe('PromptManagementService', () => {
         const existing = createMockTemplateEntity({ id: 'tpl-1', version: 1 });
         mockTemplateRepo.findById.mockResolvedValue(existing);
         const goldenCaseRepository = { findById: vi.fn().mockResolvedValue(undefined), decryptFieldsFromEntity: vi.fn() };
-        const { svc } = buildSmrService(wordsOfLength(60), { goldenCaseRepository });
+        const { svc } = buildTextService(wordsOfLength(60), { goldenCaseRepository });
 
         await expect(svc.startPromptTemplateTest('tpl-1', { goldenCaseId: 'case-missing' } as never)).rejects.toThrow(NotFoundException);
       });
@@ -2257,7 +2257,7 @@ describe('PromptManagementService', () => {
       it('rejects sampleInput + goldenCaseId supplied together', async () => {
         const existing = createMockTemplateEntity({ id: 'tpl-1', version: 1 });
         mockTemplateRepo.findById.mockResolvedValue(existing);
-        const { svc, httpMock } = buildSmrService(wordsOfLength(60));
+        const { svc, httpMock } = buildTextService(wordsOfLength(60));
 
         await expect(svc.startPromptTemplateTest('tpl-1', { sampleInput: 'free text', goldenCaseId: 'case-1' } as never)).rejects.toThrow(
           ArgumentInvalidException,
@@ -2655,7 +2655,7 @@ describe('PromptManagementService', () => {
     });
   });
 
-  // ─── approveTemplate scope (OD-3): SYSTEM = global-admin only,
+  // ─── approveTemplate scope (OD-3): SYSTEM = super-admin only,
   //     tenant-owned = manage:PromptTemplate for that tenant ───
   describe('approveTemplate authorization scope (OD-3)', () => {
     const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
@@ -2731,7 +2731,7 @@ describe('PromptManagementService', () => {
       expect(mockTemplateRepo.updateWithVersion).not.toHaveBeenCalled();
     });
 
-    it('global admin approves a SYSTEM/library template → 200', async () => {
+    it('super admin approves a SYSTEM/library template → 200', async () => {
       useContext({ roles: ['SUPER_ADMIN'], tenantId: 'tenant-1', canManage: false });
       const tpl = createMockTemplateEntity({ id: 'tpl-sys', tenantId: SYSTEM_TENANT_ID, scope: 'TENANT_DEFAULT', status: 'DRAFT', version: 2 });
       wireApproveSuccess(tpl);
@@ -2742,7 +2742,7 @@ describe('PromptManagementService', () => {
       expect(mockTemplateRepo.updateWithVersion).toHaveBeenCalled();
     });
 
-    it('global admin approves a tenant-owned template → 200', async () => {
+    it('super admin approves a tenant-owned template → 200', async () => {
       useContext({ roles: ['SUPER_ADMIN'], tenantId: 'tenant-1', canManage: false });
       const tpl = createMockTemplateEntity({ id: 'tpl-t', tenantId: 'tenant-1', scope: 'DEPARTMENT_DEFAULT', status: 'DRAFT', version: 4 });
       wireApproveSuccess(tpl);
@@ -2803,7 +2803,7 @@ describe('PromptManagementService', () => {
 
     beforeEach(() => {
       mockGate.evaluatePromotion.mockReset();
-      // Global admin approving a tenant-owned DRAFT template.
+      // Super admin approving a tenant-owned DRAFT template.
       mockClsService.get.mockImplementation((key: string) =>
         key === 'user' ? { ...defaultClsContext.user, roles: ['SUPER_ADMIN'] } : key === 'tenantId' ? 'tenant-1' : null,
       );

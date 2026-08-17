@@ -686,9 +686,7 @@ export class DepartmentAgentService extends BaseService implements IDepartmentAg
     if (!overrides) return;
     const disallowed = disallowedHarnessOverrideKeys(overrides);
     if (disallowed.length > 0) {
-      throw new BadRequestException(
-        `harnessOverrides may only carry tenant-tier keys; the following are global-admin-only: ${disallowed.join(', ')}`,
-      );
+      throw new BadRequestException(`harnessOverrides may only carry tenant-tier keys; the following are super-admin-only: ${disallowed.join(', ')}`);
     }
   }
 

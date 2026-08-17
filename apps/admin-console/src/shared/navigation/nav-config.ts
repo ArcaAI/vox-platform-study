@@ -93,7 +93,7 @@ export const NAV_SECTIONS: readonly NavSection[] = [
 ];
 
 export const NAV_ENTRIES: readonly NavEntry[] = [
-  // Tier 10-19 — global admin (cross-tenant). Tenant frontend config is a
+  // Tier 10-19 — super admin (cross-tenant). Tenant frontend config is a
   // tenant-detail tab (matrix row 6), not a standalone nav entry.
   { route: '/dashboard', label: 'Dashboard', tier: '10-19', icon: IconLayoutDashboard, required: [['manage', 'PlatformMetrics']], implemented: true },
   {
@@ -144,13 +144,13 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     ],
     implemented: true,
   },
-  // Global-admin only per the 2026-07-04 review (backend guard re-pin:).
+  // Super-admin only per the 2026-07-04 review (backend guard re-pin:).
   // Unhidden: the screen is now the AI-models HUB (registry grid +
-  // live LM Studio/Ollama discovery + register), i.e. the surface a global admin
+  // live LM Studio/Ollama discovery + register), i.e. the surface a super admin
   // uses to see what the serving engines actually host. It was hidden only while
   // it was registry-only. The manage:all gate is unchanged.
   { route: '/ai-models', label: 'AI models', tier: '10-19', icon: IconBrain, required: [['manage', 'all']], implemented: true },
-  // SYSTEM-tenant task-default rows; guardrail config is global-admin-only by owner directive.
+  // SYSTEM-tenant task-default rows; guardrail config is super-admin-only by owner directive.
   {
     route: '/ai-task-defaults',
     label: 'AI task defaults',
@@ -160,7 +160,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     implemented: true,
   },
   { route: '/rate-limits', label: 'Rate limits', tier: '10-19', icon: IconGauge, required: [['manage', 'all']], implemented: true },
-  // Phase 3B agentic global-admin console (all SUPER_ADMIN-only).
+  // Phase 3B agentic super-admin console (all SUPER_ADMIN-only).
   { route: '/agentic-policy', label: 'Agentic policy', tier: '10-19', icon: IconShieldBolt, required: [['manage', 'all']], implemented: true },
   // `/prompt-studio` retired — prompt governance folded
   // into the elevated-only Governance tab of `/agents` (one authoritative
@@ -261,7 +261,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
   },
   { route: '/account', label: 'Account', tier: '20-29', icon: IconUserCircle, required: [], implemented: true },
 
-  // Tier 30-49 — tenant-admin scope (a global admin needs a working tenant)
+  // Tier 30-49 — tenant-admin scope (a super admin needs a working tenant)
   { route: '/departments', label: 'Departments', tier: '30-49', icon: IconSitemap, required: [['manage', 'Department']], implemented: true },
   {
     route: '/identity-providers',

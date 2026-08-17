@@ -5,7 +5,7 @@ export const metadata: Metadata = {
   title: 'Monitoring',
 };
 
-/** Frame 11 — Monitoring (tier 10, global admins only). */
+/** Frame 11 — Monitoring (tier 10, super admins only). */
 export default function MonitoringPage() {
   return <MonitoringScreen />;
 }

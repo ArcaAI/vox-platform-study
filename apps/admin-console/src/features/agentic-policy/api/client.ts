@@ -3,7 +3,7 @@
  * the shared core prepends the `/api/hope` BFF proxy mount so nothing here
  * ever hits the gateway directly. Edits target the SYSTEM-tenant GLOBAL-DEFAULT
  * harness policy row (the fallback for every tenant), so no working tenant is
- * required — the gateway asserts global admin in code.
+ * required — the gateway asserts super admin in code.
  */
 
 import { getJson, getWithEtag, patchJson, patchWithEtag, putWithEtag, request, versionFromEtag } from '@/shared/api';
@@ -44,7 +44,7 @@ export function updateGlobalAgenticPolicy(patch: UpdateAgenticPolicyRequest, eta
   return patchWithEtag(`${HARNESS}/policy/global`, occ.body, occ.etag);
 }
 
-/** Live-doc engine kill-switch (global admin only; Redis-backed, NOT versioned). */
+/** Live-doc engine kill-switch (super admin only; Redis-backed, NOT versioned). */
 export function getLiveEngineConfig(): Promise<LiveDocEngineConfig> {
   return getJson(`${HARNESS}/live/config`);
 }

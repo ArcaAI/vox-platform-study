@@ -98,13 +98,13 @@ interface DepartmentRow {
   revisitPromptId?: string | null;
 }
 
-interface TestResult {
-  id: string;
-  score: number;
-  output: string;
-  testedAt: string;
-  version: number;
-  metrics?: Record<string, unknown>;
+/** `PromptTestAckResponse` — what `POST :id/test` returns (BUG-018 two-call split). */
+interface PromptTestAck {
+  mode: 'stream' | 'dry-run';
+  provider: string;
+  model: string;
+  assembledPrompt: string;
+  taskId?: string;
 }
 
 interface OccError {
@@ -279,39 +279,50 @@ test.describe.serial('agent management backend contract (arcaai_admin · ARCAAI)
 
   // ── Frame 33 · test playground (SMR-dependent) ─────────────────────────
 
-  test('POST test without If-Match → 428 (the run is an OCC write too)', async ({ request }) => {
+  // The test run is NOT an OCC write: it assembles the prompt and submits a
+  // STREAMING generation job, persisting nothing until the separate
+  // `POST :id/test/finalize` call. `prompt-management.controller.ts` says so
+  // explicitly ("This route no longer writes, so it carries NO `If-Match`
+  // requirement"), so a bare POST must be ACCEPTED, never 428.
+  test('POST test without If-Match → accepted (the run itself writes nothing)', async ({ request }) => {
     const res = await request.post(`${PROMPTS}/${promptId}/test`, { headers: auth(token), data: {} });
-    expect(res.status()).toBe(428);
-    expect(((await res.json()) as OccError).code).toBe('HTTP.PRECONDITION_REQUIRED');
+    expect([200, 201], `test run → ${res.status()}`).toContain(res.status());
   });
 
-  test('POST test with If-Match → reaches the SMR run (score+output when SMR is up)', async ({ request }) => {
+  // BUG-018 split the test run into TWO calls: this route now returns an ACK
+  // (`PromptTestAckResponse` — assembled prompt + resolved provider/model, plus a
+  // `taskId`/`streamUrl` in stream mode) and persists nothing. `score`/`output`
+  // belong to the SECOND call, `POST :id/test/finalize`, which scores the
+  // streamed generation. Asserting a score here read the old one-call contract.
+  test('POST test → an ack naming the resolved provider/model and the assembled prompt', async ({ request }) => {
     const before = await request.get(`${PROMPTS}/${promptId}`, { headers: auth(token) });
     const current = (await before.json()) as PromptTemplate;
 
+    // An If-Match is sent to prove it is ACCEPTED (harmless), not required —
+    // the preceding test covers the bare, header-less call.
     const res = await request.post(`${PROMPTS}/${promptId}/test`, {
       headers: ifMatch(token, current.version),
       data: { sampleInput: 'Patient reports chest pain for 2 days.', variables: { department: 'Cardiology', transcript: 'CC: chest pain.' } },
     });
-    // The header gate is deterministic; the SMR run itself is not (the test
-    // stack may not run SMR). Always assert the gate was passed…
-    expect(res.status(), 'If-Match present ⇒ not 428').not.toBe(428);
+    // Prompt assembly + provider resolution are deterministic; reaching SMR is
+    // not (the test stack may not run it, and a missing `smr.test` model is a
+    // documented 400). Assert the shape only when the ack was actually issued.
+    expect(res.status(), 'the run is not OCC-gated ⇒ never 428').not.toBe(428);
 
     if ([200, 201].includes(res.status())) {
-      const result = (await res.json()) as TestResult;
-      expect(typeof result.score, 'score is a numeric quality proxy in [0,1]').toBe('number');
-      expect(result.score).toBeGreaterThanOrEqual(0);
-      expect(result.score).toBeLessThanOrEqual(1);
-      expect(typeof result.output).toBe('string');
-      // F8 deterministic breakdown is OPTIONAL — assert shape only if present.
-      if (result.metrics) {
-        expect(result.metrics).toHaveProperty('wordCount');
-        expect(result.metrics).toHaveProperty('nonEmpty');
-      }
+      const ack = (await res.json()) as PromptTestAck;
+      expect(['stream', 'dry-run'], `mode → ${ack.mode}`).toContain(ack.mode);
+      expect(typeof ack.assembledPrompt, 'the assembled prompt is echoed back').toBe('string');
+      // Interpolation actually happened — the placeholders are gone.
+      expect(ack.assembledPrompt).toContain('Cardiology');
+      expect(ack.assembledPrompt).not.toContain('{{department}}');
+      expect(typeof ack.provider).toBe('string');
+      expect(typeof ack.model).toBe('string');
+      // Stream mode hands back the handle the finalize call needs.
+      if (ack.mode === 'stream') expect(typeof ack.taskId).toBe('string');
     } else {
-      // Authored — SMR/text-generation upstream not reachable in this stack.
-      // The OCC contract above is the deterministic part of this test.
-      console.warn(`[task-382] prompt test run returned ${res.status()} — SMR likely unavailable; OCC gate verified.`);
+      // Authored — SMR unreachable, or no `smr.test` model configured (400).
+      console.warn(`[task-382] prompt test run returned ${res.status()} — SMR/model selection unavailable; the no-428 contract is verified.`);
     }
   });
 

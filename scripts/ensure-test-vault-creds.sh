@@ -54,11 +54,34 @@ vault_exec() {
 }
 
 # Upsert KEY=VALUE (no sed — robust against URL/base64 special chars).
+# The tmp file is PID-unique: test-run.sh spawns every service in parallel and each
+# start-test-app.sh calls this script, so a shared `${ENV_FILE}.tmp` was being created by
+# one process and mv'd away by another — the loser died on
+# `mv: .env.test.tmp: No such file or directory`, taking its service down with it.
 set_env() {
-  local key="$1" val="$2"
-  grep -vE "^${key}=" "${ENV_FILE}" > "${ENV_FILE}.tmp" && mv "${ENV_FILE}.tmp" "${ENV_FILE}"
+  local key="$1" val="$2" tmp="${ENV_FILE}.tmp.$$"
+  grep -vE "^${key}=" "${ENV_FILE}" > "${tmp}" && mv "${tmp}" "${ENV_FILE}"
   printf '%s=%s\n' "${key}" "${val}" >> "${ENV_FILE}"
 }
+
+# Serialize concurrent invocations. Unique tmp files stop the crash, but two runs
+# interleaving read-modify-write on ${ENV_FILE} can still drop a key. mkdir is the
+# portable atomic mutex (macOS has no flock). The lock is released on any exit.
+LOCK_DIR="${ENV_FILE}.lock"
+LOCK_HELD=false
+for _ in $(seq 1 300); do
+  if mkdir "${LOCK_DIR}" 2>/dev/null; then
+    LOCK_HELD=true
+    trap 'rmdir "${LOCK_DIR}" 2>/dev/null || true' EXIT
+    break
+  fi
+  sleep 1
+done
+if [ "${LOCK_HELD}" != true ]; then
+  red "ERROR: timed out waiting for ${LOCK_DIR}."
+  echo  "If a previous run was killed the lock is stale — remove it with:  rmdir ${LOCK_DIR}" >&2
+  exit 1
+fi
 
 # hope-vault-test is owned by the ISOLATED test infra, not dev —
 # bring the test stack up if it is not running.

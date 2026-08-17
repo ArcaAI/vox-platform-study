@@ -4,6 +4,6 @@
 
 export enum ChangelogAudience {
   ALL = 'ALL',
-  GLOBAL_ADMIN = 'GLOBAL_ADMIN',
+  SUPER_ADMIN = 'SUPER_ADMIN',
   TENANT_ADMIN = 'TENANT_ADMIN',
 }

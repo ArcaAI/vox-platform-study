@@ -3,7 +3,7 @@
  *
  * The CASL `@Authorize` tuples + `If-Match`/`@RequiresIfMatch` decorators are
  * exercised by the guard/interceptor (and e2e). These specs cover the
- * controller's OWN logic: global-admin vs. tenant read scoping, the effective
+ * controller's OWN logic: super-admin vs. tenant read scoping, the effective
  * cascade GET (+ trace), the editable row GET (scope parsing), and the
  * If-Match-over-body version precedence forwarded to the policy service. The
  * max-scope 400 lives in the service (unit-tested there); here we assert the
@@ -59,7 +59,7 @@ describe('PipelinePolicyAdminController — effective cascade', () => {
     expect(policyService.getEffective).toHaveBeenCalledWith({ tenantId: 't1', departmentId: 'd1', doctorId: 'doc1' });
   });
 
-  it('lets a global-admin target another tenant via ?tenantId=', async () => {
+  it('lets a super-admin target another tenant via ?tenantId=', async () => {
     const { controller, policyService } = makeController({ user: SUPER });
     policyService.getEffective.mockResolvedValue({});
 

@@ -119,7 +119,7 @@ test.describe('cross-tenant — resync', () => {
 
     const tenants = await request.get('/api/v1/admin/tenants', { headers: auth(tenantAdmin!.token) });
     // A tenant admin may not even list tenants; when they can, resync must
-    // still refuse. Either way the reconciler stays global-admin-only.
+    // still refuse. Either way the reconciler stays super-admin-only.
     if (tenants.status() === 200) {
       const body = (await tenants.json()) as { data: { id: string }[] };
       const anyTenant = body.data[0];
@@ -135,11 +135,11 @@ test.describe('cross-tenant — resync', () => {
   });
 
   test('resyncing the SYSTEM tenant against itself is rejected', async ({ request }) => {
-    const globalAdmin = await loginUser(request, SEEDED_USERS.superAdmin.username, SEEDED_USERS.superAdmin.password);
-    expect(globalAdmin).not.toBeNull();
+    const superAdmin = await loginUser(request, SEEDED_USERS.superAdmin.username, SEEDED_USERS.superAdmin.password);
+    expect(superAdmin).not.toBeNull();
 
     const rejected = await request.post('/api/v1/admin/tenants/00000000-0000-0000-0000-000000000000/pipelines/resync', {
-      headers: auth(globalAdmin!.token),
+      headers: auth(superAdmin!.token),
     });
     expect(rejected.status()).toBe(400);
   });

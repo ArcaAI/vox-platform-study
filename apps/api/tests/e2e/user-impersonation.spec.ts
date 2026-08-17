@@ -30,8 +30,13 @@ import { SEEDED_USERS, DEFAULT_TENANT_KEY, loginUser } from '../../../../tests/h
 const bearer = (token: string) => ({ Authorization: `Bearer ${token}` });
 const UNIQUE = Date.now();
 
-/** Seeded SUPER_ADMIN (00-constants SEED_USER_IDS) — super-admin-tier target. */
-const SUPER_ADMIN_USER_ID = '70000000-0000-0000-0000-000000000006';
+/**
+ * The SUPER_ADMIN role (00-constants SEED_ROLE_IDS.SUPER_ADMIN). E3 grants it to
+ * a throwaway user because the ONE seeded super-admin user
+ * (`70000000-…-0001`) is the CALLER: targeting it exercises the
+ * self-impersonation guard (E2), not the elevated-tier guard E3 is about.
+ */
+const SUPER_ADMIN_ROLE_ID = '00000000-0000-0000-0000-000000000003';
 
 interface ImpersonateBody {
   user: { id: string; username: string; email?: string; roles: string[]; permissions: string[]; tenantId?: string };
@@ -271,11 +276,35 @@ test.describe.serial('E — safeguards', () => {
     expect(((await res.json()) as { message?: string }).message).toMatch(/yourself/i);
   });
 
-  test('E3 — elevated-tier target (seeded SUPER_ADMIN) is rejected', async ({ request }) => {
-    const res = await impersonate(request, SUPER_ADMIN_USER_ID);
-    expect(res.status(), 'SUPER_ADMIN target → 400').toBe(400);
-    // The guard message says "global administrator".
-    expect(((await res.json()) as { message?: string }).message).toMatch(/global administrator/i);
+  test('E3 — elevated-tier target (a SUPER_ADMIN other than the caller) is rejected', async ({ request }) => {
+    // Throwaway target granted SUPER_ADMIN via the API (no seed mutation),
+    // mirroring E4's create-mutate-cleanup shape. Targeting the seeded
+    // super-admin user directly is impossible here: it IS the caller, so the
+    // self-guard (E2) answers first and the elevated-tier guard never runs.
+    const create = await request.post('/api/v1/admin/users', {
+      headers: bearer(saToken),
+      data: { username: `t401elevated_${UNIQUE}`, password: 'Password123!', email: `t401.elevated.${UNIQUE}@example.com` },
+    });
+    expect(create.status(), 'create throwaway target').toBeLessThan(300);
+    const target = (await create.json()) as { id: string };
+
+    try {
+      const grant = await request.post('/api/v1/admin/users/bulk-actions', {
+        headers: bearer(saToken),
+        data: { ids: [target.id], action: 'assign-role', roleId: SUPER_ADMIN_ROLE_ID },
+      });
+      expect(grant.status(), 'grant SUPER_ADMIN to the throwaway target').toBe(200);
+      const granted = (await grant.json()) as { succeeded: number };
+      expect(granted.succeeded, 'the SUPER_ADMIN grant must actually land, else E3 proves nothing').toBe(1);
+
+      const res = await impersonate(request, target.id);
+      expect(res.status(), 'SUPER_ADMIN target → 400').toBe(400);
+      // The guard message says "super administrator".
+      expect(((await res.json()) as { message?: string }).message).toMatch(/super administrator/i);
+    } finally {
+      // Soft-delete via the API (repository.softDelete — no hard delete).
+      await request.delete(`/api/v1/admin/users/${target.id}`, { headers: bearer(saToken) }).catch(() => undefined);
+    }
   });
 
   test('E4 — disabled target is rejected; unknown target is 404', async ({ request }) => {

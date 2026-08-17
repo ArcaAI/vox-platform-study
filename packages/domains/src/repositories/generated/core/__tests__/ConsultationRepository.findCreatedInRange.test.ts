@@ -7,7 +7,7 @@
  * semantics are pinned verbatim:
  *
  *   • where: `createdAt` between [rangeStart, rangeEnd] (inclusive)
- *   • tenantId filter ONLY when a truthy tenantId is supplied (GLOBAL_ADMIN
+ *   • tenantId filter ONLY when a truthy tenantId is supplied (SUPER_ADMIN
  *     with no working tenant reads cross-tenant)
  *   • minimal projection `{ createdAt, parentConsultationId }` — rows are
  *     returned raw (no entity mapping; the service buckets them itself)

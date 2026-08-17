@@ -2,7 +2,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
 import { Injectable } from '@nestjs/common';
 import { IActiveUserContext, IBaseService } from '../interfaces';
-import { BaseEntity, ResourceType, SysEvent, SysEventType, SendContactMessageEvent } from '@arcaai/domains';
+import { BaseEntity, ResourceType, SysEvent, SysEventType, SendContactMessageEvent, generateId } from '@arcaai/domains';
 import { applyChangesToEntity, ChangeFieldHandlers } from './applyChangesToEntity';
 import { UserSession } from '../services';
 
@@ -71,6 +71,23 @@ export abstract class BaseService implements IBaseService {
   broadcastSysEvent(type: SysEventType, data: Partial<SysEvent> | Partial<SendContactMessageEvent>): void {
     const impersonatedBy = this.requestUser?.impersonatedBy;
     this.eventEmitter.emit(type, {
+      // ENVELOPE IDENTITY. This emits a plain object, never a `SysEvent`
+      // instance, so the constructor's `id = props.id || generateId()` never
+      // ran and every broadcast event carried `id: undefined`. The webhook
+      // fan-out derives its BullMQ job id from it
+      // (`hook:<webhookId>:<envelopeId>`), so that id collapsed to the constant
+      // `hook:<webhookId>:undefined` — BullMQ deduplicated it, and a webhook
+      // therefore delivered its FIRST event and then silently nothing, ever.
+      // `sourceEnvelopeId` on the delivery log was unset for the same reason,
+      // leaving deliveries untraceable to the event that caused them. Stays
+      // ahead of `...data` so an explicit caller-supplied id still wins.
+      id: generateId(),
+      // The event type was ONLY the emit channel name, never a field on the
+      // envelope, so `SysEvent.type` was undefined for every consumer that reads
+      // the payload rather than the channel. The webhook body carries it as
+      // `eventType`, and `JSON.stringify` drops undefined — subscribers received
+      // a notification that never said WHAT happened.
+      type,
       responsibleEntityId: this.requestUser?.id,
       responsibleIp: this.requestIp,
       resourceType: this.resourceType,

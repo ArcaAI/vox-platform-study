@@ -43,7 +43,7 @@
  * covers the whole consolidated file end to end.)
  *
  * ─── DELIBERATELY *NOT* SCHEMA-VALIDATED (declared boundary, not an oversight) ─
- *   • `apps/{stt,smr,guardrail,nlp,harness,tts}/.env.sample` — their schema is
+ *   • `apps/{stt,text,guardrail,nlp,harness,tts}/.env.sample` — their schema is
  *     pydantic-settings, which the drift gate cannot import (CI has no Python
  *     service environment), and whose FULL field surface is ~500 keys against
  *     the ~120-key target. Their operator documentation therefore
@@ -388,7 +388,7 @@ const PYTHON_SAMPLE_SECTIONS: ReadonlyArray<{ path: string; title: string; note:
     { path: 'apps/guardrail/.env.sample', title: 'GUARDRAIL — Safety Engine (apps/guardrail, :8863)', note: 'Hand-maintained (pydantic-settings; too large for this generator to validate). Content audited TASK-582.' },
     { path: 'apps/harness/.env.sample', title: 'HARNESS — Clinical Documentation (apps/harness, :8866)', note: 'Hand-maintained. Content audited TASK-582.' },
     { path: 'apps/nlp/.env.sample', title: 'NLP — Medical NLP (apps/nlp, :8864)', note: 'Hand-maintained. Content audited TASK-582.' },
-    { path: 'apps/text/.env.sample', title: 'SMR — LLM Summarization (apps/text, :8862)', note: 'Hand-maintained. Content audited TASK-582.' },
+    { path: 'apps/text/.env.sample', title: 'Text — LLM Summarization (apps/text, :8862)', note: 'Hand-maintained. Content audited TASK-582.' },
     { path: 'apps/stt/.env.sample', title: 'STT — Speech-to-Text (apps/stt, :8861)', note: 'Hand-maintained. Content audited TASK-582.' },
     { path: 'apps/tts/.env.sample', title: 'TTS — Text-to-Speech (apps/tts, :8865)', note: 'Hand-maintained. Created TASK-582 (previously the only Python service with no example file).' },
 ];

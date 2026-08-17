@@ -8,7 +8,7 @@ Read in full: `docs/architecture/consultation-session-workflow/user-stories-and-
 
 Research was split into three parallel deep-dive passes over the code as it exists today on `feat/loop`, each returning file:line evidence, no ticket numbers, no `docs/implementation/**`/`docs/archive/**` citations:
 
-1. **Gateway API** — `apps/api/src/modules/consultation/**`, `.../streaming/**`, `.../consultation-context-schema/**`, plus every WS/SSE route touching sessions/transcripts/notes/summaries found by broad grep (`stt-ws.gateway.ts`, `stt-compat.gateway.ts`, `smr-proxy.controller.ts`, `harness-internal.controller.ts`, `harness-admin.controller.ts`, `agent-trajectory.controller.ts`, `prompt-management/*`), and the `packages/applications`/`packages/database` layers those controllers call into.
+1. **Gateway API** — `apps/api/src/modules/consultation/**`, `.../streaming/**`, `.../consultation-context-schema/**`, plus every WS/SSE route touching sessions/transcripts/notes/summaries found by broad grep (`stt-ws.gateway.ts`, `stt-compat.gateway.ts`, `text-proxy.controller.ts`, `harness-internal.controller.ts`, `harness-admin.controller.ts`, `agent-trajectory.controller.ts`, `prompt-management/*`), and the `packages/applications`/`packages/database` layers those controllers call into.
 2. **Vox SDK** — `packages/agentic-sdk-v2/src/{hooks,store,core,types}`, `packages/vox-node/src`, and (following the trail) `packages/room`, `packages/stt`, `packages/vad`, `packages/noise-filter` for the mute/audio-pipeline trace.
 3. **Admin console + UI** — `apps/admin-console/src/{app,features}` (consultation/playground/AI/governance screens) and `packages/ui/src/components/{live-transcript,editor,timeline,data-grid,custom,elevenlabs,shared,shadcn}`.
 
@@ -37,7 +37,7 @@ Verdict legend: **IMPLEMENTED** / **PARTIAL** / **ABSENT** / **VIOLATED** (code 
 | `GET admin/agent-trajectory/{sessions,sessions/:id/steps,metrics/generation}` | `apps/api/src/modules/agent-trajectory/agent-trajectory.controller.ts` | Tool-call/agentic trajectory reader (QA provenance component #3) |
 | `GET/PATCH/DELETE admin/consultation-context-schemas*`, `GET tenant/me/context-schema` | `apps/api/src/modules/consultation-context-schema/consultation-context-schema.controller.ts` | Versioned, immutable-per-version context-schema declaration + tenant discovery |
 | `POST/PATCH prompt-templates*` | `apps/api/src/modules/prompt-management/prompt-template.controller.ts` | Clinician template selection + personal-template CRUD, OCC-protected |
-| `POST text/generate[,/assembled]`, `GET text/tasks/:id[,/stream]` | `apps/api/src/modules/streaming/smr-proxy.controller.ts` | SMR generation proxy with cross-tenant/cross-doctor ownership checks |
+| `POST text/generate[,/assembled]`, `GET text/tasks/:id[,/stream]` | `apps/api/src/modules/streaming/text-proxy.controller.ts` | Text generation proxy with cross-tenant/cross-doctor ownership checks |
 | `GET/PATCH admin/consultations*`, `.../aggregate` | `apps/api/src/modules/consultation/admin-consultation.controller.ts` | Tenant-wide consultation listing + volume aggregation |
 
 ### Vox SDK (`packages/agentic-sdk-v2`, `packages/vox-node`, `packages/room`)

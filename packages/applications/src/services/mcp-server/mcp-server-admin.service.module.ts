@@ -6,7 +6,7 @@ import { McpServerAdminService } from './mcp-server-admin.service';
 
 /**
  * McpServerAdminServiceModule — the MCP external-tools registry admin
- * service (global-admin CRUD + tenant-admin registry reads). Mirrors
+ * service (super-admin CRUD + tenant-admin registry reads). Mirrors
  * `AiTaskDefaultServiceModule`.
  */
 @Module({

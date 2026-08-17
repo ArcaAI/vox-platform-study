@@ -18,7 +18,7 @@ inventory").
 
 ## Capabilities Matrix (tiers 10–49, as of 2026-07-04 — 33 rows)
 
-### Tier 10–19 — Global admin only (cross-tenant; never require a selected tenant)
+### Tier 10–19 — Super admin only (cross-tenant; never require a selected tenant)
 
 | # | Capability | Planned route | Notes |
 |---|---|---|---|
@@ -35,7 +35,7 @@ inventory").
 | 11 | AI model registry | `/ai-models` | |
 | 12 | Prisma Studio | `/pstudio` | |
 
-### Tier 20–29 — Shared (global admin cross-tenant or tenant-scoped; tenant admin own tenant)
+### Tier 20–29 — Shared (super admin cross-tenant or tenant-scoped; tenant admin own tenant)
 
 | # | Capability | Planned route | Notes |
 |---|---|---|---|
@@ -50,7 +50,7 @@ inventory").
 | 21 | Global settings & secrets | `/settings` | |
 | 22 | Tenant & account self-service | `/tenant-profile`, `/account` | |
 
-### Tier 30–49 — Tenant-admin scope (global admin must select a working tenant)
+### Tier 30–49 — Tenant-admin scope (super admin must select a working tenant)
 
 | # | Capability | Planned route | Notes |
 |---|---|---|---|
@@ -60,7 +60,7 @@ inventory").
 | 26 | DNA writing style administration | `/dna-writing-styles` | |
 | 27 | Audio (ASR) pipelines | `/audio/pipelines` | |
 | 28 | Transcription jobs (admin view) | `/audio/transcription-jobs` | |
-| 29 | Harness policy & live config | `/harness/policy` | Global-default row is global-admin only |
+| 29 | Harness policy & live config | `/harness/policy` | Global-default row is super-admin only |
 | 30 | Harness observability | `/harness/observability` | |
 | 31 | Harness workflow operations | `/harness/workflows` | |
 | 32 | Realtime pipeline policy (cascade) | `/harness/pipeline-policy` | |
@@ -84,7 +84,7 @@ Frames live in the Figma file `HOPE-Admin-Console`, named per `<NN>[.<sub>][-<de
 | 08 | `08 - Layouts & Data Patterns` |
 | 09 | `09 - Screen Templates` |
 
-### Group: Global admins' (10–29)
+### Group: Super Admin (10–29)
 
 | Frame | Name | Route | Matrix rows |
 |---|---|---|---|

@@ -23,7 +23,7 @@ function makeCls(store: Record<string, unknown> = { tenantId: TENANT, user: { id
 }
 
 /** CLS for a platform (SUPER_ADMIN) caller — no tenant binding. */
-function globalAdminCls() {
+function superAdminCls() {
   return { tenantId: '', user: { id: USER, roles: ['SUPER_ADMIN'] } };
 }
 
@@ -190,7 +190,7 @@ describe('TenantStorageConfigService', () => {
 
     it('refuses to delete the SYSTEM platform default through the tenant route', async () => {
       const platform = systemDefaultEntity();
-      // A global admin whose WORKING tenant is SYSTEM: the tenant-ownership
+      // A super admin whose WORKING tenant is SYSTEM: the tenant-ownership
       // check would otherwise pass. The platform row has exactly one
       // authoritative editor — the platform route.
       const { service, configRepo } = build({
@@ -274,10 +274,10 @@ describe('TenantStorageConfigService', () => {
   });
 
   describe('platform default (SYSTEM row) — SUPER_ADMIN only', () => {
-    it('reads the SYSTEM row for a global admin', async () => {
+    it('reads the SYSTEM row for a super admin', async () => {
       const platform = systemDefaultEntity();
       const { service } = build({
-        cls: globalAdminCls(),
+        cls: superAdminCls(),
         configRepo: { findSystemDefault: vi.fn().mockResolvedValue(platform) },
       });
 
@@ -289,7 +289,7 @@ describe('TenantStorageConfigService', () => {
     });
 
     it('returns a version:0 placeholder when the SYSTEM row has not been seeded yet', async () => {
-      const { service } = build({ cls: globalAdminCls() });
+      const { service } = build({ cls: superAdminCls() });
 
       const res = await service.getPlatformDefault();
 
@@ -313,7 +313,7 @@ describe('TenantStorageConfigService', () => {
     });
 
     it('creates the SYSTEM row on expectedVersion 0 and busts the PLATFORM provider cache', async () => {
-      const { service, configRepo, factory, eventEmitter } = build({ cls: globalAdminCls() });
+      const { service, configRepo, factory, eventEmitter } = build({ cls: superAdminCls() });
 
       const res = await service.upsertPlatformDefault({
         provider: StorageProviderType.MINIO,
@@ -331,7 +331,7 @@ describe('TenantStorageConfigService', () => {
     });
 
     it('rejects a create whose expectedVersion is not 0 (OCC)', async () => {
-      const { service, configRepo } = build({ cls: globalAdminCls() });
+      const { service, configRepo } = build({ cls: superAdminCls() });
 
       await expect(
         service.upsertPlatformDefault({ provider: StorageProviderType.MINIO, topology: StorageTopologyType.SHARED, expectedVersion: 3 }),
@@ -342,7 +342,7 @@ describe('TenantStorageConfigService', () => {
     it('CAS-updates an existing SYSTEM row through updateWithVersion', async () => {
       const platform = systemDefaultEntity();
       const { service, configRepo, factory, eventEmitter } = build({
-        cls: globalAdminCls(),
+        cls: superAdminCls(),
         configRepo: { findSystemDefault: vi.fn().mockResolvedValue(platform) },
       });
 
@@ -362,7 +362,7 @@ describe('TenantStorageConfigService', () => {
     it('rejects an update that changes nothing', async () => {
       const platform = systemDefaultEntity();
       const { service } = build({
-        cls: globalAdminCls(),
+        cls: superAdminCls(),
         configRepo: { findSystemDefault: vi.fn().mockResolvedValue(platform) },
       });
 
@@ -380,7 +380,7 @@ describe('TenantStorageConfigService', () => {
     });
 
     it('never accepts inline credentials — only a credentialsRef reaches the row', async () => {
-      const { service, configRepo } = build({ cls: globalAdminCls() });
+      const { service, configRepo } = build({ cls: superAdminCls() });
 
       await service.upsertPlatformDefault({
         provider: StorageProviderType.MINIO,

@@ -508,7 +508,7 @@ would fail that in-flight request closed for nothing).
 handler; the moderation gate — extracted verbatim from `generate()` into `_apply_guardrail_gate`,
 so exactly one gate exists in the service — raises `GuardrailRecursionError` when entered inside
 that scope. Both layers exist because each covers the other's blind spot. Separately verified that
-`apps/api`'s `SmrProxyController` declares explicit paths with no catch-all, so the judge route is
+`apps/api`'s `TextProxyController` declares explicit paths with no catch-all, so the judge route is
 not reachable through the gateway.
 
 **Pool isolation.** Separate keyspace (`app.state.judge_semaphores` / `judge_circuit_breakers`)

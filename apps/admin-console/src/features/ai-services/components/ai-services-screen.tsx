@@ -25,7 +25,7 @@ const TAB_VALUES = ['guardrail', 'nlp', 'instructions'] as const;
  * see the defensive-rendering note at the top of `guardrail-panel.tsx`.
  *
  * Tenancy: the screen sits in the `(global)` route group, but the Instructions
- * tab reads TENANT-SCOPED data (a global-admin-only screen over per-tenant
+ * tab reads TENANT-SCOPED data (a super-admin-only screen over per-tenant
  * data). That tab carries its own working-tenant gate; the other two are
  * cross-tenant.
  */

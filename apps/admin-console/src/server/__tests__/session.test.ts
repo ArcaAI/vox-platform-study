@@ -109,12 +109,12 @@ describe('cookie helpers', () => {
 });
 
 describe('isElevated', () => {
-  it('is true for SUPER_ADMIN (the single elevated role, renamed from GLOBAL_ADMIN)', () => {
+  it('is true for SUPER_ADMIN (the single elevated role)', () => {
     expect(isElevated({ roles: ['SUPER_ADMIN'] })).toBe(true);
     expect(isElevated({ roles: ['TENANT_ADMIN', 'SUPER_ADMIN'] })).toBe(true);
   });
 
-  it('is false for the pre-rename GLOBAL_ADMIN literal, tenant-bound roles, and empty input', () => {
+  it('is false for GLOBAL_ADMIN (not a JWT alias), tenant-bound roles, and empty input', () => {
     expect(isElevated({ roles: ['GLOBAL_ADMIN'] })).toBe(false);
     expect(isElevated({ roles: ['TENANT_ADMIN'] })).toBe(false);
     expect(isElevated({ roles: [] })).toBe(false);

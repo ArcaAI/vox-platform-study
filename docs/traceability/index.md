@@ -71,6 +71,6 @@ Each row states, and each claim must be **verified to exist against the code bef
 - **unit(console)** = `apps/admin-console/src/**/__tests__/` (Vitest + jsdom; screen specs include axe + both themes)
 - **e2e** = `apps/api/tests/e2e/*.spec.ts` (Playwright, real HTTP against `http://localhost:8868/api/v1`)
 - **contract** = `tests/contracts/` · **x-tenant** = `tests/cross-tenant/` + `task-307-*` e2e suite
-- **py(stt)** = `apps/stt/tests/` · **py(smr)** = `apps/text/src/text/tests/` · **py(grd)** = `apps/guardrail/src/guardrail/tests/` · **py(nlp)** = `apps/nlp/tests/` · **py(hrn)** = `apps/harness/src/harness/tests/` · **py(tts)** = `apps/tts/src/tts/tests/`
+- **py(stt)** = `apps/stt/tests/` · **py(text)** = `apps/text/src/text/tests/` · **py(grd)** = `apps/guardrail/src/guardrail/tests/` · **py(nlp)** = `apps/nlp/tests/` · **py(hrn)** = `apps/harness/src/harness/tests/` · **py(tts)** = `apps/tts/src/tts/tests/`
 
 Last verified: 2026-07-21

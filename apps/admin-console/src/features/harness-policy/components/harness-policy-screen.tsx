@@ -104,7 +104,7 @@ function SettingsComparisonGrid({
         </Table>
       </div>
       {!isElevated ? (
-        <p className="text-muted-foreground text-xs">The global default column is visible to global admins only (platform-asserted read).</p>
+        <p className="text-muted-foreground text-xs">The global default column is visible to super admins only (platform-asserted read).</p>
       ) : null}
     </div>
   );

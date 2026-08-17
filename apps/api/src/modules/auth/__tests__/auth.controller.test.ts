@@ -527,8 +527,8 @@ describe('AuthController', () => {
         userRepository: createMockUserRepository(users),
         authService: createMockAuthService(),
         tenantRepository: createMockTenantRepository(tenantMap),
-        // Pre-TASK-417 retired role, seed placeholder name. TASK-707 renamed
-        // the live GLOBAL_ADMIN role to SUPER_ADMIN, which would otherwise
+        // Pre- retired role, seed placeholder name.  renamed
+        // the live SUPER_ADMIN role to SUPER_ADMIN, which would otherwise
         // collide in name (not id) with this unrelated retired role.
         userRoleAssignmentService: createMockUserRoleAssignmentService([{ Role: createRole('SUPER_ADMIN__RETIRED_TASK_417', ['*']) }]),
       });

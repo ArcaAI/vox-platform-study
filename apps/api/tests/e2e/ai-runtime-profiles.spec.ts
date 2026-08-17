@@ -14,14 +14,14 @@ import { test, expect } from '@playwright/test';
 import { DEFAULT_TENANT_KEY, SEEDED_USERS, loginUser } from '../../../../tests/helpers';
 
 test.describe('AI runtime profiles', () => {
-  let globalAdminToken: string;
+  let superAdminToken: string;
 
   test.beforeAll(async ({ request }) => {
     const login = await loginUser(request, SEEDED_USERS.superAdmin.username, SEEDED_USERS.superAdmin.password, DEFAULT_TENANT_KEY);
-    globalAdminToken = login!.token;
+    superAdminToken = login!.token;
   });
 
-  const auth = () => ({ Authorization: `Bearer ${globalAdminToken}` });
+  const auth = () => ({ Authorization: `Bearer ${superAdminToken}` });
 
   test('seeds ZERO profiles, so resolution is empty (silent-change guard)', async ({ request }) => {
     const list = await request.get('/api/v1/admin/ai-runtime-profiles', { headers: auth() });

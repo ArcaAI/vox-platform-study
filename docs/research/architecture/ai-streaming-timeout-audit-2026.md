@@ -24,7 +24,7 @@ Main findings:
 
 ### API Gateway (NestJS)
 
-- `apps/api/src/modules/streaming/smr-proxy.controller.ts`
+- `apps/api/src/modules/streaming/text-proxy.controller.ts`
 - `apps/api/src/shared/base-proxy.controller.ts`
 - `apps/api/src/modules/streaming/streaming.module.ts`
 - `apps/api/src/modules/health/health.controller.ts`

@@ -1,5 +1,5 @@
 /**
- * AdminImpersonationController — global-admin-only impersonation.
+ * AdminImpersonationController — super-admin-only impersonation.
  *
  * Guard matrix, token-claim shape, TTL default/override, and audit emissions
  * for `POST /admin/users/:id/impersonate`. Pure unit tests (no Nest container),
@@ -13,10 +13,10 @@ import { ImpersonationEvents, ImpersonationDeniedReason } from '../impersonation
 
 const SUPER_ADMIN = 'SUPER_ADMIN';
 // Retired role literal, used only to prove it no longer elevates. Distinct
-// from the live 'SUPER_ADMIN' role above (TASK-707 renamed GLOBAL_ADMIN to
+// from the live 'SUPER_ADMIN' role above ( renamed SUPER_ADMIN to
 // SUPER_ADMIN, which now collides in name — but not in id — with this
 // pre-existing retired role; see the seed placeholder
-// 'SUPER_ADMIN__RETIRED_TASK_417' used by the TASK-707 data migration).
+// 'SUPER_ADMIN__RETIRED_TASK_417' used by the  data migration).
 const RETIRED_SUPER_ADMIN = 'SUPER_ADMIN__RETIRED_TASK_417';
 const TENANT_ADMIN = 'TENANT_ADMIN';
 const DOCTOR = 'DOCTOR';
@@ -156,7 +156,7 @@ describe('AdminImpersonationController — guard matrix', () => {
     expect(ceil.exp - ceil.iat).toBe(1800);
   });
 
-  it('rejects a non-global-admin caller (doctor) with 403 + CALLER_NOT_SUPER_ADMIN', async () => {
+  it('rejects a non-super-admin caller (doctor) with 403 + CALLER_NOT_SUPER_ADMIN', async () => {
     const { controller, eventEmitter } = buildController({
       user: { id: 'admin-A', tenantId: 'tenant-A' },
       fixture: { actorRoles: [DOCTOR] },
@@ -166,7 +166,7 @@ describe('AdminImpersonationController — guard matrix', () => {
     expect(deniedEvents(eventEmitter)).toEqual([expect.objectContaining({ reason: ImpersonationDeniedReason.CallerNotSuperAdmin })]);
   });
 
-  it('rejects a TENANT_ADMIN caller with 403 (global-admin only, stricter than the legacy route)', async () => {
+  it('rejects a TENANT_ADMIN caller with 403 (super-admin only, stricter than the legacy route)', async () => {
     const { controller } = buildController({
       user: { id: 'admin-A', tenantId: 'tenant-A' },
       fixture: { actorRoles: [TENANT_ADMIN] },
@@ -192,7 +192,7 @@ describe('AdminImpersonationController — guard matrix', () => {
     expect(deniedEvents(eventEmitter)).toEqual([expect.objectContaining({ reason: ImpersonationDeniedReason.SelfImpersonation })]);
   });
 
-  it('rejects a global-admin target with 400 + TARGET_IS_SUPER_ADMIN', async () => {
+  it('rejects a super-admin target with 400 + TARGET_IS_SUPER_ADMIN', async () => {
     const { controller, eventEmitter } = buildController({
       user: { id: 'admin-A' },
       fixture: { targetRoles: [{ name: 'SUPER_ADMIN' }] },
@@ -282,7 +282,7 @@ describe('AdminImpersonationController — audit emissions', () => {
     );
 
     // Forced audit row, attributed to the RESOLVED tenant
-    // because the global admin's CLS tenant is null.
+    // because the super admin's CLS tenant is null.
     const forced = eventEmitter.emit.mock.calls.find(([name]) => name === SysEventType.ResourceViewed);
     expect(forced?.[1]).toEqual(
       expect.objectContaining({
@@ -301,7 +301,7 @@ describe('AdminImpersonationController — audit emissions', () => {
     );
   });
 
-  it('prefers the CLS tenant for the forced row when the global admin is tenant-scoped', async () => {
+  it('prefers the CLS tenant for the forced row when the super admin is tenant-scoped', async () => {
     const { controller, eventEmitter } = buildController({ user: { id: 'admin-A', tenantId: 'tenant-CLS' } });
 
     await controller.impersonate('target-B', {}, REQ);
@@ -310,14 +310,14 @@ describe('AdminImpersonationController — audit emissions', () => {
     expect((forced?.[1] as { tenantId: string }).tenantId).toBe('tenant-CLS');
   });
 
-  // A global-admin's JWT carries `tenantId: ''` (empty string,
+  // A super-admin's JWT carries `tenantId: ''` (empty string,
   // never `null`; see `resolve-active-tenant.ts`). The prior `?? resolvedTenantId`
-  // only falls back on null/undefined, so an unscoped global admin produced a
+  // only falls back on null/undefined, so an unscoped super admin produced a
   // forced audit row with `tenantId: ''`, which `AuditLogProcessor`'s
   // fail-closed guard rejects (`job.data.tenantId is required`). The `null`
   // case above never reproduced this because the test harness's sentinel for
   // "no tenant" didn't match the real empty-string CLS/JWT shape.
-  it('falls back to the resolved tenant when CLS tenantId is empty string (real global-admin JWT shape)', async () => {
+  it('falls back to the resolved tenant when CLS tenantId is empty string (real super-admin JWT shape)', async () => {
     const { controller, eventEmitter } = buildController({ user: { id: 'admin-A', tenantId: '' } });
 
     await controller.impersonate('target-B', {}, REQ);

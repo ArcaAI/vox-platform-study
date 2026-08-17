@@ -12,7 +12,7 @@
  *       username, displayName, resourceStatus, assignedAt).
  *   M2. Unscoped SUPER_ADMIN (no CLS tenant) sees assignments across ALL
  *       tenants, and the role read's `memberCount` equals the listing total.
- *   M3. A global admin acting AS a tenant (`X-Tenant-Id`) sees ONLY that
+ *   M3. A super admin acting AS a tenant (`X-Tenant-Id`) sees ONLY that
  *       tenant's assignments; `memberCount` follows the working tenant and
  *       equals the scoped listing total.
  *   M4. A tenant-bound TENANT_ADMIN sees ONLY their own tenant's assignments
@@ -25,8 +25,8 @@
  *       and consecutive pages return distinct assignments.
  *
  * Seeded anchors (dev/test seed, `packages/database/src/prisma/db_main/seed/`):
- *   - SUPER_ADMIN role (00000000-…-0003): its holders (`super_admin`,
- *     `global_admin`) live under the SYSTEM tenant 00000000-…-0000, so any
+ *   - SUPER_ADMIN role (00000000-…-0003): its holder (`super_admin`)
+ *     lives under the SYSTEM tenant 00000000-…-0000, so any
  *     listing scoped to the default tenant 50000000-…-0000 must NOT show them.
  *   - DOCTOR role (00000000-…-0010): many members across more than one
  *     tenant — the tenant-consistency oracle for scoped listings.
@@ -53,11 +53,11 @@ const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
 const DEFAULT_TENANT_ID = '50000000-0000-0000-0000-000000000000';
 
 /**
- * Unscoped platform admin. The seeded `global_admin` (like `super_admin`) is
- * SUPER_ADMIN and logs in WITHOUT a tenant key — its JWT carries
- * `tenantId: ''`, i.e. no CLS tenant, the unscoped read posture under test.
+ * Unscoped platform admin. The seeded `super_admin` is SUPER_ADMIN and logs
+ * in WITHOUT a tenant key — its JWT carries `tenantId: ''`, i.e. no CLS
+ * tenant, the unscoped read posture under test.
  */
-const SUPER_ADMIN = { username: 'global_admin', password: 'password123' };
+const SUPER_ADMIN = { username: 'super_admin', password: 'password123' };
 
 /** uuidv7-shaped id no role has ever had — the 404 shape probe. */
 const SYNTHETIC_ROLE_ID = '018f0000-0000-7200-8000-000000000000';
@@ -132,16 +132,16 @@ async function fetchRole(request: APIRequestContext, token: string, roleId: stri
 // is an independent contract that must report its own verdict.
 
 test.describe('role members — cross-tenant contract', () => {
-  let globalAdminToken: string;
+  let superAdminToken: string;
   let tenantAdminToken: string;
-  let globalAdminRoleId: string;
+  let superAdminRoleId: string;
   let doctorRoleId: string;
 
   test.beforeAll(async ({ request }) => {
     // Logins may sit out several 60s throttle windows on the shared gateway.
     test.setTimeout(300_000);
 
-    globalAdminToken = await loginWithBackoff(request, SUPER_ADMIN.username, SUPER_ADMIN.password);
+    superAdminToken = await loginWithBackoff(request, SUPER_ADMIN.username, SUPER_ADMIN.password);
     tenantAdminToken = await loginWithBackoff(
       request,
       SEEDED_USERS.admin.username, // tenant_admin — TENANT_ADMIN on the default tenant
@@ -152,21 +152,21 @@ test.describe('role members — cross-tenant contract', () => {
     // Discover the seeded anchor roles by NAME (ids are seed-stable but
     // discovery keeps the spec honest across reseeds).
     const res = await request.get('/api/v1/admin/rbac/roles?page=1&pageSize=100', {
-      headers: bearer(globalAdminToken),
+      headers: bearer(superAdminToken),
     });
     expect(res.status(), `roles list → ${await res.text()}`).toBe(200);
     const roles = ((await res.json()) as { data: RoleRow[] }).data;
     const byName = (name: string) => roles.find((role) => role.name === name);
-    const globalAdminRole = byName('SUPER_ADMIN');
+    const superAdminRole = byName('SUPER_ADMIN');
     const doctorRole = byName('DOCTOR');
-    expect(globalAdminRole, 'seeded SUPER_ADMIN role present').toBeTruthy();
+    expect(superAdminRole, 'seeded SUPER_ADMIN role present').toBeTruthy();
     expect(doctorRole, 'seeded DOCTOR role present').toBeTruthy();
-    globalAdminRoleId = globalAdminRole!.id;
+    superAdminRoleId = superAdminRole!.id;
     doctorRoleId = doctorRole!.id;
   });
 
   test('M1 — members envelope shape and row projection', async ({ request }) => {
-    const envelope = await fetchMembers(request, globalAdminToken, doctorRoleId, 'page=1&pageSize=5');
+    const envelope = await fetchMembers(request, superAdminToken, doctorRoleId, 'page=1&pageSize=5');
     expect(Array.isArray(envelope.data)).toBe(true);
     expect(typeof envelope.total).toBe('number');
     expect(envelope.page).toBe(1);
@@ -184,21 +184,21 @@ test.describe('role members — cross-tenant contract', () => {
     }
   });
 
-  test('M2 — unscoped global admin sees members across tenants; memberCount matches', async ({ request }) => {
+  test('M2 — unscoped super admin sees members across tenants; memberCount matches', async ({ request }) => {
     // SUPER_ADMIN holders live under the SYSTEM tenant — an unscoped
     // platform read must surface them.
-    const members = await fetchMembers(request, globalAdminToken, globalAdminRoleId);
+    const members = await fetchMembers(request, superAdminToken, superAdminRoleId);
     expect(members.total).toBeGreaterThanOrEqual(1);
     const tenants = new Set(members.data.map((row) => row.tenantId));
     expect(tenants.has(SYSTEM_TENANT_ID), 'SYSTEM-tenant holders visible unscoped').toBe(true);
 
     // The role read's memberCount is the same unscoped predicate.
-    const role = await fetchRole(request, globalAdminToken, globalAdminRoleId);
+    const role = await fetchRole(request, superAdminToken, superAdminRoleId);
     expect(role.memberCount).toBe(members.total);
 
     // DOCTOR spans more than one tenant in the seed — the unscoped read
     // must not collapse to a single tenant.
-    const doctors = await fetchMembers(request, globalAdminToken, doctorRoleId);
+    const doctors = await fetchMembers(request, superAdminToken, doctorRoleId);
     const doctorTenants = new Set(doctors.data.map((row) => row.tenantId));
     expect(doctorTenants.size).toBeGreaterThanOrEqual(2);
   });
@@ -206,20 +206,20 @@ test.describe('role members — cross-tenant contract', () => {
   test('M3 — X-Tenant-Id scopes the listing AND memberCount to the working tenant', async ({ request }) => {
     // Acting on the default tenant: SYSTEM-tenant SUPER_ADMIN holders
     // must vanish from BOTH the listing and the count.
-    const members = await fetchMembers(request, globalAdminToken, globalAdminRoleId, 'page=1&pageSize=50', DEFAULT_TENANT_ID);
+    const members = await fetchMembers(request, superAdminToken, superAdminRoleId, 'page=1&pageSize=50', DEFAULT_TENANT_ID);
     for (const row of members.data) {
       expect(row.tenantId, `member ${row.username} leaked from tenant ${row.tenantId}`).toBe(DEFAULT_TENANT_ID);
     }
 
-    const role = await fetchRole(request, globalAdminToken, globalAdminRoleId, DEFAULT_TENANT_ID);
+    const role = await fetchRole(request, superAdminToken, superAdminRoleId, DEFAULT_TENANT_ID);
     expect(role.memberCount, 'scoped memberCount equals scoped listing total').toBe(members.total);
 
     // Same invariant on a role that HAS default-tenant members.
-    const doctors = await fetchMembers(request, globalAdminToken, doctorRoleId, 'page=1&pageSize=100', DEFAULT_TENANT_ID);
+    const doctors = await fetchMembers(request, superAdminToken, doctorRoleId, 'page=1&pageSize=100', DEFAULT_TENANT_ID);
     for (const row of doctors.data) {
       expect(row.tenantId, `member ${row.username} leaked from tenant ${row.tenantId}`).toBe(DEFAULT_TENANT_ID);
     }
-    const doctorRole = await fetchRole(request, globalAdminToken, doctorRoleId, DEFAULT_TENANT_ID);
+    const doctorRole = await fetchRole(request, superAdminToken, doctorRoleId, DEFAULT_TENANT_ID);
     expect(doctorRole.memberCount, 'scoped memberCount equals scoped listing total').toBe(doctors.total);
   });
 
@@ -238,13 +238,13 @@ test.describe('role members — cross-tenant contract', () => {
     // SUPER_ADMIN's holders are all SYSTEM-tenant: for a tenant admin the
     // listing must be EMPTY — platform admin identities (usernames,
     // emails) never cross the tenant boundary.
-    const members = await fetchMembers(request, tenantAdminToken, globalAdminRoleId);
+    const members = await fetchMembers(request, tenantAdminToken, superAdminRoleId);
     expect(members.total, 'SYSTEM-tenant platform admins hidden from a tenant admin').toBe(0);
     expect(members.data).toHaveLength(0);
   });
 
   test('M5 — unknown role id → 404 for every caller; no 403 on the members surface', async ({ request }) => {
-    for (const token of [globalAdminToken, tenantAdminToken]) {
+    for (const token of [superAdminToken, tenantAdminToken]) {
       const res = await request.get(`/api/v1/admin/rbac/roles/${SYNTHETIC_ROLE_ID}/members`, {
         headers: bearer(token),
       });
@@ -257,7 +257,7 @@ test.describe('role members — cross-tenant contract', () => {
     // 404-over-403 posture: a permitted tenant-bound caller reading a role
     // whose members all live elsewhere gets a normal 200/empty — never a
     // 403 revealing that the resource exists but is off-limits.
-    const res = await request.get(`/api/v1/admin/rbac/roles/${globalAdminRoleId}/members`, {
+    const res = await request.get(`/api/v1/admin/rbac/roles/${superAdminRoleId}/members`, {
       headers: bearer(tenantAdminToken),
     });
     expect(res.status()).not.toBe(403);
@@ -265,13 +265,13 @@ test.describe('role members — cross-tenant contract', () => {
   });
 
   test('M6 — pagination envelope: caps, echoes, and distinct pages', async ({ request }) => {
-    const page1 = await fetchMembers(request, globalAdminToken, doctorRoleId, 'page=1&pageSize=1');
+    const page1 = await fetchMembers(request, superAdminToken, doctorRoleId, 'page=1&pageSize=1');
     expect(page1.data).toHaveLength(1);
     expect(page1.page).toBe(1);
     expect(page1.pageSize).toBe(1);
     expect(page1.total).toBeGreaterThan(1);
 
-    const page2 = await fetchMembers(request, globalAdminToken, doctorRoleId, 'page=2&pageSize=1');
+    const page2 = await fetchMembers(request, superAdminToken, doctorRoleId, 'page=2&pageSize=1');
     expect(page2.data).toHaveLength(1);
     expect(page2.page).toBe(2);
     expect(page2.data[0].assignmentId).not.toBe(page1.data[0].assignmentId);

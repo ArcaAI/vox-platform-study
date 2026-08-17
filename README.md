@@ -8,7 +8,7 @@ A medical AI platform built as a monorepo with [Turborepo](https://turbo.build/r
 apps/
   api/          NestJS API Gateway (8868) — auth, multi-tenancy, REST/WS/SSE, system of record
   stt/       FastAPI (8861) — speech-to-text, multi-model ASR, diarization + batch worker
-  smr/          FastAPI (8862) — LLM summarization / text generation
+  text/         FastAPI (8862) — LLM summarization / text generation (formerly SMR)
   guardrail/    FastAPI (8863) — content-safety, PII, medical validation
   nlp/          FastAPI (8864) — medical NER, classification, diagnosis suggestions
   harness/      FastAPI (8866) — clinical documentation harness + Temporal worker
@@ -67,8 +67,8 @@ For the full setup guide, daily workflows, testing, and troubleshooting, see **[
 
 | Command                                               | Description                                                                                   |
 | ----------------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| `pnpm stack:dev`                                      | Start the default stack (API, STT, SMR, guardrail, NLP, harness + worker, admin console)      |
-| `pnpm stack:dev -- smr worker`                        | Start a subset of the stack (any of: api, stt, smr, guardrail, nlp, harness, worker, ui, tts) |
+| `pnpm stack:dev`                                      | Start the default stack (API, STT, Text, guardrail, NLP, harness + worker, admin console)     |
+| `pnpm stack:dev -- text worker`                       | Start a subset of the stack (any of: api, stt, text, guardrail, nlp, harness, worker, ui, tts) |
 | `pnpm stack:dev down`                                 | Stop services previously spawned by `dev:stack` (pidfile-based; no-op if none)                |
 | `DRY_RUN=1 pnpm stack:dev`                            | Print the launch plan without starting anything                                               |
 | `pnpm stack:dev:doctor`                               | Health-check all services, docker infra, LLM engines, and the STT key                         |
@@ -76,15 +76,15 @@ For the full setup guide, daily workflows, testing, and troubleshooting, see **[
 | `pnpm infra:dev:down` / `infra:status` / `infra:logs` | Stop / inspect / follow docker infra                                                          |
 | `pnpm api:dev`                                        | Start API Gateway (development)                                                               |
 | `pnpm stt:dev`                                        | Start STT service (no reload; `:watch` for scoped reload)                                     |
-| `pnpm text:dev`                                        | Start SMR service with the LM Studio provider registered                                      |
+| `pnpm text:dev`                                        | Start the Text service (formerly SMR) with the LM Studio provider registered                  |
 | `pnpm nlp:dev` / `dev:guardrail` / `dev:harness`      | Start NLP / Guardrail / harness API service                                                   |
 | `pnpm worker:dev`                                     | Start the harness Temporal worker                                                             |
 | `pnpm tts:dev`                                        | Start TTS service (`:watch` for scoped reload)                                                |
 | `pnpm admin:dev`                                      | Start the admin console (Next.js dev, port 5176)                                              |
-| `pnpm dev:<service>:watch`                            | Scoped-reload variant (stt, smr, guardrail, nlp, harness, tts)                                |
+| `pnpm dev:<service>:watch`                            | Scoped-reload variant (stt, text, guardrail, nlp, harness, tts)                               |
 | `pnpm build`                                          | Build all packages and apps                                                                   |
 | `pnpm test:unit` / `test:integration` / `test:e2e`    | Run the TypeScript test suites (`.env.test`, isolated infra)                                  |
-| `pnpm py:<svc>:test`                                  | Run a Python service's pytest suite (stt, smr, nlp, guardrail, harness, tts)                  |
+| `pnpm py:<svc>:test`                                  | Run a Python service's pytest suite (stt, text, nlp, guardrail, harness, tts)                 |
 | `pnpm db:all && pnpm build`                           | Full reset: push DB (destructive), seed, build everything                                     |
 | `pnpm db:studio`                                      | Open Prisma Studio                                                                            |
 | `pnpm gen:token`                                      | Generate a dev JWT token                                                                      |

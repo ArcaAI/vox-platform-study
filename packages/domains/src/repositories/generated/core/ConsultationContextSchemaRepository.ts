@@ -55,7 +55,7 @@ export class ConsultationContextSchemaRepository extends Repository<Consultation
   /**
    * `findFirst` throws `DataNotFoundException` on a miss. Only a genuine miss
    * maps to null — anything else (most importantly the tenant-scope
-   * extension's cross-tenant throw) must SURFACE, or a global-admin read
+   * extension's cross-tenant throw) must SURFACE, or a super-admin read
    * targeting a foreign tenant would silently "succeed" as empty. Same
    * treatment as `AiTaskDefaultRepository.findByTenantAndTaskKey`.
    */

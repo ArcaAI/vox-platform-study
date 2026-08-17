@@ -23,8 +23,8 @@ import { PromptAssemblyService } from '../../prompt/prompt-assembly.service';
 import { JobMetricsService } from '../../../baseServices/observability/job-metrics.service';
 import { SecretsService } from '../../../baseServices/_meta/secrets';
 import { encryptPhiFields } from '../../../../common';
-import { buildSmrGeneratePayload, mapSmrGenerateResponse } from '../../summary/text-generate';
-import { buildGuardrailUsageInput, buildLlmUsageInput, parseSmrUsageDetail, type SmrUsageDetail } from '../../summary/text-usage';
+import { buildTextGeneratePayload, mapTextGenerateResponse } from '../../summary/text-generate';
+import { buildGuardrailUsageInput, buildLlmUsageInput, parseTextUsageDetail, type TextUsageDetail } from '../../summary/text-usage';
 import { HarnessPolicyService } from '../../../harness-policy/harness-policy.service';
 import { ConfigResolver } from '../../../config-resolver';
 import { IActiveUserContext } from '../../../../interfaces';
@@ -62,7 +62,7 @@ import { INoteGenerationService, GenerationTrigger } from '../../note-generation
 @Processor(JobQueue.GenerateComprehensiveSummary)
 export class ComprehensiveSummaryProcessor extends WorkerHost {
   private readonly logger = new Logger(ComprehensiveSummaryProcessor.name);
-  private readonly smrServiceUrl: string;
+  private readonly textServiceUrl: string;
 
   constructor(
     @Inject(IConsultationJobService) private readonly jobService: IConsultationJobService,
@@ -107,7 +107,7 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
     @Optional() @Inject(INoteGenerationService) private readonly noteGenerationService?: INoteGenerationService,
   ) {
     super();
-    this.smrServiceUrl = this.configService.get<string>('TEXT_URL') ?? 'http://localhost:8862';
+    this.textServiceUrl = this.configService.get<string>('TEXT_URL') ?? 'http://localhost:8862';
   }
 
   /**
@@ -224,7 +224,7 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
         // Step 4: Call SMR service (60%)
         await this.jobService.notifyProgress(jobId, 60, 'Generating comprehensive summary with AI');
 
-        const smrResponse = await this.callSmrService(
+        const smrResponse = await this.callTextService(
           consultation,
           sections,
           aggregatedEntities,
@@ -314,7 +314,7 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
     });
   }
 
-  private async callSmrService(
+  private async callTextService(
     consultation: {
       departmentId?: string | null;
       parentConsultationId?: string | null;
@@ -354,9 +354,9 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
     inputTokens?: number;
     outputTokens?: number;
     /** SMR's billing passthrough for this call. */
-    usage: SmrUsageDetail | null;
+    usage: TextUsageDetail | null;
     /** The guardrail call this generation triggered, forwarded by SMR. */
-    guardrailUsage: SmrUsageDetail | null;
+    guardrailUsage: TextUsageDetail | null;
   }> {
     // Build structured text from sections
     const sectionTexts = sections.map((section, index) => {
@@ -404,7 +404,7 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
         const { provider, model } = await this.harnessPolicyService.resolveSmrSelection(tenantId, 'finalize');
         options = { smrProvider: provider, smrModel: model, ...request.options };
       }
-      const smrPayload = buildSmrGeneratePayload(assembledPrompt, options, {
+      const textPayload = buildTextGeneratePayload(assembledPrompt, options, {
         dnaStyleId: request.dnaStyleId,
         template: request.template ?? 'comprehensive',
         includeNER: request.includeNER,
@@ -416,7 +416,7 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
         promptHyperparameters: assembledPrompt.hyperparameters,
       });
       const smrServiceToken = (await this.secretsService?.getSecretOptional('TEXT_SERVICE_TOKEN')) ?? '';
-      const response = await this.httpService.axiosRef.post(`${this.smrServiceUrl}/api/v1/generate`, smrPayload, {
+      const response = await this.httpService.axiosRef.post(`${this.textServiceUrl}/api/v1/generate`, textPayload, {
         timeout: 180000,
         headers: {
           'Content-Type': 'application/json',
@@ -427,9 +427,9 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
       this.jobMetrics.recordSmrCallDuration(JobQueue.GenerateComprehensiveSummary, 'smr', (Date.now() - smrStart) / 1000);
       const data = response.data as { usage_detail?: unknown; guardrail_usage?: unknown };
       return {
-        ...mapSmrGenerateResponse(response.data),
-        usage: parseSmrUsageDetail(data?.usage_detail),
-        guardrailUsage: parseSmrUsageDetail(data?.guardrail_usage),
+        ...mapTextGenerateResponse(response.data),
+        usage: parseTextUsageDetail(data?.usage_detail),
+        guardrailUsage: parseTextUsageDetail(data?.guardrail_usage),
       };
     } catch (error) {
       this.logger.error({
@@ -461,7 +461,7 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
    */
   private async persistSummaryMetaWithUsage(
     summaryMeta: Parameters<SummaryMetaRepository['create']>[0],
-    smrResponse: { usage: SmrUsageDetail | null; guardrailUsage: SmrUsageDetail | null },
+    smrResponse: { usage: TextUsageDetail | null; guardrailUsage: TextUsageDetail | null },
     attribution: { tenantId: string; consultationId: string; doctorId?: string | null; departmentId?: string | null },
   ): Promise<void> {
     const llmInput = smrResponse.usage

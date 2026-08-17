@@ -16,7 +16,7 @@ export interface DnaJobResponse {
 
 /** Filters for the paginated admin report list. */
 export interface ListDnaReportsFilters {
-  /** Global admins only: scope to a tenant. Ignored for tenant admins. */
+  /** Super Admins only: scope to a tenant. Ignored for tenant admins. */
   tenantId?: string;
   doctorId?: string;
   includeDisabled?: boolean;
@@ -72,13 +72,13 @@ export abstract class IDnaWritingStyleService {
   abstract listReports(filters?: { doctorId?: string; includeDisabled?: boolean }): Promise<DnaReportResponse[]>;
   /**
    * Repository-level paginated admin list. Tenant scope is
-   * resolved identically to {@link getDashboard}: a global admin may pass
+   * resolved identically to {@link getDashboard}: a super admin may pass
    * `tenantId` (or omit it for an all-tenants view); a tenant admin is pinned to
    * their CLS tenant and any supplied `tenantId` is ignored.
    */
   abstract listReportsPaginated(filters?: ListDnaReportsFilters): Promise<PaginatedDnaReports>;
   /**
-   * Aggregate dashboard. A global admin (SUPER_ADMIN)
+   * Aggregate dashboard. A super admin (SUPER_ADMIN)
    * may pass `tenantId` to scope to a tenant (or omit it for an all-tenants
    * view); a tenant admin is pinned to their CLS tenant and the argument is
    * ignored.

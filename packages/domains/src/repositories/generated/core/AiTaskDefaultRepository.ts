@@ -46,7 +46,7 @@ export class AiTaskDefaultRepository extends Repository<AiTaskDefaultEntity, AiT
       // r2605 Finding A — only a genuine miss maps to null. Anything else
       // (most importantly the tenant-scope extension's `TenantScope: tenantId
       // mismatch` throw on a cross-tenant read) must SURFACE: the former
-      // blanket catch made global-admin reads targeting SYSTEM/foreign
+      // blanket catch made super-admin reads targeting SYSTEM/foreign
       // tenants silently "succeed" as empty.
       if (err instanceof DataNotFoundException) {
         return null;

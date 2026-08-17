@@ -35,7 +35,7 @@ Before flipping ANY tenant, confirm:
 
 1. `docs/implementation/TASK-732-Legacy-Migration-Deletion/readiness-checklist.md` — every row relevant to the environment you're migrating in is VERIFIED (a real production rollout, as opposed to this pass's pre-production authorization, should not proceed on unmet rows without an equally explicit owner override).
 2. `go-no-go-thresholds.md` carries a dated, signed verdict (§7 of that document).
-3. You have `admin:pipeline-policy:manage` scope and, for a global admin acting on a specific tenant, `?tenantId=<id>` reaches the right cascade tier.
+3. You have `admin:pipeline-policy:manage` scope and, for a super admin acting on a specific tenant, `?tenantId=<id>` reaches the right cascade tier.
 
 ## The flip mechanism
 

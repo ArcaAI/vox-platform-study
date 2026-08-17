@@ -48,9 +48,9 @@ export class TenantStorageConfigAdminController {
   // AUTH-NOTE: the two `platform` routes below manage the SYSTEM-tenant
   // storage row — the platform default every tenant falls back to. They are
   // SUPER_ADMIN-ONLY, enforced IMPERATIVELY in
-  // `TenantStorageConfigService.assertGlobalAdmin` (→ 403), because the
+  // `TenantStorageConfigService.assertSuperAdmin` (→ 403), because the
   // permission decorators express `action + subject` and cannot express
-  // "global admins only": a tenant admin legitimately holds `manage:Storage`
+  // "super admins only": a tenant admin legitimately holds `manage:Storage`
   // for its OWN rows and reaches this controller through the class-level
   // `update:Tenant`. The handler decorators below therefore UNDERSTATE the real
   // gate — do not widen either without reading the service first. This is a 403
@@ -66,7 +66,7 @@ export class TenantStorageConfigAdminController {
       '`credentialsRef` is a Vault path, never the credentials.',
   })
   @ApiResponse({ status: 200, type: TenantStorageConfigResponse })
-  @ApiResponse({ status: 403, description: 'Caller is not a global administrator.' })
+  @ApiResponse({ status: 403, description: 'Caller is not a super administrator.' })
   @CanRead('Storage')
   async getPlatformDefault(): Promise<TenantStorageConfigResponse> {
     return this.storageConfigService.getPlatformDefault();
@@ -89,7 +89,7 @@ export class TenantStorageConfigAdminController {
     example: '"0"',
   })
   @ApiResponse({ status: 200, type: TenantStorageConfigResponse })
-  @ApiResponse({ status: 403, description: 'Caller is not a global administrator.' })
+  @ApiResponse({ status: 403, description: 'Caller is not a super administrator.' })
   @ApiResponse({ status: 412, description: 'Optimistic concurrency conflict — re-fetch and retry with the new version.' })
   @ApiResponse({ status: 428, description: 'If-Match header is required for this operation.' })
   @CanUpdate('Storage')

@@ -14,7 +14,7 @@
  */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { SmrProxyController } from '../text-proxy.controller';
+import { TextProxyController } from '../text-proxy.controller';
 
 const emptyProfile = {
   provider: 'lm-studio',
@@ -38,7 +38,7 @@ function build(profileResolver?: { resolveProfile: ReturnType<typeof vi.fn> }) {
   const config = { getConfigValue: vi.fn(() => 'http://localhost:8862') };
   const selection = { resolveSmrSelection: vi.fn(async () => ({ provider: 'lm-studio', model: 'gemma-4' })) };
 
-  const ctrl = new SmrProxyController(
+  const ctrl = new TextProxyController(
     http as any,
     { fetchByCodeName: vi.fn() } as any,
     cls as any,

@@ -2,7 +2,7 @@
  * Privilege boundaries inside `TenantAllowedOriginService`.
  *
  * Previously this resource was governed entirely at the controller
- * (`assertGlobalAdmin()` on every handler). That is now relaxed so a
+ * (`assertSuperAdmin()` on every handler). That is now relaxed so a
  * `TENANT_ADMIN` can self-serve their own origins, which moves two
  * boundaries INTO the service, where the shape of the value is actually
  * visible:
@@ -48,7 +48,7 @@ const TENANT_B = '50000000-0000-0000-0000-0000000000bb';
 const ORIGIN_REGISTRY_INVALIDATE_EVENT = 'origin-registry.invalidate';
 
 const tenantAdmin = { id: 'user-tenant-admin', email: 'ta@example.org', roles: ['TENANT_ADMIN'] };
-const globalAdmin = { id: 'user-global-admin', email: 'ga@example.org', roles: ['SUPER_ADMIN'] };
+const superAdmin = { id: 'user-super-admin', email: 'ga@example.org', roles: ['SUPER_ADMIN'] };
 
 function makeEntity(overrides: Partial<{ id: string; tenantId: string; origin: string; label: string; version: number }> = {}): TenantAllowedOriginEntity {
   return new TenantAllowedOriginEntity({
@@ -149,7 +149,7 @@ describe('TenantAllowedOriginService — privilege boundaries', () => {
     });
 
     it('allows a SUPER_ADMIN the identical write (no regression)', async () => {
-      const result = await actingAs(globalAdmin, TENANT_A, () =>
+      const result = await actingAs(superAdmin, TENANT_A, () =>
         service.create({ origin: 'https://*.bcmch.org:*', label: 'BCMCH subdomains' } as never),
       );
 
@@ -170,7 +170,7 @@ describe('TenantAllowedOriginService — privilege boundaries', () => {
     });
 
     it('allows a SUPER_ADMIN', async () => {
-      const result = await actingAs(globalAdmin, TENANT_A, () => service.create({ origin: '*', label: 'everything' } as never));
+      const result = await actingAs(superAdmin, TENANT_A, () => service.create({ origin: '*', label: 'everything' } as never));
 
       expect(result.origin).toBe('*');
     });
@@ -234,12 +234,12 @@ describe('TenantAllowedOriginService — privilege boundaries', () => {
     });
 
     it('refuses a SUPER_ADMIN too — an encoded wildcard is malformed input, not a privileged write', async () => {
-      // The pre-lane-J behaviour would have ADMITTED this for a global admin
+      // The pre-lane-J behaviour would have ADMITTED this for a super admin
       // (it classified as an "exact" origin and stored `https://*.evil.com`).
       // There is no legitimate reason to spell a wildcard this way: the
       // supported form is `https://*.evil.com:*`, which T-4 covers.
       await expect(
-        actingAs(globalAdmin, TENANT_A, () => service.create({ origin: 'https://%2A.evil.com', label: 'smuggled' } as never)),
+        actingAs(superAdmin, TENANT_A, () => service.create({ origin: 'https://%2A.evil.com', label: 'smuggled' } as never)),
       ).rejects.toThrow(ArgumentInvalidException);
 
       expect(repository.create).not.toHaveBeenCalled();
@@ -262,7 +262,7 @@ describe('TenantAllowedOriginService — privilege boundaries', () => {
     it('allows a SUPER_ADMIN the identical PATCH', async () => {
       repository.findById.mockResolvedValue(makeEntity({ id: 'row-1', tenantId: TENANT_A, origin: 'https://app.tenant-a.example' }));
 
-      await actingAs(globalAdmin, TENANT_A, () => service.update('row-1', { origin: 'https://*.bcmch.org:*', expectedVersion: 1 } as never));
+      await actingAs(superAdmin, TENANT_A, () => service.update('row-1', { origin: 'https://*.bcmch.org:*', expectedVersion: 1 } as never));
 
       expect(repository.updateWithVersion).toHaveBeenCalledTimes(1);
       expect((repository.updateWithVersion.mock.calls[0][1] as TenantAllowedOriginEntity).origin).toBe('https://*.bcmch.org:*');
@@ -319,15 +319,15 @@ describe('TenantAllowedOriginService — privilege boundaries', () => {
     });
 
     it('allows a SUPER_ADMIN every SYSTEM-tenant write', async () => {
-      await actingAs(globalAdmin, SYSTEM_TENANT_ID, () => service.create({ origin: 'https://console.example', label: 'console' } as never));
+      await actingAs(superAdmin, SYSTEM_TENANT_ID, () => service.create({ origin: 'https://console.example', label: 'console' } as never));
       expect((repository.create.mock.calls[0][0] as TenantAllowedOriginEntity).tenantId).toBe(SYSTEM_TENANT_ID);
 
       repository.findById.mockResolvedValue(makeEntity({ id: 'row-sys', tenantId: SYSTEM_TENANT_ID }));
-      await actingAs(globalAdmin, SYSTEM_TENANT_ID, () => service.update('row-sys', { label: 'renamed', expectedVersion: 1 } as never));
+      await actingAs(superAdmin, SYSTEM_TENANT_ID, () => service.update('row-sys', { label: 'renamed', expectedVersion: 1 } as never));
       expect(repository.updateWithVersion).toHaveBeenCalledTimes(1);
 
       repository.softDelete.mockResolvedValue(makeEntity({ id: 'row-sys', tenantId: SYSTEM_TENANT_ID }));
-      await actingAs(globalAdmin, SYSTEM_TENANT_ID, () => service.deleteById('row-sys'));
+      await actingAs(superAdmin, SYSTEM_TENANT_ID, () => service.deleteById('row-sys'));
       expect(repository.softDelete).toHaveBeenCalledTimes(1);
     });
   });

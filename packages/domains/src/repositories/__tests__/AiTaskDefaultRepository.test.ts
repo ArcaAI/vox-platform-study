@@ -5,7 +5,7 @@
  *  - a genuine miss (base `findFirst` throws `DataNotFoundException`) → null;
  *  - any OTHER error — most importantly the tenant-scope extension's
  *    `TenantScope: tenantId mismatch` throw — must SURFACE, not be swallowed
- *    into a silent null (that masking made cross-tenant global-admin reads
+ *    into a silent null (that masking made cross-tenant super-admin reads
  *    "succeed" as empty);
  *  - a supplied `tx` client routes the read through `tx.aiTaskDefault`
  *    (unscoped base-client lane), never the cached extended delegate.

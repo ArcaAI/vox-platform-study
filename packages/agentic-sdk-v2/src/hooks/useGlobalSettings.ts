@@ -46,10 +46,10 @@ export interface UseGlobalSettingsReturn {
   update: (id: string, input: UpdateGlobalSettingInput) => Promise<GlobalSetting>;
   remove: (id: string) => Promise<void>;
   /**
-   * Reveal ONE secret setting's plaintext. Global-admin only + step-up
+   * Reveal ONE secret setting's plaintext. Super-admin only + step-up
    * re-auth: pass the caller's current password. The result is transient (never
    * persisted by the SDK). Throws `AgenticError` on 401 (wrong/absent password)
-   * or 403 (not a global-admin).
+   * or 403 (not a super-admin).
    */
   revealSecret: (id: string, input: RevealSecretInput) => Promise<RevealSecretResult>;
 }

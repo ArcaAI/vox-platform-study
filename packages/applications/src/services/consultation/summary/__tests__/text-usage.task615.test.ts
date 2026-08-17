@@ -2,7 +2,7 @@ import { AiCapability, AiCostBasis, AiDeploymentKind, AiUsageUnit } from '@arcaa
 import { describe, expect, it } from 'vitest';
 
 import { KNOWN_PROVIDERS } from '../../../usageLedger/vocabulary';
-import { buildGuardrailUsageInput, buildLlmUsageInput, buildLlmUsageInputFromTokenCounts, parseSmrUsageDetail, toLedgerProvider } from '../text-usage';
+import { buildGuardrailUsageInput, buildLlmUsageInput, buildLlmUsageInputFromTokenCounts, parseTextUsageDetail, toLedgerProvider } from '../text-usage';
 
 /**
  * Turning an SMR response into ledger rows.
@@ -65,9 +65,9 @@ describe('toLedgerProvider', () => {
   });
 });
 
-describe('parseSmrUsageDetail', () => {
+describe('parseTextUsageDetail', () => {
   it('reads the block SMR puts on the response', () => {
-    const parsed = parseSmrUsageDetail(detail());
+    const parsed = parseTextUsageDetail(detail());
 
     expect(parsed).not.toBeNull();
     expect(parsed!.taskId).toBe('task-1');
@@ -76,19 +76,19 @@ describe('parseSmrUsageDetail', () => {
   });
 
   it('returns null for a response that carries no usage block', () => {
-    expect(parseSmrUsageDetail(undefined)).toBeNull();
-    expect(parseSmrUsageDetail({})).toBeNull();
-    expect(parseSmrUsageDetail({ task_id: 'x' })).toBeNull(); // no endpoint kind
+    expect(parseTextUsageDetail(undefined)).toBeNull();
+    expect(parseTextUsageDetail({})).toBeNull();
+    expect(parseTextUsageDetail({ task_id: 'x' })).toBeNull(); // no endpoint kind
   });
 
   it('rejects an endpoint kind the normalizer does not know', () => {
     // Better to record nothing than to guess between inclusive and exclusive
     // input arithmetic — that coin flip lands on an invoice.
-    expect(parseSmrUsageDetail(detail({ endpoint_kind: 'made.up' }))).toBeNull();
+    expect(parseTextUsageDetail(detail({ endpoint_kind: 'made.up' }))).toBeNull();
   });
 
   it('falls back to now when the timestamp is unusable', () => {
-    const parsed = parseSmrUsageDetail(detail({ occurred_at: 'not-a-date' }));
+    const parsed = parseTextUsageDetail(detail({ occurred_at: 'not-a-date' }));
     expect(parsed!.occurredAt.getTime()).not.toBeNaN();
   });
 });
@@ -96,7 +96,7 @@ describe('parseSmrUsageDetail', () => {
 describe('buildLlmUsageInput', () => {
   it('emits one row per non-zero unit under a single request-derived key', () => {
     const input = buildLlmUsageInput({
-      usage: parseSmrUsageDetail(detail())!,
+      usage: parseTextUsageDetail(detail())!,
       tenantId: 'tenant-1',
       operation: 'generate',
       consultationId: 'consult-1',
@@ -125,7 +125,7 @@ describe('buildLlmUsageInput', () => {
 
   it('splits the cache and reasoning counters apart — they are priced separately', () => {
     const input = buildLlmUsageInput({
-      usage: parseSmrUsageDetail(
+      usage: parseTextUsageDetail(
         detail({
           provider: 'openai',
           endpoint_kind: 'openai.chat',
@@ -152,7 +152,7 @@ describe('buildLlmUsageInput', () => {
 
   it('passes Anthropic exclusive input through untouched', () => {
     const input = buildLlmUsageInput({
-      usage: parseSmrUsageDetail(
+      usage: parseTextUsageDetail(
         detail({
           provider: 'anthropic',
           model: 'claude-sonnet-5',
@@ -183,7 +183,7 @@ describe('buildLlmUsageInput', () => {
 
   it('marks a BYOK call BYOK_NOTIONAL so platform-spend rollups exclude it', () => {
     const input = buildLlmUsageInput({
-      usage: parseSmrUsageDetail(detail({ byok: true, provider: 'anthropic', endpoint_kind: 'anthropic.messages' }))!,
+      usage: parseTextUsageDetail(detail({ byok: true, provider: 'anthropic', endpoint_kind: 'anthropic.messages' }))!,
       tenantId: 'tenant-1',
       operation: 'generate',
     })!;
@@ -206,7 +206,7 @@ describe('buildLlmUsageInput', () => {
     // would contribute 0 to every COGS rollup and resolve the baseline SELL
     // price rather than the managed-vendor row.
     const input = buildLlmUsageInput({
-      usage: parseSmrUsageDetail(detail({ byok: false, provider: 'azure-openai', endpoint_kind: 'openai.chat' }))!,
+      usage: parseTextUsageDetail(detail({ byok: false, provider: 'azure-openai', endpoint_kind: 'openai.chat' }))!,
       tenantId: 'tenant-1',
       operation: 'generate',
     })!;
@@ -218,7 +218,7 @@ describe('buildLlmUsageInput', () => {
 
   it('classifies a self-hosted engine as SELF_HOSTED, not CLOUD', () => {
     const input = buildLlmUsageInput({
-      usage: parseSmrUsageDetail(detail({ provider: 'lm-studio', endpoint_kind: 'lmstudio.chat' }))!,
+      usage: parseTextUsageDetail(detail({ provider: 'lm-studio', endpoint_kind: 'lmstudio.chat' }))!,
       tenantId: 'tenant-1',
       operation: 'generate',
     })!;
@@ -228,12 +228,12 @@ describe('buildLlmUsageInput', () => {
 
   it('marks an interrupted stream without changing the idempotency key', () => {
     const completed = buildLlmUsageInput({
-      usage: parseSmrUsageDetail(detail())!,
+      usage: parseTextUsageDetail(detail())!,
       tenantId: 'tenant-1',
       operation: 'generate.stream',
     })!;
     const aborted = buildLlmUsageInput({
-      usage: parseSmrUsageDetail(detail({ interrupted: true }))!,
+      usage: parseTextUsageDetail(detail({ interrupted: true }))!,
       tenantId: 'tenant-1',
       operation: 'generate.stream',
     })!;
@@ -246,7 +246,7 @@ describe('buildLlmUsageInput', () => {
 
   it('records nothing at all when every counter is zero', () => {
     const input = buildLlmUsageInput({
-      usage: parseSmrUsageDetail(detail({ prompt_tokens: 0, completion_tokens: 0, raw: null }))!,
+      usage: parseTextUsageDetail(detail({ prompt_tokens: 0, completion_tokens: 0, raw: null }))!,
       tenantId: 'tenant-1',
       operation: 'generate',
     });
@@ -256,7 +256,7 @@ describe('buildLlmUsageInput', () => {
 
   it('falls back to the headline counts when the provider sent no raw usage', () => {
     const input = buildLlmUsageInput({
-      usage: parseSmrUsageDetail(detail({ raw: null }))!,
+      usage: parseTextUsageDetail(detail({ raw: null }))!,
       tenantId: 'tenant-1',
       operation: 'generate',
     })!;
@@ -269,7 +269,7 @@ describe('buildLlmUsageInput', () => {
 
   it('carries the provider-reported service tier (a batch tier is ~50% off)', () => {
     const input = buildLlmUsageInput({
-      usage: parseSmrUsageDetail(detail({ service_tier: 'batch' }))!,
+      usage: parseTextUsageDetail(detail({ service_tier: 'batch' }))!,
       tenantId: 'tenant-1',
       operation: 'generate',
     })!;
@@ -281,7 +281,7 @@ describe('buildLlmUsageInput', () => {
 describe('buildGuardrailUsageInput', () => {
   it('emits guardrail.validate rows under a guardrail-prefixed key', () => {
     const input = buildGuardrailUsageInput({
-      usage: parseSmrUsageDetail(
+      usage: parseTextUsageDetail(
         detail({
           task_id: 'guardrail-req-9',
           provider: 'lm-studio',
@@ -309,7 +309,7 @@ describe('buildGuardrailUsageInput', () => {
   it('falls back to the parent request id when guardrail reported none', () => {
     const input = buildGuardrailUsageInput({
       // Guardrail does not mint request ids of its own, so neither field is set.
-      usage: parseSmrUsageDetail(detail({ task_id: '', request_id: '' }))!,
+      usage: parseTextUsageDetail(detail({ task_id: '', request_id: '' }))!,
       tenantId: 'tenant-1',
       fallbackRequestId: 'parent-task-7',
     })!;
@@ -322,7 +322,7 @@ describe('buildGuardrailUsageInput', () => {
 // PATH THAT NEVER CALLS SMR ITSELF (confirmed: zero httpService/axios
 // references in that file). It exists to persist a summary + bare
 // inputTokens/outputTokens the CALLER already computed, so there is no real
-// SmrUsageDetail — no provider, no endpointKind, no raw provider payload.
+// TextUsageDetail — no provider, no endpointKind, no raw provider payload.
 // buildLlmUsageInput requires all of that (and would force a fabricated
 // endpointKind onto attributesJson, misrepresenting an API shape that never
 // happened), so this is a separate, honest, minimal builder for that one

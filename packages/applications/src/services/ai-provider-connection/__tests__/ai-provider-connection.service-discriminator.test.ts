@@ -110,7 +110,7 @@ describe('assertWriteAllowed — per-service tenant lane', () => {
     await expect(svc.upsertRow('tts', 'openai', { enabled: true }, TENANT)).rejects.toBeInstanceOf(ForbiddenException);
   });
 
-  it('still gates SYSTEM writes on global admin regardless of service', async () => {
+  it('still gates SYSTEM writes on super admin regardless of service', async () => {
     const { svc } = makeService({ roles: [] });
     await expect(svc.upsertRow('stt', 'azure-speech', { enabled: true }, SYSTEM_TENANT_ID)).rejects.toBeInstanceOf(ForbiddenException);
   });

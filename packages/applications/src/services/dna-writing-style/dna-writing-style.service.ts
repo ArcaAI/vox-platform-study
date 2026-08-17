@@ -539,7 +539,7 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
    * Pushes pagination down to the repository (`findPaginated` → `db.findMany` +
    * `db.count`) instead of materializing the full tenant result set and slicing
    * it in the controller. Tenant scope is resolved identically to
-   * `getDashboard`/`resolveDashboardScope`: a global admin may target a tenant
+   * `getDashboard`/`resolveDashboardScope`: a super admin may target a tenant
    * via `tenantId` (or omit it for an all-tenants view); a tenant admin is
    * pinned to their CLS tenant and any supplied `tenantId` is ignored.
    */
@@ -569,7 +569,7 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
   /**
    * Aggregate DNA dashboard.
    *
-   * Tenant scoping mirrors `listReports`: a global admin
+   * Tenant scoping mirrors `listReports`: a super admin
    * (SUPER_ADMIN) may target a specific tenant via `tenantId`, or
    * omit it for an all-tenants roll-up. A tenant admin is always pinned to
    * their CLS tenant — any `tenantId` argument is ignored so they cannot read
@@ -604,7 +604,7 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
   /**
    * CC-02 — resolve the tenant the admin *list* runs against.
    *
-   * Mirrors `resolveDashboardScope`, EXCEPT a global admin who supplied no
+   * Mirrors `resolveDashboardScope`, EXCEPT a super admin who supplied no
    * explicit `tenantId` falls back to their ACTIVE tenant (the `X-Tenant-Id`
    * header surfaced on CLS as `tenantId`) before defaulting to the all-tenants
    * view. Without this, a super-admin who had selected an active tenant still
@@ -625,7 +625,7 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
   }
 
   /**
-   * Resolve the tenant a dashboard request runs against. Global admins keep the
+   * Resolve the tenant a dashboard request runs against. Super Admins keep the
    * caller-supplied `tenantId` (possibly `undefined` ⇒ all tenants); tenant
    * admins are forced onto their CLS tenant and require one to be present.
    */

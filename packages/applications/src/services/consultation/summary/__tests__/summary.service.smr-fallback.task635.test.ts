@@ -1,9 +1,9 @@
 /**
- * SummaryService.callSmrService — tenant SMR fallback on finalize
+ * SummaryService.callTextService — tenant SMR fallback on finalize
  *
  * `resolveSmrFallbackSelection` (`smr.finalize.fallback`) was configurable in
  * the admin UI but INERT on the native finalize path — only smr-compat ever
- * called it. `callSmrService` now mirrors compat's provider-failure fallback
+ * called it. `callTextService` now mirrors compat's provider-failure fallback
  * (`smr-compat.controller.ts#computeSummary`): on a provider-side failure,
  * retry EXACTLY ONCE against the tenant's configured fallback selection;
  * propagate the ORIGINAL error when no fallback is configured, the fallback
@@ -76,7 +76,7 @@ const createMockPromptAssemblyService = () => ({
   }),
 });
 
-describe('SummaryService.callSmrService — tenant SMR fallback (B-03)', () => {
+describe('SummaryService.callTextService — tenant SMR fallback (B-03)', () => {
   let mockContextItemRepository: ReturnType<typeof createMockContextItemRepository>;
   let mockHttpService: { axiosRef: { post: ReturnType<typeof vi.fn> } };
   let mockHarnessPolicyService: {

@@ -45,9 +45,9 @@ const KNOBS = ['temperature', 'topP', 'maxTokens', 'contextLength', 'maxConcurre
 /**
  * Runtime-profile service.
  *
- * Hyperparameters / context / concurrency are GLOBAL-ADMIN-ONLY and
+ * Hyperparameters / context / concurrency are SUPER_ADMIN-ONLY and
  * SYSTEM-tenant-only by design. A write from a
- * non-global-admin, or targeting any tenant other than SYSTEM, is a PRIVILEGE
+ * non-super-admin, or targeting any tenant other than SYSTEM, is a PRIVILEGE
  * boundary → 403 (not the 404-over-403 cross-tenant posture).
  *
  * The resolution contract is deliberately forgiving: a missing profile is NOT
@@ -60,7 +60,7 @@ export class AiRuntimeProfileService extends BaseService implements IAiRuntimePr
   constructor(
     private readonly profileRepository: AiRuntimeProfileRepository,
     // The UNSCOPED base client backing the cross-tenant lane — profiles live on
-    // the SYSTEM tenant while a global admin acts under a working tenant.
+    // the SYSTEM tenant while a super admin acts under a working tenant.
     @Inject('CORE_DATABASE_SERVICE') private readonly databaseService: CoreDatabaseService,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
@@ -222,13 +222,13 @@ export class AiRuntimeProfileService extends BaseService implements IAiRuntimePr
   }
 
   /**
-   * Hyperparameters are global-admin-only AND SYSTEM-tenant-only (E5). Both
+   * Hyperparameters are super-admin-only AND SYSTEM-tenant-only (E5). Both
    * violations are 403 — the caller is being told "you may not", not "this
    * does not exist".
    */
   private assertWriteAllowed(tenantId?: string): void {
     if (!isSuperAdmin(this.requestUser)) {
-      throw new ForbiddenException('AI runtime profiles are managed by global administrators only.');
+      throw new ForbiddenException('AI runtime profiles are managed by super administrators only.');
     }
     if (tenantId !== undefined && tenantId !== SYSTEM_TENANT_ID) {
       throw new ForbiddenException('AI runtime profiles are platform-level configuration and exist only on the SYSTEM tenant.');

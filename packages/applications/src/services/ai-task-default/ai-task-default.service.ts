@@ -21,8 +21,8 @@ import {
   AI_TASK_KEYS,
   AI_TASK_MODEL_TASK_TYPES,
   AiTaskKey,
-  GLOBAL_ADMIN_ONLY_TASK_PREFIXES,
-  isGlobalAdminOnlyTaskKey,
+  SUPER_ADMIN_ONLY_TASK_PREFIXES,
+  isSuperAdminOnlyTaskKey,
   isGuardrailTaskKey,
 } from './constants';
 import { AiTaskDefaultResponse, EffectiveAiTaskDefaultResponse, UpsertAiTaskDefaultRequest } from './dto';
@@ -69,7 +69,7 @@ export class AiTaskDefaultService extends BaseService implements IAiTaskDefaultS
 
     // SUPER_ADMIN-only tasks resolve SYSTEM only (orphan tenant
     // override rows remain harmless but never win at runtime).
-    const systemOnly = isGlobalAdminOnlyTaskKey(taskKey);
+    const systemOnly = isSuperAdminOnlyTaskKey(taskKey);
 
     const [tenantRow, systemRow] = await Promise.all([
       systemOnly || scopedTenantId === SYSTEM_TENANT_ID
@@ -104,12 +104,12 @@ export class AiTaskDefaultService extends BaseService implements IAiTaskDefaultS
   async upsertRow(taskKey: string, dto: UpsertAiTaskDefaultRequest, tenantId?: string): Promise<AiTaskDefaultResponse> {
     this.assertKnownTaskKey(taskKey);
 
-    // GOVERNANCE: nlp / harness model routing is exclusively global-admin-managed
+    // GOVERNANCE: nlp / harness model routing is exclusively super-admin-managed
     // (smr.* and, since TASK-735, guardrail.* are tenant-configurable — see the
     // class doc comment). A privilege rule — 403, not 404 (the caller can
     // already READ these keys; only writes are gated).
-    if (GLOBAL_ADMIN_ONLY_TASK_PREFIXES.some((p) => taskKey.startsWith(p)) && !isSuperAdmin(this.requestUser)) {
-      throw new ForbiddenException(`AI task '${taskKey}' is managed by global administrators only.`);
+    if (SUPER_ADMIN_ONLY_TASK_PREFIXES.some((p) => taskKey.startsWith(p)) && !isSuperAdmin(this.requestUser)) {
+      throw new ForbiddenException(`AI task '${taskKey}' is managed by super administrators only.`);
     }
 
     const scopedTenantId = this.resolveScopedTenantId(tenantId);
@@ -119,7 +119,7 @@ export class AiTaskDefaultService extends BaseService implements IAiTaskDefaultS
     // binding for a non-SYSTEM tenant must name a slug on the platform-
     // approved list (a SYSTEM-tenant AiModel row), regardless of whether the
     // caller also holds a tenant-owned model of the same slug. Writing the
-    // SYSTEM row itself (global-admin defining the approved list) is exempt.
+    // SYSTEM row itself (super-admin defining the approved list) is exempt.
     // This is a 403 privilege boundary — not the 404-over-403 tenancy posture
     // and not a silent clamp to some other slug.
     if (isGuardrailTaskKey(taskKey) && scopedTenantId !== SYSTEM_TENANT_ID) {
@@ -196,14 +196,14 @@ export class AiTaskDefaultService extends BaseService implements IAiTaskDefaultS
   /**
    * r2605 Finding A — the cross-tenant persistence lane.
    *
-   * A global admin's working tenant W is elevated into CLS by the BFF proxy
+   * A super admin's working tenant W is elevated into CLS by the BFF proxy
    * on every request, so when the platform screen targets `?tenantId=SYSTEM`
    * (or any foreign tenant) through the EXTENDED client, the tenant-scope
    * extension injects W everywhere: the CAS `updateMany` matches 0 rows
    * (eternal 412 despite a correct If-Match), the create throws
    * `TenantScope: tenantId mismatch` (500), and reads miss. When the resolved
    * target differs from the CLS tenant (or CLS carries no tenant) AND the
-   * caller is a global admin, route the whole read/write set through the
+   * caller is a super admin, route the whole read/write set through the
    * UNSCOPED base client so the queries carry ONLY the explicit tenant
    * filters (mirrors `HarnessPolicyService.upsert`'s baseClient usage).
    * Tenant admins are pinned to their CLS tenant by `resolveScopedTenantId`
@@ -222,7 +222,7 @@ export class AiTaskDefaultService extends BaseService implements IAiTaskDefaultS
     }
   }
 
-  /** Explicit tenant target (global-admin `?tenantId=`) over the CLS tenant. */
+  /** Explicit tenant target (super-admin `?tenantId=`) over the CLS tenant. */
   private resolveScopedTenantId(tenantId?: string): string {
     const scoped = tenantId ?? this.tenantId;
     if (!scoped) {
@@ -252,7 +252,7 @@ export class AiTaskDefaultService extends BaseService implements IAiTaskDefaultS
    * Resolve a slug to an ENABLED AiModel in [tenant, SYSTEM], preferring the
    * tenant-owned row (`findBySlug` pins exact-tenant + ENABLED). `tx` threads
    * the cross-tenant base-client lane through the model reads too — without
-   * it, a global admin acting under working tenant W would have the foreign
+   * it, a super admin acting under working tenant W would have the foreign
    * tenant's row read rewritten/rejected by the tenant-scope extension.
    */
   private async resolveEnabledModelBySlug(tenantId: string, slug: string, tx?: CoreDatabaseService['baseClient']): Promise<AiModelEntity | null> {

@@ -18,7 +18,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ProviderCredentialVetoedException, QuotaExceededException } from '@arcaai/exceptions';
-import { SmrProxyController } from '../text-proxy.controller';
+import { TextProxyController } from '../text-proxy.controller';
 
 function build(
   opts: {
@@ -45,7 +45,7 @@ function build(
     }),
   };
 
-  const ctrl = new SmrProxyController(
+  const ctrl = new TextProxyController(
     http as any,
     { fetchByCodeName: vi.fn() } as any,
     cls as any,

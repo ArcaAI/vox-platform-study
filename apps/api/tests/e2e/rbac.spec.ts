@@ -352,7 +352,7 @@ test.describe('RBAC Controllers', () => {
       });
     });
 
-    // Global admin gains create/update on SYSTEM roles + role cloning.
+    // Super admin gains create/update on SYSTEM roles + role cloning.
     test.describe('SYSTEM-role authoring + clone', () => {
       test('super_admin (SUPER_ADMIN) can rename a SYSTEM role; tenant admin cannot', async ({ request }) => {
         if (!rbacEndpointsAvailable || !superAdminToken || !adminToken) {
@@ -374,11 +374,11 @@ test.describe('RBAC Controllers', () => {
           return;
         }
 
-        const asGlobalAdmin = await request.put(`/api/v1/admin/rbac/roles/${systemRole.id}`, {
+        const asSuperAdmin = await request.put(`/api/v1/admin/rbac/roles/${systemRole.id}`, {
           headers: { Authorization: `Bearer ${superAdminToken}` },
           data: { description: `TASK-501 e2e ${Date.now()}` },
         });
-        expect(asGlobalAdmin.status()).toBe(200);
+        expect(asSuperAdmin.status()).toBe(200);
 
         const asTenantAdmin = await request.put(`/api/v1/admin/rbac/roles/${systemRole.id}`, {
           headers: { Authorization: `Bearer ${adminToken}` },

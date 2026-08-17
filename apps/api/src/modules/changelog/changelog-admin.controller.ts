@@ -9,8 +9,8 @@ import { CanManage, ExpectedVersion, RequiresIfMatch, RequiredScopes } from '../
  *
  * AUTH-NOTE: the class-level `@CanManage('ChangelogEntry')` UNDERSTATES the
  * real gate. Every route here is SUPER_ADMIN-only, enforced imperatively in
- * `ChangelogService.assertGlobalAdmin()` — the decorators cannot express
- * "global admin only" (`05-nestjs-api.md` §Imperative Privilege Checks), and a
+ * `ChangelogService.assertSuperAdmin()` — the decorators cannot express
+ * "super admin only" (`05-nestjs-api.md` §Imperative Privilege Checks), and a
  * release note is a platform-wide broadcast that a tenant admin must never
  * author or publish. That is a 403 privilege boundary, NOT the 404-over-403
  * cross-tenant posture. The decorator is still required so the deny-by-default
@@ -34,7 +34,7 @@ export class ChangelogAdminController {
     description: 'CI creates DRAFTs by this route. Nothing here makes an entry visible — publishing is a separate human action.',
   })
   @ApiResponse({ status: 201, type: ChangelogEntryResponse })
-  @ApiResponse({ status: 403, description: 'Not a global admin.' })
+  @ApiResponse({ status: 403, description: 'Not a super admin.' })
   async create(@Body() request: CreateChangelogEntryRequest): Promise<ChangelogEntryResponse> {
     return this.changelogService.create(request);
   }
@@ -49,7 +49,7 @@ export class ChangelogAdminController {
   @ApiParam({ name: 'id', description: 'Changelog entry id' })
   @ApiHeader({ name: 'If-Match', description: 'Strong validator carrying the version the client read (e.g. `"1"`).', required: true, example: '"1"' })
   @ApiResponse({ status: 200, type: ChangelogEntryResponse })
-  @ApiResponse({ status: 403, description: 'Not a global admin.' })
+  @ApiResponse({ status: 403, description: 'Not a super admin.' })
   @ApiResponse({ status: 412, description: 'Version drift — re-fetch and retry.' })
   @ApiResponse({ status: 428, description: 'If-Match header is required.' })
   async update(
@@ -73,7 +73,7 @@ export class ChangelogAdminController {
   @ApiParam({ name: 'id', description: 'Changelog entry id' })
   @ApiHeader({ name: 'If-Match', description: 'Strong validator carrying the version the client read (e.g. `"1"`).', required: true, example: '"1"' })
   @ApiResponse({ status: 200, type: ChangelogEntryResponse })
-  @ApiResponse({ status: 403, description: 'Not a global admin.' })
+  @ApiResponse({ status: 403, description: 'Not a super admin.' })
   @ApiResponse({ status: 409, description: 'Already published.' })
   @ApiResponse({ status: 412, description: 'Version drift — re-fetch and retry.' })
   @ApiResponse({ status: 428, description: 'If-Match header is required.' })

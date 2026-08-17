@@ -15,6 +15,7 @@
         "admin-console",
         "compat-playground",
         "smr",
+        "text",
         "stt-ml-runtime",
         "stt-worker",
         "nlp",

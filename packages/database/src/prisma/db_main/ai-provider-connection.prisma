@@ -16,7 +16,7 @@
 // `provider` is a capability-scoped provider id (see CLOUD_BYO_PROVIDERS in the
 // application service). Tenant rows are allowed ONLY for the cloud API providers
 // listed for their service (service-layer 403 otherwise, mirroring
-// GLOBAL_ADMIN_ONLY_TASK_PREFIXES); self-host engines are SYSTEM-only.
+// SUPER_ADMIN_ONLY_TASK_PREFIXES); self-host engines are SYSTEM-only.
 // `encryptedApiKey` is Vault-Transit ciphertext via secret-field.util —
 // NEVER returned by any read DTO (hasKey boolean only).
 // Resolution: tenant row (enabled) → SYSTEM row → fail closed, filtered by

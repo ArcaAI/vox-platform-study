@@ -77,7 +77,7 @@ const SESSION = {
 };
 
 // A non-elevated (tenant admin) session. `harnessEnabled` and
-// `autoNerEnabled` became global-admin-only server-side, so this session must
+// `autoNerEnabled` became super-admin-only server-side, so this session must
 // see them read-only.
 const TENANT_ADMIN_SESSION = {
   ...SESSION,
@@ -269,7 +269,7 @@ describe('PipelinePolicyScreen', () => {
   });
 
   /**
-   * The two governed toggles are global-admin-only in
+   * The two governed toggles are super-admin-only in
    * `PipelinePolicyService.upsertRow` (descriptor `globalOnly`). A tenant
    * admin sees them, and their pinned values, but cannot edit them.
    */
@@ -295,7 +295,7 @@ describe('PipelinePolicyScreen', () => {
       fireEvent.click(within(table).getByText('tenant'));
       const summary = await screen.findByRole('radiogroup', { name: 'Auto-summary' });
       expect((within(summary).getByText('off') as HTMLButtonElement).disabled).toBe(false);
-      expect(screen.getAllByText('Global admins only')).toHaveLength(2);
+      expect(screen.getAllByText('Super Admins only')).toHaveLength(2);
     });
 
     it('keeps both pins editable for an elevated session', async () => {
@@ -306,7 +306,7 @@ describe('PipelinePolicyScreen', () => {
       fireEvent.click(within(table).getByText('tenant'));
       const routing = await screen.findByRole('radiogroup', { name: 'Harness routing' });
       expect((within(routing).getByText('harness') as HTMLButtonElement).disabled).toBe(false);
-      expect(screen.queryByText('Global admins only')).toBeNull();
+      expect(screen.queryByText('Super Admins only')).toBeNull();
     });
   });
 

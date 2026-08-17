@@ -78,6 +78,14 @@ function suffixesFor(prefix: string) {
   return PREFIXES_WITH_GENERAL.has(prefix) ? [...GENERAL_SUFFIXES, ...CORE_SUFFIXES] : [...CORE_SUFFIXES];
 }
 
+function settingIdKey(prefix: (typeof SETTING_PREFIXES)[number], suffix: string): keyof typeof SEED_GLOBAL_SETTING_IDS {
+  // GLOBAL + ADMIN_MENU_ORDER concatenates to the retired GLOBAL_ADMIN role token.
+  if (prefix === 'GLOBAL' && suffix === 'ADMIN_MENU_ORDER') {
+    return 'GLOBAL_TENANT_ADMIN_MENU_ORDER';
+  }
+  return `${prefix}_${suffix}` as keyof typeof SEED_GLOBAL_SETTING_IDS;
+}
+
 const TOTAL_IDS = SETTING_PREFIXES.reduce((sum, p) => sum + suffixesFor(p).length, 0) + PLATFORM_WIDE_KEYS.length + SYSTEM_WIDE_KEYS.length;
 
 describe('Global Settings Seed Data (11-global-setting)', () => {
@@ -86,7 +94,7 @@ describe('Global Settings Seed Data (11-global-setting)', () => {
       const expected = suffixesFor(prefix);
       describe(prefix, () => {
         for (const suffix of expected) {
-          const key = `${prefix}_${suffix}` as keyof typeof SEED_GLOBAL_SETTING_IDS;
+          const key = settingIdKey(prefix, suffix);
           it(`should define ${key}`, () => {
             expect(SEED_GLOBAL_SETTING_IDS[key]).toBeDefined();
             expect(SEED_GLOBAL_SETTING_IDS[key]).toMatch(UUID_REGEX);
@@ -95,7 +103,7 @@ describe('Global Settings Seed Data (11-global-setting)', () => {
 
         it(`should have exactly ${expected.length} settings`, () => {
           const count = expected.filter((suffix) => {
-            const key = `${prefix}_${suffix}` as keyof typeof SEED_GLOBAL_SETTING_IDS;
+            const key = settingIdKey(prefix, suffix);
             return SEED_GLOBAL_SETTING_IDS[key] !== undefined;
           }).length;
           expect(count).toBe(expected.length);
@@ -114,7 +122,7 @@ describe('Global Settings Seed Data (11-global-setting)', () => {
       it(`${prefix} settings should use segment ${segment}`, () => {
         const segmentRegex = new RegExp(`^85000000-0000-0000-${segment}-`);
         for (const suffix of suffixesFor(prefix)) {
-          const key = `${prefix}_${suffix}` as keyof typeof SEED_GLOBAL_SETTING_IDS;
+          const key = settingIdKey(prefix as (typeof SETTING_PREFIXES)[number], suffix);
           expect(SEED_GLOBAL_SETTING_IDS[key]).toMatch(segmentRegex);
         }
       });
@@ -128,7 +136,7 @@ describe('Global Settings Seed Data (11-global-setting)', () => {
       it(`${prefix} UX constants should use 04x range`, () => {
         const uxRangeRegex = /00000000004\d$/;
         for (const suffix of UX_SUFFIXES) {
-          const key = `${prefix}_${suffix}` as keyof typeof SEED_GLOBAL_SETTING_IDS;
+          const key = settingIdKey(prefix, suffix);
           expect(SEED_GLOBAL_SETTING_IDS[key]).toMatch(uxRangeRegex);
         }
       });

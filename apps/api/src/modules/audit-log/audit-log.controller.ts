@@ -67,7 +67,7 @@ export class AuditLogController {
     // The unscoped list route is the cross-tenant enumeration surface. The
     // service `buildTenantWhere` already scopes every query, but mirror the
     // `fetchByUser` guard here so the rule is observable at the request entry
-    // point and a non-global-admin with no tenant context never reaches the
+    // point and a non-super-admin with no tenant context never reaches the
     // service. SUPER_ADMIN keeps the cross-tenant read.
     const user = this.cls.get('user');
     const callerTenantId = this.cls.get('tenantId');
@@ -116,7 +116,7 @@ export class AuditLogController {
       throw new ForbiddenException('Tenant context required to export audit logs');
     }
 
-    // OB-07: a global (cross-tenant) export is a global-admin reading without
+    // OB-07: a global (cross-tenant) export is a super-admin reading without
     // a tenant scope — those rows span tenants, so the export must carry a
     // tenantId column. A tenant-scoped export omits it (every row is the same
     // tenant, so the column would be noise).
@@ -265,7 +265,7 @@ export class AuditLogController {
   @CanRead('AuditLog')
   async fetchByUser(@Param('userId') userId: string, @Query() queryParams: PaginatedQuery): Promise<PaginatedAuditLogResponse> {
     // Defence-in-depth tenant scope. The service-side `buildTenantWhere`
-    // already throws when a non-global-admin has no CLS tenantId, but this
+    // already throws when a non-super-admin has no CLS tenantId, but this
     // adds an explicit controller-layer assertion so the rule is observable
     // at the request entry point. SUPER_ADMIN keeps the cross-tenant read.
     const user = this.cls.get('user');

@@ -495,9 +495,7 @@ describe('Role Seed Data', () => {
       });
     });
 
-    // The elevated role is named SUPER_ADMIN (TASK-707 renamed GLOBAL_ADMIN →
-    // SUPER_ADMIN). The retired name must never be seeded again — same guard as
-    // before the rename, with the two names swapped.
+    // The elevated role is named SUPER_ADMIN. GLOBAL_ADMIN must never be seeded.
     it('should NOT seed a GLOBAL_ADMIN role anywhere', () => {
       expect(DEFAULT_ROLES.find((r) => r.name === 'GLOBAL_ADMIN')).toBeUndefined();
     });
@@ -507,6 +505,7 @@ describe('Role Seed Data', () => {
       expect(superAdmin).toBeDefined();
       expect(superAdmin?.isSystemRole).toBe(true);
       expect(superAdmin?.parentRoleId).toBeNull();
+      expect(superAdmin?.externalName).toBe('Super Administrator');
     });
 
     it('should include TENANT_ADMIN role', () => {
@@ -559,10 +558,10 @@ describe('Role Seed Data', () => {
   describe('Role-Policy Assignments', () => {
     // SUPER_ADMIN carries the full elevated policy set.
     it('should assign the full elevated policy set to SUPER_ADMIN', () => {
-      const globalAdmin = DEFAULT_ROLES.find((r) => r.name === 'SUPER_ADMIN');
-      expect(globalAdmin?.policies).toContain('system-full-access');
-      expect(globalAdmin?.policies).toContain('rbac-system-manage');
-      expect(globalAdmin?.policies).toContain('global-settings-manage');
+      const superAdmin = DEFAULT_ROLES.find((r) => r.name === 'SUPER_ADMIN');
+      expect(superAdmin?.policies).toContain('system-full-access');
+      expect(superAdmin?.policies).toContain('rbac-system-manage');
+      expect(superAdmin?.policies).toContain('global-settings-manage');
     });
 
     it('should assign tenant-full-access to TENANT_ADMIN', () => {
@@ -593,8 +592,8 @@ describe('Role Seed Data', () => {
     // Prisma Studio grant (manage:all would also pass the guard, but the
     // explicit policy makes the studio delegable without full access).
     it('should assign prisma-studio-manage to SUPER_ADMIN', () => {
-      const globalAdmin = DEFAULT_ROLES.find((r) => r.name === 'SUPER_ADMIN');
-      expect(globalAdmin?.policies).toContain('prisma-studio-manage');
+      const superAdmin = DEFAULT_ROLES.find((r) => r.name === 'SUPER_ADMIN');
+      expect(superAdmin?.policies).toContain('prisma-studio-manage');
     });
 
     it('should assign user-profile-own to all clinical roles', () => {

@@ -50,7 +50,7 @@ function toTimelineItem(entry: ChangelogEntry): TimelineItemModel {
  */
 export function ChangelogScreen() {
   const { data: session } = useSession();
-  const isGlobalAdmin = session?.effectiveUser.roles.includes('SUPER_ADMIN') ?? false;
+  const isSuperAdmin = session?.effectiveUser.roles.includes('SUPER_ADMIN') ?? false;
 
   const [severity, setSeverity] = useQueryState('severity');
   const [version, setVersion] = useQueryState('version', { defaultValue: '' });
@@ -71,7 +71,7 @@ export function ChangelogScreen() {
           title="What's New"
           meta={<span>{data ? `${data.count} entries` : null}</span>}
           actions={
-            isGlobalAdmin ? (
+            isSuperAdmin ? (
               <Button
                 type="button"
                 onClick={() => {
@@ -119,7 +119,7 @@ export function ChangelogScreen() {
             <EmptyTitle>No release notes yet</EmptyTitle>
             <EmptyDescription>Published changelog entries will appear here.</EmptyDescription>
           </EmptyHeader>
-          {isGlobalAdmin ? (
+          {isSuperAdmin ? (
             <EmptyContent>
               <Button type="button" onClick={() => setDrawerOpen(true)}>
                 New entry
@@ -135,7 +135,7 @@ export function ChangelogScreen() {
           height="100%"
           aria-label="Release notes timeline"
           onItemExpand={(id) => {
-            if (isGlobalAdmin) {
+            if (isSuperAdmin) {
               setEditingId(id);
               setDrawerOpen(true);
             }

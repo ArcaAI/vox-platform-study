@@ -27,15 +27,15 @@ import { DEFAULT_TENANT_KEY, SEEDED_USERS, loginUser } from '../../../../tests/h
 const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
 
 test.describe('Unified provider connections — admin/providers/llm', () => {
-  let globalAdminToken: string;
+  let superAdminToken: string;
 
   test.beforeAll(async ({ request }) => {
     const login = await loginUser(request, SEEDED_USERS.superAdmin.username, SEEDED_USERS.superAdmin.password, DEFAULT_TENANT_KEY);
-    expect(login, 'global admin login failed').toBeTruthy();
-    globalAdminToken = login!.token;
+    expect(login, 'super admin login failed').toBeTruthy();
+    superAdminToken = login!.token;
   });
 
-  const auth = () => ({ Authorization: `Bearer ${globalAdminToken}` });
+  const auth = () => ({ Authorization: `Bearer ${superAdminToken}` });
 
   test('lists the SYSTEM llm connections including the three new cloud providers, all masked', async ({ request }) => {
     const res = await request.get(`/api/v1/admin/providers/llm?tenantId=${SYSTEM_TENANT_ID}`, { headers: auth() });
@@ -104,15 +104,15 @@ test.describe('Unified provider connections — admin/providers/llm', () => {
 });
 
 test.describe('Unified provider connections — legacy admin/ai-providers alias', () => {
-  let globalAdminToken: string;
+  let superAdminToken: string;
 
   test.beforeAll(async ({ request }) => {
     const login = await loginUser(request, SEEDED_USERS.superAdmin.username, SEEDED_USERS.superAdmin.password, DEFAULT_TENANT_KEY);
-    expect(login, 'global admin login failed').toBeTruthy();
-    globalAdminToken = login!.token;
+    expect(login, 'super admin login failed').toBeTruthy();
+    superAdminToken = login!.token;
   });
 
-  const auth = () => ({ Authorization: `Bearer ${globalAdminToken}` });
+  const auth = () => ({ Authorization: `Bearer ${superAdminToken}` });
 
   test('the legacy alias returns the SAME llm rows as the unified route', async ({ request }) => {
     const [legacy, unified] = await Promise.all([

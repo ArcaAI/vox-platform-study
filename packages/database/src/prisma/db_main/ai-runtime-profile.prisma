@@ -3,7 +3,7 @@
 //
 // Hyperparameters / context / concurrency per provider (modelSlug = "") or per
 // model (modelSlug = AiModel.slug — no FK, house slug-reference convention).
-// GLOBAL-ADMIN-ONLY and SYSTEM-tenant-only (hyperparameters are global-admin-only);
+// SUPER_ADMIN-ONLY and SYSTEM-tenant-only (hyperparameters are super-admin-only);
 // tenantId is kept for the house template + forward compat.
 // `modelSlug` uses the EMPTY-STRING sentinel for "provider-level default"
 // (NOT null): Postgres treats NULLs as distinct in unique indexes, which would

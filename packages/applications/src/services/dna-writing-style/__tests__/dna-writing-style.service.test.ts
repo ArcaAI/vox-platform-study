@@ -1015,12 +1015,12 @@ describe('DnaWritingStyleService', () => {
 
     it('should return all reports across tenants when user is SUPER_ADMIN without tenantId', async () => {
       mockClsService.get.mockImplementation((key: string) => {
-        if (key === 'user') return { id: 'global-admin-1', roles: ['SUPER_ADMIN'] };
+        if (key === 'user') return { id: 'super-admin-1', roles: ['SUPER_ADMIN'] };
         if (key === 'tenantId') return null;
         return null;
       });
 
-      const globalAdminService = new DnaWritingStyleService(
+      const superAdminService = new DnaWritingStyleService(
         mockReportRepo as never,
         mockVersionRepo as never,
         mockUsageRepo as never,
@@ -1037,7 +1037,7 @@ describe('DnaWritingStyleService', () => {
       mockReportRepo.$.mockReturnValue(mockQb);
       mockQb.ToList.mockResolvedValue([createMockReportEntity({ id: 'r1', tenantId: 'tenant-X' })]);
 
-      const result = await globalAdminService.listReports();
+      const result = await superAdminService.listReports();
 
       expect(mockQb.Where).not.toHaveBeenCalledWith(expect.objectContaining({ tenantId: expect.any(String) }));
       expect(result).toHaveLength(1);
@@ -1045,7 +1045,7 @@ describe('DnaWritingStyleService', () => {
 
     it('should still scope by tenantId when SUPER_ADMIN has a tenantId set', async () => {
       mockClsService.get.mockImplementation((key: string) => {
-        if (key === 'user') return { id: 'global-admin-1', roles: ['SUPER_ADMIN'] };
+        if (key === 'user') return { id: 'super-admin-1', roles: ['SUPER_ADMIN'] };
         if (key === 'tenantId') return 'tenant-scoped';
         return null;
       });
@@ -1198,29 +1198,29 @@ describe('DnaWritingStyleService', () => {
       expect(where).toMatchObject({ tenantId: 'tenant-1' });
     });
 
-    it('uses the requested tenantId for a global admin', async () => {
-      const globalAdmin = buildWith((key: string) => {
+    it('uses the requested tenantId for a super admin', async () => {
+      const superAdmin = buildWith((key: string) => {
         if (key === 'user') return { id: 'super-1', roles: ['SUPER_ADMIN'] };
         if (key === 'tenantId') return null;
         return null;
       });
       mockReportRepo.findPaginated.mockResolvedValue({ data: [], count: 0 });
 
-      await globalAdmin.listReportsPaginated({ tenantId: 'tenant-X' });
+      await superAdmin.listReportsPaginated({ tenantId: 'tenant-X' });
 
       const [where] = mockReportRepo.findPaginated.mock.calls[0];
       expect(where).toMatchObject({ tenantId: 'tenant-X' });
     });
 
-    it('omits the tenantId filter for a global admin with no tenantId (all tenants)', async () => {
-      const globalAdmin = buildWith((key: string) => {
+    it('omits the tenantId filter for a super admin with no tenantId (all tenants)', async () => {
+      const superAdmin = buildWith((key: string) => {
         if (key === 'user') return { id: 'super-1', roles: ['SUPER_ADMIN'] };
         if (key === 'tenantId') return null;
         return null;
       });
       mockReportRepo.findPaginated.mockResolvedValue({ data: [], count: 0 });
 
-      await globalAdmin.listReportsPaginated();
+      await superAdmin.listReportsPaginated();
 
       const [where] = mockReportRepo.findPaginated.mock.calls[0];
       expect(where).not.toHaveProperty('tenantId');
@@ -1229,29 +1229,29 @@ describe('DnaWritingStyleService', () => {
     // CC-02 — a super-admin who has selected an active tenant
     // (X-Tenant-Id → CLS `tenantId`) but omits the `?tenantId` query param
     // must see ONLY that tenant's reports, not every tenant's.
-    it('scopes a global admin with an active tenant header and no explicit tenantId to the active tenant', async () => {
-      const globalAdmin = buildWith((key: string) => {
+    it('scopes a super admin with an active tenant header and no explicit tenantId to the active tenant', async () => {
+      const superAdmin = buildWith((key: string) => {
         if (key === 'user') return { id: 'super-1', roles: ['SUPER_ADMIN'] };
         if (key === 'tenantId') return 'tenant-ACTIVE';
         return null;
       });
       mockReportRepo.findPaginated.mockResolvedValue({ data: [], count: 0 });
 
-      await globalAdmin.listReportsPaginated();
+      await superAdmin.listReportsPaginated();
 
       const [where] = mockReportRepo.findPaginated.mock.calls[0];
       expect(where).toMatchObject({ tenantId: 'tenant-ACTIVE' });
     });
 
-    it('an explicit tenantId still overrides the active tenant header for a global admin', async () => {
-      const globalAdmin = buildWith((key: string) => {
+    it('an explicit tenantId still overrides the active tenant header for a super admin', async () => {
+      const superAdmin = buildWith((key: string) => {
         if (key === 'user') return { id: 'super-1', roles: ['SUPER_ADMIN'] };
         if (key === 'tenantId') return 'tenant-ACTIVE';
         return null;
       });
       mockReportRepo.findPaginated.mockResolvedValue({ data: [], count: 0 });
 
-      await globalAdmin.listReportsPaginated({ tenantId: 'tenant-X' });
+      await superAdmin.listReportsPaginated({ tenantId: 'tenant-X' });
 
       const [where] = mockReportRepo.findPaginated.mock.calls[0];
       expect(where).toMatchObject({ tenantId: 'tenant-X' });
@@ -1577,7 +1577,7 @@ describe('DnaWritingStyleService', () => {
     /**
      * The v1-compat summary surface authenticates with an API KEY, and
      * that path leaves CLS `tenantId` EMPTY (only the JWT strategy populates it;
-     * `SmrCompatController.requireTenantId` therefore falls back to
+     * `TextCompatController.requireTenantId` therefore falls back to
      * `apiKey.tenantId`). Every other resolver on that path is handed the
      * resolved tenant explicitly — this one alone re-read CLS, so on
      * `hope-v2-dev` every single summary logged "DNA writing-style resolution

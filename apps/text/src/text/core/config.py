@@ -270,7 +270,7 @@ class SarvamConfig(BaseSettings):
     SMR's ``translate`` capability routes to Sarvam's REST ``/translate``
     endpoint. Sarvam is BYOK-only: the api_key NEVER comes from env — it always
     arrives per request as a ``ProviderOverride`` (the gateway resolves it from
-    the tenant/global-admin provider-connection). This config therefore carries
+    the tenant/super-admin provider-connection). This config therefore carries
     only NON-secret operational settings; a request with no override key fails
     closed (endpoint → 503).
     """

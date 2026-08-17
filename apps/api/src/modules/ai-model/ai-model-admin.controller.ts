@@ -9,9 +9,9 @@ import { ApiEndpoint, Authorize, ExpectedVersion, RequiresIfMatch, RequiredScope
  * Mirrors `audio-pipeline.controller.ts` 1:1: a thin delegation surface over
  * the already-existing `AiModelService`.
  *
- * Authorization: the registry is a GLOBAL-ADMIN plane — the guard is
+ * Authorization: the registry is a SUPER_ADMIN plane — the guard is
  * pinned to `manage:all`, and the tenant-scoped `manage:AiModel` grant no
- * longer opens this controller. Global admins manage per-tenant clones of the
+ * longer opens this controller. Super Admins manage per-tenant clones of the
  * SYSTEM catalog through the working-tenant context. Event broadcasting +
  * exact-tenant scoping live in the service / Prisma `tenant-scope` extension;
  * OCC is enforced via the `If-Match` header.

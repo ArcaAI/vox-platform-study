@@ -28,15 +28,15 @@ import { DEFAULT_TENANT_KEY, SEEDED_USERS, loginUser } from '../../../../tests/h
 const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
 
 test.describe('AI provider connections', () => {
-  let globalAdminToken: string;
+  let superAdminToken: string;
 
   test.beforeAll(async ({ request }) => {
     const login = await loginUser(request, SEEDED_USERS.superAdmin.username, SEEDED_USERS.superAdmin.password, DEFAULT_TENANT_KEY);
-    expect(login, 'global admin login failed').toBeTruthy();
-    globalAdminToken = login!.token;
+    expect(login, 'super admin login failed').toBeTruthy();
+    superAdminToken = login!.token;
   });
 
-  const auth = () => ({ Authorization: `Bearer ${globalAdminToken}` });
+  const auth = () => ({ Authorization: `Bearer ${superAdminToken}` });
 
   test('seeds ten SYSTEM llm connections: built-in-local enabled, cloud disabled, all keyless', async ({ request }) => {
     const res = await request.get(`/api/v1/admin/ai-providers?tenantId=${SYSTEM_TENANT_ID}`, { headers: auth() });

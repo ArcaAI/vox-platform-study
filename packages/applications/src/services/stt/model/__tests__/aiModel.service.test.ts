@@ -713,7 +713,7 @@ describe('AiModelService', () => {
       expect(result[0].id).toBe('ten-1');
     });
 
-    it('falls back to an explicit SYSTEM-pinned query when CLS carries no tenant (non-elevated global admin)', async () => {
+    it('falls back to an explicit SYSTEM-pinned query when CLS carries no tenant (non-elevated super admin)', async () => {
       mockClsService.get.mockImplementation((key: string) => {
         switch (key) {
           case 'user':

@@ -14,7 +14,7 @@ import { appendFilters } from '../utils/urlUtils';
 import type { DnaReport, DnaStyleVersion, DnaGenerateInput, DnaUpdateInput, DnaJobStatus } from '../types';
 
 /**
- * Filters for the admin cross-user report list. A global admin
+ * Filters for the admin cross-user report list. A super admin
  * may target a tenant via `tenantId`; a tenant admin is pinned to their CLS
  * tenant server-side. `doctorId` narrows to one in-tenant doctor.
  */

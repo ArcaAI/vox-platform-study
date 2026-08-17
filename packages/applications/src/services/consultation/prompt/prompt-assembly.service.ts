@@ -376,7 +376,7 @@ export class PromptAssemblyService {
    * Effective warm-start decision for the calling tenant.
    *
    * Policy wins; a null policy value means "not configured" and falls through to the
-   * env fallback. Resolved on every call so a global admin's console flip takes
+   * env fallback. Resolved on every call so a super admin's console flip takes
    * effect without a redeploy. A policy-backend failure degrades to the env value —
    * prompt assembly is on the generation hot path and must never fail closed on a
    * governance lookup.

@@ -29,7 +29,7 @@ export class CreateRoleDto {
   @IsUUID()
   parentRoleId?: string;
 
-  @ApiPropertyOptional({ description: 'Create as a SYSTEM role — global admin only', example: false })
+  @ApiPropertyOptional({ description: 'Create as a SYSTEM role — super admin only', example: false })
   @IsOptional()
   @IsBoolean()
   isSystemRole?: boolean;

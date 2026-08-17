@@ -13,7 +13,7 @@ see [`environment-setup.md`](environment-setup.md).
 | `pnpm test` | `turbo run test` — every package's `test` script across the monorepo |
 | `pnpm test:all` | `test:unit` → `test:integration` → `test:e2e` → `test:py`, in sequence |
 | `pnpm verify` | `lint:all` + `typecheck:all` + `test` — the pre-push gate |
-| `pnpm test:py` | every Python suite: `py-env` → stt → smr → nlp → guardrail → harness → tts |
+| `pnpm test:py` | every Python suite: `py-env` → stt → text → nlp → guardrail → harness → tts |
 | `pnpm test:py:cov` | the same, with coverage |
 
 ### TypeScript — Vitest
@@ -47,7 +47,7 @@ pnpm test:e2e         # terminal 2 — playwright test (apps/api/tests/e2e/*.spe
 | `pnpm test:e2e:all` | turbo `test:e2e` task across packages instead of the root Playwright run |
 
 Other startable test targets (all via `scripts/start-test-app.sh`, on `.env.test`):
-`test:up:admin`, `test:up:stt`, `test:up:smr`, `test:up:nlp`, `test:up:guardrail`,
+`test:up:admin`, `test:up:stt`, `test:up:text`, `test:up:nlp`, `test:up:guardrail`,
 `test:up:harness`, `test:up:tts`, `test:up:worker`.
 
 ### SDK E2E (no root alias — run manually)
@@ -78,7 +78,7 @@ pnpm --filter @arcaai/ui test
 | Service | All | Unit | Integration | E2E | Coverage |
 |---|---|---|---|---|---|
 | STT | `pnpm stt:test` | `stt:test:unit` | `stt:test:integration` | `stt:test:e2e` | `stt:test:cov` |
-| SMR | `pnpm text:test` | `text:test:unit` | `text:test:integration` | `text:test:e2e` | `text:test:cov` |
+| Text | `pnpm text:test` | `text:test:unit` | `text:test:integration` | `text:test:e2e` | `text:test:cov` |
 | NLP | `pnpm nlp:test` | — | — | — | `nlp:test:cov` |
 | Guardrail | `pnpm guardrail:test` | — | — | — | `guardrail:test:cov` |
 | Harness | `pnpm harness:test` | `harness:test:unit` | `harness:test:integration` | — | `harness:test:cov` |
@@ -87,7 +87,7 @@ pnpm --filter @arcaai/ui test
 
 Test locations differ per service (a known quirk):
 `apps/stt/tests/`, `apps/nlp/tests/` (top-level) vs
-`apps/{smr,guardrail,harness,tts}/src/<pkg>/tests/` (in-package).
+`apps/{text,guardrail,harness,tts}/src/<pkg>/tests/` (in-package).
 
 Under the hood each alias is
 `conda run -n arcaenv --no-capture-output pytest <path> -v --tb=short`
@@ -104,7 +104,7 @@ pnpm test:unit:managed
 pnpm test:integration:managed
 pnpm test:e2e:managed          # starts the API for you
 pnpm test:py:managed
-pnpm <svc>:test:managed        # stt|smr|nlp|guardrail|harness|tts
+pnpm <svc>:test:managed        # stt|text|nlp|guardrail|harness|tts
 ```
 
 Flags: `--keep` (leave services up), `--no-teardown-infra`. Extra positional args override the

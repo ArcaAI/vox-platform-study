@@ -97,7 +97,7 @@ describe('DnaWritingStyleController', () => {
       expect(mockDnaService.generateDnaReport).not.toHaveBeenCalled();
     });
 
-    it('rejects a global admin caller without active doctor scope', async () => {
+    it('rejects a super admin caller without active doctor scope', async () => {
       const adminCls = createMockClsService('admin-2', { roles: ['SUPER_ADMIN'] });
       const adminController = new DnaWritingStyleController(mockDnaService as any, adminCls as any, mockDnaQueue as any);
 
@@ -207,7 +207,7 @@ describe('DnaWritingStyleController', () => {
 
     // ─── Doctor self-edit OCC ──────────────────────────────────────────
     // The doctor PATCH route now mirrors the admin route: `@RequiresIfMatch()`
-    // + `@ExpectedVersion()` so super/global admin (under a tenant), tenant
+    // + `@ExpectedVersion()` so super/super admin (under a tenant), tenant
     // admin, the doctor, and an admin-impersonated doctor all manage their
     // DNA report under real optimistic concurrency control.
     it('requires the If-Match header on the update route (@RequiresIfMatch metadata)', () => {

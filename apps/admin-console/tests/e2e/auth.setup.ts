@@ -21,7 +21,7 @@ import { ADMIN_CREDENTIALS, apiAvailable, appAvailable } from './helpers/stack';
 
 export const ADMIN_STORAGE_STATE = 'test-results/.auth/admin.json';
 
-setup('authenticate as seeded global admin', async ({ page }) => {
+setup('authenticate as seeded super admin', async ({ page }) => {
   mkdirSync(dirname(ADMIN_STORAGE_STATE), { recursive: true });
   if (!(await appAvailable()) || !(await apiAvailable())) {
     writeFileSync(ADMIN_STORAGE_STATE, JSON.stringify({ cookies: [], origins: [] }));

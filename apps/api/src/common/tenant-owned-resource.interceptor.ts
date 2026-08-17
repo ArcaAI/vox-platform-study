@@ -111,7 +111,7 @@ export class TenantOwnedResourceInterceptor implements NestInterceptor {
       throw new NotFoundException(RESOURCE_NOT_FOUND);
     }
 
-    if (!callerTenantId && opts.scope === 'global-admin' && isSuperAdmin(this.cls.get('user'))) {
+    if (!callerTenantId && opts.scope === 'super-admin' && isSuperAdmin(this.cls.get('user'))) {
       return;
     }
 

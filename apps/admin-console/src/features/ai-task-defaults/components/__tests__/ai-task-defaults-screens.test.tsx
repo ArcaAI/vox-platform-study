@@ -1,7 +1,7 @@
 /**
  * Screen tests for the two AI task-default surfaces:
  *  - the PLATFORM screen (tier 10-19) editing the SYSTEM-tenant rows for all
- *    three task keys (guardrail card labeled global-admin-only),
+ *    three task keys (guardrail card labeled super-admin-only),
  *  - the TENANT screen (tier 30-49) editing the NLP keys only (guardrail is
  *    deliberately absent per the owner governance directive).
  * URL-branching fetch stub per the feature-api test pattern.
@@ -165,7 +165,7 @@ describe('AiTaskDefaultsPlatformScreen', () => {
 
     expect(screen.getByRole('heading', { level: 1, name: 'AI task defaults (platform)' })).toBeDefined();
     // TASK-735 Phase 0 (2026-08-16): the guardrail card no longer claims
-    // "platform-controlled (global admins only)" — guardrail is now
+    // "platform-controlled (super admins only)" — guardrail is now
     // tenant-configurable via the API. This card still edits the SYSTEM
     // (platform-default) row, so its title reflects that instead. Wait on
     // the card's own heading (renders only once its data has loaded) rather

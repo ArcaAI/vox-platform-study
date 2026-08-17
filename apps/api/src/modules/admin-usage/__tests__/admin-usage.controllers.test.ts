@@ -2,7 +2,7 @@
  * Usage-analytics controllers unit tests.
  *
  * `@CanManage`/`@Authorize` are exercised by the guard pipeline (+ e2e). These
- * specs cover the controllers' OWN logic: tenant scoping (global-admin
+ * specs cover the controllers' OWN logic: tenant scoping (super-admin
  * `?tenantId=` vs a pinned tenant caller — the 403-on-foreign-query posture of
  * `resolveScopedTenantId`), self-service pinning to the CLS tenant with no
  * tenant override, default-period behavior, and plain delegation. The
@@ -42,7 +42,7 @@ describe('AdminUsageController — tenant scoping', () => {
     vi.setSystemTime(new Date('2026-08-20T10:00:00.000Z'));
   });
 
-  it('global admin acts cross-tenant via ?tenantId=', async () => {
+  it('super admin acts cross-tenant via ?tenantId=', async () => {
     const service = makeUsageAnalyticsService();
     const controller = new AdminUsageController(service as never, makeCls({ user: SUPER, tenantId: undefined }) as never);
 
@@ -50,7 +50,7 @@ describe('AdminUsageController — tenant scoping', () => {
     expect(service.getUsageSummary).toHaveBeenCalledWith('tenant-9', '2026-07');
   });
 
-  it('global admin without a target tenant gets a 400 telling them to pass ?tenantId=', () => {
+  it('super admin without a target tenant gets a 400 telling them to pass ?tenantId=', () => {
     const service = makeUsageAnalyticsService();
     const controller = new AdminUsageController(service as never, makeCls({ user: SUPER, tenantId: undefined }) as never);
     expect(() => controller.summary({})).toThrow(BadRequestException);
@@ -128,7 +128,7 @@ describe('MyUsageController — self-service pinning', () => {
     expect(service.getBudgetBurndown).toHaveBeenCalledWith('t1', '2026-06');
   });
 
-  it('refuses without a tenant context (global admin with no working tenant)', () => {
+  it('refuses without a tenant context (super admin with no working tenant)', () => {
     const service = makeUsageAnalyticsService();
     const controller = new MyUsageController(service as never, makeCls({ user: SUPER, tenantId: undefined }) as never);
     expect(() => controller.summary({})).toThrow(BadRequestException);

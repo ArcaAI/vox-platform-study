@@ -48,11 +48,11 @@ function useRoleTab() {
 }
 
 /**
- * SYSTEM-role policy assign/revoke is global-admin only; the
+ * SYSTEM-role policy assign/revoke is super-admin only; the
  * effective identity (impersonation-aware) drives the lock so the
  * UI matches what the gateway will actually accept.
  */
-function useIsGlobalAdmin() {
+function useIsSuperAdmin() {
   const session = useSession();
   return session.data?.effectiveIsElevated ?? false;
 }
@@ -310,8 +310,8 @@ function PoliciesTabPanel({ role }: { role: Role }) {
   const [detachTarget, setDetachTarget] = useState<{ id: string; name: string } | null>(null);
   const [detachError, setDetachError] = useState<string | null>(null);
   const policies = role.policies ?? [];
-  const isGlobalAdmin = useIsGlobalAdmin();
-  const locked = role.isSystemRole && !isGlobalAdmin;
+  const isSuperAdmin = useIsSuperAdmin();
+  const locked = role.isSystemRole && !isSuperAdmin;
 
   function closeDetachDialog() {
     setDetachTarget(null);
@@ -385,12 +385,12 @@ function PoliciesTabPanel({ role }: { role: Role }) {
 
 /**
  * Clone is always offered — cloning a SYSTEM role into an editable CUSTOM
- * copy is the point. Edit unlocks for a global admin on a SYSTEM
+ * copy is the point. Edit unlocks for a super admin on a SYSTEM
  * role too (matches the service-layer `isSuperAdmin` carve-out on
  * update/patch). Delete stays hidden for EVERY system role, EVERY caller —
  * `softDelete()` is hard-blocked platform-wide, deleting a seed-managed role
  * shared across every tenant is irreversible and out of scope even for a
- * global admin (confirmed decision, see the ticket README).
+ * super admin (confirmed decision, see the ticket README).
  */
 function RoleDetailActions({
   role,
@@ -403,8 +403,8 @@ function RoleDetailActions({
   onRequestDelete: (role: Role) => void;
   onClone: () => void;
 }) {
-  const isGlobalAdmin = useIsGlobalAdmin();
-  const canEdit = !role.isSystemRole || isGlobalAdmin;
+  const isSuperAdmin = useIsSuperAdmin();
+  const canEdit = !role.isSystemRole || isSuperAdmin;
   return (
     <div className="flex items-center gap-2">
       <Button variant="outline" size="sm" onClick={onClone}>
@@ -509,7 +509,7 @@ function LockNotice() {
 }
 
 function TabPanels({ role, tier }: { role: Role; tier: ViewportTier }) {
-  const isGlobalAdmin = useIsGlobalAdmin();
+  const isSuperAdmin = useIsSuperAdmin();
   return (
     <>
       <TabsContent value="permissions" className="mt-0">
@@ -519,7 +519,7 @@ function TabPanels({ role, tier }: { role: Role; tier: ViewportTier }) {
         <MembersTabPanel role={role} />
       </TabsContent>
       <TabsContent value="policies" className="mt-0">
-        {role.isSystemRole && !isGlobalAdmin ? <LockNotice /> : null}
+        {role.isSystemRole && !isSuperAdmin ? <LockNotice /> : null}
         <div className="mt-3">
           <PoliciesTabPanel role={role} />
         </div>
@@ -586,7 +586,7 @@ export function RoleDetailPane({
   const [tab, setTab] = useRoleTab();
   const [editOpen, setEditOpen] = useState(false);
   const [cloneOpen, setCloneOpen] = useState(false);
-  const isGlobalAdmin = useIsGlobalAdmin();
+  const isSuperAdmin = useIsSuperAdmin();
 
   if (detail.isPending) return <RoleDetailSkeleton />;
   if (detail.error || !role) {
@@ -612,7 +612,7 @@ export function RoleDetailPane({
             <RoleMeta role={role} />
           </div>
           {role.description ? <p className="text-muted-foreground text-sm">{role.description}</p> : null}
-          {role.isSystemRole && !isGlobalAdmin ? <LockNotice /> : null}
+          {role.isSystemRole && !isSuperAdmin ? <LockNotice /> : null}
         </div>
         <RoleDetailActions role={role} onEdit={() => setEditOpen(true)} onRequestDelete={onRequestDelete} onClone={() => setCloneOpen(true)} />
       </div>

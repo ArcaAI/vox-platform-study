@@ -7,7 +7,7 @@ import { ChangelogAudience, ChangelogPublishStatus, ChangelogSeverity } from '..
 
 // Curated release notes ("What's New") — one row per
 // platform (`ALL-`) train version. CI creates a DRAFT pre-filled from
-// Conventional Commits; a global admin edits it into human language and
+// Conventional Commits; a super admin edits it into human language and
 // PUBLISHes it. This is the ONE model in the Service Version & Release
 // Registry that is genuinely human-edited, so it carries real OCC (see
 // ChangelogEntryEntityMapper's `FIELDS_NOT_WRITABLE`). Always platform-wide

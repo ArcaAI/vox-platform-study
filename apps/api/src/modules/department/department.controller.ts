@@ -46,7 +46,7 @@ export class DepartmentController {
   async fetchAll(@Query('includeDisabled') includeDisabled?: string): Promise<DepartmentResponse[]> {
     // `DepartmentService.getAll` already requires
     // `this.tenantId`, but mirror the AuditLogController guard so a
-    // non-global-admin with no tenant context is rejected at the request
+    // non-super-admin with no tenant context is rejected at the request
     // entry point and never reaches the service. SUPER_ADMIN bypasses here
     // (the service still enforces its own tenant rule for operators).
     const user = this.cls.get('user');

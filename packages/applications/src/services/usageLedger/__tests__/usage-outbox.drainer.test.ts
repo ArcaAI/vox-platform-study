@@ -66,7 +66,21 @@ function outboxRow(events: Record<string, unknown>[], overrides: Record<string, 
   };
 }
 
+/**
+ * The drain runs on a BullMQ tick, so there is no request-scoped CLS context;
+ * the drainer has to open one itself before `runInTransaction` can set
+ * `coreTransactionClient`. This stand-in records what it was given so the
+ * per-row tenant context can be asserted.
+ */
+const mockCls = {
+  run: vi.fn(),
+  set: vi.fn(),
+};
+
 function buildDrainer() {
+  // Set here rather than in each `beforeEach`: every one of them calls
+  // `vi.clearAllMocks()` first, which would wipe the implementation.
+  mockCls.run.mockImplementation(async (work: () => Promise<unknown>) => work());
   return new UsageOutboxDrainer(
     mockOutboxRepository as never,
     mockEventRepository as never,
@@ -74,6 +88,7 @@ function buildDrainer() {
     mockDailyRepository as never,
     mockPriceBook as never,
     mockUnitOfWork as never,
+    mockCls as never,
   );
 }
 
@@ -433,5 +448,49 @@ describe('UsageOutboxDrainer — batch behaviour', () => {
     mockOutboxRepository.findClaimable.mockResolvedValue([]);
     expect(await drainer.drainBatch()).toEqual({ rows: 0, inserted: 0, skipped: 0, failed: 0 });
     expect(mockOutboxRepository.update).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * The drain fires from a BullMQ scheduler tick, so no ClsMiddleware/Guard has run
+ * and there is NO ambient CLS context. `CoreUnitOfWorkService.runInTransaction`
+ * sets `coreTransactionClient` in CLS, which throws outside a context — so every
+ * row failed with "Cannot set the key 'coreTransactionClient'. No CLS context
+ * available", retried to `attempts=5`, and the outbox never drained at all. The
+ * drainer therefore has to open its own context, per row, carrying that row's
+ * tenant (the batch spans tenants).
+ */
+describe('UsageOutboxDrainer — worker CLS context', () => {
+  let drainer: UsageOutboxDrainer;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockUnitOfWork.runInTransaction.mockImplementation(async (work: (tx: unknown) => Promise<unknown>) => work(TX));
+    mockEventRepository.create.mockImplementation(async (entity: unknown) => entity);
+    mockPriceBook.resolveCostPrice.mockResolvedValue({ priceBookId: 'p1', unitPriceMicros: 3n, bookVersion: 'book-v1', currency: 'USD' });
+    drainer = buildDrainer();
+  });
+
+  it('opens a CLS context before doing any row work', async () => {
+    mockOutboxRepository.findClaimable.mockResolvedValue([outboxRow([serializedEvent()])]);
+
+    await drainer.drainBatch();
+
+    expect(mockCls.run).toHaveBeenCalledTimes(1);
+    expect(mockCls.set).toHaveBeenCalledWith('tenantId', TENANT);
+  });
+
+  it('opens ONE context per row so a multi-tenant batch never scopes rows to the wrong tenant', async () => {
+    const otherTenant = '50000000-0000-0000-0000-000000000009';
+    mockOutboxRepository.findClaimable.mockResolvedValue([
+      outboxRow([serializedEvent()], { id: 'row-a' }),
+      outboxRow([serializedEvent()], { id: 'row-b', tenantId: otherTenant }),
+    ]);
+
+    await drainer.drainBatch();
+
+    expect(mockCls.run).toHaveBeenCalledTimes(2);
+    const tenants = mockCls.set.mock.calls.filter(([key]) => key === 'tenantId').map(([, value]) => value);
+    expect(tenants).toEqual([TENANT, otherTenant]);
   });
 });

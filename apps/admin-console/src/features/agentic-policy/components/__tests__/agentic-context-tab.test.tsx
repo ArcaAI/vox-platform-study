@@ -2,7 +2,7 @@
  * Agentic Context tab — READ/WRITE registry lane.
  *
  * The tab was a metadata-only inventory that pointed elsewhere for editing, so
- * the `agentic.context.*` knobs a global admin could see were not editable here
+ * the `agentic.context.*` knobs a super admin could see were not editable here
  * — and (until B1) were not read by the running loop either.
  *
  * These tests pin the write contract, and especially the CONFLICT path, which is

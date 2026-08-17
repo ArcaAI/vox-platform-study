@@ -22,7 +22,7 @@ describe('TenantFrontendConfigAdminController', () => {
       expect(mockService.getByTenant).toHaveBeenCalledWith(undefined);
     });
 
-    it('forwards the tenantId query param for a global admin', async () => {
+    it('forwards the tenantId query param for a super admin', async () => {
       mockService.getByTenant.mockResolvedValue({ id: 'c1', tenantId: 't-2' });
       await controller.get('t-2');
       expect(mockService.getByTenant).toHaveBeenCalledWith('t-2');

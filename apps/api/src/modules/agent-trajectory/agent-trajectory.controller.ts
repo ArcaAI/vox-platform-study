@@ -13,7 +13,7 @@ import { resolveScopedTenantId } from '../../shared/tenant-scope';
 import { AggregateGenerationMetricsQuery, ListAgentTrajectorySessionsQuery, ListAgentTrajectoryStepsQuery } from './dto';
 
 /**
- * AgentTrajectoryController — the global-admin read plane
+ * AgentTrajectoryController — the super-admin read plane
  * for the ordered session trajectory, mounted at `/admin/agent-trajectory/*`
  * (global prefix → `/api/v1/admin/agent-trajectory/*`).
  *
@@ -24,7 +24,7 @@ import { AggregateGenerationMetricsQuery, ListAgentTrajectorySessionsQuery, List
  * ticket adding trajectory writes appends the enum value then.
  *
  * Tenant scoping mirrors `HarnessAdminController`: tenant admins are
- * pinned to their CLS tenant; global-admins act cross-tenant via `?tenantId=`.
+ * pinned to their CLS tenant; super-admins act cross-tenant via `?tenantId=`.
  *
  * The read projections deliberately NEVER carry `payloadRef` — the service maps
  * through `AgentTrajectoryStepResponse`, which omits the claim-check/encrypted
@@ -99,7 +99,7 @@ export class AgentTrajectoryController {
     });
   }
 
-  /** Resolve the effective read tenant: tenant admins → own tenant; global-admins → `?tenantId=` (or CLS tenant). */
+  /** Resolve the effective read tenant: tenant admins → own tenant; super-admins → `?tenantId=` (or CLS tenant). */
   private resolveReadTenantId(queryTenantId?: string): string {
     return resolveScopedTenantId(this.cls.get('user'), this.cls.get('tenantId'), queryTenantId);
   }

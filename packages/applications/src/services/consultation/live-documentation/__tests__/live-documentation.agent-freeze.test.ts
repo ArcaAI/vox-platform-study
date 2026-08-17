@@ -21,20 +21,20 @@ import { DEFAULT_LIVE_TOOL_PLAN, type FrozenLiveAgentSnapshot, type ILiveAgentRe
 const CID = 'consultation-agent-001';
 const TENANT = 'tenant-agent-001';
 
-interface SmrCall {
+interface TextCall {
   prompt: string;
   system_prompt: string;
   provider?: string;
   model?: string;
 }
 
-function recordingHttpMock(calls: SmrCall[]) {
+function recordingHttpMock(calls: TextCall[]) {
   return {
     axiosRef: {
       post: vi.fn().mockImplementation((url: string, body: Record<string, unknown>) => {
         if (url.includes('/classify/tokens')) return Promise.resolve({ data: { entities: [] } });
         if (url.includes('/generate')) {
-          calls.push(body as unknown as SmrCall);
+          calls.push(body as unknown as TextCall);
           return Promise.resolve({ data: { summary: 'Subjective: cough\nObjective:\nAssessment:\nPlan:' } });
         }
         return Promise.resolve({ data: {} });
@@ -97,7 +97,7 @@ function buildService(opts: {
     // which `encryptPhiFields` FAILS CLOSED rather than persisting plaintext PHI.
     // Without one the durable-snapshot write is (correctly) refused.
     //
-    // `getSecretOptional` is REQUIRED, not decorative: `callSmr` resolves
+    // `getSecretOptional` is REQUIRED, not decorative: `callText` resolves
     // `TEXT_SERVICE_TOKEN` through it for the authenticated gateway→SMR hop
     // A stand-in missing the method throws inside the flush's try,
     // which the catch turns into "SMR failed" — so every assertion about the
@@ -118,7 +118,7 @@ const settle = async (): Promise<void> => {
 
 describe('The gateway→SMR hop is authenticated', () => {
   it('sends X-Service-Token resolved from TEXT_SERVICE_TOKEN', async () => {
-    const calls: SmrCall[] = [];
+    const calls: TextCall[] = [];
     const http = recordingHttpMock(calls);
     const service = buildService({ http });
     // Re-point the stand-in at a configured secret (the default resolves '').
@@ -141,7 +141,7 @@ describe('The gateway→SMR hop is authenticated', () => {
 
 describe('C3-T1 — default-prompt parity (the unconfigured tenant sees zero change)', () => {
   it('with NO resolver port wired, the SMR payload is byte-identical to the pre-C3 constants', async () => {
-    const calls: SmrCall[] = [];
+    const calls: TextCall[] = [];
     const service = buildService({ http: recordingHttpMock(calls) });
     service.start({ consultationId: CID, tenantId: TENANT });
     service.ingestSegment(CID, { text: 'Patient reports cough', isFinal: true, segmentId: 's1' });
@@ -153,7 +153,7 @@ describe('C3-T1 — default-prompt parity (the unconfigured tenant sees zero cha
   });
 
   it('with the port resolving the SYSTEM default (bytes == the constants), the payload is still byte-identical', async () => {
-    const calls: SmrCall[] = [];
+    const calls: TextCall[] = [];
     const resolver: Partial<ILiveAgentResolver> = {
       resolveForSession: vi.fn().mockResolvedValue(
         agentSnapshot({
@@ -178,7 +178,7 @@ describe('C3-T1 — default-prompt parity (the unconfigured tenant sees zero cha
   });
 
   it('a bound agent’s prompt bytes actually reach SMR (the capability is real, not decorative)', async () => {
-    const calls: SmrCall[] = [];
+    const calls: TextCall[] = [];
     const resolver: Partial<ILiveAgentResolver> = { resolveForSession: vi.fn().mockResolvedValue(agentSnapshot()) };
     const service = buildService({ http: recordingHttpMock(calls), resolver });
     service.start({ consultationId: CID, tenantId: TENANT });
@@ -191,7 +191,7 @@ describe('C3-T1 — default-prompt parity (the unconfigured tenant sees zero cha
   });
 
   it('an agent llmOverrides.live selection is served FROZEN, bypassing the per-flush tenant resolve (RF-4)', async () => {
-    const calls: SmrCall[] = [];
+    const calls: TextCall[] = [];
     const harnessPolicyService = { resolveSmrSelection: vi.fn().mockResolvedValue({ provider: 'vllm', model: 'tenant-default' }) };
     const resolver: Partial<ILiveAgentResolver> = {
       resolveForSession: vi.fn().mockResolvedValue(agentSnapshot({ liveLlm: { provider: 'llama-cpp', model: 'fast-live-model' } })),
@@ -208,7 +208,7 @@ describe('C3-T1 — default-prompt parity (the unconfigured tenant sees zero cha
   });
 
   it('with NO agent override the per-flush tenant AiTaskDefault resolve is preserved exactly', async () => {
-    const calls: SmrCall[] = [];
+    const calls: TextCall[] = [];
     const harnessPolicyService = { resolveSmrSelection: vi.fn().mockResolvedValue({ provider: 'vllm', model: 'tenant-default' }) };
     const resolver: Partial<ILiveAgentResolver> = { resolveForSession: vi.fn().mockResolvedValue(agentSnapshot({ liveLlm: null })) };
     const service = buildService({ http: recordingHttpMock(calls), resolver, harnessPolicyService });
@@ -227,7 +227,7 @@ describe('C3-T1 — default-prompt parity (the unconfigured tenant sees zero cha
 
 describe('C3-T2 — freeze semantics and three-tier recovery', () => {
   it('resolves ONCE per session: a mid-session re-point cannot change the running prompt', async () => {
-    const calls: SmrCall[] = [];
+    const calls: TextCall[] = [];
     const resolveForSession = vi
       .fn()
       .mockResolvedValueOnce(agentSnapshot({ stableUserPrefix: 'V1 PREFIX.' }))
@@ -267,7 +267,7 @@ describe('C3-T2 — freeze semantics and three-tier recovery', () => {
     const cache = cacheMock({
       get: vi.fn().mockImplementation(async (key: string) => (key.endsWith(':agent') ? JSON.stringify(stored) : null)),
     });
-    const calls: SmrCall[] = [];
+    const calls: TextCall[] = [];
     const resolveForSession = vi.fn().mockResolvedValue(agentSnapshot({ stableUserPrefix: 'FRESH PREFIX (MUST NEVER APPEAR).' }));
     const service = buildService({ http: recordingHttpMock(calls), cache, resolver: { resolveForSession } });
 
@@ -370,7 +370,7 @@ describe('C3-T3 — SSE DTO additive-only', () => {
 
 describe('C3-T4 — fail-open: a resolution failure never fails a live consultation', () => {
   it('a throwing resolver still starts the session and flushes with the in-code constants', async () => {
-    const calls: SmrCall[] = [];
+    const calls: TextCall[] = [];
     const resolver: Partial<ILiveAgentResolver> = { resolveForSession: vi.fn().mockRejectedValue(new Error('resolver exploded')) };
     const service = buildService({ http: recordingHttpMock(calls), resolver });
 
@@ -386,7 +386,7 @@ describe('C3-T4 — fail-open: a resolution failure never fails a live consultat
 
   it('a Redis outage on the agent key degrades to a fresh resolve rather than failing', async () => {
     const cache = cacheMock({ get: vi.fn().mockRejectedValue(new Error('redis down')), setex: vi.fn().mockRejectedValue(new Error('redis down')) });
-    const calls: SmrCall[] = [];
+    const calls: TextCall[] = [];
     const resolver: Partial<ILiveAgentResolver> = { resolveForSession: vi.fn().mockResolvedValue(agentSnapshot()) };
     const service = buildService({ http: recordingHttpMock(calls), cache, resolver });
 
@@ -423,7 +423,7 @@ describe('C3-T5 — zero added blocking I/O per flush', () => {
   });
 
   it('a flush that starts before resolution completes still serves the frozen snapshot (await, never re-resolve)', async () => {
-    const calls: SmrCall[] = [];
+    const calls: TextCall[] = [];
     let release!: (snapshot: FrozenLiveAgentSnapshot) => void;
     const pending = new Promise<FrozenLiveAgentSnapshot>((resolve) => {
       release = resolve;

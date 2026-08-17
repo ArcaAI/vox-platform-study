@@ -5,7 +5,7 @@ export const metadata: Metadata = {
   title: 'Platform Dashboard',
 };
 
-/** Frame 10 — Platform Dashboard (tier 10, global admins only). */
+/** Frame 10 — Platform Dashboard (tier 10, super admins only). */
 export default function DashboardPage() {
   return <PlatformDashboard />;
 }

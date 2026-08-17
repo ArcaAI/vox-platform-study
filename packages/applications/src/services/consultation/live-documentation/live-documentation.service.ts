@@ -21,7 +21,7 @@ import { encryptPhiFields } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 import { RedisSubscriberService } from '../../stt/realtime/redisSubscriber.service';
 import { StreamingAudioBridgeService } from '../../stt/streaming/streamingAudioBridge.service';
-import { mapSmrGenerateResponse } from '../summary/text-generate';
+import { mapTextGenerateResponse } from '../summary/text-generate';
 import { HarnessPolicyService } from '../../harness-policy/harness-policy.service';
 import { IAiTaskDefaultService } from '../../ai-task-default/IAiTaskDefaultService';
 import { ConsultationPipelineEvent, type ContextAddedPayload, type ContextRemovedPayload } from '../events';
@@ -88,7 +88,7 @@ const SOAP_OUTPUT_INSTRUCTION =
  * user prompt. This block is BYTE-IDENTICAL on every flush of a session (first
  * flush AND every subsequent update flush), so a prefix-cache engine (vLLM /
  * llama.cpp `cache_prompt`) reuses the KV cache of the stable prefix instead of
- * re-prefilling a mode-specific directive. `buildSmrUserPrompt` emits the blocks
+ * re-prefilling a mode-specific directive. `buildTextUserPrompt` emits the blocks
  * in the order `[stable system] + [transcript-so-far] + [current note] +
  * [delta instruction]`, keeping the variable, mode-specific directive LAST.
  */
@@ -100,7 +100,7 @@ export const LIVE_SOAP_STABLE_SYSTEM_PREFIX =
 /**
  * The SMR `system_prompt` for the live running-note call.
  *
- * LIFTED VERBATIM out of the inline `callSmr` literal — the bytes
+ * LIFTED VERBATIM out of the inline `callText` literal — the bytes
  * are unchanged (the paired sha256 guards in `live-soap-prompt-checksum.test.ts`
  * and `system-live-soap-default-checksum.test.ts` pin them, and C2's seed
  * carries the identical string under `metaData.promptConfig.systemPrompt`).
@@ -340,7 +340,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
   private configSubscription?: Subscription;
 
   private readonly nlpServiceUrl: string;
-  private readonly smrServiceUrl: string;
+  private readonly textServiceUrl: string;
   private readonly guardrailServiceUrl: string;
   private readonly heartbeatMs: number;
   // `agentic.context.*` env FALLBACKS. These are no longer the
@@ -348,7 +348,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
   // through `resolveAgenticContext`'s `EffectiveSettingsService`.
   //
   // These six used to be read from `env ?? AGENTIC_CONTEXT_DEFAULTS` in the
-  // constructor and frozen there — so a global admin's registry write moved what
+  // constructor and frozen there — so a super admin's registry write moved what
   // `GET /admin/settings/registry` reported and moved NOTHING in the running loop,
   // and even the env value needed a redeploy. `undefined` here means "no env
   // override", which lets a stored value or the code default win.
@@ -432,7 +432,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     @Optional() @Inject(ILiveAgentResolver) private readonly liveAgentResolver?: ILiveAgentResolverPort,
   ) {
     this.nlpServiceUrl = this.configService.get<string>('NLP_URL') ?? 'http://localhost:8864';
-    this.smrServiceUrl = this.configService.get<string>('TEXT_URL') ?? 'http://localhost:8862';
+    this.textServiceUrl = this.configService.get<string>('TEXT_URL') ?? 'http://localhost:8862';
     // Capture only the ENV OVERRIDES here. The effective values are
     // resolved per call in `resolveAgenticContext` so a control-plane write lands
     // on the next flush with no redeploy. `LIVE_DOC_*` keys stay supported as the
@@ -987,7 +987,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
 
     // Resolve the effective agentic.context.* knobs for THIS flush.
     // Refreshing here (rather than at construction) is what makes the control plane
-    // real: a global admin's registry write governs the very next flush, with no
+    // real: a super admin's registry write governs the very next flush, with no
     // redeploy. It also refreshes the snapshot the synchronous ingest/debounce
     // paths read.
     const agenticContext = await this.resolveAgenticContext(session.tenantId);
@@ -1081,7 +1081,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // module constant. Prefix-cache friendliness is preserved BY CONSTRUCTION:
     // the prefix is frozen per session, so it stays byte-identical across every
     // flush — exactly the property the constant used to provide.
-    const promptText = this.buildSmrUserPrompt(priorNote, delta || transcript, notes, elidedParts > 0, agent.stableUserPrefix);
+    const promptText = this.buildTextUserPrompt(priorNote, delta || transcript, notes, elidedParts > 0, agent.stableUserPrefix);
 
     // SMR first (a structured S/O/A/P running note), then NER over the resulting
     // `runningSummary` (the canonical text the entity highlight offsets index — so it
@@ -1110,7 +1110,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       const outcome = await generateJsonWithRepair<LiveSummarySectionDto[], LiveSoapCall>({
         generate: async (corrective) => {
           const startedAt = Date.now();
-          const { text, stats, structured } = await this.callSmr(promptText, session.tenantId, signal, corrective, agent);
+          const { text, stats, structured } = await this.callText(promptText, session.tenantId, signal, corrective, agent);
           return { text, stats, structured, latencyMs: Date.now() - startedAt };
         },
         parseStrict: (text) => {
@@ -1904,7 +1904,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
    * whole transcript, keeping prompt size bounded; the first flush sends the delta
    * as the initial transcript.
    */
-  private buildSmrUserPrompt(
+  private buildTextUserPrompt(
     priorNote: string,
     delta: string,
     notes: string,
@@ -1947,7 +1947,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
    *   3. the descriptor code default (`AGENTIC_CONTEXT_DEFAULTS`)
    *
    * Env deliberately LOSES to a stored value: the registry is the control plane,
-   * and a knob a global admin can see in the catalog must be the knob that governs.
+   * and a knob a super admin can see in the catalog must be the knob that governs.
    * When nothing is stored, (2)/(3) reproduce the pre-B1 behaviour exactly, so an
    * untouched deployment is unaffected.
    *
@@ -2007,7 +2007,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
-  private async callSmr(
+  private async callText(
     promptText: string,
     tenantId: string,
     signal?: AbortSignal,
@@ -2020,7 +2020,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // resolver is not wired (kept for non-DI construction paths).
     //
     // This is the LIVE tier: ask for the 'smr.live' routing key so a
-    // global admin can point the low-latency running-note model at something smaller
+    // super admin can point the low-latency running-note model at something smaller
     // than the end-of-visit finalize model. Omitting the task argument defaults to
     // 'finalize', which is what left `smr.live` inert despite being seeded+registered.
     //
@@ -2066,7 +2066,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // (`prompt-management.service.ts`, `dna-writing-style.processor.ts`); `??
     // ''` preserves the dev bypass when no secret is configured.
     const serviceToken = (await this.secretsService?.getSecretOptional('TEXT_SERVICE_TOKEN')) ?? '';
-    const response = await this.httpService.axiosRef.post(`${this.smrServiceUrl}/api/v1/generate`, payload, {
+    const response = await this.httpService.axiosRef.post(`${this.textServiceUrl}/api/v1/generate`, payload, {
       timeout: this.smrTimeoutMs,
       headers: { 'Content-Type': 'application/json', 'X-Service-Token': serviceToken },
       signal,
@@ -2078,7 +2078,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // SMR itself has no notion of this key; it only echoes back the
     // provider/model it actually ran, so the tier provenance is stamped here.
     return {
-      text: mapSmrGenerateResponse(response.data).summary,
+      text: mapTextGenerateResponse(response.data).summary,
       // `selection_source` is additive telemetry: it says WHETHER the frozen
       // agent override or the per-flush tenant default chose this model.
       stats: stats ? { ...stats, task_key: 'smr.live', selection_source: selectionSource } : null,

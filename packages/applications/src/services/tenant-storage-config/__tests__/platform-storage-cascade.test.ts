@@ -29,7 +29,7 @@ import { BlobStorageProviderFactory } from '../../baseServices/storage/providers
 import { TenantStorageConfigService } from '../tenant-storage-config.service';
 
 const TENANT = 'tenant-1';
-const ADMIN = 'global-admin-1';
+const ADMIN = 'super-admin-1';
 
 /** Minimal in-memory stand-in for `TenantStorageConfigRepository`. */
 class FakeConfigRepo {
@@ -121,14 +121,14 @@ describe('platform storage cascade — SYSTEM row over env, no redeploy', () => 
     }
   });
 
-  it('THE PROOF: a global admin writing the SYSTEM row changes the resolved config on the SAME live factory', async () => {
+  it('THE PROOF: a super admin writing the SYSTEM row changes the resolved config on the SAME live factory', async () => {
     process.env.MINIO_ENDPOINT = 'localhost:9000';
 
     // 1. Boot-time state: env tier.
     await factory.getProvider();
     expect(lastS3Config()).toMatchObject({ endpoint: 'http://localhost:9000' });
 
-    // 2. A global admin edits the platform default through the admin API.
+    // 2. A super admin edits the platform default through the admin API.
     const created = await service().upsertPlatformDefault({
       provider: StorageProviderType.MINIO,
       topology: StorageTopologyType.SHARED,

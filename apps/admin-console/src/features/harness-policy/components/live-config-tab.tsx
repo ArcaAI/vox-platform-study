@@ -49,7 +49,7 @@ export function LiveConfigTab() {
       <div className="flex flex-col gap-1">
         <h2 className="text-base font-semibold">Live documentation engine</h2>
         <p className="text-muted-foreground text-sm">
-          Runtime kill-switch (global admin, global scope). A Redis override fans out to every API instance &mdash; no redeploy. Disabling refuses new
+          Runtime kill-switch (super admin, global scope). A Redis override fans out to every API instance &mdash; no redeploy. Disabling refuses new
           sessions while in-flight ones drain. Edited from Agentic policy, which owns this row.
         </p>
       </div>

@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-# ── SMR Service (smr) ─────────────────────────────────────────────────────
+# ── Text Service (text) ───────────────────────────────────────────────────
 # Multi-stage build: builder → production
 #
 # Built from the REPO ROOT context so it consumes the single uv workspace lock
@@ -10,7 +10,7 @@
 #   docker build -t hope-python-base infrastructure/docker/python-base/
 #
 # Build (from repo root):
-#   docker build -f apps/text/Dockerfile --target production -t smr .
+#   docker build -f apps/text/Dockerfile --target production -t text .
 # ─────────────────────────────────────────────────────────────────────────────
 
 # Base image is parameterized so CI can inject the registry-qualified tag while
@@ -20,7 +20,7 @@ ARG BASE_IMAGE=hope-python-base:latest
 # ── Stage 1: builder ─────────────────────────────────────────────────────────
 FROM ${BASE_IMAGE} AS builder
 
-# Layer 1: install ONLY smr's deps from the workspace lock (cached unless the
+# Layer 1: install ONLY text's deps from the workspace lock (cached unless the
 # lock or any member manifest changes).
 COPY pyproject.toml uv.lock ./
 COPY apps/text/pyproject.toml ./apps/text/
@@ -40,19 +40,19 @@ COPY packages/py-runtime-models ./packages/py-runtime-models
 # file:///app/packages/py-env". Dependency-light and rarely changed.
 COPY packages/py-env ./packages/py-env
 # Shared OTEL trace-propagation helpers (`hope-otel`). Same workspace
-# path-dependency rule: smr now declares `hope-otel`, so `uv sync` needs it on
+# path-dependency rule: text now declares `hope-otel`, so `uv sync` needs it on
 # disk or layer 1 fails with "Distribution not found at:
 # file:///app/packages/py-otel". Its only dep (opentelemetry-api) is already in
 # the lock, so it costs no meaningful layer-cache churn.
 COPY packages/py-otel ./packages/py-otel
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --package smr --no-dev --no-install-project --no-editable
+    uv sync --frozen --package text --no-dev --no-install-project --no-editable
 
 # Layer 2: copy source + install the package itself.
 COPY apps/text/README.md ./apps/text/
 COPY apps/text/src ./apps/text/src
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --package smr --no-dev --no-editable
+    uv sync --frozen --package text --no-dev --no-editable
 
 # Slim the venv: drop bytecode + egg-info only. Do NOT delete dirs named
 # "docs"/"doc"/"tests" — some packages ship real importable submodules with
@@ -65,9 +65,9 @@ RUN find /app/.venv/lib -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/nul
 FROM ${BASE_IMAGE} AS production
 
 LABEL maintainer="HOPE Team" \
-    service="apps-smr" \
+    service="apps-text" \
     version="2.0.0" \
-    org.opencontainers.image.title="HOPE SMR Service" \
+    org.opencontainers.image.title="HOPE Text Service" \
     org.opencontainers.image.description="Multi-provider text generation service" \
     org.opencontainers.image.version="2.0.0"
 
@@ -113,4 +113,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
 
 EXPOSE 8862
 
-ENTRYPOINT ["python", "-m", "uvicorn", "smr.main:app", "--host", "0.0.0.0", "--port", "8862"]
+ENTRYPOINT ["python", "-m", "uvicorn", "text.main:app", "--host", "0.0.0.0", "--port", "8862"]

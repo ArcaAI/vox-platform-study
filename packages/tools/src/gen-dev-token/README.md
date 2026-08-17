@@ -88,7 +88,7 @@ Users are defined in `users.ts` and match the database seed data:
 
 | Username      | Roles       | Tenant | Description                           |
 | ------------- | ----------- | ------ | ------------------------------------- |
-| `super_admin` | SUPER_ADMIN | Global | System administrator with full access |
+| `super_admin` | SUPER_ADMIN | Super Admin | System administrator with full access |
 | `admin`       | ADMIN       | Global | Organization administrator            |
 | `user`        | USER        | Global | Standard user with basic permissions  |
 

@@ -222,7 +222,7 @@ describe('OriginTenantBindingGuard (many-to-many)', () => {
       expect(guard.canActivate(createContext({ origin: 'https://a.example' }))).toBe(true);
     });
 
-    it('allows a global admin, whose CLS tenantId is the empty string', () => {
+    it('allows a super admin, whose CLS tenantId is the empty string', () => {
       const guard = new OriginTenantBindingGuard(createCls({ tenantId: '', user: { tenantId: '' } }), registry);
 
       expect(guard.canActivate(createContext({ origin: 'https://a.example' }))).toBe(true);

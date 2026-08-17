@@ -76,10 +76,10 @@ test.describe('model-cache retention TTL — write lane reaches the effective-co
   // describe must run serially.
   test.describe.configure({ mode: 'serial' });
 
-  let globalAdminToken: string;
+  let superAdminToken: string;
   let originalValue: number;
 
-  const auth = () => ({ Authorization: `Bearer ${globalAdminToken}` });
+  const auth = () => ({ Authorization: `Bearer ${superAdminToken}` });
 
   async function readKey(request: APIRequestContext): Promise<RegistrySettingBody> {
     const resp = await request.get(REGISTRY_ROUTE, { headers: auth() });
@@ -98,8 +98,8 @@ test.describe('model-cache retention TTL — write lane reaches the effective-co
 
   test.beforeAll(async ({ request }) => {
     const login = await loginUser(request, SEEDED_USERS.superAdmin.username, SEEDED_USERS.superAdmin.password, DEFAULT_TENANT_KEY);
-    expect(login, 'global admin login failed').toBeTruthy();
-    globalAdminToken = login!.token;
+    expect(login, 'super admin login failed').toBeTruthy();
+    superAdminToken = login!.token;
 
     originalValue = (await readKey(request)).value;
   });

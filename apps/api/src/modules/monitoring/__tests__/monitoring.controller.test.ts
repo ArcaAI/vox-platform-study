@@ -244,7 +244,7 @@ describe('monitoring admin-gating', () => {
   const REQUIRED_PERMISSIONS_KEY = 'required_permissions';
   const PERMISSION_MODE_KEY = 'permission_mode';
 
-  it('accepts EITHER `manage all` (global-admin) OR `read TenantTelemetry` (tenant-admin)', async () => {
+  it('accepts EITHER `manage all` (super-admin) OR `read TenantTelemetry` (tenant-admin)', async () => {
     const { MonitoringController } = await import('../monitoring.controller');
     const required = Reflect.getMetadata(REQUIRED_PERMISSIONS_KEY, MonitoringController);
     const mode = Reflect.getMetadata(PERMISSION_MODE_KEY, MonitoringController);

@@ -5,7 +5,7 @@
 /**
  * The tenant-tier HarnessPolicy keys a DepartmentAgent's `harnessOverrides`
  * JSONB may carry. Everything else on HarnessPolicy is
- * `GLOBAL_ADMIN_ONLY_POLICY_KEYS` (see
+ * `SUPER_ADMIN_ONLY_POLICY_KEYS` (see
  * `harness-policy/harness-policy.service.ts`) and MUST NOT appear in an agent's
  * overrides — a tenant admin editing an agent may only nudge the tenant-tier
  * knobs (the 5 assurance-sensor thresholds + the 4 pipeline-shape knobs).
@@ -33,7 +33,7 @@ const ALLOWED_KEY_SET: ReadonlySet<string> = new Set(TENANT_TIER_HARNESS_OVERRID
 
 /**
  * Keys present in `overrides` that are NOT tenant-tier-allowed (i.e. would be
- * global-admin-only HarnessPolicy knobs). Empty ⇒ the override set is valid.
+ * super-admin-only HarnessPolicy knobs). Empty ⇒ the override set is valid.
  */
 export function disallowedHarnessOverrideKeys(overrides: Record<string, unknown>): string[] {
   return Object.keys(overrides).filter((key) => !ALLOWED_KEY_SET.has(key));
@@ -65,7 +65,7 @@ export type LiveToolKey = (typeof LIVE_TOOL_KEYS)[number];
 const LIVE_TOOL_KEY_SET: ReadonlySet<string> = new Set(LIVE_TOOL_KEYS);
 
 /**
- * The `SmrRoutingTask` subset an agent may override. Deliberately NOT one
+ * The `TextRoutingTask` subset an agent may override. Deliberately NOT one
  * global field: a low-latency live model must never silently drive
  * finalize, so the override is keyed per task and each key falls back
  * independently to the tenant's `AiTaskDefault` (`smr.live` / `smr.finalize`).

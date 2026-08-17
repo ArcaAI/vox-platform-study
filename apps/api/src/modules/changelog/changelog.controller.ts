@@ -31,7 +31,7 @@ export class ChangelogController {
   @Get()
   @ApiOperation({
     summary: 'List the release notes visible to the caller',
-    description: 'Audience-filtered, newest published first. Global admins additionally see DRAFT entries.',
+    description: 'Audience-filtered, newest published first. Super Admins additionally see DRAFT entries.',
   })
   @ApiResponse({ status: 200, type: PaginatedChangelogEntryResponse })
   async list(@Query() query: ListChangelogQuery): Promise<PaginatedChangelogEntryResponse> {

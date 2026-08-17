@@ -71,13 +71,13 @@ async function firstStepsPage(request: APIRequestContext, token: string, session
 }
 
 test.describe('GenerationStats surfaces via the trajectory step `stats` blob', () => {
-  let globalAdminToken: string;
+  let superAdminToken: string;
   let doctorToken: string;
 
   test.beforeAll(async ({ request }) => {
     const ga = await loginUser(request, SEEDED_USERS.superAdmin.username, SEEDED_USERS.superAdmin.password, 'ARCAAI');
-    expect(ga, 'global admin login (ARCAAI) failed — is the stack seeded?').toBeTruthy();
-    globalAdminToken = ga!.token;
+    expect(ga, 'super admin login (ARCAAI) failed — is the stack seeded?').toBeTruthy();
+    superAdminToken = ga!.token;
 
     const doc = await loginUser(request, SEEDED_USERS.doctor.username, SEEDED_USERS.doctor.password, DEFAULT_TENANT_KEY);
     expect(doc, 'doctor login (__GLOBAL__) failed').toBeTruthy();
@@ -90,7 +90,7 @@ test.describe('GenerationStats surfaces via the trajectory step `stats` blob', (
   });
 
   test('step items expose an optional nullable `stats` blob (AD-1 GenerationStats surface) and never `payloadRef`', async ({ request }) => {
-    const sessionsResp = await request.get(`${SESSIONS}?limit=10`, { headers: bearer(globalAdminToken) });
+    const sessionsResp = await request.get(`${SESSIONS}?limit=10`, { headers: bearer(superAdminToken) });
     expect(sessionsResp.status(), 'list sessions').toBe(200);
     const sessions = (await sessionsResp.json()) as SessionsList;
     expect(Array.isArray(sessions.items), 'sessions envelope carries items[]').toBe(true);
@@ -99,7 +99,7 @@ test.describe('GenerationStats surfaces via the trajectory step `stats` blob', (
     let inspectedGenerationStats = false;
 
     for (const session of sessions.items) {
-      const page = await firstStepsPage(request, globalAdminToken, session.sessionId, session.runId);
+      const page = await firstStepsPage(request, superAdminToken, session.sessionId, session.runId);
       expect(Array.isArray(page.items)).toBe(true);
 
       for (const step of page.items) {

@@ -27,7 +27,7 @@ import { RequiredScopes } from '../decorators';
 import { PolicyEngine } from '../policy.engine';
 import { ApiKeyService } from '../../services/apiKey/apikey.service';
 
-class DummySmrCompatController {
+class DummyTextCompatController {
   @RequiredScopes('consultation:report:write')
   summarySync() {}
 }
@@ -36,8 +36,8 @@ const createMockContext = () => {
   const request = { headers: {}, method: 'POST', url: '/api/smr/api/v1/summary/sync', ip: '127.0.0.1', params: {} };
   return {
     switchToHttp: () => ({ getRequest: () => request }),
-    getHandler: () => DummySmrCompatController.prototype.summarySync,
-    getClass: () => DummySmrCompatController,
+    getHandler: () => DummyTextCompatController.prototype.summarySync,
+    getClass: () => DummyTextCompatController,
   } as unknown as ExecutionContext;
 };
 

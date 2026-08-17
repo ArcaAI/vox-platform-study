@@ -158,15 +158,15 @@ export class TranscriptionJobController {
    * controllers: the CLS `tenantId` key FIRST, then the JWT-derived identity.
    *
    * The `tenantId` key is where `ContextInterceptor` elevates a SUPER_ADMIN's
-   * selected working tenant from the `x-tenant-id` header; a global admin's own
+   * selected working tenant from the `x-tenant-id` header; a super admin's own
    * JWT carries `tenantId: ''`, so reading `user.tenantId` alone rejected every
-   * global-admin caller with a 400 (BUG-012). `??` (not `||`) matches the
+   * super-admin caller with a 400 (BUG-012). `??` (not `||`) matches the
    * provider exactly, and the explicit length check keeps an empty-string claim
    * from leaking through as a tenant — a caller with no active tenant still
    * fails closed here.
    *
    * No new trust is granted: the only way the CLS `tenantId` diverges from
-   * `user.tenantId` is that audited global-admin elevation, which
+   * `user.tenantId` is that audited super-admin elevation, which
    * `resolveActiveTenant` already restricts to elevated callers with an empty
    * JWT tenant and a well-formed UUID (a forged header from a tenant-bound
    * caller is rejected as 400 before the handler runs).

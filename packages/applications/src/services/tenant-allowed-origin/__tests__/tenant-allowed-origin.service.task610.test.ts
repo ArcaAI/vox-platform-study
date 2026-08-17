@@ -123,7 +123,7 @@ describe('TenantAllowedOriginService', () => {
       switch (key) {
         case 'user':
           // The acting user is made EXPLICITLY `SUPER_ADMIN`.
-          // Under this whole resource was global-admin-only at the
+          // Under this whole resource was super-admin-only at the
           // controller, so every scenario in this suite — including its
           // wildcard/allow-all cases — was already, implicitly, a global
           // admin acting. moves the wildcard boundary INTO the

@@ -260,7 +260,7 @@ test.describe.serial('tenant create / edit (If-Match) / enable / disable (F3/F4/
 // =============================================================================
 test.describe('tenant configuration OCC (C1)', () => {
   test('C1: GET /admin/tenant-frontend-config returns 200 (config or null)', async ({ request }) => {
-    // The Configuration page's data source. A global-admin operator targets a
+    // The Configuration page's data source. A super-admin operator targets a
     // tenant via ?tenantId=. Body may be null when not yet configured.
     const res = await authGet(request, '/api/v1/admin/tenant-frontend-config', superToken, { tenantId: globalTenantId });
     expect(res.status()).toBe(200);

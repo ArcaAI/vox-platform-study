@@ -5,7 +5,7 @@
  * path makes NO SMR call of its own — confirmed by an exhaustive search: zero
  * httpService/axios references anywhere in context.service.ts. It exists to
  * persist a summary + bare `inputTokens`/`outputTokens` a caller already
- * computed elsewhere, so there is no real `SmrUsageDetail` (no provider, no
+ * computed elsewhere, so there is no real `TextUsageDetail` (no provider, no
  * endpointKind, no raw provider payload) — hence
  * `buildLlmUsageInputFromTokenCounts` (smr-usage.ts) rather than
  * `buildLlmUsageInput`, which would force a fabricated `endpointKind` onto

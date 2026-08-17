@@ -11,8 +11,8 @@ gateway, task defaults, discovery/lifecycle/retention).
 Route paths are relative to the global prefix `/api/v1`. Test shorthand is defined in
 [`index.md`](./index.md#test-location-shorthand). `—` means verified-absent.
 
-The registry is a GLOBAL-ADMIN plane (guards pinned to `manage:all`, not the tenant-scoped
-`manage:AiModel`); global admins manage per-tenant clones of the SYSTEM catalog through the
+The registry is a SUPER_ADMIN plane (guards pinned to `manage:all`, not the tenant-scoped
+`manage:AiModel`); super admins manage per-tenant clones of the SYSTEM catalog through the
 working-tenant context, with exact-tenant scoping enforced in the Prisma `tenant-scope`
 extension.
 
@@ -50,7 +50,7 @@ The SYSTEM row is the platform default; a tenant row overrides it per task.
 | App / service | `apps/api` |
 | Key modules | `apps/api/src/modules/ai-task-default` (`ai-task-default-admin.controller.ts`); `packages/applications/src/services/ai-task-default` |
 | Prisma models | `AiTaskDefault` (`db_main/ai-task-default.prisma`) |
-| Key API endpoints | `@Controller('admin/ai-task-defaults')`: `GET /admin/ai-task-defaults/options` (assignable models), `GET /admin/ai-task-defaults` (resolved effective per-task map), `GET /admin/ai-task-defaults/row`, `PUT /admin/ai-task-defaults/row` (create/CAS under `If-Match`). GLOBAL-ADMIN-only for certain task prefixes (`GLOBAL_ADMIN_ONLY_TASK_PREFIXES`, enforced imperatively — see rule 05 `AUTH-NOTE`) |
+| Key API endpoints | `@Controller('admin/ai-task-defaults')`: `GET /admin/ai-task-defaults/options` (assignable models), `GET /admin/ai-task-defaults` (resolved effective per-task map), `GET /admin/ai-task-defaults/row`, `PUT /admin/ai-task-defaults/row` (create/CAS under `If-Match`). SUPER_ADMIN-only for certain task prefixes (`SUPER_ADMIN_ONLY_TASK_PREFIXES`, enforced imperatively — see rule 05 `AUTH-NOTE`) |
 | Console | `apps/admin-console` feature `ai-task-defaults`; route `/ai-task-defaults` (tier 10–19, global). The tenant-facing view (`tenant-ai-configuration-screen`) surfaces the effective map — legacy row 39, route `/ai-configuration` (tier 30–49; `/ai-model-defaults` redirects) |
 | Tests | unit(app): `ai-task-default/__tests__/ai-task-default.service.test.ts`; unit(api): `ai-task-default/__tests__/ai-task-default-admin.controller.test.ts`; unit(console): `ai-task-defaults/components/__tests__/{ai-task-defaults-screens,tenant-ai-configuration-screen}.test.tsx`, `ai-task-defaults/api/__tests__/ai-task-defaults-api.test.ts`; e2e: `ai-task-defaults-cross-tenant.spec.ts` |
 
@@ -85,11 +85,11 @@ the model/runtime for each call.
 | Field | Value |
 |---|---|
 | App / service | `apps/api` + `apps/text` (overrides injected into generation) |
-| Key modules | `apps/api/src/modules/ai-provider-connection` (`ai-provider-connection.controller.ts`); `packages/applications/src/services/ai-provider-connection` (`resolveConnection`, `resolveTenantCloudOverrides`); `apps/api/src/modules/streaming` `SmrProxyController.applyTenantProviderOverrides` |
+| Key modules | `apps/api/src/modules/ai-provider-connection` (`ai-provider-connection.controller.ts`); `packages/applications/src/services/ai-provider-connection` (`resolveConnection`, `resolveTenantCloudOverrides`); `apps/api/src/modules/streaming` `TextProxyController.applyTenantProviderOverrides` |
 | Prisma models | `AiProviderConnection` (`db_main/ai-provider-connection.prisma`) |
 | Key API endpoints | `@Controller('admin/ai-providers')`: `GET /admin/ai-providers`, `GET /admin/ai-providers/:provider`, `PUT /admin/ai-providers/:provider` (`@RequiresIfMatch()` OCC; `apiKey` write-only, no reveal route), `DELETE /admin/ai-providers/:provider`. Injected onto SMR `POST /api/v1/generate` as `provider_overrides` |
 | Console | `apps/admin-console` feature `ai-task-defaults` `byo-credential-card` (surfaced on `/ai-configuration`, tier 30–49) — legacy row 39 |
-| Tests | unit(app): `ai-provider-connection/__tests__/{ai-provider-connection.service,ai-provider-connection.tenant-lane}.test.ts`; unit(api): `streaming/__tests__/smr-proxy-tenant-byo.controller.test.ts`; e2e: `ai-provider-connections-cross-tenant.spec.ts` |
+| Tests | unit(app): `ai-provider-connection/__tests__/{ai-provider-connection.service,ai-provider-connection.tenant-lane}.test.ts`; unit(api): `streaming/__tests__/text-proxy-tenant-byo.controller.test.ts`; e2e: `ai-provider-connections-cross-tenant.spec.ts` |
 
 ### M7 — Agent-trajectory observability & AI operations (TASK-530/535) — NEW
 
@@ -102,14 +102,14 @@ per-step trajectory, with retention.
 | Key modules | `apps/api/src/modules/agent-trajectory` (`agent-trajectory.controller.ts`); `packages/applications/src/services/agent-trajectory`, `packages/applications/src/services/agent-trajectory-retention`. The `AgentTrajectory` / `McpServer` RBAC subjects were added in TASK-532 M-12 (see legacy row 34d) |
 | Prisma models | `AgentTrajectoryStep` (`db_main/agent-trajectory.prisma`) |
 | Key API endpoints | `@Controller('admin/agent-trajectory')` (read-only subject): `GET /admin/agent-trajectory/metrics/generation`, `GET /admin/agent-trajectory/sessions`, `GET /admin/agent-trajectory/sessions/:sessionId/steps` |
-| Console | `apps/admin-console` features `ai-operations-runs` (route `/ai-operations/runs`) + `ai-operations-metrics` (route `/ai-operations/metrics`), tier 10–19 global. These are the "global-admin-only screen over per-tenant data" pattern: `(global)` tier + `WorkingTenantGate` (see rule 13 §Routing) |
+| Console | `apps/admin-console` features `ai-operations-runs` (route `/ai-operations/runs`) + `ai-operations-metrics` (route `/ai-operations/metrics`), tier 10–19 global. These are the "super-admin-only screen over per-tenant data" pattern: `(global)` tier + `WorkingTenantGate` (see rule 13 §Routing) |
 | Tests | unit(api): `agent-trajectory/__tests__/agent-trajectory.controller.test.ts`; unit(app): `agent-trajectory/__tests__/{agent-trajectory.service,agent-trajectory.token-budget}.test.ts`, `agent-trajectory-retention/__tests__/agent-trajectory-retention.service.test.ts`; unit(console): `ai-operations-runs/components/__tests__/{ai-operations-runs-screen,step-stats}.test.tsx`, `ai-operations-metrics/components/__tests__/ai-operations-metrics-screen.test.tsx`, `ai-operations-metrics/api/__tests__/aggregate.test.ts`; e2e: `apps/api/tests/e2e/trajectory-admin.spec.ts` (agent-trajectory admin read plane — pagination, projection, 404-over-403) |
 
 ## Honest notes / gaps
 
 - **M4 (runtime profiles) has no `apps/api/tests/e2e` spec.** It is covered at the unit(app)/unit(api)/unit(console) layers only; runtime-profile resolution is exercised indirectly through the AI-inference controller tests, not a dedicated profile e2e. (M7's agent-trajectory admin read plane IS covered by `apps/api/tests/e2e/trajectory-admin.spec.ts`.)
 - **The ASR-pipeline half of legacy row 26 is NOT here.** `AsrPipeline`/`AsrPipelineVersion` + `modules/pipeline` belong to the transcription domain and remain in `docs/traceability-matrix.md` until that domain is migrated.
-- **M3 GLOBAL-ADMIN-only enforcement is imperative, not declarative.** Certain task-default prefixes (and MCP writes, and the guardrail task) are gated in the service via `isSuperAdmin`/`GLOBAL_ADMIN_ONLY_*`, so the `@Authorize` decorator alone understates the gate — read the service, per rule 05.
+- **M3 SUPER_ADMIN-only enforcement is imperative, not declarative.** Certain task-default prefixes (and MCP writes, and the guardrail task) are gated in the service via `isSuperAdmin`/`SUPER_ADMIN_ONLY_*`, so the `@Authorize` decorator alone understates the gate — read the service, per rule 05.
 - Model discovery probes are upstream-host dependent; the discovery e2e (`ai-model-discovery.spec.ts`) covers registration, not live probing of every provider host.
 - **Text/RAG embedding is infra-tier, not catalog-tier — by design, not omission (TASK-581).** The `FEATURE_EXTRACTION`/`SENTENCE_SIMILARITY` `ModelTaskType` values have no seeded `AiModel` row. Verified 2026-07-28: `AI_TASK_KEYS` (`packages/applications/src/services/ai-task-default/constants.ts`) has no embedding task key, and `apps/harness`'s only embedding consumer (`RetrievalConfig` → `EmbeddingsClient`, `apps/harness/src/harness/core/config.py` + `services/embeddings_client.py`) resolves its endpoint/model entirely from `HARNESS_RETRIEVAL_EMBEDDINGS_*` env vars — never from `AiModel`/`AiProviderConnection`/`AiTaskDefault`. There is no DB-catalog lookup for a text embedder anywhere in the codebase. Do not re-flag this as a Day-1-defaults gap without first confirming a new resolver actually reads an embedding row from the catalog.
 

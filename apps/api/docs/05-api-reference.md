@@ -533,9 +533,9 @@ interface ProxyControllerConfig {
 
 ---
 
-### SmrProxyController (Text Proxy)
+### TextProxyController (Text Proxy)
 
-**Location**: `src/modules/streaming/smr-proxy.controller.ts`
+**Location**: `src/modules/streaming/text-proxy.controller.ts`
 **Route**: `text` → `/api/v1/text/**`
 
 **Proxy Configuration:**

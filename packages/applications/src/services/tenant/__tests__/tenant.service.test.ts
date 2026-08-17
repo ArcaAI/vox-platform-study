@@ -2335,7 +2335,7 @@ describe('TenantService', () => {
 
   describe('provisionDefaultDepartment / tenant-created audit attribution', () => {
     it('rebinds CLS tenantId to the new tenant so provisioning broadcasts are not stamped null', async () => {
-      // Models the real global-admin-creating-a-tenant case: CLS carries
+      // Models the real super-admin-creating-a-tenant case: CLS carries
       // NO active tenant (root cause) until `create()` rebinds it. A
       // stateful mock is required because a real ClsService's `get`
       // reflects prior `set` calls — the suite-wide static mock does not.

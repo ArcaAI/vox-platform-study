@@ -16,7 +16,7 @@ import { McpServer } from '../../../models';
  * index. The reserved SYSTEM tenant owns the shared registry rows. `McpServer`
  * is a SYSTEM-shared read model, so the tenant-scope extension permits pinning
  * `tenantId` to either the caller OR the SYSTEM tenant (mirrors
- * `AiTaskDefaultRepository`); registry WRITES are additionally global-admin
+ * `AiTaskDefaultRepository`); registry WRITES are additionally super-admin
  * only, enforced at the application/controller layer.
  */
 @Injectable()
@@ -54,7 +54,7 @@ export class McpServerRepository extends Repository<McpServerEntity, McpServer> 
    * the read goes through the extended (tenant-scoped) client — for this
    * SYSTEM-shared read model that widens to `[caller, SYSTEM]`, so a
    * cross-tenant row simply misses (→ 404 at the service). With a `tx`
-   * (global-admin cross-tenant base-client lane) the caller has already scoped
+   * (super-admin cross-tenant base-client lane) the caller has already scoped
    * the tenant explicitly.
    */
   async findEnabledById(id: string, tx?: Prisma.TransactionClient | any): Promise<McpServerEntity | null> {
@@ -77,7 +77,7 @@ export class McpServerRepository extends Repository<McpServerEntity, McpServer> 
    * List ENABLED servers visible to the caller. Without a `tx` the extended
    * client widens the SYSTEM-shared read to `[caller, SYSTEM]` (no explicit
    * `tenantId` filter — passing one as an object would trip the tenant-scope
-   * guard). With a `tx` (global-admin cross-tenant base-client lane) the caller
+   * guard). With a `tx` (super-admin cross-tenant base-client lane) the caller
    * supplies the explicit `tenantIds` to scope to `[target, SYSTEM]`.
    */
   async listEnabled(tenantIds?: string[], tx?: Prisma.TransactionClient | any): Promise<McpServerEntity[]> {

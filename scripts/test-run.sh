@@ -22,7 +22,7 @@
 #   integration   Vitest integration suites     (infra: yes, services: none)
 #   e2e           Playwright API e2e            (infra: yes, services: full stack)
 #   py            every Python pytest suite     (infra: yes, services: none)
-#   <service>     one Python service's pytest   (stt|smr|nlp|guardrail|harness|tts)
+#   <service>     one Python service's pytest   (stt|text|nlp|guardrail|harness|tts)
 #
 # Extra positional args override the service list, e.g.:
 #   ./scripts/test-run.sh integration api harness
@@ -47,15 +47,27 @@ CYAN='\033[0;36m'
 BOLD='\033[1m'
 NC='\033[0m'
 
-# 300s ceiling (was 120): the e2e full-stack default starts STT, which loads
-# Whisper models on boot and legitimately needs longer than 120s on a laptop.
+# 240s ceiling: the e2e full-stack default boots six services CONCURRENTLY, each
+# through its own `conda run`; STT and guardrail import heavy ML stacks and, under
+# that contention, routinely need well past the old 120s (measured individually on
+# an idle machine: ~40s and ~55s — the concurrent run is what blows the budget).
 # This only bounds the wait when a service is NOT yet healthy — a fast boot
 # still exits the health loop the moment it reports ready, so success is unaffected.
-READY_TIMEOUT="${TEST_RUN_TIMEOUT:-300}"
+READY_TIMEOUT="${TEST_RUN_TIMEOUT:-240}"
 KEEP=false
 TEARDOWN_INFRA=true
 
-PY_SERVICES=(stt smr nlp guardrail harness tts)
+PY_SERVICES=(stt text nlp guardrail harness tts)
+
+# Canonical CLI token is `text`. `smr` still works as a deprecated remap.
+remap_smr_alias() {
+    if [ "$1" = "smr" ]; then
+        echo -e "${YELLOW}warning: 'smr' is deprecated; use 'text'.${NC}" >&2
+        echo "text"
+    else
+        echo "$1"
+    fi
+}
 
 SUITE=""
 SERVICES=()
@@ -75,6 +87,14 @@ if [ -z "$SUITE" ]; then
     echo -e "${RED}No suite given.${NC} One of: unit integration e2e py ${PY_SERVICES[*]}" >&2
     exit 2
 fi
+SUITE="$(remap_smr_alias "$SUITE")"
+if [ "${#SERVICES[@]}" -gt 0 ]; then
+    remapped=()
+    for s in "${SERVICES[@]}"; do
+        remapped+=("$(remap_smr_alias "$s")")
+    done
+    SERVICES=("${remapped[@]}")
+fi
 
 # ----------------------------------------------------------------------------
 # Suite → command + default services
@@ -93,12 +113,12 @@ case "$SUITE" in
         # Full stack minus the Temporal worker: the isolated test infra
         # (tests/docker-compose.test.yml) has no Temporal, so the worker cannot
         # connect. The harness FastAPI app itself boots fine without it.
-        # Override ad-hoc by passing services, e.g. `test:e2e:managed -- api smr`.
-        DEFAULT_SERVICES=(api stt smr guardrail nlp harness) ;;
+        # Override ad-hoc by passing services, e.g. `test:e2e:managed -- api text`.
+        DEFAULT_SERVICES=(api stt text guardrail nlp harness) ;;
     py)
         SUITE_CMD=(pnpm test:py)
         DEFAULT_SERVICES=() ;;
-    stt|smr|nlp|guardrail|harness|tts)
+    stt|text|nlp|guardrail|harness|tts)
         SUITE_CMD=(pnpm "${SUITE}:test")
         DEFAULT_SERVICES=() ;;
     *)
@@ -222,7 +242,7 @@ port_for() {
         api)       v="$(env_val API_PORT)";       echo "${v:-8968}" ;;
         admin)     v="$(env_val ADMIN_PORT)";     echo "${v:-5276}" ;;
         stt)       v="$(env_val STT_PORT)";       echo "${v:-8961}" ;;
-        smr)       v="$(env_val TEXT_PORT)";       echo "${v:-8962}" ;;
+        text)      v="$(env_val TEXT_PORT)";       echo "${v:-8962}" ;;
         guardrail) v="$(env_val GUARDRAIL_PORT)"; echo "${v:-8963}" ;;
         nlp)       v="$(env_val NLP_PORT)";       echo "${v:-8964}" ;;
         tts)       v="$(env_val TTS_PORT)";       echo "${v:-8965}" ;;

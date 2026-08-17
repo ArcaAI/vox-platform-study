@@ -16,7 +16,7 @@ import { CreateMcpServerRequest, McpServerListResponse, McpServerResponse, Updat
  * Registry rows are SYSTEM-owned initially (the shared platform registry).
  * Reads (list/get) are available to tenant admins over the SYSTEM-shared read
  * model (backs the console "Tools & MCP" screen); a cross-tenant read
- * simply misses → 404. WRITES are GLOBAL-ADMIN-ONLY — a tenant-admin write gets
+ * simply misses → 404. WRITES are SUPER_ADMIN-ONLY — a tenant-admin write gets
  * a `ForbiddenException` (403), the guardrail.* privilege-boundary precedent
  * (deliberately NOT the 404-over-403 tenancy posture: it is a privilege rule on
  * a registry the caller can already read).
@@ -29,7 +29,7 @@ import { CreateMcpServerRequest, McpServerListResponse, McpServerResponse, Updat
 export class McpServerAdminService extends BaseService implements IMcpServerAdminService {
   constructor(
     private readonly mcpServerRepository: McpServerRepository,
-    // The UNSCOPED base client backs the global-admin cross-tenant lane
+    // The UNSCOPED base client backs the super-admin cross-tenant lane
     // (mirrors AiTaskDefaultService / HarnessPolicyService).
     @Inject('CORE_DATABASE_SERVICE') private readonly databaseService: CoreDatabaseService,
     protected override readonly eventEmitter: EventEmitter2,
@@ -61,8 +61,8 @@ export class McpServerAdminService extends BaseService implements IMcpServerAdmi
   }
 
   async create(dto: CreateMcpServerRequest, tenantId?: string): Promise<McpServerResponse> {
-    this.assertGlobalAdmin();
-    // Registry rows are SYSTEM-owned initially; a global admin may still target
+    this.assertSuperAdmin();
+    // Registry rows are SYSTEM-owned initially; a super admin may still target
     // a specific tenant explicitly, but the default write target is SYSTEM.
     const scopedTenantId = tenantId ?? SYSTEM_TENANT_ID;
     const tx = this.crossTenantLane(scopedTenantId);
@@ -95,7 +95,7 @@ export class McpServerAdminService extends BaseService implements IMcpServerAdmi
   }
 
   async update(id: string, dto: UpdateMcpServerRequest, expectedVersion: number | undefined, tenantId?: string): Promise<McpServerResponse> {
-    this.assertGlobalAdmin();
+    this.assertSuperAdmin();
     const scopedTenantId = tenantId ?? SYSTEM_TENANT_ID;
     const tx = this.crossTenantLane(scopedTenantId);
 
@@ -132,7 +132,7 @@ export class McpServerAdminService extends BaseService implements IMcpServerAdmi
   }
 
   async remove(id: string, expectedVersion: number | undefined, tenantId?: string): Promise<McpServerResponse> {
-    this.assertGlobalAdmin();
+    this.assertSuperAdmin();
     const scopedTenantId = tenantId ?? SYSTEM_TENANT_ID;
     const tx = this.crossTenantLane(scopedTenantId);
 
@@ -157,17 +157,17 @@ export class McpServerAdminService extends BaseService implements IMcpServerAdmi
 
   // ────────────────────────────── internals ──────────────────────────────
 
-  /** Registry WRITES are global-admin only — a privilege boundary (403), not a 404 probe. */
-  private assertGlobalAdmin(): void {
+  /** Registry WRITES are super-admin only — a privilege boundary (403), not a 404 probe. */
+  private assertSuperAdmin(): void {
     if (!isSuperAdmin(this.requestUser)) {
-      throw new ForbiddenException('The MCP server registry is managed by global administrators only.');
+      throw new ForbiddenException('The MCP server registry is managed by super administrators only.');
     }
   }
 
   /**
-   * Global-admin cross-tenant persistence lane (mirrors AiTaskDefaultService):
+   * Super-admin cross-tenant persistence lane (mirrors AiTaskDefaultService):
    * when the resolved target differs from the CLS working tenant AND the caller
-   * is a global admin, route the read/write through the UNSCOPED base client so
+   * is a super admin, route the read/write through the UNSCOPED base client so
    * the SYSTEM-owned registry rows are addressed by their explicit tenant filter
    * (the extended client would otherwise inject the working tenant and miss).
    */
@@ -178,11 +178,11 @@ export class McpServerAdminService extends BaseService implements IMcpServerAdmi
     return undefined;
   }
 
-  /** Explicit tenant target (global-admin `?tenantId=`) over the CLS tenant. */
+  /** Explicit tenant target (super-admin `?tenantId=`) over the CLS tenant. */
   private resolveScopedTenantId(tenantId?: string): string {
     const scoped = tenantId ?? this.tenantId;
     if (!scoped) {
-      // A global admin with no working tenant reads the SYSTEM registry.
+      // A super admin with no working tenant reads the SYSTEM registry.
       if (isSuperAdmin(this.requestUser)) return SYSTEM_TENANT_ID;
       throw new BadRequestException('Tenant ID is required');
     }

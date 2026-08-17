@@ -3,14 +3,14 @@ import { Observable, Subject, finalize } from 'rxjs';
 import Redis from 'ioredis';
 import { IConfigService } from '../../baseServices/_meta/config';
 
-export interface SmrStreamChunk {
+export interface TextStreamChunk {
   id: string;
   type: string;
   data: Record<string, unknown>;
 }
 
 /**
- * SmrStreamConsumerService
+ * TextStreamConsumerService
  *
  * Reads SMR task chunks directly from Redis Streams:
  * - Stream key: `smr:stream:{taskId}` (matches Python TaskManager._STREAM_KEY_PREFIX)
@@ -21,8 +21,8 @@ export interface SmrStreamChunk {
  * to avoid blocking the main Redis client with XREAD calls.
  */
 @Injectable()
-export class SmrStreamConsumerService implements OnModuleDestroy {
-  private readonly logger = new Logger(SmrStreamConsumerService.name);
+export class TextStreamConsumerService implements OnModuleDestroy {
+  private readonly logger = new Logger(TextStreamConsumerService.name);
 
   private readerRedis: Redis | null = null;
   private connected = false;

@@ -6,7 +6,7 @@ Sarvam's REST ``/translate`` endpoint.
 
 Sarvam is BYOK-ONLY: the ``api_key`` NEVER comes from env/platform config — it
 arrives per request as a ``ProviderOverride`` (the gateway resolves it from the
-tenant/global-admin provider-connection). A request with no override key fails
+tenant/super-admin provider-connection). A request with no override key fails
 closed (``SarvamCredentialError`` → endpoint 503). The config carries only
 non-secret operational settings (base_url / model).
 

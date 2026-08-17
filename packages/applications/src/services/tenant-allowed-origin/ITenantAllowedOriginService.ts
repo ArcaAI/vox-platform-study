@@ -6,7 +6,7 @@ import { CreateTenantAllowedOriginRequest, TenantAllowedOriginResponse, UpdateTe
  * ## Where the privilege boundaries live
  *
  * Originally this resource was governed entirely at the controller — a blanket
- * `assertGlobalAdmin()` on every handler — and this doc said so. **That is no
+ * `assertSuperAdmin()` on every handler — and this doc said so. **That is no
  * longer true.** A `TENANT_ADMIN` may self-serve the origins
  * its own application is served from, so the controller gate is relaxed to the
  * ordinary `manage:TenantAllowedOrigin` ability and the two boundaries that
@@ -20,7 +20,7 @@ import { CreateTenantAllowedOriginRequest, TenantAllowedOriginResponse, UpdateTe
  * | **This service — `403`** | **SYSTEM gate.** A write whose resolved (CLS) tenant is SYSTEM requires `SUPER_ADMIN` regardless of role — a SYSTEM row is treated as valid for EVERY tenant by `OriginRegistryService.allows()` |
  * | This service — `404` | Cross-tenant id, via `findOwnedOrThrow`. Unchanged |
  *
- * Both service-side gates are the "global-admin-only action on a
+ * Both service-side gates are the "super-admin-only action on a
  * tenant-manageable resource" pattern of `05-nestjs-api.md`, and both carry an
  * `// AUTH-NOTE:` marker at their implementation. They are **403s (privilege)**
  * — deliberately NOT the 404-over-403 cross-tenant posture, which continues to

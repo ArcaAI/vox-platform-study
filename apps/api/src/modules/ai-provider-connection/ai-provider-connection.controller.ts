@@ -48,10 +48,10 @@ function assertProviderService(value: string): ProviderService {
  *     `CLOUD_BYO_PROVIDERS` (C5); a self-host engine → `ForbiddenException` (403,
  *     a privilege rule on the caller's own tenant — NOT the 404-over-403
  *     cross-tenant posture);
- *   - a SYSTEM row may be written only by a global admin → 403.
+ *   - a SYSTEM row may be written only by a super admin → 403.
  *
  * Tenant admins are pinned to their CLS tenant by `resolveScopedTenantId`;
- * global admins act cross-tenant — incl. the SYSTEM platform default — via
+ * super admins act cross-tenant — incl. the SYSTEM platform default — via
  * `?tenantId=`. A cross-tenant by-id read returns 404, never 403.
  */
 @ApiTags('Admin: Provider Connections')
@@ -113,7 +113,7 @@ export class ProviderConnectionController {
   })
   @ApiQuery({ name: 'tenantId', required: false })
   @ApiResponse({ status: 200, type: AiProviderConnectionResponse })
-  @ApiResponse({ status: 403, description: 'Non-listed provider on a tenant row, or a SYSTEM row without global admin.' })
+  @ApiResponse({ status: 403, description: 'Non-listed provider on a tenant row, or a SYSTEM row without super admin.' })
   @ApiResponse({ status: 412, description: 'Optimistic concurrency conflict — re-fetch and retry with the new version.' })
   @ApiResponse({ status: 428, description: 'If-Match header is required for this operation.' })
   async upsert(
@@ -146,7 +146,7 @@ export class ProviderConnectionController {
   @ApiParam({ name: 'provider', description: 'Capability-scoped provider identifier, e.g. `azure`.' })
   @ApiQuery({ name: 'tenantId', required: false })
   @ApiResponse({ status: 200, description: 'Deleted.' })
-  @ApiResponse({ status: 403, description: 'Non-listed provider on a tenant row, or a SYSTEM row without global admin.' })
+  @ApiResponse({ status: 403, description: 'Non-listed provider on a tenant row, or a SYSTEM row without super admin.' })
   async remove(@Param('service') service: string, @Param('provider') provider: string, @Query('tenantId') tenantId?: string): Promise<void> {
     return this.connectionService.deleteRow(assertProviderService(service), provider, this.resolveTenantId(tenantId));
   }
@@ -218,7 +218,7 @@ export class AiProviderConnectionController {
   })
   @ApiQuery({ name: 'tenantId', required: false })
   @ApiResponse({ status: 200, type: AiProviderConnectionResponse })
-  @ApiResponse({ status: 403, description: 'Self-hosted provider on a tenant row, or a SYSTEM row without global admin.' })
+  @ApiResponse({ status: 403, description: 'Self-hosted provider on a tenant row, or a SYSTEM row without super admin.' })
   @ApiResponse({ status: 412, description: 'Optimistic concurrency conflict — re-fetch and retry with the new version.' })
   @ApiResponse({ status: 428, description: 'If-Match header is required for this operation.' })
   async upsert(
@@ -237,7 +237,7 @@ export class AiProviderConnectionController {
   @ApiParam({ name: 'provider', description: 'Serving provider identifier, e.g. `azure`.' })
   @ApiQuery({ name: 'tenantId', required: false })
   @ApiResponse({ status: 200, description: 'Deleted.' })
-  @ApiResponse({ status: 403, description: 'Self-hosted provider on a tenant row, or a SYSTEM row without global admin.' })
+  @ApiResponse({ status: 403, description: 'Self-hosted provider on a tenant row, or a SYSTEM row without super admin.' })
   async remove(@Param('provider') provider: string, @Query('tenantId') tenantId?: string): Promise<void> {
     return this.connectionService.deleteRow(AiProviderConnectionController.SERVICE, provider, this.resolveTenantId(tenantId));
   }

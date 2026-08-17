@@ -551,7 +551,7 @@ describe('PromptManagementController', () => {
     });
 
     it('propagates ForbiddenException (403) when caller is not a SUPER_ADMIN', async () => {
-      mockService.approveTemplate.mockRejectedValue(new ForbiddenException('global admins only'));
+      mockService.approveTemplate.mockRejectedValue(new ForbiddenException('super admins only'));
 
       await expect(controller.approve('tpl-1', {} as any, 1)).rejects.toBeInstanceOf(ForbiddenException);
     });

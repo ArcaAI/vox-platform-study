@@ -14,7 +14,7 @@
 #   TEST_STACK_WAIT=0 pnpm stack:test    # skip the readiness wait
 #
 # DEFAULT SERVICES: api  (the suites that need more name them explicitly)
-# ALL SERVICES:     api admin stt smr nlp guardrail harness worker tts
+# ALL SERVICES:     api admin stt text nlp guardrail harness worker tts
 #
 # BEHAVIOUR:
 #   - Ensures the test Docker infra is up and validated (start-test-infra.sh),
@@ -44,7 +44,17 @@ CYAN='\033[0;36m'
 NC='\033[0m'
 
 DEFAULT_SERVICES=(api)
-ALL_SERVICES=(api admin stt smr nlp guardrail harness worker tts)
+ALL_SERVICES=(api admin stt text nlp guardrail harness worker tts)
+
+# Canonical CLI token is `text`. `smr` still works as a deprecated remap.
+remap_smr_alias() {
+    if [ "$1" = "smr" ]; then
+        echo -e "${YELLOW}warning: 'smr' is deprecated; use 'text'.${NC}" >&2
+        echo "text"
+    else
+        echo "$1"
+    fi
+}
 
 TEST_STACK_TIMEOUT="${TEST_STACK_TIMEOUT:-90}"
 TEST_STACK_WAIT="${TEST_STACK_WAIT:-1}"
@@ -58,7 +68,7 @@ port_for() {
         api)       v="$(env_val API_PORT)";       echo "${v:-8968}" ;;
         admin)     v="$(env_val ADMIN_PORT)";     echo "${v:-5276}" ;;
         stt)       v="$(env_val STT_PORT)";       echo "${v:-8961}" ;;
-        smr)       v="$(env_val TEXT_PORT)";       echo "${v:-8962}" ;;
+        text)      v="$(env_val TEXT_PORT)";       echo "${v:-8962}" ;;
         guardrail) v="$(env_val GUARDRAIL_PORT)"; echo "${v:-8963}" ;;
         nlp)       v="$(env_val NLP_PORT)";       echo "${v:-8964}" ;;
         tts)       v="$(env_val TTS_PORT)";       echo "${v:-8965}" ;;
@@ -109,6 +119,7 @@ if [ "${#ARGS[@]}" -eq 0 ]; then
     SERVICES=("${DEFAULT_SERVICES[@]}")
 else
     for arg in "${ARGS[@]}"; do
+        arg="$(remap_smr_alias "$arg")"
         ok=0
         for s in "${ALL_SERVICES[@]}"; do
             [ "$arg" = "$s" ] && ok=1

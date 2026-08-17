@@ -42,12 +42,12 @@ import {
  * Mount path is `admin/settings` (not `admin/global-settings`) to match the
  * existing, tested SDK contract.
  *
- * Authorization: class-level `manage:GlobalSetting` (global-admin via
+ * Authorization: class-level `manage:GlobalSetting` (super-admin via
  * `manage:all`; tenant admins via the seeded `tenant-full-access` /
  * `global-settings-manage` policies, tenant-scoped). GET routes relax to
  * `read:GlobalSetting`. OCC on PATCH via the `If-Match` header (the global
  * `ETagInterceptor` emits `ETag: "<version>"` on the single-object GET).
- * `locked` platform-owned rows stay global-admin-only (enforced in the service).
+ * `locked` platform-owned rows stay super-admin-only (enforced in the service).
  */
 @ApiBearerAuth()
 @ApiTags('admin-global-settings')
@@ -139,7 +139,7 @@ export class GlobalSettingController {
       "Compare-And-Set against the row's `_version` column. When the header is " +
       'present, its value overrides the body-field `expectedVersion`. On ' +
       'version drift the response is `412 Precondition Failed`; a missing ' +
-      'header is `428 Precondition Required`. `locked` rows are global-admin-only.',
+      'header is `428 Precondition Required`. `locked` rows are super-admin-only.',
   })
   @ApiHeader({
     name: 'If-Match',
@@ -202,7 +202,7 @@ export class GlobalSettingController {
   @HttpCode(200)
   @Authorize(['manage', 'all'])
   @ApiOperation({
-    summary: 'Reveal a secret setting (global-admin, step-up re-auth, audited)',
+    summary: 'Reveal a secret setting (super-admin, step-up re-auth, audited)',
     description:
       'Returns the decrypted plaintext of ONE global setting. SUPER_ADMIN only ' +
       '(CASL `manage:all`). Requires step-up re-authentication: the request body ' +
@@ -248,7 +248,7 @@ export class GlobalSettingController {
   @Authorize(['manage', 'all'])
   @RequiresIfMatch()
   @ApiOperation({
-    summary: 'Rotate a secret setting (global-admin, step-up re-auth, OCC, audited)',
+    summary: 'Rotate a secret setting (super-admin, step-up re-auth, OCC, audited)',
     description:
       'Atomically replaces the stored secret value of ONE global setting under ' +
       'optimistic concurrency. SUPER_ADMIN only (CASL `manage:all`). Requires ' +

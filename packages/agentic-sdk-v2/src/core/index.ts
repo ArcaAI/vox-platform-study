@@ -23,6 +23,7 @@ export {
   type SttConfig,
   type UiConfig,
   type SmrConfig,
+  type TextConfig,
   type FeatureFlags,
   type DeepPartial,
   type ConfigPermission,
