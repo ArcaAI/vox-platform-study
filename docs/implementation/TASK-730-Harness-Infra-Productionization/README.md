@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Blocked — on Task 1's human sign-off (decision document ready). Tasks 4/5 are now genuinely verified against live local infra (§2.11/§7). Tasks 2/3 still need external cluster/deployment-repo write access; §2.11 also corrects Task 2's diagnosis — the specific `CreateContainerConfigError` cause was already fixed and stated as applied live in `arca/hope-v2-deployment` on 2026-08-09, a finding the original session missed. |
+| **Status** | Blocked — Task 1 is now DECIDED (Option A, self-hosted k3s, 2026-08-17 — `temporal-hosting-decision.md` §6); the remaining block is Tasks 2/3, which need write access to `arca/hope-v2-deployment` and the `c-nfhxq` cluster this session does not have. The exact, not-yet-applied patch/commands for both are written in `deployment-repo-changes.md`. Tasks 4/5 are genuinely verified against live local infra (§2.11/§7). |
 | **Wave** | 3 · **Size** | L |
 | **Epic slug** | `harness-infra-productionization` |
 | **Depends on** | — |
@@ -572,10 +572,14 @@ finding 5/6) is unaffected by this correction and remains open.
 
 Each item independently verifiable; this is the literal checklist TASK-731/732 unblock against.
 
-- [ ] Task 1: Temporal hosting decision made and recorded, with a human sign-off date, in
-      `temporal-hosting-decision.md`. **Document exists (both options costed, no recommendation
-      baked in); sign-off itself is still outstanding — this is the literal human gate, not
-      something this session can close.**
+- [x] Task 1: Temporal hosting decision made and recorded, with a sign-off date, in
+      `temporal-hosting-decision.md` §6. **Decided 2026-08-17: Option A, self-hosted Temporal in
+      k3s, ratifying the existing (currently disconnected) in-cluster `hope-temporal` Deployment
+      over the VM.** Decision relayed as an explicit, named owner directive into this session
+      ("OWNER DECISION #4") — provenance recorded verbatim in the Decision Record rather than
+      presented as this session's own judgment call, matching how every other owner decision in
+      this program is documented (`.claude/rules/00-project-context.md`,
+      `09-infrastructure-devops.md`).
 - [x] Task 2: `harness` + `harness-worker` Deployment manifests exist in `arca/hope-v2-deployment`
       — **verified directly** (read-only GitLab access, not previously known to be available):
       `deployment/k8s/base/harness.yaml` + `harness-worker.yaml` @ commit `bb2f96f4c7d89e1099bdb300066e56b05ea43df5`,
@@ -588,14 +592,23 @@ Each item independently verifiable; this is the literal checklist TASK-731/732 u
       cluster access (still not available), but there is no evidence of a regression — the only
       later commit touching the file is a non-functional TASK-id-stripping pass. Remaining real
       work is narrower than previously stated: confirm on-cluster today, and resolve
-      `TEMPORAL_ADDRESS` once Task 1 lands.
+      `TEMPORAL_ADDRESS` once Task 1 lands. **Task 1 has now landed (2026-08-17): the exact
+      one-line `TEMPORAL_ADDRESS` patch (`10.10.1.10:7233` → `hope-temporal:7233` in
+      `deployment/k8s/base/config/harness.env`, re-verified this session against the same
+      unchanged commit `bb2f96f4c7d89e1099bdb300066e56b05ea43df5`) is written in
+      `deployment-repo-changes.md`, along with the apply/verify commands. NOT applied — still
+      needs deployment-repo write access this session lacks.**
 - [ ] Task 3: a `promote-staging` pipeline run succeeds end-to-end against a real staging namespace
       (CI job log pasted); same for `promote-prod` once a release tag exercises it. **Not attempted
       this session** — no cluster access, and triggering a real deploy pipeline is outside this
       session's authorization regardless. Verified instead (§2.10 finding 3): the overlays/Argo
       manifests already exist in Git but have not been applied to the cluster (Argo `Application`
       objects are not self-managed), so the namespaces genuinely do not exist yet — confirms the
-      original assessment claim precisely.
+      original assessment claim precisely. **Re-verified this session (2026-08-17), same commit
+      `bb2f96f4c7d89e1099bdb300066e56b05ea43df5`, no drift.** Exact apply commands
+      (`kubectl apply -f deployment/argocd/{appproject,application}-{staging,prod}.yaml`, in that
+      order, plus the `argocd app sync`/watch sequence each file's own `syncPolicy` comments call
+      for) are written in `deployment-repo-changes.md` — not run.
 - [x] Task 4: the availability-measurement report (5xx rate, latency percentiles, duplicate-execution
       count for `harness-doc-{consultationId}`) is produced and reviewed. **Re-run 2026-08-16 (§2.11)
       against LIVE local Temporal (`hope-temporal`, healthy): `harness-availability-report.py
@@ -824,11 +837,52 @@ those constraints, this execution:
     with no evidence of reversion — the "crash-looping" framing in both this ticket's §2.10 and the
     outer task's own briefing was stale by 7 days.
 
-**Status is left as Blocked** — Task 1's human sign-off is still the binding gate, and Tasks 2/3
-still need write/cluster access this session does not have. Nothing was written to
+**Status was left as Blocked** — Task 1's human sign-off was still the binding gate, and Tasks 2/3
+still needed write/cluster access this session did not have. Nothing was written to
 `arca/hope-v2-deployment` or any cluster this session either (only `get_project`,
 `get_repository_tree`, `get_file_contents`, `list_commits`, `get_commit`, `get_commit_diff` — all
 read-only GitLab calls).
+
+**Continuation session, 2026-08-17 — Task 1 decided, Task 2/3 patches/commands written.**
+
+12. **Task 1's decision was made and recorded.** Per an explicit owner directive relayed into this
+    session ("OWNER DECISION #4"): **Option A — self-hosted Temporal in k3s**, ratifying the
+    existing (currently disconnected) in-cluster `hope-temporal` Deployment over the unmanaged VM,
+    rather than Temporal Cloud. Recorded in `temporal-hosting-decision.md` §6 with the decision's
+    provenance stated verbatim (relayed directive, not this session's own inference) — the same
+    posture as every other `(owner directive, YYYY-MM-DD)` decision already codified in this
+    program's rules files. `docs/operations/temporal/README.md`'s header and §1 were updated to
+    say Option A is now the decided path (Option B sections kept for reference, not deleted).
+13. **Re-verified `arca/hope-v2-deployment` against the same commit the prior sessions cited**
+    (`bb2f96f4c7d89e1099bdb300066e56b05ea43df5`) — no drift found in `harness.env`, `harness.yaml`,
+    `harness-worker.yaml`, `temporal.yaml`, `observability-config.yaml`, `kustomization.yaml`, or
+    the four `deployment/argocd/*.yaml` files, all re-read directly this session (read-only
+    `get_file_contents`/`get_repository_tree` calls only — no write tool used, confirmed by the
+    absence of any `create_or_update_file`/`push_files`/`mcp__rancher__*`/`mcp__argocd__*` call in
+    this session's tool history).
+14. **Wrote `deployment-repo-changes.md`** — the exact, NOT-APPLIED Task 2 patch (a one-line
+    `TEMPORAL_ADDRESS` change in `deployment/k8s/base/config/harness.env`, confirmed this session
+    to be the SOLE place both `hope-harness` and `hope-harness-worker` source that value via
+    `configMapKeyRef`/`hope-harness-config`, itself generated by `kustomization.yaml`'s
+    `configMapGenerator` from that same file) and the exact, NOT-APPLIED Task 3 commands
+    (`kubectl apply -f deployment/argocd/{appproject,application}-{staging,prod}.yaml`, ordered
+    project-before-application, with the sync/watch sequence each file's own `syncPolicy` comments
+    require). Both are stated plainly as documented-not-executed — no cluster or deployment-repo
+    write access exists in this session, and none was attempted.
+15. **§5's Wave-4 gate checklist updated**: Task 1 now checked (decision made); Task 2's checked
+    item's body gained the specific reconnection-patch pointer; Task 3 remains unchecked but its
+    body now cites the exact apply commands rather than describing them abstractly.
+16. **Corrected the two remaining "unmanaged VM with a dead in-cluster copy" descriptions this
+    ticket's outer brief named** (`docs/architecture/consultation-session-workflow/assessment/04-target-architecture.md`
+    lines ~17 and ~323) with inline, dated addenda pointing at the Task 1 decision and the
+    not-yet-applied reconnection patch — the original sentences were left intact (they were
+    accurate for the state they described; TASK-730's own re-verification confirmed them, §2.10)
+    rather than rewritten, consistent with this program's "CORRECTED" addendum convention seen
+    elsewhere in this same ticket. **`.claude/rules/09-infrastructure-devops.md` was checked and
+    needed NO edit** — grepped directly this session and confirmed it contains no "unmanaged VM"
+    or equivalent Temporal-hosting-topology claim anywhere; the outer brief's premise that it
+    still needed correcting did not hold for the current tree. Not editing a file that needed no
+    change is the correct, minimal action here, not an omission.
 
 ## 8. Change History
 
@@ -837,3 +891,4 @@ read-only GitLab calls).
 | 2026-08-16 | Ticket authored | Claude (ticket-authoring session) |
 | 2026-08-16 | Execution session: §2 corrected against `arca/hope-v2-deployment` (read-only access, new §2.10); Task 1 decision document authored (`temporal-hosting-decision.md`, sign-off outstanding); Task 4 measurement script authored (`scripts/harness-availability-report.py`, not run — Temporal unreachable); Task 5 local-dev dashboard + alert rules authored and validated (`promtool`/JSON-valid), cluster-side scrape-target gap documented not fixed; Task 6 DR/backup runbook authored (`docs/operations/temporal/README.md`, forked on the unmade Task 1 decision, linked from `docs/README.md`). Status set to Blocked pending Task 1 sign-off + external access. | Claude (TASK-730 execution session) |
 | 2026-08-16 | Follow-on session (local infra now up): new §2.11 — Task 4 script actually run against live local Temporal (0 executions, expected on a fresh DB); Task 5 dashboard/alerts actually verified against live local Prometheus (4/4 rules loaded, `temporal` scrape target `up`) and Grafana (dashboard renders, live "UP" status observed in a real browser session); §2.10 finding 2 corrected — the specific `CreateContainerConfigError` root cause (`HARNESS_INTERNAL_SERVICE_TOKEN` optionality mismatch + a `runAsNonRoot` UID issue behind it) was already fixed and stated as "applied live on hope-v2-dev" by deployment-repo commit `fcfe19a640f3875dd231b1e75423f3ac0aea1090` on 2026-08-09, seven days before this ticket's original execution — the earlier session's claim it remains open traced from a stale prose doc (`docs/deployment-runbook.md` §12/§15) rather than the manifest's own current content and commit history. §5 checklist updated for Tasks 2/4/5. No write access used against `arca/hope-v2-deployment` or any cluster (read-only GitLab calls only); Status remains Blocked on Task 1's human sign-off. | Claude (TASK-730 follow-on session) |
+| 2026-08-17 | Continuation session: **Task 1 decided** — Option A, self-hosted Temporal in k3s, per an explicit owner directive relayed into this session; recorded with provenance in `temporal-hosting-decision.md` §6. Re-verified `arca/hope-v2-deployment` at the same commit (`bb2f96f4c7d89e1099bdb300066e56b05ea43df5`, no drift) and wrote `deployment-repo-changes.md` — the exact, NOT-APPLIED Task 2 patch (one-line `TEMPORAL_ADDRESS` change in `deployment/k8s/base/config/harness.env`) and Task 3 commands (`kubectl apply` sequence for the staging/prod `appproject`/`application` Argo manifests), both stated plainly as documented-not-executed (no cluster/deployment-repo write access). Updated `docs/operations/temporal/README.md` to mark Option A as decided. Corrected the two remaining "unmanaged VM with a dead in-cluster copy" mentions in `docs/architecture/consultation-session-workflow/assessment/04-target-architecture.md` with dated addenda (original text left intact — it was accurate for its time). Checked `.claude/rules/09-infrastructure-devops.md` directly: it contains no such claim to correct. §5 checklist updated (Task 1 now checked; Task 2/3 bodies cite the new patch/commands). Status remains Blocked — now on Tasks 2/3's external write/cluster access, not on Task 1. | Claude (TASK-730 continuation session) |

@@ -294,3 +294,58 @@ yet added — Task 3 is out of this pass) and a design-change proposal is raised
 
 Per the ticket's own §1.1: **this is a complete, successful execution of the ticket, not a
 failure of it.**
+
+---
+
+## 7. Task 3 — [HUMAN-GATED] Verdict
+
+**Verdict: GO.**
+
+**Decider:** Owner (product/platform owner, via the `remaining-open-tickets` program session).
+**Date:** 2026-08-16.
+
+**Basis — read this before treating it as the R-1 data-driven verdict it is not.** Both §5 runs
+above return an honest zero: this dev database carries no live `stopRecording`/sign/generate
+traffic, the §4 minimum-sample-size floor (≥200 capture-stop events) is nowhere close to met, and
+no re-measurement window has been run. **This verdict is NOT the data-driven comparison R-1
+envisaged** — the §3 dominance test was never evaluated against a real numerator/denominator
+because none exists yet. It is a **pre-production owner call**: proceed with the harness-only
+end state now, before real tenant traffic exists, rather than wait for a decision-grade sample
+that a pre-production environment cannot produce. The distinction is recorded here explicitly so
+it is not later mistaken for "the numbers said GO."
+
+**Readiness-checklist rows.** Per Task 1, 5 of 10 rows (1, 3, 4, 7, 10) were **NOT VERIFIED** at
+the time `readiness-checklist.md` was authored. Per Task 1's own rule ("Any row that is not
+verified blocks Phase 2"), those unmet rows would ordinarily force NO-GO regardless of the rate
+comparison. **The owner's GO explicitly overrides that block** for this pre-production execution —
+recorded here as an explicit, named exception rather than silently ignored. The unmet rows
+(staging promotion, availability measurement, dashboards/alerts on real traffic, a blocking
+`harness-eval-gate`, the consultation palette) remain open operational risks for the eventual
+production rollout and are not retroactively marked verified by this verdict.
+
+**Scope of what "GO" authorizes in this pass.** Given there is no real tenant traffic and only the
+two seeded tenants (both already `harnessEnabled: true` per `seed/14-pipeline-policy.ts:64,78`),
+Phase 2's cohorted rollout with multi-week monitoring windows has no real population to cohort.
+This verdict authorizes, for this pass: flipping the `SYSTEM_PIPELINE_POLICY_DEFAULTS.harnessEnabled`
+default (Phase 2's stated exit criterion) as a pre-production configuration change, and executing
+Phase 3's deletion **within the R-2 boundary recorded below** — not a claim that a multi-cohort,
+multi-week production migration was actually run. See `docs/operations/consultation/harness-migration-runbook.md`
+§"Pre-production execution note" for how the runbook's cohort/monitoring-window sections apply (or
+don't) to this pass.
+
+**R-2 boundary (Task 8), recorded by the same owner decision:** KEEP the v1-compat `pre-summary`
+and `summary` surfaces — they are to be transformed into standalone features in a later ticket.
+"Legacy deleted" is scoped to the **signable generator path only**: `summary.processor.ts` (the
+async `SUMMARY_REGENERATE` BullMQ generator that, post-TASK-704, is the sole path capable of
+producing an `isFinalSummary` draft reachable by `approveSummary`) and its NER companion
+`ner.processor.ts`, plus TASK-714's now-throwaway legacy safety floor. `PreSummaryProcessor`,
+`ComprehensiveSummaryProcessor`, and `SummaryService.generateSummary`'s sync legacy body (the
+"third generator," `summary.service.ts:402`, permanently excluded from ever routing to harness per
+TASK-704's own decision — deletion-manifest.md §0.1) all **survive**, per option (b) of the
+ticket's own §2.6 decision table: kept, un-gated, as explicitly non-signable helper generators.
+The frozen `@Controller('api/smr/api/v1')` wire route (`apps/api/src/modules/smr-compat/`) and its
+four vox-node/admin-console consumers (§2.7) are untouched by this scope. This is the Task 8
+decision — recorded here and cross-referenced from `deletion-manifest.md` §5.
+
+**Phases 2-4 proceed on this basis.** See `harness-migration-runbook.md` for the mechanism and
+`deletion-manifest.md` §5 for Task 8's full record.

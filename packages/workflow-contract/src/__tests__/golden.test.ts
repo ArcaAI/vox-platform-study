@@ -19,7 +19,7 @@ import { describe, expect, it } from 'vitest';
 import type { WorkflowGraph } from '../graph-model';
 import { evaluatePredicate } from '../predicates';
 import type { WorkflowEvaluationContext } from '../predicates/context';
-import { DRAFT_STT_RULE_SET, DRAFT_SUMMARIZATION_RULE_SET } from '../rule-catalogue';
+import { DRAFT_CONSULTATION_RULE_SET, DRAFT_STT_RULE_SET, DRAFT_SUMMARIZATION_RULE_SET } from '../rule-catalogue';
 import type { DraftWorkflowRule } from '../rule-catalogue';
 
 const GOLDEN_DIR = path.join(__dirname, 'golden');
@@ -39,7 +39,11 @@ const NODE_CLASSES: Record<string, readonly string[]> = {
   'cloud.route': ['cloudProviderRouting', 'activity'],
 };
 
-const ALL_RULES: readonly DraftWorkflowRule[] = [...DRAFT_SUMMARIZATION_RULE_SET, ...DRAFT_STT_RULE_SET];
+const ALL_RULES: readonly DraftWorkflowRule[] = [
+  ...DRAFT_SUMMARIZATION_RULE_SET,
+  ...DRAFT_STT_RULE_SET,
+  ...DRAFT_CONSULTATION_RULE_SET,
+];
 
 /** One context per palette a rule can declare — STT's rules select purely by `nodeType`, so its
  *  `classesOf` stub is never consulted, but the shape is kept parallel to the summarization

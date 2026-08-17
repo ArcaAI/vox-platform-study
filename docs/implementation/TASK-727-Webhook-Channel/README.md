@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Review — Tasks 1–6 and 8 implemented, unit-tested, and build-verified with real command output (§7). Task 7's e2e spec is authored and Playwright-listable but NOT executed — `pnpm test:e2e`'s `globalSetup` runs `prisma db push --force-reset`, which Prisma's CLI refuses when invoked by an AI agent in this environment; this is a pre-existing environment constraint, not a gap in this ticket's code. A design correction to §2.7's storage-mechanism reading is recorded in §7 — read it before touching `WebhookService`'s secret handling. |
+| **Status** | Review — Tasks 1–6 and 8 implemented, unit-tested, and build-verified with real command output (§7); close-out pass (2026-08-17) re-proved the migration diff against the new squashed baseline. Task 7's e2e spec is authored and Playwright-listable but NOT executed — `pnpm test:e2e`'s `globalSetup` runs `prisma db push --force-reset`, which Prisma's CLI refuses when invoked by an AI agent in this environment; this is a pre-existing environment constraint, not a gap in this ticket's code. A design correction to §2.7's storage-mechanism reading is recorded in §7 — read it before touching `WebhookService`'s secret handling. |
 | **Wave** | 3 · **Size** | M |
 | **Epic slug** | `webhook-channel` |
 | **Depends on** | TASK-717 (`async-contract` — design-only per D7 as of this writing; §2.9/§6 name exactly what this ticket needs from it and the fallback if it lands late), TASK-722 (`exposure-v1` — not yet landed as of this writing; this ticket reuses the exposure plane's channel-binding concept but does not require its code) |
@@ -654,9 +654,52 @@ result.
 `pnpm test:e2e -- task-727-webhook-delivery` — blocked by the Prisma AI-agent `db push
 --force-reset` refusal described above.
 
+### Close-out pass (2026-08-17) — re-verified against the squashed migration baseline
+
+**The migration ledger was squashed since this ticket executed** (102 migrations →
+`20260817000000_init` + two follow-ons). The old, by-hand-authored
+`20260816161101_task_727_webhook_run_dead_lettered` migration file no longer exists as a separate
+file; its schema effect is folded into `20260817000000_init`
+(`CREATE TYPE "core"."WebhookRunStatus" AS ENUM ('SUCCESS', 'FAILED', 'DEAD_LETTERED')` is present
+at line 62). Re-ran the rule-02 shadow-DB recipe against a throwaway `hope_shadow_closeout`
+database this pass (never the dev DB) to re-prove zero drift on the NEW baseline:
+
+```
+$ pnpm --filter @arcaai/database db:migrate:deploy   (→ hope_shadow_closeout)
+Applying migration `20260817000000_init`
+Applying migration `20260817000100_task_734_workflow_definition_immutability_guard`
+Applying migration `20260817031425_task_732_flip_system_harness_enabled_default`
+All migrations have been successfully applied.
+
+$ npx prisma migrate diff --from-config-datasource --to-schema src/prisma/db_main --script
+-- This is an empty migration.
+```
+
+`hope_shadow_closeout` dropped afterward.
+
+**Re-verified this pass, real output:**
+
+```
+$ NODE_ENV=test npx vitest run packages/applications/src/services/webhook apps/api/src/modules/webhook \
+    packages/applications/src/services/settings-registry/__tests__/fail-mode.governance.test.ts
+  → Test Files 4 passed (4); Tests 114 passed (114)
+$ pnpm --filter @arcaai/applications build   → clean
+$ pnpm api:build                              → 12/12 successful
+$ npx playwright test apps/api/tests/e2e/task-727-webhook-delivery.spec.ts --list
+  → 1 test listed (unchanged, still not run)
+```
+
+**Not fixed this pass, unchanged**: e2e execution (same documented `db push --force-reset`
+environment blocker every ticket in this close-out hits); the `resourceTypeName`
+free-string-vs-`ResourceType`-enum validation gap (§6, explicitly out of scope); the outbound
+egress/SSRF-safety allowlist recommendation (§6, flagged for a separate security review — still
+not built, still not silently dropped). No code defects found in this ticket's own files this
+pass. Status remains Review.
+
 ## 8. Change History
 
 | Date | Change | By |
 |---|---|---|
 | 2026-08-16 | Ticket authored | Wave-3 ticket-authoring agent |
 | 2026-08-16 | Tasks 1–6, 8 implemented and verified (Task 7 authored, not executed — environment constraint). Server-generated webhook secrets + rotation; `webhook-delivery.processor.ts` (two-queue matcher/sender split); `WebhookRunStatus.DEAD_LETTERED` migration; dedicated `WEBHOOK_SECRET_PEPPER`. Design correction recorded: `hashedSecret` stores reversible AES-256-GCM ciphertext, not a one-way hash (§7) — a one-way hash cannot support HMAC signature verification by the receiver. `pnpm --filter @arcaai/applications build/test`, `pnpm api:build`, full `pnpm test:unit` (17903+673+4183+223+1553 all passed) all green; `pnpm env:sync` re-run for the new descriptor. | Execution agent |
+| 2026-08-17 | Close-out pass. Re-proved the rule-02 shadow-DB migration diff against the newly-squashed baseline (old per-ticket migration file no longer exists; its `WebhookRunStatus.DEAD_LETTERED` schema is now part of `20260817000000_init`) using a throwaway `hope_shadow_closeout` database — empty diff confirmed. Re-ran the webhook + settings-registry-governance test suites (4 files / 114 tests) and `applications`/`api:build`, all green. No code changes to this ticket's own files. Status remains Review — e2e execution is the only open item, outside this pass's authority to close. | close-out pass agent |

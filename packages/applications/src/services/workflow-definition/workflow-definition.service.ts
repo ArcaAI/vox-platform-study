@@ -26,6 +26,7 @@ import { createHash } from 'node:crypto';
 import { assertEqualTenants, BaseService, FetchResponse, PaginatedQuery, withFormattedCountProps, withFormattedPaginatedProps } from '../../common';
 import { IActiveUserContext } from '../../interfaces';
 import { IEntitlementsService } from '../entitlements/IEntitlementsService';
+import { SttPipelineCompilerService } from './compilers/stt-pipeline.compiler';
 import {
   CreateWorkflowDefinitionRequest,
   PaginatedWorkflowDefinitionResponse,
@@ -104,6 +105,11 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
     // Optional so unit fixtures can construct without it; production DI
     // (EntitlementsServiceModule) always supplies it.
     @Optional() @Inject(IEntitlementsService) private readonly entitlements?: IEntitlementsService,
+    // TASK-724 Task 4 — optional for the same reason (unit-fixture construction); production DI
+    // (WorkflowDefinitionServiceModule importing PipelineServiceModule) always supplies it. A
+    // publish() of an `stt`-palette workflow with this undefined is a MISCONFIGURATION, not a
+    // silently-skipped feature — see the doc comment on `compileSttPipelineIfNeeded` below.
+    @Optional() private readonly sttPipelineCompiler?: SttPipelineCompilerService,
   ) {
     super(eventEmitter, clsService, ResourceType.WorkflowDefinition);
   }
@@ -312,6 +318,12 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
 
     const compiled = this.compileGraphOrThrow(entity, graph);
 
+    // TASK-724 Task 4 — an `stt`-palette publish ALSO compiles the graph into an
+    // `AsrPipeline`/`AsrPipelineVersion` row (README §1's central design decision). Runs BEFORE
+    // any entity mutation below: a failure here (e.g. no `stt.asrEngine` node) must abort the
+    // publish with nothing written, exactly like the engine gate above.
+    const asrPipeline = await this.compileSttPipelineIfNeeded(entity, compiled);
+
     entity.validationReport = report as unknown as JsonValue;
     entity.validatedAt = new Date();
     entity.compiledConfig = compiled as unknown as JsonValue;
@@ -332,7 +344,13 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
 
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
       resourceId: id,
-      data: { action: 'publish', versionNumber: updated.versionNumber, compiledConfigChecksum: updated.compiledConfigChecksum, activate },
+      data: {
+        action: 'publish',
+        versionNumber: updated.versionNumber,
+        compiledConfigChecksum: updated.compiledConfigChecksum,
+        activate,
+        ...(asrPipeline ? { asrPipelineId: asrPipeline.id, asrPipelineSlug: asrPipeline.slug } : {}),
+      },
     });
 
     return WorkflowDefinitionDtoMapper.toResponse(updated);
@@ -408,6 +426,28 @@ export class WorkflowDefinitionService extends BaseService implements IWorkflowD
         requested: 1,
       });
     }
+  }
+
+  /**
+   * TASK-724 Task 4 — an `stt`-palette publish compiles the graph into an `AsrPipeline` +
+   * `AsrPipelineVersion` row (README §1). No-op (`null`) for every other palette. When the
+   * palette IS `stt` but `sttPipelineCompiler` was never wired, this is a deployment
+   * misconfiguration, not a case to skip quietly — `WorkflowDefinitionServiceModule` always
+   * supplies it in production; only unit fixtures construct without it (and none of them
+   * publish an `stt`-palette graph without also stubbing this).
+   */
+  private async compileSttPipelineIfNeeded(
+    entity: Pick<WorkflowDefinitionEntity, 'id' | 'slug' | 'versionNumber' | 'name' | 'paletteKey'>,
+    compiled: CompiledWorkflowConfig,
+  ): Promise<{ id: string; slug: string } | null> {
+    if (entity.paletteKey !== STT_PALETTE_KEY) return null;
+    if (!this.sttPipelineCompiler) {
+      throw new Error(
+        `Cannot publish stt-palette WorkflowDefinition '${entity.id}': SttPipelineCompilerService is not wired (misconfiguration — see WorkflowDefinitionServiceModule).`,
+      );
+    }
+    const pipeline = await this.sttPipelineCompiler.compileAndPublish(entity, compiled);
+    return { id: pipeline.id, slug: pipeline.slug };
   }
 
   private parseGraphOrThrow(raw: Record<string, unknown>): WorkflowGraph {

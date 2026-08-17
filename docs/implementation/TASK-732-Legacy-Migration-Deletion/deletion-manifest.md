@@ -163,3 +163,45 @@ sync legacy body are kept-as-non-signable-helpers, deleted as a product-capabili
 (for the sync case, uniquely) reconciled with their async siblings some other way, is **not decided
 here**. §0.1 adds a fourth entry point to that decision's scope; it does not pre-empt the decision
 itself.
+
+---
+
+## 5. Task 8 — [HUMAN-GATED] Decision: pre-summary, comprehensive-summary, sync summary (recorded)
+
+**Decision: option (b) for all three — kept, un-gated, as explicitly non-signable helper
+generators.** Recorded by the owner alongside the Task 3 GO verdict (`go-no-go-thresholds.md` §7),
+2026-08-16: *"KEEP the v1-compat pre-summary and summary surfaces — they are to be transformed
+into STANDALONE features. 'Legacy deleted' is therefore scoped to the SIGNABLE GENERATOR path
+only."*
+
+| Entry point | Fate | Reasoning |
+|---|---|---|
+| `PreSummaryProcessor` (async pre-summary) + `generatePreSummary` (sync, `summary.service.ts:259`) | **KEEP (b)** | Never had a harness equivalent (§2.6); `PRE_SUMMARY` is structurally excluded from `approveSummary`'s `isFinalSummary` predicate already; becomes the "pre-summary" half of the future standalone v1-compat feature |
+| `ComprehensiveSummaryProcessor` (async comprehensive summary) | **KEEP (b)** | Same reasoning as pre-summary — no harness equivalent, not signable, not named in `design.md` §Deprecations as a hard requirement over the alternative; the owner's "signable generator path only" framing scopes deletion away from it |
+| `SummaryService.generateSummary` (sync `SUMMARY_REGENERATE`, the "third generator," `summary.service.ts:402`) | **KEEP (b)** | §0.1's new finding — TASK-704 permanently excluded this route from ever calling `noteGenerationService.generate`; it is the "summary" half of the v1-compat surface the owner named explicitly, and it can never become signable-via-harness by construction |
+
+**What "kept, not incidentally non-signable" requires (per the ticket's own Task 11 approach for
+option (b)):** each of the three above must be made *structurally* impossible to reach
+`approveSummary`'s `isFinalSummary` gate, verified by a test, not left "non-signable by accident."
+Implemented by Task 11 of this pass — see README §7 for the test added and the class/method-level
+comments naming this decision.
+
+**Correction found while implementing Task 11 — the table above's "non-signable" framing does NOT
+hold for two of the three rows, verified against the live code
+(`packages/applications/src/services/consultation/jobs/processors/__tests__/kept-generators-signability.task732.test.ts`):**
+
+| Entry point | `isFinalSummary` reachable? | Verdict |
+|---|---|---|
+| `PreSummaryProcessor` | **No** — `ContextItemFactory.CreatePreSummary` sets `type: PRE_SUMMARY`, which `isFinalSummary` never returns `true` for. | Structurally non-signable, as the ticket's §2.6 claimed. |
+| `SummaryService.generateSummary` (sync) | **Yes** — calls `CreateRawSummary` (`type: RAW_SUMMARY`), which DOES satisfy `isFinalSummary`. | **This is correct, not a gap.** This generator produces the consultation's actual note on its one permanently-legacy trigger; it must stay signable. The ticket's §2.6 lumping it into "non-signable helper generator" was a category error — being KEPT (not deleted) and being NON-SIGNABLE are different properties, and this generator is kept-and-signable. |
+| `ComprehensiveSummaryProcessor` | **Yes** — also calls `CreateRawSummary` against the root consultationId the job was created for. | **Open finding, NOT resolved by this pass.** The ticket's §2.6 asserted comprehensive summaries are non-signable "the same way" pre-summary is, without verifying it — they are not. Whether a cross-consultation-chain rollup should be signable as if it were the target consultation's own note is a clinical-product question outside this ticket's authority to decide (matches the ticket's own HUMAN-GATED posture for product calls elsewhere). Task 11 locks the CURRENT behavior with an accurate, non-endorsing regression test rather than asserting a false "cannot sign" claim — flagged here for the product owner.
+
+**Consumers unaffected:** the four SDK/console consumers of `POST :id/summary/async` (§2.7) and the
+frozen `@Controller('api/smr/api/v1')` wire route are untouched — this decision keeps their
+implementation, it does not remove the surface.
+
+**What this decision does NOT cover:** `summary.processor.ts` (async `SUMMARY_REGENERATE`, the
+signable generator) and `ner.processor.ts` are **not** part of this Task 8 decision — their
+deletion was already scoped independently in §1's manifest table above and proceeds regardless of
+how Task 8 resolved, per the ticket's own framing (Task 8 gates only §2.6's three-then-four
+no-harness-equivalent entry points, never the signable summary/ner pair).

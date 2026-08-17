@@ -161,6 +161,7 @@ function buildController(
     summaryService as any,
     chainSummaryService as any,
     jobService as any,
+    {} as any, // noteGenerationService — TASK-732
     timelineService as any,
     cls as any,
     policyEngine as any,

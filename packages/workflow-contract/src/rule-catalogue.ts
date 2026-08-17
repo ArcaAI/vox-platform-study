@@ -378,3 +378,209 @@ export const DRAFT_STT_RULE_SET: readonly DraftWorkflowRule[] = [
     title: 'Nothing routes audio to stt.transcriptOutput without passing through stt.asrEngine.',
   }),
 ] as const;
+
+/**
+ * The Consultation-palette rule set (TASK-731 Task 2/11 — a partial pass; see the ticket
+ * README §7 and `docs/implementation/TASK-731-Palette-Consultation/contracts/validator-rules.md`
+ * for the full CR-01..CR-19 statement set and which ones are NOT graph rules — 16 of them are
+ * implemented here as `WF-CONS-*`; the rest are enforced elsewhere (registry-level fields,
+ * deferred pending a node type that does not exist yet, or deferred pending the impure
+ * schema/entitlement-I/O validator layer that no palette has today — same scope boundary the
+ * SIX `WF-C-*` rules above already established for Summarization).
+ *
+ * Node type keys per `contracts/node-types.md`. Mandatory subgraph: consent -> capture -> PHI ->
+ * synthesis -> verifier -> HITL gate, signing outside (never a node type in this substrate).
+ */
+export const DRAFT_CONSULTATION_RULE_SET: readonly DraftWorkflowRule[] = [
+  // ---- CR-01: exactly one consent gate, nothing precedes it -------------------------------
+  rule({
+    ruleId: 'WF-CONS-001',
+    ruleClass: 'structural',
+    predicateType: 'SINGLE_ENTRY',
+    predicateConfig: { entryType: 'consultation.consentGate' },
+    severity: 'ERROR',
+    paletteKey: 'consultation',
+    registerRefs: ['INV-003', 'INV-004', 'INV-201'],
+    title: 'Exactly one consultation.consentGate node (CR-01).',
+  }),
+  rule({
+    ruleId: 'WF-CONS-002',
+    ruleClass: 'structural',
+    predicateType: 'REACHABLE_FROM_ENTRY',
+    predicateConfig: { entryType: 'consultation.consentGate' },
+    severity: 'ERROR',
+    paletteKey: 'consultation',
+    registerRefs: ['INV-003', 'INV-004', 'INV-201'],
+    title: 'Every node is reachable from consultation.consentGate — no node precedes it (CR-01).',
+  }),
+  // ---- CR-06: exactly one HITL gate, terminal ---------------------------------------------
+  rule({
+    ruleId: 'WF-CONS-003',
+    ruleClass: 'structural',
+    predicateType: 'SINGLE_ENTRY',
+    predicateConfig: { entryType: 'consultation.hitlGate' },
+    severity: 'ERROR',
+    paletteKey: 'consultation',
+    registerRefs: ['INV-144', 'INV-146', 'INV-159'],
+    title: 'Exactly one consultation.hitlGate node (CR-06).',
+  }),
+  rule({
+    ruleId: 'WF-CONS-004',
+    ruleClass: 'structural',
+    predicateType: 'REACHES_TERMINAL',
+    predicateConfig: { terminalType: 'consultation.hitlGate' },
+    severity: 'ERROR',
+    paletteKey: 'consultation',
+    registerRefs: ['INV-144', 'INV-146', 'INV-159'],
+    title: 'Every node reaches consultation.hitlGate — no node executes after it (CR-06).',
+  }),
+  // ---- CR-17: mandatory-node presence (capture, phiHop, persist) --------------------------
+  rule({
+    ruleId: 'WF-CONS-005',
+    ruleClass: 'structural',
+    predicateType: 'REQUIRED_NODE_TYPE',
+    predicateConfig: { nodeType: 'consultation.captureBinding', minCount: 1 },
+    severity: 'ERROR',
+    paletteKey: 'consultation',
+    registerRefs: ['INV-019', 'INV-126', 'INV-205'],
+    title: 'A consultation.captureBinding node is present (CR-17, mandatory).',
+  }),
+  rule({
+    ruleId: 'WF-CONS-006',
+    ruleClass: 'structural',
+    predicateType: 'REQUIRED_NODE_TYPE',
+    predicateConfig: { nodeType: 'consultation.phiHop', minCount: 1 },
+    severity: 'ERROR',
+    paletteKey: 'consultation',
+    registerRefs: ['INV-019', 'INV-126', 'INV-205'],
+    title: 'A consultation.phiHop node is present (CR-17, mandatory).',
+  }),
+  rule({
+    ruleId: 'WF-CONS-007',
+    ruleClass: 'structural',
+    predicateType: 'REQUIRED_NODE_TYPE',
+    predicateConfig: { nodeType: 'consultation.persistDraft', minCount: 1 },
+    severity: 'ERROR',
+    paletteKey: 'consultation',
+    registerRefs: ['INV-019', 'INV-126', 'INV-205'],
+    title: 'A consultation.persistDraft node is present (CR-17, mandatory).',
+  }),
+  // ---- Canonical mandatory subgraph: consent -> {capture, phiHop, synthesize, sensors} -> gate
+  rule({
+    ruleId: 'WF-CONS-008',
+    ruleClass: 'structural',
+    predicateType: 'REQUIRED_PATH_THROUGH',
+    predicateConfig: {
+      fromType: 'consultation.consentGate',
+      toType: 'consultation.hitlGate',
+      throughType: 'consultation.captureBinding',
+    },
+    severity: 'ERROR',
+    paletteKey: 'consultation',
+    registerRefs: ['INV-137', 'INV-155'],
+    title: 'Nothing routes from consentGate to hitlGate without passing through captureBinding.',
+  }),
+  rule({
+    ruleId: 'WF-CONS-009',
+    ruleClass: 'structural',
+    predicateType: 'REQUIRED_PATH_THROUGH',
+    predicateConfig: {
+      fromType: 'consultation.consentGate',
+      toType: 'consultation.hitlGate',
+      throughType: 'consultation.phiHop',
+    },
+    severity: 'ERROR',
+    paletteKey: 'consultation',
+    registerRefs: ['INV-026', 'INV-136'],
+    title:
+      'Nothing routes from consentGate to hitlGate without passing through phiHop (CR-15 structural half — the data-driven phiClass/mode check is deferred, see validator-rules.md §3).',
+  }),
+  rule({
+    ruleId: 'WF-CONS-010',
+    ruleClass: 'structural',
+    predicateType: 'REQUIRED_PATH_THROUGH',
+    predicateConfig: {
+      fromType: 'consultation.consentGate',
+      toType: 'consultation.hitlGate',
+      throughType: 'consultation.synthesize',
+    },
+    severity: 'ERROR',
+    paletteKey: 'consultation',
+    registerRefs: ['INV-137', 'INV-155'],
+    title: 'Nothing routes from consentGate to hitlGate without passing through synthesize.',
+  }),
+  rule({
+    ruleId: 'WF-CONS-011',
+    ruleClass: 'structural',
+    predicateType: 'REQUIRED_PATH_THROUGH',
+    predicateConfig: {
+      fromType: 'consultation.consentGate',
+      toType: 'consultation.hitlGate',
+      throughType: 'consultation.sensors',
+    },
+    severity: 'ERROR',
+    paletteKey: 'consultation',
+    registerRefs: ['INV-137', 'INV-155'],
+    title: 'Nothing routes from consentGate to hitlGate without passing through sensors (the verifier stage).',
+  }),
+  // ---- CR-13: a reconciliation node sits between capture and final synthesis --------------
+  rule({
+    ruleId: 'WF-CONS-012',
+    ruleClass: 'structural',
+    predicateType: 'REQUIRED_PATH_THROUGH',
+    predicateConfig: {
+      fromType: 'consultation.captureBinding',
+      toType: 'consultation.synthesize',
+      throughType: 'consultation.extractEntities',
+    },
+    severity: 'ERROR',
+    paletteKey: 'consultation',
+    registerRefs: ['INV-134', 'INV-135', 'INV-137', 'INV-176'],
+    title: 'Nothing routes captured content to synthesize without passing through extractEntities (CR-13).',
+  }),
+  // ---- CR-03: MCP/tool-calling node declares a purpose scope ------------------------------
+  rule({
+    ruleId: 'WF-CONS-013',
+    ruleClass: 'invariant',
+    predicateType: 'CONFIG_PREDICATE',
+    predicateConfig: { appliesTo: { nodeType: 'consultation.bindTerminology' }, field: 'purposeScope', op: 'present' },
+    severity: 'ERROR',
+    paletteKey: 'consultation',
+    registerRefs: ['INV-007', 'INV-067', 'INV-232'],
+    title: 'consultation.bindTerminology declares a purposeScope (CR-03).',
+  }),
+  // ---- CR-07: content-writing node declares occ:true --------------------------------------
+  rule({
+    ruleId: 'WF-CONS-014',
+    ruleClass: 'invariant',
+    predicateType: 'CONFIG_PREDICATE',
+    predicateConfig: { appliesTo: { nodeType: 'consultation.persistDraft' }, field: 'occ', op: 'eq', value: true },
+    severity: 'ERROR',
+    paletteKey: 'consultation',
+    registerRefs: ['INV-029', 'INV-052', 'INV-085', 'INV-092', 'INV-133', 'INV-152', 'INV-219', 'INV-237'],
+    title: 'consultation.persistDraft declares occ: true (CR-07, the TASK-709 authorship protection made structural).',
+  }),
+  // ---- CR-18: only bindTerminology may produce a code -------------------------------------
+  rule({
+    ruleId: 'WF-CONS-015',
+    ruleClass: 'invariant',
+    predicateType: 'CONFIG_PREDICATE',
+    predicateConfig: { appliesTo: { nodeType: 'consultation.synthesize' }, field: 'producesCode', op: 'eq', value: false },
+    severity: 'ERROR',
+    paletteKey: 'consultation',
+    registerRefs: ['INV-065', 'INV-066', 'INV-231', 'INV-089'],
+    title:
+      'consultation.synthesize explicitly declares producesCode: false (CR-18). DRAFT STRICTNESS CHOICE, mirrors WF-I-004: requires the negative to be STATED, not merely absent.',
+  }),
+  // ---- CR-19: the coverage gap is made visible --------------------------------------------
+  rule({
+    ruleId: 'WF-CONS-016',
+    ruleClass: 'invariant',
+    predicateType: 'CONFIG_PREDICATE',
+    predicateConfig: { appliesTo: { nodeType: 'consultation.bindTerminology' }, field: 'unmappedOutputKey', op: 'present' },
+    severity: 'ERROR',
+    paletteKey: 'consultation',
+    registerRefs: ['INV-063', 'INV-233', 'INV-071'],
+    title: 'consultation.bindTerminology declares an unmappedOutputKey (CR-19 — unmapped terms surfaced, never silent).',
+  }),
+] as const;

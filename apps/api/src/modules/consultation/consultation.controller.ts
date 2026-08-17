@@ -55,6 +55,7 @@ import {
   Headers,
   ForbiddenException,
   NotFoundException,
+  ServiceUnavailableException,
   UnauthorizedException,
   Logger,
   Get,
@@ -72,6 +73,7 @@ import { ClsService } from 'nestjs-cls';
 import type { IActiveUserContext } from '@arcaai/applications';
 import { ChainSummaryService } from '@arcaai/applications';
 import { IConsultationJobService } from '@arcaai/applications';
+import { INoteGenerationService, GenerationTrigger } from '@arcaai/applications';
 import { ConsentPurpose, GlobalSettingRepository, ResourceType } from '@arcaai/domains';
 
 class AsyncJobResponseDto {
@@ -162,6 +164,12 @@ export class ConsultationController {
     private readonly chainSummaryService: ChainSummaryService,
     @Inject(IConsultationJobService)
     private readonly consultationJobService: IConsultationJobService,
+    // TASK-732 — the single seam every note-generation entry point routes
+    // through (TASK-704). `generateSummaryAsync` calls it directly now that
+    // the legacy `SummaryProcessor`/`createSummaryJob` dispatch it used to
+    // rely on has been deleted.
+    @Inject(INoteGenerationService)
+    private readonly noteGenerationService: INoteGenerationService,
     private readonly timelineService: TimelineService,
     private readonly cls: ClsService<IActiveUserContext>,
     private readonly policyEngine: PolicyEngine,
@@ -1264,25 +1272,47 @@ export class ConsultationController {
     await this.verifyConsultationOwnership(consultationId);
     const tenantId = this.cls.get('tenantId') ?? 'unknown';
     const userId = this.getDoctorId();
+
+    // TASK-732 — this route used to enqueue onto the legacy `GenerateSummary`
+    // BullMQ queue (`ConsultationJobService.createSummaryJob`), which decided
+    // harness-vs-legacy only later, inside `SummaryProcessor.process()`. That
+    // processor (the seam-decision site for THIS trigger) was deleted along
+    // with the rest of the signable generator path, so the controller is now
+    // the only remaining caller who can make the decision — it calls the
+    // seam directly (the same pattern the auto-pipeline handler already
+    // uses for `TRANSCRIPTION_CREATED`). Per-request `dnaStyleId`/`template`/
+    // `contextItemIds` overrides are NOT forwarded — the harness workflow
+    // resolves its own prompt/DNA config, exactly as the auto-pipeline
+    // trigger already does; this route deliberately gained no new capability
+    // versus TRANSCRIPTION_CREATED's harness path.
     /* eslint-disable @typescript-eslint/no-explicit-any */
-    const job = await this.consultationJobService.createSummaryJob(
+    const contextItemId = (request as any)?.contextItemIds?.[0];
+    /* eslint-enable @typescript-eslint/no-explicit-any */
+
+    const decision = await this.noteGenerationService.generate(GenerationTrigger.SUMMARY_REGENERATE, {
       consultationId,
       tenantId,
       userId,
-      {
-        dnaStyleId: (request as any)?.dnaStyleId,
-        template: (request as any)?.template,
-        includeNER: (request as any)?.includeNER,
-        contextItemIds: (request as any)?.contextItemIds,
-        options: (request as any)?.options,
-      },
-      undefined,
-      // Forward the SDK-supplied idempotency key.
-      (request as any)?.idempotencyKey,
-    );
-    /* eslint-enable @typescript-eslint/no-explicit-any */
+      contextItemId,
+    });
+
+    if (decision.generator !== 'harness') {
+      // Reachable only if `harnessEnabled` resolves false for this
+      // consultation (stale per-consultation override, or a not-yet-
+      // migrated tenant) — the legacy generator that used to run here no
+      // longer exists. Per `design.md` §Error handling this is a VISIBLE
+      // queued failure, never a silent no-op and never a resurrection of the
+      // legacy generator.
+      this.logger.error({
+        message: 'generateSummaryAsync: seam resolved to the legacy generator, which no longer exists',
+        consultationId,
+        reason: decision.reason,
+      });
+      throw new ServiceUnavailableException(`Note generation is temporarily unavailable for this consultation (seam reason: ${decision.reason})`);
+    }
+
     return new AsyncJobResponseDto({
-      jobId: job.jobId,
+      jobId: decision.harnessJobId,
       status: 'pending',
       consultationId,
       createdAt: new Date().toISOString(),

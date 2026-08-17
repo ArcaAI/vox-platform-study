@@ -48,9 +48,16 @@ export function toggleColumnByParam(param: string): ToggleColumn {
   return TOGGLE_COLUMNS.find((column) => column.param === param) ?? TOGGLE_COLUMNS[0];
 }
 
-/** Boolean display: routing is a harness-vs-legacy choice, the rest on/off. */
+/**
+ * Boolean display for the routing toggle. TASK-732 deleted the legacy
+ * signable generator, so `false` no longer means "route to legacy" — per
+ * `design.md` §Error handling, the remaining off-state edge is a visible
+ * queued failure (`ConsultationController.generateSummaryAsync` /
+ * `ConsultationEventHandler` both now emit a loud failure rather than
+ * silently falling back to a generator that no longer exists).
+ */
 export function toggleLabel(key: PipelineToggleKey, value: boolean): string {
-  if (key === 'harnessEnabled') return value ? 'harness' : 'legacy';
+  if (key === 'harnessEnabled') return value ? 'harness' : 'unavailable';
   return value ? 'on' : 'off';
 }
 

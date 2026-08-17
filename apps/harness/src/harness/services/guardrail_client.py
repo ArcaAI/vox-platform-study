@@ -19,6 +19,13 @@ collapsing it — the node activity is what decides "no verdict" vs "pass", per 
 A TRANSPORT failure (guardrail unreachable, non-2xx, timeout) raises ``GuardrailServiceError``
 instead of ever synthesizing a fake `safe=True` result — this client does not repeat guardrail's
 own fail-open branch for a failure guardrail never even got to run.
+
+``redact()`` (TASK-731, ``consultation.phiHop``'s compile target) calls the SEPARATE
+``POST /guardrail/redact`` endpoint (``apps/guardrail/src/guardrail/api/endpoints/redact.py:267``)
+TASK-710 shipped — genuinely FAIL-CLOSED on that service's own side (a runtime extraction error is
+a 502, never a 200 echoing unredacted text; a missing model selection is 503), the opposite of
+``/guardrail/analyze``'s legacy fail-open posture. This client does not soften either: any
+transport/HTTP failure raises ``GuardrailServiceError``, exactly like ``analyze()``.
 """
 
 from __future__ import annotations
@@ -29,6 +36,29 @@ from pydantic import BaseModel, ConfigDict
 
 class GuardrailServiceError(RuntimeError):
     """The guardrail service was unreachable, timed out, or returned a non-2xx response."""
+
+
+class RedactEntity(BaseModel):
+    """One masked PII span — mirrors guardrail's `RedactEntityModel`."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    label: str = ""
+    start: int = 0
+    end: int = 0
+    score: float = 0.0
+
+
+class RedactResult(BaseModel):
+    """Parsed `RedactResponse` (`apps/guardrail/.../redact.py:171`)."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    sanitized_text: str
+    entities: list[RedactEntity] = []
+    mode: str = ""
+    request_id: str = ""
+    timestamp: str = ""
 
 
 class GuardrailAnalysis(BaseModel):
@@ -96,3 +126,34 @@ class GuardrailClient:
         except httpx.HTTPError as exc:
             raise GuardrailServiceError(f"guardrail analyze failed: {exc}") from exc
         return GuardrailAnalysis.model_validate(data)
+
+    async def redact(
+        self,
+        *,
+        text: str,
+        mode: str,
+        tenant_id: str,
+        request_id: str | None = None,
+    ) -> RedactResult:
+        """Sanitize `text` per `mode` (`'pseudonymize'` or `'full'`). Raises
+        :class:`GuardrailServiceError` on ANY transport/HTTP failure — never returns a
+        synthesized/unredacted result for one (see module doc; mirrors `analyze()`)."""
+        url = f"{self._base_url}/guardrail/redact"
+        body: dict[str, object] = {"text": text, "mode": mode}
+        if request_id:
+            body["request_id"] = request_id
+        headers = {
+            "X-Service-Token": self._service_token,
+            # TASK-737: mandatory on every tenant-scoped internal service call.
+            "X-Tenant-Id": tenant_id,
+        }
+        try:
+            async with httpx.AsyncClient(
+                transport=self._transport, timeout=self._timeout
+            ) as client:
+                resp = await client.post(url, json=body, headers=headers)
+                resp.raise_for_status()
+                data = resp.json()
+        except httpx.HTTPError as exc:
+            raise GuardrailServiceError(f"guardrail redact failed: {exc}") from exc
+        return RedactResult.model_validate(data)

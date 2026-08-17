@@ -1,6 +1,66 @@
 {
-  "_comment": "The cross-language node-registry parity fixture (TASK-734 Task 3, extended by TASK-724 Task 3 with the eight STT-palette node types — stt.phiHop is implemented:false, a documented placeholder pending TASK-710). Asserted from BOTH packages/workflow-contract/src/__tests__/node-registry-parity.test.ts (TS) and apps/harness/src/harness/tests/unit/temporal/interpreter/test_node_registry_parity.py (Python) — see packages/workflow-contract/src/node-registry.ts's module docstring for why the two sides check against this file instead of against each other. `entries` sorted by `key`. Only fields BOTH registries carry today are listed here; `classes`/`paletteKey` (TS-only) and `kind` (Python-only) are intentionally excluded. NOTE (2026-08-16, TASK-724 execution): TASK-720's summarization-palette entries are currently absent from both registries — a concurrent sibling session's uncommitted work was reverted mid-session by an external tree operation (see docs/implementation/TASK-724-Palette-Stt/README.md §7). This fixture reflects the registries' actual current content (noop/passthrough + stt.*); TASK-720's own reconciliation will re-add its five entries on top of this.",
+  "_comment": "The cross-language node-registry parity fixture (TASK-734 Task 3, extended by TASK-720 Task 5 with the five summarization-palette node types, by TASK-724 Task 3 with the eight STT-palette node types — stt.phiHop is implemented:false, a documented placeholder pending TASK-710 — and by TASK-731 Task 9 with THREE consultation-palette node types (consentGate, phiHop, hitlGate — hitlGate is implemented:false, a documented placeholder pending the interpreter's own durable-wait extension; the palette's other ten node types are specified but not yet wired — see docs/implementation/TASK-731-Palette-Consultation/README.md §7). Asserted from BOTH packages/workflow-contract/src/__tests__/node-registry-parity.test.ts (TS) and apps/harness/src/harness/tests/unit/temporal/interpreter/test_node_registry_parity.py (Python) — see packages/workflow-contract/src/node-registry.ts's module docstring for why the two sides check against this file instead of against each other. `entries` sorted by `key`. Only fields BOTH registries carry today are listed here; `classes`/`paletteKey` (TS-only) and `kind` (Python-only) are intentionally excluded. NOTE (2026-08-17, TASK-720/711/720/721/723/727 close-out pass): the five summarization-palette entries were re-added this pass — a prior external tree operation had dropped them from both registries (see docs/implementation/TASK-724-Palette-Stt/README.md §7 and docs/implementation/TASK-731-Palette-Consultation/README.md §7 for the history) even though the node activities, rule catalogue, and golden fixtures never stopped existing on disk.",
   "entries": [
+    {
+      "key": "consultation.consentGate",
+      "implemented": true,
+      "activityName": "interpreter.consultation_consent_gate",
+      "critical": true,
+      "externalWrite": false,
+      "defaultTimeoutSeconds": 30,
+      "defaultMaxAttempts": 3,
+      "entitlementKey": null
+    },
+    {
+      "key": "consultation.hitlGate",
+      "implemented": false,
+      "activityName": "interpreter.consultation_hitl_gate",
+      "critical": true,
+      "externalWrite": true,
+      "defaultTimeoutSeconds": 60,
+      "defaultMaxAttempts": 1,
+      "entitlementKey": null
+    },
+    {
+      "key": "consultation.phiHop",
+      "implemented": true,
+      "activityName": "interpreter.consultation_phi_hop",
+      "critical": false,
+      "externalWrite": false,
+      "defaultTimeoutSeconds": 60,
+      "defaultMaxAttempts": 3,
+      "entitlementKey": null
+    },
+    {
+      "key": "generate.text",
+      "implemented": true,
+      "activityName": "interpreter.text_generate",
+      "critical": true,
+      "externalWrite": false,
+      "defaultTimeoutSeconds": 300,
+      "defaultMaxAttempts": 2,
+      "entitlementKey": null
+    },
+    {
+      "key": "guardrail.check",
+      "implemented": true,
+      "activityName": "interpreter.guardrail_check",
+      "critical": false,
+      "externalWrite": false,
+      "defaultTimeoutSeconds": 60,
+      "defaultMaxAttempts": 3,
+      "entitlementKey": null
+    },
+    {
+      "key": "input.context_binding",
+      "implemented": true,
+      "activityName": "interpreter.context_binding",
+      "critical": true,
+      "externalWrite": false,
+      "defaultTimeoutSeconds": 60,
+      "defaultMaxAttempts": 3,
+      "entitlementKey": null
+    },
     {
       "key": "noop",
       "implemented": true,
@@ -12,6 +72,16 @@
       "entitlementKey": null
     },
     {
+      "key": "output.deliver",
+      "implemented": true,
+      "activityName": "interpreter.deliver",
+      "critical": true,
+      "externalWrite": true,
+      "defaultTimeoutSeconds": 60,
+      "defaultMaxAttempts": 3,
+      "entitlementKey": null
+    },
+    {
       "key": "passthrough",
       "implemented": true,
       "activityName": "interpreter.passthrough",
@@ -19,6 +89,16 @@
       "externalWrite": false,
       "defaultTimeoutSeconds": 60,
       "defaultMaxAttempts": 1,
+      "entitlementKey": null
+    },
+    {
+      "key": "prompt.template_ref",
+      "implemented": true,
+      "activityName": "interpreter.template_ref",
+      "critical": false,
+      "externalWrite": false,
+      "defaultTimeoutSeconds": 30,
+      "defaultMaxAttempts": 3,
       "entitlementKey": null
     },
     {

@@ -2944,11 +2944,13 @@ describe('Phase 5 — seedPipelinePolicy (cascade defaults + WORM)', () => {
     return { client, created, changes };
   };
 
-  it('exposes the platform-legacy SYSTEM defaults (auto on, harness OFF)', () => {
+  it('exposes the SYSTEM defaults (auto on, harness ON since TASK-732)', () => {
     expect(SYSTEM_PIPELINE_POLICY_DEFAULTS.autoSummaryEnabled).toBe(true);
     expect(SYSTEM_PIPELINE_POLICY_DEFAULTS.autoNerEnabled).toBe(true);
-    // Back-compat: today only the clinical-workspace demo opted into the harness.
-    expect(SYSTEM_PIPELINE_POLICY_DEFAULTS.harnessEnabled).toBe(false);
+    // TASK-732 (Phase 2 exit criterion): the legacy signable generator this
+    // toggle used to fall back to when false was deleted, so the SYSTEM
+    // default flipped to true.
+    expect(SYSTEM_PIPELINE_POLICY_DEFAULTS.harnessEnabled).toBe(true);
   });
 
   it('exposes the demo-tenant override that preserves the clinical-workspace harness', () => {
@@ -2976,7 +2978,7 @@ describe('Phase 5 — seedPipelinePolicy (cascade defaults + WORM)', () => {
     const systemRow = created.find((c) => c.data.tenantId === SYSTEM_TENANT_ID)!.data;
     expect(systemRow.scope).toBe('TENANT');
     expect(systemRow.scopeId ?? null).toBeNull();
-    expect(systemRow.harnessEnabled).toBe(false);
+    expect(systemRow.harnessEnabled).toBe(true);
     expect(systemRow.autoSummaryEnabled).toBe(true);
 
     const demoRow = created.find((c) => c.data.tenantId === SEED_TENANT_ID)!.data;

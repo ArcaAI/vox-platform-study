@@ -7,4 +7,5 @@ export const workflowStudioKeys = {
   detail: (id: string) => [...workflowStudioKeys.root, 'detail', id] as const,
   versions: (id: string) => [...workflowStudioKeys.root, 'versions', id] as const,
   registry: () => [...workflowStudioKeys.root, 'registry'] as const,
+  promptTemplates: () => [...workflowStudioKeys.root, 'prompt-templates'] as const,
 };

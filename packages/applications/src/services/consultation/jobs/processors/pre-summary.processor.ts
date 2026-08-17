@@ -18,6 +18,14 @@ import { IActiveUserContext } from '../../../../interfaces';
 import { assertEqualTenants, createWorkerSession, encryptPhiFields } from '../../../../common';
 import { INoteGenerationService, GenerationTrigger } from '../../note-generation';
 
+// TASK-732 R-2 boundary (owner decision, deletion-manifest.md §5): KEPT,
+// un-gated, as an explicitly non-signable helper generator — never had a
+// harness equivalent (`GenerationTrigger.PRE_SUMMARY` is not in
+// `HARNESS_SUPPORTED_TRIGGERS`), and its output type (`PRE_SUMMARY`) never
+// satisfies `ContextItemEntity.isFinalSummary`, so it structurally cannot
+// reach `SummaryService.approveSummary` — confirmed by
+// `jobs/processors/__tests__/kept-generators-signability.task732.test.ts`.
+// Becomes the "pre-summary" half of a future standalone v1-compat feature.
 @Processor(JobQueue.GeneratePreSummary)
 export class PreSummaryProcessor extends WorkerHost {
   private readonly logger = new Logger(PreSummaryProcessor.name);

@@ -117,8 +117,9 @@ export class HarnessInternalService {
   // produced this span" column, and it is the honest home for this: these rows
   // ARE the harness NER pass's output.
   //
-  // FOUR other production paths create NamedEntity rows — `ContextService`,
-  // `SummaryService`, `NerProcessor` and `ChainSummaryService`'s NER writes — all
+  // Other production paths create NamedEntity rows — `ContextService`,
+  // `SummaryService`, and `ChainSummaryService`'s NER writes (the legacy
+  // BullMQ NER generator's own writes were removed with it, TASK-732) — all
   // through `namedEntityPropsFromNlp`, which sets NO `aiModelId`. They routinely
   // cover the SAME transcript ContextItem and the same spans, so scoping by
   // `contextItemId` alone would let this path rewrite rows it never authored.
@@ -1624,7 +1625,8 @@ export class HarnessInternalService {
   /**
    * Flatten a consultation's NER entities for prompt injection. Transcript-span
    * offsets are preferred over the raw source offsets so the model can cite the
-   * source location (mirrors SummaryProcessor.loadNerEntities).
+   * source location (mirrors the same helper on the pre-summary/comprehensive
+   * processors).
    */
   private async loadNerEntities(consultationId: string): Promise<NerEntityForPrompt[]> {
     const entities = await this.namedEntityRepository.findByConsultation(consultationId);

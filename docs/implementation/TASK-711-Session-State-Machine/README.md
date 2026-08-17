@@ -1227,6 +1227,71 @@ concern was transient. No longer an open flag.
 - **The backfill migration's DATA effect has not been applied to the real dev DB** — see Task 12
   above for why, and for what WAS proven (shadow-DB correctness, idempotency, atomicity).
 
+### Close-out pass (2026-08-17) — re-verified against the squashed migration baseline
+
+**Context**: between the prior pass and this one, the migration ledger was squashed (102
+migrations → `20260817000000_init` + `20260817000100_task_734_workflow_definition_immutability_guard`,
+now also `20260817031425_task_732_flip_system_harness_enabled_default`). This pass re-verifies
+this ticket's schema claims against the NEW baseline rather than assuming the old numbered
+migrations (`20260816010000_…`, `20260816100654_…`, `20260816110000_…`) still exist — they do
+not; the squash folded their SCHEMA effect into `20260817000000_init` and discarded the
+individual files.
+
+**Schema re-verified present in the baseline** (`grep` against
+`packages/database/src/prisma/db_main/migrations/20260817000000_init/migration.sql`):
+`ConsultationStatus` carries all 12 members including `PRIMED`/`DRAINING`/`TIMED_OUT`/
+`CLOSED_COMPLETE`/`CLOSED_INCOMPLETE` (line 92); `HarnessAuditAction` carries `SESSION_PRIMED`/
+`SESSION_TIMED_OUT`/`SESSION_REOPENED`/`SESSION_CLOSED_COMPLETE`/`SESSION_CLOSED_INCOMPLETE`
+(line 185); `Consultation.degradedReasons TEXT[]` is present (line 531). `pnpm db:generate` and
+`pnpm --filter @arcaai/database test` (50 files / 1226 tests), `pnpm --filter @arcaai/domains
+build test` (145 files / 1793 tests, 2 skipped), `pnpm --filter @arcaai/applications build`, and
+`pnpm api:build` (12/12) all re-run clean this pass — see the aggregate evidence block below,
+shared across all five tickets in this close-out.
+
+**The backfill migration file itself no longer exists** (squashed away — it was pure DML, never
+applied to any real database, so the squash correctly did not carry it forward as a separate
+migration). Re-checked the real thing it was meant to fix, read-only, against the live dev DB
+(`docker exec hope-postgres psql -U postgres -d hope -c "select status, metadata->>'status' as
+meta_status, count(*) from core.\"Consultation\" group by 1,2 order by 3 desc;"`, 2026-08-17):
+
+```
+ status | meta_status  | count
+--------+--------------+-------
+ OPEN   | OPEN         |     4
+ OPEN   | REVIEW       |     2
+ OPEN   | CLOSED       |     2
+ OPEN   | SUMMARIZING  |     1
+ OPEN   | RECORDING    |     1
+ OPEN   | TRANSCRIBING |     1
+(6 rows)
+```
+
+This is the same distribution the prior pass's backfill-mapping.md documented — the dev DB's data
+was never touched by the (never-applied) backfill, so the 2 `meta=CLOSED` rows are still the
+`CLOSED_INCOMPLETE` candidates and the 4 other legacy `meta_status` values are still stale,
+harmless orphaned JSON keys. **This is functionally inert, not a live bug**: TASK-711's own
+Task 10 already deleted every reader of `metadata.status` (re-confirmed this pass — the
+single-source gate test `consultation.status-single-source.test.ts` still passes, and a fresh
+sweep for live `metadata.status` reads/writes in `packages/applications/src` returns none), so
+these six rows' `metadata.status` values are never observed by any code path; they are cosmetic
+JSON left over from before this ticket, not a correctness defect. **Not fixed this pass**:
+re-authoring a backfill migration and running it against the real dev DB would require (a) a new
+migration under the new baseline and (b) either `prisma migrate deploy` against a database that
+has no `_prisma_migrations` ledger (confirmed absent — `to_regclass('_prisma_migrations')` is
+NULL; this dev DB is `db push`-managed, so `migrate deploy` was never how it received DDL to begin
+with) or a direct `UPDATE` against shared dev-DB data — both are outside this pass's authority per
+the standing hard rules (no `db:migrate*` against the dev DB; no UPDATE/DELETE on shared data
+without explicit owner approval). Flagged for the ticket owner as a follow-up, not silently
+dropped.
+
+**Status**: left at **Review**, not advanced to Completed. Every code-level acceptance-criteria
+box this pass could verify is green (see the shared evidence block below); the two boxes that
+remain unchecked in §5 — live e2e execution and owner sign-off on `state-machine.md`/
+`backfill-mapping.md` — are unchanged from the prior pass and are not something this pass had the
+authority to close (the e2e blocker is the same documented, cross-ticket Prisma
+`db push --force-reset`-under-an-AI-agent refusal every sibling ticket in this close-out pass also
+hits; owner sign-off is HUMAN-GATED by definition). No regression found; no evidence overclaimed.
+
 ## 8. Change History
 
 | Date | Change | By |
@@ -1235,3 +1300,4 @@ concern was transient. No longer an open flag.
 | 2026-08-16 | Phase 0 (Task 1 docs) + Phase 1 (Tasks 2-3, schema/migration/domain-model regen) + Phase 2 (Tasks 4-5, `ConsultationEntity.transitionTo` TDD) executed. `packages/database`/`packages/domains` only — see §7. Migration authored by hand; shadow-DB proof and the backfill query are gated (local infra down). Status set to In Progress (Phases 3-7 remain). | execution agent |
 | 2026-08-16 | Infra confirmed up. Closed both previously-gated proofs (shadow-DB diff for `20260816010000`; real observed-distribution query against dev, 11 rows, mapping extended with 4 newly-observed legacy `metadata.status` values). Incorporated the owner's Q1 decision: added `ConsultationStatus.{CLOSED_COMPLETE,CLOSED_INCOMPLETE}` + `HarnessAuditAction.{SESSION_CLOSED_COMPLETE,SESSION_CLOSED_INCOMPLETE}` via a new migration (`20260816100654_task_711_closed_terminal_states`), superseding the dead `CLOSED` member permanently and documented as such; applied to dev DB via `pnpm db:push`. Revised state-machine.md/backfill-mapping.md in place (§1a). Designed (not implemented) the settings-registry session-timeout + scheduled-sweep contract. Confirmed Q2/Q3 unchanged. One mechanical `packages/domains` test fix (enum member count 10→12); `CONSULTATION_TRANSITIONS` wiring for the two new terminals explicitly left for a follow-up `packages/domains` pass — flagged, not silently inconsistent. `packages/database` test/build/typecheck/gen:*:check all green; `packages/domains` build/test/typecheck/lint all green. Status remains In Progress (Phases 3-7, plus the new domains-wiring follow-up, remain). | execution agent (database-phase continuation) |
 | 2026-08-16 | Executed the full remainder of the ticket: wired `CLOSED_COMPLETE`/`CLOSED_INCOMPLETE` into `ConsultationEntity.CONSULTATION_TRANSITIONS` (closing the prior pass's flagged gap); Task 6 (`ConsultationService` — `primeConsultation`, close/reopen terminal derivation, recording lifecycle, `applyTransition` 409 mapping, `UpdateConsultationRequest.status` removed); Task 7 (harness `persistDraft`/`finalizeAssurance`/`recordEscalation` + `TIMED_OUT` + clinician notification + `findTimedOutForTenant` wired into the gate queue; also fixed the same direct-assignment defect in `summary.processor.ts`, found during the sweep); Task 8 (`approveSummary`'s sign legality assertion); Task 9 (API: `POST :id/prime`, `@RequiresIfMatch()`/`@ExpectedVersion()` on prime/close/reopen — verified to actually fire via a new metadata-reading unit test; the `requirePrimedBeforeRecording` kill-switch + `sessionTimeoutMinutes` tuning descriptor registered; found and fixed a real gap — `ConsultationResponse` had no `version` field, so `ETagInterceptor` could never stamp an `ETag`; admin-console `CONSULTATION_STATUSES`/status-badge/labels extended to all 12 members); Task 10 (`metadata.status` deleted from the DTO/mapper/service; `@arcaai/vox-node`'s public type widened; precise sweep documented, including the one inert historical seed-data hit left as-is); Task 11 (two new static gate tests — domains wiring gate, applications single-source-of-truth gate); Task 12 (backfill migration authored, proven idempotent AND atomic-on-error against a fixture-seeded throwaway `hope_shadow` — a `GET DIAGNOSTICS` row-counting bug was found and fixed during this proof; deliberately NOT applied to the real dev DB's data, since it is pure DML and out of the sanctioned schema-sync recipe); Task 13 (9-case e2e spec authored, NOT executed — documented environment blocker). All of `packages/domains`/`packages/applications`/`apps/api`/`apps/admin-console`/`packages/database` build/typecheck/lint clean and their full test suites green (see §7 for exact counts). Status set to Review — the settings-timeout sweep worker, owner sign-off on the design docs, and e2e execution remain open, each explicitly flagged rather than silently treated as done. | execution agent (full remaining scope) |
+| 2026-08-17 | Close-out pass (5-ticket sweep: 711/720/721/723/727). Re-verified all TASK-711 schema against the newly-squashed 2/3-migration baseline (`20260817000000_init` carries the full 12-member `ConsultationStatus`, the 5 new `HarnessAuditAction` members, and `degradedReasons` — confirmed by grep, not assumed). Re-ran `packages/database`/`packages/domains`/`packages/applications`/`apps/api` build+test, all green. Re-checked the never-applied backfill's real-world target via a read-only dev-DB query (6 stale rows, same distribution as before, confirmed functionally inert since Task 10 already deleted every `metadata.status` reader). No code changes to this ticket's own files this pass — TASK-720's node-registry regression (found while cross-checking a sibling ticket) was fixed under TASK-720's own README, not here. Status remains Review — e2e execution and owner design-doc sign-off are the only two open items, both outside this pass's authority to close. | close-out pass agent |

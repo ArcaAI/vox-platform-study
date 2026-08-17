@@ -41,9 +41,7 @@ const createMockRedisSubscriber = () => ({
 describe('ConsultationJobService', () => {
   let service: ConsultationJobService;
   let mockPreSummaryQueue: ReturnType<typeof createMockQueue>;
-  let mockSummaryQueue: ReturnType<typeof createMockQueue>;
   let mockComprehensiveSummaryQueue: ReturnType<typeof createMockQueue>;
-  let mockNerQueue: ReturnType<typeof createMockQueue>;
   let mockCacheService: ReturnType<typeof createMockCacheService>;
   let mockRedisSubscriber: ReturnType<typeof createMockRedisSubscriber>;
 
@@ -51,17 +49,13 @@ describe('ConsultationJobService', () => {
     vi.clearAllMocks();
 
     mockPreSummaryQueue = createMockQueue();
-    mockSummaryQueue = createMockQueue();
     mockComprehensiveSummaryQueue = createMockQueue();
-    mockNerQueue = createMockQueue();
     mockCacheService = createMockCacheService();
     mockRedisSubscriber = createMockRedisSubscriber();
 
     service = new ConsultationJobService(
       mockPreSummaryQueue as unknown as Queue,
-      mockSummaryQueue as unknown as Queue,
       mockComprehensiveSummaryQueue as unknown as Queue,
-      mockNerQueue as unknown as Queue,
       mockCacheService as any,
       mockRedisSubscriber as any,
     );
@@ -176,136 +170,10 @@ describe('ConsultationJobService', () => {
     });
   });
 
-  // ===========================================================================
-  // createSummaryJob Tests
-  // ===========================================================================
-
-  describe('createSummaryJob', () => {
-    const validParams = {
-      consultationId: 'consultation-123',
-      tenantId: 'tenant-1',
-      userId: 'user-1',
-      request: {
-        dnaStyleId: 'style-1',
-        template: 'default',
-        includeNER: true,
-        contextItemIds: ['ctx-1', 'ctx-2'],
-      },
-    };
-
-    it('should create a summary job and return JobResponse', async () => {
-      const result = await service.createSummaryJob(validParams.consultationId, validParams.tenantId, validParams.userId, validParams.request);
-
-      expect(result).toEqual({
-        jobId: 'test-job-id-123',
-        status: 'PENDING',
-        sseUrl: '/api/consultations/jobs/test-job-id-123/sse',
-        estimatedSeconds: 60,
-      });
-    });
-
-    it('should add job to summary queue with correct payload', async () => {
-      await service.createSummaryJob(validParams.consultationId, validParams.tenantId, validParams.userId, validParams.request);
-
-      expect(mockSummaryQueue.add).toHaveBeenCalledWith(
-        'generate',
-        expect.objectContaining({
-          jobId: 'test-job-id-123',
-          consultationId: validParams.consultationId,
-          request: validParams.request,
-        }),
-        expect.any(Object),
-      );
-    });
-
-    it('should store initial job status as SUMMARY type', async () => {
-      await service.createSummaryJob(validParams.consultationId, validParams.tenantId, validParams.userId, validParams.request);
-
-      expect(mockCacheService.setex).toHaveBeenCalledWith('consultation_job:test-job-id-123', 86400, expect.stringContaining('"type":"SUMMARY"'));
-    });
-
-    it('should handle includeNER flag in request', async () => {
-      await service.createSummaryJob(validParams.consultationId, validParams.tenantId, validParams.userId, { includeNER: false });
-
-      expect(mockSummaryQueue.add).toHaveBeenCalledWith(
-        'generate',
-        expect.objectContaining({
-          request: { includeNER: false },
-        }),
-        expect.any(Object),
-      );
-    });
-
-    it('should work with empty contextItemIds', async () => {
-      await service.createSummaryJob(validParams.consultationId, validParams.tenantId, validParams.userId, { contextItemIds: [] });
-
-      expect(mockSummaryQueue.add).toHaveBeenCalled();
-    });
-  });
-
-  // ===========================================================================
-  // createNerJob Tests
-  // ===========================================================================
-
-  describe('createNerJob', () => {
-    const validParams = {
-      contextItemId: 'ctx-item-123',
-      consultationId: 'consultation-123',
-      tenantId: 'tenant-1',
-      userId: 'user-1',
-    };
-
-    it('should create a NER job and return JobResponse', async () => {
-      const result = await service.createNerJob(validParams.contextItemId, validParams.consultationId, validParams.tenantId, validParams.userId);
-
-      expect(result).toEqual({
-        jobId: 'test-job-id-123',
-        status: 'PENDING',
-        sseUrl: '/api/consultations/jobs/test-job-id-123/sse',
-        estimatedSeconds: 15,
-      });
-    });
-
-    it('should add job to NER queue with correct payload', async () => {
-      await service.createNerJob(validParams.contextItemId, validParams.consultationId, validParams.tenantId, validParams.userId);
-
-      expect(mockNerQueue.add).toHaveBeenCalledWith(
-        'extract',
-        expect.objectContaining({
-          jobId: 'test-job-id-123',
-          contextItemId: validParams.contextItemId,
-          consultationId: validParams.consultationId,
-          tenantId: validParams.tenantId,
-          userId: validParams.userId,
-        }),
-        expect.any(Object),
-      );
-    });
-
-    it('should store initial job status as NER type', async () => {
-      await service.createNerJob(validParams.contextItemId, validParams.consultationId, validParams.tenantId, validParams.userId);
-
-      expect(mockCacheService.setex).toHaveBeenCalledWith('consultation_job:test-job-id-123', 86400, expect.stringContaining('"type":"NER"'));
-    });
-
-    it('should include callbackUrl when provided', async () => {
-      await service.createNerJob(
-        validParams.contextItemId,
-        validParams.consultationId,
-        validParams.tenantId,
-        validParams.userId,
-        'https://example.com/ner-callback',
-      );
-
-      expect(mockNerQueue.add).toHaveBeenCalledWith(
-        'extract',
-        expect.objectContaining({
-          callbackUrl: 'https://example.com/ner-callback',
-        }),
-        expect.any(Object),
-      );
-    });
-  });
+  // TASK-732 — `createSummaryJob`/`createNerJob` (the legacy `SUMMARY_REGENERATE`
+  // async generator and its NER companion) were deleted along with
+  // `summary.processor.ts`/`ner.processor.ts`. Their describe blocks were
+  // removed here in the same commit.
 
   // ===========================================================================
   // createComprehensiveSummaryJob Tests
@@ -341,14 +209,12 @@ describe('ConsultationJobService', () => {
       });
     });
 
-    it('should add job to the GenerateComprehensiveSummary queue (not regular Summary queue)', async () => {
+    it('should add job to the GenerateComprehensiveSummary queue (not the pre-summary queue)', async () => {
       await service.createComprehensiveSummaryJob(validParams.consultationId, validParams.tenantId, validParams.userId, validParams.request);
 
-      // Must use the comprehensive summary queue, not the regular summary queue
+      // Must use the comprehensive summary queue, not the pre-summary queue
       expect(mockComprehensiveSummaryQueue.add).toHaveBeenCalledTimes(1);
-      expect(mockSummaryQueue.add).not.toHaveBeenCalled();
       expect(mockPreSummaryQueue.add).not.toHaveBeenCalled();
-      expect(mockNerQueue.add).not.toHaveBeenCalled();
     });
 
     it('should add job with correct payload structure', async () => {
@@ -552,7 +418,7 @@ describe('ConsultationJobService', () => {
     it('should return false for already COMPLETED job', async () => {
       const storedStatus: ConsultationJobStatus = {
         jobId: 'job-123',
-        type: 'SUMMARY',
+        type: 'PRE_SUMMARY',
         status: 'COMPLETED',
         progress: 100,
         createdAt: new Date(),
@@ -562,13 +428,13 @@ describe('ConsultationJobService', () => {
       const result = await service.cancelJob('job-123');
 
       expect(result).toBe(false);
-      expect(mockSummaryQueue.getJob).not.toHaveBeenCalled();
+      expect(mockPreSummaryQueue.getJob).not.toHaveBeenCalled();
     });
 
     it('should return false for already FAILED job', async () => {
       const storedStatus: ConsultationJobStatus = {
         jobId: 'job-123',
-        type: 'SUMMARY',
+        type: 'PRE_SUMMARY',
         status: 'FAILED',
         progress: 50,
         error: 'Service error',
@@ -584,7 +450,7 @@ describe('ConsultationJobService', () => {
     it('should return false for already CANCELLED job', async () => {
       const storedStatus: ConsultationJobStatus = {
         jobId: 'job-123',
-        type: 'NER',
+        type: 'PRE_SUMMARY',
         status: 'CANCELLED',
         progress: 0,
         createdAt: new Date(),
@@ -621,46 +487,10 @@ describe('ConsultationJobService', () => {
       expect(mockCacheService.publish).toHaveBeenCalled();
     });
 
-    it('should cancel PENDING SUMMARY job successfully', async () => {
-      const storedStatus: ConsultationJobStatus = {
-        jobId: 'job-123',
-        type: 'SUMMARY',
-        status: 'PENDING',
-        progress: 0,
-        createdAt: new Date(),
-      };
-      mockCacheService.get.mockResolvedValue(JSON.stringify(storedStatus));
-
-      const mockJob = {
-        getState: vi.fn().mockResolvedValue('delayed'),
-        remove: vi.fn().mockResolvedValue(undefined),
-      };
-      mockSummaryQueue.getJob.mockResolvedValue(mockJob);
-
-      const result = await service.cancelJob('job-123');
-
-      expect(result).toBe(true);
-      expect(mockSummaryQueue.getJob).toHaveBeenCalledWith('job-123');
-      expect(mockJob.remove).toHaveBeenCalled();
-    });
-
-    it('should cancel PENDING NER job successfully', async () => {
-      const storedStatus: ConsultationJobStatus = {
-        jobId: 'job-123',
-        type: 'NER',
-        status: 'PENDING',
-        progress: 0,
-        createdAt: new Date(),
-      };
-      mockCacheService.get.mockResolvedValue(JSON.stringify(storedStatus));
-
-      mockNerQueue.getJob.mockResolvedValue(null);
-
-      const result = await service.cancelJob('job-123');
-
-      expect(result).toBe(true);
-      expect(mockNerQueue.getJob).toHaveBeenCalledWith('job-123');
-    });
+    // TASK-732 — 'SUMMARY'/'NER' cancel coverage removed: their queues and
+    // processors were deleted, so `cancelJob` now falls through to the
+    // default (not-found) branch for those types — see the "unknown job
+    // type" test below, which now also covers 'SUMMARY'/'NER'.
 
     it('should cancel PENDING COMPREHENSIVE_SUMMARY job successfully', async () => {
       const storedStatus: ConsultationJobStatus = {
@@ -688,7 +518,7 @@ describe('ConsultationJobService', () => {
     it('should cancel RUNNING job (update status but not remove)', async () => {
       const storedStatus: ConsultationJobStatus = {
         jobId: 'job-123',
-        type: 'SUMMARY',
+        type: 'PRE_SUMMARY',
         status: 'RUNNING',
         progress: 50,
         createdAt: new Date(),
@@ -699,13 +529,28 @@ describe('ConsultationJobService', () => {
         getState: vi.fn().mockResolvedValue('active'),
         remove: vi.fn().mockResolvedValue(undefined),
       };
-      mockSummaryQueue.getJob.mockResolvedValue(mockJob);
+      mockPreSummaryQueue.getJob.mockResolvedValue(mockJob);
 
       const result = await service.cancelJob('job-123');
 
       expect(result).toBe(true);
       // Should NOT call remove for active jobs (only waiting/delayed)
       expect(mockJob.remove).not.toHaveBeenCalled();
+    });
+
+    it('should return false for a job type whose queue was deleted (SUMMARY/NER, TASK-732)', async () => {
+      const storedStatus = {
+        jobId: 'job-123',
+        type: 'SUMMARY',
+        status: 'PENDING',
+        progress: 0,
+        createdAt: new Date(),
+      };
+      mockCacheService.get.mockResolvedValue(JSON.stringify(storedStatus));
+
+      const result = await service.cancelJob('job-123');
+
+      expect(result).toBe(false);
     });
 
     it('should return false for unknown job type', async () => {
@@ -1443,16 +1288,14 @@ describe('ConsultationJobService', () => {
       // Simulate multiple parallel job creations
       const promises = [
         service.createPreSummaryJob('c1', 't1', 'u1', {}),
-        service.createSummaryJob('c2', 't1', 'u1', {}),
-        service.createNerJob('ctx1', 'c3', 't1', 'u1'),
+        service.createComprehensiveSummaryJob('c2', 't1', 'u1', {}),
       ];
 
       const results = await Promise.all(promises);
 
-      expect(results).toHaveLength(3);
+      expect(results).toHaveLength(2);
       expect(mockPreSummaryQueue.add).toHaveBeenCalledTimes(1);
-      expect(mockSummaryQueue.add).toHaveBeenCalledTimes(1);
-      expect(mockNerQueue.add).toHaveBeenCalledTimes(1);
+      expect(mockComprehensiveSummaryQueue.add).toHaveBeenCalledTimes(1);
     });
 
     it('should handle special characters in consultationId', async () => {
@@ -1473,9 +1316,9 @@ describe('ConsultationJobService', () => {
         largeOptions[`option_${i}`] = `value_${'x'.repeat(100)}`;
       }
 
-      await service.createSummaryJob('consultation-123', 'tenant-1', 'user-1', { options: largeOptions });
+      await service.createComprehensiveSummaryJob('consultation-123', 'tenant-1', 'user-1', { options: largeOptions });
 
-      expect(mockSummaryQueue.add).toHaveBeenCalled();
+      expect(mockComprehensiveSummaryQueue.add).toHaveBeenCalled();
     });
 
     it('should preserve job order in queue', async () => {
@@ -1542,22 +1385,6 @@ describe('ConsultationJobService', () => {
       expect(idempotencyCall![2]).toBe('test-job-id-123');
     });
 
-    it('createSummaryJob honors the idempotency key the same way', async () => {
-      mockCacheService.get.mockImplementation(async (key: string) => (key.startsWith('idempotency:') ? 'prior-summary-job' : null));
-
-      const result = await service.createSummaryJob(
-        validParams.consultationId,
-        validParams.tenantId,
-        validParams.userId,
-        {},
-        undefined,
-        'idem-summary',
-      );
-
-      expect(result.jobId).toBe('prior-summary-job');
-      expect(mockSummaryQueue.add).not.toHaveBeenCalled();
-    });
-
     it('createComprehensiveSummaryJob honors the idempotency key the same way', async () => {
       mockCacheService.get.mockImplementation(async (key: string) => (key.startsWith('idempotency:') ? 'prior-comp-job' : null));
 
@@ -1616,13 +1443,6 @@ describe('ConsultationJobService', () => {
       expect(payload.userId).toBe('user-A');
     });
 
-    it('persists tenantId + userId when storing a SUMMARY job status', async () => {
-      await service.createSummaryJob('c-1', 'tenant-B', 'user-B', { includeNER: false });
-      const payload = stored();
-      expect(payload.tenantId).toBe('tenant-B');
-      expect(payload.userId).toBe('user-B');
-    });
-
     it('persists tenantId + userId when storing a COMPREHENSIVE_SUMMARY job status', async () => {
       await service.createComprehensiveSummaryJob('c-1', 'tenant-C', 'user-C', {});
       const payload = stored();
@@ -1630,18 +1450,11 @@ describe('ConsultationJobService', () => {
       expect(payload.userId).toBe('user-C');
     });
 
-    it('persists tenantId + userId when storing a NER job status', async () => {
-      await service.createNerJob('ctx-1', 'c-1', 'tenant-D', 'user-D');
-      const payload = stored();
-      expect(payload.tenantId).toBe('tenant-D');
-      expect(payload.userId).toBe('user-D');
-    });
-
     it('returns tenantId + userId from getJobStatus so interceptors can ownership-check', async () => {
       mockCacheService.get.mockResolvedValueOnce(
         JSON.stringify({
           jobId: 'jobX',
-          type: 'SUMMARY',
+          type: 'PRE_SUMMARY',
           status: 'RUNNING',
           consultationId: 'c-1',
           progress: 30,

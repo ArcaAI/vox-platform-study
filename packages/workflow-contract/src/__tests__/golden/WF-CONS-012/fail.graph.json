@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": "n_from",
+      "type": "consultation.captureBinding",
+      "config": {}
+    },
+    {
+      "id": "n_to",
+      "type": "consultation.synthesize",
+      "config": {}
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "from": "n_from",
+      "fromPort": "out",
+      "to": "n_to",
+      "toPort": "in"
+    }
+  ]
+}

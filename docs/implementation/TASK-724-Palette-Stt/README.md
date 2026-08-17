@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Partial — Tasks 1, 2 (honesty-disclosed), 3, 7 done and verified; Task 6's grep-gate half done; Tasks 4, 5, 6's resolver half NOT done, gated with reasons in §7 |
+| **Status** | Partial — Tasks 1, 2 (honesty-disclosed), 3, 4, 6, 7 done and verified; Task 5 (harness batch-trigger activity) NOT done, gated with reasons in §7 |
 | **Wave** | 3 · **Size** | L |
 | **Epic slug** | `palette-stt` |
 | **Depends on** | TASK-720 (`palette-summarization` — first palette onto the substrate; this ticket is the second and must not re-derive registry/compiler mechanics TASK-720 already established) |
@@ -629,63 +629,130 @@ full suite below.
   finding) and the regenerated "one fixture directory per catalogue rule, across every palette"
   parity check.
 
-### Task 4 — compiler hook (STT graph → `AsrPipeline` + `AsrPipelineVersion`) — NOT DONE, gated
+### Task 4 — compiler hook (STT graph → `AsrPipeline` + `AsrPipelineVersion`) — DONE, verified (second pass)
 
-**Not attempted this pass, disclosed rather than rushed.** Reasons, concretely:
+Built, RED-first, in this pass — unblocked because the previous pass's incident recovery (Tasks
+1–3/7) left `workflow-definition.service.ts`'s `publish()` stable and `PipelineService`'s exact
+write path confirmed (§Task 1(c)):
 
-1. This is the ticket's single largest remaining task — a new service walking
-   `compiledConfig.stages[].nodes[]` by `type` to emit an `AsrPipeline.configYaml` string whose
-   exact key set (`models.asr`/`models.vad`/`models.denoise`, per `ModelRef`/`ModelRefs` in
-   `apps/stt/src/stt/pipeline/dto.py`) must round-trip through the REAL Python
-   `PipelineYamlParser`/`PipelineConfigReader`, wired through `PipelineService.create`/`update`
-   (verified reusable — §Task 1(c)) from inside `WorkflowDefinitionService.publish()`, with its
-   own RED-first test suite. This is comparable in size to the rest of this ticket combined.
-   `contracts/palette.md`'s own "Compiler interoperability" section records the confirmed
-   starting contract (`compiledConfig.stages[].nodes[].config` carries the authored config
-   verbatim — Task 1(b)) for whoever picks this back up.
-2. `workflow-definition.service.ts` — the file `publish()` lives in — was independently,
-   concurrently modified by another live session during this pass (verified: `git diff` showed a
-   small, already-landed `getCompiledConfigForSandboxRun` addition from a TASK-721 Workbench
-   session, present before this ticket touched the file). The entitlement-gate edit (Task 7,
-   below) was small and isolated enough to land safely alongside that; a full new compiler
-   service wired into the SAME method's control flow is a materially larger, riskier edit to
-   make inside a file under active concurrent edit, especially having just recovered from one
-   shared-tree incident this same pass (see above).
-3. The provenance question the ticket's own README flags (§4 Task 4, §6) — whether
-   `AsrPipeline`/`AsrPipelineVersion` need a new `sourceWorkflowDefinitionId` column, i.e.
-   another schema migration — needs its OWN sizing and shadow-DB migration pass, not a
-   last-minute add-on to an already-large task.
+- **Files**: `packages/applications/src/services/workflow-definition/compilers/stt-pipeline.compiler.ts`
+  (new — `compileSttGraphToYaml`, a PURE function over `CompiledWorkflowConfig`, plus
+  `SttPipelineCompilerService`, `STT_WORKFLOW_TAG_PREFIX`, `sttWorkflowPipelineSlug`), its test
+  `compilers/__tests__/stt-pipeline.compiler.test.ts` (15 cases, run RED against a
+  `Cannot find module` error before the implementation file existed, then GREEN); `workflow-definition.service.ts`
+  (`publish()` now calls a new private `compileSttPipelineIfNeeded` right after `compileGraphOrThrow`
+  and BEFORE any entity mutation, so a compile failure aborts the publish with nothing written —
+  the constructor gained an `@Optional() sttPipelineCompiler` 6th param, same DI-optionality
+  pattern as `entitlements`); `workflow-definition.service.module.ts` (imports `PipelineServiceModule`,
+  provides `SttPipelineCompilerService`); `workflow-definition/index.ts` (barrel export);
+  `workflow-definition.service.test.ts` (6th constructor arg threaded through every test, 3 tests
+  updated/added under `STT pipeline compilation on publish (TASK-724 Task 4)` plus the existing
+  entitlement-gate tests now assert the compiler is/isn't called).
+- **YAML shape verified against the REAL Python consumer**, not assumed: `apps/stt/src/stt/pipeline/yaml_parser.py`'s
+  `_parse_models`/`_parse_diarization` and `dto.py`'s `ModelRefs`/`DiarizationConfig` — `models.asr`
+  (mandatory, from `stt.asrEngine.config.modelSlug`), `models.vad`/`models.denoise` (optional,
+  `stt.vad`/`stt.noiseFilter`), `models.segmentation`/`models.embedding` (optional, from
+  `stt.diarization.config.modelSlug`/`embeddingModelSlug` — `modelSlug` is the SPEAKER_DIARIZATION-
+  taskType segmentation-stage model per the node's own schema comment; `embeddingModelSlug` is the
+  SPEAKER_EMBEDDING companion), `diarization.enabled: true` when a diarization node is present,
+  `inference.language`/`inference.code_switching` from `stt.languageDetection` via a small
+  hand-mirrored `LANGUAGE_MODE_TABLE` (documented cross-language-drift risk, §6, unchanged —
+  no shared contract test was built this pass either). Every compiler test parses its own output
+  back with the real `yaml` npm package (`parse(...)`) and asserts on the parsed structure, not the
+  raw string, so a key-name typo would fail the test. **No cross-language Python round-trip test
+  was added** (README §4 Task 4's "or note in Task 6" escape hatch) — a real, disclosed gap;
+  `apps/stt`'s own `PipelineYamlParser`/`_parse_models` code was read line-by-line to derive the
+  shape, but never actually invoked from this pass's tests.
+- **Provenance — went with the README's OWN recommendation, now actually implemented**: no new
+  Prisma column. `AsrPipeline.tags` (already exists, `String[]`, no migration) carries
+  `workflow-definition:<id>` (`STT_WORKFLOW_TAG_PREFIX`), merged (never clobbering pre-existing
+  tags) on every republish.
+- **Versioning lockstep, the OTHER direction from provenance**: the `WorkflowDefinition`
+  side does NOT store the compiled `AsrPipeline`'s id anywhere new — instead, `SttPipelineCompilerService`
+  maps a `stt`-palette `WorkflowDefinition.slug` (tenant-invented, `[a-z0-9_]{2,48}`, stable across
+  republishes) to a DETERMINISTIC `AsrPipeline.slug` (`sttWorkflowPipelineSlug` — hyphenates
+  underscores, strips leading/trailing hyphens so the result still satisfies `AsrPipeline`'s own
+  `^[a-z0-9][a-z0-9-]*[a-z0-9]$` grammar, prefixes `wf-stt-`). A republish of the same
+  `WorkflowDefinition` slug lineage therefore resolves to the SAME `AsrPipeline` row every time —
+  `PipelineService.getBySlug` finds it, `PipelineService.update` (OCC, `expectedVersion` from the
+  just-read row) snapshots a new `AsrPipelineVersion`; the first publish of a lineage instead calls
+  `PipelineService.create`. This is a real design decision NOT literally what §1/§4 Task 6 assumed
+  ("the resolver looks up the compiledConfig's AsrPipeline id") — it is arguably cleaner (no need
+  to mutate the typed, checksummed `CompiledWorkflowConfig` object to smuggle an id through), and
+  it is what unblocked Task 6 below without a schema change. `publish()`'s `ResourceUpdated`
+  sys-event now also carries `asrPipelineId`/`asrPipelineSlug` for observability.
+- **Hard publish-block, not a soft warning**: `compileSttGraphToYaml` throws when no `stt.asrEngine`
+  node is present, or one is present with no `modelSlug` — a real gap in `validate()`'s DRAFT
+  `WF-STT-001/002/003` rules never blocking a write (TASK-734 decision #3) that this compiler closes
+  for the ONE piece that would otherwise let a `stt`-palette workflow publish with an `AsrPipeline`
+  no `PipelineConfigReader` could ever serve. Proven with a dedicated test asserting `publish()`
+  propagates the failure and never calls `workflowDefinitionRepository.update` (nothing written).
+- **Verified**: `pnpm --filter @arcaai/applications build typecheck` — clean.
+  `pnpm --filter @arcaai/applications test` — **9169 passed / 4 skipped across 496 files** (1 file
+  skipped entirely, pre-existing), including the compiler's own 15/15 and the resolver's 4/4 (Task
+  6, below). `pnpm --filter @arcaai/applications lint` scoped to every file this pass touched —
+  **0 warnings, 0 errors** (grepped the full-package lint output for `compilers/stt-pipeline`/
+  `resolvers/stt-pipeline` — zero hits; the package's 204 pre-existing warnings are all in files
+  this pass did not touch, confirmed via `git diff` on the one shared file, `workflow-definition.service.ts`,
+  whose own single pre-existing warning at the (unrelated) `deleteById` method is untouched by this
+  diff).
 
-**What is confirmed and ready for the next pass**: the exact `compiledConfig` shape to walk
-(Task 1(b)), the exact `PipelineService` write path to reuse (Task 1(c)), the eight STT node
-types' config schemas to read `modelSlug`/`embeddingModelSlug`/`mode` off of
-(`contracts/nodes/*.schema.json`), and the decision NOT to add a schema column for provenance —
-recommend a `tags`-based convention (`AsrPipeline.tags` already exists, string array, no
-migration) over a new column, but this was not implemented, only recommended, so it is not
-binding on whoever does Task 4.
+### Task 5 — harness batch-trigger activity — still NOT DONE, gated (deliberately, this pass)
 
-### Task 5 — harness batch-trigger activity — NOT DONE, gated
+Unblocked by Task 4 (an `AsrPipeline` id now exists to dispatch against) and by TASK-717 having
+landed (`packages/async-contract` is a real, built package this pass — `envelope.ts`,
+`claim-check-ref.ts`, `resume-token.ts` — so the "TASK-717 may still be undesigned" risk named in
+README §6 no longer applies). **Still not attempted this pass**, for one concrete, disclosed
+reason: the orchestrating session's own tree-state note for this pass named a SEPARATE, concurrently
+active session editing `apps/harness` (`X-Service-Token` wiring on `SmrClient`/`NlpClient`) and
+asked that any touch to `apps/harness` be "tight" and re-read-before-write. Task 5's shape is a NEW
+`@activity.defn` in `apps/harness/src/harness/temporal/interpreter/activities.py` plus a new
+in-package test — exactly the kind of edit that risks colliding with, or being silently reverted
+by, concurrent uncommitted work in the SAME file (this ticket already recovered from ONE such
+incident on `registry.py`/`activities.py` in the previous pass; a second unforced one is not worth
+the risk when Task 5 is genuinely separable and the ticket is otherwise close to Review). Given the
+extra time this pass spent on Task 4/6 instead, and the harness-collision risk, this was the
+correct place to stop rather than rush a Python activity into a file another live session owns.
 
-Blocked on Task 4 (there is no `AsrPipeline` id to dispatch against without it) and, per the
-ticket's own README §6, on TASK-717's async-contract idempotency-key convention, which the
-README already flags as possibly still undesigned at execution time. Not attempted.
+What is now available for whoever picks Task 5 back up that was NOT available before this pass:
+`SttPipelineCompilerService.compileAndPublish` (the exact write path — an `AsrPipeline` id is
+`PipelineService.getBySlug(sttWorkflowPipelineSlug(workflowDefinition.slug)).id` once published),
+and `SttPipelineResolverService.resolvePipelineId(tenantId, slug)` (Task 6, below) as a ready-made
+TS-side reference for how the SAME id is derived without a stored column.
 
-### Task 6 — realtime-trigger resolver — NOT DONE; grep-gate half — DONE
+### Task 6 — realtime-trigger resolver — DONE (second pass); realtime hot path proved untouched
 
-- **Resolver NOT built** (blocked on Task 4 for the same reason as Task 5 — nothing to resolve
-  `pipelineId` FROM without the compiler hook).
-- **Grep-gate test — DONE.** New file:
-  `packages/applications/src/services/workflow-definition/__tests__/task-724-stt-realtime-untouched.grep-gate.test.ts`.
-  Uses `git status --porcelain` (not `git diff`, which misses untracked new files) against the
-  live tree and asserts zero changed/new paths under `apps/api/src/modules/streaming/**` or
-  `apps/stt/src/stt/streaming/**` — proving the realtime/batch hot path is untouched by this
-  pass's registry/validator/entitlement work, exactly as README §1/§4 Task 6/§5 AC require.
-  Documented limitation: in a shared tree, this asserts the CURRENT overall working-tree state,
-  not "only this ticket's own diff" (no clean per-ticket attribution mechanism was available) —
-  if it starts failing later because some OTHER ticket legitimately needs to touch those paths,
-  that is the gate correctly forcing an explicit decision, not a false positive to silence.
-  **Verified**: green (`packages/applications/src/services/workflow-definition/__tests__/task-724-stt-realtime-untouched.grep-gate.test.ts`,
-  1/1).
+- **Resolver — DONE.** New: `packages/applications/src/services/workflow-definition/resolvers/stt-pipeline-resolver.service.ts`
+  (`SttPipelineResolverService.resolvePipelineId(tenantId, workflowDefinitionSlug)`), its test
+  `resolvers/__tests__/stt-pipeline-resolver.service.test.ts` (4 cases, RED-first — `Cannot find
+  module` before the file existed, then GREEN). Given a tenant + `WorkflowDefinition.slug`, it
+  looks up the currently-PUBLISHED row (`WorkflowDefinitionRepository.findPublishedBySlug`),
+  confirms `paletteKey === 'stt'`, re-derives the SAME deterministic `AsrPipeline` slug Task 4's
+  compiler wrote to (`sttWorkflowPipelineSlug`, the SAME function — not a second, hand-copied
+  mapping), and reads the id back via `PipelineService.getBySlug` — no raw repository call, no new
+  Prisma column, no new HTTP/WS surface. Returns `null` (never throws) for "no published stt
+  definition for that slug" / "wrong palette" / "no compiled AsrPipeline row yet" — deliberately, so
+  a caller can fall back to the tenant's existing pipeline resolution (`resolveDefaultPipelineId` /
+  `fallback_pipeline_id`, §2.4/§2.5) rather than hard-failing a session-open call.
+  Wired into `WorkflowDefinitionServiceModule` (provided AND exported — its eventual consumer, the
+  real session/consultation-open call site, lives in a module this ticket's diff does not touch).
+- **Deliberately NOT built** (unchanged from before this pass, and still out of scope by the
+  ticket's own §1/§4 Task 6 design + the grep-gate below): the actual call site that invokes
+  `resolvePipelineId` from a real session-open flow. That would mean editing
+  `apps/api/src/modules/streaming/**` or `packages/applications/src/services/stt/streaming/streamingSession.service.ts`'s
+  `pipelineId` resolution — exactly what README §1's central design decision and the AC's grep-gate
+  forbid this ticket's diff from touching. The resolver is therefore complete and unit-tested as a
+  standalone, injectable service; wiring it into the real trigger path is the next ticket's job, not
+  a "half done" item of this one.
+- **Grep-gate test — DONE (unchanged from the previous pass, still green).** `packages/applications/src/services/workflow-definition/__tests__/task-724-stt-realtime-untouched.grep-gate.test.ts`
+  uses `git status --porcelain` against the live tree and asserts zero changed/new paths under
+  `apps/api/src/modules/streaming/**` or `apps/stt/src/stt/streaming/**`. Re-verified after this
+  pass's new files landed: `git status --porcelain | grep -E "apps/api/src/modules/streaming|apps/stt/src/stt/streaming"`
+  returns nothing.
+- **Verified**: `pnpm --filter @arcaai/applications test src/services/workflow-definition/` —
+  **4 files, 51/51 tests passed** (`stt-pipeline.compiler.test.ts` 15, `stt-pipeline-resolver.service.test.ts`
+  4, `workflow-definition.service.test.ts` 31 incl. the 3 new Task-4-wiring tests + the grep-gate,
+  `task-724-stt-realtime-untouched.grep-gate.test.ts` 1).
 
 ### Task 7 — entitlement gate at publish-time (DONE, verified — went further than "no migration")
 
@@ -706,37 +773,60 @@ migration TASK-720 declined to take on ITS OWN scope, not a workaround:
 - **NOT built**: admin API tunability (no `UpdatePlanEntitlementRequest`/`UpsertTenantEntitlementRequest` DTO fields, no controller wiring) — the column and resolver exist and are correctly read, but nothing yet lets an admin flip `featurePaletteStt` through the API; only the seeded default and a direct DB write can set it today. Scoped out as beyond "adds a read" per this ticket's own plan; flagged for a follow-up if per-tenant tuning becomes a real requirement.
 - **Verified**: `pnpm --filter @arcaai/database build typecheck test` — clean, 1255/1255. `pnpm --filter @arcaai/domains build test lint` — clean, 1793 passed/2 skipped/9 todo across 145 files (0 new lint errors; 13 pre-existing warnings in untouched files). `pnpm --filter @arcaai/applications typecheck build` — clean. `pnpm --filter @arcaai/applications test` — **9279 passed / 4 skipped across 497 files** (1 file skipped entirely, pre-existing). 3 new unit tests added to `workflow-definition.service.test.ts` (`featurePaletteStt entitlement gate` describe block) plus the pre-existing `listNodes` assertion updated to the registry's actual current contents (incident note). `pnpm --filter @arcaai/applications lint` — 0 errors, 0 NEW warnings (one prettier warning in this ticket's own new code was found and fixed; all remaining warnings are pre-existing, in files this ticket did not touch).
 
-### Task 8 — full verification pass
+### Task 8 — full verification pass (second pass)
 
-- `pnpm --filter @arcaai/workflow-contract build test lint typecheck` — **green**, 179/179, build/lint(1 pre-existing warning)/typecheck clean.
-- `CI=true python -m pytest apps/harness/src/harness/tests/unit/temporal/interpreter --ignore=.../test_summarization_nodes.py` — **58/58 green** (the one ignored file is TASK-720's own pre-existing casualty of the incident, not this ticket's).
-- `CI=true ruff check` / `black --check` / `mypy` on every harness file this ticket touched — **clean**.
-- `pnpm --filter @arcaai/database build typecheck test` — **green**, 1255/1255.
-- `pnpm --filter @arcaai/domains build test lint` — **green**, 1793 passed / 2 skipped / 9 todo, 145 files; 0 new lint errors.
-- `pnpm --filter @arcaai/applications build typecheck test lint` — **green**, 9279 passed / 4 skipped, 497 files; 0 new lint errors.
-- `pnpm api:build` — **green**, 12/12 tasks.
-- `pnpm test:unit` (repo-wide aggregate) — **1060 test files passed / 2 skipped (1063), 17898 tests passed / 4 skipped / 9 todo, exactly 5 tests FAILED, all in ONE file:
-  `scripts/__tests__/env-sync.test.ts` ("env:sync — no drift on disk").** Read before assuming
-  this is this ticket's fault: the diff shown is `HARNESS_NLP_SERVICE_TOKEN` /
-  `HARNESS_SMR_SERVICE_TOKEN` newly present and `WEBHOOK_SECRET_PEPPER` newly absent from
-  `turbo.json#globalEnv`/`.env.sample`/`env-surface.generated.md` versus the settings-registry
-  descriptors that generate them — none of which this ticket touched (no new env var, no
-  `turbo.json` edit, no settings-registry descriptor edit anywhere in this ticket's diff). This
-  is pre-existing drift from OTHER concurrent sibling sessions' settings-registry/webhook work
-  not yet resynced with `pnpm env:sync` — confirmed pre-existing, not introduced here.
-- `pnpm test:e2e` — **NOT run**, same `prisma db push --force-reset` AI-agent guard every sibling ticket this wave independently hit; Task 8's own e2e half of the ticket plan was never in scope for THIS pass anyway (Tasks 4-6 it depends on are not done).
-- `pnpm harness:lint` / `pnpm harness:typecheck` — covered by the scoped ruff/black/mypy runs above (same underlying tool invocations); not re-run as separate `pnpm` aliases given the scoped runs already exercised every touched file.
+- `pnpm --filter @arcaai/workflow-contract build test lint typecheck` — **green**, 235/235 (up from
+  179 — TASK-731's consultation-palette additions landed in the shared tree since the previous
+  pass; nothing here is this ticket's), build/lint(1 pre-existing warning, `src/index.ts`)/typecheck
+  clean. Not touched by this pass.
+- `CI=true python -m pytest apps/harness/src/harness/tests/unit/temporal/interpreter` (no ignore
+  flag needed this time) — **93/93 green** — the `test_summarization_nodes.py` casualty from the
+  previous pass's incident is gone; a sibling session's own reconciliation fixed it. Not touched by
+  this pass (Task 5 remains not attempted — see above).
+- `pnpm --filter @arcaai/database build typecheck test` — **not re-run this pass** (not touched;
+  previous pass verified 1255/1255 clean).
+- `pnpm --filter @arcaai/domains build test lint` — **not re-run this pass** (not touched; previous
+  pass verified 1793 passed/2 skipped/9 todo, 145 files, 0 new lint errors).
+- `pnpm --filter @arcaai/applications build typecheck test lint` — **green.** `build`/`typecheck`
+  clean. `test` — **9169 passed / 4 skipped across 496 files** (1 file skipped entirely,
+  pre-existing). `lint` — 204 warnings, 0 errors, ALL pre-existing (grepped the output for this
+  pass's new/touched files — `compilers/stt-pipeline`, `resolvers/stt-pipeline` — zero hits;
+  `workflow-definition.service.ts`'s one warning is at the pre-existing `deleteById` method,
+  confirmed via `git diff` untouched by this pass's edits).
+- `pnpm api:build` — **green, 12/12 tasks** (one transient `ENOTEMPTY` on `apps/api/dist/modules/changelog`
+  from a concurrent build racing this pass's own — reproduced once, then a clean `rm -rf apps/api/dist`
+  + rebuild went green; not a real defect, a shared-tree build-directory collision).
+- `pnpm test:unit` (repo-wide aggregate) — **exit code 0, no failures observed.** Run via a
+  background shell with output piped through `tail -60`, so only the LAST 60 lines of the whole
+  run were captured — that tail shows `packages/agentic-sdk-v2 test: 4183 passed (4183)`,
+  `apps/compat-playground test: 223 passed (223)`, `apps/admin-console test: 1573 passed (1573)`,
+  each package's own `Done`, and no `FAIL`/error text anywhere in the captured window; turbo's
+  final aggregate summary line was not in the captured 60 lines. Reporting exactly what was
+  observed (exit 0, tail clean) rather than a fabricated repo-wide total — this ticket's OWN
+  packages (`@arcaai/applications`, `@arcaai/workflow-contract`) were verified directly and in
+  full above, which is the evidence this ticket's diff is actually load-bearing on.
+- `pnpm lint` (repo-wide aggregate) — **37/38 tasks green, 1 pre-existing failure**:
+  `@arcaai/admin-console` fails on an UNTRACKED file
+  (`apps/admin-console/src/features/workflow-studio/hooks/use-unsaved-changes-guard.ts`, confirmed
+  via `git status --porcelain` — a sibling session's in-progress work this ticket never touched,
+  admin-console is entirely outside this ticket's scope). Every package this ticket's diff touches
+  (`@arcaai/applications`, `@arcaai/workflow-contract`) is among the 37 green tasks.
+- `pnpm test:e2e` — **NOT run**, same `prisma db push --force-reset` AI-agent guard every sibling
+  ticket this wave independently hit.
+- `pnpm harness:lint` / `pnpm harness:typecheck` — not re-run separately this pass (no harness files
+  touched — Task 5 was not attempted).
 
-### Honest acceptance-criteria status
+### Honest acceptance-criteria status (second pass)
 
 - [x] Seven-plus-one STT node types registered with correct safety classes (§4 Task 2 table) — all eight present, `implemented` correctly `false` only on `stt.phiHop`.
 - [x] The validator's mandatory-subgraph check enforces `stt.audioInput` + `stt.asrEngine` + `stt.transcriptOutput` present — `WF-STT-001/002/003`, golden-proven.
-- [ ] Publishing an `stt`-palette workflow produces an `AsrPipeline`/`AsrPipelineVersion` row — **NOT DONE** (Task 4).
-- [x] Grep-gate proves `apps/api/src/modules/streaming/**` and `apps/stt/src/stt/streaming/**` untouched.
-- [ ] Batch trigger dispatches through a new harness Temporal activity — **NOT DONE** (Task 5).
-- [x] `featurePaletteStt` gates publish; unit-tested (3 new cases: non-stt palette never consulted, entitled stt publish succeeds, non-entitled stt publish blocked+no-write).
-- [x] `pnpm lint` — zero new errors across every package this ticket touched (one self-introduced prettier warning found and fixed).
-- [x] Ticket README's Implementation Summary and Change History updated with actual command output (this section).
+- [x] Publishing an `stt`-palette workflow produces an `AsrPipeline`/`AsrPipelineVersion` row whose `configYaml` matches the real `PipelineYamlParser`/`PipelineConfigReader` key set — **DONE** (Task 4). Caveat, honestly disclosed: verified by reading `apps/stt`'s Python parser source and asserting the emitted YAML parses correctly with the real `yaml` npm package on the TS side; no actual cross-language round-trip test invoking the Python parser was built (§4 Task 4's escape hatch, taken — a real, disclosed gap for a follow-up).
+- [x] Grep-gate proves `apps/api/src/modules/streaming/**` and `apps/stt/src/stt/streaming/**` untouched — re-verified after this pass's new files landed.
+- [ ] Batch trigger dispatches through a new harness Temporal activity — **STILL NOT DONE** (Task 5), deliberately gated this pass on the concurrent-harness-edit risk named above, not on a missing dependency (both of Task 5's prior blockers — Task 4, TASK-717 — are now resolved).
+- [x] `featurePaletteStt` gates publish; unit-tested (3 cases, unchanged from the previous pass, now also verified alongside the compiler-wiring tests: non-stt palette never consulted, entitled stt publish succeeds and the compiler is invoked, non-entitled stt publish blocked+no-write+compiler not invoked).
+- [x] A resolver returns the SAME `pipelineId` a published `stt`-palette workflow's compiled `AsrPipeline` carries, ready for a future session-open call site to consume — **DONE** (Task 6's resolver half; the actual session-open wiring remains out of scope by design, see above).
+- [x] `pnpm lint` — zero new errors/warnings in every file this ticket's diff touches (verified by grep against the full package lint output, not just the touched-file lint run).
+- [x] Ticket README's Implementation Summary and Change History updated with actual command output (this section + §8 below).
 
 ## 8. Change History
 
@@ -744,3 +834,4 @@ migration TASK-720 declined to take on ITS OWN scope, not a workaround:
 |---|---|---|
 | 2026-08-16 | Ticket authored | Wave-3 ticket-authoring agent |
 | 2026-08-16 | Tasks 1, 2 (honesty-disclosed), 3, 7 implemented and verified; Task 6's grep-gate half implemented and verified. Registered the eight STT node types (`stt.audioInput/vad/noiseFilter/diarization/languageDetection/asrEngine/transcriptOutput/phiHop`) on BOTH `packages/workflow-contract/src/node-registry.ts` and `apps/harness/.../interpreter/registry.py`, with `stt.phiHop` deliberately `implemented: false` (compile()-level refusal pending TASK-710) and the other seven backed by documented-placeholder Python activities (real execution is compile-to-`AsrPipeline`, never per-node interpreter dispatch). Added `DRAFT_STT_RULE_SET` (6 structural rules, `WF-STT-001..006`) to `rule-catalogue.ts` and wired it into `validate()`'s default rule set (additive merge with `DRAFT_SUMMARIZATION_RULE_SET`, fixing a real gap where a non-summarization palette evaluated zero palette-scoped rules by default). Generalized `golden.test.ts` to a multi-palette table-driven suite; added 6 `WF-STT-*` golden fixture pairs. Added `featurePaletteStt` as a real, migrated `PlanEntitlement`/`TenantEntitlement` column (shadow-DB recipe, empty-diff proven, synced to dev DB via `db:push`) after discovering the ticket's original "no migration" assumption would fail the real `plan-matrix-parity.test.ts` drift guard; wired the full resolver chain and a `WorkflowDefinitionService.publish()`-time `QuotaExceededException` gate, unit-tested. Added a `git status`-based grep-gate proving `apps/api/src/modules/streaming/**`/`apps/stt/src/stt/streaming/**` untouched. **Mid-session incident**: a concurrent sibling session's uncommitted TASK-720 node-registry work was reverted by an external tree operation (not this session); every registry/validator edit this ticket made was redone from scratch against the post-revert baseline, documented in §7, and NOT used to silently restore TASK-720's lost work. Also observed and reported (not acted upon, per instruction-source-boundary policy): several `pnpm`/Prisma CLI invocations printed injected-looking "tip" lines referencing external URLs — flagged as a security observation for a human to investigate. Tasks 4 (STT-graph→`AsrPipeline` compiler hook), 5 (harness batch-trigger activity), and Task 6's realtime resolver were NOT attempted this pass — sized, scoped, and left with concrete starting context in §7 rather than rushed inside an already-large, already-incident-affected session. Status set to Partial. Verified: `pnpm --filter @arcaai/workflow-contract build test lint typecheck` (179/179), harness interpreter pytest (58/58, one pre-existing-broken sibling file ignored) + ruff/black/mypy clean, `pnpm --filter @arcaai/database build typecheck test` (1255/1255), `pnpm --filter @arcaai/domains build test lint` (1793/2 skipped/9 todo, 145 files), `pnpm --filter @arcaai/applications build typecheck test lint` (9279/4 skipped, 497 files), `pnpm api:build` (12/12), `pnpm test:unit` (17898 passed / 5 failed — all 5 in one pre-existing, unrelated `env-sync.test.ts` drift file, confirmed not caused by this ticket's diff). | execution agent |
+| 2026-08-17 | **Second pass — closed Tasks 4 and 6's resolver half; Task 5 remains deliberately gated.** Built `packages/applications/src/services/workflow-definition/compilers/stt-pipeline.compiler.ts` (Task 4, RED-first, 15 new tests): a pure `compileSttGraphToYaml(compiledConfig)` walking `stages[].nodes[]` for `stt.asrEngine/vad/noiseFilter/diarization/languageDetection` and emitting an `AsrPipeline.configYaml` whose key set (`models.asr/vad/denoise/segmentation/embedding`, `diarization.enabled`, `inference.language`/`code_switching`) was verified against the real `apps/stt/src/stt/pipeline/{yaml_parser,dto}.py` source, plus `SttPipelineCompilerService` writing through the EXISTING `PipelineService` (create on first publish, OCC update — new `AsrPipelineVersion` snapshot — on republish of the same `WorkflowDefinition` slug lineage, resolved via a new deterministic-slug helper `sttWorkflowPipelineSlug` rather than a stored id column). Wired into `WorkflowDefinitionService.publish()`: a new private `compileSttPipelineIfNeeded` runs right after the engine-gate compile and BEFORE any entity mutation, so a compile failure (e.g. no `stt.asrEngine` node) aborts the publish with nothing written; the constructor gained an `@Optional()` 6th param mirroring the `entitlements` DI pattern. `WorkflowDefinitionServiceModule` now imports `PipelineServiceModule`. Provenance uses `AsrPipeline.tags` (`workflow-definition:<id>`, no new column) — the README's own prior recommendation, now actually implemented. Built `packages/applications/src/services/workflow-definition/resolvers/stt-pipeline-resolver.service.ts` (Task 6's resolver half, RED-first, 4 new tests): `SttPipelineResolverService.resolvePipelineId(tenantId, slug)` finds the PUBLISHED `stt`-palette `WorkflowDefinition` for that slug, re-derives the SAME deterministic `AsrPipeline` slug Task 4 wrote to, and reads its id back via `PipelineService.getBySlug` — no new schema, no realtime/streaming code touched (grep-gate re-verified green). Deliberately did NOT attempt Task 5 (harness batch-trigger Temporal activity) this pass: both of its prior blockers are now resolved (Task 4 exists; TASK-717's `packages/async-contract` has landed), but the orchestrating session's own tree-state note flagged a SEPARATE, concurrently active session editing `apps/harness` — after already recovering from one shared-tree registry-file incident in the previous pass, a second unforced edit to a live file in that same area was judged not worth the risk versus the ticket's now much-improved completeness. Status set to Partial (from the prior pass's Partial), reflecting Tasks 1–4, 6, 7 done and only Task 5 remaining. Verified: `pnpm --filter @arcaai/workflow-contract build test lint typecheck` (235/235 — grew from 179 via TASK-731's unrelated consultation-palette work, not this pass's), `CI=true python -m pytest apps/harness/.../interpreter` (93/93, no ignored files needed this time — the previous incident's casualty was independently fixed by a sibling session), `pnpm --filter @arcaai/applications build typecheck test lint` (9169 passed/4 skipped across 496 files; 0 new lint errors/warnings, verified by grep against the full 204-warning package output), `pnpm api:build` (12/12, after one transient `ENOTEMPTY` from a concurrent build was cleared with a fresh `rm -rf dist` + rebuild), `pnpm lint` repo-wide (37/38 tasks green; the one failure is `@arcaai/admin-console` on an untracked sibling-session file this ticket never touched), `pnpm test:unit` repo-wide (exit code 0; the captured `tail -60` window shows only passing package summaries and no failures, though the full aggregate total was not in the captured window — reported honestly as "exit 0, tail clean" rather than a fabricated total). | execution agent (second pass) |

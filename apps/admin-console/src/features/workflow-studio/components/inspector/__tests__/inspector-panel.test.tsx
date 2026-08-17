@@ -5,9 +5,10 @@
  * (the REAL registry today — `contracts/registry.contract.md`: no delivered node type has
  * one), the panel falls back to the raw `CodeEditor` over `node.config` directly.
  */
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { axe } from 'vitest-axe';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { renderWithProviders } from '@/test/render';
 import { InspectorPanel } from '../inspector-panel';
 import type { GraphStoreNode } from '../../../store/types';
 import type { WorkflowFinding } from '../../../api/types';
@@ -25,6 +26,14 @@ const SCHEMA = {
 function node(config: Record<string, unknown> = {}): GraphStoreNode {
   return { id: 'n1', type: 'summarize', position: { x: 0, y: 0 }, safetyClasses: [], config };
 }
+
+function stubPromptTemplatesFetch(): void {
+  vi.stubGlobal('fetch', vi.fn(async () => Response.json({ data: [{ id: 't-1', name: 'Discharge summary' }], count: 1 })));
+}
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 describe('InspectorPanel', () => {
   it('shows an empty state when no node is selected', () => {
@@ -67,8 +76,40 @@ describe('InspectorPanel', () => {
   });
 
   it('falls back to the raw CodeEditor when the node type has no config schema', () => {
-    render(<InspectorPanel node={node({ raw: true })} configSchema={undefined} problems={[]} onConfigChange={vi.fn()} />);
+    stubPromptTemplatesFetch();
+    renderWithProviders(<InspectorPanel node={node({ raw: true })} configSchema={undefined} problems={[]} onConfigChange={vi.fn()} />);
     expect(screen.getByText(/no configuration schema/i)).toBeTruthy();
+  });
+
+  it('Task 19: also renders the PromptTemplatePicker below the raw JSON editor when there is no config schema', async () => {
+    stubPromptTemplatesFetch();
+    renderWithProviders(<InspectorPanel node={node({ raw: true })} configSchema={undefined} problems={[]} onConfigChange={vi.fn()} />);
+    expect(await screen.findByText('Prompt template')).toBeTruthy();
+    expect(screen.getByRole('link', { name: /manage prompt templates/i }).getAttribute('href')).toBe('/prompt-templates');
+  });
+
+  it('Task 19: selecting a prompt template merges promptTemplateId into node.config without disturbing other keys', async () => {
+    stubPromptTemplatesFetch();
+    const onConfigChange = vi.fn();
+    renderWithProviders(<InspectorPanel node={node({ raw: true })} configSchema={undefined} problems={[]} onConfigChange={onConfigChange} />);
+    if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => {};
+
+    const trigger = await screen.findByLabelText('Prompt template');
+    fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false, pointerType: 'mouse' });
+    await waitFor(() => expect(screen.getByRole('option', { name: 'Discharge summary' })).toBeTruthy());
+    // See prompt-template-picker.test.tsx for why `click`, not `pointerUp`, is the activation
+    // path that works under jsdom's incomplete pointer-event pipeline.
+    fireEvent.click(screen.getByRole('option', { name: 'Discharge summary' }));
+
+    expect(onConfigChange).toHaveBeenCalledWith({ raw: true, promptTemplateId: 't-1' });
+  });
+
+  it('Task 19: the PromptTemplatePicker section steps aside when the schema already declares a promptTemplateId field', () => {
+    render(<InspectorPanel node={node()} configSchema={SCHEMA} problems={[]} onConfigChange={vi.fn()} />);
+    // The schema's own generic string control ("Prompt Template Id") renders it — the Task 19
+    // section (labeled exactly "Prompt template") never doubles up on the same key.
+    expect(screen.getByText(/^Prompt Template Id/)).toBeTruthy();
+    expect(screen.queryByText('Prompt template')).toBeNull();
   });
 
   it('0 axe violations with a schema-backed node selected', async () => {

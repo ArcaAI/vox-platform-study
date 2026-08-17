@@ -102,6 +102,85 @@ export const WORKFLOW_NODE_REGISTRY: Readonly<Record<string, WorkflowNodeDescrip
     entitlementKey: null,
   }),
   // -------------------------------------------------------------------------------------------
+  // Summarization palette (TASK-720) — five node types, `paletteKey: 'summarization'`. `classes`
+  // carries `'activity'` on every entry (each emits exactly one NODE trajectory step per
+  // palette.md's "emitsTrajectory" section) plus `'generation'` on `generate.text` only (the one
+  // node whose compiled config carries an `onError` field — matches the existing DRAFT rule at
+  // `rule-catalogue.ts` keyed off `nodeClass: 'generation'`). None carry `'gate'` — none are HITL
+  // gates, so the compiler correctly leaves all five inside `stages[]` (none lifted into `gates[]`,
+  // which v1's admission requires to stay `[]` — execution-semantics.md §2 step 5).
+  // `entitlementKey: null` on every entry — R-7 (this ticket's README §6): `PlanEntitlement` is
+  // column-per-key, not a free-string registry, so gating this palette needs a migration, not a
+  // registry value; not added here.
+  //
+  // RESTORED (2026-08-17, close-out pass): these five entries were dropped from this file by an
+  // external tree operation mid-session (see TASK-724/TASK-731 READMEs, and this ticket's own §7
+  // "Second pass") even though the node activities, rule catalogue (`WF-SUMM-001..006`), and
+  // golden fixtures never stopped existing on disk. Re-added verbatim from the last known-good
+  // shape (git history, commit 632f93f14) — values match `contracts/palette.md`'s node table and
+  // `registry.py`'s matching five entries exactly.
+  // -------------------------------------------------------------------------------------------
+  'input.context_binding': Object.freeze({
+    key: 'input.context_binding',
+    implemented: true,
+    activityName: 'interpreter.context_binding',
+    classes: Object.freeze(['activity']),
+    paletteKey: 'summarization',
+    critical: true,
+    externalWrite: false,
+    defaultTimeoutSeconds: 60,
+    defaultMaxAttempts: 3,
+    entitlementKey: null,
+  }),
+  'prompt.template_ref': Object.freeze({
+    key: 'prompt.template_ref',
+    implemented: true,
+    activityName: 'interpreter.template_ref',
+    classes: Object.freeze(['activity']),
+    paletteKey: 'summarization',
+    critical: false,
+    externalWrite: false,
+    defaultTimeoutSeconds: 30,
+    defaultMaxAttempts: 3,
+    entitlementKey: null,
+  }),
+  'generate.text': Object.freeze({
+    key: 'generate.text',
+    implemented: true,
+    activityName: 'interpreter.text_generate',
+    classes: Object.freeze(['activity', 'generation']),
+    paletteKey: 'summarization',
+    critical: true,
+    externalWrite: false,
+    defaultTimeoutSeconds: 300,
+    defaultMaxAttempts: 2,
+    entitlementKey: null,
+  }),
+  'guardrail.check': Object.freeze({
+    key: 'guardrail.check',
+    implemented: true,
+    activityName: 'interpreter.guardrail_check',
+    classes: Object.freeze(['activity']),
+    paletteKey: 'summarization',
+    critical: false,
+    externalWrite: false,
+    defaultTimeoutSeconds: 60,
+    defaultMaxAttempts: 3,
+    entitlementKey: null,
+  }),
+  'output.deliver': Object.freeze({
+    key: 'output.deliver',
+    implemented: true,
+    activityName: 'interpreter.deliver',
+    classes: Object.freeze(['activity']),
+    paletteKey: 'summarization',
+    critical: true,
+    externalWrite: true,
+    defaultTimeoutSeconds: 60,
+    defaultMaxAttempts: 3,
+    entitlementKey: null,
+  }),
+  // -------------------------------------------------------------------------------------------
   // STT palette (TASK-724) — eight node types, `paletteKey: 'stt'`. See
   // docs/implementation/TASK-724-Palette-Stt/contracts/palette.md for the node table, `critical`
   // rationale, and the `implemented: false` decision on `stt.phiHop` (a documented placeholder
@@ -109,13 +188,6 @@ export const WORKFLOW_NODE_REGISTRY: Readonly<Record<string, WorkflowNodeDescrip
   // never a silent pass-through). `entitlementKey: null` on every entry — `featurePaletteStt`
   // gating is wired at WorkflowDefinitionService.publish() via IEntitlementsService, not a
   // registry-declared key (see palette.md's Entitlement gate section).
-  //
-  // NOTE (2026-08-16, this ticket's execution): as of this pass, TASK-720's own summarization
-  // node-registry entries are ABSENT from this file — a concurrent sibling session's uncommitted
-  // work was reverted by an external tree operation mid-session (see this ticket's README §7 for
-  // the full account). These eight STT entries do not depend on the summarization entries being
-  // present and are correct either way; do not silently "restore" TASK-720's entries here — that
-  // is TASK-720's own reconciliation to make.
   // -------------------------------------------------------------------------------------------
   'stt.audioInput': Object.freeze({
     key: 'stt.audioInput',
@@ -210,6 +282,53 @@ export const WORKFLOW_NODE_REGISTRY: Readonly<Record<string, WorkflowNodeDescrip
     paletteKey: 'stt',
     critical: false,
     externalWrite: false,
+    defaultTimeoutSeconds: 60,
+    defaultMaxAttempts: 1,
+    entitlementKey: null,
+  }),
+  // -------------------------------------------------------------------------------------------
+  // Consultation palette (TASK-731) — a PARTIAL pass: only 3 of the palette's 13 node types are
+  // registered this pass. See docs/implementation/TASK-731-Palette-Consultation/contracts/
+  // node-types.md for the full 13-node design (every node type's compile target is verified and
+  // documented there, including the 10 not yet wired) and this ticket's README §7 for why. TASK-710
+  // (phi-redactor) HAS landed (unlike at STT's execution time), so `consultation.phiHop` registers
+  // `implemented: true`, unlike its `stt.phiHop` sibling above.
+  // -------------------------------------------------------------------------------------------
+  'consultation.consentGate': Object.freeze({
+    key: 'consultation.consentGate',
+    implemented: true,
+    activityName: 'interpreter.consultation_consent_gate',
+    classes: Object.freeze(['consentGate']),
+    paletteKey: 'consultation',
+    critical: true,
+    externalWrite: false,
+    defaultTimeoutSeconds: 30,
+    defaultMaxAttempts: 3,
+    entitlementKey: null,
+  }),
+  'consultation.phiHop': Object.freeze({
+    key: 'consultation.phiHop',
+    implemented: true,
+    activityName: 'interpreter.consultation_phi_hop',
+    classes: Object.freeze(['activity', 'redaction']),
+    paletteKey: 'consultation',
+    critical: false,
+    externalWrite: false,
+    defaultTimeoutSeconds: 60,
+    defaultMaxAttempts: 3,
+    entitlementKey: null,
+  }),
+  // PLACEHOLDER — implemented:false. The interpreter's durable-wait extension (Phase B) has not
+  // been implemented; compile() therefore refuses any graph containing this node type. See
+  // contracts/palette-contract.md §2.
+  'consultation.hitlGate': Object.freeze({
+    key: 'consultation.hitlGate',
+    implemented: false,
+    activityName: 'interpreter.consultation_hitl_gate',
+    classes: Object.freeze(['gate']),
+    paletteKey: 'consultation',
+    critical: true,
+    externalWrite: true,
     defaultTimeoutSeconds: 60,
     defaultMaxAttempts: 1,
     entitlementKey: null,

@@ -1883,8 +1883,9 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
    * Delegates to the shared repository helper
    * (`ContextItemRepository.findLatestPreSummaryWithDecryptedContent`) instead of
    * hand-rolling the find + subType-filter + newest-wins reduce here — this was one
-   * of four copies of that exact logic (harness's `loadLiveSoapSnapshot`,
-   * `SummaryService`/`SummaryProcessor`'s `resolveWarmStartPreSummary`). No
+   * of several copies of that exact logic (harness's `loadLiveSoapSnapshot`,
+   * `SummaryService.resolveWarmStartPreSummary` and, before TASK-732 deleted
+   * it, the legacy async summary generator's own copy). No
    * `secrets` is passed: this caller only ever reads `.metaData` off the row (agent
    * lineage / dedup identity), never `.content`, so there is nothing to decrypt and
    * no behaviour change from skipping it.

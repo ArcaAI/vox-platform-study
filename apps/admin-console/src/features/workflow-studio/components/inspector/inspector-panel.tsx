@@ -13,6 +13,13 @@
  * re-validates client-side; `jsonSchemaValueProblems` is not called here (README pitfall 1 /
  * Task 8's own discipline: the compiler only decides how to RENDER, never whether a value is
  * valid).
+ *
+ * Task 19 adds a standalone `PromptTemplatePicker` section (`config.promptTemplateId`) — shown
+ * whenever the schema does NOT already declare a field at that path (the real registry state
+ * today: no delivered node type has a config schema at all, so `promptTemplateId` is otherwise
+ * unreachable except by hand-editing raw JSON). If a future schema DOES declare
+ * `promptTemplateId` itself, the generic `field-renderers.tsx` string control already renders it
+ * and this section steps aside rather than offering a second, duplicate control for the same key.
  */
 import { CodeEditor, Empty, EmptyDescription, EmptyMedia, EmptyTitle, Skeleton } from '@arcaai/ui';
 import { IconLayoutBoard } from '@tabler/icons-react';
@@ -21,7 +28,10 @@ import { toFieldDescriptors, type FieldDescriptor } from '../../lib/schema-form'
 import type { WorkflowFinding } from '../../api/types';
 import type { GraphStoreNode } from '../../store/types';
 import { FieldRenderer } from './field-renderers';
+import { PromptTemplatePicker } from './prompt-template-picker';
 import { NO_SCHEMA_REASON } from './raw-json-field';
+
+const PROMPT_TEMPLATE_PATH = 'promptTemplateId';
 
 export interface InspectorPanelProps {
   node: GraphStoreNode | null;
@@ -46,6 +56,38 @@ function flattenPaths(descriptors: FieldDescriptor[]): string[] {
     if (descriptor.kind === 'discriminated') return [descriptor.path, ...descriptor.branches.flatMap((branch) => flattenPaths(branch.fields))];
     return [descriptor.path];
   });
+}
+
+function promptTemplateValue(config: Record<string, unknown>): string {
+  const value = config[PROMPT_TEMPLATE_PATH];
+  return typeof value === 'string' ? value : '';
+}
+
+function PromptTemplateSection({
+  node,
+  onConfigChange,
+  problems,
+  readOnly,
+}: {
+  node: GraphStoreNode;
+  onConfigChange: (config: Record<string, unknown>) => void;
+  problems: WorkflowFinding[];
+  readOnly?: boolean;
+}) {
+  return (
+    <PromptTemplatePicker
+      id={`${node.id}-${PROMPT_TEMPLATE_PATH}`}
+      label="Prompt template"
+      description="Optional — links this node to a tenant prompt template."
+      value={promptTemplateValue(node.config)}
+      onChange={(next) => {
+        const { [PROMPT_TEMPLATE_PATH]: _omit, ...rest } = node.config;
+        onConfigChange(next ? { ...rest, [PROMPT_TEMPLATE_PATH]: next } : rest);
+      }}
+      disabled={readOnly}
+      errors={errorsForPath(problems, PROMPT_TEMPLATE_PATH)}
+    />
+  );
 }
 
 function WholeConfigJsonEditor({ node, onConfigChange }: { node: GraphStoreNode; onConfigChange: (config: Record<string, unknown>) => void }) {
@@ -96,7 +138,12 @@ export function InspectorPanel({ node, configSchema, problems, onConfigChange, l
   }
 
   if (configSchema === undefined) {
-    return <WholeConfigJsonEditor node={node} onConfigChange={onConfigChange} />;
+    return (
+      <div className="flex flex-col gap-4">
+        <WholeConfigJsonEditor node={node} onConfigChange={onConfigChange} />
+        <PromptTemplateSection node={node} onConfigChange={onConfigChange} problems={problems} readOnly={readOnly} />
+      </div>
+    );
   }
 
   const descriptors = toFieldDescriptors(configSchema);
@@ -115,6 +162,9 @@ export function InspectorPanel({ node, configSchema, problems, onConfigChange, l
           idPrefix={node.id}
         />
       ))}
+      {!knownPaths.has(PROMPT_TEMPLATE_PATH) ? (
+        <PromptTemplateSection node={node} onConfigChange={onConfigChange} problems={problems} readOnly={readOnly} />
+      ) : null}
       {graphLevelErrors.length > 0 ? (
         <div role="alert" className="text-destructive text-sm">
           {graphLevelErrors.map((problem) => (

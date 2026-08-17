@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Review — Phase A/B (Tasks 1, 3–6, 10) and Phase C (Tasks 7–9, 11) all built and green; e2e specs authored but NOT executed (infra/tooling constraints, not skipped by choice) — see §7 |
+| **Status** | Review — Phase A/B (Tasks 1, 3–6, 10) and Phase C (Tasks 7–9, 11) all built and green; close-out pass (2026-08-17) re-proved the migration diff against the new squashed baseline — see §7c. e2e specs authored but NOT executed (infra/tooling constraints, not skipped by choice) |
 | **Wave** | 2 · **Size** | M |
 | **Epic slug** | `runs-observability` |
 | **Depends on** | TASK-718 (`workflow-interpreter`), TASK-719 (`workflow-studio-v1`) |
@@ -1109,6 +1109,65 @@ green.
 - `apps/admin-console` package-wide `build`/`lint`/`typecheck` need a clean re-run once the
   concurrent `workflow-studio/**` work lands — nothing in THIS ticket's own files is blocking it.
 
+## 7c. Close-out pass (2026-08-17) — re-verified against the squashed migration baseline
+
+**The migration ledger was squashed since Session 2** (102 migrations →
+`20260817000000_init` + two follow-ons). The old, by-hand-authored
+`20260816040000_task_723_workflow_run` migration file no longer exists as a separate file; its
+schema effect is folded into `20260817000000_init` (`CREATE TABLE "core"."WorkflowRun"` is present
+at line 2609, plus its four indexes and unique constraint). Re-ran the rule-02 shadow-DB recipe
+against a throwaway `hope_shadow_closeout` database this pass (never the dev DB) to re-prove
+zero drift on the NEW baseline, since Session 2's own proof was against the old ledger:
+
+```
+$ pnpm --filter @arcaai/database db:migrate:deploy   (→ hope_shadow_closeout)
+Applying migration `20260817000000_init`
+Applying migration `20260817000100_task_734_workflow_definition_immutability_guard`
+Applying migration `20260817031425_task_732_flip_system_harness_enabled_default`
+All migrations have been successfully applied.
+
+$ npx prisma migrate diff --from-config-datasource --to-schema src/prisma/db_main --script
+-- This is an empty migration.
+```
+
+`hope_shadow_closeout` dropped afterward. Confirmed live on the real dev DB too:
+`to_regclass('core."WorkflowRun"')` resolves.
+
+**Re-verified this pass, real output:**
+
+```
+$ pnpm --filter @arcaai/domains build test    → clean; 145 files / 1793 tests (2 skipped)
+$ pnpm --filter @arcaai/database build test    → clean; 50 files / 1226 tests
+$ pnpm --filter @arcaai/applications build      → clean
+$ NODE_ENV=test npx vitest run packages/applications/src/services/workflow-run apps/api/src/modules/workflow-run
+  → Test Files 2 passed (2); Tests 32 passed (32)
+$ pnpm api:build                                → 12/12 successful
+$ pnpm --filter @arcaai/admin-console typecheck → clean
+$ pnpm --filter @arcaai/admin-console exec eslint src/features/workflow-runs --max-warnings 0 → clean
+$ pnpm --filter @arcaai/admin-console build     → next build succeeded; /workflow-runs and
+                                                   /workflow-runs/[runId] both listed
+$ (apps/admin-console) npx vitest run --exclude "**/workflow-studio/**"
+  → Test Files 185 passed (185); Tests 1464 passed (1464)
+$ npx playwright test tests/e2e/workflow-runs.spec.ts --list
+  → 17 tests listed (unchanged, still not run)
+$ npx playwright test apps/api/tests/e2e/task-723-workflow-runs-cross-tenant.spec.ts --list
+  → listed, still not run
+```
+
+The `workflow-studio/**` (TASK-719 sibling) typecheck/lint/build failures Session 2 flagged as
+"currently blocked, not by this ticket" were re-checked: `workflow-studio` is still concurrently
+in-flight in this shared tree, so the unscoped `pnpm --filter @arcaai/admin-console lint`/`build`
+still surface ONE error inside that folder — confirmed by `git status`/`grep` that it is not a
+file this ticket touches, same as Session 2 found. Scoped commands above (which is what this
+ticket's own files actually need to prove) are clean.
+
+**Not fixed this pass, unchanged**: e2e execution (same documented `db push --force-reset`
+environment blocker every ticket in this close-out hits); the live-browser manual a11y/keyboard
+pass (no interactive session available); `WorkflowRun` still has zero real fixture rows anywhere
+reachable (R2 — `recordRunStarted`/`recordRunFinished` are called only by TASK-718's interpreter,
+which this ticket does not own). No code defects found in this ticket's own files this pass.
+Status remains Review.
+
 ## 8. Change History
 
 | Date | Change | By |
@@ -1116,3 +1175,4 @@ green.
 | 2026-08-16 | Ticket authored | ticket-writer agent (Wave 2 Studio batch) |
 | 2026-08-16 | Phase A/B executed: Task 1 contract (CREATE verdict), `WorkflowRun` schema + migration (authored, unapplied — infra down), domain layer (entity/factory/mapper/repository), `WorkflowRunService` (keyset list, single-read trace rollup, idempotent record-run write contract), `WorkflowRunController` (`/admin/workflow-runs/*`), Task 10 retention decision note. Phase C (Tasks 7–9, 11 — admin-console UI + Playwright e2e) NOT started. Full evidence in §7. Status → Partial. | Execution agent (session 1) |
 | 2026-08-16 | Phase C executed (session 2, infra up): shadow-DB empty-diff proof closed; fixed a real backend bug (`tracePruned` hardcoded `false`, dead-coding Task 9's own state) with 5 new `@arcaai/applications` unit tests; built the full `workflow-runs` admin-console feature (list screen, canvas-overlay trace + `?view=list` peer, failure/retry/degraded/pruned states, node detail drawer, both routes, nav entry, `/ai-operations/runs` reciprocal cross-link) with 32 new passing admin-console tests incl. axe scans (37 new tests total across both packages); authored (not executed — Playwright globalSetup blocker) the API cross-tenant e2e spec and the admin-console e2e spec. Full evidence, honesty notes, and the live sibling-collision fix in §7b. Status → Review. | Execution agent (session 2) |
+| 2026-08-17 | Close-out pass. Re-proved the rule-02 shadow-DB migration diff against the newly-squashed baseline (old per-ticket migration file no longer exists; its schema is now part of `20260817000000_init`) using a throwaway `hope_shadow_closeout` database — empty diff confirmed. Re-ran domains/database/applications/api/admin-console build+test, all green (see §7c). No code changes to this ticket's own files. Status remains Review — e2e execution and the manual a11y pass are the only open items, both outside this pass's authority to close. | close-out pass agent |

@@ -3,6 +3,7 @@ import {
   ConsultationServiceModule,
   ContextServiceModule,
   ConsultationJobServiceModule,
+  NoteGenerationServiceModule,
   SummaryServiceModule,
   TimelineServiceModule,
   ChainSummaryServiceModule,
@@ -40,6 +41,11 @@ import { ConsentInternalController } from './consent-internal.controller';
     ConsultationServiceModule,
     ContextServiceModule,
     ConsultationJobServiceModule,
+    // TASK-732: the legacy SummaryProcessor was deleted, so `generateSummaryAsync`
+    // now calls the NoteGeneration seam DIRECTLY. Without this import the
+    // controller's INoteGenerationService parameter is unresolvable and the API
+    // fails to BOOT — a failure unit tests cannot catch, since they mock it.
+    NoteGenerationServiceModule,
     SummaryServiceModule,
     TimelineServiceModule,
     ChainSummaryServiceModule,

@@ -26,6 +26,14 @@ with workflow.unsafe.imports_passed_through():
         interpreter_noop,
         interpreter_passthrough,
     )
+    from harness.temporal.interpreter.nodes.consultation import (
+        interpreter_consultation_consent_gate,
+        interpreter_consultation_hitl_gate,
+        interpreter_consultation_phi_hop,
+    )
+    from harness.temporal.interpreter.nodes.context_binding import interpreter_context_binding
+    from harness.temporal.interpreter.nodes.deliver import interpreter_deliver
+    from harness.temporal.interpreter.nodes.guardrail_check import interpreter_guardrail_check
     from harness.temporal.interpreter.nodes.stt_placeholder import (
         interpreter_stt_asr_engine,
         interpreter_stt_audio_input,
@@ -36,6 +44,8 @@ with workflow.unsafe.imports_passed_through():
         interpreter_stt_transcript_output,
         interpreter_stt_vad,
     )
+    from harness.temporal.interpreter.nodes.template_ref import interpreter_template_ref
+    from harness.temporal.interpreter.nodes.text_generate import interpreter_text_generate
 
 
 def _registered_activity_name(fn: Callable[..., Any]) -> str:
@@ -90,16 +100,60 @@ class NodeSpec:
 NODE_REGISTRY: dict[str, NodeSpec] = {
     "noop": NodeSpec(key="noop", implemented=True, activity=interpreter_noop),
     "passthrough": NodeSpec(key="passthrough", implemented=True, activity=interpreter_passthrough),
+    # Summarization palette (TASK-720). `critical`/`external_write`/timeouts mirror
+    # contracts/palette.md's node table and node-registry.ts's matching five entries exactly.
+    # RESTORED (2026-08-17, close-out pass): dropped from this dict by an external tree operation
+    # mid-session (see TASK-724/TASK-731 READMEs); the node activities themselves never stopped
+    # existing on disk. Re-added verbatim from the last known-good shape (git history, commit
+    # 632f93f14).
+    "input.context_binding": NodeSpec(
+        key="input.context_binding",
+        implemented=True,
+        activity=interpreter_context_binding,
+        critical=True,
+        default_timeout_seconds=60,
+        default_max_attempts=3,
+    ),
+    "prompt.template_ref": NodeSpec(
+        key="prompt.template_ref",
+        implemented=True,
+        activity=interpreter_template_ref,
+        critical=False,
+        default_timeout_seconds=30,
+        default_max_attempts=3,
+    ),
+    "generate.text": NodeSpec(
+        key="generate.text",
+        implemented=True,
+        activity=interpreter_text_generate,
+        critical=True,
+        default_timeout_seconds=300,
+        default_max_attempts=2,
+    ),
+    "guardrail.check": NodeSpec(
+        key="guardrail.check",
+        implemented=True,
+        activity=interpreter_guardrail_check,
+        critical=False,
+        default_timeout_seconds=60,
+        default_max_attempts=3,
+    ),
+    "output.deliver": NodeSpec(
+        key="output.deliver",
+        implemented=True,
+        activity=interpreter_deliver,
+        critical=True,
+        external_write=True,
+        default_timeout_seconds=60,
+        default_max_attempts=3,
+    ),
     # STT palette (TASK-724). Mirrors
     # docs/implementation/TASK-724-Palette-Stt/contracts/palette.md's node table and
     # node-registry.ts's matching eight entries exactly. Every activity here is a documented
     # PLACEHOLDER (nodes/stt_placeholder.py's module docstring) — the STT palette's real
     # execution path is compile-to-AsrPipeline + pipelineId binding, never per-node interpreter
     # dispatch; these entries satisfy the cross-language registry-parity contract compile()
-    # depends on. NOTE (2026-08-16): TASK-720's summarization entries are currently absent from
-    # this dict — a concurrent sibling session's uncommitted work was reverted mid-session (see
-    # this ticket's README §7); these eight entries do not depend on that and are correct either
-    # way.
+    # depends on.
     "stt.audioInput": NodeSpec(
         key="stt.audioInput",
         implemented=True,
@@ -163,6 +217,41 @@ NODE_REGISTRY: dict[str, NodeSpec] = {
         implemented=False,
         activity=interpreter_stt_phi_hop,
         critical=False,
+        default_timeout_seconds=60,
+        default_max_attempts=1,
+    ),
+    # Consultation palette (TASK-731) — a PARTIAL pass: only 3 of the palette's 13 node types are
+    # wired this pass (contracts/node-types.md has the full 13-node design; nodes/consultation.py's
+    # module docstring names exactly why the other 10 are not here yet — real, already-shipped
+    # compile targets exist for each, but their interpreter wrappers were judged out of this
+    # pass's time budget rather than rushed). See the ticket README §7.
+    "consultation.consentGate": NodeSpec(
+        key="consultation.consentGate",
+        implemented=True,
+        activity=interpreter_consultation_consent_gate,
+        critical=True,
+        external_write=False,
+        default_timeout_seconds=30,
+        default_max_attempts=3,
+    ),
+    "consultation.phiHop": NodeSpec(
+        key="consultation.phiHop",
+        implemented=True,
+        activity=interpreter_consultation_phi_hop,
+        critical=False,
+        external_write=False,
+        default_timeout_seconds=60,
+        default_max_attempts=3,
+    ),
+    # PLACEHOLDER — implemented=False. The interpreter's durable-wait extension (Phase B) has not
+    # been implemented; compile() therefore refuses any graph containing this node type. See
+    # contracts/palette-contract.md §2 and nodes/consultation.py's module docstring.
+    "consultation.hitlGate": NodeSpec(
+        key="consultation.hitlGate",
+        implemented=False,
+        activity=interpreter_consultation_hitl_gate,
+        critical=True,
+        external_write=True,
         default_timeout_seconds=60,
         default_max_attempts=1,
     ),

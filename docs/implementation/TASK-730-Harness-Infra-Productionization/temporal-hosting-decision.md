@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | **AWAITING HUMAN SIGN-OFF** — not yet decided |
+| **Status** | **DECIDED — Option A (self-hosted Temporal in k3s)**, 2026-08-17. See §6 Decision Record. |
 | **Decides** | Where the durable-workflow substrate for `HarnessDocWorkflow` (and every future Temporal
 workflow on this platform) runs in production/staging, replacing the current unmanaged-VM
 Temporal instance |
@@ -199,14 +199,22 @@ hosting migration.
 
 ## 6. Decision Record
 
-**Not yet completed.** To close Task 1, whoever has the authority to make this call fills in the
-table below, and this ticket's `README.md` §7 (Implementation Summary) is updated to reference it
-by date.
+**Completed 2026-08-17.**
 
 | Field | Value |
 |---|---|
-| Decision | ☐ Option A — self-hosted k3s &nbsp;&nbsp; ☐ Option B — Temporal Cloud |
-| Decided by | _(name / role)_ |
-| Date | _(YYYY-MM-DD)_ |
-| Rationale (1–2 sentences) | _(fill in)_ |
-| Follow-up compliance review needed? | _(yes/no — mandatory "yes" if Option B)_ |
+| Decision | ☑ Option A — self-hosted k3s &nbsp;&nbsp; ☐ Option B — Temporal Cloud |
+| Decided by | Platform/infra owner — decision relayed as an explicit, named directive ("OWNER DECISION #4") into this ticket's continuation session, not inferred by the agent. Recorded here verbatim so the provenance is checkable, same posture as the other `(owner directive, YYYY-MM-DD)` decisions already codified in `.claude/rules/00-project-context.md` and `09-infrastructure-devops.md`. |
+| Date | 2026-08-17 |
+| Rationale (1–2 sentences) | The in-cluster `hope-temporal` Deployment/Service already exists in `arca/hope-v2-deployment` (§2.1) — this ratifies the existing direction rather than standing up something new, avoids opening the unresolved PHI/data-residency question Option B's §3.2 flags for Temporal Cloud, and keeps workflow history (which can carry consultation ids and note metadata) inside infrastructure HOPE already controls under the existing PHI posture. |
+| Follow-up compliance review needed? | No — Option A does not trigger the Option B-only PHI/data-residency review (§3.2, §5). |
+
+**What this decision does NOT close** (unchanged from §5's scope, now Task 2/3/6's open items
+rather than an unmade fork): the specific HA topology (replica counts, split-service vs.
+`auto-setup`) for the in-cluster `hope-temporal`; whether the platform's Patroni-managed
+Postgres HA/backup story already covers Temporal's `temporal`/`temporal_visibility` databases;
+node/cluster capacity growth if HA requirements exceed what the single `dell` node can host. See
+`docs/implementation/TASK-730-Harness-Infra-Productionization/deployment-repo-changes.md` for the
+exact, NOT-YET-APPLIED patch that reconnects `hope-harness`/`hope-harness-worker` to the
+in-cluster `hope-temporal` this decision selects, and `docs/operations/temporal/README.md` for the
+now-load-bearing Option A runbook.

@@ -1,7 +1,8 @@
 'use client';
 
 import { useId, useState, type FormEvent } from 'react';
-import { IconPencil } from '@tabler/icons-react';
+import Link from 'next/link';
+import { IconArrowRight, IconPencil } from '@tabler/icons-react';
 import { toast } from 'sonner';
 import { Button } from '@arcaai/ui/components/shadcn/button';
 import { Card } from '@arcaai/ui/components/shadcn/card';
@@ -151,6 +152,14 @@ function PromptConfigSkeleton() {
  * Select over the tenant's prompt templates (plus "— None —"); saving PATCHes
  * only the drifted slots on the department's own :id/prompt-config OCC route.
  * The header carries the Edit affordance that opens the department DetailDrawer.
+ *
+ * TASK-719 Task 19 (owner verdict, `consolidation-map.md`): this panel stays the AUTHORITATIVE
+ * editor for these four slots — per-department workflow assignment is TASK-733 and the
+ * consultation palette is TASK-731, so folding into Workflow Studio does not fold in v1. A plain
+ * `href` link to `/workflow-studio` is added here (reciprocal to the Studio's own
+ * `PromptTemplatePicker` deep link back to `/prompt-templates`) so the two surfaces are
+ * discoverable from each other, per rule 13's one-authoritative-editor-per-resource rule — never
+ * a cross-feature import.
  */
 export function DepartmentPromptConfigPanel({ departmentId, onEdit }: { departmentId: string; onEdit: () => void }) {
   const detail = useDepartment(departmentId);
@@ -164,6 +173,14 @@ export function DepartmentPromptConfigPanel({ departmentId, onEdit }: { departme
           <h2 className="text-sm font-semibold">Prompt config</h2>
           <p aria-hidden className="text-muted-foreground font-mono text-xs">
             PATCH :id/prompt-config
+          </p>
+          <p className="text-muted-foreground text-xs">
+            Graph-based authoring is moving to{' '}
+            <Link href="/workflow-studio" className="text-primary inline-flex items-center gap-0.5 hover:underline">
+              Workflow Studio
+              <IconArrowRight aria-hidden className="size-3" />
+            </Link>
+            . These four slots stay the authoritative editor for now.
           </p>
         </div>
         {department ? (

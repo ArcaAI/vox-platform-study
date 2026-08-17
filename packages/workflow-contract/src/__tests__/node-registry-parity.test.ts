@@ -60,10 +60,18 @@ describe('WORKFLOW_NODE_REGISTRY <-> registry.py parity fixture', () => {
     expect(entries).toEqual(sorted);
   });
 
-  it('carries exactly the seed + stt-palette keys, no more, no less', () => {
+  it('carries exactly the seed + summarization-palette + stt-palette + consultation-palette keys, no more, no less', () => {
     expect(Object.keys(WORKFLOW_NODE_REGISTRY).sort()).toEqual([
+      'consultation.consentGate',
+      'consultation.hitlGate',
+      'consultation.phiHop',
+      'generate.text',
+      'guardrail.check',
+      'input.context_binding',
       'noop',
+      'output.deliver',
       'passthrough',
+      'prompt.template_ref',
       'stt.asrEngine',
       'stt.audioInput',
       'stt.diarization',

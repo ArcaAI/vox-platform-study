@@ -50,7 +50,7 @@ export interface IngestKnowledgeDocumentResult {
 /**
  * IngestKnowledgeDocumentProcessor — institutional RAG.
  *
- * Mirrors SummaryProcessor: a fail-closed `tenantId` guard, a CLS rebind via
+ * Mirrors the other BullMQ consultation processors: a fail-closed `tenantId` guard, a CLS rebind via
  * `createWorkerSession` (worker processes run outside the API edge ClsModule
  * middleware, so the tenantScope Prisma extension needs the context re-bound),
  * an `assertEqualTenants` defense-in-depth check against a stale payload, and
