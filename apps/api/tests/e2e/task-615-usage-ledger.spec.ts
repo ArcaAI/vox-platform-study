@@ -114,6 +114,11 @@ test.describe('Usage ledger — synthetic drain-and-rollup flow', () => {
   });
 
   test('seeding a PENDING outbox row → the live drainer produces a rated AiUsageEvent', async () => {
+    // pollUntilDispatched below has its own 60s budget (DRAIN_DEFAULTS.intervalSeconds = 30,
+    // so a row can wait up to a full tick before the drainer even picks it up) — the Playwright
+    // default per-test timeout (30s, playwright.config.ts) is shorter than that budget, so it
+    // must be raised here or this test times out before the poll ever gets the chance to.
+    test.setTimeout(90_000);
     const db = await getDb();
     const now = new Date();
 

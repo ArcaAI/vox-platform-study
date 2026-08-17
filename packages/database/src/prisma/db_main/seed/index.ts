@@ -196,6 +196,8 @@ export const seed = async () => {
     // two fixture tenants expressed as locked clones. FKs:
     // DepartmentAgent → Department (golden, above) + PromptTemplate (golden,
     // created here). Idempotent upsert-by-id.
+    await seedAgentGoldenLibrary(client);
+    console.log('');
     // Day-1 consultation context schema: one servable TENANT-scoped
     // default per seeded tenant. Together with the loop configuration
     // seedAgentGoldenLibrary just wrote onto the default agents, this is what

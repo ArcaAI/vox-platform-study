@@ -51,7 +51,10 @@ async function openConsultation(request: APIRequestContext, token: string, patie
     headers: bearer(token),
     data: { patientId },
   });
-  expect(res.status(), 'POST /consultations/open must succeed').toBe(200);
+  // Nest's default @Post() status is 201 Created; the sibling specs
+  // (consent-abac.spec.ts, task-635-live-agent-lineage.spec.ts) already
+  // accept both. This spec's original `.toBe(200)` was over-strict.
+  expect([200, 201], 'POST /consultations/open must succeed').toContain(res.status());
   const body = await res.json();
   expect(typeof body.version, 'ConsultationResponse must carry version for If-Match construction').toBe('number');
   return { id: body.id as string, version: body.version as number };
@@ -64,10 +67,32 @@ async function getConsultation(request: APIRequestContext, token: string, id: st
   return { status: body.status as string, version: body.version as number };
 }
 
+/**
+ * `POST :id/prime` carries `@RequiresConsent(ConsentPurpose.AI_DOCUMENTATION)`
+ * (TASK-712), enforced by `PatientConsentGuard` — a global `APP_GUARD`
+ * registered strictly BEFORE `RequiresIfMatchGuard` in `app.module.ts`, and
+ * ON BY DEFAULT with no kill-switch (`ConsultationConsentService` denies
+ * unconditionally when no `ConsentGrant` row exists — see its doc comment).
+ * A freshly-generated `uniquePatientId()` has no grant (the seed only covers
+ * EXTERNAL_TOOL_LOOKUP/STYLE_LEARNING/QUALITY_REVIEW for fixed demo
+ * patients; AI_DOCUMENTATION is backfilled only for pre-existing rows), so
+ * every `prime` call needs one recorded first or the consent guard 403s
+ * before the If-Match/OCC guard is ever reached. Only a `manage:ConsentGrant`
+ * holder (tenant admin, not a plain doctor — `tenant-full-access` policy)
+ * can record it. Mirrors `consent-abac.spec.ts`'s `grant()` helper.
+ */
+async function grantAiDocumentationConsent(request: APIRequestContext, adminToken: string, externalPatientId: string): Promise<void> {
+  const res = await request.post('/api/v1/admin/consent-grants', {
+    headers: bearer(adminToken),
+    data: { externalPatientId, purpose: 'AI_DOCUMENTATION', grantMethod: 'VERBAL_ATTESTED' },
+  });
+  expect([200, 201], 'POST /admin/consent-grants (AI_DOCUMENTATION)').toContain(res.status());
+}
+
 test.describe('TASK-711 — session state machine (RUNNABLE-HERE, apps/api + Postgres only)', () => {
   let doctorToken: string;
   let _doctor2Token: string;
-  let _tenantAdminToken: string;
+  let tenantAdminToken: string;
   let arcaaiSuperAdminToken: string;
 
   test.beforeAll(async ({ request }) => {
@@ -81,7 +106,7 @@ test.describe('TASK-711 — session state machine (RUNNABLE-HERE, apps/api + Pos
 
     const tenantAdmin = await loginUser(request, SEEDED_USERS.admin.username, SEEDED_USERS.admin.password, DEFAULT_TENANT_KEY);
     expect(tenantAdmin, 'tenant admin login failed').toBeTruthy();
-    _tenantAdminToken = tenantAdmin!.token;
+    tenantAdminToken = tenantAdmin!.token;
 
     // super_admin re-logged with tenantKey=ARCAAI, mirroring
     // consultation-job-cross-tenant.spec.ts — binds the JWT's tenant claim
@@ -112,13 +137,19 @@ test.describe('TASK-711 — session state machine (RUNNABLE-HERE, apps/api + Pos
 
   // ── Case 3: the one flagged precondition (kill-switch default OFF) ──
   test('case 3a: recording/start without a prior prime succeeds while the kill-switch is OFF (default)', async ({ request }) => {
-    const { id } = await openConsultation(request, doctorToken, uniquePatientId('case3a'));
+    const patientId = uniquePatientId('case3a');
+    const { id } = await openConsultation(request, doctorToken, patientId);
+    // recording/start is ALSO consent-gated (TASK-712, same AI_DOCUMENTATION
+    // purpose as prime) — see grantAiDocumentationConsent's doc comment.
+    await grantAiDocumentationConsent(request, tenantAdminToken, patientId);
 
     const res = await request.post(`/api/v1/consultations/${id}/recording/start`, { headers: bearer(doctorToken) });
 
     // Default posture: the flag is OFF, so a legacy caller (no prime call)
     // keeps working — logged as a would-be violation, not rejected.
-    expect(res.status(), 'recording/start without prime must succeed while the kill-switch is OFF').toBe(200);
+    // Nest's default @Post() status is 201 Created (no @HttpCode override on
+    // this route) — see the openConsultation() comment above.
+    expect([200, 201], 'recording/start without prime must succeed while the kill-switch is OFF').toContain(res.status());
     const after = await getConsultation(request, doctorToken, id);
     expect(after.status).toBe('RECORDING');
   });
@@ -156,7 +187,11 @@ test.describe('TASK-711 — session state machine (RUNNABLE-HERE, apps/api + Pos
   // ── Case 9: OCC gate on the three new/changed transition routes ──
   test.describe('case 9: If-Match / ExpectedVersion OCC gate', () => {
     test('prime without If-Match -> 428; with a stale version -> 412; with the correct version -> 200', async ({ request }) => {
-      const { id, version } = await openConsultation(request, doctorToken, uniquePatientId('case9-prime'));
+      const patientId = uniquePatientId('case9-prime');
+      const { id, version } = await openConsultation(request, doctorToken, patientId);
+      // prime is consent-gated (TASK-712) ahead of the OCC guard — see
+      // grantAiDocumentationConsent's doc comment.
+      await grantAiDocumentationConsent(request, tenantAdminToken, patientId);
 
       const noHeader = await request.post(`/api/v1/consultations/${id}/prime`, { headers: bearer(doctorToken) });
       expect(noHeader.status(), 'prime without If-Match must 428').toBe(428);
@@ -169,7 +204,8 @@ test.describe('TASK-711 — session state machine (RUNNABLE-HERE, apps/api + Pos
       const ok = await request.post(`/api/v1/consultations/${id}/prime`, {
         headers: { ...bearer(doctorToken), 'If-Match': `"${version}"` },
       });
-      expect(ok.status(), 'prime with the correct If-Match must succeed').toBe(200);
+      // Nest default POST status (201), not an override — see openConsultation() comment.
+      expect([200, 201], 'prime with the correct If-Match must succeed').toContain(ok.status());
       const body = await ok.json();
       expect(body.status).toBe('PRIMED');
       expect(body.version, 'a real (non-idempotent) transition must bump the version').toBe(version + 1);
@@ -191,11 +227,13 @@ test.describe('TASK-711 — session state machine (RUNNABLE-HERE, apps/api + Pos
   // Extra: idempotency — priming an already-PRIMED consultation is a no-op
   // (per transitionTo's self-transition rule), so the version must NOT bump.
   test('extra: priming an already-PRIMED consultation is idempotent (no version bump)', async ({ request }) => {
-    const { id, version } = await openConsultation(request, doctorToken, uniquePatientId('case-idem'));
+    const patientId = uniquePatientId('case-idem');
+    const { id, version } = await openConsultation(request, doctorToken, patientId);
+    await grantAiDocumentationConsent(request, tenantAdminToken, patientId);
     const first = await request.post(`/api/v1/consultations/${id}/prime`, {
       headers: { ...bearer(doctorToken), 'If-Match': `"${version}"` },
     });
-    expect(first.status()).toBe(200);
+    expect([200, 201], 'prime with the correct If-Match must succeed').toContain(first.status());
     const firstBody = await first.json();
     expect(firstBody.version).toBe(version + 1);
 
@@ -203,7 +241,9 @@ test.describe('TASK-711 — session state machine (RUNNABLE-HERE, apps/api + Pos
     const second = await request.post(`/api/v1/consultations/${id}/prime`, {
       headers: { ...bearer(doctorToken), 'If-Match': `"${firstBody.version}"` },
     });
-    expect(second.status(), 'idempotent no-op still returns 200, not a conflict').toBe(200);
+    // Same POST route, same Nest-default status regardless of whether the
+    // transition was a real change or a self-transition no-op.
+    expect([200, 201], 'idempotent no-op still returns success, not a conflict').toContain(second.status());
     const secondBody = await second.json();
     expect(secondBody.status).toBe('PRIMED');
     expect(secondBody.version, 'a self-transition no-op must NOT bump the version').toBe(firstBody.version);

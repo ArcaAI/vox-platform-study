@@ -7,13 +7,20 @@
  * EXTERNAL_TOOL_LOOKUP; a future STYLE_LEARNING/QUALITY_REVIEW consumer would
  * find a grant to evaluate against) without every demo tool call denying.
  *
- * AI_DOCUMENTATION / HISTORY_RETRIEVAL are DELIBERATELY NOT seeded here — the
- * legacy-grant backfill inside migration
- * `20260816030000_task_712_consent_grant` (Q2 option (a)) already creates a
- * dated `IMPORTED` grant for those two purposes for every pre-existing
- * `(tenantId, patientId)` pair with a Consultation row, seeded or not. This
- * file covers exactly the three purposes that backfill did NOT (nothing
- * gated on them at the time that migration shipped).
+ * AI_DOCUMENTATION / HISTORY_RETRIEVAL are ALSO seeded here now — see
+ * `seedLegacyImportedGrants` at the bottom of this file.
+ *
+ * They used to be left to the legacy-grant backfill inside migration
+ * `20260816030000_task_712_consent_grant` (Q2 option (a)). That was wrong for
+ * local and test databases: rule 02 says the dev DB and `hope_test` are
+ * `db push`-managed and carry NO `_prisma_migrations` ledger, so migrations
+ * NEVER execute against them — only seeds do. The practical consequence, once
+ * TASK-712 turned consent enforcement ON by default, was that a freshly-seeded
+ * environment denied the core documentation flow outright:
+ *   POST /consultations/:id/prime -> 403
+ *   `Consent denied for purpose "AI_DOCUMENTATION" (no_grant)`
+ * for EVERY seeded patient. The migration still exists for deployed databases
+ * that DO replay migrations; this seed covers the ones that never will.
  *
  * CREATE-ONLY / idempotent: an existing ACTIVE grant (revokedAt IS NULL) for
  * the same (tenantId, externalPatientId, purpose) is left untouched — the
@@ -94,6 +101,54 @@ function buildGrants(): ConsentGrantSeed[] {
   return grants;
 }
 
+/**
+ * Mirror of the TASK-712 migration backfill, for databases that never replay
+ * migrations. One dated `IMPORTED` grant per (tenant, patient, purpose) for the
+ * two purposes the explicit demo rows above do not cover, derived from the
+ * Consultation table exactly as the migration's SELECT does — including the
+ * TRIM, which matches `normalizeExternalPatientId` (Q3: trim only, exact case),
+ * so the key matches what `assertConsent` looks up.
+ */
+const LEGACY_IMPORTED_PURPOSES = [ConsentPurpose.AI_DOCUMENTATION, ConsentPurpose.HISTORY_RETRIEVAL] as const;
+
+const seedLegacyImportedGrants = async (client: CorePrismaClient): Promise<{ created: number; skipped: number }> => {
+  const consultations = await client.consultation.findMany({ select: { tenantId: true, patientId: true } });
+  const pairs = new Map<string, { tenantId: string; patientId: string }>();
+  for (const c of consultations) {
+    const patientId = (c.patientId ?? '').trim();
+    if (!patientId) continue; // blank is never a real identifier — the migration skips these too
+    pairs.set(`${c.tenantId}::${patientId}`, { tenantId: c.tenantId, patientId });
+  }
+
+  let created = 0;
+  let skipped = 0;
+  for (const { tenantId, patientId } of pairs.values()) {
+    for (const purpose of LEGACY_IMPORTED_PURPOSES) {
+      const existing = await client.consentGrant.findFirst({
+        where: { tenantId, externalPatientId: patientId, purpose, revokedAt: null, resourceStatus: { not: 'DELETED' } },
+      });
+      if (existing) {
+        skipped += 1;
+        continue;
+      }
+      await client.consentGrant.create({
+        data: {
+          tenantId,
+          externalPatientId: patientId,
+          purpose,
+          grantedAt: GRANTED_AT,
+          grantedBy: SEED_USER_IDS.SYSTEM,
+          grantMethod: ConsentGrantMethod.IMPORTED,
+          evidenceRef: 'task-712-legacy-backfill',
+          createdBy: SEED_USER_IDS.SYSTEM,
+        },
+      });
+      created += 1;
+    }
+  }
+  return { created, skipped };
+};
+
 export const seedConsentGrant = async (client: CorePrismaClient): Promise<void> => {
   console.log('Seeding demo ConsentGrant rows (EXTERNAL_TOOL_LOOKUP / STYLE_LEARNING / QUALITY_REVIEW)...');
   try {
@@ -131,7 +186,11 @@ export const seedConsentGrant = async (client: CorePrismaClient): Promise<void> 
       created += 1;
     }
 
-    console.log(`Seeded ${created} ConsentGrant row(s), ${skipped} already present (left untouched)`);
+    const legacy = await seedLegacyImportedGrants(client);
+    console.log(
+      `Seeded ${created} ConsentGrant row(s), ${skipped} already present (left untouched); ` +
+        `legacy IMPORTED (AI_DOCUMENTATION/HISTORY_RETRIEVAL): ${legacy.created} created, ${legacy.skipped} already present`,
+    );
   } catch (error) {
     console.error('Error seeding ConsentGrant demo data:', error);
     throw error;
