@@ -75,7 +75,7 @@ export const SYSTEM_AI_PROVIDER_CONNECTIONS: AiProviderConnectionSeed[] = [
   },
   {
     // Azure OpenAI — endpoint/apiVersion/deployment are per-deployment and
-    // blank in `.env.production`; a global admin fills them in.
+    // blank in `.env.production`; a super admin fills them in.
     id: '87000000-0000-0000-0000-000000000003',
     tenantId: SYSTEM_TENANT_ID,
     service: 'llm',
@@ -137,7 +137,7 @@ export const SYSTEM_AI_PROVIDER_CONNECTIONS: AiProviderConnectionSeed[] = [
   },
   {
     // OpenAI (cloud) — speech-to-text and OpenAI-compatible LLM
-    // endpoints. baseUrl blank; a global admin fills it in. NOTE: the public
+    // endpoints. baseUrl blank; a super admin fills it in. NOTE: the public
     // API is not PHI-safe — point at an Azure OpenAI / VPC host before enabling
     // for patient data.
     id: '87000000-0000-0000-0000-000000000009',

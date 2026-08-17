@@ -26,7 +26,7 @@ import { CostPerEncounterQuery, TopTenantsQuery, UsageSummaryQuery, UsageTimeser
  * G16 migration note on `UsageAnalyticsService`.
  *
  * Tenant scoping (summary/timeseries/cost-per-encounter): `resolveScopedTenantId`
- * — global admins act cross-tenant via `?tenantId=`; a tenant-bound caller is
+ * — super admins act cross-tenant via `?tenantId=`; a tenant-bound caller is
  * pinned to their own tenant (a foreign `?tenantId=` is rejected, 403).
  *
  * `top-tenants` is the ONE deliberately cross-tenant read on this surface —
@@ -74,7 +74,7 @@ export class AdminUsageController {
 
   @Get('top-tenants')
   @ApiOperation({
-    summary: 'GLOBAL-ADMIN-only cross-tenant top-N by rollup cost. Every other route on this controller is tenant-scoped; this one is not.',
+    summary: 'SUPER_ADMIN-only cross-tenant top-N by rollup cost. Every other route on this controller is tenant-scoped; this one is not.',
   })
   @ApiResponse({ status: 200, type: TopTenantsResponse })
   topTenants(@Query() query: TopTenantsQuery): Promise<TopTenantsResponse> {

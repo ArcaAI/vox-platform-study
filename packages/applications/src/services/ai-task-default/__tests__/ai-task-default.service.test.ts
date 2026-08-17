@@ -4,7 +4,7 @@
  * Mirrors the `tenant-tts-config` test style: repositories, EventEmitter2 and
  * ClsService are mocked; the effective cascade (tenant row → SYSTEM row →
  * null), upsert validation (task key, slug resolution, taskType
- * compatibility), the guardrail.* global-admin governance rule, OCC semantics
+ * compatibility), the guardrail.* super-admin governance rule, OCC semantics
  * and sys-event broadcasting are asserted.
  */
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -184,7 +184,7 @@ describe('AiTaskDefaultService — upsertRow validation', () => {
 
 describe('AiTaskDefaultService — SUPER_ADMIN-only governance', () => {
   // TASK-735 Phase 0 (owner decision 2026-08-16) reversed the 2026-07-17
-  // global-admin-only directive for guardrail.*: it is now tenant-admin
+  // super-admin-only directive for guardrail.*: it is now tenant-admin
   // configurable, subject to the D2 platform-approved-list floor (see the
   // "guardrail.* platform floor" describe block below), NOT a blanket
   // ForbiddenException for every tenant admin. This test previously asserted
@@ -250,7 +250,7 @@ describe('AiTaskDefaultService — SUPER_ADMIN-only governance', () => {
   // nlp.*/harness.* must keep the exact pre-TASK-735 behaviour: blanket
   // ForbiddenException for a tenant admin, success for SUPER_ADMIN, no
   // approved-list floor involved (that floor is guardrail-specific).
-  it('nlp.*/harness.* governance is unchanged by TASK-735 (still blanket global-admin-only, no approved-list floor)', async () => {
+  it('nlp.*/harness.* governance is unchanged by TASK-735 (still blanket super-admin-only, no approved-list floor)', async () => {
     const tenantAdminCtx = makeService({ roles: ['TENANT_ADMIN'] });
     tenantAdminCtx.modelRepo.findBySlug.mockResolvedValue(makeModel({ taskType: ModelTaskType.TEXT_GENERATION }));
     await expect(
@@ -271,8 +271,8 @@ describe('AiTaskDefaultService — SUPER_ADMIN-only governance', () => {
 
 /**
  * TASK-735 Phase 0 (owner decision 2026-08-16, D2 "tighten-only"). Guardrail
- * left `GLOBAL_ADMIN_ONLY_TASK_PREFIXES`, so `upsertRow`'s blanket
- * global-admin-only check no longer fires for `guardrail.*` — but a
+ * left `SUPER_ADMIN_ONLY_TASK_PREFIXES`, so `upsertRow`'s blanket
+ * super-admin-only check no longer fires for `guardrail.*` — but a
  * SEPARATE, guardrail-specific platform floor still applies: a binding for a
  * non-SYSTEM tenant must name a slug that resolves to an ENABLED
  * SYSTEM-tenant `AiModel` row (the platform-approved list), independent of
@@ -443,7 +443,7 @@ describe('AiTaskDefaultService — upsertRow OCC + sys-events', () => {
     await expect(ctx.svc.upsertRow('nlp.ner', { modelSlug: 'medical-ner', expectedVersion: 1 })).rejects.toBeInstanceOf(ArgumentInvalidException);
   });
 
-  it('honors an explicit tenantId override (global admin acting on another tenant)', async () => {
+  it('honors an explicit tenantId override (super admin acting on another tenant)', async () => {
     const ctx = makeService({ roles: ['SUPER_ADMIN'] });
     ctx.modelRepo.findBySlug.mockImplementation(async (tenantId: string, slug: string) =>
       makeModel({ tenantId, slug, taskType: ModelTaskType.TOKEN_CLASSIFICATION }),
@@ -454,21 +454,21 @@ describe('AiTaskDefaultService — upsertRow OCC + sys-events', () => {
     const res = await ctx.svc.upsertRow('nlp.ner', { modelSlug: 'medical-ner', expectedVersion: 0 }, 'tenant-other');
 
     expect(res.tenantId).toBe('tenant-other');
-    // Cross-tenant global-admin write → routed through the base-client lane.
+    // Cross-tenant super-admin write → routed through the base-client lane.
     expect(ctx.repo.findByTenantAndTaskKey).toHaveBeenCalledWith('tenant-other', 'nlp.ner', ctx.db.baseClient);
   });
 });
 
 /**
  * r2605 Finding A — SYSTEM/cross-tenant reads+writes must bypass the
- * tenant-scoped extended client. With a global admin's working tenant W
+ * tenant-scoped extended client. With a super admin's working tenant W
  * elevated into CLS, targeting `?tenantId=SYSTEM` through the extended client
  * makes the tenant-scope extension inject W: the CAS update matches 0 rows
  * (eternal 412), the create throws `TenantScope: tenantId mismatch` (500) and
  * reads silently miss. The service must route the whole target-tenant
  * read/write set through the UNSCOPED base client whenever the resolved
  * target differs from the CLS tenant (or CLS is empty) AND the caller is a
- * global admin. Tenant admins stay on the scoped path byte-for-byte.
+ * super admin. Tenant admins stay on the scoped path byte-for-byte.
  */
 describe('AiTaskDefaultService — cross-tenant base-client lane', () => {
   it('getRow targeting SYSTEM under an elevated working tenant W routes the read through the base client', async () => {
@@ -521,7 +521,7 @@ describe('AiTaskDefaultService — cross-tenant base-client lane', () => {
     expect(ctx.repo.updateWithVersion).toHaveBeenCalledWith(row.id, row, 1, ctx.db.baseClient);
   });
 
-  it('global admin with an EMPTY CLS tenant (not elevated) also uses the base-client lane', async () => {
+  it('super admin with an EMPTY CLS tenant (not elevated) also uses the base-client lane', async () => {
     const ctx = makeService({ roles: ['SUPER_ADMIN'], clsTenantId: null });
     ctx.repo.findByTenantAndTaskKey.mockResolvedValue(null);
 

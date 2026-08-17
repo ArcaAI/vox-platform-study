@@ -39,7 +39,7 @@ export interface CreateRbacRoleRequest {
   externalName?: string;
   externalId?: string;
   parentRoleId?: string;
-  /** Only a global admin may set `true` (service-enforced). */
+  /** Only a super admin may set `true` (service-enforced). */
   isSystemRole?: boolean;
 }
 

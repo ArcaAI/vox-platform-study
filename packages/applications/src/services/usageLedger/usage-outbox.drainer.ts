@@ -1,4 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
+import { ClsService } from 'nestjs-cls';
 import Decimal from 'decimal.js';
 import {
   AiUsageEventFactory,
@@ -15,6 +16,8 @@ import {
   JsonObject,
 } from '@arcaai/domains';
 
+import { createWorkerSession } from '../../common';
+import { IActiveUserContext } from '../../interfaces';
 import { IPriceBookService } from '../priceBook/IPriceBookService';
 import { SerializedUsageEvent, USAGE_OUTBOX_PAYLOAD_VERSION, UsageOutboxPayload } from './dto';
 import { computeCostMicros } from '../priceBook/price-book.resolution';
@@ -92,6 +95,13 @@ export class UsageOutboxDrainer {
     private readonly dailyRepository: AiUsageRollupDailyRepository,
     @Inject(IPriceBookService) private readonly priceBook: IPriceBookService,
     private readonly unitOfWork: CoreUnitOfWorkService,
+    // The drain runs on a BullMQ tick, i.e. with NO request and therefore no CLS
+    // context. `runInTransaction` sets `coreTransactionClient` in CLS, so without
+    // a context every single row threw "Cannot set the key
+    // 'coreTransactionClient'. No CLS context available" and the outbox never
+    // drained at all. Same worker-session pattern as
+    // `WebhookDeliveryProcessor`.
+    private readonly cls: ClsService<IActiveUserContext>,
   ) {}
 
   /**
@@ -107,7 +117,14 @@ export class UsageOutboxDrainer {
 
     for (const row of rows) {
       try {
-        const outcome = await this.drainRow(row);
+        // One CLS context PER ROW, carrying that row's tenant: the batch spans
+        // tenants, so a single context around the whole sweep would scope every
+        // row's writes to whichever tenant happened to come first.
+        const outcome = await this.cls.run(async () => {
+          this.cls.set('tenantId', row.tenantId);
+          this.cls.set('user', createWorkerSession({ tenantId: row.tenantId, kind: 'usage-outbox-drain' }));
+          return this.drainRow(row);
+        });
         report.inserted += outcome.inserted;
         report.skipped += outcome.skipped;
         await this.markDispatched(row);

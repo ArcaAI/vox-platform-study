@@ -206,7 +206,14 @@ export class WebhookDeliveryProcessor extends WorkerHost {
           eventType: event.type,
           resourceType: event.resourceType,
           resourceId: event.resourceId ?? null,
-          occurredAt: event.createdAt.toISOString(),
+          // `SysEvent.createdAt` is typed `Date`, but this event arrived through
+          // BullMQ — JSON serialisation already turned it into an ISO STRING, so
+          // the static type lies at runtime and calling `.toISOString()` on it
+          // threw `event.createdAt.toISOString is not a function`. That killed
+          // EVERY sys-event job before any delivery was enqueued, so no webhook
+          // in the platform ever fired. Re-wrap so both shapes work (a `Date`
+          // survives the round trip when a caller invokes this in-process).
+          occurredAt: new Date(event.createdAt).toISOString(),
         };
 
         await this.deliveryQueue.add(JobQueue.WebhookDelivery, payload, {

@@ -141,14 +141,12 @@ describe('ChangelogService — listUnseen', () => {
     expect(written[0].autoAcknowledged).toBe(true);
   });
 
-  it('a global admin sees the GLOBAL_ADMIN audience, not TENANT_ADMIN', async () => {
+  it('a super admin sees the SUPER_ADMIN audience, not TENANT_ADMIN', async () => {
     const admin = build(SUPER_ADMIN);
     await admin.service.listUnseen();
 
-    // NOTE: ChangelogAudience.GLOBAL_ADMIN is intentionally NOT renamed here —
-    // the enum rename is HUMAN-GATED and has not landed (see changelog.service.ts).
     expect(admin.entryRepo.findAll.mock.calls[0][0].where.audience).toEqual({
-      in: [ChangelogAudience.ALL, ChangelogAudience.GLOBAL_ADMIN],
+      in: [ChangelogAudience.ALL, ChangelogAudience.SUPER_ADMIN],
     });
   });
 });
@@ -180,7 +178,7 @@ describe('ChangelogService — acknowledge', () => {
 describe('ChangelogService — list', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('shows a global admin DRAFT entries too', async () => {
+  it('shows a super admin DRAFT entries too', async () => {
     const h = build(SUPER_ADMIN);
     await h.service.list({});
 
@@ -207,7 +205,7 @@ describe('ChangelogService — authoring (SUPER_ADMIN only)', () => {
 
   const createDto = { platformVersion: '2.2.0', title: 't', summary: 's', body: 'b' };
 
-  it('rejects create/update/publish for a non-global admin', async () => {
+  it('rejects create/update/publish for a non-super admin', async () => {
     const h = build(TENANT_USER);
     h.entryRepo.findById.mockResolvedValue(makeEntry());
 

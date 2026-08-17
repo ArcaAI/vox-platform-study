@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PreSummaryRequest } from '../dto/pre-summary.request';
 import type { PreSummaryResponse, SummaryResponse } from '../dto/summary.response';
 import { SyncSummaryRequest } from '../dto/sync-summary.request';
-import { resolveDepartmentVisit, SmrCompatController } from '../text-compat.controller';
+import { resolveDepartmentVisit, TextCompatController } from '../text-compat.controller';
 
 const createMockHttpService = () => ({
   axiosRef: { post: vi.fn(), get: vi.fn() },
@@ -214,8 +214,8 @@ describe('PreSummaryRequest validation', () => {
   });
 });
 
-describe('SmrCompatController', () => {
-  let controller: SmrCompatController;
+describe('TextCompatController', () => {
+  let controller: TextCompatController;
   let http: ReturnType<typeof createMockHttpService>;
   let config: ReturnType<typeof createMockConfigService>;
   let cls: ReturnType<typeof createMockClsService>;
@@ -231,7 +231,7 @@ describe('SmrCompatController', () => {
     secrets = createMockSecrets();
     policy = createMockHarnessPolicy();
     template = createMockTemplateService();
-    controller = new SmrCompatController(http as any, config as any, cls as any, policy as any, template as any, secrets as any);
+    controller = new TextCompatController(http as any, config as any, cls as any, policy as any, template as any, secrets as any);
   });
 
   // Drive the real (thin-router) handler with a mock `res`. Non-stream success →
@@ -335,7 +335,7 @@ describe('SmrCompatController', () => {
     // doctor_id is supplied (D5: department + visit-type only).
     it('injects the doctor DNA writing style into the SMR system_prompt when doctor_id is provided', async () => {
       const dna = { getEffectiveStyleText: vi.fn().mockResolvedValue('Terse SOAP, active voice.') };
-      const controllerWithDna = new SmrCompatController(
+      const controllerWithDna = new TextCompatController(
         http as any,
         config as any,
         cls as any,
@@ -358,7 +358,7 @@ describe('SmrCompatController', () => {
 
     it('does NOT resolve or inject DNA style when doctor_id is absent', async () => {
       const dna = { getEffectiveStyleText: vi.fn().mockResolvedValue('SHOULD NOT APPEAR') };
-      const controllerWithDna = new SmrCompatController(
+      const controllerWithDna = new TextCompatController(
         http as any,
         config as any,
         cls as any,
@@ -391,7 +391,7 @@ describe('SmrCompatController', () => {
         }
         return Promise.resolve({ data: { content: JSON.stringify({ chief_complaint: 'x', summary: 'y' }) } });
       });
-      const ctrl = new SmrCompatController(
+      const ctrl = new TextCompatController(
         httpLocal as any,
         config as any,
         cls as any,
@@ -429,7 +429,7 @@ describe('SmrCompatController', () => {
         }
         return Promise.resolve({ data: { content: JSON.stringify({ chief_complaint: 'x', summary: 'y' }) } });
       });
-      const ctrl = new SmrCompatController(
+      const ctrl = new TextCompatController(
         httpLocal as any,
         config as any,
         cls as any,
@@ -461,7 +461,7 @@ describe('SmrCompatController', () => {
       // CLS carries NO tenantId — exactly the API-key request shape.
       const clsNoTenant = { get: vi.fn(() => undefined), getId: vi.fn(() => 'req-test-id') };
       const dna = { getEffectiveStyleText: vi.fn().mockResolvedValue('Terse, active voice, no abbreviations.') };
-      const ctrl = new SmrCompatController(
+      const ctrl = new TextCompatController(
         httpLocal as any,
         config as any,
         clsNoTenant as any,
@@ -486,7 +486,7 @@ describe('SmrCompatController', () => {
     it('leaves an English transcript single-line, with no bilingual directive', async () => {
       const httpLocal = createMockHttpService();
       httpLocal.axiosRef.post.mockResolvedValue({ data: { content: JSON.stringify({ chief_complaint: 'x', summary: 'y' }) } });
-      const ctrl = new SmrCompatController(
+      const ctrl = new TextCompatController(
         httpLocal as any,
         config as any,
         cls as any,
@@ -527,7 +527,7 @@ describe('SmrCompatController', () => {
         }
         return Promise.resolve({ data: { content: JSON.stringify({ chief_complaint: 'x', summary: 'y' }) } });
       });
-      const ctrl = new SmrCompatController(
+      const ctrl = new TextCompatController(
         httpLocal as any,
         config as any,
         cls as any,
@@ -570,7 +570,7 @@ describe('SmrCompatController', () => {
         }
         return Promise.resolve({ data: { content: JSON.stringify({ chief_complaint: 'x', summary: 'y' }) } });
       });
-      const ctrl = new SmrCompatController(
+      const ctrl = new TextCompatController(
         httpLocal as any,
         config as any,
         cls as any,
@@ -620,7 +620,7 @@ describe('SmrCompatController', () => {
         if (String(url).includes('/api/v1/translate')) return Promise.reject(new Error('smr translate down'));
         return Promise.resolve({ data: { content: JSON.stringify({ chief_complaint: 'x', summary: 'y' }) } });
       });
-      const ctrl = new SmrCompatController(
+      const ctrl = new TextCompatController(
         httpLocal as any,
         config as any,
         cls as any,
@@ -645,7 +645,7 @@ describe('SmrCompatController', () => {
     // and the platform tier arrives labelled `funding: 'platform'` — which is
     // what makes the translation bill as platform spend rather than as the
     // tenant's own key.
-    it('serves the global-admin (SYSTEM) Sarvam credential through the shared cascade, labelled platform', async () => {
+    it('serves the super-admin (SYSTEM) Sarvam credential through the shared cascade, labelled platform', async () => {
       const providerConnection = {
         resolveTenantCloudOverrides: vi.fn().mockResolvedValue({ overrides: { sarvam: { api_key: 'platform-byok', funding: 'platform' } } }),
       };
@@ -656,7 +656,7 @@ describe('SmrCompatController', () => {
         }
         return Promise.resolve({ data: { content: JSON.stringify({ chief_complaint: 'x', summary: 'y' }) } });
       });
-      const ctrl = new SmrCompatController(
+      const ctrl = new TextCompatController(
         httpLocal as any,
         config as any,
         cls as any,

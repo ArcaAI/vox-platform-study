@@ -10,7 +10,7 @@ import { BaseTenantEntity, IBaseTenantEntity } from '../../../common';
 // the PHI boundary the server sits on (fail-safe default "external" ⇒ cloud
 // egress). This entity carries only structural invariants; feature-flag gating
 // (HarnessPolicy.mcpToolsEnabled) + allowlist intersection + PHI egress
-// screening are enforced by the harness activity, and global-admin write
+// screening are enforced by the harness activity, and super-admin write
 // authorization by the application service.
 export type McpTransport = 'streamable-http';
 export type McpPhiBoundary = 'external' | 'in-boundary';

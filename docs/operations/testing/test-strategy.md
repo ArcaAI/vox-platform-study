@@ -81,7 +81,7 @@ gate (build + test) green before advancing. See the layer-gate table in the work
 - **Collected everywhere, thresholds not yet hard-enforced in config.** Root Vitest coverage uses
   the `istanbul` provider (reporters `text/json/html/lcov` → `./coverage`) over a scoped include list
   (`applications, domains, logger, exceptions, pipeline, agentic-sdk-v2, med-ner, stt, vad`). Python
-  services print `--cov-report=term-missing`; smr/guardrail also emit html+xml.
+  services print `--cov-report=term-missing`; text/guardrail also emit html+xml.
 - **Target regime (aspirational gates until wired into CI):**
   - Domain + application layers (business logic): **≥ 85 %** line coverage; every public service
     method and factory path exercised.
@@ -98,7 +98,7 @@ advisory jobs):
 
 - [ ] Full local `pnpm verify` green.
 - [ ] CI pipeline green including opt-in jobs: run with `RUN_INFRA_TESTS=true` and `RUN_UI_CT=true`.
-- [ ] Advisory Python jobs (stt, smr, guardrail, nlp) reviewed and green — do not ship on a red
+- [ ] Advisory Python jobs (stt, text, guardrail, nlp) reviewed and green — do not ship on a red
       advisory job without an explicit, recorded waiver.
 - [ ] API E2E (`test-api-e2e`) green against a booted gateway.
 - [ ] Harness eval gate (`harness-eval-gate`) within thresholds (PDSQI-9 / faithfulness / ICC on

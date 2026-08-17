@@ -607,6 +607,7 @@ export { DEFAULT_AVAILABLE_STT_MODELS, DEFAULT_MODELS, DEFAULT_STT_MODELS, DEFAU
 export {
   // SMR error → AgenticErrorCode classification helpers.
   classifyHttpError,
+  classifyTextError,
   classifySmrError,
   // SDK-207 WS-4: Diff utilities
   computeDiff,
@@ -656,7 +657,7 @@ export type { CursorPageResult } from './utils';
 
 export { AgenticClient } from './core/AgenticClient';
 export { ConfigManager, type ConfigManagerOptions } from './core/ConfigManager';
-export type { AppConfig, DeepPartial } from './core/ConfigSchema';
+export type { AppConfig, DeepPartial, TextConfig } from './core/ConfigSchema';
 export { ModelRegistry, type ModelLoadProgressCallback } from './core/ModelRegistry';
 export { PersonalizationManager, type PreferencesChangeCallback } from './core/PersonalizationManager';
 

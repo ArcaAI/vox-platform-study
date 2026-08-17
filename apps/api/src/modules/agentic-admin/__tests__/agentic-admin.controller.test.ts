@@ -3,7 +3,7 @@
  *
  * The `@CanManage('HarnessPolicy')` tuple is exercised by the guard (+ e2e).
  * These specs cover the controller's OWN logic: read-tenant scoping (tenant
- * admin pinned to own tenant; global-admin targets `?tenantId=`), the
+ * admin pinned to own tenant; super-admin targets `?tenantId=`), the
  * cross-tenant 404 posture, and query pass-through to the service.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
@@ -34,7 +34,7 @@ describe('AgenticAdminController.getInstructions', () => {
     expect(service.getEffectiveInstructions).toHaveBeenCalledWith('t1', { departmentId: 'dep-1', promptType: 'revisit' });
   });
 
-  it('lets a global-admin target a tenant via ?tenantId=', async () => {
+  it('lets a super-admin target a tenant via ?tenantId=', async () => {
     const { controller, service } = makeController({ user: SUPER });
     await controller.getInstructions({ tenantId: 't-other' });
     expect(service.getEffectiveInstructions).toHaveBeenCalledWith('t-other', { departmentId: undefined, promptType: undefined });
@@ -46,7 +46,7 @@ describe('AgenticAdminController.getInstructions', () => {
     expect(service.getEffectiveInstructions).not.toHaveBeenCalled();
   });
 
-  it('400s a global-admin who omits ?tenantId= with no working tenant', async () => {
+  it('400s a super-admin who omits ?tenantId= with no working tenant', async () => {
     const { controller } = makeController({ user: SUPER });
     await expect(controller.getInstructions({})).rejects.toBeInstanceOf(BadRequestException);
   });

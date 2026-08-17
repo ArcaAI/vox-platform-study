@@ -1,6 +1,6 @@
 /**
  * `ComprehensiveSummaryProcessor` makes its own
- * SMR `/generate` call (`callSmrService`) and was flagged in the WS-D
+ * SMR `/generate` call (`callTextService`) and was flagged in the WS-D
  * handoff as an unmetered `SummaryMeta` writer. This mirrors the
  * `summary.service.ts`/`chain-summary.service.ts` treatment: the SummaryMeta
  * write and the LLM (+ guardrail, when present) usage-ledger rows commit in

@@ -54,20 +54,20 @@ async function readRow(request: APIRequestContext, token: string, provider: stri
 }
 
 test.describe('tenant BYO cloud credentials', () => {
-  let globalAdminToken: string;
+  let superAdminToken: string;
   let tenantAdminToken: string;
   let foreignTenantId: string;
 
   test.beforeAll(async ({ request }) => {
     const ga = await loginUser(request, SEEDED_USERS.superAdmin.username, SEEDED_USERS.superAdmin.password, 'ARCAAI');
-    expect(ga, 'global admin login (ARCAAI) failed').toBeTruthy();
-    globalAdminToken = ga!.token;
+    expect(ga, 'super admin login (ARCAAI) failed').toBeTruthy();
+    superAdminToken = ga!.token;
 
     const ta = await loginUser(request, SEEDED_USERS.admin.username, SEEDED_USERS.admin.password, DEFAULT_TENANT_KEY);
     expect(ta, `tenant_admin login (${DEFAULT_TENANT_KEY}) failed`).toBeTruthy();
     tenantAdminToken = ta!.token;
 
-    const resp = await readRow(request, globalAdminToken, 'azure');
+    const resp = await readRow(request, superAdminToken, 'azure');
     expect(resp.status()).toBe(200);
     foreignTenantId = ((await resp.json()) as { tenantId: string }).tenantId;
   });

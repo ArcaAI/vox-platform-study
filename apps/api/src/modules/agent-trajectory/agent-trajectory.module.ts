@@ -4,7 +4,7 @@ import { AgentTrajectoryController } from './agent-trajectory.controller';
 
 /**
  * AgentTrajectoryModule — the `/admin/agent-trajectory/*`
- * global-admin read plane over the ordered session trajectory.
+ * super-admin read plane over the ordered session trajectory.
  *
  * `AgentTrajectoryServiceModule` supplies `IAgentTrajectoryService` (ingest +
  * read + retention prune, built in Phase 2B). `ClsService` is global.

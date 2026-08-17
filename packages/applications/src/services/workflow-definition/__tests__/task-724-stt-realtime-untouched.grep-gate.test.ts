@@ -39,8 +39,10 @@ function changedPaths(): string[] {
 
 describe('TASK-724 realtime hot path untouched (grep-gate)', () => {
   it('the working tree has no changed/new file under apps/api/src/modules/streaming/** or apps/stt/src/stt/streaming/**', () => {
+    // NOTE: a CLEAN tree is a legitimate state (fresh clone, CI checkout, right after a commit),
+    // so emptiness is a PASS here — there is nothing under the forbidden prefixes. Asserting the
+    // tree is dirty made this gate fail for reasons unrelated to the claim it encodes.
     const paths = changedPaths();
-    expect(paths.length, 'sanity: git status must report something in an active dev tree').toBeGreaterThan(0);
 
     const violations = paths.filter((path) => FORBIDDEN_PREFIXES.some((prefix) => path.startsWith(prefix)));
 

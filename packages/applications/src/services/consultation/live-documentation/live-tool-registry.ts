@@ -184,7 +184,7 @@ export class NlpExtractionTool implements ExtractionToolExecutor {
     // guardrail executor below already does it. This call omitted the header,
     // so wherever NLP enforces a token (`NLP_SERVICE_TOKEN` non-empty) entity
     // extraction was rejected and the live note silently lost its highlights —
-    // the NLP twin of the SMR defect in `callSmr`.
+    // the NLP twin of the SMR defect in `callText`.
     const serviceToken = (await this.deps.secretsService?.getSecretOptional('NLP_SERVICE_TOKEN')) ?? '';
     const response = await this.deps.httpService.axiosRef.post(
       `${this.deps.nlpServiceUrl}/api/v1/classify/tokens`,

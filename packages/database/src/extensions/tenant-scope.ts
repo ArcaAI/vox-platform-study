@@ -144,7 +144,7 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   'AiProviderConnection',
   // ai-runtime-profile.prisma (1) — config-plane core. Hyperparameter /
   // context / concurrency profiles per (provider, modelSlug). SYSTEM-only rows
-  // (global-admin-only per owner expectation); tenantId is
+  // (super-admin-only per owner expectation); tenantId is
   // carried for the house template + forward compatibility.
   'AiRuntimeProfile', // also a SYSTEM-shared read model (platform-default row, below)
   // entitlement.prisma (1) — rolling-monthly usage meters. The
@@ -153,7 +153,7 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   // purge), so scoping here is behaviour-neutral for it while protecting any
   // future extended-client/repository access. `TenantEntitlement` is NOT
   // here — see INTENTIONALLY_UNSCOPED in the drift-guard test (pre-auth
-  // throttler + global-admin cross-tenant override CRUD read it through the
+  // throttler + super-admin cross-tenant override CRUD read it through the
   // extended client without a matching CLS tenant).
   'TenantUsageMeter',
   // entitlement.prisma (1) — append-only plan-change history (#6).
@@ -177,7 +177,7 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   // scoped config model (tenantId + resourceStatus soft-delete + _version OCC +
   // audit). SYSTEM-tenant rows are the shared registry every tenant's harness
   // run READS to resolve a server (also a SYSTEM-shared read model below);
-  // WRITES stay SYSTEM-only (global-admin, service layer).
+  // WRITES stay SYSTEM-only (super-admin, service layer).
   'McpServer',
   // consultation.prisma — segment-level transcript structure. A
   // per-transcript annotation table (like NamedEntity / AudioRecording),
@@ -217,7 +217,7 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   'AiUsageRollupDaily',
   // SYSTEM-owned platform records (a vendor bills the platform, not a
   // tenant). Scoped here so a customer tenant's reads can never surface
-  // aggregate platform vendor spend; global-admin reads go through the service.
+  // aggregate platform vendor spend; super-admin reads go through the service.
   'ProviderReconciliationRun',
   // The price book is the ONE exception in this group: its SYSTEM-tenant rows
   // are the platform rate card that every tenant's rater must read, so it is
@@ -352,7 +352,7 @@ export const SYSTEM_SHARED_READ_MODELS: ReadonlySet<string> = new Set([
   // SYSTEM tenant row is the platform default every tenant merges under its
   // own row (AiTaskDefaultService.getEffective). READS widen to
   // [caller, SYSTEM]; WRITES are NOT widened (guardrail.* keys are additionally
-  // global-admin-only at the service layer).
+  // super-admin-only at the service layer).
   'AiTaskDefault',
   // The provider CONNECTION catalog: the SYSTEM row records where a
   // serving provider lives and (as Vault-Transit ciphertext) how to auth to it.
@@ -375,22 +375,22 @@ export const SYSTEM_SHARED_READ_MODELS: ReadonlySet<string> = new Set([
   // the model at all. READS widen to [caller, SYSTEM]; WRITES are NOT widened.
   'AiRuntimeProfile',
   // the MCP external-tools registry: server rows are registered by a
-  // global admin under the SYSTEM tenant and every tenant's harness run must
+  // super admin under the SYSTEM tenant and every tenant's harness run must
   // READ the shared registry to resolve a server it references (server metadata
   // only — `authRef` is a Vault PATH, never secret material). READS widen to
-  // [caller, SYSTEM]; WRITES are NOT widened (registry mutation is global-admin
+  // [caller, SYSTEM]; WRITES are NOT widened (registry mutation is super-admin
   // only at the service layer, the guardrail.* precedent).
   'McpServer',
   // The release registry and the curated changelog are PLATFORM
   // facts owned by the SYSTEM tenant, read by callers acting under their own
   // tenant CLS. Without widening, `/changelog` and `/changelog/unseen` return
   // NOTHING for every tenant user, and `/releases` returns nothing for a
-  // TENANT_ADMIN (or a global admin who has a working tenant selected) — the
+  // TENANT_ADMIN (or a super admin who has a working tenant selected) — the
   // rows exist, the reader just never sees them. Found by U10 during
   // implementation; it affects all three models, not only the changelog.
   // READS widen to [caller, SYSTEM]; WRITES are NOT widened — release rows are
   // written only by the service-token registration path, and changelog
-  // authoring is global-admin-only, enforced imperatively in ChangelogService.
+  // authoring is super-admin-only, enforced imperatively in ChangelogService.
   // No secret material: these carry versions, commit SHAs and release notes.
   //
   // `UserChangelogAcknowledgement` is deliberately NOT here — an
@@ -406,7 +406,7 @@ export const SYSTEM_SHARED_READ_MODELS: ReadonlySet<string> = new Set([
   // so without widening the read the row is invisible and the platform silently
   // falls back to env — the exact failure mode documented for GlobalSetting
   // below. READS widen to [caller, SYSTEM]; WRITES are NOT widened (only a
-  // global admin mutates the platform default, enforced imperatively in
+  // super admin mutates the platform default, enforced imperatively in
   // `TenantStorageConfigService`). No secret material is shared: the row
   // carries only a `credentialsRef` Vault PATH, never credentials (same posture
   // as McpServer's `authRef`).
@@ -431,7 +431,7 @@ export const SYSTEM_SHARED_READ_MODELS: ReadonlySet<string> = new Set([
   // rate card is invisible and nothing can be priced (the same silent-fallback
   // failure mode documented for GlobalSetting above). READS widen to
   // [caller, SYSTEM]; WRITES are NOT widened — rate-card mutation is
-  // GLOBAL_ADMIN-only at the service layer (the AiTaskDefault precedent), and a
+  // SUPER_ADMIN-only at the service layer (the AiTaskDefault precedent), and a
   // tenant-owned row is reserved for a negotiated enterprise rate. No secret
   // material: prices are integer micros.
   'AiPriceBook',
@@ -482,7 +482,7 @@ export function isSystemSharedReadModel(model: string): boolean {
 /**
  * Pluggable provider that returns the *current* tenant id (typically
  * from `nestjs-cls`) and optionally signals whether the caller carries
- * the GLOBAL_ADMIN role (cross-tenant audit / platform-admin paths).
+ * the SUPER_ADMIN role (cross-tenant audit / platform-admin paths).
  *
  * The provider is intentionally framework-agnostic so this package
  * does not have to depend on `nestjs-cls`. NestJS wires its CLS-backed

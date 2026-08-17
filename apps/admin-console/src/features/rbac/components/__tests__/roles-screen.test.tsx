@@ -25,7 +25,7 @@ vi.mock('@/shared/layout/use-viewport-tier', () => ({
 function role(overrides: Partial<Role> = {}): Role {
   return {
     id: 'r-1',
-    name: 'GlobalAdmin',
+    name: 'SuperAdmin',
     description: 'Full platform access',
     isSystemRole: true,
     resourceStatus: 'ENABLED',
@@ -162,7 +162,7 @@ describe('RolesScreen (two-pane redesign)', () => {
     renderWithProviders(<RolesScreen />);
 
     expect(screen.getByRole('heading', { level: 1, name: 'Roles' })).toBeDefined();
-    expect(await screen.findByRole('button', { name: 'GlobalAdmin' })).toBeDefined();
+    expect(await screen.findByRole('button', { name: 'SuperAdmin' })).toBeDefined();
     expect(screen.getByRole('button', { name: 'Billing' })).toBeDefined();
     expect(screen.getByText(/System · locked/i)).toBeDefined();
     expect(screen.getByText(/^Custom/i)).toBeDefined();
@@ -189,7 +189,7 @@ describe('RolesScreen (two-pane redesign)', () => {
     // is URL-driven here — see role-detail useRoleTab).
     renderWithProviders(<RolesScreen />, { searchParams: '?role=r-1&tab=policies' });
 
-    await screen.findByRole('heading', { level: 2, name: 'GlobalAdmin' });
+    await screen.findByRole('heading', { level: 2, name: 'SuperAdmin' });
     expect(screen.queryByRole('button', { name: 'Edit' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Delete' })).toBeNull();
     // Clone is offered even for a locked system role and even to a tenant admin.
@@ -199,26 +199,26 @@ describe('RolesScreen (two-pane redesign)', () => {
     expect(screen.queryByRole('button', { name: 'Attach policy' })).toBeNull();
   });
 
-  it('a global admin session unlocks the Policies tab AND Edit on a SYSTEM role; Delete stays hidden', async () => {
+  it('a super admin session unlocks the Policies tab AND Edit on a SYSTEM role; Delete stays hidden', async () => {
     stubFetch((url, method) => {
       if (url === '/api/auth/session') return Response.json(SUPER_ADMIN_SESSION);
       return defaultHandler(url, method);
     });
     renderWithProviders(<RolesScreen />, { searchParams: '?role=r-1&tab=policies' });
 
-    await screen.findByRole('heading', { level: 2, name: 'GlobalAdmin' });
+    await screen.findByRole('heading', { level: 2, name: 'SuperAdmin' });
     // No lock notice, and attach/detach affordances are reachable.
     expect(screen.queryByText(/System role — seed-managed and read-only/i)).toBeNull();
     expect(await screen.findByRole('button', { name: 'Attach policy' })).toBeDefined();
     expect(screen.getByRole('button', { name: 'Detach tenant.manage' })).toBeDefined();
-    // Edit unlocks for a global admin (matches the backend isSuperAdmin carve-out on update/patch).
+    // Edit unlocks for a super admin (matches the backend isSuperAdmin carve-out on update/patch).
     expect(screen.getByRole('button', { name: 'Edit' })).toBeDefined();
     // Delete stays hidden for EVERY caller — softDelete() is hard-blocked platform-wide.
     expect(screen.queryByRole('button', { name: 'Delete' })).toBeNull();
   });
 
-  it('a global admin can rename a SYSTEM role through the Edit dialog', async () => {
-    const RENAMED_SYSTEM_ROLE = { ...SYSTEM_ROLE, name: 'GlobalAdmin', description: 'Renamed by a global admin' };
+  it('a super admin can rename a SYSTEM role through the Edit dialog', async () => {
+    const RENAMED_SYSTEM_ROLE = { ...SYSTEM_ROLE, name: 'SuperAdmin', description: 'Renamed by a super admin' };
     const calls = stubFetch((url, method) => {
       if (url === '/api/auth/session') return Response.json(SUPER_ADMIN_SESSION);
       if (method === 'PATCH' && url === '/api/hope/admin/rbac/roles/r-1') return Response.json(RENAMED_SYSTEM_ROLE);
@@ -228,13 +228,13 @@ describe('RolesScreen (two-pane redesign)', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
     const descriptionInput = await screen.findByLabelText(/description/i);
-    fireEvent.change(descriptionInput, { target: { value: 'Renamed by a global admin' } });
+    fireEvent.change(descriptionInput, { target: { value: 'Renamed by a super admin' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
 
     await waitFor(() => expect(calls.some((call) => call.method === 'PATCH')).toBe(true));
     const patch = calls.find((call) => call.method === 'PATCH');
     expect(patch?.url).toBe('/api/hope/admin/rbac/roles/r-1');
-    expect(patch?.body).toEqual({ name: 'GlobalAdmin', description: 'Renamed by a global admin' });
+    expect(patch?.body).toEqual({ name: 'SuperAdmin', description: 'Renamed by a super admin' });
   });
 
   it('clones a role and lands on the new role, prefilling "{name} (copy)"', async () => {
@@ -357,7 +357,7 @@ describe('RolesScreen (two-pane redesign)', () => {
     stubFetch();
     renderWithProviders(<RolesScreen />, { searchParams: '?role=r-1&tab=members' });
 
-    await screen.findByRole('heading', { level: 2, name: 'GlobalAdmin' });
+    await screen.findByRole('heading', { level: 2, name: 'SuperAdmin' });
     expect(await screen.findByText('No members yet')).toBeDefined();
     expect(screen.queryByRole('list', { name: 'Role members' })).toBeNull();
   });

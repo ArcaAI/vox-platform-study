@@ -20,7 +20,7 @@ export class LoginRequest {
 
   @ApiPropertyOptional({
     description:
-      'Tenant key for tenant-scoped authentication. Required for non-global-admin users. Global admins may omit this for global access or provide it to scope to a specific tenant.',
+      'Tenant key for tenant-scoped authentication. Required for non-super-admin users. Super Admins may omit this for global access or provide it to scope to a specific tenant.',
     example: 'acme-hospital',
   })
   @IsOptional()

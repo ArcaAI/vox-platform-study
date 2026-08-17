@@ -13,11 +13,11 @@ import {
   IUsageLedgerService,
   ModelResponse,
   buildLlmUsageInput,
-  parseSmrUsageDetail,
+  parseTextUsageDetail,
   parseStorageUri,
   SecretsService,
   isSuperAdmin,
-  SmrRequestEnrichmentService,
+  TextRequestEnrichmentService,
 } from '@arcaai/applications';
 import type { IBlobStorageService as IBlobStorageServiceType } from '@arcaai/applications';
 import {
@@ -56,13 +56,13 @@ import type { Response } from 'express';
 import { ClsService } from 'nestjs-cls';
 import { StreamScope } from '../auth/decorators/stream-scope.decorator';
 
-interface SmrResponseFormat {
+interface TextResponseFormat {
   type: 'text' | 'json' | 'json_schema';
   json_schema?: Record<string, unknown>;
   strict?: boolean;
 }
 
-interface SmrGenerateRequest {
+interface TextGenerateRequest {
   prompt: string;
   system_prompt?: string;
   provider?: string;
@@ -71,7 +71,7 @@ interface SmrGenerateRequest {
   max_tokens?: number;
   top_p?: number;
   stream?: boolean;
-  response_format?: SmrResponseFormat;
+  response_format?: TextResponseFormat;
   context?: Record<string, unknown>;
   /**
    * Gateway-injected tenant BYO credentials, keyed by provider.
@@ -144,8 +144,8 @@ const SSE_HEARTBEAT_INTERVAL_MS = 15_000;
 // document can't blow the SMR context window. ~200k chars ≈ 50k tokens.
 const ATTACHMENT_TEXT_LIMIT = 200_000;
 const GLOBAL_TENANT_KEY = '__GLOBAL__';
-// SUPER_ADMIN (formerly GLOBAL_ADMIN, renamed TASK-707) is the single
-// elevated role; the earlier, unrelated pre-TASK-417 SUPER_ADMIN role has
+// SUPER_ADMIN (formerly SUPER_ADMIN, renamed ) is the single
+// elevated role; the earlier, unrelated pre- SUPER_ADMIN role has
 // been retired.
 const SUPER_ADMIN_ROLE = 'SUPER_ADMIN';
 
@@ -175,8 +175,8 @@ interface ProviderListingEntry {
 @ApiTags('text')
 @ApiBearerAuth()
 @Controller('text')
-export class SmrProxyController {
-  private readonly logger = new Logger(SmrProxyController.name);
+export class TextProxyController {
+  private readonly logger = new Logger(TextProxyController.name);
 
   constructor(
     private readonly httpService: HttpService,
@@ -234,10 +234,10 @@ export class SmrProxyController {
     // this controller's own (already injected) dependencies rather than taken as
     // another constructor parameter: the service is stateless, and every
     // existing positional test fixture keeps its arity and its exact behavior.
-    this.smrRequestEnrichment = new SmrRequestEnrichmentService(this.clsService, this.aiRuntimeProfileService, this.aiProviderConnectionService);
+    this.textRequestEnrichment = new TextRequestEnrichmentService(this.clsService, this.aiRuntimeProfileService, this.aiProviderConnectionService);
   }
 
-  private readonly smrRequestEnrichment: SmrRequestEnrichmentService;
+  private readonly textRequestEnrichment: TextRequestEnrichmentService;
 
   /**
    * SDK fidelity: a caller-supplied model is forwarded
@@ -245,7 +245,7 @@ export class SmrProxyController {
    * AiTaskDefault / HarnessPolicy. FAIL CLOSED: unresolved selection rethrows
    * (typically 400) — no silent omit → env fallback.
    */
-  private async applySmrModelSelection<T extends { provider?: string; model?: string }>(target: T): Promise<T> {
+  private async applyTextModelSelection<T extends { provider?: string; model?: string }>(target: T): Promise<T> {
     if (!target.model && this.harnessPolicyService) {
       const tenantId = this.clsService.get('tenantId');
       const { provider, model } = await this.harnessPolicyService.resolveSmrSelection(tenantId);
@@ -255,7 +255,7 @@ export class SmrProxyController {
     // Layer the resolved runtime profile on top of the identity.
     // Runs for a caller-pinned model too: the caller chose the MODEL, not the
     // hyperparameters, and any parameter they did send still wins below.
-    await this.applySmrRuntimeProfile(target);
+    await this.applyTextRuntimeProfile(target);
     // Then fold in the caller tenant's BYO cloud credential, if any.
     return this.applyTenantProviderOverrides(target);
   }
@@ -265,24 +265,24 @@ export class SmrProxyController {
    * `provider_overrides`.
    *
    * BUG-018 — the implementation MOVED VERBATIM to the applications-layer
-   * `SmrRequestEnrichmentService` so the prompt-template test bench (which used
+   * `TextRequestEnrichmentService` so the prompt-template test bench (which used
    * to POST to SMR directly, on platform credentials) shares exactly one
    * implementation with this proxy. Semantics are unchanged: cloud-only,
    * minimal exposure, fail-open on a resolver error, and the policy-refusal
    * `assertProviderAvailable` check outside that catch.
    */
   private async applyTenantProviderOverrides<T extends { provider?: string }>(target: T): Promise<T> {
-    return this.smrRequestEnrichment.applyTenantProviderOverrides(target);
+    return this.textRequestEnrichment.applyTenantProviderOverrides(target);
   }
 
   /**
    * Inject the resolved hyperparameter profile into the forwarded body.
    *
-   * BUG-018 — implementation MOVED VERBATIM to `SmrRequestEnrichmentService`
+   * BUG-018 — implementation MOVED VERBATIM to `TextRequestEnrichmentService`
    * (caller-wins merge, fail-open on resolver error). See above.
    */
-  private async applySmrRuntimeProfile<T extends { provider?: string; model?: string }>(target: T): Promise<T> {
-    return this.smrRequestEnrichment.applySmrRuntimeProfile(target);
+  private async applyTextRuntimeProfile<T extends { provider?: string; model?: string }>(target: T): Promise<T> {
+    return this.textRequestEnrichment.applyTextRuntimeProfile(target);
   }
 
   // The SMR base URL resolves through the
@@ -291,7 +291,7 @@ export class SmrProxyController {
   // read is forbidden by the `no-direct-downstream-url-env` lint
   // rule; the env-or-fallback resolution happens once at bootstrap
   // in `ConfigService.loadBaseConfig()`.
-  private getSmrBaseUrl(): string {
+  private getTextBaseUrl(): string {
     return this.configService.getConfigValue('TEXT_URL');
   }
 
@@ -496,9 +496,9 @@ export class SmrProxyController {
   @ApiExcludeEndpoint()
   @ApiOperation({ summary: 'Generate text via SMR (sync or streaming)' })
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  async generate(@Body() body: SmrGenerateRequest): Promise<any> {
-    const base = this.getSmrBaseUrl();
-    await this.applySmrModelSelection(body);
+  async generate(@Body() body: TextGenerateRequest): Promise<any> {
+    const base = this.getTextBaseUrl();
+    await this.applyTextModelSelection(body);
 
     try {
       const response = await this.withRetry(
@@ -533,7 +533,7 @@ export class SmrProxyController {
   @ApiParam({ name: 'taskId', description: 'Task ID' })
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async getTaskStatus(@Param('taskId') taskId: string): Promise<any> {
-    const base = this.getSmrBaseUrl();
+    const base = this.getTextBaseUrl();
 
     try {
       const response = await this.withRetry(
@@ -563,7 +563,7 @@ export class SmrProxyController {
   @ApiParam({ name: 'taskId', description: 'Task ID to cancel' })
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async cancelTask(@Param('taskId') taskId: string): Promise<any> {
-    const base = this.getSmrBaseUrl();
+    const base = this.getTextBaseUrl();
 
     try {
       const response = await this.httpService.axiosRef.post(`${base}/api/v1/tasks/${taskId}/cancel`, {}, { headers: this.getForwardHeaders() });
@@ -595,7 +595,7 @@ export class SmrProxyController {
     @Headers('last-event-id') lastEventId: string | undefined,
     @Res() res: Response,
   ): Promise<void> {
-    const base = this.getSmrBaseUrl();
+    const base = this.getTextBaseUrl();
 
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache, no-transform');
@@ -625,7 +625,7 @@ export class SmrProxyController {
       emitted = true;
       if (!this.usageLedger || !tenantId || !terminalUsage) return;
 
-      const usage = parseSmrUsageDetail(terminalUsage);
+      const usage = parseTextUsageDetail(terminalUsage);
       if (!usage) return;
 
       const input = buildLlmUsageInput({ usage, tenantId, operation: 'generate.stream' });
@@ -759,7 +759,7 @@ export class SmrProxyController {
 
     const { prompt, systemPrompt, resolvedMeta } = await this.assemblePrompt(body);
 
-    const smrPayload: SmrGenerateRequest = {
+    const textPayload: TextGenerateRequest = {
       prompt,
       system_prompt: systemPrompt,
       provider: body.provider,
@@ -768,16 +768,16 @@ export class SmrProxyController {
       max_tokens: body.max_tokens,
       stream: body.stream ?? false,
     };
-    await this.applySmrModelSelection(smrPayload);
+    await this.applyTextModelSelection(textPayload);
 
-    const base = this.getSmrBaseUrl();
+    const base = this.getTextBaseUrl();
 
     try {
       const response = await this.withRetry(
         () =>
-          this.httpService.axiosRef.post(`${base}/api/v1/generate`, smrPayload, {
+          this.httpService.axiosRef.post(`${base}/api/v1/generate`, textPayload, {
             headers: this.getForwardHeaders(),
-            timeout: smrPayload.stream ? 30_000 : 120_000,
+            timeout: textPayload.stream ? 30_000 : 120_000,
           }),
         'SMR assembled generate',
         // Same single-delivery contract as `generate()`.
@@ -1115,7 +1115,7 @@ export class SmrProxyController {
   // TEXT_GENERATION + SUMMARIZATION rows grouped by `provider`), replacing the
   // retired `smr-provider-models`/`default-smr-*` GlobalSetting keys. The
   // tenant's effective default still comes from the HarnessPolicy cascade
-  // (`applySmrModelSelection` untouched). The live SMR probe survives ONLY as
+  // (`applyTextModelSelection` untouched). The live SMR probe survives ONLY as
   // transition safety when the registry has zero rows.
   //
   // That fallback is scoped to the PLAYGROUND (tier 50-59), the
@@ -1155,7 +1155,7 @@ export class SmrProxyController {
     // ("available"/"unavailable") rather than `is_available: boolean`, so we map
     // it here to satisfy the TypeScript SmrProvider interface.
     try {
-      const base = this.getSmrBaseUrl();
+      const base = this.getTextBaseUrl();
       const response = await this.withRetry(
         () =>
           this.httpService.axiosRef.get(`${base}/api/v1/providers`, {

@@ -84,7 +84,7 @@ export function PersonaControl({ session }: { session: SafeSession }) {
         </span>
         <span className="text-muted-foreground hidden items-center gap-1 text-xs sm:inline-flex">
           <IconInfoCircle className="size-3.5 shrink-0" aria-hidden />
-          Impersonation requires global admin
+          Impersonation requires super admin
         </span>
         {underAdmin}
       </div>

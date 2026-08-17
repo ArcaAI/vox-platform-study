@@ -65,7 +65,7 @@ describe('SettingsRegistryWriteService — globalOnly enforcement', () => {
   // `GlobalSetting` create whose `tenantId` is not the caller's CLS tenant — so
   // in a running gateway the same call raised `TenantScope: tenantId mismatch`
   // as a bare 500. That is now the intended answer (403: a
-  // platform-wide write is a global-admin surface) and gives a tenant admin the
+  // platform-wide write is a super-admin surface) and gives a tenant admin the
   // scope it can actually write at.
   //
   // The INTENT is preserved verbatim: prove the guard reads descriptor
@@ -80,7 +80,7 @@ describe('SettingsRegistryWriteService — globalOnly enforcement', () => {
     await expect(svc.write('agentic.context.liveDelta.maxChars', 9000)).rejects.toBeInstanceOf(ForbiddenException);
   });
 
-  it('allows a globalOnly key for a global admin', async () => {
+  it('allows a globalOnly key for a super admin', async () => {
     const { svc } = makeService({ roles: ['SUPER_ADMIN'] });
     await expect(svc.write('agentic.context.liveDelta.maxChars', 9000)).resolves.toBeDefined();
   });

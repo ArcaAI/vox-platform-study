@@ -31,9 +31,9 @@ import { SellRateDtoMapper } from './sell-rate-card.dto.mapper';
  * and an already-computed invoice remains reproducible from its
  * `priceBookVersion` stamp.
  *
- * // AUTH-NOTE: rate-card mutation is GLOBAL-ADMIN-ONLY, enforced imperatively
+ * // AUTH-NOTE: rate-card mutation is SUPER_ADMIN-ONLY, enforced imperatively
  * // here (`isSuperAdmin`) because the permission decorators cannot express
- * // "global admins only" — the `AiTaskDefault` precedent (rule 05). This is a
+ * // "super admins only" — the `AiTaskDefault` precedent (rule 05). This is a
  * // deliberate 403 privilege boundary, NOT the 404-over-403 tenancy posture.
  *
  * The COST plane is refused outright: it is ops-owned (seeds + the future
@@ -69,7 +69,7 @@ export class SellRateCardService extends BaseService implements ISellRateCardSer
   }
 
   async createSellRate(request: CreateSellRateRequest): Promise<SellRateResponse> {
-    this.assertGlobalAdmin();
+    this.assertSuperAdmin();
     this.assertRowShape(request);
 
     const entity = AiPriceBookFactory.CreateAiPriceBook({
@@ -100,7 +100,7 @@ export class SellRateCardService extends BaseService implements ISellRateCardSer
   }
 
   async supersedeSellRate(id: string, request: SupersedeSellRateRequest, expectedVersion: number): Promise<SellRateSupersedeResponse> {
-    this.assertGlobalAdmin();
+    this.assertSuperAdmin();
 
     const current = await this.findSellRow(id);
     const successorFrom = new Date(request.effectiveFrom);
@@ -181,9 +181,9 @@ export class SellRateCardService extends BaseService implements ISellRateCardSer
     }
   }
 
-  private assertGlobalAdmin(): void {
+  private assertSuperAdmin(): void {
     if (!isSuperAdmin(this.requestUser)) {
-      throw new ForbiddenException('Rate-card mutation is restricted to global administrators.');
+      throw new ForbiddenException('Rate-card mutation is restricted to super administrators.');
     }
   }
 }

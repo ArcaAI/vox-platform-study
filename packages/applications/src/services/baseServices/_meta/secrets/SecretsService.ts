@@ -248,7 +248,7 @@ export class SecretsService implements OnModuleDestroy {
   // Warmup re-warm loop — keeps `getSecretSync` consumers from going cold
   // ---------------------------------------------------------------------------
   //
-  // The sync path (SmrCompatController / SmrProxyController / TtsWsGateway
+  // The sync path (TextCompatController / TextProxyController / TtsWsGateway
   // `getForwardHeaders`) cannot await Vault, so it reads `getSecretSync`, which
   // returns `undefined` on any cache miss — including a plain TTL expiry. Boot
   // warms the keys once; this loop re-fetches them at half the TTL so a warmed

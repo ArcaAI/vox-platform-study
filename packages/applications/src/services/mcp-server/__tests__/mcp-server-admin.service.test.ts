@@ -2,7 +2,7 @@
  * McpServerAdminService — unit tests.
  *
  * Mirrors the `ai-task-default` test style: repository, EventEmitter2 and
- * ClsService are mocked. Asserts the GLOBAL-ADMIN-only write governance (403 for
+ * ClsService are mocked. Asserts the SUPER_ADMIN-only write governance (403 for
  * tenant admins), OCC semantics, cross-tenant 404 reads, sys-event broadcasting,
  * and — security-critical — that NO secret material is stored or echoed
  * (authRef is a Vault path only; the model has no secret column).
@@ -64,7 +64,7 @@ describe('McpServerAdminService — write governance (GLOBAL-ADMIN only)', () =>
     await expect(svc.remove('id-1', 1)).rejects.toBeInstanceOf(ForbiddenException);
   });
 
-  it('a global admin can create a SYSTEM registry row + broadcasts ResourceCreated', async () => {
+  it('a super admin can create a SYSTEM registry row + broadcasts ResourceCreated', async () => {
     const { svc, repo, emitter } = makeService({ roles: ['SUPER_ADMIN'], clsTenantId: null });
     const res = await svc.create({ name: 'fhir-terminology', baseUrl: 'https://terminology.internal/mcp', phiBoundary: 'in-boundary' } as any);
     expect(repo.create).toHaveBeenCalledTimes(1);

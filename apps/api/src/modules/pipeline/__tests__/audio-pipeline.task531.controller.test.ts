@@ -79,9 +79,9 @@ describe('TenantPipelineResyncController — resync route', () => {
     expect(result).toEqual({ added: 1, fastForwarded: 2, skipped: 6 });
   });
 
-  // Resync writes into an arbitrary tenant, so it is global-admin only —
+  // Resync writes into an arbitrary tenant, so it is super-admin only —
   // same posture as tenant provisioning.
-  it('is gated on manage:Tenant (global admin)', () => {
+  it('is gated on manage:Tenant (super admin)', () => {
     const handler = (TenantPipelineResyncController.prototype as any).resync;
     const permissions = Reflect.getMetadata(REQUIRED_PERMISSIONS_KEY, handler);
 

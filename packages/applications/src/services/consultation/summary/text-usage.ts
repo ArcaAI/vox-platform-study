@@ -33,7 +33,7 @@ import type { UsageOperation } from '../../usageLedger/vocabulary';
  */
 
 /** The block SMR puts on a response / terminal stream frame, after parsing. */
-export interface SmrUsageDetail {
+export interface TextUsageDetail {
   /** Stable per-generation id — the ledger's idempotency key is derived from it. */
   taskId: string;
   /** Correlation id, for log/trace joins. Never used as a billing key. */
@@ -95,7 +95,7 @@ export function toLedgerProvider(smrProvider: string): string {
  * on an invoice, and a missing event is repairable from the provider's own
  * usage API while a wrong one is not.
  */
-export function parseSmrUsageDetail(raw: unknown): SmrUsageDetail | null {
+export function parseTextUsageDetail(raw: unknown): TextUsageDetail | null {
   if (!raw || typeof raw !== 'object') return null;
   const block = raw as Record<string, unknown>;
 
@@ -125,7 +125,7 @@ export function parseSmrUsageDetail(raw: unknown): SmrUsageDetail | null {
 }
 
 interface BuildLlmUsageParams {
-  usage: SmrUsageDetail;
+  usage: TextUsageDetail;
   tenantId: string;
   operation: UsageOperation;
   consultationId?: string | null;
@@ -175,7 +175,7 @@ export function buildLlmUsageInput(params: BuildLlmUsageParams): UsageEventBatch
 }
 
 interface BuildGuardrailUsageParams {
-  usage: SmrUsageDetail;
+  usage: TextUsageDetail;
   tenantId: string;
   consultationId?: string | null;
   doctorId?: string | null;
@@ -240,7 +240,7 @@ interface BuildLlmUsageFromTokenCountsParams {
 /**
  * Build an LLM usage batch from BARE `{inputTokens, outputTokens}` — for a
  * writer that never called SMR itself and therefore has no
- * {@link SmrUsageDetail} (no provider, no `endpointKind`, no raw provider
+ * {@link TextUsageDetail} (no provider, no `endpointKind`, no raw provider
  * payload). `context.service.ts#addRawSummary` is the one caller: a legacy
  * write path that persists a summary + pre-computed token counts a caller
  * supplied directly, with zero SMR/HTTP calls anywhere in that file.
@@ -296,7 +296,7 @@ export function buildLlmUsageInputFromTokenCounts(params: BuildLlmUsageFromToken
  * provider that reported nothing) the headline counts stand in — losing the
  * breakdown is a rate imprecision; losing the event is lost revenue.
  */
-function normalizeUnits(usage: SmrUsageDetail): ReturnType<typeof toUsageUnitQuantities> {
+function normalizeUnits(usage: TextUsageDetail): ReturnType<typeof toUsageUnitQuantities> {
   const fromRaw = usage.raw ? toUsageUnitQuantities(normalizeLlmUsage(toLedgerProvider(usage.smrProvider), usage.endpointKind, usage.raw)) : [];
   if (fromRaw.length > 0) return fromRaw;
 
@@ -323,7 +323,7 @@ function resolveDeployment(provider: string, byok: boolean): AiDeploymentKind {
  * rejected by `recordUsage` on purpose — this is the PHI boundary of the
  * billing plane, not a place for context.
  */
-function buildAttributes(usage: SmrUsageDetail): UsageAttributes {
+function buildAttributes(usage: TextUsageDetail): UsageAttributes {
   const attributes: UsageAttributes = {
     endpointKind: usage.endpointKind,
     interrupted: usage.interrupted,

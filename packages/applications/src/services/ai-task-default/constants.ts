@@ -13,10 +13,10 @@ import { ModelTaskType } from '@arcaai/domains';
 // `smr.live.fallback` / `smr.finalize.fallback` are the per-tenant,
 // opt-in fallback selections `resolveSmrFallbackSelection` reads (fail-OPEN: no
 // row ⇒ no fallback). SMR selection is tenant-admin configurable (NOT in
-// `GLOBAL_ADMIN_ONLY_TASK_PREFIXES`).
+// `SUPER_ADMIN_ONLY_TASK_PREFIXES`).
 // `smr.test` routes the tenant-admin prompt-template test
 // bench when the caller does not supply an explicit provider/model pair;
-// `PromptManagementService.callSmrGenerate` falls back to `smr.finalize` when
+// `PromptManagementService.callTextGenerate` falls back to `smr.finalize` when
 // `smr.test` is unconfigured for the tenant.
 // additive keys moving the last env-selected surfaces into the DB
 // control plane: `guardrail.safety` (GLiNER content-safety detector),
@@ -26,12 +26,12 @@ import { ModelTaskType } from '@arcaai/domains';
 // TASK-729: `nlp.sentiment` / `nlp.toxicity` — two more FIXED-taxonomy
 // classification tasks served by the SAME generic `/classify/text` endpoint
 // (model-agnostic already; see apps/nlp/src/nlp/api/v1/rest/classify.py).
-// No new Python endpoint — only these two AiTaskDefault keys. Global-admin-only,
+// No new Python endpoint — only these two AiTaskDefault keys. Super-admin-only,
 // consistent with every other `nlp.*` key.
 // `vlm.extract`  routes SMR's vision capability (image → text
 // extraction via a vision-language model). It lives in SMR's own
 // provider/adapter framework — same governance class as `smr.*` — so it is
-// tenant-admin configurable, NOT under `GLOBAL_ADMIN_ONLY_TASK_PREFIXES`.
+// tenant-admin configurable, NOT under `SUPER_ADMIN_ONLY_TASK_PREFIXES`.
 export const AI_TASK_KEYS = [
   'guardrail.validate',
   'guardrail.safety',
@@ -86,7 +86,7 @@ export const AI_TASK_MODEL_TASK_TYPES: Record<AiTaskKey, ModelTaskType> = {
 };
 
 /**
- * Task-key prefixes whose writes AND effective resolution are GLOBAL-ADMIN-ONLY
+ * Task-key prefixes whose writes AND effective resolution are SUPER_ADMIN-ONLY
  * (a privilege boundary → 403 on write, NOT the 404-over-403 cross-tenant posture).
  * Runtime reads ignore per-tenant override rows and use the SYSTEM row only
  * (tenants may only *use* platform defaults for these surfaces).
@@ -99,7 +99,7 @@ export const AI_TASK_MODEL_TASK_TYPES: Record<AiTaskKey, ModelTaskType> = {
  * honours per-tenant override rows and `upsertRow` permits tenant writes.
  *
  * `guardrail.` was REMOVED here by owner decision 2026-08-16 (TASK-735 Phase
- * 0), reversing the 2026-07-17 global-admin-only directive: guardrail
+ * 0), reversing the 2026-07-17 super-admin-only directive: guardrail
  * selection is now tenant-admin configurable via the SAME cascade as `smr.*`
  * (`getEffective` honours the tenant row; `upsertRow` accepts tenant writes).
  * It is NOT unconditional, though — `AiTaskDefaultService.upsertRow` layers a
@@ -114,26 +114,26 @@ export const AI_TASK_MODEL_TASK_TYPES: Record<AiTaskKey, ModelTaskType> = {
  * `TenantEntitlement` column (a `packages/database` migration) outside this
  * ticket's file scope. See the TASK-735 ticket README §7 for the gap.
  */
-export const GLOBAL_ADMIN_ONLY_TASK_PREFIXES = ['nlp.', 'harness.'] as const;
+export const SUPER_ADMIN_ONLY_TASK_PREFIXES = ['nlp.', 'harness.'] as const;
 
 /**
- * @deprecated Use {@link GLOBAL_ADMIN_ONLY_TASK_PREFIXES}. Retained for
+ * @deprecated Use {@link SUPER_ADMIN_ONLY_TASK_PREFIXES}. Retained for
  * back-compat with zero production callers (verified 2026-08-16, TASK-735).
- * Historically pinned to `'guardrail.'`; guardrail left the global-admin-only
+ * Historically pinned to `'guardrail.'`; guardrail left the super-admin-only
  * set in TASK-735 Phase 0, so that value would now be actively wrong. Aliased
  * to the first remaining locked prefix instead of a stale literal.
  */
-export const GLOBAL_ADMIN_ONLY_TASK_PREFIX = GLOBAL_ADMIN_ONLY_TASK_PREFIXES[0];
+export const SUPER_ADMIN_ONLY_TASK_PREFIX = SUPER_ADMIN_ONLY_TASK_PREFIXES[0];
 
 /** True when `taskKey` is under a SUPER_ADMIN-only prefix. */
-export function isGlobalAdminOnlyTaskKey(taskKey: string): boolean {
-  return GLOBAL_ADMIN_ONLY_TASK_PREFIXES.some((p) => taskKey.startsWith(p));
+export function isSuperAdminOnlyTaskKey(taskKey: string): boolean {
+  return SUPER_ADMIN_ONLY_TASK_PREFIXES.some((p) => taskKey.startsWith(p));
 }
 
 /**
  * Task-key prefix for the guardrail safety-engine keys
  * (`guardrail.validate` / `guardrail.safety` / `guardrail.groundedness`).
- * `guardrail.` is tenant-configurable (see {@link GLOBAL_ADMIN_ONLY_TASK_PREFIXES}
+ * `guardrail.` is tenant-configurable (see {@link SUPER_ADMIN_ONLY_TASK_PREFIXES}
  * doc), but `AiTaskDefaultService.upsertRow` still layers the D2 tighten-only
  * platform floor on it via {@link isGuardrailTaskKey}.
  */

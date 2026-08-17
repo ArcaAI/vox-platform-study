@@ -478,7 +478,7 @@ describe('HarnessPolicyService', () => {
     });
 
     // The guardrail/PHI ON-OFF switches
-    // join the global-admin-only list. A tenant admin must not be able to
+    // join the super-admin-only list. A tenant admin must not be able to
     // disable the safety gate or the PHI fail-closed posture for their tenant.
     describe.each(['safetyEnabled', 'phiEnabled', 'phiFailClosed'] as const)('E3-L1 lock — %s', (key) => {
       it('rejects a tenant updatePolicy patching it (403 naming the key)', async () => {

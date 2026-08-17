@@ -1,8 +1,8 @@
 /**
  * Fetches the SAME discovery bundle `@arcaai/vox` reads at session start
- * `GET /tenant/me/context-schema` — as a global-admin
+ * `GET /tenant/me/context-schema` — as a super-admin
  * "manage as tenant" call: `Authorization: Bearer <token>` for a
- * GLOBAL_ADMIN whose JWT carries an empty tenant binding, plus
+ * SUPER_ADMIN whose JWT carries an empty tenant binding, plus
  * `X-Tenant-Id: <tenantId>` to select the target tenant
  * (`resolve-active-tenant.ts`'s elevation path — the same mechanism the
  * admin-console BFF proxy uses for its "working tenant").
@@ -23,7 +23,7 @@ export interface FetchConsultationSchemaOptions {
   /** Gateway origin, e.g. `http://localhost:8868`. May include a trailing `/api/v1` — normalized away. */
   baseUrl: string;
   tenantId: string;
-  /** Bearer JWT for a GLOBAL_ADMIN user (see module doc). */
+  /** Bearer JWT for a SUPER_ADMIN user (see module doc). */
   token: string;
   /** Prefer the department-scoped default, falling back to the tenant default. */
   departmentId?: string;

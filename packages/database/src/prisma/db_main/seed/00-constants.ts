@@ -148,19 +148,11 @@ export const SEED_POLICY_IDS = {
 // =============================================================================
 
 export const SEED_ROLE_IDS = {
-  // 00000000-0000-0000-0000-000000000001 is the RETIRED legacy role id:
-  // originally named SUPER_ADMIN, consolidated into GLOBAL_ADMIN and
-  // soft-deleted by TASK-417's data migration. TASK-707 renamed the live
-  // elevated role (id ...0003 below) from GLOBAL_ADMIN back to SUPER_ADMIN,
-  // so this retired row's `name` column was further renamed to a dead
-  // placeholder ('SUPER_ADMIN__RETIRED_TASK_417') by the TASK-707 data
-  // migration to avoid colliding with the live role's new name. Reserved
-  // forever — never reuse it for a new role.
+  // 00000000-0000-0000-0000-000000000001 is a retired legacy role id.
+  // Reserved forever — never reuse it for a new role.
   TENANT_ADMIN: '00000000-0000-0000-0000-000000000002',
-  // Elevated platform-wide "global admin" role; the single
-  // elevated role recognized by tenant-guards.ELEVATED_ROLES. Renamed from
-  // GLOBAL_ADMIN to SUPER_ADMIN by TASK-707 (D8) — this constant's VALUE
-  // (the UUID) is unchanged; only the role's `name` and this key changed.
+  // Elevated platform-wide role; the single elevated role recognized by
+  // tenant-guards.ELEVATED_ROLES. UUID is stable; Role.name is SUPER_ADMIN.
   SUPER_ADMIN: '00000000-0000-0000-0000-000000000003',
   DOCTOR: '00000000-0000-0000-0000-000000000010',
   NURSE: '00000000-0000-0000-0000-000000000011',
@@ -175,21 +167,10 @@ export const SEED_ROLE_IDS = {
 
 export const SEED_USER_IDS = {
   SYSTEM: SYSTEM_USER_ID,
-  // Key kept as SUPER_ADMIN for data identity: it is the seeded `super_admin`
-  // USER (login identifier), which carries the SUPER_ADMIN role (renamed
-  // from GLOBAL_ADMIN by TASK-707, D8).
+  // Seeded `super_admin` user (login identifier); carries the SUPER_ADMIN role.
   SUPER_ADMIN: '70000000-0000-0000-0000-000000000001',
   TENANT_ADMIN: '70000000-0000-0000-0000-000000000002',
   ARCAAI_ADMIN: '70000000-0000-0000-0000-000000000003',
-  // Platform-wide global admin USER (username `global_admin`), distinct from
-  // the `super_admin` user above. This key is NOT renamed by TASK-707: it
-  // names a user identity ("global admin"), not the elevated ROLE literal
-  // (which this user also carries, now named SUPER_ADMIN per D8) — and the
-  // key `SUPER_ADMIN` is already taken by the unrelated `super_admin` user
-  // above, so renaming this key would collide. Lives on the SYSTEM tenant
-  // (like the seeded super_admin user) so it is membership-exempt and
-  // elevated cross-tenant.
-  GLOBAL_ADMIN: '70000000-0000-0000-0000-000000000006',
   DOCTOR: '70000000-0000-0000-0000-000000000010',
   DOCTOR2: '70000000-0000-0000-0000-000000000011',
   DEPT_HEAD: '70000000-0000-0000-0000-000000000012',
@@ -690,7 +671,9 @@ export const SEED_GLOBAL_SETTING_IDS = {
   // (namespace `arcaai-admin`, key `menuOrder`). Seeds the TENANT tier of the
   // resolver's USER → TENANT → DEFAULT precedence. Suffix `051` mirrors the
   // `050` locked-config-paths numbering; the 4th UUID group encodes the tenant.
-  GLOBAL_ADMIN_MENU_ORDER: '85000000-0000-0000-0000-000000000051',
+  // Named GLOBAL_TENANT_* so the key is not read as the retired GLOBAL_ADMIN
+  // role token. Sibling for the ArcaAI tenant stays ARCAAI_ADMIN_MENU_ORDER.
+  GLOBAL_TENANT_ADMIN_MENU_ORDER: '85000000-0000-0000-0000-000000000051',
   ARCAAI_ADMIN_MENU_ORDER: '85000000-0000-0000-0001-000000000051',
 
   // Platform capability for local raw-stream dual-capture. A single

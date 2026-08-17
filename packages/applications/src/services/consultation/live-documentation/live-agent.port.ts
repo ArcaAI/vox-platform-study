@@ -4,7 +4,7 @@
  *
  * WHY A PORT AND NOT `PromptAssemblyService`. The live prompt is not the
  * template-assembly pipeline: it is a bespoke, prefix-cache-ordered
- * concatenation (`buildSmrUserPrompt`) with no `{variable}` substitution, no
+ * concatenation (`buildTextUserPrompt`) with no `{variable}` substitution, no
  * EXTERNAL_DATA spotlighting, and no DNA / few-shot / NER blocks. Injecting the
  * assembler would drag its DB reads (template row, DNA decrypt, exemplar
  * retrieval) toward the flush path and couple the live loop to finalize-only

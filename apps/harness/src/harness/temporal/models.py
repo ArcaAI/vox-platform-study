@@ -297,7 +297,7 @@ class HarnessPolicy(BaseModel):
     smr_provider: str | None = None
     smr_model: str | None = None
     # LLM-as-judge selection resolved from the SYSTEM ``AiTaskDefault``
-    # key ``harness.judge`` (GLOBAL_ADMIN-owned). NULLABLE by design (like
+    # key ``harness.judge`` (SUPER_ADMIN-owned). NULLABLE by design (like
     # ``smr_provider``): ``None`` ⇒ the SYSTEM default is missing/disabled, and the
     # inferential pass FAILS CLOSED (degrades) rather than falling back to the
     # env ``HARNESS_JUDGE_PROVIDER``/``HARNESS_JUDGE_MODEL`` selection — env carries
@@ -334,7 +334,7 @@ class HarnessPolicy(BaseModel):
     regen_feedback_enabled: bool | None = None
     # MCP external-tools master switch. NULLABLE by design:
     # ``None`` ⇒ OFF (the whole MCP tool path stays dormant), so the feature is off
-    # by default everywhere until a global admin flips this per-tenant knob AND the
+    # by default everywhere until a super admin flips this per-tenant knob AND the
     # referenced ``McpServer.enabled`` is true. ``mcp_servers`` carries the enabled
     # SYSTEM-shared registry rows the workflow resolves against (empty ⇒ nothing to call).
     mcp_tools_enabled: bool | None = None

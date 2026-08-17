@@ -121,7 +121,7 @@ export interface AgentTemplateResyncSummary {
  * no golden agent sets any of the seven fields yet. See the Decisions section.
  *
  * TENANT CONTEXT: callers run this with an elevated, tenant-less context (a
- * global admin authenticates with an empty `tenantId`; the cron has no CLS at
+ * super admin authenticates with an empty `tenantId`; the cron has no CLS at
  * all). Both make the tenant-scope Prisma extension pass through in its elevated
  * mode — the same path `PipelineTemplateResyncService` relies on to read the
  * SYSTEM catalog and write into a tenant that is not the caller's. The target

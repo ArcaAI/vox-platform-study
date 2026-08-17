@@ -20,10 +20,8 @@ export const GLOBAL_TENANT_KEY = '__GLOBAL__';
  * gate for sensitive tenant-config operations such as editing locked rows or
  * mutating the master `__GLOBAL__` tenant defaults.
  *
- * This is the single elevated role literal. History: an earlier, unrelated
- * legacy `SUPER_ADMIN` role was consolidated into `GLOBAL_ADMIN` and retired
- * (TASK-417); `GLOBAL_ADMIN` was then itself renamed to `SUPER_ADMIN`
- * (TASK-707) — the two `SUPER_ADMIN` names do not refer to the same role.
+ * This is the single elevated role literal recognized by
+ * `tenant-guards.ELEVATED_ROLES`.
  */
 export const SUPER_ADMIN_ROLE = 'SUPER_ADMIN';
 

@@ -30,7 +30,7 @@ const CLINICIAN_ROLES = ['DOCTOR', 'SPECIALIST', 'CONSULTANT'];
  * the Guardrail and NLP Python services, backing the Agent Playground's
  * Guardrails and NER tabs (matrix row 38). `@Authorize()` (no permission pair):
  * any authenticated caller — SUPER_ADMIN or TENANT_ADMIN acting under their
- * OWN account — may call it, mirroring `SmrProxyController` (`/text/*`). These
+ * OWN account — may call it, mirroring `TextProxyController` (`/text/*`). These
  * are stateless inference calls over caller-supplied text — no tenant-owned
  * resource is read, so there is no by-id/tenancy surface here.
  *

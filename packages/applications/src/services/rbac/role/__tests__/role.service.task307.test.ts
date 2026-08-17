@@ -216,7 +216,7 @@ describe('RbacRoleService', () => {
       expect(result.RolePolicies).toEqual([]);
     });
 
-    it('a global admin may create a SYSTEM role', async () => {
+    it('a super admin may create a SYSTEM role', async () => {
       const mocks = makeMocks(ADMIN_USER);
       const row = makeRoleRow({ id: 'role-sys', name: 'CLINICIAN', isSystemRole: true });
       mocks.roleRepo.create.mockResolvedValue(row);
@@ -232,13 +232,13 @@ describe('RbacRoleService', () => {
       const mocks = makeMocks(TENANT_ADMIN_USER);
       const service = buildService(mocks);
 
-      await expect(service.create({ name: 'CLINICIAN', isSystemRole: true })).rejects.toThrow(/global admin/i);
+      await expect(service.create({ name: 'CLINICIAN', isSystemRole: true })).rejects.toThrow(/super admin/i);
       expect(mocks.roleRepo.create).not.toHaveBeenCalled();
     });
   });
 
   describe('update', () => {
-    it('a global admin may update a system role', async () => {
+    it('a super admin may update a system role', async () => {
       const mocks = makeMocks(ADMIN_USER);
       mocks.roleRepo.findByIdGuardSelect.mockResolvedValue({ isSystemRole: true, name: 'SUPER_ADMIN' });
       const updated = makeRoleRow({ isSystemRole: true, name: 'SUPER_ADMIN', description: 'x' });
@@ -317,7 +317,7 @@ describe('RbacRoleService', () => {
       expect(updateData.updatedBy).toBe(ADMIN_USER.id);
     });
 
-    it('a global admin may patch a system role; a tenant admin is refused', async () => {
+    it('a super admin may patch a system role; a tenant admin is refused', async () => {
       const adminMocks = makeMocks(ADMIN_USER);
       adminMocks.roleRepo.findByIdGuardSelect.mockResolvedValue({ isSystemRole: true, name: 'SUPER_ADMIN' });
       adminMocks.roleRepo.update.mockResolvedValue(makeRoleRow({ isSystemRole: true, resourceStatus: 'DISABLED' }));
@@ -426,7 +426,7 @@ describe('RbacRoleService', () => {
       expect(reEnableData.priority).toBe(7);
     });
 
-    it('a global admin may assign a policy to a system role', async () => {
+    it('a super admin may assign a policy to a system role', async () => {
       const mocks = makeMocks(ADMIN_USER);
       mocks.roleRepo.findByIdGuardSelect.mockResolvedValue({ isSystemRole: true, name: 'SUPER_ADMIN' });
       mocks.rolePolicyRepo.findFirstByRoleAndPolicy.mockResolvedValue(null);
@@ -442,7 +442,7 @@ describe('RbacRoleService', () => {
       mocks.roleRepo.findByIdGuardSelect.mockResolvedValue({ isSystemRole: true, name: 'SUPER_ADMIN' });
       const service = buildService(mocks);
 
-      await expect(service.assignPolicy('role-sys', 'policy-1', {})).rejects.toThrow(/global admin/i);
+      await expect(service.assignPolicy('role-sys', 'policy-1', {})).rejects.toThrow(/super admin/i);
       expect(mocks.rolePolicyRepo.findFirstByRoleAndPolicy).not.toHaveBeenCalled();
       expect(mocks.rolePolicyRepo.create).not.toHaveBeenCalled();
     });
@@ -468,7 +468,7 @@ describe('RbacRoleService', () => {
       );
     });
 
-    it('a global admin may remove a policy from a system role', async () => {
+    it('a super admin may remove a policy from a system role', async () => {
       const mocks = makeMocks(ADMIN_USER);
       mocks.roleRepo.findByIdGuardSelect.mockResolvedValue({ isSystemRole: true, name: 'SUPER_ADMIN' });
       const service = buildService(mocks);
@@ -483,7 +483,7 @@ describe('RbacRoleService', () => {
       mocks.roleRepo.findByIdGuardSelect.mockResolvedValue({ isSystemRole: true, name: 'SUPER_ADMIN' });
       const service = buildService(mocks);
 
-      await expect(service.removePolicy('role-sys', 'policy-1', BREAK_GLASS('team-policy'))).rejects.toThrow(/global admin/i);
+      await expect(service.removePolicy('role-sys', 'policy-1', BREAK_GLASS('team-policy'))).rejects.toThrow(/super admin/i);
       expect(mocks.policyRepo.findById).not.toHaveBeenCalled();
       expect(mocks.rolePolicyRepo.softDeleteByRoleAndPolicy).not.toHaveBeenCalled();
     });

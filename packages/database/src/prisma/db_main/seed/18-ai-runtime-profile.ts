@@ -19,7 +19,7 @@ import type { CorePrismaClient } from '../../../client';
  * a deliberate silent-change guard: seeding any value here would silently
  * override a live service default without the caller changing anything.
  *
- * A global admin creates profiles deliberately through
+ * A super admin creates profiles deliberately through
  * `PUT /api/v1/admin/ai-runtime-profiles`; the seed never presumes one.
  *
  * The typed export exists so the seed-shape test can assert the emptiness

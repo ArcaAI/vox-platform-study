@@ -1,5 +1,5 @@
 /**
- * ChainSummaryService.callSmrService — explicit tenant assertion
+ * ChainSummaryService.callTextService — explicit tenant assertion
  *
  * `resolveSmrSelection()` used to be called with NO tenantId, relying on
  * `HarnessPolicyService`'s own CLS fallback — a worker/CLS-less caller could
@@ -119,7 +119,7 @@ function createService(clsTenantId: string | null) {
   return { service, httpService, harnessPolicyService };
 }
 
-describe('ChainSummaryService.callSmrService — explicit tenant assertion (B-04)', () => {
+describe('ChainSummaryService.callTextService — explicit tenant assertion (B-04)', () => {
   it('resolves the SMR selection with the CLS tenant + finalize task passed explicitly', async () => {
     const { service, harnessPolicyService } = createService('tenant-1');
 

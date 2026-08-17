@@ -60,7 +60,7 @@ test.describe('login page', () => {
   });
 });
 
-test.describe('authenticated round-trip (seeded global admin)', () => {
+test.describe('authenticated round-trip (seeded super admin)', () => {
   test.beforeEach(async () => {
     test.skip(!(await apiAvailable()), API_DOWN_MESSAGE);
   });

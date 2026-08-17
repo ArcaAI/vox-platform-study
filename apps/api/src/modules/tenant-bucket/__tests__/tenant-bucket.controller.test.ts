@@ -229,8 +229,8 @@ describe('TenantBucketController', () => {
       expect(meta('deleteObject')).toEqual({ modelName: 'TenantBucket', paramName: 'id' });
     });
 
-    it('listObjects is annotated with modelName TenantBucket + paramName id and global-admin scope', () => {
-      expect(meta('listObjects')).toEqual({ modelName: 'TenantBucket', paramName: 'id', scope: 'global-admin' });
+    it('listObjects is annotated with modelName TenantBucket + paramName id and super-admin scope', () => {
+      expect(meta('listObjects')).toEqual({ modelName: 'TenantBucket', paramName: 'id', scope: 'super-admin' });
     });
 
     it('uploadObject is annotated with modelName TenantBucket + paramName id', () => {

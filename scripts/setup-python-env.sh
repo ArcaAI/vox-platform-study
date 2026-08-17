@@ -4,7 +4,7 @@
 # =============================================================================
 # Sets up a shared conda environment (arcaenv) with all dependencies for:
 #   - stt     (Speech-to-Text)
-#   - smr     (Summary Agent / SMR)
+#   - text    (Summarization / LLM)
 #   - nlp     (Medical NLP)
 #   - harness (Clinical Documentation Harness orchestrator)
 #   - guardrail (AI content-safety / medical-context validation)
@@ -59,9 +59,19 @@ REBUILD=false
 # Every Python service this script knows how to install, in dependency-safe
 # order (workspace packages under packages/py-* are installed separately,
 # before all of them — pip cannot resolve `{ workspace = true }`).
-ALL_SERVICES=(stt smr nlp harness guardrail tts)
+ALL_SERVICES=(stt text nlp harness guardrail tts)
 # Selected subset (empty => all). Populated by --service.
 SERVICES=()
+
+# Canonical CLI token is `text`. `smr` still works as a deprecated remap.
+remap_smr_alias() {
+    if [[ "$1" == "smr" ]]; then
+        echo "${YELLOW}warning: 'smr' is deprecated; use 'text'.${NC}" >&2
+        echo "text"
+    else
+        echo "$1"
+    fi
+}
 
 # ---------------------------------------------------------------------------
 # Argument parsing
@@ -70,6 +80,7 @@ expect_service=false
 for arg in "$@"; do
     if $expect_service; then
         expect_service=false
+        arg="$(remap_smr_alias "$arg")"
         found=false
         for known in "${ALL_SERVICES[@]}"; do
             [[ "$arg" == "$known" ]] && found=true
@@ -91,7 +102,7 @@ for arg in "$@"; do
         --gpu)      ML_PLATFORM="gpu" ;;
         --service|-s) expect_service=true ;;
         --service=*)
-            svc="${arg#--service=}"
+            svc="$(remap_smr_alias "${arg#--service=}")"
             found=false
             for known in "${ALL_SERVICES[@]}"; do
                 [[ "$svc" == "$known" ]] && found=true
@@ -515,16 +526,16 @@ install_dependencies() {
     fi
     fi
 
-    # --- smr ---
-    if service_selected smr; then
-    print_header "  4b: smr (Summary Agent)"
-    local smr_dir="$PROJECT_ROOT/apps/text"
-    if [[ -f "$smr_dir/pyproject.toml" ]]; then
-        print_step "Installing smr dependencies..."
-        "${CR[@]}" pip install -e "${smr_dir}[dev,test]"
-        print_ok "smr installed"
+    # --- text ---
+    if service_selected text; then
+    print_header "  4b: text (Summarization)"
+    local text_dir="$PROJECT_ROOT/apps/text"
+    if [[ -f "$text_dir/pyproject.toml" ]]; then
+        print_step "Installing text dependencies..."
+        "${CR[@]}" pip install -e "${text_dir}[dev,test]"
+        print_ok "text installed"
     else
-        print_warn "smr pyproject.toml not found at $smr_dir — skipping"
+        print_warn "text pyproject.toml not found at $text_dir — skipping"
     fi
     fi
 

@@ -106,7 +106,7 @@ export function ProvidersCard({
             <div className="flex min-w-0 flex-col gap-0.5">
               <Label htmlFor="llm-global-catalog">Global catalog</Label>
               <p className="text-muted-foreground text-xs">
-                Global admins only — resolves against <code className="font-mono">__GLOBAL__</code> instead of the working tenant.
+                Super Admins only — resolves against <code className="font-mono">__GLOBAL__</code> instead of the working tenant.
               </p>
             </div>
             <Switch id="llm-global-catalog" checked={globalCatalog} onCheckedChange={onGlobalCatalogChange} />

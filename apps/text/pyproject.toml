@@ -103,7 +103,7 @@ load = [
 where = ["src"]
 
 [tool.setuptools.package-data]
-smr = ["py.typed", "*.yaml", "*.yml", "*.json"]
+text = ["py.typed", "*.yaml", "*.yml", "*.json"]
 
 # Black configuration
 [tool.black]
@@ -127,8 +127,8 @@ extend-exclude = '''
 # mypy configuration
 [tool.mypy]
 python_version = "3.11"
-# smr is editable-installed AND uses a src-layout namespace package, so mypy
-# can resolve files under two module names ("src.smr.*" vs "smr.*").
+# text is editable-installed AND uses a src-layout namespace package, so mypy
+# can resolve files under two module names ("src.text.*" vs "text.*").
 # Pinning the package base to apps/text/src forces the single, installed name.
 namespace_packages = true
 explicit_package_bases = true

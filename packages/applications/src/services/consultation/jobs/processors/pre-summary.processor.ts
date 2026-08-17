@@ -11,7 +11,7 @@ import { PromptResolutionService, type PromptResolutionTier } from '../../prompt
 import { PromptAssemblyService } from '../../prompt/prompt-assembly.service';
 import { JobMetricsService } from '../../../baseServices/observability/job-metrics.service';
 import { SecretsService } from '../../../baseServices/_meta/secrets';
-import { buildSmrGeneratePayload, mapSmrGenerateResponse } from '../../summary/text-generate';
+import { buildTextGeneratePayload, mapTextGenerateResponse } from '../../summary/text-generate';
 import { HarnessPolicyService } from '../../../harness-policy/harness-policy.service';
 import { ConfigResolver } from '../../../config-resolver';
 import { IActiveUserContext } from '../../../../interfaces';
@@ -29,7 +29,7 @@ import { INoteGenerationService, GenerationTrigger } from '../../note-generation
 @Processor(JobQueue.GeneratePreSummary)
 export class PreSummaryProcessor extends WorkerHost {
   private readonly logger = new Logger(PreSummaryProcessor.name);
-  private readonly smrServiceUrl: string;
+  private readonly textServiceUrl: string;
 
   constructor(
     @Inject(IConsultationJobService) private readonly jobService: IConsultationJobService,
@@ -58,7 +58,7 @@ export class PreSummaryProcessor extends WorkerHost {
     @Optional() @Inject(INoteGenerationService) private readonly noteGenerationService?: INoteGenerationService,
   ) {
     super();
-    this.smrServiceUrl = this.configService.get<string>('TEXT_URL') ?? 'http://localhost:8862';
+    this.textServiceUrl = this.configService.get<string>('TEXT_URL') ?? 'http://localhost:8862';
   }
 
   /**
@@ -184,7 +184,7 @@ export class PreSummaryProcessor extends WorkerHost {
         // Step 2: Calling AI service (30%)
         await this.jobService.notifyProgress(jobId, 30, 'Generating pre-summary with AI');
 
-        const smrResponse = await this.callSmrService(
+        const smrResponse = await this.callTextService(
           assembledPrompt,
           {
             ...request,
@@ -257,7 +257,7 @@ export class PreSummaryProcessor extends WorkerHost {
     });
   }
 
-  private async callSmrService(
+  private async callTextService(
     assembledPrompt: {
       userPrompt: string;
       systemPrompt: string;
@@ -293,12 +293,12 @@ export class PreSummaryProcessor extends WorkerHost {
         const { provider, model } = await this.harnessPolicyService.resolveSmrSelection(tenantId, 'finalize');
         options = { smrProvider: provider, smrModel: model, ...request.options };
       }
-      const smrPayload = buildSmrGeneratePayload(assembledPrompt, options, {
+      const textPayload = buildTextGeneratePayload(assembledPrompt, options, {
         dnaStyleId: request.dnaStyleId,
         summaryType: 'pre-summary',
       });
       const smrServiceToken = (await this.secretsService?.getSecretOptional('TEXT_SERVICE_TOKEN')) ?? '';
-      const response = await this.httpService.axiosRef.post(`${this.smrServiceUrl}/api/v1/generate`, smrPayload, {
+      const response = await this.httpService.axiosRef.post(`${this.textServiceUrl}/api/v1/generate`, textPayload, {
         timeout: 120000,
         headers: {
           'Content-Type': 'application/json',
@@ -307,7 +307,7 @@ export class PreSummaryProcessor extends WorkerHost {
         },
       });
       this.jobMetrics.recordSmrCallDuration(JobQueue.GeneratePreSummary, 'smr', (Date.now() - smrStart) / 1000);
-      return mapSmrGenerateResponse(response.data);
+      return mapTextGenerateResponse(response.data);
     } catch (error) {
       this.logger.error({
         message: 'SMR service call failed',

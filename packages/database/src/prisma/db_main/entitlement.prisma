@@ -51,7 +51,7 @@ enum UsageMeterMetric {
 // Permission/Role): it has no `tenantId` column, so the tenant-scope Prisma
 // extension never filters it. A null quantity/meter column = "unlimited". The
 // resolver reads these rows (falling back to the seeded constants when a row is
-// missing). Admin-editable by global admins only.
+// missing). Admin-editable by super admins only.
 // ---------------------------------------------------------------------------
 model PlanEntitlement {
   // meta fields

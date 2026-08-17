@@ -47,11 +47,11 @@ describe('ChangelogAdminController — SUPER_ADMIN-only (imperative gate in the 
     controller = new ChangelogAdminController(service as never);
   });
 
-  it('a non-global-admin is rejected from EVERY admin route', async () => {
+  it('a non-super-admin is rejected from EVERY admin route', async () => {
     // The controller holds no role logic of its own by design — the real gate
-    // is `ChangelogService.assertGlobalAdmin()`. Assert the 403 it raises
+    // is `ChangelogService.assertSuperAdmin()`. Assert the 403 it raises
     // propagates unchanged from every route (nothing swallows or remaps it).
-    const forbidden = new ForbiddenException('Only a global administrator may author release notes');
+    const forbidden = new ForbiddenException('Only a super administrator may author release notes');
     service.create.mockRejectedValue(forbidden);
     service.update.mockRejectedValue(forbidden);
     service.publish.mockRejectedValue(forbidden);

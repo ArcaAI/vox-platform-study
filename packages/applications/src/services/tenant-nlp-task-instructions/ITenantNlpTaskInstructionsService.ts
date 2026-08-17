@@ -4,10 +4,10 @@ import { TenantNlpTaskInstructionsResponse, UpsertTenantNlpTaskInstructionsReque
  * Tenant-writable topic/intent instruction content service (TASK-729).
  *
  * `tenantId` is optional on every method: when omitted the CLS request
- * tenant is used; a global admin may target another tenant explicitly (the
+ * tenant is used; a super admin may target another tenant explicitly (the
  * controller resolves `?tenantId=` via `resolveScopedTenantId`). Unlike
  * `AiTaskDefault` there is no SYSTEM-tenant platform default and no
- * global-admin-only write lock — an ordinary tenant admin owns these rows.
+ * super-admin-only write lock — an ordinary tenant admin owns these rows.
  */
 export interface ITenantNlpTaskInstructionsService {
   /** Raw persisted row for (tenant, taskKey) — version:0 placeholder when none. */

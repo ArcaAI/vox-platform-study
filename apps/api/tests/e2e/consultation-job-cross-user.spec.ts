@@ -40,11 +40,19 @@ import { DEFAULT_TENANT_KEY, SEEDED_USERS, loginUser } from '../../../../tests/h
 
 const JOB_KEY_PREFIX = 'consultation_job:';
 
-/** Build a `ConsultationJobStatus` row that mirrors `JobService` exactly. */
+/**
+ * Build a `ConsultationJobStatus` row that mirrors `JobService` exactly.
+ *
+ * `type` must be one of the types `cancelJob` still routes — TASK-732 deleted
+ * the `SUMMARY`/`NER` queues and processors, so a `SUMMARY` row now falls to
+ * that switch's `default: return false` and the creator's own cancel answers
+ * 404. `PRE_SUMMARY` is a live type, so the cancel arm below exercises the
+ * ownership guard it is actually about rather than a dead job type.
+ */
 function buildJobStatusJson(opts: { jobId: string; tenantId: string; userId: string }) {
   return JSON.stringify({
     jobId: opts.jobId,
-    type: 'SUMMARY',
+    type: 'PRE_SUMMARY',
     status: 'RUNNING',
     consultationId: 'e2e-consultation-308',
     progress: 42,

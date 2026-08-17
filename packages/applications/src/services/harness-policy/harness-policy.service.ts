@@ -34,9 +34,9 @@ import { HarnessOverridesSource, HarnessPolicyResponse, HarnessPolicySource, Upd
  * `resolveSmrSelection` consults the matching `AiTaskDefault` key FIRST, then
  * falls back to the legacy `HarnessPolicy.smrProvider/smrModel` cascade.
  */
-export type SmrRoutingTask = 'live' | 'finalize' | 'test';
+export type TextRoutingTask = 'live' | 'finalize' | 'test';
 
-const TEXT_TASK_KEY: Record<SmrRoutingTask, string> = {
+const TEXT_TASK_KEY: Record<TextRoutingTask, string> = {
   live: 'smr.live',
   finalize: 'smr.finalize',
   test: 'smr.test',
@@ -44,15 +44,15 @@ const TEXT_TASK_KEY: Record<SmrRoutingTask, string> = {
 
 /**
  * The per-tenant, opt-in SMR fallback selection keys. Tenant-admin
- * configurable (the `smr.` prefix is NOT in `GLOBAL_ADMIN_ONLY_TASK_PREFIXES`);
+ * configurable (the `smr.` prefix is NOT in `SUPER_ADMIN_ONLY_TASK_PREFIXES`);
  * `resolveSmrFallbackSelection` reads these fail-OPEN (no row ⇒ null ⇒ no
  * fallback runs — the same effect as the removed `TEXT_FALLBACK_*` env being
  * unset). No SYSTEM default is seeded.
  */
-const TEXT_FALLBACK_TASK_KEY: Record<SmrRoutingTask, string> = {
+const TEXT_FALLBACK_TASK_KEY: Record<TextRoutingTask, string> = {
   live: 'smr.live.fallback',
   finalize: 'smr.finalize.fallback',
-  // Present only for the Record<SmrRoutingTask, string> exhaustiveness check —
+  // Present only for the Record<TextRoutingTask, string> exhaustiveness check —
   // no AiTaskDefault key is registered for it and no caller resolves fallback
   // for the 'test' task (has no fallback tier).
   test: 'smr.test.fallback',
@@ -60,8 +60,8 @@ const TEXT_FALLBACK_TASK_KEY: Record<SmrRoutingTask, string> = {
 
 /**
  * the SYSTEM-only AiTaskDefault key that selects the harness
- * LLM-as-judge. SUPER_ADMIN-managed (the `harness.` prefix is global-admin-only
- * in {@link GLOBAL_ADMIN_ONLY_TASK_PREFIXES}); tenants can only USE the platform
+ * LLM-as-judge. SUPER_ADMIN-managed (the `harness.` prefix is super-admin-only
+ * in {@link SUPER_ADMIN_ONLY_TASK_PREFIXES}); tenants can only USE the platform
  * default, so `getEffective` resolves the SYSTEM row regardless of tenant.
  */
 const JUDGE_TASK_KEY = 'harness.judge';
@@ -122,7 +122,7 @@ export interface HarnessPolicyKnobs {
   regenFeedbackEnabled: boolean | null;
   /**
    * Master gate for the MCP external-tools path. `null ⇒ OFF`, so
-   * the feature stays dormant until a global admin explicitly flips it AND the
+   * the feature stays dormant until a super admin explicitly flips it AND the
    * referenced `McpServer.enabled` is true.
    *
    * This existed on the entity (and therefore in `KNOB_KEYS`, which derives from
@@ -141,12 +141,12 @@ export interface HarnessPolicyKnobs {
  * off for their tenant.
  *
  * Includes `safetyEnabled`/`phiEnabled`/`phiFailClosed`:
- * guardrail and NLP are controlled by global admins only. Because this list
+ * guardrail and NLP are controlled by super admins only. Because this list
  * also drives the SYSTEM overlay in `getEffectivePolicy`, pre-existing tenant
  * rows carrying those three are neutralised at READ time (values are ignored,
  * not deleted — removing a key here restores the tenant row's effect).
  */
-const GLOBAL_ADMIN_ONLY_POLICY_KEYS = [
+const SUPER_ADMIN_ONLY_POLICY_KEYS = [
   'safetyProvider',
   'safetyModel',
   'smrProvider',
@@ -162,7 +162,7 @@ const GLOBAL_ADMIN_ONLY_POLICY_KEYS = [
   'phiEnabled',
   'phiFailClosed',
   // MCP calls OUT of the platform boundary, so arming it is
-  // global-admin governance, never a tenant-level switch.
+  // super-admin governance, never a tenant-level switch.
   'mcpToolsEnabled',
 ] as const satisfies readonly (keyof HarnessPolicyKnobs)[];
 
@@ -172,8 +172,8 @@ const KNOB_KEYS = Object.keys(HARNESS_POLICY_DEFAULTS) as (keyof HarnessPolicyKn
  * Read-time allow-list for per-agent `harnessOverrides`. Reuses the
  * EXACT set validates on write (`TENANT_TIER_HARNESS_OVERRIDE_KEYS`) so
  * the read and write sides can never diverge. Any override key NOT in here is a
- * global-admin-only knob (OD-2) and is dropped defense-in-depth before it can
- * reach the harness — mirroring the SYSTEM overlay of `GLOBAL_ADMIN_ONLY_POLICY_KEYS`.
+ * super-admin-only knob (OD-2) and is dropped defense-in-depth before it can
+ * reach the harness — mirroring the SYSTEM overlay of `SUPER_ADMIN_ONLY_POLICY_KEYS`.
  */
 const TENANT_TIER_OVERRIDE_KEY_SET: ReadonlySet<string> = new Set(TENANT_TIER_HARNESS_OVERRIDE_KEYS);
 
@@ -283,7 +283,7 @@ export class HarnessPolicyService {
   /**
    * Per-run token budget from `agentic.context.tokenBudget.perRun`.
    *
-   * The budget lives in the settings registry (the control plane a global admin
+   * The budget lives in the settings registry (the control plane a super admin
    * edits), not on `HarnessPolicy` — but the harness only fetches ONE document at
    * workflow start, so it is served here rather than adding a second round trip
    * from the worker. Null when unresolvable ⇒ the workflow keeps its snapshotted
@@ -396,7 +396,7 @@ export class HarnessPolicyService {
       const sys = await this.policyRepository.findSystemDefault();
       if (sys) {
         const sysKnobs = entityToKnobs(sys);
-        for (const key of GLOBAL_ADMIN_ONLY_POLICY_KEYS) {
+        for (const key of SUPER_ADMIN_ONLY_POLICY_KEYS) {
           (resp as unknown as Record<string, unknown>)[key] = sysKnobs[key];
         }
       }
@@ -433,9 +433,9 @@ export class HarnessPolicyService {
    * agent, or the agent carries no overrides.
    *
    * Read-time defense-in-depth (OD-2): only keys in the tenant-tier allow-list
-   * flow; any global-admin-only key that somehow got stored in the JSONB is
+   * flow; any super-admin-only key that somehow got stored in the JSONB is
    * DROPPED + warned, never served — matching the SYSTEM overlay that neutralises
-   * `GLOBAL_ADMIN_ONLY_POLICY_KEYS`.
+   * `SUPER_ADMIN_ONLY_POLICY_KEYS`.
    *
    * Cross-tenant safety: the consultation read is tenant-scoped, and an explicit
    * `tenantId` guard refuses any consultation the caller does not own (no leak),
@@ -473,7 +473,7 @@ export class HarnessPolicyService {
 
       if (dropped.length > 0) {
         this.logger.warn({
-          message: `DepartmentAgent ${agent.id} harnessOverrides carried global-admin-only key(s) [${dropped.join(', ')}] — dropped at read time (OD-2)`,
+          message: `DepartmentAgent ${agent.id} harnessOverrides carried super-admin-only key(s) [${dropped.join(', ')}] — dropped at read time (OD-2)`,
           agentId: agent.id,
         });
       }
@@ -535,7 +535,7 @@ export class HarnessPolicyService {
    * fallback for tenants that have not migrated to AiTaskDefault. SMR stays
    * a stateless gateway; the caller model resolved here is authority.
    */
-  async resolveSmrSelection(tenantId?: string, task: SmrRoutingTask = 'finalize'): Promise<{ provider: string; model: string }> {
+  async resolveSmrSelection(tenantId?: string, task: TextRoutingTask = 'finalize'): Promise<{ provider: string; model: string }> {
     // Precedence 1 — AiTaskDefault (when wired). A resolved model's sourceUri is
     // the provider-native id SMR expects; provider is the canonical runtime.
     if (this.aiTaskDefaultService) {
@@ -577,7 +577,7 @@ export class HarnessPolicyService {
    * `TEXT_FALLBACK_*` env being unset). Fallback is per-tenant opt-in: there is
    * NO SYSTEM default, so an un-configured tenant gets `null`.
    */
-  async resolveSmrFallbackSelection(tenantId?: string, task: SmrRoutingTask = 'finalize'): Promise<{ provider: string; model: string } | null> {
+  async resolveSmrFallbackSelection(tenantId?: string, task: TextRoutingTask = 'finalize'): Promise<{ provider: string; model: string } | null> {
     if (!this.aiTaskDefaultService) return null;
     try {
       const eff = await this.aiTaskDefaultService.getEffective(TEXT_FALLBACK_TASK_KEY[task], tenantId);
@@ -609,7 +609,7 @@ export class HarnessPolicyService {
   async updatePolicy(dto: UpdateHarnessPolicyRequest, expectedVersion?: number): Promise<HarnessPolicyResponse> {
     const tid = this.callerTenantId;
     if (!tid) throw new BadRequestException('Tenant ID is required');
-    this.assertNoGlobalAdminOnlyPolicyWrites(dto);
+    this.assertNoSuperAdminOnlyPolicyWrites(dto);
     return this.upsert(tid, 'tenant', dto, expectedVersion);
   }
 
@@ -617,10 +617,10 @@ export class HarnessPolicyService {
    * Tenant PATCH must not touch selection / agentic knobs
    * (SUPER_ADMIN edits those via `updateGlobalDefault`).
    */
-  private assertNoGlobalAdminOnlyPolicyWrites(dto: UpdateHarnessPolicyRequest): void {
-    const present = GLOBAL_ADMIN_ONLY_POLICY_KEYS.filter((key) => (dto as Record<string, unknown>)[key] !== undefined);
+  private assertNoSuperAdminOnlyPolicyWrites(dto: UpdateHarnessPolicyRequest): void {
+    const present = SUPER_ADMIN_ONLY_POLICY_KEYS.filter((key) => (dto as Record<string, unknown>)[key] !== undefined);
     if (present.length === 0) return;
-    throw new ForbiddenException(`HarnessPolicy fields [${present.join(', ')}] are managed by global administrators only.`);
+    throw new ForbiddenException(`HarnessPolicy fields [${present.join(', ')}] are managed by super administrators only.`);
   }
 
   /** Edit the SYSTEM-tenant GLOBAL-DEFAULT policy row (platform-only). */

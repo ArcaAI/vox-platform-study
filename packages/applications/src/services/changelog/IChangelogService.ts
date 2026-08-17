@@ -10,7 +10,7 @@ import {
 export const IChangelogService = Symbol('IChangelogService');
 
 export interface IChangelogService {
-  /** Audience-filtered, paginated, newest published first. Global admins also see DRAFT. */
+  /** Audience-filtered, paginated, newest published first. Super Admins also see DRAFT. */
   list(query: ListChangelogQuery): Promise<PaginatedChangelogEntryResponse>;
   /** The one-time "What's New" popup's data source. Capped at 3; empty while impersonating. */
   listUnseen(): Promise<ChangelogEntryResponse[]>;

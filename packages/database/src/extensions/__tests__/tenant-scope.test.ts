@@ -248,14 +248,14 @@ describe('TENANT_SCOPED_MODELS stays in sync with the Prisma schema', () => {
     //      CLS is active but empty (not elevated), so a scoped read would
     //      throw and per-tenant rate-limit overrides (Q7 "increase on
     //      demand") would silently stop applying.
-    //   2. GLOBAL_ADMIN override CRUD (`/admin/entitlements/tenants/:id`)
+    //   2. SUPER_ADMIN override CRUD (`/admin/entitlements/tenants/:id`)
     //      targets ANY tenant while the admin's working-tenant CLS context
     //      (X-Tenant-Id, `resolve-active-tenant.ts`) may point elsewhere —
     //      the extension only bypasses when NO CLS tenant exists, so scoping
     //      would 404/mismatch legitimate cross-tenant admin operations.
     // Isolation still holds: every read path filters by an explicit
     // `tenantId` (`findByTenant`), the row carries no PHI, and the only
-    // write surface is the GLOBAL_ADMIN-gated admin controller.
+    // write surface is the SUPER_ADMIN-gated admin controller.
     'TenantEntitlement',
     // API-key AUTHENTICATION reads this table by
     // `keyHash` before any principal exists, so it can never have a CLS
@@ -273,7 +273,7 @@ describe('TENANT_SCOPED_MODELS stays in sync with the Prisma schema', () => {
     //   - list paths go through `buildTenantWhere` (injects the caller's CLS
     //     tenantId; throws NotFound for a non-super-admin with no tenant),
     //   - `fetchAllByTenantId` rejects a foreign `tenantId` unless the caller
-    //     is GLOBAL_ADMIN (added precisely to
+    //     is SUPER_ADMIN (added precisely to
     //     stop a Tenant-A admin enumerating Tenant-B keys),
     //   - every `findById` is immediately followed by `assertKeyAccess`,
     //     which compares `apiKey.tenantId` to the caller's CLS tenant.
@@ -345,7 +345,7 @@ describe('SYSTEM_SHARED_READ_MODELS allow-list', () => {
       // getEffective merges under its own row; writes are NOT widened.
       // McpServer's SYSTEM-tenant rows are the shared external-tools
       // registry every tenant's harness run reads to resolve a server; writes
-      // are NOT widened (registry mutation is global-admin only).
+      // are NOT widened (registry mutation is super-admin only).
       // AiProviderConnection's SYSTEM row is the platform-default
       // provider catalog entry every tenant's resolveConnection cascade reads
       // (tenant row → SYSTEM row → env); it is the FIRST secret-bearing entry
@@ -380,7 +380,7 @@ describe('SYSTEM_SHARED_READ_MODELS allow-list', () => {
         'AiRuntimeProfile',
         // TenantStorageConfig's SYSTEM row (bucketId IS NULL) is the platform
         // storage default every tenant's upload path resolves under its own
-        // CLS; writes stay global-admin only. Carries a Vault `credentialsRef`
+        // CLS; writes stay super-admin only. Carries a Vault `credentialsRef`
         // path, never credentials.
         'TenantStorageConfig',
         // The price book's SYSTEM-tenant rows ARE the platform rate
@@ -389,7 +389,7 @@ describe('SYSTEM_SHARED_READ_MODELS allow-list', () => {
         // running under that tenant's CLS, so without widening the read the
         // rate card is invisible and nothing can be priced. READS widen to
         // [caller, SYSTEM]; WRITES are NOT widened (rate-card mutation is
-        // GLOBAL_ADMIN-only at the service layer, the AiTaskDefault precedent).
+        // SUPER_ADMIN-only at the service layer, the AiTaskDefault precedent).
         // No secrets on the model — prices are integer micros.
         'AiPriceBook',
         // The platform-default PROMPT catalog is SYSTEM-owned
@@ -655,7 +655,7 @@ describe('Read operations on tenant-scoped models', () => {
 
 // ---------------------------------------------------------------------------
 // Missing tenantId — throw vs pass-through based on the isSuperAdmin flag
-// (true = caller holds the elevated GLOBAL_ADMIN role)
+// (true = caller holds the elevated SUPER_ADMIN role)
 // ---------------------------------------------------------------------------
 
 describe('Missing tenantId behaviour', () => {

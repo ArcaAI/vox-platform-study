@@ -66,7 +66,7 @@ export async function POST(request: Request): Promise<Response> {
       email: data.user.email,
       roles: data.user.roles,
       // Home tenant of a tenant-bound admin: client-side WS
-      // streams need it for the tenant claim; absent for global admins.
+      // streams need it for the tenant claim; absent for super admins.
       ...(data.user.tenantId ? { tenantId: data.user.tenantId } : {}),
     },
   };

@@ -284,5 +284,9 @@ describe('tenant-guards', () => {
       expect(isSuperAdmin({ roles: ['super_admin'] })).toBe(false);
       expect(isSuperAdmin({ roles: ['SuperAdmin'] })).toBe(false);
     });
+
+    it('does not treat GLOBAL_ADMIN as a JWT alias', () => {
+      expect(isSuperAdmin({ roles: ['GLOBAL_ADMIN'] })).toBe(false);
+    });
   });
 });

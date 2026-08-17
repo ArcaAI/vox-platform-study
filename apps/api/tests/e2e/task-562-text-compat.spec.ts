@@ -67,7 +67,7 @@ test.describe('V1-compatible SMR summary shims', () => {
   test.beforeAll(async ({ request }) => {
     // A TENANT-SCOPED admin, not the global superAdmin: the v1 SDK consumers
     // these shims emulate are always tenant-bound, and the compat shim requires
-    // a resolvable tenant context (`requireTenantId`). A global-admin
+    // a resolvable tenant context (`requireTenantId`). A super-admin
     // authenticates with an EMPTY tenant, so it would (correctly) 401 on these
     // prefix-excluded routes — the working-tenant elevation interceptor does not
     // run there. tenant_admin's JWT carries a concrete tenantId, resolved by the

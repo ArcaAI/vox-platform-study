@@ -38,10 +38,8 @@ import { ClsModule, ClsService } from 'nestjs-cls';
  * consumed by the `isSuperAdmin` helper). Kept local so this DB adapter has no
  * hard dependency on the applications elevated-set export, matching the same
  * deliberate cross-layer duplication documented in `common/tenant-guards.ts`.
+ * The set is exactly `[SUPER_ADMIN]`.
  */
-// The former (retired) SUPER_ADMIN role was consolidated into GLOBAL_ADMIN
-// (TASK-417); GLOBAL_ADMIN was itself later renamed to SUPER_ADMIN
-// (TASK-707) — still the single elevated role, unrelated to the retired id.
 const ELEVATED_ROLES: readonly string[] = [SUPER_ADMIN_ROLE];
 
 @Injectable()
@@ -52,7 +50,7 @@ export class ClsTenantContextProvider implements TenantContextProvider, OnApplic
 
   getTenantId(): string | undefined {
     if (!this.cls.isActive()) return undefined;
-    // An empty-string tenantId — global admins authenticate without a tenant
+    // An empty-string tenantId — super admins authenticate without a tenant
     // binding, so their JWT/CLS carries `tenantId: ''` — means "no tenant
     // context", identical to `undefined`. Using `??` would leak the empty
     // string through, bypassing the extension's `tenantId == null` elevated

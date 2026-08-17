@@ -209,7 +209,7 @@ enum ResourceType {
   // Only the three ADMIN-MANAGED models of the metering/billing plane appear
   // here — these are the mutations a compliance reviewer or a billing dispute
   // actually needs a trail for:
-  //   - AiPriceBook: GLOBAL_ADMIN rate-card edits (both COST and SELL planes).
+  //   - AiPriceBook: SUPER_ADMIN rate-card edits (both COST and SELL planes).
   //   - BillingInvoice: draft computation, finalize (the immutability
   //     transition), void.
   //   - BillingAdjustment: issuing a credit memo against a finalized period.

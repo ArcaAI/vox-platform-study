@@ -1,13 +1,10 @@
 /**
- * Seed-Policy Regression Test (re-pointed to SUPER_ADMIN).
+ * Seed-Policy Regression Test.
  *
- * Locks in the invariant that the seeded elevated
- * role (`SUPER_ADMIN`, renamed from `GLOBAL_ADMIN` by TASK-707; an earlier,
- * unrelated legacy `SUPER_ADMIN` role was consolidated into `GLOBAL_ADMIN`
- * and retired by TASK-417 — the two `SUPER_ADMIN` names do not refer to the
- * same role) must resolve to a CASL ability that grants `manage:Tenant`, otherwise
+ * Locks in the invariant that the seeded elevated role (`SUPER_ADMIN`)
+ * must resolve to a CASL ability that grants `manage:Tenant`, otherwise
  * `MyTenantController.create/update/delete` would 403
- * its own global admins.
+ * its own super admins.
  *
  * Strategy: the test feeds the actual
  * seed data shapes (`DEFAULT_POLICIES` from `01-policy.ts`, role/policy linkage
@@ -112,18 +109,18 @@ describe('Tenant-ability regression — seeded SUPER_ADMIN policy linkage', () =
 
   describe('seed-data sanity', () => {
     it('SUPER_ADMIN role exists in seed', () => {
-      const globalAdmin = DEFAULT_ROLES.find((r) => r.name === 'SUPER_ADMIN');
-      expect(globalAdmin).toBeDefined();
-      expect(globalAdmin?.id).toBe(SEED_ROLE_IDS.SUPER_ADMIN);
-      // The unrelated legacy SUPER_ADMIN role retired by TASK-417 is a
+      const superAdmin = DEFAULT_ROLES.find((r) => r.name === 'SUPER_ADMIN');
+      expect(superAdmin).toBeDefined();
+      expect(superAdmin?.id).toBe(SEED_ROLE_IDS.SUPER_ADMIN);
+      // The unrelated legacy SUPER_ADMIN role retired by  is a
       // different, soft-deleted row (id ...0001) — not present in
       // DEFAULT_ROLES at all, so it can't collide with the id assertion above.
       expect(DEFAULT_ROLES.find((r) => r.id === '00000000-0000-0000-0000-000000000001')).toBeUndefined();
     });
 
     it('SUPER_ADMIN role references system-full-access policy', () => {
-      const globalAdmin = DEFAULT_ROLES.find((r) => r.name === 'SUPER_ADMIN');
-      expect(globalAdmin?.policies).toContain('system-full-access');
+      const superAdmin = DEFAULT_ROLES.find((r) => r.name === 'SUPER_ADMIN');
+      expect(superAdmin?.policies).toContain('system-full-access');
     });
 
     it('system-full-access policy contains the manage:all wildcard rule', () => {
@@ -150,11 +147,11 @@ describe('Tenant-ability regression — seeded SUPER_ADMIN policy linkage', () =
 
   describe('SUPER_ADMIN via PolicyEngine.buildAbility', () => {
     it('grants can(manage, Tenant) when a user holds the seeded SUPER_ADMIN role', async () => {
-      const globalAdminRolePayload = buildPrismaRolePayload('SUPER_ADMIN');
+      const superAdminRolePayload = buildPrismaRolePayload('SUPER_ADMIN');
 
       mockPrismaClient.userRoleAssignment.findMany.mockResolvedValue([
         {
-          id: 'ura-global-admin',
+          id: 'ura-super-admin',
           userId: SEED_USER_IDS.SUPER_ADMIN,
           roleId: SEED_ROLE_IDS.SUPER_ADMIN,
           tenantId: null,
@@ -162,7 +159,7 @@ describe('Tenant-ability regression — seeded SUPER_ADMIN policy linkage', () =
           resourceStatus: 'ENABLED',
         },
       ]);
-      mockPrismaClient.role.findMany.mockResolvedValue([globalAdminRolePayload]);
+      mockPrismaClient.role.findMany.mockResolvedValue([superAdminRolePayload]);
 
       const ability = await policyEngine.buildAbility({
         userId: SEED_USER_IDS.SUPER_ADMIN,
@@ -172,11 +169,11 @@ describe('Tenant-ability regression — seeded SUPER_ADMIN policy linkage', () =
     });
 
     it('grants can(manage, Tenant) regardless of tenant context (global wildcard)', async () => {
-      const globalAdminRolePayload = buildPrismaRolePayload('SUPER_ADMIN');
+      const superAdminRolePayload = buildPrismaRolePayload('SUPER_ADMIN');
 
       mockPrismaClient.userRoleAssignment.findMany.mockResolvedValue([
         {
-          id: 'ura-global-admin',
+          id: 'ura-super-admin',
           userId: SEED_USER_IDS.SUPER_ADMIN,
           roleId: SEED_ROLE_IDS.SUPER_ADMIN,
           tenantId: null,
@@ -184,7 +181,7 @@ describe('Tenant-ability regression — seeded SUPER_ADMIN policy linkage', () =
           resourceStatus: 'ENABLED',
         },
       ]);
-      mockPrismaClient.role.findMany.mockResolvedValue([globalAdminRolePayload]);
+      mockPrismaClient.role.findMany.mockResolvedValue([superAdminRolePayload]);
 
       const ability = await policyEngine.buildAbility({
         userId: SEED_USER_IDS.SUPER_ADMIN,
@@ -201,11 +198,11 @@ describe('Tenant-ability regression — seeded SUPER_ADMIN policy linkage', () =
       // Guards against a seed edit that narrows the rule from `manage:all` to a
       // single subject like `Tenant` — that would silently re-introduce gaps
       // elsewhere even though `manage:Tenant` keeps passing.
-      const globalAdminRolePayload = buildPrismaRolePayload('SUPER_ADMIN');
+      const superAdminRolePayload = buildPrismaRolePayload('SUPER_ADMIN');
 
       mockPrismaClient.userRoleAssignment.findMany.mockResolvedValue([
         {
-          id: 'ura-global-admin',
+          id: 'ura-super-admin',
           userId: SEED_USER_IDS.SUPER_ADMIN,
           roleId: SEED_ROLE_IDS.SUPER_ADMIN,
           tenantId: null,
@@ -213,7 +210,7 @@ describe('Tenant-ability regression — seeded SUPER_ADMIN policy linkage', () =
           resourceStatus: 'ENABLED',
         },
       ]);
-      mockPrismaClient.role.findMany.mockResolvedValue([globalAdminRolePayload]);
+      mockPrismaClient.role.findMany.mockResolvedValue([superAdminRolePayload]);
 
       const ability = await policyEngine.buildAbility({
         userId: SEED_USER_IDS.SUPER_ADMIN,

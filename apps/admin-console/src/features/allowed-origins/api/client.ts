@@ -8,7 +8,7 @@ export function listAllowedOrigins(): Promise<TenantAllowedOrigin[]> {
   return getJson(BASE);
 }
 
-/** FR-4 — `GET /admin/allowed-origins/posture`, reachable by both tenant and global admins. */
+/** FR-4 — `GET /admin/allowed-origins/posture`, reachable by both tenant and super admins. */
 export function getAllowedOriginPosture(): Promise<AllowedOriginPosture> {
   return getJson(`${BASE}/posture`);
 }

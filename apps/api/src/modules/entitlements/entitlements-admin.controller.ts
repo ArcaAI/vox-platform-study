@@ -87,7 +87,7 @@ export class EntitlementsAdminController {
   // ── Per-tenant override (Q1/Q7) + snapshot ────────────────────────────────
 
   @Get('tenants/:tenantId')
-  @ApiOperation({ summary: 'Capability/usage snapshot for ANY tenant (global-admin view).' })
+  @ApiOperation({ summary: 'Capability/usage snapshot for ANY tenant (super-admin view).' })
   @ApiParam({ name: 'tenantId' })
   @ApiOkResponse({ type: EntitlementCapabilitiesResponse })
   getTenantSnapshot(@Param('tenantId') tenantId: string): Promise<EntitlementCapabilitiesResponse> {

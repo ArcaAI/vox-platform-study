@@ -47,7 +47,7 @@ const TENANT_SESSION = {
 
 const ELEVATED_WITH_TENANT_SESSION = {
   ...TENANT_SESSION,
-  user: { id: 'u-9', username: 'global_admin', email: 'root@arca.ai', roles: ['SUPER_ADMIN'] },
+  user: { id: 'u-9', username: 'super_admin', email: 'root@arca.ai', roles: ['SUPER_ADMIN'] },
   isElevated: true,
   effectiveIsElevated: true,
 };

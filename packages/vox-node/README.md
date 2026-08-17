@@ -79,14 +79,14 @@ Every request needs one of:
   request's tenant from the key itself, so a Node service needs nothing else
   (no browser session, no stream tickets).
 - **`tenantId`** — sent as `X-Tenant-Id`, on top of `apiKey`. Only meaningful
-  for **global-admin** API keys, which are not bound to a single tenant; a
+  for **super-admin** API keys, which are not bound to a single tenant; a
   tenant-scoped key ignores this header (its own tenant always wins).
 
 ```ts
 const hope = new HopeClient({
   baseUrl: process.env.HOPE_API_URL!,
   apiKey: process.env.HOPE_API_KEY!,
-  // tenantId: process.env.HOPE_TENANT_ID, // global-admin keys only
+  // tenantId: process.env.HOPE_TENANT_ID, // super-admin keys only
 });
 ```
 
@@ -202,7 +202,7 @@ Every non-2xx gateway response is thrown as a typed subclass of
 | Class | HTTP status | Meaning |
 |---|---|---|
 | `AuthenticationError` | 401 | The API key (or bearer token) is missing, invalid, or expired. |
-| `PermissionError` | 403 | A privilege boundary — e.g. a global-admin-only action attempted by a tenant admin. |
+| `PermissionError` | 403 | A privilege boundary — e.g. a super-admin-only action attempted by a tenant admin. |
 | `NotFoundError` | 404 | See the callout below before treating this as "wrong route". |
 | `QuotaExceededError` | 409 | An entitlements quota (quantity-capped resource) was exceeded. |
 | `VersionConflictError` | 412 | Optimistic-concurrency conflict; carries `currentVersion` when the server reported it. |

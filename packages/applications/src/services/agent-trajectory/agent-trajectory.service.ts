@@ -297,7 +297,7 @@ export class AgentTrajectoryService extends BaseService implements IAgentTraject
    * Evaluate a run against its per-run token budget.
    *
    * `perRunBudget = 0` means UNBOUNDED — the shipped default, and the reason this
-   * check is byte-for-byte inert until a global admin sets a budget through
+   * check is byte-for-byte inert until a super admin sets a budget through
    * `agentic.context.tokenBudget.perRun`.
    */
   async checkRunBudget(tenantId: string, sessionId: string, runId: string, perRunBudget: number): Promise<RunBudgetStatus> {

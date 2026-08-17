@@ -1,6 +1,6 @@
 import type { AssembledPrompt } from '../prompt/prompt-assembly.service';
 
-export interface LegacySmrSummaryResponse {
+export interface LegacyTextSummaryResponse {
   summary: string;
   llmProvider?: string;
   modelName?: string;
@@ -11,7 +11,7 @@ export interface LegacySmrSummaryResponse {
   qualityScore?: number;
 }
 
-interface SmrGeneratePayload {
+interface TextGeneratePayload {
   prompt: string;
   system_prompt?: string;
   provider?: string;
@@ -24,7 +24,7 @@ interface SmrGeneratePayload {
   context?: Record<string, unknown>;
 }
 
-interface SmrGenerateResponse {
+interface TextGenerateResponse {
   summary?: string;
   content?: string;
   llmProvider?: string;
@@ -85,11 +85,11 @@ function shouldForwardResponseFormat(provider: string | undefined): boolean {
   return normalized !== 'ollama';
 }
 
-export function buildSmrGeneratePayload(
+export function buildTextGeneratePayload(
   assembledPrompt: AssembledPrompt,
   options?: Record<string, unknown>,
   contextExtras?: Record<string, unknown>,
-): SmrGeneratePayload {
+): TextGeneratePayload {
   const context = {
     ...(options ?? {}),
     ...(contextExtras ?? {}),
@@ -114,7 +114,7 @@ export function buildSmrGeneratePayload(
   };
 }
 
-export function mapSmrGenerateResponse(responseData: SmrGenerateResponse): LegacySmrSummaryResponse {
+export function mapTextGenerateResponse(responseData: TextGenerateResponse): LegacyTextSummaryResponse {
   return {
     summary: responseData.summary ?? responseData.content ?? '',
     llmProvider: responseData.llmProvider ?? responseData.provider,

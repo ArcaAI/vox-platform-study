@@ -21,7 +21,7 @@ import {
  * - password: Hashed password (default: password123)
  * - roleNames: Array of role names to assign
  * - tenantId: Tenant scope (use SYSTEM_TENANT_ID for platform-wide users
- *             such as the System service account or the global admins; NULL
+ *             such as the System service account or the super admin; NULL
  *             is no longer accepted)
  * - profile: User profile information
  */
@@ -116,9 +116,7 @@ export const SEED_USERS = [
   // =================================================================
   {
     // The `super_admin` USERNAME is a stable login identifier
-    // (dev logins + e2e helpers depend on it); its ROLE is SUPER_ADMIN
-    // (renamed from GLOBAL_ADMIN by TASK-707, D8 — before that rename, the
-    // legacy SUPER_ADMIN role had been consolidated away by TASK-417).
+    // (dev logins + e2e helpers depend on it); its ROLE is SUPER_ADMIN.
     id: SEED_USER_IDS.SUPER_ADMIN,
     username: 'super_admin',
     password: null,
@@ -134,30 +132,6 @@ export const SEED_USERS = [
     tags: ['admin', 'system'],
     lastLoginAt: new Date(),
     lastActiveAt: new Date(),
-  },
-  {
-    // Elevated platform-wide "global admin"; carries the
-    // canonical elevated role (tenant-guards.ELEVATED_ROLES, renamed
-    // SUPER_ADMIN by TASK-707, D8). Lives
-    // on the SYSTEM tenant so it is membership-exempt (no department
-    // required) exactly like super_admin, and works cross-tenant. This
-    // user's own key/username stay `GLOBAL_ADMIN`/`global_admin` — see the
-    // note on `SEED_USER_IDS.GLOBAL_ADMIN` in 00-constants.ts for why.
-    id: SEED_USER_IDS.GLOBAL_ADMIN,
-    username: 'global_admin',
-    password: null,
-    isServiceAccount: false,
-    roleNames: ['SUPER_ADMIN'],
-    tenantId: SYSTEM_TENANT_ID,
-    profile: {
-      firstName: 'Global',
-      lastName: 'Admin',
-      email: 'global.admin@example.com',
-      phone: '+1234567899',
-    },
-    tags: ['admin', 'system', 'global'],
-    lastLoginAt: null,
-    lastActiveAt: null,
   },
   {
     id: SEED_USER_IDS.TENANT_ADMIN,

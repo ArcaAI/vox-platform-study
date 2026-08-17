@@ -4,7 +4,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
  * DNA aggregate dashboard DTOs.
  *
  * Returned by `GET /admin/dna-writing-styles/dashboard`. All counts are
- * tenant-scoped by the service (a global admin may target a specific tenant
+ * tenant-scoped by the service (a super admin may target a specific tenant
  * via `?tenantId=`, a tenant admin is pinned to their CLS tenant).
  */
 export class DnaDashboardDailyCount {

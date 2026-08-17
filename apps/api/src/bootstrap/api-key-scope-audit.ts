@@ -27,7 +27,7 @@ import { GUARDS_METADATA, METHOD_METADATA, PATH_METADATA } from '@nestjs/common/
 import { MetadataScanner, Reflector } from '@nestjs/core';
 import { ModulesContainer } from '@nestjs/core/injector/modules-container';
 import { API_KEY_REQUIRED_SCOPES, SKIP_AUTH_KEY } from '@arcaai/applications';
-import { SmrCompatController } from '../modules/text-compat/text-compat.controller';
+import { TextCompatController } from '../modules/text-compat/text-compat.controller';
 import { ConsultationController } from '../modules/consultation/consultation.controller';
 import { ConsultationJobController } from '../modules/consultation/consultation-job.controller';
 import { WorkflowsController } from '../modules/workflows/workflows.controller';
@@ -42,8 +42,8 @@ interface ScopedRoute {
 
 /** The HOPE Node SDK's day-1 surface. */
 export const SDK_DAY1_SCOPED_ROUTES: ScopedRoute[] = [
-  { controller: SmrCompatController, method: 'summarySync' },
-  { controller: SmrCompatController, method: 'presummary' },
+  { controller: TextCompatController, method: 'summarySync' },
+  { controller: TextCompatController, method: 'presummary' },
   { controller: ConsultationController, method: 'generateSummary' },
   { controller: ConsultationController, method: 'generatePreSummary' },
   { controller: ConsultationController, method: 'generateSummaryAsync' },

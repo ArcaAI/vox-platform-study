@@ -132,7 +132,7 @@ describe('DepartmentAgentService', () => {
       await expect(service.create({ departmentId: 'dept-1', name: 'X', slug: 'x', promptTemplateId: 'tpl-x' })).rejects.toThrow(BadRequestException);
     });
 
-    it('rejects a harnessOverrides global-admin-only key (400)', async () => {
+    it('rejects a harnessOverrides super-admin-only key (400)', async () => {
       await expect(
         service.create({
           departmentId: 'dept-1',
@@ -141,7 +141,7 @@ describe('DepartmentAgentService', () => {
           promptTemplateId: 'tpl-1',
           harnessOverrides: { maxRegen: 2, smrProvider: 'azure' },
         }),
-      ).rejects.toThrow(/global-admin-only/);
+      ).rejects.toThrow(/super-admin-only/);
     });
 
     it('rejects a pin to a non-existent version (400)', async () => {

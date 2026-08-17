@@ -5,18 +5,18 @@
 // `AiTaskDefault` table (tier `db-config`, tenant → SYSTEM cascade resolved by
 // `AiTaskDefaultService.getEffective`).
 //
-// Governance: `nlp.*` and `harness.*` keys are GLOBAL-ADMIN-ONLY —
-// `editableBy` points at the global-admin resource (`'all'`, the CASL
+// Governance: `nlp.*` and `harness.*` keys are SUPER_ADMIN-ONLY —
+// `editableBy` points at the super-admin resource (`'all'`, the CASL
 // manage-everything subject) and the descriptor is flagged `globalOnly`.
 // `smr.*` and, since TASK-735 Phase 0 (owner decision 2026-08-16,
-// reversing the 2026-07-17 global-admin-only directive), `guardrail.*` are
+// reversing the 2026-07-17 super-admin-only directive), `guardrail.*` are
 // tenant-admin configurable: their descriptors resolve to the tenant-editable
 // `AiTaskDefault` resource and are NOT flagged `globalOnly` (driven by
-// `GLOBAL_ADMIN_ONLY_TASK_PREFIXES`). `guardrail.*` writes still pass through
+// `SUPER_ADMIN_ONLY_TASK_PREFIXES`). `guardrail.*` writes still pass through
 // the D2 platform-approved-list floor enforced in `AiTaskDefaultService` —
 // this descriptor only governs WHO may attempt the write, not WHICH slugs.
 
-import { AI_TASK_KEYS, AiTaskKey, GLOBAL_ADMIN_ONLY_TASK_PREFIXES } from '../../ai-task-default/constants';
+import { AI_TASK_KEYS, AiTaskKey, SUPER_ADMIN_ONLY_TASK_PREFIXES } from '../../ai-task-default/constants';
 import { SettingDescriptor } from '../registry.types';
 
 const META: Record<AiTaskKey, { label: string; description: string }> = {
@@ -43,22 +43,22 @@ const META: Record<AiTaskKey, { label: string; description: string }> = {
   },
   'nlp.classification': {
     label: 'Document-type classification model',
-    description: 'Default text-classification model used by the /classify/text document-type classifier (global admins only).',
+    description: 'Default text-classification model used by the /classify/text document-type classifier (super admins only).',
   },
   // diagnosis suggester, split out of the doc-type classifier key.
   'nlp.diagnosis': {
     label: 'Diagnosis suggestion model',
-    description: 'Default text-classification model used for symptom→disease diagnosis suggestions (global admins only).',
+    description: 'Default text-classification model used for symptom→disease diagnosis suggestions (super admins only).',
   },
   // TASK-729: sentiment / toxicity classifiers — same generic /classify/text
-  // path as nlp.classification/nlp.diagnosis (global admins only).
+  // path as nlp.classification/nlp.diagnosis (super admins only).
   'nlp.sentiment': {
     label: 'Sentiment classification model',
-    description: 'Default text-classification model used for sentiment classification (global admins only).',
+    description: 'Default text-classification model used for sentiment classification (super admins only).',
   },
   'nlp.toxicity': {
     label: 'Toxicity classification model',
-    description: 'Default text-classification model used for toxicity classification (global admins only).',
+    description: 'Default text-classification model used for toxicity classification (super admins only).',
   },
   // SMR generation routing (tenant-admin configurable).
   'smr.live': {
@@ -88,10 +88,10 @@ const META: Record<AiTaskKey, { label: string; description: string }> = {
     label: 'SMR prompt-test-bench model',
     description: 'Default text-generation model for the tenant-admin prompt-template test bench, when the caller does not select a provider/model.',
   },
-  // harness LLM-as-judge model (global admins only).
+  // harness LLM-as-judge model (super admins only).
   'harness.judge': {
     label: 'Harness judge model',
-    description: 'Default text-generation model used as the LLM-as-judge by the clinical documentation harness (global admins only).',
+    description: 'Default text-generation model used as the LLM-as-judge by the clinical documentation harness (super admins only).',
   },
   // vision extraction — tenant-admin configurable, same
   // governance class as smr.*.
@@ -102,15 +102,15 @@ const META: Record<AiTaskKey, { label: string; description: string }> = {
 };
 
 export const MODEL_DEFAULT_SETTINGS: SettingDescriptor[] = AI_TASK_KEYS.map<SettingDescriptor>((taskKey) => {
-  const globalAdminOnly = GLOBAL_ADMIN_ONLY_TASK_PREFIXES.some((p) => taskKey.startsWith(p));
+  const superAdminOnly = SUPER_ADMIN_ONLY_TASK_PREFIXES.some((p) => taskKey.startsWith(p));
   return {
     key: `models.${taskKey}`,
     tier: 'db-config',
     dataType: 'string',
     sensitivity: 'internal',
     maxScope: 'tenant',
-    editableBy: globalAdminOnly ? 'all' : 'AiTaskDefault',
-    ...(globalAdminOnly ? { globalOnly: true } : {}),
+    editableBy: superAdminOnly ? 'all' : 'AiTaskDefault',
+    ...(superAdminOnly ? { globalOnly: true } : {}),
     // Provider/model SELECTION — the canonical fail-closed class.
     // An unselected task must surface as unresolved, never as a null the caller
     // cannot tell apart from a deliberate value, and never as a neighbouring

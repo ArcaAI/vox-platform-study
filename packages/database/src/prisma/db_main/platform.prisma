@@ -107,7 +107,7 @@ model ServiceInstance {
 //
 // `ChangelogEntry` is the CURATED release-notes artifact ("What's New"), one
 // row per platform (`ALL-`) train version. CI creates a DRAFT pre-filled from
-// Conventional Commits; a global admin edits it into human language and
+// Conventional Commits; a super admin edits it into human language and
 // publishes. This is the ONE model on this page that is genuinely human-edited,
 // so it carries real OCC: the mapper strips `version` from every write
 // (`FIELDS_NOT_WRITABLE`) and the PATCH route (W13, out of this unit's scope)

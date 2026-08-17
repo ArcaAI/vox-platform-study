@@ -69,7 +69,7 @@ export class TenantController {
 
   /**
    * Scope guard for the tenant-config routes, which take a
-   * dual `:identifier` (tenant UUID OR code-name). A non-global-admin may only
+   * dual `:identifier` (tenant UUID OR code-name). A non-super-admin may only
    * address their own tenant. We can decide this up-front ONLY for a UUID
    * identifier; a code-name is deferred to the service's own
    * no-existence-leak guard (it resolves code-name → tenant, then 404s
@@ -114,7 +114,7 @@ export class TenantController {
     // extension, and the class-level `@CanAny(['manage','Tenant'],['update','Tenant'])`
     // admits any TENANT_ADMIN (their CASL policy is `tenantId: ${user.tenantId}`). Without
     // this guard a tenant admin could enumerate every tenant on the platform.
-    // Non-global-admins are restricted to their own tenant; SUPER_ADMIN keeps the
+    // Non-super-admins are restricted to their own tenant; SUPER_ADMIN keeps the
     // full cross-tenant listing (admin/operator surfaces). Mirrors the write-path
     // posture on `update`/`delete`.
     const user = this.cls.get('user');

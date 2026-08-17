@@ -31,8 +31,8 @@ import { Authorize, ForbidApiKey } from '../../decorators';
 import { AdminImpersonateRequest, ImpersonateResponse, ImpersonateUserResponse } from './dto';
 import { ImpersonationEvents, ImpersonationDeniedReason, ImpersonationEventPayload } from './impersonation-events';
 
-// The elevated tier is exactly SUPER_ADMIN (formerly GLOBAL_ADMIN, renamed
-// TASK-707); the earlier, unrelated pre-TASK-417 SUPER_ADMIN role has been
+// The elevated tier is exactly SUPER_ADMIN (formerly SUPER_ADMIN, renamed
+// ); the earlier, unrelated pre- SUPER_ADMIN role has been
 // retired.
 const ELEVATED_TIER_ROLES = ['SUPER_ADMIN'];
 
@@ -45,7 +45,7 @@ const MIN_TTL_SECONDS = 10;
 const MAX_TTL_SECONDS = 1800;
 
 /**
- * Global-admin-only impersonation start endpoint.
+ * Super-admin-only impersonation start endpoint.
  *
  * `POST /admin/users/:id/impersonate` mints a time-boxed (default 30m),
  * NON-refreshable "act-as" token whose claims carry BOTH the subject identity
@@ -88,18 +88,18 @@ export class AdminImpersonationController {
   @Authorize(['manage', 'all'])
   @ApiBearerAuth()
   @ApiOperation({
-    summary: 'Impersonate a user (global-admin only, time-boxed, audited)',
+    summary: 'Impersonate a user (super-admin only, time-boxed, audited)',
     description:
       'Mints a time-boxed (default 30 minutes), non-refreshable impersonation token that acts as the target ' +
       'user while preserving the true actor in the `impersonatedBy` claim. SUPER_ADMIN only (CASL `manage:all`). ' +
-      'Safeguards: no self-impersonation, no global-admin targets, target must be ENABLED, and an already ' +
+      'Safeguards: no self-impersonation, no super-admin targets, target must be ENABLED, and an already ' +
       'impersonated session can never start another (no nesting). Start and end are force-audited.',
   })
   @ApiParam({ name: 'id', description: 'Target user id', type: String })
   @ApiResponse({ status: 200, description: 'Impersonation token minted', type: ImpersonateResponse })
-  @ApiResponse({ status: 400, description: 'Invalid target (self, global-admin, disabled, or missing tenant assignment)' })
+  @ApiResponse({ status: 400, description: 'Invalid target (self, super-admin, disabled, or missing tenant assignment)' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
-  @ApiResponse({ status: 403, description: 'Forbidden — global-admin only, or nested impersonation attempt' })
+  @ApiResponse({ status: 403, description: 'Forbidden — super-admin only, or nested impersonation attempt' })
   @ApiResponse({ status: 404, description: 'Target user not found' })
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async impersonate(@Param('id') targetUserId: string, @Body() request: AdminImpersonateRequest, @Request() req: any): Promise<ImpersonateResponse> {
@@ -156,7 +156,7 @@ export class AdminImpersonationController {
     const targetRoleNames = targetRoles.map((r) => r.name);
     if (targetRoleNames.some((r) => ELEVATED_TIER_ROLES.includes(r))) {
       this.recordDenied(req, actor.id, targetUser.id, ImpersonationDeniedReason.TargetIsSuperAdmin);
-      throw new BadRequestException('Cannot impersonate a global administrator');
+      throw new BadRequestException('Cannot impersonate a super administrator');
     }
 
     const targetPermissions = this.collectPermissions(targetRoles);
@@ -257,7 +257,7 @@ export class AdminImpersonationController {
     } satisfies ImpersonationEventPayload);
 
     // Forced audit row for the sensitive action. Direct emit
-    // (not broadcastSysEvent): a global-admin's CLS tenant is usually EMPTY
+    // (not broadcastSysEvent): a super-admin's CLS tenant is usually EMPTY
     // STRING (never null — their JWT carries `tenantId: ''`, see
     // `resolve-active-tenant.ts`) and the AuditLogProcessor fail-closes on a
     // falsy tenant, so the row is attributed to the RESOLVED impersonation

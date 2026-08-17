@@ -250,6 +250,36 @@ describe('BaseService', () => {
       );
     });
 
+    // The emitted envelope is a plain object, NOT a `SysEvent` instance, so the
+    // constructor's `id = props.id || generateId()` never runs here. Without an
+    // explicit id every event carried `id: undefined`, which collapsed the
+    // webhook fan-out's BullMQ job id to `hook:<webhookId>:undefined` — BullMQ
+    // deduplicated it, so each webhook fired once and then never again.
+    it('stamps a unique envelope id on every event (webhook fan-out keys its job id off it)', () => {
+      service.testBroadcastSysEvent('RESOURCE_CREATED' as SysEventType, { other: 'x' });
+      service.testBroadcastSysEvent('RESOURCE_CREATED' as SysEventType, { other: 'y' });
+
+      const [first, second] = mockEventEmitter.emit.mock.calls.map(([, payload]: [string, { id?: string }]) => payload.id);
+      expect(typeof first).toBe('string');
+      expect(first).toBeTruthy();
+      expect(second).not.toBe(first);
+    });
+
+    // The type used to live ONLY in the emit channel name, so `event.type` was
+    // undefined on the payload and the webhook body's `eventType` was dropped by
+    // JSON.stringify — subscribers were told something happened, but not what.
+    it('carries the event type on the envelope, not just as the emit channel', () => {
+      service.testBroadcastSysEvent('RESOURCE_CREATED' as SysEventType, { other: 'x' });
+
+      expect(mockEventEmitter.emit).toHaveBeenCalledWith('RESOURCE_CREATED', expect.objectContaining({ type: 'RESOURCE_CREATED' }));
+    });
+
+    it('lets an explicit caller-supplied envelope id win', () => {
+      service.testBroadcastSysEvent('RESOURCE_CREATED' as SysEventType, { id: 'caller-supplied-id' });
+
+      expect(mockEventEmitter.emit).toHaveBeenCalledWith('RESOURCE_CREATED', expect.objectContaining({ id: 'caller-supplied-id' }));
+    });
+
     it('uses CLS tenantId when payload omits tenantId', () => {
       mockClsService.get.mockImplementation((key: string) => {
         if (key === 'tenantId') return 'tenant-A';

@@ -831,8 +831,8 @@ describe('ComprehensiveSummaryProcessor', () => {
       );
       expect(mocks.promptResolutionService.resolve).toHaveBeenCalledTimes(1);
 
-      const smrPayload = mocks.httpService.axiosRef.post.mock.calls[0][1];
-      expect(smrPayload.context?.template).toBe('narrative');
+      const textPayload = mocks.httpService.axiosRef.post.mock.calls[0][1];
+      expect(textPayload.context?.template).toBe('narrative');
     });
 
     it('should not call PromptResolutionService when template is provided', async () => {
@@ -848,8 +848,8 @@ describe('ComprehensiveSummaryProcessor', () => {
 
       expect(mocks.promptResolutionService.resolve).not.toHaveBeenCalled();
 
-      const smrPayload = mocks.httpService.axiosRef.post.mock.calls[0][1];
-      expect(smrPayload.context).toEqual(
+      const textPayload = mocks.httpService.axiosRef.post.mock.calls[0][1];
+      expect(textPayload.context).toEqual(
         expect.objectContaining({
           dnaStyleId: 'explicit-style',
           template: 'SOAP',
@@ -875,8 +875,8 @@ describe('ComprehensiveSummaryProcessor', () => {
         ),
       );
 
-      const smrPayload = mocks.httpService.axiosRef.post.mock.calls[0][1];
-      expect(smrPayload.context?.template).toBe('narrative');
+      const textPayload = mocks.httpService.axiosRef.post.mock.calls[0][1];
+      expect(textPayload.context?.template).toBe('narrative');
     });
   });
 
@@ -933,13 +933,13 @@ describe('ComprehensiveSummaryProcessor', () => {
       expect(result.summaryMeta?.processingTimeMs).toBe(8500);
 
       // Verify SMR was called with all sections
-      const smrPayload = mocks.httpService.axiosRef.post.mock.calls[0][1];
-      expect(smrPayload.prompt).toContain('Summary from Gen Med.');
-      expect(smrPayload.prompt).toContain('Hematology findings.');
-      expect(smrPayload.prompt).toContain('Lab results: CBC normal.');
-      expect(smrPayload.prompt).toContain('Previous visit notes.');
-      expect(smrPayload.prompt).toContain('MEDICATION: Aspirin 75mg, Metformin 500mg');
-      expect(smrPayload.prompt).toContain('PROCEDURE: CBC');
+      const textPayload = mocks.httpService.axiosRef.post.mock.calls[0][1];
+      expect(textPayload.prompt).toContain('Summary from Gen Med.');
+      expect(textPayload.prompt).toContain('Hematology findings.');
+      expect(textPayload.prompt).toContain('Lab results: CBC normal.');
+      expect(textPayload.prompt).toContain('Previous visit notes.');
+      expect(textPayload.prompt).toContain('MEDICATION: Aspirin 75mg, Metformin 500mg');
+      expect(textPayload.prompt).toContain('PROCEDURE: CBC');
 
       // Verify full progress lifecycle
       expect(mocks.jobService.notifyProgress).toHaveBeenCalledTimes(5);

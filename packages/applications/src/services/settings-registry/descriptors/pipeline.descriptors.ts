@@ -25,7 +25,7 @@ function mapScope(scope: PipelinePolicyScope): SettingScope {
  * `globalOnly` marks the toggles a tenant admin may no
  * longer write. `harnessEnabled` gates guardrail's primary caller and
  * `autoNerEnabled` gates NLP auto-extraction; per the owner directive both AI
- * services are controlled by global admins only. `PipelinePolicyService`
+ * services are controlled by super admins only. `PipelinePolicyService`
  * enforces FROM this metadata — do not mirror it into a key list there.
  *
  * `autoSummaryEnabled` / `dnaStyleEnabled` stay tenant-writable: they select
@@ -35,12 +35,12 @@ const META: Record<PipelineToggleKey, { label: string; description: string; glob
   autoSummaryEnabled: { label: 'Auto-summary', description: 'Automatically generate a summary after each consultation.' },
   autoNerEnabled: {
     label: 'Auto medical NER',
-    description: 'Automatically extract medical entities during transcription (global administrators only).',
+    description: 'Automatically extract medical entities during transcription (super administrators only).',
     globalOnly: true,
   },
   harnessEnabled: {
     label: 'Documentation harness',
-    description: 'Route consultations through the clinical documentation harness (rollout knob — capped at department; global administrators only).',
+    description: 'Route consultations through the clinical documentation harness (rollout knob — capped at department; super administrators only).',
     globalOnly: true,
   },
   dnaStyleEnabled: { label: 'DNA writing style', description: "Apply and learn the doctor's DNA writing style." },

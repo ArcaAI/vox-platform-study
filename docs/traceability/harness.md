@@ -87,7 +87,7 @@ engine kill-switch (rule 13: `/agentic-policy` owns `harness/policy/global` +
 | App / service | `apps/api` + `apps/admin-console` |
 | Key modules | `apps/api/src/modules/harness-admin` (`policy/global` + `live/config` on `harness-admin.controller.ts`); `packages/applications/src/services/{harness-policy,agentic-instructions}` |
 | Prisma models | `HarnessPolicy` (SYSTEM-tenant global-default row), `HarnessPolicyChange` |
-| Key API endpoints | `GET/PATCH /admin/harness/policy/global` (`@RequiresIfMatch()` even on first edit — 428/412), `GET/PATCH /admin/harness/live/config` (engine kill-switch; NOT versioned). **AUTH-NOTE:** GLOBAL-ADMIN-only via `GLOBAL_ADMIN_ONLY_POLICY_KEYS` enforced imperatively (rule 05) |
+| Key API endpoints | `GET/PATCH /admin/harness/policy/global` (`@RequiresIfMatch()` even on first edit — 428/412), `GET/PATCH /admin/harness/live/config` (engine kill-switch; NOT versioned). **AUTH-NOTE:** SUPER_ADMIN-only via `SUPER_ADMIN_ONLY_POLICY_KEYS` enforced imperatively (rule 05) |
 | Console | `apps/admin-console` feature `agentic-policy` (`agentic-policy-screen`, `agentic-context-tab`); route `/agentic-policy` (tier 10–19, global) |
 | Tests | unit(app): `harness-policy/__tests__/*`, `agentic-instructions/__tests__/agentic-instructions.service.test.ts`; unit(console): `agentic-policy/components/__tests__/{agentic-policy-screen,agentic-context-tab}.test.tsx`; e2e: `agentic-policy.spec.ts` |
 
@@ -98,7 +98,7 @@ engine kill-switch (rule 13: `/agentic-policy` owns `harness/policy/global` +
 | App / service | `apps/api` |
 | Key modules | `apps/api/src/modules/mcp-admin` (`mcp-admin.controller.ts`); `packages/applications/src/services/mcp-server` (`mcp-server-admin.service.ts`) |
 | Prisma models | `McpServer` (`db_main/mcp-server.prisma`) — dedicated `McpServer` (read/manage) RBAC subject added in TASK-532 M-12 |
-| Key API endpoints | `@Controller('admin/mcp-servers')`: `GET ''`, `GET :id`, `POST ''`, `PATCH :id`, `DELETE :id`. **AUTH-NOTE:** MCP writes stay GLOBAL_ADMIN-only in the service (rule 05) |
+| Key API endpoints | `@Controller('admin/mcp-servers')`: `GET ''`, `GET :id`, `POST ''`, `PATCH :id`, `DELETE :id`. **AUTH-NOTE:** MCP writes stay SUPER_ADMIN-only in the service (rule 05) |
 | Console | `apps/admin-console` feature `tools-mcp` (`tools-mcp-screen`); route `/tools-mcp` (tier 10–19, global) |
 | Tests | unit(app): `mcp-server/__tests__/mcp-server-admin.service.test.ts`, `harness-policy/__tests__/harness-policy.mcp.test.ts`; unit(api): decorator-subject specs in `mcp-admin`; unit(console): `tools-mcp/components/__tests__/tools-mcp-screen.test.tsx` |
 

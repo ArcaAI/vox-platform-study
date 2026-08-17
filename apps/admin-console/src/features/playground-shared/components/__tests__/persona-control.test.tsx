@@ -87,7 +87,7 @@ describe('PersonaControl', () => {
     );
     expect(screen.queryByRole('button', { name: /acting as/i })).toBeNull();
     expect(screen.getByText(/acting as yourself/i)).toBeDefined();
-    expect(screen.getByText(/requires global admin/i)).toBeDefined();
+    expect(screen.getByText(/requires super admin/i)).toBeDefined();
     expect(screen.getByText(/under ted-tenant/i)).toBeDefined();
   });
 

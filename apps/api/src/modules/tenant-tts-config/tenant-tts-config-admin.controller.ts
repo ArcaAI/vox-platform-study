@@ -56,7 +56,7 @@ function toTtsCredentialResponse(row: AiProviderConnectionResponse): TtsCredenti
  *  - `PUT 'row'` → create (`expectedVersion` 0) or CAS-update the row under
  *    `If-Match` (drift → 412, missing → 428).
  *
- * Tenant admins are pinned to their CLS tenant; global-admins (`isSuperAdmin`)
+ * Tenant admins are pinned to their CLS tenant; super-admins (`isSuperAdmin`)
  * act cross-tenant — incl. the SYSTEM-tenant platform default — via `?tenantId=`.
  * Credentials (BYO keys) get their own routes in Phase 6.
  */
@@ -201,7 +201,7 @@ export class TenantTtsConfigAdminController {
     return this.providerConnectionService.deleteRow('tts', provider, this.resolveTenantId(tenantId));
   }
 
-  /** Tenant admins → own tenant; global-admins → `?tenantId=` (or CLS tenant). */
+  /** Tenant admins → own tenant; super-admins → `?tenantId=` (or CLS tenant). */
   private resolveTenantId(queryTenantId?: string): string {
     return resolveScopedTenantId(this.cls.get('user'), this.cls.get('tenantId'), queryTenantId);
   }

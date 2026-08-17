@@ -15,7 +15,7 @@ import { TenantNlpTaskInstructionsResponse, UpsertTenantNlpTaskInstructionsReque
  *
  * Deliberately separate from `AiTaskDefaultService`: this table carries
  * tenant-authored CONTENT for `nlp.topic`/`nlp.intent` only, never a
- * `modelSlug`, and is NOT under the `nlp.*` global-admin-only write lock —
+ * `modelSlug`, and is NOT under the `nlp.*` super-admin-only write lock —
  * an ordinary tenant admin (`manage:TenantNlpTaskInstructions`, enforced by
  * the gateway controller's authorization decorator) owns these rows. Model
  * selection for these two task keys still resolves through `AiTaskDefault`
@@ -104,7 +104,7 @@ export class TenantNlpTaskInstructionsService extends BaseService implements ITe
     }
   }
 
-  /** Explicit tenant target (global-admin `?tenantId=`) over the CLS tenant. */
+  /** Explicit tenant target (super-admin `?tenantId=`) over the CLS tenant. */
   private resolveScopedTenantId(tenantId?: string): string {
     const scoped = tenantId ?? this.tenantId;
     if (!scoped) {

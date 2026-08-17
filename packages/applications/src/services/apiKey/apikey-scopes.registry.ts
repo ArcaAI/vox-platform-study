@@ -77,7 +77,7 @@ export const API_KEY_SCOPE_REGISTRY: Record<string, ScopeDefinition> = {
   'admin:ai-runtime-profile:manage': { description: 'Manage AI runtime profiles', category: 'Admin' },
   'admin:ai-service:manage': { description: 'Manage AI service configuration', category: 'Admin' },
   'admin:ai-task-default:manage': {
-    description: 'Manage AI task defaults (some sub-routes are additionally GLOBAL_ADMIN-only via GLOBAL_ADMIN_ONLY_TASK_PREFIXES)',
+    description: 'Manage AI task defaults (some sub-routes are additionally SUPER_ADMIN-only via SUPER_ADMIN_ONLY_TASK_PREFIXES)',
     category: 'Admin',
   },
   'admin:billing:manage': { description: 'Manage billing invoices and rate cards', category: 'Admin' },

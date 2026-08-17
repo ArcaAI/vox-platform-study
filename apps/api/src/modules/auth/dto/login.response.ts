@@ -16,7 +16,7 @@ export class LoginUserResponse extends UserSession {
   permissions: string[];
 
   @ApiPropertyOptional({
-    description: 'Tenant ID the user is authenticated against. Empty for global admins with global access.',
+    description: 'Tenant ID the user is authenticated against. Empty for super admins with global access.',
     example: '50000000-0000-0000-0000-000000000000',
   })
   @IsOptional()
@@ -24,7 +24,7 @@ export class LoginUserResponse extends UserSession {
   tenantId?: string;
 
   @ApiPropertyOptional({
-    description: 'Tenant key the user is authenticated against. Empty for global admins with global access.',
+    description: 'Tenant key the user is authenticated against. Empty for super admins with global access.',
     example: 'acme-hospital',
   })
   @IsOptional()

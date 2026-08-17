@@ -27,7 +27,7 @@ import { resolveScopedTenantIdOptional } from '../../shared/tenant-scope';
  * this registry via `manage:HarnessPolicy` must add the new grant.
  *
  * Reads (list/get) back the console "Tools & MCP" screen — the registry
- * list/read. WRITES are GLOBAL-ADMIN-ONLY: the SERVICE throws a
+ * list/read. WRITES are SUPER_ADMIN-ONLY: the SERVICE throws a
  * `ForbiddenException` (403) for a tenant admin (the guardrail.* privilege
  * boundary; NOT the 404-over-403 tenancy posture). Cross-tenant reads are 404.
  *
@@ -51,7 +51,7 @@ export class McpAdminController {
     summary: 'List registered MCP external-tools servers (registry read — backs the console "Tools & MCP" screen)',
     description:
       'Returns the servers visible to the caller: their own tenant rows plus the SYSTEM-shared registry. No secret ' +
-      'material is surfaced (authRef is a Vault path only). Tenant admins are pinned to their own tenant; global admins ' +
+      'material is surfaced (authRef is a Vault path only). Tenant admins are pinned to their own tenant; super admins ' +
       'target any tenant via `?tenantId=` (omit = SYSTEM registry).',
   })
   @ApiQuery({ name: 'tenantId', required: false, description: 'Platform-admin only: target tenant. Tenant admins are pinned to their own tenant.' })
@@ -77,12 +77,12 @@ export class McpAdminController {
     summary: 'Register a new MCP server (GLOBAL-ADMIN only)',
     description:
       'Creates a SYSTEM-owned registry row by default (or a specific tenant via `?tenantId=`). `authRef` is a Vault path ' +
-      '(no secret material). Global-admin only — a tenant admin gets 403. The server is dormant (`enabled: false`) unless ' +
+      '(no secret material). Super-admin only — a tenant admin gets 403. The server is dormant (`enabled: false`) unless ' +
       'explicitly enabled, and the whole MCP path is additionally gated OFF by `HarnessPolicy.mcpToolsEnabled` (null → off).',
   })
-  @ApiQuery({ name: 'tenantId', required: false, description: 'Global-admin only: target tenant (default SYSTEM registry).' })
+  @ApiQuery({ name: 'tenantId', required: false, description: 'Super-admin only: target tenant (default SYSTEM registry).' })
   @ApiResponse({ status: 201, type: McpServerResponse })
-  @ApiResponse({ status: 403, description: 'Forbidden — the MCP registry is managed by global administrators only.' })
+  @ApiResponse({ status: 403, description: 'Forbidden — the MCP registry is managed by super administrators only.' })
   async create(@Body() body: CreateMcpServerRequest, @Query('tenantId') tenantId?: string): Promise<McpServerResponse> {
     return this.mcpServerService.create(body, this.resolveWriteTenantId(tenantId));
   }
@@ -94,10 +94,10 @@ export class McpAdminController {
     summary: 'Update a registered MCP server under optimistic concurrency (GLOBAL-ADMIN only)',
     description:
       'Sparse patch. `If-Match` (RFC 7232) is REQUIRED and CASes against the row `_version` (drift → 412, missing → 428). ' +
-      'Global-admin only (403 for tenant admins). `authRef` stays a Vault path — never secret material.',
+      'Super-admin only (403 for tenant admins). `authRef` stays a Vault path — never secret material.',
   })
   @ApiParam({ name: 'id', description: 'MCP server id' })
-  @ApiQuery({ name: 'tenantId', required: false, description: 'Global-admin only: target tenant (default SYSTEM registry).' })
+  @ApiQuery({ name: 'tenantId', required: false, description: 'Super-admin only: target tenant (default SYSTEM registry).' })
   @ApiHeader({
     name: 'If-Match',
     description: 'RFC 7232 strong validator carrying the version the client read (e.g. `"1"`).',
@@ -105,7 +105,7 @@ export class McpAdminController {
     example: '"1"',
   })
   @ApiResponse({ status: 200, type: McpServerResponse })
-  @ApiResponse({ status: 403, description: 'Forbidden — global-admin only.' })
+  @ApiResponse({ status: 403, description: 'Forbidden — super-admin only.' })
   @ApiResponse({ status: 404, description: 'Server not found for the tenant.' })
   @ApiResponse({ status: 412, description: 'Optimistic concurrency conflict — re-fetch and retry with the new version.' })
   @ApiResponse({ status: 428, description: 'If-Match header is required for this operation.' })
@@ -123,10 +123,10 @@ export class McpAdminController {
   @RequiresIfMatch()
   @ApiOperation({
     summary: 'Soft-delete a registered MCP server under optimistic concurrency (GLOBAL-ADMIN only)',
-    description: 'Soft-delete (resourceStatus → DELETED). `If-Match` REQUIRED (OCC). Global-admin only (403 for tenant admins).',
+    description: 'Soft-delete (resourceStatus → DELETED). `If-Match` REQUIRED (OCC). Super-admin only (403 for tenant admins).',
   })
   @ApiParam({ name: 'id', description: 'MCP server id' })
-  @ApiQuery({ name: 'tenantId', required: false, description: 'Global-admin only: target tenant (default SYSTEM registry).' })
+  @ApiQuery({ name: 'tenantId', required: false, description: 'Super-admin only: target tenant (default SYSTEM registry).' })
   @ApiHeader({
     name: 'If-Match',
     description: 'RFC 7232 strong validator carrying the version the client read (e.g. `"1"`).',
@@ -134,7 +134,7 @@ export class McpAdminController {
     example: '"1"',
   })
   @ApiResponse({ status: 200, type: McpServerResponse })
-  @ApiResponse({ status: 403, description: 'Forbidden — global-admin only.' })
+  @ApiResponse({ status: 403, description: 'Forbidden — super-admin only.' })
   @ApiResponse({ status: 404, description: 'Server not found for the tenant.' })
   @ApiResponse({ status: 412, description: 'Optimistic concurrency conflict.' })
   @ApiResponse({ status: 428, description: 'If-Match header is required for this operation.' })
@@ -148,12 +148,12 @@ export class McpAdminController {
 
   // ───────────────────────── Helpers ─────────────────────────
 
-  /** Read scope: tenant admins → own tenant; global admins → optional `?tenantId=` (undefined = SYSTEM registry, resolved by the service). */
+  /** Read scope: tenant admins → own tenant; super admins → optional `?tenantId=` (undefined = SYSTEM registry, resolved by the service). */
   private resolveReadTenantId(queryTenantId?: string): string | undefined {
     return resolveScopedTenantIdOptional(this.cls.get('user'), this.cls.get('tenantId'), queryTenantId);
   }
 
-  /** Write scope: global admins target `?tenantId=` (undefined = SYSTEM, defaulted by the service). Tenant admins are 403'd at the service layer. */
+  /** Write scope: super admins target `?tenantId=` (undefined = SYSTEM, defaulted by the service). Tenant admins are 403'd at the service layer. */
   private resolveWriteTenantId(queryTenantId?: string): string | undefined {
     return resolveScopedTenantIdOptional(this.cls.get('user'), this.cls.get('tenantId'), queryTenantId);
   }

@@ -75,7 +75,7 @@ function assertNoSecretMaterial(server: Record<string, unknown>, expectedAuthRef
 }
 
 test.describe('MCP registry admin (CRUD + secret hygiene + SUPER_ADMIN + OCC)', () => {
-  let globalAdminToken: string;
+  let superAdminToken: string;
   let tenantAdminToken: string;
 
   const unique = Date.now();
@@ -84,8 +84,8 @@ test.describe('MCP registry admin (CRUD + secret hygiene + SUPER_ADMIN + OCC)', 
 
   test.beforeAll(async ({ request }) => {
     const ga = await loginUser(request, SEEDED_USERS.superAdmin.username, SEEDED_USERS.superAdmin.password, 'ARCAAI');
-    expect(ga, 'global admin login (ARCAAI) failed — is the stack seeded?').toBeTruthy();
-    globalAdminToken = ga!.token;
+    expect(ga, 'super admin login (ARCAAI) failed — is the stack seeded?').toBeTruthy();
+    superAdminToken = ga!.token;
 
     const ta = await loginUser(request, SEEDED_USERS.admin.username, SEEDED_USERS.admin.password, DEFAULT_TENANT_KEY);
     expect(ta, `tenant_admin login (${DEFAULT_TENANT_KEY}) failed`).toBeTruthy();
@@ -93,7 +93,7 @@ test.describe('MCP registry admin (CRUD + secret hygiene + SUPER_ADMIN + OCC)', 
 
     // SUPER_ADMIN registers a dormant SYSTEM registry row (default tenant = SYSTEM).
     const create = await request.post(BASE, {
-      headers: bearer(globalAdminToken),
+      headers: bearer(superAdminToken),
       data: {
         name: `e2e-mcp-${unique}`,
         baseUrl: 'https://terminology.internal/mcp',
@@ -113,16 +113,16 @@ test.describe('MCP registry admin (CRUD + secret hygiene + SUPER_ADMIN + OCC)', 
 
   test.afterAll(async ({ request }) => {
     if (!serverId) return;
-    const get = await request.get(`${BASE}/${serverId}`, { headers: bearer(globalAdminToken) });
+    const get = await request.get(`${BASE}/${serverId}`, { headers: bearer(superAdminToken) });
     if (get.status() !== 200) return;
     const current = (await get.json()) as McpServer;
     await request
-      .delete(`${BASE}/${serverId}`, { headers: { ...bearer(globalAdminToken), 'If-Match': `"${current.version}"` } })
+      .delete(`${BASE}/${serverId}`, { headers: { ...bearer(superAdminToken), 'If-Match': `"${current.version}"` } })
       .catch(() => undefined);
   });
 
   test('GET by id reads the registry row back and never echoes secret material', async ({ request }) => {
-    const resp = await request.get(`${BASE}/${serverId}`, { headers: bearer(globalAdminToken) });
+    const resp = await request.get(`${BASE}/${serverId}`, { headers: bearer(superAdminToken) });
     expect(resp.status()).toBe(200);
     const server = (await resp.json()) as McpServer;
     expect(server.id).toBe(serverId);
@@ -130,7 +130,7 @@ test.describe('MCP registry admin (CRUD + secret hygiene + SUPER_ADMIN + OCC)', 
   });
 
   test('LIST returns the { items, total } envelope including the new server', async ({ request }) => {
-    const resp = await request.get(BASE, { headers: bearer(globalAdminToken) });
+    const resp = await request.get(BASE, { headers: bearer(superAdminToken) });
     expect(resp.status()).toBe(200);
     const body = (await resp.json()) as McpServerList;
     expect(Array.isArray(body.items)).toBe(true);
@@ -142,7 +142,7 @@ test.describe('MCP registry admin (CRUD + secret hygiene + SUPER_ADMIN + OCC)', 
 
   test('OCC: PATCH without If-Match → 428', async ({ request }) => {
     const resp = await request.patch(`${BASE}/${serverId}`, {
-      headers: bearer(globalAdminToken),
+      headers: bearer(superAdminToken),
       data: { description: 'no if-match' },
     });
     expect(resp.status()).toBe(428);
@@ -150,19 +150,19 @@ test.describe('MCP registry admin (CRUD + secret hygiene + SUPER_ADMIN + OCC)', 
 
   test('OCC: PATCH with a stale If-Match → 412', async ({ request }) => {
     const resp = await request.patch(`${BASE}/${serverId}`, {
-      headers: { ...bearer(globalAdminToken), 'If-Match': '"999"' },
+      headers: { ...bearer(superAdminToken), 'If-Match': '"999"' },
       data: { description: 'stale if-match' },
     });
     expect(resp.status()).toBe(412);
   });
 
   test('OCC: PATCH with the current If-Match succeeds, bumps version, keeps authRef a Vault path', async ({ request }) => {
-    const get = await request.get(`${BASE}/${serverId}`, { headers: bearer(globalAdminToken) });
+    const get = await request.get(`${BASE}/${serverId}`, { headers: bearer(superAdminToken) });
     expect(get.status()).toBe(200);
     const before = (await get.json()) as McpServer;
 
     const resp = await request.patch(`${BASE}/${serverId}`, {
-      headers: { ...bearer(globalAdminToken), 'If-Match': `"${before.version}"` },
+      headers: { ...bearer(superAdminToken), 'If-Match': `"${before.version}"` },
       data: { description: `e2e ${unique}` },
     });
     expect(resp.status()).toBe(200);

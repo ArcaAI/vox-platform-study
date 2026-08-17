@@ -70,14 +70,14 @@ async function listSessions(request: APIRequestContext, token: string, qs = ''):
 }
 
 test.describe('agent-trajectory admin read plane', () => {
-  let globalAdminToken: string;
+  let superAdminToken: string;
   let tenantAdminToken: string;
   let doctorToken: string;
 
   test.beforeAll(async ({ request }) => {
     const ga = await loginUser(request, SEEDED_USERS.superAdmin.username, SEEDED_USERS.superAdmin.password, 'ARCAAI');
-    expect(ga, 'global admin login (ARCAAI) failed — is the stack seeded?').toBeTruthy();
-    globalAdminToken = ga!.token;
+    expect(ga, 'super admin login (ARCAAI) failed — is the stack seeded?').toBeTruthy();
+    superAdminToken = ga!.token;
 
     const ta = await loginUser(request, SEEDED_USERS.admin.username, SEEDED_USERS.admin.password, DEFAULT_TENANT_KEY);
     expect(ta, `tenant_admin login (${DEFAULT_TENANT_KEY}) failed`).toBeTruthy();
@@ -97,7 +97,7 @@ test.describe('agent-trajectory admin read plane', () => {
   });
 
   test('session list returns the { items, total } envelope with the locked row shape (no payloadRef)', async ({ request }) => {
-    const { status, body } = await listSessions(request, globalAdminToken, '?limit=10');
+    const { status, body } = await listSessions(request, superAdminToken, '?limit=10');
     expect(status).toBe(200);
     expect(Array.isArray(body.items)).toBe(true);
     expect(typeof body.total).toBe('number');
@@ -114,13 +114,13 @@ test.describe('agent-trajectory admin read plane', () => {
   });
 
   test('offset pagination bounds the page (?limit=1 → at most one row)', async ({ request }) => {
-    const { status, body } = await listSessions(request, globalAdminToken, '?page=1&limit=1');
+    const { status, body } = await listSessions(request, superAdminToken, '?page=1&limit=1');
     expect(status).toBe(200);
     expect(body.items.length).toBeLessThanOrEqual(1);
   });
 
   test('steps keyset pagination echoes limit and advances by cursor (seq asc, no overlap)', async ({ request }) => {
-    const { body: sessions } = await listSessions(request, globalAdminToken, '?limit=25');
+    const { body: sessions } = await listSessions(request, superAdminToken, '?limit=25');
     const multiStep = sessions.items.find((s) => s.stepCount > 1);
     if (!multiStep) {
       console.warn('[e2e] no multi-step session in the seed — cursor-advance assertion skipped.');
@@ -129,7 +129,7 @@ test.describe('agent-trajectory admin read plane', () => {
 
     const runQs = multiStep.runId ? `&runId=${encodeURIComponent(multiStep.runId)}` : '';
     const firstResp = await request.get(`${SESSIONS}/${encodeURIComponent(multiStep.sessionId)}/steps?limit=1${runQs}`, {
-      headers: bearer(globalAdminToken),
+      headers: bearer(superAdminToken),
     });
     expect(firstResp.status()).toBe(200);
     const first = (await firstResp.json()) as StepsPage;
@@ -145,7 +145,7 @@ test.describe('agent-trajectory admin read plane', () => {
     if (first.hasMore && first.nextCursor) {
       const secondResp = await request.get(
         `${SESSIONS}/${encodeURIComponent(multiStep.sessionId)}/steps?limit=1${runQs}&cursor=${encodeURIComponent(first.nextCursor)}`,
-        { headers: bearer(globalAdminToken) },
+        { headers: bearer(superAdminToken) },
       );
       expect(secondResp.status()).toBe(200);
       const second = (await secondResp.json()) as StepsPage;
@@ -158,14 +158,14 @@ test.describe('agent-trajectory admin read plane', () => {
   });
 
   test('nonexistent sessionId → 404 (never 403), body leaks no tenant', async ({ request }) => {
-    const resp = await request.get(`${SESSIONS}/${SYNTHETIC_SESSION_ID}/steps`, { headers: bearer(globalAdminToken) });
+    const resp = await request.get(`${SESSIONS}/${SYNTHETIC_SESSION_ID}/steps`, { headers: bearer(superAdminToken) });
     expect(resp.status()).toBe(404);
     const body = await resp.json().catch(() => ({}));
     expect(String((body as { message?: string }).message ?? '')).not.toMatch(/tenant/i);
   });
 
   test('a tenant admin passing a FOREIGN ?tenantId= is rejected (never 200), no foreign tenant content', async ({ request }) => {
-    // Discover the ARCAAI tenant id via the global admin's own session scope
+    // Discover the ARCAAI tenant id via the super admin's own session scope
     // isn't guaranteed (empty seed), so probe with a synthetic foreign tenant id.
     const foreignTenantId = '018f0000-0000-7000-8000-0000005100bb';
     const resp = await request.get(`${SESSIONS}?tenantId=${foreignTenantId}`, { headers: bearer(tenantAdminToken) });

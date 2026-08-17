@@ -27,7 +27,7 @@ const WAV_HEADER_BYTES = 44;
 
 // The gateway forwards the body verbatim; tts owns strict validation. A plain
 // interface (not a class-validator DTO) means the global ValidationPipe skips it,
-// preserving pass-through (mirrors SmrProxyController).
+// preserving pass-through (mirrors TextProxyController).
 interface SpeechSynthesizeRequest {
   input: string;
   voice: string;

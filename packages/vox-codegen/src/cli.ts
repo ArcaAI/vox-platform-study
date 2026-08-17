@@ -26,7 +26,7 @@ Usage:
 
 Options:
   --tenant <id>       Tenant id to generate types for (required)
-  --token <jwt>        Bearer token for a GLOBAL_ADMIN user (or set HOPE_API_TOKEN)
+  --token <jwt>        Bearer token for a SUPER_ADMIN user (or set HOPE_API_TOKEN)
   --base-url <url>     Gateway origin (default: ${DEFAULT_BASE_URL}, or HOPE_API_BASE_URL)
   --department <id>    Prefer this department's schema default, falling back to the tenant default
   --out <path>         Output file path (default: ${DEFAULT_OUT_FILE})

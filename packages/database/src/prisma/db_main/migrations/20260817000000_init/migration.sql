@@ -167,7 +167,7 @@ CREATE TYPE "core"."BillingLineKind" AS ENUM ('PLAN_FEE', 'OVERAGE', 'ADJUSTMENT
 CREATE TYPE "core"."ChangelogSeverity" AS ENUM ('INFO', 'IMPORTANT', 'BREAKING');
 
 -- CreateEnum
-CREATE TYPE "core"."ChangelogAudience" AS ENUM ('ALL', 'GLOBAL_ADMIN', 'TENANT_ADMIN');
+CREATE TYPE "core"."ChangelogAudience" AS ENUM ('ALL', 'SUPER_ADMIN', 'TENANT_ADMIN');
 
 -- CreateEnum
 CREATE TYPE "core"."ChangelogPublishStatus" AS ENUM ('DRAFT', 'PUBLISHED');

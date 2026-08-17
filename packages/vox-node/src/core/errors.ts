@@ -167,7 +167,7 @@ export class AuthenticationError extends HopeAPIError {
   }
 }
 
-/** HTTP 403 — a privilege boundary, e.g. a global-admin-only action attempted by a tenant admin. */
+/** HTTP 403 — a privilege boundary, e.g. a super-admin-only action attempted by a tenant admin. */
 export class PermissionError extends HopeAPIError {
   constructor(init: Omit<HopeAPIErrorInit, 'status'>) {
     super({ ...init, status: 403 });

@@ -49,17 +49,17 @@ import {
  *
  * Four concerns:
  *  - Policy: GET/PATCH the caller-tenant policy (`If-Match` OCC) + the platform
- *    GLOBAL-DEFAULT (`policy/global`, global-admin only).
+ *    GLOBAL-DEFAULT (`policy/global`, super-admin only).
  *  - Observe: read the WORM audit trail (+ integrity verdict), eval runs, and
  *    the clinician gate queue.
  *  - Datasets: golden sets/cases — list/read + create over
  *    `EvalService`. Case reads are PHI-SAFE metadata (the encrypted
  *    transcript/reference-note payloads are never surfaced).
  *  - Operate: proxy Temporal workflow ops to the harness via `HarnessOpsClient`,
- *    enforcing tenant ownership on destructive ops (platform global-admins bypass).
+ *    enforcing tenant ownership on destructive ops (platform super-admins bypass).
  *
  * Tenant scoping mirrors `MyTenantController`/`TenantController`: tenant admins
- * are pinned to their CLS tenant; global-admins (`isSuperAdmin`) act cross-tenant
+ * are pinned to their CLS tenant; super-admins (`isSuperAdmin`) act cross-tenant
  * (and may target a tenant via `?tenantId=` on reads). The ETag interceptor sets
  * `ETag: "<version>"` on the policy responses (top-level `version`).
  */
@@ -123,9 +123,9 @@ export class HarnessAdminController {
 
   @Get('policy/global')
   @Authorize(['read', 'HarnessPolicy'])
-  @ApiOperation({ summary: 'Get the platform GLOBAL-DEFAULT harness policy (global-admin only)' })
+  @ApiOperation({ summary: 'Get the platform GLOBAL-DEFAULT harness policy (super-admin only)' })
   @ApiResponse({ status: 200, type: HarnessPolicyResponse })
-  @ApiResponse({ status: 403, description: 'Forbidden — platform (global-admin) privileges required.' })
+  @ApiResponse({ status: 403, description: 'Forbidden — platform (super-admin) privileges required.' })
   async getGlobalPolicy(): Promise<HarnessPolicyResponse> {
     this.assertPlatform();
     return this.policyService.getGlobalDefault();
@@ -135,8 +135,8 @@ export class HarnessAdminController {
   @Authorize(['manage', 'HarnessPolicy'])
   @RequiresIfMatch()
   @ApiOperation({
-    summary: 'Update the platform GLOBAL-DEFAULT harness policy (global-admin only)',
-    description: 'Same OCC + WORM semantics as `PATCH policy`, targeting the SYSTEM-tenant GLOBAL-DEFAULT row. Restricted to platform global-admins.',
+    summary: 'Update the platform GLOBAL-DEFAULT harness policy (super-admin only)',
+    description: 'Same OCC + WORM semantics as `PATCH policy`, targeting the SYSTEM-tenant GLOBAL-DEFAULT row. Restricted to platform super-admins.',
   })
   @ApiHeader({
     name: 'If-Match',
@@ -145,7 +145,7 @@ export class HarnessAdminController {
     example: '"1"',
   })
   @ApiResponse({ status: 200, type: HarnessPolicyResponse })
-  @ApiResponse({ status: 403, description: 'Forbidden — platform (global-admin) privileges required.' })
+  @ApiResponse({ status: 403, description: 'Forbidden — platform (super-admin) privileges required.' })
   @ApiResponse({ status: 412, description: 'Optimistic concurrency conflict — re-fetch and retry with the new version.' })
   @ApiResponse({ status: 428, description: 'If-Match header is required for this operation.' })
   async updateGlobalPolicy(
@@ -313,7 +313,7 @@ export class HarnessAdminController {
   @ApiOperation({
     summary: 'Run an eval over a golden set now (synchronous)',
     description:
-      'Decrypts the set’s cases, runs the harness eval + release gate, persists the EvalRun (triggerType=MANUAL) + per-case scores, and returns the verdict. Tenant admins run their own sets; a SYSTEM set is global-admin-only (a cross-tenant id 404s).',
+      'Decrypts the set’s cases, runs the harness eval + release gate, persists the EvalRun (triggerType=MANUAL) + per-case scores, and returns the verdict. Tenant admins run their own sets; a SYSTEM set is super-admin-only (a cross-tenant id 404s).',
   })
   @ApiParam({ name: 'id', description: 'Golden set id' })
   @ApiQuery({ name: 'tenantId', required: false, description: 'Platform-admin only: target tenant.' })
@@ -521,9 +521,9 @@ export class HarnessAdminController {
 
   @Get('live/config')
   @Authorize(['read', 'HarnessPolicy'])
-  @ApiOperation({ summary: 'Read the live-documentation engine kill-switch (global-admin / global scope)' })
+  @ApiOperation({ summary: 'Read the live-documentation engine kill-switch (super-admin / global scope)' })
   @ApiResponse({ status: 200, type: LiveDocEngineConfigResponse })
-  @ApiResponse({ status: 403, description: 'Forbidden — platform (global-admin) privileges required.' })
+  @ApiResponse({ status: 403, description: 'Forbidden — platform (super-admin) privileges required.' })
   async getLiveConfig(): Promise<LiveDocEngineConfigResponse> {
     this.assertLiveConfigAdmin();
     return this.liveDocumentationService.getEngineConfig();
@@ -532,13 +532,13 @@ export class HarnessAdminController {
   @Patch('live/config')
   @Authorize(['manage', 'HarnessPolicy'])
   @ApiOperation({
-    summary: 'Toggle the live-documentation engine kill-switch (global-admin / global scope)',
+    summary: 'Toggle the live-documentation engine kill-switch (super-admin / global scope)',
     description:
       'Persists a Redis override that survives restart and fans out to all API instances (no redeploy). ' +
       '`enabled: false` engages the kill-switch — new `start()` calls are refused while in-flight sessions drain.',
   })
   @ApiResponse({ status: 200, type: LiveDocEngineConfigResponse })
-  @ApiResponse({ status: 403, description: 'Forbidden — platform (global-admin) privileges required.' })
+  @ApiResponse({ status: 403, description: 'Forbidden — platform (super-admin) privileges required.' })
   async updateLiveConfig(@Body() body: UpdateLiveDocEngineConfigRequest): Promise<LiveDocEngineConfigResponse> {
     this.assertLiveConfigAdmin();
     return this.liveDocumentationService.setEngineEnabled(body.enabled, { userId: this.cls.get('user')?.id, reason: body.reason });
@@ -546,32 +546,32 @@ export class HarnessAdminController {
 
   // ───────────────────────── Helpers ─────────────────────────
 
-  /** Resolve the effective read tenant: tenant admins → own tenant; global-admins → `?tenantId=` (or CLS tenant). */
+  /** Resolve the effective read tenant: tenant admins → own tenant; super-admins → `?tenantId=` (or CLS tenant). */
   private resolveReadTenantId(queryTenantId?: string): string {
     return resolveScopedTenantId(this.cls.get('user'), this.cls.get('tenantId'), queryTenantId);
   }
 
-  /** Workflow-list tenant filter: tenant admins → own tenant; global-admins → optional `?tenantId=` (undefined = all tenants). */
+  /** Workflow-list tenant filter: tenant admins → own tenant; super-admins → optional `?tenantId=` (undefined = all tenants). */
   private resolveWorkflowListTenant(queryTenantId?: string): string | undefined {
     return resolveScopedTenantIdOptional(this.cls.get('user'), this.cls.get('tenantId'), queryTenantId);
   }
 
-  /** Platform (global-admin) gate for the GLOBAL-DEFAULT policy routes. */
+  /** Platform (super-admin) gate for the GLOBAL-DEFAULT policy routes. */
   private assertPlatform(): void {
     if (!isSuperAdmin(this.cls.get('user'))) {
-      throw new ForbiddenException('Editing the harness global-default policy requires platform (global-admin) privileges.');
+      throw new ForbiddenException('Editing the harness global-default policy requires platform (super-admin) privileges.');
     }
   }
 
-  /** Platform (global-admin) gate for the live-documentation engine kill-switch (global scope). */
+  /** Platform (super-admin) gate for the live-documentation engine kill-switch (global scope). */
   private assertLiveConfigAdmin(): void {
     if (!isSuperAdmin(this.cls.get('user'))) {
-      throw new ForbiddenException('Reading or toggling the live-documentation engine kill-switch requires platform (global-admin) privileges.');
+      throw new ForbiddenException('Reading or toggling the live-documentation engine kill-switch requires platform (super-admin) privileges.');
     }
   }
 
   /**
-   * Enforce tenant ownership of a workflow: global-admins bypass; tenant admins
+   * Enforce tenant ownership of a workflow: super-admins bypass; tenant admins
    * must own the workflow's tenant. Returns the owning tenantId (forwarded to
    * the harness so it can re-scope server-side).
    */

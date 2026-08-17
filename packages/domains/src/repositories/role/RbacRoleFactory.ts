@@ -17,7 +17,7 @@ export interface RbacRoleCreateProps {
   externalName?: string;
   externalId?: string;
   parentRoleId?: string;
-  /** Defaults to `false`; only a global admin may pass `true`
+  /** Defaults to `false`; only a super admin may pass `true`
    *  (enforced by `RbacRoleService.create`, not the factory). */
   isSystemRole?: boolean;
   createdBy?: string;

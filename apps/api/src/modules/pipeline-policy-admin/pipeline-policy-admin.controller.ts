@@ -31,7 +31,7 @@ import { Authorize, ExpectedVersion, RequiresIfMatch, RequiredScopes } from '../
  *    (the service enforces the registered max scope → 400).
  *
  * Tenant scoping mirrors `HarnessAdminController`: tenant admins are pinned to
- * their CLS tenant; global-admins (`isSuperAdmin`) act cross-tenant via `?tenantId=`.
+ * their CLS tenant; super-admins (`isSuperAdmin`) act cross-tenant via `?tenantId=`.
  * The doctor-scope `dnaStyleEnabled` column is NOT writable here — it is Phase 6
  * doctor self-service storage (this surface is tenant/department admin).
  */
@@ -125,7 +125,7 @@ export class PipelinePolicyAdminController {
 
   // ───────────────────────── Helpers ─────────────────────────
 
-  /** Resolve the effective tenant: tenant admins → own tenant; global-admins → `?tenantId=` (or CLS tenant). */
+  /** Resolve the effective tenant: tenant admins → own tenant; super-admins → `?tenantId=` (or CLS tenant). */
   private resolveTenantId(queryTenantId?: string): string {
     return resolveScopedTenantId(this.cls.get('user'), this.cls.get('tenantId'), queryTenantId);
   }

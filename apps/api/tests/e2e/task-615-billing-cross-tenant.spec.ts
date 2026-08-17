@@ -13,11 +13,11 @@
  *      different, PRIVILEGE code path (`resolveScopedTenantId` throws
  *      `ForbiddenException` before the service is even reached) — asserted
  *      separately so the two mechanisms are not conflated.
- *   2. `admin/billing/rate-card/:id/supersede` — a GLOBAL-ADMIN-ONLY action
+ *   2. `admin/billing/rate-card/:id/supersede` — a SUPER_ADMIN-ONLY action
  *      (`// AUTH-NOTE` in `rate-card-admin.controller.ts`: mutation is
  *      enforced imperatively via `isSuperAdmin` in `SellRateCardService`).
  *      A tenant admin gets 403 regardless of WHICH id they target — this is
- *      the "global-admin-only action on a tenant-manageable resource"
+ *      the "super-admin-only action on a tenant-manageable resource"
  *      pattern from rule 05, distinct from 404-over-403.
  *
  * Run: `pnpm test:up:api` (terminal 1) then `pnpm test:e2e` — see
@@ -49,20 +49,20 @@ function currentPeriod(): string {
 test.describe.configure({ mode: 'serial' });
 
 test.describe('Billing cross-tenant posture', () => {
-  let globalAdminToken: string;
+  let superAdminToken: string;
   let tenantAdminToken: string; // DEFAULT_TENANT_KEY (__GLOBAL__)
   let foreignTenantId: string;
   let foreignInvoiceId: string;
 
   test.beforeAll(async ({ request }) => {
     const ga = await loginUser(request, SEEDED_USERS.superAdmin.username, SEEDED_USERS.superAdmin.password, FOREIGN_TENANT_KEY);
-    expect(ga, 'global admin login failed').toBeTruthy();
-    globalAdminToken = ga!.token;
+    expect(ga, 'super admin login failed').toBeTruthy();
+    superAdminToken = ga!.token;
 
-    // Discover the FOREIGN_TENANT_KEY tenant id through the global admin's own
+    // Discover the FOREIGN_TENANT_KEY tenant id through the super admin's own
     // working-tenant scope — same discovery trick `ai-task-defaults-cross-tenant.spec.ts`
     // uses (a proven, already-seeded admin surface that echoes `tenantId` in its row).
-    const row = await request.get('/api/v1/admin/ai-task-defaults/row?taskKey=nlp.ner', { headers: bearer(globalAdminToken) });
+    const row = await request.get('/api/v1/admin/ai-task-defaults/row?taskKey=nlp.ner', { headers: bearer(superAdminToken) });
     expect(row.status(), 'ai-task-defaults row (tenant discovery)').toBe(200);
     foreignTenantId = ((await row.json()) as { tenantId: string }).tenantId;
     expect(foreignTenantId).toBeTruthy();
@@ -71,9 +71,9 @@ test.describe('Billing cross-tenant posture', () => {
     expect(ta, `tenant_admin login (${DEFAULT_TENANT_KEY}) failed`).toBeTruthy();
     tenantAdminToken = ta!.token;
 
-    // Global admin computes (idempotently) a DRAFT invoice on the FOREIGN tenant for the current period.
+    // Super admin computes (idempotently) a DRAFT invoice on the FOREIGN tenant for the current period.
     const draft = await request.post(`${INVOICES_BASE}/compute-draft`, {
-      headers: bearer(globalAdminToken),
+      headers: bearer(superAdminToken),
       data: { tenantId: foreignTenantId, period: currentPeriod() },
     });
     expect(draft.status(), 'compute-draft for foreign tenant').toBe(201);
@@ -99,8 +99,8 @@ test.describe('Billing cross-tenant posture', () => {
     expect(resp.status()).toBe(404);
   });
 
-  test('GET invoice :id — global admin CAN read the foreign invoice via ?tenantId=', async ({ request }) => {
-    const resp = await request.get(`${INVOICES_BASE}/${foreignInvoiceId}?tenantId=${foreignTenantId}`, { headers: bearer(globalAdminToken) });
+  test('GET invoice :id — super admin CAN read the foreign invoice via ?tenantId=', async ({ request }) => {
+    const resp = await request.get(`${INVOICES_BASE}/${foreignInvoiceId}?tenantId=${foreignTenantId}`, { headers: bearer(superAdminToken) });
     expect(resp.status()).toBe(200);
     const body = (await resp.json()) as { id: string };
     expect(body.id).toBe(foreignInvoiceId);
@@ -122,7 +122,7 @@ test.describe('Billing cross-tenant posture', () => {
     expect(resp.status()).not.toBe(201);
   });
 
-  test('rate-card supersede — tenant admin gets 403 regardless of target id (global-admin-only action, not 404-over-403)', async ({ request }) => {
+  test('rate-card supersede — tenant admin gets 403 regardless of target id (super-admin-only action, not 404-over-403)', async ({ request }) => {
     const resp = await request.post(`${RATE_CARD_BASE}/00000000-0000-4000-8000-000000000000/supersede`, {
       headers: { ...bearer(tenantAdminToken), 'If-Match': '"1"' },
       data: { effectiveFrom: new Date().toISOString(), unitPriceMicros: '1000' },
@@ -130,10 +130,8 @@ test.describe('Billing cross-tenant posture', () => {
     expect(resp.status()).toBe(403);
   });
 
-  test('rate-card list — global admin never sees tenant-owned negotiated rows leak into the platform (no ?tenantId=) listing', async ({
-    request,
-  }) => {
-    const resp = await request.get(RATE_CARD_BASE, { headers: bearer(globalAdminToken) });
+  test('rate-card list — super admin never sees tenant-owned negotiated rows leak into the platform (no ?tenantId=) listing', async ({ request }) => {
+    const resp = await request.get(RATE_CARD_BASE, { headers: bearer(superAdminToken) });
     expect(resp.status()).toBe(200);
     const body = (await resp.json()) as Array<{ tenantId: string }>;
     expect(Array.isArray(body)).toBe(true);

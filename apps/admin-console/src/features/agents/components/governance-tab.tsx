@@ -11,7 +11,7 @@
  * redirects here for one release.
  *
  * TIER NOTE: `/prompt-studio` sat in tier 10-19 but was `WorkingTenantGate`d
- * and read per-tenant data (a global-admin-only screen over per-tenant
+ * and read per-tenant data (a super-admin-only screen over per-tenant
  * data). Moving to `/agents` (tier 30-49) is therefore behaviour-neutral —
  * both require a working tenant, and both gate the tab itself on an
  * elevated session. Approve authority is NOT a console concern: the service

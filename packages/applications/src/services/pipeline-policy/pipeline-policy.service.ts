@@ -415,7 +415,7 @@ export class PipelinePolicyService {
    * another toggle — this is the single enforcement point.
    *
    * 403 not 404: the caller may still READ these toggles and their pinned rows;
-   * only the write is gated. That mirrors `GLOBAL_ADMIN_ONLY_TASK_PREFIXES` in
+   * only the write is gated. That mirrors `SUPER_ADMIN_ONLY_TASK_PREFIXES` in
    * `AiTaskDefaultService` and the MCP write path — it is a privilege boundary,
    * NOT the 404-over-403 cross-tenant posture.
    *
@@ -435,7 +435,7 @@ export class PipelinePolicyService {
     );
     if (present.length === 0) return;
 
-    throw new ForbiddenException(`Pipeline toggles [${present.join(', ')}] are managed by global administrators only.`);
+    throw new ForbiddenException(`Pipeline toggles [${present.join(', ')}] are managed by super administrators only.`);
   }
 
   private assertWithinMaxScope(scope: PipelinePolicyScope, dto: UpdatePipelinePolicyRequest): void {

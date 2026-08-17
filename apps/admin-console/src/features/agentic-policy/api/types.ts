@@ -1,5 +1,5 @@
 /**
- * Wire types for the global-admin Agentic Policy surface (, tier
+ * Wire types for the super-admin Agentic Policy surface (, tier
  * 10-19). Shapes mirror the gateway DTOs in @arcaai/applications
  * (HarnessPolicyResponse / UpdateHarnessPolicyRequest, LiveDocEngineConfig*,
  * SettingCatalog*) — the console cannot import that server package, so the
@@ -45,7 +45,7 @@ export interface AgenticPolicy {
   nerPriorsEnabled?: boolean | null;
   maxEditReruns?: number | null;
   regenFeedbackEnabled?: boolean | null;
-  // MCP external-tools master switch (null = OFF). Global-admin
+  // MCP external-tools master switch (null = OFF). Super-admin
   // governed, so the effective value always comes from the SYSTEM row.
   mcpToolsEnabled?: boolean | null;
   updatedAt: string | null;

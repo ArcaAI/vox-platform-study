@@ -103,7 +103,7 @@ describe('HOPE_SETTINGS_REGISTRY (assembled catalog)', () => {
   });
 
   // The two pipeline toggles that gate guardrail's primary caller (the
-  // harness) and NLP auto-extraction are global-admin-only. Enforcement reads
+  // harness) and NLP auto-extraction are super-admin-only. Enforcement reads
   // THIS metadata, so the descriptor is the contract, not a hand-rolled key
   // list in the service.
   it('flags pipeline.harnessEnabled + pipeline.autoNerEnabled as globalOnly, leaving the other two tenant-writable', () => {
@@ -181,11 +181,11 @@ describe('HOPE_SETTINGS_REGISTRY (assembled catalog)', () => {
     expect(AI_TASK_MODEL_TASK_TYPES['smr.finalize.fallback']).toBe(ModelTaskType.TEXT_GENERATION);
   });
 
-  it('flags nlp.*/harness.* task-model defaults as global-admin-only (editableBy all, globalOnly)', () => {
+  it('flags nlp.*/harness.* task-model defaults as super-admin-only (editableBy all, globalOnly)', () => {
     // These task-model defaults are platform-owned: nlp (revoked tenant
-    // writes) and harness.judge. Both resolve to the global-admin resource
+    // writes) and harness.judge. Both resolve to the super-admin resource
     // and carry globalOnly. SMR and, since TASK-735 (owner decision
-    // 2026-08-16, reversing the 2026-07-17 global-admin-only directive),
+    // 2026-08-16, reversing the 2026-07-17 super-admin-only directive),
     // guardrail are NOT in this set — see the test below.
     for (const key of ['models.nlp.ner', 'models.nlp.classification', 'models.nlp.diagnosis', 'models.harness.judge']) {
       const d = HOPE_SETTINGS_REGISTRY.getOrThrow(key);

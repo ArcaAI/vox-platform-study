@@ -23,7 +23,7 @@
  * strips it from routing until enabled).
  *
  * Idempotent. CREATE-ONLY: an existing row is left untouched, because after the
- * first boot it is the global admin's to edit and a re-seed must never silently
+ * first boot it is the super admin's to edit and a re-seed must never silently
  * revert an operator's change (mirrors `seedPlatformStorageConfig`).
  */
 import type { CorePrismaClient } from '../../../client';

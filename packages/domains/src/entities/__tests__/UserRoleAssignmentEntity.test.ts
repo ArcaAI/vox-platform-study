@@ -11,7 +11,7 @@
  *   - tenantId: REQUIRED (schema is NOT NULL,
  *     validate() refuses empty/null/undefined). The pre-W1.3 "global
  *     assignment via null tenantId" pattern is gone; platform-wide
- *     role assignments (GLOBAL_ADMIN, system service account) belong
+ *     role assignments (SUPER_ADMIN, system service account) belong
  *     to SYSTEM_TENANT_ID now.
  */
 
@@ -59,7 +59,7 @@ describe('UserRoleAssignmentEntity.validate()', () => {
       // Previously this case was a positive assertion ("global
       // role assignments may omit tenantId"). The new contract
       // requires every role assignment row to carry a concrete tenant
-      // (SYSTEM_TENANT_ID for platform-wide roles like GLOBAL_ADMIN).
+      // (SYSTEM_TENANT_ID for platform-wide roles like SUPER_ADMIN).
       const entity = new UserRoleAssignmentEntity(createValidInit({ tenantId: null as unknown as string }));
 
       expect(() => entity.validate()).toThrow(/UserRoleAssignmentEntity is missing tenant context/);

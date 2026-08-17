@@ -82,7 +82,7 @@ Usage:
 
 Options:
   --tenant <id>       Tenant id to generate types for (required)
-  --token <jwt>       Bearer token for a GLOBAL_ADMIN user (or set HOPE_API_TOKEN)
+  --token <jwt>       Bearer token for a SUPER_ADMIN user (or set HOPE_API_TOKEN)
   --base-url <url>    Gateway origin (default: http://localhost:8868, or HOPE_API_BASE_URL)
   --department <id>   Prefer this department's schema default, falling back to the tenant default
   --out <path>        Output file path (default: ./consultation-context-schema.generated.ts)
@@ -91,9 +91,9 @@ Options:
   -h, --help              Show this help
 ```
 
-**Auth.** The CLI calls `GET /tenant/me/context-schema` as a global-admin
+**Auth.** The CLI calls `GET /tenant/me/context-schema` as a super-admin
 "manage as tenant" request: `Authorization: Bearer <token>` for a
-GLOBAL_ADMIN whose JWT carries an empty tenant binding, plus
+SUPER_ADMIN whose JWT carries an empty tenant binding, plus
 `X-Tenant-Id: <tenantId>` — the same elevation path
 `resolve-active-tenant.ts` implements for the admin-console BFF's "working
 tenant" header. `--token`/`HOPE_API_TOKEN` is expected to be such a token

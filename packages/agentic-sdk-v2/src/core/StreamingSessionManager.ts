@@ -184,7 +184,7 @@ export class StreamingSessionManager {
     // claim from the URL. This is the single chokepoint for the SDK's own
     // streaming flow — `@arcaai/stt`'s StreamingBackendSTTProvider connects
     // with `connect(url)` (no options), so the claim MUST live in the URL.
-    // When no tenant is set (e.g. an unscoped global-admin), nothing is appended
+    // When no tenant is set (e.g. an unscoped super-admin), nothing is appended
     // and the guard fails closed, which is the intended posture.
     const tenantId = this.apiClient.getTenantId();
     if (tenantId) {

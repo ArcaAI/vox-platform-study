@@ -13,7 +13,7 @@ import { EffectiveSettingResponse, SettingCatalogItemResponse, SettingCatalogRes
  * `HOPE_SETTINGS_REGISTRY` (tier / scope / sensitivity / category / editor). It
  * returns METADATA only — never a value — so it is safe for any admin to read.
  * A tenant admin does not see SUPER_ADMIN-only entries (they cannot edit them);
- * a global-admin sees everything.
+ * a super-admin sees everything.
  *
  * Route note: mounted at `admin/settings/catalog`. `SettingsCatalogModule` is
  * registered BEFORE `GlobalSettingModule` in `app.module` so this static route

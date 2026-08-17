@@ -124,7 +124,7 @@ export function classifyHttpError(status: number): AgenticErrorCode {
  *   - `task_cancelled`          → `API_ERROR` (caller should also inspect cancellation locally)
  *   - everything else           → fall through to HTTP-status classification.
  */
-export function classifySmrError(
+export function classifyTextError(
   payload: { error_code?: string; detail?: string; message?: string } | null | undefined,
   status?: number,
 ): AgenticErrorCode {
@@ -152,6 +152,9 @@ export function classifySmrError(
       return typeof status === 'number' ? classifyHttpError(status) : 'API_ERROR';
   }
 }
+
+/** @deprecated Use {@link classifyTextError}. Same identity. */
+export const classifySmrError = classifyTextError;
 
 // =============================================================================
 // Retry Utility (extracted from useArca — HOOK-07)

@@ -4,7 +4,7 @@
  * CASL `@CanRead/@CanManage` + `If-Match`/`@RequiresIfMatch` are exercised by the
  * guard/interceptor (+ e2e). These specs cover the controller's OWN logic:
  * taskKey validation (400), the all-keys effective aggregation, tenant vs.
- * global-admin scoping, If-Match-over-body version precedence, and the
+ * super-admin scoping, If-Match-over-body version precedence, and the
  * guardrail-governance ForbiddenException passthrough from the service.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -137,14 +137,14 @@ describe('AiTaskDefaultAdminController — tenant scoping', () => {
     expect(service.getRow).not.toHaveBeenCalled();
   });
 
-  it('lets a global admin target any tenant via ?tenantId=', async () => {
+  it('lets a super admin target any tenant via ?tenantId=', async () => {
     const { controller, service } = makeController({ user: SUPER });
     service.getRow.mockResolvedValue({ tenantId: 't9', taskKey: 'guardrail.validate', version: 2 });
     await controller.getRow('guardrail.validate', 't9');
     expect(service.getRow).toHaveBeenCalledWith('guardrail.validate', 't9');
   });
 
-  it('400s when a global admin omits ?tenantId= and has no CLS tenant', async () => {
+  it('400s when a super admin omits ?tenantId= and has no CLS tenant', async () => {
     const { controller } = makeController({ user: SUPER });
     await expect(controller.getEffective('nlp.ner')).rejects.toBeInstanceOf(BadRequestException);
   });
@@ -173,7 +173,7 @@ describe('AiTaskDefaultAdminController — PUT row (OCC wiring + governance pass
 
   it('propagates the service-level guardrail governance ForbiddenException (403, deliberately not 404)', async () => {
     const { controller, service } = makeController({ user: TENANT_ADMIN('t1'), tenantId: 't1' });
-    service.upsertRow.mockRejectedValue(new ForbiddenException('Guardrail model configuration is global-admin-only'));
+    service.upsertRow.mockRejectedValue(new ForbiddenException('Guardrail model configuration is super-admin-only'));
 
     await expect(controller.upsertRow({ modelSlug: 'granite-guardian-4.1-8b' }, 0, 'guardrail.validate', undefined)).rejects.toBeInstanceOf(
       ForbiddenException,
@@ -181,7 +181,7 @@ describe('AiTaskDefaultAdminController — PUT row (OCC wiring + governance pass
     expect(service.upsertRow).toHaveBeenCalledWith('guardrail.validate', expect.objectContaining({ modelSlug: 'granite-guardian-4.1-8b' }), 't1');
   });
 
-  it('scopes a global-admin PUT to the ?tenantId= target', async () => {
+  it('scopes a super-admin PUT to the ?tenantId= target', async () => {
     const { controller, service } = makeController({ user: SUPER });
     service.upsertRow.mockResolvedValue({ tenantId: 't9', taskKey: 'guardrail.validate', version: 1 });
 

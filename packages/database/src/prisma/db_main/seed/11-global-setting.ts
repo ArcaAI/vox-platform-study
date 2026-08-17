@@ -435,7 +435,7 @@ export const ALL_SETTINGS: SettingDef[] = [
     uxLocalNoiseSuppressionModels: IDS.GLOBAL_UX_LOCAL_NOISE_SUPPRESSION_MODELS,
     uxGuardrailProviderModels: IDS.GLOBAL_UX_GUARDRAIL_PROVIDER_MODELS,
     lockedConfigPaths: IDS.GLOBAL_LOCKED_CONFIG_PATHS,
-    adminMenuOrder: IDS.GLOBAL_ADMIN_MENU_ORDER,
+    adminMenuOrder: IDS.GLOBAL_TENANT_ADMIN_MENU_ORDER,
   }),
   ...tenantSettings(SEED_CUSTOMER_TENANT_IDS.ARCAAI, {
     genMaxConcurrentSessions: IDS.ARCAAI_MAX_CONCURRENT_SESSIONS,

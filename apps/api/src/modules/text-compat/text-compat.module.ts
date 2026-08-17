@@ -7,8 +7,8 @@ import {
 } from '@arcaai/applications';
 import { CoreDatabaseModule } from '@arcaai/domains';
 import { Module } from '@nestjs/common';
-import { SmrCompatController } from './text-compat.controller';
-import { SmrCompatTemplateService } from './text-compat-template.service';
+import { TextCompatController } from './text-compat.controller';
+import { TextCompatTemplateService } from './text-compat-template.service';
 
 /**
  * v1-compatible SMR summary gateway shims.
@@ -34,7 +34,7 @@ import { SmrCompatTemplateService } from './text-compat-template.service';
     AiProviderConnectionServiceModule,
     CoreDatabaseModule,
   ],
-  controllers: [SmrCompatController],
-  providers: [SmrCompatTemplateService],
+  controllers: [TextCompatController],
+  providers: [TextCompatTemplateService],
 })
-export class SmrCompatModule {}
+export class TextCompatModule {}

@@ -17,13 +17,13 @@ import { resolveScopedTenantId } from '../../shared/tenant-scope';
  * mounted at `/admin/nlp-task-instructions` (global prefix →
  * `/api/v1/admin/nlp-task-instructions`). Mirrors `AiTaskDefaultAdminController`'s
  * row GET/PUT shape, but deliberately WITHOUT its `getEffective`/`getOptions`
- * routes and global-admin-only write lock — this is a plain tenant-writable
+ * routes and super-admin-only write lock — this is a plain tenant-writable
  * resource (a SEPARATE subject, `TenantNlpTaskInstructions`, from
  * `AiTaskDefault`; see `01-policy.ts`'s tenant-full-access grant).
  *
  * Model/provider SELECTION for `nlp.topic`/`nlp.intent` is untouched — it
  * still resolves through `/admin/ai-task-defaults` under the existing
- * `nlp.*` global-admin-only lock. This controller carries ONLY instruction
+ * `nlp.*` super-admin-only lock. This controller carries ONLY instruction
  * content (never a modelSlug).
  *
  *  - `GET 'row'?taskKey=`  → ONE raw, editable row (`version` drives the OCC
@@ -98,7 +98,7 @@ export class NlpTaskInstructionsAdminController {
     }
   }
 
-  /** Tenant admins → own tenant; global admins → `?tenantId=` (or CLS working tenant). */
+  /** Tenant admins → own tenant; super admins → `?tenantId=` (or CLS working tenant). */
   private resolveTenantId(queryTenantId?: string): string {
     return resolveScopedTenantId(this.cls.get('user'), this.cls.get('tenantId'), queryTenantId);
   }

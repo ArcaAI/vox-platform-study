@@ -1,8 +1,8 @@
 /**
- * ComprehensiveSummaryProcessor.callSmrService — explicit tenant id
+ * ComprehensiveSummaryProcessor.callTextService — explicit tenant id
  *
  * `resolveSmrSelection()` used to be called with NO tenantId, relying on
- * `HarnessPolicyService`'s own CLS fallback. `callSmrService` now takes the
+ * `HarnessPolicyService`'s own CLS fallback. `callTextService` now takes the
  * job's already fail-closed-validated `tenantId` as an EXPLICIT parameter
  * (TypeScript-required, no longer optional/implicit) and passes it straight
  * through to `resolveSmrSelection(tenantId, 'finalize')`.
@@ -65,7 +65,7 @@ const createConsultation = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
-describe('ComprehensiveSummaryProcessor.callSmrService — explicit tenant id (B-04)', () => {
+describe('ComprehensiveSummaryProcessor.callTextService — explicit tenant id (B-04)', () => {
   it('resolves the SMR selection with the job tenantId + finalize task passed explicitly', async () => {
     const jobService = { notifyProgress: vi.fn(), notifyComplete: vi.fn(), notifyFailed: vi.fn() };
     const chainSummaryService = {

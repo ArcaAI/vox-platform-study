@@ -23,7 +23,7 @@ import { Authorize, ExpectedVersion, RequiresIfMatch, RequiredScopes } from '../
  * as a path segment. Omitting it therefore addresses the provider default —
  * exactly matching the storage sentinel.
  *
- * GOVERNANCE: hyperparameters are GLOBAL-ADMIN-ONLY and live only on the SYSTEM
+ * GOVERNANCE: hyperparameters are SUPER_ADMIN-ONLY and live only on the SYSTEM
  * tenant (owner expectation E5). `@Authorize(['manage', 'all'])` gates the
  * route; `AiRuntimeProfileService` re-asserts both rules with a
  * `ForbiddenException` so a service-to-service caller cannot bypass them.
@@ -97,7 +97,7 @@ export class AiRuntimeProfileController {
   })
   @ApiResponse({ status: 200, type: AiRuntimeProfileResponse })
   @ApiResponse({ status: 400, description: 'A knob is outside its permitted range.' })
-  @ApiResponse({ status: 403, description: 'Not a global admin, or a non-SYSTEM tenant was targeted.' })
+  @ApiResponse({ status: 403, description: 'Not a super admin, or a non-SYSTEM tenant was targeted.' })
   @ApiResponse({ status: 412, description: 'Optimistic concurrency conflict — re-fetch and retry with the new version.' })
   @ApiResponse({ status: 428, description: 'If-Match header is required for this operation.' })
   async upsert(
@@ -116,7 +116,7 @@ export class AiRuntimeProfileController {
   @ApiQuery({ name: 'provider', required: true })
   @ApiQuery({ name: 'modelSlug', required: false })
   @ApiResponse({ status: 200, description: 'Deleted.' })
-  @ApiResponse({ status: 403, description: 'Not a global admin.' })
+  @ApiResponse({ status: 403, description: 'Not a super admin.' })
   async remove(@Query('provider') provider: string, @Query('modelSlug') modelSlug?: string): Promise<void> {
     return this.profileService.deleteProfile(provider, modelSlug ?? '');
   }

@@ -42,7 +42,7 @@ export interface HopeClientOptions {
   baseUrl: string;
   /** Sent as `X-API-Key` on every request. */
   apiKey?: string;
-  /** Sent as `X-Tenant-Id` on every request — global-admin API keys only. */
+  /** Sent as `X-Tenant-Id` on every request — super-admin API keys only. */
   tenantId?: string;
   /** Default `2`. */
   maxRetries?: number;

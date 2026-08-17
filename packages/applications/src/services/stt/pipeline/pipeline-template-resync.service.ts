@@ -60,7 +60,7 @@ export interface PipelineTemplateResyncSummary {
  * and lands in the "already current" skip branch, so re-running yields zeroes.
  *
  * TENANT CONTEXT: callers run this with an elevated, tenant-less context (a
- * global admin authenticates with an empty `tenantId`; the cron has no CLS at
+ * super admin authenticates with an empty `tenantId`; the cron has no CLS at
  * all). Both make `ClsTenantContextProvider.getTenantId()` return `undefined`,
  * which puts the tenant-scope Prisma extension into its elevated pass-through —
  * the same path `provisionTenantPipelineCatalog` already relies on to write

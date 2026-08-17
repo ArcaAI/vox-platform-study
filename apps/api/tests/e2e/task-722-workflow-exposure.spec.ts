@@ -91,7 +91,7 @@ test.describe('TASK-722 — /api/v1/workflows exposure plane', () => {
     tenantAdminToken = admin!.token as string;
 
     // A SECOND tenant's admin — for cross-tenant slug isolation. ARCAAI is the
-    // global-admin's own tenant in the seed; used here purely as "a foreign tenant".
+    // super-admin's own tenant in the seed; used here purely as "a foreign tenant".
     const other = await loginUser(request, SEEDED_USERS.superAdmin.username, SEEDED_USERS.superAdmin.password, 'ARCAAI');
     expect(other?.token, 'foreign-tenant login failed').toBeTruthy();
     otherTenantAdminToken = other!.token as string;
@@ -124,7 +124,7 @@ test.describe('TASK-722 — /api/v1/workflows exposure plane', () => {
       expect(Array.isArray(body.data)).toBe(true);
     });
 
-    test('a JWT-authenticated tenant admin (not only a global admin) can list', async ({ request }) => {
+    test('a JWT-authenticated tenant admin (not only a super admin) can list', async ({ request }) => {
       const response = await request.get('/api/v1/workflows', { headers: { Authorization: `Bearer ${tenantAdminToken}` } });
       expect(response.status()).toBe(200);
     });

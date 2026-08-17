@@ -46,8 +46,8 @@ const UNSEEN_SCAN_WINDOW = 50;
  *     — any authenticated user; audience filtering happens HERE, not in a
  *     decorator, because the audience is a property of the row, not of the route.
  *   • authoring surface (`/admin/changelog*`) — SUPER_ADMIN only, enforced
- *     imperatively below (`assertGlobalAdmin`). The permission decorators cannot
- *     express "global admin only"; this is the documented house pattern
+ *     imperatively below (`assertSuperAdmin`). The permission decorators cannot
+ *     express "super admin only"; this is the documented house pattern
  *     (`05-nestjs-api.md` §Imperative Privilege Checks), and the routes carry an
  *     `// AUTH-NOTE:` marker pointing here.
  *
@@ -79,12 +79,12 @@ export class ChangelogService extends BaseService implements IChangelogService {
     const page = query.page ?? 0;
     const limit = query.limit ?? 10;
 
-    // A global admin authors these rows, so they see DRAFTs too; everyone else
+    // A super admin authors these rows, so they see DRAFTs too; everyone else
     // sees only what a human deliberately published.
     const where: Record<string, unknown> = {
       audience: { in: this.visibleAudiences() },
     };
-    if (!this.isGlobalAdmin()) {
+    if (!isSuperAdmin(this.requestUser)) {
       where.publishStatus = ChangelogPublishStatus.PUBLISHED;
     }
     if (query.severity) {
@@ -182,7 +182,7 @@ export class ChangelogService extends BaseService implements IChangelogService {
   // ---------------------------------------------------------------------------
 
   async create(dto: CreateChangelogEntryRequest): Promise<ChangelogEntryResponse> {
-    this.assertGlobalAdmin();
+    this.assertSuperAdmin();
 
     // Always DRAFT, always SYSTEM-tenant: a release note is platform-wide, and
     // publishing is a separate, explicit human action.
@@ -211,7 +211,7 @@ export class ChangelogService extends BaseService implements IChangelogService {
   }
 
   async update(id: string, dto: UpdateChangelogEntryRequest): Promise<ChangelogEntryResponse> {
-    this.assertGlobalAdmin();
+    this.assertSuperAdmin();
 
     const entity = await this.changelogEntryRepository.findById(id);
     const previousData = entity.toObject();
@@ -241,7 +241,7 @@ export class ChangelogService extends BaseService implements IChangelogService {
    * re-broadcast.
    */
   async publish(id: string, expectedVersion?: number): Promise<ChangelogEntryResponse> {
-    this.assertGlobalAdmin();
+    this.assertSuperAdmin();
 
     const entity = await this.changelogEntryRepository.findById(id);
     if (entity.publishStatus === ChangelogPublishStatus.PUBLISHED) {
@@ -270,29 +270,23 @@ export class ChangelogService extends BaseService implements IChangelogService {
   // Internals
   // ---------------------------------------------------------------------------
 
-  private isGlobalAdmin(): boolean {
-    return isSuperAdmin(this.requestUser);
-  }
-
   /**
    * AUTH-NOTE: the route decorators declare `manage:ChangelogEntry`, which a
    * tenant admin could legitimately hold; the REAL gate on every authoring
-   * route is this global-admin check. A release note is a platform-wide
+   * route is this super-admin check. A release note is a platform-wide
    * broadcast — a tenant admin must never author or publish one. This is a 403
    * privilege boundary, not the 404-over-403 cross-tenant posture.
    */
-  private assertGlobalAdmin(): void {
-    if (!this.isGlobalAdmin()) {
-      throw new ForbiddenException('Only a global administrator may author release notes');
+  private assertSuperAdmin(): void {
+    if (!isSuperAdmin(this.requestUser)) {
+      throw new ForbiddenException('Only a super administrator may author release notes');
     }
   }
 
   private visibleAudiences(): ChangelogAudience[] {
-    // NOTE: ChangelogAudience.GLOBAL_ADMIN is intentionally NOT renamed here —
-    // the enum's member values are frozen by an external contract per
-    // enums.prisma's comment; the TASK-707 rename of this enum is HUMAN-GATED
-    // and has not landed (see packages/domains/src/enums/generated/ChangelogAudience.ts).
-    return this.isGlobalAdmin() ? [ChangelogAudience.ALL, ChangelogAudience.GLOBAL_ADMIN] : [ChangelogAudience.ALL, ChangelogAudience.TENANT_ADMIN];
+    return isSuperAdmin(this.requestUser)
+      ? [ChangelogAudience.ALL, ChangelogAudience.SUPER_ADMIN]
+      : [ChangelogAudience.ALL, ChangelogAudience.TENANT_ADMIN];
   }
 
   private async acknowledgedIdsFor(entryIds: string[]): Promise<Set<string>> {

@@ -31,7 +31,7 @@ export const DEV_USERS: DevUser[] = [
     lastName: 'Admin',
     tenantId: null,
     isServiceAccount: false,
-    roles: ['GLOBAL_ADMIN'],
+    roles: ['SUPER_ADMIN'],
   },
   {
     id: '70000000-0000-0000-0000-000000000002',

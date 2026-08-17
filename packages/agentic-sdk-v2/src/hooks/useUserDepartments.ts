@@ -3,7 +3,7 @@
  *
  * Admin hook for managing a user's department assignments. Mirrors the
  * `/admin/users/:id/departments` controller; tenant scoping is carried by the
- * active tenant context on the client (global admins set `X-Tenant-Id`).
+ * active tenant context on the client (super admins set `X-Tenant-Id`).
  */
 
 import { useState, useCallback } from 'react';

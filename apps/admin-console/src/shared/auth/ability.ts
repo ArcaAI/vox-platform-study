@@ -11,10 +11,8 @@ export interface PermissionRule {
 }
 
 /**
- * SUPER_ADMIN is the single elevated role (renamed from GLOBAL_ADMIN). Before
- * that rename, the legacy (and separately retired) SUPER_ADMIN role of the
- * same name had already been consolidated into GLOBAL_ADMIN — dev DBs are
- * migrated and the backend no longer issues that retired role.
+ * SUPER_ADMIN is the single elevated role. JWT aliases such as GLOBAL_ADMIN
+ * are not accepted.
  */
 export const ELEVATED_ROLES = ['SUPER_ADMIN'] as const;
 

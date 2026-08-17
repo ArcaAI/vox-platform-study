@@ -150,7 +150,7 @@ export class KnowledgeDocumentService extends BaseService implements IKnowledgeD
 
   /** Paginated list of the caller tenant's documents. Not forced — no content read, just metadata. */
   async listDocuments(query: PaginatedQuery): Promise<PaginatedKnowledgeDocumentResponse> {
-    // A global admin with no working tenant selected must be TOLD to pick one.
+    // A super admin with no working tenant selected must be TOLD to pick one.
     // Without this the tenant-scope extension simply has nothing to inject and
     // the caller got `200 {count: 0, data: []}` — which reads as "this tenant has
     // no documents" when the truth is "you never said whose documents". Same

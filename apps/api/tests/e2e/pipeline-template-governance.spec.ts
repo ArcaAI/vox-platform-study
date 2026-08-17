@@ -226,7 +226,7 @@ test.describe('clone is the customization path', () => {
 });
 
 test.describe('resync reconciles an existing tenant', () => {
-  test('a global admin can resync, and re-running is a no-op', async ({ request }) => {
+  test('a super admin can resync, and re-running is a no-op', async ({ request }) => {
     const session = await loginUser(request, SEEDED_USERS.superAdmin.username, SEEDED_USERS.superAdmin.password);
     expect(session).not.toBeNull();
     const token = session!.token;
@@ -254,7 +254,7 @@ test.describe('resync reconciles an existing tenant', () => {
     expect(secondSummary.fastForwarded).toBe(0);
   });
 
-  test('a tenant admin cannot resync (manage:Tenant is global-admin only)', async ({ request }) => {
+  test('a tenant admin cannot resync (manage:Tenant is super-admin only)', async ({ request }) => {
     const token = await adminToken(request);
 
     const denied = await request.post('/api/v1/admin/tenants/00000000-0000-0000-0000-000000000000/pipelines/resync', {

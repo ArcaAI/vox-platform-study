@@ -30,7 +30,7 @@ src/
                        # observability (OpenTelemetry), rate limiting, units of work
 ```
 
-Service domains under `src/services/`: apiKey, audit, audit-retention, auditLog, auth (JWT/OIDC), config-resolver, consultation, crypto, department, dna-writing-style, entitlements, eval, globalSetting, harness-audit, harness-observability, harness-policy, knowledge, media, metering, notification, pipeline-policy, platform-metrics, prompt-management, pstudio, queue-admin, rate-limit, rbac, resourceSubscription, security, smr, storage-access-key, stt, sysEvent, tag, tenant, tenant-bucket, tenant-frontend-config, tenant-storage-config, user, webhook.
+Service domains under `src/services/`: apiKey, audit, audit-retention, auditLog, auth (JWT/OIDC), config-resolver, consultation, crypto, department, dna-writing-style, entitlements, eval, globalSetting, harness-audit, harness-observability, harness-policy, knowledge, media, metering, notification, pipeline-policy, platform-metrics, prompt-management, pstudio, queue-admin, rate-limit, rbac, resourceSubscription, security, text, storage-access-key, stt, sysEvent, tag, tenant, tenant-bucket, tenant-frontend-config, tenant-storage-config, user, webhook.
 
 ## Service anatomy
 
@@ -111,7 +111,7 @@ Cross-aggregate isolation checks that the database tenant-scope extension cannot
 - `assertEqualTenants(parent, child)` — parent/child rows must share a tenant; throws `NotFoundException` on mismatch (no existence leak).
 - `assertUserBelongsToTenant(roleRepo, deptRepo, userRepo, userId, tenantId)` — verifies enabled `UserRoleAssignment` + `UserDepartment` membership before referencing a user in tenant-scoped rows.
 - `assertParentInScope(repo, parentId, callerTenantId)` — load-and-assert sugar for the common parent lookup.
-- `isSuperAdmin(user)` / `ELEVATED_ROLES` — the single source of truth for the cross-tenant privileged role (`SUPER_ADMIN`, renamed from `GLOBAL_ADMIN` by TASK-707; `GLOBAL_ADMIN` was itself the successor to an earlier, unrelated legacy `SUPER_ADMIN` role retired by TASK-417 — the two `SUPER_ADMIN` names do not refer to the same role).
+- `isSuperAdmin(user)` / `ELEVATED_ROLES` — the single source of truth for the cross-tenant privileged role (`SUPER_ADMIN`). JWT aliases such as `GLOBAL_ADMIN` are not accepted.
 
 ### Authorization
 

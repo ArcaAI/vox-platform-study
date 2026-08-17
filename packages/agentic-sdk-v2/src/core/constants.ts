@@ -214,7 +214,7 @@ export const DNA_STYLE_ENDPOINTS = {
   ADMIN_LIST: '/admin/dna-writing-styles',
   ADMIN_JOB_STATUS: (jobId: string) => `/admin/dna-writing-styles/jobs/${encodeURIComponent(jobId)}`,
   ADMIN_JOB_STREAM: (jobId: string) => `/admin/dna-writing-styles/jobs/${encodeURIComponent(jobId)}/stream`,
-  // Aggregate dashboard. `tenantId` is global-admin-only; the
+  // Aggregate dashboard. `tenantId` is super-admin-only; the
   // backend ignores it for tenant admins (CLS tenant wins).
   ADMIN_DASHBOARD: (tenantId?: string) =>
     tenantId ? `/admin/dna-writing-styles/dashboard?tenantId=${encodeURIComponent(tenantId)}` : '/admin/dna-writing-styles/dashboard',
@@ -619,20 +619,20 @@ export const GLOBAL_SETTINGS_ENDPOINTS = {
   DELETE: (id: string) => `/admin/settings/${encodeURIComponent(id)}`,
   BY_TENANT: (tenantId: string) => `/admin/settings/tenant/${encodeURIComponent(tenantId)}`,
   TENANT_CONFIG: (tenantId: string) => `/admin/settings/tenant/${encodeURIComponent(tenantId)}/config`,
-  // Global-admin-only, step-up-authenticated, audited secret reveal.
+  // Super-admin-only, step-up-authenticated, audited secret reveal.
   REVEAL: (id: string) => `/admin/settings/${encodeURIComponent(id)}/reveal`,
 } as const;
 
 /**
  * Plan-entitlements endpoints.
  *
- * `ADMIN` paths are global-admin-only (`/admin/entitlements/*`, admin-plane per
+ * `ADMIN` paths are super-admin-only (`/admin/entitlements/*`, admin-plane per
  * `isAdminPlanePath`, so the admin JWT is used during impersonation); `ME` is
  * the tenant self-view on the user plane. `PLAN`/`TENANT_*` builders
  * `encodeURIComponent` their segments to match the other endpoint groups.
  */
 export const ENTITLEMENTS_ENDPOINTS = {
-  // Global-admin surface
+  // Super-admin surface
   ENABLED: '/admin/entitlements/enabled',
   PLANS: '/admin/entitlements/plans',
   PLAN: (plan: string) => `/admin/entitlements/plans/${encodeURIComponent(plan)}`,
@@ -700,7 +700,7 @@ export const USER_ENDPOINTS = {
   PASSWORD_RESET_COMPLETE: '/users/password-reset/complete',
   // Public self-service forgot-password (no auth; always 202).
   FORGOT_PASSWORD: '/auth/forgot-password',
-  // Global-admin-only time-boxed impersonation mint ("act as").
+  // Super-admin-only time-boxed impersonation mint ("act as").
   IMPERSONATE: (id: string) => `/admin/users/${encodeURIComponent(id)}/impersonate`,
   // Server-side bulk user actions (enable/disable/delete/assign-departments).
   BULK_ACTIONS: '/admin/users/bulk-actions',
@@ -810,7 +810,7 @@ export const ADMIN_USER_ROLES_ENDPOINTS = {
  *
  * Targets `apps/api/.../controllers/user-departments.controller.ts` at
  * `/admin/users/:id/departments[/:assignmentId]`. Tenant-scoped via the active
- * tenant context (global admins pass `X-Tenant-Id`).
+ * tenant context (super admins pass `X-Tenant-Id`).
  */
 export const ADMIN_USER_DEPARTMENTS_ENDPOINTS = {
   LIST: (userId: string) => `/admin/users/${encodeURIComponent(userId)}/departments`,
@@ -875,7 +875,7 @@ export const ADMIN_CONSULTATION_ENDPOINTS = {
   /**
    * Zero-filled new/revisit aggregation over a date range.
    * Requires `?from=&to=`; optional `&granularity=day|month`. Scope mirrors LIST
-   * (global-admin cross-tenant when unscoped; tenant-admin pinned to their tenant).
+   * (super-admin cross-tenant when unscoped; tenant-admin pinned to their tenant).
    */
   AGGREGATE: (params: { from: string; to: string; granularity?: 'day' | 'month' }) => {
     const qs = new URLSearchParams({ from: params.from, to: params.to });
@@ -995,7 +995,7 @@ export const HARNESS_ADMIN_ENDPOINTS = {
  * Controller: `apps/api/src/modules/tenant-frontend-config/tenant-frontend-config-admin.controller.ts`
  * (`@Controller('admin/tenant-frontend-config')`, class-level `@CanManage('Tenant')`).
  * One row per tenant: `GET` reads (null when unset), `UPSERT` is a PUT to the
- * same path. A global admin may target a tenant via `?tenantId=`.
+ * same path. A super admin may target a tenant via `?tenantId=`.
  */
 export const TENANT_FRONTEND_CONFIG_ENDPOINTS = {
   /** Read the tenant frontend pipeline config (null when not yet configured) */
@@ -1104,7 +1104,7 @@ export const VOICE_EMBEDDING_ENDPOINTS = {
  * Rate-limit admin endpoints.
  *
  * Matches `RateLimitAdminController` at `@Controller('admin/rate-limit')` —
- * global-admin only (`manage all`). Every mutation returns the fresh full
+ * super-admin only (`manage all`). Every mutation returns the fresh full
  * `RateLimitPolicy`.
  */
 export const RATE_LIMIT_ADMIN_ENDPOINTS = {
@@ -1117,7 +1117,7 @@ export const RATE_LIMIT_ADMIN_ENDPOINTS = {
 /**
  * Queue admin endpoints.
  *
- * Matches `QueueAdminController` at `@Controller('admin/queues')` — global-admin
+ * Matches `QueueAdminController` at `@Controller('admin/queues')` — super-admin
  * only (`manage all`). Deliberately NON-destructive: the SDK exposes no
  * clean/remove/pause builders, so the admin console cannot invoke them.
  */

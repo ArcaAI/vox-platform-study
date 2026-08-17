@@ -8,10 +8,10 @@
 // kv-v2 at `platform/storage/minio` and is referenced by `credentialsRef`
 // (per-tenant/platform secrets never sit in a DB column).
 //
-// Governance: every key here is GLOBAL-ADMIN-ONLY (`globalOnly: true`,
+// Governance: every key here is SUPER_ADMIN-ONLY (`globalOnly: true`,
 // `editableBy: 'all'`), enforced imperatively by
-// `TenantStorageConfigService.assertGlobalAdmin` — the permission decorators
-// cannot express "global admins only" (rule 05). `maxScope: 'system'` says the
+// `TenantStorageConfigService.assertSuperAdmin` — the permission decorators
+// cannot express "super admins only" (rule 05). `maxScope: 'system'` says the
 // value may be set at the SYSTEM scope and nowhere deeper: a tenant tunes its
 // own backend through its OWN `TenantStorageConfig` row, not by overriding the
 // platform default.

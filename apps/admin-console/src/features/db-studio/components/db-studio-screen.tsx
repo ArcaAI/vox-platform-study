@@ -98,7 +98,7 @@ export function DbStudioScreen() {
             <>
               <span>Embedded database browser</span>
               <span aria-hidden>&middot;</span>
-              <span>GlobalAdmin only</span>
+              <span>Super Admin only</span>
             </>
           }
         />

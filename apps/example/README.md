@@ -54,8 +54,8 @@ It is the runnable companion to
 Run it against a local gateway:
 
 ```bash
-# 1. Bring up the stack (gateway :8868 + STT + SMR) — see infrastructure/README.md
-pnpm setup:dev && pnpm stack:dev -- api stt smr
+# 1. Bring up the stack (gateway :8868 + STT + Text) — see infrastructure/README.md
+pnpm setup:dev && pnpm stack:dev -- api stt text
 
 # 2. Point the example at it (apps/example/.env.local):
 #   VITE_API_BASE_URL=http://localhost:8868

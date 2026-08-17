@@ -1,9 +1,9 @@
 services:
-  smr:
+  text:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: hope-smr
+    container_name: hope-text
     ports:
       - "${TEXT_PORT:-8862}:8862"
     env_file:
@@ -17,12 +17,12 @@ services:
       redis:
         condition: service_healthy
     networks:
-      - smr-network
+      - text-network
     restart: unless-stopped
 
   redis:
     image: redis:8-alpine
-    container_name: hope-smr-redis
+    container_name: hope-text-redis
     ports:
       - "${REDIS_PORT:-6379}:6379"
     healthcheck:
@@ -33,22 +33,22 @@ services:
     volumes:
       - redis-data:/data
     networks:
-      - smr-network
+      - text-network
 
   # Monitoring stack (optional, activate with: docker compose --profile monitoring up)
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.96.0
-    container_name: hope-smr-otel
+    container_name: hope-text-otel
     profiles: ["monitoring"]
     ports:
       - "4317:4317"
       - "4318:4318"
     networks:
-      - smr-network
+      - text-network
 
   prometheus:
     image: prom/prometheus:v3.13.2
-    container_name: hope-smr-prometheus
+    container_name: hope-text-prometheus
     profiles: ["monitoring"]
     ports:
       - "9090:9090"
@@ -56,11 +56,11 @@ services:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus-data:/prometheus
     networks:
-      - smr-network
+      - text-network
 
   grafana:
     image: grafana/grafana:13.1.2
-    container_name: hope-smr-grafana
+    container_name: hope-text-grafana
     profiles: ["monitoring"]
     ports:
       - "3001:3000"
@@ -74,7 +74,7 @@ services:
     depends_on:
       - prometheus
     networks:
-      - smr-network
+      - text-network
 
 volumes:
   redis-data:
@@ -82,5 +82,5 @@ volumes:
   grafana-data:
 
 networks:
-  smr-network:
+  text-network:
     driver: bridge

@@ -30,10 +30,10 @@
  *
  * SMR dependency (house pattern from `agent-management-contract.spec.ts`,
  * frame-33 test). Every SUCCESS branch of `testPromptTemplate` calls
- * `callSmrGenerate` UNCONDITIONALLY — `dryRun` only skips the persistence
+ * `callTextGenerate` UNCONDITIONALLY — `dryRun` only skips the persistence
  * step, generation always runs — so any assertion that needs a `200/201`
  * body is generation-dependent. Deterministic gates (`400`/`404`/`428`, all
- * thrown BEFORE `callSmrGenerate`) are asserted unconditionally; the
+ * thrown BEFORE `callTextGenerate`) are asserted unconditionally; the
  * generation-dependent assertions are gated behind a `[200, 201]` check with
  * a `console.warn` fallback when the stack's SMR/text-generation service is
  * unreachable, so the spec stays green without a live LLM backend while
@@ -95,7 +95,7 @@ const auth = (token: string) => ({ Authorization: `Bearer ${token}` });
 const ifMatch = (token: string, version: number) => ({ ...auth(token), 'If-Match': `"${version}"` });
 
 /**
- * `callSmrGenerate` runs unconditionally on every non-error path, so a
+ * `callTextGenerate` runs unconditionally on every non-error path, so a
  * `[200, 201]` response is the only proof the SMR/text-generation service
  * answered. Anything else in a test stack without a live LLM backend is
  * treated as "generation unavailable" — logged, not failed — so the spec's
@@ -252,7 +252,7 @@ test.describe.serial('prompt-template test bench (tenant_admin · __GLOBAL__)', 
       expect(ack.provider).toBe(KNOWN_PROVIDER);
       expect(ack.model).toBe(KNOWN_MODEL);
     } else if (res.status() === 400) {
-      // `callSmrGenerate` wraps ANY axios failure (incl. SMR unreachable) as a
+      // `callTextGenerate` wraps ANY axios failure (incl. SMR unreachable) as a
       // 400 too, so a bare status check can't tell "known pair wrongly
       // rejected" apart from "SMR is down in this stack". Read the message:
       // `assertKnownSmrModel` throws a distinct "Unknown or disabled

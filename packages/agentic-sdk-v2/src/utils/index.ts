@@ -13,6 +13,7 @@ export {
   isAuthError,
   isRetriableError,
   classifyHttpError,
+  classifyTextError,
   classifySmrError,
 } from './errorUtils';
 

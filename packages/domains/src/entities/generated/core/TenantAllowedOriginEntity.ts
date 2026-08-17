@@ -4,7 +4,7 @@
 import { BusinessException } from '@arcaai/exceptions';
 import { BaseTenantEntity, IBaseTenantEntity } from '../../../common';
 
-// DB-backed, global-admin-editable registry of browser origins permitted to
+// DB-backed, super-admin-editable registry of browser origins permitted to
 // call the gateway (CORS control plane). `tenantId` is the OWNING
 // tenant; the reserved SYSTEM tenant owns platform-operated origins (e.g. the
 // admin console, which serves every tenant from one origin) and is treated as

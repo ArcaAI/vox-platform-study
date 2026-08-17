@@ -220,11 +220,11 @@ describe('AgenticPolicyScreen', () => {
     expect(screen.queryByText('pipeline.harnessEnabled')).toBeNull();
   });
 
-  it('gates a non-elevated session behind the global-admins-only empty state', async () => {
+  it('gates a non-elevated session behind the super-admins-only empty state', async () => {
     stubFetch({ session: TENANT_ADMIN_SESSION });
     renderWithProviders(<AgenticPolicyScreen />);
 
-    expect(await screen.findByText('Global admins only')).toBeDefined();
+    expect(await screen.findByText('Super Admins only')).toBeDefined();
     expect(screen.queryByRole('tab', { name: 'Global default' })).toBeNull();
   });
 

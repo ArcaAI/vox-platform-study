@@ -39,8 +39,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { SYSTEM_DEFAULTS } from '@arcaai/applications';
 
-import { SmrCompatController } from '../text-compat.controller';
-import { SmrCompatTemplateService } from '../text-compat-template.service';
+import { TextCompatController } from '../text-compat.controller';
+import { TextCompatTemplateService } from '../text-compat-template.service';
 // `PRE_SUMMARY_TEMPLATE_VARIABLES` originates in `@arcaai/applications` and is
 // re-exported by the builder; importing it from there keeps this file on the
 // same module the compat path itself consumes.
@@ -83,7 +83,7 @@ const routeInventory = (proto: object): { name: string; path: string; method: st
 };
 
 describe('R-C1 — the compat surface exposes no live-summarization route', () => {
-  const routes = routeInventory(SmrCompatController.prototype);
+  const routes = routeInventory(TextCompatController.prototype);
 
   it('exposes EXACTLY the two v1 generation routes (POST summary/sync, POST presummary)', () => {
     expect(routes.map((r) => `${r.method} ${r.path}`).sort()).toEqual(['POST presummary', 'POST summary/sync']);
@@ -120,7 +120,7 @@ const createTemplateService = (overrides?: {
       vi.fn(async () => ({ promptId: 'tpl-bound', resolvedFrom: 'agent', content: 'GOVERNED BODY', trace: {} })),
   };
   // ClsService is used only by the INFO audit line (correlation id).
-  const service = new SmrCompatTemplateService(departmentRepository as never, promptResolutionService as never, {
+  const service = new TextCompatTemplateService(departmentRepository as never, promptResolutionService as never, {
     getId: () => 'req-test-id',
   } as never);
   return { service, departmentRepository, promptResolutionService };
@@ -171,14 +171,14 @@ describe('R-C2 — the LLM is the default set by the tenant admin', () => {
     resolveSmrSelection: ReturnType<typeof vi.fn>;
     resolveSmrFallbackSelection: ReturnType<typeof vi.fn>;
   };
-  let controller: SmrCompatController;
+  let controller: TextCompatController;
 
   beforeEach(() => {
     harnessPolicyService = {
       resolveSmrSelection: vi.fn(async () => ({ provider: 'lm-studio', model: 'tenant-default-model' })),
       resolveSmrFallbackSelection: vi.fn(async () => null),
     };
-    controller = new SmrCompatController(
+    controller = new TextCompatController(
       { axiosRef: { post: vi.fn(), get: vi.fn() } } as never,
       { getConfigValue: vi.fn(() => 'http://localhost:8862') } as never,
       { get: vi.fn(() => undefined), getId: vi.fn(() => 'req-1') } as never,
@@ -189,9 +189,9 @@ describe('R-C2 — the LLM is the default set by the tenant admin', () => {
 
   it('resolves the model through the tenant-scoped policy with an EXPLICIT tenant id', async () => {
     const request: { provider?: string; model?: string } = {};
-    // `applySmrModelSelection` is the single seam every compat generation path
+    // `applyTextModelSelection` is the single seam every compat generation path
     // funnels through (summary sync/stream, pre-summary sync/stream).
-    await (controller as unknown as { applySmrModelSelection: (r: object, t: string) => Promise<void> }).applySmrModelSelection(
+    await (controller as unknown as { applyTextModelSelection: (r: object, t: string) => Promise<void> }).applyTextModelSelection(
       request,
       'tenant-1',
     );
@@ -199,7 +199,7 @@ describe('R-C2 — the LLM is the default set by the tenant admin', () => {
     expect(harnessPolicyService.resolveSmrSelection).toHaveBeenCalledTimes(1);
     const [tenantArg, taskArg] = harnessPolicyService.resolveSmrSelection.mock.calls[0];
     expect(tenantArg).toBe('tenant-1');
-    // `HarnessPolicyService.resolveSmrSelection(tenantId?, task: SmrRoutingTask = 'finalize')`
+    // `HarnessPolicyService.resolveSmrSelection(tenantId?, task: TextRoutingTask = 'finalize')`
     // — compat relies on the default, so either spelling is conformant. What is
     // NOT conformant is 'live' or 'test'.
     expect(taskArg === undefined || taskArg === 'finalize').toBe(true);

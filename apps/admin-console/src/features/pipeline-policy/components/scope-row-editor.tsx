@@ -148,7 +148,7 @@ export function ScopeRowEditor({
         {TOGGLE_COLUMNS.map((column) => {
           // harnessEnabled has a registered max scope of DEPARTMENT.
           const beyondMaxScope = column.key === 'harnessEnabled' && scope === 'DOCTOR';
-          // Governed toggles are global-admin-only.
+          // Governed toggles are super-admin-only.
           const globalOnly = GLOBAL_ONLY_TOGGLE_KEYS.includes(column.key) && !isElevated;
           return (
             <div key={column.key} className="flex flex-col gap-1.5">

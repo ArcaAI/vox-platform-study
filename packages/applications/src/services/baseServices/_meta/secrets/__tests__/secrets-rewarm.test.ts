@@ -1,7 +1,7 @@
 // SecretsService warmup re-warm loop tests.
 //
 // Regression coverage for the production defect where `getSecretSync` consumers
-// (SmrCompatController / SmrProxyController / TtsWsGateway `getForwardHeaders`)
+// (TextCompatController / TextProxyController / TtsWsGateway `getForwardHeaders`)
 // silently lost their `X-Service-Token` header `SECRETS_TTL_SEC` seconds after
 // boot: the warmup set was cached once and never re-warmed, so the cache-only
 // sync path went cold on TTL expiry and upstream calls started returning 401.

@@ -146,7 +146,7 @@ test.describe('account screen', () => {
 
 /**
  * Tenant profile (/tenant-profile, tier 20-29): profile tabs + Settings
- * category sub-nav. The seeded global admin may have no working tenant, so
+ * category sub-nav. The seeded super admin may have no working tenant, so
  * every check tolerates the NoTenant empty state as a valid outcome.
  */
 

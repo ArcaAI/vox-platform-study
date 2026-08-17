@@ -108,13 +108,13 @@ Resolution (`AiTaskDefaultService.getEffective`): **tenant row → SYSTEM row �
 consuming service's env fallback**.
 
 **Governance:** every task-key prefix (`guardrail.`, `nlp.`, `smr.`, `harness.`)
-is **global-admin-only** — writes are gated by an `isSuperAdmin` service-layer
-guard (`GLOBAL_ADMIN_ONLY_TASK_PREFIXES` in
+is **super-admin-only** — writes are gated by an `isSuperAdmin` service-layer
+guard (`SUPER_ADMIN_ONLY_TASK_PREFIXES` in
 `packages/applications/src/services/ai-task-default/constants.ts`). Tenants only
 *consume* the SYSTEM-row platform default; no task key is tenant-admin editable
 and runtime resolution ignores per-tenant override rows. This mirrors the
 imperative privilege pattern documented in the API gateway rules — the
-permission decorator says `manage`, but the real gate is "global admin only".
+permission decorator says `manage`, but the real gate is "super admin only".
 
 The gateway's `ai-inference` proxy (user-plane `/ai/*` over Guardrail + NLP)
 resolves the effective task-default model, validates any caller-supplied model
@@ -170,7 +170,7 @@ than null, because Postgres treats NULLs as distinct in unique indexes (which
 would allow duplicate provider-default rows and break the compound-unique
 upsert).
 
-This program keeps runtime profiles **global-admin-only and SYSTEM-tenant-only**
+This program keeps runtime profiles **super-admin-only and SYSTEM-tenant-only**
 (hyperparameters are a platform concern); `tenantId` is retained for the house
 template and forward compatibility.
 
@@ -302,7 +302,7 @@ Deep dive: docs/implementation/TASK-531-Pipeline-Template-Governance.
   secret + directory credentials are Vault-Transit refs. Home-realm discovery
   routes a verified email domain to exactly one provider. The `idp-resolver`
   service backs OIDC login. SAML lands on the same table via a follow-up ticket.
-- **External tools** (`McpServer`): global-admin-managed registry of MCP tool
+- **External tools** (`McpServer`): super-admin-managed registry of MCP tool
   servers the harness may call. SYSTEM-only rows + SYSTEM-shared read; **no
   secret material in the DB** (`authRef` is a Vault path only, resolved at call
   time). `phiBoundary` defaults to `"external"` so an unmarked server is treated

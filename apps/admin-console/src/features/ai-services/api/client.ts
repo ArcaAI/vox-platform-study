@@ -29,7 +29,7 @@ export function getNlpStatus(): Promise<NlpStatus> {
 
 /**
  * The effective agentic instruction set for one tenant. Tenant-scoped read:
- * global admins target the working tenant via `?tenantId=`, tenant admins are
+ * super admins target the working tenant via `?tenantId=`, tenant admins are
  * pinned server-side and a foreign id is 404 (no existence leak).
  */
 export function getAgenticInstructions(params: AgenticInstructionsParams = {}): Promise<AgenticInstructions> {

@@ -80,8 +80,8 @@ export function ToolsMcpScreen() {
       <ScreenTemplate header={<PageHeader title="Tools & MCP" />}>
         <EmptyState
           icon={IconShieldLock}
-          title="Global admins only"
-          description="The MCP external-tools registry is managed by global administrators. Tenant admins cannot register or mutate servers."
+          title="Super Admins only"
+          description="The MCP external-tools registry is managed by super administrators. Tenant admins cannot register or mutate servers."
         />
       </ScreenTemplate>
     );

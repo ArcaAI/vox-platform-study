@@ -9,7 +9,7 @@ import { CanAny, ExpectedVersion, RequiredScopes } from '../../decorators';
  * A single row per tenant holds the client-side capture defaults applied to
  * every user in that tenant (ASR model + feature switches + a typed advanced
  * `configJson`). Tenant scoping mirrors the DNA admin surface:
- * a global admin (SUPER_ADMIN) may target a tenant via
+ * a super admin (SUPER_ADMIN) may target a tenant via
  * `?tenantId=`; a tenant admin is pinned to their CLS tenant and any supplied
  * `tenantId` is ignored by the service.
  *
@@ -32,7 +32,7 @@ export class TenantFrontendConfigAdminController {
 
   @Get()
   @ApiOperation({ summary: "Get the tenant's frontend pipeline config (null when not yet configured)" })
-  @ApiQuery({ name: 'tenantId', required: false, type: String, description: 'Global-admin only: target a tenant. Ignored for tenant admins.' })
+  @ApiQuery({ name: 'tenantId', required: false, type: String, description: 'Super-admin only: target a tenant. Ignored for tenant admins.' })
   @ApiResponse({ status: 200, description: 'Frontend pipeline config, or null when none is set' })
   async get(@Query('tenantId') tenantId?: string): Promise<TenantFrontendConfigResponse | null> {
     return this.frontendConfigService.getByTenant(tenantId);
@@ -55,7 +55,7 @@ export class TenantFrontendConfigAdminController {
     required: false,
     example: '"3"',
   })
-  @ApiQuery({ name: 'tenantId', required: false, type: String, description: 'Global-admin only: target a tenant. Ignored for tenant admins.' })
+  @ApiQuery({ name: 'tenantId', required: false, type: String, description: 'Super-admin only: target a tenant. Ignored for tenant admins.' })
   @ApiResponse({ status: 200, description: 'Stored frontend pipeline config' })
   @ApiResponse({ status: 400, description: 'Bad request — expectedVersion required to update an existing config' })
   @ApiResponse({ status: 412, description: 'Optimistic concurrency conflict — re-fetch and retry with the new version.' })

@@ -518,7 +518,7 @@ function canonicalizeHost(host: string, raw: string): string {
  * platform suffix, or a private-section entry. A wildcard over such a suffix
  * still delegates credentialed CORS to every tenant of that platform. The
  * complete fix is a maintained PSL (`tldts`/`psl`) at write time; until then,
- * a global admin approving a wildcard row must check the suffix by hand.
+ * a super admin approving a wildcard row must check the suffix by hand.
  */
 function isLikelyPublicSuffix(suffix: string): boolean {
   if (KNOWN_SHARED_SUFFIXES.has(suffix)) {

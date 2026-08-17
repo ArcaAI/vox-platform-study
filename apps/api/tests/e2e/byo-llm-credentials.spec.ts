@@ -5,7 +5,7 @@
  * `AiProviderConnectionController` itself: secret-never-echoed, self-host-403,
  * and the cross-tenant read/write posture — exclusively against the `azure`
  * row. NONE of that proves the credential actually reaches SMR — that only
- * happens inside `SmrProxyController#generate` via
+ * happens inside `TextProxyController#generate` via
  * `applyTenantProviderOverrides` (see
  * `apps/api/src/modules/streaming/__tests__/smr-proxy-tenant-byo.controller.test.ts`
  * for the equivalent unit-level proof of the same fold-in logic). This spec is
@@ -28,7 +28,7 @@
  * ENV-GATED — SKIPPED BY DEFAULT (a visible skip count in the report, never a
  * silent omission). Proving (1)/(2) needs the gateway's own `TEXT_URL` to point
  * at a listener this spec can inspect, and the gateway resolves `TEXT_URL` ONCE
- * at bootstrap (`smr-proxy.controller.ts#getSmrBaseUrl`) — this Playwright
+ * at bootstrap (`smr-proxy.controller.ts#getTextBaseUrl`) — this Playwright
  * worker cannot redirect an already-running gateway process. That makes this
  * an OPERATOR setup step, not something the spec can arrange on its own:
  *
@@ -121,7 +121,7 @@ test.describe.serial('tenant BYO cloud credential reaches SMR (generate round-tr
     // fixture tenant acts under ITS OWN CLS context, same pattern
     // `ai-provider-connections-cross-tenant.spec.ts` uses for `foreignTenantId`.
     const tb = await loginUser(request, SEEDED_USERS.superAdmin.username, SEEDED_USERS.superAdmin.password, ARCAAI_TENANT_KEY);
-    expect(tb, `global admin login (${ARCAAI_TENANT_KEY}) failed`).toBeTruthy();
+    expect(tb, `super admin login (${ARCAAI_TENANT_KEY}) failed`).toBeTruthy();
     tenantBToken = tb!.token;
 
     const current = await request.get(`${ADMIN_BASE}/bedrock`, { headers: { Authorization: `Bearer ${tenantAToken}` } });

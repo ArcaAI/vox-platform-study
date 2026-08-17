@@ -35,7 +35,7 @@ describe('batch-transcription limit descriptors', () => {
     }
   });
 
-  it('is a platform capacity knob: global-kv, global-admin only, never tenant-set', () => {
+  it('is a platform capacity knob: global-kv, super-admin only, never tenant-set', () => {
     for (const knob of KEYS) {
       const descriptor = HOPE_SETTINGS_REGISTRY.getOrThrow(`stt.batch.${knob}`);
       expect(descriptor.tier, knob).toBe('global-kv');

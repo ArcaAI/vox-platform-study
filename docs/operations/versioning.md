@@ -83,12 +83,12 @@ per-service build jobs live in `.gitlab/ci/build.yml`:
 | `^v\d+` (e.g. `v2.2.0`) | `tag_release` | **No build.** Only `promote-prod` becomes available (manual) — see §4 |
 
 Each build job in `build.yml` has its own `rules:` on top of the shared
-`.build-common-rules`, keyed on the exact prefix — e.g. `build-smr` runs on
+`.build-common-rules`, keyed on the exact prefix — e.g. `build-text` runs on
 `$CI_COMMIT_TAG =~ /^SMR-/ || $CI_COMMIT_TAG =~ /^ALL-/`, `build-api` on
 `/^API-/ || /^ALL-/`, and so on for every service in the scope table below. So:
 
-- `SMR-2.1.0` builds only the `smr` image.
-- `ALL-2.2.0` builds **every** image (`api`, `admin-console`, `compat-playground`, `smr`,
+- `SMR-2.1.0` builds only the `text` image.
+- `ALL-2.2.0` builds **every** image (`api`, `admin-console`, `compat-playground`, `text`,
   `stt-ml-runtime`, `stt-worker`, `nlp`, `guardrail`, `tts`, `harness`, `harness-worker`,
   `database`, `qdrant-init`, `hope-python-base`) — that is what makes it "the platform
   release train."
@@ -214,7 +214,7 @@ record and changelog, then — separately — tag the same commit `vX.Y.Z` and r
 
 ## 6. Worked example — cutting `ALL-2.2.0`
 
-1. **Confirm the bump.** You're shipping a new SMR provider (backwards-compatible) and a
+1. **Confirm the bump.** You're shipping a new Text provider (backwards-compatible) and a
    guardrail bug fix — nothing breaks a published contract, so this is a MINOR bump:
    `2.1.0` → `2.2.0`.
 2. **Make sure the commit is already built on a branch pipeline** if you intend to reach
@@ -226,13 +226,13 @@ record and changelog, then — separately — tag the same commit `vX.Y.Z` and r
    git push origin ALL-2.2.0
    ```
 4. **Watch the pipeline.** `PIPELINE_TYPE=release` runs the full test suite, then builds
-   every image in scope (`api`, `admin-console`, `compat-playground`, `smr`,
+   every image in scope (`api`, `admin-console`, `compat-playground`, `text`,
    `stt-ml-runtime`, `stt-worker`, `nlp`, `guardrail`, `tts`, `harness`,
    `harness-worker`, `database`, `qdrant-init`, `hope-python-base`), each tagged
    `ALL-2.2.0` + `sha-<sha8>`. CI collects the commits since the previous `ALL-` tag,
    generates the technical changelog per service, and creates a **DRAFT**
    `ChangelogEntry` for the platform version `2.2.0`.
-5. **Publish the release note.** In the admin console, a global admin opens the draft,
+5. **Publish the release note.** In the admin console, a super admin opens the draft,
    rewrites it for a tenant-admin audience, and publishes it. It will now appear once,
    on next login, to every admin who hasn't seen it (never during impersonation).
 6. **Check the registry.** Once each service has booted with the new image (on whichever

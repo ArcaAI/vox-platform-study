@@ -7,7 +7,7 @@
 export const APP_URL = process.env.ADMIN_CONSOLE_URL ?? 'http://localhost:5176';
 export const API_URL = process.env.API_URL ?? 'http://localhost:8868';
 
-/** Seeded global admin from packages/database seed 91-user.ts (dev + test DBs). */
+/** Seeded super admin from packages/database seed 91-user.ts (dev + test DBs). */
 export const ADMIN_CREDENTIALS = {
   username: process.env.E2E_ADMIN_USERNAME ?? 'super_admin',
   password: process.env.E2E_ADMIN_PASSWORD ?? 'password123',

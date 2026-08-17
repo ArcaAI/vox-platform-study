@@ -197,7 +197,7 @@ function PlanUsagePanel() {
  * Self-service view of the working tenant, reframed into three tabs:
  * Organization (read-only identity — no self-serve tenant PATCH exists), Plan &
  * usage (entitlement/usage snapshot), and Settings (category sub-nav over the
- * editable tenant/me/config rows). Tenant-less global admins get the frame's
+ * editable tenant/me/config rows). Tenant-less super admins get the frame's
  * NoTenant empty state.
  */
 export function TenantProfileScreen() {
@@ -257,7 +257,7 @@ export function TenantProfileScreen() {
         <EmptyState
           icon={IconBuildingHospital}
           title="No working tenant selected"
-          description="Select a working tenant to view its profile. Global admins act on one tenant at a time — pick one from the tenant switcher in the top bar."
+          description="Select a working tenant to view its profile. Super Admins act on one tenant at a time — pick one from the tenant switcher in the top bar."
         />
       </ScreenTemplate>
     );

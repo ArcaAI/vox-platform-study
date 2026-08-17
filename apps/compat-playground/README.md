@@ -20,11 +20,11 @@ pnpm ui:build
 pnpm sdk:build
 ```
 
-Bring up the stack (gateway `:8868` + STT + SMR) — see
+Bring up the stack (gateway `:8868` + STT + Text) — see
 [`infrastructure/README.md`](../../infrastructure/README.md):
 
 ```bash
-pnpm setup:dev && pnpm stack:dev -- api stt smr
+pnpm setup:dev && pnpm stack:dev -- api stt text
 ```
 
 Run the playground:

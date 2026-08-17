@@ -44,7 +44,7 @@ export interface PromotionGateVerdict {
  * `triggerType=PROMOTION`) and, in `block` mode, reports `blocked=true` on
  * failure so the caller can reject with a 409. `warn` records but never blocks;
  * `off` skips the eval entirely. No golden set ⇒ the promotion proceeds with a
- * recorded warning (never blocked). The mode comes from the global-admin-only
+ * recorded warning (never blocked). The mode comes from the super-admin-only
  * `agentic.eval.promotionGate` registry setting.
  */
 @Injectable()

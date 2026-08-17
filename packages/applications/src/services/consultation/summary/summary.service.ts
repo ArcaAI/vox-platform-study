@@ -10,6 +10,7 @@ import {
   ContextItemRepository,
   ContextItemVersionRepository,
   ConsultationRepository,
+  CorePrisma,
   CoreUnitOfWorkService,
   SummaryMetaRepository,
   NamedEntityRepository,
@@ -47,8 +48,8 @@ import {
   CitedSegmentResponse,
 } from './dto';
 import { SummaryDtoMapper } from './summary.dto.mapper';
-import { buildSmrGeneratePayload, mapSmrGenerateResponse, type LegacySmrSummaryResponse } from './text-generate';
-import { buildGuardrailUsageInput, buildLlmUsageInput, parseSmrUsageDetail, type SmrUsageDetail } from './text-usage';
+import { buildTextGeneratePayload, mapTextGenerateResponse, type LegacyTextSummaryResponse } from './text-generate';
+import { buildGuardrailUsageInput, buildLlmUsageInput, parseTextUsageDetail, type TextUsageDetail } from './text-usage';
 import { IUsageLedgerService } from '../../usageLedger/IUsageLedgerService';
 import type { UsageOperation } from '../../usageLedger/vocabulary';
 import { BaseService, assertParentInScope, encryptPhiFields } from '../../../common';
@@ -78,7 +79,7 @@ import { INoteGenerationService, GenerationTrigger } from '../note-generation';
  * token counts are derivable from the existing `inputTokens`/`outputTokens`).
  * All optional — never fabricated; a field the engine omitted stays null.
  */
-interface SmrGenerationStats {
+interface TextGenerationStats {
   stop_reason?: string | null;
   ttft_ms?: number | null;
   tokens_per_second?: number | null;
@@ -89,13 +90,13 @@ interface SmrGenerationStats {
  * Carries the mapped response alongside the raw `text` the repair helper parses,
  * so the caller can attribute cost across the (at most two) calls.
  */
-interface SmrRepairCall extends JsonRepairCall {
-  mapped: LegacySmrSummaryResponse;
-  stats: SmrGenerationStats | null;
+interface TextRepairCall extends JsonRepairCall {
+  mapped: LegacyTextSummaryResponse;
+  stats: TextGenerationStats | null;
   /** SMR's billing passthrough for this call — one per attempt, all metered. */
-  usage: SmrUsageDetail | null;
+  usage: TextUsageDetail | null;
   /** The guardrail call this generation triggered, forwarded by SMR. */
-  guardrailUsage: SmrUsageDetail | null;
+  guardrailUsage: TextUsageDetail | null;
 }
 
 /** Everything an emission needs that is NOT already on the usage block. */
@@ -106,8 +107,8 @@ interface SummaryUsageAttribution {
   departmentId?: string | null;
 }
 
-/** Request shape for `SummaryService#callSmrService` / `#executeSmrGenerate` (B-03 / B-04). */
-interface SmrCallPayload {
+/** Request shape for `SummaryService#callTextService` / `#executeSmrGenerate` (B-03 / B-04). */
+interface TextCallPayload {
   assembledPrompt: {
     userPrompt: string;
     systemPrompt: string;
@@ -142,16 +143,16 @@ interface WarmStartPreSummary {
   snapshotId: string | null;
 }
 
-type SmrCallResult = LegacySmrSummaryResponse & {
-  stats: SmrGenerationStats | null;
-  usage: SmrUsageDetail | null;
-  guardrailUsage: SmrUsageDetail | null;
+type TextCallResult = LegacyTextSummaryResponse & {
+  stats: TextGenerationStats | null;
+  usage: TextUsageDetail | null;
+  guardrailUsage: TextUsageDetail | null;
 };
 
 @Injectable()
 export class SummaryService extends BaseService implements ISummaryService {
   private readonly logger = new Logger(SummaryService.name);
-  private readonly smrServiceUrl: string;
+  private readonly textServiceUrl: string;
   private readonly nlpServiceUrl: string;
 
   constructor(
@@ -258,7 +259,7 @@ export class SummaryService extends BaseService implements ISummaryService {
     @Optional() @Inject(INoteGenerationService) private readonly noteGenerationService?: INoteGenerationService,
   ) {
     super(eventEmitter, clsService, ResourceType.ContextItem);
-    this.smrServiceUrl = this.configService.get<string>('TEXT_URL') ?? 'http://localhost:8862';
+    this.textServiceUrl = this.configService.get<string>('TEXT_URL') ?? 'http://localhost:8862';
     this.nlpServiceUrl = this.configService.get<string>('NLP_URL') ?? 'http://localhost:8864';
   }
 
@@ -366,7 +367,7 @@ export class SummaryService extends BaseService implements ISummaryService {
     });
 
     // Call SMR service
-    const smrResponse = await this.callSmrService({
+    const smrResponse = await this.callTextService({
       assembledPrompt,
       options: request.options,
       context: {
@@ -604,7 +605,7 @@ export class SummaryService extends BaseService implements ISummaryService {
     });
 
     // Call SMR service
-    const smrResponse = await this.callSmrService({
+    const smrResponse = await this.callTextService({
       assembledPrompt,
       options: request.options,
       // Agent `llmOverrides.finalize` outranks the tenant
@@ -724,7 +725,7 @@ export class SummaryService extends BaseService implements ISummaryService {
    */
   private async persistSummaryMetaWithUsage(
     summaryMeta: Parameters<SummaryMetaRepository['create']>[0],
-    smrResponse: { usage: SmrUsageDetail | null; guardrailUsage: SmrUsageDetail | null },
+    smrResponse: { usage: TextUsageDetail | null; guardrailUsage: TextUsageDetail | null },
     operation: UsageOperation,
     attribution: SummaryUsageAttribution,
   ): Promise<void> {
@@ -789,7 +790,7 @@ export class SummaryService extends BaseService implements ISummaryService {
     consultationId: string;
     summaryId: string;
     name: 'generate' | 'pre-summary';
-    stats: SmrGenerationStats | null;
+    stats: TextGenerationStats | null;
     durationMs?: number | null;
   }): Promise<void> {
     if (!this.trajectoryService) return;
@@ -869,8 +870,6 @@ export class SummaryService extends BaseService implements ISummaryService {
     await this.encryptBestEffort('ContextItemVersion', () =>
       this.contextItemVersionRepository.encryptFieldsIntoEntity(version, this.secretsService!),
     );
-    const savedVersion = await this.contextItemVersionRepository.create(version);
-
     contextItem.currentVersionNumber = versionNumber;
 
     if (request.content !== undefined) {
@@ -892,7 +891,26 @@ export class SummaryService extends BaseService implements ISummaryService {
     // TASK-709: Compare-And-Set against `_version` — the CAS predicate is
     // the `@RequiresIfMatch()`-gated `expectedVersion` folded onto the DTO by
     // the controller. Drift throws `OptimisticConcurrencyException` -> 412.
-    const updated = await this.contextItemRepository.updateWithVersion(contextItemId, contextItem, request.expectedVersion);
+    //
+    // The version row and the CAS MUST share one transaction. The insert
+    // consumes `(contextItemId, versionNumber)`, which is UNIQUE, while the CAS
+    // is what decides whether this edit is allowed at all. Inserting first and
+    // OUTSIDE a transaction left an orphan version row behind every rejected
+    // (412) write, and because a rejected write never advances
+    // `currentVersionNumber`, the next legitimate edit recomputed the SAME
+    // `versionNumber` and died on
+    // `ContextItemVersion_contextItemId_versionNumber_key` (P2002 -> 409):
+    // one stale `If-Match` permanently wedged the summary.
+    const writeVersionAndCas = async (tx?: CorePrisma.TransactionClient) => {
+      const saved = await this.contextItemVersionRepository.create(version, tx);
+      const row = await this.contextItemRepository.updateWithVersion(contextItemId, contextItem, request.expectedVersion, tx);
+      return { saved, row };
+    };
+    // Without the unit of work (direct-construction fixtures) both writes still
+    // run, just unguarded — identical to the behaviour before this fix.
+    const { saved: savedVersion, row: updated } = this.unitOfWork
+      ? await this.unitOfWork.runInTransaction((tx: CorePrisma.TransactionClient) => writeVersionAndCas(tx))
+      : await writeVersionAndCas();
 
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
       resourceId: updated.id,
@@ -1444,7 +1462,7 @@ export class SummaryService extends BaseService implements ISummaryService {
    * (mirrors `smr-compat.controller.ts#computeSummary`'s fallback shape);
    * an unconfigured/no-op fallback propagates the ORIGINAL error.
    */
-  private async callSmrService(payload: SmrCallPayload): Promise<SmrCallResult> {
+  private async callTextService(payload: TextCallPayload): Promise<TextCallResult> {
     let tenantId: string | undefined;
     if (this.harnessPolicyService) {
       tenantId = this.tenantId ?? undefined;
@@ -1496,7 +1514,7 @@ export class SummaryService extends BaseService implements ISummaryService {
    * Fallback is eligible for provider-side failures: an upstream RESPONSE
    * error (SMR answered with an error — the LLM/provider failed) OR a
    * parse/mapping failure (unparseable content, thrown by
-   * `generateJsonWithRepair`/`mapSmrGenerateResponse`). NOT eligible when SMR
+   * `generateJsonWithRepair`/`mapTextGenerateResponse`). NOT eligible when SMR
    * itself was unreachable (a connect-phase transport error with no
    * response) — retrying a different provider through the same unreachable
    * gateway cannot help. Mirrors `smr-compat.controller.ts#isFallbackEligible`.
@@ -1510,12 +1528,12 @@ export class SummaryService extends BaseService implements ISummaryService {
 
   /**
    * One SMR generate attempt (with the bounded corrective-JSON retry).
-   * Raw errors propagate uncaught so `callSmrService` can decide fallback
+   * Raw errors propagate uncaught so `callTextService` can decide fallback
    * eligibility from the original shape before wrapping into
    * `BadRequestException`.
    */
-  private async executeSmrGenerate(payload: SmrCallPayload, options: Record<string, unknown> | undefined): Promise<SmrCallResult> {
-    const smrPayload = buildSmrGeneratePayload(payload.assembledPrompt, options, payload.context);
+  private async executeSmrGenerate(payload: TextCallPayload, options: Record<string, unknown> | undefined): Promise<TextCallResult> {
+    const textPayload = buildTextGeneratePayload(payload.assembledPrompt, options, payload.context);
     const smrServiceToken = (await this.secretsService?.getSecretOptional('TEXT_SERVICE_TOKEN')) ?? '';
 
     // The finalize path now carries the SAME bounded corrective
@@ -1524,14 +1542,14 @@ export class SummaryService extends BaseService implements ISummaryService {
     // — on the HIGHER-stakes path, since this output is what the clinician signs.
     // The corrective instruction is APPENDED so the prefix-cache-stable lead-in
     // stays byte-identical between the original and the repair call.
-    const basePrompt = smrPayload.prompt;
-    const structuredRequested = smrPayload.response_format !== undefined;
+    const basePrompt = textPayload.prompt;
+    const structuredRequested = textPayload.response_format !== undefined;
 
-    const outcome = await generateJsonWithRepair<string, SmrRepairCall>({
+    const outcome = await generateJsonWithRepair<string, TextRepairCall>({
       generate: async (corrective) => {
         const response = await this.httpService.axiosRef.post(
-          `${this.smrServiceUrl}/api/v1/generate`,
-          { ...smrPayload, prompt: corrective ? `${basePrompt}${corrective}` : basePrompt },
+          `${this.textServiceUrl}/api/v1/generate`,
+          { ...textPayload, prompt: corrective ? `${basePrompt}${corrective}` : basePrompt },
           {
             headers: {
               'Content-Type': 'application/json',
@@ -1539,14 +1557,14 @@ export class SummaryService extends BaseService implements ISummaryService {
             },
           },
         );
-        const mapped = mapSmrGenerateResponse(response.data);
+        const mapped = mapTextGenerateResponse(response.data);
         const data = response.data as { usage_detail?: unknown; guardrail_usage?: unknown } | null;
         return {
           text: mapped.summary,
           mapped,
           stats: SummaryService.parseGenerationStats(response.data),
-          usage: parseSmrUsageDetail(data?.usage_detail),
-          guardrailUsage: parseSmrUsageDetail(data?.guardrail_usage),
+          usage: parseTextUsageDetail(data?.usage_detail),
+          guardrailUsage: parseTextUsageDetail(data?.guardrail_usage),
         };
       },
       // The summary is opaque JSON we persist verbatim, so the strict parse only
@@ -1571,7 +1589,7 @@ export class SummaryService extends BaseService implements ISummaryService {
     // Cost fields are additive across the (at most two) calls — the repair really
     // did spend those tokens/that time. Everything else describes the call whose
     // text became the stored note.
-    const sumAcrossCalls = (pick: (call: SmrRepairCall) => number | undefined): number | undefined => {
+    const sumAcrossCalls = (pick: (call: TextRepairCall) => number | undefined): number | undefined => {
       const values = outcome.calls.map(pick).filter((v): v is number => typeof v === 'number');
       return values.length > 0 ? values.reduce((a, b) => a + b, 0) : undefined;
     };
@@ -1597,7 +1615,7 @@ export class SummaryService extends BaseService implements ISummaryService {
    * (legacy response) or null (idempotency-cache hit) so the caller persists
    * nothing extra. Null-safe per field — never throws over missing/odd stats.
    */
-  private static parseGenerationStats(data: unknown): SmrGenerationStats | null {
+  private static parseGenerationStats(data: unknown): TextGenerationStats | null {
     const raw = (data as { stats?: unknown } | null | undefined)?.stats;
     if (!raw || typeof raw !== 'object') {
       return null;

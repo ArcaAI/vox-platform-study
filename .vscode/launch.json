@@ -5,7 +5,7 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "SMR v2",
+            "name": "Text",
             "type": "debugpy",
             "cwd": "${workspaceFolder}/apps/text/src",
             "request": "launch",

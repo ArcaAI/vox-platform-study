@@ -135,7 +135,7 @@ describe('UsageAnalyticsService.getCostPerEncounter', () => {
 });
 
 describe('UsageAnalyticsService.getTopTenants', () => {
-  it('rejects a non-global-admin caller (403)', async () => {
+  it('rejects a non-super-admin caller (403)', async () => {
     const repos = makeRepos();
     const service = makeService(repos, { roles: ['TENANT_ADMIN'] });
     await expect(service.getTopTenants('2026-08', { limit: 10 })).rejects.toThrow(ForbiddenException);

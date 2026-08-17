@@ -3,7 +3,7 @@
  *
  * The CASL `@Authorize` tuples + `If-Match`/`@RequiresIfMatch` decorators are
  * exercised by the guard/interceptor (and e2e). These specs cover the
- * controller's OWN logic: global-admin vs. tenant read scoping, the platform
+ * controller's OWN logic: super-admin vs. tenant read scoping, the platform
  * gate on the GLOBAL-DEFAULT routes, workflow tenant-ownership enforcement, and
  * the If-Match-over-body version precedence forwarded to the policy service.
  */
@@ -120,13 +120,13 @@ describe('HarnessAdminController — policy', () => {
     expect(policyService.updatePolicy).toHaveBeenCalledWith(request, 2);
   });
 
-  it('getGlobalPolicy is forbidden for a tenant admin (global-admin only)', async () => {
+  it('getGlobalPolicy is forbidden for a tenant admin (super-admin only)', async () => {
     const { controller, policyService } = makeController({ user: TENANT_ADMIN('t1'), tenantId: 't1' });
     await expect(controller.getGlobalPolicy()).rejects.toBeInstanceOf(ForbiddenException);
     expect(policyService.getGlobalDefault).not.toHaveBeenCalled();
   });
 
-  it('getGlobalPolicy is allowed for a global-admin', async () => {
+  it('getGlobalPolicy is allowed for a super-admin', async () => {
     const { controller, policyService } = makeController({ user: SUPER });
     const resp = { id: 'global', tenantId: '00000000-0000-0000-0000-000000000000', version: 1 };
     policyService.getGlobalDefault.mockResolvedValue(resp);
@@ -174,13 +174,13 @@ describe('HarnessAdminController — read tenant scoping', () => {
     await expect(controller.listAudit({ tenantId: 't2' })).rejects.toBeInstanceOf(ForbiddenException);
   });
 
-  it('lets a global-admin target any tenant via ?tenantId', async () => {
+  it('lets a super-admin target any tenant via ?tenantId', async () => {
     const { controller, observabilityService } = makeController({ user: SUPER });
     await controller.gateQueue({ tenantId: 't9' });
     expect(observabilityService.gateQueue).toHaveBeenCalledWith('t9');
   });
 
-  it('requires a global-admin to pass ?tenantId when there is no CLS tenant', async () => {
+  it('requires a super-admin to pass ?tenantId when there is no CLS tenant', async () => {
     const { controller } = makeController({ user: SUPER });
     await expect(controller.gateQueue({})).rejects.toBeInstanceOf(BadRequestException);
   });
@@ -232,7 +232,7 @@ describe('HarnessAdminController — edit burden', () => {
     expect(observabilityService.getEditBurden).not.toHaveBeenCalled();
   });
 
-  it('lets a global-admin target any tenant via ?tenantId', async () => {
+  it('lets a super-admin target any tenant via ?tenantId', async () => {
     const { controller, observabilityService } = makeController({ user: SUPER });
     observabilityService.getEditBurden.mockResolvedValue({ ...BURDEN, consultationId: 'c9' });
 
@@ -270,7 +270,7 @@ describe('HarnessAdminController — edit burden', () => {
 describe('HarnessAdminController — workflow ops ownership', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('lists all tenants for a global-admin (undefined tenant filter)', async () => {
+  it('lists all tenants for a super-admin (undefined tenant filter)', async () => {
     const { controller, opsClient } = makeController({ user: SUPER });
     await controller.listWorkflows({});
     expect(opsClient.listWorkflows).toHaveBeenCalledWith(expect.objectContaining({ tenantId: undefined }));
@@ -288,7 +288,7 @@ describe('HarnessAdminController — workflow ops ownership', () => {
     await expect(controller.describeWorkflow('wf-1', {})).rejects.toBeInstanceOf(ForbiddenException);
   });
 
-  it('lets a global-admin describe any tenant workflow', async () => {
+  it('lets a super-admin describe any tenant workflow', async () => {
     const { controller, opsClient } = makeController({ user: SUPER });
     const detail = { workflowId: 'wf-1', tenantId: 't2' };
     opsClient.describeWorkflow.mockResolvedValue(detail);
@@ -310,7 +310,7 @@ describe('HarnessAdminController — workflow ops ownership', () => {
   });
 });
 
-// Admin live console: monitoring (tenant-scoped) + kill-switch (global-admin).
+// Admin live console: monitoring (tenant-scoped) + kill-switch (super-admin).
 describe('HarnessAdminController — live sessions (TENANT_ADMIN, tenant-scoped)', () => {
   beforeEach(() => vi.clearAllMocks());
 
@@ -328,7 +328,7 @@ describe('HarnessAdminController — live sessions (TENANT_ADMIN, tenant-scoped)
     await expect(controller.listLiveSessions({ tenantId: 't2' })).rejects.toBeInstanceOf(ForbiddenException);
   });
 
-  it('lets a global-admin target a tenant via ?tenantId', async () => {
+  it('lets a super-admin target a tenant via ?tenantId', async () => {
     const { controller, liveDocumentationService } = makeController({ user: SUPER });
     await controller.listLiveSessions({ tenantId: 't9' });
     expect(liveDocumentationService.getActiveSessions).toHaveBeenCalledWith('t9');
@@ -359,7 +359,7 @@ describe('HarnessAdminController — live engine kill-switch (SUPER_ADMIN / glob
     expect(liveDocumentationService.getEngineConfig).not.toHaveBeenCalled();
   });
 
-  it('getLiveConfig is allowed for a global-admin', async () => {
+  it('getLiveConfig is allowed for a super-admin', async () => {
     const { controller, liveDocumentationService } = makeController({ user: SUPER });
     const resp = { enabled: true, envDefault: true, source: 'env-default' };
     liveDocumentationService.getEngineConfig.mockResolvedValue(resp);
@@ -372,7 +372,7 @@ describe('HarnessAdminController — live engine kill-switch (SUPER_ADMIN / glob
     expect(liveDocumentationService.setEngineEnabled).not.toHaveBeenCalled();
   });
 
-  it('updateLiveConfig toggles the kill-switch for a global-admin, carrying the actor + reason', async () => {
+  it('updateLiveConfig toggles the kill-switch for a super-admin, carrying the actor + reason', async () => {
     const { controller, liveDocumentationService } = makeController({ user: { roles: ['SUPER_ADMIN'], id: 'admin-7' } as never });
     await controller.updateLiveConfig({ enabled: false, reason: 'incident' } as never);
     expect(liveDocumentationService.setEngineEnabled).toHaveBeenCalledWith(false, { userId: 'admin-7', reason: 'incident' });
@@ -390,7 +390,7 @@ describe('HarnessAdminController — golden sets', () => {
     expect(evalService.listGoldenSets).toHaveBeenCalledWith('t1', { page: 2, limit: 5 });
   });
 
-  it('listGoldenSets lets a global-admin target a tenant via ?tenantId', async () => {
+  it('listGoldenSets lets a super-admin target a tenant via ?tenantId', async () => {
     const { controller, evalService } = makeController({ user: SUPER });
     await controller.listGoldenSets({ tenantId: 't9' });
     expect(evalService.listGoldenSets).toHaveBeenCalledWith('t9', { page: undefined, limit: undefined });
@@ -471,7 +471,7 @@ describe('HarnessAdminController — golden-set authorization metadata', () => {
  * Eval regression-corpus export.
  *
  * The route is a thin pass-through by design; what must be locked here is the
- * TENANT resolution (a global admin may target a tenant, a tenant admin may
+ * TENANT resolution (a super admin may target a tenant, a tenant admin may
  * not) and the fact that the SME-gate marker survives to the wire.
  */
 describe('HarnessAdminController — gate-edit corpus export', () => {

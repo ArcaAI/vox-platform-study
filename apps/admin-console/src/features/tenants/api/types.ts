@@ -72,7 +72,7 @@ export interface TenantConfig extends BaseResource {
   namespace?: string | null;
   tenantId: string;
   tenantCode?: string | null;
-  /** Locked platform-owned default — global-admin-only write. */
+  /** Locked platform-owned default — super-admin-only write. */
   locked?: boolean;
   version: number;
 }
@@ -125,7 +125,7 @@ export interface UpsertTenantFrontendConfigRequest {
 }
 
 /**
- * POST /admin/tenants/:id/pipelines/resync result (global admin only).
+ * POST /admin/tenants/:id/pipelines/resync result (super admin only).
  * Reconciliation counts for one run against the SYSTEM pipeline templates.
  */
 export interface PipelineResyncSummary {

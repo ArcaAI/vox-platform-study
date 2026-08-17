@@ -18,9 +18,9 @@ import { CanManage, ExpectedVersion, RequiresIfMatch, RequiredScopes } from '../
  * repriced by superseding it (close + insert, atomic, If-Match OCC on the
  * close) — never edited in place, so a computed invoice stays reproducible.
  *
- * // AUTH-NOTE: mutation is GLOBAL-ADMIN-ONLY, enforced imperatively in
+ * // AUTH-NOTE: mutation is SUPER_ADMIN-ONLY, enforced imperatively in
  * // `SellRateCardService` (`isSuperAdmin` → 403) — the decorator cannot
- * // express "global admins only" (rule 05). Class-level `@CanManage` keeps
+ * // express "super admins only" (rule 05). Class-level `@CanManage` keeps
  * // the deny-by-default boot audit green.
  */
 @ApiBearerAuth()

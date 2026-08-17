@@ -11,7 +11,7 @@ export const NLP_NER_TASK_KEY = 'nlp.ner';
  * Resolve the effective `nlp.ner` model for injection into a clinical
  * `/api/v1/classify/tokens` call — the SAME resolution `AiInferenceController`
  * (`apps/api/src/modules/ai-inference/ai-inference.controller.ts`) applies to
- * the Agent-Playground NER tab. Without this, a global admin re-pointing
+ * the Agent-Playground NER tab. Without this, a super admin re-pointing
  * `nlp.ner` only changes the playground; every clinical NER caller keeps
  * silently using the NLP service's env default. Shared by the three clinical
  * callers: `ner.processor.ts` (durable BullMQ job), `summary.service.ts`
@@ -24,8 +24,8 @@ export const NLP_NER_TASK_KEY = 'nlp.ner';
  * default — rather than blocking clinical NER on a registry hiccup. A warning
  * is logged on every fallback path; this function never throws.
  *
- * SYSTEM-PIN — `nlp.*` is GLOBAL_ADMIN_ONLY (system-row-only resolution;
- * `isGlobalAdminOnlyTaskKey('nlp.ner')` in `ai-task-default/constants.ts`), but
+ * SYSTEM-PIN — `nlp.*` is SUPER_ADMIN_ONLY (system-row-only resolution;
+ * `isSuperAdminOnlyTaskKey('nlp.ner')` in `ai-task-default/constants.ts`), but
  * the three callers run in worker/event/in-request contexts whose ambient CLS
  * tenant is the CALLING tenant — or, in a service-token/event context, no
  * tenant at all. Reading a SYSTEM-only key must not depend on what that

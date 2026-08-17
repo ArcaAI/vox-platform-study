@@ -1,7 +1,7 @@
 // ============================================================================
 // Tenant Allowed Origin (CORS control plane)
 //
-// DB-backed, global-admin-editable registry of browser origins permitted to
+// DB-backed, super-admin-editable registry of browser origins permitted to
 // call the gateway. Modeled on tenant-stt-config.prisma. Origin resolution
 // (CORS callback + WS handshake) and the tenant-isolation binding guard are
 // built in packages/applications / apps/api (layers 3-4); this

@@ -10,7 +10,7 @@ import { RequestMethod } from '@nestjs/common';
 import { AiModelDiscoveryController } from '../ai-model-discovery.controller';
 import { AiModelDiscoveryService, normalizeModelSlug } from '../ai-model-discovery.service';
 
-type SmrProviderEntry = {
+type TextProviderEntry = {
   name: string;
   display_name?: string;
   status?: string;
@@ -21,7 +21,7 @@ type SmrProviderEntry = {
 };
 
 function makeService(opts: {
-  smr?: SmrProviderEntry[];
+  smr?: TextProviderEntry[];
   smrError?: Error;
   dbRows?: Array<Record<string, unknown>>;
   create?: ReturnType<typeof vi.fn>;
@@ -211,7 +211,7 @@ describe('normalizeModelSlug', () => {
 // Controller wiring + guard
 // =============================================================================
 describe('AiModelDiscoveryController metadata', () => {
-  it('is decorated @Authorize(["manage","all"]) at class level (global-admin only)', () => {
+  it('is decorated @Authorize(["manage","all"]) at class level (super-admin only)', () => {
     const meta = Reflect.getMetadata('required_permissions', AiModelDiscoveryController);
     expect(meta).toEqual(expect.arrayContaining([{ action: 'manage', subject: 'all' }]));
   });

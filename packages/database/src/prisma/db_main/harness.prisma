@@ -384,7 +384,7 @@ model HarnessPolicy {
 
   // MCP external-tools master switch. ADDITIVE + NULLABLE:
   // null ⇒ OFF (the harness env/code default is off), so the whole MCP tool path
-  // stays dormant until a global admin explicitly flips this per-tenant knob AND
+  // stays dormant until a super admin explicitly flips this per-tenant knob AND
   // the referenced McpServer.enabled is true. Same per-field fallthrough as the
   // knobs above.
   mcpToolsEnabled Boolean?

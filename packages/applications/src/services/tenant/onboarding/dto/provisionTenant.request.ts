@@ -33,7 +33,7 @@ export class ProvisionTenantAdminBlock {
   password?: string;
 }
 
-/** `POST /admin/tenants/provision` (global-admin create-tenant-with-admin). */
+/** `POST /admin/tenants/provision` (super-admin create-tenant-with-admin). */
 export class ProvisionTenantRequest {
   @ApiProperty({ description: 'Name of the tenant' })
   @IsString()

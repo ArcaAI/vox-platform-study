@@ -50,7 +50,7 @@ import { PromptManagementDtoMapper } from './prompt-management.dto.mapper';
 import { SecretsService } from '../baseServices/_meta/secrets';
 import { IAiTaskDefaultService } from '../ai-task-default/IAiTaskDefaultService';
 import { EffectiveAiTaskDefaultResponse } from '../ai-task-default/dto';
-import { SmrRequestEnrichmentService } from '../text-request/text-request-enrichment.service';
+import { TextRequestEnrichmentService } from '../text-request/text-request-enrichment.service';
 import { IDepartmentService } from '../department/IDepartmentService';
 import { IEntitlementsService } from '../entitlements/IEntitlementsService';
 // The doctor self-service "set my preferred template"
@@ -72,7 +72,7 @@ const SCOPE_USER_PERSONAL = 'USER_PERSONAL';
 // Reserved SYSTEM tenant that owns the platform-wide / library prompt templates.
 // Mirrors `SYSTEM_TENANT_ID` in `base.service.ts` / `tenant.service.ts`
 // (duplicated as a literal per the established convention). A template owned by
-// this tenant is the shared library and its approval stays global-admin-only
+// this tenant is the shared library and its approval stays super-admin-only
 // (OD-3); tenant-owned templates devolve to `manage:PromptTemplate`.
 const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
 
@@ -158,7 +158,7 @@ function extractDeclaredVariableNames(variables?: Record<string, unknown> | null
 
 @Injectable()
 export class PromptManagementService extends BaseService implements IPromptManagementService {
-  private readonly smrServiceUrl: string;
+  private readonly textServiceUrl: string;
 
   constructor(
     private readonly promptTemplateRepository: PromptTemplateRepository,
@@ -206,13 +206,13 @@ export class PromptManagementService extends BaseService implements IPromptManag
     // `goldenCaseId` requests fail closed with a clear configuration error.
     @Optional() @Inject(GoldenCaseRepository) private readonly goldenCaseRepository?: GoldenCaseRepository,
     // BUG-018 — the SHARED tenant-credential + runtime-profile enrichment used
-    // by `SmrProxyController`. Optional + trailing so existing positional
+    // by `TextProxyController`. Optional + trailing so existing positional
     // fixtures keep their arity; absent ⇒ the outgoing body is unenriched
     // (exactly the pre-BUG-018 behavior), never a failure.
-    @Optional() @Inject(SmrRequestEnrichmentService) private readonly smrRequestEnrichment?: SmrRequestEnrichmentService,
+    @Optional() @Inject(TextRequestEnrichmentService) private readonly textRequestEnrichment?: TextRequestEnrichmentService,
   ) {
     super(eventEmitter, clsService, ResourceType.PromptTemplate);
-    this.smrServiceUrl = this.configService?.get<string>('TEXT_URL') ?? 'http://localhost:8862';
+    this.textServiceUrl = this.configService?.get<string>('TEXT_URL') ?? 'http://localhost:8862';
   }
 
   /**
@@ -477,7 +477,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
    *   globally visible, so approval is a SUPER_ADMIN-only PRIVILEGE (403, not
    *   404: existence is not hidden for the shared library).
    * - **Tenant-owned** template (tenantId ≠ SYSTEM) — a caller holding
-   *   `manage:PromptTemplate` for that tenant (or a global admin) may approve.
+   *   `manage:PromptTemplate` for that tenant (or a super admin) may approve.
    *   Cross-tenant ids are hidden behind `assertOwnedByTenant` (404-over-403).
    *
    * Both are privilege rules → `ForbiddenException` (403). The cross-tenant 404
@@ -867,7 +867,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
    *    the returned `streamUrl` over SSE and then calls
    *    {@link finalizePromptTemplateTest} to score and persist.
    *  - The outgoing body carries the tenant's BYO credentials + runtime profile
-   *    via the shared `SmrRequestEnrichmentService`, and the request carries
+   *    via the shared `TextRequestEnrichmentService`, and the request carries
    *    `X-Tenant-Id`, so the run is tenant-funded and attributable.
    *  - Model selection reads `IAiTaskDefaultService` directly; the harness
    *    policy service is gone from this path entirely.
@@ -1179,7 +1179,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
    * Precedence:
    *  1. Caller-supplied pair (`override.provider` + `override.model`, both
    *     required together) — forwarded VERBATIM (mirrors
-   *     `applySmrModelSelection`'s "caller-pinned model wins" semantics),
+   *     `applyTextModelSelection`'s "caller-pinned model wins" semantics),
    *     after validating it against the ENABLED AiModel registry.
    *  2. The `smr.test` AiTaskDefault, read DIRECTLY from
    *     `IAiTaskDefaultService.getEffective` — whose own cascade is tenant row
@@ -1282,8 +1282,8 @@ export class PromptManagementService extends BaseService implements IPromptManag
    *
    * Replaces the old blocking `stream: false` POST (2–3½ minutes, CDN 524) and
    * the direct-to-SMR bypass that lost tenant credentials and metering:
-   *  - the body goes through the SHARED `SmrRequestEnrichmentService` — the same
-   *    code path `SmrProxyController` uses — so the tenant's BYO credential
+   *  - the body goes through the SHARED `TextRequestEnrichmentService` — the same
+   *    code path `TextProxyController` uses — so the tenant's BYO credential
    *    (`provider_overrides`, carrying its `funding` label) and the resolved
    *    hyperparameter profile ride along;
    *  - `X-Tenant-Id` is sent alongside `X-Service-Token`, so SMR no longer logs
@@ -1298,14 +1298,14 @@ export class PromptManagementService extends BaseService implements IPromptManag
       throw new BadRequestException('SMR/text-generation client is not configured');
     }
     const body: Record<string, unknown> = { prompt, stream: true, provider, model };
-    if (this.smrRequestEnrichment) {
-      await this.smrRequestEnrichment.applySmrRuntimeProfile(body as { provider?: string; model?: string });
-      await this.smrRequestEnrichment.applyTenantProviderOverrides(body as { provider?: string });
+    if (this.textRequestEnrichment) {
+      await this.textRequestEnrichment.applyTextRuntimeProfile(body as { provider?: string; model?: string });
+      await this.textRequestEnrichment.applyTenantProviderOverrides(body as { provider?: string });
     }
 
     let data: { task_id?: string; stream_url?: string };
     try {
-      const response = await this.httpService.axiosRef.post(`${this.smrServiceUrl}/api/v1/generate`, body, {
+      const response = await this.httpService.axiosRef.post(`${this.textServiceUrl}/api/v1/generate`, body, {
         headers: await this.smrHeaders(),
       });
       data = response.data ?? {};
@@ -1317,7 +1317,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
     if (!taskId) {
       throw new BadRequestException('SMR did not return a task id for the streaming generation job.');
     }
-    // Gateway-relative SSE path (`SmrProxyController` mounts `text/*`), not the
+    // Gateway-relative SSE path (`TextProxyController` mounts `text/*`), not the
     // service-relative `stream_url` SMR reports — the browser talks to the
     // gateway, with a `smr_task:<taskId>`-scoped single-use ticket.
     return { taskId, streamUrl: `text/tasks/${taskId}/stream` };
@@ -1337,7 +1337,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
 
     let data: { status?: string; content?: string | null; error?: string | null };
     try {
-      const response = await this.httpService.axiosRef.get(`${this.smrServiceUrl}/api/v1/tasks/${taskId}`, {
+      const response = await this.httpService.axiosRef.get(`${this.textServiceUrl}/api/v1/tasks/${taskId}`, {
         headers: await this.smrHeaders(),
       });
       data = response.data ?? {};
@@ -1437,12 +1437,12 @@ export class PromptManagementService extends BaseService implements IPromptManag
    * OD-3 approval gate. SYSTEM/library templates (tenantId = SYSTEM) are
    * globally visible and stay SUPER_ADMIN-only (privilege → 403, existence not
    * hidden). Tenant-owned templates hide cross-tenant existence (404) and then
-   * require `manage:PromptTemplate` for that tenant (or a global admin).
+   * require `manage:PromptTemplate` for that tenant (or a super admin).
    */
   private assertCanApprove(template: PromptTemplateEntity, id: string): void {
     if (template.tenantId === SYSTEM_TENANT_ID) {
       if (!isSuperAdmin(this.requestUser)) {
-        throw new ForbiddenException('Approval of SYSTEM/library prompt templates is restricted to global administrators.');
+        throw new ForbiddenException('Approval of SYSTEM/library prompt templates is restricted to super administrators.');
       }
       return;
     }

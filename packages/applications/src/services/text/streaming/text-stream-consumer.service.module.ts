@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '../../baseServices/_meta/config';
-import { SmrStreamConsumerService } from './text-stream-consumer.service';
+import { TextStreamConsumerService } from './text-stream-consumer.service';
 
 /**
  * SMR Stream Consumer Module
@@ -12,11 +12,11 @@ import { SmrStreamConsumerService } from './text-stream-consumer.service';
  * - ConfigModule: Access to Redis config via IConfigService
  *
  * Providers/Exports:
- * - SmrStreamConsumerService: XREAD-based chunk subscription
+ * - TextStreamConsumerService: XREAD-based chunk subscription
  */
 @Module({
   imports: [ConfigModule],
-  providers: [SmrStreamConsumerService],
-  exports: [SmrStreamConsumerService],
+  providers: [TextStreamConsumerService],
+  exports: [TextStreamConsumerService],
 })
-export class SmrStreamConsumerModule {}
+export class TextStreamConsumerModule {}

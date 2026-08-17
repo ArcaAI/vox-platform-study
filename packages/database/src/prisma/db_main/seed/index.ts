@@ -122,7 +122,7 @@ export const seed = async () => {
     // The SYSTEM-tenant platform storage default — the third
     // tier of `bucket row → tenant default → SYSTEM default → env`. Depends
     // only on the reserved SYSTEM tenant (seedTenant, above); CREATE-ONLY, so a
-    // re-seed never reverts a global admin's edit.
+    // re-seed never reverts a super admin's edit.
     await seedPlatformStorageConfig(client);
     console.log('');
 

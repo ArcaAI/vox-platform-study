@@ -11,7 +11,7 @@ export interface SafeSession {
     username: string;
     email: string;
     roles: string[];
-    /** Home tenant of a tenant-bound user (null for unscoped global admins). Non-secret. */
+    /** Home tenant of a tenant-bound user (null for unscoped super admins). Non-secret. */
     tenantId: string | null;
   };
   isElevated: boolean;

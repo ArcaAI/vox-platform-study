@@ -42,7 +42,7 @@ export interface IHarnessPolicyEntity extends IBaseTenantEntity {
   maxEditReruns?: number | null;
   regenFeedbackEnabled?: boolean | null;
   // Per-tenant gate for the whole MCP external-tools path. `null` = OFF: the
-  // path stays dormant unless a global admin explicitly flips this AND the
+  // path stays dormant unless a super admin explicitly flips this AND the
   // referenced `McpServer.enabled` is true. Same per-field fallthrough as the
   // knobs above (see harness.prisma).
   mcpToolsEnabled?: boolean | null;

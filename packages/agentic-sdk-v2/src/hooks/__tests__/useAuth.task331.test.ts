@@ -2,7 +2,7 @@
  * useAuth — impersonation guards
  *
  * F-3: `impersonate(targetUserId, targetTenantId?)` must forward the selected
- *      tenant to `POST /auth/impersonate` so a global admin's chosen tenant is
+ *      tenant to `POST /auth/impersonate` so a super admin's chosen tenant is
  *      honoured (the backend otherwise picks the target's oldest assignment).
  *      `targetTenantId` is included ONLY when provided.
  * F-9: the impersonate response `user.departmentId` must survive into the SDK

@@ -127,7 +127,7 @@ describe('SellRateCardService.createSellRate', () => {
     ).rejects.toThrow(/unit/);
   });
 
-  // AUTH-NOTE pattern (rule 05): the decorator cannot express "global admins
+  // AUTH-NOTE pattern (rule 05): the decorator cannot express "super admins
   // only", so the SERVICE is the real gate — a deliberate 403 privilege
   // boundary, not the 404-over-403 tenancy posture.
   it('is SUPER_ADMIN-only — a tenant admin gets 403', async () => {

@@ -38,7 +38,7 @@ Exceptions: high-volume/immutable/telemetry rows (`AudioRecording`, `SummaryMeta
 
 - Every business row carries `tenantId` (string UUID, **no FK to Tenant** — keeps cross-schema writes cheap and allows the reserved system tenant).
 - Reserved system tenant `00000000-0000-0000-0000-000000000000` owns platform-wide rows (system RBAC policies, system AI models, global settings namespace).
-- Request flow: `UnifiedAuthGuard` resolves the user → CLS (`nestjs-cls`) stores `tenantId` → the **`tenantScopeFilter` Prisma client extension** (`packages/database/src/extensions/tenant-scope.ts`, wired by `TenantContextProviderModule` at bootstrap) injects tenant predicates into every query. Without CLS (CLI/seeds) it passes through as global-admin — the safe default for offline scripts.
+- Request flow: `UnifiedAuthGuard` resolves the user → CLS (`nestjs-cls`) stores `tenantId` → the **`tenantScopeFilter` Prisma client extension** (`packages/database/src/extensions/tenant-scope.ts`, wired by `TenantContextProviderModule` at bootstrap) injects tenant predicates into every query. Without CLS (CLI/seeds) it passes through as super-admin — the safe default for offline scripts.
 - Defense in depth: `TenantOwnedResourceInterceptor` (+ `TenantOwnedResourceSseGuard` for `@Sse()` routes) re-asserts ownership per-request with a 404-over-403 posture; `BaseService` exposes `assertEqualTenants` / `assertParentInScope` / `assertUserBelongsToTenant`; tenant-leading composite indexes keep tenant-scoped scans efficient; cross-tenant regression suites live in `apps/api/tests/e2e/task-307-*` and `tests/cross-tenant/`.
 - Tenant commercial plan: `Tenant.plan` (`ENTERPRISE | PRO | TRIAL | STARTER`, nullable) + `trialEndsAt`; entitlements resolve limits per plan with per-tenant overrides.
 
@@ -127,11 +127,11 @@ The AI configuration / model control plane — full resolution semantics, creden
 | Model | Purpose | Key relations | Owning module |
 |---|---|---|---|
 | `AiProviderConnection` | Where a serving provider lives + how to auth: one row per `(tenant, provider)`; location columns (`baseUrl`/`region`/`apiVersion`/`deploymentName`); BYO cloud key as Vault-Transit ciphertext (`encryptedApiKey`, never returned — `hasKey` only). Tenant rows only for azure/bedrock; self-host SYSTEM-only. **SYSTEM-shared read** | `provider` by slug (no FK) | `ai-provider-connection` |
-| `AiRuntimeProfile` | Hyperparameters / context / concurrency per provider (`modelSlug = ""` sentinel) or per model (`modelSlug = AiModel.slug`); all numeric fields nullable = inherit. Global-admin / SYSTEM-only | `modelSlug` → `AiModel.slug` (no FK) | `ai-runtime-profile` |
-| `AiTaskDefault` | Per-`(tenant, taskKey)` default model for a task (`guardrail.*`, `nlp.*`, `smr.*`, `harness.*`); resolution tenant → SYSTEM → env. **All task-key prefixes global-admin-only** | `modelSlug` → `AiModel.slug` (no FK) | `ai-task-default` |
+| `AiRuntimeProfile` | Hyperparameters / context / concurrency per provider (`modelSlug = ""` sentinel) or per model (`modelSlug = AiModel.slug`); all numeric fields nullable = inherit. Super-admin / SYSTEM-only | `modelSlug` → `AiModel.slug` (no FK) | `ai-runtime-profile` |
+| `AiTaskDefault` | Per-`(tenant, taskKey)` default model for a task (`guardrail.*`, `nlp.*`, `smr.*`, `harness.*`); resolution tenant → SYSTEM → env. **All task-key prefixes super-admin-only** | `modelSlug` → `AiModel.slug` (no FK) | `ai-task-default` |
 | `TenantTtsConfig` | One TTS spec per tenant (`tenantId` unique; SYSTEM = platform default; null/`[]` inherits; clamped to `PLATFORM_TTS_LIMITS`) — resolved by the gateway, injected into stateless tts | tenant-scoped | `tenant-tts-config` |
 | `TenantTtsProviderCredential` | Optional per-`(tenant, provider)` BYO TTS key; Vault-Transit ciphertext only; **not** SYSTEM-shared | tenant-scoped | `tenant-tts-config` |
-| `McpServer` | Global-admin registry of external MCP tool servers the harness may call; SYSTEM-only rows + SYSTEM-shared read; **no secret in DB** (`authRef` = Vault path only); `phiBoundary` defaults `external` (fail-closed egress screen); `enabled` kill-switch under `HarnessPolicy.mcpToolsEnabled` | referenced by name (no FK) | `mcp-admin`, harness |
+| `McpServer` | Super-admin registry of external MCP tool servers the harness may call; SYSTEM-only rows + SYSTEM-shared read; **no secret in DB** (`authRef` = Vault path only); `phiBoundary` defaults `external` (fail-closed egress screen); `enabled` kill-switch under `HarnessPolicy.mcpToolsEnabled` | referenced by name (no FK) | `mcp-admin`, harness |
 
 ### 5.8 Storage & media
 

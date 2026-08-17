@@ -34,7 +34,7 @@ function policy(overrides: Partial<Policy> = {}): Policy {
 }
 
 const TENANT_POLICY = policy();
-const PROTECTED_POLICY = policy({ id: 'p-2', name: 'platform.global-admin', scope: 'GLOBAL', isProtected: true });
+const PROTECTED_POLICY = policy({ id: 'p-2', name: 'platform.super-admin', scope: 'GLOBAL', isProtected: true });
 
 function envelope(rows: Policy[]): RbacPaginated<Policy> {
   return { data: rows, total: rows.length, page: 1, pageSize: 25 };
@@ -99,7 +99,7 @@ describe('PoliciesScreen', () => {
 
     expect(screen.getByRole('heading', { level: 1, name: 'Policies' })).toBeDefined();
     expect(await screen.findByText('tenant.manage')).toBeDefined();
-    expect(screen.getByText('platform.global-admin')).toBeDefined();
+    expect(screen.getByText('platform.super-admin')).toBeDefined();
     expect(screen.getByText('Tenant')).toBeDefined();
     expect(screen.getByText('Global')).toBeDefined();
     expect(screen.getByText('Protected')).toBeDefined();
@@ -270,8 +270,8 @@ describe('PoliciesScreen', () => {
     stubFetch(() => Response.json(envelope([PROTECTED_POLICY])));
     renderWithProviders(<PoliciesScreen />);
 
-    await screen.findByText('platform.global-admin');
-    openRowMenu('platform.global-admin');
+    await screen.findByText('platform.super-admin');
+    openRowMenu('platform.super-admin');
     const item = await screen.findByRole('menuitem', { name: 'Delete' });
     expect(item.getAttribute('aria-disabled')).toBe('true');
   });

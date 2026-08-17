@@ -5,7 +5,7 @@ import { ClsService } from 'nestjs-cls';
 import { Authorize, CanManage, RequiredScopes } from '../../decorators';
 
 /**
- * AgenticAdminController — the global-admin control
+ * AgenticAdminController — the super-admin control
  * plane's read-only agentic instruction inventory, mounted at `/admin/agentic/*`
  * (global prefix → `/api/v1/admin/agentic/*`). Mirrors `HarnessAdminController`'s
  * tenant-scope posture.
@@ -16,7 +16,7 @@ import { Authorize, CanManage, RequiredScopes } from '../../decorators';
  *
  * Scoping: tenant admins are pinned to their CLS tenant; a FOREIGN `?tenantId=`
  * is 404 (no-existence-leak posture — this is an admin config surface).
- * Global-admins (`isSuperAdmin`) target any tenant via `?tenantId=`.
+ * Super-admins (`isSuperAdmin`) target any tenant via `?tenantId=`.
  *
  * AUTHORIZATION: this controller DELIBERATELY keeps `@CanManage('HarnessPolicy')`
  * — the mcp-admin and agent-trajectory controllers were swapped to their own
@@ -68,7 +68,7 @@ export class AgenticAdminController {
   }
 
   /**
-   * Resolve the effective read tenant. Global-admins target `?tenantId=` (falling
+   * Resolve the effective read tenant. Super-admins target `?tenantId=` (falling
    * back to the elevated working tenant). Tenant-bound callers are pinned to their
    * own tenant; a FOREIGN `?tenantId=` yields 404 (no-existence-leak posture).
    */

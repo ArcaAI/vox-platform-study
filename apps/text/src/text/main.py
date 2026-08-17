@@ -351,7 +351,7 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
     settings = settings_override or get_settings()
 
     app = FastAPI(
-        title="SMR — Text Generation Service",
+        title="Text — Text Generation Service",
         description="General-purpose text generation API with multi-provider LLM support",
         version="2.0.0",
         docs_url="/api/v1/docs",

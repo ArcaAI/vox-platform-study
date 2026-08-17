@@ -185,7 +185,7 @@ or directly.
 - **Base path**: `/api/v1/audio/transcription-jobs` (`TranscriptionJobController`, `apps/api`).
 - **Auth**: `@ApiBearerAuth()` + class-level `@Authorize()` (no ability argument) — every route requires an
   authenticated caller; no per-route ability is declared beyond that.
-- **Tenancy**: `getTenantId()` resolves the caller's active tenant (CLS `tenantId`, elevated by a global admin's
+- **Tenancy**: `getTenantId()` resolves the caller's active tenant (CLS `tenantId`, elevated by a super admin's
   `X-Tenant-Id` header, else the JWT's own `tenantId`) and throws `400` if none resolves — "Tenant context is
   required." **There is no SYSTEM-tenant fallback.**
 - **Ownership scope — two different postures on the same controller, read the route table carefully:**

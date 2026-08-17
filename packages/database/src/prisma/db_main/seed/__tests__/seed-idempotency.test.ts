@@ -12,7 +12,7 @@
  *   PLATFORM_SETTINGS  update: { defaultValue, dataType, description, ... }   ✅ no `value`
  *   ALL_SETTINGS       update: { value, defaultValue, dataType, ... }         ❌ reverts the admin
  *
- * and the PLATFORM_SETTINGS loop even carries the comment "GLOBAL_ADMIN who
+ * and the PLATFORM_SETTINGS loop even carries the comment "SUPER_ADMIN who
  * turned the capability ON keeps it after `db:seed`".
  *
  * The rule this encodes:

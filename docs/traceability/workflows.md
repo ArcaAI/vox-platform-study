@@ -18,7 +18,7 @@ domain file (or, for not-yet-migrated domains, in the legacy [`docs/traceability
   gateway's tenant-owned-resource interceptor + service-layer `assertEqualTenants` throw
   `NotFoundException`, hiding resource existence. Locked by `tests/cross-tenant/` + the
   `*-cross-tenant.spec.ts` suite. (Distinct from the imperative **403** privilege
-  boundaries — GLOBAL-ADMIN-only writes — which are annotated `AUTH-NOTE(TASK-532)` at the
+  boundaries — SUPER_ADMIN-only writes — which are annotated `AUTH-NOTE` at the
   route; see rule 05.)
 - **Optimistic concurrency (OCC / If-Match).** `_version` → strong `ETag` → client `If-Match`
   → `@RequiresIfMatch()` (missing header → **428**) + `@ExpectedVersion()` → `updateWithVersion`
@@ -90,16 +90,16 @@ posting progress/results back on internal service-token callbacks.
 ## W4 — Summarization (async / SSE) with in-band guardrail interception
 
 Turning clinical context into documentation across tiers (pre / final / comprehensive), with
-guardrail validation applied **inside** SMR generation (a gateway hop it is not).
+guardrail validation applied **inside** Text generation (a gateway hop it is not).
 
 1. **Resolve the prompt.** `packages/applications/src/services/consultation/prompt` (`prompt-resolution.service.ts`, `prompt-assembly.service.ts`) selects the effective (approved) `PromptTemplate`/`PromptVersion`. unit(app): `summary.service.prompt-tier.task331`, `summary.service.preferred-prompt.task329`.
 2. **Quota precheck.** `IEntitlementsService.assertQuantityQuota` → `QuotaExceededException` (HTTP 409), kill-switch-gated (rule 04) → `TenantEntitlement`, `TenantUsageMeter` (legacy row 6). unit(app): entitlements suite (legacy row 6).
-3. **Generate (sync or async).** `POST /consultations/:id/summary[/async]`, `/pre-summary[/async]`, `/comprehensive[/async]` → BullMQ `Generate*` queues → SMR `POST /api/v1/generate` → `SummaryMeta`, `ContextItem` (`RAW_SUMMARY`/`MODIFIED_SUMMARY`). unit(app): `consultation/summary/__tests__/{summary.service,chain-summary.service,smr-generate}.test.ts`; contract: `smr.contract.test.ts`; py(smr).
-4. **Guardrail gate (in-band, fail-closed).** SMR `ExternalGuardrailClient` (`external_guardrail.py`) validates every prompt before the LLM call → guardrail `POST /api/v1/guardrail/analyze` (stateless); guardrail outage → retryable **503**, genuine violation → **block**. py(smr): `unit/test_generate_guardrail_wiring.py`, `unit/test_external_guardrail_client.py`; py(grd).
+3. **Generate (sync or async).** `POST /consultations/:id/summary[/async]`, `/pre-summary[/async]`, `/comprehensive[/async]` → BullMQ `Generate*` queues → Text `POST /api/v1/generate` → `SummaryMeta`, `ContextItem` (`RAW_SUMMARY`/`MODIFIED_SUMMARY`). unit(app): `consultation/summary/__tests__/{summary.service,chain-summary.service,text-generate}.test.ts`; contract: `text.contract.test.ts`; py(text).
+4. **Guardrail gate (in-band, fail-closed).** Text `ExternalGuardrailClient` (`external_guardrail.py`) validates every prompt before the LLM call → guardrail `POST /api/v1/guardrail/analyze` (stateless); guardrail outage → retryable **503**, genuine violation → **block**. py(text): `unit/test_generate_guardrail_wiring.py`, `unit/test_external_guardrail_client.py`; py(grd).
 5. **Stream progress / track the job.** SSE `GET /consultations/jobs/:jobId/stream`, `GET /consultations/jobs/:jobId`, `PATCH …/cancel`. e2e: `consultation-jobs.e2e-spec.ts`, `consultation-job-cross-tenant.spec.ts`.
 6. **Read / edit / provenance.** `GET /consultations/:id/summary/latest`, `PATCH /consultations/:id/summary/:summaryId` (OCC), `GET …/:contextItemId/{versions,provenance,diff}`. unit(app): `summary.service.provenance.task330`, `summary.service.edit-capture`.
 
-**Composes:** [`summarization.md`](./summarization.md) G1 (summarization), G2 (SMR proxy), G3 (guardrail interception); [`consultation.md`](./consultation.md) C8 (async jobs).
+**Composes:** [`summarization.md`](./summarization.md) G1 (summarization), G2 (Text proxy), G3 (guardrail interception); [`consultation.md`](./consultation.md) C8 (async jobs).
 
 **Invariants:** 404-over-403 on consultation/job ids (`consultation-job-cross-tenant`); OCC on `PATCH …/summary/:summaryId`; guardrail **fail-closed** (a wired-but-unreachable guardrail blocks generation rather than shipping an unmoderated PHI prompt); summary content envelope-encrypted.
 
@@ -153,17 +153,17 @@ tasks, resolve its runtime, and retire trajectory data on a retention schedule.
 
 **Composes:** [`ai-models-providers.md`](./ai-models-providers.md) M1 (registry), M2 (discovery), M3 (task defaults), M4 (runtime profiles), M5 (inference gateway), M7 (trajectory + retention).
 
-**Invariants:** the registry is a **GLOBAL-ADMIN plane** (guards pinned to `manage:all`); OCC on `PATCH ai-models/:id` and every `PUT /row` (incl. "0"-create — `ai-provider-connections.spec.ts`, `ai-runtime-profiles.spec.ts`, `settings-registry-write.spec.ts`); certain task-default prefixes are GLOBAL-ADMIN-only **imperatively** (`GLOBAL_ADMIN_ONLY_TASK_PREFIXES`, a 403, not the 404 posture — rule 05); exact-tenant scoping in the Prisma `tenant-scope` extension.
+**Invariants:** the registry is a **SUPER_ADMIN plane** (guards pinned to `manage:all`); OCC on `PATCH ai-models/:id` and every `PUT /row` (incl. "0"-create — `ai-provider-connections.spec.ts`, `ai-runtime-profiles.spec.ts`, `settings-registry-write.spec.ts`); certain task-default prefixes are SUPER_ADMIN-only **imperatively** (`SUPER_ADMIN_ONLY_TASK_PREFIXES`, a 403, not the 404 posture — rule 05); exact-tenant scoping in the Prisma `tenant-scope` extension.
 
 ---
 
-## W8 — BYO provider resolution (tenant override → SMR / TTS injection)
+## W8 — BYO provider resolution (tenant override → Text / TTS injection)
 
 Runtime resolution of a tenant's own cloud-provider credentials, injected into the otherwise
 stateless generation and synthesis services.
 
 1. **Store the BYO connection.** `PUT /admin/ai-providers/:provider` → `AiProviderConnection` (`db_main/ai-provider-connection.prisma`; `apiKey` write-only, Vault-Transit, no reveal route, OCC). unit(app): `ai-provider-connection/__tests__/ai-provider-connection.service.test.ts`.
-2. **Resolve at generation time.** `resolveConnection` / `resolveTenantCloudOverrides` → `SmrProxyController.applyTenantProviderOverrides` injects `provider_overrides` onto SMR `POST /api/v1/generate`. unit(app): `ai-provider-connection.tenant-lane.test.ts`; unit(api): `streaming/__tests__/smr-proxy-tenant-byo.controller.test.ts`; e2e: `ai-provider-connections-cross-tenant.spec.ts`.
+2. **Resolve at generation time.** `resolveConnection` / `resolveTenantCloudOverrides` → `TextProxyController.applyTenantProviderOverrides` injects `provider_overrides` onto Text `POST /api/v1/generate`. unit(app): `ai-provider-connection.tenant-lane.test.ts`; unit(api): `streaming/__tests__/text-proxy-tenant-byo.controller.test.ts`; e2e: `ai-provider-connections-cross-tenant.spec.ts`.
 3. **Tenant-TTS lane.** Gateway resolves the effective TTS spec (tenant row merged over SYSTEM default, clamped to platform limits) + decrypts the BYO TTS key at injection time → injected into stateless `apps/tts` per request → `TenantTtsConfig`, `TenantTtsProviderCredential` (deliberately **non-OCC**). unit(app): `tenant-tts-config/__tests__/{tenant-tts-config.service,platform-limits}.test.ts`.
 
 **Composes:** [`ai-models-providers.md`](./ai-models-providers.md) M6 (BYO cloud connections); [`tts.md`](./tts.md) T3 (tenant-TTS BYO).
@@ -209,15 +209,15 @@ audit path.
 The three release-governance write paths, each an authoritative-editor surface with an
 imperative privilege gate above the declarative decorator.
 
-1. **Prompt approval (clinical gate).** `POST /admin/prompt-templates/:id/approve` → flips `PromptTemplate.status = APPROVED`, pins a `PromptVersion`, writes a WORM change row (`@RequiresIfMatch()`). **GLOBAL-ADMIN-only imperatively** (`isSuperAdmin` in the service — the class decorator understates it; `AUTH-NOTE(TASK-532)`). This is the gate `prompt-resolution` (W4 step 1) requires. unit(app): `prompt-management/__tests__/prompt-management.service.test.ts`; e2e: `agent-management-contract.spec.ts`, `agents-backend-backlog.spec.ts`.
+1. **Prompt approval (clinical gate).** `POST /admin/prompt-templates/:id/approve` → flips `PromptTemplate.status = APPROVED`, pins a `PromptVersion`, writes a WORM change row (`@RequiresIfMatch()`). **SUPER_ADMIN-only imperatively** (`isSuperAdmin` in the service — the class decorator understates it; `AUTH-NOTE`). This is the gate `prompt-resolution` (W4 step 1) requires. unit(app): `prompt-management/__tests__/prompt-management.service.test.ts`; e2e: `agent-management-contract.spec.ts`, `agents-backend-backlog.spec.ts`.
 2. **Policy cascade (realtime pipeline policy).** `@Controller('admin/harness/pipeline-policy')` → `GET /row`, `PUT /row` (create/CAS under `If-Match`, "0"-create) → `PipelinePolicy`, `PipelinePolicyChange`. **`globalOnly` descriptor lock enforced imperatively** (`AUTH-NOTE`). unit(app): `pipeline-policy/__tests__/pipeline-policy.service.test.ts`; e2e: `backend-residuals.spec.ts` (partial).
-3. **Global harness policy default.** `GET/PATCH /admin/harness/policy/global` (SYSTEM-tenant GLOBAL-DEFAULT `HarnessPolicy`; `@RequiresIfMatch()` even on first edit — 428/412) — the single authoritative editor (`/agentic-policy` owns it; `/harness/policy` links). **GLOBAL-ADMIN-only** via `GLOBAL_ADMIN_ONLY_POLICY_KEYS`. unit(app): `harness-policy/__tests__/*`; e2e: `agentic-policy.spec.ts`.
-4. **Engine kill switch.** `GET/PATCH /admin/harness/live/config` — `enabled:false` engages the kill-switch (new `start()` calls refused while in-flight sessions drain; NOT versioned). Reading/toggling raises `ForbiddenException` without platform (global-admin) privilege. unit(app): `agentic-instructions/__tests__/agentic-instructions.service.test.ts`; e2e: `agentic-policy.spec.ts`.
-5. **MCP tool registry writes.** `@Controller('admin/mcp-servers')` CRUD → `McpServer` — writes stay **GLOBAL-ADMIN-only** in the service (`AUTH-NOTE`). e2e: `mcp-admin.spec.ts`.
+3. **Global harness policy default.** `GET/PATCH /admin/harness/policy/global` (SYSTEM-tenant GLOBAL-DEFAULT `HarnessPolicy`; `@RequiresIfMatch()` even on first edit — 428/412) — the single authoritative editor (`/agentic-policy` owns it; `/harness/policy` links). **SUPER_ADMIN-only** via `SUPER_ADMIN_ONLY_POLICY_KEYS`. unit(app): `harness-policy/__tests__/*`; e2e: `agentic-policy.spec.ts`.
+4. **Engine kill switch.** `GET/PATCH /admin/harness/live/config` — `enabled:false` engages the kill-switch (new `start()` calls refused while in-flight sessions drain; NOT versioned). Reading/toggling raises `ForbiddenException` without platform (super-admin) privilege. unit(app): `agentic-instructions/__tests__/agentic-instructions.service.test.ts`; e2e: `agentic-policy.spec.ts`.
+5. **MCP tool registry writes.** `@Controller('admin/mcp-servers')` CRUD → `McpServer` — writes stay **SUPER_ADMIN-only** in the service (`AUTH-NOTE`). e2e: `mcp-admin.spec.ts`.
 
 **Composes:** [`summarization.md`](./summarization.md) G5 (prompt governance); [`harness.md`](./harness.md) H3 (pipeline-policy cascade), H6 (agentic-policy engine + kill switch), H7 (MCP registry).
 
-**Invariants:** these are **403 privilege boundaries** (imperative `isSuperAdmin` / `GLOBAL_ADMIN_ONLY_*` / `globalOnly` locks), NOT the 404-over-403 cross-tenant posture — a cross-tenant id is still **404** via `assertOwnedByTenant` (rule 05); OCC / "0"-create on every versioned `PUT /row` and `PATCH /policy/global`; approval + policy changes write WORM change rows (`HarnessPolicyChange`, `PipelinePolicyChange`, pinned `PromptVersion`); one authoritative editor per resource (rule 13).
+**Invariants:** these are **403 privilege boundaries** (imperative `isSuperAdmin` / `SUPER_ADMIN_ONLY_*` / `globalOnly` locks), NOT the 404-over-403 cross-tenant posture — a cross-tenant id is still **404** via `assertOwnedByTenant` (rule 05); OCC / "0"-create on every versioned `PUT /row` and `PATCH /policy/global`; approval + policy changes write WORM change rows (`HarnessPolicyChange`, `PipelinePolicyChange`, pinned `PromptVersion`); one authoritative editor per resource (rule 13).
 
 ---
 
@@ -308,7 +308,7 @@ closed` (no env fallback).
 
 ## Honest notes / gaps (workflow-level)
 
-- **No e2e proves W4's full guardrail-interception chain end to end.** The fail-closed behavior is covered at py(smr) unit level (`test_generate_guardrail_wiring.py`); there is no live-DB Playwright spec asserting a blocked generation from a browser call.
+- **No e2e proves W4's full guardrail-interception chain end to end.** The fail-closed behavior is covered at py(text) unit level (`test_generate_guardrail_wiring.py`); there is no live-DB Playwright spec asserting a blocked generation from a browser call.
 - **W2's browser-WS live round-trip and W9's live synthesis are env-gated**, not `apps/api/tests/e2e` specs (playground manual passes) — see the transcription and TTS domain gaps.
 - **W6's SAML leg is an open security gate** — real signed-assertion tamper/expiry/replay/XSW coverage does not exist (I2 unit tests use a mocked SAML client). Do not read W6 step 4 as assertion-hardening evidence.
 - **W10 step 5 (revocation/audit) is uncommitted** on `fix/2605-review` (TASK-541, status Review) — landed-but-unmerged.

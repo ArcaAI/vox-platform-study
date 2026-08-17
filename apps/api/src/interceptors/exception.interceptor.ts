@@ -325,7 +325,15 @@ export class ExceptionInterceptor implements NestInterceptor {
           err.correlationId = requestId;
         }
 
-        if (err.response) {
+        // Only an OBJECT body can carry a correlationId. `new HttpException('msg',
+        // status)` keeps the body as a raw STRING, and assigning a property to a
+        // string primitive THROWS in strict mode ("Cannot create property
+        // 'correlationId' on string ..."). That TypeError escaped this
+        // `catchError`, so any downstream client raising a string-bodied
+        // HttpException — `AiInferenceClient.toHttpError`, which deliberately
+        // redacts PHI-bearing upstream bodies down to a plain string — had its
+        // honest 503/4xx rewritten into an opaque 500.
+        if (err.response !== null && typeof err.response === 'object') {
           err.response.correlationId = err.correlationId;
         }
 

@@ -189,58 +189,58 @@ class TestExceptionAttributes:
 class TestExceptionHandlerStatusCodes:
     @pytest.mark.asyncio
     async def test_handler_returns_correct_status_for_rate_limit(self):
-        from text.core.exception_handlers import smr_exception_handler
+        from text.core.exception_handlers import text_exception_handler
 
         exc = RateLimitError("too fast", retry_after=10.0)
-        resp = await smr_exception_handler(MagicMock(), exc)
+        resp = await text_exception_handler(MagicMock(), exc)
         assert resp.status_code == 429
 
     @pytest.mark.asyncio
     async def test_handler_returns_correct_status_for_circuit_open(self):
-        from text.core.exception_handlers import smr_exception_handler
+        from text.core.exception_handlers import text_exception_handler
 
         exc = CircuitOpenError(provider="azure")
-        resp = await smr_exception_handler(MagicMock(), exc)
+        resp = await text_exception_handler(MagicMock(), exc)
         assert resp.status_code == 503
 
     @pytest.mark.asyncio
     async def test_handler_returns_correct_status_for_provider_error(self):
-        from text.core.exception_handlers import smr_exception_handler
+        from text.core.exception_handlers import text_exception_handler
 
         exc = ProviderError("boom", provider="ollama")
-        resp = await smr_exception_handler(MagicMock(), exc)
+        resp = await text_exception_handler(MagicMock(), exc)
         assert resp.status_code == 502
 
     @pytest.mark.asyncio
     async def test_handler_returns_correct_status_for_shutdown(self):
-        from text.core.exception_handlers import smr_exception_handler
+        from text.core.exception_handlers import text_exception_handler
 
         exc = ShutdownError()
-        resp = await smr_exception_handler(MagicMock(), exc)
+        resp = await text_exception_handler(MagicMock(), exc)
         assert resp.status_code == 503
 
     @pytest.mark.asyncio
     async def test_handler_returns_correct_status_for_not_found(self):
-        from text.core.exception_handlers import smr_exception_handler
+        from text.core.exception_handlers import text_exception_handler
 
         exc = ProviderNotFoundError("nope", provider="ghost")
-        resp = await smr_exception_handler(MagicMock(), exc)
+        resp = await text_exception_handler(MagicMock(), exc)
         assert resp.status_code == 404
 
     @pytest.mark.asyncio
     async def test_handler_returns_correct_status_for_validation(self):
-        from text.core.exception_handlers import smr_exception_handler
+        from text.core.exception_handlers import text_exception_handler
 
         exc = InputValidationError("bad input")
-        resp = await smr_exception_handler(MagicMock(), exc)
+        resp = await text_exception_handler(MagicMock(), exc)
         assert resp.status_code == 422
 
     @pytest.mark.asyncio
     async def test_handler_returns_correct_status_for_content_blocked(self):
-        from text.core.exception_handlers import smr_exception_handler
+        from text.core.exception_handlers import text_exception_handler
 
         exc = ContentBlockedError()
-        resp = await smr_exception_handler(MagicMock(), exc)
+        resp = await text_exception_handler(MagicMock(), exc)
         assert resp.status_code == 422
 
     @pytest.mark.asyncio
@@ -248,84 +248,84 @@ class TestExceptionHandlerStatusCodes:
         """A cloud provider raising ModelNotSelectedError (no model
         resolved — never a substituted vendor default) maps to 422, same as
         InputValidationError (its parent)."""
-        from text.core.exception_handlers import smr_exception_handler
+        from text.core.exception_handlers import text_exception_handler
 
         exc = ModelNotSelectedError("no model", provider="azure_openai")
-        resp = await smr_exception_handler(MagicMock(), exc)
+        resp = await text_exception_handler(MagicMock(), exc)
         assert resp.status_code == 422
 
     @pytest.mark.asyncio
     async def test_handler_returns_correct_status_for_queue_full(self):
-        from text.core.exception_handlers import smr_exception_handler
+        from text.core.exception_handlers import text_exception_handler
 
         exc = QueueFullError(provider="ollama")
-        resp = await smr_exception_handler(MagicMock(), exc)
+        resp = await text_exception_handler(MagicMock(), exc)
         assert resp.status_code == 429
 
     @pytest.mark.asyncio
     async def test_handler_returns_correct_status_for_queue_timeout(self):
-        from text.core.exception_handlers import smr_exception_handler
+        from text.core.exception_handlers import text_exception_handler
 
         exc = QueueTimeoutError(provider="ollama")
-        resp = await smr_exception_handler(MagicMock(), exc)
+        resp = await text_exception_handler(MagicMock(), exc)
         assert resp.status_code == 429
 
     @pytest.mark.asyncio
     async def test_handler_returns_correct_status_for_concurrency_limit(self):
-        from text.core.exception_handlers import smr_exception_handler
+        from text.core.exception_handlers import text_exception_handler
 
         exc = ConcurrencyLimitError(provider="bedrock")
-        resp = await smr_exception_handler(MagicMock(), exc)
+        resp = await text_exception_handler(MagicMock(), exc)
         assert resp.status_code == 503
 
     @pytest.mark.asyncio
     async def test_handler_returns_correct_status_for_provider_timeout(self):
-        from text.core.exception_handlers import smr_exception_handler
+        from text.core.exception_handlers import text_exception_handler
 
         exc = ProviderTimeoutError(provider="azure")
-        resp = await smr_exception_handler(MagicMock(), exc)
+        resp = await text_exception_handler(MagicMock(), exc)
         assert resp.status_code == 502
 
     @pytest.mark.asyncio
     async def test_handler_returns_500_for_base_smr_error(self):
-        from text.core.exception_handlers import smr_exception_handler
+        from text.core.exception_handlers import text_exception_handler
 
         exc = SmrError("generic")
-        resp = await smr_exception_handler(MagicMock(), exc)
+        resp = await text_exception_handler(MagicMock(), exc)
         assert resp.status_code == 500
 
 
 class TestExceptionHandlerHeaders:
     @pytest.mark.asyncio
     async def test_handler_returns_retry_after_header_for_rate_limit(self):
-        from text.core.exception_handlers import smr_exception_handler
+        from text.core.exception_handlers import text_exception_handler
 
         exc = RateLimitError("slow down", retry_after=9.2)
-        resp = await smr_exception_handler(MagicMock(), exc)
+        resp = await text_exception_handler(MagicMock(), exc)
         assert resp.headers.get("retry-after") == "10"
 
     @pytest.mark.asyncio
     async def test_handler_returns_retry_after_header_for_circuit_open(self):
-        from text.core.exception_handlers import smr_exception_handler
+        from text.core.exception_handlers import text_exception_handler
 
         exc = CircuitOpenError(provider="azure")
-        resp = await smr_exception_handler(MagicMock(), exc)
+        resp = await text_exception_handler(MagicMock(), exc)
         assert resp.headers.get("retry-after") == "30"
 
     @pytest.mark.asyncio
     async def test_handler_returns_retry_after_header_for_concurrency_limit(self):
-        from text.core.exception_handlers import smr_exception_handler
+        from text.core.exception_handlers import text_exception_handler
 
         exc = ConcurrencyLimitError(provider="bedrock")
-        resp = await smr_exception_handler(MagicMock(), exc)
+        resp = await text_exception_handler(MagicMock(), exc)
         assert resp.headers.get("retry-after") == "5"
 
     @pytest.mark.asyncio
     async def test_handler_no_retry_after_for_provider_error(self):
-        from text.core.exception_handlers import smr_exception_handler
+        from text.core.exception_handlers import text_exception_handler
 
         exc = ProviderError("boom", provider="ollama")
-        resp = await smr_exception_handler(MagicMock(), exc)
+        resp = await text_exception_handler(MagicMock(), exc)
         assert "retry-after" not in resp.headers
 
 
@@ -334,10 +334,10 @@ class TestExceptionHandlerBody:
     async def test_handler_response_includes_error_code(self):
         import json
 
-        from text.core.exception_handlers import smr_exception_handler
+        from text.core.exception_handlers import text_exception_handler
 
         exc = CircuitOpenError(provider="azure")
-        resp = await smr_exception_handler(MagicMock(), exc)
+        resp = await text_exception_handler(MagicMock(), exc)
         body = json.loads(resp.body.decode())
         assert body["error_code"] == "CIRCUIT_OPEN"
         assert body["detail"] == "Service temporarily unavailable"
@@ -346,10 +346,10 @@ class TestExceptionHandlerBody:
     async def test_handler_response_includes_detail_message(self):
         import json
 
-        from text.core.exception_handlers import smr_exception_handler
+        from text.core.exception_handlers import text_exception_handler
 
         exc = ProviderError("GPU OOM", provider="ollama")
-        resp = await smr_exception_handler(MagicMock(), exc)
+        resp = await text_exception_handler(MagicMock(), exc)
         body = json.loads(resp.body.decode())
         assert body["detail"] == "GPU OOM"
         assert body["error_code"] == "PROVIDER_ERROR"

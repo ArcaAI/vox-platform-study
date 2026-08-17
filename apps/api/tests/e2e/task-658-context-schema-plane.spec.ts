@@ -135,7 +135,7 @@ test.describe('A tenant with no context schema is untouched by the programme', (
 test.describe.serial('Context-schema plane end to end', () => {
   let adminToken: string;
   let arcaaiDoctorToken: string;
-  let globalAdminToken: string;
+  let superAdminToken: string;
   let schemaId: string;
   let publishedEtag: string;
   let pinnedVersionId: string;
@@ -154,7 +154,7 @@ test.describe.serial('Context-schema plane end to end', () => {
 
     const globalAdmin = await loginUser(request, SEEDED_USERS.admin.username, SEEDED_USERS.admin.password, DEFAULT_TENANT_KEY);
     expect(globalAdmin, 'tenant_admin login (__GLOBAL__) failed — is the stack seeded?').toBeTruthy();
-    globalAdminToken = globalAdmin!.token;
+    superAdminToken = globalAdmin!.token;
   });
 
   test.afterAll(async ({ request }) => {
@@ -301,14 +301,14 @@ test.describe.serial('Context-schema plane end to end', () => {
   });
 
   test('another tenant cannot read this schema — 404, never 403', async ({ request }) => {
-    const response = await request.get(`${ADMIN_SCHEMAS}/${schemaId}`, { headers: auth(globalAdminToken) });
+    const response = await request.get(`${ADMIN_SCHEMAS}/${schemaId}`, { headers: auth(superAdminToken) });
 
     expect(response.status()).toBe(404);
     expect(String((await response.json()).message ?? '')).not.toMatch(/tenant/i);
   });
 
   test('the schema list is tenant-scoped', async ({ request }) => {
-    const response = await request.get(ADMIN_SCHEMAS, { headers: auth(globalAdminToken) });
+    const response = await request.get(ADMIN_SCHEMAS, { headers: auth(superAdminToken) });
     expect(response.status()).toBe(200);
 
     const rows = (await response.json()) as Array<{ slug: string }>;

@@ -9,7 +9,7 @@
  *      provider (azure/bedrock). A self-host provider is a PRIVILEGE boundary
  *      on the caller's own tenant → 403, deliberately NOT the 404-over-403
  *      cross-tenant posture.
- *   2. SYSTEM-row writes require a global admin → 403.
+ *   2. SYSTEM-row writes require a super admin → 403.
  *   3. No read DTO anywhere carries `encryptedApiKey`/ciphertext — asserted by
  *      a recursive deep-key scan, not a shallow property check.
  *   4. `resolveConnection` cascades enabled-tenant → SYSTEM → null, where null
@@ -277,12 +277,12 @@ describe('AiProviderConnectionService — secret containment (test 3)', () => {
 // ===========================================================================
 
 describe('AiProviderConnectionService — SYSTEM governance (test 4)', () => {
-  it('rejects a SYSTEM-row write from a non-global-admin with 403', async () => {
+  it('rejects a SYSTEM-row write from a non-super-admin with 403', async () => {
     const { svc } = makeService({ roles: [] });
     await expect(svc.upsertRow('llm', 'ollama', { enabled: true }, SYSTEM_TENANT_ID)).rejects.toBeInstanceOf(ForbiddenException);
   });
 
-  it('allows a SYSTEM-row write from a global admin, for a self-host provider', async () => {
+  it('allows a SYSTEM-row write from a super admin, for a self-host provider', async () => {
     const { svc, repo } = makeService({ roles: ['SUPER_ADMIN'] });
     const res = await svc.upsertRow('llm', 'ollama', { enabled: true, baseUrl: 'http://localhost:11434' }, SYSTEM_TENANT_ID);
     expect(repo.create).toHaveBeenCalledTimes(1);

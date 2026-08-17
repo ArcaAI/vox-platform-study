@@ -14,7 +14,7 @@ import { isSuperAdmin } from '@arcaai/applications';
  * their call sites are unchanged.
  *
  * Posture (unchanged from the originals):
- *  - global-admin (`isSuperAdmin`) acts cross-tenant via `?tenantId=`, falling
+ *  - super-admin (`isSuperAdmin`) acts cross-tenant via `?tenantId=`, falling
  *    back to the working tenant elevated into CLS.
  *  - a tenant-bound caller is pinned to its own tenant; a FOREIGN `?tenantId=`
  *    is rejected (403, or 404 for the no-existence-leak config surfaces).
@@ -24,7 +24,7 @@ type ScopeUser = { tenantId?: string | null; roles?: string[] | null } | null | 
 /**
  * Resolve the single tenant a scoped admin request acts on.
  * @param callerTenantId the CLS active tenant (may be the elevated working
- *   tenant for a global-admin); falls back to the user's JWT tenant.
+ *   tenant for a super-admin); falls back to the user's JWT tenant.
  */
 export function resolveScopedTenantId(user: ScopeUser, callerTenantId: string | undefined, queryTenantId?: string): string {
   if (isSuperAdmin(user)) {
@@ -45,7 +45,7 @@ export function resolveScopedTenantId(user: ScopeUser, callerTenantId: string | 
 }
 
 /**
- * List-filter variant: a global-admin may OMIT the tenant (undefined = across
+ * List-filter variant: a super-admin may OMIT the tenant (undefined = across
  * all tenants); a tenant-bound caller is pinned and a foreign query → 403.
  */
 export function resolveScopedTenantIdOptional(user: ScopeUser, callerTenantId: string | undefined, queryTenantId?: string): string | undefined {
@@ -62,7 +62,7 @@ export function resolveScopedTenantIdOptional(user: ScopeUser, callerTenantId: s
 
 /**
  * Assert a caller may act on an ALREADY-KNOWN target tenant id (e.g. from a
- * `:id` path param or a lookup result). Global-admin always passes.
+ * `:id` path param or a lookup result). Super-admin always passes.
  * @param onForeign `'forbidden'` (403, default) or `'notfound'` (404) — use
  *   404 where surfacing existence would leak cross-tenant data.
  */

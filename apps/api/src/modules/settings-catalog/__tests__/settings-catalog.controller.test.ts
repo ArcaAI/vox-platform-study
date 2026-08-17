@@ -14,7 +14,7 @@ function controllerFor(user: unknown, effective: Partial<EffectiveSettingsServic
 }
 
 describe('SettingsCatalogController.getCatalog', () => {
-  it('a global-admin sees SUPER_ADMIN-only entries (the entitlements kill-switch)', () => {
+  it('a super-admin sees SUPER_ADMIN-only entries (the entitlements kill-switch)', () => {
     const res = controllerFor({ roles: ['SUPER_ADMIN'] }).getCatalog();
     expect(res.items.some((i) => i.key === 'entitlements.enabled')).toBe(true);
     expect(res.items.some((i) => i.key === 'pipeline.autoSummaryEnabled')).toBe(true);
@@ -52,7 +52,7 @@ describe('SettingsCatalogController.getEffective', () => {
 
   it('resolves the scoped tenant and delegates to EffectiveSettingsService', async () => {
     const resolveEffective = vi.fn(async () => ({ key: 'pipeline.harnessEnabled', tier: 'db-config', value: true, sourceScope: 'department' }));
-    // global-admin passes ?tenantId= explicitly
+    // super-admin passes ?tenantId= explicitly
     const controller = controllerFor({ roles: ['SUPER_ADMIN'] }, { resolveEffective });
     const res = await controller.getEffective('pipeline.harnessEnabled', 'tnt-9', 'dep-1');
 

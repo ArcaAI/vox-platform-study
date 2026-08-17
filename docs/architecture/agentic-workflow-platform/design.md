@@ -30,7 +30,7 @@ generator. Published workflows are products: bindable to REST/SSE/socket/webhook
 | D5 | Palette sequencing | **Summarization → STT → Consultation** — prove substrate/canvas/exposure on palettes with no clinical gates; consultation inherits a battle-tested engine. Plane 2 (containment + modernization) proceeds regardless |
 | D6 | CQRS | **CQRS-lite, scoped to the substrate** — commands+events on definition mutations, read models for runs/observability. No platform-wide rewrite |
 | D7 | Async transport | **Contract over broker** — one documented async task/event envelope over existing infra (Redis Streams, BullMQ, Temporal). Broker adoption only behind the contract, only if proven necessary |
-| D8 | Naming | `smr` → `text`; `GLOBAL_ADMIN` → `SUPER_ADMIN` (a **rename** — code already has one elevated role). Batched in one `naming-alignment` epic, executed early |
+| D8 | Naming | `smr` → `text`; `SUPER_ADMIN` → `SUPER_ADMIN` (a **rename** — code already has one elevated role). Batched in one `naming-alignment` epic, executed early |
 
 ## Architecture — three planes plus exposure
 

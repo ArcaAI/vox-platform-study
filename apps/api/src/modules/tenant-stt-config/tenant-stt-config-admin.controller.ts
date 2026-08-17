@@ -38,7 +38,7 @@ import { Authorize, ExpectedVersion, RequiresIfMatch, RequiredScopes } from '../
  *  - `POST 'credentials/:provider/test'` → ephemeral "Test connection" probe of
  *    an apiKey/region/endpoint BEFORE it is saved. Never persisted, no OCC.
  *
- * Tenant admins are pinned to their CLS tenant; global-admins (`isSuperAdmin`)
+ * Tenant admins are pinned to their CLS tenant; super-admins (`isSuperAdmin`)
  * act cross-tenant — incl. the SYSTEM-tenant platform default — via `?tenantId=`.
  * A foreign `?tenantId=` on a scoped read is rejected by `resolveScopedTenantId`.
  * The controller holds NO business logic: it resolves the target tenant and
@@ -191,7 +191,7 @@ export class TenantSttConfigAdminController {
     return this.configService.testCredential(this.resolveTenantId(tenantId), provider, body);
   }
 
-  /** Tenant admins → own tenant; global-admins → `?tenantId=` (or CLS tenant). */
+  /** Tenant admins → own tenant; super-admins → `?tenantId=` (or CLS tenant). */
   private resolveTenantId(queryTenantId?: string): string {
     return resolveScopedTenantId(this.cls.get('user'), this.cls.get('tenantId'), queryTenantId);
   }

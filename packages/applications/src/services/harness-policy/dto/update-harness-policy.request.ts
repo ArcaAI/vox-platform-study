@@ -156,7 +156,7 @@ export class UpdateHarnessPolicyRequest {
 
   /**
    * Master gate for the MCP external-tools path. SUPER_ADMIN
-   * only (see `GLOBAL_ADMIN_ONLY_POLICY_KEYS`): a tenant PATCH carrying it is
+   * only (see `SUPER_ADMIN_ONLY_POLICY_KEYS`): a tenant PATCH carrying it is
    * rejected 403. `null ⇒ OFF`; arming it additionally requires the referenced
    * `McpServer.enabled` to be true, so this alone cannot open an egress path.
    *
@@ -164,7 +164,7 @@ export class UpdateHarnessPolicyRequest {
    * pipe runs `forbidNonWhitelisted`, so the field was stripped before it could
    * ever reach `mergeKnobs`.
    */
-  @ApiPropertyOptional({ description: 'MCP external-tools master switch (null = OFF). Global-admin only.', nullable: true })
+  @ApiPropertyOptional({ description: 'MCP external-tools master switch (null = OFF). Super-admin only.', nullable: true })
   @IsOptional()
   @IsBoolean()
   mcpToolsEnabled?: boolean | null;

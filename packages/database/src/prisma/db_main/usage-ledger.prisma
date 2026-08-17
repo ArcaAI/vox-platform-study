@@ -188,7 +188,7 @@ model AiUsageOutbox {
 /// (00000000-0000-0000-0000-000000000000) and the model is in
 /// SYSTEM_SHARED_READ_MODELS, so every tenant's rater READS them under its own
 /// CLS while WRITES stay pinned to the caller (rate-card mutation is
-/// GLOBAL_ADMIN-only at the service layer — the AiTaskDefault precedent). A
+/// SUPER_ADMIN-only at the service layer — the AiTaskDefault precedent). A
 /// tenant-owned row is the hook for a negotiated enterprise rate.
 ///
 /// Unlike its siblings in this file this model IS admin-managed: it keeps the
@@ -380,7 +380,7 @@ model AiUsageRollupDaily {
 /// PLATFORM-WIDE: rows are SYSTEM-owned because a vendor bills the PLATFORM,
 /// not a tenant. It is tenant-scoped in the extension purely so a customer
 /// tenant's reads can never surface aggregate platform vendor spend; reads are
-/// GLOBAL_ADMIN-only at the service layer.
+/// SUPER_ADMIN-only at the service layer.
 model ProviderReconciliationRun {
   // meta fields
   metaData Json?  @map("_metadata") @db.JsonB

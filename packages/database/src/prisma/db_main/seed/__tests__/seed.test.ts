@@ -44,6 +44,12 @@ describe('DNA seed reuses canonical users (cold-seed duplicate-username bug)', (
     expect(new Set(usernames).size).toBe(usernames.length);
   });
 
+  it('seeds super_admin and does not seed a global_admin user', () => {
+    expect(SEED_USERS.some((u) => u.username === 'super_admin')).toBe(true);
+    expect(SEED_USERS.some((u) => u.username === 'global_admin')).toBe(false);
+    expect(SEED_USERS.filter((u) => u.roleNames.includes('SUPER_ADMIN')).map((u) => u.username)).toEqual(['super_admin']);
+  });
+
   it('attaches customer DNA rows only to canonical 91-user.ts users (never invents a new identity)', () => {
     const canonicalIds = new Set(SEED_USERS.map((u) => u.id));
     for (const clinician of CUSTOMER_DNA_CLINICIANS) {

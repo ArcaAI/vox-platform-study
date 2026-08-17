@@ -110,7 +110,7 @@ export class TenantBucketController {
   }
 
   @Get(':id/objects')
-  @TenantOwnedResource({ modelName: 'TenantBucket', paramName: 'id', scope: 'global-admin' })
+  @TenantOwnedResource({ modelName: 'TenantBucket', paramName: 'id', scope: 'super-admin' })
   @ApiOperation({ summary: 'List objects in a tenant bucket (storage-provider operation)' })
   @ApiParam({ name: 'id', description: 'Bucket ID' })
   @ApiQuery({ name: 'prefix', required: false, description: 'Restrict results to keys beginning with this prefix' })

@@ -64,7 +64,7 @@ back to the gateway on internal service-token callbacks.
 ### R5 — Pipeline template governance: clone + SYSTEM-template resync (TASK-531) — NEW (post-2026-07-06)
 
 Locked SYSTEM-template copies are read-only; a tenant admin **clones** one into an editable
-copy (carrying template provenance), and a global admin **resyncs** a tenant's catalog
+copy (carrying template provenance), and a super admin **resyncs** a tenant's catalog
 against the SYSTEM templates (missing templates cloned in as locked copies; pristine locked
 copies fast-forwarded; customized/unlocked rows never touched).
 

@@ -16,7 +16,7 @@ export function useHarnessPolicy() {
   return useQuery({ queryKey: harnessPolicyKeys.policy(), queryFn: getHarnessPolicy });
 }
 
-/** Global-default row — gateway asserts global admin; only mount when elevated. */
+/** Global-default row — gateway asserts super admin; only mount when elevated. */
 export function useGlobalHarnessPolicy(enabled: boolean) {
   return useQuery({ queryKey: harnessPolicyKeys.globalPolicy(), queryFn: getGlobalHarnessPolicy, enabled });
 }

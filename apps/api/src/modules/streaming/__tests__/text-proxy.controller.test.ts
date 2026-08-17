@@ -2,7 +2,7 @@ import { BadRequestException, ForbiddenException, HttpException, HttpStatus, Log
 import { ModelTaskType } from '@arcaai/domains';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { STREAM_SCOPE_METADATA } from '../../auth/decorators/stream-scope.decorator';
-import { SmrProxyController } from '../text-proxy.controller';
+import { TextProxyController } from '../text-proxy.controller';
 
 const createMockHttpService = () => ({
   axiosRef: {
@@ -37,7 +37,7 @@ const createMockDnaWritingStyleRepository = () => ({
   findById: vi.fn(),
 });
 
-// TASK-700: the gated accessor SmrProxyController now routes the
+// TASK-700: the gated accessor TextProxyController now routes the
 // `dna_writing_style_id` path through, instead of trusting `styleText` off the
 // raw (ciphertext-only) repository row.
 const createMockDnaWritingStyleService = () => ({
@@ -68,8 +68,8 @@ const createMockConfigService = () => ({
   }),
 });
 
-describe('SmrProxyController', () => {
-  let controller: SmrProxyController;
+describe('TextProxyController', () => {
+  let controller: TextProxyController;
   let mockHttpService: ReturnType<typeof createMockHttpService>;
   let mockTenantService: ReturnType<typeof createMockTenantService>;
   let mockClsService: ReturnType<typeof createMockClsService>;
@@ -104,7 +104,7 @@ describe('SmrProxyController', () => {
       return undefined;
     });
 
-    controller = new SmrProxyController(
+    controller = new TextProxyController(
       mockHttpService as any,
       mockTenantService as any,
       mockClsService as any,
@@ -305,7 +305,7 @@ describe('SmrProxyController', () => {
   // to SMR, which is the fail-closed 422 authority (no in-proxy default).
   describe('SMR model selection', () => {
     const buildWithResolver = (resolver: { resolveSmrSelection: ReturnType<typeof vi.fn> }) =>
-      new SmrProxyController(
+      new TextProxyController(
         mockHttpService as any,
         mockTenantService as any,
         mockClsService as any,
@@ -713,7 +713,7 @@ describe('SmrProxyController', () => {
     aiTaskDefaults?: { getEffective: ReturnType<typeof vi.fn> };
     harnessPolicy?: { resolveSmrSelection: ReturnType<typeof vi.fn> };
   }) =>
-    new SmrProxyController(
+    new TextProxyController(
       mockHttpService as any,
       mockTenantService as any,
       mockClsService as any,
@@ -1802,7 +1802,7 @@ describe('SmrProxyController', () => {
   });
 });
 
-describe('SmrProxyController - OpenAPI/Swagger metadata', () => {
+describe('TextProxyController - OpenAPI/Swagger metadata', () => {
   const SWAGGER = {
     API_OPERATION: 'swagger/apiOperation',
     API_RESPONSE: 'swagger/apiResponse',
@@ -1810,14 +1810,14 @@ describe('SmrProxyController - OpenAPI/Swagger metadata', () => {
   };
 
   it('should have @ApiTags("text")', () => {
-    const tags = Reflect.getMetadata(SWAGGER.API_TAGS, SmrProxyController);
+    const tags = Reflect.getMetadata(SWAGGER.API_TAGS, TextProxyController);
     expect(tags).toContain('text');
   });
 });
 
-describe('SmrProxyController - Endpoint Security', () => {
+describe('TextProxyController - Endpoint Security', () => {
   it('should have all mutating endpoints protected', () => {
-    const proto = SmrProxyController.prototype;
+    const proto = TextProxyController.prototype;
     const endpoints = ['generate', 'cancelTask', 'getTaskStatus', 'streamTaskEvents', 'getProviders', 'getGuardrailProviders'];
 
     for (const method of endpoints) {
@@ -1827,13 +1827,13 @@ describe('SmrProxyController - Endpoint Security', () => {
   });
 });
 
-describe('SmrProxyController - SSE stream scope', () => {
+describe('TextProxyController - SSE stream scope', () => {
   it('declares @StreamScope on the task stream so single-use tickets can open it', () => {
     // House SSE convention: every SSE route declares a stream scope so
     // clients mint `POST auth/stream-ticket` with `<namespace>:<resourceId>` and
     // connect straight to the gateway. Without this metadata the guard 401s any
     // presented ticket, which is what forced the console's BFF-tunnel workaround.
-    const scope = Reflect.getMetadata(STREAM_SCOPE_METADATA, SmrProxyController.prototype.streamTaskEvents);
+    const scope = Reflect.getMetadata(STREAM_SCOPE_METADATA, TextProxyController.prototype.streamTaskEvents);
 
     expect(scope).toEqual({ namespace: 'smr_task', param: 'taskId' });
   });

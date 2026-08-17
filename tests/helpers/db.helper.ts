@@ -265,8 +265,8 @@ const SERVICE_CONFIGS: Record<string, TestServiceConfig> = {
     healthPath: '/api/v1/health',
     debugEnvVar: 'DEBUG_STT',
   },
-  smr: {
-    name: 'SMR',
+  text: {
+    name: 'Text',
     command: [
       'conda',
       'run',
@@ -274,7 +274,7 @@ const SERVICE_CONFIGS: Record<string, TestServiceConfig> = {
       'arcaenv',
       '--no-capture-output',
       'uvicorn',
-      'smr.main:app',
+      'text.main:app',
       '--host',
       '0.0.0.0',
       '--port',
@@ -284,7 +284,7 @@ const SERVICE_CONFIGS: Record<string, TestServiceConfig> = {
     ],
     baseUrl: process.env.TEXT_URL || 'http://localhost:8862',
     healthPath: '/api/v1/health',
-    debugEnvVar: 'DEBUG_SMR',
+    debugEnvVar: 'DEBUG_TEXT',
   },
   nlp: {
     name: 'NLP',
@@ -311,7 +311,7 @@ const SERVICE_CONFIGS: Record<string, TestServiceConfig> = {
 };
 
 /**
- * Start a test service by key ('api', 'stt', 'smr', 'nlp').
+ * Start a test service by key ('api', 'stt', 'text', 'nlp').
  * Returns the ChildProcess for lifecycle management.
  */
 export function startTestService(serviceKey: keyof typeof SERVICE_CONFIGS): ChildProcess {
@@ -400,7 +400,7 @@ export async function waitForApi(
 /**
  * Wait for a Python microservice to be ready by service key.
  */
-export async function waitForMicroservice(serviceKey: 'stt' | 'smr' | 'nlp', maxRetries = 60, retryInterval = 1000): Promise<void> {
+export async function waitForMicroservice(serviceKey: 'stt' | 'text' | 'nlp', maxRetries = 60, retryInterval = 1000): Promise<void> {
   const config = SERVICE_CONFIGS[serviceKey];
   if (!config) {
     throw new Error(`Unknown service: ${serviceKey}`);

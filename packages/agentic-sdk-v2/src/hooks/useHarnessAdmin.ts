@@ -9,7 +9,7 @@
  * degrade honestly (em-dash / unavailable card).
  *
  * Tenant scoping mirrors the server posture: tenant admins are pinned to
- * their CLS tenant; global-admins act cross-tenant via the `X-Tenant-Id`
+ * their CLS tenant; super-admins act cross-tenant via the `X-Tenant-Id`
  * header the SDK already sends.
  */
 

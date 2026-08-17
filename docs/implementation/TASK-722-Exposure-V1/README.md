@@ -188,8 +188,8 @@ Tiers `default` (always on), `strict`, `heavy`, `relaxed` (opt-in) — documente
 ### Idempotency — no global mechanism; two reusable per-domain ones
 
 **There is no idempotency interceptor or shared service in `apps/api`.** No `*idempotenc*` file under
-`apps/api/src`; `SmrProxyController` has none, and `getForwardHeaders()`
-(`smr-proxy.controller.ts:288-300`) does not forward a client `Idempotency-Key`.
+`apps/api/src`; `TextProxyController` has none, and `getForwardHeaders()`
+(`text-proxy.controller.ts:288-300`) does not forward a client `Idempotency-Key`.
 
 Two patterns exist and either is a valid model:
 
@@ -243,7 +243,7 @@ metadata (`:102`, mismatch → 401 at `:125-129`), impersonation claim restored 
 
 `@StreamScope` (`apps/api/src/modules/auth/decorators/stream-scope.decorator.ts:31-33`, config
 interface `:24-29`). **Routes without it cannot be opened via `?ticket=`** (`:19-20`). The only
-streaming-module route using it today is `smr-proxy.controller.ts:576`
+streaming-module route using it today is `text-proxy.controller.ts:576`
 (`{ namespace: 'smr_task', param: 'taskId' }`).
 
 **Note:** `POST /auth/stream-ticket` carries **no per-endpoint `@Throttle`** (confirmed by
@@ -252,8 +252,8 @@ namespace increases its value as a target; flag it in §6.
 
 ### SSE proxying + the resume-token convention (S-5)
 
-The existing SSE passthrough is `SmrProxyController.streamTaskEvents`
-(`apps/api/src/modules/streaming/smr-proxy.controller.ts:583-740`) and is the exemplar to imitate:
+The existing SSE passthrough is `TextProxyController.streamTaskEvents`
+(`apps/api/src/modules/streaming/text-proxy.controller.ts:583-740`) and is the exemplar to imitate:
 
 - Headers set manually and flushed: `:590-594` — `text/event-stream`, `no-cache, no-transform`,
   `keep-alive`, `X-Accel-Buffering: no`, then `res.flushHeaders()`.
@@ -358,7 +358,7 @@ a run-status DTO probably should not, since a run is not OCC-written.
 | **One generic route family, slug-parameterised** | Generated routes multiply the audited surface by the number of tenant workflows; one route is one thing to secure. D3 + the YAGNI ledger. |
 | **Deny-by-default scopes with a boot-time audit** | `unified-auth.guard.ts:220-222` makes *absent* metadata mean *unrestricted*; the audit (`api-key-scope-audit.ts:78-79`) converts a silent hole into a refusal to boot. |
 | **Idempotency-Key header with response replay** | The behaviour external integrators expect from a POST product surface; `withHarnessIdempotency` already implements it correctly (write first, record after). |
-| **Resume via SSE `id` + `Last-Event-ID`** | The W3C SSE convention, already implemented end-to-end here (`stream.py:35,61` ↔ `smr-proxy.controller.ts:667-669`). Reuse, don't reinvent. |
+| **Resume via SSE `id` + `Last-Event-ID`** | The W3C SSE convention, already implemented end-to-end here (`stream.py:35,61` ↔ `text-proxy.controller.ts:667-669`). Reuse, don't reinvent. |
 | **Single-use 30 s stream tickets** | Keeps credentials out of URLs that land in CDN logs (`stream-ticket.service.ts:5-8`). |
 | **404-over-403 for cross-tenant slugs** | Hides resource existence; the platform-wide posture (rule 05). |
 | **Slug uniqueness per tenant, immutable after first publish** | A slug is a public URL; silently repointing it repoints every integrator. |
@@ -371,7 +371,7 @@ a run-status DTO probably should not, since a run is not OCC-written.
 3. **Do not assume plan rate limits apply to API-key traffic** — `tiered-throttler.guard.ts:169-171`
    returns `null` for it. Per-key `ApiKey.rateLimit` is the control that does apply.
 4. **Do not forward the upstream error body** on SSE or invoke failures — it can echo PHI
-   (`smr-proxy.controller.ts:715-739`, `ai-inference.client.ts:128-136`).
+   (`text-proxy.controller.ts:715-739`, `ai-inference.client.ts:128-136`).
 5. **Do not add a second SSE envelope.** TASK-717 owns it (S-5).
 6. **Do not put `tenantId` in the invoke body.** S-3 — it comes from the authenticated principal.
 7. **`@RequiredScopes` throws at decoration time on an unknown scope** (`decorators.ts:125-132`), so
@@ -482,7 +482,7 @@ a run-status DTO probably should not, since a run is not OCC-written.
   6. POST to the harness dispatcher `POST /api/v1/internal/workflow-runs:start` (TASK-718 Task 10)
      with `HARNESS_URL` from `IConfigService.getConfigValue('HARNESS_URL')` — **never**
      `process.env` (lint-banned, rule 05) — and the `X-Service-Token` from `SecretsService`, the
-     `smr-proxy.controller.ts:288-300` pattern;
+     `text-proxy.controller.ts:288-300` pattern;
   7. `broadcastSysEvent` on the invocation and write an audit row (rule 04 §ALWAYS);
   8. map to `WorkflowRunResponse` via the static DTO mapper — never return an entity.
   Request DTO: `{ input: Record<string, unknown> }` **only** — every field declared with
@@ -555,7 +555,7 @@ a run-status DTO probably should not, since a run is not OCC-written.
 - **Agent:** T3 · opus-4-8 · high
 - **Files:** modify `apps/api/src/modules/workflows/workflows.controller.ts`; create
   `apps/api/src/modules/workflows/workflow-stream.service.ts`
-- **Approach:** **Port `SmrProxyController.streamTaskEvents` (`smr-proxy.controller.ts:583-740`)
+- **Approach:** **Port `TextProxyController.streamTaskEvents` (`text-proxy.controller.ts:583-740`)
   — read it in full first.** Carry over verbatim: manual header set + `flushHeaders()` (`:590-594`),
   `last-event-id` propagation to the upstream (`:667-669`, `@Headers('last-event-id')` at `:585`),
   `responseType: 'stream'` + `Accept: text/event-stream` + a long timeout (`:670-674`), byte-pipe
@@ -837,7 +837,7 @@ re-running the whole `auth/__tests__/` suite (199/199 green).
 
 **Task 8 — `WorkflowStreamService`** (`apps/api/src/modules/workflows/workflow-stream.service.ts`
 + `workflow-run-event.ts`). **Honest deviation from the plan's own exemplar**: the plan named
-`SmrProxyController.streamTaskEvents` (a byte-for-byte SSE proxy) to port verbatim, but
+`TextProxyController.streamTaskEvents` (a byte-for-byte SSE proxy) to port verbatim, but
 `apps/harness/.../interpreter.py` exposes NO `text/event-stream` endpoint — only plain-JSON
 `start`/`get`/`cancel` (TASK-717's Phase C reference producer was explicitly deferred). There is
 therefore nothing upstream to byte-pipe. Built instead: a documented POLLING BRIDGE — re-runs

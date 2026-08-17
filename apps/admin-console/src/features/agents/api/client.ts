@@ -99,7 +99,7 @@ export function activateVersion(id: string, versionNumber: number): Promise<Prom
  *
  * SUPER_ADMIN only, enforced SERVER-SIDE (imperative `isSuperAdmin` check in
  * the service, not a decorator — see the AUTH-NOTE on the route). If-Match is
- * REQUIRED: missing → 428, drift → 412, non-global-admin → 403. Idempotent —
+ * REQUIRED: missing → 428, drift → 412, non-super-admin → 403. Idempotent —
  * approving an already-approved row returns it unchanged.
  */
 export async function approveTemplate(id: string, reason: string | undefined, etag: string): Promise<PromptTemplate> {
@@ -262,7 +262,7 @@ export function listEvalGoldenCases(goldenSetId: string, params?: ListEvalGolden
   return getJson(`${HARNESS_BASE}/golden-sets/${encodeURIComponent(goldenSetId)}/cases`, params);
 }
 
-/** Synchronous run-now — tenant admins run their own sets; a SYSTEM set is global-admin-only. */
+/** Synchronous run-now — tenant admins run their own sets; a SYSTEM set is super-admin-only. */
 export function runGoldenSetEval(goldenSetId: string): Promise<EvalRunTrigger> {
   return postJson(`${HARNESS_BASE}/golden-sets/${encodeURIComponent(goldenSetId)}/run`);
 }

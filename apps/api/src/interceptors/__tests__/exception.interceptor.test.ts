@@ -859,3 +859,48 @@ describe('ArgumentInvalidException -> 400', () => {
     expect((caught as HttpException).getStatus()).toBe(HttpStatus.INTERNAL_SERVER_ERROR);
   });
 });
+
+/**
+ * A downstream client may raise an HttpException whose body is a raw STRING
+ * rather than an object — `AiInferenceClient.toHttpError` does exactly that on
+ * purpose, redacting a PHI-bearing upstream body down to a fixed message while
+ * preserving the upstream status. The interceptor's correlationId stamping used
+ * to assign onto that body unconditionally, and assigning a property to a string
+ * primitive throws in strict mode, so the TypeError escaped `catchError` and the
+ * honest upstream status was rewritten into an opaque 500.
+ */
+describe('ExceptionInterceptor — string-bodied HttpException keeps its status', () => {
+  let interceptor: ExceptionInterceptor;
+
+  beforeEach(() => {
+    const cls: any = { getId: () => 'test-correlation-id', get: () => undefined };
+    interceptor = new ExceptionInterceptor(cls);
+  });
+
+  const ctx = () =>
+    ({
+      switchToHttp: () => ({ getRequest: () => ({ method: 'POST', url: '/api/v1/ai/nlp/topic' }), getResponse: () => ({}) }),
+    }) as unknown as ExecutionContext;
+  const handlerFor = (err: unknown): CallHandler => ({ handle: () => throwError(() => err) });
+
+  it('passes a 503 with a string body through unchanged (no TypeError, no 500)', async () => {
+    const upstream = new HttpException('The AI inference service returned an error.', HttpStatus.SERVICE_UNAVAILABLE);
+    let caught: unknown;
+    await firstValueFrom(interceptor.intercept(ctx(), handlerFor(upstream))).catch((e) => {
+      caught = e;
+    });
+    expect(caught).toBeInstanceOf(HttpException);
+    expect((caught as HttpException).getStatus()).toBe(HttpStatus.SERVICE_UNAVAILABLE);
+    expect((caught as HttpException).getResponse()).toBe('The AI inference service returned an error.');
+  });
+
+  it('still stamps correlationId onto an OBJECT body', async () => {
+    const upstream = new HttpException({ message: 'nope' }, HttpStatus.BAD_GATEWAY);
+    let caught: unknown;
+    await firstValueFrom(interceptor.intercept(ctx(), handlerFor(upstream))).catch((e) => {
+      caught = e;
+    });
+    const body = (caught as HttpException).getResponse() as { correlationId?: string };
+    expect(body.correlationId).toBeTruthy();
+  });
+});

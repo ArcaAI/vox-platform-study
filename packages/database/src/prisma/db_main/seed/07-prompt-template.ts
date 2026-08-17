@@ -30,7 +30,7 @@ export const SYSTEM_USER_ID = '60000000-0000-0000-0000-000000000000';
  * Seeded into the SOAP template's `metaData.promptConfig.outputSchema` so
  * `PromptAssemblyService.assemble()` emits a non-null `responseFormat`
  * (`{ type: 'json_schema', json_schema, strict: true }`). For non-Ollama
- * providers `buildSmrGeneratePayload()` then forwards it as `response_format`,
+ * providers `buildTextGeneratePayload()` then forwards it as `response_format`,
  * activating constrained SOAP generation end-to-end.
  */
 export const SOAP_OUTPUT_SCHEMA = {

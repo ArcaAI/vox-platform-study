@@ -108,8 +108,8 @@ import {
  * picked up by exactly one draft.
  *
  * // AUTH-NOTE: computeDraft / finalize / void / addAdjustment are
- * // GLOBAL-ADMIN-ONLY, enforced imperatively (`isSuperAdmin`) because the
- * // permission decorators cannot express "global admins only" (rule 05).
+ * // SUPER_ADMIN-ONLY, enforced imperatively (`isSuperAdmin`) because the
+ * // permission decorators cannot express "super admins only" (rule 05).
  * // Deliberate 403 privilege boundary; cross-tenant BY-ID reads still 404.
  */
 @Injectable()
@@ -137,7 +137,7 @@ export class BillingService extends BaseService implements IBillingService {
   // ═════════════════════════════════════════════════════════════════════════
 
   async computeDraft(tenantId: string, period: string): Promise<BillingInvoiceResponse> {
-    this.assertGlobalAdmin();
+    this.assertSuperAdmin();
 
     const billingPeriod = parseBillingPeriod(period);
     if (billingPeriod.start.getTime() > Date.now()) {
@@ -226,7 +226,7 @@ export class BillingService extends BaseService implements IBillingService {
   // ═════════════════════════════════════════════════════════════════════════
 
   async finalize(tenantId: string, invoiceId: string, expectedVersion: number): Promise<BillingInvoiceResponse> {
-    this.assertGlobalAdmin();
+    this.assertSuperAdmin();
     const invoice = await this.findScopedInvoice(tenantId, invoiceId);
 
     if (invoice.status === BillingInvoiceStatus.FINALIZED) {
@@ -251,7 +251,7 @@ export class BillingService extends BaseService implements IBillingService {
   }
 
   async voidDraft(tenantId: string, invoiceId: string, expectedVersion: number): Promise<BillingInvoiceResponse> {
-    this.assertGlobalAdmin();
+    this.assertSuperAdmin();
     const invoice = await this.findScopedInvoice(tenantId, invoiceId);
 
     // VOID only from DRAFT (D13): voiding a finalized period would rewrite it.
@@ -271,7 +271,7 @@ export class BillingService extends BaseService implements IBillingService {
   }
 
   async addAdjustment(tenantId: string, invoiceId: string, request: AddAdjustmentRequest): Promise<BillingInvoiceResponse> {
-    this.assertGlobalAdmin();
+    this.assertSuperAdmin();
     const invoice = await this.findScopedInvoice(tenantId, invoiceId);
 
     // Memos exist to correct CLOSED periods; an open draft is corrected by
@@ -654,9 +654,9 @@ export class BillingService extends BaseService implements IBillingService {
     });
   }
 
-  private assertGlobalAdmin(): void {
+  private assertSuperAdmin(): void {
     if (!isSuperAdmin(this.requestUser)) {
-      throw new ForbiddenException('Invoice computation and lifecycle transitions are restricted to global administrators.');
+      throw new ForbiddenException('Invoice computation and lifecycle transitions are restricted to super administrators.');
     }
   }
 }

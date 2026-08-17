@@ -24,7 +24,7 @@ import { ServiceReleaseInternalController } from '../../modules/service-release/
 import { auditApiKeyRequiredScopes, auditInternalRoutesOffApiKeySurface, SDK_DAY1_SCOPED_ROUTES } from '../api-key-scope-audit';
 
 describe('boot-time API-key scope audit', () => {
-  it('passes for the real HOPE Node SDK day-1 surface (SmrCompatController, ConsultationController, ConsultationJobController)', () => {
+  it('passes for the real HOPE Node SDK day-1 surface (TextCompatController, ConsultationController, ConsultationJobController)', () => {
     expect(() => auditApiKeyRequiredScopes()).not.toThrow();
   });
 
@@ -38,8 +38,8 @@ describe('boot-time API-key scope audit', () => {
     expect(covered).toEqual(
       [
         // Stateless v1-compat shims — hope.summarization.*
-        'SmrCompatController.presummary',
-        'SmrCompatController.summarySync',
+        'TextCompatController.presummary',
+        'TextCompatController.summarySync',
         // Consultation-bound generation — hope.consultations.summaries.generate*
         'ConsultationController.generatePreSummary',
         'ConsultationController.generatePreSummaryAsync',

@@ -128,7 +128,7 @@ describe('AiProviderConnection SYSTEM seed rows', () => {
    * the single thing that makes a cloud provider reachable on the PLATFORM's
    * money for every tenant that lacks its own key. The seed must therefore keep
    * every cloud-BYO SYSTEM row disabled and keyless, so arming one stays a
-   * deliberate, per-provider act by a global admin.
+   * deliberate, per-provider act by a super admin.
    *
    * The pair list is spelled out here rather than derived: it mirrors
    * `CLOUD_BYO_PROVIDERS` in `@arcaai/applications`, which the database package

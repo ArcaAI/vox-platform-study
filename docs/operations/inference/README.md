@@ -9,11 +9,11 @@ vLLM and llama.cpp are the **production** self-host LLM engines for HOPE (AD-4 o
 the [TASK-508 program](../../implementation/TASK-508-Agentic-SOTA-Program/README.md)).
 LM Studio (`openai_compat` / `lm-studio`) and Ollama stay the **local dev/test**
 engines — this runbook covers staging, wiring, and smoke-testing the production
-engines behind SMR's first-class `vllm` and `llama-cpp` providers (TASK-513/514).
+engines behind Text's first-class `vllm` and `llama-cpp` providers (TASK-513/514).
 
 > **PHI posture unchanged.** These engines are self-hosted (in-boundary). Cloud
 > providers (Azure/Bedrock) remain governance-gated per the gap review §7.C. No
-> transcript/PHI ever leaves the SMR ⇄ engine hop inside the cluster/host.
+> transcript/PHI ever leaves the Text ⇄ engine hop inside the cluster/host.
 
 ---
 
@@ -25,7 +25,7 @@ engines behind SMR's first-class `vllm` and `llama-cpp` providers (TASK-513/514)
 | Production self-host | **vLLM** (primary; safetensors/AWQ/FP8) · **llama.cpp** (GGUF tier: MiniCheck, small utility, CPU/edge) | vLLM (Granite) or llama.cpp (GGUF) | **TEI** bge-m3 `:8871` | TEI `:8870` |
 | Cloud C2 (gov-gated) | Azure OpenAI / Bedrock | — | — | — |
 
-Both engines are **first-class SMR providers** (not `openai_compat` re-pointed):
+Both engines are **first-class Text providers** (not `openai_compat` re-pointed):
 engine identity in stats, native stop reasons + token counts (AD-1), structured
 output control, `/health`, and — for vLLM — a prefix-cache hit-rate gauge.
 
@@ -60,11 +60,11 @@ in-region GPU instances — "cloud" without a policy change.
 
 ---
 
-## 3. Wiring SMR to the engines
+## 3. Wiring Text to the engines
 
-SMR loads every provider config at startup; point its `base_url` at the running
+Text loads every provider config at startup; point its `base_url` at the running
 server to make the engine available (see `apps/text/.env.prod`, TASK-584 —
-SMR gates a provider by the PRESENCE of its connection config, not an
+Text gates a provider by the PRESENCE of its connection config, not an
 `enabled` flag, so there is no `TEXT_VLLM_ENABLED`/`TEXT_LLAMA_CPP_ENABLED`).
 
 ```bash
@@ -83,7 +83,7 @@ own the per-task selection (`smr.live` / `smr.finalize`, control-plane phase).
 > **Deferred provider-accept wiring** (owned by parallel agents, NOT in this
 > ticket): guardrail engine selector + harness `JudgeConfig.provider` accepting
 > `vllm`/`llama-cpp`, and `AiModel.provider` seed rows. Track under TASK-513/514
-> follow-ups; SMR already routes to both engines today.
+> follow-ups; Text already routes to both engines today.
 
 ---
 
@@ -105,13 +105,12 @@ Compose vars (`.env`): `VLLM_MODEL`, `VLLM_MAX_MODEL_LEN`, `VLLM_GPU_MEM_UTIL`,
 `LLAMA_CPP_CTX_SIZE`, `HOPE_TEI_EMBED_MODEL`. Images are pinned (no `latest`);
 bump to a build validated on your hardware.
 
-## 5. Serving — cluster (k3s base)
+## 5. Serving — cluster
 
-`deployment/k3s/base/vllm.yaml` (StatefulSet, GPU, PVC weights cache) and
-`llama-cpp.yaml` (Deployment + PVC of pre-staged GGUFs) are registered in the
-base kustomization. Third-party images are pinned and NOT rewritten by the
-registry component. Set the served model / sizing via overlay patches on the
-`VLLM_MODEL` / `LLAMA_CPP_MODEL` env vars; stage the GGUF into the
+vLLM and llama.cpp serving manifests live in the **deployment repo**
+(`arca/hope-v2-deployment`), not in this tree (`deployment/k3s/` was deleted).
+Third-party images are pinned. Set the served model / sizing via overlay patches
+on the `VLLM_MODEL` / `LLAMA_CPP_MODEL` env vars; stage the GGUF into the
 `hope-llama-cpp-models` PVC before rollout.
 
 ---
@@ -122,7 +121,7 @@ registry component. Set the served model / sizing via overlay patches on the
 # --- vLLM ---
 curl -fsS http://localhost:8000/health && echo " vllm healthy"
 curl -fsS http://localhost:8000/v1/models | jq '.data[].id'
-# prefix-cache counters (re-exported by SMR as smr_engine_cache_hit_rate{engine="vllm"}):
+# prefix-cache counters (re-exported by Text as smr_engine_cache_hit_rate{engine="vllm"}):
 curl -fsS http://localhost:8000/metrics | grep -E 'vllm:.*prefix_cache'
 
 # --- llama.cpp ---
@@ -132,7 +131,7 @@ curl -fsS http://localhost:8080/completion \
   -d '{"prompt":"Say hello in one word.","n_predict":16,"cache_prompt":true}' \
   | jq '{content, timings}'
 
-# --- Through SMR (engine identity + AD-1 stats) ---
+# --- Through Text (engine identity + AD-1 stats) ---
 curl -fsS http://localhost:8862/api/v1/generate \
   -H 'content-type: application/json' \
   -d '{"provider":"vllm","model":"Qwen/Qwen3-8B","prompt":"Say hello in one word."}' \
@@ -150,5 +149,5 @@ TEXT_E2E_VLLM_BASE_URL=http://localhost:8000/v1 TEXT_E2E_VLLM_MODEL=Qwen/Qwen3-8
 
 ## 7. Structured output & prefix caching
 
-- **vLLM**: JSON-schema structured output via native `response_format={"type":"json_schema",...}` (vLLM ≥ 0.8); flip `TEXT_VLLM_USE_GUIDED_JSON=true` to route through `extra_body.guided_json` on older builds. Automatic prefix caching is on by default — SMR scrapes the hit rate into `smr_engine_cache_hit_rate{engine="vllm"}`.
+- **vLLM**: JSON-schema structured output via native `response_format={"type":"json_schema",...}` (vLLM ≥ 0.8); flip `TEXT_VLLM_USE_GUIDED_JSON=true` to route through `extra_body.guided_json` on older builds. Automatic prefix caching is on by default — Text scrapes the hit rate into `smr_engine_cache_hit_rate{engine="vllm"}`.
 - **llama.cpp**: JSON-schema (`json_schema` field) or raw **GBNF** grammar (via `context.grammar`). `cache_prompt: true` reuses the KV cache of a stable prefix across flushes/regens (the 4C prompt-reorder program depends on this).

@@ -4,7 +4,7 @@
  * `HarnessPolicy.warmStartEnabled` was fully WRITE-plumbed — DTO, response,
  * SUPER_ADMIN gate, admin-console knob, even parsed into the Python dataclass —
  * and then read by NOTHING. The real switch was the process-wide env var
- * `HARNESS_WARM_START_ENABLED`, cached at CONSTRUCTION, so a global admin toggling
+ * `HARNESS_WARM_START_ENABLED`, cached at CONSTRUCTION, so a super admin toggling
  * the console knob changed nothing and could never vary per tenant.
  *
  * The contract this pins:
@@ -101,7 +101,7 @@ describe('PromptAssemblyService — effective warmStartEnabled', () => {
 
     expect(warmStarted(await assembleWithPriorDraft(service as never))).toBe(false);
 
-    // Global admin flips the knob. Same service instance, no redeploy.
+    // Super admin flips the knob. Same service instance, no redeploy.
     getEffectivePolicy.mockResolvedValue({ warmStartEnabled: true } as never);
 
     expect(warmStarted(await assembleWithPriorDraft(service as never))).toBe(true);

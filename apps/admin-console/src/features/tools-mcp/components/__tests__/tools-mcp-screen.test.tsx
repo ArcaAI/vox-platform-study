@@ -130,13 +130,13 @@ describe('ToolsMcpScreen', () => {
     expect(screen.queryByText('Entity faithfulness')).toBeNull();
   });
 
-  it('gates non-elevated sessions behind the Global admins only empty state', async () => {
+  it('gates non-elevated sessions behind the Super Admins only empty state', async () => {
     stubFetchWithSession(TENANT_ADMIN_SESSION, () => {
       throw new Error('mcp-servers must not be fetched for tenant admins');
     });
     renderWithProviders(<ToolsMcpScreen />);
 
-    expect(await screen.findByText('Global admins only')).toBeDefined();
+    expect(await screen.findByText('Super Admins only')).toBeDefined();
     expect(screen.queryByRole('table', { name: 'MCP servers' })).toBeNull();
   });
 

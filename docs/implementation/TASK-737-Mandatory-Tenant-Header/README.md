@@ -98,8 +98,8 @@ failure mode §2 describes, one hop upstream of guardrail.
 
 | Caller → Callee | Transport | Sends `X-Tenant-Id`? | Tenant source | Behaviour if absent | Class | file:line |
 |---|---|---|---|---|---|---|
-| `SmrProxyController` (`/text/generate`, `/tasks/*`, `/providers`) → Text | HTTP | **No** — `getForwardHeaders()` sets only `Content-Type` + `X-Service-Token` | n/a | Text falls back to platform default; per-tenant BYOK/provider config never applied | B | `apps/api/src/modules/streaming/text-proxy.controller.ts:298-310` (verified) |
-| `SmrCompatController` (v1 `/summary/sync`, `/presummary`, `/translate`, stream) → Text | HTTP | **No** | n/a | same | B | `apps/api/src/modules/text-compat/text-compat.controller.ts:864-872` |
+| `TextProxyController` (`/text/generate`, `/tasks/*`, `/providers`) → Text | HTTP | **No** — `getForwardHeaders()` sets only `Content-Type` + `X-Service-Token` | n/a | Text falls back to platform default; per-tenant BYOK/provider config never applied | B | `apps/api/src/modules/streaming/text-proxy.controller.ts:298-310` (verified) |
+| `TextCompatController` (v1 `/summary/sync`, `/presummary`, `/translate`, stream) → Text | HTTP | **No** | n/a | same | B | `apps/api/src/modules/text-compat/text-compat.controller.ts:864-872` |
 | `SummaryProcessor` (BullMQ finalize) → Text `/generate` | HTTP | **No** — `tenantId` is used one line above (`resolveSmrSelection(tenantId, 'finalize')`) then never forwarded as a header | n/a | same | B | `packages/applications/src/services/consultation/jobs/processors/summary.processor.ts:518-533` (verified) |
 | `PreSummaryProcessor` (BullMQ) → Text `/generate` | HTTP | **No** | n/a | same | B | `.../processors/pre-summary.processor.ts:293-300` |
 | `ComprehensiveSummaryProcessor` (BullMQ) → Text `/generate` | HTTP | **No** | n/a | same | B | `.../processors/comprehensive-summary.processor.ts:406-413` |
@@ -371,7 +371,7 @@ X-Tenant-Id: tenantless:control-plane  # every core/effective_config.py pull + s
    was missing independent of this ticket.
 2. **`apps/api` → `apps/text` (§3.2)** — the biggest concentration and the highest live traffic
    volume (every clinical summary, every live-doc flush). Two shapes:
-   - `SmrProxyController.getForwardHeaders()` and `SmrCompatController`'s equivalent: these are
+   - `TextProxyController.getForwardHeaders()` and `TextCompatController`'s equivalent: these are
      the two chokepoints — fixing the shared header-building helper likely closes the two proxy
      controllers in one change. Source the tenant from CLS the same way `AiInferenceClient`
      already does correctly (§3.3), not by re-deriving it per call site.

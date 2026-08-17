@@ -7,7 +7,7 @@
  * a plain DOCTOR is denied (403) — surfaced as a clean `AgenticError`.
  *
  * Tenant scoping: a tenant admin omits `tenantId` (the server uses the CLS
- * tenant); a global admin may pass `tenantId` to target a specific tenant.
+ * tenant); a super admin may pass `tenantId` to target a specific tenant.
  *
  * OCC: `save` carries `expectedVersion` (the `version` from the prior `get`)
  * in the body; the server fails the PUT with `412` if the row drifted. On
@@ -25,7 +25,7 @@ export interface UseTenantFrontendConfigReturn {
   config: TenantFrontendConfig | null;
   isLoading: boolean;
   error: Error | null;
-  /** Load the tenant's frontend config (global admin may pass `tenantId`). */
+  /** Load the tenant's frontend config (super admin may pass `tenantId`). */
   get: (tenantId?: string) => Promise<TenantFrontendConfig | null>;
   /** Create-or-update the tenant's frontend config (OCC via `expectedVersion`). */
   save: (input: UpsertTenantFrontendConfigInput, tenantId?: string) => Promise<TenantFrontendConfig>;

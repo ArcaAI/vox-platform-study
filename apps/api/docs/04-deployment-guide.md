@@ -95,7 +95,7 @@ This guide covers deploying the HOPE API Gateway to various environments. The AP
 
 - PostgreSQL (typically port 5432)
 - Redis (typically port 6379)
-- Python microservices (STT=8861, SMR=8862, Guardrail=8863, NLP=8864, Harness=8866)
+- Python microservices (STT=8861, Text=8862, Guardrail=8863, NLP=8864, Harness=8866)
 - External APIs (HTTPS 443)
 
 ---
@@ -164,9 +164,9 @@ REDIS_DB=0
 STT_PORT=8861
 STT_URL=http://stt-service:8861
 
-# SMR (Summarization)
+# Text (formerly SMR)
 TEXT_PORT=8862
-TEXT_URL=http://smr-service:8862
+TEXT_URL=http://text-service:8862
 
 # Guardrail (Safety Engine)
 GUARDRAIL_URL=http://guardrail-service:8863

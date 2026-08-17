@@ -3,7 +3,7 @@
  *
  * CASL `@Authorize` + `If-Match`/`@RequiresIfMatch` are exercised by the
  * guard/interceptor (+ the cross-tenant e2e spec). These specs cover the
- * controller's OWN logic: tenant vs. global-admin scoping, and the
+ * controller's OWN logic: tenant vs. super-admin scoping, and the
  * If-Match-over-body version precedence forwarded to the service on BOTH the
  * fallback row and the OCC-guarded credential write.
  */
@@ -47,14 +47,14 @@ describe('TenantSttConfigAdminController — scoping', () => {
     await expect(controller.getRow('t2')).rejects.toBeInstanceOf(ForbiddenException);
   });
 
-  it('lets a global admin target any tenant via ?tenantId=', async () => {
+  it('lets a super admin target any tenant via ?tenantId=', async () => {
     const { controller, service } = makeController({ user: SUPER });
     service.getRow.mockResolvedValue({ tenantId: 't9', version: 0 });
     await controller.getRow('t9');
     expect(service.getRow).toHaveBeenCalledWith('t9');
   });
 
-  it('400s when a global admin omits ?tenantId= and has no CLS tenant', async () => {
+  it('400s when a super admin omits ?tenantId= and has no CLS tenant', async () => {
     const { controller } = makeController({ user: SUPER });
     await expect(controller.getEffective()).rejects.toBeInstanceOf(BadRequestException);
   });
@@ -136,7 +136,7 @@ describe('TenantSttConfigAdminController — test connection (ephemeral, no OCC)
     await expect(controller.testCredential('openai', { apiKey: 'sk-test' }, 't2')).rejects.toBeInstanceOf(ForbiddenException);
   });
 
-  it('lets a global admin test a credential for any tenant via ?tenantId=', async () => {
+  it('lets a super admin test a credential for any tenant via ?tenantId=', async () => {
     const { controller, service } = makeController({ user: SUPER });
     service.testCredential.mockResolvedValue({ ok: false, message: 'Rejected — invalid API key' });
     await controller.testCredential('azure-speech', { apiKey: 'bad', region: 'eastus' }, 't9');

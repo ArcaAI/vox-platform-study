@@ -102,7 +102,7 @@ export function EffectiveModelsTable() {
         </h2>
         <p className="text-muted-foreground text-sm">
           The model that actually serves each guardrail, NLP and harness task for this tenant, and which tier decided it. NLP and harness selection
-          is managed by global administrators; guardrail selection is now tenant-configurable via the API (this view is not yet an editor for it).
+          is managed by super administrators; guardrail selection is now tenant-configurable via the API (this view is not yet an editor for it).
           Summarization models are configured above, in the &ldquo;Models&rdquo; tab.
         </p>
       </div>

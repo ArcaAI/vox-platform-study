@@ -28,7 +28,7 @@ export class ImpersonateRequest {
 }
 
 /**
- * Request body for the global-admin-only
+ * Request body for the super-admin-only
  * `POST /admin/users/:id/impersonate` endpoint. The target user id travels in
  * the PATH (`:id`), unlike the legacy `/auth/impersonate` body shape.
  */

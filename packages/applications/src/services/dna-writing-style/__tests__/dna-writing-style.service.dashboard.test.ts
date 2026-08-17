@@ -81,7 +81,7 @@ describe('DnaWritingStyleService.getDashboard', () => {
       return null;
     });
 
-  const asGlobalAdmin = (tenantId: string | null) =>
+  const asSuperAdmin = (tenantId: string | null) =>
     mockClsService.get.mockImplementation((key: string) => {
       if (key === 'user') return { id: 'super-1', roles: ['SUPER_ADMIN'] };
       if (key === 'tenantId') return tenantId;
@@ -190,8 +190,8 @@ describe('DnaWritingStyleService.getDashboard', () => {
       await expect(service.getDashboard()).rejects.toThrow(BadRequestException);
     });
 
-    it('uses the requested tenantId for a global admin', async () => {
-      asGlobalAdmin(null);
+    it('uses the requested tenantId for a super admin', async () => {
+      asSuperAdmin(null);
       service = build();
 
       await service.getDashboard('tenant-X');
@@ -200,8 +200,8 @@ describe('DnaWritingStyleService.getDashboard', () => {
       expect(mockUsageRepo.countSince).toHaveBeenCalledWith(expect.any(Date), 'tenant-X');
     });
 
-    it('aggregates across all tenants for a global admin with no tenantId', async () => {
-      asGlobalAdmin(null);
+    it('aggregates across all tenants for a super admin with no tenantId', async () => {
+      asSuperAdmin(null);
       service = build();
 
       await service.getDashboard();

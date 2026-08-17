@@ -32,7 +32,7 @@ interface NlpExtractResult {
  *      location — `mediaRepository.findById(mediaId)` → `parseStorageUri(media.uri)`
  *      — and fetches the file bytes from THAT bucket/key via `IBlobStorageService`
  *      (mirrors `ContextService.resolveMediaUrls` /
- *      `SmrProxyController.extractAttachmentText`; it must NOT treat `mediaId`
+ *      `TextProxyController.extractAttachmentText`; it must NOT treat `mediaId`
  *      itself as a literal S3 key),
  *   2. calls the NLP `/api/v1/extract` endpoint (PyMuPDF + RapidOCR, in-cluster),
  *   3. persists the result onto `ContextItem.metaData.extractedText`, and
@@ -155,7 +155,7 @@ export class OcrEnrichmentProcessor {
 
         // `mediaId` is a `Media` row UUID, NOT a literal S3 key.
         // Resolve it to its actual bucket/key via the Media row's `uri`
-        // (mirrors ContextService.resolveMediaUrls / SmrProxyController.extractAttachmentText).
+        // (mirrors ContextService.resolveMediaUrls / TextProxyController.extractAttachmentText).
         if (!this.mediaRepository) return; // no media repo wired → nothing to resolve
         const media = await this.mediaRepository.findById(mediaId).catch(() => null);
         if (!media) {

@@ -1,7 +1,7 @@
 // =============================================================================
 // Agentic SOTA Program, Phase 5: MCP external-tools registry.
 //
-// McpServer is the global-admin-managed registry of external tool servers the
+// McpServer is the super-admin-managed registry of external tool servers the
 // clinical documentation harness may call out to over the MCP streamable-HTTP
 // transport (AD-5). It is a STANDARD tenant-scoped config model (tenantId +
 // resourceStatus soft-delete + _version OCC + audit), mirroring AiModel /
@@ -13,8 +13,8 @@
 //     tenant-scoped (TENANT_SCOPED_MODELS) AND a SYSTEM-shared read model
 //     (SYSTEM_SHARED_READ_MODELS) so every tenant's harness run can READ the
 //     shared registry to resolve a server it references, while WRITES stay
-//     SYSTEM-only (global-admin, enforced at the service layer — the
-//     guardrail.* GLOBAL_ADMIN precedent).
+//     SYSTEM-only (super-admin, enforced at the service layer — the
+//     guardrail.* SUPER_ADMIN precedent).
 //   - NO secret material in the DB. `authRef` is a Vault PATH ONLY (e.g.
 //     "secret/data/mcp/terminology"); the actual credential is fetched from
 //     Vault at call time by the harness and is NEVER stored here or echoed in

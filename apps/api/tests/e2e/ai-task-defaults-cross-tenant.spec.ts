@@ -2,13 +2,13 @@
  * Cross-tenant + governance probes against AiTaskDefaultAdminController
  * (`/api/v1/admin/ai-task-defaults`), following the cross-tenant pattern.
  *
- * Governance contracts (`GLOBAL_ADMIN_ONLY_TASK_PREFIXES` in
+ * Governance contracts (`SUPER_ADMIN_ONLY_TASK_PREFIXES` in
  * `packages/applications/src/services/ai-task-default/constants.ts` covers
  * `nlp.` AND `harness.` only. REMOVED `smr.` (earlier) and `guardrail.`
  * (TASK-735 Phase 0, owner decision 2026-08-16, reversing the 2026-07-17
- * global-admin-only directive) — both are now TENANT-ADMIN configurable, so a
+ * super-admin-only directive) — both are now TENANT-ADMIN configurable, so a
  * tenant admin may write them for their OWN tenant while `nlp.`/`harness.`
- * stay global-admin-only. `guardrail.*` carries an ADDITIONAL platform floor
+ * stay super-admin-only. `guardrail.*` carries an ADDITIONAL platform floor
  * on top (D2, tighten-only): a tenant write must name a `modelSlug` that
  * resolves to a SYSTEM-tenant `AiModel` row (the platform-approved list) —
  * also 403 otherwise. The seeded slug `granite-guardian-4.1-8b` used below is
@@ -16,14 +16,14 @@
  *  1. Tenant scoping — a tenant admin is pinned to their CLS tenant; an explicit
  *     foreign `?tenantId=` is REJECTED (403/404, 200 never; no foreign row
  *     content in the body).
- *  2. Task-key governance — writes to a GLOBAL-ADMIN-ONLY task key
+ *  2. Task-key governance — writes to a SUPER_ADMIN-ONLY task key
  *     (nlp./harness.) are refused: a tenant admin PUT → 403 even for
  *     their OWN tenant (a privilege verdict, deliberately raised BEFORE the OCC
  *     compare — so a tenant admin sees 403, not 412, on any version). The
  *     un-locked `smr.*`/`guardrail.*` keys are the exception: a tenant admin
  *     PUT succeeds for their own tenant (guardrail.* subject to the
  *     platform-approved-list floor above).
- *  3. Global admin acts cross-tenant via `?tenantId=` (PUT succeeds).
+ *  3. Super admin acts cross-tenant via `?tenantId=` (PUT succeeds).
  *  4. RFC 7232 OCC — PUT without `If-Match` → 428; stale `If-Match` → 412
  *     (asserted on the seeded SYSTEM row, where a version ≥ 1 exists).
  *  5. Unknown taskKey → 400.
@@ -56,22 +56,22 @@ async function readRowVersion(request: APIRequestContext, token: string, taskKey
 }
 
 test.describe('AiTaskDefault admin surface (cross-tenant + guardrail governance)', () => {
-  let globalAdminToken: string;
+  let superAdminToken: string;
   let tenantAdminToken: string;
   /** The tenant the GLOBAL admin acts on (ARCAAI) — foreign to the tenant admin (__GLOBAL__). */
   let arcaaiTenantId: string;
 
   test.beforeAll(async ({ request }) => {
     const ga = await loginUser(request, SEEDED_USERS.superAdmin.username, SEEDED_USERS.superAdmin.password, 'ARCAAI');
-    expect(ga, 'global admin login (ARCAAI) failed').toBeTruthy();
-    globalAdminToken = ga!.token;
+    expect(ga, 'super admin login (ARCAAI) failed').toBeTruthy();
+    superAdminToken = ga!.token;
 
     const ta = await loginUser(request, SEEDED_USERS.admin.username, SEEDED_USERS.admin.password, DEFAULT_TENANT_KEY);
     expect(ta, `tenant_admin login (${DEFAULT_TENANT_KEY}) failed`).toBeTruthy();
     tenantAdminToken = ta!.token;
 
-    // Discover the ARCAAI tenant id through the global admin's own scope.
-    const row = await readRowVersion(request, globalAdminToken, 'nlp.ner');
+    // Discover the ARCAAI tenant id through the super admin's own scope.
+    const row = await readRowVersion(request, superAdminToken, 'nlp.ner');
     arcaaiTenantId = row.tenantId;
     expect(arcaaiTenantId).toBeTruthy();
   });
@@ -130,7 +130,7 @@ test.describe('AiTaskDefault admin surface (cross-tenant + guardrail governance)
     expect([403, 404]).toContain(resp.status());
   });
 
-  test('TASK-735: tenant admin PUT on guardrail.validate for their OWN tenant → 200 (guardrail left the global-admin-only set)', async ({
+  test('TASK-735: tenant admin PUT on guardrail.validate for their OWN tenant → 200 (guardrail left the super-admin-only set)', async ({
     request,
   }) => {
     // Reverses the OLD "GOVERNANCE: tenant admin PUT on guardrail.validate …
@@ -153,7 +153,7 @@ test.describe('AiTaskDefault admin surface (cross-tenant + guardrail governance)
 
   test('TASK-735 D2: tenant admin PUT on guardrail.validate with a slug OUTSIDE the platform-approved (SYSTEM) list → 403', async ({ request }) => {
     // The platform-approved-list floor is independent of the blanket
-    // global-admin-only governance check above (which no longer fires for
+    // super-admin-only governance check above (which no longer fires for
     // guardrail.* at all) — it rejects an unvetted slug even for the
     // caller's OWN tenant.
     const row = await readRowVersion(request, tenantAdminToken, 'guardrail.validate');
@@ -165,7 +165,7 @@ test.describe('AiTaskDefault admin surface (cross-tenant + guardrail governance)
   });
 
   test('GOVERNANCE: a still-locked prefix stays global-only — nlp.ner PUT by a tenant admin → 403', async ({ request }) => {
-    // nlp./harness. remain GLOBAL-ADMIN-ONLY (smr. and, since TASK-735,
+    // nlp./harness. remain SUPER_ADMIN-ONLY (smr. and, since TASK-735,
     // guardrail. were un-locked). The 403 fires BEFORE the OCC compare, so
     // any valid If-Match sees it.
     const row = await readRowVersion(request, tenantAdminToken, 'nlp.ner');
@@ -174,11 +174,11 @@ test.describe('AiTaskDefault admin surface (cross-tenant + guardrail governance)
       data: { modelSlug: 'medical-ner' },
     });
     expect(resp.status()).toBe(403);
-    expect(JSON.stringify(await resp.json())).toContain('global administrators only');
+    expect(JSON.stringify(await resp.json())).toContain('super administrators only');
   });
 
   test('Tenant admin CAN write an smr.* key (smr.finalize) for their OWN tenant → 200', async ({ request }) => {
-    // `smr.` left GLOBAL_ADMIN_ONLY_TASK_PREFIXES: the smr.* keys are
+    // `smr.` left SUPER_ADMIN_ONLY_TASK_PREFIXES: the smr.* keys are
     // now tenant-admin configurable. Unlike the guardrail/nlp negative probes
     // above, this write is accepted for the caller's own CLS-pinned tenant. On a
     // fresh seed the tenant row is a version-0 placeholder, so this PUT travels
@@ -199,10 +199,10 @@ test.describe('AiTaskDefault admin surface (cross-tenant + guardrail governance)
   // First edit on a fresh seed: the ARCAAI tenant row is a version-0
   // placeholder, so this PUT travels the `If-Match: "0"` create lane
   // (accepted as a deliberate owner decision).
-  test('global admin PUT with ?tenantId= succeeds cross-tenant (incl. guardrail.validate)', async ({ request }) => {
-    const row = await readRowVersion(request, globalAdminToken, 'guardrail.validate', arcaaiTenantId);
+  test('super admin PUT with ?tenantId= succeeds cross-tenant (incl. guardrail.validate)', async ({ request }) => {
+    const row = await readRowVersion(request, superAdminToken, 'guardrail.validate', arcaaiTenantId);
     const resp = await request.put(`${BASE}/row?taskKey=guardrail.validate&tenantId=${arcaaiTenantId}`, {
-      headers: { Authorization: `Bearer ${globalAdminToken}`, 'If-Match': `"${row.version}"` },
+      headers: { Authorization: `Bearer ${superAdminToken}`, 'If-Match': `"${row.version}"` },
       data: { modelSlug: 'granite-guardian-4.1-8b' },
     });
     expect(resp.status()).toBe(200);
@@ -211,10 +211,10 @@ test.describe('AiTaskDefault admin surface (cross-tenant + guardrail governance)
     expect(updated.modelSlug).toBe('granite-guardian-4.1-8b');
   });
 
-  test('r2605 Finding A: global admin with an ELEVATED working tenant (x-tenant-id) targeting ?tenantId=SYSTEM — GET row + PUT both 200', async ({
+  test('r2605 Finding A: super admin with an ELEVATED working tenant (x-tenant-id) targeting ?tenantId=SYSTEM — GET row + PUT both 200', async ({
     request,
   }) => {
-    // The BFF proxy always sends the global admin's working tenant as
+    // The BFF proxy always sends the super admin's working tenant as
     // `x-tenant-id`, which the gateway elevates into CLS. Pre-fix, targeting
     // `?tenantId=SYSTEM` under that elevated context made the tenant-scope
     // extension inject the working tenant: reads silently missed, the CAS
@@ -222,7 +222,7 @@ test.describe('AiTaskDefault admin surface (cross-tenant + guardrail governance)
     // create lane threw `TenantScope: tenantId mismatch` (500). The service's
     // cross-tenant base-client lane must make both the read and the write 200.
     const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
-    const headers = { Authorization: `Bearer ${globalAdminToken}`, 'x-tenant-id': arcaaiTenantId };
+    const headers = { Authorization: `Bearer ${superAdminToken}`, 'x-tenant-id': arcaaiTenantId };
 
     const read = await request.get(`${BASE}/row?taskKey=guardrail.validate&tenantId=${SYSTEM_TENANT_ID}`, { headers });
     expect(read.status(), 'GET SYSTEM row under an elevated working tenant').toBe(200);
@@ -253,10 +253,10 @@ test.describe('AiTaskDefault admin surface (cross-tenant + guardrail governance)
   test('PUT with a stale If-Match → 412 (Precondition Failed)', async ({ request }) => {
     // A tenant admin gets the governance 403 BEFORE
     // the OCC compare on every key, so the 412 contract is asserted where it
-    // still lives — a global admin against the seeded SYSTEM row (version ≥ 1).
+    // still lives — a super admin against the seeded SYSTEM row (version ≥ 1).
     const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
     const resp = await request.put(`${BASE}/row?taskKey=guardrail.validate&tenantId=${SYSTEM_TENANT_ID}`, {
-      headers: { Authorization: `Bearer ${globalAdminToken}`, 'If-Match': '"999"' },
+      headers: { Authorization: `Bearer ${superAdminToken}`, 'If-Match': '"999"' },
       // A unique configJson stamp guarantees a real change regardless of
       // execution order against the sibling test above (same row, same
       // modelSlug) — without it the no-op guard can win the race and return
@@ -272,7 +272,7 @@ test.describe('AiTaskDefault admin surface (cross-tenant + guardrail governance)
     // seed (their creation is governance-blocked), so assert on the seeded SYSTEM row.
     const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
     const resp = await request.get(`${BASE}/row?taskKey=guardrail.validate&tenantId=${SYSTEM_TENANT_ID}`, {
-      headers: { Authorization: `Bearer ${globalAdminToken}` },
+      headers: { Authorization: `Bearer ${superAdminToken}` },
     });
     expect(resp.status()).toBe(200);
     const row = (await resp.json()) as AiTaskDefaultRow;

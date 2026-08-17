@@ -293,8 +293,8 @@ describe('SummaryService', () => {
     );
   });
 
-  // ── callSmrService passes the cascade-resolved model ──
-  describe('callSmrService SMR selection', () => {
+  // ── callTextService passes the cascade-resolved model ──
+  describe('callTextService SMR selection', () => {
     const primeGenerateMocks = () => {
       mockConsultationRepository.findById.mockResolvedValue(consultationFixture({ id: 'c-1', tenantId: 'tenant-1' }));
       mockContextItemRepository.findTranscripts.mockResolvedValue([{ content: 'transcript text' }]);
@@ -321,7 +321,7 @@ describe('SummaryService', () => {
 
     // GenerateSummary is a one-shot/finalize path: it must
     // keep resolving the DEFAULT ('finalize') tier, never the live tier, so a
-    // global admin's `smr.live` re-point never leaks into final summaries.
+    // super admin's `smr.live` re-point never leaks into final summaries.
     // The tenant id is now resolved EXPLICITLY (never a
     // bare no-arg call trusting the callee's own CLS fallback), so a worker
     // path with unpopulated CLS fails loudly instead of silently serving the
@@ -1602,7 +1602,12 @@ describe('SummaryService', () => {
 
         await service.updateSummary('ctx-occ-1', { content: 'Updated', expectedVersion: 3 });
 
-        expect(mockContextItemRepository.updateWithVersion).toHaveBeenCalledWith('ctx-occ-1', mockItem, 3);
+        // The 4th argument is the transaction client: the version-row insert and
+        // this CAS now share one transaction, so a rejected (412) write no longer
+        // leaves an orphan `ContextItemVersion` behind to collide with the next
+        // edit's version number. `undefined` here because these fixtures build the
+        // service without a unit of work.
+        expect(mockContextItemRepository.updateWithVersion).toHaveBeenCalledWith('ctx-occ-1', mockItem, 3, undefined);
         // CAS-only — the legacy non-versioned write MUST NOT fire.
         expect(mockContextItemRepository.update).not.toHaveBeenCalled();
       });

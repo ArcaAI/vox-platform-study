@@ -7,7 +7,7 @@ import { CanManage, ExpectedVersion, RequiresIfMatch, RequiredScopes } from '../
  * Admin CRUD for user ↔ department assignments.
  *
  * Tenant scoping mirrors the other admin controllers: the active tenant comes
- * from the CLS request context. For a global-admin that context is set by a
+ * from the CLS request context. For a super-admin that context is set by a
  * role-gated elevation in `ContextInterceptor` — only a SUPER_ADMIN whose JWT
  * tenant is empty may have a syntactically valid `X-Tenant-Id` promoted into
  * CLS; the header can never override a tenant-bound JWT. A tenant admin's

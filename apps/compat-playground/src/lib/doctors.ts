@@ -16,7 +16,7 @@
  *
  * On the default listing each `UserResponse` carries `id`, `username`, and
  * `isServiceAccount`; the RBAC role assignments are opt-in (`includeRoles=true`)
- * and are platform roles (e.g. GLOBAL_ADMIN), NOT a clinical "DOCTOR"
+ * and are platform roles (e.g. SUPER_ADMIN), NOT a clinical "DOCTOR"
  * designation. There is therefore no clinical-role field to filter on, so we
  * list every human user and only drop service accounts (never a hard fail if
  * that field is absent).

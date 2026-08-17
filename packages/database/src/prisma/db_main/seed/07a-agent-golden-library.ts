@@ -50,7 +50,7 @@
  * Provisioning reads the golden rows through the sanctioned unscoped client in
  * `tenant.service.ts`; the resync sweep runs tenant-less (elevated
  * pass-through). A tenant-facing "Library" browse surface, if ever wanted, is
- * a dedicated global-admin-fed endpoint — not a scope widening.
+ * a dedicated super-admin-fed endpoint — not a scope widening.
  */
 import type { CorePrismaClient } from '../../../client';
 import { Prisma } from '../../../generated/core-prisma-client/client';

@@ -101,7 +101,7 @@ test.describe('TASK-728 — /api/v1/admin/knowledge/documents', () => {
     expect(response.status()).toBe(404);
   });
 
-  test('a global admin acting via X-Tenant-Id can list that tenant’s (empty) documents', async ({ request }) => {
+  test('a super admin acting via X-Tenant-Id can list that tenant’s (empty) documents', async ({ request }) => {
     const response = await request.get(BASE, { headers: bearer(superAdminToken, defaultTenantId) });
     expect(response.status()).toBe(200);
     const body = await response.json();

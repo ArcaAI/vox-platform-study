@@ -193,7 +193,7 @@ describe('HarnessPolicyScreen', () => {
     expect(screen.queryByRole('tab', { name: 'Live config' })).toBeNull();
     // Tenant admins also never fetch the platform-asserted global read.
     await screen.findByText('Effective policy resolve');
-    expect(screen.getByText(/visible to global admins only/)).toBeDefined();
+    expect(screen.getByText(/visible to super admins only/)).toBeDefined();
   });
 
   // The elevated tabs still MOUNT for an elevated session —
@@ -274,7 +274,7 @@ describe('HarnessPolicyScreen', () => {
 
   /**
    * The three safety/PHI switches became
-   * global-admin-only server-side. The TENANT tab must render them disabled
+   * super-admin-only server-side. The TENANT tab must render them disabled
    * with a visible reason rather than letting a tenant admin flip a switch
    * that 403s on save (rule 11 §5: a disabled control needs a visible reason).
    */
@@ -304,7 +304,7 @@ describe('HarnessPolicyScreen', () => {
 
       await screen.findByLabelText('Safety guardrail');
       // One hint per locked field, with the exact copy the form renders.
-      expect(screen.getAllByText('Global admins only')).toHaveLength(LOCKED.length);
+      expect(screen.getAllByText('Super Admins only')).toHaveLength(LOCKED.length);
     });
 
     it('leaves the tenant-writable clinical thresholds editable', async () => {

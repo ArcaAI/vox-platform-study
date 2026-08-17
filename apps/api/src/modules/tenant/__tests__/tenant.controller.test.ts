@@ -22,7 +22,7 @@ function createMockTenantService() {
 
 // Direct construction mirrors the pattern used by every other controller
 // test in apps/api/src/modules/**/__tests__ (consultation, auth, etc.).
-// Default CLS = global-admin so the existing pre-W5.5 test blocks below
+// Default CLS = super-admin so the existing pre-W5.5 test blocks below
 // remain agnostic to the W5.5 tenant-scope guard.
 function createMockCls(
   user: { id?: string; tenantId?: string | null; roles?: string[] } | null = { id: 'admin', tenantId: null, roles: ['SUPER_ADMIN'] },
@@ -209,7 +209,7 @@ describe('TenantController', () => {
     }
 
     describe('update(:id)', () => {
-      it('throws ForbiddenException when caller is NOT global-admin AND id != user.tenantId', async () => {
+      it('throws ForbiddenException when caller is NOT super-admin AND id != user.tenantId', async () => {
         const { controller, tenantService } = buildWithCls({
           id: 'u-1',
           tenantId: 't-OWN',
@@ -241,7 +241,7 @@ describe('TenantController', () => {
     });
 
     describe('delete(:id)', () => {
-      it('throws ForbiddenException when caller is NOT global-admin AND id != user.tenantId', async () => {
+      it('throws ForbiddenException when caller is NOT super-admin AND id != user.tenantId', async () => {
         const { controller, tenantService } = buildWithCls({
           id: 'u-1',
           tenantId: 't-OWN',
@@ -263,7 +263,7 @@ describe('TenantController', () => {
     });
 
     describe('getUsage(:id)', () => {
-      it('throws ForbiddenException when caller is NOT global-admin AND id != user.tenantId', async () => {
+      it('throws ForbiddenException when caller is NOT super-admin AND id != user.tenantId', async () => {
         const { controller, tenantService } = buildWithCls({
           id: 'u-1',
           tenantId: 't-OWN',
@@ -297,7 +297,7 @@ describe('TenantController', () => {
     describe('fetchByCodeName(:code-name)', () => {
       // codeName guard compares the LOADED tenant's id to the caller's
       // tenantId — code-name is not the same as the row's UUID id.
-      it('throws ForbiddenException when caller is NOT global-admin AND loaded tenant.id != user.tenantId', async () => {
+      it('throws ForbiddenException when caller is NOT super-admin AND loaded tenant.id != user.tenantId', async () => {
         const { controller, tenantService } = buildWithCls({
           id: 'u-1',
           tenantId: 't-OWN',
@@ -348,7 +348,7 @@ describe('TenantController', () => {
   // `Tenant` rows are NOT tenant-scoped by the Prisma extension, and the
   // class-level @CanManage('Tenant') admits any TENANT_ADMIN (their policy is
   // tenantId-conditioned). Without an explicit guard a tenant admin could
-  // enumerate EVERY tenant via GET /admin/tenants. Non-global-admins must see
+  // enumerate EVERY tenant via GET /admin/tenants. Non-super-admins must see
   // only their own tenant; SUPER_ADMIN keeps the full cross-tenant listing.
   //
   // (fetchById / fetchByCodeName / fetchTenantConfigs are already tenant-scoped
@@ -361,7 +361,7 @@ describe('TenantController', () => {
       return { controller: new TenantController(svc as never, cls as never), svc };
     }
 
-    it('non-global-admin sees ONLY their own tenant (never the full list)', async () => {
+    it('non-super-admin sees ONLY their own tenant (never the full list)', async () => {
       const { controller, svc } = build({ id: 'u-1', tenantId: 't-OWN', roles: ['TENANT_ADMIN'] });
       svc.fetchById.mockResolvedValue({ id: 't-OWN', name: 'Own', toObject: () => ({ id: 't-OWN' }) });
 
@@ -394,7 +394,7 @@ describe('TenantController', () => {
       expect(res.data).toHaveLength(2);
     });
 
-    it('throws ForbiddenException for a non-global-admin with no tenant context', async () => {
+    it('throws ForbiddenException for a non-super-admin with no tenant context', async () => {
       const { controller, svc } = build({ id: 'u-1', tenantId: null, roles: ['DOCTOR'] });
 
       await expect(controller.fetchAll({ page: 1, limit: 10 } as any)).rejects.toBeInstanceOf(ForbiddenException);
@@ -422,13 +422,13 @@ describe('TenantController', () => {
     }
 
     describe('fetchTenantConfigs', () => {
-      it('404s a non-global-admin addressing a FOREIGN tenant by UUID (no leak, service untouched)', async () => {
+      it('404s a non-super-admin addressing a FOREIGN tenant by UUID (no leak, service untouched)', async () => {
         const { controller, svc } = build({ id: 'u-1', tenantId: OWN_UUID, roles: ['TENANT_ADMIN'] });
         await expect(controller.fetchTenantConfigs(FOREIGN_UUID, {} as any)).rejects.toBeInstanceOf(NotFoundException);
         expect(svc.fetchTenantConfigs).not.toHaveBeenCalled();
       });
 
-      it('allows a non-global-admin to read their OWN tenant by UUID', async () => {
+      it('allows a non-super-admin to read their OWN tenant by UUID', async () => {
         const { controller, svc } = build({ id: 'u-1', tenantId: OWN_UUID, roles: ['TENANT_ADMIN'] });
         await controller.fetchTenantConfigs(OWN_UUID, {} as any);
         expect(svc.fetchTenantConfigs).toHaveBeenCalledTimes(1);
@@ -448,7 +448,7 @@ describe('TenantController', () => {
     });
 
     describe('updateTenantConfigs', () => {
-      it('404s a non-global-admin updating a FOREIGN tenant by UUID (service untouched)', async () => {
+      it('404s a non-super-admin updating a FOREIGN tenant by UUID (service untouched)', async () => {
         const { controller, svc } = build({ id: 'u-1', tenantId: OWN_UUID, roles: ['TENANT_ADMIN'] });
         await expect(controller.updateTenantConfigs(FOREIGN_UUID, [{ id: 'c1', value: 'v', expectedVersion: 1 } as any])).rejects.toBeInstanceOf(
           NotFoundException,

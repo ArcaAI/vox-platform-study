@@ -30,7 +30,10 @@ export type WorkerSessionKind =
   | 'directory-sync'
   // Webhook delivery: SysEvent → matching Webhook fan-out, and the signed
   // per-webhook HTTP POST (TASK-727).
-  | 'webhook-delivery';
+  | 'webhook-delivery'
+  // Usage-outbox drain tick: rates each claimed row and appends the
+  // AiUsageEvent + rollups. One context PER ROW — the batch spans tenants.
+  | 'usage-outbox-drain';
 
 /**
  * Init shape for `createWorkerSession`.

@@ -153,11 +153,11 @@ describe('AiRuntimeProfileService — range validation (test 7)', () => {
 });
 
 // ===========================================================================
-// 8. Global-admin + SYSTEM-only governance
+// 8. Super-admin + SYSTEM-only governance
 // ===========================================================================
 
 describe('AiRuntimeProfileService — governance (test 8)', () => {
-  it('rejects a write from a non-global-admin with 403', async () => {
+  it('rejects a write from a non-super-admin with 403', async () => {
     const { svc } = makeService({ roles: [] });
     await expect(svc.upsertProfile('lm-studio', '', { temperature: 0.5 })).rejects.toBeInstanceOf(ForbiddenException);
   });

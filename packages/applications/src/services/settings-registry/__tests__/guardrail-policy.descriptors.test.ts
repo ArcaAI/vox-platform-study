@@ -54,7 +54,7 @@ describe('guardrail policy descriptors — registration and shape', () => {
     }
   });
 
-  it('is tier db-config, tenant-scoped, and NOT global-admin-only (tenant may tighten its own row)', () => {
+  it('is tier db-config, tenant-scoped, and NOT super-admin-only (tenant may tighten its own row)', () => {
     for (const d of GUARDRAIL_POLICY_SETTINGS) {
       expect(d.tier, d.key).toBe('db-config');
       expect(d.maxScope, d.key).toBe('tenant');

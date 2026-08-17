@@ -11,7 +11,7 @@
 #   ./scripts/start-test-app.sh <target> [--build]
 #
 # TARGETS:
-#   api  admin  stt  smr  nlp  guardrail  harness  tts  worker
+#   api  admin  stt  text  nlp  guardrail  harness  tts  worker
 #
 # FLAGS:
 #   --build   build the TS packages first (db:generate + core packages + modules)
@@ -35,8 +35,18 @@ source "$SCRIPT_DIR/start-test-service.sh"
 TARGET="${1:-}"
 shift || true
 
-PY_TARGETS=(stt smr nlp guardrail harness tts worker)
+PY_TARGETS=(stt text nlp guardrail harness tts worker)
 TS_TARGETS=(api admin)
+
+# Canonical CLI token is `text`. `smr` still works as a deprecated remap.
+remap_smr_alias() {
+    if [ "$1" = "smr" ]; then
+        echo -e "${YELLOW}warning: 'smr' is deprecated; use 'text'.${NC}" >&2
+        echo "text"
+    else
+        echo "$1"
+    fi
+}
 
 usage() {
     echo "Usage: $0 <${TS_TARGETS[*]} ${PY_TARGETS[*]}> [--build]" >&2
@@ -47,6 +57,7 @@ if [ -z "$TARGET" ]; then
     usage
     exit 2
 fi
+TARGET="$(remap_smr_alias "$TARGET")"
 
 is_python_target=false
 known=false
@@ -117,7 +128,7 @@ port_for() {
         api)       echo "${API_PORT:-8968}" ;;
         admin)     echo "${ADMIN_PORT:-5276}" ;;
         stt)       echo "${STT_PORT:-8961}" ;;
-        smr)       echo "${TEXT_PORT:-8962}" ;;
+        text)      echo "${TEXT_PORT:-8962}" ;;
         guardrail) echo "${GUARDRAIL_PORT:-8963}" ;;
         nlp)       echo "${NLP_PORT:-8964}" ;;
         tts)       echo "${TTS_PORT:-8965}" ;;

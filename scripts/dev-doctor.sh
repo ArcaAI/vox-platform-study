@@ -105,29 +105,29 @@ http_check optional "ollama" "http://localhost:11434/"
 echo -e "${CYAN}── HOPE services ────────────────────────────────────────────────${NC}"
 http_check required "api (8868)" "http://localhost:${API_PORT:-8868}/api/v1/health" "pnpm api:dev"
 http_check required "stt (8861)" "http://localhost:${STT_PORT:-8861}/api/v1/health" "pnpm stt:dev"
-http_check required "smr (8862)" "http://localhost:${TEXT_PORT:-8862}/api/v1/health" "pnpm text:dev"
+http_check required "text (8862)" "http://localhost:${TEXT_PORT:-8862}/api/v1/health" "pnpm text:dev"
 http_check required "nlp (8864)" "http://localhost:${NLP_PORT:-8864}/api/v1/health" "pnpm nlp:dev"
 http_check required "harness (8866)" "http://localhost:${HARNESS_PORT:-8866}/api/v1/health" "pnpm harness:dev"
 # guardrail mounts its routers under /api (no version segment), unlike the rest
 http_check optional "guardrail (8863)" "http://localhost:${GUARDRAIL_PORT:-8863}/api/health"
 
-# SMR must not just be up — it must have at least one LLM provider registered
-# (the silent live-summary killer: SMR up, zero providers, every generate 404s).
+# text must not just be up — it must have at least one LLM provider registered
+# (the silent live-summary killer: text up, zero providers, every generate 404s).
 # /api/v1/providers sits behind the X-Service-Token middleware (only /health is
 # exempt), so resolve the same token the service reads (host env > .env.dev)
 # before probing it — otherwise every call 401s and reads as "zero providers".
-smr_token="${TEXT_SERVICE_TOKEN:-}"
-if [ -z "$smr_token" ] && [ -f .env.dev ]; then
-    smr_token="$(grep -m1 '^TEXT_SERVICE_TOKEN=' .env.dev | cut -d= -f2-)"
+text_token="${TEXT_SERVICE_TOKEN:-}"
+if [ -z "$text_token" ] && [ -f .env.dev ]; then
+    text_token="$(grep -m1 '^TEXT_SERVICE_TOKEN=' .env.dev | cut -d= -f2-)"
 fi
-providers="$(curl -s --connect-timeout 2 --max-time 5 -H "X-Service-Token: ${smr_token}" "http://localhost:${TEXT_PORT:-8862}/api/v1/providers" 2>/dev/null)" || providers=""
+providers="$(curl -s --connect-timeout 2 --max-time 5 -H "X-Service-Token: ${text_token}" "http://localhost:${TEXT_PORT:-8862}/api/v1/providers" 2>/dev/null)" || providers=""
 if printf '%s' "$providers" | grep -q '"name"'; then
     # top-level provider entries are the ones carrying a display_name
-    pass "smr providers registered" "$(printf '%s' "$providers" | grep -oE '"name":"[^"]*","display_name"' | cut -d'"' -f4 | sort -u | tr '\n' ' ')"
+    pass "text providers registered" "$(printf '%s' "$providers" | grep -oE '"name":"[^"]*","display_name"' | cut -d'"' -f4 | sort -u | tr '\n' ' ')"
 elif printf '%s' "$providers" | grep -q 'service token'; then
-    fail "smr providers registered" "TEXT_SERVICE_TOKEN mismatch — doctor's .env.dev value doesn't match the running SMR process's"
+    fail "text providers registered" "TEXT_SERVICE_TOKEN mismatch — doctor's .env.dev value doesn't match the running text process's"
 else
-    fail "smr providers registered" "none — start SMR via 'pnpm text:dev' (registers the LM Studio provider)"
+    fail "text providers registered" "none — start text via 'pnpm text:dev' (registers the LM Studio provider)"
 fi
 
 # Harness Temporal worker — no port; it is a worker process polling the task

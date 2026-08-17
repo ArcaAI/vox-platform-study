@@ -36,7 +36,7 @@ const sha256Hex = (content: string): string => createHash('sha256').update(conte
 
 /**
  * C2 wrote this guard against the SOURCE TEXT of `live-documentation.service.ts`,
- * because the `system_prompt` was then an inline literal in `callSmr` and C2 did
+ * because the `system_prompt` was then an inline literal in `callText` and C2 did
  * not own that file. Its own failure message named the successor: *"If C3 has
  * lifted it onto FrozenLiveAgentSnapshot, replace this extraction with a direct
  * import of the exported constant."*

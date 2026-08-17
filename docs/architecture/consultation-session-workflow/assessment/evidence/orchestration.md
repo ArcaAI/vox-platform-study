@@ -296,7 +296,7 @@ at whether that orphan is ever cleaned up or merely invisible.
 ### F-09 detail — Generic ops signal endpoint can forge audit-trail attribution
 
 `POST /admin/harness/workflows/:id/signal` (`harness-admin.controller.ts:485-493`), gated
-`@Authorize(['manage','HarnessWorkflow'])` (tenant-admin-reachable, not global-admin-only), forwards an
+`@Authorize(['manage','HarnessWorkflow'])` (tenant-admin-reachable, not super-admin-only), forwards an
 **arbitrary, unrestricted** `signalName` + JSON `payload` straight to the Temporal workflow handle
 (`harness-ops.client.ts` → `apps/harness/.../api/endpoints/admin.py: await handle.signal(...)`). Nothing stops an
 operator from naming the signal `approval` with a payload shaped like `ApprovalSignal`
@@ -350,7 +350,7 @@ a specific elevated ability, and doesn't touch the clinical record itself.
    the inferential pass return FLAG afterward — the note stays signed.
 3. **F-09 — Ops signal endpoint can forge `GATE_DECISION` attribution.** Bounded blast radius (cannot fake a
    signed note) but a real audit-integrity gap reachable by a tenant-admin-scoped ability, not just a
-   global-admin. Fix: either scope `signalName` to a safe allowlist (exclude `approval`), or cross-validate
+   super-admin. Fix: either scope `signalName` to a safe allowlist (exclude `approval`), or cross-validate
    `clinicianId`/`attestationHash` against an actual `SIGNED_NOTE` version before writing `GATE_DECISION`.
 
 ## Divergences

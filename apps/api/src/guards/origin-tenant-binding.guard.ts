@@ -37,7 +37,7 @@
  *  2. No resolved tenant → PASS THROUGH. Public/unauthenticated routes (login,
  *     health, password reset) have none, and the origin already passed the
  *     CORS gate. 404-ing an anonymous login request would take the login page
- *     down. A global admin carries `tenantId: ''` — treated as "no tenant",
+ *     down. A super admin carries `tenantId: ''` — treated as "no tenant",
  *     not compared against real owners (see `resolveTenantId`).
  *  3. Origin not registered at all (`registry.has(origin)` is false — i.e.
  *     `tenantsFor(origin)` is empty) → PASS THROUGH + warn. An unregistered
@@ -60,8 +60,8 @@
  * empty, rule 2 fires for every request, and the guard silently degrades to a
  * no-op that still passes all of its own unit tests.
  *
- * Note that `ContextInterceptor`'s global-admin `x-tenant-id` elevation runs
- * AFTER all guards, so a global admin "acting as" a tenant is still seen here
+ * Note that `ContextInterceptor`'s super-admin `x-tenant-id` elevation runs
+ * AFTER all guards, so a super admin "acting as" a tenant is still seen here
  * with their own empty tenant and takes rule 2. That is correct: they arrive
  * on the SYSTEM-granted console origin, which rule 4's `allows()` admits
  * anyway.
@@ -220,7 +220,7 @@ export class OriginTenantBindingGuard implements CanActivate {
    * Same resolution the DB tenant-scope adapter uses
    * (`database/tenant-context.provider.ts#getTenantId`) — `cls.get('tenantId')`
    * with the CLS user as fallback — rather than a new accessor. An EMPTY
-   * string means "no tenant context": global admins authenticate without a
+   * string means "no tenant context": super admins authenticate without a
    * tenant binding and carry `tenantId: ''`, so `??` alone would leak the
    * empty string through and make it compare unequal to every real owner.
    */

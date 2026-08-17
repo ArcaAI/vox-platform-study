@@ -17,7 +17,7 @@ import type { ChangelogAudience, ChangelogSeverity, CreateChangelogEntryRequest 
 const EMPTY_DRAFT: CreateChangelogEntryRequest = { platformVersion: '', title: '', summary: '', body: '', severity: 'INFO', audience: 'ALL' };
 
 /**
- * Global-admin-only authoring surface — reuses `DetailDrawer` (never a bespoke
+ * Super-admin-only authoring surface — reuses `DetailDrawer` (never a bespoke
  * modal, per `11-ux-ui-principles.md`). Publish goes through If-Match/ETag OCC
  * (428 missing header, 412 drift), surfaced as toasts via GatewayError.
  */
@@ -154,7 +154,7 @@ export function ChangelogEntryDrawer({ open, onOpenChange, entryId }: { open: bo
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="ALL">All</SelectItem>
-                  <SelectItem value="GLOBAL_ADMIN">Global admin</SelectItem>
+                  <SelectItem value="SUPER_ADMIN">Super admin</SelectItem>
                   <SelectItem value="TENANT_ADMIN">Tenant admin</SelectItem>
                 </SelectContent>
               </Select>

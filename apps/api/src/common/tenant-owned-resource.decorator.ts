@@ -53,7 +53,7 @@ export interface TenantOwnedResourceOptions {
    *                        (StreamSession only)
    */
   lookup?: 'id' | 'name' | 'session';
-  scope?: 'tenant' | 'creator' | 'global-admin';
+  scope?: 'tenant' | 'creator' | 'super-admin';
 }
 
 export const TenantOwnedResource = (opts: TenantOwnedResourceOptions): MethodDecorator => SetMetadata(TENANT_OWNED_RESOURCE_KEY, opts);

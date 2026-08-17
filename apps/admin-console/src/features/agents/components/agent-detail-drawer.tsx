@@ -9,7 +9,7 @@
  *   - Loop config: the seven loop-configuration fields —
  *     role, subscribed kinds/write scope (picked from the resolved context
  *     schema), a constrained goal, tool allowlist, guardrail profile,
- *     always/never actions, and global-admin-tier budgets. See
+ *     always/never actions, and super-admin-tier budgets. See
  *     `agent-loop-config-tab.tsx`.
  *   - Version: current pin state + pin/track-latest controls (`POST :id/pin`).
  *   - History: the bound Agent Template's version timeline (read-only reuse

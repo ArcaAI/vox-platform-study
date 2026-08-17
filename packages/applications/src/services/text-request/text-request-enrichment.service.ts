@@ -11,7 +11,7 @@ import { assertProviderAvailable } from '../ai-provider-connection/assert-provid
  * `/api/v1/generate` body must carry: the caller tenant's BYO cloud credential
  * (`provider_overrides`) and the resolved hyperparameter profile.
  *
- * Extracted VERBATIM out of `SmrProxyController` (BUG-018 defect 3) because a
+ * Extracted VERBATIM out of `TextProxyController` (BUG-018 defect 3) because a
  * second caller — the prompt-template test bench — was posting to SMR directly
  * and therefore silently ran on platform credentials with no runtime profile.
  * Both callers now share this service, so there is exactly one place where the
@@ -22,8 +22,8 @@ import { assertProviderAvailable } from '../ai-provider-connection/assert-provid
  * Which model to run is each caller's own concern.
  */
 @Injectable()
-export class SmrRequestEnrichmentService {
-  private readonly logger = new Logger(SmrRequestEnrichmentService.name);
+export class TextRequestEnrichmentService {
+  private readonly logger = new Logger(TextRequestEnrichmentService.name);
 
   constructor(
     private readonly clsService: ClsService<IActiveUserContext>,
@@ -107,7 +107,7 @@ export class SmrRequestEnrichmentService {
    * Field names are snake_case to match the SMR wire contract; SMR ignores
    * unknown body fields.
    */
-  async applySmrRuntimeProfile<T extends { provider?: string; model?: string }>(target: T): Promise<T> {
+  async applyTextRuntimeProfile<T extends { provider?: string; model?: string }>(target: T): Promise<T> {
     if (!this.aiRuntimeProfileService || !target.provider || !target.model) {
       return target;
     }

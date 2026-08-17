@@ -646,13 +646,13 @@ enum ChangelogSeverity {
 // Filters both the one-time popup and the /changelog list.
 enum ChangelogAudience {
   ALL
-  GLOBAL_ADMIN
+  SUPER_ADMIN
   TENANT_ADMIN
 
   @@schema("core")
 }
 
-// CI creates DRAFT on an ALL- tag; a global admin PUBLISHes it. Nothing
+// CI creates DRAFT on an ALL- tag; a super admin PUBLISHes it. Nothing
 // reaches admins' screens automatically.
 enum ChangelogPublishStatus {
   DRAFT

@@ -95,6 +95,8 @@ export type AudioConfig = v.InferOutput<typeof AudioConfigSchema>;
 export type SttConfig = v.InferOutput<typeof SttConfigSchema>;
 export type UiConfig = v.InferOutput<typeof UiConfigSchema>;
 export type SmrConfig = v.InferOutput<typeof SmrConfigSchema>;
+/** Alias of {@link SmrConfig}. Published config path remains `smr`. */
+export type TextConfig = SmrConfig;
 export type FeatureFlags = v.InferOutput<typeof FeatureFlagsSchema>;
 
 export type DeepPartial<T> = {

@@ -34,7 +34,7 @@ export class AiRuntimeProfileRepository extends Repository<AiRuntimeProfileEntit
    * The (tenant, provider, modelSlug) lookup driving the injection cascade.
    * Pass `modelSlug: ''` for the provider-level default row.
    *
-   * Accepts an optional transaction/base client so a global admin acting on the
+   * Accepts an optional transaction/base client so a super admin acting on the
    * SYSTEM tenant can read through the unscoped lane — without it the
    * tenant-scope extension injects the admin's working tenant and the read
    * silently misses.

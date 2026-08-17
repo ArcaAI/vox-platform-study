@@ -60,13 +60,13 @@ interface AgenticInstructions {
 
 test.describe('agentic policy governance (OCC + SUPER_ADMIN privilege walls)', () => {
   /** SUPER_ADMIN acting on tenant __GLOBAL__ (same tenant as the tenant admin, so 403s are privilege verdicts). */
-  let globalAdminToken: string;
+  let superAdminToken: string;
   let tenantAdminToken: string;
 
   test.beforeAll(async ({ request }) => {
     const ga = await loginUser(request, SEEDED_USERS.superAdmin.username, SEEDED_USERS.superAdmin.password, DEFAULT_TENANT_KEY);
-    expect(ga, `global admin login (${DEFAULT_TENANT_KEY}) failed — is the stack seeded?`).toBeTruthy();
-    globalAdminToken = ga!.token;
+    expect(ga, `super admin login (${DEFAULT_TENANT_KEY}) failed — is the stack seeded?`).toBeTruthy();
+    superAdminToken = ga!.token;
 
     const ta = await loginUser(request, SEEDED_USERS.admin.username, SEEDED_USERS.admin.password, DEFAULT_TENANT_KEY);
     expect(ta, `tenant_admin login (${DEFAULT_TENANT_KEY}) failed`).toBeTruthy();
@@ -83,7 +83,7 @@ test.describe('agentic policy governance (OCC + SUPER_ADMIN privilege walls)', (
 
   test('A: PATCH harness policy without If-Match → 428', async ({ request }) => {
     const resp = await request.patch(HARNESS_POLICY, {
-      headers: bearer(globalAdminToken),
+      headers: bearer(superAdminToken),
       data: { maxRegen: 2 },
     });
     expect(resp.status()).toBe(428);
@@ -91,7 +91,7 @@ test.describe('agentic policy governance (OCC + SUPER_ADMIN privilege walls)', (
 
   test('A: PATCH harness policy with a stale If-Match → 412', async ({ request }) => {
     const resp = await request.patch(HARNESS_POLICY, {
-      headers: { ...bearer(globalAdminToken), 'If-Match': '"999"' },
+      headers: { ...bearer(superAdminToken), 'If-Match': '"999"' },
       data: { maxRegen: 2 },
     });
     expect(resp.status()).toBe(412);
@@ -103,20 +103,20 @@ test.describe('agentic policy governance (OCC + SUPER_ADMIN privilege walls)', (
     // row starts at version 1, so "bumps version" cannot hold on that edit.
     // Edit once to guarantee the row exists, then assert the OCC
     // version bump on a SECOND edit against the materialized row.
-    const before = await readPolicy(request, globalAdminToken);
+    const before = await readPolicy(request, superAdminToken);
     const firstMaxRegen = before.maxRegen === 2 ? 3 : 2;
     const first = await request.patch(HARNESS_POLICY, {
-      headers: { ...bearer(globalAdminToken), 'If-Match': `"${before.version}"` },
+      headers: { ...bearer(superAdminToken), 'If-Match': `"${before.version}"` },
       data: { maxRegen: firstMaxRegen, reason: `e2e ${Date.now()}` },
     });
     expect(first.status()).toBe(200);
     expect(((await first.json()) as HarnessPolicy).maxRegen).toBe(firstMaxRegen);
 
-    const mid = await readPolicy(request, globalAdminToken);
+    const mid = await readPolicy(request, superAdminToken);
     expect(mid.source).toBe('tenant');
     const secondMaxRegen = mid.maxRegen === 2 ? 3 : 2;
     const second = await request.patch(HARNESS_POLICY, {
-      headers: { ...bearer(globalAdminToken), 'If-Match': `"${mid.version}"` },
+      headers: { ...bearer(superAdminToken), 'If-Match': `"${mid.version}"` },
       data: { maxRegen: secondMaxRegen, reason: `e2e ${Date.now()}` },
     });
     expect(second.status()).toBe(200);
@@ -145,7 +145,7 @@ test.describe('agentic policy governance (OCC + SUPER_ADMIN privilege walls)', (
 
     test.beforeAll(async ({ request }) => {
       const create = await request.post(PROMPT_TEMPLATES, {
-        headers: bearer(globalAdminToken),
+        headers: bearer(superAdminToken),
         data: {
           name: `t511 approve ${unique}`,
           content: 'Summarize the visit for {{patient}}.',
@@ -161,7 +161,7 @@ test.describe('agentic policy governance (OCC + SUPER_ADMIN privilege walls)', (
 
     test.afterAll(async ({ request }) => {
       if (templateId) {
-        await request.delete(`${PROMPT_TEMPLATES}/${templateId}`, { headers: bearer(globalAdminToken) }).catch(() => undefined);
+        await request.delete(`${PROMPT_TEMPLATES}/${templateId}`, { headers: bearer(superAdminToken) }).catch(() => undefined);
       }
     });
 
@@ -174,7 +174,7 @@ test.describe('agentic policy governance (OCC + SUPER_ADMIN privilege walls)', (
       // 428 / 412 / "flips to APPROVED" tests below, which all still need it
       // in DRAFT).
       const create = await request.post(PROMPT_TEMPLATES, {
-        headers: bearer(globalAdminToken),
+        headers: bearer(superAdminToken),
         data: {
           name: `t511 tenant-approve ${unique}`,
           content: 'Summarize the visit for {{patient}}.',
@@ -186,7 +186,7 @@ test.describe('agentic policy governance (OCC + SUPER_ADMIN privilege walls)', (
       expect(create.status(), 'create DRAFT template for the tenant-approve check').toBeLessThan(300);
       const tenantOwnedId = ((await create.json()) as PromptTemplate).id;
 
-      // This template is created under the global admin's own (non-SYSTEM)
+      // This template is created under the super admin's own (non-SYSTEM)
       // tenant, so approval exercises the tenant-owned branch of
       // assertCanApprove: a caller holding manage:PromptTemplate for that
       // tenant may approve it. Only SYSTEM/library templates (tenantId =
@@ -200,11 +200,11 @@ test.describe('agentic policy governance (OCC + SUPER_ADMIN privilege walls)', (
       const approved = (await resp.json()) as PromptTemplate;
       expect(approved.status).toBe('APPROVED');
 
-      await request.delete(`${PROMPT_TEMPLATES}/${tenantOwnedId}`, { headers: bearer(globalAdminToken) }).catch(() => undefined);
+      await request.delete(`${PROMPT_TEMPLATES}/${tenantOwnedId}`, { headers: bearer(superAdminToken) }).catch(() => undefined);
     });
 
     test('D: a DRAFT template is NEVER the resolved prompt tier (resolution skips non-APPROVED)', async ({ request }) => {
-      const resp = await request.get(`${AGENTIC_INSTRUCTIONS}?promptType=new-patient`, { headers: bearer(globalAdminToken) });
+      const resp = await request.get(`${AGENTIC_INSTRUCTIONS}?promptType=new-patient`, { headers: bearer(superAdminToken) });
       expect(resp.status(), 'GET agentic instructions').toBe(200);
       const body = (await resp.json()) as AgenticInstructions;
       expect(body.promptTier, 'instructions carry a resolved prompt tier').toBeTruthy();
@@ -213,7 +213,7 @@ test.describe('agentic policy governance (OCC + SUPER_ADMIN privilege walls)', (
 
     test('C: approve without If-Match → 428', async ({ request }) => {
       const resp = await request.post(`${PROMPT_TEMPLATES}/${templateId}/approve`, {
-        headers: bearer(globalAdminToken),
+        headers: bearer(superAdminToken),
         data: {},
       });
       expect(resp.status()).toBe(428);
@@ -221,21 +221,21 @@ test.describe('agentic policy governance (OCC + SUPER_ADMIN privilege walls)', (
 
     test('C: approve with a stale If-Match → 412', async ({ request }) => {
       const resp = await request.post(`${PROMPT_TEMPLATES}/${templateId}/approve`, {
-        headers: { ...bearer(globalAdminToken), 'If-Match': '"999"' },
+        headers: { ...bearer(superAdminToken), 'If-Match': '"999"' },
         data: {},
       });
       expect(resp.status()).toBe(412);
     });
 
     test('C: a SUPER_ADMIN with the current If-Match flips the template to APPROVED', async ({ request }) => {
-      const get = await request.get(`${PROMPT_TEMPLATES}/${templateId}`, { headers: bearer(globalAdminToken) });
+      const get = await request.get(`${PROMPT_TEMPLATES}/${templateId}`, { headers: bearer(superAdminToken) });
       expect(get.status()).toBe(200);
       const current = (await get.json()) as PromptTemplate;
       const etag = get.headers()['etag'];
       const ifMatch = etag ?? `"${current.version ?? 1}"`;
 
       const resp = await request.post(`${PROMPT_TEMPLATES}/${templateId}/approve`, {
-        headers: { ...bearer(globalAdminToken), 'If-Match': ifMatch },
+        headers: { ...bearer(superAdminToken), 'If-Match': ifMatch },
         data: { reason: 'e2e approval' },
       });
       expect(resp.status()).toBe(200);

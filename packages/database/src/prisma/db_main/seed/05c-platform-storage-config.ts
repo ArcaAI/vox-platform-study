@@ -20,7 +20,7 @@
  * keeps a dev box (`SECRETS_PROVIDER=env`) working with no extra setup.
  *
  * Idempotent. CREATE-ONLY: an existing row is left untouched, because after the
- * first boot it is the global admin's to edit, and a re-seed must never silently
+ * first boot it is the super admin's to edit, and a re-seed must never silently
  * revert an operator's change. Duplicate tenant-wide defaults are pruned (the
  * `@@unique([tenantId, bucketId])` index cannot enforce uniqueness across NULLs —
  * Postgres treats NULLs as distinct — so uniqueness is an application-layer rule

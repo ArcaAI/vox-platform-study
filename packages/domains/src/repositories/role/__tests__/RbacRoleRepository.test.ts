@@ -259,7 +259,7 @@ describe('RbacRoleFactory', () => {
       expect(input.resourceStatus).toBe(ResourceStatusType.ENABLED);
     });
 
-    it('honours an explicit isSystemRole:true (global-admin SYSTEM-role create)', () => {
+    it('honours an explicit isSystemRole:true (super-admin SYSTEM-role create)', () => {
       const input = RbacRoleFactory.buildCreateInput({
         name: 'CLINICIAN',
         isSystemRole: true,

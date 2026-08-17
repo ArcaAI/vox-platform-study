@@ -3,7 +3,7 @@
  *
  * CASL `@Authorize` + `If-Match`/`@RequiresIfMatch` are exercised by the
  * guard/interceptor (+ e2e). These specs cover the controller's OWN logic:
- * tenant vs. global-admin scoping (404-over-403 precedent — mirrors
+ * tenant vs. super-admin scoping (404-over-403 precedent — mirrors
  * `TenantTtsConfigAdminController`), and the If-Match-over-body version
  * precedence forwarded to the service.
  */
@@ -46,14 +46,14 @@ describe('TenantIdpConfigAdminController — scoping', () => {
     await expect(controller.getById('provider-1', 't2')).rejects.toBeInstanceOf(ForbiddenException);
   });
 
-  it('lets a global admin target any tenant via ?tenantId=', async () => {
+  it('lets a super admin target any tenant via ?tenantId=', async () => {
     const { controller, service } = makeController({ user: SUPER });
     service.getById.mockResolvedValue({ id: 'provider-1', tenantId: 't9' });
     await controller.getById('provider-1', 't9');
     expect(service.getById).toHaveBeenCalledWith('t9', 'provider-1');
   });
 
-  it('400s when a global admin omits ?tenantId= and has no CLS tenant', async () => {
+  it('400s when a super admin omits ?tenantId= and has no CLS tenant', async () => {
     const { controller } = makeController({ user: SUPER });
     await expect(controller.list()).rejects.toBeInstanceOf(BadRequestException);
   });

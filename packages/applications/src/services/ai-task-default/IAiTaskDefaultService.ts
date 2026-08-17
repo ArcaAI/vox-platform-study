@@ -4,7 +4,7 @@ import { AiTaskDefaultResponse, EffectiveAiTaskDefaultResponse, UpsertAiTaskDefa
  * Per-tenant AI task-model default service.
  *
  * `tenantId` is optional on every method: when omitted the CLS request tenant
- * is used; a global admin may target another tenant explicitly (the controller
+ * is used; a super admin may target another tenant explicitly (the controller
  * resolves `?tenantId=` via `resolveScopedTenantId`). The reserved SYSTEM
  * tenant id addresses the platform-default row.
  */
@@ -21,7 +21,7 @@ export interface IAiTaskDefaultService {
 
   /**
    * Create (expectedVersion 0) or compare-and-set the (tenant, taskKey) row.
-   * `nlp.*`/`harness.*` keys are GLOBAL-ADMIN-ONLY (ForbiddenException for
+   * `nlp.*`/`harness.*` keys are SUPER_ADMIN-ONLY (ForbiddenException for
    * tenant admins — a privilege rule, not a cross-tenant probe). `guardrail.*`
    * is tenant-admin configurable since TASK-735 Phase 0, but a tenant write
    * still must name a slug on the platform-approved model list (a

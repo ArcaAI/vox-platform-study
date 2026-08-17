@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
-import { SmrStreamConsumerService } from '../text-stream-consumer.service';
+import { TextStreamConsumerService } from '../text-stream-consumer.service';
 
 const createMockConfigService = () => ({
   isRedisConfigured: vi.fn().mockReturnValue(true),
@@ -26,14 +26,14 @@ vi.mock('ioredis', () => {
   };
 });
 
-describe('SmrStreamConsumerService', () => {
-  let service: SmrStreamConsumerService;
+describe('TextStreamConsumerService', () => {
+  let service: TextStreamConsumerService;
   let mockConfigService: ReturnType<typeof createMockConfigService>;
 
   beforeEach(() => {
     vi.clearAllMocks();
     mockConfigService = createMockConfigService();
-    service = new SmrStreamConsumerService(mockConfigService as any);
+    service = new TextStreamConsumerService(mockConfigService as any);
   });
 
   afterEach(async () => {

@@ -4,7 +4,7 @@
  * from GET /entitlements/me, Settings with a category sub-nav over the editable
  * tenant/me/config rows). Settings saves send per-row If-Match over PATCH
  * /tenant/me/config (OCC alert on 412), and the frame's NoTenant variant covers
- * tenant-less global admins.
+ * tenant-less super admins.
  */
 
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
@@ -137,7 +137,7 @@ const ENTITLEMENTS: EntitlementCapabilities = {
 
 const NO_TENANT_BODY = {
   statusCode: 400,
-  message: 'Tenant context is required. Global-admins must use /admin/tenants endpoints to manage other tenants.',
+  message: 'Tenant context is required. Super-admins must use /admin/tenants endpoints to manage other tenants.',
   error: 'Bad Request',
 };
 
@@ -260,7 +260,7 @@ describe('TenantProfileScreen', () => {
     expect((input as HTMLInputElement).inputMode).toBe('decimal');
   });
 
-  it('shows the friendly no-tenant empty state instead of an error for tenant-less global admins', async () => {
+  it('shows the friendly no-tenant empty state instead of an error for tenant-less super admins', async () => {
     stubFetch(() => Response.json(NO_TENANT_BODY, { status: 400 }));
     renderWithProviders(<TenantProfileScreen />);
 

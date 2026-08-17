@@ -23,7 +23,7 @@ import { Module } from '@nestjs/common';
 import { TenantOwnedResourceModule } from '../../common';
 import { AdminTranscriptionJobController } from './admin-transcription-job.controller';
 import { SessionRemovalRetryService } from './session-removal-retry.service';
-import { SmrProxyController } from './text-proxy.controller';
+import { TextProxyController } from './text-proxy.controller';
 import { SttWsGateway } from './stt-ws.gateway';
 import { TranscriptionJobController } from './transcription-job.controller';
 
@@ -40,14 +40,14 @@ import { TranscriptionJobController } from './transcription-job.controller';
     TenantBucketServiceModule,
     PipelineServiceModule,
     CoreDatabaseModule,
-    HarnessPolicyServiceModule, // SMR-selection resolver for SmrProxyController
+    HarnessPolicyServiceModule, // SMR-selection resolver for TextProxyController
     // Supplies `IOriginRegistry` to `SttWsGateway`'s CSWSH
     // handshake check. Browsers do NOT apply CORS to WebSockets, so this is the
     // only place the allow-list reaches the socket path. The gateway injects it
     // `@Optional()` and fails OPEN, so omitting this import does not break the
     // build or any test — it just silently disables the check.
     OriginRegistryServiceModule,
-    // Registry-backed providers listings on SmrProxyController:
+    // Registry-backed providers listings on TextProxyController:
     // AiModelService lists ENABLED rows per taskType; AiTaskDefaultService
     // resolves the effective `guardrail.validate` default.
     AiModelServiceModule,
@@ -70,21 +70,21 @@ import { TranscriptionJobController } from './transcription-job.controller';
     // Resolves the caller tenant's STT fallback pointer + BYO provider
     // overrides for `createStreamSession` injection + `switch-to-fallback`.
     TenantSttConfigServiceModule,
-    // `IUsageLedgerService` for `SmrProxyController`'s
+    // `IUsageLedgerService` for `TextProxyController`'s
     // generate.stream emission AND `StreamingSessionService`'s
     // transcribe.stream emission. Both are constructor-injected at THIS
-    // module's level (SmrProxyController is declared directly below;
+    // module's level (TextProxyController is declared directly below;
     // StreamingSessionServiceModule importing it only satisfies its OWN
     // providers, not a sibling controller here) — Nest's module
     // encapsulation means each module that injects the token must import it.
     UsageLedgerServiceModule,
-    // TASK-700: supplies `IDnaWritingStyleService` to `SmrProxyController` so
+    // TASK-700: supplies `IDnaWritingStyleService` to `TextProxyController` so
     // its `dna_writing_style_id` path routes through the gated
     // `getEffectiveStyleText` accessor instead of reading the (ciphertext-only,
     // ungated) repository row directly.
     DnaWritingStyleServiceModule,
   ],
-  controllers: [TranscriptionJobController, AdminTranscriptionJobController, SmrProxyController],
+  controllers: [TranscriptionJobController, AdminTranscriptionJobController, TextProxyController],
   // SessionRemovalRetryService resolves
   // `StreamingSessionService` from StreamingSessionServiceModule above and
   // `IRedisCacheService` from the @Global() RedisCacheModule registration.

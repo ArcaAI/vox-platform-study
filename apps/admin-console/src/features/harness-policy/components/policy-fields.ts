@@ -51,7 +51,7 @@ export const TENANT_LOCKED_POLICY_KEYS = [
 ] as const satisfies readonly PolicyField['key'][];
 
 /** The copy shown under every locked control (rule 11 §5: visible reason). */
-export const LOCKED_FIELD_HINT = 'Global admins only';
+export const LOCKED_FIELD_HINT = 'Super Admins only';
 
 export const POLICY_FIELD_GROUPS: PolicyFieldGroup[] = [
   {

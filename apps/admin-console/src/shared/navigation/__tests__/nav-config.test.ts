@@ -71,7 +71,7 @@ describe('NAV_ENTRIES (capabilities-matrix section 3, reviewed 2026-07-04; playg
     expect(tenant?.implemented).toBe(true);
   });
 
-  it('re-tiers AI models to global-admin only and folds frontend config into the tenant detail', () => {
+  it('re-tiers AI models to super-admin only and folds frontend config into the tenant detail', () => {
     const aiModels = NAV_ENTRIES.find((entry) => entry.route === '/ai-models');
     expect(aiModels?.tier).toBe('10-19');
     expect(aiModels?.required).toEqual([['manage', 'all']]);
@@ -81,7 +81,7 @@ describe('NAV_ENTRIES (capabilities-matrix section 3, reviewed 2026-07-04; playg
   // The entry was hidden (`implemented: false`, reachable only by
   // direct URL) while the screen was registry-only. It is now the AI-models
   // hub (registry + live discovery + register), so it is a first-class,
-  // navigable global-admin surface.
+  // navigable super-admin surface.
   it('exposes /ai-models as an implemented, navigable hub', () => {
     const aiModels = NAV_ENTRIES.find((entry) => entry.route === '/ai-models');
     expect(aiModels?.implemented).toBe(true);
@@ -171,7 +171,7 @@ describe('NAV_ENTRIES (capabilities-matrix section 3, reviewed 2026-07-04; playg
       expect(dbStudio?.implemented).toBe(true);
     });
 
-    it('adds /ai-services as a global-admin surface over the unused backends (M-09)', () => {
+    it('adds /ai-services as a super-admin surface over the unused backends (M-09)', () => {
       const aiServices = NAV_ENTRIES.find((entry) => entry.route === '/ai-services');
       expect(aiServices?.tier).toBe('10-19');
       expect(aiServices?.required).toEqual([['manage', 'all']]);
@@ -227,21 +227,21 @@ describe('matchNavEntry', () => {
 });
 
 describe('visibleNavEntries', () => {
-  it('shows a global admin every implemented entry (manage:all grants all tiers)', () => {
+  it('shows a super admin every implemented entry (manage:all grants all tiers)', () => {
     const visible = visibleNavEntries(SUPER_ADMIN_RULES, ['SUPER_ADMIN']);
     const implemented = NAV_ENTRIES.filter((entry) => entry.implemented);
     expect(visible.map((entry) => entry.route)).toEqual(implemented.map((entry) => entry.route));
   });
 
-  it('shows /ai-models to a global admin now that the hub is implemented', () => {
+  it('shows /ai-models to a super admin now that the hub is implemented', () => {
     expect(visibleNavEntries(SUPER_ADMIN_RULES, ['SUPER_ADMIN']).map((entry) => entry.route)).toContain('/ai-models');
   });
 
-  it('hides global-admin-only entries from tenant admins but keeps shared screens and the playground', () => {
+  it('hides super-admin-only entries from tenant admins but keeps shared screens and the playground', () => {
     const visible = visibleNavEntries(TENANT_ADMIN_RULES, ['TENANT_ADMIN']).map((entry) => entry.route);
     expect(visible).not.toContain('/dashboard');
     expect(visible).not.toContain('/monitoring');
-    // Still global-admin only (manage:all) — now visible to global admins,
+    // Still super-admin only (manage:all) — now visible to super admins,
     // never to tenant admins.
     expect(visible).not.toContain('/ai-models');
     expect(visible).toContain('/users');

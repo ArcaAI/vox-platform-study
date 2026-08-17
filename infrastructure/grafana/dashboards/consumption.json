@@ -120,7 +120,7 @@
         "type": "postgres",
         "uid": "hope-postgres"
       },
-      "description": "Top-N tenants by rated rollup cost over the dashboard time range (INTERNAL basis). Cross-tenant by construction — same GLOBAL_ADMIN-only posture as GET admin/usage/top-tenants (TASK-615 WS-J).",
+      "description": "Top-N tenants by rated rollup cost over the dashboard time range (INTERNAL basis). Cross-tenant by construction — same SUPER_ADMIN-only posture as GET admin/usage/top-tenants.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },

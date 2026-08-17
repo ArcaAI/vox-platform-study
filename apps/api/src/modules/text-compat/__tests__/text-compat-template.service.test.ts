@@ -1,6 +1,6 @@
 import { Logger } from '@nestjs/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { SmrCompatTemplateService } from '../text-compat-template.service';
+import { TextCompatTemplateService } from '../text-compat-template.service';
 
 const createDeptRepo = () => ({
   findAllByTenant: vi.fn(async () => [
@@ -25,10 +25,10 @@ const createResolver = () => ({
  * without a debug build, so these assert the FIELDS an investigation needs —
  * not the message wording.
  */
-describe('SmrCompatTemplateService — INFO resolution audit', () => {
+describe('TextCompatTemplateService — INFO resolution audit', () => {
   let repo: ReturnType<typeof createDeptRepo>;
   let resolver: ReturnType<typeof createResolver>;
-  let service: SmrCompatTemplateService;
+  let service: TextCompatTemplateService;
   let info: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
@@ -36,7 +36,7 @@ describe('SmrCompatTemplateService — INFO resolution audit', () => {
     repo = createDeptRepo();
     resolver = createResolver();
     info = vi.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
-    service = new SmrCompatTemplateService(repo as never, resolver as never, { getId: () => 'req-test-id' } as never);
+    service = new TextCompatTemplateService(repo as never, resolver as never, { getId: () => 'req-test-id' } as never);
   });
 
   it('logs template id, department, doctor id and visit type when a governed template serves', async () => {
@@ -84,17 +84,17 @@ describe('SmrCompatTemplateService — INFO resolution audit', () => {
   });
 });
 
-describe('SmrCompatTemplateService', () => {
+describe('TextCompatTemplateService', () => {
   let repo: ReturnType<typeof createDeptRepo>;
   let resolver: ReturnType<typeof createResolver>;
-  let service: SmrCompatTemplateService;
+  let service: TextCompatTemplateService;
 
   beforeEach(() => {
     vi.clearAllMocks();
     repo = createDeptRepo();
     resolver = createResolver();
     // ClsService is used only by the INFO audit line (correlation id).
-    service = new SmrCompatTemplateService(repo as never, resolver as never, { getId: () => 'req-test-id' } as never);
+    service = new TextCompatTemplateService(repo as never, resolver as never, { getId: () => 'req-test-id' } as never);
   });
 
   describe('toSummaryPromptType', () => {

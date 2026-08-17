@@ -57,7 +57,7 @@ import { StreamTicketModule } from './stream-ticket.module';
     // adding a second lookup path.
     WorkflowRunServiceModule,
   ],
-  // AdminImpersonationController adds the global-admin-only
+  // AdminImpersonationController adds the super-admin-only
   // `POST /admin/users/:id/impersonate` mint alongside the legacy
   // `/auth/impersonate` route (same module: it reuses the exact same
   // service/repository set the AuthController already wires).

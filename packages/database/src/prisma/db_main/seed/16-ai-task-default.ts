@@ -20,8 +20,8 @@ import { SYSTEM_TENANT_ID, SYSTEM_USER_ID } from './00-constants';
  * SYSTEM row → consuming service's env fallback.
  *
  * Governance: the `guardrail.`, `nlp.`, and `harness.` task-key prefixes are
- * GLOBAL-ADMIN-ONLY (service-level isSuperAdmin guard on writes) per
- * GLOBAL_ADMIN_ONLY_TASK_PREFIXES in
+ * SUPER_ADMIN-ONLY (service-level isSuperAdmin guard on writes) per
+ * SUPER_ADMIN_ONLY_TASK_PREFIXES in
  * packages/applications/src/services/ai-task-default/constants.ts. For those,
  * tenants only CONSUME the SYSTEM-row platform default and runtime resolution
  * ignores per-tenant override rows. EXCEPTION: the `smr.` prefix is
@@ -79,7 +79,7 @@ export const SYSTEM_AI_TASK_DEFAULTS: AiTaskDefaultSeed[] = [
   // SMR generation routing, mapped to the CURRENT SMR
   // default (HarnessPolicy SYSTEM smrProvider/smrModel = lm-studio /
   // gemma-4-e2b-it-qat, registry slug `lms-gemma-4-e2b-it-qat`). Both live and
-  // finalize point at the same platform default today; a global admin OR a
+  // finalize point at the same platform default today; a super admin OR a
   // tenant admin may split or override them later.
   // `resolveSmrSelection` consults these keys FIRST. NOTE: the per-tenant
   // `smr.<task>.fallback` keys are opt-in and intentionally NOT seeded here.
@@ -111,7 +111,7 @@ export const SYSTEM_AI_TASK_DEFAULTS: AiTaskDefaultSeed[] = [
     modelSlug: 'lms-gemma-4-e2b-it-qat',
   },
   // Guardrail selection moved out of env into the DB control plane
-  // (Phase B). Both keys are GLOBAL-ADMIN-only.
+  // (Phase B). Both keys are SUPER_ADMIN-only.
   {
     id: '86000000-0000-0000-0000-000000000006',
     tenantId: SYSTEM_TENANT_ID,
@@ -125,7 +125,7 @@ export const SYSTEM_AI_TASK_DEFAULTS: AiTaskDefaultSeed[] = [
     modelSlug: 'minicheck-flan-t5-large',
   },
   // Harness LLM-as-judge selection moved out of env into the DB
-  // control plane (Phase C). GLOBAL-ADMIN-only; SYSTEM wins.
+  // control plane (Phase C). SUPER_ADMIN-only; SYSTEM wins.
   {
     id: '86000000-0000-0000-0000-000000000008',
     tenantId: SYSTEM_TENANT_ID,

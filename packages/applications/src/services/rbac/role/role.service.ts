@@ -135,7 +135,7 @@ export class RbacRoleService extends BaseService implements IRbacRoleService {
 
   async create(request: CreateRbacRoleRequest): Promise<RbacRoleRecord> {
     if (request.isSystemRole === true && !isSuperAdmin(this.requestUser)) {
-      throw new ForbiddenException('Only a global admin can create a system role.');
+      throw new ForbiddenException('Only a super admin can create a system role.');
     }
 
     if (request.parentRoleId) {
@@ -289,7 +289,7 @@ export class RbacRoleService extends BaseService implements IRbacRoleService {
       throw new NotFoundException('Role not found');
     }
     if (role.isSystemRole && !isSuperAdmin(this.requestUser)) {
-      throw new ForbiddenException('Only a global admin can modify policies on a system role.');
+      throw new ForbiddenException('Only a super admin can modify policies on a system role.');
     }
 
     const user = this.requestUser;
@@ -332,14 +332,14 @@ export class RbacRoleService extends BaseService implements IRbacRoleService {
   }
 
   async removePolicy(roleId: string, policyId: string, breakGlass?: BreakGlassCredentials): Promise<void> {
-    // SYSTEM-role policy detach is a global-admin-only operation
+    // SYSTEM-role policy detach is a super-admin-only operation
     // (defense in depth — the admin console already scopes the affordance).
     const role = await this.roleRepository.findByIdGuardSelect(roleId);
     if (!role) {
       throw new NotFoundException('Role not found');
     }
     if (role.isSystemRole && !isSuperAdmin(this.requestUser)) {
-      throw new ForbiddenException('Only a global admin can modify policies on a system role.');
+      throw new ForbiddenException('Only a super admin can modify policies on a system role.');
     }
 
     // The detach target must exist (the policy name anchors both
@@ -390,7 +390,7 @@ export class RbacRoleService extends BaseService implements IRbacRoleService {
    * Clone a role (SYSTEM or CUSTOM) into a new CUSTOM role that
    * copies the source's policy set. Any admin may call this (no isSuperAdmin
    * gate) — cloning a SYSTEM role is the whole point, since SYSTEM roles
-   * themselves stay locked to global admins.
+   * themselves stay locked to super admins.
    */
   async clone(sourceId: string, request: CloneRbacRoleRequest): Promise<RbacRoleRecord> {
     const source = (await this.roleRepository.findByIdWithPolicies(sourceId, this.roleReadInclude())) as RbacRoleRecord | null;

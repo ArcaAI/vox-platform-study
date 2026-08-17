@@ -110,7 +110,7 @@ export class TenantService extends BaseService implements ITenantService {
    */
   async create(request: CreateTenantRequest): Promise<TenantEntity> {
     // Auto-generate the key from `name` when the caller omits
-    // it; an explicit `key` (global-admin override) is used as-is (already
+    // it; an explicit `key` (super-admin override) is used as-is (already
     // format/reserved-validated by the DTO).
     const key = request.key ?? (await generateUniqueTenantKey(request.name, (candidate) => this.tenantKeyExists(candidate)));
 
@@ -132,7 +132,7 @@ export class TenantService extends BaseService implements ITenantService {
       throw new InternalServerErrorException(`Failed to create TenantEntity: ${request}`);
     }
 
-    // Tenant creation is a cross-tenant, global-admin operation:
+    // Tenant creation is a cross-tenant, super-admin operation:
     // CLS `tenantId` is empty for the whole call (the new tenant isn't
     // "active" yet), so `broadcastSysEvent()`'s CLS-only attribution
     // (anti-spoofing) would stamp every provisioning event
@@ -527,7 +527,7 @@ export class TenantService extends BaseService implements ITenantService {
 
         // Snapshot the golden template into a tenant-owned APPROVED copy so the
         // clone resolves for clinical generation immediately (the golden rows
-        // are already global-admin-approved).
+        // are already super-admin-approved).
         const snapshot = PromptTemplateFactory.CreatePromptTemplate({
           tenantId: newTenantId,
           // Name after the AGENT (unique per department), NOT the shared golden

@@ -15,7 +15,7 @@ import * as Enums from '../../../enums';
  * most-specific dimensions winning.
  *
  * The SYSTEM-tenant rows are the platform rate card (SYSTEM-shared READ, writes
- * GLOBAL_ADMIN-only at the service layer). Unlike its append-only siblings in
+ * SUPER_ADMIN-only at the service layer). Unlike its append-only siblings in
  * this plane, this model IS admin-managed: standard soft-delete lifecycle,
  * sys-events on mutation (`ResourceType.AiPriceBook`).
  */

@@ -163,7 +163,7 @@ describe('SummaryService.generateSummary — finalize lineage', () => {
     expect(createdMeta().sessionAgentId).toBeNull();
   });
 
-  // ── RF-4 — finalize LLM precedence, end to end through callSmrService ──
+  // ── RF-4 — finalize LLM precedence, end to end through callTextService ──
   describe('finalize LLM precedence (RF-4)', () => {
     const httpService = createMockHttpService();
     const resolveSmrSelection = vi.fn().mockResolvedValue({ provider: 'tenant-provider', model: 'tenant-model' });
