@@ -79,6 +79,16 @@ best practices, a TDD-ordered implementation plan, and an agent-allocation table
 | TASK-732 | `legacy-migration-deletion` | L | 713, 730, 731 | T3 |
 | TASK-733 | `department-assignment-personalization` | M | 700 (scan clean), 731 | T3 |
 
+**TASK-732 status (2026-08-17): shipped, scoped to the signable generator.** Phase 1
+(readiness/thresholds) landed 2026-08-16 with the Task 3 verdict deliberately left unwritten
+(no real traffic to compute a decision-grade rate). The owner then rendered a pre-production GO —
+not the data-driven verdict R-1 envisaged — plus the R-2 boundary (keep the v1-compat
+pre-summary/summary surfaces). Phases 2 (SYSTEM-default flip only; no real cohorts existed to
+migrate through), 3 (deletion) and 4 (grep-gate + contract test + doc sync) executed against that
+boundary. `docs/implementation/TASK-732-Legacy-Migration-Deletion/README.md` §7 has the full
+record; `deletion-manifest.md` §5 has an open finding on `ComprehensiveSummaryProcessor`'s
+signability this pass did not resolve.
+
 ## Dependency graph
 
 ```mermaid

@@ -4,28 +4,33 @@ import { SEED_CUSTOMER_TENANT_IDS, SEED_TENANT_ID, SYSTEM_TENANT_ID, SYSTEM_USER
 /**
  * PipelinePolicy Seed (Realtime cascade)
  *
- * The realtime-pipeline toggle cascade (auto-summary / auto-NER / harness-vs-
- * legacy routing) is resolved by `ConfigResolver`
+ * The realtime-pipeline toggle cascade (auto-summary / auto-NER / harness
+ * routing) is resolved by `ConfigResolver`
  *   DOCTOR → DEPARTMENT → TENANT → SYSTEM-tenant default → code-default.
  *
  * Two TENANT-scope rows bootstrap that cascade:
  *
  *  1. SYSTEM-tenant GLOBAL DEFAULT (`SYSTEM_TENANT_ID`) — every tenant without an
- *     override falls through to this. Set to the LEGACY platform behavior:
- *     `autoSummaryEnabled`/`autoNerEnabled = true` (matching DEFAULT_PIPELINE_CONFIG)
- *     and `harnessEnabled = false`. Today only the clinical-workspace demo opted
- *     into the harness (via a hard-coded UI flag), so a `false` platform default
- *     preserves back-compat for every OTHER tenant once that UI flag is removed.
+ *     override falls through to this. `autoSummaryEnabled`/`autoNerEnabled = true`
+ *     (matching DEFAULT_PIPELINE_CONFIG) and, since TASK-732,
+ *     `harnessEnabled = true`: the legacy signable generator this toggle used to
+ *     fall back to was deleted in that ticket (Phase 2 exit criterion — the
+ *     R-2 boundary keeps the un-gated pre-summary/comprehensive-summary/sync-
+ *     summary helper generators, which never read this toggle at all). Before
+ *     TASK-732 this defaulted to `false` (legacy platform behavior); see
+ *     `docs/implementation/TASK-732-Legacy-Migration-Deletion/` for the
+ *     pre-production owner authorization to flip it ahead of a real
+ *     multi-cohort migration (no real tenant traffic existed to cohort).
  *
  *  2. DEMO-tenant OVERRIDE (`SEED_TENANT_ID`, the Global customer tenant) — pins
- *     `harnessEnabled = true` so the clinical-workspace walkthrough keeps routing
- *     through the documentation harness after the UI hard-code is removed. The
- *     other toggles stay NULL (inherit the SYSTEM default).
+ *     `harnessEnabled = true` (now redundant with the SYSTEM default, kept as an
+ *     explicit override for clarity/back-compat with pre-TASK-732 deployments
+ *     whose SYSTEM row has not yet been migrated — see the data migration
+ *     under `db_main/migrations/`). Other toggles stay NULL (inherit the
+ *     SYSTEM default).
  *
- *  3. ArcaAI-tenant OVERRIDE (`SEED_CUSTOMER_TENANT_IDS.ARCAAI`) — ArcaAI is a
- *     production-ready day-1 tenant and mirrors the Global tenant: it pins
- *     `harnessEnabled = true` so its consultations route through the documentation
- *     harness rather than the legacy pipeline. Other toggles stay NULL (inherit
+ *  3. ArcaAI-tenant OVERRIDE (`SEED_CUSTOMER_TENANT_IDS.ARCAAI`) — same
+ *     reasoning as the demo tenant. Other toggles stay NULL (inherit
  *     the SYSTEM default).
  *
  * The migration also bootstraps the SYSTEM default (a fixed-id INSERT … ON CONFLICT
@@ -49,11 +54,15 @@ interface PipelineToggleSnapshot {
   dnaStyleEnabled: boolean | null;
 }
 
-/** SYSTEM-tenant GLOBAL DEFAULT — legacy platform behavior (harness OFF). */
+/**
+ * SYSTEM-tenant GLOBAL DEFAULT. TASK-732 flipped `harnessEnabled` to `true`
+ * (Phase 2 exit criterion) — the legacy signable generator it used to fall
+ * back to was deleted in the same ticket.
+ */
 export const SYSTEM_PIPELINE_POLICY_DEFAULTS = {
   autoSummaryEnabled: true,
   autoNerEnabled: true,
-  harnessEnabled: false,
+  harnessEnabled: true,
   dnaStyleEnabled: null,
 } as const satisfies PipelineToggleSnapshot;
 
@@ -79,7 +88,8 @@ export const ARCAAI_PIPELINE_POLICY_OVERRIDE = {
   dnaStyleEnabled: true,
 } as const satisfies PipelineToggleSnapshot;
 
-const SYSTEM_REASON = 'TASK-356 Phase 5 seed: SYSTEM pipeline cascade default (auto on, harness off — legacy platform behavior)';
+const SYSTEM_REASON =
+  'TASK-356 Phase 5 seed: SYSTEM pipeline cascade default (auto on, harness on — TASK-732 flipped this from off once the legacy signable generator it fell back to was deleted)';
 const DEMO_REASON = 'TASK-356 Phase 5 seed: demo-tenant harness override (preserves clinical-workspace harness after UI hard-code removal)';
 const ARCAAI_REASON = 'Seed: ArcaAI production day-1 harness override (routes ArcaAI consultations through the documentation harness, mirroring the Global tenant)';
 

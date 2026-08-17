@@ -14,20 +14,16 @@
  * `settings-registry/__tests__/consultation-gate-seed-parity.test.ts`'s
  * node:fs-based pattern rather than live imports) and asserts zero
  * CONDITIONAL reads of `harnessEnabled` (`if (config.harnessEnabled`,
- * `if (cascade?.harnessEnabled`, or equivalent) outside one explicitly
- * documented, pre-existing exception:
+ * `if (cascade?.harnessEnabled`, or equivalent) anywhere in that tree.
  *
- *   `events/consultation-event.handler.ts` — `handleSummaryGenerated`'s
- *   "skip the legacy NER job, the harness workflow already persists its own
- *   NamedEntity rows" decision. This answers a DIFFERENT question than the
- *   seam ("should the legacy NER job be skipped as duplicate work?", not
- *   "which generator produces the note?"), predates this ticket, and is
- *   explicitly out of scope per the ticket's Current State Evaluation §2.1
- *   (which enumerates NOTE-generation entry points only — NER extraction is
- *   a separate pipeline step, see `consultation-event.handler.ts`'s own
- *   module docstring: "SummaryGenerated → auto-extract NER"). Both the
- *   source call site and this test carry a matching comment so the two
- *   cannot silently drift apart.
+ * TASK-732 update: `events/consultation-event.handler.ts`'s SECOND
+ * conditional reader — `handleSummaryGenerated`'s "skip the legacy NER job,
+ * the harness workflow already persists its own NamedEntity rows" decision —
+ * was collapsed to an UNCONDITIONAL skip when the legacy NER generator
+ * (`ner.processor.ts` / `createNerJob`) was deleted, since there is no longer
+ * a legacy branch to guard against. The allow-list for that site is removed
+ * in the same commit — leaving it would let a future reintroduction of a
+ * conditional `harnessEnabled` read there hide behind a stale exception.
  *
  * A plain (non-conditional) reference to `.harnessEnabled` — e.g. logging its
  * resolved value for observability, as `SummaryService.generateSummary` does
@@ -41,17 +37,6 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 const CONSULTATION_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
-
-/** Site allow-listed as a legitimate, documented, out-of-scope second reader. */
-const ALLOWED_SITE = {
-  relativePath: 'events/consultation-event.handler.ts',
-  /** The exact conditional line the allow-list covers — pinned so an
-   * unrelated NEW conditional read added to the same file cannot hide behind
-   * this allow-list entry. */
-  conditionalLine: 'if (config.harnessEnabled) {',
-  /** The documented-exception comment that must accompany it. */
-  markerComment: 'TASK-704 grep-gate NOTE',
-};
 
 /** Conditional-read patterns: `if (<expr>.harnessEnabled` / `if (!<expr>.harnessEnabled` / `if (<expr>?.harnessEnabled`, allowing an optional leading `!` and an optional-chain segment before the property. */
 const CONDITIONAL_HARNESS_ENABLED_RE = /if\s*\(\s*!?\s*[\w.]+\??\.\s*harnessEnabled\b/g;
@@ -71,8 +56,8 @@ function listTsFiles(dir: string): string[] {
   return out;
 }
 
-describe('harnessEnabled has exactly one runtime reader (TASK-704 grep-gate)', () => {
-  it('finds zero conditional harnessEnabled reads outside the documented allow-list', () => {
+describe('harnessEnabled has exactly one runtime reader (TASK-704 grep-gate, hardened by TASK-732)', () => {
+  it('finds zero conditional harnessEnabled reads anywhere in the consultation tree (no allow-list — TASK-732 removed the second reader)', () => {
     const files = listTsFiles(CONSULTATION_ROOT);
     expect(files.length, 'sanity: the consultation tree must not be empty').toBeGreaterThan(20);
 
@@ -86,23 +71,11 @@ describe('harnessEnabled has exactly one runtime reader (TASK-704 grep-gate)', (
       lines.forEach((lineText, idx) => {
         CONDITIONAL_HARNESS_ENABLED_RE.lastIndex = 0;
         if (!CONDITIONAL_HARNESS_ENABLED_RE.test(lineText)) return;
-
-        const isAllowed = relativePath === ALLOWED_SITE.relativePath && lineText.trim() === ALLOWED_SITE.conditionalLine;
-        if (isAllowed) return;
-
         violations.push({ file: relativePath, line: idx + 1, text: lineText.trim() });
       });
     }
 
     expect(violations, `unexpected conditional harnessEnabled read(s) outside NoteGenerationService.generate:\n${JSON.stringify(violations, null, 2)}`).toEqual([]);
-  });
-
-  it('the one allow-listed exception still exists, at the expected line, with its documented-exception marker', () => {
-    const source = readFileSync(join(CONSULTATION_ROOT, ALLOWED_SITE.relativePath), 'utf8');
-    expect(source, 'the allow-listed conditional must still be present — if it was removed, delete the allow-list entry too').toContain(
-      ALLOWED_SITE.conditionalLine,
-    );
-    expect(source, 'the allow-listed conditional must carry its documented-exception marker comment').toContain(ALLOWED_SITE.markerComment);
   });
 
   it('NoteGenerationService.generate is the one place that DOES conditionally read harnessEnabled', () => {

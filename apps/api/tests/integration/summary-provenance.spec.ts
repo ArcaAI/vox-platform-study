@@ -71,6 +71,7 @@ function buildController(opts: { summaryMetaRepository: { findByContextItem: Ret
     summaryService as never,
     {} as never, // chainSummaryService
     {} as never, // consultationJobService
+    {} as never, // noteGenerationService — TASK-732
     {} as never, // timelineService
     cls as never,
     policyEngine as never,

@@ -26,6 +26,14 @@ from harness.temporal.activities import (
 from harness.temporal.claim_check import ClaimCheckRef, build_blob_store, load_blob
 from harness.temporal.interpreter.compiled_config import CompiledWorkflowConfig, parse_and_verify
 from harness.temporal.interpreter.models import NodeActivityInput, NodeActivityResult
+from harness.temporal.interpreter.nodes.consultation import (
+    interpreter_consultation_consent_gate,
+    interpreter_consultation_hitl_gate,
+    interpreter_consultation_phi_hop,
+)
+from harness.temporal.interpreter.nodes.context_binding import interpreter_context_binding
+from harness.temporal.interpreter.nodes.deliver import interpreter_deliver
+from harness.temporal.interpreter.nodes.guardrail_check import interpreter_guardrail_check
 from harness.temporal.interpreter.nodes.stt_placeholder import (
     interpreter_stt_asr_engine,
     interpreter_stt_audio_input,
@@ -36,6 +44,8 @@ from harness.temporal.interpreter.nodes.stt_placeholder import (
     interpreter_stt_transcript_output,
     interpreter_stt_vad,
 )
+from harness.temporal.interpreter.nodes.template_ref import interpreter_template_ref
+from harness.temporal.interpreter.nodes.text_generate import interpreter_text_generate
 
 # ---------------------------------------------------------------------------
 # Seed node activities (Task 4/6's tests dispatch against these; TASK-720 adds
@@ -100,6 +110,13 @@ async def interpreter_passthrough(payload: NodeActivityInput) -> NodeActivityRes
 NODE_ACTIVITIES: list[Callable[..., Any]] = [
     interpreter_noop,
     interpreter_passthrough,
+    # Summarization palette (TASK-720 Task 4/5) — see nodes/{context_binding,template_ref,
+    # text_generate,guardrail_check,deliver}.py.
+    interpreter_context_binding,
+    interpreter_template_ref,
+    interpreter_text_generate,
+    interpreter_guardrail_check,
+    interpreter_deliver,
     # STT palette (TASK-724 Task 3) — placeholders, see nodes/stt_placeholder.py.
     interpreter_stt_audio_input,
     interpreter_stt_vad,
@@ -109,6 +126,10 @@ NODE_ACTIVITIES: list[Callable[..., Any]] = [
     interpreter_stt_asr_engine,
     interpreter_stt_transcript_output,
     interpreter_stt_phi_hop,
+    # Consultation palette (TASK-731 Task 9, partial pass) — see nodes/consultation.py.
+    interpreter_consultation_consent_gate,
+    interpreter_consultation_phi_hop,
+    interpreter_consultation_hitl_gate,
 ]
 
 # ---------------------------------------------------------------------------

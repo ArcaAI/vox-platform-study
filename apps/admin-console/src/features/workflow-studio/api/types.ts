@@ -137,3 +137,11 @@ export interface WorkflowNodeRegistry {
   nodes: WorkflowNodeDescriptor[];
   registryChecksum: string;
 }
+
+/** Minimal prompt-template shape for the inspector's picker (id + name). Mirrors
+ *  `features/departments/api/types.ts`'s `PromptTemplateOption` field-for-field — deliberately
+ *  NOT imported from there (rule 13 §Structure: "features never import each other"). */
+export interface PromptTemplateOption {
+  id: string;
+  name: string;
+}

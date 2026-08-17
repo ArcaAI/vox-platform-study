@@ -35,8 +35,9 @@ import { INoteGenerationService, GenerationTrigger } from '../../note-generation
 /**
  * BullMQ processor for async comprehensive summary generation.
  *
- * Follows the same pattern as SummaryProcessor but aggregates content
- * across the entire consultation chain before calling the SMR service.
+ * Follows the same pattern as the legacy signable summary generator (deleted
+ * TASK-732) but aggregates content across the entire consultation chain
+ * before calling the SMR service.
  *
  * Progress steps:
  *   10% — Resolving linked consultations
@@ -45,6 +46,18 @@ import { INoteGenerationService, GenerationTrigger } from '../../note-generation
  *   60% — Generating comprehensive summary with AI
  *   85% — Saving results
  *  100% — Complete
+ *
+ * TASK-732 R-2 boundary (owner decision, deletion-manifest.md §5): KEPT,
+ * un-gated — never had a harness equivalent (`GenerationTrigger.COMPREHENSIVE_SUMMARY`
+ * is not in `HARNESS_SUPPORTED_TRIGGERS`). **NOT structurally non-signable**:
+ * it writes its rollup via `ContextItemFactory.CreateRawSummary` against the
+ * root consultation the job was created for, which DOES satisfy
+ * `ContextItemEntity.isFinalSummary` — the same as a real single-consultation
+ * note. Whether a cross-chain rollup should be reachable by
+ * `SummaryService.approveSummary` as if it were that consultation's own note
+ * is an open product question this ticket does not decide; the CURRENT
+ * (unchanged) behavior is locked as a finding, not an endorsement, by
+ * `jobs/processors/__tests__/kept-generators-signability.task732.test.ts`.
  */
 @Processor(JobQueue.GenerateComprehensiveSummary)
 export class ComprehensiveSummaryProcessor extends WorkerHost {

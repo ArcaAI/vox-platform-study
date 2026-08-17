@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | In Progress (Phases A–D done; E partially done — assessment only, no folds executed; F partially done) |
+| **Status** | In Progress (Phases A–D done, incl. Task 15/16 remainder; E — Task 17 assessment done, Task 18 correctly not-applicable per its own verdict, Task 19 done; F partially done — unit/a11y green, e2e execution + manual a11y pass still gated on infra) |
 | **Wave** | 2 · **Size** | XL |
 | **Epic slug** | `workflow-studio-v1` |
 | **Depends on** | TASK-715 (`workflow-definition-model`), TASK-716 (`workflow-compiler-validator`) |
@@ -935,17 +935,21 @@ this session. No route was deleted or redirected; no cross-feature import was ad
 - **Manual a11y pass** (keyboard-only two-node graph build, 200% zoom, reduced-motion, screen
   reader) — **NOT performed this session**, same gap as Session 1.
 
-#### What is still genuinely NOT done (read this before marking the ticket complete)
+#### What is still genuinely NOT done (read this before marking the ticket complete) — updated Session 3
 
 1. Task 1 (Figma design gate) — still waived per orchestrator instruction, still not cleared for
    real; if a future session's scope changes, reconfirm the waiver explicitly.
-2. Task 18/19 (pipeline-policy fold, prompt-template picker + department cross-link).
-3. `name`/`description` autosave; "Create new version from this" branch action on a PUBLISHED
-   row; `?view=` URL sync.
-4. TASK-720's palette content landing will re-open the registry-contract gap (no `configSchema`,
-   no `label`) — Task 9/12's fallbacks are the safety net, not a permanent design.
-5. Playwright e2e execution and the manual a11y pass — both blocked on infra/tooling this
+2. Task 18 (pipeline-policy fold) — Task 17's own verdict is "does not fold this pass" (registry
+   still has no palette content to fold against), so there is genuinely nothing to execute here
+   yet; re-check the verdict once TASK-720 lands real palette content.
+3. TASK-720's palette content landing will re-open the registry-contract gap (no `configSchema`,
+   no `label`) — Task 9/12's fallbacks (and Task 19's `PromptTemplatePicker` gating on
+   `knownPaths`) are the safety net, not a permanent design.
+4. Playwright e2e execution and the manual a11y pass — both blocked on infra/tooling this
    session, not skipped by choice.
+5. **DONE this session (Session 3), removed from this list:** `name`/`description` autosave;
+   "Create new version from this" on a PUBLISHED row; `?view=` URL sync (Task 15/16 remainder);
+   Task 19 (prompt-template picker in the inspector + department reciprocal link). See below.
 
 ### Commands run, verbatim results (Session 2)
 
@@ -982,6 +986,113 @@ pnpm --filter @arcaai/ui lint        → clean
   `pnpm build`'s static route generation and the unit/component test suite (mocked `fetch`)
   verify the wiring in this session.
 
+### Session 3 (2026-08-17) — Task 15 remainder, Task 16 remainder, Task 19
+
+**Scope, per explicit orchestrator instruction:** finish exactly Task 15's remainder
+(name/description metadata form + autosave wiring, "create new version from a published row",
+unsaved-changes guard), Task 16's remainder (`?view=list` URL sync via nuqs), and Task 19 (demote
+the department prompt-config panel, add the prompt-template picker to the inspector). Decision
+#11 (`/agentic-policy` fold-in) remains GATED and was **not** touched. Task 18 was **not**
+attempted — Task 17's own verdict already resolves it to "does not fold this pass"; there is
+nothing to execute until TASK-720 lands real palette content, and forcing a fold against that
+verdict would be inventing scope, not finishing it.
+
+- **Task 15 remainder — DONE.**
+  - `hooks/use-unsaved-changes-guard.ts` (new, TDD RED→GREEN, 5/5 tests) — `beforeunload` +
+    a capture-phase document `click` listener on same-origin anchors (the App Router has no
+    `router.events` to intercept programmatic navigation, so the click-driven path — every nav
+    affordance in this console — is what's covered; recorded as a known, honest limitation in the
+    hook's own doc comment, not silently assumed complete).
+  - `components/definition-metadata-form.tsx` (new, TDD RED→GREEN, 6/6 tests) — a short Dialog
+    (rule 11 §1) over `name`/`description`, controlled state, no `react-hook-form`. Fires
+    `onNameChange`/`onDescriptionChange` on every keystroke.
+  - `workflow-studio-editor.tsx` wiring (new test file, TDD RED→GREEN, 5/5 tests): local
+    `name`/`description`/`metadataDirty` state hydrated alongside the graph in the existing
+    per-`definition.id` `hydratedRef` effect; `handleNameChange`/`handleDescriptionChange` call
+    the SAME `autosave.schedule(...)` the graph uses (the hook already merges patches — no second
+    debounce timer); `onSaved` clears `metadataDirty` the same way it clears the store's graph
+    `dirty`. An "Edit details" button in the `PageHeader` actions slot opens the dialog.
+  - "Create new version from this" (design.md §Plane 1) — a PUBLISHED/DEPRECATED row's
+    `statusBanner` now carries a "Create new version" button next to the read-only notice
+    (instead of any edit affordance) that calls `useCreateWorkflowDefinition().mutateAsync` with
+    `{ slug, name, description, paletteKey, graph }` cloned from the current row plus
+    `parentVersionId: definition.id`, then `router.push`es to the new draft's editor route.
+    Verified against the delivered `create()` service logic
+    (`workflow-definition.service.ts:148-210`): `parentVersionId` requires the parent's `slug` to
+    match and mints `versionNumber = maxVersionNumber(slug) + 1` inside the same transaction — no
+    client-side version-number guessing.
+  - `useUnsavedChangesGuard(!readOnly && (dirty || metadataDirty))` wired at the top of
+    `EditorBody` — combines the store's graph-shape `dirty` with the new metadata-form dirty flag;
+    a read-only published row is never treated as dirty.
+- **Task 16 remainder — DONE.** `?view=` now round-trips through nuqs
+  (`parseAsStringLiteral(['canvas','list']).withDefault('canvas')`, default `history: 'replace'`
+  so toggling the view doesn't spam browser history): the URL is read on mount and whenever it
+  changes externally (shared link, back/forward) and pushed into the store via `setViewMode`; the
+  toolbar's `onViewModeChange` now writes BOTH the store and the URL in one call
+  (`handleViewModeChange`). Verified end-to-end (not just the codec in isolation): mounting with
+  `?view=list` renders the list editor, and clicking the "List" toggle from a bare URL updates the
+  URL's `view` param.
+- **Task 19 — DONE.**
+  - `components/inspector/prompt-template-picker.tsx` (new, TDD RED→GREEN, 5/5 tests) — a picker
+    (Select + `<Skeleton>` while loading) over the tenant's prompt templates, reading
+    `admin/prompt-templates` through this feature's OWN `api/client.ts`/`api/hooks.ts`
+    (`listPromptTemplateOptions`/`usePromptTemplateOptions`, new) — deliberately re-implemented
+    rather than imported from `features/departments/api/client.ts:54`, which does the identical
+    read for the identical reason (rule 13 §Structure: "features never import each other"). Plus
+    a plain `href` deep link to `/prompt-templates` (design.md: "prompt templates keep their own
+    authoritative editor (picker + deep link)").
+  - Wired into `InspectorPanel` (`inspector-panel.tsx`, +4 tests) as a standalone
+    `PromptTemplateSection` bound to `node.config.promptTemplateId`: rendered in BOTH the
+    schema-less fallback (the real registry state today — no delivered node type has a
+    `configSchema`) and the schema-driven branch, but in the latter it steps aside whenever the
+    compiled `FieldDescriptor[]` already declares a field at path `promptTemplateId` — so a future
+    schema that names the field itself never gets a second, duplicate control for the same key.
+  - `department-prompt-config-panel.tsx` — added the reciprocal plain-`href` link to
+    `/workflow-studio` in the panel's header, plus a one-line note naming the Studio as the future
+    home, per the owner verdict already recorded in `consolidation-map.md` ("does not fold in
+    v1 — per-department workflow assignment is TASK-733"). This panel remains the AUTHORITATIVE
+    editor for its four prompt slots; nothing about its own editing behavior changed.
+- **A pre-existing Radix `Select` test gap was found and fixed while writing the picker's
+  tests**, not introduced by this session: no test anywhere in `apps/admin-console` previously
+  drove a `SelectItem` selection all the way through under jsdom (`identity-provider-form.test.tsx`
+  only opens the dropdown and reads its options). Root-caused against
+  `@radix-ui/react-select`'s own source: `SelectItem` tracks pointer type on an ITEM-scoped ref
+  that only becomes `"mouse"` after a real `pointerdown` on that same item; a synthetic
+  `fireEvent.click` — which jsdom never precedes with real pointer events — hits the item's
+  `onClick` branch instead (fires for any NON-"mouse" pointer type, which is the ref's default).
+  `fireEvent.click(option)` is therefore the activation path that survives jsdom; `pointerUp`
+  alone is not. Documented as a comment at both call sites (`prompt-template-picker.test.tsx`,
+  `inspector-panel.test.tsx`) so the next Select-interaction test in this app doesn't rediscover it.
+
+#### Commands run, verbatim results (Session 3)
+
+```
+pnpm --filter @arcaai/admin-console test        → Test Files  201 passed (201) · Tests  1579 passed (1579)
+pnpm --filter @arcaai/admin-console lint        → clean (0 errors, 0 warnings)
+pnpm --filter @arcaai/admin-console typecheck   → clean
+pnpm --filter @arcaai/admin-console build       → exit 0; `/workflow-studio` and
+    `/workflow-studio/[definitionId]` present in the compiled route manifest (Turbopack, 79/79
+    static pages generated). Same 5 pre-existing Edge-Runtime warnings from `instrumentation.ts`
+    as Session 2 — untouched by this session.
+```
+
+RED confirmed before each new test file/behavior (`use-unsaved-changes-guard.test.tsx`,
+`definition-metadata-form.test.tsx` — module-not-found; `workflow-studio-editor.test.tsx` — all 5
+new assertions failed against the pre-change component). `packages/ui` was not touched this
+session (`workflow-canvas` unchanged) — not re-verified in this session since no file under
+`packages/ui` was edited.
+
+#### Gated / not run (Session 3)
+
+- `pnpm --filter @arcaai/admin-console test:e2e` for `tests/e2e/workflow-studio.spec.ts` — not
+  run. Same program-wide blocker as Sessions 1–2 (`prisma db push --force-reset` reserved for the
+  orchestrator; local infra not brought up this session).
+- Manual a11y pass (keyboard-only build, 200% zoom, reduced-motion, screen reader) — not
+  performed this session either.
+- Decision #11 (`/agentic-policy` fold) — remains GATED, not performed, per explicit instruction.
+- Task 18 (pipeline-policy fold) — not attempted; Task 17's verdict already resolves it to
+  "does not fold this pass" and nothing in this session's scope changed that verdict.
+
 ## 8. Change History
 
 | Date | Change | By |
@@ -989,3 +1100,4 @@ pnpm --filter @arcaai/ui lint        → clean
 | 2026-08-16 | Ticket authored | ticket-writer agent (Wave 2 Studio batch) |
 | 2026-08-16 | Phases A–C executed (Tasks 1–8): design gate waived per orchestrator instruction; React Flow pinned + `DEPENDENCY.md`; three cross-ticket contracts written against delivered TASK-715/716/717 code with real gaps recorded; `WorkflowCanvas` composite built TDD (RED→GREEN, 14/14 unit + 3/4 CT, 1 CT `fixme`) in `packages/ui`; `toFieldDescriptors` schema→form compiler built TDD (RED→GREEN, 12/12) in `apps/admin-console`. Phases D–F (Tasks 9–21) not started — see §7 for the exact boundary. `pnpm --filter @arcaai/ui {test,lint,typecheck,build}` and `pnpm --filter @arcaai/admin-console {test,lint,typecheck,build}` all green. | execution agent |
 | 2026-08-16 | **Session 2** (same day, continued — TASK-734 landed the real `admin/workflow-definitions`/`admin/workflow-nodes` endpoints between sessions): the three Task 3 contracts re-derived against delivered code (superseding Session 1's "NOT YET DELIVERED" verdicts, real gaps re-confirmed — notably still NO per-node `configSchema`); Task 9 (inspector form rendering) finished, closing out Phase C; Phase D built in full — API layer (Task 10), Zustand graph store (Task 11, +`reorderNode`), palette rail (Task 12), structured list/tree peer editor (Task 13, every mutation proven click-only/no-drag), validation rail + click-to-focus (Task 14), debounced autosave/OCC/publish (Task 15, RED→GREEN fake-timer coverage of 412-pause/never-retry/428/cancel), routes + nav entry (Task 16) — `pnpm --filter @arcaai/admin-console build` succeeds with both new routes in the compiled manifest; Phase E (Task 17) executed as an assessment — consolidation-map.md records that NOTHING folds this pass (registry still has no palette content to fold against; `/agentic-policy` stays HUMAN-GATED per explicit instruction) — Tasks 18/19 correctly left not-done rather than forced; Phase F partial — 89 unit/a11y tests across the new components (all green), `tests/e2e/workflow-studio.spec.ts` authored following `workflow-runs.spec.ts` but NOT executed (program-wide Playwright/Prisma blocker), manual a11y pass not performed. Full command evidence and the "still genuinely NOT done" list are in §7. | execution agent |
+| 2026-08-17 | **Session 3** — finished Task 15's remainder (name/description metadata form + autosave wiring via `DefinitionMetadataForm` + `use-unsaved-changes-guard.ts`; "Create new version from this" on a PUBLISHED row; combined graph+metadata unsaved-changes guard), Task 16's remainder (`?view=list` URL sync via nuqs, both directions), and Task 19 (`PromptTemplatePicker` in the inspector, gated off `knownPaths` so it never duplicates a schema-declared field; reciprocal `/workflow-studio` link + note added to `department-prompt-config-panel.tsx`, which stays authoritative). Decision #11 remains GATED, untouched. Task 18 not attempted — Task 17's own verdict already resolves it to "does not fold this pass". TDD RED→GREEN throughout (3 new test files + additions to `inspector-panel.test.tsx`/`workflow-studio-api.test.ts`); along the way, root-caused and fixed a pre-existing gap in how this app's tests drive a Radix `SelectItem` selection under jsdom (documented in §7). `pnpm --filter @arcaai/admin-console {test,lint,typecheck,build}` all green (201 test files, 1579 tests); e2e execution and the manual a11y pass remain gated on the program-wide infra blocker. | execution agent |

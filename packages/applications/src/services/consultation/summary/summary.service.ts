@@ -442,6 +442,17 @@ export class SummaryService extends BaseService implements ISummaryService {
 
   /**
    * Generate final consultation summary
+   *
+   * TASK-732 R-2 boundary (owner decision, deletion-manifest.md §5): KEPT,
+   * permanently legacy (see the decision block below) — the "summary" half
+   * of the v1-compat surface named explicitly by the owner. Unlike
+   * `PreSummaryProcessor`/`ComprehensiveSummaryProcessor`, this generator is
+   * NOT non-signable: it produces the consultation's actual clinical note
+   * via `ContextItemFactory.CreateRawSummary`, which satisfies
+   * `ContextItemEntity.isFinalSummary` by design — it must remain signable
+   * through `approveSummary`, exactly like the harness-produced note it
+   * substitutes for on this one permanently-legacy trigger. Confirmed by
+   * `jobs/processors/__tests__/kept-generators-signability.task732.test.ts`.
    */
   async generateSummary(consultationId: string, request: GenerateSummaryRequest): Promise<SummaryResponse> {
     const tenantId = this.tenantId;
@@ -479,12 +490,16 @@ export class SummaryService extends BaseService implements ISummaryService {
     //      groundedness / MCP terminology checks (i.e. designed to NOT be
     //      instant), risking HTTP timeouts and introducing a blocking-wait
     //      pattern that exists nowhere else in this codebase.
-    //   Entry point #4 (`POST :id/summary/async`, `SummaryProcessor.process`)
-    //   is already the fully-wired, harness-routing entry point for this
-    //   exact trigger (`SUMMARY_REGENERATE`) — its async/job-polling contract
-    //   is what harness-enabled tenants should use for a regenerate that may
-    //   run through harness. That entry point already replaces (never
-    //   supplements) its legacy body on a 'harness' decision (Task 4).
+    //   Entry point #4 (`POST :id/summary/async`, now
+    //   `ConsultationController.generateSummaryAsync` calling the seam
+    //   directly — TASK-732 deleted the `SummaryProcessor` that used to make
+    //   this decision) is already the fully-wired, harness-routing entry
+    //   point for this exact trigger (`SUMMARY_REGENERATE`) — its
+    //   async/job-polling contract is what harness-enabled tenants should
+    //   use for a regenerate that may run through harness. That entry point
+    //   replaces (never supplements) the legacy generator on a 'harness'
+    //   decision, and is now a VISIBLE queued failure — never a silent
+    //   fallback — on any other decision (see its own comment).
     //
     // Only the side-effect-free `resolveConfig` read is logged here, for
     // observability; nothing below is gated on it. If a future ticket
@@ -1364,9 +1379,11 @@ export class SummaryService extends BaseService implements ISummaryService {
 
     // Per-invocation ner.extract usage row — keyed
     // on a freshly generated requestId for THIS synchronous call (this path
-    // has no natural durable job id the way NerProcessor does), never on
-    // consultationId (attribution only — shares buildNerUsageEvent with the
-    // async NerProcessor path so the shape can't drift). No business
+    // has no natural durable job id the way an async BullMQ job would),
+    // never on consultationId (attribution only — shares `buildNerUsageEvent`
+    // with what was, before TASK-732 deleted it, the legacy async NER
+    // generator's own usage event, so the shape couldn't drift; that shared
+    // helper now has only this one caller). No business
     // transaction to join — entity persistence above isn't wrapped in one —
     // so recordUsage runs without `tx`. Never let a metering failure fail
     // the request; it's a side effect of work already done.

@@ -87,9 +87,11 @@ describe('HOPE_SETTINGS_REGISTRY (assembled catalog)', () => {
   it('registers the four pipeline toggles sourced from PIPELINE_SETTING_DESCRIPTORS', () => {
     const auto = HOPE_SETTINGS_REGISTRY.getOrThrow('pipeline.autoSummaryEnabled');
     expect(auto).toMatchObject({ tier: 'db-config', dataType: 'boolean', maxScope: 'doctor', default: true });
-    // harnessEnabled is the rollout knob — capped at DEPARTMENT, fail-closed default
+    // harnessEnabled is the rollout knob — capped at DEPARTMENT. TASK-732
+    // flipped its default to true (the legacy signable generator it used to
+    // fall back to no longer exists).
     const harness = HOPE_SETTINGS_REGISTRY.getOrThrow('pipeline.harnessEnabled');
-    expect(harness).toMatchObject({ maxScope: 'department', default: false });
+    expect(harness).toMatchObject({ maxScope: 'department', default: true });
     // the clamp must reject setting the rollout knob per-doctor
     expect(() => HOPE_SETTINGS_REGISTRY.assertWithinMaxScope('pipeline.harnessEnabled', 'doctor')).toThrow(ArgumentInvalidException);
   });

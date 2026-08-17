@@ -71,13 +71,15 @@ interface SettingDescriptor {
  * The setting registry (/ Q7):
  *  - `autoSummaryEnabled` / `autoNerEnabled` may be set down to DOCTOR scope.
  *  - `harnessEnabled` is capped at DEPARTMENT (never per-doctor) and code-defaults
- *    to `false` (fail-closed) when nothing resolves.
+ *    to `true` since TASK-732 (Phase 2 exit criterion — the legacy signable
+ *    generator this toggle used to fall back to no longer exists; matches the
+ *    SYSTEM row flipped in `seed/14-pipeline-policy.ts`).
  *  - `dnaStyleEnabled` is DOCTOR-scope storage (written elsewhere); read here.
  */
 export const PIPELINE_SETTING_DESCRIPTORS: Record<PipelineToggleKey, SettingDescriptor> = {
   autoSummaryEnabled: { codeDefault: true, maxScope: PipelinePolicyScope.DOCTOR },
   autoNerEnabled: { codeDefault: true, maxScope: PipelinePolicyScope.DOCTOR },
-  harnessEnabled: { codeDefault: false, maxScope: PipelinePolicyScope.DEPARTMENT },
+  harnessEnabled: { codeDefault: true, maxScope: PipelinePolicyScope.DEPARTMENT },
   dnaStyleEnabled: { codeDefault: false, maxScope: PipelinePolicyScope.DOCTOR },
   // The TENANT-level enablement gate for DNA redaction; the doctor
   // opt-in is the doctor's DNA toggle (see resolveEffectiveDnaRedactionEnabled).

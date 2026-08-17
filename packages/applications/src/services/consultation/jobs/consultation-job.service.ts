@@ -8,15 +8,19 @@ import { IRedisCacheService } from '../../baseServices/redis';
 import { RedisSubscriberService } from '../../stt/realtime/redisSubscriber.service';
 import {
   GeneratePreSummaryJobPayload,
-  GenerateSummaryJobPayload,
   GenerateComprehensiveSummaryJobPayload,
-  ExtractNerJobPayload,
   ConsultationJobStatus,
   JobResponse,
   JobStatusResponse,
   JobStatusType,
 } from './dto';
 
+// TASK-732 — `createSummaryJob`/`createNerJob` (the legacy `SUMMARY_REGENERATE`
+// async generator and its NER companion) were deleted here along with
+// `summary.processor.ts`/`ner.processor.ts`. `generateSummaryAsync` now calls
+// `NoteGenerationService.generate(GenerationTrigger.SUMMARY_REGENERATE, …)`
+// directly (see `apps/api/.../consultation.controller.ts`); auto-NER's
+// duplicate-work skip collapsed to unconditional in `consultation-event.handler.ts`.
 export interface IConsultationJobService {
   createPreSummaryJob(
     consultationId: string,
@@ -28,31 +32,11 @@ export interface IConsultationJobService {
     idempotencyKey?: string,
   ): Promise<JobResponse>;
 
-  createSummaryJob(
-    consultationId: string,
-    tenantId: string,
-    userId: string,
-    request: GenerateSummaryJobPayload['request'],
-    callbackUrl?: string,
-    /** Redis-backed dedupe key for the POST creation. */
-    idempotencyKey?: string,
-  ): Promise<JobResponse>;
-
   createComprehensiveSummaryJob(
     consultationId: string,
     tenantId: string,
     userId: string,
     request: GenerateComprehensiveSummaryJobPayload['request'],
-    callbackUrl?: string,
-    /** Redis-backed dedupe key for the POST creation. */
-    idempotencyKey?: string,
-  ): Promise<JobResponse>;
-
-  createNerJob(
-    contextItemId: string,
-    consultationId: string,
-    tenantId: string,
-    userId: string,
     callbackUrl?: string,
     /** Redis-backed dedupe key for the POST creation. */
     idempotencyKey?: string,
@@ -82,9 +66,7 @@ export class ConsultationJobService implements IConsultationJobService {
 
   constructor(
     @InjectQueue(JobQueue.GeneratePreSummary) private preSummaryQueue: Queue,
-    @InjectQueue(JobQueue.GenerateSummary) private summaryQueue: Queue,
     @InjectQueue(JobQueue.GenerateComprehensiveSummary) private comprehensiveSummaryQueue: Queue,
-    @InjectQueue(JobQueue.ExtractNamedEntities) private nerQueue: Queue,
     @Inject(IRedisCacheService) private readonly cacheService: IRedisCacheService,
     private readonly redisSubscriber: RedisSubscriberService,
   ) {
@@ -156,69 +138,6 @@ export class ConsultationJobService implements IConsultationJobService {
   }
 
   /**
-   * Create a summary generation job
-   */
-  async createSummaryJob(
-    consultationId: string,
-    tenantId: string,
-    userId: string,
-    request: GenerateSummaryJobPayload['request'],
-    callbackUrl?: string,
-    idempotencyKey?: string,
-  ): Promise<JobResponse> {
-    const prior = await this.lookupIdempotentJobId('summary', tenantId, userId, idempotencyKey);
-    if (prior) {
-      return { jobId: prior, status: 'PENDING', sseUrl: `/api/consultations/jobs/${prior}/sse`, estimatedSeconds: 60 };
-    }
-
-    const jobId = uuidv7();
-
-    const payload: GenerateSummaryJobPayload = {
-      jobId,
-      consultationId,
-      tenantId,
-      userId,
-      request,
-      callbackUrl,
-    };
-
-    await this.summaryQueue.add('generate', payload, {
-      jobId,
-      attempts: 3,
-      backoff: { type: 'exponential', delay: 1000 },
-      removeOnComplete: { age: 3600 },
-      removeOnFail: { age: 86400 },
-    });
-
-    await this.storeJobStatus(jobId, {
-      jobId,
-      type: 'SUMMARY',
-      status: 'PENDING',
-      consultationId,
-      progress: 0,
-      createdAt: new Date(),
-      tenantId,
-      userId,
-    });
-
-    await this.recordIdempotentJobId('summary', tenantId, userId, idempotencyKey, jobId);
-
-    this.logger.log({
-      message: 'Created summary job',
-      jobId,
-      consultationId,
-      tenantId,
-    });
-
-    return {
-      jobId,
-      status: 'PENDING',
-      sseUrl: `/api/consultations/jobs/${jobId}/sse`,
-      estimatedSeconds: 60,
-    };
-  }
-
-  /**
    * Create a comprehensive cross-chain summary generation job
    */
   async createComprehensiveSummaryJob(
@@ -282,71 +201,6 @@ export class ConsultationJobService implements IConsultationJobService {
   }
 
   /**
-   * Create a NER extraction job
-   */
-  async createNerJob(
-    contextItemId: string,
-    consultationId: string,
-    tenantId: string,
-    userId: string,
-    callbackUrl?: string,
-    idempotencyKey?: string,
-  ): Promise<JobResponse> {
-    const prior = await this.lookupIdempotentJobId('ner', tenantId, userId, idempotencyKey);
-    if (prior) {
-      return { jobId: prior, status: 'PENDING', sseUrl: `/api/consultations/jobs/${prior}/sse`, estimatedSeconds: 15 };
-    }
-
-    const jobId = uuidv7();
-
-    const payload: ExtractNerJobPayload = {
-      jobId,
-      contextItemId,
-      consultationId,
-      tenantId,
-      userId,
-      callbackUrl,
-    };
-
-    await this.nerQueue.add('extract', payload, {
-      jobId,
-      attempts: 3,
-      backoff: { type: 'exponential', delay: 1000 },
-      removeOnComplete: { age: 3600 },
-      removeOnFail: { age: 86400 },
-    });
-
-    await this.storeJobStatus(jobId, {
-      jobId,
-      type: 'NER',
-      status: 'PENDING',
-      contextItemId,
-      consultationId,
-      progress: 0,
-      createdAt: new Date(),
-      tenantId,
-      userId,
-    });
-
-    await this.recordIdempotentJobId('ner', tenantId, userId, idempotencyKey, jobId);
-
-    this.logger.log({
-      message: 'Created NER job',
-      jobId,
-      contextItemId,
-      consultationId,
-      tenantId,
-    });
-
-    return {
-      jobId,
-      status: 'PENDING',
-      sseUrl: `/api/consultations/jobs/${jobId}/sse`,
-      estimatedSeconds: 15,
-    };
-  }
-
-  /**
    * Get job status from Redis
    */
   async getJobStatus(jobId: string): Promise<JobStatusResponse | null> {
@@ -380,15 +234,13 @@ export class ConsultationJobService implements IConsultationJobService {
       case 'PRE_SUMMARY':
         queue = this.preSummaryQueue;
         break;
-      case 'SUMMARY':
-        queue = this.summaryQueue;
-        break;
       case 'COMPREHENSIVE_SUMMARY':
         queue = this.comprehensiveSummaryQueue;
         break;
-      case 'NER':
-        queue = this.nerQueue;
-        break;
+      // TASK-732 — 'SUMMARY'/'NER' job types can no longer be cancelled here:
+      // their queues (`GenerateSummary`/`ExtractNamedEntities`) and processors
+      // were deleted along with `createSummaryJob`/`createNerJob`. A stale
+      // status row of either type falls through to the default (not found).
       default:
         return false;
     }

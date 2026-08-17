@@ -11,6 +11,7 @@ import {
   createWorkflowDefinition,
   deleteWorkflowDefinition,
   getWorkflowDefinition,
+  listPromptTemplateOptions,
   listWorkflowDefinitions,
   listWorkflowDefinitionVersions,
   listWorkflowNodes,
@@ -57,6 +58,8 @@ describe('workflowStudioKeys', () => {
     expect(workflowStudioKeys.list()[0]).toBe('workflow-studio');
     expect(workflowStudioKeys.registry()[0]).toBe('workflow-studio');
     expect(workflowStudioKeys.registry()).not.toEqual(workflowStudioKeys.list());
+    expect(workflowStudioKeys.promptTemplates()[0]).toBe('workflow-studio');
+    expect(workflowStudioKeys.promptTemplates()).not.toEqual(workflowStudioKeys.registry());
   });
 });
 
@@ -110,5 +113,16 @@ describe('workflow-studio client', () => {
     const calls = installFetchMock();
     await listWorkflowNodes();
     expect(calls.map((call) => `${call.method} ${call.url}`)).toEqual(['GET /api/hope/admin/workflow-nodes']);
+  });
+
+  it('reads the tenant prompt-template catalog for the inspector picker (id + name only, Task 19)', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => Response.json({ data: [{ id: 't-1', name: 'Discharge', category: 'ignored-field' }], count: 1 })),
+    );
+    const options = await listPromptTemplateOptions();
+    expect(options).toEqual([{ id: 't-1', name: 'Discharge' }]);
+    const [[url]] = vi.mocked(fetch).mock.calls;
+    expect(String(url)).toContain('/api/hope/admin/prompt-templates');
   });
 });

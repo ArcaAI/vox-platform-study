@@ -54,6 +54,15 @@ const mockEntitlements = {
   isFeatureEnabled: vi.fn(() => Promise.resolve(true)),
 };
 
+// TASK-724 Task 4 — `SttPipelineCompilerService` is mocked at the seam; its OWN real behavior
+// (YAML emission, PipelineService create/update wiring) is covered by
+// `compilers/__tests__/stt-pipeline.compiler.test.ts`. Here we only assert that `publish()`
+// calls it for the `stt` palette, threads its result into the sys-event, and propagates its
+// failures as a publish-blocking abort.
+const mockSttPipelineCompiler = {
+  compileAndPublish: vi.fn(),
+};
+
 const STT_GRAPH = {
   version: 1,
   nodes: [
@@ -117,12 +126,21 @@ describe('WorkflowDefinitionService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockEntitlements.isEnforcementEnabled.mockReturnValue(false);
+    // `vi.clearAllMocks()` resets call history but NOT a previously-set `mockResolvedValue` — a
+    // test elsewhere in this file that flips this to `false` would otherwise leak into every
+    // later test, since this file's tests share these module-scope mocks. Re-pin the default
+    // ("allowed", matching `!isEnforcementEnabled() -> true`) every test.
+    mockEntitlements.isFeatureEnabled.mockResolvedValue(true);
     mockDatabaseService.baseClient.$transaction.mockImplementation((callback: (tx: unknown) => unknown) => callback({}));
     mockClsService.get.mockImplementation((key: string) => {
       if (key === 'tenantId') return 'tenant-1';
       if (key === 'user') return { id: 'admin-1', roles: ['TENANT_ADMIN'] };
       return undefined;
     });
+    // Default resolved value so every pre-existing `paletteKey: 'stt'` test above (none of
+    // which asserted on the compiler) keeps passing without threading a bespoke pipeline
+    // fixture through — the dedicated describe block below overrides/asserts on the mock.
+    mockSttPipelineCompiler.compileAndPublish.mockResolvedValue({ id: 'pipe-1', slug: 'wf-stt-discharge-summary', version: 1 });
     service = new WorkflowDefinitionService(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       mockWorkflowDefinitionRepository as any,
@@ -130,6 +148,7 @@ describe('WorkflowDefinitionService', () => {
       mockClsService as any,
       mockDatabaseService as any,
       mockEntitlements as any,
+      mockSttPipelineCompiler as any,
     );
   });
 
@@ -375,16 +394,58 @@ describe('WorkflowDefinitionService', () => {
         const result = await service.publish('def-id-1', {});
 
         expect(mockEntitlements.isFeatureEnabled).toHaveBeenCalledWith('tenant-1', 'paletteStt');
+        expect(mockSttPipelineCompiler.compileAndPublish).toHaveBeenCalledTimes(1);
         expect(result.status).toBe(WorkflowDefinitionStatus.PUBLISHED);
       });
 
-      it('blocks (does not write) an stt-palette publish when the tenant is NOT entitled', async () => {
+      it('blocks (does not write, does not compile an AsrPipeline) an stt-palette publish when the tenant is NOT entitled', async () => {
         const entity = createMockEntity({ paletteKey: 'stt', graph: STT_GRAPH });
         mockWorkflowDefinitionRepository.findById.mockResolvedValue(entity);
         mockEntitlements.isFeatureEnabled.mockResolvedValue(false);
 
         await expect(service.publish('def-id-1', {})).rejects.toBeInstanceOf(QuotaExceededException);
         expect(mockWorkflowDefinitionRepository.update).not.toHaveBeenCalled();
+        expect(mockSttPipelineCompiler.compileAndPublish).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('STT pipeline compilation on publish (TASK-724 Task 4)', () => {
+      it('compiles the graph into an AsrPipeline via SttPipelineCompilerService and threads its id/slug into the sys-event', async () => {
+        const entity = createMockEntity({ paletteKey: 'stt', graph: STT_GRAPH });
+        mockWorkflowDefinitionRepository.findById.mockResolvedValue(entity);
+        mockWorkflowDefinitionRepository.update.mockImplementation((_id, e) => Promise.resolve(e));
+        mockSttPipelineCompiler.compileAndPublish.mockResolvedValue({ id: 'pipe-42', slug: 'wf-stt-discharge-summary', version: 1 });
+
+        await service.publish('def-id-1', {});
+
+        expect(mockSttPipelineCompiler.compileAndPublish).toHaveBeenCalledWith(
+          expect.objectContaining({ id: 'def-id-1', slug: entity.slug }),
+          expect.objectContaining({ paletteKey: 'stt' }),
+        );
+        expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+          SysEventType.ResourceUpdated,
+          expect.objectContaining({ data: expect.objectContaining({ asrPipelineId: 'pipe-42', asrPipelineSlug: 'wf-stt-discharge-summary' }) }),
+        );
+      });
+
+      it('never calls the STT compiler for a non-stt palette', async () => {
+        const entity = createMockEntity({ paletteKey: 'summarization' });
+        mockWorkflowDefinitionRepository.findById.mockResolvedValue(entity);
+        mockWorkflowDefinitionRepository.update.mockImplementation((_id, e) => Promise.resolve(e));
+
+        await service.publish('def-id-1', {});
+
+        expect(mockSttPipelineCompiler.compileAndPublish).not.toHaveBeenCalled();
+      });
+
+      it('aborts the publish (never writes the WorkflowDefinition) when the compiler rejects — e.g. a graph missing stt.asrEngine', async () => {
+        const entity = createMockEntity({ paletteKey: 'stt', graph: STT_GRAPH });
+        mockWorkflowDefinitionRepository.findById.mockResolvedValue(entity);
+        mockSttPipelineCompiler.compileAndPublish.mockRejectedValue(new Error("no 'stt.asrEngine' node"));
+
+        await expect(service.publish('def-id-1', {})).rejects.toThrow(/stt\.asrEngine/);
+        expect(mockWorkflowDefinitionRepository.update).not.toHaveBeenCalled();
+        expect(entity.status).not.toBe(WorkflowDefinitionStatus.PUBLISHED);
       });
     });
   });
@@ -474,16 +535,25 @@ describe('WorkflowDefinitionService', () => {
     it('projects WORKFLOW_NODE_REGISTRY, sorted, with a registryChecksum', async () => {
       const result = await service.listNodes();
 
-      // TASK-724 populated the eight STT-palette node types alongside the TASK-734 seed
-      // entries — this projection is a live read of WORKFLOW_NODE_REGISTRY, so it must track
-      // that registry's real contents, not a stale snapshot. NOTE (2026-08-16): TASK-720's own
-      // five summarization-palette entries are currently absent from the registry — a
-      // concurrent sibling session's uncommitted work was reverted mid-session by an external
-      // tree operation (see this ticket's README §7); this assertion reflects the registry's
-      // actual current content, not what either ticket intends long-term.
+      // TASK-720 populated the five summarization-palette node types alongside the TASK-734
+      // seed entries; TASK-724 added the eight STT-palette node types; TASK-731 added three
+      // consultation-palette node types (consentGate/phiHop/hitlGate — the palette's other ten
+      // node types are not yet registered, see that ticket's README §7) — this projection is a
+      // live read of WORKFLOW_NODE_REGISTRY, so it must track that registry's real contents, not
+      // a stale snapshot. (2026-08-17 close-out pass: TASK-720's five entries, briefly dropped
+      // from the registry by an external tree operation, were restored — see that ticket's
+      // README §7.)
       expect(result.nodes.map((n) => n.type)).toEqual([
+        'consultation.consentGate',
+        'consultation.hitlGate',
+        'consultation.phiHop',
+        'generate.text',
+        'guardrail.check',
+        'input.context_binding',
         'noop',
+        'output.deliver',
         'passthrough',
+        'prompt.template_ref',
         'stt.asrEngine',
         'stt.audioInput',
         'stt.diarization',

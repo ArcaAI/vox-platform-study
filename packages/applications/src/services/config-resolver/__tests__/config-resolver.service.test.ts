@@ -63,7 +63,9 @@ describe('ConfigResolver.resolvePipelineToggles', () => {
 
     expect(r.autoSummaryEnabled).toBe(true);
     expect(r.autoNerEnabled).toBe(true);
-    expect(r.harnessEnabled).toBe(false);
+    // TASK-732 — harnessEnabled code-defaults to true (the legacy signable
+    // generator this toggle used to fall back to no longer exists).
+    expect(r.harnessEnabled).toBe(true);
     expect(r.dnaStyleEnabled).toBe(false);
     expect(r.trace.autoSummaryEnabled).toBe('code-default');
     expect(r.trace.harnessEnabled).toBe('code-default');
@@ -147,7 +149,8 @@ describe('ConfigResolver.resolvePipelineToggles', () => {
     const r = await resolver.resolvePipelineToggles({ tenantId: TENANT });
 
     expect(r.autoSummaryEnabled).toBe(true);
-    expect(r.harnessEnabled).toBe(false);
+    // TASK-732 — code-default harnessEnabled is now true.
+    expect(r.harnessEnabled).toBe(true);
   });
 });
 

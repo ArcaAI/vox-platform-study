@@ -12,13 +12,17 @@
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { parseAsStringLiteral, useQueryState } from 'nuqs';
 import { toast } from 'sonner';
+import { Button } from '@arcaai/ui';
+import { IconPencil, IconPlus } from '@tabler/icons-react';
 import { WorkflowCanvas, type WorkflowCanvasEdge, type WorkflowCanvasNode } from '@arcaai/ui/components/workflow-canvas';
 import { PageHeader } from '@/shared/page/page-header';
 import { ScreenTemplate } from '@/shared/page/screen-template';
 import { StatusFooter } from '@/shared/page/status-footer';
 import { OccConflictAlert } from '@/shared/occ/occ-alert';
-import { useAutosave } from '../hooks';
+import { useAutosave, useUnsavedChangesGuard } from '../hooks';
+import { useCreateWorkflowDefinition } from '../api';
 import { publishWorkflowDefinition, validateWorkflowDefinition } from '../api/client';
 import { fromWorkflowGraph, toWorkflowGraph } from '../lib/graph-serialization';
 import { humanizeKey } from '../lib/schema-form';
@@ -35,6 +39,7 @@ import {
   selectSelectedNodeId,
   selectViewMode,
 } from '../store';
+import type { WorkflowStudioViewMode } from '../store/types';
 import type { WorkflowDefinition, WorkflowFinding, WorkflowNodeDescriptor, WorkflowValidationReport } from '../api/types';
 import { InspectorPanel } from './inspector';
 import { PaletteRail } from './palette';
@@ -42,6 +47,9 @@ import { GraphListEditor } from './list-editor';
 import { ValidationRail, publishBlockedReason, useFocusNode } from './validation';
 import { StudioToolbar } from './studio-toolbar';
 import { PublishDialog } from './publish-dialog';
+import { DefinitionMetadataForm } from './definition-metadata-form';
+
+const VIEW_MODES = ['canvas', 'list'] as const satisfies readonly WorkflowStudioViewMode[];
 
 export interface WorkflowStudioEditorProps {
   definition: WorkflowDefinition;
@@ -65,7 +73,12 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
   const [validating, setValidating] = useState(false);
   const [publishOpen, setPublishOpen] = useState(false);
   const [publishing, setPublishing] = useState(false);
+  const [metadataOpen, setMetadataOpen] = useState(false);
+  const [name, setName] = useState(definition.name);
+  const [description, setDescription] = useState(definition.description ?? '');
+  const [metadataDirty, setMetadataDirty] = useState(false);
   const readOnly = definition.status === 'PUBLISHED' || definition.status === 'DEPRECATED';
+  const createNewVersion = useCreateWorkflowDefinition();
 
   const hydratedRef = useRef<string | null>(null);
   useEffect(() => {
@@ -77,7 +90,10 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
       loadedNodes.map((node) => ({ ...node, safetyClasses: descriptorByType.get(node.type)?.classes ?? node.safetyClasses })),
       loadedEdges,
     );
-  }, [definition.id, definition.graph, registryNodes, storeApi]);
+    setName(definition.name);
+    setDescription(definition.description ?? '');
+    setMetadataDirty(false);
+  }, [definition.id, definition.graph, definition.name, definition.description, registryNodes, storeApi]);
 
   const autosave = useAutosave({
     definitionId: definition.id,
@@ -85,21 +101,70 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
     onSaved: (saved, nextEtag) => {
       setCurrentEtag(nextEtag);
       storeApi.getState().markSaved(saved.version);
+      setMetadataDirty(false);
     },
     onStateChange: (state) => storeApi.getState().setAutosaveState(state),
     onMissingPrecondition: () => toast.error('Stale tab — the request went out without If-Match. Refresh the page.'),
   });
 
-  // Debounced graph-shape autosave — README §7 honesty note: only `graph` autosaves in this
-  // pass; name/description edits are not wired to a form yet (Task 16 was reached, but the
-  // metadata-only settings panel was not built this session — see the ticket README). The
-  // hook's own debounce coalesces rapid re-schedules, so re-firing on every `nodes`/`edges`
-  // change while `dirty` is exactly the intended path, not redundant work.
+  // Debounced graph-shape autosave. The hook's own debounce coalesces rapid re-schedules, so
+  // re-firing on every `nodes`/`edges` change while `dirty` is exactly the intended path, not
+  // redundant work.
   useEffect(() => {
     if (readOnly || !dirty) return;
     autosave.schedule({ graph: toWorkflowGraph(nodes, edges) });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `autosave.schedule` is a stable useCallback; including it would not change behavior
   }, [nodes, edges, dirty, readOnly]);
+
+  // Name/description autosave — same debounced `schedule()` the graph uses (merges into the
+  // same in-flight patch), driven by `DefinitionMetadataForm`'s controlled fields.
+  function handleNameChange(next: string) {
+    setName(next);
+    setMetadataDirty(true);
+    if (!readOnly) autosave.schedule({ name: next });
+  }
+  function handleDescriptionChange(next: string) {
+    setDescription(next);
+    setMetadataDirty(true);
+    if (!readOnly) autosave.schedule({ description: next });
+  }
+
+  // Unsaved-changes guard (design.md §Data flow) — combines the store's graph-shape `dirty` with
+  // the local metadata-form `dirty` flag; a read-only (published) row is never dirty.
+  useUnsavedChangesGuard(!readOnly && (dirty || metadataDirty));
+
+  // `?view=` URL sync (Task 16 remainder) — the URL is the shareable source of truth; the store
+  // stays the single graph-editing state per rule 08 §Store, kept in lockstep both ways so a
+  // shared link (`?view=list`) and the toolbar toggle agree.
+  const [urlView, setUrlView] = useQueryState('view', parseAsStringLiteral(VIEW_MODES).withDefault('canvas'));
+  useEffect(() => {
+    if (urlView !== viewMode) storeApi.getState().setViewMode(urlView);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only re-sync when the URL param itself changes (e.g. back/forward, shared link)
+  }, [urlView]);
+  function handleViewModeChange(mode: WorkflowStudioViewMode) {
+    storeApi.getState().setViewMode(mode);
+    void setUrlView(mode);
+  }
+
+  // "Create new version from this" (design.md §Plane 1: "published rows immutable — edits create
+  // versions") — a PUBLISHED/DEPRECATED row offers no edit affordance; this is the branch action
+  // instead. Clones the frozen graph into a fresh DRAFT in the same (tenantId, slug) lineage.
+  async function handleCreateNewVersion() {
+    try {
+      const created = await createNewVersion.mutateAsync({
+        slug: definition.slug,
+        name: definition.name,
+        description: definition.description ?? undefined,
+        paletteKey: definition.paletteKey,
+        graph: definition.graph,
+        parentVersionId: definition.id,
+      });
+      toast.success('New draft version created.');
+      router.push(`/workflow-studio/${created.id}`);
+    } catch {
+      toast.error('Could not create a new version.');
+    }
+  }
 
   const focusNode = useFocusNode({ viewMode, onSelect: (nodeId) => storeApi.getState().selectNode(nodeId) });
   const problemsByNodeId = useMemo(() => findingsByNodeId(report?.findings ?? []), [report]);
@@ -149,21 +214,38 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
   return (
     <ScreenTemplate
       contentMode={viewMode === 'list' ? 'scroll' : 'fill'}
-      header={<PageHeader title={definition.name} meta={<span className="font-mono text-xs">{definition.slug} · v{definition.versionNumber} · {definition.status}</span>} />}
+      header={
+        <PageHeader
+          title={name}
+          meta={<span className="font-mono text-xs">{definition.slug} · v{definition.versionNumber} · {definition.status}</span>}
+          actions={
+            <Button type="button" variant="outline" size="sm" onClick={() => setMetadataOpen(true)}>
+              <IconPencil aria-hidden />
+              Edit details
+            </Button>
+          }
+        />
+      }
       statusBanner={
         <>
           {autosave.paused ? <OccConflictAlert error={autosave.lastError} onReload={() => router.refresh()} onOverwrite={() => autosave.resume()} /> : null}
           {readOnly ? (
-            <p role="status" className="text-muted-foreground text-sm">
-              This version is {definition.status.toLowerCase()} and read-only. Create a new version to keep editing.
-            </p>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p role="status" className="text-muted-foreground text-sm">
+                This version is {definition.status.toLowerCase()} and read-only. Create a new version to keep editing.
+              </p>
+              <Button type="button" variant="outline" size="sm" onClick={() => void handleCreateNewVersion()} disabled={createNewVersion.isPending}>
+                <IconPlus aria-hidden />
+                {createNewVersion.isPending ? 'Creating…' : 'Create new version'}
+              </Button>
+            </div>
           ) : null}
         </>
       }
       toolbar={
         <StudioToolbar
           viewMode={viewMode}
-          onViewModeChange={(mode) => storeApi.getState().setViewMode(mode)}
+          onViewModeChange={handleViewModeChange}
           autosaveState={autosaveState}
           onValidate={() => void handleValidate()}
           validating={validating}
@@ -196,7 +278,7 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
         <div className="min-h-0 flex-1">
           {viewMode === 'canvas' ? (
             <WorkflowCanvas
-              aria-label={`${definition.name} graph, canvas view`}
+              aria-label={`${name} graph, canvas view`}
               nodes={canvasNodes}
               edges={canvasEdges}
               readOnly={readOnly}
@@ -254,6 +336,15 @@ function EditorBody({ definition, etag, registryNodes }: WorkflowStudioEditorPro
         </aside>
       </div>
       <PublishDialog open={publishOpen} onOpenChange={setPublishOpen} onConfirm={(activate) => void handlePublish(activate)} confirming={publishing} />
+      <DefinitionMetadataForm
+        open={metadataOpen}
+        onOpenChange={setMetadataOpen}
+        name={name}
+        description={description}
+        onNameChange={handleNameChange}
+        onDescriptionChange={handleDescriptionChange}
+        readOnly={readOnly}
+      />
     </ScreenTemplate>
   );
 }

@@ -261,13 +261,13 @@ const SERVICE_COVERAGE: readonly CoverageEntry[] = [
  * live in the dedicated `describe('CLS rebind ...')` /
  * `describe('AuditLogProcessor — CLS rebind ...')` blocks.
  */
+// TASK-732 — `summary.processor` and `ner.processor` (the legacy signable
+// generator + its NER companion) were deleted along with their test files;
+// their coverage rows are removed here in the same commit as the deletion,
+// per this file's own §"Deletion hazard" rule. `pre-summary.processor` and
+// `comprehensive-summary.processor` survive per the R-2 boundary (kept,
+// non-signable helper generators).
 const PROCESSOR_COVERAGE: readonly CoverageEntry[] = [
-  {
-    name: 'summary.processor',
-    file: 'services/consultation/jobs/__tests__/summary.processor.test.ts',
-    minTests: 3,
-    marker: /CLS rebind|TASK-305 D\.9/,
-  },
   {
     name: 'pre-summary.processor',
     file: 'services/consultation/jobs/__tests__/pre-summary.processor.test.ts',
@@ -277,12 +277,6 @@ const PROCESSOR_COVERAGE: readonly CoverageEntry[] = [
   {
     name: 'comprehensive-summary.processor',
     file: 'services/consultation/jobs/__tests__/comprehensive-summary.processor.test.ts',
-    minTests: 3,
-    marker: /CLS rebind|TASK-305 D\.9/,
-  },
-  {
-    name: 'ner.processor',
-    file: 'services/consultation/jobs/__tests__/ner.processor.test.ts',
     minTests: 3,
     marker: /CLS rebind|TASK-305 D\.9/,
   },

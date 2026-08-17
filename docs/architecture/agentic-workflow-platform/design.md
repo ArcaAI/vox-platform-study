@@ -23,7 +23,7 @@ generator. Published workflows are products: bindable to REST/SSE/socket/webhook
 
 | # | Fork | Decision |
 |---|---|---|
-| D1 | Generator end-state | **Staged migration** — entry-point seam now → capped legacy floor during infra hardening → harness-only, legacy deleted. `ConsultationLoopWorkflow` never adopted; superseded by the interpreter |
+| D1 | Generator end-state | **Staged migration** — entry-point seam now → capped legacy floor during infra hardening → harness-only, legacy deleted. `ConsultationLoopWorkflow` never adopted; superseded by the interpreter. **Shipped TASK-732 (2026-08-17)**, scoped to the SIGNABLE generator per the owner's R-2 boundary — see §Deprecations |
 | D2 | Builder UX | **Visual canvas builder** — canvas as view, validated schema as model; tenants author graphs of sanctioned blocks, never executable definitions |
 | D3 | Builder audience | **Tenant admins, full power, day one** — the server-side validator is therefore v1 critical path and the safety boundary; no reliance on UI lockouts |
 | D4 | Engine scope | **Generic engine, domain palettes** — one data model + one interpreter; palettes onboard without engine changes |
@@ -180,14 +180,35 @@ on non-clinical palettes first (D5).
 
 The legacy BullMQ generation surface — ticket-authoring verification found **seven** entry points
 and **five** processors (incl. `PreSummaryProcessor` and a second `harnessEnabled` fork on the NER
-path), not the three the assessment named; the authoritative enumeration lives in TASK-704 (seam)
-and TASK-732 (deletion) · `metadata.status` (three writers, per TASK-711 verification) · plain
-`.update()` on note paths · free-text ICD-10 prompt instructions · `ConsultationLoopWorkflow` ·
-scattered admin screens (department-agent, pipeline-policy, harness-admin loop settings) → Studio.
+path), not the three the assessment named; the authoritative enumeration lived in TASK-704 (seam)
+and TASK-732 (deletion). **Shipped, TASK-732 (2026-08-17), owner GO — pre-production, not the
+data-driven verdict R-1 envisaged (no real tenant traffic exists yet to compute a decision-grade
+rate; see the ticket's `go-no-go-thresholds.md` §7):**
 
-Scope note (TASK-732): three of the seven entry points have no harness equivalent — "legacy
-deleted" means the *signable* generator unless a product decision also retires the
-pre-summary/comprehensive-summary features.
+- **Deleted:** `summary.processor.ts` + `ner.processor.ts` (`JobQueue.GenerateSummary` /
+  `ExtractNamedEntities`'s processors — the signable generator and its NER companion) and
+  TASK-714's legacy safety floor (`legacy-dosage-check.util.ts`). The `JobQueue` enum members
+  themselves stay pending a BullMQ drain confirmation (R-5) — every runtime reader was removed, so
+  they are inert. `ConsultationEventHandler`'s two `harnessEnabled` forks collapsed: fork 1 (summary
+  routing) now emits a VISIBLE `PipelineStepFailed` on any non-harness decision instead of a legacy
+  dispatch; fork 2 (NER) is now an unconditional skip (the seam's second reader, removed).
+  `ConsultationController.generateSummaryAsync` now calls the seam directly.
+- **Kept, per the owner's R-2 boundary** (deletion-manifest.md §5) — `PreSummaryProcessor`,
+  `ComprehensiveSummaryProcessor`, and `SummaryService.generateSummary`'s sync body (the "third
+  generator", permanently excluded from harness by TASK-704's own decision). These are the
+  "v1-compat pre-summary and summary surfaces," to be transformed into standalone features in a
+  later ticket. **Correction found while verifying this:** only `PreSummaryProcessor`'s output is
+  structurally non-signable (`PRE_SUMMARY` never satisfies `isFinalSummary`); the sync summary
+  generator's output IS signable (correct — it produces the actual clinical note); and
+  `ComprehensiveSummaryProcessor`'s output ALSO currently satisfies `isFinalSummary` (an open
+  finding this ticket did not resolve, not a confirmed-safe fact — see deletion-manifest.md §5).
+- `SYSTEM_PIPELINE_POLICY_DEFAULTS.harnessEnabled` flipped to `true` (Phase 2 exit criterion,
+  executed pre-production alongside the deletion given no real cohorts existed to migrate).
+
+Still open (untouched by this ticket, unrelated deprecations): `metadata.status` (three writers,
+per TASK-711 verification) · plain `.update()` on note paths · free-text ICD-10 prompt instructions
+· `ConsultationLoopWorkflow` · scattered admin screens (department-agent, pipeline-policy,
+harness-admin loop settings) → Studio.
 
 ## Explicitly not doing (YAGNI ledger)
 

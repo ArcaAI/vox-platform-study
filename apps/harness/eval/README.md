@@ -127,11 +127,49 @@ channels, Gemma `<unused94>thought` / `<|think|>` markers, markdown fences) and 
 **final** balanced JSON object — so a stray `{` inside leaked chain-of-thought never wins over
 the real score object.
 
+## Run the release gate locally (the supported path)
+
+**OWNER DECISION (2026-08-17, `docs/implementation/TASK-713-Harness-Eval-Gate/README.md`
+§7): the eval gate is a LOCAL / scheduled quality check, not a per-MR blocking CI job.**
+LM Studio has no CI-runnable container image, and standing up a dedicated self-hosted
+runner just to host a desktop app was explicitly declined. So `harness-eval-gate` in
+`.gitlab/ci/test.yml` stays behind an explicit `RUN_INFRA_TESTS=true` opt-in **and**
+carries `allow_failure: true` — it will never redden an ordinary shared-CI pipeline. The
+supported way to get a real, blocking PASS/FAIL verdict before merging harness-generator
+changes is to run it locally, against your own running LM Studio instance:
+
+```bash
+cd apps/harness
+PYTHONPATH=src \
+HARNESS_JUDGE_PROVIDER=openai_compat \
+HARNESS_JUDGE_OPENAI_COMPAT_BASE_URL=http://localhost:1234/v1 \
+HARNESS_JUDGE_OPENAI_COMPAT_API_KEY=lm-studio \
+HARNESS_JUDGE_MODEL=google/gemma-4-e4b \
+HARNESS_JUDGE_TEMPERATURE=0.0 HARNESS_JUDGE_SEED=7 \
+HARNESS_JUDGE_OUTPUT_MODE=score HARNESS_JUDGE_SUPPRESS_REASONING=true \
+HARNESS_JUDGE_ANCHORED=false HARNESS_JUDGE_SELF_CONSISTENCY=1 \
+HARNESS_JUDGE_MAX_TOKENS=16384 \
+HARNESS_JUDGE_OPENAI_COMPAT_JSON_RESPONSE_FORMAT=text \
+HARNESS_JUDGE_TIMEOUT_S=90 HARNESS_EVAL_CASE_CONCURRENCY=1 \
+conda run -n arcaenv python -m harness.eval.ci \
+  --golden-set src/harness/eval/golden/fixtures/curated_v1.json \
+  --output eval-report.json
+```
+
+Requires LM Studio running locally with `google/gemma-4-e4b` loaded and served at
+`:1234` (`curl http://localhost:1234/v1/models` should list it). `HARNESS_EVAL_CASE_CONCURRENCY=1`
+matches LM Studio's single-process, no-parallel-decode-slots reality — see
+`harness.core.llm_concurrency`'s own default cap. See TASK-713 README §7 "Local run —
+measured wall-clock and per-metric result" for the actual measured runtime and outcome
+of this exact command, run to completion against the owner's real LM Studio instance.
+
 ## Live gate results — LM Studio `google/gemma-4-e4b` on `curated_v1` (18 cases)
 
 This is also the exact backend/config `harness-eval-gate` (`.gitlab/ci/test.yml`, TASK-713)
-targets in CI — the job is gated behind `RUN_INFRA_TESTS=true` rather than unconditionally
-on, because no CI-runnable LM Studio image exists for a shared GitLab runner; see
+targets when someone opts in locally — the job is gated behind `RUN_INFRA_TESTS=true` AND
+`allow_failure: true` in CI because no CI-runnable LM Studio image exists for a shared
+GitLab runner and the gate is a local/scheduled check by owner decision, not a per-MR
+blocking job; see
 `docs/implementation/TASK-713-Harness-Eval-Gate/README.md` §7 for the fresh wall-clock
 measurement, the two viable CI-provisioning paths, and why `EvalConfig`'s default thresholds
 needed no recalibration for this judge.

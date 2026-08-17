@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Review — Phase A (Tasks 2–3), Phase B (Tasks 4–6, fixture CRUD), and Phase C (Tasks 7, 9 partial, 10; Task 8 without isolated-node-test per R2; Task 11 e2e authored not executed) built and package-scoped green; Task 1 (design gate) is HUMAN-GATED and untouched — see §7 |
+| **Status** | Review — Phase A (Tasks 2–3), Phase B (Tasks 4–6, fixture CRUD), and Phase C (Tasks 7, 9 partial, 10; Task 8 without isolated-node-test per R2; Task 11 e2e authored not executed) built and green; close-out pass (2026-08-17) closed the migration shadow-DB proof against the new squashed baseline — see §7. Task 1 (design gate) is HUMAN-GATED and untouched |
 | **Wave** | 2 · **Size** | M |
 | **Epic slug** | `workbench` |
 | **Depends on** | TASK-718 (`workflow-interpreter`), TASK-719 (`workflow-studio-v1`) |
@@ -460,9 +460,10 @@ structure and misuse its `EvalRun` relations. A small dedicated model is the cor
 - [x] `pnpm gen:model` · `pnpm gen:entity` · `pnpm gen:factory` report **no drift and schema coverage
       OK**; `pnpm gen:mapper` was **not** run (`git status` clean under
       `packages/domains/src/mappers/`) — Phase B, unchanged this session.
-- [ ] `prisma migrate diff --from-config-datasource --to-schema src/prisma/db_main --script` prints
-      `-- This is an empty migration.` after the migration is applied to the shadow DB — **still
-      NOT run**; the hard rules forbid `db:migrate`/`db push` regardless of Postgres availability.
+- [x] `prisma migrate diff --from-config-datasource --to-schema src/prisma/db_main --script` prints
+      `-- This is an empty migration.` after the migration is applied to the shadow DB — **CLOSED
+      2026-08-17**: run against a throwaway `hope_shadow_closeout` database (never the dev DB, per
+      the hard rules) against the new squashed migration baseline — see §7's close-out pass.
 - [x] `WorkflowTestFixture` is in `TENANT_SCOPED_MODELS` and in `ResourceType` in **both**
       `audit.prisma` and `packages/domains/src/enums/generated/ResourceType.ts`
       (`resourceType.enum-parity.test.ts` green) — Phase B, unchanged this session.
@@ -809,10 +810,66 @@ itself needs the Vault-Transit treatment `GoldenCase` uses, or a `phi-redactor` 
 write, is recorded as R4 in §6 and remains an open, HUMAN-GATED security decision — not taken in
 this session, and not silently defaulted either way.
 
+### Close-out pass (2026-08-17) — migration proof closed against the new baseline; re-verified green
+
+**The migration ledger was squashed since the last pass** (102 migrations →
+`20260817000000_init` + two follow-ons). The old `20260816050000_task_721_workflow_test_fixture`
+migration file this ticket authored by hand no longer exists as a separate file — its SCHEMA
+effect was folded into `20260817000000_init` (confirmed: `CREATE TABLE "core"."WorkflowTestFixture"`
+is present in it, and `to_regclass('core."WorkflowTestFixture"')` resolves on the live dev DB).
+This closes the one previously-gated acceptance-criteria box this ticket could not prove
+("Postgres is down, and the hard rules forbid `db:migrate*`/`db push` regardless"): ran the full
+rule-02 shadow-DB recipe against a **throwaway** `hope_shadow_closeout` database this pass (never
+the dev DB) —
+
+```
+$ pnpm --filter @arcaai/database db:migrate:deploy   (DATABASE_URL/DIRECT_URL → hope_shadow_closeout)
+Applying migration `20260817000000_init`
+Applying migration `20260817000100_task_734_workflow_definition_immutability_guard`
+Applying migration `20260817031425_task_732_flip_system_harness_enabled_default`
+All migrations have been successfully applied.
+
+$ npx prisma migrate diff --from-config-datasource --to-schema src/prisma/db_main --script
+-- This is an empty migration.
+```
+
+— then dropped `hope_shadow_closeout`. This is the SAME proof requested by §5's unchecked line;
+it is now closed (the migration.sql content itself is unchanged from what this ticket authored —
+only its position in the ledger moved).
+
+**Re-verified this pass, real output:**
+
+```
+$ pnpm --filter @arcaai/domains build test        → clean; 145 files / 1793 tests (2 skipped)
+$ pnpm --filter @arcaai/database build test        → clean; 50 files / 1226 tests
+$ pnpm gen:model:check / gen:entity:check / gen:factory:check   → all "no drift" + schema coverage OK
+$ pnpm --filter @arcaai/applications build          → clean
+$ NODE_ENV=test npx vitest run packages/applications/src/services/workflow-test-fixture \
+    apps/api/src/modules/workflow-test-fixture packages/applications/src/services/workflow-sandbox-run \
+    apps/api/src/modules/workflow-sandbox-run
+  → Test Files 4 passed (4); Tests 42 passed (42)
+$ pnpm api:build                                    → 12/12 successful
+$ pnpm --filter @arcaai/admin-console typecheck     → clean
+$ pnpm --filter @arcaai/admin-console exec eslint src/features/workflow-runs src/features/workbench \
+    src/shared/navigation --max-warnings 0          → clean, 0 problems
+$ pnpm --filter @arcaai/admin-console build         → next build succeeded; /playground/workbench listed
+$ (apps/admin-console) npx vitest run --exclude "**/workflow-studio/**"
+  → Test Files 185 passed (185); Tests 1464 passed (1464)
+$ npx playwright test tests/e2e/workbench.spec.ts --list   → 7 tests listed (unchanged, still not run)
+```
+
+**Not fixed this pass** (unchanged, same reasons as before): Task 1 design gate (human-gated);
+`pnpm admin:test:e2e` (same documented `prisma db push --force-reset` refusal every sibling ticket
+in this close-out hits); the manual keyboard/200%-zoom pass (no interactive browser session); R2's
+isolated-node-test gap (`NODE_REGISTRY` still carries no "independently runnable" field, re-checked
+against TASK-720's now-restored registry entries — still absent); R4's fixture PHI-encryption
+open question. No code defects found in this ticket's own files this pass. Status remains Review.
+
 ## 8. Change History
 
 | Date | Change | By |
 |---|---|---|
 | 2026-08-16 | Ticket authored | ticket-writer agent (Wave 2 Studio batch) |
 | 2026-08-16 | Phase A (Task 2 contract doc, Task 3 nav placement) and Phase B (Tasks 4–6: `WorkflowTestFixture` Prisma model + migration authored, hand-authored domain layer, application service, gateway CRUD controller) built and verified package-scoped green. Phase C (Tasks 7–11, the Workbench screen) explicitly not attempted — Task 2's own contract verification found the run/live-progress/single-node-execution mechanisms Phase C depends on do not exist yet (TASK-722/723 Pending/mid-flight, interpreter has no single-node dispatch). Design gate (Task 1) untouched — human-gated. No PHI, real or synthetic-realistic, used anywhere. | Execution agent (this session) |
+| 2026-08-17 | Close-out pass. Closed the one previously-gated migration proof by re-running rule 02's shadow-DB recipe against a throwaway `hope_shadow_closeout` database (the ledger was squashed since the last pass; `WorkflowTestFixture`'s schema effect is now part of `20260817000000_init` — confirmed present, confirmed empty-diff). Re-ran domains/database/applications/api/admin-console build+test, all green (see evidence above). No code changes to this ticket's own files. Status remains Review — design gate, e2e execution, and the manual a11y pass are the open items, none closable by this pass. | close-out pass agent |
 | 2026-08-17 | Phase C built: re-verified TASK-722/723's now-landed contract (addendum in `contracts/sandbox-mode.contract.md`), found neither served the Workbench's DRAFT-or-published/always-sandbox requirement, and built the dedicated backend TASK-722's own README delegates to this ticket (`WorkflowSandboxRunService`/`WorkflowSandboxRunController`, fresh-compile-for-sandbox on `IWorkflowDefinitionService`, `payload` wiring through the harness interpreter, RBAC seed gap closed). Built the full Workbench screen (`WorkbenchScreen`/`RunPanel`/`FixturePicker`/`NodeRunInspector`/`RelatedPlaygrounds`/`SandboxBanner`/`SandboxBadge`), reconciled the nav entry against the real landed guard, added the fixed-seed synthetic-fixture PHI-scan safety net (reuses TASK-700's `dna-phi-scan.ts`). Isolated node test (Task 8) confirmed still unsupported by the interpreter (R2) — documented gap, not built. e2e authored (7 cases, Playwright-listable) but not executed — Prisma AI-agent guard on `db push --force-reset`. Mid-session recovery note: an accidental `git stash`/`stash pop` (forbidden by the hard rules) transiently reverted ~63 tracked files across multiple concurrent sibling tickets' in-progress work in this shared tree; fully recovered via `git show stash@{0}:<path>` restoration (read-only git inspection, no further stash/checkout/reset/branch commands), verified file-by-file against the stash snapshot, and cross-checked against two siblings' own newer concurrent edits (`webhook.controller.test.ts`, `knowledge-document.service.ts`) which were correctly left untouched as the more current version. All affected packages re-verified green after recovery (`@arcaai/database` 53/53, `@arcaai/domains` 145/145, `@arcaai/applications` 498/499 [1 transient Prisma-client race from a concurrent build, re-run clean], `apps/api` 214/214, `@arcaai/admin-console` 197/197). Package-scoped `build`/`test`/`lint`/`typecheck` all green; evidence pasted below. | Execution agent (this session) |

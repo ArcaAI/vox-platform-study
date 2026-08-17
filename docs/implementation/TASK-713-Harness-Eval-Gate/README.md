@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Review (Task 0 CORRECTED by owner 2026-08-16 — the llama.cpp/Qwen2.5-1.5B backend was rejected; the judge is now LM Studio `google/gemma-4-e4b`, connectivity/model-presence/smoke-completion re-verified live against the owner's actual running LM Studio instance; the release-gate PASS is grounded in the real, dated `apps/harness/eval/README.md` run against this exact model+golden-set — a fresh full 18-case reproduction was launched this session but did not finish within the available time, reported honestly, §7; because no CI-runnable LM Studio image exists, the job is gated behind `RUN_INFRA_TESTS=true` pending an owner choice between a self-hosted runner and a local/scheduled run — see §7; live-pipeline proof remains GATED — no GitLab CI / self-hosted-runner access from this session) |
+| **Status** | Review (2026-08-17, fourth session — OWNER DECISION on CI-provisioning implemented: run the gate LOCALLY, not on a self-hosted CI runner — it is a local/scheduled quality check, not a blocking shared-CI job. `harness-eval-gate` in `.gitlab/ci/test.yml` now carries BOTH the `RUN_INFRA_TESTS=true` opt-in gate AND an explicit `allow_failure: true`, with a comment recording why; `apps/harness/eval/README.md` gained a "Run the release gate locally (the supported path)" section with the exact command. A fresh full 18-case local reproduction against the owner's live LM Studio `google/gemma-4-e4b` instance was launched this session, confirmed reachable and mid-run with real successful calls (live `TCP ESTABLISHED` to `localhost:1234`, ~16.5s per trivial smoke completion observed), but — like the prior session's attempt — did NOT finish within this session's available turn budget; reported honestly, not fabricated, §7 "Local run attempt, this session". The release-gate PASS/FAIL evidence this ticket ships on remains the real, dated `apps/harness/eval/README.md` run (2026-06-07, identical model + golden set, PASS on every metric) — unchanged from the prior pass. Remaining/gated: a completed fresh wall-clock measurement for `google/gemma-4-e4b` specifically, and a real GitLab CI pipeline run (no CI access from any session)) |
 | **Wave** | 1 · **Size** | M |
 | **Epic slug** | `harness-eval-gate` |
 | **Depends on** | — |
@@ -196,6 +196,125 @@ Its own justification (:119-122) is that image builds are idempotent/content-add
 - This ticket does not expand the golden set beyond `curated_v1.json`'s 18 cases; per the job's own header comment, a larger clinician-rated golden-set program is a separate, longer-running effort this ticket does not attempt to shortcut. **Answer**: Confirmed, unchanged — out of scope, not attempted in this pass.
 
 ## 7. Implementation Summary
+
+**This pass (2026-08-17, fourth session — OWNER DECISION: run locally, not on a
+self-hosted runner):** the owner answered the CI-provisioning fork the third session
+left open (Path (a) self-hosted runner vs. Path (b) local/scheduled) — **Path (b)**:
+"run the gate LOCALLY, not on a self-hosted CI runner. The eval gate is a
+local/scheduled quality check, NOT a blocking shared-CI job." This pass:
+
+1. **`.gitlab/ci/test.yml`** — `harness-eval-gate` now carries `allow_failure: true`
+   in addition to the pre-existing `RUN_INFRA_TESTS=true` opt-in `rules:` gate, each
+   with a comment recording the owner decision and why (a self-hosted runner was
+   explicitly declined, so even an intentional opt-in on a pipeline that can't reach
+   `:1234` must never redden the pipeline for everyone else). Verified the job still
+   YAML-parses correctly and `allow_failure`/`retry`/`rules` are exactly as intended
+   (see "Verification actually run" below).
+2. **`apps/harness/eval/README.md`** — new "Run the release gate locally (the
+   supported path)" section (inserted before "Live gate results") with the exact,
+   copy-pasteable command (same env recipe the CI job and the third session's fresh
+   run both used), documenting this as THE supported way to get a real, blocking
+   verdict — the CI job is explicitly a non-blocking local/scheduled check, not a
+   substitute for running it yourself before a harness-generator change.
+3. **Local run, this session** — launched the identical fresh full 18-case
+   reproduction against the owner's actual live LM Studio instance the third session
+   started but didn't finish. See "Local run attempt, this session" below for the
+   honest outcome — reachability and live mid-run activity were reconfirmed, but the
+   run again did not complete within this session's available time.
+
+### Local run attempt, this session — reachability reconfirmed, run still in progress at session end
+
+Before launching, reconfirmed LM Studio is live and serving the judge model (not
+reusing a stale claim from a prior session):
+
+```
+$ curl -sf --max-time 5 http://localhost:1234/v1/models
+{"data":[..., {"id":"google/gemma-4-e4b", ...}, ...]}   # present among served models
+
+$ time curl -s --max-time 60 http://localhost:1234/v1/chat/completions \
+    -d '{"model":"google/gemma-4-e4b","messages":[{"role":"user","content":"Say OK"}],
+         "max_tokens":10,"temperature":0}'
+{"choices":[{"message":{"content":"OK", ...},"finish_reason":"stop"}], ...}
+curl ... 16.515 total
+```
+
+16.5s wall-clock for a trivial 18-prompt-token / 2-completion-token round trip —
+consistent with the third session's own observation (~20s) that this LM Studio
+instance carries substantial fixed per-call overhead even for the smallest possible
+request (likely the same JIT engine-reload behaviour `apps/harness/eval/README.md`'s
+operational notes already describe).
+
+Launched the full 18-case run in the background (same env recipe as
+`apps/harness/eval/README.md`'s new "Run the release gate locally" section,
+`HARNESS_EVAL_CASE_CONCURRENCY=1`, sequential — matching LM Studio's single-process,
+no-parallel-decode-slots reality). Confirmed it was genuinely making live progress,
+not hung: `lsof -p <pid>` showed an `ESTABLISHED` TCP connection to
+`localhost:search-agent` (LM Studio's port) throughout, and the process stayed alive
+and consumed CPU across multiple checks spanning several minutes. It had not produced
+`eval-report.json` or the `END_EPOCH`/`REAL_RUN_WALL_CLOCK_S` marker by the time this
+session's available turn budget ran out.
+
+**What this means for the ticket's evidence base — same honest conclusion as the
+third session, not resolved further this pass:** the release-gate PASS/FAIL verdict
+and the threshold decision (§"Thresholds" above) do not depend on this in-progress
+run — they rest on the real, dated, in-repo `apps/harness/eval/README.md` run
+(2026-06-07, identical model + identical `curated_v1.json` golden set, PASS on every
+metric with real margin). What remains unresolved after two sessions' attempts is a
+**fresh, this-repo-state wall-clock number for `google/gemma-4-e4b` specifically** —
+the ticket's explicit ask. Given two independent sessions have now observed the same
+~16-20s-per-trivial-call overhead on this LM Studio instance, a back-of-envelope
+floor is worth stating honestly rather than omitting: the full run needs on the order
+of 50-70 judge calls (18 PDSQI + 12 faithfulness extractions + a variable number of
+per-claim verify calls), most of them far larger than the 18-token smoke request
+(PDSQI calls carry the full ~2-2.4K-token rubric + case note). At even a
+conservative 20-40s/call average this alone implies **roughly 20-45+ minutes**
+of sequential wall-clock — well past a single interactive session's practical
+verification budget, though not necessarily impractical for an unattended
+local/scheduled run (which is exactly the posture the owner's decision above
+adopts). This is a floor estimate reasoned from two real partial observations, not
+a completed measurement — it should not be quoted as the actual number; see
+"Remaining/gated work" below for what would close this out for real.
+
+### Verification actually run (this fourth session)
+
+```
+$ python3 -c "import yaml; ..." # custom loader stubbing !reference
+harness-eval-gate: allow_failure=True, retry={'max': 2, 'when': ['runner_system_failure',
+  'stuck_or_timeout_failure']}, rules=[RUN_INFRA_TESTS!=true -> never, SKIP_TESTS==true -> never,
+  SKIP_TESTS_PY==true -> never, !reference(.rules-harness)]
+# — confirms allow_failure is set and the opt-in rules gate is unchanged
+
+$ ~/miniconda3/envs/arcaenv/bin/ruff check apps/harness/src/
+All checks passed!
+
+$ ~/miniconda3/envs/arcaenv/bin/mypy --config-file apps/harness/pyproject.toml apps/harness/src/
+Success: no issues found in 118 source files
+```
+
+No Python source was touched this session (`.gitlab/ci/test.yml`,
+`apps/harness/eval/README.md`, and this ticket's own README only — confirmed via
+`git status --short`), so `pnpm harness:test`'s full hermetic suite was not
+re-run in this session; the third session's full-suite result (1279 passed / 4
+pre-existing unrelated failures in 169.90s, none of the 4 in files this ticket
+touches) stands as the last full-suite evidence and nothing in this session's
+diff could have changed it.
+
+**Remaining/gated work (updated this session):**
+- A completed fresh wall-clock + per-metric measurement for `google/gemma-4-e4b`
+  specifically — attempted twice now (third and fourth sessions), reachability and
+  live progress reconfirmed both times, neither completed within its session's
+  turn budget. The floor estimate above (~20-45+ min) is reasoned, not measured.
+  Closing this out for real needs either a longer unattended run (this ticket's own
+  "local/scheduled" posture, run outside an interactive session) or a background/
+  cron invocation whose output is collected asynchronously.
+- A real GitLab CI pipeline run of `harness-eval-gate` — still not attempted, no CI
+  access from any session; per this session's owner decision this is now explicitly
+  out of scope for "making the gate real" — the gate is local/scheduled by design,
+  not a pipeline job that needs proving on a shared runner.
+- Task 5 (layer-gate table row) — still proposed, not applied, unchanged from prior
+  sessions.
+- Cloud judge-backend Vault wiring — still just a documented pattern, not
+  provisioned, unchanged from prior sessions.
 
 **This pass (2026-08-16, third session — CORRECTION):** the owner rejected the second
 session's judge backend outright: *"do not use llama.cpp for judgement, we use LM Studio
@@ -732,3 +851,4 @@ Path (a)/(b) choice above.
 | 2026-08-16 | Task 1 (TDD): added `test_ci_gate_wiring.py` proving `harness.eval.ci` gate wiring against the real `curated_v1.json` CI-pinned golden set (RED confirmed via a naive stub, then GREEN). Task 4: added a narrow GitLab `retry:` block (`runner_system_failure`/`stuck_or_timeout_failure` only, no `script_failure`) to `harness-eval-gate` in `.gitlab/ci/test.yml`. Task 0/2/3 explicitly left undone — HUMAN-GATED judge-backend decision not made, no backend picked, no cloud spend wired, per this session's execution instruction. Status set to Blocked pending Decision #5. | Claude (execution session) |
 | 2026-08-16 | Owner decided Task 0 (self-hosted local judge in a CI service container). Implemented Tasks 2/3: `services:` block running `llama.cpp:server` + `Qwen2.5-1.5B-Instruct-GGUF` wired into `harness-eval-gate`, `RUN_INFRA_TESTS` gate and `allow_failure: true` both removed. Added case-level concurrency to `GoldenSetRunner` (TDD, 5 new tests) and a malformed-JSON tolerance fix to `FaithfulnessEvaluator`'s claim extractor/verifier (TDD, 2 new tests) — the latter a real robustness gap the live judge backend surfaced and would otherwise have crashed the entire gate run. Measured real wall-clock against the live backend three times (4-way concurrency: reproduced a genuine timeout failure; 2-way concurrency: 375.2s clean full run; `anchored=true`: reproduced runaway generation, abandoned) and recalibrated `EvalConfig` thresholds against the real, measured score distribution (`faithfulness_threshold` 0.85→0.65 via CI env; new `icc_gate_enabled` flag added and set `false` in CI, since the measured ICC's ceiling-effect near-zero value is outside what the existing `[0,1]`-validated `icc_threshold` could ever be recalibrated to accommodate — see §7 for the full reasoning). Status set to Review pending a real GitLab CI pipeline run (no CI access from this session). | Claude (execution session 2) |
 | 2026-08-16 | **CORRECTION**: owner rejected the llama.cpp/Qwen2.5-1.5B judge backend — "do not use llama.cpp for judgement, we use LM Studio and google/gemma-4-e4b." Removed the `services:` block from `harness-eval-gate` entirely; re-wired `HARNESS_JUDGE_*` to the LM-Studio-shaped `openai_compat` endpoint (`http://localhost:1234/v1`, `HARNESS_JUDGE_MODEL=google/gemma-4-e4b`), matching operational settings `apps/harness/eval/README.md` documents for this model (`HARNESS_JUDGE_MAX_TOKENS=3072`, `HARNESS_JUDGE_OPENAI_COMPAT_JSON_RESPONSE_FORMAT=text`). Removed the concurrency (`HARNESS_LLM_MAX_CONCURRENCY`/`HARNESS_EVAL_CASE_CONCURRENCY=2`) and threshold-surgery (`HARNESS_EVAL_FAITHFULNESS_THRESHOLD`/`HARNESS_EVAL_ICC_GATE_ENABLED`) overrides the rejected backend needed — `google/gemma-4-e4b` passes on `EvalConfig`'s unchanged code defaults per the real, dated `apps/harness/eval/README.md` "Live gate results" run (PASS on every metric). Restored `RUN_INFRA_TESTS=true` as an opt-in gate — LM Studio has no CI-runnable container image, so the job cannot reach a judge on an ordinary shared runner; documented two viable CI-provisioning paths (self-hosted runner vs. local/scheduled) for the owner to choose, not decided here. Deliberately did NOT change `config.py`'s `JudgeConfig.model` code default or `.env.sample` (both `gemma-4-e2b-it-qat`, a same-day cross-cutting decision from the concurrently-landed TASK-735/736/737, pinned by its own test) — the CI job's explicit `HARNESS_JUDGE_MODEL` env var is the correct, fail-closed lever for this ticket's own judge choice per `06-python-services.md` §Configuration, and traced the runtime inferential-sensor path to confirm it reads the DB-driven `harness.judge` AiTaskDefault policy, never this code default, so there is no collision. Verified live against the owner's actual running LM Studio instance (model listed, smoke completion succeeded); launched a full 18-case local reproduction which did not finish within this session's available time (reported honestly, not fabricated — see §7 "Fresh run outcome"). `pnpm harness:lint`/`harness:typecheck` clean; full hermetic `pnpm harness:test` suite: 1279 passed / 4 pre-existing unrelated failures in 169.90s. Status remains Review — pending the owner's CI-provisioning path choice and a real GitLab CI pipeline run (no CI access from this session). | Claude (execution session 3 — correction) |
+| 2026-08-17 | **OWNER DECISION implemented**: run the gate LOCALLY, not on a self-hosted CI runner — a local/scheduled quality check, not a blocking shared-CI job. `.gitlab/ci/test.yml`'s `harness-eval-gate` now carries `allow_failure: true` in addition to the existing `RUN_INFRA_TESTS=true` opt-in `rules:` gate, both commented with the owner's reasoning. `apps/harness/eval/README.md` gained a "Run the release gate locally (the supported path)" section with the exact command. Reconfirmed LM Studio reachability and the `google/gemma-4-e4b` model live (fresh `curl`/model-list/smoke-completion, ~16.5s for a trivial 2-token completion — consistent with the prior session's own observation). Launched a fresh full 18-case local reproduction in the background; confirmed genuine live progress (`lsof` showed an `ESTABLISHED` connection to the LM Studio port throughout, process alive and consuming CPU across multiple checks) but — like the third session's attempt — it did NOT complete within this session's available turn budget. Reported honestly rather than fabricated, with a reasoned (not measured) ~20-45+ minute wall-clock floor derived from the two real partial observations across sessions — see §7 "Local run attempt, this session". `pnpm harness:lint`/`harness:typecheck` clean this session (no Python source touched); YAML-parse-verified `allow_failure`/`retry`/`rules` on the job. Status remains Review — the CI-provisioning question is now answered and implemented; what remains gated is a completed fresh wall-clock measurement (an unattended/background run, consistent with the "local/scheduled" posture just adopted, would close this out) and a real GitLab CI pipeline run (still no CI access from any session, and now explicitly out of scope per the owner's local-only decision). | Claude (execution session 4) |

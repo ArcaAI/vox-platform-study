@@ -607,24 +607,24 @@ test-harness:
 # with `HARNESS_JUDGE_MODEL=google/gemma-4-e4b` (the model verified resident and
 # serving on the owner's LM Studio instance — README §7 real measured run).
 #
-# REAL CONSTRAINT (do not paper over): LM Studio is a desktop application with
-# no official CI-runnable container image — a shared GitLab runner cannot start
-# it the way it started llama.cpp. So this job CANNOT reach a judge on an
-# ordinary shared-runner pipeline today; it is gated back behind
-# `RUN_INFRA_TESTS=true` (the same "needs infra we don't provision, opt in
-# explicitly" pattern the `test-api-e2e` job below already uses)
-# rather than left to run-and-immediately-fail-closed on every MR. Two viable
-# paths to make it reachable in CI for real — laid out with implications in
-# README §7 for the owner to choose, NOT decided here:
-#   (a) a self-hosted runner with LM Studio reachable at :1234 (real desktop
-#       app, real GPU/model, no per-call cloud spend; requires provisioning +
-#       maintaining that runner and keeping the model loaded)
-#   (b) this gate runs locally / on a scheduled pipeline pointed at such a
-#       runner, not on every shared-runner MR pipeline (weaker per-change
-#       signal, far less infra to own)
-# Until one is chosen, `RUN_INFRA_TESTS=true` is the manual escape hatch for
-# whichever path is provisioned. When it DOES run, it is a real blocking gate
-# (no `allow_failure`) — see the flake-policy `retry:` below.
+# OWNER DECISION (2026-08-17, docs/implementation/TASK-713-*/README.md §7
+# "Owner decision — run locally, not on a self-hosted runner"): this gate runs
+# LOCALLY (or on a scheduled pipeline pointed at a machine with LM Studio
+# already running), NOT as a blocking job on ordinary shared-CI pipelines.
+# LM Studio is a desktop application with no official CI-runnable container
+# image — a shared GitLab runner cannot start it the way it started llama.cpp
+# — and the owner explicitly rejected standing up a dedicated self-hosted
+# runner just to host it (Path (a) from the prior pass's fork). So this job:
+#   - stays behind the explicit `RUN_INFRA_TESTS=true` opt-in (never runs on
+#     an ordinary MR pipeline);
+#   - ALSO carries `allow_failure: true` — even when someone opts in on a
+#     pipeline whose runner happens to reach `localhost:1234`, a transient
+#     unreachable-judge failure must not redden a shared pipeline for
+#     everyone else. This is a quality CHECK, not a merge-blocking gate.
+# The supported, documented path for real signal is a LOCAL run:
+# `apps/harness/eval/README.md` §"Run the release gate locally (the supported
+# path)" has the exact command. See TASK-713 README §7 for the measured
+# wall-clock and the full per-metric PASS/FAIL result of that local run.
 harness-eval-gate:
   stage: test
   image: python:3.11-slim
@@ -632,6 +632,15 @@ harness-eval-gate:
   needs:
     - job: lint-python
       optional: true
+  # OWNER DECISION (2026-08-17, TASK-713 README §7): this is a local/scheduled
+  # quality CHECK, not a blocking shared-CI job — LM Studio has no CI-runnable
+  # image, and the owner declined to stand up a dedicated self-hosted runner
+  # for it. `allow_failure: true` means an accidental RUN_INFRA_TESTS=true
+  # opt-in on a pipeline that can't reach :1234 never reddens the pipeline for
+  # everyone else; the `rules:` gate below is what actually keeps it off
+  # ordinary pipelines. The supported way to get a real, blocking verdict is
+  # the LOCAL invocation documented in apps/harness/eval/README.md.
+  allow_failure: true
   # TASK-713 Task 4 — flake policy, narrower than the .build-template
   # exemplar (templates.yml:113-128) on purpose: this GitLab-level retry
   # covers ONLY runner/infra flakes (never `script_failure`). A `script_failure`
@@ -728,11 +737,15 @@ harness-eval-gate:
       - eval-report.json
     expire_in: 30 days
   rules:
-    # Disabled by default: no CI-runnable LM Studio image exists, so an
-    # ordinary shared-runner pipeline cannot reach the judge backend (see the
-    # REAL CONSTRAINT note above). Re-enable by setting RUN_INFRA_TESTS=true
-    # on a pipeline running against a runner that can actually reach LM
-    # Studio at :1234 (self-hosted runner, or a local/scheduled run).
+    # Disabled by default (OWNER DECISION, TASK-713 README §7): this gate is a
+    # local/scheduled quality check, not a per-MR blocking job — no
+    # CI-runnable LM Studio image exists, and the owner declined to provision
+    # a dedicated self-hosted runner for it. Opt in with RUN_INFRA_TESTS=true
+    # only on a pipeline/runner that genuinely has LM Studio reachable at
+    # :1234 (e.g. a manually-triggered scheduled pipeline on such a machine);
+    # `allow_failure: true` above is the second layer in case that opt-in
+    # happens where the judge isn't reachable. The supported way to get a
+    # real verdict is the LOCAL invocation in apps/harness/eval/README.md.
     - if: $RUN_INFRA_TESTS != "true"
       when: never
     - if: $SKIP_TESTS == "true"

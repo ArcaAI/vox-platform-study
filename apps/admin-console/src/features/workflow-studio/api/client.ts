@@ -15,6 +15,7 @@ import { deleteJson, getJson, getWithEtag, patchWithEtag, postJson, versionFromE
 import type { Paginated, WithEtag } from '@/shared/api';
 import type {
   CreateWorkflowDefinitionRequest,
+  PromptTemplateOption,
   PublishWorkflowDefinitionRequest,
   UpdateWorkflowDefinitionRequest,
   WorkflowDefinition,
@@ -23,6 +24,7 @@ import type {
 
 const BASE = 'admin/workflow-definitions';
 const NODES_PATH = 'admin/workflow-nodes';
+const PROMPT_TEMPLATES_PATH = 'admin/prompt-templates';
 
 const definitionPath = (id: string) => `${BASE}/${encodeURIComponent(id)}`;
 
@@ -81,4 +83,17 @@ export function publishWorkflowDefinition(id: string, body?: PublishWorkflowDefi
  *  (`@CanRead('WorkflowDefinition')`), a separate controller from the CRUD surface above. */
 export function listWorkflowNodes(): Promise<WorkflowNodeRegistry> {
   return getJson(NODES_PATH);
+}
+
+/**
+ * Select catalog for the inspector's `PromptTemplatePicker` (Task 19 — design.md: "prompt
+ * templates keep their own authoritative editor (picker + deep link)"). A read of the EXISTING
+ * `admin/prompt-templates` route, deliberately RE-IMPLEMENTED rather than imported from
+ * `features/departments/api/client.ts:54` (which does the identical read for the same reason) —
+ * rule 13 §Structure: "features never import each other".
+ */
+export function listPromptTemplateOptions(): Promise<PromptTemplateOption[]> {
+  return getJson<Paginated<PromptTemplateOption>>(PROMPT_TEMPLATES_PATH, { page: 1, limit: 100 }).then((res) =>
+    res.data.map((template) => ({ id: template.id, name: template.name })),
+  );
 }

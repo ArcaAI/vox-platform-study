@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | **DRAFT — forked on an unmade decision.** `temporal-hosting-decision.md` (TASK-730 Task 1) has not been signed off. This runbook is structured as two paths so both are ready the moment that decision lands; sections that genuinely don't depend on the choice are written once. |
+| **Status** | **Option A (self-hosted k3s) is the decided path** — `temporal-hosting-decision.md` (TASK-730 Task 1) was signed off 2026-08-17. §1.2/§2.2/§3.1's Option A sections are now load-bearing; §1.3/§2.3/§3.2's Option B sections are retained for reference only (not chosen, kept so the fork's reasoning stays legible). The reconnection patch that makes Option A live (harness/harness-worker still point at the VM as of this writing) is documented, not yet applied, in `deployment-repo-changes.md`. |
 | **Scope** | Backup/restore + daily operational checks for the durable-workflow substrate `HarnessDocWorkflow` (and future Temporal workflows) run on. **Explicitly an ops runbook, never a console CRUD screen or admin UI feature** — design.md's YAGNI ledger: *"DR/backup as console CRUD (ops tooling + at most a read-only status page)."* |
 | **Modeled on** | `docs/operations/vault/README.md`'s section shape (architecture / bootstrap / privileged commands / daily ops / rotation-or-backup / CI integration) |
 | **Depends on** | `docs/implementation/TASK-730-Harness-Infra-Productionization/temporal-hosting-decision.md` — read that first; it decides which half of this document is load-bearing |
@@ -23,6 +23,12 @@ to a Temporal server on an unmanaged VM (`TEMPORAL_ADDRESS=10.10.1.10:7233`), wh
 **This document exists to close that gap by describing what the target state looks like once
 Task 1's decision is made — it does not claim the current VM instance is backed up, because it
 is not.**
+
+**Update, 2026-08-17: Task 1's decision is now made (Option A, self-hosted k3s —
+`temporal-hosting-decision.md` §6). The state described in this paragraph is still accurate as of
+this writing** — the reconnection patch (`deployment-repo-changes.md` Task 2) has been written but
+not applied, so `hope-harness`/`hope-harness-worker` still point at the VM today. §1.2/§2.2/§3.1
+below are what becomes true once that patch lands.
 
 ### 1.1 Local dev (unaffected by the Task 1 decision)
 

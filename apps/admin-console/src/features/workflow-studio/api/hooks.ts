@@ -11,6 +11,7 @@ import {
   createWorkflowDefinition,
   deleteWorkflowDefinition,
   getWorkflowDefinition,
+  listPromptTemplateOptions,
   listWorkflowDefinitionVersions,
   listWorkflowDefinitions,
   listWorkflowNodes,
@@ -38,6 +39,11 @@ export function useWorkflowDefinitionVersions(id: string) {
  *  hard-coded palette; README §1 "zero hard-coded node types"). */
 export function useWorkflowNodeRegistry() {
   return useQuery({ queryKey: workflowStudioKeys.registry(), queryFn: listWorkflowNodes, staleTime: 5 * 60 * 1000 });
+}
+
+/** Prompt-template select catalog for the inspector's `PromptTemplatePicker` (Task 19). */
+export function usePromptTemplateOptions() {
+  return useQuery({ queryKey: workflowStudioKeys.promptTemplates(), queryFn: listPromptTemplateOptions, staleTime: 60 * 1000 });
 }
 
 function useInvalidateWorkflowStudio() {
