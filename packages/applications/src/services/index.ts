@@ -5,6 +5,7 @@ export * from './auditLog';
 export * from './audit-retention';
 export * from './auth';
 export * from './baseServices';
+export * from './serviceAccount';
 export * from './sysEvent';
 export * from './globalSetting';
 // Kafka service removed - using Redis for job queues and PostgreSQL for audit logs

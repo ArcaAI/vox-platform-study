@@ -15,6 +15,11 @@ export {
   Public,
   RequiredScopes,
   ForbidApiKey,
+  // Machine identity for administration (TASK-762) — the THIRD credential
+  // class. Deliberately separate from the two above: `svc:*` is not `admin:*`,
+  // and forbidding a machine is not forbidding a tenant API key.
+  RequiredSvcScopes,
+  ForbidServiceAccount,
   CanRead,
   CanList,
   CanCreate,

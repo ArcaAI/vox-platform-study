@@ -92,3 +92,4 @@ export * from './WorkflowTestFixtureEntity';
 export * from './WorkflowRunEntity';
 export * from './WorkflowDefinitionEntity';
 export * from './TenantNlpTaskInstructionsEntity';
+export * from './ServiceAccountEntity';

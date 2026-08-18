@@ -12,11 +12,17 @@ export {
   JWT_AUTH_GUARD,
   API_KEY_REQUIRED_SCOPES,
   API_KEY_FORBIDDEN,
+  // Machine identity for administration (TASK-762) — the third credential
+  // class. Separate metadata keys, separate header, separate authenticator.
+  SERVICE_ACCOUNT_REQUIRED_SCOPES,
+  SERVICE_ACCOUNT_FORBIDDEN,
+  SERVICE_ACCOUNT_TOKEN_HEADER,
+  SERVICE_ACCOUNT_AUTHENTICATOR,
   // CASL shadow mode (TASK-712 Phase 5 Task 14)
   SUBJECT_INSTANCE_RESOLVER_KEY,
   ResolveSubjectInstance,
 } from './unified-auth.guard';
-export type { SubjectInstanceResolver } from './unified-auth.guard';
+export type { SubjectInstanceResolver, IServiceAccountAuthenticator, ServiceAccountPrincipalLike } from './unified-auth.guard';
 
 // Decorators
 export {
@@ -27,6 +33,8 @@ export {
   AuthorizeAny,
   RequiredScopes,
   ForbidApiKey,
+  RequiredSvcScopes,
+  ForbidServiceAccount,
   UserAbility,
   CanRead,
   CanList,

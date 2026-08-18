@@ -56,6 +56,7 @@ export * from './PromptVersionEntityMapper';
 export * from './ResourceSubscriptionEntityMapper';
 export * from './RoleEntityMapper';
 export * from './RolePermissionEntityMapper';
+export * from './ServiceAccountEntityMapper';
 export * from './StorageAccessKeyEntityMapper';
 export * from './SummaryMetaEntityMapper';
 export * from './TagEntityMapper';

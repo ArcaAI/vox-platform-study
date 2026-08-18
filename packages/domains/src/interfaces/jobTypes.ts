@@ -32,6 +32,8 @@ export interface SysEventJob {
 export interface AuditLogJob {
   action: AuditAction;
   responsibleUserId: EntityId;
+  /** TASK-762 — the MACHINE actor; mutually exclusive with `responsibleUserId`. */
+  responsibleServiceAccountId?: EntityId;
   responsibleIp?: string;
   resourceId?: EntityId;
   resourceType: ResourceType;

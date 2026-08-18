@@ -281,6 +281,22 @@ describe('TENANT_SCOPED_MODELS stays in sync with the Prisma schema', () => {
     // lookup itself: it matches on a unique, cryptographically random secret,
     // and the row it returns is what ESTABLISHES the tenant context.
     'ApiKey',
+    // TASK-762 — the service-account TOKEN EXCHANGE reads this table by
+    // `clientId` before any principal exists, so it can never carry a CLS
+    // tenant. Identical pre-auth shape to `ApiKey` directly above: inside an
+    // HTTP request CLS is active but empty (`tenantId === undefined` AND
+    // `isSuperAdmin() === false`), the exact combination `makeReadHandler`
+    // throws on. The ticket README §5.1 asked for this model to be added to
+    // TENANT_SCOPED_MODELS; doing so would have reproduced the `ApiKey`
+    // failure above (every credential authenticating as 401).
+    //
+    // Isolation still holds — enforced one layer up in
+    // `service-account.service.ts` on EVERY read path: list reads scope to the
+    // caller's tenant (SUPER_ADMIN may widen), and every `findById` is followed
+    // by `assertTenantOwnership`, which throws `NotFoundException` (404-over-403)
+    // on a cross-tenant id. The only unguarded read is `findByClientId`, which
+    // IS the authentication lookup and whose row establishes the context.
+    'ServiceAccount',
   ]);
 
   /** Every `model X { … tenantId String … }` declared across db_main/*.prisma. */

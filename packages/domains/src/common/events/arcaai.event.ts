@@ -10,6 +10,12 @@ export interface SysEventProps {
   resourceIds?: EntityId[];
   resourceType: ResourceType;
   responsibleEntityId: EntityId;
+  /**
+   * TASK-762 — the MACHINE actor. Mutually exclusive with
+   * `responsibleEntityId`; `BaseService.broadcastSysEvent` sets exactly one.
+   * Carried to `AuditLog.responsibleServiceAccountId` by `SysEventService`.
+   */
+  responsibleServiceAccountId?: EntityId;
   responsibleEntityType?: ResourceType;
   responsibleIp?: string;
   metaData?: JsonValue | object;
@@ -38,6 +44,7 @@ export class SysEvent {
   resourceIds?: EntityId[];
   resourceType!: ResourceType;
   responsibleEntityId!: EntityId;
+  responsibleServiceAccountId?: EntityId;
   responsibleEntityType?: ResourceType;
   responsibleIp?: string;
   metaData?: JsonValue | object;
@@ -57,6 +64,7 @@ export class SysEvent {
     this.resourceIds = props.resourceIds;
     this.resourceType = props.resourceType;
     this.responsibleEntityId = props.responsibleEntityId;
+    this.responsibleServiceAccountId = props.responsibleServiceAccountId;
     this.responsibleEntityType = props.responsibleEntityType || ResourceType.User;
     this.responsibleIp = props.responsibleIp;
     this.metaData = props.metaData;

@@ -7,6 +7,7 @@ import { AgentTrajectoryStepRepository } from '../../../repositories/generated/c
 import { AiModelRepository } from '../../../repositories/generated/core/AiModelRepository';
 import { AiPriceBookRepository } from '../../../repositories/generated/core/AiPriceBookRepository';
 import { AiProviderConnectionRepository } from '../../../repositories/generated/core/AiProviderConnectionRepository';
+import { ServiceAccountRepository } from '../../../repositories/generated/core/ServiceAccountRepository';
 import { AiRuntimeProfileRepository } from '../../../repositories/generated/core/AiRuntimeProfileRepository';
 import { AiTaskDefaultRepository } from '../../../repositories/generated/core/AiTaskDefaultRepository';
 import { AiUsageEventRepository } from '../../../repositories/generated/core/AiUsageEventRepository';
@@ -179,6 +180,10 @@ const repositories = [
   AuditLogRepository,
   // API & Organization domain
   ApiKeyRepository,
+  // Platform-issued machine identity for administration (TASK-762) — the
+  // THIRD credential class, sharing no mechanism with ApiKey or the shared
+  // peer-service token.
+  ServiceAccountRepository,
   DepartmentRepository,
   // First-class department agent entity
   DepartmentAgentRepository,

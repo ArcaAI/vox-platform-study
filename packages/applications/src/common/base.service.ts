@@ -1,7 +1,7 @@
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
 import { Injectable } from '@nestjs/common';
-import { IActiveUserContext, IBaseService } from '../interfaces';
+import { IActiveUserContext, IBaseService, IServiceAccountPrincipal } from '../interfaces';
 import { BaseEntity, ResourceType, SysEvent, SysEventType, SendContactMessageEvent, generateId } from '@arcaai/domains';
 import { applyChangesToEntity, ChangeFieldHandlers } from './applyChangesToEntity';
 import { UserSession } from '../services';
@@ -88,7 +88,16 @@ export abstract class BaseService implements IBaseService {
       // `eventType`, and `JSON.stringify` drops undefined — subscribers received
       // a notification that never said WHAT happened.
       type,
-      responsibleEntityId: this.requestUser?.id,
+      // TASK-762 — EXACTLY ONE actor. A service-account request carries a
+      // machine principal on its own CLS key; stamping the bound human's id
+      // (which is what this line did unconditionally before) attributed a
+      // machine's admin action to a person, with no record of which credential
+      // performed it. When a machine principal is present the human column is
+      // left UNSET rather than filled with a plausible-looking id: a wrong
+      // attribution is undetectable to a reviewer, a missing one is not.
+      ...(this.requestServiceAccount
+        ? { responsibleServiceAccountId: this.requestServiceAccount.id }
+        : { responsibleEntityId: this.requestUser?.id }),
       responsibleIp: this.requestIp,
       resourceType: this.resourceType,
       correlationId: this.correlationId,
@@ -121,6 +130,16 @@ export abstract class BaseService implements IBaseService {
 
   get requestUser(): UserSession | null {
     return this.clsService.get('user');
+  }
+
+  /**
+   * The MACHINE principal for this request, or null for a human one
+   * (TASK-762). Read from its own CLS key — never from `user` — so no existing
+   * `requestUser` consumer can accidentally observe a service account as a
+   * person.
+   */
+  get requestServiceAccount(): IServiceAccountPrincipal | null {
+    return this.clsService.get('serviceAccount') ?? null;
   }
 
   get requestUserId(): string | null {

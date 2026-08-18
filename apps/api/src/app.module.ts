@@ -15,6 +15,9 @@ import {
   ConsentServiceModule,
   EntitlementsServiceModule,
   JWT_AUTH_GUARD,
+  SERVICE_ACCOUNT_AUTHENTICATOR,
+  ServiceAccountService,
+  ServiceAccountServiceModule,
   LoggingServiceModule,
   ObservabilityModule,
   OriginRegistryServiceModule,
@@ -52,6 +55,7 @@ import { AiTaskDefaultModule } from './modules/ai-task-default/ai-task-default.m
 import { AiServiceAdminModule } from './modules/ai-service-admin/ai-service-admin.module';
 import { NlpTaskInstructionsModule } from './modules/nlp-task-instructions/nlp-task-instructions.module';
 import { ApiKeyModule } from './modules/api-key/api-key.module';
+import { ServiceAccountModule } from './modules/service-account/service-account.module';
 import { AuditLogModule } from './modules/audit-log/audit-log.module';
 import { AuthModule } from './modules/auth/auth.module';
 // /admin/settings global-settings CRUD (super-admin tier).
@@ -267,6 +271,25 @@ const queueNames = Object.values(JobQueue);
 })
 class JwtAuthGuardModule {}
 
+/**
+ * ServiceAccountAuthenticatorModule — registers SERVICE_ACCOUNT_AUTHENTICATOR
+ * globally so `UnifiedAuthGuard`'s third branch (TASK-762) can resolve it.
+ *
+ * Same shape and same reason as `JwtAuthGuardModule` directly above: the guard
+ * is constructed once as an `APP_GUARD` and must be able to resolve the
+ * authenticator from every feature module. The guard's injection is
+ * `@Optional()`, so WITHOUT this module a presented machine token would simply
+ * fall through to the ordinary 401 rather than being honoured — fail closed,
+ * never fail open.
+ */
+@Global()
+@Module({
+  imports: [ServiceAccountServiceModule],
+  providers: [{ provide: SERVICE_ACCOUNT_AUTHENTICATOR, useExisting: ServiceAccountService }],
+  exports: [SERVICE_ACCOUNT_AUTHENTICATOR, ServiceAccountServiceModule],
+})
+class ServiceAccountAuthenticatorModule {}
+
 const common = [
   LoggingServiceModule, // Add the logger service
   GracefulShutdownModule, // Graceful shutdown coordination
@@ -328,6 +351,9 @@ const common = [
   // the other background workers, so the drainer starts with them.
   UsageLedgerServiceModule,
   JwtAuthGuardModule, // JWT guard — before AuthorizationModule
+  // Machine-identity authenticator — same ordering requirement as the line
+  // above: UnifiedAuthGuard resolves the token when it is constructed.
+  ServiceAccountAuthenticatorModule,
   AuthorizationModule, // Policy-based authorization (RBAC)
   // Vault prisma factory. Self-guards via SECRETS_PROVIDER=vault +
   // PG_DYNAMIC_CREDS=true, so it's safe to import unconditionally; when
@@ -366,6 +392,9 @@ const featureModules: any[] = [
   AiProviderConnectionModule,
   AiRuntimeProfileModule,
   ApiKeyModule,
+  // /admin/service-accounts + POST /auth/service-token (TASK-762) — the third
+  // credential class: platform-issued machine identity for administration.
+  ServiceAccountModule,
   AuthModule,
   AuditLogModule,
   ConsultationModule,

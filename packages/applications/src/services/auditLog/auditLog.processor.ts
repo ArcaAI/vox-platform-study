@@ -24,7 +24,19 @@ export class AuditLogProcessor extends WorkerHost {
   }
 
   async process(job: Job<AuditLogJob>): Promise<void> {
-    const { action, responsibleUserId, responsibleIp, resourceId, resourceType, data, previousData, metadata, correlationId, tenantId } = job.data;
+    const {
+      action,
+      responsibleUserId,
+      responsibleServiceAccountId,
+      responsibleIp,
+      resourceId,
+      resourceType,
+      data,
+      previousData,
+      metadata,
+      correlationId,
+      tenantId,
+    } = job.data;
 
     // Fail-closed when tenantId is missing.
     // Guards against legacy queue entries that predate the multi-tenancy
@@ -50,7 +62,11 @@ export class AuditLogProcessor extends WorkerHost {
 
       const entity = AuditLogFactory.CreateAuditLog({
         action,
+        // TASK-762 — exactly one actor reaches the row. When the job names a
+        // service account the factory leaves `responsibleUserId` NULL, so a
+        // machine action is never recorded against a person.
         responsibleUserId,
+        responsibleServiceAccountId,
         responsibleIp,
         resourceId,
         resourceType,

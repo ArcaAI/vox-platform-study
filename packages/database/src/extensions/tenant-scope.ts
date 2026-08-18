@@ -67,6 +67,8 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   'ResourceSubscription',
   // tag.prisma (1)
   'Tag',
+  // service-account.prisma — `ServiceAccount` is NOT here either, for exactly
+  // the reason below: the token exchange reads it by `clientId` PRE-AUTH.
   // apikey.prisma — `ApiKey` is NOT here; it is INTENTIONALLY_UNSCOPED (see
   // the drift-guard test). API-key AUTHENTICATION must read the row by
   // keyHash before any principal — and therefore any tenant — exists, the

@@ -65,6 +65,7 @@ export * from './ResourceSubscriptionModel';
 export * from './RoleModel';
 export * from './RolePermissionModel';
 export * from './RolePolicyModel';
+export * from './ServiceAccountModel';
 export * from './ServiceInstanceModel';
 export * from './ServiceReleaseModel';
 export * from './StorageAccessKeyModel';

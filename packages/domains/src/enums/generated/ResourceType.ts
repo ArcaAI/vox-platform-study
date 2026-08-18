@@ -113,4 +113,5 @@ export enum ResourceType {
   // ResourceType (see audit.prisma). Parity with audit.prisma; see
   // resourceType.enum-parity.test.ts.
   KnowledgeDocument = 'KnowledgeDocument',
+  ServiceAccount = 'ServiceAccount',
 }
