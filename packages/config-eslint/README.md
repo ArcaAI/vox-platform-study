@@ -21,6 +21,8 @@ Last updated: 2026-07-05
 
 - `arcaai-internal/no-controller-direct-prisma` (error) on `**/modules/**/*.controller.ts` — controllers must not touch `this.databaseService.client` (TASK-307 W6.4).
 - `arcaai-internal/no-direct-downstream-url-env` (error) on `**/modules/**/*.ts` — downstream service URLs must come from `IConfigService.getConfigValue(...)`, not `process.env` (TASK-310 E-5).
+- `arcaai-internal/require-internal-tenant-header` (error) on `**/src/**/*.ts` (tests excluded) — an outbound internal call sending `X-Service-Token` must also carry a tenant channel (TASK-737 §4.4).
+- `arcaai-internal/require-api-key-justification` (error) on `**/modules/**/*.controller.ts` (tests excluded) — a business-plane `@ForbidApiKey()` must record WHY in an `// API-KEY-NOTE` (TASK-761 gate G3).
 - `no-restricted-syntax` on `**/services/**/*.service.ts` — application services must route data access through domain repositories (TASK-311 AC-8).
 - `no-restricted-imports` for `getPlatformAdminPrismaClient_Unscoped` — the unscoped Prisma client bypasses tenant scoping and soft delete (TASK-305 B.5).
 - `@typescript-eslint/no-unused-vars` honors the `_`-prefix convention for intentionally unused identifiers.

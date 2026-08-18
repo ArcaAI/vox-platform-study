@@ -205,6 +205,26 @@ module.exports = [
         },
     },
     {
+        // TASK-761 gate G3 (justification half) — a business-plane
+        // `@ForbidApiKey()` must record WHY in an `// API-KEY-NOTE`.
+        //
+        // The presence and the named-exemption halves of G3 are boot audits
+        // (`api-key-surface-audit.ts`, `business-plane-apikey-exemptions-audit.ts`)
+        // because they are facts about resolved Nest metadata. A REASON is a
+        // comment, stripped by `tsc` before metadata exists, so no audit can
+        // ever see one — lint is the only mechanism that reads source text.
+        //
+        // Scope mirrors `no-controller-direct-prisma`: the only package with
+        // this path shape is `apps/api`. Tests are excluded — a fixture
+        // asserting the pre-fix shape is not a mounted route surface.
+        name: 'arcaai/business-plane-apikey-justification',
+        files: ['**/modules/**/*.controller.ts'],
+        ignores: ['**/__tests__/**', '**/*.test.ts', '**/*.spec.ts'],
+        rules: {
+            'arcaai-internal/require-api-key-justification': 'error',
+        },
+    },
+    {
         name: 'arcaai/house-rules',
         rules: {
             // Parity shim for the typescript-eslint v7 → v8 move: v7

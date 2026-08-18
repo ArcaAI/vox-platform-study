@@ -21,7 +21,13 @@ import { SttInternalController } from '../../modules/internal/stt-internal.contr
 import { EffectiveConfigController } from '../../modules/internal/effective-config.controller';
 import { HarnessInternalController } from '../../modules/consultation/harness-internal.controller';
 import { ServiceReleaseInternalController } from '../../modules/service-release/service-release-internal.controller';
-import { auditApiKeyRequiredScopes, auditInternalRoutesOffApiKeySurface, SDK_DAY1_SCOPED_ROUTES } from '../api-key-scope-audit';
+import {
+  auditApiKeyRequiredScopes,
+  auditInternalRoutesOffApiKeySurface,
+  RECOGNISED_SERVICE_TOKEN_GUARD_NAMES,
+  RESERVED_INTERNAL_SCOPE_CONTROLLERS,
+  SDK_DAY1_SCOPED_ROUTES,
+} from '../api-key-scope-audit';
 
 describe('boot-time API-key scope audit', () => {
   it('passes for the real HOPE Node SDK day-1 surface (TextCompatController, ConsultationController, ConsultationJobController)', () => {
@@ -282,6 +288,44 @@ describe('boot-time /internal/* off-API-key-surface audit (TASK-708)', () => {
    * and stripping `@RequiredScopes('internal:stt:worker')` would silently put
    * every `/internal/stt/*` route back on the open API-key surface.
    */
+  /**
+   * TASK-761 gate G2 (decision D-3) — FREEZE the carve-out at one member.
+   *
+   * The audit itself has existed since TASK-708 and already fails boot on an
+   * unguarded `/internal/*` route, so G2 needed no new gate. What it had no
+   * defence against was GROWTH: `RESERVED_INTERNAL_SCOPE_CONTROLLERS` is an
+   * ordinary `Set`, and adding a second name to it silently re-opens the
+   * API-key path under `/internal/*` for that controller — a one-line change
+   * with no test, no boot failure, and nothing in a diff to catch the eye
+   * beyond a string.
+   *
+   * This pin is deliberately brittle: it names the single member, so widening
+   * the exemption REQUIRES editing this test, which forces the discussion into
+   * review instead of letting it happen by accident. If you are here because
+   * this test failed, the question to answer is not "how do I update the pin"
+   * but "why can this new controller not present a service token?" — the
+   * BUG-013 answer (the STT worker's `X-Internal-Service-Key` carries a raw
+   * SERVICE_ACCOUNT ApiKey value) is specific to one caller, not a pattern.
+   */
+  it('freezes the reserved-scope carve-out at exactly one member (D-3)', () => {
+    expect([...RESERVED_INTERNAL_SCOPE_CONTROLLERS]).toEqual(['SttInternalController']);
+    expect(RESERVED_INTERNAL_SCOPE_CONTROLLERS.size).toBe(1);
+  });
+
+  /**
+   * The other half of the same freeze: the recognised guard allow-list. A new
+   * name here does NOT re-open the API-key path (a guard is still a guard), so
+   * this is a softer pin than the one above — it exists so that adding a guard
+   * class is a visible act rather than a silent one.
+   */
+  it('pins the recognised service-token guard allow-list', () => {
+    expect([...RECOGNISED_SERVICE_TOKEN_GUARD_NAMES].sort()).toEqual([
+      'HarnessServiceTokenGuard',
+      'InternalServiceTokenGuard',
+      'ServiceReleaseTokenGuard',
+    ]);
+  });
+
   it('accepts the reserved-scope carve-out when the internal:-rooted scope is present (BUG-013 shape)', async () => {
     @RequiredScopes('internal:stt:worker')
     @Controller('internal/stt')
