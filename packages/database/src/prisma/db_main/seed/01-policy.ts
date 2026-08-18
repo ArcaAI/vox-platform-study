@@ -113,6 +113,18 @@ export const DEFAULT_POLICIES: DefaultPolicy[] = [
       // User management
       { action: 'manage', subject: 'User', conditions: { tenantId: '${context.tenantId}' } },
       { action: 'manage', subject: 'UserProfile' },
+      // TASK-762 (owner decision 2026-08-18): a tenant admin may READ the service
+      // accounts belonging to their own tenant. Without this, no seeded role below
+      // SUPER_ADMIN held `read:ServiceAccount`, so CASL refused every caller with a
+      // uniform 403 and the service's own 404-over-403 in `loadOwned` was
+      // unreachable. With it, a foreign id now correctly 404s.
+      //
+      // READ only, deliberately: every MUTATION on this resource
+      // (`create`/`update`/`delete`) additionally calls `assertMayIssue()` in
+      // `ServiceAccountService`, which is SUPER_ADMIN-only — issuing a machine
+      // credential stays a platform act. Granting `manage` here would pass CASL and
+      // then be refused by that guard, which is a worse experience than `read`.
+      { action: 'read', subject: 'ServiceAccount', conditions: { tenantId: '${context.tenantId}' } },
       { action: 'manage', subject: 'UserMedia', conditions: { tenantId: '${context.tenantId}' } },
       // Clinical data
       { action: 'manage', subject: 'Consultation', conditions: { tenantId: '${context.tenantId}' } },
