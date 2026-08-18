@@ -25,6 +25,7 @@ import { IEntitlementsService } from '../entitlements/IEntitlementsService';
 import { TenantSettingsService } from '../settings-registry/tenant-settings.service';
 import { SUPER_ADMIN_ROLE } from '../tenant/constants';
 import { CreateApiKeyResult, IApiKeyService } from './IApiKeyService';
+import { resolveImpliedPermissions } from './apikey-scopes.registry';
 import { CreateApiKeyRequest, UpdateApiKeyRequest } from './dto';
 
 /**
@@ -311,6 +312,10 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
       }
     }
 
+    // TASK-756 — privilege ceiling. Runs BEFORE any key material exists: a
+    // refused mint must leave nothing behind.
+    this.assertScopeCeiling(request.scopes);
+
     const rawKey = ApiKeyService.generateRawKey(keyType);
     const keyHash = await this.hashKeyForStorage(rawKey);
     const keyPrefix = ApiKeyService.extractPrefix(rawKey);
@@ -524,6 +529,17 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
       description: apiKey.description,
       environment: apiKey.environment,
     };
+
+    // TASK-756 — privilege ceiling, applied to the WIDENING DELTA only. A PATCH
+    // that renames the key, or that narrows an existing scope array, must not
+    // fail because the key already carries something broad; a PATCH that omits
+    // `scopes` is not checked at all. Only newly ADDED scopes are gated.
+    if (request.scopes !== undefined) {
+      // `scopes` is a Json column on the entity; only a string[] can have been
+      // written by this service, but narrow defensively rather than cast.
+      const alreadyHeld = new Set<string>(Array.isArray(apiKey.scopes) ? apiKey.scopes.filter((s): s is string => typeof s === 'string') : []);
+      this.assertScopeCeiling((request.scopes ?? []).filter((scope) => !alreadyHeld.has(scope)));
+    }
 
     // Apply changes using entity change tracking
     await this.updateEntity(apiKey, {
@@ -1125,6 +1141,72 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
     if (this.isSuperAdmin()) return true;
     const ability = this.clsService.get('userAbility') as { can?: (action: string, subject: string) => boolean } | undefined;
     return !!ability && typeof ability.can === 'function' && ability.can('manage', 'ApiKey');
+  }
+
+  /**
+   * TASK-756 — the privilege CEILING on minting.
+   *
+   * `ValidScopesConstraint` only proves a requested scope is a REGISTRY MEMBER.
+   * Nothing proved the caller was entitled to grant it, so a tenant admin —
+   * gated by the class-level `@CanManage('ApiKey')` on `ApiKeyController`, not
+   * by SUPER_ADMIN — could mint a key carrying `admin:*` or the bare `'*'`.
+   *
+   * Refuse any scope whose implied CASL ability (`ScopeDefinition.implies`,
+   * expanded for wildcards by `resolveImpliedPermissions`) the CALLING
+   * principal does not itself hold. A credential must never out-rank the human
+   * who created it.
+   *
+   * Relationship to the request-time check: this is the MINTING half only.
+   * `UnifiedAuthGuard.enforceApiKeyAbilities()` independently evaluates each
+   * route's CASL metadata against the key's BOUND USER on every request; the
+   * two are a conjunction and neither substitutes for the other. What the
+   * ceiling removes is the long-lived static bearer credential carrying the
+   * granting admin's full blast radius — no MFA, no session expiry, no
+   * revocation-on-logout — not a raw privilege delta.
+   *
+   * Fails CLOSED, deliberately, in two places:
+   *
+   * - **No compiled ability in CLS → refuse.** `UnifiedAuthGuard` does NOT
+   *   publish the ability on the API-key path (it is a gate, never published —
+   *   several services read its absence as "not privileged"), so a caller who
+   *   authenticated WITH an API key has no `userAbility` and cannot mint a
+   *   scoped key at all. That is the correct posture and the direction
+   *   TASK-757 takes `/admin/api-keys` (JWT-only).
+   * - **Unknown scope → refuse.** Resolving an unrecognized string to "no
+   *   requirement" would turn a typo into a ceiling bypass.
+   *
+   * Throws `ForbiddenException` (403) — this is a PRIVILEGE boundary, not the
+   * cross-tenant 404-over-403 posture used by `assertTenantOwnership`.
+   */
+  private assertScopeCeiling(scopes: string[] | null | undefined): void {
+    if (!scopes || scopes.length === 0) return;
+    // `manage:all` would satisfy every implication anyway; the fast path
+    // mirrors this module's existing convention (`callerCanManageAllKeys`).
+    if (this.isSuperAdmin()) return;
+
+    const ability = this.clsService.get('userAbility') as { can?: (action: string, subject: string) => boolean } | undefined;
+    if (!ability || typeof ability.can !== 'function') {
+      throw new ForbiddenException('Scoped API keys can only be minted by a caller whose permissions can be evaluated');
+    }
+
+    const denials: string[] = [];
+    for (const scope of scopes) {
+      let implied: Array<{ action: string; subject: string }>;
+      try {
+        implied = resolveImpliedPermissions(scope);
+      } catch {
+        throw new ForbiddenException(`Cannot grant unknown API key scope '${scope}'`);
+      }
+
+      const missing = implied.filter((permission) => !ability.can(permission.action, permission.subject));
+      if (missing.length > 0) {
+        denials.push(`'${scope}' (requires ${missing.map((m) => `${m.action}:${m.subject}`).join(', ')})`);
+      }
+    }
+
+    if (denials.length > 0) {
+      throw new ForbiddenException(`Cannot grant API key scopes beyond your own permissions: ${denials.join('; ')}`);
+    }
   }
 
   /**
