@@ -35,7 +35,7 @@ Evidence base: [api-controller-inventory.md](./api-controller-inventory.md) (re-
 | A1 — business ⇒ JWT + API key | 14 controllers | **18 controllers / 69 handlers** | Several are legitimate exemptions — see §2.2 |
 | P1/P2 — prefix matches nature | ~all | **2 controllers** | `MonitoringController`, `ApiHealthController` (`/services` routes) |
 | P3 — internal prefix | 5/5 | 0 (prefix) / **1 (auth model)** | `SttInternalController` is the lone internal surface on the API-key path |
-| R3 — WS requester-only | 0/2 in-scope gateways | **2** | One critical (STT hijack), one defence-in-depth (TTS origin) |
+| R3 — WS requester-only | **2/2 in-scope gateways** | 0 | ~~One critical (STT hijack), one defence-in-depth (TTS origin)~~ — STT closed by TASK-754 (`e3f3713fb`); TTS closed by TASK-755 (origin/CSWSH check + `tts_session` mint branch). Original finding text kept below. |
 
 ---
 
@@ -171,8 +171,8 @@ Make the requester binding real, in this order:
 2. **Check it at all four enforcement points** — ticket mint, refresh-ticket, connect/rebind, and close/switch. Cross-user within a tenant must 404, matching the cross-tenant posture.
 3. **Refuse rebind on owner mismatch** at `stt-ws.gateway.ts:738`; never overwrite `session.userId`. On mismatch, close `4401` and leave the incumbent connected.
 4. **Close the incumbent explicitly on legitimate resume** so takeover is never silent, and log it as a security event.
-5. **Add the fail-closed Origin/CSWSH check to `TtsWsGateway`.** Correction: STT's comments argue alignment with the **HTTP CORS path** (`cors.config.ts`), not with TTS — the STT gateway never mentions TTS. The reasoning still transfers, and is the stronger argument: browsers exempt WebSockets from CORS entirely, so CSWSH is the one vector CORS cannot cover — on TTS as much as STT.
-6. **Add an ownership branch for `tts_session:*` at mint** — currently the only scope prefix with no check at all.
+5. **DONE (TASK-755).** **Add the fail-closed Origin/CSWSH check to `TtsWsGateway`.** Correction: STT's comments argue alignment with the **HTTP CORS path** (`cors.config.ts`), not with TTS — the STT gateway never mentions TTS. The reasoning still transfers, and is the stronger argument: browsers exempt WebSockets from CORS entirely, so CSWSH is the one vector CORS cannot cover — on TTS as much as STT.
+6. **DONE (TASK-755), as Option A rather than an ownership branch.** **Add an ownership branch for `tts_session:*` at mint** — currently the only scope prefix with no check at all. *Outcome:* an ownership branch is not implementable today — there is no server-side TTS session resource to look up (`SpeechProxyController` exposes only `synthesize` and `voices`), so `assertTtsSessionScopeShape` asserts what is knowable (well-formed bounded id + active tenant) and carries the reason plus the trigger that would upgrade it to a real ownership check. See `docs/implementation/TASK-755-Tts-Ws-Hardening/README.md` §Design decision.
 7. **Regression tests**: same-tenant/different-user denied at each of the four points. That case has never been covered.
 
 `SttWsGateway` remains the reference implementation on every other axis — single-use 30s tickets, fail-closed non-enumerable `4401`s, message-level binding to the connect-time session object.
@@ -199,7 +199,7 @@ Every rule above is mechanically checkable. Add boot-time/lint gates: admin pref
 |---|---|---|
 | 1 | ~~§2.1 WS hijack + §3.4 items 1-4, 7~~ — **DONE**, commit `e3f3713fb` (TASK-754) | Security — was first |
 | 2 | §3.1 step 1 — privilege ceiling on key minting | Security — small, self-contained |
-| 3 | §3.4 items 5-6 — TTS origin + `tts_session` ownership | Low |
+| 3 | ~~§3.4 items 5-6 — TTS origin + `tts_session` ownership~~ — **DONE** (TASK-755) | Low |
 | 4 | §3.1 step 2 — `@ForbidApiKey()` across admin + reserve scopes + boot audit | Medium; 3 e2e specs to rewrite |
 | 5 | §2.5 prefix moves (`monitoring`, `health/services`) | Low; pre-launch, redirects available |
 | 6 | §3.3 A1 rollout with exemption list | Low |

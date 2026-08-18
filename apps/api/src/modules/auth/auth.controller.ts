@@ -941,6 +941,12 @@ export class AuthController {
     // Fail-closed: a missing/foreign run 404s too.
     await this.assertWorkflowRunScopeOwnership(body.scope, tenantId);
 
+    // TASK-755 G-2 — `tts_session:<sessionId>` was the only stream-ticket
+    // scope prefix with NO branch here. This is deliberately NOT an ownership
+    // check; read `assertTtsSessionScopeShape` for why one is impossible today
+    // and what would make it possible.
+    this.assertTtsSessionScopeShape(body.scope, tenantId);
+
     const issued = await this.streamTicketService.issueTicket({
       userId: user.id,
       tenantId,
@@ -1065,6 +1071,64 @@ export class AuthController {
       await this.workflowRunService.getRun(activeTenantId, runId);
     } catch {
       throw new NotFoundException('Run not found');
+    }
+  }
+
+  /** Scope prefix for TTS duplex-WS tickets consumed by `TtsWsGateway` (`modules/speech/`). */
+  private static readonly TTS_SESSION_SCOPE_PREFIX = 'tts_session:';
+
+  /**
+   * Bounded, character-restricted grammar for the `tts_session:` suffix. Covers
+   * both shapes the SDK actually mints (`useTtsStream.ts`): a
+   * `crypto.randomUUID()` and the `tts-<epochMs>-<rand>` fallback.
+   */
+  private static readonly TTS_SESSION_ID_PATTERN = /^[A-Za-z0-9._-]{1,128}$/;
+
+  /**
+   * TASK-755 G-2, **Option A ("document-and-assert")** — the recommendation
+   * recorded in `docs/implementation/TASK-755-Tts-Ws-Hardening/README.md`.
+   *
+   * WHAT THIS CHECKS: the scope is well-formed (`tts_session:` + a non-empty,
+   * ≤128-char, `[A-Za-z0-9._-]` id) and the caller has an active tenant.
+   *
+   * WHAT IT DOES **NOT** CHECK, AND WHY: ownership. There is no server-side
+   * TTS session resource to look up. Unlike STT — where `POST …/stream/session`
+   * creates a real upstream session and records a binding — the TTS
+   * `sessionId` is an opaque, CLIENT-CHOSEN string with no row, no Redis
+   * binding, and no prior existence (`SpeechProxyController` exposes only
+   * `synthesize` and `voices`; there is no session-create route). Each connect
+   * calls `openBridge()`, which opens its OWN upstream socket keyed to that
+   * socket's `Bridge` entry (`bridges: Map<WebSocket, Bridge>`), so two
+   * connections sharing a `sessionId` get two independent bridges and neither
+   * can see, steal, or displace the other's audio. A ticket minted here is
+   * therefore always a ticket for a session that will only ever exist as the
+   * minting caller's own socket — the ticket already carries their
+   * userId/tenantId, is single-use, and expires in 30 seconds.
+   *
+   * THE TRIGGER THAT WOULD MAKE THIS INSUFFICIENT (ticket §Design decision,
+   * Option B): the moment TTS gains a server-side session resource — a route
+   * that mints a sessionId and records a binding — this MUST become a real
+   * ownership assertion mirroring `assertSttSessionScopeOwnership`, because at
+   * that point there IS something to hijack. This method is the placeholder
+   * that makes that dependency visible instead of leaving the prefix silently
+   * unchecked.
+   *
+   * Rejection is a `NotFoundException` with the SAME message the
+   * `stt_session` branch uses — no 403, and nothing that distinguishes
+   * "malformed" from "not yours". Non-`tts_session` scopes pass through
+   * untouched. Synchronous: it performs no I/O, precisely because there is
+   * nothing to look up.
+   */
+  private assertTtsSessionScopeShape(scope: string, activeTenantId: string | null): void {
+    if (!scope?.startsWith(AuthController.TTS_SESSION_SCOPE_PREFIX)) {
+      return;
+    }
+    if (!activeTenantId) {
+      throw new NotFoundException('Session not found');
+    }
+    const sessionId = scope.slice(AuthController.TTS_SESSION_SCOPE_PREFIX.length);
+    if (!AuthController.TTS_SESSION_ID_PATTERN.test(sessionId)) {
+      throw new NotFoundException('Session not found');
     }
   }
 

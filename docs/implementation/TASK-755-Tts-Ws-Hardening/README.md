@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | **Pending** |
+| **Status** | **Completed** |
 | **Owner** | Platform / API gateway |
 | **Created** | 2026-08-18 |
 | **Classification** | `bugfix` — defence-in-depth (P2; see §Severity) |
@@ -167,6 +167,14 @@ imply it:
 Option A is the recommendation. Option B is the right answer *if and when* TTS gains a server-side
 session resource — note that dependency in the code comment so the trigger is visible.
 
+### DECIDED — 2026-08-18: **Option A**, on the ticket's own recommendation
+
+Recorded plainly because the choice was **delegated to this ticket's recommendation, not
+independently approved by the owner**. What Option A commits the platform to, and how reversible
+it is, is set out in §Implementation Summary → *Option A trade-off*. It is a code-local, additive
+change with no schema, no API surface and no client change; reversing it to Option B is purely
+additive on top.
+
 ---
 
 ## Implementation Plan
@@ -262,9 +270,145 @@ the trigger that would make Option B necessary.
 
 ## Implementation Summary
 
-**pending** — no code written. To be filled in after the Verification Criteria have been run and
-their output captured, and must record which of Options A/B/C was chosen for G-2 and on whose
-decision.
+**Completed 2026-08-18.** Both gaps closed, TDD (RED observed on every new assertion before the
+implementation existed). G-2 was implemented as **Option A — document-and-assert**, on this
+ticket's own recommendation; see the trade-off note below, which is written for an owner who may
+want to revisit it.
+
+### Files changed
+
+| File | Change |
+|---|---|
+| `apps/api/src/modules/speech/tts-ws.gateway.ts:5` | Import `IOriginRegistry` from `@arcaai/applications` |
+| `apps/api/src/modules/speech/tts-ws.gateway.ts:19` | Import `isOriginEnforcementEnabled` from `../../cors.config` — the switch is READ, never re-resolved (AC-2) |
+| `apps/api/src/modules/speech/tts-ws.gateway.ts:134-139` | `@Optional() @Inject(IOriginRegistry) originRegistry?` as the **trailing** constructor param (positional test fixtures keep compiling) |
+| `apps/api/src/modules/speech/tts-ws.gateway.ts:141-213` | `isOriginAllowed(origin)` — semantics identical to `stt-ws.gateway.ts:381-435`: enforcement off ⇒ allow (registry never consulted); registry absent ⇒ deny; `size() === 0` ⇒ deny; `has()` throws ⇒ deny; otherwise `has(origin)`. Log reasons `origin_registry_unavailable` / `origin_registry_miss` reused verbatim (AC-3) |
+| `apps/api/src/modules/speech/tts-ws.gateway.ts:215-235` | Invocation **first** in `handleConnection`, before `sessionId`/`ticket` parsing, guarded by `typeof origin === 'string' && origin.length > 0` (AC-1, AC-4); rejects through the existing `this.reject(client, 'unregistered origin')` so the close stays the generic `4401` (AC-5) |
+| `apps/api/src/modules/speech/speech.module.ts:4,30-36` | `OriginRegistryServiceModule` imported (with the fail-CLOSED note) |
+| `apps/api/src/modules/auth/auth.controller.ts:943-948` | `assertTtsSessionScopeShape(body.scope, tenantId)` called from `issueStreamTicket`, after the `workflow_run` assertion |
+| `apps/api/src/modules/auth/auth.controller.ts:1077-1133` | `TTS_SESSION_SCOPE_PREFIX`, `TTS_SESSION_ID_PATTERN` (`/^[A-Za-z0-9._-]{1,128}$/`), and `assertTtsSessionScopeShape` — Option A, with the full "what is NOT checked and why" comment and the Option-B trigger (AC-6) |
+| `apps/api/src/modules/speech/__tests__/tts-ws.gateway.origin.test.ts` | **New** — 12 assertions, the full RED table from §Implementation Plan Step 1 |
+| `apps/api/src/modules/auth/__tests__/auth.controller.stream-ticket.test.ts:548-686` | **Extended** — new `tts_session scope shape` describe block, 10 assertions |
+| `apps/api/src/modules/streaming/streaming.module.ts:44-51` | **Comment only** — the stale *"fails OPEN"* note corrected to fail-CLOSED (reversed by TASK-610; flagged in this ticket's §Current State Evaluation). Zero behavioural change; corrected here because this ticket mirrored that exact wiring comment into `speech.module.ts` and shipping a correct copy beside a wrong original is worse than fixing both |
+| `docs/architecture/api-controller-inventory.md` | §5 summary row + `TtsWsGateway inbound` rewritten as an ordered 3-step connect sequence; the *"no Redis tenant-binding cross-check"* note kept **with its reason attached** |
+| `docs/architecture/api-design-conformance-review.md` | §1 scorecard R3 row → 2/2 conformant (original text struck through, not deleted); §3.4 items 5-6 marked DONE with the Option-A outcome appended; §4 sequencing row 3 struck through |
+
+### Option A trade-off — what it commits the platform to, and how reversible it is
+
+**What was added:** `tts_session:` now has a branch at mint that requires (a) a well-formed suffix —
+non-empty, ≤128 chars, `[A-Za-z0-9._-]` — and (b) an active tenant on the caller. Both shapes the
+SDK actually mints (`useTtsStream.ts:101`: a `crypto.randomUUID()`, and the `tts-<epochMs>-<rand>`
+fallback) are covered, and both are pinned by tests so a future SDK id change fails loudly here
+rather than in production.
+
+**What it does NOT buy — state this plainly:** *no isolation*. Any authenticated caller with an
+active tenant can still mint `tts_session:<anything-well-formed>`. That is not a weakness of the
+implementation; it is the honest ceiling, because there is nothing to own. What it buys is the
+removal of the "one prefix nobody checks" asymmetry and a durable, in-code explanation so the next
+reader does not re-file the gap or, worse, assume an ownership check exists.
+
+**The commitment it creates:** a **grammar** for `tts_session` ids. A client that starts using an id
+outside `[A-Za-z0-9._-]` (a URL-encoded value, a `/`-separated composite, an id over 128 chars) will
+be refused at mint with a 404. Today's only consumer is the SDK hook, which stays inside the
+grammar; a third-party consumer choosing a different id shape is the one realistic way this becomes
+a breaking change.
+
+**Reversibility — high, in both directions:**
+
+- *Loosen / revert to Option C:* delete one call site (`auth.controller.ts:948`) and one private
+  method. No schema, no migration, no API contract, no client change.
+- *Upgrade to Option B:* purely additive. Add the TTS session-create route + binding, then replace
+  the body of `assertTtsSessionScopeShape` with a real ownership lookup mirroring
+  `assertSttSessionScopeOwnership`. The method name and call site are already in the right place —
+  Option A is deliberately shaped as the seat Option B slides into.
+- **The trigger is documented in the code**, not only here: the doc comment on
+  `assertTtsSessionScopeShape` names *"the moment TTS gains a server-side session resource"* as the
+  point at which Option A stops being sufficient.
+
+**Owner decision still open (deliberately):** whether TTS should get a server-side session resource
+at all (Option B). This ticket does not settle that and does not pre-commit to it.
+
+### Discrepancies found in the specification
+
+1. **AC/RED table — "The rejection message is identical to the `stt_session` / `consultation_*`
+   rejections" (Step 2) is not literally satisfiable.** Those two are already different from each
+   other: `stt_session` throws `'Session not found'`, `consultation_*` throws
+   `'Consultation not found'`. Resolved by matching the **`stt_session`** message
+   (`'Session not found'`) — the nearest sibling, and both are session scopes — and the test asserts
+   equality against the `stt_session` rejection specifically rather than against both.
+2. **Ticket §Current State line numbers for `handleConnection` (`:136-177`) are pre-change** and
+   have shifted by the inserted origin block; the Files-changed table above carries post-change
+   lines.
+3. Everything else in the spec was implementable as written. Nothing in the plan had to be
+   substituted, and Option A was implemented as specified — not silently swapped.
+
+### Verification evidence
+
+```
+$ pnpm --filter @arcaai/api test
+ Test Files  218 passed | 2 skipped (220)
+      Tests  3093 passed | 4 skipped (3097)
+   Duration  39.44s
+```
+
+```
+$ pnpm api:build
+ Tasks:    12 successful, 12 total
+Cached:    0 cached, 12 total
+  Time:    25.168s
+```
+
+```
+$ pnpm --filter @arcaai/api lint
+✖ 65 problems (0 errors, 65 warnings)
+```
+
+All 65 are pre-existing `eslint-comments/require-description` warnings on `eslint-disable`
+directives this ticket did not touch; **0 errors**, and this ticket added no directive comments.
+
+**RED evidence (observed before any implementation existed):**
+
+```
+$ npx vitest run src/modules/speech/__tests__/tts-ws.gateway.origin.test.ts
+ Test Files  1 failed (1)
+      Tests  9 failed | 3 passed (12)
+```
+
+The 3 that passed at RED are the three ALLOW paths (no `Origin`, empty `Origin`, enforcement OFF) —
+they pass vacuously when no check exists at all, which is exactly why the 9 DENY/ordering
+assertions are the ones that prove the check. After implementation: 12/12 green.
+
+```
+$ npx vitest run src/modules/auth/__tests__/auth.controller.stream-ticket.test.ts
+ Test Files  1 failed (1)
+      Tests  5 failed | 33 passed (38)
+```
+
+The 5 failures are the five rejection paths (empty suffix, illegal characters, over-long id, no
+active tenant, message parity); the 4 new mint-SUCCESS assertions pass vacuously with no branch
+present. After implementation: 38/38 green (10 new).
+
+```
+$ npx vitest run src/modules/speech/      # after implementation
+ Test Files  6 passed (6)
+      Tests  77 passed (77)
+```
+
+Confirms AC-7: `tts-ws.gateway.test.ts`, `tts-ws.gateway.quota.task615.test.ts`,
+`speech-proxy.controller*.test.ts` all unbroken — the `4429` quota path, init enrichment, binary
+passthrough and usage-ledger teardown are untouched.
+
+### Verification Criteria — final state
+
+- [x] `pnpm --filter @arcaai/api test` green (3093 passed) — new origin suite + extended mint suite
+- [x] Existing TTS suites unbroken (6 files / 77 tests in `modules/speech`)
+- [x] `pnpm api:build` green
+- [x] `pnpm --filter @arcaai/api lint` — 0 errors, no new warnings
+- [x] Every RED assertion observed failing first (output above)
+- [x] Inspection: the switch is read from `cors.config.ts`; no second source of truth in the speech module (AC-2)
+- [x] Inspection: rejection reuses `TTS_WS_CLOSE_CODES.AUTH_FAILED`; no new close code; `4429` untouched (AC-5, AC-7)
+- [x] Inspection: no Redis tenant-binding cross-check copied over from STT
+- [x] Option A recorded in §Design decision **and** restated in the code comment
 
 ---
 
@@ -273,3 +417,4 @@ decision.
 | Date | Change |
 |---|---|
 | 2026-08-18 | **Created.** Documents the two `TtsWsGateway` defence-in-depth gaps from the conformance review §3.4 items 5-6: no CSWSH `Origin` check (verified — zero `origin`/`Origin` matches in the 468-line file, and `speech.module.ts` does not import `OriginRegistryServiceModule`), and `tts_session:*` as the only stream-ticket scope prefix with no branch at mint (verified — three branches exist at `auth.controller.ts:931/937/942`, none for TTS). Severity recorded as **lower than TASK-754's** with the structural reason: TTS has no server-side session resource (`SpeechProxyController` exposes only `synthesize` and `voices`; each connect opens its own socket-keyed bridge at `tts-ws.gateway.ts:105/207`), so there is nothing to hijack. **Discrepancy corrected:** the review's claim that STT's comments argue for STT↔TTS alignment does not hold literally — those comments (`stt-ws.gateway.ts:359`, `:374`) argue for alignment with the **HTTP CORS path**, and the STT gateway never mentions TTS. The argument transfers, but is not made in that code. Status **Pending** — sequenced behind TASK-754 per conformance review §4 row 3. No source code modified. |
+| 2026-08-18 | **Implemented — status Pending → Completed.** G-1: fail-closed Origin/CSWSH check added to `TtsWsGateway` (`isOriginAllowed` + first-in-`handleConnection` invocation), `OriginRegistryServiceModule` wired into `speech.module.ts`; semantics, log reasons and the `cors.config.ts` switch read are identical to the STT reference — no second source of truth. G-2: implemented as **Option A (document-and-assert)** per this ticket's recommendation — `assertTtsSessionScopeShape` in `auth.controller.ts` asserts a bounded, character-restricted id and an active tenant, and carries in-code the reason no ownership check is possible plus the trigger (a server-side TTS session resource) that would upgrade it to Option B. 22 new test assertions across a new `tts-ws.gateway.origin.test.ts` and an extended `auth.controller.stream-ticket.test.ts`, all observed RED first. **Spec discrepancy found:** the Step-2 RED row "rejection message identical to the `stt_session` / `consultation_*` rejections" is unsatisfiable as written (those two already differ — `'Session not found'` vs `'Consultation not found'`); resolved by matching `stt_session`. **Out-of-scope fix taken deliberately:** the stale *"fails OPEN"* comment at `streaming.module.ts:47-48` (flagged in §Current State Evaluation) was corrected to fail-CLOSED — comment only, zero behaviour change, done because this ticket mirrored that wiring comment into `speech.module.ts`. Docs updated: `api-controller-inventory.md` §5 (ordered connect sequence; the no-tenant-binding note kept with its reason), `api-design-conformance-review.md` §1 R3 row, §3.4 items 5-6, §4 row 3. |

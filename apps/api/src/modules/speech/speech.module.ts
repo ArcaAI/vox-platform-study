@@ -1,6 +1,7 @@
 import {
   AiProviderConnectionServiceModule,
   EntitlementsServiceModule,
+  OriginRegistryServiceModule,
   TenantTtsConfigServiceModule,
   UsageLedgerServiceModule,
 } from '@arcaai/applications';
@@ -27,6 +28,12 @@ import { TtsWsGateway } from './tts-ws.gateway';
     AiProviderConnectionServiceModule,
     UsageLedgerServiceModule,
     EntitlementsServiceModule,
+    // TASK-755 G-1 — supplies `IOriginRegistry` to `TtsWsGateway`'s CSWSH
+    // handshake check. Browsers do NOT apply CORS to WebSockets, so this is
+    // the only place the allow-list reaches the socket path. The gateway
+    // injects it `@Optional()` and fails CLOSED, so omitting this import does
+    // not break the build — it refuses every browser origin instead.
+    OriginRegistryServiceModule,
   ],
   controllers: [SpeechProxyController],
   providers: [TtsWsGateway],
