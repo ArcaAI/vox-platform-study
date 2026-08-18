@@ -16,10 +16,12 @@
  *      two states that matter — a tenant with NO schema at all, and a tenant
  *      that HAS a published schema but whose write simply does not name a kind.
  *
- * `__GLOBAL__` is deliberately never given a schema, so the "no schema
- * configured" arm stays true however often this spec runs. The schema is
- * created in ARCAAI under a run-unique slug and soft-deleted at the end, so the
- * spec is re-runnable.
+ * The "no schema configured" arm self-provisions a throwaway tenant (TASK-764).
+ * It used to rely on `__GLOBAL__` never being given one, which TASK-686 ended:
+ * the day-1 seed now publishes a `consultation_default` schema for every seeded
+ * tenant, `__GLOBAL__` included. The plane's own schema is created in ARCAAI
+ * under a run-unique slug and soft-deleted at the end, so the spec is
+ * re-runnable.
  *
  * Live-stack requirement: seeded test stack (`pnpm infra:test:up`,
  * `pnpm test:db:seed`) + `pnpm test:up:api`.
@@ -84,15 +86,51 @@ test.describe.configure({ mode: 'serial' });
 
 test.describe('A tenant with no context schema is untouched by the programme', () => {
   let doctorToken: string;
+  let superAdminToken: string;
+  let unconfiguredTenantId = '';
 
   test.beforeAll(async ({ request }) => {
     const doctor = await loginUser(request, SEEDED_USERS.doctor.username, SEEDED_USERS.doctor.password, DEFAULT_TENANT_KEY);
     expect(doctor, 'doctor login (__GLOBAL__) failed — is the stack seeded?').toBeTruthy();
     doctorToken = doctor!.token;
+
+    // TASK-764 — this block used to read discovery as `doctor` on `__GLOBAL__`
+    // because that tenant was "deliberately never given a schema". TASK-686
+    // then made the day-1 context schema part of the SEED
+    // (`07e-consultation-loop-defaults.ts` creates a PUBLISHED
+    // `consultation_default` for the SYSTEM tenant, `__GLOBAL__` AND `ARCAAI`),
+    // so `__GLOBAL__` now legitimately resolves a real bundle with a real
+    // ETag. That is the intended product behaviour, not a regression — but it
+    // leaves the K7 "no schema at all" arm with no seeded tenant to stand on.
+    //
+    // Self-provision one instead of depending on seed state. Tenant creation
+    // provisions buckets, configs, a default department, model/pipeline/agent
+    // catalogs — but NOT a context schema (`tenant.service.ts` has no
+    // context-schema provisioning step), so a brand-new tenant is exactly the
+    // unconfigured state this contract is about. A super admin authenticates
+    // with an empty JWT tenant and elevates onto it via `x-tenant-id`
+    // (`resolve-active-tenant.ts`), so no user needs to exist inside it.
+    const superAdmin = await loginUser(request, SEEDED_USERS.superAdmin.username, SEEDED_USERS.superAdmin.password);
+    expect(superAdmin, 'super_admin login failed — is the stack seeded?').toBeTruthy();
+    superAdminToken = superAdmin!.token;
+
+    const created = await request.post('/api/v1/admin/tenants', {
+      headers: auth(superAdminToken),
+      data: { name: 'TASK-764 unconfigured-tenant probe', key: `TASK764_E2E_${Date.now()}` },
+    });
+    expect(created.status(), `provision throwaway tenant — body: ${await created.text()}`).toBe(201);
+    unconfiguredTenantId = ((await created.json()) as { id: string }).id;
+  });
+
+  test.afterAll(async ({ request }) => {
+    if (!unconfiguredTenantId) return;
+    await request.delete(`/api/v1/admin/tenants/${unconfiguredTenantId}`, { headers: auth(superAdminToken) }).catch(() => undefined);
   });
 
   test('discovery answers 200 with null fields and ETag "none" — never 404', async ({ request }) => {
-    const response = await request.get(DISCOVERY, { headers: auth(doctorToken) });
+    const response = await request.get(DISCOVERY, {
+      headers: { ...auth(superAdminToken), 'X-Tenant-Id': unconfiguredTenantId },
+    });
 
     // A 404 here would be indistinguishable from a routing mistake to a client,
     // which is exactly why the endpoint returns an empty bundle instead.
@@ -103,6 +141,26 @@ test.describe('A tenant with no context schema is untouched by the programme', (
     expect(bundle.schemaId).toBeNull();
     expect(bundle.definition).toBeNull();
     expect(bundle.contextSchemaVersionId).toBeNull();
+  });
+
+  // TASK-764 — the other half of the same guarantee, and the half the seed
+  // change actually put at risk: a SEEDED tenant now DOES resolve a bundle, and
+  // discovery must serve it whole rather than half-populated. Pinning it here
+  // means a future seed change that drops (or fails to publish) the day-1
+  // schema is caught as a discovery failure, not silently absorbed.
+  test('a seeded tenant resolves a real day-1 bundle with a content-derived ETag', async ({ request }) => {
+    const response = await request.get(DISCOVERY, { headers: auth(doctorToken) });
+
+    expect(response.status()).toBe(200);
+    const etag = response.headers()['etag'];
+    expect(etag, 'a configured tenant must not report the unconfigured ETag').not.toBe('"none"');
+    expect(etag).toMatch(/^"[0-9a-f]+"$/);
+
+    const bundle = await response.json();
+    expect(bundle.schemaId).toBeTruthy();
+    expect(bundle.contextSchemaVersionId).toBeTruthy();
+    expect(bundle.definition).toBeTruthy();
+    expect(Array.isArray(bundle.definition.kinds)).toBe(true);
   });
 
   test('a context write that names no kindKey behaves exactly as before the programme', async ({ request }) => {
