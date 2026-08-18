@@ -46,7 +46,7 @@ import { Throttle } from '@nestjs/throttler';
 import * as bcrypt from 'bcryptjs';
 import { randomBytes } from 'crypto';
 import { ClsService } from 'nestjs-cls';
-import { StreamSessionTenantBindingService } from '../../common';
+import { type StreamSessionBinding, StreamSessionTenantBindingService } from '../../common';
 import { Authorize, Public, ForbidApiKey } from '../../decorators';
 import {
   LoginRequest,
@@ -115,10 +115,11 @@ export class AuthController {
     // Mint-time tenant-ownership check for live-summary stream
     // tickets (defense-in-depth alongside the SSE route's @TenantOwnedResource).
     private readonly consultationRepository: ConsultationRepository,
-    // Mint-time tenant-ownership check for `stt_session:*`
-    // tickets, resolved via the gateway-side sessionId → tenantId binding
-    // written at session create (same instance the WS gateway and the
-    // DELETE-route interceptor consult).
+    // Mint-time ownership check for `stt_session:*` tickets, resolved via the
+    // gateway-side sessionId → { tenantId, userId } binding written at session
+    // create (same instance the WS gateway and the DELETE-route interceptor
+    // consult). Both halves are asserted: a live session belongs to one USER,
+    // not to the tenant at large.
     private readonly streamSessionTenantBinding: StreamSessionTenantBindingService,
     // Mint-time tenant-ownership check for `workflow_run:<runId>` tickets (TASK-722 Task 7).
     @Inject(IWorkflowRunService) private readonly workflowRunService: IWorkflowRunService,
@@ -929,10 +930,11 @@ export class AuthController {
     // before issuing.
     await this.assertConsultationScopeOwnership(body.scope, tenantId);
 
-    // Same posture for `stt_session:<sessionId>` (live
-    // transcript WS): the session must be bound to the caller's (active)
-    // tenant. Fail-closed: a missing binding 404s too.
-    await this.assertSttSessionScopeOwnership(body.scope, tenantId);
+    // Same posture for `stt_session:<sessionId>` (live transcript WS), except
+    // the session is owned by ONE USER: it must be bound to the caller's
+    // (active) tenant AND to the caller themselves. Fail-closed: a missing
+    // binding, an ownerless binding, and a colleague's session all 404.
+    await this.assertSttSessionScopeOwnership(body.scope, tenantId, user.id);
 
     // Same posture for `workflow_run:<runId>` (TASK-722's exposure-plane SSE
     // route): the run must belong to the caller's (active) tenant.
@@ -1004,26 +1006,38 @@ export class AuthController {
   /**
    * `stt_session:<sessionId>` tickets used to silently bypass the
    * consultation-only check above, so any authenticated user who learned a
-   * foreign sessionId could mint a live-transcript WS ticket for it. Resolve
-   * the session's owning tenant via the gateway-side binding written at
-   * session create and require it to match the caller's active tenant. A
-   * missing binding, a mismatch, and a lookup failure all yield 404 (no
-   * existence leak) — mirroring the DELETE route's
-   * `assertStreamSessionOwnership`. Non-`stt_session` scopes pass through
-   * untouched.
+   * foreign sessionId could mint a live-transcript WS ticket for it. Round 1
+   * closed the cross-TENANT half by resolving the session's owning tenant
+   * from the gateway-side binding written at session create.
+   *
+   * That comparison was still tenant-only, and a live STT session belongs to
+   * ONE USER: a colleague inside the same tenant could mint a ticket for an
+   * in-progress consultation, connect, and have the audio-ingest + transcript
+   * stream transplanted onto their socket. The binding now records the owning
+   * user too, and BOTH must match.
+   *
+   * A missing binding, an ownerless (legacy) binding, a tenant mismatch, an
+   * owner mismatch, and a lookup failure all yield 404 (no existence leak) —
+   * mirroring the `StreamSession` interceptor branch that guards the sibling
+   * refresh-ticket / close / switch routes. No super-admin bypass: not owning
+   * the session is not owning the session. Non-`stt_session` scopes pass
+   * through untouched.
    */
-  private async assertSttSessionScopeOwnership(scope: string, activeTenantId: string | null): Promise<void> {
+  private async assertSttSessionScopeOwnership(scope: string, activeTenantId: string | null, callerUserId: string): Promise<void> {
     if (!scope?.startsWith(AuthController.STT_SESSION_SCOPE_PREFIX)) {
       return;
     }
     const sessionId = scope.slice(AuthController.STT_SESSION_SCOPE_PREFIX.length);
-    let boundTenantId: string | null;
+    let binding: StreamSessionBinding | null;
     try {
-      boundTenantId = await this.streamSessionTenantBinding.lookup(sessionId);
+      binding = await this.streamSessionTenantBinding.lookupBinding(sessionId);
     } catch {
-      boundTenantId = null;
+      binding = null;
     }
-    if (boundTenantId === null || boundTenantId !== activeTenantId) {
+    if (binding === null || binding.tenantId !== activeTenantId) {
+      throw new NotFoundException('Session not found');
+    }
+    if (!binding.userId || binding.userId !== callerUserId) {
       throw new NotFoundException('Session not found');
     }
   }

@@ -23,7 +23,7 @@ function buildController(
       isRevoked: ReturnType<typeof vi.fn>;
     };
     consultationRepository?: { findById: ReturnType<typeof vi.fn> };
-    streamSessionTenantBinding?: { lookup: ReturnType<typeof vi.fn> };
+    streamSessionTenantBinding?: { lookupBinding: ReturnType<typeof vi.fn> };
     workflowRunService?: { getRun: ReturnType<typeof vi.fn> };
   } = {},
 ) {
@@ -38,7 +38,7 @@ function buildController(
   };
   const consultationRepository = opts.consultationRepository ?? { findById: vi.fn() };
   // Default fail-closed: no binding bound for any session.
-  const streamSessionTenantBinding = opts.streamSessionTenantBinding ?? { lookup: vi.fn().mockResolvedValue(null) };
+  const streamSessionTenantBinding = opts.streamSessionTenantBinding ?? { lookupBinding: vi.fn().mockResolvedValue(null) };
   // Default fail-closed: no run resolvable for any (tenantId, runId).
   const workflowRunService = opts.workflowRunService ?? { getRun: vi.fn().mockRejectedValue(new Error('not found')) };
 
@@ -323,50 +323,85 @@ describe('AuthController.issueStreamTicket', () => {
     });
   });
 
-  // `stt_session:<sessionId>` silently bypassed the
-  // consultation-only mint check, so any authenticated user in tenant B who
-  // learned a tenant-A sessionId could mint a live-transcript WS ticket for
-  // it (cross-tenant PHI egress). The mint now resolves the session's owning
-  // tenant via the gateway-side binding written at session create
-  // (`StreamSessionTenantBindingService.bind`) and 404s on missing OR
-  // mismatched bindings — mirroring the DELETE route's
-  // `assertStreamSessionOwnership` (404-over-403, no existence leak).
+  // `stt_session:<sessionId>` mint-time ownership.
+  //
+  // Round 1 closed the CROSS-TENANT hole (the scope silently bypassed the
+  // consultation-only check, so any user in tenant B who learned a tenant-A
+  // sessionId could mint a live-transcript WS ticket for it).
+  //
+  // The comparison was still tenant-only, so a
+  // COLLEAGUE — same tenant, different user — could mint a ticket for a live
+  // consultation and take the socket over. The binding now records the owning
+  // USER as well, and the mint requires BOTH to match. Missing binding,
+  // missing owner, tenant mismatch and owner mismatch all 404 (no existence
+  // leak), mirroring the `StreamSession` interceptor branch.
   describe('stt_session scope ownership', () => {
-    it('mints an stt_session ticket when the session binding matches the caller tenant', async () => {
+    const bindingFor = (tenantId: string, userId: string | null) => vi.fn().mockResolvedValue({ tenantId, userId });
+
+    it('mints an stt_session ticket for the session OWNER', async () => {
       const issueTicket = vi.fn(async () => ({ ticket: 'tkt', expiresAt: 1, scope: 'stt_session:sess-1' }));
-      const lookup = vi.fn().mockResolvedValue('tenant-1');
+      const lookupBinding = bindingFor('tenant-1', 'user-1');
       const { controller } = buildController({
         cls: { get: (key: string) => (key === 'user' ? { id: 'user-1', tenantId: 'tenant-1' } : null) },
         streamTicketService: { issueTicket, consumeTicket: vi.fn() },
-        streamSessionTenantBinding: { lookup },
+        streamSessionTenantBinding: { lookupBinding },
       });
 
       await controller.issueStreamTicket({ scope: 'stt_session:sess-1' });
 
-      expect(lookup).toHaveBeenCalledWith('sess-1');
+      expect(lookupBinding).toHaveBeenCalledWith('sess-1');
       expect(issueTicket).toHaveBeenCalledWith(expect.objectContaining({ userId: 'user-1', tenantId: 'tenant-1', scope: 'stt_session:sess-1' }));
     });
 
     it("throws NotFoundException (no existence leak) and never mints for another tenant's session", async () => {
       const issueTicket = vi.fn();
-      const lookup = vi.fn().mockResolvedValue('tenant-OTHER');
+      const lookupBinding = bindingFor('tenant-OTHER', 'user-9');
       const { controller } = buildController({
         cls: { get: (key: string) => (key === 'user' ? { id: 'user-1', tenantId: 'tenant-1' } : null) },
         streamTicketService: { issueTicket, consumeTicket: vi.fn() },
-        streamSessionTenantBinding: { lookup },
+        streamSessionTenantBinding: { lookupBinding },
       });
 
       await expect(controller.issueStreamTicket({ scope: 'stt_session:sess-of-tenant-a' })).rejects.toThrow(NotFoundException);
       expect(issueTicket).not.toHaveBeenCalled();
     });
 
-    it('fail-closed: throws NotFoundException and never mints when NO binding exists for the session', async () => {
+    // THE HIJACK CASE: same tenant, different user. This is the mint
+    // that handed an attacker a valid WS ticket for a colleague's live
+    // consultation.
+    it("throws NotFoundException and never mints for a COLLEAGUE's session (same tenant, different user)", async () => {
       const issueTicket = vi.fn();
-      const lookup = vi.fn().mockResolvedValue(null);
+      const lookupBinding = bindingFor('tenant-1', 'user-victim');
+      const { controller } = buildController({
+        cls: { get: (key: string) => (key === 'user' ? { id: 'user-attacker', tenantId: 'tenant-1' } : null) },
+        streamTicketService: { issueTicket, consumeTicket: vi.fn() },
+        streamSessionTenantBinding: { lookupBinding },
+      });
+
+      await expect(controller.issueStreamTicket({ scope: 'stt_session:sess-of-colleague' })).rejects.toThrow(NotFoundException);
+      expect(issueTicket).not.toHaveBeenCalled();
+    });
+
+    it('fail-closed: a binding with NO recorded owner (legacy record) never mints', async () => {
+      const issueTicket = vi.fn();
+      const lookupBinding = bindingFor('tenant-1', null);
       const { controller } = buildController({
         cls: { get: (key: string) => (key === 'user' ? { id: 'user-1', tenantId: 'tenant-1' } : null) },
         streamTicketService: { issueTicket, consumeTicket: vi.fn() },
-        streamSessionTenantBinding: { lookup },
+        streamSessionTenantBinding: { lookupBinding },
+      });
+
+      await expect(controller.issueStreamTicket({ scope: 'stt_session:sess-legacy' })).rejects.toThrow(NotFoundException);
+      expect(issueTicket).not.toHaveBeenCalled();
+    });
+
+    it('fail-closed: throws NotFoundException and never mints when NO binding exists for the session', async () => {
+      const issueTicket = vi.fn();
+      const lookupBinding = vi.fn().mockResolvedValue(null);
+      const { controller } = buildController({
+        cls: { get: (key: string) => (key === 'user' ? { id: 'user-1', tenantId: 'tenant-1' } : null) },
+        streamTicketService: { issueTicket, consumeTicket: vi.fn() },
+        streamSessionTenantBinding: { lookupBinding },
       });
 
       await expect(controller.issueStreamTicket({ scope: 'stt_session:unknown-session' })).rejects.toThrow(NotFoundException);
@@ -375,20 +410,20 @@ describe('AuthController.issueStreamTicket', () => {
 
     it('fail-closed: a binding lookup failure (Redis blip) rejects with 404, never a mint', async () => {
       const issueTicket = vi.fn();
-      const lookup = vi.fn().mockRejectedValue(new Error('redis down'));
+      const lookupBinding = vi.fn().mockRejectedValue(new Error('redis down'));
       const { controller } = buildController({
         cls: { get: (key: string) => (key === 'user' ? { id: 'user-1', tenantId: 'tenant-1' } : null) },
         streamTicketService: { issueTicket, consumeTicket: vi.fn() },
-        streamSessionTenantBinding: { lookup },
+        streamSessionTenantBinding: { lookupBinding },
       });
 
       await expect(controller.issueStreamTicket({ scope: 'stt_session:sess-1' })).rejects.toThrow(NotFoundException);
       expect(issueTicket).not.toHaveBeenCalled();
     });
 
-    it("checks ownership against a super admin's selected X-Tenant-Id (CLS tenant wins)", async () => {
+    it("checks ownership against a super admin's selected X-Tenant-Id (CLS tenant wins) — and still requires ownership", async () => {
       const issueTicket = vi.fn(async () => ({ ticket: 't', expiresAt: 1, scope: 'stt_session:sess-2' }));
-      const lookup = vi.fn().mockResolvedValue('selected-tenant');
+      const lookupBinding = bindingFor('selected-tenant', 'admin-1');
       const { controller } = buildController({
         cls: {
           get: (key: string) => {
@@ -398,7 +433,7 @@ describe('AuthController.issueStreamTicket', () => {
           },
         },
         streamTicketService: { issueTicket, consumeTicket: vi.fn() },
-        streamSessionTenantBinding: { lookup },
+        streamSessionTenantBinding: { lookupBinding },
       });
 
       await controller.issueStreamTicket({ scope: 'stt_session:sess-2' });
@@ -408,18 +443,41 @@ describe('AuthController.issueStreamTicket', () => {
       );
     });
 
+    // There is deliberately NO super-admin bypass: a live consultation socket
+    // is exactly the surface where a silent third listener is the harm. A
+    // super admin who does not own the session gets the same 404 as anyone
+    // else.
+    it("gives a SUPER_ADMIN no bypass over another user's session", async () => {
+      const issueTicket = vi.fn();
+      const lookupBinding = bindingFor('selected-tenant', 'clinician-1');
+      const { controller } = buildController({
+        cls: {
+          get: (key: string) => {
+            if (key === 'user') return { id: 'admin-1', tenantId: '', roles: ['SUPER_ADMIN'] };
+            if (key === 'tenantId') return 'selected-tenant';
+            return null;
+          },
+        },
+        streamTicketService: { issueTicket, consumeTicket: vi.fn() },
+        streamSessionTenantBinding: { lookupBinding },
+      });
+
+      await expect(controller.issueStreamTicket({ scope: 'stt_session:sess-2' })).rejects.toThrow(NotFoundException);
+      expect(issueTicket).not.toHaveBeenCalled();
+    });
+
     it('does NOT perform a session-binding lookup for consultation scopes (paths stay independent)', async () => {
       const issueTicket = vi.fn(async () => ({ ticket: 't', expiresAt: 1, scope: 'consultation_job:job-1' }));
-      const lookup = vi.fn();
+      const lookupBinding = vi.fn();
       const { controller } = buildController({
         cls: { get: (key: string) => (key === 'user' ? { id: 'user-1', tenantId: 'tenant-1' } : null) },
         streamTicketService: { issueTicket, consumeTicket: vi.fn() },
-        streamSessionTenantBinding: { lookup },
+        streamSessionTenantBinding: { lookupBinding },
       });
 
       await controller.issueStreamTicket({ scope: 'consultation_job:job-1' });
 
-      expect(lookup).not.toHaveBeenCalled();
+      expect(lookupBinding).not.toHaveBeenCalled();
       expect(issueTicket).toHaveBeenCalled();
     });
   });

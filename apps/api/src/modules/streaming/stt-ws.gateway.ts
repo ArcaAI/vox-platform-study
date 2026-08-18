@@ -14,7 +14,7 @@ import type { IncomingMessage } from 'http';
 import type { Subscription } from 'rxjs';
 import type WebSocket from 'ws';
 import type { Server } from 'ws';
-import { StreamSessionTenantBindingService } from '../../common';
+import { type StreamSessionBinding, StreamSessionTenantBindingService } from '../../common';
 import { isOriginEnforcementEnabled } from '../../cors.config';
 import { StreamTicketService } from '../auth/stream-ticket.service';
 import { SessionRemovalRetryService } from './session-removal-retry.service';
@@ -33,10 +33,16 @@ import { SessionRemovalRetryService } from './session-removal-retry.service';
  * remain useful.
  *
  * 4401 — handshake failure (any cause)
+ * 4409 — the session's OWNER resumed it on another socket (this socket is
+ *        superseded). NOT a handshake-failure signal: it is only ever sent to
+ *        a socket that already proved ownership, so it leaks nothing an
+ *        attacker could probe — and it exists precisely so a takeover is never
+ *        silent.
  * 1011 — internal error (resume buffer corruption etc.)
  */
 export const WS_CLOSE_CODES = {
   AUTH_FAILED: 4401,
+  SESSION_SUPERSEDED: 4409,
 } as const;
 
 /**
@@ -45,6 +51,13 @@ export const WS_CLOSE_CODES = {
  * sessions, tickets, or scope mismatches.
  */
 export const WS_GENERIC_AUTH_REASON = 'Authentication failed';
+
+/**
+ * Reason sent to a socket displaced by its OWN user resuming the session
+ * elsewhere. Unlike {@link WS_GENERIC_AUTH_REASON} this may be specific: the
+ * recipient already proved it owns the session.
+ */
+export const WS_SESSION_SUPERSEDED_REASON = 'Session resumed elsewhere';
 
 /**
  * Bounded per-session transcript replay buffer.
@@ -495,25 +508,38 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
     }
 
     // The scope string above only proves the ticket was
-    // minted FOR this sessionId, not that the minting tenant OWNS the
-    // session. Verify the ticket's tenant against the session's owning
-    // tenant (the gateway-side binding written at session create), mirroring
-    // the DELETE route's `assertStreamSessionOwnership`. Missing binding,
-    // mismatch, and lookup failure all reject fail-closed with the same
-    // generic close — no enumeration signal, and no tenant ids in the log.
-    let boundTenant: string | null = null;
+    // minted FOR this sessionId, not that the minting caller OWNS the
+    // session. Verify the ticket against the session's owning tenant AND
+    // owning user (the gateway-side binding written at session create),
+    // mirroring the `StreamSession` interceptor branch. Missing binding,
+    // tenant mismatch, owner mismatch, an ownerless (legacy) binding, and a
+    // lookup failure all reject fail-closed with the same generic close — no
+    // enumeration signal, and no tenant/user ids in the log.
+    //
+    // The OWNER half is what closes the same-tenant hijack: the tenant check
+    // alone let any colleague who learned a sessionId connect and have the
+    // live audio-ingest + transcript stream transplanted onto their socket.
+    let binding: StreamSessionBinding | null = null;
     try {
-      boundTenant = await this.sessionBinding.lookup(sessionId);
+      binding = await this.sessionBinding.lookupBinding(sessionId);
     } catch (err) {
       this.logger.warn({
-        message: 'WS handshake — session tenant binding lookup failed (fail-closed)',
+        message: 'WS handshake — session binding lookup failed (fail-closed)',
         sessionId,
         error: err instanceof Error ? err.message : String(err),
       });
     }
-    if (boundTenant === null || boundTenant !== stored.tenantId) {
+    if (binding === null || binding.tenantId !== stored.tenantId) {
       this.logger.warn({
         message: 'WS handshake rejected — session tenant binding missing or mismatched',
+        sessionId,
+      });
+      client.close(WS_CLOSE_CODES.AUTH_FAILED, WS_GENERIC_AUTH_REASON);
+      return;
+    }
+    if (!binding.userId || binding.userId !== stored.userId) {
+      this.logger.warn({
+        message: 'WS handshake rejected — ticket user is not the session owner (same-tenant hijack attempt or legacy ownerless binding)',
         sessionId,
       });
       client.close(WS_CLOSE_CODES.AUTH_FAILED, WS_GENERIC_AUTH_REASON);
@@ -718,6 +744,24 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
    * resume handshake.
    */
   private rebindSession(session: SessionInfo, client: WebSocket, stored: { userId: string; tenantId: string | null }): void {
+    // OWNER INVARIANT: a live session is never adopted by a different user.
+    // This line used to be an unconditional `session.userId = stored.userId`,
+    // which is what actually performed the transplant — the incumbent socket
+    // was silently orphaned (its next frame got a generic NO_SESSION) and
+    // `handleDisconnect` later cleaned it up as an ordinary drop, so nothing
+    // was ever logged as anomalous. The handshake gate above already compares
+    // the ticket against the binding; this is the second, independent check
+    // against the LIVE session object, so a rewritten or expired binding still
+    // cannot hand a session to someone else.
+    if (session.userId !== stored.userId) {
+      this.logger.warn({
+        message: 'WS rebind REFUSED — ticket user is not the incumbent session owner; incumbent left connected',
+        sessionId: session.sessionId,
+      });
+      client.close(WS_CLOSE_CODES.AUTH_FAILED, WS_GENERIC_AUTH_REASON);
+      return;
+    }
+
     if (session.graceTimer) {
       clearTimeout(session.graceTimer);
       session.graceTimer = undefined;
@@ -729,13 +773,28 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
     session.freshlyCreated = false;
 
     // Drop the stale socket mapping (defensive — normally already removed on
-    // disconnect) and bind the new one.
+    // disconnect) and bind the new one. When the previous socket is somehow
+    // STILL OPEN, close it explicitly rather than orphaning it: the owner is
+    // resuming from somewhere else, and a takeover that leaves a live socket
+    // silently detached is indistinguishable (to the displaced client, and in
+    // the logs) from the hijack this whole path exists to prevent.
     const previous = session.client;
     if (previous && previous !== client) {
       this.sessions.delete(previous);
+      if (previous.readyState === previous.OPEN) {
+        this.logger.warn({
+          message: 'WS session taken over by its owner on a new socket — closing the superseded socket',
+          sessionId: session.sessionId,
+        });
+        try {
+          previous.close(WS_CLOSE_CODES.SESSION_SUPERSEDED, WS_SESSION_SUPERSEDED_REASON);
+        } catch {
+          // Already gone — nothing to do.
+        }
+      }
     }
     session.client = client;
-    session.userId = stored.userId;
+    // `session.userId` is NEVER reassigned — see the owner invariant above.
     session.tenantId = stored.tenantId;
     session.connectedAt = new Date();
     this.sessions.set(client, session);

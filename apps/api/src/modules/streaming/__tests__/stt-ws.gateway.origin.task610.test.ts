@@ -51,6 +51,9 @@ const createMockSessionBinding = () => ({
   bind: vi.fn().mockResolvedValue(undefined),
   bindSessionMeta: vi.fn().mockResolvedValue(undefined),
   lookup: vi.fn().mockResolvedValue('tenant-abc'),
+  // The handshake resolves tenant AND owner from one binding read; the
+  // default owner matches the userId these suites' ticket mocks carry.
+  lookupBinding: vi.fn().mockResolvedValue({ tenantId: 'tenant-abc', userId: 'user-123' }),
   lookupSessionMeta: vi.fn().mockResolvedValue(null),
   clear: vi.fn().mockResolvedValue(undefined),
 });

@@ -141,7 +141,14 @@ const createMocks = () => ({
   streamTicketService: {
     consumeTicket: vi.fn().mockResolvedValue({ userId: 'u-1', tenantId: 't-1', scope: 'stt_session:s-1', exp: Date.now() + 30_000, impersonatedBy: null }),
   },
-  sessionBinding: { lookup: vi.fn().mockResolvedValue('t-1'), lookupSessionMeta: vi.fn().mockResolvedValue(null), clear: vi.fn().mockResolvedValue(undefined) },
+  sessionBinding: {
+    lookup: vi.fn().mockResolvedValue('t-1'),
+    // Owner matches the userId this suite's ticket mock carries, so the
+    // handshake's ownership gate passes and tracing is what's under test.
+    lookupBinding: vi.fn().mockResolvedValue({ tenantId: 't-1', userId: 'u-1' }),
+    lookupSessionMeta: vi.fn().mockResolvedValue(null),
+    clear: vi.fn().mockResolvedValue(undefined),
+  },
   removalRetry: { enqueue: vi.fn() },
 });
 

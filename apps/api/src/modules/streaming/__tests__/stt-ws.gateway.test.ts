@@ -1,7 +1,7 @@
 import { Logger } from '@nestjs/common';
 import { Subject } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { RESUME_BUFFER_SIZE, SttWsGateway, WS_CLOSE_CODES, WS_RESUME_GRACE_MS } from '../stt-ws.gateway';
+import { RESUME_BUFFER_SIZE, SttWsGateway, WS_CLOSE_CODES, WS_RESUME_GRACE_MS, WS_SESSION_SUPERSEDED_REASON } from '../stt-ws.gateway';
 
 /**
  * The 7th `writeAudioFrame` argument is the session's W3C trace carrier
@@ -58,6 +58,10 @@ const createMockSessionBinding = () => ({
   bind: vi.fn().mockResolvedValue(undefined),
   bindSessionMeta: vi.fn().mockResolvedValue(undefined),
   lookup: vi.fn().mockResolvedValue('tenant-abc'),
+  // The handshake resolves the session's owning tenant AND owning
+  // user from one binding read. Default: owned by the same (tenant, user) the
+  // default ticket carries, so existing cases connect as the OWNER.
+  lookupBinding: vi.fn().mockResolvedValue({ tenantId: 'tenant-abc', userId: 'user-123' }),
   lookupSessionMeta: vi.fn().mockResolvedValue(null),
   clear: vi.fn().mockResolvedValue(undefined),
 });
@@ -305,7 +309,7 @@ describe('SttWsGateway', () => {
       it('session tenant-binding mismatch -> 4401 with the generic reason (no tenant id on the wire)', async () => {
         const client = createMockSocket();
         setValidTicketFor('sess-x');
-        mockSessionBinding.lookup.mockResolvedValueOnce('tenant-OTHER');
+        mockSessionBinding.lookupBinding.mockResolvedValueOnce({ tenantId: 'tenant-OTHER', userId: 'user-123' });
 
         await gateway.handleConnection(client as any, { url: '/ws/stt/stream?sessionId=sess-x&ticket=t' } as any);
 
@@ -347,11 +351,11 @@ describe('SttWsGateway', () => {
       it('consults the tenant binding for the sessionId and accepts when it matches the ticket tenant', async () => {
         const client = createMockSocket();
         setValidTicketFor('sess-450'); // ticket tenant: tenant-abc
-        mockSessionBinding.lookup.mockResolvedValueOnce('tenant-abc');
+        mockSessionBinding.lookupBinding.mockResolvedValueOnce({ tenantId: 'tenant-abc', userId: 'user-123' });
 
         await gateway.handleConnection(client as any, buildReq('sess-450') as any);
 
-        expect(mockSessionBinding.lookup).toHaveBeenCalledWith('sess-450');
+        expect(mockSessionBinding.lookupBinding).toHaveBeenCalledWith('sess-450');
         expect(client.close).not.toHaveBeenCalled();
         expect(gateway.getActiveSessionCount()).toBe(1);
       });
@@ -359,7 +363,7 @@ describe('SttWsGateway', () => {
       it('rejects a matching-scope ticket carrying a FOREIGN tenant with the generic 4401 close', async () => {
         const client = createMockSocket();
         setValidTicketFor('sess-450'); // ticket tenant: tenant-abc
-        mockSessionBinding.lookup.mockResolvedValueOnce('tenant-OTHER');
+        mockSessionBinding.lookupBinding.mockResolvedValueOnce({ tenantId: 'tenant-OTHER', userId: 'user-123' });
 
         await gateway.handleConnection(client as any, buildReq('sess-450') as any);
 
@@ -371,7 +375,7 @@ describe('SttWsGateway', () => {
       it('fail-closed: rejects when NO binding exists for the session (not just on mismatch)', async () => {
         const client = createMockSocket();
         setValidTicketFor('sess-450');
-        mockSessionBinding.lookup.mockResolvedValueOnce(null);
+        mockSessionBinding.lookupBinding.mockResolvedValueOnce(null);
 
         await gateway.handleConnection(client as any, buildReq('sess-450') as any);
 
@@ -383,7 +387,7 @@ describe('SttWsGateway', () => {
       it('fail-closed: rejects when the binding lookup throws (Redis blip is not an auth bypass)', async () => {
         const client = createMockSocket();
         setValidTicketFor('sess-450');
-        mockSessionBinding.lookup.mockRejectedValueOnce(new Error('redis down'));
+        mockSessionBinding.lookupBinding.mockRejectedValueOnce(new Error('redis down'));
 
         await gateway.handleConnection(client as any, buildReq('sess-450') as any);
 
@@ -397,13 +401,145 @@ describe('SttWsGateway', () => {
         warnSpy.mockClear();
         const client = createMockSocket();
         setValidTicketFor('sess-450');
-        mockSessionBinding.lookup.mockResolvedValueOnce('tenant-OTHER');
+        mockSessionBinding.lookupBinding.mockResolvedValueOnce({ tenantId: 'tenant-OTHER', userId: 'user-123' });
 
         await gateway.handleConnection(client as any, buildReq('sess-450') as any);
 
         const serialized = JSON.stringify(warnSpy.mock.calls);
         expect(serialized).not.toContain('tenant-OTHER');
         expect(serialized).not.toContain('tenant-abc');
+      });
+    });
+
+    // =====================================================================
+    // SESSION OWNER enforced at the WS handshake.
+    //
+    // The binding proved the session's TENANT and nothing else, so a
+    // colleague inside the same tenant who learned a sessionId could mint a
+    // ticket, connect, and have the live audio-ingest + transcript stream
+    // transplanted onto their socket — the victim's socket orphaned, nothing
+    // logged as anomalous. The binding now carries the owning USER and the
+    // handshake requires it to match the ticket's user.
+    // =====================================================================
+    describe('session OWNER enforced at the WS handshake', () => {
+      /** Consume a ticket minted for `sessionId` on behalf of `userId`. */
+      const setTicketFor = (sessionId: string, userId: string) => {
+        mockStreamTicketService.consumeTicket.mockImplementationOnce(async () => ({
+          userId,
+          tenantId: 'tenant-abc',
+          scope: `stt_session:${sessionId}`,
+          exp: Date.now() + 30_000,
+          impersonatedBy: null,
+        }));
+      };
+
+      it('accepts the session OWNER', async () => {
+        const client = createMockSocket();
+        setTicketFor('sess-own', 'user-123');
+        mockSessionBinding.lookupBinding.mockResolvedValueOnce({ tenantId: 'tenant-abc', userId: 'user-123' });
+
+        await gateway.handleConnection(client as any, buildReq('sess-own') as any);
+
+        expect(client.close).not.toHaveBeenCalled();
+        expect(gateway.getActiveSessionCount()).toBe(1);
+      });
+
+      // THE HIJACK CASE.
+      it('rejects a SAME-TENANT / DIFFERENT-USER ticket with the generic 4401 close', async () => {
+        const client = createMockSocket();
+        setTicketFor('sess-hijack', 'user-attacker');
+        mockSessionBinding.lookupBinding.mockResolvedValueOnce({ tenantId: 'tenant-abc', userId: 'user-victim' });
+
+        await gateway.handleConnection(client as any, buildReq('sess-hijack') as any);
+
+        expect(client.close).toHaveBeenCalledWith(WS_CLOSE_CODES.AUTH_FAILED, 'Authentication failed');
+        expect(mockBridgeService.subscribeToResults).not.toHaveBeenCalled();
+        expect(gateway.getActiveSessionCount()).toBe(0);
+      });
+
+      it('fail-closed: rejects when the binding records NO owner (legacy record)', async () => {
+        const client = createMockSocket();
+        setTicketFor('sess-legacy', 'user-123');
+        mockSessionBinding.lookupBinding.mockResolvedValueOnce({ tenantId: 'tenant-abc', userId: null });
+
+        await gateway.handleConnection(client as any, buildReq('sess-legacy') as any);
+
+        expect(client.close).toHaveBeenCalledWith(WS_CLOSE_CODES.AUTH_FAILED, 'Authentication failed');
+        expect(gateway.getActiveSessionCount()).toBe(0);
+      });
+
+      it('does not leak user ids in the rejection warn log', async () => {
+        const warnSpy = vi.spyOn(Logger.prototype, 'warn');
+        warnSpy.mockClear();
+        const client = createMockSocket();
+        setTicketFor('sess-hijack', 'user-attacker');
+        mockSessionBinding.lookupBinding.mockResolvedValueOnce({ tenantId: 'tenant-abc', userId: 'user-victim' });
+
+        await gateway.handleConnection(client as any, buildReq('sess-hijack') as any);
+
+        const serialized = JSON.stringify(warnSpy.mock.calls);
+        expect(serialized).not.toContain('user-attacker');
+        expect(serialized).not.toContain('user-victim');
+      });
+
+      // Defence-in-depth at the rebind seam itself: even if a binding were
+      // rewritten under a live session, `rebindSession` must never adopt a
+      // new owner. `session.userId = stored.userId` was an unconditional
+      // overwrite — the line that actually performed the transplant.
+      it('REFUSES to rebind a live session to a different user and leaves the incumbent connected', async () => {
+        const resultSubject = new Subject();
+        mockBridgeService.subscribeToResults.mockReturnValue(resultSubject.asObservable());
+
+        // Victim owns the live session.
+        const victim = createMockSocket();
+        setTicketFor('sess-transplant', 'user-victim');
+        mockSessionBinding.lookupBinding.mockResolvedValueOnce({ tenantId: 'tenant-abc', userId: 'user-victim' });
+        await gateway.handleConnection(victim as any, buildReq('sess-transplant') as any);
+
+        // Attacker arrives with a ticket + binding that agree with each other
+        // (so the handshake gate passes) but disagree with the INCUMBENT.
+        const attacker = createMockSocket();
+        setTicketFor('sess-transplant', 'user-attacker');
+        mockSessionBinding.lookupBinding.mockResolvedValueOnce({ tenantId: 'tenant-abc', userId: 'user-attacker' });
+        await gateway.handleConnection(attacker as any, buildReq('sess-transplant') as any);
+
+        // Attacker rejected; victim untouched.
+        expect(attacker.close).toHaveBeenCalledWith(WS_CLOSE_CODES.AUTH_FAILED, 'Authentication failed');
+        expect(victim.close).not.toHaveBeenCalled();
+
+        // The live stream still reaches the VICTIM, not the attacker.
+        (victim.send as any).mockClear();
+        resultSubject.next({ type: 'transcript', text: 'phi', startTime: 1, endTime: 2, isFinal: true });
+        expect((victim.send as any).mock.calls.length).toBeGreaterThan(0);
+        const attackerPayloads = (attacker.send as any).mock.calls.map((c: any[]) => String(c[0]));
+        expect(attackerPayloads.some((p: string) => p.includes('phi'))).toBe(false);
+      });
+
+      // A legitimate resume by the OWNER is still allowed — but it must not
+      // be silent: the displaced socket is closed explicitly (and logged) so
+      // a takeover can never look like an idle connection.
+      it('closes the incumbent socket explicitly when the OWNER resumes on a new socket', async () => {
+        const resultSubject = new Subject();
+        mockBridgeService.subscribeToResults.mockReturnValue(resultSubject.asObservable());
+
+        const first = createMockSocket();
+        setTicketFor('sess-resume-own', 'user-123');
+        mockSessionBinding.lookupBinding.mockResolvedValueOnce({ tenantId: 'tenant-abc', userId: 'user-123' });
+        await gateway.handleConnection(first as any, buildReq('sess-resume-own') as any);
+
+        const second = createMockSocket();
+        setTicketFor('sess-resume-own', 'user-123');
+        mockSessionBinding.lookupBinding.mockResolvedValueOnce({ tenantId: 'tenant-abc', userId: 'user-123' });
+        await gateway.handleConnection(second as any, buildReq('sess-resume-own') as any);
+
+        expect(first.close).toHaveBeenCalledWith(WS_CLOSE_CODES.SESSION_SUPERSEDED, WS_SESSION_SUPERSEDED_REASON);
+        expect(second.close).not.toHaveBeenCalled();
+
+        // The session continues on the new socket.
+        (second.send as any).mockClear();
+        resultSubject.next({ type: 'transcript', text: 'after-resume', startTime: 1, endTime: 2, isFinal: true });
+        const sent = (second.send as any).mock.calls.map((c: any[]) => String(c[0]));
+        expect(sent.some((p: string) => p.includes('after-resume'))).toBe(true);
       });
     });
   });
