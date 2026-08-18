@@ -191,17 +191,26 @@ test.describe('Authorization Flow', () => {
     // interactive login. This assertion had never actually executed: it sat
     // behind a 404 status-guard, and once repointed it still needed the
     // API-key auth path to work at all.
-    test('service account should have limited integration permissions', async ({ request }) => {
+    // TASK-763 (owner decision 2026-08-18): the seeded SERVICE_ACCOUNT key was
+    // narrowed from `'*'` to `['internal:stt:worker']`, because the STT worker is
+    // its only consumer and it only ever calls `/internal/stt/*`. The wildcard
+    // bought it nothing while giving a tenant-bound key unrestricted reach.
+    //
+    // The old premise — that this key can introspect its own permissions — is
+    // therefore obsolete: the permissions route is a business-plane surface and
+    // the key holds no scope matching it, so deny-by-default refuses it. What is
+    // worth asserting now is exactly that confinement.
+    test('the seeded service-account key is confined to its internal STT surface', async ({ request }) => {
       const permResponse = await request.post(MY_PERMISSIONS_ROUTE, {
         headers: { 'X-API-Key': SEEDED_API_KEY_SERVICE_ACCOUNT },
       });
 
-      expect([200, 201]).toContain(permResponse.status());
+      expect(
+        permResponse.status(),
+        'a key scoped only to internal:stt:worker must not reach a business-plane route',
+      ).toBe(403);
       const body = await permResponse.json();
-      // Service account should NOT have manage:all
-      expect(hasPermission(body.permissions, 'manage', 'all')).toBe(false);
-      // Service account should have create access to consultations
-      expect(hasPermission(body.permissions, 'create', 'Consultation')).toBe(true);
+      expect(JSON.stringify(body)).not.toContain('manage');
     });
   });
 

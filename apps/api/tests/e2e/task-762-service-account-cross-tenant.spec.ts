@@ -123,31 +123,25 @@ test.describe('Service accounts — cross-tenant posture (404-over-403)', () => 
     await request.delete(`${BASE}/${foreignAccountId}`, { headers: { Authorization: `Bearer ${superAdminToken}` } });
   });
 
-  // The service layer DOES implement 404-over-403 (`loadOwned` throws NotFound for
-  // both a missing row and a foreign one). A tenant admin never reaches it: the
-  // controller carries `@CanManage('ServiceAccount')` + `@CanRead`, and no seeded
-  // role below SUPER_ADMIN holds that ability, so CASL refuses first with a 403.
+  // TASK-762 owner decision (2026-08-18): a tenant admin holds
+  // `read:ServiceAccount` scoped to their own tenant (seeded in
+  // `01-policy.ts`), so CASL now admits them and the service's own
+  // `loadOwned` decides — which throws NotFound for a missing row AND for a
+  // foreign one. That makes 404-over-403 the reachable, asserted posture.
   //
-  // That is a PRIVILEGE boundary, not the cross-tenant posture — and it is only
-  // safe because it is UNIFORM: the same 403 is returned whether the id exists or
-  // not, so existence still cannot leak. This test pins that uniformity, which is
-  // the property that actually matters.
-  //
-  // OPEN DESIGN QUESTION (TASK-762): if tenant admins should ever manage their own
-  // service accounts, seed `read:ServiceAccount` for TENANT_ADMIN — at which point
-  // the service's 404-over-403 becomes reachable and this test should assert 404.
-  test('a tenant admin cannot read a foreign account, and existence does not leak', async ({ request }) => {
+  // Mutations remain SUPER_ADMIN-only via `assertMayIssue()` in the service:
+  // issuing a machine credential is a platform act, not a tenant one.
+  test('a tenant admin reading a FOREIGN account gets 404, never 403', async ({ request }) => {
     const foreign = await request.get(`${BASE}/${foreignAccountId}`, { headers: { Authorization: `Bearer ${tenantAdminToken}` } });
-    expect([403, 404], 'must not be 200 — a foreign row must never be readable').toContain(foreign.status());
+    expect(foreign.status(), 'cross-tenant reads are 404-over-403').toBe(404);
     expect(await foreign.text()).not.toContain('hope_svc_');
 
+    // Existence must not leak: a foreign-but-real id and a fabricated one are
+    // indistinguishable.
     const absent = await request.get(`${BASE}/01920000-0000-7000-8000-00000000dead`, {
       headers: { Authorization: `Bearer ${tenantAdminToken}` },
     });
-    expect(
-      absent.status(),
-      'an existing-but-foreign id and a non-existent id must be indistinguishable',
-    ).toBe(foreign.status());
+    expect(absent.status(), 'a foreign id and a non-existent id must be indistinguishable').toBe(foreign.status());
   });
 
   test("a tenant admin's list never contains a foreign account", async ({ request }) => {
