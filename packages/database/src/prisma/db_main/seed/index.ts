@@ -37,6 +37,7 @@ import { seedAiPriceBook } from './20-ai-price-book';
 import { seedWorkflowDefinition } from './21-workflow-definition';
 import { seedConsentGrant } from './22-consent-grant';
 import { seedUser } from './91-user';
+import { seedBootstrapAdmin } from './92-bootstrap-admin';
 import { resolveSeedMode, isPhaseEnabled } from './seed-mode';
 
 /**
@@ -215,6 +216,15 @@ export const seed = async () => {
       await seedUser(client);
       console.log('');
     }
+    // TASK-763 — the env-driven first SUPER_ADMIN. Runs in EVERY seeding mode
+    // (deliberately NOT on the `safe` deny-list): `91-user` is skipped in
+    // `safe`, which left a production bootstrap with zero users and therefore
+    // no way to log in. No-op unless BOOTSTRAP_SUPER_ADMIN_EMAIL +
+    // _PASSWORD are set; CREATE-ONLY, so a re-seed never resets a rotated
+    // credential. Ordered after seedUser so a `username` collision with a demo
+    // account is detected rather than raced.
+    await seedBootstrapAdmin(client);
+    console.log('');
     // API-key fixtures embed raw demo secrets; only seed in dev/test.
     if (SEED_DEMO_DATA) {
       await seedApiKey(client);

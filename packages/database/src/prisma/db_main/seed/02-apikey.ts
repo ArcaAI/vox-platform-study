@@ -56,6 +56,73 @@ function extractPrefix(rawKey: string): string {
   return rawKey.substring(0, 12);
 }
 
+/**
+ * TASK-763 — the scope set a seeded SDK key needs to drive the day-1 SDK
+ * surface, declared ONCE instead of copy-pasted per key.
+ *
+ * Every entry is derived from a `@RequiredScopes(...)` a route the browser SDK
+ * (`@arcaai/vox`) or the Node SDK (`@arcaai/vox-node`) actually calls — not
+ * from what "looks reasonable". The paths were read off the two SDK packages;
+ * the scopes off the controllers that serve them:
+ *
+ * | SDK call                          | Controller                          | Scope |
+ * |-----------------------------------|-------------------------------------|-------|
+ * | consultation + summarization      | consultation / text-compat          | `consultation:*` (4) |
+ * | live + batch transcription        | transcription-job / stt ws          | `stt:*` (3) |
+ * | `GET /audio/pipelines`            | `AudioPipelinePublicController`     | `stt:model:read` |
+ * | `POST /speech/synthesize`, voices | TTS proxy                           | `tts:speech:write`, `tts:voice:read` |
+ * | `GET /prompt-templates/available` | `PromptTemplateController`          | `prompt:template:read` |
+ * | `GET /tenant/me`, `/tenant/me/config` | `MyTenantController`            | `tenant:profile:read` |
+ * | `GET /tenant/me/context-schema`   | `MyTenantContextSchemaController`   | `tenant:context-schema:read` |
+ * | `GET /entitlements/me`            | `MyEntitlementsController`          | `tenant:account:read` |
+ * | `GET/PATCH /user/me/settings`     | `UserSettingsController`            | `user:settings:read|write` |
+ * | `GET /user/me/preferences`        | `UserPreferencesController`         | `user:preferences:read|write` |
+ * | `GET /user/me/departments`, `/rbac/check` | user/rbac `me` reads        | `user:profile:read` |
+ * | `GET /changelog`, `/changelog/unseen` | `ChangelogController`           | `platform:changelog:read` |
+ *
+ * NOT included, deliberately:
+ *   - Any `admin:*` or `webhook:*` scope. TASK-757 makes `/api/v1/admin/*` a
+ *     JWT-only plane (`@ForbidApiKey()`, checked BEFORE the scope check), and
+ *     TASK-758/757 mark all 59 of those strings `reserved: true` — refused at
+ *     GRANT time and dropped from the advertised catalog. A seeded key carrying
+ *     one would be dead on arrival AND unreproducible through the console.
+ *   - `media:file:read`. No route declares it, and `read:Storage` is not an
+ *     ability any clinical role holds — see the TASK-763 README §Owner Decisions.
+ *   - `workflow:*`. The exposure plane ships behind a kill-switch (TASK-722 R-1).
+ */
+export const SDK_DAY_ONE_SCOPES = [
+  // Transcription
+  'stt:transcription:read',
+  'stt:transcription:write',
+  'stt:stream:write',
+  'stt:model:read',
+  // Speech synthesis
+  'tts:speech:write',
+  'tts:voice:read',
+  // Consultation + summarization. `consultation:report:write` is the SDK's
+  // flagship day-1 capability (summary / pre-summary generation) — the seeded
+  // keys 403'd on it once the summarization routes began declaring scopes,
+  // which is why `seed-apikey-sdk-scopes.test.ts` pins it.
+  'consultation:session:read',
+  'consultation:session:write',
+  'consultation:report:read',
+  'consultation:report:write',
+  // Clinician template selector
+  'prompt:template:read',
+  // Tenant self-service reads (resolve to the KEY'S tenant, not its user)
+  'tenant:profile:read',
+  'tenant:context-schema:read',
+  'tenant:account:read',
+  // User self-service (resolve to the key's BOUND USER)
+  'user:profile:read',
+  'user:preferences:read',
+  'user:preferences:write',
+  'user:settings:read',
+  'user:settings:write',
+  // Release notes / What's New
+  'platform:changelog:read',
+] as const;
+
 export const DEFAULT_API_KEYS = [
   {
     id: SEED_API_KEY_IDS.SDK_DOCTOR,
@@ -67,20 +134,7 @@ export const DEFAULT_API_KEYS = [
     environment: 'development',
     tenantId: SEED_TENANT_ID,
     userId: SEED_USER_IDS.DOCTOR,
-    scopes: [
-      'stt:transcription:read',
-      'stt:transcription:write',
-      'stt:stream:write',
-      'consultation:session:read',
-      'consultation:session:write',
-      'consultation:report:read',
-      // Generating a summary / pre-summary is a report WRITE. Required since the
-      // summarization routes began declaring @RequiredScopes — without it every
-      // seeded SDK key 403s on the primary consultation-documentation flow.
-      'consultation:report:write',
-      'user:preferences:read',
-      'user:preferences:write',
-    ],
+    scopes: [...SDK_DAY_ONE_SCOPES],
     rateLimit: 1000,
   },
   {
@@ -93,20 +147,7 @@ export const DEFAULT_API_KEYS = [
     environment: 'development',
     tenantId: SEED_TENANT_ID,
     userId: SEED_USER_IDS.DOCTOR2,
-    scopes: [
-      'stt:transcription:read',
-      'stt:transcription:write',
-      'stt:stream:write',
-      'consultation:session:read',
-      'consultation:session:write',
-      'consultation:report:read',
-      // Generating a summary / pre-summary is a report WRITE. Required since the
-      // summarization routes began declaring @RequiredScopes — without it every
-      // seeded SDK key 403s on the primary consultation-documentation flow.
-      'consultation:report:write',
-      'user:preferences:read',
-      'user:preferences:write',
-    ],
+    scopes: [...SDK_DAY_ONE_SCOPES],
     rateLimit: 1000,
   },
   {
@@ -119,7 +160,22 @@ export const DEFAULT_API_KEYS = [
     environment: 'development',
     tenantId: SEED_TENANT_ID,
     userId: SEED_USER_IDS.TENANT_ADMIN,
-    scopes: ['webhook:event:read', 'webhook:event:write'],
+    // TASK-763 — deliberately EMPTY, not `['webhook:event:read','webhook:event:write']`.
+    //
+    // `WebhookController` lives at `admin/webhooks`, so TASK-757's policy A2
+    // (`/api/v1/admin/*` is JWT-only) makes it unreachable by ANY API key, and
+    // both `webhook:*` strings are now `reserved: true` in
+    // `apikey-scopes.registry.ts` — refused at grant time, dropped from the
+    // advertised catalog. Seeding them would produce a key that cannot be
+    // reproduced through the console and 403s on the only surface it names.
+    //
+    // The row is kept because a WEBHOOK-type key's day-1 purpose is OUTBOUND
+    // delivery identity (and `10-audit-log.ts:133` references its id), not
+    // inbound reach. `ApiKeyService.hasScope` returns false for an empty array,
+    // so this fails CLOSED on every scoped route — which is the honest state.
+    // Re-pointing it at a real inbound capability needs an owner decision; see
+    // the TASK-763 README §Owner Decisions.
+    scopes: [] as string[],
     rateLimit: 500,
   },
   {
@@ -132,7 +188,33 @@ export const DEFAULT_API_KEYS = [
     environment: 'development',
     tenantId: SEED_TENANT_ID,
     userId: SEED_USER_IDS.SERVICE_ACCOUNT,
-    scopes: ['*'],
+    // TASK-763 — narrowed from `['*']` to the one scope this credential is
+    // actually for.
+    //
+    // This row is the STT worker's gateway credential: BUG-013 requires
+    // `API_GATEWAY_KEY` to be the RAW value of a registered ACTIVE
+    // SERVICE_ACCOUNT `ApiKey` row, and `.env.dev` sets it to exactly this
+    // key's raw value. The worker calls ONLY `/internal/stt/*` (verified across
+    // `apps/stt/src/stt/core/api_client/gateway.py` — 10 call sites, all under
+    // that prefix) plus `/internal/effective-config`, which is `@Public()`.
+    // `SttInternalController` declares `@RequiredScopes('internal:stt:worker')`,
+    // so the exact scope satisfies it and the wildcard bought nothing the
+    // worker needed.
+    //
+    // What it DID buy: an unrestricted credential — one that satisfies every
+    // scope on every non-admin route — bound to a CUSTOMER tenant
+    // (`SEED_TENANT_ID`, the Global playground). `'*'` is the single most
+    // dangerous string in the registry and is deliberately NOT `reserved`,
+    // because it stays legitimate on `/internal/*`; that is a reason to scope
+    // it precisely, not to leave it wide.
+    //
+    // NOTE for TASK-757/762: three comments in `apps/api/src` still describe
+    // this credential as "scopes `['*']`" (`stt-internal.controller.ts` and
+    // `apikey-scopes.registry.ts`'s `internal:stt:worker` entry). They remain
+    // CORRECT about the outcome — the worker still clears the gate — but the
+    // parenthetical is now stale. `apps/api/src` is owned by TASK-757 in this
+    // sprint and was not edited here.
+    scopes: ['internal:stt:worker'],
     rateLimit: 5000,
   },
   {
@@ -145,23 +227,7 @@ export const DEFAULT_API_KEYS = [
     environment: 'development',
     tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
     userId: SEED_USER_IDS.ARCAAI_ADMIN,
-    scopes: [
-      'stt:transcription:read',
-      'stt:transcription:write',
-      'stt:stream:write',
-      'consultation:session:read',
-      'consultation:session:write',
-      'consultation:report:read',
-      // Generating a summary / pre-summary is a report WRITE. Required since the
-      // summarization routes began declaring @RequiredScopes — without it every
-      // seeded SDK key 403s on the primary consultation-documentation flow.
-      'consultation:report:write',
-      'user:preferences:read',
-      'user:preferences:write',
-      'admin:user:read',
-      'admin:apikey:read',
-      'admin:tenant:read',
-    ],
+    scopes: [...SDK_DAY_ONE_SCOPES],
     rateLimit: 1000,
   },
   {
@@ -187,20 +253,7 @@ export const DEFAULT_API_KEYS = [
     environment: 'development',
     tenantId: SEED_TENANT_ID,
     userId: SEED_USER_IDS.DOCTOR_SURGERY,
-    scopes: [
-      'stt:transcription:read',
-      'stt:transcription:write',
-      'stt:stream:write',
-      'consultation:session:read',
-      'consultation:session:write',
-      'consultation:report:read',
-      // Generating a summary / pre-summary is a report WRITE. Required since the
-      // summarization routes began declaring @RequiredScopes — without it every
-      // seeded SDK key 403s on the primary consultation-documentation flow.
-      'consultation:report:write',
-      'user:preferences:read',
-      'user:preferences:write',
-    ],
+    scopes: [...SDK_DAY_ONE_SCOPES],
     rateLimit: 1000,
   },
   {
@@ -226,20 +279,7 @@ export const DEFAULT_API_KEYS = [
     environment: 'development',
     tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
     userId: SEED_USER_IDS.ARCAAI_ADMIN,
-    scopes: [
-      'stt:transcription:read',
-      'stt:transcription:write',
-      'stt:stream:write',
-      'consultation:session:read',
-      'consultation:session:write',
-      'consultation:report:read',
-      // Generating a summary / pre-summary is a report WRITE. Required since the
-      // summarization routes began declaring @RequiredScopes — without it every
-      // seeded SDK key 403s on the primary consultation-documentation flow.
-      'consultation:report:write',
-      'user:preferences:read',
-      'user:preferences:write',
-    ],
+    scopes: [...SDK_DAY_ONE_SCOPES],
     rateLimit: 1000,
   },
   {

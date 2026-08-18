@@ -65,7 +65,7 @@ import { AgenticProvider, useArca } from '@arcaai/vox';
 const config = {
   api: {
     baseUrl: 'https://api.arcaai.example.com',
-    accessToken: 'jwt-from-your-auth-flow', // or apiKey for system keys
+    accessToken: 'jwt-from-your-auth-flow', // or apiKey for system keys (business plane only — admin hooks need the JWT)
     tenantId: 'tenant-id',
   },
   audio: {
@@ -291,7 +291,7 @@ Note the `clarity.level: 'info'` — at the default `'error'` floor, `vox.op.*` 
 const SDK_CONFIG_OPTIONS = {
   apiEndpoint: 'https://staging-api.arcaai.com',
   websocketUrl: 'wss://staging-api.arcaai.com',
-  credentials: { apiKey: KEY },
+  credentials: { apiKey: KEY },                 // business plane only — see the admin-hooks note above
   environment: 'staging',                       // ← also feeds the transport stage gate
   logging: {
     clarity: { projectId: process.env.CLARITY_PROJECT_ID, level: 'info' },
@@ -322,11 +322,22 @@ The v1 `environment` propagates into `clarity.environment` and `highlight.enviro
 | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Consultation     | `useArca`, `useArcaSession`, `useArcaAudio`, `useArcaContext`, `useArcaSummary`, `useArcaConfig`, `useConsultationChain`, `useConsultationJob`, `useAudioRecordings`                                                                                   |
 | Auth and tenancy | `useAuth`, `useTenants`, `useTenantFrontendConfig`, `useTenantStorageConfig`, `useTenantBuckets`, `useEntitlements`                                                                                                                                    |
-| Admin            | `useUsers`, `useRoles`, `useDepartments`, `useUserDepartments`, `usePolicies`, `usePrompts`, `useApiKeys`, `useAuditLog`, `useAdminConsultations`, `useAdminTranscriptionJobs`, `useHarnessAdmin`, `useQueueAdmin`, `useRateLimits`, `usePrismaStudio` |
+| Admin¹           | `useUsers`, `useRoles`, `useDepartments`, `useUserDepartments`, `usePolicies`, `usePrompts`, `useApiKeys`, `useAuditLog`, `useAdminConsultations`, `useAdminTranscriptionJobs`, `useHarnessAdmin`, `useQueueAdmin`, `useRateLimits`, `usePrismaStudio` |
 | Platform         | `useHealthCheck`, `useMonitoring`, `usePlatformMetrics`, `usePipelines`, `useGlobalSettings`, `useUserSettings`, `useStorage`, `useStorageKeys`                                                                                                        |
 | Voice and DNA    | `useVoiceEmbedding`, `useLocalVoiceEmbedding`, `useDnaStyle`, `useDnaDashboard`                                                                                                                                                                        |
 | Audio plugins    | `useVAD`, `useSTT`, `useNoiseFilter` (from `/plugins`), `useMedNER` (from `/plugins/med-ner`)                                                                                                                                                          |
 | Compat (v1 migration) | `ArcaCompatProvider`, `useArcaSessionManager`, `useAudioCapture`, `useArcaSpeechToText`, `useText`, `useArcaSttProvider`, `useArcaSttLanguageModes` (all from `/compat` — see [Migrating from v1](#migrating-from-v1-arcaaivoxcompat))                |
+
+> **¹ Admin hooks require a JWT.** `/api/v1/admin/*` is a **JWT-only** plane (policy A2): API
+> keys are prohibited there and every request carrying one is refused with `403 This route does not
+> accept API-key authentication` — including a key holding the `'*'` wildcard. Configure
+> `credentials: { accessToken }` for any admin hook; `credentials: { apiKey }` reaches the business
+> plane (consultations, STT/TTS, storage, self-service `me` surfaces) only.
+>
+> The reason is credential class, not privilege: an API key is a long-lived static bearer secret
+> with no MFA, no session expiry, no revocation-on-logout and no impersonation audit trail.
+> Headless administration is unsupported until the platform's service-account credential ships.
+
 
 Full signatures and types: [docs/API-Reference.md](docs/API-Reference.md). Release history: [CHANGELOG.md](CHANGELOG.md).
 
