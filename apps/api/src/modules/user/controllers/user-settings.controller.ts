@@ -11,7 +11,7 @@ import {
 import { BadRequestException, Body, Controller, Get, Inject, Param, Patch, UnauthorizedException } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse, ApiParam } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
-import { Authorize, ForbidApiKey } from '../../../decorators';
+import { Authorize, RequiredScopes } from '../../../decorators';
 
 /**
  * Setting namespace/key reserved for the doctor's chosen pipeline. The
@@ -24,19 +24,28 @@ const SELECTED_PIPELINE_KEY = 'selectedPipelineId';
 /**
  * Controller for current user's raw settings (key-value by namespace).
  */
+/**
+ * TASK-758 — the `me` semantics an integrator cannot infer from the path.
+ *
+ * `UnifiedAuthGuard.handleApiKeyAuth` sets the CLS principal from
+ * `apiKeyEntity.userId`, so under a key `me` is the BOUND USER — not the key's
+ * tenant, and not "whoever the integrator meant". Pinned per route by
+ * `src/modules/user/controllers/__tests__/me-semantics-openapi.test.ts`.
+ */
+const ME_IS_THE_BOUND_USER =
+  "Under API-key authentication, `me` resolves to the **user the key is bound to** — never to the key's tenant. " +
+  'A `SERVICE_ACCOUNT` key with no linked user cannot call this route (403).';
+
 @ApiBearerAuth()
 @ApiTags('user')
 @Controller('user/me/settings')
 @Authorize()
-// TASK-742 API-KEY-NOTE — CONSERVATIVE DEFAULT, AWAITING OWNER CLASSIFICATION.
-// Reason: self-service settings; distinct from the user:preferences:* scopes and with no scope of its own.
-// This route family declared nothing about API-key access, which under the
-// deny-by-default rule is a boot failure. Rather than guess a scope (guessing
-// permissive is how the original gap was created), it is closed explicitly.
-// Reversing it is a one-line change to @RequiredScopes('<scope>') once the
-// owner confirms a real API-key use case — see the TASK-708 README's
-// "Reachability changes awaiting owner review" table.
-@ForbidApiKey()
+// API-KEY-NOTE: policy A1. Direct sibling of the already-keyed
+// `UserPreferencesController` (the typed view over these same rows). Read at
+// class level; the PATCH narrows to `user:settings:write` on the handler, so
+// a read-only key cannot write. Resolves to the key's BOUND USER — see the
+// `me`-semantics note in each route's OpenAPI description.
+@RequiredScopes('user:settings:read')
 export class UserSettingsController {
   constructor(
     @Inject(IUserSettingsService)
@@ -46,7 +55,7 @@ export class UserSettingsController {
   ) {}
 
   @Get()
-  @ApiOperation({ summary: 'Get all settings for current user' })
+  @ApiOperation({ summary: 'Get all settings for current user', description: ME_IS_THE_BOUND_USER })
   @ApiResponse({
     status: 200,
     description: 'User settings retrieved successfully',
@@ -60,7 +69,10 @@ export class UserSettingsController {
   }
 
   @Patch(':namespace/:key')
-  @ApiOperation({ summary: 'Update a specific setting by namespace and key' })
+  // Narrows past the class-level `user:settings:read` — method metadata wins,
+  // so a read-only key is refused here by `enforceApiKeyScopes`.
+  @RequiredScopes('user:settings:write')
+  @ApiOperation({ summary: 'Update a specific setting by namespace and key', description: ME_IS_THE_BOUND_USER })
   @ApiParam({ name: 'namespace', description: 'Setting namespace' })
   @ApiParam({ name: 'key', description: 'Setting key' })
   @ApiResponse({

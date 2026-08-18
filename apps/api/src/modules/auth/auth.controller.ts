@@ -82,11 +82,14 @@ const SUPER_ADMIN_ROLE = 'SUPER_ADMIN';
 // throttler instead.
 @ApiTags('auth')
 @Controller('auth')
-// TASK-742: session lifecycle for interactive humans (login/logout/me/
-// refresh/impersonate/stream-ticket). Nonsensical for a credential that IS the
-// authentication — and `/auth/stream-ticket` mints SSE/WS tickets bound to a
-// session. TASK-708's Task 3 table bucketed this (c); it was left out of that
-// ticket's `/admin/*`-only approval and is closed here.
+// API-KEY-NOTE — REASONED EXEMPTION from policy A1 (JWT + API key on the
+// business plane), recorded by TASK-758 and policed by
+// `BUSINESS_PLANE_KEY_FORBIDDEN` (bootstrap/business-plane-apikey-exemptions-audit.ts).
+// This is the credential-ISSUING plane: session lifecycle for interactive
+// humans (login/logout/me/refresh/impersonate/stream-ticket). A credential
+// that IS the authentication authenticating itself here is circular, and
+// `/auth/stream-ticket` mints the single-use SSE/WS tickets the entire
+// streaming posture rests on. JWT only.
 @ForbidApiKey()
 export class AuthController {
   private readonly logger = new Logger(AuthController.name);

@@ -1,21 +1,17 @@
 import { PipelineResponse, PipelineService } from '@arcaai/applications';
 import { Controller, NotFoundException, Param } from '@nestjs/common';
 import { ApiBearerAuth, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { ApiEndpoint, Authorize, ForbidApiKey } from '../../decorators';
+import { ApiEndpoint, Authorize, RequiredScopes } from '../../decorators';
 
 @ApiBearerAuth()
 @ApiTags('audio-pipelines')
 @Controller('audio/pipelines')
 @Authorize()
-// TASK-742 API-KEY-NOTE — CONSERVATIVE DEFAULT, AWAITING OWNER CLASSIFICATION.
-// Reason: TASK-708 left this (a)/(b) pending a file-level read; no SDK client reaches it today.
-// This route family declared nothing about API-key access, which under the
-// deny-by-default rule is a boot failure. Rather than guess a scope (guessing
-// permissive is how the original gap was created), it is closed explicitly.
-// Reversing it is a one-line change to @RequiredScopes('<scope>') once the
-// owner confirms a real API-key use case — see the TASK-708 README's
-// "Reachability changes awaiting owner review" table.
-@ForbidApiKey()
+// API-KEY-NOTE: policy A1. Read-only ASR pipeline catalog — REUSES the
+// existing `stt:model:read` rather than minting a scope of its own: this is
+// the pipeline half of the same "what can I transcribe with" question the
+// STT model list answers, and a key issued to transcribe already needs it.
+@RequiredScopes('stt:model:read')
 export class AudioPipelinePublicController {
   constructor(private readonly pipelineService: PipelineService) {}
 

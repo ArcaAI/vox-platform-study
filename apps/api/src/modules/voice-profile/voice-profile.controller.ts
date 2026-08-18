@@ -28,14 +28,13 @@ const MAX_FILES = 3;
 @ApiBearerAuth()
 @ApiTags('voice-profile')
 @Controller('voice-profile')
-// TASK-742 API-KEY-NOTE — CONSERVATIVE DEFAULT, AWAITING OWNER CLASSIFICATION.
-// Reason: voice enrolment; ownership-checked but with no dedicated scope, and reached today by the browser SDK over JWT.
-// This route family declared nothing about API-key access, which under the
-// deny-by-default rule is a boot failure. Rather than guess a scope (guessing
-// permissive is how the original gap was created), it is closed explicitly.
-// Reversing it is a one-line change to @RequiredScopes('<scope>') once the
-// owner confirms a real API-key use case — see the TASK-708 README's
-// "Reachability changes awaiting owner review" table.
+// API-KEY-NOTE — REASONED EXEMPTION from policy A1 (JWT + API key on the
+// business plane), recorded by TASK-758 and policed by
+// `BUSINESS_PLANE_KEY_FORBIDDEN` (bootstrap/business-plane-apikey-exemptions-audit.ts).
+// Voice biometrics: enrolment audio IS a biometric identifier, and a tenant
+// API key has no MFA, no session expiry and no revocation-on-logout. A
+// credential that can sit in a CI log must never enrol or read a voice
+// profile. JWT only — this is a decision, not TASK-742's pending default.
 @ForbidApiKey()
 export class VoiceProfileController {
   constructor(

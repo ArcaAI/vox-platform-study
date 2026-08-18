@@ -95,6 +95,81 @@ export const API_KEY_SCOPE_REGISTRY: Record<string, ScopeDefinition> = {
   'user:profile:read': { description: 'Read own user profile', category: 'User', implies: [{ action: 'read', subject: 'UserProfile' }] },
   'user:preferences:read': { description: 'Read own preferences', category: 'User', implies: [{ action: 'read', subject: 'UserSettings' }] },
   'user:preferences:write': { description: 'Update own preferences', category: 'User', implies: [{ action: 'update', subject: 'UserSettings' }] },
+  // TASK-758 — the raw key/value sibling of `user:preferences:*`
+  // (`/user/me/settings`, which the typed preferences surface is an
+  // aggregation over). Split read/write rather than following
+  // `UserPreferencesController`'s single write scope, so a read-only
+  // integration is expressible: the controller declares the read at class
+  // level and the write on the PATCH handler alone.
+  'user:settings:read': { description: 'Read own raw settings', category: 'User', implies: [{ action: 'read', subject: 'UserSettings' }] },
+  'user:settings:write': { description: 'Update own raw settings', category: 'User', implies: [{ action: 'update', subject: 'UserSettings' }] },
+
+  // Business plane (TASK-758 — policy A1: a non-`admin` route is JWT + API
+  // key, so an integrator holding a scoped tenant key can drive the platform's
+  // business capabilities without a human session). These 9 scopes replace the
+  // conservative `@ForbidApiKey()` default TASK-742 applied to 13 controllers
+  // that had DECLARED NOTHING — the classification those `API-KEY-NOTE` blocks
+  // explicitly deferred to an owner ruling, not a reversal of one.
+  //
+  // Two surfaces are gated by scopes that already existed and needed no new
+  // vocabulary: the ASR pipeline catalog (`AudioPipelinePublicController`)
+  // reuses `stt:model:read`, and the three `me`-shaped reads
+  // (`PermissionCheckController`, `UserDepartmentsMeController`,
+  // `UserRolesController`) reuse `user:profile:read`, which was registered but
+  // declared by nothing until now.
+  //
+  // `implies` follows this file's existing derivation rule: the CASL pair the
+  // scope's own controller declares. Where the controller is auth-only
+  // (`@Authorize()` with no subject) the resource the plane OPERATES ON is
+  // used — `Consultation` for the inference proxy, matching the STT/TTS
+  // runtime-plane precedent above.
+  'ai:inference:write': {
+    description: 'Run guardrail / NLP inference over caller-supplied text',
+    category: 'AI',
+    implies: [{ action: 'create', subject: 'Consultation' }],
+  },
+  // READ-shaped on purpose. Three of this controller's five routes are WRITES
+  // declared with `read:PromptTemplate`, with caller-ownership enforced inside
+  // `PromptManagementService` (the `AUTH-NOTE` at prompt-template.controller.ts).
+  // A `prompt:template:write` scope would suggest the key may mutate any
+  // template, which is exactly what the service refuses; the scope must not
+  // over-promise what the ability re-check will then deny.
+  'prompt:template:read': {
+    description: "Read the prompt templates the key's bound clinician may use (personal writes stay owner-gated in the service)",
+    category: 'Prompt',
+    implies: [{ action: 'read', subject: 'PromptTemplate' }],
+  },
+  'platform:changelog:read': {
+    description: 'Read and acknowledge the release notes visible to the bound user',
+    category: 'Platform',
+    implies: [{ action: 'read', subject: 'ChangelogEntry' }],
+  },
+
+  // Tenant self-service. These resolve to the KEY'S TENANT (the CLS `tenantId`
+  // `UnifiedAuthGuard.handleApiKeyAuth` sets from `apiKeyEntity.tenantId`) —
+  // NOT to the bound user, which is the `user:*` family's semantics. The two
+  // are documented per-route in OpenAPI because an integrator cannot tell them
+  // apart from the path alone.
+  'tenant:account:read': {
+    description: "Read the key tenant's own billing, usage and entitlements",
+    category: 'Tenant',
+    implies: [{ action: 'read', subject: 'Tenant' }],
+  },
+  'tenant:profile:read': {
+    description: "Read the key tenant's own profile and configuration",
+    category: 'Tenant',
+    implies: [{ action: 'read', subject: 'Tenant' }],
+  },
+  'tenant:profile:write': {
+    description: "Update the key tenant's own configuration",
+    category: 'Tenant',
+    implies: [{ action: 'update', subject: 'Tenant' }],
+  },
+  'tenant:context-schema:read': {
+    description: "Discover the key tenant's pinned consultation context schema",
+    category: 'Tenant',
+    implies: [{ action: 'read', subject: 'ConsultationContextSchema' }],
+  },
 
   // Media
   'media:file:read': { description: 'Read/download media files', category: 'Media', implies: [{ action: 'read', subject: 'Storage' }] },
@@ -389,6 +464,8 @@ export const API_KEY_SCOPE_REGISTRY: Record<string, ScopeDefinition> = {
   'stt:*': { description: 'Full STT service access', category: 'Wildcard', implies: [] /* expanded — see resolveImpliedPermissions */ },
   'tts:*': { description: 'Full TTS service access', category: 'Wildcard', implies: [] /* expanded — see resolveImpliedPermissions */ },
   'consultation:*': { description: 'Full consultation access', category: 'Wildcard', implies: [] /* expanded — see resolveImpliedPermissions */ },
+  'ai:*': { description: 'Full AI inference access', category: 'Wildcard', implies: [] /* expanded — see resolveImpliedPermissions */ },
+  'tenant:*': { description: 'Full tenant self-service access', category: 'Wildcard', implies: [] /* expanded — see resolveImpliedPermissions */ },
   'user:*': { description: 'Full user self-service access', category: 'Wildcard', implies: [] /* expanded — see resolveImpliedPermissions */ },
   'media:*': { description: 'Full media access', category: 'Wildcard', implies: [] /* expanded — see resolveImpliedPermissions */ },
   'admin:*': { description: 'Full admin access', category: 'Wildcard', implies: [] /* expanded — see resolveImpliedPermissions */ },

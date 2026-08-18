@@ -51,14 +51,17 @@ import { getDnaJobStatus, streamDnaJobStatus } from './dna-writing-style-job-str
 @ApiTags('dna-writing-styles')
 @Controller('dna-writing-styles')
 @Authorize()
-// TASK-742 API-KEY-NOTE — CONSERVATIVE DEFAULT, AWAITING OWNER CLASSIFICATION.
-// Reason: per-clinician self-service; TASK-708 bucketed it (a) when absence-of-scopes still meant "reachable".
-// This route family declared nothing about API-key access, which under the
-// deny-by-default rule is a boot failure. Rather than guess a scope (guessing
-// permissive is how the original gap was created), it is closed explicitly.
-// Reversing it is a one-line change to @RequiredScopes('<scope>') once the
-// owner confirms a real API-key use case — see the TASK-708 README's
-// "Reachability changes awaiting owner review" table.
+// API-KEY-NOTE — REASONED EXEMPTION from policy A1 (JWT + API key on the
+// business plane), recorded by TASK-758 and policed by
+// `BUSINESS_PLANE_KEY_FORBIDDEN` (bootstrap/business-plane-apikey-exemptions-audit.ts).
+// A clinician's PERSONAL writing model. The owner/doctor checks live in the
+// service (see the AUTH-NOTEs there), so the class-level `@Authorize()`
+// understates the real gate — converting would hand a long-lived static
+// credential a principal's private model on the strength of a bare
+// authenticated check. JWT only.
+//
+// If this is ever un-exempted, fix the SSE handler first: `jobs/:jobId/stream`
+// carries no `@StreamScope`, so a `?ticket=` request 401s.
 @ForbidApiKey()
 export class DnaWritingStyleController {
   constructor(

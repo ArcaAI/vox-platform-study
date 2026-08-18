@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Pending |
+| **Status** | Completed |
 | **Owner** | Platform / Architecture |
 | **Date** | 2026-08-18 |
 | **Type** | refactor (auth posture) + docs |
@@ -267,7 +267,175 @@ Update `api-controller-inventory.md` (summary table + the per-controller catalog
 
 ## Implementation Summary
 
-_pending_
+**Shipped 2026-08-18.** Policy A1 applied as default-convert + a narrow, policed exemption list.
+13 controllers / 33 handlers converted; 3 exempt; 2 deferred to TASK-759 and untouched.
+
+### 1. Scope vocabulary (`packages/applications/src/services/apiKey/apikey-scopes.registry.ts`)
+
+9 new scopes + 2 wildcards; 2 surfaces reuse existing scopes rather than growing the registry.
+Every entry carries the `implies` field TASK-756 made mandatory, derived by this file's own
+documented rule (the CASL pair the scope's controller declares; the resource the plane operates
+on where the controller is auth-only).
+
+| Scope | `implies` | Gates |
+|---|---|---|
+| `ai:inference:write` (new) | `create:Consultation` | `AiInferenceController` |
+| `prompt:template:read` (new) | `read:PromptTemplate` | `PromptTemplateController` |
+| `platform:changelog:read` (new) | `read:ChangelogEntry` | `ChangelogController` |
+| `tenant:account:read` (new) | `read:Tenant` | `MyBillingController`, `MyUsageController`, `MyEntitlementsController` |
+| `tenant:profile:read` / `:write` (new) | `read:Tenant` / `update:Tenant` | `MyTenantController` (write is METHOD-level on the PATCH) |
+| `tenant:context-schema:read` (new) | `read:ConsultationContextSchema` | `MyTenantContextSchemaController` |
+| `user:settings:read` / `:write` (new) | `read:UserSettings` / `update:UserSettings` | `UserSettingsController` (write is METHOD-level on the PATCH) |
+| `stt:model:read` (**reused**) | — | `AudioPipelinePublicController` |
+| `user:profile:read` (**reused**, previously declared by nothing) | — | `PermissionCheckController`, `UserDepartmentsMeController`, `UserRolesController` |
+| `ai:*`, `tenant:*` (new wildcards) | expanded | symmetry with `stt:*` / `user:*` |
+
+**Consumer impact — prefix matching.** `ApiKeyService.hasScope` treats a bare parent as granting
+all children, so an already-issued key holding `user:*` (or the bare `user` / `tenant`) gains
+`user:settings:*` and the `tenant:*` family the moment they are registered. That is existing
+prefix semantics, not new behaviour, but it IS a reachability change for keys minted before this
+ticket.
+
+**Minting-side consequence of `platform:changelog:read`.** No seeded policy grants
+`read:ChangelogEntry` to a tenant admin (`01-policy.ts` has no `ChangelogEntry` rule at all), so
+under TASK-756's ceiling only a super admin can mint that scope today. This is fail-CLOSED and was
+chosen over mapping the scope onto an unrelated ability a tenant admin happens to hold; granting
+`read:ChangelogEntry` in `tenant-full-access` would fix it and is a one-line policy change, but it
+widens a seeded policy and so was left as an owner decision rather than taken here.
+
+### 2. Conversions (13 controllers / 33 handlers)
+
+Each lost the verbatim `// TASK-742 API-KEY-NOTE — CONSERVATIVE DEFAULT, AWAITING OWNER
+CLASSIFICATION` block — the classification this ticket supplies — and gained a class-level
+`@RequiredScopes(...)` plus an `// API-KEY-NOTE` stating the decision. `@Authorize`/`@CanXxx`
+untouched everywhere: scope and ability are a conjunction (`enforceApiKeyAbilities` re-evaluates
+the route's CASL against the key's BOUND USER), so no conversion widens authorization.
+
+| # | Controller | File | Scope |
+|---|---|---|---|
+| 1 | `AiInferenceController` | `ai-inference.controller.ts:54` | `ai:inference:write` |
+| 2 | `PromptTemplateController` | `prompt-template.controller.ts:43` | `prompt:template:read` |
+| 3 | `AudioPipelinePublicController` | `audio-pipeline-public.controller.ts:14` | `stt:model:read` |
+| 4 | `ChangelogController` | `changelog.controller.ts:28` | `platform:changelog:read` |
+| 5 | `MyBillingController` | `my-billing.controller.ts:39` | `tenant:account:read` |
+| 6 | `MyUsageController` | `my-usage.controller.ts:30` | `tenant:account:read` |
+| 7 | `MyEntitlementsController` | `my-entitlements.controller.ts:30` | `tenant:account:read` |
+| 8 | `MyTenantController` | `my-tenant.controller.ts:35` (+ `:102` method-level write) | `tenant:profile:read` / `tenant:profile:write` |
+| 9 | `MyTenantContextSchemaController` | `consultation-context-schema.controller.ts:186` | `tenant:context-schema:read` |
+| 10 | `PermissionCheckController` | `permission-check.controller.ts:22` | `user:profile:read` |
+| 11 | `UserSettingsController` | `user-settings.controller.ts:48` (+ `:74` method-level write) | `user:settings:read` / `user:settings:write` |
+| 12 | `UserDepartmentsMeController` | `user-departments-me.controller.ts:33` | `user:profile:read` |
+| 13 | `UserRolesController` | `user-roles.controller.ts:40` | `user:profile:read` |
+
+**Deviation from the plan (deliberate, narrower than proposed).** Step 4 assigned one scope per
+controller. `MyTenantController` and `UserSettingsController` each carry a single mutating route,
+so declaring both read and write at CLASS level would have let a read-only key satisfy the write
+route's scope check (OR semantics). Both instead declare the read at class level and the `:write`
+scope on the mutating handler, where `getAllAndOverride([handler, class])` makes the method
+declaration REPLACE the class one. Pinned by
+`business-plane-apikey-exemptions.test.ts` and by the two e2e "read scope does not reach the write
+route" cases.
+
+### 3. Exemptions (3 controllers / 26 handlers) — kept, with a decision
+
+`AuthController` (`auth.controller.ts:84-91`), `VoiceProfileController`
+(`voice-profile.controller.ts:30-37`), `DnaWritingStyleController`
+(`dna-writing-style.controller.ts:52-63`) keep `@ForbidApiKey()`, each with a real
+`// API-KEY-NOTE — REASONED EXEMPTION` naming the reason and the audit that polices it.
+`DnaWritingStyleController`'s note also carries D-5 forward: its SSE handler has no `@StreamScope`,
+so a future un-exemption would inherit a broken stream.
+
+**Deviation from the plan (owner decision, 2026-08-18).** Step 6 proposed consolidating onto the
+`// AUTH-NOTE:` marker. The owner ruled afterwards that `API-KEY-NOTE` and `AUTH-NOTE` stay
+DISTINCT with NO migration: `API-KEY-NOTE` = the API-key classification, `AUTH-NOTE` = rule 05's
+"the decorator understates the real gate" case. Every retained `@ForbidApiKey()` therefore keeps an
+`API-KEY-NOTE`, now carrying prose that states a decision instead of deferring one. The existing
+`AUTH-NOTE`s (e.g. on `PromptTemplateController`'s owner-gated writes) were left exactly as they
+were.
+
+### 4. The exemption list is a boot contract
+
+`apps/api/src/bootstrap/business-plane-apikey-exemptions-audit.ts` (wired at `main.ts:328`) fails
+the boot when a NON-`admin/` route carries `@ForbidApiKey()` without being named in
+`BUSINESS_PLANE_KEY_FORBIDDEN`. Mirrors `RESERVED_INTERNAL_SCOPE_CONTROLLERS` — a policed
+exemption, not a hole. `BUSINESS_PLANE_KEY_FORBIDDEN_DEFERRED` tracks `MonitoringController` and
+`ApiHealthController` in a SEPARATE set so "deferred to TASK-759" can never read as "reasoned
+exemption"; neither file was touched by this ticket.
+
+### 5. `me` semantics in OpenAPI
+
+Two different resolutions behind the same `me` segment, one sentence each, on 16 routes across 9
+controllers (including the already-keyed `UserPreferencesController`, the surface that proves the
+ambiguity):
+
+- `/user/me/*` and `users/:id/roles` → *"`me` resolves to the **user the key is bound to** — never
+  to the key's tenant. A `SERVICE_ACCOUNT` key with no linked user cannot call this route (403)."*
+- `billing` / `usage` / `entitlements` / `tenant` (incl. `tenant/me/context-schema`) → *"Under
+  API-key authentication this resolves to the key's **tenant**."*
+
+**Deviation from the plan (spec defect).** Step 8 grouped `MyTenantContextSchemaController` with
+the `/user/me/*` bound-user surfaces. It is not one: `getEffectiveBundle` resolves
+`requireTenantId()`, i.e. the CLS TENANT. It takes the tenant sentence; documenting it as
+bound-user would have told an integrator the opposite of what the service does — the exact harm
+this decision exists to prevent.
+
+### 6. Tests
+
+| File | What it pins |
+|---|---|
+| `apps/api/src/bootstrap/__tests__/business-plane-apikey-exemptions.test.ts` (new, 28 cases) | the exemption set, the audit's behaviour (unlisted controller / method-level forbid / admin plane / `@Public()`), the scope VALUE each converted controller declares, the two method-level `:write` narrowings, that the CASL declarations are unchanged, and that the exempt files carry a decision rather than the deferral boilerplate |
+| `apps/api/src/modules/user/controllers/__tests__/me-semantics-openapi.test.ts` (new, 17 cases) | the `me` sentence per route, and that neither sentence is ever applied to the other group |
+| `packages/applications/src/services/apiKey/__tests__/apikey-scopes.registry.test.ts` (extended) | the 9 new scopes, the 2 wildcards, and the `implies` mapping for the four that gate a tenant-owned resource |
+| `apps/api/tests/e2e/task-758-business-plane-apikey.spec.ts` (new) | reach with the scope, the exact `enforceApiKeyScopes` 403 without it, read-scope-cannot-write, `me` = bound user, unbound SERVICE_ACCOUNT 403, exemptions still 403 an API key while a JWT still reaches them, cross-tenant still 404 |
+| `apps/api/tests/e2e/task-708-apikey-scope-contract.spec.ts` (re-pointed) | half 4's `@ForbidApiKey()` example moved `/tenant/me` → `/voice-profile`, with the reason in a comment |
+
+### 7. Verification evidence
+
+```
+$ pnpm --filter @arcaai/applications exec vitest run src/services/apiKey/__tests__/apikey-scopes.registry.test.ts
+  # RED (before registering):  Tests  3 failed | 23 passed (26)
+  # GREEN:                     Tests  26 passed (26)
+
+$ pnpm --filter @arcaai/api exec vitest run src/bootstrap/__tests__/business-plane-apikey-exemptions.test.ts
+  # RED (audit module absent):        Error: Cannot find module '../business-plane-apikey-exemptions-audit'
+  # RED (audit present, unconverted): Tests  4 failed | 9 passed (13)
+  # GREEN (after conversion):         Tests  28 passed (28)
+
+$ pnpm --filter @arcaai/api exec vitest run src/modules/user/controllers/__tests__/me-semantics-openapi.test.ts
+  # RED:   Tests  16 failed (16)
+  # GREEN: Tests  17 passed (17)
+```
+
+Full-suite, build and lint (run after every change landed):
+
+```
+$ pnpm --filter @arcaai/api test          # apps/api, vitest run
+ Test Files  223 passed | 2 skipped (225)
+      Tests  3162 passed | 4 skipped (3166)
+
+$ pnpm api:build
+ Tasks:    12 successful, 12 total
+  Time:    34.561s
+
+$ pnpm --filter @arcaai/api lint
+✖ 65 problems (0 errors, 65 warnings)      # all 65 pre-existing eslint-comments/require-description
+                                           # warnings; none in any file this ticket touched
+
+$ pnpm --filter @arcaai/applications test
+ Test Files  2 failed | 506 passed | 1 skipped (509)
+      Tests  2 failed | 9318 passed | 4 skipped (9324)
+```
+
+The two `@arcaai/applications` failures are PRE-EXISTING and unrelated to A1 —
+`settings-registry/__tests__/fail-mode.governance.test.ts` (`internal.accessToken` descriptor,
+introduced by commit `87f894bdb`) and `dna-writing-style/__tests__/dna-writing-style.processor.test.ts`
+(SMR `/api/v1/generate` call shape). Neither suite imports `apikey-scopes.registry`, which is the
+only non-test file this ticket changed in that package.
+
+**Not executed here:** `pnpm test:e2e`. It needs a running gateway against the seeded test DB
+(`pnpm test:up:api`), which was not available in this environment; the spec is authored and the
+`task-708` re-point is a mechanical consequence of the `/tenant/me` conversion. The boot audits are
+the standing acceptance gate in the meantime.
 
 ---
 
@@ -276,3 +444,4 @@ _pending_
 | Date | Change |
 |---|---|
 | 2026-08-18 | Created. Requirement analysis, current-state evaluation (18 controllers / 69 handlers derived and verified against source), CONVERT/EXEMPT classification, `me`-semantics decision, implementation plan and verification criteria. Status: Pending. No code changed. |
+| 2026-08-18 | **Implemented.** 9 scopes + 2 wildcards registered (2 surfaces reuse `stt:model:read` / `user:profile:read`); 13 controllers / 33 handlers converted from `@ForbidApiKey()` to `@RequiredScopes(...)`, with `tenant:profile:write` and `user:settings:write` narrowed to the mutating handler; the 3 exemptions rewritten to state a decision under the retained `API-KEY-NOTE` marker (owner ruling: no marker migration); new boot audit `auditBusinessPlaneApiKeyExemptions` wired into `main.ts`; `me` semantics documented on 16 routes; 45 new/extended unit cases + a new e2e spec + the `task-708` re-point; inventory and groupings docs updated. Three deliberate deviations from the plan recorded in the Implementation Summary (method-level write scopes, `API-KEY-NOTE` retained over `AUTH-NOTE`, `tenant/me/context-schema` documented as TENANT-scoped). Status: Completed. |

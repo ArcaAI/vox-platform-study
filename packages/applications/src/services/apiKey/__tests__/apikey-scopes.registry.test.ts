@@ -51,6 +51,48 @@ describe('API Key Scope Registry', () => {
       expect(API_KEY_SCOPE_REGISTRY['workflow:*']).toBeDefined();
     });
 
+    // TASK-758 — the business-plane (policy A1) scope family. 13 controllers
+    // that carried TASK-742's conservative `@ForbidApiKey()` default now
+    // declare a real scope, so the vocabulary has to exist before the
+    // decorators can reference it (`@RequiredScopes` validates at DECORATION
+    // time). Reuse was preferred wherever a scope already fitted:
+    // `stt:model:read` gates the ASR pipeline catalog and the previously
+    // unused `user:profile:read` gates the three `me`-shaped reads, so neither
+    // appears below.
+    it('should contain the business-plane scopes policy A1 introduces', () => {
+      for (const scope of [
+        'ai:inference:write',
+        'prompt:template:read',
+        'platform:changelog:read',
+        'tenant:account:read',
+        'tenant:profile:read',
+        'tenant:profile:write',
+        'tenant:context-schema:read',
+        'user:settings:read',
+        'user:settings:write',
+      ]) {
+        expect(API_KEY_SCOPE_REGISTRY[scope], `${scope} must be registered`).toBeDefined();
+      }
+    });
+
+    it('should contain the ai:* and tenant:* wildcards, for symmetry with stt:*/user:*', () => {
+      expect(API_KEY_SCOPE_REGISTRY['ai:*']).toBeDefined();
+      expect(API_KEY_SCOPE_REGISTRY['tenant:*']).toBeDefined();
+    });
+
+    // The ceiling is only as good as the mapping: a business scope whose
+    // `implies` names an ability nobody holds is unmintable, and one that
+    // names an ability EVERYBODY holds is a free grant. These are the four
+    // that gate a tenant-owned resource, pinned to the CASL pair their own
+    // controller declares.
+    it('should map the business-plane scopes onto the ability their controller declares', () => {
+      const key = (p: { action: string; subject: string }) => `${p.action}:${p.subject}`;
+      expect(API_KEY_SCOPE_REGISTRY['prompt:template:read'].implies.map(key)).toEqual(['read:PromptTemplate']);
+      expect(API_KEY_SCOPE_REGISTRY['tenant:account:read'].implies.map(key)).toEqual(['read:Tenant']);
+      expect(API_KEY_SCOPE_REGISTRY['tenant:profile:write'].implies.map(key)).toEqual(['update:Tenant']);
+      expect(API_KEY_SCOPE_REGISTRY['user:settings:write'].implies.map(key)).toEqual(['update:UserSettings']);
+    });
+
     // TASK-756 T1 — the minting privilege ceiling reads `implies` for EVERY
     // scope. A scope with no declared implication would sail through the
     // ceiling unchecked, so an undeclared/empty `implies` is a fail-OPEN hole,

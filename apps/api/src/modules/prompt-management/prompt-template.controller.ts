@@ -8,7 +8,7 @@ import {
 } from '@arcaai/applications';
 import { Body, Controller, Delete, Get, Inject, Param, Patch, Post, Put, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { Authorize, ExpectedVersion, RequiresIfMatch, ForbidApiKey } from '../../decorators';
+import { Authorize, ExpectedVersion, RequiresIfMatch, RequiredScopes } from '../../decorators';
 
 /**
  * End-user (clinician) prompt-template plane.
@@ -35,15 +35,12 @@ import { Authorize, ExpectedVersion, RequiresIfMatch, ForbidApiKey } from '../..
 @ApiBearerAuth()
 @ApiTags('prompt-templates')
 @Controller('prompt-templates')
-// TASK-742 API-KEY-NOTE — CONSERVATIVE DEFAULT, AWAITING OWNER CLASSIFICATION.
-// Reason: personal (USER_PERSONAL) template self-service; TASK-708 flagged it as needing confirmation.
-// This route family declared nothing about API-key access, which under the
-// deny-by-default rule is a boot failure. Rather than guess a scope (guessing
-// permissive is how the original gap was created), it is closed explicitly.
-// Reversing it is a one-line change to @RequiredScopes('<scope>') once the
-// owner confirms a real API-key use case — see the TASK-708 README's
-// "Reachability changes awaiting owner review" table.
-@ForbidApiKey()
+// API-KEY-NOTE: policy A1. READ-shaped on purpose — the three write routes
+// below are declared with `read:PromptTemplate` and enforce STRICT caller
+// ownership in the service (see the AUTH-NOTE on `create`), so a
+// `prompt:template:write` scope would promise authority the service then
+// refuses. The key never gains more than the clinician it is bound to has.
+@RequiredScopes('prompt:template:read')
 export class PromptTemplateController {
   constructor(
     @Inject(IPromptManagementService)
