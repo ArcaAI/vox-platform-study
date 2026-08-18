@@ -225,6 +225,22 @@ published. Its doc claims "Session-JWT admin console ONLY" (`:19-21`) but **noth
 (`apikey-scopes.registry.ts:123`), the API-key path never evaluates CASL (§6.1), and
 `WORKFLOW_EXPOSURE_ENABLED` is not read by `workflow-sandbox-run.service.ts`.
 
+**Status (TASK-759, 2026-08-18).** Re-verified; the finding stands, with two corrections to its
+framing and no code change in this ticket — `WorkflowSandboxRunController`'s decorators are
+deliberately untouched here.
+
+1. **The drift is closed by TASK-757, not by a taxonomy move.** The prefix is already
+   `admin/…` (`workflow-sandbox-run.controller.ts:34`), so P1/P2 have nothing to do. TASK-757's
+   class-level `@ForbidApiKey()` sweep across the admin plane (policy A2) turns the
+   `@RequiredScopes('admin:workflow-definition:manage')` at `:33` into an inert declaration and
+   makes the "Session-JWT admin console ONLY" doc comment true. Tracked there, not here.
+2. **"the API-key path never evaluates CASL" was true pre-TASK-742 and is now false.**
+   `enforceApiKeyAbilities` (`packages/applications/src/authorization/unified-auth.guard.ts`)
+   evaluates the route's `@CanCreate('WorkflowRun')` / `@CanRead` / `@CanUpdate` metadata against
+   the key's bound user. The blast radius is therefore narrower than stated above: an API key must
+   still hold the CASL ability through its bound user. The finding itself — a doc comment
+   asserting a restriction no decorator enforces — is unaffected.
+
 ### 6.4 No privilege ceiling on API-key minting
 
 `apikey.service.ts` create/update enforce cross-tenant checks (`:250-254`), linkage (`:259-284`),

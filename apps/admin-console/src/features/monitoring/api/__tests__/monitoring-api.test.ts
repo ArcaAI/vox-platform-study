@@ -40,12 +40,12 @@ describe('monitoring client', () => {
     await getSessions();
     await getRedisHealth();
     expect(calls.map((call) => call.url)).toEqual([
-      '/api/hope/health/services',
-      '/api/hope/health/services/stt',
-      '/api/hope/monitoring/uptime',
-      '/api/hope/monitoring/uptime/smr',
-      '/api/hope/monitoring/heartbeats/nlp',
-      '/api/hope/monitoring/sessions',
+      '/api/hope/admin/health/services',
+      '/api/hope/admin/health/services/stt',
+      '/api/hope/admin/monitoring/uptime',
+      '/api/hope/admin/monitoring/uptime/smr',
+      '/api/hope/admin/monitoring/heartbeats/nlp',
+      '/api/hope/admin/monitoring/sessions',
       '/api/hope/admin/queues/health/redis',
     ]);
     expect(calls.every((call) => call.method === 'GET')).toBe(true);

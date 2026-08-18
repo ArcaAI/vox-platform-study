@@ -5,7 +5,7 @@ import type { CurrentService, Environment, ServiceRelease, ServiceReleaseListPar
 /**
  * Typed calls over the BFF proxy against `admin/service-releases/*`
  * (`@CanAny(['manage','all'], ['read','TenantTelemetry'])` — the same gate as
- * `/health/services`, per the frozen contract).
+ * `/admin/health/services`, per the frozen contract).
  */
 const BASE = 'admin/service-releases';
 

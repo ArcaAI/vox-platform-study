@@ -13,7 +13,7 @@
  *   PM3 · GET /admin/platform/consumption  → 200; numeric Postgres roll-ups (#18).
  *   PM4 · GET /admin/consultations/aggregate → 200; zero-filled buckets; Σ = totals (#20).
  *   PM5 · GET /admin/tenants/:id/usage     → 200; extended storage/clinical fields (#4/#5).
- *   PM6 · GET /monitoring/sessions + /health/services — tenant_admin 200, doctor 403 (#21/E6).
+ *   PM6 · GET /admin/monitoring/sessions + /admin/health/services — tenant_admin 200, doctor 403 (#21/E6).
  *   PM7 · GET /admin/consultations (super_admin, NO tenant scope) → 200 cross-tenant (TD3/DEF-1).
  *
  * ENV-DEPENDENT: the Prometheus-derived fields in PM1 (requests/error/p95/per-model
@@ -205,7 +205,7 @@ test.describe('platform runtime metrics (PM1–PM7)', () => {
 
   // --- PM6 · #21/E6 widened telemetry gates ----------------------------------
 
-  test('PM6: tenant_admin can read /monitoring/sessions + /health/services; a doctor is 403', async ({ request }) => {
+  test('PM6: tenant_admin can read /admin/monitoring/sessions + /admin/health/services; a doctor is 403', async ({ request }) => {
     const tenantAdmin = await loginUser(request, SEEDED_USERS.admin.username, SEEDED_USERS.admin.password, DEFAULT_TENANT_KEY);
     expect(tenantAdmin, 'tenant_admin login failed — is the stack seeded?').toBeTruthy();
     const doctor = await loginUser(request, SEEDED_USERS.doctor.username, SEEDED_USERS.doctor.password, DEFAULT_TENANT_KEY);
@@ -214,7 +214,7 @@ test.describe('platform runtime metrics (PM1–PM7)', () => {
     // Service sessions/health are platform-infra status (no per-tenant rows), so
     // #21 widens the gate (read:TenantTelemetry) rather than filtering rows: a
     // TENANT_ADMIN may now read; a plain DOCTOR (neither grant) is still forbidden.
-    for (const path of ['/api/v1/monitoring/sessions', '/api/v1/health/services'] as const) {
+    for (const path of ['/api/v1/admin/monitoring/sessions', '/api/v1/admin/health/services'] as const) {
       const ta = await authGet(request, path, tenantAdmin!.token);
       expect(ta.status(), `${path} reachable by tenant_admin (read:TenantTelemetry)`).toBe(200);
 

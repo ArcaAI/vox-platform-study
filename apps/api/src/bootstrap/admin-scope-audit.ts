@@ -48,7 +48,9 @@ import { DnaWritingStyleAdminController } from '../modules/dna-writing-style/dna
 import { EntitlementsAdminController } from '../modules/entitlements/entitlements-admin.controller';
 import { GlobalSettingController } from '../modules/global-setting/global-setting.controller';
 import { HarnessAdminController } from '../modules/harness-admin/harness-admin.controller';
+import { AdminHealthServicesController } from '../modules/health/admin-health-services.controller';
 import { McpAdminController } from '../modules/mcp-admin/mcp-admin.controller';
+import { MonitoringController } from '../modules/monitoring/monitoring.controller';
 import { NlpTaskInstructionsAdminController } from '../modules/nlp-task-instructions/nlp-task-instructions-admin.controller';
 import { NotificationController } from '../modules/notification/notification.controller';
 import { PipelinePolicyAdminController } from '../modules/pipeline-policy-admin/pipeline-policy-admin.controller';
@@ -160,6 +162,16 @@ export const ADMIN_SCOPED_CONTROLLERS: ScopedController[] = [
   { controller: WorkflowNodeController, expect: 'admin:workflow-node:read' },
   { controller: WorkflowRunController, expect: 'admin:workflow-run:read' },
   { controller: WorkflowTestFixtureController, expect: 'admin:workflow-test-fixture:manage' },
+
+  // TASK-759 (rule P2) filed two administrative capabilities that were
+  // sitting on business prefixes onto the admin plane. Neither declares
+  // `@RequiredScopes` — both were already `@ForbidApiKey()` under TASK-742's
+  // conservative default, which IS the A2 outcome the admin plane requires —
+  // so they are pinned here as 'FORBID', the same shape as
+  // `AdminImpersonationController` above. Listing them is what stops a later
+  // edit from silently re-opening an admin surface to API keys.
+  { controller: MonitoringController, expect: 'FORBID' },
+  { controller: AdminHealthServicesController, expect: 'FORBID' },
 ];
 
 export function auditAdminScopedControllers(controllers: ScopedController[] = ADMIN_SCOPED_CONTROLLERS): void {

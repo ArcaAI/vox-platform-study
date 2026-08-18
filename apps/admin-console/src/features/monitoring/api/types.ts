@@ -3,7 +3,7 @@ export type MonitoredService = 'smr' | 'nlp' | 'stt' | 'tts' | 'guardrail' | 'ha
 
 export type ServiceStatus = 'healthy' | 'degraded' | 'down' | 'unknown';
 
-/** GET /health/services — per-service liveness probe fan-out. */
+/** GET /admin/health/services — per-service liveness probe fan-out. */
 export interface HealthServices {
   status: string;
   timestamp: string;
@@ -32,13 +32,13 @@ export interface ServiceUptime {
   heartbeats: HeartbeatRecord[];
 }
 
-/** GET /monitoring/uptime. */
+/** GET /admin/monitoring/uptime. */
 export interface UptimeOverview {
   services: Record<string, ServiceUptime>;
   refreshedAt: string;
 }
 
-/** GET /monitoring/sessions. */
+/** GET /admin/monitoring/sessions. */
 export interface SessionsOverview {
   services: Record<MonitoredService, { active: number }>;
   totalUsers: number;

@@ -109,7 +109,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
   },
   {
     // service version & release registry. Same gate as
-    // `/monitoring` and `/health/services` (frozen contract): grouped
+    // `/admin/monitoring` and `/admin/health/services` (frozen contract): grouped
     // together in the sidebar.
     route: '/releases',
     label: 'Releases',

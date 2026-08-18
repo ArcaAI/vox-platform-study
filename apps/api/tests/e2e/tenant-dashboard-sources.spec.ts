@@ -16,12 +16,12 @@
  *        `assertTenantInScope` (:63): non-super-admin reading ANOTHER tenant → 403.
  *   2. GET /admin/audit-logs         audit-log.controller.ts:65 (fetchAll)
  *      — @CanRead('AuditLog'); tenant-scoped, super-admin cross-tenant.
- *   3. GET /monitoring/sessions      monitoring.controller.ts 🔒
+ *   3. GET /admin/monitoring/sessions      monitoring.controller.ts 🔒
  *      — controller @CanAny(['manage','all'],['read','TenantTelemetry']):
  *        SUPER_ADMIN via manage:all, TENANT_ADMIN via the
  *        read:TenantTelemetry grant; a plain DOCTOR (neither) → 403.
- *   4. GET /health/services          health.controller.ts 🔒
- *      — same @CanAny posture as /monitoring/sessions.
+ *   4. GET /admin/health/services          health.controller.ts 🔒
+ *      — same @CanAny posture as /admin/monitoring/sessions.
  *   5. GET /admin/consultations      admin-consultation.controller.ts:52 (list)
  *      — @CanManage('Consultation') → TENANT_ADMIN / SUPER_ADMIN; DOCTOR → 403.
  *
@@ -141,9 +141,9 @@ test.describe('Tenant Dashboard (18d) backend sources', () => {
 
   // --- TD1/TD2 — Monitoring sessions (🔒 manage:all OR read:TenantTelemetry) --
 
-  test('TD2: super_admin reads /monitoring/sessions shape (services + totalUsers)', async ({ request }) => {
-    const res = await authGet(request, '/api/v1/monitoring/sessions', superToken);
-    expect(res.status(), 'GET /monitoring/sessions (super_admin)').toBe(200);
+  test('TD2: super_admin reads /admin/monitoring/sessions shape (services + totalUsers)', async ({ request }) => {
+    const res = await authGet(request, '/api/v1/admin/monitoring/sessions', superToken);
+    expect(res.status(), 'GET /admin/monitoring/sessions (super_admin)').toBe(200);
     const body = (await res.json()) as SessionsResponse;
     expect(typeof body.services, 'sessions has a per-service map').toBe('object');
     expect(typeof body.totalUsers, 'totalUsers is numeric').toBe('number');
@@ -151,24 +151,24 @@ test.describe('Tenant Dashboard (18d) backend sources', () => {
 
   // TENANT_ADMIN intentionally holds the seeded `read:TenantTelemetry` rule
   // so the tenant dashboard can read platform-infra session counts.
-  test('TD2: tenant_admin (own tenant, read:TenantTelemetry) reads /monitoring/sessions', async ({ request }) => {
-    const res = await authGet(request, '/api/v1/monitoring/sessions', tenantAdminToken);
+  test('TD2: tenant_admin (own tenant, read:TenantTelemetry) reads /admin/monitoring/sessions', async ({ request }) => {
+    const res = await authGet(request, '/api/v1/admin/monitoring/sessions', tenantAdminToken);
     expect(res.status(), 'tenant_admin holds read:TenantTelemetry (TASK-386 #21) → 200').toBe(200);
     const body = (await res.json()) as SessionsResponse;
     expect(typeof body.services, 'sessions has a per-service map').toBe('object');
     expect(typeof body.totalUsers, 'totalUsers is numeric').toBe('number');
   });
 
-  test('TD2: doctor is FORBIDDEN from /monitoring/sessions', async ({ request }) => {
-    const res = await authGet(request, '/api/v1/monitoring/sessions', doctorToken);
+  test('TD2: doctor is FORBIDDEN from /admin/monitoring/sessions', async ({ request }) => {
+    const res = await authGet(request, '/api/v1/admin/monitoring/sessions', doctorToken);
     expect(res.status(), 'a plain doctor holds neither manage:all nor read:TenantTelemetry → 403').toBe(403);
   });
 
   // --- TD1/TD5 — Service health (🔒 manage:all OR read:TenantTelemetry) ------
 
-  test('TD5: super_admin reads /health/services shape (status + per-service map)', async ({ request }) => {
-    const res = await authGet(request, '/api/v1/health/services', superToken);
-    expect(res.status(), 'GET /health/services (super_admin)').toBe(200);
+  test('TD5: super_admin reads /admin/health/services shape (status + per-service map)', async ({ request }) => {
+    const res = await authGet(request, '/api/v1/admin/health/services', superToken);
+    expect(res.status(), 'GET /admin/health/services (super_admin)').toBe(200);
     const body = (await res.json()) as ServiceHealthResponse;
     expect(typeof body.status, 'overall status string present').toBe('string');
     expect(typeof body.services, 'per-service health map present').toBe('object');
@@ -180,16 +180,16 @@ test.describe('Tenant Dashboard (18d) backend sources', () => {
   // Same `read:TenantTelemetry` widening as TD2: the
   // tenant dashboard's audio-pipeline strip reads downstream health, so a
   // TENANT_ADMIN with read:TenantTelemetry gets 200.
-  test('TD5: tenant_admin (own tenant, read:TenantTelemetry) reads /health/services', async ({ request }) => {
-    const res = await authGet(request, '/api/v1/health/services', tenantAdminToken);
+  test('TD5: tenant_admin (own tenant, read:TenantTelemetry) reads /admin/health/services', async ({ request }) => {
+    const res = await authGet(request, '/api/v1/admin/health/services', tenantAdminToken);
     expect(res.status(), 'tenant_admin holds read:TenantTelemetry (TASK-386 #21) → 200').toBe(200);
     const body = (await res.json()) as ServiceHealthResponse;
     expect(typeof body.status, 'overall status string present').toBe('string');
     expect(typeof body.services, 'per-service health map present').toBe('object');
   });
 
-  test('TD5: doctor is FORBIDDEN from /health/services (neither grant)', async ({ request }) => {
-    const res = await authGet(request, '/api/v1/health/services', doctorToken);
+  test('TD5: doctor is FORBIDDEN from /admin/health/services (neither grant)', async ({ request }) => {
+    const res = await authGet(request, '/api/v1/admin/health/services', doctorToken);
     expect(res.status(), 'a plain doctor holds neither manage:all nor read:TenantTelemetry → 403').toBe(403);
   });
 

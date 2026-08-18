@@ -8,6 +8,7 @@ import { auditAdminRoutePermissions } from './bootstrap/admin-route-permission-a
 import { auditApiKeyRequiredScopes, auditInternalRoutesOffApiKeySurface } from './bootstrap/api-key-scope-audit';
 import { auditAdminScopedControllers } from './bootstrap/admin-scope-audit';
 import { auditEveryApiKeyReachableRouteDeclaresScopes } from './bootstrap/api-key-surface-audit';
+import { auditBusinessPlaneApiKeyExemptions } from './bootstrap/business-plane-apikey-exemptions-audit';
 import { auditConsentRouteCoverage } from './bootstrap/consent-route-coverage-audit';
 import { auditServiceAccountSurface } from './bootstrap/service-account-surface-audit';
 import { assertGenaiContentCaptureDisabled } from './bootstrap/genai-content-capture-audit';
@@ -317,6 +318,14 @@ async function bootstrap() {
   // runtime — this turns that into a boot-time authoring error instead of a
   // production 403.
   auditEveryApiKeyReachableRouteDeclaresScopes(app);
+
+  // Refuses to start if a NON-`admin/` route forbids API keys without being a
+  // named, reasoned exemption (TASK-758, policy A1). The audit above pins that
+  // every route DECLARES something; this pins that what the business plane
+  // declares is JWT + API key, and that each `@ForbidApiKey()` surviving there
+  // (auth, voice biometrics, personal writing model) is an owner decision
+  // recorded in `BUSINESS_PLANE_KEY_FORBIDDEN`, not TASK-742's pending default.
+  auditBusinessPlaneApiKeyExemptions(app);
 
   // Refuses to start if any route taking a `:patientId` route param lacks
   // both `@RequiresConsent(...)` and `@ConsentExempt(...)` (TASK-712,

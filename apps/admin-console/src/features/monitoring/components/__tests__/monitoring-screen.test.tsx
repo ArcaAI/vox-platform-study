@@ -81,9 +81,9 @@ type RouteOverrides = Partial<Record<'health' | 'uptime' | 'sessions' | 'redis',
 function installFetch(overrides: RouteOverrides = {}) {
   const fetchMock = vi.fn(async (input: string | URL | Request) => {
     const url = String(input);
-    if (url.includes('health/services')) return (overrides.health ?? (() => Response.json(HEALTH)))();
-    if (url.includes('monitoring/uptime')) return (overrides.uptime ?? (() => Response.json(UPTIME)))();
-    if (url.includes('monitoring/sessions')) return (overrides.sessions ?? (() => Response.json(SESSIONS)))();
+    if (url.includes('admin/health/services')) return (overrides.health ?? (() => Response.json(HEALTH)))();
+    if (url.includes('admin/monitoring/uptime')) return (overrides.uptime ?? (() => Response.json(UPTIME)))();
+    if (url.includes('admin/monitoring/sessions')) return (overrides.sessions ?? (() => Response.json(SESSIONS)))();
     if (url.includes('admin/queues/health/redis')) return (overrides.redis ?? (() => Response.json(REDIS)))();
     throw new Error(`Unexpected fetch in test: ${url}`);
   });
@@ -162,10 +162,10 @@ describe('MonitoringScreen', () => {
 
     const alerts = await screen.findAllByRole('alert');
     expect(alerts.length).toBeGreaterThan(0);
-    expect(callsTo(fetchMock, 'monitoring/uptime')).toBe(1);
+    expect(callsTo(fetchMock, 'admin/monitoring/uptime')).toBe(1);
 
     fireEvent.click(within(alerts[0]).getByRole('button', { name: /retry/i }));
-    await waitFor(() => expect(callsTo(fetchMock, 'monitoring/uptime')).toBe(2));
+    await waitFor(() => expect(callsTo(fetchMock, 'admin/monitoring/uptime')).toBe(2));
   });
 
   it('renders uptime samples in the response chart when service health fails', async () => {

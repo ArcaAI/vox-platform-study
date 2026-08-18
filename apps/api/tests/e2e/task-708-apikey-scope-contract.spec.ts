@@ -54,7 +54,9 @@
  *     undeclared route with no authorization decision at all. It now denies.
  *     This half asserts the observable consequence on three surfaces the
  *     gateway conformance review named: `/audio/transcription-jobs` (20
- *     routes, 0 scopes), `/speech/*` (TTS), and an `@ForbidApiKey()` route.
+ *     routes, 0 scopes), `/speech/*` (TTS), and an `@ForbidApiKey()` route
+ *     (`/voice-profile` — re-pointed from `/tenant/me` by TASK-758, which
+ *     converted that controller to policy A1's JWT + API key).
  *     Half 2's assertions are UNCHANGED by TASK-742 — `/admin/tenants` was
  *     already declared, so the new default never applied to it.
  *
@@ -401,11 +403,18 @@ test.describe('TASK-708 — API-key scope contract (locks in current behavior)',
       expect(body.message).toContain('API key does not have required scope(s): tts:speech:write');
     });
 
-    test('an @ForbidApiKey() surface (/tenant/me) refuses even the "*" wildcard key', async ({ request }) => {
+    // Re-pointed from `/tenant/me` to `/voice-profile` by TASK-758: policy A1
+    // converted `MyTenantController` to `@RequiredScopes('tenant:profile:read')`,
+    // so it is no longer an `@ForbidApiKey()` surface at all. `/voice-profile`
+    // is a REASONED exemption (voice biometrics — a long-lived static
+    // credential must never enrol or read a voice profile), named in
+    // `BUSINESS_PLANE_KEY_FORBIDDEN` and policed at boot, so it will not move
+    // again the way TASK-742's conservative default did.
+    test('an @ForbidApiKey() surface (/voice-profile) refuses even the "*" wildcard key', async ({ request }) => {
       const key = await createScopedApiKey(request, superAdminToken, ['*'], 'task-742-forbid-wildcard');
       createdApiKeyIds.push(key.id);
 
-      const response = await request.get('/api/v1/tenant/me', {
+      const response = await request.get('/api/v1/voice-profile', {
         headers: { 'X-API-Key': key.rawKey, Accept: 'application/json' },
       });
 
@@ -415,7 +424,7 @@ test.describe('TASK-708 — API-key scope contract (locks in current behavior)',
     });
 
     test('the same @ForbidApiKey() route is still reachable with a session JWT (the marker is API-key-specific)', async ({ request }) => {
-      const response = await request.get('/api/v1/tenant/me', {
+      const response = await request.get('/api/v1/voice-profile', {
         headers: { Authorization: `Bearer ${adminToken}`, Accept: 'application/json' },
       });
 

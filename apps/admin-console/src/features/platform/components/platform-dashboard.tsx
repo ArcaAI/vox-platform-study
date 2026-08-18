@@ -234,7 +234,7 @@ export function PlatformDashboard() {
           }
           end={
             <span aria-hidden className="font-mono">
-              GET /health/services · 30s
+              GET /admin/health/services · 30s
             </span>
           }
         />

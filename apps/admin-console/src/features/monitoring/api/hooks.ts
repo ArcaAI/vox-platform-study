@@ -5,7 +5,7 @@ import { getRedisHealth, getServiceHealth, getServiceUptime, getServicesHealth, 
 import { monitoringKeys } from './keys';
 import type { MonitoredService } from './types';
 
-/** Health boards poll — /health/services is gateway-throttled at 30/min. */
+/** Health boards poll — /admin/health/services is gateway-throttled at 30/min. */
 const REFRESH_MS = 30_000;
 
 export function useServicesHealth() {

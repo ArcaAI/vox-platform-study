@@ -384,9 +384,9 @@ describe('SDK v2 route standardization', () => {
       expect(HEALTH_ENDPOINTS.READY).toBe('/health/ready');
     });
 
-    it('MONITORING_ENDPOINTS should be unchanged', () => {
-      expect(MONITORING_ENDPOINTS.UPTIME).toBe('/monitoring/uptime');
-      expect(MONITORING_ENDPOINTS.SESSIONS).toBe('/monitoring/sessions');
+    it('MONITORING_ENDPOINTS should sit on the admin plane (TASK-759)', () => {
+      expect(MONITORING_ENDPOINTS.UPTIME).toBe('/admin/monitoring/uptime');
+      expect(MONITORING_ENDPOINTS.SESSIONS).toBe('/admin/monitoring/sessions');
     });
 
     it('AUTH_ENDPOINTS should be unchanged', () => {
@@ -396,8 +396,8 @@ describe('SDK v2 route standardization', () => {
       expect(AUTH_ENDPOINTS.IMPERSONATE).toBe('/auth/impersonate');
     });
 
-    it('SERVICE_HEALTH_ENDPOINTS should use consolidated /health/services endpoint', () => {
-      expect(SERVICE_HEALTH_ENDPOINTS.SERVICES).toBe('/health/services');
+    it('SERVICE_HEALTH_ENDPOINTS should use the consolidated /admin/health/services endpoint', () => {
+      expect(SERVICE_HEALTH_ENDPOINTS.SERVICES).toBe('/admin/health/services');
       expect(Object.keys(SERVICE_HEALTH_ENDPOINTS)).toHaveLength(1);
     });
 
