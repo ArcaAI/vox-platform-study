@@ -137,9 +137,20 @@ test.describe('TASK-709 — OCC on PATCH :id/context/:contextId', () => {
 test.describe('TASK-709 — OCC on PATCH :id/summary/:summaryId and POST :id/summary/:contextItemId/approve', () => {
   // Requires a reachable apps/text (SMR) to actually generate a summary —
   // see the file-level doc comment.
+  //
+  // TASK-764 — that requirement was DOCUMENTED but never ENFORCED: the
+  // `beforeAll` hard-asserted `[200,201]` on the generate call, so on any stack
+  // without apps/text (:8862) running it threw there and Playwright charged the
+  // failure to the first test in the block ("GET the generated summary carries
+  // a strong ETag…"), which reads as an OCC regression rather than an absent
+  // service. The gateway reports the real cause plainly — `Failed to call SMR
+  // service: connect ECONNREFUSED …:8862`, a 400 — so capture it and self-skip
+  // per the probe pattern in `streaming-ticket-refresh.spec.ts`. Every OCC
+  // assertion below is unchanged and still runs whenever SMR is up.
   let token: string;
   let consultationId: string;
-  let summaryId: string;
+  let summaryId = '';
+  let skipReason = '';
 
   test.beforeAll(async ({ request }) => {
     const login = await loginUser(request, SEEDED_USERS.doctor.username, SEEDED_USERS.doctor.password, DEFAULT_TENANT_KEY);
@@ -162,15 +173,23 @@ test.describe('TASK-709 — OCC on PATCH :id/summary/:summaryId and POST :id/sum
       headers: bearer(token),
       data: {},
     });
-    expect([200, 201], 'POST :id/summary (generate) — requires a reachable SMR').toContain(generated.status());
+
+    if (![200, 201].includes(generated.status())) {
+      skipReason = `POST :id/summary (generate) returned ${generated.status()} — is apps/text (TEXT_URL) running? body: ${await generated.text()}`;
+      console.warn(`[TASK-764] ${skipReason}`);
+      return;
+    }
+
     summaryId = ((await generated.json()) as SummaryBody).id;
   });
 
   test.afterAll(async ({ request }) => {
+    if (!consultationId) return;
     await request.delete(`/api/v1/consultations/${consultationId}`, { headers: bearer(token) }).catch(() => undefined);
   });
 
   test('GET the generated summary carries a strong ETag equal to its version', async ({ request }) => {
+    test.skip(!summaryId, skipReason);
     const res = await request.get(`/api/v1/consultations/${consultationId}/summary/latest`, { headers: bearer(token) });
     expect(res.status()).toBe(200);
     const body = (await res.json()) as SummaryBody;
@@ -178,6 +197,7 @@ test.describe('TASK-709 — OCC on PATCH :id/summary/:summaryId and POST :id/sum
   });
 
   test('PATCH :id/summary/:summaryId without If-Match returns 428', async ({ request }) => {
+    test.skip(!summaryId, skipReason);
     const res = await request.patch(`/api/v1/consultations/${consultationId}/summary/${summaryId}`, {
       headers: bearer(token),
       data: { content: 'edited without If-Match', expectedVersion: 1 },
@@ -186,6 +206,7 @@ test.describe('TASK-709 — OCC on PATCH :id/summary/:summaryId and POST :id/sum
   });
 
   test('PATCH :id/summary/:summaryId with a stale If-Match returns 412', async ({ request }) => {
+    test.skip(!summaryId, skipReason);
     const before = await request.get(`/api/v1/consultations/${consultationId}/summary/latest`, { headers: bearer(token) });
     const staleVersion = ((await before.json()) as SummaryBody).version;
 
@@ -205,6 +226,7 @@ test.describe('TASK-709 — OCC on PATCH :id/summary/:summaryId and POST :id/sum
   });
 
   test('POST :id/summary/:contextItemId/approve without If-Match returns 428', async ({ request }) => {
+    test.skip(!summaryId, skipReason);
     const res = await request.post(`/api/v1/consultations/${consultationId}/summary/${summaryId}/approve`, {
       headers: bearer(token),
       data: { expectedVersion: 1 },
@@ -213,6 +235,7 @@ test.describe('TASK-709 — OCC on PATCH :id/summary/:summaryId and POST :id/sum
   });
 
   test('POST :id/summary/:contextItemId/approve with a stale If-Match returns 412', async ({ request }) => {
+    test.skip(!summaryId, skipReason);
     const before = await request.get(`/api/v1/consultations/${consultationId}/summary/latest`, { headers: bearer(token) });
     const staleVersion = ((await before.json()) as SummaryBody).version;
 

@@ -63,9 +63,19 @@ test.describe('AC-6 — Auth throttle granularity', () => {
   // and run this spec in isolation with throttling ON (see the file header):
   //   RATE_LIMIT_ENABLED=true pnpm dev:api:test
   //   RATE_LIMIT_ENABLED=true pnpm test:e2e --grep auth-throttle-per-endpoint
+  //
+  // TASK-764: the guard is OPT-IN (`!== 'true'`), not opt-out (`=== 'false'`).
+  // The old form only skipped when the variable was EXPLICITLY 'false', so any
+  // invocation that did not load `.env.test` — e.g. a bare
+  // `pnpm exec playwright test <spec>` rather than `pnpm test:e2e`, which is
+  // `dotenv -e .env.test -- playwright test` — left it undefined, ran the spec
+  // against an API with throttling OFF, and reported `[401,401,401,401,401,401]`
+  // as a product failure. An unset variable is "I have not been told throttling
+  // is on", which is a skip, not a pass condition.
   test.skip(
-    process.env.RATE_LIMIT_ENABLED === 'false',
-    'Throttling disabled for the full suite (RATE_LIMIT_ENABLED=false); run this spec in isolation with RATE_LIMIT_ENABLED=true.',
+    process.env.RATE_LIMIT_ENABLED !== 'true',
+    `Throttling not declared enabled (RATE_LIMIT_ENABLED=${process.env.RATE_LIMIT_ENABLED ?? 'unset'}); ` +
+      'the full suite runs with it OFF. Run this spec in isolation against an API started with RATE_LIMIT_ENABLED=true.',
   );
 
   // The doctor login is the FIRST `/auth/login` call this spec makes —
