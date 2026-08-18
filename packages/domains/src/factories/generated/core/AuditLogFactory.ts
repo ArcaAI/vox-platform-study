@@ -9,6 +9,7 @@ import * as Entities from '../../../entities';
 
 export interface CreateAuditLogProps extends BaseEntityFactoryCreateProps {
   responsibleUserId?: IAuditLogEntity['responsibleUserId'];
+  responsibleServiceAccountId?: IAuditLogEntity['responsibleServiceAccountId'];
   responsibleIp?: IAuditLogEntity['responsibleIp'];
   resourceType: IAuditLogEntity['resourceType'];
   resourceId?: IAuditLogEntity['resourceId'];
@@ -43,7 +44,13 @@ export class AuditLogFactory {
       createdBy: props.createdBy ?? null,
       updatedBy: props.updatedBy || null,
 
-      responsibleUserId: props.responsibleUserId ?? '',
+      // TASK-762 — the machine path leaves the human column NULL rather than
+      // stamping the empty-string placeholder every other row uses, so a
+      // service-account row is distinguishable from "a human whose id we
+      // failed to resolve". The `?? ''` default is preserved verbatim for
+      // every existing (human) caller.
+      responsibleUserId: props.responsibleUserId ?? (props.responsibleServiceAccountId ? null : ''),
+      responsibleServiceAccountId: props.responsibleServiceAccountId ?? null,
       responsibleIp: props.responsibleIp ?? '',
       resourceType: props.resourceType,
       resourceId: props.resourceId ?? '',

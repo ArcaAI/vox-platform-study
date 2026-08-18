@@ -92,3 +92,4 @@ export * from './WorkflowTestFixtureFactory';
 export * from './WorkflowRunFactory';
 export * from './WorkflowDefinitionFactory';
 export * from './TenantNlpTaskInstructionsFactory';
+export * from './ServiceAccountFactory';

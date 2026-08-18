@@ -100,6 +100,7 @@ export * from './PromptVersionRepository';
 export * from './ResourceSubscriptionRepository';
 export * from './RolePermissionRepository';
 export * from './RoleRepository';
+export * from './ServiceAccountRepository';
 export * from './StorageAccessKeyRepository';
 export * from './SummaryMetaRepository';
 // Sibling that patches SummaryMetaRepository.prototype.

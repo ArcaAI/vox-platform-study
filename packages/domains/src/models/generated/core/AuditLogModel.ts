@@ -12,6 +12,7 @@ export class AuditLog {
   public id: string;
   public tenantId: string;
   public responsibleUserId: string | null;
+  public responsibleServiceAccountId: string | null;
   public responsibleIp: string | null;
   public resourceType: Enums.ResourceType;
   public resourceId: string | null;
@@ -44,6 +45,7 @@ export class AuditLog {
     this.id = data.id;
     this.tenantId = data.tenantId;
     this.responsibleUserId = data.responsibleUserId;
+    this.responsibleServiceAccountId = data.responsibleServiceAccountId;
     this.responsibleIp = data.responsibleIp;
     this.resourceType = data.resourceType;
     this.resourceId = data.resourceId;

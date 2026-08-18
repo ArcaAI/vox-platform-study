@@ -8,8 +8,19 @@ model AuditLog {
   tenantId String
 
   // Actor information
-  responsibleUserId String?
-  responsibleIp     String?
+  //
+  // TASK-762 — an admin action may be performed by a HUMAN or by a platform-
+  // issued MACHINE identity (`ServiceAccount`), never by both. Exactly one of
+  // the two columns below is populated per row:
+  //   - `responsibleUserId`          — an interactive human principal (JWT), or
+  //                                    the human an API key is bound to.
+  //   - `responsibleServiceAccountId`— a service-account principal.
+  // Attributing a machine action to the human who happens to have issued the
+  // credential is WRONG in a way a reviewer cannot detect, so the machine path
+  // leaves `responsibleUserId` NULL rather than borrowing a person's identity.
+  responsibleUserId           String?
+  responsibleServiceAccountId String?
+  responsibleIp               String?
 
   // Resource identification
   resourceType     ResourceType
@@ -69,6 +80,7 @@ model AuditLog {
   @@index([tenantId], name: "AuditLog_tenantId_idx")
   @@index([createdAt], name: "AuditLog_createdAt_idx")
   @@index([responsibleUserId], name: "AuditLog_responsibleUserId_idx")
+  @@index([responsibleServiceAccountId], name: "AuditLog_responsibleServiceAccountId_idx")
   // Resource-based queries
   @@index([resourceType, resourceId], name: "AuditLog_resource_idx")
   @@index([action, resourceType], name: "AuditLog_action_resource_idx")
@@ -297,6 +309,13 @@ enum ResourceType {
   // LIST READ is audited under the parent KnowledgeDocument's resourceType +
   // resourceId (see knowledge-document.service.ts#listChunks).
   KnowledgeDocument
+
+  // Platform-issued machine identity for administration (TASK-762). The
+  // THIRD credential class: not a tenant API key (`ApiKey`) and not the
+  // shared peer-service token, which the TASK-708 §6 owner ruling forbids
+  // extending to `/admin/*`. Issued SUPER_ADMIN-only; every issuance,
+  // rotation and revocation broadcasts against this resourceType.
+  ServiceAccount
 
   @@schema("core")
 }

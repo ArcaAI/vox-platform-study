@@ -2,8 +2,9 @@ import { SetMetadata, applyDecorators, createParamDecorator, ExecutionContext } 
 import { ApiBearerAuth } from '@nestjs/swagger';
 import { ConsentPurpose } from '@arcaai/domains';
 import { REQUIRED_PERMISSIONS_KEY, SKIP_AUTH_KEY, PERMISSION_MODE_KEY, RequiredPermission, PermissionMode } from './authorization.guard';
-import { API_KEY_REQUIRED_SCOPES, API_KEY_FORBIDDEN } from './unified-auth.guard';
+import { API_KEY_REQUIRED_SCOPES, API_KEY_FORBIDDEN, SERVICE_ACCOUNT_REQUIRED_SCOPES, SERVICE_ACCOUNT_FORBIDDEN } from './unified-auth.guard';
 import { isValidScope } from '../services/apiKey/apikey-scopes.registry';
+import { isValidServiceAccountScope } from '../services/serviceAccount/service-account-scopes.registry';
 
 /**
  * Mark route as public (no authentication or authorization required)
@@ -154,6 +155,69 @@ export function RequiredScopes(...scopes: string[]) {
  * ```
  */
 export const ForbidApiKey = () => SetMetadata(API_KEY_FORBIDDEN, true);
+
+/**
+ * Declare which `svc:*` scopes reach this route (TASK-762) — the
+ * service-account counterpart of `@RequiredScopes`.
+ *
+ * DELIBERATELY a separate decorator with a separate metadata key. `svc:*` and
+ * `admin:*` are different vocabularies belonging to different credential
+ * classes; one decorator carrying both would put a tenant API key and a
+ * platform machine identity in the same scope space, which is precisely the
+ * mixing the TASK-708 §6 owner ruling forbids.
+ *
+ * Deny-by-default: a route with no declaration is not a service-account surface
+ * and refuses every machine token (`enforceServiceAccountScopes`). ANY one of
+ * the listed scopes is sufficient (OR semantics).
+ *
+ * Validated at DECORATION time — an unknown scope is a module-load crash rather
+ * than a production 403, matching `@RequiredScopes`'s posture.
+ *
+ * @example
+ * ```typescript
+ * @Patch(':id')
+ * @CanUpdate('Department')
+ * @RequiredSvcScopes('svc:admin:department:manage')
+ * update() { ... }
+ * ```
+ */
+export function RequiredSvcScopes(...scopes: string[]) {
+  const invalid = scopes.filter((scope) => !isValidServiceAccountScope(scope));
+  if (invalid.length > 0) {
+    throw new Error(
+      `@RequiredSvcScopes(): unknown service-account scope(s): ${invalid.join(', ')}. ` +
+        `Scopes must be declared in SERVICE_ACCOUNT_SCOPE_REGISTRY ` +
+        `(packages/applications/src/services/serviceAccount/service-account-scopes.registry.ts). ` +
+        `admin:* and * are TENANT API KEY scopes and are never valid here.`,
+    );
+  }
+  return SetMetadata(SERVICE_ACCOUNT_REQUIRED_SCOPES, scopes);
+}
+
+/**
+ * Deny ANY service-account-authenticated caller (TASK-762 §5.5).
+ *
+ * INDEPENDENT of `@ForbidApiKey()`, which is about TENANT API KEYS. A route
+ * that must exclude machines but still admit keys declares only this one; a
+ * route that must exclude both declares both. Reusing `@ForbidApiKey()` for
+ * both would re-create the "one mechanism, two purposes" conflation the owner
+ * ruled against.
+ *
+ * Interactive-human-only flows are the intended users: `AuthController`,
+ * `ConsentGrantController`, `AdminImpersonationController` — and
+ * `ServiceAccountController` itself, where it is what stops a service account
+ * minting another one.
+ *
+ * @example
+ * ```typescript
+ * @Post()
+ * @CanManage('ServiceAccount')
+ * @ForbidApiKey()
+ * @ForbidServiceAccount()
+ * create() { ... }
+ * ```
+ */
+export const ForbidServiceAccount = () => SetMetadata(SERVICE_ACCOUNT_FORBIDDEN, true);
 
 /**
  * Parameter decorator to inject the user's CASL ability into controller method

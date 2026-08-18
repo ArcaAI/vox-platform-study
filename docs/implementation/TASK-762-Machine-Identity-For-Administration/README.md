@@ -2,8 +2,8 @@
 
 | | |
 |---|---|
-| **Status** | **Pending** — owner decision recorded 2026-08-18: **Option 2, platform-issued service account. Build now.** |
-| **Type** | Decision + design (no code in this ticket) |
+| **Status** | **Review** — Option 2 built (2026-08-18). All layers land: audit attribution, `ServiceAccount` model + domain trio, `svc:*` namespace, SUPER_ADMIN-only issuance, token exchange/rotation/revocation, the third `UnifiedAuthGuard` branch, and six boot audits. Two deviations from §5 are recorded in §7 and need an owner call. |
+| **Type** | Decision + design + implementation |
 | **Owner** | Platform / Architecture — owner decision required before any implementation |
 | **Date** | 2026-08-18 |
 | **Size** | Decision: S · Implementation (Option 2): L |
@@ -325,7 +325,163 @@ TASK-761 owns the admin-plane audit; these assertions extend it and must fail **
 
 ## 7. Implementation Summary
 
-**Pending.** No code has been written and none may be until the owner decision in §6 is recorded. This ticket currently delivers the decision framing, the verified current-state evidence in §2, and the §5 design.
+Option 2 is **built**. 45 files changed. Every layer of the dependency chain
+(`Database → Domain → Services → API`) landed in order, TDD, with the RED
+observed before each GREEN.
+
+### 7.1 Step 0 (prerequisite) — audit attribution
+
+`AuditLog` could name only a person, so a machine's admin action was recorded
+against the human its credential was bound to (§2.8). Fixed FIRST, because the
+credential is not usable for attributable admin actions until it is.
+
+| Change | Location |
+|---|---|
+| `responsibleServiceAccountId String?` + index | `packages/database/src/prisma/db_main/audit.prisma:22,83` |
+| Entity field + **mutual-exclusion** invariant (a row naming both actors is unattributable and is refused) | `packages/domains/src/entities/generated/core/AuditLogEntity.ts` |
+| Factory: machine path leaves `responsibleUserId` **null** instead of the `''` placeholder every human row uses | `packages/domains/src/factories/generated/core/AuditLogFactory.ts` |
+| `SysEvent.responsibleServiceAccountId` | `packages/domains/src/common/events/arcaai.event.ts:18,47,67` |
+| `AuditLogJob.responsibleServiceAccountId` | `packages/domains/src/interfaces/jobTypes.ts:36` |
+| `BaseService.broadcastSysEvent` stamps **exactly one** actor; new `requestServiceAccount` getter | `packages/applications/src/common/base.service.ts` |
+| `SysEventService` passes it through; a machine actor now counts as a present actor for the "missing author" warning | `packages/applications/src/services/sysEvent/sysEvent.service.ts:124,143` |
+| `AuditLogProcessor` threads it to the factory | `packages/applications/src/services/auditLog/auditLog.processor.ts:27,58` |
+
+### 7.2 Steps 1–7
+
+| Step | What landed |
+|---|---|
+| **1 — model + trio** | `service-account.prisma` (new); hand-authored `ServiceAccountEntity` / `Factory` / `EntityMapper` (carries the `FIELDS_NOT_WRITABLE=['version']` OCC strip) / `Repository`; `ResourceType.ServiceAccount` in both `audit.prisma` and the domain enum; repository registered in `CoreDatabaseModule`; mapper + repository barrel lines added by hand. `gen:model`/`gen:entity`/`gen:factory` run; `gen:mapper`/`gen:repository` NOT run. |
+| **2 — issuance** | `ServiceAccountController` at `admin/service-accounts`, class-level `@CanManage('ServiceAccount')` **plus** an imperative SUPER_ADMIN check in the service, marked `AUTH-NOTE`. Also carries **both** `@ForbidApiKey()` and `@ForbidServiceAccount()`. |
+| **3 — tenant binding** | Two shapes only: tenant-bound (`tenantId` = customer) and platform (`tenantId` = SYSTEM + an `allowedTenantIds` working-tenant allow-list). No ambient default; a platform account with no `X-Tenant-Id` resolves **SYSTEM only**, and `50000000-…` is refused explicitly at both issuance and working-tenant resolution. |
+| **4 — credential lifecycle** | 64-hex CSPRNG secret returned **exactly once**; peppered HMAC verifier persisted; two-slot rotation with a bounded overlap; revocation = soft-delete **plus** an immediate Redis token purge. Opaque, server-validated tokens (never a JWT) keyed in Redis by token hash. |
+| **5 — guard branch** | Third `UnifiedAuthGuard` branch on `X-Service-Account-Token`, ordered after `@Public()` and before the API-key branch. New `@RequiredSvcScopes()` / `@ForbidServiceAccount()` decorators with their OWN metadata keys. Ability built for the **account itself** via new `PolicyEngine.buildAbilityFromRules`. Principal published on its own CLS key (`serviceAccount`), never on `user`, with an explicit `roles` array. |
+| **6 — audit attribution** | §7.1 above. |
+| **7 — boot audits** | `apps/api/src/bootstrap/service-account-surface-audit.ts`, wired at `main.ts:342`. Implements B, C, D, E, F, G. |
+
+### 7.3 Three deliberate deviations from §5 — each needs an owner acknowledgement
+
+**D1 — §5.1's "Add to `TENANT_SCOPED_MODELS`" is wrong and was NOT followed.**
+`ServiceAccount` is registered as `INTENTIONALLY_UNSCOPED` instead, exactly as
+`ApiKey` is. The token exchange reads the row by `clientId` **pre-auth**, where
+CLS is active but empty (`tenantId === undefined` AND `isSuperAdmin() === false`)
+— the precise combination the tenant-scope read handler throws on. Following §5.1
+would have reproduced the documented `ApiKey` failure in which *every credential
+on the platform authenticated as 401*. Isolation is enforced one layer up
+instead: list reads scope to the caller's tenant, and every by-id load runs
+`assertTenantOwnership` (404-over-403). Recorded with reasoning at
+`packages/database/src/extensions/__tests__/tenant-scope.test.ts` and in the
+repository's class doc.
+
+**D2 — §5.4's Vault WRITE of the client secret is not implemented, because
+there is no write path to implement it with.** `ISecretsProvider`
+(`packages/applications/src/services/baseServices/_meta/secrets/ISecretsProvider.ts`)
+exposes `getSecret*` and a backend-triggered `rotateSecret(key)` and **nothing
+that writes caller-supplied material**, across all five providers. Adding one
+changes the platform secrets contract, requires new Vault ACL policy for the
+app's AppRole, and touches the out-of-repo deployment manifests — an owner
+decision, not a side effect of this ticket.
+
+What shipped instead is *stronger* on the rule §Configuration Tiers actually
+states ("never put a credential in a DB column in plaintext") and weaker on one
+convenience property:
+
+- the secret is returned once and then **discarded by the platform** — never
+  persisted in any recoverable form, anywhere;
+- the row holds a peppered one-way HMAC verifier (the `ApiKey.keyHash` shape);
+- `credentialsRef` records the Vault path where an operator provisions it, so
+  "where does this live" is still answered on the row;
+- "survives rotation windows" is met by the two-slot verifier design, not by
+  re-reading stored material.
+
+The property NOT met is operator **re-retrieval of a lost secret**; the remedy
+is `POST :id/rotate`. If the owner wants true Vault-held secrets, that is a
+follow-up ticket adding `writeSecret` to `ISecretsProvider` + Vault ACL.
+
+**D3 — boot-audit assertion A is deliberately NOT implemented here.** A says no
+`admin/`-prefixed controller declares `@RequiredScopes`. 67 admin controllers
+legitimately still carry their `admin:*` scopes today, so asserting A now would
+refuse the boot. A belongs with TASK-757's cutover, once `@ForbidApiKey()` has
+actually been applied across the admin plane. Assertion G is likewise
+implemented in its *consistency* form (a route may not both declare a `svc:*`
+scope and forbid machines, and may not name an unregistered scope) rather than
+its every-route form, for the same reason: no route declares `@RequiredSvcScopes`
+yet, and the runtime already denies them all.
+
+### 7.4 Design choices worth naming
+
+- **`svc:*` is a separate registry, DERIVED from the admin vocabulary.** Every
+  concrete `admin:<area>` scope is renamespaced to `svc:admin:<area>` at module
+  load, carrying its `implies` verbatim, so boot-audit D holds by construction
+  and adding an admin area extends both surfaces in one edit. The two registries
+  are asserted **disjoint in both directions**.
+- **A dedicated header, not `Authorization: Bearer`.** Sharing the JWT header
+  would make branch selection a parsing heuristic on the auth hot path, and a
+  heuristic that guesses wrong is an authentication bypass.
+- **Ambiguous credentials are rejected outright.** A request presenting both an
+  API key and a machine token is refused before either is validated — picking
+  one would be a guess about intent that decides an authorization outcome.
+- **`superAdmin` is a persisted column, not an inference.** §2.7's failure mode
+  runs in both directions, so elevation is always an explicit, auditable
+  decision and `roles` is always present (empty, never undefined).
+
+### 7.5 Evidence
+
+| Gate | Result |
+|---|---|
+| Migration | `20260818112802_task_762_service_account_machine_identity` authored against a THROWAWAY `hope_shadow` DB per rule 02, applied, follow-up diff printed `-- This is an empty migration.`, shadow dropped. Dev DB synced with plain `pnpm db:push` (additive only; no `--force-reset`, no `db:all`). |
+| `pnpm --filter @arcaai/domains build test` | build clean; **1810 passed**, 2 skipped, 9 todo |
+| `pnpm --filter @arcaai/applications build test` | build clean; **9315 passed** (was 9268 — +47), 2 pre-existing failures unchanged |
+| `pnpm api:build` | 12/12 tasks successful |
+| `pnpm test:unit` (workspace) | **18147 passed**, 3 failed — all 3 verified pre-existing on a clean `git stash` tree (`env-sync` key-count 149>148, `dna-writing-style.processor`, `fail-mode.governance`) |
+| `pnpm lint` (domains / applications / api) | **13 / 183 / 65 warnings, 0 errors — byte-identical to the pre-change baseline.** Zero new warnings. |
+| Real boot | `node --import ./dist/instrumentation.js dist/main.js` reached `Nest application successfully started` + `Application started { port=8868 }` with all six new audits wired. |
+| Live route probes | `POST /auth/service-token` bad creds → 401 non-enumerable; secret in query string → 400; `GET /admin/service-accounts` unauthenticated → 401; API key + machine token together → 401 "Present exactly one credential"; unknown machine token → 401. |
+| `pnpm test:e2e` | **NOT RUN** — see §7.6. |
+
+### 7.6 What is NOT done
+
+- **`pnpm test:e2e` was not executed — deliberately, to avoid harming a
+  concurrent session.** The spec is written and COMPILES
+  (`apps/api/tests/e2e/task-762-service-account-cross-tenant.spec.ts`;
+  `playwright test --list task-762` resolves all 11 tests, zero compile errors).
+  It covers the 403 privilege boundary, the 404-over-403 tenancy posture,
+  secret-returned-once, no-self-replication, non-enumerable exchange, credentials
+  refused in the query string, and immediate revocation.
+
+  Two blockers, both requiring a human:
+
+  1. **The isolated test DB lacks the new schema.** Verified directly: it is
+     seeded (32 `User` rows) but `to_regclass('core."ServiceAccount"')` is NULL,
+     so every test would fail on a missing table.
+  2. **A test API is ALREADY RUNNING on port 8968** (PID observed, `/health`
+     200), started by one of the concurrent sessions (TASK-754 / TASK-755) that
+     own `apps/api/src/modules/speech/**` and the STT streaming files. It is
+     running pre-TASK-762 code, so it cannot serve these routes — but restarting
+     it would tear down that session's server. TASK-708's own close-out entry
+     records the damage a blanket `pkill` did last time this was not respected,
+     so this session stopped here rather than repeat it.
+
+  **A human must run**, once the concurrent sessions are finished with port 8968:
+  ```
+  pnpm --filter @arcaai/database db:push   # additive: adds ServiceAccount + the
+                                           # AuditLog column to the TEST DB;
+                                           # NODE_ENV=test, no --force-reset
+  pnpm test:up:api                          # terminal 1 (RESET_DB=false is enough —
+                                            # the test DB is already seeded)
+  pnpm test:e2e task-762                    # terminal 2
+  ```
+  The equivalent probes WERE run live against the dev API on 8868 (§7.5 "Live
+  route probes"), so the three guard branches, the non-enumerable 401, the
+  query-string refusal and the two-credential rejection are confirmed working —
+  what is unverified is the seeded-user, cross-tenant half.
+- Tests 29–32 of §5.6 (audit rows written end-to-end through the BullMQ
+  processor) are covered at the unit level for the factory/entity/`BaseService`
+  hops but not as an integration test through a live queue.
+- No admin controller yet declares `@RequiredSvcScopes(...)`, so no admin route
+  is machine-reachable in practice. That wiring is TASK-757's cutover; the
+  credential class, its guard branch and its audits are ready for it.
+- No `SettingDescriptor` for a Vault key family was registered (§5.4) — moot
+  under D2, since nothing is written to Vault.
 
 ---
 
@@ -334,4 +490,5 @@ TASK-761 owns the admin-plane audit; these assertions extend it and must fail **
 | Date | Change | Author |
 |---|---|---|
 | 2026-08-18 | **Created.** Documented the machine-identity gap that policy A2 / TASK-757 opens: verified against the working tree that no `admin/`-prefixed controller uses any service-token guard (all three guards appear only on `internal/*` controllers), that the sole reserved internal scope is `internal:stt:worker`, and that no OAuth2 client-credentials issuer or machine JWT exists — so after TASK-757 there is zero machine path to administration. Laid out three options against the TASK-708 §6 non-mixing ruling (which forbids both extending `X-Service-Token` to admin and re-admitting tenant API keys), recommended Option 2 (platform-issued service account) built on first named consumer with Option 1 as the standing position until then, and specified issuance gating, tenant→SYSTEM cascade binding, Vault-tier credential storage, rotation/revocation, audit attribution, and the seven boot-audit assertions TASK-761 must carry. Status **Blocked — requires owner decision**. Recorded two tree/document contradictions found during verification (see §2.7). | Documentation agent |
+| 2026-08-18 | **Implemented (Option 2).** All seven §5 steps built TDD across 45 files, RED observed before each GREEN. Landed the §5.6 audit-attribution prerequisite FIRST (`AuditLog.responsibleServiceAccountId` + a mutual-exclusion invariant, threaded through `SysEvent` → `SysEventService` → `AuditLogJob` → `AuditLogProcessor`, with `BaseService` stamping exactly one actor), then the `ServiceAccount` model + hand-authored domain trio, the `svc:*` scope namespace (a SEPARATE registry, derived from the `admin:*` vocabulary and asserted disjoint from it), SUPER_ADMIN-only issuance with a day-one privilege ceiling, opaque short-lived token exchange with two-slot rotation and immediate revocation, the third `UnifiedAuthGuard` branch with its own header/decorators/CASL principal, and six boot audits making the TASK-708 §6 non-mixing ruling mechanical. Evidence in §7.5: domains + applications + api build clean, 18147 unit tests pass (3 failures verified pre-existing), lint byte-identical to baseline, and a real boot reached "Application started" with live route probes confirming all three credential branches. THREE deviations from §5 need an owner call — §7.3: (D1) §5.1's `TENANT_SCOPED_MODELS` instruction was NOT followed because the token exchange is a pre-auth read and following it would have reproduced the documented `ApiKey` "every credential 401s" failure; (D2) §5.4's Vault WRITE is unimplementable — `ISecretsProvider` has no write path in any of its five providers — so the secret is shown once and never persisted recoverably, which is stronger on the no-plaintext-column rule but gives up operator re-retrieval; (D3) boot-audit A is deferred to TASK-757, since 67 admin controllers legitimately still carry `admin:*` scopes and asserting A now would refuse the boot. `pnpm test:e2e` was NOT run: the spec compiles (11 tests resolve) but the isolated test DB lacks the new table AND a concurrent session's test API is live on port 8968 — restarting it would tear down their server, which TASK-708's close-out entry records as real prior harm. Status Pending → **Review**. | Implementation agent |
 | 2026-08-18 | **Owner decision recorded — UNBLOCKED.** Option 2 (platform-issued service account, `svc:*` namespace, SUPER_ADMIN-only issuance, Vault-tier storage) is selected and is to be **built now**, not held until a first named consumer as §Recommendation proposed. Status Blocked → Pending. Two consequences follow and are in scope: (1) **audit attribution is a schema prerequisite** — `AuditLog` carries only `responsibleUserId`/`responsibleIp` (`audit.prisma:11-12`), so a machine actor cannot currently be recorded and a migration must land before the credential is usable for attributable admin actions; (2) TASK-757 no longer needs to ship into a zero-machine-path world — sequence 762's credential ahead of, or alongside, 757's cutover. | Owner decision |

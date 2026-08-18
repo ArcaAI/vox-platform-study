@@ -10,6 +10,13 @@ import * as Entities from '../../../entities';
 
 export interface IAuditLogEntity extends IBaseTenantEntity {
   responsibleUserId?: string | null;
+  /**
+   * TASK-762 — the MACHINE half of the actor pair. Mutually exclusive with
+   * `responsibleUserId`: a service-account action leaves the user column NULL
+   * rather than borrowing the identity of whichever human issued the
+   * credential, which would be wrong in a way a reviewer cannot detect.
+   */
+  responsibleServiceAccountId?: string | null;
   responsibleIp?: string | null;
   resourceType: Enums.ResourceType;
   resourceId?: string | null;
@@ -35,6 +42,7 @@ export interface IAuditLogEntity extends IBaseTenantEntity {
 
 export class AuditLogEntity extends BaseTenantEntity {
   private _responsibleUserId?: IAuditLogEntity['responsibleUserId'];
+  private _responsibleServiceAccountId?: IAuditLogEntity['responsibleServiceAccountId'];
   private _responsibleIp?: IAuditLogEntity['responsibleIp'];
   private _resourceType: IAuditLogEntity['resourceType'];
   private _resourceId?: IAuditLogEntity['resourceId'];
@@ -55,6 +63,7 @@ export class AuditLogEntity extends BaseTenantEntity {
   constructor(init: IAuditLogEntity) {
     super(init);
     this._responsibleUserId = init.responsibleUserId;
+    this._responsibleServiceAccountId = init.responsibleServiceAccountId;
     this._responsibleIp = init.responsibleIp;
     this._resourceType = init.resourceType;
     this._resourceId = init.resourceId;
@@ -79,6 +88,14 @@ export class AuditLogEntity extends BaseTenantEntity {
 
   set responsibleUserId(value: IAuditLogEntity['responsibleUserId']) {
     this.setProperty('responsibleUserId', value);
+  }
+
+  get responsibleServiceAccountId(): IAuditLogEntity['responsibleServiceAccountId'] {
+    return this._responsibleServiceAccountId;
+  }
+
+  set responsibleServiceAccountId(value: IAuditLogEntity['responsibleServiceAccountId']) {
+    this.setProperty('responsibleServiceAccountId', value);
   }
 
   get responsibleIp(): IAuditLogEntity['responsibleIp'] {
@@ -232,6 +249,18 @@ export class AuditLogEntity extends BaseTenantEntity {
     }
     if (!Object.values(Enums.ResourceType).includes(this._resourceType)) {
       throw new BusinessException(`AuditLog resourceType is invalid: ${String(this._resourceType)}.`);
+    }
+    // TASK-762 — an audited action has exactly ONE actor: a human
+    // (`responsibleUserId`) or a machine (`responsibleServiceAccountId`).
+    // A row naming both is unattributable — a reader cannot tell which one
+    // actually performed the action.
+    const hasHumanActor = this._responsibleUserId !== undefined && this._responsibleUserId !== null && this._responsibleUserId.trim().length > 0;
+    const hasMachineActor =
+      this._responsibleServiceAccountId !== undefined &&
+      this._responsibleServiceAccountId !== null &&
+      this._responsibleServiceAccountId.trim().length > 0;
+    if (hasHumanActor && hasMachineActor) {
+      throw new BusinessException('AuditLog must name exactly one actor — responsibleUserId and responsibleServiceAccountId are mutually exclusive.');
     }
     if (this._responsibleUserId !== undefined && this._responsibleUserId !== null && this._responsibleUserId.trim().length === 0) {
       throw new BusinessException('AuditLog responsibleUserId must not be blank when provided.');

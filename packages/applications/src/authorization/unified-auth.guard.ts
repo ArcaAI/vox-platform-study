@@ -17,6 +17,7 @@ import { IApiKeyService } from '../services/apiKey/IApiKeyService';
 import { IApiKeyRateLimiter, RateLimitResult } from '../services/apiKey/apikey-rate-limiter.service';
 import { PERMISSION_MODE_KEY, PermissionMode, REQUIRED_PERMISSIONS_KEY, RequiredPermission, SKIP_AUTH_KEY } from './authorization.guard';
 import { AppAbility, PolicyEngine } from './policy.engine';
+import { serviceAccountPolicyRules } from '../services/serviceAccount/service-account-scopes.registry';
 
 export const API_KEY_REQUIRED_SCOPES = 'apiKeyRequiredScopes';
 
@@ -36,6 +37,44 @@ export const API_KEY_REQUIRED_SCOPES = 'apiKeyRequiredScopes';
  * completely unaffected by this decorator.
  */
 export const API_KEY_FORBIDDEN = 'apiKeyForbidden';
+
+/**
+ * The header a service-account access token is presented in (TASK-762).
+ *
+ * A DEDICATED header, not `Authorization: Bearer`. The token is opaque and
+ * server-validated; sharing the JWT header would make "is this a JWT or a
+ * machine token?" a parsing heuristic on the hot auth path, and a heuristic
+ * that guesses wrong is an authentication bypass. A distinct header makes the
+ * branch selection unambiguous and keeps the third class mechanically separate
+ * from the other two, which is what the TASK-708 §6 ruling requires.
+ */
+export const SERVICE_ACCOUNT_TOKEN_HEADER = 'x-service-account-token';
+
+/**
+ * Metadata key set by `@RequiredSvcScopes(...)` — the service-account
+ * equivalent of `API_KEY_REQUIRED_SCOPES`, and DELIBERATELY a separate key.
+ *
+ * Deny-by-default: a route that declares no `svc:*` scope is not a
+ * service-account surface at all and refuses every machine token, exactly as
+ * `enforceApiKeyScopes` does for API keys. Boot-audit G turns that runtime
+ * refusal into an authoring error.
+ */
+export const SERVICE_ACCOUNT_REQUIRED_SCOPES = 'serviceAccountRequiredScopes';
+
+/**
+ * Metadata key set by `@ForbidServiceAccount()` — an unconditional deny for any
+ * service-account-authenticated caller.
+ *
+ * SEPARATE from `API_KEY_FORBIDDEN` on purpose. `@ForbidApiKey()` is about
+ * TENANT API KEYS; a service account is a distinct credential class and a route
+ * must be able to exclude machines independently of keys (`AuthController`,
+ * `ConsentGrantController`, `AdminImpersonationController`, and the
+ * service-account controller itself all want exactly that). Reusing one
+ * decorator for both would re-create the "one mechanism, two purposes"
+ * conflation the owner ruled against — and a route that wants to block both
+ * simply declares both.
+ */
+export const SERVICE_ACCOUNT_FORBIDDEN = 'serviceAccountForbidden';
 
 /**
  * Metadata key for `@ResolveSubjectInstance(...)` (TASK-712 Phase 5 Task 14
@@ -117,6 +156,37 @@ const UNIFIED_AUTH_RESULT = Symbol('unifiedAuthResult');
  * server-side log (`reason: 'forbid_api_key'` vs `'no_scopes_declared'`).
  */
 const API_KEY_ROUTE_DENIED_MESSAGE = 'This route does not accept API-key authentication';
+
+/**
+ * Client-facing denial for a service-account caller on a route that is not a
+ * service-account surface. Deliberately identical for both denial reasons
+ * (`@ForbidServiceAccount()` and "route declares no `@RequiredSvcScopes`"), for
+ * the same non-probing reason `API_KEY_ROUTE_DENIED_MESSAGE` documents.
+ */
+const SERVICE_ACCOUNT_ROUTE_DENIED_MESSAGE = 'This route does not accept service-account authentication';
+
+/**
+ * The minimal surface of `ServiceAccountService` this guard depends on.
+ * Structural, so `@arcaai/applications`' authorization layer does not take a
+ * hard dependency on the service module (mirroring how `IApiKeyService` is
+ * injected by token).
+ */
+export interface IServiceAccountAuthenticator {
+  authenticateByToken(token: string): Promise<ServiceAccountPrincipalLike | null>;
+  hasScope(principal: ServiceAccountPrincipalLike, requiredScope: string): boolean;
+}
+
+export interface ServiceAccountPrincipalLike {
+  id: string;
+  clientId: string;
+  tenantId: string;
+  workingTenantId: string;
+  scopes: string[];
+  roles: string[];
+  allowedTenantIds?: string[] | null;
+}
+
+export const SERVICE_ACCOUNT_AUTHENTICATOR = Symbol('SERVICE_ACCOUNT_AUTHENTICATOR');
 
 /**
  * The CASL verdict for a set of `@Authorize()`-declared permissions.
@@ -212,6 +282,13 @@ export class UnifiedAuthGuard implements CanActivate {
     @Inject(IApiKeyRateLimiter)
     private readonly rateLimiter?: { checkRateLimit: (apiKeyId: string, tenantId: string, limit: number) => Promise<RateLimitResult> },
     @Optional() @Inject(JWT_AUTH_GUARD) private readonly jwtAuthGuard?: CanActivate,
+    // TASK-762 — the THIRD credential class. `@Optional` so every existing test
+    // double and any context that does not wire the service-account module
+    // keeps constructing; without it the branch is simply never taken and a
+    // presented machine token falls through to the ordinary 401.
+    @Optional()
+    @Inject(SERVICE_ACCOUNT_AUTHENTICATOR)
+    private readonly serviceAccounts?: IServiceAccountAuthenticator,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -245,6 +322,37 @@ export class UnifiedAuthGuard implements CanActivate {
     const ipAddress = this.getClientIp(request);
 
     const rawApiKey = this.apiKeyService.extractApiKeyFromRequest(request);
+    const serviceAccountToken = this.extractServiceAccountToken(request);
+
+    // AMBIGUOUS CREDENTIALS ARE REJECTED, never silently resolved to one of
+    // them (TASK-762 §5.5 test 28). Whichever branch we picked would be a
+    // guess about caller intent, and a guess here decides an authorization
+    // outcome: a caller could present a broad API key alongside a narrow
+    // machine token (or vice versa) and receive whichever grant the guard
+    // happened to prefer. Checked BEFORE either branch runs, so neither
+    // credential is even validated.
+    if (rawApiKey && serviceAccountToken) {
+      this.logger.warn({ message: 'Authentication failed', reason: 'multiple_credential_classes_presented', method, path, ip: ipAddress });
+      throw new UnauthorizedException('Present exactly one credential: an API key or a service-account token, not both');
+    }
+
+    // Ordered AFTER @Public() and BEFORE the API-key branch.
+    if (serviceAccountToken) {
+      try {
+        return await this.handleServiceAccountAuth(context, request, serviceAccountToken, ipAddress, method, path);
+      } catch (error) {
+        if (error instanceof HttpException) throw error;
+        this.logger.warn({
+          message: 'Service-account authentication error',
+          reason: error instanceof Error ? error.message : String(error),
+          method,
+          path,
+          ip: ipAddress,
+        });
+        throw new UnauthorizedException('Invalid service-account token');
+      }
+    }
+
     if (rawApiKey) {
       try {
         return await this.handleApiKeyAuth(context, request, rawApiKey, ipAddress, method, path);
@@ -301,6 +409,156 @@ export class UnifiedAuthGuard implements CanActivate {
       ip: ipAddress,
     });
     throw new UnauthorizedException('Authentication required. Provide a valid JWT (Authorization: Bearer) or API key (X-API-Key).');
+  }
+
+  // ─── Service-Account Auth Path (TASK-762) ──────────────────────────
+  //
+  // The THIRD credential class. It shares NO mechanism with the two below:
+  // its own header, its own scope namespace (`svc:*`), its own exclusion
+  // decorator, and — critically — its own CASL principal. The API-key path
+  // evaluates abilities against the key's BOUND HUMAN; this path evaluates
+  // them against the ACCOUNT ITSELF, so a machine's authority is
+  // independently grantable and revocable.
+
+  private extractServiceAccountToken(request: { headers?: Record<string, unknown> } | undefined): string | null {
+    const raw = request?.headers?.[SERVICE_ACCOUNT_TOKEN_HEADER];
+    const value = Array.isArray(raw) ? raw[0] : raw;
+    if (typeof value !== 'string') return null;
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+
+  private async handleServiceAccountAuth(
+    context: ExecutionContext,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- same request shape as handleApiKeyAuth.
+    request: any,
+    token: string,
+    ipAddress: string,
+    method: string,
+    path: string,
+  ): Promise<boolean> {
+    if (!this.serviceAccounts) {
+      // Nothing can validate the token, so nothing may be trusted. Fail closed.
+      throw new UnauthorizedException('Service-account authentication is not available');
+    }
+
+    // `@ForbidServiceAccount()` is checked BEFORE the token is even resolved:
+    // a forbidden route has no scope and no principal that could rescue it.
+    const forbidden = this.reflector.getAllAndOverride<boolean>(SERVICE_ACCOUNT_FORBIDDEN, [context.getHandler(), context.getClass()]);
+    if (forbidden === true) {
+      this.logger.warn({ message: 'Service account denied', reason: 'forbid_service_account', method, path });
+      throw new ForbiddenException(SERVICE_ACCOUNT_ROUTE_DENIED_MESSAGE);
+    }
+
+    const principal = await this.serviceAccounts.authenticateByToken(token);
+    if (!principal) {
+      this.logger.warn({ message: 'Service-account authentication failed', reason: 'unknown_or_expired_token', method, path, ip: ipAddress });
+      throw new UnauthorizedException('Invalid or expired service-account token');
+    }
+
+    this.enforceServiceAccountScopes(context, principal, method, path);
+
+    // The principal goes on its OWN CLS key. Never on `user`: every
+    // `requestUser?.id` read in the codebase — including
+    // `BaseService.broadcastSysEvent` — would otherwise record this machine's
+    // actions against a person, which is §2.8's defect made worse.
+    this.cls.set('serviceAccount', principal);
+    // The WORKING tenant, not the account's home tenant: a platform account
+    // acts on the tenant it presented (validated against its allow-list at
+    // exchange time), and a tenant-bound account's working tenant IS its own.
+    if (principal.workingTenantId && !this.cls.get('tenantId')) {
+      this.cls.set('tenantId', principal.workingTenantId);
+    }
+    request['serviceAccount'] = principal;
+
+    await this.enforceServiceAccountAbilities(context, principal, method, path);
+
+    this.logger.debug({
+      message: 'Service account authenticated',
+      serviceAccountId: principal.id,
+      clientId: principal.clientId,
+      tenantId: principal.workingTenantId,
+      method,
+      path,
+    });
+
+    return true;
+  }
+
+  /**
+   * DENY BY DEFAULT, exactly as `enforceApiKeyScopes` does for API keys: a
+   * route is reachable by a machine token only if it EXPLICITLY declares
+   * `@RequiredSvcScopes(...)`. No declaration means "not a service-account
+   * surface", and the request is refused rather than falling through to CASL.
+   */
+  private enforceServiceAccountScopes(context: ExecutionContext, principal: ServiceAccountPrincipalLike, method: string, path: string): void {
+    const required = this.reflector.getAllAndOverride<string[]>(SERVICE_ACCOUNT_REQUIRED_SCOPES, [context.getHandler(), context.getClass()]);
+
+    if (!required || required.length === 0) {
+      this.logger.warn({ message: 'Service account denied', reason: 'no_svc_scopes_declared', serviceAccountId: principal.id, method, path });
+      throw new ForbiddenException(SERVICE_ACCOUNT_ROUTE_DENIED_MESSAGE);
+    }
+
+    if (!required.some((scope) => this.serviceAccounts!.hasScope(principal, scope))) {
+      this.logger.warn({
+        message: 'Service account scope insufficient',
+        serviceAccountId: principal.id,
+        requiredScopes: required,
+        heldScopes: principal.scopes,
+        method,
+        path,
+      });
+      throw new ForbiddenException(`Service account does not have required scope(s): ${required.join(', ')}`);
+    }
+  }
+
+  /**
+   * The SECOND half of the conjunction. Scopes bound the CREDENTIAL; abilities
+   * bound the PRINCIPAL — and here the principal is the account, so its ability
+   * is built from the `svc:*` scopes it was issued with rather than loaded for
+   * a human. A held scope NEVER substitutes for a missing ability and vice
+   * versa, in both directions.
+   */
+  private async enforceServiceAccountAbilities(
+    context: ExecutionContext,
+    principal: ServiceAccountPrincipalLike,
+    method: string,
+    path: string,
+  ): Promise<void> {
+    const required = this.reflector.getAllAndOverride<RequiredPermission[]>(REQUIRED_PERMISSIONS_KEY, [context.getHandler(), context.getClass()]);
+    if (!required || required.length === 0) {
+      return;
+    }
+
+    const mode = this.reflector.getAllAndOverride<PermissionMode>(PERMISSION_MODE_KEY, [context.getHandler(), context.getClass()]) || 'AND';
+
+    let ability: AppAbility;
+    try {
+      ability = this.policyEngine.buildAbilityFromRules(serviceAccountPolicyRules(principal.scopes));
+    } catch (error) {
+      this.logger.error({
+        message: 'Service-account ability build failed',
+        serviceAccountId: principal.id,
+        method,
+        path,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw new ForbiddenException('Authorization failed');
+    }
+
+    const verdict = evaluatePermissions(ability, required, mode);
+    if (!verdict.allowed) {
+      this.logger.warn({
+        message: 'Access denied',
+        reason: 'service_account_lacks_permission',
+        serviceAccountId: principal.id,
+        method,
+        path,
+        mode,
+        deniedPermissions: verdict.missing,
+      });
+      throw new ForbiddenException(verdict.message);
+    }
   }
 
   // ─── API Key Auth Path ─────────────────────────────────────────────

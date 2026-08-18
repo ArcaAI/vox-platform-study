@@ -9,6 +9,7 @@ import { auditApiKeyRequiredScopes, auditInternalRoutesOffApiKeySurface } from '
 import { auditAdminScopedControllers } from './bootstrap/admin-scope-audit';
 import { auditEveryApiKeyReachableRouteDeclaresScopes } from './bootstrap/api-key-surface-audit';
 import { auditConsentRouteCoverage } from './bootstrap/consent-route-coverage-audit';
+import { auditServiceAccountSurface } from './bootstrap/service-account-surface-audit';
 import { assertGenaiContentCaptureDisabled } from './bootstrap/genai-content-capture-audit';
 import { assertJwtSecretNotPlaceholder } from './bootstrap/jwt-secret-placeholder-audit';
 // CORS helpers live in `cors.config.ts` so the dev / staging / production
@@ -323,6 +324,22 @@ async function bootstrap() {
   // predicate authoritative at request time; this surfaces a forgotten
   // decorator at boot instead of a silent enforcement gap in production.
   auditConsentRouteCoverage(app);
+
+  // Refuses to start if the THIRD credential class (TASK-762) has leaked into
+  // either of the other two planes, or has lost its own gates:
+  //   B  no /admin/* controller uses a peer-service token guard — the owner's
+  //      TASK-708 §6 non-mixing ruling made MECHANICAL rather than left as an
+  //      accident of implementation (§2.1 verified it holds today; nothing
+  //      stopped it from changing tomorrow);
+  //   C  no /internal/* route declares a svc:* scope — the mirror of B;
+  //   D  every svc:* scope maps to a live admin area and vice-versa;
+  //   E  /admin/service-accounts carries BOTH @ForbidApiKey() and
+  //      @ForbidServiceAccount() — no key-path escalation into machine
+  //      issuance, and no self-replication;
+  //   F  POST /auth/service-token is @Public() AND guarded;
+  //   G  a route declaring @RequiredSvcScopes never also forbids machines, and
+  //      never names a scope outside the registry.
+  auditServiceAccountSurface(app);
 
   // KEEP-ALIVE MUST OUTLIVE THE UPSTREAM PROXY'S IDLE TIMEOUT.
   //

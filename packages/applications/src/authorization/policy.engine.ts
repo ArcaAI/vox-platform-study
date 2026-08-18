@@ -168,6 +168,21 @@ export class PolicyEngine {
    * @param context - Policy context with user info
    * @returns CASL ability instance
    */
+  /**
+   * Build an ability from EXPLICIT rules, with no user, no tenant and no
+   * database read (TASK-762).
+   *
+   * The service-account path needs a CASL ability for the ACCOUNT ITSELF, not
+   * for a bound human — that is the whole point of the credential class: a
+   * machine's authority must be independently grantable and revocable. Its
+   * rules come from the `svc:*` scopes the account was issued with, so there is
+   * nothing to load and nothing to cache (a per-request scope list is already
+   * in hand, and caching it under a user key would be wrong twice over).
+   */
+  buildAbilityFromRules(rules: PolicyRule[]): AppAbility {
+    return createPrismaAbility(rules);
+  }
+
   async buildAbility(context: PolicyContext): Promise<AppAbility> {
     const cacheKey = this.getCacheKey(context);
 
