@@ -36,6 +36,17 @@ export class ApiKeyController {
     return getScopesByCategory();
   }
 
+  /**
+   * AUTH-NOTE: `@CanCreate('ApiKey')` UNDERSTATES the real gate. `ApiKeyService`
+   * additionally enforces a privilege CEILING on the requested `scopes`
+   * (`assertScopeCeiling`): every scope's implied CASL ability must be one the
+   * CALLING principal already holds, so a tenant admin cannot mint a key
+   * carrying `admin:*` or the bare `'*'`. It fails CLOSED when the caller's
+   * compiled ability is unavailable — notably on the API-key-authenticated
+   * minting path, where `UnifiedAuthGuard` deliberately never publishes the
+   * ability to CLS. A refusal is a 403 (privilege boundary), NOT the
+   * cross-tenant 404-over-403 posture this controller's by-id routes use.
+   */
   @ApiEndpoint({
     returnedModel: ApiKeyResponse,
     method: HttpMethod.POST,
@@ -86,6 +97,13 @@ export class ApiKeyController {
     return ApiKeyDtoMapper.ToResponse(result);
   }
 
+  /**
+   * AUTH-NOTE: `@CanUpdate('ApiKey')` UNDERSTATES the real gate — the same
+   * scope ceiling as `create` above, applied to the WIDENING DELTA only. A
+   * PATCH is refused (403) when it ADDS a scope whose implied ability the
+   * caller does not hold; renames and narrowing PATCHes are not gated, and a
+   * PATCH that omits `scopes` is not checked at all.
+   */
   @ApiEndpoint({
     returnedModel: ApiKeyResponse,
     method: HttpMethod.PATCH,

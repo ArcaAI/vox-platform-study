@@ -58,6 +58,21 @@
  *     Half 2's assertions are UNCHANGED by TASK-742 — `/admin/tenants` was
  *     already declared, so the new default never applied to it.
  *
+ *  5. "Minting privilege ceiling" (TASK-756) — the other end of the same
+ *     credential's life. Halves 1-4 all ask "what may this key REACH?";
+ *     half 5 asks "who was allowed to MINT it?". `ApiKeyService` now refuses
+ *     any scope whose implied CASL ability the CALLING principal does not
+ *     itself hold, so a tenant admin — gated by the class-level
+ *     `@CanManage('ApiKey')`, not by SUPER_ADMIN — can no longer issue a
+ *     long-lived bearer credential carrying `admin:*` or the bare `'*'`.
+ *     Consequence for the halves above: the three fixtures that need a
+ *     privileged scope (`admin:tenant:write`, `'*'`) are now minted with the
+ *     SUPER_ADMIN token instead of the tenant-admin one. Their assertions are
+ *     unchanged — an API-key-authenticated caller is never treated as a super
+ *     admin by the handlers (`UnifiedAuthGuard` publishes `{ id, tenantId }`
+ *     with no `roles`), so a super-admin-minted key is still tenant-scoped at
+ *     request time.
+ *
  * Prerequisites: API server running against the test DB
  * (`pnpm test:up:api`), seeded (`pnpm test:db:seed`).
  */
@@ -87,12 +102,22 @@ async function createScopedApiKey(request: APIRequestContext, token: string, sco
 
 test.describe('TASK-708 — API-key scope contract (locks in current behavior)', () => {
   let adminToken: string;
+  // TASK-756 — the minting ceiling refuses a scope whose implied ability the
+  // caller does not hold, so privileged fixtures (`admin:tenant:write`, `'*'`)
+  // must be minted by a super admin. The tenant-admin token still mints every
+  // ordinary tenant-plane scope this spec uses.
+  let superAdminToken: string;
   const createdApiKeyIds: string[] = [];
 
   test.beforeAll(async ({ request }) => {
-    const login = await loginUser(request, SEEDED_USERS.admin.username, SEEDED_USERS.admin.password, DEFAULT_TENANT_KEY);
+    const [login, saLogin] = await Promise.all([
+      loginUser(request, SEEDED_USERS.admin.username, SEEDED_USERS.admin.password, DEFAULT_TENANT_KEY),
+      loginUser(request, SEEDED_USERS.superAdmin.username, SEEDED_USERS.superAdmin.password, DEFAULT_TENANT_KEY),
+    ]);
     expect(login?.token, 'tenant-admin login failed — cannot create scoped API keys').toBeTruthy();
+    expect(saLogin?.token, 'super-admin login failed — cannot create privileged scoped API keys').toBeTruthy();
     adminToken = login!.token as string;
+    superAdminToken = saLogin!.token as string;
   });
 
   test.afterAll(async ({ request }) => {
@@ -230,7 +255,7 @@ test.describe('TASK-708 — API-key scope contract (locks in current behavior)',
     });
 
     test('an admin:tenant:write-scoped API key still succeeds', async ({ request }) => {
-      const key = await createScopedApiKey(request, adminToken, ['admin:tenant:write'], 'task-708-gap-admin-tenants-allowed');
+      const key = await createScopedApiKey(request, superAdminToken, ['admin:tenant:write'], 'task-708-gap-admin-tenants-allowed');
       createdApiKeyIds.push(key.id);
 
       const response = await request.get('/api/v1/admin/tenants', {
@@ -249,7 +274,7 @@ test.describe('TASK-708 — API-key scope contract (locks in current behavior)',
     });
 
     test('the platform "*" wildcard scope still satisfies the new gate (no regression for platform-operator keys)', async ({ request }) => {
-      const key = await createScopedApiKey(request, adminToken, ['*'], 'task-708-gap-admin-tenants-wildcard');
+      const key = await createScopedApiKey(request, superAdminToken, ['*'], 'task-708-gap-admin-tenants-wildcard');
       createdApiKeyIds.push(key.id);
 
       const response = await request.get('/api/v1/admin/tenants', {
@@ -377,7 +402,7 @@ test.describe('TASK-708 — API-key scope contract (locks in current behavior)',
     });
 
     test('an @ForbidApiKey() surface (/tenant/me) refuses even the "*" wildcard key', async ({ request }) => {
-      const key = await createScopedApiKey(request, adminToken, ['*'], 'task-742-forbid-wildcard');
+      const key = await createScopedApiKey(request, superAdminToken, ['*'], 'task-742-forbid-wildcard');
       createdApiKeyIds.push(key.id);
 
       const response = await request.get('/api/v1/tenant/me', {
@@ -395,6 +420,91 @@ test.describe('TASK-708 — API-key scope contract (locks in current behavior)',
       });
 
       expect(response.status()).toBe(200);
+    });
+  });
+
+  // ==========================================================================
+  // Half 5 — TASK-756: the MINTING privilege ceiling.
+  //
+  // Halves 1-4 gate what a key may REACH. This one gates who may ISSUE it.
+  // `ValidScopesConstraint` only ever proved a requested scope was a REGISTRY
+  // MEMBER; nothing proved the caller was entitled to grant it, so a tenant
+  // admin could mint a long-lived bearer credential carrying `admin:*` or the
+  // bare `'*'` — no MFA, no session expiry, no revocation-on-logout, and a
+  // value that survives in CI logs and `.env` files. `ApiKeyService` now
+  // refuses any scope whose implied CASL ability the CALLER does not hold.
+  //
+  // This does NOT weaken the request-time half: `enforceApiKeyAbilities` still
+  // evaluates each route's CASL metadata against the key's bound user on every
+  // request. The two are a conjunction.
+  // ==========================================================================
+
+  test.describe('TASK-756 — a tenant admin cannot mint a key above its own privilege', () => {
+    test("a tenant admin minting 'admin:*' is refused with 403", async ({ request }) => {
+      const response = await request.post('/api/v1/admin/api-keys', {
+        headers: { Authorization: `Bearer ${adminToken}` },
+        data: { keyName: `task-756-admin-wildcard-${Date.now()}`, keyType: 'SDK', scopes: ['admin:*'] },
+      });
+
+      expect(response.status()).toBe(403);
+      const body = await response.json();
+      expect(body.message).toContain('beyond your own permissions');
+    });
+
+    test("a tenant admin minting the bare '*' is refused with 403", async ({ request }) => {
+      const response = await request.post('/api/v1/admin/api-keys', {
+        headers: { Authorization: `Bearer ${adminToken}` },
+        data: { keyName: `task-756-star-${Date.now()}`, keyType: 'SDK', scopes: ['*'] },
+      });
+
+      expect(response.status()).toBe(403);
+    });
+
+    test('the same tenant admin can still mint an ordinary tenant-plane scope (the ceiling does not over-block)', async ({ request }) => {
+      const response = await request.post('/api/v1/admin/api-keys', {
+        headers: { Authorization: `Bearer ${adminToken}` },
+        data: { keyName: `task-756-ordinary-${Date.now()}`, keyType: 'SDK', scopes: ['consultation:session:read'] },
+      });
+
+      expect(response.status()).toBe(201);
+      const body = await response.json();
+      createdApiKeyIds.push(body.apiKey.id);
+    });
+
+    test("a SUPER_ADMIN can still mint '*' (the platform-operator path is unchanged)", async ({ request }) => {
+      const response = await request.post('/api/v1/admin/api-keys', {
+        headers: { Authorization: `Bearer ${superAdminToken}` },
+        data: { keyName: `task-756-sa-star-${Date.now()}`, keyType: 'SDK', scopes: ['*'] },
+      });
+
+      expect(response.status()).toBe(201);
+      const body = await response.json();
+      createdApiKeyIds.push(body.apiKey.id);
+    });
+
+    test('a PATCH that WIDENS an existing key with admin:* is refused, while a rename is not', async ({ request }) => {
+      const created = await request.post('/api/v1/admin/api-keys', {
+        headers: { Authorization: `Bearer ${adminToken}` },
+        data: { keyName: `task-756-widen-${Date.now()}`, keyType: 'SDK', scopes: ['consultation:session:read'] },
+      });
+      expect(created.status()).toBe(201);
+      const createdBody = await created.json();
+      createdApiKeyIds.push(createdBody.apiKey.id);
+
+      const etag = created.headers()['etag'];
+
+      const widen = await request.patch(`/api/v1/admin/api-keys/${createdBody.apiKey.id}`, {
+        headers: { Authorization: `Bearer ${adminToken}`, ...(etag ? { 'If-Match': etag } : {}) },
+        data: { scopes: ['consultation:session:read', 'admin:*'] },
+      });
+      expect(widen.status()).toBe(403);
+
+      // A PATCH that never touches `scopes` is not ceiling-checked at all.
+      const rename = await request.patch(`/api/v1/admin/api-keys/${createdBody.apiKey.id}`, {
+        headers: { Authorization: `Bearer ${adminToken}`, ...(etag ? { 'If-Match': etag } : {}) },
+        data: { keyName: `task-756-renamed-${Date.now()}` },
+      });
+      expect(rename.status()).toBe(200);
     });
   });
 });
