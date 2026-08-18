@@ -37,7 +37,7 @@ import { MyEntitlementsController } from '../../modules/entitlements/my-entitlem
 import { ChangelogController } from '../../modules/changelog/changelog.controller';
 import { AiInferenceController } from '../../modules/ai-inference/ai-inference.controller';
 import { PromptTemplateController } from '../../modules/prompt-management/prompt-template.controller';
-import { AudioPipelinePublicController } from '../../modules/pipeline/audio-pipeline-public.controller';
+import { AudioPipelineCatalogController } from '../../modules/pipeline/audio-pipeline-catalog.controller';
 import { PermissionCheckController } from '../../modules/rbac/permission-check.controller';
 import { UserSettingsController } from '../../modules/user/controllers/user-settings.controller';
 import { UserDepartmentsMeController } from '../../modules/user/controllers/user-departments-me.controller';
@@ -106,7 +106,7 @@ describe('business-plane API-key exemption audit (TASK-758, policy A1)', () => {
         buildFakeAppFromRealControllers([
           AiInferenceController,
           PromptTemplateController,
-          AudioPipelinePublicController,
+          AudioPipelineCatalogController,
           ChangelogController,
           MyBillingController,
           MyTenantController,
@@ -228,7 +228,7 @@ describe('the converted business controllers declare the scope A1 assigned them'
   const expected: Array<[string, new (...args: never[]) => unknown, string]> = [
     ['AiInferenceController', AiInferenceController, 'ai:inference:write'],
     ['PromptTemplateController', PromptTemplateController, 'prompt:template:read'],
-    ['AudioPipelinePublicController', AudioPipelinePublicController, 'stt:model:read'],
+    ['AudioPipelineCatalogController', AudioPipelineCatalogController, 'stt:model:read'],
     ['ChangelogController', ChangelogController, 'platform:changelog:read'],
     ['MyBillingController', MyBillingController, 'tenant:account:read'],
     ['MyUsageController', MyUsageController, 'tenant:account:read'],

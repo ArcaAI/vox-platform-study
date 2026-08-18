@@ -30,7 +30,7 @@ import { test, expect } from '@playwright/test';
 import { DEFAULT_TENANT_KEY, SEEDED_USERS, loginUser } from '../../../../tests/helpers';
 
 const ADMIN_SCHEMAS = '/api/v1/admin/consultation-context-schemas';
-const DISCOVERY = '/api/v1/tenant/me/context-schema';
+const DISCOVERY = '/api/v1/tenants/me/context-schema';
 
 /** Seeded `__GLOBAL__` consultation owned by the `doctor` user. */
 const GLOBAL_CONSULTATION_ID = '90000000-0000-0000-0000-000000000001';
