@@ -9,7 +9,7 @@ import {
 } from '@arcaai/applications';
 import { Body, Controller, Delete, Get, Inject, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { CanManage, ExpectedVersion, RequiresIfMatch, RequiredScopes } from '../../decorators';
+import { CanManage, ExpectedVersion, RequiresIfMatch, ForbidApiKey } from '../../decorators';
 
 /**
  * WorkflowDefinitionController — admin CRUD + compile/validate/publish for the
@@ -28,7 +28,7 @@ import { CanManage, ExpectedVersion, RequiresIfMatch, RequiredScopes } from '../
  */
 @ApiBearerAuth()
 @ApiTags('admin-workflow-definitions')
-@RequiredScopes('admin:workflow-definition:manage')
+@ForbidApiKey()
 @Controller('admin/workflow-definitions')
 @CanManage('WorkflowDefinition')
 export class WorkflowDefinitionController {

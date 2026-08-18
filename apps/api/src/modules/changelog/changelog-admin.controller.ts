@@ -1,7 +1,7 @@
 import { ChangelogEntryResponse, CreateChangelogEntryRequest, IChangelogService, UpdateChangelogEntryRequest } from '@arcaai/applications';
 import { Body, Controller, Inject, Param, Patch, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { CanManage, ExpectedVersion, RequiresIfMatch, RequiredScopes } from '../../decorators';
+import { CanManage, ExpectedVersion, RequiresIfMatch, ForbidApiKey } from '../../decorators';
 
 /**
  * Authoring surface for the curated release notes (frozen
@@ -18,7 +18,7 @@ import { CanManage, ExpectedVersion, RequiresIfMatch, RequiredScopes } from '../
  */
 @ApiBearerAuth()
 @ApiTags('admin-changelog')
-@RequiredScopes('admin:changelog:manage')
+@ForbidApiKey()
 @Controller('admin/changelog')
 @CanManage('ChangelogEntry')
 export class ChangelogAdminController {

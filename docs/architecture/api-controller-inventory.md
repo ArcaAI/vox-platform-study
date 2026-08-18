@@ -70,15 +70,34 @@ Mixed controllers are split into public vs JWT-only at the handler. Since TASK-7
 
 | Auth | Controllers | Handlers |
 |---|---:|---:|
-| JWT + API key (`@RequiredScopes`) | 89 | 534 |
-| JWT only (`@ForbidApiKey` or no key path), including mixed JWT methods | 5 jwt-only classes + mixed JWT methods | 34 |
+| JWT + API key (`@RequiredScopes`) | 24 | 148 |
+| JWT only (`@ForbidApiKey` or no key path), including mixed JWT methods | 70 jwt-only classes + mixed JWT methods | 420 |
 | Public (`@Public()`), including mixed public methods | 4 public classes + mixed public methods | 15 |
 | Service token (`@Public()` + `X-Service-Token`) | 4 | 22 |
-| **Total** | **104** | **605** |
+| **Total** | **105** | **605** |
 
-API-key-reachable handlers (`apikeyCount` after correcting `ConsentGrantController` to 0): **534**.
+API-key-reachable handlers: **148** — the whole business plane and `SttInternalController`'s
+documented carve-out, and nothing else.
 
 **TASK-758 delta (policy A1).** 13 business controllers / 33 handlers moved from *JWT only* to *JWT + API key* (76 → 89 classes, 501 → 534 handlers). The 5 remaining jwt-only classes are the three reasoned exemptions (`VoiceProfileController`, `DnaWritingStyleController` — `AuthController` is mixed, so it is counted with the mixed controllers), the two `admin/`-prefixed rows A2 owns (`ConsentGrantController`, `AdminImpersonationController`), and `MonitoringController` / `ApiHealthController`, which TASK-759 reclassifies.
+
+**TASK-757 delta (policy A2 — the admin plane becomes JWT-only).** 65 controllers / **386
+handlers** move from *JWT + API key* to *JWT only*: every `admin/`-prefixed controller that carried
+a class-level `@RequiredScopes(...)` now carries `@ForbidApiKey()` instead. All 70 admin-prefixed
+controllers are now JWT-only, so API-key-reachable handlers fall 534 → **148**. No handler was
+created, deleted or moved and no CASL/permission decorator changed — this is purely the removal of
+a credential class from one plane.
+
+The 56 `admin:*` scope strings (and the 3 `webhook:*` strings, whose only consumer
+`WebhookController` sits at `admin/webhooks`) are **RESERVED, not deleted**: still valid for a
+stored key, refused at grant time, dropped from `GET /admin/api-keys/scopes`, and retained as the
+vocabulary the service-account plane derives `svc:admin:*` from. The bare `'*'` is NOT reserved —
+it is the platform SERVICE_ACCOUNT wildcard for `/internal/*` and is made inert on admin by
+`@ForbidApiKey()` alone (checked BEFORE the scope check, so no scope can rescue a forbidden route).
+
+**Consequence:** until the service-account credential class is live end-to-end, there is no machine
+path to administration. `X-Service-Token` is structurally confined to `/internal/*` and a boot audit
+refuses to start if an admin controller adopts it.
 
 **TASK-759 delta (rules P1/P2).** No handler was created or deleted and no gate changed; two handlers changed class and two controllers changed prefix, so the class total is **105** and the handler total stays **605**. `MonitoringController` `api/v1/monitoring` → `api/v1/admin/monitoring` (4 handlers, still JWT-only). `ApiHealthController` drops from 6 handlers to 4 and stops being *Mixed*; the 2 CASL-gated handlers become `AdminHealthServicesController` at `api/v1/admin/health/services` (JWT-only). Both moved surfaces were already `@ForbidApiKey()`, so the *count* of API-key-reachable handlers is unchanged — what changes is the REASON: "undeclared, therefore closed" becomes "admin plane, therefore closed" (A2). Hard move, no alias: the pre-move paths 404.
 
@@ -93,113 +112,113 @@ One row per HTTP controller and WebSocket gateway. Sorted by API count descendin
 | Controller | Prefix | APIs | Auth model | API key | JWT / other | Notes |
 |---|---|---:|---|---|---|---|
 | ConsultationController | `api/v1/consultations` | 51 | JWT + API key | consultation:session:write (read/report overrides) | @Authorize(); some create:Consultation | Largest surface. 5 @Sse() streams + StreamScope. Consent on history/prime/recording. |
-| HarnessAdminController | `api/v1/admin/harness` | 26 | JWT + API key | admin:harness:manage | per-method HarnessPolicy / Eval / Workflow / Audit | Policy, golden sets, Temporal workflow ops, live sessions. |
-| UserController | `api/v1/admin/users` | 21 | JWT + API key | admin:user:write | manage:User (assign-role → UserRoleAssignment) | Shares prefix with UserDepartments + AdminImpersonation. |
+| HarnessAdminController | `api/v1/admin/harness` | 26 | JWT only | forbidden (@ForbidApiKey) | per-method HarnessPolicy / Eval / Workflow / Audit | Policy, golden sets, Temporal workflow ops, live sessions. |
+| UserController | `api/v1/admin/users` | 21 | JWT only | forbidden (@ForbidApiKey) | manage:User (assign-role → UserRoleAssignment) | Shares prefix with UserDepartments + AdminImpersonation. |
 | TranscriptionJobController | `api/v1/audio/transcription-jobs` | 20 | JWT + API key | stt:transcription:write | @Authorize() | 1 @Sse() job stream. Stream session CRUD + TenantOwnedResource. |
 | HarnessInternalController | `api/v1/internal/harness` | 18 | Service token | n/a — X-Service-Token (HarnessServiceTokenGuard) | skipped (@Public) | Harness worker callbacks. UnifiedAuth skipped. |
-| PromptManagementController | `api/v1/admin/prompt-templates` | 16 | JWT + API key | admin:prompt-template:manage | manage:PromptTemplate (method Can* overrides) | Approve is SYSTEM-row SUPER_ADMIN in service. Assign-department uses manage:Department. |
-| TenantController | `api/v1/admin/tenants` | 15 | JWT + API key | admin:tenant:write | manage\|update:Tenant (lifecycle = manage) | Shares prefix with provision + pipeline-resync. |
-| AudioPipelineController | `api/v1/admin/audio/pipelines` | 14 | JWT + API key | admin:audio-pipeline:manage | manage:AsrPipeline | YAML validate, clone, tenant assign, versions. |
+| PromptManagementController | `api/v1/admin/prompt-templates` | 16 | JWT only | forbidden (@ForbidApiKey) | manage:PromptTemplate (method Can* overrides) | Approve is SYSTEM-row SUPER_ADMIN in service. Assign-department uses manage:Department. |
+| TenantController | `api/v1/admin/tenants` | 15 | JWT only | forbidden (@ForbidApiKey) | manage\|update:Tenant (lifecycle = manage) | Shares prefix with provision + pipeline-resync. |
+| AudioPipelineController | `api/v1/admin/audio/pipelines` | 14 | JWT only | forbidden (@ForbidApiKey) | manage:AsrPipeline | YAML validate, clone, tenant assign, versions. |
 | DnaWritingStyleController | `api/v1/dna-writing-styles` | 14 | JWT only | forbidden (@ForbidApiKey) | @Authorize(); owner/doctor checks in service | SSE job stream has no @StreamScope — ticket will 401. |
-| QueueAdminController | `api/v1/admin/queues` | 12 | JWT + API key | admin:queue:manage | manage:all | SUPER_ADMIN BullMQ ops. |
-| TenantBucketController | `api/v1/admin/tenants/storage/buckets` | 12 | JWT + API key | admin:tenant-storage:manage | class manage:Tenant; methods Can*:Storage | TenantOwnedResource on named buckets. |
-| EntitlementsAdminController | `api/v1/admin/entitlements` | 11 | JWT + API key | admin:entitlement:manage | manage:all | Plans, tenant overrides, trial expiry. |
-| DepartmentController | `api/v1/admin/departments` | 10 | JWT + API key | admin:department:manage | manage:Department | Tree + users + prompt-config OCC. |
-| RolesController | `api/v1/admin/rbac/roles` | 10 | JWT + API key | admin:role:write | manage:Role (reads CanAny read\|manage) | Break-glass on deletes. |
+| QueueAdminController | `api/v1/admin/queues` | 12 | JWT only | forbidden (@ForbidApiKey) | manage:all | SUPER_ADMIN BullMQ ops. |
+| TenantBucketController | `api/v1/admin/tenants/storage/buckets` | 12 | JWT only | forbidden (@ForbidApiKey) | class manage:Tenant; methods Can*:Storage | TenantOwnedResource on named buckets. |
+| EntitlementsAdminController | `api/v1/admin/entitlements` | 11 | JWT only | forbidden (@ForbidApiKey) | manage:all | Plans, tenant overrides, trial expiry. |
+| DepartmentController | `api/v1/admin/departments` | 10 | JWT only | forbidden (@ForbidApiKey) | manage:Department | Tree + users + prompt-config OCC. |
+| RolesController | `api/v1/admin/rbac/roles` | 10 | JWT only | forbidden (@ForbidApiKey) | manage:Role (reads CanAny read\|manage) | Break-glass on deletes. |
 | StorageController | `api/v1/storage` | 10 | JWT + API key | media:file:write | per-verb Storage | MinIO/S3. TenantOwnedResource on named buckets. |
 | SttInternalController | `api/v1/internal/stt` | 10 | JWT + API key | internal:stt:worker (X-Internal-Service-Key) | @Authorize() — worker rejects JWT in handler | Exception to /internal Public+token pattern. Tenant pin needs platform key. |
-| ApiKeyController | `api/v1/admin/api-keys` | 9 | JWT + API key | admin:apikey:write | manage:ApiKey + per-verb Can* | Create/rotate/revoke plus scopes catalog. |
-| DepartmentAgentController | `api/v1/admin/department-agents` | 9 | JWT + API key | admin:department-agent:manage | manage:DepartmentAgent | Shares prefix with resync controller. |
-| ConsultationContextSchemaAdminController | `api/v1/admin/consultation-context-schemas` | 8 | JWT + API key | admin:consultation-context-schema:manage | manage:ConsultationContextSchema | Same file as MyTenantContextSchemaController. |
-| DnaWritingStyleAdminController | `api/v1/admin/dna-writing-styles` | 8 | JWT + API key | admin:dna-writing-style:manage | manage:DnaWritingStyleReport | SSE job stream with StreamScope dna_job. |
-| GlobalSettingController | `api/v1/admin/settings` | 8 | JWT + API key | admin:settings:manage | manage:GlobalSetting (reveal/rotate → manage:all) | Shares prefix with catalog + registry-write. |
-| TenantIdpConfigAdminController | `api/v1/admin/tenant-idp-config` | 8 | JWT + API key | admin:tenant-idp-config:manage | read/manage:TenantIdentityProvider | Test + directory sync. |
-| TenantSttConfigAdminController | `api/v1/admin/stt-config` | 8 | JWT + API key | admin:tenant-stt-config:manage | read/manage:TenantSttConfig | Effective + row + credentials test. |
-| WorkflowDefinitionController | `api/v1/admin/workflow-definitions` | 8 | JWT + API key | admin:workflow-definition:manage | manage:WorkflowDefinition | Validate + publish. |
-| AiModelAdminController | `api/v1/admin/ai-models` | 7 | JWT + API key | admin:ai-model:manage | manage:all | Shares prefix with discovery controller. |
+| ApiKeyController | `api/v1/admin/api-keys` | 9 | JWT only | forbidden (@ForbidApiKey) | manage:ApiKey + per-verb Can* | Create/rotate/revoke plus scopes catalog. |
+| DepartmentAgentController | `api/v1/admin/department-agents` | 9 | JWT only | forbidden (@ForbidApiKey) | manage:DepartmentAgent | Shares prefix with resync controller. |
+| ConsultationContextSchemaAdminController | `api/v1/admin/consultation-context-schemas` | 8 | JWT only | forbidden (@ForbidApiKey) | manage:ConsultationContextSchema | Same file as MyTenantContextSchemaController. |
+| DnaWritingStyleAdminController | `api/v1/admin/dna-writing-styles` | 8 | JWT only | forbidden (@ForbidApiKey) | manage:DnaWritingStyleReport | SSE job stream with StreamScope dna_job. |
+| GlobalSettingController | `api/v1/admin/settings` | 8 | JWT only | forbidden (@ForbidApiKey) | manage:GlobalSetting (reveal/rotate → manage:all) | Shares prefix with catalog + registry-write. |
+| TenantIdpConfigAdminController | `api/v1/admin/tenant-idp-config` | 8 | JWT only | forbidden (@ForbidApiKey) | read/manage:TenantIdentityProvider | Test + directory sync. |
+| TenantSttConfigAdminController | `api/v1/admin/stt-config` | 8 | JWT only | forbidden (@ForbidApiKey) | read/manage:TenantSttConfig | Effective + row + credentials test. |
+| WorkflowDefinitionController | `api/v1/admin/workflow-definitions` | 8 | JWT only | forbidden (@ForbidApiKey) | manage:WorkflowDefinition | Validate + publish. |
+| AiModelAdminController | `api/v1/admin/ai-models` | 7 | JWT only | forbidden (@ForbidApiKey) | manage:all | Shares prefix with discovery controller. |
 | AuthController | `api/v1/auth` | 7 | Mixed | forbidden | class @ForbidApiKey; login+refresh @Public | Public: POST login, POST refresh. JWT: logout, me, impersonate, stream-ticket, revoke-impersonation. |
-| BillingAdminController | `api/v1/admin/billing/invoices` | 7 | JWT + API key | admin:billing:manage | manage:BillingInvoice | Mutations SUPER_ADMIN in service. |
-| PoliciesController | `api/v1/admin/rbac/policies` | 7 | JWT + API key | admin:rbac-policy:write | manage:Policy (GETs CanAny read\|manage) | Break-glass on protected deletes. |
-| TenantTtsConfigAdminController | `api/v1/admin/tts-config` | 7 | JWT + API key | admin:tenant-tts-config:manage | read/manage:TenantTtsConfig | Catalog + credentials. |
+| BillingAdminController | `api/v1/admin/billing/invoices` | 7 | JWT only | forbidden (@ForbidApiKey) | manage:BillingInvoice | Mutations SUPER_ADMIN in service. |
+| PoliciesController | `api/v1/admin/rbac/policies` | 7 | JWT only | forbidden (@ForbidApiKey) | manage:Policy (GETs CanAny read\|manage) | Break-glass on protected deletes. |
+| TenantTtsConfigAdminController | `api/v1/admin/tts-config` | 7 | JWT only | forbidden (@ForbidApiKey) | read/manage:TenantTtsConfig | Catalog + credentials. |
 | TextProxyController | `api/v1/text` | 7 | JWT + API key | consultation:report:write | @Authorize() | Hand-rolled SSE on GET tasks/:taskId/stream (StreamScope text_task). |
-| WebhookController | `api/v1/admin/webhooks` | 7 | JWT + API key | webhook:event:write | manage:Webhook (deliveries read:WebhookRunHistory) | Rotate-secret OCC. |
+| WebhookController | `api/v1/admin/webhooks` | 7 | JWT only | forbidden (@ForbidApiKey) | manage:Webhook (deliveries read:WebhookRunHistory) | Rotate-secret OCC. |
 | ApiHealthController | `api/v1/health` | 4 | Public | forbidden (inert — every route is @Public) | none (all @Public) | PUBLIC-ONLY since TASK-759: /, /live, /ready, /startup. No longer "Mixed" — the two CASL-gated /services routes moved to AdminHealthServicesController. |
-| AuditLogController | `api/v1/admin/audit-logs` | 6 | JWT + API key | admin:audit:read | read:AuditLog | Non-SUPER_ADMIN needs tenant context. |
-| ResourceSubscriptionController | `api/v1/admin/resource-subscriptions` | 6 | JWT + API key | admin:resource-subscription:manage | manage:ResourceSubscription | Tenant-scoped in service. |
+| AuditLogController | `api/v1/admin/audit-logs` | 6 | JWT only | forbidden (@ForbidApiKey) | read:AuditLog | Non-SUPER_ADMIN needs tenant context. |
+| ResourceSubscriptionController | `api/v1/admin/resource-subscriptions` | 6 | JWT only | forbidden (@ForbidApiKey) | manage:ResourceSubscription | Tenant-scoped in service. |
 | SttWsGateway | `/ws/stt/stream (no api/v1)` | 6 | Stream ticket | no — ?ticket= scoped stt_session:<id> | n/a — Nest APP_GUARD does not run | Raw ws. Origin check + Redis tenant binding. Binary + JSON audio/stop/resume/close. |
-| TenantAllowedOriginController | `api/v1/admin/allowed-origins` | 6 | JWT + API key | admin:allowed-origin:manage | manage:TenantAllowedOrigin | Wildcard origins SUPER_ADMIN in service. |
-| TenantStorageConfigAdminController | `api/v1/admin/tenants/storage/config` | 6 | JWT + API key | admin:tenant-storage:manage | manage\|update:Tenant; methods Can*:Storage | Platform default routes SUPER_ADMIN in service. |
+| TenantAllowedOriginController | `api/v1/admin/allowed-origins` | 6 | JWT only | forbidden (@ForbidApiKey) | manage:TenantAllowedOrigin | Wildcard origins SUPER_ADMIN in service. |
+| TenantStorageConfigAdminController | `api/v1/admin/tenants/storage/config` | 6 | JWT only | forbidden (@ForbidApiKey) | manage\|update:Tenant; methods Can*:Storage | Platform default routes SUPER_ADMIN in service. |
 | AiInferenceController | `api/v1/ai` | 5 | JWT + API key | `ai:inference:write` | @Authorize() | Guardrail + NLP proxy. |
-| AiRuntimeProfileController | `api/v1/admin/ai-runtime-profiles` | 5 | JWT + API key | admin:ai-runtime-profile:manage | manage:all | SUPER_ADMIN / SYSTEM rows. |
+| AiRuntimeProfileController | `api/v1/admin/ai-runtime-profiles` | 5 | JWT only | forbidden (@ForbidApiKey) | manage:all | SUPER_ADMIN / SYSTEM rows. |
 | AuthSsoController | `api/v1/auth/sso` | 5 | Public | n/a | none (@Public) | OIDC + SAML start/callback/ACS. Throttled. |
-| KnowledgeController | `api/v1/admin/knowledge/documents` | 5 | JWT + API key | admin:knowledge:manage | manage:KnowledgeDocument (chunks → read) | Qdrant cleanup fail-closed on delete. |
-| McpAdminController | `api/v1/admin/mcp-servers` | 5 | JWT + API key | admin:mcp-server:manage | read/manage:McpServer | Writes SUPER_ADMIN-only in service. |
+| KnowledgeController | `api/v1/admin/knowledge/documents` | 5 | JWT only | forbidden (@ForbidApiKey) | manage:KnowledgeDocument (chunks → read) | Qdrant cleanup fail-closed on delete. |
+| McpAdminController | `api/v1/admin/mcp-servers` | 5 | JWT only | forbidden (@ForbidApiKey) | read/manage:McpServer | Writes SUPER_ADMIN-only in service. |
 | PromptTemplateController | `api/v1/prompt-templates` | 5 | JWT + API key | `prompt:template:read` | read:PromptTemplate (writes owner-gated in service) | Clinician plane — AUTH-NOTE: declared read, ownership in service. |
-| SchedulerAdminController | `api/v1/admin/schedulers` | 5 | JWT + API key | admin:scheduler:manage | manage:all | Pause/resume/cron/toggle. |
+| SchedulerAdminController | `api/v1/admin/schedulers` | 5 | JWT only | forbidden (@ForbidApiKey) | manage:all | Pause/resume/cron/toggle. |
 | TtsWsGateway | `/ws/tts/stream (no api/v1)` | 5 | Fail-closed Origin check, then stream ticket | no — ?ticket= scoped tts_session:<id> | n/a — APP_GUARD does not run | No Redis tenant-binding cross-check — no server-side TTS session resource exists to bind (TASK-755). Quota close 4429. |
 | VoiceProfileController | `api/v1/voice-profile` | 5 | JWT only | forbidden | per-verb UserVoiceProfile | TenantOwnedResource on mutate/delete. |
-| WorkflowTestFixtureController | `api/v1/admin/workflow-test-fixtures` | 5 | JWT + API key | admin:workflow-test-fixture:manage | manage:WorkflowTestFixture |  |
+| WorkflowTestFixtureController | `api/v1/admin/workflow-test-fixtures` | 5 | JWT only | forbidden (@ForbidApiKey) | manage:WorkflowTestFixture |  |
 | WorkflowsController | `api/v1/workflows` | 5 | JWT + API key | workflow:definition:read / workflow:run:read\|write | per-route WorkflowDefinition / WorkflowRun | Hand-rolled SSE on run stream. Heavy throttle on invoke. |
-| AdminUsageController | `api/v1/admin/usage` | 4 | JWT + API key | admin:usage:manage | manage:UsageAnalytics | top-tenants SUPER_ADMIN in service. |
-| AiProviderConnectionController | `api/v1/admin/ai-providers` | 4 | JWT + API key | admin:ai-provider:manage | read/manage:GlobalSetting | Legacy LLM alias (service=llm). |
-| AiTaskDefaultAdminController | `api/v1/admin/ai-task-defaults` | 4 | JWT + API key | admin:ai-task-default:manage | read/manage:AiTaskDefault | Some keys SUPER_ADMIN in service. |
+| AdminUsageController | `api/v1/admin/usage` | 4 | JWT only | forbidden (@ForbidApiKey) | manage:UsageAnalytics | top-tenants SUPER_ADMIN in service. |
+| AiProviderConnectionController | `api/v1/admin/ai-providers` | 4 | JWT only | forbidden (@ForbidApiKey) | read/manage:GlobalSetting | Legacy LLM alias (service=llm). |
+| AiTaskDefaultAdminController | `api/v1/admin/ai-task-defaults` | 4 | JWT only | forbidden (@ForbidApiKey) | read/manage:AiTaskDefault | Some keys SUPER_ADMIN in service. |
 | MonitoringController | `api/v1/admin/monitoring` | 4 | JWT only | forbidden | CanAny manage:all \| read:TenantTelemetry | Moved under /admin by TASK-759 (rule P2). Throttle 300/60s. |
 | AdminHealthServicesController | `api/v1/admin/health/services` | 2 | JWT only | forbidden | CanAny manage:all \| read:TenantTelemetry | Split off ApiHealthController by TASK-759 (rule P2). Throttle 30/60s. Fans out 6 downstream probes. |
-| NotificationController | `api/v1/admin/notifications` | 4 | JWT + API key | admin:notification:manage | manage:Notification | No create route. |
-| ProviderConnectionController | `api/v1/admin/providers` | 4 | JWT + API key | admin:ai-provider:manage | read/manage:GlobalSetting | Same file as AiProviderConnectionController. |
-| RateLimitAdminController | `api/v1/admin/rate-limit` | 4 | JWT + API key | admin:rate-limit:manage | manage:all | SUPER_ADMIN policy editor. |
+| NotificationController | `api/v1/admin/notifications` | 4 | JWT only | forbidden (@ForbidApiKey) | manage:Notification | No create route. |
+| ProviderConnectionController | `api/v1/admin/providers` | 4 | JWT only | forbidden (@ForbidApiKey) | read/manage:GlobalSetting | Same file as AiProviderConnectionController. |
+| RateLimitAdminController | `api/v1/admin/rate-limit` | 4 | JWT only | forbidden (@ForbidApiKey) | manage:all | SUPER_ADMIN policy editor. |
 | SttCompatGateway | `/stt (no api/v1)` | 4 | API key (WS) | WS headers apikey/api-key/x-api-key/x-internal-service-key, or query apiKey/api-key/key | n/a | Legacy v1. Session tenant must match key tenant. |
-| UserDepartmentsController | `api/v1/admin/users` | 4 | JWT + API key | admin:user:write | manage:User | :id/departments assign/unassign. |
-| WorkflowSandboxRunController | `api/v1/admin/workflow-definitions/:definitionId/sandbox-runs` | 4 | JWT + API key | admin:workflow-definition:manage | per-method WorkflowRun Can* | Hand-rolled SSE + StreamScope workflow_run. |
-| AdminConsultationController | `api/v1/admin/consultations` | 3 | JWT + API key | admin:consultation-admin:manage | manage:Consultation | Tenant-wide list/aggregate. |
-| AdminReconciliationController | `api/v1/admin/usage/reconciliation` | 3 | JWT + API key | admin:usage:manage | manage:UsageAnalytics |  |
-| AdminTranscriptionJobController | `api/v1/admin/audio/transcription-jobs` | 3 | JWT + API key | admin:transcription-job:read | class manage:Tenant; handlers read:AsrPipeline |  |
-| AgentPromotionController | `api/v1/admin/agent-promotions` | 3 | JWT + API key | admin:agent-promotion:manage | manage:DepartmentAgent | POST requires manage in both tenants (service). |
-| AgentTrajectoryController | `api/v1/admin/agent-trajectory` | 3 | JWT + API key | admin:agent-trajectory:read | read:AgentTrajectory |  |
-| AiServiceAdminController | `api/v1/admin/ai-services` | 3 | JWT + API key | admin:ai-service:manage | manage:all | Read-only guardrail/NLP status proxy. |
+| UserDepartmentsController | `api/v1/admin/users` | 4 | JWT only | forbidden (@ForbidApiKey) | manage:User | :id/departments assign/unassign. |
+| WorkflowSandboxRunController | `api/v1/admin/workflow-definitions/:definitionId/sandbox-runs` | 4 | JWT only | forbidden (@ForbidApiKey) | per-method WorkflowRun Can* | Hand-rolled SSE + StreamScope workflow_run. |
+| AdminConsultationController | `api/v1/admin/consultations` | 3 | JWT only | forbidden (@ForbidApiKey) | manage:Consultation | Tenant-wide list/aggregate. |
+| AdminReconciliationController | `api/v1/admin/usage/reconciliation` | 3 | JWT only | forbidden (@ForbidApiKey) | manage:UsageAnalytics |  |
+| AdminTranscriptionJobController | `api/v1/admin/audio/transcription-jobs` | 3 | JWT only | forbidden (@ForbidApiKey) | class manage:Tenant; handlers read:AsrPipeline |  |
+| AgentPromotionController | `api/v1/admin/agent-promotions` | 3 | JWT only | forbidden (@ForbidApiKey) | manage:DepartmentAgent | POST requires manage in both tenants (service). |
+| AgentTrajectoryController | `api/v1/admin/agent-trajectory` | 3 | JWT only | forbidden (@ForbidApiKey) | read:AgentTrajectory |  |
+| AiServiceAdminController | `api/v1/admin/ai-services` | 3 | JWT only | forbidden (@ForbidApiKey) | manage:all | Read-only guardrail/NLP status proxy. |
 | AudioPipelinePublicController | `api/v1/audio/pipelines` | 3 | JWT + API key | `stt:model:read` | @Authorize() | Read-only catalog for clinicians. |
-| ChangelogAdminController | `api/v1/admin/changelog` | 3 | JWT + API key | admin:changelog:manage | manage:ChangelogEntry | SUPER_ADMIN in service. |
+| ChangelogAdminController | `api/v1/admin/changelog` | 3 | JWT only | forbidden (@ForbidApiKey) | manage:ChangelogEntry | SUPER_ADMIN in service. |
 | ChangelogController | `api/v1/changelog` | 3 | JWT + API key | `platform:changelog:read` | @Authorize() (any authenticated user) | Reader plane. |
 | ConsentGrantController | `api/v1/admin/consent-grants` | 3 | JWT only | forbidden | manage:ConsentGrant | Human-only consent admin. `@ForbidApiKey()`. |
 | ConsultationJobController | `api/v1/consultations/jobs` | 3 | JWT + API key | consultation:session:read | @Authorize() | 1 SSE + TenantOwnedResource. |
 | MyBillingController | `api/v1/billing` | 3 | JWT + API key | `tenant:account:read` | read:Tenant | CLS tenant only. 404-over-403 on foreign invoice. |
 | MyTenantController | `api/v1/tenant` | 3 | JWT + API key | `tenant:profile:read` | @Authorize(); PATCH update:Tenant |  |
 | PermissionCheckController | `api/v1/rbac/check` | 3 | JWT + API key | `user:profile:read` | @Authorize(); other-user checks need manage:User |  |
-| PipelinePolicyAdminController | `api/v1/admin/harness/pipeline-policy` | 3 | JWT + API key | admin:pipeline-policy:manage | read/manage:PipelinePolicy |  |
-| PlatformMetricsController | `api/v1/admin/platform` | 3 | JWT + API key | admin:platform-metrics:read | manage:PlatformMetrics | SUPER_ADMIN via manage:all. |
-| RateCardAdminController | `api/v1/admin/billing/rate-card` | 3 | JWT + API key | admin:billing:manage | manage:AiPriceBook | Mutations SUPER_ADMIN in service. |
-| ServiceReleaseAdminController | `api/v1/admin/service-releases` | 3 | JWT + API key | admin:service-release:manage | CanAny manage:all \| read:TenantTelemetry |  |
-| StorageAccessKeyController | `api/v1/admin/tenants/storage/keys` | 3 | JWT + API key | admin:storage-key:manage | class manage:Tenant; methods Can*:Storage |  |
+| PipelinePolicyAdminController | `api/v1/admin/harness/pipeline-policy` | 3 | JWT only | forbidden (@ForbidApiKey) | read/manage:PipelinePolicy |  |
+| PlatformMetricsController | `api/v1/admin/platform` | 3 | JWT only | forbidden (@ForbidApiKey) | manage:PlatformMetrics | SUPER_ADMIN via manage:all. |
+| RateCardAdminController | `api/v1/admin/billing/rate-card` | 3 | JWT only | forbidden (@ForbidApiKey) | manage:AiPriceBook | Mutations SUPER_ADMIN in service. |
+| ServiceReleaseAdminController | `api/v1/admin/service-releases` | 3 | JWT only | forbidden (@ForbidApiKey) | CanAny manage:all \| read:TenantTelemetry |  |
+| StorageAccessKeyController | `api/v1/admin/tenants/storage/keys` | 3 | JWT only | forbidden (@ForbidApiKey) | class manage:Tenant; methods Can*:Storage |  |
 | SttCompatController | `api/stt (prefix excluded)` | 3 | JWT + API key | stt:stream:write | @Authorize() | Live paths: POST /api/stt/{start_session,switch,stop_session}. |
-| WorkflowRunController | `api/v1/admin/workflow-runs` | 3 | JWT + API key | admin:workflow-run:read | read:WorkflowRun | Working-tenant CLS required. |
-| AiModelDiscoveryController | `api/v1/admin/ai-models` | 2 | JWT + API key | admin:ai-model:manage | manage:all |  |
+| WorkflowRunController | `api/v1/admin/workflow-runs` | 3 | JWT only | forbidden (@ForbidApiKey) | read:WorkflowRun | Working-tenant CLS required. |
+| AiModelDiscoveryController | `api/v1/admin/ai-models` | 2 | JWT only | forbidden (@ForbidApiKey) | manage:all |  |
 | MyUsageController | `api/v1/usage` | 2 | JWT + API key | `tenant:account:read` | read:Tenant | No tenantId override. |
-| NlpTaskInstructionsAdminController | `api/v1/admin/nlp-task-instructions` | 2 | JWT + API key | admin:nlp-task-instructions:manage | read/manage:TenantNlpTaskInstructions | No class @Authorize; per-handler CASL. |
-| PrismaStudioController | `api/v1/admin/pstudio` | 2 | JWT + API key | admin:pstudio:manage | manage:PrismaStudio | HTML shell + BFF POST. Not public. |
+| NlpTaskInstructionsAdminController | `api/v1/admin/nlp-task-instructions` | 2 | JWT only | forbidden (@ForbidApiKey) | read/manage:TenantNlpTaskInstructions | No class @Authorize; per-handler CASL. |
+| PrismaStudioController | `api/v1/admin/pstudio` | 2 | JWT only | forbidden (@ForbidApiKey) | manage:PrismaStudio | HTML shell + BFF POST. Not public. |
 | RegisterController | `api/v1/auth` | 2 | Public | n/a | none | 404 if self-signup flag off. Throttled. |
 | ServiceReleaseInternalController | `api/v1/internal/service-releases` | 2 | Service token | n/a — X-Service-Token (any known service secret) | skipped (@Public) |  |
-| SettingsCatalogController | `api/v1/admin/settings` | 2 | JWT + API key | admin:settings:manage | read:GlobalSetting |  |
-| SettingsRegistryWriteController | `api/v1/admin/settings` | 2 | JWT + API key | admin:settings:manage | read/manage:GlobalSetting | PUT uses ExpectedVersion, not RequiresIfMatch. |
+| SettingsCatalogController | `api/v1/admin/settings` | 2 | JWT only | forbidden (@ForbidApiKey) | read:GlobalSetting |  |
+| SettingsRegistryWriteController | `api/v1/admin/settings` | 2 | JWT only | forbidden (@ForbidApiKey) | read/manage:GlobalSetting | PUT uses ExpectedVersion, not RequiresIfMatch. |
 | SpeechProxyController | `api/v1/speech` | 2 | JWT + API key | tts:speech:write | @Authorize() | Synthesize may be SSE or audio bytes. |
-| TenantFrontendConfigAdminController | `api/v1/admin/tenant-frontend-config` | 2 | JWT + API key | admin:tenant-frontend-config:manage | manage\|update:Tenant |  |
+| TenantFrontendConfigAdminController | `api/v1/admin/tenant-frontend-config` | 2 | JWT only | forbidden (@ForbidApiKey) | manage\|update:Tenant |  |
 | TextCompatController | `api/smr/api/v1 (prefix excluded)` | 2 | JWT + API key | consultation:report:write | @Authorize() | POST /api/smr/api/v1/{summary/sync,presummary}. SSE if body.stream===true. |
 | UserPreferencesController | `api/v1/user/me/preferences` | 2 | JWT + API key | user:preferences:write | @Authorize() | Self CLS user. |
 | UserSettingsController | `api/v1/user/me/settings` | 2 | JWT + API key | `user:settings:read` | @Authorize() |  |
 | AdminImpersonationController | `api/v1/admin/users` | 1 | JWT only | forbidden | manage:all | SUPER_ADMIN impersonation. Throttled. |
-| AgenticAdminController | `api/v1/admin/agentic` | 1 | JWT + API key | admin:agentic:manage | @Authorize() + manage:HarnessPolicy | GET instructions. |
+| AgenticAdminController | `api/v1/admin/agentic` | 1 | JWT only | forbidden (@ForbidApiKey) | @Authorize() + manage:HarnessPolicy | GET instructions. |
 | ConsentInternalController | `api/v1/internal/consent` | 1 | Service token | n/a — X-Service-Token (HarnessServiceTokenGuard) | skipped (@Public) | POST assert. |
-| DepartmentAgentResyncController | `api/v1/admin/department-agents` | 1 | JWT + API key | admin:department-agent:manage | manage:Tenant | SUPER_ADMIN resync. |
+| DepartmentAgentResyncController | `api/v1/admin/department-agents` | 1 | JWT only | forbidden (@ForbidApiKey) | manage:Tenant | SUPER_ADMIN resync. |
 | EffectiveConfigController | `api/v1/internal/effective-config` | 1 | Service token | n/a — X-Service-Token (InternalServiceTokenGuard) | skipped (@Public) |  |
 | ForgotPasswordController | `api/v1/auth` | 1 | Public | n/a | none | Throttled 5/min. |
 | MyEntitlementsController | `api/v1/entitlements` | 1 | JWT + API key | `tenant:account:read` | read:Tenant |  |
 | MyTenantContextSchemaController | `api/v1/tenant/me/context-schema` | 1 | JWT + API key | `tenant:context-schema:read` | @Authorize() | Same file as ConsultationContextSchemaAdminController. |
 | PasswordResetController | `api/v1/users/password-reset` | 1 | Public | n/a | none | POST complete. Token in body. |
-| PrismaStudioStatusController | `api/v1/admin/pstudio/status` | 1 | JWT + API key | admin:pstudio:manage | manage:PrismaStudio |  |
-| TenantPipelineResyncController | `api/v1/admin/tenants` | 1 | JWT + API key | admin:tenant:write | manage:Tenant | SUPER_ADMIN. |
-| TenantProvisionController | `api/v1/admin/tenants` | 1 | JWT + API key | admin:tenant:write | manage:Tenant | SUPER_ADMIN. |
+| PrismaStudioStatusController | `api/v1/admin/pstudio/status` | 1 | JWT only | forbidden (@ForbidApiKey) | manage:PrismaStudio |  |
+| TenantPipelineResyncController | `api/v1/admin/tenants` | 1 | JWT only | forbidden (@ForbidApiKey) | manage:Tenant | SUPER_ADMIN. |
+| TenantProvisionController | `api/v1/admin/tenants` | 1 | JWT only | forbidden (@ForbidApiKey) | manage:Tenant | SUPER_ADMIN. |
 | UserDepartmentsMeController | `api/v1/user/me/departments` | 1 | JWT + API key | `user:profile:read` | @Authorize() |  |
 | UserRolesController | `api/v1/users` | 1 | JWT + API key | `user:profile:read` | @Authorize(); :id must equal caller |  |
-| WorkflowNodeController | `api/v1/admin/workflow-nodes` | 1 | JWT + API key | admin:workflow-node:read | read:WorkflowDefinition | Read-only registry. |
+| WorkflowNodeController | `api/v1/admin/workflow-nodes` | 1 | JWT only | forbidden (@ForbidApiKey) | read:WorkflowDefinition | Read-only registry. |
 
 *HTTP rows in this table: 104; API-count sum: 605. Gateway rows: 3.*
 

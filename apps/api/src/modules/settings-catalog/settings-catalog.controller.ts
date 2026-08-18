@@ -2,7 +2,7 @@ import { EffectiveSettingsService, HOPE_SETTINGS_REGISTRY, IActiveUserContext, i
 import { BadRequestException, Controller, Get, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
-import { CanRead, RequiredScopes } from '../../decorators';
+import { CanRead, ForbidApiKey } from '../../decorators';
 import { resolveScopedTenantId } from '../../shared/tenant-scope';
 import { EffectiveSettingResponse, SettingCatalogItemResponse, SettingCatalogResponse } from './dto/setting-catalog.response';
 
@@ -21,7 +21,7 @@ import { EffectiveSettingResponse, SettingCatalogItemResponse, SettingCatalogRes
  */
 @ApiTags('Admin: Settings Catalog')
 @ApiBearerAuth()
-@RequiredScopes('admin:settings:manage')
+@ForbidApiKey()
 @Controller('admin/settings')
 export class SettingsCatalogController {
   constructor(

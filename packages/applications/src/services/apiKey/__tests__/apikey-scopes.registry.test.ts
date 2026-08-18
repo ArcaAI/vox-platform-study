@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { API_KEY_SCOPE_REGISTRY, isValidScope, getAvailableScopes, getScopesByCategory, resolveImpliedPermissions } from '../apikey-scopes.registry';
+import {
+  API_KEY_SCOPE_REGISTRY,
+  isValidScope,
+  isReservedScope,
+  getAvailableScopes,
+  getScopesByCategory,
+  resolveImpliedPermissions,
+} from '../apikey-scopes.registry';
 
 describe('API Key Scope Registry', () => {
   describe('API_KEY_SCOPE_REGISTRY', () => {
@@ -164,12 +171,14 @@ describe('API Key Scope Registry', () => {
       }
     });
 
-    it('should include all registered scopes', () => {
+    it('should include all GRANTABLE registered scopes', () => {
       const scopes = getAvailableScopes();
       const scopeNames = scopes.map((s) => s.scope);
       expect(scopeNames).toContain('stt:transcription:read');
-      expect(scopeNames).toContain('admin:*');
       expect(scopeNames).toContain('*');
+      // TASK-757: `admin:*` is RESERVED and therefore no longer advertised —
+      // pinned in the reserved-scopes block below.
+      expect(scopeNames).not.toContain('admin:*');
     });
   });
 
@@ -221,14 +230,106 @@ describe('API Key Scope Registry', () => {
     });
   });
 
+  /**
+   * TASK-757 (policy A2) — the `admin:*` and `webhook:*` families are RESERVED,
+   * not deleted.
+   *
+   * `@ForbidApiKey()` on all 65 admin controllers makes every one of these
+   * strings inert at request time, but the strings themselves stay in the
+   * registry: they are the vocabulary TASK-762's service-account plane reuses,
+   * and deleting them would make every already-stored key carrying one fail
+   * `isValidScope` and become unreadable. `reserved` marks them un-GRANTABLE
+   * while keeping them KNOWN.
+   */
+  describe('reserved scopes (TASK-757, policy A2)', () => {
+    const reservedKeys = () => Object.keys(API_KEY_SCOPE_REGISTRY).filter((s) => API_KEY_SCOPE_REGISTRY[s].reserved === true);
+
+    it('marks all 56 admin: scopes reserved — INCLUDING the admin:* wildcard', () => {
+      const admin = Object.keys(API_KEY_SCOPE_REGISTRY).filter((s) => s.startsWith('admin:'));
+      expect(admin.length).toBe(56);
+      // `admin:*` sits OUTSIDE the contiguous admin block in the source file.
+      // Enumerating by line range instead of by KEY would leave the single most
+      // dangerous string in the family grantable.
+      expect(admin).toContain('admin:*');
+      for (const scope of admin) {
+        expect(API_KEY_SCOPE_REGISTRY[scope].reserved, `${scope} must be reserved`).toBe(true);
+      }
+    });
+
+    it('marks the whole webhook: family reserved — its only consumer is WebhookController at admin/webhooks', () => {
+      const webhook = Object.keys(API_KEY_SCOPE_REGISTRY).filter((s) => s.startsWith('webhook:'));
+      expect(webhook.sort()).toEqual(['webhook:*', 'webhook:event:read', 'webhook:event:write']);
+      for (const scope of webhook) {
+        expect(API_KEY_SCOPE_REGISTRY[scope].reserved, `${scope} must be reserved`).toBe(true);
+      }
+    });
+
+    it("does NOT reserve the bare '*' — it is the platform SERVICE_ACCOUNT wildcard for /internal/*", () => {
+      expect(API_KEY_SCOPE_REGISTRY['*'].reserved).toBeUndefined();
+      expect(isReservedScope('*')).toBe(false);
+    });
+
+    it('reserves exactly the admin: and webhook: families and nothing else', () => {
+      const derived = Object.keys(API_KEY_SCOPE_REGISTRY)
+        .filter((s) => s.startsWith('admin:') || s.startsWith('webhook:'))
+        .sort();
+      expect(reservedKeys().sort()).toEqual(derived);
+      expect(reservedKeys().length).toBe(59);
+    });
+
+    it('isReservedScope answers for members and is false for unknown strings', () => {
+      expect(isReservedScope('admin:tenant:write')).toBe(true);
+      expect(isReservedScope('admin:*')).toBe(true);
+      expect(isReservedScope('webhook:event:write')).toBe(true);
+      expect(isReservedScope('consultation:session:read')).toBe(false);
+      expect(isReservedScope('not:a:scope')).toBe(false);
+    });
+
+    it('keeps reserved scopes VALID — a stored key carrying one must still be readable', () => {
+      expect(isValidScope('admin:tenant:write')).toBe(true);
+      expect(isValidScope('admin:*')).toBe(true);
+      expect(isValidScope('webhook:event:write')).toBe(true);
+    });
+
+    it('drops reserved scopes from the advertised catalog (getAvailableScopes)', () => {
+      const advertised = getAvailableScopes().map((s) => s.scope);
+      expect(advertised).not.toContain('admin:tenant:write');
+      expect(advertised).not.toContain('admin:*');
+      expect(advertised).not.toContain('webhook:event:write');
+      expect(advertised).not.toContain('webhook:*');
+      // Non-reserved entries are untouched.
+      expect(advertised).toContain('stt:transcription:read');
+      expect(advertised).toContain('*');
+    });
+
+    it('drops the Admin and Webhook categories entirely from getScopesByCategory', () => {
+      const grouped = getScopesByCategory();
+      expect(grouped).not.toHaveProperty('Admin');
+      expect(grouped).not.toHaveProperty('Webhook');
+      const wildcard = grouped['Wildcard'].map((s) => s.scope);
+      expect(wildcard).not.toContain('admin:*');
+      expect(wildcard).not.toContain('webhook:*');
+      expect(wildcard).toContain('*');
+      expect(wildcard).toContain('stt:*');
+    });
+
+    it('still charges the ceiling for reserved scopes — reservation is a GRANT rule, not a ceiling exemption', () => {
+      // `resolveImpliedPermissions` must keep expanding them, or a pre-existing
+      // key carrying `admin:*` would look free to widen.
+      expect(resolveImpliedPermissions('admin:tenant:write').length).toBeGreaterThan(0);
+      expect(resolveImpliedPermissions('admin:*').length).toBeGreaterThan(0);
+    });
+  });
+
   describe('getScopesByCategory', () => {
     it('should group scopes by category', () => {
       const grouped = getScopesByCategory();
       expect(grouped).toHaveProperty('STT');
       expect(grouped).toHaveProperty('Consultation');
-      expect(grouped).toHaveProperty('Admin');
       expect(grouped).toHaveProperty('Wildcard');
       expect(grouped).toHaveProperty('Workflow');
+      // TASK-757: 'Admin' is gone — every entry in it is reserved.
+      expect(grouped).not.toHaveProperty('Admin');
     });
 
     it('should have scope and description in each group entry', () => {

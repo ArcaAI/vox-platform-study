@@ -59,6 +59,16 @@ const SANCTIONED_LATER_CHANGES: ReadonlyArray<{ readonly path: string; readonly 
   { path: 'apps/api/src/modules/streaming/transcription-job.controller.ts', ticket: 'P0 F-01', why: 'presents token + tenant to stt' },
   { path: 'apps/api/src/modules/streaming/__tests__/transcription-job.controller.test.ts', ticket: 'P0 F-01', why: 'covers the above' },
   { path: 'apps/api/src/modules/streaming/__tests__/transcription-job.stt-fallback.controller.test.ts', ticket: 'P0 F-01', why: 'covers the above' },
+  // TASK-757 (policy A2) — `/api/v1/admin/*` becomes JWT-only. This controller is
+  // `admin/audio/transcription-jobs`, so it is one of the 65 whose class-level
+  // `@RequiredScopes(...)` becomes `@ForbidApiKey()`. It is a decorator swap on the ADMIN
+  // read surface: no execution surface added, no realtime/batch call path touched, and the
+  // non-admin `transcription-job.controller.ts` hot path is untouched by this ticket.
+  {
+    path: 'apps/api/src/modules/streaming/admin-transcription-job.controller.ts',
+    ticket: 'TASK-757',
+    why: 'admin plane becomes JWT-only — decorator swap only, no execution surface',
+  },
 ];
 
 const SANCTIONED_PATHS: ReadonlySet<string> = new Set(SANCTIONED_LATER_CHANGES.map((entry) => entry.path));

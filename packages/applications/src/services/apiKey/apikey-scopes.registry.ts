@@ -42,6 +42,37 @@ export interface ScopeDefinition {
    * in `resolveImpliedPermissions`, never by a literal of their own.
    */
   implies: ImpliedPermission[];
+
+  /**
+   * TASK-757 (policy A2) — this scope may no longer be GRANTED, but is still a
+   * KNOWN string.
+   *
+   * `/api/v1/admin/*` is a JWT-only plane: all 65 admin controllers carry
+   * `@ForbidApiKey()`, which `UnifiedAuthGuard` checks BEFORE the scope check,
+   * so every `admin:*` scope — including the `admin:*` wildcard — is inert at
+   * request time whatever a key holds. The `webhook:*` family goes with them:
+   * its only consumer is `WebhookController` at `admin/webhooks`.
+   *
+   * Reserved, NOT deleted, for two reasons:
+   *   1. `isValidScope` is what makes a STORED scope array readable. Deleting
+   *      the strings would make every pre-existing key carrying one fail
+   *      validation on an unrelated `PATCH`.
+   *   2. They are the vocabulary TASK-762's service-account plane reuses.
+   *
+   * What `reserved` changes: the scope is refused at GRANT time
+   * (`NoReservedScopesConstraint` on the create DTO; the widening-delta check
+   * in `ApiKeyService.update()`) and dropped from the advertised catalog
+   * (`getAvailableScopes`, `getScopesByCategory`). What it does NOT change:
+   * `isValidScope` and `resolveImpliedPermissions`, both of which must keep
+   * answering for already-stored scopes.
+   *
+   * `'*'` is deliberately NOT reserved — it is the platform SERVICE_ACCOUNT
+   * wildcard for `/internal/*` and stays legitimate there; `@ForbidApiKey()`
+   * alone makes it inert on the admin plane, which is exactly the property
+   * that made a "reserved scope string" trick unnecessary as a GUARD (see
+   * `API_KEY_FORBIDDEN`'s doc comment in `unified-auth.guard.ts`).
+   */
+  reserved?: true;
 }
 
 export const API_KEY_SCOPE_REGISTRY: Record<string, ScopeDefinition> = {
@@ -176,19 +207,44 @@ export const API_KEY_SCOPE_REGISTRY: Record<string, ScopeDefinition> = {
   'media:file:write': { description: 'Upload media files', category: 'Media', implies: [{ action: 'create', subject: 'Storage' }] },
 
   // Admin
-  'admin:user:read': { description: 'Read user information', category: 'Admin', implies: [{ action: 'read', subject: 'User' }] },
-  'admin:user:write': { description: 'Manage users', category: 'Admin', implies: [{ action: 'manage', subject: 'User' }] },
-  'admin:apikey:read': { description: 'Read API keys', category: 'Admin', implies: [{ action: 'read', subject: 'ApiKey' }] },
-  'admin:apikey:write': { description: 'Manage API keys', category: 'Admin', implies: [{ action: 'manage', subject: 'ApiKey' }] },
-  'admin:tenant:read': { description: 'Read tenant configuration', category: 'Admin', implies: [{ action: 'read', subject: 'Tenant' }] },
-  'admin:tenant:write': { description: 'Manage tenant settings', category: 'Admin', implies: [{ action: 'manage', subject: 'Tenant' }] },
-  'admin:audit:read': { description: 'Read audit logs', category: 'Admin', implies: [{ action: 'read', subject: 'AuditLog' }] },
-  'admin:role:read': { description: 'Read roles and policies', category: 'Admin', implies: [{ action: 'read', subject: 'Role' }] },
-  'admin:role:write': { description: 'Manage roles and policies', category: 'Admin', implies: [{ action: 'manage', subject: 'Role' }] },
+  'admin:user:read': { description: 'Read user information', category: 'Admin', implies: [{ action: 'read', subject: 'User' }], reserved: true },
+  'admin:user:write': { description: 'Manage users', category: 'Admin', implies: [{ action: 'manage', subject: 'User' }], reserved: true },
+  'admin:apikey:read': { description: 'Read API keys', category: 'Admin', implies: [{ action: 'read', subject: 'ApiKey' }], reserved: true },
+  'admin:apikey:write': { description: 'Manage API keys', category: 'Admin', implies: [{ action: 'manage', subject: 'ApiKey' }], reserved: true },
+  'admin:tenant:read': {
+    description: 'Read tenant configuration',
+    category: 'Admin',
+    implies: [{ action: 'read', subject: 'Tenant' }],
+    reserved: true,
+  },
+  'admin:tenant:write': {
+    description: 'Manage tenant settings',
+    category: 'Admin',
+    implies: [{ action: 'manage', subject: 'Tenant' }],
+    reserved: true,
+  },
+  'admin:audit:read': { description: 'Read audit logs', category: 'Admin', implies: [{ action: 'read', subject: 'AuditLog' }], reserved: true },
+  'admin:role:read': { description: 'Read roles and policies', category: 'Admin', implies: [{ action: 'read', subject: 'Role' }], reserved: true },
+  'admin:role:write': {
+    description: 'Manage roles and policies',
+    category: 'Admin',
+    implies: [{ action: 'manage', subject: 'Role' }],
+    reserved: true,
+  },
 
   // Webhooks
-  'webhook:event:read': { description: 'Read webhook events', category: 'Webhook', implies: [{ action: 'read', subject: 'Webhook' }] },
-  'webhook:event:write': { description: 'Manage webhook subscriptions', category: 'Webhook', implies: [{ action: 'manage', subject: 'Webhook' }] },
+  'webhook:event:read': {
+    description: 'Read webhook events',
+    category: 'Webhook',
+    implies: [{ action: 'read', subject: 'Webhook' }],
+    reserved: true,
+  },
+  'webhook:event:write': {
+    description: 'Manage webhook subscriptions',
+    category: 'Webhook',
+    implies: [{ action: 'manage', subject: 'Webhook' }],
+    reserved: true,
+  },
 
   // Internal (platform-only). Reserved for service-to-service credentials —
   // never issued to a tenant SDK/WEBHOOK/INTEGRATION key. Gates
@@ -225,47 +281,61 @@ export const API_KEY_SCOPE_REGISTRY: Record<string, ScopeDefinition> = {
     description: 'Manage platform rate-limit configuration',
     category: 'Admin',
     implies: [{ action: 'manage', subject: 'all' }],
+    reserved: true,
   },
   'admin:usage:manage': {
     description: 'Read/reconcile usage analytics',
     category: 'Admin',
     implies: [{ action: 'manage', subject: 'UsageAnalytics' }],
+    reserved: true,
   },
   'admin:agent-promotion:manage': {
     description: 'Manage department-agent promotions',
     category: 'Admin',
     implies: [{ action: 'manage', subject: 'DepartmentAgent' }],
+    reserved: true,
   },
   'admin:agent-trajectory:read': {
     description: 'Read agent trajectory steps',
     category: 'Admin',
     implies: [{ action: 'read', subject: 'AgentTrajectory' }],
+    reserved: true,
   },
   'admin:agentic:manage': {
     description: 'Manage agentic policy administration',
     category: 'Admin',
     implies: [{ action: 'manage', subject: 'HarnessPolicy' }],
+    reserved: true,
   },
   'admin:ai-model:manage': {
     description: 'Manage AI model registrations and discovery',
     category: 'Admin',
     implies: [{ action: 'manage', subject: 'all' }],
+    reserved: true,
   },
   'admin:ai-provider:manage': {
     description: 'Manage AI/model provider connections (HIGH sensitivity — provider credentials)',
     category: 'Admin',
     implies: [{ action: 'manage', subject: 'GlobalSetting' }],
+    reserved: true,
   },
   'admin:ai-runtime-profile:manage': {
     description: 'Manage AI runtime profiles',
     category: 'Admin',
     implies: [{ action: 'manage', subject: 'all' }],
+    reserved: true,
   },
-  'admin:ai-service:manage': { description: 'Manage AI service configuration', category: 'Admin', implies: [{ action: 'manage', subject: 'all' }] },
+  'admin:ai-service:manage': {
+    description: 'Manage AI service configuration',
+    category: 'Admin',
+    implies: [{ action: 'manage', subject: 'all' }],
+    reserved: true,
+  },
   'admin:ai-task-default:manage': {
     description: 'Manage AI task defaults (some sub-routes are additionally SUPER_ADMIN-only via SUPER_ADMIN_ONLY_TASK_PREFIXES)',
     category: 'Admin',
     implies: [{ action: 'manage', subject: 'AiTaskDefault' }],
+    reserved: true,
   },
   'admin:billing:manage': {
     description: 'Manage billing invoices and rate cards',
@@ -274,21 +344,25 @@ export const API_KEY_SCOPE_REGISTRY: Record<string, ScopeDefinition> = {
       { action: 'manage', subject: 'BillingInvoice' },
       { action: 'manage', subject: 'AiPriceBook' },
     ],
+    reserved: true,
   },
   'admin:changelog:manage': {
     description: 'Manage changelog entries',
     category: 'Admin',
     implies: [{ action: 'manage', subject: 'ChangelogEntry' }],
+    reserved: true,
   },
   'admin:consultation-context-schema:manage': {
     description: 'Manage consultation context schemas',
     category: 'Admin',
     implies: [{ action: 'manage', subject: 'ConsultationContextSchema' }],
+    reserved: true,
   },
   'admin:consultation-admin:manage': {
     description: 'Manage consultations from the admin surface',
     category: 'Admin',
     implies: [{ action: 'manage', subject: 'Consultation' }],
+    reserved: true,
   },
   'admin:department-agent:manage': {
     description: 'Manage department agents and their resync',
@@ -297,18 +371,31 @@ export const API_KEY_SCOPE_REGISTRY: Record<string, ScopeDefinition> = {
       { action: 'manage', subject: 'DepartmentAgent' },
       { action: 'manage', subject: 'Tenant' },
     ],
+    reserved: true,
   },
-  'admin:department:manage': { description: 'Manage departments', category: 'Admin', implies: [{ action: 'manage', subject: 'Department' }] },
+  'admin:department:manage': {
+    description: 'Manage departments',
+    category: 'Admin',
+    implies: [{ action: 'manage', subject: 'Department' }],
+    reserved: true,
+  },
   'admin:dna-writing-style:manage': {
     description: 'Manage DNA writing style reports',
     category: 'Admin',
     implies: [{ action: 'manage', subject: 'DnaWritingStyleReport' }],
+    reserved: true,
   },
-  'admin:entitlement:manage': { description: 'Manage tenant entitlements', category: 'Admin', implies: [{ action: 'manage', subject: 'all' }] },
+  'admin:entitlement:manage': {
+    description: 'Manage tenant entitlements',
+    category: 'Admin',
+    implies: [{ action: 'manage', subject: 'all' }],
+    reserved: true,
+  },
   'admin:settings:manage': {
     description: 'Read/manage platform global settings (HIGH sensitivity — platform-wide knobs)',
     category: 'Admin',
     implies: [{ action: 'manage', subject: 'GlobalSetting' }],
+    reserved: true,
   },
   'admin:harness:manage': {
     description: 'Manage the Clinical Documentation Harness admin surface',
@@ -319,120 +406,163 @@ export const API_KEY_SCOPE_REGISTRY: Record<string, ScopeDefinition> = {
       { action: 'manage', subject: 'HarnessWorkflow' },
       { action: 'read', subject: 'HarnessAudit' },
     ],
+    reserved: true,
   },
   'admin:knowledge:manage': {
     description: 'Manage the institutional-RAG knowledge corpus (inspect, archive, delete — governance, not ingestion)',
     category: 'Admin',
     implies: [{ action: 'manage', subject: 'KnowledgeDocument' }],
+    reserved: true,
   },
   'admin:mcp-server:manage': {
     description: 'Manage MCP server registrations',
     category: 'Admin',
     implies: [{ action: 'manage', subject: 'McpServer' }],
+    reserved: true,
   },
   'admin:nlp-task-instructions:manage': {
     description: 'Manage tenant NLP task instructions',
     category: 'Admin',
     implies: [{ action: 'manage', subject: 'TenantNlpTaskInstructions' }],
+    reserved: true,
   },
   'admin:notification:manage': {
     description: 'Manage platform notifications',
     category: 'Admin',
     implies: [{ action: 'manage', subject: 'Notification' }],
+    reserved: true,
   },
   'admin:pipeline-policy:manage': {
     description: 'Manage harness pipeline policy (carries the globalOnly descriptor lock on some fields)',
     category: 'Admin',
     implies: [{ action: 'manage', subject: 'PipelinePolicy' }],
+    reserved: true,
   },
   'admin:audio-pipeline:manage': {
     description: 'Manage audio pipeline configuration',
     category: 'Admin',
     implies: [{ action: 'manage', subject: 'AsrPipeline' }],
+    reserved: true,
   },
   'admin:platform-metrics:read': {
     description: 'Read platform-wide metrics',
     category: 'Admin',
     implies: [{ action: 'manage', subject: 'PlatformMetrics' }],
+    reserved: true,
   },
   'admin:prompt-template:manage': {
     description: 'Manage prompt templates from the admin surface',
     category: 'Admin',
     implies: [{ action: 'manage', subject: 'PromptTemplate' }],
+    reserved: true,
   },
-  'admin:pstudio:manage': { description: 'Manage Prisma Studio access', category: 'Admin', implies: [{ action: 'manage', subject: 'PrismaStudio' }] },
-  'admin:queue:manage': { description: 'Manage background job queues', category: 'Admin', implies: [{ action: 'manage', subject: 'all' }] },
-  'admin:scheduler:manage': { description: 'Manage scheduled jobs', category: 'Admin', implies: [{ action: 'manage', subject: 'all' }] },
+  'admin:pstudio:manage': {
+    description: 'Manage Prisma Studio access',
+    category: 'Admin',
+    implies: [{ action: 'manage', subject: 'PrismaStudio' }],
+    reserved: true,
+  },
+  'admin:queue:manage': {
+    description: 'Manage background job queues',
+    category: 'Admin',
+    implies: [{ action: 'manage', subject: 'all' }],
+    reserved: true,
+  },
+  'admin:scheduler:manage': {
+    description: 'Manage scheduled jobs',
+    category: 'Admin',
+    implies: [{ action: 'manage', subject: 'all' }],
+    reserved: true,
+  },
   'admin:rbac-policy:write': {
     description: 'Manage RBAC policies (HIGH sensitivity — defines the RBAC model itself)',
     category: 'Admin',
     implies: [{ action: 'manage', subject: 'Policy' }],
+    reserved: true,
   },
   'admin:resource-subscription:manage': {
     description: 'Manage resource subscriptions',
     category: 'Admin',
     implies: [{ action: 'manage', subject: 'ResourceSubscription' }],
+    reserved: true,
   },
   'admin:service-release:manage': {
     description: 'Manage service release registrations',
     category: 'Admin',
     implies: [{ action: 'read', subject: 'TenantTelemetry' }],
+    reserved: true,
   },
   'admin:storage-key:manage': {
     description: 'Manage tenant storage access keys (HIGH sensitivity — storage credentials)',
     category: 'Admin',
     implies: [{ action: 'manage', subject: 'Tenant' }],
+    reserved: true,
   },
   'admin:transcription-job:read': {
     description: 'Read admin transcription job status',
     category: 'Admin',
     implies: [{ action: 'read', subject: 'AsrPipeline' }],
+    reserved: true,
   },
   'admin:allowed-origin:manage': {
     description: 'Manage tenant CORS allow-list',
     category: 'Admin',
     implies: [{ action: 'manage', subject: 'TenantAllowedOrigin' }],
+    reserved: true,
   },
   'admin:tenant-storage:manage': {
     description: 'Manage tenant storage buckets and config',
     category: 'Admin',
     implies: [{ action: 'manage', subject: 'Tenant' }],
+    reserved: true,
   },
   'admin:tenant-frontend-config:manage': {
     description: 'Manage tenant frontend configuration',
     category: 'Admin',
     implies: [{ action: 'update', subject: 'Tenant' }],
+    reserved: true,
   },
   'admin:tenant-idp-config:manage': {
     description: 'Manage tenant identity-provider config (HIGH sensitivity — SSO)',
     category: 'Admin',
     implies: [{ action: 'manage', subject: 'TenantIdentityProvider' }],
+    reserved: true,
   },
   'admin:tenant-stt-config:manage': {
     description: 'Manage tenant STT configuration',
     category: 'Admin',
     implies: [{ action: 'manage', subject: 'TenantSttConfig' }],
+    reserved: true,
   },
   'admin:tenant-tts-config:manage': {
     description: 'Manage tenant TTS configuration',
     category: 'Admin',
     implies: [{ action: 'manage', subject: 'TenantTtsConfig' }],
+    reserved: true,
   },
-  'admin:workflow-run:read': { description: 'Read admin workflow runs', category: 'Admin', implies: [{ action: 'read', subject: 'WorkflowRun' }] },
+  'admin:workflow-run:read': {
+    description: 'Read admin workflow runs',
+    category: 'Admin',
+    implies: [{ action: 'read', subject: 'WorkflowRun' }],
+    reserved: true,
+  },
   'admin:workflow-test-fixture:manage': {
     description: 'Manage workflow test fixtures',
     category: 'Admin',
     implies: [{ action: 'manage', subject: 'WorkflowTestFixture' }],
+    reserved: true,
   },
   'admin:workflow-definition:manage': {
     description: 'Author, validate and publish workflow definitions',
     category: 'Admin',
     implies: [{ action: 'manage', subject: 'WorkflowDefinition' }],
+    reserved: true,
   },
   'admin:workflow-node:read': {
     description: 'Read the code-owned workflow node-type registry',
     category: 'Admin',
     implies: [{ action: 'read', subject: 'WorkflowDefinition' }],
+    reserved: true,
   },
 
   // Workflow exposure plane (TASK-722). Prefix-matching (apikey.service.ts's
@@ -468,14 +598,37 @@ export const API_KEY_SCOPE_REGISTRY: Record<string, ScopeDefinition> = {
   'tenant:*': { description: 'Full tenant self-service access', category: 'Wildcard', implies: [] /* expanded — see resolveImpliedPermissions */ },
   'user:*': { description: 'Full user self-service access', category: 'Wildcard', implies: [] /* expanded — see resolveImpliedPermissions */ },
   'media:*': { description: 'Full media access', category: 'Wildcard', implies: [] /* expanded — see resolveImpliedPermissions */ },
-  'admin:*': { description: 'Full admin access', category: 'Wildcard', implies: [] /* expanded — see resolveImpliedPermissions */ },
-  'webhook:*': { description: 'Full webhook access', category: 'Wildcard', implies: [] /* expanded — see resolveImpliedPermissions */ },
+  'admin:*': { description: 'Full admin access', category: 'Wildcard', implies: [] /* expanded — see resolveImpliedPermissions */, reserved: true },
+  'webhook:*': {
+    description: 'Full webhook access',
+    category: 'Wildcard',
+    implies: [] /* expanded — see resolveImpliedPermissions */,
+    reserved: true,
+  },
   'workflow:*': { description: 'Full workflow exposure access', category: 'Wildcard', implies: [] /* expanded — see resolveImpliedPermissions */ },
   '*': { description: 'Unrestricted access (superadmin only)', category: 'Wildcard', implies: [] /* expanded — see resolveImpliedPermissions */ },
 };
 
 export function isValidScope(scope: string): boolean {
   return scope in API_KEY_SCOPE_REGISTRY;
+}
+
+/**
+ * TASK-757 (policy A2) — is this scope RESERVED, i.e. known but no longer
+ * grantable?
+ *
+ * Deliberately NOT folded into `isValidScope`: the two answer different
+ * questions and conflating them would break stored keys. `isValidScope` is
+ * "is this a string the platform recognises?" and must stay `true` for a
+ * reserved scope, or an existing key carrying `admin:*` would fail validation
+ * on a `PATCH` that never touched its scopes. `isReservedScope` is "may this be
+ * granted NOW?" and is the one that says no.
+ *
+ * An UNKNOWN string is not reserved — membership is `isValidScope`'s job, and
+ * answering `true` here for a typo would produce a misleading error message.
+ */
+export function isReservedScope(scope: string): boolean {
+  return API_KEY_SCOPE_REGISTRY[scope]?.reserved === true;
 }
 
 /**
@@ -528,16 +681,29 @@ export function resolveImpliedPermissions(scope: string): ImpliedPermission[] {
   });
 }
 
+/**
+ * The GRANTABLE catalog. Reserved scopes (TASK-757) are omitted: the platform
+ * will always refuse to mint a key carrying one, so advertising them would
+ * offer access that can never be issued.
+ */
 export function getAvailableScopes(): Array<{ scope: string } & ScopeDefinition> {
-  return Object.entries(API_KEY_SCOPE_REGISTRY).map(([scope, def]) => ({
-    scope,
-    ...def,
-  }));
+  return Object.entries(API_KEY_SCOPE_REGISTRY)
+    .filter(([, def]) => def.reserved !== true)
+    .map(([scope, def]) => ({
+      scope,
+      ...def,
+    }));
 }
 
+/**
+ * What `GET /api/v1/admin/api-keys/scopes` returns. Reserved scopes are
+ * omitted, which empties the `Admin` and `Webhook` categories entirely — so
+ * neither category appears at all, rather than appearing empty.
+ */
 export function getScopesByCategory(): Record<string, Array<{ scope: string; description: string }>> {
   const result: Record<string, Array<{ scope: string; description: string }>> = {};
   for (const [scope, def] of Object.entries(API_KEY_SCOPE_REGISTRY)) {
+    if (def.reserved === true) continue;
     if (!result[def.category]) result[def.category] = [];
     result[def.category].push({ scope, description: def.description });
   }

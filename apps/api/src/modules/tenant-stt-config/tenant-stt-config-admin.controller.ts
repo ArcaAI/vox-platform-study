@@ -14,7 +14,7 @@ import { Body, Controller, Delete, Get, HttpCode, Inject, Param, Post, Put, Quer
 import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
 import { resolveScopedTenantId } from '../../shared/tenant-scope';
-import { Authorize, ExpectedVersion, RequiresIfMatch, RequiredScopes } from '../../decorators';
+import { Authorize, ExpectedVersion, RequiresIfMatch, ForbidApiKey } from '../../decorators';
 
 /**
  * TenantSttConfigAdminController — the admin surface for a tenant's STT fallback
@@ -46,7 +46,7 @@ import { Authorize, ExpectedVersion, RequiresIfMatch, RequiredScopes } from '../
  */
 @ApiBearerAuth()
 @ApiTags('admin-stt')
-@RequiredScopes('admin:tenant-stt-config:manage')
+@ForbidApiKey()
 @Controller('admin/stt-config')
 @Authorize()
 export class TenantSttConfigAdminController {

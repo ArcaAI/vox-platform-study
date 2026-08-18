@@ -26,7 +26,7 @@ import {
   CanDelete,
   ExpectedVersion,
   RequiresIfMatch,
-  RequiredScopes,
+  ForbidApiKey,
 } from '../../decorators';
 
 /**
@@ -51,7 +51,7 @@ import {
  */
 @ApiBearerAuth()
 @ApiTags('admin-global-settings')
-@RequiredScopes('admin:settings:manage')
+@ForbidApiKey()
 @Controller('admin/settings')
 @CanManage('GlobalSetting')
 export class GlobalSettingController {

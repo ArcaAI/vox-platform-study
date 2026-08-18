@@ -1,7 +1,7 @@
 import { AiRuntimeProfileResponse, IAiRuntimeProfileService, UpsertAiRuntimeProfileRequest } from '@arcaai/applications';
 import { Body, Controller, Delete, Get, Inject, Put, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiHeader, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { Authorize, ExpectedVersion, RequiresIfMatch, RequiredScopes } from '../../decorators';
+import { Authorize, ExpectedVersion, RequiresIfMatch, ForbidApiKey } from '../../decorators';
 
 /**
  * AiRuntimeProfileController — the admin surface for runtime
@@ -30,7 +30,7 @@ import { Authorize, ExpectedVersion, RequiresIfMatch, RequiredScopes } from '../
  */
 @ApiTags('Admin: AI Runtime Profiles')
 @ApiBearerAuth()
-@RequiredScopes('admin:ai-runtime-profile:manage')
+@ForbidApiKey()
 @Controller('admin/ai-runtime-profiles')
 export class AiRuntimeProfileController {
   constructor(

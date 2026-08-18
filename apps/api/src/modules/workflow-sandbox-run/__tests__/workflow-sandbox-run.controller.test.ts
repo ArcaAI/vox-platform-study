@@ -2,14 +2,15 @@
  * WorkflowSandboxRunController unit tests (TASK-721 Phase C).
  *
  * Asserts every mutating/read route carries an authorization decorator (deny-by-default boot
- * audit, rule 05), the controller carries `@RequiredScopes('admin:workflow-definition:manage')`
- * at the CLASS level (reused, not a new scope), the stream route carries
+ * audit, rule 05), the controller carries `@ForbidApiKey()` at the CLASS level (policy A2,
+ * TASK-757 — the admin plane is JWT-only, which is what this controller's own doc comment
+ * always claimed while it declared a scope that said otherwise), the stream route carries
  * `@StreamScope({ namespace: 'workflow_run', param: 'runId' })` (the SAME namespace TASK-722
  * registered — no auth.controller.ts change needed), and that the controller is a thin
  * pass-through with zero business logic.
  */
 import { describe, it, expect, vi } from 'vitest';
-import { API_KEY_REQUIRED_SCOPES, REQUIRED_PERMISSIONS_KEY } from '@arcaai/applications';
+import { API_KEY_FORBIDDEN, API_KEY_REQUIRED_SCOPES, REQUIRED_PERMISSIONS_KEY } from '@arcaai/applications';
 import { Reflector } from '@nestjs/core';
 import { STREAM_SCOPE_METADATA } from '../../auth/decorators/stream-scope.decorator';
 import { WorkflowSandboxRunController } from '../workflow-sandbox-run.controller';
@@ -28,9 +29,9 @@ function makeController() {
 const reflector = new Reflector();
 
 describe('WorkflowSandboxRunController', () => {
-  it('carries @RequiredScopes("admin:workflow-definition:manage") at the class level', () => {
-    const scopes = reflector.getAllAndOverride<string[]>(API_KEY_REQUIRED_SCOPES, [WorkflowSandboxRunController]);
-    expect(scopes).toEqual(['admin:workflow-definition:manage']);
+  it('carries @ForbidApiKey() at the class level and declares NO scope (policy A2, TASK-757)', () => {
+    expect(reflector.getAllAndOverride<boolean>(API_KEY_FORBIDDEN, [WorkflowSandboxRunController])).toBe(true);
+    expect(reflector.getAllAndOverride<string[]>(API_KEY_REQUIRED_SCOPES, [WorkflowSandboxRunController])).toBeUndefined();
   });
 
   describe.each([

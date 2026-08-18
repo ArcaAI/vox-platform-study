@@ -1,7 +1,7 @@
 import { Body, Controller, Get, Inject, Param, Put } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import { IRateLimitAdminService, type RateLimitPolicy } from '@arcaai/applications';
-import { Authorize, RequiredScopes } from '../../decorators';
+import { Authorize, ForbidApiKey } from '../../decorators';
 import { RateLimitPolicyResponse, SetRateLimitEnabledRequest, SetRateLimitRouteRequest, SetRateLimitTierRequest } from './dto';
 
 /**
@@ -19,7 +19,7 @@ import { RateLimitPolicyResponse, SetRateLimitEnabledRequest, SetRateLimitRouteR
 @ApiTags('admin-rate-limit')
 @ApiBearerAuth()
 @Authorize(['manage', 'all'])
-@RequiredScopes('admin:rate-limit:manage')
+@ForbidApiKey()
 @Controller('admin/rate-limit')
 export class RateLimitAdminController {
   constructor(

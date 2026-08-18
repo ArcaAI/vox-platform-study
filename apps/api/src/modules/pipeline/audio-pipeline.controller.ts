@@ -11,7 +11,7 @@ import {
 } from '@arcaai/applications';
 import { BadRequestException, Body, Controller, Get, HttpCode, NotFoundException, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { ApiEndpoint, Authorize, ExpectedVersion, RequiresIfMatch, RequiredScopes } from '../../decorators';
+import { ApiEndpoint, Authorize, ExpectedVersion, RequiresIfMatch, ForbidApiKey } from '../../decorators';
 import { AssignTenantRequest, AssignTenantResponse, ValidateYamlRequest, ValidateYamlResponse, resolveYaml } from './dto';
 
 /**
@@ -21,7 +21,7 @@ import { AssignTenantRequest, AssignTenantResponse, ValidateYamlRequest, Validat
  */
 @ApiBearerAuth()
 @ApiTags('admin-audio-pipelines')
-@RequiredScopes('admin:audio-pipeline:manage')
+@ForbidApiKey()
 @Controller('admin/audio/pipelines')
 @Authorize(['manage', 'AsrPipeline'])
 export class AudioPipelineController {

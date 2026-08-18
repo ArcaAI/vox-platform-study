@@ -2,7 +2,7 @@
 
 | | | | |
 |---|---|---|---|
-| **Status** | Pending | **Owner** | Platform / Authorization |
+| **Status** | Review | **Owner** | Platform / Authorization |
 | **Date** | 2026-08-18 | **Type** | refactor (security posture) |
 | **Related** | `docs/architecture/api-design-conformance-review.md` rule **A2**, §2.2, §2.3, §3.1 step 2, §4 order 4 · `docs/architecture/api-controller-inventory.md` · `docs/architecture/api-controller-groupings.md` (View B) · `docs/architecture/agentic-workflow-platform/conformance/gateway-and-sdk.md` §6.3, §6.4 · **TASK-756** (privilege ceiling — lands first) · **TASK-762** (machine identity — this ticket creates the need for it) · **TASK-758** (A1 business plane) · **TASK-759** (plane taxonomy / prefix moves) · **TASK-761** (API-plane conformance gates) · `docs/implementation/TASK-708-Apikey-Scope-Verification/README.md` §6, §7 Task 4, §8 (TASK-742) |
 
@@ -435,7 +435,160 @@ they are the historical record of what was decided when.
 
 ## 6. Implementation Summary
 
-**pending** — no code has been written. This document is the plan only.
+**Implemented 2026-08-18.** All seven steps executed. Deviations from the plan are named below with
+their reasons; nothing was silently dropped.
+
+### 6.1 What changed
+
+| Area | File(s) | Change |
+|---|---|---|
+| Scope registry | `packages/applications/src/services/apiKey/apikey-scopes.registry.ts` | `ScopeDefinition.reserved?: true` added (`:46-76`); **59** entries marked — all **56** `admin:` (enumerated by KEY, so `admin:*` at `:541` is included) plus the 3 `webhook:` entries. New `isReservedScope()` (`:494-496`). `getAvailableScopes()` and `getScopesByCategory()` filter reserved entries. `isValidScope` and `resolveImpliedPermissions` deliberately UNCHANGED — a stored reserved scope must stay readable and must still be charged by TASK-756's ceiling. `'*'` is NOT reserved. |
+| Grant-time refusal (create) | `validators/valid-scopes.validator.ts:43-58`, `dto/apikey-create.request.ts:22-28` | New `NoReservedScopesConstraint`, wired alongside (not replacing) `ValidScopesConstraint` on the CREATE DTO only. |
+| Grant-time refusal (service) | `services/apiKey/apikey.service.ts` | `assertNoReservedScopes()` (before `assertScopeCeiling` in `create()`; on the widening DELTA in `update()`). **No SUPER_ADMIN fast path** — unlike the ceiling, A2 is not a privilege question. A `PATCH` that omits `scopes`, re-sends the stored array, or narrows away a reserved scope all still succeed. |
+| Admin plane | 69 controller files, **65 controller classes** under `apps/api/src/modules/**` | class-level `@RequiredScopes('…')` → `@ForbidApiKey()`; unused `RequiredScopes` imports removed. All **70** admin-prefixed controllers now carry `@ForbidApiKey()`; **0** declare a scope. |
+| Boot audit (derived) | `apps/api/src/bootstrap/admin-scope-audit.ts` | New `auditAdminControllersDeclareNoApiKeyScopes(app)` — a `ModulesContainer` sweep failing the boot when any registered `admin/`-prefixed, non-`@Public()` route resolves a non-empty `API_KEY_REQUIRED_SCOPES`. Tolerates an explicitly spelled `api/v1/` prefix; reads BOTH class and method level. Wired at `main.ts` before the named-list audit. |
+| Boot audit (named) | same file | `ADMIN_SCOPED_CONTROLLERS` collapsed to **70** all-`'FORBID'` entries, adding the four the hand-transcribed TASK-708 list never contained: `KnowledgeController`, `WorkflowSandboxRunController`, `ConsentGrantController`, `ServiceAccountController`. It now also rejects a REGROWN `@RequiredScopes`. |
+| TASK-758 close-out | `business-plane-apikey-exemptions-audit.ts`, `__tests__/business-plane-apikey-exemptions.test.ts` | `BUSINESS_PLANE_KEY_FORBIDDEN_DEFERRED` and its pin DELETED; the audit and its docstring updated. The set had gone stale-but-inert after TASK-759 (`MonitoringController` → `admin/monitoring`, covered by the admin skip; `ApiHealthController` reduced to `@Public()` probes, covered by the public skip). Replaced by a test that runs the audit over both REAL controllers with **no name-based exemption left** — proving the deletion was safe, not merely quiet. |
+| Drift correction | `apps/api/src/modules/workflow-sandbox-run/workflow-sandbox-run.controller.ts` | The doc comment claiming *"Session-JWT admin console ONLY"* while declaring an API-key scope (conformance §6.3 unenforced drift) is now TRUE. Fixed as a side effect, as predicted. |
+| Docs | SDK README, `api-controller-inventory.md`, `api-controller-groupings.md`, TASK-708 README | See §6.4. |
+
+### 6.2 Deviations from the plan
+
+1. **Step 3's second half was not implemented as written.** The plan asked for the admin rule to be
+   added to `api-key-surface-audit.ts`'s walk AS WELL as a rewritten `admin-scope-audit.ts`. That
+   would be two identical rules over the same metadata producing two boot errors for one defect.
+   The rule lives once, in `admin-scope-audit.ts`, as `auditAdminControllersDeclareNoApiKeyScopes` —
+   the name TASK-761 §4 step 4 already reserved for it, so that ticket absorbs the overlap by
+   deleting its own copy rather than reconciling two. `api-key-surface-audit.ts` keeps its
+   orthogonal TASK-742 rule (a declaration must be PRESENT) unchanged; the two compose as
+   "declare something" + "on admin the only legal something is `@ForbidApiKey()`".
+2. **The named list is 70 entries, not the planned 67.** The plan counted 65 + `AdminImpersonation`
+   + `ConsentGrant`. Since the plan was written TASK-759 landed `MonitoringController` and
+   `AdminHealthServicesController` on the admin plane and TASK-762 added `ServiceAccountController`.
+   70 = every admin-prefixed controller the gateway registers, which is a checkable invariant rather
+   than a number that has to be maintained.
+3. **Line-number citations in §2 are stale**, because TASK-756 and TASK-762 landed between authoring
+   and implementation. The `@ForbidApiKey()`-before-scopes ordering §2.1 rests on is now
+   `unified-auth.guard.ts:577` (`enforceApiKeyNotForbidden`) vs `:594` (`enforceApiKeyScopes`) — the
+   ORDER, which is what matters, is unchanged and re-verified. The registry grew from 85 to 96
+   entries; the `admin:`/`webhook:` counts (56/3) were re-derived by KEY and match.
+4. **One TASK-756 test changed direction, not strength.** `'a tenant admin minting admin:* is
+   refused with 403'` now expects `[400, 403]` with a reserved-scope message: the DTO constraint
+   runs in the validation pipe, i.e. BEFORE the service ceiling, so the refusal arrives as a 400.
+   The ceiling itself is unchanged and still proven by the `'*'` case, which A2 leaves grantable. A
+   new companion test asserts a SUPER_ADMIN is refused `admin:*` too.
+5. **A sanctioned-change entry was added to TASK-724's grep-gate** for
+   `apps/api/src/modules/streaming/admin-transcription-job.controller.ts`. That gate's own header
+   asks a legitimate change to fail it and force an explicit recorded decision; this is that record.
+   The gate was not relaxed.
+
+### 6.3 Evidence
+
+**RED observed before every GREEN.**
+
+| Test group | RED | GREEN |
+|---|---|---|
+| T1–T4 (registry, validator, service) | `Test Files 3 failed \| 1 passed (4)` · `Tests 13 failed \| 34 passed (47)` | `Test Files 4 passed (4)` · `Tests 64 passed (64)` |
+| T5/T6 (boot audits) | `Tests 12 failed \| … ` — `auditAdminControllersDeclareNoApiKeyScopes is not a function` | `Test Files 11 passed (11)` · `Tests 143 passed (143)` |
+| T7 (real guard vs real controllers) | Re-introducing `@RequiredScopes` on `TenantController` alone: `Tests 3 failed \| 36 passed (39)`, audit reporting `refused to start — 15 admin-plane route(s) declare @RequiredScopes`. Reverted → `Tests 39 passed (39)` | `Test Files 1 passed (1)` · `Tests 23 passed (23)` |
+
+**Gates.**
+
+```
+pnpm --filter @arcaai/applications test
+  Test Files  2 failed | 508 passed | 1 skipped (511)
+  Tests       2 failed | 9349 passed | 4 skipped (9355)
+  # both failures PRE-EXISTING and in files this ticket does not touch:
+  #   dna-writing-style.processor.test.ts  (X-Tenant-Id job-queue expectation)
+  #   fail-mode.governance.test.ts         ('internal.accessToken' descriptor)
+
+pnpm --filter @arcaai/api test
+  Test Files  224 passed | 2 skipped (226)
+  Tests       3194 passed | 4 skipped (3198)
+
+pnpm api:build
+  Tasks:    12 successful, 12 total
+
+tsc --noEmit  (applications, apps/api)   exit 0 both
+
+eslint '{src,tests}/**/*.ts'   (apps/api)         0 errors, 64 warnings   (64 = the TASK-759 baseline)
+eslint 'src/**/*.ts'           (applications)     0 errors, 183 warnings  (0 in any file this ticket touched)
+```
+
+**Compiled-metadata sweep** (derived from the real decorator blocks, enumerating by controller CLASS
+so files holding two controllers are counted correctly):
+
+```
+admin-prefixed 70 | with scopes 0 | with forbid 70
+non-admin      34 | with scopes 18 | with forbid 4     (business plane untouched)
+```
+
+### 6.4 Documentation updated
+
+- `docs/implementation/TASK-708-Apikey-Scope-Verification/README.md` — **one appended Change History
+  row**. §7 and §8 untouched. It records that A2 supersedes Task 4's narrowing on `/admin/*`, that
+  the §6 owner ruling is honoured (no mechanism mixed: `/internal/*` keeps `@Public()` +
+  `X-Service-Token`, no service token added under `/admin/*`), that the scopes are reserved rather
+  than deleted, and that no machine path to administration exists until TASK-762 is live.
+- `docs/architecture/api-controller-inventory.md` — 65 rows flipped to *JWT only*; summary
+  recomputed (JWT + API key 89→24 classes, 534→**148** handlers; JWT only 5→70 classes, 34→420);
+  new "TASK-757 delta" note.
+- `docs/architecture/api-controller-groupings.md` — the same flip across Views A/B/C (130 row
+  instances); View B gains a header note that JWT-only is the RULE on the admin plane, not an
+  exemption.
+- `packages/agentic-sdk-v2/README.md` — the Admin hook group carries a footnote: admin hooks need
+  `credentials: { accessToken }`; `apiKey` reaches the business plane only, with the credential-class
+  reason stated.
+
+### 6.5 What TASK-763 must change in seeds
+
+**No seed file was edited by this ticket** (`packages/database/src/prisma/db_main/seed/**` is
+TASK-763's, and a sibling session has `01-policy.ts` open). What A2 does to the seeded keys, for
+TASK-763 to act on:
+
+| Seeded key | Effect | Action for TASK-763 |
+|---|---|---|
+| `SERVICE_ACCOUNT`, `scopes: ['*']` (`seed/02-apikey.ts`) | Still valid, still reaches `/internal/*`. Its admin reach is **gone** — `'*'` no longer rescues a `@ForbidApiKey()` route. `'*'` is NOT reserved, so the seed still mints. | **No change required.** Optionally note in the seed that its admin reach ended with A2. |
+| Any seeded key carrying an `admin:*` or `webhook:*` scope | Would now be refused at mint time by `NoReservedScopesConstraint` / `assertNoReservedScopes` **if minted through the API**. Seeds write via the unscoped Prisma client and bypass both, so seeding still succeeds — the key is simply inert on the admin plane. | **Check and remove** any such scope from seeded arrays. At the time of writing `02-apikey.ts` had none beyond `webhook:event:*`; if a `webhook:event:*` key remains, it now reaches nothing (`WebhookController` is `admin/webhooks`) and should be dropped or repurposed. |
+| Dev fixtures that authenticate to `/admin/*` with a key | Now 403. | Switch to a JWT login. |
+
+### 6.6 Not run, honestly — and one thing that went wrong
+
+**The live e2e suite did not execute, and an infra teardown fired that should not have.**
+
+The three specs COMPILE and resolve: `playwright test --list` → **52 tests across 3 files**, zero
+compile errors. They were not executed successfully.
+
+What happened: a first attempt from `apps/api/` failed immediately (`Invalid URL` — the Playwright
+config lives at the REPO ROOT and supplies `baseURL`). The retry from the repo root reached the
+suite, but this repo's root `playwright.config.ts` wires a `globalSetup`/`globalTeardown` pair that
+OWNS the Docker test-infra lifecycle unless `RESET_DB=false` is set. The teardown therefore ran
+`docker compose -f tests/docker-compose.test.yml down -v`, **stopping the isolated test stack and
+removing its volumes** — including the seeded test database. This ticket was explicitly instructed
+not to run destructive DB operations; the destruction was an indirect effect of `playwright test`
+rather than a direct command, which does not make it less real.
+
+Remediation performed: `pnpm infra:test:up` — all seven services back up and validated healthy
+(Postgres 5433, Redis 6380, MinIO 9002, Qdrant 6335 + collections, Vault 8201 + AppRole/transit).
+**The test database is empty and needs re-seeding**, which was NOT done: seeding is on this ticket's
+forbidden list and `seed/**` is TASK-763's file set mid-edit. Any session needing e2e must seed
+first. Anyone running these specs should use
+`RESET_DB=false pnpm exec playwright test <spec>` from the repo root so the teardown leaves the
+shared infra alone.
+
+Also not verified live: a real `node dist/main.js` boot (it needs the same infra + a seeded DB) and
+the `apps/admin-console` smoke pass. The boot audits themselves ARE proven, over the real
+controller classes and the real `Reflector`, in `admin-scope-audit.test.ts` — including the
+real-tree assertion that every registered admin controller passes.
+
+### 6.7 The consequence that must not be buried
+
+After this ticket there is **no machine path to administration**. `X-Service-Token` is structurally
+confined to `/internal/*` (a boot audit refuses to start if an admin controller adopts it), tenant
+API keys are refused on the whole admin plane, and TASK-762's service-account plane is present in
+code but is not yet an operational credential anyone holds. Until it is provisioned end-to-end, the
+honest position is: **tenant-facing headless administration is unsupported.** This belongs in the
+release notes; an integrator must not discover it.
 
 ---
 
@@ -444,3 +597,4 @@ they are the historical record of what was decided when.
 | Date | Change | By |
 |---|---|---|
 | 2026-08-18 | Ticket created. Claims conformance rule **A2** (`api-design-conformance-review.md` §2.2, §3.1 step 2, §4 order 4). Full 65-controller list derived independently from the inventory summary table; handler total **386** reconciles exactly with the conformance scorecard. Evidence re-verified against the live tree; four corrections recorded: (a) the `@ForbidApiKey()`-before-scopes ordering is `unified-auth.guard.ts:319` vs `:336`, not `:365` (§2.1); (b) only 55 of the 56 `admin:` scopes fall in `apikey-scopes.registry.ts:37-134` — `admin:*` is at `:152` and a range-based reservation pass would miss it (§2.4); (c) `ADMIN_SCOPED_CONTROLLERS` polices 63 of 65 — `KnowledgeController` and `WorkflowSandboxRunController` are absent (§2.3); (d) `api-key-owner-scope.spec.ts` is JWT-only and does **not** break, so the breakage set is two specs, not three (§2.8). Also corrected the machine-identity cross-reference: sibling sessions authored TASK-754…762 concurrently from the same review, and machine identity is **TASK-762** (Blocked — owner decision), not TASK-758 (which is A1). Ownership boundaries against TASK-758/759/761 recorded in the header note and §4 Step 3. Status: Pending. | Ticket-authoring agent |
+| 2026-08-18 | **Implemented.** All 65 admin controllers swapped from class-level `@RequiredScopes(...)` to `@ForbidApiKey()`; all **70** admin-prefixed controllers now forbid API keys and **0** declare a scope (compiled-metadata sweep). The 56 `admin:` + 3 `webhook:` scopes marked `reserved` — enumerated by KEY so `admin:*` is included — refused at grant time (`NoReservedScopesConstraint` on the create DTO; a widening-DELTA check in `ApiKeyService.update()` so a rename `PATCH` on a pre-existing key still works) and dropped from the advertised catalog, while `isValidScope`/`resolveImpliedPermissions` keep answering so stored keys stay readable and TASK-756's ceiling keeps charging for them. `'*'` deliberately left grantable. The reserved rule has **no SUPER_ADMIN fast path** — A2 is a credential-class question, not a privilege one. Boot audit INVERTED and made DERIVED: new `auditAdminControllersDeclareNoApiKeyScopes(app)` walks `ModulesContainer` and fails the boot on any admin-prefixed route resolving `@RequiredScopes`; `ADMIN_SCOPED_CONTROLLERS` collapsed to 70 all-`FORBID`, adding the four the hand-transcribed list never held (`KnowledgeController`, `WorkflowSandboxRunController`, `ConsentGrantController`, `ServiceAccountController`). **Deviation:** the plan's second copy of the rule in `api-key-surface-audit.ts` was NOT added — one rule, in the file TASK-761 already names for it, instead of two identical boot errors for one defect (§6.2). TASK-758 close-out done: `BUSINESS_PLANE_KEY_FORBIDDEN_DEFERRED` and its pin deleted, replaced by a test running the audit over both real controllers with no name-based exemption left. `WorkflowSandboxRunController`'s "Session-JWT ONLY" drift fixed as a side effect. Evidence: RED captured before every GREEN (13 → 0, 12 → 0, and a temporary re-introduction of `@RequiredScopes` on `TenantController` proving the guard test discriminates); `apps/api` **3194 passed, 0 failed**; `applications` **9349 passed, 2 failed — both pre-existing and in untouched files**; `pnpm api:build` 12/12; typecheck clean both; lint 0 errors (64 / 183 warnings, none in a touched file). **Not run, and one thing went wrong:** the live e2e suite did not execute — the specs compile (`--list` → 52 tests / 3 files) but the root `playwright test` invocation's own `globalTeardown` ran `docker compose down -v` and destroyed the isolated test stack including the seeded DB. Infra restored with `pnpm infra:test:up` (7/7 healthy); the DB is EMPTY and was deliberately not re-seeded (forbidden here, and `seed/**` is TASK-763's mid-edit). Use `RESET_DB=false` when running these specs. Status: **Review** — pending a live e2e run against a seeded DB, and pending the TASK-762 machine-identity resolution §2.9/§6.7 requires before close. | TASK-757 implementation agent |

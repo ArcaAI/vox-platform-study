@@ -25,11 +25,7 @@ import { Reflector } from '@nestjs/core';
 import { ModulesContainer } from '@nestjs/core/injector/modules-container';
 import { API_KEY_REQUIRED_SCOPES, Authorize, ForbidApiKey, Public, REQUIRED_PERMISSIONS_KEY, RequiredScopes } from '@arcaai/applications';
 
-import {
-  auditBusinessPlaneApiKeyExemptions,
-  BUSINESS_PLANE_KEY_FORBIDDEN,
-  BUSINESS_PLANE_KEY_FORBIDDEN_DEFERRED,
-} from '../business-plane-apikey-exemptions-audit';
+import { auditBusinessPlaneApiKeyExemptions, BUSINESS_PLANE_KEY_FORBIDDEN } from '../business-plane-apikey-exemptions-audit';
 
 import { AuthController } from '../../modules/auth/auth.controller';
 import { VoiceProfileController } from '../../modules/voice-profile/voice-profile.controller';
@@ -49,6 +45,8 @@ import { UserRolesController } from '../../modules/user/controllers/user-roles.c
 import { MyTenantContextSchemaController } from '../../modules/consultation-context-schema/consultation-context-schema.controller';
 import { ConsentGrantController } from '../../modules/consent/consent.controller';
 import { AdminImpersonationController } from '../../modules/auth/admin-impersonation.controller';
+import { MonitoringController } from '../../modules/monitoring/monitoring.controller';
+import { ApiHealthController } from '../../modules/health/health.controller';
 
 /** Same shortcut the sibling audit tests use: real metadata, no DI graph. */
 function buildFakeAppFromRealControllers(
@@ -76,17 +74,20 @@ describe('business-plane API-key exemption audit (TASK-758, policy A1)', () => {
   });
 
   /**
-   * `MonitoringController` and `ApiHealthController` are administrative
-   * capabilities sitting on business prefixes (`/monitoring`, `/health`) —
-   * they are not business routes at all, and TASK-759 moves them. Tracked in
-   * their OWN set so "deferred to another ticket" is never mistaken for "we
-   * reasoned about this and chose to exempt it".
+   * The TASK-759 deferral set (`BUSINESS_PLANE_KEY_FORBIDDEN_DEFERRED`) is
+   * DELETED as of TASK-757's close-out. TASK-759 landed and both controllers it
+   * named are now handled structurally: `MonitoringController` moved to
+   * `admin/monitoring` (A2's plane, skipped by the admin-path rule) and
+   * `ApiHealthController` kept only `@Public()` probes (skipped by the public
+   * rule). The audit must still pass over both WITHOUT any name-based
+   * exemption — that is what proves the deletion was safe rather than merely
+   * quiet.
    */
-  it('tracks the TASK-759 deferrals separately from the reasoned exemptions', () => {
-    expect(BUSINESS_PLANE_KEY_FORBIDDEN_DEFERRED).toEqual(new Set(['MonitoringController', 'ApiHealthController']));
-    for (const name of BUSINESS_PLANE_KEY_FORBIDDEN_DEFERRED) {
-      expect(BUSINESS_PLANE_KEY_FORBIDDEN.has(name), `${name} is a deferral, not a reasoned exemption`).toBe(false);
-    }
+  it('passes over the two former TASK-759 deferrals with no name-based exemption left', () => {
+    expect(BUSINESS_PLANE_KEY_FORBIDDEN.has('MonitoringController')).toBe(false);
+    expect(BUSINESS_PLANE_KEY_FORBIDDEN.has('ApiHealthController')).toBe(false);
+
+    expect(() => auditBusinessPlaneApiKeyExemptions(buildFakeAppFromRealControllers([MonitoringController, ApiHealthController]))).not.toThrow();
   });
 
   it('passes against the three real exempt controllers', () => {

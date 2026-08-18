@@ -11,7 +11,7 @@ import {
 } from '@arcaai/applications';
 import { Body, Controller, Delete, Get, Inject, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { Authorize, CanManage, ExpectedVersion, RequiresIfMatch, RequiredScopes } from '../../decorators';
+import { Authorize, CanManage, ExpectedVersion, RequiresIfMatch, ForbidApiKey } from '../../decorators';
 import { CreateWebhookResponse } from './dto';
 
 /**
@@ -27,7 +27,7 @@ import { CreateWebhookResponse } from './dto';
  */
 @ApiBearerAuth()
 @ApiTags('admin-webhooks')
-@RequiredScopes('webhook:event:write')
+@ForbidApiKey()
 @Controller('admin/webhooks')
 @CanManage('Webhook')
 export class WebhookController {

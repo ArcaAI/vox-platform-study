@@ -8,7 +8,7 @@ import {
 import { BadRequestException, Body, Controller, Get, Inject, Put, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiHeader, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
-import { CanManage, CanRead, ExpectedVersion, RequiresIfMatch, RequiredScopes } from '../../decorators';
+import { CanManage, CanRead, ExpectedVersion, RequiresIfMatch, ForbidApiKey } from '../../decorators';
 import { resolveScopedTenantId } from '../../shared/tenant-scope';
 
 /**
@@ -33,7 +33,7 @@ import { resolveScopedTenantId } from '../../shared/tenant-scope';
  */
 @ApiBearerAuth()
 @ApiTags('admin-nlp-task-instructions')
-@RequiredScopes('admin:nlp-task-instructions:manage')
+@ForbidApiKey()
 @Controller('admin/nlp-task-instructions')
 export class NlpTaskInstructionsAdminController {
   constructor(
