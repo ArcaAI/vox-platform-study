@@ -156,10 +156,13 @@ const RECOGNISED_SERVICE_TOKEN_GUARD_NAMES: ReadonlySet<string> = new Set([
  * There is exactly one, and it is not a style choice: the STT worker
  * authenticates with `X-Internal-Service-Key` carrying `api_gateway_key`, which
  * BUG-013 requires to be the RAW value of a registered ACTIVE SERVICE_ACCOUNT
- * `ApiKey` row (`apps/stt/src/stt/worker.py:209`,
- * `apps/stt/src/stt/core/effective_config.py:171`). It presents an API KEY, not
- * a service token, so pulling this controller off the API-key surface would
- * break the worker unless `apps/stt` changed in lockstep.
+ * `ApiKey` row. The live send sites are `apps/stt/src/stt/core/api_client/gateway.py`
+ * (`"X-Internal-Service-Key": self.api_key`) and
+ * `apps/stt/src/stt/core/effective_config.py` — corrected by TASK-759 (D-3):
+ * the previous citation `apps/stt/src/stt/worker.py:209` now points at
+ * SERVICE-RELEASE REGISTRATION, not the STT internal callback path. It presents
+ * an API KEY, not a service token, so pulling this controller off the API-key
+ * surface would break the worker unless `apps/stt` changed in lockstep.
  *
  * The exemption is POLICED, not a hole: an exempted controller must still carry
  * `@RequiredScopes` with a scope under the reserved `internal:` root, which no

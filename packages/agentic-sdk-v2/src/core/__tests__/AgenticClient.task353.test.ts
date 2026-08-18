@@ -3,13 +3,20 @@
  * the admin's own JWT during impersonation.
  *
  * The backend gates `/monitoring/*` (whole controller) and
- * `/health/services[/:serviceKey]` behind `@Authorize(['manage', 'all'])`,
+ * `/health/services[/:serviceKey]` behind CASL (`manage:all | read:TenantTelemetry`),
  * but `isAdminPlanePath` only matched `/admin/*`.
  * While impersonating a doctor, these endpoints received the impersonation JWT
  * and returned 403 — e.g. the entire /admin/system-health page broke.
  *
  * Other `/health/*` probes (`/health`, `/health/live`, `/health/ready`) are
  * unrestricted and stay on the user-plane path.
+ *
+ * TASK-759 filed both surfaces under `admin/` (`/admin/monitoring/*`,
+ * `/admin/health/services*`), so the generic `admin/` branch now carries them
+ * and the SDK's own endpoint constants emit the new paths. The legacy branches
+ * are retained and still asserted below: a caller passing a hard-coded
+ * pre-move path must still be classified admin-plane rather than silently
+ * receiving the impersonation JWT.
  *
  * @vitest-environment jsdom
  */
@@ -29,7 +36,7 @@ function authHeaderOf(callIndex = 0): string | undefined {
 }
 
 describe('isAdminPlanePath covers non-/admin admin-only routes', () => {
-  it('matches /monitoring/* (entire controller is manage:all)', () => {
+  it('still matches the LEGACY /monitoring/* paths (pre-TASK-759 hard-coded callers)', () => {
     expect(isAdminPlanePath('/monitoring/uptime')).toBe(true);
     expect(isAdminPlanePath('/monitoring/sessions')).toBe(true);
     expect(isAdminPlanePath('/monitoring/uptime/smr')).toBe(true);
@@ -38,11 +45,19 @@ describe('isAdminPlanePath covers non-/admin admin-only routes', () => {
     expect(isAdminPlanePath('/api/v1/monitoring/uptime')).toBe(true); // fully-qualified
   });
 
-  it('matches /health/services and /health/services/:serviceKey (manage:all)', () => {
+  it('still matches the LEGACY /health/services[/:serviceKey] paths (pre-TASK-759 hard-coded callers)', () => {
     expect(isAdminPlanePath('/health/services')).toBe(true);
     expect(isAdminPlanePath('/health/services/smr')).toBe(true);
     expect(isAdminPlanePath('/health/services?verbose=1')).toBe(true); // query string
     expect(isAdminPlanePath('/api/v1/health/services')).toBe(true); // fully-qualified
+  });
+
+  it('matches the TASK-759 admin-plane paths through the generic admin/ branch', () => {
+    expect(isAdminPlanePath('/admin/monitoring/uptime')).toBe(true);
+    expect(isAdminPlanePath('/admin/monitoring/sessions')).toBe(true);
+    expect(isAdminPlanePath('/admin/health/services')).toBe(true);
+    expect(isAdminPlanePath('/admin/health/services/smr')).toBe(true);
+    expect(isAdminPlanePath('/api/v1/admin/health/services')).toBe(true);
   });
 
   it('does NOT match unrestricted health probes or look-alike paths', () => {

@@ -4,9 +4,9 @@
  * The hook now makes 3 calls:
  *   1. GET /health       (API gateway health)
  *   2. GET /health/live  (API gateway liveness)
- *   3. GET /health/services  (consolidated downstream service health)
+ *   3. GET /admin/health/services  (consolidated downstream service health)
  *
- * The /health/services response contains per-service status for smr, nlp, stt, guardrail.
+ * The /admin/health/services response contains per-service status for smr, nlp, stt, guardrail.
  * The hook flattens this into the services map alongside api and apiLive.
  *
  * @vitest-environment jsdom

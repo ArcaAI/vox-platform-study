@@ -88,7 +88,7 @@ function installFetch(overrides: RouteOverrides = {}) {
   const fetchMock = vi.fn(async (input: string | URL | Request) => {
     const url = String(input);
     if (url.includes('admin/platform/metrics')) return (overrides.metrics ?? (() => Response.json(METRICS)))();
-    if (url.includes('health/services')) return (overrides.health ?? (() => Response.json(HEALTH)))();
+    if (url.includes('admin/health/services')) return (overrides.health ?? (() => Response.json(HEALTH)))();
     if (url.includes('admin/audit-logs')) return (overrides.audit ?? (() => Response.json(AUDIT)))();
     throw new Error(`Unexpected fetch in test: ${url}`);
   });

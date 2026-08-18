@@ -12,13 +12,16 @@
  * Whether `path` targets the **admin plane**.
  *
  * Covers `/admin/*` (mirrors the API gateway's own admin-route detection,
- * `AuthorizationGuard`, `/^\/(api\/v\d+\/)?admin\//`) PLUS the admin-only
- * surfaces that live OUTSIDE the `/admin/` prefix:
+ * `AuthorizationGuard`, `/^\/(api\/v\d+\/)?admin\//`).
  *
- * - `/monitoring/*` — whole controller is `@Authorize(['manage', 'all'])`.
- * - `/health/services[/:serviceKey]` — `manage:all`; the other `/health/*`
- *   probes (`/health`, `/health/live`, `/health/ready`) are unrestricted and
- *   deliberately NOT matched.
+ * TASK-759 moved the two surfaces that used to sit OUTSIDE that prefix onto
+ * it — `/monitoring/*` → `/admin/monitoring/*`, and
+ * `/health/services[/:serviceKey]` → `/admin/health/services[...]` — so the
+ * `admin/` branch now covers them. The two legacy branches are KEPT (they
+ * cost nothing and still classify a hard-coded pre-move path correctly for an
+ * older caller), and the remaining `/health/*` probes (`/health`,
+ * `/health/live`, `/health/ready`) stay unrestricted and deliberately
+ * unmatched.
  *
  * The optional `api/vN/` segment is tolerated even though SDK endpoint
  * constants omit the gateway prefix (the `baseUrl` carries it) — this keeps
@@ -307,13 +310,17 @@ export const HEALTH_ENDPOINTS = {
 /**
  * Monitoring endpoints (SDK-207 WS-4)
  *
- * Matches MonitoringController.
+ * Matches `MonitoringController` at `@Controller('admin/monitoring')`.
+ * TASK-759 moved this controller off the business prefix (`/monitoring`) onto
+ * the admin plane — it requires `manage:all | read:TenantTelemetry`, an
+ * administrative capability, so rule P2 applies. Hard move, no alias: the
+ * pre-move paths 404.
  */
 export const MONITORING_ENDPOINTS = {
-  UPTIME: '/monitoring/uptime',
-  SERVICE_UPTIME: (service: string) => `/monitoring/uptime/${encodeURIComponent(service)}`,
-  HEARTBEATS: (service: string) => `/monitoring/heartbeats/${encodeURIComponent(service)}`,
-  SESSIONS: '/monitoring/sessions',
+  UPTIME: '/admin/monitoring/uptime',
+  SERVICE_UPTIME: (service: string) => `/admin/monitoring/uptime/${encodeURIComponent(service)}`,
+  HEARTBEATS: (service: string) => `/admin/monitoring/heartbeats/${encodeURIComponent(service)}`,
+  SESSIONS: '/admin/monitoring/sessions',
 } as const;
 
 /**
@@ -606,12 +613,18 @@ export const AUTH_ENDPOINTS = {
 /**
  * Consolidated service health endpoint.
  *
- * The API gateway provides a single /health/services endpoint that fans out
- * health checks to all downstream Python microservices (TTS, SMR, NLP, STT)
- * and returns aggregated results with per-service status.
+ * The API gateway provides a single endpoint that fans out health checks to
+ * all downstream Python microservices (TTS, SMR, NLP, STT) and returns
+ * aggregated results with per-service status.
+ *
+ * TASK-759 moved it to `AdminHealthServicesController`
+ * (`@Controller('admin/health/services')`): it is CASL-gated ops telemetry
+ * (`manage:all | read:TenantTelemetry`), so it belongs on the admin plane, not
+ * on the PUBLIC k8s-probe prefix. The unauthenticated probes in
+ * `HEALTH_ENDPOINTS` above are unaffected. Hard move, no alias.
  */
 export const SERVICE_HEALTH_ENDPOINTS = {
-  SERVICES: '/health/services',
+  SERVICES: '/admin/health/services',
 } as const;
 
 /**

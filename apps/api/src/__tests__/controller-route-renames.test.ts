@@ -97,8 +97,10 @@ describe('@ApiTags alignment with new routes', () => {
 describe('Unchanged controller paths (no rename needed)', () => {
   const unchanged: [string, string][] = [
     ['auth/auth.controller.ts', 'auth'],
+    // `health` stays put — it is the PUBLIC k8s-probe prefix. TASK-759 moved
+    // only the two CASL-gated `/services` routes off it, into
+    // `AdminHealthServicesController` (asserted below).
     ['health/health.controller.ts', 'health'],
-    ['monitoring/monitoring.controller.ts', 'monitoring'],
     ['rbac/permission-check.controller.ts', 'rbac/check'],
     ['storage/storage.controller.ts', 'storage'],
   ];
@@ -189,7 +191,10 @@ describe('Complete controller inventory', () => {
     ['pstudio/pstudio.controller.ts', 'admin/pstudio'],
     ['auth/auth.controller.ts', 'auth'],
     ['health/health.controller.ts', 'health'],
-    ['monitoring/monitoring.controller.ts', 'monitoring'],
+    // TASK-759 (rule P2) — administrative capabilities moved onto the admin
+    // plane. HARD MOVE: the pre-move prefixes are gone, not aliased.
+    ['monitoring/monitoring.controller.ts', 'admin/monitoring'],
+    ['health/admin-health-services.controller.ts', 'admin/health/services'],
     ['rbac/permission-check.controller.ts', 'rbac/check'],
     ['storage/storage.controller.ts', 'storage'],
   ];

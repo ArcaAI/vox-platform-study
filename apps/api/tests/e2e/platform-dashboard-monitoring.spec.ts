@@ -13,15 +13,15 @@
  *   Dashboard (frame 10):
  *     P1 · GET /admin/tenants     → cross-tenant tenant list (Active-tenants KPI).
  *     P2 · GET /admin/users       → cross-tenant user count (Total-users KPI).
- *     P1 · GET /monitoring/sessions → live-session / processing-job counts. 🔒
+ *     P1 · GET /admin/monitoring/sessions → live-session / processing-job counts. 🔒
  *   Monitoring (frame 11):
- *     M1 · GET /monitoring/uptime → per-service elapsed uptime. 🔒
- *     M1 · GET /health/services   → per-service health (degraded-services KPI +
+ *     M1 · GET /admin/monitoring/uptime → per-service elapsed uptime. 🔒
+ *     M1 · GET /admin/health/services   → per-service health (degraded-services KPI +
  *          the Services table). 🔒
  *   G1 · super-admin scope — a tenant-scoped `doctor` is 403 on the three 🔒
  *          platform-ops endpoints (MonitoringController is class-gated
- *          @Authorize(['manage','all']) at monitoring.controller.ts:14;
- *          /health/services is method-gated at health.controller.ts:182).
+ *          @CanAny(['manage','all'],['read','TenantTelemetry']) at monitoring.controller.ts;
+ *          /admin/health/services is method-gated on AdminHealthServicesController since TASK-759).
  *
  * Deliberately NOT asserted (TARGET — no backend; drawn em-dash on the surfaces,
  * see README + TRACEABILITY-MATRIX T1): requests/min, error-rate, sockets/min,
@@ -38,20 +38,20 @@ interface Paginated<T> {
   page: number;
 }
 
-/** GET /monitoring/sessions — SessionsResponse (monitoring.dto.ts). */
+/** GET /admin/monitoring/sessions — SessionsResponse (monitoring.dto.ts). */
 interface SessionsResponse {
   services: Record<string, { active: number }>;
   totalUsers: number;
   refreshedAt: string;
 }
 
-/** GET /monitoring/uptime — UptimeResponse (monitoring.dto.ts). */
+/** GET /admin/monitoring/uptime — UptimeResponse (monitoring.dto.ts). */
 interface UptimeResponse {
   services: Record<string, { status: string; uptime: number }>;
   refreshedAt: string;
 }
 
-/** GET /health/services — consolidated downstream health (health.controller.ts). */
+/** GET /admin/health/services — consolidated downstream health (health.controller.ts). */
 interface HealthServicesResponse {
   status: string;
   timestamp: string;
@@ -62,7 +62,7 @@ const authGet = (request: APIRequestContext, path: string, token: string, params
   request.get(path, { headers: { Authorization: `Bearer ${token}` }, params });
 
 // The 🔒 platform-ops endpoints, gated to SUPER_ADMIN (`manage all`).
-const SUPER_ADMIN_ONLY_PATHS = ['/api/v1/monitoring/sessions', '/api/v1/monitoring/uptime', '/api/v1/health/services'] as const;
+const SUPER_ADMIN_ONLY_PATHS = ['/api/v1/admin/monitoring/sessions', '/api/v1/admin/monitoring/uptime', '/api/v1/admin/health/services'] as const;
 
 test.describe('platform dashboard + monitoring (cross-tenant data sources)', () => {
   let token: string;
@@ -97,8 +97,8 @@ test.describe('platform dashboard + monitoring (cross-tenant data sources)', () 
     expect(body.count, 'seed ships several users').toBeGreaterThan(0);
   });
 
-  test('P1: GET /monitoring/sessions exposes session counts (live sessions / processing jobs)', async ({ request }) => {
-    const res = await authGet(request, '/api/v1/monitoring/sessions', token);
+  test('P1: GET /admin/monitoring/sessions exposes session counts (live sessions / processing jobs)', async ({ request }) => {
+    const res = await authGet(request, '/api/v1/admin/monitoring/sessions', token);
     expect(res.status(), 'super_admin reads session counts').toBe(200);
     const body = (await res.json()) as SessionsResponse;
     // REAL wire contract (SessionsResponse): per-service counts + totalUsers +
@@ -110,8 +110,8 @@ test.describe('platform dashboard + monitoring (cross-tenant data sources)', () 
 
   // --- Monitoring (frame 11) REAL service-health sources --------------------
 
-  test('M1: GET /monitoring/uptime exposes per-service uptime (Services-table UPTIME)', async ({ request }) => {
-    const res = await authGet(request, '/api/v1/monitoring/uptime', token);
+  test('M1: GET /admin/monitoring/uptime exposes per-service uptime (Services-table UPTIME)', async ({ request }) => {
+    const res = await authGet(request, '/api/v1/admin/monitoring/uptime', token);
     expect(res.status(), 'super_admin reads uptime').toBe(200);
     const body = (await res.json()) as UptimeResponse;
     expect(typeof body.services, 'uptime payload carries a per-service map').toBe('object');
@@ -122,8 +122,8 @@ test.describe('platform dashboard + monitoring (cross-tenant data sources)', () 
     }
   });
 
-  test('M1: GET /health/services returns consolidated downstream health (degraded-services KPI + Services table)', async ({ request }) => {
-    const res = await authGet(request, '/api/v1/health/services', token);
+  test('M1: GET /admin/health/services returns consolidated downstream health (degraded-services KPI + Services table)', async ({ request }) => {
+    const res = await authGet(request, '/api/v1/admin/health/services', token);
     expect(res.status(), 'super_admin reads consolidated service health').toBe(200);
     const body = (await res.json()) as HealthServicesResponse;
     expect(body.status, 'overall status present (healthy|degraded|unhealthy)').toBeTruthy();

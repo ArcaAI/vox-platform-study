@@ -265,6 +265,64 @@ describe('boot-time /internal/* off-API-key-surface audit (TASK-708)', () => {
     expect(() => auditInternalRoutesOffApiKeySurface(app)).toThrow(/is not @Public\(\)/);
   });
 
+  /**
+   * TASK-759 Step 5 — prove the carve-out is POLICED before writing it down as
+   * settled in `api-controller-inventory.md`.
+   *
+   * `RESERVED_INTERNAL_SCOPE_CONTROLLERS` exempts exactly `SttInternalController`
+   * from the "@Public() + service-token guard" rule, because the STT worker
+   * presents an API KEY (BUG-013), not a service token. The exemption is keyed
+   * on the CLASS NAME, so the two tests below stand a stand-in class of that
+   * exact name next to the real one and check both halves of the claim:
+   *
+   *   1. exempted + reserved `internal:` scope  → passes (what the tree does);
+   *   2. exempted + NO reserved scope           → still an offender.
+   *
+   * (2) is the load-bearing one: without it, "exempt" would mean "unchecked",
+   * and stripping `@RequiredScopes('internal:stt:worker')` would silently put
+   * every `/internal/stt/*` route back on the open API-key surface.
+   */
+  it('accepts the reserved-scope carve-out when the internal:-rooted scope is present (BUG-013 shape)', async () => {
+    @RequiredScopes('internal:stt:worker')
+    @Controller('internal/stt')
+    class SttInternalController {
+      @Get('jobs/:id/status')
+      status() {
+        return {};
+      }
+    }
+    const app = await buildAppFromControllers([SttInternalController]);
+    expect(() => auditInternalRoutesOffApiKeySurface(app)).not.toThrow();
+  });
+
+  it('still fails the exempted controller when the reserved internal: scope is missing — the carve-out is policed, not a hole', async () => {
+    @Controller('internal/stt')
+    class SttInternalController {
+      @Get('jobs/:id/status')
+      status() {
+        return {};
+      }
+    }
+    const app = await buildAppFromControllers([SttInternalController]);
+    expect(() => auditInternalRoutesOffApiKeySurface(app)).toThrow(/carries no @RequiredScopes under the reserved 'internal:' root/);
+  });
+
+  it('rejects a non-reserved scope on the exempted controller (a real admin: scope must not satisfy it)', async () => {
+    // A REGISTERED scope — `@RequiredScopes` validates against
+    // `API_KEY_SCOPE_REGISTRY` at decoration time, so an invented string would
+    // throw before the audit ever ran and prove nothing.
+    @RequiredScopes('admin:tenant:write')
+    @Controller('internal/stt')
+    class SttInternalController {
+      @Get('jobs/:id/status')
+      status() {
+        return {};
+      }
+    }
+    const app = await buildAppFromControllers([SttInternalController]);
+    expect(() => auditInternalRoutesOffApiKeySurface(app)).toThrow(/reserved 'internal:' root/);
+  });
+
   it('lists every offender in one error when multiple routes drift', async () => {
     @Controller('internal/foo')
     class FooOrphan {

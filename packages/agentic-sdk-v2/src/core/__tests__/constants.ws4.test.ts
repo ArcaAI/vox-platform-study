@@ -154,19 +154,19 @@ describe('WS-4 endpoint constants', () => {
 
   describe('MONITORING_ENDPOINTS', () => {
     it('should have UPTIME endpoint', () => {
-      expect(MONITORING_ENDPOINTS.UPTIME).toBe('/monitoring/uptime');
+      expect(MONITORING_ENDPOINTS.UPTIME).toBe('/admin/monitoring/uptime');
     });
 
     it('should generate SERVICE_UPTIME endpoint', () => {
-      expect(MONITORING_ENDPOINTS.SERVICE_UPTIME('api')).toBe('/monitoring/uptime/api');
+      expect(MONITORING_ENDPOINTS.SERVICE_UPTIME('api')).toBe('/admin/monitoring/uptime/api');
     });
 
     it('should generate HEARTBEATS endpoint', () => {
-      expect(MONITORING_ENDPOINTS.HEARTBEATS('stt')).toBe('/monitoring/heartbeats/stt');
+      expect(MONITORING_ENDPOINTS.HEARTBEATS('stt')).toBe('/admin/monitoring/heartbeats/stt');
     });
 
     it('should have SESSIONS endpoint', () => {
-      expect(MONITORING_ENDPOINTS.SESSIONS).toBe('/monitoring/sessions');
+      expect(MONITORING_ENDPOINTS.SESSIONS).toBe('/admin/monitoring/sessions');
     });
   });
 
@@ -223,8 +223,8 @@ describe('WS-4 endpoint constants', () => {
       expect(PROMPT_TEMPLATE_ENDPOINTS.GET('')).toBe('/admin/prompt-templates/');
       expect(DEPARTMENT_ENDPOINTS.GET('')).toBe('/admin/departments/');
       expect(CONSULTATION_ENDPOINTS.CHAIN('')).toBe('/consultations//chain');
-      expect(MONITORING_ENDPOINTS.SERVICE_UPTIME('')).toBe('/monitoring/uptime/');
-      expect(MONITORING_ENDPOINTS.HEARTBEATS('')).toBe('/monitoring/heartbeats/');
+      expect(MONITORING_ENDPOINTS.SERVICE_UPTIME('')).toBe('/admin/monitoring/uptime/');
+      expect(MONITORING_ENDPOINTS.HEARTBEATS('')).toBe('/admin/monitoring/heartbeats/');
       expect(TENANT_ENDPOINTS.GET_CONFIGS('')).toBe('/admin/tenants/configs/');
       expect(TENANT_ENDPOINTS.UPDATE_CONFIGS('')).toBe('/admin/tenants/configs/');
     });
@@ -233,7 +233,7 @@ describe('WS-4 endpoint constants', () => {
       const specialId = 'id-with-special_chars.v2';
       expect(DNA_STYLE_ENDPOINTS.UPDATE(specialId)).toBe(`/dna-writing-styles/${specialId}`);
       expect(PROMPT_TEMPLATE_ENDPOINTS.GET(specialId)).toBe(`/admin/prompt-templates/${specialId}`);
-      expect(MONITORING_ENDPOINTS.SERVICE_UPTIME('stt')).toBe('/monitoring/uptime/stt');
+      expect(MONITORING_ENDPOINTS.SERVICE_UPTIME('stt')).toBe('/admin/monitoring/uptime/stt');
     });
 
     it('should handle very long IDs', () => {

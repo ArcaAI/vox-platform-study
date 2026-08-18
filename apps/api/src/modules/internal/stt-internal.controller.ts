@@ -49,6 +49,24 @@ import type { RequestWithAuth } from '../../types/request-with-auth';
 // satisfies it via the existing wildcard grant, so this is unaffected for the
 // worker and closes the gap for every other API-key holder.
 @RequiredScopes('internal:stt:worker')
+// API-KEY-NOTE — RESERVED-SCOPE CARVE-OUT (BUG-013). SETTLED, AND POLICED AT BOOT.
+// This is the ONLY `/internal/*` controller on the API-key path. The other four
+// (`EffectiveConfigController`, `HarnessInternalController`,
+// `ConsentInternalController`, `ServiceReleaseInternalController`) are
+// `@Public()` + a service-token guard. That asymmetry reads as drift and is not:
+// the STT worker authenticates with `X-Internal-Service-Key` carrying the RAW
+// value of a registered ACTIVE SERVICE_ACCOUNT `ApiKey` row (BUG-013) — see
+// `apps/stt/src/stt/core/api_client/gateway.py` and `core/effective_config.py`.
+// It presents an API KEY, not a service token, so pulling this controller off
+// the API-key surface would break the worker unless `apps/stt` changed in
+// lockstep, and `assertPlatformInternalCredential` below depends on that same
+// API-key identity for the cross-tenant `X-Internal-Tenant-Id` pin.
+// The exemption is enforced, not merely written down: `auditInternalRoutesOffApiKeySurface`
+// (`apps/api/src/bootstrap/api-key-scope-audit.ts`, `RESERVED_INTERNAL_SCOPE_CONTROLLERS`)
+// fails BOOT if this class stops carrying an `internal:`-rooted `@RequiredScopes`
+// — proven by `api-key-scope-audit.test.ts`'s "carve-out is policed, not a hole"
+// case. Do not "converge" this onto a service-token guard without changing
+// `apps/stt` in the same commit. Recorded in `docs/architecture/api-controller-inventory.md` §1.
 @Controller('internal/stt')
 export class SttInternalController {
   constructor(

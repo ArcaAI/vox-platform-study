@@ -6,9 +6,9 @@
  * Makes 3 calls in parallel:
  *   1. GET /health           – API gateway detailed health
  *   2. GET /health/live      – API gateway liveness
- *   3. GET /health/services  – Consolidated downstream service health
+ *   3. GET /admin/health/services – Consolidated downstream service health
  *
- * The /health/services response is flattened so each downstream service
+ * The /admin/health/services response is flattened so each downstream service
  * (smr, nlp, stt, guardrail, harness) appears as a top-level entry in the
  * services map alongside 'api' and 'apiLive'.
  */

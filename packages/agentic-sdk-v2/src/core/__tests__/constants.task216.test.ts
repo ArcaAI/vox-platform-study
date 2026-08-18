@@ -1,7 +1,7 @@
 /**
  * Endpoint Constants Tests (updated for consolidated health)
  *
- * SERVICE_HEALTH_ENDPOINTS uses a single consolidated endpoint at /health/services
+ * SERVICE_HEALTH_ENDPOINTS uses a single consolidated endpoint at /admin/health/services
  * on the API gateway. The gateway fans out health checks to all downstream
  * Python microservices (TTS, SMR, NLP, STT) and returns aggregated results.
  *
@@ -16,8 +16,8 @@ import { describe, it, expect } from 'vitest';
 import { SERVICE_HEALTH_ENDPOINTS } from '../constants';
 
 describe('SERVICE_HEALTH_ENDPOINTS (consolidated health check)', () => {
-  it('should have SERVICES pointing to /health/services', () => {
-    expect(SERVICE_HEALTH_ENDPOINTS.SERVICES).toBe('/health/services');
+  it('should have SERVICES pointing to /admin/health/services (moved by TASK-759)', () => {
+    expect(SERVICE_HEALTH_ENDPOINTS.SERVICES).toBe('/admin/health/services');
   });
 
   it('should have exactly 1 key (consolidated endpoint)', () => {

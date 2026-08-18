@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Pending |
+| **Status** | Completed (e2e run outstanding — see Verification) |
 | **Owner** | Platform / Architecture |
 | **Date** | 2026-08-18 |
 | **Type** | refactor (route taxonomy) + docs |
@@ -305,7 +305,72 @@ Update in the same commit: `api-controller-inventory.md` (summary rows `:112`, `
 
 ## Implementation Summary
 
-_pending_
+Executed 2026-08-18. All four §2.5 items closed: two hard route moves, two documentary records.
+No auth decorator was added or removed anywhere — both moved surfaces were **already**
+`@ForbidApiKey()` (TASK-742's conservative default), which is exactly the A2 posture the admin
+plane requires, so the move is a re-filing rather than a re-authorization.
+
+### Step 0 — decisions taken
+
+| # | Decision | Reasoning |
+|---|---|---|
+| 0.1 | **Option A — hard move, no alias.** | Current State §6: there is no redirect/deprecation precedent anywhere in `apps/api` (zero `@Redirect`, zero 301/308, zero `deprecated: true`), and the pre-production posture is "ship complete, not dual-pathed". Option B would invent a gateway convention for a surface whose only consumers live in this repo, and would leave an admin-shaped route on a business prefix — the exact defect this ticket removes. Every in-repo consumer moved in the same change; the retired paths are asserted **404** in `monitoring.spec.ts`. |
+| 0.2 | **Preserve the existing 30/60s throttle on the moved `/services` routes** (explicit `@Throttle` on the new controller). | The tightness was justified by unauthenticated probe reconnaissance, but the probe itself fans out 6 outbound HTTP calls per request, so it is an SSRF amplifier on any prefix. 30/min sits comfortably above the admin console's 30-second poll (`features/monitoring/api/hooks.ts`, ≈2/min). Changing a rate limit is not a taxonomy decision, so this ticket preserves observable behaviour rather than re-tuning it. |
+| 0.3 | **Record the `SttInternalController` carve-out; do not converge.** | Current State §3 — already settled, reasoned and boot-policed. Convergence would need a lockstep `apps/stt` change for zero security gain over a reserved scope no tenant key is ever issued. |
+
+### Step 1 — `MonitoringController` → `admin/monitoring`
+
+- `apps/api/src/modules/monitoring/monitoring.controller.ts:19` — `@Controller('monitoring')` → `@Controller('admin/monitoring')`. `@CanAny` (`:17`, OR mode) and `@Throttle(300/60s)` (`:18`) unchanged.
+- Same file, the API-KEY-NOTE block: rewritten from "TASK-742 CONSERVATIVE DEFAULT, AWAITING OWNER CLASSIFICATION" to "CLOSED BY PLANE" — the decorator is identical, the *reason* is now A2 rather than a deferral.
+- RED first: `apps/api/src/modules/monitoring/__tests__/monitoring.controller.route.test.ts` (new) — 5 metadata assertions, 1 failed on the prefix (`expected 'monitoring' to be 'admin/monitoring'`) and 4 passed, pinning the gate/throttle/handler paths that must NOT change.
+
+### Step 2 — split `ApiHealthController`
+
+- `apps/api/src/modules/health/admin-health-services.controller.ts` (new) — `AdminHealthServicesController` at `@Controller('admin/health/services')`, holding `checkServices` (`@Get()`), `checkServiceByKey` (`@Get(':serviceKey')`), the `downstreamServices` table and the shared `probeService` helper. Carries the same per-handler `@CanAny(['manage','all'],['read','TenantTelemetry'])`, the same class `@ForbidApiKey()` and the same `@Throttle(30/60s)`.
+- `apps/api/src/modules/health/health.controller.ts` — reduced to the four `@Public()` probes. `HttpService`, `IConfigService`, `Logger`, the `DownstreamService`/`ServiceProbeResult` interfaces and the `downstreamServices` table went with the handlers (they were orphaned by the split, so they were removed rather than left dangling).
+- `apps/api/src/modules/health/health.module.ts` — registers both controllers; `HttpModule` stays (the new controller needs it).
+- **Kept** the now-inert class-level `@ForbidApiKey()` on `ApiHealthController` even though the ticket's Step 2 said it "can be dropped": every route on the class is `@Public()`, so it covers nothing at runtime, but dropping it is an auth-posture change owned by TASK-757, and keeping it means a future non-public route added there fails boot instead of arriving undeclared. Recorded in the file's own comment.
+- RED first: new `admin-health-services.controller.test.ts` failed to resolve the module; the rewritten `health.controller.test.ts` failed 15/15 on the two-argument constructor and the "handlers are gone" assertions.
+
+### Step 3 — consumers moved in the same change
+
+| File | Change |
+|---|---|
+| `apps/admin-console/src/features/monitoring/api/client.ts:16,20,24,28,32,36` | all six calls repointed to `admin/health/services…` / `admin/monitoring/…` |
+| `…/features/monitoring/api/types.ts`, `…/api/hooks.ts`, `…/features/platform/components/platform-dashboard.tsx:237`, `…/features/releases/api/client.ts:8`, `…/shared/navigation/nav-config.ts:112` | doc comments + the UI label |
+| admin-console tests: `monitoring-api.test.ts`, `monitoring-screen.test.tsx`, `platform-dashboard.test.tsx` | asserted URLs |
+| **`packages/agentic-sdk-v2/src/core/constants.ts`** | `MONITORING_ENDPOINTS` (4 entries) and `SERVICE_HEALTH_ENDPOINTS.SERVICES` repointed; `isAdminPlanePath`'s doc updated. **This consumer was NOT in the ticket's §5 consumer table** — see "Findings while implementing" below. |
+| SDK tests `constants.ws4`, `constants.task210`, `constants.task216`, `AgenticClient.task353`, `useHealthCheck` + its test | asserted paths; `task353` gained a case proving the new paths classify admin-plane through the generic `admin/` branch |
+| API e2e `monitoring.spec.ts`, `platform-dashboard-monitoring.spec.ts`, `platform-runtime-metrics.spec.ts`, `tenant-dashboard-sources.spec.ts` | every path; `monitoring.spec.ts` gained a `Retired pre-TASK-759 monitoring paths` block asserting **404** on the three old paths |
+| `apps/api/src/__tests__/controller-route-renames.test.ts` | the repo-wide controller-prefix inventory (**not in the ticket's consumer list**; it failed the full run and pinned `monitoring`) |
+
+### Step 4 — handed to the admin plane
+
+`apps/api/src/bootstrap/admin-scope-audit.ts` — `MonitoringController` and `AdminHealthServicesController` added to `ADMIN_SCOPED_CONTROLLERS` as `expect: 'FORBID'` (the `AdminImpersonationController` shape). Neither declares `@RequiredScopes`, so TASK-757's proposed "fail boot when an `admin/` controller declares `@RequiredScopes`" rule is satisfied on arrival. `auditAdminScopedControllers()` runs over the real list in `admin-scope-audit.test.ts` and passes.
+
+`BUSINESS_PLANE_KEY_FORBIDDEN_DEFERRED` (`bootstrap/business-plane-apikey-exemptions-audit.ts`) — **deliberately left alone.** It names these two controllers as "TASK-759's to classify" and its own docstring says entries are not policed for staleness precisely so this ticket landing does not fail the boot. It is TASK-758's file and TASK-758 is in flight; the set is now inert (the controller-level `continue` fires before any path check, and both surfaces are admin-prefixed or `@Public()` anyway). **TASK-758 should delete the set and its test assertion when it closes.**
+
+### Step 5 — `SttInternalController` carve-out (documentary; no functional change)
+
+- `apps/api/src/modules/internal/stt-internal.controller.ts` — `// API-KEY-NOTE` block added above `@Controller('internal/stt')`. **Marker deviation, deliberate:** the plan said `// AUTH-NOTE:`, but the 2026-08-18 owner marker convention (recorded in `bootstrap/__tests__/business-plane-apikey-exemptions.test.ts`) assigns `API-KEY-NOTE` to the API-key classification and `AUTH-NOTE` to rule 05's "the decorator understates the real gate". This note is the former; the pre-existing `AUTH-NOTE` on `assertPlatformInternalCredential` is the latter and is untouched.
+- `apps/api/src/bootstrap/api-key-scope-audit.ts` — **D-3 fixed**: the `apps/stt/src/stt/worker.py:209` citation replaced with the live send sites `apps/stt/src/stt/core/api_client/gateway.py` (verified: `"X-Internal-Service-Key": self.api_key`) and `core/effective_config.py:171,227`.
+- `apps/api/src/bootstrap/__tests__/api-key-scope-audit.test.ts` — three new cases proving the exemption is POLICED before it is written down as settled: exempted + reserved scope passes; exempted + **no** scope is still an offender; exempted + a registered `admin:` scope is still an offender.
+- `docs/architecture/api-controller-inventory.md` — §1 gained a carve-out paragraph; the `SttInternalController` catalog note replaced.
+
+### Step 6 — `WorkflowSandboxRunController`
+
+No decorator changed. `docs/architecture/agentic-workflow-platform/conformance/gateway-and-sdk.md` §6.3 gained a status note: the drift is closed by TASK-757's admin sweep, and D-4 is recorded (post-TASK-742 the API-key path DOES evaluate CASL via `enforceApiKeyAbilities`, so the stated blast radius is narrower than written; the finding itself stands).
+
+### Step 7 — documentation
+
+`api-controller-inventory.md` (summary rows, both catalog entries, new `AdminHealthServicesController` entry, headline class count 104 → 105, a TASK-759 handler-split delta, D-1 `:serviceKey` fixed, D-5 resolved by the class no longer being "Mixed"), `api-controller-groupings.md` (View A rows + counts; View B — the two rows were filed under **ENDUSER**, which was the misfiling itself: `ApiHealthController` moved to PUBLIC, `MonitoringController` + `AdminHealthServicesController` to SUPER-CARVE), `api-design-conformance-review.md` (P1/P2 row now 0 non-conformant, P3 row records the policed carve-out, §2.5 rows marked DONE, §4 sequencing row 5 struck), and TASK-708's Change History (correction appended, nothing above rewritten).
+
+### Findings while implementing (not in the ticket as written)
+
+1. **The ticket's §5 consumer table was incomplete.** `packages/agentic-sdk-v2` ships the moved paths as public SDK constants — `MONITORING_ENDPOINTS` (4 entries, consumed by `useMonitoring`) and `SERVICE_HEALTH_ENDPOINTS.SERVICES` (consumed by `useHealthCheck`) — plus `isAdminPlanePath`'s hard-coded non-`admin/` branches. §5's claim that "no `@arcaai/vox-node` resource calls" these was true, but `@arcaai/vox` (browser) does. All updated; the `isAdminPlanePath` legacy branches were KEPT (they cost nothing and still classify a hard-coded pre-move path as admin-plane rather than handing it the impersonation JWT).
+2. **A repo-wide prefix pin the ticket did not name:** `apps/api/src/__tests__/controller-route-renames.test.ts` asserts `@Controller` strings for a fixed controller list. It failed the full suite on `monitoring` and was updated (the new controller added to the inventory block; `monitoring` moved out of the "unchanged" block).
+3. **`@RequiredScopes` validates against `API_KEY_SCOPE_REGISTRY` at decoration time** — an invented scope string throws before any audit runs, so a negative audit test must use a registered scope to prove anything.
+4. **This is a breaking change for any out-of-repo caller.** Six URLs move; no alias. In-repo that is fully absorbed. Outside the repo the only plausible callers are consumers of `@arcaai/vox` ≤ 2.0.7 pinned to the old constants and any operator script/dashboard hitting `/api/v1/health/services` or `/api/v1/monitoring/*` directly — both must move to the `admin/` paths. Auth is unaffected: both surfaces were already `@ForbidApiKey()`, so no API-key integration can have existed, and a JWT caller holding `manage:all` or `read:TenantTelemetry` is unchanged. **The SDK constants change should ship in the next `@arcaai/vox` release note.**
 
 ---
 
@@ -313,4 +378,5 @@ _pending_
 
 | Date | Change |
 |---|---|
+| 2026-08-18 | **Implemented (Steps 0–7).** Owner decisions recorded: 0.1 **hard move, no alias** (Option A — no redirect precedent exists in `apps/api`, no out-of-repo consumer for either surface, pre-production posture); 0.2 **throttle preserved** at 30/60s on the new controller (an explicit `@Throttle`, so the split changes no observable rate limit); 0.3 **record, do not converge** for `SttInternalController`. `MonitoringController` → `@Controller('admin/monitoring')`; `AdminHealthServicesController` extracted at `admin/health/services` with `ApiHealthController` reduced to its four `@Public()` probes. No auth decorator added or removed. Consumers moved in lockstep: admin-console (6 calls + labels + 3 test files), `@arcaai/vox` endpoint constants + 5 test files (**a consumer §5 missed**), 4 API e2e specs, and `controller-route-renames.test.ts` (**a prefix pin the ticket did not name**). Both moved controllers pinned in `ADMIN_SCOPED_CONTROLLERS` as `FORBID`. `SttInternalController` carve-out recorded at the controller (`// API-KEY-NOTE` — marker deviation from the plan's `AUTH-NOTE`, per the 2026-08-18 marker convention), in the inventory §1, and PROVEN by three new audit cases; D-3 citation corrected. TASK-708's Change History corrected by appending (nothing above rewritten). §6.3 cross-reference + D-4 recorded. Evidence: RED captured before each GREEN; `pnpm --filter @arcaai/api test` **223 files / 3162 tests passed, 0 failed** (2 skipped); `pnpm api:build` 12/12 tasks successful; `eslint {src,tests}/**/*.ts` **0 errors, 64 warnings** (was 65 — all pre-existing `eslint-comments/require-description`, and the one warning the new file initially inherited was given a description); admin-console touched-feature suites 8 files / 61 tests passed; SDK touched suites 5 files / 147 tests passed. **Not run:** the live e2e suite — the shared test API on :8968 belongs to a concurrent session and serves a pre-move build, restarting it would disrupt that session, and re-seeding is a destructive DB operation this ticket is not permitted to run. The four touched specs were compile-verified with `playwright test --list` (49 tests resolve across 4 files). Pre-existing failures observed and NOT caused by this ticket: `constants.ws4.test.ts` expects `DNA_STYLE_ENDPOINTS` to have 16 keys while HEAD already has 18, and 5 admin-console `ai-task-defaults`/`harness-policy` tests. Status: **Completed** pending that e2e run. | TASK-759 implementation agent |
 | 2026-08-18 | Created. All four §2.5 claims verified against source (`monitoring.controller.ts:17-29`, `health.controller.ts:53-62,196-244`, `stt-internal.controller.ts:41-52`, `workflow-sandbox-run.controller.ts:20-34`). Six discrepancies recorded (D-1…D-6), including that the `SttInternalController` "decision required" is already settled and boot-policed, and that no redirect convention exists in `apps/api`. Implementation plan and verification criteria written. Status: Pending. No code changed. |

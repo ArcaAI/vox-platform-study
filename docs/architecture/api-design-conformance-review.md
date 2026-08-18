@@ -33,8 +33,8 @@ Evidence base: [api-controller-inventory.md](./api-controller-inventory.md) (re-
 |---|---:|---:|---|
 | A2 — admin ⇒ JWT only | 2 controllers | **65 controllers / 386 handlers** | Only `AdminImpersonationController` and `ConsentGrantController` already carry `@ForbidApiKey()` |
 | A1 — business ⇒ JWT + API key | 14 controllers | **18 controllers / 69 handlers** | Several are legitimate exemptions — see §2.2 |
-| P1/P2 — prefix matches nature | ~all | **2 controllers** | `MonitoringController`, `ApiHealthController` (`/services` routes) |
-| P3 — internal prefix | 5/5 | 0 (prefix) / **1 (auth model)** | `SttInternalController` is the lone internal surface on the API-key path |
+| P1/P2 — prefix matches nature | **all** | ~~2 controllers~~ 0 | ~~`MonitoringController`, `ApiHealthController` (`/services` routes)~~ — **CLOSED by TASK-759**: `monitoring` → `admin/monitoring`; the two `/health/services` routes split into `AdminHealthServicesController` at `admin/health/services`. Hard move, no alias (there is no redirect convention in `apps/api`); gates, throttles and `@ForbidApiKey()` carried across unchanged. |
+| P3 — internal prefix | 5/5 | 0 (prefix) / 0 | `SttInternalController` is the lone internal surface on the API-key path — **recorded by TASK-759 as a POLICED CARVE-OUT, not drift**: BUG-013 requires the STT worker to present a real `ApiKey` row, and `RESERVED_INTERNAL_SCOPE_CONTROLLERS` fails boot if the reserved `internal:`-rooted scope is dropped. Documented in `api-controller-inventory.md` §1 and at the controller (`// API-KEY-NOTE`). |
 | R3 — WS requester-only | **2/2 in-scope gateways** | 0 | ~~One critical (STT hijack), one defence-in-depth (TTS origin)~~ — STT closed by TASK-754 (`e3f3713fb`); TTS closed by TASK-755 (origin/CSWSH check + `tts_session` mint branch). Original finding text kept below. |
 
 ---
@@ -103,8 +103,8 @@ Three of the 18 are not really A1 candidates at all:
 
 | Controller | Now | Nature | Action |
 |---|---|---|---|
-| `MonitoringController` | `api/v1/monitoring` | requires `manage:all \| read:TenantTelemetry` | → `api/v1/admin/monitoring`, then JWT-only. Inventory already flags "Not under /admin." |
-| `ApiHealthController` `/services`, `/services/:key` | `api/v1/health` | ops telemetry behind CASL | Split: keep `/`, `/live`, `/ready`, `/startup` public; move the two `/services` routes to `api/v1/admin/health/services` |
+| `MonitoringController` | ~~`api/v1/monitoring`~~ → `api/v1/admin/monitoring` | requires `manage:all \| read:TenantTelemetry` | **DONE (TASK-759).** Prefix moved; `@CanAny` (OR mode), `@Throttle(300/60s)` and `@ForbidApiKey()` unchanged. Already JWT-only, so A2-compliant on arrival. |
+| `ApiHealthController` `/services`, `/services/:serviceKey` (**`:serviceKey`**, not `:key` — D-1) | `api/v1/health` | ops telemetry behind CASL | **DONE (TASK-759).** Split executed: the four probes stay `@Public()` on `health`; the two CASL-gated routes are now `AdminHealthServicesController` at `api/v1/admin/health/services`, carrying the same `@CanAny`, the same 30/60s throttle and the same `@ForbidApiKey()`. `ApiHealthController` is no longer "Mixed". |
 | `SttInternalController` | `api/v1/internal/stt` | prefix correct; auth deviates | **Already settled and boot-policed — no decision needed.** `RESERVED_INTERNAL_SCOPE_CONTROLLERS` (`api-key-scope-audit.ts:169`) names the exemption and fails boot if the reserved scope is removed; `task-708-apikey-scope-contract.spec.ts:30-49` records it as *"the SETTLED design … do not re-derive"*. BUG-013 requires the STT worker to present a real `ApiKey` row. Action is **documentary**: record it in the inventory so it stops reading as drift. |
 | `WorkflowSandboxRunController` | `api/v1/admin/…` | doc comment says *"Session-JWT admin console ONLY"* yet carries `admin:workflow-definition:manage` | Unenforced drift (`conformance/gateway-and-sdk.md` §6.3); A2 fixes it automatically |
 
@@ -201,7 +201,7 @@ Every rule above is mechanically checkable. Add boot-time/lint gates: admin pref
 | 2 | §3.1 step 1 — privilege ceiling on key minting | Security — small, self-contained |
 | 3 | ~~§3.4 items 5-6 — TTS origin + `tts_session` ownership~~ — **DONE** (TASK-755) | Low |
 | 4 | §3.1 step 2 — `@ForbidApiKey()` across admin + reserve scopes + boot audit | Medium; 3 e2e specs to rewrite |
-| 5 | §2.5 prefix moves (`monitoring`, `health/services`) | Low; pre-launch, redirects available |
+| 5 | ~~§2.5 prefix moves (`monitoring`, `health/services`)~~ — **DONE** (TASK-759). Hard move, no redirect: verified there is no `@Redirect`/301/308/`deprecated: true` precedent anywhere in `apps/api`, and no consumer outside this repo. | Low; pre-launch |
 | 6 | §3.3 A1 rollout with exemption list | Low |
 | 7 | §3.5 business-plane normalization | Low, broad diff |
 | 8 | Compat surfaces (A3) | Deferred — dedicated deprecation ticket |

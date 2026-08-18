@@ -16,15 +16,17 @@ import { HeartbeatRecord, ServiceUptime, SessionsResponse, UptimeResponse } from
 // is still rejected.
 @CanAny(['manage', 'all'], ['read', 'TenantTelemetry'])
 @Throttle({ default: { limit: 300, ttl: 60000 } })
-@Controller('monitoring')
-// TASK-742 API-KEY-NOTE — CONSERVATIVE DEFAULT, AWAITING OWNER CLASSIFICATION.
-// Reason: admin-shaped telemetry export; outside TASK-708 s /admin/*-only approval and has no scope of its own.
-// This route family declared nothing about API-key access, which under the
-// deny-by-default rule is a boot failure. Rather than guess a scope (guessing
-// permissive is how the original gap was created), it is closed explicitly.
-// Reversing it is a one-line change to @RequiredScopes('<scope>') once the
-// owner confirms a real API-key use case — see the TASK-708 README's
-// "Reachability changes awaiting owner review" table.
+@Controller('admin/monitoring')
+// API-KEY-NOTE — CLOSED BY PLANE, NOT BY CONSERVATIVE DEFAULT.
+// Originally @ForbidApiKey() as TASK-742's conservative default: the route
+// family declared nothing about API-key access, which under the deny-by-
+// default rule is a boot failure, and guessing a permissive scope is how the
+// original gap was created. TASK-759 moved the prefix to `admin/monitoring`
+// (rule P2 — this is an administrative capability, not a business one), so
+// the SAME decorator is now the A2 outcome the admin plane requires: the
+// admin plane is JWT-only. The declaration is no longer awaiting owner
+// classification — the plane classifies it. No key-based consumer ever
+// existed on this surface, so the move breaks nothing.
 @ForbidApiKey()
 export class MonitoringController {
   private readonly logger = new Logger(MonitoringController.name);
